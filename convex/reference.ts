@@ -187,10 +187,12 @@ export const clubs = query({
 const ATHLETE_PAGE_SIZE = 2000;
 /**
  * Registrations answered to a client that does not page (the app, site and
- * CLI before paging), the most recent first: under Convex's 8,192-element
- * array limit, and a bounded read.
+ * CLI before paging), the most recently written first: under Convex's
+ * 8,192-element array limit, and a bounded read. `wsoAthletes` answers text,
+ * which has no element limit, so it keeps more, within the read limits.
  */
-const UNPAGED_ATHLETE_LIMIT = 8000;
+const UNPAGED_CLUB_ATHLETE_LIMIT = 8000;
+const UNPAGED_WSO_ATHLETE_LIMIT = 16000;
 
 const athleteCursor = v.optional(v.union(v.string(), v.null()));
 
@@ -215,7 +217,7 @@ const namesDescending = (a: Doc<'athletes'>, b: Doc<'athletes'>) => compareColla
  * `{ json, cursor, isDone }`: call again with `cursor` until `isDone`. Each
  * page is in name order; pages are not merged, and a roster replaced while a
  * client pages can appear twice. Without it (clients that predate paging),
- * the plain array of the club's UNPAGED_ATHLETE_LIMIT most recent entries.
+ * the plain array of the club's UNPAGED_CLUB_ATHLETE_LIMIT most recent entries.
  */
 export const clubAthletes = query({
   args: { club: v.string(), cursor: athleteCursor },
@@ -227,7 +229,7 @@ export const clubAthletes = query({
       const json = JSON.stringify(page.page.sort(namesDescending).map(clubAthleteRow));
       return { json, cursor: page.continueCursor, isDone: page.isDone };
     }
-    return (await rows.order('desc').take(UNPAGED_ATHLETE_LIMIT)).sort(namesDescending).map(clubAthleteRow);
+    return (await rows.order('desc').take(UNPAGED_CLUB_ATHLETE_LIMIT)).sort(namesDescending).map(clubAthleteRow);
   },
 });
 
@@ -247,7 +249,7 @@ export const wsoAthletes = query({
       const page = await rows.paginate({ cursor: args.cursor, numItems: ATHLETE_PAGE_SIZE });
       return { json: JSON.stringify(page.page.sort(namesDescending).map(row)), cursor: page.continueCursor, isDone: page.isDone };
     }
-    const recent = await rows.order('desc').take(UNPAGED_ATHLETE_LIMIT);
+    const recent = await rows.order('desc').take(UNPAGED_WSO_ATHLETE_LIMIT);
     return { json: JSON.stringify(recent.sort(namesDescending).map(row)) };
   },
 });

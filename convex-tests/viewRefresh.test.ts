@@ -153,6 +153,40 @@ describe('targeted refresh', () => {
     expect(h.scheduled.map((s) => s.name)).toContain('views:refresh');
   });
 
+  it('keeps a hint a write renewed while its view was being built', async () => {
+    const h: ReturnType<typeof harness> = harness(
+      { view_hints: [hint('nat', nat('Open')), hint('nat', nat('Youth'))] },
+      builders({
+        // A result written mid-build: the write bumps the hint's `seq`.
+        buildNat: async ({ ageCategory }) => {
+          const row = h.fake.rows('view_hints').find((r) => r.key === nat('Open'));
+          if (ageCategory === 'Open' && row) await h.fake.db.patch(row._id, { seq: 1, updatedAt: 2 });
+          return 1;
+        },
+      }),
+    );
+    await refresh(h);
+    expect(h.hints()).toEqual([`nat:${nat('Open')}`]);
+  });
+
+  it('retries a rebuild’s failed builds in a targeted refresh, however many, and alerts until they succeed', async () => {
+    const failed = Array.from({ length: 2001 }, (_, i) => ({ ...hint('nat', nat(`Class ${i}`)), retry: true }));
+    const h = harness(
+      { view_hints: failed, view_state: [{ name: 'refresh', scheduled: false, baseline: [], rebuildFailures: 3 }] },
+      builders({ buildNat: ({ ageCategory }) => { if (ageCategory === 'Class 0') throw new Error('still broken'); return 1; } }),
+    );
+    const error = jest.spyOn(console, 'error').mockImplementation(() => {});
+    await expect(handlerOf(views.refreshJob)(h.ctx, {})).rejects.toThrow('the last full rebuild could not build 3 group(s)');
+    expect(h.called('buildNat')).toHaveLength(2001);
+    expect(h.scheduled.some((s) => s.name === 'views:rebuildStage')).toBe(false);
+    expect(h.hints()).toEqual([`nat:${nat('Class 0')}`]);
+    // Once it builds, the alert clears.
+    const ok = harness({ view_hints: h.fake.rows('view_hints'), view_state: h.fake.rows('view_state') }, builders());
+    await handlerOf(views.refreshJob)(ok.ctx, {});
+    error.mockRestore();
+    expect(ok.fake.rows('view_state')[0].rebuildFailures).toBeUndefined();
+  });
+
   it('only fails the hourly job when a build failed', async () => {
     const h = harness({ view_hints: [hint('nat', nat('Open'))] }, builders({ buildNat: () => { throw new Error('boom'); } }));
     const error = jest.spyOn(console, 'error').mockImplementation(() => {});
@@ -191,6 +225,33 @@ describe('full rebuild', () => {
     error.mockRestore();
     expect(h.scheduled.find((s) => s.name === 'views:rebuildStage')?.args).toEqual({ stage: 'meets', offset: 40, startedAt: 5, again: true });
     expect(h.fake.rows('view_state')[0].rebuildRestarts).toBe(1);
+  });
+
+  it('counts the builds a rebuild left pending', async () => {
+    const h = harness({ view_state: [{ name: 'refresh', scheduled: false, baseline: [] }] }, builders({ buildNat: () => { throw new Error('boom'); } }));
+    await writeView(h.ctx as never, 'rebuild|classes', jsonChunks([nat('Open'), nat('Youth')]), []);
+    const error = jest.spyOn(console, 'error').mockImplementation(() => {});
+    await handlerOf(views.rebuildStage)(h.ctx, { stage: 'nat', offset: 0, again: false, startedAt: 5 });
+    error.mockRestore();
+    expect(h.fake.rows('view_state')[0].rebuildFailures).toBe(2);
+    expect(h.fake.rows('view_hints').every((row) => row.retry === true)).toBe(true);
+  });
+
+  it('sweeps large orphans a few at a time, within a transaction’s read limit', async () => {
+    const orphans = Array.from({ length: 7 }, (_, i) => ({ key: natKey('USAW', `Gone ${i}`), etag: 'e', chunk_count: 5, built_at: 10, sources: STAMP }));
+    const h = harness({ views: orphans });
+    const first = (await handlerOf(views.sweepViewsPage)(h.ctx, { after: '', before: 100 })) as { after: string | null; deleted: number };
+    expect(first).toEqual({ after: natKey('USAW', 'Gone 0'), deleted: 1 });
+    await handlerOf(views.rebuildStage)(h.ctx, { stage: 'sweep', offset: 0, again: false, startedAt: 100 });
+    expect(h.fake.rows('views')).toEqual([]);
+  });
+
+  it('finishes a rebuild scheduled before the sweep existed by consuming the hints it read', async () => {
+    const h = harness({ view_hints: [hint('meet', 'Read Then'), hint('meet', 'Written Later')] });
+    const [readThen] = h.fake.rows('view_hints');
+    await handlerOf(views.rebuildStage)(h.ctx, { stage: 'sweep', offset: 0, again: false, hints: [{ id: readThen._id, seq: 0 }], versions: [] });
+    expect(h.hints()).toEqual(['meet:Written Later']);
+    expect(h.scheduled.map((s) => s.name)).toEqual(['views:refresh']);
   });
 
   it('sweeps views it did not rebuild unless a later write names them', async () => {

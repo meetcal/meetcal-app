@@ -330,6 +330,9 @@ export default defineSchema({
     // changed, so the refresh skips the stats of meets those results come
     // after. Absent when not known (a hint from before this existed).
     since: v.optional(v.string()),
+    // Left by a full rebuild for a build it could not do: retried by a
+    // targeted refresh, never counted toward starting another rebuild.
+    retry: v.optional(v.boolean()),
   })
     .index('by_kind_key', ['kind', 'key'])
     .index('by_updatedAt', ['updatedAt']),
@@ -350,6 +353,9 @@ export default defineSchema({
     // Times the running rebuild was restarted after a stage stopped; the
     // views-refresh job alerts once it keeps failing.
     rebuildRestarts: v.optional(v.number()),
+    // Builds the last full rebuild could not do (left as `retry` hints);
+    // cleared once a refresh rebuilds what is pending without a failure.
+    rebuildFailures: v.optional(v.number()),
     // Where the running rebuild's latest stage started, so a rebuild whose
     // stage failed resumes there rather than from the beginning.
     rebuildPosition: v.optional(

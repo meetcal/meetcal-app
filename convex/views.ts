@@ -907,10 +907,12 @@ export const beginRefresh = internalMutation({
     else if (lease !== null) await ctx.db.insert('view_state', { name: 'refresh', scheduled: false, baseline: [], refreshLease: lease });
     const all = await ctx.db.query('view_hints').take(MAX_REFRESH_HINTS + 1);
     const rows = all.slice(0, MAX_REFRESH_HINTS);
-    const costly = rows.filter((h) => !CHEAP_HINT_KINDS.has(h.kind)).length;
+    // A rebuild's failed targets are retried here, never by another rebuild:
+    // a build that fails everywhere would otherwise loop full rebuilds.
+    const costly = rows.filter((h) => !CHEAP_HINT_KINDS.has(h.kind) && !h.retry).length;
     return {
       hints: rows.map((h) => ({ id: h._id, kind: h.kind, key: h.key, seq: h.seq ?? 0, since: h.since })),
-      overflow: all.length > MAX_REFRESH_HINTS || costly > MAX_TARGETED_HINTS,
+      overflow: (all.length > MAX_REFRESH_HINTS && !rows.every((h) => h.retry)) || costly > MAX_TARGETED_HINTS,
       rebuilding: state?.rebuilding ?? false,
       rebuildHeartbeat: state?.rebuildHeartbeat ?? null,
       rebuildPosition: storedPosition(state?.rebuildPosition),
@@ -982,7 +984,8 @@ export const deleteHints = internalMutation({
 
 /**
  * Leaves (or renews) hints for views a full rebuild failed to build, so they
- * stay stale, survive the rebuild's sweeps, and the next refresh retries them.
+ * stay stale, survive the rebuild's sweeps, and the next (targeted) refresh
+ * retries them; counted in `rebuildFailures`, which the hourly job alerts on.
  */
 export const requeueHints = internalMutation({
   args: { hints: v.array(v.object({ kind: v.string(), key: v.string() })) },
@@ -993,9 +996,20 @@ export const requeueHints = internalMutation({
         .query('view_hints')
         .withIndex('by_kind_key', (q) => q.eq('kind', kind).eq('key', key))
         .first();
-      if (existing) await ctx.db.patch(existing._id, { seq: (existing.seq ?? 0) + 1, updatedAt });
-      else await ctx.db.insert('view_hints', { kind, key, seq: 0, updatedAt });
+      if (existing) await ctx.db.patch(existing._id, { seq: (existing.seq ?? 0) + 1, updatedAt, retry: true });
+      else await ctx.db.insert('view_hints', { kind, key, seq: 0, updatedAt, retry: true });
     }
+    const state = await refreshState(ctx);
+    if (state) await ctx.db.patch(state._id, { rebuildFailures: (state.rebuildFailures ?? 0) + 1 });
+  },
+});
+
+/** Clears the rebuild failure count once a refresh has rebuilt everything pending without a failure. */
+export const clearRebuildFailures = internalMutation({
+  args: {},
+  handler: async (ctx) => {
+    const state = await refreshState(ctx);
+    if (state?.rebuildFailures !== undefined) await ctx.db.patch(state._id, { rebuildFailures: undefined });
   },
 });
 
@@ -1053,6 +1067,11 @@ export const deleteHintsUpdatedBefore = internalMutation({
 
 /** View headers checked per `sweepViewsPage` mutation. */
 const SWEEP_PAGE = 200;
+/**
+ * Chunks (up to 700 KB each) one `sweepViewsPage` deletes before it stops:
+ * deleting reads them, and a transaction may read at most 16 MiB.
+ */
+const SWEEP_CHUNK_BUDGET = 8;
 
 /**
  * Whether a write (or a failed build, see `requeueHints`) named something
@@ -1083,11 +1102,15 @@ export const sweepViewsPage = internalMutation({
       .withIndex('by_key', (q) => q.gt('key', after))
       .take(SWEEP_PAGE);
     let deleted = 0;
-    for (const header of headers) {
+    let chunks = 0;
+    for (const [i, header] of headers.entries()) {
+      // Always at least one, so the sweep moves on past any view.
+      if (deleted > 0 && chunks + header.chunk_count > SWEEP_CHUNK_BUDGET) return { after: headers[i - 1].key, deleted };
       if (header.built_at >= before || INTERNAL_VIEW_PREFIXES.some((prefix) => header.key.startsWith(prefix))) continue;
       if (await changedSince(ctx, header.key, before)) continue;
       await deleteHeaderAndChunks(ctx, header);
       deleted += 1;
+      chunks += header.chunk_count;
     }
     return { after: headers.length < SWEEP_PAGE ? null : headers[headers.length - 1].key, deleted };
   },
@@ -1141,14 +1164,16 @@ const rebuildPosition = v.object({
  * it starts.
  */
 export const setRebuilding = internalMutation({
-  args: { rebuilding: v.boolean(), restarted: v.optional(v.boolean()), position: v.optional(rebuildPosition) },
-  handler: async (ctx, { rebuilding, restarted, position }) => {
+  args: { rebuilding: v.boolean(), restarted: v.optional(v.boolean()), fresh: v.optional(v.boolean()), position: v.optional(rebuildPosition) },
+  handler: async (ctx, { rebuilding, restarted, fresh, position }) => {
     const state = await refreshState(ctx);
     const fields = {
       rebuilding,
       rebuildHeartbeat: rebuilding ? Date.now() : undefined,
       // Counted while a rebuild keeps stopping; cleared when one finishes.
       ...(restarted ? { rebuildRestarts: (state?.rebuildRestarts ?? 0) + 1 } : rebuilding ? {} : { rebuildRestarts: undefined }),
+      // A new rebuild (not a resumed one) counts its own failed builds.
+      ...(fresh ? { rebuildFailures: undefined } : {}),
       ...(position ? { rebuildPosition: position } : rebuilding ? {} : { rebuildPosition: undefined }),
     };
     if (state) await ctx.db.patch(state._id, fields);
@@ -1326,9 +1351,9 @@ export const rebuildStage = internalAction({
         }
         await ctx.runMutation(internal.views.setRebuilding, { rebuilding: false });
         // Now, not through the queued probe (up to REBUILD_WAIT_MS away): the
-        // writes that arrived during the rebuild are applied at once. The
-        // probe then finds nothing left to do.
-        if (args.again) await ctx.scheduler.runAfter(0, internal.views.refresh, {});
+        // writes that arrived during the rebuild, and the builds it left
+        // pending, are applied at once. With none, the refresh does nothing.
+        await ctx.scheduler.runAfter(0, internal.views.refresh, {});
         return 'done';
       }
     }
@@ -1348,7 +1373,7 @@ const REBUILD_HINT_MARGIN_MS = 60 * 1000;
  * so a stage that failed does not send it back to the scan).
  */
 async function startRebuild(ctx: ActionCtx, options: { again: boolean; restarted?: boolean; from?: RebuildPosition | null }): Promise<void> {
-  await ctx.runMutation(internal.views.setRebuilding, { rebuilding: true, restarted: options.restarted });
+  await ctx.runMutation(internal.views.setRebuilding, { rebuilding: true, restarted: options.restarted, fresh: !options.from });
   // The probe that notices if a stage fails (see `refresh`).
   await ctx.runMutation(internal.views.queueRefresh, { delayMs: REBUILD_WAIT_MS });
   const from = options.from ?? null;
@@ -1427,7 +1452,11 @@ export const refreshHealth = internalQuery({
       .first();
     const oldest = [legacy?._creationTime, dated?.updatedAt].filter((t): t is number => t !== undefined);
     const state = await refreshState(ctx);
-    return { oldestHintAt: oldest.length ? Math.min(...oldest) : null, rebuildRestarts: state?.rebuildRestarts ?? 0 };
+    return {
+      oldestHintAt: oldest.length ? Math.min(...oldest) : null,
+      rebuildRestarts: state?.rebuildRestarts ?? 0,
+      rebuildFailures: state?.rebuildFailures ?? 0,
+    };
   },
 });
 
@@ -1442,13 +1471,19 @@ export const refreshJob = internalAction({
   args: {},
   handler: async (ctx): Promise<Record<string, number>> => {
     const result = await runRefresh(ctx);
-    const health: { oldestHintAt: number | null; rebuildRestarts: number } = await ctx.runQuery(internal.views.refreshHealth, {});
+    const health: { oldestHintAt: number | null; rebuildRestarts: number; rebuildFailures: number } = await ctx.runQuery(
+      internal.views.refreshHealth,
+      {},
+    );
     const problems: string[] = [];
     if ((result.failed ?? 0) > 0) {
       problems.push(`${result.failed} view build(s) failed and stay pending`);
     }
     if (health.oldestHintAt !== null && Date.now() - health.oldestHintAt > HINT_BACKLOG_ALERT_MS) {
       problems.push(`a write has waited ${Math.round((Date.now() - health.oldestHintAt) / 60_000)} minutes for its views to refresh`);
+    }
+    if (health.rebuildFailures > 0) {
+      problems.push(`the last full rebuild could not build ${health.rebuildFailures} group(s) of views, and no refresh has rebuilt them since`);
     }
     if (health.rebuildRestarts >= REBUILD_RESTART_ALERT) {
       problems.push(`the full rebuild has stopped and been restarted ${health.rebuildRestarts} times`);
@@ -1649,5 +1684,6 @@ async function refreshTargets(ctx: ActionCtx, hints: readonly Hint[]): Promise<R
   await done(hints.filter((h) => (h.kind === 'table' ? !builtTables.has(h.key) : !readKinds.has(h.kind))));
 
   if (deferred) await ctx.runMutation(internal.views.queueRefresh, { delayMs: REFRESH_DELAY_MS });
+  else if (failed.length === 0) await ctx.runMutation(internal.views.clearRebuildFailures, {});
   return { hints: hints.length, handled, rebuilt, failed: failed.length, deferred: deferred ? 1 : 0 };
 }

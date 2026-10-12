@@ -93,8 +93,9 @@ describe('club and WSO athlete lists', () => {
     // The oldest 100 registrations are the ones left out.
     expect(rows.some((r) => r.member_id === '99')).toBe(false);
     expect(rows[0]).toEqual({ name: 'Lifter 08099', meet: 'Meet 19', club: 'Big Club', gender: 'Women', weight_class: '64', entry_total: 150, member_id: '8099' });
+    // Text has no element limit: the WSO list keeps more.
     const wso = parse(await query(wsoAthletes, fake.db, { wso: 'California' })) as unknown[];
-    expect(wso).toHaveLength(8000);
+    expect(wso).toHaveLength(8100);
   });
 });
 
