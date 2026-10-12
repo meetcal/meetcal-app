@@ -198,11 +198,13 @@ export const replaceMeetSchedule = internalMutation({
 
 const scrapedMeet = v.object({
   name: v.string(),
-  venueName: v.string(),
-  venueStreet: v.string(),
-  venueCity: v.string(),
-  venueState: v.string(),
-  venueZip: v.string(),
+  // Absent together when the scraper got no address: a stored meet keeps its
+  // venue, a new one gets the meet's name and `NO_VENUE`.
+  venueName: v.optional(v.string()),
+  venueStreet: v.optional(v.string()),
+  venueCity: v.optional(v.string()),
+  venueState: v.optional(v.string()),
+  venueZip: v.optional(v.string()),
   // Absent when the scraper could not tell the zone (an unknown state).
   timeZone: v.optional(v.string()),
   startDate: v.string(),
@@ -216,6 +218,9 @@ const UNKNOWN_TIME_ZONE = '';
 /** The last US zone a day ends in: when a meet with no zone has surely ended. */
 const LATEST_US_ZONE = 'Pacific/Honolulu';
 
+/** The venue of a new meet scraped without an address (what `parseAddress('')` gave). */
+const NO_VENUE = { venueStreet: '', venueCity: 'Unknown', venueState: 'Unknown', venueZip: 'Unknown' };
+
 type ScrapedMeetRow = Infer<typeof scrapedMeet>;
 
 /**
@@ -223,7 +228,9 @@ type ScrapedMeetRow = Infer<typeof scrapedMeet>;
  * a new meet). A completed meet stays completed. The time zone is left alone
  * when the scraper could not tell it, or when someone set it by hand
  * (`timeZoneLocked`, see `setMeetTimeZone`), so the nightly sync never undoes
- * a correction; a new meet with no zone is stored with a blank one.
+ * a correction; a new meet with no zone is stored with a blank one. Likewise
+ * the venue is left alone when the scraper got no address (`upsertMeets`
+ * gives a new meet placeholders).
  */
 export function scrapedMeetValues(row: ScrapedMeetRow, existing: Pick<Doc<'meets'>, 'status' | 'timeZoneLocked'> | null) {
   const { timeZone, ...rest } = row;
@@ -257,7 +264,7 @@ export const upsertMeets = internalMutation({
         .first();
       if (!existing) {
         const values = scrapedMeetValues(row, null);
-        await ctx.db.insert('meets', { ...values, timeZone: values.timeZone ?? UNKNOWN_TIME_ZONE, updatedAt: now });
+        await ctx.db.insert('meets', { venueName: row.name, ...NO_VENUE, ...values, timeZone: values.timeZone ?? UNKNOWN_TIME_ZONE, updatedAt: now });
         outcomes.push({ wasInsert: true, wasChanged: true });
         hints.push({ kind: 'meet', key: row.name });
         continue;

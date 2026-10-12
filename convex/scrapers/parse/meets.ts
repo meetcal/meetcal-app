@@ -22,9 +22,10 @@ export function widgetPageUrl(search: string, page: number): string {
   return `${WIDGET}?p=${page}&i=${WIDGET_PAGE_SIZE}&l=&d=10&f=&s=${encodeURIComponent(search)}`;
 }
 
-export type WidgetRow = { id: string | null; name: string; address: string; subtitle: string };
+/** A widget row; `address` and `subtitle` are null when the row has no such text. */
+export type WidgetRow = { id: string | null; name: string; address: string | null; subtitle: string | null };
 
-const text = (value: unknown): string => (typeof value === 'string' ? value : '');
+const text = (value: unknown): string | null => (typeof value === 'string' ? value : null);
 
 /**
  * A widget page's rows and the search's total match count (the widget sends
@@ -38,7 +39,7 @@ export function readWidgetPage(body: unknown): { total: number; rows: WidgetRow[
   if (!Array.isArray(data)) throw new Error('widget: no data array');
   const rows = data.map((item: unknown, i): WidgetRow => {
     const row = (typeof item === 'object' && item !== null ? item : {}) as Record<string, unknown>;
-    const name = text(row.name).trim();
+    const name = (text(row.name) ?? '').trim();
     if (!name) throw new Error(`widget: row ${i} has no name`);
     const id = row.id === undefined || row.id === null ? null : String(row.id);
     return { id, name, address: text(row.address), subtitle: text(row.subtitle) };
@@ -47,32 +48,37 @@ export function readWidgetPage(body: unknown): { total: number; rows: WidgetRow[
 }
 
 /**
- * Every meet a search matches, a page at a time until the widget's count is
- * reached (or a page comes back short or empty). A search still short of its
- * count after `MAX_WIDGET_PAGES`, or that read fewer distinct meets than the
- * count, fails: a partial list would silently leave meets out.
+ * Every meet a search matches, once each, a page at a time until the widget's
+ * count is reached (or a page comes back short or empty). A meet repeated on a
+ * later page (the listing shifted between reads) is kept once. A search still
+ * short of its count after `MAX_WIDGET_PAGES`, or that read fewer distinct
+ * meets than the count, fails: a partial list would silently leave meets out.
  */
 export async function readAllWidgetPages(fetchPage: (page: number) => Promise<unknown>): Promise<WidgetRow[]> {
   const rows: WidgetRow[] = [];
+  const seen = new Set<string>();
   let total = 0;
   for (let page = 0; page < MAX_WIDGET_PAGES; page++) {
     const result = readWidgetPage(await fetchPage(page));
     total = result.total;
-    rows.push(...result.rows);
+    for (const row of result.rows) {
+      if (row.id !== null) {
+        if (seen.has(row.id)) continue;
+        seen.add(row.id);
+      }
+      rows.push(row);
+    }
     if (rows.length >= total || result.rows.length < WIDGET_PAGE_SIZE) break;
   }
-  const distinct = new Set(rows.map((row, i) => row.id ?? `#${i}`)).size;
-  if (distinct < total) throw new Error(`widget: read ${distinct} distinct meets of ${total} (${MAX_WIDGET_PAGES} pages of ${WIDGET_PAGE_SIZE} at most)`);
+  if (rows.length < total) throw new Error(`widget: read ${rows.length} distinct meets of ${total} (${MAX_WIDGET_PAGES} pages of ${WIDGET_PAGE_SIZE} at most)`);
   return rows;
 }
 
-export type ScrapedMeet = {
+/** The venue fields; absent together when the widget gave no address, so the stored venue stays. */
+type ScrapedVenue = { venueName: string; venueStreet: string; venueCity: string; venueState: string; venueZip: string };
+
+export type ScrapedMeet = Partial<ScrapedVenue> & {
   name: string;
-  venueName: string;
-  venueStreet: string;
-  venueCity: string;
-  venueState: string;
-  venueZip: string;
   /** Absent when the state is not a US state: reported, not guessed. */
   timeZone?: string;
   startDate: string;
@@ -154,26 +160,37 @@ export type TransformedMeets = {
   rejected: string[];
   /** Meets left out because their dates are not set yet ("TBD"): not an error. */
   undated: string[];
-  /** Meets synced without a time zone (the state is not a US state). */
+  /** Meets synced without a time zone (the state is not a US state, or no address). */
   unknownZone: string[];
 };
 
 /**
  * `transformMeetsData`: widget rows to meets, dropping adaptive ones. A meet
- * whose dates cannot be read is left out and reported, never stored with
- * made-up dates; one whose dates are still "TBD" (or blank) is left out until
- * they are set, without failing the run, which would mask a real outage while
- * the meet stays listed. The zone comes from the state and, in a state that spans
- * two zones, the city (`lib/states.ts`).
+ * whose dates cannot be read (or that has no dates field at all) is left out
+ * and reported, never stored with made-up dates; one whose dates are still
+ * "TBD" (or blank) is left out until they are set, without failing the run,
+ * which would mask a real outage while the meet stays listed. The zone comes
+ * from the state and, in a state that spans two zones, the city
+ * (`lib/states.ts`). A meet with no address is synced without venue or zone,
+ * so the stored ones stay.
  */
-export function transformMeets(rows: { name: string; address: string; subtitle: string }[]): TransformedMeets {
+export function transformMeets(rows: Pick<WidgetRow, 'name' | 'address' | 'subtitle'>[]): TransformedMeets {
   const result: TransformedMeets = { meets: [], rejected: [], undated: [], unknownZone: [] };
   for (const row of rows) {
     if (row.name.toUpperCase().includes('ADAPTIVE')) continue;
+    if (row.subtitle === null) {
+      result.rejected.push(`${row.name}: no dates`);
+      continue;
+    }
     const dates = parseDateRange(row.subtitle);
     if (!dates) {
       if (UNSET_DATES.test(row.subtitle)) result.undated.push(row.name);
       else result.rejected.push(`${row.name}: unreadable dates ${JSON.stringify(row.subtitle)}`);
+      continue;
+    }
+    if (row.address === null || !row.address.trim()) {
+      result.unknownZone.push(`${row.name}: no address`);
+      result.meets.push({ name: row.name, ...dates, status: 'upcoming', federation: 'USAW' });
       continue;
     }
     const { venueName, street, city, state, zip } = parseAddress(row.address);

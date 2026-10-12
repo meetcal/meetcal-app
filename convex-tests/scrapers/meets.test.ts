@@ -89,7 +89,34 @@ describe('meet sync (port of sync-meets.js / sync-nat-meets.js / sync-virus-meet
     expect(() => readWidgetPage({ data: [] })).toThrow('no match count');
     expect(() => readWidgetPage({ total: '1' })).toThrow('no data array');
     expect(() => readWidgetPage({ total: 1, data: [{ subtitle: '10/01/2026' }] })).toThrow('row 0 has no name');
-    expect(readWidgetPage({ total: 1, data: [{ id: 7, name: ' A ' }] }).rows).toEqual([{ id: '7', name: 'A', address: '', subtitle: '' }]);
+    // A missing address or date is told apart from a blank one.
+    expect(readWidgetPage({ total: 1, data: [{ id: 7, name: ' A ' }] }).rows).toEqual([{ id: '7', name: 'A', address: null, subtitle: null }]);
+    expect(readWidgetPage({ total: 1, data: [{ id: 7, name: 'A', address: '', subtitle: '' }] }).rows).toEqual([{ id: '7', name: 'A', address: '', subtitle: '' }]);
+  });
+
+  it('fails a meet with no dates field rather than wait for its dates', () => {
+    expect(transformMeets([{ name: 'No subtitle', address: 'Gym, 1 Main St, Nashville, Tennessee, United States of America, 37210', subtitle: null }])).toEqual({
+      meets: [],
+      undated: [],
+      rejected: ['No subtitle: no dates'],
+      unknownZone: [],
+    });
+  });
+
+  it('syncs a meet with no address without a venue or zone, so the stored ones stay', () => {
+    const rows = [
+      { name: 'No address', address: null, subtitle: '10/01/2026' },
+      { name: 'Blank address', address: ' ', subtitle: '10/02/2026' },
+    ];
+    expect(transformMeets(rows)).toEqual({
+      meets: [
+        { name: 'No address', startDate: '2026-10-01', endDate: '2026-10-01', status: 'upcoming', federation: 'USAW' },
+        { name: 'Blank address', startDate: '2026-10-02', endDate: '2026-10-02', status: 'upcoming', federation: 'USAW' },
+      ],
+      undated: [],
+      rejected: [],
+      unknownZone: ['No address: no address', 'Blank address: no address'],
+    });
   });
 
   it('asks for each page of a search', () => {
@@ -139,6 +166,13 @@ describe('meet sync (port of sync-meets.js / sync-nat-meets.js / sync-virus-meet
     it('fails when pages repeat meets', async () => {
       const fetchPage = async (page: number) => ({ total: 25, data: Array.from({ length: page === 0 ? 20 : 5 }, (_, i) => meet(i)) });
       await expect(readAllWidgetPages(fetchPage)).rejects.toThrow('read 20 distinct meets of 25');
+    });
+
+    it('keeps a meet once when the listing shifts between pages', async () => {
+      // Page 0 has meets 1-20; by page 1 the listing moved, so it has 16-25.
+      const fetchPage = async (page: number) => ({ total: 25, data: Array.from({ length: page === 0 ? 20 : 10 }, (_, i) => meet(page === 0 ? i + 1 : i + 16)) });
+      const rows = await readAllWidgetPages(fetchPage);
+      expect(rows.map((r) => r.id)).toEqual(Array.from({ length: 25 }, (_, i) => String(i + 1)));
     });
   });
 });
