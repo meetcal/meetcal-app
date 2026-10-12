@@ -4,7 +4,7 @@ import { disambiguatedMeetName, joinRoster, meetByName, oldestMeet } from '../co
 import { earliestLocalDate, meetStatusAt, meetStatusOn } from '../convex/lib/meetStatus';
 import { distinctNameKeys, normalizeName } from '../convex/lib/names';
 import { athleteGenderLabel, normalizeGender, storedGenderSpellings } from '../convex/lib/normalize';
-import { computeStandards } from '../convex/lib/referenceData';
+import { computeStandards, filterWsoRows } from '../convex/lib/referenceData';
 
 const composed = 'Jos\u00e9 Pe\u00f1a';
 const decomposed = 'Jose\u0301 Pen\u0303a';
@@ -112,5 +112,11 @@ describe('readers before the gender migration (#165)', () => {
     expect(joinRoster([athlete('Men'), athlete('Female')] as never, []).map((row) => row.gender)).toEqual(['Female', 'Male']);
     const { db } = fakeDb({ standards: [{ ageCategory: 'Senior', gender: 'Male', weightClass: '89', standardA: 1, standardB: 1 }] });
     expect((await computeStandards({ db } as never)).map((row) => row.gender)).toEqual(['Men']);
+  });
+
+  it('read a WSO records gender filter in the spelling the rows answer', () => {
+    const row = { age_category: 'Senior', gender: 'Men', weight_class: '89' } as never;
+    expect(filterWsoRows([row], undefined, 'male')).toEqual([row]);
+    expect(filterWsoRows([row], undefined, 'Women')).toEqual([]);
   });
 });

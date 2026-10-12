@@ -206,8 +206,9 @@ describe('meet writes', () => {
 
     it("inserts a new event under a disambiguated name when another federation's meet has its name (#159)", async () => {
       const { ctx, rows } = fakeMutationCtx({ meets: [{ ...meetRow('Spring Classic'), updatedAt: 1 }] });
-      expect((await sync(ctx, { events: [event('Spring Classic')] })).inserted).toEqual(['Spring Classic (USAMW)']);
-      expect((await sync(ctx, { events: [event('Spring Classic')] })).unchanged).toEqual(['Spring Classic (USAMW)']);
+      expect(await sync(ctx, { events: [event('Spring Classic')] })).toMatchObject({ inserted: ['Spring Classic (USAMW)'], renamed: ['Spring Classic (USAMW)'] });
+      // Reported once, when stored: the next sync just finds it.
+      expect(await sync(ctx, { events: [event('Spring Classic')] })).toMatchObject({ unchanged: ['Spring Classic (USAMW)'], renamed: [] });
       expect(rows('meets').map((m) => [m.name, m.federation])).toEqual([
         ['Spring Classic', 'USAW'],
         ['Spring Classic (USAMW)', 'USAMW'],

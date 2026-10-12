@@ -4,7 +4,7 @@ import { v } from 'convex/values';
 import { internalAction } from '../_generated/server';
 import { internal } from '../_generated/api';
 import { MEET_SEARCHES, transformMeets, type ScrapedMeet } from './parse/meets';
-import { sourcesFailed } from '../lib/cronAlerts';
+import { sourcesFailed, type SourceFailure } from '../lib/cronAlerts';
 import type { ZoneFormatters } from '../lib/meetData';
 import { meetStatusAt } from '../lib/meetStatus';
 
@@ -16,6 +16,16 @@ import { meetStatusAt } from '../lib/meetStatus';
  * their scraped dates have moved into the future: `upsertMeets` then makes
  * them upcoming again (status follows the dates, `lib/meetStatus.ts`).
  */
+/**
+ * Why a new meet was stored under `storedAs`: its name is another
+ * federation's meet's, and rosters and results still refer to meets by
+ * name, so those written under the plain name attach to the other meet
+ * until a person renames one of the two.
+ */
+export function renamedMeetMessage(name: string, storedAs: string): string {
+  return `another federation's meet is named ${JSON.stringify(name)}, so this one was stored as ${JSON.stringify(storedAs)}; results and entries sent under the plain name still attach to the other meet (rename one by hand)`;
+}
+
 async function fetchWidget(url: string): Promise<{ name: string; address: string; subtitle: string }[]> {
   for (let attempt = 1; ; attempt++) {
     try {
@@ -36,6 +46,9 @@ export const run = internalAction({
   args: { dryRun: v.optional(v.boolean()) },
   handler: async (ctx, { dryRun }): Promise<SearchResult[]> => {
     const results: SearchResult[] = [];
+    // New meets stored under another name because another federation's
+    // meet has theirs: stored, then the run fails once so a person hears.
+    const renamed: SourceFailure[] = [];
     for (const search of MEET_SEARCHES) {
       const result: SearchResult = { key: search.key, fetched: 0, meets: [], skippedCompleted: [], inserted: [], updated: 0 };
       results.push(result);
@@ -60,13 +73,17 @@ export const run = internalAction({
         result.skippedCompleted = result.meets.filter(skipped).map((m) => m.name);
         toIngest = result.meets.filter((m) => !skipped(m));
       }
-      const outcomes: { wasInsert: boolean; wasChanged: boolean }[] = await ctx.runMutation(internal.ingest.upsertMeets, { rows: toIngest });
+      const outcomes: { wasInsert: boolean; wasChanged: boolean; storedAs?: string }[] = await ctx.runMutation(internal.ingest.upsertMeets, { rows: toIngest });
       result.inserted = toIngest.filter((_, i) => outcomes[i].wasInsert).map((m) => m.name);
+      toIngest.forEach((m, i) => {
+        const { wasInsert, storedAs } = outcomes[i];
+        if (wasInsert && storedAs) renamed.push({ source: `meet ${m.name}`, error: renamedMeetMessage(m.name, storedAs) });
+      });
       result.updated = outcomes.filter((o) => !o.wasInsert && o.wasChanged).length;
       console.log(`meets (${search.key}): ${result.fetched} fetched, ${toIngest.length} synced, ${result.inserted.length} new, ${result.updated} updated`);
     }
-    const failed = results.filter((r) => r.error);
-    if (failed.length) throw sourcesFailed('meets', failed.map((r) => ({ source: r.key, error: r.error! })));
+    const failed = [...results.filter((r) => r.error).map((r) => ({ source: r.key, error: r.error! })), ...renamed];
+    if (failed.length) throw sourcesFailed('meets', failed);
     return results;
   },
 });

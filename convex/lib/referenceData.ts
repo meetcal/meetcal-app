@@ -257,8 +257,10 @@ export async function computeWsoRows(ctx: QueryCtx, wso: string): Promise<WsoRec
 }
 
 export function filterWsoRows(rows: WsoRecordRow[], ageCategory?: string, gender?: string): WsoRecordRow[] {
+  // Rows answer `normalizeGender`'s spelling; so is the filter read.
+  const wanted = gender === undefined ? undefined : normalizeGender(gender);
   return rows.filter(
-    (r) => (ageCategory === undefined || r.age_category === ageCategory) && (gender === undefined || r.gender === gender),
+    (r) => (ageCategory === undefined || r.age_category === ageCategory) && (wanted === undefined || r.gender === wanted),
   );
 }
 

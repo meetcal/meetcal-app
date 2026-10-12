@@ -7,6 +7,11 @@ import { normalizeAgeCategory, normalizeGender } from './lib/normalize';
 import { deleteResultRows, eventResultsByKey, recordWrite } from './ingest';
 
 const BACKFILL_PAGE_SIZE = 500;
+/**
+ * Result rows one dedupe mutation deletes at most: each deletion rewrites
+ * its athlete's history (`ingest.RESULT_PRUNE_BATCH` for the same reason).
+ */
+const DEDUPE_BATCH = 200;
 
 /**
  * Fills `lifting_results.nameKey` on rows written before it existed, or
@@ -193,7 +198,12 @@ export const dedupeLiftingResults = internalMutation({
       // Oldest first within a key: all but the last are older copies.
       for (const rows of (await eventResultsByKey(ctx, eventId)).values()) copies.push(...rows.slice(0, -1));
     }
-    const count = deleted + (await deleteResultRows(ctx, copies));
+    const count = deleted + (await deleteResultRows(ctx, copies.slice(0, DEDUPE_BATCH)));
+    if (copies.length > DEDUPE_BATCH) {
+      // The same page again: the deleted copies are gone, the rest are next.
+      await ctx.scheduler.runAfter(0, internal.migrations.dedupeLiftingResults, { cursor: cursor ?? null, deleted: count, ...(lastEventId === undefined ? {} : { lastEventId }) });
+      return;
+    }
     if (page.isDone) {
       console.log(`dedupeLiftingResults: done, ${count} duplicate rows deleted`);
       return;

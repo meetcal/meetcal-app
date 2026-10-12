@@ -478,7 +478,7 @@ export const syncUsamwEvents = internalMutation({
     const now = Date.now();
     const formatters: ZoneFormatters = new Map();
     const hints: WriteHint[] = [];
-    const result = { inserted: [] as string[], updated: [] as string[], unchanged: [] as string[], ambiguous: [] as string[] };
+    const result = { inserted: [] as string[], updated: [] as string[], unchanged: [] as string[], ambiguous: [] as string[], renamed: [] as string[] };
     // Every USAMW meet that has not ended before the earliest event: the
     // candidates for a folded-name or date match.
     const earliest = events.reduce((min, e) => (e.startDate < min ? e.startDate : min), '9999-12-31');
@@ -531,6 +531,7 @@ export const syncUsamwEvents = internalMutation({
         });
         hints.push({ kind: 'meet', key: name });
         result.inserted.push(name);
+        if (name !== event.name) result.renamed.push(name);
         continue;
       }
       const site: Partial<Doc<'meets'>> = { startDate: event.startDate, endDate: event.endDate };

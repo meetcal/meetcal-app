@@ -60,7 +60,7 @@ describe('dedupeLiftingResults (#132)', () => {
     const calls = await runPaged('migrations:dedupeLiftingResults', handlerOf<Paged, void>(dedupeLiftingResults), store);
     expect(calls).toBe(2);
     const remaining = store.rows('lifting_results');
-    expect(remaining).toHaveLength(602 + 2 - 1);
+    expect(remaining).toHaveLength(605 - 2);
     expect(remaining.filter((r) => r.eventId === 'e498a')).toEqual([expect.objectContaining({ name: 'john smith', total: 220 })]);
     expect(remaining.filter((r) => r.eventId === 'x2')).toHaveLength(2);
     expect(JSON.parse(store.rows('athlete_history').find((h) => h.nameKey === 'john smith')!.json as string)).toHaveLength(1);
@@ -68,6 +68,22 @@ describe('dedupeLiftingResults (#132)', () => {
     const before = store.rows('lifting_results').length;
     await runPaged('migrations:dedupeLiftingResults', handlerOf<Paged, void>(dedupeLiftingResults), store);
     expect(store.rows('lifting_results')).toHaveLength(before);
+  });
+
+  it('deletes a heavily duplicated event over several mutations, the same page again each time', async () => {
+    const seed: Row[] = [];
+    for (let i = 0; i < 450; i++) seed.push(result(`Athlete ${i}`, 'big'), result(`ATHLETE  ${i}`, 'big'));
+    const store = fakeMutationCtx({ lifting_results: seed });
+    const removed: number[] = [];
+    const handler = handlerOf<Paged, void>(dedupeLiftingResults);
+    const counting = async (ctx: unknown, args: Paged) => {
+      const before = store.rows('lifting_results').length;
+      await handler(ctx, args);
+      removed.push(before - store.rows('lifting_results').length);
+    };
+    expect(await runPaged('migrations:dedupeLiftingResults', counting, store)).toBe(3);
+    expect(removed).toEqual([200, 200, 50]);
+    expect(store.rows('lifting_results')).toHaveLength(450);
   });
 });
 
