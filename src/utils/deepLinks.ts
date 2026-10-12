@@ -125,11 +125,20 @@ export function getOneSignalDeepLink(event: unknown) {
  * Deep links (`normalizeDeepLinkHref`) use the same rule: a push payload of
  * `//host/path` used to be accepted as an in-app href because it starts with
  * `/`.
+ *
+ * Browsers also read `\` as `/` and drop tabs and newlines, so `/\host` and
+ * `/<tab>/host` are `//host` too. No route the app has contains a backslash
+ * (routes are Expo Router file names, and `createAppDeepLink` percent-encodes
+ * one in a query), and none starts with a blank or control character.
  */
 export function isInternalRoutePath(value: unknown): value is string {
   if (typeof value !== 'string') return false;
   // `//host` is protocol-relative, not an in-app path.
-  return value.startsWith('/') && !value.startsWith('//');
+  if (!value.startsWith('/') || value.startsWith('//')) return false;
+  if (value.includes('\\')) return false;
+  // A control character or space where the first segment should start.
+  const first = value.charCodeAt(1);
+  return !(first <= 0x20 || first === 0x7f);
 }
 
 export function normalizeDeepLinkHref(value: string): Href | null {
@@ -151,7 +160,9 @@ export function normalizeDeepLinkHref(value: string): Href | null {
         ? `/${parsed.hostname}`
         : "";
     const path = `${hostPath}${parsed.pathname || ""}` || "/";
-    return isInternalRoutePath(path) ? (`${path}${parsed.search}` as Href) : null;
+    const href = `${path}${parsed.search}`;
+    // Checks the whole href: a raw backslash survives in a `meetcal:` query.
+    return isInternalRoutePath(href) ? (href as Href) : null;
   } catch {
     return null;
   }

@@ -359,7 +359,10 @@ function createServer() {
     if (call.args.ifNoneMatch === etag) return { etag };
     return { etag, json: JSON.stringify(rowsFor(id, version(id))) };
   };
-  return { version, bump: (id: string) => versions.set(id, version(id) + 1), answer };
+  // A `Transport` returns a promise: the client chains on it (the clock
+  // sample calls `.then`), so the synchronous `answer` is wrapped.
+  const transport: Transport = async (call) => answer(call);
+  return { version, bump: (id: string) => versions.set(id, version(id) + 1), answer, transport };
 }
 
 function fetchKey(key: WsoKey) {
@@ -422,6 +425,7 @@ describe('validator cache under transport faults (chaos)', () => {
       fc.asyncProperty(
         wsoKeysArb.chain((keys) => fc.tuple(fc.constant(keys), fc.array(cacheOpArb(keys.length), { maxLength: 12 }))),
         async ([keys, ops]) => {
+          resetServerClockForTests();
           clearHttpValidatorCache();
           const server = createServer();
           const ids = keys.map(keyId);
@@ -434,7 +438,7 @@ describe('validator cache under transport faults (chaos)', () => {
               clearHttpValidatorCache();
               continue;
             }
-            const run = install(server.answer as Transport, [op.fault]);
+            const run = install(server.transport, [op.fault]);
             const outcome = await outcomeOf(fetchKey(keys[op.key]));
             const id = ids[op.key];
             const healthyRun = dataCalls(run).every(({ fault }) => fault.kind === 'pass');
@@ -449,7 +453,7 @@ describe('validator cache under transport faults (chaos)', () => {
             }
           }
           // No fault left anything behind that a healthy call would serve.
-          install(server.answer as Transport, []);
+          install(server.transport, []);
           for (const [index, key] of keys.entries()) {
             await expect(fetchKey(key)).resolves.toEqual(rowsFor(ids[index], server.version(ids[index])));
           }
@@ -475,6 +479,9 @@ describe('validator cache under transport faults (chaos)', () => {
           ),
         ),
         async (s, [keys, ops]) => {
+          // Each run starts cold: whether the clock sample is taken (and its
+          // `.then` chained) must not depend on what an earlier run did.
+          resetServerClockForTests();
           clearHttpValidatorCache();
           const server = createServer();
           const ids = keys.map(keyId);
@@ -497,11 +504,17 @@ describe('validator cache under transport faults (chaos)', () => {
               resolved.set(id, [...(resolved.get(id) ?? []), rows[0].total_record ?? -1]);
             }),
           );
-          await s.waitFor(Promise.all(work));
+          // Wait for every operation, not just the first to fail, and then
+          // release anything still scheduled: an answer left unreleased would
+          // let its request's 10s timeout fire after the run, uncaught.
+          const settled = await s.waitFor(Promise.allSettled(work));
+          await s.waitAll();
+          const failed = settled.find((result) => result.status === 'rejected');
+          if (failed) throw failed.reason;
           for (const versions of resolved.values()) {
             expect(versions).toEqual([...versions].sort((a, b) => a - b));
           }
-          setApiTransportForTests(server.answer as Transport);
+          setApiTransportForTests(server.transport);
           for (const [index, key] of keys.entries()) {
             await expect(fetchKey(key)).resolves.toEqual(rowsFor(ids[index], server.version(ids[index])));
           }

@@ -1,5 +1,8 @@
 import * as fc from "fast-check";
-import { shouldLinkExternally } from "expo-router/build/utils/url";
+// Not public API: `expo-router` re-exports the check `router.push` makes only
+// through its `internal/*` subpath, so an Expo upgrade may move or rename it.
+// The test wants the router's own answer, not a copy that could drift.
+import { shouldLinkExternally } from "expo-router/internal/utils";
 
 import {
   createAppDeepLink,
@@ -17,11 +20,18 @@ import { HOSTILE_STRINGS, hostileStringArb, hostileValueArb } from "@/test-suppo
  * (`shouldLinkExternally`, the check `router.push` makes).
  */
 
+/** A control character or space, which browsers strip or stop at. */
+const isBlankOrControl = (code: number) => code <= 0x20 || code === 0x7f;
+
 function expectInternalRoute(href: unknown) {
   expect(typeof href).toBe("string");
   const route = href as string;
   expect(route.startsWith("/")).toBe(true);
   expect(route.startsWith("//")).toBe(false);
+  // Browsers read `\` as `/` and drop tabs and newlines: `/\host` and
+  // `/<tab>/host` are protocol-relative too.
+  expect(route.includes("\\")).toBe(false);
+  expect(isBlankOrControl(route.charCodeAt(1))).toBe(false);
   expect(shouldLinkExternally(route)).toBe(false);
 }
 
@@ -74,6 +84,38 @@ describe("deep links (properties)", () => {
     fc.assert(
       fc.property(fc.oneof(anyLinkArb, hostileValueArb), (value) => {
         if (isInternalRoutePath(value)) expectInternalRoute(value);
+      }),
+    );
+  });
+
+  it("refuses a path a browser would read as protocol-relative: a backslash, or a blank before the first segment", () => {
+    const blankArb = fc.integer({ min: 0, max: 0x20 }).map((code) => String.fromCharCode(code));
+    const leadArb = fc.oneof(
+      fc.constantFrom("/\\", "/\\/", "/\t/", "/\n/", "/\r/", "/ /", "/\u0000/", "/\u007f/"),
+      blankArb.map((blank) => `/${blank}`),
+    );
+    // Starts with a letter: `normalizeDeepLinkHref` trims, and `/<tab>` alone is `/`.
+    const tailArb = fc.oneof(fc.constantFrom("evil.example", "evil.example/open/saved", "open/saved?x=1"), fc.domain());
+    fc.assert(
+      fc.property(leadArb, tailArb, (lead, tail) => {
+        const path = `${lead}${tail}`;
+        expect(isInternalRoutePath(path)).toBe(false);
+        expect(normalizeDeepLinkHref(path)).toBeNull();
+        expect(normalizeDeepLinkHref(` ${path}\n`)).toBeNull();
+      }),
+    );
+  });
+
+  it("refuses a backslash anywhere in a link", () => {
+    // Before any `#`: the fragment is dropped, backslash and all.
+    const beforeArb = fc.string().filter((text) => !text.includes("#"));
+    fc.assert(
+      fc.property(fc.constantFrom("/", "meetcal://", "meetcal:///"), beforeArb, fc.string(), (prefix, before, after) => {
+        // After the host: before it, the URL parser takes a backslash as part
+        // of the user info (`meetcal://open\\@x`) and drops it.
+        const link = `${prefix}open/${before}\\${after}`;
+        expect(normalizeDeepLinkHref(link)).toBeNull();
+        expect(isInternalRoutePath(`/open${before}\\${after}`)).toBe(false);
       }),
     );
   });

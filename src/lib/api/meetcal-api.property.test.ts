@@ -396,13 +396,26 @@ describe('meetcal API mappers (properties)', () => {
 
   it('canonicalizes platforms idempotently, case-insensitively, and never to blank', () => {
     fc.assert(
-      fc.property(fc.oneof(hostileStringArb, fc.constantFrom('red', 'RED', ' Red ', 'gold  team')), (platform) => {
-        const canonical = normalizePlatform(platform);
-        expect(canonical.trim()).toBe(canonical);
-        expect(canonical.length).toBeGreaterThan(0);
-        expect(normalizePlatform(canonical)).toBe(canonical);
-        expect(normalizePlatform(platform.toUpperCase())).toBe(normalizePlatform(platform.toLowerCase()));
-      }),
+      fc.property(
+        fc.oneof(
+          hostileStringArb,
+          fc.stringMatching(/^[A-Za-z \t]{0,16}$/),
+          fc.constantFrom('red', 'RED', ' Red ', 'gold  team'),
+        ),
+        (platform) => {
+          const canonical = normalizePlatform(platform);
+          expect(canonical.trim()).toBe(canonical);
+          expect(canonical.length).toBeGreaterThan(0);
+          expect(normalizePlatform(canonical)).toBe(canonical);
+          // Case-insensitivity is only claimed for ASCII, which is what platform
+          // names are. Beyond it, case maps are not char for char: "ß"
+          // uppercases to "SS", a final sigma lowercases by context, and
+          // `charAt` splits a non-BMP letter ("𐐀") into surrogates.
+          if ([...platform].every((char) => char.charCodeAt(0) < 128)) {
+            expect(normalizePlatform(platform.toUpperCase())).toBe(normalizePlatform(platform.toLowerCase()));
+          }
+        },
+      ),
     );
   });
 });

@@ -88,6 +88,25 @@ describe("deep link helpers", () => {
     expect(normalizeDeepLinkHref("/open/saved?x=1")).toBe("/open/saved?x=1");
   });
 
+  it("rejects paths a browser reads as protocol-relative: a backslash, or a blank before the first segment", () => {
+    expect(normalizeDeepLinkHref("/\\evil.example")).toBeNull();
+    expect(normalizeDeepLinkHref("/\\/evil.example")).toBeNull();
+    expect(normalizeDeepLinkHref("/\t/evil.example")).toBeNull();
+    expect(normalizeDeepLinkHref("/\n/evil.example")).toBeNull();
+    expect(normalizeDeepLinkHref("/ /evil.example")).toBeNull();
+    expect(normalizeDeepLinkHref("/open/saved\\x")).toBeNull();
+    expect(normalizeDeepLinkHref("meetcal://open/\\evil.example")).toBeNull();
+    expect(normalizeDeepLinkHref("meetcal://open/saved?next=\\evil.example")).toBeNull();
+  });
+
+  it("keeps the session return path when the meet name has a backslash or a tab", () => {
+    // `createAppDeepLink` percent-encodes them in the query.
+    const link = createSessionDetailsDeepLink({ meet: "A\\B\tMeet", sessionNumber: 3, platform: "Red" });
+    expect(normalizeDeepLinkHref(link)).toBe(
+      "/shared-screens/schedule-details?meet=A%5CB%09Meet&sessionNumber=3&platform=Red",
+    );
+  });
+
   it("extracts links from local notification data aliases", () => {
     expect(getNotificationDeepLink({ url: "meetcal:///open/saved" })).toBe(
       "meetcal:///open/saved",

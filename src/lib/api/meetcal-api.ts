@@ -713,6 +713,21 @@ export function mapApiMeet(row: ApiMeet): MappedMeet {
   };
 }
 
+/**
+ * The day and session number key a schedule row; a row without them would
+ * become a day titled `undefined` or a session numbered `NaN`. Run by the
+ * fetcher's validator, so a bad answer never reaches the validator cache, and
+ * by the mapper, for the package path and any other caller that hands it
+ * rows directly.
+ */
+function assertApiScheduleRow(row: unknown, label: string): ApiScheduleRow {
+  assertObject(row, label);
+  if (typeof row.date !== 'string' || typeof row.session_id !== 'number' || !Number.isFinite(row.session_id)) {
+    throw new Error(`${label} has an invalid date or session_id`);
+  }
+  return row as ApiScheduleRow;
+}
+
 export function mapApiSchedule(rows: ApiScheduleRow[], meet?: Meet): Schedule {
   const timeZoneIdentifier = meet?.time.timeZoneIdentifier ?? 'America/New_York';
   const scheduleMap = new Map<string, {
@@ -722,12 +737,7 @@ export function mapApiSchedule(rows: ApiScheduleRow[], meet?: Meet): Schedule {
   }>();
 
   rows.forEach((row, index) => {
-    // The day and session number key everything below; a row without them
-    // would become a day titled `undefined` or a session numbered `NaN`.
-    assertObject(row, `schedule[${index}]`);
-    if (typeof row.date !== 'string' || typeof row.session_id !== 'number' || !Number.isFinite(row.session_id)) {
-      throw new Error(`schedule[${index}] has an invalid date or session_id`);
-    }
+    assertApiScheduleRow(row, `schedule[${index}]`);
     if (!scheduleMap.has(row.date)) {
       scheduleMap.set(row.date, {
         date: dateForMeetTimezone(row.date, timeZoneIdentifier),
@@ -861,6 +871,8 @@ export function mapApiLiftingResult(row: ApiLiftingResult, index = 0): SupabaseL
     name,
     age: nullableString(row.age) ?? nullableNumber(row.age) ?? '',
     body_weight: nullableNumber(row.body_weight) ?? 0,
+    // Numeric policy: Convex sends numbers; a lift of any other type reads as
+    // `null` (no lift), unlike year bests, which are never null (`toFiniteNumber`).
     snatch1: nullableNumber(row.snatch1),
     snatch2: nullableNumber(row.snatch2),
     snatch3: nullableNumber(row.snatch3),
@@ -874,6 +886,9 @@ export function mapApiLiftingResult(row: ApiLiftingResult, index = 0): SupabaseL
 }
 
 export function mapApiYearBests(row: ApiYearBests) {
+  // Numeric policy: a best is a number with 0 for none, read with
+  // `toFiniteNumber` exactly as the package's year bests are; lifts in a
+  // result row read `null` instead because their type allows it.
   return {
     bestSnatch: toFiniteNumber(row.best_snatch),
     bestCJ: toFiniteNumber(row.best_cj),
@@ -913,7 +928,9 @@ function validateApiMeetDetails(json: unknown): ApiMeet {
 }
 
 function validateApiSchedule(json: unknown): ApiScheduleRow[] {
-  return assertArray<ApiScheduleRow>(json, '/meets/schedule');
+  return assertArray<unknown>(json, '/meets/schedule').map((row, index) =>
+    assertApiScheduleRow(row, `/meets/schedule[${index}]`),
+  );
 }
 
 // The three below revalidate with the remembered tag. The cache holds the
@@ -1183,6 +1200,7 @@ export async function fetchApiMeetPackageConditional(
         'best_total',
       ]);
       if (typeof fields.name !== 'string') throw new Error(`/meets/package.year_bests[${index}] has invalid name`);
+      // Same numeric policy as `mapApiYearBests`: 0 for a missing or mistyped best.
       byName[fields.name] = {
         best_snatch: toFiniteNumber(fields.best_snatch),
         best_cj: toFiniteNumber(fields.best_cj),
