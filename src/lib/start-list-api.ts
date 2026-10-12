@@ -259,6 +259,11 @@ async function getLastYearBestsUncached(athleteName: string): Promise<YearBests>
   }
 }
 
+/**
+ * Bests for each name. When the lookup fails, names with a stale stored
+ * answer get it and names without one are left out of the result (it
+ * rejects when no name has one).
+ */
 export async function getLastYearBestsBatch(
   names: string[],
   options: { fetchMissing?: boolean } = {},
@@ -310,10 +315,13 @@ export async function getLastYearBestsBatch(
       fetched = await fetchApiYearBestsByNames(missing, cutoffDate);
     } catch (error) {
       // Offline or failed. The stale copies are better than nothing; with
-      // none at all the caller still gets the failure.
+      // none at all the caller still gets the failure. A name with no stale
+      // copy is left out rather than given zeros: nothing answered that it
+      // has no results.
       if (!missing.some((name) => staleByName[name])) throw error;
       missing.forEach((name) => {
-        byName[name] = staleByName[name] ?? ZERO_BESTS;
+        const stale = staleByName[name];
+        if (stale) byName[name] = stale;
       });
       return byName;
     }

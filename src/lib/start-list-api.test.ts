@@ -333,9 +333,10 @@ describe("getLastYearBestsBatch", () => {
 
     const result = await startListApi.getLastYearBestsBatch(["Stale", "Unknown"]);
 
+    // "Unknown" has no stored answer and no lookup answered for it, so it is
+    // left out rather than shown as a genuine "no results".
     expect(result).toEqual({
       Stale: { bestSnatch: 50, bestCJ: 60, bestTotal: 110 },
-      Unknown: { bestSnatch: 0, bestCJ: 0, bestTotal: 0 },
     });
     expect(mockSaveAthleteBestsBatch).not.toHaveBeenCalled();
   });
