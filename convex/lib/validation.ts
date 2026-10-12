@@ -53,19 +53,20 @@ export function isKnownTimeZone(timeZone: string): boolean {
   }
 }
 
+/** "UTC" or an IANA Area/Location name as the database spells it ("Asia/Tokyo", "America/Argentina/Buenos_Aires"). */
+const IANA_ZONE_NAME = /^(?:UTC|[A-Z][A-Za-z]*(?:\/[A-Z][A-Za-z0-9_+-]*)+)$/;
+
 /**
- * The zones the app can show a meet in (`timezoneOffsets` in
- * `src/data/types/meet.ts`); it shows any other zone in New York time.
+ * Whether `timeZone` can be a meet's zone: an IANA zone name, spelled as the
+ * database spells it, that this runtime's time zone database knows. Every
+ * client reads it in its own database (the app through `Intl` on Hermes, the
+ * widgets through Foundation and java.time), so names only V8 accepts are
+ * refused: abbreviations ("EST"), offsets ("+05:30") and other casings
+ * ("asia/tokyo", which `java.time` rejects).
  */
-export const APP_TIME_ZONES: readonly string[] = [
-  'America/New_York',
-  'America/Chicago',
-  'America/Denver',
-  'America/Phoenix',
-  'America/Los_Angeles',
-  'America/Anchorage',
-  'Pacific/Honolulu',
-];
+export function isMeetTimeZone(timeZone: string): boolean {
+  return IANA_ZONE_NAME.test(timeZone) && isKnownTimeZone(timeZone);
+}
 
 export function requireIsoDate(field: string, value: string | undefined): void {
   if (value !== undefined && !isValidIsoDate(value)) {

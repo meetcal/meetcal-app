@@ -1,9 +1,8 @@
 import { completeEndedMeets, scrapedMeetValues, setMeetTimeZone, upsertMeets } from '../convex/ingest';
 import { padMeetDates } from '../convex/migrations';
-import { APP_TIME_ZONES, canonicalMeetDate, isKnownTimeZone } from '../convex/lib/validation';
+import { canonicalMeetDate, isKnownTimeZone, isMeetTimeZone } from '../convex/lib/validation';
 import { meetDataProblems } from '../convex/scrapers/queries';
 import type { Doc, Id } from '../convex/_generated/dataModel';
-import { timezoneOffsets } from '../src/data/types/meet';
 
 // Convex attaches the handler at runtime but omits it from its public types.
 function handlerOf(registered: unknown): (ctx: unknown, args: unknown) => Promise<unknown> {
@@ -87,6 +86,7 @@ describe('stored meet dates', () => {
 
   it('knows IANA zones', () => {
     expect(isKnownTimeZone('America/New_York')).toBe(true);
+    expect(isKnownTimeZone('Australia/Sydney')).toBe(true);
     expect(isKnownTimeZone('')).toBe(false);
     expect(isKnownTimeZone('Not/AZone')).toBe(false);
   });
@@ -106,13 +106,9 @@ describe('scraped meet values', () => {
     expect('timeZone' in scrapedMeetValues(noZone, meet())).toBe(false);
   });
 
-  it('completes a meet stored without a zone only once its last day has ended everywhere in the US', async () => {
-    jest.useFakeTimers({ now: Date.UTC(2026, 9, 12, 5) }); // 1am Oct 12 in New York, 7pm Oct 11 in Honolulu
+  async function completedAt(now: number, meets: Doc<'meets'>[]): Promise<string[]> {
+    jest.useFakeTimers({ now });
     try {
-      const meets = [
-        meet({ _id: 'ny' as Id<'meets'>, name: 'New York meet', timeZone: 'America/New_York', endDate: '2026-10-11' }),
-        meet({ _id: 'blank' as Id<'meets'>, name: 'No zone', timeZone: '', endDate: '2026-10-11' }),
-      ];
       const patch = jest.fn();
       const ctx = {
         db: {
@@ -129,11 +125,38 @@ describe('scraped meet values', () => {
         },
         scheduler: { runAfter: jest.fn() },
       };
-      expect(await handlerOf(completeEndedMeets)(ctx, {})).toBe(1);
-      expect(patch.mock.calls.filter(([id]) => id === 'ny' || id === 'blank').map(([id]) => id)).toEqual(['ny']);
+      await handlerOf(completeEndedMeets)(ctx, {});
+      return patch.mock.calls.map(([id]) => id).filter((id) => meets.some((m) => m._id === id));
     } finally {
       jest.useRealTimers();
     }
+  }
+
+  it('completes a meet once its last day has ended in its own zone, abroad too', async () => {
+    const meets = [
+      meet({ _id: 'ny' as Id<'meets'>, name: 'New York meet', timeZone: 'America/New_York', endDate: '2026-10-11' }),
+      meet({ _id: 'tokyo' as Id<'meets'>, name: 'Tokyo meet', timeZone: 'Asia/Tokyo', endDate: '2026-10-11' }),
+      meet({ _id: 'auckland' as Id<'meets'>, name: 'Auckland meet', timeZone: 'Pacific/Auckland', endDate: '2026-10-11' }),
+      meet({ _id: 'kolkata' as Id<'meets'>, name: 'Kolkata meet', timeZone: 'Asia/Kolkata', endDate: '2026-10-11' }),
+    ];
+    // 11:00 UTC Oct 11: midnight Oct 12 in Auckland (UTC+13), 8pm Oct 11 in
+    // Tokyo, 4:30pm in Kolkata, 7am in New York.
+    expect(await completedAt(Date.UTC(2026, 9, 11, 11), meets)).toEqual(['auckland']);
+    // 18:30 UTC: midnight Oct 12 in Kolkata (UTC+5:30); Tokyo ended at 15:00.
+    expect(await completedAt(Date.UTC(2026, 9, 11, 18, 30), meets)).toEqual(['tokyo', 'auckland', 'kolkata']);
+  });
+
+  it('completes a meet stored without a zone only once its last day has ended everywhere on Earth', async () => {
+    const meets = [
+      meet({ _id: 'ny' as Id<'meets'>, name: 'New York meet', timeZone: 'America/New_York', endDate: '2026-10-11' }),
+      meet({ _id: 'blank' as Id<'meets'>, name: 'No zone', timeZone: '', endDate: '2026-10-11' }),
+      meet({ _id: 'bad' as Id<'meets'>, name: 'Bad zone', timeZone: 'Not/AZone', endDate: '2026-10-11' }),
+    ];
+    // 10:30 UTC Oct 12: 11:30pm Oct 11 in American Samoa (UTC-11), a day a
+    // Honolulu (UTC-10) cutoff had already ended.
+    expect(await completedAt(Date.UTC(2026, 9, 12, 10, 30), meets)).toEqual(['ny']);
+    // Noon UTC: midnight at UTC-12, the last place the day ends.
+    expect(await completedAt(Date.UTC(2026, 9, 12, 12), meets)).toEqual(['ny', 'blank', 'bad']);
   });
 
   it('keeps a completed meet completed', () => {
@@ -179,18 +202,41 @@ describe('scraped meet values', () => {
 });
 
 describe('setting a meet time zone by hand', () => {
-  it('accepts exactly the zones the app can show', () => {
-    expect([...APP_TIME_ZONES].sort()).toEqual(Object.keys(timezoneOffsets).sort());
+  it('accepts any IANA zone, spelled as the database spells it', () => {
+    for (const zone of ['America/New_York', 'Pacific/Honolulu', 'Asia/Tokyo', 'Australia/Sydney', 'Asia/Kolkata', 'Pacific/Auckland', 'Europe/Madrid', 'America/Argentina/Buenos_Aires', 'America/Port-au-Prince', 'Etc/GMT+12', 'UTC']) {
+      expect([zone, isMeetTimeZone(zone)]).toEqual([zone, true]);
+    }
+    // Names only some runtimes take (V8 takes all but the last two, Hermes on
+    // iOS and java.time on Android do not), and garbage.
+    for (const zone of ['EST', '+05:30', 'asia/tokyo', 'America/new_york', '', ' ', 'Not/AZone', 'Asia/Atlantis', 'America/New_York ']) {
+      expect([zone, isMeetTimeZone(zone)]).toEqual([zone, false]);
+    }
   });
 
-  it('refuses a zone the app would show in New York time', async () => {
+  it('refuses a name that is not an IANA zone', async () => {
     const ctx = { db: { query: jest.fn(), patch: jest.fn() } };
-    await expect(handlerOf(setMeetTimeZone)(ctx, { name: 'Meet', timeZone: 'Europe/Madrid' })).rejects.toThrow('not a time zone the app can show');
-    await expect(handlerOf(setMeetTimeZone)(ctx, { name: 'Meet', timeZone: 'Not/AZone' })).rejects.toThrow('not a time zone the app can show');
+    for (const timeZone of ['Not/AZone', 'EST', '+09:00', 'asia/tokyo']) {
+      await expect(handlerOf(setMeetTimeZone)(ctx, { name: 'Meet', timeZone })).rejects.toThrow('not an IANA time zone');
+    }
+    expect(ctx.db.query).not.toHaveBeenCalled();
     expect(ctx.db.patch).not.toHaveBeenCalled();
   });
 
-  it('locks an app zone on the meet', async () => {
+  it('locks a zone abroad on the meet', async () => {
+    const patch = jest.fn();
+    const ctx = {
+      db: {
+        query: (table: string) => ({ withIndex: () => ({ first: async () => (table === 'meets' ? meet() : null), unique: async () => null }) }),
+        patch,
+        insert: jest.fn(),
+      },
+      scheduler: { runAfter: jest.fn() },
+    };
+    expect(await handlerOf(setMeetTimeZone)(ctx, { name: 'Meet', timeZone: 'Asia/Tokyo' })).toEqual({ changed: true });
+    expect(patch).toHaveBeenCalledWith('meet1', expect.objectContaining({ timeZone: 'Asia/Tokyo', timeZoneLocked: true }));
+  });
+
+  it('locks a US zone on the meet', async () => {
     const patch = jest.fn();
     const ctx = {
       db: {

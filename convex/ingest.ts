@@ -5,7 +5,7 @@ import { writeHistories } from './lib/history';
 import { normalizeAgeCategory, normalizeFederation, normalizeGender } from './lib/normalize';
 import { meetLocalDate, type ZoneFormatters } from './lib/meetData';
 import { normalizeName } from './lib/names';
-import { APP_TIME_ZONES } from './lib/validation';
+import { isKnownTimeZone, isMeetTimeZone } from './lib/validation';
 import { bumpVersion, type SourceTable } from './lib/views';
 import {
   athletesFields,
@@ -215,8 +215,13 @@ const scrapedMeet = v.object({
 
 /** A meet stored without a known zone: every reader treats a blank zone as unknown. */
 const UNKNOWN_TIME_ZONE = '';
-/** The last US zone a day ends in: when a meet with no zone has surely ended. */
-const LATEST_US_ZONE = 'Pacific/Honolulu';
+/**
+ * The last zone a day ends in, UTC-12 ("Anywhere on Earth"; the IANA name's
+ * sign is inverted): when a meet with no zone has surely ended, wherever it
+ * is. Meets are not only in US zones, so not Honolulu (UTC-10): American Samoa
+ * is UTC-11.
+ */
+const ANYWHERE_ON_EARTH = 'Etc/GMT+12';
 
 /** The venue of a new meet scraped without an address (what `parseAddress('')` gave). */
 const NO_VENUE = { venueStreet: '', venueCity: 'Unknown', venueState: 'Unknown', venueZip: 'Unknown' };
@@ -287,15 +292,16 @@ export const upsertMeets = internalMutation({
  * overwrite it (the state-based guess is wrong for a few places, see
  * `scrapers/lib/states.ts`): `npx convex run ingest:setMeetTimeZone
  * '{"name":"…","timeZone":"America/New_York"}'`. Pass `locked: false` to hand
- * the zone back to the syncs. Only the zones the app can show are accepted
- * (`APP_TIME_ZONES`): it would show any other in New York time. Goes through
+ * the zone back to the syncs. Any IANA zone is accepted ("Asia/Tokyo",
+ * "Europe/Madrid"): every client shows a meet's times in its own zone. Names
+ * that are not IANA zones are refused (`isMeetTimeZone`). Goes through
  * `recordWrite` like every write, so the meet's views follow.
  */
 export const setMeetTimeZone = internalMutation({
   args: { name: v.string(), timeZone: v.string(), locked: v.optional(v.boolean()) },
   handler: async (ctx, { name, timeZone, locked }) => {
-    if (!APP_TIME_ZONES.includes(timeZone)) {
-      throw new Error(`not a time zone the app can show: ${JSON.stringify(timeZone)} (one of ${APP_TIME_ZONES.join(', ')})`);
+    if (!isMeetTimeZone(timeZone)) {
+      throw new Error(`not an IANA time zone: ${JSON.stringify(timeZone)} (spell it as the database does, e.g. "America/Chicago" or "Asia/Tokyo")`);
     }
     const meet = await ctx.db
       .query('meets')
@@ -580,9 +586,10 @@ export const completeEndedMeets = internalMutation({
         .withIndex('by_status', (q) => q.eq('status', status))
         .collect();
       for (const meet of meets) {
-        // A meet stored without a zone (an unknown state) is completed once
-        // its end date has passed in every US zone, never early.
-        const zone = meet.timeZone.trim() ? meet.timeZone : LATEST_US_ZONE;
+        // A meet stored without a zone (an unknown state or country), or
+        // with one this runtime cannot read, is completed once its end date
+        // has passed everywhere on Earth, never early.
+        const zone = isKnownTimeZone(meet.timeZone) ? meet.timeZone : ANYWHERE_ON_EARTH;
         if (meet.endDate >= meetLocalDate(now, zone, formatters)) continue;
         await ctx.db.patch(meet._id, { status: 'completed', updatedAt: now });
         hints.push({ kind: 'meet', key: meet.name });
