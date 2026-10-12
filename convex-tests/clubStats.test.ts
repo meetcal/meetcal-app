@@ -184,12 +184,26 @@ describe('club meet stats tie-breaks', () => {
   });
 
   it('count a missing attempt or body weight last', () => {
-    const known = liftKey({ snatchBest: 80, snatch1: 80, bodyWeight: 70 }, 'snatch');
-    const unknown = liftKey({ snatchBest: 80, bodyWeight: 0 }, 'snatch');
+    const date = '2026-06-20';
+    const known = liftKey({ date, snatchBest: 80, snatch1: 80, bodyWeight: 70 }, 'snatch');
+    const unknown = liftKey({ date, snatchBest: 80, bodyWeight: 0 }, 'snatch');
     expect(known).toEqual([80, 80, 1, 70]);
     expect(unknown).toEqual([80, 80, 4, Infinity]);
     expect(rankOf(unknown, [known, unknown])).toBe(2);
-    expect(liftKey({ cjBest: 120, cj1: -120, cj2: 120, total: 200 }, 'total')).toEqual([200, 120, 2, Infinity]);
+    expect(liftKey({ date, cjBest: 120, cj1: -120, cj2: 120, total: 200 }, 'total')).toEqual([200, 120, 2, Infinity]);
+  });
+
+  it('break a tie by the lighter body weight first before 2017', () => {
+    // 200 each: Ann's 115 came before Bea's 118, but Bea is lighter.
+    const ann = { snatchBest: 85, cjBest: 115, cj1: 115, total: 200, bodyWeight: 68 };
+    const bea = { snatchBest: 82, cjBest: 118, cj1: 118, total: 200, bodyWeight: 66.5 };
+    const placings = (date: string) => {
+      const keys = [liftKey({ ...ann, date }, 'total'), liftKey({ ...bea, date }, 'total')];
+      return keys.map((key) => rankOf(key, keys));
+    };
+    expect(placings('2015-06-20')).toEqual([2, 1]);
+    expect(placings('2016-12-31')).toEqual([2, 1]);
+    expect(placings('2017-01-01')).toEqual([1, 2]);
   });
 });
 
@@ -238,6 +252,21 @@ describe('club meet stats ranking groups', () => {
       ],
     });
     expect(placings).toEqual({ Ann: [2, 2, 2], Bea: [1, 1, 1] });
+  });
+
+  it('place an athlete lifting in two divisions in each, and report the better total', async () => {
+    const placings = await placingsOf({
+      athletes: [athlete('Ann', 'North'), athlete('Bea', 'South'), athlete('Cat', 'South')],
+      lifting_results: [
+        // Ann's reported row is her better total, in the Open, behind Bea;
+        // her Junior row is not reported but still places ahead of Cat.
+        lifted('Ann', W71, [82, -85, -85], [102, -105, -105], 70),
+        lifted('Ann', "Junior Women's 71kg", [80, -85, -85], [100, -105, -105], 70),
+        lifted('Bea', W71, [85, -90, -90], [105, -110, -110], 70),
+        lifted('Cat', "Junior Women's 71kg", [79, -85, -85], [99, -105, -105], 70),
+      ],
+    });
+    expect(placings).toEqual({ Ann: [2, 2, 2], Bea: [1, 1, 1], Cat: [2, 2, 2] });
   });
 
   it('fall back to the roster gender and weight class for a division with no class', () => {

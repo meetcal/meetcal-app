@@ -467,21 +467,25 @@ export function rankingGroup(
 /** What placing a lift reads from a result. */
 export type RankedResult = Pick<
   Doc<'lifting_results'>,
-  'bodyWeight' | 'snatch1' | 'snatch2' | 'snatch3' | 'snatchBest' | 'cj1' | 'cj2' | 'cj3' | 'cjBest' | 'total'
+  'date' | 'bodyWeight' | 'snatch1' | 'snatch2' | 'snatch3' | 'snatchBest' | 'cj1' | 'cj2' | 'cj3' | 'cjBest' | 'total'
 >;
 export type RankedLift = 'snatch' | 'cj' | 'total';
 
+/** Results dated before this were tie-broken by body weight first (the IWF rules before 2017). */
+const BODY_WEIGHT_TIE_BREAK_BEFORE = '2017-01-01';
+
 /**
- * How a lift ranks, compared field by field: the heavier lift first, then
- * whoever lifted it first. Sport80 publishes no placing and no lifting order,
- * so "first" is read from the attempts: within a session the bar only goes
- * up, so the lighter deciding bar (for a total, the clean & jerk that made
- * it) came first, and at the same weight the lower attempt number lifts
- * first. A tie that leaves is decided by the lighter body weight, the rule
- * before 2017 and only a stand-in since (the real decider, the order of the
- * lifts, is not published). An unknown attempt or body weight counts last.
+ * How a lift ranks: the heavier lift first, then the tie-breaks in order,
+ * lower first. Ties go to whoever lifted first; before 2017, to the lighter
+ * body weight and then whoever lifted first. Sport80 publishes no placing and
+ * no lifting order, so "first" is read from the attempts: within a session
+ * the bar only goes up, so the lighter deciding bar (for a total, the clean &
+ * jerk that made it) came first, and at the same weight the lower attempt
+ * number lifts first. Since 2017 a tie that leaves is decided by the lighter
+ * body weight, a stand-in for the real decider (the order of the lifts, which
+ * is not published). An unknown attempt or body weight counts last.
  */
-export type LiftKey = readonly [lift: number, bar: number, attempt: number, bodyWeight: number];
+export type LiftKey = readonly [lift: number, ...tieBreaks: number[]];
 
 /** The 1-based attempt that made `best`, or 4 when no attempt did (none recorded). */
 function attemptOf(best: number, attempts: readonly (number | undefined)[]): number {
@@ -493,16 +497,17 @@ export function liftKey(row: RankedResult, lift: RankedLift): LiftKey {
   const snatch = row.snatchBest ?? 0;
   const cj = row.cjBest ?? 0;
   const bodyWeight = row.bodyWeight !== undefined && row.bodyWeight > 0 ? row.bodyWeight : Infinity;
-  if (lift === 'snatch') return [snatch, snatch, attemptOf(snatch, [row.snatch1, row.snatch2, row.snatch3]), bodyWeight];
-  const cjAttempt = attemptOf(cj, [row.cj1, row.cj2, row.cj3]);
-  return lift === 'cj' ? [cj, cj, cjAttempt, bodyWeight] : [row.total ?? 0, cj, cjAttempt, bodyWeight];
+  const [value, bar, attempt] =
+    lift === 'snatch'
+      ? [snatch, snatch, attemptOf(snatch, [row.snatch1, row.snatch2, row.snatch3])]
+      : [lift === 'cj' ? cj : (row.total ?? 0), cj, attemptOf(cj, [row.cj1, row.cj2, row.cj3])];
+  return row.date < BODY_WEIGHT_TIE_BREAK_BEFORE ? [value, bodyWeight, bar, attempt] : [value, bar, attempt, bodyWeight];
 }
 
 function ranksAhead(a: LiftKey, b: LiftKey): boolean {
   if (a[0] !== b[0]) return a[0] > b[0];
-  if (a[1] !== b[1]) return a[1] < b[1];
-  if (a[2] !== b[2]) return a[2] < b[2];
-  return a[3] < b[3];
+  for (let i = 1; i < Math.min(a.length, b.length); i += 1) if (a[i] !== b[i]) return a[i] < b[i];
+  return false;
 }
 
 /**
