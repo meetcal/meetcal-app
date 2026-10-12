@@ -2,7 +2,7 @@ import { IconSymbol } from "@/components/ui/IconSymbol";
 import { ThemedText } from "@/components/ui/ThemedText";
 import { useExpandedRow } from "@/contexts/ExpandedIdContext";
 import type { MeetName } from "@/data/types/meet";
-import { getLastYearBests } from "@/lib/start-list-api";
+import { getLastYearBests, type YearBests } from "@/lib/start-list-api";
 import {
   formatSessionDisplayDate,
   getChevronIcon,
@@ -68,12 +68,20 @@ export const AthleteItem = React.memo(function AthleteItem({
       setTimeout(() => onExpand(index), 50);
     }
   }, [toggle, onExpand, index]);
-  const [yearBests, setYearBests] = useState({
-    bestSnatch: 0,
-    bestCJ: 0,
-    bestTotal: 0,
-  });
-  const [loadingBests, setLoadingBests] = useState(true);
+  // FlashList recycles this component for another athlete without resetting
+  // its state. The bests were two plain `useState`s, reset only from inside
+  // the idle callback (up to 500 ms later), so a recycled row expanded for
+  // athlete C first painted athlete A's numbers under C's name. The answer is
+  // now stored with the name it belongs to, and an answer for anyone else
+  // reads as "still loading" in the very render the athlete changes.
+  const [rowBests, setRowBests] = useState<{
+    name: string;
+    /** `null` while the request for `name` is in flight. */
+    bests: YearBests | null;
+  } | null>(null);
+  const yearBests =
+    rowBests?.name === athlete.name ? rowBests.bests : null;
+  const loadingBests = yearBests === null;
 
   const colors = useMemo(
     () => ({
@@ -94,22 +102,24 @@ export const AthleteItem = React.memo(function AthleteItem({
     // idle period is never guaranteed (a list that is scrolled continuously
     // never yields one), and without it the row would spin forever.
     let cancelled = false;
+    const name = athlete.name;
     const handle = requestIdleCallback(
       () => {
         if (cancelled) return;
-        setLoadingBests(true);
-        getLastYearBests(athlete.name)
+        setRowBests({ name, bests: null });
+        getLastYearBests(name)
           .then((bests) => {
             if (cancelled) return;
-            setYearBests(bests);
-            setLoadingBests(false);
+            setRowBests({ name, bests });
           })
           .catch((err) => {
             if (cancelled) return;
             if (__DEV__)
               console.warn("[AthleteItem] getLastYearBests failed", err);
-            setYearBests({ bestSnatch: 0, bestCJ: 0, bestTotal: 0 });
-            setLoadingBests(false);
+            setRowBests({
+              name,
+              bests: { bestSnatch: 0, bestCJ: 0, bestTotal: 0 },
+            });
           });
       },
       { timeout: 500 },
