@@ -29,6 +29,7 @@ import { usePreloadYearBests, useYearBestsForSort } from "@/hooks/useStartListBe
 import { useStartListFilters } from "@/hooks/useStartListFilters";
 import { groupCalendarSessions } from "@/lib/calendar-export";
 import { lightImpact, successNotification } from "@/lib/haptics";
+import { loadFailureCopy } from "@/lib/load-failure";
 import { describeSaveSessionsFailure } from "@/lib/saved-sessions-actions";
 import { captureViewAsPng } from "@/lib/share-image";
 import {
@@ -109,7 +110,7 @@ export default function StartListScreen() {
   const { requirePremium: requirePremiumAction, requireAuth } = useRequirePremium();
   const { saveAllFromAthletes } = useSavedSessions();
 
-  const { athletes, schedule, loading, refreshing, refresh } =
+  const { athletes, schedule, loading, refreshing, refresh, loadFailure } =
     useStartListData(selectedMeet);
   const {
     filters: storedFilters,
@@ -497,6 +498,12 @@ export default function StartListScreen() {
     return <StartListSkeleton skeletonPulse={skeletonPulse} />;
   }
 
+  // Not "Athletes will appear here once the start list is published": the
+  // roster could not be loaded (offline with nothing saved, or a failed
+  // request). A filtered or searched list keeps its own empty state.
+  const loadFailureText =
+    loadFailure && !isFiltering ? loadFailureCopy("start list", loadFailure === "offline") : null;
+
   return (
     <ThemedView
       testID="start-list-screen"
@@ -549,24 +556,43 @@ export default function StartListScreen() {
             ]}
             showsVerticalScrollIndicator={false}
             ListEmptyComponent={
-              <EmptyState
-                style={styles.listEmpty}
-                icon={
-                  <IconSymbol
-                    name={isFiltering ? "magnifyingglass" : "list.bullet"}
-                    size={44}
-                    color={colors.secondaryText}
-                  />
-                }
-                title={isFiltering ? "No athletes match your filters" : "No athletes yet"}
-                message={
-                  isFiltering
-                    ? "Try adjusting or clearing your filters to see more athletes."
-                    : "Athletes will appear here once the start list is published."
-                }
-                actionLabel={isFiltering ? "Clear filters" : undefined}
-                onActionPress={isFiltering ? resetFilters : undefined}
-              />
+              loadFailureText ? (
+                <EmptyState
+                  style={styles.listEmpty}
+                  icon={
+                    <IconSymbol
+                      name={loadFailure === "offline" ? "wifi.slash" : "arrow.clockwise"}
+                      size={44}
+                      color={colors.secondaryText}
+                    />
+                  }
+                  title={loadFailureText.title}
+                  message={loadFailureText.message}
+                  actionLabel="Retry"
+                  onActionPress={() => {
+                    void refresh();
+                  }}
+                />
+              ) : (
+                <EmptyState
+                  style={styles.listEmpty}
+                  icon={
+                    <IconSymbol
+                      name={isFiltering ? "magnifyingglass" : "list.bullet"}
+                      size={44}
+                      color={colors.secondaryText}
+                    />
+                  }
+                  title={isFiltering ? "No athletes match your filters" : "No athletes yet"}
+                  message={
+                    isFiltering
+                      ? "Try adjusting or clearing your filters to see more athletes."
+                      : "Athletes will appear here once the start list is published."
+                  }
+                  actionLabel={isFiltering ? "Clear filters" : undefined}
+                  onActionPress={isFiltering ? resetFilters : undefined}
+                />
+              )
             }
             refreshControl={
               <RefreshControl

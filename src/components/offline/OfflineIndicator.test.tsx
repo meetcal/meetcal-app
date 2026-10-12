@@ -15,8 +15,17 @@ jest.mock("@/components/ui/IconSymbol", () => ({ IconSymbol: () => null }));
 jest.mock("react-native-safe-area-context", () => ({
   useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }),
 }));
+// A week-old subscription check is not old meet data: the banner must not
+// read it at all.
 jest.mock("@/contexts/SubscriptionContext", () => ({
-  useSubscription: () => ({ isUsingStaleCache: false, lastSyncTimestamp: null }),
+  useSubscription: () => ({ isUsingStaleCache: true, lastSyncTimestamp: 1 }),
+}));
+jest.mock("@/contexts/SelectedMeetContext", () => ({
+  useSelectedMeet: () => ({ selectedMeet: "Meet A" }),
+}));
+const mockGetLastSyncTime = jest.fn<Promise<number | null>, [string]>(async () => null);
+jest.mock("@/lib/database/offline-store", () => ({
+  getLastSyncTime: (meet: string) => mockGetLastSyncTime(meet),
 }));
 
 /** Longer than the banner's own minimum delay, so it is allowed to render. */
@@ -79,6 +88,44 @@ describe("OfflineIndicator", () => {
       tree.unmount();
     });
     expect(unsubscribe).toHaveBeenCalledTimes(1);
+  });
+
+  it("stays hidden online even when the subscription cache is stale", async () => {
+    jest.mocked(isNetworkAvailable).mockResolvedValue(true);
+
+    let tree!: ReturnType<typeof create>;
+    await act(async () => {
+      tree = create(<OfflineIndicator />);
+    });
+    await act(async () => {
+      jest.advanceTimersByTime(WELL_PAST_BANNER_DELAY_MS);
+    });
+
+    expect(rendered(tree)).not.toContain("Using Cached Data");
+    expect(rendered(tree)).not.toContain("Offline Mode");
+    act(() => {
+      tree.unmount();
+    });
+  });
+
+  it("shows how old the selected meet's data is, and never takes touches", async () => {
+    jest.mocked(isNetworkAvailable).mockResolvedValue(false);
+    mockGetLastSyncTime.mockResolvedValue(Date.now() - 3 * 60 * 60 * 1000);
+
+    let tree!: ReturnType<typeof create>;
+    await act(async () => {
+      tree = create(<OfflineIndicator />);
+    });
+    await act(async () => {
+      jest.advanceTimersByTime(WELL_PAST_BANNER_DELAY_MS);
+    });
+
+    expect(mockGetLastSyncTime).toHaveBeenCalledWith("Meet A");
+    expect(rendered(tree)).toContain("Meet data synced 3h ago");
+    expect(tree.toJSON()).toMatchObject({ props: { pointerEvents: "none" } });
+    act(() => {
+      tree.unmount();
+    });
   });
 
   it("lets a change event that beats the initial probe win", async () => {

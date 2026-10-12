@@ -23,7 +23,27 @@ jest.mock("@/lib/database/offline-store", () => ({
   getAllCachedLiftingResultsForAthlete: jest.fn(async () => []),
 }));
 jest.mock("@/lib/database/queries", () => ({ fetchAllResultsForName: jest.fn() }));
+let mockIsOffline = true;
+jest.mock("@/hooks/useIsOffline", () => ({ useIsOffline: () => [mockIsOffline, () => {}] }));
+jest.mock("@/components/ui/EmptyState", () => {
+  const { Pressable, Text, View } = require("react-native");
+  return {
+    EmptyState: (props: { title: string; message?: string; actionLabel?: string; onActionPress?: () => void }) => (
+      <View>
+        <Text>{props.title}</Text>
+        <Text>{props.message}</Text>
+        {props.actionLabel ? (
+          <Pressable testID="empty-state-action" onPress={props.onActionPress}>
+            <Text>{props.actionLabel}</Text>
+          </Pressable>
+        ) : null}
+      </View>
+    ),
+  };
+});
 
+// Regression: a failed load (offline) said "No meet results found for …",
+// which reads as "this athlete has never competed", with no way to retry.
 it("does not display the previous athlete's history when the next athlete fails to load", async () => {
   const errorLog = jest.spyOn(console, "error").mockImplementation(() => {});
   jest.mocked(fetchAllResultsForName)
@@ -33,10 +53,36 @@ it("does not display the previous athlete's history when the next athlete fails 
   await act(async () => { tree = create(<AthleteResultsScreen />); });
   mockName = "Second Athlete";
   await act(async () => { tree.update(<AthleteResultsScreen />); });
-  expect(JSON.stringify(tree.toJSON())).toContain("No meet results found for");
-  expect(JSON.stringify(tree.toJSON())).toContain("Second Athlete");
+  const rendered = JSON.stringify(tree.toJSON());
+  expect(rendered).not.toContain("First Athlete");
+  expect(rendered).not.toContain("No meet results found for");
+  expect(rendered).toContain("You're offline");
+  expect(rendered).toContain("Retry");
   await act(async () => { tree.unmount(); });
   errorLog.mockRestore();
+});
+
+it("retries a failed load and shows the results once it succeeds", async () => {
+  const errorLog = jest.spyOn(console, "error").mockImplementation(() => {});
+  mockIsOffline = false;
+  mockName = "Retry Athlete";
+  jest.mocked(fetchAllResultsForName)
+    .mockRejectedValueOnce(new Error("MeetCal API error 503"))
+    .mockResolvedValueOnce([]);
+  let tree!: ReturnType<typeof create>;
+  await act(async () => { tree = create(<AthleteResultsScreen />); });
+  expect(JSON.stringify(tree.toJSON())).toContain("Couldn't load the results");
+
+  await act(async () => {
+    tree.root.findByProps({ testID: "empty-state-action" }).props.onPress();
+  });
+
+  // The API answered this time: an empty answer really is "no results".
+  expect(fetchAllResultsForName).toHaveBeenLastCalledWith("Retry Athlete");
+  expect(JSON.stringify(tree.toJSON())).toContain("No meet results found for");
+  await act(async () => { tree.unmount(); });
+  errorLog.mockRestore();
+  mockIsOffline = true;
 });
 
 it("ignores a previous athlete's response after changing the route", async () => {

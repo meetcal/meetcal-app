@@ -1,12 +1,15 @@
 import { RateBar } from "@/components/athlete-results/RateBar";
+import { EmptyState } from "@/components/ui/EmptyState";
 import { ThemedText } from "@/components/ui/ThemedText";
 import { ThemedView } from "@/components/ui/ThemedView";
 import { AppColors, useAppColors } from "@/hooks/useAppColors";
+import { useIsOffline } from "@/hooks/useIsOffline";
 import { calculateAthleteMakeRates } from "@/lib/athlete-make-rates";
 import { findPRIndexes } from "@/lib/athlete-prs";
 import { getAllCachedLiftingResultsForAthlete } from "@/lib/database/offline-store";
 import { fetchAllResultsForName } from "@/lib/database/queries";
 import { loadAthleteResults } from "@/lib/athlete-results-load";
+import { loadFailureCopy } from "@/lib/load-failure";
 import { SupabaseLiftResult } from "@/types/athlete-results";
 import { FlashList } from "@shopify/flash-list";
 import { Stack, useLocalSearchParams } from "expo-router";
@@ -296,6 +299,12 @@ export default function AthleteResultsScreen() {
   const [athleteResults, setAthleteResults] = useState<SupabaseLiftResult[]>(
     [],
   );
+  // The request failed with nothing to show. Kept apart from an empty
+  // answer: "No meet results found" read as "never competed" when the
+  // device was only offline.
+  const [loadFailed, setLoadFailed] = useState(false);
+  const [retryCount, setRetryCount] = useState(0);
+  const [isOffline] = useIsOffline();
   const resultsCacheRef = useRef<Map<string, SupabaseLiftResult[]>>(new Map());
   const requestIdRef = useRef(0);
 
@@ -316,6 +325,7 @@ export default function AthleteResultsScreen() {
       const nameStr = Array.isArray(name) ? name[0] : name;
       const cacheKey = `all::${nameStr}`;
       const cachedResults = resultsCacheRef.current.get(cacheKey);
+      setLoadFailed(false);
       if (cachedResults) {
         setAthleteResults(cachedResults);
         setLoading(false);
@@ -330,7 +340,7 @@ export default function AthleteResultsScreen() {
         // the complete record; the full history from the API replaces it.
         // The API request starts before the offline read (see
         // `loadAthleteResults`).
-        await loadAthleteResults({
+        const outcome = await loadAthleteResults({
           shown: cachedResults,
           readOffline: () => getAllCachedLiftingResultsForAthlete(nameStr),
           fetchFull: () => fetchAllResultsForName(nameStr),
@@ -343,6 +353,7 @@ export default function AthleteResultsScreen() {
             if (source === "offline") setLoading(false);
           },
         });
+        if (outcome === "failed") setLoadFailed(true);
       } catch (error) {
         console.error("Error in fetchAthleteResults:", error);
       } finally {
@@ -358,7 +369,7 @@ export default function AthleteResultsScreen() {
       // different athlete) must not repaint it with the previous results.
       requestIdRef.current += 1;
     };
-  }, [name]);
+  }, [name, retryCount]);
 
   // For each lift, the index of the meet where the athlete's PR was set.
   // If the same best is hit at multiple meets, only the earliest one counts
@@ -444,14 +455,23 @@ export default function AthleteResultsScreen() {
                 { backgroundColor: colors.card, marginTop: 16 },
               ]}
             >
-              <View style={styles.emptyStateContainer}>
-                <ThemedText
-                  style={[styles.emptyStateText, { color: colors.secondaryText }]}
-                >
-                  No meet results found for{" "}
-                  {name}
-                </ThemedText>
-              </View>
+              {loadFailed ? (
+                <EmptyState
+                  title={loadFailureCopy("results", isOffline).title}
+                  message={loadFailureCopy("results", isOffline).message}
+                  actionLabel="Retry"
+                  onActionPress={() => setRetryCount((count) => count + 1)}
+                />
+              ) : (
+                <View style={styles.emptyStateContainer}>
+                  <ThemedText
+                    style={[styles.emptyStateText, { color: colors.secondaryText }]}
+                  >
+                    No meet results found for{" "}
+                    {name}
+                  </ThemedText>
+                </View>
+              )}
             </View>
           )}
         </ScrollView>

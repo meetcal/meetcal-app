@@ -9,6 +9,8 @@ import {
   saveMeetSchedule,
 } from "@/lib/database/offline-store";
 import { fetchAthletesWithSession, fetchSchedule } from "@/lib/database/queries";
+import { useRetryOnReconnect } from "@/hooks/useRetryOnReconnect";
+import { emptyLoadFailure, type LoadFailure } from "@/lib/load-failure";
 import { devInfo } from "@/lib/logger";
 import { isNetworkAvailable } from "@/lib/networkUtils";
 import type { Schedule } from "@/types/schedule";
@@ -56,12 +58,16 @@ async function loadMeetSnapshot(meet: MeetName) {
  * cache, which would bring back the double roster download on meet open
  * that the fresh-snapshot check above exists to avoid, and it deep-compares
  * every revalidated payload (`stableSerialize` of a 1,500-athlete roster).
+ * `loadFailure` says why the roster is empty when that is not "unpublished"
+ * (offline with nothing cached, or the roster request failed); while it is
+ * set, the load is retried when the connection comes back.
  */
 export function useStartListData(selectedMeet: string | null) {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [athletes, setAthletes] = useState<LiftResult[]>([]);
   const [schedule, setSchedule] = useState<Schedule>([]);
+  const [loadFailure, setLoadFailure] = useState<LoadFailure | null>(null);
   const latestLoadIdRef = useRef(0);
   const loadStartedAtRef = useRef(performance.now());
   const loggedReadyRef = useRef(false);
@@ -71,6 +77,7 @@ export function useStartListData(selectedMeet: string | null) {
       if (!selectedMeet || !isMeetName(selectedMeet)) {
         setAthletes([]);
         setSchedule([]);
+        setLoadFailure(null);
         setLoading(false);
         return;
       }
@@ -85,6 +92,8 @@ export function useStartListData(selectedMeet: string | null) {
       if (!forceRefresh) {
         loadStartedAtRef.current = performance.now();
         loggedReadyRef.current = false;
+        // A failure belongs to the load (and meet) that hit it.
+        setLoadFailure(null);
         setLoading(true);
       }
 
@@ -94,6 +103,7 @@ export function useStartListData(selectedMeet: string | null) {
       if (!forceRefresh) {
         setAthletes(snapshot.cachedAthletes);
         setSchedule(snapshot.cachedSchedule);
+        if (snapshot.cachedAthletes.length > 0) setLoadFailure(null);
         setLoading(false);
         // Both halves present and just written (by the meet-open prefetch
         // or a previous visit): the network round trip would return the
@@ -110,6 +120,13 @@ export function useStartListData(selectedMeet: string | null) {
       const hasNetwork = await isNetworkAvailable();
       if (isStale()) return;
       if (!hasNetwork) {
+        setLoadFailure(
+          emptyLoadFailure({
+            shownCount: snapshot.cachedAthletes.length,
+            hasNetwork,
+            requestFailed: false,
+          }),
+        );
         setLoading(false);
         if (forceRefresh) {
           showToast({ type: "error", message: REFRESH_FAILED_MESSAGE });
@@ -129,7 +146,12 @@ export function useStartListData(selectedMeet: string | null) {
       let nextAthletes = snapshot.cachedAthletes;
       let nextSchedule = snapshot.cachedSchedule;
 
-      if (athletesResult.status === "fulfilled") {
+      // An empty answer does not replace the saved roster on screen either;
+      // `saveMeetAthletes` already refuses to store it over one.
+      if (
+        athletesResult.status === "fulfilled" &&
+        (athletesResult.value.length > 0 || snapshot.cachedAthletes.length === 0)
+      ) {
         nextAthletes = athletesResult.value;
         saveMeetAthletes(validMeet, nextAthletes).catch(() => {});
       }
@@ -151,6 +173,13 @@ export function useStartListData(selectedMeet: string | null) {
 
       setAthletes(nextAthletes);
       setSchedule(nextSchedule);
+      setLoadFailure(
+        emptyLoadFailure({
+          shownCount: nextAthletes.length,
+          hasNetwork,
+          requestFailed: athletesResult.status === "rejected",
+        }),
+      );
       // Unconditional: a forced refresh can supersede an initial load that
       // set `loading` and then bailed out as stale.
       setLoading(false);
@@ -167,6 +196,11 @@ export function useStartListData(selectedMeet: string | null) {
       latestLoadIdRef.current += 1;
     };
   }, [load]);
+
+  // A failed load used to stay on the empty state until a pull-to-refresh.
+  useRetryOnReconnect(loadFailure !== null, () => {
+    void load(false);
+  });
 
   useEffect(() => {
     if (!__DEV__ || loggedReadyRef.current || loading || athletes.length === 0) {
@@ -191,5 +225,5 @@ export function useStartListData(selectedMeet: string | null) {
     }
   }, [load]);
 
-  return { athletes, schedule, loading, refreshing, refresh };
+  return { athletes, schedule, loading, refreshing, refresh, loadFailure };
 }

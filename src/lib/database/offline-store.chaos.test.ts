@@ -22,6 +22,30 @@ import { bulkyLiftResults, liftResultArb, liftResultsArb } from '@/test-support/
 
 jest.mock('@/lib/api/meetcal-api', () => ({ getTrustedNow: () => null }));
 
+type OfflineStoreModule = typeof import('@/lib/database/offline-store');
+
+/** The AsyncStorage mock this file's disk lives in, shared with every restarted store. */
+const asyncStorageModule: unknown = jest.requireMock('@react-native-async-storage/async-storage');
+
+/**
+ * `offline-store` as the app has it after a restart: the same disk, none of
+ * the old copy's in-memory state. The crash tests below simulate a process
+ * dying mid-write with a storage call that never settles. A meet's saves run
+ * one after another on a per-meet write chain (`meetDataWrites`), so in the
+ * same module copy every later save of that meet would wait on the dead one
+ * forever; a real crash takes that chain with it. What happens after a
+ * crash (a read, a later rewrite) therefore runs on a restarted store.
+ */
+function restartedStore(): OfflineStoreModule {
+  let store: OfflineStoreModule | undefined;
+  jest.isolateModules(() => {
+    jest.doMock('@react-native-async-storage/async-storage', () => asyncStorageModule);
+    store = jest.requireActual<OfflineStoreModule>('@/lib/database/offline-store');
+  });
+  if (!store) throw new Error('offline-store did not load');
+  return store;
+}
+
 jest.setTimeout(Math.max(10_000, (fc.readConfigureGlobal().numRuns ?? 100) * 150));
 
 const MEET = 'Chaos Test Meet';
@@ -199,6 +223,7 @@ describe('meet lifting results under storage chaos', () => {
   });
 
   it('writes past every chunk generation on disk when the manifest is unreadable, then prunes them', async () => {
+    const { getMeetLiftingResults, saveMeetLiftingResults } = restartedStore();
     const storage = (AsyncStorage as unknown as Storage).__INTERNAL_MOCK_STORAGE__;
     const chunkKeys = () => Object.keys(storage).filter((key) => key.includes('__chunk_')).sort();
     const previous = [{ ...bulkyLiftResults(1, 1)[0], name: 'Previous Lifter' }];
@@ -223,9 +248,12 @@ describe('meet lifting results under storage chaos', () => {
     expect(await getMeetLiftingResults(MEET)).toEqual(previous);
 
     // A rewrite that lands after an unreadable manifest read prunes every
-    // generation the listing found.
-    await underChaos([{ kind: 'corrupt-read', value: 'not json' }], () => saveMeetLiftingResults(MEET, next));
-    expect(await getMeetLiftingResults(MEET)).toEqual(next);
+    // generation the listing found. The app restarted after the crash.
+    const restarted = restartedStore();
+    await underChaos([{ kind: 'corrupt-read', value: 'not json' }], () =>
+      restarted.saveMeetLiftingResults(MEET, next),
+    );
+    expect(await restarted.getMeetLiftingResults(MEET)).toEqual(next);
     expect(chunkKeys()).toEqual([`meetcal_lifting_results_${MEET}__chunk_0_g6`]);
   });
 
@@ -240,6 +268,9 @@ describe('meet lifting results under storage chaos', () => {
         fc.nat(),
         async (previous, next, crashAfter) => {
           await AsyncStorage.clear();
+          // Each case is a fresh launch: the previous case's crash left its
+          // module copy's write chain waiting forever (see `restartedStore`).
+          const { getMeetLiftingResults, saveMeetLiftingResults } = restartedStore();
           if (previous) await saveMeetLiftingResults(MEET, previous);
 
           // The data `multiSet` persists its first `crashAfter` pairs and the
@@ -278,6 +309,7 @@ describe('meet lifting results under storage chaos', () => {
   });
 
   it('keeps the previous multi-chunk copy when the process dies after the first new chunk', async () => {
+    const { getMeetLiftingResults, saveMeetLiftingResults } = restartedStore();
     const previous = bulkyLiftResults(3, 900);
     const next = bulkyLiftResults(5, 900);
     await saveMeetLiftingResults(MEET, previous);

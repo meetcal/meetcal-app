@@ -53,14 +53,18 @@ jest.mock("@/lib/database/meet-manager", () => ({
 const mockClearMeetData = jest.fn(async (_meet: string, _options?: unknown) => {});
 const mockClearAllAthleteHistory = jest.fn(async () => {});
 const mockMarkMeetExplicitlyDownloaded = jest.fn(async (..._args: unknown[]) => {});
-const mockReadStorageKeysForMeetClear = jest.fn(async (_count: number) => ["k1", "k2"]);
+// Also reports a meet that is on disk without being in today's window.
+const mockListStoredMeets = jest.fn(async (extra: readonly string[] = []) => ({
+  meetIds: [...extra, "Old Browsed Meet"],
+  storageKeys: ["k1", "k2"],
+}));
 jest.mock("@/lib/database/offline-store", () => ({
   clearAllAthleteHistory: () => mockClearAllAthleteHistory(),
   clearMeetData: (meet: string, options?: unknown) => mockClearMeetData(meet, options),
   getExplicitlyDownloadedMeetIds: async () => new Set(["Meet A"]),
   getLastSyncTime: async () => 1,
   markMeetExplicitlyDownloaded: (...args: unknown[]) => mockMarkMeetExplicitlyDownloaded(...args),
-  readStorageKeysForMeetClear: (count: number) => mockReadStorageKeysForMeetClear(count),
+  listStoredMeets: (extra?: readonly string[]) => mockListStoredMeets(extra),
 }));
 
 type Hook = ReturnType<typeof useOfflineData>;
@@ -247,7 +251,7 @@ describe("useOfflineData refresh all, partial failure", () => {
 });
 
 describe("useOfflineData delete all", () => {
-  it("removes every cache, each meet with one shared key listing, and athlete history", async () => {
+  it("removes every cache, each stored meet with one shared key listing, and athlete history", async () => {
     await AsyncStorage.setItem(OFFLINE_CACHE_KEYS.qualifyingTotals, cacheEntry);
     const tree = await mount();
 
@@ -256,10 +260,13 @@ describe("useOfflineData delete all", () => {
 
     await expect(AsyncStorage.getItem(OFFLINE_CACHE_KEYS.standards)).resolves.toBeNull();
     await expect(AsyncStorage.getItem(OFFLINE_CACHE_KEYS.qualifyingTotals)).resolves.toBeNull();
-    expect(mockReadStorageKeysForMeetClear).toHaveBeenCalledTimes(1);
+    expect(mockListStoredMeets).toHaveBeenCalledTimes(1);
+    expect(mockListStoredMeets).toHaveBeenCalledWith(["Meet A", "Meet B"]);
+    // A meet outside today's window that still has data on disk goes too.
     expect(mockClearMeetData.mock.calls).toEqual([
       ["Meet A", { storageKeys: ["k1", "k2"] }],
       ["Meet B", { storageKeys: ["k1", "k2"] }],
+      ["Old Browsed Meet", { storageKeys: ["k1", "k2"] }],
     ]);
     expect(mockClearAllAthleteHistory).toHaveBeenCalledTimes(1);
     expect(alertSpy.mock.calls.at(-1)?.[0]).toBe("Deleted");

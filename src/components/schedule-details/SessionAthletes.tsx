@@ -7,13 +7,16 @@ import type {
   SortDirection,
   SortKey,
 } from "@/components/schedule-details/sessionSort/types";
+import { Button } from "@/components/ui/Button";
 import { IconSymbol } from "@/components/ui/IconSymbol";
 import { ThemedText } from "@/components/ui/ThemedText";
 import { LiftResult, SupabaseBests } from "@/data/types/athletes";
 import { MeetName } from "@/data/types/meet";
 import { useAppColors } from "@/hooks/useAppColors";
+import { useIsOffline } from "@/hooks/useIsOffline";
 import { useSessionAthletes } from "@/hooks/useMeetAthletes";
 import { useRequirePremium } from "@/hooks/useRequirePremium";
+import { loadFailureCopy } from "@/lib/load-failure";
 import { SessionAthlete } from "@/types/schedule-details";
 import {
   createSessionDetailsDeepLink,
@@ -63,8 +66,14 @@ export default function SessionAthletes({
 }) {
   const router = useRouter();
   const colors = useAppColors();
-  const { athletes: sessionAthletes, isLoading, isRefreshing, refreshAthletes } =
-    useSessionAthletes(meetId, sessionNumber, platform);
+  const {
+    athletes: sessionAthletes,
+    isLoading,
+    isRefreshing,
+    loadError,
+    refreshAthletes,
+  } = useSessionAthletes(meetId, sessionNumber, platform);
+  const [isOffline] = useIsOffline();
   const [athleteBests, setAthleteBests] = useState<
     Record<string, SupabaseBests>
   >({});
@@ -312,6 +321,41 @@ export default function SessionAthletes({
               >
                 Loading athletes...
               </ThemedText>
+            </View>
+          </View>
+        </View>
+      );
+    }
+    if (loadError) {
+      // The card used to vanish here, which read as "nobody in this
+      // session" when the request had failed.
+      const failure = loadFailureCopy("session athletes", isOffline);
+      return (
+        <View>
+          <View style={[styles.card, { backgroundColor: colors.card }]}>
+            <View
+              style={[
+                styles.titleSection,
+                { borderBottomColor: colors.border },
+              ]}
+            >
+              <ThemedText style={styles.athletesTitle}>
+                Session Athletes
+              </ThemedText>
+            </View>
+            <View style={styles.loadingContainer} testID="session-athletes-load-error">
+              <ThemedText style={styles.athletesTitle}>{failure.title}</ThemedText>
+              <ThemedText
+                style={[styles.loadingText, { color: colors.secondaryText, textAlign: "center" }]}
+              >
+                {failure.message}
+              </ThemedText>
+              <Button
+                title="Retry"
+                onPress={() => {
+                  void refreshAthletes();
+                }}
+              />
             </View>
           </View>
         </View>

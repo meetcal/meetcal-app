@@ -5,7 +5,7 @@ import { showToast } from "@/components/ui/Toast";
 import type { LiftResult } from "@/data/types/athletes";
 import { getMeetData, saveMeetAthletes, saveMeetSchedule } from "@/lib/database/offline-store";
 import { fetchAthletesWithSession, fetchSchedule } from "@/lib/database/queries";
-import { isNetworkAvailable } from "@/lib/networkUtils";
+import { isNetworkAvailable, subscribeToNetworkChanges } from "@/lib/networkUtils";
 import type { Schedule } from "@/types/schedule";
 import { FRESH_SNAPSHOT_TTL_MS, isSnapshotFresh, useStartListData } from "./useStartListData";
 
@@ -19,7 +19,10 @@ jest.mock("@/lib/database/queries", () => ({
   fetchAthletesWithSession: jest.fn(),
   fetchSchedule: jest.fn(),
 }));
-jest.mock("@/lib/networkUtils", () => ({ isNetworkAvailable: jest.fn() }));
+jest.mock("@/lib/networkUtils", () => ({
+  isNetworkAvailable: jest.fn(),
+  subscribeToNetworkChanges: jest.fn(() => () => {}),
+}));
 
 const lifter = (name: string) => ({ name }) as unknown as LiftResult;
 const day = (fullDate: string) => ({ date: fullDate, fullDate, sessions: [] }) as Schedule[number];
@@ -83,6 +86,39 @@ describe("isSnapshotFresh", () => {
 });
 
 describe("useStartListData", () => {
+  it("says offline, and watches for the connection, when nothing is cached and there is no network", async () => {
+    jest.mocked(getMeetData).mockResolvedValue({
+      athletes: [],
+      schedule: [],
+      athletesSyncedAt: 0,
+    } as unknown as Awaited<ReturnType<typeof getMeetData>>);
+    jest.mocked(isNetworkAvailable).mockResolvedValue(false);
+    await mount();
+    expect(hook.athletes).toEqual([]);
+    expect(hook.loadFailure).toBe("offline");
+    expect(subscribeToNetworkChanges).toHaveBeenCalled();
+  });
+
+  it("reports a failed roster request with nothing cached as an error, not an unpublished list", async () => {
+    jest.mocked(getMeetData).mockResolvedValue({
+      athletes: [],
+      schedule: [],
+      athletesSyncedAt: 0,
+    } as unknown as Awaited<ReturnType<typeof getMeetData>>);
+    jest.mocked(fetchAthletesWithSession).mockRejectedValue(new Error("down"));
+    await mount();
+    expect(hook.loadFailure).toBe("error");
+  });
+
+  it("keeps the saved roster on screen when the API answers with an empty one", async () => {
+    cache(0);
+    jest.mocked(fetchAthletesWithSession).mockResolvedValue([]);
+    await mount();
+    expect(hook.athletes).toEqual(CACHED.athletes);
+    expect(hook.loadFailure).toBeNull();
+    expect(saveMeetAthletes).not.toHaveBeenCalled();
+  });
+
   it("serves a just-written snapshot without going to the network", async () => {
     cache(Date.now());
     await mount();
