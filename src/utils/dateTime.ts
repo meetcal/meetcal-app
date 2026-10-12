@@ -77,9 +77,10 @@ export function getTimeZoneAbbreviation(
 export function formatIsoDateTitle(sourceDate: string): string | null {
   if (!sourceDate) return null;
 
-  const calendarDate = toMeetCalendarDate(sourceDate);
-  const parsed = calendarDate
-    ? meetCalendarDateAnchor(calendarDate)
+  // An ISO date is anchored by its date part, or rejected when that day does
+  // not exist: `new Date("2026-02-30")` would roll it onto Mar 1.
+  const parsed = ISO_DATE_REGEX.test(sourceDate.split("T")[0] ?? "")
+    ? meetCalendarDateAnchor(toMeetCalendarDate(sourceDate))
     : new Date(sourceDate);
   if (!parsed || Number.isNaN(parsed.getTime())) return null;
 
@@ -223,7 +224,8 @@ export function getCalendarDateInTimeZone(
 const ISO_DATE_REGEX = /^\d{4}-\d{2}-\d{2}$/;
 
 /**
- * The calendar-date part of a meet date field, or "" when it isn't one.
+ * The calendar-date part of a meet date field, or "" when it isn't one
+ * (including a day the calendar does not have, such as `2026-02-30`).
  *
  * Meet dates are calendar dates, so date windows are compared as `YYYY-MM-DD`
  * strings. Going through `new Date("2026-06-01")` instead would produce UTC
@@ -233,7 +235,9 @@ const ISO_DATE_REGEX = /^\d{4}-\d{2}-\d{2}$/;
 export function toMeetCalendarDate(value: string | null | undefined): string {
   if (typeof value !== "string") return "";
   const [datePart] = value.split("T");
-  return ISO_DATE_REGEX.test(datePart ?? "") ? datePart : "";
+  return ISO_DATE_REGEX.test(datePart ?? "") && meetCalendarDateAnchor(datePart)
+    ? datePart
+    : "";
 }
 
 /**

@@ -81,12 +81,9 @@ describe('toMeetCalendarDate', () => {
     );
   });
 
-  // FINDING: toMeetCalendarDate("2026-02-30") returns "2026-02-30". Its doc
-  // says it returns "" for a value that is not a calendar date, and
-  // `meetCalendarDateAnchor` / `convertZonedLocalToUTC` reject such days.
-  // Left as is: its callers include the offline download window
-  // (utils/offline.ts), which this change may not alter.
-  it.skip('rejects a day the calendar does not have', () => {
+  // Found by this property: "2026-02-30" used to come back as a date, which a
+  // string comparison then ordered as if it existed.
+  it('rejects a day the calendar does not have', () => {
     fc.assert(
       fc.property(nonexistentDateArb, (date) => {
         expect(toMeetCalendarDate(date)).toBe('');
