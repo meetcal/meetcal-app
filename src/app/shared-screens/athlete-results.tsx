@@ -2,6 +2,7 @@ import { RateBar } from "@/components/athlete-results/RateBar";
 import { ThemedText } from "@/components/ui/ThemedText";
 import { ThemedView } from "@/components/ui/ThemedView";
 import { AppColors, useAppColors } from "@/hooks/useAppColors";
+import { calculateAthleteMakeRates } from "@/lib/athlete-make-rates";
 import { findPRIndexes } from "@/lib/athlete-prs";
 import { getAllCachedLiftingResultsForAthlete } from "@/lib/database/offline-store";
 import { fetchAllResultsForName } from "@/lib/database/queries";
@@ -74,94 +75,7 @@ function AthleteStats({
   results: SupabaseLiftResult[];
   colors: AppColors;
 }) {
-  const stats = useMemo(() => {
-    let snatchAttempts = 0;
-    let snatchMakes = 0;
-    let cjAttempts = 0;
-    let cjMakes = 0;
-
-    // Initialize attempt-specific counters
-    const snatchAttemptsByNumber = {
-      attempt1: { makes: 0, total: 0 },
-      attempt2: { makes: 0, total: 0 },
-      attempt3: { makes: 0, total: 0 },
-    };
-
-    const cjAttemptsByNumber = {
-      attempt1: { makes: 0, total: 0 },
-      attempt2: { makes: 0, total: 0 },
-      attempt3: { makes: 0, total: 0 },
-    };
-
-    results.forEach((result) => {
-      // Count snatch attempts
-      [result.snatch1, result.snatch2, result.snatch3].forEach(
-        (attempt, index) => {
-          if (attempt !== null && attempt !== 0) {
-            snatchAttempts++;
-            if (attempt > 0) snatchMakes++;
-
-            // Count attempt-specific stats
-            const attemptKey =
-              `attempt${index + 1}` as keyof typeof snatchAttemptsByNumber;
-            snatchAttemptsByNumber[attemptKey].total++;
-            if (attempt > 0) snatchAttemptsByNumber[attemptKey].makes++;
-          }
-        },
-      );
-
-      // Count clean & jerk attempts
-      [result.cj1, result.cj2, result.cj3].forEach((attempt, index) => {
-        if (attempt !== null && attempt !== 0) {
-          cjAttempts++;
-          if (attempt > 0) cjMakes++;
-
-          // Count attempt-specific stats
-          const attemptKey =
-            `attempt${index + 1}` as keyof typeof cjAttemptsByNumber;
-          cjAttemptsByNumber[attemptKey].total++;
-          if (attempt > 0) cjAttemptsByNumber[attemptKey].makes++;
-        }
-      });
-    });
-
-    // Calculate rates for each attempt
-    const calculateRates = (attempts: typeof snatchAttemptsByNumber) => {
-      return {
-        attempt1: {
-          ...attempts.attempt1,
-          rate:
-            attempts.attempt1.total > 0
-              ? (attempts.attempt1.makes / attempts.attempt1.total) * 100
-              : 0,
-        },
-        attempt2: {
-          ...attempts.attempt2,
-          rate:
-            attempts.attempt2.total > 0
-              ? (attempts.attempt2.makes / attempts.attempt2.total) * 100
-              : 0,
-        },
-        attempt3: {
-          ...attempts.attempt3,
-          rate:
-            attempts.attempt3.total > 0
-              ? (attempts.attempt3.makes / attempts.attempt3.total) * 100
-              : 0,
-        },
-      };
-    };
-
-    return {
-      snatchMakeRate:
-        snatchAttempts > 0 ? (snatchMakes / snatchAttempts) * 100 : 0,
-      cjMakeRate: cjAttempts > 0 ? (cjMakes / cjAttempts) * 100 : 0,
-      totalSnatchAttempts: snatchAttempts,
-      totalCJAttempts: cjAttempts,
-      snatchAttemptRates: calculateRates(snatchAttemptsByNumber),
-      cjAttemptRates: calculateRates(cjAttemptsByNumber),
-    };
-  }, [results]);
+  const stats = useMemo(() => calculateAthleteMakeRates(results), [results]);
 
   return (
     <Animated.View
