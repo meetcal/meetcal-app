@@ -28,6 +28,14 @@ import { sourcesFailed, type SourceFailure } from '../lib/cronAlerts';
  */
 type Dict = Record<string, unknown>;
 
+/** Pages one table may take: tables are requested as one page, so more is a misbehaving API. */
+const MAX_PAGES = 50;
+
+/** Whether a table read in full: as many rows as the `total` it reports (a table reporting none is taken as read). */
+export function tableComplete(rows: number, total: unknown): boolean {
+  return typeof total !== 'number' || rows === total;
+}
+
 /** The Sport80 public API: key and base URL come from the site's `window.env`. */
 class Sport80 {
   private constructor(private readonly env: Record<string, string>) {}
@@ -60,14 +68,20 @@ class Sport80 {
     return (await response.json()) as Dict;
   }
 
-  /** Every page's `data`, following `next_page_url`; any failed page fails the whole table. */
+  /**
+   * Every page's `data`, following `next_page_url`; any failed page fails
+   * the whole table, and so does a table short of the `total` it reports
+   * (the results sync deletes what a table lacks, so it must be whole).
+   */
   private async collate(first: Dict, payload?: Dict): Promise<Dict[]> {
     const rows: Dict[] = [...((first.data as Dict[]) ?? [])];
     let current = first;
-    while (typeof current.next_page_url === 'string' && current.next_page_url) {
+    for (let page = 1; typeof current.next_page_url === 'string' && current.next_page_url; page++) {
+      if (page > MAX_PAGES) throw new Error(`table has over ${MAX_PAGES} pages`);
       current = await this.post(current.next_page_url, payload);
       rows.push(...((current.data as Dict[]) ?? []));
     }
+    if (!tableComplete(rows.length, first.total)) throw new Error(`read ${rows.length} rows of the ${String(first.total)} the table reports`);
     return rows;
   }
 
@@ -105,6 +119,9 @@ export const MAX_UNREADABLE_SHARE = 0.2;
 export function tooManyUnreadable(unreadable: number, rows: number): boolean {
   return rows > 0 && unreadable > rows * MAX_UNREADABLE_SHARE;
 }
+
+/** Prune calls (of `ingest.RESULT_PRUNE_BATCH` rows each) one meet gets in a run. */
+const MAX_PRUNE_CALLS = 25;
 
 /** A row the sync can store: it has a name, and its age category is text. */
 const readable = (row: ResultRow) => typeof row.name === 'string' && row.name !== '' && (row.age === null || typeof row.age === 'string');
@@ -174,6 +191,7 @@ export const run = internalAction({
         const counts: { inserted: number; updated: number; unchanged: number } = await ctx.runMutation(
           internal.ingest.upsertLiftingResults,
           {
+            allowShrink: allowShrink ?? false,
             rows: valid.slice(i, i + INGEST_BATCH).map((row) => ({
               eventId: row.eventId,
               meet: row.meet,
@@ -207,12 +225,17 @@ export const run = internalAction({
       // Only a meet read in full is a safe basis for deleting what it lacks.
       if (outcome.failed > 0 || valid.length === 0) continue;
       try {
-        const pruned: { deleted: number } = await ctx.runMutation(internal.ingest.pruneEventResults, {
-          eventId,
-          keep: valid.map((row) => ({ meet: row.meet, name: row.name! })),
-          allowShrink: allowShrink ?? false,
-        });
-        outcome.deleted = pruned.deleted;
+        const keep = valid.map((row) => ({ meet: row.meet, name: row.name! }));
+        // A batch a call; the rest of a huge prune waits for the next run.
+        for (let call = 0; call < MAX_PRUNE_CALLS; call++) {
+          const pruned: { deleted: number; remaining: number } = await ctx.runMutation(internal.ingest.pruneEventResults, {
+            eventId,
+            keep,
+            allowShrink: allowShrink ?? false,
+          });
+          outcome.deleted += pruned.deleted;
+          if (pruned.remaining === 0 || pruned.deleted === 0) break;
+        }
       } catch (error) {
         failures.push({ source, error: `stale results not deleted: ${(error as Error).message}` });
       }

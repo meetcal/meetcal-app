@@ -6,7 +6,7 @@ import { normalizeAgeCategory, normalizeFederation, normalizeGender } from './li
 import { meetLocalDate, type ZoneFormatters } from './lib/meetData';
 import { normalizeName } from './lib/names';
 import { bumpVersion, type SourceTable } from './lib/views';
-import { clearedLifts, exceedsShrink, liftCount } from './lib/shrinkGuard';
+import { clearedColumns, clearedLifts, exceedsShrink, liftCount } from './lib/shrinkGuard';
 import {
   athletesFields,
   intlRankingsFields,
@@ -79,11 +79,35 @@ const liftingResult = v.object(liftingResultsFields);
  * Python writer's natural key. `nameKey` is derived here, never taken from
  * the caller, and the federation is normalized (`normalize_federation`). A
  * row whose values are unchanged is not written, so re-syncing an unchanged
- * meet bumps no version and invalidates no view.
+ * meet bumps no version and invalidates no view. Without `allowShrink`, a
+ * batch that empties a column (a lift, the total, the body weight) on many
+ * of the stored rows it updates is refused, nothing written: that is a
+ * column the source renamed, not a set of corrections.
  */
 export const upsertLiftingResults = internalMutation({
-  args: { rows: v.array(liftingResult) },
-  handler: async (ctx, { rows }) => {
+  args: { rows: v.array(liftingResult), allowShrink: v.optional(v.boolean()) },
+  handler: async (ctx, { rows, allowShrink }) => {
+    const stored = async (row: (typeof rows)[number]) =>
+      (
+        await ctx.db
+          .query('lifting_results')
+          .withIndex('by_event_and_name', (q) => q.eq('eventId', row.eventId).eq('name', row.name))
+          .collect()
+      ).find((r) => r.meet === row.meet);
+    if (!allowShrink) {
+      const updates = [];
+      for (const row of rows) {
+        const existing = await stored(row);
+        if (existing) updates.push({ stored: existing, next: row });
+      }
+      const emptied = clearedColumns(updates);
+      if (emptied.length) {
+        throw new Error(
+          `refusing to clear ${emptied.join(', ')} on most of ${updates.length} stored results (a source column renamed?). ` +
+            `If the source really cleared them, rerun its sync with '{"allowShrink":true}'`,
+        );
+      }
+    }
     const hints: WriteHint[] = [];
     let inserted = 0;
     let updated = 0;
@@ -95,12 +119,8 @@ export const upsertLiftingResults = internalMutation({
         federation: fields.federation === undefined ? undefined : normalizeFederation(fields.federation),
         nameKey: normalizeName(row.name),
       };
-      const existing = (
-        await ctx.db
-          .query('lifting_results')
-          .withIndex('by_event_and_name', (q) => q.eq('eventId', row.eventId).eq('name', row.name))
-          .collect()
-      ).find((r) => r.meet === row.meet);
+      // Read again: an earlier row of this batch may have written it.
+      const existing = await stored(row);
       if (!existing) {
         await ctx.db.insert('lifting_results', doc);
         inserted += 1;
@@ -181,6 +201,13 @@ export const deleteLiftingResults = internalMutation({
 const RESULT_PRUNE_LIMIT = { share: 0.1, min: 5 };
 
 /**
+ * Rows one prune call deletes at most: each deletion rewrites its athlete's
+ * history, as a batch of upserts does (`INGEST_BATCH` in the Sport80 sync),
+ * so a retitled meet is pruned over several calls.
+ */
+export const RESULT_PRUNE_BATCH = 200;
+
+/**
  * After a complete payload of an event's results was upserted: deletes the
  * event's stored rows that payload no longer has (a name Sport80 corrected,
  * a result withdrawn, rows under the meet's old title), through the same
@@ -188,7 +215,9 @@ const RESULT_PRUNE_LIMIT = { share: 0.1, min: 5 };
  * follow. `keep` is the payload's (meet, name) pairs. A row whose athlete is
  * still in the payload under another meet title was only retitled; the rest
  * count against RESULT_PRUNE_LIMIT, past which nothing is deleted unless
- * `allowShrink`.
+ * `allowShrink`. Deletes at most RESULT_PRUNE_BATCH rows, dropped ones
+ * first (so a later call's guard sees no larger share), and returns how
+ * many stale rows remain for the next call.
  */
 export const pruneEventResults = internalMutation({
   args: { eventId: v.string(), keep: v.array(v.object({ meet: v.string(), name: v.string() })), allowShrink: v.optional(v.boolean()) },
@@ -197,20 +226,28 @@ export const pruneEventResults = internalMutation({
     if (keep.length === 0) throw new Error(`refusing to prune event ${eventId}'s results against an empty payload`);
     const kept = new Set(keep.map(resultKey));
     const names = new Set(keep.map((row) => row.name));
-    const stored = await ctx.db
-      .query('lifting_results')
-      .withIndex('by_event_and_name', (q) => q.eq('eventId', eventId))
-      .collect();
+    // Only rows the Sport80 sync writes (USAW, not adaptive): an imported
+    // row of another source under the same event id is not its to delete.
+    const stored = (
+      await ctx.db
+        .query('lifting_results')
+        .withIndex('by_event_and_name', (q) => q.eq('eventId', eventId))
+        .collect()
+    ).filter((row) => row.federation === 'USAW' && !row.adaptive);
     const stale = stored.filter((row) => !kept.has(resultKey(row)));
     const dropped = stale.filter((row) => !names.has(row.name));
-    if (!allowShrink && exceedsShrink(dropped.length, stored.length, RESULT_PRUNE_LIMIT)) {
+    const retitled = stale.filter((row) => names.has(row.name));
+    // Judged against the event's rows less the retitled copies, which are
+    // its athletes counted twice.
+    if (!allowShrink && exceedsShrink(dropped.length, stored.length - retitled.length, RESULT_PRUNE_LIMIT)) {
       throw new Error(
-        `refusing to delete ${dropped.length} of event ${eventId}'s ${stored.length} stored results no longer in its Sport80 table ` +
+        `refusing to delete ${dropped.length} of event ${eventId}'s ${stored.length - retitled.length} stored results no longer in its Sport80 table ` +
           `(${dropped.slice(0, 10).map((row) => row.name).join(', ')}${dropped.length > 10 ? ', …' : ''}). ` +
           `If Sport80 really dropped them: npx convex run scrapers/sport80:run '{"only":["${eventId}"],"allowShrink":true}' (add --prod for production)`,
       );
     }
-    return { deleted: await deleteResultRows(ctx, stale) };
+    const deleted = await deleteResultRows(ctx, [...dropped, ...retitled].slice(0, RESULT_PRUNE_BATCH));
+    return { deleted, remaining: stale.length - deleted };
   },
 });
 
@@ -643,12 +680,15 @@ const recordRow = v.object({
 /**
  * Inserts or updates records matched on (type, age, gender, class),
  * normalized like `upsert_record`. A lift missing from the row clears it, as
- * the Python writer's `None` did. Never deletes.
+ * the Python writer's `None` did. Never deletes. Without `allowShrink`, a
+ * payload that clears more of the matched records' stored lifts than
+ * `exceedsShrink` allows is refused (nothing written): a lift row the parser
+ * stopped finding reads as no record for every class at once.
  */
 export const upsertRecords = internalMutation({
-  args: { rows: v.array(recordRow) },
-  handler: async (ctx, { rows }): Promise<UpsertOutcome[]> => {
-    const outcomes: UpsertOutcome[] = [];
+  args: { rows: v.array(recordRow), allowShrink: v.optional(v.boolean()) },
+  handler: async (ctx, { rows, allowShrink }): Promise<UpsertOutcome[]> => {
+    const pairs = [];
     for (const row of rows) {
       const doc = {
         recordType: row.recordType,
@@ -670,6 +710,21 @@ export const upsertRecords = internalMutation({
           )
           .collect()
       ).find((r) => r.weightClass === doc.weightClass);
+      pairs.push({ doc, existing });
+    }
+    if (!allowShrink) {
+      const matched = pairs.filter((pair) => pair.existing !== undefined);
+      const storedLifts = matched.reduce((sum, { existing }) => sum + liftCount(existing!), 0);
+      const cleared = matched.reduce((sum, { doc, existing }) => sum + clearedLifts(existing!, doc), 0);
+      if (exceedsShrink(cleared, storedLifts)) {
+        throw new Error(
+          `refusing to clear ${cleared} of ${storedLifts} stored record lifts (the source may be partly broken). ` +
+            `If it really cleared them, rerun its sync with '{"allowShrink":true}'`,
+        );
+      }
+    }
+    const outcomes: UpsertOutcome[] = [];
+    for (const { doc, existing } of pairs) {
       if (!existing) {
         await ctx.db.insert('records', doc);
         outcomes.push({ wasInsert: true, wasChanged: true });

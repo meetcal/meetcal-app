@@ -4,8 +4,11 @@ import {
   deleteMissingIntlRankingGroups,
   pruneEventResults,
   replaceMeetAthletes,
+  RESULT_PRUNE_BATCH,
   replaceWsoRecordSet,
   upsertEntryAthletes,
+  upsertLiftingResults,
+  upsertRecords,
 } from '../convex/ingest';
 import { writeHistories } from '../convex/lib/history';
 
@@ -80,7 +83,7 @@ const result = (name: string, meet = 'Open', extra: Partial<Record<string, unkno
 });
 
 describe('pruning an event to its Sport80 table (#97)', () => {
-  const prune = handlerOf<{ eventId: string; keep: { meet: string; name: string }[]; allowShrink?: boolean }, { deleted: number }>(pruneEventResults);
+  const prune = handlerOf<{ eventId: string; keep: { meet: string; name: string }[]; allowShrink?: boolean }, { deleted: number; remaining: number }>(pruneEventResults);
   const names = (n: number) => Array.from({ length: n }, (_, i) => `Athlete ${i}`);
 
   beforeEach(() => jest.mocked(writeHistories).mockClear());
@@ -90,14 +93,14 @@ describe('pruning an event to its Sport80 table (#97)', () => {
       lifting_results: [...names(20).map((name) => result(name)), result('Jon Smith'), result('Withdrawn'), result('Other Event', 'Open', { eventId: '200' })],
     });
     const keep = [...names(20), 'John Smith'].map((name) => ({ meet: 'Open', name }));
-    expect(await prune({ db }, { eventId: '100', keep })).toEqual({ deleted: 2 });
+    expect(await prune({ db }, { eventId: '100', keep })).toEqual({ deleted: 2, remaining: 0 });
     expect(rows('lifting_results').map((r) => r.name)).toEqual([...names(20), 'Other Event']);
     expect(writeHistories).toHaveBeenCalledWith(expect.anything(), expect.arrayContaining(['jon smith', 'withdrawn']));
   });
 
   it("deletes the rows under a meet's old title without counting them as dropped", async () => {
     const { db, rows } = fakeDb({ lifting_results: names(30).map((name) => result(name, 'Old Title')).concat(names(30).map((name) => result(name, 'New Title'))) });
-    expect(await prune({ db }, { eventId: '100', keep: names(30).map((name) => ({ meet: 'New Title', name })) })).toEqual({ deleted: 30 });
+    expect(await prune({ db }, { eventId: '100', keep: names(30).map((name) => ({ meet: 'New Title', name })) })).toEqual({ deleted: 30, remaining: 0 });
     expect(new Set(rows('lifting_results').map((r) => r.meet))).toEqual(new Set(['New Title']));
   });
 
@@ -108,7 +111,26 @@ describe('pruning an event to its Sport80 table (#97)', () => {
     await expect(prune({ db: refused.db }, { eventId: '100', keep })).rejects.toThrow("refusing to delete 10 of event 100's 40 stored results");
     expect(refused.rows('lifting_results')).toHaveLength(40);
     const allowed = seed();
-    expect(await prune({ db: allowed.db }, { eventId: '100', keep, allowShrink: true })).toEqual({ deleted: 10 });
+    expect(await prune({ db: allowed.db }, { eventId: '100', keep, allowShrink: true })).toEqual({ deleted: 10, remaining: 0 });
+  });
+
+  it('deletes a big prune in batches, dropped rows first so the guard still passes on the next call', async () => {
+    const athletes = names(RESULT_PRUNE_BATCH + 100);
+    const dropped = names(30).map((name) => `Gone ${name}`);
+    const { db, rows } = fakeDb({
+      lifting_results: [...athletes.map((name) => result(name, 'Old Title')), ...athletes.map((name) => result(name, 'New Title')), ...dropped.map((name) => result(name, 'Old Title'))],
+    });
+    const keep = athletes.map((name) => ({ meet: 'New Title', name }));
+    expect(await prune({ db }, { eventId: '100', keep })).toEqual({ deleted: RESULT_PRUNE_BATCH, remaining: 130 });
+    expect(rows('lifting_results').some((r) => String(r.name).startsWith('Gone'))).toBe(false);
+    expect(await prune({ db }, { eventId: '100', keep })).toEqual({ deleted: 130, remaining: 0 });
+    expect(rows('lifting_results')).toHaveLength(athletes.length);
+  });
+
+  it("leaves another source's rows under the same event id alone", async () => {
+    const { db, rows } = fakeDb({ lifting_results: [result('A'), result('B', 'Open', { federation: 'IWF' }), result('C', 'Open', { adaptive: true })] });
+    expect(await prune({ db }, { eventId: '100', keep: [{ meet: 'Open', name: 'A' }] })).toEqual({ deleted: 0, remaining: 0 });
+    expect(rows('lifting_results')).toHaveLength(3);
   });
 
   it('refuses an empty payload', async () => {
@@ -172,5 +194,44 @@ describe('intl rankings prune guard (#98)', () => {
     expect(refused.rows('intl_rankings')).toHaveLength(8);
     const allowed = fakeDb({ intl_rankings: meets.map(ranking) });
     expect(await prune({ db: allowed.db }, { groups: active, allowShrink: true })).toMatchObject({ deleted: 5 });
+  });
+});
+
+describe('result upserts refuse to empty a column (#96)', () => {
+  const upsert = handlerOf<{ rows: Record<string, unknown>[]; allowShrink?: boolean }, Record<string, number>>(upsertLiftingResults);
+  const athletes = Array.from({ length: 10 }, (_, i) => `Athlete ${i}`);
+  const payload = (total?: number) => athletes.map((name) => ({ ...result(name), nameKey: undefined, total }));
+
+  it('refuses a batch that drops the total from every stored row, and takes it with allowShrink', async () => {
+    const { db, rows } = fakeDb({ lifting_results: athletes.map((name) => result(name)) });
+    await expect(upsert({ db }, { rows: payload(undefined) })).rejects.toThrow('refusing to clear total on most of 10 stored results');
+    expect(rows('lifting_results').every((r) => r.total === 200)).toBe(true);
+    expect(await upsert({ db }, { rows: payload(undefined), allowShrink: true })).toMatchObject({ updated: 10 });
+  });
+
+  it('takes ordinary updates and new rows', async () => {
+    const { db } = fakeDb({ lifting_results: athletes.map((name) => result(name)) });
+    expect(await upsert({ db }, { rows: [...payload(210), { ...result('New'), nameKey: undefined }] })).toMatchObject({ inserted: 1, updated: 10 });
+  });
+});
+
+describe('record upserts refuse to clear many lifts (#91)', () => {
+  const upsert = handlerOf<{ rows: Record<string, unknown>[]; allowShrink?: boolean }, unknown[]>(upsertRecords);
+  const record = (weightClass: string, lifts: Record<string, number>) => ({ recordType: 'UMWF', ageCategory: 'Masters 35', gender: 'Men', weightClass, ...lifts });
+  const classes = Array.from({ length: 30 }, (_, i) => `${60 + i}kg`);
+  const full = classes.map((c) => record(c, { snatchRecord: 100, cjRecord: 120, totalRecord: 220 }));
+
+  it('refuses a payload that loses one lift on every class (a label the parser stopped finding)', async () => {
+    const { db, rows } = fakeDb({ records: full });
+    const noCj = classes.map((c) => record(c, { snatchRecord: 100, totalRecord: 220 }));
+    await expect(upsert({ db }, { rows: noCj })).rejects.toThrow('refusing to clear 30 of 90 stored record lifts');
+    expect(rows('records')).toEqual(full);
+    expect(await upsert({ db }, { rows: noCj, allowShrink: true })).toHaveLength(30);
+  });
+
+  it('takes a lift or two cleared', async () => {
+    const { db } = fakeDb({ records: full });
+    const one = full.map((row, i) => (i === 0 ? record(row.weightClass, { snatchRecord: 100 }) : row));
+    expect(await upsert({ db }, { rows: one })).toHaveLength(30);
   });
 });

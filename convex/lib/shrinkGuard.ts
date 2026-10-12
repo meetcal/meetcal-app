@@ -31,3 +31,25 @@ export function liftCount(record: Lifts): number {
 export function clearedLifts(stored: Lifts, next: Lifts): number {
   return LIFTS.filter((lift) => stored[lift] !== undefined && next[lift] === undefined).length;
 }
+
+/** A result's values a sync fills from one source column each. */
+export const RESULT_COLUMNS = ['bodyWeight', 'snatch1', 'snatch2', 'snatch3', 'snatchBest', 'cj1', 'cj2', 'cj3', 'cjBest', 'total'] as const;
+
+/**
+ * A column may go from a value to none on at most this share of the stored
+ * rows that have it (and always this many): a corrected result is a row or
+ * two, while a column the source renamed empties it on every row.
+ */
+export const COLUMN_CLEAR_LIMIT: ShrinkLimit = { share: 0.5, min: 5 };
+
+/** The columns that `updates` (stored row, its replacement) empty on more rows than `limit` allows. */
+export function clearedColumns(
+  updates: readonly { stored: Partial<Record<(typeof RESULT_COLUMNS)[number], number>>; next: Partial<Record<(typeof RESULT_COLUMNS)[number], number>> }[],
+  limit: ShrinkLimit = COLUMN_CLEAR_LIMIT,
+): string[] {
+  return RESULT_COLUMNS.filter((column) => {
+    const had = updates.filter(({ stored }) => stored[column] !== undefined);
+    const cleared = had.filter(({ next }) => next[column] === undefined).length;
+    return exceedsShrink(cleared, had.length, limit);
+  });
+}

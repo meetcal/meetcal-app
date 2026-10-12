@@ -31,8 +31,10 @@ import { sourcesFailed, type SourceFailure } from '../lib/cronAlerts';
 type RunResult = { records: UmwfRecord[]; failedTabs: string[]; inserted: number; updated: number };
 
 export const run = internalAction({
-  args: { dryRun: v.optional(v.boolean()) },
-  handler: async (ctx, { dryRun }): Promise<RunResult> => {
+  // `allowShrink`: let the sync clear more stored lifts than it otherwise
+  // may (`ingest.upsertRecords`), after checking the source by hand.
+  args: { dryRun: v.optional(v.boolean()), allowShrink: v.optional(v.boolean()) },
+  handler: async (ctx, { dryRun, allowShrink }): Promise<RunResult> => {
     const records: UmwfRecord[] = [];
     const failures: SourceFailure[] = [];
     for (const [baseUrl, sheets, gender] of [
@@ -56,6 +58,7 @@ export const run = internalAction({
     if (dryRun) return { records, failedTabs, inserted: 0, updated: 0 };
 
     const outcomes: { wasInsert: boolean; wasChanged: boolean }[] = await ctx.runMutation(internal.ingest.upsertRecords, {
+      allowShrink: allowShrink ?? false,
       rows: records.map((r) => ({
         recordType: r.record_type,
         ageCategory: r.age_category,
