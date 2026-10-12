@@ -1,4 +1,7 @@
+import { NativeModules, Platform } from "react-native";
+
 import {
+  buildDataWidgetPayloads,
   buildIntlRankingsFilterSections,
   buildIntlRankingsWidgetPayload,
   buildQualifyingTotalsFilterSections,
@@ -8,9 +11,12 @@ import {
   buildTotalsAgeGroupOptions,
   buildWidgetFilterOptions,
   defaultWidgetSettings,
+  getDataWidgetWriteCount,
   hasResolvedWidgetFilters,
+  isDataWidgetModuleAvailable,
   mergeWidgetSettings,
   normalizeWidgetSettings,
+  syncDataWidgets,
   WIDGET_PAYLOAD_ROW_LIMIT,
   WidgetSettings,
 } from "@/utils/dataWidgets";
@@ -452,5 +458,44 @@ describe("widget filter policy", () => {
       ).toEqual([]);
       expect(buildIntlRankingsFilterSections([], "")[0].options).toEqual([]);
     });
+  });
+});
+
+describe("syncDataWidgets", () => {
+  const updateDataWidgets = jest.fn();
+  const originalOS = Platform.OS;
+
+  beforeEach(() => {
+    updateDataWidgets.mockReset();
+    Object.defineProperty(Platform, "OS", { configurable: true, get: () => "ios" });
+    NativeModules.SavedWidget = { updateDataWidgets };
+  });
+
+  afterEach(() => {
+    delete NativeModules.SavedWidget;
+    Object.defineProperty(Platform, "OS", { configurable: true, get: () => originalOS });
+  });
+
+  it("writes the payloads and counts the write, so a background refresh can yield to it", () => {
+    const payloads = buildDataWidgetPayloads(
+      { totalsData: {}, standardsData: {} as never, intlRankings: [] },
+      defaultWidgetSettings,
+    );
+    const before = getDataWidgetWriteCount();
+
+    expect(isDataWidgetModuleAvailable()).toBe(true);
+    syncDataWidgets(payloads);
+
+    expect(updateDataWidgets).toHaveBeenCalledWith(JSON.stringify(payloads));
+    expect(getDataWidgetWriteCount()).toBe(before + 1);
+  });
+
+  it("reports the module unavailable, and writes nothing, without the native method", () => {
+    delete NativeModules.SavedWidget;
+    const before = getDataWidgetWriteCount();
+
+    expect(isDataWidgetModuleAvailable()).toBe(false);
+    syncDataWidgets({} as never);
+    expect(getDataWidgetWriteCount()).toBe(before);
   });
 });

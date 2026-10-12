@@ -17,12 +17,13 @@ import {
 } from "@/lib/database/fetchIntlRankings";
 import { StandardsData } from "@/types/standards";
 import {
+  buildDataWidgetPayloads,
   buildIntlRankingsFilterSections,
   buildIntlRankingsWidgetPayload,
   buildQualifyingTotalsFilterSections,
   buildQualifyingTotalsWidgetPayload,
   buildStandardsWidgetPayload,
-  DataWidgetPayload,
+  DataWidgetPayloads,
   defaultWidgetSettings,
   hasResolvedWidgetFilters,
   loadWidgetSettings,
@@ -48,12 +49,6 @@ import { useScreenHorizontalInsets } from "@/hooks/useScreenInsets";
 import { Palette } from "@/constants/Palette";
 
 type ActiveModal = WidgetKind | null;
-
-type WidgetPayloads = {
-  qualifyingTotals: DataWidgetPayload;
-  standards: DataWidgetPayload;
-  intlRankings: DataWidgetPayload;
-};
 
 type CommitOptions = {
   /**
@@ -136,17 +131,8 @@ export default function WidgetSettingsScreen() {
   }, [intlRankings, settingsLoaded, totalsData]);
 
   const buildPayloads = useCallback(
-    (next: WidgetSettings): WidgetPayloads => ({
-      qualifyingTotals: buildQualifyingTotalsWidgetPayload(
-        totalsData,
-        next.qualifyingTotals,
-      ),
-      standards: buildStandardsWidgetPayload(standardsData, next.standards),
-      intlRankings: buildIntlRankingsWidgetPayload(
-        intlRankings,
-        next.intlRankings,
-      ),
-    }),
+    (next: WidgetSettings): DataWidgetPayloads =>
+      buildDataWidgetPayloads({ totalsData, standardsData, intlRankings }, next),
     [intlRankings, standardsData, totalsData],
   );
 
