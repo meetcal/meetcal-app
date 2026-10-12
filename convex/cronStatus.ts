@@ -31,13 +31,14 @@ export const start = internalMutation({
 const MAX_ERROR_CHARS = 4000;
 
 export const finish = internalMutation({
-  args: { job: v.string(), error: v.optional(v.string()) },
-  handler: async (ctx, { job, error: fullError }): Promise<Notice[]> => {
+  args: { job: v.string(), error: v.optional(v.string()), failedSources: v.optional(v.array(v.string())) },
+  handler: async (ctx, { job, error: fullError, failedSources: sources }): Promise<Notice[]> => {
     const error = fullError === undefined || fullError.length <= MAX_ERROR_CHARS ? fullError : `${fullError.slice(0, MAX_ERROR_CHARS)}… (truncated)`;
     const existing = await statusOf(ctx, job);
-    const { alerting, notice } = afterRun(job, existing?.alerting as Alerting | undefined, error === undefined ? { ok: true } : { ok: false, error });
+    const outcome = error === undefined ? ({ ok: true } as const) : { ok: false as const, error, failedSources: sources };
+    const { alerting, failedSources, notice } = afterRun(job, existing?.alerting as Alerting | undefined, outcome, existing?.failedSources);
     const unsent = [...(existing?.unsent ?? []), ...(notice ? [{ kind: notice.kind, detail: notice.detail }] : [])];
-    const fields = { finishedAt: Date.now(), status: error === undefined ? ('ok' as const) : ('error' as const), error, alerting, unsent };
+    const fields = { finishedAt: Date.now(), status: error === undefined ? ('ok' as const) : ('error' as const), error, alerting, failedSources, unsent };
     if (existing) await ctx.db.patch(existing._id, fields);
     else await ctx.db.insert('cron_status', { job, startedAt: Date.now(), ...fields });
     return unsent.map((u) => ({ job, kind: u.kind as Notice['kind'], detail: u.detail }));

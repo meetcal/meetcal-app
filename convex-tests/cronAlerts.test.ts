@@ -1,8 +1,117 @@
-import { JOBS, WATCHDOG_SCHEDULE } from '../convex/cronJobs';
-import { afterRun, START_MARGIN_MS, STUCK_AFTER_MS, watch } from '../convex/lib/cronAlerts';
+import { ConvexError } from 'convex/values';
+import { JOBS, run, watchdog, WATCHDOG_JOB, WATCHDOG_SCHEDULE } from '../convex/cronJobs';
+import { afterRun, describeFailure, sourcesFailed, START_MARGIN_MS, STUCK_AFTER_MS, watch } from '../convex/lib/cronAlerts';
 import { lastScheduled, parseSchedule } from '../convex/lib/cronSchedule';
+import { HEARTBEAT_TIMEOUT_MS, pingHeartbeat } from '../convex/lib/heartbeat';
+import { handlerOf } from './fakeDb';
 
 const at = (iso: string) => Date.parse(iso);
+
+describe('alerts for a job that reads many sources (#92)', () => {
+  const failing = (...sources: string[]) => ({ ok: false as const, error: `failed: ${sources.join(', ')}`, failedSources: sources });
+
+  it('emails a source that starts failing while the job already is, and stays quiet for the same set', () => {
+    const first = afterRun('wso-records', undefined, failing('Missouri Valley'));
+    expect(first).toMatchObject({ alerting: 'failed', failedSources: ['Missouri Valley'], notice: { kind: 'failed' } });
+    expect(afterRun('wso-records', 'failed', failing('Missouri Valley'), ['Missouri Valley'])).toEqual({ alerting: 'failed', failedSources: ['Missouri Valley'] });
+    const second = afterRun('wso-records', 'failed', failing('Florida', 'Missouri Valley'), ['Missouri Valley']);
+    expect(second.notice).toEqual({ kind: 'failed', job: 'wso-records', detail: 'now also failing: Florida\n\nfailed: Florida, Missouri Valley' });
+    expect(second.failedSources).toEqual(['Florida', 'Missouri Valley']);
+  });
+
+  it('stays quiet when sources recover, and emails one that fails again after recovering', () => {
+    expect(afterRun('wso-records', 'failed', failing('Florida'), ['Florida', 'Missouri Valley']).notice).toBeUndefined();
+    expect(afterRun('wso-records', 'failed', failing('Florida', 'Missouri Valley'), ['Florida'])).toMatchObject({ notice: { detail: expect.stringContaining('now also failing: Missouri Valley') } });
+  });
+
+  it('keeps the known failing sources through a failure that names none', () => {
+    const whole = afterRun('wso-records', 'failed', { ok: false, error: 'timed out' }, ['Florida']);
+    expect(whole).toEqual({ alerting: 'failed', failedSources: ['Florida'] });
+    expect(afterRun('wso-records', 'failed', failing('Florida'), undefined).notice).toBeUndefined();
+    expect(afterRun('wso-records', 'failed', { ok: true }, ['Florida'])).toMatchObject({ alerting: undefined, notice: { kind: 'recovered' } });
+    expect(afterRun('wso-records', 'failed', { ok: true }, ['Florida']).failedSources).toBeUndefined();
+  });
+
+  it('carries the failed sources on the thrown error, also as Convex rethrows it from runAction', () => {
+    const error = sourcesFailed('wso records', [
+      { source: 'Ohio', error: 'boom' },
+      { source: 'Florida', error: 'parsed 0 records' },
+    ]);
+    expect(error.message).toBe('wso records: Ohio: boom; Florida: parsed 0 records');
+    expect(describeFailure(error)).toEqual({ error: 'wso records: Ohio: boom; Florida: parsed 0 records', failedSources: ['Florida', 'Ohio'] });
+    // runAction rethrows a ConvexError with the message it was given and the data.
+    const rethrown = new ConvexError('Uncaught ConvexError: wso records: …');
+    rethrown.data = JSON.parse(JSON.stringify(error.data)) as never;
+    expect(describeFailure(rethrown).failedSources).toEqual(['Florida', 'Ohio']);
+    expect(describeFailure(new Error('plain'))).toEqual({ error: 'plain' });
+    expect(describeFailure('text')).toEqual({ error: 'text' });
+  });
+});
+
+describe('watching the watchdog (#168)', () => {
+  const okFetch = () => jest.fn(async () => new Response('OK', { status: 200 }));
+
+  afterEach(() => {
+    delete process.env.HEARTBEAT_URL;
+    jest.restoreAllMocks();
+  });
+
+  it('pings the heartbeat only when a URL is set, and never throws', async () => {
+    const fetchImpl = okFetch();
+    expect(await pingHeartbeat(undefined, fetchImpl)).toBe(false);
+    expect(fetchImpl).not.toHaveBeenCalled();
+    expect(await pingHeartbeat('https://hc-ping.com/abc', fetchImpl)).toBe(true);
+    expect(fetchImpl).toHaveBeenCalledWith('https://hc-ping.com/abc', expect.objectContaining({ signal: expect.anything() }));
+    jest.spyOn(console, 'error').mockImplementation(() => {});
+    expect(await pingHeartbeat('https://hc-ping.com/abc', jest.fn(async () => new Response('', { status: 500 })))).toBe(false);
+    expect(await pingHeartbeat('https://hc-ping.com/abc', jest.fn(async () => Promise.reject(new Error('offline'))))).toBe(false);
+    expect(HEARTBEAT_TIMEOUT_MS).toBeGreaterThan(0);
+  });
+
+  const watchdogCtx = (all: () => Promise<unknown[]>) => {
+    const runMutation = jest.fn(async (_fn: unknown, args: Record<string, unknown>) => ('due' in args ? null : 'error' in args || 'failedSources' in args ? [] : undefined));
+    return { runMutation, runQuery: jest.fn(all) };
+  };
+
+  it('records its run under its own job and pings the heartbeat after a clean sweep', async () => {
+    process.env.HEARTBEAT_URL = 'https://hc-ping.com/abc';
+    const fetchSpy = jest.spyOn(globalThis, 'fetch').mockImplementation(async () => new Response('OK', { status: 200 }));
+    const ctx = watchdogCtx(async () => []);
+    await handlerOf<Record<string, never>, unknown>(watchdog)(ctx, {});
+    const jobs = ctx.runMutation.mock.calls.map(([, args]) => args.job);
+    expect(jobs[0]).toBe(WATCHDOG_JOB);
+    expect(jobs.at(-1)).toBe(WATCHDOG_JOB);
+    expect(ctx.runMutation.mock.calls.at(-1)?.[1]).toEqual({ job: WATCHDOG_JOB, error: undefined, failedSources: undefined });
+    expect(fetchSpy).toHaveBeenCalledWith('https://hc-ping.com/abc', expect.anything());
+  });
+
+  it('records a failed sweep, does not ping, and rethrows', async () => {
+    process.env.HEARTBEAT_URL = 'https://hc-ping.com/abc';
+    const fetchSpy = jest.spyOn(globalThis, 'fetch').mockImplementation(async () => new Response('OK', { status: 200 }));
+    const ctx = watchdogCtx(async () => Promise.reject(new Error('query failed')));
+    await expect(handlerOf<Record<string, never>, unknown>(watchdog)(ctx, {})).rejects.toThrow('query failed');
+    expect(ctx.runMutation.mock.calls.at(-1)?.[1]).toEqual({ job: WATCHDOG_JOB, error: 'query failed', failedSources: undefined });
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it("checks the watchdog from every job's run", async () => {
+    const ctx = watchdogCtx(async () => []);
+    await handlerOf<{ job: string }, unknown>(run)(ctx, { job: 'complete-ended-meets' });
+    const check = ctx.runMutation.mock.calls.find(([, args]) => 'due' in args)?.[1];
+    expect(check).toMatchObject({ job: WATCHDOG_JOB });
+    // Judged against the watchdog's own schedule (":45 every hour").
+    expect(new Date(check?.due as number).getUTCMinutes()).toBe(45);
+  });
+
+  it("still records a job's run when its check of the watchdog fails", async () => {
+    jest.spyOn(console, 'error').mockImplementation(() => {});
+    const ctx = watchdogCtx(async () => []);
+    const fallback = ctx.runMutation.getMockImplementation()!;
+    ctx.runMutation.mockImplementation(async (fn, args) => ('due' in args ? Promise.reject(new Error('busy')) : fallback(fn, args)));
+    await handlerOf<{ job: string }, unknown>(run)(ctx, { job: 'complete-ended-meets' });
+    expect(ctx.runMutation.mock.calls.at(-1)?.[1]).toEqual({ job: 'complete-ended-meets', error: undefined, failedSources: undefined });
+  });
+});
 
 describe('cron schedules', () => {
   it('finds the latest run at or before a time', () => {
