@@ -1,0 +1,77 @@
+{
+  "total": 345,
+  "page": 0,
+  "items_per_page": 4,
+  "next_page_url": null,
+  "previous_page_url": null,
+  "data": [
+    {
+      "meet": "2026 Stoneage Invitational (NUQ)",
+      "level": "Local",
+      "date": "2026-10-10",
+      "results": 29,
+      "action": [
+        {
+          "type": "route_button",
+          "route": "/public/rankings/results/7528",
+          "text": "View",
+          "icon": "mdi-eye",
+          "disabled": false,
+          "confirmation_message": null,
+          "default_table_row_action": true
+        }
+      ]
+    },
+    {
+      "meet": "2026 NYC Grand Prix",
+      "level": "Local",
+      "date": "2026-10-10",
+      "results": 56,
+      "action": [
+        {
+          "type": "route_button",
+          "route": "/public/rankings/results/7529",
+          "text": "View",
+          "icon": "mdi-eye",
+          "disabled": false,
+          "confirmation_message": null,
+          "default_table_row_action": true
+        }
+      ]
+    },
+    {
+      "meet": "2026 Pan American Junior Championships",
+      "level": "International",
+      "date": "2026-10-08",
+      "results": 15,
+      "action": [
+        {
+          "type": "route_button",
+          "route": "/public/rankings/results/7526",
+          "text": "View",
+          "icon": "mdi-eye",
+          "disabled": false,
+          "confirmation_message": null,
+          "default_table_row_action": true
+        }
+      ]
+    },
+    {
+      "meet": "51st Annual Mid American Championships",
+      "level": "Local",
+      "date": "2026-10-04",
+      "results": 88,
+      "action": [
+        {
+          "type": "route_button",
+          "route": "/public/rankings/results/7524",
+          "text": "View",
+          "icon": "mdi-eye",
+          "disabled": false,
+          "confirmation_message": null,
+          "default_table_row_action": true
+        }
+      ]
+    }
+  ]
+}

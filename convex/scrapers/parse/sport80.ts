@@ -28,20 +28,33 @@ function utc(year: number, month: number, day: number): number | null {
   return date.getUTCFullYear() === year && date.getUTCMonth() === month - 1 && date.getUTCDate() === day ? date.getTime() : null;
 }
 
+/** The event's start date as sent, or null when it has none. */
+function rawEventDate(event: Dict): string | null {
+  const raw = or(nested(event, 'date', 'Start Date'), nested(event, 'start_date'));
+  return raw ? String(raw) : null;
+}
+
 /**
- * `parse_event_date`: the first space-separated token of the start date in
- * the first format that parses (ISO, then day/month, then month/day), or
- * null (Python's `datetime.min`).
+ * `parse_event_date`: the start date's first space-separated token as an ISO
+ * date (`2026-10-04`, the one format the event index sends), or null.
+ *
+ * The Python also read slash dates, day/month first, which would swap the
+ * month and day of a US `MM/DD/YYYY` date whose day is 12 or less (the site
+ * is set to US dates). Sport80 has not been seen sending one (every event of
+ * 2025 and 2026 checked in October 2026 was ISO), so any other format is not
+ * guessed at: see `unreadableEventDate`.
  */
 export function eventDate(event: Dict): number | null {
-  const raw = or(nested(event, 'date', 'Start Date'), nested(event, 'start_date'));
+  const raw = rawEventDate(event);
   if (!raw) return null;
-  const token = String(raw).split(' ')[0];
-  const iso = /^(\d{4})-(\d{1,2})-(\d{1,2})$/.exec(token);
-  if (iso) return utc(Number(iso[1]), Number(iso[2]), Number(iso[3]));
-  const slash = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/.exec(token);
-  if (slash) return utc(Number(slash[3]), Number(slash[2]), Number(slash[1])) ?? utc(Number(slash[3]), Number(slash[1]), Number(slash[2]));
-  return null;
+  const iso = /^(\d{4})-(\d{2})-(\d{2})$/.exec(raw.split(' ')[0]);
+  return iso ? utc(Number(iso[1]), Number(iso[2]), Number(iso[3])) : null;
+}
+
+/** The start date as sent when the event has one `eventDate` cannot read, else null. */
+export function unreadableEventDate(event: Dict): string | null {
+  const raw = rawEventDate(event);
+  return raw !== null && eventDate(event) === null ? raw : null;
 }
 
 /**
