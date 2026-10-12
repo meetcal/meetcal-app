@@ -57,6 +57,11 @@ pub async fn get_athlete_year(name: &str, year: i32) -> Result<SearchResponse> {
 pub fn exact_name_results(name: &str, response: SearchResponse) -> Result<Vec<LiftingResults>> {
     let results = filter_exact_name(name, response.results);
 
+    // A cut answer kept only the most recent rows, so a Wrapped would miss some.
+    if response.truncated && !results.is_empty() {
+        bail!("\"{name}\" has more results in that year than one search returns");
+    }
+
     if results.is_empty() && !response.suggestions.is_empty() {
         let narrow = if response.truncated {
             " (more athletes match; type more of the name)"
@@ -471,6 +476,22 @@ mod tests {
         assert!(
             error.contains("Suggestions: Jane Doe (more athletes match; type more of the name)")
         );
+    }
+
+    #[test]
+    fn exact_name_filter_refuses_a_cut_year() {
+        let response = SearchResponse {
+            matched_name: Some("Jane Doe".to_string()),
+            suggestions: Vec::new(),
+            results: vec![result("2026-01-01", "Meet", [70.0; 6], 70.0, 90.0, 160.0)],
+            truncated: true,
+        };
+
+        let error = exact_name_results("Jane Doe", response)
+            .unwrap_err()
+            .to_string();
+
+        assert!(error.contains("more results in that year"));
     }
 
     #[test]
