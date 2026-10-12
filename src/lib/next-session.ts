@@ -20,6 +20,9 @@ export function getTodayInMeetTimeZone(timeZone: string, now: Date = new Date())
 /**
  * The meet is "today / ongoing" when its backend status says so, or when the
  * current date in the meet's timezone falls within the meet's date range.
+ * The backend sets `ongoing` by the meet's own calendar, but only hourly, and
+ * a cached meet keeps the status it was fetched with, so the dates still
+ * decide when the status lags.
  */
 export function isMeetTodayOrOngoing(
   meetDetails: Meet,

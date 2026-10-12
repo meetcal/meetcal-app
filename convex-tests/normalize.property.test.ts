@@ -80,8 +80,8 @@ describe('normalizeGender (property)', () => {
   const CANONICAL: Record<string, string> = {
     men: 'Men',
     women: 'Women',
-    male: 'Male',
-    female: 'Female',
+    male: 'Men',
+    female: 'Women',
     m: 'Men',
     f: 'Women',
   };

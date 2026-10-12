@@ -75,7 +75,12 @@ jest.mock("@/components/share/ShareScheduleView", () => ({
 }));
 jest.mock("@/components/ui/IconSymbol", () => ({ IconSymbol: () => null }));
 jest.mock("@/components/ui/EmptyState", () => ({ EmptyState: () => null }));
-jest.mock("@/components/ui/Toast", () => ({ showToast: jest.fn() }));
+// The screen raises toasts through `components/ui/Toast`; `useRequirePremium`
+// through `lib/toast`, which the former re-exports. One mock for both.
+jest.mock("@/lib/toast", () => ({ showToast: jest.fn() }));
+jest.mock("@/components/ui/Toast", () => ({
+  showToast: jest.requireMock("@/lib/toast").showToast,
+}));
 jest.mock("@/contexts/SelectedMeetContext", () => ({
   useSelectedMeet: () => ({
     selectedMeet: mockMeet.selectedMeet,
@@ -369,7 +374,9 @@ describe("Start List premium actions", () => {
     expect(Alert.alert).not.toHaveBeenCalled();
   });
 
-  it("does nothing while the subscription is unknown", async () => {
+  // An unknown entitlement says so (lib/premium-access) instead of doing
+  // nothing silently, and never opens the paywall.
+  it("tells the user, and never opens the paywall, while the subscription is unknown", async () => {
     mockSubscription.isSubscribed = null;
     await mount();
     await act(async () => {
@@ -379,7 +386,10 @@ describe("Start List premium actions", () => {
     });
     expect(mockPush).not.toHaveBeenCalled();
     expect(Alert.alert).not.toHaveBeenCalled();
-    expect(jest.mocked(showToast)).not.toHaveBeenCalled();
+    expect(jest.mocked(showToast)).toHaveBeenCalledTimes(3);
+    expect(jest.mocked(showToast)).toHaveBeenCalledWith(
+      expect.objectContaining({ type: "info", message: expect.stringContaining("subscription") }),
+    );
   });
 
   it("asks a subscriber for a club or WSO before building a shareable schedule", async () => {

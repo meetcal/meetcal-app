@@ -102,6 +102,9 @@ export const meetsFields = {
     endDate: v.string(),
     status: meetStatus,
     federation: v.optional(v.string()),
+    // The name the source gave a meet stored under another
+    // (`disambiguatedMeetName`); unset when the two are the same.
+    sourceName: v.optional(v.string()),
     updatedAt: v.number(),
 };
 
@@ -183,7 +186,7 @@ export default defineSchema({
     .index('by_name', ['name'])
     .index('by_end_date', ['endDate']),
 
-  qualifying_totals: defineTable(qualifyingTotalsFields),
+  qualifying_totals: defineTable(qualifyingTotalsFields).index('by_event', ['eventName']),
 
   records: defineTable(recordsFields)
     .index('by_record_type', ['recordType'])

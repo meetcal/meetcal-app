@@ -21,6 +21,7 @@ import { isMeetName } from "@/data/types/meet";
 import { useAppColors } from "@/hooks/useAppColors";
 import { useCalendarSessionsExport } from "@/hooks/useCalendarSessionsExport";
 import { useFilterApplyReviewPrompt } from "@/hooks/useFilterApplyReviewPrompt";
+import { useRequirePremium } from "@/hooks/useRequirePremium";
 import { useScreenHorizontalInsets } from "@/hooks/useScreenInsets";
 import { useStarredClubs } from "@/hooks/useStarredClubs";
 import { useStartListData } from "@/hooks/useStartListData";
@@ -51,7 +52,6 @@ import {
   normalizeStartListAthletes,
   STARRED_CLUBS_FILTER,
 } from "@/lib/start-list-utils";
-import { useAuthGuard } from "@/utils/authGuard";
 import { FlashList, type FlashListRef } from "@shopify/flash-list";
 import { useNavigation, useRouter } from "expo-router";
 import React, {
@@ -105,7 +105,7 @@ export default function StartListScreen() {
   const { currentTheme } = useTheme();
   const { selectedMeet, meetDetails } = useSelectedMeet();
   const { isSubscribed } = useSubscription();
-  const { requireAuth } = useAuthGuard();
+  const { requirePremium: requirePremiumAction, requireAuth } = useRequirePremium();
   const { saveSessionsFromAthletes } = useSavedSessions();
 
   const { athletes, schedule, loading, refreshing, refresh } =
@@ -191,24 +191,14 @@ export default function StartListScreen() {
 
   /**
    * Sign-in, then the subscription: `true` only for a signed-in subscriber.
-   * A free user is sent to the paywall with a way back here. `null` from
-   * either is "unknown yet": do nothing rather than bounce a paying user to
-   * the paywall.
+   * A free user is sent to the paywall with a way back here; an unknown
+   * entitlement (offline, or still checking) says so in a toast and never
+   * opens the paywall (see `useRequirePremium` / `lib/premium-access`).
    */
   const requirePremium = useCallback(
-    (feature: string, message: string): boolean => {
-      const authResult = requireAuth({ feature, message, returnPath: START_LIST_PATH });
-      if (authResult !== true) return false;
-      if (isSubscribed === false) {
-        router.push({
-          pathname: "/shared-screens/paywall",
-          params: { from: START_LIST_PATH, feature },
-        });
-        return false;
-      }
-      return isSubscribed === true;
-    },
-    [isSubscribed, requireAuth, router],
+    (feature: string, message: string): boolean =>
+      requirePremiumAction({ feature, message, returnPath: START_LIST_PATH }),
+    [requirePremiumAction],
   );
 
   const handleSeeAllResults = useCallback(
