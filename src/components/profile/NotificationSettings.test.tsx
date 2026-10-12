@@ -10,6 +10,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Notifications from "expo-notifications";
 import type { SubscriptionStatus } from "@/app/schedule-toolbar/profile";
 import { NOTIFICATION_ENABLED_KEY } from "@/utils/notifications";
+import { subscribeToReminderPreference } from "@/lib/reminder-preference";
 import { NotificationSettings } from "@/components/profile/NotificationSettings";
 
 jest.mock("@/components/ui/IconSymbol", () => ({ IconSymbol: () => null }));
@@ -20,12 +21,10 @@ jest.mock("expo-notifications", () => ({
   getPermissionsAsync: jest.fn(async () => ({ status: "granted" })),
   requestPermissionsAsync: jest.fn(async () => ({ status: "granted" })),
   setNotificationChannelAsync: jest.fn(async () => undefined),
-  cancelAllScheduledNotificationsAsync: jest.fn(async () => undefined),
 }));
 
 const mockGetPermissions = Notifications.getPermissionsAsync as jest.Mock;
 const mockRequestPermissions = Notifications.requestPermissionsAsync as jest.Mock;
-const mockCancelAll = Notifications.cancelAllScheduledNotificationsAsync as jest.Mock;
 
 const requireAuth = jest.fn(() => true);
 const router = { push: jest.fn() } as never;
@@ -92,13 +91,17 @@ describe("NotificationSettings", () => {
     setItemSpy.mockClear();
     const renderer = await mount("lifetime");
     expect(theSwitch(renderer).props.value).toBe(true);
+    // The reminder sync listens for the change and cancels the reminders.
+    const onPreferenceChange = jest.fn();
+    const unsubscribe = subscribeToReminderPreference(onPreferenceChange);
 
     await act(async () => {
       theSwitch(renderer).props.onValueChange();
     });
     await flush();
+    unsubscribe();
 
-    expect(mockCancelAll).toHaveBeenCalledTimes(1);
+    expect(onPreferenceChange).toHaveBeenCalledTimes(1);
     expect(reminderWrites()).toEqual(["false"]);
     await expect(AsyncStorage.getItem(NOTIFICATION_ENABLED_KEY)).resolves.toBe("false");
     expect(theSwitch(renderer).props.value).toBe(false);

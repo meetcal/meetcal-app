@@ -1,170 +1,328 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { convertToUTC, getMeetConfig } from '@/data/meets/config';
-import { getPlatformStartTime } from '@/data/types/schedule';
-import { fetchSchedule } from '@/lib/database/queries';
+import type { MeetName } from '@/data/types/meet';
+import { getMeetSchedule } from '@/lib/database/offline-store';
+import {
+  readReminderPreference,
+  type RemindersPolicy,
+  resolveRemindersPolicy,
+} from '@/lib/reminder-preference';
+import { buildSessionScheduleLookup, withScheduleTimes } from '@/lib/saved-schedule-lookup';
 import type { SavedSession } from '@/lib/saved-sessions-store';
-import type { Schedule as ScheduleType, Session as ScheduleSession } from '@/types/schedule';
+import type { Schedule as ScheduleType } from '@/types/schedule';
 import {
   cancelNotification,
-  NOTIFICATION_ENABLED_KEY,
+  listScheduledNotifications,
   scheduleNotification,
+  type ScheduledNotificationSummary,
 } from '@/utils/notifications';
-import { calculateWeighInTime } from '@/utils/time';
 
 /**
- * The local "session starts in 1 hour" reminder for a saved session:
- * scheduled after a save, cancelled after a removal. Both are best effort; a
- * failure here is logged and never fails the save or removal.
+ * The local "session starts in 1 hour" reminders, kept in line with the
+ * saved list by one diff (`syncSessionReminders`) instead of being scheduled
+ * by a save and cancelled by a removal.
+ *
+ * The per-action version drifted: nothing scheduled reminders for sessions
+ * that arrived from another device, were migrated, or were saved before
+ * reminders were turned on, and nothing cancelled them for a reset, a
+ * removal on another device, the auto-unsave prune or a sign-out, so the
+ * next account on the device inherited them. The sync compares what should
+ * be scheduled against what is, and fixes the difference. Best effort: a
+ * failure is logged and never fails a save or a load.
  */
 
 /** A session reminder fires this long before the session's start time. */
 export const NOTIFICATION_LEAD_MS = 60 * 60 * 1000;
 
-/**
- * Saving a session used to emit ~15 `console.log` lines — including the same
- * instant formatted in three timezones — on every save, in production. Keep
- * the trace, keep it out of release builds.
- */
-function logNotificationScheduling(step: string, detail?: unknown): void {
-  if (!__DEV__) return;
-  console.log(`[notifications] ${step}`, detail);
-}
-
-/** The user's "notifications enabled" preference. */
-export async function readNotificationsEnabled(): Promise<boolean> {
-  return (await AsyncStorage.getItem(NOTIFICATION_ENABLED_KEY)) === 'true';
-}
+/** `data.kind` of every reminder this module schedules. */
+export const SESSION_REMINDER_KIND = 'session-reminder';
 
 /**
- * The first schedule session numbered `sessionNumber`, with its day's
- * `YYYY-MM-DD` date, or null when the schedule does not have it.
+ * A meet-local date older than this many days before today (UTC) cannot
+ * start in the future in any time zone, so a meet whose sessions are all
+ * older is skipped without looking up its zone or schedule.
  */
-export function findScheduledSession(
-  schedule: ScheduleType,
-  sessionNumber: number,
-): { session: ScheduleSession; date: string } | null {
-  for (const day of schedule) {
-    const session = day.sessions.find(s => s.number === sessionNumber);
-    if (session) {
-      return { session, date: day.fullDate }; // YYYY-MM-DD from transformed data
-    }
-  }
-  return null;
-}
+const PAST_DATE_SLACK_DAYS = 1;
 
 /** When the reminder for a session starting at `sessionStart` fires. */
 export function reminderTriggerDate(sessionStart: Date): Date {
   return new Date(sessionStart.getTime() - NOTIFICATION_LEAD_MS);
 }
 
-export interface ReminderOptions {
-  /**
-   * The meet's schedule when the caller already has it. Only used when
-   * non-empty; otherwise the schedule is fetched.
-   */
-  schedule?: ScheduleType;
-  /** The already-read notifications preference; read from storage if absent. */
-  notificationsEnabled?: boolean;
+/** A reminder that should be pending: the session (with live times) and when it fires. */
+export interface DesiredReminder {
+  session: SavedSession;
+  triggerAtMs: number;
+}
+
+/** A pending session reminder, as read back from the OS. */
+export interface ScheduledReminder {
+  id: string;
+  /** When it was scheduled to fire; `null` for reminders from older builds. */
+  triggerAtMs: number | null;
 }
 
 /**
- * Schedule a local notification 1 hour before the session's start time, if
- * notifications are enabled and that moment is still in the future. The
- * start time comes from the meet's schedule, converted with the meet's time
- * zone (same as calendar events).
+ * The session reminders among the pending notifications. Builds before the
+ * sync tagged nothing, but always used the session id as both the
+ * notification identifier and `data.identifier`.
  */
-export async function scheduleSavedSessionReminder(
-  savedSession: SavedSession,
-  options?: ReminderOptions,
+export function toScheduledReminders(
+  notifications: readonly ScheduledNotificationSummary[],
+): ScheduledReminder[] {
+  const reminders: ScheduledReminder[] = [];
+  for (const { identifier, data } of notifications) {
+    const isReminder =
+      data.kind === SESSION_REMINDER_KIND ||
+      (data.kind === undefined && data.identifier === identifier);
+    if (!isReminder) continue;
+    reminders.push({
+      id: identifier,
+      triggerAtMs:
+        typeof data.triggerAtMs === 'number' && Number.isFinite(data.triggerAtMs)
+          ? data.triggerAtMs
+          : null,
+    });
+  }
+  return reminders;
+}
+
+export interface ReminderPlanInput {
+  policy: RemindersPolicy;
+  /** Session reminders pending now. */
+  scheduled: readonly ScheduledReminder[];
+  /** Every saved session id. */
+  savedIds: ReadonlySet<string>;
+  /** Saved sessions whose reminder should be pending, by id (policy `on`). */
+  desired: ReadonlyMap<string, DesiredReminder>;
+  /**
+   * Saved sessions whose start could not be worked out (meet zone or times
+   * unknown, often just offline): their pending reminder is left alone.
+   */
+  unresolvedIds: ReadonlySet<string>;
+}
+
+export interface ReminderPlan {
+  cancel: string[];
+  schedule: DesiredReminder[];
+}
+
+/**
+ * What to cancel and what to (re)schedule so the pending reminders match
+ * the saved list. A reminder whose fire time moved is scheduled again under
+ * the same identifier, which replaces it.
+ */
+export function planReminderSync({
+  policy,
+  scheduled,
+  savedIds,
+  desired,
+  unresolvedIds,
+}: ReminderPlanInput): ReminderPlan {
+  if (policy === 'off') {
+    return { cancel: scheduled.map((reminder) => reminder.id), schedule: [] };
+  }
+
+  const cancel: string[] = [];
+  const pending = new Map<string, ScheduledReminder>();
+  for (const reminder of scheduled) {
+    if (!savedIds.has(reminder.id)) {
+      cancel.push(reminder.id);
+      continue;
+    }
+    if (policy === 'unknown' || unresolvedIds.has(reminder.id)) continue;
+    if (!desired.has(reminder.id)) {
+      // Saved, but already started (or about to): nothing left to remind.
+      cancel.push(reminder.id);
+      continue;
+    }
+    pending.set(reminder.id, reminder);
+  }
+  if (policy === 'unknown') return { cancel, schedule: [] };
+
+  const schedule: DesiredReminder[] = [];
+  for (const [id, reminder] of desired) {
+    if (pending.get(id)?.triggerAtMs === reminder.triggerAtMs) continue;
+    schedule.push(reminder);
+  }
+  return { cancel, schedule };
+}
+
+export interface ReminderSyncDeps {
+  now: () => Date;
+  /** The meet's IANA zone, or null when it cannot be resolved. */
+  timeZoneFor: (meet: MeetName) => Promise<string | null>;
+  /** The latest schedule the device has for the meet (may be empty). */
+  readSchedule: (meet: MeetName) => Promise<ScheduleType>;
+}
+
+const defaultDeps: ReminderSyncDeps = {
+  now: () => new Date(),
+  timeZoneFor: async (meet) => {
+    try {
+      const config = await getMeetConfig(meet);
+      return config?.time?.timeZoneIdentifier || null;
+    } catch {
+      return null;
+    }
+  },
+  // The offline copy, which the schedule resource rewrites on every fetch:
+  // no network request per sync.
+  readSchedule: (meet) => getMeetSchedule(meet),
+};
+
+/** `YYYY-MM-DD` dates before this cannot be upcoming anywhere. */
+function pastDateCutoff(now: Date): string {
+  const cutoff = new Date(now.getTime() - PAST_DATE_SLACK_DAYS * 24 * 60 * 60 * 1000);
+  return cutoff.toISOString().slice(0, 10);
+}
+
+/**
+ * The reminder each saved session should have: one hour before its start,
+ * read from the meet's current schedule (falling back to the saved copy) in
+ * the meet's zone, while that moment is still ahead.
+ */
+export async function resolveDesiredReminders(
+  sessions: readonly SavedSession[],
+  deps: ReminderSyncDeps,
+): Promise<{ desired: Map<string, DesiredReminder>; unresolvedIds: Set<string> }> {
+  const desired = new Map<string, DesiredReminder>();
+  const unresolvedIds = new Set<string>();
+  const nowMs = deps.now().getTime();
+  const cutoff = pastDateCutoff(deps.now());
+
+  const byMeet = new Map<MeetName, SavedSession[]>();
+  for (const session of sessions) {
+    const group = byMeet.get(session.meet);
+    if (group) group.push(session);
+    else byMeet.set(session.meet, [session]);
+  }
+
+  for (const [meet, meetSessions] of byMeet) {
+    if (meetSessions.every((session) => session.date && session.date < cutoff)) continue;
+
+    const schedule = await deps.readSchedule(meet).catch(() => [] as ScheduleType);
+    const lookup = schedule.length > 0 ? buildSessionScheduleLookup(schedule) : null;
+    const timeZone = await deps.timeZoneFor(meet);
+
+    for (const saved of meetSessions) {
+      const session = withScheduleTimes(saved, lookup);
+      if (!timeZone || !session.date || !session.startTime) {
+        unresolvedIds.add(session.id);
+        continue;
+      }
+      let startMs: number;
+      try {
+        startMs = convertToUTC(session.startTime, session.date, timeZone).getTime();
+      } catch {
+        unresolvedIds.add(session.id);
+        continue;
+      }
+      if (Number.isNaN(startMs)) {
+        unresolvedIds.add(session.id);
+        continue;
+      }
+      const triggerAtMs = reminderTriggerDate(new Date(startMs)).getTime();
+      if (triggerAtMs > nowMs) desired.set(session.id, { session, triggerAtMs });
+    }
+  }
+  return { desired, unresolvedIds };
+}
+
+async function scheduleReminder({ session, triggerAtMs }: DesiredReminder): Promise<void> {
+  await scheduleNotification(
+    'Session Reminder',
+    `Session ${session.sessionNumber} ${session.platform} starts in 1 hour.`,
+    new Date(triggerAtMs),
+    session.id,
+    {
+      id: session.id,
+      meet: session.meet,
+      sessionNumber: session.sessionNumber,
+      platform: session.platform,
+      weightClass: session.weightClass,
+      startTime: session.startTime,
+      weighInTime: session.weighInTime,
+      date: session.date,
+    },
+    { kind: SESSION_REMINDER_KIND, triggerAtMs },
+  );
+}
+
+/**
+ * Make the pending session reminders match `sessions` (the signed-in user's
+ * whole saved list; `[]` when signed out) under the reminders policy for
+ * `isSubscribed` and the stored preference. Never throws.
+ */
+export async function syncSessionReminders(
+  sessions: readonly SavedSession[],
+  isSubscribed: boolean | null,
+  deps: ReminderSyncDeps = defaultDeps,
 ): Promise<void> {
   try {
-    const notificationsEnabled =
-      options?.notificationsEnabled ?? (await readNotificationsEnabled());
-    logNotificationScheduling('enabled', notificationsEnabled);
-    if (!notificationsEnabled) return;
-
-    const meetName = savedSession.meet;
-    const sessionNumber = savedSession.sessionNumber;
-    const platform = savedSession.platform;
-    const providedSchedule =
-      options?.schedule && options.schedule.length > 0 ? options.schedule : null;
-    logNotificationScheduling(
-      providedSchedule ? 'reusing caller schedule' : 'fetching schedule',
-      { meetName, sessionNumber, platform },
-    );
-    const schedule = providedSchedule ?? (await fetchSchedule(meetName));
-    logNotificationScheduling('schedule days', schedule?.length ?? 0);
-
-    if (!schedule || schedule.length === 0) {
-      console.error(`Notification Scheduling - Could not fetch or schedule is empty for meet: ${meetName}`);
-      return; // The session is still saved.
-    }
-
-    const found = findScheduledSession(schedule, sessionNumber);
-    logNotificationScheduling('session found', found ? found.date : false);
-    if (!found || !found.date) return;
-
-    const sessionDayDate = found.date;
-    const startTime = getPlatformStartTime(found.session, platform);
-    const meetConfig = await getMeetConfig(meetName);
-    const sessionDate = convertToUTC(
-      startTime,
-      sessionDayDate,
-      meetConfig.time.timeZoneIdentifier,
-    );
-    const triggerDate = reminderTriggerDate(sessionDate);
-    const now = new Date();
-
-    logNotificationScheduling('trigger', {
-      sessionUtc: sessionDate.toISOString(),
-      triggerUtc: triggerDate.toISOString(),
-      meetZone: meetConfig.time.timeZoneIdentifier,
-      willSchedule: triggerDate > now,
+    const policy = resolveRemindersPolicy(await readReminderPreference(), isSubscribed);
+    const scheduled = toScheduledReminders(await listScheduledNotifications());
+    const { desired, unresolvedIds } =
+      policy === 'on'
+        ? await resolveDesiredReminders(sessions, deps)
+        : { desired: new Map<string, DesiredReminder>(), unresolvedIds: new Set<string>() };
+    const plan = planReminderSync({
+      policy,
+      scheduled,
+      savedIds: new Set(sessions.map((session) => session.id)),
+      desired,
+      unresolvedIds,
     });
 
-    if (triggerDate > now) {
-      const notificationId = await scheduleNotification(
-        `Session Reminder`,
-        `Session ${savedSession.sessionNumber} ${savedSession.platform} starts in 1 hour.`,
-        triggerDate,
-        savedSession.id,
-        {
-          id: savedSession.id,
-          meet: savedSession.meet,
-          sessionNumber: savedSession.sessionNumber,
-          platform: savedSession.platform,
-          weightClass: savedSession.weightClass,
-          startTime,
-          weighInTime: calculateWeighInTime(startTime),
-          date: sessionDayDate,
-        },
-      );
-      logNotificationScheduling('scheduled', notificationId);
+    for (const id of plan.cancel) {
+      try {
+        await cancelNotification(id);
+      } catch (error) {
+        console.error(`Session reminders: could not cancel ${id}`, error);
+      }
     }
-  } catch (notifError) {
-    console.error('Notification Scheduling - Error caught during scheduling block:', notifError);
+    for (const reminder of plan.schedule) {
+      try {
+        await scheduleReminder(reminder);
+      } catch (error) {
+        console.error(`Session reminders: could not schedule ${reminder.session.id}`, error);
+      }
+    }
+  } catch (error) {
+    console.error('Session reminders: sync failed', error);
   }
 }
 
-/**
- * Cancel the reminder of a removed session. `removed` is the row as it was
- * in storage before the removal, or undefined when it was not there.
- */
-export async function cancelSavedSessionReminder(
-  sessionId: string,
-  removed: SavedSession | undefined,
-): Promise<void> {
-  if (!removed) {
-    console.warn(`removeSession: Could not find session ${sessionId} in storage before removal to cancel notification.`);
-    return;
-  }
-  try {
-    // Only cancel if notifications were potentially scheduled.
-    if (await readNotificationsEnabled()) {
-      await cancelNotification(removed.id);
+export interface ReminderSyncRunner {
+  /**
+   * Run `task` after the one in flight. Calls made while a task runs are
+   * coalesced: only the latest runs next, since each sync is a full diff.
+   */
+  run(task: () => Promise<void>): Promise<void>;
+}
+
+export function createReminderSyncRunner(): ReminderSyncRunner {
+  let running: Promise<void> | null = null;
+  let next: (() => Promise<void>) | null = null;
+
+  const drain = async () => {
+    try {
+      while (next) {
+        const task = next;
+        next = null;
+        await task().catch((error: unknown) => {
+          console.error('Session reminders: sync task failed', error);
+        });
+      }
+    } finally {
+      running = null;
     }
-  } catch (cancelError) {
-    console.error(`removeSession: Failed to cancel notification for ${removed.id}:`, cancelError);
-    // Continue with removal even if cancellation fails
-  }
+  };
+
+  return {
+    run(task) {
+      next = task;
+      if (!running) running = drain();
+      return running;
+    },
+  };
 }
