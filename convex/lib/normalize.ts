@@ -14,25 +14,33 @@ export function titleCase(value: string): string {
     .join(' ');
 }
 
-const GENDERS: Record<string, string> = {
-  men: 'Men',
-  women: 'Women',
-  male: 'Male',
-  female: 'Female',
-  m: 'Men',
-  f: 'Women',
-};
+// Maps, not object literals: a lookup must not reach `Object.prototype`
+// ('constructor', '__proto__').
+const GENDERS = new Map([
+  ['men', 'Men'],
+  ['women', 'Women'],
+  ['male', 'Male'],
+  ['female', 'Female'],
+  ['m', 'Men'],
+  ['f', 'Women'],
+]);
 
 export function normalizeGender(value: string): string {
   const normalized = value.trim();
-  return GENDERS[normalized.toLowerCase()] ?? titleCase(normalized);
+  return GENDERS.get(normalized.toLowerCase()) ?? titleCase(normalized);
 }
 
-const AGE_CODES: Record<string, string> = { u13: 'U13', u15: 'U15', u17: 'U17', u20: 'U20', u25: 'U25' };
+const AGE_CODES = new Map([
+  ['u13', 'U13'],
+  ['u15', 'U15'],
+  ['u17', 'U17'],
+  ['u20', 'U20'],
+  ['u25', 'U25'],
+]);
 
 export function normalizeAgeCategory(value: string): string {
   const normalized = titleCase(value);
-  return AGE_CODES[normalized.toLowerCase()] ?? normalized;
+  return AGE_CODES.get(normalized.toLowerCase()) ?? normalized;
 }
 
 export function normalizeFederation(value: string): string {
