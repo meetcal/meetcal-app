@@ -174,8 +174,12 @@ export function getOffsetMinutesAtInstant(
   timeZone: string,
   instant: Date,
 ): number {
-  const zonedParts = getZonedParts(timeZone, instant);
-  return (toUtcTimestamp(zonedParts) - instant.getTime()) / MS_PER_MINUTE;
+  // The zoned parts stop at the minute, so read the minute the instant falls
+  // in: an instant with seconds (`new Date()`) would otherwise give an offset
+  // short by that fraction of a minute ("GMT+5:29.4").
+  const minute = new Date(Math.floor(instant.getTime() / MS_PER_MINUTE) * MS_PER_MINUTE);
+  const zonedParts = getZonedParts(timeZone, minute);
+  return (toUtcTimestamp(zonedParts) - minute.getTime()) / MS_PER_MINUTE;
 }
 
 export function convertZonedLocalToUTC(

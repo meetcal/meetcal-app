@@ -67,6 +67,12 @@ describe('a meet in a zone outside the US', () => {
     expect(meet.time.utcOffset).toBe(-13);
   });
 
+  it('labels a meet with no readable start date by the offset now, in whole minutes', () => {
+    const meet = mapApiMeet(apiMeet('Asia/Kolkata', 'TBD'));
+    expect(meet.time.abbreviation).toBe('GMT+5:30');
+    expect(meet.time.utcOffset).toBe(-5.5);
+  });
+
   it('falls back loudly for a blank zone, as before', () => {
     const meet = mapApiMeet(apiMeet('', '2026-06-20'));
     expect(meet.timeZoneUnknown).toBe(true);

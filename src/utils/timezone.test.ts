@@ -286,6 +286,12 @@ describe("zones outside the US", () => {
     expect(at("2026-06-20", "9:00 AM", "Europe/London")).toBe("2026-06-20T08:00:00.000Z");
   });
 
+  it("reads a whole-minute offset at an instant with seconds", () => {
+    const instant = new Date("2026-06-20T06:30:35.409Z");
+    expect(getOffsetMinutesAtInstant("Asia/Kolkata", instant)).toBe(330);
+    expect(getOffsetMinutesAtInstant("America/St_Johns", instant)).toBe(-150);
+  });
+
   it("keeps southern-hemisphere daylight time the right way round", () => {
     // Sydney is UTC+11 (AEDT) in January and UTC+10 (AEST) in July.
     expect(at("2026-01-15", "10:00 AM", "Australia/Sydney")).toBe("2026-01-14T23:00:00.000Z");
