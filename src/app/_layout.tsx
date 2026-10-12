@@ -342,7 +342,9 @@ function RootLayoutContent({ fontsLoaded }: { fontsLoaded: boolean }) {
           await syncOneSignalIdToRevenueCat();
         } else {
           OneSignal.logout();
-          await Purchases.logOut();
+          // RevenueCat throws when asked to log out an anonymous user, which
+          // is every signed-out launch.
+          if (!(await Purchases.isAnonymous())) await Purchases.logOut();
         }
       } catch (error) {
         console.error("Error syncing authenticated user services:", error);
