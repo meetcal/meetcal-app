@@ -41,7 +41,12 @@ type FlashListProps = {
 };
 const mockFlashList = jest.fn((_props: FlashListProps) => null);
 const mockRequireAuth = jest.fn((_options: { feature: string }) => true as boolean | null);
-const mockSaveSessions = jest.fn(async () => true);
+const mockSaveSessions = jest.fn(
+  async (..._args: unknown[]): Promise<{ total: number; saved: number }> => ({
+    total: 1,
+    saved: 1,
+  }),
+);
 const mockPush = jest.fn();
 const mockMeet: { selectedMeet: string | null } = { selectedMeet: "Meet A" };
 const mockSubscription: { isSubscribed: boolean | null } = { isSubscribed: true };
@@ -91,7 +96,7 @@ jest.mock("@/contexts/SubscriptionContext", () => ({
   useSubscription: () => ({ isSubscribed: mockSubscription.isSubscribed }),
 }));
 jest.mock("@/contexts/SavedSessionsContext", () => ({
-  useSavedSessions: () => ({ saveSessionsFromAthletes: mockSaveSessions }),
+  useSavedSessions: () => ({ saveAllFromAthletes: mockSaveSessions }),
 }));
 jest.mock("@/contexts/ThemeContext", () => ({
   useTheme: () => ({ currentTheme: "light" }),
@@ -357,6 +362,30 @@ describe("Start List Add to Saved", () => {
       "Meet A",
       [],
     );
+    expect(jest.mocked(Alert.alert)).toHaveBeenLastCalledWith(
+      "Success",
+      expect.any(String),
+      expect.any(Array),
+    );
+  });
+
+  it("says how many sessions were saved when only some could be", async () => {
+    mockSaveSessions.mockResolvedValueOnce({ total: 3, saved: 2 });
+    await mount();
+
+    await act(async () => {
+      await lastCall(mockActionModal).onSaveAll();
+    });
+    const [, , buttons] = jest.mocked(Alert.alert).mock.calls[0];
+    await act(async () => {
+      await buttons?.find((b) => b.text === "Save")?.onPress?.();
+    });
+
+    expect(jest.mocked(showToast)).toHaveBeenLastCalledWith({
+      type: "error",
+      message: "Saved 2 of 3 sessions. The rest could not be saved.",
+    });
+    expect(jest.mocked(Alert.alert)).toHaveBeenCalledTimes(1);
   });
 });
 

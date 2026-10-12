@@ -98,6 +98,11 @@ export interface LoadSavedSessionsDeps {
   pruneStartedSessions: () => Promise<void>;
   setIsLoading: (isLoading: boolean) => void;
   setAuthExpired: (authExpired: boolean) => void;
+  /**
+   * The last load could not reach the server (timeout, 5xx, network), so the
+   * list on screen is the device's copy. Cleared by the next answer.
+   */
+  setSyncFailed: (syncFailed: boolean) => void;
 }
 
 /**
@@ -123,6 +128,7 @@ async function reconcileWithServer(
       'Saved sessions: Clerk getToken() failed; keeping local sessions',
       tokenError,
     );
+    deps.setSyncFailed(true);
     return false;
   }
   if (!isCurrent()) return false;
@@ -158,6 +164,7 @@ async function reconcileWithServer(
   }
   if (!isCurrent()) return false;
   deps.setAuthExpired(false);
+  deps.setSyncFailed(false);
 
   const serverSessions = sessionsFromApi(apiSessions);
 
@@ -194,22 +201,29 @@ async function reconcileWithServer(
   return true;
 }
 
-/** Report a failed load; the three failure modes stay distinct. */
+/**
+ * Report a failed load; the three failure modes stay distinct. A 401 is
+ * `authExpired`; anything else is `syncFailed`, so the Saved tab can say it
+ * is showing the device's copy instead of looking like an empty list.
+ */
 function reportLoadFailure(
   error: unknown,
-  setAuthExpired: (authExpired: boolean) => void,
+  deps: Pick<LoadSavedSessionsDeps, 'setAuthExpired' | 'setSyncFailed'>,
 ): void {
   console.error('Error loading saved sessions:', error);
 
   if (error instanceof MeetCalApiTimeoutError) {
     console.error('Saved sessions request timed out, falling back to local storage');
+    deps.setSyncFailed(true);
   } else if (error instanceof MeetCalApiError) {
     console.error('Saved sessions request rejected, falling back to local storage', {
       status: error.status,
     });
-    if (error.status === 401) setAuthExpired(true);
+    if (error.status === 401) deps.setAuthExpired(true);
+    else deps.setSyncFailed(true);
   } else {
     console.error('Network or storage failure, falling back to local storage');
+    deps.setSyncFailed(true);
   }
 }
 
@@ -243,7 +257,7 @@ export async function loadSavedSessionsFor(deps: LoadSavedSessionsDeps): Promise
     if (isCurrent()) await deps.pruneStartedSessions();
   } catch (error) {
     if (!isCurrent()) return;
-    reportLoadFailure(error, deps.setAuthExpired);
+    reportLoadFailure(error, deps);
     // Attempt to load from local storage as a final fallback
     await reloadStoredSessionsFallback(store, userId);
   } finally {

@@ -1,7 +1,7 @@
 import { ThemedText } from "@/components/ui/ThemedText";
 import { useAppColors } from "@/hooks/useAppColors";
 import { OnboardingViewProps } from "@/types/schedule";
-import { NOTIFICATION_ENABLED_KEY } from "@/utils/notifications";
+import { NOTIFICATION_PROMPT_SHOWN_KEY } from "@/utils/notifications";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Calendar from "expo-calendar/legacy";
 import * as Notifications from "expo-notifications";
@@ -189,10 +189,11 @@ export function OnboardingView({ visible, onComplete }: OnboardingViewProps) {
       devLog(
         granted ? "Notification access granted" : "Notification access denied",
       );
-      await AsyncStorage.setItem(
-        NOTIFICATION_ENABLED_KEY,
-        granted ? "true" : "false",
-      );
+      // Only that the prompt was shown. Turning reminders on is the Profile
+      // switch's job: reminders are a premium feature, and writing the flag
+      // here for every user gave free users reminders that Profile showed as
+      // off and locked. Subscribers who never choose get them by default.
+      await AsyncStorage.setItem(NOTIFICATION_PROMPT_SHOWN_KEY, "true");
     } catch (error) {
       if (__DEV__) {
         console.error("Notification permission error:", error);

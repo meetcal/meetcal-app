@@ -11,6 +11,13 @@ import { devLog } from '@/lib/logger';
 export const NOTIFICATION_ENABLED_KEY = '@notification_enabled';
 
 /**
+ * AsyncStorage key set once the OS notification permission prompt has been
+ * shown (onboarding or the Profile switch). Whether the user allowed it is
+ * the OS's to say; whether reminders are on is `NOTIFICATION_ENABLED_KEY`.
+ */
+export const NOTIFICATION_PROMPT_SHOWN_KEY = 'hasCheckedNotifications';
+
+/**
  * The Android channel every reminder is delivered on. It is the one the
  * onboarding and profile screens create with `AndroidImportance.MAX`,
  * vibration and a light; a trigger that names no channel lands on
@@ -47,6 +54,7 @@ export async function scheduleNotification(
   trigger: Date,
   identifier?: string,
   session?: SessionNotificationData,
+  extraData?: Record<string, unknown>,
 ): Promise<string | undefined> {
   const seconds = Math.max(0, Math.floor((trigger.getTime() - Date.now()) / 1000));
 
@@ -62,6 +70,7 @@ export async function scheduleNotification(
       sound: true,
       priority: Notifications.AndroidNotificationPriority.HIGH,
       data: {
+        ...extraData,
         identifier,
         url: session ? createSessionDetailsDeepLink(session) : undefined,
       },
@@ -87,3 +96,23 @@ export async function cancelNotification(identifier: string) {
   }
 }
 
+/** A pending local notification: its identifier and its content's `data`. */
+export interface ScheduledNotificationSummary {
+  identifier: string;
+  data: Record<string, unknown>;
+}
+
+/** Every local notification still waiting to fire. */
+export async function listScheduledNotifications(): Promise<ScheduledNotificationSummary[]> {
+  const requests = await Notifications.getAllScheduledNotificationsAsync();
+  return requests.map((request) => {
+    const data: unknown = request.content?.data;
+    return {
+      identifier: request.identifier,
+      data:
+        data && typeof data === 'object' && !Array.isArray(data)
+          ? (data as Record<string, unknown>)
+          : {},
+    };
+  });
+}

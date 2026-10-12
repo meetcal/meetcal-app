@@ -1,5 +1,6 @@
 import type { LiftResult } from "@/data/types/athletes";
 import {
+  countSessionsOutsideMeet,
   mergeWithStoredSession,
   revertRefusedSave,
   sessionsFromAthletes,
@@ -177,5 +178,18 @@ describe("mergeWithStoredSession", () => {
       startTime: "10:00 AM",
       athleteNames: ["A", "B", "C"],
     });
+  });
+});
+
+describe("countSessionsOutsideMeet", () => {
+  it("counts the rows saved under any other meet", () => {
+    const sessions = [
+      session(),
+      session({ id: "b", meet: "Other Meet" as never }),
+      session({ id: "c", meet: "Third Meet" as never }),
+    ];
+    expect(countSessionsOutsideMeet(sessions, MEET)).toBe(2);
+    expect(countSessionsOutsideMeet(sessions, null)).toBe(3);
+    expect(countSessionsOutsideMeet([], MEET)).toBe(0);
   });
 });

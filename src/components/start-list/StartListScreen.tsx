@@ -27,10 +27,11 @@ import { useStarredClubs } from "@/hooks/useStarredClubs";
 import { useStartListData } from "@/hooks/useStartListData";
 import { usePreloadYearBests, useYearBestsForSort } from "@/hooks/useStartListBests";
 import { useStartListFilters } from "@/hooks/useStartListFilters";
+import { groupCalendarSessions } from "@/lib/calendar-export";
 import { lightImpact, successNotification } from "@/lib/haptics";
+import { describeSaveSessionsFailure } from "@/lib/saved-sessions-actions";
 import { captureViewAsPng } from "@/lib/share-image";
 import {
-  buildCalendarSessions,
   buildScheduleCsv,
   buildSessionExportRows,
   scheduleCsvFileName,
@@ -106,7 +107,7 @@ export default function StartListScreen() {
   const { selectedMeet, meetDetails } = useSelectedMeet();
   const { isSubscribed } = useSubscription();
   const { requirePremium: requirePremiumAction, requireAuth } = useRequirePremium();
-  const { saveSessionsFromAthletes } = useSavedSessions();
+  const { saveAllFromAthletes } = useSavedSessions();
 
   const { athletes, schedule, loading, refreshing, refresh } =
     useStartListData(selectedMeet);
@@ -358,7 +359,7 @@ export default function StartListScreen() {
 
   const handleSaveAll = () => {
     // Saving writes to the signed-in user's list, so sign-in comes first, as
-    // on every other save path. `saveSessionsFromAthletes` returns false
+    // on every other save path. `saveAllFromAthletes` saves nothing
     // without a user, which used to surface as "Failed to save sessions."
     // after the confirmation instead of a sign-in prompt. `null` is "still
     // loading"; `false` means the sign-in alert has already been shown.
@@ -385,13 +386,12 @@ export default function StartListScreen() {
           text: "Save",
           onPress: async () => {
             try {
-              const success = await saveSessionsFromAthletes(
-                filteredAthletes,
-                validMeet,
-                schedule,
+              showToast({ type: "info", message: "Saving sessions..." });
+              const failure = describeSaveSessionsFailure(
+                await saveAllFromAthletes(filteredAthletes, validMeet, schedule),
               );
-              if (!success) {
-                showToast({ type: "error", message: "Failed to save sessions." });
+              if (failure) {
+                showToast({ type: "error", message: failure });
                 return;
               }
               successNotification();
@@ -421,7 +421,7 @@ export default function StartListScreen() {
       return;
     }
     calendarExport.exportSessions(
-      buildCalendarSessions(
+      groupCalendarSessions(
         buildSessionExportRows(filteredAthletes, getSessionDetails),
         selectedMeetName,
       ),
