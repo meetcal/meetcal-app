@@ -440,6 +440,131 @@ describe("SubscriptionProvider", () => {
     });
   });
 
+  describe("racing answers", () => {
+    const getAppUserID = Purchases.getAppUserID as jest.Mock;
+    function listener(): (info: unknown) => Promise<void> {
+      const add = Purchases.addCustomerInfoUpdateListener as jest.Mock;
+      return add.mock.calls[add.mock.calls.length - 1][0];
+    }
+    function deferred<T>() {
+      let resolve!: (value: T) => void;
+      const promise = new Promise<T>((done) => {
+        resolve = done;
+      });
+      return { promise, resolve };
+    }
+
+    let appUserId = "$RCAnonymousID:install";
+    beforeEach(() => {
+      appUserId = "$RCAnonymousID:install";
+      getAppUserID.mockImplementation(async () => appUserId);
+    });
+    afterEach(() => {
+      getAppUserID.mockImplementation(async () => "rc_user");
+    });
+
+    it("keeps a signed-in purchase when an anonymous check started before logIn answers last", async () => {
+      // Fresh install: no cache, so the provider checks at once, as the
+      // anonymous user, while the root layout signs in to RevenueCat.
+      const anonymousCheck = deferred<unknown>();
+      mockGetCustomerInfo.mockReturnValueOnce(anonymousCheck.promise as never);
+      const value = await mountProvider();
+      expect(mockGetCustomerInfo).toHaveBeenCalledTimes(1);
+
+      // `Purchases.logIn("user_a")` switches identity and RevenueCat pushes
+      // user A's lifetime purchase through the listener.
+      appUserId = "user_a";
+      await act(async () => {
+        await listener()(customerInfo("meetcal_lifetime"));
+      });
+      await flush();
+      expect(value.current.subscriptionType).toBe("lifetime");
+
+      // The anonymous check now answers "free".
+      await act(async () => {
+        anonymousCheck.resolve(customerInfo(null));
+      });
+      await flush();
+
+      expect(value.current.isSubscribed).toBe(true);
+      expect(value.current.subscriptionType).toBe("lifetime");
+      expect(value.current.isLoading).toBe(false);
+      expect(JSON.parse(mockSecureStore.get(SECURE_KEY) ?? "null")).toMatchObject({
+        appUserId: "user_a",
+        isSubscribed: true,
+        subscriptionType: "lifetime",
+      });
+    });
+
+    it("asks again when the RevenueCat user changes mid-check and no listener update arrives", async () => {
+      const anonymousCheck = deferred<unknown>();
+      mockGetCustomerInfo
+        .mockReturnValueOnce(anonymousCheck.promise as never)
+        .mockResolvedValueOnce(customerInfo("meetcal_quarterly"));
+      const value = await mountProvider();
+
+      appUserId = "user_a";
+      await act(async () => {
+        anonymousCheck.resolve(customerInfo(null));
+      });
+      await flush();
+
+      // The anonymous "free" is never published or cached for user A.
+      expect(mockGetCustomerInfo).toHaveBeenCalledTimes(2);
+      expect(value.current.isSubscribed).toBe(true);
+      expect(value.current.subscriptionType).toBe("quarterly");
+      expect(JSON.parse(mockSecureStore.get(SECURE_KEY) ?? "null")).toMatchObject({
+        appUserId: "user_a",
+        isSubscribed: true,
+      });
+    });
+
+    it("lets a newer check win over an older one that answers later", async () => {
+      appUserId = "user_a";
+      const olderCheck = deferred<unknown>();
+      mockGetCustomerInfo.mockReturnValueOnce(olderCheck.promise as never);
+      const value = await mountProvider();
+
+      // Retry while the first check is still out; RevenueCat now says
+      // quarterly (a purchase just landed).
+      mockGetCustomerInfo.mockResolvedValueOnce(customerInfo("meetcal_quarterly"));
+      await act(async () => {
+        value.current.recheckSubscription();
+      });
+      await flush();
+      expect(value.current.subscriptionType).toBe("quarterly");
+
+      await act(async () => {
+        olderCheck.resolve(customerInfo(null));
+      });
+      await flush();
+
+      expect(value.current.isSubscribed).toBe(true);
+      expect(value.current.subscriptionType).toBe("quarterly");
+      expect(value.current.isLoading).toBe(false);
+    });
+
+    it("drops a check a listener update superseded, without leaving the provider loading", async () => {
+      appUserId = "user_a";
+      const check = deferred<unknown>();
+      mockGetCustomerInfo.mockReturnValueOnce(check.promise as never);
+      const value = await mountProvider();
+      expect(value.current.isLoading).toBe(true);
+
+      await act(async () => {
+        await listener()(customerInfo(null));
+      });
+      await flush();
+      await act(async () => {
+        check.resolve(customerInfo("meetcal_quarterly"));
+      });
+      await flush();
+
+      expect(value.current.isLoading).toBe(false);
+      expect(value.current.subscriptionType).toBe("free");
+    });
+  });
+
   it("initializes and runs the delayed refresh once, however often the provider re-renders", async () => {
     mockGetCustomerInfo.mockResolvedValue(customerInfo("meetcal_quarterly"));
     const addListener = Purchases.addCustomerInfoUpdateListener as jest.Mock;
