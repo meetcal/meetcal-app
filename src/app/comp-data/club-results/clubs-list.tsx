@@ -115,6 +115,7 @@ function ShareResultsByClubScreenContent() {
           <Pressable
             style={[styles.retryButton, { backgroundColor: colors.link }]}
             onPress={loadClubs}
+            accessibilityRole="button"
           >
             <ThemedText style={styles.retryButtonText}>Retry</ThemedText>
           </Pressable>
@@ -165,6 +166,9 @@ function ShareResultsByClubScreenContent() {
         pressed && { backgroundColor: colors.pressed },
       ]}
       onPress={() => handleClubPress(item)}
+      accessibilityRole="button"
+      accessibilityLabel={item}
+      accessibilityHint="Shows the club's meets"
     >
       <ThemedText style={[styles.clubName, { color: colors.text }]}>
         {item}
@@ -206,6 +210,8 @@ function ShareResultsByClubScreenContent() {
               pressed && { opacity: 0.7 },
             ]}
             hitSlop={12}
+            accessibilityRole="button"
+            accessibilityLabel="Back"
           >
             <IconSymbol
               name={Platform.OS === "ios" ? "chevron.left" : "arrow.back"}
@@ -249,6 +255,9 @@ function ShareResultsByClubScreenContent() {
                     styles.clearButton,
                     pressed && { opacity: 0.7 },
                   ]}
+                  hitSlop={10}
+                  accessibilityRole="button"
+                  accessibilityLabel="Clear search"
                 >
                   <IconSymbol
                     name={

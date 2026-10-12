@@ -22,6 +22,7 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Palette } from "@/constants/Palette";
+import { useScreenHorizontalInsets } from "@/hooks/useScreenInsets";
 
 // Multiple screens mount their own copy (schedule and info tabs). Both run
 // their storage check before either is dismissed, so without a session-level
@@ -31,6 +32,8 @@ let announcementClaimedThisSession = false;
 export function VersionAnnouncement() {
   const [isVisible, setIsVisible] = useState(false);
   const insets = useSafeAreaInsets();
+  // A modal is above every screen's padding: clear the Duo band here.
+  const screenInsets = useScreenHorizontalInsets();
   const colors = useAppColors();
 
   const announcement = getAnnouncementForVersion(CURRENT_VERSION);
@@ -85,6 +88,7 @@ export function VersionAnnouncement() {
         style={[
           styles.modalOverlay,
           { backgroundColor: colors.modalBackground },
+          screenInsets,
         ]}
         onPress={handleDismiss}
       >
@@ -111,7 +115,9 @@ export function VersionAnnouncement() {
             <TouchableOpacity
               style={styles.closeButton}
               onPress={handleDismiss}
-              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+              hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+              accessibilityRole="button"
+              accessibilityLabel="Close"
             >
               <IconSymbol
                 name={getCloseIcon()}

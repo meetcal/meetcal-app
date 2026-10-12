@@ -1,5 +1,6 @@
 import { ThemedText } from "@/components/ui/ThemedText";
 import { useAppColors } from "@/hooks/useAppColors";
+import { useScreenHorizontalInsets } from "@/hooks/useScreenInsets";
 import { OnboardingViewProps } from "@/types/schedule";
 import { NOTIFICATION_PROMPT_SHOWN_KEY } from "@/utils/notifications";
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -156,6 +157,8 @@ function OnboardingPage({ pageCounter }: { pageCounter: number }) {
 
 export function OnboardingView({ visible, onComplete }: OnboardingViewProps) {
   const colors = useAppColors();
+  // A modal is above every screen's padding: clear the Duo band here.
+  const screenInsets = useScreenHorizontalInsets();
   const [pageCounter, setPageCounter] = useState(1);
 
   const requestCalendarAccess = async () => {
@@ -235,7 +238,7 @@ export function OnboardingView({ visible, onComplete }: OnboardingViewProps) {
       animationType="slide"
       onRequestClose={skip}
     >
-      <Pressable style={styles.modalOverlay}>
+      <Pressable style={[styles.modalOverlay, screenInsets]}>
         <Pressable
           style={[styles.container, { backgroundColor: colors.card }]}
           onPress={(e) => e.stopPropagation()}

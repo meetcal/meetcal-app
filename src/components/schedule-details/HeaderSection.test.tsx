@@ -17,6 +17,10 @@ jest.mock("react-native-reanimated", () => ({
   withSequence: () => 1,
   withSpring: () => 1,
 }));
+// The calendar picker pads for the iPhone Duo side band (`useScreenHorizontalInsets`).
+jest.mock("react-native-safe-area-context", () => ({
+  useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }),
+}));
 jest.mock("expo-router", () => ({ useRouter: () => ({ push: jest.fn() }) }));
 jest.mock("expo-store-review", () => ({}));
 jest.mock("@/components/ui/IconSymbol", () => ({ IconSymbol: () => null }));

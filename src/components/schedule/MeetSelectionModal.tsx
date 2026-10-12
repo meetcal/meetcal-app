@@ -15,6 +15,7 @@ import {
   StyleSheet,
   View,
 } from "react-native";
+import { useScreenHorizontalInsets } from "@/hooks/useScreenInsets";
 
 export function MeetSelectionModal({
   visible,
@@ -26,6 +27,7 @@ export function MeetSelectionModal({
   isRefreshing,
 }: MeetSelectionModalProps) {
   const colors = useAppColors();
+  const screenInsets = useScreenHorizontalInsets();
   const [isSelecting, setIsSelecting] = useState(false);
 
   const handleSelectMeet = async (meetName: string) => {
@@ -54,6 +56,9 @@ export function MeetSelectionModal({
           styles.modalOverlay,
           {
             backgroundColor: colors.modalBackground,
+            // A modal is above every screen's padding: clear the Duo band here.
+            paddingLeft: OVERLAY_PADDING + screenInsets.paddingLeft,
+            paddingRight: OVERLAY_PADDING + screenInsets.paddingRight,
           },
         ]}
         onPress={onClose}
@@ -111,6 +116,10 @@ export function MeetSelectionModal({
                 testID={`meet-option-${meet.name.replace(/[^a-z0-9]+/gi, "-").toLowerCase()}`}
                 accessibilityRole="button"
                 accessibilityLabel={`Select ${meet.name}`}
+                accessibilityState={{
+                  selected: selectedMeet === meet.name,
+                  disabled: isSelecting,
+                }}
                 style={({ pressed }) => [
                   styles.modalOption,
                   { borderBottomColor: colors.border },
@@ -151,11 +160,13 @@ export function MeetSelectionModal({
   );
 }
 
+const OVERLAY_PADDING = 16;
+
 const styles = StyleSheet.create({
   modalOverlay: {
     flex: 1,
     justifyContent: "center",
-    padding: 16,
+    padding: OVERLAY_PADDING,
   },
   modalContent: {
     borderRadius: 12,

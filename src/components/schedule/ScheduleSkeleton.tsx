@@ -2,6 +2,7 @@ import { SkeletonBlock, useSkeletonPulse } from "@/components/ui/Skeleton";
 import { ThemedText } from "@/components/ui/ThemedText";
 import { ThemedView } from "@/components/ui/ThemedView";
 import { useAppColors } from "@/hooks/useAppColors";
+import { useScreenHorizontalInsets } from "@/hooks/useScreenInsets";
 import { ScheduleSkeletonProps } from "@/types/schedule";
 import { ScrollView, StyleSheet, View } from "react-native";
 import { Palette } from "@/constants/Palette";
@@ -11,10 +12,13 @@ export function ScheduleSkeleton({
 }: ScheduleSkeletonProps) {
   const colors = useAppColors();
   const skeletonPulse = useSkeletonPulse();
+  // The skeleton replaces the whole screen, so it clears the iPhone Duo side
+  // band itself; without it the layout jumped sideways when content arrived.
+  const screenInsets = useScreenHorizontalInsets();
 
   return (
     <ThemedView
-      style={[styles.container, { backgroundColor: colors.background }]}
+      style={[styles.container, { backgroundColor: colors.background }, screenInsets]}
     >
       <View
         style={[

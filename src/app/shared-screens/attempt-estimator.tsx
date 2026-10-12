@@ -8,7 +8,9 @@ import { filterSessionAthletes } from "@/lib/athletes";
 import {
   AthleteAttemptEstimate,
   calculateEstimates,
+  formatAttemptsOut,
   generateAthleteNotes,
+  sortEstimatesByAttemptsOut,
 } from "@/lib/attempt-estimator";
 import {
   getAllCachedLiftingResultsForAthletes,
@@ -27,6 +29,7 @@ import {
 import { Stack, useLocalSearchParams } from "expo-router";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
+  ActivityIndicator,
   Animated,
   Pressable,
   ScrollView,
@@ -34,6 +37,7 @@ import {
   View,
 } from "react-native";
 import { useScreenHorizontalInsets } from "@/hooks/useScreenInsets";
+import { Palette } from "@/constants/Palette";
 
 function SkeletonCard({ colors }: { colors: ReturnType<typeof useAppColors> }) {
   const opacity = useRef(new Animated.Value(0.4)).current;
@@ -77,7 +81,16 @@ export default function AttemptEstimatorScreen() {
     !isNaN(sessionNumber) && !!params.platform && !!params.meet;
 
   const [estimates, setEstimates] = useState<AthleteAttemptEstimate[]>([]);
+  // `loading` is the skeleton: true only until there is something to show.
+  // Cached estimates paint straight away and the network refresh then runs
+  // behind `refreshing`, so weak gym Wi-Fi no longer hides offline data
+  // behind a skeleton until the request times out.
   const [loading, setLoading] = useState(hasValidParams);
+  const [refreshing, setRefreshing] = useState(false);
+  // Why the latest load could not refresh from the network: offline, or the
+  // request failed. The error state when there is nothing to list, and a
+  // note above the cached estimates otherwise.
+  const [loadIssue, setLoadIssue] = useState<"offline" | "failed" | null>(null);
   const [expandedAthletes, setExpandedAthletes] = useState<Set<string>>(
     new Set(),
   );
@@ -94,6 +107,8 @@ export default function AttemptEstimatorScreen() {
     const requestId = ++requestIdRef.current;
     const isStale = () => requestId !== requestIdRef.current;
     setLoading(true);
+    setRefreshing(false);
+    setLoadIssue(null);
     setEstimates([]);
     try {
       const meetId = params.meet as MeetName;
@@ -132,12 +147,12 @@ export default function AttemptEstimatorScreen() {
         setEstimates(
           calculateEstimates(cachedSessionAthletes, cachedSessionResults),
         );
-      } else {
-        if (isStale()) return;
-        setEstimates([]);
+        setLoading(false);
+        if (hasNetwork) setRefreshing(true);
       }
 
       if (!hasNetwork) {
+        setLoadIssue("offline");
         return;
       }
 
@@ -191,9 +206,12 @@ export default function AttemptEstimatorScreen() {
     } catch (error) {
       if (isStale()) return;
       console.error("Error loading data:", error);
+      // Cached estimates already on screen stay there.
+      setLoadIssue("failed");
     } finally {
       if (!isStale()) {
         setLoading(false);
+        setRefreshing(false);
       }
     }
   }, [hasValidParams, sessionNumber, params.platform, params.meet]);
@@ -217,9 +235,7 @@ export default function AttemptEstimatorScreen() {
     setExpandedAthletes(newExpanded);
   };
 
-  const sortedEstimates = [...estimates].sort(
-    (a, b) => a.snatchAttemptsOut - b.snatchAttemptsOut,
-  );
+  const sortedEstimates = sortEstimatesByAttemptsOut(estimates);
 
   if (!hasValidParams) {
     return (
@@ -299,6 +315,28 @@ export default function AttemptEstimatorScreen() {
       />
 
       <ScrollView contentContainerStyle={styles.scrollContent}>
+        {refreshing && (
+          <View
+            style={styles.statusRow}
+            accessible
+            accessibilityLiveRegion="polite"
+            accessibilityLabel="Refreshing estimates"
+          >
+            <ActivityIndicator size="small" color={colors.secondaryText} />
+            <ThemedText style={[styles.statusText, { color: colors.secondaryText }]}>
+              Refreshing…
+            </ThemedText>
+          </View>
+        )}
+        {!refreshing && loadIssue && sortedEstimates.length > 0 && (
+          <View style={styles.statusRow} accessible accessibilityLiveRegion="polite">
+            <ThemedText style={[styles.statusText, { color: colors.secondaryText }]}>
+              {loadIssue === "offline"
+                ? "Offline. Showing downloaded data."
+                : "Couldn't refresh. Showing downloaded data."}
+            </ThemedText>
+          </View>
+        )}
         <View
           style={[
             styles.disclaimerCard,
@@ -314,6 +352,41 @@ export default function AttemptEstimatorScreen() {
           </ThemedText>
         </View>
 
+        {sortedEstimates.length === 0 && (
+          <View style={styles.messageContainer}>
+            <ThemedText style={[styles.messageTitle, { color: colors.text }]}>
+              {loadIssue === "offline"
+                ? "You're offline"
+                : loadIssue === "failed"
+                  ? "Couldn't load estimates"
+                  : "No athletes in this session"}
+            </ThemedText>
+            <ThemedText
+              style={[styles.messageText, { color: colors.secondaryText }]}
+            >
+              {loadIssue === "offline"
+                ? "This session isn't downloaded. Connect to the internet and try again."
+                : loadIssue === "failed"
+                  ? "Check your connection and try again."
+                  : "The start list has no athletes for this session and platform yet."}
+            </ThemedText>
+            <Pressable
+              style={({ pressed }) => [
+                styles.retryButton,
+                { backgroundColor: colors.link },
+                pressed && { opacity: 0.8 },
+              ]}
+              onPress={() => {
+                void loadData();
+              }}
+              accessibilityRole="button"
+              accessibilityLabel="Retry loading estimates"
+            >
+              <ThemedText style={styles.retryButtonText}>Retry</ThemedText>
+            </Pressable>
+          </View>
+        )}
+
         {sortedEstimates.map((estimate) => (
           <View
             key={estimate.id}
@@ -322,10 +395,20 @@ export default function AttemptEstimatorScreen() {
             <Pressable
               style={styles.athleteHeader}
               onPress={() => toggleAthlete(estimate.id)}
+              accessibilityRole="button"
+              accessibilityState={{ expanded: expandedAthletes.has(estimate.id) }}
+              accessibilityHint="Shows the estimated attempts and notes"
             >
-              <ThemedText style={styles.athleteName}>
-                {estimate.athleteName}
-              </ThemedText>
+              <View style={styles.athleteHeaderText}>
+                <ThemedText style={styles.athleteName}>
+                  {estimate.athleteName}
+                </ThemedText>
+                <ThemedText
+                  style={[styles.athleteSubtitle, { color: colors.secondaryText }]}
+                >
+                  {`Snatch: ${formatAttemptsOut(estimate.snatchAttemptsOut)}`}
+                </ThemedText>
+              </View>
               <IconSymbol
                 name={
                   expandedAthletes.has(estimate.id)
@@ -349,20 +432,15 @@ export default function AttemptEstimatorScreen() {
                     Estimated Count
                   </ThemedText>
 
-                  {estimate.snatchEstimates.length > 0 &&
-                  estimate.snatchEstimates[0] > 0 ? (
+                  {estimate.snatchAttemptsOut !== null ? (
                     <ThemedText
                       style={[
                         styles.detailText,
                         { color: colors.secondaryText },
                       ]}
                     >
-                      Snatch: 
-{' '}
-{estimate.snatchAttemptsOut}
-{' '}
-attempts out
-</ThemedText>
+                      {`Snatch: ${formatAttemptsOut(estimate.snatchAttemptsOut)}`}
+                    </ThemedText>
                   ) : (
                     <ThemedText
                       style={[
@@ -374,20 +452,15 @@ attempts out
                     </ThemedText>
                   )}
 
-                  {estimate.cjEstimates.length > 0 &&
-                  estimate.cjEstimates[0] > 0 ? (
+                  {estimate.cjAttemptsOut !== null ? (
                     <ThemedText
                       style={[
                         styles.detailText,
                         { color: colors.secondaryText },
                       ]}
                     >
-                      CJ: 
-{' '}
-{estimate.cjAttemptsOut}
-{' '}
-attempts out
-</ThemedText>
+                      {`CJ: ${formatAttemptsOut(estimate.cjAttemptsOut)}`}
+                    </ThemedText>
                   ) : (
                     <ThemedText
                       style={[
@@ -580,8 +653,56 @@ const styles = StyleSheet.create({
     alignItems: "center",
     padding: 16,
   },
+  athleteHeaderText: {
+    flex: 1,
+    marginRight: 12,
+  },
   athleteName: {
     fontSize: 14,
+    fontWeight: "600",
+  },
+  athleteSubtitle: {
+    fontSize: 13,
+    marginTop: 2,
+  },
+  statusRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    marginBottom: 12,
+  },
+  statusText: {
+    fontSize: 13,
+  },
+  messageContainer: {
+    alignItems: "center",
+    paddingVertical: 32,
+    paddingHorizontal: 16,
+  },
+  messageTitle: {
+    fontSize: 17,
+    fontWeight: "600",
+    marginBottom: 8,
+    textAlign: "center",
+  },
+  messageText: {
+    fontSize: 15,
+    lineHeight: 20,
+    textAlign: "center",
+    marginBottom: 16,
+  },
+  retryButton: {
+    minHeight: 44,
+    minWidth: 120,
+    paddingHorizontal: 24,
+    borderRadius: 10,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  retryButtonText: {
+    color: Palette.white,
+    fontSize: 16,
     fontWeight: "600",
   },
   athleteDetails: {

@@ -106,6 +106,28 @@ describe("ClubFilterModal", () => {
     expect(headerJson).toContain("Favorites");
   });
 
+  it("offers starring as an action on the row, which a screen reader focuses whole", () => {
+    const onToggleStarredClub = jest.fn();
+    renderModal({ starredClubs: ["Club 001"], onToggleStarredClub });
+
+    const { renderItem } = flashListCalls[0];
+    let row!: ReturnType<typeof create>;
+    act(() => {
+      row = create(<>{renderItem({ item: "Club 001", index: 1 })}</>);
+    });
+    const button = row.root.findByProps({ accessibilityLabel: "Club 001, starred" });
+    expect(button.props.accessibilityActions).toEqual([
+      { name: "toggleStar", label: "Unstar club" },
+    ]);
+    act(() => {
+      button.props.onAccessibilityAction({ nativeEvent: { actionName: "toggleStar" } });
+    });
+    expect(onToggleStarredClub).toHaveBeenCalledWith("Club 001");
+    // The visible star button is labelled too, for TalkBack and Switch Control.
+    expect(row.root.findAllByProps({ accessibilityLabel: "Unstar Club 001" }).length)
+      .toBeGreaterThan(0);
+  });
+
   it("omits the favorites row when nothing is starred", () => {
     renderModal({ starredClubs: [] });
 
