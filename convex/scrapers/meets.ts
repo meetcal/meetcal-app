@@ -5,13 +5,16 @@ import { internalAction } from '../_generated/server';
 import { internal } from '../_generated/api';
 import { MEET_SEARCHES, transformMeets, type ScrapedMeet } from './parse/meets';
 import { sourcesFailed } from '../lib/cronAlerts';
+import type { ZoneFormatters } from '../lib/meetData';
+import { meetStatusAt } from '../lib/meetStatus';
 
 /**
  * Upcoming USAW meets (port of meet-sync: `sync-meets.js`,
  * `sync-nat-meets.js`, `sync-virus-meets.js`): three searches of Sport80's
  * public events widget, each meet's venue, dates and time zone upserted by
- * name. The WSO search skips meets already completed, as before; a meet
- * marked completed is never reopened either way.
+ * name. The WSO search skips meets already completed, as before, unless
+ * their scraped dates have moved into the future: `upsertMeets` then makes
+ * them upcoming again (status follows the dates, `lib/meetStatus.ts`).
  */
 async function fetchWidget(url: string): Promise<{ name: string; address: string; subtitle: string }[]> {
   for (let attempt = 1; ; attempt++) {
@@ -51,8 +54,11 @@ export const run = internalAction({
         const statuses: Record<string, string> = await ctx.runQuery(internal.scrapers.queries.meetStatuses, {
           names: result.meets.map((m) => m.name),
         });
-        result.skippedCompleted = result.meets.filter((m) => statuses[m.name] === 'completed').map((m) => m.name);
-        toIngest = result.meets.filter((m) => statuses[m.name] !== 'completed');
+        const now = Date.now();
+        const formatters: ZoneFormatters = new Map();
+        const skipped = (m: ScrapedMeet) => statuses[m.name] === 'completed' && meetStatusAt(m, now, formatters) === 'completed';
+        result.skippedCompleted = result.meets.filter(skipped).map((m) => m.name);
+        toIngest = result.meets.filter((m) => !skipped(m));
       }
       const outcomes: { wasInsert: boolean; wasChanged: boolean }[] = await ctx.runMutation(internal.ingest.upsertMeets, { rows: toIngest });
       result.inserted = toIngest.filter((_, i) => outcomes[i].wasInsert).map((m) => m.name);

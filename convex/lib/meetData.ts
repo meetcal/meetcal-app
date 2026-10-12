@@ -1,6 +1,7 @@
 import type { QueryCtx } from '../_generated/server';
 import type { Doc } from '../_generated/dataModel';
 import { normalizeName } from './names';
+import { athleteGenderLabel, normalizeGender } from './normalize';
 import {
   accumulateBests,
   toApiLiftingResult,
@@ -50,11 +51,36 @@ export function toApiMeet(meet: Doc<'meets'>): ApiMeet {
   };
 }
 
+/**
+ * The meet a name identifies. Names are meant to be unique (the ingest
+ * mutations store a second federation's meet of the same name under
+ * `disambiguatedMeetName`), but older rows can repeat one: then the oldest
+ * row is the meet, the one its roster and results were written for, and the
+ * duplicate is logged (`migrations:duplicateMeetNames` lists them all)
+ * rather than chosen by chance.
+ */
 export async function meetByName(ctx: QueryCtx, name: string): Promise<Doc<'meets'> | null> {
-  return await ctx.db
+  const rows = await ctx.db
     .query('meets')
     .withIndex('by_name', (q) => q.eq('name', name))
-    .first();
+    .take(2);
+  if (rows.length > 1) console.warn(`meets: more than one meet named ${JSON.stringify(name)}; using the oldest`);
+  return oldestMeet(rows);
+}
+
+/** The first-created of `rows`, or null. Index order already ties by creation time; this does not rely on it. */
+export function oldestMeet<T extends { _creationTime: number }>(rows: readonly T[]): T | null {
+  return rows.reduce<T | null>((oldest, row) => (oldest === null || row._creationTime < oldest._creationTime ? row : oldest), null);
+}
+
+/**
+ * The name a meet is stored under when another federation's meet already
+ * has its display name ("2027 Masters Nationals (USAMW)"): names identify
+ * meets in every table and in saved sessions, so a second meet must never
+ * take an existing one's name, and a stored name never changes.
+ */
+export function disambiguatedMeetName(name: string, federation: string): string {
+  return `${name} (${federation})`;
 }
 
 /**
@@ -232,7 +258,7 @@ export function joinRoster(athletes: Doc<'athletes'>[], schedule: readonly ApiSc
         age: athlete.age,
         club: athlete.club,
         wso: athlete.wso ?? null,
-        gender: athlete.gender,
+        gender: athleteGenderLabel(athlete.gender),
         weight_class: athlete.weightClass,
         entry_total: athlete.entryTotal,
         adaptive: athlete.adaptive,
@@ -491,7 +517,7 @@ async function statsEntries(ctx: QueryCtx, meet: string): Promise<{ joined: Stat
   const joined: StatsEntry[] = [];
   for (const [key, row] of best) {
     const athlete = roster.get(key);
-    if (athlete) joined.push({ key, row, athlete, group: `${athlete.gender}\u0000${athlete.weightClass}\u0000${row.age ?? ''}` });
+    if (athlete) joined.push({ key, row, athlete, group: `${normalizeGender(athlete.gender)}\u0000${athlete.weightClass}\u0000${row.age ?? ''}` });
   }
   const groups: StatsGroups = new Map();
   for (const { row, group } of joined) {
