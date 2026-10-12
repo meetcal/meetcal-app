@@ -462,24 +462,35 @@ export function SubscriptionProvider({ children }: { children: React.ReactNode }
     };
   }, [recordConfirmedMembership]);
 
-  // Listen for network changes and refresh when coming back online
-  useEffect(() => {
-    const unsubscribe = subscribeToNetworkChanges(async (isConnected) => {
-      devLog('Network state changed:', isConnected);
+  // Refresh when coming back online. Subscribed once, reading the latest
+  // state through an Effect Event: NetInfo calls a listener with the current
+  // state as soon as it subscribes, so an effect re-subscribing on every
+  // `isLoading` flip re-ran the check each time one finished, and a check
+  // that failed while online looped forever. Only a change to "connected"
+  // counts, and never while a check is already in flight.
+  const lastConnectedRef = useRef<boolean | null>(null);
+  const onNetworkChange = useEffectEvent(async (isConnected: boolean) => {
+    devLog('Network state changed:', isConnected);
+    const wasConnected = lastConnectedRef.current;
+    lastConnectedRef.current = isConnected;
+    if (!isConnected || wasConnected === true || isLoading) return;
 
-      // Unknown (offline with no cache, or a failed check) recovers the same
-      // way a stale cache does: the first reconnect asks RevenueCat, unless
-      // a check is already in flight.
-      if (isConnected && (isUsingStaleCache || (isSubscribed === null && !isLoading))) {
-        devLog('Network restored with a stale or unknown entitlement, refreshing subscription...');
-        await checkSubscriptionStatus();
-      }
+    // Unknown (offline with no cache, or a failed check) recovers the same
+    // way a stale cache does.
+    if (isUsingStaleCache || isSubscribed === null) {
+      devLog('Network restored with a stale or unknown entitlement, refreshing subscription...');
+      await checkSubscriptionStatus();
+    }
+  });
+  useEffect(() => {
+    const unsubscribe = subscribeToNetworkChanges((isConnected) => {
+      void onNetworkChange(isConnected);
     });
 
     return () => {
       unsubscribe();
     };
-  }, [isUsingStaleCache, isSubscribed, isLoading]);
+  }, []);
 
   // `checkSubscriptionStatus` is an Effect Event, callable only from effects,
   // so a Retry tap requests a check and this effect runs it.

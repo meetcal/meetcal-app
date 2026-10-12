@@ -48,10 +48,16 @@ jest.mock("@/config/development", () => ({
 }));
 
 let mockNetworkListener: ((isConnected: boolean) => void) | null = null;
+// Real NetInfo calls a new listener with the current state at once; `null`
+// keeps the mock quiet on subscribe.
+let mockConnectedOnSubscribe: boolean | null = null;
+let mockNetworkSubscriptions = 0;
 jest.mock("@/lib/networkUtils", () => ({
   isNetworkAvailable: jest.fn(async () => true),
   subscribeToNetworkChanges: (callback: (isConnected: boolean) => void) => {
+    mockNetworkSubscriptions += 1;
     mockNetworkListener = callback;
+    if (mockConnectedOnSubscribe !== null) callback(mockConnectedOnSubscribe);
     return () => {
       mockNetworkListener = null;
     };
@@ -119,6 +125,8 @@ describe("SubscriptionProvider", () => {
     jest.spyOn(console, "log").mockImplementation(() => {});
     mockSecureStore.clear();
     mockNetworkListener = null;
+    mockConnectedOnSubscribe = null;
+    mockNetworkSubscriptions = 0;
     await AsyncStorage.clear();
     mockIsNetworkAvailable.mockResolvedValue(true);
     mockGetCustomerInfo.mockResolvedValue(customerInfo(null));
@@ -306,6 +314,30 @@ describe("SubscriptionProvider", () => {
 
     expect(mockGetCustomerInfo).toHaveBeenCalledTimes(1);
     expect(value.current.isSubscribed).toBe(true);
+  });
+
+  it("does not loop checks when RevenueCat fails while online", async () => {
+    // A listener that fires on subscribe plus an effect that re-subscribed on
+    // every `isLoading` flip re-ran a failing check forever.
+    mockConnectedOnSubscribe = true;
+    // Fails, and after a few calls stops answering, so a regression fails
+    // the assertion below instead of spinning the test forever.
+    mockGetCustomerInfo.mockImplementation(() =>
+      mockGetCustomerInfo.mock.calls.length > 5
+        ? new Promise(() => {})
+        : Promise.reject(new Error("rc down")),
+    );
+
+    const value = await mountProvider();
+    await act(async () => {
+      await jest.advanceTimersByTimeAsync(REFRESH_DELAY_MS * 3);
+    });
+    await flush();
+
+    expect(mockGetCustomerInfo).toHaveBeenCalledTimes(1);
+    expect(mockNetworkSubscriptions).toBe(1);
+    expect(value.current.isSubscribed).toBeNull();
+    expect(value.current.isLoading).toBe(false);
   });
 
   it("recheckSubscription asks RevenueCat again", async () => {
