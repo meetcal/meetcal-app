@@ -47,6 +47,10 @@ A view is fresh while its source tables are unchanged, whatever the code that bu
 
 Check the result with `npx convex run parity:run`. It compares every fast path (views, histories, summaries, search shards) with a live computation from the raw tables and should report 0 mismatches. `migrations:countPage` counts a table a page at a time, for checking a load against its source.
 
+## Meet time zones and dates
+
+The meet scrapers take a meet's time zone from its state, or its city in a state that spans two zones (`convex/scrapers/lib/states.ts`). A meet in a state they do not know keeps the zone it has, or gets a blank one if new. To set a zone by hand, use `npx convex run ingest:setMeetTimeZone '{"name":"…","timeZone":"America/New_York"}'`. This locks the zone so the nightly syncs leave it alone. Pass `"locked":false` to hand it back to them. `npx convex run scrapers/queries:meetDataProblems` lists blank or unknown zones, zones the state and city now place elsewhere, and dates that are not padded `YYYY-MM-DD`. `npx convex run migrations:padMeetDates` pads the unpadded dates.
+
 ## Scheduled jobs and alerts
 
 `convex/cronJobs.ts` lists every job and its UTC schedule. Each run goes through `cronJobs:run`, which records it in `cron_status`. It emails `ALERT_EMAIL` (through OneSignal) when a job fails and again when it recovers. The hourly `cron-watchdog` emails when a job misses its run or never finishes. The hourly `views-refresh` job runs a refresh even when none is scheduled, so views catch up after a refresh that failed or was lost. It fails, and so emails, when a write has waited over two hours for its views, or when the full rebuild keeps stopping. `urlwatch` emails page changes to `URLWATCH_EMAIL`. Set both variables on prod only.
