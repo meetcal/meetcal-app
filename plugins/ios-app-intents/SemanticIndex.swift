@@ -237,7 +237,15 @@ enum SemanticIndexDonator {
     /// nothing back. When the fetch fails, the existing index is kept and only
     /// the (local) saved sessions are re-donated; an unsaved session may then
     /// linger until the next successful reindex.
+    ///
+    /// Reindexes run one at a time through `DonationQueue`, so one that read
+    /// the saved sessions earlier can never finish last and put back a session
+    /// the user has since unsaved.
     static func donateAll() async {
+        await DonationQueue.shared.enqueue().value
+    }
+
+    fileprivate static func replaceIndex() async {
         guard CSSearchableIndex.isIndexingAvailable() else { return }
         let index = CSSearchableIndex.default()
 
@@ -293,6 +301,34 @@ enum SemanticIndexDonator {
         } else {
             try? await index.indexAppEntities(savedSessions)
         }
+    }
+}
+
+/// Serializes Spotlight reindexes in request order. Each run reads the saved
+/// sessions when it starts, after the previous run has finished, and a run
+/// with a newer request queued behind it is skipped, since that newer run
+/// will index a fresher snapshot. The last request always runs.
+private actor DonationQueue {
+    static let shared = DonationQueue()
+
+    private var tail: Task<Void, Never>?
+    private var latestRequest = 0
+
+    func enqueue() -> Task<Void, Never> {
+        latestRequest += 1
+        let request = latestRequest
+        let previous = tail
+        let task = Task {
+            await previous?.value
+            guard self.isLatest(request) else { return }
+            await SemanticIndexDonator.replaceIndex()
+        }
+        tail = task
+        return task
+    }
+
+    private func isLatest(_ request: Int) -> Bool {
+        request == latestRequest
     }
 }
 

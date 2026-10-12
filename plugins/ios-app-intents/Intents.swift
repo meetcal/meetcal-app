@@ -282,19 +282,13 @@ struct GetAthleteResultsIntent: AppIntent {
     }
 
     func perform() async throws -> some IntentResult & ProvidesDialog & ShowsSnippetView {
-        let bests: [String: APIYearBests]
-        let results: [APILiftingResult]
-        do {
-            async let bestsTask = MeetCalAPI.shared.bests(names: [name])
-            async let resultsTask = MeetCalAPI.shared.resultsByNames([name], limitPerName: Self.recentResultCount)
-            bests = try await bestsTask
-            results = try await resultsTask
-        } catch {
-            return .result(
-                dialog: IntentFailure.dialog(),
-                view: IntentFailure.view(title: name, systemImage: "trophy.fill")
-            )
-        }
+        // Bests and recent meets are independent: show whichever arrived.
+        async let bestsTask = MeetCalAPI.shared.bests(names: [name])
+        async let resultsTask = MeetCalAPI.shared.resultsByNames([name], limitPerName: Self.recentResultCount)
+        let fetchedBests = try? await bestsTask
+        let fetchedResults = try? await resultsTask
+        let bests = fetchedBests ?? [:]
+        let results = fetchedResults ?? []
 
         var rows: [SnippetRow] = []
 
@@ -318,6 +312,15 @@ struct GetAthleteResultsIntent: AppIntent {
                 subtitle: [result.date.map { APIDateFormat.pretty($0) }, result.body_weight.map { "\($0) kg BW" }].compactMap { $0 }.joined(separator: " • "),
                 trailing: total
             ))
+        }
+
+        // Nothing to show and a query failed: the server was unreachable, so
+        // don't claim the athlete has no results.
+        if rows.isEmpty && (fetchedBests == nil || fetchedResults == nil) {
+            return .result(
+                dialog: IntentFailure.dialog(),
+                view: IntentFailure.view(title: name, systemImage: "trophy.fill")
+            )
         }
 
         let dialog: IntentDialog
