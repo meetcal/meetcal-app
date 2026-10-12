@@ -45,6 +45,15 @@ describe("findLegacySessionsNeedingMigration", () => {
     expect(batches[0].sessions.map((s) => s.id)).toEqual(["Test-Meet-1-Red", "Test-Meet-1-Red"]);
   });
 
+  it("leaves out rows the outbox would refuse, so they are not retried on every mount", async () => {
+    const [legacyKey] = getLegacySavedSessionsKeys(USER);
+    await AsyncStorage.setItem(legacyKey, JSON.stringify([row(), row({ id: "zero", sessionNumber: 0 })]));
+
+    const [batch] = await findLegacySessionsNeedingMigration(USER, MEET);
+
+    expect(batch.sessions.map((s) => s.sessionNumber)).toEqual([1]);
+  });
+
   it.each(["{", "{}", "null", '"x"'])("ignores malformed legacy storage %s", async (raw) => {
     const [legacyKey] = getLegacySavedSessionsKeys(USER);
     await AsyncStorage.setItem(legacyKey, raw);
