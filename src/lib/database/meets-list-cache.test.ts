@@ -51,6 +51,9 @@ describe("meets list cache", () => {
         { ...good, name: "No Time", time: undefined },
         { ...good, name: "No Zone", time: { ...good.time, timeZoneIdentifier: 5 } },
         { ...good, name: "No Dates", dates: null },
+        { ...good, name: "No End", dates: { start: "2026-06-20" } },
+        { ...good, name: "Blank Zone", time: { ...good.time, timeZoneIdentifier: " " } },
+        { ...good, name: "Unknown Zone", time: { ...good.time, timeZoneIdentifier: "Mars/Olympus" } },
       ]),
     );
     const meets = await getCachedMeets();
