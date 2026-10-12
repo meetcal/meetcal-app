@@ -90,10 +90,14 @@ const DAY_LABEL_FORMATTER = new Intl.DateTimeFormat('en-US', {
 export function formatWidgetDayLabel(date: string | undefined): string | undefined {
   const match = date ? ISO_DATE.exec(date) : null;
   if (!match) return undefined;
+  const year = Number(match[1]);
   const month = Number(match[2]);
   const day = Number(match[3]);
-  if (month < 1 || month > 12 || day < 1 || day > 31) return undefined;
-  return DAY_LABEL_FORMATTER.format(Date.UTC(Number(match[1]), month - 1, day));
+  // `Date.UTC` rolls Feb 30 over to Mar 2; reject it instead. Day 0 of the
+  // next month is this month's last day, leap years included.
+  const daysInMonth = new Date(Date.UTC(year, month, 0)).getUTCDate();
+  if (month < 1 || month > 12 || day < 1 || day > daysInMonth) return undefined;
+  return DAY_LABEL_FORMATTER.format(Date.UTC(year, month - 1, day));
 }
 
 /**

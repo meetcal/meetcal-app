@@ -205,8 +205,49 @@ describe("createDataWidgetRefresher", () => {
     expect(deps.sync).not.toHaveBeenCalled();
   });
 
-  it("never rejects, and a failed run does not block the next one", async () => {
-    const { deps, refresher, advance } = setup({
+  it("does not save healed filters once the settings screen has started a commit", async () => {
+    let release: (value: DataWidgetSourceData) => void = () => {};
+    const { deps, refresher, simulateScreenWrite } = setup({
+      loadSource: jest.fn(
+        () =>
+          new Promise<DataWidgetSourceData>((resolve) => {
+            release = resolve;
+          }),
+      ),
+      loadSettings: jest.fn(async () => ({
+        ...storedSettings,
+        intlRankings: { meet: "Old Meet", ageCategory: "Senior", gender: "Men" as const },
+      })),
+    });
+
+    const pending = refresher.refresh();
+    // `markDataWidgetCommitStarted`: the screen's save is still in flight and
+    // it has not synced the widget yet.
+    simulateScreenWrite();
+    release(source);
+
+    await expect(pending).resolves.toBe("superseded");
+    expect(deps.saveSettings).not.toHaveBeenCalled();
+    expect(deps.sync).not.toHaveBeenCalled();
+  });
+
+  it("yields when the screen commits while the healed filters are being saved", async () => {
+    const { deps, refresher, simulateScreenWrite } = setup({
+      loadSettings: jest.fn(async () => ({
+        ...storedSettings,
+        intlRankings: { meet: "Old Meet", ageCategory: "Senior", gender: "Men" as const },
+      })),
+      saveSettings: jest.fn(async () => {
+        simulateScreenWrite();
+      }),
+    });
+
+    await expect(refresher.refresh()).resolves.toBe("superseded");
+    expect(deps.sync).not.toHaveBeenCalled();
+  });
+
+  it("never rejects, and a run that found no data does not throttle the next one", async () => {
+    const { deps, refresher } = setup({
       loadSettings: jest
         .fn()
         .mockRejectedValueOnce(new Error("storage"))
@@ -214,9 +255,20 @@ describe("createDataWidgetRefresher", () => {
     });
 
     await expect(refresher.refresh()).resolves.toBe("no-data");
-    advance(DATA_WIDGET_REFRESH_MIN_INTERVAL_MS);
     await expect(refresher.refresh()).resolves.toBe("synced");
     expect(deps.sync).toHaveBeenCalledTimes(1);
+  });
+
+  it("retries at the next foreground after an offline launch with no cache", async () => {
+    const loadSource = jest
+      .fn<Promise<DataWidgetSourceData | null>, [number]>()
+      .mockResolvedValueOnce(null)
+      .mockResolvedValue(source);
+    const { refresher } = setup({ loadSource });
+
+    await expect(refresher.refresh()).resolves.toBe("no-data");
+    await expect(refresher.refresh()).resolves.toBe("synced");
+    expect(loadSource).toHaveBeenCalledTimes(2);
   });
 });
 
@@ -243,7 +295,7 @@ describe("readWidgetSource", () => {
 
   it("uses a fresh cached copy without a network request", async () => {
     const r = resource({ data: "cached", lastUpdatedAt: now - 1 }, async () => "fresh");
-    await expect(readWidgetSource(r, now)).resolves.toBe("cached");
+    await expect(readWidgetSource(r, now, new Map())).resolves.toBe("cached");
     expect(r.revalidateWithCached).not.toHaveBeenCalled();
   });
 
@@ -252,20 +304,45 @@ describe("readWidgetSource", () => {
       { data: "cached", lastUpdatedAt: now - DATA_WIDGET_SOURCE_MAX_AGE_MS },
       async () => "fresh",
     );
-    await expect(readWidgetSource(r, now)).resolves.toBe("fresh");
+    await expect(readWidgetSource(r, now, new Map())).resolves.toBe("fresh");
+  });
+
+  it("does not refetch an unchanged table on every refresh once its stamp is old", async () => {
+    // An unchanged revalidation leaves the cache stamp where it was (the
+    // resource only persists, and re-stamps, data that changed).
+    const stale = { data: "same", lastUpdatedAt: now - 2 * DATA_WIDGET_SOURCE_MAX_AGE_MS };
+    const r = resource(stale, async () => "same");
+    const log = new Map<string, number>();
+
+    await expect(readWidgetSource(r, now, log)).resolves.toBe("same");
+    await expect(readWidgetSource(r, now + 60_000, log)).resolves.toBe("same");
+    expect(r.revalidateWithCached).toHaveBeenCalledTimes(1);
+
+    // Six hours after the last check it is confirmed again.
+    await expect(readWidgetSource(r, now + DATA_WIDGET_SOURCE_MAX_AGE_MS, log)).resolves.toBe("same");
+    expect(r.revalidateWithCached).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not record a check that failed", async () => {
+    const r = resource({ data: "cached", lastUpdatedAt: null }, async () => {
+      throw new Error("Offline");
+    });
+    const log = new Map<string, number>();
+    await readWidgetSource(r, now, log);
+    expect(log.size).toBe(0);
   });
 
   it("falls back to the stale copy when the network fails", async () => {
     const r = resource({ data: "cached", lastUpdatedAt: null }, async () => {
       throw new Error("Offline");
     });
-    await expect(readWidgetSource(r, now)).resolves.toBe("cached");
+    await expect(readWidgetSource(r, now, new Map())).resolves.toBe("cached");
   });
 
   it("is null with neither cache nor network", async () => {
     const r = resource(null, async () => {
       throw new Error("Offline");
     });
-    await expect(readWidgetSource(r, now)).resolves.toBeNull();
+    await expect(readWidgetSource(r, now, new Map())).resolves.toBeNull();
   });
 });

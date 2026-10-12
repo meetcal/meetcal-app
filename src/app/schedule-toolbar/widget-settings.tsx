@@ -27,6 +27,7 @@ import {
   defaultWidgetSettings,
   hasResolvedWidgetFilters,
   loadWidgetSettings,
+  markDataWidgetCommitStarted,
   normalizeWidgetSettings,
   saveWidgetSettings,
   STANDARDS_FILTER_SECTIONS,
@@ -155,6 +156,7 @@ export default function WidgetSettingsScreen() {
       // slow auto-sync can overwrite filters applied while it was saving.
       const commit = commitQueue.current.then(async () => {
         if (options.dedupe && lastCommittedSignature.current === signature) return;
+        markDataWidgetCommitStarted();
         try {
           await saveWidgetSettings(next);
           syncDataWidgets(payloads);

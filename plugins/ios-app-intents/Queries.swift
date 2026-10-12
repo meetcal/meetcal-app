@@ -101,7 +101,9 @@ struct AthleteQuery: EntityStringQuery {
             if !deduped.isEmpty { return deduped }
         }
 
-        // Fall back to the global search endpoint.
+        // Fall back to the global search endpoint, which rejects an empty
+        // query: nothing to search for is "no matches", not a failure.
+        guard !string.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return [] }
         let response = try await MeetCalAPI.shared.search(string)
         let names =
             [response.matched_name].compactMap { $0 }

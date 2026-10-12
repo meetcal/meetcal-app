@@ -37,7 +37,7 @@ export const DATA_WIDGET_SOURCE_MAX_AGE_MS = 6 * 60 * 60 * 1000;
 export type DataWidgetRefreshOutcome =
   /** No native data-widget module (web, Expo Go, tests). Nothing fetched. */
   | 'unavailable'
-  /** A refresh ran less than `DATA_WIDGET_REFRESH_MIN_INTERVAL_MS` ago. */
+  /** A refresh reached the data less than `DATA_WIDGET_REFRESH_MIN_INTERVAL_MS` ago. */
   | 'throttled'
   /** A source could not be read from cache or network. Widgets untouched. */
   | 'no-data'
@@ -60,43 +60,54 @@ export interface DataWidgetRefreshDeps {
 }
 
 /**
+ * When each resource was last confirmed against the network, by resource key.
+ * A resource's cache stamp (`lastUpdatedAt`) only moves when the data
+ * *changes*, and these tables rarely do, so judging freshness by it alone
+ * would refetch all three on every refresh once a copy turned six hours old.
+ */
+export type SourceCheckLog = Map<string, number>;
+
+/**
  * The cached copy when it is fresh enough, else a revalidation, else whatever
  * stale copy exists. `null` only when there is neither cache nor network.
  */
 export async function readWidgetSource<T>(
   resource: MutableResource<T, []>,
   now: number,
+  checkLog: SourceCheckLog,
 ): Promise<T | null> {
+  const key = resource.getKey();
   let cached: Awaited<ReturnType<typeof resource.loadCached>> = null;
   try {
     cached = await resource.loadCached();
   } catch {
     cached = null;
   }
-  if (
-    cached &&
-    cached.lastUpdatedAt !== null &&
-    now - cached.lastUpdatedAt < DATA_WIDGET_SOURCE_MAX_AGE_MS
-  ) {
+  const lastConfirmedAt = Math.max(cached?.lastUpdatedAt ?? 0, checkLog.get(key) ?? 0);
+  if (cached && now - lastConfirmedAt < DATA_WIDGET_SOURCE_MAX_AGE_MS) {
     return cached.data;
   }
   try {
-    return (await resource.revalidateWithCached(cached)).data;
+    const { data } = await resource.revalidateWithCached(cached);
+    checkLog.set(key, now);
+    return data;
   } catch {
     return cached?.data ?? null;
   }
 }
+
+const sourceCheckLog: SourceCheckLog = new Map();
 
 /**
  * Sequential on purpose: three small reference tables, read one at a time so
  * a launch never stacks three requests on top of the screen's own.
  */
 async function loadDefaultSource(now: number): Promise<DataWidgetSourceData | null> {
-  const totalsData = await readWidgetSource(qualifyingTotalsResource, now);
+  const totalsData = await readWidgetSource(qualifyingTotalsResource, now, sourceCheckLog);
   if (!totalsData) return null;
-  const standardsData = await readWidgetSource(standardsResource, now);
+  const standardsData = await readWidgetSource(standardsResource, now, sourceCheckLog);
   if (!standardsData) return null;
-  const intlRankings = await readWidgetSource(intlRankingsResource, now);
+  const intlRankings = await readWidgetSource(intlRankingsResource, now, sourceCheckLog);
   if (!intlRankings) return null;
   return { totalsData, standardsData, intlRankings };
 }
@@ -152,7 +163,9 @@ export function createDataWidgetRefresher(deps: DataWidgetRefreshDeps) {
 
   /**
    * Never rejects. Concurrent callers share one run; calls within
-   * `DATA_WIDGET_REFRESH_MIN_INTERVAL_MS` of the last start are skipped.
+   * `DATA_WIDGET_REFRESH_MIN_INTERVAL_MS` of the last run that reached the
+   * data are skipped. A run that found no data (no cache and no network, or a
+   * storage error) does not hold back the next foreground.
    */
   const refresh = (): Promise<DataWidgetRefreshOutcome> => {
     if (!deps.isAvailable()) return Promise.resolve('unavailable');
@@ -171,6 +184,7 @@ export function createDataWidgetRefresher(deps: DataWidgetRefreshDeps) {
         return 'no-data' as const;
       })
       .then((outcome) => {
+        if (outcome === 'no-data') lastStartedAt = null;
         devLog(`[Widget] Data widget refresh: ${outcome}`);
         return outcome;
       })

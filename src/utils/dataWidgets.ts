@@ -304,12 +304,22 @@ export function buildDataWidgetPayloads(
 let dataWidgetWriteCount = 0;
 
 /**
- * Bumped by every `syncDataWidgets` write. A background refresh records it
- * before its fetches and skips its write when it changed, so a refresh that
- * started before the user applied new filters cannot overwrite them.
+ * Bumped by every `syncDataWidgets` write and by `markDataWidgetCommitStarted`.
+ * A background refresh records it before its fetches and skips its settings
+ * save and widget write when it changed, so a refresh that started before the
+ * user applied new filters cannot overwrite them.
  */
 export function getDataWidgetWriteCount(): number {
   return dataWidgetWriteCount;
+}
+
+/**
+ * The settings screen calls this before it persists new filters (it syncs the
+ * widget only after the save resolves), so a background refresh that is about
+ * to save healed filters yields instead of racing the user's save.
+ */
+export function markDataWidgetCommitStarted(): void {
+  dataWidgetWriteCount += 1;
 }
 
 /** True when the platform has the native data-widget writer. */

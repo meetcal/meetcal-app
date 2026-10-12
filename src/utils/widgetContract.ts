@@ -30,8 +30,9 @@ export const WIDGET_STORAGE_KEYS = {
  * - `start_time`: the meet-local wall-clock time the app shows ("9:00 AM").
  *   Display only; the native side never parses it.
  * - `start_at_ms`: the session's start instant (epoch ms), computed with the
- *   meet's IANA zone. Omitted when the zone is unknown: the native side then
- *   keeps the row instead of guessing, the same policy as
+ *   meet's IANA zone from its config. Omitted when the app has no usable zone
+ *   (the config lookup failed, or the identifier does not resolve): the native
+ *   side then keeps the row instead of guessing, the same policy as
  *   `lib/saved-sessions-prune.ts`.
  * - `day_label`: short meet-local day ("Sat, Jun 20") for multi-day meets.
  */

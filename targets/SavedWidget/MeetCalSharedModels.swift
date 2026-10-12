@@ -210,20 +210,6 @@ struct MeetCalSharedSavedSession: Codable {
     var isPast: Bool {
         hasStarted(at: Date())
     }
-
-    var deepLinkURL: URL? {
-        if let url, let parsed = URL(string: url) { return parsed }
-        return MeetCalDeepLinks.sessionDetails(
-            id: id,
-            meet: meet,
-            sessionNumber: sessionNumber,
-            platform: platform,
-            weightClass: weightClass,
-            startTime: startTime,
-            weighInTime: weighInTime,
-            date: date
-        )
-    }
 }
 
 // MARK: - Data widgets

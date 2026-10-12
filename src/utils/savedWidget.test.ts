@@ -137,10 +137,17 @@ describe("formatWidgetDayLabel", () => {
     expect(formatWidgetDayLabel("")).toBeUndefined();
     expect(formatWidgetDayLabel("June 20")).toBeUndefined();
     expect(formatWidgetDayLabel("2026-13-01")).toBeUndefined();
+    // Rejected, not rolled over to "Mon, Mar 2".
+    expect(formatWidgetDayLabel("2026-02-30")).toBeUndefined();
+    expect(formatWidgetDayLabel("2028-02-29")).toBe("Tue, Feb 29");
   });
 });
 
 describe("buildSavedWidgetRows", () => {
+  afterEach(() => {
+    jest.restoreAllMocks();
+  });
+
   it("sends the start instant, day label and zone when the zone resolves", () => {
     const [row] = buildSavedWidgetRows([session({ id: "a" })], "America/Los_Angeles");
     expect(row).toMatchObject({
@@ -160,7 +167,6 @@ describe("buildSavedWidgetRows", () => {
       // The display fields still go through.
       expect(row).toMatchObject({ start_time: "9:00 AM", day_label: "Sat, Jun 20" });
     }
-    jest.restoreAllMocks();
   });
 });
 

@@ -233,7 +233,9 @@ struct ShowSavedSessionsIntent: AppIntent {
         // Only the meet selected in the app is mirrored, so an empty answer
         // names that meet instead of claiming nothing is saved anywhere.
         let dialog: IntentDialog
-        if !saved.isEmpty {
+        if saved.count == 1 {
+            dialog = "You have 1 upcoming saved session."
+        } else if !saved.isEmpty {
             dialog = "You have \(saved.count) upcoming saved sessions."
         } else if selectedMeet.isEmpty {
             dialog = "You don't have any upcoming saved sessions. Select a meet in MeetCal to see the sessions you saved for it."

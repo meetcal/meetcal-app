@@ -27,8 +27,7 @@ class SavedWidgetProvider : AppWidgetProvider() {
     when (intent.action) {
       ACTION_REFRESH,
       Intent.ACTION_TIME_CHANGED,
-      Intent.ACTION_TIMEZONE_CHANGED,
-      Intent.ACTION_DATE_CHANGED -> updateAllWidgets(context)
+      Intent.ACTION_TIMEZONE_CHANGED -> updateAllWidgets(context)
     }
   }
 
