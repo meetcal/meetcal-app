@@ -466,8 +466,8 @@ export function yearBestsFromTimelines(
 /**
  * One athlete's result at a meet with everything a club summary needs:
  * their roster entry (DISTINCT ON the folded name), their best row at the
- * meet, placings within gender / roster weight class / age label, and their
- * best non-BWL total before the meet.
+ * meet, placings within its ranking group (`rankingGroup`), and their best
+ * non-BWL total before the meet.
  */
 export type StatsRow = {
   key: string;
@@ -486,19 +486,88 @@ export type StatsRow = {
 
 export type Placing = number | null;
 
+/** A division that names its weight class: "Open Men's 95kg", "Women's Masters (35-39) 86+kg". */
+const DIVISION_WITH_CLASS = /\d\+?\s*kg\s*$/i;
+
 /**
- * SQL `RANK()`: one more than the number of strictly better values. A lift or
+ * The group a result is placed in at its meet. Sport80 and USAMW results
+ * carry their division in `age` ("Open Men's 95kg"): gender, age group and
+ * weight class, so every finisher in it is ranked, on the roster or not. A
+ * result whose `age` names no weight class falls back to its roster entry's
+ * gender and weight class with that label; with no roster entry either, it
+ * cannot be grouped and is left out (null).
+ */
+export function rankingGroup(
+  age: string | undefined,
+  athlete: Pick<Doc<'athletes'>, 'gender' | 'weightClass'> | undefined,
+): string | null {
+  if (age !== undefined && DIVISION_WITH_CLASS.test(age)) return age;
+  return athlete ? `${normalizeGender(athlete.gender)}\u0000${athlete.weightClass}\u0000${age ?? ''}` : null;
+}
+
+/** What placing a lift reads from a result. */
+export type RankedResult = Pick<
+  Doc<'lifting_results'>,
+  'date' | 'bodyWeight' | 'snatch1' | 'snatch2' | 'snatch3' | 'snatchBest' | 'cj1' | 'cj2' | 'cj3' | 'cjBest' | 'total'
+>;
+export type RankedLift = 'snatch' | 'cj' | 'total';
+
+/** Results dated before this were tie-broken by body weight first (the IWF rules before 2017). */
+const BODY_WEIGHT_TIE_BREAK_BEFORE = '2017-01-01';
+
+/**
+ * How a lift ranks: the heavier lift first, then the tie-breaks in order,
+ * lower first. Ties go to whoever lifted first; before 2017, to the lighter
+ * body weight and then whoever lifted first. Sport80 publishes no placing and
+ * no lifting order, so "first" is read from the attempts: within a session
+ * the bar only goes up, so the lighter deciding bar (for a total, the clean &
+ * jerk that made it) came first, and at the same weight the lower attempt
+ * number lifts first. Since 2017, lifters still tied after that (the same
+ * weight on the same attempt) share the placing: who lifted first then
+ * depends on the order of the lifts, which is not published, and body weight
+ * is not the rule. An unknown attempt, or before 2017 an unknown body weight,
+ * counts last.
+ */
+export type LiftKey = readonly [lift: number, ...tieBreaks: number[]];
+
+/** The 1-based attempt that made `best`, or 4 when no attempt did (none recorded). */
+function attemptOf(best: number, attempts: readonly (number | undefined)[]): number {
+  const index = best > 0 ? attempts.indexOf(best) : -1;
+  return index === -1 ? 4 : index + 1;
+}
+
+export function liftKey(row: RankedResult, lift: RankedLift): LiftKey {
+  const snatch = row.snatchBest ?? 0;
+  const cj = row.cjBest ?? 0;
+  const [value, bar, attempt] =
+    lift === 'snatch'
+      ? [snatch, snatch, attemptOf(snatch, [row.snatch1, row.snatch2, row.snatch3])]
+      : [lift === 'cj' ? cj : (row.total ?? 0), cj, attemptOf(cj, [row.cj1, row.cj2, row.cj3])];
+  if (row.date >= BODY_WEIGHT_TIE_BREAK_BEFORE) return [value, bar, attempt];
+  const bodyWeight = row.bodyWeight !== undefined && row.bodyWeight > 0 ? row.bodyWeight : Infinity;
+  return [value, bodyWeight, bar, attempt];
+}
+
+function ranksAhead(a: LiftKey, b: LiftKey): boolean {
+  if (a[0] !== b[0]) return a[0] > b[0];
+  for (let i = 1; i < Math.min(a.length, b.length); i += 1) if (a[i] !== b[i]) return a[i] < b[i];
+  return false;
+}
+
+/**
+ * One more than the number of the group's results that rank ahead
+ * (`ranksAhead`); results equal on every field share the placing. A lift or
  * total of 0 or less is a bomb-out, not a result, so it gets no placing.
  */
-export function rankOf(value: number, group: readonly number[]): Placing {
-  if (!(value > 0)) return null;
+export function rankOf(value: LiftKey, group: readonly LiftKey[]): Placing {
+  if (!(value[0] > 0)) return null;
   let better = 0;
-  for (const other of group) if (other > value) better += 1;
+  for (const other of group) if (ranksAhead(other, value)) better += 1;
   return better + 1;
 }
 
 type StatsEntry = { key: string; row: Doc<'lifting_results'>; athlete: Doc<'athletes'>; group: string };
-type StatsGroups = Map<string, { snatch: number[]; cj: number[]; total: number[] }>;
+type StatsGroups = Map<string, { snatch: LiftKey[]; cj: LiftKey[]; total: LiftKey[] }>;
 
 /**
  * An athlete's previous best total before a date: the best of their earlier
@@ -511,7 +580,23 @@ function previousBestId(key: string, before: string): string {
   return `${key}\u0000${before}`;
 }
 
-/** The meet's finishers joined to the roster, and each ranking group's lifts. */
+/** `DISTINCT ON (key) ORDER BY key, total DESC, date DESC, id DESC`: whether `row` comes before `current`. */
+function isBetterResult(row: Doc<'lifting_results'>, current: Doc<'lifting_results'> | undefined): boolean {
+  if (!current) return true;
+  const total = row.total ?? 0;
+  const currentTotal = current.total ?? 0;
+  return (
+    total > currentTotal ||
+    (total === currentTotal && (row.date > current.date || (row.date === current.date && row._creationTime > current._creationTime)))
+  );
+}
+
+/**
+ * The meet's finishers joined to the roster, and each ranking group's lifts.
+ * Groups hold every finisher of the meet, one result per folded name, so a
+ * finisher missing from the roster (a late entry, a misspelt name) still
+ * places ahead of the athletes they beat; only joined finishers get a row.
+ */
 async function statsEntries(ctx: QueryCtx, meet: string): Promise<{ joined: StatsEntry[]; groups: StatsGroups }> {
   const [athletes, results] = await Promise.all([rosterDocs(ctx, meet), meetResultDocs(ctx, meet)]);
 
@@ -525,35 +610,33 @@ async function statsEntries(ctx: QueryCtx, meet: string): Promise<{ joined: Stat
     if (!roster.has(key)) roster.set(key, athlete);
   }
 
-  // DISTINCT ON (key) ORDER BY key, total DESC, date DESC, id DESC
+  // The best result per folded name, overall (the one reported) and within
+  // each ranking group (the ones ranked).
   const best = new Map<string, Doc<'lifting_results'>>();
+  const members = new Map<string, Map<string, Doc<'lifting_results'>>>();
   for (const row of results) {
     const key = normalizeName(row.name);
-    const current = best.get(key);
-    const total = row.total ?? 0;
-    const currentTotal = current?.total ?? 0;
-    if (
-      !current ||
-      total > currentTotal ||
-      (total === currentTotal &&
-        (row.date > current.date || (row.date === current.date && row._creationTime > current._creationTime)))
-    ) {
-      best.set(key, row);
-    }
+    if (isBetterResult(row, best.get(key))) best.set(key, row);
+    const group = rankingGroup(row.age, roster.get(key));
+    if (group === null) continue;
+    const inGroup = members.get(group) ?? new Map<string, Doc<'lifting_results'>>();
+    if (isBetterResult(row, inGroup.get(key))) inGroup.set(key, row);
+    members.set(group, inGroup);
   }
 
   const joined: StatsEntry[] = [];
   for (const [key, row] of best) {
     const athlete = roster.get(key);
-    if (athlete) joined.push({ key, row, athlete, group: `${normalizeGender(athlete.gender)}\u0000${athlete.weightClass}\u0000${row.age ?? ''}` });
+    if (athlete) joined.push({ key, row, athlete, group: rankingGroup(row.age, athlete)! });
   }
   const groups: StatsGroups = new Map();
-  for (const { row, group } of joined) {
-    const g = groups.get(group) ?? { snatch: [], cj: [], total: [] };
-    g.snatch.push(row.snatchBest ?? 0);
-    g.cj.push(row.cjBest ?? 0);
-    g.total.push(row.total ?? 0);
-    groups.set(group, g);
+  for (const [group, rows] of members) {
+    const ranked = [...rows.values()];
+    groups.set(group, {
+      snatch: ranked.map((row) => liftKey(row, 'snatch')),
+      cj: ranked.map((row) => liftKey(row, 'cj')),
+      total: ranked.map((row) => liftKey(row, 'total')),
+    });
   }
   return { joined, groups };
 }
@@ -634,7 +717,7 @@ function statsRow({ key, row, athlete, group }: StatsEntry, groups: StatsGroups,
     snatch_best: row.snatchBest ?? 0,
     cj_best: row.cjBest ?? 0,
     total: row.total ?? 0,
-    placings: [rankOf(row.snatchBest ?? 0, g.snatch), rankOf(row.cjBest ?? 0, g.cj), rankOf(row.total ?? 0, g.total)],
+    placings: [rankOf(liftKey(row, 'snatch'), g.snatch), rankOf(liftKey(row, 'cj'), g.cj), rankOf(liftKey(row, 'total'), g.total)],
     previous_best: previousBest,
   };
 }
