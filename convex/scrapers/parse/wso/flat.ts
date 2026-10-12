@@ -12,8 +12,6 @@ import { intOrNull, type WsoRecord } from './common';
 // lower bound whenever it was above 0, which filed every class's records
 // under the class below and overwrote the lightest class; that is not ported.
 
-export const FLAT_SHEET_NAME = 'Current Records';
-
 /** JR -> Junior, Open -> Senior, M35/W35 -> Masters 35, suffixes (" ADAP") kept. */
 export function normalizeAgeGroup(raw: string): string {
   const ageGroup = raw.trim();

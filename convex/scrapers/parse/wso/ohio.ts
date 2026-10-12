@@ -10,9 +10,26 @@ import { intOrNull, type WsoRecord } from './common';
 // its holder: Athlete (B, "WSO Standard" or blank for a standard), Date (E),
 // Meet (F) and Location (G).
 
+export const OHIO_SHEET_ID = '1fX-Ft3PuLn8BCE2thhwPEXFTEUTN7yJGxWi7LMajAD8';
+
 export const OHIO_TABS = ['Youth Women', 'Youth Men', 'Junior Women', 'Junior Men', 'Senior Women', 'Senior Men', 'Masters Women', 'Masters Men'] as const;
 
 type OhioTab = (typeof OHIO_TABS)[number];
+
+/**
+ * Each tab's gid (looked up October 2026). The Python fetched the tabs by
+ * name, which Google answers with the first tab when the name is gone.
+ */
+export const OHIO_TAB_GIDS: Record<OhioTab, string> = {
+  'Youth Women': '0',
+  'Youth Men': '746965671',
+  'Junior Women': '1263051690',
+  'Junior Men': '2144687196',
+  'Senior Women': '727485978',
+  'Senior Men': '1922990492',
+  'Masters Women': '277965842',
+  'Masters Men': '2131432096',
+};
 
 type Lift = { value: number | null; by?: RecordHolder };
 const NO_LIFT: Lift = { value: null };
