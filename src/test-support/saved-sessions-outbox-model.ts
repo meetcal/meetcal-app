@@ -515,11 +515,36 @@ export function setOnline(h: Harness, online: boolean): void {
   setNetInfoState(online ? ONLINE : OFFLINE);
 }
 
-/** The user saves, unsaves or resets; the mark must be durable once it resolves. */
+/** A save whose body the outbox could not read back; its mark must refuse it. */
+function isUnreadableSave(intent: Intent | BurstOp): boolean {
+  return intent.kind === 'save' && intent.invalid === true;
+}
+
+/** Marks `intent`, which must be refused. */
+async function expectMarkRefused(h: Harness, intent: Intent): Promise<void> {
+  const refused = await markIntent(h, intent).then(
+    () => false,
+    () => true,
+  );
+  if (!refused) throw new Error(`${describeIntent(intent)} was queued, but the outbox cannot read its body back`);
+}
+
+/**
+ * The user saves, unsaves or resets; the mark must be durable once it
+ * resolves. A save with an unreadable body is refused and changes nothing.
+ */
 export class MarkCommand implements Command {
   constructor(readonly intent: Intent) {}
   check = () => true;
   async run(m: Model, h: Harness): Promise<void> {
+    if (isUnreadableSave(this.intent)) {
+      const before = JSON.stringify(await h.outbox.readOutbox(OWNER));
+      await expectMarkRefused(h, this.intent);
+      const after = JSON.stringify(await h.outbox.readOutbox(OWNER));
+      if (after !== before) throw new Error(`a refused ${this.toString()} changed the outbox: ${before} → ${after}`);
+      await checkInvariants(m, h);
+      return;
+    }
     applyIntent(m, h, this.intent);
     const rev = await markIntent(h, this.intent);
     const outbox = await h.outbox.readOutbox(OWNER);
@@ -591,8 +616,7 @@ export class StorageFaultCommand implements Command {
   ) {}
   check = () => true;
   async run(m: Model, h: Harness): Promise<void> {
-    const beforeOutbox = await h.outbox.readOutbox(OWNER);
-    const before = JSON.stringify(beforeOutbox);
+    const before = JSON.stringify(await h.outbox.readOutbox(OWNER));
     const transport = installChaosTransport(serverTransport(h, []), []);
     const storage = installStorageChaos(this.plan);
     let failed = false;
@@ -617,15 +641,6 @@ export class StorageFaultCommand implements Command {
         applyIntent(m, h, this.inner);
         // The platform said the write landed; it did not. Nothing can see that.
         if (consumed.has('lose-write')) for (const id of idsCoveredBy(this.inner)) excuse(m, id, { kind: 'any' });
-      }
-    } else if (consumed.has('lose-write')) {
-      // FINDING (lost reset clear, see `saved-sessions-outbox.chaos.test.ts`):
-      // a delivered reset whose clear is lost stays pending, yet the same pass
-      // sends later saves in its meet, which the re-sent reset then deletes.
-      // Excluded here, and only here, until the fix is approved.
-      for (const key of Object.keys(beforeOutbox.resets)) {
-        const meet = key === RESET_ALL_KEY ? null : (key as Meet);
-        for (const id of idsCoveredBy({ kind: 'reset', meet })) excuse(m, id, { kind: 'any' });
       }
     }
     if (consumed.has('corrupt-read')) {
@@ -767,6 +782,10 @@ export class BurstCommand implements Command {
       }
       await onQueue(async () => {
         processRefusals(m, h, chaos.calls, cursor);
+        if (isUnreadableSave(op)) {
+          await expectMarkRefused(h, op);
+          return;
+        }
         applyIntent(m, h, op);
         await markIntent(h, op);
         lastMarkResolved = ++clock;
@@ -808,16 +827,19 @@ export class BurstCommand implements Command {
 
 const sessionIdArb = fc.constantFrom(...SESSION_IDS);
 
-// Saves always carry a readable body. FINDING (unreadable PUT body, see
-// `saved-sessions-outbox.chaos.test.ts`): an `invalid` save is acknowledged
-// and then dropped on the next read; excluded until the fix is approved.
-
+/** Now and then a save whose body the outbox cannot read back, which its mark must refuse. */
 export const intentArb: fc.Arbitrary<Intent> = fc.oneof(
   {
     weight: 4,
     arbitrary: fc
       .record({ id: sessionIdArb, version: fc.integer({ min: 1, max: 9 }) })
       .map(({ id, version }): Intent => ({ kind: 'save', id, version })),
+  },
+  {
+    weight: 1,
+    arbitrary: fc
+      .record({ id: sessionIdArb, version: fc.integer({ min: 1, max: 9 }) })
+      .map(({ id, version }): Intent => ({ kind: 'save', id, version, invalid: true })),
   },
   { weight: 3, arbitrary: sessionIdArb.map((id): Intent => ({ kind: 'unsave', id })) },
   { weight: 2, arbitrary: fc.constantFrom<Meet | null>(...MEETS, null).map((meet): Intent => ({ kind: 'reset', meet })) },

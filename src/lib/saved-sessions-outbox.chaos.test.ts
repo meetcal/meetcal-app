@@ -70,11 +70,11 @@ describe('saved-sessions outbox under chaos (model-based)', () => {
 
 /**
  * Real defects the model found, kept as the shrunk sequences it reported.
- * Skipped until a fix to this write path is approved; each fails today and
- * passes once its proposed fix lands. The property above excludes exactly
- * these scenarios (see the FINDING comments in the harness).
+ * The fixed ones run as regressions; the property above covers them too. The
+ * one still open is skipped, and the property excludes exactly its scenario
+ * (see the FINDING comment in the harness).
  */
-describe('outbox findings (skipped until fixed)', () => {
+describe('outbox defects the model found', () => {
   const ID = 'Spring Open-1-Red';
   const flush = (h: Harness) => settle(h.outbox.flushOutbox(OWNER, async () => OWNER_TOKEN), 'flush');
 
@@ -87,15 +87,15 @@ describe('outbox findings (skipped until fixed)', () => {
     }
   }
 
-  // FINDING (lost reset clear). Shrunk sequence:
+  // Regression (lost reset clear). Shrunk sequence:
   //   reset(Spring Open), save(Spring Open-1-Red, v1),
   //   storage([pass, pass, lose-write], flush)
   // The reset is delivered but the write clearing it is lost, so the outbox
-  // still holds it. The same pass then sends the save (the meet is held only
-  // for a reset that *failed* in this pass, tracked in memory), and the next
-  // flush re-sends the reset, which deletes the save.
-  // Expected: the save survives. Actual: the server has no Spring Open-1-Red.
-  it.skip('FINDING: a delivered reset whose clear was lost deletes a save sent after it', () =>
+  // still holds it and the next flush re-sends it. The save used to go out in
+  // the same pass (the meet was held only for a reset that *failed* in it),
+  // so the re-sent reset deleted it. A session now waits while any reset of
+  // its meet is still stored.
+  it('keeps a save made after a delivered reset whose clear was lost', () =>
     withDevice(async (h) => {
       const chaos = installChaosTransport(serverTransport(h, []), []);
       try {
@@ -116,23 +116,20 @@ describe('outbox findings (skipped until fixed)', () => {
     }),
   );
 
-  // FINDING (unreadable PUT body). Shrunk sequence:
+  // Regression (unreadable PUT body). Shrunk sequence:
   //   save(Spring Open-1-Red, v7, invalid)   (session number 0)
-  // `markSessionPut` resolves with rev 1, but `parseOutbox` drops a PUT whose
-  // body `normalizeStoredSession` rejects, so the outbox is empty on the next
-  // read, along with whatever entry the PUT replaced. With a pending unsave
-  // it replaced, the unsave never reaches the server and the session comes
-  // back on the next reconcile.
-  // Expected: the mark refuses the body (the unsave stays queued and is sent).
-  // Actual: the mark resolves, both writes vanish, the server keeps v1.
-  it.skip('FINDING: a save with a body the outbox cannot read back erases the unsave it replaced', () =>
+  // `parseOutbox` drops a PUT whose body `normalizeStoredSession` rejects.
+  // `markSessionPut` used to store such a body anyway and resolve, so the
+  // entry vanished on the next read along with the pending unsave it had
+  // replaced, and the session came back. The mark now refuses the body.
+  it('refuses a save with a body the outbox cannot read back, keeping the unsave it would replace', () =>
     withDevice(async (h) => {
       const chaos = installChaosTransport(serverTransport(h, []), []);
       try {
         await h.outbox.markSessionPut(OWNER, sessionBody(ID, 1));
         await flush(h);
         await h.outbox.markSessionDelete(OWNER, ID, 'Spring Open');
-        await h.outbox.markSessionPut(OWNER, sessionBody(ID, 7, true)).catch(() => undefined);
+        await expect(h.outbox.markSessionPut(OWNER, sessionBody(ID, 7, true))).rejects.toThrow('unreadable session body');
         await flush(h);
         expect(h.server.wires(OWNER).has(ID)).toBe(false);
       } finally {
@@ -141,7 +138,8 @@ describe('outbox findings (skipped until fixed)', () => {
     }),
   );
 
-  // FINDING (late landing). Shrunk sequence:
+  // FINDING (late landing), deferred: needs a server-side revision check, see
+  // the linked issue in PR #190. Shrunk sequence:
   //   save(Spring Open-1-Red, v1), flush(answers: [late]),
   //   unsave(Spring Open-1-Red), flush
   // The PUT is on the wire when the client's 10s timeout aborts it; the abort
