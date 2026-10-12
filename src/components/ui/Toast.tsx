@@ -13,15 +13,9 @@ import Animated, {
   withTiming,
 } from "react-native-reanimated";
 import { Palette } from "@/constants/Palette";
+import { registerToastHandler, type ToastOptions, type ToastType } from "@/lib/toast";
 
-export type ToastType = "success" | "error" | "info";
-
-export interface ToastOptions {
-  type: ToastType;
-  message: string;
-  /** Auto-dismiss delay in ms. Defaults to 3500 (6000 for errors). */
-  duration?: number;
-}
+export { showToast, type ToastOptions, type ToastType } from "@/lib/toast";
 
 interface ToastData extends ToastOptions {
   id: number;
@@ -30,21 +24,6 @@ interface ToastData extends ToastOptions {
 const DEFAULT_DURATION = 3500;
 const ERROR_DURATION = 6000;
 const HIDDEN_OFFSET = -200;
-
-// Module-level handle so non-component code can trigger toasts.
-let activeHandler: ((options: ToastOptions) => void) | null = null;
-
-/**
- * Imperative helper usable from anywhere (including non-component code).
- * Requires a mounted <ToastProvider> in the tree.
- */
-export function showToast(options: ToastOptions) {
-  if (activeHandler) {
-    activeHandler(options);
-  } else if (__DEV__) {
-    console.warn("showToast called before ToastProvider was mounted");
-  }
-}
 
 /**
  * Mounts the single toast host. Callers reach the toast imperatively through
@@ -105,14 +84,7 @@ function ToastHost() {
   );
 
   // Register the imperative handler while mounted.
-  useEffect(() => {
-    activeHandler = show;
-    return () => {
-      if (activeHandler === show) {
-        activeHandler = null;
-      }
-    };
-  }, [show]);
+  useEffect(() => registerToastHandler(show), [show]);
 
   // Animate + schedule auto-dismiss whenever a new toast is shown.
   useEffect(() => {

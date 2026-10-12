@@ -1,15 +1,19 @@
 import { ThemedView } from "@/components/ui/ThemedView";
 import { useTheme } from "@/contexts/ThemeContext";
+import { useScreenHorizontalInsets } from "@/hooks/useScreenInsets";
 import { Suspense, lazy } from "react";
 import { ActivityIndicator, StyleSheet } from "react-native";
 
-const StartListContent = lazy(() => import("./StartListContent"));
+const LazyStartListScreen = lazy(
+  () => import("@/components/start-list/StartListScreen"),
+);
 
 function StartListFallback() {
   const { currentTheme } = useTheme();
   const bg = currentTheme === "dark" ? "#000000" : "#F5F5F5";
+  const screenInsets = useScreenHorizontalInsets();
   return (
-    <ThemedView style={[styles.fallback, { backgroundColor: bg }]}>
+    <ThemedView style={[styles.fallback, { backgroundColor: bg }, screenInsets]}>
       <ActivityIndicator size="large" />
     </ThemedView>
   );
@@ -18,7 +22,7 @@ function StartListFallback() {
 export default function StartListScreen() {
   return (
     <Suspense fallback={<StartListFallback />}>
-      <StartListContent />
+      <LazyStartListScreen />
     </Suspense>
   );
 }

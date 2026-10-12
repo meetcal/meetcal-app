@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
+import { nameMatchesSearchWords, searchWords } from "@/lib/name-search";
+
 /** Athlete names are long; shorter prefixes match too much of the federation. */
 export const MIN_SUGGESTION_QUERY_LENGTH = 4;
 
@@ -11,12 +13,9 @@ export const MAX_NAME_SUGGESTIONS = 8;
 
 /** Names containing every word of the query, capped for the dropdown. */
 export function filterNameSuggestions(names: readonly string[], query: string): string[] {
-  const words = query.trim().toLowerCase().split(/\s+/);
+  const words = searchWords(query);
   return names
-    .filter((name) => {
-      const lower = name.toLowerCase();
-      return words.every((word) => lower.includes(word));
-    })
+    .filter((name) => nameMatchesSearchWords(name, words))
     .slice(0, MAX_NAME_SUGGESTIONS);
 }
 

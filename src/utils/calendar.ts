@@ -10,6 +10,7 @@ import {
 } from "@/data/meets/config";
 import { devLog } from "@/lib/logger";
 import { createSessionDetailsDeepLink } from "@/utils/deepLinks";
+import { makeLookupKey } from "@/utils/session";
 
 export async function requestCalendarPermissions(): Promise<boolean> {
   const currentPermissions = await Calendar.getCalendarPermissionsAsync();
@@ -40,8 +41,21 @@ export type CalendarDestination = {
   sourceName?: string | null;
 };
 
+/**
+ * How one export went. `created` and `updated` were written; `failed` were
+ * not (the rest of the batch still was). `total` is the sessions passed in.
+ */
+export type CalendarWriteResult = {
+  total: number;
+  created: number;
+  updated: number;
+  failed: number;
+};
+
 const MAX_ANDROID_INT = 2_147_483_647;
 const PREFERRED_ANDROID_CALENDAR_ID_KEY = "@preferred_android_calendar_id";
+/** `calendarEventKey` → id of the event MeetCal created for that session. */
+const CALENDAR_EVENT_IDS_KEY = "@calendar_event_ids_v1";
 type WritableCalendar = Awaited<
   ReturnType<typeof Calendar.getCalendarsAsync>
 >[number];
@@ -279,32 +293,204 @@ export async function resolvePreferredAndroidCalendar(): Promise<CalendarDestina
   return selectedCalendar;
 }
 
-export async function createCalendarEventsToCalendar(
+/**
+ * One calendar event per destination calendar, meet, session and platform.
+ * The calendar is part of the key: exporting to Home after Work must add the
+ * session to Home, not update the Work copy, and switching back updates the
+ * Work copy again.
+ */
+export function calendarEventKey(
+  session: Pick<CalendarSession, "meet" | "sessionNumber" | "platform">,
+  calendarId: string,
+): string {
+  return `${calendarId}|${session.meet}|${makeLookupKey(session.sessionNumber, session.platform)}`;
+}
+
+/**
+ * Event ids the last store write failed to persist (a full AsyncStorage, say),
+ * kept for this app session so a repeat export still updates those events
+ * instead of adding them again. Cleared once a write succeeds, since that
+ * write carried them.
+ */
+let unpersistedEventIds: Record<string, string> = {};
+
+/** Test seam: forget event ids kept only in memory. */
+export function clearUnpersistedCalendarEventIds(): void {
+  unpersistedEventIds = {};
+}
+
+async function readCalendarEventIds(): Promise<Record<string, string>> {
+  try {
+    const raw = await AsyncStorage.getItem(CALENDAR_EVENT_IDS_KEY);
+    if (!raw) return { ...unpersistedEventIds };
+    const parsed: unknown = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      return { ...unpersistedEventIds };
+    }
+    const ids: Record<string, string> = {};
+    for (const [key, value] of Object.entries(parsed as Record<string, unknown>)) {
+      if (typeof value === "string" && value) ids[key] = value;
+    }
+    return { ...ids, ...unpersistedEventIds };
+  } catch (error) {
+    console.warn("Calendar: could not read stored event ids", error);
+    return { ...unpersistedEventIds };
+  }
+}
+
+async function writeCalendarEventIds(ids: Record<string, string>): Promise<void> {
+  try {
+    await AsyncStorage.setItem(CALENDAR_EVENT_IDS_KEY, JSON.stringify(ids));
+    unpersistedEventIds = {};
+  } catch (error) {
+    // The event exists; without its id a later export would add it again.
+    // Keep the ids in memory so this app session still updates it.
+    unpersistedEventIds = { ...ids };
+    console.warn("Calendar: could not store event ids; keeping them for this session", error);
+  }
+}
+
+/** Whether the event MeetCal created earlier is still in a calendar. */
+async function calendarEventExists(eventId: string): Promise<boolean> {
+  try {
+    const event = await Calendar.getEventAsync(eventId);
+    return Boolean(event?.id);
+  } catch {
+    return false;
+  }
+}
+
+/** Writes run one at a time, so two exports cannot both create the same event. */
+let calendarWriteChain: Promise<unknown> = Promise.resolve();
+
+/**
+ * Write one event per session into `calendarId`. A session MeetCal already
+ * added to that calendar, whose event the calendar can still find by the id it returned, has
+ * that event updated instead, so exporting again after saving one more
+ * session, or retrying after a partial failure, does not duplicate what is
+ * already there, and a session whose time moved is corrected. (An event the
+ * user moved to another calendar may get a new id on iOS, and an event saved
+ * through Android's calendar editor has no stored id; those can still be
+ * added again.)
+ *
+ * A failed session does not stop the batch. Throws (with the mapped copy)
+ * only when nothing could be written.
+ */
+export function createCalendarEventsToCalendar(
   sessions: CalendarSession[],
   calendarId: string,
-): Promise<string[]> {
-  try {
-    const eventIds: string[] = [];
+): Promise<CalendarWriteResult> {
+  const run = calendarWriteChain
+    .catch(() => undefined)
+    .then(() => writeCalendarEvents(sessions, calendarId));
+  calendarWriteChain = run;
+  return run;
+}
 
-    for (const session of sessions) {
-      if (!session.meet) {
-        console.warn("Calendar: skipping session with no meet", session);
-        continue;
-      }
+async function writeCalendarEvents(
+  sessions: CalendarSession[],
+  calendarId: string,
+): Promise<CalendarWriteResult> {
+  const result: CalendarWriteResult = {
+    total: sessions.length,
+    created: 0,
+    updated: 0,
+    failed: 0,
+  };
+  const eventIds = await readCalendarEventIds();
+  let firstError: unknown = null;
 
-      const eventInput = await buildCalendarEventInput(session);
-      const eventId = await Calendar.createEventAsync(calendarId, eventInput);
-      eventIds.push(eventId);
+  for (const session of sessions) {
+    if (!session.meet) {
+      console.warn("Calendar: skipping session with no meet", session);
+      result.failed += 1;
+      continue;
     }
 
-    return eventIds;
-  } catch (error) {
-    console.error("Calendar: direct event creation failed", {
-      calendarId,
-      error,
-    });
-    throw mapCalendarError(error);
+    try {
+      const eventInput = await buildCalendarEventInput(session);
+      const key = calendarEventKey(session, calendarId);
+      const existingId = eventIds[key];
+      let updated = false;
+      if (existingId && (await calendarEventExists(existingId))) {
+        try {
+          await Calendar.updateEventAsync(existingId, eventInput);
+          updated = true;
+        } catch (updateError) {
+          // Its calendar became read-only, or it went between the two
+          // calls. Write a new event rather than failing this session on
+          // every export from now on.
+          console.warn("Calendar: could not update the earlier event; adding it again", updateError);
+        }
+      }
+      if (updated) {
+        result.updated += 1;
+      } else {
+        eventIds[key] = await Calendar.createEventAsync(calendarId, eventInput);
+        // Stored after every event, so a crash mid-batch cannot leave
+        // written events the next export would add again.
+        await writeCalendarEventIds(eventIds);
+        result.created += 1;
+      }
+    } catch (error) {
+      console.error("Calendar: event write failed", {
+        calendarId,
+        sessionNumber: session.sessionNumber,
+        platform: session.platform,
+        error,
+      });
+      firstError ??= error;
+      result.failed += 1;
+    }
   }
+
+  if (result.failed === result.total && result.total > 0) {
+    throw mapCalendarError(firstError);
+  }
+  return result;
+}
+
+/**
+ * The toast for an export. `skipped` sessions never reached the calendar
+ * (no schedule details), so they count against "Added N of M" like a failed
+ * write does.
+ */
+export function describeCalendarWrite(
+  result: CalendarWriteResult,
+  { skipped = 0, calendarTitle }: { skipped?: number; calendarTitle?: string } = {},
+): { type: "success" | "info" | "error"; message: string } {
+  const destination = calendarTitle || "your calendar";
+  const written = result.created + result.updated;
+  const requested = result.total + skipped;
+  const plural = (count: number) => `${count} session${count === 1 ? "" : "s"}`;
+
+  if (written === requested) {
+    if (result.created === 0) {
+      return {
+        type: "success",
+        message: `${plural(written)} already in ${destination} ${written === 1 ? "is" : "are"} up to date.`,
+      };
+    }
+    if (result.updated === 0) {
+      return { type: "success", message: `Added ${plural(written)} to ${destination}.` };
+    }
+    return {
+      type: "success",
+      message: `Added ${plural(result.created)} to ${destination} and updated ${result.updated} already there.`,
+    };
+  }
+
+  const reasons: string[] = [];
+  if (skipped > 0) {
+    reasons.push(`${plural(skipped)} had no schedule details.`);
+  }
+  if (result.failed > 0) {
+    reasons.push(`${plural(result.failed)} could not be written; try again to add ${result.failed === 1 ? "it" : "them"}.`);
+  }
+  return {
+    type: result.failed > 0 ? "error" : "info",
+    message: [`Added ${written} of ${plural(requested)} to ${destination}.`, ...reasons].join(" "),
+  };
 }
 
 export async function createCalendarEventWithSystemUI(
@@ -340,7 +526,7 @@ export async function createCalendarEventWithSystemUI(
 export async function createCalendarEvents(
   sessions: CalendarSession[],
   calendarId?: string,
-): Promise<string[]> {
+): Promise<CalendarWriteResult> {
   try {
     if (Platform.OS === "ios") {
       const iosCalendarId = await getIosDefaultCalendarId();

@@ -1,6 +1,6 @@
 // Shared by the WSO records parsers (ports of `usaw/wso_sheets_scraper`).
 
-import type { RecordHolder } from '../holder';
+import { recordLift, type RecordHolder } from '../holder';
 
 /** One WSO record row as the Python scrapers built it (lifts may be missing). */
 export type WsoRecord = {
@@ -33,11 +33,13 @@ export const gvizCsvByName = (sheetId: string, sheetName: string) =>
 export const gvizCsvByGid = (sheetId: string, gid: string | number) =>
   `https://docs.google.com/spreadsheets/d/${sheetId}/gviz/tq?tqx=out:csv&gid=${gid}`;
 
-/** Python's `int(float(s))`, or null where that raises. */
+/**
+ * A lift cell (`recordLift`): its number, null for an empty marker (blank,
+ * dash, vacant, TBD, standard), and a throw for anything else, so a cell the
+ * parser cannot read fails the WSO instead of clearing its stored record.
+ */
 export function intOrNull(value: string): number | null {
-  const text = value.trim();
-  if (!/^[-+]?(\d+\.?\d*|\.\d+)([eE][-+]?\d+)?$/.test(text)) return null;
-  return Math.trunc(Number(text));
+  return recordLift(value);
 }
 
 /** The `gid` (tab) a Google Sheets URL points at, if it names one. */

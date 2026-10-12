@@ -10,15 +10,14 @@ import type {
 import { Button } from "@/components/ui/Button";
 import { IconSymbol } from "@/components/ui/IconSymbol";
 import { ThemedText } from "@/components/ui/ThemedText";
-import { useSubscription } from "@/contexts/SubscriptionContext";
 import { LiftResult, SupabaseBests } from "@/data/types/athletes";
 import { MeetName } from "@/data/types/meet";
 import { useAppColors } from "@/hooks/useAppColors";
 import { useIsOffline } from "@/hooks/useIsOffline";
 import { useSessionAthletes } from "@/hooks/useMeetAthletes";
+import { useRequirePremium } from "@/hooks/useRequirePremium";
 import { loadFailureCopy } from "@/lib/load-failure";
 import { SessionAthlete } from "@/types/schedule-details";
-import { useAuthGuard } from "@/utils/authGuard";
 import {
   createSessionDetailsDeepLink,
   normalizeDeepLinkHref,
@@ -32,6 +31,7 @@ import {
     View
 } from "react-native";
 import { devInfo } from "@/lib/logger";
+import { sortSessionAthletes } from "@/lib/session-athlete-sort";
 import { Palette } from "@/constants/Palette";
 
 function toSessionAthletesByPlatform(
@@ -79,8 +79,10 @@ export default function SessionAthletes({
   >({});
   const [sortKey, setSortKey] = useState<SortKey>("entryTotal");
   const [sortDirection, setSortDirection] = useState<SortDirection>("desc");
-  const { isSubscribed } = useSubscription();
-  const { requireAuth } = useAuthGuard();
+  // An unknown entitlement shows the locked UI, but a tap on it never opens
+  // the paywall: `requirePremium` says it can't confirm the subscription.
+  const { requirePremium, requireAuth, access } = useRequirePremium();
+  const isSubscribed = access === "granted";
   const refreshKeyRef = useRef(refreshKey);
   // Where sign-in and the paywall send the user back to. The bare route path
   // used to be passed, so the return landed on a details screen with no
@@ -201,39 +203,16 @@ export default function SessionAthletes({
     void refreshAthletes();
   }, [refreshAthletes, refreshKey]);
 
-  // Compute the numeric sort value for an athlete based on the active sort key
-  const getSortValue = useCallback(
-    (athlete: SessionAthlete) => {
-      if (sortKey === "entryTotal") {
-        return athlete.entryTotal || 0;
-      }
-      const bests = athleteBests[athlete.name];
-      const fallback = athlete.entryTotal ?? 0;
-      if (sortKey === "snatch") {
-        return bests?.snatch_best ?? fallback;
-      }
-      if (sortKey === "cj") {
-        return bests?.cj_best ?? fallback;
-      }
-      return bests?.total ?? fallback;
-    },
-    [athleteBests, sortKey],
-  );
-
   const sortedAthletes = useMemo(() => {
     const entries = Object.entries(athletes).map(
-      ([platformName, platformAthletes]) => {
-        const sorted = [...platformAthletes].sort((a, b) => {
-          const aValue = getSortValue(a);
-          const bValue = getSortValue(b);
-          if (aValue === bValue) return 0;
-          return sortDirection === "desc" ? bValue - aValue : aValue - bValue;
-        });
-        return [platformName, sorted] as const;
-      },
+      ([platformName, platformAthletes]) =>
+        [
+          platformName,
+          sortSessionAthletes(platformAthletes, athleteBests, sortKey, sortDirection),
+        ] as const,
     );
     return Object.fromEntries(entries);
-  }, [athletes, getSortValue, sortDirection]);
+  }, [athletes, athleteBests, sortKey, sortDirection]);
 
   const sortOptions = useMemo(
     () => [
@@ -296,23 +275,15 @@ export default function SessionAthletes({
     [],
   );
 
+  // Unlocking needs nothing more: once the entitlement is known the control
+  // re-renders unlocked.
   const handleSortLockedPress = useCallback(() => {
-    const authResult = requireAuth({
+    requirePremium({
       feature: "sort-athletes",
       message: "Sign in to access premium features.",
       returnPath,
     });
-    if (authResult === null || authResult === false) {
-      return;
-    }
-    router.push({
-      pathname: "/shared-screens/paywall",
-      params: {
-        from: returnPath,
-        feature: "sort-athletes",
-      },
-    });
-  }, [requireAuth, returnPath, router]);
+  }, [requirePremium, returnPath]);
 
    
   const loading = isLoading || (sessionAthletes.length === 0 && isRefreshing);
@@ -333,7 +304,7 @@ export default function SessionAthletes({
                   Session Athletes
                 </ThemedText>
                 <SessionSortControl
-                  isSubscribed={!!isSubscribed}
+                  isSubscribed={isSubscribed}
                   sortLabel={sortLabel}
                   sortKey={sortKey}
                   sortDirection={sortDirection}
@@ -404,7 +375,7 @@ export default function SessionAthletes({
               Session Athletes
             </ThemedText>
             <SessionSortControl
-              isSubscribed={!!isSubscribed}
+              isSubscribed={isSubscribed}
               sortLabel={sortLabel}
               sortKey={sortKey}
               sortDirection={sortDirection}
@@ -526,20 +497,10 @@ export default function SessionAthletes({
                         pressed && { opacity: 0.8 },
                       ]}
                       onPress={() => {
-                        const authResult = requireAuth({
+                        requirePremium({
                           feature: "athlete-bests",
                           message: "Sign in to access premium features.",
                           returnPath,
-                        });
-                        if (authResult === null || authResult === false) {
-                          return;
-                        }
-                        router.push({
-                          pathname: "/shared-screens/paywall",
-                          params: {
-                            from: returnPath,
-                            feature: "athlete-bests",
-                          },
                         });
                       }}
                     >

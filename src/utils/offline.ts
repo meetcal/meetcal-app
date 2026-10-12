@@ -1,5 +1,4 @@
 import { useSelectedMeet } from "@/contexts/SelectedMeetContext";
-import { useSubscription } from "@/contexts/SubscriptionContext";
 import { downloadAdaptiveRecordsForOffline } from "@/lib/database/fetch-adaptive-records";
 import { downloadQualifyingTotalsForOffline } from "@/lib/database/fetch-qualifying-totals";
 import { downloadRecordsForOffline } from "@/lib/database/fetch-records";
@@ -119,7 +118,6 @@ const getMeetNameFromDownloadId = (
 };
 
 export const useOfflineData = () => {
-  const { isSubscribed, isLoading: isSubscriptionLoading } = useSubscription();
   const { availableMeets, isLoading: isMeetLoading } = useSelectedMeet();
   const availableMeetNames = useMemo(
     () => availableMeets.map((meet) => meet.name),
@@ -474,8 +472,6 @@ export const useOfflineData = () => {
   };
 
   return {
-    isSubscribed,
-    isSubscriptionLoading,
     isMeetLoading,
     filteredMeets,
     downloadingItems,

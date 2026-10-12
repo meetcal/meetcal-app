@@ -10,7 +10,9 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Notifications from "expo-notifications";
 import type { SubscriptionStatus } from "@/app/schedule-toolbar/profile";
 import { NOTIFICATION_ENABLED_KEY } from "@/utils/notifications";
+import { subscribeToReminderPreference } from "@/lib/reminder-preference";
 import { NotificationSettings } from "@/components/profile/NotificationSettings";
+import { showToast } from "@/components/ui/Toast";
 
 jest.mock("@/components/ui/IconSymbol", () => ({ IconSymbol: () => null }));
 jest.mock("@/components/ui/Toast", () => ({ showToast: jest.fn() }));
@@ -20,15 +22,13 @@ jest.mock("expo-notifications", () => ({
   getPermissionsAsync: jest.fn(async () => ({ status: "granted" })),
   requestPermissionsAsync: jest.fn(async () => ({ status: "granted" })),
   setNotificationChannelAsync: jest.fn(async () => undefined),
-  cancelAllScheduledNotificationsAsync: jest.fn(async () => undefined),
 }));
 
 const mockGetPermissions = Notifications.getPermissionsAsync as jest.Mock;
 const mockRequestPermissions = Notifications.requestPermissionsAsync as jest.Mock;
-const mockCancelAll = Notifications.cancelAllScheduledNotificationsAsync as jest.Mock;
 
 const requireAuth = jest.fn(() => true);
-const router = { push: jest.fn() } as never;
+const router = { push: jest.fn() };
 
 async function flush(): Promise<void> {
   await act(async () => {
@@ -43,7 +43,7 @@ async function mount(status: SubscriptionStatus): Promise<ReactTestRenderer> {
       <NotificationSettings
         subscriptionStatus={status}
         requireAuth={requireAuth}
-        router={router}
+        router={router as never}
       />,
     );
   });
@@ -92,13 +92,17 @@ describe("NotificationSettings", () => {
     setItemSpy.mockClear();
     const renderer = await mount("lifetime");
     expect(theSwitch(renderer).props.value).toBe(true);
+    // The reminder sync listens for the change and cancels the reminders.
+    const onPreferenceChange = jest.fn();
+    const unsubscribe = subscribeToReminderPreference(onPreferenceChange);
 
     await act(async () => {
       theSwitch(renderer).props.onValueChange();
     });
     await flush();
+    unsubscribe();
 
-    expect(mockCancelAll).toHaveBeenCalledTimes(1);
+    expect(onPreferenceChange).toHaveBeenCalledTimes(1);
     expect(reminderWrites()).toEqual(["false"]);
     await expect(AsyncStorage.getItem(NOTIFICATION_ENABLED_KEY)).resolves.toBe("false");
     expect(theSwitch(renderer).props.value).toBe(false);
@@ -128,6 +132,26 @@ describe("NotificationSettings", () => {
     expect(mockRequestPermissions).not.toHaveBeenCalled();
     expect(setItemSpy).not.toHaveBeenCalled();
   });
+  it("tells a tap on an unknown subscription it can't confirm it, without the upgrade prompt", async () => {
+    const renderer = await mount("unknown");
+    const row = renderer.root.findAll(
+      (node) => typeof node.props.onPress === "function" && node.props.disabled === false,
+    )[0];
+
+    await act(async () => {
+      row.props.onPress();
+    });
+    await flush();
+
+    expect((Alert.alert as jest.Mock).mock.calls.map(([title]) => title)).not.toContain(
+      "Premium Feature",
+    );
+    expect(router.push).not.toHaveBeenCalled();
+    expect(showToast).toHaveBeenCalledWith(
+      expect.objectContaining({ message: expect.stringMatching(/confirm your subscription/) }),
+    );
+  });
+
   describe("when the OS permission is denied", () => {
     function permissionAlerts(): unknown[] {
       return (Alert.alert as jest.Mock).mock.calls.filter(

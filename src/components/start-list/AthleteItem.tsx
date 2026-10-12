@@ -2,7 +2,7 @@ import { IconSymbol } from "@/components/ui/IconSymbol";
 import { ThemedText } from "@/components/ui/ThemedText";
 import { useExpandedRow } from "@/contexts/ExpandedIdContext";
 import type { MeetName } from "@/data/types/meet";
-import { getLastYearBests } from "@/lib/start-list-api";
+import { getLastYearBests, type YearBests } from "@/lib/start-list-api";
 import {
   formatSessionDisplayDate,
   getChevronIcon,
@@ -12,7 +12,6 @@ import { AthleteItemProps } from "@/types/start-list";
 import React, {
   useCallback,
   useEffect,
-  useMemo,
   useState,
 } from "react";
 import {
@@ -22,6 +21,7 @@ import {
   View,
 } from "react-native";
 import Animated, { FadeIn } from "react-native-reanimated";
+import { Colors } from "@/constants/Colors";
 import { Palette } from "@/constants/Palette";
 
 /**
@@ -68,23 +68,25 @@ export const AthleteItem = React.memo(function AthleteItem({
       setTimeout(() => onExpand(index), 50);
     }
   }, [toggle, onExpand, index]);
-  const [yearBests, setYearBests] = useState({
-    bestSnatch: 0,
-    bestCJ: 0,
-    bestTotal: 0,
-  });
-  const [loadingBests, setLoadingBests] = useState(true);
+  // FlashList recycles this component for another athlete without resetting
+  // its state. The bests were two plain `useState`s, reset only from inside
+  // the idle callback (up to 500 ms later), so a recycled row expanded for
+  // athlete C first painted athlete A's numbers under C's name. The answer is
+  // now stored with the name it belongs to, and an answer for anyone else
+  // reads as "still loading" in the very render the athlete changes.
+  const [rowBests, setRowBests] = useState<{
+    name: string;
+    /** `null` while the request for `name` is in flight. */
+    bests: YearBests | null;
+  } | null>(null);
+  const yearBests =
+    rowBests?.name === athlete.name ? rowBests.bests : null;
+  const loadingBests = yearBests === null;
 
-  const colors = useMemo(
-    () => ({
-      card: currentTheme === "dark" ? "#1C1C1E" : "#FFFFFF",
-      border: currentTheme === "dark" ? "#38383A" : "#E1E1E1",
-      text: currentTheme === "dark" ? "#FFFFFF" : "#000000",
-      secondaryText: currentTheme === "dark" ? "#8E8E93" : "#6B6B6B",
-      pressed: currentTheme === "dark" ? "#2C2C2E" : "#F5F5F5",
-    }),
-    [currentTheme],
-  );
+  // The app palette for the theme the screen resolved (a prop, not
+  // `useAppColors()`, so the row reads no context). This was a hand-copied
+  // palette that had already drifted from `Colors.ts`.
+  const colors = Colors[currentTheme];
 
   useEffect(() => {
     if (!isExpanded) return;
@@ -94,22 +96,24 @@ export const AthleteItem = React.memo(function AthleteItem({
     // idle period is never guaranteed (a list that is scrolled continuously
     // never yields one), and without it the row would spin forever.
     let cancelled = false;
+    const name = athlete.name;
     const handle = requestIdleCallback(
       () => {
         if (cancelled) return;
-        setLoadingBests(true);
-        getLastYearBests(athlete.name)
+        setRowBests({ name, bests: null });
+        getLastYearBests(name)
           .then((bests) => {
             if (cancelled) return;
-            setYearBests(bests);
-            setLoadingBests(false);
+            setRowBests({ name, bests });
           })
           .catch((err) => {
             if (cancelled) return;
             if (__DEV__)
               console.warn("[AthleteItem] getLastYearBests failed", err);
-            setYearBests({ bestSnatch: 0, bestCJ: 0, bestTotal: 0 });
-            setLoadingBests(false);
+            setRowBests({
+              name,
+              bests: { bestSnatch: 0, bestCJ: 0, bestTotal: 0 },
+            });
           });
       },
       { timeout: 500 },
@@ -183,6 +187,8 @@ export const AthleteItem = React.memo(function AthleteItem({
           pressed && { backgroundColor: colors.pressed },
         ]}
         onPress={onPress}
+        accessibilityRole="button"
+        accessibilityState={{ expanded: isExpanded }}
       >
         <ThemedText style={styles.athleteName}>{athlete.name}</ThemedText>
         <IconSymbol
@@ -213,7 +219,7 @@ export const AthleteItem = React.memo(function AthleteItem({
                 </ThemedText>
                 <View style={styles.sessionValueContainer}>
                   <ThemedText
-                    style={[styles.detailValue, { color: Palette.systemBlue }]}
+                    style={[styles.detailValue, { color: colors.link }]}
                   >
                     Session{" "}
                     {athlete.session.number}
@@ -226,7 +232,7 @@ export const AthleteItem = React.memo(function AthleteItem({
                   <IconSymbol
                     name={getChevronIcon("right")}
                     size={13}
-                    color="#007AFF"
+                    color={colors.link}
                   />
                 </View>
               </Pressable>
@@ -387,7 +393,7 @@ export const AthleteItem = React.memo(function AthleteItem({
             <IconSymbol
               name={getChevronIcon("right")}
               size={13}
-              color="#007AFF"
+              color={colors.link}
             />
           </Pressable>
         </Animated.View>

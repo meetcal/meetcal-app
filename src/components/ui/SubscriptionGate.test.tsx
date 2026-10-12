@@ -1,7 +1,8 @@
 /**
  * `SubscriptionGate` with the real `SubscriptionProvider`. Only RevenueCat,
  * OneSignal, SecureStore and the network probe are stubbed. A background
- * refresh of a known entitlement must not unmount the gated screen.
+ * refresh of a known entitlement must not unmount the gated screen, and an
+ * unknown entitlement must never show the paywall.
  */
 import React, { useEffect } from "react";
 import { ActivityIndicator, Text } from "react-native";
@@ -52,6 +53,14 @@ jest.mock("@/lib/networkUtils", () => ({
   isNetworkAvailable: jest.fn(async () => true),
   subscribeToNetworkChanges: () => () => {},
 }));
+jest.mock("@/components/ui/IconSymbol", () => ({ IconSymbol: () => null }));
+jest.mock("react-native-reanimated", () => ({
+  __esModule: true,
+  default: { View: jest.requireActual("react-native").View },
+  useSharedValue: (value: number) => ({ value }),
+  useAnimatedStyle: () => ({}),
+  withSpring: () => 1,
+}));
 
 jest.mock("expo-router", () => ({ usePathname: () => "/(tabs)/records" }));
 jest.mock("@/contexts/ThemeContext", () => ({ useTheme: () => ({ currentTheme: "light" }) }));
@@ -61,6 +70,8 @@ jest.mock("@/app/shared-screens/paywall", () => {
   return { __esModule: true, default: () => <MockText>Paywall</MockText> };
 });
 
+const mockIsNetworkAvailable = jest.requireMock("@/lib/networkUtils")
+  .isNetworkAvailable as jest.Mock;
 const mockGetCustomerInfo = Purchases.getCustomerInfo as jest.MockedFunction<
   typeof Purchases.getCustomerInfo
 >;
@@ -113,6 +124,19 @@ async function mountGate(): Promise<ReactTestRenderer> {
 
 function texts(renderer: ReactTestRenderer): string[] {
   return renderer.root.findAllByType(Text).map((node) => String(node.props.children));
+}
+
+async function press(renderer: ReactTestRenderer, label: string): Promise<void> {
+  const target = renderer.root.findAll(
+    (node) =>
+      typeof node.props.onPress === "function" &&
+      node.findAllByType(Text).some((text) => text.props.children === label),
+  )[0];
+  if (!target) throw new Error(`No pressable labelled ${label}`);
+  await act(async () => {
+    target.props.onPress();
+  });
+  await flush();
 }
 
 describe("SubscriptionGate", () => {
@@ -222,6 +246,60 @@ describe("SubscriptionGate", () => {
     expect(texts(renderer)).toEqual(["Gated"]);
     expect(mounts).toBe(1);
     expect(unmounts).toBe(0);
+  });
+
+  describe("with no cached entitlement", () => {
+    beforeEach(() => {
+      mockSecureStore.clear();
+    });
+
+    it("checks RevenueCat at once and shows a spinner, never the paywall, until it answers", async () => {
+      let resolveInfo!: (info: CustomerInfo) => void;
+      mockGetCustomerInfo.mockReturnValue(
+        new Promise<CustomerInfo>((resolve) => {
+          resolveInfo = resolve;
+        }),
+      );
+
+      const renderer = await mountGate();
+      // No 8 s wait: with nothing cached there is nothing to paint first.
+      expect(mockGetCustomerInfo).toHaveBeenCalledTimes(1);
+      expect(renderer.root.findAllByType(ActivityIndicator)).toHaveLength(1);
+      expect(texts(renderer)).not.toContain("Paywall");
+
+      await act(async () => {
+        resolveInfo(customerInfo("meetcal_quarterly"));
+      });
+      await flush();
+
+      expect(texts(renderer)).toEqual(["Gated"]);
+    });
+
+    it("offline, says it can't confirm the subscription and retries on Try Again", async () => {
+      mockIsNetworkAvailable.mockResolvedValue(false);
+
+      const renderer = await mountGate();
+
+      expect(mockGetCustomerInfo).not.toHaveBeenCalled();
+      expect(texts(renderer)).toContain("Can't confirm your subscription");
+      expect(texts(renderer)).not.toContain("Paywall");
+      expect(mounts).toBe(0);
+
+      mockIsNetworkAvailable.mockResolvedValue(true);
+      mockGetCustomerInfo.mockResolvedValue(customerInfo("meetcal_lifetime"));
+      await press(renderer, "Try Again");
+
+      expect(mockGetCustomerInfo).toHaveBeenCalledTimes(1);
+      expect(texts(renderer)).toEqual(["Gated"]);
+    });
+
+    it("shows the paywall once RevenueCat says the user is free", async () => {
+      mockGetCustomerInfo.mockResolvedValue(customerInfo(null));
+
+      const renderer = await mountGate();
+
+      expect(texts(renderer)).toEqual(["Paywall"]);
+    });
   });
 
   it("shows the paywall when a listener update ends the entitlement", async () => {

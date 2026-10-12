@@ -42,12 +42,13 @@ import { useUpcomingMeets } from "@/hooks/useUpcomingMeets";
 import { initStore } from "@/lib/database/offline-store";
 import { isMaestroE2E } from "@/lib/e2e";
 import { loadFailureCopy } from "@/lib/load-failure";
+import { noMeetState } from "@/lib/schedule-empty-state";
 import { DaySchedule } from "@/types/schedule";
 import {
   formatDayTitle,
   formatIsoDateTitle,
 } from "@/utils/dateTime";
-import { useUser } from "@clerk/expo";
+import { useAuthGuard } from "@/utils/authGuard";
 import { useScreenHorizontalInsets } from "@/hooks/useScreenInsets";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Palette } from "@/constants/Palette";
@@ -90,11 +91,19 @@ export default function ScheduleScreen() {
     availableMeets,
     refreshAvailableMeets,
   } = useSelectedMeet();
-  const { isLoaded: isUserLoaded, isSignedIn } = useUser();
+  // The guard, not Clerk's `isLoaded`: offline, Clerk never loads, and the
+  // profile button returned early, so even a signed-in user with a valid
+  // cached sign-in could not reach reminders, widget settings or Clear Cache.
+  const { isAuthenticated, authState, notifyAuthPending } = useAuthGuard();
   const router = useRouter();
   const pathname = usePathname();
   const colors = useAppColors();
-  const [showOnboarding, setShowOnboarding] = useState(false);
+  const [isOffline] = useIsOffline();
+  // "What's New" waits for this to be "done", so a fresh install never gets
+  // it stacked on top of onboarding.
+  const [onboardingStatus, setOnboardingStatus] = useState<
+    "checking" | "showing" | "done"
+  >("checking");
   const [showFilterModal, setShowFilterModal] = useState(false);
   const [isRefreshingMeets, setIsRefreshingMeets] = useState(false);
   const [isChangingMeet, setIsChangingMeet] = useState(false);
@@ -109,7 +118,6 @@ export default function ScheduleScreen() {
     initialScrollIndex,
     refreshSchedule,
   } = useScheduleData(selectedMeet, meetDetails?.time.timeZoneIdentifier);
-  const [isOffline] = useIsOffline();
   const scheduleFailure = loadError ? loadFailureCopy("schedule", isOffline) : null;
 
   const { upcomingMeets } = useUpcomingMeets({ availableMeets });
@@ -154,8 +162,11 @@ export default function ScheduleScreen() {
   useLayoutEffect(() => {
     const openOfflineData = () => router.push("/schedule-toolbar/offline-data");
     const openProfile = () => {
-      if (!isUserLoaded) return;
-      if (isSignedIn) {
+      if (authState === null) {
+        notifyAuthPending();
+        return;
+      }
+      if (authState) {
         router.push("/schedule-toolbar/profile");
       } else {
         router.push({
@@ -184,7 +195,7 @@ export default function ScheduleScreen() {
         unstable_headerRightItems: () => [
           {
             type: "button",
-            label: isSignedIn ? "My profile and settings" : "Sign in",
+            label: isAuthenticated ? "My profile and settings" : "Sign in",
             icon: { type: "sfSymbol", name: "person.circle.fill" },
             onPress: openProfile,
           },
@@ -209,7 +220,7 @@ export default function ScheduleScreen() {
             onPress={openProfile}
             accessibilityRole="button"
             accessibilityLabel={
-              isSignedIn ? "My profile and settings" : "Sign in"
+              isAuthenticated ? "My profile and settings" : "Sign in"
             }
           >
             <IconSymbol
@@ -221,7 +232,15 @@ export default function ScheduleScreen() {
         </View>
       ),
     });
-  }, [colors.text, isSignedIn, isUserLoaded, navigation, pathname, router]);
+  }, [
+    authState,
+    colors.text,
+    isAuthenticated,
+    navigation,
+    notifyAuthPending,
+    pathname,
+    router,
+  ]);
 
   useEffect(() => {
     initStore();
@@ -229,19 +248,21 @@ export default function ScheduleScreen() {
 
   // Check onboarding status on mount
   useEffect(() => {
-    if (isMaestroE2E()) return;
+    if (isMaestroE2E()) {
+      setOnboardingStatus("done");
+      return;
+    }
 
     let aborted = false;
 
     const checkOnboarding = async () => {
       try {
         const completed = await checkOnboardingComplete();
-        if (!aborted && !completed) {
-          setShowOnboarding(true);
-        }
+        if (!aborted) setOnboardingStatus(completed ? "done" : "showing");
       } catch (error) {
         if (!aborted) {
           console.error("Error checking onboarding status:", error);
+          setOnboardingStatus("done");
         }
       }
     };
@@ -308,6 +329,10 @@ export default function ScheduleScreen() {
       await refreshAvailableMeets();
     } catch (error) {
       console.error("Error refreshing meets:", error);
+      showToast({
+        type: "error",
+        message: "Couldn't load meets. Check your connection and try again.",
+      });
     } finally {
       setIsRefreshingMeets(false);
     }
@@ -351,16 +376,60 @@ export default function ScheduleScreen() {
     return <ScheduleSkeleton label="Loading meets..." />;
   }
 
+  const onboarding = (
+    <OnboardingView
+      visible={onboardingStatus === "showing"}
+      onComplete={() => setOnboardingStatus("done")}
+    />
+  );
+
+  const meetSelectionModal = (
+    <MeetSelectionModal
+      visible={showFilterModal}
+      onClose={() => setShowFilterModal(false)}
+      meets={upcomingMeets}
+      selectedMeet={selectedMeet}
+      onSelectMeet={handleSelectMeet}
+      onRefresh={handleRefreshMeets}
+      isRefreshing={isRefreshingMeets}
+    />
+  );
+
   if (!selectedMeet || !meetDetails) {
+    const emptyState = noMeetState({
+      isOffline,
+      hasMeets: upcomingMeets.length > 0,
+    });
     return (
       <ThemedView
+        testID="schedule-no-meet"
         style={[styles.container, { backgroundColor: colors.background }, screenInsets]}
       >
-        <View style={styles.loadingContainer}>
-          <ThemedText style={[styles.loadingText, { color: colors.text }]}>
-            Please select a meet to view the schedule
-          </ThemedText>
-        </View>
+        {onboarding}
+        <ScrollView
+          contentContainerStyle={styles.emptyStateContainer}
+          refreshControl={
+            <RefreshControl
+              refreshing={isRefreshingMeets}
+              onRefresh={handleRefreshMeets}
+              tintColor={colors.text}
+            />
+          }
+        >
+          <EmptyState
+            image={require("@/assets/images/MeetCal-no-bg.png")}
+            imageSize={144}
+            title={emptyState.title}
+            message={emptyState.message}
+            actionLabel={emptyState.actionLabel}
+            onActionPress={
+              emptyState.action === "choose-meet"
+                ? () => setShowFilterModal(true)
+                : () => void handleRefreshMeets()
+            }
+          />
+        </ScrollView>
+        {meetSelectionModal}
       </ThemedView>
     );
   }
@@ -374,10 +443,7 @@ export default function ScheduleScreen() {
       testID="schedule-screen"
       style={[styles.container, { backgroundColor: colors.background }, screenInsets]}
     >
-      <OnboardingView
-        visible={showOnboarding}
-        onComplete={() => setShowOnboarding(false)}
-      />
+      {onboarding}
 
       <View
         style={[
@@ -434,7 +500,7 @@ export default function ScheduleScreen() {
         style={styles.nextSession}
       />
 
-      <VersionAnnouncement />
+      {onboardingStatus === "done" && <VersionAnnouncement />}
 
       {!schedule || schedule.length === 0 ? (
         <ScrollView
@@ -500,15 +566,7 @@ export default function ScheduleScreen() {
         </View>
       )}
 
-      <MeetSelectionModal
-        visible={showFilterModal}
-        onClose={() => setShowFilterModal(false)}
-        meets={upcomingMeets}
-        selectedMeet={selectedMeet}
-        onSelectMeet={handleSelectMeet}
-        onRefresh={handleRefreshMeets}
-        isRefreshing={isRefreshingMeets}
-      />
+      {meetSelectionModal}
     </ThemedView>
   );
 }
@@ -569,15 +627,6 @@ const styles = StyleSheet.create({
   contentContainer: {
     flex: 1,
     position: "relative",
-  },
-  loadingContainer: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  loadingText: {
-    fontSize: 16,
-    textAlign: "center",
   },
   headerDate: {
     alignItems: "center",

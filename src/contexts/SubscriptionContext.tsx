@@ -9,10 +9,11 @@ import { devLog, devWarn } from '@/lib/logger';
 import { SUBSCRIPTION_ENTITLEMENT_ID } from '@/lib/premium-intent';
 
 /**
- * `setSubscribed` and `checkSubscriptionStatus` are provider internals, not
- * part of this contract: entitlement is server truth (RevenueCat), so a screen
- * that could write it locally is a bug waiting to happen. The provider keeps
- * itself in sync via its own RevenueCat listener and reconnect effect.
+ * `setSubscribed` is a provider internal, not part of this contract:
+ * entitlement is server truth (RevenueCat), so a screen that could write it
+ * locally is a bug waiting to happen. The provider keeps itself in sync via
+ * its own RevenueCat listener and reconnect effect; `recheckSubscription`
+ * only asks RevenueCat again.
  */
 type SubscriptionContextType = {
   isSubscribed: boolean | null;
@@ -26,6 +27,12 @@ type SubscriptionContextType = {
    * implementation stays exposed rather than being deleted and rewritten.
    */
   restorePurchases: () => Promise<boolean>;
+  /**
+   * Ask RevenueCat again (falling back to the cache offline). For the
+   * "can't confirm your subscription" state's Retry; it never writes an
+   * entitlement the server did not report.
+   */
+  recheckSubscription: () => void;
   isUsingStaleCache: boolean;
   lastSyncTimestamp: number | null;
 };
@@ -139,6 +146,14 @@ export async function writeSubscriptionCache(data: SubscriptionCacheData): Promi
  */
 const INITIAL_REFRESH_DELAY_MS = 8000;
 
+/**
+ * How many times a check re-asks RevenueCat when its app user id changed
+ * while the request was out (Clerk signing in, or out, mid-check). Past this
+ * the check fails into the cache fallback rather than chasing a flapping
+ * identity.
+ */
+const MAX_IDENTITY_ATTEMPTS = 3;
+
 const SubscriptionContext = createContext<SubscriptionContextType | undefined>(undefined);
 
 export function SubscriptionProvider({ children }: { children: React.ReactNode }) {
@@ -151,6 +166,25 @@ export function SubscriptionProvider({ children }: { children: React.ReactNode }
     subscribed: boolean;
     type: 'free' | 'quarterly' | 'lifetime';
   } | null>(null);
+
+  // Entitlement answers come from three places that race: a check
+  // (`getCustomerInfo`), RevenueCat's CustomerInfo listener, and a restore.
+  // On a fresh install the first check starts as the anonymous user while the
+  // root layout's `Purchases.logIn` runs, so the anonymous "free" answer could
+  // land after the listener published the signed-in user's purchase and take
+  // it away. Each answer takes a generation when it starts and is dropped,
+  // state and cache alike, if a newer one has started since.
+  const generationRef = useRef(0);
+  const beginAnswer = useCallback(() => {
+    generationRef.current += 1;
+    return generationRef.current;
+  }, []);
+  const isCurrentAnswer = useCallback(
+    (generation: number) => generation === generationRef.current,
+    [],
+  );
+  // SecureStore writes are serialized so the last write is the newest answer.
+  const cacheWriteRef = useRef<Promise<void>>(Promise.resolve());
 
   // These are app-owned tags. RevenueCat's native OneSignal integration covers
   // auto-renewing subscription events; this entitlement-based tag also covers
@@ -207,25 +241,36 @@ export function SubscriptionProvider({ children }: { children: React.ReactNode }
     };
   }, [syncOneSignalMembershipTags]);
 
-  // Helper function to save subscription to cache with timestamp
-  const saveSubscriptionCache = async (
+  // Save an answer to the cache, after any earlier write and only while it
+  // is still the newest answer. `appUserId` is who the answer is about when
+  // the caller knows; otherwise the id at write time.
+  const saveSubscriptionCache = useCallback((
+    generation: number,
     subscribed: boolean,
-    type: 'free' | 'quarterly' | 'lifetime'
-  ) => {
-    try {
-      const cacheData: SubscriptionCacheData = {
-        isSubscribed: subscribed,
-        subscriptionType: type,
-        timestamp: Date.now(),
-      };
-      await writeSubscriptionCache(cacheData);
-      setLastSyncTimestamp(cacheData.timestamp);
-      setIsUsingStaleCache(false);
-      devLog('Subscription cache saved:', cacheData);
-    } catch (error) {
-      console.error('Error saving subscription cache:', error);
-    }
-  };
+    type: 'free' | 'quarterly' | 'lifetime',
+    appUserId?: string | null,
+  ): Promise<void> => {
+    const write = cacheWriteRef.current.then(async () => {
+      if (!isCurrentAnswer(generation)) return;
+      try {
+        const cacheData: SubscriptionCacheData = {
+          isSubscribed: subscribed,
+          subscriptionType: type,
+          timestamp: Date.now(),
+          ...(appUserId ? { appUserId } : {}),
+        };
+        await writeSubscriptionCache(cacheData);
+        if (!isCurrentAnswer(generation)) return;
+        setLastSyncTimestamp(cacheData.timestamp);
+        setIsUsingStaleCache(false);
+        devLog('Subscription cache saved:', cacheData);
+      } catch (error) {
+        console.error('Error saving subscription cache:', error);
+      }
+    });
+    cacheWriteRef.current = write;
+    return write;
+  }, [isCurrentAnswer]);
 
   // Helper function to get subscription from cache
   const getSubscriptionCache = async (
@@ -284,6 +329,7 @@ export function SubscriptionProvider({ children }: { children: React.ReactNode }
   // the reconnect listener), always at its latest version, without making it
   // a dependency that would re-run the initialization or re-subscribe.
   const checkSubscriptionStatus = useEffectEvent(async () => {
+    const generation = beginAnswer();
     try {
       devLog('Checking subscription status...');
       setIsLoading(true);
@@ -293,19 +339,21 @@ export function SubscriptionProvider({ children }: { children: React.ReactNode }
       if (simulatedStatus !== null) {
         devLog('Using simulated subscription status:', simulatedStatus);
         const type = simulatedStatus ? 'quarterly' : 'free';
-        await saveSubscriptionCache(simulatedStatus, type);
         setIsSubscribed(simulatedStatus);
         setSubscriptionType(type);
         setIsLoading(false);
+        await saveSubscriptionCache(generation, simulatedStatus, type);
         return;
       }
 
       // Check network availability before attempting RevenueCat call
       const hasNetwork = await isNetworkAvailable();
+      if (!isCurrentAnswer(generation)) return;
 
       if (!hasNetwork) {
         devLog('No network available, using cached subscription data');
         const cached = await getSubscriptionCache(true);
+        if (!isCurrentAnswer(generation)) return;
         if (cached) {
           setIsSubscribed(cached.isSubscribed);
           setSubscriptionType(cached.subscriptionType);
@@ -318,20 +366,38 @@ export function SubscriptionProvider({ children }: { children: React.ReactNode }
         return;
       }
 
-      // Network available, check real subscription
-      const customerInfo = await Purchases.getCustomerInfo();
-      const [hasActiveSubscription, type] = await checkEntitlementStatus(customerInfo);
-      devLog('Real subscription status:', { hasActiveSubscription, type });
+      // Network available, check real subscription. CustomerInfo is for the
+      // app user id current when the request went out; if that changed by
+      // the time it answered, it describes the previous identity, so ask
+      // again for the new one.
+      for (let attempt = 0; attempt < MAX_IDENTITY_ATTEMPTS; attempt += 1) {
+        const requestedFor = await currentAppUserId();
+        const customerInfo = await Purchases.getCustomerInfo();
+        if (!isCurrentAnswer(generation)) return;
+        const answeredFor = await currentAppUserId();
+        if (!isCurrentAnswer(generation)) return;
+        if (requestedFor !== answeredFor) {
+          devLog('RevenueCat user changed during the subscription check, asking again');
+          continue;
+        }
 
-      await saveSubscriptionCache(hasActiveSubscription, type);
-      recordConfirmedMembership(hasActiveSubscription, type);
-      setIsSubscribed(hasActiveSubscription);
-      setSubscriptionType(type);
-      setIsLoading(false);
+        const [hasActiveSubscription, type] = await checkEntitlementStatus(customerInfo);
+        devLog('Real subscription status:', { hasActiveSubscription, type });
+
+        recordConfirmedMembership(hasActiveSubscription, type);
+        setIsSubscribed(hasActiveSubscription);
+        setSubscriptionType(type);
+        setIsLoading(false);
+        await saveSubscriptionCache(generation, hasActiveSubscription, type, answeredFor);
+        return;
+      }
+      throw new Error('RevenueCat user kept changing during the subscription check');
     } catch (error) {
+      if (!isCurrentAnswer(generation)) return;
       console.error('Failed to check subscription status:', error);
       // On error, try to get status from cache
       const cached = await getSubscriptionCache(false);
+      if (!isCurrentAnswer(generation)) return;
       if (cached) {
         setIsSubscribed(cached.isSubscribed);
         setSubscriptionType(cached.subscriptionType);
@@ -356,6 +422,9 @@ export function SubscriptionProvider({ children }: { children: React.ReactNode }
     let cancelled = false;
 
     const initializeStatus = async () => {
+      // The cache is the oldest answer there is: if RevenueCat answered
+      // (the listener) during the SecureStore read, it must not be replaced.
+      const startGeneration = generationRef.current;
       setIsLoading(true);
       try {
         const simulatedStatus = getSimulatedSubscriptionStatus();
@@ -372,7 +441,10 @@ export function SubscriptionProvider({ children }: { children: React.ReactNode }
         // unmounted (or re-mounted on sign-out) during the SecureStore read
         // still published the old user's entitlement.
         if (cancelled) return;
-        if (cached) {
+        const superseded = generationRef.current !== startGeneration;
+        if (superseded) {
+          // Already answered; just keep the delayed refresh below.
+        } else if (cached) {
           setIsSubscribed(cached.isSubscribed);
           setSubscriptionType(cached.subscriptionType);
         } else {
@@ -380,10 +452,20 @@ export function SubscriptionProvider({ children }: { children: React.ReactNode }
           setSubscriptionType('unknown');
         }
 
-        if (cached?.isExpired) {
+        if (cached?.isExpired && !superseded) {
           setIsUsingStaleCache(true);
         }
-        setIsLoading(false);
+
+        // With nothing cached there is nothing to paint first, and waiting
+        // out the delay published "unknown" (not loading) for 8 s, so every
+        // premium surface told a subscriber on a fresh install that it could
+        // not confirm the subscription. Check now; `isLoading` stays true
+        // until it answers.
+        if (!cached && !superseded) {
+          void checkSubscriptionStatus();
+          return;
+        }
+        if (!superseded) setIsLoading(false);
 
         refreshTimeout = setTimeout(() => {
           if (!cancelled) {
@@ -413,19 +495,22 @@ export function SubscriptionProvider({ children }: { children: React.ReactNode }
     const setupListener = async () => {
       try {
         const listener = async (info: CustomerInfo) => {
+          // RevenueCat pushes this for the current user (after `logIn`, a
+          // purchase, a renewal), so it supersedes any check still in flight.
+          const generation = beginAnswer();
           // Never log the whole CustomerInfo: it carries the RevenueCat app
           // user id, purchase dates, and store transaction ids.
           devLog('Customer info updated. Active entitlements:', Object.keys(info.entitlements.active));
           setIsLoading(true);
           const [hasActiveSubscription, type] = await checkEntitlementStatus(info);
+          if (!isCurrentAnswer(generation)) return;
           devLog('Subscription update received:', { hasActiveSubscription, type });
 
-          await saveSubscriptionCache(hasActiveSubscription, type);
           recordConfirmedMembership(hasActiveSubscription, type);
-
           setIsSubscribed(hasActiveSubscription);
           setSubscriptionType(type);
           setIsLoading(false);
+          await saveSubscriptionCache(generation, hasActiveSubscription, type);
         };
 
         Purchases.addCustomerInfoUpdateListener(listener);
@@ -443,30 +528,62 @@ export function SubscriptionProvider({ children }: { children: React.ReactNode }
         customerInfoUpdateListener();
       }
     };
-  }, [recordConfirmedMembership]);
+  }, [recordConfirmedMembership, beginAnswer, isCurrentAnswer, saveSubscriptionCache]);
 
-  // Listen for network changes and refresh when coming back online
+  // Refresh when coming back online. Subscribed once, reading the latest
+  // state through an Effect Event: NetInfo calls a listener with the current
+  // state as soon as it subscribes, so an effect re-subscribing on every
+  // `isLoading` flip re-ran the check each time one finished, and a check
+  // that failed while online looped forever. Only a change to "connected"
+  // counts, and never while a check is already in flight.
+  const lastConnectedRef = useRef<boolean | null>(null);
+  const onNetworkChange = useEffectEvent(async (isConnected: boolean) => {
+    devLog('Network state changed:', isConnected);
+    const wasConnected = lastConnectedRef.current;
+    lastConnectedRef.current = isConnected;
+    if (!isConnected || wasConnected === true || isLoading) return;
+
+    // Unknown (offline with no cache, or a failed check) recovers the same
+    // way a stale cache does.
+    if (isUsingStaleCache || isSubscribed === null) {
+      devLog('Network restored with a stale or unknown entitlement, refreshing subscription...');
+      await checkSubscriptionStatus();
+    }
+  });
   useEffect(() => {
-    const unsubscribe = subscribeToNetworkChanges(async (isConnected) => {
-      devLog('Network state changed:', isConnected);
-
-      if (isConnected && isUsingStaleCache) {
-        devLog('Network restored and using stale cache, refreshing subscription...');
-        await checkSubscriptionStatus();
-      }
+    const unsubscribe = subscribeToNetworkChanges((isConnected) => {
+      void onNetworkChange(isConnected);
     });
 
     return () => {
       unsubscribe();
     };
-  }, [isUsingStaleCache]);
+  }, []);
 
-  const setSubscribed = async (value: boolean, type: 'free' | 'quarterly' | 'lifetime') => {
+  // `checkSubscriptionStatus` is an Effect Event, callable only from effects,
+  // so a Retry tap requests a check and this effect runs it.
+  const [recheckRequest, setRecheckRequest] = useState(0);
+  useEffect(() => {
+    if (recheckRequest === 0) return;
+    void checkSubscriptionStatus();
+  }, [recheckRequest]);
+  const recheckSubscription = useCallback(() => {
+    setRecheckRequest((count) => count + 1);
+  }, []);
+
+  const setSubscribed = async (
+    generation: number,
+    value: boolean,
+    type: 'free' | 'quarterly' | 'lifetime',
+  ) => {
+    if (!isCurrentAnswer(generation)) return;
     try {
-      await saveSubscriptionCache(value, type);
       recordConfirmedMembership(value, type);
       setIsSubscribed(value);
       setSubscriptionType(type);
+      // A check this answer superseded will not clear its own loading flag.
+      setIsLoading(false);
+      await saveSubscriptionCache(generation, value, type);
     } catch (e) {
       console.error('Failed to save subscription status:', e);
     }
@@ -476,10 +593,13 @@ export function SubscriptionProvider({ children }: { children: React.ReactNode }
     try {
       devLog('Attempting to restore purchases...');
       const customerInfo = await Purchases.restorePurchases();
+      // Taken once there is an answer: a failed restore leaves state alone,
+      // and must not orphan a check still in flight.
+      const generation = beginAnswer();
       const [hasActiveSubscription, type] = await checkEntitlementStatus(customerInfo);
       devLog('Restore purchases result:', { hasActiveSubscription, type });
-      
-      await setSubscribed(hasActiveSubscription, type);
+
+      await setSubscribed(generation, hasActiveSubscription, type);
       return hasActiveSubscription;
     } catch (error) {
       console.error('Failed to restore purchases:', error);
@@ -494,6 +614,7 @@ export function SubscriptionProvider({ children }: { children: React.ReactNode }
         subscriptionType,
         isLoading,
         restorePurchases,
+        recheckSubscription,
         isUsingStaleCache,
         lastSyncTimestamp,
       }}
