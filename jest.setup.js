@@ -15,9 +15,14 @@ jest.mock("@react-native-community/netinfo", () =>
 
 // Property tests: case count and replay seed from FC_NUM_RUNS / FC_SEED / FC_PATH
 // (see jest/fast-check-config.js and docs/testing.md).
-require("fast-check").configureGlobal(
-  require("./jest/fast-check-config").fastCheckParameters(process.env),
-);
+const fastCheckParameters = require("./jest/fast-check-config").fastCheckParameters(process.env);
+require("fast-check").configureGlobal(fastCheckParameters);
+// A deeper run gets a proportionally longer per-test timeout, so a property is
+// not cut off at Jest's 5s while it is still finding nothing (30s per 100
+// cases; it only has to catch a hang).
+if (fastCheckParameters.numRuns > 100) {
+  jest.setTimeout(30_000 * Math.ceil(fastCheckParameters.numRuns / 100));
+}
 
 // react-native's exports are lazy getters, and on a cold transform cache (every
 // CI run) the first access to a UI module costs seconds: Animated ~2.3s,

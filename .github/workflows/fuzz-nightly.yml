@@ -42,7 +42,7 @@ jobs:
       - name: Run property and chaos suites
         env:
           FC_NUM_RUNS: ${{ inputs.num_runs || '2000' }}
-        run: bunx jest --ci --watchman=false --testTimeout=1200000 --testPathPattern '\.(property|chaos)\.test\.tsx?$'
+        run: bunx jest --ci --watchman=false --testPathPattern '\.(property|chaos)\.test\.tsx?$'
 
       - name: Open an issue
         if: failure() && github.event_name == 'schedule'

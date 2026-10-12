@@ -40,6 +40,8 @@ Name them `<module>.property.test.ts` and `<module>.chaos.test.ts`, next to the 
 
 - `arbitraries.ts`: meet time zones (DST, half-hour offsets, both sides of the date line), calendar dates biased to DST changes and leap days, clock strings, hostile strings and values, and `corruptedArb(valid)`, which breaks one node of a valid payload.
 - `chaos.ts`: `installChaosTransport` (faults from `src/lib/api/chaos-transport.ts`: network failure, hang until aborted, delay, HTTP status, Convex "try again later", garbage answer, truncated JSON), `installStorageChaos` (AsyncStorage: rejection, full disk, lost write, corrupted read), `createChaosSecureStore`, `chaosGetToken` (Clerk returns null, empty or throws) and `setNetInfoState`. A plan is a list of faults used one per call; once it runs out, calls pass, so a flow always gets a healthy tail to recover on. Plans with `hang` or `delay` need fake timers; `settlingTransportFaultArb` leaves them out.
+- `time-arbitraries.ts`: meet-local wall clocks biased to DST gaps and overlaps, clock strings in every accepted spelling and out of range, and oracles that read a zone's wall clock and offset through their own `Intl` formatter, so a time property never checks `utils/timezone` against itself.
+- `device-zone-properties.ts`: the calendar-date properties that must not move with the device zone, in one `describeDeviceZoneProperties(zone)`. Each `src/utils/dateTime.*property.test.ts` file pins one device zone (Auckland, Los Angeles, Kolkata, Santiago) and calls it.
 
 To watch the real app degrade under the same transport faults on a simulator, set `DEV_CONFIG.CHAOS` in `src/config/development.ts` (documented there): a development build then fails a share of backend calls at random and logs each fault as `[chaos]`. It never touches a release build, Maestro runs, the server-clock sample or a transport installed with `setApiTransportForTests`.
 
@@ -50,7 +52,7 @@ FC_SEED=<seed> FC_PATH=<path> bunx jest --ci --watchman=false src/utils/timezone
 FC_NUM_RUNS=5000 bunx jest --ci --watchman=false --testPathPattern '\.(property|chaos)\.test'
 ```
 
-`.github/workflows/fuzz-nightly.yml` runs the property and chaos suites at 2,000 cases each every night and opens an issue when one fails.
+`FC_NUM_RUNS` above 100 also raises Jest's per-test timeout in proportion (`jest.setup.js`), so a deep local run is not cut off at 5s. `.github/workflows/fuzz-nightly.yml` runs the property and chaos suites at 2,000 cases each every night and opens an issue when one fails.
 
 Risk cases that belong in unit tests:
 
