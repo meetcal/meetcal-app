@@ -356,11 +356,13 @@ function RootLayoutContent({ fontsLoaded }: { fontsLoaded: boolean }) {
 
   useEffect(() => {
     let cancelled = false;
+    // Not over onboarding: its last page explains and asks for the same
+    // notification permission. Read at launch, so a launch that shows
+    // onboarding never prompts, even if the user skips out of it within the
+    // delay; the next launch asks if the user has not answered by then.
+    const onboardingDoneAtLaunch = checkOnboardingComplete();
     const requestPermissionAfterFirstPaint = setTimeout(() => {
-      // Not over onboarding: its last page explains and asks for the same
-      // notification permission. A launch that is still onboarding skips the
-      // prompt; the next launch asks if the user has not answered by then.
-      void checkOnboardingComplete().then((completed) => {
+      void onboardingDoneAtLaunch.then((completed) => {
         if (cancelled || !completed) return;
         OneSignal.Notifications.requestPermission(false).catch((error) => {
           console.warn("OneSignal permission request failed:", error);
