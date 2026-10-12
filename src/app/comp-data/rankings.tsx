@@ -12,6 +12,7 @@ import {
   IntlRanking,
   intlRankingsResource,
 } from "@/lib/database/fetchIntlRankings";
+import { computeDefaultRankingFilters } from "@/lib/rankings-filters";
 import { sortAgeGroups } from "@/lib/sortAgeGroups";
 import { Filters } from "@/types/rankings";
 import { Stack, useLocalSearchParams } from "expo-router";
@@ -73,35 +74,7 @@ function IntlRankingsScreenContent() {
   const [hasSetDefaultFilters, setHasSetDefaultFilters] = useState(hasRouteFilters);
   useEffect(() => {
     if (!hasSetDefaultFilters && intlRankings.length > 0) {
-      const availableAgeCategories = Array.from(
-        new Set(
-          intlRankings.map((r) =>
-            typeof r.ageCategory === "string" ? r.ageCategory : "",
-          ),
-        ),
-      ).filter(Boolean);
-      const availableGenders = Array.from(
-        new Set(
-          intlRankings.map((r) =>
-            typeof r.gender === "string" ? r.gender : "",
-          ),
-        ),
-      ).filter(Boolean);
-
-      const defaultMeet =
-        typeof intlRankings[0].meet === "string" ? intlRankings[0].meet : "";
-      const defaultAgeCategory = availableAgeCategories.includes("Senior")
-        ? "Senior"
-        : availableAgeCategories[0] || "";
-      const defaultGender = availableGenders.includes("Men")
-        ? "Men"
-        : availableGenders[0] || "";
-
-      const defaults: Filters = {
-        meet: defaultMeet,
-        age_category: defaultAgeCategory,
-        gender: defaultGender,
-      };
+      const defaults = computeDefaultRankingFilters(intlRankings);
       setFilters(defaults);
       setTempFilters(defaults);
       setHasSetDefaultFilters(true);
@@ -181,23 +154,10 @@ function IntlRankingsScreenContent() {
 
   // Unlike the sibling screens, reset cannot go through `useFilterState`'s
   // `onReset`: the defaults here are derived from the fetched rankings, not
-  // from a literal known at mount.
+  // from a literal known at mount. The same helper as the first load, so
+  // Reset restores the screen's original state.
   const handleResetFilters = () => {
-    const defaultMeet =
-      meetOptions[0] ||
-      (typeof intlRankings[0]?.meet === "string" ? intlRankings[0].meet : "");
-    const defaultAgeCategory = ageCategoryOptions.includes("Senior")
-      ? "Senior"
-      : ageCategoryOptions[0] || "";
-    const defaultGender = genderOptions.includes("Men")
-      ? "Men"
-      : genderOptions[0] || "";
-
-    const resetFilters: Filters = {
-      meet: defaultMeet,
-      age_category: defaultAgeCategory,
-      gender: defaultGender,
-    };
+    const resetFilters = computeDefaultRankingFilters(intlRankings);
     setFilters(resetFilters);
     setTempFilters(resetFilters);
   };
