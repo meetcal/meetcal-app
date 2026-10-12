@@ -820,7 +820,9 @@ const recordRow = v.object({
  * the Python writer's `None` did. Never deletes. Without `allowShrink`, a
  * payload that clears more of the matched records' stored lifts than
  * `exceedsShrink` allows is refused (nothing written): a lift row the parser
- * stopped finding reads as no record for every class at once.
+ * stopped finding reads as no record for every class at once. A key the
+ * payload repeats is one record, written in payload order (the last row
+ * wins), and the guard judges that last row.
  */
 export const upsertRecords = internalMutation({
   args: { rows: v.array(recordRow), allowShrink: v.optional(v.boolean()) },
@@ -847,10 +849,12 @@ export const upsertRecords = internalMutation({
             .collect(),
         )
       ).find((r) => r.weightClass === doc.weightClass);
-      pairs.push({ doc, existing });
+      pairs.push({ key: JSON.stringify([doc.recordType, doc.ageCategory, doc.gender, doc.weightClass]), doc, existing });
     }
     if (!allowShrink) {
-      const matched = pairs.filter((pair) => pair.existing !== undefined);
+      // One pair a key, its last row: that is what the key ends up holding.
+      const final = new Map(pairs.map((pair) => [pair.key, pair]));
+      const matched = [...final.values()].filter((pair) => pair.existing !== undefined);
       const storedLifts = matched.reduce((sum, { existing }) => sum + liftCount(existing!), 0);
       const cleared = matched.reduce((sum, { doc, existing }) => sum + clearedLifts(existing!, doc), 0);
       if (exceedsShrink(cleared, storedLifts)) {
@@ -861,12 +865,17 @@ export const upsertRecords = internalMutation({
       }
     }
     const outcomes: UpsertOutcome[] = [];
-    for (const { doc, existing } of pairs) {
-      if (!existing) {
-        await ctx.db.insert('records', doc);
+    // What each key holds so far: an earlier row of this payload may have
+    // inserted or rewritten it, after `existing` was read.
+    const written = new Map<string, Lifts & { gender: string; _id: Id<'records'> }>();
+    for (const { key, doc, existing } of pairs) {
+      const current = written.get(key) ?? existing;
+      if (!current) {
+        written.set(key, { ...doc, _id: await ctx.db.insert('records', doc) });
         outcomes.push({ wasInsert: true, wasChanged: true });
-      } else if (liftsChanged(existing, doc) || existing.gender !== doc.gender) {
-        await ctx.db.replace(existing._id, doc);
+      } else if (liftsChanged(current, doc) || current.gender !== doc.gender) {
+        await ctx.db.replace(current._id, doc);
+        written.set(key, { ...doc, _id: current._id });
         outcomes.push({ wasInsert: false, wasChanged: true });
       } else {
         outcomes.push({ wasInsert: false, wasChanged: false });

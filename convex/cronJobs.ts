@@ -86,18 +86,21 @@ async function markAllSent(ctx: ActionCtx, notices: readonly Notice[]): Promise<
 /**
  * Records a run's outcome in `cron_status` and sends the alerts it queued,
  * with `extra` alerts already queued for another job. A failed send leaves
- * them queued: the watchdog sends them next hour.
+ * them queued: the watchdog sends them next hour. Returns whether every
+ * alert was sent (true when there were none).
  */
-async function finishRun(ctx: ActionCtx, job: string, failure: unknown, extra: Notice[] = []): Promise<void> {
+async function finishRun(ctx: ActionCtx, job: string, failure: unknown, extra: Notice[] = []): Promise<boolean> {
   const { error, failedSources } = failure === undefined ? { error: undefined, failedSources: undefined } : describeFailure(failure);
   const unsent: Notice[] = await ctx.runMutation(internal.cronStatus.finish, { job, error, failedSources });
   const notices = [...unsent, ...extra];
-  if (!notices.length) return;
+  if (!notices.length) return true;
   try {
     await alert(notices);
     await markAllSent(ctx, notices);
+    return true;
   } catch (sendError) {
     console.error(`cron alert for ${job} could not be sent: ${(sendError as Error).message}`);
+    return false;
   }
 }
 
@@ -141,7 +144,8 @@ export const run = internalAction({
  * and any whose email failed earlier), clearing each only once sent. Its own
  * runs are recorded in `cron_status` like a job's (every job's run checks it
  * ran), and a run that did all that pings the external heartbeat
- * (`lib/heartbeat.ts`), whose monitor alerts when the pings stop.
+ * (`lib/heartbeat.ts`), whose monitor alerts when the pings stop. A run
+ * whose own alerts could not be sent does not ping.
  */
 export const watchdog = internalAction({
   args: {},
@@ -154,9 +158,11 @@ export const watchdog = internalAction({
     } catch (error) {
       failure = error;
     }
-    await finishRun(ctx, WATCHDOG_JOB, failure);
+    const delivered = await finishRun(ctx, WATCHDOG_JOB, failure);
     if (failure !== undefined) throw failure;
-    await pingHeartbeat(process.env.HEARTBEAT_URL);
+    // Alerts left unsent (its own, say "is running again") mean alerting
+    // is broken: no ping, so the external monitor notices.
+    if (delivered) await pingHeartbeat(process.env.HEARTBEAT_URL);
     return sent;
   },
 });

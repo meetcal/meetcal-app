@@ -32,9 +32,29 @@ type Dict = Record<string, unknown>;
 /** Pages one table may take: tables are requested as one page, so more is a misbehaving API. */
 const MAX_PAGES = 50;
 
-/** Whether a table read in full: as many rows as the `total` it reports (a table reporting none is taken as read). */
+/** Whether a table provably read in full: it reports a row count (`total`), and that many rows were read. */
 export function tableComplete(rows: number, total: unknown): boolean {
-  return typeof total !== 'number' || rows === total;
+  return typeof total === 'number' && Number.isInteger(total) && total >= 0 && rows === total;
+}
+
+/**
+ * A table's pages joined. A table short of the `total` it reports throws.
+ * `notWhole` says why the rows, though returned, are no proof the table was
+ * read in full, so no basis for deleting what it lacks: it reports no
+ * `total`, or a row came back on two pages (the pages' order shifted between
+ * requests, so the repeat may stand in for a row no page returned).
+ */
+export function joinPages(pages: readonly Dict[][], total: unknown): { rows: Dict[]; notWhole?: string } {
+  const rows = pages.flat();
+  if (typeof total === 'number' && rows.length !== total) throw new Error(`read ${rows.length} rows of the ${total} the table reports`);
+  if (!tableComplete(rows.length, total)) return { rows, notWhole: 'the table reports no row count' };
+  const earlier = new Set<string>();
+  for (const page of pages) {
+    const keys = page.map((row) => JSON.stringify(row));
+    if (keys.some((key) => earlier.has(key))) return { rows, notWhole: 'a row came back on two pages (their order shifted)' };
+    for (const key of keys) earlier.add(key);
+  }
+  return { rows };
 }
 
 /** The Sport80 public API: key and base URL come from the site's `window.env`. */
@@ -71,19 +91,19 @@ class Sport80 {
 
   /**
    * Every page's `data`, following `next_page_url`; any failed page fails
-   * the whole table, and so does a table short of the `total` it reports
-   * (the results sync deletes what a table lacks, so it must be whole).
+   * the whole table, and so does a table short of the `total` it reports.
+   * The results sync deletes what a table lacks, so it prunes only a table
+   * `joinPages` finds whole.
    */
-  private async collate(first: Dict, payload?: Dict): Promise<Dict[]> {
-    const rows: Dict[] = [...((first.data as Dict[]) ?? [])];
+  private async collate(first: Dict, payload?: Dict): Promise<{ rows: Dict[]; notWhole?: string }> {
+    const pages: Dict[][] = [(first.data as Dict[]) ?? []];
     let current = first;
     for (let page = 1; typeof current.next_page_url === 'string' && current.next_page_url; page++) {
       if (page > MAX_PAGES) throw new Error(`table has over ${MAX_PAGES} pages`);
       current = await this.post(current.next_page_url, payload);
-      rows.push(...((current.data as Dict[]) ?? []));
+      pages.push((current.data as Dict[]) ?? []);
     }
-    if (!tableComplete(rows.length, first.total)) throw new Error(`read ${rows.length} rows of the ${String(first.total)} the table reports`);
-    return rows;
+    return joinPages(pages, first.total);
   }
 
   /**
@@ -99,10 +119,10 @@ class Sport80 {
 
   async eventIndex(year: number): Promise<Dict[]> {
     const payload = { date_range_start: `${year}-01-01`, date_range_end: `${year}-12-31` };
-    return await this.collate(await this.post(this.url('/api/events/table/data', 1000), payload), payload);
+    return (await this.collate(await this.post(this.url('/api/events/table/data', 1000), payload), payload)).rows;
   }
 
-  async eventResults(eventId: string): Promise<Dict[]> {
+  async eventResults(eventId: string): Promise<{ rows: Dict[]; notWhole?: string }> {
     return await this.collate(await this.post(this.url(`/api/events/${eventId}/table/data`, 2000)));
   }
 }
@@ -128,7 +148,7 @@ const MAX_PRUNE_CALLS = 25;
 const readable = (row: ResultRow) => typeof row.name === 'string' && row.name !== '' && (row.age === null || typeof row.age === 'string');
 
 type MeetOutcome = { meet: string; eventId: string; rows: number; inserted: number; updated: number; unchanged: number; failed: number; deleted: number };
-type RunResult = { meets: { eventId: string; meet: string; rows: ResultRow[] }[]; outcomes: MeetOutcome[]; failed: string[] };
+type RunResult = { meets: { eventId: string; meet: string; rows: ResultRow[]; notWhole?: string }[]; outcomes: MeetOutcome[]; failed: string[] };
 
 export const run = internalAction({
   // `only`: event ids to sync (of the recent events). `allowShrink`: let an
@@ -160,20 +180,20 @@ export const run = internalAction({
       if (!eventId || !meet || seen.has(eventId)) continue;
       seen.add(eventId);
       if (!hasResultsRoute(event) || (only && !only.includes(eventId))) continue;
-      let items: Dict[];
+      let table: { rows: Dict[]; notWhole?: string };
       try {
-        items = await api.eventResults(eventId);
+        table = await api.eventResults(eventId);
       } catch (error) {
         failures.push({ source: `${meet} (event ${eventId})`, error: `${eventDate(event)}: ${(error as Error).message}` });
         continue;
       }
-      if (items.length) meets.push({ eventId, meet, rows: formatResults(eventId, meet, eventDate(event), items) });
+      if (table.rows.length) meets.push({ eventId, meet, rows: formatResults(eventId, meet, eventDate(event), table.rows), notWhole: table.notWhole });
     }
     for (const failure of failed()) console.error(`sport80: ${failure}`);
     if (dryRun) return { meets, outcomes: [], failed: failed() };
 
     const outcomes: MeetOutcome[] = [];
-    for (const { eventId, meet, rows } of meets) {
+    for (const { eventId, meet, rows, notWhole } of meets) {
       const source = `${meet} (event ${eventId})`;
       const outcome: MeetOutcome = { meet, eventId, rows: rows.length, inserted: 0, updated: 0, unchanged: 0, failed: 0, deleted: 0 };
       outcomes.push(outcome);
@@ -225,6 +245,10 @@ export const run = internalAction({
       }
       // Only a meet read in full is a safe basis for deleting what it lacks.
       if (outcome.failed > 0 || valid.length === 0) continue;
+      if (notWhole) {
+        failures.push({ source, error: `stale results not deleted: ${notWhole}` });
+        continue;
+      }
       try {
         const keep = valid.map((row) => ({ meet: row.meet, name: row.name!, age: row.age }));
         // A batch a call; the rest of a huge prune waits for the next run.

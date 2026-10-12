@@ -234,4 +234,17 @@ describe('record upserts refuse to clear many lifts (#91)', () => {
     const one = full.map((row, i) => (i === 0 ? record(row.weightClass, { snatchRecord: 100 }) : row));
     expect(await upsert({ db }, { rows: one })).toHaveLength(30);
   });
+
+  it('stores a key the payload repeats once, holding its last row', async () => {
+    const { db, rows } = fakeDb({ records: [] });
+    const outcomes = await upsert({ db }, { rows: [record('60kg', { snatchRecord: 100 }), record('60kg', { snatchRecord: 105 })] });
+    expect(outcomes).toEqual([
+      { wasInsert: true, wasChanged: true },
+      { wasInsert: false, wasChanged: true },
+    ]);
+    expect(rows('records')).toHaveLength(1);
+    expect(rows('records')[0]).toMatchObject({ weightClass: '60kg', snatchRecord: 105 });
+    await upsert({ db }, { rows: [record('60kg', { snatchRecord: 110 })] });
+    expect(rows('records').map((r) => r.snatchRecord)).toEqual([110]);
+  });
 });
