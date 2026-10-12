@@ -117,9 +117,9 @@ function backendOk(call: ApiCall): unknown {
 
 describe("outbox replay over the real API client", () => {
   it("sends a reset, a delete and a put in rev order with the owner's token", async () => {
-    await markResetPending(USER, "Other Meet");
-    await markSessionDelete(USER, "Test Meet-2-Red", "Test Meet");
-    await markSessionPut(
+    const resetRev = await markResetPending(USER, "Other Meet");
+    const deleteRev = await markSessionDelete(USER, "Test Meet-2-Red", "Test Meet");
+    const putRev = await markSessionPut(
       USER,
       session("Test Meet/Finals-1-Red", { notes: "bring chalk", athleteNames: ["Athlete A"] }),
     );
@@ -136,9 +136,9 @@ describe("outbox replay over the real API client", () => {
     // server can ignore one that lands after a newer write from this install.
     const { device } = await readOutbox(USER);
     expect(device).toMatch(/^[A-Za-z0-9_-]{8,64}$/);
-    expect(sent[0].args).toEqual({ meet: "Other Meet", device, rev: 1 });
-    expect(sent[1].args).toEqual({ sessionId: "Test Meet-2-Red", device, rev: 2 });
-    expect(sent[2].args).toMatchObject({ device, rev: 3 });
+    expect(sent[0].args).toEqual({ meet: "Other Meet", device, rev: resetRev });
+    expect(sent[1].args).toEqual({ sessionId: "Test Meet-2-Red", device, rev: deleteRev });
+    expect(sent[2].args).toMatchObject({ device, rev: putRev });
     // A `/` in the meet name is part of the id argument, not a path segment.
     expect(sent[2].args.sessionId).toBe("Test Meet/Finals-1-Red");
     expect(sent.every((call) => call.token === TOKEN)).toBe(true);
@@ -249,7 +249,7 @@ describe("outbox replay over the real API client", () => {
     const result = await flushOutbox(USER, async () => TOKEN);
 
     expect(sent.map((call) => [call.fn, call.args])).toEqual([
-      ["users:deleteSavedSession", { sessionId: "gone", device: expect.any(String), rev: 1 }],
+      ["users:deleteSavedSession", { sessionId: "gone", device: expect.any(String), rev: expect.any(Number) }],
     ]);
     expect(result).toMatchObject({ delivered: 1, remaining: 0 });
   });

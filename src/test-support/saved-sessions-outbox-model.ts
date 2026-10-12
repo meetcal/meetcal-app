@@ -490,19 +490,36 @@ function idsWrittenBy(call: ApiCall): string[] {
 }
 
 /**
- * Accounts for the late writes that landed since the last call. One sent
- * under an install id the outbox lost to corruption is unordered against the
- * new id's writes, so it leaves its sessions unconstrained. One that applied
- * moves the server row a refused write's excuse allows: the refused write
- * never landed, so whatever earlier write lands last is the server's word.
+ * The row a write that applied leaves for `id`: a save its own body, an
+ * unsave none, and a reset whatever it kept (sessions saved after it).
+ */
+function rowAfter(call: ApiCall, id: string, rows: Map<string, Wire>): Wire | undefined {
+  if (call.fn === 'users:putSavedSession') {
+    const { device: _device, rev: _rev, ...body } = call.args;
+    return canonical(body);
+  }
+  if (call.fn === 'users:deleteSavedSession') return undefined;
+  return rows.get(id);
+}
+
+/**
+ * Accounts for the late writes that applied since the last call (one the
+ * server ignored as stale changed nothing). One sent under an install id the
+ * outbox lost to corruption is unordered against the new id's writes, so its
+ * outcome is allowed until the user's next change. One that applied while
+ * its session is excused for a refused write moves that excuse to its own
+ * outcome: the refused write never landed, so the earlier write that lands
+ * last is the server's word.
  */
 export function processLandings(m: Model, h: Harness): void {
   if (h.landed.length === 0) return;
   const rows = h.server.wires(OWNER);
   for (const landing of h.landed.splice(0)) {
+    if (!landing.applied) continue;
     for (const id of idsWrittenBy(landing.call)) {
-      if (landing.orphaned) excuse(m, id, { kind: 'any' });
-      else if (landing.applied && m.excused.get(id)?.kind === 'server') m.excused.set(id, { kind: 'server', wire: rows.get(id) });
+      const outcome: Excuse = { kind: 'server', wire: rowAfter(landing.call, id, rows) };
+      if (landing.orphaned) excuse(m, id, outcome);
+      else if (m.excused.get(id)?.kind === 'server') m.excused.set(id, outcome);
     }
   }
 }

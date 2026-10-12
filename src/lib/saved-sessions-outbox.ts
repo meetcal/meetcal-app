@@ -55,7 +55,7 @@ export type PendingSessionOp = 'put' | 'delete';
 
 export interface PendingSessionEntry {
   op: PendingSessionOp;
-  /** Monotonic per outbox; a clear only lands when the rev still matches. */
+  /** Monotonic per outbox (`takeRev`); a clear only lands when the rev still matches. */
   rev: number;
   /** Meet the session belongs to, so resets can supersede and hold it. */
   meet: string;
@@ -71,9 +71,9 @@ export interface SavedSessionsOutbox {
   /**
    * This install's id in the server's write ordering, which compares revs
    * only within one id. Stored with `nextRev`, not beside it: whenever the
-   * counter starts over (storage cleared, or a value that reads as empty), so
-   * does the id, so a new rev 1 is never read as older than an earlier
-   * install's rev 9. Set by the first write of the outbox.
+   * counter starts over (storage cleared, or a value that reads as empty or
+   * without a counter), so does the id, so a new rev is never read as older
+   * than one an earlier outbox sent. Set by the first write of the outbox.
    */
   device?: string;
 }
@@ -91,6 +91,21 @@ export interface FlushResult {
 
 function emptyOutbox(): SavedSessionsOutbox {
   return { sessions: {}, resets: {}, nextRev: 1 };
+}
+
+/**
+ * Hands out the next rev: past every rev this outbox gave before, and at
+ * least the clock in milliseconds. The clock is what keeps the server's
+ * ordering sound when storage goes back in time with the install id intact:
+ * an outbox restored from a device backup (or the same backup restored onto
+ * two phones) has an older `nextRev` than the revs the server already holds
+ * from that id, and counting on from it would have the server ignore the new
+ * writes as stale. Never moves back, even when the clock does.
+ */
+function takeRev(outbox: SavedSessionsOutbox): number {
+  const rev = Math.max(outbox.nextRev, Date.now());
+  outbox.nextRev = rev + 1;
+  return rev;
 }
 
 /** An install id this outbox writes, and the server's 64-character limit allows. */
@@ -189,11 +204,12 @@ function parseOutbox(raw: string | null): SavedSessionsOutbox {
       ...Object.values(sessions).map((entry) => entry.rev),
       ...Object.values(resets),
     );
-    const nextRev =
-      typeof parsed.nextRev === 'number' && Number.isInteger(parsed.nextRev)
-        ? Math.max(parsed.nextRev, maxRev + 1)
-        : maxRev + 1;
-    return { sessions, resets, nextRev, ...(isDeviceId(parsed.device) ? { device: parsed.device } : {}) };
+    const hasCounter = typeof parsed.nextRev === 'number' && Number.isInteger(parsed.nextRev);
+    const nextRev = hasCounter ? Math.max(parsed.nextRev as number, maxRev + 1) : maxRev + 1;
+    // The id is kept only with the counter it numbered: one without it
+    // starts over, so the next write takes a new id.
+    const device = hasCounter && isDeviceId(parsed.device) ? parsed.device : undefined;
+    return { sessions, resets, nextRev, ...(device ? { device } : {}) };
   } catch {
     return emptyOutbox();
   }
@@ -247,7 +263,7 @@ export function markSessionPut(userId: string, session: SavedSession): Promise<n
     return Promise.reject(new Error(`Saved sessions outbox: unreadable session body for ${String(session.id)}; not queued`));
   }
   return updateOutbox(userId, (outbox) => {
-    const rev = outbox.nextRev++;
+    const rev = takeRev(outbox);
     outbox.sessions[body.id] = { op: 'put', rev, meet: body.meet, session: body };
     return rev;
   });
@@ -256,7 +272,7 @@ export function markSessionPut(userId: string, session: SavedSession): Promise<n
 /** Record that session `sessionId` (in `meet`) must be deleted on the server. */
 export function markSessionDelete(userId: string, sessionId: string, meet: string): Promise<number> {
   return updateOutbox(userId, (outbox) => {
-    const rev = outbox.nextRev++;
+    const rev = takeRev(outbox);
     outbox.sessions[sessionId] = { op: 'delete', rev, meet };
     return rev;
   });
@@ -269,7 +285,7 @@ export function markSessionDelete(userId: string, sessionId: string, meet: strin
  */
 export function markResetPending(userId: string, meet: string | null): Promise<number> {
   return updateOutbox(userId, (outbox) => {
-    const rev = outbox.nextRev++;
+    const rev = takeRev(outbox);
     if (meet === null) {
       outbox.sessions = {};
       outbox.resets = { [RESET_ALL_MEETS]: rev };
@@ -330,7 +346,7 @@ export async function adoptPreOutboxSessions(
         // Same check as `markSessionPut`: a body the reader would drop is not queued.
         const body = parseSessionBody(session);
         if (!body || outbox.sessions[body.id]) continue;
-        const rev = outbox.nextRev++;
+        const rev = takeRev(outbox);
         outbox.sessions[body.id] = { op: 'put', rev, meet: body.meet, session: body };
         adopted += 1;
       }

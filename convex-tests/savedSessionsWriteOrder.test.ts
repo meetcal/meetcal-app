@@ -117,6 +117,25 @@ describe('saved-session write ordering', () => {
     expect(await s.list()).toEqual(['a:from the tablet']);
   });
 
+  it('compares a write with a reset strictly: revs are unique, so only an older write is stale', async () => {
+    const s = server();
+    await s.reset(MEET, at(PHONE, 5));
+    await s.put('a', 'same rev', at(PHONE, 5));
+    expect(await s.list()).toEqual(['a:same rev']);
+  });
+
+  it('records an unsave of a session a reset already removed, so an older save stays out', async () => {
+    const s = server();
+    await s.put('a', 'v1', at(PHONE, 1));
+    await s.reset(MEET, at(PHONE, 5));
+    // The unsave from before the reset lands after it; the row is gone, and
+    // with no row its meet is unknown, so only a reset-all could cover it.
+    expect(await s.unsave('a', at(PHONE, 4))).toEqual({ deleted: false });
+    expect(s.rows('saved_session_revisions')).toEqual([expect.objectContaining({ sessionId: 'a', rev: 4 })]);
+    expect(await s.put('a', 'older', at(PHONE, 3))).toMatchObject({ superseded: true });
+    expect(await s.list()).toEqual([]);
+  });
+
   it('applies a newer write from the same install', async () => {
     const s = server();
     await s.unsave('a', at(PHONE, 2));

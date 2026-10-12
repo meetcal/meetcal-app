@@ -243,17 +243,41 @@ describe("install id for the server's write ordering", () => {
     expect(mockDelete).toHaveBeenCalledWith(TOKEN, "delete-me", { device, rev: del });
   });
 
-  it("starts a new id with the counter when the stored outbox reads as empty", async () => {
+  it.each([
+    ["reads as empty", "{corrupt"],
+    ["keeps its id but lost its counter", (device: string) => JSON.stringify({ sessions: {}, resets: {}, device })],
+  ])("starts a new id with the counter when the stored outbox %s", async (_, stored) => {
     await markSessionPut(USER, session("a"));
     const before = await readOutbox(USER);
-    await AsyncStorage.setItem(getSavedSessionsOutboxKey(USER), "{corrupt");
+    const raw = typeof stored === "string" ? stored : stored(before.device as string);
+    await AsyncStorage.setItem(getSavedSessionsOutboxKey(USER), raw);
 
-    const rev = await markSessionPut(USER, session("b"));
+    await markSessionPut(USER, session("b"));
 
     const after = await readOutbox(USER);
-    expect(rev).toBe(1);
     expect(after.device).toMatch(DEVICE);
     expect(after.device).not.toBe(before.device);
+  });
+
+  it("numbers writes past the clock, so a counter restored from a backup still moves past the revs it sent", async () => {
+    const now = jest.spyOn(Date, "now").mockReturnValue(1_800_000_000_000);
+    const first = await markSessionPut(USER, session("a"));
+    expect(first).toBe(1_800_000_000_000);
+    const backup = await AsyncStorage.getItem(getSavedSessionsOutboxKey(USER));
+    // Same millisecond: still one past the last.
+    expect(await markSessionPut(USER, session("b"))).toBe(first + 1);
+    now.mockReturnValue(1_800_000_060_000);
+    const later = await markSessionDelete(USER, "a", "Test Meet");
+
+    // The device restores the older store, same id and all, an hour on.
+    await AsyncStorage.setItem(getSavedSessionsOutboxKey(USER), backup as string);
+    now.mockReturnValue(1_800_003_600_000);
+    const afterRestore = await markSessionPut(USER, session("a"));
+    expect(afterRestore).toBeGreaterThan(later);
+
+    // A clock set back never takes revs back.
+    now.mockReturnValue(1_000);
+    expect(await markSessionPut(USER, session("c"))).toBe(afterRestore + 1);
   });
 
   it("stores an id before sending an outbox an older build wrote", async () => {
