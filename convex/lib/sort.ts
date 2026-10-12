@@ -11,7 +11,7 @@ function weightClassKey(weightClass: string): [boolean, number, boolean] {
   // `str::parse::<i32>` accepts an optional sign and digits only.
   if (/^[+-]?\d+$/.test(weight)) {
     const parsed = Number(weight);
-    if (Number.isSafeInteger(parsed) && Math.abs(parsed) <= 2 ** 31) {
+    if (Number.isSafeInteger(parsed) && parsed >= -(2 ** 31) && parsed < 2 ** 31) {
       return [false, parsed, isPlus];
     }
   }
