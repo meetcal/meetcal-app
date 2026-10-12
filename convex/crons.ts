@@ -1,6 +1,6 @@
 import { cronJobs } from 'convex/server';
 import { internal } from './_generated/api';
-import { JOBS, WATCHDOG_SCHEDULE } from './cronJobs';
+import { JOBS, WATCHDOG_JOB, WATCHDOG_SCHEDULE } from './cronJobs';
 
 /**
  * Every scheduled job, from the table in `cronJobs.ts` (schedules in UTC).
@@ -12,6 +12,6 @@ const crons = cronJobs();
 for (const [job, { schedule }] of Object.entries(JOBS)) {
   crons.cron(job, schedule, internal.cronJobs.run, { job });
 }
-crons.cron('cron-watchdog', WATCHDOG_SCHEDULE, internal.cronJobs.watchdog, {});
+crons.cron(WATCHDOG_JOB, WATCHDOG_SCHEDULE, internal.cronJobs.watchdog, {});
 
 export default crons;

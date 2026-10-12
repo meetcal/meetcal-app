@@ -245,6 +245,9 @@ export default defineSchema({
     // succeeds; the watchdog retries them, so a failed send never hides an
     // outage.
     unsent: v.optional(v.array(v.object({ kind: v.string(), detail: v.string() }))),
+    // The sources (a WSO, a meet) the latest failed run named, so a source
+    // that starts failing while the job already is still sends an alert.
+    failedSources: v.optional(v.array(v.string())),
   }).index('by_job', ['job']),
 
   // The last text of each page the urlwatch cron follows (urlwatch's cache.db).
