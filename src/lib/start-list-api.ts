@@ -7,8 +7,9 @@ import {
 import { normalizeAthleteName } from '@/lib/athletes';
 import {
   getAllCachedLiftingResultsForAthlete,
-  getCachedAthleteBestsForNames,
+  getStoredAthleteBestsForNames,
   saveAthleteBestsBatch,
+  type StoredAthleteBests,
 } from '@/lib/database/offline-store';
 import {
   getHistoryCutoffDate,
@@ -87,10 +88,13 @@ function deriveMostRecentMeetBests(results: SupabaseLiftResult[]): YearBests {
  * athletes whose year-bests came back empty and derives their bests from that
  * meet. `deriveMostRecentMeetBests` only ever reads the newest date's rows, so
  * the full career history it used to download changed nothing.
+ *
+ * @returns null when the request failed: the callers must not store (or
+ * memoize) a failed lookup as "no results".
  */
 async function getMostRecentMeetBestsBatch(
   names: string[],
-): Promise<Record<string, YearBests>> {
+): Promise<Record<string, YearBests> | null> {
   const byName: Record<string, YearBests> = {};
   if (names.length === 0) return byName;
   try {
@@ -111,9 +115,7 @@ async function getMostRecentMeetBestsBatch(
       byName[name] = deriveMostRecentMeetBests(grouped.get(normalizeAthleteName(name)) ?? []);
     });
   } catch {
-    names.forEach((name) => {
-      byName[name] = ZERO_BESTS;
-    });
+    return null;
   }
   return byName;
 }
@@ -170,17 +172,37 @@ export async function getLastYearBests(athleteName: string): Promise<YearBests> 
   return request;
 }
 
+/**
+ * Stores what the API answered. A failed write only costs the next view a
+ * lookup, so it does not fail the bests that were just resolved.
+ */
+async function persistBests(bestsByName: Record<string, YearBests>): Promise<void> {
+  const rows: Record<string, ReturnType<typeof toStoredBests>> = {};
+  for (const [name, bests] of Object.entries(bestsByName)) rows[name] = toStoredBests(bests);
+  if (Object.keys(rows).length === 0) return;
+  try {
+    await saveAthleteBestsBatch(rows);
+  } catch (error) {
+    console.warn('Could not store athlete bests:', error);
+  }
+}
+
+/** A stale stored answer with real numbers: shown when a lookup cannot run. */
+function staleRealBests(stored: StoredAthleteBests | undefined): YearBests | null {
+  if (!stored) return null;
+  const bests = fromStoredBests(stored.bests);
+  return hasRealBests(bests) ? bests : null;
+}
+
 async function getLastYearBestsUncached(athleteName: string): Promise<YearBests> {
-  const stored = await getCachedAthleteBestsForNames([athleteName]);
-  const storedBests = stored[athleteName];
-  if (storedBests) {
-    const result = fromStoredBests(storedBests);
-    // Stored all-null rows (athletes cached before the most-recent-meet
-    // fallback existed) fall through so they get another chance to resolve.
-    if (hasRealBests(result)) {
-      cacheBests(athleteName, result);
-      return result;
-    }
+  // Freshness is `offline-store`'s rule, shared with session details: a
+  // fresh entry is final, real numbers or "no results" alike; a stale one
+  // (or one stored before entries carried a time) is looked up again.
+  const stored = (await getStoredAthleteBestsForNames([athleteName]))[athleteName];
+  if (stored?.isFresh) {
+    const result = fromStoredBests(stored.bests);
+    cacheBests(athleteName, result);
+    return result;
   }
 
   try {
@@ -198,23 +220,22 @@ async function getLastYearBestsUncached(athleteName: string): Promise<YearBests>
       // Nothing inside the window: fall back to the most recent meet the
       // athlete ever competed at.
       const fallbackByName = await getMostRecentMeetBestsBatch([athleteName]);
+      if (!fallbackByName) {
+        return staleRealBests(stored) ?? ZERO_BESTS;
+      }
       const fallback = fallbackByName[athleteName] ?? ZERO_BESTS;
       cacheBests(athleteName, fallback);
-      if (hasRealBests(fallback)) {
-        await saveAthleteBestsBatch({ [athleteName]: toStoredBests(fallback) });
-      }
+      await persistBests({ [athleteName]: fallback });
       return fallback;
     }
     cacheBests(athleteName, result);
-    await saveAthleteBestsBatch({ [athleteName]: toStoredBests(result) });
+    await persistBests({ [athleteName]: result });
     return result;
   } catch {
-    const fallback = await getOfflineFallback(athleteName);
-    if (hasRealBests(fallback)) {
-      cacheBests(athleteName, fallback);
-      await saveAthleteBestsBatch({ [athleteName]: toStoredBests(fallback) });
-    }
-    return fallback;
+    // Offline or the request failed. Neither the stale copy nor what the
+    // downloaded meets say is an answer, so nothing is stored or memoized:
+    // storing it used to turn one offline view into "—" for good.
+    return staleRealBests(stored) ?? (await getOfflineFallback(athleteName));
   }
 }
 
@@ -233,31 +254,49 @@ export async function getLastYearBestsBatch(
   });
 
   const missingMemory = uniqueNames.filter((name) => byName[name] == null);
+  // Stale stored answers with real numbers, shown when no lookup runs.
+  const staleByName: Record<string, YearBests> = {};
   if (missingMemory.length > 0) {
-    const stored = await getCachedAthleteBestsForNames(missingMemory);
+    const stored = await getStoredAthleteBestsForNames(missingMemory);
     missingMemory.forEach((name) => {
-      const storedBests = stored[name];
-      if (!storedBests) return;
-      const result = fromStoredBests(storedBests);
-      // Skip stored all-null rows so athletes cached before the
-      // most-recent-meet fallback existed get another chance to resolve.
-      if (!hasRealBests(result)) return;
-      cacheBests(name, result);
-      byName[name] = result;
+      const entry = stored[name];
+      if (!entry) return;
+      // A fresh entry is final, "no results" included (it expires sooner).
+      // A stale one is looked up again, which is also what gives rows
+      // stored before entries carried a time another chance.
+      if (entry.isFresh) {
+        const result = fromStoredBests(entry.bests);
+        cacheBests(name, result);
+        byName[name] = result;
+        return;
+      }
+      const stale = staleRealBests(entry);
+      if (stale) staleByName[name] = stale;
     });
   }
 
   const missing = uniqueNames.filter((name) => byName[name] == null);
   if (options.fetchMissing === false) {
     missing.forEach((name) => {
-      byName[name] = ZERO_BESTS;
+      byName[name] = staleByName[name] ?? ZERO_BESTS;
     });
     return byName;
   }
 
   if (missing.length > 0) {
     const cutoffDate = getHistoryCutoffDate(YEAR_BESTS_YEARS);
-    const fetched = await fetchApiYearBestsByNames(missing, cutoffDate);
+    let fetched: Awaited<ReturnType<typeof fetchApiYearBestsByNames>>;
+    try {
+      fetched = await fetchApiYearBestsByNames(missing, cutoffDate);
+    } catch (error) {
+      // Offline or failed. The stale copies are better than nothing; with
+      // none at all the caller still gets the failure.
+      if (!missing.some((name) => staleByName[name])) throw error;
+      missing.forEach((name) => {
+        byName[name] = staleByName[name] ?? ZERO_BESTS;
+      });
+      return byName;
+    }
     // The API keys its answer by the cleaned name (trimmed, whitespace
     // folded), so a roster spelling like ' Jane Doe' never matched its own
     // row under the raw key and was persisted as "no results". Match the way
@@ -266,7 +305,7 @@ export async function getLastYearBestsBatch(
     for (const [key, row] of Object.entries(fetched)) {
       fetchedByNormalized.set(normalizeAthleteName(key), row);
     }
-    const persisted: Record<string, ReturnType<typeof toStoredBests>> = {};
+    const persisted: Record<string, YearBests> = {};
 
     const emptyNames: string[] = [];
     missing.forEach((name) => {
@@ -284,7 +323,7 @@ export async function getLastYearBestsBatch(
       }
       byName[name] = bests;
       cacheBests(name, bests);
-      persisted[name] = toStoredBests(bests);
+      persisted[name] = bests;
     });
 
     // Athletes with nothing inside the window: show their most recent
@@ -292,16 +331,21 @@ export async function getLastYearBestsBatch(
     if (emptyNames.length > 0) {
       const fallbacks = await getMostRecentMeetBestsBatch(emptyNames);
       emptyNames.forEach((name) => {
+        if (!fallbacks) {
+          // The fallback lookup failed: not an answer, so not stored.
+          byName[name] = staleByName[name] ?? ZERO_BESTS;
+          return;
+        }
+        // Both lookups answered: all-zero is the API's "no results", stored
+        // under the shorter empty TTL.
         const bests = fallbacks[name] ?? ZERO_BESTS;
         byName[name] = bests;
         cacheBests(name, bests);
-        if (hasRealBests(bests)) {
-          persisted[name] = toStoredBests(bests);
-        }
+        persisted[name] = bests;
       });
     }
 
-    await saveAthleteBestsBatch(persisted);
+    await persistBests(persisted);
   }
 
   return byName;

@@ -12,8 +12,10 @@ import { MeetName } from "@/data/types/meet";
 import { maxSuccessfulAttempt, normalizeAthleteName } from "@/lib/athletes";
 import {
   getAllCachedLiftingResultsForAthletes,
-  getCachedAthleteBestsForNames,
+  getStoredAthleteBestsForNames,
+  hasAnyAthleteBest,
   saveAthleteBestsBatch,
+  type StoredAthleteBests,
 } from "@/lib/database/offline-store";
 import { fetchAthleteBestsForNames } from "@/lib/database/queries";
 import { isNetworkAvailable } from "@/lib/networkUtils";
@@ -103,12 +105,19 @@ async function loadCachedBestsForNames(
 /**
  * The stored-bests layer, shared by both entry points: de-duplicate the
  * names, seed every one with an empty record, then overwrite whatever
- * `offline-store` already holds. `getCachedAthleteBestsBatch` stops here;
- * `getAthleteBestsBatchUncached` continues with `namesMissingStoredBests`.
+ * `offline-store` already holds, fresh or not (a stale answer still beats
+ * "—"). `getCachedAthleteBestsBatch` stops here;
+ * `getAthleteBestsBatchUncached` continues with `namesNeedingLookup`.
+ *
+ * Freshness is `offline-store`'s rule (`isAthleteBestsFresh`), the one the
+ * start list uses too: a stored all-null entry used to count as a final
+ * "no results" forever, even when it was an offline or failed lookup's
+ * fallback.
  */
 async function loadStoredBests(names: string[]): Promise<{
   bestsByName: Record<string, SupabaseBests>;
-  namesMissingStoredBests: string[];
+  namesNeedingLookup: string[];
+  storedByName: Record<string, StoredAthleteBests>;
 }> {
   const uniqueNames = Array.from(new Set(names.filter(Boolean)));
   const bestsByName: Record<string, SupabaseBests> = {};
@@ -118,25 +127,42 @@ async function loadStoredBests(names: string[]): Promise<{
   });
 
   if (uniqueNames.length === 0) {
-    return { bestsByName, namesMissingStoredBests: [] };
+    return { bestsByName, namesNeedingLookup: [], storedByName: {} };
   }
 
-  const cachedStoredBests = await getCachedAthleteBestsForNames(uniqueNames);
+  const storedByName = await getStoredAthleteBestsForNames(uniqueNames);
   uniqueNames.forEach((name) => {
-    const cached = cachedStoredBests[name];
-    if (cached) {
-      bestsByName[name] = cached;
+    const stored = storedByName[name];
+    if (stored) {
+      bestsByName[name] = stored.bests;
     }
   });
 
   return {
     bestsByName,
-    // A name with a stored entry of all-nulls is still resolved: the athlete
-    // genuinely has no results. Only an absent key means "never looked up".
-    namesMissingStoredBests: uniqueNames.filter(
-      (name) => !Object.prototype.hasOwnProperty.call(cachedStoredBests, name),
-    ),
+    namesNeedingLookup: uniqueNames.filter((name) => !storedByName[name]?.isFresh),
+    storedByName,
   };
+}
+
+/**
+ * Bests for names the API could not answer (offline, or the request failed):
+ * a stale stored answer with real numbers if there is one, else what the
+ * downloaded meets' results say. Never persisted. Storing this fallback is
+ * what turned one offline session view into a permanent "—" for the athlete.
+ */
+async function loadFallbackBests(
+  names: string[],
+  storedByName: Record<string, StoredAthleteBests>,
+): Promise<Record<string, SupabaseBests>> {
+  const derived = await loadCachedBestsForNames(names);
+  const bestsByName: Record<string, SupabaseBests> = {};
+  for (const name of names) {
+    const stored = storedByName[name]?.bests;
+    bestsByName[name] =
+      stored && hasAnyAthleteBest(stored) ? stored : (derived[name] ?? createEmptyBests());
+  }
+  return bestsByName;
 }
 
 function createBatchKey(names: string[], meetId: MeetName): string {
@@ -170,49 +196,48 @@ export async function getCachedAthleteBestsBatch(
 async function getAthleteBestsBatchUncached(
   names: string[],
 ): Promise<Record<string, SupabaseBests>> {
-  const { bestsByName, namesMissingStoredBests } = await loadStoredBests(names);
-  if (namesMissingStoredBests.length === 0) {
+  const { bestsByName, namesNeedingLookup, storedByName } = await loadStoredBests(names);
+  if (namesNeedingLookup.length === 0) {
     return bestsByName;
   }
 
   const hasNetwork = await isNetworkAvailable();
   if (!hasNetwork) {
-    const cachedOnly = await loadCachedBestsForNames(namesMissingStoredBests);
-    Object.assign(bestsByName, cachedOnly);
-    await saveAthleteBestsBatch(cachedOnly);
+    Object.assign(bestsByName, await loadFallbackBests(namesNeedingLookup, storedByName));
     return bestsByName;
   }
 
+  let fetchedBestsByName: Record<string, SupabaseBests>;
   try {
-    const fetchedBestsByName = await fetchAthleteBestsForNames(
-      namesMissingStoredBests,
-    );
+    fetchedBestsByName = await fetchAthleteBestsForNames(namesNeedingLookup);
+  } catch {
+    // A network error or timeout is not an answer either.
+    Object.assign(bestsByName, await loadFallbackBests(namesNeedingLookup, storedByName));
+    return bestsByName;
+  }
 
-    Object.assign(bestsByName, fetchedBestsByName);
+  Object.assign(bestsByName, fetchedBestsByName);
 
-    const missingNames = namesMissingStoredBests.filter((name) => {
-      const bests = fetchedBestsByName[name];
-      return (
-        bests.snatch_best == null && bests.cj_best == null && bests.total == null
-      );
+  const missingNames = namesNeedingLookup.filter((name) => {
+    const bests = fetchedBestsByName[name];
+    return !bests || !hasAnyAthleteBest(bests);
+  });
+  if (missingNames.length > 0) {
+    const cachedBests = await loadCachedBestsForNames(missingNames);
+    missingNames.forEach((name) => {
+      bestsByName[name] = cachedBests[name] ?? createEmptyBests();
     });
-    if (missingNames.length > 0) {
-      const cachedBests = await loadCachedBestsForNames(missingNames);
-      missingNames.forEach((name) => {
-        bestsByName[name] = cachedBests[name] ?? createEmptyBests();
-      });
-    }
+  }
+  // The API answered, so this is stored, all-null rows included: those are
+  // its "no results" and expire after `ATHLETE_BESTS_EMPTY_TTL_MS`. A failed
+  // write only costs the next view a lookup; the answer is still shown.
+  try {
     await saveAthleteBestsBatch(
-      namesMissingStoredBests.reduce<Record<string, SupabaseBests>>((acc, name) => {
+      namesNeedingLookup.reduce<Record<string, SupabaseBests>>((acc, name) => {
         acc[name] = bestsByName[name] ?? createEmptyBests();
         return acc;
       }, {}),
     );
-    return bestsByName;
-  } catch {
-    const fallback = await loadCachedBestsForNames(namesMissingStoredBests);
-    Object.assign(bestsByName, fallback);
-    await saveAthleteBestsBatch(fallback);
-    return bestsByName;
-  }
+  } catch {}
+  return bestsByName;
 }
