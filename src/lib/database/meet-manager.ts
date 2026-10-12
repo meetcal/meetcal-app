@@ -250,8 +250,12 @@ export function prunePendingHistory(
   return kept;
 }
 
-/** Records (or with `null`, clears) the athletes a meet's refresh still owes. */
-async function writePendingHistory(meet: MeetName, entry: PendingHistory | null): Promise<void> {
+/**
+ * Records (or with `null`, clears) the athletes a meet's refresh still owes.
+ *
+ * @returns whether the write landed (logged, not thrown, when it did not).
+ */
+async function writePendingHistory(meet: MeetName, entry: PendingHistory | null): Promise<boolean> {
   try {
     await historyStateWrites(async () => {
       const current = await readPendingHistory();
@@ -261,19 +265,23 @@ async function writePendingHistory(meet: MeetName, entry: PendingHistory | null)
       else next[meet] = entry;
       await AsyncStorage.setItem(HISTORY_PENDING_KEY, JSON.stringify(next));
     });
+    return true;
   } catch (error) {
     console.warn('Could not record pending athlete history:', error);
+    return false;
   }
 }
 
 /**
  * Which athletes a history pass downloads.
  *
- * - `force` (Refresh All): the whole roster.
+ * - `force` (Refresh All) or a changed package: the whole roster. A new
+ *   package can carry new results for athletes an unfinished refresh already
+ *   reached, so it starts a new refresh rather than resuming the old one.
  * - An unfinished refresh younger than the TTL: only the athletes it did not
  *   reach, plus any with no history blob at all. This is the resume: one
  *   failed batch used to make the next attempt start over from batch one.
- * - A changed package or a last full sync older than the TTL: the roster.
+ * - A last full sync older than the TTL: the roster.
  * - Otherwise only the gaps (athletes with no blob on disk).
  *
  * `fullRefresh` says whether finishing the pass completes a full refresh
@@ -291,7 +299,7 @@ export async function planHistoryDownload(input: {
   now: number;
 }): Promise<{ names: string[]; fullRefresh: boolean; since: number }> {
   const { rosterNames, pending, now } = input;
-  if (input.force) {
+  if (input.force || input.packageChanged) {
     return { names: [...rosterNames], fullRefresh: true, since: now };
   }
   if (pending && now - pending.since < HISTORY_REFRESH_TTL_MS) {
@@ -306,7 +314,7 @@ export async function planHistoryDownload(input: {
     for (const name of await input.findMissing(rosterNames)) names.add(name);
     return { names: Array.from(names), fullRefresh: true, since: pending.since };
   }
-  if (input.packageChanged || now - input.syncedAt >= HISTORY_REFRESH_TTL_MS) {
+  if (now - input.syncedAt >= HISTORY_REFRESH_TTL_MS) {
     return { names: [...rosterNames], fullRefresh: true, since: now };
   }
   return { names: await input.findMissing(rosterNames), fullRefresh: false, since: now };
@@ -837,18 +845,31 @@ async function fetchHistoryBatch(batch: readonly string[]): Promise<SupabaseLift
   }
 }
 
+/** A planned history pass (see `planHistoryDownload`), ready to run. */
+interface HistoryPass {
+  names: string[];
+  fullRefresh: boolean;
+  since: number;
+  /** Whether an unfinished refresh was on disk when the pass was planned. */
+  hadPending: boolean;
+  /**
+   * Whether what the pass owes is on disk: true unless a full refresh's
+   * pending list could not be written. A package ETag must not be saved over
+   * an unrecorded refresh: the next `304` would then plan only the gaps.
+   */
+  recorded: boolean;
+}
+
 /**
- * Brings a meet's athlete history up to date for `rosterNames` (see
- * `planHistoryDownload` for which athletes), and records what is still
- * missing so the next attempt resumes there.
- *
- * @returns true when every athlete the pass set out to fetch was written.
+ * Plans a meet's history pass for `rosterNames` and, for a full refresh,
+ * records its names as pending before anything is fetched, so an app killed
+ * at any point after this resumes with them rather than with nothing owed.
  */
-async function syncAthleteHistory(
+async function planAthleteHistory(
   meet: MeetName,
   rosterNames: readonly string[],
   options: { packageChanged: boolean; force: boolean },
-): Promise<boolean> {
+): Promise<HistoryPass> {
   const [syncedAtByMeet, pendingByMeet] = await Promise.all([
     readHistorySyncedAt(),
     readPendingHistory(),
@@ -864,19 +885,28 @@ async function syncAthleteHistory(
   });
 
   // A gap-only pass is recomputed from storage next time; only a full
-  // refresh needs its remainder written down. It is written before the pass
-  // too, so an app killed mid-way resumes with these names rather than the
-  // whole roster.
-  if (plan.fullRefresh && plan.names.length > 0) {
-    await writePendingHistory(meet, { names: plan.names, since: plan.since });
-  }
-  const failed = plan.names.length > 0 ? await downloadAthleteHistory(meet, plan.names) : [];
+  // refresh needs its remainder written down.
+  const recorded =
+    plan.fullRefresh && plan.names.length > 0
+      ? await writePendingHistory(meet, { names: plan.names, since: plan.since })
+      : true;
+  return { ...plan, hadPending: Boolean(pendingByMeet[meet]), recorded };
+}
+
+/**
+ * Runs a planned history pass and records what is still missing, so the
+ * next attempt resumes there.
+ *
+ * @returns true when every athlete the pass set out to fetch was written.
+ */
+async function runAthleteHistory(meet: MeetName, pass: HistoryPass): Promise<boolean> {
+  const failed = pass.names.length > 0 ? await downloadAthleteHistory(meet, pass.names) : [];
   if (failed.length > 0) {
-    if (plan.fullRefresh) await writePendingHistory(meet, { names: failed, since: plan.since });
+    if (pass.fullRefresh) await writePendingHistory(meet, { names: failed, since: pass.since });
     return false;
   }
-  if (plan.fullRefresh) await markHistorySynced(meet);
-  if (pendingByMeet[meet] || (plan.fullRefresh && plan.names.length > 0)) {
+  if (pass.fullRefresh) await markHistorySynced(meet);
+  if (pass.hadPending || (pass.fullRefresh && pass.names.length > 0)) {
     await writePendingHistory(meet, null);
   }
   return true;
@@ -885,7 +915,7 @@ async function syncAthleteHistory(
 /**
  * Decomposes a fresh package into storage: schedule, roster (which also
  * writes the per-session caches), the meet's own results and year bests.
- * Athlete history is the caller's next step (`syncAthleteHistory`).
+ * Athlete history is the caller's next step (`planAthleteHistory`).
  *
  * @returns the roster's athlete names. A schedule/roster/result write that
  * fails throws, so the caller can retry the whole ingest after a SQLITE_FULL
@@ -1001,19 +1031,36 @@ async function prefetchMeetDataUncached(meet: MeetName, options: PrefetchMeetOpt
     }
   }
 
-  // Saved before the history pass, which can run for minutes on a national
-  // meet: an app killed during it then resumes from a `304` and the pending
-  // list instead of re-ingesting the package.
-  if (etagUpdate !== undefined) {
-    await savePackageEtag(meet, etagUpdate);
-  }
-
+  // What the history pass owes is planned, and written down, before the new
+  // ETag is saved. Saved the other way round, an app killed in between came
+  // back to a `304` with no pending list and planned only the gaps, leaving
+  // every changed history stale until the TTL ran out.
+  let historyPass: HistoryPass | null = null;
   if (rosterNames) {
     try {
-      const complete = await syncAthleteHistory(meet, rosterNames, {
+      historyPass = await planAthleteHistory(meet, rosterNames, {
         packageChanged,
         force: options.forceHistoryRefresh === true,
       });
+    } catch (historyError) {
+      console.error('Prefetch athlete history failed:', { meet, error: historyError });
+      errors.push('athlete_history');
+    }
+  }
+
+  // Saved before the history pass, which can run for minutes on a national
+  // meet: an app killed during it then resumes from a `304` and the pending
+  // list instead of re-ingesting the package. A changed package whose
+  // history could not be recorded is treated as not ingested: dropping the
+  // ETag makes the next attempt fetch it in full and refresh every history.
+  if (etagUpdate !== undefined) {
+    const historyRecorded = historyPass?.recorded === true;
+    await savePackageEtag(meet, packageChanged && !historyRecorded ? null : etagUpdate);
+  }
+
+  if (historyPass) {
+    try {
+      const complete = await runAthleteHistory(meet, historyPass);
       if (!complete) errors.push('athlete_history');
     } catch (historyError) {
       console.error('Prefetch athlete history failed:', { meet, error: historyError });

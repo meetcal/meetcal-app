@@ -1178,6 +1178,70 @@ describe("package revalidation with ETag", () => {
     expect(savedEtags().at(-1)).toEqual({ "Etag Meet Early": '"before-history"' });
   });
 
+  // The ETag used to be saved first: an app killed before the pending list
+  // landed came back to a `304`, found no refresh owed and fetched only the
+  // gaps, leaving every changed history stale.
+  it("records the pending list before it saves the new ETag", async () => {
+    mockFetchApiMeetPackageConditional.mockResolvedValueOnce({
+      status: "fresh",
+      etag: '"ordered"',
+      package: freshPackage,
+    });
+
+    await prefetchMeetData("Etag Meet Ordered" as any);
+
+    const keys = mockSetItem.mock.calls.map(([key]) => key as string);
+    const firstPending = keys.indexOf("@meet_history_pending_v1");
+    expect(firstPending).toBeGreaterThanOrEqual(0);
+    expect(firstPending).toBeLessThan(keys.indexOf(PACKAGE_ETAG_KEY));
+  });
+
+  it("drops the new ETag when the history a changed package owes cannot be recorded", async () => {
+    storedEtags({ "Etag Meet Unrecorded": '"old-tag"' });
+    jest.spyOn(console, "warn").mockImplementation(() => {});
+    mockFetchApiMeetPackageConditional.mockResolvedValueOnce({
+      status: "fresh",
+      etag: '"new-tag"',
+      package: freshPackage,
+    });
+    const defaultSetItem = mockSetItem.getMockImplementation();
+    mockSetItem.mockImplementation(async (key: string) => {
+      if (key === "@meet_history_pending_v1") throw new Error("disk full");
+    });
+
+    try {
+      await prefetchMeetData("Etag Meet Unrecorded" as any);
+    } finally {
+      mockSetItem.mockImplementation(defaultSetItem ?? (async () => undefined));
+      jest.restoreAllMocks();
+    }
+
+    // No validator: the next attempt fetches the package in full and so
+    // refreshes every history, rather than trusting a `304` for it.
+    expect(savedEtags().at(-1)).toEqual({});
+  });
+
+  it("refreshes the whole roster when the package changed during an unfinished refresh", async () => {
+    mockGetItem.mockImplementation(async (key: string) => {
+      if (key === PACKAGE_ETAG_KEY) return JSON.stringify({ "Etag Meet Changed": '"old"' });
+      if (key === "@meet_history_pending_v1") {
+        return JSON.stringify({
+          "Etag Meet Changed": { names: ["Athlete B"], since: Date.now() - 60_000 },
+        });
+      }
+      return null;
+    });
+    mockFetchApiMeetPackageConditional.mockResolvedValueOnce({
+      status: "fresh",
+      etag: '"new"',
+      package: { ...freshPackage, athletes: [athlete("Athlete A"), athlete("Athlete B")] },
+    });
+
+    await prefetchMeetData("Etag Meet Changed" as any);
+
+    expect(mockFetchApiResultsByNames).toHaveBeenCalledWith(["Athlete A", "Athlete B"]);
+  });
+
   it("stores only the package's real year bests, not its zero rows", async () => {
     const saveBests = offlineStore.saveAthleteBestsBatch as jest.Mock;
     saveBests.mockClear();
@@ -1409,17 +1473,33 @@ describe("planHistoryDownload", () => {
     expect(findMissing).not.toHaveBeenCalled();
   });
 
-  it("resumes a young unfinished refresh, even over a changed package", async () => {
+  it("resumes a young unfinished refresh with its remainder and the gaps", async () => {
     const since = now - 60_000;
     const findMissing = jest.fn(async () => ["Athlete A"]);
     await expect(
       planHistoryDownload({
         ...base,
-        packageChanged: true,
+        syncedAt: 0,
         pending: { names: ["athlete c", "Not On Roster"], since },
         findMissing,
       }),
     ).resolves.toEqual({ names: ["Athlete C", "Athlete A"], fullRefresh: true, since });
+  });
+
+  // A new package can carry new results for athletes the unfinished refresh
+  // already reached; resuming fetched only its remainder and then stamped
+  // the whole roster as current.
+  it("refreshes the whole roster for a changed package, over a young unfinished refresh", async () => {
+    const findMissing = jest.fn(async () => []);
+    await expect(
+      planHistoryDownload({
+        ...base,
+        packageChanged: true,
+        pending: { names: ["Athlete C"], since: now - 60_000 },
+        findMissing,
+      }),
+    ).resolves.toEqual({ names: roster, fullRefresh: true, since: now });
+    expect(findMissing).not.toHaveBeenCalled();
   });
 
   it("ignores an unfinished refresh on Refresh All or once it is older than the TTL", async () => {
