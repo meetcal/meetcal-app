@@ -31,6 +31,14 @@ let mutationRevision = 0;
  * delete — leaving `isSignedIn: true` on disk after a sign-out.
  */
 let writeChain: Promise<void> = Promise.resolve();
+/**
+ * Set when a sign-out's Keychain delete failed, until the next successful
+ * `cacheAuthState`. The entry may still say signed in, and `useStorageUser`
+ * trusts it whenever Clerk has no user, so reads answer "no hint" (what a
+ * delete leaves) instead of reading it. In memory only: a fresh process
+ * relies on the signed-out entry `clearAuthCache` writes over it.
+ */
+let clearFailed = false;
 
 interface AuthCacheData {
   isSignedIn: boolean;
@@ -100,6 +108,7 @@ export async function cacheAuthState(
       await SecureStore.setItemAsync(AUTH_CACHE_KEY, JSON.stringify(cacheData));
       lastPersistedSignature = signature;
       lastPersistedAt = cacheData.timestamp;
+      clearFailed = false;
       devLog('Auth state cached successfully');
     } catch (error) {
       console.error('Error caching auth state:', error);
@@ -138,6 +147,7 @@ export async function getCachedAuthState(): Promise<AuthCacheData | null> {
   inFlightRead = (async () => {
   try {
     await writeChain;
+    if (clearFailed) return null;
     const readRevision = mutationRevision;
     const cachedData = await SecureStore.getItemAsync(AUTH_CACHE_KEY);
     // A read started before sign-out must not restore its old signed-in hint.
@@ -186,16 +196,36 @@ export async function getCachedAuthState(): Promise<AuthCacheData | null> {
   return inFlightRead;
 }
 
+/**
+ * Forget the auth hint (sign-out, or an unusable entry). Never rejects: the
+ * sign-out goes on to Clerk either way. A failed delete is covered twice: a
+ * signed-out entry is written over the old one, so a later process does not
+ * read it as signed in, and `clearFailed` keeps this process from reading it
+ * meanwhile. If the Keychain refuses both, a cold start before the next
+ * `cacheAuthState` can still read the old signed-in hint (for reads only,
+ * within its seven days); the first `useAuthGuard` that mounts online with no
+ * Clerk user overwrites it.
+ */
 export async function clearAuthCache() {
   const clear = writeChain.then(async () => {
     mutationRevision += 1;
+    // Whatever happens below, the next `cacheAuthState` must write, not
+    // deduplicate against an entry that may be gone.
+    lastPersistedSignature = null;
+    lastPersistedAt = 0;
     try {
       await SecureStore.deleteItemAsync(AUTH_CACHE_KEY);
-      lastPersistedSignature = null;
-      lastPersistedAt = 0;
+      clearFailed = false;
       devLog('Auth cache cleared');
     } catch (error) {
       console.error('Error clearing auth cache:', error);
+      clearFailed = true;
+      try {
+        const signedOut: AuthCacheData = { isSignedIn: false, timestamp: Date.now() };
+        await SecureStore.setItemAsync(AUTH_CACHE_KEY, JSON.stringify(signedOut));
+      } catch (overwriteError) {
+        console.error('Error overwriting auth cache after a failed clear:', overwriteError);
+      }
     }
   });
 

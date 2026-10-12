@@ -26,8 +26,9 @@ import { devWarn } from '@/lib/logger';
  * - A reset (bulk delete of a meet, or of every meet) covers only writes
  *   made *before* it. Marking a reset drops the per-session entries it
  *   supersedes; a session saved after the reset keeps its own, later entry.
- * - While a reset for a meet is still unsent, later writes for that meet are
- *   held back, so the reset can never land after them and delete them.
+ * - While a reset for a meet is still in the outbox (unsent, or sent but not
+ *   yet cleared), later writes for that meet are held back, so the reset can
+ *   never land after them and delete them.
  * - A flag is cleared only on a 2xx, and only if the entry still has the rev
  *   that was sent.
  */
@@ -189,11 +190,22 @@ function updateOutbox<T>(
   });
 }
 
-/** Record that `session` must be upserted on the server. Returns the entry's rev. */
+/**
+ * Record that `session` must be upserted on the server. Returns the entry's rev.
+ *
+ * Rejects a body the outbox's reader would drop (`parseSessionBody`): the
+ * entry would vanish on the next read, and with it the write it replaced
+ * (a pending unsave would never reach the server). Stores the body as that
+ * reader returns it.
+ */
 export function markSessionPut(userId: string, session: SavedSession): Promise<number> {
+  const body = parseSessionBody(session);
+  if (!body) {
+    return Promise.reject(new Error(`Saved sessions outbox: unreadable session body for ${String(session.id)}; not queued`));
+  }
   return updateOutbox(userId, (outbox) => {
     const rev = outbox.nextRev++;
-    outbox.sessions[session.id] = { op: 'put', rev, meet: session.meet, session };
+    outbox.sessions[body.id] = { op: 'put', rev, meet: body.meet, session: body };
     return rev;
   });
 }
@@ -272,9 +284,11 @@ export async function adoptPreOutboxSessions(
   if (serverIsEmpty && localSessions.length > 0) {
     await updateOutbox(userId, (outbox) => {
       for (const session of localSessions) {
-        if (outbox.sessions[session.id]) continue;
+        // Same check as `markSessionPut`: a body the reader would drop is not queued.
+        const body = parseSessionBody(session);
+        if (!body || outbox.sessions[body.id]) continue;
         const rev = outbox.nextRev++;
-        outbox.sessions[session.id] = { op: 'put', rev, meet: session.meet, session };
+        outbox.sessions[body.id] = { op: 'put', rev, meet: body.meet, session: body };
         adopted += 1;
       }
     });
@@ -549,9 +563,7 @@ async function runPass(
   result: FlushResult,
 ): Promise<'done' | 'stopped'> {
   const attempted = new Set<string>();
-  // Meets whose reset could not be sent this pass: later writes for them
-  // wait, so the reset cannot land after them and delete them.
-  const heldMeets = new Set<string>();
+  // Set when a reset of every meet could not be sent: nothing else goes this pass.
   let holdAll = false;
 
   for (;;) {
@@ -559,7 +571,14 @@ async function runPass(
     const next = candidatesInRevOrder(outbox).find((candidate) => {
       if (attempted.has(`${candidate.kind}:${candidate.key}:${candidate.rev}`)) return false;
       if (holdAll) return false;
-      if (candidate.kind === 'session') return !heldMeets.has(candidate.entry.meet);
+      // A session waits while an older reset of its meet is still stored, so
+      // the reset cannot land after it and delete it. Checked against the
+      // stored outbox, not this pass's failures: a reset that was delivered but
+      // whose clear was lost is sent again next flush, after any save sent now.
+      // A newer reset does not hold it: the session goes first, as revs order.
+      if (candidate.kind === 'session') {
+        return !resetRevsFor(candidate.entry.meet, outbox).some((rev) => rev < candidate.rev);
+      }
       return true;
     });
     if (!next) return 'done';
@@ -619,10 +638,7 @@ async function runPass(
       }
       devWarn(`Saved sessions outbox: ${next.kind} ${next.key} still pending`, error);
       if (isConnectivityFailure(error)) return 'stopped';
-      if (next.kind === 'reset') {
-        if (meet === null) holdAll = true;
-        else heldMeets.add(meet);
-      }
+      if (next.kind === 'reset' && meet === null) holdAll = true;
     }
   }
 }

@@ -717,6 +717,26 @@ describe("server reconcile with the pending-writes outbox", () => {
     expect(hook.current.savedSessions.map((s) => s.notes)).toEqual(["kept"]);
   });
 
+  it("fails a save the outbox cannot queue and leaves the saved version in place", async () => {
+    const hook = await mountHook();
+    await act(async () => {
+      await hook.current.saveSession(makeSession("Test-Meet-1-Red", { notes: "kept" }));
+    });
+    mockPutSavedSession.mockClear();
+
+    // Session number 0 is unreadable to the outbox (and the list), so the
+    // mark rejects before anything is written or sent.
+    let saved = true;
+    await act(async () => {
+      saved = await hook.current.saveSession(makeSession("Test-Meet-1-Red", { sessionNumber: 0, notes: "lost" }));
+    });
+
+    expect(saved).toBe(false);
+    expect(mockPutSavedSession).not.toHaveBeenCalled();
+    expect(hook.current.savedSessions.map((s) => s.notes)).toEqual(["kept"]);
+    expect(countPendingWrites(await readOutbox("user_1"))).toBe(0);
+  });
+
   it("drops a clean local row the server no longer has, even when the list is empty", async () => {
     // First reconcile on this build: server already has the row, so nothing
     // is adopted and the device is in step.
