@@ -1600,6 +1600,37 @@ export async function fetchSavedSessions(token: string): Promise<ApiSavedSession
   return sessions.map(mapApiSavedSession);
 }
 
+/**
+ * A saved-session write's place in its install's order (`convex/users.ts`):
+ * the outbox's install id and the entry's rev, which only grows on that
+ * install. The server ignores a write older than one it already applied from
+ * the same install (one that landed after the client timed out), and answers
+ * it as a success.
+ */
+export interface SavedSessionWriteRevision {
+  device: string;
+  rev: number;
+}
+
+/** Mirrors `MAX_SAVED_SESSION_DEVICE_LEN` in `convex/users.ts`. */
+export const MAX_SAVED_SESSION_DEVICE_LEN = 64;
+
+/** The revision as call arguments, checked before it is sent; none sends none. */
+function writeRevisionArgs(
+  revision: SavedSessionWriteRevision | undefined,
+  label: string,
+): Partial<SavedSessionWriteRevision> {
+  if (revision === undefined) return {};
+  const { device, rev } = revision;
+  if (typeof device !== 'string' || device.trim() === '' || Array.from(device).length > MAX_SAVED_SESSION_DEVICE_LEN) {
+    throw new Error(`${label} requires a device id of 1 to ${MAX_SAVED_SESSION_DEVICE_LEN} characters`);
+  }
+  if (typeof rev !== 'number' || !Number.isSafeInteger(rev) || rev < 1) {
+    throw new Error(`${label} requires a rev that is a whole number from 1`);
+  }
+  return { device, rev };
+}
+
 export async function putSavedSession(
   token: string,
   sessionId: string,
@@ -1613,12 +1644,15 @@ export async function putSavedSession(
     notes?: string;
     athlete_names?: string[];
   },
+  revision?: SavedSessionWriteRevision,
 ): Promise<{ session_id: string; updated_at: number }> {
   const authToken = requireToken(token, 'putSavedSession');
+  const order = writeRevisionArgs(revision, 'putSavedSession');
   const row = assertHasFields(
     await userCall(`/users/me/saved-sessions/${sessionId}`, 'users:putSavedSession', 'mutation', authToken, {
       sessionId,
       ...body,
+      ...order,
     }),
     'putSavedSession',
     ['session_id', 'updated_at'],
@@ -1632,14 +1666,16 @@ export async function putSavedSession(
 export async function deleteSavedSession(
   token: string,
   sessionId: string,
+  revision?: SavedSessionWriteRevision,
 ): Promise<{ deleted: boolean }> {
   const authToken = requireToken(token, 'deleteSavedSession');
+  const order = writeRevisionArgs(revision, 'deleteSavedSession');
   const row = await userCall(
     `/users/me/saved-sessions/${sessionId}`,
     'users:deleteSavedSession',
     'mutation',
     authToken,
-    { sessionId },
+    { sessionId, ...order },
   );
   // The outbox drops the pending delete once this resolves, so an
   // acknowledgement that is not `{ deleted: bool }` fails here and the delete
@@ -1654,10 +1690,13 @@ export async function deleteSavedSession(
 export async function deleteSavedSessions(
   token: string,
   meet?: string,
+  revision?: SavedSessionWriteRevision,
 ): Promise<{ deleted_count: number }> {
   const authToken = requireToken(token, 'deleteSavedSessions');
+  const order = writeRevisionArgs(revision, 'deleteSavedSessions');
   const row = await userCall('/users/me/saved-sessions', 'users:deleteSavedSessions', 'mutation', authToken, {
     meet,
+    ...order,
   });
   const ack = assertHasFields(row, 'deleteSavedSessions', ['deleted_count']);
   if (typeof ack.deleted_count !== 'number' || !Number.isFinite(ack.deleted_count)) {

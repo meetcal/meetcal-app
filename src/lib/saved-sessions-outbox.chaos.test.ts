@@ -3,8 +3,9 @@
  *
  * fast-check generates a session of user actions (save, unsave, reset a meet
  * or everything), flushes under transport faults, lost answers and a flaky or
- * foreign Clerk token, network drops, storage faults, app restarts (some in
- * the middle of a send) and overlapping taps, flushes and reconciles
+ * foreign Clerk token, writes that land after the client gave up on them
+ * (and after later writes), network drops, storage faults, app restarts
+ * (some in the middle of a send) and overlapping taps, flushes and reconciles
  * interleaved by its scheduler. After every step the outbox must read back
  * well formed and, merged with the server's list, show exactly what the user
  * meant; at the end, healthy flushes must empty it and leave the server
@@ -70,9 +71,7 @@ describe('saved-sessions outbox under chaos (model-based)', () => {
 
 /**
  * Real defects the model found, kept as the shrunk sequences it reported.
- * The fixed ones run as regressions; the property above covers them too. The
- * one still open is skipped, and the property excludes exactly its scenario
- * (see the FINDING comment in the harness).
+ * They run as regressions; the property above covers them too.
  */
 describe('outbox defects the model found', () => {
   const ID = 'Spring Open-1-Red';
@@ -138,20 +137,18 @@ describe('outbox defects the model found', () => {
     }),
   );
 
-  // FINDING (late landing), deferred: needs a server-side revision check, see
-  // the linked issue in PR #190. Shrunk sequence:
+  // Regression (late landing, #191). Shrunk sequence:
   //   save(Spring Open-1-Red, v1), flush(answers: [late]),
   //   unsave(Spring Open-1-Red), flush
   // The PUT is on the wire when the client's 10s timeout aborts it; the abort
   // cannot recall bytes already sent, and the server applies it at 15s. By
   // then the unsave was sent and acknowledged, so the outbox is empty and the
-  // stale save silently resurrects the session (the transport's comment
-  // assumes an aborted write never lands).
-  // Expected: the session stays unsaved. Actual: the server has v1 again.
-  it.skip('FINDING: a save that lands after the client timed out undoes a later unsave', () =>
+  // stale save used to resurrect the session. Writes now carry the outbox's
+  // install id and rev, and the server ignores the older one.
+  it('keeps a session unsaved when a save that timed out lands after the unsave', () =>
     withDevice(async (h) => {
       await h.outbox.markSessionPut(OWNER, sessionBody(ID, 1));
-      const late = installChaosTransport(serverTransport(h, [{ kind: 'late' }]), []);
+      const late = installChaosTransport(serverTransport(h, [{ kind: 'late', delayMs: LATE_LANDING_MS }]), []);
       try {
         await flush(h);
       } finally {
@@ -164,6 +161,53 @@ describe('outbox defects the model found', () => {
         expect(h.outbox.countPendingWrites(await h.outbox.readOutbox(OWNER))).toBe(0);
         await jest.advanceTimersByTimeAsync(LATE_LANDING_MS);
         expect(h.server.wires(OWNER).has(ID)).toBe(false);
+      } finally {
+        healthy.restore();
+      }
+    }),
+  );
+
+  // The same for a meet reset: a save from before it lands after it.
+  it('keeps a meet reset when a save from before it lands after it', () =>
+    withDevice(async (h) => {
+      await h.outbox.markSessionPut(OWNER, sessionBody(ID, 1));
+      const late = installChaosTransport(serverTransport(h, [{ kind: 'late', delayMs: LATE_LANDING_MS }]), []);
+      try {
+        await flush(h);
+      } finally {
+        late.restore();
+      }
+      await h.outbox.markResetPending(OWNER, 'Spring Open');
+      const healthy = installChaosTransport(serverTransport(h, []), []);
+      try {
+        await flush(h);
+        await jest.advanceTimersByTimeAsync(LATE_LANDING_MS);
+        expect(h.server.wires(OWNER).has(ID)).toBe(false);
+      } finally {
+        healthy.restore();
+      }
+    }),
+  );
+
+  // And the other way: a reset that lands late must not delete a session
+  // saved after it.
+  it('keeps a session saved after a meet reset that lands late', () =>
+    withDevice(async (h) => {
+      await h.outbox.markResetPending(OWNER, 'Spring Open');
+      const late = installChaosTransport(serverTransport(h, [{ kind: 'late', delayMs: 30_000 }]), []);
+      try {
+        await flush(h);
+      } finally {
+        late.restore();
+      }
+      await h.outbox.markSessionPut(OWNER, sessionBody(ID, 2));
+      const healthy = installChaosTransport(serverTransport(h, []), []);
+      try {
+        // The reset is sent again (its first send timed out), then the save.
+        await flush(h);
+        expect(h.outbox.countPendingWrites(await h.outbox.readOutbox(OWNER))).toBe(0);
+        await jest.advanceTimersByTimeAsync(30_000);
+        expect(h.server.wires(OWNER).get(ID)).toBe(wireOf(h.outbox, sessionBody(ID, 2)));
       } finally {
         healthy.restore();
       }

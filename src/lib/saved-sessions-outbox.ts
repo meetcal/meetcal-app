@@ -1,4 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as Crypto from 'expo-crypto';
 import { normalizeStoredSession, type SavedSession } from '@/lib/saved-sessions-store';
 import {
   deleteSavedSession,
@@ -6,6 +7,7 @@ import {
   MeetCalApiError,
   MeetCalApiTimeoutError,
   putSavedSession,
+  type SavedSessionWriteRevision,
 } from '@/lib/api/meetcal-api';
 import { devWarn } from '@/lib/logger';
 
@@ -31,6 +33,10 @@ import { devWarn } from '@/lib/logger';
  *   never land after them and delete them.
  * - A flag is cleared only on a 2xx, and only if the entry still has the rev
  *   that was sent.
+ * - Every write carries its rev and the outbox's install id (`device`), so the
+ *   server can ignore one that lands after a newer write from this install
+ *   (aborting a timed-out request cannot recall it). The server answers such
+ *   a write with success, so it is cleared like any other.
  */
 
 /**
@@ -49,7 +55,7 @@ export type PendingSessionOp = 'put' | 'delete';
 
 export interface PendingSessionEntry {
   op: PendingSessionOp;
-  /** Monotonic per outbox; a clear only lands when the rev still matches. */
+  /** Monotonic per outbox (`takeRev`); a clear only lands when the rev still matches. */
   rev: number;
   /** Meet the session belongs to, so resets can supersede and hold it. */
   meet: string;
@@ -62,6 +68,14 @@ export interface SavedSessionsOutbox {
   /** Meet name (or `RESET_ALL_MEETS`) → rev of the pending bulk delete. */
   resets: Record<string, number>;
   nextRev: number;
+  /**
+   * This install's id in the server's write ordering, which compares revs
+   * only within one id. Stored with `nextRev`, not beside it: whenever the
+   * counter starts over (storage cleared, or a value that reads as empty or
+   * without a counter), so does the id, so a new rev is never read as older
+   * than one an earlier outbox sent. Set by the first write of the outbox.
+   */
+  device?: string;
 }
 
 export interface FlushResult {
@@ -77,6 +91,49 @@ export interface FlushResult {
 
 function emptyOutbox(): SavedSessionsOutbox {
   return { sessions: {}, resets: {}, nextRev: 1 };
+}
+
+/**
+ * Hands out the next rev: past every rev this outbox gave before, and at
+ * least the clock in milliseconds. The clock is what keeps the server's
+ * ordering sound when storage goes back in time with the install id intact:
+ * an outbox restored from a device backup (or the same backup restored onto
+ * two phones) has an older `nextRev` than the revs the server already holds
+ * from that id, and counting on from it would have the server ignore the new
+ * writes as stale. Never moves back, even when the clock does.
+ */
+function takeRev(outbox: SavedSessionsOutbox): number {
+  const rev = Math.max(outbox.nextRev, Date.now());
+  outbox.nextRev = rev + 1;
+  return rev;
+}
+
+/** An install id this outbox writes, and the server's 64-character limit allows. */
+const DEVICE_ID = /^[A-Za-z0-9_-]{8,64}$/;
+
+function isDeviceId(value: unknown): value is string {
+  return typeof value === 'string' && DEVICE_ID.test(value);
+}
+
+/**
+ * A new random install id: a v4 UUID from the platform's secure random
+ * source, or, where that is unavailable (Jest's native-module mock), 128 bits
+ * from `Math.random`. It only has to differ between one user's installs.
+ */
+export function newDeviceId(): string {
+  try {
+    const id: unknown = Crypto.randomUUID();
+    if (isDeviceId(id)) return id;
+  } catch {
+    // Fall through to the fallback below.
+  }
+  let id = '';
+  for (let i = 0; i < 4; i += 1) {
+    id += Math.floor(Math.random() * 0x1_0000_0000)
+      .toString(16)
+      .padStart(8, '0');
+  }
+  return id;
 }
 
 export function getSavedSessionsOutboxKey(userId: string): string {
@@ -147,11 +204,12 @@ function parseOutbox(raw: string | null): SavedSessionsOutbox {
       ...Object.values(sessions).map((entry) => entry.rev),
       ...Object.values(resets),
     );
-    const nextRev =
-      typeof parsed.nextRev === 'number' && Number.isInteger(parsed.nextRev)
-        ? Math.max(parsed.nextRev, maxRev + 1)
-        : maxRev + 1;
-    return { sessions, resets, nextRev };
+    const hasCounter = typeof parsed.nextRev === 'number' && Number.isInteger(parsed.nextRev);
+    const nextRev = hasCounter ? Math.max(parsed.nextRev as number, maxRev + 1) : maxRev + 1;
+    // The id is kept only with the counter it numbered: one without it
+    // starts over, so the next write takes a new id.
+    const device = hasCounter && isDeviceId(parsed.device) ? parsed.device : undefined;
+    return { sessions, resets, nextRev, ...(device ? { device } : {}) };
   } catch {
     return emptyOutbox();
   }
@@ -185,6 +243,7 @@ function updateOutbox<T>(
   return enqueue(async () => {
     const outbox = await readOutbox(userId);
     const result = mutate(outbox);
+    outbox.device ??= newDeviceId();
     await writeOutbox(userId, outbox);
     return result;
   });
@@ -204,7 +263,7 @@ export function markSessionPut(userId: string, session: SavedSession): Promise<n
     return Promise.reject(new Error(`Saved sessions outbox: unreadable session body for ${String(session.id)}; not queued`));
   }
   return updateOutbox(userId, (outbox) => {
-    const rev = outbox.nextRev++;
+    const rev = takeRev(outbox);
     outbox.sessions[body.id] = { op: 'put', rev, meet: body.meet, session: body };
     return rev;
   });
@@ -213,7 +272,7 @@ export function markSessionPut(userId: string, session: SavedSession): Promise<n
 /** Record that session `sessionId` (in `meet`) must be deleted on the server. */
 export function markSessionDelete(userId: string, sessionId: string, meet: string): Promise<number> {
   return updateOutbox(userId, (outbox) => {
-    const rev = outbox.nextRev++;
+    const rev = takeRev(outbox);
     outbox.sessions[sessionId] = { op: 'delete', rev, meet };
     return rev;
   });
@@ -226,7 +285,7 @@ export function markSessionDelete(userId: string, sessionId: string, meet: strin
  */
 export function markResetPending(userId: string, meet: string | null): Promise<number> {
   return updateOutbox(userId, (outbox) => {
-    const rev = outbox.nextRev++;
+    const rev = takeRev(outbox);
     if (meet === null) {
       outbox.sessions = {};
       outbox.resets = { [RESET_ALL_MEETS]: rev };
@@ -287,7 +346,7 @@ export async function adoptPreOutboxSessions(
         // Same check as `markSessionPut`: a body the reader would drop is not queued.
         const body = parseSessionBody(session);
         if (!body || outbox.sessions[body.id]) continue;
-        const rev = outbox.nextRev++;
+        const rev = takeRev(outbox);
         outbox.sessions[body.id] = { op: 'put', rev, meet: body.meet, session: body };
         adopted += 1;
       }
@@ -533,9 +592,13 @@ function isConnectivityFailure(error: unknown): boolean {
 }
 
 /** `DELETE` one session, treating 404 as done: already gone is the outcome wanted. */
-export async function deletePendingSession(token: string, sessionId: string): Promise<void> {
+export async function deletePendingSession(
+  token: string,
+  sessionId: string,
+  revision?: SavedSessionWriteRevision,
+): Promise<void> {
   try {
-    await deleteSavedSession(token, sessionId);
+    await deleteSavedSession(token, sessionId, revision);
   } catch (error) {
     if (!(error instanceof MeetCalApiError && error.status === 404)) throw error;
   }
@@ -565,6 +628,7 @@ async function runPass(
   const attempted = new Set<string>();
   // Set when a reset of every meet could not be sent: nothing else goes this pass.
   let holdAll = false;
+  let assignedDevice = false;
 
   for (;;) {
     const outbox = await readOutbox(userId);
@@ -582,7 +646,20 @@ async function runPass(
       return true;
     });
     if (!next) return 'done';
+    if (!outbox.device) {
+      // Written by a build before write ordering: store an install id first,
+      // so every write of this outbox goes out under the same one. Storage
+      // that will not keep it holds the queue until it does.
+      if (assignedDevice) return 'stopped';
+      assignedDevice = true;
+      await updateOutbox(userId, () => undefined);
+      continue;
+    }
     attempted.add(`${next.kind}:${next.key}:${next.rev}`);
+    // A rev the server cannot take (only a damaged store holds one) goes
+    // unordered, as before ordering, rather than failing the write forever.
+    const revision: SavedSessionWriteRevision | undefined =
+      Number.isSafeInteger(next.rev) && next.rev >= 1 ? { device: outbox.device, rev: next.rev } : undefined;
 
     let token: string | null = null;
     try {
@@ -606,14 +683,14 @@ async function runPass(
 
     try {
       if (next.kind === 'reset') {
-        await deleteSavedSessions(token, meet ?? undefined);
+        await deleteSavedSessions(token, meet ?? undefined, revision);
         recordDelivery(userId, { kind: 'reset', meet });
       } else if (next.entry.op === 'delete') {
-        await deletePendingSession(token, next.key);
+        await deletePendingSession(token, next.key, revision);
         recordDelivery(userId, { kind: 'delete', id: next.key });
       } else {
         const body = next.entry.session as SavedSession;
-        await putSavedSession(token, next.key, toSavedSessionBody(body));
+        await putSavedSession(token, next.key, toSavedSessionBody(body), revision);
         recordDelivery(userId, { kind: 'put', id: next.key, session: body });
       }
       await clear();

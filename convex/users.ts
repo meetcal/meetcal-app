@@ -1,4 +1,4 @@
-import { mutation, query, type QueryCtx } from './_generated/server';
+import { mutation, query, type MutationCtx, type QueryCtx } from './_generated/server';
 import type { Doc } from './_generated/dataModel';
 import { compareCollated } from './lib/sort';
 import { apiError, isValidIsoDate, requireNonEmpty } from './lib/validation';
@@ -13,6 +13,15 @@ export const MAX_SAVED_SESSION_NOTES_LEN = 2000;
 export const MAX_SAVED_SESSION_ATHLETE_NAME_LEN = 128;
 export const MAX_SAVED_SESSION_ATHLETE_NAMES = 64;
 export const MAX_SAVED_SESSIONS_PER_USER = 500;
+export const MAX_SAVED_SESSION_DEVICE_LEN = 64;
+/**
+ * How long a write's revision and a reset's marker are kept. They only have
+ * to outlive a request delayed in flight (minutes at most); a week leaves room
+ * for a phone that sent a request and then slept.
+ */
+export const SAVED_SESSION_WRITE_ORDER_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+/** Expired revisions and markers one write deletes per table. */
+export const SAVED_SESSION_WRITE_ORDER_PRUNE_BATCH = 32;
 
 async function requireUserId(ctx: QueryCtx): Promise<string> {
   const identity = await ctx.auth.getUserIdentity();
@@ -55,6 +64,30 @@ function optionalStringArray(args: RawArgs, key: string): string[] | undefined {
   if (value === undefined || value === null) return undefined;
   if (!Array.isArray(value) || value.some((item) => typeof item !== 'string')) throw apiError(400, `${key} must be a list of strings`);
   return value as string[];
+}
+
+/**
+ * A write's place in its install's order: the app's outbox sends its install
+ * id (`device`) and the outbox entry's revision (`rev`, which only grows on
+ * that install). Both or neither: an app from before the ordering sends
+ * neither, and its writes apply as they arrive.
+ */
+export interface WriteRevision {
+  device: string;
+  rev: number;
+}
+
+export function optionalWriteRevision(args: RawArgs): WriteRevision | undefined {
+  const device = optionalString(args, 'device');
+  const rev = args.rev === null ? undefined : args.rev;
+  if (device === undefined && rev === undefined) return undefined;
+  if (device === undefined || rev === undefined) throw apiError(400, 'device and rev must be sent together');
+  if (device.trim() === '') throw apiError(400, 'device is required');
+  requireMaxLen('device too long', device, MAX_SAVED_SESSION_DEVICE_LEN);
+  if (typeof rev !== 'number' || !Number.isSafeInteger(rev) || rev < 1) {
+    throw apiError(400, 'rev must be a whole number from 1');
+  }
+  return { device, rev };
 }
 
 /**
@@ -101,6 +134,101 @@ async function savedSessionRows(ctx: QueryCtx, userId: string, sessionId: string
     .query('saved_sessions')
     .withIndex('by_sessionId_and_userId', (q) => q.eq('sessionId', sessionId).eq('userId', userId))
     .take(MAX_SAVED_SESSIONS_PER_USER);
+}
+
+// Write ordering. Aborting a request that timed out cannot recall bytes
+// already sent, so a save can reach the server after a later unsave (or meet
+// reset) from the same install and undo it. Each install's writes carry a
+// growing `rev`, and the server keeps, per install, the last rev applied to
+// each session (`saved_session_revisions`, which outlives a delete, so it is
+// the tombstone) and to each reset (`saved_session_resets`). A write from an
+// install that has already applied a newer one to the session is stale: it
+// is ignored but answered as a success, because the outbox must clear it
+// (it is superseded, not refused). Only one install's writes are compared
+// with each other: another install's write, or one with no revision, applies
+// as it arrives, as before.
+
+async function sessionRevision(ctx: QueryCtx, userId: string, sessionId: string, device: string) {
+  return await ctx.db
+    .query('saved_session_revisions')
+    .withIndex('by_userId_and_sessionId_and_device', (q) =>
+      q.eq('userId', userId).eq('sessionId', sessionId).eq('device', device),
+    )
+    .first();
+}
+
+async function resetMarker(ctx: QueryCtx, userId: string, device: string, meet: string | null) {
+  return await ctx.db
+    .query('saved_session_resets')
+    .withIndex('by_userId_and_device_and_meet', (q) => q.eq('userId', userId).eq('device', device).eq('meet', meet))
+    .first();
+}
+
+/**
+ * Whether the same install has already applied a newer write to the session:
+ * a save or unsave of it with a rev at least this one's, or a later reset of
+ * `meets` (the session's meet, when known) or of every meet.
+ */
+async function isSuperseded(
+  ctx: QueryCtx,
+  userId: string,
+  sessionId: string,
+  meets: readonly string[],
+  revision: WriteRevision,
+): Promise<boolean> {
+  const own = await sessionRevision(ctx, userId, sessionId, revision.device);
+  if (own && own.rev >= revision.rev) return true;
+  for (const meet of [...new Set(meets), null]) {
+    const marker = await resetMarker(ctx, userId, revision.device, meet);
+    if (marker && marker.rev > revision.rev) return true;
+  }
+  return false;
+}
+
+async function rememberSessionRevision(
+  ctx: MutationCtx,
+  userId: string,
+  sessionId: string,
+  revision: WriteRevision,
+  now: number,
+): Promise<void> {
+  const existing = await sessionRevision(ctx, userId, sessionId, revision.device);
+  if (existing) await ctx.db.patch(existing._id, { rev: Math.max(existing.rev, revision.rev), updatedAt: now });
+  else await ctx.db.insert('saved_session_revisions', { userId, sessionId, ...revision, updatedAt: now });
+}
+
+async function rememberReset(
+  ctx: MutationCtx,
+  userId: string,
+  meet: string | null,
+  revision: WriteRevision,
+  now: number,
+): Promise<void> {
+  const existing = await resetMarker(ctx, userId, revision.device, meet);
+  if (existing) await ctx.db.patch(existing._id, { rev: Math.max(existing.rev, revision.rev), updatedAt: now });
+  else await ctx.db.insert('saved_session_resets', { userId, meet, ...revision, updatedAt: now });
+}
+
+/**
+ * Deletes up to a batch of the user's revisions and markers older than
+ * `SAVED_SESSION_WRITE_ORDER_TTL_MS`, on each of the user's ordered writes.
+ * Pruning here rather than in a cron keeps it to one indexed range per table
+ * (the user's oldest records), with no scan over every user. Each write adds
+ * at most one record and removes up to a batch, so a user's backlog drains;
+ * a user who stops writing keeps at most what they wrote in their last week.
+ */
+async function pruneWriteOrder(ctx: MutationCtx, userId: string, now: number): Promise<void> {
+  const cutoff = now - SAVED_SESSION_WRITE_ORDER_TTL_MS;
+  const revisions = await ctx.db
+    .query('saved_session_revisions')
+    .withIndex('by_userId_and_updatedAt', (q) => q.eq('userId', userId).lt('updatedAt', cutoff))
+    .take(SAVED_SESSION_WRITE_ORDER_PRUNE_BATCH);
+  for (const row of revisions) await ctx.db.delete(row._id);
+  const markers = await ctx.db
+    .query('saved_session_resets')
+    .withIndex('by_userId_and_updatedAt', (q) => q.eq('userId', userId).lt('updatedAt', cutoff))
+    .take(SAVED_SESSION_WRITE_ORDER_PRUNE_BATCH);
+  for (const row of markers) await ctx.db.delete(row._id);
 }
 
 function toApiSavedSession(row: Doc<'saved_sessions'>) {
@@ -171,9 +299,15 @@ export const putSavedSession = mutation({
     for (const name of athleteNames) {
       requireMaxLen('athlete_names entry too long', name, MAX_SAVED_SESSION_ATHLETE_NAME_LEN);
     }
+    const revision = optionalWriteRevision(args);
 
     const userId = await requireUserId(ctx);
-    const [existing, ...duplicates] = await savedSessionRows(ctx, userId, sessionId);
+    const now = Date.now();
+    const rows = await savedSessionRows(ctx, userId, sessionId);
+    if (revision && (await isSuperseded(ctx, userId, sessionId, [body.meet], revision))) {
+      return { session_id: sessionId, updated_at: rows[0]?.updatedAt ?? now, superseded: true };
+    }
+    const [existing, ...duplicates] = rows;
     for (const duplicate of duplicates) await ctx.db.delete(duplicate._id);
     if (!existing) {
       const count = (
@@ -197,37 +331,88 @@ export const putSavedSession = mutation({
       notes: body.notes,
       athleteNames,
       date: body.date,
-      updatedAt: Date.now(),
+      updatedAt: now,
     };
     if (existing) await ctx.db.replace(existing._id, row);
     else await ctx.db.insert('saved_sessions', row);
+    if (revision) {
+      await rememberSessionRevision(ctx, userId, sessionId, revision, now);
+      await pruneWriteOrder(ctx, userId, now);
+    }
     return { session_id: sessionId, updated_at: row.updatedAt };
   },
 });
 
-/** `DELETE /users/me/saved-sessions/{session_id}` */
+/**
+ * `DELETE /users/me/saved-sessions/{session_id}`. With a revision, the
+ * session's revision for the install stays behind as its tombstone, so a save
+ * from before the delete that lands after it is ignored.
+ */
 export const deleteSavedSession = mutation({
   handler: async (ctx, args: RawArgs) => {
     const sessionId = requiredString(args, 'sessionId');
+    const revision = optionalWriteRevision(args);
     const userId = await requireUserId(ctx);
     const rows = await savedSessionRows(ctx, userId, sessionId);
+    if (revision) {
+      const meets = rows.map((row) => row.meet);
+      if (await isSuperseded(ctx, userId, sessionId, meets, revision)) return { deleted: false, superseded: true };
+    }
     for (const row of rows) await ctx.db.delete(row._id);
+    if (revision) {
+      const now = Date.now();
+      await rememberSessionRevision(ctx, userId, sessionId, revision, now);
+      await pruneWriteOrder(ctx, userId, now);
+    }
     return { deleted: rows.length > 0 };
   },
 });
 
-/** `DELETE /users/me/saved-sessions[?meet=]` */
+/**
+ * `DELETE /users/me/saved-sessions[?meet=]`. With a revision, it covers only
+ * what its install wrote before it: a session the same install saved since
+ * (a higher rev) stays, so a reset that lands late cannot delete it. The
+ * reset is remembered, so a save from before it that lands later is ignored.
+ */
 export const deleteSavedSessions = mutation({
   handler: async (ctx, args: RawArgs) => {
     const meet = optionalString(args, 'meet');
+    const revision = optionalWriteRevision(args);
     const userId = await requireUserId(ctx);
-    const rows = (
+    // This install's resets, by meet (`null`: every meet). A reset it already
+    // applied, or one older than a reset it applied since, is a resend whose
+    // reply was lost: its deletes landed the first time, and running it again
+    // would delete what another install saved in between. A reset of every
+    // meet also leaves the meets this install has reset since.
+    const newerResets = new Map<string | null, number>();
+    if (revision) {
+      const markers = await ctx.db
+        .query('saved_session_resets')
+        .withIndex('by_userId_and_device_and_meet', (q) => q.eq('userId', userId).eq('device', revision.device))
+        .take(MAX_SAVED_SESSIONS_PER_USER);
+      for (const marker of markers) {
+        if (marker.rev >= revision.rev) newerResets.set(marker.meet, marker.rev);
+      }
+      if (newerResets.has(meet ?? null) || newerResets.has(null)) return { deleted_count: 0 };
+    }
+    const inScope = (
       await ctx.db
         .query('saved_sessions')
         .withIndex('by_userId', (q) => q.eq('userId', userId))
         .collect()
-    ).filter((row) => meet === undefined || row.meet === meet);
+    ).filter((row) => (meet === undefined || row.meet === meet) && !newerResets.has(row.meet));
+    const rows: Doc<'saved_sessions'>[] = [];
+    for (const row of inScope) {
+      const own = revision ? await sessionRevision(ctx, userId, row.sessionId, revision.device) : null;
+      if (revision && own && own.rev > revision.rev) continue;
+      rows.push(row);
+    }
     await Promise.all(rows.map((row) => ctx.db.delete(row._id)));
+    if (revision) {
+      const now = Date.now();
+      await rememberReset(ctx, userId, meet ?? null, revision, now);
+      await pruneWriteOrder(ctx, userId, now);
+    }
     return { deleted_count: rows.length };
   },
 });

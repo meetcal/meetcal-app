@@ -44,6 +44,8 @@ function jwtFor(sub: string): string {
   return `${part({ alg: "RS256" })}.${part({ sub })}.sig`;
 }
 const TOKEN = jwtFor("user_1");
+/** Every outbox write carries its install id and rev (`convex/users.ts` orders by them). */
+const WRITE_REVISION = { device: expect.any(String), rev: expect.any(Number) };
 
 jest.mock("@clerk/expo", () => ({
   useUser: () => ({ user: mockClerkUser, isLoaded: mockClerkLoaded }),
@@ -634,6 +636,7 @@ describe("server reconcile with the pending-writes outbox", () => {
       TOKEN,
       "Test-Meet-2-Red",
       expect.objectContaining({ session_number: 2 }),
+      WRITE_REVISION,
     );
     expect(countPendingWrites(await readOutbox("user_1"))).toBe(1);
   });
@@ -761,7 +764,7 @@ describe("server reconcile with the pending-writes outbox", () => {
     const hook = await mountHook();
 
     expect(hook.current.savedSessions.map((s) => s.id)).toEqual(["Test-Meet-1-Red"]);
-    expect(mockPutSavedSession).toHaveBeenCalledWith(TOKEN, "Test-Meet-1-Red", expect.anything());
+    expect(mockPutSavedSession).toHaveBeenCalledWith(TOKEN, "Test-Meet-1-Red", expect.anything(), WRITE_REVISION);
     expect(countPendingWrites(await readOutbox("user_1"))).toBe(0);
   });
 
@@ -820,7 +823,7 @@ describe("server reconcile with the pending-writes outbox", () => {
     });
     await flush();
 
-    expect(mockPutSavedSession).toHaveBeenCalledWith(TOKEN, "Test-Meet-1-Red", expect.anything());
+    expect(mockPutSavedSession).toHaveBeenCalledWith(TOKEN, "Test-Meet-1-Red", expect.anything(), WRITE_REVISION);
     expect(countPendingWrites(await readOutbox("user_1"))).toBe(0);
   });
 
@@ -1056,7 +1059,7 @@ describe("destructive writes: resets, removals and batch saves", () => {
     });
 
     expect(ok).toBe(true);
-    expect(mockDeleteSavedSessions).toHaveBeenCalledWith(TOKEN, "Test Meet");
+    expect(mockDeleteSavedSessions).toHaveBeenCalledWith(TOKEN, "Test Meet", WRITE_REVISION);
     expect(hook.current.savedSessions.map((s) => s.id)).toEqual(["Other-Meet-1-Red"]);
     const stored = JSON.parse((await AsyncStorage.getItem(SESSION_KEY)) ?? "[]");
     expect(stored.map((s: { id: string }) => s.id)).toEqual(["Other-Meet-1-Red"]);
@@ -1073,7 +1076,7 @@ describe("destructive writes: resets, removals and batch saves", () => {
     });
 
     expect(mockDeleteSavedSessions).toHaveBeenCalledTimes(1);
-    expect(mockDeleteSavedSessions).toHaveBeenCalledWith(TOKEN, undefined);
+    expect(mockDeleteSavedSessions).toHaveBeenCalledWith(TOKEN, undefined, WRITE_REVISION);
     expect(hook.current.savedSessions).toEqual([]);
   });
 
@@ -1111,7 +1114,7 @@ describe("destructive writes: resets, removals and batch saves", () => {
     expect(ok).toBe(true);
     expect(hook.current.savedSessions).toEqual([]);
     expect((await readOutbox("user_1")).sessions["Test-Meet-1-Red"]).toMatchObject({ op: "delete" });
-    expect(mockDeleteSavedSession).toHaveBeenCalledWith(TOKEN, "Test-Meet-1-Red");
+    expect(mockDeleteSavedSession).toHaveBeenCalledWith(TOKEN, "Test-Meet-1-Red", WRITE_REVISION);
   });
 
   it("does not write anything without a signed-in user", async () => {
