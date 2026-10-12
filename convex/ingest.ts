@@ -1,10 +1,11 @@
-import { v } from 'convex/values';
+import { v, type Infer } from 'convex/values';
 import { internalMutation, type MutationCtx } from './_generated/server';
 import type { Doc, Id, TableNames } from './_generated/dataModel';
 import { writeHistories } from './lib/history';
 import { normalizeAgeCategory, normalizeFederation, normalizeGender } from './lib/normalize';
 import { meetLocalDate, type ZoneFormatters } from './lib/meetData';
 import { normalizeName } from './lib/names';
+import { isKnownTimeZone } from './lib/validation';
 import { bumpVersion, type SourceTable } from './lib/views';
 import {
   athletesFields,
@@ -202,19 +203,44 @@ const scrapedMeet = v.object({
   venueCity: v.string(),
   venueState: v.string(),
   venueZip: v.string(),
-  timeZone: v.string(),
+  // Absent when the scraper could not tell the zone (an unknown state).
+  timeZone: v.optional(v.string()),
   startDate: v.string(),
   endDate: v.string(),
   status: v.union(v.literal('upcoming'), v.literal('ongoing'), v.literal('completed')),
   federation: v.optional(v.string()),
 });
 
+/** A meet stored without a known zone: every reader treats a blank zone as unknown. */
+const UNKNOWN_TIME_ZONE = '';
+
+type ScrapedMeetRow = Infer<typeof scrapedMeet>;
+
+/**
+ * The values a scraped meet writes over the stored one (`existing`, null for
+ * a new meet). A completed meet stays completed. The time zone is left alone
+ * when the scraper could not tell it, or when someone set it by hand
+ * (`timeZoneLocked`, see `setMeetTimeZone`), so the nightly sync never undoes
+ * a correction; a new meet with no zone is stored with a blank one.
+ */
+export function scrapedMeetValues(row: ScrapedMeetRow, existing: Pick<Doc<'meets'>, 'status' | 'timeZoneLocked'> | null) {
+  const { timeZone, ...rest } = row;
+  const values: Omit<ScrapedMeetRow, 'timeZone'> & { federation: string; timeZone?: string } = {
+    ...rest,
+    federation: normalizeFederation(row.federation ?? 'USAW'),
+  };
+  if (existing?.status === 'completed') values.status = 'completed';
+  if (!existing) values.timeZone = timeZone ?? UNKNOWN_TIME_ZONE;
+  else if (timeZone !== undefined && !existing.timeZoneLocked) values.timeZone = timeZone;
+  return values;
+}
+
 /**
  * Inserts or updates meets matched on name (`upsert_meet`). Only the scraped
- * columns are written: a meet already marked completed stays completed, and
- * fields the scrapers do not own (venue map links) are kept. A meet whose
- * scraped values are unchanged is not written; `updatedAt` moves only with a
- * real change, so the nightly syncs do not invalidate every meet's views.
+ * columns are written (see `scrapedMeetValues`): fields the scrapers do not
+ * own (venue map links, a locked time zone) are kept. A meet whose scraped
+ * values are unchanged is not written; `updatedAt` moves only with a real
+ * change, so the nightly syncs do not invalidate every meet's views.
  */
 export const upsertMeets = internalMutation({
   args: { rows: v.array(scrapedMeet) },
@@ -223,18 +249,18 @@ export const upsertMeets = internalMutation({
     const hints: WriteHint[] = [];
     const now = Date.now();
     for (const row of rows) {
-      const values = { ...row, federation: normalizeFederation(row.federation ?? 'USAW') };
       const existing = await ctx.db
         .query('meets')
         .withIndex('by_name', (q) => q.eq('name', row.name))
         .first();
       if (!existing) {
-        await ctx.db.insert('meets', { ...values, updatedAt: now });
+        const values = scrapedMeetValues(row, null);
+        await ctx.db.insert('meets', { ...values, timeZone: values.timeZone ?? UNKNOWN_TIME_ZONE, updatedAt: now });
         outcomes.push({ wasInsert: true, wasChanged: true });
         hints.push({ kind: 'meet', key: row.name });
         continue;
       }
-      if (existing.status === 'completed') values.status = 'completed';
+      const values = scrapedMeetValues(row, existing);
       const changed = (Object.keys(values) as (keyof typeof values)[]).some((key) => existing[key] !== values[key]);
       if (changed) {
         await ctx.db.patch(existing._id, { ...values, updatedAt: now });
@@ -244,6 +270,31 @@ export const upsertMeets = internalMutation({
     }
     if (hints.length) await recordWrite(ctx, 'meets', hints);
     return outcomes;
+  },
+});
+
+/**
+ * Sets a meet's time zone by hand, locked by default so the meet syncs never
+ * overwrite it (the state-based guess is wrong for a few places, see
+ * `scrapers/lib/states.ts`): `npx convex run ingest:setMeetTimeZone
+ * '{"name":"…","timeZone":"America/New_York"}'`. Pass `locked: false` to hand
+ * the zone back to the syncs. Goes through `recordWrite` like every write, so
+ * the meet's views follow.
+ */
+export const setMeetTimeZone = internalMutation({
+  args: { name: v.string(), timeZone: v.string(), locked: v.optional(v.boolean()) },
+  handler: async (ctx, { name, timeZone, locked }) => {
+    if (!isKnownTimeZone(timeZone)) throw new Error(`not an IANA time zone: ${JSON.stringify(timeZone)}`);
+    const meet = await ctx.db
+      .query('meets')
+      .withIndex('by_name', (q) => q.eq('name', name))
+      .first();
+    if (!meet) throw new Error(`no meet named ${JSON.stringify(name)}`);
+    const timeZoneLocked = locked ?? true;
+    if (meet.timeZone === timeZone && (meet.timeZoneLocked ?? false) === timeZoneLocked) return { changed: false };
+    await ctx.db.patch(meet._id, { timeZone, timeZoneLocked, updatedAt: Date.now() });
+    await recordWrite(ctx, 'meets', [{ kind: 'meet', key: name }]);
+    return { changed: true };
   },
 });
 
@@ -262,7 +313,7 @@ const PLACEHOLDERS = new Set(['', 'TBD', 'Unknown']);
  * results refer to a meet by name.
  */
 export const syncUsamwEvents = internalMutation({
-  args: { events: v.array(v.object({ name: v.string(), startDate: v.string(), endDate: v.string(), venueName: v.string(), venueCity: v.string(), venueState: v.string(), timeZone: v.string() })) },
+  args: { events: v.array(v.object({ name: v.string(), startDate: v.string(), endDate: v.string(), venueName: v.string(), venueCity: v.string(), venueState: v.string(), timeZone: v.optional(v.string()) })) },
   handler: async (ctx, { events }) => {
     const now = Date.now();
     const hints: WriteHint[] = [];
@@ -302,6 +353,7 @@ export const syncUsamwEvents = internalMutation({
       if (!match) {
         await ctx.db.insert('meets', {
           ...event,
+          timeZone: event.timeZone ?? UNKNOWN_TIME_ZONE,
           venueStreet: 'TBD',
           venueZip: 'TBD',
           status: 'upcoming',
@@ -316,7 +368,8 @@ export const syncUsamwEvents = internalMutation({
       for (const field of ['venueName', 'venueCity', 'venueState'] as const) {
         if (!PLACEHOLDERS.has(event[field])) site[field] = event[field];
       }
-      if (site.venueState) site.timeZone = event.timeZone;
+      // A zone the site does not name, or one set by hand, is kept.
+      if (site.venueState && event.timeZone !== undefined && !match.timeZoneLocked) site.timeZone = event.timeZone;
       if (site.venueCity && site.venueCity !== match.venueCity) {
         site.venueStreet = 'TBD';
         site.venueZip = 'TBD';

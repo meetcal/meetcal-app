@@ -17,6 +17,8 @@ export const run = internalAction({
   handler: async (ctx, { dryRun }): Promise<RunResult> => {
     const events = parseUsamwEvents(await fetchText(EVENTS_URL, 45_000));
     if (events.length === 0) throw new Error('usamw events: parsed 0 events');
+    // Synced without a zone: a stored meet keeps its own, a new one gets a blank one.
+    for (const event of events) if (event.timeZone === undefined) console.warn(`usamw events: no time zone for ${event.name} (${event.venueCity}, ${event.venueState})`);
     if (dryRun) return { events, inserted: [], updated: [], unchanged: [], ambiguous: [] };
     const result: Omit<RunResult, 'events'> = await ctx.runMutation(internal.ingest.syncUsamwEvents, { events });
     // An event overlapping several stored meets needs a person: fail the run

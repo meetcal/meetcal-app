@@ -1,4 +1,5 @@
 import { parseHtml } from '../lib/html';
+import { stateCode, usTimeZone } from '../lib/states';
 
 // USA Masters events (replaces `usamw/meets/scrape_events.py`, whose site,
 // usamastersweightlifting.com, is gone). The events page on usamasters.net
@@ -18,42 +19,31 @@ export type UsamwEvent = {
   venueName: string;
   venueCity: string;
   venueState: string;
-  timeZone: string;
+  /** Absent when neither the state nor the location names a zone. */
+  timeZone?: string;
 };
 
 const MONTHS: Record<string, number> = {
   jan: 1, feb: 2, mar: 3, apr: 4, may: 5, jun: 6, jul: 7, aug: 8, sep: 9, oct: 10, nov: 11, dec: 12,
 };
 
-const STATES: Record<string, string> = {
-  Alabama: 'AL', Alaska: 'AK', Arizona: 'AZ', Arkansas: 'AR', California: 'CA', Colorado: 'CO', Connecticut: 'CT', Delaware: 'DE',
-  Florida: 'FL', Georgia: 'GA', Hawaii: 'HI', Idaho: 'ID', Illinois: 'IL', Indiana: 'IN', Iowa: 'IA', Kansas: 'KS', Kentucky: 'KY',
-  Louisiana: 'LA', Maine: 'ME', Maryland: 'MD', Massachusetts: 'MA', Michigan: 'MI', Minnesota: 'MN', Mississippi: 'MS', Missouri: 'MO',
-  Montana: 'MT', Nebraska: 'NE', Nevada: 'NV', 'New Hampshire': 'NH', 'New Jersey': 'NJ', 'New Mexico': 'NM', 'New York': 'NY',
-  'North Carolina': 'NC', 'North Dakota': 'ND', Ohio: 'OH', Oklahoma: 'OK', Oregon: 'OR', Pennsylvania: 'PA', 'Rhode Island': 'RI',
-  'South Carolina': 'SC', 'South Dakota': 'SD', Tennessee: 'TN', Texas: 'TX', Utah: 'UT', Vermont: 'VT', Virginia: 'VA',
-  Washington: 'WA', 'West Virginia': 'WV', Wisconsin: 'WI', Wyoming: 'WY', 'District of Columbia': 'DC',
-};
-
-const CENTRAL = ['AL', 'AR', 'IL', 'IA', 'KS', 'LA', 'MN', 'MS', 'MO', 'NE', 'ND', 'OK', 'SD', 'TN', 'TX', 'WI'];
-const MOUNTAIN = ['CO', 'ID', 'MT', 'NM', 'UT', 'WY'];
-const PACIFIC = ['CA', 'NV', 'OR', 'WA'];
 const ABROAD: Record<string, string> = {
   greece: 'Europe/Athens', japan: 'Asia/Tokyo', spain: 'Europe/Madrid', 'puerto rico': 'America/Puerto_Rico',
   'el salvador': 'America/El_Salvador', canada: 'America/Toronto', mexico: 'America/Mexico_City',
 };
 
-/** The meet's time zone from its state, or a country named in its location; Eastern when unknown, as the Python defaulted. */
-export function timeZoneFor(state: string, locationText = state): string {
-  if (state === 'AZ') return 'America/Phoenix';
-  if (state === 'AK') return 'America/Anchorage';
-  if (state === 'HI') return 'Pacific/Honolulu';
-  if (CENTRAL.includes(state)) return 'America/Chicago';
-  if (MOUNTAIN.includes(state)) return 'America/Denver';
-  if (PACIFIC.includes(state)) return 'America/Los_Angeles';
+/**
+ * The meet's time zone from its state and city (`lib/states.ts`), or a
+ * country named in its location. Undefined when neither tells: the sync then
+ * keeps the zone stored, and a new meet gets a blank one (the Python
+ * defaulted to Eastern).
+ */
+export function timeZoneFor(state: string, city = '', locationText = state): string | undefined {
+  const zone = usTimeZone(state, city);
+  if (zone) return zone;
   const lower = locationText.toLowerCase();
   const country = Object.keys(ABROAD).find((name) => lower.includes(name));
-  return country ? ABROAD[country] : 'America/New_York';
+  return country ? ABROAD[country] : undefined;
 }
 
 const pad = (n: number) => String(n).padStart(2, '0');
@@ -85,7 +75,7 @@ export function parseLocation(text: string): { venueCity: string; venueState: st
   const parts = text.split(',').map((part) => part.trim()).filter(Boolean);
   if (parts.length < 2) return { venueCity: text.trim(), venueState: text.trim() };
   const region = parts[1];
-  return { venueCity: parts[0], venueState: STATES[region] ?? region };
+  return { venueCity: parts[0], venueState: stateCode(region) ?? region };
 }
 
 /** A paragraph's lines, split at its line breaks, blank ones dropped. */
@@ -125,7 +115,8 @@ export function parseUsamwEvents(html: string): UsamwEvent[] {
       rest = rest.slice(1);
     }
     const venueLine = rest.find((line) => line.length <= 60 && !/[$:]|\d{4}/.test(line));
-    events.push({ name, ...dates, venueName: venueLine ?? 'TBD', venueCity, venueState, timeZone: timeZoneFor(venueState, [place, ...location].join(' ')) });
+    const timeZone = timeZoneFor(venueState, venueCity, [place, ...location].join(' '));
+    events.push({ name, ...dates, venueName: venueLine ?? 'TBD', venueCity, venueState, ...(timeZone === undefined ? {} : { timeZone }) });
   }
   return events;
 }

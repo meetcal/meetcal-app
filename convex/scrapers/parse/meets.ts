@@ -1,13 +1,70 @@
 // Pure parts of `scrapers/meets.ts` (port of `usaw/meet_to_supabase/scripts/sync-*.js`).
 
-const WIDGET = 'https://usaweightlifting.sport80.com/api/public/widget/data/new/1?p=0&i=20&l=&d=10&f=&s=';
+import { isValidIsoDate } from '../../lib/validation';
+import { stateCode, usTimeZone } from '../lib/states';
+
+const WIDGET = 'https://usaweightlifting.sport80.com/api/public/widget/data/new/1';
+
+/** Meets per widget page: the page size the Node scripts asked for. */
+export const WIDGET_PAGE_SIZE = 20;
+/** Pages read per search at most; a search matching more fails rather than drop the rest. */
+export const MAX_WIDGET_PAGES = 10;
 
 /** The three searches the VPS ran; only the WSO one skips completed meets. */
 export const MEET_SEARCHES = [
-  { key: 'wso', url: `${WIDGET}WSO`, skipCompleted: true },
-  { key: 'nationals', url: `${WIDGET}Nationals`, skipCompleted: false },
-  { key: 'virus', url: `${WIDGET}Virus%20Weightlifting`, skipCompleted: false },
+  { key: 'wso', search: 'WSO', skipCompleted: true },
+  { key: 'nationals', search: 'Nationals', skipCompleted: false },
+  { key: 'virus', search: 'Virus Weightlifting', skipCompleted: false },
 ] as const;
+
+/** One page (from 0) of a widget search, upcoming meets soonest first. */
+export function widgetPageUrl(search: string, page: number): string {
+  return `${WIDGET}?p=${page}&i=${WIDGET_PAGE_SIZE}&l=&d=10&f=&s=${encodeURIComponent(search)}`;
+}
+
+export type WidgetRow = { id: string | null; name: string; address: string; subtitle: string };
+
+const text = (value: unknown): string => (typeof value === 'string' ? value : '');
+
+/**
+ * A widget page's rows and the search's total match count (the widget sends
+ * the count as a string). Anything else is an error, never an empty page.
+ */
+export function readWidgetPage(body: unknown): { total: number; rows: WidgetRow[] } {
+  if (typeof body !== 'object' || body === null) throw new Error('widget: response is not an object');
+  const { total, data } = body as { total?: unknown; data?: unknown };
+  const count = typeof total === 'number' ? total : typeof total === 'string' && /^\d+$/.test(total.trim()) ? Number(total) : NaN;
+  if (!Number.isInteger(count)) throw new Error(`widget: no match count (total ${JSON.stringify(total)})`);
+  if (!Array.isArray(data)) throw new Error('widget: no data array');
+  const rows = data.map((item: unknown, i): WidgetRow => {
+    const row = (typeof item === 'object' && item !== null ? item : {}) as Record<string, unknown>;
+    const name = text(row.name).trim();
+    if (!name) throw new Error(`widget: row ${i} has no name`);
+    const id = row.id === undefined || row.id === null ? null : String(row.id);
+    return { id, name, address: text(row.address), subtitle: text(row.subtitle) };
+  });
+  return { total: count, rows };
+}
+
+/**
+ * Every meet a search matches, a page at a time until the widget's count is
+ * reached (or a page comes back short or empty). A search still short of its
+ * count after `MAX_WIDGET_PAGES`, or that read fewer distinct meets than the
+ * count, fails: a partial list would silently leave meets out.
+ */
+export async function readAllWidgetPages(fetchPage: (page: number) => Promise<unknown>): Promise<WidgetRow[]> {
+  const rows: WidgetRow[] = [];
+  let total = 0;
+  for (let page = 0; page < MAX_WIDGET_PAGES; page++) {
+    const result = readWidgetPage(await fetchPage(page));
+    total = result.total;
+    rows.push(...result.rows);
+    if (rows.length >= total || result.rows.length < WIDGET_PAGE_SIZE) break;
+  }
+  const distinct = new Set(rows.map((row, i) => row.id ?? `#${i}`)).size;
+  if (distinct < total) throw new Error(`widget: read ${distinct} distinct meets of ${total} (${MAX_WIDGET_PAGES} pages of ${WIDGET_PAGE_SIZE} at most)`);
+  return rows;
+}
 
 export type ScrapedMeet = {
   name: string;
@@ -16,7 +73,8 @@ export type ScrapedMeet = {
   venueCity: string;
   venueState: string;
   venueZip: string;
-  timeZone: string;
+  /** Absent when the state is not a US state: reported, not guessed. */
+  timeZone?: string;
   startDate: string;
   endDate: string;
   status: 'upcoming';
@@ -61,58 +119,70 @@ export function parseAddress(raw: string): Address {
   }
 }
 
-/** `parseDateRange`: "MM/DD/YYYY - MM/DD/YYYY" (escaped slashes allowed) to ISO dates. */
-export function parseDateRange(range: string): { startDate: string | null; endDate: string | null } {
-  try {
-    const dates = range.replace(/\\\//g, '/').split(' - ');
-    const start = dates[0].split('/');
-    const end = dates[1] ? dates[1].split('/') : start;
-    return { startDate: `${start[2]}-${start[0]}-${start[1]}`, endDate: `${end[2]}-${end[0]}-${end[1]}` };
-  } catch {
-    return { startDate: null, endDate: null };
-  }
+const SLASH_DATE = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/;
+
+/** "9/5/2026" -> "2026-09-05"; null for anything else or a date that does not exist. */
+function isoFromSlash(text: string): string | null {
+  const match = SLASH_DATE.exec(text.trim());
+  if (!match) return null;
+  const iso = `${match[3]}-${match[1].padStart(2, '0')}-${match[2].padStart(2, '0')}`;
+  return isValidIsoDate(iso) ? iso : null;
 }
 
-const STATES: Record<string, [string, string]> = {
-  Alabama: ['AL', 'America/Chicago'], Alaska: ['AK', 'America/Anchorage'], Arizona: ['AZ', 'America/Phoenix'],
-  Arkansas: ['AR', 'America/Chicago'], California: ['CA', 'America/Los_Angeles'], Colorado: ['CO', 'America/Denver'],
-  Connecticut: ['CT', 'America/New_York'], Delaware: ['DE', 'America/New_York'], Florida: ['FL', 'America/New_York'],
-  Georgia: ['GA', 'America/New_York'], Hawaii: ['HI', 'Pacific/Honolulu'], Idaho: ['ID', 'America/Denver'],
-  Illinois: ['IL', 'America/Chicago'], Indiana: ['IN', 'America/New_York'], Iowa: ['IA', 'America/Chicago'],
-  Kansas: ['KS', 'America/Chicago'], Kentucky: ['KY', 'America/New_York'], Louisiana: ['LA', 'America/Chicago'],
-  Maine: ['ME', 'America/New_York'], Maryland: ['MD', 'America/New_York'], Massachusetts: ['MA', 'America/New_York'],
-  Michigan: ['MI', 'America/New_York'], Minnesota: ['MN', 'America/Chicago'], Mississippi: ['MS', 'America/Chicago'],
-  Missouri: ['MO', 'America/Chicago'], Montana: ['MT', 'America/Denver'], Nebraska: ['NE', 'America/Chicago'],
-  Nevada: ['NV', 'America/Los_Angeles'], 'New Hampshire': ['NH', 'America/New_York'], 'New Jersey': ['NJ', 'America/New_York'],
-  'New Mexico': ['NM', 'America/Denver'], 'New York': ['NY', 'America/New_York'], 'North Carolina': ['NC', 'America/New_York'],
-  'North Dakota': ['ND', 'America/Chicago'], Ohio: ['OH', 'America/New_York'], Oklahoma: ['OK', 'America/Chicago'],
-  Oregon: ['OR', 'America/Los_Angeles'], Pennsylvania: ['PA', 'America/New_York'], 'Rhode Island': ['RI', 'America/New_York'],
-  'South Carolina': ['SC', 'America/New_York'], 'South Dakota': ['SD', 'America/Chicago'], Tennessee: ['TN', 'America/Chicago'],
-  Texas: ['TX', 'America/Chicago'], Utah: ['UT', 'America/Denver'], Vermont: ['VT', 'America/New_York'],
-  Virginia: ['VA', 'America/New_York'], Washington: ['WA', 'America/Los_Angeles'], 'West Virginia': ['WV', 'America/New_York'],
-  Wisconsin: ['WI', 'America/Chicago'], Wyoming: ['WY', 'America/Denver'], 'District of Columbia': ['DC', 'America/New_York'],
+/**
+ * `parseDateRange`: "MM/DD/YYYY - MM/DD/YYYY" or one "MM/DD/YYYY" (escaped
+ * slashes allowed) to ISO dates, zero-padded. Null for anything else ("TBD",
+ * a date that does not exist, an end before the start): meet dates are
+ * compared as text, so a malformed one ("undefined-TBD-undefined",
+ * "2026-9-5") would sort in the wrong place and never complete.
+ */
+export function parseDateRange(range: string): { startDate: string; endDate: string } | null {
+  const sides = range.replace(/\\\//g, '/').split(/\s+-\s+/);
+  if (sides.length > 2) return null;
+  const startDate = isoFromSlash(sides[0]);
+  const endDate = sides.length === 2 ? isoFromSlash(sides[1]) : startDate;
+  if (!startDate || !endDate || endDate < startDate) return null;
+  return { startDate, endDate };
+}
+
+export type TransformedMeets = {
+  meets: ScrapedMeet[];
+  /** Meets left out because their dates could not be read, with the text. */
+  rejected: string[];
+  /** Meets synced without a time zone (the state is not a US state). */
+  unknownZone: string[];
 };
 
-/** `transformMeetsData`: widget rows to meets, dropping undated and adaptive ones. */
-export function transformMeets(rows: { name: string; address: string; subtitle: string }[]): ScrapedMeet[] {
-  const meets: ScrapedMeet[] = [];
+/**
+ * `transformMeetsData`: widget rows to meets, dropping adaptive ones. A meet
+ * whose dates cannot be read is left out and reported, never stored with
+ * made-up dates. The zone comes from the state and, in a state that spans
+ * two zones, the city (`lib/states.ts`).
+ */
+export function transformMeets(rows: { name: string; address: string; subtitle: string }[]): TransformedMeets {
+  const result: TransformedMeets = { meets: [], rejected: [], unknownZone: [] };
   for (const row of rows) {
+    if (row.name.toUpperCase().includes('ADAPTIVE')) continue;
+    const dates = parseDateRange(row.subtitle);
+    if (!dates) {
+      result.rejected.push(`${row.name}: unreadable dates ${JSON.stringify(row.subtitle)}`);
+      continue;
+    }
     const { venueName, street, city, state, zip } = parseAddress(row.address);
-    const { startDate, endDate } = parseDateRange(row.subtitle);
-    if (!startDate || !endDate || row.name.toUpperCase().includes('ADAPTIVE')) continue;
-    meets.push({
+    const timeZone = usTimeZone(state, city);
+    if (timeZone === null) result.unknownZone.push(`${row.name}: state ${JSON.stringify(state)}`);
+    result.meets.push({
       name: row.name,
       venueName: venueName || row.name,
       venueStreet: street,
       venueCity: city,
-      venueState: STATES[state]?.[0] ?? state,
+      venueState: stateCode(state) ?? state,
       venueZip: zip,
-      timeZone: STATES[state]?.[1] ?? 'America/New_York',
-      startDate,
-      endDate,
+      ...(timeZone === null ? {} : { timeZone }),
+      ...dates,
       status: 'upcoming',
       federation: 'USAW',
     });
   }
-  return meets;
+  return result;
 }

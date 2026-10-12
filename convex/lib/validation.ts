@@ -29,6 +29,30 @@ export function isValidIsoDate(value: string): boolean {
   return days !== undefined && day >= 1 && day <= days;
 }
 
+/**
+ * A stored meet date as a real, zero-padded `YYYY-MM-DD`, or null. The meet
+ * scraper once stored some unpadded ("2026-9-5") and some that were not dates
+ * at all ("undefined-TBD-undefined"); meet dates are compared as text, so
+ * those sort in the wrong place (`migrations:padMeetDates` repairs them).
+ */
+export function canonicalMeetDate(value: string): string | null {
+  const match = /^(\d{4})-(\d{1,2})-(\d{1,2})$/.exec(value.trim());
+  if (!match) return null;
+  const date = `${match[1]}-${match[2].padStart(2, '0')}-${match[3].padStart(2, '0')}`;
+  return isValidIsoDate(date) ? date : null;
+}
+
+/** Whether `timeZone` is an IANA zone this runtime knows (a blank one is not). */
+export function isKnownTimeZone(timeZone: string): boolean {
+  if (!timeZone.trim()) return false;
+  try {
+    new Intl.DateTimeFormat('en-US', { timeZone });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export function requireIsoDate(field: string, value: string | undefined): void {
   if (value !== undefined && !isValidIsoDate(value)) {
     throw apiError(400, `${field} must be a valid YYYY-MM-DD date`);

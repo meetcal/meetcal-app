@@ -1,0 +1,81 @@
+{
+  "total": "10",
+  "page": 0,
+  "items_per_page": 20,
+  "next_page_url": null,
+  "previous_page_url": null,
+  "no_data_message": "No records found please try a different search/filter.",
+  "data": [
+    {
+      "id": "14772",
+      "is_event": true,
+      "name": "2026 Tennessee-Kentucky WSO Championship",
+      "subtitle": "10/17/2026 - 10/17/2026",
+      "address": "Trevecca Community Church Gymnasium, 335 Murfreesboro Pike, Nashville, Tennessee, United States of America, 37210"
+    },
+    {
+      "id": "14972",
+      "is_event": true,
+      "name": "Alabama WSO Championship 2026",
+      "subtitle": "10/17/2026 - 10/17/2026",
+      "address": "2424 4TH AVE S, BIRMINGHAM, Alabama, United States of America, 352332519"
+    },
+    {
+      "id": "14903",
+      "is_event": true,
+      "name": "2026 Iowa-Nebraska WSO Championships",
+      "subtitle": "10/24/2026 - 10/24/2026",
+      "address": "Mid America Center, 1 Arena Way, Council Bluffs, Iowa, United States of America, 51501"
+    },
+    {
+      "id": "14881",
+      "is_event": true,
+      "name": "2026 Missouri Valley WSO Championships",
+      "subtitle": "10/24/2026 - 10/25/2026",
+      "address": "Columbia Sports Fieldhouse, 421 Philps Farm Road, Columbia, Missouri, United States of America, 65201"
+    },
+    {
+      "id": "14820",
+      "is_event": true,
+      "name": "2026 California South WSO Championship (NUQ)",
+      "subtitle": "10/31/2026 - 11/01/2026",
+      "address": "Paul and Barbara Heath Forum at Vanguard University, 55 Fair Drive, Costa Mesa, California, United States of America, 92626"
+    },
+    {
+      "id": "15047",
+      "is_event": true,
+      "name": "2026 Indiana WSO Championships (NUQ)",
+      "subtitle": "10/31/2026 - 10/31/2026",
+      "address": "9625 E 150th St. STE #6, Noblesville, Indiana, United States of America, 46060"
+    },
+    {
+      "id": "14980",
+      "is_event": true,
+      "name": "2026 MN DAK WSO Championship",
+      "subtitle": "10/31/2026 - 11/01/2026",
+      "address": "Torque Sports Performance, 1480 Weir Drive Suite 300, Woodbury, Minnesota, United States of America, 55125"
+    },
+    {
+      "id": "14855",
+      "is_event": true,
+      "name": "2026 Pennsylvania-West Virginia WSO Championships",
+      "subtitle": "10/31/2026 - 11/01/2026",
+      "address": "The Greater Philadelphia Expo Center (Hall E), 100 Station Ave, Oaks, Pennsylvania, United States of America, 19456"
+    },
+    {
+      "id": "15004",
+      "is_event": true,
+      "name": "2026 Georgia WSO Championships",
+      "subtitle": "11/07/2026 - 11/07/2026",
+      "address": "1128 Highway 54, East Fayetteville, Georgia, United States of America, 30214"
+    },
+    {
+      "id": "14678",
+      "is_event": true,
+      "name": "2026 California North WSO Championships",
+      "subtitle": "12/03/2026 - 12/06/2026",
+      "address": "Alameda County Fairgrounds, 4501 Pleasanton Ave, Pleasanton, California, United States of America, 94566"
+    }
+  ],
+  "breadcrumbs": null
+}

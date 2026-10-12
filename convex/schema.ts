@@ -98,6 +98,8 @@ export const meetsFields = {
     venueMapPdfUrl: v.optional(v.string()),
     venueMapAppleUrl: v.optional(v.string()),
     timeZone: v.string(),
+    // Set with the zone by `ingest:setMeetTimeZone`: the meet syncs leave a locked zone alone.
+    timeZoneLocked: v.optional(v.boolean()),
     startDate: v.string(),
     endDate: v.string(),
     status: meetStatus,
