@@ -136,6 +136,41 @@ describe('saved-session write ordering', () => {
     expect(await s.list()).toEqual([]);
   });
 
+  it("does not re-run a reset whose reply was lost, so another install's save in between stays", async () => {
+    const s = server();
+    await s.reset(MEET, at(PHONE, 5));
+    // The phone never heard back; meanwhile the tablet saves a session.
+    await s.put('a', 'tablet', at(TABLET, 1));
+    // The phone resends the same reset.
+    expect(await s.reset(MEET, at(PHONE, 5))).toEqual({ deleted_count: 0 });
+    expect(await s.list()).toEqual(['a:tablet']);
+  });
+
+  it('does not let a reset land after a newer reset of its meet, or of every meet, from the same install', async () => {
+    const s = server();
+    await s.reset(MEET, at(PHONE, 7));
+    await s.put('a', 'tablet', at(TABLET, 1));
+    expect(await s.reset(MEET, at(PHONE, 4))).toEqual({ deleted_count: 0 });
+
+    expect(await s.list()).toEqual(['a:tablet']);
+
+    // A newer reset of every meet does remove it; an older meet reset after that does nothing.
+    await s.reset(undefined, at(PHONE, 9));
+    await s.put('b', 'tablet', at(TABLET, 2), OTHER_MEET);
+    expect(await s.reset(OTHER_MEET, at(PHONE, 8))).toEqual({ deleted_count: 0 });
+    expect(await s.list()).toEqual(['b:tablet']);
+  });
+
+  it("keeps a late reset of every meet out of the meets the install has reset since", async () => {
+    const s = server();
+    await s.reset(MEET, at(PHONE, 6));
+    await s.put('a', 'tablet', at(TABLET, 1));
+    await s.put('b', 'tablet', at(TABLET, 2), OTHER_MEET);
+    // A reset of every meet from before the meet reset lands late.
+    expect(await s.reset(undefined, at(PHONE, 3))).toEqual({ deleted_count: 1 });
+    expect(await s.list()).toEqual(['a:tablet']);
+  });
+
   it('applies a newer write from the same install', async () => {
     const s = server();
     await s.unsave('a', at(PHONE, 2));

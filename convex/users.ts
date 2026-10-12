@@ -379,12 +379,28 @@ export const deleteSavedSessions = mutation({
     const meet = optionalString(args, 'meet');
     const revision = optionalWriteRevision(args);
     const userId = await requireUserId(ctx);
+    // This install's resets, by meet (`null`: every meet). A reset it already
+    // applied, or one older than a reset it applied since, is a resend whose
+    // reply was lost: its deletes landed the first time, and running it again
+    // would delete what another install saved in between. A reset of every
+    // meet also leaves the meets this install has reset since.
+    const newerResets = new Map<string | null, number>();
+    if (revision) {
+      const markers = await ctx.db
+        .query('saved_session_resets')
+        .withIndex('by_userId_and_device_and_meet', (q) => q.eq('userId', userId).eq('device', revision.device))
+        .take(MAX_SAVED_SESSIONS_PER_USER);
+      for (const marker of markers) {
+        if (marker.rev >= revision.rev) newerResets.set(marker.meet, marker.rev);
+      }
+      if (newerResets.has(meet ?? null) || newerResets.has(null)) return { deleted_count: 0 };
+    }
     const inScope = (
       await ctx.db
         .query('saved_sessions')
         .withIndex('by_userId', (q) => q.eq('userId', userId))
         .collect()
-    ).filter((row) => meet === undefined || row.meet === meet);
+    ).filter((row) => (meet === undefined || row.meet === meet) && !newerResets.has(row.meet));
     const rows: Doc<'saved_sessions'>[] = [];
     for (const row of inScope) {
       const own = revision ? await sessionRevision(ctx, userId, row.sessionId, revision.device) : null;
