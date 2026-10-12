@@ -5,7 +5,7 @@ import type { Doc } from './_generated/dataModel';
 import { normalizeName } from './lib/names';
 import { normalizeAgeCategory, normalizeGender } from './lib/normalize';
 import { canonicalMeetDate } from './lib/validation';
-import { deleteResultRows, eventResultsByKey, recordWrite } from './ingest';
+import { deleteResultRows, eventResultsByKey, recordWrite, sameEditionDates, sameResultValues } from './ingest';
 
 const BACKFILL_PAGE_SIZE = 500;
 /**
@@ -173,20 +173,58 @@ export const normalizeAthleteGenders = internalMutation({
   },
 });
 
+/** Two stored rows that are one result twice: one edition (`sameEditionDates`), the same values, federation and adaptive flag. */
+function isCopy(a: Doc<'lifting_results'>, b: Doc<'lifting_results'>): boolean {
+  return sameEditionDates(a.date, b.date) && sameResultValues(a, b) && a.federation === b.federation && a.adaptive === b.adaptive;
+}
+
+/** Identities one log line lists: Convex keeps a bounded number of log lines per function run. */
+const LEFT_PER_LOG_LINE = 50;
+
 /**
- * Deletes result rows stored twice under one identity (`ingest.resultKey`:
- * event, meet, folded name, age category), which the writers allowed while
- * they matched exact names ("John Smith" and "John  Smith"). Of each set the
- * newest row is kept, the source's latest spelling. Walks the results in
- * event order a page per mutation, reading each event whole once, and
- * deletes through the ingest path, so histories, summaries, views and search
- * follow. Idempotent.
+ * Splits one identity's stored rows (oldest first) into sets of copies of
+ * one result (`isCopy`), each in the order the rows were stored.
+ */
+function copySets(rows: readonly Doc<'lifting_results'>[]): Doc<'lifting_results'>[][] {
+  const sets: Doc<'lifting_results'>[][] = [];
+  for (const row of rows) {
+    const set = sets.find((candidate) => isCopy(candidate[0], row));
+    if (set) set.push(row);
+    else sets.push([row]);
+  }
+  return sets;
+}
+
+/**
+ * Deletes result rows stored twice: under one identity (`ingest.resultKey`:
+ * event, meet, folded name, age category) in one edition of the meet
+ * (dated within `ingest.SAME_EDITION_DAYS`), with the same body weight, attempts, bests, total, federation and adaptive flag. The
+ * writers allowed such copies while they matched exact names ("John Smith"
+ * and "John  Smith"). Of each set of copies the newest row is kept (the
+ * source's latest spelling), taking the pre-Convex serial (`legacyId`) of
+ * an older copy when it has none.
  *
+ * Rows under one identity that are not copies are never deleted: another
+ * edition's result under an event id the pre-Convex import reused across
+ * a meet's editions (#369), or two sets of values for one result. Each such
+ * identity is logged ("dedupeLiftingResults: left …") for a person to
+ * resolve. `dryRun` deletes nothing and logs the same, with what it would
+ * delete counted. Walks the results in event order a page per mutation,
+ * reading each event whole once, and deletes through the ingest path, so
+ * histories, summaries, views and search follow. Idempotent.
+ *
+ *   npx convex run migrations:dedupeLiftingResults '{"dryRun":true}'
  *   npx convex run migrations:dedupeLiftingResults
  */
 export const dedupeLiftingResults = internalMutation({
-  args: { cursor: v.optional(v.union(v.string(), v.null())), lastEventId: v.optional(v.string()), deleted: v.optional(v.number()) },
-  handler: async (ctx, { cursor, lastEventId, deleted = 0 }) => {
+  args: {
+    cursor: v.optional(v.union(v.string(), v.null())),
+    lastEventId: v.optional(v.string()),
+    deleted: v.optional(v.number()),
+    left: v.optional(v.number()),
+    dryRun: v.optional(v.boolean()),
+  },
+  handler: async (ctx, { cursor, lastEventId, deleted = 0, left = 0, dryRun = false }) => {
     const page = await ctx.db
       .query('lifting_results')
       .withIndex('by_event_and_name')
@@ -194,25 +232,63 @@ export const dedupeLiftingResults = internalMutation({
     // Rows come in event order: an event already read is the one the
     // previous page ended in.
     const events = [...new Set(page.page.map((row) => row.eventId))].filter((eventId) => eventId !== lastEventId);
-    const copies: Doc<'lifting_results'>[] = [];
+    const sets: Doc<'lifting_results'>[][] = [];
+    const unresolved: string[] = [];
     for (const eventId of events) {
-      // Oldest first within a key: all but the last are older copies.
-      for (const rows of (await eventResultsByKey(ctx, eventId)).values()) copies.push(...rows.slice(0, -1));
+      for (const rows of (await eventResultsByKey(ctx, eventId)).values()) {
+        const identity = copySets(rows);
+        sets.push(...identity.filter((set) => set.length > 1));
+        if (identity.length > 1) {
+          const { meet, name, age } = rows[0];
+          const values = identity.map((set) => `${set[0].date} total ${set[0].total ?? '-'} bw ${set[0].bodyWeight ?? '-'}${set.length > 1 ? ` (x${set.length})` : ''}`);
+          unresolved.push(`event ${eventId} ${JSON.stringify(meet)} ${JSON.stringify(name)} ${age ?? '(no age)'}: ${values.join('; ')}`);
+        }
+      }
     }
-    const count = deleted + (await deleteResultRows(ctx, copies.slice(0, DEDUPE_BATCH)));
-    if (copies.length > DEDUPE_BATCH) {
-      // The same page again: the deleted copies are gone, the rest are next.
-      await ctx.scheduler.runAfter(0, internal.migrations.dedupeLiftingResults, { cursor: cursor ?? null, deleted: count, ...(lastEventId === undefined ? {} : { lastEventId }) });
-      return;
+    const total = sets.reduce((sum, set) => sum + set.length - 1, 0);
+    let removed = 0;
+    if (dryRun) {
+      removed = total;
+    } else {
+      // Each set's older rows, newest kept, up to DEDUPE_BATCH deletions.
+      const doomed: Doc<'lifting_results'>[] = [];
+      for (const set of sets) {
+        const kept = set[set.length - 1];
+        const older = set.slice(0, -1).slice(0, DEDUPE_BATCH - doomed.length);
+        if (older.length === 0) break;
+        const legacyId = kept.legacyId ?? older.find((row) => row.legacyId !== undefined)?.legacyId;
+        if (legacyId !== kept.legacyId) await ctx.db.patch(kept._id, { legacyId });
+        doomed.push(...older);
+      }
+      removed = await deleteResultRows(ctx, doomed);
+      if (total > DEDUPE_BATCH) {
+        // The same page again: the deleted copies are gone, the rest are next.
+        await ctx.scheduler.runAfter(0, internal.migrations.dedupeLiftingResults, {
+          cursor: cursor ?? null,
+          deleted: deleted + removed,
+          left,
+          ...(lastEventId === undefined ? {} : { lastEventId }),
+        });
+        return;
+      }
     }
+    // Logged once, on the pass that finishes the page.
+    for (let i = 0; i < unresolved.length; i += LEFT_PER_LOG_LINE) {
+      console.log(`dedupeLiftingResults: left\n${unresolved.slice(i, i + LEFT_PER_LOG_LINE).join('\n')}`);
+    }
+    const counts = { deleted: deleted + removed, left: left + unresolved.length };
     if (page.isDone) {
-      console.log(`dedupeLiftingResults: done, ${count} duplicate rows deleted`);
+      console.log(
+        `dedupeLiftingResults: done${dryRun ? ' (dry run)' : ''}, ${counts.deleted} duplicate rows ${dryRun ? 'to delete' : 'deleted'}, ` +
+          `${counts.left} identities left for a person (logged above)`,
+      );
       return;
     }
     await ctx.scheduler.runAfter(0, internal.migrations.dedupeLiftingResults, {
       cursor: page.continueCursor,
       lastEventId: page.page[page.page.length - 1]?.eventId ?? lastEventId,
-      deleted: count,
+      ...counts,
+      ...(dryRun ? { dryRun } : {}),
     });
   },
 });

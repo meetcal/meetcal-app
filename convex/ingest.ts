@@ -87,6 +87,43 @@ const liftingResult = v.object(liftingResultsFields);
 export type ResultIdentity = { meet: string; name: string; age?: string | null };
 export const resultKey = (row: ResultIdentity) => JSON.stringify([row.meet, normalizeName(row.name), row.age ?? null]);
 
+/** The values of a result: the body weight, every attempt, the bests and the total. */
+const RESULT_VALUES = ['bodyWeight', 'snatch1', 'snatch2', 'snatch3', 'snatchBest', 'cj1', 'cj2', 'cj3', 'cjBest', 'total'] as const;
+type ResultValues = Pick<Doc<'lifting_results'>, (typeof RESULT_VALUES)[number]>;
+
+/** Whether two results hold the same values (absent and `undefined` are the same). */
+export const sameResultValues = (a: ResultValues, b: ResultValues) => RESULT_VALUES.every((field) => a[field] === b[field]);
+
+/**
+ * How far apart two results' dates may be and still be one edition of a
+ * meet: rows of one edition are days apart at most (a multi-day meet, a
+ * re-sync that restamped the date), editions a year.
+ */
+export const SAME_EDITION_DAYS = 180;
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+/** Whether two `YYYY-MM-DD` result dates are of one edition of a meet; an unreadable date matches only itself. */
+export function sameEditionDates(a: string, b: string): boolean {
+  if (a === b) return true;
+  const days = Math.abs(Date.parse(`${a}T00:00:00Z`) - Date.parse(`${b}T00:00:00Z`)) / DAY_MS;
+  return days <= SAME_EDITION_DAYS;
+}
+
+/**
+ * Of the stored rows under an incoming row's identity (`resultKey`), the
+ * ones that are that result: those dated within SAME_EDITION_DAYS of it.
+ * The pre-Convex import stored some meets' editions under one event id
+ * (event 4598 holds the 2020 and the 2021 Dallas Weightlifting
+ * Championships, #369), so the identity alone can name another edition's
+ * real result, which is neither updated nor deleted. Not even one holding
+ * the same values: two editions can, so a copy stored under a wrong date
+ * (#402) stays a duplicate rather than risk deleting a real result.
+ */
+export function sameEditionRows(stored: readonly Doc<'lifting_results'>[], incoming: { date: string }): Doc<'lifting_results'>[] {
+  return stored.filter((row) => sameEditionDates(row.date, incoming.date));
+}
+
 /** One event's stored results by `resultKey`, oldest first within a key; read once per mutation. */
 export async function eventResultsByKey(ctx: MutationCtx, eventId: string): Promise<Map<string, Doc<'lifting_results'>[]>> {
   const byKey = new Map<string, Doc<'lifting_results'>[]>();
@@ -113,7 +150,8 @@ function pickStored(rows: readonly Doc<'lifting_results'>[], name: string): Doc<
 }
 
 /**
- * Inserts or updates results, matched on (eventId, `resultKey`). `nameKey`
+ * Inserts or updates results, matched on (eventId, `resultKey`) among the
+ * stored rows of the same edition (`sameEditionRows`). `nameKey`
  * is derived here, never taken from the caller, and the federation is
  * normalized (`normalize_federation`). A row whose values are unchanged is
  * not written, so re-syncing an unchanged meet bumps no version and
@@ -133,14 +171,15 @@ export const upsertLiftingResults = internalMutation({
         byKey = await eventResultsByKey(ctx, row.eventId);
         events.set(row.eventId, byKey);
       }
-      return { byKey, key: resultKey(row) };
+      const key = resultKey(row);
+      // This result's stored rows: another edition's under its identity are left alone.
+      return { byKey, key, matches: sameEditionRows(byKey.get(key) ?? [], row) };
     };
     if (!allowShrink) {
       const updates = [];
       for (const row of rows) {
-        const { byKey, key } = await storedUnder(row);
-        const matches = byKey.get(key);
-        if (matches) updates.push({ stored: pickStored(matches, row.name), next: row });
+        const { matches } = await storedUnder(row);
+        if (matches.length) updates.push({ stored: pickStored(matches, row.name), next: row });
       }
       const emptied = clearedColumns(updates);
       if (emptied.length) {
@@ -164,11 +203,11 @@ export const upsertLiftingResults = internalMutation({
       };
       // The map follows this batch's writes, so a row repeated in the
       // batch updates the first one's document.
-      const { byKey, key } = await storedUnder(row);
-      const matches = byKey.get(key) ?? [];
+      const { byKey, key, matches } = await storedUnder(row);
+      const otherEditions = (byKey.get(key) ?? []).filter((stored) => !matches.includes(stored));
       if (matches.length === 0) {
         const _id = await ctx.db.insert('lifting_results', doc);
-        byKey.set(key, [{ ...doc, _id, _creationTime: Date.now() }]);
+        byKey.set(key, [...otherEditions, { ...doc, _id, _creationTime: Date.now() }]);
         inserted += 1;
         hints.push(...resultHints(doc));
         continue;
@@ -183,7 +222,7 @@ export const upsertLiftingResults = internalMutation({
       // The pre-Convex serial is the row's identity, not a value the scrapers
       // send: kept, and left out of the comparison.
       const { _id, _creationTime, legacyId, ...current } = existing;
-      byKey.set(key, [{ ...doc, legacyId, _id, _creationTime }]);
+      byKey.set(key, [...otherEditions, { ...doc, legacyId, _id, _creationTime }]);
       if (sameValues(current, doc)) {
         unchanged += 1;
         continue;
@@ -230,7 +269,8 @@ export async function deleteResultRows(ctx: MutationCtx, rows: readonly Doc<'lif
 
 /**
  * Deletes results by the identity `upsertLiftingResults` writes them under
- * (eventId, `resultKey`): every stored spelling of the name. A key without
+ * (eventId, `resultKey`): every stored spelling of the name, in every year
+ * the event id holds (a person names the rows to delete). A key without
  * `age` deletes the athlete's rows in every age category of that meet; `age:
  * null` only a row stored without one.
  */
@@ -278,7 +318,10 @@ export const RESULT_PRUNE_BATCH = 200;
  * path as every result write, so histories, summaries, views and search
  * follow. `keep` is the payload's rows, matched on the upsert's identity
  * (`resultKey`: meet, folded name, age category; `age` is required, so a
- * caller cannot leave it out and have every row with one deleted). A row
+ * caller cannot leave it out and have every row with one deleted). Only
+ * stored rows dated within SAME_EDITION_DAYS of the payload's are judged: a
+ * row of another edition under the event id (#369) is not one this payload
+ * dropped. A row
  * whose athlete is still in the payload under another meet title or age
  * category was only retitled; the rest count against RESULT_PRUNE_LIMIT,
  * past which nothing is deleted unless `allowShrink`. Deletes at most
@@ -288,7 +331,7 @@ export const RESULT_PRUNE_BATCH = 200;
 export const pruneEventResults = internalMutation({
   args: {
     eventId: v.string(),
-    keep: v.array(v.object({ meet: v.string(), name: v.string(), age: v.union(v.string(), v.null()) })),
+    keep: v.array(v.object({ meet: v.string(), name: v.string(), age: v.union(v.string(), v.null()), date: v.string() })),
     allowShrink: v.optional(v.boolean()),
   },
   handler: async (ctx, { eventId, keep, allowShrink }) => {
@@ -296,14 +339,16 @@ export const pruneEventResults = internalMutation({
     if (keep.length === 0) throw new Error(`refusing to prune event ${eventId}'s results against an empty payload`);
     const kept = new Set(keep.map(resultKey));
     const names = new Set(keep.map((row) => normalizeName(row.name)));
-    // Only rows the Sport80 sync writes (USAW, not adaptive): an imported
-    // row of another source under the same event id is not its to delete.
+    const dates = [...new Set(keep.map((row) => row.date))];
+    // Only rows the Sport80 sync writes (USAW, not adaptive) of this
+    // edition: an imported row of another source, or of another edition, under
+    // the same event id is not its to delete.
     const stored = (
       await ctx.db
         .query('lifting_results')
         .withIndex('by_event_and_name', (q) => q.eq('eventId', eventId))
         .collect()
-    ).filter((row) => row.federation === 'USAW' && !row.adaptive);
+    ).filter((row) => row.federation === 'USAW' && !row.adaptive && dates.some((date) => sameEditionDates(row.date, date)));
     const stale = stored.filter((row) => !kept.has(resultKey(row)));
     const dropped = stale.filter((row) => !names.has(normalizeName(row.name)));
     const retitled = stale.filter((row) => names.has(normalizeName(row.name)));

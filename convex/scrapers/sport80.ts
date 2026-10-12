@@ -267,7 +267,7 @@ export const run = internalAction({
         continue;
       }
       try {
-        const keep = valid.map((row) => ({ meet: row.meet, name: row.name!, age: row.age }));
+        const keep = valid.map((row) => ({ meet: row.meet, name: row.name!, age: row.age, date: row.date }));
         // A batch a call; the rest of a huge prune waits for the next run.
         for (let call = 0; call < MAX_PRUNE_CALLS; call++) {
           const pruned: { deleted: number; remaining: number } = await ctx.runMutation(internal.ingest.pruneEventResults, {

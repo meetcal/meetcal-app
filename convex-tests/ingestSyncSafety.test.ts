@@ -83,7 +83,7 @@ const result = (name: string, meet = 'Open', extra: Partial<Record<string, unkno
 });
 
 describe('pruning an event to its Sport80 table (#97)', () => {
-  const prune = handlerOf<{ eventId: string; keep: { meet: string; name: string; age: string | null }[]; allowShrink?: boolean }, { deleted: number; remaining: number }>(pruneEventResults);
+  const prune = handlerOf<{ eventId: string; keep: { meet: string; name: string; age: string | null; date: string }[]; allowShrink?: boolean }, { deleted: number; remaining: number }>(pruneEventResults);
   const names = (n: number) => Array.from({ length: n }, (_, i) => `Athlete ${i}`);
 
   beforeEach(() => jest.mocked(writeHistories).mockClear());
@@ -92,7 +92,7 @@ describe('pruning an event to its Sport80 table (#97)', () => {
     const { db, rows } = fakeDb({
       lifting_results: [...names(20).map((name) => result(name)), result('Jon Smith'), result('Withdrawn'), result('Other Event', 'Open', { eventId: '200' })],
     });
-    const keep = [...names(20), 'John Smith'].map((name) => ({ meet: 'Open', name, age: null }));
+    const keep = [...names(20), 'John Smith'].map((name) => ({ meet: 'Open', name, age: null, date: '2026-09-01' }));
     expect(await prune({ db }, { eventId: '100', keep })).toEqual({ deleted: 2, remaining: 0 });
     expect(rows('lifting_results').map((r) => r.name)).toEqual([...names(20), 'Other Event']);
     expect(writeHistories).toHaveBeenCalledWith(expect.anything(), expect.arrayContaining(['jon smith', 'withdrawn']));
@@ -100,13 +100,13 @@ describe('pruning an event to its Sport80 table (#97)', () => {
 
   it("deletes the rows under a meet's old title without counting them as dropped", async () => {
     const { db, rows } = fakeDb({ lifting_results: names(30).map((name) => result(name, 'Old Title')).concat(names(30).map((name) => result(name, 'New Title'))) });
-    expect(await prune({ db }, { eventId: '100', keep: names(30).map((name) => ({ meet: 'New Title', name, age: null })) })).toEqual({ deleted: 30, remaining: 0 });
+    expect(await prune({ db }, { eventId: '100', keep: names(30).map((name) => ({ meet: 'New Title', name, age: null, date: '2026-09-01' })) })).toEqual({ deleted: 30, remaining: 0 });
     expect(new Set(rows('lifting_results').map((r) => r.meet))).toEqual(new Set(['New Title']));
   });
 
   it('refuses to drop many athletes without allowShrink, and does with it', async () => {
     const seed = () => fakeDb({ lifting_results: names(40).map((name) => result(name)) });
-    const keep = names(30).map((name) => ({ meet: 'Open', name, age: null }));
+    const keep = names(30).map((name) => ({ meet: 'Open', name, age: null, date: '2026-09-01' }));
     const refused = seed();
     await expect(prune({ db: refused.db }, { eventId: '100', keep })).rejects.toThrow("refusing to delete 10 of event 100's 40 stored results");
     expect(refused.rows('lifting_results')).toHaveLength(40);
@@ -120,7 +120,7 @@ describe('pruning an event to its Sport80 table (#97)', () => {
     const { db, rows } = fakeDb({
       lifting_results: [...athletes.map((name) => result(name, 'Old Title')), ...athletes.map((name) => result(name, 'New Title')), ...dropped.map((name) => result(name, 'Old Title'))],
     });
-    const keep = athletes.map((name) => ({ meet: 'New Title', name, age: null }));
+    const keep = athletes.map((name) => ({ meet: 'New Title', name, age: null, date: '2026-09-01' }));
     expect(await prune({ db }, { eventId: '100', keep })).toEqual({ deleted: RESULT_PRUNE_BATCH, remaining: 130 });
     expect(rows('lifting_results').some((r) => String(r.name).startsWith('Gone'))).toBe(false);
     expect(await prune({ db }, { eventId: '100', keep })).toEqual({ deleted: 130, remaining: 0 });
@@ -129,7 +129,7 @@ describe('pruning an event to its Sport80 table (#97)', () => {
 
   it("leaves another source's rows under the same event id alone", async () => {
     const { db, rows } = fakeDb({ lifting_results: [result('A'), result('B', 'Open', { federation: 'IWF' }), result('C', 'Open', { adaptive: true })] });
-    expect(await prune({ db }, { eventId: '100', keep: [{ meet: 'Open', name: 'A', age: null }] })).toEqual({ deleted: 0, remaining: 0 });
+    expect(await prune({ db }, { eventId: '100', keep: [{ meet: 'Open', name: 'A', age: null, date: '2026-09-01' }] })).toEqual({ deleted: 0, remaining: 0 });
     expect(rows('lifting_results')).toHaveLength(3);
   });
 
