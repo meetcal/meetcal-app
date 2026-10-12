@@ -1,6 +1,8 @@
 // Seconds are optional and the space before the period is too: the API emits
 // both "9:00 AM" and "9:00:00 AM", and stored sessions can carry "9:00AM".
-const TIME_12H_REGEX = /^(\d{1,2}):(\d{2})(?::\d{2})?\s*(AM|PM)$/i;
+// Seconds are range-checked like `parseClockTime`'s, so "1:00:99 PM" is not
+// rendered as a valid "1:00 PM" that the reminder math then rejects.
+const TIME_12H_REGEX = /^(\d{1,2}):(\d{2})(?::[0-5]\d)?\s*(AM|PM)$/i;
 const TIME_24H_REGEX = /^([01]?\d|2[0-3]):([0-5]\d)(?::([0-5]\d))?$/;
 
 function parseTo24Hour(startTime: string): { hour24: number; minutes: number } | null {

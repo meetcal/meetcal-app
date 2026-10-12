@@ -46,24 +46,77 @@ export type SourceTable = (typeof SOURCE_TABLES)[number];
 
 export type SourceVersion = { table: string; version: number };
 
-/** A document holds at most 1 MiB; chunks stay well under it. */
+/**
+ * A chunk's length in UTF-16 code units, as JavaScript counts it. Chunks are
+ * also capped in bytes (`MAX_CHUNK_BYTES`); this older cap still decides
+ * where text that is mostly ASCII is cut, so chunks stored before the byte cap
+ * keep their boundaries.
+ */
 const MAX_CHUNK_CHARS = 700 * 1024;
 
 /**
- * `JSON.stringify(items)` split into chunks of at most `MAX_CHUNK_CHARS`,
- * each itself a JSON array; `joinJsonChunks` restores the exact text.
+ * A chunk's size in UTF-8 bytes. Convex caps a document at 1 MiB (1,048,576
+ * bytes; https://docs.convex.dev/production/state/limits) and counts a string
+ * as its UTF-8 bytes plus two (`getConvexSize` in `convex/values/size.ts`).
+ * A `view_chunks` document is the text plus its `key`, `index`, `_id` and
+ * `_creationTime`, so 1,000,000 bytes leaves ~48 KB for everything else.
+ * ASCII is one byte a character, so this cap only binds on wide text.
+ */
+export const MAX_CHUNK_BYTES = 1_000_000;
+
+/**
+ * UTF-8 bytes of the code point starting at `text[i]` (before `end`). Four
+ * means a surrogate pair, two code units; every other width is one unit.
+ */
+function utf8Width(text: string, i: number, end: number): number {
+  const code = text.charCodeAt(i);
+  if (code < 0x80) return 1;
+  if (code < 0x800) return 2;
+  if (code >= 0xd800 && code <= 0xdbff && i + 1 < end) {
+    const next = text.charCodeAt(i + 1);
+    if (next >= 0xdc00 && next <= 0xdfff) return 4;
+  }
+  // Other BMP characters, and a lone surrogate (which UTF-8 encoders replace
+  // with U+FFFD, three bytes).
+  return 3;
+}
+
+/** UTF-8 byte length of `text`, counted without encoding it. */
+export function utf8Length(text: string): number {
+  let bytes = 0;
+  for (let i = 0; i < text.length; ) {
+    const width = utf8Width(text, i, text.length);
+    bytes += width;
+    i += width === 4 ? 2 : 1;
+  }
+  return bytes;
+}
+
+/**
+ * `JSON.stringify(items)` split into chunks of at most `MAX_CHUNK_CHARS` code
+ * units and `MAX_CHUNK_BYTES` bytes, each itself a JSON array; `joinJsonChunks`
+ * restores the exact text. An item too big for a chunk on its own gets a
+ * chunk to itself (a chunk cannot split an item).
  */
 export function jsonChunks(items: readonly unknown[]): string[] {
   const chunks: string[] = [];
   let current: string[] = [];
   let chars = 2;
+  // The exact UTF-8 size of `[${current.join(',')}]`.
+  let bytes = 2;
   for (const item of items) {
     const text = JSON.stringify(item) ?? 'null';
-    if (current.length > 0 && chars + text.length + 1 > MAX_CHUNK_CHARS) {
+    const itemBytes = utf8Length(text);
+    if (
+      current.length > 0 &&
+      (chars + text.length + 1 > MAX_CHUNK_CHARS || bytes + 1 + itemBytes > MAX_CHUNK_BYTES)
+    ) {
       chunks.push(`[${current.join(',')}]`);
       current = [];
       chars = 2;
+      bytes = 2;
     }
+    bytes += (current.length > 0 ? 1 : 0) + itemBytes;
     current.push(text);
     chars += text.length + 1;
   }
@@ -78,7 +131,10 @@ export function joinJsonChunks(chunks: readonly string[]): string {
   return `[${inner.join(',')}]`;
 }
 
-/** Plain text split into chunks, for views that are not JSON (the search directory). */
+/**
+ * Plain text split into chunks of at most `MAX_CHUNK_CHARS` code units and
+ * `MAX_CHUNK_BYTES` bytes, for views that are not JSON (the search directory).
+ */
 export function textChunks(text: string): string[] {
   const chunks: string[] = [];
   for (let i = 0; i < text.length; ) {
@@ -86,8 +142,18 @@ export function textChunks(text: string): string[] {
     // Never between the two halves of a surrogate pair: a lone half is not a
     // string Convex can store.
     if (end < text.length && /[\uD800-\uDBFF]/.test(text[end - 1])) end -= 1;
-    chunks.push(text.slice(i, end));
-    i = end;
+    // Then stop sooner if the chunk would pass the byte cap, a whole code
+    // point at a time (so a pair stays together).
+    let bytes = 0;
+    let cut = i;
+    while (cut < end) {
+      const width = utf8Width(text, cut, end);
+      if (bytes + width > MAX_CHUNK_BYTES) break;
+      bytes += width;
+      cut += width === 4 ? 2 : 1;
+    }
+    chunks.push(text.slice(i, cut));
+    i = cut;
   }
   return chunks.length > 0 ? chunks : [''];
 }
