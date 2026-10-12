@@ -32,6 +32,12 @@ describe('alerts for a job that reads many sources (#92)', () => {
     expect(afterRun('wso-records', 'failed', { ok: true }, ['Florida']).failedSources).toBeUndefined();
   });
 
+  it('emails a named source failing after a failure of the whole job', () => {
+    const whole = afterRun('wso-records', undefined, { ok: false, error: 'timed out' });
+    expect(whole).toMatchObject({ alerting: 'failed', failedSources: [], notice: { kind: 'failed' } });
+    expect(afterRun('wso-records', 'failed', failing('Florida'), whole.failedSources).notice?.detail).toContain('now also failing: Florida');
+  });
+
   it('carries the failed sources on the thrown error, also as Convex rethrows it from runAction', () => {
     const error = sourcesFailed('wso records', [
       { source: 'Ohio', error: 'boom' },
@@ -103,6 +109,14 @@ describe('watching the watchdog (#168)', () => {
     expect(new Date(check?.due as number).getUTCMinutes()).toBe(45);
   });
 
+  it("sends the watchdog's queued alerts from a job's run while the watchdog is in trouble", async () => {
+    jest.spyOn(console, 'warn').mockImplementation(() => {});
+    const queued = [{ job: WATCHDOG_JOB, kind: 'missed', detail: 'was due at …' }];
+    const ctx = watchdogCtx(async () => queued);
+    await handlerOf<{ job: string }, unknown>(run)(ctx, { job: 'complete-ended-meets' });
+    expect(ctx.runMutation.mock.calls.map(([, args]) => args)).toContainEqual({ job: WATCHDOG_JOB, sent: [{ kind: 'missed', detail: 'was due at …' }] });
+  });
+
   it("still records a job's run when its check of the watchdog fails", async () => {
     jest.spyOn(console, 'error').mockImplementation(() => {});
     const ctx = watchdogCtx(async () => []);
@@ -132,7 +146,7 @@ describe('cron schedules', () => {
 describe('cron alerts', () => {
   it('emails the first failure, stays quiet while it keeps failing, and emails the recovery', () => {
     const first = afterRun('wso-records', undefined, { ok: false, error: 'boom' });
-    expect(first).toEqual({ alerting: 'failed', notice: { kind: 'failed', job: 'wso-records', detail: 'boom' } });
+    expect(first).toEqual({ alerting: 'failed', failedSources: [], notice: { kind: 'failed', job: 'wso-records', detail: 'boom' } });
     expect(afterRun('wso-records', 'failed', { ok: false, error: 'boom again' })).toEqual({ alerting: 'failed' });
     expect(afterRun('wso-records', 'failed', { ok: true })).toMatchObject({ alerting: undefined, notice: { kind: 'recovered' } });
     expect(afterRun('wso-records', undefined, { ok: true })).toEqual({ alerting: undefined });

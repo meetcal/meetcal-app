@@ -23,10 +23,15 @@ export function afterRun(
   failingBefore?: readonly string[],
 ): { alerting: Alerting | undefined; failedSources?: string[]; notice?: Notice } {
   if (!outcome.ok) {
-    // A failure that names no sources (the whole job failed) says nothing
-    // about which recovered, so the ones known to be failing are kept.
+    // A new incident starts the list (none failing yet when the whole job
+    // failed, so a source failing next run still emails). A failure that
+    // names no sources while the job already is failing says nothing about
+    // which recovered, so the ones known to be failing are kept. Only a row
+    // from before sources were tracked has no list, and stays quiet once.
+    if (alerting !== 'failed') {
+      return { alerting: 'failed', failedSources: [...(outcome.failedSources ?? [])], notice: { kind: 'failed', job, detail: outcome.error } };
+    }
     const failedSources = outcome.failedSources ? [...outcome.failedSources] : failingBefore ? [...failingBefore] : undefined;
-    if (alerting !== 'failed') return { alerting: 'failed', failedSources, notice: { kind: 'failed', job, detail: outcome.error } };
     const added = outcome.failedSources && failingBefore ? outcome.failedSources.filter((source) => !failingBefore.includes(source)) : [];
     if (!added.length) return { alerting, failedSources };
     return { alerting, failedSources, notice: { kind: 'failed', job, detail: `now also failing: ${added.join(', ')}\n\n${outcome.error}` } };

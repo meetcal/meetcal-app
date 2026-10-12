@@ -114,18 +114,21 @@ export const run = internalAction({
       failure = error;
     }
     // Every job's run also checks on the watchdog, which nothing else does:
-    // one that missed its run or never finished is alerted from here. A
-    // check that fails must not keep this run from being recorded.
-    let watchdogNotice: Notice | null = null;
+    // one that missed its run or never finished is alerted from here, and
+    // while it is in trouble its queued alerts (which it would send itself)
+    // are sent from here too. A check that fails must not keep this run
+    // from being recorded.
+    let watchdogQueued: Notice[] = [];
     try {
-      watchdogNotice = await ctx.runMutation(internal.cronStatus.raiseAlert, {
+      await ctx.runMutation(internal.cronStatus.raiseAlert, {
         job: WATCHDOG_JOB,
         due: lastScheduled(WATCHDOG_SCHEDULE, Date.now() - START_MARGIN_MS),
       });
+      watchdogQueued = await ctx.runQuery(internal.cronStatus.queuedWhileAlerting, { job: WATCHDOG_JOB });
     } catch (error) {
       console.error(`watchdog check from ${job} failed: ${(error as Error).message}`);
     }
-    await finishRun(ctx, job, failure, watchdogNotice ? [watchdogNotice] : []);
+    await finishRun(ctx, job, failure, watchdogQueued);
     // Rethrown so the run also shows as failed in the Convex dashboard.
     if (failure !== undefined) throw failure;
   },

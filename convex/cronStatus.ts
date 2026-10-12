@@ -81,6 +81,20 @@ export const markSent = internalMutation({
   },
 });
 
+/**
+ * A job's queued alerts while it is in an incident. For the watchdog: when
+ * it is the one that stopped or fails, it cannot send its own queue, so
+ * every job's run sends it.
+ */
+export const queuedWhileAlerting = internalQuery({
+  args: { job: v.string() },
+  handler: async (ctx, { job }): Promise<Notice[]> => {
+    const status = await statusOf(ctx, job);
+    if (!status?.alerting) return [];
+    return (status.unsent ?? []).map((u) => ({ job, kind: u.kind as Notice['kind'], detail: u.detail }));
+  },
+});
+
 export const all = internalQuery({
   args: {},
   handler: async (ctx) => await ctx.db.query('cron_status').collect(),
