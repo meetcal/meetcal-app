@@ -22,6 +22,13 @@ A few seconds later `views:refresh` uses the hints to rebuild only what those ro
 
 So new athletes, new results, deletions and new meets update everything on their own. Nothing needs to be run by hand.
 
+What the writers match on:
+
+- A result is identified within its event by meet, folded name (`normalizeName`: Unicode NFC, whitespace collapsed, lowercased) and age category (`ingest.resultKey`). The upsert, `deleteLiftingResults` and the Sport80 prune all use that key, and the upsert deletes a second stored copy of a row it updates.
+- A meet is identified by its name, everywhere (rosters, results, schedules, views, saved sessions), and a stored name never changes. The meet syncs match a meet on name and federation. A new meet whose name another federation's meet already has is stored as `<name> (<federation>)` and logged, never over the other meet. `npx convex run migrations:duplicateMeetNames` lists names held by more than one meet row (readers use the oldest).
+- A meet's status follows its dates on its own calendar: `upcoming`, `ongoing` from its first day, `completed` after its last. The meet syncs set it on every write, and the hourly `complete-ended-meets` job (`ingest.updateMeetStatuses`) moves it as the days pass, including back to `upcoming` when a completed meet's dates move into the future.
+- Genders are stored as `Men` / `Women` (`normalizeGender`). The athlete answers (start lists, rosters, club and WSO registrations) give `Male` / `Female`, the spelling the apps filter on.
+
 The club-list builder reads at most 100 distinct club names per query and publishes the completed list in one mutation. It keeps the source version from its first page, so a roster write during the scan leaves the view stale for another refresh rather than marking mixed data fresh.
 
 National ranking builders and their live parity checks read at most 1,000 results per query, merging each athlete's best total across pages. Builders publish only the complete ranking and keep the first page's source version for the same freshness guarantee.
@@ -38,10 +45,9 @@ After one of those, bring the derived data back in step (add `--prod` for produc
 
 ```sh
 npx convex run migrations:backfillNameKeys    # fills lifting_results.nameKey, then starts views:rebuildAll
-npx convex run migrations:backfillSummaries   # fills athlete_summary from the history documents
 ```
 
-`views:rebuildAll` rebuilds the histories, views, search directory and shards in stages; it runs on its own after `backfillNameKeys`, or can be started directly. It also deletes the history and summary documents of names left with no results, and clears every pending change written before it started. While it runs, a refresh checks on it every minute and starts it again if a stage stopped for 15 minutes. To rebuild only the search shards from the current directory, run `npx convex run views:buildSearchShards`.
+`backfillNameKeys` also rekeys every row after a change to `normalizeName`. `views:rebuildAll` rebuilds the histories and their summaries, views, search directory and shards in stages; it runs on its own after `backfillNameKeys`, or can be started directly. It also deletes the history and summary documents of names left with no results, and clears every pending change written before it started. While it runs, a refresh checks on it every minute and starts it again if a stage stopped for 15 minutes. To rebuild only the search shards from the current directory, run `npx convex run views:buildSearchShards`.
 
 A view is fresh while its source tables are unchanged, whatever the code that built it. So a deploy that changes what a view holds (a field added to `/data/records`, say) serves the old answer until the view is rebuilt: rebuild the views built by the function you changed, such as `npx convex run views:buildReferenceTables` (records, standards, qualifying totals, international rankings, adaptive records) or `npx convex run views:buildWso` (WSO records), or start `views:rebuildAll`.
 
