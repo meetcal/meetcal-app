@@ -11,10 +11,17 @@ import {
   widgetPageUrl,
 } from '../../convex/scrapers/parse/meets';
 import { stateCode, usTimeZone } from '../../convex/scrapers/lib/states';
+import { isMeetTimeZone } from '../../convex/lib/validation';
 
 // The WSO search's first page as the widget sent it on 2026-10-11 (contact
 // details and descriptions dropped).
 const WSO_PAGE: unknown = JSON.parse(readFileSync(join(__dirname, 'fixtures/sport80-meet-widget-wso-20261011.json'), 'utf8'));
+// Meets abroad in the widget's shape. No meet abroad was listed when this was
+// written (October 2026), so the rows are built on the widget's address
+// template, "Venue, Street, City, Region, Country, Postcode", with US
+// addresses whose city or state reads like a country, and the live online
+// qualifier row, whose address is the country alone.
+const ABROAD_PAGE: unknown = JSON.parse(readFileSync(join(__dirname, 'fixtures/sport80-meet-widget-abroad.json'), 'utf8'));
 
 describe('meet sync (port of sync-meets.js / sync-nat-meets.js / sync-virus-meets.js)', () => {
   it('parses Sport80 addresses the way the Node scripts did', () => {
@@ -82,6 +89,36 @@ describe('meet sync (port of sync-meets.js / sync-nat-meets.js / sync-virus-meet
       '2026 Tennessee-Kentucky WSO Championship', 'Nashville', 'TN', 'America/Chicago', '2026-10-17', '2026-10-17',
     ]);
     expect(meets.find((m) => m.name === '2026 California North WSO Championships')).toMatchObject({ timeZone: 'America/Los_Angeles', startDate: '2026-12-03', endDate: '2026-12-06' });
+  });
+
+  it('takes the zone of a meet abroad from its country, when the country keeps one clock', () => {
+    const { rows } = readWidgetPage(ABROAD_PAGE);
+    const { meets, rejected, unknownZone } = transformMeets(rows);
+    expect(rejected).toEqual([]);
+    expect(Object.fromEntries(meets.map((m) => [m.name, m.timeZone ?? null]))).toEqual({
+      '2026 October Online Qualifier (NUQ)': null,
+      'Tokyo Masters Invitational': 'Asia/Tokyo',
+      // Several zones: reported, not guessed.
+      'Sydney Open': null,
+      'Barcelona Cup': 'Europe/Madrid',
+      // Spain's Canary Islands keep their own clock.
+      'Tenerife Classic': 'Atlantic/Canary',
+      'Kolkata International': 'Asia/Kolkata',
+      'Auckland Open': 'Pacific/Auckland',
+      'London Classic': 'Europe/London',
+      'Mexico City Cup': null,
+      // A territory listed as a US state.
+      'Puerto Rico Open': 'America/Puerto_Rico',
+      // A US town named like a country, and the state named like one, stay US.
+      'Lebanon Valley Open': 'America/New_York',
+      'Peach State Open': 'America/New_York',
+    });
+    expect(unknownZone).toEqual([
+      '2026 October Online Qualifier (NUQ): state "Unknown"',
+      'Sydney Open: Australia spans several time zones',
+      'Mexico City Cup: Mexico spans several time zones',
+    ]);
+    expect(meets.find((m) => m.name === 'Tokyo Masters Invitational')).toMatchObject({ venueCity: 'Shibuya City', venueState: 'Japan', venueZip: '151-0051' });
   });
 
   it('refuses a widget response it cannot read', () => {
@@ -205,10 +242,9 @@ describe('US states and time zones', () => {
     expect(usTimeZone('')).toBeNull();
   });
 
-  it('only names zones the app knows', () => {
-    const known = ['America/New_York', 'America/Chicago', 'America/Denver', 'America/Phoenix', 'America/Los_Angeles', 'America/Anchorage', 'Pacific/Honolulu'];
+  it('only names IANA zones', () => {
     for (const state of ['AL', 'AK', 'AZ', 'CA', 'FL', 'HI', 'ID', 'IN', 'KS', 'KY', 'MI', 'NE', 'ND', 'OR', 'SD', 'TN', 'TX']) {
-      expect(known).toContain(usTimeZone(state));
+      expect(isMeetTimeZone(usTimeZone(state) ?? '')).toBe(true);
     }
   });
 });

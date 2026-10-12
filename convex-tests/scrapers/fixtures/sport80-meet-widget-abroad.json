@@ -1,0 +1,94 @@
+{
+  "total": "12",
+  "page": 0,
+  "items_per_page": 20,
+  "next_page_url": null,
+  "previous_page_url": null,
+  "no_data_message": "No records found please try a different search/filter.",
+  "data": [
+    {
+      "id": "14994",
+      "is_event": true,
+      "name": "2026 October Online Qualifier (NUQ)",
+      "subtitle": "10/01/2026 - 11/01/2026",
+      "address": "United States of America"
+    },
+    {
+      "id": "90001",
+      "is_event": true,
+      "name": "Tokyo Masters Invitational",
+      "subtitle": "11/14/2026 - 11/15/2026",
+      "address": "Tokyo Metropolitan Gymnasium, 1-17-1 Sendagaya, Shibuya City, Tokyo, Japan, 151-0051"
+    },
+    {
+      "id": "90002",
+      "is_event": true,
+      "name": "Sydney Open",
+      "subtitle": "01/16/2027 - 01/17/2027",
+      "address": "Sydney Olympic Park Sports Centre, Olympic Boulevard, Sydney Olympic Park, New South Wales, Australia, 2127"
+    },
+    {
+      "id": "90003",
+      "is_event": true,
+      "name": "Barcelona Cup",
+      "subtitle": "03/06/2027",
+      "address": "Pavello Municipal, Carrer de la Diagonal 1, Barcelona, Catalonia, Spain, 08019"
+    },
+    {
+      "id": "90004",
+      "is_event": true,
+      "name": "Tenerife Classic",
+      "subtitle": "03/13/2027",
+      "address": "Pabellon Santiago Martin, Calle Las Mercedes, San Cristobal de La Laguna, Santa Cruz de Tenerife, Spain, 38108"
+    },
+    {
+      "id": "90005",
+      "is_event": true,
+      "name": "Kolkata International",
+      "subtitle": "02/20/2027 - 02/21/2027",
+      "address": "Netaji Indoor Stadium, Strand Road, Kolkata, West Bengal, India, 700021"
+    },
+    {
+      "id": "90006",
+      "is_event": true,
+      "name": "Auckland Open",
+      "subtitle": "04/03/2027 - 04/04/2027",
+      "address": "Trusts Arena, 65-67 Central Park Drive, Henderson, Auckland, New Zealand, 0610"
+    },
+    {
+      "id": "90007",
+      "is_event": true,
+      "name": "London Classic",
+      "subtitle": "05/08/2027",
+      "address": "Copper Box Arena, Queen Elizabeth Olympic Park, London, England, United Kingdom, E20 3HB"
+    },
+    {
+      "id": "90008",
+      "is_event": true,
+      "name": "Mexico City Cup",
+      "subtitle": "06/12/2027",
+      "address": "Gimnasio Juan de la Barrera, Avenida Division del Norte, Mexico City, CDMX, Mexico, 03100"
+    },
+    {
+      "id": "90009",
+      "is_event": true,
+      "name": "Puerto Rico Open",
+      "subtitle": "07/10/2027",
+      "address": "Coliseo Roberto Clemente, Avenida Roosevelt, San Juan, Puerto Rico, United States of America, 00918"
+    },
+    {
+      "id": "90010",
+      "is_event": true,
+      "name": "Lebanon Valley Open",
+      "subtitle": "08/14/2027",
+      "address": "Gym, 1 Main St, Lebanon, Pennsylvania, United States of America, 17042"
+    },
+    {
+      "id": "90011",
+      "is_event": true,
+      "name": "Peach State Open",
+      "subtitle": "08/21/2027",
+      "address": "Gym, 1 Main St, Atlanta, Georgia, United States of America, 30303"
+    }
+  ]
+}

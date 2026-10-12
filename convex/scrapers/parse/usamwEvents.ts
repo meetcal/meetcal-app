@@ -1,4 +1,5 @@
 import { parseHtml } from '../lib/html';
+import { countryTimeZone, usTerritoryTimeZone } from '../lib/countries';
 import { stateCode, usTimeZone } from '../lib/states';
 
 // USA Masters events (replaces `usamw/meets/scrape_events.py`, whose site,
@@ -27,23 +28,21 @@ const MONTHS: Record<string, number> = {
   jan: 1, feb: 2, mar: 3, apr: 4, may: 5, jun: 6, jul: 7, aug: 8, sep: 9, oct: 10, nov: 11, dec: 12,
 };
 
-const ABROAD: Record<string, string> = {
-  greece: 'Europe/Athens', japan: 'Asia/Tokyo', spain: 'Europe/Madrid', 'puerto rico': 'America/Puerto_Rico',
-  'el salvador': 'America/El_Salvador', canada: 'America/Toronto', mexico: 'America/Mexico_City',
-};
-
 /**
- * The meet's time zone from its state and city (`lib/states.ts`), or a
- * country named in its location. Undefined when neither tells: the sync then
- * keeps the zone stored, and a new meet gets a blank one (the Python
- * defaulted to Eastern).
+ * The meet's time zone from its state and city (`lib/states.ts`), or the
+ * country (or US territory) its state field or a part of its location names,
+ * when that country keeps one clock (`lib/countries.ts`). Parts are split at
+ * commas, line breaks and " - " ("Barcelona - SPAIN") and matched whole, so a
+ * place merely containing a country's name ("Panama City Beach") is not read
+ * as it. Undefined when nothing tells, including a country with several zones
+ * (Canada, Mexico): the sync then keeps the zone stored, a new meet gets a
+ * blank one, and the run warns.
  */
 export function timeZoneFor(state: string, city = '', locationText = state): string | undefined {
-  const zone = usTimeZone(state, city);
+  const zone = usTimeZone(state, city) ?? usTerritoryTimeZone(state);
   if (zone) return zone;
-  const lower = locationText.toLowerCase();
-  const country = Object.keys(ABROAD).find((name) => lower.includes(name));
-  return country ? ABROAD[country] : undefined;
+  const parts = locationText.split(/,|\n|\s-\s/);
+  return countryTimeZone([state, ...parts], [city, locationText].join(' '))?.zone ?? undefined;
 }
 
 const pad = (n: number) => String(n).padStart(2, '0');
@@ -115,7 +114,7 @@ export function parseUsamwEvents(html: string): UsamwEvent[] {
       rest = rest.slice(1);
     }
     const venueLine = rest.find((line) => line.length <= 60 && !/[$:]|\d{4}/.test(line));
-    const timeZone = timeZoneFor(venueState, venueCity, [place, ...location].join(' '));
+    const timeZone = timeZoneFor(venueState, venueCity, [place, ...location].join('\n'));
     events.push({ name, ...dates, venueName: venueLine ?? 'TBD', venueCity, venueState, ...(timeZone === undefined ? {} : { timeZone }) });
   }
   return events;

@@ -35,6 +35,7 @@ import type * as scrapers_entries from "../scrapers/entries.js";
 import type * as scrapers_entryTargets from "../scrapers/entryTargets.js";
 import type * as scrapers_intlRankings from "../scrapers/intlRankings.js";
 import type * as scrapers_iwfRecords from "../scrapers/iwfRecords.js";
+import type * as scrapers_lib_countries from "../scrapers/lib/countries.js";
 import type * as scrapers_lib_csv from "../scrapers/lib/csv.js";
 import type * as scrapers_lib_diff from "../scrapers/lib/diff.js";
 import type * as scrapers_lib_email from "../scrapers/lib/email.js";
@@ -120,6 +121,7 @@ declare const fullApi: ApiFromModules<{
   "scrapers/entryTargets": typeof scrapers_entryTargets;
   "scrapers/intlRankings": typeof scrapers_intlRankings;
   "scrapers/iwfRecords": typeof scrapers_iwfRecords;
+  "scrapers/lib/countries": typeof scrapers_lib_countries;
   "scrapers/lib/csv": typeof scrapers_lib_csv;
   "scrapers/lib/diff": typeof scrapers_lib_diff;
   "scrapers/lib/email": typeof scrapers_lib_email;

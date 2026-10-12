@@ -1,6 +1,7 @@
 // Pure parts of `scrapers/meets.ts` (port of `usaw/meet_to_supabase/scripts/sync-*.js`).
 
 import { isValidIsoDate } from '../../lib/validation';
+import { countryTimeZone, isUnitedStates, usTerritoryTimeZone } from '../lib/countries';
 import { stateCode, usTimeZone } from '../lib/states';
 
 const WIDGET = 'https://usaweightlifting.sport80.com/api/public/widget/data/new/1';
@@ -79,7 +80,7 @@ type ScrapedVenue = { venueName: string; venueStreet: string; venueCity: string;
 
 export type ScrapedMeet = Partial<ScrapedVenue> & {
   name: string;
-  /** Absent when the state is not a US state: reported, not guessed. */
+  /** Absent when neither the state nor the country tells it: reported, not guessed. */
   timeZone?: string;
   startDate: string;
   endDate: string;
@@ -160,9 +161,26 @@ export type TransformedMeets = {
   rejected: string[];
   /** Meets left out because their dates are not set yet ("TBD"): not an error. */
   undated: string[];
-  /** Meets synced without a time zone (the state is not a US state, or no address). */
+  /** Meets synced without a time zone (an unknown state or country, a country with several zones, or no address). */
   unknownZone: string[];
 };
+
+/**
+ * A meet's zone from its widget address, or why there is none. A US address
+ * (it names the United States) takes its state's zone, or a territory's. An
+ * address abroad names its country last, before the postcode: a country on one
+ * clock gives its zone, one with several gives none. An address naming no
+ * country is read as a US one, as before.
+ */
+export function addressTimeZone(raw: string, state: string, city: string): { zone: string } | { problem: string } {
+  const parts = raw.split(',').map((part) => part.trim()).filter(Boolean);
+  if (!parts.some(isUnitedStates)) {
+    const country = countryTimeZone(parts.slice(-2).reverse(), raw);
+    if (country !== null) return country.zone === null ? { problem: `${country.country} spans several time zones` } : { zone: country.zone };
+  }
+  const zone = usTimeZone(state, city) ?? usTerritoryTimeZone(state);
+  return zone === null ? { problem: `state ${JSON.stringify(state)}` } : { zone };
+}
 
 /**
  * `transformMeetsData`: widget rows to meets, dropping adaptive ones. A meet
@@ -171,7 +189,8 @@ export type TransformedMeets = {
  * "TBD" (or blank) is left out until they are set, without failing the run,
  * which would mask a real outage while the meet stays listed. The zone comes
  * from the state and, in a state that spans two zones, the city
- * (`lib/states.ts`). A meet with no address is synced without venue or zone,
+ * (`lib/states.ts`), or from the country abroad (`lib/countries.ts`,
+ * `addressTimeZone`). A meet with no address is synced without venue or zone,
  * so the stored ones stay.
  */
 export function transformMeets(rows: Pick<WidgetRow, 'name' | 'address' | 'subtitle'>[]): TransformedMeets {
@@ -194,8 +213,9 @@ export function transformMeets(rows: Pick<WidgetRow, 'name' | 'address' | 'subti
       continue;
     }
     const { venueName, street, city, state, zip } = parseAddress(row.address);
-    const timeZone = usTimeZone(state, city);
-    if (timeZone === null) result.unknownZone.push(`${row.name}: state ${JSON.stringify(state)}`);
+    const zone = addressTimeZone(row.address, state, city);
+    const timeZone = 'zone' in zone ? zone.zone : null;
+    if ('problem' in zone) result.unknownZone.push(`${row.name}: ${zone.problem}`);
     result.meets.push({
       name: row.name,
       venueName: venueName || row.name,

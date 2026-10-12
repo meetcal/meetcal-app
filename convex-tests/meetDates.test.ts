@@ -261,6 +261,9 @@ describe('scraped data problems', () => {
       meet({ name: 'Knoxville', venueCity: 'Knoxville' }),
       meet({ name: 'Knoxville locked', venueCity: 'Knoxville', timeZoneLocked: true }),
       meet({ name: 'Abroad', venueState: 'Greece', venueCity: 'Athens', timeZone: 'Europe/Athens' }),
+      meet({ name: 'Abroad guessed', venueState: 'Japan', venueCity: 'Tokyo', timeZone: 'America/New_York' }),
+      meet({ name: 'Abbreviation', timeZone: 'EST' }),
+      meet({ name: 'Several zones', venueState: 'Canada', venueCity: 'Vancouver', timeZone: 'America/Toronto' }),
     ];
     const ctx = { db: { query: () => ({ collect: async () => meets }) } };
     const result = await handlerOf(meetDataProblems)(ctx, {});
@@ -269,8 +272,15 @@ describe('scraped data problems', () => {
         { name: 'TBD dates', status: 'upcoming', startDate: 'undefined-TBD-undefined', endDate: 'undefined-TBD-undefined' },
         { name: 'Unpadded', status: 'upcoming', startDate: '2026-9-5', endDate: '2026-09-06' },
       ],
-      unknownZone: [{ name: 'No zone', status: 'upcoming', timeZone: '', venueCity: 'Nashville', venueState: 'TN' }],
-      zoneDiffers: [{ name: 'Knoxville', status: 'upcoming', timeZone: 'America/Chicago', derived: 'America/New_York', venueCity: 'Knoxville', venueState: 'TN' }],
+      unknownZone: [
+        { name: 'No zone', status: 'upcoming', timeZone: '', venueCity: 'Nashville', venueState: 'TN' },
+        { name: 'Abbreviation', status: 'upcoming', timeZone: 'EST', venueCity: 'Nashville', venueState: 'TN' },
+      ],
+      // A country with several zones derives nothing, so a stored guess is not listed.
+      zoneDiffers: [
+        { name: 'Knoxville', status: 'upcoming', timeZone: 'America/Chicago', derived: 'America/New_York', venueCity: 'Knoxville', venueState: 'TN' },
+        { name: 'Abroad guessed', status: 'upcoming', timeZone: 'America/New_York', derived: 'Asia/Tokyo', venueCity: 'Tokyo', venueState: 'Japan' },
+      ],
     });
   });
 });

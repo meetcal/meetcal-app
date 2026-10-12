@@ -2,9 +2,9 @@
 // shared by the Sport80 meet sync (`parse/meets.ts`) and the USA Masters
 // events (`parse/usamwEvents.ts`).
 //
-// Zones are the seven the app knows (`src/data/types/meet.ts`); a zone outside
-// them is shown in New York time. A state that spans two zones has its main
-// zone here and the towns on the other side of the line in `OTHER_ZONE_CITIES`.
+// A state that spans two zones has its main zone here and the towns on the
+// other side of the line in `OTHER_ZONE_CITIES`. US territories and countries
+// abroad are in `countries.ts`.
 
 const EASTERN = 'America/New_York';
 const CENTRAL = 'America/Chicago';

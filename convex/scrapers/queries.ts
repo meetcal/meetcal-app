@@ -1,7 +1,8 @@
 import { v } from 'convex/values';
 import { internalQuery } from '../_generated/server';
 import { normalizeName } from '../lib/names';
-import { canonicalMeetDate, isKnownTimeZone } from '../lib/validation';
+import { canonicalMeetDate, isMeetTimeZone } from '../lib/validation';
+import { countryTimeZone, usTerritoryTimeZone } from './lib/countries';
 import { usTimeZone } from './lib/states';
 
 /** Current status of each named meet that exists (scrapers read state through these). */
@@ -28,10 +29,13 @@ export const meetStatuses = internalQuery({
  *   ("undefined-TBD-undefined", "2026-9-5"). `migrations:padMeetDates`
  *   pads the unpadded ones; fix (or delete) the others by hand, or let the
  *   next sync with real dates overwrite them.
- * - `unknownZone`: a blank or unknown time zone.
- * - `zoneDiffers`: an unlocked zone that differs from what the state and city
- *   now give (a split state guessed per state before); the next sync of a
- *   meet still listed fixes it, `ingest:setMeetTimeZone` fixes any other.
+ * - `unknownZone`: a blank time zone, or one that is not an IANA zone name
+ *   (`isMeetTimeZone`). A meet abroad in a country with several zones is
+ *   stored blank and listed here until someone sets its zone.
+ * - `zoneDiffers`: an unlocked zone that differs from what the state and city,
+ *   or the one-zone country, now give (a split state guessed per state
+ *   before); the next sync of a meet still listed fixes it,
+ *   `ingest:setMeetTimeZone` fixes any other.
  */
 export const meetDataProblems = internalQuery({
   args: {},
@@ -45,11 +49,11 @@ export const meetDataProblems = internalQuery({
       if (canonicalMeetDate(startDate) !== startDate || canonicalMeetDate(endDate) !== endDate) {
         badDates.push({ name, status, startDate, endDate });
       }
-      if (!isKnownTimeZone(timeZone)) {
+      if (!isMeetTimeZone(timeZone)) {
         unknownZone.push({ name, status, timeZone, venueCity, venueState });
         continue;
       }
-      const derived = usTimeZone(venueState, venueCity);
+      const derived = usTimeZone(venueState, venueCity) ?? usTerritoryTimeZone(venueState) ?? countryTimeZone([venueState], venueCity)?.zone ?? null;
       if (!meet.timeZoneLocked && derived !== null && derived !== timeZone) {
         zoneDiffers.push({ name, status, timeZone, derived, venueCity, venueState });
       }
