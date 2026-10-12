@@ -12,7 +12,7 @@ bun .codex/skills/review-code-performance-tests/scripts/report-coverage-gaps.ts
 
 CI (`.github/workflows/ci.yml`) runs lint, typecheck, Jest coverage, and the coverage-gap inventory with the Bun version pinned in `mise.toml`. The `test` script is watch mode and is not the CI gate.
 
-For local PR verification, run `mise run check`. It uses the pinned Bun and Node versions and runs lint, typecheck, Jest coverage, and the coverage-gap report. The report is an inventory to inspect for changed auth, API, and timezone code; it is not a percentage target. `mise run app:test` runs the faster Jest CI suite while iterating. Maestro is a separate device smoke check.
+For local PR verification, run `mise run check`. It uses the pinned Bun and Node versions and runs the suites the branch changes need (`scripts/check/plan.ts`): the app suite (lint, typecheck, Jest coverage, and the coverage-gap report) for app and `convex/` changes, and the website's and CLI's Cargo format, clippy and tests for `web/` and `cli/`. Documentation, workflows and skills alone run nothing; the gate's own files, `mise.toml`, and any path it cannot classify run everything. `mise run check -- --plan` prints the selection; `-- --all` runs every suite. The gate holds a lock in the git common directory (`scripts/check-lock.ts`, ported from Atlas), so gates in several worktrees queue instead of exhausting memory; a lock left by a process that died is reclaimed. The report is an inventory to inspect for changed auth, API, and timezone code; it is not a percentage target. `mise run app:test` runs the faster Jest CI suite while iterating, under the same lock. Maestro is a separate device smoke check.
 
 ### Device time zone
 
