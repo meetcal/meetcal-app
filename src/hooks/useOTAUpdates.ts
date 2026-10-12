@@ -44,22 +44,45 @@ export function resetOTADismissalForTests(): void {
  * to reappear on every foreground more than five minutes apart, all through a
  * meet day, because `checkForUpdateAsync` keeps reporting the update until
  * the app restarts. Not once the update is downloaded (it applies on the next
- * launch anyway), and not again for an update the user put off.
+ * launch anyway), and not again for an update the user put off. A different
+ * update than the downloaded one is still a new question.
  */
 export function shouldPromptForUpdate({
   isAvailable,
   updateId,
   isUpdatePending,
+  downloadedUpdateId = null,
   dismissed,
 }: {
   isAvailable: boolean;
   updateId: string | null;
   isUpdatePending: boolean;
+  /** `useUpdates().downloadedUpdate?.updateId`; `null` when unknown. */
+  downloadedUpdateId?: string | null;
   dismissed: { id: string | null } | null;
 }): boolean {
-  if (!isAvailable || isUpdatePending) return false;
+  if (!isAvailable) return false;
+  if (isPendingUpdate({ updateId, isUpdatePending, downloadedUpdateId })) return false;
   if (dismissed && (dismissed.id === null || dismissed.id === updateId)) return false;
   return true;
+}
+
+/**
+ * Whether `updateId` is the update expo-updates has already downloaded. An
+ * unidentified download (or an unidentified update) counts as a match, so
+ * the prompt errs towards staying quiet.
+ */
+function isPendingUpdate({
+  updateId,
+  isUpdatePending,
+  downloadedUpdateId,
+}: {
+  updateId: string | null;
+  isUpdatePending: boolean;
+  downloadedUpdateId: string | null;
+}): boolean {
+  if (!isUpdatePending) return false;
+  return downloadedUpdateId === null || updateId === null || downloadedUpdateId === updateId;
 }
 
 export function useOTAUpdates(): OTAUpdateState & OTAUpdateActions {
@@ -70,11 +93,12 @@ export function useOTAUpdates(): OTAUpdateState & OTAUpdateActions {
   });
   // Read from the check callback without re-creating it on every native
   // state change.
-  const { isUpdatePending } = Updates.useUpdates();
-  const isUpdatePendingRef = useRef(isUpdatePending);
+  const { isUpdatePending, downloadedUpdate } = Updates.useUpdates();
+  const downloadedUpdateId = downloadedUpdate?.updateId ?? null;
+  const pendingRef = useRef({ isUpdatePending, downloadedUpdateId });
   useEffect(() => {
-    isUpdatePendingRef.current = isUpdatePending;
-  }, [isUpdatePending]);
+    pendingRef.current = { isUpdatePending, downloadedUpdateId };
+  }, [isUpdatePending, downloadedUpdateId]);
   // The id of the update the prompt is showing, for "Later".
   const promptedUpdateIdRef = useRef<string | null>(null);
 
@@ -87,6 +111,18 @@ export function useOTAUpdates(): OTAUpdateState & OTAUpdateActions {
     return () => {
       isMountedRef.current = false;
     };
+  }, []);
+
+  // Take the prompt down once the update it offers is downloaded. Skipped
+  // while the user's own download is running: that path ends in the restart
+  // alert, whose buttons clear the modal.
+  const withdrawPrompt = useCallback(() => {
+    if (!isMountedRef.current) return;
+    setState(prev =>
+      prev.isUpdateAvailable && !prev.isDownloading
+        ? { ...prev, isUpdateAvailable: false }
+        : prev,
+    );
   }, []);
 
   const resetState = useCallback(() => {
@@ -127,7 +163,8 @@ export function useOTAUpdates(): OTAUpdateState & OTAUpdateActions {
         shouldPromptForUpdate({
           isAvailable: update.isAvailable,
           updateId,
-          isUpdatePending: isUpdatePendingRef.current,
+          isUpdatePending: pendingRef.current.isUpdatePending,
+          downloadedUpdateId: pendingRef.current.downloadedUpdateId,
           dismissed: dismissedUpdate,
         })
       ) {
@@ -135,7 +172,10 @@ export function useOTAUpdates(): OTAUpdateState & OTAUpdateActions {
         promptedUpdateIdRef.current = updateId;
         setState(prev => ({ ...prev, isUpdateAvailable: true }));
       } else if (update.isAvailable) {
+        // A prompt raised before expo-updates finished its background
+        // download would otherwise stay up offering a finished download.
         devLog('[OTA] Update available but already downloaded or put off');
+        withdrawPrompt();
       } else {
         devLog('[OTA] No update available');
         resetState();
@@ -149,7 +189,21 @@ export function useOTAUpdates(): OTAUpdateState & OTAUpdateActions {
       console.error('[OTA] Error checking for updates:', error);
       resetState();
     }
-  }, [resetState]);
+  }, [resetState, withdrawPrompt]);
+
+  // The background download can finish while the prompt is up, with no
+  // foreground check to notice.
+  useEffect(() => {
+    if (
+      isPendingUpdate({
+        updateId: promptedUpdateIdRef.current,
+        isUpdatePending,
+        downloadedUpdateId,
+      })
+    ) {
+      withdrawPrompt();
+    }
+  }, [isUpdatePending, downloadedUpdateId, withdrawPrompt]);
 
   // "Later", from the prompt or from the restart alert: take the prompt down
   // and do not raise it again this session for the same update.

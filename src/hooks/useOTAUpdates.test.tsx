@@ -15,12 +15,16 @@ import {
 const mockCheckForUpdate = jest.fn();
 const mockFetchUpdate = jest.fn(async () => ({ isNew: true }));
 let mockIsUpdatePending = false;
+let mockDownloadedUpdateId: string | null = null;
 jest.mock("expo-updates", () => ({
   isEnabled: true,
   checkForUpdateAsync: () => mockCheckForUpdate(),
   fetchUpdateAsync: () => mockFetchUpdate(),
   reloadAsync: jest.fn(async () => {}),
-  useUpdates: () => ({ isUpdatePending: mockIsUpdatePending }),
+  useUpdates: () => ({
+    isUpdatePending: mockIsUpdatePending,
+    downloadedUpdate: mockDownloadedUpdateId ? { updateId: mockDownloadedUpdateId } : undefined,
+  }),
 }));
 
 jest.mock("@/lib/networkUtils", () => ({ isNetworkAvailable: async () => true }));
@@ -38,17 +42,38 @@ async function flush(): Promise<void> {
   });
 }
 
+let rerender: () => Promise<void> = async () => {};
+
 async function mount() {
   const ref = { current: null as unknown as ReturnType<typeof useOTAUpdates> };
-  function Harness() {
+  function Harness({ tick }: { tick: number }) {
+    void tick;
     ref.current = useOTAUpdates();
     return null;
   }
+  let renderer!: ReturnType<typeof create>;
   await act(async () => {
-    create(<Harness />);
+    renderer = create(<Harness tick={0} />);
   });
   await flush();
+  let tick = 0;
+  // `useUpdates()` re-renders its host when expo-updates' native state
+  // changes; this stands in for that.
+  rerender = async () => {
+    tick += 1;
+    await act(async () => {
+      renderer.update(<Harness tick={tick} />);
+    });
+    await flush();
+  };
   return ref;
+}
+
+/** expo-updates finished downloading `id` in the background. */
+async function finishBackgroundDownload(id: string): Promise<void> {
+  mockIsUpdatePending = true;
+  mockDownloadedUpdateId = id;
+  await rerender();
 }
 
 async function foreground(): Promise<void> {
@@ -66,6 +91,7 @@ describe("useOTAUpdates", () => {
     jest.clearAllMocks();
     resetOTADismissalForTests();
     mockIsUpdatePending = false;
+    mockDownloadedUpdateId = null;
     appStateListener = null;
     jest.spyOn(console, "log").mockImplementation(() => {});
     jest.spyOn(AppState, "addEventListener").mockImplementation(((
@@ -131,6 +157,47 @@ describe("useOTAUpdates", () => {
     expect(mockCheckForUpdate).toHaveBeenCalledTimes(1);
     expect(ota.current.isUpdateAvailable).toBe(false);
   });
+
+  it("takes the prompt down when the background download finishes while it is up", async () => {
+    mockCheckForUpdate.mockResolvedValue(available("update-1"));
+    const ota = await mount();
+    expect(ota.current.isUpdateAvailable).toBe(true);
+
+    await finishBackgroundDownload("update-1");
+    expect(ota.current.isUpdateAvailable).toBe(false);
+
+    // A later foreground check still reports it; it stays down.
+    await foreground();
+    expect(ota.current.isUpdateAvailable).toBe(false);
+  });
+
+  it("keeps the prompt for a different update than the one downloaded", async () => {
+    mockCheckForUpdate.mockResolvedValue(available("update-2"));
+    const ota = await mount();
+    await finishBackgroundDownload("update-1");
+    expect(ota.current.isUpdateAvailable).toBe(true);
+
+    // And still offers it on a later check.
+    await foreground();
+    expect(ota.current.isUpdateAvailable).toBe(true);
+  });
+
+  it("leaves the modal to the restart alert when the user's own download finishes", async () => {
+    mockCheckForUpdate.mockResolvedValue(available("update-1"));
+    const alertSpy = jest.spyOn(Alert, "alert").mockImplementation(() => {});
+    const ota = await mount();
+
+    await act(async () => {
+      await ota.current.downloadAndRestart();
+    });
+    await finishBackgroundDownload("update-1");
+    expect(ota.current.isDownloading).toBe(true);
+    expect(ota.current.isUpdateAvailable).toBe(true);
+
+    const buttons = alertSpy.mock.calls[0][2] as { text: string; onPress: () => void }[];
+    act(() => buttons.find((button) => button.text === "Later")!.onPress());
+    expect(ota.current.isUpdateAvailable).toBe(false);
+  });
 });
 
 describe("shouldPromptForUpdate", () => {
@@ -143,6 +210,15 @@ describe("shouldPromptForUpdate", () => {
   it("does not prompt when nothing is available or it is already downloaded", () => {
     expect(shouldPromptForUpdate({ ...base, isAvailable: false })).toBe(false);
     expect(shouldPromptForUpdate({ ...base, isUpdatePending: true })).toBe(false);
+    expect(
+      shouldPromptForUpdate({ ...base, isUpdatePending: true, downloadedUpdateId: "a" }),
+    ).toBe(false);
+  });
+
+  it("prompts for an update other than the one already downloaded", () => {
+    expect(
+      shouldPromptForUpdate({ ...base, isUpdatePending: true, downloadedUpdateId: "older" }),
+    ).toBe(true);
   });
 
   it("respects a dismissal of the same update, or of an unidentified one", () => {
