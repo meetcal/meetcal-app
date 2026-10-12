@@ -4,6 +4,8 @@ import { MeetName } from '@/data/types/meet';
 import { useAuth, useUser } from '@clerk/expo';
 import { getMeetConfig } from '@/data/meets/config';
 import { useSelectedMeet } from '@/contexts/SelectedMeetContext';
+import { useSubscription } from '@/contexts/SubscriptionContext';
+import { getMeetSchedule } from '@/lib/database/offline-store';
 import { syncSavedWidget, clearSavedWidget } from '@/utils/savedWidget';
 import { reindexAppEntities } from '@/utils/appIntents';
 import type { Schedule as ScheduleType } from '@/types/schedule';
@@ -32,13 +34,16 @@ import {
   migrateLegacySessions as migrateLegacySessionsFor,
   removeSession as removeSessionFor,
   resetAllSessions as resetAllSessionsFor,
+  saveAllFromAthletes as saveAllFromAthletesFor,
   saveSession as saveSessionFor,
-  saveSessionsFromAthletes as saveSessionsFromAthletesFor,
   type SaveSessionOptions,
+  type SaveSessionsResult,
   type SavedSessionsActionDeps,
 } from '@/lib/saved-sessions-actions';
 import { useStorageUser } from '@/hooks/saved-sessions/useStorageUser';
 import { useReconnectReplay } from '@/hooks/saved-sessions/useReconnectReplay';
+import { useReminderSync } from '@/hooks/saved-sessions/useReminderSync';
+import { useScheduleTimedSessions } from '@/hooks/saved-sessions/useScheduleTimedSessions';
 
 export type { SavedSession } from '@/lib/saved-sessions-store';
 
@@ -53,16 +58,21 @@ export type { SavedSession } from '@/lib/saved-sessions-store';
  * - `lib/saved-sessions-actions` — save / remove / reset / migrate;
  * - `lib/saved-sessions-load` — hydrate, reconcile with the server;
  * - `lib/saved-sessions-prune` — the auto-unsave preference;
- * - `lib/saved-sessions-reminders` — the session reminder notification.
+ * - `lib/saved-sessions-reminders` — the session reminder notifications;
+ * - `lib/saved-schedule-lookup` — the selected meet's current start times.
  */
 export function useSavedSessions() {
-  const { user } = useUser();
+  const { user, isLoaded: isClerkLoaded } = useUser();
   const { getToken } = useAuth();
   const { selectedMeet } = useSelectedMeet();
-  const [savedSessions, setSavedSessions] = useState<SavedSession[]>([]);
+  const { isSubscribed } = useSubscription();
+  const [storedSessions, setSavedSessions] = useState<SavedSession[]>([]);
+  // What every consumer reads (the screens, the widget, the reminders): the
+  // stored rows, with the selected meet's on its current schedule times.
+  const savedSessions = useScheduleTimedSessions(storedSessions, selectedMeet);
   const [isLoading, setIsLoading] = useState(true);
   const clerkUserId = user?.id;
-  const { storageUserId, hasResolvedUser } = useStorageUser(clerkUserId);
+  const { storageUserId, hasResolvedUser } = useStorageUser(clerkUserId, Boolean(isClerkLoaded));
   /**
    * The API answered 401 to a `/users/me/*` call. The Clerk session Clerk
    * still reports as signed in no longer authorises writes, so nothing is
@@ -70,6 +80,12 @@ export function useSavedSessions() {
    * living only in the console.
    */
   const [authExpired, setAuthExpired] = useState(false);
+  /**
+   * The last load could not reach the server (timeout, 5xx, offline): the
+   * list is the device's copy, which a screen can say rather than looking
+   * identical to "nothing saved".
+   */
+  const [syncFailed, setSyncFailed] = useState(false);
   /** Writes recorded in the outbox that have not yet reached the server. */
   const pendingWriteCountRef = useRef(0);
   // Clerk's `getToken` identity is not something the effects below should
@@ -103,6 +119,7 @@ export function useSavedSessions() {
     setSavedSessions([]);
     setIsLoading(false);
     setAuthExpired(false);
+    setSyncFailed(false);
     pendingWriteCountRef.current = 0;
     clearSavedWidget();
     clearSavedSessionsCache(store.cache);
@@ -201,6 +218,7 @@ export function useSavedSessions() {
     getToken: () => getTokenRef.current(),
     readStoredSessions: () => readStoredSessions(),
     removeSession,
+    readSchedule: getMeetSchedule,
   }), [clerkUserId, readStoredSessions, removeSession, store]);
 
   const runLoad = useCallback(() => loadSavedSessionsFor({
@@ -216,6 +234,7 @@ export function useSavedSessions() {
     pruneStartedSessions,
     setIsLoading,
     setAuthExpired,
+    setSyncFailed,
   }), [
     activeUserId,
     clerkUserId,
@@ -265,6 +284,10 @@ export function useSavedSessions() {
 
   useReconnectReplay(clerkUserId, pendingWriteCountRef, syncOutbox);
 
+  // Once the list for the resolved user (or no user) has loaded. On sign-out
+  // the list is empty, which cancels the previous user's reminders.
+  useReminderSync(savedSessions, isSubscribed, hasResolvedUser && !isLoading);
+
   /** See `SaveSessionOptions` in `lib/saved-sessions-actions`. */
   const saveSession = useCallback(
     (session: SavedSession, options?: SaveSessionOptions) =>
@@ -272,9 +295,13 @@ export function useSavedSessions() {
     [actionDeps],
   );
 
-  const saveSessionsFromAthletes = useCallback(
-    (athletes: LiftResult[], meet: MeetName, scheduleOverride?: ScheduleType) =>
-      saveSessionsFromAthletesFor(actionDeps, athletes, meet, scheduleOverride),
+  const saveAllFromAthletes = useCallback(
+    (
+      athletes: LiftResult[],
+      meet: MeetName,
+      scheduleOverride?: ScheduleType,
+    ): Promise<SaveSessionsResult> =>
+      saveAllFromAthletesFor(actionDeps, athletes, meet, scheduleOverride),
     [actionDeps],
   );
 
@@ -297,8 +324,9 @@ export function useSavedSessions() {
     savedSessions,
     isLoading,
     authExpired,
+    syncFailed,
     loadSavedSessions,
-    saveSessionsFromAthletes,
+    saveAllFromAthletes,
     saveSession,
     removeSession,
     isSessionSaved,
@@ -308,8 +336,9 @@ export function useSavedSessions() {
     savedSessions,
     isLoading,
     authExpired,
+    syncFailed,
     loadSavedSessions,
-    saveSessionsFromAthletes,
+    saveAllFromAthletes,
     saveSession,
     removeSession,
     isSessionSaved,

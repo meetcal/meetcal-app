@@ -6,8 +6,10 @@ import { fetchSchedule } from "@/lib/database/queries";
 import {
   NOTIFICATION_ENABLED_KEY,
   cancelNotification,
+  listScheduledNotifications,
   scheduleNotification,
 } from "@/utils/notifications";
+import { setRemindersEnabled } from "@/lib/reminder-preference";
 import {
   deleteSavedSession,
   deleteSavedSessions,
@@ -18,7 +20,7 @@ import {
 } from "@/lib/api/meetcal-api";
 import { getMeetData } from "@/lib/database/offline-store";
 import { convertToUTC, getMeetConfig } from "@/data/meets/config";
-import { syncSavedWidget } from "@/utils/savedWidget";
+import { clearSavedWidget, syncSavedWidget } from "@/utils/savedWidget";
 import {
   countPendingWrites,
   MAX_SAVED_SESSION_ATHLETE_NAMES,
@@ -32,6 +34,8 @@ import type { Schedule } from "@/types/schedule";
  * Clerk session yet, so the hook falls back to the SecureStore hint.
  */
 let mockClerkUser: { id: string } | null = null;
+/** Whether Clerk has finished loading; false is "still loading". */
+let mockClerkLoaded = false;
 const mockGetToken = jest.fn<Promise<string | null>, []>(async () => null);
 
 /** An unsigned JWT with `sub`; the outbox checks the subject before sending. */
@@ -42,18 +46,39 @@ function jwtFor(sub: string): string {
 const TOKEN = jwtFor("user_1");
 
 jest.mock("@clerk/expo", () => ({
-  useUser: () => ({ user: mockClerkUser }),
+  useUser: () => ({ user: mockClerkUser, isLoaded: mockClerkLoaded }),
   useAuth: () => ({ getToken: mockGetToken }),
 }));
 
-let mockNetworkListener: ((isConnected: boolean) => void) | null = null;
+const mockNetworkListeners = new Set<(isConnected: boolean) => void>();
+/** Reports a network change to every subscriber. */
+const mockNetworkListener = (isConnected: boolean) => {
+  for (const listener of [...mockNetworkListeners]) listener(isConnected);
+};
+let mockIsNetworkAvailable = true;
 jest.mock("@/lib/networkUtils", () => ({
   subscribeToNetworkChanges: (callback: (isConnected: boolean) => void) => {
-    mockNetworkListener = callback;
+    mockNetworkListeners.add(callback);
     return () => {
-      mockNetworkListener = null;
+      mockNetworkListeners.delete(callback);
     };
   },
+  isNetworkAvailable: async () => mockIsNetworkAvailable,
+}));
+
+/** `null` is RevenueCat still loading. */
+let mockIsSubscribed: boolean | null = true;
+jest.mock("@/contexts/SubscriptionContext", () => ({
+  useSubscription: () => ({ isSubscribed: mockIsSubscribed }),
+}));
+
+/** The selected meet's schedule, as the schedule resource would serve it. */
+let mockSelectedMeetSchedule: unknown[] = [];
+jest.mock("@/hooks/useScheduleData", () => ({
+  useScheduleData: (meet: string | null) => ({
+    schedule: meet ? mockSelectedMeetSchedule : [],
+    isLoading: false,
+  }),
 }));
 
 // Reconnect replays are jittered in production; no delay in tests.
@@ -72,6 +97,7 @@ jest.mock("@/lib/database/queries", () => ({
 
 jest.mock("@/lib/database/offline-store", () => ({
   getMeetData: jest.fn(async () => ({ schedule: null })),
+  getMeetSchedule: jest.fn(async () => []),
 }));
 
 jest.mock("@/lib/authCache", () => ({
@@ -94,6 +120,7 @@ jest.mock("@/utils/notifications", () => ({
   NOTIFICATION_ENABLED_KEY: "notificationsEnabled",
   scheduleNotification: jest.fn(async () => "notification-id"),
   cancelNotification: jest.fn(async () => undefined),
+  listScheduledNotifications: jest.fn(async () => []),
 }));
 
 jest.mock("@/data/meets/config", () => ({
@@ -158,7 +185,16 @@ const mockConvertToUTC = convertToUTC as jest.MockedFunction<typeof convertToUTC
 // otherwise leak into whichever test runs next (fails under `--randomize`).
 beforeEach(() => {
   mockConvertToUTC.mockReturnValue(new Date("2099-01-01T15:00:00.000Z"));
+  mockClerkLoaded = false;
+  mockIsNetworkAvailable = true;
+  mockIsSubscribed = true;
+  mockSelectedMeetSchedule = [];
+  mockListScheduled.mockResolvedValue([]);
 });
+
+const mockListScheduled = listScheduledNotifications as jest.MockedFunction<
+  typeof listScheduledNotifications
+>;
 
 const mockFetchSchedule = fetchSchedule as jest.MockedFunction<
   typeof fetchSchedule
@@ -197,20 +233,6 @@ const ATHLETES: LiftResult[] = [1, 2, 3].map((number) => ({
   session: { number, platform: "Red" },
 })) as unknown as LiftResult[];
 
-/**
- * `AsyncStorage` is already a jest mock and `jest.clearAllMocks()` runs in
- * `beforeEach`, so its own call log is the counter. Deliberately not a
- * `jest.spyOn` + `mockRestore` pair: restoring a spy that wrapped an existing
- * mock strips that mock's implementation for the rest of the file.
- */
-function countNotificationFlagReads(): number {
-  const getItem = AsyncStorage.getItem as jest.MockedFunction<
-    typeof AsyncStorage.getItem
-  >;
-  return getItem.mock.calls.filter(([key]) => key === NOTIFICATION_ENABLED_KEY)
-    .length;
-}
-
 type Hook = ReturnType<typeof useSavedSessions>;
 
 /** Drain every queued microtask (AsyncStorage's mock is promise-based) twice over. */
@@ -221,6 +243,18 @@ async function flush(): Promise<void> {
     }
   });
 }
+
+/**
+ * Every harness mounted by a test, unmounted after it: a hook left mounted
+ * keeps listening (network, reminder preference) and acts on the next test.
+ */
+const mountedRenderers: ReturnType<typeof create>[] = [];
+afterEach(async () => {
+  const renderers = mountedRenderers.splice(0);
+  await act(async () => {
+    for (const renderer of renderers) renderer.unmount();
+  });
+});
 
 async function mountHook(): Promise<{
   current: Hook;
@@ -241,6 +275,7 @@ async function mountHook(): Promise<{
   await act(async () => {
     renderer = create(<Harness />);
   });
+  mountedRenderers.push(renderer!);
   ref.rerender = async () => {
     await act(async () => {
       renderer.update(<Harness />);
@@ -282,14 +317,12 @@ function apiRow(id: string) {
   };
 }
 
-describe("saveSessionsFromAthletes", () => {
+describe("saveAllFromAthletes", () => {
   beforeEach(async () => {
     jest.clearAllMocks();
     mockClerkUser = null;
     mockGetToken.mockResolvedValue(null);
     await AsyncStorage.clear();
-    // Notification scheduling is the only thing that needs the schedule, so it
-    // has to be on for this to measure anything.
     await AsyncStorage.setItem(NOTIFICATION_ENABLED_KEY, "true");
     mockFetchSchedule.mockResolvedValue(SCHEDULE);
   });
@@ -297,18 +330,16 @@ describe("saveSessionsFromAthletes", () => {
   it("fetches the meet schedule once for the whole batch", async () => {
     const hook = await mountHook();
 
+    let result = { total: 0, saved: 0 };
     await act(async () => {
-      await hook.current.saveSessionsFromAthletes(
+      result = await hook.current.saveAllFromAthletes(
         ATHLETES,
         "Test Meet" as never,
       );
     });
 
-    // Once for the batch itself. Before this, every saved session re-fetched
-    // the same meet's schedule inside the notification step — and because the
-    // save loop is sequential, `fetchSchedule`'s in-flight de-duplication
-    // never applied.
     expect(mockFetchSchedule).toHaveBeenCalledTimes(1);
+    expect(result).toEqual({ total: 3, saved: 3 });
     expect(hook.current.savedSessions).toHaveLength(3);
   });
 
@@ -316,7 +347,7 @@ describe("saveSessionsFromAthletes", () => {
     const hook = await mountHook();
 
     await act(async () => {
-      await hook.current.saveSessionsFromAthletes(
+      await hook.current.saveAllFromAthletes(
         ATHLETES,
         "Test Meet" as never,
         SCHEDULE,
@@ -327,77 +358,54 @@ describe("saveSessionsFromAthletes", () => {
     expect(hook.current.savedSessions).toHaveLength(3);
   });
 
-  it("still fetches for a single save that was given no schedule", async () => {
+  it("does not fetch the schedule for a single save", async () => {
     const hook = await mountHook();
 
     await act(async () => {
-      await hook.current.saveSession({
-        id: "Test Meet-1-Red",
-        meet: "Test Meet" as never,
-        sessionNumber: 1,
-        platform: "Red",
-        weightClass: "71kg",
-        startTime: "10:00 AM",
-        weighInTime: "8:00 AM",
-        date: "2099-06-20",
-      });
+      await hook.current.saveSession(makeSession("Test Meet-1-Red"));
     });
 
-    expect(mockFetchSchedule).toHaveBeenCalledTimes(1);
+    // The reminder reads the device's copy of the schedule, never the network.
+    expect(mockFetchSchedule).not.toHaveBeenCalled();
   });
 
-  it("reads the notification preference once for the whole batch", async () => {
+  it("records the whole batch in one write and sends it in one flush", async () => {
+    mockClerkUser = { id: "user_1" };
+    mockGetToken.mockResolvedValue(TOKEN);
+    mockFetchSavedSessions.mockResolvedValue([]);
+    const hook = await mountHook();
+    const setItem = AsyncStorage.setItem as jest.MockedFunction<typeof AsyncStorage.setItem>;
+    setItem.mockClear();
+    mockGetToken.mockClear();
+
+    await act(async () => {
+      await hook.current.saveAllFromAthletes(ATHLETES, "Test Meet" as never, SCHEDULE);
+    });
+
+    expect(setItem.mock.calls.filter(([key]) => key === SESSION_KEY)).toHaveLength(1);
+    expect(mockPutSavedSession).toHaveBeenCalledTimes(3);
+    expect(countPendingWrites(await readOutbox("user_1"))).toBe(0);
+  });
+
+  it("schedules a reminder for every saved session once the batch is published", async () => {
     const hook = await mountHook();
 
     await act(async () => {
-      await hook.current.saveSessionsFromAthletes(
-        ATHLETES,
-        "Test Meet" as never,
-        SCHEDULE,
-      );
+      await hook.current.saveAllFromAthletes(ATHLETES, "Test Meet" as never, SCHEDULE);
     });
+    await flush();
 
-    // One user preference, read once — not once per saved session. The batch
-    // is sequential and the flag cannot change between iterations, so the
-    // per-session read was N-1 pure AsyncStorage round trips.
-    expect(countNotificationFlagReads()).toBe(1);
+    expect(scheduleNotification).toHaveBeenCalledTimes(3);
     expect(hook.current.savedSessions).toHaveLength(3);
   });
 
-  it("still reads the notification preference for a lone save", async () => {
-    const hook = await mountHook();
-
-    await act(async () => {
-      await hook.current.saveSession(
-        {
-          id: "Test Meet-1-Red",
-          meet: "Test Meet" as never,
-          sessionNumber: 1,
-          platform: "Red",
-          weightClass: "71kg",
-          startTime: "10:00 AM",
-          weighInTime: "8:00 AM",
-          date: "2099-06-20",
-        },
-        { schedule: SCHEDULE },
-      );
-    });
-
-    // A caller that did not already resolve the flag must still get it.
-    expect(countNotificationFlagReads()).toBe(1);
-    expect(scheduleNotification).toHaveBeenCalledTimes(1);
-  });
-
-  describe("a change that lands while the batch is running", () => {
+  describe("a change that lands while the schedule is loading", () => {
     const SESSION_3 = "Test-Meet-3-Red";
-    const mockScheduleNotification = scheduleNotification as jest.MockedFunction<
-      typeof scheduleNotification
-    >;
 
     /**
      * Seeds session 3 with the user's own notes and a hand-added athlete,
-     * then starts the batch and holds it inside session 1's reminder, after
-     * session 1 is stored and before session 3 is merged.
+     * then starts the batch and holds it in the schedule fetch, before any
+     * row is merged.
      */
     async function startHeldBatch() {
       await AsyncStorage.setItem(
@@ -411,32 +419,28 @@ describe("saveSessionsFromAthletes", () => {
         ]),
       );
       let release: () => void = () => {};
-      mockScheduleNotification.mockImplementationOnce(
+      mockFetchSchedule.mockImplementationOnce(
         () =>
           new Promise((resolve) => {
-            release = () => resolve("notification-id");
+            release = () => resolve(SCHEDULE);
           }),
       );
       const hook = await mountHook();
-      let batch: Promise<boolean> = Promise.resolve(false);
+      let batch: Promise<{ total: number; saved: number }> = Promise.resolve({ total: 0, saved: 0 });
       await act(async () => {
-        batch = hook.current.saveSessionsFromAthletes(
-          ATHLETES,
-          "Test Meet" as never,
-          SCHEDULE,
-        );
+        batch = hook.current.saveAllFromAthletes(ATHLETES, "Test Meet" as never);
       });
       await flush();
-      expect(mockScheduleNotification).toHaveBeenCalledTimes(1);
+      expect(mockFetchSchedule).toHaveBeenCalledTimes(1);
       return {
         hook,
         finish: async () => {
-          let ok = false;
+          let result = { total: 0, saved: 0 };
           await act(async () => {
             release();
-            ok = await batch;
+            result = await batch;
           });
-          return ok;
+          return result;
         },
       };
     }
@@ -444,7 +448,7 @@ describe("saveSessionsFromAthletes", () => {
     const stored = async () =>
       JSON.parse((await AsyncStorage.getItem(SESSION_KEY)) ?? "[]") as Hook["savedSessions"];
 
-    it("keeps an edit saved mid-batch instead of merging over it from the old list", async () => {
+    it("merges over an edit saved meanwhile instead of the old list", async () => {
       const { hook, finish } = await startHeldBatch();
 
       await act(async () => {
@@ -456,7 +460,7 @@ describe("saveSessionsFromAthletes", () => {
           }),
         );
       });
-      await expect(finish()).resolves.toBe(true);
+      await expect(finish()).resolves.toEqual({ total: 3, saved: 3 });
 
       const row = (await stored()).find((s) => s.id === SESSION_3);
       expect(row?.notes).toBe("after");
@@ -469,13 +473,13 @@ describe("saveSessionsFromAthletes", () => {
       });
     });
 
-    it("does not bring back the notes and names of a session unsaved mid-batch", async () => {
+    it("does not bring back the notes and names of a session unsaved meanwhile", async () => {
       const { hook, finish } = await startHeldBatch();
 
       await act(async () => {
         await hook.current.removeSession(SESSION_3);
       });
-      await expect(finish()).resolves.toBe(true);
+      await expect(finish()).resolves.toEqual({ total: 3, saved: 3 });
 
       // The batch still saves session 3 (its athlete is entered in it), but
       // as a fresh row: nothing of the row the user removed comes back.
@@ -861,6 +865,9 @@ describe("server reconcile with the pending-writes outbox", () => {
 
   it("cancels the reminder of a session the auto-unsave prune removes", async () => {
     await AsyncStorage.setItem(NOTIFICATION_ENABLED_KEY, "true");
+    mockListScheduled.mockResolvedValue([
+      { identifier: "Test-Meet-1-Red", data: { identifier: "Test-Meet-1-Red" } },
+    ]);
     await AsyncStorage.setItem(SESSION_KEY, JSON.stringify([makeSession("Test-Meet-1-Red")]));
     mockFetchUserPreferences.mockResolvedValue({ auto_unsave_started_sessions: true });
     // Started long ago, so it is past the auto-unsave window.
@@ -869,8 +876,6 @@ describe("server reconcile with the pending-writes outbox", () => {
     const hook = await mountHook();
 
     expect(hook.current.savedSessions).toEqual([]);
-    // The prune runs from the load effect, whose `savedSessions` closure is
-    // the empty initial array; looking the session up there never found it.
     expect(cancelNotification).toHaveBeenCalledWith("Test-Meet-1-Red");
   });
 
@@ -1119,7 +1124,7 @@ describe("destructive writes: resets, removals and batch saves", () => {
 
     let ok = false;
     await act(async () => {
-      ok = await hook.current.saveSessionsFromAthletes(ATHLETES, "Test Meet" as never);
+      ok = (await hook.current.saveAllFromAthletes(ATHLETES, "Test Meet" as never)).saved === 3;
     });
 
     expect(ok).toBe(true);
@@ -1141,12 +1146,13 @@ describe("destructive writes: resets, removals and batch saves", () => {
     });
     const hook = await mountHook();
 
-    let ok = true;
+    let result = { total: 0, saved: 0 };
     await act(async () => {
-      ok = await hook.current.saveSessionsFromAthletes(ATHLETES, "Test Meet" as never, SCHEDULE);
+      result = await hook.current.saveAllFromAthletes(ATHLETES, "Test Meet" as never, SCHEDULE);
     });
 
-    expect(ok).toBe(false);
+    // Two of three: the refused row is undone, the others stay saved.
+    expect(result).toEqual({ total: 3, saved: 2 });
     expect(hook.current.savedSessions.map((s) => s.sessionNumber).sort()).toEqual([1, 3]);
     expect(countPendingWrites(await readOutbox("user_1"))).toBe(0);
   });
@@ -1202,5 +1208,219 @@ describe("saved widget sync", () => {
     await mountHook();
 
     expect(mockSyncSavedWidget).toHaveBeenLastCalledWith("Meet C", expect.any(Array), "UTC");
+  });
+});
+
+describe("signed-out Clerk and the cached user", () => {
+  beforeEach(async () => {
+    jest.clearAllMocks();
+    mockClerkUser = null;
+    mockGetToken.mockResolvedValue(null);
+    await AsyncStorage.clear();
+    await AsyncStorage.setItem(SESSION_KEY, JSON.stringify([makeSession("Test-Meet-1-Red")]));
+  });
+
+  it("drops the cached user's sessions and widget once Clerk loads signed out online", async () => {
+    const hook = await mountHook();
+    // Clerk still loading: the SecureStore hint stands in.
+    expect(hook.current.savedSessions).toHaveLength(1);
+
+    mockClerkLoaded = true;
+    await hook.rerender();
+
+    expect(hook.current.savedSessions).toEqual([]);
+    expect(clearSavedWidget).toHaveBeenCalled();
+  });
+
+  it("keeps the cached user while offline, then drops them when the network returns", async () => {
+    mockIsNetworkAvailable = false;
+    mockClerkLoaded = true;
+    const hook = await mountHook();
+    expect(hook.current.savedSessions).toHaveLength(1);
+
+    mockIsNetworkAvailable = true;
+    await act(async () => {
+      mockNetworkListener(false);
+      mockNetworkListener(true);
+    });
+    await flush();
+
+    expect(hook.current.savedSessions).toEqual([]);
+  });
+});
+
+describe("session reminders follow the saved list", () => {
+  const mockScheduleNotification = scheduleNotification as jest.MockedFunction<
+    typeof scheduleNotification
+  >;
+
+  beforeEach(async () => {
+    jest.clearAllMocks();
+    jest.spyOn(console, "error").mockImplementation(() => {});
+    mockClerkUser = { id: "user_1" };
+    mockGetToken.mockResolvedValue(TOKEN);
+    mockPutSavedSession.mockReset();
+    mockPutSavedSession.mockImplementation(async (_token, id) => ({
+      session_id: id,
+      updated_at: 1,
+    }));
+    mockDeleteSavedSessions.mockReset();
+    mockDeleteSavedSessions.mockResolvedValue({ deleted_count: 1 });
+    mockFetchSavedSessions.mockReset();
+    mockFetchSavedSessions.mockResolvedValue([]);
+    mockFetchUserPreferences.mockResolvedValue({ auto_unsave_started_sessions: false });
+    await AsyncStorage.clear();
+  });
+
+  afterEach(() => {
+    jest.restoreAllMocks();
+  });
+
+  it("schedules reminders for sessions saved on another device", async () => {
+    mockFetchSavedSessions.mockResolvedValue([apiRow("Test-Meet-1-Red")]);
+
+    await mountHook();
+
+    expect(mockScheduleNotification).toHaveBeenCalledTimes(1);
+    expect(mockScheduleNotification.mock.calls[0][3]).toBe("Test-Meet-1-Red");
+  });
+
+  it("schedules the saved sessions' reminders when reminders are turned on", async () => {
+    await AsyncStorage.setItem(NOTIFICATION_ENABLED_KEY, "false");
+    mockFetchSavedSessions.mockResolvedValue([apiRow("Test-Meet-1-Red")]);
+    await mountHook();
+    expect(mockScheduleNotification).not.toHaveBeenCalled();
+
+    await act(async () => {
+      await setRemindersEnabled(true);
+    });
+    await flush();
+
+    expect(mockScheduleNotification).toHaveBeenCalledTimes(1);
+  });
+
+  it("gives a free user no reminders", async () => {
+    mockIsSubscribed = false;
+    await AsyncStorage.setItem(NOTIFICATION_ENABLED_KEY, "true");
+    mockFetchSavedSessions.mockResolvedValue([apiRow("Test-Meet-1-Red")]);
+
+    await mountHook();
+
+    expect(mockScheduleNotification).not.toHaveBeenCalled();
+  });
+
+  it("cancels the previous user's reminders on sign-out", async () => {
+    mockFetchSavedSessions.mockResolvedValue([apiRow("Test-Meet-1-Red")]);
+    const hook = await mountHook();
+    mockListScheduled.mockResolvedValue([
+      { identifier: "Test-Meet-1-Red", data: { kind: "session-reminder", triggerAtMs: 1 } },
+    ]);
+
+    mockClerkUser = null;
+    mockClerkLoaded = true;
+    const { getCachedAuthState } = jest.requireMock("@/lib/authCache");
+    getCachedAuthState.mockResolvedValueOnce({ isSignedIn: false, userId: null });
+    await hook.rerender();
+
+    expect(hook.current.savedSessions).toEqual([]);
+    expect(cancelNotification).toHaveBeenCalledWith("Test-Meet-1-Red");
+  });
+
+  it("cancels the reminders of a reset", async () => {
+    mockFetchSavedSessions.mockResolvedValue([apiRow("Test-Meet-1-Red")]);
+    const hook = await mountHook();
+    mockListScheduled.mockResolvedValue([
+      { identifier: "Test-Meet-1-Red", data: { kind: "session-reminder", triggerAtMs: 1 } },
+    ]);
+
+    await act(async () => {
+      await hook.current.resetAllSessions();
+    });
+    await flush();
+
+    expect(cancelNotification).toHaveBeenCalledWith("Test-Meet-1-Red");
+  });
+});
+
+describe("start times from the current schedule", () => {
+  const mockSyncSavedWidget = syncSavedWidget as jest.MockedFunction<typeof syncSavedWidget>;
+  const MOVED = [
+    {
+      date: "June 20, 2099",
+      fullDate: "2099-06-20",
+      sessions: [
+        {
+          id: "Test Meet-1",
+          number: 1,
+          startTime: "2:00 PM",
+          weighInTime: "12:00 PM",
+          platforms: [{ platform: "Red", weightClass: "71kg", platformStartTime: "2:00 PM" }],
+        },
+      ],
+    },
+  ];
+
+  beforeEach(async () => {
+    jest.clearAllMocks();
+    mockClerkUser = null;
+    mockGetToken.mockResolvedValue(null);
+    await AsyncStorage.clear();
+  });
+
+  afterEach(() => {
+    mockSelectedMeet = null;
+  });
+
+  it("hands the widget and the screens the moved time, not the one saved", async () => {
+    await AsyncStorage.setItem(SESSION_KEY, JSON.stringify([makeSession("Test-Meet-1-Red")]));
+    mockSelectedMeet = "Test Meet";
+    mockSelectedMeetSchedule = MOVED;
+
+    const hook = await mountHook();
+
+    expect(hook.current.savedSessions[0]).toMatchObject({
+      startTime: "2:00 PM",
+      weighInTime: "12:00 PM",
+    });
+    const [, widgetSessions] = mockSyncSavedWidget.mock.calls.at(-1) ?? [];
+    expect(widgetSessions?.[0]?.startTime).toBe("2:00 PM");
+    // The stored copy is not rewritten.
+    const stored = JSON.parse((await AsyncStorage.getItem(SESSION_KEY)) ?? "[]");
+    expect(stored[0].startTime).toBe("10:00 AM");
+  });
+});
+
+describe("sync failures", () => {
+  beforeEach(async () => {
+    jest.clearAllMocks();
+    jest.spyOn(console, "error").mockImplementation(() => {});
+    mockClerkUser = { id: "user_1" };
+    mockGetToken.mockResolvedValue(TOKEN);
+    mockFetchSavedSessions.mockReset();
+    await AsyncStorage.clear();
+  });
+
+  afterEach(() => {
+    jest.restoreAllMocks();
+  });
+
+  it("says the list is the device's copy after a 5xx, and clears it once the server answers", async () => {
+    mockFetchSavedSessions.mockRejectedValueOnce(new MeetCalApiError("down", 503, ""));
+    const hook = await mountHook();
+    expect(hook.current.syncFailed).toBe(true);
+    expect(hook.current.authExpired).toBe(false);
+
+    mockFetchSavedSessions.mockResolvedValue([]);
+    await act(async () => {
+      await hook.current.loadSavedSessions();
+    });
+
+    expect(hook.current.syncFailed).toBe(false);
+  });
+
+  it("treats a network failure as a sync failure too", async () => {
+    mockFetchSavedSessions.mockRejectedValueOnce(new Error("Network request failed"));
+    const hook = await mountHook();
+    expect(hook.current.syncFailed).toBe(true);
   });
 });
