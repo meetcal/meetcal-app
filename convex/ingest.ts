@@ -373,7 +373,9 @@ const scrapedMeet = v.object({
   venueCity: v.string(),
   venueState: v.string(),
   venueZip: v.string(),
-  timeZone: v.string(),
+  // Absent (or blank) when the scraper could not tell the zone: a stored
+  // meet keeps its own, a new one is stored with a blank one.
+  timeZone: v.optional(v.string()),
   startDate: v.string(),
   endDate: v.string(),
   status: v.union(v.literal('upcoming'), v.literal('ongoing'), v.literal('completed')),
@@ -434,7 +436,8 @@ function newMeetName(name: string, federation: string, { taken, freeName }: { ta
  * the meet's identity everywhere; stored names never change. Only the
  * scraped columns are written, and the status follows the dates
  * (`meetStatusAt`): a completed meet whose dates move into the future is
- * upcoming again. Fields the scrapers do not own (venue map links) are kept.
+ * upcoming again. A row without a zone keeps the stored one (a new meet's is
+ * blank). Fields the scrapers do not own (venue map links) are kept.
  * A meet whose scraped values are unchanged is not written; `updatedAt`
  * moves only with a real change, so the nightly syncs do not invalidate
  * every meet's views.
@@ -451,7 +454,8 @@ export const upsertMeets = internalMutation({
       const lookup = await meetOfFederation(ctx, row.name, federation);
       const existing = lookup.match;
       const name = existing?.name ?? newMeetName(row.name, federation, lookup);
-      const values = { ...row, name, federation, status: meetStatusAt(row, now, formatters) };
+      const timeZone = row.timeZone?.trim() ? row.timeZone : (existing?.timeZone ?? '');
+      const values = { ...row, name, federation, timeZone, status: meetStatusAt({ ...row, timeZone }, now, formatters) };
       if (!existing) {
         await ctx.db.insert('meets', { ...values, ...(name !== row.name ? { sourceName: row.name } : {}), updatedAt: now });
         if (name !== row.name) console.warn(`upsertMeets: another meet is named ${JSON.stringify(row.name)}; stored this ${federation} meet as ${JSON.stringify(name)}`);
@@ -487,11 +491,15 @@ const PLACEHOLDERS = new Set(['', 'TBD', 'Unknown']);
  * match takes every value the site gives (dates, venue, city, state, time
  * zone), and its status follows the new dates (`meetStatusAt`); fields the
  * site leaves blank keep what is stored, and a move to another city clears
- * the old venue's street and zip. The stored name is kept: athletes and
+ * the old venue's street and zip. An event without a zone keeps the stored
+ * one, unless it moved to another state (then the zone is blank: unknown);
+ * a new one is stored with a blank zone. The stored name is kept: athletes and
  * results refer to a meet by name.
  */
 export const syncUsamwEvents = internalMutation({
-  args: { events: v.array(v.object({ name: v.string(), startDate: v.string(), endDate: v.string(), venueName: v.string(), venueCity: v.string(), venueState: v.string(), timeZone: v.string() })) },
+  // `timeZone` is absent (or blank) when the site's location names none: a
+  // country with several zones (Canada, Mexico) or an unknown place.
+  args: { events: v.array(v.object({ name: v.string(), startDate: v.string(), endDate: v.string(), venueName: v.string(), venueCity: v.string(), venueState: v.string(), timeZone: v.optional(v.string()) })) },
   handler: async (ctx, { events }) => {
     const now = Date.now();
     const formatters: ZoneFormatters = new Map();
@@ -540,6 +548,7 @@ export const syncUsamwEvents = internalMutation({
         const name = newMeetName(event.name, 'USAMW', lookups.get(i)!);
         await ctx.db.insert('meets', {
           ...event,
+          timeZone: event.timeZone?.trim() ? event.timeZone : '',
           name,
           ...(name !== event.name ? { sourceName: event.name } : {}),
           venueStreet: 'TBD',
@@ -557,7 +566,12 @@ export const syncUsamwEvents = internalMutation({
       for (const field of ['venueName', 'venueCity', 'venueState'] as const) {
         if (!PLACEHOLDERS.has(event[field])) site[field] = event[field];
       }
-      if (site.venueState) site.timeZone = event.timeZone;
+      if (site.venueState) {
+        if (event.timeZone?.trim()) site.timeZone = event.timeZone;
+        // Moved to a place the site names no zone for: the old place's zone
+        // would be wrong there, so it is unknown (blank). Same state, kept.
+        else if (site.venueState !== match.venueState) site.timeZone = '';
+      }
       if (site.venueCity && site.venueCity !== match.venueCity) {
         site.venueStreet = 'TBD';
         site.venueZip = 'TBD';

@@ -211,6 +211,23 @@ describe('meet writes', () => {
     ]);
   });
 
+  it('keeps the stored zone for a row without one, stores a new one blank, and never completes it early', async () => {
+    // 09:00 UTC on Oct 13: 02:00 on the 13th in Los Angeles, still the 12th in UTC-12.
+    jest.spyOn(Date, 'now').mockReturnValue(Date.UTC(2026, 9, 13, 9));
+    const withoutZone = (name: string): Row => {
+      const { timeZone: _zone, ...row } = meetRow(name, { startDate: '2026-10-11', endDate: '2026-10-12' });
+      return row;
+    };
+    const stored = { ...meetRow('LA Open', { timeZone: 'America/Los_Angeles', startDate: '2026-10-11', endDate: '2026-10-12', status: 'ongoing' }), updatedAt: 1 };
+    const { ctx, rows } = fakeMutationCtx({ meets: [stored] });
+    await upsert(ctx, { rows: [withoutZone('LA Open'), withoutZone('Toronto Open'), { ...withoutZone('Blank Open'), timeZone: ' ' }] });
+    expect(rows('meets').map((m) => [m.name, m.timeZone, m.status])).toEqual([
+      ['LA Open', 'America/Los_Angeles', 'completed'],
+      ['Toronto Open', '', 'ongoing'],
+      ['Blank Open', '', 'ongoing'],
+    ]);
+  });
+
   it('treats a meet stored without a federation as USAW', async () => {
     const { federation: _f, ...legacy } = meetRow('Old Open');
     const { ctx, rows } = fakeMutationCtx({ meets: [{ ...legacy, updatedAt: 1 }] });
@@ -248,6 +265,38 @@ describe('meet writes', () => {
       expect(rows('meets').map((m) => [m.name, m.federation, m.sourceName])).toEqual([
         ['Spring Classic', 'USAW', undefined],
         ['Spring Classic (USAMW)', 'USAMW', 'Spring Classic'],
+      ]);
+    });
+
+    it('takes an event with no time zone (a meet in Canada or Mexico)', () => {
+      type Field = { fieldType: { type: string; value?: unknown }; optional: boolean };
+      const args = JSON.parse((syncUsamwEvents as unknown as { exportArgs(): string }).exportArgs()) as { value: { events: Field } };
+      const eventFields = (args.value.events.fieldType.value as { value: Record<string, Field> }).value;
+      expect(eventFields.timeZone.optional).toBe(true);
+      expect(eventFields.name.optional).toBe(false);
+    });
+
+    it('stores a new event without a zone blank, and keeps or clears a stored zone by where the event is', async () => {
+      // 03:00 UTC on Apr 13: the UTC date is past the end, but it is still
+      // the 12th west of UTC, so the zoneless meet is not completed early.
+      jest.spyOn(Date, 'now').mockReturnValue(Date.UTC(2027, 3, 13, 3));
+      const { timeZone: _zone, ...toronto } = event('Canadian Masters Open', { venueCity: 'Toronto', venueState: 'Canada' });
+      const masters = (name: string) => ({ ...meetRow(name, { federation: 'USAMW', startDate: '2027-04-10', endDate: '2027-04-12', venueCity: 'Reno', venueState: 'NV', timeZone: 'America/Los_Angeles' }), updatedAt: 1 });
+      const { ctx, rows } = fakeMutationCtx({ meets: [masters('Same State'), masters('Moved Abroad')] });
+      const outcome = await sync(ctx, {
+        events: [
+          toronto,
+          // Still in Nevada, no zone given (blank): the stored one is kept.
+          event('Same State', { venueCity: 'Las Vegas', timeZone: '' }),
+          // Moved to Mexico, which has several zones: Pacific would be wrong there.
+          { ...toronto, name: 'Moved Abroad', venueCity: 'Monterrey', venueState: 'Mexico' },
+        ],
+      });
+      expect(outcome.inserted).toEqual(['Canadian Masters Open']);
+      expect(rows('meets').map((m) => [m.name, m.venueState, m.timeZone, m.status])).toEqual([
+        ['Same State', 'NV', 'America/Los_Angeles', 'ongoing'],
+        ['Moved Abroad', 'Mexico', '', 'ongoing'],
+        ['Canadian Masters Open', 'Canada', '', 'ongoing'],
       ]);
     });
 
