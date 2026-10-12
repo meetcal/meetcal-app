@@ -446,6 +446,7 @@ a {
 .wrapped-choices button { display: block; width: 100%; padding: 11px 13px; border-bottom: 1px solid var(--border); color: var(--text); text-align: left; }
 .wrapped-choices button:last-child { border-bottom: 0; }
 .wrapped-choices button:hover, .wrapped-choices button:focus { background: color-mix(in srgb, var(--accent) 10%, var(--card)); }
+.wrapped-choices button:focus-visible { outline: 2px solid color-mix(in srgb, var(--accent) 55%, transparent); outline-offset: -2px; }
 .meet-search { position: relative; width: min(620px, 100%); }
 .meet-search > label { display: block; margin-bottom: 5px; color: var(--text-secondary); font-size: 0.82rem; font-weight: 700; }
 .meet-search .data-filter { width: 100%; }

@@ -28,13 +28,14 @@ enum WrappedResponse {
         year: i32,
         stats: WrappedStats,
     },
-    /// Several athletes matched `query`, or, when `truncated`, more may have
-    /// than the answer holds; the user picks one.
+    /// Several athletes matched `query`; the user picks one. With
+    /// `more_than_shown`, `names` may not hold the athlete meant: more
+    /// matched than the list shows, or than the answer held.
     Choices {
         query: String,
         year: i32,
         names: Vec<String>,
-        truncated: bool,
+        more_than_shown: bool,
     },
 }
 
@@ -44,7 +45,10 @@ enum WrappedSelection {
     /// One athlete's year: score these rows under `name`.
     Athlete { name: String, rows: Vec<LiftResult> },
     /// The names to pick from (see `WrappedResponse::Choices`).
-    Choose { names: Vec<String>, truncated: bool },
+    Choose {
+        names: Vec<String>,
+        more_than_shown: bool,
+    },
 }
 
 #[component]
@@ -68,7 +72,9 @@ pub fn Wrapped() -> impl IntoView {
             <label>"Year"<input class="data-filter data-year-input" inputmode="numeric" maxlength="4" prop:value=current_year on:input=move |event| set_year.set(event_target_value(&event)) /></label>
             <button class="data-search-button" type="submit">"Build wrapped"</button>
         </form>
-        {move || wrapped.with(|response| match response { None if request.get().is_some() => view! { <TableSkeleton columns=3 /> }.into_any(), Some(Err(error)) => view! { <p class="data-status error">{format!("Could not build wrapped: {error}")}</p> }.into_any(), Some(Ok(Some(WrappedResponse::Report { athlete_name, year, stats }))) => report(athlete_name, *year, stats), Some(Ok(Some(WrappedResponse::Choices { query, year, names, truncated }))) => choices(query, *year, names, *truncated, set_athlete_name, set_request), _ => view! { <DataStatus message="Enter an athlete to build their yearly recap." /> }.into_any() })}
+        // A pick's search never answers with a pick list, so a list shown
+        // while a pick is the request is the answer before it: still loading.
+        {move || wrapped.with(|response| match response { None if request.get().is_some() => view! { <TableSkeleton columns=3 /> }.into_any(), Some(Err(error)) => view! { <p class="data-status error">{format!("Could not build wrapped: {error}")}</p> }.into_any(), Some(Ok(Some(WrappedResponse::Report { athlete_name, year, stats }))) => report(athlete_name, *year, stats), Some(Ok(Some(WrappedResponse::Choices { .. }))) if request.get().is_some_and(|request| request.picked) => view! { <TableSkeleton columns=3 /> }.into_any(), Some(Ok(Some(WrappedResponse::Choices { query, year, names, more_than_shown }))) => choices(query, *year, names, *more_than_shown, set_athlete_name, set_request), _ => view! { <DataStatus message="Enter an athlete to build their yearly recap." /> }.into_any() })}
     </DataPage> }
 }
 
@@ -90,11 +96,14 @@ async fn load_wrapped(request: WrappedRequest) -> Result<Option<WrappedResponse>
                 year,
                 stats: wrapped_stats(&rows),
             },
-            WrappedSelection::Choose { names, truncated } => WrappedResponse::Choices {
+            WrappedSelection::Choose {
+                names,
+                more_than_shown,
+            } => WrappedResponse::Choices {
                 query: request.athlete,
                 year,
                 names,
-                truncated,
+                more_than_shown,
             },
         },
     ))
@@ -185,12 +194,13 @@ fn select_wrapped(
     }
     // The athletes that lifted in the year, so each pick has a Wrapped; the
     // answer's `suggestions` span every year.
+    let more_than_shown = response.truncated || athletes.len() > MAX_WRAPPED_NAME_CHOICES;
     Ok(WrappedSelection::Choose {
         names: athletes
             .into_values()
             .take(MAX_WRAPPED_NAME_CHOICES)
             .collect(),
-        truncated: response.truncated,
+        more_than_shown,
     })
 }
 
@@ -203,17 +213,17 @@ fn choices(
     query: &str,
     year: i32,
     names: &[String],
-    truncated: bool,
+    more_than_shown: bool,
     set_athlete_name: WriteSignal<String>,
     set_request: WriteSignal<Option<WrappedRequest>>,
 ) -> AnyView {
-    let message = if truncated {
+    let message = if more_than_shown {
         format!("Many athletes match {query}. Pick one, or type more of the name.")
     } else {
         format!("Several athletes match {query}. Pick one.")
     };
     view! {
-        <p class="data-status">{message}</p>
+        <p class="data-status" role="status">{message}</p>
         <div class="wrapped-choices" role="group" aria-label="Matching athletes">
             {names.iter().cloned().map(|name| {
                 let athlete = name.clone();
@@ -316,14 +326,16 @@ mod tests {
             ],
             false,
         );
-        let WrappedSelection::Choose { names, truncated } =
-            select_wrapped("Smith", 2026, false, response).unwrap()
+        let WrappedSelection::Choose {
+            names,
+            more_than_shown,
+        } = select_wrapped("Smith", 2026, false, response).unwrap()
         else {
             panic!("two athletes must not be scored as one");
         };
         // One entry per athlete, whatever the spelling, in name order.
         assert_eq!(names, ["Ann Smith", "John Smith"]);
-        assert!(!truncated);
+        assert!(!more_than_shown);
     }
 
     #[test]
@@ -394,13 +406,15 @@ mod tests {
     #[test]
     fn wrapped_offers_a_pick_rather_than_score_a_cut_fallback() {
         let response = answer(None, &[row("Ann Lee", "2026-02-01", 150.0)], true);
-        let WrappedSelection::Choose { names, truncated } =
-            select_wrapped("an", 2026, false, response).unwrap()
+        let WrappedSelection::Choose {
+            names,
+            more_than_shown,
+        } = select_wrapped("an", 2026, false, response).unwrap()
         else {
             panic!("a cut fallback must not be scored");
         };
         assert_eq!(names, ["Ann Lee"]);
-        assert!(truncated);
+        assert!(more_than_shown);
     }
 
     #[test]
@@ -408,13 +422,17 @@ mod tests {
         let rows = (0..12)
             .map(|index| row(&format!("Athlete {index:02}"), "2026-02-01", 150.0))
             .collect::<Vec<_>>();
-        let WrappedSelection::Choose { names, .. } =
-            select_wrapped("Athlete", 2026, false, answer(None, &rows, false)).unwrap()
+        let WrappedSelection::Choose {
+            names,
+            more_than_shown,
+        } = select_wrapped("Athlete", 2026, false, answer(None, &rows, false)).unwrap()
         else {
             panic!("expected a pick list");
         };
         assert_eq!(names.len(), MAX_WRAPPED_NAME_CHOICES);
         assert_eq!(names[0], "Athlete 00");
+        // The answer was whole, but the list hides some athletes.
+        assert!(more_than_shown);
     }
 
     #[test]
