@@ -82,7 +82,7 @@ describe('loadAthleteResults', () => {
 
   it('shows an empty API answer when nothing else was shown', async () => {
     const { load, painted } = makeLoad();
-    await loadAthleteResults(load);
+    await expect(loadAthleteResults(load)).resolves.toBe('shown');
     expect(painted).toEqual([{ source: 'api', meets: [] }]);
   });
 
@@ -98,7 +98,7 @@ describe('loadAthleteResults', () => {
     full.reject(new Error('offline'));
     await Promise.resolve();
     offline.resolve([row('Local')]);
-    await expect(done).resolves.toBeUndefined();
+    await expect(done).resolves.toBe('shown');
     expect(painted).toEqual([{ source: 'offline', meets: ['Local'] }]);
     expect(console.error).not.toHaveBeenCalled();
   });
@@ -109,7 +109,7 @@ describe('loadAthleteResults', () => {
         throw new Error('offline');
       },
     });
-    await loadAthleteResults(load);
+    await expect(loadAthleteResults(load)).resolves.toBe('failed');
     expect(painted).toEqual([]);
     expect(console.error).toHaveBeenCalledTimes(1);
   });
@@ -178,7 +178,7 @@ describe('loadAthleteResults', () => {
     const done = loadAthleteResults(load);
     current = false;
     full.reject(new Error('offline'));
-    await done;
+    await expect(done).resolves.toBe('superseded');
     expect(painted).toEqual([]);
     expect(console.error).not.toHaveBeenCalled();
   });

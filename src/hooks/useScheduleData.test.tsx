@@ -134,4 +134,46 @@ describe("useScheduleData", () => {
       tree.unmount();
     });
   });
+
+  // Regression: the hook dropped `error`, so a failed first load with
+  // nothing cached rendered "No schedule yet … Check back soon!".
+  it("reports a failed load when nothing is cached", async () => {
+    jest.spyOn(console, "error").mockImplementation(() => {});
+    mockGetMeetSchedule.mockResolvedValue([]);
+    mockFetchSchedule.mockRejectedValue(new Error("Network request failed"));
+
+    let tree!: ReturnType<typeof create>;
+    act(() => {
+      tree = create(<Harness meet="Failed Meet" />);
+    });
+    await flush();
+
+    expect(captured!.schedule).toEqual([]);
+    expect(captured!.loadError).toBe("Network request failed");
+    expect(captured!.isLoading).toBe(false);
+
+    act(() => {
+      tree.unmount();
+    });
+    jest.restoreAllMocks();
+  });
+
+  it("keeps a cached schedule on screen and reports the failed refresh separately", async () => {
+    mockGetMeetSchedule.mockResolvedValue([DAY]);
+    mockFetchSchedule.mockRejectedValue(new Error("Network request failed"));
+
+    let tree!: ReturnType<typeof create>;
+    act(() => {
+      tree = create(<Harness meet="Cached Failed Meet" />);
+    });
+    await flush();
+
+    expect(captured!.schedule).toEqual([DAY]);
+    expect(captured!.loadError).toBeNull();
+    expect(captured!.refreshError).toBe("Network request failed");
+
+    act(() => {
+      tree.unmount();
+    });
+  });
 });

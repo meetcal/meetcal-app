@@ -16,6 +16,14 @@ interface UseScheduleDataReturn {
   schedule: Schedule;
   isLoading: boolean;
   isRefreshing: boolean;
+  /**
+   * Why there is no schedule to show: the load failed (offline included) and
+   * nothing is cached. Null while a schedule is shown, so an empty schedule
+   * with no error really is "not published yet".
+   */
+  loadError: string | null;
+  /** A revalidate that failed on top of a cached schedule (still shown). */
+  refreshError: string | null;
   initialScrollIndex: number;
   refreshSchedule: () => Promise<void>;
 }
@@ -75,6 +83,8 @@ export function useScheduleData(
   const [emptySchedule] = useState<Schedule>([]);
   const {
     data: schedule,
+    error,
+    refreshError,
     isInitialLoading,
     isRefreshing,
     refresh,
@@ -93,6 +103,8 @@ export function useScheduleData(
     schedule,
     isLoading: isInitialLoading,
     isRefreshing,
+    loadError: schedule.length === 0 ? error : null,
+    refreshError,
     initialScrollIndex,
     refreshSchedule: refresh,
   };

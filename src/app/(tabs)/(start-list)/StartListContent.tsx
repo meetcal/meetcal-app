@@ -29,6 +29,8 @@ import {
   saveMeetSchedule,
 } from "@/lib/database/offline-store";
 import { fetchAthletesWithSession, fetchSchedule } from "@/lib/database/queries";
+import { useRetryOnReconnect } from "@/hooks/useRetryOnReconnect";
+import { emptyLoadFailure, loadFailureCopy, type LoadFailure } from "@/lib/load-failure";
 import { isNetworkAvailable } from "@/lib/networkUtils";
 import { captureViewAsPng } from "@/lib/share-image";
 import { getLastYearBestsBatch, preloadYearBests, type YearBests } from "@/lib/start-list-api";
@@ -200,6 +202,9 @@ export default function StartListScreen() {
   const [athletes, setAthletes] = useState<LiftResult[]>([]);
   const [refreshing, setRefreshing] = useState(false);
   const [scheduleData, setScheduleData] = useState<ScheduleType>([]);
+  // Why the roster is empty when it is not "unpublished": offline with
+  // nothing cached, or the roster request failed.
+  const [loadFailure, setLoadFailure] = useState<LoadFailure | null>(null);
   const latestLoadIdRef = useRef(0);
   const loadStartedAtRef = useRef(performance.now());
   const loggedReadyRef = useRef(false);
@@ -333,6 +338,7 @@ export default function StartListScreen() {
       if (!selectedMeet || !isMeetName(selectedMeet)) {
         setAthletes([]);
         setScheduleData([]);
+        setLoadFailure(null);
         setLoading(false);
         return;
       }
@@ -357,6 +363,7 @@ export default function StartListScreen() {
         if (!forceRefresh) {
           setAthletes(snapshot.cachedAthletes);
           setScheduleData(snapshot.cachedSchedule);
+          if (snapshot.cachedAthletes.length > 0) setLoadFailure(null);
           setLoading(false);
           // Both halves present and just written (by the meet-open prefetch
           // or a previous visit): the network round trip would return the
@@ -373,6 +380,13 @@ export default function StartListScreen() {
         const hasNetwork = await isNetworkAvailable();
         if (isStale()) return;
         if (!hasNetwork) {
+          setLoadFailure(
+            emptyLoadFailure({
+              shownCount: snapshot.cachedAthletes.length,
+              hasNetwork,
+              requestFailed: false,
+            }),
+          );
           setLoading(false);
           if (forceRefresh) {
             showToast({
@@ -420,6 +434,13 @@ export default function StartListScreen() {
 
         setAthletes(nextAthletes);
         setScheduleData(nextSchedule);
+        setLoadFailure(
+          emptyLoadFailure({
+            shownCount: nextAthletes.length,
+            hasNetwork,
+            requestFailed: athletesResult.status === "rejected",
+          }),
+        );
         // Unconditional: a forced refresh can supersede an initial load that
         // set `loading` and then bailed out as stale.
         setLoading(false);
@@ -439,6 +460,11 @@ export default function StartListScreen() {
       latestLoadIdRef.current += 1;
     };
   }, [loadStartListData]);
+
+  // A failed load used to stay on the empty state until a pull-to-refresh.
+  useRetryOnReconnect(loadFailure !== null, () => {
+    void loadStartListData(false);
+  });
 
   useEffect(() => {
     if (!__DEV__ || loggedReadyRef.current || loading || athletes.length === 0) {
@@ -1537,6 +1563,32 @@ export default function StartListScreen() {
     return <StartListSkeleton skeletonPulse={skeletonPulse} />;
   }
 
+  // Not "Athletes will appear here once the start list is published": the
+  // roster could not be loaded (offline with nothing saved, or a failed
+  // request).
+  const loadFailureCopyText = loadFailure
+    ? loadFailureCopy("start list", loadFailure === "offline")
+    : null;
+  const loadFailureEmptyState =
+    loadFailureCopyText && !hasActiveFilters && searchQuery.length === 0 ? (
+      <EmptyState
+        style={styles.listEmpty}
+        icon={
+          <IconSymbol
+            name={loadFailure === "offline" ? "wifi.slash" : "arrow.clockwise"}
+            size={44}
+            color={colors.secondaryText}
+          />
+        }
+        title={loadFailureCopyText.title}
+        message={loadFailureCopyText.message}
+        actionLabel="Retry"
+        onActionPress={() => {
+          void onRefresh();
+        }}
+      />
+    ) : null;
+
   return (
     <ThemedView
       testID="start-list-screen"
@@ -1640,7 +1692,7 @@ export default function StartListScreen() {
             ]}
             showsVerticalScrollIndicator={false}
             ListEmptyComponent={
-              <EmptyState
+              loadFailureEmptyState ?? <EmptyState
                 style={styles.listEmpty}
                 icon={
                   <IconSymbol

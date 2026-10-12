@@ -33,7 +33,17 @@ type FullOutcome =
   | { ok: true; rows: SupabaseLiftResult[] }
   | { ok: false; error: unknown };
 
-export async function loadAthleteResults(load: AthleteResultsLoad): Promise<void> {
+/**
+ * How a load ended: `shown` once the screen has something it can trust
+ * (rows, or the API's own empty answer), `failed` when the request failed
+ * with nothing on screen (offline, or an error: not "this athlete has no
+ * results"), `superseded` when the screen moved on.
+ */
+export type AthleteResultsOutcome = 'shown' | 'failed' | 'superseded';
+
+export async function loadAthleteResults(
+  load: AthleteResultsLoad,
+): Promise<AthleteResultsOutcome> {
   // Started first and settled into a value, so a rejection while the
   // on-device read is still running is never unhandled.
   const full: Promise<FullOutcome> = load.fetchFull().then(
@@ -45,7 +55,7 @@ export async function loadAthleteResults(load: AthleteResultsLoad): Promise<void
   if (displayedCount === 0) {
     try {
       const offline = await load.readOffline();
-      if (!load.isCurrent()) return;
+      if (!load.isCurrent()) return 'superseded';
       if (offline.length > 0) {
         displayedCount = offline.length;
         load.show(offline, 'offline');
@@ -56,15 +66,19 @@ export async function loadAthleteResults(load: AthleteResultsLoad): Promise<void
   }
 
   const outcome = await full;
-  if (!load.isCurrent()) return;
+  if (!load.isCurrent()) return 'superseded';
   if (outcome.ok) {
     // An empty answer (e.g. a transient name-normalization miss) must not
     // clobber rows already on screen.
     if (outcome.rows.length > 0 || displayedCount === 0) {
       load.show(outcome.rows, 'api');
     }
-  } else if (displayedCount === 0) {
-    // Offline or the request failed: whatever was shown stays.
-    console.error('Error fetching athlete results:', outcome.error);
+    return 'shown';
   }
+  if (displayedCount > 0) {
+    // Offline or the request failed: whatever was shown stays.
+    return 'shown';
+  }
+  console.error('Error fetching athlete results:', outcome.error);
+  return 'failed';
 }

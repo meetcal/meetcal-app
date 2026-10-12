@@ -35,11 +35,13 @@ import { showToast } from "@/components/ui/Toast";
 import { useSavedSessions } from "@/contexts/SavedSessionsContext";
 import { useSelectedMeet } from "@/contexts/SelectedMeetContext";
 import { useAppColors } from "@/hooks/useAppColors";
+import { useIsOffline } from "@/hooks/useIsOffline";
 import { usePaginatedSchedule } from "@/hooks/usePaginatedSchedule";
 import { useScheduleData } from "@/hooks/useScheduleData";
 import { useUpcomingMeets } from "@/hooks/useUpcomingMeets";
 import { initStore } from "@/lib/database/offline-store";
 import { isMaestroE2E } from "@/lib/e2e";
+import { loadFailureCopy } from "@/lib/load-failure";
 import { DaySchedule } from "@/types/schedule";
 import {
   formatDayTitle,
@@ -103,9 +105,12 @@ export default function ScheduleScreen() {
     schedule,
     isLoading,
     isRefreshing,
+    loadError,
     initialScrollIndex,
     refreshSchedule,
   } = useScheduleData(selectedMeet, meetDetails?.time.timeZoneIdentifier);
+  const [isOffline] = useIsOffline();
+  const scheduleFailure = loadError ? loadFailureCopy("schedule", isOffline) : null;
 
   const { upcomingMeets } = useUpcomingMeets({ availableMeets });
   const { savedSessions } = useSavedSessions();
@@ -442,12 +447,25 @@ export default function ScheduleScreen() {
             />
           }
         >
-          <EmptyState
-            image={require("@/assets/images/MeetCal-no-bg.png")}
-            imageSize={144}
-            title="No schedule yet"
-            message="No data has been loaded yet for this meet. Check back soon!"
-          />
+          {scheduleFailure ? (
+            <EmptyState
+              image={require("@/assets/images/MeetCal-no-bg.png")}
+              imageSize={144}
+              title={scheduleFailure.title}
+              message={scheduleFailure.message}
+              actionLabel="Retry"
+              onActionPress={() => {
+                void refreshSchedule();
+              }}
+            />
+          ) : (
+            <EmptyState
+              image={require("@/assets/images/MeetCal-no-bg.png")}
+              imageSize={144}
+              title="No schedule yet"
+              message="No data has been loaded yet for this meet. Check back soon!"
+            />
+          )}
         </ScrollView>
       ) : (
         <View style={styles.contentContainer}>
