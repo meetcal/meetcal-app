@@ -4,6 +4,8 @@ import { normalizeName } from './names';
 import { athleteGenderLabel, normalizeGender } from './normalize';
 import {
   accumulateBests,
+  bestsSince,
+  namedBests,
   toApiLiftingResult,
   ZERO_BESTS,
   type ApiLiftingResult,
@@ -332,34 +334,49 @@ export function plainRoster(items: readonly RosterItem[], meet: string) {
  * (case-folded) it is an inner join, so athletes without a matching schedule
  * row drop out; unfiltered it is the left join.
  */
-export function athletesWithSessions(items: readonly RosterItem[], sessionNumber?: number, platform?: string) {
+export function athletesWithSessions(items: readonly RosterItem[], sessionNumber?: number, platform?: string): SessionRow[] {
+  const rows = items.map(sessionRow);
+  return sessionNumber === undefined && platform === undefined ? rows : narrowSessions(rows, sessionNumber, platform);
+}
+
+function sessionRow(item: RosterItem) {
+  return {
+    member_id: item.member_id,
+    name: item.name,
+    age: item.age,
+    club: item.club,
+    wso: item.wso,
+    gender: item.gender,
+    weight_class: item.weight_class,
+    entry_total: item.entry_total,
+    adaptive: item.adaptive,
+    session_number: item.session?.session_number ?? null,
+    session_platform: item.session?.session_platform ?? null,
+    date: item.session?.date ?? null,
+    start_time: item.session?.start_time ?? null,
+    weigh_in_time: item.session?.weigh_in_time ?? null,
+  };
+}
+
+/** One row of `/meets/athletes-sessions`. */
+export type SessionRow = ReturnType<typeof sessionRow>;
+
+/**
+ * The inner-join narrowing of the (left-joined) start list: rows of a
+ * scheduled session (a matching schedule row, so a date) in `sessionNumber`
+ * and on `platform` (case-folded), each when given. The query narrows a
+ * stored view with it, and `athletesWithSessions` a computed list.
+ */
+export function narrowSessions(rows: readonly SessionRow[], sessionNumber?: number, platform?: string): SessionRow[] {
   const platformKey = platform === undefined ? undefined : normalizeName(platform);
-  const filtered = sessionNumber !== undefined || platformKey !== undefined;
-  const rows = [];
-  for (const item of items) {
-    if (filtered) {
-      if (!item.session || item.session.date === null) continue;
-      if (sessionNumber !== undefined && item.session.session_number !== sessionNumber) continue;
-      if (platformKey !== undefined && normalizeName(item.session.session_platform) !== platformKey) continue;
-    }
-    rows.push({
-      member_id: item.member_id,
-      name: item.name,
-      age: item.age,
-      club: item.club,
-      wso: item.wso,
-      gender: item.gender,
-      weight_class: item.weight_class,
-      entry_total: item.entry_total,
-      adaptive: item.adaptive,
-      session_number: item.session?.session_number ?? null,
-      session_platform: item.session?.session_platform ?? null,
-      date: item.session?.date ?? null,
-      start_time: item.session?.start_time ?? null,
-      weigh_in_time: item.session?.weigh_in_time ?? null,
-    });
-  }
-  return rows;
+  return rows.filter(
+    (row) =>
+      row.date !== null &&
+      row.session_number !== null &&
+      row.session_platform !== null &&
+      (sessionNumber === undefined || row.session_number === sessionNumber) &&
+      (platformKey === undefined || normalizeName(row.session_platform) === platformKey),
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -436,21 +453,10 @@ export function yearBestsFromTimelines(
 ): NamedBests[] {
   const byKey = new Map<string, YearBests>();
   for (const [key, points] of timelines) {
-    let bests: YearBests | null = null;
-    for (const [date, snatch, cj, total] of points) {
-      if (date < sinceDate) continue;
-      const b: YearBests = bests ?? ZERO_BESTS;
-      bests = {
-        best_snatch: Math.max(b.best_snatch, snatch),
-        best_cj: Math.max(b.best_cj, cj),
-        best_total: Math.max(b.best_total, total),
-      };
-    }
+    const bests = bestsSince(points, sinceDate);
     if (bests) byKey.set(key, bests);
   }
-  return Array.from(new Set(names))
-    .sort(compareBytes)
-    .map((name) => ({ name, ...(byKey.get(normalizeName(name)) ?? ZERO_BESTS) }));
+  return namedBests(names, byKey);
 }
 
 // ---------------------------------------------------------------------------
@@ -473,12 +479,19 @@ export type StatsRow = {
   snatch_best: number;
   cj_best: number;
   total: number;
-  placings: [number, number, number];
+  /** Snatch, clean & jerk and total placings; null for a lift of 0 (a bomb-out), which places nowhere. */
+  placings: [Placing, Placing, Placing];
   previous_best: number | null;
 };
 
-/** SQL `RANK()`: one more than the number of strictly better values. */
-function rankOf(value: number, group: number[]): number {
+export type Placing = number | null;
+
+/**
+ * SQL `RANK()`: one more than the number of strictly better values. A lift or
+ * total of 0 or less is a bomb-out, not a result, so it gets no placing.
+ */
+export function rankOf(value: number, group: readonly number[]): Placing {
+  if (!(value > 0)) return null;
   let better = 0;
   for (const other of group) if (other > value) better += 1;
   return better + 1;
@@ -626,7 +639,15 @@ function statsRow({ key, row, athlete, group }: StatsEntry, groups: StatsGroups,
   };
 }
 
-function medalFor(placing: number): string | null {
+type Medal = 'gold' | 'silver' | 'bronze';
+
+/**
+ * The medal a placing earns. The lift is checked as well as the placing: a
+ * stats view built before bomb-outs went unplaced still holds a placing for a
+ * lift of 0, and a bomb-out never medals.
+ */
+export function medalFor(placing: Placing, lift: number): Medal | null {
+  if (!(lift > 0)) return null;
   return placing === 1 ? 'gold' : placing === 2 ? 'silver' : placing === 3 ? 'bronze' : null;
 }
 
@@ -646,14 +667,17 @@ export function clubStats(rows: readonly StatsRow[], club: string, totalAthletes
   const snatchAttempts: number[] = [];
   const cjAttempts: number[] = [];
   const athleteResults = clubRows.map((r) => {
-    for (const placing of r.placings) {
-      if (placing === 1) gold += 1;
-      else if (placing === 2) silver += 1;
-      else if (placing === 3) bronze += 1;
+    const [snatchPlacing, cjPlacing, totalPlacing] = r.placings;
+    const snatchMedal = medalFor(snatchPlacing, r.snatch_best);
+    const cjMedal = medalFor(cjPlacing, r.cj_best);
+    const totalMedal = medalFor(totalPlacing, r.total);
+    for (const medal of [snatchMedal, cjMedal, totalMedal]) {
+      if (medal === 'gold') gold += 1;
+      else if (medal === 'silver') silver += 1;
+      else if (medal === 'bronze') bronze += 1;
     }
     snatchAttempts.push(...r.attempts.slice(0, 3));
     cjAttempts.push(...r.attempts.slice(3));
-    const [snatchPlacing, cjPlacing, totalPlacing] = r.placings;
     return {
       name: r.name,
       weight_class: r.weight_class,
@@ -661,10 +685,10 @@ export function clubStats(rows: readonly StatsRow[], club: string, totalAthletes
       cj_best: r.cj_best,
       total: r.total,
       body_weight: r.body_weight,
-      medal: medalFor(totalPlacing),
-      snatch_medal: medalFor(snatchPlacing),
-      cj_medal: medalFor(cjPlacing),
-      total_medal: medalFor(totalPlacing),
+      medal: totalMedal,
+      snatch_medal: snatchMedal,
+      cj_medal: cjMedal,
+      total_medal: totalMedal,
       is_pr: r.previous_best !== null && r.total > r.previous_best,
       perfect_lifts: r.attempts.every((a) => a > 0),
     };

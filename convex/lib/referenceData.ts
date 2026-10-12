@@ -3,6 +3,7 @@ import type { QueryCtx } from '../_generated/server';
 import type { recordHolder } from '../schema';
 import { normalizeGender } from './normalize';
 import { compareBytes, compareCollated, sortByWeightClass } from './sort';
+import { apiError } from './validation';
 
 // Reference answers, each the JSON of the Rust route named on it. Queries
 // serve them from a view when one is fresh and compute them here otherwise;
@@ -164,6 +165,82 @@ export async function computeNationalRankingsForYear(
   return bestTotalPerAthlete(ranked);
 }
 
+type RankingGender = 'Men' | 'Women';
+
+/** Senior, junior and masters weight classes (`getWeightClasses` in the app, `division_options` on the website). */
+const SENIOR_WEIGHTS: Record<RankingGender, readonly string[]> = {
+  Men: ['60', '65', '71', '79', '88', '94', '110', '110+'],
+  Women: ['48', '53', '58', '63', '69', '77', '86', '86+'],
+};
+const UNDER_13_WEIGHTS: Record<RankingGender, readonly string[]> = {
+  Men: ['40', '44', '48', '52', '56', '60', '65', '65+'],
+  Women: ['36', '40', '44', '48', '53', '58', '63', '63+'],
+};
+const YOUTH_WEIGHTS: Record<string, Record<RankingGender, readonly string[]>> = {
+  '11 Under Age Group': UNDER_13_WEIGHTS,
+  '13 Under Age Group': UNDER_13_WEIGHTS,
+  '14-15 Age Group': {
+    Men: ['48', '52', '56', '60', '65', '71', '79', '79+'],
+    Women: ['40', '44', '48', '53', '58', '63', '69', '69+'],
+  },
+  '16-17 Age Group': {
+    Men: ['56', '60', '65', '71', '79', '88', '94', '94+'],
+    Women: ['44', '48', '53', '58', '63', '69', '77', '77+'],
+  },
+};
+const MASTERS_BANDS = ['35-39', '40-44', '45-49', '50-54', '55-59', '60-64', '65-69', '70-74', '75-79', '80-84', '85-89', '90+'];
+
+/**
+ * Every current ranking division, spelled as the app and the website send it
+ * (`Open Men's 60kg`, `Women's 14-15 Age Group 48kg`, `Men's Masters (35-39)
+ * 79kg`). Such a class is real even before anyone has a result in it.
+ */
+export const RANKING_DIVISIONS: ReadonlySet<string> = (() => {
+  const divisions = new Set<string>();
+  for (const gender of ['Men', 'Women'] as const) {
+    for (const weight of SENIOR_WEIGHTS[gender]) {
+      divisions.add(`Open ${gender}'s ${weight}kg`);
+      divisions.add(`Junior ${gender}'s ${weight}kg`);
+      for (const band of MASTERS_BANDS) divisions.add(`${gender}'s Masters (${band}) ${weight}kg`);
+    }
+    for (const [group, weights] of Object.entries(YOUTH_WEIGHTS)) {
+      for (const weight of weights[gender]) divisions.add(`${gender}'s ${group} ${weight}kg`);
+    }
+  }
+  return divisions;
+})();
+
+export function isRankingDivision(ageCategory: string): boolean {
+  return RANKING_DIVISIONS.has(ageCategory);
+}
+
+/** Federations the app, the website and the CLI rank; known whatever the data holds. */
+const RANKING_FEDERATIONS: ReadonlySet<string> = new Set(['USAW', 'USAMW']);
+
+/**
+ * Rejects a ranking class nobody could mean, so a typo or the wrong case
+ * answers 404 instead of an empty ranking that looks like "nobody lifted".
+ * The federation must be one the clients rank or have results; the age
+ * category must be a current division (`isRankingDivision`) or have results
+ * under that federation (a retired class such as `Open Men's 85 kg`). A
+ * current division of USAW or USAMW costs no read; anything else one or two.
+ */
+export async function requireKnownRankingClass(ctx: QueryCtx, federation: string, ageCategory: string): Promise<void> {
+  if (!RANKING_FEDERATIONS.has(federation)) {
+    const anyInFederation = await ctx.db
+      .query('lifting_results')
+      .withIndex('by_federation_and_age', (q) => q.eq('federation', federation))
+      .first();
+    if (anyInFederation === null) throw apiError(404, `unknown federation '${federation}'`);
+  }
+  if (isRankingDivision(ageCategory)) return;
+  const anyInClass = await ctx.db
+    .query('lifting_results')
+    .withIndex('by_federation_and_age', (q) => q.eq('federation', federation).eq('age', ageCategory))
+    .first();
+  if (anyInClass === null) throw apiError(404, `unknown age category '${ageCategory}' for ${federation}`);
+}
+
 /** Distinct values in the database's text order (`SELECT DISTINCT … ORDER BY`). */
 export function distinctCollated(values: Iterable<string>): string[] {
   return Array.from(new Set(values)).sort(compareCollated);
@@ -279,8 +356,17 @@ const WOMEN = /\bwomen\b/i;
 const YEAR = /\b\d{4}\b/;
 const WEIGHT_CLASS = /\b(\d+\+?)kg/gi;
 
-function matchesGender(age: string, gender: string): boolean {
-  if (gender.toLowerCase() === 'men') return MEN.test(age) && !WOMEN.test(age);
+export type AdaptiveGender = 'men' | 'women';
+
+/** `men` or `women`, any case; anything else is a 400 (it used to read as women). */
+export function requireAdaptiveGender(gender: string): AdaptiveGender {
+  const folded = gender.toLowerCase();
+  if (folded === 'men' || folded === 'women') return folded;
+  throw apiError(400, "gender must be 'men' or 'women'");
+}
+
+function matchesGender(age: string, gender: AdaptiveGender): boolean {
+  if (gender === 'men') return MEN.test(age) && !WOMEN.test(age);
   return WOMEN.test(age);
 }
 
@@ -309,7 +395,7 @@ export type AdaptiveRecord = { weight_class: string; snatch: number; cj: number;
 /** The season's best lifts per weight class. */
 export async function computeAdaptiveRecords(
   ctx: QueryCtx,
-  gender: string,
+  gender: AdaptiveGender,
   excludeFederation: string,
   season: string,
 ): Promise<AdaptiveRecord[]> {

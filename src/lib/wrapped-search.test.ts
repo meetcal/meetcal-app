@@ -30,7 +30,7 @@ function row(name: string, date: string, total = 200): SupabaseLiftResult {
 describe('selectWrappedRows', () => {
   it('uses every row of an exact match, in date order', () => {
     const rows = [row('John Smith', '2025-06-01'), row('John Smith', '2025-02-01')];
-    const selection = selectWrappedRows({ matchedName: 'john smith', results: rows });
+    const selection = selectWrappedRows({ matchedName: 'john smith', results: rows, truncated: false });
     expect(selection).toEqual({
       kind: 'athlete',
       name: 'John Smith',
@@ -45,7 +45,7 @@ describe('selectWrappedRows', () => {
       row('JOHN  SMITH', '2025-05-01', 310),
       row('Adam Smithers', '2025-04-01', 250),
     ];
-    const selection = selectWrappedRows({ matchedName: null, results: rows });
+    const selection = selectWrappedRows({ matchedName: null, results: rows, truncated: false });
     expect(selection).toEqual({
       kind: 'ambiguous',
       names: ['Adam Smithers', 'Jane Smith', 'John Smith'],
@@ -54,21 +54,45 @@ describe('selectWrappedRows', () => {
 
   it('accepts the fallback when its rows are one athlete (spelling variants included)', () => {
     const rows = [row('Jane Doe', '2025-05-01'), row('jane  doe ', '2025-01-01')];
-    const selection = selectWrappedRows({ matchedName: null, results: rows });
+    const selection = selectWrappedRows({ matchedName: null, results: rows, truncated: false });
     expect(selection).toEqual({ kind: 'athlete', name: 'Jane Doe', rows: [rows[1], rows[0]] });
   });
 
   it('drops blank-named rows rather than scoring them with the one athlete', () => {
     const rows = [row('Jane Doe', '2025-05-01'), row('', '2025-01-01')];
-    const selection = selectWrappedRows({ matchedName: null, results: rows });
+    const selection = selectWrappedRows({ matchedName: null, results: rows, truncated: false });
     expect(selection).toEqual({ kind: 'athlete', name: 'Jane Doe', rows: [rows[0]] });
   });
 
   it('answers none for no rows, or only blank names', () => {
-    expect(selectWrappedRows({ matchedName: null, results: [] })).toEqual({ kind: 'none' });
-    expect(selectWrappedRows({ matchedName: 'x', results: [] })).toEqual({ kind: 'none' });
-    expect(selectWrappedRows({ matchedName: null, results: [row('  ', '2025-01-01')] })).toEqual({
+    expect(selectWrappedRows({ matchedName: null, results: [], truncated: false })).toEqual({ kind: 'none' });
+    expect(selectWrappedRows({ matchedName: 'x', results: [], truncated: false })).toEqual({ kind: 'none' });
+    expect(selectWrappedRows({ matchedName: null, results: [row('  ', '2025-01-01')], truncated: false })).toEqual({
       kind: 'none',
+    });
+  });
+
+  it('refuses to score an exact match whose year was cut', () => {
+    const rows = [row('John Smith', '2025-02-01'), row('John Smith', '2025-06-01')];
+    expect(selectWrappedRows({ matchedName: 'john smith', results: rows, truncated: true })).toEqual({
+      kind: 'tooManyResults',
+      name: 'John Smith',
+    });
+  });
+
+  it('offers the one athlete of a cut fallback to pick, not as the match', () => {
+    // The scan stopped at its name limit: other athletes may match, the meant one included.
+    const rows = [row('Jane Doe', '2025-05-01')];
+    expect(selectWrappedRows({ matchedName: null, results: rows, truncated: true })).toEqual({
+      kind: 'ambiguous',
+      names: ['Jane Doe'],
+    });
+  });
+
+  it('asks to narrow, not "no results", when a cut fallback found nobody in the year', () => {
+    expect(selectWrappedRows({ matchedName: null, results: [], truncated: true })).toEqual({ kind: 'narrow' });
+    expect(selectWrappedRows({ matchedName: null, results: [row(' ', '2025-01-01')], truncated: true })).toEqual({
+      kind: 'narrow',
     });
   });
 
@@ -76,13 +100,13 @@ describe('selectWrappedRows', () => {
     const many = Array.from({ length: MAX_WRAPPED_NAME_CHOICES + 3 }, (_, i) =>
       row(`Athlete ${String(i).padStart(2, '0')} Smith`, '2025-01-01'),
     );
-    const ambiguous = selectWrappedRows({ matchedName: null, results: many });
+    const ambiguous = selectWrappedRows({ matchedName: null, results: many, truncated: false });
     expect(ambiguous.kind === 'ambiguous' && ambiguous.names).toHaveLength(MAX_WRAPPED_NAME_CHOICES);
 
     const year = Array.from({ length: MAX_WRAPPED_RESULTS + 1 }, (_, i) =>
       row('John Smith', `2025-01-${String((i % 28) + 1).padStart(2, '0')}`),
     );
-    const one = selectWrappedRows({ matchedName: 'John Smith', results: year });
+    const one = selectWrappedRows({ matchedName: 'John Smith', results: year, truncated: false });
     expect(one.kind === 'athlete' && one.rows).toHaveLength(MAX_WRAPPED_RESULTS);
   });
 });

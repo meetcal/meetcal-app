@@ -11,13 +11,19 @@ export const MAX_WRAPPED_NAME_CHOICES = 8;
 export type WrappedSearchResponse = {
   matchedName: string | null;
   results: readonly SupabaseLiftResult[];
+  /** The answer was cut: it kept the most recent rows, or stopped scanning names. */
+  truncated: boolean;
 };
 
 export type WrappedSelection =
   /** One athlete: score these rows (date order, capped) under `name`. */
   | { kind: 'athlete'; name: string; rows: SupabaseLiftResult[] }
-  /** Several athletes matched; the user has to pick one. */
+  /** Several athletes matched, or more may have than the answer holds; the user has to pick one. */
   | { kind: 'ambiguous'; names: string[] }
+  /** The name-contains scan was cut before any athlete with a result: the user has to type more of the name. */
+  | { kind: 'narrow' }
+  /** One athlete's year has more rows than one answer holds, so a Wrapped would miss some. */
+  | { kind: 'tooManyResults'; name: string }
   | { kind: 'none' };
 
 function inDateOrder(rows: readonly SupabaseLiftResult[]): SupabaseLiftResult[] {
@@ -35,12 +41,19 @@ function inDateOrder(rows: readonly SupabaseLiftResult[]): SupabaseLiftResult[] 
  * rows are only one person's year when they carry exactly one distinct name;
  * otherwise scoring them together would merge several athletes into one
  * Wrapped, so the caller gets the names to choose from instead.
+ *
+ * A `truncated` answer is never scored or read as "no results": its rows may
+ * miss part of the year, and a fallback that stopped scanning names may have
+ * missed other athletes, or the one the user meant. A fallback's names are
+ * offered to pick from (a pick searches that exact name); an exact match's
+ * year cannot be narrowed further, so it is refused.
  */
 export function selectWrappedRows(response: WrappedSearchResponse): WrappedSelection {
   const rows = response.results;
-  if (rows.length === 0) return { kind: 'none' };
+  if (rows.length === 0) return response.truncated ? { kind: 'narrow' } : { kind: 'none' };
 
   if (response.matchedName !== null) {
+    if (response.truncated) return { kind: 'tooManyResults', name: rows[0].name || response.matchedName };
     const ordered = inDateOrder(rows);
     return { kind: 'athlete', name: ordered[0].name || response.matchedName, rows: ordered };
   }
@@ -52,12 +65,12 @@ export function selectWrappedRows(response: WrappedSearchResponse): WrappedSelec
     if (normalized && !byNormalized.has(normalized)) byNormalized.set(normalized, row.name);
   }
 
-  if (byNormalized.size === 1) {
+  if (byNormalized.size === 0) return response.truncated ? { kind: 'narrow' } : { kind: 'none' };
+  if (byNormalized.size === 1 && !response.truncated) {
     const [[only, name]] = [...byNormalized];
     const ordered = inDateOrder(rows.filter((row) => normalizeAthleteName(row.name) === only));
     return { kind: 'athlete', name, rows: ordered };
   }
-  if (byNormalized.size === 0) return { kind: 'none' };
 
   // Offer the athletes that actually lifted in the range (each pick then has
   // a Wrapped). The API's own `suggestions` span every year, so a pick from

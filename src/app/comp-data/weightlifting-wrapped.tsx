@@ -248,8 +248,9 @@ export default function WeightliftingWrappedScreen() {
     setLoading(true);
     try {
       const normalizedName = searchQuery.trim();
+      // `results:search` includes both ends of the range.
       const startDate = `${selectedYear}-01-01`;
-      const endDate = `${selectedYear + 1}-01-01`;
+      const endDate = `${selectedYear}-12-31`;
 
       const response = await searchApi(normalizedName, startDate, endDate);
       const selection = selectWrappedRows(response);
@@ -261,12 +262,29 @@ export default function WeightliftingWrappedScreen() {
         });
         return;
       }
+      if (selection.kind === "narrow") {
+        showToast({
+          type: "info",
+          message: `Too many athletes match ${normalizedName}. Type more of the name.`,
+        });
+        return;
+      }
+      if (selection.kind === "tooManyResults") {
+        showToast({
+          type: "error",
+          message: `${selection.name} has more ${selectedYear} results than a Wrapped can hold.`,
+        });
+        return;
+      }
       if (selection.kind === "ambiguous") {
         presentSuggestions(selection.names);
         setDidYouMean(true);
         showToast({
           type: "info",
-          message: `Several athletes match ${normalizedName}. Pick one.`,
+          // Truncated: more athletes matched than the answer holds.
+          message: response.truncated
+            ? `Many athletes match ${normalizedName}. Pick one, or type more of the name.`
+            : `Several athletes match ${normalizedName}. Pick one.`,
         });
         return;
       }

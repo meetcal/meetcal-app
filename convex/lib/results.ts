@@ -1,4 +1,6 @@
 import type { Doc } from '../_generated/dataModel';
+import { normalizeName } from './names';
+import { compareBytes } from './sort';
 
 /**
  * One `lifting_results` row as the Rust API serializes it
@@ -64,6 +66,40 @@ export const ZERO_BESTS: YearBests = { best_snatch: 0, best_cj: 0, best_total: 0
  * Rust API sent.
  */
 export type NamedBests = YearBests & { name: string };
+
+/**
+ * One result reduced to its bests, `[date, snatch, cj, total]`: a history
+ * summary's `Mark` or a meet timeline's point.
+ */
+export type BestsPoint = readonly [date: string, snatch: number, cj: number, total: number];
+
+/**
+ * The heaviest snatch, clean & jerk and total over the points dated
+ * `sinceDate` or later, in any order; null when none is.
+ */
+export function bestsSince(points: Iterable<BestsPoint>, sinceDate: string): YearBests | null {
+  let bests: YearBests | null = null;
+  for (const [date, snatch, cj, total] of points) {
+    if (date < sinceDate) continue;
+    const b: YearBests = bests ?? ZERO_BESTS;
+    bests = {
+      best_snatch: Math.max(b.best_snatch, snatch),
+      best_cj: Math.max(b.best_cj, cj),
+      best_total: Math.max(b.best_total, total),
+    };
+  }
+  return bests;
+}
+
+/**
+ * Each distinct spelling in `names`, in byte order, with the bests of its
+ * folded name (`bestsByKey`); zeros for a name without any.
+ */
+export function namedBests(names: readonly string[], bestsByKey: ReadonlyMap<string, YearBests>): NamedBests[] {
+  return Array.from(new Set(names))
+    .sort(compareBytes)
+    .map((name) => ({ name, ...(bestsByKey.get(normalizeName(name)) ?? ZERO_BESTS) }));
+}
 
 /**
  * `best_lifts_columns!`: the heaviest of the recorded best and every attempt

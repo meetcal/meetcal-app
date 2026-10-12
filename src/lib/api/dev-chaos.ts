@@ -45,13 +45,6 @@ const ALL_KINDS: ReadonlySet<string> = new Set<ChaosFaultKind>([
   'truncate',
 ]);
 
-/**
- * The client's clock sample (`lib/api/meetcal-api.ts`). Never faulted: its
- * failures are swallowed by design, so faulting it shows the developer
- * nothing and only skews the clock the session prune trusts.
- */
-const SERVER_CLOCK_FN = 'system:serverTime';
-
 const CONFIG_KEYS: ReadonlySet<string> = new Set(['rate', 'latencyMs', 'kinds']);
 
 function invalid(problem: string): Error {
@@ -99,7 +92,11 @@ function pickOne<T>(items: readonly T[], random: () => number): T {
  * tests pass a seeded one. `config` must already be valid.
  */
 export function pickChaosFault(config: ChaosConfig, call: ApiCall, random: () => number): TransportFault {
-  if (call.fn === SERVER_CLOCK_FN) return { kind: 'pass' };
+  // The client's clock sample (`SERVER_CLOCK_CALL` in `lib/api/meetcal-api.ts`,
+  // the only `clock` call). Never faulted: its failures are swallowed by
+  // design, so faulting it shows the developer nothing and only skews the
+  // clock the session prune trusts.
+  if (call.kind === 'clock') return { kind: 'pass' };
   if (random() >= config.rate) return { kind: 'pass' };
   const kind = pickOne(config.kinds ?? DEFAULT_CHAOS_KINDS, random);
   switch (kind) {

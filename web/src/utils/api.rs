@@ -85,7 +85,8 @@ pub(crate) mod queries {
     pub(crate) const MEET_ATHLETES_SESSIONS: Query = Query::text("meets:athletesSessions");
     /// `GET /lifting-results`; takes `meet`.
     pub(crate) const MEET_RESULTS: Query = Query::text("results:byMeet");
-    /// `GET /search`; takes `query`, and optionally `startDate` and `endDate`.
+    /// `GET /search`; takes `query`, and optionally `startDate` and `endDate` (both included).
+    /// Answers at most 600 results, the most recent, with `truncated` set when it cut some.
     pub(crate) const SEARCH: Query = Query::value("results:search");
     /// `GET /data/records`
     pub(crate) const RECORDS: Query = Query::text("reference:records");

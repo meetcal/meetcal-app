@@ -134,7 +134,8 @@ export class MeetCalApiError extends Error {
 }
 
 /**
- * Server clock, as sampled from the `system:serverTime` mutation.
+ * Server clock, as sampled from the `Date` header of a `system:ping` answer
+ * (a constant query, so always a cache hit; see `serverClockMs`).
  *
  * Destructive housekeeping — auto-unsaving started sessions (server DELETE
  * included), clearing a downloaded meet once it has ended — used to trust
@@ -186,6 +187,12 @@ const SERVER_CLOCK_SAMPLE_TIMEOUT_MS = 10000;
 /** A sample whose round trip took longer than this is too imprecise to keep. */
 const MAX_CLOCK_SAMPLE_ROUND_TRIP_MS = 5000;
 
+/**
+ * The clock sample's request. App bundles before this one called the
+ * `system:serverTime` mutation instead, which runs (and bills) every time.
+ */
+export const SERVER_CLOCK_CALL: ApiCall = { path: '/clock', fn: 'system:ping', kind: 'clock', args: {} };
+
 let serverClockSample: ServerClockSample | null = null;
 let serverClockInFlight: Promise<void> | null = null;
 
@@ -197,7 +204,7 @@ let serverClockInFlight: Promise<void> | null = null;
 function sampleServerClock(): { done: Promise<void>; started: boolean } {
   if (serverClockInFlight) return { done: serverClockInFlight, started: false };
   const sentAt = Date.now();
-  const sample = callApi({ path: '/clock', fn: 'system:serverTime', kind: 'mutation', args: {} })
+  const sample = callApi(SERVER_CLOCK_CALL)
     .then((serverNow) => {
       if (typeof serverNow !== 'number' || !Number.isFinite(serverNow)) return;
       const receivedAt = Date.now();
@@ -301,7 +308,7 @@ function assertHasFields(value: unknown, label: string, fields: string[]): Recor
 }
 
 function methodLabel(call: ApiCall): string {
-  return call.kind === 'query' ? 'GET' : 'POST';
+  return call.kind === 'mutation' ? 'POST' : 'GET';
 }
 
 /**
@@ -1116,6 +1123,12 @@ export async function fetchApiYearBestsByNames(
   return merged;
 }
 
+/**
+ * `results:search`: name suggestions, or with `startDate` and `endDate` (both
+ * inclusive, `YYYY-MM-DD`) the results in that range. `truncated` says more
+ * results matched than the answer holds (the most recent are kept), so the
+ * search should be narrowed.
+ */
 export async function searchApi(query: string, startDate?: string, endDate?: string) {
   const response = assertHasFields(
     await readQuery('/search', 'results:search', { query, startDate, endDate }),
@@ -1128,6 +1141,8 @@ export async function searchApi(query: string, startDate?: string, endDate?: str
     matchedName: typeof response.matched_name === 'string' ? response.matched_name : null,
     suggestions,
     results: results.map(mapApiLiftingResult),
+    // Deployments before the field answered without it; they cut silently.
+    truncated: response.truncated === true,
   };
 }
 

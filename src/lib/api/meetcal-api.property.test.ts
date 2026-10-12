@@ -783,7 +783,7 @@ describe('JSON text answers (properties)', () => {
     await fc.assert(
       fc.asyncProperty(textArb as fc.Arbitrary<string>, async (text) => {
         clearHttpValidatorCache();
-        setApiTransportForTests(async (call) => (call.fn === 'system:serverTime' ? Date.now() : { etag: null, json: text }));
+        setApiTransportForTests(async (call) => (isClockCall(call) ? Date.now() : { etag: null, json: text }));
         await expect((invoke as () => Promise<unknown>)()).rejects.toThrow(/empty body|invalid JSON|expected an? (array|object)/);
       }),
     );
