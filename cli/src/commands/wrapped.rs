@@ -468,7 +468,9 @@ mod tests {
 
         let error = exact_name_results("Doe", response).unwrap_err().to_string();
 
-        assert!(error.contains("Suggestions: Jane Doe (more athletes match; type more of the name)"));
+        assert!(
+            error.contains("Suggestions: Jane Doe (more athletes match; type more of the name)")
+        );
     }
 
     #[test]
