@@ -25,6 +25,7 @@ import {
   computeWsoList,
   computeWsoRows,
   filterWsoRows,
+  requireAdaptiveGender,
   wsoAgeGroups,
 } from './lib/referenceData';
 import { compareBytes } from './lib/sort';
@@ -82,7 +83,7 @@ export const live = internalQuery({
       case 'wsoAgeGroups':
         return JSON.stringify(wsoAgeGroups(await computeWsoRows(ctx, a.wso)));
       case 'adaptive':
-        return JSON.stringify(await computeAdaptiveRecords(ctx, a.gender, a.excludeFederation, '2026'));
+        return JSON.stringify(await computeAdaptiveRecords(ctx, requireAdaptiveGender(a.gender), a.excludeFederation, '2026'));
       case 'clubMeetStats': {
         const roster = await ctx.db
           .query('athletes')

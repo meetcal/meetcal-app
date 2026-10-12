@@ -15,6 +15,8 @@ import {
   computeWsoList,
   computeWsoRows,
   filterWsoRows,
+  requireAdaptiveGender,
+  requireKnownRankingClass,
   wsoAgeGroups as ageGroupsOf,
   type WsoRecordRow,
 } from './lib/referenceData';
@@ -67,13 +69,19 @@ export const intlRankings = query({
     await viewOrLive(ctx, REF_VIEWS.intl_rankings, args.ifNoneMatch, () => computeIntlRankings(ctx)),
 });
 
-/** `GET /data/nat-rankings`: each athlete's best total in the class, heaviest first. */
+/**
+ * `GET /data/nat-rankings`: each athlete's best total in the class, heaviest
+ * first. An unknown federation or age category is a 404
+ * (`requireKnownRankingClass`); a known class nobody has a total in is `[]`.
+ */
 export const nationalRankings = query({
   args: { federation: v.string(), ageCategory: v.string(), ifNoneMatch },
-  handler: async (ctx, args) =>
-    await viewOrLive(ctx, natKey(args.federation, args.ageCategory), args.ifNoneMatch, () =>
+  handler: async (ctx, args) => {
+    await requireKnownRankingClass(ctx, args.federation, args.ageCategory);
+    return await viewOrLive(ctx, natKey(args.federation, args.ageCategory), args.ifNoneMatch, () =>
       computeNationalRankings(ctx, args.federation, args.ageCategory),
-    ),
+    );
+  },
 });
 
 /** `GET /data/nat-rankings-year`: `nationalRankings` within one calendar year, with dates. */
@@ -81,6 +89,7 @@ export const nationalRankingsByYear = query({
   args: { federation: v.string(), ageCategory: v.string(), year: v.string(), ifNoneMatch },
   handler: async (ctx, args) => {
     if (!/^\d{4}$/.test(args.year)) throw apiError(400, 'year must be a four-digit year');
+    await requireKnownRankingClass(ctx, args.federation, args.ageCategory);
     const rankings = await computeNationalRankingsForYear(ctx, args.federation, args.ageCategory, args.year);
     return revalidated(rankings, args.ifNoneMatch);
   },
@@ -126,7 +135,7 @@ export const wsoRecords = query({
   },
 });
 
-/** `GET /data/adaptive`: the season's best lifts per weight class. */
+/** `GET /data/adaptive`: the season's best lifts per weight class. `gender` is `men` or `women`, any case. */
 export const adaptiveRecords = query({
   args: {
     gender: v.string(),
@@ -137,14 +146,13 @@ export const adaptiveRecords = query({
   handler: async (ctx, args) => {
     const season = args.season ?? ADAPTIVE_RECORDS_SEASON_START;
     if (!/^\d{4}$/.test(season)) throw apiError(400, 'season must be a four-digit year');
-    const compute = () => computeAdaptiveRecords(ctx, args.gender, args.excludeFederation, season);
+    const gender = requireAdaptiveGender(args.gender);
+    const compute = () => computeAdaptiveRecords(ctx, gender, args.excludeFederation, season);
     const viewed =
       season === ADAPTIVE_RECORDS_SEASON_START &&
-      ADAPTIVE_VIEW_ARGS.some(
-        (a) => a.gender === args.gender.toLowerCase() && a.excludeFederation === args.excludeFederation,
-      );
+      ADAPTIVE_VIEW_ARGS.some((a) => a.gender === gender && a.excludeFederation === args.excludeFederation);
     if (!viewed) return revalidated(await compute(), args.ifNoneMatch);
-    return await viewOrLive(ctx, adaptiveKey(args.gender, args.excludeFederation, season), args.ifNoneMatch, compute);
+    return await viewOrLive(ctx, adaptiveKey(gender, args.excludeFederation, season), args.ifNoneMatch, compute);
   },
 });
 

@@ -278,7 +278,9 @@ function closePackage(staticText: string, yearBests: unknown | undefined): strin
 /**
  * `GET /meets/package`: meet, schedule, roster (with each athlete's session
  * times), the meet's results, and optionally each athlete's bests over the
- * year after `historyCutoffDate` (as `year_bests`, see `NamedBests`).
+ * year after `historyCutoffDate` (as `year_bests`, see `NamedBests`). Asking
+ * for `year_bests` (the default) without `historyCutoffDate` is a 400; pass
+ * `include: []` for the package without them.
  *
  * From views, the package is concatenated from the sections' stored text.
  * Without a fresh view for every section it is computed live
@@ -304,6 +306,11 @@ export const packageForMeet = query({
     }
 
     const wantBests = sections.has('year_bests');
+    // Without a cutoff there is no window to take bests over, and `[]` would
+    // read as "nobody has bests".
+    if (wantBests && historyCutoffDate === undefined) {
+      throw apiError(400, 'history_cutoff_date is required for year_bests');
+    }
     const bestsSince = wantBests && historyCutoffDate !== undefined ? addMonths(historyCutoffDate, 12) : undefined;
 
     const [staticView, timelinesView] = await Promise.all([

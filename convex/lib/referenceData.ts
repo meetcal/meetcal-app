@@ -2,6 +2,7 @@ import type { Infer } from 'convex/values';
 import type { QueryCtx } from '../_generated/server';
 import type { recordHolder } from '../schema';
 import { compareBytes, compareCollated, sortByWeightClass } from './sort';
+import { apiError } from './validation';
 
 // Reference answers, each the JSON of the Rust route named on it. Queries
 // serve them from a view when one is fresh and compute them here otherwise;
@@ -163,6 +164,41 @@ export async function computeNationalRankingsForYear(
   return bestTotalPerAthlete(ranked);
 }
 
+/**
+ * A current ranking division as the app and the website spell it (`Open
+ * Men's 60kg`, `Women's 14-15 Age Group 48kg`, `Men's Masters (35-39) 79kg`).
+ * Such a class is real even before anyone has a result in it.
+ */
+const RANKING_DIVISION = new RegExp(
+  "^(?:(?:Open|Junior) (?:Men|Women)'s|(?:Men|Women)'s (?:11 Under Age Group|13 Under Age Group|14-15 Age Group|16-17 Age Group|" +
+    'Masters \\((?:35-39|40-44|45-49|50-54|55-59|60-64|65-69|70-74|75-79|80-84|85-89|90\\+)\\))) \\d+\\+?kg$',
+);
+
+export function isRankingDivision(ageCategory: string): boolean {
+  return RANKING_DIVISION.test(ageCategory);
+}
+
+/**
+ * Rejects a ranking class nobody could mean, so a typo or the wrong case
+ * answers 404 instead of an empty ranking that looks like "nobody lifted":
+ * the federation must have results, and the age category must be a current
+ * division (`isRankingDivision`) or have results under that federation (a
+ * retired class such as `Open Men's 85 kg`). Costs one or two index reads.
+ */
+export async function requireKnownRankingClass(ctx: QueryCtx, federation: string, ageCategory: string): Promise<void> {
+  const anyInFederation = await ctx.db
+    .query('lifting_results')
+    .withIndex('by_federation_and_age', (q) => q.eq('federation', federation))
+    .first();
+  if (anyInFederation === null) throw apiError(404, `unknown federation '${federation}'`);
+  if (isRankingDivision(ageCategory)) return;
+  const anyInClass = await ctx.db
+    .query('lifting_results')
+    .withIndex('by_federation_and_age', (q) => q.eq('federation', federation).eq('age', ageCategory))
+    .first();
+  if (anyInClass === null) throw apiError(404, `unknown age category '${ageCategory}' for ${federation}`);
+}
+
 /** Distinct values in the database's text order (`SELECT DISTINCT … ORDER BY`). */
 export function distinctCollated(values: Iterable<string>): string[] {
   return Array.from(new Set(values)).sort(compareCollated);
@@ -276,8 +312,17 @@ const WOMEN = /\bwomen\b/i;
 const YEAR = /\b\d{4}\b/;
 const WEIGHT_CLASS = /\b(\d+\+?)kg/gi;
 
-function matchesGender(age: string, gender: string): boolean {
-  if (gender.toLowerCase() === 'men') return MEN.test(age) && !WOMEN.test(age);
+export type AdaptiveGender = 'men' | 'women';
+
+/** `men` or `women`, any case; anything else is a 400 (it used to read as women). */
+export function requireAdaptiveGender(gender: string): AdaptiveGender {
+  const folded = gender.toLowerCase();
+  if (folded === 'men' || folded === 'women') return folded;
+  throw apiError(400, "gender must be 'men' or 'women'");
+}
+
+function matchesGender(age: string, gender: AdaptiveGender): boolean {
+  if (gender === 'men') return MEN.test(age) && !WOMEN.test(age);
   return WOMEN.test(age);
 }
 
@@ -306,7 +351,7 @@ export type AdaptiveRecord = { weight_class: string; snatch: number; cj: number;
 /** The season's best lifts per weight class. */
 export async function computeAdaptiveRecords(
   ctx: QueryCtx,
-  gender: string,
+  gender: AdaptiveGender,
   excludeFederation: string,
   season: string,
 ): Promise<AdaptiveRecord[]> {

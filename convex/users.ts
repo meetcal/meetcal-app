@@ -1,7 +1,7 @@
 import { mutation, query, type QueryCtx } from './_generated/server';
 import type { Doc } from './_generated/dataModel';
 import { compareCollated } from './lib/sort';
-import { apiError, requireNonEmpty } from './lib/validation';
+import { apiError, isValidIsoDate, requireNonEmpty } from './lib/validation';
 
 // `/users/me/*`. The Clerk subject is the user id, as in the Rust API; every
 // read and write is scoped to it here instead of by row-level security.
@@ -55,6 +55,30 @@ function optionalStringArray(args: RawArgs, key: string): string[] | undefined {
   if (value === undefined || value === null) return undefined;
   if (!Array.isArray(value) || value.some((item) => typeof item !== 'string')) throw apiError(400, `${key} must be a list of strings`);
   return value as string[];
+}
+
+/**
+ * A start time as schedules and the app spell it (`src/utils/time.ts`):
+ * `9:00 AM`, `9:00:00 AM`, `9:00AM`, or 24-hour `09:00` / `09:00:00`.
+ */
+const START_TIME = /^(?:(?:0?[1-9]|1[0-2]):[0-5]\d(?::[0-5]\d)?\s*(?:AM|PM)|(?:[01]?\d|2[0-3]):[0-5]\d(?::[0-5]\d)?)$/i;
+
+/**
+ * The saved session's when, which the app counts down to and auto-unsaves
+ * by: a whole session number from 1, and a `YYYY-MM-DD` date and a clock
+ * start time when given. Empty text is "not known" (the app sends `''` for a
+ * session without a schedule row) and stays allowed.
+ */
+export function requireSavedSessionWhen(sessionNumber: number, date: string | undefined, startTime: string | undefined): void {
+  if (!Number.isInteger(sessionNumber) || sessionNumber < 1) {
+    throw apiError(400, 'session_number must be a whole number from 1');
+  }
+  if (date !== undefined && date !== '' && !isValidIsoDate(date)) {
+    throw apiError(400, 'date must be a valid YYYY-MM-DD date');
+  }
+  if (startTime !== undefined && startTime.trim() !== '' && !START_TIME.test(startTime.trim())) {
+    throw apiError(400, 'start_time must be a time such as 9:00 AM or 09:00');
+  }
 }
 
 function requireMaxLen(what: string, value: string | undefined, max: number): void {
@@ -137,6 +161,7 @@ export const putSavedSession = mutation({
     requireMaxLen('start_time too long', body.start_time, MAX_SAVED_SESSION_FIELD_LEN);
     requireMaxLen('date too long', body.date, MAX_SAVED_SESSION_FIELD_LEN);
     requireMaxLen('notes too long', body.notes, MAX_SAVED_SESSION_NOTES_LEN);
+    requireSavedSessionWhen(body.session_number, body.date, body.start_time);
     const athleteNames = body.athlete_names ?? [];
     if (athleteNames.length > MAX_SAVED_SESSION_ATHLETE_NAMES) {
       throw apiError(400, 'too many athlete_names', { max: MAX_SAVED_SESSION_ATHLETE_NAMES });
