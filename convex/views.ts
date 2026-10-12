@@ -388,7 +388,6 @@ export const storeResultNames = internalMutation({
   },
 });
 
-/** Adds names to the search directory without a full scan. */
 /**
  * Brings the search directory up to date for names a write touched (the
  * `name` hints carry the old name of a deleted or replaced row as well as the
@@ -934,7 +933,8 @@ export const storeScratchText = internalMutation({
   },
 });
 
-export const storeTextView = internalMutation({
+/** Stores a JSON view outside the refresh machinery (the scan's progress, the rebuild's classes). */
+export const storeScratchJson = internalMutation({
   args: { key: v.string(), chunks: v.array(v.string()) },
   handler: async (ctx, { key, chunks }) => {
     await writeView(ctx, key, chunks, []);
@@ -1019,14 +1019,14 @@ export const rebuildStage = internalAction({
           cursor = page.cursor;
           if (overBudget()) {
             await ctx.runMutation(internal.views.storeScratchText, { key: SCAN_NAMES_VIEW, chunks: textChunks(directoryText([...names].sort(compareCollated))) });
-            await ctx.runMutation(internal.views.storeTextView, { key: SCAN_CLASSES_VIEW, chunks: jsonChunks([...classes]) });
+            await ctx.runMutation(internal.views.storeScratchJson, { key: SCAN_CLASSES_VIEW, chunks: jsonChunks([...classes]) });
             return await next('scan', 0, { cursor });
           }
         }
         const sortedNames = [...names].sort(compareCollated);
         await ctx.runMutation(internal.views.storeResultNames, { chunks: textChunks(directoryText(sortedNames)) });
         await rebuildSearchShards(ctx, sortedNames);
-        await ctx.runMutation(internal.views.storeTextView, {
+        await ctx.runMutation(internal.views.storeScratchJson, {
           key: REBUILD_CLASSES_VIEW,
           chunks: jsonChunks([...classes].sort()),
         });

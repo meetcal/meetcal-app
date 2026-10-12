@@ -6,8 +6,11 @@ import {
   MAX_PLAUSIBLE_CLOCK_SKEW_MS,
 } from '@/lib/api/meetcal-api';
 import { devLog } from '@/lib/logger';
+import { buildSessionScheduleLookup, withScheduleTimes } from '@/lib/saved-schedule-lookup';
 import { tokenBelongsTo } from '@/lib/saved-sessions-outbox';
 import type { SavedSession } from '@/lib/saved-sessions-store';
+import type { SessionScheduleLookup } from '@/types/saved';
+import type { Schedule } from '@/types/schedule';
 import { hasSessionPassedAutoUnsaveWindow } from '@/utils/time';
 
 /**
@@ -27,14 +30,34 @@ import { hasSessionPassedAutoUnsaveWindow } from '@/utils/time';
  * and was deleted, server copy and notes included, before it began. Pruning
  * is destructive, so an unknown zone keeps the rows until a later load can
  * resolve it.
+ *
+ * `readSchedule` supplies the meet's current schedule. A saved row keeps the
+ * start time it was saved with, so a session USAW moved from 9:00 AM to
+ * 2:00 PM was deleted at 11:00 AM, notes and server copy included, before it
+ * started. A row is pruned only once the later of its saved start and its
+ * schedule start is past the window: the offline schedule copy can be older
+ * than a row saved from a fresh fetch, and pruning is destructive, so the
+ * more cautious of the two wins.
  */
 export async function findExpiredSessionIds(
   sessions: SavedSession[],
   now: Date,
+  readSchedule?: (meet: MeetName) => Promise<Schedule>,
 ): Promise<string[]> {
   // `null`: the meet's zone could not be resolved, so its rows are kept.
   const timeZoneByMeet = new Map<MeetName, string | null>();
+  const lookupByMeet = new Map<MeetName, Map<string, SessionScheduleLookup> | null>();
   const expiredIds: string[] = [];
+
+  const startOf = (session: SavedSession, timeZone: string): number | null => {
+    if (!session.startTime || !session.date) return null;
+    try {
+      const startMs = convertToUTC(session.startTime, session.date, timeZone).getTime();
+      return Number.isNaN(startMs) ? null : startMs;
+    } catch {
+      return null;
+    }
+  };
 
   for (const session of sessions) {
     if (!session.startTime || !session.date) continue;
@@ -51,14 +74,22 @@ export async function findExpiredSessionIds(
     }
     if (timeZone === null) continue;
 
-    let sessionStart: Date;
-    try {
-      sessionStart = convertToUTC(session.startTime, session.date, timeZone);
-    } catch {
-      continue;
-    }
+    const savedStart = startOf(session, timeZone);
+    if (savedStart === null) continue;
 
-    if (hasSessionPassedAutoUnsaveWindow(sessionStart, now)) {
+    let lookup = lookupByMeet.get(session.meet);
+    if (lookup === undefined) {
+      const schedule = readSchedule
+        ? await readSchedule(session.meet).catch(() => [] as Schedule)
+        : [];
+      lookup = schedule.length > 0 ? buildSessionScheduleLookup(schedule) : null;
+      lookupByMeet.set(session.meet, lookup);
+    }
+    const scheduled = withScheduleTimes(session, lookup);
+    const scheduleStart = scheduled === session ? null : startOf(scheduled, timeZone);
+    const latestStart = Math.max(savedStart, scheduleStart ?? savedStart);
+
+    if (hasSessionPassedAutoUnsaveWindow(new Date(latestStart), now)) {
       expiredIds.push(session.id);
     }
   }
@@ -73,6 +104,8 @@ export interface PruneStartedSessionsDeps {
   getToken: () => Promise<string | null>;
   readStoredSessions: () => Promise<SavedSession[]>;
   removeSession: (sessionId: string) => Promise<boolean>;
+  /** The meet's current schedule, so a moved session is judged by its new time. */
+  readSchedule?: (meet: MeetName) => Promise<Schedule>;
 }
 
 /**
@@ -129,7 +162,11 @@ export async function pruneStartedSessions(deps: PruneStartedSessionsDeps): Prom
   const sessions = await deps.readStoredSessions();
   if (sessions.length === 0 || !stillThisUser()) return;
 
-  const expiredIds = await findExpiredSessionIds(sessions, new Date(Date.now() + clock.skewMs));
+  const expiredIds = await findExpiredSessionIds(
+    sessions,
+    new Date(Date.now() + clock.skewMs),
+    deps.readSchedule,
+  );
 
   for (const id of expiredIds) {
     if (!stillThisUser()) return;

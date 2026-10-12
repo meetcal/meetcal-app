@@ -3,6 +3,7 @@ import { getCloseIcon } from "@/lib/start-list-utils";
 import { MaterialSurface } from "@/components/ui/MaterialSurface";
 import { ThemedText } from "@/components/ui/ThemedText";
 import { useAppColors } from "@/hooks/useAppColors";
+import { UPCOMING_MEETS_MONTHS_RANGE } from "@/hooks/useUpcomingMeets";
 import { MeetSelectionModalProps } from "@/types/schedule";
 import { lightImpact } from "@/lib/haptics";
 import { useState } from "react";
@@ -148,7 +149,7 @@ export function MeetSelectionModal({
             {meets.length === 0 && (
               <View style={styles.emptyContainer}>
                 <ThemedText style={[styles.emptyText, { color: colors.secondaryText }]}>
-                  No meets available in the next 6 months
+                  {`No meets within ${UPCOMING_MEETS_MONTHS_RANGE} months of today`}
                 </ThemedText>
               </View>
             )}

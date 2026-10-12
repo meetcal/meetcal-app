@@ -208,6 +208,7 @@ export default function WeightliftingWrappedScreen() {
   const [isOffline] = useIsOffline();
   const flatListRef = useRef<FlatList>(null);
   const viewShotRef = useRef<React.ComponentRef<typeof ViewShot>>(null);
+  const searchInFlightRef = useRef(false);
 
   const onSearchTextChange = useCallback((text: string) => {
     setSearchQuery(text);
@@ -232,11 +233,16 @@ export default function WeightliftingWrappedScreen() {
   }, [screenWidth, currentSlide]);
 
   const searchAthlete = async () => {
+    // The button is disabled while a search runs or offline, but the return
+    // key submits too. A ref, not `loading`: two quick submits can both run
+    // before the re-render that would show `loading` as true.
+    if (searchInFlightRef.current || isOffline) return;
     if (!searchQuery.trim()) {
       showToast({ type: "error", message: "Please enter an athlete name" });
       return;
     }
 
+    searchInFlightRef.current = true;
     dismissSuggestions();
     setDidYouMean(false);
     setLoading(true);
@@ -274,6 +280,7 @@ export default function WeightliftingWrappedScreen() {
       console.error("Error in searchAthlete:", error);
       showToast({ type: "error", message: "An unexpected error occurred" });
     } finally {
+      searchInFlightRef.current = false;
       setLoading(false);
     }
   };
@@ -301,7 +308,15 @@ export default function WeightliftingWrappedScreen() {
     } catch {
       if (!wrappedStats) return;
       const shareText = buildWrappedShareText(wrappedStats, selectedYear);
-      await Share.share({ message: shareText });
+      // The text share is the fallback for a failed image share, so it runs
+      // inside the `catch`; without its own guard a failure here was an
+      // unhandled rejection and the tap did nothing visible.
+      try {
+        await Share.share({ message: shareText });
+      } catch (error) {
+        console.warn("Wrapped: text share failed", error);
+        showToast({ type: "error", message: "Couldn't share your Wrapped. Please try again." });
+      }
     }
   };
 

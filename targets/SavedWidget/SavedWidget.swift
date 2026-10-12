@@ -8,16 +8,13 @@
 import WidgetKit
 import SwiftUI
 
-let meetCalSavedDeepLink = URL(string: "meetcal:///open/saved")
-let meetCalQualifyingTotalsDeepLink = URL(string: "meetcal:///comp-data/new-qualifying-totals")
-let meetCalStandardsDeepLink = URL(string: "meetcal:///comp-data/new-standards")
-let meetCalIntlRankingsDeepLink = URL(string: "meetcal:///comp-data/rankings")
+/// How long a timeline may go without the app reloading it. The app calls
+/// `WidgetCenter.reloadAllTimelines()` after every write, so this is only a
+/// backstop for a reload that never arrived.
+let meetCalTimelineBackstop: TimeInterval = 60 * 60
 
-extension UserDefaults {
-    static var appGroup: UserDefaults {
-        UserDefaults(suiteName: "group.com.memohnsen.meetcal") ?? .standard
-    }
-}
+/// Upper bound on precomputed entries (one per upcoming session start).
+let meetCalMaxSessionEntries = 24
 
 struct Provider: TimelineProvider {
     func placeholder(in context: Context) -> SimpleEntry {
@@ -25,55 +22,45 @@ struct Provider: TimelineProvider {
     }
 
     func getSnapshot(in context: Context, completion: @escaping (SimpleEntry) -> ()) {
-        let entry = loadEntry()
-        completion(entry)
+        let defaults = MeetCalShared.defaults
+        let now = Date()
+        completion(SimpleEntry(
+            date: now,
+            sessions: MeetCalShared.upcomingSavedSessions(in: defaults, at: now),
+            selectedMeet: MeetCalShared.selectedMeet(in: defaults)
+        ))
     }
 
+    /// One entry now plus one at each upcoming session start, so a session
+    /// drops off the widget the moment it starts without spending a reload.
     func getTimeline(in context: Context, completion: @escaping (Timeline<Entry>) -> ()) {
-        let entry = loadEntry()
-        // Refresh every 5 minutes to pick up changes from the app
-        let refreshDate = Calendar.current.date(byAdding: .minute, value: 5, to: Date()) ?? Date()
-        let timeline = Timeline(entries: [entry], policy: .after(refreshDate))
-        completion(timeline)
-    }
+        let defaults = MeetCalShared.defaults
+        let selectedMeet = MeetCalShared.selectedMeet(in: defaults)
+        let sessions = MeetCalShared.allSavedSessions(in: defaults)
+        let now = Date()
 
-    private func loadEntry() -> SimpleEntry {
-        print("Widget: loadEntry called")
+        let upcomingStarts = Array(
+            Set(sessions.compactMap { $0.startAt }.filter { $0 > now })
+        )
+        .sorted()
+        .prefix(meetCalMaxSessionEntries)
 
-        let sharedDefaults = UserDefaults.appGroup
-        let selectedMeet = sharedDefaults.string(forKey: "selectedMeet") ?? ""
-        print("Widget: selectedMeet = \(selectedMeet)")
-
-        guard let savedSessionsData = sharedDefaults.data(forKey: "savedSessions") else {
-            print("Widget: No saved sessions data found")
-            return SimpleEntry(date: Date(), sessions: [], selectedMeet: selectedMeet)
+        var entries = [SimpleEntry(
+            date: now,
+            sessions: sessions.filter { !$0.hasStarted(at: now) },
+            selectedMeet: selectedMeet
+        )]
+        for start in upcomingStarts {
+            entries.append(SimpleEntry(
+                date: start,
+                sessions: sessions.filter { !$0.hasStarted(at: start) },
+                selectedMeet: selectedMeet
+            ))
         }
 
-        let decoder = JSONDecoder()
-        guard let savedSessions = try? decoder.decode([SessionsRowForWidget].self, from: savedSessionsData) else {
-            print("Widget: Failed to decode sessions")
-            return SimpleEntry(date: Date(), sessions: [], selectedMeet: selectedMeet)
-        }
-
-        print("Widget: Decoded \(savedSessions.count) sessions")
-
-        let widgetSessions = savedSessions
-            .map { session in
-                WidgetSession(
-                    id: session.id,
-                    meet: session.meet,
-                    platform: session.platform,
-                    sessionNumber: session.session_number,
-                    startTime: session.start_time,
-                    weighInTime: session.weigh_in_time,
-                    weightClass: session.weight_class,
-                    date: session.date,
-                    url: session.url
-                )
-            }
-            .filter { !$0.isPast }
-
-        return SimpleEntry(date: Date(), sessions: widgetSessions, selectedMeet: selectedMeet)
+        // Entries past the backstop are simply rebuilt by the next reload.
+        let reloadDate = now.addingTimeInterval(meetCalTimelineBackstop)
+        completion(Timeline(entries: entries, policy: .after(reloadDate)))
     }
 }
 
@@ -100,19 +87,16 @@ struct DataWidgetProvider: TimelineProvider {
         completion(loadEntry())
     }
 
+    /// The payload only changes when the app writes it, and the app reloads
+    /// the timelines when it does; the backstop covers a missed reload.
     func getTimeline(in context: Context, completion: @escaping (Timeline<DataWidgetEntry>) -> ()) {
         let entry = loadEntry()
-        let refreshDate = Calendar.current.date(byAdding: .minute, value: 5, to: Date()) ?? Date()
+        let refreshDate = Date().addingTimeInterval(meetCalTimelineBackstop)
         completion(Timeline(entries: [entry], policy: .after(refreshDate)))
     }
 
     private func loadEntry() -> DataWidgetEntry {
-        let sharedDefaults = UserDefaults.appGroup
-        guard let data = sharedDefaults.data(forKey: defaultsKey),
-              let payload = try? JSONDecoder().decode(DataWidgetPayload.self, from: data) else {
-            return DataWidgetEntry(date: Date(), payload: fallbackPayload)
-        }
-
+        let payload = MeetCalShared.dataPayload(forKey: defaultsKey) ?? fallbackPayload
         return DataWidgetEntry(date: Date(), payload: payload)
     }
 }
@@ -157,9 +141,10 @@ struct SessionView: View {
                 Text("Session \(session.sessionNumber) • \(session.formattedStartTime)")
                     .font(.caption)
                     .bold()
-                Text("\(session.weightClass)")
+                Text(session.detailLine)
                     .font(.caption2)
                     .foregroundStyle(.secondary)
+                    .lineLimit(1)
             }
             Spacer()
         }
@@ -171,25 +156,16 @@ func sessionDeepLink(_ session: WidgetSession, selectedMeet: String) -> URL? {
     if let url = session.url, let parsed = URL(string: url) {
         return parsed
     }
-
-    var components = URLComponents()
-    components.scheme = "meetcal"
-    components.host = ""
-    components.path = "/shared-screens/schedule-details"
-    components.queryItems = [
-        URLQueryItem(name: "id", value: session.id),
-        URLQueryItem(name: "meet", value: session.meet ?? selectedMeet),
-        URLQueryItem(name: "sessionNumber", value: String(session.sessionNumber)),
-        URLQueryItem(name: "platform", value: session.platform),
-        URLQueryItem(name: "weightClass", value: session.weightClass),
-        URLQueryItem(name: "startTime", value: session.startTime),
-        URLQueryItem(name: "weighInTime", value: session.weighInTime),
-        URLQueryItem(name: "date", value: session.date)
-    ].filter { item in
-        guard let value = item.value else { return false }
-        return !value.isEmpty
-    }
-    return components.url
+    return MeetCalDeepLinks.sessionDetails(
+        id: session.id,
+        meet: session.meet ?? selectedMeet,
+        sessionNumber: session.sessionNumber,
+        platform: session.platform,
+        weightClass: session.weightClass,
+        startTime: session.startTime,
+        weighInTime: session.weighInTime,
+        date: session.date
+    )
 }
 
 @ViewBuilder
@@ -426,7 +402,7 @@ struct SavedWidget: Widget {
         StaticConfiguration(kind: kind, provider: Provider()) { entry in
             SavedWidgetEntryView(entry: entry)
                 .containerBackground(.fill.tertiary, for: .widget)
-                .widgetURL(meetCalSavedDeepLink)
+                .widgetURL(MeetCalDeepLinks.saved)
         }
         .configurationDisplayName("Saved Sessions")
         .description("Get a quick glance at your saved sessions.")
@@ -441,12 +417,12 @@ struct QualifyingTotalsWidget: Widget {
         StaticConfiguration(
             kind: kind,
             provider: DataWidgetProvider(
-                defaultsKey: "qualifyingTotalsWidgetData",
+                defaultsKey: MeetCalShared.Key.qualifyingTotals,
                 fallbackPayload: DataWidgetPayload(
                     title: "Qualifying Totals",
                     subtitle: "Open MeetCal to choose filters",
                     emptyMessage: "No qualifying totals",
-                    linkURL: meetCalQualifyingTotalsDeepLink?.absoluteString,
+                    linkURL: MeetCalDeepLinks.qualifyingTotals.absoluteString,
                     maxRows: 10,
                     rows: []
                 )
@@ -454,7 +430,7 @@ struct QualifyingTotalsWidget: Widget {
         ) { entry in
             LargeDataWidgetView(entry: entry, systemImage: "target")
                 .containerBackground(.fill.tertiary, for: .widget)
-                .widgetURL(URL(string: entry.payload.linkURL ?? "") ?? meetCalQualifyingTotalsDeepLink)
+                .widgetURL(URL(string: entry.payload.linkURL ?? "") ?? MeetCalDeepLinks.qualifyingTotals)
         }
         .configurationDisplayName("Qualifying Totals")
         .description("See qualifying totals for your selected event.")
@@ -469,12 +445,12 @@ struct StandardsWidget: Widget {
         StaticConfiguration(
             kind: kind,
             provider: DataWidgetProvider(
-                defaultsKey: "standardsWidgetData",
+                defaultsKey: MeetCalShared.Key.standards,
                 fallbackPayload: DataWidgetPayload(
                     title: "A/B Standards",
                     subtitle: "Open MeetCal to choose filters",
                     emptyMessage: "No standards",
-                    linkURL: meetCalStandardsDeepLink?.absoluteString,
+                    linkURL: MeetCalDeepLinks.standards.absoluteString,
                     maxRows: 10,
                     rows: []
                 )
@@ -482,7 +458,7 @@ struct StandardsWidget: Widget {
         ) { entry in
             LargeDataWidgetView(entry: entry, systemImage: "chart.bar", centerTitle: true)
                 .containerBackground(.fill.tertiary, for: .widget)
-                .widgetURL(URL(string: entry.payload.linkURL ?? "") ?? meetCalStandardsDeepLink)
+                .widgetURL(URL(string: entry.payload.linkURL ?? "") ?? MeetCalDeepLinks.standards)
         }
         .configurationDisplayName("A/B Standards")
         .description("See USA Weightlifting A/B standards.")
@@ -497,12 +473,12 @@ struct InternationalRankingsWidget: Widget {
         StaticConfiguration(
             kind: kind,
             provider: DataWidgetProvider(
-                defaultsKey: "intlRankingsWidgetData",
+                defaultsKey: MeetCalShared.Key.intlRankings,
                 fallbackPayload: DataWidgetPayload(
                     title: "International Rankings",
                     subtitle: "Open MeetCal to choose filters",
                     emptyMessage: "No rankings",
-                    linkURL: meetCalIntlRankingsDeepLink?.absoluteString,
+                    linkURL: MeetCalDeepLinks.rankings.absoluteString,
                     maxRows: 7,
                     rows: []
                 )
@@ -510,7 +486,7 @@ struct InternationalRankingsWidget: Widget {
         ) { entry in
             LargeDataWidgetView(entry: entry, systemImage: "globe.americas")
                 .containerBackground(.fill.tertiary, for: .widget)
-                .widgetURL(URL(string: entry.payload.linkURL ?? "") ?? meetCalIntlRankingsDeepLink)
+                .widgetURL(URL(string: entry.payload.linkURL ?? "") ?? MeetCalDeepLinks.rankings)
         }
         .configurationDisplayName("International Rankings")
         .description("See international rankings for your selected filters.")
@@ -534,9 +510,9 @@ struct SavedWidgetBundle: WidgetBundle {
     SimpleEntry(
         date: .now,
         sessions: [
-            WidgetSession(platform: "Red", sessionNumber: 1, startTime: "08:00:00", weightClass: "M81", date: "2025-10-04"),
-            WidgetSession(platform: "Blue", sessionNumber: 2, startTime: "10:30:00", weightClass: "W71", date: "2025-10-04"),
-            WidgetSession(platform: "Stars", sessionNumber: 3, startTime: "14:00:00", weightClass: "M102", date: "2025-10-04")
+            WidgetSession(platform: "Red", sessionNumber: 1, startTime: "8:00 AM", weightClass: "M81", date: "2025-10-04"),
+            WidgetSession(platform: "Blue", sessionNumber: 2, startTime: "10:30 AM", weightClass: "W71", date: "2025-10-04"),
+            WidgetSession(platform: "Stars", sessionNumber: 3, startTime: "2:00 PM", weightClass: "M102", date: "2025-10-04")
         ],
         selectedMeet: "2025 New England WSO Championships"
     )
@@ -548,15 +524,15 @@ struct SavedWidgetBundle: WidgetBundle {
     SimpleEntry(
         date: .now,
         sessions: [
-            WidgetSession(platform: "Red", sessionNumber: 1, startTime: "08:00:00", weightClass: "M81", date: "2025-10-04"),
-            WidgetSession(platform: "Blue", sessionNumber: 2, startTime: "10:30:00", weightClass: "W71", date: "2025-10-04"),
-            WidgetSession(platform: "Stars", sessionNumber: 3, startTime: "14:00:00", weightClass: "M102", date: "2025-10-04"),
-            WidgetSession(platform: "White", sessionNumber: 4, startTime: "16:00:00", weightClass: "W59", date: "2025-10-04"),
-            WidgetSession(platform: "Stripes", sessionNumber: 5, startTime: "18:30:00", weightClass: "M89", date: "2025-10-04"),
-            WidgetSession(platform: "Rogue", sessionNumber: 6, startTime: "20:00:00", weightClass: "W76", date: "2025-10-04"),
-            WidgetSession(platform: "Red", sessionNumber: 7, startTime: "09:00:00", weightClass: "M73", date: "2025-10-04"),
-            WidgetSession(platform: "Blue", sessionNumber: 8, startTime: "12:00:00", weightClass: "W64", date: "2025-10-04"),
-            WidgetSession(platform: "Stars", sessionNumber: 9, startTime: "15:30:00", weightClass: "M96", date: "2025-10-04")
+            WidgetSession(platform: "Red", sessionNumber: 1, startTime: "8:00 AM", weightClass: "M81", date: "2025-10-04"),
+            WidgetSession(platform: "Blue", sessionNumber: 2, startTime: "10:30 AM", weightClass: "W71", date: "2025-10-04"),
+            WidgetSession(platform: "Stars", sessionNumber: 3, startTime: "2:00 PM", weightClass: "M102", date: "2025-10-04"),
+            WidgetSession(platform: "White", sessionNumber: 4, startTime: "4:00 PM", weightClass: "W59", date: "2025-10-04"),
+            WidgetSession(platform: "Stripes", sessionNumber: 5, startTime: "6:30 PM", weightClass: "M89", date: "2025-10-04"),
+            WidgetSession(platform: "Rogue", sessionNumber: 6, startTime: "8:00 PM", weightClass: "W76", date: "2025-10-04"),
+            WidgetSession(platform: "Red", sessionNumber: 7, startTime: "9:00 AM", weightClass: "M73", date: "2025-10-04"),
+            WidgetSession(platform: "Blue", sessionNumber: 8, startTime: "12:00 PM", weightClass: "W64", date: "2025-10-04"),
+            WidgetSession(platform: "Stars", sessionNumber: 9, startTime: "3:30 PM", weightClass: "M96", date: "2025-10-04")
         ],
         selectedMeet: "2025 New England WSO Championships"
     )

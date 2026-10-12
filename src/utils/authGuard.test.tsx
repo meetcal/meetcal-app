@@ -6,6 +6,7 @@ import { useUser } from "@clerk/expo";
 import { useRouter } from "expo-router";
 import { cacheAuthState, getCachedAuthState } from "@/lib/authCache";
 import { isNetworkAvailable } from "@/lib/networkUtils";
+import { showToast } from "@/lib/toast";
 
 jest.mock("@clerk/expo", () => ({
   useUser: jest.fn(),
@@ -23,6 +24,9 @@ jest.mock("@/lib/authCache", () => ({
 jest.mock("@/lib/networkUtils", () => ({
   isNetworkAvailable: jest.fn(),
 }));
+
+jest.mock("@/lib/toast", () => ({ showToast: jest.fn() }));
+const mockShowToast = showToast as jest.MockedFunction<typeof showToast>;
 
 const mockUseUser = useUser as jest.MockedFunction<typeof useUser>;
 const mockUseRouter = useRouter as jest.MockedFunction<typeof useRouter>;
@@ -238,6 +242,62 @@ describe("useAuthGuard offline behavior", () => {
     expect(push).toHaveBeenLastCalledWith({
       pathname: "/(auth)/sign-in",
       params: { from: "/(tabs)", feature: "saved-sessions" },
+    });
+  });
+
+  describe("when sign-in cannot be decided", () => {
+    it("offline with no cached sign-in, says to connect instead of doing nothing", async () => {
+      // Offline, Clerk never loads: this used to return `null` silently.
+      mockUseUser.mockReturnValue({ user: null, isLoaded: false } as any);
+      mockGetCachedAuthState.mockResolvedValue(null);
+      mockIsNetworkAvailable.mockResolvedValue(false);
+
+      await act(async () => {
+        create(<Harness />);
+      });
+      await flushEffects();
+
+      expect(captured?.authState).toBeNull();
+      expect(captured?.requireAuth({ feature: "save-session" })).toBeNull();
+      expect(alertSpy).not.toHaveBeenCalled();
+      expect(push).not.toHaveBeenCalled();
+      expect(mockShowToast).toHaveBeenCalledWith({
+        type: "info",
+        message: "You're offline. Connect to the internet to sign in.",
+      });
+    });
+
+    it("online while Clerk is still loading, says to try again in a moment", async () => {
+      mockUseUser.mockReturnValue({ user: null, isLoaded: false } as any);
+      mockGetCachedAuthState.mockResolvedValue(null);
+      mockIsNetworkAvailable.mockResolvedValue(true);
+
+      await act(async () => {
+        create(<Harness />);
+      });
+      await flushEffects();
+
+      expect(captured?.requireAuth({ feature: "save-session" })).toBeNull();
+      expect(mockShowToast).toHaveBeenCalledWith({
+        type: "info",
+        message: "Still checking your sign-in. Try again in a moment.",
+      });
+    });
+
+    it("does not toast when the guard can answer", async () => {
+      mockUseUser.mockReturnValue({ user: { id: "123" }, isLoaded: true } as any);
+      mockGetCachedAuthState.mockResolvedValue(null);
+      mockIsNetworkAvailable.mockResolvedValue(true);
+      mockCacheAuthState.mockResolvedValue(undefined);
+
+      await act(async () => {
+        create(<Harness />);
+      });
+      await flushEffects();
+
+      expect(captured?.authState).toBe(true);
+      expect(captured?.requireAuth({ feature: "save-session" })).toBe(true);
+      expect(mockShowToast).not.toHaveBeenCalled();
     });
   });
 });

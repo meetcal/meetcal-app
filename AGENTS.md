@@ -63,7 +63,7 @@ Package manager is **bun**, pinned in `mise.toml`. Do not use npm.
 |---|---|
 | Install | `bun install` |
 | Install from lockfile | `mise run setup` |
-| Full local PR gate | `mise run check` |
+| Full local PR gate | `mise run check` (`-- --plan` to see what it will run, `-- --all` for every suite) |
 | Dev client | `bun run start` / `bun run dev` |
 | Lint | `bun run lint` |
 | Typecheck | `bun run typecheck` (or `bunx tsc --noEmit`) |
@@ -82,7 +82,7 @@ Package manager is **bun**, pinned in `mise.toml`. Do not use npm.
 
 ## Verify
 
-Run `mise run check` before opening or updating a PR. It runs lint, typecheck, Jest coverage, and the coverage-gap inventory. Do not merge or push to `master`. Use the individual commands below while iterating.
+Run `mise run check` before opening or updating a PR. It runs only the suites the branch changes need (`scripts/check/plan.ts`): for the app and `convex/`, lint, typecheck, Jest coverage and the coverage-gap inventory; for `web/` and `cli/`, their Cargo format, clippy and tests. It holds a lock shared by every worktree, so a second gate (or a full Jest run through `mise run app:test`) waits instead of running alongside it; concurrent gates have run this machine out of memory. Run full Jest suites through `mise run check` or `mise run app:test`, not a bare `bunx jest` with no path. Do not merge or push to `master`. Use the individual commands below, scoped to the files you touched, while iterating.
 
 | Gate | Command | Pass when |
 |---|---|---|

@@ -71,9 +71,10 @@ function ClubMeetsListScreenContent() {
   ).sort();
 
   // Filter meets based on search query
-  const uniqueMeets = searchQuery
+  const meetQuery = searchQuery.trim();
+  const uniqueMeets = meetQuery
     ? allMeets.filter((meet) =>
-        meet.toLowerCase().includes(searchQuery.toLowerCase()),
+        meet.toLowerCase().includes(meetQuery.toLowerCase()),
       )
     : allMeets;
 
@@ -132,6 +133,23 @@ function ClubMeetsListScreenContent() {
               <ThemedText style={styles.retryButtonText}>Retry</ThemedText>
             </Pressable>
           )}
+        </View>
+      );
+    }
+
+    // The search box is what emptied the list: say so, instead of the
+    // "no meets for this club" state with an athlete count that contradicts it.
+    if (uniqueMeets.length === 0 && allMeets.length > 0) {
+      return (
+        <View style={styles.centerContainer}>
+          <ThemedText style={[styles.emptyTitle, { color: colors.text }]}>
+            {`No meets match "${meetQuery}"`}
+          </ThemedText>
+          <ThemedText
+            style={[styles.emptyText, { color: colors.secondaryText }]}
+          >
+            Try a different search.
+          </ThemedText>
         </View>
       );
     }
