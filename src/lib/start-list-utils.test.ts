@@ -13,6 +13,9 @@ import {
   matchesAdaptiveFilter,
   ADAPTIVE_ATHLETES_FILTER,
   NON_ADAPTIVE_ATHLETES_FILTER,
+  applyStartListPillSelection,
+  DEFAULT_START_LIST_FILTERS,
+  hasActiveStartListFilters,
 } from "@/lib/start-list-utils";
 import type { LiftResult } from "@/data/types/athletes";
 
@@ -235,6 +238,49 @@ describe("buildWeightClassOptions", () => {
         roster.some((a) => parseWeightClasses(a.weightClass).includes(option)),
       ).toBe(true);
     }
+  });
+});
+
+describe("applyStartListPillSelection", () => {
+  const withClass = { ...DEFAULT_START_LIST_FILTERS, weightClass: "89kg" };
+
+  it("clears the weight class when gender, age group or adaptive changes", () => {
+    expect(applyStartListPillSelection(withClass, "gender", "Male")).toMatchObject({
+      gender: "Male",
+      weightClass: "",
+    });
+    expect(applyStartListPillSelection(withClass, "ageGroup", "U17").weightClass).toBe("");
+    expect(
+      applyStartListPillSelection(withClass, "adaptiveAthlete", ADAPTIVE_ATHLETES_FILTER)
+        .weightClass,
+    ).toBe("");
+  });
+
+  it("keeps the weight class for the other pills and ignores unknown ids", () => {
+    expect(applyStartListPillSelection(withClass, "wso", "Ohio")).toMatchObject({
+      wso: "Ohio",
+      weightClass: "89kg",
+    });
+    expect(applyStartListPillSelection(withClass, "club", "x")).toBe(withClass);
+  });
+
+  it("only accepts known sorts", () => {
+    expect(applyStartListPillSelection(withClass, "sort", "bestSnatch").sort).toBe("bestSnatch");
+    expect(applyStartListPillSelection(withClass, "sort", "").sort).toBe("alphabetical");
+    expect(applyStartListPillSelection(withClass, "sort", "bogus").sort).toBe("alphabetical");
+  });
+});
+
+describe("hasActiveStartListFilters", () => {
+  it("counts pills and a non-default sort, not the search box", () => {
+    expect(hasActiveStartListFilters(DEFAULT_START_LIST_FILTERS)).toBe(false);
+    expect(
+      hasActiveStartListFilters({ ...DEFAULT_START_LIST_FILTERS, search: "smith" }),
+    ).toBe(false);
+    expect(
+      hasActiveStartListFilters({ ...DEFAULT_START_LIST_FILTERS, sort: "entryTotal" }),
+    ).toBe(true);
+    expect(hasActiveStartListFilters({ ...DEFAULT_START_LIST_FILTERS, club: "C" })).toBe(true);
   });
 });
 

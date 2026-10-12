@@ -23,6 +23,7 @@ import { useTheme } from "@/contexts/ThemeContext";
 import { LiftResult } from "@/data/types/athletes";
 import { isMeetName, MeetName } from "@/data/types/meet";
 import { useAppColors } from "@/hooks/useAppColors";
+import { useStartListFilters } from "@/hooks/useStartListFilters";
 import {
   getMeetData,
   saveMeetAthletes,
@@ -34,7 +35,9 @@ import { captureViewAsPng } from "@/lib/share-image";
 import { getLastYearBestsBatch, preloadYearBests, type YearBests } from "@/lib/start-list-api";
 import {
   ADAPTIVE_ATHLETES_FILTER,
+  ATHLETE_SORT_OPTIONS,
   buildWeightClassOptions,
+  hasActiveStartListFilters,
   compareCalendarDates,
   compareStartTimes,
   formatSessionDisplayDate,
@@ -96,13 +99,6 @@ import {
 import { Palette } from "@/constants/Palette";
 
 
-type AthleteSortOption =
-  | "alphabetical"
-  | "entryTotal"
-  | "bestTotal"
-  | "bestSnatch"
-  | "bestCJ";
-
 const AGE_GROUP_OPTIONS = [
   "U13",
   "U15",
@@ -121,14 +117,6 @@ const AGE_GROUP_OPTIONS = [
   "Masters 80",
   "Masters 85",
   "Masters 90+",
-];
-
-const SORT_OPTIONS: { value: AthleteSortOption; label: string }[] = [
-  { value: "alphabetical", label: "A-Z" },
-  { value: "entryTotal", label: "Entry Total" },
-  { value: "bestTotal", label: "Best Total" },
-  { value: "bestSnatch", label: "Best Sn" },
-  { value: "bestCJ", label: "Best CJ" },
 ];
 
 /**
@@ -170,14 +158,24 @@ const SHARE_IMAGE_WIDTH = 850;
 export default function StartListScreen() {
   const screenInsets = useScreenHorizontalInsets();
   const [showClubModal, setShowClubModal] = useState(false);
-  const [weightClassFilter, setWeightClassFilter] = useState("");
-  const [clubFilter, setClubFilter] = useState("");
-  const [ageGroupFilter, setAgeGroupFilter] = useState("");
-  const [adaptiveAthleteFilter, setAdaptiveAthleteFilter] = useState("");
-  const [genderFilter, setGenderFilter] = useState("");
-  const [wsoFilter, setWsoFilter] = useState("");
-  const [sortOption, setSortOption] = useState<AthleteSortOption>("alphabetical");
-  const [searchQuery, setSearchQuery] = useState("");
+  const { selectedMeet, meetDetails } = useSelectedMeet();
+  const {
+    filters,
+    selectPill,
+    setClub: setClubFilter,
+    setSearch: setSearchQuery,
+    resetFilters,
+  } = useStartListFilters(selectedMeet);
+  const {
+    weightClass: weightClassFilter,
+    club: clubFilter,
+    ageGroup: ageGroupFilter,
+    adaptive: adaptiveAthleteFilter,
+    gender: genderFilter,
+    wso: wsoFilter,
+    sort: sortOption,
+    search: searchQuery,
+  } = filters;
   const colors = useAppColors();
   const insets = useSafeAreaInsets();
   const router = useRouter();
@@ -186,7 +184,6 @@ export default function StartListScreen() {
   const [starredClubs, setStarredClubs] = useState<string[]>([]);
   const [showSaveModal, setShowSaveModal] = useState(false);
   const [showCalendarPicker, setShowCalendarPicker] = useState(false);
-  const { selectedMeet, meetDetails } = useSelectedMeet();
   const { isSubscribed } = useSubscription();
   const { requireAuth } = useAuthGuard();
   const { currentTheme } = useTheme();
@@ -593,27 +590,7 @@ export default function StartListScreen() {
     return wsoFilter;
   }, [clubFilter, wsoFilter]);
 
-  const hasActiveFilters = useMemo(
-    () =>
-      Boolean(
-        weightClassFilter ||
-          clubFilter ||
-          ageGroupFilter ||
-          adaptiveAthleteFilter ||
-          genderFilter ||
-          wsoFilter ||
-          sortOption !== "alphabetical",
-      ),
-    [
-      adaptiveAthleteFilter,
-      ageGroupFilter,
-      clubFilter,
-      genderFilter,
-      sortOption,
-      weightClassFilter,
-      wsoFilter,
-    ],
-  );
+  const hasActiveFilters = hasActiveStartListFilters(filters);
 
   const availableWeightClasses = useMemo(
     () =>
@@ -655,7 +632,7 @@ export default function StartListScreen() {
         id: "sort",
         label: "Sort",
         value: sortOption === "alphabetical" ? "" : sortOption,
-        options: SORT_OPTIONS.filter((opt) => opt.value !== "alphabetical"),
+        options: ATHLETE_SORT_OPTIONS.filter((opt) => opt.value !== "alphabetical"),
         allOptionLabel: "A-Z",
       },
       {
@@ -749,31 +726,9 @@ export default function StartListScreen() {
   const handlePillSelect = useCallback(
     (id: string, value: string) => {
       trackFilterApply();
-      switch (id) {
-        case "sort":
-          setSortOption((value || "alphabetical") as AthleteSortOption);
-          break;
-        case "gender":
-          setGenderFilter(value);
-          setWeightClassFilter("");
-          break;
-        case "ageGroup":
-          setAgeGroupFilter(value);
-          setWeightClassFilter("");
-          break;
-        case "adaptiveAthlete":
-          setAdaptiveAthleteFilter(value);
-          setWeightClassFilter("");
-          break;
-        case "weightClass":
-          setWeightClassFilter(value);
-          break;
-        case "wso":
-          setWsoFilter(value);
-          break;
-      }
+      selectPill(id, value);
     },
-    [trackFilterApply],
+    [selectPill, trackFilterApply],
   );
 
   const handleSelectClub = useCallback(
@@ -781,7 +736,7 @@ export default function StartListScreen() {
       trackFilterApply();
       setClubFilter(club);
     },
-    [trackFilterApply],
+    [setClubFilter, trackFilterApply],
   );
 
   useLayoutEffect(() => {
@@ -1219,18 +1174,6 @@ export default function StartListScreen() {
     },
     [pendingCalendarSessions],
   );
-
-  // Add resetFilters function before the return statement
-  const resetFilters = () => {
-    setWeightClassFilter("");
-    setClubFilter("");
-    setAgeGroupFilter("");
-    setAdaptiveAthleteFilter("");
-    setGenderFilter("");
-    setWsoFilter("");
-    setSortOption("alphabetical");
-    setSearchQuery("");
-  };
 
   // Add back toggleStarredClub function
   const toggleStarredClub = async (club: string) => {

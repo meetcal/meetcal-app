@@ -193,6 +193,89 @@ export function parseWeightClasses(weightClass: string): string[] {
   return Array.from(weightClasses);
 }
 
+export type AthleteSortOption =
+  | 'alphabetical'
+  | 'entryTotal'
+  | 'bestTotal'
+  | 'bestSnatch'
+  | 'bestCJ';
+
+export const ATHLETE_SORT_OPTIONS: readonly { value: AthleteSortOption; label: string }[] = [
+  { value: 'alphabetical', label: 'A-Z' },
+  { value: 'entryTotal', label: 'Entry Total' },
+  { value: 'bestTotal', label: 'Best Total' },
+  { value: 'bestSnatch', label: 'Best Sn' },
+  { value: 'bestCJ', label: 'Best CJ' },
+];
+
+export function isAthleteSortOption(value: string): value is AthleteSortOption {
+  return ATHLETE_SORT_OPTIONS.some((option) => option.value === value);
+}
+
+/** Everything the Start List's search box and filter pills hold. */
+export interface StartListFilters {
+  weightClass: string;
+  club: string;
+  ageGroup: string;
+  adaptive: string;
+  gender: string;
+  wso: string;
+  sort: AthleteSortOption;
+  search: string;
+}
+
+export const DEFAULT_START_LIST_FILTERS: Readonly<StartListFilters> = Object.freeze({
+  weightClass: '',
+  club: '',
+  ageGroup: '',
+  adaptive: '',
+  gender: '',
+  wso: '',
+  sort: 'alphabetical',
+  search: '',
+});
+
+/** Whether any pill (not the search box) differs from its default. */
+export function hasActiveStartListFilters(filters: StartListFilters): boolean {
+  return Boolean(
+    filters.weightClass ||
+      filters.club ||
+      filters.ageGroup ||
+      filters.adaptive ||
+      filters.gender ||
+      filters.wso ||
+      filters.sort !== 'alphabetical',
+  );
+}
+
+/**
+ * The filters after picking `value` in pill `id` ("" is the pill's "all"
+ * option). Gender, age group and adaptive change which weight classes are on
+ * offer, so picking one of them clears the weight class.
+ */
+export function applyStartListPillSelection(
+  filters: StartListFilters,
+  id: string,
+  value: string,
+): StartListFilters {
+  switch (id) {
+    case 'sort':
+      return { ...filters, sort: isAthleteSortOption(value) ? value : 'alphabetical' };
+    case 'gender':
+      return { ...filters, gender: value, weightClass: '' };
+    case 'ageGroup':
+      return { ...filters, ageGroup: value, weightClass: '' };
+    case 'adaptiveAthlete':
+      return { ...filters, adaptive: value, weightClass: '' };
+    case 'weightClass':
+      return { ...filters, weightClass: value };
+    case 'wso':
+      return { ...filters, wso: value };
+    default:
+      return filters;
+  }
+}
+
 export const ADAPTIVE_ATHLETES_FILTER = 'Adaptive Athletes';
 export const NON_ADAPTIVE_ATHLETES_FILTER = 'Non-Adaptive Athletes';
 
