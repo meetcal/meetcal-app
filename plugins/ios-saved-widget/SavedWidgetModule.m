@@ -2,6 +2,33 @@
 #import <React/RCTLog.h>
 #import <Foundation/Foundation.h>
 
+// The App Group id and keys are a contract with the widget extension and the
+// App Intents (`MeetCalShared` in MeetCalSharedModels.swift) and with JS
+// (src/utils/widgetContract.ts). Obj-C cannot read the Swift constants, so
+// they are repeated here; src/utils/widgetContract.test.ts checks they agree.
+static NSString *const MeetCalAppGroupIdentifier = @"group.com.memohnsen.meetcal";
+static NSString *const MeetCalSelectedMeetKey = @"selectedMeet";
+static NSString *const MeetCalSavedSessionsKey = @"savedSessions";
+static NSString *const MeetCalQualifyingTotalsKey = @"qualifyingTotalsWidgetData";
+static NSString *const MeetCalStandardsKey = @"standardsWidgetData";
+static NSString *const MeetCalIntlRankingsKey = @"intlRankingsWidgetData";
+
+// `MeetCalWidgetReloader` (MeetCalWidgetReloader.swift) wraps WidgetCenter,
+// which is Swift-only. Looked up at runtime so this file does not depend on
+// the generated `<Product>-Swift.h` header name.
+@protocol MeetCalWidgetReloading
++ (void)reloadAllTimelines;
+@end
+
+static void MeetCalReloadWidgetTimelines(void) {
+  Class reloader = NSClassFromString(@"MeetCalWidgetReloader");
+  if (reloader && [reloader respondsToSelector:@selector(reloadAllTimelines)]) {
+    [(Class<MeetCalWidgetReloading>)reloader reloadAllTimelines];
+  } else {
+    RCTLogWarn(@"[SavedWidget] MeetCalWidgetReloader unavailable; widgets refresh on their own schedule");
+  }
+}
+
 @interface SavedWidgetModule : NSObject <RCTBridgeModule>
 @end
 
@@ -13,39 +40,39 @@ RCT_EXPORT_MODULE(SavedWidget);
   return NO;
 }
 
-RCT_EXPORT_METHOD(updateSavedWidget:(NSString *)selectedMeet 
+RCT_EXPORT_METHOD(updateSavedWidget:(NSString *)selectedMeet
                   sessionsJson:(NSString *)sessionsJson) {
-  RCTLogInfo(@"[SavedWidget] updateSavedWidget called: meet=%@, jsonLength=%lu", 
+  RCTLogInfo(@"[SavedWidget] updateSavedWidget called: meet=%@, jsonLength=%lu",
              selectedMeet, (unsigned long)sessionsJson.length);
-  
-  NSUserDefaults *shared = [[NSUserDefaults alloc] initWithSuiteName:@"group.com.memohnsen.meetcal"];
+
+  NSUserDefaults *shared = [[NSUserDefaults alloc] initWithSuiteName:MeetCalAppGroupIdentifier];
   if (!shared) {
     RCTLogWarn(@"[SavedWidget] Could not access app group");
     return;
   }
-  
-  [shared setObject:(selectedMeet ?: @"") forKey:@"selectedMeet"];
-  
+
+  [shared setObject:(selectedMeet ?: @"") forKey:MeetCalSelectedMeetKey];
+
   if (sessionsJson && sessionsJson.length > 0) {
     NSData *data = [sessionsJson dataUsingEncoding:NSUTF8StringEncoding];
     if (data) {
-      [shared setObject:data forKey:@"savedSessions"];
+      [shared setObject:data forKey:MeetCalSavedSessionsKey];
       RCTLogInfo(@"[SavedWidget] Saved %lu bytes of session data", (unsigned long)data.length);
     }
   } else {
-    [shared removeObjectForKey:@"savedSessions"];
+    [shared removeObjectForKey:MeetCalSavedSessionsKey];
     RCTLogInfo(@"[SavedWidget] Cleared session data");
   }
-  
+
   [shared synchronize];
-  RCTLogInfo(@"[SavedWidget] Data saved successfully. Widget will refresh within 15 minutes.");
+  MeetCalReloadWidgetTimelines();
 }
 
 RCT_EXPORT_METHOD(updateDataWidgets:(NSString *)payloadsJson) {
   RCTLogInfo(@"[SavedWidget] updateDataWidgets called: jsonLength=%lu",
              (unsigned long)payloadsJson.length);
 
-  NSUserDefaults *shared = [[NSUserDefaults alloc] initWithSuiteName:@"group.com.memohnsen.meetcal"];
+  NSUserDefaults *shared = [[NSUserDefaults alloc] initWithSuiteName:MeetCalAppGroupIdentifier];
   if (!shared) {
     RCTLogWarn(@"[SavedWidget] Could not access app group");
     return;
@@ -65,9 +92,9 @@ RCT_EXPORT_METHOD(updateDataWidgets:(NSString *)payloadsJson) {
   }
 
   NSDictionary *keyMap = @{
-    @"qualifyingTotals": @"qualifyingTotalsWidgetData",
-    @"standards": @"standardsWidgetData",
-    @"intlRankings": @"intlRankingsWidgetData"
+    @"qualifyingTotals": MeetCalQualifyingTotalsKey,
+    @"standards": MeetCalStandardsKey,
+    @"intlRankings": MeetCalIntlRankingsKey
   };
 
   [keyMap enumerateKeysAndObjectsUsingBlock:^(NSString *payloadKey, NSString *defaultsKey, BOOL *stop) {
@@ -85,19 +112,21 @@ RCT_EXPORT_METHOD(updateDataWidgets:(NSString *)payloadsJson) {
   }];
 
   [shared synchronize];
+  MeetCalReloadWidgetTimelines();
 }
 
+// Clears only the saved-sessions widget (the signed-in user's data). The data
+// widget payloads are public reference data, need no sign-in, and are only
+// rewritten when the app refreshes them, so sign-out leaves them in place.
 RCT_EXPORT_METHOD(clearSavedWidget) {
-  NSUserDefaults *shared = [[NSUserDefaults alloc] initWithSuiteName:@"group.com.memohnsen.meetcal"];
+  NSUserDefaults *shared = [[NSUserDefaults alloc] initWithSuiteName:MeetCalAppGroupIdentifier];
   if (!shared) return;
-  
-  [shared removeObjectForKey:@"selectedMeet"];
-  [shared removeObjectForKey:@"savedSessions"];
-  [shared removeObjectForKey:@"qualifyingTotalsWidgetData"];
-  [shared removeObjectForKey:@"standardsWidgetData"];
-  [shared removeObjectForKey:@"intlRankingsWidgetData"];
+
+  [shared removeObjectForKey:MeetCalSelectedMeetKey];
+  [shared removeObjectForKey:MeetCalSavedSessionsKey];
   [shared synchronize];
-  RCTLogInfo(@"[SavedWidget] Data cleared. Widget will refresh within 15 minutes.");
+  RCTLogInfo(@"[SavedWidget] Saved-session data cleared.");
+  MeetCalReloadWidgetTimelines();
 }
 
 @end
