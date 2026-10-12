@@ -100,6 +100,36 @@ describe('watching the watchdog (#168)', () => {
     expect(fetchSpy).not.toHaveBeenCalled();
   });
 
+  it('does not ping the heartbeat when its own queued alert cannot be sent', async () => {
+    process.env.HEARTBEAT_URL = 'https://hc-ping.com/abc';
+    const saved = { ...process.env };
+    Object.assign(process.env, { ALERT_EMAIL: 'ops@example.com', ONESIGNAL_APP_ID: 'app', ONESIGNAL_REST_API_KEY: 'os_key' });
+    jest.spyOn(console, 'warn').mockImplementation(() => {});
+    jest.spyOn(console, 'error').mockImplementation(() => {});
+    // The email provider rejects the send; the heartbeat would answer OK.
+    const fetchSpy = jest
+      .spyOn(globalThis, 'fetch')
+      .mockImplementation(async (input) => new Response('', { status: String(input).includes('hc-ping') ? 200 : 500 }));
+    const ctx = watchdogCtx(async () => []);
+    const fallback = ctx.runMutation.getMockImplementation()!;
+    // Its clean sweep finishes with a queued "is running again" of its own.
+    ctx.runMutation.mockImplementation(async (fn, args) =>
+      // The fake's results are typed as its defaults; this queued notice is what `finish` returns.
+      'error' in args ? ([{ job: WATCHDOG_JOB, kind: 'recovered', detail: 'ran at …' }] as never[]) : fallback(fn, args),
+    );
+    try {
+      await handlerOf<Record<string, never>, unknown>(watchdog)(ctx, {});
+    } finally {
+      for (const name of ['ALERT_EMAIL', 'ONESIGNAL_APP_ID', 'ONESIGNAL_REST_API_KEY'] as const) {
+        if (saved[name] === undefined) delete process.env[name];
+        else process.env[name] = saved[name];
+      }
+    }
+    expect(fetchSpy).toHaveBeenCalledWith(expect.stringContaining('onesignal'), expect.anything());
+    expect(fetchSpy).not.toHaveBeenCalledWith('https://hc-ping.com/abc', expect.anything());
+    expect(ctx.runMutation.mock.calls.map(([, args]) => args)).not.toContainEqual(expect.objectContaining({ sent: expect.anything() }));
+  });
+
   it("checks the watchdog from every job's run", async () => {
     const ctx = watchdogCtx(async () => []);
     await handlerOf<{ job: string }, unknown>(run)(ctx, { job: 'complete-ended-meets' });
