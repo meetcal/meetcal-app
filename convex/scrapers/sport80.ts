@@ -19,8 +19,9 @@ import { sourcesFailed, type SourceFailure } from '../lib/cronAlerts';
  * USAW meet results from Sport80 (port of
  * `usaw/sport80_api/update_supabase_from_sport80.py`): the 30 most recent
  * events of this year and last, each meet's results upserted into
- * `lifting_results` (matched on event id, meet and name; unchanged rows are
- * not written, so a re-sync of an unchanged meet costs no writes). Rows the
+ * `lifting_results` (matched on event id, meet, folded name and age
+ * category, `ingest.resultKey`; unchanged rows are not written, so a
+ * re-sync of an unchanged meet costs no writes). Rows the
  * event's table no longer has (a corrected name, a withdrawn result, the
  * meet's old title) are then deleted (`ingest.pruneEventResults`, which
  * refuses to delete much without `allowShrink`), but only for a meet whose
@@ -266,7 +267,7 @@ export const run = internalAction({
         continue;
       }
       try {
-        const keep = valid.map((row) => ({ meet: row.meet, name: row.name! }));
+        const keep = valid.map((row) => ({ meet: row.meet, name: row.name!, age: row.age }));
         // A batch a call; the rest of a huge prune waits for the next run.
         for (let call = 0; call < MAX_PRUNE_CALLS; call++) {
           const pruned: { deleted: number; remaining: number } = await ctx.runMutation(internal.ingest.pruneEventResults, {

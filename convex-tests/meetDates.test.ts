@@ -1,4 +1,5 @@
-import { completeEndedMeets, scrapedMeetValues, setMeetTimeZone, upsertMeets } from '../convex/ingest';
+import { scrapedMeetValues, setMeetTimeZone, updateMeetStatuses, upsertMeets } from '../convex/ingest';
+import { fakeMutationCtx } from './fakeDb';
 import { padMeetDates } from '../convex/migrations';
 import { canonicalMeetDate, isKnownTimeZone, isMeetTimeZone } from '../convex/lib/validation';
 import { meetDataProblems } from '../convex/scrapers/queries';
@@ -106,79 +107,64 @@ describe('scraped meet values', () => {
     expect('timeZone' in scrapedMeetValues(noZone, meet())).toBe(false);
   });
 
+  /** The names of `meets` the hourly status job leaves completed at `now`. */
   async function completedAt(now: number, meets: Doc<'meets'>[]): Promise<string[]> {
-    jest.useFakeTimers({ now });
+    const clock = jest.spyOn(Date, 'now').mockReturnValue(now);
+    const log = jest.spyOn(console, 'log').mockImplementation(() => undefined);
     try {
-      const patch = jest.fn();
-      const ctx = {
-        db: {
-          query: (table: string) => ({
-            withIndex: (_name: string, build: (q: unknown) => unknown) => {
-              let status = '';
-              const q = { eq: (field: string, value: string) => { if (field === 'status') status = value; return q; } };
-              build(q);
-              return { collect: async () => (table === 'meets' && status === 'upcoming' ? meets : []), first: async () => null, unique: async () => null };
-            },
-          }),
-          patch,
-          insert: jest.fn(),
-        },
-        scheduler: { runAfter: jest.fn() },
-      };
-      await handlerOf(completeEndedMeets)(ctx, {});
-      return patch.mock.calls.map(([id]) => id).filter((id) => meets.some((m) => m._id === id));
+      const { ctx, rows } = fakeMutationCtx({ meets: meets.map(({ _id: _i, _creationTime: _c, ...doc }) => doc) });
+      await handlerOf(updateMeetStatuses)(ctx, {});
+      return rows('meets').filter((m) => m.status === 'completed').map((m) => String(m.name));
     } finally {
-      jest.useRealTimers();
+      clock.mockRestore();
+      log.mockRestore();
     }
   }
 
   it('completes a meet once its last day has ended in its own zone, abroad too', async () => {
     const meets = [
-      meet({ _id: 'ny' as Id<'meets'>, name: 'New York meet', timeZone: 'America/New_York', endDate: '2026-10-11' }),
-      meet({ _id: 'tokyo' as Id<'meets'>, name: 'Tokyo meet', timeZone: 'Asia/Tokyo', endDate: '2026-10-11' }),
-      meet({ _id: 'auckland' as Id<'meets'>, name: 'Auckland meet', timeZone: 'Pacific/Auckland', endDate: '2026-10-11' }),
-      meet({ _id: 'kolkata' as Id<'meets'>, name: 'Kolkata meet', timeZone: 'Asia/Kolkata', endDate: '2026-10-11' }),
+      meet({ _id: 'ny' as Id<'meets'>, name: 'New York meet', timeZone: 'America/New_York', startDate: '2026-10-11', endDate: '2026-10-11' }),
+      meet({ _id: 'tokyo' as Id<'meets'>, name: 'Tokyo meet', timeZone: 'Asia/Tokyo', startDate: '2026-10-11', endDate: '2026-10-11' }),
+      meet({ _id: 'auckland' as Id<'meets'>, name: 'Auckland meet', timeZone: 'Pacific/Auckland', startDate: '2026-10-11', endDate: '2026-10-11' }),
+      meet({ _id: 'kolkata' as Id<'meets'>, name: 'Kolkata meet', timeZone: 'Asia/Kolkata', startDate: '2026-10-11', endDate: '2026-10-11' }),
     ];
     // 11:00 UTC Oct 11: midnight Oct 12 in Auckland (UTC+13), 8pm Oct 11 in
     // Tokyo, 4:30pm in Kolkata, 7am in New York.
-    expect(await completedAt(Date.UTC(2026, 9, 11, 11), meets)).toEqual(['auckland']);
+    expect(await completedAt(Date.UTC(2026, 9, 11, 11), meets)).toEqual(['Auckland meet']);
     // 18:30 UTC: midnight Oct 12 in Kolkata (UTC+5:30); Tokyo ended at 15:00.
-    expect(await completedAt(Date.UTC(2026, 9, 11, 18, 30), meets)).toEqual(['tokyo', 'auckland', 'kolkata']);
+    expect(await completedAt(Date.UTC(2026, 9, 11, 18, 30), meets)).toEqual(['Tokyo meet', 'Auckland meet', 'Kolkata meet']);
   });
 
   it('completes a meet stored without a zone only once its last day has ended everywhere on Earth', async () => {
     const meets = [
-      meet({ _id: 'ny' as Id<'meets'>, name: 'New York meet', timeZone: 'America/New_York', endDate: '2026-10-11' }),
-      meet({ _id: 'blank' as Id<'meets'>, name: 'No zone', timeZone: '', endDate: '2026-10-11' }),
-      meet({ _id: 'bad' as Id<'meets'>, name: 'Bad zone', timeZone: 'Not/AZone', endDate: '2026-10-11' }),
+      meet({ _id: 'ny' as Id<'meets'>, name: 'New York meet', timeZone: 'America/New_York', startDate: '2026-10-11', endDate: '2026-10-11' }),
+      meet({ _id: 'blank' as Id<'meets'>, name: 'No zone', timeZone: '', startDate: '2026-10-11', endDate: '2026-10-11' }),
+      meet({ _id: 'bad' as Id<'meets'>, name: 'Bad zone', timeZone: 'Not/AZone', startDate: '2026-10-11', endDate: '2026-10-11' }),
     ];
     // 10:30 UTC Oct 12: 11:30pm Oct 11 in American Samoa (UTC-11), a day a
     // Honolulu (UTC-10) cutoff had already ended.
-    expect(await completedAt(Date.UTC(2026, 9, 12, 10, 30), meets)).toEqual(['ny']);
+    expect(await completedAt(Date.UTC(2026, 9, 12, 10, 30), meets)).toEqual(['New York meet']);
     // Noon UTC: midnight at UTC-12, the last place the day ends.
-    expect(await completedAt(Date.UTC(2026, 9, 12, 12), meets)).toEqual(['ny', 'blank', 'bad']);
+    expect(await completedAt(Date.UTC(2026, 9, 12, 12), meets)).toEqual(['New York meet', 'No zone', 'Bad zone']);
   });
 
-  it('keeps a completed meet completed', () => {
-    expect(scrapedMeetValues(scraped, meet({ status: 'completed' })).status).toBe('completed');
-  });
+  // A completed meet no longer stays completed: the status follows the dates
+  // (#180, `lib/meetStatus.ts`); ingestWritePath covers one reopened.
 
   describe('a meet scraped without an address', () => {
     const { venueName: _n, venueStreet: _s, venueCity: _c, venueState: _st, venueZip: _z, timeZone: _tz, ...noVenue } = scraped;
-    /** `upsertMeets` over `stored` (null for none), with the db calls it made. */
+    /** `upsertMeets` over `stored` (null for none), with the db calls it made, on Oct 1 2026. */
     async function upsert(stored: Doc<'meets'> | null, row: object) {
-      const patch = jest.fn();
-      const insert = jest.fn();
-      const ctx = {
-        db: {
-          query: (table: string) => ({ withIndex: () => ({ first: async () => (table === 'meets' ? stored : null), unique: async () => null }) }),
-          patch,
-          insert,
-        },
-        scheduler: { runAfter: jest.fn() },
-      };
-      const outcomes = await handlerOf(upsertMeets)(ctx, { rows: [row] });
-      return { outcomes, patch, insert };
+      const clock = jest.spyOn(Date, 'now').mockReturnValue(Date.UTC(2026, 9, 1));
+      try {
+        const { ctx, rows, docs } = fakeMutationCtx({ meets: stored ? [(({ _id: _i, _creationTime: _c, ...doc }) => doc)(stored)] : [] });
+        const patch = jest.spyOn(ctx.db, 'patch');
+        const insert = jest.spyOn(ctx.db, 'insert');
+        const outcomes = await handlerOf(upsertMeets)(ctx, { rows: [row] });
+        return { outcomes, patch, insert, rows, docs };
+      } finally {
+        clock.mockRestore();
+      }
     }
 
     it('keeps the stored venue and zone', async () => {
@@ -187,7 +173,7 @@ describe('scraped meet values', () => {
       expect(unchanged.patch).not.toHaveBeenCalled();
       const moved = await upsert(meet(), { ...noVenue, endDate: '2026-10-18' });
       expect(moved.outcomes).toEqual([{ wasInsert: false, wasChanged: true }]);
-      const [[, values]] = moved.patch.mock.calls.filter(([id]) => id === 'meet1');
+      const [[, values]] = moved.patch.mock.calls.filter(([id]) => id === moved.docs('meets')[0]._id);
       expect(values).toMatchObject({ endDate: '2026-10-18' });
       for (const key of ['venueName', 'venueStreet', 'venueCity', 'venueState', 'venueZip', 'timeZone']) expect(values).not.toHaveProperty(key);
     });

@@ -63,23 +63,25 @@ describe('Sport80 entries (replaces csv_scraper.js)', () => {
   it('finds the row the old scraper stored with the surname cut short', () => {
     const stored = [
       { memberId: '100', name: 'Maria De', gender: 'Female', age: 30 },
-      { memberId: 'noid:ann-van', name: 'Ann Van', gender: 'Female', age: 17 },
+      { memberId: 'noid:ann-van', name: 'Ann Van', gender: 'Women', age: 17 },
       { memberId: '300', name: 'Bob Smith', gender: 'Male', age: 40 },
     ];
+    // The caller passes the normalized gender; stored rows may still hold the
+    // older spelling (`Female`), which matches too.
     const incoming = new Set(['maria de la cruz', 'ann van dyke']);
-    expect(truncatedEntryRow(stored, { memberId: '100', age: 31 }, 'maria de la cruz', 'Female', incoming)).toBe(stored[0]);
-    expect(truncatedEntryRow(stored, { memberId: 'noid:ann-van-dyke', age: 17 }, 'ann van dyke', 'Female', incoming)).toBe(stored[1]);
+    expect(truncatedEntryRow(stored, { memberId: '100', age: 31 }, 'maria de la cruz', 'Women', incoming)).toBe(stored[0]);
+    expect(truncatedEntryRow(stored, { memberId: 'noid:ann-van-dyke', age: 17 }, 'ann van dyke', 'Women', incoming)).toBe(stored[1]);
     // Without a membership number, a different age is someone else.
-    expect(truncatedEntryRow(stored, { memberId: 'noid:ann-van-dyke', age: 18 }, 'ann van dyke', 'Female', incoming)).toBeUndefined();
+    expect(truncatedEntryRow(stored, { memberId: 'noid:ann-van-dyke', age: 18 }, 'ann van dyke', 'Women', incoming)).toBeUndefined();
     // A different membership number, gender, or a name that is not a whole-word prefix is someone else.
-    expect(truncatedEntryRow(stored, { memberId: '999', age: 30 }, 'maria de la cruz', 'Female', incoming)).toBeUndefined();
-    expect(truncatedEntryRow(stored, { memberId: 'noid:ann-van-dyke', age: 17 }, 'ann van dyke', 'Male', incoming)).toBeUndefined();
-    expect(truncatedEntryRow(stored, { memberId: '300', age: 40 }, 'bob smithson', 'Male', incoming)).toBeUndefined();
+    expect(truncatedEntryRow(stored, { memberId: '999', age: 30 }, 'maria de la cruz', 'Women', incoming)).toBeUndefined();
+    expect(truncatedEntryRow(stored, { memberId: 'noid:ann-van-dyke', age: 17 }, 'ann van dyke', 'Men', incoming)).toBeUndefined();
+    expect(truncatedEntryRow(stored, { memberId: '300', age: 40 }, 'bob smithson', 'Men', incoming)).toBeUndefined();
     // A shorter name still on the list is its own entrant.
-    expect(truncatedEntryRow(stored, { memberId: '100', age: 30 }, 'maria de la cruz', 'Female', new Set([...incoming, 'maria de']))).toBeUndefined();
+    expect(truncatedEntryRow(stored, { memberId: '100', age: 30 }, 'maria de la cruz', 'Women', new Set([...incoming, 'maria de']))).toBeUndefined();
     // Two candidates is ambiguous.
     const twice = [...stored, { memberId: 'noid:ann', name: 'Ann', gender: 'Female', age: 17 }];
-    expect(truncatedEntryRow(twice, { memberId: 'noid:ann-van-dyke', age: 17 }, 'ann van dyke', 'Female', incoming)).toBeUndefined();
+    expect(truncatedEntryRow(twice, { memberId: 'noid:ann-van-dyke', age: 17 }, 'ann van dyke', 'Women', incoming)).toBeUndefined();
   });
 
   it('lists stored entry rows cut short beside their full-name twins', async () => {

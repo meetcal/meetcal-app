@@ -1,5 +1,6 @@
 import { v } from 'convex/values';
 import { internalQuery } from '../_generated/server';
+import { meetByName } from '../lib/meetData';
 import { normalizeName } from '../lib/names';
 import { canonicalMeetDate, isMeetTimeZone } from '../lib/validation';
 import { oneClockCountryZone, usTerritoryTimeZone } from './lib/countries';
@@ -11,10 +12,7 @@ export const meetStatuses = internalQuery({
   handler: async (ctx, { names }) => {
     const statuses: Record<string, string> = {};
     for (const name of new Set(names)) {
-      const meet = await ctx.db
-        .query('meets')
-        .withIndex('by_name', (q) => q.eq('name', name))
-        .first();
+      const meet = await meetByName(ctx, name);
       if (meet) statuses[name] = meet.status;
     }
     return statuses;
@@ -114,10 +112,7 @@ export const meetEnds = internalQuery({
   handler: async (ctx, { names }) => {
     const ends: Record<string, { status: string; endDate: string }> = {};
     for (const name of new Set(names)) {
-      const meet = await ctx.db
-        .query('meets')
-        .withIndex('by_name', (q) => q.eq('name', name))
-        .first();
+      const meet = await meetByName(ctx, name);
       if (meet) ends[name] = { status: meet.status, endDate: meet.endDate };
     }
     return ends;

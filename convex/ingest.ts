@@ -2,23 +2,14 @@ import { v, type Infer } from 'convex/values';
 import { internalMutation, type MutationCtx } from './_generated/server';
 import type { Doc, Id, TableNames } from './_generated/dataModel';
 import { writeHistories } from './lib/history';
-import { normalizeAgeCategory, normalizeFederation, normalizeGender } from './lib/normalize';
-import { meetLocalDate, type ZoneFormatters } from './lib/meetData';
+import { normalizeAgeCategory, normalizeFederation, normalizeGender, storedGenderSpellings } from './lib/normalize';
+import { disambiguatedMeetName, MAX_DISAMBIGUATED_NAMES, oldestMeet, type ZoneFormatters } from './lib/meetData';
+import { earliestLocalDate, meetStatusAt, type MeetStatus } from './lib/meetStatus';
 import { normalizeName } from './lib/names';
-import { isKnownTimeZone, isMeetTimeZone } from './lib/validation';
+import { isMeetTimeZone } from './lib/validation';
 import { bumpVersion, type SourceTable } from './lib/views';
 import { clearedColumns, clearedLifts, exceedsShrink, liftCount } from './lib/shrinkGuard';
-import {
-  athletesFields,
-  intlRankingsFields,
-  liftingResultsFields,
-  qualifyingTotalsFields,
-  recordHolder,
-  recordsFields,
-  sessionScheduleFields,
-  standardsFields,
-  wsoRecordsFields,
-} from './schema';
+import { athletesFields, liftingResultsFields, recordHolder, sessionScheduleFields } from './schema';
 import { scheduleRefresh } from './views';
 
 /**
@@ -76,30 +67,71 @@ function athleteKeys(hints: WriteHint[]): string[] {
 const liftingResult = v.object(liftingResultsFields);
 
 /**
- * Inserts or updates results, matched on (eventId, meet, name) like the
- * Python writer's natural key. `nameKey` is derived here, never taken from
- * the caller, and the federation is normalized (`normalize_federation`). A
- * row whose values are unchanged is not written, so re-syncing an unchanged
- * meet bumps no version and invalidates no view. Without `allowShrink`, a
- * batch that empties a column (a lift, the total, the body weight) on many
- * of the stored rows it updates is refused, nothing written: that is a
- * column the source renamed, not a set of corrections.
+ * A result row's identity within its event: the meet, the athlete's folded
+ * name (`normalizeName`, so "John  Smith" and "john smith" are one athlete,
+ * as their history is) and the age category (a lifter entered in Masters and
+ * Open at one meet has a result in each). The one definition every result
+ * writer matches on: the upsert, the delete and the Sport80 prune. Computed
+ * from the name, never from a stored `nameKey`, so a row keyed by an older
+ * rule still matches.
+ */
+export type ResultIdentity = { meet: string; name: string; age?: string | null };
+export const resultKey = (row: ResultIdentity) => JSON.stringify([row.meet, normalizeName(row.name), row.age ?? null]);
+
+/** One event's stored results by `resultKey`, oldest first within a key; read once per mutation. */
+export async function eventResultsByKey(ctx: MutationCtx, eventId: string): Promise<Map<string, Doc<'lifting_results'>[]>> {
+  const byKey = new Map<string, Doc<'lifting_results'>[]>();
+  const rows = await ctx.db
+    .query('lifting_results')
+    .withIndex('by_event_and_name', (q) => q.eq('eventId', eventId))
+    .collect();
+  for (const row of rows.sort((a, b) => a._creationTime - b._creationTime)) {
+    const key = resultKey(row);
+    const list = byKey.get(key);
+    if (list) list.push(row);
+    else byKey.set(key, [row]);
+  }
+  return byKey;
+}
+
+/**
+ * Of several stored rows under one identity (written before names were
+ * matched folded), the one an incoming row updates: the same exact name if
+ * there is one, else the oldest.
+ */
+function pickStored(rows: readonly Doc<'lifting_results'>[], name: string): Doc<'lifting_results'> {
+  return rows.find((row) => row.name === name) ?? rows[0];
+}
+
+/**
+ * Inserts or updates results, matched on (eventId, `resultKey`). `nameKey`
+ * is derived here, never taken from the caller, and the federation is
+ * normalized (`normalize_federation`). A row whose values are unchanged is
+ * not written, so re-syncing an unchanged meet bumps no version and
+ * invalidates no view. Stored copies of a row beyond the one it updates
+ * (the same athlete stored under two spellings) are deleted. Without
+ * `allowShrink`, a batch that empties a column (a lift, the total, the body
+ * weight) on many of the stored rows it updates is refused, nothing written:
+ * that is a column the source renamed, not a set of corrections.
  */
 export const upsertLiftingResults = internalMutation({
   args: { rows: v.array(liftingResult), allowShrink: v.optional(v.boolean()) },
   handler: async (ctx, { rows, allowShrink }) => {
-    const stored = async (row: (typeof rows)[number]) =>
-      (
-        await ctx.db
-          .query('lifting_results')
-          .withIndex('by_event_and_name', (q) => q.eq('eventId', row.eventId).eq('name', row.name))
-          .collect()
-      ).find((r) => r.meet === row.meet);
+    const events = new Map<string, Map<string, Doc<'lifting_results'>[]>>();
+    const storedUnder = async (row: (typeof rows)[number]) => {
+      let byKey = events.get(row.eventId);
+      if (!byKey) {
+        byKey = await eventResultsByKey(ctx, row.eventId);
+        events.set(row.eventId, byKey);
+      }
+      return { byKey, key: resultKey(row) };
+    };
     if (!allowShrink) {
       const updates = [];
       for (const row of rows) {
-        const existing = await stored(row);
-        if (existing) updates.push({ stored: existing, next: row });
+        const { byKey, key } = await storedUnder(row);
+        const matches = byKey.get(key);
+        if (matches) updates.push({ stored: pickStored(matches, row.name), next: row });
       }
       const emptied = clearedColumns(updates);
       if (emptied.length) {
@@ -113,6 +145,7 @@ export const upsertLiftingResults = internalMutation({
     let inserted = 0;
     let updated = 0;
     let unchanged = 0;
+    let duplicates = 0;
     for (const row of rows) {
       const { legacyId: _legacy, nameKey: _key, ...fields } = row;
       const doc = {
@@ -120,17 +153,28 @@ export const upsertLiftingResults = internalMutation({
         federation: fields.federation === undefined ? undefined : normalizeFederation(fields.federation),
         nameKey: normalizeName(row.name),
       };
-      // Read again: an earlier row of this batch may have written it.
-      const existing = await stored(row);
-      if (!existing) {
-        await ctx.db.insert('lifting_results', doc);
+      // The map follows this batch's writes, so a row repeated in the
+      // batch updates the first one's document.
+      const { byKey, key } = await storedUnder(row);
+      const matches = byKey.get(key) ?? [];
+      if (matches.length === 0) {
+        const _id = await ctx.db.insert('lifting_results', doc);
+        byKey.set(key, [{ ...doc, _id, _creationTime: Date.now() }]);
         inserted += 1;
         hints.push(...resultHints(doc));
         continue;
       }
+      const existing = pickStored(matches, row.name);
+      for (const copy of matches) {
+        if (copy === existing) continue;
+        hints.push(...resultHints(copy));
+        await ctx.db.delete(copy._id);
+        duplicates += 1;
+      }
       // The pre-Convex serial is the row's identity, not a value the scrapers
       // send: kept, and left out of the comparison.
       const { _id, _creationTime, legacyId, ...current } = existing;
+      byKey.set(key, [{ ...doc, legacyId, _id, _creationTime }]);
       if (sameValues(current, doc)) {
         unchanged += 1;
         continue;
@@ -144,7 +188,7 @@ export const upsertLiftingResults = internalMutation({
       await writeHistories(ctx, athleteKeys(hints));
       await recordWrite(ctx, 'lifting_results', hints);
     }
-    return { inserted, updated, unchanged };
+    return { inserted, updated, unchanged, duplicates };
   },
 });
 
@@ -162,7 +206,7 @@ function sameValues(a: Record<string, unknown>, b: Record<string, unknown>): boo
  * Deletes result rows, rewriting their athletes' histories and leaving the
  * hints that update views and search, like every result write.
  */
-async function deleteResultRows(ctx: MutationCtx, rows: readonly Doc<'lifting_results'>[]): Promise<number> {
+export async function deleteResultRows(ctx: MutationCtx, rows: readonly Doc<'lifting_results'>[]): Promise<number> {
   const hints: WriteHint[] = [];
   for (const row of rows) {
     hints.push(...resultHints(row));
@@ -175,22 +219,32 @@ async function deleteResultRows(ctx: MutationCtx, rows: readonly Doc<'lifting_re
   return rows.length;
 }
 
-/** A result row's identity, the one `upsertLiftingResults` matches on within an event: (meet, name). */
-const resultKey = (row: { meet: string; name: string }) => JSON.stringify([row.meet, row.name]);
-
-/** Deletes results by the identity `upsertLiftingResults` writes them under (eventId, meet, name). */
+/**
+ * Deletes results by the identity `upsertLiftingResults` writes them under
+ * (eventId, `resultKey`): every stored spelling of the name. A key without
+ * `age` deletes the athlete's rows in every age category of that meet; `age:
+ * null` only a row stored without one.
+ */
 export const deleteLiftingResults = internalMutation({
-  args: { keys: v.array(v.object({ eventId: v.string(), meet: v.string(), name: v.string() })) },
+  args: {
+    keys: v.array(v.object({ eventId: v.string(), meet: v.string(), name: v.string(), age: v.optional(v.union(v.string(), v.null())) })),
+  },
   handler: async (ctx, { keys }) => {
-    const rows: Doc<'lifting_results'>[] = [];
+    const events = new Map<string, Map<string, Doc<'lifting_results'>[]>>();
+    const rows = new Map<string, Doc<'lifting_results'>>();
     for (const key of keys) {
-      const matches = await ctx.db
-        .query('lifting_results')
-        .withIndex('by_event_and_name', (q) => q.eq('eventId', key.eventId).eq('name', key.name))
-        .collect();
-      rows.push(...matches.filter((row) => resultKey(row) === resultKey(key)));
+      let byKey = events.get(key.eventId);
+      if (!byKey) {
+        byKey = await eventResultsByKey(ctx, key.eventId);
+        events.set(key.eventId, byKey);
+      }
+      const matches =
+        key.age === undefined
+          ? [...byKey.values()].flat().filter((row) => resultKey({ ...row, age: null }) === resultKey({ ...key, age: null }))
+          : (byKey.get(resultKey(key)) ?? []);
+      for (const row of matches) rows.set(row._id, row);
     }
-    return { deleted: await deleteResultRows(ctx, rows) };
+    return { deleted: await deleteResultRows(ctx, [...rows.values()]) };
   },
 });
 
@@ -213,20 +267,26 @@ export const RESULT_PRUNE_BATCH = 200;
  * event's stored rows that payload no longer has (a name Sport80 corrected,
  * a result withdrawn, rows under the meet's old title), through the same
  * path as every result write, so histories, summaries, views and search
- * follow. `keep` is the payload's (meet, name) pairs. A row whose athlete is
- * still in the payload under another meet title was only retitled; the rest
- * count against RESULT_PRUNE_LIMIT, past which nothing is deleted unless
- * `allowShrink`. Deletes at most RESULT_PRUNE_BATCH rows, dropped ones
- * first (so a later call's guard sees no larger share), and returns how
- * many stale rows remain for the next call.
+ * follow. `keep` is the payload's rows, matched on the upsert's identity
+ * (`resultKey`: meet, folded name, age category; `age` is required, so a
+ * caller cannot leave it out and have every row with one deleted). A row
+ * whose athlete is still in the payload under another meet title or age
+ * category was only retitled; the rest count against RESULT_PRUNE_LIMIT,
+ * past which nothing is deleted unless `allowShrink`. Deletes at most
+ * RESULT_PRUNE_BATCH rows, dropped ones first (so a later call's guard sees
+ * no larger share), and returns how many stale rows remain for the next call.
  */
 export const pruneEventResults = internalMutation({
-  args: { eventId: v.string(), keep: v.array(v.object({ meet: v.string(), name: v.string() })), allowShrink: v.optional(v.boolean()) },
+  args: {
+    eventId: v.string(),
+    keep: v.array(v.object({ meet: v.string(), name: v.string(), age: v.union(v.string(), v.null()) })),
+    allowShrink: v.optional(v.boolean()),
+  },
   handler: async (ctx, { eventId, keep, allowShrink }) => {
     if (!eventId) throw new Error('eventId is required');
     if (keep.length === 0) throw new Error(`refusing to prune event ${eventId}'s results against an empty payload`);
     const kept = new Set(keep.map(resultKey));
-    const names = new Set(keep.map((row) => row.name));
+    const names = new Set(keep.map((row) => normalizeName(row.name)));
     // Only rows the Sport80 sync writes (USAW, not adaptive): an imported
     // row of another source under the same event id is not its to delete.
     const stored = (
@@ -236,8 +296,8 @@ export const pruneEventResults = internalMutation({
         .collect()
     ).filter((row) => row.federation === 'USAW' && !row.adaptive);
     const stale = stored.filter((row) => !kept.has(resultKey(row)));
-    const dropped = stale.filter((row) => !names.has(row.name));
-    const retitled = stale.filter((row) => names.has(row.name));
+    const dropped = stale.filter((row) => !names.has(normalizeName(row.name)));
+    const retitled = stale.filter((row) => names.has(normalizeName(row.name)));
     // Judged against the event's rows less the retitled copies, which are
     // its athletes counted twice.
     if (!allowShrink && exceedsShrink(dropped.length, stored.length - retitled.length, RESULT_PRUNE_LIMIT)) {
@@ -253,13 +313,25 @@ export const pruneEventResults = internalMutation({
 });
 
 /**
- * Replaces a meet's start list. Gender is stored normalized, as the entries
- * sync stores and matches it (`upsertEntryAthletes`).
+ * An empty start list or schedule is a failed load, not a meet without
+ * one: refused unless the caller says it means to clear it.
+ */
+function refuseEmptyReplace(what: string, meet: string, rows: readonly unknown[], allowEmpty: boolean | undefined): void {
+  if (rows.length === 0 && !allowEmpty) {
+    throw new Error(`refusing to replace ${meet}'s ${what} with an empty payload; pass '{"allowEmpty":true}' to clear it`);
+  }
+}
+
+/**
+ * Replaces a meet's start list (by hand, from a published start list). Gender
+ * is stored normalized, as the entries sync stores and matches it
+ * (`upsertEntryAthletes`). An empty list is refused unless `allowEmpty`.
  */
 export const replaceMeetAthletes = internalMutation({
-  args: { meet: v.string(), rows: v.array(v.object(athletesFields)) },
-  handler: async (ctx, { meet, rows }) => {
+  args: { meet: v.string(), rows: v.array(v.object(athletesFields)), allowEmpty: v.optional(v.boolean()) },
+  handler: async (ctx, { meet, rows, allowEmpty }) => {
     if (rows.some((row) => row.meet !== meet)) throw new Error('every row must belong to `meet`');
+    refuseEmptyReplace('start list', meet, rows, allowEmpty);
     const existing = await ctx.db
       .query('athletes')
       .withIndex('by_meet', (q) => q.eq('meet', meet))
@@ -274,11 +346,16 @@ export const replaceMeetAthletes = internalMutation({
   },
 });
 
-/** Replaces a meet's session schedule. */
+/**
+ * Replaces a meet's session schedule (by hand). Its values are stored as
+ * given: nothing in a schedule row has a normalized spelling. An empty
+ * schedule is refused unless `allowEmpty`.
+ */
 export const replaceMeetSchedule = internalMutation({
-  args: { meet: v.string(), rows: v.array(v.object(sessionScheduleFields)) },
-  handler: async (ctx, { meet, rows }) => {
+  args: { meet: v.string(), rows: v.array(v.object(sessionScheduleFields)), allowEmpty: v.optional(v.boolean()) },
+  handler: async (ctx, { meet, rows, allowEmpty }) => {
     if (rows.some((row) => row.meet !== meet)) throw new Error('every row must belong to `meet`');
+    refuseEmptyReplace('schedule', meet, rows, allowEmpty);
     const existing = await ctx.db
       .query('session_schedule')
       .withIndex('by_meet', (q) => q.eq('meet', meet))
@@ -299,7 +376,8 @@ const scrapedMeet = v.object({
   venueCity: v.optional(v.string()),
   venueState: v.optional(v.string()),
   venueZip: v.optional(v.string()),
-  // Absent when the scraper could not tell the zone (an unknown state).
+  // Absent (or blank) when the scraper could not tell the zone: a stored
+  // meet keeps its own, a new one is stored with a blank one.
   timeZone: v.optional(v.string()),
   startDate: v.string(),
   endDate: v.string(),
@@ -309,46 +387,92 @@ const scrapedMeet = v.object({
 
 /** A meet stored without a known zone: every reader treats a blank zone as unknown. */
 const UNKNOWN_TIME_ZONE = '';
-/**
- * The last zone a day ends in, UTC-12 ("Anywhere on Earth"; the IANA name's
- * sign is inverted): when a meet with no zone has surely ended, wherever it
- * is. Meets are not only in US zones, so not Honolulu (UTC-10): American Samoa
- * is UTC-11.
- */
-const ANYWHERE_ON_EARTH = 'Etc/GMT+12';
-
 /** The venue of a new meet scraped without an address (what `parseAddress('')` gave). */
 const NO_VENUE = { venueStreet: '', venueCity: 'Unknown', venueState: 'Unknown', venueZip: 'Unknown' };
 
 type ScrapedMeetRow = Infer<typeof scrapedMeet>;
 
 /**
- * The values a scraped meet writes over the stored one (`existing`, null for
- * a new meet). A completed meet stays completed. The time zone is left alone
- * when the scraper could not tell it, or when someone set it by hand
+ * The scraped values a meet writes over the stored one (`existing`, null for
+ * a new meet); `upsertMeets` adds its stored name and its status, which
+ * follows the dates (`meetStatusAt`). The time zone is left alone when the
+ * scraper could not tell it (absent or blank), or when someone set it by hand
  * (`timeZoneLocked`, see `setMeetTimeZone`), so the nightly sync never undoes
  * a correction; a new meet with no zone is stored with a blank one. Likewise
  * the venue is left alone when the scraper got no address (`upsertMeets`
  * gives a new meet placeholders).
  */
-export function scrapedMeetValues(row: ScrapedMeetRow, existing: Pick<Doc<'meets'>, 'status' | 'timeZoneLocked'> | null) {
+export function scrapedMeetValues(row: ScrapedMeetRow, existing: Pick<Doc<'meets'>, 'timeZoneLocked'> | null) {
   const { timeZone, ...rest } = row;
+  const scrapedZone = timeZone?.trim() ? timeZone : undefined;
   const values: Omit<ScrapedMeetRow, 'timeZone'> & { federation: string; timeZone?: string } = {
     ...rest,
     federation: normalizeFederation(row.federation ?? 'USAW'),
   };
-  if (existing?.status === 'completed') values.status = 'completed';
-  if (!existing) values.timeZone = timeZone ?? UNKNOWN_TIME_ZONE;
-  else if (timeZone !== undefined && !existing.timeZoneLocked) values.timeZone = timeZone;
+  if (!existing) values.timeZone = scrapedZone ?? UNKNOWN_TIME_ZONE;
+  else if (scrapedZone !== undefined && !existing.timeZoneLocked) values.timeZone = scrapedZone;
   return values;
 }
 
+/** A stored meet's federation; rows from before the column was filled are USAW's. */
+const meetFederation = (meet: Pick<Doc<'meets'>, 'federation'>) => normalizeFederation(meet.federation ?? 'USAW');
+
 /**
- * Inserts or updates meets matched on name (`upsert_meet`). Only the scraped
- * columns are written (see `scrapedMeetValues`): fields the scrapers do not
- * own (venue map links, a locked time zone) are kept. A meet whose scraped
- * values are unchanged is not written; `updatedAt` moves only with a real
- * change, so the nightly syncs do not invalidate every meet's views.
+ * The stored meet a federation's meet called `name` is: the one of that
+ * federation stored under the name (and not one disambiguated from another
+ * name), or one stored under a name `disambiguatedMeetName` gave it, which
+ * keeps `name` as its `sourceName`. A meet the source itself calls
+ * "Open (USAMW)" is a different event from a disambiguated "Open", so
+ * neither is taken for the other. `taken`: another meet holds the plain
+ * name, so a new meet must be stored as `freeName`, the first disambiguated
+ * name no meet holds. Meets are matched by exact name through the index;
+ * the oldest wins if older rows repeat a name.
+ */
+async function meetOfFederation(
+  ctx: MutationCtx,
+  name: string,
+  federation: string,
+): Promise<{ match: Doc<'meets'> | null; taken: boolean; freeName: string | null }> {
+  const named = (candidate: string) =>
+    ctx.db
+      .query('meets')
+      .withIndex('by_name', (q) => q.eq('name', candidate))
+      .collect();
+  const plain = await named(name);
+  const own = plain.filter((meet) => meetFederation(meet) === federation && (meet.sourceName ?? meet.name) === name);
+  const taken = own.length === 0 && plain.length > 0;
+  // Disambiguated names are taken in order, so the first free one ends the
+  // search: no meet of `name` was stored under a later one.
+  let freeName: string | null = null;
+  for (let attempt = 1; attempt <= MAX_DISAMBIGUATED_NAMES && freeName === null; attempt++) {
+    const candidate = disambiguatedMeetName(name, federation, attempt);
+    const rows = await named(candidate);
+    own.push(...rows.filter((meet) => meetFederation(meet) === federation && meet.sourceName === name));
+    if (rows.length === 0) freeName = candidate;
+  }
+  return { match: oldestMeet(own), taken, freeName };
+}
+
+/** The name a new meet called `name` is stored under: `freeName` when another meet holds `name`. */
+function newMeetName(name: string, federation: string, { taken, freeName }: { taken: boolean; freeName: string | null }): string {
+  if (!taken) return name;
+  if (freeName === null) throw new Error(`no free name for the ${federation} meet ${JSON.stringify(name)}: ${MAX_DISAMBIGUATED_NAMES} disambiguated names are taken`);
+  return freeName;
+}
+
+/**
+ * Inserts or updates meets (`upsert_meet`), matched on name and federation:
+ * a sync never takes over another federation's meet of the same name. A new
+ * meet whose name another meet has is stored under a free
+ * `disambiguatedMeetName` (and reported in `storedAs`), since the name is
+ * the meet's identity everywhere; stored names never change. Only the
+ * scraped columns are written (`scrapedMeetValues`), and the status follows
+ * the dates (`meetStatusAt`, on the zone the meet ends up with): a completed
+ * meet whose dates move into the future is upcoming again. Fields the
+ * scrapers do not own (venue map links, a locked time zone) are kept.
+ * A meet whose scraped values are unchanged is not written; `updatedAt`
+ * moves only with a real change, so the nightly syncs do not invalidate
+ * every meet's views.
  */
 export const upsertMeets = internalMutation({
   args: { rows: v.array(scrapedMeet) },
@@ -356,25 +480,37 @@ export const upsertMeets = internalMutation({
     const outcomes: UpsertOutcome[] = [];
     const hints: WriteHint[] = [];
     const now = Date.now();
+    const formatters: ZoneFormatters = new Map();
     for (const row of rows) {
-      const existing = await ctx.db
-        .query('meets')
-        .withIndex('by_name', (q) => q.eq('name', row.name))
-        .first();
+      const federation = normalizeFederation(row.federation ?? 'USAW');
+      const lookup = await meetOfFederation(ctx, row.name, federation);
+      const existing = lookup.match;
+      const name = existing?.name ?? newMeetName(row.name, federation, lookup);
+      const scraped = scrapedMeetValues(row, existing);
+      // Read on the zone the meet ends up with, so a row without one is read
+      // on the stored zone.
+      const timeZone = scraped.timeZone ?? existing?.timeZone;
+      const values = { ...scraped, name, status: meetStatusAt({ ...row, timeZone }, now, formatters) };
       if (!existing) {
-        const values = scrapedMeetValues(row, null);
-        await ctx.db.insert('meets', { venueName: row.name, ...NO_VENUE, ...values, timeZone: values.timeZone ?? UNKNOWN_TIME_ZONE, updatedAt: now });
-        outcomes.push({ wasInsert: true, wasChanged: true });
-        hints.push({ kind: 'meet', key: row.name });
+        await ctx.db.insert('meets', {
+          venueName: row.name,
+          ...NO_VENUE,
+          ...values,
+          timeZone: values.timeZone ?? UNKNOWN_TIME_ZONE,
+          ...(name !== row.name ? { sourceName: row.name } : {}),
+          updatedAt: now,
+        });
+        if (name !== row.name) console.warn(`upsertMeets: another meet is named ${JSON.stringify(row.name)}; stored this ${federation} meet as ${JSON.stringify(name)}`);
+        outcomes.push({ wasInsert: true, wasChanged: true, ...(name !== row.name ? { storedAs: name } : {}) });
+        hints.push({ kind: 'meet', key: name });
         continue;
       }
-      const values = scrapedMeetValues(row, existing);
       const changed = (Object.keys(values) as (keyof typeof values)[]).some((key) => existing[key] !== values[key]);
       if (changed) {
         await ctx.db.patch(existing._id, { ...values, updatedAt: now });
-        hints.push({ kind: 'meet', key: row.name });
+        hints.push({ kind: 'meet', key: name });
       }
-      outcomes.push({ wasInsert: false, wasChanged: changed });
+      outcomes.push({ wasInsert: false, wasChanged: changed, ...(name !== row.name ? { storedAs: name } : {}) });
     }
     if (hints.length) await recordWrite(ctx, 'meets', hints);
     return outcomes;
@@ -414,41 +550,58 @@ const PLACEHOLDERS = new Set(['', 'TBD', 'Unknown']);
 
 /**
  * USA Masters events from usamasters.net, upserted. An event is matched to
- * the USAMW meet stored under its name (case and spacing folded); the site's
- * names often differ from the stored ones ("2027 National Masters" vs "2027
- * USA Masters Nationals"), so failing that, to the one unclaimed USAMW meet
- * whose dates overlap. Several overlapping meets is ambiguous and reported,
- * not guessed. A new event is inserted. A match takes every
- * value the site gives (dates, venue, city, state, time zone); fields the
+ * the USAMW meet stored under its name, whatever that meet's dates (it may
+ * have been postponed, or stored with wrong ones): by exact name (or the
+ * name `disambiguatedMeetName` gave it) through the index, or with case and
+ * spacing folded among the meets not ended before the payload's first
+ * event. The site's names often differ from the stored ones ("2027 National
+ * Masters" vs "2027 USA Masters Nationals"), so failing that, to the one
+ * unclaimed USAMW meet whose dates overlap. Several overlapping meets is
+ * ambiguous and reported, not guessed. A new event is inserted, under
+ * a free `disambiguatedMeetName` if another meet has its name. A
+ * match takes every value the site gives (dates, venue, city, state, time
+ * zone), and its status follows the new dates (`meetStatusAt`); fields the
  * site leaves blank keep what is stored, and a move to another city clears
- * the old venue's street and zip. The stored name is kept: athletes and
+ * the old venue's street and zip. An event without a zone keeps the stored
+ * one, unless it moved to another state (then the zone is blank: unknown);
+ * a new one is stored with a blank zone. The stored name is kept: athletes and
  * results refer to a meet by name.
  */
 export const syncUsamwEvents = internalMutation({
+  // `timeZone` is absent (or blank) when the site's location names none: a
+  // country with several zones (Canada, Mexico) or an unknown place.
   args: { events: v.array(v.object({ name: v.string(), startDate: v.string(), endDate: v.string(), venueName: v.string(), venueCity: v.string(), venueState: v.string(), timeZone: v.optional(v.string()) })) },
   handler: async (ctx, { events }) => {
     const now = Date.now();
+    const formatters: ZoneFormatters = new Map();
     const hints: WriteHint[] = [];
-    const result = { inserted: [] as string[], updated: [] as string[], unchanged: [] as string[], ambiguous: [] as string[] };
-    // Every USAMW meet that has not ended before the earliest event.
+    const result = { inserted: [] as string[], updated: [] as string[], unchanged: [] as string[], ambiguous: [] as string[], renamed: [] as string[] };
+    // Every USAMW meet that has not ended before the earliest event: the
+    // candidates for a folded-name or date match.
     const earliest = events.reduce((min, e) => (e.startDate < min ? e.startDate : min), '9999-12-31');
     const usamw = (
       await ctx.db
         .query('meets')
         .withIndex('by_end_date', (q) => q.gte('endDate', earliest))
         .collect()
-    ).filter((meet) => meet.federation === 'USAMW');
-    // A meet stored under the event's own name (folded) is that event; those
-    // are claimed first, so a date match never takes another event's meet.
+    ).filter((meet) => meetFederation(meet) === 'USAMW');
+    // A meet stored under the event's own name is that event, whatever its
+    // dates; those are claimed first, so a date match never takes another
+    // event's meet.
     const byName = new Map<number, Doc<'meets'>>();
     const claimed = new Set<string>();
-    events.forEach((event, i) => {
-      const named = usamw.find((meet) => normalizeName(meet.name) === normalizeName(event.name) && !claimed.has(meet._id));
+    const lookups = new Map<number, Awaited<ReturnType<typeof meetOfFederation>>>();
+    for (const [i, event] of events.entries()) {
+      const exact = await meetOfFederation(ctx, event.name, 'USAMW');
+      lookups.set(i, exact);
+      const named = [exact.match, ...usamw.filter((meet) => normalizeName(meet.name) === normalizeName(event.name))].find(
+        (meet): meet is Doc<'meets'> => meet !== null && !claimed.has(meet._id),
+      );
       if (named) {
         byName.set(i, named);
         claimed.add(named._id);
       }
-    });
+    }
     for (const [i, event] of events.entries()) {
       let match = byName.get(i);
       if (!match) {
@@ -463,30 +616,40 @@ export const syncUsamwEvents = internalMutation({
         if (match) claimed.add(match._id);
       }
       if (!match) {
+        const name = newMeetName(event.name, 'USAMW', lookups.get(i)!);
         await ctx.db.insert('meets', {
           ...event,
-          timeZone: event.timeZone ?? UNKNOWN_TIME_ZONE,
+          timeZone: event.timeZone?.trim() ? event.timeZone : UNKNOWN_TIME_ZONE,
+          name,
+          ...(name !== event.name ? { sourceName: event.name } : {}),
           venueStreet: 'TBD',
           venueZip: 'TBD',
-          status: 'upcoming',
+          status: meetStatusAt(event, now, formatters),
           federation: 'USAMW',
           updatedAt: now,
         });
-        hints.push({ kind: 'meet', key: event.name });
-        result.inserted.push(event.name);
+        hints.push({ kind: 'meet', key: name });
+        result.inserted.push(name);
+        if (name !== event.name) result.renamed.push(name);
         continue;
       }
       const site: Partial<Doc<'meets'>> = { startDate: event.startDate, endDate: event.endDate };
       for (const field of ['venueName', 'venueCity', 'venueState'] as const) {
         if (!PLACEHOLDERS.has(event[field])) site[field] = event[field];
       }
-      // A zone the site does not name, or one set by hand, is kept.
-      if (site.venueState && event.timeZone !== undefined && !match.timeZoneLocked) site.timeZone = event.timeZone;
+      // A zone set by hand is kept. Otherwise the site's zone is taken; moved
+      // to a place the site names no zone for, the old place's zone would be
+      // wrong there, so it is unknown (blank). Same state, kept.
+      if (site.venueState && !match.timeZoneLocked) {
+        if (event.timeZone?.trim()) site.timeZone = event.timeZone;
+        else if (site.venueState !== match.venueState) site.timeZone = UNKNOWN_TIME_ZONE;
+      }
       if (site.venueCity && site.venueCity !== match.venueCity) {
         site.venueStreet = 'TBD';
         site.venueZip = 'TBD';
         site.venueName ??= 'TBD';
       }
+      site.status = meetStatusAt({ ...match, ...site }, now, formatters);
       const patch = Object.fromEntries(Object.entries(site).filter(([key, value]) => match[key as keyof typeof site] !== value)) as Partial<Doc<'meets'>>;
       if (Object.keys(patch).length === 0) {
         result.unchanged.push(match.name);
@@ -521,7 +684,8 @@ const hasSession = (athlete: Pick<Doc<'athletes'>, 'sessionNumber' | 'sessionPla
 /**
  * The one stored athlete whose folded name is a leading run of whole words of
  * the entrant's (`nameKey`) with the same membership number, or, for an
- * entrant without one, a placeholder id, the same gender and age: the row the old
+ * entrant without one, a placeholder id, the same gender (either stored
+ * spelling, `normalizeGender`) and age: the row the old
  * entries scraper wrote after cutting the surname at its first space. A name
  * the incoming list still carries as an entrant of its own is never taken.
  */
@@ -535,7 +699,7 @@ export function truncatedEntryRow<T extends { memberId: string; name: string; ge
   const idless = isPlaceholderMemberId(row.memberId);
   const candidates = existing.filter((a) => {
     // The cheap checks first: this runs for each new entrant over the meet's rows.
-    const same = idless ? isPlaceholderMemberId(a.memberId) && a.gender === gender && a.age === row.age : a.memberId === row.memberId;
+    const same = idless ? isPlaceholderMemberId(a.memberId) && normalizeGender(a.gender) === gender && a.age === row.age : a.memberId === row.memberId;
     if (!same) return false;
     const key = normalizeName(a.name);
     return key !== '' && nameKey.startsWith(`${key} `) && !incomingKeys.has(key);
@@ -586,7 +750,7 @@ export const upsertEntryAthletes = internalMutation({
       const idless = isPlaceholderMemberId(row.memberId);
       let match: Doc<'athletes'> | undefined;
       if (idless) {
-        const sameName = existing.filter((a) => normalizeName(a.name) === nameKey && a.gender === gender);
+        const sameName = existing.filter((a) => normalizeName(a.name) === nameKey && normalizeGender(a.gender) === gender);
         match = sameName.find((a) => isPlaceholderMemberId(a.memberId));
         for (const a of sameName) {
           if (match) break;
@@ -643,72 +807,75 @@ export const upsertEntryAthletes = internalMutation({
   },
 });
 
-const referenceTables = {
-  records: recordsFields,
-  standards: standardsFields,
-  qualifying_totals: qualifyingTotalsFields,
-  intl_rankings: intlRankingsFields,
-  wso_records: wsoRecordsFields,
-} as const;
-
-function replaceTable<T extends keyof typeof referenceTables>(table: T) {
-  return internalMutation({
-    args: { rows: v.array(v.object(referenceTables[table])) },
-    handler: async (ctx, { rows }) => {
-      // An empty payload is a failed load, not an empty table.
-      if (rows.length === 0) throw new Error(`refusing to replace ${table} with an empty payload`);
-      const existing = await ctx.db.query(table).collect();
-      for (const row of existing) await ctx.db.delete(row._id);
-      for (const row of rows) await ctx.db.insert(table, row as never);
-      await recordWrite(ctx, table, [{ kind: 'table', key: table }]);
-      return { deleted: existing.length, inserted: rows.length };
-    },
-  });
-}
-
-/** Wholesale replacement of the small reference tables. */
-export const replaceRecords = replaceTable('records');
-export const replaceStandards = replaceTable('standards');
-export const replaceQualifyingTotals = replaceTable('qualifying_totals');
-export const replaceIntlRankings = replaceTable('intl_rankings');
-export const replaceWsoRecords = replaceTable('wso_records');
-
 /**
- * Marks meets completed once their end date has passed on the meet's own
- * calendar (`complete_ended_meets.sql` in the Rust backend): a meet ending
- * tonight in Los Angeles is not completed at 17:00 Pacific just because the
- * UTC date rolled over. Run hourly by `convex/crons.ts`; writes only when a
- * meet actually changes, through `recordWrite` like every other write.
+ * Moves each meet's status to what its dates say on the meet's own calendar
+ * (`meetStatusAt`): `ongoing` from its first day, `completed` once its end
+ * date has passed (`complete_ended_meets.sql` in the Rust backend), and back
+ * to `upcoming` if its dates were moved into the future by hand. A meet
+ * ending tonight in Los Angeles is not completed at 17:00 Pacific just
+ * because the UTC date rolled over, and a meet with no zone is read on
+ * UTC-12's calendar, so it is never ongoing or completed early. Run hourly by `convex/crons.ts` (the
+ * `complete-ended-meets` job); writes only when a meet actually changes,
+ * through `recordWrite` like every other write. Returns how many changed.
  */
-export const completeEndedMeets = internalMutation({
+export const updateMeetStatuses = internalMutation({
   args: {},
   handler: async (ctx) => {
     const now = Date.now();
     const formatters: ZoneFormatters = new Map();
     const hints: WriteHint[] = [];
+    // Every meet not completed, and every meet that may not have ended yet
+    // anywhere (a completed one whose dates were moved).
+    const meets = new Map<string, Doc<'meets'>>();
     for (const status of ['upcoming', 'ongoing'] as const) {
-      const meets = await ctx.db
+      for (const meet of await ctx.db
         .query('meets')
         .withIndex('by_status', (q) => q.eq('status', status))
-        .collect();
-      for (const meet of meets) {
-        // A meet stored without a zone (an unknown state or country), or
-        // with one this runtime cannot read, is completed once its end date
-        // has passed everywhere on Earth, never early.
-        const zone = isKnownTimeZone(meet.timeZone) ? meet.timeZone : ANYWHERE_ON_EARTH;
-        if (meet.endDate >= meetLocalDate(now, zone, formatters)) continue;
-        await ctx.db.patch(meet._id, { status: 'completed', updatedAt: now });
-        hints.push({ kind: 'meet', key: meet.name });
+        .collect()) {
+        meets.set(meet._id, meet);
       }
     }
+    for (const meet of await ctx.db
+      .query('meets')
+      .withIndex('by_end_date', (q) => q.gte('endDate', earliestLocalDate(now)))
+      .collect()) {
+      meets.set(meet._id, meet);
+    }
+    const counts: Record<MeetStatus, number> = { upcoming: 0, ongoing: 0, completed: 0 };
+    for (const meet of meets.values()) {
+      const status = meetStatusAt(meet, now, formatters);
+      if (status === meet.status) continue;
+      await ctx.db.patch(meet._id, { status, updatedAt: now });
+      hints.push({ kind: 'meet', key: meet.name });
+      counts[status] += 1;
+    }
     if (hints.length > 0) await recordWrite(ctx, 'meets', hints);
-    console.log(`Marked ${hints.length} ended meet(s) completed.`);
+    console.log(`Meet statuses: ${counts.completed} completed, ${counts.ongoing} ongoing, ${counts.upcoming} upcoming again.`);
     return hints.length;
   },
 });
 
-/** Per-row outcome of an upsert, as the Python writers reported it. */
-export type UpsertOutcome = { wasInsert: boolean; wasChanged: boolean };
+/**
+ * Per-row outcome of an upsert, as the Python writers reported it.
+ * `storedAs`: the name a meet is stored under when it is not the one sent
+ * (`upsertMeets`).
+ */
+export type UpsertOutcome = { wasInsert: boolean; wasChanged: boolean; storedAs?: string };
+
+/**
+ * An index lookup run for every spelling a stored row of `gender` may still
+ * hold (`storedGenderSpellings`), canonical first: until the gender
+ * migrations have run, a row stored as `Male` is the `Men` row. The writers
+ * below rewrite such a row's gender when they match it.
+ */
+async function bySpellingOf<T>(gender: string, read: (spelling: string) => Promise<T[]>): Promise<T[]> {
+  const rows: T[] = [];
+  for (const spelling of storedGenderSpellings(gender)) rows.push(...(await read(spelling)));
+  return rows;
+}
+
+/** A stored, possibly absent, gender compared as `normalizeGender` writes it. */
+const storedGender = (gender: string | undefined) => (gender === undefined ? null : normalizeGender(gender));
 
 /**
  * Inserts or updates standards matched on (age category, gender, weight
@@ -732,15 +899,17 @@ export const upsertStandards = internalMutation({
         standardB: row.standardB,
       };
       const existing = (
-        await ctx.db
-          .query('standards')
-          .withIndex('by_age_gender', (q) => q.eq('ageCategory', doc.ageCategory).eq('gender', doc.gender))
-          .collect()
+        await bySpellingOf(doc.gender, (gender) =>
+          ctx.db
+            .query('standards')
+            .withIndex('by_age_gender', (q) => q.eq('ageCategory', doc.ageCategory).eq('gender', gender))
+            .collect(),
+        )
       ).find((s) => s.weightClass === doc.weightClass);
       if (!existing) {
         await ctx.db.insert('standards', doc);
         outcomes.push({ wasInsert: true, wasChanged: true });
-      } else if (existing.standardA !== doc.standardA || existing.standardB !== doc.standardB) {
+      } else if (existing.standardA !== doc.standardA || existing.standardB !== doc.standardB || existing.gender !== doc.gender) {
         await ctx.db.patch(existing._id, doc);
         outcomes.push({ wasInsert: false, wasChanged: true });
       } else {
@@ -810,12 +979,12 @@ export const upsertRecords = internalMutation({
         totalBy: row.totalBy,
       };
       const existing = (
-        await ctx.db
-          .query('records')
-          .withIndex('by_type_age_gender', (q) =>
-            q.eq('recordType', doc.recordType).eq('ageCategory', doc.ageCategory).eq('gender', doc.gender),
-          )
-          .collect()
+        await bySpellingOf(doc.gender, (gender) =>
+          ctx.db
+            .query('records')
+            .withIndex('by_type_age_gender', (q) => q.eq('recordType', doc.recordType).eq('ageCategory', doc.ageCategory).eq('gender', gender))
+            .collect(),
+        )
       ).find((r) => r.weightClass === doc.weightClass);
       pairs.push({ key: JSON.stringify([doc.recordType, doc.ageCategory, doc.gender, doc.weightClass]), doc, existing });
     }
@@ -835,13 +1004,13 @@ export const upsertRecords = internalMutation({
     const outcomes: UpsertOutcome[] = [];
     // What each key holds so far: an earlier row of this payload may have
     // inserted or rewritten it, after `existing` was read.
-    const written = new Map<string, Lifts & { _id: Id<'records'> }>();
+    const written = new Map<string, Lifts & { gender: string; _id: Id<'records'> }>();
     for (const { key, doc, existing } of pairs) {
       const current = written.get(key) ?? existing;
       if (!current) {
         written.set(key, { ...doc, _id: await ctx.db.insert('records', doc) });
         outcomes.push({ wasInsert: true, wasChanged: true });
-      } else if (liftsChanged(current, doc)) {
+      } else if (liftsChanged(current, doc) || current.gender !== doc.gender) {
         await ctx.db.replace(current._id, doc);
         written.set(key, { ...doc, _id: current._id });
         outcomes.push({ wasInsert: false, wasChanged: true });
@@ -889,7 +1058,7 @@ export const replaceRecordSet = internalMutation({
   handler: async (ctx, { recordType, rows }) => {
     if (!recordType) throw new Error('recordType is required');
     if (!rows.length) throw new Error(`refusing to replace ${recordType} records with an empty payload`);
-    const keyOf = (r: { ageCategory: string; gender: string; weightClass: string }) => JSON.stringify([r.ageCategory, r.gender, r.weightClass]);
+    const keyOf = (r: { ageCategory: string; gender: string; weightClass: string }) => JSON.stringify([r.ageCategory, normalizeGender(r.gender), r.weightClass]);
     const { byKey: existing, deleted: duplicates } = await onePerKey(
       ctx,
       await ctx.db.query('records').withIndex('by_record_type', (q) => q.eq('recordType', recordType)).collect(),
@@ -920,7 +1089,7 @@ export const replaceRecordSet = internalMutation({
       if (!current) {
         await ctx.db.insert('records', doc);
         counts.inserted += 1;
-      } else if (liftsChanged(current, doc)) {
+      } else if (liftsChanged(current, doc) || current.gender !== doc.gender) {
         await ctx.db.replace(current._id, doc);
         counts.updated += 1;
         changes.push(`${label}: ${current.snatchRecord}/${current.cjRecord}/${current.totalRecord} -> ${doc.snatchRecord}/${doc.cjRecord}/${doc.totalRecord}`);
@@ -933,6 +1102,71 @@ export const replaceRecordSet = internalMutation({
     }
     if (counts.inserted + counts.updated + counts.deleted > 0) await recordWrite(ctx, 'records', [{ kind: 'table', key: 'records' }]);
     return { ...counts, changes };
+  },
+});
+
+const qualifyingTotalRow = v.object({
+  ageCategory: v.string(),
+  gender: v.string(),
+  weightClass: v.string(),
+  qualifyingTotal: v.number(),
+});
+
+/**
+ * Exact-set sync of one event's qualifying totals, the way `replaceRecordSet`
+ * syncs a record type: gender and age normalized, classes missing from the
+ * payload deleted, the rest written only where they changed. An empty
+ * payload or a duplicate class is refused (a failed load, not an event
+ * without totals). The only writer of `qualifying_totals`:
+ *
+ *   npx convex run ingest:replaceQualifyingTotalSet '{"eventName":"…","rows":[…]}'
+ */
+export const replaceQualifyingTotalSet = internalMutation({
+  args: { eventName: v.string(), rows: v.array(qualifyingTotalRow) },
+  handler: async (ctx, { eventName, rows }) => {
+    if (!eventName.trim()) throw new Error('eventName is required');
+    if (!rows.length) throw new Error(`refusing to replace ${eventName} qualifying totals with an empty payload`);
+    const keyOf = (r: { ageCategory: string; gender: string; weightClass: string }) =>
+      JSON.stringify([normalizeAgeCategory(r.ageCategory), normalizeGender(r.gender), r.weightClass]);
+    const { byKey: existing, deleted: duplicates } = await onePerKey(
+      ctx,
+      await ctx.db
+        .query('qualifying_totals')
+        .withIndex('by_event', (q) => q.eq('eventName', eventName))
+        .collect(),
+      keyOf,
+    );
+    const counts = { inserted: 0, updated: 0, deleted: duplicates, unchanged: 0 };
+    const seen = new Set<string>();
+    for (const row of rows) {
+      const doc = {
+        eventName,
+        ageCategory: normalizeAgeCategory(row.ageCategory),
+        gender: normalizeGender(row.gender),
+        weightClass: row.weightClass,
+        qualifyingTotal: row.qualifyingTotal,
+      };
+      const key = keyOf(doc);
+      if (seen.has(key)) throw new Error(`Duplicate ${eventName} qualifying total in payload: ${key}`);
+      seen.add(key);
+      const current = existing.get(key);
+      if (!current) {
+        await ctx.db.insert('qualifying_totals', doc);
+        counts.inserted += 1;
+      } else if (current.qualifyingTotal !== doc.qualifyingTotal || current.gender !== doc.gender || current.ageCategory !== doc.ageCategory) {
+        await ctx.db.replace(current._id, doc);
+        counts.updated += 1;
+      } else counts.unchanged += 1;
+    }
+    for (const [key, row] of existing) {
+      if (seen.has(key)) continue;
+      await ctx.db.delete(row._id);
+      counts.deleted += 1;
+    }
+    if (counts.inserted + counts.updated + counts.deleted > 0) {
+      await recordWrite(ctx, 'qualifying_totals', [{ kind: 'table', key: 'qualifying_totals' }]);
+    }
+    return counts;
   },
 });
 
@@ -967,10 +1201,12 @@ export const replaceIntlRankingsGroup = internalMutation({
       throw new Error(`refusing to replace intl rankings for ${meet}/${gender}/${ageCategory} with an empty payload`);
     }
     const existing = (
-      await ctx.db
-        .query('intl_rankings')
-        .withIndex('by_gender_age', (q) => q.eq('gender', gender).eq('ageCategory', ageCategory))
-        .collect()
+      await bySpellingOf(gender, (spelling) =>
+        ctx.db
+          .query('intl_rankings')
+          .withIndex('by_gender_age', (q) => q.eq('gender', spelling).eq('ageCategory', ageCategory))
+          .collect(),
+      )
     ).filter((row) => row.meet === meet);
     const keyOf = (ranking: number | undefined, name: string | undefined) => JSON.stringify([ranking, name]);
     const incoming = new Set<string>();
@@ -992,6 +1228,7 @@ export const replaceIntlRankingsGroup = internalMutation({
         writes.push({ id: null, doc });
       } else if (
         current.legacyId !== undefined ||
+        current.gender !== doc.gender ||
         current.weightClass !== doc.weightClass ||
         current.total !== doc.total ||
         current.percentA !== doc.percentA
@@ -1044,13 +1281,13 @@ export const deleteMissingIntlRankingGroups = internalMutation({
     const byGroup = new Map<string, { meet: string; gender: string; ageCategory: string; ids: (typeof rows)[number]['_id'][] }>();
     const rows = await ctx.db.query('intl_rankings').collect();
     for (const row of rows) {
-      const key = JSON.stringify([row.meet ?? null, row.gender ?? null, row.ageCategory ?? null]);
+      const key = JSON.stringify([row.meet ?? null, storedGender(row.gender), row.ageCategory ?? null]);
       if (active.has(key)) continue;
       const group = byGroup.get(key) ?? { meet: row.meet ?? '', gender: row.gender ?? '', ageCategory: row.ageCategory ?? '', ids: [] };
       group.ids.push(row._id);
       byGroup.set(key, group);
     }
-    const storedGroups = new Set(rows.map((row) => JSON.stringify([row.meet ?? null, row.gender ?? null, row.ageCategory ?? null]))).size;
+    const storedGroups = new Set(rows.map((row) => JSON.stringify([row.meet ?? null, storedGender(row.gender), row.ageCategory ?? null]))).size;
     if (!allowShrink && exceedsShrink(byGroup.size, storedGroups, INTL_GROUP_PRUNE_LIMIT)) {
       throw new Error(
         `refusing to prune ${byGroup.size} of ${storedGroups} international rankings groups no longer on the standings page ` +
@@ -1096,7 +1333,7 @@ export const replaceWsoRecordSet = internalMutation({
   handler: async (ctx, { wso, rows, allowShrink }) => {
     if (!wso) throw new Error('wso is required');
     if (!rows.length) throw new Error(`refusing to replace ${wso} WSO records with an empty payload`);
-    const keyOf = (r: { ageCategory: string; gender: string; weightClass: string }) => JSON.stringify([r.ageCategory, r.gender, r.weightClass]);
+    const keyOf = (r: { ageCategory: string; gender: string; weightClass: string }) => JSON.stringify([r.ageCategory, normalizeGender(r.gender), r.weightClass]);
     if (!allowShrink) {
       const incoming = new Map(rows.map((row) => [keyOf({ ageCategory: normalizeAgeCategory(row.ageCategory), gender: normalizeGender(row.gender), weightClass: row.weightClass }), row]));
       const stored = new Map((await ctx.db.query('wso_records').withIndex('by_wso', (q) => q.eq('wso', wso)).collect()).map((row) => [keyOf(row), row]));
@@ -1140,7 +1377,7 @@ export const replaceWsoRecordSet = internalMutation({
       if (!current) {
         await ctx.db.insert('wso_records', doc);
         counts.inserted += 1;
-      } else if (liftsChanged(current, doc)) {
+      } else if (liftsChanged(current, doc) || current.gender !== doc.gender) {
         await ctx.db.replace(current._id, doc);
         counts.updated += 1;
       } else counts.unchanged += 1;

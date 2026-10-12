@@ -16,6 +16,7 @@ import { distinctNameKeys } from './lib/names';
 import { RESULT_NAMES_VIEW } from './lib/viewKeys';
 import { joinJsonChunks, readViewTextAnyAge } from './lib/views';
 import {
+  ADAPTIVE_RECORDS_SEASON_START,
   computeAdaptiveRecords,
   computeClubs,
   computeIntlRankings,
@@ -82,7 +83,7 @@ export const live = internalQuery({
       case 'wsoAgeGroups':
         return JSON.stringify(wsoAgeGroups(await computeWsoRows(ctx, a.wso)));
       case 'adaptive':
-        return JSON.stringify(await computeAdaptiveRecords(ctx, a.gender, a.excludeFederation, '2026'));
+        return JSON.stringify(await computeAdaptiveRecords(ctx, a.gender, a.excludeFederation, ADAPTIVE_RECORDS_SEASON_START));
       case 'clubMeetStats': {
         const roster = await ctx.db
           .query('athletes')
@@ -281,23 +282,6 @@ export const run = internalAction({
       await compare(`search ${JSON.stringify(query)}`, ctx.runQuery(api.results.search, { query }), 'searchSuggestions', { query });
     }
     return { checks, mismatches: mismatches.slice(0, 50) };
-  },
-});
-
-/** Stored `lifting_results` rows of the given events, for comparing a scraper port with Postgres. */
-export const resultRowsForEvents = internalQuery({
-  args: { eventIds: v.array(v.string()) },
-  handler: async (ctx, { eventIds }) => {
-    const rows = [];
-    for (const eventId of eventIds) {
-      rows.push(
-        ...(await ctx.db
-          .query('lifting_results')
-          .withIndex('by_event_and_name', (q) => q.eq('eventId', eventId))
-          .collect()),
-      );
-    }
-    return rows.map(({ _id, _creationTime, nameKey, ...row }) => row);
   },
 });
 

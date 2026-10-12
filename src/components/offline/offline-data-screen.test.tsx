@@ -19,6 +19,13 @@ jest.mock("react-native-safe-area-context", () => ({
   useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }),
 }));
 jest.mock("@/components/ui/IconSymbol", () => ({ IconSymbol: () => null }));
+jest.mock("react-native-reanimated", () => ({
+  __esModule: true,
+  default: { View: jest.requireActual("react-native").View },
+  useSharedValue: (value: number) => ({ value }),
+  useAnimatedStyle: () => ({}),
+  withSpring: () => 1,
+}));
 const mockPaywallProps: unknown[] = [];
 jest.mock("@/app/shared-screens/paywall", () => {
   const { Text } = jest.requireActual<typeof import("react-native")>("react-native");
@@ -35,6 +42,7 @@ type HeaderItem = { label: string; disabled: boolean; onPress: () => void };
 type ScreenOptions = { unstable_headerRightItems?: () => HeaderItem[] };
 let mockScreenOptions: ScreenOptions = {};
 jest.mock("expo-router", () => ({
+  usePathname: () => "/schedule-toolbar/offline-data",
   Stack: {
     Screen: ({ options }: { options: ScreenOptions }) => {
       mockScreenOptions = options;
@@ -43,9 +51,14 @@ jest.mock("expo-router", () => ({
   },
 }));
 
-let mockIsSubscribed = true;
+let mockIsSubscribed: boolean | null = true;
+let mockIsSubscriptionLoading = false;
 jest.mock("@/contexts/SubscriptionContext", () => ({
-  useSubscription: () => ({ isSubscribed: mockIsSubscribed, isLoading: false }),
+  useSubscription: () => ({
+    isSubscribed: mockIsSubscribed,
+    isLoading: mockIsSubscriptionLoading,
+    recheckSubscription: () => {},
+  }),
 }));
 
 // "Today" where the download window is anchored (UTC-12), so the window does
@@ -181,6 +194,7 @@ beforeEach(async () => {
   resetOfflineActivityForTests();
   jest.clearAllMocks();
   mockIsSubscribed = true;
+  mockIsSubscriptionLoading = false;
   mockScreenOptions = {};
   mockDownloadedMeets = new Set(["Meet A"]);
   mockPrefetchMeetData.mockImplementation(async () => {});
@@ -311,7 +325,33 @@ describe("OfflineDataScreen", () => {
     expect(mockPaywallProps.at(-1)).toEqual({
       from: "/schedule-toolbar/offline-data",
       feature: "offline-data",
+      inline: true,
     });
+    act(() => tree.unmount());
+  });
+
+  it("says it can't confirm an unknown subscription instead of showing the paywall", async () => {
+    mockIsSubscribed = null;
+    mockPaywallProps.length = 0;
+    const tree = await mount();
+    expect(rows(tree)).toHaveLength(0);
+    expect(mockPaywallProps).toEqual([]);
+    expect(JSON.stringify(tree.toJSON())).toContain("Can't confirm your subscription");
+    act(() => tree.unmount());
+  });
+
+  it("keeps the rows mounted through a background subscription refresh", async () => {
+    const tree = await mount();
+    const before = rows(tree)[0];
+    expect(before).toBeDefined();
+
+    mockIsSubscriptionLoading = true;
+    await act(async () => {
+      tree.update(<OfflineDataScreen />);
+    });
+
+    // The same instance, not a spinner and a remount.
+    expect(rows(tree)[0]).toBe(before);
     act(() => tree.unmount());
   });
 });
