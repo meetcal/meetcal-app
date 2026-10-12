@@ -104,9 +104,13 @@ export const meetsFields = {
     endDate: v.string(),
     status: meetStatus,
     federation: v.optional(v.string()),
-    // The name the source gave a meet stored under another
-    // (`disambiguatedMeetName`); unset when the two are the same.
+    // The name the source gives a meet stored under another: a name
+    // `disambiguatedMeetName` gave it, or the meet's name before the source
+    // retitled it (names never change); unset when the two are the same.
     sourceName: v.optional(v.string()),
+    // The source's own id for the meet (the Sport80 event id): a meet the
+    // source retitles is still this meet (`ingest.upsertMeets`).
+    sourceId: v.optional(v.string()),
     updatedAt: v.number(),
 };
 
@@ -187,7 +191,8 @@ export default defineSchema({
     .index('by_status', ['status'])
     .index('by_status_and_start_date', ['status', 'startDate'])
     .index('by_name', ['name'])
-    .index('by_end_date', ['endDate']),
+    .index('by_end_date', ['endDate'])
+    .index('by_source_id', ['sourceId']),
 
   qualifying_totals: defineTable(qualifyingTotalsFields).index('by_event', ['eventName']),
 

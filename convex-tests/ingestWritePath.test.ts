@@ -7,6 +7,7 @@ import {
   replaceMeetSchedule,
   replaceQualifyingTotalSet,
   replaceWsoRecordSet,
+  setMeetSourceId,
   syncUsamwEvents,
   updateMeetStatuses,
   upsertEntryAthletes,
@@ -193,7 +194,7 @@ const meetRow = (name: string, extra: Row = {}): Row => ({
 const NOW = Date.UTC(2026, 9, 12, 16);
 
 describe('meet writes', () => {
-  const upsert = handlerOf<{ rows: Row[] }, { wasInsert: boolean; wasChanged: boolean; storedAs?: string }[]>(upsertMeets);
+  const upsert = handlerOf<{ rows: Row[] }, { wasInsert: boolean; wasChanged: boolean; storedAs?: string; retitledFrom?: string }[]>(upsertMeets);
   beforeEach(() => jest.spyOn(Date, 'now').mockReturnValue(NOW));
 
   it('reopens a completed meet whose dates moved into the future (#158)', async () => {
@@ -280,6 +281,67 @@ describe('meet writes', () => {
       ['Toronto Open', '', 'ongoing'],
       ['Blank Open', '', 'ongoing'],
     ]);
+  });
+
+  describe('Sport80 event ids (#252, #413)', () => {
+    const NJ = '2026 New Jersey WSO Championship (NUQ)';
+    const NJ_NEW = '2026 New Jersey State Championship (NUQ)';
+
+    it('keeps a retitled meet as one meet under its stored name, with the new title as its source name, reported once', async () => {
+      const { ctx, rows } = fakeMutationCtx({ meets: [{ ...meetRow(NJ, { sourceId: '14836' }), updatedAt: 1 }] });
+      expect(await upsert(ctx, { rows: [meetRow(NJ_NEW, { sourceId: '14836' })] })).toEqual([
+        { wasInsert: false, wasChanged: true, storedAs: NJ, retitledFrom: NJ },
+      ]);
+      // The next sync finds it the same way, and reports nothing new.
+      expect(await upsert(ctx, { rows: [meetRow(NJ_NEW, { sourceId: '14836' })] })).toEqual([{ wasInsert: false, wasChanged: false, storedAs: NJ }]);
+      expect(rows('meets').map((m) => [m.name, m.sourceName, m.sourceId])).toEqual([[NJ, NJ_NEW, '14836']]);
+      expect(rows('view_hints').map((h) => `${h.kind}:${h.key}`)).toEqual([`meet:${NJ}`]);
+      // Retitled back: the source's name is the stored one again.
+      expect(await upsert(ctx, { rows: [meetRow(NJ, { sourceId: '14836' })] })).toEqual([{ wasInsert: false, wasChanged: true, retitledFrom: NJ_NEW }]);
+      expect(rows('meets').map((m) => [m.name, m.sourceName])).toEqual([[NJ, undefined]]);
+    });
+
+    it('gives a meet found by name its event id without invalidating its views, then follows it through a retitle', async () => {
+      const { ctx, rows } = fakeMutationCtx({ meets: [{ ...meetRow(NJ), updatedAt: 1 }] });
+      expect(await upsert(ctx, { rows: [meetRow(NJ, { sourceId: '14836' })] })).toEqual([{ wasInsert: false, wasChanged: false }]);
+      expect(rows('meets')).toEqual([expect.objectContaining({ name: NJ, sourceId: '14836', updatedAt: 1 })]);
+      expect(rows('view_hints')).toEqual([]);
+      await upsert(ctx, { rows: [meetRow(NJ_NEW, { sourceId: '14836' })] });
+      expect(rows('meets').map((m) => [m.name, m.sourceName])).toEqual([[NJ, NJ_NEW]]);
+    });
+
+    it('never takes a meet of the same name that Sport80 knows by another id: that is another event', async () => {
+      const { ctx, rows } = fakeMutationCtx({ meets: [{ ...meetRow('Halloweenie', { startDate: '2025-10-25', endDate: '2025-10-25', status: 'completed', sourceId: '13000' }), updatedAt: 1 }] });
+      expect(await upsert(ctx, { rows: [meetRow('Halloweenie', { sourceId: '15060' })] })).toEqual([
+        { wasInsert: true, wasChanged: true, storedAs: 'Halloweenie (USAW)' },
+      ]);
+      expect(rows('meets').map((m) => [m.name, m.startDate, m.sourceId, m.sourceName])).toEqual([
+        ['Halloweenie', '2025-10-25', '13000', undefined],
+        ['Halloweenie (USAW)', '2026-11-07', '15060', 'Halloweenie'],
+      ]);
+    });
+
+    it('stores a new meet with its event id', async () => {
+      const { ctx, rows } = fakeMutationCtx();
+      await upsert(ctx, { rows: [meetRow('Open', { sourceId: '1' })] });
+      expect(rows('meets')).toEqual([expect.objectContaining({ name: 'Open', sourceId: '1' })]);
+    });
+
+    it('ties a stored meet to its event by hand, once', async () => {
+      const setSourceId = handlerOf<{ name: string; sourceId: string }, { changed: boolean }>(setMeetSourceId);
+      const { ctx, rows } = fakeMutationCtx({ meets: [{ ...meetRow(NJ), updatedAt: 1 }, { ...meetRow('Other', { sourceId: '7' }), updatedAt: 1 }] });
+      await expect(setSourceId(ctx, { name: NJ, sourceId: 'abc' })).rejects.toThrow('not a Sport80 event id');
+      await expect(setSourceId(ctx, { name: 'Nope', sourceId: '14836' })).rejects.toThrow('no meet named');
+      await expect(setSourceId(ctx, { name: NJ, sourceId: '7' })).rejects.toThrow('already the meet "Other"');
+      expect(await setSourceId(ctx, { name: NJ, sourceId: '14836' })).toEqual({ changed: true });
+      expect(await setSourceId(ctx, { name: NJ, sourceId: '14836' })).toEqual({ changed: false });
+      // The next sync follows the retitle.
+      await upsert(ctx, { rows: [meetRow(NJ_NEW, { sourceId: '14836' })] });
+      expect(rows('meets').map((m) => [m.name, m.sourceName])).toEqual([
+        [NJ, NJ_NEW],
+        ['Other', undefined],
+      ]);
+    });
   });
 
   it('treats a meet stored without a federation as USAW', async () => {

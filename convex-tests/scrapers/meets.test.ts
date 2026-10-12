@@ -1,6 +1,7 @@
 import { readFileSync } from 'fs';
 import { join } from 'path';
 import {
+  listedMeetTitle,
   MAX_WIDGET_PAGES,
   parseAddress,
   parseDateRange,
@@ -34,6 +35,31 @@ describe('meet sync (port of sync-meets.js / sync-nat-meets.js / sync-virus-meet
     expect(parseAddress('12 Oak Rd, Reno, Nevada, 89501')).toEqual({ venueName: '', street: '12 Oak Rd', city: 'Reno', state: 'Nevada', zip: '89501' });
     expect(parseAddress('TBD')).toEqual({ venueName: '', street: 'TBD', city: 'Unknown', state: 'Unknown', zip: 'Unknown' });
     expect(parseAddress('A, , B, C, D')).toMatchObject({ venueName: 'A', street: 'B' });
+  });
+
+  it('reads a US city back from the state, whatever comes between it and the venue (#403)', () => {
+    // A street first, then a suite: the suite is no city.
+    expect(parseAddress('17630 Juniper Path, Suite F, Lakeville, Minnesota, United States of America, 55044')).toEqual({
+      venueName: '', street: '17630 Juniper Path, Suite F', city: 'Lakeville', state: 'Minnesota', zip: '55044',
+    });
+    expect(parseAddress('1540 W Park Ave, #4, Titon Falls, New Jersey, United States of America, 07712')).toMatchObject({
+      street: '1540 W Park Ave, #4', city: 'Titon Falls', state: 'New Jersey',
+    });
+    // A building between the venue and the street belongs to the venue.
+    expect(parseAddress('Wayne State University, Mort Harris Fitness & Recreation Center, 5210 Gullen Mall, Detroit, Michigan, United States of America, 48202')).toEqual({
+      venueName: 'Wayne State University, Mort Harris Fitness & Recreation Center', street: '5210 Gullen Mall', city: 'Detroit', state: 'Michigan', zip: '48202',
+    });
+    // No street at all.
+    expect(parseAddress('Gym, Reno, Nevada, United States of America, 89501')).toEqual({ venueName: 'Gym', street: '', city: 'Reno', state: 'Nevada', zip: '89501' });
+    // No country, but a US state before the zip.
+    expect(parseAddress('12 Oak Rd, Suite 2, Reno, Nevada, 89501')).toMatchObject({ street: '12 Oak Rd, Suite 2', city: 'Reno', state: 'Nevada' });
+  });
+
+  it('takes the zone of the city the address really names in a state that spans two (#403)', () => {
+    const [meet] = transformMeets([
+      { name: 'Panhandle Open', address: 'Venue, Building, 123 Main St, Pensacola, Florida, United States of America, 32501', subtitle: '10/01/2026' },
+    ]).meets;
+    expect(meet).toMatchObject({ venueName: 'Venue, Building', venueStreet: '123 Main St', venueCity: 'Pensacola', venueState: 'FL', timeZone: 'America/Chicago' });
   });
 
   it('turns MM/DD/YYYY ranges (escaped slashes too) into padded ISO dates', () => {
@@ -156,10 +182,41 @@ describe('meet sync (port of sync-meets.js / sync-nat-meets.js / sync-virus-meet
     });
   });
 
-  it('asks for each page of a search', () => {
+  it('asks for each page of a search, or of the whole listing', () => {
     expect(widgetPageUrl('Virus Weightlifting', 2)).toBe(
       `https://usaweightlifting.sport80.com/api/public/widget/data/new/1?p=2&i=${WIDGET_PAGE_SIZE}&l=&d=10&f=&s=Virus%20Weightlifting`,
     );
+    expect(widgetPageUrl('', 0)).toBe(`https://usaweightlifting.sport80.com/api/public/widget/data/new/1?p=0&i=${WIDGET_PAGE_SIZE}&l=&d=10&f=&s=`);
+  });
+
+  it('lists WSO, national and Virus series meets by title (#413)', () => {
+    for (const title of [
+      '2026 Georgia WSO Championships',
+      'Sadecki MN State Championships and Mn/Dak WSO 3',
+      '2027 USA Weightlifting National Championships & Virus Weightlifting Series 1',
+      '2026 Masters National Championships & National University Championships',
+      'Spring Nationals Qualifier',
+      '2026 VIRUS Weightlifting Series 1',
+      '2026 Florida State Championships (WSO Championships)',
+    ]) {
+      expect([title, listedMeetTitle(title)]).toEqual([title, true]);
+    }
+    for (const title of ['2026 New Jersey State Championship (NUQ)', 'Kolkata International', 'Halloweenie', 'NJWSOpen']) {
+      expect([title, listedMeetTitle(title)]).toEqual([title, false]);
+    }
+  });
+
+  it("keeps each meet's Sport80 event id", () => {
+    const { meets } = transformMeets([
+      { id: '14836', name: 'NJ', address: '1540 W Park Ave, #4, Titon Falls, New Jersey, United States of America, 07712', subtitle: '10/24/2026 - 10/25/2026' },
+      { id: '15078', name: 'No address', address: null, subtitle: '03/14/2027' },
+      { id: null, name: 'No id', address: null, subtitle: '03/14/2027' },
+    ]);
+    expect(meets.map((m) => [m.name, m.sourceId])).toEqual([
+      ['NJ', '14836'],
+      ['No address', '15078'],
+      ['No id', undefined],
+    ]);
   });
 
   describe('paging', () => {
