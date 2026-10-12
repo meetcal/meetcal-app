@@ -960,6 +960,18 @@ export default function StartListScreen() {
   }, [filteredAthletes, getSessionDetails]);
 
   const handleSaveAll = async () => {
+    // Saving writes to the signed-in user's list, so sign-in comes first, as
+    // on every other save path. `saveSessionsFromAthletes` returns false
+    // without a user, which used to surface as "Failed to save sessions."
+    // after the confirmation instead of a sign-in prompt. `null` is "still
+    // loading"; `false` means the sign-in alert has already been shown.
+    const authResult = requireAuth({
+      feature: "save-session",
+      message: "Sign in to save sessions and sync them across your devices.",
+      returnPath: "/(tabs)/(start-list)",
+    });
+    if (authResult !== true) return;
+
     if (!selectedMeet || !isMeetName(selectedMeet)) {
       showToast({ type: "error", message: "Please select a meet before saving sessions." });
       return;
