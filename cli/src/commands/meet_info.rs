@@ -10,11 +10,12 @@ use crate::utils::names::{NameKind, not_found};
 use crate::utils::output::{self, Report};
 
 /// Show a meet's details: dates, status, venue and address, time zone, and venue maps.
-///
-/// Examples:
-///   meetcal meet-info "2026 Florida State Championships (WSO Championships)"
 #[derive(Parser)]
-#[command(name = "meet-info")]
+#[command(
+    name = "meet-info",
+    after_help = r#"Examples:
+  meetcal meet-info "2026 Florida State Championships (WSO Championships)""#
+)]
 pub struct MeetInfoArgs {
     /// Exact meet name (see `meetcal meets`)
     pub name: String,

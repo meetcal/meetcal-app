@@ -13,12 +13,13 @@ use crate::utils::output::{self, Report};
 
 /// Show a meet's session schedule: each session's date, platform, weigh-in and start times (in
 /// the meet's time zone), and weight classes.
-///
-/// Examples:
-///   meetcal schedule "2026 Florida State Championships (WSO Championships)"
-///   meetcal schedule "2026 Florida State Championships (WSO Championships)" --date 2026-10-03
 #[derive(Parser)]
-#[command(name = "schedule")]
+#[command(
+    name = "schedule",
+    after_help = r#"Examples:
+  meetcal schedule "2026 Florida State Championships (WSO Championships)"
+  meetcal schedule "2026 Florida State Championships (WSO Championships)" --date 2026-09-26"#
+)]
 pub struct ScheduleArgs {
     /// Exact meet name (see `meetcal meets`)
     pub name: String,

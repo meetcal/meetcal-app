@@ -14,12 +14,13 @@ use crate::utils::stats::{Division, Gender, chronological, number, weight_class}
 ///
 /// The athlete's gender, age category and weight class come from their latest result; override
 /// them with --category and --class.
-///
-/// Examples:
-///   meetcal qualify "Brandon Victorian"
-///   meetcal qualify "Brandon Victorian" --class 94
 #[derive(Parser)]
-#[command(name = "qualify")]
+#[command(
+    name = "qualify",
+    after_help = r#"Examples:
+  meetcal qualify "Brandon Victorian"
+  meetcal qualify "Brandon Victorian" --class 94"#
+)]
 pub struct QualifyArgs {
     /// Exact athlete name
     pub name: String,
@@ -125,7 +126,10 @@ pub fn target(division: &Division, category: Option<&str>, class: Option<&str>) 
     let class = match class {
         Some(class) => match weight_class(class) {
             Some(class) => class,
-            None => bail!("Weight class must look like 89 or 110+, not \"{class}\""),
+            None => bail!(
+                "Weight class (--class, -c) must look like 89 or 110+, not \"{class}\"; \
+                 the age category is --category (-a)"
+            ),
         },
         None => match &division.weight_class {
             Some(class) => class.clone(),

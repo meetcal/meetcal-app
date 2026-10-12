@@ -16,11 +16,12 @@ pub struct QualifyingTotal {
 }
 
 /// Search for Qualifying Totals for a given age, gender, and event.
-///
-/// Examples:
-///   meetcal qualifying-totals --age Senior --gender Men --event Nationals
 #[derive(Parser)]
-#[command(name = "qualifying-totals")]
+#[command(
+    name = "qualifying-totals",
+    after_help = r#"Examples:
+  meetcal qualifying-totals --age Junior --gender Men --event Nationals"#
+)]
 pub struct QualTotalsArgs {
     /// Age group: U11, U13, U15, U17, U23, U25, Junior, University, Senior,
     /// Masters 35, Masters 40, Masters 45, Masters 50, Masters 55, Masters 60,

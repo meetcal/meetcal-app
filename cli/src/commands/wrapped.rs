@@ -11,12 +11,13 @@ use crate::utils::backend::{queries, query};
 use crate::utils::output::{self, Report};
 
 /// Show an athlete's calendar year in lifting.
-///
-/// Examples:
-///   meetcal wrapped "Maddisen Mohnsen"
-///   meetcal wrapped "Maddisen Mohnsen" --year 2025
 #[derive(Parser)]
-#[command(name = "wrapped")]
+#[command(
+    name = "wrapped",
+    after_help = r#"Examples:
+  meetcal wrapped "Maddisen Mohnsen"
+  meetcal wrapped "Maddisen Mohnsen" --year 2024"#
+)]
 pub struct WrappedArgs {
     /// Exact athlete name
     pub name: String,

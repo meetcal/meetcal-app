@@ -15,12 +15,13 @@ static WOMEN: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(?i)\bwomen\b").un
 static YEAR: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\b\d{4}\b").unwrap());
 static WEIGHT_CLASS: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(?i)\b(\d+\+?)kg").unwrap());
 
-/// Search for Adaptive American Records for a given weight class and gender.
-///
-/// Examples:
-///   meetcal adaptive-records Women
+/// Search for Adaptive American Records for a gender.
 #[derive(Parser)]
-#[command(name = "adaptive-records")]
+#[command(
+    name = "adaptive-records",
+    after_help = r#"Examples:
+  meetcal adaptive-records Women"#
+)]
 pub struct AdaptiveArgs {
     /// Gender: Men or Women
     pub gender: String,

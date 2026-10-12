@@ -14,11 +14,12 @@ use crate::{
 };
 
 /// Search for WSO Records for a given age, wso, and gender.
-///
-/// Examples:
-///   meetcal wso-records --age Senior --gender Men --wso Carolinas
 #[derive(Parser)]
-#[command(name = "wso-records")]
+#[command(
+    name = "wso-records",
+    after_help = r#"Examples:
+  meetcal wso-records --age Senior --gender Men --wso Carolina"#
+)]
 pub struct WsoRecordsArgs {
     /// Age group: U11, U13, U15, U17, Youth, Junior, Senior, Masters 35,
     /// Masters 40, Masters 45, Masters 50, Masters 55, Masters 60, Masters 65,
@@ -30,8 +31,7 @@ pub struct WsoRecordsArgs {
     #[arg(long, short = 'g')]
     pub gender: String,
 
-    /// WSO region to search for
-    /// Carolina, California South, Florida, etc
+    /// WSO, e.g. Carolina, California South or Florida (see `meetcal wsos`)
     #[arg(long, short = 'w')]
     pub wso: String,
 }

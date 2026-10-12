@@ -15,12 +15,13 @@ use clap::Parser;
 use comfy_table::Table;
 
 /// Search for entries for a meet.
-///
-/// Examples:
-///   meetcal meet "2026 VIRUS Weightlifting Series 1" --session-number 1 --session-platform red
-///   meetcal meet "2026 Virus Weightlifting Series 2, Powered by Rogue Fitness"
 #[derive(Parser)]
-#[command(name = "meet")]
+#[command(
+    name = "meet",
+    after_help = r#"Examples:
+  meetcal meet "2026 VIRUS Weightlifting Series 1" --session-number 1 --session-platform red
+  meetcal meet "2026 Virus Weightlifting Series 2, Powered by Rogue Fitness""#
+)]
 pub struct MeetArgs {
     /// Meet to search for
     pub name: String,

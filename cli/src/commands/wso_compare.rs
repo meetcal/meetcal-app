@@ -8,11 +8,12 @@ use crate::commands::wrapped::current_year;
 use crate::utils::names::{NameKind, not_found};
 
 /// Compare a WSO's current calendar year with the previous calendar year.
-///
-/// Examples:
-///   meetcal wso-compare Carolina
 #[derive(Parser)]
-#[command(name = "wso-compare")]
+#[command(
+    name = "wso-compare",
+    after_help = r#"Examples:
+  meetcal wso-compare Carolina"#
+)]
 pub struct WsoCompareArgs {
     /// Weightlifting State Organization
     pub wso: String,

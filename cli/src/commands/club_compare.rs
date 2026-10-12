@@ -8,11 +8,12 @@ use crate::commands::wrapped::current_year;
 use crate::utils::names::{NameKind, not_found};
 
 /// Compare a club's current calendar year with the previous calendar year.
-///
-/// Examples:
-///   meetcal club-compare "POWER AND GRACE PERFORMANCE."
 #[derive(Parser)]
-#[command(name = "club-compare")]
+#[command(
+    name = "club-compare",
+    after_help = r#"Examples:
+  meetcal club-compare "POWER AND GRACE PERFORMANCE.""#
+)]
 pub struct ClubCompareArgs {
     pub club: String,
 }

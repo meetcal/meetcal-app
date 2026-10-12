@@ -55,13 +55,14 @@ impl Metric {
 /// Without --club or --wso it reads every result in the range (a year is about 28,000). Results
 /// whose total is not their snatch plus clean & jerk (a source error) are left out, and Sinclair
 /// is not computed for impossible bodyweights.
-///
-/// Examples:
-///   meetcal leaderboard --by sinclair --gender women
-///   meetcal leaderboard --year 2025 --by snatch --category "Masters 45"
-///   meetcal leaderboard --wso Florida --by total --limit 10
 #[derive(Parser)]
-#[command(name = "leaderboard")]
+#[command(
+    name = "leaderboard",
+    after_help = r#"Examples:
+  meetcal leaderboard --by sinclair --gender women
+  meetcal leaderboard --year 2025 --by snatch --category "Masters 45"
+  meetcal leaderboard --wso Florida --by total --limit 10"#
+)]
 pub struct LeaderboardArgs {
     /// What to rank by
     #[arg(long, short = 'b', value_enum, default_value_t = Metric::Total)]

@@ -8,12 +8,13 @@ use crate::utils::names::{completed_meets, upcoming_meets};
 use crate::utils::output::{self, Report};
 
 /// List meets: upcoming (starting within three months, or under way), or completed.
-///
-/// Examples:
-///   meetcal meets
-///   meetcal meets --completed --search virus
 #[derive(Parser)]
-#[command(name = "meets")]
+#[command(
+    name = "meets",
+    after_help = r#"Examples:
+  meetcal meets
+  meetcal meets --completed --search virus"#
+)]
 pub struct MeetsArgs {
     /// List completed meets, newest first, instead of upcoming ones
     #[arg(long, short = 'c')]

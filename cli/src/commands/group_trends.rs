@@ -30,11 +30,12 @@ pub const TOP_LIFTERS: usize = 15;
 /// Show a club's results year by year: athletes, meets, make rate, weight lifted, best total, PRs
 /// and medals; then its top lifters of all time. Counts results at meets where the athlete was
 /// registered with the club.
-///
-/// Examples:
-///   meetcal club-trends "Texas Barbell Club"
 #[derive(Parser)]
-#[command(name = "club-trends")]
+#[command(
+    name = "club-trends",
+    after_help = r#"Examples:
+  meetcal club-trends "Texas Barbell Club""#
+)]
 pub struct ClubTrendsArgs {
     /// Exact club name (see `meetcal clubs`)
     pub club: String,
@@ -47,11 +48,12 @@ pub struct ClubTrendsArgs {
 /// Show a WSO's results year by year: athletes, meets, make rate, weight lifted, best total, PRs
 /// and medals; then its top lifters of all time. Counts results at meets where the athlete was
 /// registered with the WSO.
-///
-/// Examples:
-///   meetcal wso-trends Florida
 #[derive(Parser)]
-#[command(name = "wso-trends")]
+#[command(
+    name = "wso-trends",
+    after_help = r#"Examples:
+  meetcal wso-trends Florida"#
+)]
 pub struct WsoTrendsArgs {
     /// Exact WSO name (see `meetcal wsos`)
     pub wso: String,

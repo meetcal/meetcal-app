@@ -14,12 +14,13 @@ use crate::utils::stats::{
 
 /// Every result in a year or date range, with every attempt and its Sinclair: the raw data for
 /// your own analysis. Best with --format csv or --format json.
-///
-/// Examples:
-///   meetcal results --year 2025 --format csv > results-2025.csv
-///   meetcal results --from 2026-06-01 --to 2026-06-30 --gender women --format json
 #[derive(Parser)]
-#[command(name = "results")]
+#[command(
+    name = "results",
+    after_help = r#"Examples:
+  meetcal results --year 2025 --format csv > results-2025.csv
+  meetcal results --from 2026-06-01 --to 2026-06-30 --gender women --format json"#
+)]
 pub struct ResultsArgs {
     /// Calendar year (defaults to the current year; ignored with --from)
     #[arg(long, short = 'y', value_parser = clap::value_parser!(i32).range(1900..=9999))]

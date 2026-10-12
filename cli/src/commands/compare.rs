@@ -10,11 +10,12 @@ use crate::types::wrapped::{SearchResponse, WrappedStats};
 use crate::utils::output::{self, Report};
 
 /// Compare an athlete's current calendar year with the previous calendar year.
-///
-/// Examples:
-///   meetcal compare "Maddisen Mohnsen"
 #[derive(Parser)]
-#[command(name = "compare")]
+#[command(
+    name = "compare",
+    after_help = r#"Examples:
+  meetcal compare "Maddisen Mohnsen""#
+)]
 pub struct CompareArgs {
     /// Exact athlete name
     pub name: String,

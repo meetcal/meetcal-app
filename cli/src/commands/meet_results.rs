@@ -24,12 +24,13 @@ pub const TOP_SINCLAIR: usize = 10;
 /// Show a meet's results and statistics: every result with its Sinclair, the heaviest lifts, the
 /// top Sinclair lifters, bomb-outs, make rates by attempt, and how the meet compares with its
 /// previous editions.
-///
-/// Examples:
-///   meetcal meet-results "2026 AZ Summer Slam Nationals Qualifier"
-///   meetcal meet-results "2026 Ohio WSO Championships" --no-history
 #[derive(Parser)]
-#[command(name = "meet-results")]
+#[command(
+    name = "meet-results",
+    after_help = r#"Examples:
+  meetcal meet-results "2026 AZ Summer Slam Nationals Qualifier"
+  meetcal meet-results "2026 Ohio WSO Championships" --no-history"#
+)]
 pub struct MeetResultsArgs {
     /// Meet to search for
     pub name: String,

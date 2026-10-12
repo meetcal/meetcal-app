@@ -19,11 +19,12 @@ pub struct Rankings {
 }
 
 /// Search for International Rankings for a given age, meet, and gender.
-///
-/// Examples:
-///   meetcal intl-rankings --age Senior --gender Men --meet Worlds
 #[derive(Parser)]
-#[command(name = "intl-rankings")]
+#[command(
+    name = "intl-rankings",
+    after_help = r#"Examples:
+  meetcal intl-rankings --age Senior --gender Men --meet Worlds"#
+)]
 pub struct IntlRankingsArgs {
     /// Age group: U15, U17, Youth, Junior, University, or Senior
     #[arg(long, short = 'a')]

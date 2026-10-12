@@ -8,11 +8,12 @@ use clap::Parser;
 use comfy_table::Table;
 
 /// Search for Records for a given age, federation, and gender.
-///
-/// Examples:
-///   meetcal records --age Senior --gender Men --federation USAW
 #[derive(Parser)]
-#[command(name = "records")]
+#[command(
+    name = "records",
+    after_help = r#"Examples:
+  meetcal records --age Senior --gender Men --federation USAW"#
+)]
 pub struct RecordsArgs {
     /// Age group: U13, U15, U17, U20, U23, Youth, Junior, University, Senior,
     /// Masters 30, Masters 35, Masters 40, Masters 45, Masters 50, Masters 55,

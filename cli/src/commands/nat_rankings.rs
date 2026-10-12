@@ -13,14 +13,16 @@ pub struct NatRanking {
     pub total: f64,
 }
 
-/// Search for National Rankings for a given weight.
-///
-/// Examples:
-///   meetcal nat-rankings "Junior Women's 77kg"
+/// Show a division's national rankings: each lifter's best total (see nat-ranking-year for one
+/// calendar year).
 #[derive(Parser)]
-#[command(name = "nat-rankings")]
+#[command(
+    name = "nat-rankings",
+    after_help = r#"Examples:
+  meetcal nat-rankings "Junior Women's 77kg" --federation USAW"#
+)]
 pub struct NatRankingsArgs {
-    /// Weight class to search for
+    /// Division to rank, e.g. "Junior Women's 77kg" or "Open Men's 89kg"
     pub weight_class: String,
 
     /// Federation: USAW or USAMW
