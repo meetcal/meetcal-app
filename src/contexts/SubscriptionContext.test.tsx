@@ -48,10 +48,16 @@ jest.mock("@/config/development", () => ({
 }));
 
 let mockNetworkListener: ((isConnected: boolean) => void) | null = null;
+// Real NetInfo calls a new listener with the current state at once; `null`
+// keeps the mock quiet on subscribe.
+let mockConnectedOnSubscribe: boolean | null = null;
+let mockNetworkSubscriptions = 0;
 jest.mock("@/lib/networkUtils", () => ({
   isNetworkAvailable: jest.fn(async () => true),
   subscribeToNetworkChanges: (callback: (isConnected: boolean) => void) => {
+    mockNetworkSubscriptions += 1;
     mockNetworkListener = callback;
+    if (mockConnectedOnSubscribe !== null) callback(mockConnectedOnSubscribe);
     return () => {
       mockNetworkListener = null;
     };
@@ -119,6 +125,8 @@ describe("SubscriptionProvider", () => {
     jest.spyOn(console, "log").mockImplementation(() => {});
     mockSecureStore.clear();
     mockNetworkListener = null;
+    mockConnectedOnSubscribe = null;
+    mockNetworkSubscriptions = 0;
     await AsyncStorage.clear();
     mockIsNetworkAvailable.mockResolvedValue(true);
     mockGetCustomerInfo.mockResolvedValue(customerInfo(null));
@@ -177,9 +185,12 @@ describe("SubscriptionProvider", () => {
     "treats a malformed cache %s as no cache",
     async (raw) => {
       mockSecureStore.set(SECURE_KEY, raw);
+      // RevenueCat has not answered yet: unknown, and still loading.
+      mockGetCustomerInfo.mockReturnValue(new Promise(() => {}));
       const value = await mountProvider();
       expect(value.current.isSubscribed).toBeNull();
       expect(value.current.subscriptionType).toBe("unknown");
+      expect(value.current.isLoading).toBe(true);
     },
   );
 
@@ -208,12 +219,17 @@ describe("SubscriptionProvider", () => {
     expect(value.current.isLoading).toBe(false);
   });
 
-  it("takes RevenueCat's answer online and writes it to SecureStore", async () => {
+  it("with no cache, takes RevenueCat's answer at once and writes it to SecureStore", async () => {
     mockGetCustomerInfo.mockResolvedValue(customerInfo("meetcal_lifetime"));
 
     const value = await mountProvider();
-    expect(value.current.isSubscribed).toBeNull();
 
+    // No 8 s hold: with nothing cached, "unknown, not loading" would tell a
+    // subscriber every premium surface could not confirm the subscription.
+    expect(mockGetCustomerInfo).toHaveBeenCalledTimes(1);
+    expect(value.current.isLoading).toBe(false);
+
+    // And no second, delayed check on top of it.
     await runInitialRefresh();
 
     expect(mockGetCustomerInfo).toHaveBeenCalledTimes(1);
@@ -280,6 +296,66 @@ describe("SubscriptionProvider", () => {
     expect(value.current.isUsingStaleCache).toBe(false);
   });
 
+  it("offline with no cache, is unknown (not loading) and re-checks on reconnect", async () => {
+    mockIsNetworkAvailable.mockResolvedValue(false);
+
+    const value = await mountProvider();
+    expect(value.current.isSubscribed).toBeNull();
+    expect(value.current.subscriptionType).toBe("unknown");
+    expect(value.current.isLoading).toBe(false);
+    expect(mockGetCustomerInfo).not.toHaveBeenCalled();
+
+    mockIsNetworkAvailable.mockResolvedValue(true);
+    mockGetCustomerInfo.mockResolvedValue(customerInfo("meetcal_quarterly"));
+    await act(async () => {
+      mockNetworkListener?.(true);
+    });
+    await flush();
+
+    expect(mockGetCustomerInfo).toHaveBeenCalledTimes(1);
+    expect(value.current.isSubscribed).toBe(true);
+  });
+
+  it("does not loop checks when RevenueCat fails while online", async () => {
+    // A listener that fires on subscribe plus an effect that re-subscribed on
+    // every `isLoading` flip re-ran a failing check forever.
+    mockConnectedOnSubscribe = true;
+    // Fails, and after a few calls stops answering, so a regression fails
+    // the assertion below instead of spinning the test forever.
+    mockGetCustomerInfo.mockImplementation(() =>
+      mockGetCustomerInfo.mock.calls.length > 5
+        ? new Promise(() => {})
+        : Promise.reject(new Error("rc down")),
+    );
+
+    const value = await mountProvider();
+    await act(async () => {
+      await jest.advanceTimersByTimeAsync(REFRESH_DELAY_MS * 3);
+    });
+    await flush();
+
+    expect(mockGetCustomerInfo).toHaveBeenCalledTimes(1);
+    expect(mockNetworkSubscriptions).toBe(1);
+    expect(value.current.isSubscribed).toBeNull();
+    expect(value.current.isLoading).toBe(false);
+  });
+
+  it("recheckSubscription asks RevenueCat again", async () => {
+    mockIsNetworkAvailable.mockResolvedValue(false);
+    const value = await mountProvider();
+    expect(value.current.isSubscribed).toBeNull();
+
+    mockIsNetworkAvailable.mockResolvedValue(true);
+    mockGetCustomerInfo.mockResolvedValue(customerInfo(null));
+    await act(async () => {
+      value.current.recheckSubscription();
+    });
+    await flush();
+
+    expect(mockGetCustomerInfo).toHaveBeenCalledTimes(1);
+    expect(value.current.isSubscribed).toBe(false);
+  });
+
   it("re-checks on reconnect only while running on a stale cache", async () => {
     mockIsNetworkAvailable.mockResolvedValue(false);
     mockSecureStore.set(
@@ -323,6 +399,7 @@ describe("SubscriptionProvider", () => {
     }
 
     it("publishes an active entitlement and writes it to SecureStore", async () => {
+      mockGetCustomerInfo.mockReturnValue(new Promise(() => {}));
       const value = await mountProvider();
       expect(value.current.isSubscribed).toBeNull();
 
@@ -360,6 +437,131 @@ describe("SubscriptionProvider", () => {
         isSubscribed: false,
         subscriptionType: "free",
       });
+    });
+  });
+
+  describe("racing answers", () => {
+    const getAppUserID = Purchases.getAppUserID as jest.Mock;
+    function listener(): (info: unknown) => Promise<void> {
+      const add = Purchases.addCustomerInfoUpdateListener as jest.Mock;
+      return add.mock.calls[add.mock.calls.length - 1][0];
+    }
+    function deferred<T>() {
+      let resolve!: (value: T) => void;
+      const promise = new Promise<T>((done) => {
+        resolve = done;
+      });
+      return { promise, resolve };
+    }
+
+    let appUserId = "$RCAnonymousID:install";
+    beforeEach(() => {
+      appUserId = "$RCAnonymousID:install";
+      getAppUserID.mockImplementation(async () => appUserId);
+    });
+    afterEach(() => {
+      getAppUserID.mockImplementation(async () => "rc_user");
+    });
+
+    it("keeps a signed-in purchase when an anonymous check started before logIn answers last", async () => {
+      // Fresh install: no cache, so the provider checks at once, as the
+      // anonymous user, while the root layout signs in to RevenueCat.
+      const anonymousCheck = deferred<unknown>();
+      mockGetCustomerInfo.mockReturnValueOnce(anonymousCheck.promise as never);
+      const value = await mountProvider();
+      expect(mockGetCustomerInfo).toHaveBeenCalledTimes(1);
+
+      // `Purchases.logIn("user_a")` switches identity and RevenueCat pushes
+      // user A's lifetime purchase through the listener.
+      appUserId = "user_a";
+      await act(async () => {
+        await listener()(customerInfo("meetcal_lifetime"));
+      });
+      await flush();
+      expect(value.current.subscriptionType).toBe("lifetime");
+
+      // The anonymous check now answers "free".
+      await act(async () => {
+        anonymousCheck.resolve(customerInfo(null));
+      });
+      await flush();
+
+      expect(value.current.isSubscribed).toBe(true);
+      expect(value.current.subscriptionType).toBe("lifetime");
+      expect(value.current.isLoading).toBe(false);
+      expect(JSON.parse(mockSecureStore.get(SECURE_KEY) ?? "null")).toMatchObject({
+        appUserId: "user_a",
+        isSubscribed: true,
+        subscriptionType: "lifetime",
+      });
+    });
+
+    it("asks again when the RevenueCat user changes mid-check and no listener update arrives", async () => {
+      const anonymousCheck = deferred<unknown>();
+      mockGetCustomerInfo
+        .mockReturnValueOnce(anonymousCheck.promise as never)
+        .mockResolvedValueOnce(customerInfo("meetcal_quarterly"));
+      const value = await mountProvider();
+
+      appUserId = "user_a";
+      await act(async () => {
+        anonymousCheck.resolve(customerInfo(null));
+      });
+      await flush();
+
+      // The anonymous "free" is never published or cached for user A.
+      expect(mockGetCustomerInfo).toHaveBeenCalledTimes(2);
+      expect(value.current.isSubscribed).toBe(true);
+      expect(value.current.subscriptionType).toBe("quarterly");
+      expect(JSON.parse(mockSecureStore.get(SECURE_KEY) ?? "null")).toMatchObject({
+        appUserId: "user_a",
+        isSubscribed: true,
+      });
+    });
+
+    it("lets a newer check win over an older one that answers later", async () => {
+      appUserId = "user_a";
+      const olderCheck = deferred<unknown>();
+      mockGetCustomerInfo.mockReturnValueOnce(olderCheck.promise as never);
+      const value = await mountProvider();
+
+      // Retry while the first check is still out; RevenueCat now says
+      // quarterly (a purchase just landed).
+      mockGetCustomerInfo.mockResolvedValueOnce(customerInfo("meetcal_quarterly"));
+      await act(async () => {
+        value.current.recheckSubscription();
+      });
+      await flush();
+      expect(value.current.subscriptionType).toBe("quarterly");
+
+      await act(async () => {
+        olderCheck.resolve(customerInfo(null));
+      });
+      await flush();
+
+      expect(value.current.isSubscribed).toBe(true);
+      expect(value.current.subscriptionType).toBe("quarterly");
+      expect(value.current.isLoading).toBe(false);
+    });
+
+    it("drops a check a listener update superseded, without leaving the provider loading", async () => {
+      appUserId = "user_a";
+      const check = deferred<unknown>();
+      mockGetCustomerInfo.mockReturnValueOnce(check.promise as never);
+      const value = await mountProvider();
+      expect(value.current.isLoading).toBe(true);
+
+      await act(async () => {
+        await listener()(customerInfo(null));
+      });
+      await flush();
+      await act(async () => {
+        check.resolve(customerInfo("meetcal_quarterly"));
+      });
+      await flush();
+
+      expect(value.current.isLoading).toBe(false);
+      expect(value.current.subscriptionType).toBe("free");
     });
   });
 
@@ -447,6 +649,8 @@ describe("SubscriptionProvider", () => {
 
   it("reports a failed restore as not subscribed and keeps the current state", async () => {
     (Purchases.restorePurchases as jest.Mock).mockRejectedValue(new Error("store down"));
+    // Offline with no cache: the state to keep is "unknown".
+    mockIsNetworkAvailable.mockResolvedValue(false);
     const value = await mountProvider();
 
     let restored: boolean | undefined;

@@ -3,6 +3,7 @@ import {
   fetchUserPreferences,
   patchAutoUnsavePreference,
 } from "@/lib/api/meetcal-api";
+import { premiumActionFor, type PremiumAccess } from "@/lib/premium-access";
 import { AuthGuardOptions } from "@/utils/authGuard";
 import { useAuth, useUser } from "@clerk/expo";
 import type { useRouter } from "expo-router";
@@ -10,16 +11,17 @@ import React, { useEffect, useState } from "react";
 import { ProfileSwitchSetting } from "./ProfileSwitchSetting";
 
 interface AutoUnsaveSettingProps {
-  isSubscribed: boolean;
+  premiumAccess: PremiumAccess;
   requireAuth: (options: AuthGuardOptions) => boolean | null;
   router: ReturnType<typeof useRouter>;
 }
 
 export function AutoUnsaveSetting({
-  isSubscribed,
+  premiumAccess,
   requireAuth,
   router,
 }: AutoUnsaveSettingProps) {
+  const isSubscribed = premiumAccess === "granted";
   const { user } = useUser();
   const { getToken } = useAuth();
   const [isEnabled, setIsEnabled] = useState(false);
@@ -77,7 +79,14 @@ export function AutoUnsaveSetting({
       return;
     }
 
-    if (!isSubscribed) {
+    // An entitlement that can't be confirmed (offline, no cache) says so
+    // instead of sending a subscriber to the paywall.
+    const premium = premiumActionFor(premiumAccess);
+    if (premium.kind === "notify") {
+      showToast(premium.toast);
+      return;
+    }
+    if (premium.kind === "paywall") {
       router.push({
         pathname: "/shared-screens/paywall",
         params: {

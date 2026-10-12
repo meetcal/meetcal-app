@@ -11,8 +11,14 @@ import { showToast } from "@/components/ui/Toast";
 import { useSelectedMeet } from "@/contexts/SelectedMeetContext";
 import { useSubscription } from "@/contexts/SubscriptionContext";
 import { useAppColors } from "@/hooks/useAppColors";
+import {
+  ACCOUNT_DELETION_TITLE,
+  accountDeletionMessage,
+  subscriptionManagementUrl,
+} from "@/lib/account-deletion";
 import { clearAuthCache } from "@/lib/authCache";
 import { clearCachedMeetData, clearCacheToast } from "@/lib/database/clear-cache";
+import { resolvePremiumAccess } from "@/lib/premium-access";
 import { useAuthGuard } from "@/utils/authGuard";
 import { useClerk, useUser } from "@clerk/expo";
 import { Stack, usePathname, useRouter } from "expo-router";
@@ -83,7 +89,15 @@ export default function ProfileScreen() {
   const [isAccountOpen, setIsAccountOpen] = useState(false);
   const [isClearingCache, setIsClearingCache] = useState(false);
   const insets = useSafeAreaInsets();
-  const { isSubscribed, subscriptionType } = useSubscription();
+  const {
+    isSubscribed,
+    subscriptionType,
+    isLoading: isSubscriptionLoading,
+  } = useSubscription();
+  const premiumAccess = resolvePremiumAccess({
+    isSubscribed,
+    isLoading: isSubscriptionLoading,
+  });
   const { requireAuth } = useAuthGuard();
   const { forceSync, refreshAvailableMeets } = useSelectedMeet();
 
@@ -106,6 +120,25 @@ export default function ProfileScreen() {
   };
 
   const closeAccount = useCallback(() => setIsAccountOpen(false), []);
+
+  const confirmDeleteAccount = () => {
+    Alert.alert(ACCOUNT_DELETION_TITLE, accountDeletionMessage(Platform.OS), [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: "Manage Subscription",
+        onPress: () => {
+          Linking.openURL(subscriptionManagementUrl(Platform.OS)).catch((error) => {
+            console.error("Error opening subscription settings:", error);
+          });
+        },
+      },
+      {
+        text: "Continue",
+        style: "destructive",
+        onPress: () => setIsAccountOpen(true),
+      },
+    ]);
+  };
   // Signed out from inside Clerk's account screen: Clerk already ended the
   // session, so only the app's own auth cache and route are left to reset.
   const handleSignedOutInAccount = useCallback(() => {
@@ -191,12 +224,14 @@ export default function ProfileScreen() {
 
         <View style={[styles.card, { backgroundColor: colors.card }]}>
           <NotificationSettings
-            subscriptionStatus={subscriptionType || "free"}
+            // Not "free": before the first answer `subscriptionType` is null,
+            // and a subscriber was shown the upgrade prompt.
+            subscriptionStatus={subscriptionType ?? "unknown"}
             requireAuth={requireAuth}
             router={router}
           />
           <AutoUnsaveSetting
-            isSubscribed={Boolean(isSubscribed)}
+            premiumAccess={premiumAccess}
             requireAuth={requireAuth}
             router={router}
           />
@@ -360,9 +395,8 @@ export default function ProfileScreen() {
           </Pressable>
         </View>
         <Pressable
-          onPress={() =>
-            Linking.openURL(`https://accounts.meetcal.app/sign-in`)
-          }
+          onPress={confirmDeleteAccount}
+          accessibilityRole="button"
           style={{ alignSelf: "center", marginBottom: 8 }}
         >
           <ThemedText style={[styles.legalText, { color: colors.link }]}>

@@ -38,6 +38,7 @@ jest.mock("@/lib/networkUtils", () => ({
 }));
 
 const mockRouter = {
+  dismissTo: jest.fn(),
   replace: jest.fn(),
   back: jest.fn(),
   canGoBack: jest.fn(() => false),
@@ -122,8 +123,11 @@ describe("sign-in return path", () => {
     await signIn(renderer);
 
     expect(mockRedirects).toEqual([]);
-    expect(mockRouter.replace).toHaveBeenCalledTimes(1);
-    expect(mockRouter.replace).toHaveBeenCalledWith("/schedule-toolbar/profile");
+    // `dismissTo`, not `replace`: sign-in sits on top of `from`, and replacing
+    // it pushed a second copy of the origin screen onto the stack.
+    expect(mockRouter.dismissTo).toHaveBeenCalledTimes(1);
+    expect(mockRouter.dismissTo).toHaveBeenCalledWith("/schedule-toolbar/profile");
+    expect(mockRouter.replace).not.toHaveBeenCalled();
     expect(JSON.parse(mockSecureStore.get(AUTH_CACHE_KEY) ?? "null")).toMatchObject({
       isSignedIn: true,
       userId: "user_1",
@@ -136,8 +140,8 @@ describe("sign-in return path", () => {
 
     await signIn(renderer);
 
-    expect(mockRouter.replace).toHaveBeenCalledWith("/(tabs)/records");
-    expect(JSON.stringify(mockRouter.replace.mock.calls)).not.toContain("paywall");
+    expect(mockRouter.dismissTo).toHaveBeenCalledWith("/(tabs)/records");
+    expect(JSON.stringify(mockRouter.dismissTo.mock.calls)).not.toContain("paywall");
   });
 
   describe("premium intent", () => {
@@ -152,7 +156,7 @@ describe("sign-in return path", () => {
 
       await signIn(renderer);
 
-      expect(mockRouter.replace).toHaveBeenCalledWith("/shared-screens/schedule-details");
+      expect(mockRouter.dismissTo).toHaveBeenCalledWith("/shared-screens/schedule-details");
       expect(paywallPushes()).toEqual([]);
       // What `app/_layout.tsx` does once `Purchases.logIn` resolves.
       expect(confirmRevenueCatIdentity("user_1", false)).toEqual({
@@ -168,7 +172,7 @@ describe("sign-in return path", () => {
 
       await signIn(renderer);
 
-      expect(mockRouter.replace).toHaveBeenCalledWith("/shared-screens/schedule-details");
+      expect(mockRouter.dismissTo).toHaveBeenCalledWith("/shared-screens/schedule-details");
       expect(paywallPushes()).toEqual([
         [
           {
@@ -212,8 +216,20 @@ describe("sign-in return path", () => {
       await signIn(renderer);
 
       expect(mockRouter.replace).toHaveBeenCalledWith("/(tabs)/(index)");
+      expect(mockRouter.dismissTo).not.toHaveBeenCalled();
     },
   );
+
+  it("goes back when `from` is missing and there is a screen underneath", async () => {
+    mockRouter.canGoBack.mockReturnValue(true);
+    const renderer = await mountLayout();
+
+    await signIn(renderer);
+
+    expect(mockRouter.back).toHaveBeenCalledTimes(1);
+    expect(mockRouter.dismissTo).not.toHaveBeenCalled();
+    expect(mockRouter.replace).not.toHaveBeenCalled();
+  });
 
   it("still redirects a user who arrives already signed in", async () => {
     mockAuth.isSignedIn = true;
