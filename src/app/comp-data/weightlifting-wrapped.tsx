@@ -63,6 +63,8 @@ const SLIDE_GRADIENTS: [string, string, string][] = [
 ];
 
 const SLIDE_COUNT = 7;
+/** Each slide dot's touch height; the dot itself is 8pt. */
+const SLIDE_DOT_TOUCH_HEIGHT = 44;
 
 function AnimatedCounter({
   value,
@@ -385,18 +387,28 @@ export default function WeightliftingWrappedScreen() {
         </ViewShot>
 
         <View
+          // Only the dots take touches; the rest of the row lets taps through
+          // to the slide underneath.
+          pointerEvents="box-none"
           style={[
             styles.dotsContainer,
-            { bottom: insets.bottom + 16, left: insets.left, right: insets.right },
+            {
+              // Keeps the 8pt dots where they sat before their targets grew
+              // to 44pt.
+              bottom: insets.bottom + 16 - (SLIDE_DOT_TOUCH_HEIGHT - 8) / 2,
+              left: insets.left,
+              right: insets.right,
+            },
           ]}
         >
           {Array.from({ length: SLIDE_COUNT }, (_, i) => (
             <Pressable
               key={i}
               onPress={() => goToSlide(i)}
-              // 44pt tall; the dots sit too close together to go wider
+              // A real 44pt height, not hitSlop: Android ignores slop past the
+              // parent's bounds. The dots sit too close together to go wider
               // without spreading them out, and swiping changes slides too.
-              hitSlop={{ top: 18, bottom: 18 }}
+              style={styles.slideDotTarget}
               accessibilityRole="button"
               accessibilityLabel={`Slide ${i + 1} of ${SLIDE_COUNT}`}
               accessibilityState={{ selected: currentSlide === i }}
@@ -998,6 +1010,10 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
 
+  slideDotTarget: {
+    height: SLIDE_DOT_TOUCH_HEIGHT,
+    justifyContent: "center",
+  },
   dotsContainer: {
     position: "absolute",
     left: 0,
