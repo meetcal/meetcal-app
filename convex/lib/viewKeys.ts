@@ -3,10 +3,35 @@ import type { SourceTable } from './views';
 /**
  * Every materialized view, by key, with the source tables it is built from.
  * Keys are `family|part|part`; the parts are data (meet names, age labels),
- * compared exactly.
+ * compared exactly, each written with `escapeKeyPart` so no part holds a `|`.
  */
 
-export const natKey = (federation: string, ageCategory: string) => `nat|${federation}|${ageCategory}`;
+/**
+ * A free-text key part (a meet, federation, age category, WSO name) with
+ * `%` written `%25` and `|` written `%7C`, and nothing else changed, so a
+ * key's `|` always separates parts: `natKey('a|b', 'c')` and
+ * `natKey('a', 'b|c')` differ, and the prefix `meet|A|` covers only meet
+ * `A`'s views, never those of a meet named `A|session|1` (issue #192).
+ *
+ * A part with neither character keeps the key it had before parts were
+ * escaped, byte for byte, so no stored view moved and, while no stored name
+ * holds `%`, no rebuild is needed for the deploy. A part holding `%` has a
+ * new key. Its view under the old key is not read by its own name again: a
+ * reader misses and computes the answer live (a national ranking over one
+ * page answers "being built") until the next build writes the new key.
+ * `views:rebuildAll`'s sweep deletes the old view as one it did not rebuild,
+ * and `buildWso` deletes an old WSO key itself as a key of no current WSO.
+ * Until then, an old key whose name holds `%7C` or `%25` literally
+ * (`meet|A%7CB|…`) is also the new key of another name (`A|B`) and answers
+ * for it. So if a stored name holds `%`, run `views:rebuildAll` right after
+ * the deploy.
+ */
+export const escapeKeyPart = (part: string) => part.replace(/%/g, '%25').replace(/\|/g, '%7C');
+/** The part `escapeKeyPart` was given, from what it returned. */
+export const unescapeKeyPart = (escaped: string) => escaped.replace(/%7C|%25/g, (code) => (code === '%7C' ? '|' : '%'));
+
+export const natKey = (federation: string, ageCategory: string) =>
+  `nat|${escapeKeyPart(federation)}|${escapeKeyPart(ageCategory)}`;
 
 /**
  * Per-meet views, each the exact JSON of one answer (or of one package
@@ -34,10 +59,12 @@ export const MEET_VIEW_PARTS: readonly MeetViewPart[] = [
   'stats',
   'keys',
 ];
-export const meetKey = (meet: string, part: MeetViewPart) => `meet|${meet}|${part}`;
+/** Every view of one meet, and of no other meet, has a key starting with this. */
+export const meetViewsPrefix = (meet: string) => `meet|${escapeKeyPart(meet)}|`;
+export const meetKey = (meet: string, part: MeetViewPart) => `${meetViewsPrefix(meet)}${part}`;
 /** One session's start list (`/meets/athletes-sessions?session_number=`), all platforms. */
-export const meetSessionKey = (meet: string, sessionNumber: number) => `meet|${meet}|session|${sessionNumber}`;
-export const meetSessionPrefix = (meet: string) => `meet|${meet}|session|`;
+export const meetSessionKey = (meet: string, sessionNumber: number) => `${meetSessionPrefix(meet)}${sessionNumber}`;
+export const meetSessionPrefix = (meet: string) => `${meetViewsPrefix(meet)}session|`;
 
 export const REF_VIEWS = {
   records: 'ref|records',
@@ -48,9 +75,9 @@ export const REF_VIEWS = {
   wso_list: 'ref|wso_list',
 } as const;
 
-export const wsoKey = (wso: string) => `wso|${wso}`;
+export const wsoKey = (wso: string) => `wso|${escapeKeyPart(wso)}`;
 export const adaptiveKey = (gender: string, excludeFederation: string, season: string) =>
-  `adaptive|${gender.toLowerCase()}|${excludeFederation}|${season}`;
+  `adaptive|${escapeKeyPart(gender.toLowerCase())}|${escapeKeyPart(excludeFederation)}|${escapeKeyPart(season)}`;
 
 /**
  * Every meet that has views (a meet row or a roster), sorted: the meets a
@@ -126,8 +153,42 @@ export type ViewDependencies = {
   roster?: { meet: string; part: 'timelines' | 'stats' };
 };
 
-const MEET_PART_PATTERN = new RegExp(`^meet\\|(.+)\\|(${MEET_VIEW_PARTS.join('|')})$`);
-const MEET_SESSION_PATTERN = /^meet\|(.+)\|session\|\d+$/;
+/** A key of a family built from data, read back into what built it. */
+export type ParsedViewKey =
+  | { family: 'meet'; meet: string; part: MeetViewPart }
+  | { family: 'session'; meet: string; sessionNumber: number }
+  | { family: 'nat'; federation: string; ageCategory: string }
+  | { family: 'adaptive'; gender: string; excludeFederation: string; season: string }
+  | { family: 'wso'; wso: string };
+
+// An escaped part holds no `|`, so each `([^|]*)` is exactly one part.
+const MEET_PART_PATTERN = new RegExp(`^meet\\|([^|]*)\\|(${MEET_VIEW_PARTS.join('|')})$`);
+const MEET_SESSION_PATTERN = /^meet\|([^|]*)\|session\|(\d+)$/;
+const NAT_PATTERN = /^nat\|([^|]*)\|([^|]*)$/;
+const ADAPTIVE_PATTERN = /^adaptive\|([^|]*)\|([^|]*)\|([^|]*)$/;
+const WSO_PATTERN = /^wso\|([^|]*)$/;
+
+/**
+ * The arguments a meet, session, national ranking, adaptive or WSO key was
+ * built from (the adaptive gender as the key holds it, lowercased); null for
+ * any other key, including one of these families in a shape no builder makes.
+ */
+export function parseViewKey(key: string): ParsedViewKey | null {
+  const session = MEET_SESSION_PATTERN.exec(key);
+  if (session) return { family: 'session', meet: unescapeKeyPart(session[1]), sessionNumber: Number(session[2]) };
+  const meetPart = MEET_PART_PATTERN.exec(key);
+  if (meetPart) return { family: 'meet', meet: unescapeKeyPart(meetPart[1]), part: meetPart[2] as MeetViewPart };
+  const nat = NAT_PATTERN.exec(key);
+  if (nat) return { family: 'nat', federation: unescapeKeyPart(nat[1]), ageCategory: unescapeKeyPart(nat[2]) };
+  const adaptive = ADAPTIVE_PATTERN.exec(key);
+  if (adaptive) {
+    const [gender, excludeFederation, season] = adaptive.slice(1).map(unescapeKeyPart);
+    return { family: 'adaptive', gender, excludeFederation, season };
+  }
+  const wso = WSO_PATTERN.exec(key);
+  if (wso) return { family: 'wso', wso: unescapeKeyPart(wso[1]) };
+  return null;
+}
 
 const REF_VIEW_TABLES: Record<string, string> = {
   [REF_VIEWS.records]: 'records',
@@ -147,24 +208,26 @@ const REF_VIEW_TABLES: Record<string, string> = {
  * it was forgotten.
  */
 export function viewDependencies(key: string): ViewDependencies | null {
-  const session = MEET_SESSION_PATTERN.exec(key);
-  if (session) return { hints: [{ kind: 'meet', key: session[1] }] };
-  const meetPart = MEET_PART_PATTERN.exec(key);
-  if (meetPart) {
-    const [, meet, part] = meetPart;
-    const hints = [{ kind: 'meet', key: meet }];
-    return part === 'timelines' || part === 'stats' ? { hints, roster: { meet, part } } : { hints };
+  const parsed = parseViewKey(key);
+  switch (parsed?.family) {
+    case 'session':
+      return { hints: [{ kind: 'meet', key: parsed.meet }] };
+    case 'meet': {
+      const { meet, part } = parsed;
+      const hints = [{ kind: 'meet', key: meet }];
+      return part === 'timelines' || part === 'stats' ? { hints, roster: { meet, part } } : { hints };
+    }
+    case 'nat':
+      return { hints: [{ kind: 'nat', key: JSON.stringify([parsed.federation, parsed.ageCategory]) }] };
+    case 'adaptive':
+      return { hints: [{ kind: 'adaptive', key: '1' }] };
+    case 'wso':
+      return { hints: [{ kind: 'table', key: 'wso_records' }] };
+    default: {
+      const table = REF_VIEW_TABLES[key];
+      return table === undefined ? null : { hints: [{ kind: 'table', key: table }] };
+    }
   }
-  if (key.startsWith('nat|')) {
-    const rest = key.slice('nat|'.length);
-    const split = rest.indexOf('|');
-    if (split < 0) return null;
-    return { hints: [{ kind: 'nat', key: JSON.stringify([rest.slice(0, split), rest.slice(split + 1)]) }] };
-  }
-  if (key.startsWith('adaptive|')) return { hints: [{ kind: 'adaptive', key: '1' }] };
-  if (key.startsWith('wso|')) return { hints: [{ kind: 'table', key: 'wso_records' }] };
-  const table = REF_VIEW_TABLES[key];
-  return table === undefined ? null : { hints: [{ kind: 'table', key: table }] };
 }
 
 /**
