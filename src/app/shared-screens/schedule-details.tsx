@@ -5,12 +5,7 @@ import { useSelectedMeet } from "@/contexts/SelectedMeetContext";
 import { MeetName } from "@/data/types/meet";
 import { useAppColors } from "@/hooks/useAppColors";
 import { useScheduleData } from "@/hooks/useScheduleData";
-import {
-  DaySchedule,
-  Platform as PlatformDetails,
-} from "@/types/schedule";
-import { isSamePlatform } from "@/lib/athletes";
-import { Session } from "@/types/schedule-details";
+import { findSessionPlatform } from "@/lib/schedule-lookup";
 import { generateSessionId } from "@/utils/session";
 import { calculateWeighInTime } from "@/utils/time";
 import { Stack, useLocalSearchParams } from "expo-router";
@@ -58,62 +53,19 @@ export default function SessionDetailsScreen() {
     refreshSchedule,
   } = useScheduleData((params.meet || null) as MeetName | null);
 
-  // Get the correct weight class from current schedule
-  const sessionWeightClass = useMemo(() => {
-    const sessionDay = currentSchedule.find((day: DaySchedule) =>
-      day.sessions.some(
-        (s: Session) => s.number === parsedSessionNumber,
-      ),
-    );
+  // This session's day and platform row in the current schedule, looked up
+  // once for the weight class, date and start time below.
+  const sessionMatch = useMemo(
+    () => findSessionPlatform(currentSchedule, parsedSessionNumber, params.platform),
+    [currentSchedule, parsedSessionNumber, params.platform],
+  );
 
-    const session = sessionDay?.sessions.find(
-      (s: Session) => s.number === parsedSessionNumber,
-    );
-
-    const platformData = session?.platforms.find(
-      (p: PlatformDetails) => isSamePlatform(p.platform, params.platform),
-    );
-
-    return platformData?.weightClass || params.weightClass;
-  }, [
-    currentSchedule,
-    parsedSessionNumber,
-    params.platform,
-    params.weightClass,
-  ]);
-
-  const sessionDate = useMemo(() => {
-    const sessionDay = currentSchedule.find((day: DaySchedule) =>
-      day.sessions.some(
-        (s: Session) => s.number === parsedSessionNumber,
-      ),
-    );
-    return sessionDay?.date || `Session ${params.sessionNumber}`;
-  }, [currentSchedule, parsedSessionNumber, params.sessionNumber]);
-
-  // Get the platform-specific start time
-  const platformStartTime = useMemo(() => {
-    const sessionDay = currentSchedule.find((day: DaySchedule) =>
-      day.sessions.some(
-        (s: Session) => s.number === parsedSessionNumber,
-      ),
-    );
-
-    const session = sessionDay?.sessions.find(
-      (s: Session) => s.number === parsedSessionNumber,
-    );
-
-    const platformData = session?.platforms.find(
-      (p: PlatformDetails) => isSamePlatform(p.platform, params.platform),
-    );
-
-    return platformData?.platformStartTime || params.startTime;
-  }, [
-    currentSchedule,
-    parsedSessionNumber,
-    params.platform,
-    params.startTime,
-  ]);
+  const sessionWeightClass =
+    sessionMatch?.platform?.weightClass || params.weightClass;
+  const sessionDate = sessionMatch?.day.date || `Session ${params.sessionNumber}`;
+  // The platform's own start time wins over the one passed in.
+  const platformStartTime =
+    sessionMatch?.platform?.platformStartTime || params.startTime;
 
   // Calculate weigh-in time based on platform start time
   const platformWeighInTime = useMemo(() => {

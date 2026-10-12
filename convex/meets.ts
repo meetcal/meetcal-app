@@ -11,12 +11,14 @@ import {
   joinRoster,
   meetByName,
   meetLocalDate,
+  narrowSessions,
   packageAthlete,
   packageStaticText,
   plainRoster,
   toApiMeet,
   yearBestsFromTimelines,
   type ApiScheduleRow,
+  type SessionRow,
   type Timeline,
   type TimelinesView,
   type ZoneFormatters,
@@ -51,10 +53,27 @@ const UPCOMING_WINDOW_MONTHS = 3;
  */
 const MAX_CLIENT_CLOCK_SKEW_MS = 24 * 60 * 60 * 1000;
 
+const HOUR_MS = 60 * 60 * 1000;
+
+/**
+ * The instant the upcoming window is measured from. `now` must be a whole
+ * hour, as every client rounds it: it is the cache key, and a caller varying
+ * it by the millisecond would otherwise miss the cache on every call. The
+ * 400 costs no read. A `now` further than a day from the server's clock gives
+ * way to the server's hour.
+ */
+export function upcomingWindowNow(clientNow: number, serverNow: number): number {
+  if (!Number.isFinite(clientNow) || clientNow % HOUR_MS !== 0) {
+    throw apiError(400, 'now must be a whole hour in milliseconds (rounded down)');
+  }
+  if (Math.abs(clientNow - serverNow) <= MAX_CLIENT_CLOCK_SKEW_MS) return clientNow;
+  return Math.floor(serverNow / HOUR_MS) * HOUR_MS;
+}
+
 export const list = query({
   args: { now: v.number(), ifNoneMatch: v.optional(v.string()) },
   handler: async (ctx, { now: clientNow, ifNoneMatch }) => {
-    const now = Math.abs(clientNow - Date.now()) > MAX_CLIENT_CLOCK_SKEW_MS ? Date.now() : clientNow;
+    const now = upcomingWindowNow(clientNow, Date.now());
     const [upcoming, ongoing] = await Promise.all(
       (['upcoming', 'ongoing'] as const).map((status) =>
         ctx.db
@@ -210,21 +229,6 @@ export async function liveAthletesJson(ctx: QueryCtx, meet: string): Promise<str
   return JSON.stringify(plainRoster(await computeRoster(ctx, meet), meet));
 }
 
-type SessionRow = ReturnType<typeof athletesWithSessions>[number];
-
-/** The inner-join narrowing of the unfiltered (left-joined) start list. */
-function narrowSessions(rows: SessionRow[], sessionNumber?: number, platform?: string): SessionRow[] {
-  const platformKey = platform === undefined ? undefined : normalizeName(platform);
-  return rows.filter(
-    (row) =>
-      row.date !== null &&
-      row.session_number !== null &&
-      row.session_platform !== null &&
-      (sessionNumber === undefined || row.session_number === sessionNumber) &&
-      (platformKey === undefined || normalizeName(row.session_platform) === platformKey),
-  );
-}
-
 /**
  * `GET /meets/athletes-sessions`: athletes with their session's date and
  * times. Narrowed by session and/or platform (case-folded), the join is an
@@ -291,7 +295,9 @@ function closePackage(staticText: string, yearBests: unknown | undefined): strin
 /**
  * `GET /meets/package`: meet, schedule, roster (with each athlete's session
  * times), the meet's results, and optionally each athlete's bests over the
- * year after `historyCutoffDate` (as `year_bests`, see `NamedBests`).
+ * year after `historyCutoffDate` (as `year_bests`, see `NamedBests`). Asking
+ * for `year_bests` (the default) without `historyCutoffDate` is a 400; pass
+ * `include: []` for the package without them.
  *
  * From views, the package is concatenated from the sections' stored text.
  * Without a fresh view for every section it is computed live
@@ -317,6 +323,11 @@ export const packageForMeet = query({
     }
 
     const wantBests = sections.has('year_bests');
+    // Without a cutoff there is no window to take bests over, and `[]` would
+    // read as "nobody has bests".
+    if (wantBests && historyCutoffDate === undefined) {
+      throw apiError(400, 'history_cutoff_date is required for year_bests');
+    }
     const bestsSince = wantBests && historyCutoffDate !== undefined ? addMonths(historyCutoffDate, 12) : undefined;
 
     const [staticView, timelinesView] = await Promise.all([

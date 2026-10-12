@@ -19,9 +19,13 @@ POST https://disciplined-hare-790.convex.cloud/api/query
 - An answer carries its body one of two ways, recorded on the `Query`:
   - `Body::JsonText`: `{ json }` or `{ etag, json }`, the body as JSON text. Most list answers come
     this way.
-  - `Body::Value`: the answer is the body (`results:search`, `reference:clubAthletes`,
-    `reference:clubMeetStats`). Convex writes its numbers as floats; `backend.rs` turns whole
-    numbers back into integers before parsing.
+  - `Body::Value`: the answer is the body (`results:search`, `reference:clubMeetStats`). Convex
+    writes its numbers as floats; `backend.rs` turns whole numbers back into integers before
+    parsing.
+- `reference:clubAthletes` and `reference:wsoAthletes` are paged: `query_all_pages` sends
+  `cursor: null`, then each returned `cursor`, and concatenates each page's
+  `{ json, cursor, isDone }` rows until `isDone`, failing after `MAX_PAGES`. Rows are not ordered
+  or unique across pages.
 - A function that ran and failed answers `{ status: "error", errorMessage, errorData }` (HTTP 200
   or 560). Our functions throw `{ status, error }` as `errorData`; the CLI prints
   `MeetCal could not answer <query>: <error>`.
@@ -58,7 +62,7 @@ Reference commands fetch the whole table and filter it locally by the flags (`re
 `club-wrapped`, `club-compare`, `wso-wrapped` and `wso-compare` share `group_wrapped.rs`:
 
 1. Read the group's registrations across meets (`reference:clubAthletes` or
-   `reference:wsoAthletes`). A registration records the club and WSO the athlete entered under at
+   `reference:wsoAthletes`, a page at a time). A registration records the club and WSO the athlete entered under at
    that meet, so an athlete who changed WSOs counts for each at the right meets.
 2. Read those athletes' results since a cutoff (`results:recent`, 50 names per call).
 3. Keep only results from meets where the athlete registered with the group

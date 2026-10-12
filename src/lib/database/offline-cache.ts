@@ -10,6 +10,7 @@ export const OFFLINE_CACHE_KEYS = {
   qualifyingTotals: '@offline_cache/qualifying_totals',
   intlRankings: '@offline_cache/intl_rankings',
   records: '@offline_cache/records',
+  recordsBrowse: '@offline_cache/records_browse',
   wsoRecords: '@offline_cache/wso_records',
   wsoRecordsFiltered: '@offline_cache/wso_records_filtered',
   adaptiveRecords: '@offline_cache/adaptive_records',
@@ -159,6 +160,7 @@ export async function writeBoundedCacheEntry<T>(
  * still remove them.
  */
 export const BROWSE_CACHE_KEYS = [
+  OFFLINE_CACHE_KEYS.recordsBrowse,
   OFFLINE_CACHE_KEYS.nationalRankings,
   OFFLINE_CACHE_KEYS.clubs,
   OFFLINE_CACHE_KEYS.clubAthletes,

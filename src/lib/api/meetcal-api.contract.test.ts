@@ -528,8 +528,22 @@ describe('meetcal API contract (serde output through the real client)', () => {
       matchedName: null,
       suggestions: ['Alexander Nordstrom'],
       results: [],
+      truncated: false,
     });
     expect(calls[0].args).toEqual({ query: 'Alexan', startDate: '2025-01-01', endDate: '2025-12-31' });
+  });
+
+  it('searchApi: carries truncated when the answer kept only the most recent rows', async () => {
+    stubTransport({
+      'results:search':
+        '{"matched_name":null,"suggestions":["Ann Smith"],"truncated":true,"results":[' +
+        `${liftingResultJson(8, 'e8', 'Search Meet', '2025-05-10')}]}`,
+    });
+
+    const search = await searchApi('smith', '2005-01-01', '2025-12-31');
+
+    expect(search.truncated).toBe(true);
+    expect(search.results).toHaveLength(1);
   });
 
   it('searchApi: an exact match carries matched_name and LiftingResults rows', async () => {

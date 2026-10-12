@@ -11,12 +11,12 @@ use js_sys::Date;
 use leptos::prelude::*;
 use leptos_router::hooks::use_query_map;
 
+/// The last twenty years, through today: `results:search` includes both ends of the range.
 fn search_date_range() -> (String, String) {
     let start = Date::new_0();
     start.set_full_year(start.get_full_year() - 20);
 
     let end = Date::new_0();
-    end.set_date(end.get_date() + 1);
 
     (format_date(&start), format_date(&end))
 }
@@ -61,6 +61,7 @@ pub fn Results() -> impl IntoView {
                     matched_name: None,
                     suggestions: Vec::new(),
                     results: Vec::new(),
+                    truncated: false,
                 }),
             }
         }
@@ -116,11 +117,19 @@ fn ResultsTable(
     let heading = response.matched_name.map(|matched_name| {
         view! { <p class="data-status">"Results for " <strong>{matched_name}</strong></p> }
     });
+    let truncated = response.truncated.then(|| {
+        view! {
+            <p class="data-status">
+                "More results match than one search shows; these are the most recent. Type more of the name to narrow it."
+            </p>
+        }
+    });
     let results = StoredValue::new(response.results);
 
     view! {
         {heading}
         {suggestions}
+        {truncated}
         <div class="data-filters">
             <SortSelect options=SORT_OPTIONS set_sort />
         </div>
@@ -147,7 +156,7 @@ mod tests {
     #[test]
     fn search_response_deserializes_results_and_suggestions() {
         let response: AthleteSearchResponse = serde_json::from_str(
-            r#"{"matched_name":"Test Athlete","suggestions":["Test Athlete Jr"],"results":[{"meet":"Nationals","date":"2026-06-20","age":"Senior","body_weight":70.5,"snatch1":95.0,"snatch2":100.0,"snatch3":-103.0,"snatch_best":100.0,"cj1":120.0,"cj2":125.0,"cj3":0.0,"cj_best":125.0,"total":225.0,"adaptive":false}]}"#,
+            r#"{"matched_name":"Test Athlete","suggestions":["Test Athlete Jr"],"results":[{"name":"Test Athlete","meet":"Nationals","date":"2026-06-20","age":"Senior","body_weight":70.5,"snatch1":95.0,"snatch2":100.0,"snatch3":-103.0,"snatch_best":100.0,"cj1":120.0,"cj2":125.0,"cj3":0.0,"cj_best":125.0,"total":225.0,"adaptive":false}]}"#,
         )
         .unwrap();
 
@@ -155,5 +164,17 @@ mod tests {
         assert_eq!(response.suggestions, ["Test Athlete Jr"]);
         assert_eq!(response.results[0].total, 225.0);
         assert_eq!(response.results[0].snatch3, -103.0);
+        // Deployments before `truncated` answered without it.
+        assert!(!response.truncated);
+    }
+
+    #[test]
+    fn search_response_reads_truncated() {
+        let response: AthleteSearchResponse = serde_json::from_str(
+            r#"{"matched_name":null,"suggestions":["Ann Smith"],"results":[],"truncated":true}"#,
+        )
+        .unwrap();
+
+        assert!(response.truncated);
     }
 }

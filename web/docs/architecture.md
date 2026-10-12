@@ -21,9 +21,12 @@ POST https://disciplined-hare-790.convex.cloud/api/query
   - `Body::JsonText`: `{ json }` or `{ etag, json }`, the body as JSON text. Most list answers
     (records, rankings, rosters, results) come this way because Convex serves text faster than the
     same rows as values. The site sends no `ifNoneMatch`, so `json` is always present.
-  - `Body::Value`: the answer is the body (`results:search`, `reference:clubAthletes`,
-    `reference:clubMeetStats`). Convex writes its numbers as floats (`2.0`); `api.rs` turns whole
-    numbers back into integers before parsing.
+  - `Body::Value`: the answer is the body (`results:search`, `reference:clubMeetStats`). Convex
+    writes its numbers as floats (`2.0`); `api.rs` turns whole numbers back into integers before
+    parsing.
+- `reference:clubAthletes` is paged: `query_all_pages` sends `cursor: null`, then each returned
+  `cursor`, and concatenates each page's `{ json, cursor, isDone }` rows until `isDone`, failing
+  after `MAX_PAGES`. Rows are not ordered or unique across pages.
 - A function that ran and failed answers `{ status: "error", errorMessage, errorData }`, over HTTP
   200 or 560. Our functions throw `{ status, error }` as `errorData`; the site shows `error`.
 - 429 and 503 are retried twice, honoring `Retry-After` (1 to 10 seconds). Every call is a read,

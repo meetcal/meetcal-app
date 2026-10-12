@@ -5,9 +5,12 @@ import { clearMeetConfigCache } from "@/data/meets/config";
 import { fetchMeetByName } from "@/lib/database/meet-manager";
 import { createSessionDetailsDeepLink } from "@/utils/deepLinks";
 import {
+  calendarEventKey,
   type CalendarSession,
+  clearUnpersistedCalendarEventIds,
   createCalendarEvents,
   createCalendarEventsToCalendar,
+  describeCalendarWrite,
   getWritableCalendars,
   resolvePreferredAndroidCalendar,
   setPreferredAndroidCalendarId,
@@ -21,6 +24,10 @@ jest.mock("expo-calendar/legacy", () => ({
   getDefaultCalendarAsync: jest.fn(),
   createEventAsync: jest.fn(async () => "event-1"),
   createEventInCalendarAsync: jest.fn(),
+  getEventAsync: jest.fn(async () => {
+    throw new Error("not found");
+  }),
+  updateEventAsync: jest.fn(async () => undefined),
 }));
 
 jest.mock("@/lib/database/meet-manager", () => ({
@@ -283,7 +290,12 @@ describe("calendar destinations and failures", () => {
     it("writes to the stored calendar", async () => {
       mockGetCalendarsAsync.mockResolvedValue([sdkCalendar({ id: "7" })]);
       await setPreferredAndroidCalendarId("7");
-      await expect(createCalendarEvents([SESSION])).resolves.toEqual(["event-1"]);
+      await expect(createCalendarEvents([SESSION])).resolves.toEqual({
+        total: 1,
+        created: 1,
+        updated: 0,
+        failed: 0,
+      });
       expect(mockCreateEventAsync.mock.calls[0][0]).toBe("7");
     });
 
@@ -294,6 +306,144 @@ describe("calendar destinations and failures", () => {
         "Could not add events to calendar. Please make sure you have a calendar account configured and try again.",
       );
       expect(failure.message).not.toContain("id 17");
+    });
+  });
+
+  describe("repeat exports and partial failures", () => {
+    const mockGetEventAsync = Calendar.getEventAsync as jest.MockedFunction<
+      typeof Calendar.getEventAsync
+    >;
+    const mockUpdateEventAsync = Calendar.updateEventAsync as jest.MockedFunction<
+      typeof Calendar.updateEventAsync
+    >;
+    const SESSION_2: CalendarSession = { ...SESSION, sessionNumber: "4" };
+
+    beforeEach(() => {
+      clearUnpersistedCalendarEventIds();
+      // Drop `mockResolvedValueOnce` values an earlier test left queued.
+      mockCreateEventAsync.mockReset();
+      mockCreateEventAsync.mockResolvedValue("event-1");
+      mockGetEventAsync.mockReset();
+      mockGetEventAsync.mockRejectedValue(new Error("not found"));
+      mockUpdateEventAsync.mockReset();
+      mockUpdateEventAsync.mockResolvedValue(undefined as never);
+    });
+
+    it("updates the event it created before instead of adding a second copy", async () => {
+      await createCalendarEventsToCalendar([SESSION], "cal-1");
+      mockGetEventAsync.mockResolvedValue({ id: "event-1" } as never);
+      mockCreateEventAsync.mockResolvedValue("event-2");
+
+      const result = await createCalendarEventsToCalendar([SESSION, SESSION_2], "cal-1");
+
+      expect(result).toEqual({ total: 2, created: 1, updated: 1, failed: 0 });
+      expect(mockUpdateEventAsync).toHaveBeenCalledWith("event-1", expect.any(Object));
+      expect(mockCreateEventAsync).toHaveBeenCalledTimes(2);
+    });
+
+    it("creates the event again when the user deleted it from the calendar", async () => {
+      await createCalendarEventsToCalendar([SESSION], "cal-1");
+      // `getEventAsync` rejects for an event that no longer exists.
+      const result = await createCalendarEventsToCalendar([SESSION], "cal-1");
+
+      expect(result).toEqual({ total: 1, created: 1, updated: 0, failed: 0 });
+      expect(mockUpdateEventAsync).not.toHaveBeenCalled();
+    });
+
+    it("keeps writing after a failed session and reports it instead of throwing", async () => {
+      mockCreateEventAsync
+        .mockRejectedValueOnce(new Error("denied"))
+        .mockResolvedValueOnce("event-2");
+
+      const result = await createCalendarEventsToCalendar([SESSION, SESSION_2], "cal-1");
+
+      expect(result).toEqual({ total: 2, created: 1, updated: 0, failed: 1 });
+      // A retry writes the failed one and updates the one already added.
+      mockGetEventAsync.mockImplementation(async (id) => {
+        if (id === "event-2") return { id } as never;
+        throw new Error("not found");
+      });
+      mockCreateEventAsync.mockResolvedValue("event-3");
+      await expect(
+        createCalendarEventsToCalendar([SESSION, SESSION_2], "cal-1"),
+      ).resolves.toEqual({ total: 2, created: 1, updated: 1, failed: 0 });
+    });
+
+    it("adds the event again when the earlier one can no longer be updated", async () => {
+      await createCalendarEventsToCalendar([SESSION], "cal-1");
+      mockGetEventAsync.mockResolvedValue({ id: "event-1" } as never);
+      mockUpdateEventAsync.mockRejectedValue(new Error("read-only calendar"));
+      mockCreateEventAsync.mockResolvedValue("event-2");
+
+      await expect(createCalendarEventsToCalendar([SESSION], "cal-1")).resolves.toEqual({
+        total: 1,
+        created: 1,
+        updated: 0,
+        failed: 0,
+      });
+      // The new id replaces the stale one, so the next export updates it.
+      mockGetEventAsync.mockImplementation(async (id) => ({ id }) as never);
+      mockUpdateEventAsync.mockResolvedValue(undefined as never);
+      await createCalendarEventsToCalendar([SESSION], "cal-1");
+      expect(mockUpdateEventAsync).toHaveBeenLastCalledWith("event-2", expect.any(Object));
+    });
+
+    it("does not create the same event twice when two exports overlap", async () => {
+      mockCreateEventAsync.mockResolvedValueOnce("event-1").mockResolvedValueOnce("event-2");
+      mockGetEventAsync.mockImplementation(async (id) => ({ id }) as never);
+
+      const [first, second] = await Promise.all([
+        createCalendarEventsToCalendar([SESSION], "cal-1"),
+        createCalendarEventsToCalendar([SESSION], "cal-1"),
+      ]);
+
+      expect(mockCreateEventAsync).toHaveBeenCalledTimes(1);
+      expect(first.created + second.created).toBe(1);
+      expect(second.updated).toBe(1);
+    });
+
+    it("adds the session to a newly chosen calendar instead of updating the old one", async () => {
+      mockGetEventAsync.mockImplementation(async (id) => ({ id }) as never);
+      mockCreateEventAsync.mockResolvedValueOnce("work-event").mockResolvedValueOnce("home-event");
+
+      await createCalendarEventsToCalendar([SESSION], "work");
+      const home = await createCalendarEventsToCalendar([SESSION], "home");
+
+      expect(home).toEqual({ total: 1, created: 1, updated: 0, failed: 0 });
+      expect(mockCreateEventAsync).toHaveBeenLastCalledWith("home", expect.any(Object));
+      expect(mockUpdateEventAsync).not.toHaveBeenCalled();
+
+      // Switching back updates the Work copy rather than adding another.
+      const work = await createCalendarEventsToCalendar([SESSION], "work");
+      expect(work).toEqual({ total: 1, created: 0, updated: 1, failed: 0 });
+      expect(mockUpdateEventAsync).toHaveBeenCalledWith("work-event", expect.any(Object));
+    });
+
+    it("still updates an event whose id could not be stored, for the rest of the session", async () => {
+      mockGetEventAsync.mockImplementation(async (id) => ({ id }) as never);
+      const setItem = jest
+        .spyOn(AsyncStorage, "setItem")
+        .mockRejectedValueOnce(new Error("storage full"));
+
+      await createCalendarEventsToCalendar([SESSION], "cal-1");
+      expect(setItem).toHaveBeenCalled();
+      const again = await createCalendarEventsToCalendar([SESSION], "cal-1");
+
+      expect(again).toEqual({ total: 1, created: 0, updated: 1, failed: 0 });
+      expect(mockCreateEventAsync).toHaveBeenCalledTimes(1);
+      expect(mockUpdateEventAsync).toHaveBeenCalledWith("event-1", expect.any(Object));
+    });
+
+    it("keys events by calendar, meet, session and canonical platform", () => {
+      expect(calendarEventKey({ meet: "M", sessionNumber: "3", platform: "red" }, "c")).toBe(
+        calendarEventKey({ meet: "M", sessionNumber: "3", platform: "Red" }, "c"),
+      );
+      expect(calendarEventKey({ meet: "M", sessionNumber: "3", platform: "Red" }, "c")).not.toBe(
+        calendarEventKey({ meet: "N", sessionNumber: "3", platform: "Red" }, "c"),
+      );
+      expect(calendarEventKey({ meet: "M", sessionNumber: "3", platform: "Red" }, "c")).not.toBe(
+        calendarEventKey({ meet: "M", sessionNumber: "3", platform: "Red" }, "d"),
+      );
     });
   });
 
@@ -325,6 +475,44 @@ describe("calendar destinations and failures", () => {
       await expect(createCalendarEvents([SESSION])).rejects.toThrow(
         /^Could not add events to calendar\. Please try again\.$/,
       );
+    });
+  });
+});
+
+describe("describeCalendarWrite", () => {
+  const result = (created: number, updated: number, failed: number) => ({
+    total: created + updated + failed,
+    created,
+    updated,
+    failed,
+  });
+
+  it("names the calendar when every session was added", () => {
+    expect(describeCalendarWrite(result(2, 0, 0), { calendarTitle: "Work" })).toEqual({
+      type: "success",
+      message: "Added 2 sessions to Work.",
+    });
+  });
+
+  it("says when the events were already there and only updated", () => {
+    expect(describeCalendarWrite(result(0, 1, 0))).toEqual({
+      type: "success",
+      message: "1 session already in your calendar is up to date.",
+    });
+    expect(describeCalendarWrite(result(1, 2, 0)).message).toBe(
+      "Added 1 session to your calendar and updated 2 already there.",
+    );
+  });
+
+  it("reports N of M when sessions were skipped or failed", () => {
+    expect(describeCalendarWrite(result(2, 0, 0), { skipped: 1 })).toEqual({
+      type: "info",
+      message: "Added 2 of 3 sessions to your calendar. 1 session had no schedule details.",
+    });
+    expect(describeCalendarWrite(result(1, 0, 2))).toEqual({
+      type: "error",
+      message:
+        "Added 1 of 3 sessions to your calendar. 2 sessions could not be written; try again to add them.",
     });
   });
 });

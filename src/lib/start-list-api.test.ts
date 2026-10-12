@@ -12,16 +12,27 @@ jest.mock("@/lib/api/meetcal-api", () => ({
 }));
 
 const mockGetAllCachedLiftingResultsForAthlete = jest.fn();
-const mockGetCachedAthleteBestsForNames = jest.fn();
+const mockGetStoredAthleteBestsForNames = jest.fn();
 const mockSaveAthleteBestsBatch = jest.fn();
 
 jest.mock("@/lib/database/offline-store", () => ({
   getAllCachedLiftingResultsForAthlete: (...args: any[]) =>
     mockGetAllCachedLiftingResultsForAthlete(...args),
-  getCachedAthleteBestsForNames: (...args: any[]) =>
-    mockGetCachedAthleteBestsForNames(...args),
+  getStoredAthleteBestsForNames: (...args: any[]) =>
+    mockGetStoredAthleteBestsForNames(...args),
   saveAthleteBestsBatch: (...args: any[]) => mockSaveAthleteBestsBatch(...args),
+  // The real freshness rule, so the in-memory cache expires on it too.
+  isAthleteBestsFresh: (...args: any[]) =>
+    jest.requireActual("@/lib/database/offline-store").isAthleteBestsFresh(...args),
 }));
+
+/** A stored bests entry as `getStoredAthleteBestsForNames` reports it. */
+function storedBests(
+  bests: { snatch_best: number | null; cj_best: number | null; total: number | null },
+  isFresh: boolean,
+) {
+  return { bests, fetchedAt: isFresh ? Date.now() : 0, isFresh };
+}
 
 function liftRow(overrides: Partial<SupabaseLiftResult>): SupabaseLiftResult {
   return {
@@ -52,7 +63,7 @@ beforeEach(() => {
   jest.clearAllMocks();
   jest.resetModules();
   // Sensible defaults; individual tests override as needed.
-  mockGetCachedAthleteBestsForNames.mockResolvedValue({});
+  mockGetStoredAthleteBestsForNames.mockResolvedValue({});
   mockGetAllCachedLiftingResultsForAthlete.mockResolvedValue([]);
   mockSaveAthleteBestsBatch.mockResolvedValue(undefined);
   mockFetchApiResultsByNames.mockResolvedValue([]);
@@ -112,7 +123,7 @@ describe("getLastYearBests", () => {
     });
   });
 
-  it("returns zeros for a never-competed athlete and never persists an all-null row", async () => {
+  it("returns zeros for a never-competed athlete and stores the API's \"no results\"", async () => {
     mockFetchApiYearBests.mockResolvedValue([
       { bestSnatch: 0, bestCJ: 0, bestTotal: 0 },
     ]);
@@ -121,12 +132,26 @@ describe("getLastYearBests", () => {
     const result = await startListApi.getLastYearBests("Never Competed");
 
     expect(result).toEqual({ bestSnatch: 0, bestCJ: 0, bestTotal: 0 });
-    expect(mockSaveAthleteBestsBatch).not.toHaveBeenCalled();
+    // Both lookups answered, so it is stored (under the short empty TTL).
+    expect(mockSaveAthleteBestsBatch).toHaveBeenCalledWith({
+      "Never Competed": { snatch_best: null, cj_best: null, total: null },
+    });
   });
 
-  it("skips a stored all-null bests row and re-resolves via fetch", async () => {
-    mockGetCachedAthleteBestsForNames.mockResolvedValue({
-      "Null Row Athlete": { snatch_best: null, cj_best: null, total: null },
+  it("trusts a fresh stored \"no results\" without fetching", async () => {
+    mockGetStoredAthleteBestsForNames.mockResolvedValue({
+      Newcomer: storedBests({ snatch_best: null, cj_best: null, total: null }, true),
+    });
+
+    const result = await startListApi.getLastYearBests("Newcomer");
+
+    expect(result).toEqual({ bestSnatch: 0, bestCJ: 0, bestTotal: 0 });
+    expect(mockFetchApiYearBests).not.toHaveBeenCalled();
+  });
+
+  it("re-resolves a stale stored all-null row via fetch", async () => {
+    mockGetStoredAthleteBestsForNames.mockResolvedValue({
+      "Null Row Athlete": storedBests({ snatch_best: null, cj_best: null, total: null }, false),
     });
     mockFetchApiYearBests.mockResolvedValue([
       { bestSnatch: 90, bestCJ: 110, bestTotal: 200 },
@@ -139,9 +164,9 @@ describe("getLastYearBests", () => {
     expect(mockFetchApiYearBests).toHaveBeenCalledTimes(1);
   });
 
-  it("returns a stored real bests row without fetching", async () => {
-    mockGetCachedAthleteBestsForNames.mockResolvedValue({
-      "Cached Athlete": { snatch_best: 80, cj_best: 100, total: 180 },
+  it("returns a fresh stored real bests row without fetching", async () => {
+    mockGetStoredAthleteBestsForNames.mockResolvedValue({
+      "Cached Athlete": storedBests({ snatch_best: 80, cj_best: 100, total: 180 }, true),
     });
 
     const result = await startListApi.getLastYearBests("Cached Athlete");
@@ -159,6 +184,30 @@ describe("getLastYearBests", () => {
     const result = await startListApi.getLastYearBests("Erroring Athlete");
 
     expect(result).toEqual({ bestSnatch: 0, bestCJ: 0, bestTotal: 0 });
+    expect(mockSaveAthleteBestsBatch).not.toHaveBeenCalled();
+  });
+
+  it("serves a stale stored answer when the lookup fails, and stores nothing", async () => {
+    mockGetStoredAthleteBestsForNames.mockResolvedValue({
+      "Old Athlete": storedBests({ snatch_best: 80, cj_best: 100, total: 180 }, false),
+    });
+    mockFetchApiYearBests.mockRejectedValue(new Error("offline"));
+
+    const result = await startListApi.getLastYearBests("Old Athlete");
+
+    expect(result).toEqual({ bestSnatch: 80, bestCJ: 100, bestTotal: 180 });
+    expect(mockSaveAthleteBestsBatch).not.toHaveBeenCalled();
+  });
+
+  it("does not store an offline fallback derived from downloaded meets", async () => {
+    mockFetchApiYearBests.mockRejectedValue(new Error("offline"));
+    mockGetAllCachedLiftingResultsForAthlete.mockResolvedValue([
+      liftRow({ date: "2099-01-01", snatch_best: 100, cj_best: 120, total: 220 }),
+    ]);
+
+    const result = await startListApi.getLastYearBests("Offline Athlete");
+
+    expect(result).toEqual({ bestSnatch: 100, bestCJ: 120, bestTotal: 220 });
     expect(mockSaveAthleteBestsBatch).not.toHaveBeenCalled();
   });
 });
@@ -233,14 +282,69 @@ describe("getLastYearBestsBatch", () => {
       latestOnly: true,
     });
 
-    // Persists only rows with real bests; never-competed all-null row excluded.
+    // Every answered name is stored; never-competed as the API's "no
+    // results", which expires under the short empty TTL.
     expect(mockSaveAthleteBestsBatch).toHaveBeenCalledTimes(1);
     const persisted = mockSaveAthleteBestsBatch.mock.calls[0][0];
     expect(persisted).toEqual({
       Fresh: { snatch_best: 100, cj_best: 120, total: 220 },
       Stale: { snatch_best: 90, cj_best: 110, total: 200 },
+      Never: { snatch_best: null, cj_best: null, total: null },
     });
-    expect(persisted).not.toHaveProperty("Never");
+  });
+
+  it("does not store \"no results\" when the latest-meet lookup failed", async () => {
+    mockFetchApiYearBestsByNames.mockResolvedValue({
+      Never: { bestSnatch: 0, bestCJ: 0, bestTotal: 0 },
+    });
+    mockFetchApiResultsByNames.mockRejectedValue(new Error("timed out"));
+
+    const result = await startListApi.getLastYearBestsBatch(["Never"]);
+
+    expect(result.Never).toEqual({ bestSnatch: 0, bestCJ: 0, bestTotal: 0 });
+    expect(mockSaveAthleteBestsBatch).not.toHaveBeenCalled();
+  });
+
+  it("uses fresh stored rows, \"no results\" included, and looks stale ones up again", async () => {
+    mockGetStoredAthleteBestsForNames.mockResolvedValue({
+      Fresh: storedBests({ snatch_best: 100, cj_best: 120, total: 220 }, true),
+      FreshEmpty: storedBests({ snatch_best: null, cj_best: null, total: null }, true),
+      Stale: storedBests({ snatch_best: 50, cj_best: 60, total: 110 }, false),
+    });
+    mockFetchApiYearBestsByNames.mockResolvedValue({
+      Stale: { bestSnatch: 55, bestCJ: 65, bestTotal: 120 },
+    });
+
+    const result = await startListApi.getLastYearBestsBatch(["Fresh", "FreshEmpty", "Stale"]);
+
+    expect(mockFetchApiYearBestsByNames).toHaveBeenCalledWith(["Stale"], expect.any(String));
+    expect(result).toEqual({
+      Fresh: { bestSnatch: 100, bestCJ: 120, bestTotal: 220 },
+      FreshEmpty: { bestSnatch: 0, bestCJ: 0, bestTotal: 0 },
+      Stale: { bestSnatch: 55, bestCJ: 65, bestTotal: 120 },
+    });
+  });
+
+  it("falls back to stale stored rows when the lookup fails", async () => {
+    mockGetStoredAthleteBestsForNames.mockResolvedValue({
+      Stale: storedBests({ snatch_best: 50, cj_best: 60, total: 110 }, false),
+    });
+    mockFetchApiYearBestsByNames.mockRejectedValue(new Error("offline"));
+
+    const result = await startListApi.getLastYearBestsBatch(["Stale", "Unknown"]);
+
+    // "Unknown" has no stored answer and no lookup answered for it, so it is
+    // left out rather than shown as a genuine "no results".
+    expect(result).toEqual({
+      Stale: { bestSnatch: 50, bestCJ: 60, bestTotal: 110 },
+    });
+    expect(mockSaveAthleteBestsBatch).not.toHaveBeenCalled();
+  });
+
+  it("still rejects a failed lookup when there is nothing stored to fall back on", async () => {
+    mockFetchApiYearBestsByNames.mockRejectedValue(new Error("offline"));
+
+    await expect(startListApi.getLastYearBestsBatch(["Unknown"])).rejects.toThrow("offline");
   });
 
   it("gives the same bests from the latest_only rows as from the full history", async () => {
@@ -325,6 +429,63 @@ describe("in-memory bests cache bound", () => {
     await startListApi.getLastYearBestsBatch(["A"]);
 
     expect(mockFetchApiYearBestsByNames).toHaveBeenCalledTimes(1);
+  });
+
+  // The memory cache had no expiry, so a running app kept an answer past
+  // the TTL its stored copy has.
+  it("looks a memoized \"no results\" up again once a day has passed", async () => {
+    const start = Date.UTC(2026, 9, 12, 12);
+    const now = jest.spyOn(Date, "now").mockReturnValue(start);
+    mockFetchApiYearBestsByNames.mockResolvedValue({
+      A: { bestSnatch: 0, bestCJ: 0, bestTotal: 0 },
+    });
+
+    try {
+      await startListApi.getLastYearBestsBatch(["A"]);
+      now.mockReturnValue(start + 23 * 60 * 60 * 1000);
+      await startListApi.getLastYearBestsBatch(["A"]);
+      expect(mockFetchApiYearBestsByNames).toHaveBeenCalledTimes(1);
+
+      now.mockReturnValue(start + 25 * 60 * 60 * 1000);
+      await startListApi.getLastYearBestsBatch(["A"]);
+      expect(mockFetchApiYearBestsByNames).toHaveBeenCalledTimes(2);
+    } finally {
+      now.mockRestore();
+    }
+  });
+
+  it("expires a memoized answer read from storage with the stored entry's age", async () => {
+    const start = Date.UTC(2026, 9, 12, 12);
+    const now = jest.spyOn(Date, "now").mockReturnValue(start);
+    const sixDaysAgo = start - 6 * 24 * 60 * 60 * 1000;
+    mockGetStoredAthleteBestsForNames.mockResolvedValueOnce({
+      A: {
+        bests: { snatch_best: 100, cj_best: 120, total: 220 },
+        fetchedAt: sixDaysAgo,
+        isFresh: true,
+      },
+    });
+    mockFetchApiYearBests.mockResolvedValue([
+      { bestSnatch: 105, bestCJ: 125, bestTotal: 230 },
+    ]);
+
+    try {
+      await expect(startListApi.getLastYearBests("A")).resolves.toEqual({
+        bestSnatch: 100,
+        bestCJ: 120,
+        bestTotal: 220,
+      });
+      // A day and a half later the stored answer is 7.5 days old.
+      now.mockReturnValue(start + 36 * 60 * 60 * 1000);
+      await expect(startListApi.getLastYearBests("A")).resolves.toEqual({
+        bestSnatch: 105,
+        bestCJ: 125,
+        bestTotal: 230,
+      });
+      expect(mockFetchApiYearBests).toHaveBeenCalledTimes(1);
+    } finally {
+      now.mockRestore();
+    }
   });
 
   it("evicts the oldest names once the cap is exceeded", async () => {

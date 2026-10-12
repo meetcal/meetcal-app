@@ -2,7 +2,11 @@ import { SubscriptionStatus } from "@/app/schedule-toolbar/profile";
 import { showToast } from "@/components/ui/Toast";
 import { premiumPendingToast } from "@/lib/premium-access";
 import { AuthGuardOptions } from "@/utils/authGuard";
-import { NOTIFICATION_ENABLED_KEY } from "@/utils/notifications";
+import { setRemindersEnabled } from "@/lib/reminder-preference";
+import {
+  NOTIFICATION_ENABLED_KEY,
+  NOTIFICATION_PROMPT_SHOWN_KEY,
+} from "@/utils/notifications";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Notifications from "expo-notifications";
 // Named import: eslint-plugin-import cannot see enums re-exported through
@@ -117,7 +121,7 @@ export function NotificationSettings({
   const recordDeclinedAutoEnable = async () => {
     setIsEnabled(false);
     setIsNeverWritten(false);
-    await AsyncStorage.setItem(NOTIFICATION_ENABLED_KEY, "false");
+    await setRemindersEnabled(false);
   };
 
   const handleToggle = async ({ auto = false }: { auto?: boolean } = {}) => {
@@ -166,13 +170,13 @@ export function NotificationSettings({
       if (newEnabledState) {
         // Check if we've shown the initial prompt
         const hasCheckedNotifications = await AsyncStorage.getItem(
-          "hasCheckedNotifications",
+          NOTIFICATION_PROMPT_SHOWN_KEY,
         );
 
         // If we haven't shown the prompt yet, show it and save the state
         if (!hasCheckedNotifications) {
           const permissionGranted = await requestPermissions();
-          await AsyncStorage.setItem("hasCheckedNotifications", "true");
+          await AsyncStorage.setItem(NOTIFICATION_PROMPT_SHOWN_KEY, "true");
           if (!permissionGranted) {
             if (auto) await recordDeclinedAutoEnable();
             return;
@@ -216,16 +220,9 @@ export function NotificationSettings({
       setIsEnabled(newEnabledState);
       setIsNeverWritten(false);
 
-      // Save to AsyncStorage
-      await AsyncStorage.setItem(
-        NOTIFICATION_ENABLED_KEY,
-        String(newEnabledState),
-      );
-
-      if (!newEnabledState) {
-        // Cancel all scheduled notifications when disabling
-        await Notifications.cancelAllScheduledNotificationsAsync();
-      }
+      // Save it; the reminder sync schedules every saved session's reminder
+      // when this turns on and cancels them when it turns off.
+      await setRemindersEnabled(newEnabledState);
     } catch (error) {
       console.error("Error toggling notifications:", error);
       showToast({

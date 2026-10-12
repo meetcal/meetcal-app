@@ -13,6 +13,18 @@ export function getPillLabel(config: PillFilterConfig) {
   return option?.label ?? config.value;
 }
 
+/**
+ * What a screen reader announces for a pill: the filter and its current
+ * value ("Filter by Gender, Women", or "..., All" when nothing is chosen),
+ * since the visible text alone says only one of the two.
+ */
+export function getPillAccessibilityLabel(config: PillFilterConfig) {
+  const current = config.value
+    ? getPillLabel(config)
+    : config.allOptionLabel ?? "All";
+  return `Filter by ${config.label}, ${current}`;
+}
+
 interface PillContentProps {
   config: PillFilterConfig;
 }

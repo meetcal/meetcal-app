@@ -15,6 +15,13 @@ interface UseMeetAthletesReturn {
   athletes: LiftResult[];
   isLoading: boolean;
   isRefreshing: boolean;
+  /**
+   * Why there are no athletes to show: the load failed (offline included)
+   * and nothing is cached. Null while athletes are shown.
+   */
+  loadError: string | null;
+  /** A revalidate that failed on top of cached athletes (still shown). */
+  refreshError: string | null;
   refreshAthletes: () => Promise<void>;
 }
 
@@ -61,6 +68,8 @@ export function useSessionAthletes(
   const [emptyAthletes] = useState<LiftResult[]>([]);
   const {
     data: athletes,
+    error,
+    refreshError,
     isInitialLoading,
     isRefreshing,
     refresh,
@@ -74,6 +83,11 @@ export function useSessionAthletes(
     athletes,
     isLoading: isInitialLoading,
     isRefreshing,
+    // As in `useScheduleData`: after an empty answer, a failed refresh is
+    // filed under `refreshError`, and with no athletes shown it is the
+    // failure to show.
+    loadError: athletes.length === 0 ? (error ?? refreshError) : null,
+    refreshError,
     refreshAthletes: refresh,
   };
 }

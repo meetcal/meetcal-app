@@ -6,7 +6,11 @@ import { clearExpiredDownloadedMeets } from '@/lib/database/offline-store';
 import { prefetchMeetData, fetchMeetsFresh, getCachedMeets, warmMeetData } from '@/lib/database/meet-manager';
 import { fetchApiMeetByName } from '@/lib/api/meetcal-api';
 import { subscribeToNetworkChanges } from '@/lib/networkUtils';
-import { RECONNECT_REFETCH_JITTER_MAX_MS, reconnectRefetchDelayMs } from '@/lib/data/mutable-resource';
+import {
+  RECONNECT_REFETCH_JITTER_MAX_MS,
+  reconnectRefetchDelayMs,
+  stableSerialize,
+} from '@/lib/data/mutable-resource';
 import { reindexAppEntities } from '@/utils/appIntents';
 import { devLog } from '@/lib/logger';
 
@@ -63,6 +67,22 @@ function parseStoredMeetDetails(raw: string | null, expectedName: string): Meet 
   } catch {
     return null;
   }
+}
+
+/**
+ * The fresh `/meets` copy of the meet `current` describes, when it differs
+ * from `current`; null when there is nothing to update (no meet, the meet is
+ * not in the list, or nothing changed). Compared key-order independently, so
+ * a list that only re-serialized differently does not count as a change.
+ */
+export function refreshedMeetDetails(
+  current: Meet | null,
+  freshMeets: readonly Meet[],
+): Meet | null {
+  if (!current) return null;
+  const fresh = freshMeets.find((meet) => meet.name === current.name);
+  if (!fresh || stableSerialize(fresh) === stableSerialize(current)) return null;
+  return fresh;
 }
 
 const SelectedMeetContext = createContext<SelectedMeetContextType | undefined>(undefined);
@@ -390,6 +410,24 @@ export function SelectedMeetProvider({ children }: { children: React.ReactNode }
           if (isStale()) return;
           await initializeMeetData(freshMeets[0].name, freshMeets[0]);
           return;
+        }
+
+        if (activeMeet) {
+          // The selected meet's details were painted from the cached list,
+          // and nothing below replaced them while it stayed in the list: a
+          // corrected time zone, new dates, venue or venue map did not reach
+          // any tab until a cold start, which iOS can hold off for days
+          // during a meet. Only the details change; the SyncManager and the
+          // warm-up are keyed on the meet name and keep running.
+          const fresh = freshMeets.find((meet) => meet.name === activeMeet) ?? null;
+          setMeetDetails((current) => refreshedMeetDetails(current, freshMeets) ?? current);
+          // Persisted details exist only for a meet that was selected from
+          // outside the window; keep that copy current too.
+          const persisted = fresh ? parseStoredMeetDetails(storedDetailsRaw, fresh.name) : null;
+          if (fresh && persisted && refreshedMeetDetails(persisted, [fresh])) {
+            await AsyncStorage.setItem(SELECTED_MEET_DETAILS_KEY, JSON.stringify(fresh));
+            if (isStale()) return;
+          }
         }
 
         if (!initializedFromCache && !activeMeet) {

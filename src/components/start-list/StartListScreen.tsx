@@ -27,10 +27,12 @@ import { useStarredClubs } from "@/hooks/useStarredClubs";
 import { useStartListData } from "@/hooks/useStartListData";
 import { usePreloadYearBests, useYearBestsForSort } from "@/hooks/useStartListBests";
 import { useStartListFilters } from "@/hooks/useStartListFilters";
+import { groupCalendarSessions } from "@/lib/calendar-export";
 import { lightImpact, successNotification } from "@/lib/haptics";
+import { loadFailureCopy } from "@/lib/load-failure";
+import { describeSaveSessionsFailure } from "@/lib/saved-sessions-actions";
 import { captureViewAsPng } from "@/lib/share-image";
 import {
-  buildCalendarSessions,
   buildScheduleCsv,
   buildSessionExportRows,
   scheduleCsvFileName,
@@ -106,9 +108,9 @@ export default function StartListScreen() {
   const { selectedMeet, meetDetails } = useSelectedMeet();
   const { isSubscribed } = useSubscription();
   const { requirePremium: requirePremiumAction, requireAuth } = useRequirePremium();
-  const { saveSessionsFromAthletes } = useSavedSessions();
+  const { saveAllFromAthletes } = useSavedSessions();
 
-  const { athletes, schedule, loading, refreshing, refresh } =
+  const { athletes, schedule, loading, refreshing, refresh, loadFailure } =
     useStartListData(selectedMeet);
   const {
     filters: storedFilters,
@@ -355,7 +357,7 @@ export default function StartListScreen() {
 
   const handleSaveAll = () => {
     // Saving writes to the signed-in user's list, so sign-in comes first, as
-    // on every other save path. `saveSessionsFromAthletes` returns false
+    // on every other save path. `saveAllFromAthletes` saves nothing
     // without a user, which used to surface as "Failed to save sessions."
     // after the confirmation instead of a sign-in prompt. `null` is "still
     // loading"; `false` means the sign-in alert has already been shown.
@@ -382,13 +384,12 @@ export default function StartListScreen() {
           text: "Save",
           onPress: async () => {
             try {
-              const success = await saveSessionsFromAthletes(
-                filteredAthletes,
-                validMeet,
-                schedule,
+              showToast({ type: "info", message: "Saving sessions..." });
+              const failure = describeSaveSessionsFailure(
+                await saveAllFromAthletes(filteredAthletes, validMeet, schedule),
               );
-              if (!success) {
-                showToast({ type: "error", message: "Failed to save sessions." });
+              if (failure) {
+                showToast({ type: "error", message: failure });
                 return;
               }
               successNotification();
@@ -418,7 +419,7 @@ export default function StartListScreen() {
       return;
     }
     calendarExport.exportSessions(
-      buildCalendarSessions(
+      groupCalendarSessions(
         buildSessionExportRows(filteredAthletes, getSessionDetails),
         selectedMeetName,
       ),
@@ -494,6 +495,12 @@ export default function StartListScreen() {
     return <StartListSkeleton skeletonPulse={skeletonPulse} />;
   }
 
+  // Not "Athletes will appear here once the start list is published": the
+  // roster could not be loaded (offline with nothing saved, or a failed
+  // request). A filtered or searched list keeps its own empty state.
+  const loadFailureText =
+    loadFailure && !isFiltering ? loadFailureCopy("start list", loadFailure === "offline") : null;
+
   return (
     <ThemedView
       testID="start-list-screen"
@@ -546,24 +553,43 @@ export default function StartListScreen() {
             ]}
             showsVerticalScrollIndicator={false}
             ListEmptyComponent={
-              <EmptyState
-                style={styles.listEmpty}
-                icon={
-                  <IconSymbol
-                    name={isFiltering ? "magnifyingglass" : "list.bullet"}
-                    size={44}
-                    color={colors.secondaryText}
-                  />
-                }
-                title={isFiltering ? "No athletes match your filters" : "No athletes yet"}
-                message={
-                  isFiltering
-                    ? "Try adjusting or clearing your filters to see more athletes."
-                    : "Athletes will appear here once the start list is published."
-                }
-                actionLabel={isFiltering ? "Clear filters" : undefined}
-                onActionPress={isFiltering ? resetFilters : undefined}
-              />
+              loadFailureText ? (
+                <EmptyState
+                  style={styles.listEmpty}
+                  icon={
+                    <IconSymbol
+                      name={loadFailure === "offline" ? "wifi.slash" : "arrow.clockwise"}
+                      size={44}
+                      color={colors.secondaryText}
+                    />
+                  }
+                  title={loadFailureText.title}
+                  message={loadFailureText.message}
+                  actionLabel="Retry"
+                  onActionPress={() => {
+                    void refresh();
+                  }}
+                />
+              ) : (
+                <EmptyState
+                  style={styles.listEmpty}
+                  icon={
+                    <IconSymbol
+                      name={isFiltering ? "magnifyingglass" : "list.bullet"}
+                      size={44}
+                      color={colors.secondaryText}
+                    />
+                  }
+                  title={isFiltering ? "No athletes match your filters" : "No athletes yet"}
+                  message={
+                    isFiltering
+                      ? "Try adjusting or clearing your filters to see more athletes."
+                      : "Athletes will appear here once the start list is published."
+                  }
+                  actionLabel={isFiltering ? "Clear filters" : undefined}
+                  onActionPress={isFiltering ? resetFilters : undefined}
+                />
+              )
             }
             refreshControl={
               <RefreshControl

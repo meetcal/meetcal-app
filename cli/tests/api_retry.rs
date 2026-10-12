@@ -1,11 +1,12 @@
-//! Exercises the retry policy against a local HTTP server; nothing here calls the live API.
+//! Exercises the retry policy, and paging, against a local HTTP server; nothing here calls the
+//! live API.
 
 use std::io::{BufRead, BufReader, Read, Write};
 use std::net::TcpListener;
 use std::sync::{Arc, Mutex};
 use std::thread;
 
-use meetcal::utils::backend::{USER_AGENT, queries, query_from};
+use meetcal::utils::backend::{USER_AGENT, queries, query_all_pages_from, query_from};
 use serde_json::{Value, json};
 
 const RATE_LIMITED: &str = "429 Too Many Requests";
@@ -188,4 +189,55 @@ async fn explains_a_query_that_failed_without_retrying() {
         "MeetCal could not answer reference:clubAthletes: club must not be empty"
     );
     assert_eq!(requests.lock().unwrap().len(), 1);
+}
+
+/// The JSON body of each request the test server received.
+fn request_bodies(requests: &Mutex<Vec<String>>) -> Vec<Value> {
+    requests
+        .lock()
+        .unwrap()
+        .iter()
+        .map(|request| {
+            serde_json::from_str(&request[request.find("\r\n\r\n").unwrap() + 4..]).unwrap()
+        })
+        .collect()
+}
+
+#[tokio::test]
+async fn pages_through_a_paged_query_with_its_cursor() {
+    let (base_url, requests) = serve(vec![
+        reply(
+            OK,
+            None,
+            r#"{"status":"success","value":{"json":"[{\"meet\":\"Meet B\"}]","cursor":"c1","isDone":false}}"#,
+        ),
+        reply(RATE_LIMITED, Some("1"), r#"{"error":"rate limited"}"#),
+        reply(
+            OK,
+            None,
+            r#"{"status":"success","value":{"json":"[{\"meet\":\"Meet A\"}]","cursor":"c2","isDone":true}}"#,
+        ),
+    ]);
+
+    let rows: Vec<Value> = query_all_pages_from(
+        &base_url,
+        queries::CLUB_ATHLETES,
+        &json!({ "club": "Test Barbell" }),
+    )
+    .await
+    .expect("paging should succeed");
+
+    assert_eq!(rows, [json!({"meet": "Meet B"}), json!({"meet": "Meet A"})]);
+    // The throttled second page is retried with the same cursor.
+    assert_eq!(
+        request_bodies(&requests)
+            .iter()
+            .map(|body| body["args"].clone())
+            .collect::<Vec<_>>(),
+        [
+            json!({"club": "Test Barbell", "cursor": null}),
+            json!({"club": "Test Barbell", "cursor": "c1"}),
+            json!({"club": "Test Barbell", "cursor": "c1"}),
+        ]
+    );
 }

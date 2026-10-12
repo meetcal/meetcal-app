@@ -29,7 +29,11 @@ export type ApiCall = {
   path: string;
   /** The Convex function, `module:function`. */
   fn: string;
-  kind: 'query' | 'mutation';
+  /**
+   * `clock` asks for the server's clock: the call is made as a query, and
+   * resolves with the time the server answered it (`serverClockMs`), in ms.
+   */
+  kind: 'query' | 'mutation' | 'clock';
   args: Record<string, unknown>;
   /**
    * The function answers `{ etag, body? }` and takes `ifNoneMatch`: the body
@@ -58,20 +62,49 @@ export const PRODUCTION_CONVEX_URL = 'https://disciplined-hare-790.convex.cloud'
 
 export const CONVEX_URL = process.env.EXPO_PUBLIC_CONVEX_URL || PRODUCTION_CONVEX_URL;
 
+/** What a client's last response said beyond its body. */
+type ResponseFacts = { status: number | null; date: string | null };
+
 /**
- * A client whose requests record the HTTP status they were answered with: the
- * client reports a refused request as a bare `Error` with the response text.
+ * A client whose requests record the HTTP status (and `Date` header) they
+ * were answered with: the client reports a refused request as a bare `Error`
+ * with the response text.
  */
-function httpClient(onStatus: (status: number) => void, signal: AbortSignal | undefined): ConvexHttpClient {
+function httpClient(facts: ResponseFacts, signal: AbortSignal | undefined): ConvexHttpClient {
   return new ConvexHttpClient(CONVEX_URL, {
     // Functions' log lines are for the Convex dashboard, not the app console.
     logger: false,
     fetch: async (input, init) => {
       const response = await fetch(input, signal ? { ...init, signal } : init);
-      onStatus(response.status);
+      facts.status = response.status;
+      facts.date = response.headers?.get?.('date') ?? null;
       return response;
     },
   });
+}
+
+/**
+ * The clock mutation, for a `clock` call whose answer had no readable `Date`
+ * header. Every call to it runs (mutations are never cached), so it is only
+ * the fallback; shipped binaries still call it directly.
+ */
+export const SERVER_TIME_MUTATION = 'system:serverTime';
+
+const HTTP_DATE =
+  /^(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun), (\d{2}) (Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec) (\d{4}) (\d{2}):(\d{2}):(\d{2}) GMT$/;
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+/**
+ * The server's clock from an HTTP `Date` header (`Mon, 12 Oct 2026 11:12:00
+ * GMT`), in ms; null for anything else. The header is whole seconds, cut
+ * down, so the estimate is the middle of that second.
+ */
+export function serverClockMs(header: string | null): number | null {
+  const match = header === null ? null : HTTP_DATE.exec(header.trim());
+  if (!match) return null;
+  const [, day, month, year, hours, minutes, seconds] = match;
+  const ms = Date.UTC(Number(year), MONTHS.indexOf(month), Number(day), Number(hours), Number(minutes), Number(seconds));
+  return Number.isFinite(ms) ? ms + 500 : null;
 }
 
 function functionReference(fn: string): any {
@@ -159,15 +192,19 @@ function definedArgs(args: Record<string, unknown>): Record<string, unknown> {
 export const convexTransport: Transport = async (call) => {
   const ref = functionReference(call.fn);
   const args = definedArgs(call.args);
-  let httpStatus: number | null = null;
-  const client = httpClient((status) => {
-    httpStatus = status;
-  }, call.signal);
+  const facts: ResponseFacts = { status: null, date: null };
+  const client = httpClient(facts, call.signal);
   if (call.token) client.setAuth(call.token);
   try {
+    if (call.kind === 'clock') {
+      // A cached query's answer still carries the time it was sent, so the
+      // clock costs a cache hit rather than a mutation.
+      await client.query(ref, args);
+      return serverClockMs(facts.date) ?? (await client.mutation(functionReference(SERVER_TIME_MUTATION), {}));
+    }
     return call.kind === 'query' ? await client.query(ref, args) : await client.mutation(ref, args);
   } catch (error) {
-    throw toTransportError(call, error, httpStatus);
+    throw toTransportError(call, error, facts.status);
   }
 };
 

@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 use anyhow::Result;
 use comfy_table::Table;
@@ -8,7 +8,7 @@ use crate::commands::compare::{MetricComparison, MetricUnit, percent_change};
 use crate::commands::wrapped::calculate_wrapped_stats;
 use crate::types::lifting_results::LiftingResults;
 use crate::types::wrapped::WrappedStats;
-use crate::utils::backend::{queries, query};
+use crate::utils::backend::{queries, query, query_all_pages};
 use crate::utils::meet_names::equivalent_meets;
 use crate::utils::output::Report;
 use serde_json::json;
@@ -32,12 +32,15 @@ pub struct GroupWrappedStats {
     pub wrapped: WrappedStats,
 }
 
+/// Every registration of the club's athletes. Read in pages, so rows are in no particular order
+/// and may repeat; the reports dedupe names and match meets, so neither matters.
 pub async fn get_club_memberships(club: &str) -> Result<Vec<ClubMembership>> {
-    query(queries::CLUB_ATHLETES, &json!({ "club": club })).await
+    query_all_pages(queries::CLUB_ATHLETES, &json!({ "club": club })).await
 }
 
+/// Every registration of the WSO's athletes; read in pages like [`get_club_memberships`].
 pub async fn get_wso_memberships(wso: &str) -> Result<Vec<ClubMembership>> {
-    query(queries::WSO_ATHLETES, &json!({ "wso": wso })).await
+    query_all_pages(queries::WSO_ATHLETES, &json!({ "wso": wso })).await
 }
 
 pub async fn get_recent_results(
@@ -90,19 +93,25 @@ pub fn filter_membership_results(
     memberships: &[ClubMembership],
     results: Vec<LiftingResults>,
 ) -> Vec<LiftingResults> {
-    let represented_athletes: HashSet<_> = memberships
-        .iter()
-        .map(|membership| normalize(&membership.name))
-        .collect();
+    // Each athlete's registered meets, built once: a lookup per result instead of a scan of
+    // every registration (a large WSO has tens of thousands of both).
+    let mut meets_by_athlete: HashMap<String, HashSet<&str>> = HashMap::new();
+    for membership in memberships {
+        meets_by_athlete
+            .entry(normalize(&membership.name))
+            .or_default()
+            .insert(membership.meet.as_str());
+    }
 
     results
         .into_iter()
         .filter(|result| {
-            let name = normalize(&result.name);
-            represented_athletes.contains(&name)
-                && memberships.iter().any(|membership| {
-                    normalize(&membership.name) == name
-                        && equivalent_meets(&membership.meet, &result.meet)
+            meets_by_athlete
+                .get(&normalize(&result.name))
+                .is_some_and(|meets| {
+                    meets
+                        .iter()
+                        .any(|meet| equivalent_meets(meet, &result.meet))
                 })
         })
         .collect()
@@ -359,6 +368,26 @@ mod tests {
 
         assert_eq!(filtered.len(), 1);
         assert_eq!(filtered[0].total, 170.0);
+    }
+
+    #[test]
+    fn matches_each_meet_an_athlete_registered_at() {
+        let memberships = vec![
+            membership("Jane Doe", "Meet One"),
+            membership("Other Athlete", "Meet Three"),
+            membership(" jane  DOE", "Meet Two"),
+        ];
+        let results = vec![
+            result("Jane Doe", "Meet One", "2026-01-01", 170.0),
+            result("Jane Doe", "Meet Two", "2026-02-01", 175.0),
+            result("Jane Doe", "Meet Three", "2026-03-01", 180.0),
+            result("Other Athlete", "Meet Three", "2026-03-01", 185.0),
+        ];
+
+        let filtered = filter_membership_results(&memberships, results);
+
+        let totals: Vec<_> = filtered.iter().map(|result| result.total).collect();
+        assert_eq!(totals, vec![170.0, 175.0, 185.0]);
     }
 
     #[test]

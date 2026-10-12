@@ -41,6 +41,7 @@ import { useScheduleData } from "@/hooks/useScheduleData";
 import { useUpcomingMeets } from "@/hooks/useUpcomingMeets";
 import { initStore } from "@/lib/database/offline-store";
 import { isMaestroE2E } from "@/lib/e2e";
+import { loadFailureCopy } from "@/lib/load-failure";
 import { noMeetState } from "@/lib/schedule-empty-state";
 import { DaySchedule } from "@/types/schedule";
 import {
@@ -113,9 +114,11 @@ export default function ScheduleScreen() {
     schedule,
     isLoading,
     isRefreshing,
+    loadError,
     initialScrollIndex,
     refreshSchedule,
   } = useScheduleData(selectedMeet, meetDetails?.time.timeZoneIdentifier);
+  const scheduleFailure = loadError ? loadFailureCopy("schedule", isOffline) : null;
 
   const { upcomingMeets } = useUpcomingMeets({ availableMeets });
   const { savedSessions } = useSavedSessions();
@@ -510,12 +513,25 @@ export default function ScheduleScreen() {
             />
           }
         >
-          <EmptyState
-            image={require("@/assets/images/MeetCal-no-bg.png")}
-            imageSize={144}
-            title="No schedule yet"
-            message="No data has been loaded yet for this meet. Check back soon!"
-          />
+          {scheduleFailure ? (
+            <EmptyState
+              image={require("@/assets/images/MeetCal-no-bg.png")}
+              imageSize={144}
+              title={scheduleFailure.title}
+              message={scheduleFailure.message}
+              actionLabel="Retry"
+              onActionPress={() => {
+                void refreshSchedule();
+              }}
+            />
+          ) : (
+            <EmptyState
+              image={require("@/assets/images/MeetCal-no-bg.png")}
+              imageSize={144}
+              title="No schedule yet"
+              message="No data has been loaded yet for this meet. Check back soon!"
+            />
+          )}
         </ScrollView>
       ) : (
         <View style={styles.contentContainer}>

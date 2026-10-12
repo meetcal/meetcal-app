@@ -12,6 +12,10 @@ import { OnboardingView } from "@/components/schedule/OnboardingView";
 import { CURRENT_VERSION, VERSION_ANNOUNCEMENT_KEY } from "@/config/version-announcements";
 import { checkOnboardingComplete } from "@/lib/onboarding";
 
+// The screen pads for the iPhone Duo side band (`useScreenHorizontalInsets`).
+jest.mock("react-native-safe-area-context", () => ({
+  useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }),
+}));
 jest.mock("expo-calendar/legacy", () => ({
   requestCalendarPermissionsAsync: jest.fn(async () => ({ status: "granted" })),
 }));

@@ -3,6 +3,7 @@ import { lightImpact as lightHaptic } from "@/lib/haptics";
 import React, { useCallback } from "react";
 import { Pressable, ScrollView, View } from "react-native";
 import {
+  getPillAccessibilityLabel,
   pillRowContentStyle,
   PillContent,
   ResetPill,
@@ -73,7 +74,7 @@ const FilterPillBar: React.FC<FilterPillBarProps> = ({
               }}
               style={({ pressed }) => [pressed && { opacity: 0.7 }]}
               accessibilityRole="button"
-              accessibilityLabel={`Filter by ${config.label}`}
+              accessibilityLabel={getPillAccessibilityLabel(config)}
             >
               <PillContent config={config} />
             </Pressable>
@@ -93,7 +94,11 @@ const FilterPillBar: React.FC<FilterPillBarProps> = ({
               onSelect(config.id, value);
             }}
           >
-            <View accessibilityLabel={`Filter by ${config.label}`}>
+            <View
+              accessible
+              accessibilityRole="button"
+              accessibilityLabel={getPillAccessibilityLabel(config)}
+            >
               <PillContent config={config} />
             </View>
           </MenuView>

@@ -4,7 +4,11 @@ import { useNameSuggestions } from "@/hooks/useNameSuggestions";
 import { showToast } from "@/components/ui/Toast";
 import { searchApi } from "@/lib/api/meetcal-api";
 import { captureViewAsPng, shareImageFile } from "@/lib/share-image";
-import { calculateWrappedStats } from "@/lib/wrapped-stats";
+import {
+  buildWrappedShareText,
+  calculateWrappedStats,
+  formatImprovement,
+} from "@/lib/wrapped-stats";
 import { selectWrappedRows } from "@/lib/wrapped-search";
 import { WrappedStats } from "@/types/wrapped";
 import { LinearGradient } from "expo-linear-gradient";
@@ -59,6 +63,8 @@ const SLIDE_GRADIENTS: [string, string, string][] = [
 ];
 
 const SLIDE_COUNT = 7;
+/** Each slide dot's touch height; the dot itself is 8pt. */
+const SLIDE_DOT_TOUCH_HEIGHT = 44;
 
 function AnimatedCounter({
   value,
@@ -242,8 +248,9 @@ export default function WeightliftingWrappedScreen() {
     setLoading(true);
     try {
       const normalizedName = searchQuery.trim();
+      // `results:search` includes both ends of the range.
       const startDate = `${selectedYear}-01-01`;
-      const endDate = `${selectedYear + 1}-01-01`;
+      const endDate = `${selectedYear}-12-31`;
 
       const response = await searchApi(normalizedName, startDate, endDate);
       const selection = selectWrappedRows(response);
@@ -255,12 +262,29 @@ export default function WeightliftingWrappedScreen() {
         });
         return;
       }
+      if (selection.kind === "narrow") {
+        showToast({
+          type: "info",
+          message: `Too many athletes match ${normalizedName}. Type more of the name.`,
+        });
+        return;
+      }
+      if (selection.kind === "tooManyResults") {
+        showToast({
+          type: "error",
+          message: `${selection.name} has more ${selectedYear} results than a Wrapped can hold.`,
+        });
+        return;
+      }
       if (selection.kind === "ambiguous") {
         presentSuggestions(selection.names);
         setDidYouMean(true);
         showToast({
           type: "info",
-          message: `Several athletes match ${normalizedName}. Pick one.`,
+          // Truncated: more athletes matched than the answer holds.
+          message: response.truncated
+            ? `Many athletes match ${normalizedName}. Pick one, or type more of the name.`
+            : `Several athletes match ${normalizedName}. Pick one.`,
         });
         return;
       }
@@ -301,7 +325,7 @@ export default function WeightliftingWrappedScreen() {
       await shareImageFile(uri, `My ${selectedYear} Weightlifting Wrapped!`);
     } catch {
       if (!wrappedStats) return;
-      const shareText = `My ${selectedYear} Weightlifting Wrapped!\n\nTotal Weight Lifted: ${wrappedStats.totalWeightLifted.toLocaleString()}kg\nMake Percentage: ${wrappedStats.makePercentage.toFixed(1)}%\nBest Total: ${wrappedStats.bestTotal}kg\nSnatch PR: ${wrappedStats.bestSnatch}kg\nClean & Jerk PR: ${wrappedStats.bestCleanJerk}kg\nCompeted in ${wrappedStats.totalMeets} meets\nStatus: ${wrappedStats.yearRank}\n\n#WeightliftingWrapped`;
+      const shareText = buildWrappedShareText(wrappedStats, selectedYear);
       // The text share is the fallback for a failed image share, so it runs
       // inside the `catch`; without its own guard a failure here was an
       // unhandled rejection and the tap did nothing visible.
@@ -358,7 +382,7 @@ export default function WeightliftingWrappedScreen() {
               />
             )}
             {index === 1 && <TotalWeightSlide stats={wrappedStats} active={isActive} />}
-            {index === 2 && <PersonalRecordsSlide stats={wrappedStats} active={isActive} />}
+            {index === 2 && <YearBestsSlide stats={wrappedStats} year={selectedYear} active={isActive} />}
             {index === 3 && <ConsistencySlide stats={wrappedStats} active={isActive} />}
             {index === 4 && <MeetJourneySlide stats={wrappedStats} year={selectedYear} active={isActive} />}
             {index === 5 && <FavoriteAttemptSlide stats={wrappedStats} />}
@@ -396,13 +420,32 @@ export default function WeightliftingWrappedScreen() {
         </ViewShot>
 
         <View
+          // Only the dots take touches; the rest of the row lets taps through
+          // to the slide underneath.
+          pointerEvents="box-none"
           style={[
             styles.dotsContainer,
-            { bottom: insets.bottom + 16, left: insets.left, right: insets.right },
+            {
+              // Keeps the 8pt dots where they sat before their targets grew
+              // to 44pt.
+              bottom: insets.bottom + 16 - (SLIDE_DOT_TOUCH_HEIGHT - 8) / 2,
+              left: insets.left,
+              right: insets.right,
+            },
           ]}
         >
           {Array.from({ length: SLIDE_COUNT }, (_, i) => (
-            <Pressable key={i} onPress={() => goToSlide(i)}>
+            <Pressable
+              key={i}
+              onPress={() => goToSlide(i)}
+              // A real 44pt height, not hitSlop: Android ignores slop past the
+              // parent's bounds. The dots sit too close together to go wider
+              // without spreading them out, and swiping changes slides too.
+              style={styles.slideDotTarget}
+              accessibilityRole="button"
+              accessibilityLabel={`Slide ${i + 1} of ${SLIDE_COUNT}`}
+              accessibilityState={{ selected: currentSlide === i }}
+            >
               <PulsingDot active={currentSlide === i} />
             </Pressable>
           ))}
@@ -415,6 +458,8 @@ export default function WeightliftingWrappedScreen() {
             setCurrentSlide(0);
           }}
           hitSlop={16}
+          accessibilityRole="button"
+          accessibilityLabel="Close Wrapped"
         >
           <View style={styles.closeButtonBg}>
             <IconSymbol name="xmark" size={18} color="#FFFFFF" />
@@ -435,6 +480,8 @@ export default function WeightliftingWrappedScreen() {
             <Pressable
               style={({ pressed }) => [styles.shareActionButton, pressed && { opacity: 0.85, transform: [{ scale: 0.97 }] }]}
               onPress={shareWrapped}
+              accessibilityRole="button"
+              accessibilityLabel="Share your Wrapped"
             >
               <LinearGradient
                 colors={["#1DB954", "#1ed760"]}
@@ -452,6 +499,7 @@ export default function WeightliftingWrappedScreen() {
                 setShowStats(false);
                 setCurrentSlide(0);
               }}
+              accessibilityRole="button"
             >
               <Text style={styles.searchAgainText}>Search Another Athlete</Text>
             </Pressable>
@@ -479,6 +527,8 @@ export default function WeightliftingWrappedScreen() {
         style={[styles.backNavButton, { top: insets.top + 8, left: insets.left + 16 }]}
         onPress={() => router.back()}
         hitSlop={16}
+        accessibilityRole="button"
+        accessibilityLabel="Back"
       >
         <View style={styles.backNavButtonBg}>
           <IconSymbol name="chevron.left" size={20} color="#FFFFFF" />
@@ -544,6 +594,8 @@ LIFTING
                   key={name}
                   style={({ pressed }) => [styles.suggestionRow, pressed && styles.suggestionRowPressed]}
                   onPress={() => selectSuggestion(name)}
+                  accessibilityRole="button"
+                  accessibilityLabel={name}
                 >
                   <IconSymbol name="magnifyingglass" size={14} color="rgba(255,255,255,0.35)" />
                   <Text style={styles.suggestionText} numberOfLines={1}>{name}</Text>
@@ -566,6 +618,9 @@ LIFTING
                   key={year}
                   onPress={() => setSelectedYear(year)}
                   style={[styles.yearPill, isSelected && styles.yearPillActive]}
+                  accessibilityRole="button"
+                  accessibilityLabel={String(year)}
+                  accessibilityState={{ selected: isSelected }}
                 >
                   <Text style={[styles.yearPillText, isSelected && styles.yearPillTextActive]}>
                     {year}
@@ -579,6 +634,9 @@ LIFTING
             style={({ pressed }) => [styles.unwrapButton, pressed && { opacity: 0.85 }]}
             onPress={searchAthlete}
             disabled={loading || isOffline}
+            accessibilityRole="button"
+            accessibilityLabel="Unwrap my year"
+            accessibilityState={{ busy: loading, disabled: loading || isOffline }}
           >
             <LinearGradient
               colors={["#1DB954", "#1ed760"]}
@@ -703,10 +761,13 @@ function TotalWeightSlide({ stats, active }: { stats: WrappedStats; active: bool
   );
 }
 
-function PersonalRecordsSlide({ stats, active }: { stats: WrappedStats; active: boolean }) {
+// The selected calendar year's bests. Not labelled "personal records": they
+// are not compared with the athlete's lifetime history, and a down year must
+// not share a card claiming PRs that aren't.
+function YearBestsSlide({ stats, year, active }: { stats: WrappedStats; year: number; active: boolean }) {
   return (
     <View style={styles.slideInner}>
-      <Text style={styles.slideTopLabel}>PERSONAL RECORDS</Text>
+      <Text style={styles.slideTopLabel}>{`BEST OF ${year}`}</Text>
       <View style={styles.prCenter}>
         <View style={styles.prCard}>
           <Text style={styles.prLabel}>SNATCH</Text>
@@ -804,11 +865,9 @@ TIER
 }
 
 function MeetJourneySlide({ stats, year, active }: { stats: WrappedStats; year: number; active: boolean }) {
-  const improvementText = stats.improvementFromFirst > 0
-    ? `+${stats.improvementFromFirst}kg`
-    : stats.improvementFromFirst < 0
-      ? `${stats.improvementFromFirst}kg`
-      : "Steady";
+  // `null` with fewer than two meets that have a total: nothing to compare,
+  // so the stat is left out rather than shown as a swing to or from zero.
+  const improvementText = formatImprovement(stats.improvementFromFirst);
 
   return (
     <View style={styles.slideInner}>
@@ -841,12 +900,19 @@ kg
 </Text>
             <Text style={styles.journeyStatLabel}>AVG TOTAL</Text>
           </View>
-          <View style={styles.journeyStat}>
-            <Text style={[styles.journeyStatNumber, stats.improvementFromFirst > 0 && styles.positiveText]}>
-              {improvementText}
-            </Text>
-            <Text style={styles.journeyStatLabel}>IMPROVEMENT</Text>
-          </View>
+          {improvementText !== null && (
+            <View style={styles.journeyStat}>
+              <Text
+                style={[
+                  styles.journeyStatNumber,
+                  (stats.improvementFromFirst ?? 0) > 0 && styles.positiveText,
+                ]}
+              >
+                {improvementText}
+              </Text>
+              <Text style={styles.journeyStatLabel}>IMPROVEMENT</Text>
+            </View>
+          )}
         </View>
       </View>
     </View>
@@ -977,6 +1043,10 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
 
+  slideDotTarget: {
+    height: SLIDE_DOT_TOUCH_HEIGHT,
+    justifyContent: "center",
+  },
   dotsContainer: {
     position: "absolute",
     left: 0,

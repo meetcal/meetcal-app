@@ -4,7 +4,7 @@ use super::{
     loading::{load_error, select_response},
     ui::{DataMetric, DataPage, DataStatus, DataTable, EmptyTableRow, FilterSelect, TableSkeleton},
 };
-use crate::utils::api::{queries, query, query_with};
+use crate::utils::api::{queries, query, query_all_pages, query_with};
 use leptos::prelude::*;
 use serde::{Deserialize, Serialize};
 
@@ -61,7 +61,7 @@ pub fn ClubDashboard() -> impl IntoView {
             if club.is_empty() {
                 Ok(Vec::new())
             } else {
-                query_with::<Vec<ClubAthlete>, _>(queries::CLUB_ATHLETES, &ClubQuery { club }).await
+                query_all_pages::<ClubAthlete, _>(queries::CLUB_ATHLETES, &ClubQuery { club }).await
             }
         }
     });

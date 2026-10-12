@@ -3,6 +3,7 @@ import type { QueryCtx } from '../_generated/server';
 import type { recordHolder } from '../schema';
 import { normalizeGender } from './normalize';
 import { compareBytes, compareCollated, sortByWeightClass } from './sort';
+import { apiError } from './validation';
 
 // Reference answers, each the JSON of the Rust route named on it. Queries
 // serve them from a view when one is fresh and compute them here otherwise;
@@ -119,24 +120,6 @@ export function bestTotalPerAthlete<T extends RankedTotal>(rows: Iterable<T>): T
   return Array.from(best.values()).sort((a, b) => b.total - a.total || compareBytes(a.name, b.name));
 }
 
-/** `GET /data/nat-rankings` */
-export async function computeNationalRankings(
-  ctx: QueryCtx,
-  federation: string,
-  ageCategory: string,
-): Promise<RankedTotal[]> {
-  const rows = await ctx.db
-    .query('lifting_results')
-    .withIndex('by_federation_and_age', (q) => q.eq('federation', federation).eq('age', ageCategory))
-    .collect();
-  const ranked: RankedTotal[] = [];
-  for (const row of rows) {
-    if (row.total === undefined || row.total === 0) continue;
-    ranked.push({ name: row.name, total: row.total });
-  }
-  return bestTotalPerAthlete(ranked);
-}
-
 export type DatedTotal = RankedTotal & { date: string };
 
 /**
@@ -164,36 +147,97 @@ export async function computeNationalRankingsForYear(
   return bestTotalPerAthlete(ranked);
 }
 
+type RankingGender = 'Men' | 'Women';
+
+/** Senior, junior and masters weight classes (`getWeightClasses` in the app, `division_options` on the website). */
+const SENIOR_WEIGHTS: Record<RankingGender, readonly string[]> = {
+  Men: ['60', '65', '71', '79', '88', '94', '110', '110+'],
+  Women: ['48', '53', '58', '63', '69', '77', '86', '86+'],
+};
+const UNDER_13_WEIGHTS: Record<RankingGender, readonly string[]> = {
+  Men: ['40', '44', '48', '52', '56', '60', '65', '65+'],
+  Women: ['36', '40', '44', '48', '53', '58', '63', '63+'],
+};
+const YOUTH_WEIGHTS: Record<string, Record<RankingGender, readonly string[]>> = {
+  '11 Under Age Group': UNDER_13_WEIGHTS,
+  '13 Under Age Group': UNDER_13_WEIGHTS,
+  '14-15 Age Group': {
+    Men: ['48', '52', '56', '60', '65', '71', '79', '79+'],
+    Women: ['40', '44', '48', '53', '58', '63', '69', '69+'],
+  },
+  '16-17 Age Group': {
+    Men: ['56', '60', '65', '71', '79', '88', '94', '94+'],
+    Women: ['44', '48', '53', '58', '63', '69', '77', '77+'],
+  },
+};
+const MASTERS_BANDS = ['35-39', '40-44', '45-49', '50-54', '55-59', '60-64', '65-69', '70-74', '75-79', '80-84', '85-89', '90+'];
+
+/**
+ * Every current ranking division, spelled as the app and the website send it
+ * (`Open Men's 60kg`, `Women's 14-15 Age Group 48kg`, `Men's Masters (35-39)
+ * 79kg`). Such a class is real even before anyone has a result in it.
+ */
+export const RANKING_DIVISIONS: ReadonlySet<string> = (() => {
+  const divisions = new Set<string>();
+  for (const gender of ['Men', 'Women'] as const) {
+    for (const weight of SENIOR_WEIGHTS[gender]) {
+      divisions.add(`Open ${gender}'s ${weight}kg`);
+      divisions.add(`Junior ${gender}'s ${weight}kg`);
+      for (const band of MASTERS_BANDS) divisions.add(`${gender}'s Masters (${band}) ${weight}kg`);
+    }
+    for (const [group, weights] of Object.entries(YOUTH_WEIGHTS)) {
+      for (const weight of weights[gender]) divisions.add(`${gender}'s ${group} ${weight}kg`);
+    }
+  }
+  return divisions;
+})();
+
+export function isRankingDivision(ageCategory: string): boolean {
+  return RANKING_DIVISIONS.has(ageCategory);
+}
+
+/** Federations the app, the website and the CLI rank; known whatever the data holds. */
+const RANKING_FEDERATIONS: ReadonlySet<string> = new Set(['USAW', 'USAMW']);
+
+/**
+ * Rejects a ranking class nobody could mean, so a typo or the wrong case
+ * answers 404 instead of an empty ranking that looks like "nobody lifted".
+ * The federation must be one the clients rank or have results; the age
+ * category must be a current division (`isRankingDivision`) or have results
+ * under that federation (a retired class such as `Open Men's 85 kg`). A
+ * current division of USAW or USAMW costs no read; anything else one or two.
+ */
+export async function requireKnownRankingClass(ctx: QueryCtx, federation: string, ageCategory: string): Promise<void> {
+  if (!RANKING_FEDERATIONS.has(federation)) {
+    const anyInFederation = await ctx.db
+      .query('lifting_results')
+      .withIndex('by_federation_and_age', (q) => q.eq('federation', federation))
+      .first();
+    if (anyInFederation === null) throw apiError(404, `unknown federation '${federation}'`);
+  }
+  if (isRankingDivision(ageCategory)) return;
+  const anyInClass = await ctx.db
+    .query('lifting_results')
+    .withIndex('by_federation_and_age', (q) => q.eq('federation', federation).eq('age', ageCategory))
+    .first();
+  if (anyInClass === null) throw apiError(404, `unknown age category '${ageCategory}' for ${federation}`);
+}
+
 /** Distinct values in the database's text order (`SELECT DISTINCT … ORDER BY`). */
 export function distinctCollated(values: Iterable<string>): string[] {
   return Array.from(new Set(values)).sort(compareCollated);
 }
 
-/**
- * `GET /clubs`: distinct non-empty club names. Skips along the club index one
- * read per club rather than reading every roster row: rosters are never
- * deleted, so the table only grows, while the set of clubs barely does.
- */
-export async function computeClubs(ctx: QueryCtx): Promise<string[]> {
-  const clubs: string[] = [];
-  let last: string | null = null;
-  for (;;) {
-    const after: string | null = last;
-    const row = await ctx.db
-      .query('athletes')
-      .withIndex('by_club', (q) => (after === null ? q : q.gt('club', after)))
-      .first();
-    if (!row) break;
-    if (row.club !== '') clubs.push(row.club);
-    last = row.club;
-  }
-  return distinctCollated(clubs);
-}
-
 /** Index seeks per transaction when rebuilding the club view. */
 const CLUBS_PER_PAGE = 100;
 
-/** Skips duplicate roster entries without walking every club in one transaction. */
+/**
+ * `GET /clubs` (distinct non-empty club names) a page at a time: the next
+ * clubs after `after` (the empty club sorts first and is never listed), one
+ * index seek per club, so duplicate roster entries are skipped without being
+ * read. Rosters are never deleted, so the table only grows while the set of
+ * clubs barely does.
+ */
 export async function clubNamesPage(ctx: QueryCtx, after: string | null): Promise<{ clubs: string[]; after: string | null }> {
   const clubs: string[] = [];
   let last = after ?? '';
@@ -276,17 +320,20 @@ export const ADAPTIVE_RECORDS_SEASON_START = '2026';
 
 const MEN = /\bmen\b/i;
 const WOMEN = /\bwomen\b/i;
-const YEAR = /\b\d{4}\b/;
 const WEIGHT_CLASS = /\b(\d+\+?)kg/gi;
 
-function matchesGender(age: string, gender: string): boolean {
-  if (gender.toLowerCase() === 'men') return MEN.test(age) && !WOMEN.test(age);
-  return WOMEN.test(age);
+export type AdaptiveGender = 'men' | 'women';
+
+/** `men` or `women`, any case; anything else is a 400 (it used to read as women). */
+export function requireAdaptiveGender(gender: string): AdaptiveGender {
+  const folded = gender.toLowerCase();
+  if (folded === 'men' || folded === 'women') return folded;
+  throw apiError(400, "gender must be 'men' or 'women'");
 }
 
-function yearOf(date: string): number {
-  const match = YEAR.exec(date);
-  return match ? Number(match[0]) : 0;
+function matchesGender(age: string, gender: AdaptiveGender): boolean {
+  if (gender === 'men') return MEN.test(age) && !WOMEN.test(age);
+  return WOMEN.test(age);
 }
 
 function isInsideParens(text: string, index: number): boolean {
@@ -309,24 +356,21 @@ export type AdaptiveRecord = { weight_class: string; snatch: number; cj: number;
 /** The season's best lifts per weight class. */
 export async function computeAdaptiveRecords(
   ctx: QueryCtx,
-  gender: string,
+  gender: AdaptiveGender,
   excludeFederation: string,
   season: string,
 ): Promise<AdaptiveRecord[]> {
-  const seasonStart = Number(season);
-  const seasonStartDate = `${season}-01-01`;
+  // The season's results only: every adaptive result ever grows each year.
   const rows = await ctx.db
     .query('lifting_results')
-    .withIndex('by_adaptive', (q) => q.eq('adaptive', true))
+    .withIndex('by_adaptive_and_date', (q) => q.eq('adaptive', true).gte('date', `${season}-01-01`))
     .collect();
 
   const byClass = new Map<string, AdaptiveRecord>();
   for (const row of rows) {
-    if (row.date < seasonStartDate) continue;
     if (row.federation !== undefined && row.federation === excludeFederation) continue;
     const age = row.age ?? '';
     if (!matchesGender(age, gender)) continue;
-    if (yearOf(row.date) < seasonStart) continue;
     const weightClass = classOf(age);
     if (weightClass === null) continue;
     const current = byClass.get(weightClass) ?? { weight_class: weightClass, snatch: 0, cj: 0, total: 0 };

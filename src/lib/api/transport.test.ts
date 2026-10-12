@@ -1,4 +1,4 @@
-import { convexTransport, TransportRequestError, type ApiCall } from './transport';
+import { convexTransport, serverClockMs, TransportRequestError, type ApiCall } from './transport';
 
 type StubResponse = { ok: boolean; status: number; text: () => Promise<string>; json: () => Promise<unknown> };
 
@@ -167,4 +167,43 @@ describe('convexTransport (signed-in calls over HTTP)', () => {
     await expect(convexTransport({ ...signedIn, fn: 'nocolon' })).rejects.toThrow('invalid Convex function name');
     expect(global.fetch).not.toHaveBeenCalled();
   });
+});
+
+describe('convexTransport (the server clock)', () => {
+  const clockCall: ApiCall = { path: '/clock', fn: 'system:ping', kind: 'clock', args: {} };
+
+  function withDate(response: StubResponse, date: string | null): StubResponse {
+    return { ...response, headers: { get: (name: string) => (name.toLowerCase() === 'date' ? date : null) } } as StubResponse;
+  }
+
+  it('reads the clock from the Date header of a cached query, not a mutation', async () => {
+    responses.push(withDate(respond(200, { status: 'success', value: 1 }), 'Mon, 12 Oct 2026 11:12:00 GMT'));
+    await expect(convexTransport(clockCall)).resolves.toBe(Date.UTC(2026, 9, 12, 11, 12, 0) + 500);
+    expect(global.fetch).toHaveBeenCalledTimes(1);
+    const [url, init] = (global.fetch as jest.Mock).mock.calls[0] as [string, RequestInit];
+    expect(url).toMatch(/\/api\/query$/);
+    expect(JSON.parse(String(init.body)).path).toBe('system:ping');
+  });
+
+  it('falls back to the clock mutation when the answer has no readable Date header', async () => {
+    responses.push(withDate(respond(200, { status: 'success', value: 1 }), null));
+    responses.push(respond(200, { status: 'success', value: 1_790_000_000_000 }));
+    await expect(convexTransport(clockCall)).resolves.toBe(1_790_000_000_000);
+    const [url, init] = (global.fetch as jest.Mock).mock.calls[1] as [string, RequestInit];
+    expect(url).toMatch(/\/api\/mutation$/);
+    expect(JSON.parse(String(init.body)).path).toBe('system:serverTime');
+  });
+});
+
+describe('serverClockMs', () => {
+  it('reads an HTTP date as the middle of its second', () => {
+    expect(serverClockMs('Thu, 01 Jan 2026 00:00:59 GMT')).toBe(Date.UTC(2026, 0, 1, 0, 0, 59) + 500);
+  });
+
+  it.each([null, '', 'yesterday', '2026-10-12T11:12:00Z', 'Mon, 12 Oct 2026 11:12:00 PST', 'Mon, 12 Foo 2026 11:12:00 GMT'])(
+    'is null for %p',
+    (header) => {
+      expect(serverClockMs(header)).toBeNull();
+    },
+  );
 });

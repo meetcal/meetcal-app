@@ -136,7 +136,8 @@ export class MeetCalApiError extends Error {
 }
 
 /**
- * Server clock, as sampled from the `system:serverTime` mutation.
+ * Server clock, as sampled from the `Date` header of a `system:ping` answer
+ * (a constant query, so always a cache hit; see `serverClockMs`).
  *
  * Destructive housekeeping — auto-unsaving started sessions (server DELETE
  * included), clearing a downloaded meet once it has ended — used to trust
@@ -188,6 +189,12 @@ const SERVER_CLOCK_SAMPLE_TIMEOUT_MS = 10000;
 /** A sample whose round trip took longer than this is too imprecise to keep. */
 const MAX_CLOCK_SAMPLE_ROUND_TRIP_MS = 5000;
 
+/**
+ * The clock sample's request. App bundles before this one called the
+ * `system:serverTime` mutation instead, which runs (and bills) every time.
+ */
+export const SERVER_CLOCK_CALL: ApiCall = { path: '/clock', fn: 'system:ping', kind: 'clock', args: {} };
+
 let serverClockSample: ServerClockSample | null = null;
 let serverClockInFlight: Promise<void> | null = null;
 
@@ -199,7 +206,7 @@ let serverClockInFlight: Promise<void> | null = null;
 function sampleServerClock(): { done: Promise<void>; started: boolean } {
   if (serverClockInFlight) return { done: serverClockInFlight, started: false };
   const sentAt = Date.now();
-  const sample = callApi({ path: '/clock', fn: 'system:serverTime', kind: 'mutation', args: {} })
+  const sample = callApi(SERVER_CLOCK_CALL)
     .then((serverNow) => {
       if (typeof serverNow !== 'number' || !Number.isFinite(serverNow)) return;
       const receivedAt = Date.now();
@@ -303,7 +310,7 @@ function assertHasFields(value: unknown, label: string, fields: string[]): Recor
 }
 
 function methodLabel(call: ApiCall): string {
-  return call.kind === 'query' ? 'GET' : 'POST';
+  return call.kind === 'mutation' ? 'POST' : 'GET';
 }
 
 /**
@@ -1111,6 +1118,12 @@ export async function fetchApiYearBestsByNames(
   return merged;
 }
 
+/**
+ * `results:search`: name suggestions, or with `startDate` and `endDate` (both
+ * inclusive, `YYYY-MM-DD`) the results in that range. `truncated` says more
+ * results matched than the answer holds (the most recent are kept), so the
+ * search should be narrowed.
+ */
 export async function searchApi(query: string, startDate?: string, endDate?: string) {
   const response = assertHasFields(
     await readQuery('/search', 'results:search', { query, startDate, endDate }),
@@ -1123,6 +1136,8 @@ export async function searchApi(query: string, startDate?: string, endDate?: str
     matchedName: typeof response.matched_name === 'string' ? response.matched_name : null,
     suggestions,
     results: results.map(mapApiLiftingResult),
+    // Deployments before the field answered without it; they cut silently.
+    truncated: response.truncated === true,
   };
 }
 
@@ -1473,9 +1488,47 @@ export async function fetchApiClubNames(): Promise<string[]> {
   ];
 }
 
+/**
+ * Most pages a paged query may take before the client gives up. A club's
+ * entries arrive 2,000 rows a page, so this allows 200,000 rows; an answer
+ * that never reports `isDone` fails here instead of looping forever.
+ */
+export const MAX_QUERY_PAGES = 100;
+
+type JsonTextPage = { rows: unknown[]; cursor: string; isDone: boolean };
+
+/** One `{ json, cursor, isDone }` page of a paged query, checked before anything reads it. */
+function decodeJsonTextPage(value: unknown, path: string): JsonTextPage {
+  assertObject(value, path);
+  if (typeof value.json !== 'string') throw new Error(`${path} returned a non-text json field`);
+  if (typeof value.cursor !== 'string') throw new Error(`${path} returned a non-string cursor`);
+  if (typeof value.isDone !== 'boolean') throw new Error(`${path} returned a non-boolean isDone`);
+  const rows = assertArray<unknown>(parseJsonText(value.json, path), path);
+  return { rows, cursor: value.cursor, isDone: value.isDone };
+}
+
+/**
+ * Every row of a paged query: the first call sends `cursor: null`, each later
+ * one the cursor the previous page returned, until a page reports `isDone`.
+ * Rows are concatenated in page order; the server sorts within a page only,
+ * and a list replaced while paging can repeat a row, so callers must not rely
+ * on order or uniqueness.
+ */
+async function readAllPages(path: string, fn: string, args: Record<string, unknown>): Promise<unknown[]> {
+  const rows: unknown[] = [];
+  let cursor: string | null = null;
+  for (let page = 0; page < MAX_QUERY_PAGES; page += 1) {
+    const answer = decodeJsonTextPage(await readQuery(path, fn, { ...args, cursor }), path);
+    rows.push(...answer.rows);
+    if (answer.isDone) return rows;
+    cursor = answer.cursor;
+  }
+  throw new Error(`${path} did not finish within ${MAX_QUERY_PAGES} pages`);
+}
+
 /** A club's entries across meets; `lib/database/fetch-club-stats` validates the rows. */
 export async function fetchApiClubAthletes(club: string): Promise<unknown[]> {
-  return assertArray<unknown>(await readQuery('/clubs/athletes', 'reference:clubAthletes', { club }), '/clubs/athletes');
+  return readAllPages('/clubs/athletes', 'reference:clubAthletes', { club });
 }
 
 /** A club's results at one meet; `lib/database/fetch-club-stats` validates the shape. */

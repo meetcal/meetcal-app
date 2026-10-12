@@ -2,19 +2,18 @@ import * as FileSystem from "expo-file-system";
 import * as Sharing from "expo-sharing";
 
 import type { LiftResult } from "@/data/types/athletes";
-import type { MeetName } from "@/data/types/meet";
 import {
   compareCalendarDates,
   compareStartTimes,
   formatSessionDisplayDate,
 } from "@/lib/start-list-utils";
 import type { SessionDetails } from "@/types/start-list";
-import type { CalendarSession } from "@/utils/calendar";
 import { formatTo12Hour } from "@/utils/time";
 
 /**
  * The Start List's exports (Add to Calendar and the shareable schedule CSV),
- * built from the athletes on screen. Lived inline in the screen.
+ * built from the athletes on screen. Lived inline in the screen. The calendar
+ * events are grouped by `groupCalendarSessions` (`lib/calendar-export`).
  */
 
 /** One athlete placed in their session, as the exports need it. */
@@ -58,31 +57,6 @@ export function buildSessionExportRows(
     });
   }
   return rows;
-}
-
-/**
- * One calendar event per session and platform. Several weight classes on the
- * same platform are one event; the first row seen names its weight class.
- */
-export function buildCalendarSessions(
-  rows: readonly SessionExportRow[],
-  meet: MeetName,
-): CalendarSession[] {
-  const sessions = new Map<string, CalendarSession>();
-  for (const row of rows) {
-    const key = `${row.sessionNumber}-${row.platform}`;
-    if (sessions.has(key)) continue;
-    sessions.set(key, {
-      date: row.date,
-      startTime: row.startTime,
-      weighInTime: row.weighInTime,
-      sessionNumber: row.sessionNumber.toString(),
-      platform: row.platform,
-      weightClass: row.weightClass,
-      meet,
-    });
-  }
-  return Array.from(sessions.values());
 }
 
 /** One CSV cell: quoted when it holds a quote, comma or newline. */

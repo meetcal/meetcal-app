@@ -11,13 +11,8 @@ description = "Install dependencies from the lockfile"
 run = "bun install --frozen-lockfile"
 
 [tasks.check]
-description = "Run MeetCal's local pull-request quality gate"
-run = [
-  "bun run lint",
-  "bun run typecheck",
-  "bun run test:coverage",
-  "bun .codex/skills/review-code-performance-tests/scripts/report-coverage-gaps.ts",
-]
+description = "Run the checks this branch's changes need, one worktree at a time (--all for every suite; --plan to inspect)"
+run = "bun scripts/check-lock.ts bun scripts/check.ts"
 
 [tasks."app:start"]
 description = "Start the Expo development server"
@@ -36,12 +31,12 @@ description = "Start Expo web"
 run = "bun run web"
 
 [tasks."app:test"]
-description = "Run the Jest CI suite"
-run = "bun run test:ci"
+description = "Run the Jest CI suite (waits for any other worktree's gate)"
+run = "bun scripts/check-lock.ts bun run test:ci"
 
 [tasks."app:test:coverage"]
-description = "Run Jest with coverage"
-run = "bun run test:coverage"
+description = "Run Jest with coverage (waits for any other worktree's gate)"
+run = "bun scripts/check-lock.ts bun run test:coverage"
 
 [tasks."app:maestro"]
 description = "Run device smoke flows after starting Metro with EXPO_PUBLIC_MAESTRO_E2E=1"

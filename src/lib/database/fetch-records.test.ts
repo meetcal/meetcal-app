@@ -1,22 +1,32 @@
 import { jsonTransportStub } from "@/lib/api/json-transport-stub";
 import { setApiTransportForTests } from "@/lib/api/transport";
 import {
+  downloadRecordsForOffline,
   federationRecordsResource,
   fetchAgeGroups,
 } from "@/lib/database/fetch-records";
+import { getOfflineCache, OFFLINE_CACHE_KEYS } from "@/lib/database/offline-cache";
 import type { RecordsData } from "@/types/records";
 
 const mockGetJsonArray = jest.fn();
-const mockGetOfflineCache = jest.fn();
-const mockSetOfflineCache = jest.fn();
+const mockMemory = new Map<string, string>();
 
 jest.mock("@/lib/networkUtils", () => ({
   isNetworkAvailable: jest.fn(async () => true),
 }));
-jest.mock("@/lib/database/offline-cache", () => ({
-  OFFLINE_CACHE_KEYS: { records: "@offline_cache/records" },
-  getOfflineCache: (...args: unknown[]) => mockGetOfflineCache(...args),
-  setOfflineCache: (...args: unknown[]) => mockSetOfflineCache(...args),
+// The real offline cache runs over an in-memory AsyncStorage, so the test
+// sees which entry each path writes and with what `lastSynced`.
+jest.mock("@react-native-async-storage/async-storage", () => ({
+  __esModule: true,
+  default: {
+    getItem: jest.fn(async (key: string) => mockMemory.get(key) ?? null),
+    setItem: jest.fn(async (key: string, value: string) => {
+      mockMemory.set(key, value);
+    }),
+    removeItem: jest.fn(async (key: string) => {
+      mockMemory.delete(key);
+    }),
+  },
 }));
 
 // The real API client runs, so its boundary validators see these payloads.
@@ -41,15 +51,18 @@ const row = (overrides: Record<string, unknown>) => ({
   ...overrides,
 });
 
+const seniorMen = (snatchRecord: number): RecordsData => ({
+  Senior: {
+    Men: [{ weightClass: "89kg", snatchRecord, cjRecord: 2, totalRecord: 3 }],
+    Women: [],
+  },
+});
+
 describe("federationRecordsResource and fetchAgeGroups", () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    mockMemory.clear();
     jest.spyOn(console, "error").mockImplementation(() => {});
-    mockSetOfflineCache.mockImplementation(async (_key: string, data: unknown) => ({
-      data,
-      lastSynced: 1,
-    }));
-    mockGetOfflineCache.mockResolvedValue(null);
   });
 
   afterEach(() => {
@@ -74,7 +87,58 @@ describe("federationRecordsResource and fetchAgeGroups", () => {
     expect(records.Senior.Women).toEqual([
       { weightClass: "71kg", snatchRecord: 170, cjRecord: 210, totalRecord: 380 },
     ]);
-    expect(mockSetOfflineCache).toHaveBeenCalledWith("@offline_cache/records", { USAW: records });
+    await expect(federationRecordsResource.loadCached("USAW")).resolves.toEqual({
+      data: records,
+      lastUpdatedAt: expect.any(Number),
+    });
+  });
+
+  // Browsing used to merge into the download's entry and reset its
+  // `lastSynced`, so Offline Data showed the records as downloaded "just now".
+  it("browsing never writes the offline download's entry", async () => {
+    mockGetJsonArray.mockResolvedValue([row({})]);
+
+    await fetchRecords("USAW");
+
+    await expect(getOfflineCache(OFFLINE_CACHE_KEYS.records)).resolves.toBeNull();
+    expect(mockMemory.has(OFFLINE_CACHE_KEYS.recordsBrowse)).toBe(true);
+  });
+
+  it("leaves a month-old download and its sync time alone when browsing", async () => {
+    const monthAgo = Date.now() - 30 * 24 * 60 * 60 * 1000;
+    mockMemory.set(
+      OFFLINE_CACHE_KEYS.records,
+      JSON.stringify({ data: { USAW: seniorMen(1), IWF: seniorMen(2) }, lastSynced: monthAgo }),
+    );
+    mockGetJsonArray.mockResolvedValue([row({ snatch_record: 175 })]);
+
+    await fetchRecords("USAW");
+
+    await expect(getOfflineCache(OFFLINE_CACHE_KEYS.records)).resolves.toEqual({
+      data: { USAW: seniorMen(1), IWF: seniorMen(2) },
+      lastSynced: monthAgo,
+    });
+    // The newer browsed copy is what USAW shows; IWF still reads the download.
+    await expect(federationRecordsResource.loadCached("USAW")).resolves.toMatchObject({
+      data: { Senior: { Men: [expect.objectContaining({ snatchRecord: 175 })] } },
+    });
+    await expect(federationRecordsResource.loadCached("IWF")).resolves.toEqual({
+      data: seniorMen(2),
+      lastUpdatedAt: monthAgo,
+    });
+  });
+
+  it("serves a download newer than the browsed copy", async () => {
+    mockGetJsonArray.mockResolvedValue([row({ snatch_record: 150 })]);
+    await fetchRecords("USAW");
+    mockGetJsonArray.mockResolvedValue([row({ snatch_record: 180 }), row({ record_type: "IWF" })]);
+    await new Promise((resolve) => setTimeout(resolve, 2));
+
+    await downloadRecordsForOffline();
+
+    await expect(federationRecordsResource.loadCached("USAW")).resolves.toMatchObject({
+      data: { Senior: { Men: [expect.objectContaining({ snatchRecord: 180 })] } },
+    });
   });
 
   it("orders age groups youth-first, then masters by age", async () => {
@@ -97,7 +161,7 @@ describe("federationRecordsResource and fetchAgeGroups", () => {
 
   it("falls back to the cached federation for age groups and rejects the records fetch", async () => {
     mockGetJsonArray.mockRejectedValue(new Error("down"));
-    mockGetOfflineCache.mockResolvedValue({
+    const downloaded = JSON.stringify({
       data: {
         USAW: {
           Senior: { Men: [{ weightClass: "89kg", snatchRecord: 1, cjRecord: 2, totalRecord: 3 }], Women: [] },
@@ -106,14 +170,16 @@ describe("federationRecordsResource and fetchAgeGroups", () => {
       },
       lastSynced: 1,
     });
+    mockMemory.set(OFFLINE_CACHE_KEYS.records, downloaded);
 
     // Age groups fall back to the cached federation; the records fetch
     // rejects, leaving the cached copy to the screen.
     await expect(fetchAgeGroups("USAW")).resolves.toEqual(["Junior", "Senior"]);
     await expect(fetchRecords("USAW")).rejects.toThrow("down");
-    expect(mockSetOfflineCache).not.toHaveBeenCalled();
+    expect(mockMemory.get(OFFLINE_CACHE_KEYS.records)).toBe(downloaded);
+    expect(mockMemory.has(OFFLINE_CACHE_KEYS.recordsBrowse)).toBe(false);
 
-    mockGetOfflineCache.mockResolvedValue(null);
+    mockMemory.clear();
     await expect(fetchAgeGroups("USAW")).rejects.toThrow("down");
   });
 });

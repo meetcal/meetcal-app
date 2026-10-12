@@ -1,5 +1,6 @@
 import { DEV_CONFIG, getChaosConfig } from '@/config/development';
 import { CHAOS_GARBAGE, validateChaosConfig, withDevChaos, type ChaosConfig } from '@/lib/api/dev-chaos';
+import { SERVER_CLOCK_CALL } from '@/lib/api/meetcal-api';
 import { callApi, setApiTransportForTests, type ApiCall } from '@/lib/api/transport';
 import { isMaestroE2E } from '@/lib/e2e';
 
@@ -7,7 +8,6 @@ jest.mock('@/lib/e2e', () => ({ isMaestroE2E: jest.fn(() => false) }));
 
 const valid: ChaosConfig = { rate: 0.3, latencyMs: { min: 500, max: 4000 } };
 const listMeets: ApiCall = { path: '/meets', fn: 'meets:list', kind: 'query', args: {} };
-const clockCall: ApiCall = { path: '/clock', fn: 'system:serverTime', kind: 'mutation', args: {} };
 
 describe('validateChaosConfig', () => {
   it('accepts a valid config, with or without kinds', () => {
@@ -115,8 +115,11 @@ describe('callApi under DEV_CONFIG.CHAOS', () => {
   });
 
   it('never faults the server-clock sample', async () => {
-    await expect(callApi(clockCall)).resolves.toBe(42);
-    expect(fetchMock).toHaveBeenCalledTimes(1);
+    // The stubbed answer has no `Date` header, so the transport falls back
+    // from the clock query to the clock mutation: two requests, both unfaulted.
+    await expect(callApi(SERVER_CLOCK_CALL)).resolves.toBe(42);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(log).not.toHaveBeenCalled();
   });
 
   it('does nothing when CHAOS is null', async () => {

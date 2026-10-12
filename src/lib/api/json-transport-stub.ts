@@ -32,7 +32,7 @@ export function callQuery(call: ApiCall): Record<string, string> {
 
 /** The client samples the server clock alongside requests; stubs answer it themselves. */
 export function isClockCall(call: ApiCall): boolean {
-  return call.fn === 'system:serverTime';
+  return call.kind === 'clock';
 }
 
 /** Functions whose rows travel as JSON text (`{ json }`), as `convex/` sends them. */
@@ -44,7 +44,9 @@ const TEXT_ANSWERS: ReadonlySet<string> = new Set([
 ]);
 
 /**
- * Answers in the production wire shape: conditional calls as `{ json }` (no
+ * Answers in the production wire shape: paged calls (those sending a
+ * `cursor`, e.g. `reference:clubAthletes`) as one last page
+ * `{ json, cursor, isDone: true }`, conditional calls as `{ json }` (no
  * `etag`, so nothing is remembered), row lists as `{ json }`, the rest as the
  * value itself.
  */
@@ -52,6 +54,7 @@ export function jsonTransportStub(respond: JsonResponder): Transport {
   return async (call) => {
     if (isClockCall(call)) return Date.now();
     const body = await respond(call.path, callQuery(call));
+    if ('cursor' in call.args) return { json: JSON.stringify(body), cursor: 'end', isDone: true };
     if (call.conditional || TEXT_ANSWERS.has(call.fn)) return { json: JSON.stringify(body) };
     return body;
   };
