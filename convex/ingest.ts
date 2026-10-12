@@ -3,7 +3,7 @@ import { internalMutation, type MutationCtx } from './_generated/server';
 import type { Doc, Id, TableNames } from './_generated/dataModel';
 import { writeHistories } from './lib/history';
 import { normalizeAgeCategory, normalizeFederation, normalizeGender, storedGenderSpellings } from './lib/normalize';
-import { disambiguatedMeetName, oldestMeet, type ZoneFormatters } from './lib/meetData';
+import { disambiguatedMeetName, MAX_DISAMBIGUATED_NAMES, oldestMeet, type ZoneFormatters } from './lib/meetData';
 import { earliestLocalDate, meetStatusAt, type MeetStatus } from './lib/meetStatus';
 import { normalizeName } from './lib/names';
 import { bumpVersion, type SourceTable } from './lib/views';
@@ -385,34 +385,51 @@ const meetFederation = (meet: Pick<Doc<'meets'>, 'federation'>) => normalizeFede
 
 /**
  * The stored meet a federation's meet called `name` is: the one of that
- * federation under the name, or under the name `disambiguatedMeetName` gave
- * it. `taken`: another federation's meet holds the plain name, so a new meet
- * must take the disambiguated one. Meets are matched by exact name through
- * the index; the oldest wins if older rows repeat a name.
+ * federation stored under the name (and not one disambiguated from another
+ * name), or one stored under a name `disambiguatedMeetName` gave it, which
+ * keeps `name` as its `sourceName`. A meet the source itself calls
+ * "Open (USAMW)" is a different event from a disambiguated "Open", so
+ * neither is taken for the other. `taken`: another meet holds the plain
+ * name, so a new meet must be stored as `freeName`, the first disambiguated
+ * name no meet holds. Meets are matched by exact name through the index;
+ * the oldest wins if older rows repeat a name.
  */
 async function meetOfFederation(
   ctx: MutationCtx,
   name: string,
   federation: string,
-): Promise<{ match: Doc<'meets'> | null; taken: boolean }> {
-  const candidates: Doc<'meets'>[] = [];
-  for (const candidate of new Set([name, disambiguatedMeetName(name, federation)])) {
-    candidates.push(
-      ...(await ctx.db
-        .query('meets')
-        .withIndex('by_name', (q) => q.eq('name', candidate))
-        .collect()),
-    );
+): Promise<{ match: Doc<'meets'> | null; taken: boolean; freeName: string | null }> {
+  const named = (candidate: string) =>
+    ctx.db
+      .query('meets')
+      .withIndex('by_name', (q) => q.eq('name', candidate))
+      .collect();
+  const plain = await named(name);
+  const own = plain.filter((meet) => meetFederation(meet) === federation && (meet.sourceName ?? meet.name) === name);
+  const taken = own.length === 0 && plain.length > 0;
+  // Disambiguated names are taken in order, so the first free one ends the
+  // search: no meet of `name` was stored under a later one.
+  let freeName: string | null = null;
+  for (let attempt = 1; attempt <= MAX_DISAMBIGUATED_NAMES && freeName === null; attempt++) {
+    const candidate = disambiguatedMeetName(name, federation, attempt);
+    const rows = await named(candidate);
+    own.push(...rows.filter((meet) => meetFederation(meet) === federation && meet.sourceName === name));
+    if (rows.length === 0) freeName = candidate;
   }
-  const own = candidates.filter((meet) => meetFederation(meet) === federation);
-  const taken = candidates.some((meet) => meet.name === name && meetFederation(meet) !== federation);
-  return { match: oldestMeet(own), taken };
+  return { match: oldestMeet(own), taken, freeName };
+}
+
+/** The name a new meet called `name` is stored under: `freeName` when another meet holds `name`. */
+function newMeetName(name: string, federation: string, { taken, freeName }: { taken: boolean; freeName: string | null }): string {
+  if (!taken) return name;
+  if (freeName === null) throw new Error(`no free name for the ${federation} meet ${JSON.stringify(name)}: ${MAX_DISAMBIGUATED_NAMES} disambiguated names are taken`);
+  return freeName;
 }
 
 /**
  * Inserts or updates meets (`upsert_meet`), matched on name and federation:
  * a sync never takes over another federation's meet of the same name. A new
- * meet whose name another federation's meet has is stored under
+ * meet whose name another meet has is stored under a free
  * `disambiguatedMeetName` (and reported in `storedAs`), since the name is
  * the meet's identity everywhere; stored names never change. Only the
  * scraped columns are written, and the status follows the dates
@@ -431,12 +448,13 @@ export const upsertMeets = internalMutation({
     const formatters: ZoneFormatters = new Map();
     for (const row of rows) {
       const federation = normalizeFederation(row.federation ?? 'USAW');
-      const { match: existing, taken } = await meetOfFederation(ctx, row.name, federation);
-      const name = existing?.name ?? (taken ? disambiguatedMeetName(row.name, federation) : row.name);
+      const lookup = await meetOfFederation(ctx, row.name, federation);
+      const existing = lookup.match;
+      const name = existing?.name ?? newMeetName(row.name, federation, lookup);
       const values = { ...row, name, federation, status: meetStatusAt(row, now, formatters) };
       if (!existing) {
-        await ctx.db.insert('meets', { ...values, updatedAt: now });
-        if (taken) console.warn(`upsertMeets: another federation's meet is named ${JSON.stringify(row.name)}; stored this ${federation} meet as ${JSON.stringify(name)}`);
+        await ctx.db.insert('meets', { ...values, ...(name !== row.name ? { sourceName: row.name } : {}), updatedAt: now });
+        if (name !== row.name) console.warn(`upsertMeets: another meet is named ${JSON.stringify(row.name)}; stored this ${federation} meet as ${JSON.stringify(name)}`);
         outcomes.push({ wasInsert: true, wasChanged: true, ...(name !== row.name ? { storedAs: name } : {}) });
         hints.push({ kind: 'meet', key: name });
         continue;
@@ -465,7 +483,7 @@ const PLACEHOLDERS = new Set(['', 'TBD', 'Unknown']);
  * Masters" vs "2027 USA Masters Nationals"), so failing that, to the one
  * unclaimed USAMW meet whose dates overlap. Several overlapping meets is
  * ambiguous and reported, not guessed. A new event is inserted, under
- * `disambiguatedMeetName` if another federation's meet has its name. A
+ * a free `disambiguatedMeetName` if another meet has its name. A
  * match takes every value the site gives (dates, venue, city, state, time
  * zone), and its status follows the new dates (`meetStatusAt`); fields the
  * site leaves blank keep what is stored, and a move to another city clears
@@ -493,10 +511,10 @@ export const syncUsamwEvents = internalMutation({
     // event's meet.
     const byName = new Map<number, Doc<'meets'>>();
     const claimed = new Set<string>();
-    const taken = new Map<number, boolean>();
+    const lookups = new Map<number, Awaited<ReturnType<typeof meetOfFederation>>>();
     for (const [i, event] of events.entries()) {
       const exact = await meetOfFederation(ctx, event.name, 'USAMW');
-      taken.set(i, exact.taken);
+      lookups.set(i, exact);
       const named = [exact.match, ...usamw.filter((meet) => normalizeName(meet.name) === normalizeName(event.name))].find(
         (meet): meet is Doc<'meets'> => meet !== null && !claimed.has(meet._id),
       );
@@ -519,10 +537,11 @@ export const syncUsamwEvents = internalMutation({
         if (match) claimed.add(match._id);
       }
       if (!match) {
-        const name = taken.get(i) ? disambiguatedMeetName(event.name, 'USAMW') : event.name;
+        const name = newMeetName(event.name, 'USAMW', lookups.get(i)!);
         await ctx.db.insert('meets', {
           ...event,
           name,
+          ...(name !== event.name ? { sourceName: event.name } : {}),
           venueStreet: 'TBD',
           venueZip: 'TBD',
           status: meetStatusAt(event, now, formatters),

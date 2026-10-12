@@ -175,6 +175,42 @@ describe('meet writes', () => {
     ]);
   });
 
+  it('never takes a meet the source really calls "<name> (<federation>)" for a disambiguated one (#159)', async () => {
+    const { ctx, rows } = fakeMutationCtx({
+      meets: [
+        { ...meetRow('Open'), updatedAt: 1 },
+        { ...meetRow('Open (USAMW)', { federation: 'USAMW', venueCity: 'Reno' }), updatedAt: 1 },
+      ],
+    });
+    const usamwOpen = meetRow('Open', { federation: 'USAMW', venueCity: 'Tampa' });
+    expect(await upsert(ctx, { rows: [usamwOpen] })).toEqual([{ wasInsert: true, wasChanged: true, storedAs: 'Open (USAMW 2)' }]);
+    // The next sync finds it again, and the source's "Open (USAMW)" still finds its own meet.
+    expect(await upsert(ctx, { rows: [usamwOpen] })).toEqual([{ wasInsert: false, wasChanged: false, storedAs: 'Open (USAMW 2)' }]);
+    expect(await upsert(ctx, { rows: [meetRow('Open (USAMW)', { federation: 'USAMW', venueCity: 'Reno' })] })).toEqual([{ wasInsert: false, wasChanged: false }]);
+    expect(rows('meets').map((m) => [m.name, m.federation, m.venueCity, m.sourceName])).toEqual([
+      ['Open', 'USAW', 'Columbus', undefined],
+      ['Open (USAMW)', 'USAMW', 'Reno', undefined],
+      ['Open (USAMW 2)', 'USAMW', 'Tampa', 'Open'],
+    ]);
+  });
+
+  it('never takes a disambiguated meet for one the source calls by that name (#159)', async () => {
+    const { ctx, rows } = fakeMutationCtx({
+      meets: [
+        { ...meetRow('Open'), updatedAt: 1 },
+        { ...meetRow('Open (USAMW)', { federation: 'USAMW', venueCity: 'Tampa', sourceName: 'Open' }), updatedAt: 1 },
+      ],
+    });
+    expect(await upsert(ctx, { rows: [meetRow('Open (USAMW)', { federation: 'USAMW', venueCity: 'Reno' })] })).toEqual([
+      { wasInsert: true, wasChanged: true, storedAs: 'Open (USAMW) (USAMW)' },
+    ]);
+    expect(rows('meets').map((m) => [m.name, m.venueCity])).toEqual([
+      ['Open', 'Columbus'],
+      ['Open (USAMW)', 'Tampa'],
+      ['Open (USAMW) (USAMW)', 'Reno'],
+    ]);
+  });
+
   it('treats a meet stored without a federation as USAW', async () => {
     const { federation: _f, ...legacy } = meetRow('Old Open');
     const { ctx, rows } = fakeMutationCtx({ meets: [{ ...legacy, updatedAt: 1 }] });
@@ -209,9 +245,9 @@ describe('meet writes', () => {
       expect(await sync(ctx, { events: [event('Spring Classic')] })).toMatchObject({ inserted: ['Spring Classic (USAMW)'], renamed: ['Spring Classic (USAMW)'] });
       // Reported once, when stored: the next sync just finds it.
       expect(await sync(ctx, { events: [event('Spring Classic')] })).toMatchObject({ unchanged: ['Spring Classic (USAMW)'], renamed: [] });
-      expect(rows('meets').map((m) => [m.name, m.federation])).toEqual([
-        ['Spring Classic', 'USAW'],
-        ['Spring Classic (USAMW)', 'USAMW'],
+      expect(rows('meets').map((m) => [m.name, m.federation, m.sourceName])).toEqual([
+        ['Spring Classic', 'USAW', undefined],
+        ['Spring Classic (USAMW)', 'USAMW', 'Spring Classic'],
       ]);
     });
 

@@ -99,6 +99,7 @@ describe('meet status from dates (#158, #160)', () => {
 describe('meet identity helpers (#159)', () => {
   it('disambiguates a name by federation and picks the oldest of repeated names', () => {
     expect(disambiguatedMeetName('2027 Masters Nationals', 'USAMW')).toBe('2027 Masters Nationals (USAMW)');
+    expect(disambiguatedMeetName('2027 Masters Nationals', 'USAMW', 2)).toBe('2027 Masters Nationals (USAMW 2)');
     expect(oldestMeet([{ _creationTime: 5, id: 'b' }, { _creationTime: 2, id: 'a' }])).toEqual({ _creationTime: 2, id: 'a' });
     expect(oldestMeet([])).toBeNull();
   });

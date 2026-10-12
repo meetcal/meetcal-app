@@ -73,14 +73,20 @@ export function oldestMeet<T extends { _creationTime: number }>(rows: readonly T
   return rows.reduce<T | null>((oldest, row) => (oldest === null || row._creationTime < oldest._creationTime ? row : oldest), null);
 }
 
+/** Disambiguated names tried for one meet before a write gives up. */
+export const MAX_DISAMBIGUATED_NAMES = 10;
+
 /**
- * The name a meet is stored under when another federation's meet already
- * has its display name ("2027 Masters Nationals (USAMW)"): names identify
- * meets in every table and in saved sessions, so a second meet must never
- * take an existing one's name, and a stored name never changes.
+ * A name a meet may be stored under when another meet already has its
+ * display name ("2027 Masters Nationals (USAMW)", then "... (USAMW 2)" if a
+ * meet holds that too): names identify meets in every table and in saved
+ * sessions, so a second meet must never take an existing one's name, and a
+ * stored name never changes. The meet keeps the source's name in
+ * `sourceName`, so a meet the source really calls "Open (USAMW)" is never
+ * taken for a disambiguated "Open".
  */
-export function disambiguatedMeetName(name: string, federation: string): string {
-  return `${name} (${federation})`;
+export function disambiguatedMeetName(name: string, federation: string, attempt = 1): string {
+  return attempt === 1 ? `${name} (${federation})` : `${name} (${federation} ${attempt})`;
 }
 
 /**
