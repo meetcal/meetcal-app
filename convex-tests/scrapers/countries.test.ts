@@ -1,4 +1,4 @@
-import { COUNTRY_ZONES, countryTimeZone, isUnitedStates, usTerritoryTimeZone } from '../../convex/scrapers/lib/countries';
+import { COUNTRY_ZONES, countryTimeZone, isUnitedStates, oneClockCountryZone, usTerritoryTimeZone } from '../../convex/scrapers/lib/countries';
 import { isMeetTimeZone } from '../../convex/lib/validation';
 import { timeZoneFor } from '../../convex/scrapers/parse/usamwEvents';
 import { addressTimeZone } from '../../convex/scrapers/parse/meets';
@@ -55,6 +55,13 @@ describe('countries and US territories', () => {
     expect(usTerritoryTimeZone('Japan')).toBeNull();
     expect(usTerritoryTimeZone('constructor')).toBeNull();
   });
+
+  it('confirms a zone from the country alone only where the country has one clock', () => {
+    expect(oneClockCountryZone('Japan')).toBe('Asia/Tokyo');
+    expect(oneClockCountryZone('Spain')).toBeNull();
+    expect(oneClockCountryZone('Canada')).toBeNull();
+    expect(oneClockCountryZone('TN')).toBeNull();
+  });
 });
 
 describe('a widget address', () => {
@@ -66,6 +73,14 @@ describe('a widget address', () => {
     // A US address never reads a town named like a country as one.
     expect(addressTimeZone('Gym, 1 St, Peru, Indiana, United States of America, 46970', 'Indiana', 'Peru')).toEqual({ zone: 'America/New_York' });
     expect(addressTimeZone('Gym, 1 St, Hagatna, Guam, United States of America, 96910', 'Guam', 'Hagatna')).toEqual({ zone: 'Pacific/Guam' });
+    // No postcode and no country: the last part is a state, not Lebanon's town read as the country.
+    expect(addressTimeZone('Gym, 1 Main St, Lebanon, Ohio', 'Lebanon', '1 Main St')).toEqual({ problem: 'state "Lebanon"' });
+  });
+
+  it('reads islands in the city and region only, never the street', () => {
+    expect(addressTimeZone('Gym, Calle de las Palmas 10, Madrid, Madrid, Spain, 28004', 'Spain', 'Madrid')).toEqual({ zone: 'Europe/Madrid' });
+    expect(addressTimeZone('Gym, Calle Mayor 1, La Laguna, Santa Cruz de Tenerife, Spain, 38201', 'Spain', 'La Laguna')).toEqual({ zone: 'Atlantic/Canary' });
+    expect(addressTimeZone('Pavilhao, Rua 1, Ponta Delgada, Acores, Portugal, 9500-150', 'Portugal', 'Ponta Delgada')).toEqual({ zone: 'Atlantic/Azores' });
   });
 });
 

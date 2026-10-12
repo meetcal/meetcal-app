@@ -168,14 +168,18 @@ export type TransformedMeets = {
 /**
  * A meet's zone from its widget address, or why there is none. A US address
  * (it names the United States) takes its state's zone, or a territory's. An
- * address abroad names its country last, before the postcode: a country on one
- * clock gives its zone, one with several gives none. An address naming no
- * country is read as a US one, as before.
+ * address abroad names its country last, or last before a postcode (a part
+ * with a digit): a country on one clock gives its zone, one with several gives
+ * none. Anything else is read as a US address, as before, so "…, Lebanon,
+ * Ohio" with no postcode is an unknown state, not Lebanon.
  */
 export function addressTimeZone(raw: string, state: string, city: string): { zone: string } | { problem: string } {
   const parts = raw.split(',').map((part) => part.trim()).filter(Boolean);
   if (!parts.some(isUnitedStates)) {
-    const country = countryTimeZone(parts.slice(-2).reverse(), raw);
+    let at = parts.length - 1;
+    if (at > 0 && /\d/.test(parts[at])) at -= 1;
+    // The city and region before the country, read for outlying islands.
+    const country = at >= 0 ? countryTimeZone([parts[at]], parts.slice(Math.max(0, at - 2), at).join(', ')) : null;
     if (country !== null) return country.zone === null ? { problem: `${country.country} spans several time zones` } : { zone: country.zone };
   }
   const zone = usTimeZone(state, city) ?? usTerritoryTimeZone(state);

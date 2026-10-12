@@ -264,6 +264,7 @@ describe('scraped data problems', () => {
       meet({ name: 'Abroad guessed', venueState: 'Japan', venueCity: 'Tokyo', timeZone: 'America/New_York' }),
       meet({ name: 'Abbreviation', timeZone: 'EST' }),
       meet({ name: 'Several zones', venueState: 'Canada', venueCity: 'Vancouver', timeZone: 'America/Toronto' }),
+      meet({ name: 'Island', venueState: 'Spain', venueCity: 'La Laguna', timeZone: 'Atlantic/Canary' }),
     ];
     const ctx = { db: { query: () => ({ collect: async () => meets }) } };
     const result = await handlerOf(meetDataProblems)(ctx, {});
@@ -276,7 +277,8 @@ describe('scraped data problems', () => {
         { name: 'No zone', status: 'upcoming', timeZone: '', venueCity: 'Nashville', venueState: 'TN' },
         { name: 'Abbreviation', status: 'upcoming', timeZone: 'EST', venueCity: 'Nashville', venueState: 'TN' },
       ],
-      // A country with several zones derives nothing, so a stored guess is not listed.
+      // A country with several zones, or with islands on their own clock,
+      // derives nothing, so neither a stored guess nor an island is listed.
       zoneDiffers: [
         { name: 'Knoxville', status: 'upcoming', timeZone: 'America/Chicago', derived: 'America/New_York', venueCity: 'Knoxville', venueState: 'TN' },
         { name: 'Abroad guessed', status: 'upcoming', timeZone: 'America/New_York', derived: 'Asia/Tokyo', venueCity: 'Tokyo', venueState: 'Japan' },

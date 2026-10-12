@@ -42,7 +42,7 @@ export function timeZoneFor(state: string, city = '', locationText = state): str
   const zone = usTimeZone(state, city) ?? usTerritoryTimeZone(state);
   if (zone) return zone;
   const parts = locationText.split(/,|\n|\s-\s/);
-  return countryTimeZone([state, ...parts], [city, locationText].join(' '))?.zone ?? undefined;
+  return countryTimeZone([state, ...parts], [city, ...parts].join(', '))?.zone ?? undefined;
 }
 
 const pad = (n: number) => String(n).padStart(2, '0');

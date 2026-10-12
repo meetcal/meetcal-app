@@ -76,12 +76,14 @@ const ONE_ZONE: Record<string, string> = {
 
 /**
  * Countries on one clock except for outlying islands: the mainland zone, and
- * each island zone with the places that name it. A place is matched as whole
- * words anywhere in the meet's location.
+ * each island zone with the places that name it, matched as whole words in the
+ * city and region the caller passes (never the street: Madrid has a Calle de
+ * la Palma). The islands' provinces and largest islands are named, not every
+ * town, because an island address gives its province or region.
  */
 const MAINLAND_ZONE: Record<string, [zone: string, islands: [zone: string, places: string[]][]]> = {
-  spain: ['Europe/Madrid', [['Atlantic/Canary', ['canary islands', 'canarias', 'tenerife', 'gran canaria', 'las palmas', 'lanzarote', 'fuerteventura', 'la palma', 'la gomera', 'el hierro']]]],
-  portugal: ['Europe/Lisbon', [['Atlantic/Azores', ['azores', 'acores', 'ponta delgada', 'sao miguel', 'terceira', 'angra do heroismo', 'horta']]]],
+  spain: ['Europe/Madrid', [['Atlantic/Canary', ['canary islands', 'canarias', 'islas canarias', 'tenerife', 'gran canaria', 'las palmas', 'lanzarote', 'fuerteventura']]]],
+  portugal: ['Europe/Lisbon', [['Atlantic/Azores', ['azores', 'acores', 'ponta delgada', 'sao miguel', 'angra do heroismo']]]],
   'new zealand': ['Pacific/Auckland', [['Pacific/Chatham', ['chatham islands', 'chatham island']]]],
   ecuador: ['America/Guayaquil', [['Pacific/Galapagos', ['galapagos', 'puerto ayora', 'puerto baquerizo moreno', 'santa cruz island']]]],
 };
@@ -108,6 +110,14 @@ export function isUnitedStates(name: string): boolean {
   return US_NAMES.has(fold(name));
 }
 
+/**
+ * The zone of a country on one clock everywhere (islands included), or null:
+ * what a stored meet's country alone can confirm.
+ */
+export function oneClockCountryZone(name: string): string | null {
+  return ONE.get(fold(name)) ?? null;
+}
+
 /** The zone of a US territory given as a meet's state ("Puerto Rico", "Guam"), or null. */
 export function usTerritoryTimeZone(state: string): string | null {
   return TERRITORY.get(fold(state)) ?? null;
@@ -116,8 +126,8 @@ export function usTerritoryTimeZone(state: string): string | null {
 /**
  * The first of `names` (in order) that is a country or US territory these
  * tables know, as written, with its zone: null when it spans several zones.
- * `location` is the rest of the meet's address, read for outlying islands.
- * Null when none of `names` is a country they know.
+ * `location` is the meet's city and region, read for outlying islands. Null
+ * when none of `names` is a country they know.
  */
 export function countryTimeZone(names: string[], location = ''): { country: string; zone: string | null } | null {
   for (const name of names) {

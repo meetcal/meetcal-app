@@ -2,7 +2,7 @@ import { v } from 'convex/values';
 import { internalQuery } from '../_generated/server';
 import { normalizeName } from '../lib/names';
 import { canonicalMeetDate, isMeetTimeZone } from '../lib/validation';
-import { countryTimeZone, usTerritoryTimeZone } from './lib/countries';
+import { oneClockCountryZone, usTerritoryTimeZone } from './lib/countries';
 import { usTimeZone } from './lib/states';
 
 /** Current status of each named meet that exists (scrapers read state through these). */
@@ -53,7 +53,9 @@ export const meetDataProblems = internalQuery({
         unknownZone.push({ name, status, timeZone, venueCity, venueState });
         continue;
       }
-      const derived = usTimeZone(venueState, venueCity) ?? usTerritoryTimeZone(venueState) ?? countryTimeZone([venueState], venueCity)?.zone ?? null;
+      // A country with outlying islands (Spain) is not judged: its zone
+      // depends on the region, which a stored meet does not keep.
+      const derived = usTimeZone(venueState, venueCity) ?? usTerritoryTimeZone(venueState) ?? oneClockCountryZone(venueState);
       if (!meet.timeZoneLocked && derived !== null && derived !== timeZone) {
         zoneDiffers.push({ name, status, timeZone, derived, venueCity, venueState });
       }
