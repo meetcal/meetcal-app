@@ -9,7 +9,12 @@ import {
   getAgeCategory,
   parseWeightClasses,
   formatSessionDisplayDate,
+  buildWeightClassOptions,
+  matchesAdaptiveFilter,
+  ADAPTIVE_ATHLETES_FILTER,
+  NON_ADAPTIVE_ATHLETES_FILTER,
 } from "@/lib/start-list-utils";
+import type { LiftResult } from "@/data/types/athletes";
 
 describe("sortWeightClasses", () => {
   it("orders numerically ignoring non-digit characters", () => {
@@ -140,6 +145,105 @@ describe("parseWeightClasses", () => {
     expect(parseWeightClasses("89 / 89")).toEqual(["89kg"]);
     expect(parseWeightClasses("abc / 55")).toEqual(["55kg"]);
     expect(parseWeightClasses("")).toEqual([]);
+  });
+
+  it("reads the unlimited class written either way round", () => {
+    expect(parseWeightClasses("+87")).toEqual(["87+kg"]);
+    expect(parseWeightClasses("+87kg")).toEqual(["87+kg"]);
+    expect(parseWeightClasses("110+ kg")).toEqual(["110+kg"]);
+    expect(parseWeightClasses("+110 / 110+")).toEqual(["110+kg"]);
+  });
+});
+
+function athlete(overrides: Partial<LiftResult>): LiftResult {
+  return {
+    memberId: overrides.name ?? "1",
+    name: "Athlete",
+    age: 25,
+    club: "Club",
+    gender: "Male",
+    weightClass: "89",
+    entryTotal: 0,
+    adaptive: false,
+    ...overrides,
+  };
+}
+
+const NO_OPTION_FILTERS = { gender: "", ageGroup: "", adaptive: "" };
+
+describe("buildWeightClassOptions", () => {
+  it("lists the heaviest class present as itself when nobody is in a plus class", () => {
+    const roster = [
+      athlete({ name: "A", weightClass: "94" }),
+      athlete({ name: "B", weightClass: "110" }),
+      athlete({ name: "C", weightClass: "110" }),
+    ];
+    expect(buildWeightClassOptions(roster, NO_OPTION_FILTERS)).toEqual([
+      "94kg",
+      "110kg",
+    ]);
+  });
+
+  it("lists a plus class next to its number only when the data has one", () => {
+    const roster = [
+      athlete({ name: "A", weightClass: "110" }),
+      athlete({ name: "B", weightClass: "+110" }),
+      athlete({ name: "C", gender: "Female", weightClass: "86+" }),
+      athlete({ name: "D", gender: "Female", weightClass: "77" }),
+    ];
+    expect(buildWeightClassOptions(roster, NO_OPTION_FILTERS)).toEqual([
+      "77kg",
+      "86+kg",
+      "110kg",
+      "110+kg",
+    ]);
+    expect(
+      buildWeightClassOptions(roster, { ...NO_OPTION_FILTERS, gender: "female" }),
+    ).toEqual(["77kg", "86+kg"]);
+  });
+
+  it("only offers classes the other pills leave in view", () => {
+    const roster = [
+      athlete({ name: "Youth", age: 16, weightClass: "65" }),
+      athlete({ name: "Senior", age: 25, weightClass: "110+" }),
+      athlete({ name: "Adaptive", age: 25, weightClass: "79", adaptive: true }),
+    ];
+    expect(
+      buildWeightClassOptions(roster, { ...NO_OPTION_FILTERS, ageGroup: "U17" }),
+    ).toEqual(["65kg"]);
+    expect(
+      buildWeightClassOptions(roster, {
+        ...NO_OPTION_FILTERS,
+        adaptive: ADAPTIVE_ATHLETES_FILTER,
+      }),
+    ).toEqual(["79kg"]);
+    expect(
+      buildWeightClassOptions(roster, {
+        ...NO_OPTION_FILTERS,
+        adaptive: NON_ADAPTIVE_ATHLETES_FILTER,
+      }),
+    ).toEqual(["65kg", "110+kg"]);
+  });
+
+  it("offers exactly the classes the filter matches", () => {
+    const roster = [
+      athlete({ name: "A", weightClass: "+87kg" }),
+      athlete({ name: "B", weightClass: "71 / 76" }),
+    ];
+    for (const option of buildWeightClassOptions(roster, NO_OPTION_FILTERS)) {
+      expect(
+        roster.some((a) => parseWeightClasses(a.weightClass).includes(option)),
+      ).toBe(true);
+    }
+  });
+});
+
+describe("matchesAdaptiveFilter", () => {
+  it("passes everyone with no filter and splits on the flag otherwise", () => {
+    expect(matchesAdaptiveFilter({ adaptive: true }, "")).toBe(true);
+    expect(matchesAdaptiveFilter({ adaptive: true }, ADAPTIVE_ATHLETES_FILTER)).toBe(true);
+    expect(matchesAdaptiveFilter({ adaptive: false }, ADAPTIVE_ATHLETES_FILTER)).toBe(false);
+    expect(matchesAdaptiveFilter({ adaptive: false }, NON_ADAPTIVE_ATHLETES_FILTER)).toBe(true);
   });
 });
 

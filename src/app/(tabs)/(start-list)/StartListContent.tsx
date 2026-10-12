@@ -33,15 +33,18 @@ import { isNetworkAvailable } from "@/lib/networkUtils";
 import { captureViewAsPng } from "@/lib/share-image";
 import { getLastYearBestsBatch, preloadYearBests, type YearBests } from "@/lib/start-list-api";
 import {
+  ADAPTIVE_ATHLETES_FILTER,
+  buildWeightClassOptions,
   compareCalendarDates,
   compareStartTimes,
   formatSessionDisplayDate,
   getAgeCategory,
   getSaveIcon,
+  matchesAdaptiveFilter,
+  NON_ADAPTIVE_ATHLETES_FILTER,
   parseWeightClasses,
   requestCalendarPermissions,
   sortAthletes,
-  sortWeightClasses,
   STARRED_CLUBS_FILTER,
 } from "@/lib/start-list-utils";
 import type { Schedule as ScheduleType } from "@/types/schedule";
@@ -612,70 +615,15 @@ export default function StartListScreen() {
     ],
   );
 
-  const availableWeightClasses = useMemo(() => {
-    const matchesAgeAndAdaptive = (athlete: LiftResult) => {
-      if (ageGroupFilter && getAgeCategory(athlete.age) !== ageGroupFilter) {
-        return false;
-      }
-      if (adaptiveAthleteFilter === "Adaptive Athletes") {
-        return athlete.adaptive === true;
-      }
-      if (adaptiveAthleteFilter === "Non-Adaptive Athletes") {
-        return athlete.adaptive === false;
-      }
-      return true;
-    };
-
-    // Determine the heaviest class per gender so it can be shown as "+kg".
-    const maleWeightClasses = new Set<string>();
-    const femaleWeightClasses = new Set<string>();
-    athletes.forEach((athlete) => {
-      if (!matchesAgeAndAdaptive(athlete)) return;
-      parseWeightClasses(athlete.weightClass).forEach((wc) => {
-        if (athlete.gender.toLowerCase() === "male") maleWeightClasses.add(wc);
-        else if (athlete.gender.toLowerCase() === "female")
-          femaleWeightClasses.add(wc);
-      });
-    });
-
-    const getHeaviest = (set: Set<string>) => {
-      const sorted = Array.from(set).sort(sortWeightClasses);
-      return sorted[sorted.length - 1];
-    };
-    const heaviestMale = getHeaviest(maleWeightClasses);
-    const heaviestFemale = getHeaviest(femaleWeightClasses);
-
-    const weightClasses = new Set<string>();
-
-    if (genderFilter) {
-      const relevantHeaviest =
-        genderFilter.toLowerCase() === "male" ? heaviestMale : heaviestFemale;
-      if (relevantHeaviest) {
-        weightClasses.add(`${relevantHeaviest.replace(/\+?kg$/, "")}+kg`);
-      }
-    } else {
-      [heaviestMale, heaviestFemale].forEach((wc) => {
-        if (wc) weightClasses.add(`${wc.replace(/\+?kg$/, "")}+kg`);
-      });
-    }
-
-    athletes.forEach((athlete) => {
-      if (
-        genderFilter &&
-        athlete.gender.toLowerCase() !== genderFilter.toLowerCase()
-      ) {
-        return;
-      }
-      if (!matchesAgeAndAdaptive(athlete)) return;
-      parseWeightClasses(athlete.weightClass).forEach((wc) => {
-        if (wc !== heaviestMale && wc !== heaviestFemale) {
-          weightClasses.add(wc);
-        }
-      });
-    });
-
-    return Array.from(weightClasses).sort(sortWeightClasses);
-  }, [athletes, ageGroupFilter, adaptiveAthleteFilter, genderFilter]);
+  const availableWeightClasses = useMemo(
+    () =>
+      buildWeightClassOptions(athletes, {
+        gender: genderFilter,
+        ageGroup: ageGroupFilter,
+        adaptive: adaptiveAthleteFilter,
+      }),
+    [athletes, ageGroupFilter, adaptiveAthleteFilter, genderFilter],
+  );
 
   const availableAgeGroups = useMemo(() => {
     const present = new Set(
@@ -748,8 +696,8 @@ export default function StartListScreen() {
         label: "Adaptive",
         value: adaptiveAthleteFilter,
         options: [
-          { value: "Adaptive Athletes", label: "Adaptive" },
-          { value: "Non-Adaptive Athletes", label: "Non-Adaptive" },
+          { value: ADAPTIVE_ATHLETES_FILTER, label: "Adaptive" },
+          { value: NON_ADAPTIVE_ATHLETES_FILTER, label: "Non-Adaptive" },
         ],
         allOptionLabel: "All Athletes",
       });
@@ -980,13 +928,10 @@ export default function StartListScreen() {
           const matchesAgeGroup = ageGroupFilter
             ? ageCategory === ageGroupFilter
             : true;
-          const matchesAdaptiveAthlete = adaptiveAthleteFilter
-            ? adaptiveAthleteFilter === "Adaptive Athletes"
-              ? athlete.adaptive === true
-              : adaptiveAthleteFilter === "Non-Adaptive Athletes"
-                ? athlete.adaptive === false
-                : true
-            : true;
+          const matchesAdaptiveAthlete = matchesAdaptiveFilter(
+            athlete,
+            adaptiveAthleteFilter,
+          );
           const matchesGender = gender ? genderLower === gender : true;
           const matchesWSO = wsoFilter ? wso === wsoFilter : true;
 

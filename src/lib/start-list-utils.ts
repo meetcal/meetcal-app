@@ -172,18 +172,70 @@ export function getAgeCategory(age: number): string {
   return `Masters ${mastersStart}`;
 }
 
+/**
+ * The weight classes in an athlete's `weightClass` field, normalized to
+ * `NNkg` / `NN+kg`. Start lists write the unlimited class both ways round
+ * (`110+` and `+110`); both normalize to `110+kg`, so one option matches
+ * either. Anything else (an adaptive "K44", free text) is dropped.
+ */
 export function parseWeightClasses(weightClass: string): string[] {
   if (!weightClass) return [];
   const classes = weightClass.split(' / ');
   const weightClasses = new Set<string>();
   classes.forEach(classStr => {
     const trimmedClass = classStr.trim();
-    const match = trimmedClass.match(/^(\d+)(\+)?(?:kg)?$/i);
-    if (match && match[1]) {
-      const number = match[1];
-      const plus = match[2] ? '+' : '';
-      weightClasses.add(`${number}${plus}kg`);
+    const match = trimmedClass.match(/^(\+)?(\d+)(\+)?\s*(?:kg)?$/i);
+    if (match && match[2]) {
+      const plus = match[1] || match[3] ? '+' : '';
+      weightClasses.add(`${match[2]}${plus}kg`);
     }
   });
   return Array.from(weightClasses);
+}
+
+export const ADAPTIVE_ATHLETES_FILTER = 'Adaptive Athletes';
+export const NON_ADAPTIVE_ATHLETES_FILTER = 'Non-Adaptive Athletes';
+
+/** Whether an athlete passes the Adaptive pill ("" lets everyone through). */
+export function matchesAdaptiveFilter(
+  athlete: Pick<LiftResult, 'adaptive'>,
+  adaptiveFilter: string,
+): boolean {
+  if (adaptiveFilter === ADAPTIVE_ATHLETES_FILTER) return athlete.adaptive === true;
+  if (adaptiveFilter === NON_ADAPTIVE_ATHLETES_FILTER) return athlete.adaptive === false;
+  return true;
+}
+
+export interface WeightClassOptionFilters {
+  gender: string;
+  ageGroup: string;
+  adaptive: string;
+}
+
+/**
+ * The Weight Class pill's options: every class the athletes still in view
+ * (after the gender, age-group and adaptive pills) are entered in, lightest
+ * first, exactly as the filter matches them.
+ *
+ * This used to relabel the heaviest class present per gender as a "+" class
+ * and drop the real one. Whenever nobody was in the unlimited class (a WSO or
+ * local meet, or any age-group filter) the menu offered "110+", which matched
+ * nobody, and no "110", so those lifters could not be filtered at all. A "+"
+ * option now appears only when the data has a "+" class.
+ */
+export function buildWeightClassOptions(
+  athletes: readonly LiftResult[],
+  filters: WeightClassOptionFilters,
+): string[] {
+  const gender = filters.gender.toLowerCase();
+  const weightClasses = new Set<string>();
+  for (const athlete of athletes) {
+    if (gender && athlete.gender.toLowerCase() !== gender) continue;
+    if (filters.ageGroup && getAgeCategory(athlete.age) !== filters.ageGroup) continue;
+    if (!matchesAdaptiveFilter(athlete, filters.adaptive)) continue;
+    for (const weightClass of parseWeightClasses(athlete.weightClass)) {
+      weightClasses.add(weightClass);
+    }
+  }
+  return Array.from(weightClasses).sort(sortWeightClasses);
 }
