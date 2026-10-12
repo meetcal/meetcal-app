@@ -1,6 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import type { MeetName } from '@/data/types/meet';
-import type { SavedSession } from '@/lib/saved-sessions-store';
+import { normalizeStoredSession, type SavedSession } from '@/lib/saved-sessions-store';
 import { migrateSessionsToMeetSpecific } from '@/utils/migration';
 import { getAllSavedSessionsKeys, getSavedSessionsKey } from '@/utils/session';
 
@@ -69,11 +69,13 @@ export async function findLegacySessionsNeedingMigration(
     // re-homing, and re-saving the rest would re-PUT every session the user
     // has. A legacy key is removed after migration, so all its rows move.
     const toMigrate = key === getSavedSessionsKey(userId) ? rows.filter(rowNeedsMeet) : rows;
+    // Only rows the outbox can queue (`markSessionPut` refuses the rest): a
+    // refused row would keep its legacy key and be retried on every mount.
     const sessions = migrateSessionsToMeetSpecific(toMigrate, currentMeet).filter(
       (session) =>
         typeof session.sessionNumber === 'number' &&
         typeof session.platform === 'string' &&
-        session.platform.length > 0,
+        normalizeStoredSession(session) !== null,
     );
     if (sessions.length > 0) batches.push({ key, sessions });
   }
