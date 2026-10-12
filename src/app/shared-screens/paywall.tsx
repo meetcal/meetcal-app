@@ -1,13 +1,25 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, StyleSheet, View } from 'react-native';
-import { Stack, useRouter, useLocalSearchParams, type Href } from 'expo-router';
+import { Stack, useRouter, useLocalSearchParams } from 'expo-router';
 import RevenueCatUI from 'react-native-purchases-ui';
 import { useTheme } from '@/contexts/ThemeContext';
 import * as Purchases from 'react-native-purchases';
 import { useUser } from '@clerk/expo';
 import { useScreenHorizontalInsets } from '@/hooks/useScreenInsets';
+import { useIsOffline } from '@/hooks/useIsOffline';
 import { isInternalRoutePath } from '@/utils/authGuard';
+import { DEFAULT_ORIGIN, returnToOrigin } from '@/utils/returnToOrigin';
+import { EmptyState } from '@/components/ui/EmptyState';
+import { showToast } from '@/components/ui/Toast';
 import { devLog } from '@/lib/logger';
+import { hasSubscriptionEntitlement } from '@/lib/premium-intent';
+import {
+  NOTHING_RESTORED_TOAST,
+  paywallErrorCopy,
+  paywallExitFor,
+  type PaywallEvent,
+  type PaywallLoadError,
+} from '@/lib/paywall';
 import { Palette } from '@/constants/Palette';
 
 /**
@@ -19,11 +31,23 @@ import { Palette } from '@/constants/Palette';
 interface PaywallScreenProps {
   from?: string;
   feature?: string;
+  /**
+   * Rendered inside the gated screen (`SubscriptionGate`) rather than pushed.
+   * A purchase or restore then leaves navigation alone and lets the gate
+   * re-render into the screen.
+   */
+  inline?: boolean;
 }
+
+type OfferingState =
+  | { status: 'loading' }
+  | { status: 'ready'; offering: Purchases.PurchasesOffering }
+  | { status: 'error'; error: Exclude<PaywallLoadError, 'offline'> };
 
 export default function PaywallScreen({
   from: fromProp,
   feature: featureProp,
+  inline = false,
 }: PaywallScreenProps = {}) {
   const screenInsets = useScreenHorizontalInsets();
   const router = useRouter();
@@ -32,11 +56,14 @@ export default function PaywallScreen({
   const from = fromProp ?? params.from;
   const feature = featureProp ?? params.feature;
   const { user, isLoaded } = useUser();
-  const [offering, setOffering] = useState<Purchases.PurchasesOffering | null>(null);
+  const userId = user?.id ?? null;
+  const [isOffline] = useIsOffline();
+  const [offeringState, setOfferingState] = useState<OfferingState>({ status: 'loading' });
+  const [loadAttempt, setLoadAttempt] = useState(0);
 
   // Redirect to sign-in if not authenticated
   useEffect(() => {
-    if (isLoaded && !user) {
+    if (isLoaded && !userId) {
       devLog('[Paywall] User not authenticated, redirecting to sign-in');
       router.replace({
         pathname: '/(auth)/sign-in',
@@ -46,49 +73,90 @@ export default function PaywallScreen({
         },
       });
     }
-  }, [isLoaded, user, router, from, feature]);
+  }, [isLoaded, userId, router, from, feature]);
 
   useEffect(() => {
-    if (!isLoaded || !user) {
+    if (!isLoaded || !userId) {
       return;
     }
 
     let cancelled = false;
+    setOfferingState({ status: 'loading' });
 
     const getOffering = async () => {
       try {
         const offerings = await Purchases.default.getOfferings();
-        const offeringId = "new image test";
-        const platformOffering = offerings.all[offeringId];
-        if (!cancelled) {
-          setOffering(platformOffering || offerings.current);
-        }
+        if (cancelled) return;
+        // RevenueCat's `current` offering, so dashboard targeting and
+        // experiments decide what is shown. A hard-coded experiment id used
+        // to override them whenever that offering existed.
+        const current = offerings.current;
+        setOfferingState(
+          current ? { status: 'ready', offering: current } : { status: 'error', error: 'empty' },
+        );
       } catch (e) {
         console.error('Error fetching offerings:', e);
+        if (!cancelled) setOfferingState({ status: 'error', error: 'failed' });
       }
     };
 
-    getOffering();
+    void getOffering();
     return () => {
       cancelled = true;
     };
-  }, [isLoaded, user]);
+  }, [isLoaded, userId, loadAttempt]);
 
-  const returnToOrigin = () => {
-    if (router.canGoBack()) {
-      router.back();
+  const retry = useCallback(() => setLoadAttempt((attempt) => attempt + 1), []);
+
+  const handleEvent = (event: PaywallEvent, customerInfo?: Purchases.CustomerInfo) => {
+    const exit = paywallExitFor({
+      event,
+      inline,
+      hasEntitlement: customerInfo ? hasSubscriptionEntitlement(customerInfo) : false,
+    });
+    if (exit === 'nothing-restored') {
+      showToast(NOTHING_RESTORED_TOAST);
       return;
     }
+    if (exit === 'stay') return;
 
-    if (isInternalRoutePath(from)) {
-      router.replace(from as Href);
+    if (inline) {
+      // `from` is the gated screen itself, so dismissing to it would be a
+      // no-op: leave the gated screen instead.
+      if (router.canGoBack()) router.back();
+      else router.replace(DEFAULT_ORIGIN);
       return;
     }
-
-    router.replace('/(tabs)');
+    returnToOrigin(router, from);
   };
 
-  if (!isLoaded || !user || !offering) {
+  const header = (
+    <Stack.Screen
+      options={{
+        headerTitle: 'Premium Features',
+        headerTitleStyle: {
+          color: currentTheme === 'dark' ? '#FFFFFF' : '#000000',
+        },
+        headerStyle: {
+          backgroundColor: currentTheme === 'dark' ? '#000000' : '#FFFFFF',
+        },
+        headerShadowVisible: false,
+      }}
+    />
+  );
+
+  // Offline, Clerk never finishes loading, so `!isLoaded` alone spun forever.
+  const loadError: PaywallLoadError | null =
+    !isLoaded && isOffline
+      ? 'offline'
+      : offeringState.status === 'error'
+        ? isOffline
+          ? 'offline'
+          : offeringState.error
+        : null;
+
+  if (loadError || !isLoaded || !userId || offeringState.status !== 'ready') {
+    const copy = loadError ? paywallErrorCopy(loadError) : null;
     return (
       <View
         style={[
@@ -99,49 +167,36 @@ export default function PaywallScreen({
           screenInsets,
         ]}
       >
-        <Stack.Screen
-          options={{
-            headerTitle: 'Premium Features',
-            headerTitleStyle: {
-              color: currentTheme === 'dark' ? '#FFFFFF' : '#000000',
-            },
-            headerStyle: {
-              backgroundColor: currentTheme === 'dark' ? '#000000' : '#FFFFFF',
-            },
-            headerShadowVisible: false,
-          }}
-        />
-        <View style={styles.loadingContainer}>
-          <ActivityIndicator
-            size="large"
-            color={currentTheme === 'dark' ? '#FFFFFF' : '#000000'}
+        {header}
+        {copy ? (
+          <EmptyState
+            title={copy.title}
+            message={copy.message}
+            actionLabel="Try Again"
+            onActionPress={retry}
           />
-        </View>
+        ) : (
+          <View style={styles.loadingContainer}>
+            <ActivityIndicator
+              size="large"
+              color={currentTheme === 'dark' ? '#FFFFFF' : '#000000'}
+            />
+          </View>
+        )}
       </View>
     );
   }
 
   return (
     <View style={[styles.container, screenInsets]}>
-      <Stack.Screen
-        options={{
-          headerTitle: 'Premium Features',
-          headerTitleStyle: {
-            color: currentTheme === 'dark' ? '#FFFFFF' : '#000000',
-          },
-          headerStyle: {
-            backgroundColor: currentTheme === 'dark' ? '#000000' : '#FFFFFF',
-          },
-          headerShadowVisible: false,
-        }}
-      />
+      {header}
       <RevenueCatUI.Paywall
         options={{
-          offering
+          offering: offeringState.offering,
         }}
-        onRestoreCompleted={returnToOrigin}
-        onPurchaseCompleted={returnToOrigin}
-        onDismiss={returnToOrigin}
+        onRestoreCompleted={({ customerInfo }) => handleEvent('restore', customerInfo)}
+        onPurchaseCompleted={({ customerInfo }) => handleEvent('purchase', customerInfo)}
+        onDismiss={() => handleEvent('dismiss')}
       />
     </View>
   );
