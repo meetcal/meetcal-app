@@ -130,6 +130,14 @@ describe("timezone utilities", () => {
       expect(winterOffset).toBe(-420);
       expect(summerOffset).toBe(-420);
     });
+
+    it("returns a whole-minute offset for an instant between minutes", () => {
+      // Also found by the meetcal-api mapper property: a meet with no start date
+      // is read at "now", and a UTC offset of 5.00504 hours came back.
+      expect(
+        getOffsetMinutesAtInstant("America/Chicago", new Date("2026-06-20T15:00:18.144Z")),
+      ).toBe(-300);
+    });
   });
 
   // Regression: `hour12: false` is not a promise of a 0-23 clock. Pre-2021
