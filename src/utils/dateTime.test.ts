@@ -103,6 +103,12 @@ describe("formatIsoDateTitle", () => {
     expect(formatIsoDateTitle("2026-06-20T00:00:00Z")).toBe("Saturday, Jun 20");
   });
 
+  it("returns null for a day that does not exist, with or without a time", () => {
+    // `new Date("2026-02-30T10:00:00")` rolls onto Mar 2.
+    expect(formatIsoDateTitle("2026-02-30")).toBeNull();
+    expect(formatIsoDateTitle("2026-02-30T10:00:00")).toBeNull();
+  });
+
   it("returns null for input it cannot parse", () => {
     expect(formatIsoDateTitle("TBD")).toBeNull();
     expect(formatIsoDateTitle("")).toBeNull();
