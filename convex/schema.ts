@@ -102,6 +102,9 @@ export const meetsFields = {
     endDate: v.string(),
     status: meetStatus,
     federation: v.optional(v.string()),
+    // The name the source gave a meet stored under another
+    // (`disambiguatedMeetName`); unset when the two are the same.
+    sourceName: v.optional(v.string()),
     updatedAt: v.number(),
 };
 
