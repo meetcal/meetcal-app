@@ -13,7 +13,7 @@ import {
 } from './lib/meetData';
 import { directoryNames, searchDirectory } from './lib/directory';
 import { distinctNameKeys } from './lib/names';
-import { RESULT_NAMES_VIEW, viewDependencies } from './lib/viewKeys';
+import { parseViewKey, RESULT_NAMES_VIEW, viewDependencies } from './lib/viewKeys';
 import { joinJsonChunks, readViewTextAnyAge } from './lib/views';
 import {
   ADAPTIVE_RECORDS_SEASON_START,
@@ -115,11 +115,10 @@ export const sample = internalQuery({
   args: {},
   handler: async (ctx) => {
     const meets = [...new Set((await ctx.db.query('meets').collect()).map((m) => m.name))].sort(compareBytes);
-    const classes = (await ctx.db.query('views').collect())
-      .map((h) => h.key)
-      .filter((k) => k.startsWith('nat|'))
-      .map((k) => k.slice(4).split('|'))
-      .map(([federation, ...age]) => ({ federation, ageCategory: age.join('|') }));
+    const classes = (await ctx.db.query('views').collect()).flatMap((h) => {
+      const parsed = parseViewKey(h.key);
+      return parsed?.family === 'nat' ? [{ federation: parsed.federation, ageCategory: parsed.ageCategory }] : [];
+    });
     return { meets, classes };
   },
 });

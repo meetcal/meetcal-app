@@ -50,6 +50,7 @@ import {
   meetKey,
   meetSessionKey,
   meetSessionPrefix,
+  meetViewsPrefix,
   natKey,
   REF_VIEWS,
   RESULT_NAMES_VIEW,
@@ -765,7 +766,7 @@ export const deleteMeetViews = internalMutation({
   args: { meets: v.array(v.string()) },
   handler: async (ctx, { meets }) => {
     let deleted = 0;
-    for (const meet of meets) deleted += await deleteViewsWithPrefix(ctx, `meet|${meet}|`);
+    for (const meet of meets) deleted += await deleteViewsWithPrefix(ctx, meetViewsPrefix(meet));
     return deleted;
   },
 });
