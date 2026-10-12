@@ -6,6 +6,7 @@ import { internal } from '../_generated/api';
 import { fetchText } from './lib/http';
 import { EVENTS_URL, parseUsamwEvents, type UsamwEvent } from './parse/usamwEvents';
 import { sourcesFailed, type SourceFailure } from '../lib/cronAlerts';
+import { renamedMeetMessage } from './meets';
 
 /**
  * USA Masters events (replaces `usamw/meets/scrape_events.py`): the events
@@ -37,10 +38,7 @@ export const run = internalAction({
     // failing still emails.
     const problems: SourceFailure[] = [
       ...result.ambiguous.map(({ event, meets }) => ({ source: `event ${event}`, error: `matches more than one meet (${meets.join(' / ')}), not updated` })),
-      ...result.renamed.map(({ event, storedAs }) => ({
-        source: `meet ${event}`,
-        error: `new event stored as ${JSON.stringify(storedAs)}: another meet has its name; results entered under the plain name attach to that meet`,
-      })),
+      ...result.renamed.map(({ event, storedAs }) => ({ source: `meet ${event}`, error: renamedMeetMessage(event, storedAs) })),
     ];
     if (problems.length) throw sourcesFailed('usamw events', problems);
     return { events, ...result };

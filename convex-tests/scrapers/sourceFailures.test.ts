@@ -116,7 +116,8 @@ describe('usamw-events: one alert source per problem (#254)', () => {
     expect(failure.failedSources).toEqual(['event Spring Classic', 'meet 2027 Masters Open']);
     expect(failure.error).toBe(
       'usamw events: event Spring Classic: matches more than one meet (A / B), not updated; ' +
-        'meet 2027 Masters Open: new event stored as "2027 Masters Open (USAMW)": another meet has its name; results entered under the plain name attach to that meet',
+        'meet 2027 Masters Open: another meet is named "2027 Masters Open", so this one was stored as "2027 Masters Open (USAMW)"; ' +
+        'results and entries sent under the plain name still attach to the other meet (rename one by hand)',
     );
   });
 
@@ -128,9 +129,10 @@ describe('usamw-events: one alert source per problem (#254)', () => {
     const day2 = afterRun('usamw-events', day1.alerting, { ok: false, ...describeFailure(await runWith({ ambiguous: [ambiguous], renamed: [renamed] })) }, day1.failedSources);
     expect(day2.notice?.detail).toContain('now also failing: meet 2027 Masters Open');
     expect(day2.notice?.detail).toContain('stored as "2027 Masters Open (USAMW)"');
-    // Day 3: the same problems again stay quiet.
-    const day3 = afterRun('usamw-events', day2.alerting, { ok: false, ...describeFailure(await runWith({ ambiguous: [ambiguous], renamed: [renamed] })) }, day2.failedSources);
-    expect(day3.notice).toBeUndefined();
+    // Day 3: the meet now matches by its source name, so the rename is not
+    // reported again; the ambiguous event alone stays quiet.
+    const day3 = afterRun('usamw-events', day2.alerting, { ok: false, ...describeFailure(await runWith({ ambiguous: [ambiguous], renamed: [] })) }, day2.failedSources);
+    expect(day3).toEqual({ alerting: 'failed', failedSources: ['event Spring Classic'] });
   });
 
   it('returns what it synced when nothing needs a person', async () => {
