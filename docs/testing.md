@@ -32,6 +32,24 @@ Put tests next to the module they cover (`src/lib/api/meetcal-api.test.ts`, not 
 
 `react-native`'s exports are lazy getters. On a cold transform cache (every CI run) the first access to `Animated` costs about 2.3s and `ScrollView`/`Pressable` about 0.7s, which used to land inside whichever test rendered first and push it past Jest's 5s timeout. `jest.setup.js` touches those modules during setup, outside any test's timeout, in `.tsx`/`.jsx` suites only; the environment sets `__MEETCAL_WARM_RN_UI__` from the test path so `.ts` suites skip the cost. A test that renders React Native UI must therefore live in a `.tsx` file. When a test is slow on CI, find what it pays for on first use; do not raise its timeout. To approximate a CI runner: `bunx jest --ci --watchman=false --no-cache --maxWorkers=2`.
 
+### Property and chaos tests
+
+Property tests ([fast-check](https://fast-check.dev)) check a rule over generated inputs instead of a few examples: a mapper either rejects a payload or returns a valid app type, a meet-local time survives a round trip through UTC, a deep link never leaves the app. Chaos tests run a flow under a generated plan of failures and assert how it degrades: it falls back to an expiring cache, reports a typed error, keeps a write queued. Neither asserts that a flow succeeds under failure.
+
+Name them `<module>.property.test.ts` and `<module>.chaos.test.ts`, next to the module, so the nightly run finds them, and import fast-check as a namespace (`import * as fc from 'fast-check'`; the default import trips lint). Shared pieces live in `src/test-support/` (test-only; the app never imports it):
+
+- `arbitraries.ts`: meet time zones (DST, half-hour offsets, both sides of the date line), calendar dates biased to DST changes and leap days, clock strings, hostile strings and values, and `corruptedArb(valid)`, which breaks one node of a valid payload.
+- `chaos.ts`: `installChaosTransport` (faults from `src/lib/api/chaos-transport.ts`: network failure, hang until aborted, delay, HTTP status, Convex "try again later", garbage answer, truncated JSON), `installStorageChaos` (AsyncStorage: rejection, full disk, lost write, corrupted read), `createChaosSecureStore`, `chaosGetToken` (Clerk returns null, empty or throws) and `setNetInfoState`. A plan is a list of faults used one per call; once it runs out, calls pass, so a flow always gets a healthy tail to recover on. Plans with `hang` or `delay` need fake timers; `settlingTransportFaultArb` leaves them out.
+
+Each run uses fast-check's 100 cases and a fresh seed, so the gate keeps exploring. A failure prints the shrunk counterexample with its seed and path; replay it exactly, then keep the counterexample as an example test next to the property:
+
+```sh
+FC_SEED=<seed> FC_PATH=<path> bunx jest --ci --watchman=false src/utils/timezone.property.test.ts
+FC_NUM_RUNS=5000 bunx jest --ci --watchman=false --testPathPattern '\.(property|chaos)\.test'
+```
+
+`.github/workflows/fuzz-nightly.yml` runs the property and chaos suites at 2,000 cases each every night and opens an issue when one fails.
+
 Risk cases that belong in unit tests:
 
 - API mapper validation (malformed JSON, empty lists, missing fields)

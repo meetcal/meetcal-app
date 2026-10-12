@@ -13,6 +13,12 @@ jest.mock("@react-native-community/netinfo", () =>
   require("@react-native-community/netinfo/jest/netinfo-mock.js"),
 );
 
+// Property tests: case count and replay seed from FC_NUM_RUNS / FC_SEED / FC_PATH
+// (see jest/fast-check-config.js and docs/testing.md).
+require("fast-check").configureGlobal(
+  require("./jest/fast-check-config").fastCheckParameters(process.env),
+);
+
 // react-native's exports are lazy getters, and on a cold transform cache (every
 // CI run) the first access to a UI module costs seconds: Animated ~2.3s,
 // ScrollView/Pressable ~0.7s. Left to the first render, that cost lands inside
