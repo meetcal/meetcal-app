@@ -21,6 +21,7 @@ import { fetchMissouriValleyPage } from './lib/missouriValley';
 import { parseUsawTemplate } from './parse/wso/usawTemplate';
 import { FLAT_COLUMNS, FLAT_SHEET_NAME, parseFlatSheet, type FlatColumns } from './parse/wso/flat';
 import { normalizeAgeCategory, normalizeGender } from '../lib/normalize';
+import { sourcesFailed } from '../lib/cronAlerts';
 
 /**
  * WSO records (port of the `wso-records` job: one scraper per WSO in
@@ -299,7 +300,7 @@ export const run = internalAction({
       }
     }
     const failed = results.filter((r) => r.error);
-    if (failed.length && !dryRun) throw new Error(`wso records: ${failed.map((r) => `${r.wso}: ${r.error}`).join('; ')}`);
+    if (failed.length && !dryRun) throw sourcesFailed('wso records', failed.map((r) => ({ source: r.wso, error: r.error! })));
     return results;
   },
 });

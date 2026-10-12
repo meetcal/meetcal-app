@@ -71,9 +71,10 @@ function ClubMeetsListScreenContent() {
   ).sort();
 
   // Filter meets based on search query
-  const uniqueMeets = searchQuery
+  const meetQuery = searchQuery.trim();
+  const uniqueMeets = meetQuery
     ? allMeets.filter((meet) =>
-        meet.toLowerCase().includes(searchQuery.toLowerCase()),
+        meet.toLowerCase().includes(meetQuery.toLowerCase()),
       )
     : allMeets;
 
@@ -127,10 +128,28 @@ function ClubMeetsListScreenContent() {
             <Pressable
               style={[styles.retryButton, { backgroundColor: colors.link }]}
               onPress={loadAthletes}
+              accessibilityRole="button"
             >
               <ThemedText style={styles.retryButtonText}>Retry</ThemedText>
             </Pressable>
           )}
+        </View>
+      );
+    }
+
+    // The search box is what emptied the list: say so, instead of the
+    // "no meets for this club" state with an athlete count that contradicts it.
+    if (uniqueMeets.length === 0 && allMeets.length > 0) {
+      return (
+        <View style={styles.centerContainer}>
+          <ThemedText style={[styles.emptyTitle, { color: colors.text }]}>
+            {`No meets match "${meetQuery}"`}
+          </ThemedText>
+          <ThemedText
+            style={[styles.emptyText, { color: colors.secondaryText }]}
+          >
+            Try a different search.
+          </ThemedText>
         </View>
       );
     }
@@ -164,6 +183,9 @@ function ClubMeetsListScreenContent() {
         pressed && { backgroundColor: colors.pressed },
       ]}
       onPress={() => handleMeetPress(item)}
+      accessibilityRole="button"
+      accessibilityLabel={item}
+      accessibilityHint="Shows the club's recap for this meet"
     >
       <ThemedText style={[styles.meetName, { color: colors.text }]}>
         {item}
@@ -204,6 +226,8 @@ function ClubMeetsListScreenContent() {
               pressed && { opacity: 0.7 },
             ]}
             hitSlop={12}
+            accessibilityRole="button"
+            accessibilityLabel="Back"
           >
             <IconSymbol
               name={Platform.OS === "ios" ? "chevron.left" : "arrow.back"}
@@ -234,7 +258,12 @@ function ClubMeetsListScreenContent() {
                 spellCheck={false}
               />
               {searchQuery.length > 0 && (
-                <Pressable onPress={() => setSearchQuery("")} hitSlop={8}>
+                <Pressable
+                  onPress={() => setSearchQuery("")}
+                  hitSlop={13}
+                  accessibilityRole="button"
+                  accessibilityLabel="Clear search"
+                >
                   <IconSymbol
                     name={
                       Platform.OS === "ios"

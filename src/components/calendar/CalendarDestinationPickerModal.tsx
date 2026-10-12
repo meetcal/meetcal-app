@@ -1,6 +1,7 @@
 import { IconSymbol } from "@/components/ui/IconSymbol";
 import { ThemedText } from "@/components/ui/ThemedText";
 import { useAppColors } from "@/hooks/useAppColors";
+import { useScreenHorizontalInsets } from "@/hooks/useScreenInsets";
 import { CalendarDestination } from "@/utils/calendar";
 import React from "react";
 import {
@@ -34,6 +35,7 @@ export function CalendarDestinationPickerModal({
   isLoading = false,
 }: CalendarDestinationPickerModalProps) {
   const colors = useAppColors();
+  const screenInsets = useScreenHorizontalInsets();
 
   return (
     <Modal
@@ -45,7 +47,12 @@ export function CalendarDestinationPickerModal({
       <Pressable
         style={[
           styles.overlay,
-          { backgroundColor: colors.modalBackground },
+          {
+            backgroundColor: colors.modalBackground,
+            // A modal is above every screen's padding: clear the Duo band here.
+            paddingLeft: OVERLAY_PADDING + screenInsets.paddingLeft,
+            paddingRight: OVERLAY_PADDING + screenInsets.paddingRight,
+          },
         ]}
         onPress={onClose}
       >
@@ -60,6 +67,9 @@ export function CalendarDestinationPickerModal({
             <Pressable
               style={({ pressed }) => [styles.closeButton, pressed && { opacity: 0.7 }]}
               onPress={onClose}
+              hitSlop={8}
+              accessibilityRole="button"
+              accessibilityLabel="Close"
             >
               <IconSymbol name="xmark" size={20} color={colors.secondaryText} />
             </Pressable>
@@ -92,6 +102,8 @@ export function CalendarDestinationPickerModal({
                         pressed && { backgroundColor: colors.pressed },
                       ]}
                       onPress={() => onSelect(destination)}
+                      accessibilityRole="button"
+                      accessibilityState={{ selected: isSelected }}
                     >
                       <View style={styles.optionText}>
                         <ThemedText
@@ -152,11 +164,13 @@ export function CalendarDestinationPickerModal({
   );
 }
 
+const OVERLAY_PADDING = 20;
+
 const styles = StyleSheet.create({
   overlay: {
     flex: 1,
     justifyContent: "center",
-    padding: 20,
+    padding: OVERLAY_PADDING,
   },
   content: {
     borderRadius: 16,

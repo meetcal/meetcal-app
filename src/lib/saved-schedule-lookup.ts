@@ -1,4 +1,5 @@
 import { isMeetName, type MeetName } from '@/data/types/meet';
+import type { SavedSession } from '@/lib/saved-sessions-store';
 import type { SessionScheduleLookup } from '@/types/saved';
 import type { Schedule } from '@/types/schedule';
 import { makeLookupKey } from '@/utils/session';
@@ -54,4 +55,53 @@ export function buildSessionScheduleLookup(
     }
   }
   return lookup;
+}
+
+/**
+ * `session` with its start time, weigh-in and date taken from the meet's
+ * current schedule, or `session` itself (same object) when the schedule has
+ * no usable row for it or already agrees.
+ *
+ * A saved row keeps the start time it had when it was saved, and USAW moves
+ * sessions. The Saved card already read the schedule, but the Next Session
+ * countdown, the widget, the reminders and the auto-unsave prune read the
+ * frozen copy: a session moved from 9:00 AM to 2:00 PM counted down to 9:00,
+ * and with auto-unsave on was deleted at 11:00 AM, before it started. Every
+ * consumer goes through this so they agree.
+ */
+export function withScheduleTimes<T extends SavedSession>(
+  session: T,
+  lookup: ReadonlyMap<string, SessionScheduleLookup> | null | undefined,
+): T {
+  const row = lookup?.get(makeLookupKey(session.sessionNumber, session.platform));
+  if (!row || !row.startTime || !row.fullDate) return session;
+  const weighInTime = row.weighInTime || session.weighInTime;
+  if (
+    row.startTime === session.startTime &&
+    row.fullDate === session.date &&
+    weighInTime === session.weighInTime
+  ) {
+    return session;
+  }
+  return { ...session, startTime: row.startTime, date: row.fullDate, weighInTime };
+}
+
+/**
+ * `withScheduleTimes` over the rows of `meet`; other meets' rows pass
+ * through. Returns `sessions` itself when no row changed, so a schedule
+ * refresh that moves nothing does not re-render (or re-sync) its consumers.
+ */
+export function applyScheduleTimes(
+  sessions: SavedSession[],
+  meet: MeetName,
+  lookup: ReadonlyMap<string, SessionScheduleLookup>,
+): SavedSession[] {
+  let changed = false;
+  const next = sessions.map((session) => {
+    if (session.meet !== meet) return session;
+    const timed = withScheduleTimes(session, lookup);
+    if (timed !== session) changed = true;
+    return timed;
+  });
+  return changed ? next : sessions;
 }

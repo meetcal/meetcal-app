@@ -14,13 +14,19 @@ export function titleCase(value: string): string {
     .join(' ');
 }
 
-// Maps, not object literals: a lookup must not reach `Object.prototype`
-// ('constructor', '__proto__').
+/**
+ * One spelling per gender, `Men` / `Women`, in every table. The Python
+ * writer kept `Male` / `Female` as written, so older rows (athletes, mostly)
+ * still hold those until `migrations:normalizeAthleteGenders` and
+ * `migrations:normalizeReferenceCasing` rewrite them: compare stored genders
+ * through `normalizeGender`, never as stored. A Map, not an object literal,
+ * so a lookup cannot reach `Object.prototype` ('constructor', '__proto__').
+ */
 const GENDERS = new Map([
   ['men', 'Men'],
   ['women', 'Women'],
-  ['male', 'Male'],
-  ['female', 'Female'],
+  ['male', 'Men'],
+  ['female', 'Women'],
   ['m', 'Men'],
   ['f', 'Women'],
 ]);
@@ -28,6 +34,25 @@ const GENDERS = new Map([
 export function normalizeGender(value: string): string {
   const normalized = value.trim();
   return GENDERS.get(normalized.toLowerCase()) ?? titleCase(normalized);
+}
+
+/** Every spelling a stored row of this (normalized) gender may still hold, for index lookups. */
+export function storedGenderSpellings(gender: string): string[] {
+  if (gender === 'Men') return ['Men', 'Male'];
+  if (gender === 'Women') return ['Women', 'Female'];
+  return [gender];
+}
+
+/**
+ * An athlete's gender as the start-list answers give it, `Male` / `Female`:
+ * what the shipped apps filter a start list on (`StartListContent`). Stored
+ * genders are `Men` / `Women`; only the athlete answers use this spelling.
+ */
+export function athleteGenderLabel(stored: string): string {
+  const gender = normalizeGender(stored);
+  if (gender === 'Men') return 'Male';
+  if (gender === 'Women') return 'Female';
+  return gender;
 }
 
 const AGE_CODES = new Map([

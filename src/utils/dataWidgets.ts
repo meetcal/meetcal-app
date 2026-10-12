@@ -12,8 +12,9 @@ import {
   createStandardsDeepLink,
 } from "@/utils/deepLinks";
 import { devLog } from "@/lib/logger";
+import type { DataWidgetPayloadKey } from "@/utils/widgetContract";
 
-export type WidgetKind = "qualifyingTotals" | "standards" | "intlRankings";
+export type WidgetKind = DataWidgetPayloadKey;
 
 export type WidgetSettings = {
   qualifyingTotals: {
@@ -274,11 +275,60 @@ export function buildIntlRankingsWidgetPayload(
   };
 }
 
-export function syncDataWidgets(payloads: {
-  qualifyingTotals: DataWidgetPayload;
-  standards: DataWidgetPayload;
-  intlRankings: DataWidgetPayload;
-}) {
+export type DataWidgetPayloads = Record<DataWidgetPayloadKey, DataWidgetPayload>;
+
+export type DataWidgetSourceData = {
+  totalsData: QualifyingTotalsData;
+  standardsData: StandardsData;
+  intlRankings: IntlRanking[];
+};
+
+/** All three payloads for one set of settings, keyed as the native side reads them. */
+export function buildDataWidgetPayloads(
+  data: DataWidgetSourceData,
+  settings: WidgetSettings,
+): DataWidgetPayloads {
+  return {
+    qualifyingTotals: buildQualifyingTotalsWidgetPayload(
+      data.totalsData,
+      settings.qualifyingTotals,
+    ),
+    standards: buildStandardsWidgetPayload(data.standardsData, settings.standards),
+    intlRankings: buildIntlRankingsWidgetPayload(
+      data.intlRankings,
+      settings.intlRankings,
+    ),
+  };
+}
+
+let dataWidgetWriteCount = 0;
+
+/**
+ * Bumped by every `syncDataWidgets` write and by `markDataWidgetCommitStarted`.
+ * A background refresh records it before its fetches and skips its settings
+ * save and widget write when it changed, so a refresh that started before the
+ * user applied new filters cannot overwrite them.
+ */
+export function getDataWidgetWriteCount(): number {
+  return dataWidgetWriteCount;
+}
+
+/**
+ * The settings screen calls this before it persists new filters (it syncs the
+ * widget only after the save resolves), so a background refresh that is about
+ * to save healed filters yields instead of racing the user's save.
+ */
+export function markDataWidgetCommitStarted(): void {
+  dataWidgetWriteCount += 1;
+}
+
+/** True when the platform has the native data-widget writer. */
+export function isDataWidgetModuleAvailable(): boolean {
+  if (Platform.OS !== "ios" && Platform.OS !== "android") return false;
+  return typeof NativeModules.SavedWidget?.updateDataWidgets === "function";
+}
+
+export function syncDataWidgets(payloads: DataWidgetPayloads) {
   if (Platform.OS !== "ios" && Platform.OS !== "android") return;
 
   const module = NativeModules.SavedWidget;
@@ -287,6 +337,7 @@ export function syncDataWidgets(payloads: {
     return;
   }
 
+  dataWidgetWriteCount += 1;
   module.updateDataWidgets(JSON.stringify(payloads));
 }
 

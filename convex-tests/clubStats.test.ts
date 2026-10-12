@@ -310,8 +310,8 @@ describe('club meet stats ranking groups', () => {
   it('fall back to the roster gender and weight class for a division with no class', () => {
     expect(rankingGroup("Open Men's 110+kg", undefined)).toBe("Open Men's 110+kg");
     expect(rankingGroup("Women's Masters (35-39) 86 kg", undefined)).toBe("Women's Masters (35-39) 86 kg");
-    expect(rankingGroup('Open Women', { gender: 'F', weightClass: '58' })).toBe('F\u000058\u0000Open Women');
-    expect(rankingGroup(undefined, { gender: 'F', weightClass: '58' })).toBe('F\u000058\u0000');
+    expect(rankingGroup('Open Women', { gender: 'F', weightClass: '58' })).toBe('Women\u000058\u0000Open Women');
+    expect(rankingGroup(undefined, { gender: 'F', weightClass: '58' })).toBe('Women\u000058\u0000');
     // Neither a class in the division nor a roster entry: not ranked.
     expect(rankingGroup('Open Women', undefined)).toBeNull();
     expect(rankingGroup(undefined, undefined)).toBeNull();

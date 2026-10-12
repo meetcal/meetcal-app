@@ -7,6 +7,7 @@ import { ActionModalProps } from "@/types/start-list";
 import { lightImpact as selectionHaptic } from "@/lib/haptics";
 import React from "react";
 import { Modal, Platform, Pressable, StyleSheet, View } from "react-native";
+import { useScreenHorizontalInsets } from "@/hooks/useScreenInsets";
 
 const ActionModal: React.FC<ActionModalProps> = ({
   visible,
@@ -19,6 +20,8 @@ const ActionModal: React.FC<ActionModalProps> = ({
   onDownloadShareableSchedule,
 }) => {
   const colors = useAppColors();
+  // A modal is above every screen's padding: clear the Duo band here.
+  const screenInsets = useScreenHorizontalInsets();
 
   return (
     <Modal
@@ -31,6 +34,7 @@ const ActionModal: React.FC<ActionModalProps> = ({
         style={[
           styles.modalOverlay,
           { backgroundColor: colors.modalBackground },
+          screenInsets,
         ]}
         onPress={onClose}
       >
@@ -59,6 +63,9 @@ const ActionModal: React.FC<ActionModalProps> = ({
                 pressed && { opacity: 0.8 },
               ]}
               onPress={onClose}
+              hitSlop={8}
+              accessibilityRole="button"
+              accessibilityLabel="Close"
             >
               <IconSymbol
                 name={getCloseIcon()}

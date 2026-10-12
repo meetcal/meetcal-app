@@ -8,6 +8,7 @@ import {
 } from "@/config/version-announcements";
 import { useAppColors } from "@/hooks/useAppColors";
 import { isMaestroE2E } from "@/lib/e2e";
+import { markVersionAnnouncementSeen } from "@/lib/onboarding";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import React, { useEffect, useState } from "react";
 import {
@@ -21,6 +22,7 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Palette } from "@/constants/Palette";
+import { useScreenHorizontalInsets } from "@/hooks/useScreenInsets";
 
 // Multiple screens mount their own copy (schedule and info tabs). Both run
 // their storage check before either is dismissed, so without a session-level
@@ -30,6 +32,8 @@ let announcementClaimedThisSession = false;
 export function VersionAnnouncement() {
   const [isVisible, setIsVisible] = useState(false);
   const insets = useSafeAreaInsets();
+  // A modal is above every screen's padding: clear the Duo band here.
+  const screenInsets = useScreenHorizontalInsets();
   const colors = useAppColors();
 
   const announcement = getAnnouncementForVersion(CURRENT_VERSION);
@@ -61,15 +65,7 @@ export function VersionAnnouncement() {
 
   const handleDismiss = async () => {
     try {
-      const stored = await AsyncStorage.getItem(VERSION_ANNOUNCEMENT_KEY);
-      const seenVersions = parseSeenVersions(stored);
-
-      if (!seenVersions.includes(CURRENT_VERSION)) {
-        await AsyncStorage.setItem(
-          VERSION_ANNOUNCEMENT_KEY,
-          JSON.stringify([...seenVersions, CURRENT_VERSION]),
-        );
-      }
+      await markVersionAnnouncementSeen(CURRENT_VERSION);
     } catch (error) {
       console.error("Error dismissing version announcement:", error);
     } finally {
@@ -92,6 +88,7 @@ export function VersionAnnouncement() {
         style={[
           styles.modalOverlay,
           { backgroundColor: colors.modalBackground },
+          screenInsets,
         ]}
         onPress={handleDismiss}
       >
@@ -118,7 +115,9 @@ export function VersionAnnouncement() {
             <TouchableOpacity
               style={styles.closeButton}
               onPress={handleDismiss}
-              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+              hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+              accessibilityRole="button"
+              accessibilityLabel="Close"
             >
               <IconSymbol
                 name={getCloseIcon()}

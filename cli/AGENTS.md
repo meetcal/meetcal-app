@@ -6,7 +6,7 @@ The repository root's `AGENTS.md` applies here too: its hard rules (worktrees, n
 
 ## Differences from the root
 
-- The toolchain is Cargo (and `just`, see `Justfile`), not Bun. The root's `mise run check` does not cover this folder; run the gates in [Verify](#verify).
+- The toolchain is Cargo (and `just`, see `Justfile`), not Bun. The root's `mise run check` runs this folder's `cargo fmt --check`, clippy and tests (as CI does) when the branch changes `cli/`, one worktree at a time; [Verify](#verify) lists the rest.
 - Publishing a release (a `cli-v*` tag) and updating the Homebrew tap are external actions: do them only when the task asks for a release. [docs/releasing.md](docs/releasing.md) has the steps.
 - A change to a Convex query in `../convex/` can change what a command prints. The CLI CI runs on changes to `convex/` for that reason; when you change a query's answer, check the commands that read it (`src/commands/`).
 

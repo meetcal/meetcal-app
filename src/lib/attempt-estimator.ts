@@ -16,8 +16,13 @@ export interface AthleteAttemptEstimate {
   athleteName: string;
   snatchEstimates: number[];
   cjEstimates: number[];
-  snatchAttemptsOut: number;
-  cjAttemptsOut: number;
+  /**
+   * Attempts on the platform before this athlete's opener, or `null` when the
+   * athlete has no estimated opener for the lift (no history and no entry
+   * total), so the count is unknown rather than zero.
+   */
+  snatchAttemptsOut: number | null;
+  cjAttemptsOut: number | null;
   averageSnatchIncrease: { first: number; second: number };
   averageCJIncrease: { first: number; second: number };
   snatchMakeRate: number;
@@ -27,10 +32,10 @@ export interface AthleteAttemptEstimate {
 }
 
 interface AttemptData {
-  athleteName: string;
+  /** Position of the athlete in the session list: identity and last tiebreak. */
+  athleteIndex: number;
   weight: number;
   attemptNumber: number;
-  liftType: 'snatch' | 'cj';
 }
 
 enum LiftType {
@@ -130,96 +135,88 @@ function calculateMakeRates(results: SupabaseLiftResult[]): { snatch: number; cj
   return { snatch: snatchRate, cj: cjRate };
 }
 
-function calculateAttemptsOutForEstimates(estimates: AthleteAttemptEstimate[]): AthleteAttemptEstimate[] {
-  // Create sorted arrays of all attempts
-  const snatchAttempts: AttemptData[] = [];
-  const cjAttempts: AttemptData[] = [];
+/**
+ * Platform order for one lift: lighter bars first; at the same weight the
+ * lower attempt number lifts first (an athlete's opener at 83 goes before
+ * someone else's second attempt at 83). A remaining tie, same weight and same
+ * attempt number, keeps start-list order, standing in for the lot number the
+ * start list does not carry.
+ */
+function compareAttemptOrder(a: AttemptData, b: AttemptData): number {
+  return (
+    a.weight - b.weight ||
+    a.attemptNumber - b.attemptNumber ||
+    a.athleteIndex - b.athleteIndex
+  );
+}
 
-  for (const estimate of estimates) {
-    for (let index = 0; index < estimate.snatchEstimates.length; index++) {
-      const weight = estimate.snatchEstimates[index];
+/** Every estimated attempt of one lift for the whole session, in platform order. */
+function platformOrder(perAthlete: number[][]): AttemptData[] {
+  const attempts: AttemptData[] = [];
+  perAthlete.forEach((weights, athleteIndex) => {
+    weights.forEach((weight, index) => {
       if (weight > 0) {
-        snatchAttempts.push({
-          athleteName: estimate.athleteName,
-          weight: weight,
-          attemptNumber: index + 1,
-          liftType: 'snatch'
-        });
+        attempts.push({ athleteIndex, weight, attemptNumber: index + 1 });
       }
-    }
+    });
+  });
+  return attempts.sort(compareAttemptOrder);
+}
 
-    for (let index = 0; index < estimate.cjEstimates.length; index++) {
-      const weight = estimate.cjEstimates[index];
-      if (weight > 0) {
-        cjAttempts.push({
-          athleteName: estimate.athleteName,
-          weight: weight,
-          attemptNumber: index + 1,
-          liftType: 'cj'
-        });
-      }
+/**
+ * Attempts before `athleteIndex`'s opener in `order`, or `null` when the
+ * athlete has no estimated opener. An attempt followed straight away by the
+ * same athlete's next one counts twice: the lifter following themselves gets
+ * the longer clock, so it costs the warm-up room about two attempts.
+ */
+function countAttemptsOut(order: AttemptData[], athleteIndex: number): number | null {
+  const openerIndex = order.findIndex(
+    (attempt) => attempt.athleteIndex === athleteIndex && attempt.attemptNumber === 1,
+  );
+  if (openerIndex === -1) return null;
+
+  let out = 0;
+  for (let i = 0; i < openerIndex; i++) {
+    out++;
+    if (i + 1 < openerIndex && order[i].athleteIndex === order[i + 1].athleteIndex) {
+      out++;
     }
   }
+  return out;
+}
 
-  // Sort by weight
-  snatchAttempts.sort((a, b) => a.weight - b.weight);
-  cjAttempts.sort((a, b) => a.weight - b.weight);
+function calculateAttemptsOutForEstimates(estimates: AthleteAttemptEstimate[]): AthleteAttemptEstimate[] {
+  // Athletes are keyed by position, not name: two lifters can share a name.
+  const snatchOrder = platformOrder(estimates.map((estimate) => estimate.snatchEstimates));
+  const cjOrder = platformOrder(estimates.map((estimate) => estimate.cjEstimates));
 
-  // Calculate attempts out for each athlete
-  return estimates.map(estimate => {
-    let snatchOut = 0;
-    let cjOut = 0;
+  return estimates.map((estimate, athleteIndex) => ({
+    ...estimate,
+    snatchAttemptsOut: countAttemptsOut(snatchOrder, athleteIndex),
+    cjAttemptsOut: countAttemptsOut(cjOrder, athleteIndex),
+  }));
+}
 
-    // Find first snatch attempt
-    const firstSnatchIndex = snatchAttempts.findIndex(
-      attempt => attempt.athleteName === estimate.athleteName && attempt.attemptNumber === 1
-    );
-
-    if (firstSnatchIndex !== -1) {
-      // Count attempts before this athlete's first attempt
-      // If an athlete appears consecutively, count it as 2 instead of 1
-      for (let i = 0; i < firstSnatchIndex; i++) {
-        snatchOut++;
-
-        // Check if next attempt is the same athlete (they're following themselves)
-        if (
-          i + 1 < snatchAttempts.length &&
-          i + 1 < firstSnatchIndex &&
-          snatchAttempts[i].athleteName === snatchAttempts[i + 1].athleteName
-        ) {
-          snatchOut++; // Add extra 1 when athlete follows themselves
-        }
-      }
+/**
+ * The estimator list order: by snatch attempts out, soonest first, with the
+ * athletes whose count is unknown last (they are not opening first, we just
+ * cannot say when they open). Stable, so ties keep start-list order.
+ */
+export function sortEstimatesByAttemptsOut(
+  estimates: readonly AthleteAttemptEstimate[],
+): AthleteAttemptEstimate[] {
+  return [...estimates].sort((a, b) => {
+    if (a.snatchAttemptsOut === null || b.snatchAttemptsOut === null) {
+      return (a.snatchAttemptsOut === null ? 1 : 0) - (b.snatchAttemptsOut === null ? 1 : 0);
     }
-
-    // Find first CJ attempt
-    const firstCJIndex = cjAttempts.findIndex(
-      attempt => attempt.athleteName === estimate.athleteName && attempt.attemptNumber === 1
-    );
-
-    if (firstCJIndex !== -1) {
-      // Count attempts before this athlete's first attempt
-      // If an athlete appears consecutively, count it as 2 instead of 1
-      for (let i = 0; i < firstCJIndex; i++) {
-        cjOut++;
-
-        // Check if next attempt is the same athlete (they're following themselves)
-        if (
-          i + 1 < cjAttempts.length &&
-          i + 1 < firstCJIndex &&
-          cjAttempts[i].athleteName === cjAttempts[i + 1].athleteName
-        ) {
-          cjOut++; // Add extra 1 when athlete follows themselves
-        }
-      }
-    }
-
-    return {
-      ...estimate,
-      snatchAttemptsOut: snatchOut,
-      cjAttemptsOut: cjOut
-    };
+    return a.snatchAttemptsOut - b.snatchAttemptsOut;
   });
+}
+
+/** "3 attempts out", or "—" when the count is unknown. */
+export function formatAttemptsOut(attemptsOut: number | null): string {
+  if (attemptsOut === null) return "—";
+  return `${attemptsOut} ${attemptsOut === 1 ? "attempt" : "attempts"} out`;
 }
 
 /**
@@ -366,8 +363,8 @@ export function calculateEstimates(
       athleteName: athlete.name,
       snatchEstimates,
       cjEstimates,
-      snatchAttemptsOut: 0, // Will calculate after all estimates
-      cjAttemptsOut: 0, // Will calculate after all estimates
+      snatchAttemptsOut: null, // Will calculate after all estimates
+      cjAttemptsOut: null, // Will calculate after all estimates
       averageSnatchIncrease: finalAvgSnatchIncrease,
       averageCJIncrease: finalAvgCJIncrease,
       bestSnatch,
