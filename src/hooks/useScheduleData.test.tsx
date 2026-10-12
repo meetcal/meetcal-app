@@ -7,8 +7,7 @@ import { useScheduleData } from "@/hooks/useScheduleData";
 const mockGetMeetSchedule = jest.fn<Promise<Schedule>, [string]>();
 const mockSaveMeetSchedule = jest.fn<Promise<void>, [string, Schedule]>();
 const mockClearMeetSchedule = jest.fn<Promise<void>, [string]>();
-const mockFetchSchedule = jest.fn<Promise<Schedule>, [string, unknown]>();
-const mockGetCachedMeetByName = jest.fn<Promise<unknown>, [string]>(async () => null);
+const mockFetchSchedule = jest.fn<Promise<Schedule>, [string]>();
 
 jest.mock("@/lib/database/offline-store", () => ({
   getMeetSchedule: (meet: string) => mockGetMeetSchedule(meet),
@@ -18,12 +17,7 @@ jest.mock("@/lib/database/offline-store", () => ({
 }));
 
 jest.mock("@/lib/database/queries", () => ({
-  fetchSchedule: (meet: string, meetDetails: unknown) =>
-    mockFetchSchedule(meet, meetDetails),
-}));
-
-jest.mock("@/lib/database/meet-manager", () => ({
-  getCachedMeetByName: (meet: string) => mockGetCachedMeetByName(meet),
+  fetchSchedule: (meet: string) => mockFetchSchedule(meet),
 }));
 
 jest.mock("@/lib/networkUtils", () => ({
@@ -70,12 +64,9 @@ describe("useScheduleData", () => {
     captured = null;
     mockSaveMeetSchedule.mockResolvedValue(undefined);
     mockClearMeetSchedule.mockResolvedValue(undefined);
-    mockGetCachedMeetByName.mockResolvedValue(null);
   });
 
-  it("hands the cached meet to the schedule fetch so no details request rides along", async () => {
-    const cachedMeet = { name: "Cached Meet" };
-    mockGetCachedMeetByName.mockResolvedValue(cachedMeet);
+  it("fetches the selected meet's schedule", async () => {
     mockGetMeetSchedule.mockResolvedValue([]);
     mockFetchSchedule.mockResolvedValue([DAY]);
 
@@ -85,8 +76,7 @@ describe("useScheduleData", () => {
     });
     await flush();
 
-    expect(mockGetCachedMeetByName).toHaveBeenCalledWith("Cached Meet");
-    expect(mockFetchSchedule).toHaveBeenCalledWith("Cached Meet", cachedMeet);
+    expect(mockFetchSchedule).toHaveBeenCalledWith("Cached Meet");
 
     act(() => {
       tree.unmount();

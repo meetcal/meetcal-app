@@ -379,55 +379,27 @@ describe('meetcal API client', () => {
     expect(call.token).toBeUndefined();
   });
 
-  it('skips the details request when the caller already has the meet', async () => {
-    const { dataCalls, transport } = installTransport((call) =>
-      call.fn === 'meets:schedule'
-        ? answer([
-            {
-              date: '2026-06-20',
-              platform: 'Red',
-              session_id: 1,
-              start_time: '09:00:00',
-              weigh_in_time: '07:00:00',
-              weight_class: '60kg',
-            },
-          ])(call)
-        : answer({
-            name: 'Test Meet',
-            start_date: '2026-06-20',
-            end_date: '2026-06-21',
-            time_zone: 'America/Los_Angeles',
-            venue_name: 'Venue',
-            venue_street: '1 Main',
-            venue_city: 'LA',
-            venue_state: 'CA',
-            venue_zip: '90001',
-            status: 'upcoming',
-          })(call),
+  it('fetches a schedule in one request, without the meet details', async () => {
+    const { dataCalls } = installTransport(
+      answer([
+        {
+          date: '2026-06-20',
+          platform: 'Red',
+          session_id: 1,
+          start_time: '09:00:00',
+          weigh_in_time: '07:00:00',
+          weight_class: '60kg',
+        },
+      ]),
     );
-    const meet = mapApiMeet({
-      name: 'Test Meet',
-      status: 'upcoming',
-      start_date: '2026-06-20',
-      end_date: '2026-06-21',
-      time_zone: 'America/Los_Angeles',
-      venue_name: 'Venue',
-      venue_street: '1 Main',
-      venue_city: 'LA',
-      venue_state: 'CA',
-      venue_zip: '90001',
-    });
 
-    const schedule = await fetchApiSchedule('Test Meet', meet);
+    const schedule = await fetchApiSchedule('Test Meet');
 
+    // Day titles are calendar dates read in UTC, so the meet's zone (and the
+    // `meets:details` request that used to ride alongside for it) is not needed.
     expect(dataCalls().map((call) => call.fn)).toEqual(['meets:schedule']);
     expect(dataCalls()[0].args).toEqual({ meet: 'Test Meet' });
     expect(schedule[0].date).toBe('June 20, 2026');
-
-    // Without the meet the details request still rides alongside.
-    transport.mockClear();
-    await fetchApiSchedule('Test Meet');
-    expect(dataCalls().map((call) => call.fn).sort()).toEqual(['meets:details', 'meets:schedule']);
   });
 
   it('revalidates the meet package with ifNoneMatch and honours an answer without a body', async () => {
@@ -677,7 +649,7 @@ describe('meetcal API mappers', () => {
         weigh_in_time: '11:30:00',
         weight_class: '73kg',
       },
-    ], meet);
+    ]);
 
     expect(schedule[0].sessions[0].number).toBe(2);
     expect(schedule[0].sessions[0].startTime).toBe('1:30 PM');
@@ -996,18 +968,17 @@ describe('meetcal API mappers', () => {
 
   it('keeps offset, abbreviation and identifier consistent when the zone is unknown', () => {
     jest.spyOn(console, 'warn').mockImplementation(() => {});
-    // A real IANA zone the app does not support. `utcOffset` used to come
-    // from the raw zone (Europe/London: -1) while every conversion used the
-    // New York fallback (+4).
+    // A zone the device cannot read. `utcOffset` used to come from the raw
+    // zone while every conversion used the New York fallback.
     const meet = mapApiMeet({
-      name: 'Abroad Meet',
+      name: 'Mystery Meet',
       status: 'upcoming',
       start_date: '2026-06-20',
       end_date: '2026-06-21',
-      time_zone: 'Europe/London',
+      time_zone: 'Mars/Olympus',
       venue_name: 'Venue',
       venue_street: '1 Main',
-      venue_city: 'London',
+      venue_city: 'Somewhere',
       venue_state: '',
       venue_zip: '',
     });
@@ -1015,7 +986,7 @@ describe('meetcal API mappers', () => {
     expect(meet.time.timeZoneIdentifier).toBe('America/New_York');
     expect(meet.time.utcOffset).toBe(4);
     expect(meet.time.abbreviation).toBe('EDT');
-    expect(meet.time.timeZone).toBe('Europe/London');
+    expect(meet.time.timeZone).toBe('Mars/Olympus');
 
     const known = mapApiMeet({
       name: 'Home Meet',
@@ -1623,6 +1594,8 @@ describe('conditional reads for meet queries', () => {
     const second = await fetchApiSchedule('Meet A');
     expect(second).toEqual(first);
     expect(second[0].sessions[0].platforms[0].platform).toBe('Red');
+    const details = await fetchApiMeetByName('Meet A');
+    await expect(fetchApiMeetByName('Meet A')).resolves.toEqual(details);
 
     const validators = dataCalls().map((call) => [call.fn, call.args.ifNoneMatch]);
     expect(validators).toHaveLength(4);
@@ -2028,18 +2001,7 @@ describe('conditional reads for reference data', () => {
     await fetchApiAdaptiveRecords('Women', 'BWL');
     for (let i = 0; i < 8; i += 1) {
       await fetchApiMeetByName(`Meet ${i}`);
-      await fetchApiSchedule(`Meet ${i}`, mapApiMeet({
-        name: `Meet ${i}`,
-        start_date: '2026-06-20',
-        end_date: '2026-06-21',
-        time_zone: 'America/New_York',
-        status: 'upcoming',
-        venue_city: '',
-        venue_name: '',
-        venue_state: '',
-        venue_street: '',
-        venue_zip: '',
-      }));
+      await fetchApiSchedule(`Meet ${i}`);
     }
     for (let i = 0; i < 30; i += 1) {
       await fetchApiNationalRankings('USAW', `Category ${i}`);
@@ -2097,7 +2059,7 @@ describe('JSON text answers', () => {
     ['fetchApiMeetByName', () => fetchApiMeetByName('Meet A'), 'meets:details', meetRow('Meet A'), { name: 'Meet A' }],
     [
       'fetchApiSchedule',
-      () => fetchApiSchedule('Meet A', mapApiMeet(meetRow('Meet A'))),
+      () => fetchApiSchedule('Meet A'),
       'meets:schedule',
       [scheduleRow],
       [{ fullDate: '2026-06-20', sessions: [{ number: 1, startTime: '9:00 AM' }] }],

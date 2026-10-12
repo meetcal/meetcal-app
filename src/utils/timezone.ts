@@ -8,15 +8,18 @@ type ZonedDateParts = {
 
 /**
  * Formatters kept per zone id. Mirrors `ABBREVIATION_FORMATTER_CACHE_LIMIT` in
- * `utils/dateTime.ts`: a meet list spans a handful of US zones, and the bound
+ * `utils/dateTime.ts`: a meet list spans a handful of zones, and the bound
  * keeps odd spellings of the same zone from accumulating for the process life.
  */
 export const PARTS_FORMATTER_CACHE_LIMIT = 32;
 /**
  * Half-width of the window probed for a DST transition around a wall-clock
- * time: every US offset change lands inside +/- 12 hours of it.
+ * time. UTC offsets run from -12h (Etc/GMT+12) to +14h (Pacific/Kiritimati),
+ * so the instant a wall-clock time names lies within 14 hours of that wall
+ * clock read as UTC, and the offsets at both ends of the window are the ones
+ * either side of any transition inside it.
  */
-const DST_PROBE_WINDOW_MS = 12 * 60 * 60 * 1000;
+const DST_PROBE_WINDOW_MS = 14 * 60 * 60 * 1000;
 const MS_PER_MINUTE = 60 * 1000;
 
 const PARTS_FORMATTER_CACHE = new Map<string, Intl.DateTimeFormat>();
@@ -79,6 +82,21 @@ function getPartsFormatter(timeZone: string): Intl.DateTimeFormat {
  */
 function normalizeHour(hour: number): number {
   return hour === 24 ? 0 : hour;
+}
+
+/**
+ * Whether `timeZone` is a zone this device's `Intl` can format in: any IANA
+ * zone the platform's time zone database knows (Hermes reads it from
+ * Foundation's `NSTimeZone` on iOS and ICU's `TimeZone` on Android), not only
+ * the US ones. A blank or non-string value is not.
+ */
+export function isValidTimeZone(timeZone: unknown): timeZone is string {
+  try {
+    getPartsFormatter(timeZone as string);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 function getZonedParts(timeZone: string, instant: Date): ZonedDateParts {

@@ -11,32 +11,19 @@ export interface Venue {
   };
 }
 
-// US timezone identifiers
-export type USTimeZoneIdentifier = 
-  | 'America/New_York'    // Eastern
-  | 'America/Chicago'     // Central
-  | 'America/Denver'      // Mountain
-  | 'America/Phoenix'     // Mountain (no DST)
-  | 'America/Los_Angeles' // Pacific
-  | 'America/Anchorage'   // Alaska
-  | 'Pacific/Honolulu';   // Hawaii
-
-// Mapping of timezone identifiers to their UTC offsets
-export const timezoneOffsets: { [K in USTimeZoneIdentifier]: { standard: number; dst: number } } = {
-  'America/New_York': { standard: 5, dst: 4 },     // EST/EDT
-  'America/Chicago': { standard: 6, dst: 5 },      // CST/CDT
-  'America/Denver': { standard: 7, dst: 6 },       // MST/MDT
-  'America/Phoenix': { standard: 7, dst: 7 },      // MST (no DST)
-  'America/Los_Angeles': { standard: 8, dst: 7 },  // PST/PDT
-  'America/Anchorage': { standard: 9, dst: 8 },    // AKST/AKDT
-  'Pacific/Honolulu': { standard: 10, dst: 10 },   // HST (no DST)
-};
-
 export interface TimeConfig {
+  /** The zone as the API sent it (blank when the meet has none). */
   timeZone: string;
-  timeZoneIdentifier: USTimeZoneIdentifier;
+  /**
+   * The IANA zone every meet-local time is read in: any zone the device's
+   * `Intl` knows ("America/Chicago", "Asia/Tokyo", "Australia/Sydney"), or
+   * the fallback when the API's is blank or unknown (`timeZoneUnknown`).
+   */
+  timeZoneIdentifier: string;
+  /** The label shown after a time: "EDT", or "GMT+9" for a zone with no lettered name. */
   abbreviation: string;
-  utcOffset: number; // Current offset (either standard or DST)
+  /** Hours west of UTC on the meet's start date (4 for EDT, -5.5 for India). */
+  utcOffset: number;
 }
 
 export interface DateRange {

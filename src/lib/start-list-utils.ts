@@ -122,7 +122,6 @@ export function getCloseIcon(): string {
 export function formatSessionDisplayDate(
   displayDate?: string,
   fullDate?: string,
-  timeZoneId?: string
 ): string {
   if (!displayDate && !fullDate) return '';
   const normalized = displayDate?.toLowerCase();
@@ -133,11 +132,10 @@ export function formatSessionDisplayDate(
       weekday: 'short',
       month: 'short',
       day: 'numeric',
-      // `meetDetails` can still be loading (or be missing offline), so the
-      // timezone is optional. Falling back to the *device* timezone would
-      // read the UTC-noon anchor a day early/late depending on the offset;
-      // UTC reads back the calendar date we put in.
-      timeZone: timeZoneId || 'UTC'
+      // A calendar date, so it is read back in UTC, never the device zone
+      // (a day early or late depending on the offset) nor the meet's (noon
+      // UTC is already the next day from UTC+12, Auckland, eastward).
+      timeZone: 'UTC'
     });
   }
   // Not a `YYYY-MM-DD` calendar date: shown as sent, like the schedule

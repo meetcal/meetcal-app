@@ -1,11 +1,6 @@
 import { canonicalizePlatform, filterSessionAthletes, isLiftResult } from '@/lib/athletes';
 import { LiftResult, Platform, SupabaseLiftResult } from '@/data/types/athletes';
-import {
-  Meet,
-  MeetName,
-  timezoneOffsets,
-  USTimeZoneIdentifier,
-} from '@/data/types/meet';
+import { Meet, MeetName } from '@/data/types/meet';
 import type { Schedule } from '@/types/schedule';
 import {
   ATTEMPT_HISTORY_YEARS,
@@ -14,7 +9,12 @@ import {
   meetCalendarDateAnchor,
   YEAR_BESTS_YEARS,
 } from '@/utils/dateTime';
-import { getOffsetMinutesAtInstant, parseClockTime } from '@/utils/timezone';
+import {
+  convertZonedLocalToUTC,
+  getOffsetMinutesAtInstant,
+  isValidTimeZone,
+  parseClockTime,
+} from '@/utils/timezone';
 import {
   HTTP_VALIDATOR_CACHE_LIMIT,
   usableEtag,
@@ -47,11 +47,12 @@ export const NAMES_QUERY_CHUNK_SIZE = 40;
 export const SMALL_ROWS_NAMES_CHUNK_SIZE = 100;
 
 /**
- * Meet dates are calendar dates with no time. 16:00 UTC is inside the same
- * calendar day for every `USTimeZoneIdentifier` (UTC-10 .. UTC-4), so reading
- * the zone offset at this instant gives the meet's own offset on that date.
+ * Meet dates are calendar dates with no time. The meet's offset and zone label
+ * on a date are read at this wall-clock time *in the meet's zone*: a fixed UTC
+ * hour lands on another calendar day somewhere (16:00 UTC is already tomorrow
+ * in Tokyo), and noon is clear of every DST change.
  */
-const MEET_DATE_OFFSET_PROBE_HOUR_UTC = 16;
+const MEET_DATE_OFFSET_PROBE_TIME = '12:00';
 function chunkValues<T>(values: T[], size: number): T[][] {
   if (values.length === 0) return [];
   const chunks: T[][] = [];
@@ -77,34 +78,35 @@ function toFiniteNumber(value: unknown, fallback = 0): number {
   return fallback;
 }
 
-function instantForMeetDate(dateIso: string | null | undefined): Date {
-  if (typeof dateIso !== 'string' || dateIso.length === 0) {
+/** Midday on the meet's calendar date `dateIso`, in the meet's zone; now when it is not a date. */
+function instantForMeetDate(dateIso: string | null | undefined, timeZone: string): Date {
+  const [datePart] = typeof dateIso === 'string' ? dateIso.split('T') : [''];
+  try {
+    return convertZonedLocalToUTC(datePart ?? '', MEET_DATE_OFFSET_PROBE_TIME, timeZone);
+  } catch {
     return new Date();
   }
-  const [datePart] = dateIso.split('T');
-  const [year, month, day] = (datePart ?? '').split('-').map(Number);
-  if (Number.isNaN(year) || Number.isNaN(month) || Number.isNaN(day)) {
-    return new Date();
-  }
-  return new Date(
-    Date.UTC(year, month - 1, day, MEET_DATE_OFFSET_PROBE_HOUR_UTC, 0, 0),
-  );
 }
 
 /**
  * Deliberately falls back rather than throwing: a meet with an unrecognised
  * `time_zone` still has a name, a venue and a schedule, and rejecting it here
  * would drop the whole `/meets` list over one bad row. The fallback is not
- * silent though — every displayed time for that meet will be an hour or three
- * off, and this is the only place that can say why.
+ * silent though — every displayed time for that meet will be hours off, and
+ * this is the only place that can say why.
  */
-const FALLBACK_TIME_ZONE: USTimeZoneIdentifier = 'America/New_York';
+const FALLBACK_TIME_ZONE = 'America/New_York';
 
+/**
+ * Any IANA zone the device's `Intl` knows is the meet's real zone, US or not
+ * ("Asia/Tokyo", "Australia/Sydney"). A blank zone (the server could not tell
+ * it) or one the device cannot read falls back, with a warning, and is flagged.
+ */
 function resolveTimeZoneIdentifier(
   value: string,
-): { identifier: USTimeZoneIdentifier; known: boolean } {
-  if (Object.prototype.hasOwnProperty.call(timezoneOffsets, value)) {
-    return { identifier: value as USTimeZoneIdentifier, known: true };
+): { identifier: string; known: boolean } {
+  if (isValidTimeZone(value)) {
+    return { identifier: value, known: true };
   }
   // Warned in production too: this is the only signal that a meet's times
   // are being rendered in the wrong zone, and it is one line per bad meet row.
@@ -611,9 +613,10 @@ export type ApiSavedSession = {
   updated_at: number;
 };
 
-function getUTCOffsetHours(timeZoneIdentifier: string, dateIso: string): number {
-  const instant = instantForMeetDate(dateIso);
-  return -getOffsetMinutesAtInstant(timeZoneIdentifier, instant) / 60;
+/** Hours west of UTC at `instant` (4 for EDT, -9 for Tokyo, -5.5 for India). */
+function getUTCOffsetHours(timeZoneIdentifier: string, instant: Date): number {
+  const hours = -getOffsetMinutesAtInstant(timeZoneIdentifier, instant) / 60;
+  return hours === 0 ? 0 : hours; // UTC itself: 0, not -0
 }
 
 /**
@@ -641,19 +644,20 @@ export function formatApiTime(time: string | null | undefined): string {
 /**
  * Display title for a schedule day. The API's `date` is scraped text, not a
  * typed date, so it is anchored through the one calendar-date parser
- * (`meetCalendarDateAnchor`, noon UTC). The old inline copy fell back to
- * `new Date(date)` for anything that was not `YYYY-MM-DD`, and a row dated
- * "TBD" rendered as the day title "Invalid Date". A value that is not a
- * calendar date is shown as sent.
+ * (`meetCalendarDateAnchor`, noon UTC) and read back in UTC. The old inline
+ * copy fell back to `new Date(date)` for anything that was not `YYYY-MM-DD`,
+ * and a row dated "TBD" rendered as the day title "Invalid Date". Reading the
+ * anchor in the meet's zone showed the next day for a meet east of UTC+12
+ * (Auckland). A value that is not a calendar date is shown as sent.
  */
-function dateForMeetTimezone(date: string, timeZoneIdentifier: USTimeZoneIdentifier): string {
+function formatScheduleDay(date: string): string {
   const anchor = meetCalendarDateAnchor(date);
   if (!anchor) return date;
   return anchor.toLocaleDateString('en-US', {
     month: 'long',
     day: 'numeric',
     year: 'numeric',
-    timeZone: timeZoneIdentifier,
+    timeZone: 'UTC',
   });
 }
 
@@ -668,7 +672,7 @@ export function mapApiMeet(row: ApiMeet): MappedMeet {
   const { identifier: timeZoneIdentifier, known } = resolveTimeZoneIdentifier(
     row.time_zone || '',
   );
-  const meetInstant = instantForMeetDate(row.start_date);
+  const meetInstant = instantForMeetDate(row.start_date, timeZoneIdentifier);
   const status =
     row.status === 'ongoing' || row.status === 'completed' || row.status === 'upcoming'
       ? row.status
@@ -694,7 +698,7 @@ export function mapApiMeet(row: ApiMeet): MappedMeet {
       // abbreviation and offset from the raw value, the identifier from the
       // fallback) showed a "CST" label next to times converted in New York.
       abbreviation: getTimeZoneAbbreviation(timeZoneIdentifier, meetInstant),
-      utcOffset: getUTCOffsetHours(timeZoneIdentifier, row.start_date),
+      utcOffset: getUTCOffsetHours(timeZoneIdentifier, meetInstant),
     },
     dates: {
       start: row.start_date,
@@ -705,8 +709,7 @@ export function mapApiMeet(row: ApiMeet): MappedMeet {
   };
 }
 
-export function mapApiSchedule(rows: ApiScheduleRow[], meet?: Meet): Schedule {
-  const timeZoneIdentifier = meet?.time.timeZoneIdentifier ?? 'America/New_York';
+export function mapApiSchedule(rows: ApiScheduleRow[]): Schedule {
   const scheduleMap = new Map<string, {
     date: string;
     fullDate: string;
@@ -716,7 +719,7 @@ export function mapApiSchedule(rows: ApiScheduleRow[], meet?: Meet): Schedule {
   rows.forEach((row) => {
     if (!scheduleMap.has(row.date)) {
       scheduleMap.set(row.date, {
-        date: dateForMeetTimezone(row.date, timeZoneIdentifier),
+        date: formatScheduleDay(row.date),
         fullDate: row.date,
         sessions: new Map(),
       });
@@ -747,7 +750,6 @@ export function mapApiSchedule(rows: ApiScheduleRow[], meet?: Meet): Schedule {
 }
 
 export function mapPackageSchedule(pkg: ApiMeetPackage): Schedule {
-  const meet = mapApiMeet(pkg.meet);
   const rows = pkg.schedule.flatMap((day) =>
     day.sessions.flatMap((session) =>
       session.platforms.map((platform) => ({
@@ -761,7 +763,7 @@ export function mapPackageSchedule(pkg: ApiMeetPackage): Schedule {
       })),
     ),
   );
-  return mapApiSchedule(rows, meet);
+  return mapApiSchedule(rows);
 }
 
 export function mapApiAthlete(row: ApiAthleteWithSession): LiftResult {
@@ -915,19 +917,12 @@ export async function fetchApiMeetByName(meet: string): Promise<Meet | null> {
 }
 
 /**
- * @param meetDetails The meet, when the caller already holds it (the cached
- * meets list, the selected meet). Skips the `meets:details` round trip that
- * otherwise rides alongside every schedule fetch.
+ * A meet's schedule. Its day titles are calendar dates, read in UTC, so it
+ * needs nothing from the meet's details (it used to fetch them for the zone).
  */
-export async function fetchApiSchedule(
-  meet: MeetName,
-  meetDetails?: Meet | null,
-): Promise<Schedule> {
-  const [resolvedMeet, rows] = await Promise.all([
-    meetDetails ? Promise.resolve(meetDetails) : fetchApiMeetByName(meet),
-    getRevalidated('/meets/schedule', 'meets:schedule', { meet }, validateApiSchedule),
-  ]);
-  return mapApiSchedule(rows, resolvedMeet ?? undefined);
+export async function fetchApiSchedule(meet: MeetName): Promise<Schedule> {
+  const rows = await getRevalidated('/meets/schedule', 'meets:schedule', { meet }, validateApiSchedule);
+  return mapApiSchedule(rows);
 }
 
 export async function fetchApiAthletes(meet: MeetName): Promise<LiftResult[]> {

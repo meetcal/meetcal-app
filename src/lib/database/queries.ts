@@ -1,6 +1,6 @@
 import type { Schedule } from '@/types/schedule';
 import type { SupabaseBests, SupabaseLiftResult, LiftResult } from '@/data/types/athletes';
-import { Meet, MeetName } from '@/data/types/meet';
+import { MeetName } from '@/data/types/meet';
 import {
   getMockAthletesWithSession,
   getMockSchedule,
@@ -15,24 +15,15 @@ import {
   fetchApiSchedule,
   searchApi,
 } from '@/lib/api/meetcal-api';
-import { getCachedMeetByName } from './meets-list-cache';
 
 const scheduleInFlight = new Map<MeetName, Promise<Schedule>>();
 const athletesWithSessionInFlight = new Map<string, Promise<LiftResult[]>>();
 
 /**
- * @param meetDetails The meet when the caller already has it; saves the
- * `/meets/details` request that otherwise accompanies every schedule fetch.
- * Omitted (`undefined`), the meet is looked up in the cached `/meets` list
- * first — the same cache-first policy `getMeetConfig` and `useScheduleData`
- * use — so the reminder, Save All and start-list refresh paths cost one
- * request instead of two. `null` means the caller already looked and found
- * nothing, so the lookup is not repeated.
+ * A meet's schedule, one request at a time per meet. It needs nothing from
+ * the meet's details: day titles are calendar dates, read in UTC.
  */
-export async function fetchSchedule(
-  meet: MeetName,
-  meetDetails?: Meet | null,
-): Promise<Schedule> {
+export async function fetchSchedule(meet: MeetName): Promise<Schedule> {
   if (__DEV__ && (await isMockedMeet(meet))) {
     return getMockSchedule(meet);
   }
@@ -40,11 +31,7 @@ export async function fetchSchedule(
   const inFlight = scheduleInFlight.get(meet);
   if (inFlight) return inFlight;
 
-  const request = (async () => {
-    const resolved =
-      meetDetails === undefined ? await getCachedMeetByName(meet) : meetDetails;
-    return fetchApiSchedule(meet, resolved);
-  })()
+  const request = fetchApiSchedule(meet)
     .catch((error) => {
       console.error('Error in fetchSchedule:', error);
       throw error;

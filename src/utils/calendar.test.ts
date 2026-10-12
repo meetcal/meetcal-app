@@ -41,7 +41,7 @@ const LOS_ANGELES_MEET = {
   },
   time: {
     timeZone: "America/Los_Angeles",
-    timeZoneIdentifier: "America/Los_Angeles" as const,
+    timeZoneIdentifier: "America/Los_Angeles",
     abbreviation: "PDT",
     utcOffset: 7,
   },
@@ -104,6 +104,24 @@ describe("calendar event input", () => {
       "meetcal:///shared-screens/schedule-details?meet=West+Coast+Open&sessionNumber=3&platform=Red",
     );
     expect(input.url).not.toContain("meetcal://schedule-details");
+  });
+
+  it("exports a meet outside the US in its own zone", async () => {
+    mockFetchMeetByName.mockResolvedValue({
+      ...LOS_ANGELES_MEET,
+      time: {
+        timeZone: "Asia/Tokyo",
+        timeZoneIdentifier: "Asia/Tokyo",
+        abbreviation: "GMT+9",
+        utcOffset: -9,
+      },
+    });
+    const input = await buildEvent();
+
+    // 10:00 AM in Tokyo (UTC+9, no DST) on 2026-06-20 is 01:00 UTC.
+    expect(input.startDate.toISOString()).toBe("2026-06-20T01:00:00.000Z");
+    expect(input.timeZone).toBe("Asia/Tokyo");
+    expect(input.notes).toContain("Weigh-in Time: 8:00 AM GMT+9");
   });
 
   it("converts the meet-local wall clock in the meet's zone, not the device's", async () => {

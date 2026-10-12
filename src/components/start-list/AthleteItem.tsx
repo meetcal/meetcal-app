@@ -41,7 +41,6 @@ export interface AthleteRowProps extends AthleteItemProps {
   validMeet: MeetName | null;
   /** `meetDetails.time.abbreviation`, resolved at the meet's own start date. */
   timeZoneAbbr: string;
-  timeZoneIdentifier: string | undefined;
   isSubscribed: boolean | null;
   /** Runs the auth + subscription gate and navigates; owned by the screen. */
   onSeeAllResults: (athleteName: string) => void;
@@ -56,7 +55,6 @@ export const AthleteItem = React.memo(function AthleteItem({
   currentTheme,
   validMeet,
   timeZoneAbbr,
-  timeZoneIdentifier,
   isSubscribed,
   onSeeAllResults,
 }: AthleteRowProps) {
@@ -247,7 +245,6 @@ export const AthleteItem = React.memo(function AthleteItem({
                         getSessionDetails(athlete.session.number)?.displayDate,
                       athlete.session.date ??
                         getSessionDetails(athlete.session.number)?.date,
-                      timeZoneIdentifier,
                     )}
 {" "}
                     •

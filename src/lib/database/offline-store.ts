@@ -172,14 +172,15 @@ export async function getExplicitlyDownloadedMeetIds(): Promise<Set<string>> {
   return new Set(Object.keys(await getExplicitMeetDownloads()));
 }
 
-// Pacific/Honolulu (UTC-10) is the westernmost timezone `USTimeZoneIdentifier`
-// allows, and the download entry does not record which zone the meet is in.
-// Treating the meet as ending at midnight in *that* zone means we may hold a
-// finished East-coast meet's data ~15 hours longer than necessary, which is
+// UTC-12 ("Anywhere on Earth") is the last zone a day ends in, and the
+// download entry does not record which zone the meet is in. Treating the meet
+// as ending at midnight in *that* zone means we may hold a finished meet's
+// data up to a day longer than necessary (a Tokyo meet, 21 hours), which is
 // harmless — whereas `new Date(`${endDate}T23:59:59`)` uses the *device*
 // timezone and would delete a Los Angeles meet's offline data at 9pm local on
-// its final day for a user sitting in New York.
-const WESTERNMOST_MEET_OFFSET_MS = 10 * 60 * 60 * 1000;
+// its final day for a user sitting in New York. Meets are not only in US
+// zones, so this is not Honolulu's UTC-10 either: American Samoa is UTC-11.
+const WESTERNMOST_MEET_OFFSET_MS = 12 * 60 * 60 * 1000;
 /** From the noon-UTC calendar anchor to midnight UTC starting the next day. */
 const NOON_TO_NEXT_MIDNIGHT_MS = 12 * 60 * 60 * 1000;
 

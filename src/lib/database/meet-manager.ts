@@ -762,11 +762,7 @@ export async function prefetchCriticalMeetData(meet: MeetName) {
     const hasNetwork = await isNetworkAvailable();
     if (!hasNetwork) return;
 
-    // The meets list is already cached by the time a meet is opened, so the
-    // schedule fetch can skip its `/meets/details` companion request.
-    const cachedMeet = await getCachedMeetByName(meet);
-
-    const scheduleRequest = fetchSchedule(meet, cachedMeet).then(async (schedule) => {
+    const scheduleRequest = fetchSchedule(meet).then(async (schedule) => {
       if (schedule.length > 0) {
         await saveMeetSchedule(meet, schedule);
       }

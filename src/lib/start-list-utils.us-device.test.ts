@@ -22,15 +22,6 @@ describe("formatSessionDisplayDate on a Los Angeles device", () => {
     );
   });
 
-  it("reads the calendar date in the meet zone, not the device zone", () => {
-    expect(
-      formatSessionDisplayDate(undefined, "2026-01-15", "America/New_York"),
-    ).toBe("Thu, Jan 15");
-    expect(
-      formatSessionDisplayDate(undefined, "2026-01-15", "Pacific/Honolulu"),
-    ).toBe("Thu, Jan 15");
-  });
-
   it("shows a non-ISO date as sent", () => {
     expect(formatSessionDisplayDate("January 15, 2026")).toBe("January 15, 2026");
   });
