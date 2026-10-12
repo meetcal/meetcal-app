@@ -630,6 +630,11 @@ export async function touchMeetAccess(meet: MeetName) {
 // (clearExpiredDownloadedMeets) or when the user deletes them. Everything else is
 // transient browse cache; without this bound it accumulates until the AsyncStorage
 // SQLite store hits SQLITE_FULL.
+/** A meet whose open (critical prefetch) or download is in flight. */
+function isMeetBeingOpened(meet: MeetName): boolean {
+  return criticalPrefetchRequests.has(meet) || fullPrefetchRequests.has(meet);
+}
+
 async function cleanupOldMeetData() {
   const info = await getCacheInfo();
   const meets = Object.entries(info.meets) as [MeetName, MeetInfo][];
@@ -668,15 +673,22 @@ async function cleanupOldMeetData() {
     }
     // Being opened right now: its access is stamped only once the open's
     // saves are done, so the stamp check above cannot see it yet.
-    if (criticalPrefetchRequests.has(meet) || fullPrefetchRequests.has(meet)) {
+    if (isMeetBeingOpened(meet)) {
       continue;
     }
     // The validator goes first, so a download that starts during the clear
     // fetches the package in full rather than trusting a `304` for data the
-    // clear is removing. A save that starts during the clear waits for it
-    // (`clearMeetData` and the meet's saves share one chain), so a meet
-    // reopened meanwhile keeps what it saves.
+    // clear is removing (an ETag dropped for a meet that is then skipped
+    // only costs one full fetch).
     await clearPackageEtag(meet);
+    // Checked again: an open that started during that write would queue its
+    // saves ahead of the clear. From here on there is no await before
+    // `clearMeetData` joins the meet's chain, and a save that starts later
+    // waits for the clear (they share one chain), so a meet reopened
+    // meanwhile keeps what it saves.
+    if (isMeetBeingOpened(meet)) {
+      continue;
+    }
     await clearMeetData(meet);
     evicted.push({ meet, lastAccessed: snapshot.lastAccessed });
   }

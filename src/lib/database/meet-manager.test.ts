@@ -811,6 +811,64 @@ describe("cache eviction during prefetch", () => {
     }
   });
 
+  // The in-flight check ran before the ETag write, so an open that started
+  // during that write queued its saves ahead of the clear and lost them.
+  it("does not evict a meet whose open starts while its ETag is being cleared", async () => {
+    const store = useBackedStorage({
+      [MEET_CACHE_KEY]: JSON.stringify({
+        totalSize: 0,
+        meets: {
+          "Meet E": { lastAccessed: 5, size: 0 },
+          "Meet D": { lastAccessed: 4, size: 0 },
+          "Meet B": { lastAccessed: 2, size: 0 },
+        },
+      }),
+    });
+    setExplicitlyDownloaded(() => false);
+    const setItem = AsyncStorage.setItem as jest.Mock;
+    const backedSetItem = setItem.getMockImplementation()!;
+    let releaseEtag!: () => void;
+    const etagGate = new Promise<void>((resolve) => {
+      releaseEtag = resolve;
+    });
+    let etagParked = false;
+    setItem.mockImplementation(async (key: string, value: string) => {
+      if (key === "@meet_package_etag_v1" && !etagParked) {
+        etagParked = true;
+        await etagGate;
+      }
+      return backedSetItem(key, value);
+    });
+    let releaseRoster!: (value: unknown[]) => void;
+    mockFetchAthletesWithSession.mockImplementation((meet: string) =>
+      meet === "Meet B"
+        ? new Promise((resolve) => {
+            releaseRoster = resolve;
+          })
+        : Promise.resolve([]),
+    );
+
+    try {
+      const openingF = prefetchCriticalMeetData("Meet F" as any);
+      for (let i = 0; i < 50 && !etagParked; i += 1) {
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      }
+      expect(etagParked).toBe(true);
+      // "Meet B" is opened while the sweep is dropping its ETag.
+      const openingB = prefetchCriticalMeetData("Meet B" as any);
+      releaseEtag();
+      await openingF;
+
+      expect(mockClearMeetData).not.toHaveBeenCalledWith("Meet B");
+      releaseRoster([]);
+      await openingB;
+      expect(JSON.parse(store.get(MEET_CACHE_KEY)!).meets["Meet B"]).toBeDefined();
+    } finally {
+      resetStorageMocks();
+      mockFetchAthletesWithSession.mockResolvedValue([]);
+    }
+  });
+
   it("does not evict a meet that is being opened", async () => {
     useBackedStorage({
       [MEET_CACHE_KEY]: JSON.stringify({
