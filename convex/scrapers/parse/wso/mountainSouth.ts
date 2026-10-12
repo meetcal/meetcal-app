@@ -60,11 +60,14 @@ export function mountainSouthSection(line: string): [age: string, gender: 'Men' 
   return null;
 }
 
-/** A positive whole lift, or null (0 means vacant). */
+/** A positive whole lift, or null (0 means vacant); a cell that is neither a number nor blank throws. */
 function lift(text: string): number | null {
   const value = intOrNull(text);
   return value ? value : null;
 }
+
+/** A word that is a positive number, else null: names, states and dates are not lifts. */
+const positive = (text: string) => (/^\d+(?:\.\d+)?$/.test(text) ? lift(text) : null);
 
 const FIELDS = { SNATCH: 'snatch_record', CLEAN_JERK: 'cj_record', TOTAL: 'total_record' } as const;
 const HOLDER_FIELDS = { snatch_record: 'snatch_by', cj_record: 'cj_by', total_record: 'total_by' } as const;
@@ -95,9 +98,9 @@ function lineHolder(value: number | null, line: string | PdfLine, columns: Colum
   const runs = typeof line === 'string' ? [] : line.runs.flatMap((run) => words(run.text, run.x));
   // The runs split words the text joins ("Jean-JacquesCabou"); should they
   // disagree about the value, the text's words are the ones it came from.
-  const first = runs.slice(1).find((word) => lift(word.text) !== null);
-  const all = first && lift(first.text) === value ? runs : words(typeof line === 'string' ? line : line.text);
-  const at = all.findIndex((word, i) => i > 0 && lift(word.text) === value);
+  const first = runs.slice(1).find((word) => positive(word.text) !== null);
+  const all = first && positive(first.text) === value ? runs : words(typeof line === 'string' ? line : line.text);
+  const at = all.findIndex((word, i) => i > 0 && positive(word.text) === value);
   if (at === -1) return recordHolder(value, null);
   const before = all.slice(1, at);
   const after = all.slice(at + 1);
@@ -109,6 +112,22 @@ function lineHolder(value: number | null, line: string | PdfLine, columns: Colum
   const place = atPlace ? after.filter((word) => word.x! >= columns.location! - 5) : after;
   const join = (list: Word[]) => list.map((word) => word.text).join(' ');
   return recordHolder(value, join(name), date, join(event), join(place));
+}
+
+/**
+ * The record on a class line's words ("60 Maria De La Cruz AZ 88 3/3/22 …"):
+ * the cell after the athlete's state, however many words the name has, or
+ * without a state, the first number before the date. The cell after the
+ * state must read as a lift: anything else throws rather than clear the
+ * record.
+ */
+function classLineValue(parts: readonly string[]): number | null {
+  const date = parts.findIndex((word, i) => i > 0 && DATE.test(word));
+  const cells = parts.slice(1, date === -1 ? undefined : date);
+  const state = cells.findIndex((word, i) => i > 0 && STATE.test(word));
+  if (state !== -1 && state + 1 < cells.length) return lift(cells[state + 1]);
+  const number = cells.find((word) => /^\d+(?:\.\d+)?$/.test(word));
+  return number === undefined ? null : lift(number);
 }
 
 /** One PDF's records, from its lines (text, or runs with positions) page by page. */
@@ -141,12 +160,7 @@ export function parseMountainSouth(pages: readonly (readonly (string | PdfLine)[
       const key = JSON.stringify([section[0], section[1], weightClass]);
       const record = records.get(key) ?? { wso, age_category: section[0], gender: section[1], weight_class: weightClass, snatch_record: null, cj_record: null, total_record: null };
       records.set(key, record);
-      // The record is the first positive number after the class among the
-      // next five words (the athlete's name and state come before it).
-      let value: number | null = null;
-      if (parts.length >= 4) {
-        for (let i = 1; i < Math.min(parts.length, 6) && value === null; i++) value = lift(parts[i]);
-      }
+      const value = parts.length >= 4 ? classLineValue(parts) : null;
       record[field] = value;
       const by = lineHolder(value, source, columns);
       if (by) record[HOLDER_FIELDS[field]] = by;

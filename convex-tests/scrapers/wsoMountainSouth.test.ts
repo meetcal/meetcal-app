@@ -38,6 +38,14 @@ describe('Mountain South WSO PDFs (port of scraper_pdf_mountainsouth.py)', () =>
     ]);
   });
 
+  it('finds the record after the state however long the name, and fails on a value it cannot read', () => {
+    const [record] = parseMountainSouth([['OPEN WOMEN - SNATCH', '60 Maria De La Cruz AZ 88 3/3/22 NAO Series 1 Columbus, OH']], 'Mountain South');
+    expect(record).toMatchObject({ snatch_record: 88, snatch_by: { name: 'Maria De La Cruz', date: '2022-03-03' } });
+    // A vacant class whose event carries a number is still vacant.
+    expect(parseMountainSouth([['OPEN WOMEN - SNATCH', '60 A B NM 0 1/1/25 NAO Series 1']], 'Mountain South')[0].snatch_record).toBeNull();
+    expect(() => parseMountainSouth([['OPEN WOMEN - SNATCH', '60 Maria De La Cruz AZ 88* 3/3/22 Meet']], 'Mountain South')).toThrow('unreadable lift value "88*"');
+  });
+
   it('reads holders from positioned runs: name columns, event and place split by the LOCATION column', () => {
     const pages = [
       [
