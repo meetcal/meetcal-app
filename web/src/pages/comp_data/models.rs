@@ -107,6 +107,9 @@ pub(crate) struct AthleteSearchResponse {
     pub matched_name: Option<String>,
     pub suggestions: Vec<String>,
     pub results: Vec<LiftResult>,
+    /// More results matched than the answer holds (it keeps the most recent).
+    #[serde(default)]
+    pub truncated: bool,
 }
 
 #[derive(Clone, Serialize)]

@@ -53,7 +53,7 @@ export const live = internalQuery({
       case 'searchSuggestions': {
         // The whole directory, the answer the shards must reproduce.
         const text = (await readViewTextAnyAge(ctx, RESULT_NAMES_VIEW)) ?? '';
-        return JSON.stringify({ matched_name: null, suggestions: searchDirectory(text, a.query, 8), results: [] });
+        return JSON.stringify({ matched_name: null, suggestions: searchDirectory(text, a.query, 8), results: [], truncated: false });
       }
       case 'athletes':
         return await liveAthletesJson(ctx, a.meet);

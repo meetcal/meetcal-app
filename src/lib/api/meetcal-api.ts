@@ -1067,6 +1067,12 @@ export async function fetchApiYearBestsByNames(
   return merged;
 }
 
+/**
+ * `results:search`: name suggestions, or with `startDate` and `endDate` (both
+ * inclusive, `YYYY-MM-DD`) the results in that range. `truncated` says more
+ * results matched than the answer holds (the most recent are kept), so the
+ * search should be narrowed.
+ */
 export async function searchApi(query: string, startDate?: string, endDate?: string) {
   const response = assertHasFields(
     await readQuery('/search', 'results:search', { query, startDate, endDate }),
@@ -1079,6 +1085,8 @@ export async function searchApi(query: string, startDate?: string, endDate?: str
     matchedName: typeof response.matched_name === 'string' ? response.matched_name : null,
     suggestions,
     results: results.map(mapApiLiftingResult),
+    // Deployments before the field answered without it; they cut silently.
+    truncated: response.truncated === true,
   };
 }
 

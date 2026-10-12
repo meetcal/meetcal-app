@@ -194,7 +194,11 @@ export const bests = query({
 // `GET /search`
 // ---------------------------------------------------------------------------
 
-const MAX_SEARCH_RESULT_ROWS = 600;
+/**
+ * The most results one `results:search` answer holds. When more match, it
+ * keeps the most recent and says so (`truncated`).
+ */
+export const MAX_SEARCH_RESULT_ROWS = 600;
 const MAX_SEARCH_SUGGESTIONS = 8;
 /**
  * A one- or two-letter query matches most of the directory. Postgres scans the
@@ -235,15 +239,76 @@ async function searchText(ctx: QueryCtx, query: string): Promise<string> {
   return await directory(ctx);
 }
 
-/** Rows dated in `[start, end)`, oldest first. */
+/** Rows dated `start` to `end`, both inclusive (as `results:page` reads them), oldest first. */
 function inRange(history: readonly ApiLiftingResult[], start: string, end: string): ApiLiftingResult[] {
-  return history.filter((row) => row.date >= start && row.date < end).reverse();
+  return history.filter((row) => row.date >= start && row.date <= end).reverse();
+}
+
+/**
+ * A `results:search` answer. `truncated` says more results match than it
+ * holds: it keeps the most recent `MAX_SEARCH_RESULT_ROWS`, and a client
+ * should ask for a narrower search to see the rest.
+ */
+export type SearchAnswer = {
+  matched_name: string | null;
+  suggestions: string[];
+  results: ApiLiftingResult[];
+  truncated: boolean;
+};
+
+/** Oldest-first `rows` cut to the most recent `MAX_SEARCH_RESULT_ROWS`, still oldest first. */
+function mostRecent(rows: ApiLiftingResult[]): { results: ApiLiftingResult[]; truncated: boolean } {
+  if (rows.length <= MAX_SEARCH_RESULT_ROWS) return { results: rows, truncated: false };
+  return { results: rows.slice(rows.length - MAX_SEARCH_RESULT_ROWS), truncated: true };
+}
+
+/** The exact name's answer from its newest-first history, or null when it has no result in the range. */
+export function exactSearchAnswer(
+  query: string,
+  history: readonly ApiLiftingResult[],
+  start: string,
+  end: string,
+): SearchAnswer | null {
+  const rows = inRange(history, start, end);
+  if (rows.length === 0) return null;
+  return { matched_name: query, suggestions: [], ...mostRecent(rows) };
+}
+
+/**
+ * Every matching name's results in the range, oldest first, from the
+ * histories of `matched` (the directory's first `MAX_FALLBACK_NAMES` matches;
+ * reaching that many means more names may match, so the answer is truncated).
+ */
+export function fallbackSearchAnswer(
+  query: string,
+  matched: readonly string[],
+  histories: Histories,
+  start: string,
+  end: string,
+): SearchAnswer {
+  const matches = nameMatcher(query);
+  const rows: ApiLiftingResult[] = [];
+  for (const history of histories.values()) {
+    for (const row of inRange(history, start, end)) {
+      if (matches(row.name)) rows.push(row);
+    }
+  }
+  rows.sort((a, b) => compareBytes(a.date, b.date));
+  const { results, truncated } = mostRecent(rows);
+  return {
+    matched_name: null,
+    suggestions: matched.slice(0, MAX_SEARCH_SUGGESTIONS),
+    results,
+    truncated: truncated || matched.length >= MAX_FALLBACK_NAMES,
+  };
 }
 
 /**
  * `GET /search`: without dates, name suggestions (`ILIKE '%query%'`). With
- * dates, the exact (case- and whitespace-folded) name's results in the range,
- * or, failing that, every matching name's results plus suggestions.
+ * dates (`startDate` to `endDate`, both inclusive), the exact (case- and
+ * whitespace-folded) name's results in the range, or, failing that, every
+ * matching name's results plus suggestions. Results are oldest first, at most
+ * `MAX_SEARCH_RESULT_ROWS` of them; see `SearchAnswer`.
  */
 export const search = query({
   args: {
@@ -251,38 +316,24 @@ export const search = query({
     startDate: v.optional(v.string()),
     endDate: v.optional(v.string()),
   },
-  handler: async (ctx, args) => {
+  handler: async (ctx, args): Promise<SearchAnswer> => {
     requireNonEmpty('query', args.query);
     requireIsoDate('start_date', args.startDate);
     requireIsoDate('end_date', args.endDate);
     const matchingNames = async (limit: number) => searchDirectory(await searchText(ctx, args.query), args.query, limit);
 
     if (args.startDate === undefined || args.endDate === undefined) {
-      return { matched_name: null, suggestions: await matchingNames(MAX_SEARCH_SUGGESTIONS), results: [] };
+      return { matched_name: null, suggestions: await matchingNames(MAX_SEARCH_SUGGESTIONS), results: [], truncated: false };
     }
     const start = args.startDate;
     const end = args.endDate;
+    if (end < start) throw apiError(400, 'end_date must not be before start_date');
 
     const exactKey = normalizeName(args.query);
-    const exact = inRange((await readHistories(ctx, [exactKey])).get(exactKey) ?? [], start, end);
-    if (exact.length > 0) {
-      return { matched_name: args.query, suggestions: [], results: exact.slice(0, MAX_SEARCH_RESULT_ROWS) };
-    }
+    const exact = exactSearchAnswer(args.query, (await readHistories(ctx, [exactKey])).get(exactKey) ?? [], start, end);
+    if (exact) return exact;
 
     const matched = await matchingNames(MAX_FALLBACK_NAMES);
-    const histories = await readHistories(ctx, distinctNameKeys(matched));
-    const matches = nameMatcher(args.query);
-    const rows: ApiLiftingResult[] = [];
-    for (const history of histories.values()) {
-      for (const row of inRange(history, start, end)) {
-        if (matches(row.name)) rows.push(row);
-      }
-    }
-    rows.sort((a, b) => compareBytes(a.date, b.date));
-    return {
-      matched_name: null,
-      suggestions: matched.slice(0, MAX_SEARCH_SUGGESTIONS),
-      results: rows.slice(0, MAX_SEARCH_RESULT_ROWS),
-    };
+    return fallbackSearchAnswer(args.query, matched, await readHistories(ctx, distinctNameKeys(matched)), start, end);
   },
 });

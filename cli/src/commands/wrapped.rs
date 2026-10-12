@@ -46,8 +46,9 @@ pub fn current_year() -> i32 {
 }
 
 pub async fn get_athlete_year(name: &str, year: i32) -> Result<SearchResponse> {
+    // `results:search` includes both ends of the range.
     let start_date = format!("{year:04}-01-01");
-    let end_date = format!("{:04}-01-01", year + 1);
+    let end_date = format!("{year:04}-12-31");
     let args = serde_json::json!({ "query": name, "startDate": start_date, "endDate": end_date });
 
     query(queries::SEARCH, &args).await
@@ -57,8 +58,13 @@ pub fn exact_name_results(name: &str, response: SearchResponse) -> Result<Vec<Li
     let results = filter_exact_name(name, response.results);
 
     if results.is_empty() && !response.suggestions.is_empty() {
+        let narrow = if response.truncated {
+            " (more athletes match; type more of the name)"
+        } else {
+            ""
+        };
         bail!(
-            "No exact results found for \"{name}\". Suggestions: {}",
+            "No exact results found for \"{name}\". Suggestions: {}{narrow}",
             response.suggestions.join(", ")
         );
     }
@@ -440,6 +446,7 @@ mod tests {
             matched_name: None,
             suggestions: vec!["Jane Doe".to_string()],
             results: vec![result("2026-01-01", "Meet", [70.0; 6], 70.0, 90.0, 160.0)],
+            truncated: false,
         };
 
         let error = exact_name_results("Janet Doe", response)
@@ -447,6 +454,21 @@ mod tests {
             .to_string();
 
         assert!(error.contains("Suggestions: Jane Doe"));
+        assert!(!error.contains("more athletes match"));
+    }
+
+    #[test]
+    fn exact_name_filter_asks_to_narrow_a_truncated_search() {
+        let response = SearchResponse {
+            matched_name: None,
+            suggestions: vec!["Jane Doe".to_string()],
+            results: Vec::new(),
+            truncated: true,
+        };
+
+        let error = exact_name_results("Doe", response).unwrap_err().to_string();
+
+        assert!(error.contains("Suggestions: Jane Doe (more athletes match; type more of the name)"));
     }
 
     #[test]

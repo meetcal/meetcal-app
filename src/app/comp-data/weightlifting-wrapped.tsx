@@ -236,8 +236,9 @@ export default function WeightliftingWrappedScreen() {
     setLoading(true);
     try {
       const normalizedName = searchQuery.trim();
+      // `results:search` includes both ends of the range.
       const startDate = `${selectedYear}-01-01`;
-      const endDate = `${selectedYear + 1}-01-01`;
+      const endDate = `${selectedYear}-12-31`;
 
       const response = await searchApi(normalizedName, startDate, endDate);
       const selection = selectWrappedRows(response);
@@ -254,7 +255,10 @@ export default function WeightliftingWrappedScreen() {
         setDidYouMean(true);
         showToast({
           type: "info",
-          message: `Several athletes match ${normalizedName}. Pick one.`,
+          // Truncated: more athletes matched than the answer holds.
+          message: response.truncated
+            ? `Many athletes match ${normalizedName}. Pick one, or type more of the name.`
+            : `Several athletes match ${normalizedName}. Pick one.`,
         });
         return;
       }

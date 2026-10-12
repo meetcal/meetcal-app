@@ -43,10 +43,11 @@ pub fn Wrapped() -> impl IntoView {
 }
 
 async fn athlete(name: &str, year: i32) -> Result<(String, WrappedStats), String> {
+    // `results:search` includes both ends of the range.
     let query = AthleteSearchQuery::between(
         name.to_owned(),
         format!("{year:04}-01-01"),
-        format!("{:04}-01-01", year + 1),
+        format!("{year:04}-12-31"),
     );
     let response: AthleteSearchResponse = query_with(queries::SEARCH, &query)
         .await

@@ -228,6 +228,7 @@ describe("WeightliftingWrappedScreen athlete selection", () => {
     rangedSearchAnswers({
       matchedName: null,
       suggestions: ["Jane Smith", "John Smith"],
+      truncated: false,
       results: [
         liftRow("John Smith", "2025-03-01", 300),
         liftRow("Jane Smith", "2025-04-01", 150),
@@ -253,10 +254,32 @@ describe("WeightliftingWrappedScreen athlete selection", () => {
     expect(texts()).not.toContain("DID YOU MEAN…");
   });
 
+  it("searches the whole calendar year, and asks for more of the name when the answer was cut", async () => {
+    rangedSearchAnswers({
+      matchedName: null,
+      suggestions: ["Jane Smith", "John Smith"],
+      truncated: true,
+      results: [
+        liftRow("John Smith", "2025-03-01", 300),
+        liftRow("Jane Smith", "2025-04-01", 150),
+      ],
+    });
+    await submit("Smith");
+
+    // `results:search` includes both ends, so the year ends on 31 December.
+    const ranged = jest.mocked(searchApi).mock.calls.find(([, startDate]) => startDate);
+    const year = ranged?.[1]?.slice(0, 4);
+    expect(ranged?.slice(1)).toEqual([`${year}-01-01`, `${year}-12-31`]);
+    expect(jest.mocked(showToast)).toHaveBeenCalledWith(
+      expect.objectContaining({ type: "info", message: expect.stringContaining("type more of the name") }),
+    );
+  });
+
   it("builds the Wrapped of an exact match under the athlete's name", async () => {
     rangedSearchAnswers({
       matchedName: "john smith",
       suggestions: [],
+      truncated: false,
       results: [liftRow("John Smith", "2025-03-01", 300)],
     });
     await submit("john smith");
@@ -271,6 +294,7 @@ describe("WeightliftingWrappedScreen slide pager", () => {
     rangedSearchAnswers({
       matchedName: "John Smith",
       suggestions: [],
+      truncated: false,
       results: [liftRow("John Smith", "2025-03-01", 300)],
     });
     await submit("John Smith");
