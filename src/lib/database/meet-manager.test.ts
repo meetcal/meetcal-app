@@ -771,6 +771,82 @@ describe("cache eviction during prefetch", () => {
       resetStorageMocks();
     }
   });
+
+  // The sweep removed the evicted meet's cache entry whatever happened
+  // during its clear, so a meet reopened meanwhile lost its fresh stamp.
+  it("keeps the access stamp of a meet reopened while it was being cleared", async () => {
+    const store = useBackedStorage({
+      [MEET_CACHE_KEY]: JSON.stringify({
+        totalSize: 0,
+        meets: {
+          "Meet E": { lastAccessed: 5, size: 0 },
+          "Meet D": { lastAccessed: 4, size: 0 },
+          "Meet B": { lastAccessed: 2, size: 0 },
+        },
+      }),
+    });
+    setExplicitlyDownloaded(() => false);
+    let releaseClear!: () => void;
+    const clearGate = new Promise<void>((resolve) => {
+      releaseClear = resolve;
+    });
+    mockClearMeetData.mockImplementationOnce(() => clearGate);
+
+    try {
+      const opening = prefetchCriticalMeetData("Meet F" as any);
+      for (let i = 0; i < 50 && mockClearMeetData.mock.calls.length === 0; i += 1) {
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      }
+      expect(mockClearMeetData).toHaveBeenCalledWith("Meet B");
+      // "Meet B" itself is opened again while its clear is running.
+      await touchMeetAccess("Meet B" as any);
+      releaseClear();
+      await opening;
+
+      const info = JSON.parse(store.get(MEET_CACHE_KEY)!);
+      expect(info.meets["Meet B"]).toEqual({ lastAccessed: expect.any(Number), size: 0 });
+      expect(info.meets["Meet B"].lastAccessed).toBeGreaterThan(5);
+    } finally {
+      resetStorageMocks();
+    }
+  });
+
+  it("does not evict a meet that is being opened", async () => {
+    useBackedStorage({
+      [MEET_CACHE_KEY]: JSON.stringify({
+        totalSize: 0,
+        meets: {
+          "Meet E": { lastAccessed: 5, size: 0 },
+          "Meet D": { lastAccessed: 4, size: 0 },
+          "Meet C": { lastAccessed: 3, size: 0 },
+          "Meet B": { lastAccessed: 2, size: 0 },
+        },
+      }),
+    });
+    setExplicitlyDownloaded(() => false);
+    // "Meet B"'s open is still waiting on its roster, so it has not stamped
+    // its access yet.
+    let releaseRoster!: (value: unknown[]) => void;
+    mockFetchAthletesWithSession.mockImplementation((meet: string) =>
+      meet === "Meet B"
+        ? new Promise((resolve) => {
+            releaseRoster = resolve;
+          })
+        : Promise.resolve([]),
+    );
+
+    try {
+      const openingB = prefetchCriticalMeetData("Meet B" as any);
+      await prefetchCriticalMeetData("Meet F" as any);
+
+      expect(mockClearMeetData).not.toHaveBeenCalledWith("Meet B");
+      releaseRoster([]);
+      await openingB;
+    } finally {
+      resetStorageMocks();
+      mockFetchAthletesWithSession.mockResolvedValue([]);
+    }
+  });
 });
 
 describe("package revalidation with ETag", () => {

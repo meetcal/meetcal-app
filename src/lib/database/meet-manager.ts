@@ -635,7 +635,8 @@ async function cleanupOldMeetData() {
   const explicitlyDownloaded = await getExplicitlyDownloadedMeetIds();
 
   let implicitKept = 0;
-  const evicted: MeetName[] = [];
+  // Each evicted meet with the access stamp it was evicted under.
+  const evicted: { meet: MeetName; lastAccessed: number }[] = [];
   for (const [meet, snapshot] of meets) {
     if (explicitlyDownloaded.has(meet)) {
       continue;
@@ -657,16 +658,32 @@ async function cleanupOldMeetData() {
     if (latest && latest.lastAccessed !== snapshot.lastAccessed) {
       continue;
     }
-    await clearMeetData(meet);
+    // Being opened right now: its access is stamped only once the open's
+    // saves are done, so the stamp check above cannot see it yet.
+    if (criticalPrefetchRequests.has(meet) || fullPrefetchRequests.has(meet)) {
+      continue;
+    }
+    // The validator goes first, so a download that starts during the clear
+    // fetches the package in full rather than trusting a `304` for data the
+    // clear is removing. A save that starts during the clear waits for it
+    // (`clearMeetData` and the meet's saves share one chain), so a meet
+    // reopened meanwhile keeps what it saves.
     await clearPackageEtag(meet);
-    evicted.push(meet);
+    await clearMeetData(meet);
+    evicted.push({ meet, lastAccessed: snapshot.lastAccessed });
   }
 
   if (evicted.length === 0) return;
   // Only the evicted entries are removed, from the blob as it is now:
   // writing back the snapshot dropped every access stamped during the sweep.
+  // A meet stamped again while it was being cleared was reopened; its new
+  // stamp (and the data its open saved after the clear) stays.
   await updateCacheInfo((info) => {
-    for (const meet of evicted) delete info.meets[meet];
+    for (const { meet, lastAccessed } of evicted) {
+      const current = info.meets[meet];
+      if (current && current.lastAccessed !== lastAccessed) continue;
+      delete info.meets[meet];
+    }
   });
 }
 

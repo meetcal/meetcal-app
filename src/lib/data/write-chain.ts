@@ -23,3 +23,27 @@ export function createWriteChain(): WriteChain {
     return run;
   };
 }
+
+/**
+ * One `WriteChain` per key, for values that are many separate keys rather
+ * than one blob: a meet's schedule, roster, results and session caches are
+ * written and cleared under the meet id. Tasks for the same key run one after
+ * another; different keys do not wait for each other. A key's entry is
+ * dropped once its last task settles, so the map holds only keys with work
+ * queued.
+ */
+export type KeyedWriteChain = <T>(key: string, task: () => Promise<T>) => Promise<T>;
+
+export function createKeyedWriteChain(): KeyedWriteChain {
+  const tails = new Map<string, Promise<unknown>>();
+  return <T>(key: string, task: () => Promise<T>): Promise<T> => {
+    const previous = tails.get(key) ?? Promise.resolve();
+    const run = previous.catch(() => undefined).then(task);
+    tails.set(key, run);
+    const settle = () => {
+      if (tails.get(key) === run) tails.delete(key);
+    };
+    run.then(settle, settle);
+    return run;
+  };
+}

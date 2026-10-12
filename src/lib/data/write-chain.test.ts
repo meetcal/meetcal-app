@@ -1,4 +1,4 @@
-import { createWriteChain } from "@/lib/data/write-chain";
+import { createKeyedWriteChain, createWriteChain } from "@/lib/data/write-chain";
 
 describe("createWriteChain", () => {
   it("runs each task only after the previous one settled", async () => {
@@ -49,5 +49,43 @@ describe("createWriteChain", () => {
     await expect(second(async () => "not blocked")).resolves.toBe("not blocked");
     release();
     await blocked;
+  });
+});
+
+describe("createKeyedWriteChain", () => {
+  it("runs one key's tasks in order while other keys go ahead", async () => {
+    const chain = createKeyedWriteChain();
+    const order: string[] = [];
+    let release!: () => void;
+    const clear = chain("Meet A", async () => {
+      order.push("clear:start");
+      await new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      order.push("clear:end");
+    });
+    const save = chain("Meet A", async () => {
+      order.push("save");
+    });
+
+    await chain("Meet B", async () => {
+      order.push("other meet");
+    });
+    expect(order).toEqual(["clear:start", "other meet"]);
+
+    release();
+    await Promise.all([clear, save]);
+    expect(order).toEqual(["clear:start", "other meet", "clear:end", "save"]);
+  });
+
+  it("rejects only the failed task's caller and keeps the key's chain going", async () => {
+    const chain = createKeyedWriteChain();
+    const failed = chain("Meet A", async () => {
+      throw new Error("disk full");
+    });
+    const next = chain("Meet A", async () => "written");
+
+    await expect(failed).rejects.toThrow("disk full");
+    await expect(next).resolves.toBe("written");
   });
 });

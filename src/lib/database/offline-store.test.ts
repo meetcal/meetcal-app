@@ -1662,6 +1662,39 @@ describe("store index writes", () => {
     });
   });
 
+  // The eviction sweep clears a meet key by key. A save for that same meet
+  // (the user opening it again) used to land in the middle and be deleted by
+  // the rest of the clear.
+  it("keeps what a meet saved while its own clear was in flight", async () => {
+    await saveMeetAthletes("Reopened", [athlete("Old Roster")] as never);
+    const removeItem = AsyncStorage.removeItem as jest.Mock;
+    let releaseRemoval!: () => void;
+    const removalGate = new Promise<void>((resolve) => {
+      releaseRemoval = resolve;
+    });
+    let parked = false;
+    removeItem.mockImplementationOnce(async (key: string) => {
+      parked = true;
+      await removalGate;
+      mockStorage.delete(key);
+    });
+
+    const clearing = clearMeetData("Reopened" as never);
+    for (let i = 0; i < 20 && !parked; i += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    }
+    expect(parked).toBe(true);
+    // The clear is parked on its first key removal; the meet is reopened.
+    const saving = saveMeetAthletes("Reopened", [athlete("New Roster")] as never);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    releaseRemoval();
+    await Promise.all([clearing, saving]);
+
+    await expect(getMeetData("Reopened" as never)).resolves.toMatchObject({
+      athletes: [expect.objectContaining({ name: "Athlete New Roster" })],
+    });
+  });
+
   it("lands every entry of concurrent saves for different meets", async () => {
     await Promise.all(
       ["A", "B", "C", "D"].map((meet) => saveMeetAthletes(meet, [athlete(meet)] as never)),
