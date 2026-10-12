@@ -30,6 +30,7 @@ import {
 } from "@/lib/database/offline-store";
 import { fetchAthletesWithSession, fetchSchedule } from "@/lib/database/queries";
 import { isNetworkAvailable } from "@/lib/networkUtils";
+import { premiumActionFor, resolvePremiumAccess } from "@/lib/premium-access";
 import { captureViewAsPng } from "@/lib/share-image";
 import { getLastYearBestsBatch, preloadYearBests, type YearBests } from "@/lib/start-list-api";
 import {
@@ -184,7 +185,7 @@ export default function StartListScreen() {
   const [showSaveModal, setShowSaveModal] = useState(false);
   const [showCalendarPicker, setShowCalendarPicker] = useState(false);
   const { selectedMeet, meetDetails } = useSelectedMeet();
-  const { isSubscribed } = useSubscription();
+  const { isSubscribed, isLoading: isSubscriptionLoading } = useSubscription();
   const { requireAuth } = useAuthGuard();
   const { currentTheme } = useTheme();
   // Row inputs, resolved once here instead of once per mounted row (see
@@ -1322,10 +1323,13 @@ export default function StartListScreen() {
     if (authResult === null || authResult === false) {
       return;
     }
-    // 2. Check subscription
-    if (isSubscribed) {
+    // 2. Check subscription. Unknown says so; it never opens the paywall.
+    const premium = premiumActionFor(
+      resolvePremiumAccess({ isSubscribed, isLoading: isSubscriptionLoading }),
+    );
+    if (premium.kind === "proceed") {
       captureScheduleImage();
-    } else {
+    } else if (premium.kind === "paywall") {
       router.push({
         pathname: "/shared-screens/paywall",
         params: {
@@ -1333,6 +1337,8 @@ export default function StartListScreen() {
           feature: "share-schedule-image",
         },
       });
+    } else {
+      showToast(premium.toast);
     }
   };
 
@@ -1346,10 +1352,13 @@ export default function StartListScreen() {
     if (authResult === null || authResult === false) {
       return;
     }
-    // 2. Check subscription
-    if (isSubscribed) {
+    // 2. Check subscription. Unknown says so; it never opens the paywall.
+    const premium = premiumActionFor(
+      resolvePremiumAccess({ isSubscribed, isLoading: isSubscriptionLoading }),
+    );
+    if (premium.kind === "proceed") {
       generateShareableScheduleCsv();
-    } else {
+    } else if (premium.kind === "paywall") {
       router.push({
         pathname: "/shared-screens/paywall",
         params: {
@@ -1357,6 +1366,8 @@ export default function StartListScreen() {
           feature: "export-csv",
         },
       });
+    } else {
+      showToast(premium.toast);
     }
   };
 

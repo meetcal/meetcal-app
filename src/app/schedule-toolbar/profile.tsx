@@ -13,6 +13,7 @@ import { useSubscription } from "@/contexts/SubscriptionContext";
 import { useAppColors } from "@/hooks/useAppColors";
 import { clearAuthCache } from "@/lib/authCache";
 import { clearCachedMeetData, clearCacheToast } from "@/lib/database/clear-cache";
+import { resolvePremiumAccess } from "@/lib/premium-access";
 import { useAuthGuard } from "@/utils/authGuard";
 import { useClerk, useUser } from "@clerk/expo";
 import { Stack, usePathname, useRouter } from "expo-router";
@@ -83,7 +84,15 @@ export default function ProfileScreen() {
   const [isAccountOpen, setIsAccountOpen] = useState(false);
   const [isClearingCache, setIsClearingCache] = useState(false);
   const insets = useSafeAreaInsets();
-  const { isSubscribed, subscriptionType } = useSubscription();
+  const {
+    isSubscribed,
+    subscriptionType,
+    isLoading: isSubscriptionLoading,
+  } = useSubscription();
+  const premiumAccess = resolvePremiumAccess({
+    isSubscribed,
+    isLoading: isSubscriptionLoading,
+  });
   const { requireAuth } = useAuthGuard();
   const { forceSync, refreshAvailableMeets } = useSelectedMeet();
 
@@ -191,12 +200,14 @@ export default function ProfileScreen() {
 
         <View style={[styles.card, { backgroundColor: colors.card }]}>
           <NotificationSettings
-            subscriptionStatus={subscriptionType || "free"}
+            // Not "free": before the first answer `subscriptionType` is null,
+            // and a subscriber was shown the upgrade prompt.
+            subscriptionStatus={subscriptionType ?? "unknown"}
             requireAuth={requireAuth}
             router={router}
           />
           <AutoUnsaveSetting
-            isSubscribed={Boolean(isSubscribed)}
+            premiumAccess={premiumAccess}
             requireAuth={requireAuth}
             router={router}
           />

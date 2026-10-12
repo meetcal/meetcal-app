@@ -177,9 +177,12 @@ describe("SubscriptionProvider", () => {
     "treats a malformed cache %s as no cache",
     async (raw) => {
       mockSecureStore.set(SECURE_KEY, raw);
+      // RevenueCat has not answered yet: unknown, and still loading.
+      mockGetCustomerInfo.mockReturnValue(new Promise(() => {}));
       const value = await mountProvider();
       expect(value.current.isSubscribed).toBeNull();
       expect(value.current.subscriptionType).toBe("unknown");
+      expect(value.current.isLoading).toBe(true);
     },
   );
 
@@ -208,12 +211,17 @@ describe("SubscriptionProvider", () => {
     expect(value.current.isLoading).toBe(false);
   });
 
-  it("takes RevenueCat's answer online and writes it to SecureStore", async () => {
+  it("with no cache, takes RevenueCat's answer at once and writes it to SecureStore", async () => {
     mockGetCustomerInfo.mockResolvedValue(customerInfo("meetcal_lifetime"));
 
     const value = await mountProvider();
-    expect(value.current.isSubscribed).toBeNull();
 
+    // No 8 s hold: with nothing cached, "unknown, not loading" would tell a
+    // subscriber every premium surface could not confirm the subscription.
+    expect(mockGetCustomerInfo).toHaveBeenCalledTimes(1);
+    expect(value.current.isLoading).toBe(false);
+
+    // And no second, delayed check on top of it.
     await runInitialRefresh();
 
     expect(mockGetCustomerInfo).toHaveBeenCalledTimes(1);
@@ -280,6 +288,42 @@ describe("SubscriptionProvider", () => {
     expect(value.current.isUsingStaleCache).toBe(false);
   });
 
+  it("offline with no cache, is unknown (not loading) and re-checks on reconnect", async () => {
+    mockIsNetworkAvailable.mockResolvedValue(false);
+
+    const value = await mountProvider();
+    expect(value.current.isSubscribed).toBeNull();
+    expect(value.current.subscriptionType).toBe("unknown");
+    expect(value.current.isLoading).toBe(false);
+    expect(mockGetCustomerInfo).not.toHaveBeenCalled();
+
+    mockIsNetworkAvailable.mockResolvedValue(true);
+    mockGetCustomerInfo.mockResolvedValue(customerInfo("meetcal_quarterly"));
+    await act(async () => {
+      mockNetworkListener?.(true);
+    });
+    await flush();
+
+    expect(mockGetCustomerInfo).toHaveBeenCalledTimes(1);
+    expect(value.current.isSubscribed).toBe(true);
+  });
+
+  it("recheckSubscription asks RevenueCat again", async () => {
+    mockIsNetworkAvailable.mockResolvedValue(false);
+    const value = await mountProvider();
+    expect(value.current.isSubscribed).toBeNull();
+
+    mockIsNetworkAvailable.mockResolvedValue(true);
+    mockGetCustomerInfo.mockResolvedValue(customerInfo(null));
+    await act(async () => {
+      value.current.recheckSubscription();
+    });
+    await flush();
+
+    expect(mockGetCustomerInfo).toHaveBeenCalledTimes(1);
+    expect(value.current.isSubscribed).toBe(false);
+  });
+
   it("re-checks on reconnect only while running on a stale cache", async () => {
     mockIsNetworkAvailable.mockResolvedValue(false);
     mockSecureStore.set(
@@ -323,6 +367,7 @@ describe("SubscriptionProvider", () => {
     }
 
     it("publishes an active entitlement and writes it to SecureStore", async () => {
+      mockGetCustomerInfo.mockReturnValue(new Promise(() => {}));
       const value = await mountProvider();
       expect(value.current.isSubscribed).toBeNull();
 
@@ -447,6 +492,8 @@ describe("SubscriptionProvider", () => {
 
   it("reports a failed restore as not subscribed and keeps the current state", async () => {
     (Purchases.restorePurchases as jest.Mock).mockRejectedValue(new Error("store down"));
+    // Offline with no cache: the state to keep is "unknown".
+    mockIsNetworkAvailable.mockResolvedValue(false);
     const value = await mountProvider();
 
     let restored: boolean | undefined;

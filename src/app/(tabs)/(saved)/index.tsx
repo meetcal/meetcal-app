@@ -48,6 +48,7 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useScreenHorizontalInsets } from "@/hooks/useScreenInsets";
 import { devLog } from "@/lib/logger";
+import { premiumActionFor, resolvePremiumAccess } from "@/lib/premium-access";
 
 export default function SavedScreen() {
   const screenInsets = useScreenHorizontalInsets();
@@ -71,7 +72,7 @@ export default function SavedScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [hasMigrated, setHasMigrated] = useState(false);
   const [showCalendarPicker, setShowCalendarPicker] = useState(false);
-  const { isSubscribed } = useSubscription();
+  const { isSubscribed, isLoading: isSubscriptionLoading } = useSubscription();
   const { requireAuth } = useAuthGuard();
   const colors = useAppColors();
   const [calendarDestinations, setCalendarDestinations] = useState<
@@ -205,8 +206,16 @@ export default function SavedScreen() {
       return;
     }
 
-    // 2. Then check subscription
-    if (!isSubscribed) {
+    // 2. Then check subscription. Unknown says so; it never opens the
+    // paywall in front of a subscriber whose entitlement can't be confirmed.
+    const premium = premiumActionFor(
+      resolvePremiumAccess({ isSubscribed, isLoading: isSubscriptionLoading }),
+    );
+    if (premium.kind === "notify") {
+      showToast(premium.toast);
+      return;
+    }
+    if (premium.kind === "paywall") {
       router.push({
         pathname: "/shared-screens/paywall",
         params: {
@@ -359,7 +368,7 @@ export default function SavedScreen() {
         },
       ],
     );
-  }, [requireAuth, isSubscribed, router, filteredSessions, isSchedulesLoading, sessionLookupByMeet, allowedMeetNames]);
+  }, [requireAuth, isSubscribed, isSubscriptionLoading, router, filteredSessions, isSchedulesLoading, sessionLookupByMeet, allowedMeetNames]);
 
   const handleAndroidCalendarSelection = useCallback(
     async (destination: CalendarDestination) => {

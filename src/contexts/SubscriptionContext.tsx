@@ -9,10 +9,11 @@ import { devLog, devWarn } from '@/lib/logger';
 import { SUBSCRIPTION_ENTITLEMENT_ID } from '@/lib/premium-intent';
 
 /**
- * `setSubscribed` and `checkSubscriptionStatus` are provider internals, not
- * part of this contract: entitlement is server truth (RevenueCat), so a screen
- * that could write it locally is a bug waiting to happen. The provider keeps
- * itself in sync via its own RevenueCat listener and reconnect effect.
+ * `setSubscribed` is a provider internal, not part of this contract:
+ * entitlement is server truth (RevenueCat), so a screen that could write it
+ * locally is a bug waiting to happen. The provider keeps itself in sync via
+ * its own RevenueCat listener and reconnect effect; `recheckSubscription`
+ * only asks RevenueCat again.
  */
 type SubscriptionContextType = {
   isSubscribed: boolean | null;
@@ -26,6 +27,12 @@ type SubscriptionContextType = {
    * implementation stays exposed rather than being deleted and rewritten.
    */
   restorePurchases: () => Promise<boolean>;
+  /**
+   * Ask RevenueCat again (falling back to the cache offline). For the
+   * "can't confirm your subscription" state's Retry; it never writes an
+   * entitlement the server did not report.
+   */
+  recheckSubscription: () => void;
   isUsingStaleCache: boolean;
   lastSyncTimestamp: number | null;
 };
@@ -383,6 +390,16 @@ export function SubscriptionProvider({ children }: { children: React.ReactNode }
         if (cached?.isExpired) {
           setIsUsingStaleCache(true);
         }
+
+        // With nothing cached there is nothing to paint first, and waiting
+        // out the delay published "unknown" (not loading) for 8 s, so every
+        // premium surface told a subscriber on a fresh install that it could
+        // not confirm the subscription. Check now; `isLoading` stays true
+        // until it answers.
+        if (!cached) {
+          void checkSubscriptionStatus();
+          return;
+        }
         setIsLoading(false);
 
         refreshTimeout = setTimeout(() => {
@@ -450,8 +467,11 @@ export function SubscriptionProvider({ children }: { children: React.ReactNode }
     const unsubscribe = subscribeToNetworkChanges(async (isConnected) => {
       devLog('Network state changed:', isConnected);
 
-      if (isConnected && isUsingStaleCache) {
-        devLog('Network restored and using stale cache, refreshing subscription...');
+      // Unknown (offline with no cache, or a failed check) recovers the same
+      // way a stale cache does: the first reconnect asks RevenueCat, unless
+      // a check is already in flight.
+      if (isConnected && (isUsingStaleCache || (isSubscribed === null && !isLoading))) {
+        devLog('Network restored with a stale or unknown entitlement, refreshing subscription...');
         await checkSubscriptionStatus();
       }
     });
@@ -459,7 +479,18 @@ export function SubscriptionProvider({ children }: { children: React.ReactNode }
     return () => {
       unsubscribe();
     };
-  }, [isUsingStaleCache]);
+  }, [isUsingStaleCache, isSubscribed, isLoading]);
+
+  // `checkSubscriptionStatus` is an Effect Event, callable only from effects,
+  // so a Retry tap requests a check and this effect runs it.
+  const [recheckRequest, setRecheckRequest] = useState(0);
+  useEffect(() => {
+    if (recheckRequest === 0) return;
+    void checkSubscriptionStatus();
+  }, [recheckRequest]);
+  const recheckSubscription = useCallback(() => {
+    setRecheckRequest((count) => count + 1);
+  }, []);
 
   const setSubscribed = async (value: boolean, type: 'free' | 'quarterly' | 'lifetime') => {
     try {
@@ -494,6 +525,7 @@ export function SubscriptionProvider({ children }: { children: React.ReactNode }
         subscriptionType,
         isLoading,
         restorePurchases,
+        recheckSubscription,
         isUsingStaleCache,
         lastSyncTimestamp,
       }}
