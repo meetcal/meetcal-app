@@ -14,9 +14,14 @@ type ZonedDateParts = {
 export const PARTS_FORMATTER_CACHE_LIMIT = 32;
 /**
  * Half-width of the window probed for a DST transition around a wall-clock
- * time: every US offset change lands inside +/- 12 hours of it.
+ * time. The instant a wall time names is within 14 hours (the widest UTC
+ * offset, +14:00) of the same digits read as UTC, so probing that far finds
+ * the offset on both sides of any transition that can affect it. Twelve hours
+ * covered every US zone but missed the offset in force before a change in a
+ * zone ahead of UTC+12 (Auckland and Chatham daylight time): a real Chatham
+ * time resolved an hour early, and an Auckland spring-forward gap moved back.
  */
-const DST_PROBE_WINDOW_MS = 12 * 60 * 60 * 1000;
+const DST_PROBE_WINDOW_MS = 14 * 60 * 60 * 1000;
 const MS_PER_MINUTE = 60 * 1000;
 
 const PARTS_FORMATTER_CACHE = new Map<string, Intl.DateTimeFormat>();
@@ -129,9 +134,12 @@ export function parseClockTime(time: string): { hour: number; minute: number } {
   if (amPmMatch) {
     const rawHour = Number(amPmMatch[1]);
     const minute = Number(amPmMatch[2]);
+    const second = Number(amPmMatch[3] ?? "0");
     const period = amPmMatch[4].toUpperCase();
 
-    if (rawHour < 1 || rawHour > 12 || minute < 0 || minute > 59) {
+    // Seconds are range-checked as in the 24-hour branch, which rejects
+    // "13:00:99"; "1:00:99 PM" used to be the one shape that slipped through.
+    if (rawHour < 1 || rawHour > 12 || minute < 0 || minute > 59 || second > 59) {
       throw new Error(`Invalid time: ${time}`);
     }
 
@@ -157,7 +165,11 @@ export function getOffsetMinutesAtInstant(
   instant: Date,
 ): number {
   const zonedParts = getZonedParts(timeZone, instant);
-  return (toUtcTimestamp(zonedParts) - instant.getTime()) / MS_PER_MINUTE;
+  // The parts stop at the minute, so compare them with the instant's minute:
+  // 12:00:30Z in UTC would otherwise come out as an offset of -0.5.
+  const minuteStart =
+    Math.floor(instant.getTime() / MS_PER_MINUTE) * MS_PER_MINUTE;
+  return (toUtcTimestamp(zonedParts) - minuteStart) / MS_PER_MINUTE;
 }
 
 export function convertZonedLocalToUTC(
