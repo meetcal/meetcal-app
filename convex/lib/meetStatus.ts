@@ -11,9 +11,19 @@ export type MeetStatus = Doc<'meets'>['status'];
  * a meet in progress says so, without each client re-deriving it.
  */
 export function meetStatusOn(meet: Pick<Doc<'meets'>, 'startDate' | 'endDate'>, localToday: string): MeetStatus {
-  if (meet.endDate < localToday) return 'completed';
-  if (meet.startDate <= localToday) return 'ongoing';
+  if (paddedDate(meet.endDate) < localToday) return 'completed';
+  if (paddedDate(meet.startDate) <= localToday) return 'ongoing';
   return 'upcoming';
+}
+
+/**
+ * `YYYY-M-D` zero-padded to `YYYY-MM-DD`, so it compares as text in calendar
+ * order: the meet scraper stored some dates unpadded ("2026-9-25", which
+ * sorts after "2026-10-12"). Anything else is returned as is.
+ */
+function paddedDate(date: string): string {
+  const match = /^(\d{4})-(\d{1,2})-(\d{1,2})$/.exec(date);
+  return match ? `${match[1]}-${match[2].padStart(2, '0')}-${match[3].padStart(2, '0')}` : date;
 }
 
 /** `meetStatusOn` at `instant`, on the wall calendar of the meet's time zone. */

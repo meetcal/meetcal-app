@@ -237,17 +237,20 @@ describe('meet writes', () => {
           { ...meetRow('Starts today', { startDate: '2026-10-12', endDate: '2026-10-13' }), updatedAt: 1 },
           { ...meetRow('Moved by hand', { status: 'completed' }), updatedAt: 1 },
           { ...meetRow('Long done', { startDate: '2025-01-01', endDate: '2025-01-02', status: 'completed' }), updatedAt: 1 },
+          // Stored unpadded by the old meet scraper: ended Sep 25.
+          { ...meetRow('Unpadded', { startDate: '2026-9-24', endDate: '2026-9-25' }), updatedAt: 1 },
         ],
       });
-      expect(await update(ctx, {})).toBe(3);
+      expect(await update(ctx, {})).toBe(4);
       expect(rows('meets').map((m) => [m.name, m.status])).toEqual([
         ['LA ends today', 'ongoing'],
         ['London ended', 'completed'],
         ['Starts today', 'ongoing'],
         ['Moved by hand', 'upcoming'],
         ['Long done', 'completed'],
+        ['Unpadded', 'completed'],
       ]);
-      expect(rows('view_hints').map((h) => h.key).sort()).toEqual(['London ended', 'Moved by hand', 'Starts today']);
+      expect(rows('view_hints').map((h) => h.key).sort()).toEqual(['London ended', 'Moved by hand', 'Starts today', 'Unpadded']);
       expect(await update(ctx, {})).toBe(0);
     });
   });

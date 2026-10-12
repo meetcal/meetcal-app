@@ -83,6 +83,13 @@ describe('meet status from dates (#158, #160)', () => {
     expect(meetStatusAt({ ...meet, timeZone: 'America/Los_Angeles' }, Date.UTC(2026, 9, 10, 6))).toBe('upcoming');
   });
 
+  it('reads unpadded dates in calendar order', () => {
+    // "2026-9-25" sorts after "2026-10-12" as text.
+    expect(meetStatusOn({ startDate: '2026-9-24', endDate: '2026-9-25' }, '2026-10-12')).toBe('completed');
+    expect(meetStatusOn({ startDate: '2026-10-5', endDate: '2026-10-13' }, '2026-10-12')).toBe('ongoing');
+    expect(meetStatusOn({ startDate: '2026-11-1', endDate: '2026-11-2' }, '2026-10-12')).toBe('upcoming');
+  });
+
   it('never puts the earliest local date after any zone', () => {
     expect(earliestLocalDate(Date.UTC(2026, 9, 13, 5))).toBe('2026-10-12');
     expect(earliestLocalDate(Date.UTC(2026, 9, 13, 13))).toBe('2026-10-13');
