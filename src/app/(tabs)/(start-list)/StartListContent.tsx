@@ -353,6 +353,8 @@ export default function StartListScreen() {
       if (!forceRefresh) {
         loadStartedAtRef.current = performance.now();
         loggedReadyRef.current = false;
+        // A failure belongs to the load (and meet) that hit it.
+        setLoadFailure(null);
         setLoading(true);
       }
 
@@ -409,7 +411,12 @@ export default function StartListScreen() {
         let nextAthletes = snapshot.cachedAthletes;
         let nextSchedule = snapshot.cachedSchedule;
 
-        if (athletesResult.status === "fulfilled") {
+        // An empty answer does not replace the saved roster on screen either;
+        // `saveMeetAthletes` already refuses to store it over one.
+        if (
+          athletesResult.status === "fulfilled" &&
+          (athletesResult.value.length > 0 || snapshot.cachedAthletes.length === 0)
+        ) {
           nextAthletes = athletesResult.value;
           saveMeetAthletes(validMeet, nextAthletes).catch(() => {});
         }
