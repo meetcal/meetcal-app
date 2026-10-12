@@ -9,7 +9,11 @@ import {
   PACKAGE_ETAG_STORAGE_KEY,
   getAllCachedLiftingResultsForAthlete,
   getAllCachedLiftingResultsForAthletes,
-  getCachedAthleteBestsForNames,
+  ATHLETE_BESTS_EMPTY_TTL_MS,
+  ATHLETE_BESTS_TTL_MS,
+  getStoredAthleteBestsForNames,
+  isAthleteBestsFresh,
+  listStoredMeets,
   getAthleteLiftingResults,
   getExplicitlyDownloadedMeetIds,
   getMeetData,
@@ -197,8 +201,36 @@ describe("offline-store athlete lifting results", () => {
       null, { ...athlete, name: 123 }, athlete,
     ]));
     expect((await getMeetData("Test Meet")).athletes).toEqual([athlete]);
-    await expect(saveMeetAthletes("Test Meet", [athlete])).resolves.toBeUndefined();
+    await expect(saveMeetAthletes("Test Meet", [athlete])).resolves.toBe(true);
     expect(JSON.parse(mockStorage.get("meetcal_athletes_Test Meet")!)).toEqual([athlete]);
+  });
+
+  it("never replaces a stored roster with an empty one", async () => {
+    const athlete = {
+      memberId: "123", name: "Jane Doe", age: 25, club: "Club",
+      gender: "Women", weightClass: "71kg", entryTotal: 200, adaptive: false,
+      session: { number: 4, platform: "Red", date: "2099-06-20", startTime: "9:00 AM", weighInTime: "7:00 AM" },
+    };
+    await saveMeetAthletes("Test Meet", [athlete] as never);
+    const syncedAt = (await getMeetData("Test Meet" as any)).athletesSyncedAt;
+    const rosterPayload = mockStorage.get("meetcal_athletes_Test Meet");
+
+    // A `200 []` during a re-import, or every row failing the mapper.
+    await expect(saveMeetAthletes("Test Meet", [])).resolves.toBe(false);
+
+    expect(mockStorage.get("meetcal_athletes_Test Meet")).toBe(rosterPayload);
+    const meetData = await getMeetData("Test Meet" as any);
+    expect(meetData.athletes).toHaveLength(1);
+    // The kept roster is not presented as freshly synced.
+    expect(meetData.athletesSyncedAt).toBe(syncedAt);
+    await expect(
+      getSessionAthletesFromMeetCache("Test Meet" as any, 4, "Red"),
+    ).resolves.toHaveLength(1);
+  });
+
+  it("stores an empty roster when nothing was stored before", async () => {
+    await expect(saveMeetAthletes("Empty Meet", [])).resolves.toBe(true);
+    expect(mockStorage.get("meetcal_athletes_Empty Meet")).toBe("[]");
   });
 
   it("writes the roster blob again once the payload actually changes", async () => {
@@ -1014,35 +1046,115 @@ describe("clearImplicitMeetData", () => {
 });
 
 describe("cached athlete bests", () => {
+  const NOW = Date.UTC(2026, 5, 20, 12);
+
   beforeEach(() => {
     mockStorage.clear();
   });
 
   it("round-trips bests under the normalized name and skips blank names", async () => {
-    await saveAthleteBestsBatch({
-      "  Jane   Doe ": { snatch_best: 90, cj_best: 110, total: 200 },
-      "   ": { snatch_best: 1, cj_best: 1, total: 2 },
-    });
+    await saveAthleteBestsBatch(
+      {
+        "  Jane   Doe ": { snatch_best: 90, cj_best: 110, total: 200 },
+        "   ": { snatch_best: 1, cj_best: 1, total: 2 },
+      },
+      NOW,
+    );
 
     expect(AsyncStorage.multiSet).toHaveBeenLastCalledWith([
       [expect.stringContaining("jane doe"), expect.any(String)],
     ]);
-    await expect(getCachedAthleteBestsForNames(["jane doe", "Nobody"])).resolves.toEqual({
-      "jane doe": { snatch_best: 90, cj_best: 110, total: 200 },
+    await expect(getStoredAthleteBestsForNames(["jane doe", "Nobody"], NOW)).resolves.toEqual({
+      "jane doe": {
+        bests: { snatch_best: 90, cj_best: 110, total: 200 },
+        fetchedAt: NOW,
+        isFresh: true,
+      },
     });
   });
 
+  it("expires real bests after a week and \"no results\" after a day", async () => {
+    await saveAthleteBestsBatch(
+      {
+        Lifter: { snatch_best: 90, cj_best: 110, total: 200 },
+        Newcomer: { snatch_best: null, cj_best: null, total: null },
+      },
+      NOW,
+    );
+
+    const at = async (now: number) => {
+      const stored = await getStoredAthleteBestsForNames(["Lifter", "Newcomer"], now);
+      return { lifter: stored.Lifter?.isFresh, newcomer: stored.Newcomer?.isFresh };
+    };
+    await expect(at(NOW + ATHLETE_BESTS_EMPTY_TTL_MS - 1)).resolves.toEqual({
+      lifter: true,
+      newcomer: true,
+    });
+    await expect(at(NOW + ATHLETE_BESTS_EMPTY_TTL_MS)).resolves.toEqual({
+      lifter: true,
+      newcomer: false,
+    });
+    await expect(at(NOW + ATHLETE_BESTS_TTL_MS)).resolves.toEqual({
+      lifter: false,
+      newcomer: false,
+    });
+    // Expired entries are still returned, as a fallback for offline reads.
+    const expired = await getStoredAthleteBestsForNames(["Lifter"], NOW + ATHLETE_BESTS_TTL_MS);
+    expect(expired.Lifter?.bests).toEqual({ snatch_best: 90, cj_best: 110, total: 200 });
+  });
+
+  it("reads an entry stored before bests carried a time as always stale", async () => {
+    mockStorage.set(
+      "meetcal_athlete_bests_jane doe",
+      JSON.stringify({ snatch_best: null, cj_best: null, total: null }),
+    );
+    mockStorage.set(
+      "meetcal_athlete_bests_john roe",
+      JSON.stringify({ snatch_best: 80, cj_best: 100, total: 180 }),
+    );
+
+    await expect(getStoredAthleteBestsForNames(["Jane Doe", "John Roe"], NOW)).resolves.toEqual({
+      "Jane Doe": {
+        bests: { snatch_best: null, cj_best: null, total: null },
+        fetchedAt: 0,
+        isFresh: false,
+      },
+      "John Roe": {
+        bests: { snatch_best: 80, cj_best: 100, total: 180 },
+        fetchedAt: 0,
+        isFresh: false,
+      },
+    });
+  });
+
+  it("treats a fetch time in the future (clock moved back) as stale", () => {
+    const bests = { snatch_best: 90, cj_best: 110, total: 200 };
+    expect(isAthleteBestsFresh(bests, NOW + 60_000, NOW)).toBe(false);
+    expect(isAthleteBestsFresh(bests, NOW, NOW)).toBe(true);
+    expect(isAthleteBestsFresh(bests, 0, NOW)).toBe(false);
+  });
+
   it("reads corrupt or mistyped blobs as missing or null, never as numbers", async () => {
-    await saveAthleteBestsBatch({ "Jane Doe": { snatch_best: 90, cj_best: 110, total: 200 } });
+    await saveAthleteBestsBatch({ "Jane Doe": { snatch_best: 90, cj_best: 110, total: 200 } }, NOW);
     const key = Array.from(mockStorage.keys()).find((k) => k.includes("jane doe"))!;
 
     mockStorage.set(key, "{truncated");
-    await expect(getCachedAthleteBestsForNames(["Jane Doe"])).resolves.toEqual({ "Jane Doe": undefined });
+    await expect(getStoredAthleteBestsForNames(["Jane Doe"], NOW)).resolves.toEqual({});
 
-    mockStorage.set(key, JSON.stringify({ snatch_best: "90", cj_best: null, total: 200 }));
-    await expect(getCachedAthleteBestsForNames(["Jane Doe"])).resolves.toEqual({
-      "Jane Doe": { snatch_best: null, cj_best: null, total: 200 },
+    mockStorage.set(
+      key,
+      JSON.stringify({ v: 2, fetchedAt: NOW, bests: { snatch_best: "90", cj_best: null, total: 200 } }),
+    );
+    await expect(getStoredAthleteBestsForNames(["Jane Doe"], NOW)).resolves.toEqual({
+      "Jane Doe": {
+        bests: { snatch_best: null, cj_best: null, total: 200 },
+        fetchedAt: NOW,
+        isFresh: true,
+      },
     });
+
+    mockStorage.set(key, JSON.stringify({ v: 2, fetchedAt: "yesterday", bests: null }));
+    await expect(getStoredAthleteBestsForNames(["Jane Doe"], NOW)).resolves.toEqual({});
   });
 
   it("writes a roster-sized bests map in bounded multiSet batches", async () => {
@@ -1055,12 +1167,26 @@ describe("cached athlete bests", () => {
       ]),
     );
 
-    await saveAthleteBestsBatch(bests);
+    await saveAthleteBestsBatch(bests, NOW);
 
     expect(multiSet.mock.calls.map(([entries]) => entries.length)).toEqual([500, 500, 201]);
-    await expect(getCachedAthleteBestsForNames(["Athlete 1200"])).resolves.toEqual({
-      "Athlete 1200": { snatch_best: 90, cj_best: 110, total: 200 },
+    await expect(getStoredAthleteBestsForNames(["Athlete 1200"], NOW)).resolves.toEqual({
+      "Athlete 1200": {
+        bests: { snatch_best: 90, cj_best: 110, total: 200 },
+        fetchedAt: NOW,
+        isFresh: true,
+      },
     });
+  });
+
+  it("reads a roster-sized name list in bounded multiGet batches", async () => {
+    const multiGet = AsyncStorage.multiGet as jest.Mock;
+    multiGet.mockClear();
+    const names = Array.from({ length: 1201 }, (_, i) => `Athlete ${i}`);
+
+    await getStoredAthleteBestsForNames(names, NOW);
+
+    expect(multiGet.mock.calls.map(([keys]) => keys.length)).toEqual([500, 500, 201]);
   });
 
   it("does not write at all for an empty map", async () => {
@@ -1073,7 +1199,19 @@ describe("cached athlete bests", () => {
   it("returns an empty record when storage is unavailable", async () => {
     jest.spyOn(console, "error").mockImplementation(() => {});
     (AsyncStorage.multiGet as jest.Mock).mockRejectedValueOnce(new Error("storage unavailable"));
-    await expect(getCachedAthleteBestsForNames(["Jane Doe"])).resolves.toEqual({});
+    await expect(getStoredAthleteBestsForNames(["Jane Doe"])).resolves.toEqual({});
+  });
+
+  it("is removed by clearAllAthleteHistory along with the history", async () => {
+    await saveAthleteBestsBatch({ "Jane Doe": { snatch_best: 90, cj_best: 110, total: 200 } }, NOW);
+    mockStorage.set("meetcal_schedule_Meet A", "[]");
+
+    await clearAllAthleteHistory();
+
+    expect(
+      Array.from(mockStorage.keys()).filter((k) => k.startsWith("meetcal_athlete_bests_")),
+    ).toEqual([]);
+    expect(mockStorage.has("meetcal_schedule_Meet A")).toBe(true);
   });
 });
 
@@ -1449,6 +1587,159 @@ describe("athlete history pruning", () => {
     await expect(pruneOrphanedAthleteHistory()).resolves.toBe(0);
 
     expect(AsyncStorage.getItem).not.toHaveBeenCalled();
+  });
+
+  // Every viewed start list stores bests for its whole roster. When only
+  // history keys made an athlete a candidate, a browsed meet's bests were
+  // never pruned and only accumulated.
+  it("prunes the bests of athletes who have bests but no history", async () => {
+    await saveMeetAthletes("Browsed", [athlete("Browsed", "Bests Only"), athlete("Browsed", "Shared")] as never);
+    await saveMeetAthletes("Kept", [athlete("Kept", "Shared")] as never);
+    await saveAthleteBestsBatch({
+      "Bests Only": { snatch_best: 1, cj_best: 2, total: 3 },
+      Shared: { snatch_best: 1, cj_best: 2, total: 3 },
+      Orphan: { snatch_best: 1, cj_best: 2, total: 3 },
+    });
+
+    await clearMeetData("Browsed" as never);
+
+    expect(keysFor("bests only")).toEqual([]);
+    expect(keysFor("shared")).toEqual([`${BESTS_PREFIX}shared`]);
+
+    await expect(pruneOrphanedAthleteHistory()).resolves.toBe(1);
+    expect(keysFor("orphan")).toEqual([]);
+    expect(keysFor("shared")).toEqual([`${BESTS_PREFIX}shared`]);
+  });
+});
+
+describe("store index writes", () => {
+  const athlete = (meet: string) => ({
+    memberId: `${meet}-1`,
+    name: `Athlete ${meet}`,
+    age: 25,
+    club: "Club",
+    gender: "Women",
+    weightClass: "71kg",
+    entryTotal: 200,
+    adaptive: false,
+  });
+  const storedMeetIds = () =>
+    Object.keys(JSON.parse(mockStorage.get("meetcal_offline_store") ?? "{}").meets ?? {}).sort();
+
+  beforeEach(async () => {
+    mockStorage.clear();
+    await initStore();
+  });
+
+  afterEach(() => {
+    jest.restoreAllMocks();
+  });
+
+  // `clearMeetData` read the index, awaited its slow steps, and wrote that
+  // old snapshot back, dropping whatever another meet saved meanwhile.
+  it("keeps an entry another meet saved while a clear was in flight", async () => {
+    await saveMeetAthletes("Old Meet", [athlete("Old Meet")] as never);
+    const getAllKeys = AsyncStorage.getAllKeys as jest.Mock;
+    let releaseListing!: () => void;
+    const listingGate = new Promise<void>((resolve) => {
+      releaseListing = resolve;
+    });
+    getAllKeys.mockImplementationOnce(async () => {
+      await listingGate;
+      return Array.from(mockStorage.keys());
+    });
+
+    const clearing = clearMeetData("Old Meet" as never);
+    // The clear is parked on its key listing, past its read of the index.
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    await saveMeetAthletes("New Meet", [athlete("New Meet")] as never);
+    releaseListing();
+    await clearing;
+
+    expect(storedMeetIds()).toEqual(["New Meet", "Old Meet"]);
+    await expect(getMeetData("New Meet" as never)).resolves.toMatchObject({
+      athletes: [expect.objectContaining({ name: "Athlete New Meet" })],
+    });
+  });
+
+  it("lands every entry of concurrent saves for different meets", async () => {
+    await Promise.all(
+      ["A", "B", "C", "D"].map((meet) => saveMeetAthletes(meet, [athlete(meet)] as never)),
+    );
+
+    expect(storedMeetIds()).toEqual(["A", "B", "C", "D"]);
+  });
+
+  it("keeps writing the index after one write failed", async () => {
+    jest.spyOn(console, "warn").mockImplementation(() => {});
+    const setItem = AsyncStorage.setItem as jest.Mock;
+    const realSetItem = setItem.getMockImplementation();
+    let failedOnce = false;
+    // The roster write lands; the first index write fails.
+    setItem.mockImplementation(async (key: string, value: string) => {
+      if (key === "meetcal_offline_store" && !failedOnce) {
+        failedOnce = true;
+        throw new Error("SQLITE_BUSY");
+      }
+      mockStorage.set(key, value);
+    });
+    try {
+      await saveMeetAthletes("A", [athlete("A")] as never);
+    } finally {
+      setItem.mockImplementation(realSetItem);
+    }
+    await saveMeetAthletes("B", [athlete("B")] as never);
+
+    expect(storedMeetIds()).toEqual(["B"]);
+  });
+
+  // A meet whose index entry is gone kept its schedule and its multi-MB
+  // results chunks: only the roster key had a fixed-name fallback.
+  it("clears a meet's data by its fixed key names when its index entry is gone", async () => {
+    mockStorage.set("meetcal_schedule_Lost Meet", "[]");
+    mockStorage.set("meetcal_athletes_Lost Meet", "[]");
+    mockStorage.set(
+      "meetcal_lifting_results_Lost Meet",
+      JSON.stringify({ format: "deflate-base64-chunks-v1", chunks: 1 }),
+    );
+    mockStorage.set("meetcal_lifting_results_Lost Meet__chunk_0", "abc");
+    // A chunk no manifest names any more.
+    mockStorage.set("meetcal_lifting_results_Lost Meet__chunk_4_g3", "stale");
+    mockStorage.set("meetcal_session_athletes_Lost%20Meet:1:Red", "[]");
+    mockStorage.set("meetcal_lifting_results_Lost Meet 2", "[]");
+
+    await clearMeetData("Lost Meet" as never);
+
+    expect(Array.from(mockStorage.keys()).filter((k) => k.includes("Lost")).sort()).toEqual([
+      "meetcal_lifting_results_Lost Meet 2",
+    ]);
+  });
+
+  it("finds and clears meets that have data on disk but no index entry", async () => {
+    await saveMeetAthletes("Indexed", [athlete("Indexed")] as never);
+    mockStorage.set("meetcal_schedule_Orphaned", "[]");
+    mockStorage.set("meetcal_lifting_results_Orphaned__chunk_0", "abc");
+
+    const { meetIds } = await listStoredMeets(["In Window"]);
+    expect([...meetIds].sort()).toEqual(["In Window", "Indexed", "Orphaned"]);
+
+    await clearAllMeetData();
+
+    expect(Array.from(mockStorage.keys()).filter((k) => k.includes("Orphaned"))).toEqual([]);
+    expect(mockStorage.has("meetcal_athletes_Indexed")).toBe(false);
+  });
+
+  it("does not write the index back when reading it finds no valid payload", async () => {
+    mockStorage.set("meetcal_offline_store", "{truncated");
+    const setItem = AsyncStorage.setItem as jest.Mock;
+    setItem.mockClear();
+
+    await expect(getMeetSchedule("Some Meet")).resolves.toEqual([]);
+
+    // Only the chained entry write lands, not a separate `{ meets: {} }` reset.
+    const indexWrites = setItem.mock.calls.filter(([key]) => key === "meetcal_offline_store");
+    expect(indexWrites).toHaveLength(1);
+    expect(storedMeetIds()).toEqual(["Some Meet"]);
   });
 });
 

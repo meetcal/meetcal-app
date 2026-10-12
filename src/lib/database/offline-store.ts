@@ -5,6 +5,7 @@ import { MeetName } from '@/data/types/meet';
 import { meetCalendarDateAnchor } from '@/utils/dateTime';
 import { getTrustedNow } from '@/lib/api/meetcal-api';
 import { devLog } from '@/lib/logger';
+import { createWriteChain } from '@/lib/data/write-chain';
 import { Buffer } from 'buffer';
 import { deflate, inflate } from 'pako';
 import {
@@ -621,16 +622,54 @@ async function readStoredAthletes(athletesKey: string, fallback: LiftResult[]): 
   }
 }
 
+/**
+ * Every read-modify-write of the store index (`STORE_KEY`) runs on this chain.
+ * Each writer reads the whole index, changes one meet's entry and writes the
+ * whole index back, and nothing used to order them: `clearMeetData` (run on
+ * every meet open and every meets refresh) wrote back a snapshot it had read
+ * before several slow awaits, dropping any entry another meet's save added
+ * meanwhile. A meet whose entry is lost is invisible to `clearAllMeetData`'s
+ * walk of the index, so its schedule and multi-MB results stayed on disk.
+ */
+const storeWrites = createWriteChain();
+
+function emptyMeetEntry(meetId: string): MeetData {
+  return {
+    schedule: null,
+    scheduleKey: `${SCHEDULE_KEY_PREFIX}${meetId}`,
+    athletesKey: `${ATHLETES_KEY_PREFIX}${meetId}`,
+    athletes: [],
+    liftingResultsKey: `${LIFTING_RESULTS_KEY_PREFIX}${meetId}`,
+    lastSyncTime: 0,
+  };
+}
+
+/**
+ * Reads the current index, applies `mutate` and writes it back, after every
+ * earlier update has landed. `mutate` is synchronous on purpose: slow work
+ * belongs before the call, so the chain is never held across it. Rejects
+ * when the write fails.
+ */
+async function updateStore(mutate: (store: OfflineStore) => void): Promise<void> {
+  await storeWrites(async () => {
+    const store = await getStore();
+    mutate(store);
+    await AsyncStorage.setItem(STORE_KEY, JSON.stringify(store));
+  });
+}
+
 // Initialize store if it doesn't exist
 export async function initStore(): Promise<void> {
   try {
-    const store = await AsyncStorage.getItem(STORE_KEY);
-    if (!store) {
-      const initialStore: OfflineStore = {
-        meets: {}
-      };
-      await AsyncStorage.setItem(STORE_KEY, JSON.stringify(initialStore));
-    }
+    await storeWrites(async () => {
+      const store = await AsyncStorage.getItem(STORE_KEY);
+      if (!store) {
+        const initialStore: OfflineStore = {
+          meets: {}
+        };
+        await AsyncStorage.setItem(STORE_KEY, JSON.stringify(initialStore));
+      }
+    });
   } catch (error) {
     console.error('Error initializing store:', error);
   }
@@ -642,19 +681,13 @@ export async function getMeetData(meetId: MeetName): Promise<MeetData> {
     const store = await getStore();
 
     if (!store.meets[meetId]) {
-      const scheduleKey = `${SCHEDULE_KEY_PREFIX}${meetId}`;
-      const athletesKey = `${ATHLETES_KEY_PREFIX}${meetId}`;
-      const liftingResultsKey = `${LIFTING_RESULTS_KEY_PREFIX}${meetId}`;
-      store.meets[meetId] = {
-        schedule: null,
-        scheduleKey,
-        athletesKey,
-        athletes: [],
-        liftingResultsKey,
-        lastSyncTime: 0
-      };
+      store.meets[meetId] = emptyMeetEntry(meetId);
       try {
-        await AsyncStorage.setItem(STORE_KEY, JSON.stringify(store));
+        // Re-checked on the chain: another writer may have added the entry
+        // since the read above, and its version wins.
+        await updateStore((current) => {
+          if (!current.meets[meetId]) current.meets[meetId] = emptyMeetEntry(meetId);
+        });
       } catch (metadataError) {
         console.warn('Initialized meet metadata in memory but failed to persist store:', metadataError);
       }
@@ -777,61 +810,147 @@ export async function findAthleteNamesWithoutHistory(
   return missing;
 }
 
-function normalizeCachedBests(value: unknown): SupabaseBests | null {
-  if (!value || typeof value !== 'object') return null;
-  const row = value as Partial<SupabaseBests>;
+/**
+ * How long a stored bests answer is trusted before it is looked up again.
+ * Entries used to carry no time at all, so the "last year" bests a start list
+ * showed were frozen at the first answer, across seasons. A week matches
+ * `HISTORY_REFRESH_TTL_MS`: bests only move when an athlete competes, and a
+ * downloaded meet's package rewrites its roster's bests whenever it changes.
+ */
+export const ATHLETE_BESTS_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+/**
+ * "No results" is trusted for much less: it is what a new athlete, a name the
+ * API spells differently, or a lookup that matched nothing looks like, and the
+ * next meet they lift at changes it.
+ */
+export const ATHLETE_BESTS_EMPTY_TTL_MS = 24 * 60 * 60 * 1000;
+const ATHLETE_BESTS_FORMAT_VERSION = 2;
+
+/** One athlete's stored bests and when the answer was fetched. */
+export type StoredAthleteBests = {
+  bests: SupabaseBests;
+  /** 0 for entries written before bests carried a time (always stale). */
+  fetchedAt: number;
+  /** Whether the answer is young enough to be used without a new lookup. */
+  isFresh: boolean;
+};
+
+export function hasAnyAthleteBest(bests: SupabaseBests): boolean {
+  return bests.snatch_best != null || bests.cj_best != null || bests.total != null;
+}
+
+/**
+ * The single freshness rule for stored bests, shared by session details
+ * (`lib/athlete-bests`) and the start list (`lib/start-list-api`). They used
+ * to disagree: one treated any stored entry as final, the other skipped every
+ * all-null one. A real answer lasts `ATHLETE_BESTS_TTL_MS`, "no results"
+ * `ATHLETE_BESTS_EMPTY_TTL_MS`. A time in the future (the clock moved back)
+ * is stale rather than fresh until the clock catches up.
+ */
+export function isAthleteBestsFresh(
+  bests: SupabaseBests,
+  fetchedAt: number,
+  now: number,
+): boolean {
+  const age = now - fetchedAt;
+  const ttl = hasAnyAthleteBest(bests) ? ATHLETE_BESTS_TTL_MS : ATHLETE_BESTS_EMPTY_TTL_MS;
+  return fetchedAt > 0 && age >= 0 && age < ttl;
+}
+
+function toStoredBestsValue(value: unknown): SupabaseBests | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const row = value as Partial<Record<keyof SupabaseBests, unknown>>;
+  const positiveOrNull = (candidate: unknown) =>
+    typeof candidate === 'number' && Number.isFinite(candidate) && candidate > 0
+      ? candidate
+      : null;
   return {
-    snatch_best: typeof row.snatch_best === 'number' ? row.snatch_best : null,
-    cj_best: typeof row.cj_best === 'number' ? row.cj_best : null,
-    total: typeof row.total === 'number' ? row.total : null,
+    snatch_best: positiveOrNull(row.snatch_best),
+    cj_best: positiveOrNull(row.cj_best),
+    total: positiveOrNull(row.total),
   };
 }
 
+/**
+ * A stored bests payload: `{ v: 2, fetchedAt, bests }`, or the bare bests
+ * object written before entries carried a time, which reads with
+ * `fetchedAt: 0` so it is used as a fallback but always looked up again.
+ */
+function parseStoredAthleteBests(payload: string): { bests: SupabaseBests; fetchedAt: number } | null {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(payload);
+  } catch {
+    return null;
+  }
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return null;
+  const candidate = parsed as { v?: unknown; fetchedAt?: unknown; bests?: unknown };
+  if (candidate.v === ATHLETE_BESTS_FORMAT_VERSION) {
+    const bests = toStoredBestsValue(candidate.bests);
+    const fetchedAt =
+      typeof candidate.fetchedAt === 'number' && Number.isFinite(candidate.fetchedAt)
+        ? candidate.fetchedAt
+        : 0;
+    return bests ? { bests, fetchedAt } : null;
+  }
+  const legacy = toStoredBestsValue(parsed);
+  return legacy ? { bests: legacy, fetchedAt: 0 } : null;
+}
+
+/**
+ * Stores bests the API (or a downloaded meet package) answered with, stamped
+ * `fetchedAt`. Callers must only pass real answers: an offline or failed
+ * lookup's fallback stored here used to read as "this athlete has no results"
+ * forever after.
+ */
 export async function saveAthleteBestsBatch(
   bestsByName: Record<string, SupabaseBests>,
+  fetchedAt: number = Date.now(),
 ): Promise<void> {
   try {
     const entries = Object.entries(bestsByName)
       .filter(([athleteName]) => normalizeAthleteName(athleteName).length > 0)
       .map(([athleteName, bests]) => [
         getAthleteBestsKey(normalizeAthleteName(athleteName)),
-        JSON.stringify(bests),
+        JSON.stringify({ v: ATHLETE_BESTS_FORMAT_VERSION, fetchedAt, bests }),
       ] as [string, string]);
 
-    for (let offset = 0; offset < entries.length; offset += STORAGE_WRITE_BATCH_SIZE) {
-      await AsyncStorage.multiSet(entries.slice(offset, offset + STORAGE_WRITE_BATCH_SIZE));
-    }
+    await multiSetBatched(entries);
   } catch (error) {
     console.error('Error saving athlete bests:', error);
     throw error;
   }
 }
 
-export async function getCachedAthleteBestsForNames(
-  athleteNames: string[],
-): Promise<Record<string, SupabaseBests | undefined>> {
+/**
+ * Stored bests for the names that have an entry (absent names have none),
+ * each with its freshness under `isAthleteBestsFresh`. Read in
+ * `STORAGE_READ_BATCH_SIZE` slices: a start list asks for its whole roster.
+ */
+export async function getStoredAthleteBestsForNames(
+  athleteNames: readonly string[],
+  now: number = Date.now(),
+): Promise<Record<string, StoredAthleteBests>> {
   const uniqueNames = Array.from(new Set(athleteNames.filter(Boolean)));
-  const keysByName = uniqueNames.map((name) => ({
-    name,
-    key: getAthleteBestsKey(normalizeAthleteName(name)),
-  }));
+  const keysByName = uniqueNames
+    .map((name) => ({ name, normalized: normalizeAthleteName(name) }))
+    .filter(({ normalized }) => normalized.length > 0)
+    .map(({ name, normalized }) => ({ name, key: getAthleteBestsKey(normalized) }));
 
   try {
-    const entries = await AsyncStorage.multiGet(keysByName.map(({ key }) => key));
-    return entries.reduce<Record<string, SupabaseBests | undefined>>(
-      (acc, [, payload], index) => {
-        const name = keysByName[index]?.name;
-        if (!name || !payload) return acc;
-
-        try {
-          acc[name] = normalizeCachedBests(JSON.parse(payload)) ?? undefined;
-        } catch {
-          acc[name] = undefined;
-        }
-        return acc;
-      },
-      {},
-    );
+    const payloads = await multiGetBatched(keysByName.map(({ key }) => key));
+    const byName: Record<string, StoredAthleteBests> = {};
+    for (const { name, key } of keysByName) {
+      const payload = payloads.get(key);
+      if (!payload) continue;
+      const stored = parseStoredAthleteBests(payload);
+      if (!stored) continue;
+      byName[name] = {
+        ...stored,
+        isFresh: isAthleteBestsFresh(stored.bests, stored.fetchedAt, now),
+      };
+    }
+    return byName;
   } catch (error) {
     console.error('Error getting cached athlete bests:', error);
     return {};
@@ -1127,26 +1246,21 @@ export async function saveMeetSchedule(meetId: string, schedule: Schedule): Prom
       await AsyncStorage.setItem(scheduleKey, scheduleString);
     }
 
-    // Get current store state
-    const store = await getStore();
-    
     // Update meet metadata: ONLY store the key and sync time, NOT the full schedule object
-    const currentAthletesKey = store.meets[meetId]?.athletesKey || `${ATHLETES_KEY_PREFIX}${meetId}`;
-    const currentLiftingResultsKey = store.meets[meetId]?.liftingResultsKey || `${LIFTING_RESULTS_KEY_PREFIX}${meetId}`;
-    store.meets[meetId] = {
-      schedule: null,
-      scheduleKey: scheduleKey,
-      athletesKey: currentAthletesKey,
-      athletes: [],
-      liftingResultsKey: currentLiftingResultsKey,
-      lastSyncTime: Date.now(),
-      athletesSyncedAt: store.meets[meetId]?.athletesSyncedAt ?? 0,
-    };
-    
-    // Save the updated store metadata (now much smaller)
-    const storeString = JSON.stringify(store);
     try {
-      await AsyncStorage.setItem(STORE_KEY, storeString);
+      await updateStore((store) => {
+        const currentAthletesKey = store.meets[meetId]?.athletesKey || `${ATHLETES_KEY_PREFIX}${meetId}`;
+        const currentLiftingResultsKey = store.meets[meetId]?.liftingResultsKey || `${LIFTING_RESULTS_KEY_PREFIX}${meetId}`;
+        store.meets[meetId] = {
+          schedule: null,
+          scheduleKey: scheduleKey,
+          athletesKey: currentAthletesKey,
+          athletes: [],
+          liftingResultsKey: currentLiftingResultsKey,
+          lastSyncTime: Date.now(),
+          athletesSyncedAt: store.meets[meetId]?.athletesSyncedAt ?? 0,
+        };
+      });
     } catch (metadataError) {
       console.warn('Saved schedule payload but failed to update store metadata:', metadataError);
     }
@@ -1163,24 +1277,23 @@ export async function clearMeetSchedule(meetId: string): Promise<void> {
     const scheduleKey = `${SCHEDULE_KEY_PREFIX}${meetId}`;
     await AsyncStorage.removeItem(scheduleKey);
 
-    const store = await getStore();
-    const currentAthletesKey =
-      store.meets[meetId]?.athletesKey || `${ATHLETES_KEY_PREFIX}${meetId}`;
-    const currentLiftingResultsKey =
-      store.meets[meetId]?.liftingResultsKey ||
-      `${LIFTING_RESULTS_KEY_PREFIX}${meetId}`;
+    await updateStore((store) => {
+      const currentAthletesKey =
+        store.meets[meetId]?.athletesKey || `${ATHLETES_KEY_PREFIX}${meetId}`;
+      const currentLiftingResultsKey =
+        store.meets[meetId]?.liftingResultsKey ||
+        `${LIFTING_RESULTS_KEY_PREFIX}${meetId}`;
 
-    store.meets[meetId] = {
-      schedule: null,
-      scheduleKey,
-      athletesKey: currentAthletesKey,
-      athletes: [],
-      liftingResultsKey: currentLiftingResultsKey,
-      lastSyncTime: Date.now(),
-      athletesSyncedAt: store.meets[meetId]?.athletesSyncedAt ?? 0,
-    };
-
-    await AsyncStorage.setItem(STORE_KEY, JSON.stringify(store));
+      store.meets[meetId] = {
+        schedule: null,
+        scheduleKey,
+        athletesKey: currentAthletesKey,
+        athletes: [],
+        liftingResultsKey: currentLiftingResultsKey,
+        lastSyncTime: Date.now(),
+        athletesSyncedAt: store.meets[meetId]?.athletesSyncedAt ?? 0,
+      };
+    });
   } catch (error) {
     console.error('Error clearing meet schedule:', error);
     throw error;
@@ -1202,8 +1315,20 @@ export async function getMeetSchedule(meetId: string): Promise<Schedule> {
   }
 }
 
-// Save meet athletes to store
-export async function saveMeetAthletes(meetId: string, athletes: LiftResult[]): Promise<void> {
+/**
+ * Saves a meet's roster (and the per-session caches derived from it).
+ *
+ * An empty roster never replaces a non-empty one, the rule `saveMeetSchedule`
+ * and the meets list cache already apply to their own payloads. A roster
+ * query that briefly answers `[]` (rows unpublished during a re-import) or an
+ * API shape change that fails every row in `mapApiAthletes` used to wipe a
+ * downloaded roster on the next meet open, leaving an empty start list
+ * offline under a meet still shown as downloaded. The refused write leaves
+ * `athletesSyncedAt` alone, so the old roster is not mistaken for a fresh one.
+ *
+ * @returns whether the roster was stored (false only for a refused empty one).
+ */
+export async function saveMeetAthletes(meetId: string, athletes: LiftResult[]): Promise<boolean> {
   try {
     const athletesKey = `${ATHLETES_KEY_PREFIX}${meetId}`;
     const existingPayload = await AsyncStorage.getItem(athletesKey);
@@ -1215,6 +1340,10 @@ export async function saveMeetAthletes(meetId: string, athletes: LiftResult[]): 
       } catch (parseError) {
         console.warn('Ignoring invalid cached athlete payload:', parseError);
       }
+    }
+    if (athletes.length === 0 && existingAthletes.length > 0) {
+      devLog('Roster answered with no athletes; keeping the stored roster', { meetId });
+      return false;
     }
     // Use the same identity policy as the session/history caches.
     const athleteKey = (athlete: LiftResult) =>
@@ -1245,28 +1374,20 @@ export async function saveMeetAthletes(meetId: string, athletes: LiftResult[]): 
 
     // The store metadata write is small and `lastSyncTime` drives staleness,
     // so it still happens on every call.
-    const store = await getStore();
-    if (!store.meets[meetId]) {
-      const scheduleKey = `${SCHEDULE_KEY_PREFIX}${meetId}`;
-      const liftingResultsKey = `${LIFTING_RESULTS_KEY_PREFIX}${meetId}`;
-      store.meets[meetId] = {
-        schedule: null,
-        scheduleKey,
-        athletesKey,
-        athletes: [],
-        liftingResultsKey,
-        lastSyncTime: Date.now()
-      };
-    }
-    store.meets[meetId].athletesKey = athletesKey;
-    store.meets[meetId].athletes = [];
-    store.meets[meetId].lastSyncTime = Date.now();
-    store.meets[meetId].athletesSyncedAt = Date.now();
     try {
-      await AsyncStorage.setItem(STORE_KEY, JSON.stringify(store));
+      await updateStore((store) => {
+        if (!store.meets[meetId]) {
+          store.meets[meetId] = { ...emptyMeetEntry(meetId), lastSyncTime: Date.now() };
+        }
+        store.meets[meetId].athletesKey = athletesKey;
+        store.meets[meetId].athletes = [];
+        store.meets[meetId].lastSyncTime = Date.now();
+        store.meets[meetId].athletesSyncedAt = Date.now();
+      });
     } catch (metadataError) {
       console.warn('Saved athletes payload but failed to update store metadata:', metadataError);
     }
+    return true;
   } catch (error) {
     console.error('Error saving meet athletes:', error);
     throw error;
@@ -1288,24 +1409,15 @@ export async function saveMeetLiftingResults(meetId: string, liftingResults: Sup
     await writeStoredLiftingResults(liftingResultsKey, liftingResults);
     
     // Update store metadata
-    const store = await getStore();
-    if (!store.meets[meetId]) {
-      const scheduleKey = `${SCHEDULE_KEY_PREFIX}${meetId}`;
-      const athletesKey = `${ATHLETES_KEY_PREFIX}${meetId}`;
-      store.meets[meetId] = {
-        schedule: null,
-        scheduleKey,
-        athletesKey,
-        athletes: [],
-        liftingResultsKey,
-        lastSyncTime: Date.now()
-      };
-    } else {
-      store.meets[meetId].liftingResultsKey = liftingResultsKey;
-      store.meets[meetId].lastSyncTime = Date.now();
-    }
     try {
-      await AsyncStorage.setItem(STORE_KEY, JSON.stringify(store));
+      await updateStore((store) => {
+        if (!store.meets[meetId]) {
+          store.meets[meetId] = { ...emptyMeetEntry(meetId), lastSyncTime: Date.now() };
+        } else {
+          store.meets[meetId].liftingResultsKey = liftingResultsKey;
+          store.meets[meetId].lastSyncTime = Date.now();
+        }
+      });
     } catch (metadataError) {
       console.warn('Saved lifting results payload but failed to update store metadata:', metadataError);
     }
@@ -1357,13 +1469,15 @@ function athleteNameOfStorageKey(key: string): string | null {
 
 /**
  * Normalized names of every athlete with a history blob (or a chunk of one)
- * in a key listing. Reading the listing answers "is any history on disk for
- * these athletes" without a `multiGet`.
+ * or a stored bests entry in a key listing. Reading the listing answers "is
+ * anything on disk for these athletes" without a `multiGet`. Bests count on
+ * their own: every viewed start list stores them for its whole roster, and
+ * when only history counted, an athlete with bests and no history was never
+ * pruned, so the keys only accumulated.
  */
-function athleteNamesWithHistoryInListing(storageKeys: readonly string[]): Set<string> {
+function athleteNamesWithStoredDataInListing(storageKeys: readonly string[]): Set<string> {
   const names = new Set<string>();
   for (const key of storageKeys) {
-    if (!key.startsWith(ATHLETE_HISTORY_KEY_PREFIX)) continue;
     const name = athleteNameOfStorageKey(key);
     if (name) names.add(name);
   }
@@ -1410,16 +1524,16 @@ async function readRemainingRosterNames(
 }
 
 /**
- * Drops the history of the athletes on `rosterNames` that appear on no other
- * stored roster, once a meet's data is being cleared. Athlete history is
+ * Drops the history and bests of the athletes on `rosterNames` that appear on
+ * no other stored roster, once a meet's data is being cleared. Athlete history is
  * keyed by name, not by meet, so nothing else ever reclaimed it: a season of
  * downloaded meets left every athlete's history behind after the meet
  * expired, and the Android AsyncStorage database (6 MB by default, raised by
  * the root's `plugins/withAsyncStorageDbSize.js`) filled with rows no screen
  * could reach.
  *
- * Cheap exit first: a browsed-but-never-downloaded meet has a roster and no
- * history, and must not pay for reading every other roster.
+ * Cheap exit first: a meet whose athletes have nothing stored by name (no
+ * history, no bests) must not pay for reading every other roster.
  */
 async function pruneAthleteHistoryExclusiveToRoster(
   meet: string,
@@ -1427,11 +1541,11 @@ async function pruneAthleteHistoryExclusiveToRoster(
   store: OfflineStore,
   storageKeys: readonly string[],
 ): Promise<number> {
-  const withHistory = athleteNamesWithHistoryInListing(storageKeys);
+  const withStoredData = athleteNamesWithStoredDataInListing(storageKeys);
   const candidates = new Set<string>();
   for (const name of rosterNames) {
     const normalized = normalizeAthleteName(name);
-    if (normalized && withHistory.has(normalized)) candidates.add(normalized);
+    if (normalized && withStoredData.has(normalized)) candidates.add(normalized);
   }
   if (candidates.size === 0) return 0;
 
@@ -1460,8 +1574,8 @@ export async function pruneOrphanedAthleteHistory(
 ): Promise<number> {
   try {
     const storageKeys = await AsyncStorage.getAllKeys();
-    const withHistory = athleteNamesWithHistoryInListing(storageKeys);
-    if (withHistory.size === 0) return 0;
+    const withStoredData = athleteNamesWithStoredDataInListing(storageKeys);
+    if (withStoredData.size === 0) return 0;
 
     const store = await getStore();
     const keep = await readRemainingRosterNames(store, '');
@@ -1470,7 +1584,7 @@ export async function pruneOrphanedAthleteHistory(
       if (normalized) keep.add(normalized);
     }
     const orphaned = new Set<string>();
-    for (const name of withHistory) {
+    for (const name of withStoredData) {
       if (!keep.has(name)) orphaned.add(name);
     }
     return await removeAthleteKeysFromListing(storageKeys, orphaned);
@@ -1509,21 +1623,28 @@ export async function clearMeetData(
     // `JSON.parse(store) as OfflineStore` here threw on `data.meets[...]` for a
     // truncated payload, leaving the meet's keys orphaned and undeletable.
     const data = await getStore();
-    const scheduleKey = data.meets[meet]?.scheduleKey;
-    const athletesKey = data.meets[meet]?.athletesKey || `${ATHLETES_KEY_PREFIX}${meet}`;
-    const liftingResultsKey = data.meets[meet]?.liftingResultsKey;
+    const entry = data.meets[meet];
+    // Every key is also tried under its fixed name. Only the roster key used
+    // to fall back, so a meet whose index entry was lost (a racing index
+    // write, or `getStore()` reading a corrupt payload as empty) kept its
+    // schedule and its multi-MB results chunks on disk for good.
+    const fixed = emptyMeetEntry(meet);
+    const keysFor = (stored: string | undefined, fallback: string) =>
+      Array.from(new Set([stored, fallback].filter((key): key is string => Boolean(key))));
+    const scheduleKeys = keysFor(entry?.scheduleKey, fixed.scheduleKey);
+    const athletesKeys = keysFor(entry?.athletesKey, fixed.athletesKey);
+    const liftingResultsKeys = keysFor(entry?.liftingResultsKey, fixed.liftingResultsKey);
     // The roster is what says whose history this meet was holding; read it
     // before it goes.
     const rosterNames =
       options?.pruneHistory === false
         ? []
-        : (await readStoredAthletes(athletesKey, [])).map((athlete) => athlete.name);
+        : (await readStoredAthletes(athletesKeys[0], [])).map((athlete) => athlete.name);
     await markMeetExplicitlyDownloaded(meet, false);
-    if (scheduleKey) {
-      await AsyncStorage.removeItem(scheduleKey);
+    for (const key of [...scheduleKeys, ...athletesKeys]) {
+      await AsyncStorage.removeItem(key);
     }
-    await AsyncStorage.removeItem(athletesKey);
-    if (liftingResultsKey) {
+    for (const liftingResultsKey of liftingResultsKeys) {
       await clearStoredLiftingResultsValue(liftingResultsKey);
     }
     // A caller clearing several meets hands over one shared listing. Meet
@@ -1531,38 +1652,72 @@ export async function clearMeetData(
     // holds exactly the same keys for this meet as a fresh listing would:
     // no other iteration touches them.
     const keys = options?.storageKeys ?? (await AsyncStorage.getAllKeys());
-    const sessionAthleteKeys = keys.filter((key) =>
-      key.startsWith(
-        `${SESSION_ATHLETES_KEY_PREFIX}${encodeURIComponent(meet)}:`,
-      ),
+    const sessionAthletesPrefix = `${SESSION_ATHLETES_KEY_PREFIX}${encodeURIComponent(meet)}:`;
+    // Chunks no manifest names any more (an interrupted rewrite, or a
+    // manifest already gone) are only findable in the listing.
+    const chunkPrefixes = liftingResultsKeys.map((key) => `${key}__chunk_`);
+    const leftoverKeys = keys.filter(
+      (key) =>
+        key.startsWith(sessionAthletesPrefix) ||
+        chunkPrefixes.some((prefix) => key.startsWith(prefix)),
     );
-    if (sessionAthleteKeys.length > 0) {
-      await AsyncStorage.multiRemove(sessionAthleteKeys);
-    }
+    await multiRemoveBatched(leftoverKeys);
     if (rosterNames.length > 0) {
-      await pruneAthleteHistoryExclusiveToRoster(meet, rosterNames, data, keys);
+      // Re-read: a roster another meet saved since the snapshot above shares
+      // athletes this prune would otherwise treat as exclusive.
+      await pruneAthleteHistoryExclusiveToRoster(meet, rosterNames, await getStore(), keys);
     }
-    const emptyMeetData: MeetData = {
-      schedule: null,
-      scheduleKey: `${SCHEDULE_KEY_PREFIX}${meet}`,
-      athletesKey: `${ATHLETES_KEY_PREFIX}${meet}`,
-      athletes: [],
-      liftingResultsKey: `${LIFTING_RESULTS_KEY_PREFIX}${meet}`,
-      lastSyncTime: 0
-    };
-    data.meets[meet] = emptyMeetData;
-    await AsyncStorage.setItem(STORE_KEY, JSON.stringify(data));
+    // On the chain, against the index as it is now: writing back the
+    // snapshot read above dropped every entry saved in between.
+    await updateStore((store) => {
+      store.meets[meet] = emptyMeetEntry(meet);
+    });
   } catch (error) {
     console.error('Error clearing meet data:', error);
     throw error;
   }
 }
 
+/**
+ * The meet id a per-meet schedule, roster or results key (or results chunk)
+ * belongs to, or null for any other key. Session-athlete keys are left out:
+ * `clearMeetData` finds those by prefix, and their ids are URI-encoded.
+ */
+function meetIdOfStorageKey(key: string): string | null {
+  for (const prefix of [SCHEDULE_KEY_PREFIX, ATHLETES_KEY_PREFIX, LIFTING_RESULTS_KEY_PREFIX]) {
+    if (!key.startsWith(prefix)) continue;
+    const rest = key.slice(prefix.length);
+    const chunkAt = rest.indexOf('__chunk_');
+    const meetId = chunkAt === -1 ? rest : rest.slice(0, chunkAt);
+    return meetId.length > 0 ? meetId : null;
+  }
+  return null;
+}
+
+/**
+ * Every meet with data on this device: the index's meets, the meets whose
+ * keys are on disk without an index entry, and `extraMeetIds`, together with
+ * the key listing that answered it (pass it on to `clearMeetData`).
+ *
+ * Walking only the index left a meet whose entry was lost holding its data
+ * forever; the listing finds it by its fixed key names.
+ */
+export async function listStoredMeets(
+  extraMeetIds: readonly string[] = [],
+): Promise<{ meetIds: MeetName[]; storageKeys: readonly string[] }> {
+  const store = await getStore();
+  const storageKeys = await AsyncStorage.getAllKeys();
+  const meetIds = new Set<string>([...extraMeetIds, ...Object.keys(store.meets)]);
+  for (const key of storageKeys) {
+    const meetId = meetIdOfStorageKey(key);
+    if (meetId) meetIds.add(meetId);
+  }
+  return { meetIds: Array.from(meetIds) as MeetName[], storageKeys };
+}
+
 export async function clearAllMeetData(): Promise<void> {
   try {
-    const store = await getStore();
-    const meetIds = Object.keys(store.meets) as MeetName[];
-    const storageKeys = await readStorageKeysForMeetClear(meetIds.length);
+    const { meetIds, storageKeys } = await listStoredMeets();
 
     for (const meetId of meetIds) {
       try {
@@ -1585,8 +1740,11 @@ export async function clearAllAthleteHistory(): Promise<void> {
     // per athlete — 1500-4500 serial round trips on "Delete all offline data"
     // (PoT #2 bounded loops). One `getAllKeys` plus batched removes replaces
     // them, and it also reaps chunks orphaned by an interrupted write.
-    const athleteHistoryKeys = keys.filter((k) =>
-      k.startsWith(ATHLETE_HISTORY_KEY_PREFIX),
+    // Stored bests go too. They are keyed by athlete name like the history,
+    // and "Delete All Offline Data" / "Clear Cache" used to leave every one
+    // behind, so a wrong "no results" answer survived until a reinstall.
+    const athleteHistoryKeys = keys.filter(
+      (k) => k.startsWith(ATHLETE_HISTORY_KEY_PREFIX) || k.startsWith(ATHLETE_BESTS_KEY_PREFIX),
     );
     for (
       let offset = 0;
@@ -1714,9 +1872,8 @@ async function getStore(): Promise<OfflineStore> {
     }
   }
 
-  const initialStore: OfflineStore = {
-    meets: {},
-  };
-  await AsyncStorage.setItem(STORE_KEY, JSON.stringify(initialStore));
-  return initialStore;
-} 
+  // Not written back here. Readers run outside `storeWrites`, and a reader
+  // that found no payload and wrote `{ meets: {} }` could land after a
+  // writer's update and erase it. The next `updateStore` writes a valid index.
+  return { meets: {} };
+}
