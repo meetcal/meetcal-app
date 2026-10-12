@@ -14,7 +14,7 @@ import * as SplashScreen from "expo-splash-screen";
 import { StatusBar } from "expo-status-bar";
 import { PostHogProvider } from "posthog-react-native";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { AppState, Linking, Platform } from "react-native";
+import { AppState, Linking, LogBox, Platform } from "react-native";
 import { OneSignal } from "react-native-onesignal";
 import Purchases from "react-native-purchases";
 import "react-native-reanimated";
@@ -44,6 +44,7 @@ import { refreshAuthCacheForVerifiedUser } from "@/lib/authCache";
 import { useDataWidgetRefresh } from "@/hooks/useDataWidgetRefresh";
 import { isNetworkAvailable } from "@/lib/networkUtils";
 import { checkOnboardingComplete } from "@/lib/onboarding";
+import { isMaestroE2E } from "@/lib/e2e";
 import {
   confirmRevenueCatIdentity,
   forgetRevenueCatIdentity,
@@ -119,6 +120,10 @@ if (!REVENUECAT_IOS_KEY || !REVENUECAT_ANDROID_KEY) {
 
 // Keep splash screen visible while we fetch resources
 SplashScreen.preventAutoHideAsync();
+
+// Maestro taps the tab bar, which LogBox's dev toasts cover. E2E runs are
+// dev-only (`isMaestroE2E`); console errors still reach Metro's log.
+if (isMaestroE2E()) LogBox.ignoreAllLogs();
 
 /**
  * NetInfo's default is 15s, long enough that a screen decides it is online and
