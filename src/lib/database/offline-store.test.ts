@@ -1279,6 +1279,79 @@ describe("batched athlete history writes", () => {
     await expect(findAthleteNamesWithoutHistory(["New Athlete"])).resolves.toEqual(["New Athlete"]);
   });
 
+  it("puts legacy rows back when a chunk fails but the new manifest lands", async () => {
+    const legacy = JSON.stringify([row("Jane Doe", "2024-01-01")]);
+    mockStorage.set(`${HISTORY_PREFIX}jane doe`, legacy);
+    // iOS `multiSet` writes every pair it can and reports the first failure
+    // at the end: the chunk hit a full disk, the manifest after it landed.
+    (AsyncStorage.multiSet as jest.Mock).mockImplementationOnce(
+      async (pairs: [string, string][]) => {
+        pairs
+          .filter(([key]) => !key.includes("__chunk_"))
+          .forEach(([key, value]) => mockStorage.set(key, value));
+        throw new Error("SQLITE_FULL");
+      },
+    );
+
+    await expect(
+      saveAthleteHistory("Jane Doe", [row("Jane Doe", "2026-01-01")]),
+    ).rejects.toThrow("SQLITE_FULL");
+
+    expect(mockStorage.get(`${HISTORY_PREFIX}jane doe`)).toBe(legacy);
+    await expect(getAllCachedLiftingResultsForAthlete("Jane Doe")).resolves.toEqual([
+      expect.objectContaining({ date: "2024-01-01" }),
+    ]);
+  });
+
+  it("does not prune another athlete's manifest whose key reads as a chunk key", async () => {
+    // Athlete `a__chunk_1`'s manifest key is spelled like chunk 1 of athlete `a`.
+    await saveAthleteHistory("a__chunk_1", [row("a__chunk_1", "2025-01-01")]);
+    mockStorage.set(`${HISTORY_PREFIX}a`, JSON.stringify([row("a", "2024-01-01")]));
+
+    await saveAthleteHistory("a", [row("a", "2026-01-01")]);
+
+    await expect(getAllCachedLiftingResultsForAthlete("a__chunk_1")).resolves.toEqual([
+      expect.objectContaining({ date: "2025-01-01" }),
+    ]);
+    await expect(getAllCachedLiftingResultsForAthlete("a")).resolves.toEqual([
+      expect.objectContaining({ date: "2026-01-01" }),
+    ]);
+  });
+
+  it("wraps a chunk generation past the largest a manifest can name", async () => {
+    const max = Number.MAX_SAFE_INTEGER;
+    await saveAthleteHistory("Jane Doe", [row("Jane Doe", "2025-01-01")]);
+    mockStorage.set(
+      `${HISTORY_PREFIX}jane doe`,
+      `{"format":"deflate-base64-chunks-v1","chunks":1,"generation":${max}}`,
+    );
+    mockStorage.set(
+      `${HISTORY_PREFIX}jane doe__chunk_0_g${max}`,
+      mockStorage.get(`${HISTORY_PREFIX}jane doe__chunk_0`) ?? "",
+    );
+    mockStorage.delete(`${HISTORY_PREFIX}jane doe__chunk_0`);
+    // A legacy blob with an orphan at the top generation takes the listing path.
+    mockStorage.set(`${HISTORY_PREFIX}john roe`, JSON.stringify([row("John Roe", "2024-01-01")]));
+    mockStorage.set(`${HISTORY_PREFIX}john roe__chunk_0_g${max}`, "orphan");
+
+    await saveAthleteHistoryBatch([
+      { name: "Jane Doe", results: [row("Jane Doe", "2026-01-01")] },
+      { name: "John Roe", results: [row("John Roe", "2026-01-01")] },
+    ]);
+
+    for (const name of ["Jane Doe", "John Roe"]) {
+      await expect(getAllCachedLiftingResultsForAthlete(name)).resolves.toEqual([
+        expect.objectContaining({ date: "2026-01-01" }),
+      ]);
+    }
+    expect(historyKeys()).toEqual([
+      `${HISTORY_PREFIX}jane doe`,
+      `${HISTORY_PREFIX}jane doe__chunk_0_g1`,
+      `${HISTORY_PREFIX}john roe`,
+      `${HISTORY_PREFIX}john roe__chunk_0_g1`,
+    ]);
+  });
+
   it("collapses two spellings of one name into a single write, the last winning", async () => {
     await saveAthleteHistoryBatch([
       { name: "Jane Doe", results: [row("Jane Doe", "2025-01-01")] },

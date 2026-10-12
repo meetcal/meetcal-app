@@ -1620,6 +1620,18 @@ describe('conditional reads for meet queries', () => {
     expect(sentTag(1)).toBeUndefined();
   });
 
+  it('does not remember a schedule with a row that has no usable date or session number', async () => {
+    const row = { date: '2026-06-20', platform: 'red', session_id: 1, start_time: '09:00:00', weigh_in_time: '07:00:00', weight_class: '60kg' };
+    const { sentTag } = queueTransport([
+      { etag: '"bad"', body: [row, { ...row, session_id: '2' }] },
+      { etag: '"v1"', body: [row] },
+    ]);
+
+    await expect(fetchApiSchedule('Meet A')).rejects.toThrow('/meets/schedule[1] has an invalid date or session_id');
+    await expect(fetchApiSchedule('Meet A')).resolves.toMatchObject([{ fullDate: '2026-06-20' }]);
+    expect(sentTag(1)).toBeUndefined();
+  });
+
   it('keeps throwing on rejected calls and keeps the tag for next time', async () => {
     const { sentTag } = queueTransport([
       { etag: '"v1"', body: [meetRow('Meet A')] },

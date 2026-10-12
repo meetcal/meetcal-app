@@ -14,10 +14,12 @@ type ZonedDateParts = {
 export const PARTS_FORMATTER_CACHE_LIMIT = 32;
 /**
  * Half-width of the window probed for a DST transition around a wall-clock
- * time. UTC offsets run from -12h (Etc/GMT+12) to +14h (Pacific/Kiritimati),
- * so the instant a wall-clock time names lies within 14 hours of that wall
- * clock read as UTC, and the offsets at both ends of the window are the ones
- * either side of any transition inside it.
+ * time. The instant a wall time names is within 14 hours (the widest UTC
+ * offset, +14:00) of the same digits read as UTC, so probing that far finds
+ * the offset on both sides of any transition that can affect it. Twelve hours
+ * covered every US zone but missed the offset in force before a change in a
+ * zone ahead of UTC+12 (Auckland and Chatham daylight time): a real Chatham
+ * time resolved an hour early, and an Auckland spring-forward gap moved back.
  */
 const DST_PROBE_WINDOW_MS = 14 * 60 * 60 * 1000;
 const MS_PER_MINUTE = 60 * 1000;
@@ -88,11 +90,17 @@ function normalizeHour(hour: number): number {
  * Whether `timeZone` is a zone this device's `Intl` can format in: any IANA
  * zone the platform's time zone database knows (Hermes reads it from
  * Foundation's `NSTimeZone` on iOS and ICU's `TimeZone` on Android), not only
- * the US ones. A blank or non-string value is not.
+ * the US ones. A non-string, blank or unknown id (`""`, `"__proto__"`) is not.
+ *
+ * The API mapper checks a meet's zone with it, and so do persisted rows whose
+ * zone a screen hands straight to `toLocale*String`, which throws a
+ * `RangeError` mid-render for an id `Intl` does not know. Builds (and caches)
+ * the formatter the conversions below would use anyway.
  */
 export function isValidTimeZone(timeZone: unknown): timeZone is string {
+  if (typeof timeZone !== "string") return false;
   try {
-    getPartsFormatter(timeZone as string);
+    getPartsFormatter(timeZone);
     return true;
   } catch {
     return false;
@@ -147,9 +155,12 @@ export function parseClockTime(time: string): { hour: number; minute: number } {
   if (amPmMatch) {
     const rawHour = Number(amPmMatch[1]);
     const minute = Number(amPmMatch[2]);
+    const second = Number(amPmMatch[3] ?? "0");
     const period = amPmMatch[4].toUpperCase();
 
-    if (rawHour < 1 || rawHour > 12 || minute < 0 || minute > 59) {
+    // Seconds are range-checked as in the 24-hour branch, which rejects
+    // "13:00:99"; "1:00:99 PM" used to be the one shape that slipped through.
+    if (rawHour < 1 || rawHour > 12 || minute < 0 || minute > 59 || second > 59) {
       throw new Error(`Invalid time: ${time}`);
     }
 
@@ -174,12 +185,12 @@ export function getOffsetMinutesAtInstant(
   timeZone: string,
   instant: Date,
 ): number {
-  // The zoned parts stop at the minute, so read the minute the instant falls
-  // in: an instant with seconds (`new Date()`) would otherwise give an offset
-  // short by that fraction of a minute ("GMT+5:29.4").
-  const minute = new Date(Math.floor(instant.getTime() / MS_PER_MINUTE) * MS_PER_MINUTE);
-  const zonedParts = getZonedParts(timeZone, minute);
-  return (toUtcTimestamp(zonedParts) - minute.getTime()) / MS_PER_MINUTE;
+  const zonedParts = getZonedParts(timeZone, instant);
+  // The parts stop at the minute, so compare them with the instant's minute:
+  // 12:00:30Z in UTC would otherwise come out as an offset of -0.5.
+  const minuteStart =
+    Math.floor(instant.getTime() / MS_PER_MINUTE) * MS_PER_MINUTE;
+  return (toUtcTimestamp(zonedParts) - minuteStart) / MS_PER_MINUTE;
 }
 
 export function convertZonedLocalToUTC(
