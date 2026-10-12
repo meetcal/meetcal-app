@@ -127,8 +127,31 @@ describe('calculateWrappedStats', () => {
 
   it('measures improvement from the first row to the last', () => {
     const stats = calculateWrappedStats([
-      row({ date: '2026-01-10', total: 200 }),
-      row({ date: '2026-06-10', total: 225 }),
+      row({ meet: 'Winter Open', date: '2026-01-10', total: 200 }),
+      row({ meet: 'Summer Open', date: '2026-06-10', total: 225 }),
+    ]);
+
+    expect(stats.improvementFromFirst).toBe(25);
+  });
+
+  it('has no improvement when every total comes from one meet', () => {
+    // One meet can carry two rows (the same lift listed in two age
+    // divisions). Wrapped says one meet, so it must not show "+10kg".
+    const stats = calculateWrappedStats([
+      row({ meet: 'Local Open', total: 200 }),
+      row({ meet: 'Local Open', total: 210 }),
+    ]);
+
+    expect(stats.totalMeets).toBe(1);
+    expect(stats.improvementFromFirst).toBeNull();
+  });
+
+  it("compares each meet's best total when a meet has several rows", () => {
+    const stats = calculateWrappedStats([
+      row({ meet: 'Local Open', date: '2026-01-10', total: 200 }),
+      row({ meet: 'Local Open', date: '2026-01-10', total: 205 }),
+      row({ meet: 'Nationals', date: '2026-06-10', total: 230 }),
+      row({ meet: 'Nationals', date: '2026-06-10', total: 220 }),
     ]);
 
     expect(stats.improvementFromFirst).toBe(25);
@@ -137,9 +160,9 @@ describe('calculateWrappedStats', () => {
   it('ignores a bomb-out at the end of the year', () => {
     // A 0 / missing total used to be read as the last total: "-200kg".
     const stats = calculateWrappedStats([
-      row({ date: '2026-01-10', total: 200 }),
-      row({ date: '2026-04-10', total: 210 }),
-      row({ date: '2026-09-10', total: 0 }),
+      row({ meet: 'Winter Open', date: '2026-01-10', total: 200 }),
+      row({ meet: 'Spring Open', date: '2026-04-10', total: 210 }),
+      row({ meet: 'Fall Open', date: '2026-09-10', total: 0 }),
     ]);
 
     expect(stats.improvementFromFirst).toBe(10);
@@ -147,9 +170,9 @@ describe('calculateWrappedStats', () => {
 
   it('ignores a bomb-out at the start of the year', () => {
     const stats = calculateWrappedStats([
-      row({ date: '2026-01-10', total: null }),
-      row({ date: '2026-04-10', total: 200 }),
-      row({ date: '2026-09-10', total: 195 }),
+      row({ meet: 'Winter Open', date: '2026-01-10', total: null }),
+      row({ meet: 'Spring Open', date: '2026-04-10', total: 200 }),
+      row({ meet: 'Fall Open', date: '2026-09-10', total: 195 }),
     ]);
 
     expect(stats.improvementFromFirst).toBe(-5);
@@ -158,8 +181,8 @@ describe('calculateWrappedStats', () => {
   it('has no improvement with fewer than two meets that have a total', () => {
     expect(
       calculateWrappedStats([
-        row({ date: '2026-01-10', total: 0 }),
-        row({ date: '2026-06-10', total: 200 }),
+        row({ meet: 'Winter Open', date: '2026-01-10', total: 0 }),
+        row({ meet: 'Summer Open', date: '2026-06-10', total: 200 }),
       ]).improvementFromFirst,
     ).toBeNull();
     expect(calculateWrappedStats([row({ total: 200 })]).improvementFromFirst).toBeNull();
