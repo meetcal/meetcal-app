@@ -37,6 +37,7 @@ import {
   View,
 } from "react-native";
 import { useScreenHorizontalInsets } from "@/hooks/useScreenInsets";
+import { Palette } from "@/constants/Palette";
 
 function SkeletonCard({ colors }: { colors: ReturnType<typeof useAppColors> }) {
   const opacity = useRef(new Animated.Value(0.4)).current;
@@ -699,7 +700,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   retryButtonText: {
-    color: "#FFFFFF",
+    color: Palette.white,
     fontSize: 16,
     fontWeight: "600",
   },

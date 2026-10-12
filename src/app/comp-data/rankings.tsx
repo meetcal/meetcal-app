@@ -96,24 +96,6 @@ function IntlRankingsScreenContent() {
     [intlRankings],
   );
 
-  // Filter age category options based on the applied meet
-  const ageCategoryOptions = useMemo(() => {
-    const filteredData = filters.meet
-      ? intlRankings.filter((r) => r.meet === filters.meet)
-      : intlRankings;
-
-    return sortAgeGroups(
-      Array.from(
-        new Set(
-          filteredData.map((r) =>
-            typeof r.ageCategory === "string" ? r.ageCategory : "",
-          ),
-        ),
-      ).filter(Boolean),
-      { includeExtended: true },
-    );
-  }, [filters.meet, intlRankings]);
-
   const genderOptions = useMemo(
     () =>
       Array.from(
