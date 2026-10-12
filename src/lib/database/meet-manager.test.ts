@@ -3,12 +3,15 @@ import {
   fetchMeetsFresh,
   getCachedMeets,
   prefetchCriticalMeetData,
+  HISTORY_DEFERRED_RETRY_DELAY_MS,
   HISTORY_REFRESH_TTL_MS,
   HISTORY_RETRY_AFTER_DEFAULT_MS,
   HISTORY_RETRY_AFTER_MAX_MS,
   historyRetryDelayMs,
+  planHistoryDownload,
   prefetchMeetData,
   pruneHistorySyncedAt,
+  prunePendingHistory,
   touchMeetAccess,
   validatePrefetchedLiftingResults,
   warmMeetData,
@@ -536,7 +539,7 @@ describe("full athlete history download", () => {
     expect(etagWrites[etagWrites.length - 1]).toEqual({ "Recovery Meet A": '"retry"' });
   });
 
-  it("does not pin an ETag or report success when history fails after SQLITE_FULL recovery", async () => {
+  it("keeps the re-ingested package's ETag but reports failure when history fails after SQLITE_FULL recovery", async () => {
     const pkg = {
       meet: {},
       schedule: [],
@@ -555,10 +558,72 @@ describe("full athlete history download", () => {
       /athlete_history/,
     );
 
+    // The package was decomposed, so its validator is the "ingested" marker;
+    // the athlete whose history failed is recorded for the retry instead.
     const etagWrites = (AsyncStorage.setItem as jest.Mock).mock.calls
       .filter(([key]) => key === "@meet_package_etag_v1")
       .map(([, value]) => JSON.parse(value as string));
-    expect(etagWrites[etagWrites.length - 1]).toEqual({});
+    expect(etagWrites[etagWrites.length - 1]).toEqual({ "Recovery Meet B": '"retry"' });
+    const pendingWrites = (AsyncStorage.setItem as jest.Mock).mock.calls
+      .filter(([key]) => key === "@meet_history_pending_v1")
+      .map(([, value]) => JSON.parse(value as string));
+    expect(pendingWrites[pendingWrites.length - 1]).toEqual({
+      "Recovery Meet B": { names: ["Athlete A"], since: expect.any(Number) },
+    });
+  });
+
+  it("retries a batch that timed out once, after the rest of the pass, and completes", async () => {
+    jest.useFakeTimers();
+    try {
+      const { MeetCalApiTimeoutError } = jest.requireActual("@/lib/api/meetcal-api");
+      const athleteNames = Array.from({ length: 100 }, (_, i) => `Athlete ${i + 1}`);
+      mockFetchApiMeetPackage.mockResolvedValue({
+        meet: {},
+        schedule: [],
+        athletes: athleteNames.map(buildAthlete),
+        meet_results: [{ name: "Athlete 1" }],
+        recent_results_by_name: {},
+        year_bests_by_name: {},
+      });
+      mockFetchApiResultsByNames
+        .mockResolvedValueOnce([])
+        .mockRejectedValueOnce(new MeetCalApiTimeoutError("POST", "/lifting-results/by-names", 15000))
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([{ name: "Athlete 41", date: "2025-01-01" }]);
+
+      const prefetch = prefetchMeetData("History Meet Timeout" as any);
+      await jest.advanceTimersByTimeAsync(0);
+      // Batches 1-3 went out in order; batch 2 waits for the end of the pass.
+      expect(mockFetchApiResultsByNames).toHaveBeenCalledTimes(3);
+      await jest.advanceTimersByTimeAsync(HISTORY_DEFERRED_RETRY_DELAY_MS);
+      await expect(prefetch).resolves.toBeUndefined();
+
+      expect(mockFetchApiResultsByNames).toHaveBeenCalledTimes(4);
+      expect(mockFetchApiResultsByNames.mock.calls[3][0]).toEqual(
+        mockFetchApiResultsByNames.mock.calls[1][0],
+      );
+      expect(mockSaveAthleteHistory).toHaveBeenCalledWith("Athlete 41", [
+        { name: "Athlete 41", date: "2025-01-01" },
+      ]);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it("does not retry a batch whose history write failed", async () => {
+    mockFetchApiMeetPackage.mockResolvedValue({
+      meet: {},
+      schedule: [],
+      athletes: [buildAthlete("Athlete A")],
+      meet_results: [{ name: "Athlete A" }],
+      recent_results_by_name: {},
+      year_bests_by_name: {},
+    });
+    mockFetchApiResultsByNames.mockResolvedValue([{ name: "Athlete A", date: "2025-01-01" }]);
+    mockSaveAthleteHistory.mockRejectedValueOnce(new Error("SQLITE_FULL"));
+
+    await expect(prefetchMeetData("History Meet Write" as any)).rejects.toThrow(/athlete_history/);
+    expect(mockFetchApiResultsByNames).toHaveBeenCalledTimes(1);
   });
 
   it("reports failure instead of silently succeeding when a history write fails", async () => {
@@ -666,6 +731,44 @@ describe("cache eviction during prefetch", () => {
     expect(clearedMeets).not.toContain("Meet E");
     expect(clearedMeets).not.toContain("Meet D");
     expect(clearedMeets).not.toContain("Meet C");
+  });
+
+  // The sweep wrote back the copy it read before clearing (slow), so a meet
+  // opened meanwhile lost its access stamp and was never evicted again.
+  it("keeps an access stamped while the sweep is clearing a meet", async () => {
+    const store = useBackedStorage({
+      [MEET_CACHE_KEY]: JSON.stringify({
+        totalSize: 0,
+        meets: {
+          "Meet E": { lastAccessed: 5, size: 0 },
+          "Meet D": { lastAccessed: 4, size: 0 },
+          "Meet B": { lastAccessed: 2, size: 0 },
+        },
+      }),
+    });
+    setExplicitlyDownloaded(() => false);
+    let releaseClear!: () => void;
+    const clearGate = new Promise<void>((resolve) => {
+      releaseClear = resolve;
+    });
+    mockClearMeetData.mockImplementationOnce(() => clearGate);
+
+    try {
+      const opening = prefetchCriticalMeetData("Meet F" as any);
+      for (let i = 0; i < 50 && mockClearMeetData.mock.calls.length === 0; i += 1) {
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      }
+      expect(mockClearMeetData).toHaveBeenCalledWith("Meet B");
+      // Another meet is opened while "Meet B" is being cleared.
+      await touchMeetAccess("Meet G" as any);
+      releaseClear();
+      await opening;
+
+      const info = JSON.parse(store.get(MEET_CACHE_KEY)!);
+      expect(Object.keys(info.meets).sort()).toEqual(["Meet D", "Meet E", "Meet F", "Meet G"]);
+    } finally {
+      resetStorageMocks();
+    }
   });
 });
 
@@ -916,13 +1019,85 @@ describe("package revalidation with ETag", () => {
   });
 
   it("reports an incomplete download when the missing history cannot be fetched on a 304", async () => {
-    storedEtags({ "Etag Meet A3": '"abc"' });
-    mockGetMeetData.mockResolvedValue({ ...emptyMeetData, athletes: [{ name: "Athlete A" }] });
-    mockFetchApiMeetPackageConditional.mockResolvedValueOnce({ status: "not_modified" });
-    mockFindAthleteNamesWithoutHistory.mockResolvedValueOnce(["Athlete A"]);
-    mockFetchApiResultsByNames.mockRejectedValueOnce(new Error("network"));
+    jest.useFakeTimers();
+    try {
+      storedEtags({ "Etag Meet A3": '"abc"' });
+      mockGetMeetData.mockResolvedValue({ ...emptyMeetData, athletes: [{ name: "Athlete A" }] });
+      mockFetchApiMeetPackageConditional.mockResolvedValueOnce({ status: "not_modified" });
+      mockFindAthleteNamesWithoutHistory.mockResolvedValueOnce(["Athlete A"]);
+      // Fails on the pass and again on its one deferred retry.
+      mockFetchApiResultsByNames.mockRejectedValue(new Error("network"));
 
-    await expect(prefetchMeetData("Etag Meet A3" as any)).rejects.toThrow(/athlete_history/);
+      const prefetch = prefetchMeetData("Etag Meet A3" as any);
+      prefetch.catch(() => undefined);
+      await jest.advanceTimersByTimeAsync(HISTORY_DEFERRED_RETRY_DELAY_MS);
+      await expect(prefetch).rejects.toThrow(/athlete_history/);
+      expect(mockFetchApiResultsByNames).toHaveBeenCalledTimes(2);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  // One failed batch used to withhold the ETag, so the retry re-ingested the
+  // package and re-downloaded every athlete: ~38 requests for a national meet.
+  it("resumes an unfinished history refresh with only the athletes it did not reach", async () => {
+    const pendingSince = Date.now() - 60_000;
+    mockGetItem.mockImplementation(async (key: string) => {
+      if (key === PACKAGE_ETAG_KEY) return JSON.stringify({ "Etag Meet Resume": '"abc"' });
+      // The last full sync is old: without the pending list this 304 would
+      // re-fetch the whole roster.
+      if (key === "@meet_history_synced_at_v1") return JSON.stringify({});
+      if (key === "@meet_history_pending_v1") {
+        return JSON.stringify({
+          "Etag Meet Resume": { names: ["Athlete C", "Withdrawn"], since: pendingSince },
+        });
+      }
+      return null;
+    });
+    mockGetMeetData.mockResolvedValue({
+      ...emptyMeetData,
+      athletes: [{ name: "Athlete A" }, { name: "Athlete B" }, { name: "athlete  c" }],
+    });
+    mockFetchApiMeetPackageConditional.mockResolvedValueOnce({ status: "not_modified" });
+    mockFindAthleteNamesWithoutHistory.mockResolvedValueOnce(["Athlete B"]);
+
+    await prefetchMeetData("Etag Meet Resume" as any);
+
+    // Pending (matched to today's roster spelling) plus any athlete with no blob.
+    expect(mockFetchApiResultsByNames).toHaveBeenCalledTimes(1);
+    expect(mockFetchApiResultsByNames).toHaveBeenCalledWith(["athlete  c", "Athlete B"]);
+    expect(mockSaveMeetAthletes).not.toHaveBeenCalled();
+    // Finishing the remainder completes the refresh: stamped, pending cleared.
+    const stampWrites = mockSetItem.mock.calls.filter(([key]) => key === "@meet_history_synced_at_v1");
+    expect(stampWrites).toHaveLength(1);
+    const pendingWrites = mockSetItem.mock.calls
+      .filter(([key]) => key === "@meet_history_pending_v1")
+      .map(([, value]) => JSON.parse(value as string));
+    expect(pendingWrites).toEqual([{}]);
+  });
+
+  it("starts over when the unfinished refresh is older than the TTL", async () => {
+    mockGetItem.mockImplementation(async (key: string) => {
+      if (key === PACKAGE_ETAG_KEY) return JSON.stringify({ "Etag Meet Old Pending": '"abc"' });
+      if (key === "@meet_history_pending_v1") {
+        return JSON.stringify({
+          "Etag Meet Old Pending": {
+            names: ["Athlete B"],
+            since: Date.now() - HISTORY_REFRESH_TTL_MS - 1,
+          },
+        });
+      }
+      return null;
+    });
+    mockGetMeetData.mockResolvedValue({
+      ...emptyMeetData,
+      athletes: [{ name: "Athlete A" }, { name: "Athlete B" }],
+    });
+    mockFetchApiMeetPackageConditional.mockResolvedValueOnce({ status: "not_modified" });
+
+    await prefetchMeetData("Etag Meet Old Pending" as any);
+
+    expect(mockFetchApiResultsByNames).toHaveBeenCalledWith(["Athlete A", "Athlete B"]);
   });
 
   it("does not trust a 304 when the local copy is gone; refetches without the validator", async () => {
@@ -955,7 +1130,7 @@ describe("package revalidation with ETag", () => {
     expect(saved[saved.length - 1]).toEqual({ "Etag Meet C": '"fresh-tag"' });
   });
 
-  it("drops the ETag when any part of the prefetch fails", async () => {
+  it("keeps the new ETag once the package is ingested and records the history still owed", async () => {
     storedEtags({ "Etag Meet D": '"old-tag"' });
     mockFetchApiMeetPackageConditional.mockResolvedValueOnce({
       status: "fresh",
@@ -969,7 +1144,31 @@ describe("package revalidation with ETag", () => {
     );
 
     const saved = savedEtags();
+    expect(saved[saved.length - 1]).toEqual({ "Etag Meet D": '"new-tag"' });
+    const pendingWrites = mockSetItem.mock.calls
+      .filter(([key]) => key === "@meet_history_pending_v1")
+      .map(([, value]) => JSON.parse(value as string));
+    expect(pendingWrites[pendingWrites.length - 1]).toEqual({
+      "Etag Meet D": { names: ["Athlete A"], since: expect.any(Number) },
+    });
+  });
+
+  it("drops the ETag when the package ingest itself fails", async () => {
+    storedEtags({ "Etag Meet D2": '"old-tag"' });
+    jest.spyOn(console, "error").mockImplementation(() => {});
+    mockFetchApiMeetPackageConditional.mockResolvedValueOnce({
+      status: "fresh",
+      etag: '"new-tag"',
+      package: freshPackage,
+    });
+    mockSaveMeetAthletes.mockRejectedValueOnce(new Error("I/O error"));
+
+    await expect(prefetchMeetData("Etag Meet D2" as any)).rejects.toThrow(/meet_package/);
+
+    const saved = savedEtags();
     expect(saved[saved.length - 1]).toEqual({});
+    // No roster was decomposed, so no history pass ran either.
+    expect(mockFetchApiResultsByNames).not.toHaveBeenCalled();
   });
   it("drops history stamps past the TTL when it records a new one", async () => {
     const now = Date.now();
@@ -1030,6 +1229,88 @@ describe("pruneHistorySyncedAt", () => {
 
   it("returns an empty map for no stamps", () => {
     expect(pruneHistorySyncedAt({}, Date.now())).toEqual({});
+  });
+});
+
+describe("planHistoryDownload", () => {
+  const now = Date.UTC(2026, 5, 20, 12);
+  const roster = ["Athlete A", "Athlete B", "Athlete C"];
+  const base = {
+    rosterNames: roster,
+    pending: undefined,
+    syncedAt: now - 1000,
+    packageChanged: false,
+    force: false,
+    now,
+  };
+
+  it("fetches only the gaps while the last full sync is fresh", async () => {
+    const findMissing = jest.fn(async () => ["Athlete B"]);
+    await expect(planHistoryDownload({ ...base, findMissing })).resolves.toEqual({
+      names: ["Athlete B"],
+      fullRefresh: false,
+      since: now,
+    });
+  });
+
+  it("refreshes the whole roster for a changed package or a stale sync, without probing storage", async () => {
+    const findMissing = jest.fn(async () => []);
+    for (const input of [
+      { ...base, packageChanged: true },
+      { ...base, syncedAt: now - HISTORY_REFRESH_TTL_MS },
+      { ...base, force: true },
+    ]) {
+      await expect(planHistoryDownload({ ...input, findMissing })).resolves.toEqual({
+        names: roster,
+        fullRefresh: true,
+        since: now,
+      });
+    }
+    expect(findMissing).not.toHaveBeenCalled();
+  });
+
+  it("resumes a young unfinished refresh, even over a changed package", async () => {
+    const since = now - 60_000;
+    const findMissing = jest.fn(async () => ["Athlete A"]);
+    await expect(
+      planHistoryDownload({
+        ...base,
+        packageChanged: true,
+        pending: { names: ["athlete c", "Not On Roster"], since },
+        findMissing,
+      }),
+    ).resolves.toEqual({ names: ["Athlete C", "Athlete A"], fullRefresh: true, since });
+  });
+
+  it("ignores an unfinished refresh on Refresh All or once it is older than the TTL", async () => {
+    const findMissing = jest.fn(async () => []);
+    const pending = { names: ["Athlete C"], since: now - 60_000 };
+    await expect(
+      planHistoryDownload({ ...base, force: true, pending, findMissing }),
+    ).resolves.toMatchObject({ names: roster });
+    await expect(
+      planHistoryDownload({
+        ...base,
+        syncedAt: 0,
+        pending: { ...pending, since: now - HISTORY_REFRESH_TTL_MS },
+        findMissing,
+      }),
+    ).resolves.toMatchObject({ names: roster, since: now });
+  });
+});
+
+describe("prunePendingHistory", () => {
+  it("drops unfinished refreshes that started a TTL or more ago", () => {
+    const now = Date.now();
+    expect(
+      prunePendingHistory(
+        {
+          fresh: { names: ["A"], since: now - 1 },
+          edge: { names: ["B"], since: now - HISTORY_REFRESH_TTL_MS },
+        },
+        now,
+      ),
+    ).toEqual({ fresh: { names: ["A"], since: now - 1 } });
   });
 });
 

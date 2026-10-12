@@ -41,6 +41,7 @@ import {
 } from './meets-list-cache';
 import { ATTEMPT_HISTORY_YEARS, getHistoryCutoffDate } from '@/utils/dateTime';
 import { devLog } from '../logger';
+import { createWriteChain } from '@/lib/data/write-chain';
 
 // Re-exported: callers have always read the meets list cache from here.
 export { getCachedMeetByName, getCachedMeets };
@@ -142,6 +143,31 @@ function wait(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+/**
+ * A history batch that failed on the network (a timeout, a dropped
+ * connection) gets one more attempt after the rest of the pass, this long
+ * after it. On venue Wi-Fi one timeout among a national meet's ~38 batches
+ * was likely, and it failed the whole download.
+ */
+export const HISTORY_DEFERRED_RETRY_DELAY_MS = 1000;
+
+/**
+ * The athletes a meet's last full history refresh did not reach, per meet,
+ * and when that refresh started. Kept apart from the package ETag (which now
+ * only says "this package was decomposed here"), so a retry fetches these
+ * names instead of the whole roster again.
+ */
+const HISTORY_PENDING_KEY = '@meet_history_pending_v1';
+
+type PendingHistory = { names: string[]; since: number };
+
+/**
+ * Both per-meet history blobs (`HISTORY_SYNCED_AT_KEY`, `HISTORY_PENDING_KEY`)
+ * are read-modify-written by every prefetch, and prefetches of different
+ * meets run concurrently, so their writes are serialized.
+ */
+const historyStateWrites = createWriteChain();
+
 async function readHistorySyncedAt(): Promise<Record<string, number>> {
   try {
     const raw = await AsyncStorage.getItem(HISTORY_SYNCED_AT_KEY);
@@ -176,13 +202,114 @@ export function pruneHistorySyncedAt(
 
 async function markHistorySynced(meet: MeetName): Promise<void> {
   try {
-    const now = Date.now();
-    const stamps = pruneHistorySyncedAt(await readHistorySyncedAt(), now);
-    stamps[meet] = now;
-    await AsyncStorage.setItem(HISTORY_SYNCED_AT_KEY, JSON.stringify(stamps));
+    await historyStateWrites(async () => {
+      const now = Date.now();
+      const stamps = pruneHistorySyncedAt(await readHistorySyncedAt(), now);
+      stamps[meet] = now;
+      await AsyncStorage.setItem(HISTORY_SYNCED_AT_KEY, JSON.stringify(stamps));
+    });
   } catch (error) {
     console.warn('Could not record athlete history sync time:', error);
   }
+}
+
+async function readPendingHistory(): Promise<Record<string, PendingHistory>> {
+  try {
+    const raw = await AsyncStorage.getItem(HISTORY_PENDING_KEY);
+    const parsed: unknown = raw ? JSON.parse(raw) : null;
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {};
+    const out: Record<string, PendingHistory> = {};
+    for (const [meet, value] of Object.entries(parsed as Record<string, unknown>)) {
+      if (!value || typeof value !== 'object' || Array.isArray(value)) continue;
+      const entry = value as { names?: unknown; since?: unknown };
+      if (!Array.isArray(entry.names)) continue;
+      if (typeof entry.since !== 'number' || !Number.isFinite(entry.since)) continue;
+      const names = entry.names.filter(
+        (name): name is string => typeof name === 'string' && name.length > 0,
+      );
+      out[meet] = { names, since: entry.since };
+    }
+    return out;
+  } catch {
+    return {};
+  }
+}
+
+/**
+ * Pending entries whose refresh started at least `HISTORY_REFRESH_TTL_MS`
+ * ago are dropped: by then the next refresh covers the whole roster anyway.
+ */
+export function prunePendingHistory(
+  pending: Record<string, PendingHistory>,
+  now: number,
+): Record<string, PendingHistory> {
+  const kept: Record<string, PendingHistory> = {};
+  for (const [meet, entry] of Object.entries(pending)) {
+    if (now - entry.since < HISTORY_REFRESH_TTL_MS) kept[meet] = entry;
+  }
+  return kept;
+}
+
+/** Records (or with `null`, clears) the athletes a meet's refresh still owes. */
+async function writePendingHistory(meet: MeetName, entry: PendingHistory | null): Promise<void> {
+  try {
+    await historyStateWrites(async () => {
+      const current = await readPendingHistory();
+      if (entry === null && !current[meet]) return;
+      const next = prunePendingHistory(current, Date.now());
+      if (entry === null) delete next[meet];
+      else next[meet] = entry;
+      await AsyncStorage.setItem(HISTORY_PENDING_KEY, JSON.stringify(next));
+    });
+  } catch (error) {
+    console.warn('Could not record pending athlete history:', error);
+  }
+}
+
+/**
+ * Which athletes a history pass downloads.
+ *
+ * - `force` (Refresh All): the whole roster.
+ * - An unfinished refresh younger than the TTL: only the athletes it did not
+ *   reach, plus any with no history blob at all. This is the resume: one
+ *   failed batch used to make the next attempt start over from batch one.
+ * - A changed package or a last full sync older than the TTL: the roster.
+ * - Otherwise only the gaps (athletes with no blob on disk).
+ *
+ * `fullRefresh` says whether finishing the pass completes a full refresh
+ * (and so stamps the sync time); `since` is when that refresh started.
+ * `findMissing` (the storage probe for athletes with no blob) only runs on
+ * the paths that use it.
+ */
+export async function planHistoryDownload(input: {
+  rosterNames: readonly string[];
+  findMissing: (names: readonly string[]) => Promise<string[]>;
+  pending: PendingHistory | undefined;
+  syncedAt: number;
+  packageChanged: boolean;
+  force: boolean;
+  now: number;
+}): Promise<{ names: string[]; fullRefresh: boolean; since: number }> {
+  const { rosterNames, pending, now } = input;
+  if (input.force) {
+    return { names: [...rosterNames], fullRefresh: true, since: now };
+  }
+  if (pending && now - pending.since < HISTORY_REFRESH_TTL_MS) {
+    // Pending names are matched to today's roster by normalized name; an
+    // athlete since withdrawn is dropped.
+    const rosterByName = new Map(rosterNames.map((name) => [normalizeAthleteName(name), name]));
+    const names = new Set<string>();
+    for (const name of pending.names) {
+      const onRoster = rosterByName.get(normalizeAthleteName(name));
+      if (onRoster) names.add(onRoster);
+    }
+    for (const name of await input.findMissing(rosterNames)) names.add(name);
+    return { names: Array.from(names), fullRefresh: true, since: pending.since };
+  }
+  if (input.packageChanged || now - input.syncedAt >= HISTORY_REFRESH_TTL_MS) {
+    return { names: [...rosterNames], fullRefresh: true, since: now };
+  }
+  return { names: await input.findMissing(rosterNames), fullRefresh: false, since: now };
 }
 
 interface MeetInfo {
@@ -223,7 +350,9 @@ export function validatePrefetchedLiftingResults(
 
 export async function clearCachedMeetsList(): Promise<void> {
   try {
-    await AsyncStorage.multiRemove([MEETS_LIST_CACHE_KEY, MEET_CACHE_KEY]);
+    // On the cache-info chain, so an access stamp already queued does not
+    // land after the removal and bring the old blob back.
+    await cacheInfoWrites(() => AsyncStorage.multiRemove([MEETS_LIST_CACHE_KEY, MEET_CACHE_KEY]));
   } catch (error) {
     console.error('Error clearing cached meets list:', error);
   }
@@ -274,10 +403,22 @@ async function getCacheInfo(): Promise<CacheInfo> {
   }
 }
 
-// Save cache info
-async function saveCacheInfo(info: CacheInfo) {
+/**
+ * Every read-modify-write of `@meet_cache_info` runs on this chain. The
+ * eviction sweep used to read the blob, clear meets (slow) and write its old
+ * copy back, so a meet opened during the sweep lost its access stamp and
+ * dropped out of LRU accounting for good: never evicted.
+ */
+const cacheInfoWrites = createWriteChain();
+
+/** Applies `mutate` to the current cache info and saves it; logs a failed write. */
+async function updateCacheInfo(mutate: (info: CacheInfo) => void): Promise<void> {
   try {
-    await AsyncStorage.setItem(MEET_CACHE_KEY, JSON.stringify(info));
+    await cacheInfoWrites(async () => {
+      const info = await getCacheInfo();
+      mutate(info);
+      await AsyncStorage.setItem(MEET_CACHE_KEY, JSON.stringify(info));
+    });
   } catch (error) {
     console.error('Error saving cache info:', error);
   }
@@ -455,18 +596,15 @@ async function fetchPackageForPrefetch(
 }
 
 export async function touchMeetAccess(meet: MeetName) {
-  const info = await getCacheInfo();
-  const currentMeetInfo = info.meets[meet];
-
-  // `size` used to be recomputed here by `JSON.stringify`-ing the whole
-  // roster on every access. Nothing reads it for eviction (that is count
-  // based), so it is carried forward rather than measured.
-  info.meets[meet] = {
-    lastAccessed: Date.now(),
-    size: currentMeetInfo?.size ?? 0,
-  };
-
-  await saveCacheInfo(info);
+  await updateCacheInfo((info) => {
+    // `size` used to be recomputed here by `JSON.stringify`-ing the whole
+    // roster on every access. Nothing reads it for eviction (that is count
+    // based), so it is carried forward rather than measured.
+    info.meets[meet] = {
+      lastAccessed: Date.now(),
+      size: info.meets[meet]?.size ?? 0,
+    };
+  });
 }
 
 // Evict implicitly-cached meets beyond the most-recently-accessed MAX_CACHED_MEETS.
@@ -489,7 +627,8 @@ async function cleanupOldMeetData() {
   const explicitlyDownloaded = await getExplicitlyDownloadedMeetIds();
 
   let implicitKept = 0;
-  for (const [meet] of meets) {
+  const evicted: MeetName[] = [];
+  for (const [meet, snapshot] of meets) {
     if (explicitlyDownloaded.has(meet)) {
       continue;
     }
@@ -503,12 +642,24 @@ async function cleanupOldMeetData() {
     if (implicitKept <= MAX_CACHED_MEETS) {
       continue;
     }
+    // Clearing a meet is slow, and the sweep's snapshot ages meanwhile. A
+    // meet opened since it was taken is the most recent one now, not a
+    // candidate.
+    const latest = (await getCacheInfo()).meets[meet];
+    if (latest && latest.lastAccessed !== snapshot.lastAccessed) {
+      continue;
+    }
     await clearMeetData(meet);
     await clearPackageEtag(meet);
-    delete info.meets[meet];
+    evicted.push(meet);
   }
 
-  await saveCacheInfo(info);
+  if (evicted.length === 0) return;
+  // Only the evicted entries are removed, from the blob as it is now:
+  // writing back the snapshot dropped every access stamped during the sweep.
+  await updateCacheInfo((info) => {
+    for (const meet of evicted) delete info.meets[meet];
+  });
 }
 
 export type PrefetchMeetOptions = {
@@ -551,55 +702,101 @@ export async function prefetchMeetData(meet: MeetName, options: PrefetchMeetOpti
  * memory at once, which is what previously let the iOS watchdog kill the
  * download.
  *
+ * A batch whose request failed on the network (timeout, dropped connection)
+ * is tried once more after the rest of the pass, still one batch at a time.
+ * Rate limits already had their one `Retry-After` wait in `fetchHistoryBatch`,
+ * and a function's own error or a failed write would fail the same way again.
+ *
  * Fetch *and* persist failures are recorded here rather than thrown: the
  * caller's SQLITE_FULL handler only knows how to redo the package ingest, and
  * a storage-full error during these larger full-history writes would otherwise
  * let prefetch resolve "successfully" and silently mark the meet downloaded
  * with partial/missing athlete history.
  *
- * @returns true when every athlete's history was written.
+ * @returns the athletes whose history was not written (empty when complete).
  */
 async function downloadAthleteHistory(
   meet: MeetName,
   athleteNames: readonly string[],
-): Promise<boolean> {
-  let complete = true;
+): Promise<string[]> {
+  const failed: string[] = [];
+  const deferred: string[][] = [];
   for (let i = 0; i < athleteNames.length; i += HISTORY_DOWNLOAD_BATCH_SIZE) {
     const batch = athleteNames.slice(i, i + HISTORY_DOWNLOAD_BATCH_SIZE);
-    try {
-      const batchResults = await fetchHistoryBatch(batch);
-
-      const resultsByName = new Map<string, SupabaseLiftResult[]>();
-      for (const row of batchResults) {
-        const key = normalizeAthleteName(row.name);
-        const existing = resultsByName.get(key);
-        if (existing) {
-          existing.push(row);
-        } else {
-          resultsByName.set(key, [row]);
-        }
-      }
-
-      // One storage batch per network batch: one `multiSet`, one read-back,
-      // one `multiRemove`, and no write at all for athletes whose history
-      // has not changed since the last download.
-      await saveAthleteHistoryBatch(
-        batch.map((name) => ({
-          name,
-          results: resultsByName.get(normalizeAthleteName(name)) ?? [],
-        })),
-      );
-    } catch (historyError) {
-      // Count, not names: athlete names stay out of logs and crash reports.
-      console.error('Prefetch athlete history batch failed:', {
-        meet,
-        batchSize: batch.length,
-        error: historyError,
-      });
-      complete = false;
+    const outcome = await downloadHistoryBatch(meet, batch);
+    if (outcome === 'network') deferred.push(batch);
+    else if (outcome === 'failed') failed.push(...batch);
+  }
+  if (deferred.length > 0) {
+    await wait(HISTORY_DEFERRED_RETRY_DELAY_MS);
+    for (const batch of deferred) {
+      if ((await downloadHistoryBatch(meet, batch)) !== 'saved') failed.push(...batch);
     }
   }
-  return complete;
+  return failed;
+}
+
+/**
+ * Fetches and stores one batch. `network` is a request that never got an
+ * answer (worth one more try later); `failed` is anything else.
+ */
+async function downloadHistoryBatch(
+  meet: MeetName,
+  batch: readonly string[],
+): Promise<'saved' | 'network' | 'failed'> {
+  let batchResults: SupabaseLiftResult[];
+  try {
+    batchResults = await fetchHistoryBatch(batch);
+  } catch (historyError) {
+    logHistoryBatchFailure(meet, batch, historyError);
+    return isNetworkFailure(historyError) ? 'network' : 'failed';
+  }
+
+  const resultsByName = new Map<string, SupabaseLiftResult[]>();
+  for (const row of batchResults) {
+    const key = normalizeAthleteName(row.name);
+    const existing = resultsByName.get(key);
+    if (existing) {
+      existing.push(row);
+    } else {
+      resultsByName.set(key, [row]);
+    }
+  }
+
+  try {
+    // One storage batch per network batch: one `multiSet`, one read-back,
+    // one `multiRemove`, and no write at all for athletes whose history
+    // has not changed since the last download.
+    await saveAthleteHistoryBatch(
+      batch.map((name) => ({
+        name,
+        results: resultsByName.get(normalizeAthleteName(name)) ?? [],
+      })),
+    );
+    return 'saved';
+  } catch (historyError) {
+    logHistoryBatchFailure(meet, batch, historyError);
+    return 'failed';
+  }
+}
+
+function logHistoryBatchFailure(meet: MeetName, batch: readonly string[], error: unknown): void {
+  // Count, not names: athlete names stay out of logs and crash reports.
+  console.error('Prefetch athlete history batch failed:', {
+    meet,
+    batchSize: batch.length,
+    error,
+  });
+}
+
+/**
+ * A request that failed without the server answering: a timeout or a dropped
+ * connection. A `MeetCalApiError` is an answer, and Convex's "busy" errors
+ * were already retried after their wait.
+ */
+function isNetworkFailure(error: unknown): boolean {
+  if (error instanceof MeetCalApiTimeoutError) return true;
+  return !(error instanceof MeetCalApiError) && !isConvexTransientError(error);
 }
 
 /** One `/by-names` batch, retried once after `Retry-After` on a 429/503, or after a Convex overload. */
@@ -616,18 +813,56 @@ async function fetchHistoryBatch(batch: readonly string[]): Promise<SupabaseLift
 }
 
 /**
- * Decomposes a fresh package into storage: schedule, roster (which also
- * writes the per-session caches), the meet's own results, year bests, then
- * every athlete's full history.
+ * Brings a meet's athlete history up to date for `rosterNames` (see
+ * `planHistoryDownload` for which athletes), and records what is still
+ * missing so the next attempt resumes there.
  *
- * @returns whether the history download completed. A schedule/roster/result
- * write that fails throws, so the caller can retry the whole ingest after a
- * SQLITE_FULL cleanup.
+ * @returns true when every athlete the pass set out to fetch was written.
+ */
+async function syncAthleteHistory(
+  meet: MeetName,
+  rosterNames: readonly string[],
+  options: { packageChanged: boolean; force: boolean },
+): Promise<boolean> {
+  const [syncedAtByMeet, pendingByMeet] = await Promise.all([
+    readHistorySyncedAt(),
+    readPendingHistory(),
+  ]);
+  const plan = await planHistoryDownload({
+    rosterNames,
+    findMissing: findAthleteNamesWithoutHistory,
+    pending: pendingByMeet[meet],
+    syncedAt: syncedAtByMeet[meet] ?? 0,
+    packageChanged: options.packageChanged,
+    force: options.force,
+    now: Date.now(),
+  });
+
+  const failed = plan.names.length > 0 ? await downloadAthleteHistory(meet, plan.names) : [];
+  if (failed.length > 0) {
+    // A gap-only pass is recomputed from storage next time; only an
+    // unfinished full refresh needs its remainder written down.
+    if (plan.fullRefresh) await writePendingHistory(meet, { names: failed, since: plan.since });
+    return false;
+  }
+  if (plan.fullRefresh) await markHistorySynced(meet);
+  if (pendingByMeet[meet]) await writePendingHistory(meet, null);
+  return true;
+}
+
+/**
+ * Decomposes a fresh package into storage: schedule, roster (which also
+ * writes the per-session caches), the meet's own results and year bests.
+ * Athlete history is the caller's next step (`syncAthleteHistory`).
+ *
+ * @returns the roster's athlete names. A schedule/roster/result write that
+ * fails throws, so the caller can retry the whole ingest after a SQLITE_FULL
+ * cleanup.
  */
 async function ingestMeetPackage(
   meet: MeetName,
   pkg: ApiMeetPackage,
-): Promise<{ historyComplete: boolean }> {
+): Promise<string[]> {
   const schedule = mapPackageSchedule(pkg);
   const athletes = mapApiAthletes(pkg.athletes, '/meets/package');
   const athleteNames = uniqueAthleteNames(athletes);
@@ -656,8 +891,7 @@ async function ingestMeetPackage(
     ),
   );
 
-  const historyComplete = await downloadAthleteHistory(meet, athleteNames);
-  return { historyComplete };
+  return athleteNames;
 }
 
 async function prefetchMeetDataUncached(meet: MeetName, options: PrefetchMeetOptions) {
@@ -666,50 +900,41 @@ async function prefetchMeetDataUncached(meet: MeetName, options: PrefetchMeetOpt
   // as long as the download runs, not only once it has finished.
   await touchMeetAccess(meet);
   const historyCutoffDate = getHistoryCutoffDate(ATTEMPT_HISTORY_YEARS);
-  let freshEtag: string | null = null;
-  // A `304` leaves the stored validator alone: the package it describes is
-  // still byte-identical, whatever happened to the athlete history since.
-  let keepStoredEtag = false;
+  // The package ETag is the per-meet "package ingested" marker: it is saved
+  // once a package is fully decomposed, whatever happens to the history
+  // after, because history completeness is tracked on its own (the sync
+  // stamp and the pending list). It used to be withheld when one history
+  // batch failed, so the retry re-ingested the package and re-downloaded
+  // every athlete. `undefined` leaves the stored one alone (a `304`, or a
+  // request that never got an answer, changed nothing on disk); `null`
+  // drops it (a package was being written over the stored copy).
+  let etagUpdate: string | null | undefined;
+  let rosterNames: string[] | null = null;
+  let packageChanged = false;
 
   try {
     const fetched = await fetchPackageForPrefetch(meet, historyCutoffDate);
     if (fetched.status === 'not_modified') {
-      keepStoredEtag = true;
       // The roster on disk proves the *package* was decomposed here, not that
       // every athlete's history survived: "Delete all offline data" and the
-      // SQLITE_FULL cleanup remove history without touching the roster. Fill
-      // in whatever is missing rather than trusting the validator for it.
-      const syncedAt = (await readHistorySyncedAt())[meet] ?? 0;
-      const historyIsStale =
-        options.forceHistoryRefresh === true ||
-        Date.now() - syncedAt >= HISTORY_REFRESH_TTL_MS;
-      const toFetch = historyIsStale
-        ? fetched.athleteNames
-        : await findAthleteNamesWithoutHistory(fetched.athleteNames);
-      if (toFetch.length > 0) {
-        if (await downloadAthleteHistory(meet, toFetch)) {
-          if (historyIsStale) await markHistorySynced(meet);
-        } else {
-          errors.push('athlete_history');
-        }
-      }
+      // SQLITE_FULL cleanup remove history without touching the roster. The
+      // history pass fills in whatever is missing rather than trusting the
+      // validator for it.
+      rosterNames = fetched.athleteNames;
     } else {
-      freshEtag = fetched.etag;
-      const { historyComplete } = await ingestMeetPackage(meet, fetched.package);
-      if (historyComplete) {
-        await markHistorySynced(meet);
-      } else {
-        errors.push('athlete_history');
-      }
+      etagUpdate = null;
+      rosterNames = await ingestMeetPackage(meet, fetched.package);
+      etagUpdate = fetched.etag;
+      packageChanged = true;
     }
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     if (message.includes('SQLITE_FULL')) {
-      // Free the browse cache, then redo the *whole* ingest — history
-      // included. Restoring only `meet_results` here used to leave the meet
-      // marked downloaded, and pinned by an ETag, with no athlete history.
-      keepStoredEtag = false;
-      freshEtag = null;
+      // Free the browse cache, then redo the *whole* ingest; the history
+      // pass below runs either way. Restoring only `meet_results` here used
+      // to leave the meet marked downloaded, and pinned by an ETag, with no
+      // athlete history.
+      etagUpdate = null;
       try {
         await clearImplicitMeetData(meet);
         const refetched = await fetchApiMeetPackageConditional(meet, historyCutoffDate, null);
@@ -723,13 +948,9 @@ async function prefetchMeetDataUncached(meet: MeetName, options: PrefetchMeetOpt
         await pruneOrphanedAthleteHistory({
           keepNames: uniqueAthleteNames(mapApiAthletes(refetched.package.athletes, '/meets/package')),
         });
-        const { historyComplete } = await ingestMeetPackage(meet, refetched.package);
-        if (historyComplete) {
-          freshEtag = refetched.etag;
-          await markHistorySynced(meet);
-        } else {
-          errors.push('athlete_history');
-        }
+        rosterNames = await ingestMeetPackage(meet, refetched.package);
+        etagUpdate = refetched.etag;
+        packageChanged = true;
       } catch (retryError) {
         console.error('Prefetch meet package failed after cleanup retry:', { meet, error: retryError });
         errors.push('meet_package');
@@ -740,10 +961,21 @@ async function prefetchMeetDataUncached(meet: MeetName, options: PrefetchMeetOpt
     }
   }
 
-  // Only a complete prefetch may be short-circuited next time; anything
-  // partial must refetch in full.
-  if (!keepStoredEtag) {
-    await savePackageEtag(meet, errors.length === 0 ? freshEtag : null);
+  if (rosterNames) {
+    try {
+      const complete = await syncAthleteHistory(meet, rosterNames, {
+        packageChanged,
+        force: options.forceHistoryRefresh === true,
+      });
+      if (!complete) errors.push('athlete_history');
+    } catch (historyError) {
+      console.error('Prefetch athlete history failed:', { meet, error: historyError });
+      errors.push('athlete_history');
+    }
+  }
+
+  if (etagUpdate !== undefined) {
+    await savePackageEtag(meet, etagUpdate);
   }
 
   await touchMeetAccess(meet);
