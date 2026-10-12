@@ -85,17 +85,35 @@ describe('club and WSO athlete lists', () => {
     }
   });
 
-  it('answer a client that does not page in the old shape, capped at the most recent registrations', async () => {
-    const fake = fakeDb({ athletes: registrations(8100) });
+  it('answer a client that does not page in the old shape, in full up to the array limit', async () => {
+    const fake = fakeDb({ athletes: registrations(8192) });
     const rows = (await query(clubAthletes, fake.db, { club: 'Big Club' })) as { name: string; member_id: string }[];
     expect(Array.isArray(rows)).toBe(true);
-    expect(rows).toHaveLength(8000);
-    // The oldest 100 registrations are the ones left out.
-    expect(rows.some((r) => r.member_id === '99')).toBe(false);
-    expect(rows[0]).toEqual({ name: 'Lifter 08099', meet: 'Meet 19', club: 'Big Club', gender: 'Women', weight_class: '64', entry_total: 150, member_id: '8099' });
-    // Text has no element limit: the WSO list keeps more.
-    const wso = parse(await query(wsoAthletes, fake.db, { wso: 'California' })) as unknown[];
-    expect(wso).toHaveLength(8100);
+    expect(rows).toHaveLength(8192);
+    expect(rows[0]).toEqual({ name: 'Lifter 08191', meet: 'Meet 31', club: 'Big Club', gender: 'Women', weight_class: '64', entry_total: 150, member_id: '8191' });
+    expect(parse(await query(wsoAthletes, fake.db, { wso: 'California' }))).toHaveLength(8192);
+  });
+
+  it('past the array limit, keep an entry of every meet a club entered, then the most recent', async () => {
+    // Two old meets whose only entries are the first written.
+    const old = registrations(100).map((r, i) => ({ ...r, meet: i < 50 ? 'Old Meet A' : 'Old Meet B' }));
+    const fake = fakeDb({ athletes: [...old, ...registrations(8200).map((r) => ({ ...r, memberId: `new ${r.memberId}` }))] });
+    const rows = (await query(clubAthletes, fake.db, { club: 'Big Club' })) as { meet: string; member_id: string }[];
+    expect(rows).toHaveLength(8192);
+    expect(new Set(rows.map((r) => r.meet))).toEqual(new Set(['Old Meet A', 'Old Meet B', ...Array.from({ length: 40 }, (_, i) => `Meet ${i}`)]));
+    // Each meet's first entry (new 0 to 39 for the new meets), then the most
+    // recently written: new 40 to 49 are the oldest left out.
+    const ids = new Set(rows.map((r) => r.member_id));
+    expect(['0', '50', 'new 0', 'new 39', 'new 50', 'new 8199'].every((id) => ids.has(id))).toBe(true);
+    expect(['1', 'new 40', 'new 49'].some((id) => ids.has(id))).toBe(false);
+  });
+
+  it('cap a WSO list for a client that does not page at the most recent registrations', async () => {
+    const fake = fakeDb({ athletes: registrations(30001) });
+    const wso = parse(await query(wsoAthletes, fake.db, { wso: 'California' })) as { member_id: string }[];
+    expect(wso).toHaveLength(30000);
+    // The oldest registration is the one left out.
+    expect(wso.some((r) => r.member_id === '0')).toBe(false);
   });
 });
 

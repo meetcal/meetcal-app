@@ -187,12 +187,16 @@ export const clubs = query({
 const ATHLETE_PAGE_SIZE = 2000;
 /**
  * Registrations answered to a client that does not page (the app, site and
- * CLI before paging), the most recently written first: under Convex's
- * 8,192-element array limit, and a bounded read. `wsoAthletes` answers text,
- * which has no element limit, so it keeps more, within the read limits.
+ * CLI before paging). `clubAthletes` answers an array, which holds at most
+ * 8,192 elements: a larger answer failed before paging, so every club that
+ * answered then still answers in full. `wsoAthletes` answers text, which has
+ * no element limit; before paging it failed past the 32,000 documents one
+ * query may read, and this keeps under that with room to spare.
  */
-const UNPAGED_CLUB_ATHLETE_LIMIT = 8000;
-const UNPAGED_WSO_ATHLETE_LIMIT = 16000;
+const UNPAGED_CLUB_ATHLETE_LIMIT = 8192;
+const UNPAGED_WSO_ATHLETE_LIMIT = 30000;
+/** Meets a too-large unpaged club answer keeps one entry of: one index range each, of the 4,096 a query may use. */
+const UNPAGED_CLUB_MEET_LIMIT = 4000;
 
 const athleteCursor = v.optional(v.union(v.string(), v.null()));
 
@@ -211,13 +215,46 @@ function clubAthleteRow(r: Doc<'athletes'>) {
 const namesDescending = (a: Doc<'athletes'>, b: Doc<'athletes'>) => compareCollated(b.name, a.name);
 
 /**
+ * A club's registrations for a client that does not page: all of them when
+ * they fit in UNPAGED_CLUB_ATHLETE_LIMIT. Past it, one entry of every meet the
+ * club entered (the app lists a club's meets from this answer, so none goes
+ * missing), then the most recently written for the rest.
+ */
+async function unpagedClubAthletes(ctx: QueryCtx, club: string): Promise<Doc<'athletes'>[]> {
+  const recent = await ctx.db
+    .query('athletes')
+    .withIndex('by_club', (q) => q.eq('club', club))
+    .order('desc')
+    .take(UNPAGED_CLUB_ATHLETE_LIMIT + 1);
+  if (recent.length <= UNPAGED_CLUB_ATHLETE_LIMIT) return recent;
+  const kept = new Map<string, Doc<'athletes'>>();
+  let last: string | null = null;
+  for (let i = 0; i < UNPAGED_CLUB_MEET_LIMIT; i += 1) {
+    const after: string | null = last;
+    // One index seek per meet: the club's next meet after the last one seen.
+    const row: Doc<'athletes'> | null = await ctx.db
+      .query('athletes')
+      .withIndex('by_club_and_meet', (q) => (after === null ? q.eq('club', club) : q.eq('club', club).gt('meet', after)))
+      .first();
+    if (!row) break;
+    kept.set(row._id, row);
+    last = row.meet;
+  }
+  for (const row of recent) {
+    if (kept.size >= UNPAGED_CLUB_ATHLETE_LIMIT) break;
+    kept.set(row._id, row);
+  }
+  return [...kept.values()];
+}
+
+/**
  * `GET /clubs/athletes`: a club's entries across meets, names descending.
  *
  * With `cursor` (null for the first page) it answers a page,
  * `{ json, cursor, isDone }`: call again with `cursor` until `isDone`. Each
  * page is in name order; pages are not merged, and a roster replaced while a
  * client pages can appear twice. Without it (clients that predate paging),
- * the plain array of the club's UNPAGED_CLUB_ATHLETE_LIMIT most recent entries.
+ * the plain array of `unpagedClubAthletes`.
  */
 export const clubAthletes = query({
   args: { club: v.string(), cursor: athleteCursor },
@@ -229,7 +266,7 @@ export const clubAthletes = query({
       const json = JSON.stringify(page.page.sort(namesDescending).map(clubAthleteRow));
       return { json, cursor: page.continueCursor, isDone: page.isDone };
     }
-    return (await rows.order('desc').take(UNPAGED_CLUB_ATHLETE_LIMIT)).sort(namesDescending).map(clubAthleteRow);
+    return (await unpagedClubAthletes(ctx, args.club)).sort(namesDescending).map(clubAthleteRow);
   },
 });
 

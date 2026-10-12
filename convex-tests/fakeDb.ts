@@ -18,6 +18,7 @@ const INDEXES: Record<string, string[]> = {
   'data_versions.by_table': ['table'],
   'athletes.by_meet': ['meet'],
   'athletes.by_club': ['club'],
+  'athletes.by_club_and_meet': ['club', 'meet'],
   'athletes.by_wso': ['wso'],
   'meets.by_name': ['name'],
   'lifting_results.by_adaptive_and_date': ['adaptive', 'date'],
