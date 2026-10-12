@@ -13,13 +13,18 @@ import {
   USAW_DOMAIN,
   type ResultRow,
 } from './parse/sport80';
+import { sourcesFailed, type SourceFailure } from '../lib/cronAlerts';
 
 /**
  * USAW meet results from Sport80 (port of
  * `usaw/sport80_api/update_supabase_from_sport80.py`): the 30 most recent
  * events of this year and last, each meet's results upserted into
  * `lifting_results` (matched on event id, meet and name; unchanged rows are
- * not written, so a re-sync of an unchanged meet costs no writes).
+ * not written, so a re-sync of an unchanged meet costs no writes). Rows the
+ * event's table no longer has (a corrected name, a withdrawn result, the
+ * meet's old title) are then deleted (`ingest.pruneEventResults`, which
+ * refuses to delete much without `allowShrink`), but only for a meet whose
+ * every row was read: a row that could not be read is not one Sport80 dropped.
  */
 type Dict = Record<string, unknown>;
 
@@ -90,26 +95,44 @@ class Sport80 {
 /** Rows per ingest call: each writes its rows and rewrites their athletes' history documents. */
 const INGEST_BATCH = 200;
 
-type MeetOutcome = { meet: string; eventId: string; rows: number; inserted: number; updated: number; unchanged: number; failed: number };
+/**
+ * A meet with more than this share of its rows unreadable fails (its readable
+ * rows still stored): that is a payload Sport80 changed, not a stray cell.
+ */
+export const MAX_UNREADABLE_SHARE = 0.2;
+
+/** Whether a meet's unreadable rows are more than the stray cells a sync skips quietly. */
+export function tooManyUnreadable(unreadable: number, rows: number): boolean {
+  return rows > 0 && unreadable > rows * MAX_UNREADABLE_SHARE;
+}
+
+/** A row the sync can store: it has a name, and its age category is text. */
+const readable = (row: ResultRow) => typeof row.name === 'string' && row.name !== '' && (row.age === null || typeof row.age === 'string');
+
+type MeetOutcome = { meet: string; eventId: string; rows: number; inserted: number; updated: number; unchanged: number; failed: number; deleted: number };
 type RunResult = { meets: { eventId: string; meet: string; rows: ResultRow[] }[]; outcomes: MeetOutcome[]; failed: string[] };
 
 export const run = internalAction({
-  args: { dryRun: v.optional(v.boolean()) },
-  handler: async (ctx, { dryRun }): Promise<RunResult> => {
+  // `only`: event ids to sync (of the recent events). `allowShrink`: let an
+  // event's prune delete more than it otherwise may, after checking by hand.
+  args: { dryRun: v.optional(v.boolean()), only: v.optional(v.array(v.string())), allowShrink: v.optional(v.boolean()) },
+  handler: async (ctx, { dryRun, only, allowShrink }): Promise<RunResult> => {
     const api = await Sport80.connect();
     const year = new Date().getUTCFullYear();
-    // Everything that could not be read. The rest is still stored, then the
-    // run fails naming these, so the alert fires and the next run retries.
-    const failed: string[] = [];
+    // Everything that could not be read or stored, by a source name that
+    // stays the same from run to run. The rest is still stored, then the run
+    // fails naming these, so the alert fires and the next run retries.
+    const failures: SourceFailure[] = [];
+    const failed = () => failures.map(({ source, error }) => `${source}: ${error}`);
     const events: Dict[] = [];
     for (const y of [year, year - 1]) {
       try {
-          events.push(...(await api.eventIndex(y)));
+        events.push(...(await api.eventIndex(y)));
       } catch (error) {
-        failed.push(`event index ${y}: ${(error as Error).message}`);
+        failures.push({ source: `event index ${y}`, error: (error as Error).message });
       }
     }
-    if (!events.length) throw new Error(`sport80: no events fetched (${failed.join('; ')})`);
+    if (!events.length) throw sourcesFailed('sport80: no events fetched', failures);
 
     const meets: RunResult['meets'] = [];
     const seen = new Set<string>();
@@ -118,29 +141,34 @@ export const run = internalAction({
       const meet = nested(event, 'meet') as string | null;
       if (!eventId || !meet || seen.has(eventId)) continue;
       seen.add(eventId);
-      if (!hasResultsRoute(event)) continue;
+      if (!hasResultsRoute(event) || (only && !only.includes(eventId))) continue;
       let items: Dict[];
       try {
         items = await api.eventResults(eventId);
       } catch (error) {
-        failed.push(`${meet} (event ${eventId}, ${eventDate(event)}): ${(error as Error).message}`);
+        failures.push({ source: `${meet} (event ${eventId})`, error: `${eventDate(event)}: ${(error as Error).message}` });
         continue;
       }
       if (items.length) meets.push({ eventId, meet, rows: formatResults(eventId, meet, eventDate(event), items) });
     }
-    for (const failure of failed) console.error(`sport80: ${failure}`);
-    if (dryRun) return { meets, outcomes: [], failed };
+    for (const failure of failed()) console.error(`sport80: ${failure}`);
+    if (dryRun) return { meets, outcomes: [], failed: failed() };
 
     const outcomes: MeetOutcome[] = [];
     for (const { eventId, meet, rows } of meets) {
-      const outcome: MeetOutcome = { meet, eventId, rows: rows.length, inserted: 0, updated: 0, unchanged: 0, failed: 0 };
+      const source = `${meet} (event ${eventId})`;
+      const outcome: MeetOutcome = { meet, eventId, rows: rows.length, inserted: 0, updated: 0, unchanged: 0, failed: 0, deleted: 0 };
+      outcomes.push(outcome);
       // Rows with no name or an unreadable value are not stored, and are
-      // logged (and returned in `outcomes`). They do not fail the run: a cell
-      // Sport80 keeps sending wrong would keep the job failing, and a job
-      // already failing sends no alert for a real outage.
-      const valid = rows.filter((row) => typeof row.name === 'string' && row.name !== '' && (row.age === null || typeof row.age === 'string'));
+      // logged (and returned in `outcomes`). A stray one does not fail the
+      // run: a cell Sport80 keeps sending wrong would keep the job failing.
+      // Many of a meet's rows unreadable is a changed payload, and does.
+      const valid = rows.filter(readable);
       outcome.failed = rows.length - valid.length;
-      if (outcome.failed > 0) console.warn(`sport80: ${meet} (event ${eventId}): ${outcome.failed} unreadable row(s) not stored`);
+      if (outcome.failed > 0) console.warn(`sport80: ${source}: ${outcome.failed} unreadable row(s) not stored`);
+      if (tooManyUnreadable(outcome.failed, rows.length)) {
+        failures.push({ source, error: `${outcome.failed} of ${rows.length} rows unreadable (payload changed?), those not stored` });
+      }
       try {
       for (let i = 0; i < valid.length; i += INGEST_BATCH) {
         const counts: { inserted: number; updated: number; unchanged: number } = await ctx.runMutation(
@@ -173,15 +201,28 @@ export const run = internalAction({
       }
       } catch (error) {
         // One meet's write failing leaves the other meets to be stored.
-        failed.push(`${meet} (event ${eventId}): not stored: ${(error as Error).message}`);
+        failures.push({ source, error: `not stored: ${(error as Error).message}` });
+        continue;
       }
-      outcomes.push(outcome);
+      // Only a meet read in full is a safe basis for deleting what it lacks.
+      if (outcome.failed > 0 || valid.length === 0) continue;
+      try {
+        const pruned: { deleted: number } = await ctx.runMutation(internal.ingest.pruneEventResults, {
+          eventId,
+          keep: valid.map((row) => ({ meet: row.meet, name: row.name! })),
+          allowShrink: allowShrink ?? false,
+        });
+        outcome.deleted = pruned.deleted;
+      } catch (error) {
+        failures.push({ source, error: `stale results not deleted: ${(error as Error).message}` });
+      }
     }
 
     const inserted = outcomes.filter((o) => o.inserted > 0).map((o) => o.meet);
     const updated = outcomes.filter((o) => o.inserted === 0 && o.updated > 0).map((o) => o.meet);
-    console.log(`sport80: ${meets.length} meets, ${inserted.length} with new results, ${updated.length} updated`);
-    if (failed.length) throw new Error(`sport80: ${failed.length} problem(s), the rest was stored: ${failed.join('; ')}`);
-    return { meets, outcomes, failed };
+    const deleted = outcomes.reduce((sum, o) => sum + o.deleted, 0);
+    console.log(`sport80: ${meets.length} meets, ${inserted.length} with new results, ${updated.length} updated, ${deleted} stale result(s) deleted`);
+    if (failures.length) throw sourcesFailed(`sport80: ${failures.length} problem(s), the rest was stored`, failures);
+    return { meets, outcomes, failed: failed() };
   },
 });
