@@ -12,7 +12,6 @@ import { AthleteItemProps } from "@/types/start-list";
 import React, {
   useCallback,
   useEffect,
-  useMemo,
   useState,
 } from "react";
 import {
@@ -22,6 +21,7 @@ import {
   View,
 } from "react-native";
 import Animated, { FadeIn } from "react-native-reanimated";
+import { Colors } from "@/constants/Colors";
 import { Palette } from "@/constants/Palette";
 
 /**
@@ -83,16 +83,10 @@ export const AthleteItem = React.memo(function AthleteItem({
     rowBests?.name === athlete.name ? rowBests.bests : null;
   const loadingBests = yearBests === null;
 
-  const colors = useMemo(
-    () => ({
-      card: currentTheme === "dark" ? "#1C1C1E" : "#FFFFFF",
-      border: currentTheme === "dark" ? "#38383A" : "#E1E1E1",
-      text: currentTheme === "dark" ? "#FFFFFF" : "#000000",
-      secondaryText: currentTheme === "dark" ? "#8E8E93" : "#6B6B6B",
-      pressed: currentTheme === "dark" ? "#2C2C2E" : "#F5F5F5",
-    }),
-    [currentTheme],
-  );
+  // The app palette for the theme the screen resolved (a prop, not
+  // `useAppColors()`, so the row reads no context). This was a hand-copied
+  // palette that had already drifted from `Colors.ts`.
+  const colors = Colors[currentTheme];
 
   useEffect(() => {
     if (!isExpanded) return;
@@ -223,7 +217,7 @@ export const AthleteItem = React.memo(function AthleteItem({
                 </ThemedText>
                 <View style={styles.sessionValueContainer}>
                   <ThemedText
-                    style={[styles.detailValue, { color: Palette.systemBlue }]}
+                    style={[styles.detailValue, { color: colors.link }]}
                   >
                     Session{" "}
                     {athlete.session.number}
@@ -236,7 +230,7 @@ export const AthleteItem = React.memo(function AthleteItem({
                   <IconSymbol
                     name={getChevronIcon("right")}
                     size={13}
-                    color="#007AFF"
+                    color={colors.link}
                   />
                 </View>
               </Pressable>
@@ -397,7 +391,7 @@ export const AthleteItem = React.memo(function AthleteItem({
             <IconSymbol
               name={getChevronIcon("right")}
               size={13}
-              color="#007AFF"
+              color={colors.link}
             />
           </Pressable>
         </Animated.View>

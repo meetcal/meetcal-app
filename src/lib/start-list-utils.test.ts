@@ -18,6 +18,16 @@ import {
   hasActiveStartListFilters,
   isPremiumStartListPill,
   effectiveStartListSort,
+  normalizeStartListAthletes,
+  filterStartListAthletes,
+  compareStartListAthletes,
+  buildAgeGroupOptions,
+  buildWsoOptions,
+  getShareGroup,
+  buildSessionDetailsLookup,
+  STARRED_CLUBS_FILTER,
+  type AthleteSortOption,
+  type StartListFilters,
 } from "@/lib/start-list-utils";
 import type { LiftResult } from "@/data/types/athletes";
 
@@ -363,5 +373,113 @@ describe("formatSessionDisplayDate", () => {
 
   it("returns empty string when nothing is provided", () => {
     expect(formatSessionDisplayDate()).toBe("");
+  });
+});
+
+describe("Start List filtering and sorting", () => {
+  const roster = [
+    athlete({ name: "John Smith", club: "Barbell Club", wso: " Ohio ", weightClass: "110" }),
+    athlete({ name: "Jane Doe", gender: "Female", club: "Lift House", age: 16, weightClass: "64" }),
+    athlete({ name: "Alex Moore", club: "Barbell Club", adaptive: true, entryTotal: 250 }),
+  ];
+  const normalized = normalizeStartListAthletes(roster);
+  const names = (list: LiftResult[]) => list.map((a) => a.name);
+  const run = (overrides: Partial<StartListFilters>, starred: string[] = []) =>
+    names(
+      filterStartListAthletes(normalized, { ...DEFAULT_START_LIST_FILTERS, ...overrides }, starred),
+    );
+
+  it("keeps everyone with the default filters", () => {
+    expect(run({})).toEqual(["John Smith", "Jane Doe", "Alex Moore"]);
+  });
+
+  it("applies each pill", () => {
+    expect(run({ weightClass: "110kg" })).toEqual(["John Smith"]);
+    expect(run({ club: "Barbell Club" })).toEqual(["John Smith", "Alex Moore"]);
+    expect(run({ club: STARRED_CLUBS_FILTER }, ["Lift House"])).toEqual(["Jane Doe"]);
+    expect(run({ ageGroup: "U17" })).toEqual(["Jane Doe"]);
+    expect(run({ adaptive: ADAPTIVE_ATHLETES_FILTER })).toEqual(["Alex Moore"]);
+    expect(run({ gender: "female" })).toEqual(["Jane Doe"]);
+    expect(run({ wso: "Ohio" })).toEqual(["John Smith"]);
+  });
+
+  it("searches names word by word", () => {
+    expect(run({ search: "Smith " })).toEqual(["John Smith"]);
+    expect(run({ search: "smith john" })).toEqual(["John Smith"]);
+    expect(run({ search: "smith jane" })).toEqual([]);
+  });
+
+  it("sorts A-Z, by entry total, and by bests with no bests last", () => {
+    const bests = {
+      "Jane Doe": { bestSnatch: 70, bestCJ: 90, bestTotal: 160 },
+      "John Smith": { bestSnatch: 120, bestCJ: 150, bestTotal: 270 },
+    };
+    const sorted = (sort: AthleteSortOption) =>
+      names([...roster].sort(compareStartListAthletes(sort, bests)));
+    expect(sorted("alphabetical")).toEqual(["Alex Moore", "Jane Doe", "John Smith"]);
+    expect(sorted("entryTotal")).toEqual(["Alex Moore", "Jane Doe", "John Smith"]);
+    expect(sorted("bestSnatch")).toEqual(["John Smith", "Jane Doe", "Alex Moore"]);
+    expect(sorted("bestCJ")).toEqual(["John Smith", "Jane Doe", "Alex Moore"]);
+    expect(sorted("bestTotal")).toEqual(["John Smith", "Jane Doe", "Alex Moore"]);
+  });
+});
+
+describe("Start List pill options", () => {
+  it("lists the age groups present in age order", () => {
+    expect(
+      buildAgeGroupOptions([
+        athlete({ name: "a", age: 40 }),
+        athlete({ name: "b", age: 15 }),
+        athlete({ name: "c", age: 0 }),
+      ]),
+    ).toEqual(["U15", "Masters 40"]);
+  });
+
+  it("lists distinct trimmed WSOs A-Z", () => {
+    expect(
+      buildWsoOptions([
+        athlete({ name: "a", wso: " Ohio" }),
+        athlete({ name: "b", wso: "Florida" }),
+        athlete({ name: "c", wso: "Ohio " }),
+        athlete({ name: "d", wso: "  " }),
+        athlete({ name: "e" }),
+      ]),
+    ).toEqual(["Florida", "Ohio"]);
+  });
+});
+
+describe("getShareGroup", () => {
+  it("prefers a club, never the Favorites filter, then the WSO", () => {
+    expect(getShareGroup({ club: "Barbell Club", wso: "Ohio" })).toBe("Barbell Club");
+    expect(getShareGroup({ club: STARRED_CLUBS_FILTER, wso: "Ohio" })).toBe("Ohio");
+    expect(getShareGroup({ club: STARRED_CLUBS_FILTER, wso: "" })).toBe("");
+  });
+});
+
+describe("buildSessionDetailsLookup", () => {
+  it("finds a session's day and times by number", () => {
+    const lookup = buildSessionDetailsLookup([
+      {
+        date: "Saturday",
+        fullDate: "2026-06-20",
+        sessions: [
+          {
+            id: "1",
+            number: 3,
+            startTime: "9:00 AM",
+            weighInTime: "7:00 AM",
+            platforms: [{ platform: "Red", weightClass: "89" }],
+          },
+        ],
+      },
+    ]);
+    expect(lookup(3)).toEqual({
+      date: "2026-06-20",
+      displayDate: "Saturday",
+      startTime: "9:00 AM",
+      weighInTime: "7:00 AM",
+      platforms: [{ platform: "Red", weightClass: "89" }],
+    });
+    expect(lookup(4)).toBeNull();
   });
 });

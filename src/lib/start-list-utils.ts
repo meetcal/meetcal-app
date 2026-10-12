@@ -1,5 +1,9 @@
 import { Platform } from 'react-native';
 import { LiftResult } from '@/data/types/athletes';
+import { nameMatchesSearchWords, searchWords } from '@/lib/name-search';
+import type { YearBests } from '@/lib/start-list-api';
+import type { Schedule } from '@/types/schedule';
+import type { SessionDetails } from '@/types/start-list';
 import { meetCalendarDateAnchor } from '@/utils/dateTime';
 
 const WEIGHT_CLASS_NAN_SENTINEL = Infinity;
@@ -350,4 +354,145 @@ export function buildWeightClassOptions(
     }
   }
   return Array.from(weightClasses).sort(sortWeightClasses);
+}
+
+export const AGE_GROUP_OPTIONS: readonly string[] = [
+  'U13',
+  'U15',
+  'U17',
+  'Junior',
+  'Senior',
+  'Masters 35',
+  'Masters 40',
+  'Masters 45',
+  'Masters 50',
+  'Masters 55',
+  'Masters 60',
+  'Masters 65',
+  'Masters 70',
+  'Masters 75',
+  'Masters 80',
+  'Masters 85',
+  'Masters 90+',
+];
+
+/** The Age Group pill's options: the age groups present, youngest first. */
+export function buildAgeGroupOptions(athletes: readonly LiftResult[]): string[] {
+  const present = new Set(athletes.map((athlete) => getAgeCategory(athlete.age)));
+  return AGE_GROUP_OPTIONS.filter((ageGroup) => present.has(ageGroup));
+}
+
+/** The WSO pill's options: the athletes' WSOs, trimmed, deduplicated, A-Z. */
+export function buildWsoOptions(athletes: readonly LiftResult[]): string[] {
+  return Array.from(
+    new Set(
+      athletes
+        .map((athlete) => athlete.wso?.trim())
+        .filter((wso): wso is string => Boolean(wso)),
+    ),
+  ).sort((a, b) => a.localeCompare(b));
+}
+
+/** Per-athlete values the filters compare against, derived once per roster. */
+export interface NormalizedStartListAthlete {
+  athlete: LiftResult;
+  weightClasses: string[];
+  ageCategory: string;
+  genderLower: string;
+  wso: string;
+}
+
+/**
+ * Parses each athlete's filter fields once per roster, so a pill change or a
+ * keystroke in the search box re-runs only the comparisons.
+ */
+export function normalizeStartListAthletes(
+  athletes: readonly LiftResult[],
+): NormalizedStartListAthlete[] {
+  return athletes.map((athlete) => ({
+    athlete,
+    weightClasses: parseWeightClasses(athlete.weightClass),
+    ageCategory: getAgeCategory(athlete.age),
+    genderLower: athlete.gender.toLowerCase(),
+    wso: athlete.wso?.trim() || '',
+  }));
+}
+
+/** The athletes that pass every pill and the search box, in roster order. */
+export function filterStartListAthletes(
+  normalized: readonly NormalizedStartListAthlete[],
+  filters: StartListFilters,
+  starredClubs: readonly string[],
+): LiftResult[] {
+  const words = searchWords(filters.search);
+  const gender = filters.gender.toLowerCase();
+  const result: LiftResult[] = [];
+  for (const { athlete, weightClasses, ageCategory, genderLower, wso } of normalized) {
+    if (filters.weightClass && !weightClasses.includes(filters.weightClass)) continue;
+    if (filters.club) {
+      const inClub =
+        filters.club === STARRED_CLUBS_FILTER
+          ? starredClubs.includes(athlete.club)
+          : athlete.club === filters.club;
+      if (!inClub) continue;
+    }
+    if (!nameMatchesSearchWords(athlete.name, words)) continue;
+    if (filters.ageGroup && ageCategory !== filters.ageGroup) continue;
+    if (!matchesAdaptiveFilter(athlete, filters.adaptive)) continue;
+    if (gender && genderLower !== gender) continue;
+    if (filters.wso && wso !== filters.wso) continue;
+    result.push(athlete);
+  }
+  return result;
+}
+
+/**
+ * The comparator for a Start List sort: highest first for the numeric sorts,
+ * A-Z within ties. An athlete with no bests counts as 0, so sorts last.
+ */
+export function compareStartListAthletes(
+  sort: AthleteSortOption,
+  bestsByName: Readonly<Record<string, YearBests | undefined>>,
+): (left: LiftResult, right: LiftResult) => number {
+  if (sort === 'alphabetical') return sortAthletes;
+  const valueOf = (athlete: LiftResult): number => {
+    if (sort === 'entryTotal') return athlete.entryTotal || 0;
+    const bests = bestsByName[athlete.name];
+    if (sort === 'bestTotal') return bests?.bestTotal || 0;
+    if (sort === 'bestSnatch') return bests?.bestSnatch || 0;
+    return bests?.bestCJ || 0;
+  };
+  return (left, right) => {
+    const difference = valueOf(right) - valueOf(left);
+    return difference !== 0 ? difference : sortAthletes(left, right);
+  };
+}
+
+/**
+ * The group a shareable schedule (image or CSV) is made for: the picked club,
+ * else the picked WSO, else "" (none; the share actions ask for one). The
+ * Favorites filter is several clubs, so it is not a group.
+ */
+export function getShareGroup(filters: Pick<StartListFilters, 'club' | 'wso'>): string {
+  if (filters.club && filters.club !== STARRED_CLUBS_FILTER) return filters.club;
+  return filters.wso;
+}
+
+/** A session-number lookup over a meet schedule, built once per schedule. */
+export function buildSessionDetailsLookup(
+  schedule: Schedule,
+): (sessionNumber: number) => SessionDetails | null {
+  const index = new Map<number, SessionDetails>();
+  for (const day of schedule) {
+    for (const session of day.sessions) {
+      index.set(session.number, {
+        date: day.fullDate,
+        startTime: session.startTime,
+        weighInTime: session.weighInTime,
+        displayDate: day.date,
+        platforms: session.platforms,
+      });
+    }
+  }
+  return (sessionNumber) => index.get(sessionNumber) ?? null;
 }

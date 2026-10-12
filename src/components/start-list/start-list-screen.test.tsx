@@ -4,11 +4,12 @@ import React from "react";
 import { Alert, Animated, Pressable, ScrollView, TextInput } from "react-native";
 import { act, create, type ReactTestRenderer } from "react-test-renderer";
 
-import StartListScreen from "@/app/(tabs)/(start-list)/StartListContent";
+import StartListScreen from "@/components/start-list/StartListScreen";
 import type { PillFilterConfig } from "@/components/ui/filters";
 import type { LiftResult } from "@/data/types/athletes";
 import { getMeetData } from "@/lib/database/offline-store";
 import { getLastYearBestsBatch } from "@/lib/start-list-api";
+import { showToast } from "@/components/ui/Toast";
 
 // Charge react-native's lazy-getter cost to the file, not the first test.
 void [Animated, Pressable, ScrollView, TextInput];
@@ -18,10 +19,20 @@ type PillBarProps = {
   onSelect: (id: string, value: string) => void;
   onReset?: () => void;
 };
-type ActionModalProps = { onSaveAll: () => void };
+type ActionModalProps = {
+  onSaveAll: () => void;
+  onSaveToCalendar: () => void;
+  onCreateShareableSchedule: () => void;
+  onDownloadShareableSchedule: () => void;
+};
+type ClubModalProps = {
+  onSelectClub: (club: string) => void;
+  onToggleStarredClub: (club: string) => void;
+};
 
 const mockPillBar = jest.fn((_props: PillBarProps) => null);
 const mockActionModal = jest.fn((_props: ActionModalProps) => null);
+const mockClubModal = jest.fn((_props: ClubModalProps) => null);
 const mockFlashList = jest.fn((_props: { data: LiftResult[] }) => null);
 const mockRequireAuth = jest.fn((_options: { feature: string }) => true as boolean | null);
 const mockSaveSessions = jest.fn(async () => true);
@@ -31,7 +42,7 @@ const mockSubscription: { isSubscribed: boolean | null } = { isSubscribed: true 
 
 jest.mock("@/components/ui/filters", () => ({
   FilterPillBar: (props: PillBarProps) => mockPillBar(props),
-  ClubFilterModal: () => null,
+  ClubFilterModal: (props: ClubModalProps) => mockClubModal(props),
 }));
 jest.mock("@/components/start-list/ActionModal", () => ({
   __esModule: true,
@@ -335,5 +346,66 @@ describe("Start List Add to Saved", () => {
       "Meet A",
       [],
     );
+  });
+});
+
+describe("Start List premium actions", () => {
+  const actions = () => lastCall(mockActionModal);
+
+  it("sends a free user to the paywall from Add to Calendar", async () => {
+    mockSubscription.isSubscribed = false;
+    await mount();
+    act(() => actions().onSaveToCalendar());
+    expect(mockPush).toHaveBeenCalledWith({
+      pathname: "/shared-screens/paywall",
+      params: { from: "/(tabs)/(start-list)", feature: "add-to-calendar" },
+    });
+    expect(Alert.alert).not.toHaveBeenCalled();
+  });
+
+  it("does nothing while the subscription is unknown", async () => {
+    mockSubscription.isSubscribed = null;
+    await mount();
+    await act(async () => {
+      actions().onSaveToCalendar();
+      await actions().onCreateShareableSchedule();
+      await actions().onDownloadShareableSchedule();
+    });
+    expect(mockPush).not.toHaveBeenCalled();
+    expect(Alert.alert).not.toHaveBeenCalled();
+    expect(jest.mocked(showToast)).not.toHaveBeenCalled();
+  });
+
+  it("asks a subscriber for a club or WSO before building a shareable schedule", async () => {
+    await mount();
+    await act(async () => {
+      await actions().onDownloadShareableSchedule();
+    });
+    expect(jest.mocked(showToast)).toHaveBeenCalledWith(
+      expect.objectContaining({ message: expect.stringContaining("Select a specific club") }),
+    );
+  });
+
+  it("tells a subscriber there are no sessions to add when the schedule has none", async () => {
+    await mount();
+    act(() => actions().onSaveToCalendar());
+    expect(jest.mocked(showToast)).toHaveBeenCalledWith({
+      type: "info",
+      message: "There are no sessions to add to calendar.",
+    });
+  });
+});
+
+describe("Start List favorite clubs", () => {
+  it("drops the Favorites filter when its last club is unstarred", async () => {
+    await mount();
+    const clubModal = () => lastCall(mockClubModal);
+    act(() => clubModal().onToggleStarredClub("Lift House"));
+    act(() => clubModal().onSelectClub("Favorites"));
+    expect(shownNames()).toEqual(["Jane Doe"]);
+
+    act(() => clubModal().onToggleStarredClub("Lift House"));
+    expect(pill("club").value).toBe("");
+    expect(shownNames()).toHaveLength(3);
   });
 });
