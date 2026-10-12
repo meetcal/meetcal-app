@@ -102,6 +102,9 @@ export const meetsFields = {
     endDate: v.string(),
     status: meetStatus,
     federation: v.optional(v.string()),
+    // The name the source gave a meet stored under another
+    // (`disambiguatedMeetName`); unset when the two are the same.
+    sourceName: v.optional(v.string()),
     updatedAt: v.number(),
 };
 
@@ -183,7 +186,7 @@ export default defineSchema({
     .index('by_name', ['name'])
     .index('by_end_date', ['endDate']),
 
-  qualifying_totals: defineTable(qualifyingTotalsFields),
+  qualifying_totals: defineTable(qualifyingTotalsFields).index('by_event', ['eventName']),
 
   records: defineTable(recordsFields)
     .index('by_record_type', ['recordType'])
@@ -245,6 +248,9 @@ export default defineSchema({
     // succeeds; the watchdog retries them, so a failed send never hides an
     // outage.
     unsent: v.optional(v.array(v.object({ kind: v.string(), detail: v.string() }))),
+    // The sources (a WSO, a meet) the latest failed run named, so a source
+    // that starts failing while the job already is still sends an alert.
+    failedSources: v.optional(v.array(v.string())),
   }).index('by_job', ['job']),
 
   // The last text of each page the urlwatch cron follows (urlwatch's cache.db).

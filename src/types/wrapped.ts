@@ -7,7 +7,11 @@ export interface WrappedStats {
     bestTotal: number;
     averageTotal: number;
     topMeet: string;
-    improvementFromFirst: number;
+    /**
+     * Last minus first total among the year's meets with a total, or `null`
+     * when fewer than two meets have one (bomb-outs do not count).
+     */
+    improvementFromFirst: number | null;
     consecutiveMakes: number;
     favoriteAttempt: string;
     yearRank: string;

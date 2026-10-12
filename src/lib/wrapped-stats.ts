@@ -51,7 +51,10 @@ export function calculateWrappedStats(data: SupabaseLiftResult[]): WrappedStats 
   let validTotals = 0;
   let consecutiveMakes = 0;
   let maxConsecutiveMakes = 0;
-  const meetTotals: Record<string, number> = {};
+  // Each meet's best total, keyed by meet name like `totalMeets`, in the
+  // order the meets first appear (oldest first). A Map, not an object, so a
+  // numeric-looking meet name cannot jump the order.
+  const meetTotals = new Map<string, number>();
 
   for (const result of data) {
     for (const attempt of attemptsOf(result)) {
@@ -77,22 +80,27 @@ export function calculateWrappedStats(data: SupabaseLiftResult[]): WrappedStats 
       bestTotal = Math.max(bestTotal, result.total);
       totalSum += result.total;
       validTotals++;
-      meetTotals[result.meet] = Math.max(meetTotals[result.meet] || 0, result.total);
+      meetTotals.set(result.meet, Math.max(meetTotals.get(result.meet) ?? 0, result.total));
     }
   }
 
   const makePercentage =
     totalAttempts > 0 ? (successfulAttempts / totalAttempts) * 100 : 0;
   const averageTotal = validTotals > 0 ? totalSum / validTotals : 0;
-  const meetNames = Object.keys(meetTotals);
+  const meetNames = [...meetTotals.keys()];
   const topMeet = meetNames.reduce(
-    (a, b) => (meetTotals[a] > meetTotals[b] ? a : b),
+    (a, b) => ((meetTotals.get(a) ?? 0) > (meetTotals.get(b) ?? 0) ? a : b),
     meetNames[0] || 'N/A',
   );
 
-  const firstTotal = data[0]?.total || 0;
-  const lastTotal = data[data.length - 1]?.total || 0;
-  const improvement = lastTotal - firstTotal;
+  // First to last meet with a total, one total per meet (its best). A
+  // bomb-out (no total, or 0) is not a data point: counting one as 0 turned a
+  // 200kg lifter's year into "-200kg" (or "+200kg" when the bomb-out came
+  // first). Two rows from one meet (say, the same lift listed in two age
+  // divisions) are not progress either: one meet has nothing to compare.
+  const totals = [...meetTotals.values()].filter((total) => total > 0);
+  const improvement =
+    totals.length >= 2 ? totals[totals.length - 1] - totals[0] : null;
 
   const attemptCounts = { '1st': 0, '2nd': 0, '3rd': 0 };
   for (const result of data) {
@@ -126,4 +134,38 @@ export function calculateWrappedStats(data: SupabaseLiftResult[]): WrappedStats 
     favoriteAttempt,
     yearRank,
   };
+}
+
+/**
+ * The improvement stat as shown: "+12kg", "-5kg", "Steady" for no change, or
+ * `null` when the year has fewer than two meets with a total and there is
+ * nothing to compare.
+ */
+export function formatImprovement(improvement: number | null): string | null {
+  if (improvement === null) return null;
+  if (improvement > 0) return `+${improvement}kg`;
+  if (improvement < 0) return `${improvement}kg`;
+  return 'Steady';
+}
+
+/**
+ * The plain-text Wrapped, shared when the image share fails.
+ *
+ * The bests are the best of the selected calendar year, not lifetime records,
+ * so they are labelled as such: a down year must not share "PRs" that aren't.
+ */
+export function buildWrappedShareText(stats: WrappedStats, year: number): string {
+  return [
+    `My ${year} Weightlifting Wrapped!`,
+    '',
+    `Total Weight Lifted: ${stats.totalWeightLifted.toLocaleString()}kg`,
+    `Make Percentage: ${stats.makePercentage.toFixed(1)}%`,
+    `Best Total of ${year}: ${stats.bestTotal}kg`,
+    `Best Snatch of ${year}: ${stats.bestSnatch}kg`,
+    `Best Clean & Jerk of ${year}: ${stats.bestCleanJerk}kg`,
+    `Competed in ${stats.totalMeets} meets`,
+    `Status: ${stats.yearRank}`,
+    '',
+    '#WeightliftingWrapped',
+  ].join('\n');
 }

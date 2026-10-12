@@ -1,4 +1,10 @@
-import { calculateEstimates, generateAthleteNotes } from "@/lib/attempt-estimator";
+import {
+  type AthleteAttemptEstimate,
+  calculateEstimates,
+  formatAttemptsOut,
+  generateAthleteNotes,
+  sortEstimatesByAttemptsOut,
+} from "@/lib/attempt-estimator";
 import type { LiftResult, SupabaseLiftResult } from "@/data/types/athletes";
 import {
   ATTEMPT_HISTORY_YEARS,
@@ -124,6 +130,122 @@ describe("calculateEstimates", () => {
     expect(light.snatchAttemptsOut).toBe(0);
     // Heavier athlete has the lighter athlete's three attempts ahead.
     expect(heavy.snatchAttemptsOut).toBeGreaterThan(0);
+  });
+});
+
+describe("attempts out", () => {
+  // One history row with every attempt made: the opener estimate is
+  // round(best * 0.93) and the jumps are that row's own jumps.
+  const planned = (name: string, opener: number, second: number, third: number) =>
+    result({
+      name,
+      snatch1: opener,
+      snatch2: second,
+      snatch3: third,
+      snatch_best: Math.round(opener / 0.93),
+    });
+
+  const byName = (estimates: AthleteAttemptEstimate[], name: string) =>
+    estimates.find((estimate) => estimate.athleteName === name)!;
+
+  it("lifts a lower attempt number first at the same weight", () => {
+    // A plans 80 / 83 / 86 and B opens at 83. On the platform B's opener goes
+    // before A's second attempt, so only A's opener is ahead of B. Sorting by
+    // weight alone put A2 first and counted A1, A2 and a follow-on: 3.
+    const estimates = calculateEstimates(
+      [athlete({ name: "A" }), athlete({ name: "B" })],
+      [planned("A", 80, 83, 86), planned("B", 83, 86, 89)],
+    );
+    expect(byName(estimates, "A").snatchEstimates).toEqual([80, 83, 86]);
+    expect(byName(estimates, "B").snatchEstimates[0]).toBe(83);
+    expect(byName(estimates, "A").snatchAttemptsOut).toBe(0);
+    expect(byName(estimates, "B").snatchAttemptsOut).toBe(1);
+  });
+
+  it("keeps start-list order when weight and attempt number both tie", () => {
+    const history = [planned("First", 80, 83, 86), planned("Second", 80, 83, 86)];
+    const forward = calculateEstimates(
+      [athlete({ name: "First" }), athlete({ name: "Second" })],
+      history,
+    );
+    expect(byName(forward, "First").snatchAttemptsOut).toBe(0);
+    expect(byName(forward, "Second").snatchAttemptsOut).toBe(1);
+
+    const reversed = calculateEstimates(
+      [athlete({ name: "Second" }), athlete({ name: "First" })],
+      history,
+    );
+    expect(byName(reversed, "Second").snatchAttemptsOut).toBe(0);
+    expect(byName(reversed, "First").snatchAttemptsOut).toBe(1);
+  });
+
+  it("counts an athlete following themselves as two attempts", () => {
+    // Light's 80 / 83 / 86 all come before Heavy's 100 opener, back to back:
+    // 1 + 2 + 2.
+    const estimates = calculateEstimates(
+      [athlete({ name: "Light" }), athlete({ name: "Heavy" })],
+      [planned("Light", 80, 83, 86), planned("Heavy", 100, 103, 106)],
+    );
+    expect(byName(estimates, "Heavy").snatchAttemptsOut).toBe(5);
+  });
+
+  it("is unknown, not zero, for an athlete with no estimated opener", () => {
+    const estimates = calculateEstimates(
+      [athlete({ name: "Known" }), athlete({ name: "Unknown", entryTotal: 0 })],
+      [planned("Known", 80, 83, 86)],
+    );
+    expect(byName(estimates, "Unknown").snatchAttemptsOut).toBeNull();
+    expect(byName(estimates, "Unknown").cjAttemptsOut).toBeNull();
+    expect(byName(estimates, "Known").snatchAttemptsOut).toBe(0);
+    // No C&J history and no entry total: unknown for the C&J only.
+    expect(byName(estimates, "Known").cjAttemptsOut).toBeNull();
+  });
+
+  it("tells two athletes with the same name apart", () => {
+    const estimates = calculateEstimates(
+      [
+        athlete({ memberId: "1", name: "Sam Lee", entryTotal: 100 }),
+        athlete({ memberId: "2", name: "Sam Lee", entryTotal: 300 }),
+      ],
+      [],
+    );
+    // Keyed by name, both would find the lighter Sam's opener and show 0.
+    // The heavier Sam has the lighter one's three attempts ahead, back to
+    // back: 1 + 2 + 2.
+    expect(estimates.map((estimate) => estimate.snatchAttemptsOut)).toEqual([0, 5]);
+  });
+});
+
+describe("sortEstimatesByAttemptsOut", () => {
+  const estimate = (id: string, snatchAttemptsOut: number | null) =>
+    ({ id, snatchAttemptsOut }) as AthleteAttemptEstimate;
+
+  it("orders soonest first and puts unknown counts last, keeping ties stable", () => {
+    const sorted = sortEstimatesByAttemptsOut([
+      estimate("unknown-1", null),
+      estimate("late", 6),
+      estimate("first", 0),
+      estimate("unknown-2", null),
+      estimate("tie-a", 3),
+      estimate("tie-b", 3),
+    ]);
+    expect(sorted.map((e) => e.id)).toEqual([
+      "first",
+      "tie-a",
+      "tie-b",
+      "late",
+      "unknown-1",
+      "unknown-2",
+    ]);
+  });
+});
+
+describe("formatAttemptsOut", () => {
+  it("labels an unknown count with a dash", () => {
+    expect(formatAttemptsOut(null)).toBe("—");
+    expect(formatAttemptsOut(0)).toBe("0 attempts out");
+    expect(formatAttemptsOut(1)).toBe("1 attempt out");
+    expect(formatAttemptsOut(4)).toBe("4 attempts out");
   });
 });
 

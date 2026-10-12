@@ -4,28 +4,22 @@ import { ThemedText } from "@/components/ui/ThemedText";
 import { showToast } from "@/components/ui/Toast";
 import { useSavedSessions } from "@/contexts/SavedSessionsContext";
 import { useSelectedMeet } from "@/contexts/SelectedMeetContext";
-import { useSubscription } from "@/contexts/SubscriptionContext";
 import { useAppColors } from "@/hooks/useAppColors";
+import { useRequirePremium } from "@/hooks/useRequirePremium";
 import { isSamePlatform } from "@/lib/athletes";
+import { requestReviewAfterFirstSave } from "@/lib/review-prompt";
 import { DaySchedule, Session } from "@/types/schedule";
 import { HeaderSectionProps, SessionPlatformDetails } from "@/types/schedule-details";
-import { useAuthGuard } from "@/utils/authGuard";
-import {
-  createCalendarEventWithSystemUI,
-  createCalendarEventsToCalendar,
-  requestCalendarPermissions,
-  resolvePreferredAndroidCalendar,
-} from "@/utils/calendar";
+import { CalendarDestinationPickerModal } from "@/components/calendar/CalendarDestinationPickerModal";
+import { useCalendarSessionsExport } from "@/hooks/useCalendarSessionsExport";
 import {
   createSessionDetailsDeepLink,
   normalizeDeepLinkHref,
 } from "@/utils/deepLinks";
 import { calculateWeighInTime } from "@/utils/time";
-import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useRouter } from "expo-router";
-import * as StoreReview from "expo-store-review";
 import React, { useMemo } from "react";
-import { Alert, Platform, Pressable, StyleSheet, View } from "react-native";
+import { Pressable, StyleSheet, View } from "react-native";
 import { Palette } from "@/constants/Palette";
 
 const HeaderSection: React.FC<HeaderSectionProps> = ({
@@ -46,8 +40,9 @@ const HeaderSection: React.FC<HeaderSectionProps> = ({
   const colors = useAppColors();
   const { saveSession, removeSession, isSessionSaved } = useSavedSessions();
   const { meetDetails, availableMeets } = useSelectedMeet();
-  const { isSubscribed } = useSubscription();
-  const { requireAuth } = useAuthGuard();
+  const { requirePremium, requireAuth, access } = useRequirePremium();
+  const isSubscribed = access === "granted";
+  const calendarExport = useCalendarSessionsExport();
 
   // `meetDetails.time.abbreviation` is resolved once, in `mapApiMeet`, at the
   // meet's own start date. Re-deriving it here with
@@ -152,61 +147,11 @@ const HeaderSection: React.FC<HeaderSectionProps> = ({
         return;
       }
       showSaveAlert("save");
-      checkAndShowReviewPrompt();
+      void requestReviewAfterFirstSave();
     }
   };
 
-  const checkAndShowReviewPrompt = async () => {
-    try {
-      const hasShownReview = await AsyncStorage.getItem("hasShownReview");
-      const hasSavedBefore = await AsyncStorage.getItem("hasSavedBefore");
-
-      if (!hasSavedBefore && !hasShownReview) {
-        // Mark that user has saved a session
-        await AsyncStorage.setItem("hasSavedBefore", "true");
-        // Use native store review prompt
-        try {
-          const isAvailable = await StoreReview.isAvailableAsync();
-          if (isAvailable) {
-            await StoreReview.requestReview();
-            await AsyncStorage.setItem("hasShownReview", "true");
-          }
-        } catch (error) {
-          console.warn("ScheduleDetails: Store review unavailable", error);
-        }
-      }
-    } catch (error) {
-      console.error("Error checking review status:", error);
-    }
-  };
-
-  const showSuccessAlert = (openedSystemCalendar = false) => {
-    if (Platform.OS === "android" && openedSystemCalendar) {
-      showToast({
-        type: "info",
-        message: "Review the event in your calendar app and save it there.",
-      });
-      return;
-    }
-
-    showToast({
-      type: "success",
-      message: `Session ${sessionNumber} added to your calendar`,
-    });
-  };
-
-  const addToCalendar = async () => {
-    const hasPermission = await requestCalendarPermissions();
-    if (!hasPermission) {
-      Alert.alert(
-        "Calendar Permission Required",
-        "Please enable calendar access in your device settings to add events.",
-        [{ text: "OK" }],
-        { userInterfaceStyle: "light" },
-      );
-      return;
-    }
-
+  const addToCalendar = () => {
     // Find the session and get platform-specific time
     const sessionDay = currentSchedule.find((day: DaySchedule) =>
       day.sessions.some(
@@ -230,71 +175,33 @@ const HeaderSection: React.FC<HeaderSectionProps> = ({
       return;
     }
 
-    try {
-      // Use platform-specific start time if available, otherwise use session start time
-      const session = sessionDay.sessions.find(
-        (s) => s.number === parseInt(sessionNumber),
-      );
-      const platformData = session?.platforms.find(
-        (p) => isSamePlatform(p.platform, platform),
-      );
-      const startTimeToUse = platformData?.platformStartTime || startTime;
-      const weighInTime = platformWeighInTime || calculateWeighInTime(startTimeToUse);
+    // Use platform-specific start time if available, otherwise use session start time
+    const session = sessionDay.sessions.find(
+      (s) => s.number === parseInt(sessionNumber),
+    );
+    const platformData = session?.platforms.find(
+      (p) => isSamePlatform(p.platform, platform),
+    );
+    const startTimeToUse = platformData?.platformStartTime || startTime;
+    const weighInTime = platformWeighInTime || calculateWeighInTime(startTimeToUse);
 
-      const calendarSession = {
-        date: sessionDay.fullDate,
-        startTime: startTimeToUse,
-        weighInTime: weighInTime,
-        sessionNumber: sessionNumber,
-        platform: platform,
-        weightClass: sessionWeightClass,
-        meet: meet,
-      };
-
-      let openedSystemCalendar = false;
-      if (Platform.OS === "android") {
-        try {
-          await createCalendarEventWithSystemUI(calendarSession);
-          openedSystemCalendar = true;
-        } catch (error) {
-          const errorMessage = error instanceof Error ? error.message : "";
-          if (!errorMessage.includes("Could not open the Android calendar app")) {
-            throw error;
-          }
-
-          const preferredCalendar = await resolvePreferredAndroidCalendar();
-          if (!preferredCalendar) {
-            throw error;
-          }
-
-          await createCalendarEventsToCalendar(
-            [calendarSession],
-            preferredCalendar.id,
-          );
-        }
-      } else {
-        await createCalendarEventWithSystemUI(calendarSession);
-      }
-
-      showSuccessAlert(openedSystemCalendar);
-    } catch (error) {
-      console.error("Error creating calendar event:", error);
-
-      const errorMessage =
-        error instanceof Error
-          ? error.message
-          : Platform.select({
-              ios: "Could not add event to calendar. Please try again.",
-              android:
-                "Could not add event to calendar. Please make sure you have a calendar app installed and try again.",
-              default: "Could not add event to calendar. Please try again.",
-            });
-
-      showToast({
-        type: "error",
-        message: errorMessage ?? "Could not add event to calendar.",
-      });
-    }
+    // On Android a single session opens the calendar app's editor, so the
+    // user reviews it there; elsewhere it is written (or updated, if MeetCal
+    // added it before) in the default calendar.
+    calendarExport.exportSessions(
+      [
+        {
+          date: sessionDay.fullDate,
+          startTime: startTimeToUse,
+          weighInTime: weighInTime,
+          sessionNumber: sessionNumber,
+          platform: platform,
+          weightClass: sessionWeightClass,
+          meet: meet,
+        },
+      ],
+      { confirm: false, systemEditor: true },
+    );
   };
 
   return (
@@ -361,32 +268,23 @@ const HeaderSection: React.FC<HeaderSectionProps> = ({
               pressed && { opacity: 0.8 },
             ]}
             onPress={() => {
-              const authResult = requireAuth({
-                feature: "qualifying-totals",
-                message: "Sign in to access premium features.",
-                returnPath,
-              });
-              if (authResult === null || authResult === false) {
+              if (
+                !requirePremium({
+                  feature: "qualifying-totals",
+                  message: "Sign in to access premium features.",
+                  returnPath,
+                })
+              ) {
                 return;
               }
-              if (isSubscribed === true) {
-                router.push({
-                  pathname: "/comp-data/new-qualifying-totals",
-                  params: {
-                    sessionNumber: sessionNumber,
-                    platform: platform,
-                    meet: meet,
-                  },
-                });
-              } else if (isSubscribed === false) {
-                router.push({
-                  pathname: "/shared-screens/paywall",
-                  params: {
-                    from: returnPath,
-                    feature: "qualifying-totals",
-                  },
-                });
-              }
+              router.push({
+                pathname: "/comp-data/new-qualifying-totals",
+                params: {
+                  sessionNumber: sessionNumber,
+                  platform: platform,
+                  meet: meet,
+                },
+              });
             }}
           >
             <ThemedText
@@ -415,32 +313,23 @@ const HeaderSection: React.FC<HeaderSectionProps> = ({
               pressed && { opacity: 0.8 },
             ]}
             onPress={() => {
-              const authResult = requireAuth({
-                feature: "attempt-estimator",
-                message: "Sign in to access premium features.",
-                returnPath,
-              });
-              if (authResult === null || authResult === false) {
+              if (
+                !requirePremium({
+                  feature: "attempt-estimator",
+                  message: "Sign in to access premium features.",
+                  returnPath,
+                })
+              ) {
                 return;
               }
-              if (isSubscribed === true) {
-                router.push({
-                  pathname: "/shared-screens/attempt-estimator",
-                  params: {
-                    sessionNumber: sessionNumber,
-                    platform: platform,
-                    meet: meet,
-                  },
-                });
-              } else if (isSubscribed === false) {
-                router.push({
-                  pathname: "/shared-screens/paywall",
-                  params: {
-                    from: returnPath,
-                    feature: "attempt-estimator",
-                  },
-                });
-              }
+              router.push({
+                pathname: "/shared-screens/attempt-estimator",
+                params: {
+                  sessionNumber: sessionNumber,
+                  platform: platform,
+                  meet: meet,
+                },
+              });
             }}
           >
             <ThemedText
@@ -459,6 +348,16 @@ const HeaderSection: React.FC<HeaderSectionProps> = ({
           </Pressable>
         </View>
       </View>
+      <CalendarDestinationPickerModal
+        visible={calendarExport.picker.visible}
+        title="Choose Calendar"
+        destinations={calendarExport.picker.destinations}
+        onClose={calendarExport.picker.onClose}
+        onSelect={(destination) => {
+          void calendarExport.picker.onSelect(destination);
+        }}
+        isLoading={calendarExport.picker.isLoading}
+      />
     </View>
   );
 };

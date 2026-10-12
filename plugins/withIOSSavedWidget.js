@@ -8,7 +8,9 @@ const {
 } = require('@expo/config-plugins/build/ios');
 
 const TEMPLATE_DIR = path.join(__dirname, 'ios-saved-widget');
-const FILES = ['SavedWidgetModule.m'];
+// The Obj-C bridge module plus the Swift WidgetCenter helper it calls after
+// every write (WidgetCenter has no Obj-C API).
+const FILES = ['SavedWidgetModule.m', 'MeetCalWidgetReloader.swift'];
 
 const withIOSSavedWidget = (config) => {
   return withDangerousMod(config, [
@@ -30,11 +32,13 @@ const withIOSSavedWidget = (config) => {
       const projectPath = Paths.getPBXProjectPath(projectRoot);
       const project = XcodeUtils.getPbxproj(projectRoot);
 
-      XcodeUtils.addBuildSourceFileToGroup({
-        filepath: `${projectName}/SavedWidgetModule.m`,
-        groupName: projectName,
-        project,
-      });
+      for (const file of FILES) {
+        XcodeUtils.addBuildSourceFileToGroup({
+          filepath: `${projectName}/${file}`,
+          groupName: projectName,
+          project,
+        });
+      }
 
       const productName = XcodeUtils.getProductName(project);
       

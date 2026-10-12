@@ -1,11 +1,11 @@
 import { useAuth } from "@clerk/expo";
 import { AuthView } from "@clerk/expo/native";
-import { router, useLocalSearchParams, type Href } from "expo-router";
+import { router, useLocalSearchParams } from "expo-router";
 import { useEffect, useRef } from "react";
 
 import { cacheAuthState } from "@/lib/authCache";
 import { paywallRouteFor, recordPremiumIntent } from "@/lib/premium-intent";
-import { isInternalRoutePath } from "@/utils/authGuard";
+import { returnToOrigin } from "@/utils/returnToOrigin";
 
 export default function SignInScreen() {
   const { isSignedIn, isLoaded, userId } = useAuth({
@@ -28,13 +28,7 @@ export default function SignInScreen() {
     // own. The premium intent is recorded instead and decided once
     // RevenueCat confirms this user; see `lib/premium-intent.ts`.
     void cacheAuthState(true, userId ?? undefined).finally(() => {
-      if (isInternalRoutePath(from)) {
-        router.replace(from as Href);
-      } else if (router.canGoBack()) {
-        router.back();
-      } else {
-        router.replace("/(tabs)/(index)");
-      }
+      returnToOrigin(router, from);
 
       const paywall = recordPremiumIntent({ userId, feature, from });
       if (paywall) router.push(paywallRouteFor(paywall));

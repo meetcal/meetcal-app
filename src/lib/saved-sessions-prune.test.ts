@@ -255,3 +255,78 @@ describe("pruneStartedSessions", () => {
     expect(d.removeSession).not.toHaveBeenCalled();
   });
 });
+
+describe("findExpiredSessionIds with the current schedule", () => {
+  // The fixtures' ISO "times" have no weigh-in the lookup can derive.
+  let warnSpy: jest.SpyInstance;
+  beforeEach(() => {
+    warnSpy = jest.spyOn(console, "warn").mockImplementation(() => {});
+  });
+  afterEach(() => {
+    warnSpy.mockRestore();
+  });
+
+  /** A schedule with session 1 on Red starting at `startTime` (an ISO instant here). */
+  const scheduleAt = (startTime: string) =>
+    [
+      {
+        date: "June 20, 2099",
+        fullDate: "2099-06-20",
+        sessions: [
+          {
+            id: "s1",
+            number: 1,
+            startTime,
+            weighInTime: "",
+            platforms: [{ platform: "Red", weightClass: "", platformStartTime: startTime }],
+          },
+        ],
+      },
+    ] as never;
+
+  it("keeps a session the schedule moved later, though its saved time has passed", async () => {
+    // Saved for 9:00, moved to 14:00; at 12:00 the saved time is 3 hours ago.
+    const ids = await findExpiredSessionIds(
+      [session("moved", "2099-06-20T09:00:00.000Z")],
+      NOW,
+      async () => scheduleAt("2099-06-20T14:00:00.000Z"),
+    );
+    expect(ids).toEqual([]);
+  });
+
+  it("waits for the later of the two when the schedule moved it earlier", async () => {
+    // The offline schedule copy can be older than the saved row; pruning is
+    // destructive, so the later start wins.
+    const ids = await findExpiredSessionIds(
+      [session("earlier", "2099-06-20T11:00:00.000Z")],
+      NOW,
+      async () => scheduleAt("2099-06-20T08:00:00.000Z"),
+    );
+    expect(ids).toEqual([]);
+  });
+
+  it("still prunes when both times are past the window, reading each meet's schedule once", async () => {
+    const readSchedule = jest.fn(async () => scheduleAt("2099-06-20T08:00:00.000Z"));
+    const ids = await findExpiredSessionIds(
+      [
+        session("a", "2099-06-20T09:00:00.000Z"),
+        { ...session("b", "2099-06-20T09:00:00.000Z"), sessionNumber: 2 },
+      ],
+      NOW,
+      readSchedule,
+    );
+    expect(ids).toEqual(["a", "b"]);
+    expect(readSchedule).toHaveBeenCalledTimes(1);
+  });
+
+  it("falls back to the saved time when the schedule cannot be read", async () => {
+    const ids = await findExpiredSessionIds(
+      [session("a", "2099-06-20T09:00:00.000Z")],
+      NOW,
+      async () => {
+        throw new Error("storage");
+      },
+    );
+    expect(ids).toEqual(["a"]);
+  });
+});
