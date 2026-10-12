@@ -346,6 +346,39 @@ describe("calendar destinations and failures", () => {
       ).resolves.toEqual({ total: 2, created: 1, updated: 1, failed: 0 });
     });
 
+    it("adds the event again when the earlier one can no longer be updated", async () => {
+      await createCalendarEventsToCalendar([SESSION], "cal-1");
+      mockGetEventAsync.mockResolvedValue({ id: "event-1" } as never);
+      mockUpdateEventAsync.mockRejectedValue(new Error("read-only calendar"));
+      mockCreateEventAsync.mockResolvedValue("event-2");
+
+      await expect(createCalendarEventsToCalendar([SESSION], "cal-1")).resolves.toEqual({
+        total: 1,
+        created: 1,
+        updated: 0,
+        failed: 0,
+      });
+      // The new id replaces the stale one, so the next export updates it.
+      mockGetEventAsync.mockImplementation(async (id) => ({ id }) as never);
+      mockUpdateEventAsync.mockResolvedValue(undefined as never);
+      await createCalendarEventsToCalendar([SESSION], "cal-1");
+      expect(mockUpdateEventAsync).toHaveBeenLastCalledWith("event-2", expect.any(Object));
+    });
+
+    it("does not create the same event twice when two exports overlap", async () => {
+      mockCreateEventAsync.mockResolvedValueOnce("event-1").mockResolvedValueOnce("event-2");
+      mockGetEventAsync.mockImplementation(async (id) => ({ id }) as never);
+
+      const [first, second] = await Promise.all([
+        createCalendarEventsToCalendar([SESSION], "cal-1"),
+        createCalendarEventsToCalendar([SESSION], "cal-1"),
+      ]);
+
+      expect(mockCreateEventAsync).toHaveBeenCalledTimes(1);
+      expect(first.created + second.created).toBe(1);
+      expect(second.updated).toBe(1);
+    });
+
     it("keys events by meet, session and canonical platform", () => {
       expect(calendarEventKey({ meet: "M", sessionNumber: "3", platform: "red" })).toBe(
         calendarEventKey({ meet: "M", sessionNumber: "3", platform: "Red" }),

@@ -335,17 +335,34 @@ async function calendarEventExists(eventId: string): Promise<boolean> {
   }
 }
 
+/** Writes run one at a time, so two exports cannot both create the same event. */
+let calendarWriteChain: Promise<unknown> = Promise.resolve();
+
 /**
  * Write one event per session into `calendarId`. A session MeetCal already
- * added (and whose event still exists, in any calendar) has that event
- * updated instead, so exporting again after saving one more session, or
- * retrying after a partial failure, does not duplicate everything already
- * there, and a session whose time moved is corrected.
+ * added, whose event the calendar can still find by the id it returned, has
+ * that event updated instead, so exporting again after saving one more
+ * session, or retrying after a partial failure, does not duplicate what is
+ * already there, and a session whose time moved is corrected. (An event the
+ * user moved to another calendar may get a new id on iOS, and an event saved
+ * through Android's calendar editor has no stored id; those can still be
+ * added again.)
  *
  * A failed session does not stop the batch. Throws (with the mapped copy)
  * only when nothing could be written.
  */
-export async function createCalendarEventsToCalendar(
+export function createCalendarEventsToCalendar(
+  sessions: CalendarSession[],
+  calendarId: string,
+): Promise<CalendarWriteResult> {
+  const run = calendarWriteChain
+    .catch(() => undefined)
+    .then(() => writeCalendarEvents(sessions, calendarId));
+  calendarWriteChain = run;
+  return run;
+}
+
+async function writeCalendarEvents(
   sessions: CalendarSession[],
   calendarId: string,
 ): Promise<CalendarWriteResult> {
@@ -369,8 +386,19 @@ export async function createCalendarEventsToCalendar(
       const eventInput = await buildCalendarEventInput(session);
       const key = calendarEventKey(session);
       const existingId = eventIds[key];
+      let updated = false;
       if (existingId && (await calendarEventExists(existingId))) {
-        await Calendar.updateEventAsync(existingId, eventInput);
+        try {
+          await Calendar.updateEventAsync(existingId, eventInput);
+          updated = true;
+        } catch (updateError) {
+          // Its calendar became read-only, or it went between the two
+          // calls. Write a new event rather than failing this session on
+          // every export from now on.
+          console.warn("Calendar: could not update the earlier event; adding it again", updateError);
+        }
+      }
+      if (updated) {
         result.updated += 1;
       } else {
         eventIds[key] = await Calendar.createEventAsync(calendarId, eventInput);

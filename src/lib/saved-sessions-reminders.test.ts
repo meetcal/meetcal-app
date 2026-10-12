@@ -1,6 +1,7 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import {
   createReminderSyncRunner,
+  MAX_PENDING_REMINDERS,
   type DesiredReminder,
   NOTIFICATION_LEAD_MS,
   planReminderSync,
@@ -208,6 +209,20 @@ describe("resolveDesiredReminders", () => {
     );
     expect(desired.size).toBe(0);
     expect(unresolvedIds.size).toBe(0);
+  });
+
+  it("keeps only the soonest reminders under the OS's pending limit", async () => {
+    const sessions = Array.from({ length: MAX_PENDING_REMINDERS + 5 }, (_, i) =>
+      saved(`s${i}`, { sessionNumber: i + 1, date: `2099-07-${String((i % 28) + 1).padStart(2, "0")}` }),
+    );
+    const { desired } = await resolveDesiredReminders(sessions, deps());
+    expect(desired.size).toBe(MAX_PENDING_REMINDERS);
+    const latestKept = Math.max(...[...desired.values()].map((r) => r.triggerAtMs));
+    const dropped = sessions.filter((s) => !desired.has(s.id));
+    expect(dropped).toHaveLength(5);
+    for (const session of dropped) {
+      expect(Date.parse(`${session.date}T10:00:00.000Z`)).toBeGreaterThanOrEqual(latestKept);
+    }
   });
 
   it("skips meets whose sessions are all in the past without looking anything up", async () => {

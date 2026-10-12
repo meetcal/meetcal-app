@@ -257,6 +257,15 @@ describe("pruneStartedSessions", () => {
 });
 
 describe("findExpiredSessionIds with the current schedule", () => {
+  // The fixtures' ISO "times" have no weigh-in the lookup can derive.
+  let warnSpy: jest.SpyInstance;
+  beforeEach(() => {
+    warnSpy = jest.spyOn(console, "warn").mockImplementation(() => {});
+  });
+  afterEach(() => {
+    warnSpy.mockRestore();
+  });
+
   /** A schedule with session 1 on Red starting at `startTime` (an ISO instant here). */
   const scheduleAt = (startTime: string) =>
     [

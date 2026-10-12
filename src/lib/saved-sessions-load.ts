@@ -128,6 +128,7 @@ async function reconcileWithServer(
       'Saved sessions: Clerk getToken() failed; keeping local sessions',
       tokenError,
     );
+    deps.setSyncFailed(true);
     return false;
   }
   if (!isCurrent()) return false;

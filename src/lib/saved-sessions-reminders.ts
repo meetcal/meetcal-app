@@ -43,6 +43,13 @@ export const SESSION_REMINDER_KIND = 'session-reminder';
  */
 const PAST_DATE_SLACK_DAYS = 1;
 
+/**
+ * At most this many reminders are pending at once, the soonest first. iOS
+ * keeps only 64 pending local notifications and silently drops the rest, so
+ * a larger set would look "missing" to every sync and be scheduled again.
+ */
+export const MAX_PENDING_REMINDERS = 60;
+
 /** When the reminder for a session starting at `sessionStart` fires. */
 export function reminderTriggerDate(sessionStart: Date): Date {
   return new Date(sessionStart.getTime() - NOTIFICATION_LEAD_MS);
@@ -224,6 +231,15 @@ export async function resolveDesiredReminders(
       const triggerAtMs = reminderTriggerDate(new Date(startMs)).getTime();
       if (triggerAtMs > nowMs) desired.set(session.id, { session, triggerAtMs });
     }
+  }
+  if (desired.size > MAX_PENDING_REMINDERS) {
+    const soonest = [...desired.values()]
+      .sort((a, b) => a.triggerAtMs - b.triggerAtMs)
+      .slice(0, MAX_PENDING_REMINDERS);
+    return {
+      desired: new Map(soonest.map((reminder) => [reminder.session.id, reminder])),
+      unresolvedIds,
+    };
   }
   return { desired, unresolvedIds };
 }

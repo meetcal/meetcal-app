@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from 'react';
 import { subscribeToReminderPreference } from '@/lib/reminder-preference';
 import {
   createReminderSyncRunner,
+  type ReminderSyncRunner,
   syncSessionReminders,
 } from '@/lib/saved-sessions-reminders';
 import type { SavedSession } from '@/lib/saved-sessions-store';
@@ -22,7 +23,9 @@ export function useReminderSync(
   isSubscribed: boolean | null,
   ready: boolean,
 ): void {
-  const runner = useRef(createReminderSyncRunner()).current;
+  const runnerRef = useRef<ReminderSyncRunner | null>(null);
+  runnerRef.current ??= createReminderSyncRunner();
+  const runner = runnerRef.current;
   const [preferenceVersion, setPreferenceVersion] = useState(0);
 
   useEffect(

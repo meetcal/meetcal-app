@@ -1158,59 +1158,6 @@ describe("destructive writes: resets, removals and batch saves", () => {
   });
 });
 
-describe("saved widget sync", () => {
-  const mockGetMeetConfig = getMeetConfig as jest.MockedFunction<typeof getMeetConfig>;
-  const mockSyncSavedWidget = syncSavedWidget as jest.MockedFunction<typeof syncSavedWidget>;
-
-  beforeEach(async () => {
-    jest.clearAllMocks();
-    mockClerkUser = null;
-    mockGetToken.mockResolvedValue(null);
-    await AsyncStorage.clear();
-  });
-
-  afterEach(() => {
-    mockSelectedMeet = null;
-    mockGetMeetConfig.mockImplementation((async () => ({
-      time: { timeZoneIdentifier: "America/New_York" },
-    })) as never);
-  });
-
-  it("does not let a slow config lookup for the previous meet repaint the widget", async () => {
-    let resolveMeetA: (value: unknown) => void = () => {};
-    mockGetMeetConfig.mockImplementation(((meet: string) =>
-      meet === "Meet A"
-        ? new Promise((resolve) => {
-            resolveMeetA = resolve;
-          })
-        : Promise.resolve({ time: { timeZoneIdentifier: "America/Denver" } })) as never);
-
-    mockSelectedMeet = "Meet A";
-    const hook = await mountHook();
-    mockSelectedMeet = "Meet B";
-    await hook.rerender();
-
-    expect(mockSyncSavedWidget).toHaveBeenLastCalledWith("Meet B", expect.any(Array), "America/Denver");
-
-    // Meet A's lookup (a network fetch) resolves after Meet B's cached one.
-    await act(async () => {
-      resolveMeetA({ time: { timeZoneIdentifier: "America/New_York" } });
-    });
-    await flush();
-
-    expect(mockSyncSavedWidget.mock.calls.some(([meet]) => meet === "Meet A")).toBe(false);
-    expect(mockSyncSavedWidget).toHaveBeenLastCalledWith("Meet B", expect.any(Array), "America/Denver");
-  });
-
-  it("falls back to UTC when the meet config cannot be read", async () => {
-    mockGetMeetConfig.mockRejectedValue(new Error("Meet not found"));
-    mockSelectedMeet = "Meet C";
-    await mountHook();
-
-    expect(mockSyncSavedWidget).toHaveBeenLastCalledWith("Meet C", expect.any(Array), "UTC");
-  });
-});
-
 describe("signed-out Clerk and the cached user", () => {
   beforeEach(async () => {
     jest.clearAllMocks();
@@ -1326,6 +1273,27 @@ describe("session reminders follow the saved list", () => {
     expect(cancelNotification).toHaveBeenCalledWith("Test-Meet-1-Red");
   });
 
+  it("keeps reminders through a cold start with an expired auth hint until Clerk answers", async () => {
+    mockClerkUser = null;
+    const { getCachedAuthState } = jest.requireMock("@/lib/authCache");
+    getCachedAuthState.mockResolvedValue(null);
+    mockListScheduled.mockResolvedValue([
+      { identifier: "Test-Meet-1-Red", data: { kind: "session-reminder", triggerAtMs: 1 } },
+    ]);
+    try {
+      // Clerk still loading (or offline): "no user" is not an answer yet.
+      const hook = await mountHook();
+      expect(cancelNotification).not.toHaveBeenCalled();
+
+      // Clerk loads signed out, online: now the reminders go.
+      mockClerkLoaded = true;
+      await hook.rerender();
+      expect(cancelNotification).toHaveBeenCalledWith("Test-Meet-1-Red");
+    } finally {
+      getCachedAuthState.mockResolvedValue({ isSignedIn: true, userId: "user_1" });
+    }
+  });
+
   it("cancels the reminders of a reset", async () => {
     mockFetchSavedSessions.mockResolvedValue([apiRow("Test-Meet-1-Red")]);
     const hook = await mountHook();
@@ -1418,9 +1386,69 @@ describe("sync failures", () => {
     expect(hook.current.syncFailed).toBe(false);
   });
 
+  it("treats a Clerk token failure as a sync failure", async () => {
+    mockGetToken.mockRejectedValueOnce(new Error("offline"));
+    const hook = await mountHook();
+    expect(hook.current.syncFailed).toBe(true);
+    expect(mockFetchSavedSessions).not.toHaveBeenCalled();
+  });
+
   it("treats a network failure as a sync failure too", async () => {
     mockFetchSavedSessions.mockRejectedValueOnce(new Error("Network request failed"));
     const hook = await mountHook();
     expect(hook.current.syncFailed).toBe(true);
+  });
+});
+
+describe("saved widget sync", () => {
+  const mockGetMeetConfig = getMeetConfig as jest.MockedFunction<typeof getMeetConfig>;
+  const mockSyncSavedWidget = syncSavedWidget as jest.MockedFunction<typeof syncSavedWidget>;
+
+  beforeEach(async () => {
+    jest.clearAllMocks();
+    mockClerkUser = null;
+    mockGetToken.mockResolvedValue(null);
+    await AsyncStorage.clear();
+  });
+
+  afterEach(() => {
+    mockSelectedMeet = null;
+    mockGetMeetConfig.mockImplementation((async () => ({
+      time: { timeZoneIdentifier: "America/New_York" },
+    })) as never);
+  });
+
+  it("does not let a slow config lookup for the previous meet repaint the widget", async () => {
+    let resolveMeetA: (value: unknown) => void = () => {};
+    mockGetMeetConfig.mockImplementation(((meet: string) =>
+      meet === "Meet A"
+        ? new Promise((resolve) => {
+            resolveMeetA = resolve;
+          })
+        : Promise.resolve({ time: { timeZoneIdentifier: "America/Denver" } })) as never);
+
+    mockSelectedMeet = "Meet A";
+    const hook = await mountHook();
+    mockSelectedMeet = "Meet B";
+    await hook.rerender();
+
+    expect(mockSyncSavedWidget).toHaveBeenLastCalledWith("Meet B", expect.any(Array), "America/Denver");
+
+    // Meet A's lookup (a network fetch) resolves after Meet B's cached one.
+    await act(async () => {
+      resolveMeetA({ time: { timeZoneIdentifier: "America/New_York" } });
+    });
+    await flush();
+
+    expect(mockSyncSavedWidget.mock.calls.some(([meet]) => meet === "Meet A")).toBe(false);
+    expect(mockSyncSavedWidget).toHaveBeenLastCalledWith("Meet B", expect.any(Array), "America/Denver");
+  });
+
+  it("falls back to UTC when the meet config cannot be read", async () => {
+    mockGetMeetConfig.mockRejectedValue(new Error("Meet not found"));
+    mockSelectedMeet = "Meet C";
+    await mountHook();
+
+    expect(mockSyncSavedWidget).toHaveBeenLastCalledWith("Meet C", expect.any(Array), "UTC");
   });
 });

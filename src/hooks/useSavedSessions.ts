@@ -97,6 +97,8 @@ export function useSavedSessions() {
   // earlier row. Not re-entrant: batch callers loop over the leaf mutations.
   const mutationQueue = useRef(createSerialQueue()).current;
   const activeUserId = clerkUserId ?? storageUserId;
+  // Another account's failed sync is not this one's.
+  useEffect(() => setSyncFailed(false), [activeUserId]);
   // Async work started for one user checks this before touching state, so a
   // load still in flight at sign-out or an account switch cannot repaint the
   // previous user's sessions.
@@ -284,9 +286,16 @@ export function useSavedSessions() {
 
   useReconnectReplay(clerkUserId, pendingWriteCountRef, syncOutbox);
 
-  // Once the list for the resolved user (or no user) has loaded. On sign-out
-  // the list is empty, which cancels the previous user's reminders.
-  useReminderSync(savedSessions, isSubscribed, hasResolvedUser && !isLoading);
+  // Once the list for the resolved user has loaded. "No user" is only an
+  // answer once Clerk has loaded: with an expired auth hint and Clerk still
+  // loading (or offline, where it may never load) the empty list would
+  // cancel every reminder. On sign-out the list is empty, which cancels the
+  // previous user's reminders.
+  useReminderSync(
+    savedSessions,
+    isSubscribed,
+    hasResolvedUser && !isLoading && (activeUserId !== null || Boolean(isClerkLoaded)),
+  );
 
   /** See `SaveSessionOptions` in `lib/saved-sessions-actions`. */
   const saveSession = useCallback(
