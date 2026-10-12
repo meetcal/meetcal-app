@@ -23,6 +23,9 @@ import { useTheme } from "@/contexts/ThemeContext";
 import { LiftResult } from "@/data/types/athletes";
 import { isMeetName, MeetName } from "@/data/types/meet";
 import { useAppColors } from "@/hooks/useAppColors";
+import { useCalendarSessionsExport } from "@/hooks/useCalendarSessionsExport";
+import { groupCalendarSessions } from "@/lib/calendar-export";
+import { describeSaveSessionsFailure } from "@/lib/saved-sessions-actions";
 import {
   getMeetData,
   saveMeetAthletes,
@@ -39,7 +42,6 @@ import {
   getAgeCategory,
   getSaveIcon,
   parseWeightClasses,
-  requestCalendarPermissions,
   sortAthletes,
   sortWeightClasses,
   STARRED_CLUBS_FILTER,
@@ -47,15 +49,6 @@ import {
 import type { Schedule as ScheduleType } from "@/types/schedule";
 import { SessionDetails } from "@/types/start-list";
 import { useAuthGuard } from "@/utils/authGuard";
-import {
-  type CalendarDestination,
-  type CalendarSession,
-  createCalendarEvents,
-  createCalendarEventsToCalendar,
-  getWritableCalendars,
-  resolvePreferredAndroidCalendar,
-  setPreferredAndroidCalendarId,
-} from "@/utils/calendar";
 import { formatTo12Hour } from "@/utils/time";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { FlashList, type FlashListRef } from "@shopify/flash-list";
@@ -179,10 +172,10 @@ export default function StartListScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const navigation = useNavigation();
-  const { saveSessionsFromAthletes } = useSavedSessions();
+  const { saveAllFromAthletes } = useSavedSessions();
+  const calendarExport = useCalendarSessionsExport();
   const [starredClubs, setStarredClubs] = useState<string[]>([]);
   const [showSaveModal, setShowSaveModal] = useState(false);
-  const [showCalendarPicker, setShowCalendarPicker] = useState(false);
   const { selectedMeet, meetDetails } = useSelectedMeet();
   const { isSubscribed } = useSubscription();
   const { requireAuth } = useAuthGuard();
@@ -223,13 +216,6 @@ export default function StartListScreen() {
   const filterApplyCountRef = useRef(0);
   const reviewPromptedCountsRef = useRef<number[]>([]);
   const [athleteBests, setAthleteBests] = useState<Record<string, YearBests>>({});
-  const [calendarDestinations, setCalendarDestinations] = useState<
-    CalendarDestination[]
-  >([]);
-  const [pendingCalendarSessions, setPendingCalendarSessions] = useState<
-    CalendarSession[] | null
-  >(null);
-  const [isCalendarPickerLoading, setIsCalendarPickerLoading] = useState(false);
   const skeletonPulse = useRef(new Animated.Value(0.4)).current;
   const listRef = useRef<FlashListRef<LiftResult>>(null);
 
@@ -1079,12 +1065,11 @@ export default function StartListScreen() {
           text: "Save",
           onPress: async () => {
             try {
-              const success = await saveSessionsFromAthletes(
-                filteredAthletes,
-                validMeet,
-                scheduleData,
+              showToast({ type: "info", message: "Saving sessions..." });
+              const failure = describeSaveSessionsFailure(
+                await saveAllFromAthletes(filteredAthletes, validMeet, scheduleData),
               );
-              if (success) {
+              if (!failure) {
                 successNotification();
                 Alert.alert(
                   "Success",
@@ -1100,7 +1085,7 @@ export default function StartListScreen() {
                   ],
                 );
               } else {
-                showToast({ type: "error", message: "Failed to save sessions." });
+                showToast({ type: "error", message: failure });
               }
             } catch (error) {
               showToast({ type: "error", message: "Failed to save sessions." });
@@ -1140,140 +1125,10 @@ export default function StartListScreen() {
       return;
     }
 
-    // Deduplicate sessions by unique key (session number + platform only)
-    // Multiple weight classes on the same platform are part of the same calendar event
-    const sessionMap = new Map<string, any>();
-
-    buildSessionExportRows().forEach((row) => {
-      const sessionKey = `${row.sessionNumber}-${row.platform}`;
-
-      if (!sessionMap.has(sessionKey)) {
-        sessionMap.set(sessionKey, {
-          date: row.date,
-          startTime: row.startTime,
-          weighInTime: row.weighInTime,
-          sessionNumber: row.sessionNumber.toString(),
-          platform: row.platform,
-          weightClass: row.weightClass,
-          meet: selectedMeet,
-        });
-      }
-    });
-
-    const sessionsToAdd = Array.from(sessionMap.values());
-
-    if (sessionsToAdd.length === 0) {
-      showToast({ type: "info", message: "There are no sessions to add to calendar." });
-      return;
-    }
-
-    Alert.alert(
-      "Add to Calendar",
-      `Add ${sessionsToAdd.length} session${sessionsToAdd.length === 1 ? "" : "s"} to your calendar?`,
-      [
-        {
-          text: "Cancel",
-          style: "cancel",
-        },
-        {
-          text: "Add",
-          onPress: async () => {
-            try {
-              const hasPermission = await requestCalendarPermissions();
-              if (!hasPermission) {
-                Alert.alert(
-                  "Permission Required",
-                  "Calendar permission is required to add sessions.",
-                );
-                return;
-              }
-
-              if (Platform.OS === "android") {
-                const preferredCalendar = await resolvePreferredAndroidCalendar();
-                if (preferredCalendar) {
-                  await createCalendarEventsToCalendar(
-                    sessionsToAdd,
-                    preferredCalendar.id,
-                  );
-                  showToast({
-                    type: "success",
-                    message: `Sessions added to ${preferredCalendar.title}.`,
-                  });
-                  return;
-                }
-
-                const writableCalendars = await getWritableCalendars();
-                if (writableCalendars.length === 0) {
-                  Alert.alert(
-                    "No Calendars Found",
-                    "Add a calendar account on this device before saving sessions.",
-                  );
-                  return;
-                }
-
-                setCalendarDestinations(writableCalendars);
-                setPendingCalendarSessions(sessionsToAdd);
-                setShowCalendarPicker(true);
-                return;
-              }
-
-              await createCalendarEvents(sessionsToAdd);
-              showToast({
-                type: "success",
-                message: "Sessions have been added to your calendar.",
-              });
-            } catch (error) {
-              showToast({
-                type: "error",
-                message:
-                  error instanceof Error
-                    ? error.message
-                    : "Failed to add sessions to calendar.",
-              });
-              console.error(error);
-            }
-          },
-        },
-      ],
+    calendarExport.exportSessions(
+      groupCalendarSessions(buildSessionExportRows(), selectedMeet),
     );
   };
-
-  const handleAndroidCalendarSelection = useCallback(
-    async (destination: CalendarDestination) => {
-      if (!pendingCalendarSessions?.length) {
-        setShowCalendarPicker(false);
-        return;
-      }
-
-      setIsCalendarPickerLoading(true);
-
-      try {
-        await setPreferredAndroidCalendarId(destination.id);
-        await createCalendarEventsToCalendar(
-          pendingCalendarSessions,
-          destination.id,
-        );
-        setShowCalendarPicker(false);
-        setPendingCalendarSessions(null);
-        showToast({
-          type: "success",
-          message: `Sessions added to ${destination.title}.`,
-        });
-      } catch (error) {
-        console.error("StartList: failed to write calendar events", error);
-        showToast({
-          type: "error",
-          message:
-            error instanceof Error
-              ? error.message
-              : "Failed to add sessions to calendar.",
-        });
-      } finally {
-        setIsCalendarPickerLoading(false);
-      }
-    },
-    [pendingCalendarSessions],
-  );
 
   // Add resetFilters function before the return statement
   const resetFilters = () => {
@@ -1708,17 +1563,14 @@ export default function StartListScreen() {
       />
 
       <CalendarDestinationPickerModal
-        visible={showCalendarPicker}
+        visible={calendarExport.picker.visible}
         title="Choose Calendar"
-        destinations={calendarDestinations}
-        onClose={() => {
-          setShowCalendarPicker(false);
-          setPendingCalendarSessions(null);
-        }}
+        destinations={calendarExport.picker.destinations}
+        onClose={calendarExport.picker.onClose}
         onSelect={(destination) => {
-          void handleAndroidCalendarSelection(destination);
+          void calendarExport.picker.onSelect(destination);
         }}
-        isLoading={isCalendarPickerLoading}
+        isLoading={calendarExport.picker.isLoading}
       />
 
       {showShareViews && (

@@ -9,24 +9,13 @@ import { showToast } from "@/components/ui/Toast";
 import { useSavedSessions } from "@/contexts/SavedSessionsContext";
 import { useSelectedMeet } from "@/contexts/SelectedMeetContext";
 import { useSubscription } from "@/contexts/SubscriptionContext";
-import { MeetName, isMeetName } from "@/data/types/meet";
 import { useAppColors } from "@/hooks/useAppColors";
-import { SavedSession } from "@/hooks/useSavedSessions";
+import { useCalendarSessionsExport } from "@/hooks/useCalendarSessionsExport";
 import { useSavedScheduleLookup } from "@/hooks/saved-sessions/useSavedScheduleLookup";
+import { calendarSessionsFromSaved } from "@/lib/calendar-export";
+import { countSessionsOutsideMeet } from "@/lib/saved-sessions-list";
 import { LegacySavedSession } from "@/types/saved";
 import { useAuthGuard } from "@/utils/authGuard";
-import {
-  type CalendarDestination,
-  CalendarSession,
-  createCalendarEvents,
-  createCalendarEventsToCalendar,
-  getWritableCalendars,
-  requestCalendarPermissions,
-  resolvePreferredAndroidCalendar,
-  setPreferredAndroidCalendarId,
-} from "@/utils/calendar";
-import { makeLookupKey } from "@/utils/session";
-import { calculateWeighInTime } from "@/utils/time";
 import { useUser } from "@clerk/expo";
 import { useFocusEffect, useNavigation, useRouter } from "expo-router";
 import React, {
@@ -37,6 +26,7 @@ import React, {
   useState,
 } from "react";
 import {
+  ActivityIndicator,
   Alert,
   FlatList,
   Platform,
@@ -54,7 +44,9 @@ export default function SavedScreen() {
   const { user } = useUser();
   const {
     savedSessions,
+    isLoading,
     authExpired,
+    syncFailed,
     loadSavedSessions,
     resetAllSessions,
     migrateLegacySessions,
@@ -67,20 +59,19 @@ export default function SavedScreen() {
   const router = useRouter();
   const navigation = useNavigation();
   const insets = useSafeAreaInsets();
-  const [letterFilter, setLetterFilter] = useState("");
   const [refreshing, setRefreshing] = useState(false);
   const [hasMigrated, setHasMigrated] = useState(false);
-  const [showCalendarPicker, setShowCalendarPicker] = useState(false);
   const { isSubscribed } = useSubscription();
   const { requireAuth } = useAuthGuard();
   const colors = useAppColors();
-  const [calendarDestinations, setCalendarDestinations] = useState<
-    CalendarDestination[]
-  >([]);
-  const [pendingCalendarSessions, setPendingCalendarSessions] = useState<
-    CalendarSession[] | null
-  >(null);
-  const [isCalendarPickerLoading, setIsCalendarPickerLoading] = useState(false);
+  const { exportSessions: exportToCalendar, picker: calendarPicker } =
+    useCalendarSessionsExport();
+  // Only until the first load has finished: a focus refresh of a list that
+  // is legitimately empty must not flash a spinner every time.
+  const [hasLoadedOnce, setHasLoadedOnce] = useState(!isLoading);
+  useEffect(() => {
+    if (!isLoading) setHasLoadedOnce(true);
+  }, [isLoading]);
   const loadSavedSessionsRef = React.useRef(loadSavedSessions);
 
   useEffect(() => {
@@ -156,45 +147,20 @@ export default function SavedScreen() {
     setHasMigrated(true);
   }, [selectedMeet, migrateLegacySessions, user?.id]);
 
-  // Filter saved sessions by meet and letter - strict meet filtering
-  const filteredSessions = useMemo(() => {
-    const meetSessions = savedSessions.filter(
-      (session) => session.meet === selectedMeet,
-    );
+  // Only the selected meet's sessions are listed.
+  const filteredSessions = useMemo(
+    () =>
+      savedSessions
+        .filter((session) => session.meet === selectedMeet)
+        .sort((a, b) => a.sessionNumber - b.sessionNumber),
+    [savedSessions, selectedMeet],
+  );
+  const otherMeetSessionCount = useMemo(
+    () => countSessionsOutsideMeet(savedSessions, selectedMeet),
+    [savedSessions, selectedMeet],
+  );
 
-    if (!letterFilter) {
-      return meetSessions.sort((a, b) => a.sessionNumber - b.sessionNumber);
-    }
-    return meetSessions
-      .filter((session) => {
-        // Add null check for weightClass
-        if (!session.weightClass) return false;
-        const lastChar = session.weightClass.slice(-1);
-        return lastChar === letterFilter;
-      })
-      .sort((a, b) => a.sessionNumber - b.sessionNumber);
-  }, [savedSessions, selectedMeet, letterFilter]);
-
-  // Extract unique letters from saved sessions for the current meet
-  const filterOptions = useMemo(() => {
-    const letterSet = new Set<string>();
-    const meetSessions = savedSessions.filter(
-      (session) => session.meet === selectedMeet,
-    );
-
-    meetSessions.forEach((session) => {
-      // Add null check for weightClass
-      if (session.weightClass) {
-        const lastChar = session.weightClass.slice(-1);
-        if (/^[A-G]$/.test(lastChar)) {
-          letterSet.add(lastChar);
-        }
-      }
-    });
-    return Array.from(letterSet).sort();
-  }, [savedSessions, selectedMeet]);
-
-  const handleSaveToCalendar = useCallback(async () => {
+  const handleSaveToCalendar = useCallback(() => {
     // 1. Check authentication first
     const authResult = requireAuth({
       feature: "add-to-calendar",
@@ -205,8 +171,9 @@ export default function SavedScreen() {
       return;
     }
 
-    // 2. Then check subscription
-    if (!isSubscribed) {
+    // 2. Then check subscription. `null` is "unknown yet": do nothing rather
+    // than bounce a paying user to the paywall.
+    if (isSubscribed === false) {
       router.push({
         pathname: "/shared-screens/paywall",
         params: {
@@ -216,6 +183,7 @@ export default function SavedScreen() {
       });
       return;
     }
+    if (isSubscribed !== true) return;
 
     if (filteredSessions.length === 0) {
       showToast({ type: "info", message: "There are no sessions to add to calendar." });
@@ -230,173 +198,13 @@ export default function SavedScreen() {
       return;
     }
 
-    Alert.alert(
-      "Add to Calendar",
-      `Add ${filteredSessions.length} session${filteredSessions.length === 1 ? "" : "s"} to your calendar?`,
-      [
-        {
-          text: "Cancel",
-          style: "cancel",
-        },
-        {
-          text: "Add",
-          onPress: async () => {
-            try {
-              const hasPermission = await requestCalendarPermissions();
-              if (!hasPermission) {
-                Alert.alert(
-                  "Permission Required",
-                  "Calendar permission is required to add sessions.",
-                );
-                return;
-              }
-
-              // Filter out sessions without meet information or missing schedules
-              const validSessions = filteredSessions.filter((session) => {
-                if (
-                  !session.meet ||
-                  !isMeetName(session.meet, allowedMeetNames)
-                )
-                  return false;
-                return sessionLookupByMeet.has(session.meet);
-              }) as (SavedSession & { meet: MeetName })[];
-
-              if (validSessions.length === 0) {
-                showToast({
-                  type: "error",
-                  message:
-                    "No valid sessions found with complete schedule information.",
-                });
-                return;
-              }
-
-              const sessionsToAdd: CalendarSession[] = validSessions
-                .map((session) => {
-                  const lookup = sessionLookupByMeet
-                    .get(session.meet)
-                    ?.get(
-                      makeLookupKey(session.sessionNumber, session.platform),
-                    );
-                  const startTime = lookup?.startTime || session.startTime;
-                  const weighInTime =
-                    lookup?.weighInTime ||
-                    calculateWeighInTime(startTime) ||
-                    session.weighInTime;
-
-                  return {
-                    date: lookup?.fullDate || "",
-                    startTime: startTime,
-                    weighInTime: weighInTime,
-                    sessionNumber: session.sessionNumber.toString(),
-                    platform: session.platform,
-                    weightClass: lookup?.weightClass || session.weightClass,
-                    meet: session.meet,
-                  };
-                })
-                .filter((s) => s.date && s.startTime && s.weighInTime); // Ensure critical info is present
-
-              if (sessionsToAdd.length !== validSessions.length) {
-                console.warn(
-                  "Some sessions were skipped due to missing schedule details (date/time).",
-                );
-                // Optionally inform the user
-              }
-
-              if (sessionsToAdd.length === 0) {
-                showToast({
-                  type: "error",
-                  message:
-                    "Could not extract necessary details for calendar events.",
-                });
-                return;
-              }
-
-              if (Platform.OS === "android") {
-                const preferredCalendar = await resolvePreferredAndroidCalendar();
-                if (preferredCalendar) {
-                  await createCalendarEventsToCalendar(
-                    sessionsToAdd,
-                    preferredCalendar.id,
-                  );
-                  showToast({
-                    type: "success",
-                    message: `Sessions added to ${preferredCalendar.title}.`,
-                  });
-                  return;
-                }
-
-                const writableCalendars = await getWritableCalendars();
-                if (writableCalendars.length === 0) {
-                  Alert.alert(
-                    "No Calendars Found",
-                    "Add a calendar account on this device before saving sessions.",
-                  );
-                  return;
-                }
-
-                setCalendarDestinations(writableCalendars);
-                setPendingCalendarSessions(sessionsToAdd);
-                setShowCalendarPicker(true);
-                return;
-              }
-
-              await createCalendarEvents(sessionsToAdd);
-              showToast({
-                type: "success",
-                message: "Sessions have been added to your calendar.",
-              });
-            } catch (error) {
-              showToast({
-                type: "error",
-                message:
-                  error instanceof Error
-                    ? error.message
-                    : "Failed to add sessions to calendar.",
-              });
-              console.error(error);
-            }
-          },
-        },
-      ],
+    const { sessions, skipped } = calendarSessionsFromSaved(
+      filteredSessions,
+      sessionLookupByMeet,
+      allowedMeetNames,
     );
-  }, [requireAuth, isSubscribed, router, filteredSessions, isSchedulesLoading, sessionLookupByMeet, allowedMeetNames]);
-
-  const handleAndroidCalendarSelection = useCallback(
-    async (destination: CalendarDestination) => {
-      if (!pendingCalendarSessions?.length) {
-        setShowCalendarPicker(false);
-        return;
-      }
-
-      setIsCalendarPickerLoading(true);
-
-      try {
-        await setPreferredAndroidCalendarId(destination.id);
-        await createCalendarEventsToCalendar(
-          pendingCalendarSessions,
-          destination.id,
-        );
-        setShowCalendarPicker(false);
-        setPendingCalendarSessions(null);
-        showToast({
-          type: "success",
-          message: `Sessions added to ${destination.title}.`,
-        });
-      } catch (error) {
-        console.error("Saved: failed to write calendar events", error);
-        showToast({
-          type: "error",
-          message:
-            error instanceof Error
-              ? error.message
-              : "Failed to add sessions to calendar.",
-        });
-      } finally {
-        setIsCalendarPickerLoading(false);
-      }
-    },
-    [pendingCalendarSessions],
-  );
+    exportToCalendar(sessions, { skipped });
+  }, [requireAuth, isSubscribed, router, filteredSessions, isSchedulesLoading, sessionLookupByMeet, allowedMeetNames, exportToCalendar]);
 
   const forceLoadSessions = useCallback(async () => {
     if (refreshing) return;
@@ -415,8 +223,7 @@ export default function SavedScreen() {
   // `React.memo`, and every other prop it takes is already stable, so a
   // per-row `onPress` closure was the single reason the memo never once
   // short-circuited: each of this screen's re-renders (pull-to-refresh, the
-  // letter filter, the calendar picker, and one per session while
-  // `saveSessionsFromAthletes` commits a Save All) re-rendered every visible
+  // calendar picker, and each commit of a Save All) re-rendered every visible
   // card instead of none of them.
   const handleSessionPress = useCallback(
     (session: LegacySavedSession) => {
@@ -462,13 +269,6 @@ export default function SavedScreen() {
       migrateSessions();
     }
   }, [hasMigrated, migrateSessions]);
-
-  useEffect(() => {
-    if (!selectedMeet || filterOptions.length === 0 || !letterFilter) return;
-    if (!filterOptions.includes(letterFilter)) {
-      setLetterFilter(filterOptions[0] || "");
-    }
-  }, [selectedMeet, filterOptions, letterFilter]);
 
   useLayoutEffect(() => {
     const calendarIconColor = isSchedulesLoading
@@ -552,7 +352,7 @@ export default function SavedScreen() {
         ]}
         ListHeaderComponent={
           <>
-            {authExpired && (
+            {authExpired ? (
               <View
                 testID="saved-sync-notice"
                 style={[styles.syncNotice, { borderColor: colors.border }]}
@@ -562,7 +362,17 @@ export default function SavedScreen() {
                   Sign out and back in to sync them again.
                 </ThemedText>
               </View>
-            )}
+            ) : syncFailed ? (
+              <View
+                testID="saved-sync-failed-notice"
+                style={[styles.syncNotice, { borderColor: colors.border }]}
+              >
+                <ThemedText style={[styles.syncNoticeText, { color: colors.secondaryText }]}>
+                  Couldn&apos;t sync saved sessions. Showing the copy saved on
+                  this device; pull down to try again.
+                </ThemedText>
+              </View>
+            ) : null}
             <NextSessionCard
               selectedMeet={selectedMeet}
               meetDetails={meetDetails}
@@ -570,23 +380,37 @@ export default function SavedScreen() {
             />
           </>
         }
-        ListEmptyComponent={() => (
-          <View testID="saved-empty-state" style={styles.emptyContainer}>
-            <EmptyState
-              icon={
-                <IconSymbol
-                  name="bookmark.fill"
-                  size={48}
-                  color={colors.secondaryText}
-                />
-              }
-              title="No saved sessions"
-              message="Save sessions from the schedule to see them here"
-              actionLabel="Browse Schedule"
-              onActionPress={() => router.push("/(tabs)/(index)")}
-            />
-          </View>
-        )}
+        ListEmptyComponent={() =>
+          !hasLoadedOnce ? (
+            <View testID="saved-loading-state" style={[styles.emptyContainer, styles.loading]}>
+              <ActivityIndicator color={colors.secondaryText} />
+            </View>
+          ) : (
+            <View testID="saved-empty-state" style={styles.emptyContainer}>
+              <EmptyState
+                icon={
+                  <IconSymbol
+                    name="bookmark.fill"
+                    size={48}
+                    color={colors.secondaryText}
+                  />
+                }
+                title={
+                  otherMeetSessionCount > 0
+                    ? "No saved sessions for this meet"
+                    : "No saved sessions"
+                }
+                message={
+                  otherMeetSessionCount > 0
+                    ? `You have ${otherMeetSessionCount} saved session${otherMeetSessionCount === 1 ? "" : "s"} for other meets. Switch meets to see ${otherMeetSessionCount === 1 ? "it" : "them"}.`
+                    : "Save sessions from the schedule to see them here"
+                }
+                actionLabel="Browse Schedule"
+                onActionPress={() => router.push("/(tabs)/(index)")}
+              />
+            </View>
+          )
+        }
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
@@ -597,17 +421,14 @@ export default function SavedScreen() {
         }
       />
       <CalendarDestinationPickerModal
-        visible={showCalendarPicker}
+        visible={calendarPicker.visible}
         title="Choose Calendar"
-        destinations={calendarDestinations}
-        onClose={() => {
-          setShowCalendarPicker(false);
-          setPendingCalendarSessions(null);
-        }}
+        destinations={calendarPicker.destinations}
+        onClose={calendarPicker.onClose}
         onSelect={(destination) => {
-          void handleAndroidCalendarSelection(destination);
+          void calendarPicker.onSelect(destination);
         }}
-        isLoading={isCalendarPickerLoading}
+        isLoading={calendarPicker.isLoading}
       />
     </ThemedView>
   );
@@ -635,6 +456,10 @@ const styles = StyleSheet.create({
   emptyContainer: {
     flex: 1,
     minHeight: 320,
+  },
+  loading: {
+    alignItems: "center",
+    justifyContent: "center",
   },
   syncNotice: {
     borderWidth: StyleSheet.hairlineWidth,

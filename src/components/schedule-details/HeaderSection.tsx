@@ -10,12 +10,8 @@ import { isSamePlatform } from "@/lib/athletes";
 import { DaySchedule, Session } from "@/types/schedule";
 import { HeaderSectionProps, SessionPlatformDetails } from "@/types/schedule-details";
 import { useAuthGuard } from "@/utils/authGuard";
-import {
-  createCalendarEventWithSystemUI,
-  createCalendarEventsToCalendar,
-  requestCalendarPermissions,
-  resolvePreferredAndroidCalendar,
-} from "@/utils/calendar";
+import { CalendarDestinationPickerModal } from "@/components/calendar/CalendarDestinationPickerModal";
+import { useCalendarSessionsExport } from "@/hooks/useCalendarSessionsExport";
 import {
   createSessionDetailsDeepLink,
   normalizeDeepLinkHref,
@@ -25,7 +21,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useRouter } from "expo-router";
 import * as StoreReview from "expo-store-review";
 import React, { useMemo } from "react";
-import { Alert, Platform, Pressable, StyleSheet, View } from "react-native";
+import { Pressable, StyleSheet, View } from "react-native";
 import { Palette } from "@/constants/Palette";
 
 const HeaderSection: React.FC<HeaderSectionProps> = ({
@@ -48,6 +44,7 @@ const HeaderSection: React.FC<HeaderSectionProps> = ({
   const { meetDetails, availableMeets } = useSelectedMeet();
   const { isSubscribed } = useSubscription();
   const { requireAuth } = useAuthGuard();
+  const calendarExport = useCalendarSessionsExport();
 
   // `meetDetails.time.abbreviation` is resolved once, in `mapApiMeet`, at the
   // meet's own start date. Re-deriving it here with
@@ -180,33 +177,7 @@ const HeaderSection: React.FC<HeaderSectionProps> = ({
     }
   };
 
-  const showSuccessAlert = (openedSystemCalendar = false) => {
-    if (Platform.OS === "android" && openedSystemCalendar) {
-      showToast({
-        type: "info",
-        message: "Review the event in your calendar app and save it there.",
-      });
-      return;
-    }
-
-    showToast({
-      type: "success",
-      message: `Session ${sessionNumber} added to your calendar`,
-    });
-  };
-
-  const addToCalendar = async () => {
-    const hasPermission = await requestCalendarPermissions();
-    if (!hasPermission) {
-      Alert.alert(
-        "Calendar Permission Required",
-        "Please enable calendar access in your device settings to add events.",
-        [{ text: "OK" }],
-        { userInterfaceStyle: "light" },
-      );
-      return;
-    }
-
+  const addToCalendar = () => {
     // Find the session and get platform-specific time
     const sessionDay = currentSchedule.find((day: DaySchedule) =>
       day.sessions.some(
@@ -230,71 +201,33 @@ const HeaderSection: React.FC<HeaderSectionProps> = ({
       return;
     }
 
-    try {
-      // Use platform-specific start time if available, otherwise use session start time
-      const session = sessionDay.sessions.find(
-        (s) => s.number === parseInt(sessionNumber),
-      );
-      const platformData = session?.platforms.find(
-        (p) => isSamePlatform(p.platform, platform),
-      );
-      const startTimeToUse = platformData?.platformStartTime || startTime;
-      const weighInTime = platformWeighInTime || calculateWeighInTime(startTimeToUse);
+    // Use platform-specific start time if available, otherwise use session start time
+    const session = sessionDay.sessions.find(
+      (s) => s.number === parseInt(sessionNumber),
+    );
+    const platformData = session?.platforms.find(
+      (p) => isSamePlatform(p.platform, platform),
+    );
+    const startTimeToUse = platformData?.platformStartTime || startTime;
+    const weighInTime = platformWeighInTime || calculateWeighInTime(startTimeToUse);
 
-      const calendarSession = {
-        date: sessionDay.fullDate,
-        startTime: startTimeToUse,
-        weighInTime: weighInTime,
-        sessionNumber: sessionNumber,
-        platform: platform,
-        weightClass: sessionWeightClass,
-        meet: meet,
-      };
-
-      let openedSystemCalendar = false;
-      if (Platform.OS === "android") {
-        try {
-          await createCalendarEventWithSystemUI(calendarSession);
-          openedSystemCalendar = true;
-        } catch (error) {
-          const errorMessage = error instanceof Error ? error.message : "";
-          if (!errorMessage.includes("Could not open the Android calendar app")) {
-            throw error;
-          }
-
-          const preferredCalendar = await resolvePreferredAndroidCalendar();
-          if (!preferredCalendar) {
-            throw error;
-          }
-
-          await createCalendarEventsToCalendar(
-            [calendarSession],
-            preferredCalendar.id,
-          );
-        }
-      } else {
-        await createCalendarEventWithSystemUI(calendarSession);
-      }
-
-      showSuccessAlert(openedSystemCalendar);
-    } catch (error) {
-      console.error("Error creating calendar event:", error);
-
-      const errorMessage =
-        error instanceof Error
-          ? error.message
-          : Platform.select({
-              ios: "Could not add event to calendar. Please try again.",
-              android:
-                "Could not add event to calendar. Please make sure you have a calendar app installed and try again.",
-              default: "Could not add event to calendar. Please try again.",
-            });
-
-      showToast({
-        type: "error",
-        message: errorMessage ?? "Could not add event to calendar.",
-      });
-    }
+    // On Android a single session opens the calendar app's editor, so the
+    // user reviews it there; elsewhere it is written (or updated, if MeetCal
+    // added it before) in the default calendar.
+    calendarExport.exportSessions(
+      [
+        {
+          date: sessionDay.fullDate,
+          startTime: startTimeToUse,
+          weighInTime: weighInTime,
+          sessionNumber: sessionNumber,
+          platform: platform,
+          weightClass: sessionWeightClass,
+          meet: meet,
+        },
+      ],
+      { confirm: false, systemEditor: true },
+    );
   };
 
   return (
@@ -459,6 +392,16 @@ const HeaderSection: React.FC<HeaderSectionProps> = ({
           </Pressable>
         </View>
       </View>
+      <CalendarDestinationPickerModal
+        visible={calendarExport.picker.visible}
+        title="Choose Calendar"
+        destinations={calendarExport.picker.destinations}
+        onClose={calendarExport.picker.onClose}
+        onSelect={(destination) => {
+          void calendarExport.picker.onSelect(destination);
+        }}
+        isLoading={calendarExport.picker.isLoading}
+      />
     </View>
   );
 };
