@@ -135,6 +135,23 @@ function ClubMeetsListScreenContent() {
       );
     }
 
+    // The search box is what emptied the list: say so, instead of the
+    // "no meets for this club" state with an athlete count that contradicts it.
+    if (uniqueMeets.length === 0 && allMeets.length > 0) {
+      return (
+        <View style={styles.centerContainer}>
+          <ThemedText style={[styles.emptyTitle, { color: colors.text }]}>
+            {`No meets match "${searchQuery.trim()}"`}
+          </ThemedText>
+          <ThemedText
+            style={[styles.emptyText, { color: colors.secondaryText }]}
+          >
+            Try a different search.
+          </ThemedText>
+        </View>
+      );
+    }
+
     if (uniqueMeets.length === 0) {
       return (
         <View style={styles.centerContainer}>

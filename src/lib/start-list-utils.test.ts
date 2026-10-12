@@ -16,6 +16,8 @@ import {
   applyStartListPillSelection,
   DEFAULT_START_LIST_FILTERS,
   hasActiveStartListFilters,
+  isPremiumStartListPill,
+  effectiveStartListSort,
 } from "@/lib/start-list-utils";
 import type { LiftResult } from "@/data/types/athletes";
 
@@ -268,6 +270,24 @@ describe("applyStartListPillSelection", () => {
     expect(applyStartListPillSelection(withClass, "sort", "bestSnatch").sort).toBe("bestSnatch");
     expect(applyStartListPillSelection(withClass, "sort", "").sort).toBe("alphabetical");
     expect(applyStartListPillSelection(withClass, "sort", "bogus").sort).toBe("alphabetical");
+  });
+});
+
+describe("best-lift sort gating", () => {
+  it("treats only the best-lift sorts as premium", () => {
+    expect(isPremiumStartListPill("sort", "bestTotal")).toBe(true);
+    expect(isPremiumStartListPill("sort", "bestSnatch")).toBe(true);
+    expect(isPremiumStartListPill("sort", "bestCJ")).toBe(true);
+    expect(isPremiumStartListPill("sort", "entryTotal")).toBe(false);
+    expect(isPremiumStartListPill("sort", "")).toBe(false);
+    expect(isPremiumStartListPill("weightClass", "bestCJ")).toBe(false);
+  });
+
+  it("applies a best-lift sort only while the subscription is confirmed", () => {
+    expect(effectiveStartListSort("bestCJ", true)).toBe("bestCJ");
+    expect(effectiveStartListSort("bestCJ", false)).toBe("alphabetical");
+    expect(effectiveStartListSort("bestCJ", null)).toBe("alphabetical");
+    expect(effectiveStartListSort("entryTotal", false)).toBe("entryTotal");
   });
 });
 

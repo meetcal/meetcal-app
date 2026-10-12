@@ -30,6 +30,7 @@ import {
   saveMeetSchedule,
 } from "@/lib/database/offline-store";
 import { fetchAthletesWithSession, fetchSchedule } from "@/lib/database/queries";
+import { nameMatchesSearchWords, searchWords } from "@/lib/name-search";
 import { isNetworkAvailable } from "@/lib/networkUtils";
 import { captureViewAsPng } from "@/lib/share-image";
 import { getLastYearBestsBatch, preloadYearBests, type YearBests } from "@/lib/start-list-api";
@@ -37,6 +38,9 @@ import {
   ADAPTIVE_ATHLETES_FILTER,
   ATHLETE_SORT_OPTIONS,
   buildWeightClassOptions,
+  effectiveStartListSort,
+  isBestLiftSort,
+  isPremiumStartListPill,
   hasActiveStartListFilters,
   compareCalendarDates,
   compareStartTimes,
@@ -159,13 +163,21 @@ export default function StartListScreen() {
   const screenInsets = useScreenHorizontalInsets();
   const [showClubModal, setShowClubModal] = useState(false);
   const { selectedMeet, meetDetails } = useSelectedMeet();
+  const { isSubscribed } = useSubscription();
   const {
-    filters,
+    filters: storedFilters,
     selectPill,
     setClub: setClubFilter,
     setSearch: setSearchQuery,
     resetFilters,
   } = useStartListFilters(selectedMeet);
+  const filters = useMemo(
+    () => ({
+      ...storedFilters,
+      sort: effectiveStartListSort(storedFilters.sort, isSubscribed),
+    }),
+    [storedFilters, isSubscribed],
+  );
   const {
     weightClass: weightClassFilter,
     club: clubFilter,
@@ -184,7 +196,6 @@ export default function StartListScreen() {
   const [starredClubs, setStarredClubs] = useState<string[]>([]);
   const [showSaveModal, setShowSaveModal] = useState(false);
   const [showCalendarPicker, setShowCalendarPicker] = useState(false);
-  const { isSubscribed } = useSubscription();
   const { requireAuth } = useAuthGuard();
   const { currentTheme } = useTheme();
   // Row inputs, resolved once here instead of once per mounted row (see
@@ -725,10 +736,28 @@ export default function StartListScreen() {
 
   const handlePillSelect = useCallback(
     (id: string, value: string) => {
+      // Best-lift sorts are premium (see `isPremiumStartListPill`): sign-in
+      // first, then the paywall. `null` is "unknown yet": do nothing rather
+      // than bounce a paying user to the paywall.
+      if (isPremiumStartListPill(id, value) && isSubscribed !== true) {
+        const authResult = requireAuth({
+          feature: "sort-athletes",
+          message: "Sign in to access premium features.",
+          returnPath: "/(tabs)/(start-list)",
+        });
+        if (authResult !== true) return;
+        if (isSubscribed === false) {
+          router.push({
+            pathname: "/shared-screens/paywall",
+            params: { from: "/(tabs)/(start-list)", feature: "sort-athletes" },
+          });
+        }
+        return;
+      }
       trackFilterApply();
       selectPill(id, value);
     },
-    [selectPill, trackFilterApply],
+    [isSubscribed, requireAuth, router, selectPill, trackFilterApply],
   );
 
   const handleSelectClub = useCallback(
@@ -787,11 +816,9 @@ export default function StartListScreen() {
   }, [athletes]);
 
   useEffect(() => {
-    if (
-      sortOption !== "bestTotal" &&
-      sortOption !== "bestSnatch" &&
-      sortOption !== "bestCJ"
-    ) {
+    // `sortOption` is the effective sort: a best-lift sort only while the
+    // subscription is confirmed, so free users never fetch the batch.
+    if (!isBestLiftSort(sortOption)) {
       return;
     }
 
@@ -865,7 +892,7 @@ export default function StartListScreen() {
   );
 
   const filteredAthletes = useMemo(() => {
-    const search = searchQuery.toLowerCase();
+    const words = searchWords(searchQuery);
     const gender = genderFilter.toLowerCase();
 
     return normalizedAthletes
@@ -879,7 +906,7 @@ export default function StartListScreen() {
               ? starredClubs.includes(athlete.club)
               : athlete.club === clubFilter
             : true;
-          const matchesSearch = search ? nameLower.includes(search) : true;
+          const matchesSearch = nameMatchesSearchWords(nameLower, words);
           const matchesAgeGroup = ageGroupFilter
             ? ageCategory === ageGroupFilter
             : true;

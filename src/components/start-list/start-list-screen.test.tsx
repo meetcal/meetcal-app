@@ -8,6 +8,7 @@ import StartListScreen from "@/app/(tabs)/(start-list)/StartListContent";
 import type { PillFilterConfig } from "@/components/ui/filters";
 import type { LiftResult } from "@/data/types/athletes";
 import { getMeetData } from "@/lib/database/offline-store";
+import { getLastYearBestsBatch } from "@/lib/start-list-api";
 
 // Charge react-native's lazy-getter cost to the file, not the first test.
 void [Animated, Pressable, ScrollView, TextInput];
@@ -222,6 +223,68 @@ describe("Start List filters across meets", () => {
     expect(pill("weightClass").value).toBe("");
     expect(pill("sort").value).toBe("");
     expect(shownNames()).toEqual(["Chris Park", "Sam Lee"]);
+  });
+});
+
+describe("Start List search", () => {
+  const search = (text: string) =>
+    act(() => tree.root.findByProps({ testID: "start-list-search" }).props.onChangeText(text));
+
+  it("matches names word by word, ignoring order and stray spaces", async () => {
+    await mount();
+    search("Smith ");
+    expect(shownNames()).toEqual(["John Smith"]);
+    search("smith john");
+    expect(shownNames()).toEqual(["John Smith"]);
+    search("smith jane");
+    expect(shownNames()).toEqual([]);
+  });
+});
+
+describe("Start List best-lift sorts", () => {
+  it("sends a free user to the paywall instead of sorting", async () => {
+    mockSubscription.isSubscribed = false;
+    await mount();
+    act(() => pillBar().onSelect("sort", "bestSnatch"));
+
+    expect(mockRequireAuth).toHaveBeenCalledWith(
+      expect.objectContaining({ feature: "sort-athletes" }),
+    );
+    expect(mockPush).toHaveBeenCalledWith({
+      pathname: "/shared-screens/paywall",
+      params: { from: "/(tabs)/(start-list)", feature: "sort-athletes" },
+    });
+    expect(pill("sort").value).toBe("");
+  });
+
+  it("asks a signed-out user to sign in and goes no further", async () => {
+    mockSubscription.isSubscribed = false;
+    mockRequireAuth.mockImplementation(() => false);
+    await mount();
+    act(() => pillBar().onSelect("sort", "bestTotal"));
+    expect(mockPush).not.toHaveBeenCalled();
+    expect(pill("sort").value).toBe("");
+  });
+
+  it("keeps Entry Total free", async () => {
+    mockSubscription.isSubscribed = false;
+    await mount();
+    act(() => pillBar().onSelect("sort", "entryTotal"));
+    expect(mockRequireAuth).not.toHaveBeenCalled();
+    expect(pill("sort").value).toBe("entryTotal");
+  });
+
+  it("sorts a subscriber's list by the bests", async () => {
+    jest.mocked(getLastYearBestsBatch).mockResolvedValue({
+      "Jane Doe": { bestSnatch: 90, bestCJ: 110, bestTotal: 200 },
+      "Alex Moore": { bestSnatch: 120, bestCJ: 150, bestTotal: 270 },
+    });
+    await mount();
+    act(() => pillBar().onSelect("sort", "bestSnatch"));
+    await flush();
+    expect(mockPush).not.toHaveBeenCalled();
+    expect(pill("sort").value).toBe("bestSnatch");
+    expect(shownNames()).toEqual(["Alex Moore", "Jane Doe", "John Smith"]);
   });
 });
 

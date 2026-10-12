@@ -212,6 +212,35 @@ export function isAthleteSortOption(value: string): value is AthleteSortOption {
   return ATHLETE_SORT_OPTIONS.some((option) => option.value === value);
 }
 
+/** The sorts that order athletes by their bests from the last year. */
+export function isBestLiftSort(sort: string): boolean {
+  return sort === 'bestTotal' || sort === 'bestSnatch' || sort === 'bestCJ';
+}
+
+/**
+ * Whether picking `value` in pill `id` needs a subscription.
+ *
+ * Best-lift sorts are premium, as they are in session details: the bests
+ * themselves are premium everywhere (the row's "Bests From The Last Year",
+ * session details' bests), and a free sort by them would expose the ranking
+ * the paywall sells. Entry Total and A-Z stay free.
+ */
+export function isPremiumStartListPill(id: string, value: string): boolean {
+  return id === 'sort' && isBestLiftSort(value);
+}
+
+/**
+ * The sort the list actually applies. A best-lift sort picked while
+ * subscribed falls back to A-Z once the subscription is not confirmed (it
+ * lapsed, or the user signed out), instead of showing a premium order.
+ */
+export function effectiveStartListSort(
+  sort: AthleteSortOption,
+  isSubscribed: boolean | null,
+): AthleteSortOption {
+  return isBestLiftSort(sort) && isSubscribed !== true ? 'alphabetical' : sort;
+}
+
 /** Everything the Start List's search box and filter pills hold. */
 export interface StartListFilters {
   weightClass: string;
