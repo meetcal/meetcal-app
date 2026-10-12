@@ -442,6 +442,10 @@ a {
 .wrapped-top-meet { margin-top: 12px; padding: 17px; border: 1px solid var(--border); border-radius: 13px; background: var(--card); box-shadow: var(--shadow-sm); }
 .wrapped-top-meet span { display: block; margin-bottom: 7px; color: var(--text-secondary); font-size: 0.76rem; font-weight: 750; letter-spacing: 0.04em; text-transform: uppercase; }
 .wrapped-top-meet strong { display: block; font-size: 1.15rem; line-height: 1.3; }
+.wrapped-choices { width: min(620px, 100%); overflow: hidden; border: 1px solid var(--border); border-radius: 10px; background: var(--card); box-shadow: var(--shadow-sm); }
+.wrapped-choices button { display: block; width: 100%; padding: 11px 13px; border-bottom: 1px solid var(--border); color: var(--text); text-align: left; }
+.wrapped-choices button:last-child { border-bottom: 0; }
+.wrapped-choices button:hover, .wrapped-choices button:focus { background: color-mix(in srgb, var(--accent) 10%, var(--card)); }
 .meet-search { position: relative; width: min(620px, 100%); }
 .meet-search > label { display: block; margin-bottom: 5px; color: var(--text-secondary); font-size: 0.82rem; font-weight: 700; }
 .meet-search .data-filter { width: 100%; }
