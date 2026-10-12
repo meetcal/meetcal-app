@@ -95,12 +95,12 @@ export function getOneSignalDeepLink(event: unknown) {
       launchURL?: unknown;
       additionalData?: NotificationData;
     };
-  };
+  } | null | undefined;
 
   const values = [
-    payload.result?.url,
-    getNotificationDeepLink(payload.notification?.additionalData),
-    payload.notification?.launchURL,
+    payload?.result?.url,
+    getNotificationDeepLink(payload?.notification?.additionalData),
+    payload?.notification?.launchURL,
   ];
 
   const value = values.find(

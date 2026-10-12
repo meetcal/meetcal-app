@@ -157,7 +157,10 @@ export function getOffsetMinutesAtInstant(
   instant: Date,
 ): number {
   const zonedParts = getZonedParts(timeZone, instant);
-  return (toUtcTimestamp(zonedParts) - instant.getTime()) / MS_PER_MINUTE;
+  // The parts stop at the minute, so compare them with the instant's minute:
+  // an instant 30s past it read as an offset 0.5 minutes short.
+  const instantMinute = Math.floor(instant.getTime() / MS_PER_MINUTE) * MS_PER_MINUTE;
+  return (toUtcTimestamp(zonedParts) - instantMinute) / MS_PER_MINUTE;
 }
 
 export function convertZonedLocalToUTC(

@@ -664,41 +664,49 @@ function dateForMeetTimezone(date: string, timeZoneIdentifier: USTimeZoneIdentif
  */
 export type MappedMeet = Meet & { timeZoneUnknown: boolean };
 
+/**
+ * A text field that is missing or not text reads as blank: the meet fetchers
+ * already reject a row without its name, dates and zone (`assertMeetText`),
+ * and a package's meet only feeds the schedule's time zone.
+ */
 export function mapApiMeet(row: ApiMeet): MappedMeet {
-  const { identifier: timeZoneIdentifier, known } = resolveTimeZoneIdentifier(
-    row.time_zone || '',
-  );
-  const meetInstant = instantForMeetDate(row.start_date);
+  assertObject(row, 'meet');
+  const name = nullableString(row.name) ?? '';
+  const timeZone = nullableString(row.time_zone) ?? '';
+  const startDate = nullableString(row.start_date) ?? '';
+  const { identifier: timeZoneIdentifier, known } = resolveTimeZoneIdentifier(timeZone);
+  const meetInstant = instantForMeetDate(startDate);
   const status =
     row.status === 'ongoing' || row.status === 'completed' || row.status === 'upcoming'
       ? row.status
       : 'upcoming';
   return {
-    id: row.id || row.name,
-    name: row.name,
+    id: nullableString(row.id) || name,
+    name,
+    // The venue is display text only; a missing or mistyped part reads blank.
     venue: {
-      name: row.venue_name,
+      name: nullableString(row.venue_name) ?? '',
       address: {
-        street: row.venue_street,
-        city: row.venue_city,
-        state: row.venue_state,
-        zip: row.venue_zip,
+        street: nullableString(row.venue_street) ?? '',
+        city: nullableString(row.venue_city) ?? '',
+        state: nullableString(row.venue_state) ?? '',
+        zip: nullableString(row.venue_zip) ?? '',
       },
     },
-    venueMapPdfUrl: row.venue_map_pdf_url ?? null,
-    venueMapAppleUrl: row.venue_map_apple_url ?? null,
+    venueMapPdfUrl: nullableString(row.venue_map_pdf_url),
+    venueMapAppleUrl: nullableString(row.venue_map_apple_url),
     time: {
-      timeZone: row.time_zone,
+      timeZone,
       timeZoneIdentifier,
       // Every field here derives from the *same* zone. Splitting them (the
       // abbreviation and offset from the raw value, the identifier from the
       // fallback) showed a "CST" label next to times converted in New York.
       abbreviation: getTimeZoneAbbreviation(timeZoneIdentifier, meetInstant),
-      utcOffset: getUTCOffsetHours(timeZoneIdentifier, row.start_date),
+      utcOffset: getUTCOffsetHours(timeZoneIdentifier, startDate),
     },
     dates: {
-      start: row.start_date,
-      end: row.end_date,
+      start: startDate,
+      end: nullableString(row.end_date) ?? '',
     },
     status,
     timeZoneUnknown: !known,
@@ -713,7 +721,13 @@ export function mapApiSchedule(rows: ApiScheduleRow[], meet?: Meet): Schedule {
     sessions: Map<number, Schedule[number]['sessions'][number]>;
   }>();
 
-  rows.forEach((row) => {
+  rows.forEach((row, index) => {
+    // The day and session number key everything below; a row without them
+    // would become a day titled `undefined` or a session numbered `NaN`.
+    assertObject(row, `schedule[${index}]`);
+    if (typeof row.date !== 'string' || typeof row.session_id !== 'number' || !Number.isFinite(row.session_id)) {
+      throw new Error(`schedule[${index}] has an invalid date or session_id`);
+    }
     if (!scheduleMap.has(row.date)) {
       scheduleMap.set(row.date, {
         date: dateForMeetTimezone(row.date, timeZoneIdentifier),
@@ -734,7 +748,7 @@ export function mapApiSchedule(rows: ApiScheduleRow[], meet?: Meet): Schedule {
     const session = dayData.sessions.get(row.session_id)!;
     session.platforms.push({
       platform: normalizePlatform(row.platform),
-      weightClass: row.weight_class ?? '',
+      weightClass: nullableString(row.weight_class) ?? '',
       platformStartTime: formatApiTime(row.start_time),
     });
   });
@@ -825,59 +839,77 @@ export function mapApiAthletes(rows: readonly ApiAthleteWithSession[], source: s
  * none, a stable composite of the row's identity beats `''`, which collapsed
  * every id-less row into one key.
  */
-function fallbackEventId(row: ApiLiftingResult): string {
-  return `${row.meet ?? ''}|${row.date ?? ''}|${row.name ?? ''}`;
+function fallbackEventId(meet: string, date: string, name: string): string {
+  return `${meet}|${date}|${name}`;
 }
 
+/**
+ * Like the reference tables below, a field of the wrong type reads as blank
+ * (text) or `null` (a lift), so one bad cell never reaches a screen or the
+ * offline cache as a string where a number belongs.
+ */
 export function mapApiLiftingResult(row: ApiLiftingResult, index = 0): SupabaseLiftResult {
+  assertObject(row, 'lifting result');
+  const meet = nullableString(row.meet) ?? '';
+  const date = nullableString(row.date) ?? '';
+  const name = nullableString(row.name) ?? '';
   return {
-    id: row.id ?? index,
-    event_id: row.event_id || fallbackEventId(row),
-    meet: row.meet ?? '',
-    date: row.date ?? '',
-    name: row.name ?? '',
-    age: typeof row.age === 'number' || typeof row.age === 'string' ? row.age : '',
-    body_weight: row.body_weight ?? 0,
-    snatch1: row.snatch1 ?? null,
-    snatch2: row.snatch2 ?? null,
-    snatch3: row.snatch3 ?? null,
-    snatch_best: row.snatch_best ?? null,
-    cj1: row.cj1 ?? null,
-    cj2: row.cj2 ?? null,
-    cj3: row.cj3 ?? null,
-    cj_best: row.cj_best ?? null,
-    total: row.total ?? null,
+    id: nullableNumber(row.id) ?? index,
+    event_id: nullableString(row.event_id) || fallbackEventId(meet, date, name),
+    meet,
+    date,
+    name,
+    age: nullableString(row.age) ?? nullableNumber(row.age) ?? '',
+    body_weight: nullableNumber(row.body_weight) ?? 0,
+    snatch1: nullableNumber(row.snatch1),
+    snatch2: nullableNumber(row.snatch2),
+    snatch3: nullableNumber(row.snatch3),
+    snatch_best: nullableNumber(row.snatch_best),
+    cj1: nullableNumber(row.cj1),
+    cj2: nullableNumber(row.cj2),
+    cj3: nullableNumber(row.cj3),
+    cj_best: nullableNumber(row.cj_best),
+    total: nullableNumber(row.total),
   };
 }
 
 export function mapApiYearBests(row: ApiYearBests) {
   return {
-    bestSnatch: row.best_snatch ?? 0,
-    bestCJ: row.best_cj ?? 0,
-    bestTotal: row.best_total ?? 0,
+    bestSnatch: toFiniteNumber(row.best_snatch),
+    bestCJ: toFiniteNumber(row.best_cj),
+    bestTotal: toFiniteNumber(row.best_total),
   };
 }
 
+/** A meet row's name, dates and zone are text; without them there is nothing to show. */
+function assertMeetText(row: Record<string, unknown>, label: string): void {
+  const invalid = ['name', 'start_date', 'end_date', 'time_zone'].filter((field) => typeof row[field] !== 'string');
+  if (invalid.length > 0) throw new Error(`${label} has invalid fields: ${invalid.join(', ')}`);
+}
+
 function validateApiMeets(json: unknown): ApiMeet[] {
-  return assertArray<unknown>(json, '/meets').map(
-    (row, index) =>
-      assertHasFields(row, `/meets[${index}]`, [
-        'name',
-        'start_date',
-        'end_date',
-        'time_zone',
-        'status',
-      ]) as ApiMeet,
-  );
+  return assertArray<unknown>(json, '/meets').map((row, index) => {
+    const fields = assertHasFields(row, `/meets[${index}]`, [
+      'name',
+      'start_date',
+      'end_date',
+      'time_zone',
+      'status',
+    ]);
+    assertMeetText(fields, `/meets[${index}]`);
+    return fields as ApiMeet;
+  });
 }
 
 function validateApiMeetDetails(json: unknown): ApiMeet {
-  return assertHasFields(json, '/meets/details', [
+  const fields = assertHasFields(json, '/meets/details', [
     'name',
     'start_date',
     'end_date',
     'time_zone',
-  ]) as ApiMeet;
+  ]);
+  assertMeetText(fields, '/meets/details');
+  return fields as ApiMeet;
 }
 
 function validateApiSchedule(json: unknown): ApiScheduleRow[] {
