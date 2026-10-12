@@ -37,6 +37,10 @@ describe('validateChaosConfig', () => {
     expect(() => validateChaosConfig({ ...valid, kinds: ['pass' as never] })).toThrow(/unknown fault kind "pass"/);
   });
 
+  it('rejects a misspelt key instead of running the defaults', () => {
+    expect(() => validateChaosConfig({ ...valid, kind: ['hang'] } as never)).toThrow(/unknown key "kind"/);
+  });
+
   it('rejects a config that is not an object', () => {
     expect(() => validateChaosConfig(true as never)).toThrow(/must be an object/);
   });

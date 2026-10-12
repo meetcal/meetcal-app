@@ -52,6 +52,8 @@ const ALL_KINDS: ReadonlySet<string> = new Set<ChaosFaultKind>([
  */
 const SERVER_CLOCK_FN = 'system:serverTime';
 
+const CONFIG_KEYS: ReadonlySet<string> = new Set(['rate', 'latencyMs', 'kinds']);
+
 function invalid(problem: string): Error {
   return new Error(`DEV_CONFIG.CHAOS: ${problem}`);
 }
@@ -62,6 +64,11 @@ function invalid(problem: string): Error {
  */
 export function validateChaosConfig(config: ChaosConfig): ChaosConfig {
   if (typeof config !== 'object' || config === null) throw invalid('must be an object, or null to turn chaos off');
+  // `as ChaosConfig | null` in development.ts skips TypeScript's excess-key
+  // check, so a misspelt `kinds` would otherwise run the defaults unnoticed.
+  for (const key of Object.keys(config)) {
+    if (!CONFIG_KEYS.has(key)) throw invalid(`unknown key ${JSON.stringify(key)} (expected rate, latencyMs, kinds)`);
+  }
   const { rate, latencyMs, kinds } = config;
   if (typeof rate !== 'number' || !Number.isFinite(rate) || rate < 0 || rate > 1) {
     throw invalid(`rate must be a number in [0, 1], got ${String(rate)}`);

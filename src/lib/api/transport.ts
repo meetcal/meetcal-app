@@ -185,8 +185,8 @@ async function devTransport(call: ApiCall): Promise<unknown> {
 
 export function callApi(call: ApiCall): Promise<unknown> {
   if (testTransport) return testTransport(call);
-  // Release builds inline `__DEV__` as false, so this branch is dead code
-  // there and every call goes straight to Convex.
+  // `__DEV__` is false in release builds, so every call goes straight to
+  // Convex there (and `getChaosConfig` checks it again).
   if (__DEV__) return devTransport(call);
   return convexTransport(call);
 }
