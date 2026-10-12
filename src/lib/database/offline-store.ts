@@ -442,17 +442,53 @@ type LiftingResultsWrite = {
   results: SupabaseLiftResult[];
 };
 
+/**
+ * What a blob's key held when a write read it. Only a payload that parsed as a
+ * manifest is `kept` for a restore: anything else may be bytes the read made
+ * up rather than what is on disk (a `[]` reads as a legacy row array), and
+ * writing those back over a good manifest would lose the copy.
+ */
+type PreviousLiftingResults =
+  | { kind: 'absent' }
+  | { kind: 'kept'; payload: string }
+  | { kind: 'unverified' };
+
 /** One blob's planned rewrite inside a batch. */
 type PlannedLiftingResultsWrite = {
   key: string;
-  /** The manifest value on disk before this write, restored if the write fails. */
-  previousPayload: string | null;
+  /** What a failed write puts back (see `restorePreviousManifests`). */
+  previous: PreviousLiftingResults;
   /** Chunk keys the previous manifest named; removed only after the new manifest lands. */
   previousChunkKeys: string[];
   chunkKeys: string[];
   chunks: string[];
   manifestPayload: string;
 };
+
+/**
+ * Every chunk key a key listing holds for each of `baseKeys`, whatever its
+ * generation, and the highest generation among them (-1 for none).
+ */
+function listLiftingResultsChunks(
+  storageKeys: readonly string[],
+  baseKeys: readonly string[],
+): Map<string, { chunkKeys: string[]; maxGeneration: number }> {
+  const listed = new Map(
+    baseKeys.map((baseKey) => [baseKey, { chunkKeys: [] as string[], maxGeneration: -1 }]),
+  );
+  for (const key of storageKeys) {
+    const chunkAt = key.lastIndexOf('__chunk_');
+    if (chunkAt === -1) continue;
+    const entry = listed.get(key.slice(0, chunkAt));
+    const match = /^\d+(?:_g(\d+))?$/.exec(key.slice(chunkAt + '__chunk_'.length));
+    if (!entry || !match) continue;
+    const generation = match[1] === undefined ? 0 : Number(match[1]);
+    if (!isChunkGeneration(generation)) continue;
+    entry.chunkKeys.push(key);
+    entry.maxGeneration = Math.max(entry.maxGeneration, generation);
+  }
+  return listed;
+}
 
 /**
  * Writes several lifting-results blobs (meet results or per-athlete history)
@@ -479,6 +515,11 @@ type PlannedLiftingResultsWrite = {
  * the previous chunks, so an interrupted download leaves each athlete with
  * the copy it had rather than nothing. This used to be clear-then-write.
  *
+ * A key whose value did not parse as a manifest (unreadable, or a legacy row
+ * array) does not say which chunks are live, so its new generation comes from
+ * a key listing instead: one past every chunk generation on disk, which no
+ * live chunk can share, and every listed chunk is pruned in step 4.
+ *
  * @returns how many blobs were rewritten (the rest were byte-identical).
  */
 async function writeStoredLiftingResultsBatch(
@@ -491,14 +532,22 @@ async function writeStoredLiftingResultsBatch(
   const encodedByKey = new Map<string, string>();
   const previousManifests = new Map<string, LiftingResultsManifest>();
   const previousChunkKeys: string[] = [];
+  const unverifiedKeys: string[] = [];
   for (const write of writes) {
     encodedByKey.set(write.key, encodeLiftingResults(write.results));
-    const previous = parseLiftingResultsManifest(previousPayloads.get(write.key) ?? null);
+    const payload = previousPayloads.get(write.key) ?? null;
+    const previous = parseLiftingResultsManifest(payload);
     if (previous) {
       previousManifests.set(write.key, previous);
       previousChunkKeys.push(...getManifestChunkKeys(write.key, previous));
+    } else if (payload !== null) {
+      unverifiedKeys.push(write.key);
     }
   }
+  const listedChunks =
+    unverifiedKeys.length > 0
+      ? listLiftingResultsChunks(await AsyncStorage.getAllKeys(), unverifiedKeys)
+      : new Map<string, { chunkKeys: string[]; maxGeneration: number }>();
 
   // Read the old chunks once, compare encoded to encoded (no inflate), and
   // drop every blob whose bytes are already on disk.
@@ -507,7 +556,10 @@ async function writeStoredLiftingResultsBatch(
   for (const write of writes) {
     const encoded = encodedByKey.get(write.key) ?? '';
     const previous = previousManifests.get(write.key) ?? null;
-    const oldChunkKeys = previous ? getManifestChunkKeys(write.key, previous) : [];
+    const listed = listedChunks.get(write.key);
+    const oldChunkKeys = previous
+      ? getManifestChunkKeys(write.key, previous)
+      : (listed?.chunkKeys ?? []);
     if (previous) {
       const oldChunks = oldChunkKeys.map((chunkKey) => previousChunks.get(chunkKey));
       if (oldChunks.every((chunk) => typeof chunk === 'string') && oldChunks.join('') === encoded) {
@@ -520,7 +572,9 @@ async function writeStoredLiftingResultsBatch(
         `Lifting results for ${write.key} need ${chunks.length} chunks (max ${MAX_LIFTING_RESULTS_CHUNKS})`,
       );
     }
-    const generation = previous ? (previous.generation ?? 0) + 1 : 0;
+    const generation = previous
+      ? (previous.generation ?? 0) + 1
+      : (listed?.maxGeneration ?? -1) + 1;
     const manifest: LiftingResultsManifest = {
       format: LIFTING_RESULTS_FORMAT,
       chunks: chunks.length,
@@ -528,7 +582,11 @@ async function writeStoredLiftingResultsBatch(
     };
     planned.push({
       key: write.key,
-      previousPayload: previousPayloads.get(write.key) ?? null,
+      previous: previous
+        ? { kind: 'kept', payload: previousPayloads.get(write.key) ?? '' }
+        : listed
+          ? { kind: 'unverified' }
+          : { kind: 'absent' },
       previousChunkKeys: oldChunkKeys,
       chunkKeys: chunks.map((_, index) =>
         getLiftingResultsChunkKey(write.key, index, generation),
@@ -580,17 +638,23 @@ async function writeStoredLiftingResultsBatch(
 
 /**
  * Points every blob of a failed batch back at the copy it had: the previous
- * manifest (or raw payload) where there was one, no manifest where there was
- * none. The previous chunks were never touched, so this is enough. Best
- * effort: the write failed for a reason (`SQLITE_FULL`, most likely) that may
- * fail this too, and the original error is what the caller needs to see.
+ * manifest where there was one, no manifest where there was none. The previous
+ * chunks were never touched, so this is enough, and it is harmless when the
+ * new manifest never landed. An `unverified` key is left alone: its new
+ * manifest either never landed (the old value is still there) or landed after
+ * its chunks did, so the new copy is whole. The exception is a batch large
+ * enough to span `multiSet` slices whose chunk slice was lost while the
+ * manifest slice landed: that blob reads as no results until its next write,
+ * the price of never writing back bytes the read may have made up.
+ * Best effort: the write failed for a reason (`SQLITE_FULL`, most likely) that
+ * may fail this too, and the original error is what the caller needs to see.
  */
 async function restorePreviousManifests(planned: readonly PlannedLiftingResultsWrite[]): Promise<void> {
   const restore: [string, string][] = [];
   const remove: string[] = [];
   for (const plan of planned) {
-    if (plan.previousPayload !== null) restore.push([plan.key, plan.previousPayload]);
-    else remove.push(plan.key);
+    if (plan.previous.kind === 'kept') restore.push([plan.key, plan.previous.payload]);
+    else if (plan.previous.kind === 'absent') remove.push(plan.key);
   }
   try {
     await multiSetBatched(restore);

@@ -179,20 +179,13 @@ describe('auth cache under SecureStore chaos', () => {
     );
   });
 
-  // FINDING: a sign-out whose Keychain delete fails leaves the signed-in hint
-  // in place, and the next read returns it as fresh. `clearAuthCache`
-  // (authCache.ts:189) logs the failed `deleteItemAsync` and resolves, so the
-  // profile screen's sign-out goes on to `signOut()`; but the entry is still
-  // there, and `useStorageUser` (hooks/saved-sessions/useStorageUser.ts:29),
-  // which reads the hint whenever Clerk has no user, shows the signed-out
-  // user's saved sessions in this process and on an offline cold start for up
-  // to seven days. Shrunk counterexample (seed 943584651):
-  // `cacheAuthState(true, 'user_1')`, then `clearAuthCache()` under the plan
-  // `[{ kind: 'quota' }]` (a `reject` does the same), then a healthy read
-  // returns `{ isSignedIn: true, userId: 'user_1' }`. A *lost*
-  // delete (`lose-write`) is out of scope: the app cannot know about it.
-  // Not fixed here (auth cache: behaviour changes need approval).
-  it.skip('after a sign-out, the hint never reads as signed in, even when the delete fails', async () => {
+  // Regression: `clearAuthCache` used to log a failed Keychain delete and
+  // resolve, leaving the signed-in hint that `useStorageUser` trusts whenever
+  // Clerk has no user, so a signed-out user's saved sessions stayed on screen
+  // (seed 943584651: a `quota` on the delete, then a healthy read returned
+  // `user_1`). A *lost* delete (`lose-write`) is out of scope: the app cannot
+  // know about it.
+  it('after a sign-out, the hint never reads as signed in, even when the delete fails', async () => {
     await fc.assert(
       fc.asyncProperty(faultPlanArb(honestFaultArb, 3), async (plan) => {
         await reset();
@@ -206,12 +199,45 @@ describe('auth cache under SecureStore chaos', () => {
     );
   });
 
-  // FINDING (see above): the shrunk counterexample, kept as an example.
-  it.skip('does not read a signed-in hint after a sign-out whose delete failed', async () => {
+  // The shrunk counterexample of the regression above.
+  it('does not read a signed-in hint after a sign-out whose delete failed', async () => {
     await cacheAuthState(true, 'user_1');
     secureStore.setFaults([{ kind: 'quota' }]);
     await expect(clearAuthCache()).resolves.toBeUndefined();
     secureStore.setFaults([]);
+    expect(await getCachedAuthState()).toBeNull();
+  });
+
+  it('writes a signed-out entry over a hint it could not delete, for the next process', async () => {
+    await cacheAuthState(true, 'user_1');
+    secureStore.setFaults([{ kind: 'reject' }]);
+    await clearAuthCache();
+    expect(JSON.parse(secureStore.data.get(KEY) ?? 'null')).toEqual({ isSignedIn: false, timestamp: T0 });
+  });
+
+  it('reads no hint while neither the delete nor the overwrite landed', async () => {
+    await cacheAuthState(true, 'user_1');
+    secureStore.setFaults([{ kind: 'reject' }, { kind: 'quota' }]);
+    await clearAuthCache();
+    // Still on disk: only a fresh process could read it (the residual case).
+    expect(JSON.parse(secureStore.data.get(KEY) ?? 'null')).toMatchObject({ isSignedIn: true });
+    expect(await getCachedAuthState()).toBeNull();
+  });
+
+  it('trusts the hint again once a later sign-in is cached', async () => {
+    await cacheAuthState(true, 'user_1');
+    secureStore.setFaults([{ kind: 'reject' }, { kind: 'reject' }]);
+    await clearAuthCache();
+    // The same user signs back in: the write is not deduplicated away.
+    await cacheAuthState(true, 'user_1');
+    expect(await getCachedAuthState()).toMatchObject({ isSignedIn: true, userId: 'user_1' });
+  });
+
+  it('keeps reading no hint when the sign-in after a failed clear also fails to write', async () => {
+    await cacheAuthState(true, 'user_1');
+    secureStore.setFaults([{ kind: 'reject' }, { kind: 'reject' }, { kind: 'reject' }]);
+    await clearAuthCache();
+    await cacheAuthState(true, 'user_2');
     expect(await getCachedAuthState()).toBeNull();
   });
 

@@ -1,6 +1,7 @@
 import {
   convertZonedLocalToUTC,
   getOffsetMinutesAtInstant,
+  isSupportedTimeZone,
   parseClockTime,
 } from "@/utils/timezone";
 
@@ -220,6 +221,17 @@ describe("timezone input assertions", () => {
   it("still throws for an unknown IANA id", () => {
     expect(() => getOffsetMinutesAtInstant("Mars/Olympus", instant)).toThrow();
   });
+
+  it.each(["America/New_York", "Pacific/Honolulu", "UTC"])("accepts the zone %p", (zone) => {
+    expect(isSupportedTimeZone(zone)).toBe(true);
+  });
+
+  it.each([undefined, null, 5, "", "   ", "Mars/Olympus", "__proto__"])(
+    "rejects %p as a zone instead of throwing",
+    (zone) => {
+      expect(isSupportedTimeZone(zone)).toBe(false);
+    },
+  );
 });
 
 describe("parts formatter cache", () => {

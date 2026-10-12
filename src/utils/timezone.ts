@@ -33,6 +33,22 @@ function assertTimeZone(timeZone: unknown): asserts timeZone is string {
   }
 }
 
+/**
+ * Whether `value` is a zone id this runtime can format in. For persisted rows
+ * whose zone a screen hands straight to `toLocale*String`, which throws a
+ * `RangeError` mid-render for an id `Intl` does not know. Builds (and caches)
+ * the formatter the conversions below would use anyway.
+ */
+export function isSupportedTimeZone(value: unknown): value is string {
+  if (typeof value !== "string") return false;
+  try {
+    getPartsFormatter(value);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 function getPartsFormatter(timeZone: string): Intl.DateTimeFormat {
   assertTimeZone(timeZone);
   const cached = PARTS_FORMATTER_CACHE.get(timeZone);

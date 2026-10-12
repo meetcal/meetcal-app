@@ -122,12 +122,13 @@ describe('meet lifting results under storage chaos', () => {
           await underChaos(writePlan, () => saveMeetLiftingResults(MEET, next).catch(() => undefined));
           const read = await underChaos(readPlan, () => getMeetLiftingResults(MEET));
 
-          // A `corrupt-read` hands the store bytes nobody wrote. When they
+          // A `corrupt-read` hands the read bytes nobody wrote. When they
           // parse as a legacy row array they *are* a stored payload as far as
-          // the store can tell (during a rewrite, they are also what the
-          // restore puts back), so their rows are a legitimate answer. What
-          // must never come back is a subset or a mix of written copies.
-          const legitimate = [[], previous ?? [], next, ...legacyRowsFrom([...writePlan, ...readPlan])];
+          // the reader can tell, so their rows are a legitimate answer. A
+          // rewrite never puts such bytes back on disk, so only the read's
+          // own plan can produce them. What must never come back is a subset
+          // or a mix of written copies.
+          const legitimate = [[], previous ?? [], next, ...legacyRowsFrom(readPlan)];
           expect(legitimate).toContainEqual(read);
 
           // A later healthy write always lands, whatever chaos left behind
@@ -141,19 +142,14 @@ describe('meet lifting results under storage chaos', () => {
     );
   });
 
-  // FINDING: a corrupted read of the manifest at the start of a rewrite costs
-  // the previous copy when the rewrite then fails. Counterexample (seed
-  // 494037883): previous and next are one row each; the write's first
-  // `multiGet` reads the manifest as `""`, then the `multiSet` is rejected.
-  // `writeStoredLiftingResultsBatch` keeps the bytes it read as
-  // `previousPayload` (offline-store.ts:531), and `restorePreviousManifests`
-  // (offline-store.ts:588) writes them back over the good manifest that was
-  // never touched, so the meet reads as no results. With the commit landing
-  // instead, the unparseable read also picks generation 0
-  // (offline-store.ts:523), so the new chunks overwrite the live gen-0 chunks
-  // before the commit point. Not fixed here (offline cache: behaviour changes
-  // need approval); see the report.
-  it.skip('a corrupted read during a failed rewrite does not cost the previous copy', async () => {
+  // Regression: a rewrite used to keep whatever bytes its first read returned
+  // and, on failure, write them back over the good manifest it never touched
+  // (seed 494037883: the manifest read as `""`, then the `multiSet` was
+  // rejected, and the meet read as no results). The unparseable read also
+  // picked generation 0, so the new chunks overwrote the live ones before the
+  // commit point. Now only a payload that parsed as a manifest is restored,
+  // and an unreadable one takes its generation from a key listing.
+  it('a corrupted read during a failed rewrite does not cost the previous copy', async () => {
     await fc.assert(
       fc.asyncProperty(
         fc.array(liftResultArb, { minLength: 1, maxLength: 4 }),
@@ -169,15 +165,66 @@ describe('meet lifting results under storage chaos', () => {
     );
   });
 
-  // FINDING (see above): the shrunk counterexample, kept as an example.
-  it.skip('keeps the previous copy when the manifest reads corrupt and the multiSet is rejected', async () => {
+  // The shrunk counterexample of the regression above.
+  it('keeps the previous copy when the manifest reads corrupt and the multiSet is rejected', async () => {
     const previous = [{ ...bulkyLiftResults(1, 1)[0], name: 'Previous Lifter' }];
     const next = [{ ...bulkyLiftResults(2, 1)[0], name: 'Next Lifter' }];
     await saveMeetLiftingResults(MEET, previous);
-    await underChaos([{ kind: 'corrupt-read', value: '' }, { kind: 'reject' }], () =>
+    // The manifest read, the key listing, the rejected multiSet.
+    await underChaos([{ kind: 'corrupt-read', value: '' }, { kind: 'pass' }, { kind: 'reject' }], () =>
       saveMeetLiftingResults(MEET, next).catch(() => undefined),
     );
     expect(await getMeetLiftingResults(MEET)).toEqual(previous);
+  });
+
+  it('does not write corrupt bytes that read as legacy rows back over a landed rewrite', async () => {
+    const previous = [{ ...bulkyLiftResults(1, 1)[0], name: 'Previous Lifter' }];
+    const next = [{ ...bulkyLiftResults(2, 1)[0], name: 'Next Lifter' }];
+    await saveMeetLiftingResults(MEET, previous);
+    // The manifest reads as `[]` (a legacy row array), the commit lands, and
+    // the read-back that would confirm it is rejected.
+    const multiGet = AsyncStorage.multiGet as jest.Mock;
+    const realMultiGet = multiGet.getMockImplementation() as (keys: string[]) => Promise<[string, string | null][]>;
+    multiGet
+      .mockImplementationOnce(async (keys: string[]) =>
+        (await realMultiGet(keys)).map(([key, value]) => [key, value === null ? null : '[]']),
+      )
+      .mockImplementationOnce(async () => {
+        throw new Error('chaos: storage unavailable');
+      });
+    await expect(saveMeetLiftingResults(MEET, next)).rejects.toThrow('chaos: storage unavailable');
+    expect(await getMeetLiftingResults(MEET)).toEqual(next);
+  });
+
+  it('writes past every chunk generation on disk when the manifest is unreadable, then prunes them', async () => {
+    const storage = (AsyncStorage as unknown as Storage).__INTERNAL_MOCK_STORAGE__;
+    const chunkKeys = () => Object.keys(storage).filter((key) => key.includes('__chunk_')).sort();
+    const previous = [{ ...bulkyLiftResults(1, 1)[0], name: 'Previous Lifter' }];
+    const next = [{ ...bulkyLiftResults(2, 1)[0], name: 'Next Lifter' }];
+    await saveMeetLiftingResults(MEET, previous);
+    // An orphan a failed write left behind, a generation past the live one.
+    storage[`meetcal_lifting_results_${MEET}__chunk_0_g4`] = 'orphan';
+    const liveChunk = storage[`meetcal_lifting_results_${MEET}__chunk_0`];
+
+    // The manifest reads unparseable, then the process dies once the chunks
+    // are down: the live generation-0 chunk must be untouched.
+    const multiSet = AsyncStorage.multiSet as jest.Mock;
+    const realMultiSet = multiSet.getMockImplementation() as (pairs: [string, string][]) => Promise<null>;
+    multiSet.mockImplementationOnce(async (pairs: [string, string][]) => {
+      await realMultiSet(pairs.filter(([key]) => key.includes('__chunk_')));
+      return new Promise(() => {});
+    });
+    void underChaos([{ kind: 'corrupt-read', value: 'not json' }], () => saveMeetLiftingResults(MEET, next));
+    for (let i = 0; i < 20; i++) await new Promise((resolve) => setImmediate(resolve));
+    expect(storage[`meetcal_lifting_results_${MEET}__chunk_0`]).toBe(liveChunk);
+    expect(chunkKeys()).toContain(`meetcal_lifting_results_${MEET}__chunk_0_g5`);
+    expect(await getMeetLiftingResults(MEET)).toEqual(previous);
+
+    // A rewrite that lands after an unreadable manifest read prunes every
+    // generation the listing found.
+    await underChaos([{ kind: 'corrupt-read', value: 'not json' }], () => saveMeetLiftingResults(MEET, next));
+    expect(await getMeetLiftingResults(MEET)).toEqual(next);
+    expect(chunkKeys()).toEqual([`meetcal_lifting_results_${MEET}__chunk_0_g6`]);
   });
 
   it('a crash part-way through the chunk writes leaves the previous copy readable', async () => {

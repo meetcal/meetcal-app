@@ -40,8 +40,10 @@ function assertRenderable(value: Meet): void {
   expect(typeof value.name).toBe('string');
   expect(value.name.length).toBeGreaterThan(0);
   expect(value.dates !== null && typeof value.dates === 'object').toBe(true);
+  expect(typeof value.dates.start).toBe('string');
+  expect(typeof value.dates.end).toBe('string');
   expect(value.time !== null && typeof value.time === 'object').toBe(true);
-  expect(typeof value.time.timeZoneIdentifier).toBe('string');
+  expect(isRuntimeTimeZone(value.time.timeZoneIdentifier)).toBe(true);
 }
 
 function isRuntimeTimeZone(zone: string): boolean {
@@ -125,19 +127,12 @@ describe('cached meets list', () => {
     );
   });
 
-  // FINDING: a cached meet whose `time.timeZoneIdentifier` is a string the
-  // runtime does not know reaches the UI. `isCachedMeet`
-  // (meets-list-cache.ts:20) only checks it is a string.
-  // `utils/timezone.ts` callers turn a bad zone into a skip, but
-  // `components/saved/SessionCard.tsx:57` passes it straight to
-  // `toLocaleDateString({ timeZone: zone || "UTC" })`, which throws a
-  // RangeError during render for a non-empty unknown zone. The API mapper
-  // never writes such a value (`mapApiMeet` falls back to a known zone), so
-  // only a corrupted or hand-edited blob gets here. Shrunk counterexample
-  // (seed 1047305090): one meet with `timeZoneIdentifier: ""`; `"__proto__"`
-  // is the one that crashes SessionCard. Not fixed here (offline cache:
-  // behaviour changes need approval).
-  it.skip('only returns meets whose time zone the runtime can format in', async () => {
+  // Regression: `isCachedMeet` used to accept any string zone, so a corrupted
+  // row reached `components/saved/SessionCard.tsx`, whose
+  // `toLocaleDateString({ timeZone })` throws a RangeError mid-render for an
+  // unknown id (`"__proto__"`). The API mapper never writes one (`mapApiMeet`
+  // falls back to a known zone), so such a row now reads as a miss.
+  it('only returns meets whose time zone the runtime can format in', async () => {
     const zoneArb = fc.oneof(timeZoneArb, hostileStringArb);
     await fc.assert(
       fc.asyncProperty(fc.array(zoneArb, { minLength: 1, maxLength: 3 }), async (zones) => {
@@ -151,8 +146,8 @@ describe('cached meets list', () => {
     );
   });
 
-  // FINDING (see above): the counterexample, kept as an example.
-  it.skip('drops a cached meet whose time zone is not a zone', async () => {
+  // The counterexamples of the regression above (seed 1047305090 shrank to `""`).
+  it('drops a cached meet whose time zone is not a zone', async () => {
     await AsyncStorage.setItem(
       MEETS_LIST_CACHE_KEY,
       JSON.stringify([meet('Nationals', '__proto__'), meet('Open', ''), meet('Masters', 'America/Denver')]),
