@@ -1,4 +1,5 @@
 import {
+  authPendingReason,
   isInternalRoutePath,
   resolveAuthRouteTarget,
   resolveAuthState,
@@ -181,5 +182,13 @@ describe('isInternalRoutePath', () => {
     expect(isInternalRoutePath('https://example.com')).toBe(false);
     expect(isInternalRoutePath('//example.com')).toBe(false);
     expect(isInternalRoutePath('meetcal://meet/x')).toBe(false);
+  });
+});
+
+describe('authPendingReason', () => {
+  it('is offline only when the probe said so', () => {
+    expect(authPendingReason(false)).toBe('offline');
+    expect(authPendingReason(true)).toBe('loading');
+    expect(authPendingReason(null)).toBe('loading');
   });
 });
