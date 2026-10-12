@@ -2,6 +2,10 @@ import { ConvexHttpClient } from 'convex/browser';
 import { anyApi } from 'convex/server';
 import { ConvexError } from 'convex/values';
 
+import { getChaosConfig } from '@/config/development';
+import { withDevChaos } from '@/lib/api/dev-chaos';
+import { TransportRequestError } from '@/lib/api/transport-error';
+
 /**
  * The one place the app talks to its backend: Convex functions, called by
  * `lib/api/meetcal-api.ts`.
@@ -48,18 +52,7 @@ export type ApiCall = {
 
 export type Transport = (call: ApiCall) => Promise<unknown>;
 
-/** A Convex function rejected the request (`ConvexError` with an HTTP status). */
-export class TransportRequestError extends Error {
-  status: number;
-  body: string;
-
-  constructor(message: string, status: number, body: string) {
-    super(message);
-    this.name = 'TransportRequestError';
-    this.status = status;
-    this.body = body;
-  }
-}
+export { TransportRequestError };
 
 /**
  * The production deployment, used when the build set no URL (as the iOS App
@@ -215,13 +208,30 @@ export const convexTransport: Transport = async (call) => {
   }
 };
 
-let activeTransport: Transport = convexTransport;
+let testTransport: Transport | null = null;
 
-export function callApi(call: ApiCall): Promise<unknown> {
-  return activeTransport(call);
+/**
+ * Convex behind `DEV_CONFIG.CHAOS`'s faults. The config is read on every
+ * call, so a change to it applies from the next call; a bad config rejects
+ * every call with what is wrong with it.
+ */
+async function devTransport(call: ApiCall): Promise<unknown> {
+  const chaos = getChaosConfig();
+  return chaos ? withDevChaos(convexTransport, chaos)(call) : convexTransport(call);
 }
 
-/** Replaces the transport (a stub), or restores Convex with `null`. For tests. */
+export function callApi(call: ApiCall): Promise<unknown> {
+  if (testTransport) return testTransport(call);
+  // `__DEV__` is false in release builds, so every call goes straight to
+  // Convex there (and `getChaosConfig` checks it again).
+  if (__DEV__) return devTransport(call);
+  return convexTransport(call);
+}
+
+/**
+ * Replaces the transport (a stub), or restores Convex with `null`. For tests.
+ * A stub takes precedence over `DEV_CONFIG.CHAOS`.
+ */
 export function setApiTransportForTests(transport: Transport | null): void {
-  activeTransport = transport ?? convexTransport;
+  testTransport = transport;
 }

@@ -159,6 +159,16 @@ describe("outbox bookkeeping", () => {
     expect(Object.keys(outbox.resets)).toEqual(["Test Meet"]);
   });
 
+  it("refuses a PUT body it could not read back, keeping the entry it would replace", async () => {
+    const rev = await markSessionDelete(USER, "a", "Test Meet");
+
+    await expect(markSessionPut(USER, session("a", { sessionNumber: 0 }))).rejects.toThrow(
+      "unreadable session body",
+    );
+
+    expect((await readOutbox(USER)).sessions.a).toEqual({ op: "delete", rev, meet: "Test Meet" });
+  });
+
   it("a reset-all wipes per-session entries and earlier resets", async () => {
     await markSessionPut(USER, session("a"));
     await markResetPending(USER, OTHER);
@@ -308,6 +318,13 @@ describe("mergeServerSessions", () => {
 });
 
 describe("adoptPreOutboxSessions", () => {
+  it("skips a local row the outbox could not read back", async () => {
+    expect(
+      await adoptPreOutboxSessions(USER, true, [session("old"), session("bad", { sessionNumber: 0 })]),
+    ).toBe(1);
+    expect(Object.keys((await readOutbox(USER)).sessions)).toEqual(["old"]);
+  });
+
   it("queues pre-outbox local rows once, only when the server is empty", async () => {
     expect(await adoptPreOutboxSessions(USER, true, [session("old")])).toBe(1);
     expect(Object.keys((await readOutbox(USER)).sessions)).toEqual(["old"]);
@@ -393,6 +410,56 @@ describe("flushOutbox", () => {
       mockPut.mock.invocationCallOrder[1],
     );
     expect(countPendingWrites(await readOutbox(USER))).toBe(0);
+  });
+
+  it("holds every meet's writes behind a reset-all whose clear was lost, then sends them after it", async () => {
+    await markResetPending(USER, null);
+    await markSessionPut(USER, session("saved-after"));
+    // The reset lands, but storage loses the write that clears it.
+    (AsyncStorage.setItem as jest.Mock).mockImplementationOnce(async () => undefined);
+
+    await flushOutbox(USER, getToken);
+
+    // Still stored, so it will be sent again: the save must not go before it.
+    expect(mockDeleteAll).toHaveBeenCalledTimes(1);
+    expect(mockPut).not.toHaveBeenCalled();
+    expect(Object.keys((await readOutbox(USER)).resets)).toEqual([RESET_ALL_MEETS]);
+
+    await flushOutbox(USER, getToken);
+    expect(mockDeleteAll).toHaveBeenCalledTimes(2);
+    expect(mockDeleteAll.mock.invocationCallOrder[1]).toBeLessThan(mockPut.mock.invocationCallOrder[0]);
+    expect(countPendingWrites(await readOutbox(USER))).toBe(0);
+  });
+
+  it("sends a write older than its meet's reset before the reset, not after it", async () => {
+    // No current writer stores this (a reset drops its meet's older entries),
+    // but if one did, holding the write until after the reset would let it
+    // undo the reset on the server.
+    await AsyncStorage.setItem(
+      getSavedSessionsOutboxKey(USER),
+      JSON.stringify({
+        nextRev: 3,
+        resets: { "Test Meet": 2 },
+        sessions: { a: { op: "put", rev: 1, meet: "Test Meet", session: session("a") } },
+      }),
+    );
+
+    await flushOutbox(USER, getToken);
+
+    expect(mockPut.mock.invocationCallOrder[0]).toBeLessThan(mockDeleteAll.mock.invocationCallOrder[0]);
+    expect(countPendingWrites(await readOutbox(USER))).toBe(0);
+  });
+
+  it("sends a held write in the same flush once the server refuses its meet's reset", async () => {
+    await markResetPending(USER, "Test Meet");
+    await markSessionPut(USER, session("saved-after"));
+    mockDeleteAll.mockRejectedValueOnce(new MeetCalApiError("bad meet", 400, ""));
+
+    const result = await flushOutbox(USER, getToken);
+
+    // The refused reset is dropped, so nothing holds the save any more.
+    expect(mockPut).toHaveBeenCalledWith(TOKEN, "saved-after", expect.anything());
+    expect(result.remaining).toBe(0);
   });
 
   it("sends the latest body when the session is edited while a flush is running", async () => {
