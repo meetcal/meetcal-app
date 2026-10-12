@@ -53,10 +53,27 @@ const UPCOMING_WINDOW_MONTHS = 3;
  */
 const MAX_CLIENT_CLOCK_SKEW_MS = 24 * 60 * 60 * 1000;
 
+const HOUR_MS = 60 * 60 * 1000;
+
+/**
+ * The instant the upcoming window is measured from. `now` must be a whole
+ * hour, as every client rounds it: it is the cache key, and a caller varying
+ * it by the millisecond would otherwise miss the cache on every call. The
+ * 400 costs no read. A `now` further than a day from the server's clock gives
+ * way to the server's hour.
+ */
+export function upcomingWindowNow(clientNow: number, serverNow: number): number {
+  if (!Number.isFinite(clientNow) || clientNow % HOUR_MS !== 0) {
+    throw apiError(400, 'now must be a whole hour in milliseconds (rounded down)');
+  }
+  if (Math.abs(clientNow - serverNow) <= MAX_CLIENT_CLOCK_SKEW_MS) return clientNow;
+  return Math.floor(serverNow / HOUR_MS) * HOUR_MS;
+}
+
 export const list = query({
   args: { now: v.number(), ifNoneMatch: v.optional(v.string()) },
   handler: async (ctx, { now: clientNow, ifNoneMatch }) => {
-    const now = Math.abs(clientNow - Date.now()) > MAX_CLIENT_CLOCK_SKEW_MS ? Date.now() : clientNow;
+    const now = upcomingWindowNow(clientNow, Date.now());
     const [upcoming, ongoing] = await Promise.all(
       (['upcoming', 'ongoing'] as const).map((status) =>
         ctx.db

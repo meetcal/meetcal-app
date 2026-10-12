@@ -32,7 +32,7 @@ export function callQuery(call: ApiCall): Record<string, string> {
 
 /** The client samples the server clock alongside requests; stubs answer it themselves. */
 export function isClockCall(call: ApiCall): boolean {
-  return call.fn === 'system:serverTime';
+  return call.kind === 'clock';
 }
 
 /** Functions whose rows travel as JSON text (`{ json }`), as `convex/` sends them. */

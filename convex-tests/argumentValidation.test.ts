@@ -1,7 +1,7 @@
 import { ConvexError } from 'convex/values';
 import { AGE_GROUPS } from '../src/constants/nat-rankings';
 import { getWeightClasses } from '../src/utils/nat-rankings';
-import { packageForMeet } from '../convex/meets';
+import { list as listMeets, packageForMeet, upcomingWindowNow } from '../convex/meets';
 import { adaptiveRecords, nationalRankings, nationalRankingsByYear } from '../convex/reference';
 import { isRankingDivision, requireAdaptiveGender, requireKnownRankingClass } from '../convex/lib/referenceData';
 import { requireSavedSessionWhen } from '../convex/users';
@@ -144,4 +144,27 @@ describe('users:putSavedSession session timing', () => {
   ])('rejects session %p on %p at %p with a 400', async (session, date, startTime) => {
     expect(await statusOf(() => requireSavedSessionWhen(session, date, startTime))).toBe(400);
   });
+});
+
+describe('meets:list now', () => {
+  const HOUR = 60 * 60 * 1000;
+  const serverNow = Date.UTC(2026, 9, 12, 11, 12, 13);
+  const serverHour = Date.UTC(2026, 9, 12, 11);
+
+  it('takes the whole hour every client sends', () => {
+    expect(upcomingWindowNow(serverHour, serverNow)).toBe(serverHour);
+    expect(upcomingWindowNow(serverHour - 23 * HOUR, serverNow)).toBe(serverHour - 23 * HOUR);
+  });
+
+  it("gives way to the server's hour for a clock more than a day off", () => {
+    expect(upcomingWindowNow(serverHour - 90 * 24 * HOUR, serverNow)).toBe(serverHour);
+  });
+
+  it.each([serverNow, serverHour + 1, Number.NaN, Number.POSITIVE_INFINITY])(
+    'rejects %p before reading anything, so varying it cannot bust the cache',
+    async (now) => {
+      expect(await statusOf(() => upcomingWindowNow(now, serverNow))).toBe(400);
+      expect(await statusOf(handlerOf(listMeets)(NO_DB, { now }))).toBe(400);
+    },
+  );
 });
