@@ -695,6 +695,20 @@ export async function computeStatsRows(
   onlyClub?: string,
   known: readonly PreviousBest[] = [],
 ): Promise<StatsRow[]> {
+  return (await computeStats(ctx, meet, onlyClub, known)).rows;
+}
+
+/**
+ * `computeStatsRows`, and the latest date among the meet's finishers ('' with
+ * none): no result dated on or after it can change any of their previous
+ * bests (`lib/viewKeys.ts`, `athleteChangeAffects`).
+ */
+export async function computeStats(
+  ctx: QueryCtx,
+  meet: string,
+  onlyClub?: string,
+  known: readonly PreviousBest[] = [],
+): Promise<{ rows: StatsRow[]; latest: string }> {
   const { joined, groups } = await statsEntries(ctx, meet);
   const wanted = onlyClub === undefined ? joined : joined.filter(({ athlete }) => athlete.club === onlyClub);
   const found = new Map(known.map((p) => [previousBestId(p.key, p.before), p.best]));
@@ -702,7 +716,37 @@ export async function computeStatsRows(
     .filter(({ key, row }) => !found.has(previousBestId(key, row.date)))
     .map(({ key, row }) => ({ key, before: row.date }));
   for (const p of await previousBests(ctx, missing)) found.set(previousBestId(p.key, p.before), p.best);
-  return wanted.map((entry) => statsRow(entry, groups, found.get(previousBestId(entry.key, entry.row.date)) ?? null));
+  const latest = joined.reduce((max, { row }) => (row.date > max ? row.date : max), '');
+  return { rows: wanted.map((entry) => statsRow(entry, groups, found.get(previousBestId(entry.key, entry.row.date)) ?? null)), latest };
+}
+
+/**
+ * The stats view's items: each club's athlete count as the first item, then
+ * one item per row, so `jsonChunks` can cut a national meet's rows across
+ * documents instead of holding them in one item over 1 MiB.
+ */
+export type StatsViewItem = ['club_counts', [string, number][]] | StatsRow;
+
+export function statsViewItems(rows: readonly StatsRow[], clubCounts: [string, number][]): StatsViewItem[] {
+  return [['club_counts', clubCounts], ...rows];
+}
+
+/**
+ * The rows and club counts back from the stats view's items; also reads the
+ * single `{ rows, club_counts }` item views were built as before.
+ */
+export function readStatsViewItems(items: readonly unknown[]): { rows: StatsRow[]; club_counts: [string, number][] } {
+  const [first, ...rest] = items;
+  if (Array.isArray(first) && first[0] === 'club_counts' && Array.isArray(first[1])) {
+    return { rows: rest as StatsRow[], club_counts: first[1] as [string, number][] };
+  }
+  if (items.length === 1 && first && typeof first === 'object' && 'rows' in first && 'club_counts' in first) {
+    const legacy = first as { rows: unknown; club_counts: unknown };
+    if (Array.isArray(legacy.rows) && Array.isArray(legacy.club_counts)) {
+      return { rows: legacy.rows as StatsRow[], club_counts: legacy.club_counts as [string, number][] };
+    }
+  }
+  throw new Error('malformed stats view');
 }
 
 function statsRow({ key, row, athlete, group }: StatsEntry, groups: StatsGroups, previousBest: number | null): StatsRow {

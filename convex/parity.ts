@@ -13,12 +13,11 @@ import {
 } from './lib/meetData';
 import { directoryNames, searchDirectory } from './lib/directory';
 import { distinctNameKeys } from './lib/names';
-import { RESULT_NAMES_VIEW } from './lib/viewKeys';
+import { RESULT_NAMES_VIEW, viewDependencies } from './lib/viewKeys';
 import { joinJsonChunks, readViewTextAnyAge } from './lib/views';
 import {
   ADAPTIVE_RECORDS_SEASON_START,
   computeAdaptiveRecords,
-  computeClubs,
   computeIntlRankings,
   computeQualifyingTotals,
   computeRecords,
@@ -75,8 +74,6 @@ export const live = internalQuery({
         return JSON.stringify(await computeQualifyingTotals(ctx));
       case 'intlRankings':
         return JSON.stringify(await computeIntlRankings(ctx));
-      case 'clubs':
-        return JSON.stringify(await computeClubs(ctx));
       case 'wsoList':
         return JSON.stringify(await computeWsoList(ctx));
       case 'wsoRecords':
@@ -190,9 +187,12 @@ export const run = internalAction({
     const compare = async (label: string, fast: Promise<unknown>, endpoint: string, liveArgs: Record<string, unknown>) => {
       checks += 1;
       try {
+        // Rankings and the club list are more than one query may read: paged, as their builders read them.
         const live = endpoint === 'nat' && typeof liveArgs.federation === 'string' && typeof liveArgs.ageCategory === 'string'
           ? ctx.runAction(internal.views.computeNat, { federation: liveArgs.federation, ageCategory: liveArgs.ageCategory }).then(({ chunks }) => joinJsonChunks(chunks))
-          : ctx.runQuery(internal.parity.live, { endpoint, args: liveArgs });
+          : endpoint === 'clubs'
+            ? ctx.runAction(internal.views.computeClubs, {})
+            : ctx.runQuery(internal.parity.live, { endpoint, args: liveArgs });
         const [f, l] = await Promise.all([fast, live]);
         const diff = firstDifference(decode(f), JSON.parse(l));
         if (diff) mismatches.push(`${label}: ${diff}`);
@@ -286,21 +286,35 @@ export const run = internalAction({
   },
 });
 
-/** How many views are fresh (servable) and which families have stale ones; a quick health check. */
+/** Hints `viewFreshness` reads; with more pending, it counts every view stale. */
+const MAX_HINTS_READ = 4000;
+
+/**
+ * How many views are fresh (servable) and which families have stale ones; a
+ * quick health check. A meet's timelines and stats count as stale while any
+ * athlete change is pending, whoever's roster it is on.
+ */
 export const viewFreshness = internalQuery({
   args: {},
   handler: async (ctx) => {
-    const versions = new Map((await ctx.db.query('data_versions').collect()).map((row) => [row.table, row.version]));
+    const hints = await ctx.db.query('view_hints').take(MAX_HINTS_READ);
+    const pending = new Set(hints.map((h) => `${h.kind}\u0000${h.key}`));
+    const athletePending = hints.some((h) => h.kind === 'athlete');
     let fresh = 0;
     const stale: Record<string, number> = {};
     for (const header of await ctx.db.query('views').collect()) {
-      if (!header.sources || header.sources.length === 0) continue;
-      if (header.sources.every((s) => s.version === (versions.get(s.table) ?? 0))) fresh += 1;
+      const dependencies = viewDependencies(header.key);
+      if (!header.sources || dependencies === null) continue;
+      const isStale =
+        hints.length === MAX_HINTS_READ ||
+        dependencies.hints.some((h) => pending.has(`${h.kind}\u0000${h.key}`)) ||
+        (dependencies.roster !== undefined && athletePending);
+      if (!isStale) fresh += 1;
       else {
         const family = header.key.split('|')[0];
         stale[family] = (stale[family] ?? 0) + 1;
       }
     }
-    return { fresh, stale };
+    return { fresh, stale, pendingHints: hints.length };
   },
 });

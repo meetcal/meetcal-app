@@ -8,7 +8,9 @@ import schema from '../convex/schema';
  * orders its rows by its fields, then creation, as Convex does; ranges are
  * filters on those fields), `.order`, `.filter` with
  * `q.field`/`q.eq`/`q.neq`, `collect`/`first`/`unique`/`take`/`paginate`, and
- * `get`, `normalizeId`, `insert`, `patch`, `replace`, `delete`. Call a
+ * `get`, `normalizeId`, `insert`, `patch`, `replace`, `delete`. `reads`
+ * counts the documents queries and `get` returned, for tests of how much a
+ * function reads. Call a
  * registered function's handler with it through `handlerOf`; `fakeMutationCtx`
  * adds a scheduler that records what was scheduled.
  */
@@ -40,6 +42,7 @@ function indexFields(table: string, index: string): string[] {
 
 export function fakeDb(seed: Record<string, Record<string, unknown>[]> = {}) {
   const tables = new Map<string, Doc[]>();
+  const reads = { count: 0 };
   let next = 0;
   const table = (name: string) => {
     if (!tables.has(name)) tables.set(name, []);
@@ -77,7 +80,10 @@ export function fakeDb(seed: Record<string, Record<string, unknown>[]> = {}) {
         .sort((a, b) => compareTuples(keyOf(a), keyOf(b)));
       return descending ? rows.reverse() : rows;
     };
-    const copy = (doc: Doc) => ({ ...doc });
+    const copy = (doc: Doc) => {
+      reads.count += 1;
+      return { ...doc };
+    };
     const chain = {
       withIndex(index: string, build?: (q: unknown) => unknown) {
         fields = indexFields(name, index);
@@ -141,6 +147,7 @@ export function fakeDb(seed: Record<string, Record<string, unknown>[]> = {}) {
     insert,
     get: async (id: string) => {
       const found = locate(id);
+      if (found) reads.count += 1;
       return found ? { ...found.docs[found.at] } : null;
     },
     normalizeId: (name: string, id: string) => (id.startsWith(`${name}:`) ? id : null),
@@ -165,7 +172,7 @@ export function fakeDb(seed: Record<string, Record<string, unknown>[]> = {}) {
   const rows = (name: string) => table(name).map(({ _id: _i, _creationTime: _c, ...doc }) => doc);
   /** A table's documents with their system fields. */
   const docs = (name: string) => table(name).map((doc) => ({ ...doc }));
-  return { db, rows, docs };
+  return { db, rows, docs, reads };
 }
 
 /** A mutation context over `fakeDb`, whose scheduler records each call by function name. */
@@ -181,9 +188,11 @@ export function fakeMutationCtx(seed: Record<string, Record<string, unknown>[]> 
 }
 
 /** The handler Convex attaches to a registered function (left out of its public types). */
-export function handlerOf<Args, Result>(registered: unknown): (ctx: unknown, args: Args) => Promise<Result> {
-  if (typeof registered !== 'function' || !('_handler' in registered) || typeof registered._handler !== 'function') {
-    throw new Error('Missing Convex handler');
-  }
-  return registered._handler as (ctx: unknown, args: Args) => Promise<Result>;
+export function handlerOf<Args, Result = unknown>(registered: unknown): (ctx: unknown, args: Args) => Promise<Result> {
+  const handler =
+    (typeof registered === 'function' || (typeof registered === 'object' && registered !== null)) && '_handler' in registered
+      ? registered._handler
+      : undefined;
+  if (typeof handler !== 'function') throw new Error('Missing Convex handler');
+  return handler as (ctx: unknown, args: Args) => Promise<Result>;
 }

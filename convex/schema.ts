@@ -178,6 +178,7 @@ export default defineSchema({
     .index('by_event_and_name', ['eventId', 'name'])
     .index('by_federation_and_age', ['federation', 'age'])
     .index('by_federation_age_and_date', ['federation', 'age', 'date'])
+    .index('by_adaptive_and_date', ['adaptive', 'date'])
     .index('by_nameKey_and_date', ['nameKey', 'date']),
 
   meets: defineTable(meetsFields)
@@ -228,7 +229,8 @@ export default defineSchema({
     // Versions of the source tables the view was built from; a header
     // without them predates versioning and is never served as fresh.
     sources: v.optional(v.array(v.object({ table: v.string(), version: v.number() }))),
-    // Builder-specific facts about the content (the timelines' horizon).
+    // Builder-specific facts about the content (the timelines' horizon, the
+    // stats' latest finisher date).
     meta: v.optional(v.string()),
   }).index('by_key', ['key']),
 
@@ -302,7 +304,8 @@ export default defineSchema({
   }).index('by_table', ['table']),
 
   // Which rows the writes since the last view refresh touched, so the refresh
-  // rebuilds only the views those rows can change.
+  // rebuilds only the views those rows can change. While one is pending, the
+  // views it names are not served as fresh (`convex/lib/views.ts`).
   view_hints: defineTable({
     kind: v.string(),
     key: v.string(),
@@ -313,15 +316,24 @@ export default defineSchema({
     // When a write last named this key. A full rebuild clears every hint
     // updated before it started, however many there are.
     updatedAt: v.optional(v.number()),
+    // `athlete` hints: the earliest date among the results the writes
+    // changed, so the refresh skips the stats of meets those results come
+    // after. Absent when not known (a hint from before this existed).
+    since: v.optional(v.string()),
+    // Left by a full rebuild for a build it could not do: retried by a
+    // targeted refresh, never counted toward starting another rebuild.
+    retry: v.optional(v.boolean()),
   })
     .index('by_kind_key', ['kind', 'key'])
     .index('by_updatedAt', ['updatedAt']),
 
   // Refresh bookkeeping (`convex/views.ts`): whether a refresh is scheduled,
-  // and the source versions of the last completed one.
+  // and the state of the full rebuild.
   view_state: defineTable({
     name: v.string(),
     scheduled: v.boolean(),
+    // The source versions of the last completed refresh, from when views were
+    // restamped by table; no longer read (freshness is per key).
     baseline: v.array(v.object({ table: v.string(), version: v.number() })),
     // A full rebuild (`views:rebuildStage`) is running; refreshes wait for it.
     rebuilding: v.optional(v.boolean()),
@@ -331,6 +343,21 @@ export default defineSchema({
     // Times the running rebuild was restarted after a stage stopped; the
     // views-refresh job alerts once it keeps failing.
     rebuildRestarts: v.optional(v.number()),
+    // Builds the last full rebuild could not do (left as `retry` hints);
+    // cleared once a refresh rebuilds what is pending without a failure.
+    rebuildFailures: v.optional(v.number()),
+    // Where the running rebuild's latest stage started, so a rebuild whose
+    // stage failed resumes there rather than from the beginning.
+    rebuildPosition: v.optional(
+      v.object({
+        stage: v.string(),
+        offset: v.number(),
+        after: v.optional(v.string()),
+        cursor: v.optional(v.string()),
+        startedAt: v.optional(v.number()),
+        again: v.boolean(),
+      }),
+    ),
     // When the running refresh began (its lease). One refresh at a time: a
     // second finds the lease held and tries again shortly.
     refreshLease: v.optional(v.number()),
