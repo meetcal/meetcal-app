@@ -137,10 +137,10 @@ describe("an event id holding two of a meet's editions (#369)", () => {
     expect(rows('lifting_results')).toHaveLength(3);
   });
 
-  it('takes the same result stored under a wrong date for this one, and fixes its date', async () => {
-    const { ctx, rows } = fakeMutationCtx({ lifting_results: [dallas('2012-06-15', 275, { bodyWeight: 80.4 })] });
-    expect(await upsertResults(ctx, { rows: [dallas('2025-03-01', 275, { bodyWeight: 80.4 })] })).toMatchObject({ inserted: 0, updated: 1 });
-    expect(rows('lifting_results').map((r) => r.date)).toEqual(['2025-03-01']);
+  it("never takes another edition's row for this one, even with the same values", async () => {
+    const { ctx, rows } = fakeMutationCtx({ lifting_results: [dallas('2020-10-31', 275, { bodyWeight: 80.4 })] });
+    expect(await upsertResults(ctx, { rows: [dallas('2021-10-24', 275, { bodyWeight: 80.4 })] })).toMatchObject({ inserted: 1, updated: 0 });
+    expect(rows('lifting_results').map((r) => r.date)).toEqual(['2020-10-31', '2021-10-24']);
   });
 
   it('takes a row dated across New Year as the same edition', async () => {

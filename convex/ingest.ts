@@ -112,19 +112,16 @@ export function sameEditionDates(a: string, b: string): boolean {
 
 /**
  * Of the stored rows under an incoming row's identity (`resultKey`), the
- * ones that are that result. The pre-Convex import stored some meets'
- * editions under one event id (event 4598 holds the 2020 and the 2021
- * Dallas Weightlifting Championships, #369), so the identity alone can name
- * another edition's real result. The rows dated within SAME_EDITION_DAYS of
- * the incoming one are it; failing those, a row holding its exact values at
- * a recorded body weight is (the same result stored under a wrong date,
- * #402). Any other row under the identity is another edition's, and is
- * neither updated nor deleted.
+ * ones that are that result: those dated within SAME_EDITION_DAYS of it.
+ * The pre-Convex import stored some meets' editions under one event id
+ * (event 4598 holds the 2020 and the 2021 Dallas Weightlifting
+ * Championships, #369), so the identity alone can name another edition's
+ * real result, which is neither updated nor deleted. Not even one holding
+ * the same values: two editions can, so a copy stored under a wrong date
+ * (#402) stays a duplicate rather than risk deleting a real result.
  */
-export function sameEditionRows(stored: readonly Doc<'lifting_results'>[], incoming: { date: string } & ResultValues): Doc<'lifting_results'>[] {
-  const dated = stored.filter((row) => sameEditionDates(row.date, incoming.date));
-  if (dated.length) return dated;
-  return stored.filter((row) => row.bodyWeight !== undefined && sameResultValues(row, incoming));
+export function sameEditionRows(stored: readonly Doc<'lifting_results'>[], incoming: { date: string }): Doc<'lifting_results'>[] {
+  return stored.filter((row) => sameEditionDates(row.date, incoming.date));
 }
 
 /** One event's stored results by `resultKey`, oldest first within a key; read once per mutation. */
