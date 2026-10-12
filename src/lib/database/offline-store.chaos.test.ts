@@ -170,8 +170,8 @@ describe('meet lifting results under storage chaos', () => {
     const previous = [{ ...bulkyLiftResults(1, 1)[0], name: 'Previous Lifter' }];
     const next = [{ ...bulkyLiftResults(2, 1)[0], name: 'Next Lifter' }];
     await saveMeetLiftingResults(MEET, previous);
-    // The manifest read, the key listing, the rejected multiSet.
-    await underChaos([{ kind: 'corrupt-read', value: '' }, { kind: 'pass' }, { kind: 'reject' }], () =>
+    // The manifest read, the key listing, the listed chunks' read, the rejected multiSet.
+    await underChaos([{ kind: 'corrupt-read', value: '' }, { kind: 'pass' }, { kind: 'pass' }, { kind: 'reject' }], () =>
       saveMeetLiftingResults(MEET, next).catch(() => undefined),
     );
     expect(await getMeetLiftingResults(MEET)).toEqual(previous);
@@ -181,14 +181,16 @@ describe('meet lifting results under storage chaos', () => {
     const previous = [{ ...bulkyLiftResults(1, 1)[0], name: 'Previous Lifter' }];
     const next = [{ ...bulkyLiftResults(2, 1)[0], name: 'Next Lifter' }];
     await saveMeetLiftingResults(MEET, previous);
-    // The manifest reads as `[]` (a legacy row array), the commit lands, and
-    // the read-back that would confirm it is rejected.
+    // The manifest reads as `[]` (a legacy row array), the listed chunks read
+    // fine, the commit lands, and the read-back that would confirm it is
+    // rejected.
     const multiGet = AsyncStorage.multiGet as jest.Mock;
     const realMultiGet = multiGet.getMockImplementation() as (keys: string[]) => Promise<[string, string | null][]>;
     multiGet
       .mockImplementationOnce(async (keys: string[]) =>
         (await realMultiGet(keys)).map(([key, value]) => [key, value === null ? null : '[]']),
       )
+      .mockImplementationOnce(realMultiGet)
       .mockImplementationOnce(async () => {
         throw new Error('chaos: storage unavailable');
       });
