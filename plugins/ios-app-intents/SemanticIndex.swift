@@ -155,7 +155,7 @@ struct SemanticMeetEntity: IndexedEntity, Identifiable {
 struct SemanticMeetQuery: EntityQuery {
     func entities(for identifiers: [SemanticMeetEntity.ID]) async throws -> [SemanticMeetEntity] {
         let wanted = Set(identifiers)
-        let meets = (try? await MeetCalAPI.shared.meets()) ?? []
+        let meets = try await MeetCalAPI.shared.meets()
         return meets
             .map { MeetEntity(api: $0) }
             .filter { wanted.contains($0.id) }
@@ -216,7 +216,7 @@ struct SemanticSessionQuery: EntityQuery {
         guard !selectedMeet.isEmpty else { return [] }
 
         let wanted = Set(identifiers)
-        return await SessionQuery.sessions(forMeet: selectedMeet)
+        return try await SessionQuery.sessions(forMeet: selectedMeet)
             .filter { wanted.contains($0.id) }
             .map(SemanticSessionEntity.init)
     }
@@ -225,55 +225,110 @@ struct SemanticSessionQuery: EntityQuery {
 // MARK: - Donation
 
 enum SemanticIndexDonator {
+    /// Upcoming meets donated per reindex.
+    static let maxDonatedMeets = 25
+
     /// Reads the App Group mirror + upcoming meets and (re)donates them to the
-    /// Spotlight index, removing stale entries first. Safe no-op on failure.
+    /// Spotlight index. Safe no-op on failure.
+    ///
+    /// The server-backed entities are fetched *before* anything is deleted.
+    /// This runs on every saved-sessions change, and deleting first meant a
+    /// reindex while offline wiped the indexed meets and schedule and put
+    /// nothing back. When the fetch fails, the existing index is kept and only
+    /// the (local) saved sessions are re-donated; an unsaved session may then
+    /// linger until the next successful reindex.
+    ///
+    /// Reindexes run one at a time through `DonationQueue`, so one that read
+    /// the saved sessions earlier can never finish last and put back a session
+    /// the user has since unsaved.
     static func donateAll() async {
+        await DonationQueue.shared.enqueue().value
+    }
+
+    fileprivate static func replaceIndex() async {
         guard CSSearchableIndex.isIndexingAvailable() else { return }
         let index = CSSearchableIndex.default()
-
-        // Remove previously donated entities so unsaved sessions / past meets
-        // don't linger in the index. The app registers no other CoreSpotlight
-        // items, so clearing the default index is safe and avoids depending on
-        // the newer per-type delete APIs.
-        try? await index.deleteAllSearchableItems()
 
         // Saved sessions (personal, offline).
         let selectedMeet = SharedStore.selectedMeet
         let savedSessions = SharedStore.savedSessions().map {
             SavedSessionEntity(shared: $0, fallbackMeet: selectedMeet)
         }
-        if !savedSessions.isEmpty {
+
+        // Selected-meet schedule sessions and upcoming meets (public).
+        var sessions: [SessionEntity] = []
+        let meets: [MeetEntity]
+        do {
+            if !selectedMeet.isEmpty {
+                sessions = try await SessionQuery.sessions(forMeet: selectedMeet)
+            }
+            let apiMeets = try await MeetCalAPI.shared.meets()
+            meets = apiMeets.prefix(maxDonatedMeets).map { MeetEntity(api: $0) }
+        } catch {
+            await donate(savedSessions: savedSessions, to: index)
+            return
+        }
+
+        // Everything needed is in hand: replace the index so unsaved sessions
+        // and past meets don't linger. The app registers no other CoreSpotlight
+        // items, so clearing the default index is safe and avoids depending on
+        // the newer per-type delete APIs.
+        try? await index.deleteAllSearchableItems()
+
+        await donate(savedSessions: savedSessions, to: index)
+
+        if !sessions.isEmpty {
             if #available(iOS 18.4, *) {
-                try? await index.indexAppEntities(savedSessions.map(SemanticSavedSessionEntity.init))
+                try? await index.indexAppEntities(sessions.map(SemanticSessionEntity.init))
             } else {
-                try? await index.indexAppEntities(savedSessions)
+                try? await index.indexAppEntities(sessions)
             }
         }
 
-        // Selected-meet schedule sessions (public, scoped to the meet the app
-        // currently mirrors for widgets/shortcuts).
-        if !selectedMeet.isEmpty {
-            let sessions = await SessionQuery.sessions(forMeet: selectedMeet)
-            if !sessions.isEmpty {
-                if #available(iOS 18.4, *) {
-                    try? await index.indexAppEntities(sessions.map(SemanticSessionEntity.init))
-                } else {
-                    try? await index.indexAppEntities(sessions)
-                }
+        if !meets.isEmpty {
+            if #available(iOS 18.4, *) {
+                try? await index.indexAppEntities(meets.map(SemanticMeetEntity.init))
+            } else {
+                try? await index.indexAppEntities(meets)
             }
         }
+    }
 
-        // Upcoming meets (public).
-        if let apiMeets = try? await MeetCalAPI.shared.meets() {
-            let meets = apiMeets.prefix(25).map { MeetEntity(api: $0) }
-            if !meets.isEmpty {
-                if #available(iOS 18.4, *) {
-                    try? await index.indexAppEntities(meets.map(SemanticMeetEntity.init))
-                } else {
-                    try? await index.indexAppEntities(Array(meets))
-                }
-            }
+    private static func donate(savedSessions: [SavedSessionEntity], to index: CSSearchableIndex) async {
+        guard !savedSessions.isEmpty else { return }
+        if #available(iOS 18.4, *) {
+            try? await index.indexAppEntities(savedSessions.map(SemanticSavedSessionEntity.init))
+        } else {
+            try? await index.indexAppEntities(savedSessions)
         }
+    }
+}
+
+/// Serializes Spotlight reindexes in request order. Each run reads the saved
+/// sessions when it starts, after the previous run has finished, and a run
+/// with a newer request queued behind it is skipped, since that newer run
+/// will index a fresher snapshot. The last request always runs.
+private actor DonationQueue {
+    static let shared = DonationQueue()
+
+    private var tail: Task<Void, Never>?
+    private var latestRequest = 0
+
+    func enqueue() -> Task<Void, Never> {
+        latestRequest += 1
+        let request = latestRequest
+        let previous = tail
+        let task = Task {
+            await previous?.value
+            guard self.isLatest(request) else { return }
+            await SemanticIndexDonator.replaceIndex()
+        }
+        tail = task
+        return task
+    }
+
+    private func isLatest(_ request: Int) -> Bool {
+        request == latestRequest
     }
 }
 

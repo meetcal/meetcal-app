@@ -7,6 +7,7 @@ import { useSelectedMeet } from "@/contexts/SelectedMeetContext";
 import { useAppColors } from "@/hooks/useAppColors";
 import { useRequirePremium } from "@/hooks/useRequirePremium";
 import { isSamePlatform } from "@/lib/athletes";
+import { requestReviewAfterFirstSave } from "@/lib/review-prompt";
 import { DaySchedule, Session } from "@/types/schedule";
 import { HeaderSectionProps, SessionPlatformDetails } from "@/types/schedule-details";
 import {
@@ -20,9 +21,7 @@ import {
   normalizeDeepLinkHref,
 } from "@/utils/deepLinks";
 import { calculateWeighInTime } from "@/utils/time";
-import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useRouter } from "expo-router";
-import * as StoreReview from "expo-store-review";
 import React, { useMemo } from "react";
 import { Alert, Platform, Pressable, StyleSheet, View } from "react-native";
 import { Palette } from "@/constants/Palette";
@@ -151,31 +150,7 @@ const HeaderSection: React.FC<HeaderSectionProps> = ({
         return;
       }
       showSaveAlert("save");
-      checkAndShowReviewPrompt();
-    }
-  };
-
-  const checkAndShowReviewPrompt = async () => {
-    try {
-      const hasShownReview = await AsyncStorage.getItem("hasShownReview");
-      const hasSavedBefore = await AsyncStorage.getItem("hasSavedBefore");
-
-      if (!hasSavedBefore && !hasShownReview) {
-        // Mark that user has saved a session
-        await AsyncStorage.setItem("hasSavedBefore", "true");
-        // Use native store review prompt
-        try {
-          const isAvailable = await StoreReview.isAvailableAsync();
-          if (isAvailable) {
-            await StoreReview.requestReview();
-            await AsyncStorage.setItem("hasShownReview", "true");
-          }
-        } catch (error) {
-          console.warn("ScheduleDetails: Store review unavailable", error);
-        }
-      }
-    } catch (error) {
-      console.error("Error checking review status:", error);
+      void requestReviewAfterFirstSave();
     }
   };
 

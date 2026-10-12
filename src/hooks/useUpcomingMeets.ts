@@ -2,6 +2,9 @@ import { useMemo } from "react";
 import { getDateInTimeZone, toMeetCalendarDate } from "@/utils/dateTime";
 import { Meet } from "@/data/types/meet";
 
+/** How many months either side of today the meet picker lists. */
+export const UPCOMING_MEETS_MONTHS_RANGE = 3;
+
 interface UseUpcomingMeetsParams {
   availableMeets: Meet[];
   monthsRange?: number;
@@ -58,7 +61,7 @@ export function selectUpcomingMeets(
 
 export function useUpcomingMeets({
   availableMeets,
-  monthsRange = 3,
+  monthsRange = UPCOMING_MEETS_MONTHS_RANGE,
 }: UseUpcomingMeetsParams): UseUpcomingMeetsReturn {
   const upcomingMeets = useMemo(
     () =>
