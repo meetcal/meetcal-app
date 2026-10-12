@@ -158,6 +158,35 @@ describe("useScheduleData", () => {
     jest.restoreAllMocks();
   });
 
+  // Regression: after an empty `200 []`, a failed retry was filed as a
+  // refresh error only, so the screen kept saying "No schedule yet".
+  it("reports a failed retry as a load failure after an empty answer", async () => {
+    jest.spyOn(console, "error").mockImplementation(() => {});
+    mockGetMeetSchedule.mockResolvedValue([]);
+    mockFetchSchedule.mockResolvedValueOnce([]);
+
+    let tree!: ReturnType<typeof create>;
+    act(() => {
+      tree = create(<Harness meet="Unpublished Meet" />);
+    });
+    await flush();
+    expect(captured!.schedule).toEqual([]);
+    expect(captured!.loadError).toBeNull();
+
+    mockFetchSchedule.mockRejectedValueOnce(new Error("Network request failed"));
+    await act(async () => {
+      await captured!.refreshSchedule();
+    });
+
+    expect(captured!.schedule).toEqual([]);
+    expect(captured!.loadError).toBe("Network request failed");
+
+    act(() => {
+      tree.unmount();
+    });
+    jest.restoreAllMocks();
+  });
+
   it("keeps a cached schedule on screen and reports the failed refresh separately", async () => {
     mockGetMeetSchedule.mockResolvedValue([DAY]);
     mockFetchSchedule.mockRejectedValue(new Error("Network request failed"));

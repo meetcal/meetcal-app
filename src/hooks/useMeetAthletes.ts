@@ -83,7 +83,10 @@ export function useSessionAthletes(
     athletes,
     isLoading: isInitialLoading,
     isRefreshing,
-    loadError: athletes.length === 0 ? error : null,
+    // As in `useScheduleData`: after an empty answer, a failed refresh is
+    // filed under `refreshError`, and with no athletes shown it is the
+    // failure to show.
+    loadError: athletes.length === 0 ? (error ?? refreshError) : null,
     refreshError,
     refreshAthletes: refresh,
   };

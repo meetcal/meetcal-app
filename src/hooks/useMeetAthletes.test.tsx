@@ -34,6 +34,29 @@ it('does not decode the full meet again after the session cache reader returns e
   act(() => { tree.unmount(); });
 });
 
+// Regression: after an empty answer, a failed refresh was filed as a
+// refresh error only, and the card kept treating the session as empty.
+it('reports a failed refresh as a load failure after an empty answer', async () => {
+  jest.spyOn(console, 'error').mockImplementation(() => {});
+  let current!: ReturnType<typeof useSessionAthletes>;
+  function Harness() {
+    current = useSessionAthletes('Empty Then Failed Meet', 3, 'Red');
+    return null;
+  }
+  let tree!: ReturnType<typeof create>;
+  await act(async () => { tree = create(<Harness />); });
+  expect(current.athletes).toEqual([]);
+  expect(current.loadError).toBeNull();
+
+  (fetchAthletesWithSession as jest.Mock).mockRejectedValueOnce(new Error('Offline'));
+  await act(async () => { await current.refreshAthletes(); });
+
+  expect(current.athletes).toEqual([]);
+  expect(current.loadError).toBe('Offline');
+  act(() => { tree.unmount(); });
+  jest.restoreAllMocks();
+});
+
 // Regression: the hook dropped `error`, so a failed load made the whole
 // "Session Athletes" card disappear as if the session had no one in it.
 it('reports a failed load when nothing is cached', async () => {

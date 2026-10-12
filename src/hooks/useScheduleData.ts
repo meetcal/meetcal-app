@@ -103,7 +103,11 @@ export function useScheduleData(
     schedule,
     isLoading: isInitialLoading,
     isRefreshing,
-    loadError: schedule.length === 0 ? error : null,
+    // `useMutableResource` files a failure under `refreshError` once any
+    // answer has rendered, an empty `200 []` included. With nothing on
+    // screen that failure is the one to show, or a failed retry would leave
+    // "No schedule yet" up.
+    loadError: schedule.length === 0 ? (error ?? refreshError) : null,
     refreshError,
     initialScrollIndex,
     refreshSchedule: refresh,
