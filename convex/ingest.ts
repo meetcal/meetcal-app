@@ -213,6 +213,8 @@ const scrapedMeet = v.object({
 
 /** A meet stored without a known zone: every reader treats a blank zone as unknown. */
 const UNKNOWN_TIME_ZONE = '';
+/** The last US zone a day ends in: when a meet with no zone has surely ended. */
+const LATEST_US_ZONE = 'Pacific/Honolulu';
 
 type ScrapedMeetRow = Infer<typeof scrapedMeet>;
 
@@ -405,22 +407,24 @@ const isPlaceholderMemberId = (id: string) => id === '' || id.startsWith('noid:'
 /**
  * The one stored athlete whose folded name is a leading run of whole words of
  * the entrant's (`nameKey`) with the same membership number, or, for an
- * entrant without one, a placeholder id and the same gender: the row the old
+ * entrant without one, a placeholder id, the same gender and age: the row the old
  * entries scraper wrote after cutting the surname at its first space. A name
  * the incoming list still carries as an entrant of its own is never taken.
  */
-export function truncatedEntryRow<T extends { memberId: string; name: string; gender: string }>(
+export function truncatedEntryRow<T extends { memberId: string; name: string; gender: string; age: number }>(
   existing: readonly T[],
-  row: { memberId: string },
+  row: { memberId: string; age: number },
   nameKey: string,
   gender: string,
   incomingKeys: ReadonlySet<string>,
 ): T | undefined {
   const idless = isPlaceholderMemberId(row.memberId);
   const candidates = existing.filter((a) => {
+    // The cheap checks first: this runs for each new entrant over the meet's rows.
+    const same = idless ? isPlaceholderMemberId(a.memberId) && a.gender === gender && a.age === row.age : a.memberId === row.memberId;
+    if (!same) return false;
     const key = normalizeName(a.name);
-    if (!key || !nameKey.startsWith(`${key} `) || incomingKeys.has(key)) return false;
-    return idless ? isPlaceholderMemberId(a.memberId) && a.gender === gender : a.memberId === row.memberId;
+    return key !== '' && nameKey.startsWith(`${key} `) && !incomingKeys.has(key);
   });
   return candidates.length === 1 ? candidates[0] : undefined;
 }
@@ -566,7 +570,10 @@ export const completeEndedMeets = internalMutation({
         .withIndex('by_status', (q) => q.eq('status', status))
         .collect();
       for (const meet of meets) {
-        if (meet.endDate >= meetLocalDate(now, meet.timeZone, formatters)) continue;
+        // A meet stored without a zone (an unknown state) is completed once
+        // its end date has passed in every US zone, never early.
+        const zone = meet.timeZone.trim() ? meet.timeZone : LATEST_US_ZONE;
+        if (meet.endDate >= meetLocalDate(now, zone, formatters)) continue;
         await ctx.db.patch(meet._id, { status: 'completed', updatedAt: now });
         hints.push({ kind: 'meet', key: meet.name });
       }

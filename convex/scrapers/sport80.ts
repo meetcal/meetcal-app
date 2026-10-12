@@ -9,9 +9,8 @@ import {
   formatResults,
   hasResultsRoute,
   nested,
-  newestEvents,
+  pickNewestEvents,
   USAW_DOMAIN,
-  unreadableEventDate,
   type ResultRow,
 } from './parse/sport80';
 
@@ -116,21 +115,21 @@ export const run = internalAction({
     if (!events.length) throw new Error(`sport80: no events fetched (${failed.join('; ')})`);
 
     // A date in a format not seen before is not guessed at (month and day
-    // could be swapped): the event is left out, before the newest are
-    // picked, and the run fails naming it.
-    const unreadable = new Set<string>();
-    const dated = events.filter((event) => {
-      const raw = unreadableEventDate(event);
-      if (raw === null) return true;
-      const label = `${String(nested(event, 'meet') ?? '?')} (event ${eventIdOf(event) ?? '?'})`;
-      if (!unreadable.has(label)) failed.push(`${label}: unreadable date ${JSON.stringify(raw)}, not synced`);
-      unreadable.add(label);
-      return false;
-    });
+    // could be swapped): the event is left out, and the run fails naming it
+    // when it could be among the newest (`pickNewestEvents`).
+    const { newest, unreadable } = pickNewestEvents(events);
+    const reported = new Set<string>();
+    for (const { event, date, recent } of unreadable) {
+      const problem = `${String(nested(event, 'meet') ?? '?')} (event ${eventIdOf(event) ?? '?'}): unreadable date ${JSON.stringify(date)}, not synced`;
+      if (reported.has(problem)) continue;
+      reported.add(problem);
+      if (recent) failed.push(problem);
+      else console.warn(`sport80: ${problem}`);
+    }
 
     const meets: RunResult['meets'] = [];
     const seen = new Set<string>();
-    for (const event of newestEvents(dated)) {
+    for (const event of newest) {
       const eventId = eventIdOf(event);
       const meet = nested(event, 'meet') as string | null;
       if (!eventId || !meet || seen.has(eventId)) continue;

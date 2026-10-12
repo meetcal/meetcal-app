@@ -21,6 +21,7 @@ type SearchResult = {
   fetched: number;
   meets: ScrapedMeet[];
   rejected: string[];
+  undated: string[];
   unknownZone: string[];
   skippedCompleted: string[];
   inserted: string[];
@@ -33,7 +34,7 @@ export const run = internalAction({
   handler: async (ctx, { dryRun }): Promise<SearchResult[]> => {
     const results: SearchResult[] = [];
     for (const search of MEET_SEARCHES) {
-      const result: SearchResult = { key: search.key, fetched: 0, meets: [], rejected: [], unknownZone: [], skippedCompleted: [], inserted: [], updated: 0 };
+      const result: SearchResult = { key: search.key, fetched: 0, meets: [], rejected: [], undated: [], unknownZone: [], skippedCompleted: [], inserted: [], updated: 0 };
       results.push(result);
       try {
         const rows = await readAllWidgetPages((page) => fetchWidgetPage(widgetPageUrl(search.search, page)));
@@ -45,6 +46,7 @@ export const run = internalAction({
         continue;
       }
       for (const problem of result.rejected) console.error(`meets (${search.key}): not synced: ${problem}`);
+      if (result.undated.length) console.log(`meets (${search.key}): dates not set yet, not synced: ${result.undated.join('; ')}`);
       // Synced without a zone: a new meet gets a blank one, a stored one keeps its own.
       for (const problem of result.unknownZone) console.warn(`meets (${search.key}): no time zone for ${problem}`);
       if (dryRun || result.meets.length === 0) continue;

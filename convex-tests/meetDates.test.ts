@@ -1,4 +1,4 @@
-import { scrapedMeetValues } from '../convex/ingest';
+import { completeEndedMeets, scrapedMeetValues } from '../convex/ingest';
 import { padMeetDates } from '../convex/migrations';
 import { canonicalMeetDate, isKnownTimeZone } from '../convex/lib/validation';
 import { meetDataProblems } from '../convex/scrapers/queries';
@@ -103,6 +103,36 @@ describe('scraped meet values', () => {
     expect('timeZone' in scrapedMeetValues(scraped, meet({ timeZoneLocked: true }))).toBe(false);
     const { timeZone: _zone, ...noZone } = scraped;
     expect('timeZone' in scrapedMeetValues(noZone, meet())).toBe(false);
+  });
+
+  it('completes a meet stored without a zone only once its last day has ended everywhere in the US', async () => {
+    jest.useFakeTimers({ now: Date.UTC(2026, 9, 12, 5) }); // 1am Oct 12 in New York, 7pm Oct 11 in Honolulu
+    try {
+      const meets = [
+        meet({ _id: 'ny' as Id<'meets'>, name: 'New York meet', timeZone: 'America/New_York', endDate: '2026-10-11' }),
+        meet({ _id: 'blank' as Id<'meets'>, name: 'No zone', timeZone: '', endDate: '2026-10-11' }),
+      ];
+      const patch = jest.fn();
+      const ctx = {
+        db: {
+          query: (table: string) => ({
+            withIndex: (_name: string, build: (q: unknown) => unknown) => {
+              let status = '';
+              const q = { eq: (field: string, value: string) => { if (field === 'status') status = value; return q; } };
+              build(q);
+              return { collect: async () => (table === 'meets' && status === 'upcoming' ? meets : []), first: async () => null, unique: async () => null };
+            },
+          }),
+          patch,
+          insert: jest.fn(),
+        },
+        scheduler: { runAfter: jest.fn() },
+      };
+      expect(await handlerOf(completeEndedMeets)(ctx, {})).toBe(1);
+      expect(patch.mock.calls.filter(([id]) => id === 'ny' || id === 'blank').map(([id]) => id)).toEqual(['ny']);
+    } finally {
+      jest.useRealTimers();
+    }
   });
 
   it('keeps a completed meet completed', () => {

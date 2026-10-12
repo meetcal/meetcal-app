@@ -145,10 +145,15 @@ export function parseDateRange(range: string): { startDate: string; endDate: str
   return { startDate, endDate };
 }
 
+/** A subtitle for dates not set yet. */
+const UNSET_DATES = /^\s*(?:TBD|TBA)?\s*$/i;
+
 export type TransformedMeets = {
   meets: ScrapedMeet[];
   /** Meets left out because their dates could not be read, with the text. */
   rejected: string[];
+  /** Meets left out because their dates are not set yet ("TBD"): not an error. */
+  undated: string[];
   /** Meets synced without a time zone (the state is not a US state). */
   unknownZone: string[];
 };
@@ -156,16 +161,19 @@ export type TransformedMeets = {
 /**
  * `transformMeetsData`: widget rows to meets, dropping adaptive ones. A meet
  * whose dates cannot be read is left out and reported, never stored with
- * made-up dates. The zone comes from the state and, in a state that spans
+ * made-up dates; one whose dates are still "TBD" (or blank) is left out until
+ * they are set, without failing the run, which would mask a real outage while
+ * the meet stays listed. The zone comes from the state and, in a state that spans
  * two zones, the city (`lib/states.ts`).
  */
 export function transformMeets(rows: { name: string; address: string; subtitle: string }[]): TransformedMeets {
-  const result: TransformedMeets = { meets: [], rejected: [], unknownZone: [] };
+  const result: TransformedMeets = { meets: [], rejected: [], undated: [], unknownZone: [] };
   for (const row of rows) {
     if (row.name.toUpperCase().includes('ADAPTIVE')) continue;
     const dates = parseDateRange(row.subtitle);
     if (!dates) {
-      result.rejected.push(`${row.name}: unreadable dates ${JSON.stringify(row.subtitle)}`);
+      if (UNSET_DATES.test(row.subtitle)) result.undated.push(row.name);
+      else result.rejected.push(`${row.name}: unreadable dates ${JSON.stringify(row.subtitle)}`);
       continue;
     }
     const { venueName, street, city, state, zip } = parseAddress(row.address);

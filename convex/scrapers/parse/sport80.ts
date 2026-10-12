@@ -49,7 +49,7 @@ function rawEventDate(event: Dict): string | null {
 export function eventDate(event: Dict): number | null {
   const raw = rawEventDate(event);
   if (!raw) return null;
-  const iso = /^(\d{4})-(\d{2})-(\d{2})$/.exec(raw.split(' ')[0]);
+  const iso = /^(\d{4})-(\d{1,2})-(\d{1,2})$/.exec(raw.split(' ')[0]);
   return iso ? utc(Number(iso[1]), Number(iso[2]), Number(iso[3])) : null;
 }
 
@@ -65,8 +65,9 @@ export function unreadableEventDate(event: Dict): string | null {
  * between requests, which made the Python job's cut at 30 events pick
  * different meets from one run to the next.
  */
+const idNumber = (event: Dict) => Number(eventIdOf(event) ?? 0) || 0;
+
 export function newestEvents(events: Dict[], count = RECENT_EVENTS): Dict[] {
-  const idNumber = (event: Dict) => Number(eventIdOf(event) ?? 0) || 0;
   return events
     .map((event) => ({ event, date: eventDate(event), id: idNumber(event) }))
     .sort((a, b) => (b.date ?? -Infinity) - (a.date ?? -Infinity) || b.id - a.id)
@@ -155,4 +156,26 @@ function formatResult(eventId: string, meet: string, day: string, item: Dict): R
     adaptive: false,
     federation: 'USAW',
   };
+}
+
+/**
+ * The newest events among those with a readable date (`newestEvents`), and
+ * the events whose date `eventDate` cannot read. Those are left out, not
+ * guessed at; one is `recent` when it could belong among the newest (its id
+ * is above the oldest picked one's, ids rising with time, or fewer than
+ * `count` were picked), which the sync fails on. An older one is only
+ * logged: failing on it would keep the job failing for as long as the index
+ * lists it, and a failing job sends no alert for a real outage.
+ */
+export function pickNewestEvents(events: Dict[], count = RECENT_EVENTS): { newest: Dict[]; unreadable: { event: Dict; date: string; recent: boolean }[] } {
+  const dated: Dict[] = [];
+  const undated: { event: Dict; date: string }[] = [];
+  for (const event of events) {
+    const date = unreadableEventDate(event);
+    if (date === null) dated.push(event);
+    else undated.push({ event, date });
+  }
+  const newest = newestEvents(dated, count);
+  const oldestPicked = newest.length < count ? -Infinity : Math.min(...newest.map(idNumber));
+  return { newest, unreadable: undated.map((entry) => ({ ...entry, recent: idNumber(entry.event) > oldestPicked })) };
 }

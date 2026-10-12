@@ -54,6 +54,8 @@ describe('meet sync (port of sync-meets.js / sync-nat-meets.js / sync-virus-meet
       { name: 'Unknown Land', address: 'Hall, 1 A St, Town, Atlantis, 00000', subtitle: '11/01/2026 - 11/01/2026' },
       { name: 'Knoxville Open', address: 'Gym, 1 Main St, Knoxville, Tennessee, United States of America, 37902', subtitle: '9/5/2026' },
       { name: 'Someday Open', address: 'Gym, 1 Main St, Nashville, Tennessee, United States of America, 37210', subtitle: 'TBD' },
+      { name: 'Blank Open', address: 'Gym, 1 Main St, Nashville, Tennessee, United States of America, 37210', subtitle: ' ' },
+      { name: 'Typo Open', address: 'Gym, 1 Main St, Nashville, Tennessee, United States of America, 37210', subtitle: '10/1/26' },
     ];
     expect(transformMeets(rows)).toEqual({
       meets: [
@@ -62,7 +64,9 @@ describe('meet sync (port of sync-meets.js / sync-nat-meets.js / sync-virus-meet
         { name: 'Unknown Land', venueName: 'Hall', venueStreet: '1 A St', venueCity: 'Town', venueState: 'Atlantis', venueZip: '00000', startDate: '2026-11-01', endDate: '2026-11-01', status: 'upcoming', federation: 'USAW' },
         { name: 'Knoxville Open', venueName: 'Gym', venueStreet: '1 Main St', venueCity: 'Knoxville', venueState: 'TN', venueZip: '37902', timeZone: 'America/New_York', startDate: '2026-09-05', endDate: '2026-09-05', status: 'upcoming', federation: 'USAW' },
       ],
-      rejected: ['Someday Open: unreadable dates "TBD"'],
+      // Dates not set yet wait without failing the run; dates it cannot read fail it.
+      undated: ['Someday Open', 'Blank Open'],
+      rejected: ['Typo Open: unreadable dates "10/1/26"'],
       unknownZone: ['Unknown Land: state "Atlantis"'],
     });
   });
