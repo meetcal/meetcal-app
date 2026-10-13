@@ -43,6 +43,7 @@ pub struct PerformanceStats {
     pub snatch_makes: usize,
     pub cj_attempts: usize,
     pub cj_makes: usize,
+    /// The athletes' totals summed, as the server's `total_weight_lifted` (`club-results`).
     pub total_weight_lifted: f64,
 }
 
@@ -55,8 +56,12 @@ impl PerformanceStats {
         percentage(self.cj_makes, self.cj_attempts)
     }
 
+    /// Every attempt of both lifts pooled, as the server's `combined_make_rate` (`club-results`).
     pub fn total_make_rate(&self) -> f64 {
-        (self.snatch_make_rate() + self.cj_make_rate()) / 2.0
+        percentage(
+            self.snatch_makes + self.cj_makes,
+            self.snatch_attempts + self.cj_attempts,
+        )
     }
 }
 
@@ -68,6 +73,9 @@ pub struct PrStats<'a> {
     pub details: Vec<ClubPrDetail>,
     pub target_meet_rows: Vec<&'a LiftingResults>,
     pub missing_names: Vec<String>,
+    /// The year of the meet's edition the report covers: the latest any athlete lifted at, since
+    /// a meet name used every year matches every edition.
+    pub edition_year: Option<String>,
 }
 
 pub async fn run(args: WsoResultsArgs) -> Result<()> {
@@ -76,7 +84,10 @@ pub async fn run(args: WsoResultsArgs) -> Result<()> {
     let results = get_lifting_results(&athletes.names).await?;
     let pr_stats = calculate_prs(&athletes.names, &results, &args.meet);
     let performance = calculate_performance(&pr_stats.target_meet_rows);
-    let meet_results = get_meet_results(&args.meet).await?;
+    let meet_results = edition_rows(
+        get_meet_results(&args.meet).await?,
+        pr_stats.edition_year.as_deref(),
+    );
     let medals = calculate_medal_details(&athletes.names, &meet_results, &roster_classes(&roster));
 
     output::emit(report(
@@ -197,23 +208,39 @@ fn add_new_titles(
     titles.extend(answered);
 }
 
+/// Whether `current` beats `previous`. A lift with no earlier result is not a PR: an athlete's
+/// first meet sets their marks (the server's `is_pr` and `stats::pr_flags` agree).
 pub fn is_pr(current: Option<f64>, previous: Option<f64>) -> bool {
     match (current, previous) {
         (Some(current), Some(previous)) => current > previous,
-        (Some(_), None) => true,
-        (None, _) => false,
+        _ => false,
     }
 }
 
+/// The best positive `get` among `meets`' plausible rows ([`plausible`]); `None` without one.
 pub fn calculate_current_best(
     meets: &[&LiftingResults],
     get: impl Fn(&LiftingResults) -> f64,
 ) -> Option<f64> {
     meets
         .iter()
+        .filter(|row| plausible(row))
         .map(|row| get(row))
         .filter(|value| *value > 0.0 && value.is_finite())
         .max_by(f64::total_cmp)
+}
+
+/// The mark to beat from earlier `meets`: their best `get`, or 0 when the athlete competed but
+/// made none (a bomb-out still sets a mark, as in `stats::pr_flags` and the server's
+/// `previousBest`); `None` only without an earlier plausible result, a first meet.
+pub fn previous_best(
+    meets: &[&LiftingResults],
+    get: impl Fn(&LiftingResults) -> f64,
+) -> Option<f64> {
+    meets
+        .iter()
+        .any(|row| plausible(row))
+        .then(|| calculate_current_best(meets, get).unwrap_or(0.0))
 }
 
 pub fn calculate_prs<'a>(
@@ -221,16 +248,27 @@ pub fn calculate_prs<'a>(
     results: &'a HashMap<String, Vec<LiftingResults>>,
     meet: &str,
 ) -> PrStats<'a> {
-    let mut stats = PrStats::default();
+    let mut stats = PrStats {
+        edition_year: wso_athlete_names
+            .iter()
+            .filter_map(|name| results.get(&fold(name)))
+            .flatten()
+            .filter(|row| equivalent_meets(meet, &row.meet))
+            .map(|row| year_of(row).to_string())
+            .max(),
+        ..PrStats::default()
+    };
 
     for name in wso_athlete_names {
         let history = results
             .get(&fold(name))
             .map(Vec::as_slice)
             .unwrap_or_default();
-        let (current_rows, prior_rows): (Vec<_>, Vec<_>) = history
-            .iter()
-            .partition(|row| equivalent_meets(meet, &row.meet));
+        let (current_rows, prior_rows) = split_at_meet(
+            history,
+            meet,
+            stats.edition_year.as_deref().unwrap_or_default(),
+        );
 
         if current_rows.is_empty() {
             stats.missing_names.push(name.clone());
@@ -245,7 +283,7 @@ pub fn calculate_prs<'a>(
             name,
             Movement::Snatch,
             calculate_current_best(&current_rows, |row| row.snatch_best),
-            calculate_current_best(&prior_rows, |row| row.snatch_best),
+            previous_best(&prior_rows, |row| row.snatch_best),
         );
         add_pr(
             &mut stats.cj_count,
@@ -253,7 +291,7 @@ pub fn calculate_prs<'a>(
             name,
             Movement::CleanAndJerk,
             calculate_current_best(&current_rows, |row| row.cj_best),
-            calculate_current_best(&prior_rows, |row| row.cj_best),
+            previous_best(&prior_rows, |row| row.cj_best),
         );
         add_pr(
             &mut stats.total_count,
@@ -261,7 +299,7 @@ pub fn calculate_prs<'a>(
             name,
             Movement::Total,
             calculate_current_best(&current_rows, |row| row.total),
-            calculate_current_best(&prior_rows, |row| row.total),
+            previous_best(&prior_rows, |row| row.total),
         );
     }
 
@@ -271,6 +309,55 @@ pub fn calculate_prs<'a>(
             .then_with(|| left.movement.rank().cmp(&right.movement.rank()))
     });
     stats
+}
+
+/// An athlete's rows at `meet`'s edition in `year` and their rows from before it. A meet name used
+/// every year matches every edition, so the report picks one edition for every athlete
+/// ([`PrStats::edition_year`]); an athlete absent from it is missing, not counted from an older
+/// one. "Before" is dated before that edition's first day, so later results never count as the PR
+/// to beat.
+fn split_at_meet<'a>(
+    history: &'a [LiftingResults],
+    meet: &str,
+    year: &str,
+) -> (Vec<&'a LiftingResults>, Vec<&'a LiftingResults>) {
+    let current: Vec<&LiftingResults> = history
+        .iter()
+        .filter(|row| equivalent_meets(meet, &row.meet) && year_of(row) == year)
+        .collect();
+    if current.is_empty() {
+        return (Vec::new(), Vec::new());
+    }
+    let start = current
+        .iter()
+        .map(|row| row.date.as_str())
+        .min()
+        .unwrap_or_default()
+        .to_string();
+    let prior = history
+        .iter()
+        .filter(|row| row.date.as_str() < start.as_str())
+        .collect();
+    (current, prior)
+}
+
+/// The meet's results from the edition in `year`, or its latest edition without one: a meet name
+/// used every year answers every edition's rows.
+pub fn edition_rows(rows: Vec<LiftingResults>, year: Option<&str>) -> Vec<LiftingResults> {
+    let Some(year) = year
+        .map(str::to_string)
+        .or_else(|| rows.iter().map(|row| year_of(row).to_string()).max())
+    else {
+        return rows;
+    };
+    rows.into_iter()
+        .filter(|row| year_of(row) == year)
+        .collect()
+}
+
+/// A result's year, the first four characters of its `YYYY-MM-DD` date.
+fn year_of(row: &LiftingResults) -> &str {
+    row.date.get(..4).unwrap_or(&row.date)
 }
 
 fn add_pr(
@@ -290,36 +377,38 @@ fn add_pr(
         name: name.to_string(),
         movement,
         new_pr: current.expect("a PR always has a current result"),
-        previous_pr: previous.unwrap_or(0.0),
+        previous_pr: previous.expect("a PR always beats an earlier result"),
     });
 }
 
+/// Make rates and weight lifted over one result per athlete (their best total, newest on a tie),
+/// as the server's `statsEntries` and `clubStats`: an athlete in two divisions counts once.
 pub fn calculate_performance(rows: &[&LiftingResults]) -> PerformanceStats {
     let mut stats = PerformanceStats::default();
-
+    let mut best: HashMap<String, &LiftingResults> = HashMap::new();
     for row in rows {
+        let entry = best.entry(fold(&row.name)).or_insert(row);
+        if row.total > entry.total || (row.total == entry.total && row.date > entry.date) {
+            *entry = row;
+        }
+    }
+
+    for row in best.values() {
         for attempt in [row.snatch1, row.snatch2, row.snatch3] {
-            record_attempt(
-                attempt,
-                &mut stats.snatch_attempts,
-                &mut stats.snatch_makes,
-                &mut stats.total_weight_lifted,
-            );
+            record_attempt(attempt, &mut stats.snatch_attempts, &mut stats.snatch_makes);
         }
         for attempt in [row.cj1, row.cj2, row.cj3] {
-            record_attempt(
-                attempt,
-                &mut stats.cj_attempts,
-                &mut stats.cj_makes,
-                &mut stats.total_weight_lifted,
-            );
+            record_attempt(attempt, &mut stats.cj_attempts, &mut stats.cj_makes);
+        }
+        if row.total > 0.0 && row.total.is_finite() {
+            stats.total_weight_lifted += row.total;
         }
     }
 
     stats
 }
 
-fn record_attempt(attempt: f64, attempts: &mut usize, makes: &mut usize, volume: &mut f64) {
+fn record_attempt(attempt: f64, attempts: &mut usize, makes: &mut usize) {
     if attempt == 0.0 || !attempt.is_finite() {
         return;
     }
@@ -327,7 +416,6 @@ fn record_attempt(attempt: f64, attempts: &mut usize, makes: &mut usize, volume:
     *attempts += 1;
     if attempt > 0.0 {
         *makes += 1;
-        *volume += attempt;
     }
 }
 
@@ -656,10 +744,22 @@ mod tests {
         cj_best: f64,
         total: f64,
     ) -> LiftingResults {
+        dated(name, meet, "2026-01-01", age, snatch_best, cj_best, total)
+    }
+
+    fn dated(
+        name: &str,
+        meet: &str,
+        date: &str,
+        age: &str,
+        snatch_best: f64,
+        cj_best: f64,
+        total: f64,
+    ) -> LiftingResults {
         LiftingResults {
             federation: "USAW".to_string(),
             meet: meet.to_string(),
-            date: "2026-01-01".to_string(),
+            date: date.to_string(),
             name: name.to_string(),
             age: age.to_string(),
             body_weight: 70.0,
@@ -736,6 +836,7 @@ mod tests {
             details: Vec::new(),
             target_meet_rows: Vec::new(),
             missing_names: Vec::new(),
+            edition_year: None,
         };
         let report = report("Florida", "Meet", 10, 1, &performance, &prs, &[]);
         let json = report.to_json();
@@ -766,8 +867,8 @@ mod tests {
     }
 
     #[test]
-    fn current_result_without_history_is_a_pr() {
-        assert!(is_pr(Some(100.0), None));
+    fn a_first_meet_is_not_a_pr() {
+        assert!(!is_pr(Some(100.0), None));
     }
 
     #[test]
@@ -806,7 +907,7 @@ mod tests {
             (
                 fold("Zed"),
                 vec![
-                    result("Zed", "Old Meet", "Open", 90.0, 110.0, 200.0),
+                    dated("Zed", "Old Meet", "2025-06-01", "Open", 90.0, 110.0, 200.0),
                     result("Zed", target, "Open", 95.0, 110.0, 205.0),
                 ],
             ),
@@ -818,13 +919,15 @@ mod tests {
 
         let stats = calculate_prs(&["Zed".into(), "Amy".into()], &history, target);
 
-        assert_eq!(stats.snatch_count, 2);
-        assert_eq!(stats.cj_count, 1);
-        assert_eq!(stats.total_count, 2);
-        assert_eq!(stats.details[0].name, "Amy");
+        // Amy's first meet sets her marks: no PR.
+        assert_eq!(stats.snatch_count, 1);
+        assert_eq!(stats.cj_count, 0);
+        assert_eq!(stats.total_count, 1);
+        assert_eq!(stats.details.len(), 2);
+        assert_eq!(stats.details[0].name, "Zed");
         assert_eq!(stats.details[0].movement, Movement::Snatch);
-        assert_eq!(stats.details[3].name, "Zed");
-        assert_eq!(stats.details[3].movement, Movement::Snatch);
+        assert_eq!(stats.details[0].previous_pr, 90.0);
+        assert_eq!(stats.details[1].movement, Movement::Total);
     }
 
     #[test]
@@ -854,9 +957,10 @@ mod tests {
         let history = HashMap::from([(
             fold("Jane Doe"),
             vec![
-                result(
+                dated(
                     "Jane Doe",
                     "2025 State Championships",
+                    "2025-11-01",
                     "Open",
                     75.0,
                     95.0,
@@ -918,8 +1022,9 @@ mod tests {
         assert_eq!(stats.snatch_makes, 1);
         assert_eq!(stats.cj_attempts, 3);
         assert_eq!(stats.cj_makes, 2);
-        assert_eq!(stats.total_weight_lifted, 320.0);
-        assert!((stats.total_make_rate() - 58.333_333).abs() < 0.000_001);
+        // The total, as club-results sums it; every attempt pooled: 3 made of 5.
+        assert_eq!(stats.total_weight_lifted, 220.0);
+        assert!((stats.total_make_rate() - 60.0).abs() < 0.000_001);
     }
 
     #[test]
@@ -1147,17 +1252,131 @@ mod tests {
     }
 
     #[test]
+    fn results_after_the_meet_are_not_the_pr_to_beat() {
+        let target = "2025 Carolina WSO Championships";
+        let history = HashMap::from([(
+            fold("Ada"),
+            vec![
+                dated(
+                    "Ada",
+                    "Spring Open",
+                    "2025-03-01",
+                    "Open",
+                    85.0,
+                    105.0,
+                    190.0,
+                ),
+                dated("Ada", target, "2025-09-20", "Open", 90.0, 110.0, 200.0),
+                dated("Ada", "2026 Open", "2026-02-01", "Open", 95.0, 115.0, 210.0),
+            ],
+        )]);
+
+        let stats = calculate_prs(&["Ada".into()], &history, target);
+
+        assert_eq!(stats.total_count, 1);
+        assert_eq!(stats.snatch_count, 1);
+        assert_eq!(stats.cj_count, 1);
+        assert_eq!(stats.details[2].previous_pr, 190.0);
+    }
+
+    #[test]
+    fn a_meet_held_every_year_is_its_latest_edition() {
+        let meet = "Testify Leprechaun Lift-off";
+        let history = HashMap::from([(
+            fold("Ada"),
+            vec![
+                dated("Ada", meet, "2023-03-11", "Open", 90.0, 110.0, 200.0),
+                dated("Ada", meet, "2024-03-16", "Open", 88.0, 108.0, 196.0),
+                dated("Ada", "Fall Open", "2023-10-01", "Open", 85.0, 105.0, 190.0),
+            ],
+        )]);
+
+        let stats = calculate_prs(&["Ada".into()], &history, meet);
+
+        assert_eq!(stats.target_meet_rows.len(), 1);
+        assert_eq!(stats.target_meet_rows[0].date, "2024-03-16");
+        assert_eq!(stats.total_count, 0);
+    }
+
+    #[test]
+    fn the_first_lift_after_a_bomb_out_is_a_pr() {
+        let target = "2026 Spring Open";
+        let history = HashMap::from([(
+            fold("Ada"),
+            vec![
+                // Ada's first meet: 80 snatch, bombed C&J, no total.
+                dated("Ada", "Fall Open", "2025-10-01", "Open", 80.0, 0.0, 0.0),
+                dated("Ada", target, "2026-03-01", "Open", 78.0, 90.0, 168.0),
+            ],
+        )]);
+
+        let stats = calculate_prs(&["Ada".into()], &history, target);
+
+        assert_eq!(stats.snatch_count, 0);
+        assert_eq!(stats.cj_count, 1);
+        assert_eq!(stats.total_count, 1);
+        assert!(stats.details.iter().all(|detail| detail.previous_pr == 0.0));
+    }
+
+    #[test]
+    fn every_athlete_is_counted_from_one_edition() {
+        let meet = "Spring Open";
+        let history = HashMap::from([
+            (
+                fold("Ada"),
+                vec![dated("Ada", meet, "2023-04-01", "Open", 80.0, 100.0, 180.0)],
+            ),
+            (
+                fold("Bo"),
+                vec![dated("Bo", meet, "2024-04-01", "Open", 90.0, 110.0, 200.0)],
+            ),
+        ]);
+
+        let stats = calculate_prs(&["Ada".into(), "Bo".into()], &history, meet);
+
+        assert_eq!(stats.edition_year.as_deref(), Some("2024"));
+        assert_eq!(stats.missing_names, ["Ada"]);
+        assert_eq!(stats.target_meet_rows.len(), 1);
+        let rows = edition_rows(
+            vec![
+                dated("Ada", meet, "2023-04-01", "Open", 80.0, 100.0, 180.0),
+                dated("Bo", meet, "2024-04-01", "Open", 90.0, 110.0, 200.0),
+            ],
+            stats.edition_year.as_deref(),
+        );
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].name, "Bo");
+        assert_eq!(edition_rows(rows.clone(), None).len(), 1);
+    }
+
+    #[test]
+    fn an_athlete_in_two_divisions_counts_once_in_performance() {
+        let open = result("Ada", "Meet", "Open", 80.0, 100.0, 180.0);
+        let masters = result("ada", "Meet", "Masters", 80.0, 100.0, 180.0);
+
+        let stats = calculate_performance(&[&open, &masters]);
+
+        assert_eq!(stats.total_weight_lifted, 180.0);
+        assert_eq!(stats.snatch_attempts, 1);
+        assert_eq!(stats.cj_attempts, 1);
+    }
+
+    #[test]
     fn rendered_report_contains_summary_and_detail_sections() {
         let history = HashMap::from([(
             fold("Member"),
-            vec![result(
-                "Member",
-                "Meet",
-                "Open Men's 89kg",
-                100.0,
-                120.0,
-                220.0,
-            )],
+            vec![
+                dated(
+                    "Member",
+                    "Old",
+                    "2025-01-01",
+                    "Open Men's 89kg",
+                    95.0,
+                    115.0,
+                    210.0,
+                ),
+                result("Member", "Meet", "Open Men's 89kg", 100.0, 120.0, 220.0),
+            ],
         )]);
         let prs = calculate_prs(&["Member".into()], &history, "Meet");
         let performance = calculate_performance(&prs.target_meet_rows);

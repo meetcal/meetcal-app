@@ -82,6 +82,87 @@ body::before {
     mask-image: linear-gradient(#000 15%, transparent 78%);
 }
 
+/* ---------- Loading shell (index.html), shown until the app mounts ---------- */
+
+.app-loading {
+    display: grid;
+    justify-items: center;
+    align-content: center;
+    gap: 6px;
+    min-height: 70vh;
+    padding: 40px 20px;
+    text-align: center;
+}
+
+.app-loading-logo {
+    width: 48px;
+    height: 48px;
+    object-fit: contain;
+    animation: access-pulse 1.4s ease-in-out infinite;
+}
+
+.app-loading-name {
+    margin: 4px 0 0;
+    font-size: 1.3rem;
+    font-weight: 800;
+    letter-spacing: -0.03em;
+}
+
+.app-loading-message,
+.app-loading-error {
+    max-width: 30rem;
+    margin: 0;
+    color: var(--text-secondary);
+}
+
+.app-loading-error {
+    color: var(--text);
+}
+
+.app-loading-retry {
+    min-height: 44px;
+    margin-top: 12px;
+    padding: 10px 22px;
+    border-radius: 999px;
+    background: var(--accent);
+    color: #fff;
+    font-weight: 700;
+}
+
+.app-loading-retry:focus-visible {
+    outline: 3px solid var(--accent-ink);
+    outline-offset: 3px;
+}
+
+/* The no-script fallback for a bootstrap that never loads or runs: hidden
+   (and out of the accessibility tree) until 10 s pass, then a plain reload
+   link. The bootstrap's own error, with its retry, replaces it. */
+.app-loading-slow {
+    margin: 12px 0 0;
+    color: var(--text-secondary);
+    visibility: hidden;
+    animation: app-loading-slow-reveal 0s linear 10s forwards;
+}
+
+.app-loading-slow a {
+    display: inline-block;
+    min-height: 44px;
+    padding: 10px 4px;
+    color: var(--text);
+    font-weight: 700;
+    text-decoration: underline;
+}
+
+.app-loading[role="alert"] .app-loading-slow {
+    display: none;
+}
+
+@keyframes app-loading-slow-reveal {
+    to {
+        visibility: visible;
+    }
+}
+
 /* The page frame: header, main and footer are siblings here, so each is its
    own landmark. */
 .site-shell {
@@ -1463,18 +1544,67 @@ main > div:has(> h4) > p {
 .screenshot-set img {
     display: block;
     width: 220px;
+    height: auto;
     border: 5px solid rgba(255, 255, 255, 0.18);
     border-radius: 28px;
     box-shadow: 0 20px 42px rgba(0, 31, 82, 0.35);
 }
 
-.screenshot-marquee:hover .screenshot-track {
+.screenshot-marquee:hover .screenshot-track,
+.screenshot-marquee.is-paused .screenshot-track {
     animation-play-state: paused;
 }
 
 @keyframes scroll-screenshots {
     to {
         transform: translateX(calc(-50% - 10px));
+    }
+}
+
+.marquee-toggle {
+    min-height: 44px;
+    margin-top: 22px;
+    padding: 10px 20px;
+    border: 1px solid rgba(255, 255, 255, 0.4);
+    border-radius: 999px;
+    color: #fff;
+    font-size: 0.9rem;
+    font-weight: 650;
+}
+
+.marquee-toggle:hover {
+    background: rgba(255, 255, 255, 0.12);
+}
+
+.marquee-toggle:focus-visible {
+    outline: 3px solid #fff;
+    outline-offset: 3px;
+}
+
+/* Moving content stays still for visitors who ask for less motion (WCAG 2.2.2,
+   2.3.3): the screenshots become a strip they can scroll themselves. */
+@media (prefers-reduced-motion: reduce) {
+    .screenshot-marquee {
+        overflow-x: auto;
+    }
+
+    .screenshot-track {
+        animation: none;
+    }
+
+    .screenshot-set[aria-hidden="true"],
+    .marquee-toggle {
+        display: none;
+    }
+
+    .data-skeleton,
+    .auth-button-placeholder,
+    .app-loading-logo {
+        animation: none;
+    }
+
+    .access-spinner {
+        animation-duration: 2.4s;
     }
 }
 

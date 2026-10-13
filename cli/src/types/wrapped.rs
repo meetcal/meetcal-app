@@ -22,7 +22,8 @@ pub struct WrappedStats {
     pub best_total: f64,
     pub average_total: f64,
     pub top_meet: Option<String>,
-    pub improvement_from_first: f64,
+    /// First meet's total to the last meet's; `None` with fewer than two meets with a total.
+    pub improvement_from_first: Option<f64>,
     pub consecutive_makes: usize,
     pub favorite_attempt: Option<usize>,
     pub year_rank: &'static str,
