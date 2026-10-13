@@ -9,6 +9,7 @@ import { Text } from "react-native";
 import { act, create, type ReactTestRenderer } from "react-test-renderer";
 import PaywallScreen from "@/app/shared-screens/paywall";
 import { showToast } from "@/lib/toast";
+import { isPremiumFeature } from "@/lib/premium-intent";
 
 jest.mock("@/contexts/ThemeContext", () => ({ useTheme: () => ({ currentTheme: "light" }) }));
 jest.mock("@/hooks/useScreenInsets", () => ({
@@ -52,8 +53,14 @@ const mockRouter = {
   canGoBack: jest.fn(() => true),
 };
 let mockParams: { from?: string; feature?: string } = {};
+let mockScreenOptions: Record<string, unknown>[] = [];
 jest.mock("expo-router", () => ({
-  Stack: { Screen: () => null },
+  Stack: {
+    Screen: ({ options }: { options: Record<string, unknown> }) => {
+      mockScreenOptions.push(options);
+      return null;
+    },
+  },
   useRouter: () => mockRouter,
   useLocalSearchParams: () => mockParams,
 }));
@@ -135,6 +142,7 @@ describe("PaywallScreen", () => {
     jest.spyOn(console, "error").mockImplementation(() => {});
     jest.spyOn(console, "log").mockImplementation(() => {});
     mockPaywallProps.length = 0;
+    mockScreenOptions = [];
     mockIsOffline = false;
     mockUser = { user: { id: "user_1" }, isLoaded: true };
     mockParams = { from: "/shared-screens/schedule-details", feature: "qualifying-totals" };
@@ -165,6 +173,60 @@ describe("PaywallScreen", () => {
 
     expect(mockGetOfferings).toHaveBeenCalledTimes(2);
     expect(lastPaywall().options.offering).toBe(CURRENT);
+  });
+
+  it.each([
+    ["routed", <PaywallScreen key="routed" />],
+    ["inline", <PaywallScreen
+      key="inline" from="/comp-data/records" feature="records"
+      inline
+    />],
+  ])("%s: loading and failing, shows a header with Back; ready, hides it", async (_mode, element) => {
+    let rejectOfferings!: (error: Error) => void;
+    mockGetOfferings.mockReturnValueOnce(
+      new Promise((_resolve, reject) => {
+        rejectOfferings = reject;
+      }),
+    );
+    const renderer = await mount(element);
+
+    // Spinner: the root Stack hides headers by default, so the paywall must
+    // turn one on, as `title` (a `headerTitle` outranked the gated screen's
+    // own title after a purchase).
+    expect(mockScreenOptions.at(-1)).toMatchObject({
+      headerShown: true,
+      title: "Premium Features",
+      headerBackTitle: "Back",
+    });
+    expect(mockScreenOptions.some((options) => "headerTitle" in options)).toBe(false);
+
+    await act(async () => {
+      rejectOfferings(new Error("rc down"));
+    });
+    await flush();
+    expect(texts(renderer)).toContain("Couldn't load plans");
+    expect(mockScreenOptions.at(-1)).toMatchObject({ headerShown: true });
+
+    await pressTryAgain(renderer);
+    expect(lastPaywall().options.offering).toBe(CURRENT);
+    expect(mockScreenOptions.at(-1)).toEqual({ headerShown: false });
+  });
+
+  it("inline and signed out, signs in back to the gated screen without queueing a second paywall", async () => {
+    mockUser = { user: null, isLoaded: true };
+    await mount(
+      <PaywallScreen
+        from="/shared-screens/athlete-results?name=Jane%20Doe"
+        feature="athlete-results"
+        inline
+      />,
+    );
+
+    expect(mockRouter.replace).toHaveBeenCalledWith({
+      pathname: "/(auth)/sign-in",
+      params: { from: "/shared-screens/athlete-results?name=Jane%20Doe", feature: "subscription" },
+    });
+    expect(isPremiumFeature("subscription")).toBe(false);
   });
 
   it("says when there is no current offering", async () => {

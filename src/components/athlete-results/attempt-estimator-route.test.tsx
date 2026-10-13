@@ -23,6 +23,10 @@ import { ATTEMPT_HISTORY_YEARS, getHistoryCutoffDate } from "@/utils/dateTime";
 void [Animated, Pressable, ScrollView];
 
 jest.mock("@/contexts/ThemeContext", () => ({ useTheme: () => ({ currentTheme: "light" }) }));
+// Gating is covered by premium-screens-gated.test.tsx; this file tests the content.
+jest.mock("@/components/ui/SubscriptionGate", () => ({
+  SubscriptionGate: ({ children }: { children: React.ReactNode }) => children,
+}));
 jest.mock("expo-router", () => ({
   Stack: { Screen: () => null },
   useLocalSearchParams: () => ({ meet: "test-meet", sessionNumber: "1", platform: "Red" }),

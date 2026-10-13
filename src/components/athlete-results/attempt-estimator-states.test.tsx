@@ -22,6 +22,10 @@ void [Animated, Pressable, ScrollView];
 
 jest.mock("@/contexts/ThemeContext", () => ({ useTheme: () => ({ currentTheme: "light" }) }));
 let mockParams = { meet: "test-meet", sessionNumber: "1", platform: "Red" };
+// Gating is covered by premium-screens-gated.test.tsx; this file tests the content.
+jest.mock("@/components/ui/SubscriptionGate", () => ({
+  SubscriptionGate: ({ children }: { children: React.ReactNode }) => children,
+}));
 jest.mock("expo-router", () => ({
   Stack: { Screen: () => null },
   useLocalSearchParams: () => mockParams,

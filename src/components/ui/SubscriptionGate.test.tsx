@@ -10,7 +10,11 @@ import { act, create, type ReactTestRenderer } from "react-test-renderer";
 import * as SecureStore from "expo-secure-store";
 import Purchases, { type CustomerInfo } from "react-native-purchases";
 import { SubscriptionProvider } from "@/contexts/SubscriptionContext";
-import { SubscriptionGate } from "@/components/ui/SubscriptionGate";
+import {
+  featureNameFromPathname,
+  gateOrigin,
+  SubscriptionGate,
+} from "@/components/ui/SubscriptionGate";
 
 const mockSecureStore = new Map<string, string>();
 jest.mock("expo-secure-store", () => ({
@@ -62,7 +66,17 @@ jest.mock("react-native-reanimated", () => ({
   withSpring: () => 1,
 }));
 
-jest.mock("expo-router", () => ({ usePathname: () => "/(tabs)/records" }));
+let mockScreenOptions: Record<string, unknown> | null = null;
+jest.mock("expo-router", () => ({
+  usePathname: () => "/(tabs)/records",
+  useLocalSearchParams: () => ({}),
+  Stack: {
+    Screen: ({ options }: { options: Record<string, unknown> }) => {
+      mockScreenOptions = options;
+      return null;
+    },
+  },
+}));
 jest.mock("@/contexts/ThemeContext", () => ({ useTheme: () => ({ currentTheme: "light" }) }));
 
 jest.mock("@/app/shared-screens/paywall", () => {
@@ -147,6 +161,7 @@ describe("SubscriptionGate", () => {
     jest.spyOn(console, "warn").mockImplementation(() => {});
     mounts = 0;
     unmounts = 0;
+    mockScreenOptions = null;
     mockSecureStore.clear();
     mockSecureStore.set(
       SECURE_KEY,
@@ -177,6 +192,10 @@ describe("SubscriptionGate", () => {
     expect(renderer.root.findAllByType(ActivityIndicator)).toHaveLength(1);
     expect(texts(renderer)).toEqual([]);
     expect(mounts).toBe(0);
+    // The screen's own header is not rendered yet: the spinner brings one,
+    // so there is a Back button.
+    expect(mockScreenOptions).toMatchObject({ headerShown: true, title: "" });
+    expect(mockScreenOptions).not.toHaveProperty("headerTitle");
 
     await act(async () => {
       finishRead();
@@ -284,6 +303,7 @@ describe("SubscriptionGate", () => {
       expect(texts(renderer)).toContain("Can't confirm your subscription");
       expect(texts(renderer)).not.toContain("Paywall");
       expect(mounts).toBe(0);
+      expect(mockScreenOptions).toMatchObject({ headerShown: true, headerBackTitle: "Back" });
 
       mockIsNetworkAvailable.mockResolvedValue(true);
       mockGetCustomerInfo.mockResolvedValue(customerInfo("meetcal_lifetime"));
@@ -312,5 +332,33 @@ describe("SubscriptionGate", () => {
     await flush();
 
     expect(texts(renderer)).toEqual(["Paywall"]);
+  });
+});
+
+describe("gateOrigin", () => {
+  it("keeps the gated route's params, so sign-in comes back to the same athlete", () => {
+    expect(gateOrigin("/shared-screens/athlete-results", { name: "José Núñez" })).toBe(
+      "/shared-screens/athlete-results?name=Jos%C3%A9%20N%C3%BA%C3%B1ez",
+    );
+    expect(
+      gateOrigin("/shared-screens/attempt-estimator", {
+        meet: "A & B",
+        sessionNumber: "1",
+        platform: "Red",
+      }),
+    ).toBe("/shared-screens/attempt-estimator?meet=A%20%26%20B&sessionNumber=1&platform=Red");
+  });
+
+  it("is the bare path without params, and skips values that are not strings", () => {
+    expect(gateOrigin("/comp-data/records", {})).toBe("/comp-data/records");
+    expect(
+      gateOrigin("/comp-data/records", { a: undefined, b: ["x", "y"], c: { nested: 1 } as never }),
+    ).toBe("/comp-data/records?b=x&b=y");
+  });
+
+  it("names the feature from the path, not the query", () => {
+    expect(featureNameFromPathname("/shared-screens/athlete-results?name=X")).toBe(
+      "athlete-results",
+    );
   });
 });

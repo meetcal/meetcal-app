@@ -17,6 +17,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { ActivityIndicator, ScrollView, StyleSheet, View } from "react-native";
 import Animated, { FadeIn } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { SubscriptionGate } from "@/components/ui/SubscriptionGate";
 import { useScreenHorizontalInsets } from "@/hooks/useScreenInsets";
 import { Palette } from "@/constants/Palette";
 
@@ -290,7 +291,20 @@ function meetResultKey(result: SupabaseLiftResult, index: number): string {
   return `${result.event_id}-${result.meet}-${result.date}-${result.name}-${index}`;
 }
 
+/**
+ * A premium screen. The buttons that open it check the subscription, but a
+ * `meetcal://` deep link reaches the route directly, so it gates itself like
+ * every other premium screen.
+ */
 export default function AthleteResultsScreen() {
+  return (
+    <SubscriptionGate feature="athlete-results">
+      <AthleteResultsContent />
+    </SubscriptionGate>
+  );
+}
+
+function AthleteResultsContent() {
   const screenInsets = useScreenHorizontalInsets();
   const colors = useAppColors();
   const { name } = useLocalSearchParams<{ name?: string }>();

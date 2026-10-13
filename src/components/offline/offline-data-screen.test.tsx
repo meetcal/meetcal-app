@@ -43,6 +43,7 @@ type ScreenOptions = { unstable_headerRightItems?: () => HeaderItem[] };
 let mockScreenOptions: ScreenOptions = {};
 jest.mock("expo-router", () => ({
   usePathname: () => "/schedule-toolbar/offline-data",
+  useLocalSearchParams: () => ({}),
   Stack: {
     Screen: ({ options }: { options: ScreenOptions }) => {
       mockScreenOptions = options;

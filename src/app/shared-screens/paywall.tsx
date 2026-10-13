@@ -3,7 +3,6 @@ import { ActivityIndicator, StyleSheet, View } from 'react-native';
 import { Stack, useRouter, useLocalSearchParams } from 'expo-router';
 import RevenueCatUI from 'react-native-purchases-ui';
 import { useSubscription } from '@/contexts/SubscriptionContext';
-import { useTheme } from '@/contexts/ThemeContext';
 import * as Purchases from 'react-native-purchases';
 import { useUser } from '@clerk/expo';
 import { useScreenHorizontalInsets } from '@/hooks/useScreenInsets';
@@ -11,6 +10,8 @@ import { useIsOffline } from '@/hooks/useIsOffline';
 import { isInternalRoutePath } from '@/utils/authGuard';
 import { DEFAULT_ORIGIN, returnToOrigin } from '@/utils/returnToOrigin';
 import { EmptyState } from '@/components/ui/EmptyState';
+import { FallbackHeader } from '@/components/ui/FallbackHeader';
+import { useAppColors } from '@/hooks/useAppColors';
 import { showToast } from '@/components/ui/Toast';
 import { devLog } from '@/lib/logger';
 import { hasSubscriptionEntitlement } from '@/lib/premium-intent';
@@ -21,7 +22,6 @@ import {
   type PaywallEvent,
   type PaywallLoadError,
 } from '@/lib/paywall';
-import { Palette } from '@/constants/Palette';
 
 /**
  * `from` / `feature` normally arrive as route params, but `SubscriptionGate`
@@ -40,6 +40,13 @@ interface PaywallScreenProps {
   inline?: boolean;
 }
 
+/**
+ * Set as `title`, not `headerTitle`: inline, the gated screen's own
+ * `title` must replace it once a purchase lets that screen render, and
+ * expo-router never resets options a `Stack.Screen` set.
+ */
+const PAYWALL_TITLE = 'Premium Features';
+
 type OfferingState =
   | { status: 'loading' }
   | { status: 'ready'; offering: Purchases.PurchasesOffering }
@@ -52,7 +59,7 @@ export default function PaywallScreen({
 }: PaywallScreenProps = {}) {
   const screenInsets = useScreenHorizontalInsets();
   const router = useRouter();
-  const { currentTheme } = useTheme();
+  const colors = useAppColors();
   const params = useLocalSearchParams<{ from?: string; feature?: string }>();
   const from = fromProp ?? params.from;
   const feature = featureProp ?? params.feature;
@@ -71,11 +78,15 @@ export default function PaywallScreen({
         pathname: '/(auth)/sign-in',
         params: {
           from: isInternalRoutePath(from) ? from : '/(tabs)',
-          feature: feature || 'subscription',
+          // Inline, sign-in returns to the gated screen, whose gate shows
+          // this paywall again. A premium feature name (the estimator's,
+          // athlete results') would also queue a routed paywall on top
+          // (`lib/premium-intent.ts`), so the gate's sign-in carries none.
+          feature: inline ? 'subscription' : feature || 'subscription',
         },
       });
     }
-  }, [isLoaded, userId, router, from, feature]);
+  }, [isLoaded, userId, router, from, feature, inline]);
 
   useEffect(() => {
     if (!isLoaded || !userId) {
@@ -147,21 +158,6 @@ export default function PaywallScreen({
     returnToOrigin(router, from);
   };
 
-  const header = (
-    <Stack.Screen
-      options={{
-        headerTitle: 'Premium Features',
-        headerTitleStyle: {
-          color: currentTheme === 'dark' ? '#FFFFFF' : '#000000',
-        },
-        headerStyle: {
-          backgroundColor: currentTheme === 'dark' ? '#000000' : '#FFFFFF',
-        },
-        headerShadowVisible: false,
-      }}
-    />
-  );
-
   // Offline, Clerk never finishes loading, so `!isLoaded` alone spun forever.
   const loadError: PaywallLoadError | null =
     !isLoaded && isOffline
@@ -178,13 +174,13 @@ export default function PaywallScreen({
       <View
         style={[
           styles.container,
-          {
-            backgroundColor: currentTheme === 'dark' ? Palette.black : Palette.white,
-          },
+          { backgroundColor: colors.background },
           screenInsets,
         ]}
       >
-        {header}
+        {/* Loading and failing, the paywall has nothing to close it with:
+            a header gives it a Back button, pushed or inline. */}
+        <FallbackHeader title={PAYWALL_TITLE} />
         {copy ? (
           <EmptyState
             title={copy.title}
@@ -194,10 +190,7 @@ export default function PaywallScreen({
           />
         ) : (
           <View style={styles.loadingContainer}>
-            <ActivityIndicator
-              size="large"
-              color={currentTheme === 'dark' ? '#FFFFFF' : '#000000'}
-            />
+            <ActivityIndicator size="large" color={colors.text} />
           </View>
         )}
       </View>
@@ -206,7 +199,10 @@ export default function PaywallScreen({
 
   return (
     <View style={[styles.container, screenInsets]}>
-      {header}
+      {/* RevenueCat's paywall is laid out full screen, as before; its close
+          control comes from the paywall's design. The loading header's
+          options persist until replaced, so hide it explicitly. */}
+      <Stack.Screen options={{ headerShown: false }} />
       <RevenueCatUI.Paywall
         options={{
           offering: offeringState.offering,
