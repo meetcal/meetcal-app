@@ -1,7 +1,7 @@
 use crate::{
     types::lifting_results::{LiftingResults, PRs},
     utils::{
-        backend::{queries, query},
+        athletes::history,
         make_rate::make_rate_tables,
         output::{self, Report},
     },
@@ -24,8 +24,8 @@ pub struct SearchArgs {
 pub async fn run(args: SearchArgs) -> Result<()> {
     let name = args.name;
 
-    let query_args = serde_json::json!({ "names": [name] });
-    let results: Vec<LiftingResults> = query(queries::RESULTS_BY_NAMES, &query_args).await?;
+    // An unknown name is an error suggesting the closest athletes, not an empty report.
+    let results: Vec<LiftingResults> = history(&name).await?;
 
     let mut meets_table = Table::new();
 

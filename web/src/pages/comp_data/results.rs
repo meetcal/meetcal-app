@@ -181,7 +181,7 @@ pub fn Results() -> impl IntoView {
 
     view! {
         <DataPage heading="Results" intro="Search an athlete’s competition history.">
-            <ResultsSearchForm name set_name />
+            <ResultsSearchForm name set_name current=athlete search_again=Callback::new(move |()| results.retry()) />
 
             {move || results.with(|state| match state {
                 LoadState::Loading => view! { <TableSkeleton columns=14 /> }.into_any(),
@@ -219,13 +219,26 @@ pub fn Results() -> impl IntoView {
 }
 
 #[component]
-fn ResultsSearchForm(name: ReadSignal<String>, set_name: WriteSignal<String>) -> impl IntoView {
+/// Searches by moving to the athlete's URL; searching again for the athlete
+/// the URL already names sends the search again (`search_again`), since the
+/// URL, and so the request, does not change.
+fn ResultsSearchForm(
+    name: ReadSignal<String>,
+    set_name: WriteSignal<String>,
+    current: Memo<String>,
+    search_again: Callback<()>,
+) -> impl IntoView {
     let navigate = use_navigate();
     view! {
         <form class="result-search" on:submit=move |event| {
             event.prevent_default();
             let athlete = name.get();
-            if !athlete.trim().is_empty() {
+            if athlete.trim().is_empty() {
+                return;
+            }
+            if athlete.trim() == current.get_untracked() {
+                search_again.run(());
+            } else {
                 navigate(&results_url(&athlete), Default::default());
             }
         }>

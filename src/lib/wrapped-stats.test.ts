@@ -227,6 +227,108 @@ describe('calculateWrappedStats', () => {
     expect(stats.averageTotal).toBe(0);
   });
 
+  it('counts a meet listed under two age divisions once', () => {
+    // Regression (#305): one 6-for-6 lift listed under Junior and Senior used
+    // to double the kilos and the streak, and three meets could reach the
+    // five-row "Meet Regular" rank.
+    const lift = {
+      date: '2026-03-01',
+      snatch1: 100,
+      snatch2: 105,
+      snatch3: 110,
+      snatch_best: 110,
+      cj1: 120,
+      cj2: 125,
+      cj3: 130,
+      cj_best: 130,
+      total: 240,
+    };
+    const stats = calculateWrappedStats([
+      row({ ...lift, meet: 'State Open', age: 'Junior' }),
+      row({ ...lift, meet: 'State Open', age: 'Senior' }),
+    ]);
+
+    expect(stats.totalWeightLifted).toBe(690);
+    expect(stats.consecutiveMakes).toBe(6);
+    expect(stats.makePercentage).toBe(100);
+    expect(stats.averageTotal).toBe(240);
+    expect(stats.totalMeets).toBe(1);
+  });
+
+  it('counts one lift filed under two meet names on one date once', () => {
+    // The same lift returned as both the Youth and the Junior Championships.
+    const lift = { date: '2026-06-28', snatch1: 61, snatch2: -64, snatch3: -64, cj1: 81, cj2: -84, cj3: -87, total: 142 };
+    const stats = calculateWrappedStats([
+      row({ ...lift, meet: 'National Youth Championships' }),
+      row({ ...lift, meet: 'National Junior Championships' }),
+    ]);
+
+    expect(stats.totalWeightLifted).toBe(142);
+    expect(stats.makePercentage).toBeCloseTo(100 / 3, 5);
+    expect(stats.totalMeets).toBe(1);
+    expect(stats.improvementFromFirst).toBeNull();
+  });
+
+  it('counts one meet listed under two dates once', () => {
+    const lift = { meet: 'Summer Slam', snatch1: 60, cj1: 80, total: 140 };
+    const stats = calculateWrappedStats([
+      row({ ...lift, date: '2026-05-16' }),
+      row({ ...lift, date: '2026-05-19' }),
+    ]);
+
+    expect(stats.totalWeightLifted).toBe(140);
+    expect(stats.averageTotal).toBe(140);
+  });
+
+  it('keeps two different lifts on one date, and the same numbers at two meets', () => {
+    const stats = calculateWrappedStats([
+      // Same day, different numbers: not the same lift.
+      row({ meet: 'A Open', date: '2026-03-01', snatch1: 100, total: 220 }),
+      row({ meet: 'B Open', date: '2026-03-01', snatch1: 101, total: 221 }),
+      // Same numbers, different meet and date: two lifts that happen to match.
+      row({ meet: 'C Open', date: '2026-08-01', snatch1: 100, total: 220 }),
+    ]);
+
+    expect(stats.totalWeightLifted).toBe(301);
+    expect(stats.totalMeets).toBe(3);
+  });
+
+  it('keeps the same numbers at two editions of a recurring meet', () => {
+    // A monthly "Local Open" lifted the same way twice is two lifts.
+    const lift = { meet: 'Local Open', snatch1: 45, cj1: 55, total: 100 };
+    const stats = calculateWrappedStats([
+      row({ ...lift, date: '2026-04-11' }),
+      row({ ...lift, date: '2026-05-09' }),
+    ]);
+
+    expect(stats.totalWeightLifted).toBe(200);
+    expect(stats.makePercentage).toBe(100);
+  });
+
+  it('keeps rows with an unreadable date apart from a same-named meet', () => {
+    const lift = { meet: 'Local Open', snatch1: 45, cj1: 55, total: 100 };
+    const stats = calculateWrappedStats([
+      row({ ...lift, date: '2026-04-11' }),
+      row({ ...lift, date: '' }),
+    ]);
+
+    expect(stats.totalWeightLifted).toBe(200);
+  });
+
+  it('needs five distinct lifts, not five rows, to rank Meet Regular', () => {
+    const lift = { snatch1: 50, snatch2: -55, cj1: 70, cj2: -75, total: 120 };
+    const duplicated = [1, 2, 3].flatMap((month) => [
+      row({ ...lift, meet: `Meet ${month}`, date: `2026-0${month}-01`, age: 'Junior' }),
+      row({ ...lift, meet: `Meet ${month}`, date: `2026-0${month}-01`, age: 'Senior' }),
+    ]);
+    expect(calculateWrappedStats(duplicated).yearRank).toBe('Rising Star');
+
+    const distinct = [1, 2, 3, 4, 5].map((month) =>
+      row({ ...lift, meet: `Meet ${month}`, date: `2026-0${month}-01` }),
+    );
+    expect(calculateWrappedStats(distinct).yearRank).toBe('Meet Regular');
+  });
+
   it('ranks a heavy but inconsistent year as Heavy Hitter', () => {
     const stats = calculateWrappedStats([
       row({ snatch1: 140, snatch2: -145, cj1: 170, cj2: -175, total: 310 }),

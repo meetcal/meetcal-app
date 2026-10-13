@@ -1,7 +1,8 @@
 import { MeetConfig, MeetName } from '../types/meet';
 import { fetchMeetByName } from '@/lib/database/meet-manager';
 import { formatTo12Hour } from '@/utils/time';
-import { convertZonedLocalToUTC } from '@/utils/timezone';
+import { formatVenueLocation } from '@/lib/venue-address';
+import { convertZonedLocalToUTC, meetTimeZoneLabel } from '@/utils/timezone';
 
 /**
  * How long a resolved `MeetConfig` is reused before it is re-derived.
@@ -51,6 +52,9 @@ export async function getMeetConfig(meetName: MeetName): Promise<MeetConfig> {
     venue: meet.venue,
     time: meet.time,
     dates: meet.dates,
+    // Dropping this made the fallback zone look like the meet's own to the
+    // prune, the reminders, the widget and the calendar export.
+    timeZoneUnknown: meet.timeZoneUnknown === true,
   };
 
   meetConfigCache.set(meetName, { config, fetchedAt: Date.now() });
@@ -66,21 +70,28 @@ export function convertToUTC(
   return convertZonedLocalToUTC(dateStr, timeStr, timeZoneIdentifier);
 }
 
-export function formatTimeWithZone(timeStr: string, meet: MeetName): string {
+/**
+ * `timeStr` in 12-hour form with the meet's zone label at `dateYmd`, the
+ * session's own meet calendar date (a meet that spans a DST change has two).
+ * Needs `getMeetConfig(meet)` first.
+ */
+export function formatTimeWithZone(timeStr: string, meet: MeetName, dateYmd: string): string {
   const config = meetConfigCache.get(meet)?.config;
   if (!config) {
     throw new Error('Meet config not found. Make sure to call getMeetConfig first.');
   }
-  return `${formatTo12Hour(timeStr)} ${config.time.abbreviation}`;
+  const label = meetTimeZoneLabel(config.time, dateYmd);
+  return label ? `${formatTo12Hour(timeStr)} ${label}` : formatTo12Hour(timeStr);
 }
 
+/**
+ * The meet's venue for a calendar event's location (`lib/venue-address`), or
+ * "" when it has no real address. Needs `getMeetConfig(meet)` first.
+ */
 export function getMeetVenueLocation(meet: MeetName): string {
   const config = meetConfigCache.get(meet)?.config;
   if (!config) {
     throw new Error('Meet config not found. Make sure to call getMeetConfig first.');
   }
-  const { venue } = config;
-  const { address } = venue;
-  
-  return `${venue.name}, ${address.street}, ${address.city}, ${address.state} ${address.zip}`;
-} 
+  return formatVenueLocation(config.venue, config.name);
+}

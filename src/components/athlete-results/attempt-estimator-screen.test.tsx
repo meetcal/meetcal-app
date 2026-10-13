@@ -5,6 +5,10 @@ import { fetchAthletesWithSession, fetchRecentAthleteHistoryForNames } from "@/l
 import { saveMeetAthletes } from "@/lib/database/offline-store";
 
 jest.mock("@/contexts/ThemeContext", () => ({ useTheme: () => ({ currentTheme: "light" }) }));
+// Gating is covered by premium-screens-gated.test.tsx; this file tests the content.
+jest.mock("@/components/ui/SubscriptionGate", () => ({
+  SubscriptionGate: ({ children }: { children: React.ReactNode }) => children,
+}));
 jest.mock("expo-router", () => ({
   Stack: { Screen: () => null },
   useLocalSearchParams: () => ({ meet: "test-meet", sessionNumber: "1", platform: "Red" }),

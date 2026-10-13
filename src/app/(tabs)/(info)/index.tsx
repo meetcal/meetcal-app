@@ -35,12 +35,16 @@ export default function InfoScreen() {
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [versionAnnouncementKey, setVersionAnnouncementKey] = useState(0);
 
+  // Sign-in returns to the screen that was tapped, not to this tab, and that
+  // screen's `SubscriptionGate` shows the paywall to a non-subscriber. So the
+  // feature names here must stay out of `PREMIUM_FEATURES`
+  // (`lib/premium-intent.ts`), or sign-in pushes a second, routed paywall.
   const openCompDataScreen = useCallback(
-    (pathname: Href, feature: string) => {
+    (pathname: Href & string, feature: string) => {
       const authResult = requireAuth({
         feature,
         message: "Sign in to access premium features.",
-        returnPath: "/(tabs)/(info)",
+        returnPath: pathname,
       });
       if (authResult === null || authResult === false) {
         return;
@@ -133,7 +137,7 @@ export default function InfoScreen() {
             testID="info-qualifying-totals"
             lastSection={true}
             onPress={() =>
-              openCompDataScreen("/comp-data/new-qualifying-totals", "qualifying-totals")
+              openCompDataScreen("/comp-data/new-qualifying-totals", "info-qualifying-totals")
             }
           />
         </View>

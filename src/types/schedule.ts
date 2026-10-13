@@ -6,12 +6,19 @@ export type Platform = {
   platform: PlatformName;
   weightClass: string;
   platformStartTime?: string; // Optional field for platform-specific start time
+  /**
+   * The weigh-in the meet published for this platform's row ("" when none).
+   * Absent on schedules cached before it was kept per platform; read it
+   * through `platformSessionTimes`.
+   */
+  platformWeighInTime?: string;
 };
 
 export type Session = {
   id: string;
   number: number;
   startTime: string;
+  /** The first platform row's published weigh-in; prefer the platform's own. */
   weighInTime: string;
   platforms: Platform[];
 };

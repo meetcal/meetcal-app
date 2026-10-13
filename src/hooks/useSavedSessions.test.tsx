@@ -1,7 +1,10 @@
 import React from "react";
 import { act, create } from "react-test-renderer";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { AppState, type AppStateStatus } from "react-native";
 import { useSavedSessions } from "@/hooks/useSavedSessions";
+import { clearLocalUserData } from "@/lib/account-deletion";
+import { clearAccountDeleted } from "@/lib/deleted-accounts";
 import { fetchSchedule } from "@/lib/database/queries";
 import {
   NOTIFICATION_ENABLED_KEY,
@@ -70,8 +73,17 @@ jest.mock("@/lib/networkUtils", () => ({
 
 /** `null` is RevenueCat still loading. */
 let mockIsSubscribed: boolean | null = true;
+/** RevenueCat's own answer (`null`: not yet), and the account it was about. */
+let mockConfirmedIsSubscribed: boolean | null = true;
+let mockConfirmedFor = "user_1";
 jest.mock("@/contexts/SubscriptionContext", () => ({
-  useSubscription: () => ({ isSubscribed: mockIsSubscribed }),
+  useSubscription: () => ({
+    isSubscribed: mockIsSubscribed,
+    confirmedEntitlement:
+      mockConfirmedIsSubscribed === null
+        ? null
+        : { appUserId: mockConfirmedFor, isSubscribed: mockConfirmedIsSubscribed },
+  }),
 }));
 
 /** The selected meet's schedule, as the schedule resource would serve it. */
@@ -156,6 +168,8 @@ jest.mock("@/lib/api/meetcal-api", () => {
     // The prune needs a fresh server clock sample; the server agrees with
     // the device here.
     refreshServerClock: async () => ({ skewMs: 0, sampledAt: Date.now() }),
+    // The reminders correct by the last sample: none yet here.
+    getServerClockSample: () => null,
     MAX_PLAUSIBLE_CLOCK_SKEW_MS: 15 * 60 * 1000,
     putSavedSession: jest.fn(async (_token: string, id: string) => ({
       session_id: id,
@@ -190,6 +204,8 @@ beforeEach(() => {
   mockClerkLoaded = false;
   mockIsNetworkAvailable = true;
   mockIsSubscribed = true;
+  mockConfirmedIsSubscribed = true;
+  mockConfirmedFor = "user_1";
   mockSelectedMeetSchedule = [];
   mockListScheduled.mockResolvedValue([]);
 });
@@ -902,6 +918,69 @@ describe("server reconcile with the pending-writes outbox", () => {
     expect(cancelNotification).toHaveBeenCalledWith("Test-Meet-1-Red");
   });
 
+  it("prunes only once RevenueCat confirms the subscription, not on the cached hint", async () => {
+    await AsyncStorage.setItem(SESSION_KEY, JSON.stringify([makeSession("Test-Meet-1-Red")]));
+    mockFetchUserPreferences.mockResolvedValue({ auto_unsave_started_sessions: true });
+    mockConvertToUTC.mockReturnValue(new Date("2000-01-01T15:00:00.000Z"));
+    // Started from the cache: subscribed, but RevenueCat has not answered.
+    mockConfirmedIsSubscribed = null;
+
+    const hook = await mountHook();
+    expect(hook.current.savedSessions.map((s) => s.id)).toEqual(["Test-Meet-1-Red"]);
+    expect(deleteSavedSession).not.toHaveBeenCalled();
+
+    mockConfirmedIsSubscribed = true;
+    await hook.rerender();
+
+    expect(hook.current.savedSessions).toEqual([]);
+  });
+
+  it("never prunes on the previous account's confirmed subscription after a switch", async () => {
+    await AsyncStorage.setItem(SESSION_KEY, JSON.stringify([makeSession("Test-Meet-1-Red")]));
+    mockFetchUserPreferences.mockResolvedValue({ auto_unsave_started_sessions: true });
+    mockConvertToUTC.mockReturnValue(new Date("2000-01-01T15:00:00.000Z"));
+    // RevenueCat last answered for the subscriber who was signed in before.
+    mockConfirmedFor = "user_0";
+
+    const hook = await mountHook();
+
+    expect(hook.current.savedSessions.map((s) => s.id)).toEqual(["Test-Meet-1-Red"]);
+    expect(deleteSavedSession).not.toHaveBeenCalled();
+  });
+
+  it("loads again after a load in flight when RevenueCat confirms mid-load", async () => {
+    mockConfirmedIsSubscribed = null;
+    let release!: () => void;
+    mockFetchSavedSessions.mockImplementationOnce(
+      () => new Promise((resolve) => {
+        release = () => resolve([]);
+      }),
+    );
+    const hook = await mountHook();
+    expect(mockFetchSavedSessions).toHaveBeenCalledTimes(1);
+
+    // Confirmed while the first load still waits on the server.
+    mockConfirmedIsSubscribed = true;
+    await hook.rerender();
+    await act(async () => release());
+    await flush();
+
+    // Not joined: a second load ran after the first, with its own prune.
+    expect(mockFetchSavedSessions).toHaveBeenCalledTimes(2);
+  });
+
+  it("never prunes for a lapse RevenueCat reports, though the cache says subscribed", async () => {
+    await AsyncStorage.setItem(SESSION_KEY, JSON.stringify([makeSession("Test-Meet-1-Red")]));
+    mockFetchUserPreferences.mockResolvedValue({ auto_unsave_started_sessions: true });
+    mockConvertToUTC.mockReturnValue(new Date("2000-01-01T15:00:00.000Z"));
+    mockConfirmedIsSubscribed = false;
+
+    const hook = await mountHook();
+
+    expect(hook.current.savedSessions.map((s) => s.id)).toEqual(["Test-Meet-1-Red"]);
+    expect(deleteSavedSession).not.toHaveBeenCalled();
+  });
+
   it("keeps local sessions and does not shrink storage when getToken() rejects", async () => {
     // Clerk can throw from `getToken()` (offline, a session refresh mid-flight).
     // That is neither "no token" nor "the server says you have nothing", so
@@ -1217,6 +1296,24 @@ describe("signed-out Clerk and the cached user", () => {
 
     expect(hook.current.savedSessions).toEqual([]);
   });
+
+  it("blanks a deleted account's sessions and widget at once, even offline with the cached user active (#250)", async () => {
+    mockIsNetworkAvailable = false;
+    mockClerkLoaded = true;
+    const hook = await mountHook();
+    expect(hook.current.savedSessions).toHaveLength(1);
+    (clearSavedWidget as jest.Mock).mockClear();
+
+    await act(async () => {
+      await clearLocalUserData("user_1");
+    });
+    await flush();
+
+    expect(hook.current.savedSessions).toEqual([]);
+    expect(clearSavedWidget).toHaveBeenCalled();
+    expect(await AsyncStorage.getItem(SESSION_KEY)).toBeNull();
+    clearAccountDeleted("user_1");
+  });
 });
 
 describe("session reminders follow the saved list", () => {
@@ -1481,5 +1578,171 @@ describe("saved widget sync", () => {
     await mountHook();
 
     expect(mockSyncSavedWidget).toHaveBeenLastCalledWith("Meet D", expect.any(Array), undefined);
+  });
+});
+
+describe("other devices' changes reach the list on resume (#399)", () => {
+  const mockScheduleNotification = scheduleNotification as jest.MockedFunction<
+    typeof scheduleNotification
+  >;
+  let appStateListeners: ((state: AppStateStatus) => void)[] = [];
+  let now = Date.UTC(2026, 9, 12, 12);
+
+  /** The app going to the background and coming back, `ms` later. */
+  async function resumeAfter(ms: number): Promise<void> {
+    await act(async () => {
+      for (const listener of appStateListeners) listener("background");
+      now += ms;
+      for (const listener of appStateListeners) listener("active");
+    });
+    await flush();
+  }
+
+  beforeEach(async () => {
+    jest.clearAllMocks();
+    jest.spyOn(console, "error").mockImplementation(() => {});
+    appStateListeners = [];
+    jest.spyOn(AppState, "addEventListener").mockImplementation((_type, handler) => {
+      const listener = handler as (state: AppStateStatus) => void;
+      appStateListeners.push(listener);
+      return {
+        remove: () => {
+          appStateListeners = appStateListeners.filter((l) => l !== listener);
+        },
+      } as unknown as ReturnType<typeof AppState.addEventListener>;
+    });
+    jest.spyOn(Date, "now").mockImplementation(() => now);
+    mockClerkUser = { id: "user_1" };
+    mockClerkLoaded = true;
+    mockGetToken.mockResolvedValue(TOKEN);
+    mockFetchSavedSessions.mockReset();
+    mockFetchUserPreferences.mockResolvedValue({ auto_unsave_started_sessions: false });
+    await AsyncStorage.clear();
+    await AsyncStorage.setItem(NOTIFICATION_ENABLED_KEY, "true");
+  });
+
+  afterEach(() => {
+    jest.restoreAllMocks();
+  });
+
+  it("re-fetches on foreground, republishes the list and re-syncs reminders", async () => {
+    mockFetchSavedSessions.mockResolvedValue([apiRow("Test-Meet-9-Blue")]);
+    const hook = await mountHook();
+    expect(hook.current.savedSessions.map((s) => s.id)).toEqual(["Test-Meet-9-Blue"]);
+    expect(mockFetchSavedSessions).toHaveBeenCalledTimes(1);
+
+    // Another device unsaved 9 Blue and saved 14 Red.
+    mockFetchSavedSessions.mockResolvedValue([apiRow("Test-Meet-14-Red")]);
+    mockListScheduled.mockResolvedValue([
+      { identifier: "Test-Meet-9-Blue", data: { kind: "session-reminder", triggerAtMs: 1 } },
+    ]);
+    mockScheduleNotification.mockClear();
+    await resumeAfter(5 * 60_000);
+
+    expect(mockFetchSavedSessions).toHaveBeenCalledTimes(2);
+    expect(hook.current.savedSessions.map((s) => s.id)).toEqual(["Test-Meet-14-Red"]);
+    expect(cancelNotification).toHaveBeenCalledWith("Test-Meet-9-Blue");
+    expect(mockScheduleNotification.mock.calls.map((call) => call[3])).toContain("Test-Meet-14-Red");
+    expect(syncSavedWidget).toHaveBeenCalled();
+  });
+
+  it("does not re-fetch on a foreground within a minute of the last load", async () => {
+    mockFetchSavedSessions.mockResolvedValue([apiRow("Test-Meet-9-Blue")]);
+    await mountHook();
+    await resumeAfter(10_000);
+    expect(mockFetchSavedSessions).toHaveBeenCalledTimes(1);
+  });
+
+  it("re-fetches on reconnect right after a foreground load that failed offline", async () => {
+    mockFetchSavedSessions.mockResolvedValue([apiRow("Test-Meet-9-Blue")]);
+    const hook = await mountHook();
+
+    mockFetchSavedSessions.mockRejectedValueOnce(new Error("Network request failed"));
+    await resumeAfter(5 * 60_000);
+    expect(hook.current.syncFailed).toBe(true);
+    expect(mockFetchSavedSessions).toHaveBeenCalledTimes(2);
+
+    // Back online 10 s later: inside the throttle window, but the last load
+    // never reached the server.
+    mockFetchSavedSessions.mockResolvedValue([apiRow("Test-Meet-14-Red")]);
+    now += 10_000;
+    await act(async () => {
+      mockNetworkListener(false);
+      mockNetworkListener(true);
+    });
+    await flush();
+    expect(mockFetchSavedSessions).toHaveBeenCalledTimes(3);
+    expect(hook.current.syncFailed).toBe(false);
+    expect(hook.current.savedSessions.map((s) => s.id)).toEqual(["Test-Meet-14-Red"]);
+  });
+
+  it("re-fetches after a load that was still failing when the network came back", async () => {
+    mockFetchSavedSessions.mockResolvedValue([apiRow("Test-Meet-9-Blue")]);
+    const hook = await mountHook();
+
+    // A foreground load that will fail is still waiting when the network
+    // flaps back, inside the throttle window.
+    let fail!: () => void;
+    mockFetchSavedSessions.mockImplementationOnce(
+      () => new Promise((_resolve, reject) => {
+        fail = () => reject(new Error("Network request failed"));
+      }),
+    );
+    await resumeAfter(5 * 60_000);
+    mockFetchSavedSessions.mockResolvedValue([apiRow("Test-Meet-14-Red")]);
+    await act(async () => {
+      mockNetworkListener(false);
+      mockNetworkListener(true);
+    });
+    // The reconnect (jitter is 0 here) lands before the load fails.
+    await flush();
+    expect(mockFetchSavedSessions).toHaveBeenCalledTimes(2);
+    await act(async () => fail());
+    await flush();
+
+    expect(mockFetchSavedSessions).toHaveBeenCalledTimes(3);
+    expect(hook.current.savedSessions.map((s) => s.id)).toEqual(["Test-Meet-14-Red"]);
+  });
+
+  it("sends queued writes after a load that was still failing when the network came back", async () => {
+    mockFetchSavedSessions.mockResolvedValue([]);
+    const hook = await mountHook();
+
+    // A foreground load passes its (empty) outbox flush and waits on the
+    // server; then a save made offline is queued behind it.
+    let fail!: () => void;
+    mockFetchSavedSessions.mockImplementationOnce(
+      () => new Promise((_resolve, reject) => {
+        fail = () => reject(new Error("Network request failed"));
+      }),
+    );
+    await resumeAfter(5 * 60_000);
+    mockPutSavedSession.mockRejectedValueOnce(new Error("Network request failed"));
+    await act(async () => {
+      await hook.current.saveSession(makeSession("Test-Meet-1-Red"));
+    });
+    expect(countPendingWrites(await readOutbox("user_1"))).toBe(1);
+    await act(async () => {
+      mockNetworkListener(false);
+      mockNetworkListener(true);
+    });
+    await flush();
+    await act(async () => fail());
+    await flush();
+
+    expect(countPendingWrites(await readOutbox("user_1"))).toBe(0);
+  });
+
+  it("re-fetches when the network comes back with nothing queued", async () => {
+    mockFetchSavedSessions.mockResolvedValue([apiRow("Test-Meet-9-Blue")]);
+    const hook = await mountHook();
+    mockFetchSavedSessions.mockResolvedValue([apiRow("Test-Meet-14-Red")]);
+    now += 5 * 60_000;
+    await act(async () => {
+      mockNetworkListener(false);
+      mockNetworkListener(true);
+    });
+    await flush();
+    expect(hook.current.savedSessions.map((s) => s.id)).toEqual(["Test-Meet-14-Red"]);
   });
 });

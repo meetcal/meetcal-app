@@ -1,6 +1,7 @@
 import { IconSymbol } from "@/components/ui/IconSymbol";
 import { useNavigation, usePathname, useRouter } from "expo-router";
 import {
+  type ReactNode,
   useCallback,
   useEffect,
   useLayoutEffect,
@@ -19,6 +20,8 @@ import {
 } from "react-native";
 
 import { DayView } from "@/components/schedule/DayView";
+import { useMeetZone } from "@/hooks/useMeetZone";
+import { meetTimeZoneLabel } from "@/utils/timezone";
 import { MeetSelectionModal } from "@/components/schedule/MeetSelectionModal";
 import {
   checkOnboardingComplete,
@@ -143,20 +146,19 @@ export default function ScheduleScreen() {
     onViewableItemsChanged,
     onMomentumScrollEnd,
     viewabilityConfig,
+    setHeaderTitle,
   } = usePaginatedSchedule({
     schedule,
     onTitleChange: handleTitleChange,
     formatDayTitle,
   });
 
-  // `meetDetails.time.abbreviation` is resolved once, in `mapApiMeet`, at the
-  // meet's own start date. Re-deriving it here with
-  // `getTimeZoneAbbreviation(id)` formats *today* instead: open a December New
-  // York meet in September and every row reads "EDT" when the sessions are
-  // actually EST, which looks to the user like the times are an hour wrong.
-  // The old "America/New_York" default also mislabelled every meet whose
-  // details had not loaded yet.
-  const timeZoneAbbreviation = meetDetails?.time.abbreviation ?? "";
+  // Each day's times are labelled with the zone at that day
+  // (`meetTimeZoneLabel`): a meet that spans a DST change reads "EDT" on
+  // Saturday and "EST" on Sunday. Formatting *today* instead labelled a
+  // December New York meet opened in September "EDT". No label while the
+  // meet's details load; the old "America/New_York" default mislabelled them.
+  const meetZone = useMeetZone(meetDetails?.time);
 
   // Header configuration
   useLayoutEffect(() => {
@@ -304,22 +306,17 @@ export default function ScheduleScreen() {
       // The meet start date is a calendar date in the meet's timezone. Format
       // it through the shared UTC-safe helper; `new Date("2026-06-20")` is UTC
       // midnight and renders as Jun 19 on any US device.
+      // Through the day list's setter, so it knows the header no longer
+      // shows its day: switching back to a meet with a schedule then sets
+      // that meet's day again instead of keeping this date.
       const formattedDate = formatIsoDateTitle(meetDetails.dates.start);
-      if (formattedDate) {
-        navigation.setOptions({
-          title: formattedDate,
-          headerTitle: shouldUseCustomHeader
-            ? () => <HeaderDate>{formattedDate}</HeaderDate>
-            : undefined,
-        });
-      }
+      if (formattedDate) setHeaderTitle(formattedDate);
     }
   }, [
     isLoading,
     schedule.length,
     meetDetails,
-    navigation,
-    shouldUseCustomHeader,
+    setHeaderTitle,
   ]);
 
   // Handle refreshing available meets in modal
@@ -362,26 +359,36 @@ export default function ScheduleScreen() {
       <View style={[styles.pageContainer, { width: pageWidth }]}>
         <DayView
           day={item}
-          timeZone={timeZoneAbbreviation}
+          timeZone={meetTimeZoneLabel(meetZone, item.fullDate)}
           meet={selectedMeet || ""}
           onRefreshComplete={refreshSchedule}
           refreshing={isRefreshing}
         />
       </View>
     ),
-    [pageWidth, timeZoneAbbreviation, refreshSchedule, isRefreshing, selectedMeet],
+    [pageWidth, meetZone, refreshSchedule, isRefreshing, selectedMeet],
   );
 
-  if (isMeetLoading) {
-    return <ScheduleSkeleton label="Loading meets..." />;
-  }
-
+  // The tour is a modal that keeps its page in local state. It sits first in
+  // the same fragment on every branch below, skeletons included, so a meet
+  // list or schedule arriving mid-tour (a reconnect) cannot unmount it and
+  // send the user back to page 1.
   const onboarding = (
     <OnboardingView
       visible={onboardingStatus === "showing"}
       onComplete={() => setOnboardingStatus("done")}
     />
   );
+  const withOnboarding = (content: ReactNode) => (
+    <>
+      {onboarding}
+      {content}
+    </>
+  );
+
+  if (isMeetLoading) {
+    return withOnboarding(<ScheduleSkeleton label="Loading meets..." />);
+  }
 
   const meetSelectionModal = (
     <MeetSelectionModal
@@ -400,12 +407,11 @@ export default function ScheduleScreen() {
       isOffline,
       hasMeets: upcomingMeets.length > 0,
     });
-    return (
+    return withOnboarding(
       <ThemedView
         testID="schedule-no-meet"
         style={[styles.container, { backgroundColor: colors.background }, screenInsets]}
       >
-        {onboarding}
         <ScrollView
           contentContainerStyle={styles.emptyStateContainer}
           refreshControl={
@@ -435,16 +441,14 @@ export default function ScheduleScreen() {
   }
 
   if ((isLoading && schedule.length === 0) || isChangingMeet) {
-    return <ScheduleSkeleton label="Loading schedule..." />;
+    return withOnboarding(<ScheduleSkeleton label="Loading schedule..." />);
   }
 
-  return (
+  return withOnboarding(
     <ThemedView
       testID="schedule-screen"
       style={[styles.container, { backgroundColor: colors.background }, screenInsets]}
     >
-      {onboarding}
-
       <View
         style={[
           styles.filterContainer,

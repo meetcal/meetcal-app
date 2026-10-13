@@ -4,7 +4,7 @@ import { ThemedView } from "@/components/ui/ThemedView";
 import { SupabaseLiftResult } from "@/data/types/athletes";
 import { MeetName } from "@/data/types/meet";
 import { useAppColors } from "@/hooks/useAppColors";
-import { filterSessionAthletes } from "@/lib/athletes";
+import { filterSessionAthletes, freshRosterReplacesShown } from "@/lib/athletes";
 import {
   AthleteAttemptEstimate,
   calculateEstimates,
@@ -36,6 +36,7 @@ import {
   StyleSheet,
   View,
 } from "react-native";
+import { SubscriptionGate } from "@/components/ui/SubscriptionGate";
 import { useScreenHorizontalInsets } from "@/hooks/useScreenInsets";
 import { Palette } from "@/constants/Palette";
 
@@ -65,7 +66,20 @@ function SkeletonCard({ colors }: { colors: ReturnType<typeof useAppColors> }) {
   );
 }
 
+/**
+ * A premium screen. The buttons that open it check the subscription, but a
+ * `meetcal://` deep link reaches the route directly, so it gates itself like
+ * every other premium screen.
+ */
 export default function AttemptEstimatorScreen() {
+  return (
+    <SubscriptionGate feature="attempt-estimator">
+      <AttemptEstimatorContent />
+    </SubscriptionGate>
+  );
+}
+
+function AttemptEstimatorContent() {
   const screenInsets = useScreenHorizontalInsets();
   const colors = useAppColors();
   const params = useLocalSearchParams<{
@@ -167,7 +181,17 @@ export default function AttemptEstimatorScreen() {
       );
       if (isStale()) return;
       if (freshSessionAthletes.length === 0) {
-        setEstimates([]);
+        // The Start List rule: an empty answer (a re-import, a transient
+        // filter miss) leaves the estimates painted from the downloaded
+        // session in place, and only reads "no athletes" with nothing shown.
+        if (
+          freshRosterReplacesShown(
+            freshSessionAthletes.length,
+            cachedSessionAthletes.length,
+          )
+        ) {
+          setEstimates([]);
+        }
         return;
       }
       // Off the critical path, as on the start list: a failed cache write

@@ -220,3 +220,43 @@ test("results search shows the new athlete's answer, never the previous one's", 
   await expect(page.locator("tbody")).toContainText("Bo Kim Meet");
   await expect(page.getByText("Ann Lee Meet")).toHaveCount(0);
 });
+
+test("searching again for the same athlete searches again", async ({ page }) => {
+  await mockSubscribedUser(page);
+  let searches = 0;
+  await routeQuery(page, "results:search", async (route, args) => {
+    if (!("startDate" in args)) {
+      await route.fulfill(valueAnswer({ matched_name: null, suggestions: [], results: [] }));
+      return;
+    }
+    searches += 1;
+    if (searches === 1) {
+      await route.fulfill(errorAnswer("Server Error"));
+      return;
+    }
+    await route.fulfill(valueAnswer({ matched_name: "Ann Lee", suggestions: [], results: [{ name: "Ann Lee", meet: "Ann Lee Meet", date: "2026-06-20", age: "Senior", body_weight: 70, snatch1: 90, snatch2: 95, snatch3: 0, snatch_best: 95, cj1: 110, cj2: 115, cj3: 0, cj_best: 115, total: 210, adaptive: false }] }));
+  });
+
+  await page.goto("/results");
+  const athleteSearch = page.getByLabel("Athlete", { exact: true });
+  await athleteSearch.fill("Ann Lee");
+  await athleteSearch.press("Enter");
+  await expect(page.getByRole("alert")).toContainText("Could not load results");
+
+  // The same search again is sent again, not answered with the earlier error.
+  await athleteSearch.press("Enter");
+  await expect(page.locator("tbody")).toContainText("Ann Lee Meet");
+  await expect(page.getByRole("alert")).toHaveCount(0);
+  expect(searches).toBe(2);
+});
+
+test("an unreadable answer is explained without naming the Convex function", async ({ page }) => {
+  await mockSubscribedUser(page);
+  await routeQuery(page, "reference:standards", (route) =>
+    route.fulfill({ contentType: "application/json", headers: { "access-control-allow-origin": "*" }, body: "{not json" }),
+  );
+
+  await page.goto("/standards");
+  await expect(page.getByRole("alert")).toContainText("Could not load standards: MeetCal sent an answer this page couldn't read");
+  await expect(page.getByRole("alert")).not.toContainText("reference:standards");
+});

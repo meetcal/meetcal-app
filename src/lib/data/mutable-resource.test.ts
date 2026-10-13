@@ -72,6 +72,38 @@ describe("createMutableResource", () => {
     warn.mockRestore();
   });
 
+  it("keeps the cached data, unpersisted, when keepCached says so", async () => {
+    const persistFresh = jest.fn();
+    const resource = createMutableResource<number[], []>({
+      getKey: () => "keep-cached",
+      loadCached: async () => ({ data: [1, 2], lastUpdatedAt: 10 }),
+      fetchFresh: async () => [],
+      persistFresh,
+      keepCached: (_cached, fresh) => fresh.length === 0,
+    });
+
+    const result = await resource.revalidate();
+
+    expect(result).toEqual({ data: [1, 2], changed: false, lastUpdatedAt: 10, source: "network" });
+    expect(persistFresh).not.toHaveBeenCalled();
+  });
+
+  it("takes the fresh data when there is no cache, whatever keepCached says", async () => {
+    const persistFresh = jest.fn(async (data: number[]) => ({ data, lastUpdatedAt: 20 }));
+    const resource = createMutableResource<number[], []>({
+      getKey: () => "keep-cached-empty",
+      loadCached: async () => null,
+      fetchFresh: async () => [],
+      persistFresh,
+      keepCached: () => true,
+    });
+
+    const result = await resource.revalidate();
+
+    expect(result.data).toEqual([]);
+    expect(result.changed).toBe(true);
+  });
+
   it("dedupes concurrent revalidations by resource key", async () => {
     const fetchFresh = jest.fn(
       async () =>

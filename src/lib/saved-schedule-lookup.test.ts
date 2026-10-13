@@ -37,7 +37,8 @@ describe("buildSessionScheduleLookup", () => {
           weighInTime: "7:00 AM",
           platforms: [
             { platform: "Red", weightClass: "71kg", platformStartTime: "10:00 AM" },
-            { platform: "Blue Team", weightClass: "76kg", platformStartTime: "" },
+            // No start field: a schedule cached in an older shape.
+            { platform: "Blue Team", weightClass: "76kg" },
           ],
         },
         {

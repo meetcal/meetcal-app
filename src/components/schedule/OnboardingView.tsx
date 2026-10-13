@@ -2,13 +2,13 @@ import { ThemedText } from "@/components/ui/ThemedText";
 import { useAppColors } from "@/hooks/useAppColors";
 import { useScreenHorizontalInsets } from "@/hooks/useScreenInsets";
 import { OnboardingViewProps } from "@/types/schedule";
-import { NOTIFICATION_PROMPT_SHOWN_KEY } from "@/utils/notifications";
+import {
+  ensureReminderChannel,
+  NOTIFICATION_PROMPT_SHOWN_KEY,
+} from "@/utils/notifications";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Calendar from "expo-calendar/legacy";
 import * as Notifications from "expo-notifications";
-// Named import: eslint-plugin-import cannot see enums re-exported through
-// expo-notifications' nested `export *` chain on the namespace object.
-import { AndroidImportance } from "expo-notifications";
 import React, { useState } from "react";
 import { Modal, Platform, Pressable, StyleSheet, View } from "react-native";
 import { devLog } from "@/lib/logger";
@@ -178,14 +178,8 @@ export function OnboardingView({ visible, onComplete }: OnboardingViewProps) {
 
   const requestNotificationAccess = async () => {
     try {
-      if (Platform.OS === "android") {
-        await Notifications.setNotificationChannelAsync("default", {
-          name: "default",
-          importance: AndroidImportance.MAX,
-          vibrationPattern: [0, 250, 250, 250],
-          lightColor: "#FF231F7C",
-        });
-      }
+      // Android 13+ shows the prompt only once a channel exists.
+      await ensureReminderChannel();
 
       const { status } = await Notifications.requestPermissionsAsync();
       const granted = status === "granted";

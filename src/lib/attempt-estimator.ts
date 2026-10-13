@@ -256,13 +256,20 @@ export function calculateEstimates(
     cjMakeRate: number;
   }[] = [];
 
+  // Each in-window row keyed once, in order, rather than every row keyed
+  // again for every athlete (athletes x rows `normalizeAthleteName` calls).
+  const historyByName = new Map<string, SupabaseLiftResult[]>();
+  for (const result of athleteResults) {
+    if (normalizeDate(result.date) < historyCutoffDate) continue;
+    const key = normalizeAthleteName(result.name);
+    const rows = historyByName.get(key);
+    if (rows) rows.push(result);
+    else historyByName.set(key, [result]);
+  }
+
   for (const athlete of athletes) {
-    const normalizedAthleteName = normalizeAthleteName(athlete.name);
-    const athleteHistory = athleteResults.filter(
-      result =>
-        normalizeAthleteName(result.name) === normalizedAthleteName &&
-        normalizeDate(result.date) >= historyCutoffDate
-    );
+    // A copy: two entries with one name must not share (and mutate) one array.
+    const athleteHistory = [...(historyByName.get(normalizeAthleteName(athlete.name)) ?? [])];
 
     const bestSnatchCandidates = athleteHistory
       .map((r) => getSnatchBest(r))
