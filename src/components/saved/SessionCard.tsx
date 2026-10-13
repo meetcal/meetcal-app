@@ -5,7 +5,8 @@ import { useAppColors } from "@/hooks/useAppColors";
 import { SessionCardProps } from "@/types/saved";
 import { meetCalendarDateAnchor } from "@/utils/dateTime";
 import { makeLookupKey } from "@/utils/session";
-import { calculateWeighInTime } from "@/utils/time";
+import { resolveWeighInTime } from "@/utils/time";
+import { meetTimeZoneLabel } from "@/utils/timezone";
 import React from "react";
 import { Pressable, StyleSheet, View } from "react-native";
 import { Palette } from "@/constants/Palette";
@@ -17,7 +18,7 @@ const SessionCard = React.memo<SessionCardProps>(
     onPress,
     sessionLookupByMeet,
     allowedMeetNames,
-    timeZoneAbbr,
+    meetZone,
   }) => {
     const colors = useAppColors();
 
@@ -38,10 +39,10 @@ const SessionCard = React.memo<SessionCardProps>(
       ?.get(makeLookupKey(sessionNumber, platform));
     const weightClass = lookup?.weightClass || item.weightClass || "";
     const startTime = lookup?.startTime || item.startTime || "";
-    // `calculateWeighInTime` returns "" for a missing or unparseable start
-    // time, so keep falling through to whatever the session was saved with.
+    // The schedule's weigh-in (published, else start minus 2 h); without a
+    // timed row, the saved pair, which was resolved by the same rule.
     const weighInTime =
-      lookup?.weighInTime || calculateWeighInTime(startTime) || item.weighInTime || "";
+      lookup?.weighInTime || resolveWeighInTime(item.startTime, item.weighInTime);
     // `new Date(`${date}T12:00:00`)` is *device*-local noon; rendering that in
     // the meet's timezone flips the calendar day whenever the two zones are
     // more than 12 hours apart. Anchor at noon UTC and read it back in UTC:
@@ -58,7 +59,8 @@ const SessionCard = React.memo<SessionCardProps>(
           })
         : "Date TBD");
 
-    // Format time with the correct timezone abbreviation
+    // Labelled with the zone at this session's own date.
+    const timeZoneAbbr = meetTimeZoneLabel(meetZone, lookup?.fullDate || item.date);
     const formatTime = (time: string) => {
       if (!time) return "TBD";
       if (!timeZoneAbbr) return time;

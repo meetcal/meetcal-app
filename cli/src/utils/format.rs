@@ -64,6 +64,19 @@ pub fn us_time(value: &str) -> String {
     format!("{hour}:{minute:02} {suffix}")
 }
 
+/// `08:00` or `08:00:00` as `08:00`, for JSON and CSV; anything else as written.
+pub fn time_24h(value: &str) -> String {
+    let mut parts = value.trim().split(':');
+    let (Some(hour), Some(minute)) = (parts.next(), parts.next()) else {
+        return value.to_string();
+    };
+    let (Ok(hour @ 0..=23), Ok(minute @ 0..=59)) = (hour.parse::<u32>(), minute.parse::<u32>())
+    else {
+        return value.to_string();
+    };
+    format!("{hour:02}:{minute:02}")
+}
+
 /// A lift in kilograms without a trailing `.0`; blank for none.
 pub fn kg(value: f64) -> String {
     if value <= 0.0 {
@@ -72,9 +85,17 @@ pub fn kg(value: f64) -> String {
     value.to_string()
 }
 
+/// A record weight; blank for none. The records answer `0` for a lift with no record set.
+fn record_weight(value: Option<f64>) -> String {
+    value
+        .filter(|value| value.is_finite() && *value > 0.0)
+        .map(|value| value.to_string())
+        .unwrap_or_default()
+}
+
 /// A record cell: the weight, then who set it, then when and where, one per line.
 pub fn record_cell(value: Option<f64>, holder: Option<&RecordHolder>) -> String {
-    let mut lines = vec![value.map(|value| value.to_string()).unwrap_or_default()];
+    let mut lines = vec![record_weight(value)];
     if let Some(holder) = holder {
         lines.push(holder.name.clone());
         let detail: Vec<String> = [holder.date.as_deref().map(us_date), holder.location.clone()]
@@ -106,7 +127,7 @@ pub fn record_data_header() -> Vec<&'static str> {
 /// One lift's four export columns: weight, holder, date (`YYYY-MM-DD` as stored), place.
 pub fn record_data_cells(value: Option<f64>, holder: Option<&RecordHolder>) -> [String; 4] {
     [
-        value.map(|value| value.to_string()).unwrap_or_default(),
+        record_weight(value),
         holder.map(|holder| holder.name.clone()).unwrap_or_default(),
         holder
             .and_then(|holder| holder.date.clone())
@@ -144,6 +165,10 @@ mod tests {
         assert_eq!(us_time("12:30:00"), "12:30 PM");
         assert_eq!(us_time("00:15"), "12:15 AM");
         assert_eq!(us_time("TBD"), "TBD");
+        assert_eq!(time_24h("08:00:00"), "08:00");
+        assert_eq!(time_24h("8:05"), "08:05");
+        assert_eq!(time_24h("13:30"), "13:30");
+        assert_eq!(time_24h("TBD"), "TBD");
     }
 
     #[test]
@@ -164,6 +189,10 @@ mod tests {
         };
         assert_eq!(record_cell(Some(90.0), Some(&standard)), "90\nStandard");
         assert_eq!(record_cell(None, None), "");
+        // A lift with no record set (the records answer 0) is blank, in the table and the export.
+        assert_eq!(record_cell(Some(0.0), None), "");
+        assert_eq!(record_data_cells(Some(0.0), None)[0], "");
+        assert_eq!(record_data_cells(Some(40.0), None)[0], "40");
         assert_eq!(kg(0.0), "");
         assert_eq!(kg(142.5), "142.5");
     }

@@ -1,5 +1,11 @@
 import { convertToUTC, getMeetConfig } from '@/data/meets/config';
 import type { MeetName } from '@/data/types/meet';
+import {
+  getServerClockSample,
+  MAX_PLAUSIBLE_CLOCK_SKEW_MS,
+  type ServerClockSample,
+} from '@/lib/api/meetcal-api';
+import { devLog } from '@/lib/logger';
 import { getMeetSchedule } from '@/lib/database/offline-store';
 import {
   readReminderPreference,
@@ -15,6 +21,7 @@ import {
   scheduleNotification,
   type ScheduledNotificationSummary,
 } from '@/utils/notifications';
+import { resolvedMeetTimeZone } from '@/utils/timezone';
 
 /**
  * The local "session starts in 1 hour" reminders, kept in line with the
@@ -55,10 +62,66 @@ export function reminderTriggerDate(sessionStart: Date): Date {
   return new Date(sessionStart.getTime() - NOTIFICATION_LEAD_MS);
 }
 
+/**
+ * A scheduled reminder whose device-clock fire time is within this of the
+ * wanted one is left alone: each clock sample moves the skew by a few ms, and
+ * rescheduling for that would churn every reminder on every sync.
+ */
+export const REMINDER_FIRE_TOLERANCE_MS = 60 * 1000;
+
+/**
+ * How old a server clock sample may be and still correct reminders. The app
+ * resamples every `SERVER_CLOCK_RESAMPLE_MS` (10 minutes) while it talks to
+ * the backend, so an hour covers a normal session without trusting a sample
+ * from before a clock change.
+ */
+export const REMINDER_CLOCK_SAMPLE_MAX_AGE_MS = 60 * 60 * 1000;
+
+/**
+ * Server time minus device time to correct reminders by: the last sample's
+ * skew, or `null` before this process has one.
+ *
+ * Reminders used the raw device clock, while the prune measures "now" on the
+ * server's: with the device two hours fast, a 2:00 PM session's reminder
+ * fired at 11:00 AM and sessions in the next two hours got none. Unlike the
+ * prune, a large skew is still applied (a late or early reminder is the
+ * failure it corrects, and nothing is deleted on it), but it is logged.
+ *
+ * `null` is not 0: a cold start offline (at a venue) has no sample, and
+ * reading that as "the device clock is right" rescheduled every corrected
+ * reminder on the wrong clock and cancelled those due within the skew.
+ */
+export function reminderClockSkewMs(
+  sample: ServerClockSample | null,
+  deviceNowMs: number = Date.now(),
+): number | null {
+  if (!sample || !Number.isFinite(sample.skewMs)) return null;
+  // A sample measures the device clock as it was then. One taken in the
+  // device's future (the clock was set back since) or long ago (it may have
+  // jumped since, by NTP or by hand) says nothing reliable about it now:
+  // unknown, which keeps pending reminders rather than moving them.
+  const ageMs = deviceNowMs - sample.sampledAt;
+  if (ageMs < 0 || ageMs > REMINDER_CLOCK_SAMPLE_MAX_AGE_MS) return null;
+  if (Math.abs(sample.skewMs) > MAX_PLAUSIBLE_CLOCK_SKEW_MS) {
+    devLog('Session reminders: device clock is off by', sample.skewMs, 'ms; correcting for it');
+  }
+  return sample.skewMs;
+}
+
 /** A reminder that should be pending: the session (with live times) and when it fires. */
 export interface DesiredReminder {
   session: SavedSession;
+  /** When it should fire, on the server's clock. */
   triggerAtMs: number;
+  /** The same moment on the device's clock, which the OS fires by. */
+  fireAtMs: number;
+  /**
+   * The device clock's skew is not known yet (no server clock sample), so
+   * `fireAtMs` is only the device clock's reading of `triggerAtMs`. A
+   * pending reminder for the same moment is kept as it is: it may already
+   * carry a correction this sync cannot check.
+   */
+  skewUnknown?: boolean;
 }
 
 /** A pending session reminder, as read back from the OS. */
@@ -66,6 +129,15 @@ export interface ScheduledReminder {
   id: string;
   /** When it was scheduled to fire; `null` for reminders from older builds. */
   triggerAtMs: number | null;
+  /**
+   * The device-clock instant it was scheduled for; `null` for reminders from
+   * builds that scheduled on the device clock (so it equals `triggerAtMs`).
+   */
+  fireAtMs?: number | null;
+}
+
+function finiteOrNull(value: unknown): number | null {
+  return typeof value === 'number' && Number.isFinite(value) ? value : null;
 }
 
 /**
@@ -84,10 +156,8 @@ export function toScheduledReminders(
     if (!isReminder) continue;
     reminders.push({
       id: identifier,
-      triggerAtMs:
-        typeof data.triggerAtMs === 'number' && Number.isFinite(data.triggerAtMs)
-          ? data.triggerAtMs
-          : null,
+      triggerAtMs: finiteOrNull(data.triggerAtMs),
+      fireAtMs: finiteOrNull(data.fireAtMs),
     });
   }
   return reminders;
@@ -148,26 +218,41 @@ export function planReminderSync({
 
   const schedule: DesiredReminder[] = [];
   for (const [id, reminder] of desired) {
-    if (pending.get(id)?.triggerAtMs === reminder.triggerAtMs) continue;
+    const current = pending.get(id);
+    if (current && current.triggerAtMs === reminder.triggerAtMs) {
+      if (reminder.skewUnknown) continue;
+      // The device clock was corrected (or found wrong) since it was
+      // scheduled: the OS would fire it by the old reading.
+      const firesAt = current.fireAtMs ?? current.triggerAtMs;
+      if (Math.abs(firesAt - reminder.fireAtMs) <= REMINDER_FIRE_TOLERANCE_MS) continue;
+    }
     schedule.push(reminder);
   }
   return { cancel, schedule };
 }
 
 export interface ReminderSyncDeps {
+  /** The device clock. */
   now: () => Date;
+  /**
+   * Server time minus device time (`reminderClockSkewMs`), or `null` before
+   * the first server clock sample. Taken as 0 when omitted.
+   */
+  clockSkewMs?: () => number | null;
   /** The meet's IANA zone, or null when it cannot be resolved. */
   timeZoneFor: (meet: MeetName) => Promise<string | null>;
   /** The latest schedule the device has for the meet (may be empty). */
   readSchedule: (meet: MeetName) => Promise<ScheduleType>;
 }
 
-const defaultDeps: ReminderSyncDeps = {
+export const defaultReminderSyncDeps: ReminderSyncDeps = {
   now: () => new Date(),
+  clockSkewMs: () => reminderClockSkewMs(getServerClockSample()),
   timeZoneFor: async (meet) => {
     try {
-      const config = await getMeetConfig(meet);
-      return config?.time?.timeZoneIdentifier || null;
+      // `null` for a meet with no known zone, not the mapper's New York
+      // fallback, which reminded a Los Angeles session three hours early.
+      return resolvedMeetTimeZone(await getMeetConfig(meet));
     } catch {
       return null;
     }
@@ -194,8 +279,13 @@ export async function resolveDesiredReminders(
 ): Promise<{ desired: Map<string, DesiredReminder>; unresolvedIds: Set<string> }> {
   const desired = new Map<string, DesiredReminder>();
   const unresolvedIds = new Set<string>();
-  const nowMs = deps.now().getTime();
-  const cutoff = pastDateCutoff(deps.now());
+  const sampledSkewMs = deps.clockSkewMs ? deps.clockSkewMs() : 0;
+  const skewUnknown = sampledSkewMs === null;
+  const skewMs = sampledSkewMs ?? 0;
+  // Now on the server's clock (the device's, until it has been sampled):
+  // what "still ahead" is measured against.
+  const nowMs = deps.now().getTime() + skewMs;
+  const cutoff = pastDateCutoff(new Date(nowMs));
 
   const byMeet = new Map<MeetName, SavedSession[]>();
   for (const session of sessions) {
@@ -211,7 +301,12 @@ export async function resolveDesiredReminders(
     const schedule = await deps.readSchedule(meet).catch(() => [] as ScheduleType);
     const lookup = schedule.length > 0 ? buildSessionScheduleLookup(schedule) : null;
     const timedSessions = meetSessions.map((saved) => withScheduleTimes(saved, lookup));
-    if (timedSessions.every((session) => session.date && session.date < cutoff)) continue;
+    if (timedSessions.every((session) => session.date && session.date < cutoff)) {
+      // With no clock sample the cutoff is the device clock's, which may be
+      // days fast: a meet past only by it keeps its pending reminders.
+      if (skewUnknown) for (const session of timedSessions) unresolvedIds.add(session.id);
+      continue;
+    }
 
     const timeZone = await deps.timeZoneFor(meet);
 
@@ -232,7 +327,18 @@ export async function resolveDesiredReminders(
         continue;
       }
       const triggerAtMs = reminderTriggerDate(new Date(startMs)).getTime();
-      if (triggerAtMs > nowMs) desired.set(session.id, { session, triggerAtMs });
+      if (triggerAtMs > nowMs) {
+        desired.set(session.id, {
+          session,
+          triggerAtMs,
+          fireAtMs: triggerAtMs - skewMs,
+          ...(skewUnknown ? { skewUnknown: true } : {}),
+        });
+      } else if (skewUnknown) {
+        // Past by the device clock, which may be fast: on the server's it can
+        // still be ahead. Its pending reminder (if any) is left alone.
+        unresolvedIds.add(session.id);
+      }
     }
   }
   if (desired.size > MAX_PENDING_REMINDERS) {
@@ -247,11 +353,11 @@ export async function resolveDesiredReminders(
   return { desired, unresolvedIds };
 }
 
-async function scheduleReminder({ session, triggerAtMs }: DesiredReminder): Promise<void> {
+async function scheduleReminder({ session, triggerAtMs, fireAtMs }: DesiredReminder): Promise<void> {
   await scheduleNotification(
     'Session Reminder',
     `Session ${session.sessionNumber} ${session.platform} starts in 1 hour.`,
-    new Date(triggerAtMs),
+    new Date(fireAtMs),
     session.id,
     {
       id: session.id,
@@ -263,7 +369,7 @@ async function scheduleReminder({ session, triggerAtMs }: DesiredReminder): Prom
       weighInTime: session.weighInTime,
       date: session.date,
     },
-    { kind: SESSION_REMINDER_KIND, triggerAtMs },
+    { kind: SESSION_REMINDER_KIND, triggerAtMs, fireAtMs },
   );
 }
 
@@ -275,7 +381,7 @@ async function scheduleReminder({ session, triggerAtMs }: DesiredReminder): Prom
 export async function syncSessionReminders(
   sessions: readonly SavedSession[],
   isSubscribed: boolean | null,
-  deps: ReminderSyncDeps = defaultDeps,
+  deps: ReminderSyncDeps = defaultReminderSyncDeps,
 ): Promise<void> {
   try {
     const policy = resolveRemindersPolicy(await readReminderPreference(), isSubscribed);

@@ -21,6 +21,7 @@ import { isMeetName } from "@/data/types/meet";
 import { useAppColors } from "@/hooks/useAppColors";
 import { useCalendarSessionsExport } from "@/hooks/useCalendarSessionsExport";
 import { useFilterApplyReviewPrompt } from "@/hooks/useFilterApplyReviewPrompt";
+import { useMeetZone } from "@/hooks/useMeetZone";
 import { useRequirePremium } from "@/hooks/useRequirePremium";
 import { useScreenHorizontalInsets } from "@/hooks/useScreenInsets";
 import { useStarredClubs } from "@/hooks/useStarredClubs";
@@ -35,6 +36,7 @@ import { captureViewAsPng } from "@/lib/share-image";
 import {
   buildScheduleCsv,
   buildSessionExportRows,
+  describeIncompleteShare,
   scheduleCsvFileName,
   shareScheduleCsv,
 } from "@/lib/start-list-export";
@@ -107,7 +109,11 @@ export default function StartListScreen() {
   const { currentTheme } = useTheme();
   const { selectedMeet, meetDetails } = useSelectedMeet();
   const { isSubscribed } = useSubscription();
-  const { requirePremium: requirePremiumAction, requireAuth } = useRequirePremium();
+  const {
+    requirePremium: requirePremiumAction,
+    requireCalendarExport,
+    requireAuth,
+  } = useRequirePremium();
   const { saveAllFromAthletes } = useSavedSessions();
 
   const { athletes, schedule, loading, refreshing, refresh, loadFailure } =
@@ -149,13 +155,12 @@ export default function StartListScreen() {
   const shareGroup = getShareGroup(filters);
 
   // Row inputs, resolved once here instead of once per mounted row (see
-  // `AthleteRowProps`). `meetDetails.time.abbreviation` is resolved in
-  // `mapApiMeet` at the meet's own start date; re-deriving it per row with
-  // `getTimeZoneAbbreviation(id)` would format *today* — a December New York
-  // meet opened in September would read "EDT" against EST session times.
+  // `AthleteRowProps`). Each row labels its time with the zone at its own
+  // session date (`meetTimeZoneLabel`); `useMeetZone` keeps the zone's
+  // identity across meets refreshes, so the memoized rows do not re-render.
   const selectedMeetName =
     selectedMeet && isMeetName(selectedMeet) ? selectedMeet : null;
-  const timeZoneAbbr = meetDetails?.time.abbreviation ?? "";
+  const meetZone = useMeetZone(meetDetails?.time);
 
   usePreloadYearBests(athletes);
   const athleteBests = useYearBestsForSort(athletes, isBestLiftSort(filters.sort));
@@ -229,7 +234,7 @@ export default function StartListScreen() {
         index={index}
         currentTheme={currentTheme}
         validMeet={selectedMeetName}
-        timeZoneAbbr={timeZoneAbbr}
+        meetZone={meetZone}
         isSubscribed={isSubscribed}
         onSeeAllResults={handleSeeAllResults}
       />
@@ -240,7 +245,7 @@ export default function StartListScreen() {
       handleItemExpand,
       currentTheme,
       selectedMeetName,
-      timeZoneAbbr,
+      meetZone,
       isSubscribed,
       handleSeeAllResults,
     ],
@@ -408,9 +413,7 @@ export default function StartListScreen() {
   };
 
   const handleSaveToCalendar = () => {
-    if (!requirePremium("add-to-calendar", "Sign in to add sessions to your calendar.")) {
-      return;
-    }
+    if (!requireCalendarExport(START_LIST_PATH)) return;
     if (!selectedMeetName) {
       showToast({
         type: "error",
@@ -418,12 +421,32 @@ export default function StartListScreen() {
       });
       return;
     }
-    calendarExport.exportSessions(
-      groupCalendarSessions(
-        buildSessionExportRows(filteredAthletes, getSessionDetails),
-        selectedMeetName,
-      ),
-    );
+    // Untimed sessions and athletes the schedule cannot place yet are left
+    // out and counted, so the toast says "Added N of M".
+    const { rows, unscheduled } = buildSessionExportRows(filteredAthletes, getSessionDetails);
+    const { sessions, skipped } = groupCalendarSessions(rows, selectedMeetName, unscheduled);
+    calendarExport.exportSessions(sessions, { skipped });
+  };
+
+  /**
+   * Resolves `true` to share a schedule holding `included` of the athletes
+   * on screen; when some are missing (no session on the schedule yet), only
+   * after the user agrees to share it anyway.
+   */
+  const confirmIncompleteShare = (included: number): Promise<boolean> => {
+    const warning = describeIncompleteShare(filteredAthletes.length, included);
+    if (!warning) return Promise.resolve(true);
+    return new Promise((resolve) => {
+      Alert.alert(
+        "Some Athletes Are Missing",
+        warning,
+        [
+          { text: "Cancel", style: "cancel", onPress: () => resolve(false) },
+          { text: "Share Anyway", onPress: () => resolve(true) },
+        ],
+        { cancelable: true, onDismiss: () => resolve(false) },
+      );
+    });
   };
 
   /** The share actions need one club or WSO and at least one athlete. */
@@ -442,6 +465,8 @@ export default function StartListScreen() {
   const handleCreateShareableSchedule = async () => {
     if (!requirePremium("share-schedule-image", "Sign in to share schedule images.")) return;
     if (!canShareSchedule()) return;
+    const { rows } = buildSessionExportRows(filteredAthletes, getSessionDetails);
+    if (!(await confirmIncompleteShare(rows.length))) return;
 
     try {
       setShowShareViews(true);
@@ -476,10 +501,9 @@ export default function StartListScreen() {
     if (!requirePremium("export-csv", "Sign in to export schedules.")) return;
     if (!canShareSchedule()) return;
 
-    const csv = buildScheduleCsv(
-      buildSessionExportRows(filteredAthletes, getSessionDetails),
-      { group: shareGroup, meet: selectedMeet || "" },
-    );
+    const { rows } = buildSessionExportRows(filteredAthletes, getSessionDetails);
+    if (!(await confirmIncompleteShare(rows.length))) return;
+    const csv = buildScheduleCsv(rows, { group: shareGroup, meet: selectedMeet || "" });
     try {
       const shared = await shareScheduleCsv(csv, scheduleCsvFileName(shareGroup, Date.now()));
       if (!shared) {
@@ -639,7 +663,6 @@ export default function StartListScreen() {
           <View ref={shareScheduleRef} collapsable={false}>
             <ShareScheduleView
               filteredAthletes={filteredAthletes}
-              schedule={schedule}
               selectedMeet={selectedMeet || ""}
               selectedGroup={shareGroup}
               getSessionDetails={getSessionDetails}
@@ -649,7 +672,6 @@ export default function StartListScreen() {
           <View ref={shareScheduleTransparentRef} collapsable={false}>
             <ShareScheduleView
               filteredAthletes={filteredAthletes}
-              schedule={schedule}
               selectedMeet={selectedMeet || ""}
               selectedGroup={shareGroup}
               getSessionDetails={getSessionDetails}

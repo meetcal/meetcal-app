@@ -47,15 +47,20 @@ function OfflineDataContent() {
     filteredMeets,
     downloadingItems,
     downloadStatuses,
+    statusesLoad,
     isRefreshingAll,
     isDeletingAll,
     competitionItems,
     formatLastSynced,
+    isRowReady,
     handleDownload,
     handleDelete,
     confirmRefreshAll,
     confirmDeleteAll,
   } = useOfflineData();
+  // A row cannot say whether it is downloaded until the statuses are read,
+  // so its tap (download or remove) waits for them, and so does Refresh All.
+  const rowsDisabled = isRefreshingAll || isDeletingAll || statusesLoad !== "loaded";
 
   if (isMeetLoading) {
     return (
@@ -109,7 +114,7 @@ function OfflineDataContent() {
                       name: "arrow.clockwise" as const,
                     },
                     tintColor: colors.link,
-                    disabled: isRefreshingAll || isDeletingAll,
+                    disabled: rowsDisabled,
                     onPress: confirmRefreshAll,
                   },
                   {
@@ -127,7 +132,7 @@ function OfflineDataContent() {
                   <View style={styles.headerActions}>
                     <Pressable
                       onPress={confirmRefreshAll}
-                      disabled={isRefreshingAll || isDeletingAll}
+                      disabled={rowsDisabled}
                       style={({ pressed }) => [
                         styles.headerButton,
                         pressed && { opacity: 0.7 },
@@ -198,10 +203,10 @@ function OfflineDataContent() {
                 <DownloadRow
                   key={id}
                   title={meet.name}
-                  subtitle={formatLastSynced(status?.lastSynced)}
+                  subtitle={formatLastSynced(status)}
                   isDownloaded={status?.isDownloaded ?? false}
                   isDownloading={isDownloading}
-                  disabled={isRefreshingAll || isDeletingAll}
+                  disabled={rowsDisabled || !isRowReady(status)}
                   colors={colors}
                   onDownload={() =>
                     handleDownload(id, () => prefetchMeetData(meet.name))
@@ -232,10 +237,10 @@ function OfflineDataContent() {
                 <DownloadRow
                   key={item.id}
                   title={item.title}
-                  subtitle={formatLastSynced(status?.lastSynced)}
+                  subtitle={formatLastSynced(status)}
                   isDownloaded={status?.isDownloaded ?? false}
                   isDownloading={isDownloading}
-                  disabled={isRefreshingAll || isDeletingAll}
+                  disabled={rowsDisabled || !isRowReady(status)}
                   colors={colors}
                   onDownload={() => handleDownload(item.id, item.onDownload)}
                   onDelete={() =>

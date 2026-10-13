@@ -1,8 +1,9 @@
 import React from 'react';
 import { act, create } from 'react-test-renderer';
 import { useSessionAthletes } from './useMeetAthletes';
-import { getMeetData, getSessionAthletesFromMeetCache } from '@/lib/database/offline-store';
+import { getMeetData, getSessionAthletesFromMeetCache, saveSessionAthletes } from '@/lib/database/offline-store';
 import { fetchAthletesWithSession } from '@/lib/database/queries';
+import type { LiftResult } from '@/data/types/athletes';
 
 jest.mock('@/lib/networkUtils', () => ({
   subscribeToNetworkChanges: jest.fn(() => () => {}),
@@ -73,4 +74,27 @@ it('reports a failed load when nothing is cached', async () => {
   expect(current.loadError).toBe('Offline');
   act(() => { tree.unmount(); });
   jest.restoreAllMocks();
+});
+
+// Regression (#313): an empty answer replaced the cached roster and was
+// written over the session key, and the card vanished.
+it('keeps the cached session athletes when the fresh answer is empty, and does not save it', async () => {
+  const cached = [{ name: 'Cached Lifter', session: { number: 4, platform: 'Red' } }] as unknown as LiftResult[];
+  (getSessionAthletesFromMeetCache as jest.Mock).mockResolvedValue(cached);
+  (fetchAthletesWithSession as jest.Mock).mockResolvedValue([]);
+  let current!: ReturnType<typeof useSessionAthletes>;
+  function Harness() {
+    current = useSessionAthletes('Reimport Meet', 4, 'Red');
+    return null;
+  }
+  let tree!: ReturnType<typeof create>;
+  await act(async () => { tree = create(<Harness />); });
+  await act(async () => { await current.refreshAthletes(); });
+
+  expect(fetchAthletesWithSession).toHaveBeenCalled();
+  expect(current.athletes).toEqual(cached);
+  expect(current.loadError).toBeNull();
+  expect(saveSessionAthletes).not.toHaveBeenCalled();
+  act(() => { tree.unmount(); });
+  (getSessionAthletesFromMeetCache as jest.Mock).mockResolvedValue([]);
 });
