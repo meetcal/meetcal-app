@@ -72,6 +72,9 @@ export const REF_VIEWS = {
   qualifying_totals: 'ref|qualifying_totals',
   intl_rankings: 'ref|intl_rankings',
   clubs: 'ref|clubs',
+  // Every stored spelling of each club, `[clubKey, spellings][]`, for the
+  // club answers to read every spelling of the one asked for (#363).
+  club_spellings: 'ref|club_spellings',
   wso_list: 'ref|wso_list',
 } as const;
 
@@ -99,7 +102,15 @@ export const RESULT_NAMES_VIEW = 'search|names';
 /** The search directory's two-letter shards (`lib/directory.ts`) and their sizes. */
 export const SEARCH_SHARD_PREFIX = 'search|bigram|';
 export const searchShardKey = (bigram: string) => `${SEARCH_SHARD_PREFIX}${encodeURIComponent(bigram)}`;
-export const SEARCH_SHARD_SIZES_VIEW = 'search|bigram-sizes';
+/**
+ * The shard size table, versioned by how `foldForShards` folds names: shards
+ * built under an older fold miss names a query now matches, so a new fold
+ * gets a new key, and until a full shard build writes it every query reads
+ * the whole directory (correct, only slower). Bump it with the fold.
+ */
+export const SEARCH_SHARD_SIZES_VIEW = 'search|bigram-sizes|v2';
+/** Size tables of older folds, deleted by the next full shard build. */
+export const LEGACY_SEARCH_SHARD_SIZES_VIEWS = ['search|bigram-sizes'] as const;
 
 export const VIEW_SOURCES = {
   nat: ['lifting_results'],
@@ -197,6 +208,7 @@ const REF_VIEW_TABLES: Record<string, string> = {
   [REF_VIEWS.intl_rankings]: 'intl_rankings',
   // The club list is every roster's clubs; roster writes leave this hint.
   [REF_VIEWS.clubs]: 'athletes',
+  [REF_VIEWS.club_spellings]: 'athletes',
   [REF_VIEWS.wso_list]: 'wso_records',
 };
 

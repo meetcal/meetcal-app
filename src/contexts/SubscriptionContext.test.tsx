@@ -440,6 +440,38 @@ describe("SubscriptionProvider", () => {
     });
   });
 
+  describe("confirmed entitlement for destructive writes", () => {
+    function listener(): (info: unknown) => Promise<void> {
+      const add = Purchases.addCustomerInfoUpdateListener as jest.Mock;
+      return add.mock.calls[add.mock.calls.length - 1][0];
+    }
+
+    it("stamps a check's answer with the RevenueCat user it was about", async () => {
+      mockGetCustomerInfo.mockResolvedValue(customerInfo("meetcal_quarterly"));
+      const value = await mountProvider();
+      expect(value.current.confirmedEntitlement).toEqual({ appUserId: "rc_user", isSubscribed: true });
+    });
+
+    it("never stamps a pushed answer on an account; it asks for a check instead", async () => {
+      // A subscriber's CustomerInfo arrives while RevenueCat has already
+      // switched to another (free) account.
+      mockGetCustomerInfo.mockReturnValue(new Promise(() => {}));
+      const value = await mountProvider();
+      const getAppUserID = Purchases.getAppUserID as jest.Mock;
+      getAppUserID.mockResolvedValue("free_user");
+      mockGetCustomerInfo.mockResolvedValue(customerInfo(null));
+
+      await act(async () => {
+        await listener()(customerInfo("meetcal_quarterly"));
+      });
+      await flush();
+
+      // The check that followed answered for the account now signed in.
+      expect(value.current.confirmedEntitlement).toEqual({ appUserId: "free_user", isSubscribed: false });
+      getAppUserID.mockResolvedValue("rc_user");
+    });
+  });
+
   describe("racing answers", () => {
     const getAppUserID = Purchases.getAppUserID as jest.Mock;
     function listener(): (info: unknown) => Promise<void> {

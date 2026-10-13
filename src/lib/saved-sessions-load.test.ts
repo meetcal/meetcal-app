@@ -1,5 +1,6 @@
 import {
   createLoadChain,
+  createRefreshThrottle,
   savedSessionsLoadKey,
   sessionsFromApi,
 } from "@/lib/saved-sessions-load";
@@ -37,6 +38,28 @@ describe("sessionsFromApi", () => {
   });
 });
 
+describe("sessionsFromApi duplicates (#319)", () => {
+  const row = (notes: string, updatedAt: number) =>
+    ({
+      session_id: "Meet-1-Red",
+      meet: "Meet",
+      session_number: 1,
+      platform: "Red",
+      weight_class: null,
+      start_time: null,
+      date: null,
+      notes,
+      athlete_names: [],
+      updated_at: updatedAt,
+    }) as never;
+
+  it("keeps the newest row of a session an older backend lists twice, oldest first", () => {
+    const sessions = sessionsFromApi([row("old", 1), row("new", 2)]);
+    expect(sessions).toHaveLength(1);
+    expect(sessions[0].notes).toBe("new");
+  });
+});
+
 describe("savedSessionsLoadKey", () => {
   it("distinguishes the user and whether Clerk verified them", () => {
     expect(savedSessionsLoadKey("u", true)).toBe("u:verified");
@@ -66,6 +89,23 @@ describe("createLoadChain", () => {
     expect(task).toHaveBeenCalledTimes(1);
   });
 
+  it("runs a fresh task for the same key after the running one, not sharing it", async () => {
+    const chain = createLoadChain();
+    const gate = deferred();
+    const log: string[] = [];
+    const first = chain.run("a", async () => {
+      await gate.promise;
+      log.push("first");
+    });
+    const fresh = chain.run("a", async () => {
+      log.push("fresh");
+    }, { fresh: true });
+    expect(fresh).not.toBe(first);
+    gate.resolve();
+    await fresh;
+    expect(log).toEqual(["first", "fresh"]);
+  });
+
   it("queues a new key behind the running task, even one that fails", async () => {
     const chain = createLoadChain();
     const gate = deferred();
@@ -90,5 +130,26 @@ describe("createLoadChain", () => {
     await chain.run("a", task);
     await chain.run("a", task);
     expect(task).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("createRefreshThrottle", () => {
+  it("allows a refresh before any load and once the interval has passed since the last", () => {
+    let now = 1_000_000;
+    const throttle = createRefreshThrottle(60_000, () => now);
+    expect(throttle.shouldRun()).toBe(true);
+    throttle.markRun();
+    now += 59_999;
+    expect(throttle.shouldRun()).toBe(false);
+    now += 1;
+    expect(throttle.shouldRun()).toBe(true);
+  });
+
+  it("treats a clock set back since the last load as old", () => {
+    let now = 1_000_000;
+    const throttle = createRefreshThrottle(60_000, () => now);
+    throttle.markRun();
+    now -= 1;
+    expect(throttle.shouldRun()).toBe(true);
   });
 });

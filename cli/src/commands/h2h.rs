@@ -34,6 +34,8 @@ pub async fn run(args: H2hArgs) -> Result<()> {
     }
     let first = history(&args.first).await?;
     let second = history(&args.second).await?;
+    // UTC, as the past-year bests in `meet` and `qualify` (and the app's start list) count it,
+    // so the three agree.
     let cutoff = cutoff_date(Utc::now().date_naive(), YEAR_BESTS_YEARS);
     output::emit(report(&first, &second, &cutoff));
     Ok(())
@@ -76,6 +78,21 @@ pub fn report(first: &[LiftingResults], second: &[LiftingResults], cutoff: &str)
         "Higher Total",
         "Margin",
     ]);
+    // The table names its columns after the athletes and packs each total with its division;
+    // the export has fixed keys and one value a column.
+    let mut data = Table::new();
+    data.set_header(vec![
+        "Date",
+        "Meet",
+        "First Athlete",
+        "First Total",
+        "First Division",
+        "Second Athlete",
+        "Second Total",
+        "Second Division",
+        "Higher Total",
+        "Margin",
+    ]);
     let (mut first_wins, mut second_wins) = (0, 0);
     for meeting in &meetings {
         let (a, b) = (meeting.first.total, meeting.second.total);
@@ -98,6 +115,18 @@ pub fn report(first: &[LiftingResults], second: &[LiftingResults], cutoff: &str)
             meeting.first.meet.clone(),
             format!("{} ({})", number(a), meeting.first.age),
             format!("{} ({})", number(b), meeting.second.age),
+            winner.clone(),
+            number((a - b).abs()),
+        ]);
+        data.add_row(vec![
+            meeting.first.date.clone(),
+            meeting.first.meet.clone(),
+            first_name.clone(),
+            number(a),
+            meeting.first.age.clone(),
+            second_name.clone(),
+            number(b),
+            meeting.second.age.clone(),
             winner,
             number((a - b).abs()),
         ]);
@@ -107,6 +136,7 @@ pub fn report(first: &[LiftingResults], second: &[LiftingResults], cutoff: &str)
     summary.set_header(vec![
         "Athlete",
         "Higher Total In",
+        "Meets Entered By Both",
         "Best Snatch",
         "Best C&J",
         "Best Total",
@@ -139,7 +169,8 @@ pub fn report(first: &[LiftingResults], second: &[LiftingResults], cutoff: &str)
             .fold(0.0, f64::max);
         summary.add_row(vec![
             name.clone(),
-            format!("{wins} of {}", meetings.len()),
+            wins.to_string(),
+            meetings.len().to_string(),
             number(max(|r| valid_lift(r, Lift::Snatch))),
             number(max(|r| valid_lift(r, Lift::CleanAndJerk))),
             number(max(valid_total)),
@@ -151,7 +182,7 @@ pub fn report(first: &[LiftingResults], second: &[LiftingResults], cutoff: &str)
 
     Report::new()
         .titled(format!("HEAD TO HEAD — {first_name} vs {second_name}"))
-        .headed("meetings", "MEETS ENTERED BY BOTH", table)
+        .headed_with_data("meetings", "MEETS ENTERED BY BOTH", table, data)
         .headed("summary", "SUMMARY", summary)
 }
 
@@ -204,9 +235,17 @@ mod tests {
         ];
         assert_eq!(meetings(&a, &b).len(), 1);
         let json = report(&a, &b, "2025-01-01").to_json();
-        assert_eq!(json["meetings"][0]["higher_total"], "Bea");
-        assert_eq!(json["meetings"][0]["margin"], 4);
-        assert_eq!(json["summary"][1]["higher_total_in"], "1 of 1");
+        let meeting = &json["meetings"][0];
+        assert_eq!(meeting["date"], "2025-06-01");
+        assert_eq!(meeting["first_athlete"], "Ada");
+        assert_eq!(meeting["first_total"], 190);
+        assert_eq!(meeting["first_division"], "Open Women's 64kg");
+        assert_eq!(meeting["second_athlete"], "Bea");
+        assert_eq!(meeting["second_total"], 194);
+        assert_eq!(meeting["higher_total"], "Bea");
+        assert_eq!(meeting["margin"], 4);
+        assert_eq!(json["summary"][1]["higher_total_in"], 1);
+        assert_eq!(json["summary"][1]["meets_entered_by_both"], 1);
         assert_eq!(json["summary"][1]["best_total"], 205);
     }
 
@@ -235,7 +274,8 @@ mod tests {
             json["meetings"][0]["higher_total"],
             "Unknown (source error)"
         );
-        assert_eq!(json["summary"][0]["higher_total_in"], "0 of 1");
+        assert_eq!(json["summary"][0]["higher_total_in"], 0);
+        assert_eq!(json["summary"][0]["meets_entered_by_both"], 1);
         assert_eq!(json["summary"][0]["best_snatch"], 0);
         assert_eq!(json["summary"][0]["best_total"], 0);
         assert_eq!(json["summary"][1]["best_total"], 220);

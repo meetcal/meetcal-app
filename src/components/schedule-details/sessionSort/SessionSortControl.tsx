@@ -6,6 +6,10 @@ import { Modal, Pressable, StyleSheet } from "react-native";
 import { SortButtonContent } from "./SortButtonContent";
 import type { SessionSortControlProps } from "./types";
 import { BlackAlpha } from "@/constants/Palette";
+import { useScreenHorizontalInsets } from "@/hooks/useScreenInsets";
+
+/** Space between the sort card and the screen edge (or the Duo side band). */
+const BACKDROP_PADDING = 20;
 
 /**
  * Default / Android session sort control. Uses a custom modal so the Android
@@ -22,6 +26,7 @@ const SessionSortControl: React.FC<SessionSortControlProps> = ({
   onLockedPress,
 }) => {
   const colors = useAppColors();
+  const screenInsets = useScreenHorizontalInsets();
   const [sortModalVisible, setSortModalVisible] = useState(false);
 
   const handlePress = useCallback(() => {
@@ -58,13 +63,24 @@ const SessionSortControl: React.FC<SessionSortControlProps> = ({
         onRequestClose={() => setSortModalVisible(false)}
       >
         <Pressable
-          style={styles.modalBackdrop}
+          testID="session-sort-backdrop"
+          style={[
+            styles.modalBackdrop,
+            {
+              // A modal is above every screen's padding: clear the iPhone
+              // Duo side band here.
+              paddingLeft: BACKDROP_PADDING + screenInsets.paddingLeft,
+              paddingRight: BACKDROP_PADDING + screenInsets.paddingRight,
+            },
+          ]}
           onPress={() => setSortModalVisible(false)}
         >
           <Pressable style={[styles.modalCard, { backgroundColor: colors.card }]}>
             <ThemedText style={[styles.modalTitle, { color: colors.text }]}>
               Sort Athletes
             </ThemedText>
+            {/* One choice of several: a radio group, so VoiceOver/TalkBack
+                say which order is current. */}
             {sortOptions.map((option) => {
               const isSelected =
                 option.key === sortKey && option.direction === sortDirection;
@@ -76,6 +92,8 @@ const SessionSortControl: React.FC<SessionSortControlProps> = ({
                     pressed && { opacity: 0.7 },
                   ]}
                   onPress={() => handleSelect(option.key, option.direction)}
+                  accessibilityRole="radio"
+                  accessibilityState={{ checked: isSelected, selected: isSelected }}
                 >
                   <ThemedText
                     style={[styles.modalOptionText, { color: colors.text }]}
@@ -115,7 +133,6 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: BlackAlpha[40],
     justifyContent: "center",
-    paddingHorizontal: 20,
   },
   modalCard: {
     borderRadius: 12,

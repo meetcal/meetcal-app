@@ -188,6 +188,8 @@ const MenuRow: React.FC<MenuRowProps> = ({ label, selected, onPress }) => {
         pressed && { opacity: 0.7 },
       ]}
       onPress={onPress}
+      accessibilityRole="button"
+      accessibilityState={{ selected }}
     >
       <ThemedText
         style={[

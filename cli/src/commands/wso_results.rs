@@ -11,7 +11,7 @@ use crate::utils::backend::{queries, query};
 use crate::utils::meet_names::{equivalent_meets, result_meet_aliases};
 use crate::utils::names::{NameKind, not_found};
 use crate::utils::output::{self, Report};
-use crate::utils::stats::plausible;
+use crate::utils::stats::{fold, number, plausible};
 use serde_json::json;
 
 const RESULTS_REQUEST_BATCH_SIZE: usize = 50;
@@ -119,17 +119,17 @@ pub fn select_wso_athletes(athletes: &[Athletes], wso: &str, meet: &str) -> Resu
         bail!("No athletes found for meet \"{meet}\"");
     }
 
-    let normalized_wso = normalize(wso);
+    let normalized_wso = fold(wso);
     let mut seen_names = HashSet::new();
     let mut names = Vec::new();
 
     for athlete in athletes {
-        if athlete.wso.as_deref().map(normalize).as_deref() != Some(normalized_wso.as_str()) {
+        if athlete.wso.as_deref().map(fold).as_deref() != Some(normalized_wso.as_str()) {
             continue;
         }
 
         let name = athlete.name.trim();
-        if !name.is_empty() && seen_names.insert(normalize(name)) {
+        if !name.is_empty() && seen_names.insert(fold(name)) {
             names.push(name.to_string());
         }
     }
@@ -142,8 +142,8 @@ pub fn select_wso_athletes(athletes: &[Athletes], wso: &str, meet: &str) -> Resu
             .filter(|value| !value.is_empty())
             .map(str::to_string)
             .collect();
-        available_wsos.sort_by_key(|value| normalize(value));
-        available_wsos.dedup_by(|left, right| normalize(left) == normalize(right));
+        available_wsos.sort_by_key(|value| fold(value));
+        available_wsos.dedup_by(|left, right| fold(left) == fold(right));
 
         let suffix = if available_wsos.is_empty() {
             String::new()
@@ -176,10 +176,7 @@ pub async fn get_lifting_results(
             query(queries::RESULTS_BY_NAMES, &query_args).await?;
 
         for result in lifting_results {
-            results
-                .entry(normalize(&result.name))
-                .or_default()
-                .push(result);
+            results.entry(fold(&result.name)).or_default().push(result);
         }
     }
 
@@ -188,12 +185,27 @@ pub async fn get_lifting_results(
 
 pub async fn get_meet_results(meet: &str) -> Result<Vec<LiftingResults>> {
     let mut results = Vec::new();
+    let mut titles = HashSet::new();
     for alias in result_meet_aliases(meet) {
         let query_args = json!({ "meet": alias });
-        let mut rows = query(queries::MEET_RESULTS, &query_args).await?;
-        results.append(&mut rows);
+        let rows = query(queries::MEET_RESULTS, &query_args).await?;
+        add_new_titles(&mut results, &mut titles, rows);
     }
     Ok(results)
+}
+
+/// Adds the rows of results titles no earlier answer held. A meet whose
+/// results titles are linked to it on the server (a combined national event)
+/// answers them with its own, so asking for each title again would list
+/// every result twice; an unlinked one still gets them from the aliases.
+fn add_new_titles(
+    results: &mut Vec<LiftingResults>,
+    titles: &mut HashSet<String>,
+    rows: Vec<LiftingResults>,
+) {
+    let answered: HashSet<String> = rows.iter().map(|row| row.meet.clone()).collect();
+    results.extend(rows.into_iter().filter(|row| !titles.contains(&row.meet)));
+    titles.extend(answered);
 }
 
 /// Whether `current` beats `previous`. A lift with no earlier result is not a PR: an athlete's
@@ -239,7 +251,7 @@ pub fn calculate_prs<'a>(
     let mut stats = PrStats {
         edition_year: wso_athlete_names
             .iter()
-            .filter_map(|name| results.get(&normalize(name)))
+            .filter_map(|name| results.get(&fold(name)))
             .flatten()
             .filter(|row| equivalent_meets(meet, &row.meet))
             .map(|row| year_of(row).to_string())
@@ -249,7 +261,7 @@ pub fn calculate_prs<'a>(
 
     for name in wso_athlete_names {
         let history = results
-            .get(&normalize(name))
+            .get(&fold(name))
             .map(Vec::as_slice)
             .unwrap_or_default();
         let (current_rows, prior_rows) = split_at_meet(
@@ -375,7 +387,7 @@ pub fn calculate_performance(rows: &[&LiftingResults]) -> PerformanceStats {
     let mut stats = PerformanceStats::default();
     let mut best: HashMap<String, &LiftingResults> = HashMap::new();
     for row in rows {
-        let entry = best.entry(normalize(&row.name)).or_insert(row);
+        let entry = best.entry(fold(&row.name)).or_insert(row);
         if row.total > entry.total || (row.total == entry.total && row.date > entry.date) {
             *entry = row;
         }
@@ -423,7 +435,7 @@ pub fn roster_classes(roster: &[Athletes]) -> RosterClasses {
     let mut classes = RosterClasses::new();
     for athlete in sorted {
         classes
-            .entry(normalize(&athlete.name))
+            .entry(fold(&athlete.name))
             .or_insert_with(|| (gender_key(&athlete.gender), athlete.weight_class.clone()));
     }
     classes
@@ -465,15 +477,12 @@ pub fn needs_roster(meet_rows: &[LiftingResults]) -> bool {
 /// division names a weight class, else its roster gender and weight class with the division; with
 /// no roster entry either, none.
 fn ranking_group(row: &LiftingResults, roster: &RosterClasses) -> Option<(String, String)> {
-    let meet = normalize(&row.meet);
+    let meet = fold(&row.meet);
     if has_weight_class(&row.age) {
-        return Some((meet, normalize(&row.age)));
+        return Some((meet, fold(&row.age)));
     }
-    let (gender, class) = roster.get(&normalize(&row.name))?;
-    Some((
-        meet,
-        format!("{gender}\u{0}{class}\u{0}{}", normalize(&row.age)),
-    ))
+    let (gender, class) = roster.get(&fold(&row.name))?;
+    Some((meet, format!("{gender}\u{0}{class}\u{0}{}", fold(&row.age))))
 }
 
 /// The medals `member_names` won at a meet: snatch, clean & jerk and total placings within each
@@ -490,7 +499,7 @@ pub fn calculate_medal_details(
     meet_rows: &[LiftingResults],
     roster: &RosterClasses,
 ) -> Vec<ClubMedalDetail> {
-    let members: HashSet<_> = member_names.iter().map(|name| normalize(name)).collect();
+    let members: HashSet<_> = member_names.iter().map(|name| fold(name)).collect();
     let mut divisions: HashMap<(String, String), HashMap<String, &LiftingResults>> = HashMap::new();
 
     for row in meet_rows.iter().filter(|row| plausible(row)) {
@@ -500,7 +509,7 @@ pub fn calculate_medal_details(
         let best = divisions
             .entry(group)
             .or_default()
-            .entry(normalize(&row.name))
+            .entry(fold(&row.name))
             .or_insert(row);
         if row.total > best.total || (row.total == best.total && row.date > best.date) {
             *best = row;
@@ -514,7 +523,7 @@ pub fn calculate_medal_details(
         for movement in [Movement::Snatch, Movement::CleanAndJerk, Movement::Total] {
             let keys: Vec<LiftKey> = rows.iter().map(|row| lift_key(row, movement)).collect();
             for (row, key) in rows.iter().zip(&keys) {
-                if !members.contains(&normalize(&row.name)) {
+                if !members.contains(&fold(&row.name)) {
                     continue;
                 }
                 if let Some(place) = place_of(key, &keys).filter(|place| *place <= 3) {
@@ -645,7 +654,7 @@ pub fn report(
     volume_table.set_header(vec!["Total Weight Lifted"]);
     volume_table.add_row(vec![format!(
         "{}kg",
-        format_weight(performance.total_weight_lifted)
+        number(performance.total_weight_lifted)
     )]);
 
     let mut pr_table = Table::new();
@@ -659,21 +668,21 @@ pub fn report(
         .table("volume", volume_table)
         .table("prs", pr_table);
 
-    if !prs.details.is_empty() {
+    {
         let mut table = Table::new();
         table.set_header(vec!["Athlete", "Movement", "New PR", "Previous PR"]);
         for detail in &prs.details {
             table.add_row(vec![
                 detail.name.clone(),
                 detail.movement.to_string(),
-                format_weight(detail.new_pr),
-                format_weight(detail.previous_pr),
+                number(detail.new_pr),
+                number(detail.previous_pr),
             ]);
         }
-        report = report.headed("pr_details", "ATHLETES WITH PRS", table);
+        report = report.headed_if_any("pr_details", "ATHLETES WITH PRS", table);
     }
 
-    if !medals.is_empty() {
+    {
         let mut table = Table::new();
         table.set_header(vec!["Athlete", "Age", "Movement", "Place", "Result"]);
         for detail in medals {
@@ -682,10 +691,10 @@ pub fn report(
                 detail.age.clone(),
                 detail.movement.to_string(),
                 detail.place.to_string(),
-                format_weight(detail.result),
+                number(detail.result),
             ]);
         }
-        report = report.headed("medals", "ATHLETES WITH MEDALS", table);
+        report = report.headed_if_any("medals", "ATHLETES WITH MEDALS", table);
     }
 
     report
@@ -701,25 +710,6 @@ fn percentage(made: usize, attempts: usize) -> f64 {
 
 fn format_percent(value: f64) -> String {
     format!("{value:.2}%")
-}
-
-fn format_weight(value: f64) -> String {
-    if value.fract() == 0.0 {
-        format!("{value:.0}")
-    } else {
-        format!("{value:.2}")
-            .trim_end_matches('0')
-            .trim_end_matches('.')
-            .to_string()
-    }
-}
-
-fn normalize(value: &str) -> String {
-    value
-        .split_whitespace()
-        .collect::<Vec<_>>()
-        .join(" ")
-        .to_lowercase()
 }
 
 #[cfg(test)]
@@ -787,8 +777,8 @@ mod tests {
     }
 
     #[test]
-    fn normalize_ignores_case_and_repeated_whitespace() {
-        assert_eq!(normalize("  Mountain   South "), "mountain south");
+    fn names_fold_ignoring_case_and_repeated_whitespace() {
+        assert_eq!(fold("  Mountain   South "), "mountain south");
     }
 
     #[test]
@@ -831,6 +821,52 @@ mod tests {
     }
 
     #[test]
+    fn exports_every_section_even_with_no_prs_or_medals() {
+        let performance = PerformanceStats {
+            snatch_attempts: 3,
+            snatch_makes: 2,
+            cj_attempts: 3,
+            cj_makes: 3,
+            total_weight_lifted: 500.0,
+        };
+        let prs = PrStats {
+            snatch_count: 0,
+            cj_count: 0,
+            total_count: 0,
+            details: Vec::new(),
+            target_meet_rows: Vec::new(),
+            missing_names: Vec::new(),
+            edition_year: None,
+        };
+        let report = report("Florida", "Meet", 10, 1, &performance, &prs, &[]);
+        let json = report.to_json();
+        let keys: Vec<&str> = json
+            .as_object()
+            .unwrap()
+            .keys()
+            .map(String::as_str)
+            .collect();
+        assert_eq!(
+            keys,
+            [
+                "athletes",
+                "make_rates",
+                "volume",
+                "prs",
+                "pr_details",
+                "medals"
+            ]
+        );
+        assert_eq!(json["medals"], serde_json::json!([]));
+        assert!(
+            report
+                .to_csv()
+                .contains("# medals\nathlete,age,movement,place,result\n")
+        );
+        assert!(!report.to_text().contains("ATHLETES WITH MEDALS"));
+    }
+
+    #[test]
     fn a_first_meet_is_not_a_pr() {
         assert!(!is_pr(Some(100.0), None));
     }
@@ -869,14 +905,14 @@ mod tests {
         let target = "Target Meet";
         let history = HashMap::from([
             (
-                normalize("Zed"),
+                fold("Zed"),
                 vec![
                     dated("Zed", "Old Meet", "2025-06-01", "Open", 90.0, 110.0, 200.0),
                     result("Zed", target, "Open", 95.0, 110.0, 205.0),
                 ],
             ),
             (
-                normalize("Amy"),
+                fold("Amy"),
                 vec![result("Amy", target, "Open", 70.0, 90.0, 160.0)],
             ),
         ]);
@@ -897,7 +933,7 @@ mod tests {
     #[test]
     fn calculate_prs_matches_names_and_meets_after_normalization() {
         let history = HashMap::from([(
-            normalize("Jane Doe"),
+            fold("Jane Doe"),
             vec![result(
                 "JANE DOE",
                 " Target   Meet ",
@@ -919,7 +955,7 @@ mod tests {
         let registration =
             "2026 Masters National Championships & National University Championships";
         let history = HashMap::from([(
-            normalize("Jane Doe"),
+            fold("Jane Doe"),
             vec![
                 dated(
                     "Jane Doe",
@@ -953,7 +989,7 @@ mod tests {
     #[test]
     fn calculate_prs_reports_names_without_target_results() {
         let history = HashMap::from([(
-            normalize("Jane Doe"),
+            fold("Jane Doe"),
             vec![result("Jane Doe", "Old Meet", "Open", 80.0, 100.0, 180.0)],
         )]);
 
@@ -1219,7 +1255,7 @@ mod tests {
     fn results_after_the_meet_are_not_the_pr_to_beat() {
         let target = "2025 Carolina WSO Championships";
         let history = HashMap::from([(
-            normalize("Ada"),
+            fold("Ada"),
             vec![
                 dated(
                     "Ada",
@@ -1247,7 +1283,7 @@ mod tests {
     fn a_meet_held_every_year_is_its_latest_edition() {
         let meet = "Testify Leprechaun Lift-off";
         let history = HashMap::from([(
-            normalize("Ada"),
+            fold("Ada"),
             vec![
                 dated("Ada", meet, "2023-03-11", "Open", 90.0, 110.0, 200.0),
                 dated("Ada", meet, "2024-03-16", "Open", 88.0, 108.0, 196.0),
@@ -1266,7 +1302,7 @@ mod tests {
     fn the_first_lift_after_a_bomb_out_is_a_pr() {
         let target = "2026 Spring Open";
         let history = HashMap::from([(
-            normalize("Ada"),
+            fold("Ada"),
             vec![
                 // Ada's first meet: 80 snatch, bombed C&J, no total.
                 dated("Ada", "Fall Open", "2025-10-01", "Open", 80.0, 0.0, 0.0),
@@ -1287,11 +1323,11 @@ mod tests {
         let meet = "Spring Open";
         let history = HashMap::from([
             (
-                normalize("Ada"),
+                fold("Ada"),
                 vec![dated("Ada", meet, "2023-04-01", "Open", 80.0, 100.0, 180.0)],
             ),
             (
-                normalize("Bo"),
+                fold("Bo"),
                 vec![dated("Bo", meet, "2024-04-01", "Open", 90.0, 110.0, 200.0)],
             ),
         ]);
@@ -1328,7 +1364,7 @@ mod tests {
     #[test]
     fn rendered_report_contains_summary_and_detail_sections() {
         let history = HashMap::from([(
-            normalize("Member"),
+            fold("Member"),
             vec![
                 dated(
                     "Member",
@@ -1356,5 +1392,25 @@ mod tests {
         assert!(report.contains("ATHLETES WITH PRS"));
         assert!(report.contains("ATHLETES WITH MEDALS"));
         assert!(report.contains("220kg"));
+    }
+
+    #[test]
+    fn a_linked_title_answered_with_its_meet_is_not_added_again() {
+        let parent = vec![
+            result("Ann", "Nationals", "Open", 80.0, 100.0, 180.0),
+            result("Ada", "Junior", "Junior", 70.0, 90.0, 160.0),
+        ];
+        let junior = vec![result("Ada", "Junior", "Junior", 70.0, 90.0, 160.0)];
+        let youth = vec![result("Cy", "Youth", "Youth", 50.0, 60.0, 110.0)];
+        let mut results = Vec::new();
+        let mut titles = HashSet::new();
+        add_new_titles(&mut results, &mut titles, parent);
+        add_new_titles(&mut results, &mut titles, junior);
+        add_new_titles(&mut results, &mut titles, youth);
+        let names = results
+            .iter()
+            .map(|row| row.name.as_str())
+            .collect::<Vec<_>>();
+        assert_eq!(names, ["Ann", "Ada", "Cy"]);
     }
 }

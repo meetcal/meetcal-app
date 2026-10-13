@@ -22,6 +22,10 @@ void [Animated, Pressable, ScrollView];
 
 jest.mock("@/contexts/ThemeContext", () => ({ useTheme: () => ({ currentTheme: "light" }) }));
 let mockParams = { meet: "test-meet", sessionNumber: "1", platform: "Red" };
+// Gating is covered by premium-screens-gated.test.tsx; this file tests the content.
+jest.mock("@/components/ui/SubscriptionGate", () => ({
+  SubscriptionGate: ({ children }: { children: React.ReactNode }) => children,
+}));
 jest.mock("expo-router", () => ({
   Stack: { Screen: () => null },
   useLocalSearchParams: () => mockParams,
@@ -145,6 +149,22 @@ describe("attempt estimator states", () => {
     expect(textOf(tree)).toContain("No athletes in this session");
     expect(tree.root.findAllByProps({ accessibilityLabel: "Retry loading estimates" }).length)
       .toBeGreaterThan(0);
+    act(() => tree.unmount());
+  });
+
+  // Regression (#313): an empty answer replaced estimates painted from the
+  // downloaded session with "No athletes in this session", while the Start
+  // List kept the same roster.
+  it("keeps cached estimates when the refresh answers with no athletes", async () => {
+    jest.mocked(getSessionAthletesFromMeetCache).mockResolvedValue([athlete("Cached Lifter")]);
+    jest.mocked(fetchAthletesWithSession).mockResolvedValue([]);
+
+    const tree = await render();
+
+    expect(textOf(tree)).toContain("Cached Lifter");
+    expect(textOf(tree)).not.toContain("No athletes in this session");
+    expect(textOf(tree)).not.toContain("Refreshing");
+    expect(fetchRecentAthleteHistoryForNames).not.toHaveBeenCalled();
     act(() => tree.unmount());
   });
 
