@@ -885,17 +885,18 @@ export const upsertEntryAthletes = internalMutation({
         if (renamed.length === 1) match = renamed[0];
       }
       if (!match && !idless) {
-        // The same athlete under an id the old scraper minted per run (#386).
+        // The same athlete under an id the old scraper minted per run (#386):
+        // only when exactly one row fits, as for a rename; with two, either
+        // could be another athlete of the name.
+        const minted: Doc<'athletes'>[] = [];
         for (const a of existing) {
           if (!unclaimed(a) || hasSession(a) || normalizeName(a.name) !== nameKey || normalizeGender(a.gender) !== gender) continue;
           // The same age, give or take the year it turns over: another
           // athlete of the same name keeps their row.
           if (Math.abs(a.age - row.age) > 1) continue;
-          if (await isOneOff(a.memberId)) {
-            match = a;
-            break;
-          }
+          if (await isOneOff(a.memberId)) minted.push(a);
         }
+        if (minted.length === 1) match = minted[0];
       }
       if (match) claimed.add(match._id);
       const values = {

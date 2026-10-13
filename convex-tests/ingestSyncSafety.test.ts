@@ -310,6 +310,12 @@ describe('entries a list no longer has, and renamed or re-numbered entrants (#25
     ]);
   });
 
+  it('takes over no one-off id when two rows of the name could be the entrant', async () => {
+    const { db, rows } = fakeDb({ athletes: [athlete('Sam Roe', '140203020'), athlete('Sam Roe', '140203021')] });
+    expect(await upsert({ db }, { meet: 'Meet', rows: [entry('Sam Roe', '1027360')] })).toMatchObject({ inserted: 1, updated: 0 });
+    expect(rows('athletes').map((a) => a.memberId).sort()).toEqual(['1027360', '140203020', '140203021']);
+  });
+
   it('stores an entrant listed twice once, with the last listing', async () => {
     const { db, rows } = fakeDb();
     expect(await upsert({ db }, { meet: 'Meet', rows: [entry('Ann Lee', '123', { entryTotal: 140 }), entry('ANN  LEE', '123', { entryTotal: 150 })] })).toMatchObject({ inserted: 1 });
