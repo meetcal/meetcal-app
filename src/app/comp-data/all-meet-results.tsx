@@ -4,7 +4,6 @@ import { useIsOffline } from "@/hooks/useIsOffline";
 import { SubscriptionGate } from "@/components/ui/SubscriptionGate";
 import { ThemedText } from "@/components/ui/ThemedText";
 import { ThemedView } from "@/components/ui/ThemedView";
-import { useTheme } from "@/contexts/ThemeContext";
 import { useAppColors } from "@/hooks/useAppColors";
 import { searchAthletesByName } from "@/lib/database/queries";
 import { isNetworkAvailable } from "@/lib/networkUtils";
@@ -44,7 +43,6 @@ export default function AllMeetResultsScreen() {
 function AllMeetResultsScreenContent() {
   const screenInsets = useScreenHorizontalInsets();
   const colors = useAppColors();
-  const { currentTheme } = useTheme();
   const router = useRouter();
   const insets = useSafeAreaInsets();
 
@@ -284,10 +282,10 @@ function AllMeetResultsScreenContent() {
           gestureDirection: "horizontal",
           animation: "slide_from_right",
           headerTitleStyle: {
-            color: currentTheme === "dark" ? "#fff" : "#000",
+            color: colors.headerTitle,
           },
           headerStyle: {
-            backgroundColor: currentTheme === "dark" ? "#000000" : "#F5F5F5",
+            backgroundColor: colors.headerBackground,
           },
           headerShadowVisible: false,
           headerBackButtonDisplayMode: "minimal",

@@ -14,8 +14,9 @@ use crate::{
         names::{MAX_NAME_PAGES, NameKind, just_before, meet_names_between, not_found},
         output::{self, Report},
         stats::{
-            Lift, QPOINTS_LABEL, SINCLAIR_LABEL, attempt_habits, average, bombed_out, number,
-            percent, points, row_qpoints, row_sinclair,
+            Division, Gender, Lift, QPOINTS_LABEL, SINCLAIR_LABEL, attempt_habits, average,
+            bombed_out, number, percent, points, row_qpoints, row_sinclair, valid_lift,
+            valid_total,
         },
     },
 };
@@ -26,8 +27,8 @@ pub const EDITIONS: i32 = 3;
 pub const TOP_SINCLAIR: usize = 10;
 
 /// Show a meet's results and statistics: every result with its Sinclair, the heaviest lifts, the
-/// top Sinclair lifters, bomb-outs, make rates by attempt, and how the meet compares with its
-/// previous editions.
+/// top Q-points and Sinclair lifters (men and women apart), bomb-outs, make rates by attempt, and
+/// how the meet compares with its previous editions.
 ///
 /// A meet held every year under one name (no year in it) has a results edition per year: the
 /// latest is shown, and `--year` picks another.
@@ -233,49 +234,51 @@ pub struct MeetSummary {
     pub bomb_outs: usize,
     pub average_total: Option<f64>,
     pub make_rate: Option<f64>,
-    pub best_sinclair: Option<(f64, String)>,
-    pub best_qpoints: Option<(f64, String)>,
+    /// The best Sinclair and Q-points score and who scored it, men's and women's apart: each
+    /// gender has its own scale.
+    pub best_sinclair: [Option<(f64, String)>; 2],
+    pub best_qpoints: [Option<(f64, String)>; 2],
 }
+
+/// The genders scores are ranked within, in report order.
+const GENDERS: [Gender; 2] = [Gender::Men, Gender::Women];
 
 pub fn summarize(rows: &[LiftingResults]) -> MeetSummary {
     let all: Vec<&LiftingResults> = rows.iter().collect();
-    let totals: Vec<f64> = rows
-        .iter()
-        .filter(|r| r.total > 0.0)
-        .map(|r| r.total)
-        .collect();
+    // Source errors (`stats::plausible`) count as athletes, but not toward the average total.
+    let totals: Vec<f64> = rows.iter().filter_map(valid_total).collect();
     let (mut taken, mut made) = (0, 0);
     for lift in [Lift::Snatch, Lift::CleanAndJerk] {
         let habits = attempt_habits(&all, lift);
         taken += habits.taken.iter().sum::<usize>();
         made += habits.made.iter().sum::<usize>();
     }
-    let best_sinclair = rows
-        .iter()
-        .filter_map(|row| row_sinclair(row).map(|score| (score, row.name.clone())))
-        .max_by(|a, b| a.0.total_cmp(&b.0));
-    let best_qpoints = rows
-        .iter()
-        .filter_map(|row| row_qpoints(row).map(|score| (score, row.name.clone())))
-        .max_by(|a, b| a.0.total_cmp(&b.0));
+    let best = |score: fn(&LiftingResults) -> Option<f64>, gender: Gender| {
+        rows.iter()
+            .filter(|row| Division::parse(&row.age).gender == Some(gender))
+            .filter_map(|row| score(row).map(|value| (value, row.name.clone())))
+            .max_by(|a, b| a.0.total_cmp(&b.0))
+    };
     MeetSummary {
         athletes: rows.len(),
         bomb_outs: rows.iter().filter(|row| bombed_out(row)).count(),
         average_total: average(&totals),
         make_rate: (taken > 0).then(|| made as f64 * 100.0 / taken as f64),
-        best_sinclair,
-        best_qpoints,
+        best_sinclair: GENDERS.map(|gender| best(row_sinclair, gender)),
+        best_qpoints: GENDERS.map(|gender| best(row_qpoints, gender)),
     }
 }
 
-/// The meet's best lifters by `score`, best first.
+/// The meet's best lifters of `gender` by `score`, best first.
 fn top_table(
     results: &[LiftingResults],
     score: fn(&LiftingResults) -> Option<f64>,
     label: &str,
+    gender: Gender,
 ) -> Table {
     let mut ranked: Vec<(&LiftingResults, f64)> = results
         .iter()
+        .filter(|row| Division::parse(&row.age).gender == Some(gender))
         .filter_map(|row| score(row).map(|value| (row, value)))
         .collect();
     ranked.sort_by(|a, b| b.1.total_cmp(&a.1));
@@ -366,42 +369,63 @@ pub fn report(
 
     let mut heaviest = Table::new();
     heaviest.set_header(vec!["Lift", "Weight", "Athlete", "Division"]);
+    // The heaviest lifts leave out source errors (`stats::plausible`).
     for (label, value) in [
         (
             "Snatch",
-            (|r: &LiftingResults| r.snatch_best) as fn(&LiftingResults) -> f64,
+            (|r: &LiftingResults| valid_lift(r, Lift::Snatch))
+                as fn(&LiftingResults) -> Option<f64>,
         ),
-        ("C&J", |r: &LiftingResults| r.cj_best),
-        ("Total", |r: &LiftingResults| r.total),
+        ("C&J", |r: &LiftingResults| {
+            valid_lift(r, Lift::CleanAndJerk)
+        }),
+        ("Total", valid_total),
     ] {
-        if let Some(row) = results
+        if let Some((row, weight)) = results
             .iter()
-            .filter(|r| value(r) > 0.0)
-            .max_by(|a, b| value(a).total_cmp(&value(b)))
+            .filter_map(|r| value(r).map(|weight| (r, weight)))
+            .max_by(|a, b| a.1.total_cmp(&b.1))
         {
             heaviest.add_row(vec![
                 label.to_string(),
-                number(value(row)),
+                number(weight),
                 row.name.clone(),
                 row.age.clone(),
             ]);
         }
     }
 
-    let top_qpoints = top_table(results, row_qpoints, QPOINTS_LABEL);
-    let top_sinclair = top_table(results, row_sinclair, SINCLAIR_LABEL);
-
     let (by_attempt, by_lift) = make_rate_tables(results);
     let mut report = Report::new()
         .table("results", meet_table)
         .headed("summary", "SUMMARY", summary_table)
-        .headed("heaviest_lifts", "HEAVIEST LIFTS", heaviest)
-        .headed(
+        .headed("heaviest_lifts", "HEAVIEST LIFTS", heaviest);
+    // Men and women score on separate scales, so each is ranked on its own. Q-points skip youth
+    // divisions (USAW scores them with Q-Youth) and carry no Masters age factors (Q-Masters), so
+    // this is not USAW's best-lifter result for those.
+    for (score, label, key, heading) in [
+        (
+            row_qpoints as fn(&LiftingResults) -> Option<f64>,
+            QPOINTS_LABEL,
             "top_qpoints",
-            "TOP Q-POINTS (USAW BEST LIFTER)",
-            top_qpoints,
-        )
-        .headed("top_sinclair", "TOP SINCLAIR", top_sinclair)
+            "TOP Q-POINTS",
+        ),
+        (row_sinclair, SINCLAIR_LABEL, "top_sinclair", "TOP SINCLAIR"),
+    ] {
+        for gender in GENDERS {
+            let note = if key == "top_qpoints" {
+                " (juniors, seniors and Masters without age factors; no youth)"
+            } else {
+                ""
+            };
+            report = report.headed(
+                &format!("{key}_{}", gender.label().to_lowercase()),
+                format!("{heading} — {}{note}", gender.label().to_uppercase()),
+                top_table(results, score, label, gender),
+            );
+        }
+    }
+    report = report
         .headed("make_rate_by_attempt", "MAKE RATES", by_attempt)
         .table("make_rate", by_lift);
 
@@ -414,10 +438,14 @@ pub fn report(
             "Average Total",
             "Make Rate",
             "Bomb-outs",
-            "Best Sinclair",
-            "Best Sinclair Athlete",
-            "Best Q-points",
-            "Best Q-points Athlete",
+            "Best Sinclair Men",
+            "Best Sinclair Men Athlete",
+            "Best Sinclair Women",
+            "Best Sinclair Women Athlete",
+            "Best Q-points Men",
+            "Best Q-points Men Athlete",
+            "Best Q-points Women",
+            "Best Q-points Women Athlete",
         ]);
         for EditionSummary {
             meet,
@@ -425,7 +453,7 @@ pub fn report(
             summary,
         } in editions
         {
-            history.add_row(vec![
+            let mut cells = vec![
                 year.clone(),
                 meet.clone(),
                 summary.athletes.to_string(),
@@ -435,19 +463,16 @@ pub fn report(
                     .unwrap_or_default(),
                 percent(summary.make_rate),
                 summary.bomb_outs.to_string(),
-                points(summary.best_sinclair.as_ref().map(|(score, _)| *score)),
-                summary
-                    .best_sinclair
-                    .as_ref()
-                    .map(|(_, name)| name.clone())
-                    .unwrap_or_default(),
-                points(summary.best_qpoints.as_ref().map(|(score, _)| *score)),
-                summary
-                    .best_qpoints
-                    .as_ref()
-                    .map(|(_, name)| name.clone())
-                    .unwrap_or_default(),
-            ]);
+            ];
+            for best in summary.best_sinclair.iter().chain(&summary.best_qpoints) {
+                cells.push(points(best.as_ref().map(|(score, _)| *score)));
+                cells.push(
+                    best.as_ref()
+                        .map(|(_, name)| name.clone())
+                        .unwrap_or_default(),
+                );
+            }
+            history.add_row(cells);
         }
         report = if editions.len() > 1 {
             report.headed("editions", "THIS MEET IN EARLIER YEARS", history)
@@ -547,9 +572,11 @@ mod tests {
         // 5 made of 10 taken.
         assert_eq!(summary.make_rate, Some(50.0));
         assert_eq!(
-            summary.best_sinclair.as_ref().map(|(_, n)| n.as_str()),
+            summary.best_sinclair[1].as_ref().map(|(_, n)| n.as_str()),
             Some("Ada")
         );
+        // Bo bombed out: no men's score.
+        assert_eq!(summary.best_sinclair[0], None);
 
         let editions = [EditionSummary {
             meet: "M".into(),
@@ -558,13 +585,65 @@ mod tests {
         }];
         let json = report(&rows, &editions, &[], false).to_json();
         assert_eq!(json["heaviest_lifts"][2]["athlete"], "Ada");
-        assert_eq!(json["top_sinclair"].as_array().unwrap().len(), 1);
+        assert_eq!(json["top_sinclair_women"].as_array().unwrap().len(), 1);
+        assert_eq!(json["top_sinclair_men"].as_array().unwrap().len(), 0);
         assert!(json.get("editions").is_none(), "--no-history leaves it out");
 
         // Asked for, the table is always exported, even with no earlier editions found.
         let with_history = report(&rows, &editions, &[], true);
         assert_eq!(with_history.to_json()["editions"][0]["meet"], "M");
         assert!(!with_history.to_text().contains("EARLIER YEARS"));
+    }
+
+    #[test]
+    fn men_and_women_are_ranked_apart_and_source_errors_lead_nothing() {
+        let rows = vec![
+            row(
+                "Hampton",
+                "2026-06-28",
+                "M",
+                "Open Men's 65kg",
+                64.5,
+                [140.0, 0.0, 0.0],
+                [175.0, 0.0, 0.0],
+            ),
+            row(
+                "Olivia",
+                "2026-06-28",
+                "M",
+                "Open Women's 77kg",
+                76.0,
+                [115.0, 0.0, 0.0],
+                [145.0, 0.0, 0.0],
+            ),
+            row(
+                "Gunner",
+                "2026-06-28",
+                "M",
+                "Men's 14-15 Age Group 79+kg",
+                90.8,
+                [-63.0, 633.0, 65.0],
+                [85.0, 90.0, -95.0],
+            ),
+        ];
+        let summary = summarize(&rows);
+        assert_eq!(summary.average_total, Some(287.5));
+        let json = report(
+            &rows,
+            &[EditionSummary {
+                meet: "M".into(),
+                year: "2026".into(),
+                summary,
+            }],
+            &[],
+            false,
+        )
+        .to_json();
+        assert_eq!(json["top_qpoints_men"][0]["athlete"], "Hampton");
+        assert_eq!(json["top_qpoints_women"][0]["athlete"], "Olivia");
+        assert_eq!(json["top_sinclair_men"].as_array().unwrap().len(), 1);
+        assert_eq!(json["heaviest_lifts"][0]["athlete"], "Hampton");
+        assert_eq!(json["heaviest_lifts"][2]["weight"], 315);
     }
 
     #[test]

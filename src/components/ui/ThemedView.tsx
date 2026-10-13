@@ -1,17 +1,20 @@
 import { View, ViewProps } from 'react-native';
-import { useTheme } from '@/contexts/ThemeContext';
+import { useAppColors } from '@/hooks/useAppColors';
 
+/**
+ * A `View` on the screen background. It painted white in light mode while
+ * the palette's background (and every header) is #F5F5F5.
+ */
 export function ThemedView(props: ViewProps) {
-  const { currentTheme } = useTheme();
-  const backgroundColor = currentTheme === 'dark' ? '#000000' : '#FFFFFF';
-  
+  const colors = useAppColors();
+
   return (
-    <View 
-      {...props} 
+    <View
+      {...props}
       style={[
-        { backgroundColor },
+        { backgroundColor: colors.background },
         props.style,
-      ]} 
+      ]}
     />
   );
 }

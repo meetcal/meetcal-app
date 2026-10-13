@@ -212,9 +212,36 @@ pub fn ReviewsSection() -> impl IntoView {
     }
 }
 
+/// The marquee's screenshots: 440 px wide WebP exports, twice the 220 px they
+/// are shown at.
+const SCREENSHOTS: [&str; 10] = ["01", "02", "03", "04", "05", "06", "07", "08", "09", "10"];
+const SCREENSHOT_WIDTH: u32 = 220;
+const SCREENSHOT_HEIGHT: u32 = 478;
+
+fn screenshot_src(screenshot: &str) -> String {
+    format!("/images/{screenshot}.webp")
+}
+
 #[component]
 pub fn HighlightSection() -> impl IntoView {
-    let screenshots = ["01", "02", "03", "04", "05", "06", "07", "08", "09", "10"];
+    let (paused, set_paused) = signal(false);
+    let screenshot_set = move || {
+        SCREENSHOTS
+            .iter()
+            .map(|screenshot| {
+                view! {
+                    <img
+                        src=screenshot_src(screenshot)
+                        alt=""
+                        width=SCREENSHOT_WIDTH
+                        height=SCREENSHOT_HEIGHT
+                        loading="lazy"
+                        decoding="async"
+                    />
+                }
+            })
+            .collect_view()
+    };
 
     view! {
         <section class="highlight-section">
@@ -225,22 +252,23 @@ pub fn HighlightSection() -> impl IntoView {
             </div>
             <div
                 class="screenshot-marquee"
+                class:is-paused=move || paused.get()
                 role="img"
                 aria-label="A scrolling preview of MeetCal app screens"
             >
                 <div class="screenshot-track">
-                    <div class="screenshot-set">
-                        {screenshots.iter().map(|screenshot| view! {
-                            <img src=format!("/images/{screenshot}.png") alt="" />
-                        }).collect_view()}
-                    </div>
-                    <div class="screenshot-set" aria-hidden="true">
-                        {screenshots.iter().map(|screenshot| view! {
-                            <img src=format!("/images/{screenshot}.png") alt="" />
-                        }).collect_view()}
-                    </div>
+                    <div class="screenshot-set">{screenshot_set()}</div>
+                    <div class="screenshot-set" aria-hidden="true">{screenshot_set()}</div>
                 </div>
             </div>
+            <button
+                class="marquee-toggle"
+                type="button"
+                aria-pressed=move || if paused.get() { "true" } else { "false" }
+                on:click=move |_| set_paused.update(|paused| *paused = !*paused)
+            >
+                {move || if paused.get() { "Play preview" } else { "Pause preview" }}
+            </button>
         </section>
     }
 }
@@ -263,5 +291,31 @@ mod tests {
             !CARGO_INSTALL.contains("meetcal-cli"),
             "the meetcal-cli repository is archived"
         );
+    }
+
+    #[test]
+    fn screenshots_are_the_small_webp_exports() {
+        for screenshot in SCREENSHOTS {
+            let src = screenshot_src(screenshot);
+            assert!(src.ends_with(".webp"), "{src}");
+            let path = format!("{}/public{src}", env!("CARGO_MANIFEST_DIR"));
+            let bytes = std::fs::read(&path).unwrap_or_else(|error| panic!("{path}: {error}"));
+            // A thumbnail export, not a full-size screenshot (#204).
+            assert!(bytes.len() < 60_000, "{path} is {} bytes", bytes.len());
+        }
+    }
+
+    #[test]
+    fn screenshot_size_keeps_the_exports_aspect_ratio() {
+        // The exports are 440 x 957: twice the displayed 220 x 478.
+        assert_eq!(SCREENSHOT_WIDTH * 2, 440);
+        assert!((SCREENSHOT_HEIGHT * 2).abs_diff(957) <= 1);
+    }
+
+    #[test]
+    fn header_logo_is_an_icon_sized_export() {
+        let path = format!("{}/public/images/logo.png", env!("CARGO_MANIFEST_DIR"));
+        let bytes = std::fs::read(&path).unwrap_or_else(|error| panic!("{path}: {error}"));
+        assert!(bytes.len() < 20_000, "{path} is {} bytes", bytes.len());
     }
 }
