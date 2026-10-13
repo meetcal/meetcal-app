@@ -157,6 +157,28 @@ describe('loadAthleteResults', () => {
     expect(painted).toEqual([]);
   });
 
+  // A Retry over on-device rows re-read the device and, finding nothing (the
+  // download was removed meanwhile), let an empty answer clear the rows, or
+  // a failed request report "failed" and lose the Retry.
+  it.each([
+    ['answers empty', async () => []],
+    [
+      'fails',
+      async () => {
+        throw new Error('offline');
+      },
+    ],
+  ])('keeps on-device rows kept through a retry as partial when the request %s', async (_label, fetchFull) => {
+    const { load, painted } = makeLoad({
+      shown: [row('Local')],
+      shownSource: 'offline',
+      readOffline: jest.fn(async () => []),
+      fetchFull,
+    });
+    await expect(loadAthleteResults(load)).resolves.toBe('offline-partial');
+    expect(painted).toEqual([]);
+  });
+
   it('paints nothing once the screen has moved on', async () => {
     let current = true;
     const offline = deferred<SupabaseLiftResult[]>();

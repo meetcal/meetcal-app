@@ -321,9 +321,10 @@ export default function AthleteResultsScreen() {
   const [isOffline] = useIsOffline();
   const resultsCacheRef = useRef<Map<string, SupabaseLiftResult[]>>(new Map());
   const requestIdRef = useRef(0);
-  // The athlete whose on-device rows are on screen, so a retry for that
-  // athlete keeps them up instead of blanking the list behind a spinner.
-  const offlineRowsForRef = useRef<string | null>(null);
+  // The athlete whose on-device rows are on screen, and the rows, so a retry
+  // for that athlete keeps them up (instead of blanking the list behind a
+  // spinner) and the load knows they are there and partial.
+  const offlineRowsRef = useRef<{ name: string; rows: SupabaseLiftResult[] } | null>(null);
 
   // Each cached entry can hold an athlete's entire competition history. Without
   // this cleanup the map grows for every athlete opened during a session and is
@@ -345,16 +346,17 @@ export default function AthleteResultsScreen() {
       setLoadFailed(false);
       setLoadOutcome(null);
       if (cachedResults) {
-        offlineRowsForRef.current = null;
+        offlineRowsRef.current = null;
         setAthleteResults(cachedResults);
         setRowsSource("api");
         setLoading(false);
-      } else if (offlineRowsForRef.current !== nameStr) {
-        offlineRowsForRef.current = null;
+      } else if (offlineRowsRef.current?.name !== nameStr) {
+        offlineRowsRef.current = null;
         setAthleteResults([]);
         setRowsSource(null);
         setLoading(true);
       }
+      const keptOffline = cachedResults ? undefined : offlineRowsRef.current?.rows;
 
       const requestId = ++requestIdRef.current;
       try {
@@ -363,7 +365,8 @@ export default function AthleteResultsScreen() {
         // The API request starts before the offline read (see
         // `loadAthleteResults`).
         const outcome = await loadAthleteResults({
-          shown: cachedResults,
+          shown: cachedResults ?? keptOffline,
+          shownSource: cachedResults ? "api" : "offline",
           readOffline: () => getAllCachedLiftingResultsForAthlete(nameStr),
           fetchFull: () => fetchAllResultsForName(nameStr),
           isCurrent: () => requestId === requestIdRef.current,
@@ -371,7 +374,7 @@ export default function AthleteResultsScreen() {
             if (source === "api") {
               resultsCacheRef.current.set(cacheKey, rows);
             }
-            offlineRowsForRef.current = source === "offline" ? nameStr : null;
+            offlineRowsRef.current = source === "offline" ? { name: nameStr, rows } : null;
             setAthleteResults(rows);
             setRowsSource(source);
             if (source === "offline") setLoading(false);

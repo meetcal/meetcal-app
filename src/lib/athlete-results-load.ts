@@ -21,6 +21,12 @@ import type { SupabaseLiftResult } from '@/types/athlete-results';
 export type AthleteResultsLoad = {
   /** Rows this screen already holds for the athlete (its in-memory copy). */
   shown: readonly SupabaseLiftResult[] | undefined;
+  /**
+   * Where `shown` came from (default `api`). On-device rows kept on screen
+   * through a retry are still a partial history: an empty answer must not
+   * clear them, and a failed request leaves them `offline-partial`.
+   */
+  shownSource?: ShownResultsSource;
   readOffline: () => Promise<SupabaseLiftResult[]>;
   fetchFull: () => Promise<SupabaseLiftResult[]>;
   /** False once the screen moved on (another athlete, or unmounted). */
@@ -84,7 +90,7 @@ export async function loadAthleteResults(
   );
 
   let displayedCount = load.shown?.length ?? 0;
-  let displayedOffline = false;
+  let displayedOffline = displayedCount > 0 && load.shownSource === 'offline';
   if (displayedCount === 0) {
     try {
       const offline = await load.readOffline();

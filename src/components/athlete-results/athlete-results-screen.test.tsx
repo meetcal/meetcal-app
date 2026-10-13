@@ -210,6 +210,31 @@ it("loads the full history from the partial note's Retry, keeping the on-device 
   mockIsOffline = true;
 });
 
+// The Retry used to re-read the device: with the download removed meanwhile
+// it found nothing, so a failed request dropped the Retry (and an empty
+// answer would have cleared the rows still on screen).
+it("keeps the on-device rows and the Retry when a retry fails after the download is gone", async () => {
+  mockIsOffline = false;
+  mockName = "Retry Removed Athlete";
+  const errorLog = jest.spyOn(console, "error").mockImplementation(() => {});
+  jest.mocked(getAllCachedLiftingResultsForAthlete).mockResolvedValue(cachedRow(mockName));
+  jest.mocked(fetchAllResultsForName).mockRejectedValueOnce(new Error("MeetCal API error 503"));
+  let tree!: ReturnType<typeof create>;
+  await act(async () => { tree = create(<AthleteResultsScreen />); });
+
+  jest.mocked(getAllCachedLiftingResultsForAthlete).mockResolvedValue([]);
+  jest.mocked(fetchAllResultsForName).mockRejectedValueOnce(new Error("MeetCal API error 503"));
+  await act(async () => {
+    tree.root.findByProps({ testID: "athlete-results-partial-retry" }).props.onPress();
+  });
+
+  expect(JSON.stringify(tree.toJSON())).toContain("Cached Open");
+  expect(tree.root.findAllByProps({ testID: "athlete-results-partial-retry" }).length).toBeGreaterThan(0);
+  await act(async () => { tree.unmount(); });
+  errorLog.mockRestore();
+  mockIsOffline = true;
+});
+
 it("loads the full history when the connection comes back", async () => {
   mockName = "Reconnect Athlete";
   const errorLog = jest.spyOn(console, "error").mockImplementation(() => {});
