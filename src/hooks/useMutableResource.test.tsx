@@ -78,6 +78,41 @@ describe("useMutableResource", () => {
     expect(captured!.isInitialLoading).toBe(false);
   });
 
+  it("takes a revalidate started elsewhere, keeping the value when it is unchanged", async () => {
+    let fresh: Row[] = [{ id: "v1" }];
+    const resource = createMutableResource<Row[], [string]>({
+      getKey: (param) => `shared:${param}`,
+      loadCached: async () => null,
+      fetchFresh: async () => fresh,
+      persistFresh: async () => null,
+    });
+
+    harness(resource, "a");
+    await flush();
+    const first = captured!.data;
+    expect(first).toEqual([{ id: "v1" }]);
+
+    // Same rows, new array: nothing downstream should re-render for it.
+    fresh = [{ id: "v1" }];
+    await act(async () => {
+      await resource.revalidate("a");
+    });
+    expect(captured!.data).toBe(first);
+
+    fresh = [{ id: "v2" }];
+    await act(async () => {
+      await resource.revalidate("a");
+    });
+    expect(captured!.data).toEqual([{ id: "v2" }]);
+
+    // Another key's answer is not this screen's.
+    fresh = [{ id: "other" }];
+    await act(async () => {
+      await resource.revalidate("b");
+    });
+    expect(captured!.data).toEqual([{ id: "v2" }]);
+  });
+
   it("reports an error when there is no cache to fall back on", async () => {
     const resource = createMutableResource<Row[], [string]>({
       getKey: (param) => `nocache:${param}`,

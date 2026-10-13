@@ -233,6 +233,22 @@ export function useMutableResource<T, TParams extends readonly unknown[]>(
     };
   }, [enabled, key, refresh, resource]);
 
+  // A revalidate of this key started anywhere else (another screen, the
+  // background schedule sync) lands here too, so this copy does not keep
+  // showing what it last fetched itself. An unchanged answer keeps the
+  // current value, so nothing downstream re-renders for it.
+  useEffect(() => {
+    if (!enabled || key === null) return;
+    return resource.subscribe(key, (result) => {
+      if (!mountedRef.current || previousKeyRef.current !== key) return;
+      setData((current) => (resource.isEqual(current, result.data) ? current : result.data));
+      setLastUpdatedAt(result.lastUpdatedAt);
+      setSource(result.source);
+      setError(null);
+      setRefreshError(null);
+    });
+  }, [enabled, key, resource]);
+
   useEffect(() => {
     if (!enabled) return;
 

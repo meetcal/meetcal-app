@@ -83,6 +83,40 @@ export function createLoadChain(): LoadChain {
   };
 }
 
+/**
+ * The shortest gap between two background refreshes of the saved list (app
+ * foreground, network back). Each one is a token read, an outbox flush and a
+ * GET; iOS reports `active` for every Control Center pull, and venue Wi-Fi
+ * flaps, so these are throttled. A load the user asked for (pull to refresh,
+ * the Saved tab gaining focus, a sign-in) is not.
+ */
+export const SAVED_SESSIONS_REFRESH_MIN_INTERVAL_MS = 60_000;
+
+export interface RefreshThrottle {
+  /** Note that a load started now (any load, throttled or not). */
+  markRun(): void;
+  /** Whether a background refresh may run now: the last load is old enough. */
+  shouldRun(): boolean;
+}
+
+export function createRefreshThrottle(
+  minIntervalMs: number = SAVED_SESSIONS_REFRESH_MIN_INTERVAL_MS,
+  now: () => number = Date.now,
+): RefreshThrottle {
+  let lastRunAt: number | null = null;
+  return {
+    markRun() {
+      lastRunAt = now();
+    },
+    shouldRun() {
+      if (lastRunAt === null) return true;
+      const elapsed = now() - lastRunAt;
+      // A clock set backwards since the last load: treat it as old.
+      return elapsed < 0 || elapsed >= minIntervalMs;
+    },
+  };
+}
+
 export interface LoadSavedSessionsDeps {
   /** The active user (Clerk's, or the cached one while Clerk loads). */
   userId: string | null;

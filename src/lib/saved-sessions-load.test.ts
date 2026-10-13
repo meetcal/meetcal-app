@@ -1,5 +1,6 @@
 import {
   createLoadChain,
+  createRefreshThrottle,
   savedSessionsLoadKey,
   sessionsFromApi,
 } from "@/lib/saved-sessions-load";
@@ -90,5 +91,26 @@ describe("createLoadChain", () => {
     await chain.run("a", task);
     await chain.run("a", task);
     expect(task).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("createRefreshThrottle", () => {
+  it("allows a refresh before any load and once the interval has passed since the last", () => {
+    let now = 1_000_000;
+    const throttle = createRefreshThrottle(60_000, () => now);
+    expect(throttle.shouldRun()).toBe(true);
+    throttle.markRun();
+    now += 59_999;
+    expect(throttle.shouldRun()).toBe(false);
+    now += 1;
+    expect(throttle.shouldRun()).toBe(true);
+  });
+
+  it("treats a clock set back since the last load as old", () => {
+    let now = 1_000_000;
+    const throttle = createRefreshThrottle(60_000, () => now);
+    throttle.markRun();
+    now -= 1;
+    expect(throttle.shouldRun()).toBe(true);
   });
 });

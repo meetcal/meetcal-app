@@ -26,6 +26,7 @@ import {
 } from '@/lib/saved-sessions-store';
 import {
   createLoadChain,
+  createRefreshThrottle,
   loadSavedSessionsFor,
   savedSessionsLoadKey,
 } from '@/lib/saved-sessions-load';
@@ -42,6 +43,7 @@ import {
 } from '@/lib/saved-sessions-actions';
 import { useStorageUser } from '@/hooks/saved-sessions/useStorageUser';
 import { useReconnectReplay } from '@/hooks/saved-sessions/useReconnectReplay';
+import { useForegroundRefresh } from '@/hooks/saved-sessions/useForegroundRefresh';
 import { useReminderSync } from '@/hooks/saved-sessions/useReminderSync';
 import { useScheduleTimedSessions } from '@/hooks/saved-sessions/useScheduleTimedSessions';
 
@@ -86,6 +88,8 @@ export function useSavedSessions() {
    * identical to "nothing saved".
    */
   const [syncFailed, setSyncFailed] = useState(false);
+  const syncFailedRef = useRef(syncFailed);
+  syncFailedRef.current = syncFailed;
   /** Writes recorded in the outbox that have not yet reached the server. */
   const pendingWriteCountRef = useRef(0);
   // Clerk's `getToken` identity is not something the effects below should
@@ -259,11 +263,26 @@ export function useSavedSessions() {
    * confirming the cached user) queues behind the running one.
    */
   const loadChain = useRef(createLoadChain()).current;
-  const loadSavedSessions = useCallback(
-    (): Promise<void> =>
-      loadChain.run(savedSessionsLoadKey(activeUserId, Boolean(clerkUserId)), runLoad),
-    [activeUserId, clerkUserId, loadChain, runLoad],
-  );
+  const refreshThrottle = useRef(createRefreshThrottle()).current;
+  const loadSavedSessions = useCallback((): Promise<void> => {
+    refreshThrottle.markRun();
+    return loadChain.run(savedSessionsLoadKey(activeUserId, Boolean(clerkUserId)), runLoad);
+  }, [activeUserId, clerkUserId, loadChain, refreshThrottle, runLoad]);
+
+  /**
+   * A load nobody asked for: the app returning to the foreground, or the
+   * network coming back. The list, and through it the reminders, the widget,
+   * Siri and Spotlight, then follow saves and unsaves made on another device
+   * without a visit to the Saved tab. Throttled, except after a load that
+   * could not reach the server (a foreground while offline must not hold
+   * off the reload when the network returns); skipped with no user.
+   */
+  const refreshSavedSessions = useCallback(async (): Promise<void> => {
+    if (!activeUserId) return;
+    if (!syncFailedRef.current && !refreshThrottle.shouldRun()) return;
+    await loadSavedSessions();
+  }, [activeUserId, loadSavedSessions, refreshThrottle]);
+  useForegroundRefresh(Boolean(activeUserId), refreshSavedSessions);
 
   // Load on every step of user resolution that changes what a load can do:
   // the cached id (local only) and then Clerk's id (server reconcile). Keyed
@@ -287,7 +306,13 @@ export function useSavedSessions() {
     void loadSavedSessions();
   }, [activeUserId, clerkUserId, hasResolvedUser, loadSavedSessions]);
 
-  useReconnectReplay(clerkUserId, pendingWriteCountRef, syncOutbox);
+  // Back online: queued writes go out at once (the load sends the outbox
+  // before it fetches); with nothing queued it is a throttled refresh.
+  const reconnect = useCallback(
+    (hasPendingWrites: boolean) => (hasPendingWrites ? loadSavedSessions() : refreshSavedSessions()),
+    [loadSavedSessions, refreshSavedSessions],
+  );
+  useReconnectReplay(clerkUserId, pendingWriteCountRef, reconnect);
 
   // Once the list for the resolved user has loaded. "No user" is only an
   // answer once Clerk has loaded: with an expired auth hint and Clerk still

@@ -290,6 +290,8 @@ describe("readWidgetSource", () => {
         source: "network" as const,
       })),
       invalidate: jest.fn(),
+      subscribe: jest.fn(() => () => {}),
+      isEqual: (left, right) => left === right,
     };
   }
 

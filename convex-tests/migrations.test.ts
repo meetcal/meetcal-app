@@ -2,6 +2,7 @@ import { fakeMutationCtx, handlerOf } from './fakeDb';
 import {
   backfillNameKeys,
   dedupeLiftingResults,
+  dedupeSavedSessions,
   duplicateMeetNames,
   normalizeAthleteGenders,
   normalizeReferenceCasing,
@@ -186,5 +187,65 @@ describe('duplicateMeetNames (#159)', () => {
         ],
       },
     ]);
+  });
+});
+
+describe('dedupeSavedSessions (#319)', () => {
+  const saved = (userId: string, sessionId: string, updatedAt: number, notes: string): Row => ({
+    userId,
+    sessionId,
+    meet: 'Spring Open',
+    sessionNumber: 1,
+    platform: 'Red',
+    athleteNames: [],
+    notes,
+    updatedAt,
+  });
+
+  it("keeps each user's newest row of a session across pages and is idempotent", async () => {
+    const seed: Row[] = [];
+    for (let i = 0; i < 600; i++) seed.push(saved('u1', `s${String(i).padStart(4, '0')}`, 1, 'single'));
+    seed.push(saved('u1', 's0499', 5, 'newer'), saved('u1', 's0499', 2, 'older'));
+    seed.push(saved('u2', 's0001', 1, 'other user'));
+    const store = fakeMutationCtx({ saved_sessions: seed });
+    const run = () => runPaged('migrations:dedupeSavedSessions', handlerOf<Paged, void>(dedupeSavedSessions), store);
+
+    await run();
+    const rows = store.rows('saved_sessions');
+    expect(rows).toHaveLength(601);
+    expect(rows.filter((r) => r.sessionId === 's0499').map((r) => r.notes)).toEqual(['newer']);
+    expect(rows.filter((r) => r.userId === 'u2')).toHaveLength(1);
+
+    await run();
+    expect(store.rows('saved_sessions')).toHaveLength(601);
+  });
+
+  it('deletes nothing on a dry run', async () => {
+    const store = fakeMutationCtx({ saved_sessions: [saved('u1', 'a', 1, 'x'), saved('u1', 'a', 2, 'y')] });
+    await runPaged('migrations:dedupeSavedSessions', handlerOf<Paged, void>(dedupeSavedSessions), store);
+    expect(store.rows('saved_sessions')).toHaveLength(1);
+    const dry = fakeMutationCtx({ saved_sessions: [saved('u1', 'a', 1, 'x'), saved('u1', 'a', 2, 'y')] });
+    await handlerOf<Paged, void>(dedupeSavedSessions)(dry.ctx, { dryRun: true });
+    expect(dry.rows('saved_sessions')).toHaveLength(2);
+  });
+
+  it('counts a duplicate group split across two pages once on a dry run', async () => {
+    const seed: Row[] = [];
+    // 499 singles sort before the pair, so the pair straddles the 500-row page.
+    for (let i = 0; i < 499; i++) seed.push(saved('u1', `a${String(i).padStart(4, '0')}`, 1, 'single'));
+    seed.push(saved('u1', 'b', 1, 'older'), saved('u1', 'b', 2, 'newer'));
+    const store = fakeMutationCtx({ saved_sessions: seed });
+    const handler = handlerOf<Paged, void>(dedupeSavedSessions);
+    let args: Paged = { dryRun: true };
+    for (;;) {
+      const before = store.scheduled.length;
+      await handler(store.ctx, args);
+      const next = store.scheduled.slice(before).find((s) => s.name === 'migrations:dedupeSavedSessions');
+      if (!next) break;
+      args = next.args as Paged;
+    }
+    expect(store.rows('saved_sessions')).toHaveLength(501);
+    const logged = (console.log as jest.Mock).mock.calls.map(([line]) => String(line));
+    expect(logged.at(-1)).toContain('1 duplicate rows to delete');
   });
 });
