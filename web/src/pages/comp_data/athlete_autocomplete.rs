@@ -1,3 +1,4 @@
+use super::combobox::{Combobox, SuggestionCopy, Suggestions};
 use super::models::{AthleteSearchQuery, AthleteSearchResponse};
 use crate::utils::api::{queries, query_with};
 use leptos::leptos_dom::helpers::{TimeoutHandle, set_timeout_with_handle};
@@ -32,14 +33,6 @@ impl RequestSequence {
     fn is_current(&self, request: u64) -> bool {
         self.latest == request
     }
-}
-
-#[derive(Clone, Debug, PartialEq)]
-enum Suggestions {
-    Idle,
-    Searching,
-    Ready(Vec<String>),
-    Failed,
 }
 
 #[component]
@@ -96,48 +89,45 @@ pub(crate) fn AthleteAutocomplete(
         }
     };
 
+    // Stops the pending search and discards the one in flight, keeping
+    // suggestions already shown, so Down can bring them back.
+    let stop_search = move || {
+        cancel_pending_search();
+        if sequence.try_update_value(RequestSequence::next).is_some()
+            && suggestions.get_untracked() == Suggestions::Searching
+        {
+            set_suggestions.set(Suggestions::Idle);
+        }
+    };
+
     view! {
-        <div class=format!("athlete-autocomplete {wrapper_class}")>
-            <label for=input_id>"Athlete"</label>
-            <input
-                id=input_id
-                class="data-filter"
-                type="search"
-                required=true
-                autocomplete="off"
-                aria-autocomplete="list"
-                aria-controls=format!("{input_id}-suggestions")
-                placeholder="Athlete name"
-                prop:value=move || value.get()
-                on:input=move |event| {
-                    let next = event_target_value(&event);
-                    schedule_search(&next);
-                    set_value.set(next);
-                }
-            />
-            {move || {
-                suggestions.with(|state| match state {
-                    Suggestions::Idle | Suggestions::Failed => ().into_any(),
-                    Suggestions::Searching => view! {
-                        <div id=format!("{input_id}-suggestions") class="athlete-suggestions" role="status"><p>"Searching…"</p></div>
-                    }.into_any(),
-                    Suggestions::Ready(matches) => view! {
-                        <div id=format!("{input_id}-suggestions") class="athlete-suggestions" role="listbox" aria-label="Athlete suggestions">
-                            {matches.is_empty().then(|| view! { <p>"No matching athletes"</p> })}
-                            {matches.iter().cloned().map(|name| {
-                                let selected_name = name.clone();
-                                view! {
-                                    <button type="button" role="option" on:click=move |_| {
-                                        schedule_search("");
-                                        set_value.set(selected_name.clone());
-                                    }>{name}</button>
-                                }
-                            }).collect_view()}
-                        </div>
-                    }.into_any(),
-                })
-            }}
-        </div>
+        <Combobox
+            input_id=input_id
+            label="Athlete"
+            placeholder="Athlete name"
+            input_class="data-filter"
+            wrapper_class=format!("athlete-autocomplete {wrapper_class}")
+            list_class="athlete-suggestions"
+            required=true
+            value=value
+            suggestions=suggestions
+            copy=SuggestionCopy {
+                list_label: "Athlete suggestions",
+                no_matches: "No matching athletes",
+                failed: "Couldn’t load athlete suggestions. Keep typing, or search by full name.",
+            }
+            on_input=move |next: String| {
+                schedule_search(&next);
+                set_value.set(next);
+            }
+            on_select=move |name: String| {
+                schedule_search("");
+                set_value.set(name);
+            }
+            // Submitting, Escape, or leaving the field: stop the pending
+            // search, so its answer can't reopen the list over the results.
+            on_dismiss=move |()| stop_search()
+        />
     }
 }
 
