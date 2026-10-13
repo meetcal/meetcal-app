@@ -248,3 +248,102 @@ describe('record upserts refuse to clear many lifts (#91)', () => {
     expect(rows('records').map((r) => r.snatchRecord)).toEqual([110]);
   });
 });
+
+describe('entries a list no longer has, and renamed or re-numbered entrants (#251, #386, #384)', () => {
+  type Args = { meet: string; rows: ReturnType<typeof entry>[]; complete?: boolean; allowShrink?: boolean };
+  const upsert = handlerOf<Args, Record<string, number>>(upsertEntryAthletes);
+  const names = (n: number) => Array.from({ length: n }, (_, i) => `Lifter ${i}`);
+
+  it('deletes an entrant who withdrew before the start list, only for a whole list', async () => {
+    const { db, rows } = fakeDb({ athletes: names(10).map((name, i) => athlete(name, String(i + 1))) });
+    const list = names(9).map((name, i) => entry(name, String(i + 1)));
+    expect(await upsert({ db }, { meet: 'Meet', rows: list })).toMatchObject({ deleted: 0 });
+    expect(rows('athletes')).toHaveLength(10);
+    expect(await upsert({ db }, { meet: 'Meet', rows: list, complete: true })).toMatchObject({ deleted: 1, unchanged: 9 });
+    expect(rows('athletes').map((a) => a.name)).not.toContain('Lifter 9');
+  });
+
+  it('keeps a published roster, placed rows and adaptive entrants whatever the list says', async () => {
+    const published = fakeDb({ athletes: [athlete('Placed', '1', { sessionNumber: 1, sessionPlatform: 'Red' }), athlete('Unplaced', '2')] });
+    await upsert({ db: published.db }, { meet: 'Meet', rows: [entry('Placed', '1')], complete: true });
+    expect(published.rows('athletes')).toHaveLength(2);
+    const adaptive = fakeDb({ athletes: [athlete('Ann', '1'), athlete('Adaptive Al', '2', { adaptive: true })] });
+    await upsert({ db: adaptive.db }, { meet: 'Meet', rows: [entry('Ann', '1')], complete: true });
+    expect(adaptive.rows('athletes').map((a) => a.name)).toEqual(['Ann', 'Adaptive Al']);
+  });
+
+  it('refuses to delete a large share of the entrants without allowShrink', async () => {
+    const seed = () => fakeDb({ athletes: names(40).map((name, i) => athlete(name, String(i + 1))) });
+    const list = names(20).map((name, i) => entry(name, String(i + 1)));
+    await expect(upsert({ db: seed().db }, { meet: 'Meet', rows: list, complete: true })).rejects.toThrow("refusing to delete 20 of Meet's 40 entrants");
+    const allowed = seed();
+    expect(await upsert({ db: allowed.db }, { meet: 'Meet', rows: list, complete: true, allowShrink: true })).toMatchObject({ deleted: 20 });
+  });
+
+  it('renames the row of a member whose name Sport80 corrected, rather than add a second', async () => {
+    const { db, rows } = fakeDb({ athletes: [athlete('Jon Smith', '1078562', { gender: 'Women' }), athlete('Ann Lee', '2', { gender: 'Women' })] });
+    expect(await upsert({ db }, { meet: 'Meet', rows: [entry('John Smith', '1078562'), entry('Ann Lee', '2')], complete: true })).toMatchObject({ inserted: 0, updated: 1, deleted: 0 });
+    expect(rows('athletes').map((a) => [a.name, a.memberId])).toEqual([
+      ['John Smith', '1078562'],
+      ['Ann Lee', '2'],
+    ]);
+  });
+
+  it("takes over an old scraper's one-off id once the entrant has a real number", async () => {
+    const { db, rows } = fakeDb({ athletes: [athlete('Kimberly Wiese', '140203020', { weightClass: '69' })] });
+    expect(await upsert({ db }, { meet: 'Meet', rows: [entry('Kimberly Wiese', '1027360', { weightClass: '77' })] })).toMatchObject({ inserted: 0, updated: 1 });
+    expect(rows('athletes')).toEqual([expect.objectContaining({ name: 'Kimberly Wiese', memberId: '1027360', weightClass: '77' })]);
+  });
+
+  it('leaves a nine-digit id another meet also holds (a real number), and stores no placeholder rows', async () => {
+    const { db, rows } = fakeDb({ athletes: [athlete('Kim Lee', '123456789'), athlete('Kim Lee', '123456789', { meet: 'Other' })] });
+    const counts = await upsert({ db }, { meet: 'Meet', rows: [entry('Kim Lee', '7654321'), entry('undefined undefined', 'No Member Entries'), entry(' ', '5')] });
+    expect(counts).toMatchObject({ inserted: 1, rejected: 2 });
+    expect(rows('athletes').filter((a) => a.meet === 'Meet').map((a) => a.memberId).sort()).toEqual(['123456789', '7654321']);
+  });
+});
+
+describe('start lists loaded by hand (#388, #219)', () => {
+  type Args = { meet: string; rows: ReturnType<typeof athlete>[]; allowUnchecked?: boolean };
+  const replace = handlerOf<Args, unknown>(replaceMeetAthletes);
+  const roster = (n: number, extra: (i: number) => Partial<Record<string, unknown>> = () => ({})) =>
+    Array.from({ length: n }, (_, i) =>
+      athlete(`Lifter ${i}`, String(i + 1), { age: 15 + (i % 30), weightClass: i % 10 === 0 ? '86+' : '77', ...extra(i) }),
+    );
+
+  it('stores a sound list, with a blank member id as the placeholder', async () => {
+    const { db, rows } = fakeDb();
+    await replace({ db }, { meet: 'Meet', rows: [...roster(60), athlete('No Id', '', { age: 30 })] });
+    expect(rows('athletes')).toHaveLength(61);
+    expect(rows('athletes').find((a) => a.name === 'No Id')?.memberId).toBe('noid:no-id');
+  });
+
+  it.each([
+    ['ages of 0', roster(30, () => ({ age: 0 })), 'age outside 5-100'],
+    ['ages as category buckets', roster(30, (i) => ({ age: i % 3 === 0 ? 30 : 25 })), 'have age 25'],
+    ["superheavy classes without their '+'", roster(60, () => ({ weightClass: '86' })), 'no superheavy (+) class'],
+    ['a woman stored as a man', [athlete('Lucy Korn', '1', { gender: 'Male', weightClass: '63' })], "only the other gender's"],
+    ['category text as the class', [athlete('Ann', '1', { weightClass: "Women's 16-17 Age Group 77+kg" })], 'not a bare class'],
+    ['an unknown gender', [athlete('Ann', '1', { gender: '' })], 'neither men nor women'],
+  ])('refuses %s unless allowUnchecked', async (_what, rows, message) => {
+    const refused = fakeDb({ athletes: [athlete('Kept', '9')] });
+    await expect(replace({ db: refused.db }, { meet: 'Meet', rows })).rejects.toThrow(message);
+    expect(refused.rows('athletes').map((a) => a.name)).toEqual(['Kept']);
+    const allowed = fakeDb();
+    await replace({ db: allowed.db }, { meet: 'Meet', rows, allowUnchecked: true });
+    expect(allowed.rows('athletes')).toHaveLength(rows.length);
+  });
+
+  it('always refuses a row with half a session (#219)', async () => {
+    const { db } = fakeDb();
+    for (const half of [{ sessionNumber: 3 }, { sessionPlatform: 'Red' }, { sessionNumber: 3, sessionPlatform: ' ' }]) {
+      await expect(replace({ db }, { meet: 'Meet', rows: [athlete('Ann', '1', half)], allowUnchecked: true })).rejects.toThrow('only one of sessionNumber and sessionPlatform');
+    }
+  });
+
+  it('lets the entries sync treat a roster with only half sessions as unpublished, as the start list shows it', async () => {
+    const upsert = handlerOf<{ meet: string; rows: ReturnType<typeof entry>[] }, Record<string, number>>(upsertEntryAthletes);
+    const { db } = fakeDb({ athletes: [athlete('Ann', '1', { sessionNumber: 3 })] });
+    expect(await upsert({ db }, { meet: 'Meet', rows: [entry('Bo', '2')] })).toMatchObject({ inserted: 1, notOnStartList: 0 });
+  });
+});
