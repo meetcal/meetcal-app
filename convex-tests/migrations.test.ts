@@ -191,31 +191,61 @@ describe('duplicateMeetNames (#159)', () => {
 });
 
 describe('deleteMeetsWithoutData (#405)', () => {
-  const meet = (name: string): Row => ({ name, federation: 'USAW', startDate: '2025-02-27', endDate: '2025-02-27', status: 'completed', timeZone: 'q' });
+  const meet = (name: string, startDate: string, extra: Row = {}): Row => ({
+    name,
+    federation: 'USAW',
+    startDate,
+    endDate: startDate,
+    status: 'completed',
+    timeZone: 'q',
+    venueName: 'q',
+    venueCity: 'q',
+    venueState: 'q',
+    ...extra,
+  });
   const seed = () => ({
-    meets: [meet('Virus Weightlifting Series 1'), meet("USAMW Master's Nationals"), meet('2025 World Masters Championships'), meet('Real Meet')],
-    lifting_results: [{ meet: 'Real Meet', name: 'A', nameKey: 'a', eventId: '1', date: '2025-02-27' }],
+    meets: [
+      meet('Virus Weightlifting Series 1', '2025-02-27'),
+      meet("USAMW Master's Nationals", '2025-03-26'),
+      meet('2025 World Masters Championships', '2026-03-06', { federation: 'USAMW', venueName: 'TBD', venueCity: 'Aisling', venueState: 'CT' }),
+      meet('Real Meet', '2025-05-01'),
+      // Another federation's meet of the same name, another date: never matched.
+      meet('Virus Weightlifting Series 1', '2027-02-27', { federation: 'USAMW' }),
+    ],
+    lifting_results: [{ meet: 'Real Meet', name: 'A', nameKey: 'a', eventId: '1', date: '2025-05-01' }],
     saved_sessions: [{ meet: "USAMW Master's Nationals", userId: 'u', sessionId: 's', sessionNumber: 1, platform: 'Red', updatedAt: 1 }],
   });
-  type Args = { names?: string[]; dryRun?: boolean };
-  type Result = { dryRun: boolean; deleted: string[]; kept: { name: string; has: string[] }[]; missing: string[] };
+  type Args = { meets?: { name: string; startDate: string }[]; dryRun?: boolean };
+  type Result = { dryRun: boolean; deleted: Row[]; kept: { name: string; has: string[] }[]; missing: string[] };
 
-  it('lists what it would delete on a dry run, and writes nothing', async () => {
+  it('lists each row it would delete on a dry run, and writes nothing', async () => {
     const store = fakeMutationCtx(seed());
     const result = await handlerOf<Args, Result>(deleteMeetsWithoutData)(store.ctx, { dryRun: true });
-    expect(result.deleted).toEqual(['Virus Weightlifting Series 1', '2025 World Masters Championships']);
+    expect(result.deleted).toEqual([
+      expect.objectContaining({ name: 'Virus Weightlifting Series 1', federation: 'USAW', startDate: '2025-02-27', place: 'q / q / q', timeZone: 'q' }),
+      expect.objectContaining({ name: '2025 World Masters Championships', federation: 'USAMW', place: 'TBD / Aisling / CT' }),
+    ]);
     expect(result.kept).toEqual([{ name: "USAMW Master's Nationals", has: ['saved sessions'] }]);
-    expect(store.rows('meets')).toHaveLength(4);
+    expect(store.rows('meets')).toHaveLength(5);
     expect(store.rows('view_hints')).toHaveLength(0);
   });
 
-  it('deletes only meets nothing refers to, with a meet hint each, and is idempotent', async () => {
+  it('deletes only the named row that nothing refers to, with a meet hint, and is idempotent', async () => {
     const store = fakeMutationCtx(seed());
     const run = handlerOf<Args, Result>(deleteMeetsWithoutData);
-    const first = await run(store.ctx, { names: ['Virus Weightlifting Series 1', 'Real Meet', 'Nope'] });
-    expect(first).toEqual({ dryRun: false, deleted: ['Virus Weightlifting Series 1'], kept: [{ name: 'Real Meet', has: ['results'] }], missing: ['Nope'] });
-    expect(store.rows('meets').map((m) => m.name)).not.toContain('Virus Weightlifting Series 1');
+    const first = await run(store.ctx, {
+      meets: [
+        { name: 'Virus Weightlifting Series 1', startDate: '2025-02-27' },
+        { name: 'Real Meet', startDate: '2025-05-01' },
+        { name: 'Nope', startDate: '2025-01-01' },
+      ],
+    });
+    expect(first.deleted.map((row) => row.name)).toEqual(['Virus Weightlifting Series 1']);
+    expect(first.kept).toEqual([{ name: 'Real Meet', has: ['results'] }]);
+    expect(first.missing).toEqual(['Nope (2025-01-01)']);
+    // The other federation's meet of that name is still there.
+    expect(store.rows('meets').filter((m) => m.name === 'Virus Weightlifting Series 1').map((m) => m.startDate)).toEqual(['2027-02-27']);
     expect(store.rows('view_hints').map((h) => `${h.kind}:${h.key}`)).toEqual(['meet:Virus Weightlifting Series 1']);
-    expect((await run(store.ctx, { names: ['Virus Weightlifting Series 1'] })).missing).toEqual(['Virus Weightlifting Series 1']);
+    expect((await run(store.ctx, { meets: [{ name: 'Virus Weightlifting Series 1', startDate: '2025-02-27' }] })).missing).toHaveLength(1);
   });
 });
