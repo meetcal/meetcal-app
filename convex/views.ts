@@ -56,6 +56,7 @@ import {
   RESULT_NAMES_VIEW,
   SEARCH_SHARD_PREFIX,
   SEARCH_SHARD_SIZES_VIEW,
+  LEGACY_SEARCH_SHARD_SIZES_VIEWS,
   searchShardKey,
   VIEW_SOURCES,
   viewDependencies,
@@ -480,6 +481,7 @@ export const storeSearchShardSizes = internalMutation({
   args: { sizes: v.array(v.object({ bigram: v.string(), count: v.number() })) },
   handler: async (ctx, { sizes }) => {
     await writeView(ctx, SEARCH_SHARD_SIZES_VIEW, jsonChunks(sizes.map(({ bigram, count }) => [bigram, count])), []);
+    for (const key of LEGACY_SEARCH_SHARD_SIZES_VIEWS) await deleteView(ctx, key);
   },
 });
 
@@ -530,7 +532,12 @@ export const patchSearchShards = internalMutation({
 
 /** Merges sizes into the shard size table (a size of 0 drops the entry). */
 async function mergeShardSizes(ctx: MutationCtx, sizes: readonly { bigram: string; count: number }[]): Promise<void> {
-  const table = new Map<string, number>(JSON.parse((await readViewJsonAnyAge(ctx, SEARCH_SHARD_SIZES_VIEW)) ?? '[]') as [string, number][]);
+  // No table (a new fold, not yet built in full): queries read the whole
+  // directory until a full build, and a table started here would list only
+  // the patched shards, so every other one would read as empty.
+  const stored = await readViewJsonAnyAge(ctx, SEARCH_SHARD_SIZES_VIEW);
+  if (stored === null) return;
+  const table = new Map<string, number>(JSON.parse(stored) as [string, number][]);
   let changed = false;
   for (const { bigram, count } of sizes) {
     if (count > 0 && table.get(bigram) !== count) {
@@ -1474,6 +1481,12 @@ export const refreshJob = internalAction({
   args: {},
   handler: async (ctx): Promise<Record<string, number>> => {
     const result = await runRefresh(ctx);
+    // After a deploy that changed the shard fold (a new size table key), the
+    // shards are built here on their own; search reads the whole directory
+    // until then.
+    if ((await ctx.runQuery(internal.views.jsonViewAnyAge, { key: SEARCH_SHARD_SIZES_VIEW })) === null) {
+      result.searchShards = await ctx.runAction(internal.views.buildSearchShards, {});
+    }
     const health: { oldestHintAt: number | null; rebuildRestarts: number; rebuildFailures: number } = await ctx.runQuery(
       internal.views.refreshHealth,
       {},
