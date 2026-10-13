@@ -14,7 +14,6 @@ import {
   getStoredAthleteBestsForNames,
   isAthleteBestsFresh,
   listStoredMeets,
-  getAthleteLiftingResults,
   getExplicitlyDownloadedMeetIds,
   getMeetData,
   getMeetLiftingResults,
@@ -23,9 +22,9 @@ import {
   hasMeetEnded,
   initStore,
   markMeetExplicitlyDownloaded,
+  markMeetScheduleVerified,
   pruneOrphanedAthleteHistory,
   saveAthleteBestsBatch,
-  saveAthleteHistory,
   saveAthleteHistoryBatch,
   saveMeetAthletes,
   saveMeetLiftingResults,
@@ -38,6 +37,10 @@ import {
   resetOfflineClearsForTests,
   wasClearedSince,
 } from "@/lib/database/offline-clears";
+
+/** One athlete's history, through the batch writer every caller uses. */
+const saveAthleteHistory = (name: string, results: Parameters<typeof saveAthleteHistoryBatch>[0][number]["results"]) =>
+  saveAthleteHistoryBatch([{ name, results }]);
 
 const mockStorage = new Map<string, string>();
 
@@ -99,7 +102,7 @@ describe("offline-store athlete lifting results", () => {
       },
     ] as any);
 
-    const results = await getAthleteLiftingResults("Test Meet" as any, "jane doe");
+    const results = await getAllCachedLiftingResultsForAthlete("jane doe");
 
     expect(results).toHaveLength(1);
     expect(results[0].name).toBe("  JANE   DOE ");
@@ -327,6 +330,29 @@ describe("offline-store athlete lifting results", () => {
     await expect(getMeetSchedule("Test Meet")).resolves.toEqual(schedule);
   });
 
+  // Every schedule reader (each schedule screen, the reminder sync, the
+  // auto-unsave prune) used to read and normalize the whole roster too, and
+  // add an index entry for a meet it had never stored.
+  it("reads a schedule without touching the roster or writing the index", async () => {
+    await saveMeetSchedule("Test Meet", [
+      {
+        date: "2026-06-20",
+        fullDate: "2026-06-20",
+        sessions: [{ id: "Test Meet-1-Red", number: 1, startTime: "", weighInTime: "", platforms: [] }],
+      },
+    ] as never);
+    const getItem = AsyncStorage.getItem as jest.Mock;
+    const setItem = AsyncStorage.setItem as jest.Mock;
+    getItem.mockClear();
+    setItem.mockClear();
+
+    await expect(getMeetSchedule("Test Meet")).resolves.toHaveLength(1);
+    await expect(getMeetSchedule("Never Stored")).resolves.toEqual([]);
+
+    expect(getItem.mock.calls.map(([key]) => key)).not.toContain("meetcal_athletes_Test Meet");
+    expect(setItem).not.toHaveBeenCalled();
+  });
+
   it("does not rewrite an unchanged schedule payload", async () => {
     const schedule = [
       {
@@ -440,6 +466,48 @@ describe("offline-store athlete lifting results", () => {
   });
 });
 
+describe("per-session roster caches", () => {
+  beforeEach(async () => {
+    mockStorage.clear();
+    await initStore();
+  });
+
+  const lifter = (name: string, platform: string) => ({
+    memberId: name,
+    name,
+    age: 25,
+    club: "Club",
+    gender: "Women",
+    weightClass: "71kg",
+    entryTotal: 200,
+    adaptive: false,
+    session: { number: 12, platform, date: "2026-06-20", startTime: "9:00 AM", weighInTime: "7:00 AM" },
+  });
+
+  // Session 12 Blue merged into 12 Red: the Blue key kept its old rows, and
+  // offline a saved 12 Blue listed lifters who now lift on Red.
+  it("drops the cache of a session the new roster no longer has", async () => {
+    await saveMeetAthletes("Merge Meet", [lifter("Ann", "Red"), lifter("Bea", "Blue")] as never);
+    await expect(getSessionAthletesFromMeetCache("Merge Meet" as never, 12, "Blue")).resolves.toHaveLength(1);
+
+    await saveMeetAthletes("Merge Meet", [lifter("Ann", "Red"), lifter("Bea", "Red")] as never);
+
+    const sessionKeys = Array.from(mockStorage.keys()).filter((key) =>
+      key.startsWith("meetcal_session_athletes_Merge%20Meet:"),
+    );
+    expect(sessionKeys).toHaveLength(1);
+    await expect(getSessionAthletesFromMeetCache("Merge Meet" as never, 12, "Blue")).resolves.toEqual([]);
+    await expect(getSessionAthletesFromMeetCache("Merge Meet" as never, 12, "Red")).resolves.toHaveLength(2);
+  });
+
+  it("leaves other meets' session caches alone", async () => {
+    await saveMeetAthletes("Other Meet", [lifter("Cat", "Blue")] as never);
+    await saveMeetAthletes("Merge Meet", [lifter("Ann", "Red")] as never);
+
+    await expect(getSessionAthletesFromMeetCache("Other Meet" as never, 12, "Blue")).resolves.toHaveLength(1);
+  });
+});
+
 describe("roster freshness stamp", () => {
   beforeEach(async () => {
     mockStorage.clear();
@@ -505,9 +573,9 @@ describe("offline-store corrupt payload handling", () => {
     await expect(getMeetLiftingResults("Test Meet")).resolves.toEqual([]);
   });
 
-  // `getMeetSchedule` now returns `getMeetData`'s already-parsed schedule
-  // instead of re-reading and re-parsing the same key. These pin the three
-  // degraded payloads where the two readers had to agree for that to be safe.
+  // `getMeetSchedule` reads the schedule key on its own (no roster) and
+  // `getMeetData` parses the same key. These pin the three degraded payloads
+  // where the two readers must agree.
   it.each([
     ["invalid JSON", "{\"not\": "],
     ["valid JSON that is not an array", "{\"sessions\":[]}"],
@@ -954,6 +1022,62 @@ describe("saveMeetSchedule validation", () => {
       ] as any),
     ).rejects.toThrow("Invalid session structure");
     error.mockRestore();
+  });
+});
+
+describe("schedule sync stamp (#397)", () => {
+  const SCHEDULE = [
+    {
+      date: "June 20, 2026",
+      fullDate: "2026-06-20",
+      sessions: [
+        { id: "1", number: 1, startTime: "9:00 AM", weighInTime: "7:00 AM", platforms: [{ platform: "Red", weightClass: "60kg" }] },
+      ],
+    },
+  ] as any;
+
+  beforeEach(async () => {
+    mockStorage.clear();
+    await initStore();
+  });
+
+  it("restamps a checked, unchanged schedule only once the stamp is old enough", async () => {
+    await saveMeetSchedule("Stamp Meet", SCHEDULE);
+    const savedAt = (await getMeetData("Stamp Meet" as never)).lastSyncTime;
+
+    await expect(markMeetScheduleVerified("Stamp Meet", savedAt + 60_000, 15 * 60_000)).resolves.toBe(false);
+    expect((await getMeetData("Stamp Meet" as never)).lastSyncTime).toBe(savedAt);
+
+    await expect(markMeetScheduleVerified("Stamp Meet", savedAt + 15 * 60_000, 15 * 60_000)).resolves.toBe(true);
+    expect((await getMeetData("Stamp Meet" as never)).lastSyncTime).toBe(savedAt + 15 * 60_000);
+  });
+
+  it("does not rewind a newer stamp a save wrote while the check waited", async () => {
+    await saveMeetSchedule("Stamp Meet", SCHEDULE);
+    const index = JSON.parse(mockStorage.get("meetcal_offline_store")!);
+    const savedAt: number = index.meets["Stamp Meet"].lastSyncTime;
+    // What the check read before it joined the write chain: an old stamp.
+    const stale = JSON.parse(JSON.stringify(index));
+    stale.meets["Stamp Meet"].lastSyncTime = savedAt - 60 * 60_000;
+    jest.mocked(AsyncStorage.getItem).mockImplementationOnce(async () => JSON.stringify(stale));
+
+    // Checked at a time before the save's stamp.
+    await expect(markMeetScheduleVerified("Stamp Meet", savedAt - 1, 15 * 60_000)).resolves.toBe(false);
+    expect((await getMeetData("Stamp Meet" as never)).lastSyncTime).toBe(savedAt);
+  });
+
+  it("does not create an entry for a meet with nothing stored", async () => {
+    await expect(markMeetScheduleVerified("Unknown Meet")).resolves.toBe(false);
+    expect(JSON.parse(mockStorage.get("meetcal_offline_store") ?? "{}").meets?.["Unknown Meet"]).toBeUndefined();
+  });
+
+  it("reads the schedule without the roster", async () => {
+    await saveMeetSchedule("Stamp Meet", SCHEDULE);
+    const getItem = jest.mocked(AsyncStorage.getItem);
+    getItem.mockClear();
+    await expect(getMeetSchedule("Stamp Meet")).resolves.toEqual(SCHEDULE);
+    const keys = getItem.mock.calls.map(([key]) => key);
+    expect(keys.some((key) => /athlete/i.test(String(key)))).toBe(false);
   });
 });
 
@@ -1987,7 +2111,11 @@ describe("store index writes", () => {
     const setItem = AsyncStorage.setItem as jest.Mock;
     setItem.mockClear();
 
+    // A schedule read writes nothing at all.
     await expect(getMeetSchedule("Some Meet")).resolves.toEqual([]);
+    expect(setItem.mock.calls.filter(([key]) => key === "meetcal_offline_store")).toHaveLength(0);
+
+    await getMeetData("Some Meet" as never);
 
     // A read writes nothing: no `{ meets: {} }` reset and no entry for the meet.
     const indexWrites = setItem.mock.calls.filter(([key]) => key === "meetcal_offline_store");
@@ -2096,6 +2224,72 @@ describe("downloaded meet expiry on the server's clock", () => {
     }
 
     await expect(getMeetData("Good" as never)).resolves.toMatchObject({ athletes: [] });
+    jest.restoreAllMocks();
+  });
+
+  const listMeets = (meets: { name: string; end: string }[]) =>
+    mockStorage.set(
+      "@meets_list_cache_v1",
+      JSON.stringify(
+        meets.map(({ name, end }) => ({
+          name,
+          dates: { start: end, end },
+          time: { timeZoneIdentifier: "America/New_York" },
+        })),
+      ),
+    );
+
+  // Downloaded for Oct 10-12, then postponed to the 17th-19th: the date
+  // captured at download time deleted the meet's offline data before it ran.
+  it("expires a postponed meet on its current end date from the meets list, and remembers it", async () => {
+    await saveMeetAthletes("Postponed", [athlete("Postponed")] as never);
+    await markMeetExplicitlyDownloaded("Postponed" as never, true, { endDate: "2020-01-01" });
+    listMeets([{ name: "Postponed", end: "2099-06-20" }]);
+
+    await clearExpiredDownloadedMeets();
+
+    await expect(isMeetExplicitlyDownloadedFor("Postponed")).resolves.toBe(true);
+    const downloads = JSON.parse(mockStorage.get("meetcal_explicit_meet_downloads") ?? "{}");
+    expect(downloads.Postponed.endDate).toBe("2099-06-20");
+
+    // Off the list later, the remembered date still applies.
+    mockStorage.delete("@meets_list_cache_v1");
+    await clearExpiredDownloadedMeets();
+    await expect(isMeetExplicitlyDownloadedFor("Postponed")).resolves.toBe(true);
+  });
+
+  it("expires a meet the list says has ended even though the stored date is later", async () => {
+    await saveMeetAthletes("Moved Up", [athlete("Moved Up")] as never);
+    await markMeetExplicitlyDownloaded("Moved Up" as never, true, { endDate: "2099-06-20" });
+    listMeets([{ name: "Moved Up", end: "2020-01-01" }]);
+
+    await clearExpiredDownloadedMeets();
+
+    await expect(isMeetExplicitlyDownloadedFor("Moved Up")).resolves.toBe(false);
+  });
+
+  // With storage full, saving a changed end date failed and aborted the
+  // sweep, keeping the expired downloads that would have freed space.
+  it("still clears ended meets when saving the listed end dates fails", async () => {
+    jest.spyOn(console, "warn").mockImplementation(() => {});
+    await saveMeetAthletes("Ended", [athlete("Ended")] as never);
+    await markMeetExplicitlyDownloaded("Ended" as never, true, { endDate: "2020-01-01" });
+    await markMeetExplicitlyDownloaded("Moved" as never, true, { endDate: "2099-06-20" });
+    listMeets([{ name: "Moved", end: "2099-07-01" }]);
+    const setItem = AsyncStorage.setItem as jest.Mock;
+    const realSet = setItem.getMockImplementation();
+    setItem.mockImplementationOnce(async () => {
+      throw new Error("database or disk is full (code 13 SQLITE_FULL)");
+    });
+
+    try {
+      await clearExpiredDownloadedMeets();
+    } finally {
+      if (realSet) setItem.mockImplementation(realSet);
+    }
+
+    await expect(isMeetExplicitlyDownloadedFor("Ended")).resolves.toBe(false);
+    await expect(getMeetData("Ended" as never)).resolves.toMatchObject({ athletes: [] });
     jest.restoreAllMocks();
   });
 

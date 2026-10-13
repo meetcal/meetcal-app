@@ -64,6 +64,19 @@ pub fn us_time(value: &str) -> String {
     format!("{hour}:{minute:02} {suffix}")
 }
 
+/// `08:00` or `08:00:00` as `08:00`, for JSON and CSV; anything else as written.
+pub fn time_24h(value: &str) -> String {
+    let mut parts = value.trim().split(':');
+    let (Some(hour), Some(minute)) = (parts.next(), parts.next()) else {
+        return value.to_string();
+    };
+    let (Ok(hour @ 0..=23), Ok(minute @ 0..=59)) = (hour.parse::<u32>(), minute.parse::<u32>())
+    else {
+        return value.to_string();
+    };
+    format!("{hour:02}:{minute:02}")
+}
+
 /// A lift in kilograms without a trailing `.0`; blank for none.
 pub fn kg(value: f64) -> String {
     if value <= 0.0 {
@@ -152,6 +165,10 @@ mod tests {
         assert_eq!(us_time("12:30:00"), "12:30 PM");
         assert_eq!(us_time("00:15"), "12:15 AM");
         assert_eq!(us_time("TBD"), "TBD");
+        assert_eq!(time_24h("08:00:00"), "08:00");
+        assert_eq!(time_24h("8:05"), "08:05");
+        assert_eq!(time_24h("13:30"), "13:30");
+        assert_eq!(time_24h("TBD"), "TBD");
     }
 
     #[test]
