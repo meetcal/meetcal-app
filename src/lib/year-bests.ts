@@ -18,7 +18,7 @@
 import type { SupabaseBests, SupabaseLiftResult } from "@/data/types/athletes";
 import { fetchApiResultsByNames, fetchApiYearBestsByNames } from "@/lib/api/meetcal-api";
 import { maxSuccessfulAttempt, normalizeAthleteName } from "@/lib/athletes";
-import { saveAthleteBestsBatch } from "@/lib/database/offline-store";
+import { hasAnyAthleteBest, saveAthleteBestsBatch } from "@/lib/database/offline-store";
 import {
   getHistoryCutoffDate,
   toMeetCalendarDate,
@@ -98,10 +98,6 @@ export function deriveDownloadedBests(
   return recent.length > 0 ? deriveBestsFromResults(recent) : deriveMostRecentMeetBests(rows);
 }
 
-function hasRealBest(bests: SupabaseBests): boolean {
-  return bests.snatch_best != null || bests.cj_best != null || bests.total != null;
-}
-
 /** API bests (0 for none) in the stored, nullable form. */
 function fromApiBests(row: { bestSnatch: number; bestCJ: number; bestTotal: number }): SupabaseBests {
   return {
@@ -173,7 +169,7 @@ export async function lookUpAthleteBests(names: readonly string[]): Promise<Athl
   for (const name of uniqueNames) {
     const row = windowed[name];
     const bests = row ? fromApiBests(row) : emptyBests();
-    if (hasRealBest(bests)) answered[name] = bests;
+    if (hasAnyAthleteBest(bests)) answered[name] = bests;
     else emptyNames.push(name);
   }
 

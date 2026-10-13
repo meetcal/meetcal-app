@@ -19,6 +19,8 @@ jest.mock("@/lib/database/offline-store", () => ({
   getStoredAthleteBestsForNames: (...args: any[]) =>
     mockGetStoredAthleteBestsForNames(...args),
   saveAthleteBestsBatch: (...args: any[]) => mockSaveAthleteBestsBatch(...args),
+  hasAnyAthleteBest: (...args: any[]) =>
+    jest.requireActual("@/lib/database/offline-store").hasAnyAthleteBest(...args),
   // The real freshness rule, so the in-memory cache expires on it too.
   isAthleteBestsFresh: (...args: any[]) =>
     jest.requireActual("@/lib/database/offline-store").isAthleteBestsFresh(...args),
