@@ -62,7 +62,8 @@ Convex.
 Each route needs a document that search engines and link previews can read before the Wasm loads:
 
 - `scripts/generate-bootstrap.sh` runs after every Trunk build. It writes `app-bootstrap.js` (which
-  loads the Wasm) and renders one shell per route into `dist/seo/<name>.html`, each with its own
+  loads the Wasm, then removes `index.html`'s `#app-loading` shell, or turns it into an error with
+  a retry when the load fails) and renders one shell per route into `dist/seo/<name>.html`, each with its own
   title, description, canonical URL and robots directive. Competition data pages are
   `noindex, nofollow`.
 - `vercel.json` rewrites each route to its shell (`/records` to `/seo/records.html`).

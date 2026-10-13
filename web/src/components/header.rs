@@ -24,7 +24,7 @@ pub fn Header() -> impl IntoView {
     view! {
         <header class="site-header">
             <A href="/" attr:class="brand-link">
-                <img class="brand-logo" src="/images/logo.png" alt="MeetCal" />
+                <img class="brand-logo" src="/images/logo.png" alt="MeetCal" width="34" height="34" />
                 <span>"MeetCal"</span>
             </A>
             <nav class="site-nav" aria-label="Primary navigation">
