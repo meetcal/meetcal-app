@@ -253,16 +253,30 @@ impl Edition {
 
 /// `edition` (a meet name held in several years) as one edition per year of its results `rows`:
 /// each year's distinct lifters and dates. Its registrations and meet dates, which MeetCal keeps
-/// for one meet per name, go to the year of the meet's start date, else the latest.
+/// for one meet per name, go to the year of the meet's start date, else the latest. A start date
+/// in a year with no results yet (the next edition) is a registrations-only edition of its own.
 pub fn split_by_year(edition: &Edition, rows: Vec<LiftingResults>) -> Vec<Edition> {
     let years = editions_by_year(rows);
     let registered_year = edition
         .start_date
         .as_deref()
         .and_then(|date| date.get(..4))
-        .filter(|year| years.contains_key(*year))
+        .filter(|year| year.bytes().all(|byte| byte.is_ascii_digit()))
         .or_else(|| years.keys().last().map(String::as_str))
         .map(str::to_string);
+    let upcoming = registered_year
+        .as_ref()
+        .filter(|year| !years.contains_key(*year) && edition.registrations > 0)
+        .map(|_| Edition {
+            meet: edition.meet.clone(),
+            lifters: 0,
+            registrations: edition.registrations,
+            first_date: None,
+            last_date: None,
+            start_date: edition.start_date.clone(),
+            end_date: edition.end_date.clone(),
+            status: edition.status.clone(),
+        });
     years
         .iter()
         .map(|(year, rows)| {
@@ -282,6 +296,7 @@ pub fn split_by_year(edition: &Edition, rows: Vec<LiftingResults>) -> Vec<Editio
                 status: edition.status.clone().filter(|_| registered),
             }
         })
+        .chain(upcoming)
         .collect()
 }
 
@@ -586,6 +601,63 @@ mod tests {
         assert_eq!(editions[1].last_date.as_deref(), Some("2024-03-17"));
         let json = report("testify", &editions).to_json();
         assert_eq!(json["by_year"][1]["change"], "-1 (-50.0%)");
+    }
+
+    #[test]
+    fn registrations_for_a_year_without_results_are_that_years_edition() {
+        use crate::utils::stats::tests::row;
+        let lift = |name: &str, date: &str| {
+            row(
+                name,
+                date,
+                "Spring Open",
+                "Open Men's 89kg",
+                88.0,
+                [100.0, 0.0, 0.0],
+                [120.0, 0.0, 0.0],
+            )
+        };
+        let tracked = Edition {
+            meet: "Spring Open".into(),
+            lifters: 2,
+            registrations: 100,
+            first_date: Some("2023-03-11".into()),
+            last_date: Some("2024-03-16".into()),
+            start_date: Some("2026-03-10".into()),
+            end_date: Some("2026-03-11".into()),
+            status: Some("upcoming".into()),
+        };
+        let editions = split_by_year(
+            &tracked,
+            vec![lift("Ada", "2023-03-11"), lift("Bo", "2024-03-16")],
+        );
+        let years: Vec<Option<String>> = editions.iter().map(Edition::year).collect();
+        assert_eq!(
+            years,
+            [
+                Some("2023".into()),
+                Some("2024".into()),
+                Some("2026".into())
+            ]
+        );
+        assert_eq!(editions[1].registrations, 0);
+        assert_eq!(editions[1].lifters, 1);
+        assert_eq!(editions[2].lifters, 0);
+        assert_eq!(editions[2].registrations, 100);
+        assert_eq!(editions[2].status.as_deref(), Some("upcoming"));
+
+        // Without a start date, the registrations stay with the latest results.
+        let undated = Edition {
+            start_date: None,
+            end_date: None,
+            ..tracked
+        };
+        let editions = split_by_year(
+            &undated,
+            vec![lift("Ada", "2023-03-11"), lift("Bo", "2024-03-16")],
+        );
+        assert_eq!(editions.len(), 2);
+        assert_eq!(editions[1].registrations, 100);
     }
 
     #[test]

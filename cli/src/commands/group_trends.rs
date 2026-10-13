@@ -136,27 +136,22 @@ async fn medals_by_year(
     memberships: &[ClubMembership],
     group_rows: &[LiftingResults],
 ) -> Result<BTreeMap<String, [usize; 3]>> {
-    // One entry per meet edition: a meet name held every year is a separate meet each year.
-    let mut meets: BTreeMap<String, (String, Vec<String>)> = BTreeMap::new();
-    for row in group_rows {
-        let (_, years) = meets
-            .entry(fold(&row.meet))
-            .or_insert_with(|| (row.meet.clone(), Vec::new()));
-        let row_year = year(&row.date);
-        if !years.contains(&row_year) {
-            years.push(row_year);
-        }
-    }
     let mut medals: BTreeMap<String, [usize; 3]> = BTreeMap::new();
-    for (meet, years) in meets.into_values() {
+    for (spellings, years) in meet_editions(group_rows) {
         let members: Vec<String> = memberships
             .iter()
-            .filter(|m| equivalent_meets(&m.meet, &meet))
+            .filter(|m| spellings.iter().any(|meet| equivalent_meets(&m.meet, meet)))
             .map(|m| m.name.clone())
             .collect();
-        // `meet` is a results meet already (the group's rows name it), so no aliases.
-        let meet_rows: Vec<LiftingResults> =
-            query(queries::MEET_RESULTS, &json!({ "meet": meet })).await?;
+        // Each spelling is a results meet already (the group's rows name it), so no aliases.
+        // `results:byMeet` matches a name exactly, so each spelling is asked for; their rows are
+        // disjoint.
+        let mut meet_rows: Vec<LiftingResults> = Vec::new();
+        for meet in &spellings {
+            let rows: Vec<LiftingResults> =
+                query(queries::MEET_RESULTS, &json!({ "meet": meet })).await?;
+            meet_rows.extend(rows);
+        }
         let mut editions = editions_by_year(meet_rows);
         for meet_year in years {
             let Some(edition) = editions.remove(&meet_year) else {
@@ -170,6 +165,24 @@ async fn medals_by_year(
         }
     }
     Ok(medals)
+}
+
+/// The meets the group's rows come from, one entry per meet whatever its case or spacing: every
+/// raw spelling of its name, and the years the group lifted there. A meet name held every year is
+/// a separate meet each year, and one meet's name can be spelled differently between years.
+pub fn meet_editions(group_rows: &[LiftingResults]) -> Vec<(Vec<String>, Vec<String>)> {
+    let mut meets: BTreeMap<String, (Vec<String>, Vec<String>)> = BTreeMap::new();
+    for row in group_rows {
+        let (spellings, years) = meets.entry(fold(&row.meet)).or_default();
+        if !spellings.contains(&row.meet) {
+            spellings.push(row.meet.clone());
+        }
+        let row_year = year(&row.date);
+        if !years.contains(&row_year) {
+            years.push(row_year);
+        }
+    }
+    meets.into_values().collect()
 }
 
 fn year(date: &str) -> String {
@@ -374,5 +387,36 @@ mod tests {
         assert_eq!(top[0]["athlete"], "Bo");
         assert_eq!(top[1]["best_total"], 194);
         assert_eq!(top[1]["results"], 2);
+    }
+
+    #[test]
+    fn a_meet_spelled_differently_between_years_keeps_every_spelling() {
+        let lift = |meet: &str, date: &str| {
+            row(
+                "Ada",
+                date,
+                meet,
+                "Open Women's 64kg",
+                63.0,
+                [80.0, 0.0, 0.0],
+                [100.0, 0.0, 0.0],
+            )
+        };
+        let editions = meet_editions(&[
+            lift("Spring Open", "2024-04-01"),
+            lift("spring  open", "2025-04-01"),
+            lift("Spring Open", "2024-04-01"),
+            lift("Fall Open", "2025-10-01"),
+        ]);
+        assert_eq!(
+            editions,
+            [
+                (vec!["Fall Open".to_string()], vec!["2025".to_string()]),
+                (
+                    vec!["Spring Open".to_string(), "spring  open".to_string()],
+                    vec!["2024".to_string(), "2025".to_string()]
+                ),
+            ]
+        );
     }
 }

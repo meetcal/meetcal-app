@@ -1,6 +1,7 @@
 use std::collections::BTreeMap;
 
 use crate::types::lifting_results::LiftingResults;
+use crate::utils::stats::fold;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum NationalEvent {
@@ -66,7 +67,7 @@ pub fn result_meet_aliases(meet: &str) -> Vec<String> {
 
 /// Words sponsors add to a meet's name one year and drop the next ("The 2024 Nike USA
 /// Weightlifting National Championships").
-const SPONSOR_WORDS: &[&str] = &["nike"];
+pub const SPONSOR_WORDS: &[&str] = &["nike"];
 
 /// What stays the same across a meet's editions: its name's words, lowercase, without the year,
 /// "The", punctuation, sponsor words, or a trailing "powered by …", "presented by …" or
@@ -138,12 +139,14 @@ fn meet_year(normalized: &str) -> Option<&str> {
     normalized.split_whitespace().find(|token| is_year(token))
 }
 
+/// [`fold`] (Unicode NFC and lowercase, so a composed "é" and an "e" with a combining accent are
+/// one letter), then punctuation and spacing reduced to single spaces.
 fn normalize(value: &str) -> String {
-    value
+    fold(value)
         .chars()
         .map(|character| {
             if character.is_alphanumeric() {
-                character.to_ascii_lowercase()
+                character
             } else {
                 ' '
             }
@@ -242,6 +245,16 @@ mod tests {
             series_name("2023 DMV WSO Championships and Fall Brawl"),
             series_name("2024 DMV WSO Championships")
         );
+    }
+
+    #[test]
+    fn composed_and_decomposed_accents_are_one_series() {
+        assert_eq!(
+            series_name("2025 Café Open"),
+            series_name("2024 Cafe\u{301} Open")
+        );
+        assert_eq!(series_name("2025 CAFÉ OPEN"), "café open");
+        assert!(equivalent_meets("2025 Café Open", "2025 Cafe\u{301} open"));
     }
 
     #[test]

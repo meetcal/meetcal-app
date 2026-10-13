@@ -11,7 +11,7 @@ use crate::{
     utils::{
         backend::{queries, query},
         make_rate::make_rate_tables,
-        meet_names::{editions_by_year, series_name},
+        meet_names::{SPONSOR_WORDS, editions_by_year, series_name},
         names::{NameKind, not_found},
         output::{self, Report},
         stats::{
@@ -173,7 +173,8 @@ async fn edition_names(meet: &str, year: i32) -> Result<Vec<String>> {
 }
 
 /// How an earlier edition of a meet in `series` can begin: an earlier year, with or without
-/// "The", or the series' first letter in either case, with or without "The".
+/// "The", the series' first letter in either case, with or without "The", or a sponsor word
+/// [`series_name`] drops (`Nike 2024 USA Weightlifting National Championships`).
 fn name_prefixes(series: &str, year: i32) -> Vec<String> {
     let mut prefixes = Vec::new();
     for earlier in year - EDITIONS..year {
@@ -185,6 +186,17 @@ fn name_prefixes(series: &str, year: i32) -> Vec<String> {
         prefixes.push(format!("The {upper}"));
         prefixes.push(upper);
         prefixes.push(first.to_string());
+    }
+    for sponsor in SPONSOR_WORDS {
+        let mut letters = sponsor.chars();
+        let capitalized: String = letters
+            .next()
+            .map(|first| first.to_uppercase().chain(letters).collect())
+            .unwrap_or_default();
+        prefixes.push(format!("The {capitalized}"));
+        prefixes.push(capitalized);
+        prefixes.push(sponsor.to_uppercase());
+        prefixes.push((*sponsor).to_string());
     }
     prefixes.dedup();
     prefixes
@@ -486,6 +498,14 @@ mod tests {
             assert!(prefixes.iter().any(|p| p == prefix), "{prefix}");
         }
         assert!(!prefixes.iter().any(|p| p == "2026"));
+        // A sponsor word leading an older edition's name is searched for too.
+        let prefixes = name_prefixes(
+            &series_name("2025 USA Weightlifting National Championships"),
+            2025,
+        );
+        for prefix in ["Nike", "The Nike", "U", "2024"] {
+            assert!(prefixes.iter().any(|p| p == prefix), "{prefix}");
+        }
     }
 
     #[test]
