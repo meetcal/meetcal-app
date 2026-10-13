@@ -107,6 +107,44 @@ describe("useMutableResource", () => {
     jest.restoreAllMocks();
   });
 
+  // The same, for an answer another caller (the background sync) fetched and
+  // could not store: it is published onto this screen, which then no longer
+  // matches storage either.
+  it("writes an answer again after a published revalidate could not store it", async () => {
+    const persistFresh = jest
+      .fn<Promise<ResourceCacheEntry<Row[]>>, [Row[]]>()
+      .mockRejectedValueOnce(new Error("disk full"))
+      .mockImplementation(async (data) => ({ data, lastUpdatedAt: 3 }));
+    const fetchFresh = jest
+      .fn<Promise<Row[]>, [string]>()
+      .mockResolvedValueOnce([{ id: "old" }])
+      .mockResolvedValue([{ id: "new" }]);
+    jest.spyOn(console, "warn").mockImplementation(() => {});
+    const resource = createMutableResource<Row[], [string]>({
+      getKey: (param) => `published-unstored:${param}`,
+      loadCached: async () => ({ data: [{ id: "old" }], lastUpdatedAt: 1 }),
+      fetchFresh: (param) => fetchFresh(param),
+      persistFresh: (data) => persistFresh(data),
+    });
+    harness(resource, "a");
+    await flush();
+    await flush();
+    expect(persistFresh).not.toHaveBeenCalled();
+
+    await act(async () => {
+      await resource.revalidate("a");
+    });
+    expect(captured!.data).toEqual([{ id: "new" }]);
+    expect(persistFresh).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      await captured!.refresh();
+    });
+
+    expect(persistFresh).toHaveBeenCalledTimes(2);
+    jest.restoreAllMocks();
+  });
+
   it("keeps cached rows on screen when the background revalidate fails", async () => {
     const cached: ResourceCacheEntry<Row[]> = {
       data: [{ id: "cached" }],
