@@ -1,14 +1,8 @@
-import { useMemo, useState } from "react";
-import {
-  clearMeetSchedule,
-  getMeetSchedule,
-  saveMeetSchedule,
-} from "@/lib/database/offline-store";
+import { useCallback, useMemo, useState } from "react";
 import { MeetName } from "@/data/types/meet";
 import { Schedule } from "@/types/schedule";
 import { calculateInitialPage } from "@/utils/dateTime";
-import { createMutableResource, defaultIsEqual } from "@/lib/data/mutable-resource";
-import { fetchSchedule } from "@/lib/database/queries";
+import { scheduleResource } from "@/lib/database/schedule-resource";
 import { useMutableResource } from "@/hooks/useMutableResource";
 
 interface UseScheduleDataReturn {
@@ -26,43 +20,6 @@ interface UseScheduleDataReturn {
   initialScrollIndex: number;
   refreshSchedule: () => Promise<void>;
 }
-
-const scheduleResource = createMutableResource<Schedule, [MeetName]>({
-  getKey: (meet) => `schedule:${meet}`,
-  loadCached: async (meet) => {
-    const schedule = await getMeetSchedule(meet);
-    if (schedule.length === 0) {
-      return null;
-    }
-    return {
-      data: schedule,
-      lastUpdatedAt: null,
-    };
-  },
-  fetchFresh: (meet) => fetchSchedule(meet),
-  persistFresh: async (data, meet) => {
-    // An empty response is not a command to delete the offline copy. This used
-    // to call `clearMeetSchedule(meet)`, so one `200 []` from
-    // `/meets/schedule` — rows briefly unpublished, a re-import, a backend
-    // filter bug — permanently destroyed a schedule the user had explicitly
-    // downloaded for offline use, and the next launch in airplane mode had
-    // nothing to fall back on. Every other writer takes the opposite stance
-    // for the same payload: `saveMeetSchedule` rejects an empty schedule
-    // outright, and both prefetch paths in `meet-manager` guard on
-    // `schedule.length > 0`. Explicit invalidation still goes through
-    // `clearCached` below.
-    if (data.length === 0) {
-      return null;
-    }
-
-    await saveMeetSchedule(meet, data);
-    return { data, lastUpdatedAt: Date.now() };
-  },
-  clearCached: async (meet) => {
-    await clearMeetSchedule(meet);
-  },
-  isEqual: defaultIsEqual,
-});
 
 /**
  * @param timeZoneIdentifier The meet's IANA timezone, used to decide which day
@@ -91,6 +48,11 @@ export function useScheduleData(
     initialData: emptySchedule,
   });
 
+  // The schedule tab's refresh controls take a `Promise<void>`.
+  const refreshSchedule = useCallback(async () => {
+    await refresh();
+  }, [refresh]);
+
   const initialScrollIndex = useMemo(() => {
     if (!schedule.length) return 0;
     return calculateInitialPage(schedule, timeZoneIdentifier);
@@ -107,6 +69,6 @@ export function useScheduleData(
     loadError: schedule.length === 0 ? (error ?? refreshError) : null,
     refreshError,
     initialScrollIndex,
-    refreshSchedule: refresh,
+    refreshSchedule,
   };
 }

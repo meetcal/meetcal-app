@@ -26,7 +26,12 @@ export type MutableResourceState<T> = {
   isRefreshing: boolean;
   lastUpdatedAt: number | null;
   source: ResourceSource | null;
-  refresh: () => Promise<void>;
+  /**
+   * Revalidate. Never rejects: resolves `false` when the request failed (the
+   * failure is in `error` or `refreshError`), so a pull-to-refresh can say
+   * so; `true` otherwise, a request the screen moved on from included.
+   */
+  refresh: () => Promise<boolean>;
   invalidate: () => Promise<void>;
 };
 
@@ -62,6 +67,8 @@ export function useMutableResource<T, TParams extends readonly unknown[]>(
   const previousKeyRef = useRef<string | null>(null);
   const mountedRef = useRef(true);
   const initialDataRef = useRef(initialData);
+  /** Revalidates published to this hook; a cache read started before one must not paint over it. */
+  const publishedCountRef = useRef(0);
   paramsRef.current = params;
   initialDataRef.current = initialData;
 
@@ -78,9 +85,9 @@ export function useMutableResource<T, TParams extends readonly unknown[]>(
     async (
       forceBackground = false,
       preloadedCache?: ResourceCacheEntry<T> | null,
-    ) => {
+    ): Promise<boolean> => {
       const activeParams = paramsRef.current;
-      if (activeParams === null) return;
+      if (activeParams === null) return true;
 
       // Data is already on screen when a source has been rendered, or when we
       // are revalidating on top of a cache entry that was just painted.
@@ -106,14 +113,15 @@ export function useMutableResource<T, TParams extends readonly unknown[]>(
         const result = preloadedCache === undefined
           ? await resource.revalidate(...activeParams)
           : await resource.revalidateWithCached(preloadedCache, ...activeParams);
-        if (isStale()) return;
+        if (isStale()) return true;
         setData(result.data);
         setLastUpdatedAt(result.lastUpdatedAt);
         setSource(result.source);
         setError(null);
         setRefreshError(null);
+        return true;
       } catch (caughtError) {
-        if (isStale()) return;
+        if (isStale()) return true;
         const message =
           caughtError instanceof Error
             ? caughtError.message
@@ -125,6 +133,7 @@ export function useMutableResource<T, TParams extends readonly unknown[]>(
         } else {
           setError(message);
         }
+        return false;
       } finally {
         if (!isStale()) {
           setIsRefreshing(false);
@@ -204,8 +213,15 @@ export function useMutableResource<T, TParams extends readonly unknown[]>(
         setIsInitialLoading(true);
       }
 
+      const publishedBefore = publishedCountRef.current;
       const cached = await resource.loadCached(...activeParams);
       if (cancelled) return;
+      // A revalidate published for this key while the disk read ran: what
+      // is on screen is newer than the disk copy, which must not repaint it.
+      if (publishedCountRef.current !== publishedBefore) {
+        setIsInitialLoading(false);
+        return;
+      }
 
       if (cached) {
         setData(cached.data);
@@ -232,6 +248,23 @@ export function useMutableResource<T, TParams extends readonly unknown[]>(
       cancelled = true;
     };
   }, [enabled, key, refresh, resource]);
+
+  // A revalidate of this key started anywhere else (another screen, the
+  // background schedule sync) lands here too, so this copy does not keep
+  // showing what it last fetched itself. An unchanged answer keeps the
+  // current value, so nothing downstream re-renders for it.
+  useEffect(() => {
+    if (!enabled || key === null) return;
+    return resource.subscribe(key, (result) => {
+      if (!mountedRef.current || previousKeyRef.current !== key) return;
+      publishedCountRef.current += 1;
+      setData((current) => (resource.isEqual(current, result.data) ? current : result.data));
+      setLastUpdatedAt(result.lastUpdatedAt);
+      setSource(result.source);
+      setError(null);
+      setRefreshError(null);
+    });
+  }, [enabled, key, resource]);
 
   useEffect(() => {
     if (!enabled) return;

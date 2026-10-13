@@ -4,7 +4,7 @@ import { ThemedView } from "@/components/ui/ThemedView";
 import { SupabaseLiftResult } from "@/data/types/athletes";
 import { MeetName } from "@/data/types/meet";
 import { useAppColors } from "@/hooks/useAppColors";
-import { filterSessionAthletes } from "@/lib/athletes";
+import { filterSessionAthletes, freshRosterReplacesShown } from "@/lib/athletes";
 import {
   AthleteAttemptEstimate,
   calculateEstimates,
@@ -181,7 +181,17 @@ function AttemptEstimatorContent() {
       );
       if (isStale()) return;
       if (freshSessionAthletes.length === 0) {
-        setEstimates([]);
+        // The Start List rule: an empty answer (a re-import, a transient
+        // filter miss) leaves the estimates painted from the downloaded
+        // session in place, and only reads "no athletes" with nothing shown.
+        if (
+          freshRosterReplacesShown(
+            freshSessionAthletes.length,
+            cachedSessionAthletes.length,
+          )
+        ) {
+          setEstimates([]);
+        }
         return;
       }
       // Off the critical path, as on the start list: a failed cache write
