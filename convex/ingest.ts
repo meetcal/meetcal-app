@@ -33,7 +33,9 @@ export type WriteHint = { kind: string; key: string; since?: string };
 export async function recordWrite(ctx: MutationCtx, table: SourceTable, hints: WriteHint[]): Promise<void> {
   await bumpVersion(ctx, table);
   const unique = new Map<string, WriteHint>();
-  for (const hint of hints) {
+  // Only a results write can be under a linked results title.
+  const linked = table === 'lifting_results' ? await linkedMeetHints(ctx, hints) : [];
+  for (const hint of [...hints, ...linked]) {
     const id = `${hint.kind}\u0000${hint.key}`;
     const seen = unique.get(id);
     unique.set(id, seen ? { ...hint, since: earliestSince(seen.since, hint.since) } : hint);
@@ -50,6 +52,89 @@ export async function recordWrite(ctx: MutationCtx, table: SourceTable, hints: W
     else await ctx.db.insert('view_hints', { ...hint, seq: 0, updatedAt });
   }
   await scheduleRefresh(ctx);
+}
+
+/**
+ * A change under a results title linked to a meet (`meet_result_titles`)
+ * changes that meet's views too: its hint, for each `meet` hint naming one.
+ */
+/** Linked-title lookups in flight at once, well under a function's 1,000. */
+const LINK_LOOKUP_BATCH = 250;
+
+async function linkedMeetHints(ctx: MutationCtx, hints: readonly WriteHint[]): Promise<WriteHint[]> {
+  const titles = [...new Set(hints.filter((hint) => hint.kind === 'meet').map((hint) => hint.key))];
+  // A title is linked to one meet at most (`setMeetResultTitles`). In
+  // batches: a bulk write can name many meets.
+  const linked: WriteHint[] = [];
+  for (let i = 0; i < titles.length; i += LINK_LOOKUP_BATCH) {
+    const links = await Promise.all(
+      titles.slice(i, i + LINK_LOOKUP_BATCH).map((title) =>
+        ctx.db
+          .query('meet_result_titles')
+          .withIndex('by_title', (q) => q.eq('title', title))
+          .first(),
+      ),
+    );
+    for (const link of links) if (link) linked.push({ kind: 'meet', key: link.meet });
+  }
+  return linked;
+}
+
+/**
+ * Links results titles to a meet (#362), replacing the ones it had: a
+ * combined national event is one Sport80 entries event, listed as the meet,
+ * and several results events with their own titles, which then show with
+ * it (its results, package, stats and club stats). A title belongs to one
+ * meet at most. `titles: []` unlinks them all. Leaves the meet's hint, so
+ * its views are rebuilt.
+ *
+ *   npx convex run ingest:setMeetResultTitles '{"meet":"2026 USA Weightlifting National Championships, Powered by Rogue Fitness","titles":["The 2026 National Junior Championships, Powered by Rogue Fitness","The 2026 National Youth Championships, Powered by Rogue Fitness"]}'
+ */
+export const setMeetResultTitles = internalMutation({
+  args: { meet: v.string(), titles: v.array(v.string()) },
+  handler: async (ctx, { meet, titles }) => {
+    const meetRow = await ctx.db
+      .query('meets')
+      .withIndex('by_name', (q) => q.eq('name', meet))
+      .first();
+    if (!meetRow) throw new Error(`no meet named ${JSON.stringify(meet)}`);
+    const wanted = [...new Set(titles.map((title) => title.trim()))];
+    if (wanted.some((title) => title === '' || title === meet)) throw new Error("a results title must be non-empty and not the meet's own name");
+    for (const title of wanted) {
+      const other = (
+        await ctx.db
+          .query('meet_result_titles')
+          .withIndex('by_title', (q) => q.eq('title', title))
+          .collect()
+      ).find((link) => link.meet !== meet);
+      if (other) throw new Error(`${JSON.stringify(title)} is already linked to ${JSON.stringify(other.meet)}`);
+      if ((await ctx.db.query('meets').withIndex('by_name', (q) => q.eq('name', title)).first()) !== null) {
+        throw new Error(`${JSON.stringify(title)} is a meet of its own, not a results title`);
+      }
+    }
+    const existing = await ctx.db
+      .query('meet_result_titles')
+      .withIndex('by_meet', (q) => q.eq('meet', meet))
+      .collect();
+    for (const link of existing) await ctx.db.delete(link._id);
+    for (const title of wanted) await ctx.db.insert('meet_result_titles', { meet, title });
+    await recordWrite(ctx, 'lifting_results', [{ kind: 'meet', key: meet }]);
+    return { meet, titles: wanted, results: await resultCounts(ctx, wanted) };
+  },
+});
+
+/** Stored results under each title, for checking a link by its numbers. */
+async function resultCounts(ctx: MutationCtx, titles: readonly string[]): Promise<Record<string, number>> {
+  const counts: Record<string, number> = {};
+  for (const title of titles) {
+    counts[title] = (
+      await ctx.db
+        .query('lifting_results')
+        .withIndex('by_meet', (q) => q.eq('meet', title))
+        .collect()
+    ).length;
+  }
+  return counts;
 }
 
 type ResultFields = Pick<Doc<'lifting_results'>, 'federation' | 'age' | 'meet' | 'name' | 'adaptive' | 'date'>;

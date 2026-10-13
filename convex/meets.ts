@@ -10,6 +10,8 @@ import {
   computeTimelines,
   joinRoster,
   meetByName,
+  meetResultDocs,
+  meetResultTitles,
   meetLocalDate,
   narrowSessions,
   packageAthlete,
@@ -176,11 +178,10 @@ export const attendance = query({
     }
     const rows = [];
     for (const meet of meets) {
-      const [results, registrations, meetRow] = await Promise.all([
-        ctx.db
-          .query('lifting_results')
-          .withIndex('by_meet', (q) => q.eq('meet', meet))
-          .collect(),
+      const [results, titles, registrations, meetRow] = await Promise.all([
+        // Its linked results titles too (a combined national event, #362).
+        meetResultDocs(ctx, meet),
+        meetResultTitles(ctx, meet),
         ctx.db
           .query('athletes')
           .withIndex('by_meet', (q) => q.eq('meet', meet))
@@ -197,6 +198,9 @@ export const attendance = query({
         start_date: meetRow?.startDate ?? null,
         end_date: meetRow?.endDate ?? null,
         status: meetRow?.status ?? null,
+        // The linked results titles counted here, so a caller that also
+        // asks for them by name does not count their lifters twice.
+        results_titles: titles.slice(1),
       });
     }
     return { json: JSON.stringify(rows) };
