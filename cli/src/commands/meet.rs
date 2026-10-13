@@ -44,14 +44,7 @@ pub async fn run(args: MeetArgs) -> Result<()> {
     let meet_name = args.name.clone();
     let session_number = args.session_number.clone();
     let narrowed = session_number.is_some() || args.session_platform.is_some();
-    // Platforms are the meet's own names (Red, Gold, Platform A); the server matches them
-    // ignoring case.
-    let session_platform = args
-        .session_platform
-        .as_deref()
-        .map(str::trim)
-        .filter(|platform| !platform.is_empty())
-        .map(str::to_string);
+    let session_platform = session_platform(args.session_platform.as_deref())?;
 
     let mut query_args = serde_json::json!({ "meet": meet_name });
     if let Some(session_number) = session_number {
@@ -99,6 +92,20 @@ pub async fn run(args: MeetArgs) -> Result<()> {
     Ok(())
 }
 
+/// The platform filter to send, trimmed. Platforms are the meet's own names (Red, Gold,
+/// Platform A); the server matches them ignoring case. A blank one is an error: dropping it
+/// would print the whole roster as though it matched.
+pub fn session_platform(platform: Option<&str>) -> Result<Option<String>> {
+    let Some(platform) = platform else {
+        return Ok(None);
+    };
+    let platform = platform.trim();
+    if platform.is_empty() {
+        bail!("Session platform must not be blank: give the platform's name, e.g. Red or Gold");
+    }
+    Ok(Some(platform.to_string()))
+}
+
 /// The start list: shown with US dates, 12-hour times, and the session, platform and past-year
 /// bests packed into cells; exported with ISO dates, 24-hour times and a column for each.
 /// `bests` is `None` when they were not asked for.
@@ -123,7 +130,7 @@ pub fn report(athletes: &[Athletes], bests: Option<&HashMap<String, NamedBests>>
     table.set_header(header);
 
     let mut data = Table::new();
-    let mut data_header = vec![
+    let data_header = vec![
         "Name",
         "Age",
         "Gender",
@@ -136,14 +143,11 @@ pub fn report(athletes: &[Athletes], bests: Option<&HashMap<String, NamedBests>>
         "Date",
         "Weigh-in",
         "Start",
+        // Always exported, null with --no-bests, so the keys don't depend on the flag.
+        "Past-Year Best Snatch",
+        "Past-Year Best CJ",
+        "Past-Year Best Total",
     ];
-    if bests.is_some() {
-        data_header.extend([
-            "Past-Year Best Snatch",
-            "Past-Year Best CJ",
-            "Past-Year Best Total",
-        ]);
-    }
     data.set_header(data_header);
 
     for athlete in athletes {
@@ -178,18 +182,18 @@ pub fn report(athletes: &[Athletes], bests: Option<&HashMap<String, NamedBests>>
             time_24h(&weigh_in),
             time_24h(&start),
         ]);
-        if let Some(bests) = bests {
-            let best = bests.get(&athlete.name);
+        let best = bests.and_then(|bests| bests.get(&athlete.name));
+        if bests.is_some() {
             row.push(bests_cell(best));
-            data_row.extend(
-                [
-                    best.map(|best| best.best_snatch),
-                    best.map(|best| best.best_cj),
-                    best.map(|best| best.best_total),
-                ]
-                .map(|lift| lift.map(kg).unwrap_or_default()),
-            );
         }
+        data_row.extend(
+            [
+                best.map(|best| best.best_snatch),
+                best.map(|best| best.best_cj),
+                best.map(|best| best.best_total),
+            ]
+            .map(|lift| lift.map(kg).unwrap_or_default()),
+        );
         table.add_row(row);
         data.add_row(data_row);
     }
@@ -263,6 +267,17 @@ mod tests {
             "wso": null
         }
     ]"#;
+
+    #[test]
+    fn a_blank_platform_is_an_error_not_the_whole_roster() {
+        assert!(session_platform(Some("  ")).is_err());
+        assert!(session_platform(Some("")).is_err());
+        assert_eq!(session_platform(None).unwrap(), None);
+        assert_eq!(
+            session_platform(Some(" Red ")).unwrap().as_deref(),
+            Some("Red")
+        );
+    }
 
     #[test]
     fn parse_backend_response() {
@@ -384,6 +399,14 @@ mod tests {
         assert!(text.contains("Oct 3, 2026"));
         assert!(text.contains("10:00 AM"));
         assert!(text.contains("Not set"));
+
+        // --no-bests keeps the keys, with nulls, so the schema doesn't change with the flag.
+        let without = super::report(&athletes, None).to_json();
+        let keys = |row: &serde_json::Value| -> Vec<String> {
+            row.as_object().unwrap().keys().cloned().collect()
+        };
+        assert_eq!(keys(&without[0]), keys(&json[0]));
+        assert_eq!(without[0]["past_year_best_total"], serde_json::Value::Null);
     }
 
     #[test]

@@ -1,5 +1,6 @@
 use super::{
     filters::{compare_weight_classes, filter_options, matches_filter, weight_class_options},
+    format::reference_value,
     loading::{select_response, table_response},
     models::RecordHolder,
     ui::{DataPage, DataStatus, DataTable, EmptyTableRow, FilterSelect, RecordLift, SortSelect},
@@ -27,12 +28,6 @@ struct WsoRecord {
     cj_by: Option<RecordHolder>,
     #[serde(default)]
     total_by: Option<RecordHolder>,
-}
-
-fn lift_value(value: Option<f64>) -> String {
-    value
-        .map(|value| value.to_string())
-        .unwrap_or_else(|| "—".to_owned())
 }
 
 const SORT_OPTIONS: &[(&str, &str)] = &[
@@ -115,9 +110,9 @@ pub fn WsoRecords() -> impl IntoView {
                         <tr>
                             <td>{row.gender.clone()}</td><td>{row.age_category.clone()}</td>
                             <td>{row.weight_class.clone()}</td>
-                            <RecordLift value=lift_value(row.snatch_record) holder=row.snatch_by.clone() />
-                            <RecordLift value=lift_value(row.cj_record) holder=row.cj_by.clone() />
-                            <RecordLift value=lift_value(row.total_record) holder=row.total_by.clone() />
+                            <RecordLift value=reference_value(row.snatch_record) holder=row.snatch_by.clone() />
+                            <RecordLift value=reference_value(row.cj_record) holder=row.cj_by.clone() />
+                            <RecordLift value=reference_value(row.total_record) holder=row.total_by.clone() />
                         </tr>
                     }).collect_view();
 
@@ -144,9 +139,11 @@ mod tests {
     use super::*;
 
     #[test]
-    fn missing_lifts_use_an_em_dash() {
-        assert_eq!(lift_value(None), "—");
-        assert_eq!(lift_value(Some(112.5)), "112.5");
+    fn missing_and_unset_lifts_use_an_em_dash() {
+        assert_eq!(reference_value(None), "—");
+        // About 196 WSO classes answer 0/0/0 for "no record set".
+        assert_eq!(reference_value(Some(0.0)), "—");
+        assert_eq!(reference_value(Some(112.5)), "112.5");
     }
 
     #[test]
