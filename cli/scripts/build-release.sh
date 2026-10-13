@@ -5,6 +5,9 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 DIST="$ROOT/dist"
 VERSION="${1:-$(awk -F'"' '/^version = / { print $2; exit }' "$ROOT/Cargo.toml")}"
 
+# The oldest glibc the Linux binaries run on (.github/workflows/cli-release.yml builds the same).
+LINUX_GLIBC="2.17"
+
 mkdir -p "$DIST"
 
 build_target() {
@@ -13,7 +16,16 @@ build_target() {
 
   echo "Building $artifact ($target)"
   rustup target add "$target" >/dev/null 2>&1 || true
-  cargo build --release --manifest-path "$ROOT/Cargo.toml" --target "$target"
+  case "$target" in
+    # Linux builds target glibc 2.17, as the release workflow's do, so they run on older
+    # distributions than the build host (cargo-zigbuild and zig are needed).
+    *-linux-gnu)
+      cargo zigbuild --release --manifest-path "$ROOT/Cargo.toml" --target "$target.$LINUX_GLIBC"
+      ;;
+    *)
+      cargo build --release --manifest-path "$ROOT/Cargo.toml" --target "$target"
+      ;;
+  esac
 
   local staging="$DIST/$artifact"
   rm -rf "$staging"
