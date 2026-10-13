@@ -39,8 +39,46 @@ function attemptsOf(result: SupabaseLiftResult): (number | null)[] {
   ];
 }
 
-/** `data` is expected sorted oldest-first; `improvementFromFirst` relies on it. */
-export function calculateWrappedStats(data: SupabaseLiftResult[]): WrappedStats {
+function meetKey(meet: string): string {
+  return meet.trim().toLowerCase();
+}
+
+/**
+ * The rows that are distinct lifts, in their original order.
+ *
+ * One lift can come back as several rows: the same meet listed under two age
+ * divisions, one meet filed under two dates, or one lift filed under two meet
+ * names (Youth and Junior Championships) on one date. Scoring each row would
+ * count that lift's kilos, attempts and streak twice.
+ *
+ * The rule: two rows are the same lift when all six attempts and the total
+ * are equal and they share the date or the meet name (trimmed, any case). The
+ * first row is kept. Same numbers at a different meet on a different date
+ * stay two lifts, and so do two different lifts on one date.
+ */
+export function distinctLifts(data: readonly SupabaseLiftResult[]): SupabaseLiftResult[] {
+  const keptBySignature = new Map<string, SupabaseLiftResult[]>();
+  const kept: SupabaseLiftResult[] = [];
+  for (const result of data) {
+    const signature = JSON.stringify([...attemptsOf(result), result.total]);
+    const sameNumbers = keptBySignature.get(signature) ?? [];
+    const isDuplicate = sameNumbers.some(
+      (other) => other.date === result.date || meetKey(other.meet) === meetKey(result.meet),
+    );
+    if (isDuplicate) continue;
+    sameNumbers.push(result);
+    keptBySignature.set(signature, sameNumbers);
+    kept.push(result);
+  }
+  return kept;
+}
+
+/**
+ * `rows` is expected sorted oldest-first; `improvementFromFirst` relies on it.
+ * Rows that are one lift listed twice are scored once (`distinctLifts`).
+ */
+export function calculateWrappedStats(rows: readonly SupabaseLiftResult[]): WrappedStats {
+  const data = distinctLifts(rows);
   let totalWeight = 0;
   let totalAttempts = 0;
   let successfulAttempts = 0;
@@ -96,8 +134,8 @@ export function calculateWrappedStats(data: SupabaseLiftResult[]): WrappedStats 
   // First to last meet with a total, one total per meet (its best). A
   // bomb-out (no total, or 0) is not a data point: counting one as 0 turned a
   // 200kg lifter's year into "-200kg" (or "+200kg" when the bomb-out came
-  // first). Two rows from one meet (say, the same lift listed in two age
-  // divisions) are not progress either: one meet has nothing to compare.
+  // first). Two rows from one meet are not progress either: one meet has
+  // nothing to compare.
   const totals = [...meetTotals.values()].filter((total) => total > 0);
   const improvement =
     totals.length >= 2 ? totals[totals.length - 1] - totals[0] : null;
