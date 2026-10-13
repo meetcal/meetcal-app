@@ -1,4 +1,6 @@
-import { mutation, query, type MutationCtx, type QueryCtx } from './_generated/server';
+import { v } from 'convex/values';
+import { internal } from './_generated/api';
+import { internalMutation, mutation, query, type MutationCtx, type QueryCtx } from './_generated/server';
 import type { Doc } from './_generated/dataModel';
 import { compareCollated } from './lib/sort';
 import { apiError, isValidIsoDate, requireNonEmpty } from './lib/validation';
@@ -444,5 +446,36 @@ export const setAutoUnsave = mutation({
     if (existing) await ctx.db.replace(existing._id, row);
     else await ctx.db.insert('user_preferences', row);
     return { auto_unsave_started_sessions: enabled };
+  },
+});
+
+/** A user's rows one `deleteUserData` call deletes per table at most; it reschedules itself for the rest. */
+export const USER_DATA_DELETE_BATCH = 500;
+
+/**
+ * Deletes everything stored under a user id: saved sessions (with their
+ * notes and athlete names), preferences, and the saved-session revisions and
+ * reset markers. Called by Clerk's `user.deleted` webhook (`convex/http.ts`),
+ * so an account deleted in Clerk leaves nothing behind (#250). At most
+ * USER_DATA_DELETE_BATCH rows per table a call; a call that hit the limit
+ * schedules the next. Idempotent: a user with no rows is a no-op.
+ *
+ *   npx convex run users:deleteUserData '{"userId":"user_…"}'
+ */
+export const deleteUserData = internalMutation({
+  args: { userId: v.string() },
+  handler: async (ctx, { userId }) => {
+    if (userId.trim() === '') throw new Error('userId is required');
+    const batches = await Promise.all([
+      ctx.db.query('saved_sessions').withIndex('by_userId', (q) => q.eq('userId', userId)).take(USER_DATA_DELETE_BATCH),
+      ctx.db.query('user_preferences').withIndex('by_userId', (q) => q.eq('userId', userId)).take(USER_DATA_DELETE_BATCH),
+      ctx.db.query('saved_session_revisions').withIndex('by_userId_and_updatedAt', (q) => q.eq('userId', userId)).take(USER_DATA_DELETE_BATCH),
+      ctx.db.query('saved_session_resets').withIndex('by_userId_and_updatedAt', (q) => q.eq('userId', userId)).take(USER_DATA_DELETE_BATCH),
+    ]);
+    for (const rows of batches) for (const row of rows) await ctx.db.delete(row._id);
+    const more = batches.some((rows) => rows.length === USER_DATA_DELETE_BATCH);
+    if (more) await ctx.scheduler.runAfter(0, internal.users.deleteUserData, { userId });
+    const [sessions, preferences, revisions, resets] = batches.map((rows) => rows.length);
+    return { sessions, preferences, revisions, resets, more };
   },
 });

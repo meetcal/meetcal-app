@@ -14,6 +14,7 @@ import { useAppColors } from "@/hooks/useAppColors";
 import {
   ACCOUNT_DELETION_TITLE,
   accountDeletionMessage,
+  clearLocalUserData,
   subscriptionManagementUrl,
 } from "@/lib/account-deletion";
 import { clearAuthCache } from "@/lib/authCache";
@@ -22,7 +23,7 @@ import { resolvePremiumAccess } from "@/lib/premium-access";
 import { useAuthGuard } from "@/utils/authGuard";
 import { useClerk, useUser } from "@clerk/expo";
 import { Stack, usePathname, useRouter } from "expo-router";
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -87,6 +88,9 @@ export default function ProfileScreen() {
   const router = useRouter();
   const pathname = usePathname();
   const [isAccountOpen, setIsAccountOpen] = useState(false);
+  // The user whose account sheet was opened to delete the account (through
+  // the deletion warning), or null when it was opened to edit the profile.
+  const deletingUserId = useRef<string | null>(null);
   const [isClearingCache, setIsClearingCache] = useState(false);
   const insets = useSafeAreaInsets();
   const {
@@ -135,14 +139,24 @@ export default function ProfileScreen() {
       {
         text: "Continue",
         style: "destructive",
-        onPress: () => setIsAccountOpen(true),
+        onPress: () => {
+          deletingUserId.current = user?.id ?? null;
+          setIsAccountOpen(true);
+        },
       },
     ]);
   };
   // Signed out from inside Clerk's account screen: Clerk already ended the
   // session, so only the app's own auth cache and route are left to reset.
+  // Opened to delete the account, the sign-out is the deletion: the device's
+  // copy of that user's saved sessions and queued writes goes too (#250).
   const handleSignedOutInAccount = useCallback(() => {
-    void clearAuthCache().finally(() => router.replace("/(tabs)/(index)"));
+    const deletedUserId = deletingUserId.current;
+    deletingUserId.current = null;
+    const clearLocal = deletedUserId
+      ? clearLocalUserData(deletedUserId).catch((error) => console.error("Error clearing the deleted account's data:", error))
+      : Promise.resolve();
+    void clearLocal.then(clearAuthCache).finally(() => router.replace("/(tabs)/(index)"));
   }, [router]);
 
   const sendEmailFeedback = () => {
@@ -218,7 +232,10 @@ export default function ProfileScreen() {
           <ProfileField
             label="Edit Profile"
             value={user?.primaryEmailAddress?.emailAddress || ""}
-            onPress={() => setIsAccountOpen(true)}
+            onPress={() => {
+              deletingUserId.current = null;
+              setIsAccountOpen(true);
+            }}
           />
         </View>
 

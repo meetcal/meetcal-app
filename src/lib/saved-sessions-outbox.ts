@@ -140,7 +140,7 @@ export function getSavedSessionsOutboxKey(userId: string): string {
   return `@saved_sessions_outbox_${userId}`;
 }
 
-function getOutboxSeededKey(userId: string): string {
+export function getOutboxSeededKey(userId: string): string {
   return `@saved_sessions_outbox_seeded_${userId}`;
 }
 

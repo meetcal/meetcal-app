@@ -1,4 +1,5 @@
-import { accountDeletionMessage, subscriptionManagementUrl } from "@/lib/account-deletion";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { accountDeletionMessage, clearLocalUserData, subscriptionManagementUrl } from "@/lib/account-deletion";
 
 describe("account deletion", () => {
   it.each([
@@ -16,5 +17,16 @@ describe("account deletion", () => {
     expect(subscriptionManagementUrl("android")).toBe(
       "https://play.google.com/store/account/subscriptions",
     );
+  });
+
+  it("clears only the deleted user's saved sessions and outbox from the device", async () => {
+    await AsyncStorage.multiSet([
+      ["@saved_sessions_user_1", "[]"],
+      ["@saved_sessions_outbox_user_1", "[]"],
+      ["@saved_sessions_outbox_seeded_user_1", "1"],
+      ["@saved_sessions_user_2", "[]"],
+    ]);
+    await clearLocalUserData("user_1");
+    expect(await AsyncStorage.getAllKeys()).toEqual(["@saved_sessions_user_2"]);
   });
 });
