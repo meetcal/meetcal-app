@@ -70,11 +70,16 @@ jest.mock("@/lib/networkUtils", () => ({
 
 /** `null` is RevenueCat still loading. */
 let mockIsSubscribed: boolean | null = true;
+/** RevenueCat's own answer (`null`: not yet), and the account it was about. */
 let mockConfirmedIsSubscribed: boolean | null = true;
+let mockConfirmedFor = "user_1";
 jest.mock("@/contexts/SubscriptionContext", () => ({
   useSubscription: () => ({
     isSubscribed: mockIsSubscribed,
-    confirmedIsSubscribed: mockConfirmedIsSubscribed,
+    confirmedEntitlement:
+      mockConfirmedIsSubscribed === null
+        ? null
+        : { appUserId: mockConfirmedFor, isSubscribed: mockConfirmedIsSubscribed },
   }),
 }));
 
@@ -197,6 +202,7 @@ beforeEach(() => {
   mockIsNetworkAvailable = true;
   mockIsSubscribed = true;
   mockConfirmedIsSubscribed = true;
+  mockConfirmedFor = "user_1";
   mockSelectedMeetSchedule = [];
   mockListScheduled.mockResolvedValue([]);
 });
@@ -924,6 +930,40 @@ describe("server reconcile with the pending-writes outbox", () => {
     await hook.rerender();
 
     expect(hook.current.savedSessions).toEqual([]);
+  });
+
+  it("never prunes on the previous account's confirmed subscription after a switch", async () => {
+    await AsyncStorage.setItem(SESSION_KEY, JSON.stringify([makeSession("Test-Meet-1-Red")]));
+    mockFetchUserPreferences.mockResolvedValue({ auto_unsave_started_sessions: true });
+    mockConvertToUTC.mockReturnValue(new Date("2000-01-01T15:00:00.000Z"));
+    // RevenueCat last answered for the subscriber who was signed in before.
+    mockConfirmedFor = "user_0";
+
+    const hook = await mountHook();
+
+    expect(hook.current.savedSessions.map((s) => s.id)).toEqual(["Test-Meet-1-Red"]);
+    expect(deleteSavedSession).not.toHaveBeenCalled();
+  });
+
+  it("loads again after a load in flight when RevenueCat confirms mid-load", async () => {
+    mockConfirmedIsSubscribed = null;
+    let release!: () => void;
+    mockFetchSavedSessions.mockImplementationOnce(
+      () => new Promise((resolve) => {
+        release = () => resolve([]);
+      }),
+    );
+    const hook = await mountHook();
+    expect(mockFetchSavedSessions).toHaveBeenCalledTimes(1);
+
+    // Confirmed while the first load still waits on the server.
+    mockConfirmedIsSubscribed = true;
+    await hook.rerender();
+    await act(async () => release());
+    await flush();
+
+    // Not joined: a second load ran after the first, with its own prune.
+    expect(mockFetchSavedSessions).toHaveBeenCalledTimes(2);
   });
 
   it("never prunes for a lapse RevenueCat reports, though the cache says subscribed", async () => {

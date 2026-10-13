@@ -6,6 +6,7 @@ import { getMeetConfig } from '@/data/meets/config';
 import { resolvedMeetTimeZone } from '@/utils/timezone';
 import { useSelectedMeet } from '@/contexts/SelectedMeetContext';
 import { useSubscription } from '@/contexts/SubscriptionContext';
+import { confirmedSubscriptionFor } from '@/lib/confirmed-entitlement';
 import { getMeetSchedule } from '@/lib/database/offline-store';
 import { syncSavedWidget, clearSavedWidget } from '@/utils/savedWidget';
 import { reindexAppEntities } from '@/utils/appIntents';
@@ -66,7 +67,7 @@ export function useSavedSessions() {
   const { user, isLoaded: isClerkLoaded } = useUser();
   const { getToken } = useAuth();
   const { selectedMeet } = useSelectedMeet();
-  const { isSubscribed, confirmedIsSubscribed } = useSubscription();
+  const { isSubscribed, confirmedEntitlement } = useSubscription();
   const [storedSessions, setSavedSessions] = useState<SavedSession[]>([]);
   // What every consumer reads (the screens, the widget, the reminders): the
   // stored rows, with the selected meet's on its current schedule times.
@@ -94,8 +95,10 @@ export function useSavedSessions() {
   const getTokenRef = useRef(getToken);
   getTokenRef.current = getToken;
   // Read by the prune at the moment it would delete, not when it was built.
-  // RevenueCat's own answer, not the cached hint `isSubscribed` starts from:
-  // the prune deletes on the server, and a stale cache must not authorize it.
+  // RevenueCat's own answer for *this* Clerk user, not the cached hint
+  // `isSubscribed` starts from, and not the previous account's answer right
+  // after a switch: the prune deletes on the server.
+  const confirmedIsSubscribed = confirmedSubscriptionFor(confirmedEntitlement, clerkUserId);
   const confirmedIsSubscribedRef = useRef(confirmedIsSubscribed);
   confirmedIsSubscribedRef.current = confirmedIsSubscribed;
   // Every local mutation runs through this queue, so two concurrent saves
@@ -299,14 +302,20 @@ export function useSavedSessions() {
   // whose entitlement was cached only seconds after the first load (the
   // provider's delayed refresh). Load again once it confirms, so that load's
   // prune runs instead of waiting for the next focus.
-  const lastConfirmedRef = useRef(confirmedIsSubscribed);
+  // A fresh load, never joining one already running: that load's prune may
+  // have read the subscription before it confirmed and skipped.
+  // Only a confirmation for the same signed-in user: a new user (Clerk
+  // resolving, an account switch) gets its own identity load above, whose
+  // prune reads the answer then.
+  const lastConfirmedRef = useRef({ userId: clerkUserId, confirmed: confirmedIsSubscribed });
   useEffect(() => {
-    const wasConfirmed = lastConfirmedRef.current === true;
-    lastConfirmedRef.current = confirmedIsSubscribed;
-    if (confirmedIsSubscribed === true && !wasConfirmed && clerkUserId) {
-      void loadSavedSessions();
+    const last = lastConfirmedRef.current;
+    lastConfirmedRef.current = { userId: clerkUserId, confirmed: confirmedIsSubscribed };
+    if (!clerkUserId || last.userId !== clerkUserId) return;
+    if (confirmedIsSubscribed === true && last.confirmed !== true) {
+      void loadChain.run(savedSessionsLoadKey(activeUserId, true), runLoad, { fresh: true });
     }
-  }, [clerkUserId, confirmedIsSubscribed, loadSavedSessions]);
+  }, [activeUserId, clerkUserId, confirmedIsSubscribed, loadChain, runLoad]);
 
   useReconnectReplay(clerkUserId, pendingWriteCountRef, syncOutbox);
 

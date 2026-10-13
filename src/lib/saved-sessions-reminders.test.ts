@@ -351,6 +351,17 @@ describe("syncSessionReminders", () => {
         });
       });
 
+      it("keeps a reminder whose meet looks days past only by the device's clock", async () => {
+        mockListScheduled.mockResolvedValue([corrected]);
+
+        // The device reads June 22 08:00; the server June 20 08:00. The
+        // meet's date is before the device's past-date cutoff.
+        await syncSessionReminders([saved("a")], true, noSample(NOW.getTime() + 2 * 24 * HOUR_MS));
+
+        expect(mockCancelNotification).not.toHaveBeenCalled();
+        expect(mockScheduleNotification).not.toHaveBeenCalled();
+      });
+
       it("still moves a reminder whose session moved", async () => {
         mockListScheduled.mockResolvedValue([corrected]);
 

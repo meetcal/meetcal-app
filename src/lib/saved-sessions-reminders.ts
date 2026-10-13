@@ -284,7 +284,12 @@ export async function resolveDesiredReminders(
     const schedule = await deps.readSchedule(meet).catch(() => [] as ScheduleType);
     const lookup = schedule.length > 0 ? buildSessionScheduleLookup(schedule) : null;
     const timedSessions = meetSessions.map((saved) => withScheduleTimes(saved, lookup));
-    if (timedSessions.every((session) => session.date && session.date < cutoff)) continue;
+    if (timedSessions.every((session) => session.date && session.date < cutoff)) {
+      // With no clock sample the cutoff is the device clock's, which may be
+      // days fast: a meet past only by it keeps its pending reminders.
+      if (skewUnknown) for (const session of timedSessions) unresolvedIds.add(session.id);
+      continue;
+    }
 
     const timeZone = await deps.timeZoneFor(meet);
 
