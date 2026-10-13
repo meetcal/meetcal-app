@@ -1,7 +1,8 @@
 import { getFunctionName } from 'convex/server';
 import * as views from '../convex/views';
-import { MEET_INDEX_VIEW, meetKey, natKey } from '../convex/lib/viewKeys';
-import { jsonChunks, readViewJsonAnyAge, writeView } from '../convex/lib/views';
+import { LEGACY_SEARCH_SHARD_SIZES_VIEWS, MEET_INDEX_VIEW, meetKey, natKey, RESULT_NAMES_VIEW, SEARCH_SHARD_SIZES_VIEW, searchShardKey } from '../convex/lib/viewKeys';
+import { search } from '../convex/results';
+import { jsonChunks, readViewJsonAnyAge, readViewTextAnyAge, textChunks, writeView } from '../convex/lib/views';
 import { fakeDb, handlerOf } from './fakeDb';
 
 const STAMP = [{ table: 'lifting_results', version: 1 }];
@@ -395,3 +396,38 @@ describe('full rebuild', () => {
     expect(h.fake.rows('view_state')[0].rebuilding).toBe(false);
   });
 });
+
+describe('search shards after a change to the fold (#348)', () => {
+  const NAMES = ["Brandyn O'Neal", 'Colin O\u2019Neal', 'Nick  Eudy'];
+
+  /** The directory, with shards and a size table built under the old fold (curly apostrophes not folded). */
+  async function oldShards(h: ReturnType<typeof harness>) {
+    const ctx = h.ctx as never;
+    await writeView(ctx, RESULT_NAMES_VIEW, textChunks(NAMES.join('\n')), [], { text: true });
+    await writeView(ctx, searchShardKey("o'"), textChunks("Brandyn O'Neal"), [], { text: true });
+    await writeView(ctx, searchShardKey("'n"), textChunks("Brandyn O'Neal"), [], { text: true });
+    await writeView(ctx, LEGACY_SEARCH_SHARD_SIZES_VIEWS[0], jsonChunks([["o'", 1], ["'n", 1]]), []);
+  }
+
+  it('reads the whole directory, not old shards, until the new size table is built', async () => {
+    const h = harness({}, builders());
+    await oldShards(h);
+    const answer = (await handlerOf(search)(h.ctx, { query: "O'Neal" })) as { suggestions: string[] };
+    expect(answer.suggestions).toEqual(["Brandyn O'Neal", 'Colin O\u2019Neal']);
+  });
+
+  it('never starts a size table from a patch, and the hourly job builds the shards', async () => {
+    const h = harness({}, builders());
+    await oldShards(h);
+    await handlerOf(views.patchSearchShards)(h.ctx, { bigrams: ['ni'], added: ['Nick  Eudy'], removed: [] });
+    expect(await readViewJsonAnyAge(h.ctx as never, SEARCH_SHARD_SIZES_VIEW)).toBeNull();
+
+    expect(await handlerOf(views.refreshJob)(h.ctx, {})).toMatchObject({ searchShards: 3 });
+    expect(await readViewJsonAnyAge(h.ctx as never, SEARCH_SHARD_SIZES_VIEW)).not.toBeNull();
+    expect(await readViewJsonAnyAge(h.ctx as never, LEGACY_SEARCH_SHARD_SIZES_VIEWS[0])).toBeNull();
+    expect(await readViewTextAnyAge(h.ctx as never, searchShardKey("o'"))).toBe("Brandyn O'Neal\nColin O\u2019Neal");
+    const answer = (await handlerOf(search)(h.ctx, { query: 'Colin O\u2019Neal' })) as { suggestions: string[] };
+    expect(answer.suggestions).toEqual(['Colin O\u2019Neal']);
+  });
+});
+
