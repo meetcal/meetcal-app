@@ -3,7 +3,8 @@ use super::{
         ClassificationFilters, ClassifiedRow, SortDirection, classified_rows, filter_options,
         sort_numeric, weight_class_options,
     },
-    loading::{load_query, table_response},
+    format::display_weight_class,
+    loading::{load_rows, table_response},
     ui::{DataPage, DataTable, EmptyTableRow, FilterSelect, SortSelect},
 };
 use crate::utils::api::queries;
@@ -20,6 +21,16 @@ struct Ranking {
     percent_a: f64,
     gender: String,
     age_category: String,
+}
+
+impl Ranking {
+    /// The ranking with its class as every table writes it (`65` → `65kg`).
+    fn shown(self) -> Self {
+        Self {
+            weight_class: display_weight_class(&self.weight_class),
+            ..self
+        }
+    }
 }
 
 impl ClassifiedRow for Ranking {
@@ -50,7 +61,7 @@ pub fn Rankings() -> impl IntoView {
     let (age, set_age) = signal(String::new());
     let (weight_class, set_weight_class) = signal(String::new());
     let (sort, set_sort) = signal("rank_asc".to_string());
-    let rankings = load_query::<Vec<Ranking>>(queries::INTL_RANKINGS);
+    let rankings = load_rows(queries::INTL_RANKINGS, Ranking::shown);
 
     view! {
         <DataPage

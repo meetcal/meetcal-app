@@ -2,7 +2,7 @@ use std::collections::{HashMap, HashSet};
 
 use super::{
     analytics::percentage,
-    filters::filter_options,
+    format::{display_gender, display_weight_class},
     loading::{Load, LoadState, load_error, load_meet_data, load_query},
     models::{Athlete, LiftingResult, Meet, UpcomingMeetsQuery, normalize},
     ui::{DataMetric, DataPage, DataStatus, DataTable, EmptyTableRow, FilterSelect, TableSkeleton},
@@ -23,7 +23,6 @@ pub fn WsoDashboard() -> impl IntoView {
         },
     );
     let completed_meets = load_query::<Vec<Meet>>(queries::COMPLETED_MEETS);
-    let wsos = load_query::<Vec<String>>(queries::WSO_LIST);
     let athletes = Load::new(
         move || meet.get(),
         |meet| load_meet_data::<Athlete>(meet, queries::MEET_ATHLETES),
@@ -50,14 +49,23 @@ pub fn WsoDashboard() -> impl IntoView {
                             set_wso.set(String::new());
                         }
                     />
-                    {move || wsos.with(|state| match state {
-                        LoadState::Ready(rows) if !meet.get().is_empty() => {
-                            let options = filter_options(rows.iter().map(String::as_str));
-                            view! { <FilterSelect label="WSO" placeholder="Choose a WSO" values=options selected=wso wide=true on_select=move |value| set_wso.set(value) /> }.into_any()
-                        }
-                        LoadState::Failed(error) => load_error("WSOs", error, move || wsos.retry()),
-                        _ => ().into_any(),
-                    })}
+                    // The WSOs the meet's athletes registered under, spelled as
+                    // the roster spells them: every one can be chosen, and each
+                    // matches its athletes.
+                    {move || if meet.with(String::is_empty) { ().into_any() } else {
+                        athletes.with(|state| match state {
+                            LoadState::Ready(rows) => {
+                                let options = roster_wsos(rows);
+                                if options.is_empty() {
+                                    view! { <DataStatus message="This meet’s start list doesn’t list athletes’ WSOs." /> }.into_any()
+                                } else {
+                                    view! { <FilterSelect label="WSO" placeholder="Choose a WSO" values=options selected=wso wide=true on_select=move |value| set_wso.set(value) /> }.into_any()
+                                }
+                            }
+                            LoadState::Failed(error) => load_error("the meet’s WSOs", error, move || athletes.retry()),
+                            LoadState::Loading => view! { <DataStatus message="Loading the meet’s WSOs…" /> }.into_any(),
+                        })
+                    }}
                 </div> }.into_any()
             }
             (LoadState::Failed(error), _) | (_, LoadState::Failed(error)) => load_error("meets", error, move || {
@@ -68,6 +76,20 @@ pub fn WsoDashboard() -> impl IntoView {
         }))}
         {move || if wso.get().is_empty() { view! { <DataStatus message="Choose a meet and WSO to view its dashboard." /> }.into_any() } else { athletes.with(|athlete_state| results.with(|result_state| match (athlete_state, result_state) { (LoadState::Ready(athletes), LoadState::Ready(results)) => dashboard(athletes, results, &wso.get()), (LoadState::Failed(error), _) | (_, LoadState::Failed(error)) => load_error("WSO dashboard", error, move || { athletes.retry_failed(); results.retry_failed(); }), _ => view! { <TableSkeleton columns=8 /> }.into_any() })) }}
     </DataPage> }
+}
+
+/// The WSOs a meet's athletes registered under, as the roster spells them.
+fn roster_wsos(athletes: &[Athlete]) -> Vec<String> {
+    let mut seen = HashSet::new();
+    let mut wsos = athletes
+        .iter()
+        .filter_map(|athlete| athlete.wso.as_deref())
+        .map(str::trim)
+        .filter(|wso| !wso.is_empty() && seen.insert(normalize(wso)))
+        .map(str::to_owned)
+        .collect::<Vec<_>>();
+    wsos.sort_by_key(|wso| normalize(wso));
+    wsos
 }
 
 /// Shown for a value with nothing to compute it from.
@@ -128,13 +150,14 @@ fn dashboard(athletes: &[Athlete], results: &[LiftingResult], selected_wso: &str
         wso_athletes,
         wso_coverage,
         attempts,
+        weight_lifted,
         rows,
     } = build_dashboard_data(athletes, results, selected_wso);
-    let rows = rows.into_iter().map(|row| view! { <tr><td>{row.name}</td><td>{row.gender}</td><td>{row.weight_class}</td><td>{row.club}</td><td>{row.entry_total}</td><td>{lift(row.snatch_best)}</td><td>{lift(row.cj_best)}</td><td>{lift(row.total)}</td></tr> }).collect_view();
+    let rows = rows.into_iter().map(|row| view! { <tr><td>{row.name}</td><td>{display_gender(&row.gender)}</td><td>{display_weight_class(&row.weight_class)}</td><td>{row.club}</td><td>{row.entry_total}</td><td>{lift(row.snatch_best)}</td><td>{lift(row.cj_best)}</td><td>{lift(row.total)}</td></tr> }).collect_view();
     let weight_lifted = if attempts.attempts() == 0 {
         NO_VALUE.to_owned()
     } else {
-        format!("{}kg", attempts.volume)
+        format!("{weight_lifted}kg")
     };
     view! { <div class="data-metric-grid"><DataMetric label="Meet athletes" value=meet_athletes.to_string() /><DataMetric label="WSO athletes" value=wso_count(wso_athletes, wso_coverage) /><DataMetric label="Snatch makes" value=make_rate(attempts.snatch_makes, attempts.snatch_attempts) /><DataMetric label="C&J makes" value=make_rate(attempts.cj_makes, attempts.cj_attempts) /><DataMetric label="Combined makes" value=make_rate(attempts.makes(), attempts.attempts()) /><DataMetric label="Weight lifted" value=weight_lifted /></div>
     <DataTable><thead><tr><th>"Athlete"</th><th>"Gender"</th><th>"Class"</th><th>"Club"</th><th>"Entry total"</th><th>"Snatch"</th><th>"C&J"</th><th>"Total"</th></tr></thead><tbody>{(wso_athletes == 0).then(|| view! { <EmptyTableRow columns=8 message=empty_message(wso_coverage) /> })}{rows}</tbody></DataTable> }.into_any()
@@ -153,11 +176,16 @@ struct WsoAthleteRow {
 }
 
 struct WsoDashboardData {
+    /// Distinct athletes on the roster (by folded name): an athlete entered
+    /// in two divisions is one athlete, as the Club Dashboard counts them.
     meet_athletes: usize,
     wso_athletes: usize,
     /// How many roster rows name a WSO (synced entries carry none).
     wso_coverage: WsoCoverage,
     attempts: AttemptSummary,
+    /// The sum of each WSO athlete's best total, as the Club Dashboard's
+    /// "Weight lifted" (`total_weight_lifted`) is a sum of totals.
+    weight_lifted: f64,
     rows: Vec<WsoAthleteRow>,
 }
 
@@ -166,6 +194,13 @@ fn build_dashboard_data(
     results: &[LiftingResult],
     selected_wso: &str,
 ) -> WsoDashboardData {
+    let meet_athletes = athletes
+        .iter()
+        .map(|athlete| normalize(&athlete.name))
+        .collect::<HashSet<_>>()
+        .len();
+    // Each WSO athlete once, as first listed.
+    let mut names = HashSet::new();
     let members = athletes
         .iter()
         .filter(|athlete| {
@@ -173,12 +208,9 @@ fn build_dashboard_data(
                 .wso
                 .as_deref()
                 .is_some_and(|wso| normalize(wso) == normalize(selected_wso))
+                && names.insert(normalize(&athlete.name))
         })
         .collect::<Vec<_>>();
-    let names = members
-        .iter()
-        .map(|row| normalize(&row.name))
-        .collect::<HashSet<_>>();
     let member_results = results
         .iter()
         .filter(|row| names.contains(&normalize(&row.name)))
@@ -196,6 +228,7 @@ fn build_dashboard_data(
             })
             .or_insert(result);
     }
+    let weight_lifted = best_results.values().map(|row| row.total.max(0.0)).sum();
     let rows = members
         .iter()
         .map(|athlete| {
@@ -213,7 +246,7 @@ fn build_dashboard_data(
         })
         .collect();
     WsoDashboardData {
-        meet_athletes: athletes.len(),
+        meet_athletes,
         wso_athletes: members.len(),
         wso_coverage: {
             let labeled = athletes
@@ -235,6 +268,7 @@ fn build_dashboard_data(
             }
         },
         attempts: summary,
+        weight_lifted,
         rows,
     }
 }
@@ -245,7 +279,6 @@ struct AttemptSummary {
     snatch_makes: usize,
     cj_attempts: usize,
     cj_makes: usize,
-    volume: f64,
 }
 
 impl AttemptSummary {
@@ -265,28 +298,22 @@ fn summarize_attempts<'a>(results: impl Iterator<Item = &'a LiftingResult>) -> A
                 value,
                 &mut summary.snatch_attempts,
                 &mut summary.snatch_makes,
-                &mut summary.volume,
             );
         }
         for value in [row.cj1, row.cj2, row.cj3] {
-            record(
-                value,
-                &mut summary.cj_attempts,
-                &mut summary.cj_makes,
-                &mut summary.volume,
-            );
+            record(value, &mut summary.cj_attempts, &mut summary.cj_makes);
         }
     }
     summary
 }
-fn record(value: f64, attempts: &mut usize, makes: &mut usize, volume: &mut f64) {
+
+fn record(value: f64, attempts: &mut usize, makes: &mut usize) {
     if value == 0.0 || !value.is_finite() {
         return;
     }
     *attempts += 1;
     if value > 0.0 {
         *makes += 1;
-        *volume += value;
     }
 }
 
@@ -318,11 +345,11 @@ mod tests {
     }
     #[test]
     fn misses_count_but_unrecorded_attempts_do_not() {
-        let (mut attempts, mut makes, mut volume) = (0, 0, 0.0);
-        record(-100.0, &mut attempts, &mut makes, &mut volume);
-        record(0.0, &mut attempts, &mut makes, &mut volume);
-        record(105.0, &mut attempts, &mut makes, &mut volume);
-        assert_eq!((attempts, makes, volume), (2, 1, 105.0));
+        let (mut attempts, mut makes) = (0, 0);
+        record(-100.0, &mut attempts, &mut makes);
+        record(0.0, &mut attempts, &mut makes);
+        record(105.0, &mut attempts, &mut makes);
+        assert_eq!((attempts, makes), (2, 1));
     }
 
     #[test]
@@ -331,7 +358,6 @@ mod tests {
         let summary = summarize_attempts([&result].into_iter());
         assert_eq!((summary.snatch_attempts, summary.snatch_makes), (2, 1));
         assert_eq!((summary.cj_attempts, summary.cj_makes), (3, 2));
-        assert_eq!(summary.volume, 315.0);
     }
 
     #[test]
@@ -435,5 +461,57 @@ mod tests {
         let empty = build_dashboard_data(&[], &[], "Colorado");
         assert_eq!(empty.wso_coverage, WsoCoverage::Full);
         assert_eq!(wso_count(empty.wso_athletes, empty.wso_coverage), "0");
+    }
+
+    fn entrant(name: &str, wso: Option<&str>) -> Athlete {
+        Athlete {
+            name: name.to_owned(),
+            age: 25.0,
+            club: "Club".to_owned(),
+            wso: wso.map(str::to_owned),
+            gender: "Female".to_owned(),
+            weight_class: "69".to_owned(),
+            entry_total: 200.0,
+            adaptive: false,
+            session_number: None,
+            session_platform: None,
+        }
+    }
+
+    #[test]
+    fn athletes_count_once_and_weight_lifted_sums_best_totals() {
+        // Alex is entered in two divisions; Casey has no result yet.
+        let athletes = [
+            entrant("Alex", Some("Florida")),
+            entrant("alex", Some("Florida")),
+            entrant("Casey", Some("Florida")),
+            entrant("Blair", Some("Georgia")),
+        ];
+        let results = [
+            result("Alex", 205.0),
+            result("Alex", 215.0),
+            result("Blair", 220.0),
+        ];
+
+        let data = build_dashboard_data(&athletes, &results, "Florida");
+
+        assert_eq!(data.meet_athletes, 3);
+        assert_eq!(data.wso_athletes, 2);
+        assert_eq!(data.rows.len(), 2);
+        // Alex's best total only, as the Club Dashboard sums totals.
+        assert_eq!(data.weight_lifted, 215.0);
+    }
+
+    #[test]
+    fn the_wso_choices_are_the_rosters_own() {
+        let athletes = [
+            entrant("A", Some("Florida")),
+            entrant("B", Some(" florida ")),
+            entrant("C", Some("Carolina")),
+            entrant("D", None),
+            entrant("E", Some("")),
+        ];
+        assert_eq!(roster_wsos(&athletes), ["Carolina", "Florida"]);
+        assert!(roster_wsos(&[entrant("A", None)]).is_empty());
     }
 }

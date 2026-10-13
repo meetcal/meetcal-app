@@ -2,7 +2,7 @@ use std::collections::HashSet;
 
 use super::{
     combobox::{Combobox, SuggestionCopy, Suggestions},
-    format::{format_us_date, format_us_time, yes_no},
+    format::{display_gender, display_weight_class, format_us_date, format_us_time, yes_no},
     loading::{Load, LoadState, load_error, load_meet_data, load_query, table_response},
     models::{Athlete, LiftingResult, Meet, ScheduleRow, UpcomingMeetsQuery, attempt},
     ui::{DataPage, DataStatus, DataTable, EmptyTableRow},
@@ -97,7 +97,10 @@ pub fn MeetCenter() -> impl IntoView {
     );
     let athletes = Load::new(
         move || meet.get(),
-        |meet| load_meet_data::<Athlete>(meet, queries::MEET_ATHLETES_SESSIONS),
+        // The plain roster, one row per athlete: the session join repeats an
+        // athlete once per schedule row of their session, and this table
+        // shows none of the joined fields.
+        |meet| load_meet_data::<Athlete>(meet, queries::MEET_ATHLETES),
     );
     let results = Load::new(
         move || meet.get(),
@@ -192,7 +195,7 @@ fn table_schedule(rows: &[ScheduleRow]) -> AnyView {
 
 fn table_athletes(rows: &[Athlete]) -> AnyView {
     let is_empty = rows.is_empty();
-    let body = rows.iter().map(|row| view! { <tr><td>{row.name.clone()}</td><td>{row.gender.clone()}</td><td>{row.age}</td><td>{row.weight_class.clone()}</td><td>{row.entry_total}</td><td>{row.club.clone()}</td><td>{row.wso.clone().unwrap_or_else(|| "—".to_owned())}</td><td>{session(row.session_number)}</td><td>{row.session_platform.clone().unwrap_or_else(|| "—".to_owned())}</td><td>{yes_no(row.adaptive)}</td></tr> }).collect_view();
+    let body = rows.iter().map(|row| view! { <tr><td>{row.name.clone()}</td><td>{display_gender(&row.gender)}</td><td>{row.age}</td><td>{display_weight_class(&row.weight_class)}</td><td>{row.entry_total}</td><td>{row.club.clone()}</td><td>{row.wso.clone().unwrap_or_else(|| "—".to_owned())}</td><td>{session(row.session_number)}</td><td>{row.session_platform.clone().unwrap_or_else(|| "—".to_owned())}</td><td>{yes_no(row.adaptive)}</td></tr> }).collect_view();
     view! { <DataTable><thead><tr><th>"Athlete"</th><th>"Gender"</th><th>"Age"</th><th>"Weight class"</th><th>"Entry total"</th><th>"Club"</th><th>"WSO"</th><th>"Session"</th><th>"Platform"</th><th>"Adaptive"</th></tr></thead><tbody>{is_empty.then(|| view! { <EmptyTableRow columns=10 message="No start list has been published for this meet." /> })}{body}</tbody></DataTable> }.into_any()
 }
 

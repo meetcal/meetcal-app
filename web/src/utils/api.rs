@@ -104,8 +104,6 @@ pub(crate) mod queries {
     pub(crate) const MEET_SCHEDULE: Query = Query::text("meets:schedule");
     /// `GET /meets/athletes`; takes `meet`.
     pub(crate) const MEET_ATHLETES: Query = Query::text("meets:athletes");
-    /// `GET /meets/athletes-sessions`; takes `meet`.
-    pub(crate) const MEET_ATHLETES_SESSIONS: Query = Query::text("meets:athletesSessions");
     /// `GET /lifting-results`; takes `meet`.
     pub(crate) const MEET_RESULTS: Query = Query::text("results:byMeet");
     /// `GET /search`; takes `query`, and optionally `startDate` and `endDate` (both included).

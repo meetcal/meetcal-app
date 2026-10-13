@@ -46,7 +46,7 @@ test("a new meet loads at once and never shows the previous meet's answer or a f
     await route.fulfill(textAnswer(rows(meetName)));
   };
   await routeQuery(page, "meets:schedule", answer((meetName) => [scheduleRow(meetName, meetName === "Meet Alpha" ? "Alpha Platform" : "Bravo Platform")]));
-  await routeQuery(page, "meets:athletesSessions", answer(() => []));
+  await routeQuery(page, "meets:athletes", answer(() => []));
   await routeQuery(page, "results:byMeet", answer(() => []));
 
   await page.goto("/meet-center");
@@ -161,7 +161,7 @@ test("adaptive records keep the gender choice usable through a failed load", asy
   });
 
   await page.goto("/adaptive-records");
-  await page.getByRole("combobox", { name: /^Weight class/ }).selectOption("95");
+  await page.getByRole("combobox", { name: /^Weight class/ }).selectOption("95kg");
   await expect(page.locator("tbody tr")).toHaveCount(1);
 
   await page.getByLabel("Gender").selectOption("Women");

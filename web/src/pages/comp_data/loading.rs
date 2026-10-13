@@ -163,6 +163,22 @@ where
     )
 }
 
+/// The rows of `query`, which takes no arguments, each as `shown` makes it.
+pub(crate) fn load_rows<T>(query: Query, shown: fn(T) -> T) -> Load<(), Vec<T>>
+where
+    T: serde::de::DeserializeOwned + Send + Sync + 'static,
+{
+    Load::new(
+        || (),
+        move |()| async move {
+            crate::utils::api::query::<Vec<T>>(query)
+                .await
+                .map(|rows| rows.into_iter().map(shown).collect())
+                .map_err(|error| error.to_string())
+        },
+    )
+}
+
 /// One meet's rows from `query`, which takes `meet`; none when no meet is chosen.
 pub(crate) async fn load_meet_data<T: serde::de::DeserializeOwned>(
     meet: String,

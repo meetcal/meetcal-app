@@ -1,6 +1,6 @@
 use super::{
     filters::{compare_weight_classes, matches_filter, weight_class_options},
-    format::reference_value,
+    format::{display_weight_class, reference_value},
     loading::{Load, table_response},
     ui::{DataPage, DataTable, EmptyTableRow, FilterSelect, SortSelect},
 };
@@ -21,6 +21,17 @@ struct AdaptiveRecord {
     snatch: f64,
     cj: f64,
     total: f64,
+}
+
+impl AdaptiveRecord {
+    /// The record with its class as the app shows it: the answer sends the
+    /// number alone (`71`, `110+`), which reads like a count.
+    fn shown(self) -> Self {
+        Self {
+            weight_class: display_weight_class(&self.weight_class),
+            ..self
+        }
+    }
 }
 
 const SORT_OPTIONS: &[(&str, &str)] = &[
@@ -44,6 +55,7 @@ pub fn AdaptiveRecords() -> impl IntoView {
             };
             query_with::<Vec<AdaptiveRecord>, _>(queries::ADAPTIVE_RECORDS, &query)
                 .await
+                .map(|records| records.into_iter().map(AdaptiveRecord::shown).collect())
                 .map_err(|error| error.to_string())
         },
     );
@@ -123,12 +135,18 @@ mod tests {
 
     #[test]
     fn adaptive_record_deserializes_from_the_api_shape() {
-        let record: AdaptiveRecord = serde_json::from_str(
-            r#"{"weight_class":"71kg","snatch":84.0,"cj":106.0,"total":190.0}"#,
+        // The server sends the class without its unit.
+        let record: AdaptiveRecord =
+            serde_json::from_str(r#"{"weight_class":"71","snatch":84.0,"cj":106.0,"total":190.0}"#)
+                .unwrap();
+
+        assert_eq!(record.weight_class, "71");
+        assert_eq!(record.total, 190.0);
+        assert_eq!(record.shown().weight_class, "71kg");
+        let open: AdaptiveRecord = serde_json::from_str(
+            r#"{"weight_class":"110+","snatch":84.0,"cj":106.0,"total":190.0}"#,
         )
         .unwrap();
-
-        assert_eq!(record.weight_class, "71kg");
-        assert_eq!(record.total, 190.0);
+        assert_eq!(open.shown().weight_class, "110+kg");
     }
 }
