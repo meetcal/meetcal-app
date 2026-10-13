@@ -27,7 +27,7 @@ describe("groupCalendarSessions", () => {
           row(2, "Red", "87kg"),
         ],
         MEET,
-      ),
+      ).sessions,
     ).toEqual([
       expect.objectContaining({ sessionNumber: "1", platform: "Red", weightClass: "71kg, 76kg", meet: MEET }),
       expect.objectContaining({ sessionNumber: "1", platform: "Blue", weightClass: "81kg" }),
@@ -36,7 +36,54 @@ describe("groupCalendarSessions", () => {
   });
 
   it("is empty for no rows", () => {
-    expect(groupCalendarSessions([], MEET)).toEqual([]);
+    expect(groupCalendarSessions([], MEET)).toEqual({ sessions: [], skipped: 0 });
+  });
+
+  // #283: an untimed schedule row reached the writer, which threw, and the
+  // toast said to try again, which could never succeed.
+  it("leaves out and counts sessions the schedule has not timed yet", () => {
+    const { sessions, skipped } = groupCalendarSessions(
+      [
+        row(1, "Red", "71kg"),
+        { ...row(2, "Red", "76kg"), startTime: "", weighInTime: "" },
+        { ...row(2, "Red", "81kg"), startTime: "", weighInTime: "" },
+        { ...row(3, "Blue", "87kg"), startTime: "soon" },
+        { ...row(4, "Blue", "96kg"), date: "" },
+      ],
+      MEET,
+    );
+    expect(sessions.map((s) => s.sessionNumber)).toEqual(["1"]);
+    expect(skipped).toBe(3);
+  });
+
+  it("counts the sessions of athletes the schedule cannot place, once each", () => {
+    const athlete = (name: string, number: number, platform: string) => ({
+      memberId: name,
+      name,
+      age: 25,
+      club: "Club",
+      gender: "Male",
+      weightClass: "89",
+      entryTotal: 0,
+      adaptive: false,
+      session: { number, platform },
+    });
+    const { sessions, skipped } = groupCalendarSessions(
+      [row(1, "Red", "71kg")],
+      MEET,
+      [athlete("A", 7, "Red"), athlete("B", 7, "Red"), athlete("C", 7, "Blue")],
+    );
+    expect(sessions).toHaveLength(1);
+    expect(skipped).toBe(2);
+  });
+
+  it("keeps a timed session whose weigh-in is unknown", () => {
+    const { sessions, skipped } = groupCalendarSessions(
+      [{ ...row(1, "Red", "71kg"), weighInTime: "" }],
+      MEET,
+    );
+    expect(sessions).toEqual([expect.objectContaining({ sessionNumber: "1", weighInTime: "" })]);
+    expect(skipped).toBe(0);
   });
 });
 

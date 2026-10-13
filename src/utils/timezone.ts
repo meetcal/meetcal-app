@@ -7,8 +7,8 @@ type ZonedDateParts = {
 };
 
 /**
- * Formatters kept per zone id. Mirrors `ABBREVIATION_FORMATTER_CACHE_LIMIT` in
- * `utils/dateTime.ts`: a meet list spans a handful of zones, and the bound
+ * Formatters kept per zone id. Mirrors `ABBREVIATION_FORMATTER_CACHE_LIMIT`
+ * below: a meet list spans a handful of zones, and the bound
  * keeps odd spellings of the same zone from accumulating for the process life.
  */
 export const PARTS_FORMATTER_CACHE_LIMIT = 32;
@@ -272,4 +272,142 @@ export function convertZonedLocalToUTC(
     (a, b) => Math.abs(a.diffMinutes) - Math.abs(b.diffMinutes),
   );
   return decorated[0].candidate;
+}
+
+/**
+ * How many timezone formatters stay resident. Meets span a handful of zones,
+ * so this never fills in practice; it is the bound that keeps a malformed
+ * feed from growing the map without limit.
+ */
+const ABBREVIATION_FORMATTER_CACHE_LIMIT = 32;
+
+/**
+ * `new Intl.DateTimeFormat(...)` costs roughly ten times a `formatToParts`
+ * call on an existing instance, and `mapApiMeet` builds two per meet for the
+ * whole `/meets` list on every app start, every five-minute refresh and every
+ * reconnect. A formatter carries no per-call state, so one instance per zone
+ * is reused across instants — the abbreviation still varies with `instant`
+ * (EST vs EDT), because that is decided by `formatToParts`, not by the
+ * constructor.
+ */
+const abbreviationFormatterCache = new Map<string, Intl.DateTimeFormat>();
+
+function getAbbreviationFormatter(timeZoneIdentifier: string): Intl.DateTimeFormat {
+  const cached = abbreviationFormatterCache.get(timeZoneIdentifier);
+  if (cached) return cached;
+
+  // Throws for an unknown identifier. Deliberately not cached: the caller
+  // turns it into "Local" and a later valid id must still be able to resolve.
+  const formatter = new Intl.DateTimeFormat("en-US", {
+    timeZone: timeZoneIdentifier,
+    timeZoneName: "short",
+  });
+
+  // Insertion-ordered eviction: `Map` keys iterate oldest-first.
+  while (abbreviationFormatterCache.size >= ABBREVIATION_FORMATTER_CACHE_LIMIT) {
+    const oldest = abbreviationFormatterCache.keys().next();
+    if (oldest.done) break;
+    abbreviationFormatterCache.delete(oldest.value);
+  }
+  abbreviationFormatterCache.set(timeZoneIdentifier, formatter);
+  return formatter;
+}
+
+/** A zone name made of letters only ("EDT", "HST", "GMT", "UTC"). */
+const LETTER_ZONE_NAME = /^[A-Z]{2,5}$/;
+
+/**
+ * "GMT+9", "GMT+5:30", "GMT-3" or "GMT" for an offset east of UTC in minutes.
+ * The en-US short name of most zones outside North America is already this
+ * shape, but engines spell it differently (V8 "GMT+5:30", others "GMT+05:30"
+ * or "UTC+5:30"), so the app builds it from the offset itself.
+ */
+export function formatGmtOffset(offsetMinutes: number): string {
+  if (offsetMinutes === 0) return "GMT";
+  const sign = offsetMinutes > 0 ? "+" : "-";
+  const hours = Math.floor(Math.abs(offsetMinutes) / 60);
+  const minutes = Math.abs(offsetMinutes) % 60;
+  return `GMT${sign}${hours}${minutes ? `:${String(minutes).padStart(2, "0")}` : ""}`;
+}
+
+/**
+ * The label shown after a meet-local time: the zone's en-US short name when
+ * it has a lettered one (US zones: "EDT", "MST", "HST"; also "GMT", "UTC"),
+ * otherwise its offset at `instant` ("GMT+9" for Tokyo, "GMT+5:30" for
+ * Kolkata, "GMT+11" for Sydney in January). Either way it is read at
+ * `instant`, so daylight time is the one in force then.
+ * @param timeZoneIdentifier - IANA timezone identifier (e.g., "America/New_York")
+ * @returns The label, or "Local" when the zone is not one the device knows
+ */
+export function getTimeZoneAbbreviation(
+  timeZoneIdentifier: string,
+  instant: Date = new Date(),
+): string {
+  try {
+    const name = getAbbreviationFormatter(timeZoneIdentifier)
+      .formatToParts(instant)
+      .find((part) => part.type === "timeZoneName")?.value;
+    if (name && LETTER_ZONE_NAME.test(name)) return name;
+    return formatGmtOffset(getOffsetMinutesAtInstant(timeZoneIdentifier, instant));
+  } catch {
+    return "Local";
+  }
+}
+
+/** The meet-zone fields `meetTimeZoneLabel` reads (`MeetConfig['time']`). */
+export interface MeetZone {
+  timeZoneIdentifier: string;
+  /** The label at the meet's start date, used when a session has no date. */
+  abbreviation: string;
+}
+
+/**
+ * Wall clock a session date's label is read at: noon, clear of every DST
+ * change (they happen overnight), as `mapApiMeet` reads the meet's own.
+ */
+const ZONE_LABEL_PROBE_TIME = "12:00";
+/** Labels kept per zone and date; a meet spans a few days in one zone. */
+export const ZONE_LABEL_CACHE_LIMIT = 64;
+const zoneLabelCache = new Map<string, string>();
+
+/**
+ * The zone label ("EDT", "GMT+9") for a meet-local time on the meet calendar
+ * date `dateYmd` (`YYYY-MM-DD`), read at that date in the meet's zone.
+ *
+ * `meet.abbreviation` is read once, at the meet's start date, so a meet that
+ * spans a daylight-saving change labelled every day with the first day's
+ * zone: a New York meet from Oct 30 to Nov 2 read "9:00 AM EDT" on Nov 1 and
+ * 2, which are EST. Every screen that labels a session time, and the calendar
+ * event notes, go through this instead.
+ *
+ * "" without a meet (no label beats a confidently wrong one); the start-date
+ * label when `dateYmd` is not a calendar date.
+ */
+export function meetTimeZoneLabel(
+  meet: MeetZone | null | undefined,
+  dateYmd: string | null | undefined,
+): string {
+  if (!meet) return "";
+  const datePart = typeof dateYmd === "string" ? dateYmd.trim().split("T")[0] : "";
+  if (!datePart) return meet.abbreviation;
+  const key = `${meet.timeZoneIdentifier}|${datePart}`;
+  const cached = zoneLabelCache.get(key);
+  if (cached !== undefined) return cached;
+
+  let label: string;
+  try {
+    const noon = convertZonedLocalToUTC(datePart, ZONE_LABEL_PROBE_TIME, meet.timeZoneIdentifier);
+    label = getTimeZoneAbbreviation(meet.timeZoneIdentifier, noon);
+  } catch {
+    // Not a calendar date, or not a zone this device knows.
+    return meet.abbreviation;
+  }
+  // Insertion-ordered eviction: `Map` keys iterate oldest-first.
+  while (zoneLabelCache.size >= ZONE_LABEL_CACHE_LIMIT) {
+    const oldest = zoneLabelCache.keys().next();
+    if (oldest.done) break;
+    zoneLabelCache.delete(oldest.value);
+  }
+  zoneLabelCache.set(key, label);
+  return label;
 }

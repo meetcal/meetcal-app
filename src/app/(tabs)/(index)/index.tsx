@@ -19,6 +19,8 @@ import {
 } from "react-native";
 
 import { DayView } from "@/components/schedule/DayView";
+import { useMeetZone } from "@/hooks/useMeetZone";
+import { meetTimeZoneLabel } from "@/utils/timezone";
 import { MeetSelectionModal } from "@/components/schedule/MeetSelectionModal";
 import {
   checkOnboardingComplete,
@@ -149,14 +151,12 @@ export default function ScheduleScreen() {
     formatDayTitle,
   });
 
-  // `meetDetails.time.abbreviation` is resolved once, in `mapApiMeet`, at the
-  // meet's own start date. Re-deriving it here with
-  // `getTimeZoneAbbreviation(id)` formats *today* instead: open a December New
-  // York meet in September and every row reads "EDT" when the sessions are
-  // actually EST, which looks to the user like the times are an hour wrong.
-  // The old "America/New_York" default also mislabelled every meet whose
-  // details had not loaded yet.
-  const timeZoneAbbreviation = meetDetails?.time.abbreviation ?? "";
+  // Each day's times are labelled with the zone at that day
+  // (`meetTimeZoneLabel`): a meet that spans a DST change reads "EDT" on
+  // Saturday and "EST" on Sunday. Formatting *today* instead labelled a
+  // December New York meet opened in September "EDT". No label while the
+  // meet's details load; the old "America/New_York" default mislabelled them.
+  const meetZone = useMeetZone(meetDetails?.time);
 
   // Header configuration
   useLayoutEffect(() => {
@@ -362,14 +362,14 @@ export default function ScheduleScreen() {
       <View style={[styles.pageContainer, { width: pageWidth }]}>
         <DayView
           day={item}
-          timeZone={timeZoneAbbreviation}
+          timeZone={meetTimeZoneLabel(meetZone, item.fullDate)}
           meet={selectedMeet || ""}
           onRefreshComplete={refreshSchedule}
           refreshing={isRefreshing}
         />
       </View>
     ),
-    [pageWidth, timeZoneAbbreviation, refreshSchedule, isRefreshing, selectedMeet],
+    [pageWidth, meetZone, refreshSchedule, isRefreshing, selectedMeet],
   );
 
   if (isMeetLoading) {

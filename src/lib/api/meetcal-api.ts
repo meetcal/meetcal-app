@@ -770,6 +770,9 @@ export function mapApiSchedule(rows: ApiScheduleRow[]): Schedule {
       platform: normalizePlatform(row.platform),
       weightClass: nullableString(row.weight_class) ?? '',
       platformStartTime: formatApiTime(row.start_time),
+      // Each platform row carries its own published weigh-in; the session's
+      // `weighInTime` is only the first row's.
+      platformWeighInTime: formatApiTime(row.weigh_in_time),
     });
   });
 

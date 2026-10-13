@@ -5,7 +5,8 @@ import { capAthleteNames } from '@/lib/saved-sessions-outbox';
 import type { SavedSession } from '@/lib/saved-sessions-store';
 import type { Schedule as ScheduleType } from '@/types/schedule';
 import { generateSessionId } from '@/utils/session';
-import { calculateWeighInTime } from '@/utils/time';
+import { platformSessionTimes } from '@/lib/schedule-lookup';
+import { resolveWeighInTime } from '@/utils/time';
 
 /**
  * Pure transforms over the saved-sessions list: the upsert a save applies,
@@ -129,8 +130,7 @@ export function sessionsFromAthletes(
         );
 
         if (sessionDay && scheduleSession && platform) {
-          const startTime = platform.platformStartTime || scheduleSession.startTime;
-          const weighInTime = calculateWeighInTime(startTime);
+          const { startTime, weighInTime } = platformSessionTimes(scheduleSession, platform);
           sessionMap.set(sessionId, {
             session: {
               id: sessionId,
@@ -155,7 +155,8 @@ export function sessionsFromAthletes(
               platform: athlete.session!.platform,
               weightClass: athlete.weightClass ?? '',
               startTime: fallbackStartTime,
-              weighInTime: calculateWeighInTime(fallbackStartTime),
+              // The roster's own row: its platform's published weigh-in.
+              weighInTime: resolveWeighInTime(fallbackStartTime, athlete.session?.weighInTime),
               date: athlete.session?.date ?? '',
               athleteNames: []
             },

@@ -23,7 +23,7 @@ import {
   type SavedSession,
   type SavedSessionsStore,
 } from '@/lib/saved-sessions-store';
-import { calculateWeighInTime } from '@/utils/time';
+import { resolveWeighInTime } from '@/utils/time';
 
 /**
  * Loading the saved-sessions list: hydrate from storage, then (with a
@@ -40,7 +40,9 @@ export function sessionsFromApi(apiSessions: ApiSavedSession[]): SavedSession[] 
     platform: s.platform,
     weightClass: s.weight_class ?? '',
     startTime: s.start_time ?? '',
-    weighInTime: calculateWeighInTime(s.start_time ?? ''),
+    // The API keeps no weigh-in for a saved session; the schedule lookup
+    // replaces this with the published one (`withScheduleTimes`).
+    weighInTime: resolveWeighInTime(s.start_time, null),
     date: s.date ?? '',
     notes: s.notes ?? undefined,
     athleteNames: s.athlete_names,

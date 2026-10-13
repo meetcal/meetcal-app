@@ -166,8 +166,7 @@ async function buildCalendarEventInput(session: CalendarSession) {
 
   return {
     title: `Session ${session.sessionNumber} - Platform ${session.platform}`,
-    location: getMeetVenueLocation(session.meet),
-    notes: `Weight Class: ${session.weightClass}\nWeigh-in Time: ${formatTimeWithZone(session.weighInTime, session.meet)}`,
+    ...calendarEventDetails(session),
     startDate,
     endDate,
     timeZone: meetConfig.time.timeZoneIdentifier,
@@ -178,6 +177,26 @@ async function buildCalendarEventInput(session: CalendarSession) {
       },
     ],
   };
+}
+
+/**
+ * The event's location and notes. A meet with no real address gets an empty
+ * location (it was "Meet, , Unknown, Unknown Unknown"), and an unknown
+ * weigh-in leaves its line out (it read "Weigh-in Time:  EDT"). The weigh-in
+ * is labelled with the zone at the session's own date. Needs
+ * `getMeetConfig(session.meet)` first.
+ */
+export function calendarEventDetails(
+  session: CalendarSession,
+): { location: string; notes: string } {
+  const location = getMeetVenueLocation(session.meet);
+  const notes = [`Weight Class: ${session.weightClass}`];
+  if (session.weighInTime.trim()) {
+    notes.push(`Weigh-in Time: ${formatTimeWithZone(session.weighInTime, session.meet, session.date)}`);
+  }
+  // "" rather than absent, so re-exporting clears the old bad location from
+  // an event MeetCal wrote before.
+  return { location, notes: notes.join("\n") };
 }
 
 function mapCalendarError(error: unknown): Error {

@@ -67,7 +67,7 @@ describe("calendar event input", () => {
     mockCreateEventAsync.mockResolvedValue("event-1");
   });
 
-  async function buildEvent() {
+  async function buildEvent(overrides: Partial<CalendarSession> = {}) {
     await createCalendarEventsToCalendar(
       [
         {
@@ -78,6 +78,7 @@ describe("calendar event input", () => {
           sessionNumber: "3",
           platform: "Red",
           weightClass: "71kg",
+          ...overrides,
         },
       ],
       "cal-1",
@@ -140,6 +141,35 @@ describe("calendar event input", () => {
     expect(input.timeZone).toBe("America/Los_Angeles");
     expect(input.notes).toContain("Weigh-in Time: 8:00 AM PDT");
     expect(input.location).toBe("Arena, 1 Main St, Los Angeles, CA 90001");
+  });
+
+  // #282: a meet scraped without an address is stored with "Unknown" parts
+  // and its own name as the venue; the event read "Meet, , Unknown, Unknown Unknown".
+  it("gives a meet with no real address no location", async () => {
+    mockFetchMeetByName.mockResolvedValue({
+      ...LOS_ANGELES_MEET,
+      venue: {
+        name: "West Coast Open",
+        address: { street: "", city: "Unknown", state: "Unknown", zip: "Unknown" },
+      },
+    });
+    const input = await buildEvent();
+    expect(input.location).toBe("");
+  });
+
+  it("leaves an unknown weigh-in out of the notes", async () => {
+    const input = await buildEvent({ weighInTime: "" });
+    expect(input.notes).toBe("Weight Class: 71kg");
+  });
+
+  // #284: the label is the zone at the session's own date, not the meet's first day.
+  it("labels the weigh-in with the zone in force on the session's date", async () => {
+    mockFetchMeetByName.mockResolvedValue({
+      ...LOS_ANGELES_MEET,
+      dates: { start: "2026-10-31", end: "2026-11-02" },
+    });
+    const input = await buildEvent({ date: "2026-11-02" });
+    expect(input.notes).toContain("Weigh-in Time: 8:00 AM PST");
   });
 });
 

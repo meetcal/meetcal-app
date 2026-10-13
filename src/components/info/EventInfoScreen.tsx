@@ -3,6 +3,7 @@ import { ThemedText } from "@/components/ui/ThemedText";
 import { ThemedView } from "@/components/ui/ThemedView";
 import { useSelectedMeet } from "@/contexts/SelectedMeetContext";
 import { useAppColors } from "@/hooks/useAppColors";
+import { formatVenueLocation, venueAddressLines } from "@/lib/venue-address";
 import * as WebBrowser from "expo-web-browser";
 import React, { useState } from "react";
 import {
@@ -54,20 +55,15 @@ export default function EventInfoScreen() {
 
   const venueMapLabel = venueMapPdfUrl && !venueMapAppleUrl ? "Venue Map (PDF)" : "Venue Map";
 
+  // Blank and "Unknown" placeholder parts left out (`lib/venue-address`, the
+  // same formatter as the calendar event location).
+  const venueLines = venueAddressLines(meetDetails?.venue);
+  const venueLocation = formatVenueLocation(meetDetails?.venue, meetDetails?.name);
+
   const handleAddressPress = async () => {
-    if (!meetDetails?.venue) return;
+    if (!venueLocation) return;
 
-    const addr = meetDetails.venue.address;
-    const parts = [
-      meetDetails.venue.name,
-      addr?.street,
-      addr?.city,
-      addr?.state && addr?.zip ? `${addr.state} ${addr.zip}` : addr?.state || addr?.zip,
-    ].filter(Boolean);
-
-    if (parts.length === 0) return;
-
-    const encodedAddress = encodeURIComponent(parts.join(", "));
+    const encodedAddress = encodeURIComponent(venueLocation);
     const googleMapsUrl = `https://www.google.com/maps/search/?api=1&query=${encodedAddress}`;
 
     const mapsUrl = Platform.select({
@@ -130,20 +126,13 @@ export default function EventInfoScreen() {
           <View>
             <View style={styles.addressContainer}>
               <View>
-                <ThemedText style={[styles.link, { color: colors.link }]}>
-                  {meetDetails.venue?.name}
-                </ThemedText>
-                <ThemedText style={[styles.link, { color: colors.link }]}>
-                  {meetDetails.venue?.address?.street}
-                </ThemedText>
-                <ThemedText style={[styles.link, { color: colors.link }]}>
-                  {meetDetails.venue?.address?.city}
-,
-{" "}
-                  {meetDetails.venue?.address?.state}
-{" "}
-                  {meetDetails.venue?.address?.zip}
-                </ThemedText>
+                {[venueLines.name, venueLines.street, venueLines.locality]
+                  .filter(Boolean)
+                  .map((line, index) => (
+                    <ThemedText key={`${index}-${line}`} style={[styles.link, { color: colors.link }]}>
+                      {line}
+                    </ThemedText>
+                  ))}
               </View>
               <IconSymbol name="chevron.right" size={20} color={colors.link} />
             </View>

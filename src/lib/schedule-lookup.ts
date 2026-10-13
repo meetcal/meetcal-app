@@ -1,5 +1,6 @@
 import { isSamePlatform } from '@/lib/athletes';
 import type { DaySchedule, Platform, Schedule, Session } from '@/types/schedule';
+import { resolveWeighInTime } from '@/utils/time';
 
 export interface SessionPlatformMatch {
   /** The first day that schedules a session with this number. */
@@ -30,4 +31,25 @@ export function findSessionPlatform(
     return { day, session, platform: platformRow };
   }
   return null;
+}
+
+/**
+ * A platform-session's start time (the platform's own, else the session's)
+ * and its weigh-in by `resolveWeighInTime`: the platform row's published
+ * weigh-in, else start minus 2 h. A schedule cached before platform rows kept
+ * their own weigh-in has only the session's (its first row's), which holds
+ * only for a platform starting when the session does.
+ */
+export function platformSessionTimes(
+  session: Pick<Session, 'startTime' | 'weighInTime'>,
+  platform: Pick<Platform, 'platformStartTime' | 'platformWeighInTime'> | null | undefined,
+): { startTime: string; weighInTime: string } {
+  const startTime = platform?.platformStartTime || session.startTime || '';
+  const published =
+    platform?.platformWeighInTime !== undefined
+      ? platform.platformWeighInTime
+      : startTime === session.startTime
+        ? session.weighInTime
+        : '';
+  return { startTime, weighInTime: resolveWeighInTime(startTime, published) };
 }

@@ -658,6 +658,7 @@ describe('meetcal API mappers', () => {
       platform: 'Blue',
       weightClass: '73kg',
       platformStartTime: '1:30 PM',
+      platformWeighInTime: '11:30 AM',
     });
 
     const athlete = mapApiAthlete({
@@ -2692,5 +2693,22 @@ describe('request timeouts', () => {
     await jest.advanceTimersByTimeAsync(DEFAULT_TIMEOUT_MS + 1);
     expect(await pending).toBeInstanceOf(MeetCalApiTimeoutError);
     expect(signal?.aborted).toBe(true);
+  });
+});
+
+// #281: each platform row's published weigh-in is kept; the session's is
+// only the first row's.
+describe('mapApiSchedule platform weigh-ins', () => {
+  it('keeps every platform row its own published weigh-in', () => {
+    const schedule = mapApiSchedule([
+      { date: '2026-06-20', platform: 'Red', session_id: 5, start_time: '09:00:00', weigh_in_time: '07:00:00', weight_class: '89' },
+      { date: '2026-06-20', platform: 'Blue', session_id: 5, start_time: '09:30:00', weigh_in_time: '', weight_class: '96' },
+    ]);
+    const session = schedule[0].sessions[0];
+    expect(session.weighInTime).toBe('7:00 AM');
+    expect(session.platforms.map((p) => [p.platform, p.platformStartTime, p.platformWeighInTime])).toEqual([
+      ['Red', '9:00 AM', '7:00 AM'],
+      ['Blue', '9:30 AM', ''],
+    ]);
   });
 });
