@@ -1,9 +1,11 @@
 import HeaderSection from "@/components/schedule-details/HeaderSection";
 import SessionAthletes from "@/components/schedule-details/SessionAthletes";
+import { showToast } from "@/components/ui/Toast";
 import { ThemedView } from "@/components/ui/ThemedView";
 import { useSelectedMeet } from "@/contexts/SelectedMeetContext";
 import { MeetName } from "@/data/types/meet";
 import { useAppColors } from "@/hooks/useAppColors";
+import { useSessionAthletes } from "@/hooks/useMeetAthletes";
 import { useScheduleData } from "@/hooks/useScheduleData";
 import { findSessionPlatform } from "@/lib/schedule-lookup";
 import { generateSessionId } from "@/utils/session";
@@ -13,12 +15,13 @@ import React, { useCallback, useMemo, useState } from "react";
 import { RefreshControl, ScrollView, StyleSheet, View } from "react-native";
 import { useScreenHorizontalInsets } from "@/hooks/useScreenInsets";
 
+const REFRESH_FAILED_MESSAGE = "Failed to refresh session athletes. Please try again.";
+
 export default function SessionDetailsScreen() {
   const screenInsets = useScreenHorizontalInsets();
   const colors = useAppColors();
   const { selectedMeet } = useSelectedMeet();
   const [refreshing, setRefreshing] = useState(false);
-  const [refreshKey, setRefreshKey] = useState(0);
 
   const rawParams = useLocalSearchParams<{
     id?: string;
@@ -52,6 +55,13 @@ export default function SessionDetailsScreen() {
     schedule: currentSchedule,
     refreshSchedule,
   } = useScheduleData((params.meet || null) as MeetName | null);
+  // Owned here, not in the card, so pull-to-refresh can await it.
+  const athletesState = useSessionAthletes(
+    (params.meet || null) as MeetName | null,
+    parsedSessionNumber,
+    params.platform,
+  );
+  const { refreshAthletes } = athletesState;
 
   // This session's day and platform row in the current schedule, looked up
   // once for the weight class, date and start time below.
@@ -72,17 +82,23 @@ export default function SessionDetailsScreen() {
     return calculateWeighInTime(platformStartTime);
   }, [platformStartTime]);
 
+  // Both refreshes are awaited, so the spinner covers the athletes too, and
+  // a failed athletes refresh is said out loud: it used to run from an effect
+  // nobody awaited, and its failure was never shown. Neither rejects.
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
     try {
-      await refreshSchedule();
-      setRefreshKey((prev) => prev + 1);
-    } catch (error) {
-      console.error("Refresh failed:", error);
+      const [, athletesRefreshed] = await Promise.all([
+        refreshSchedule(),
+        refreshAthletes(),
+      ]);
+      if (!athletesRefreshed) {
+        showToast({ type: "error", message: REFRESH_FAILED_MESSAGE });
+      }
     } finally {
       setRefreshing(false);
     }
-  }, [refreshSchedule]);
+  }, [refreshAthletes, refreshSchedule]);
 
   return (
     <ThemedView
@@ -141,7 +157,7 @@ export default function SessionDetailsScreen() {
             sessionNumber={parsedSessionNumber}
             platform={params.platform}
             meetId={params.meet as MeetName}
-            refreshKey={refreshKey}
+            athletesState={athletesState}
           />
         </View>
       </ScrollView>

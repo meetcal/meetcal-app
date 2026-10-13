@@ -17,6 +17,7 @@ import {
   type FlushResult,
   readOutbox,
 } from '@/lib/saved-sessions-outbox';
+import { clearAccountDeleted, onAccountDeleted } from '@/lib/deleted-accounts';
 import { createSerialQueue } from '@/lib/saved-sessions-queue';
 import {
   clearSavedSessionsCache,
@@ -75,6 +76,11 @@ export function useSavedSessions() {
   const [isLoading, setIsLoading] = useState(true);
   const clerkUserId = user?.id;
   const { storageUserId, hasResolvedUser } = useStorageUser(clerkUserId, Boolean(isClerkLoaded));
+  // Signed in as this user: an account this device cleared as deleted was
+  // only signed out of, and its saves are stored again (`deleted-accounts.ts`).
+  useEffect(() => {
+    if (clerkUserId) clearAccountDeleted(clerkUserId);
+  }, [clerkUserId]);
   /**
    * The API answered 401 to a `/users/me/*` call. The Clerk session Clerk
    * still reports as signed in no longer authorises writes, so nothing is
@@ -124,6 +130,21 @@ export function useSavedSessions() {
     };
   }
   const store = storeRef.current;
+
+  // The active account was deleted on this device (`clearLocalUserData`):
+  // blank its list and widget now, as a sign-out does; offline, the cached
+  // user can stay active, so the effect below would not.
+  useEffect(
+    () =>
+      onAccountDeleted((userId) => {
+        if (activeUserIdRef.current !== userId) return;
+        setSavedSessions([]);
+        pendingWriteCountRef.current = 0;
+        clearSavedWidget();
+        clearSavedSessionsCache(store.cache);
+      }),
+    [store],
+  );
 
   useEffect(() => {
     if (!hasResolvedUser || activeUserId) return;
