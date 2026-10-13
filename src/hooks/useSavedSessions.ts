@@ -264,10 +264,22 @@ export function useSavedSessions() {
    */
   const loadChain = useRef(createLoadChain()).current;
   const refreshThrottle = useRef(createRefreshThrottle()).current;
+  // Loads started and not yet settled, joined calls included.
+  const loadsInFlightRef = useRef(0);
+  const trackLoad = useCallback((load: Promise<void>): Promise<void> => {
+    loadsInFlightRef.current += 1;
+    const settle = () => {
+      loadsInFlightRef.current -= 1;
+    };
+    load.then(settle, settle);
+    return load;
+  }, []);
   const loadSavedSessions = useCallback((): Promise<void> => {
     refreshThrottle.markRun();
-    return loadChain.run(savedSessionsLoadKey(activeUserId, Boolean(clerkUserId)), runLoad);
-  }, [activeUserId, clerkUserId, loadChain, refreshThrottle, runLoad]);
+    return trackLoad(
+      loadChain.run(savedSessionsLoadKey(activeUserId, Boolean(clerkUserId)), runLoad),
+    );
+  }, [activeUserId, clerkUserId, loadChain, refreshThrottle, runLoad, trackLoad]);
 
   /**
    * A load nobody asked for: the app returning to the foreground, or the
@@ -307,10 +319,23 @@ export function useSavedSessions() {
   }, [activeUserId, clerkUserId, hasResolvedUser, loadSavedSessions]);
 
   // Back online: queued writes go out at once (the load sends the outbox
-  // before it fetches); with nothing queued it is a throttled refresh.
+  // before it fetches); with nothing queued it is a throttled refresh. A
+  // load still running then may be one that is about to fail offline (and
+  // it counts against the throttle), so a fresh load queues behind it.
   const reconnect = useCallback(
-    (hasPendingWrites: boolean) => (hasPendingWrites ? loadSavedSessions() : refreshSavedSessions()),
-    [loadSavedSessions, refreshSavedSessions],
+    (hasPendingWrites: boolean): Promise<void> => {
+      if (hasPendingWrites) return loadSavedSessions();
+      if (loadsInFlightRef.current > 0 && activeUserId) {
+        refreshThrottle.markRun();
+        return trackLoad(
+          loadChain.run(savedSessionsLoadKey(activeUserId, Boolean(clerkUserId)), runLoad, {
+            fresh: true,
+          }),
+        );
+      }
+      return refreshSavedSessions();
+    },
+    [activeUserId, clerkUserId, loadChain, loadSavedSessions, refreshSavedSessions, refreshThrottle, runLoad, trackLoad],
   );
   useReconnectReplay(clerkUserId, pendingWriteCountRef, reconnect);
 

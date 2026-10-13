@@ -89,6 +89,23 @@ describe("createLoadChain", () => {
     expect(task).toHaveBeenCalledTimes(1);
   });
 
+  it("runs a fresh task for the same key after the running one, not sharing it", async () => {
+    const chain = createLoadChain();
+    const gate = deferred();
+    const log: string[] = [];
+    const first = chain.run("a", async () => {
+      await gate.promise;
+      log.push("first");
+    });
+    const fresh = chain.run("a", async () => {
+      log.push("fresh");
+    }, { fresh: true });
+    expect(fresh).not.toBe(first);
+    gate.resolve();
+    await fresh;
+    expect(log).toEqual(["first", "fresh"]);
+  });
+
   it("queues a new key behind the running task, even one that fails", async () => {
     const chain = createLoadChain();
     const gate = deferred();

@@ -1580,6 +1580,34 @@ describe("other devices' changes reach the list on resume (#399)", () => {
     expect(hook.current.savedSessions.map((s) => s.id)).toEqual(["Test-Meet-14-Red"]);
   });
 
+  it("re-fetches after a load that was still failing when the network came back", async () => {
+    mockFetchSavedSessions.mockResolvedValue([apiRow("Test-Meet-9-Blue")]);
+    const hook = await mountHook();
+
+    // A foreground load that will fail is still waiting when the network
+    // flaps back, inside the throttle window.
+    let fail!: () => void;
+    mockFetchSavedSessions.mockImplementationOnce(
+      () => new Promise((_resolve, reject) => {
+        fail = () => reject(new Error("Network request failed"));
+      }),
+    );
+    await resumeAfter(5 * 60_000);
+    mockFetchSavedSessions.mockResolvedValue([apiRow("Test-Meet-14-Red")]);
+    await act(async () => {
+      mockNetworkListener(false);
+      mockNetworkListener(true);
+    });
+    // The reconnect (jitter is 0 here) lands before the load fails.
+    await flush();
+    expect(mockFetchSavedSessions).toHaveBeenCalledTimes(2);
+    await act(async () => fail());
+    await flush();
+
+    expect(mockFetchSavedSessions).toHaveBeenCalledTimes(3);
+    expect(hook.current.savedSessions.map((s) => s.id)).toEqual(["Test-Meet-14-Red"]);
+  });
+
   it("re-fetches when the network comes back with nothing queued", async () => {
     mockFetchSavedSessions.mockResolvedValue([apiRow("Test-Meet-9-Blue")]);
     const hook = await mountHook();
