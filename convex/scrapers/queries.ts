@@ -119,21 +119,32 @@ export const meetEnds = internalQuery({
   },
 });
 
-/** Registrations read per member when looking for their WSO, newest first. */
+/**
+ * Registrations naming a WSO read per member. Only start lists loaded by hand
+ * carry WSOs, a few per member; past this many, the rest go unread.
+ */
 const MEMBER_WSO_READS = 50;
 
 /**
  * Each member's WSO as their most recent registration that names one gives
  * it, for the entries sync to store with entrants (#345): Sport80's entries
- * list carries no WSO, start lists loaded by hand do. Membership numbers
- * only (digits); a member with no registration naming a WSO is left out.
- * At most 500 ids a call.
+ * list carries no WSO, start lists loaded by hand do. Most recent is by the
+ * meet's start date, not when the row was stored (a start list reloaded
+ * later is not newer); a registration whose meet has no stored date ranks
+ * below dated ones, and equal dates go to the row stored last. Membership
+ * numbers only (digits); a member with no registration naming a WSO is left
+ * out. At most 500 ids a call.
  */
 export const memberWsos = internalQuery({
   args: { memberIds: v.array(v.string()) },
   handler: async (ctx, { memberIds }): Promise<Record<string, string>> => {
     if (memberIds.length > 500) throw new Error('at most 500 memberIds per call');
     const ids = [...new Set(memberIds.filter((id) => /^\d+$/.test(id)))];
+    const meetDates = new Map<string, Promise<string>>();
+    const meetDate = (meet: string) => {
+      if (!meetDates.has(meet)) meetDates.set(meet, meetByName(ctx, meet).then((row) => (row ? (canonicalMeetDate(row.startDate) ?? '') : '')));
+      return meetDates.get(meet)!;
+    };
     const found: Record<string, string> = {};
     for (let i = 0; i < ids.length; i += 250) {
       const batch = ids.slice(i, i + 250);
@@ -141,10 +152,16 @@ export const memberWsos = internalQuery({
         batch.map(async (memberId) => {
           const rows = await ctx.db
             .query('athletes')
-            .withIndex('by_memberId', (q) => q.eq('memberId', memberId))
-            .order('desc')
+            .withIndex('by_memberId_and_wso', (q) => q.eq('memberId', memberId).gt('wso', ''))
             .take(MEMBER_WSO_READS);
-          return rows.find((row) => (row.wso ?? '').trim() !== '')?.wso?.trim() ?? null;
+          let best: { wso: string; date: string; created: number } | null = null;
+          for (const row of rows) {
+            const wso = (row.wso ?? '').trim();
+            if (wso === '') continue;
+            const date = await meetDate(row.meet);
+            if (best === null || date > best.date || (date === best.date && row._creationTime > best.created)) best = { wso, date, created: row._creationTime };
+          }
+          return best?.wso ?? null;
         }),
       );
       batch.forEach((memberId, index) => {

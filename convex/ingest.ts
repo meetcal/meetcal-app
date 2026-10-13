@@ -998,7 +998,7 @@ export const upsertEntryAthletes = internalMutation({
         entryTotal: row.entryTotal,
         // Set when known, never cleared: a start list loaded by hand can
         // carry a WSO the entries list does not.
-        ...(row.wso ? { wso: row.wso } : {}),
+        ...(row.wso?.trim() ? { wso: row.wso.trim() } : {}),
       };
       if (!match && published) {
         counts.notOnStartList += 1;
@@ -1013,7 +1013,15 @@ export const upsertEntryAthletes = internalMutation({
         continue;
       }
       if (hasSession(match)) {
-        counts.sessionSkipped += 1;
+        // A placed entrant keeps its start list, but gains a WSO it lacks:
+        // that undoes nothing the start list said.
+        if (values.wso && (match.wso ?? '').trim() === '') {
+          await ctx.db.patch(match._id, { wso: values.wso });
+          match.wso = values.wso;
+          counts.updated += 1;
+        } else {
+          counts.sessionSkipped += 1;
+        }
         continue;
       }
       const changed = (Object.keys(values) as (keyof typeof values)[]).some((key) => match[key] !== values[key]);
