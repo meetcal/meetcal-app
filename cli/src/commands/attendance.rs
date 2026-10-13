@@ -10,6 +10,7 @@ use tokio::task::JoinSet;
 
 use crate::utils::backend::{queries, query};
 use crate::utils::format::{date_range, us_date};
+use crate::utils::names::{MAX_NAME_PAGES, just_before, meet_names_between};
 use crate::utils::output::{self, Report};
 
 /// Meets `meets:attendance` counts per call (its limit).
@@ -46,17 +47,6 @@ pub struct AttendanceArgs {
     /// Leave out meets whose name contains this text (repeatable)
     #[arg(long, short = 'x')]
     pub exclude: Vec<String>,
-}
-
-#[derive(Debug, Deserialize)]
-struct NamesPage {
-    json: String,
-    next: Option<String>,
-}
-
-#[derive(Debug, Deserialize)]
-struct MeetName {
-    meet: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -130,26 +120,13 @@ pub fn matches(meet: &str, words: &[String], exclude: &[String]) -> bool {
     })
 }
 
+/// One name range's meet names, every page of it.
 async fn list_range(
     source: &'static str,
     from: Option<String>,
     before: Option<String>,
 ) -> Result<Vec<String>> {
-    let mut names = Vec::new();
-    let mut after = from;
-    loop {
-        let mut args = json!({ "source": source, "after": after });
-        if let Some(before) = &before {
-            args["before"] = json!(before);
-        }
-        let page: NamesPage = query(queries::MEET_NAMES_PAGE, &args).await?;
-        let meets: Vec<MeetName> = serde_json::from_str(&page.json)?;
-        names.extend(meets.into_iter().map(|m| m.meet));
-        match page.next {
-            Some(next) => after = Some(next),
-            None => return Ok(names),
-        }
-    }
+    meet_names_between(source, from, before, MAX_NAME_PAGES, false).await
 }
 
 /// Every meet name in the results and the registrations.
@@ -191,18 +168,6 @@ async fn all_meet_names() -> Result<Vec<String>> {
     names.sort();
     names.dedup();
     Ok(names)
-}
-
-/// The greatest string sorting before `boundary` for our purposes: `boundary` with its last
-/// character stepped back and a high character appended, so `after` it includes `boundary`.
-fn just_before(boundary: &str) -> String {
-    let mut chars: Vec<char> = boundary.chars().collect();
-    let last = chars.pop().expect("boundaries are not empty");
-    let previous = char::from_u32(last as u32 - 1).unwrap_or(last);
-    chars.push(previous);
-    let mut out: String = chars.into_iter().collect();
-    out.push('\u{10FFFF}');
-    out
 }
 
 pub async fn run(args: AttendanceArgs) -> Result<()> {

@@ -157,6 +157,9 @@ pub mod queries {
     pub const CLUBS: Query = Query::text("reference:clubs");
     /// `GET /data/wso`: every WSO with records.
     pub const WSO_LIST: Query = Query::text("reference:wsoList");
+    /// Every WSO name on registrations: the names `reference:wsoAthletes` matches, which differ
+    /// from the record sheets' (`reference:wsoList`).
+    pub const REGISTRATION_WSOS: Query = Query::value("reference:registrationWsos");
     /// `GET /data/wso/age-groups`: the age groups a WSO keeps records for; takes `wso`.
     pub const WSO_AGE_GROUPS: Query = Query::text("reference:wsoAgeGroups");
     /// `GET /clubs/athletes`; takes `club`, and `cursor` (null to start) to page. Read it with
