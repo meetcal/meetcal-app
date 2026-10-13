@@ -9,5 +9,6 @@ export type { Session };
 
 export function getPlatformStartTime(session: Session, platformName: string): string {
   const platform = session.platforms.find(p => isSamePlatform(p.platform, platformName));
-  return platform?.platformStartTime || session.startTime;
+  // The platform row's own start, blank included (see `platformSessionTimes`).
+  return (platform ? platform.platformStartTime : undefined) ?? session.startTime;
 }

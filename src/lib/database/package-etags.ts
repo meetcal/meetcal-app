@@ -14,7 +14,8 @@ import { createWriteChain } from '@/lib/data/write-chain';
  */
 export const PACKAGE_ETAG_STORAGE_KEY = '@meet_package_etag_v1';
 
-async function readPackageEtags(): Promise<Record<string, string>> {
+/** Every meet's stored validator, by meet. */
+export async function readPackageEtags(): Promise<Record<string, string>> {
   try {
     const raw = await AsyncStorage.getItem(PACKAGE_ETAG_STORAGE_KEY);
     const parsed: unknown = raw ? JSON.parse(raw) : null;

@@ -67,6 +67,8 @@ export function useMutableResource<T, TParams extends readonly unknown[]>(
   const previousKeyRef = useRef<string | null>(null);
   const mountedRef = useRef(true);
   const initialDataRef = useRef(initialData);
+  /** Revalidates published to this hook; a cache read started before one must not paint over it. */
+  const publishedCountRef = useRef(0);
   paramsRef.current = params;
   initialDataRef.current = initialData;
 
@@ -78,6 +80,13 @@ export function useMutableResource<T, TParams extends readonly unknown[]>(
   const [lastUpdatedAt, setLastUpdatedAt] = useState<number | null>(null);
   const [source, setSource] = useState<ResourceSource | null>(null);
   sourceRef.current = source;
+  // What is on screen, for a refresh to compare the fresh answer with, and
+  // whether it is also what storage holds. After a failed write it is not:
+  // comparing with the screen would then skip every later write of the same
+  // answer and leave the stored copy stale for good.
+  const shownRef = useRef<ResourceCacheEntry<T>>({ data, lastUpdatedAt });
+  shownRef.current = { data, lastUpdatedAt };
+  const shownIsStoredRef = useRef(true);
 
   const refresh = useCallback(
     async (
@@ -107,11 +116,22 @@ export function useMutableResource<T, TParams extends readonly unknown[]>(
         return current === null || resource.getKey(...current) !== requestKey;
       };
 
+      // Compared with what is on screen when something is: re-reading the
+      // stored copy cost a disk read and parse (for the schedule, the whole
+      // meet), and handed back a new object even when nothing changed, so
+      // every consumer re-rendered on each reconnect and pull-to-refresh.
+      const compareWith =
+        preloadedCache !== undefined
+          ? preloadedCache
+          : sourceRef.current !== null && shownIsStoredRef.current
+            ? shownRef.current
+            : undefined;
       try {
-        const result = preloadedCache === undefined
+        const result = compareWith === undefined
           ? await resource.revalidate(...activeParams)
-          : await resource.revalidateWithCached(preloadedCache, ...activeParams);
+          : await resource.revalidateWithCached(compareWith, ...activeParams);
         if (isStale()) return true;
+        shownIsStoredRef.current = result.stored !== false;
         setData(result.data);
         setLastUpdatedAt(result.lastUpdatedAt);
         setSource(result.source);
@@ -211,10 +231,18 @@ export function useMutableResource<T, TParams extends readonly unknown[]>(
         setIsInitialLoading(true);
       }
 
+      const publishedBefore = publishedCountRef.current;
       const cached = await resource.loadCached(...activeParams);
       if (cancelled) return;
+      // A revalidate published for this key while the disk read ran: what
+      // is on screen is newer than the disk copy, which must not repaint it.
+      if (publishedCountRef.current !== publishedBefore) {
+        setIsInitialLoading(false);
+        return;
+      }
 
       if (cached) {
+        shownIsStoredRef.current = true;
         setData(cached.data);
         setLastUpdatedAt(cached.lastUpdatedAt);
         setSource("cache");
@@ -239,6 +267,25 @@ export function useMutableResource<T, TParams extends readonly unknown[]>(
       cancelled = true;
     };
   }, [enabled, key, refresh, resource]);
+
+  // A revalidate of this key started anywhere else (another screen, the
+  // background schedule sync) lands here too, so this copy does not keep
+  // showing what it last fetched itself. An unchanged answer keeps the
+  // current value, so nothing downstream re-renders for it.
+  useEffect(() => {
+    if (!enabled || key === null) return;
+    return resource.subscribe(key, (result) => {
+      if (!mountedRef.current || previousKeyRef.current !== key) return;
+      publishedCountRef.current += 1;
+      // What is shown is now this answer, stored or not (see `shownIsStoredRef`).
+      shownIsStoredRef.current = result.stored !== false;
+      setData((current) => (resource.isEqual(current, result.data) ? current : result.data));
+      setLastUpdatedAt(result.lastUpdatedAt);
+      setSource(result.source);
+      setError(null);
+      setRefreshError(null);
+    });
+  }, [enabled, key, resource]);
 
   useEffect(() => {
     if (!enabled) return;

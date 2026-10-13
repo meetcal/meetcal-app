@@ -53,6 +53,98 @@ describe("useMutableResource", () => {
     captured = null;
   });
 
+  // A reconnect or pull-to-refresh re-read and re-parsed the stored copy to
+  // compare (for the schedule, the whole meet) and handed every consumer a
+  // new object even when nothing changed.
+  it("compares a refresh with what is on screen and keeps its identity when unchanged", async () => {
+    const loadCached = jest.fn(async () => ({ data: [{ id: "same" }], lastUpdatedAt: 1 }));
+    const resource = createMutableResource<Row[], [string]>({
+      getKey: (param) => `identity:${param}`,
+      loadCached,
+      fetchFresh: async () => [{ id: "same" }],
+      persistFresh: async (data) => ({ data, lastUpdatedAt: 2 }),
+    });
+    harness(resource, "a");
+    await flush();
+    await flush();
+    const shown = captured!.data;
+    loadCached.mockClear();
+
+    await act(async () => {
+      await captured!.refresh();
+    });
+
+    expect(loadCached).not.toHaveBeenCalled();
+    expect(captured!.data).toBe(shown);
+  });
+
+  // After a failed write the screen no longer matched storage, and every
+  // later refresh with the same answer compared equal to the screen and
+  // skipped the write: the stale stored copy came back offline.
+  it("writes an answer again after its earlier write failed", async () => {
+    const persistFresh = jest
+      .fn<Promise<ResourceCacheEntry<Row[]>>, [Row[]]>()
+      .mockRejectedValueOnce(new Error("disk full"))
+      .mockImplementation(async (data) => ({ data, lastUpdatedAt: 3 }));
+    jest.spyOn(console, "warn").mockImplementation(() => {});
+    const resource = createMutableResource<Row[], [string]>({
+      getKey: (param) => `stored-again:${param}`,
+      loadCached: async () => ({ data: [{ id: "old" }], lastUpdatedAt: 1 }),
+      fetchFresh: async () => [{ id: "new" }],
+      persistFresh: (data) => persistFresh(data),
+    });
+    harness(resource, "a");
+    await flush();
+    await flush();
+    expect(captured!.data).toEqual([{ id: "new" }]);
+    expect(persistFresh).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      await captured!.refresh();
+    });
+
+    expect(persistFresh).toHaveBeenCalledTimes(2);
+    jest.restoreAllMocks();
+  });
+
+  // The same, for an answer another caller (the background sync) fetched and
+  // could not store: it is published onto this screen, which then no longer
+  // matches storage either.
+  it("writes an answer again after a published revalidate could not store it", async () => {
+    const persistFresh = jest
+      .fn<Promise<ResourceCacheEntry<Row[]>>, [Row[]]>()
+      .mockRejectedValueOnce(new Error("disk full"))
+      .mockImplementation(async (data) => ({ data, lastUpdatedAt: 3 }));
+    const fetchFresh = jest
+      .fn<Promise<Row[]>, [string]>()
+      .mockResolvedValueOnce([{ id: "old" }])
+      .mockResolvedValue([{ id: "new" }]);
+    jest.spyOn(console, "warn").mockImplementation(() => {});
+    const resource = createMutableResource<Row[], [string]>({
+      getKey: (param) => `published-unstored:${param}`,
+      loadCached: async () => ({ data: [{ id: "old" }], lastUpdatedAt: 1 }),
+      fetchFresh: (param) => fetchFresh(param),
+      persistFresh: (data) => persistFresh(data),
+    });
+    harness(resource, "a");
+    await flush();
+    await flush();
+    expect(persistFresh).not.toHaveBeenCalled();
+
+    await act(async () => {
+      await resource.revalidate("a");
+    });
+    expect(captured!.data).toEqual([{ id: "new" }]);
+    expect(persistFresh).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      await captured!.refresh();
+    });
+
+    expect(persistFresh).toHaveBeenCalledTimes(2);
+    jest.restoreAllMocks();
+  });
+
   it("keeps cached rows on screen when the background revalidate fails", async () => {
     const cached: ResourceCacheEntry<Row[]> = {
       data: [{ id: "cached" }],
@@ -75,6 +167,78 @@ describe("useMutableResource", () => {
     // `error` blanks the table in DataTable, so it must stay clear here.
     expect(captured!.error).toBeNull();
     expect(captured!.refreshError).toBe("Offline");
+    expect(captured!.isInitialLoading).toBe(false);
+  });
+
+  it("takes a revalidate started elsewhere, keeping the value when it is unchanged", async () => {
+    let fresh: Row[] = [{ id: "v1" }];
+    const resource = createMutableResource<Row[], [string]>({
+      getKey: (param) => `shared:${param}`,
+      loadCached: async () => null,
+      fetchFresh: async () => fresh,
+      persistFresh: async () => null,
+    });
+
+    harness(resource, "a");
+    await flush();
+    const first = captured!.data;
+    expect(first).toEqual([{ id: "v1" }]);
+
+    // Same rows, new array: nothing downstream should re-render for it.
+    fresh = [{ id: "v1" }];
+    await act(async () => {
+      await resource.revalidate("a");
+    });
+    expect(captured!.data).toBe(first);
+
+    fresh = [{ id: "v2" }];
+    await act(async () => {
+      await resource.revalidate("a");
+    });
+    expect(captured!.data).toEqual([{ id: "v2" }]);
+
+    // Another key's answer is not this screen's.
+    fresh = [{ id: "other" }];
+    await act(async () => {
+      await resource.revalidate("b");
+    });
+    expect(captured!.data).toEqual([{ id: "v2" }]);
+  });
+
+  it("does not repaint a published answer with a disk copy read before it", async () => {
+    let releaseCache!: (entry: ResourceCacheEntry<Row[]>) => void;
+    const resource = createMutableResource<Row[], [string]>({
+      getKey: (param) => `race:${param}`,
+      loadCached: jest
+        .fn()
+        // The hook's own slow disk read...
+        .mockImplementationOnce(
+          () => new Promise<ResourceCacheEntry<Row[]>>((resolve) => {
+            releaseCache = resolve;
+          }),
+        )
+        // ...and the background revalidate's.
+        .mockResolvedValue(null),
+      fetchFresh: jest
+        .fn()
+        .mockResolvedValueOnce([{ id: "fresh" }])
+        // Any later revalidate stays out, so a stale repaint would show.
+        .mockImplementation(() => new Promise(() => {})),
+      persistFresh: async () => null,
+    });
+
+    harness(resource, "a");
+    await flush();
+    await act(async () => {
+      await resource.revalidate("a");
+    });
+    expect(captured!.data).toEqual([{ id: "fresh" }]);
+
+    await act(async () => {
+      releaseCache({ data: [{ id: "stale" }], lastUpdatedAt: 1 });
+    });
+    await flush();
+    expect(captured!.data).toEqual([{ id: "fresh" }]);
     expect(captured!.isInitialLoading).toBe(false);
   });
 

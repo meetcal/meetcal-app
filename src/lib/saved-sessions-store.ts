@@ -82,16 +82,23 @@ export function normalizeStoredSession(value: unknown): SavedSession | null {
   return session;
 }
 
-/** Parse a stored list; a missing, non-JSON or non-array value is empty. */
+/**
+ * Parse a stored list; a missing, non-JSON or non-array value is empty. One
+ * row per session id (the first): a list stored before the reconcile dropped
+ * the server's legacy duplicate rows can still hold two.
+ */
 export function parseStoredSessions(raw: string | null): SavedSession[] {
   if (!raw) return [];
   try {
     const parsed: unknown = JSON.parse(raw);
     if (!Array.isArray(parsed)) return [];
     const sessions: SavedSession[] = [];
+    const seen = new Set<string>();
     for (const value of parsed) {
       const session = normalizeStoredSession(value);
-      if (session) sessions.push(session);
+      if (!session || seen.has(session.id)) continue;
+      seen.add(session.id);
+      sessions.push(session);
     }
     return sessions;
   } catch {
@@ -183,8 +190,8 @@ export async function commitStoredSessions(
   if (!userId || !store.isActive(userId) || isAccountDeleted(userId)) return;
   const { cache } = store;
   const serialized = JSON.stringify(nextSessions);
-  const sameOwner = cache.owner === userId;
-  if (!sameOwner || cache.raw !== serialized) {
+  const unchanged = cache.owner === userId && cache.raw === serialized;
+  if (!unchanged) {
     await AsyncStorage.setItem(getSavedSessionsKey(userId), serialized);
     // Deleted while the write was in flight (the user signed out as well, so
     // checked before `isActive`): its device data was cleared just now, so
@@ -195,10 +202,13 @@ export async function commitStoredSessions(
     }
     if (!store.isActive(userId)) return;
     cache.raw = serialized;
+    cache.sessions = nextSessions;
   }
   cache.owner = userId;
-  cache.sessions = nextSessions;
-  store.publish(nextSessions);
+  // An unchanged list keeps the array already published. Every load commits
+  // a freshly built one, and a new identity re-ran the widget write and
+  // reload, the Spotlight reindex and a full reminder sync each time.
+  store.publish(cache.sessions);
 }
 
 /** Remove the user's list from storage and publish an empty one. */

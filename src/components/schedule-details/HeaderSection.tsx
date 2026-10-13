@@ -6,17 +6,17 @@ import { useSavedSessions } from "@/contexts/SavedSessionsContext";
 import { useSelectedMeet } from "@/contexts/SelectedMeetContext";
 import { useAppColors } from "@/hooks/useAppColors";
 import { useRequirePremium } from "@/hooks/useRequirePremium";
-import { isSamePlatform } from "@/lib/athletes";
+import { hasCalendarTimes } from "@/lib/calendar-export";
 import { requestReviewAfterFirstSave } from "@/lib/review-prompt";
 import { DaySchedule, Session } from "@/types/schedule";
-import { HeaderSectionProps, SessionPlatformDetails } from "@/types/schedule-details";
+import { HeaderSectionProps } from "@/types/schedule-details";
 import { CalendarDestinationPickerModal } from "@/components/calendar/CalendarDestinationPickerModal";
 import { useCalendarSessionsExport } from "@/hooks/useCalendarSessionsExport";
 import {
   createSessionDetailsDeepLink,
   normalizeDeepLinkHref,
 } from "@/utils/deepLinks";
-import { calculateWeighInTime } from "@/utils/time";
+import { meetTimeZoneLabel } from "@/utils/timezone";
 import { useRouter } from "expo-router";
 import React, { useMemo } from "react";
 import { Pressable, StyleSheet, View } from "react-native";
@@ -26,45 +26,36 @@ const HeaderSection: React.FC<HeaderSectionProps> = ({
   sessionNumber,
   platform,
   weightClass,
-  startTime,
   meet,
   currentSchedule,
   sessionId,
-  sessionDate,
   sessionWeightClass,
   platformStartTime,
   platformWeighInTime,
+  sessionFullDate,
   athleteName,
 }) => {
   const router = useRouter();
   const colors = useAppColors();
   const { saveSession, removeSession, isSessionSaved } = useSavedSessions();
   const { meetDetails, availableMeets } = useSelectedMeet();
-  const { requirePremium, requireAuth, access } = useRequirePremium();
+  const { requirePremium, requireCalendarExport, requireAuth, access } = useRequirePremium();
   const isSubscribed = access === "granted";
   const calendarExport = useCalendarSessionsExport();
 
-  // `meetDetails.time.abbreviation` is resolved once, in `mapApiMeet`, at the
-  // meet's own start date. Re-deriving it here with
-  // `getTimeZoneAbbreviation(id)` formats *today* instead: open a December New
-  // York meet in September and every row reads "EDT" when the sessions are
-  // actually EST, which looks to the user like the times are an hour wrong.
-  // The old "America/Denver" default also meant a deep link opened before
-  // `SelectedMeetContext` had resolved `meetDetails` labelled a New York
-  // session's 9:00 AM start as "9:00 AM MDT". No abbreviation beats a
-  // confidently wrong one.
-  //
   // `meetDetails` is the *selected* meet, not necessarily this one: the saved
   // tab, the next-session card and calendar / reminder deep links all open
-  // sessions from other meets, which then showed the selected meet's zone.
-  // Match by name, falling back to the same mapped list the picker uses.
+  // sessions from other meets. Match by name, falling back to the same mapped
+  // list the picker uses. No label (details not loaded yet) beats a
+  // confidently wrong one; it is read at this session's own date, so a meet
+  // that spans a DST change labels each day with its own zone.
   const timeZoneAbbr = useMemo(() => {
     const details =
       meetDetails?.name === meet
         ? meetDetails
         : availableMeets.find((candidate) => candidate.name === meet);
-    return details?.time.abbreviation ?? "";
-  }, [meetDetails, availableMeets, meet]);
+    return meetTimeZoneLabel(details?.time, sessionFullDate);
+  }, [meetDetails, availableMeets, meet, sessionFullDate]);
 
   // Use the generated sessionId instead of params.id
   const isSaved = isSessionSaved(sessionId);
@@ -152,38 +143,17 @@ const HeaderSection: React.FC<HeaderSectionProps> = ({
   };
 
   const addToCalendar = () => {
-    // Find the session and get platform-specific time
-    const sessionDay = currentSchedule.find((day: DaySchedule) =>
-      day.sessions.some(
-        (session: Session) =>
-          session.number === parseInt(sessionNumber) &&
-          session.platforms.some(
-            (p: SessionPlatformDetails) => isSamePlatform(p.platform, platform),
-          ),
-      ),
-    );
+    // The same sign-in and subscription gate as the Saved tab and the Start
+    // List; this button used to write the event with no gate at all.
+    if (!requireCalendarExport(returnPath)) return;
 
-    if (!sessionDay) {
-      console.error("Session day not found:", {
-        sessionNumber,
-        platform,
-      });
+    if (!hasCalendarTimes(sessionFullDate, platformStartTime)) {
       showToast({
-        type: "error",
-        message: "Could not find session details. Please try again.",
+        type: "info",
+        message: "This session has no scheduled time yet to add to your calendar.",
       });
       return;
     }
-
-    // Use platform-specific start time if available, otherwise use session start time
-    const session = sessionDay.sessions.find(
-      (s) => s.number === parseInt(sessionNumber),
-    );
-    const platformData = session?.platforms.find(
-      (p) => isSamePlatform(p.platform, platform),
-    );
-    const startTimeToUse = platformData?.platformStartTime || startTime;
-    const weighInTime = platformWeighInTime || calculateWeighInTime(startTimeToUse);
 
     // On Android a single session opens the calendar app's editor, so the
     // user reviews it there; elsewhere it is written (or updated, if MeetCal
@@ -191,9 +161,9 @@ const HeaderSection: React.FC<HeaderSectionProps> = ({
     calendarExport.exportSessions(
       [
         {
-          date: sessionDay.fullDate,
-          startTime: startTimeToUse,
-          weighInTime: weighInTime,
+          date: sessionFullDate,
+          startTime: platformStartTime,
+          weighInTime: platformWeighInTime,
           sessionNumber: sessionNumber,
           platform: platform,
           weightClass: sessionWeightClass,
@@ -212,8 +182,9 @@ const HeaderSection: React.FC<HeaderSectionProps> = ({
           {sessionNumber}
           {" "}
           •{" "}
-          {platformStartTime}
-          {timeZoneAbbr ? ` ${timeZoneAbbr}` : ""}
+          {/* An untimed row reads TBD, as on the Saved card, not a bare zone. */}
+          {platformStartTime || "TBD"}
+          {platformStartTime && timeZoneAbbr ? ` ${timeZoneAbbr}` : ""}
         </ThemedText>
       </View>
 
@@ -277,14 +248,10 @@ const HeaderSection: React.FC<HeaderSectionProps> = ({
               ) {
                 return;
               }
-              router.push({
-                pathname: "/comp-data/new-qualifying-totals",
-                params: {
-                  sessionNumber: sessionNumber,
-                  platform: platform,
-                  meet: meet,
-                },
-              });
+              // The screen reads only event / gender / age group, and
+              // neither a meet name nor a (mixed) session maps reliably onto
+              // its event options, so it opens on its defaults.
+              router.push("/comp-data/new-qualifying-totals");
             }}
           >
             <ThemedText
