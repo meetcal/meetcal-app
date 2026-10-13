@@ -52,6 +52,7 @@ function OfflineDataContent() {
     isDeletingAll,
     competitionItems,
     formatLastSynced,
+    isRowReady,
     handleDownload,
     handleDelete,
     confirmRefreshAll,
@@ -202,10 +203,10 @@ function OfflineDataContent() {
                 <DownloadRow
                   key={id}
                   title={meet.name}
-                  subtitle={formatLastSynced(status?.lastSynced)}
+                  subtitle={formatLastSynced(status)}
                   isDownloaded={status?.isDownloaded ?? false}
                   isDownloading={isDownloading}
-                  disabled={rowsDisabled}
+                  disabled={rowsDisabled || !isRowReady(status)}
                   colors={colors}
                   onDownload={() =>
                     handleDownload(id, () => prefetchMeetData(meet.name))
@@ -236,10 +237,10 @@ function OfflineDataContent() {
                 <DownloadRow
                   key={item.id}
                   title={item.title}
-                  subtitle={formatLastSynced(status?.lastSynced)}
+                  subtitle={formatLastSynced(status)}
                   isDownloaded={status?.isDownloaded ?? false}
                   isDownloading={isDownloading}
-                  disabled={rowsDisabled}
+                  disabled={rowsDisabled || !isRowReady(status)}
                   colors={colors}
                   onDownload={() => handleDownload(item.id, item.onDownload)}
                   onDelete={() =>

@@ -4,7 +4,7 @@ import { act, create } from "react-test-renderer";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { BROWSE_CACHE_KEYS, OFFLINE_CACHE_KEYS } from "@/lib/database/offline-cache";
 import { resetOfflineActivityForTests } from "@/lib/database/offline-activity";
-import { describeDownloadStatus, useOfflineData } from "@/utils/offline";
+import { describeDownloadStatus, isRowStatusKnown, useOfflineData } from "@/utils/offline";
 
 const mockIsNetworkAvailable = jest.fn<Promise<boolean>, []>(async () => true);
 jest.mock("@/lib/networkUtils", () => ({
@@ -145,7 +145,7 @@ describe("useOfflineData download statuses", () => {
       tree = create(<Harness />);
     });
     expect(captured!.statusesLoad).toBe("loading");
-    expect(captured!.formatLastSynced(null)).toBe("Checking…");
+    expect(captured!.formatLastSynced(undefined)).toBe("Checking…");
 
     await flush();
     expect(captured!.statusesLoad).toBe("loaded");
@@ -160,7 +160,7 @@ describe("useOfflineData download statuses", () => {
     const tree = await mount();
 
     expect(captured!.statusesLoad).toBe("failed");
-    expect(captured!.formatLastSynced(null)).toBe("Couldn't read offline data");
+    expect(captured!.formatLastSynced(undefined)).toBe("Couldn't read offline data");
     const alerts = alertSpy.mock.calls.length;
     act(() => captured!.confirmRefreshAll());
     expect(alertSpy.mock.calls.length).toBe(alerts);
@@ -183,8 +183,17 @@ describe("useOfflineData download statuses", () => {
 
 describe("describeDownloadStatus", () => {
   it("names the last sync once statuses are loaded", () => {
-    expect(describeDownloadStatus("loaded", null)).toBe("Not downloaded yet");
-    expect(describeDownloadStatus("loaded", Date.now() - 60_000)).toMatch(/^Last synced /);
+    expect(describeDownloadStatus("loaded", { isDownloaded: false, lastSynced: null })).toBe(
+      "Not downloaded yet",
+    );
+    expect(
+      describeDownloadStatus("loaded", { isDownloaded: true, lastSynced: Date.now() - 60_000 }),
+    ).toMatch(/^Last synced /);
+    // A row the meets list added after the last read: not known yet.
+    expect(describeDownloadStatus("loaded", undefined)).toBe("Checking…");
+    expect(isRowStatusKnown("loaded", undefined)).toBe(false);
+    expect(isRowStatusKnown("loaded", { isDownloaded: true, lastSynced: 1 })).toBe(true);
+    expect(isRowStatusKnown("loading", { isDownloaded: true, lastSynced: 1 })).toBe(false);
   });
 });
 

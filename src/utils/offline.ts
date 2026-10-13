@@ -46,7 +46,7 @@ import {
 } from "react";
 import { Alert } from "react-native";
 
-type DownloadStatus = {
+export type DownloadStatus = {
   isDownloaded: boolean;
   lastSynced: number | null;
 };
@@ -110,12 +110,25 @@ export function selectDownloadableMeets<
 /** A row's subtitle: its last sync, or why its status is not known yet. */
 export function describeDownloadStatus(
   load: DownloadStatusesLoad,
-  lastSynced: number | null | undefined,
+  status: DownloadStatus | undefined,
 ): string {
-  if (load === "loading") return "Checking…";
   if (load === "failed") return "Couldn't read offline data";
-  if (!lastSynced) return "Not downloaded yet";
-  return `Last synced ${formatDistanceToNow(new Date(lastSynced), { addSuffix: true })}`;
+  // No entry yet: a row the meets list added after the last read.
+  if (load === "loading" || !status) return "Checking…";
+  if (!status.lastSynced) return "Not downloaded yet";
+  return `Last synced ${formatDistanceToNow(new Date(status.lastSynced), { addSuffix: true })}`;
+}
+
+/**
+ * Whether a row can act (download or remove). Not until its status has been
+ * read: a meet the meets list adds after a read has no entry until the next
+ * one lands, and its tap would download a meet that may be downloaded.
+ */
+export function isRowStatusKnown(
+  load: DownloadStatusesLoad,
+  status: DownloadStatus | undefined,
+): boolean {
+  return load === "loaded" && status !== undefined;
 }
 
 const getMeetDownloadId = (meetName: string) => `meet:${meetName}`;
@@ -165,8 +178,11 @@ export const useOfflineData = () => {
   );
 
   const formatLastSynced = useCallback(
-    (lastSynced: number | null | undefined) =>
-      describeDownloadStatus(statusesLoad, lastSynced),
+    (status: DownloadStatus | undefined) => describeDownloadStatus(statusesLoad, status),
+    [statusesLoad],
+  );
+  const isRowReady = useCallback(
+    (status: DownloadStatus | undefined) => isRowStatusKnown(statusesLoad, status),
     [statusesLoad],
   );
 
@@ -501,6 +517,7 @@ export const useOfflineData = () => {
     isDeletingAll,
     competitionItems,
     formatLastSynced,
+    isRowReady,
     handleDownload,
     handleDelete,
     confirmRefreshAll,

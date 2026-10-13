@@ -249,7 +249,13 @@ export async function clearExpiredDownloadedMeets(): Promise<void> {
     for (const meet of await getCachedMeets()) {
       if (downloads[meet.name] && meet.dates.end) listedEndDates.set(meet.name, meet.dates.end);
     }
-    await updateDownloadEndDates(listedEndDates);
+    // Expiry does not depend on saving the dates: with storage full, the
+    // sweep is what frees space.
+    try {
+      await updateDownloadEndDates(listedEndDates);
+    } catch (error) {
+      console.warn('Could not save downloaded meets\' current end dates:', error);
+    }
     const expiredMeetIds = downloadedIds.filter((meetId) => {
       const endDate = listedEndDates.get(meetId) ?? downloads[meetId]?.endDate;
       return endDate ? hasMeetEnded(endDate, now) : false;

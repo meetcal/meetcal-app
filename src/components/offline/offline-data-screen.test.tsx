@@ -74,8 +74,10 @@ const MEETS = [
   // Outside the 21-day window: never offered.
   { name: "Meet Far", dates: { start: "2099-09-01", end: "2099-09-02" } },
 ];
+// Replaced by a test that grows the list after the first read.
+let mockMeets = MEETS;
 jest.mock("@/contexts/SelectedMeetContext", () => ({
-  useSelectedMeet: () => ({ availableMeets: MEETS, isLoading: false }),
+  useSelectedMeet: () => ({ availableMeets: mockMeets, isLoading: false }),
 }));
 
 jest.mock("@/lib/networkUtils", () => ({ isNetworkAvailable: async () => true }));
@@ -198,6 +200,7 @@ beforeEach(async () => {
   mockIsSubscriptionLoading = false;
   mockScreenOptions = {};
   mockDownloadedMeets = new Set(["Meet A"]);
+  mockMeets = MEETS;
   mockGetExplicitlyDownloadedMeetIds.mockImplementation(async () => new Set(mockDownloadedMeets));
   mockPrefetchMeetData.mockImplementation(async () => {});
   jest.spyOn(console, "error").mockImplementation(() => {});
@@ -214,6 +217,32 @@ afterEach(() => {
 });
 
 describe("OfflineDataScreen", () => {
+  // A meet the refreshed list adds after a read has no status until the
+  // next read lands; its row offered Download for a meet already downloaded.
+  it("holds a row the meets list added until its status is read", async () => {
+    const tree = await mount();
+    const gate = deferred();
+    mockGetExplicitlyDownloadedMeetIds.mockImplementationOnce(async () => {
+      await gate.promise;
+      return new Set(mockDownloadedMeets);
+    });
+    mockDownloadedMeets.add("Meet C");
+    mockMeets = [...MEETS.slice(0, 2), { name: "Meet C", dates: { start: "2099-06-25", end: "2099-06-26" } }, MEETS[2]];
+    await act(async () => {
+      tree.update(<OfflineDataScreen />);
+    });
+
+    expect(row(tree, "Meet C").props.subtitle).toBe("Checking…");
+    expect(rowPressable(tree, "Meet C").props.disabled).toBe(true);
+    expect(rowPressable(tree, "Meet A").props.disabled).toBe(false);
+
+    gate.resolve();
+    await flush();
+    expect(row(tree, "Meet C").props.isDownloaded).toBe(true);
+    expect(rowPressable(tree, "Meet C").props.disabled).toBe(false);
+    act(() => tree.unmount());
+  });
+
   // Until the statuses landed every row read "Not downloaded yet", so tapping
   // a downloaded meet re-downloaded it instead of offering Remove.
   it("holds row taps and Refresh All until it knows what is downloaded", async () => {

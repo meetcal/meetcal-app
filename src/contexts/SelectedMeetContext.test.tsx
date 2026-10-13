@@ -619,6 +619,46 @@ describe("SelectedMeetProvider persisted selection", () => {
     act(() => tree.unmount());
   });
 
+  // The sweep ran before the fresh list, so a meet postponed while the app
+  // was closed expired on its old end date before the new one arrived.
+  it("runs the expiry sweep only once the fresh meets list has settled", async () => {
+    let answer!: (meets: Meet[]) => void;
+    mockFetchMeetsFresh.mockImplementation(
+      () =>
+        new Promise<Meet[]>((resolve) => {
+          answer = resolve;
+        }),
+    );
+    let tree!: ReturnType<typeof create>;
+    act(() => {
+      tree = create(
+        <SelectedMeetProvider>
+          <Harness />
+        </SelectedMeetProvider>,
+      );
+    });
+    await flush();
+    expect(mockFetchMeetsFresh).toHaveBeenCalled();
+    expect(mockClearExpiredDownloadedMeets).not.toHaveBeenCalled();
+
+    await act(async () => {
+      answer([makeMeet("Window Meet")]);
+    });
+    await flush();
+    expect(mockClearExpiredDownloadedMeets).toHaveBeenCalledTimes(1);
+
+    mockClearExpiredDownloadedMeets.mockClear();
+    mockFetchMeetsFresh.mockImplementation(async () => {
+      expect(mockClearExpiredDownloadedMeets).not.toHaveBeenCalled();
+      return [makeMeet("Window Meet")];
+    });
+    await act(async () => {
+      await captured!.refreshAvailableMeets();
+    });
+    expect(mockClearExpiredDownloadedMeets).toHaveBeenCalledTimes(1);
+    act(() => tree.unmount());
+  });
+
   it("forceSync rejects when the selected meet cannot be re-downloaded", async () => {
     mockFetchMeetsFresh.mockResolvedValue([makeMeet("Window Meet")]);
     const tree = await mount();
