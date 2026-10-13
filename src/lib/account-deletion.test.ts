@@ -65,7 +65,7 @@ describe("account deletion", () => {
   });
 
   it("keeps a deleted account's sessions out of the memory cache too", async () => {
-    const session = { id: "s1", meet: "Test Meet" as never, sessionNumber: 1, platform: "Red", date: "2099-06-20", notes: "private" } as SavedSession;
+    const session: SavedSession = { id: "s1", meet: "Test Meet" as never, sessionNumber: 1, platform: "Red", weightClass: "71kg", startTime: "10:00 AM", weighInTime: "8:00 AM", date: "2099-06-20", notes: "private" };
     const published: SavedSession[][] = [];
     const store = { cache: createSavedSessionsCache(), isActive: () => true, publish: (list: SavedSession[]) => published.push(list) };
     await AsyncStorage.clear();
