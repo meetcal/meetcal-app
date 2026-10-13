@@ -441,6 +441,48 @@ describe("offline-store athlete lifting results", () => {
   });
 });
 
+describe("per-session roster caches", () => {
+  beforeEach(async () => {
+    mockStorage.clear();
+    await initStore();
+  });
+
+  const lifter = (name: string, platform: string) => ({
+    memberId: name,
+    name,
+    age: 25,
+    club: "Club",
+    gender: "Women",
+    weightClass: "71kg",
+    entryTotal: 200,
+    adaptive: false,
+    session: { number: 12, platform, date: "2026-06-20", startTime: "9:00 AM", weighInTime: "7:00 AM" },
+  });
+
+  // Session 12 Blue merged into 12 Red: the Blue key kept its old rows, and
+  // offline a saved 12 Blue listed lifters who now lift on Red.
+  it("drops the cache of a session the new roster no longer has", async () => {
+    await saveMeetAthletes("Merge Meet", [lifter("Ann", "Red"), lifter("Bea", "Blue")] as never);
+    await expect(getSessionAthletesFromMeetCache("Merge Meet" as never, 12, "Blue")).resolves.toHaveLength(1);
+
+    await saveMeetAthletes("Merge Meet", [lifter("Ann", "Red"), lifter("Bea", "Red")] as never);
+
+    const sessionKeys = Array.from(mockStorage.keys()).filter((key) =>
+      key.startsWith("meetcal_session_athletes_Merge%20Meet:"),
+    );
+    expect(sessionKeys).toHaveLength(1);
+    await expect(getSessionAthletesFromMeetCache("Merge Meet" as never, 12, "Blue")).resolves.toEqual([]);
+    await expect(getSessionAthletesFromMeetCache("Merge Meet" as never, 12, "Red")).resolves.toHaveLength(2);
+  });
+
+  it("leaves other meets' session caches alone", async () => {
+    await saveMeetAthletes("Other Meet", [lifter("Cat", "Blue")] as never);
+    await saveMeetAthletes("Merge Meet", [lifter("Ann", "Red")] as never);
+
+    await expect(getSessionAthletesFromMeetCache("Other Meet" as never, 12, "Blue")).resolves.toHaveLength(1);
+  });
+});
+
 describe("roster freshness stamp", () => {
   beforeEach(async () => {
     mockStorage.clear();
