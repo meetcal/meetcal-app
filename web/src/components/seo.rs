@@ -2,8 +2,10 @@ use crate::pages::comp_data::catalog::DATA_PAGES;
 use leptos::prelude::*;
 use leptos_router::hooks::use_location;
 
-const SITE_URL: &str = "https://meetcal.app";
-const SOCIAL_IMAGE: &str = "https://meetcal.app/web-app-manifest-512x512.png";
+/// The site's one public host. The apex, meetcal.app, redirects here, so every
+/// canonical URL, og:url and sitemap entry names www (#206).
+const SITE_URL: &str = "https://www.meetcal.app";
+const SOCIAL_IMAGE: &str = "https://www.meetcal.app/web-app-manifest-512x512.png";
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct PageMetadata {
@@ -137,6 +139,27 @@ mod tests {
                 !metadata_for_path(path).indexable,
                 "{path} should not be indexed"
             );
+        }
+    }
+
+    #[test]
+    fn static_urls_name_the_canonical_host() {
+        assert_eq!(SITE_URL, "https://www.meetcal.app");
+        assert!(SOCIAL_IMAGE.starts_with(SITE_URL));
+        for (name, text) in [
+            ("index.html", include_str!("../../index.html")),
+            (
+                "generate-bootstrap.sh",
+                include_str!("../../scripts/generate-bootstrap.sh"),
+            ),
+            ("sitemap.xml", include_str!("../../public/sitemap.xml")),
+            ("robots.txt", include_str!("../../public/robots.txt")),
+        ] {
+            assert!(
+                !text.contains("https://meetcal.app"),
+                "{name} names the apex host, which redirects to {SITE_URL}"
+            );
+            assert!(text.contains(SITE_URL), "{name} should name {SITE_URL}");
         }
     }
 }
