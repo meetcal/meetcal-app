@@ -62,7 +62,7 @@ other tools: each table's rows keyed by its column headers in snake_case, number
 a JSON object keyed by table, or CSV sections headed `# <table>`.
 
 ```sh
-meetcal leaderboard --by sinclair --format csv > leaderboard.csv
+meetcal leaderboard --by sinclair --gender women --format csv > leaderboard.csv
 meetcal progress "Maddisen Mohnsen" --format json | jq '.attempts'
 ```
 
@@ -244,6 +244,7 @@ Options:
 - `--by`, `-b`: `total` (default), `snatch`, `cj`, `sinclair` or `qpoints`
 - `--year`, `-y`, or `--from` and `--to` (`YYYY-MM-DD`): the range; defaults to the current year
 - `--gender`, `-g`; `--category`, `-c` (`Senior`, `Junior`, `U17`, `U15`, `U13`, `U11`, `Masters 35` …); `--division`, `-d` (text the division contains, e.g. `89kg`); `--federation`, `-f`
+  (`USAW`, `USAMW` or `BWL`; without it, every federation but British Weightlifting, `BWL`). `--by sinclair` and `--by qpoints` need `--gender`: men and women score on separate scales.
 - `--wso`, `-w` or `--club`: only athletes registered with it at the meet
 - `--adaptive`: include adaptive results
 - `--limit`, `-n`: rows to show (default 25)

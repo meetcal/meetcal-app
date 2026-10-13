@@ -4,7 +4,6 @@ import { SubscriptionGate } from "@/components/ui/SubscriptionGate";
 import { ThemedText } from "@/components/ui/ThemedText";
 import { ThemedView } from "@/components/ui/ThemedView";
 import { FilterSection, GenericFilterModal } from "@/components/ui/filters";
-import { useTheme } from "@/contexts/ThemeContext";
 import { useAppColors } from "@/hooks/useAppColors";
 import { useFilterState } from "@/hooks/useFilterState";
 import { useRouteFilterKey } from "@/hooks/useRouteFilterKey";
@@ -14,6 +13,7 @@ import {
   QualifyingTotalsData,
   qualifyingTotalsResource,
 } from "@/lib/database/fetch-qualifying-totals";
+import { selectQualifyingTotals } from "@/lib/comp-data-filters";
 import { sortAgeGroups } from "@/lib/sortAgeGroups";
 import { Filters } from "@/types/qual_totals";
 import { Stack, useLocalSearchParams } from "expo-router";
@@ -32,7 +32,6 @@ export default function QualifyingTotalsScreen() {
 function QualifyingTotalsScreenContent() {
   const screenInsets = useScreenHorizontalInsets();
   const colors = useAppColors();
-  const { currentTheme } = useTheme();
   const routeParams = useLocalSearchParams<{
     event?: string;
     gender?: string;
@@ -76,20 +75,10 @@ function QualifyingTotalsScreenContent() {
     return parts.join(" • ");
   };
 
-  const totals = useMemo(() => {
-    // Defensive: check all keys exist
-    const eventData = totalsData[filters.event];
-    if (!eventData) return [];
-    const ageData = eventData[filters.ageGroup];
-    if (!ageData) return [];
-    const genderData = ageData[filters.gender as 'Men' | 'Women'];
-    if (!genderData) return [];
-    // genderData is now { [weightClass]: number }
-    return Object.entries(genderData).map(([weightClass, qt]) => ({
-      bodyweightDivision: weightClass,
-      qt,
-    }));
-  }, [totalsData, filters.event, filters.ageGroup, filters.gender]);
+  const totals = useMemo(
+    () => selectQualifyingTotals(totalsData, filters),
+    [totalsData, filters],
+  );
 
   const eventOptions = useMemo(() => {
     return Object.keys(totalsData ?? {})
@@ -194,10 +183,10 @@ function QualifyingTotalsScreenContent() {
           gestureDirection: "horizontal",
           animation: "slide_from_right",
           headerTitleStyle: {
-            color: currentTheme === "dark" ? "#fff" : "#000",
+            color: colors.headerTitle,
           },
           headerStyle: {
-            backgroundColor: currentTheme === "dark" ? "#000000" : "#F5F5F5",
+            backgroundColor: colors.headerBackground,
           },
           headerShadowVisible: false,
           headerBackButtonDisplayMode: "minimal",
@@ -243,7 +232,9 @@ function QualifyingTotalsScreenContent() {
       <GenericFilterModal
         {...filterModalProps}
         sections={buildFilterSections}
-        resultCount={totals.length}
+        resultCount={(modalTempFilters) =>
+          selectQualifyingTotals(totalsData, modalTempFilters).length
+        }
         resultLabel="weight classes"
       />
     </ThemedView>

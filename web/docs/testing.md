@@ -77,8 +77,11 @@ await routeQuery(page, "results:search", (route, args) =>
   queries, `valueAnswer(body)` for `Body::Value` ones (see `queries` in
   `src/utils/api.rs`). `errorAnswer(message)` is a function that ran and failed.
 - `retryableResponse(429 | 503, retryAfter?)` exercises the retries.
-- `mockSubscribedUser(page)` replaces Clerk's and RevenueCat's scripts with a
-  signed-in, subscribed user, so gated pages render.
+- `mockSubscribedUser(page)` puts stand-ins for Clerk's and RevenueCat's SDKs
+  on the page (through `page.addInitScript`) as a signed-in, subscribed user,
+  so gated pages render. The auth bridge uses an SDK already on the page
+  instead of loading it. Don't mock the CDN files with `page.route`: they load
+  with Subresource Integrity, so the browser refuses any other body.
 
 Assert on what a user sees, and on the arguments a page sends when they
 matter (`expect(args).toEqual({ federation: "USAMW", ... })`).

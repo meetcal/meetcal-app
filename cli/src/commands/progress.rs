@@ -10,7 +10,7 @@ use crate::utils::format::us_date;
 use crate::utils::output::{self, Report};
 use crate::utils::stats::{
     Lift, QPOINTS_LABEL, SINCLAIR_LABEL, attempt_habits, bombed_out, chronological, fold, number,
-    percent, points, pr_flags, row_qpoints, row_sinclair, signed_kg,
+    percent, points, pr_flags, row_qpoints, row_sinclair, signed_kg, valid_total,
 };
 
 /// Show an athlete's progression: every meet with its Sinclair and PRs, their trend, and their
@@ -114,7 +114,11 @@ fn header_only(table: &Table) -> Table {
 
 /// The trend as shown, and as exported (ISO dates, the bomb-outs as a count).
 fn trend(rows: &[&LiftingResults]) -> (Table, Table) {
-    let totals: Vec<&&LiftingResults> = rows.iter().filter(|row| row.total > 0.0).collect();
+    // Source errors (`valid_total`) are neither the best nor the latest total.
+    let totals: Vec<&&LiftingResults> = rows
+        .iter()
+        .filter(|row| valid_total(row).is_some())
+        .collect();
     let best = totals.iter().max_by(|a, b| a.total.total_cmp(&b.total));
     let best_sinclair = rows
         .iter()
@@ -284,5 +288,23 @@ mod tests {
         let rows = vec![entry("Open Women's 64kg"), entry("Junior Women's 64kg")];
         let json = report("Ada", &rows, None).to_json();
         assert_eq!(json["trend"][0]["meets"], 1);
+    }
+
+    #[test]
+    fn a_source_error_total_is_not_the_best_or_latest() {
+        let lift = |date: &str, snatch: [f64; 3], cj: [f64; 3]| {
+            row("Ada", date, "M", "Open Men's 89kg", 88.0, snatch, cj)
+        };
+        let rows = vec![
+            lift("2024-03-01", [70.0, 0.0, 0.0], [90.0, 0.0, 0.0]),
+            lift("2025-03-01", [72.0, 0.0, 0.0], [96.0, 0.0, 0.0]),
+            // 633 for 63: the source's best and total come from the typo.
+            lift("2026-03-01", [-63.0, 633.0, 65.0], [90.0, 0.0, 0.0]),
+        ];
+        let json = report("Ada", &rows, None).to_json();
+        let trend = &json["trend"][0];
+        assert_eq!(trend["best_total"], 168);
+        assert_eq!(trend["latest_total"], 168);
+        assert_eq!(trend["first_to_latest_total"], 8);
     }
 }

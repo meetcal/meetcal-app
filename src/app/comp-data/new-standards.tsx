@@ -4,12 +4,12 @@ import { SubscriptionGate } from "@/components/ui/SubscriptionGate";
 import { ThemedText } from "@/components/ui/ThemedText";
 import { ThemedView } from "@/components/ui/ThemedView";
 import { FilterSection, GenericFilterModal } from "@/components/ui/filters";
-import { useTheme } from "@/contexts/ThemeContext";
 import { useAppColors } from "@/hooks/useAppColors";
 import { useFilterState } from "@/hooks/useFilterState";
 import { useRouteFilterKey } from "@/hooks/useRouteFilterKey";
 import { DEEP_LINKS } from "@/utils/deepLinks";
 import { useMutableResource } from "@/hooks/useMutableResource";
+import { selectStandards } from "@/lib/comp-data-filters";
 import { standardsResource } from "@/lib/database/fetch-standards";
 import { formatAgeGroupLabel } from "@/lib/sortAgeGroups";
 import { AgeGroup, Filters, Gender, StandardsData } from "@/types/standards";
@@ -31,7 +31,6 @@ export default function NewStandardsScreen() {
 function NewStandardsScreenContent() {
   const screenInsets = useScreenHorizontalInsets();
   const colors = useAppColors();
-  const { currentTheme } = useTheme();
   const routeParams = useLocalSearchParams<{
     gender?: string;
     ageGroup?: string;
@@ -62,11 +61,10 @@ function NewStandardsScreenContent() {
     initialData: {} as StandardsData,
   });
 
-  const standardsData = useMemo(() => {
-    if (!allStandards[filters.ageGroup]) return [];
-    if (!allStandards[filters.ageGroup][filters.gender]) return [];
-    return allStandards[filters.ageGroup][filters.gender];
-  }, [allStandards, filters.ageGroup, filters.gender]);
+  const standardsData = useMemo(
+    () => selectStandards(allStandards, filters),
+    [allStandards, filters],
+  );
 
   const getFilterDisplayText = () => {
     const genderText = filters.gender === "men" ? "Men" : "Women";
@@ -111,10 +109,10 @@ function NewStandardsScreenContent() {
           gestureDirection: "horizontal",
           animation: "slide_from_right",
           headerTitleStyle: {
-            color: currentTheme === "dark" ? "#fff" : "#000",
+            color: colors.headerTitle,
           },
           headerStyle: {
-            backgroundColor: currentTheme === "dark" ? "#000000" : "#F5F5F5",
+            backgroundColor: colors.headerBackground,
           },
           headerShadowVisible: false,
           headerBackButtonDisplayMode: "minimal",
@@ -164,7 +162,9 @@ function NewStandardsScreenContent() {
       <GenericFilterModal
         {...filterModalProps}
         sections={filterSections}
-        resultCount={standardsData.length}
+        resultCount={(modalTempFilters) =>
+          selectStandards(allStandards, modalTempFilters).length
+        }
         resultLabel="standards"
       />
     </ThemedView>
