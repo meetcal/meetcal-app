@@ -10,7 +10,10 @@ use serde_json::json;
 use crate::commands::group_wrapped::{
     ClubMembership, filter_membership_results, get_club_memberships, get_wso_memberships,
 };
-use crate::commands::wso_results::calculate_medal_details;
+use crate::commands::wso_results::{
+    RosterClasses, calculate_medal_details, needs_roster, roster_classes,
+};
+use crate::types::athletes::Athletes;
 use crate::types::lifting_results::LiftingResults;
 use crate::types::wso::Movement;
 use crate::utils::athletes::histories;
@@ -152,7 +155,15 @@ async fn medals_by_year(
         // `meet` is a results meet already (the group's rows name it), so no aliases.
         let meet_rows: Vec<LiftingResults> =
             query(queries::MEET_RESULTS, &json!({ "meet": meet })).await?;
-        for detail in calculate_medal_details(&members, &meet_rows) {
+        // Divisions without a weight class place by the roster's class, as on the server.
+        let roster = if needs_roster(&meet_rows) {
+            let athletes: Vec<Athletes> =
+                query(queries::MEET_ATHLETES, &json!({ "meet": meet })).await?;
+            roster_classes(&athletes)
+        } else {
+            RosterClasses::new()
+        };
+        for detail in calculate_medal_details(&members, &meet_rows, &roster) {
             if detail.movement == Movement::Total && (1..=3).contains(&detail.place) {
                 medals.entry(meet_year.clone()).or_default()[detail.place - 1] += 1;
             }
