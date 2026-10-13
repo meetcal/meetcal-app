@@ -7,6 +7,7 @@ import { getSimulatedSubscriptionStatus } from '@/config/development';
 import { isNetworkAvailable, subscribeToNetworkChanges } from '@/lib/networkUtils';
 import { devLog, devWarn } from '@/lib/logger';
 import { SUBSCRIPTION_ENTITLEMENT_ID } from '@/lib/premium-intent';
+import type { ConfirmedEntitlement } from '@/lib/confirmed-entitlement';
 
 /**
  * `setSubscribed` is a provider internal, not part of this contract:
@@ -35,6 +36,16 @@ type SubscriptionContextType = {
   recheckSubscription: () => void;
   isUsingStaleCache: boolean;
   lastSyncTimestamp: number | null;
+  /**
+   * The entitlement as RevenueCat (or a restore, or the dev simulation)
+   * reported it in this process, with the RevenueCat user it was about;
+   * `null` until it has answered. Never the SecureStore cache, which
+   * `isSubscribed` starts from. For destructive writes that a subscription
+   * gates (the auto-remove prune): read it through `confirmedSubscriptionFor`
+   * with the signed-in user, so neither a stale "subscribed" nor the previous
+   * account's answer after a switch can authorize them.
+   */
+  confirmedEntitlement: ConfirmedEntitlement | null;
 };
 
 interface SubscriptionCacheData {
@@ -162,6 +173,7 @@ export function SubscriptionProvider({ children }: { children: React.ReactNode }
   const [isLoading, setIsLoading] = useState(true);
   const [isUsingStaleCache, setIsUsingStaleCache] = useState(false);
   const [lastSyncTimestamp, setLastSyncTimestamp] = useState<number | null>(null);
+  const [confirmedEntitlement, setConfirmedEntitlement] = useState<ConfirmedEntitlement | null>(null);
   const confirmedMembershipRef = useRef<{
     subscribed: boolean;
     type: 'free' | 'quarterly' | 'lifetime';
@@ -214,13 +226,59 @@ export function SubscriptionProvider({ children }: { children: React.ReactNode }
     }
   }, []);
 
+  // Each confirmation takes a number; only the newest may publish.
+  const confirmationRef = useRef(0);
+  /**
+   * Re-derive `confirmedEntitlement` the way a check does, reading the app
+   * user id on both sides of `getCustomerInfo`, without touching what the
+   * screens show (`isSubscribed`, `isLoading`, the cache). Unknown on a
+   * failure or an identity change mid-request.
+   */
+  const confirmEntitlement = useCallback(async () => {
+    const confirmation = ++confirmationRef.current;
+    const simulatedStatus = getSimulatedSubscriptionStatus();
+    if (simulatedStatus !== null) {
+      setConfirmedEntitlement({ appUserId: null, isSubscribed: simulatedStatus, simulated: true });
+      return;
+    }
+    try {
+      const requestedFor = await currentAppUserId();
+      const info = await Purchases.getCustomerInfo();
+      const answeredFor = await currentAppUserId();
+      if (confirmation !== confirmationRef.current) return;
+      if (!answeredFor || requestedFor !== answeredFor) return;
+      const isSubscribed = info.entitlements.active[SUBSCRIPTION_ENTITLEMENT_ID] != null;
+      setConfirmedEntitlement({ appUserId: answeredFor, isSubscribed });
+    } catch (error) {
+      devWarn('Could not confirm the entitlement for this user', error);
+    }
+  }, []);
+
+  /**
+   * `confirmedFor`: the RevenueCat user the answer is known to describe,
+   * which only a check can say (it reads the app user id on both sides of
+   * `getCustomerInfo`). A pushed CustomerInfo or a restore can't: a sign-in
+   * between the answer and reading the id would stamp one account's
+   * entitlement on the other. Those clear the confirmation instead and
+   * re-confirm it with a bracketed request, so a destructive write gated on
+   * it waits a moment rather than trusting the wrong account.
+   */
   const recordConfirmedMembership = useCallback((
     subscribed: boolean,
-    type: 'free' | 'quarterly' | 'lifetime'
+    type: 'free' | 'quarterly' | 'lifetime',
+    confirmedFor: string | null,
   ) => {
     confirmedMembershipRef.current = { subscribed, type };
+    if (confirmedFor) {
+      // Supersedes any re-confirmation still in flight.
+      confirmationRef.current += 1;
+      setConfirmedEntitlement({ appUserId: confirmedFor, isSubscribed: subscribed });
+    } else {
+      setConfirmedEntitlement(null);
+      void confirmEntitlement();
+    }
     void syncOneSignalMembershipTags(subscribed, type);
-  }, [syncOneSignalMembershipTags]);
+  }, [confirmEntitlement, syncOneSignalMembershipTags]);
 
   // A CustomerInfo refresh can finish before OneSignal finishes switching to the
   // signed-in user. Retry the latest confirmed status when that identity arrives.
@@ -340,6 +398,7 @@ export function SubscriptionProvider({ children }: { children: React.ReactNode }
         devLog('Using simulated subscription status:', simulatedStatus);
         const type = simulatedStatus ? 'quarterly' : 'free';
         setIsSubscribed(simulatedStatus);
+        setConfirmedEntitlement({ appUserId: null, isSubscribed: simulatedStatus, simulated: true });
         setSubscriptionType(type);
         setIsLoading(false);
         await saveSubscriptionCache(generation, simulatedStatus, type);
@@ -384,7 +443,7 @@ export function SubscriptionProvider({ children }: { children: React.ReactNode }
         const [hasActiveSubscription, type] = await checkEntitlementStatus(customerInfo);
         devLog('Real subscription status:', { hasActiveSubscription, type });
 
-        recordConfirmedMembership(hasActiveSubscription, type);
+        recordConfirmedMembership(hasActiveSubscription, type, answeredFor);
         setIsSubscribed(hasActiveSubscription);
         setSubscriptionType(type);
         setIsLoading(false);
@@ -431,6 +490,7 @@ export function SubscriptionProvider({ children }: { children: React.ReactNode }
         if (simulatedStatus !== null) {
           const type = simulatedStatus ? 'quarterly' : 'free';
           setIsSubscribed(simulatedStatus);
+          setConfirmedEntitlement({ appUserId: null, isSubscribed: simulatedStatus, simulated: true });
           setSubscriptionType(type);
           setIsLoading(false);
           return;
@@ -506,7 +566,7 @@ export function SubscriptionProvider({ children }: { children: React.ReactNode }
           if (!isCurrentAnswer(generation)) return;
           devLog('Subscription update received:', { hasActiveSubscription, type });
 
-          recordConfirmedMembership(hasActiveSubscription, type);
+          recordConfirmedMembership(hasActiveSubscription, type, null);
           setIsSubscribed(hasActiveSubscription);
           setSubscriptionType(type);
           setIsLoading(false);
@@ -578,7 +638,7 @@ export function SubscriptionProvider({ children }: { children: React.ReactNode }
   ) => {
     if (!isCurrentAnswer(generation)) return;
     try {
-      recordConfirmedMembership(value, type);
+      recordConfirmedMembership(value, type, null);
       setIsSubscribed(value);
       setSubscriptionType(type);
       // A check this answer superseded will not clear its own loading flag.
@@ -617,6 +677,7 @@ export function SubscriptionProvider({ children }: { children: React.ReactNode }
         recheckSubscription,
         isUsingStaleCache,
         lastSyncTimestamp,
+        confirmedEntitlement,
       }}
     >
       {children}

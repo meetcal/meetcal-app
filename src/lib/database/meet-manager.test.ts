@@ -15,7 +15,9 @@ import {
   touchMeetAccess,
   validatePrefetchedLiftingResults,
   warmMeetData,
+  PrefetchCancelledError,
 } from "@/lib/database/meet-manager";
+import { runHistoryClear, runMeetClear } from "@/lib/database/offline-clears";
 import type { Schedule } from "@/types/schedule";
 
 jest.mock("@react-native-async-storage/async-storage", () => ({
@@ -143,6 +145,10 @@ jest.mock("@/lib/database/offline-store", () => ({
 }));
 
 const mockGetItem = AsyncStorage.getItem as jest.Mock;
+
+/** A clear that removes nothing: only its effect on running downloads matters here. */
+const beginMeetClear = (meet: string) => runMeetClear(meet, async () => {});
+const beginHistoryClear = () => runHistoryClear(async () => {});
 
 describe("validatePrefetchedLiftingResults", () => {
   it("does not throw when a meet has athletes but no results yet", () => {
@@ -279,6 +285,24 @@ describe("prefetchCriticalMeetData", () => {
 
       await jest.advanceTimersByTimeAsync(1);
       expect(mockFetchApiMeetPackage).toHaveBeenCalledTimes(1);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  // Remove, Delete All or Clear Cache within those 5 s used to start a full
+  // package and roster-wide history download of a meet no longer downloaded.
+  it("does not start the deferred prefetch for a meet un-marked before it fires", async () => {
+    jest.useFakeTimers();
+    setExplicitlyDownloaded(() => true);
+    mockFetchSchedule.mockResolvedValue([]);
+
+    try {
+      await warmMeetData("Removed Meet" as any);
+      setExplicitlyDownloaded(() => false);
+
+      await jest.advanceTimersByTimeAsync(5000);
+      expect(mockFetchApiMeetPackage).not.toHaveBeenCalled();
     } finally {
       jest.useRealTimers();
     }
@@ -1755,5 +1779,236 @@ describe("eviction during a full prefetch", () => {
     await expect(download).resolves.toBeUndefined();
     expect(mockClearMeetData.mock.calls.map(([name]) => name)).not.toContain("D");
     expect(JSON.parse(store.get(MEET_CACHE_KEY) ?? "{}").meets.D).toBeDefined();
+  });
+});
+
+describe("downloads and the clears that remove their data", () => {
+  const athlete = (name: string) => ({
+    member_id: name,
+    name,
+    age: 25,
+    club: "Club",
+    wso: null,
+    gender: "Male",
+    weight_class: "81",
+    entry_total: 0,
+    adaptive: false,
+    session: null,
+  });
+  const packageOf = (count: number) => ({
+    meet: {},
+    schedule: [],
+    athletes: Array.from({ length: count }, (_, i) => athlete(`Athlete ${i + 1}`)),
+    meet_results: [],
+    recent_results_by_name: {},
+    year_bests_by_name: {},
+  });
+  const tick = () => new Promise((resolve) => setTimeout(resolve, 0));
+  const until = async (done: () => boolean) => {
+    for (let i = 0; i < 100 && !done(); i += 1) await tick();
+    expect(done()).toBe(true);
+  };
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockFetchApiResultsByNames.mockResolvedValue([]);
+    setExplicitlyDownloaded(() => true);
+  });
+
+  // Remove (or the expiry sweep) during a national meet's history pass: the
+  // pass used to write history for every remaining batch, for athletes on no
+  // stored roster, and the clear returned before it.
+  it("stops the history pass at the next batch once the meet is cleared, and the clear waits for it", async () => {
+    mockFetchApiMeetPackage.mockResolvedValue(packageOf(50));
+    let answerFirstBatch!: (rows: unknown[]) => void;
+    mockFetchApiResultsByNames.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          answerFirstBatch = resolve as (rows: unknown[]) => void;
+        }),
+    );
+
+    const download = prefetchMeetData("Cleared Meet" as any);
+    const outcome = download.catch((error: unknown) => error);
+    await until(() => mockFetchApiResultsByNames.mock.calls.length === 1);
+
+    let clearProceeded = false;
+    const clearing = beginMeetClear("Cleared Meet").then(() => {
+      clearProceeded = true;
+    });
+    await tick();
+    // The clear does not touch storage while the batch is still in flight.
+    expect(clearProceeded).toBe(false);
+
+    answerFirstBatch([{ name: "Athlete 1", date: "2025-01-01" }]);
+    await clearing;
+
+    await expect(outcome).resolves.toBeInstanceOf(PrefetchCancelledError);
+    // Neither the answered batch nor the second one is written or fetched.
+    expect(mockSaveAthleteHistoryBatch).not.toHaveBeenCalled();
+    expect(mockFetchApiResultsByNames).toHaveBeenCalledTimes(1);
+  });
+
+  // Clear Cache's re-sync, or Download after Remove, joined the request that
+  // started before the clear and marked the meet downloaded with no roster.
+  it("never joins a download that started before the meet was last cleared", async () => {
+    mockFetchApiMeetPackage.mockResolvedValue(packageOf(1));
+    let answerOld!: (value: unknown) => void;
+    mockFetchApiMeetPackageConditional.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          answerOld = resolve as (value: unknown) => void;
+        }),
+    );
+
+    const old = prefetchMeetData("Rejoined Meet" as any);
+    const oldOutcome = old.catch((error: unknown) => error);
+    await until(() => mockFetchApiMeetPackageConditional.mock.calls.length === 1);
+
+    const clearing = beginHistoryClear();
+    const fresh = prefetchMeetData("Rejoined Meet" as any);
+    expect(fresh).not.toBe(old);
+
+    answerOld({ status: "fresh", etag: null, package: packageOf(1) });
+    await clearing;
+    await expect(oldOutcome).resolves.toBeInstanceOf(PrefetchCancelledError);
+    await expect(fresh).resolves.toBeUndefined();
+    // The new download fetched the package itself and ingested it.
+    expect(mockFetchApiMeetPackageConditional).toHaveBeenCalledTimes(2);
+    expect(mockSaveMeetAthletes).toHaveBeenCalledTimes(1);
+  });
+
+  // A download that starts while a clear is still deleting (the warm timer
+  // firing during a Remove) read the ETag and roster being deleted, got a
+  // `304` and finished as if the meet were on disk.
+  it("waits for a clear of the meet that is still running before it starts", async () => {
+    mockFetchApiMeetPackage.mockResolvedValue(packageOf(1));
+    let finishClear!: () => void;
+    const clearing = runMeetClear(
+      "Clearing Meet",
+      () =>
+        new Promise<void>((resolve) => {
+          finishClear = resolve;
+        }),
+    );
+    await tick();
+
+    const download = prefetchMeetData("Clearing Meet" as any);
+    await tick();
+    expect(mockFetchApiMeetPackageConditional).not.toHaveBeenCalled();
+
+    finishClear();
+    await clearing;
+    await download;
+    expect(mockFetchApiMeetPackageConditional).toHaveBeenCalledTimes(1);
+  });
+
+  // A forced download waiting for a superseded one used to start as soon as
+  // that settled, while the clear that superseded it was still deleting.
+  it("waits for a clear that started while it waited for a superseded download", async () => {
+    mockFetchApiMeetPackage.mockResolvedValue(packageOf(1));
+    let answerOld!: (value: unknown) => void;
+    mockFetchApiMeetPackageConditional.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          answerOld = resolve as (value: unknown) => void;
+        }),
+    );
+    const old = prefetchMeetData("Forced Meet" as any).catch((error: unknown) => error);
+    await until(() => mockFetchApiMeetPackageConditional.mock.calls.length === 1);
+    const forced = prefetchMeetData("Forced Meet" as any, { forceHistoryRefresh: true });
+    await tick();
+
+    let finishClear!: () => void;
+    const clearing = runMeetClear(
+      "Forced Meet",
+      () =>
+        new Promise<void>((resolve) => {
+          finishClear = resolve;
+        }),
+    );
+    answerOld({ status: "fresh", etag: null, package: packageOf(1) });
+    await expect(old).resolves.toBeInstanceOf(PrefetchCancelledError);
+    await until(() => typeof finishClear === "function");
+    await tick();
+    // The clear is still deleting: the forced download has not fetched.
+    expect(mockFetchApiMeetPackageConditional).toHaveBeenCalledTimes(1);
+
+    finishClear();
+    await clearing;
+    await forced;
+    expect(mockFetchApiMeetPackageConditional).toHaveBeenCalledTimes(2);
+  });
+
+  // The warm timer read the download mark while a Remove was still waiting
+  // out a download, before it un-marked the meet, and then downloaded it again.
+  it("does not start the deferred prefetch for a meet a running clear un-marks", async () => {
+    jest.useFakeTimers();
+    let downloaded = true;
+    setExplicitlyDownloaded(() => downloaded);
+    mockFetchSchedule.mockResolvedValue([]);
+    try {
+      await warmMeetData("Warm Removed" as any);
+      let finishClear!: () => void;
+      const clearing = runMeetClear(
+        "Warm Removed",
+        () =>
+          new Promise<void>((resolve) => {
+            finishClear = resolve;
+          }),
+      );
+      await jest.advanceTimersByTimeAsync(5000);
+      downloaded = false;
+      finishClear();
+      await clearing;
+      await jest.advanceTimersByTimeAsync(0);
+      expect(mockFetchApiMeetPackageConditional).not.toHaveBeenCalled();
+      expect(mockFetchApiMeetPackage).not.toHaveBeenCalled();
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it("still joins a download that started after the last clear", async () => {
+    await beginMeetClear("Joined Meet");
+    mockFetchApiMeetPackage.mockResolvedValue(packageOf(1));
+
+    const first = prefetchMeetData("Joined Meet" as any);
+    const second = prefetchMeetData("Joined Meet" as any);
+    await Promise.all([first, second]);
+
+    expect(mockFetchApiMeetPackageConditional).toHaveBeenCalledTimes(1);
+  });
+
+  // The out-of-space recovery cleared every meet not yet marked downloaded,
+  // including one whose download was still running in another row.
+  it("keeps downloads still running when the out-of-space recovery clears the browse cache", async () => {
+    let answerOther!: (value: unknown) => void;
+    mockFetchApiMeetPackageConditional
+      .mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            answerOther = resolve as (value: unknown) => void;
+          }),
+      )
+      .mockResolvedValueOnce({ status: "fresh", etag: '"a"', package: packageOf(1) })
+      .mockResolvedValueOnce({ status: "fresh", etag: '"b"', package: packageOf(1) });
+    const other = prefetchMeetData("Still Downloading" as any);
+    await until(() => mockFetchApiMeetPackageConditional.mock.calls.length === 1);
+    mockSaveMeetAthletes.mockRejectedValueOnce(new Error("SQLITE_FULL"));
+
+    await prefetchMeetData("Out Of Space" as any);
+
+    expect(mockClearImplicitMeetData).toHaveBeenCalledTimes(1);
+    const [except, options] = mockClearImplicitMeetData.mock.calls[0] as unknown as [
+      string,
+      { skip: (meet: string) => boolean },
+    ];
+    expect(except).toBe("Out Of Space");
+    expect(options.skip("Still Downloading")).toBe(true);
+    expect(options.skip("Only Browsed")).toBe(false);
+
+    answerOther({ status: "fresh", etag: null, package: packageOf(1) });
+    await other;
   });
 });

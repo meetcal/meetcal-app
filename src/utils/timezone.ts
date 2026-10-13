@@ -273,3 +273,29 @@ export function convertZonedLocalToUTC(
   );
   return decorated[0].candidate;
 }
+
+/** The parts of a meet (or `MeetConfig`) that say which zone its times are in. */
+export interface MeetTimeZoneSource {
+  time?: { timeZone?: string; timeZoneIdentifier?: string } | null;
+  /** Set by the API mapper when `timeZoneIdentifier` is its fallback, not the meet's zone. */
+  timeZoneUnknown?: boolean;
+}
+
+/**
+ * The zone to compute a meet's instants in, or `null` when the meet has no
+ * known zone.
+ *
+ * The API mapper turns a blank or unreadable zone into `America/New_York` so
+ * screens can still render times, and flags it (`timeZoneUnknown`). Anything
+ * that turns a meet-local time into an instant (the auto-unsave prune, the
+ * session reminders, the widget's `start_at_ms`, the calendar event) must not
+ * use that fallback: a Los Angeles meet read as New York was pruned, reminded
+ * and hidden three hours early. A blank raw zone counts as unknown too, for a
+ * meet cached before the flag was carried.
+ */
+export function resolvedMeetTimeZone(meet: MeetTimeZoneSource | null | undefined): string | null {
+  if (!meet?.time || meet.timeZoneUnknown === true) return null;
+  const { timeZone, timeZoneIdentifier } = meet.time;
+  if (typeof timeZone === "string" && timeZone.trim() === "") return null;
+  return isValidTimeZone(timeZoneIdentifier) ? timeZoneIdentifier : null;
+}
