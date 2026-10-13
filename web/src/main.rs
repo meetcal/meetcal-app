@@ -18,6 +18,8 @@ use meetcal_web::pages::{
 use meetcal_web::{
     auth::provide_auth,
     components::{
+        footer::Footer,
+        header::Header,
         seo::RouteMetadata,
         subscription_gate::{MobileSubscriptionPage, SubscriptionGate, provide_access},
     },
@@ -35,7 +37,11 @@ fn App() -> impl IntoView {
     view! {
         <Router>
             <RouteMetadata />
-            <main>
+            // One banner, one main, one contentinfo landmark for every page:
+            // pages render only their content, inside <main> (#244).
+            <div class="site-shell">
+            <Header />
+            <main id="main-content">
                 <Routes fallback=|| view! { <NotFound /> }>
                     <Route path=path!("/") view=Home />
                     <Route path=path!("/comp-data") view=|| view! { <SubscriptionGate><CompData /></SubscriptionGate> } />
@@ -57,6 +63,8 @@ fn App() -> impl IntoView {
                     <Route path=path!("/terms") view=TermsPage />
                 </Routes>
             </main>
+            <Footer />
+            </div>
         </Router>
     }
 }

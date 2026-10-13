@@ -26,6 +26,36 @@ for (const path of protectedDataRoutes) {
 test("unknown routes render the not-found page", async ({ page }) => {
   await page.goto("/does-not-exist");
   await expect(page.getByRole("heading", { name: /not found/i })).toBeVisible();
+  await expect(page.locator("header.site-header")).toBeVisible();
+  await page.getByRole("link", { name: "Browse competition data" }).click();
+  await expect(page).toHaveURL(/\/comp-data$/);
+  await page.goto("/does-not-exist");
+  await page.getByRole("link", { name: "Go to the home page" }).click();
+  await expect(page.getByRole("heading", { level: 1, name: "Your Competition Schedule, Simplified" })).toBeVisible();
+});
+
+test("the canonical link follows navigation into and out of the Not Found page", async ({ page }) => {
+  // Vercel answers a missing path with dist/404.html, whose shell has no
+  // canonical link; the static test server would answer with index.html.
+  await page.route("**/does-not-exist", (route) =>
+    route.fulfill({ status: 404, contentType: "text/html", path: "dist/404.html" }),
+  );
+  const canonical = page.locator('link[rel="canonical"]');
+  await page.goto("/does-not-exist");
+  await expect(page.getByRole("heading", { name: /not found/i })).toBeVisible();
+  await expect(canonical).toHaveCount(0);
+
+  await page.getByRole("link", { name: "Go to the home page" }).click();
+  await expect(page.getByRole("heading", { level: 1, name: "Your Competition Schedule, Simplified" })).toBeVisible();
+  await expect(canonical).toHaveCount(1);
+  await expect(canonical).toHaveAttribute("href", "https://www.meetcal.app/");
+
+  await page.goBack();
+  await expect(page.getByRole("heading", { name: /not found/i })).toBeVisible();
+  await expect(canonical).toHaveCount(0);
+
+  await page.goForward();
+  await expect(canonical).toHaveAttribute("href", "https://www.meetcal.app/");
 });
 
 test("subscription page only offers mobile-store handoffs", async ({ page }) => {
@@ -64,7 +94,7 @@ test("routes expose specific titles, descriptions, canonicals, and indexing rule
     await expect(page).toHaveTitle(title);
     await expect(page.locator('meta[name="description"]')).toHaveAttribute("content", /.{40,}/);
     await expect(page.locator('meta[name="robots"]')).toHaveAttribute("content", robots);
-    await expect(page.locator('link[rel="canonical"]')).toHaveAttribute("href", `https://meetcal.app${path}`);
+    await expect(page.locator('link[rel="canonical"]')).toHaveAttribute("href", `https://www.meetcal.app${path}`);
   }
   await page.goto("/does-not-exist");
   await expect(page).toHaveTitle(/Page Not Found/);
@@ -84,5 +114,28 @@ test("public pages have no serious or critical accessibility violations", async 
     const results = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"]).analyze();
     const materialViolations = results.violations.filter(({ impact }) => impact === "serious" || impact === "critical");
     expect(materialViolations, `${path} accessibility violations`).toEqual([]);
+  }
+});
+
+test("every page has one top-level banner, main and contentinfo landmark", async ({ page }) => {
+  for (const path of [...publicRoutes.map(([path]) => path), "/qualifying-totals", "/does-not-exist"]) {
+    await page.goto(path);
+    await expect(page.locator("header.site-header")).toBeVisible();
+    await expect(page.locator("main")).toHaveCount(1);
+    await expect(page.locator("main header, main footer, main main")).toHaveCount(0);
+    await expect(page.getByRole("banner")).toHaveCount(1);
+    await expect(page.getByRole("contentinfo")).toHaveCount(1);
+    const results = await new AxeBuilder({ page })
+      .withRules([
+        "landmark-main-is-top-level",
+        "landmark-no-duplicate-main",
+        "landmark-one-main",
+        "landmark-banner-is-top-level",
+        "landmark-contentinfo-is-top-level",
+        "landmark-no-duplicate-banner",
+        "landmark-no-duplicate-contentinfo",
+      ])
+      .analyze();
+    expect(results.violations, `${path} landmark violations`).toEqual([]);
   }
 });
