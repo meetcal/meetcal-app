@@ -35,7 +35,9 @@ export type WriteHint = { kind: string; key: string; since?: string };
 export async function recordWrite(ctx: MutationCtx, table: SourceTable, hints: WriteHint[]): Promise<void> {
   await bumpVersion(ctx, table);
   const unique = new Map<string, WriteHint>();
-  for (const hint of hints) {
+  // Only a results write can be under a linked results title.
+  const linked = table === 'lifting_results' ? await linkedMeetHints(ctx, hints) : [];
+  for (const hint of [...hints, ...linked]) {
     const id = `${hint.kind}\u0000${hint.key}`;
     const seen = unique.get(id);
     unique.set(id, seen ? { ...hint, since: earliestSince(seen.since, hint.since) } : hint);
@@ -52,6 +54,89 @@ export async function recordWrite(ctx: MutationCtx, table: SourceTable, hints: W
     else await ctx.db.insert('view_hints', { ...hint, seq: 0, updatedAt });
   }
   await scheduleRefresh(ctx);
+}
+
+/**
+ * A change under a results title linked to a meet (`meet_result_titles`)
+ * changes that meet's views too: its hint, for each `meet` hint naming one.
+ */
+/** Linked-title lookups in flight at once, well under a function's 1,000. */
+const LINK_LOOKUP_BATCH = 250;
+
+async function linkedMeetHints(ctx: MutationCtx, hints: readonly WriteHint[]): Promise<WriteHint[]> {
+  const titles = [...new Set(hints.filter((hint) => hint.kind === 'meet').map((hint) => hint.key))];
+  // A title is linked to one meet at most (`setMeetResultTitles`). In
+  // batches: a bulk write can name many meets.
+  const linked: WriteHint[] = [];
+  for (let i = 0; i < titles.length; i += LINK_LOOKUP_BATCH) {
+    const links = await Promise.all(
+      titles.slice(i, i + LINK_LOOKUP_BATCH).map((title) =>
+        ctx.db
+          .query('meet_result_titles')
+          .withIndex('by_title', (q) => q.eq('title', title))
+          .first(),
+      ),
+    );
+    for (const link of links) if (link) linked.push({ kind: 'meet', key: link.meet });
+  }
+  return linked;
+}
+
+/**
+ * Links results titles to a meet (#362), replacing the ones it had: a
+ * combined national event is one Sport80 entries event, listed as the meet,
+ * and several results events with their own titles, which then show with
+ * it (its results, package, stats and club stats). A title belongs to one
+ * meet at most. `titles: []` unlinks them all. Leaves the meet's hint, so
+ * its views are rebuilt.
+ *
+ *   npx convex run ingest:setMeetResultTitles '{"meet":"2026 USA Weightlifting National Championships, Powered by Rogue Fitness","titles":["The 2026 National Junior Championships, Powered by Rogue Fitness","The 2026 National Youth Championships, Powered by Rogue Fitness"]}'
+ */
+export const setMeetResultTitles = internalMutation({
+  args: { meet: v.string(), titles: v.array(v.string()) },
+  handler: async (ctx, { meet, titles }) => {
+    const meetRow = await ctx.db
+      .query('meets')
+      .withIndex('by_name', (q) => q.eq('name', meet))
+      .first();
+    if (!meetRow) throw new Error(`no meet named ${JSON.stringify(meet)}`);
+    const wanted = [...new Set(titles.map((title) => title.trim()))];
+    if (wanted.some((title) => title === '' || title === meet)) throw new Error("a results title must be non-empty and not the meet's own name");
+    for (const title of wanted) {
+      const other = (
+        await ctx.db
+          .query('meet_result_titles')
+          .withIndex('by_title', (q) => q.eq('title', title))
+          .collect()
+      ).find((link) => link.meet !== meet);
+      if (other) throw new Error(`${JSON.stringify(title)} is already linked to ${JSON.stringify(other.meet)}`);
+      if ((await ctx.db.query('meets').withIndex('by_name', (q) => q.eq('name', title)).first()) !== null) {
+        throw new Error(`${JSON.stringify(title)} is a meet of its own, not a results title`);
+      }
+    }
+    const existing = await ctx.db
+      .query('meet_result_titles')
+      .withIndex('by_meet', (q) => q.eq('meet', meet))
+      .collect();
+    for (const link of existing) await ctx.db.delete(link._id);
+    for (const title of wanted) await ctx.db.insert('meet_result_titles', { meet, title });
+    await recordWrite(ctx, 'lifting_results', [{ kind: 'meet', key: meet }]);
+    return { meet, titles: wanted, results: await resultCounts(ctx, wanted) };
+  },
+});
+
+/** Stored results under each title, for checking a link by its numbers. */
+async function resultCounts(ctx: MutationCtx, titles: readonly string[]): Promise<Record<string, number>> {
+  const counts: Record<string, number> = {};
+  for (const title of titles) {
+    counts[title] = (
+      await ctx.db
+        .query('lifting_results')
+        .withIndex('by_meet', (q) => q.eq('meet', title))
+        .collect()
+    ).length;
+  }
+  return counts;
 }
 
 type ResultFields = Pick<Doc<'lifting_results'>, 'federation' | 'age' | 'meet' | 'name' | 'adaptive' | 'date'>;
@@ -985,7 +1070,7 @@ export const updateMeetStatuses = internalMutation({
     for (const status of ['upcoming', 'ongoing'] as const) {
       for (const meet of await ctx.db
         .query('meets')
-        .withIndex('by_status', (q) => q.eq('status', status))
+        .withIndex('by_status_and_start_date', (q) => q.eq('status', status))
         .collect()) {
         meets.set(meet._id, meet);
       }
@@ -1034,8 +1119,8 @@ const storedGender = (gender: string | undefined) => (gender === undefined ? nul
 
 /**
  * Inserts or updates standards matched on (age category, gender, weight
- * class), normalized like `upsert_standard`. Never deletes: a class the PDF
- * stops listing keeps its last standards, as it did in Postgres.
+ * class), normalized like `upsert_standard`. Deletes nothing: the standards
+ * sync then deletes the classes the PDF no longer lists (`pruneStandards`).
  */
 export const upsertStandards = internalMutation({
   args: {
@@ -1109,7 +1194,8 @@ const recordRow = v.object({
 /**
  * Inserts or updates records matched on (type, age, gender, class),
  * normalized like `upsert_record`. A lift missing from the row clears it, as
- * the Python writer's `None` did. Never deletes. Without `allowShrink`, a
+ * the Python writer's `None` did. Deletes nothing (the syncs then prune the
+ * classes their source no longer lists, `pruneRecords`). Without `allowShrink`, a
  * payload that clears more of the matched records' stored lifts than
  * `exceedsShrink` allows is refused (nothing written): a lift row the parser
  * stopped finding reads as no record for every class at once. A key the
@@ -1175,6 +1261,90 @@ export const upsertRecords = internalMutation({
     }
     if (outcomes.some((o) => o.wasChanged)) await recordWrite(ctx, 'records', [{ kind: 'table', key: 'records' }]);
     return outcomes;
+  },
+});
+
+/** A stored class (record or standard) as the prunes compare it: age and gender normalized. */
+const classKey = (r: { ageCategory: string; gender: string; weightClass: string }) =>
+  JSON.stringify([normalizeAgeCategory(r.ageCategory), normalizeGender(r.gender), r.weightClass]);
+const groupKey = (r: { ageCategory: string; gender: string }) => JSON.stringify([normalizeAgeCategory(r.ageCategory), normalizeGender(r.gender)]);
+const classArg = v.object({ ageCategory: v.string(), gender: v.string(), weightClass: v.string() });
+
+/**
+ * The stored rows a source no longer lists, of `stored` (the rows in the
+ * sync's scope). Without `allowShrink` it refuses to delete more than
+ * `exceedsShrink` allows, or every class of an (age, gender) group: a
+ * source that partly broke (an age group relabelled, a table the parser
+ * stopped finding) looks the same as classes that went away, while a class
+ * change keeps every group with classes.
+ */
+function droppedClasses<T extends { ageCategory: string; gender: string; weightClass: string }>(
+  what: string,
+  stored: readonly T[],
+  keep: readonly { ageCategory: string; gender: string; weightClass: string }[],
+  allowShrink: boolean | undefined,
+): T[] {
+  if (!keep.length) throw new Error(`refusing to prune ${what} against an empty payload`);
+  const kept = new Set(keep.map(classKey));
+  const dropped = stored.filter((row) => !kept.has(classKey(row)));
+  if (allowShrink) return dropped;
+  const rerun = `If it really dropped them (a class change), check the source by hand and rerun its sync with '{"allowShrink":true}' (its '{"dryRun":true}' lists them)`;
+  const keptGroups = new Set(keep.map(groupKey));
+  const emptied = [...new Set(dropped.filter((row) => !keptGroups.has(groupKey(row))).map((row) => `${normalizeAgeCategory(row.ageCategory)} ${normalizeGender(row.gender)}`))];
+  if (emptied.length) {
+    throw new Error(`refusing to delete every stored ${what} class of ${emptied.join(', ')}: the source lists none (an age group it relabelled or the parser missed?). ${rerun}`);
+  }
+  if (exceedsShrink(dropped.length, stored.length)) {
+    throw new Error(`refusing to delete ${dropped.length} of ${stored.length} stored ${what} classes the source no longer lists (the source may be partly broken). ${rerun}`);
+  }
+  return dropped;
+}
+
+/**
+ * Deletes the standards classes the PDF no longer lists (`keep` is every
+ * class the sync just wrote), so retired classes are not listed beside the
+ * current ones. The standards sync is one PDF for every class: an exact set.
+ */
+export const pruneStandards = internalMutation({
+  // `dryRun`: check the guard and list what would be deleted, deleting nothing.
+  args: { keep: v.array(classArg), allowShrink: v.optional(v.boolean()), dryRun: v.optional(v.boolean()) },
+  handler: async (ctx, { keep, allowShrink, dryRun }) => {
+    const dropped = droppedClasses('standards', await ctx.db.query('standards').collect(), keep, allowShrink);
+    if (dryRun) return { deleted: dropped.map((r) => `${r.ageCategory} ${r.gender} ${r.weightClass}`) };
+    for (const row of dropped) await ctx.db.delete(row._id);
+    if (dropped.length) await recordWrite(ctx, 'standards', [{ kind: 'table', key: 'standards' }]);
+    return { deleted: dropped.map((r) => `${r.ageCategory} ${r.gender} ${r.weightClass}`) };
+  },
+});
+
+/**
+ * Deletes the classes of `recordType` its source no longer lists (`keep` is
+ * every class the sync just wrote), within `groups` (age and gender) when
+ * given: a source read in parts (UMWF's tabs) prunes only the parts it read,
+ * so a tab that failed keeps its classes.
+ */
+export const pruneRecords = internalMutation({
+  args: {
+    recordType: v.string(),
+    keep: v.array(classArg),
+    groups: v.optional(v.array(v.object({ ageCategory: v.string(), gender: v.string() }))),
+    allowShrink: v.optional(v.boolean()),
+    // Check the guard and list what would be deleted, deleting nothing.
+    dryRun: v.optional(v.boolean()),
+  },
+  handler: async (ctx, { recordType, keep, groups, allowShrink, dryRun }) => {
+    if (keep.some((row) => groups !== undefined && !groups.some((g) => groupKey(g) === groupKey(row)))) {
+      throw new Error(`a ${recordType} class to keep is outside the groups pruned`);
+    }
+    const scope = groups === undefined ? null : new Set(groups.map(groupKey));
+    const stored = (await ctx.db.query('records').withIndex('by_record_type', (q) => q.eq('recordType', recordType)).collect()).filter(
+      (row) => scope === null || scope.has(groupKey(row)),
+    );
+    const dropped = droppedClasses(`${recordType} record`, stored, keep, allowShrink);
+    if (dryRun) return { deleted: dropped.map((r) => `${r.ageCategory} ${r.gender} ${r.weightClass}`) };
+    for (const row of dropped) await ctx.db.delete(row._id);
+    if (dropped.length) await recordWrite(ctx, 'records', [{ kind: 'table', key: 'records' }]);
+    return { deleted: dropped.map((r) => `${r.ageCategory} ${r.gender} ${r.weightClass}`) };
   },
 });
 

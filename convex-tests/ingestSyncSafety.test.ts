@@ -3,6 +3,8 @@ import {
   deleteLiftingResults,
   deleteMissingIntlRankingGroups,
   pruneEventResults,
+  pruneRecords,
+  pruneStandards,
   replaceMeetAthletes,
   RESULT_PRUNE_BATCH,
   replaceWsoRecordSet,
@@ -374,3 +376,82 @@ describe('start lists loaded by hand (#388, #219)', () => {
     expect(await upsert({ db }, { meet: 'Meet', rows: [entry('Bo', '2')] })).toMatchObject({ inserted: 1, notOnStartList: 0 });
   });
 });
+
+describe('records and standards a source stops listing are deleted (#255)', () => {
+  type Key = { ageCategory: string; gender: string; weightClass: string };
+  const prune = handlerOf<{ recordType: string; keep: Key[]; groups?: { ageCategory: string; gender: string }[]; allowShrink?: boolean; dryRun?: boolean }, { deleted: string[] }>(pruneRecords);
+  const pruneStd = handlerOf<{ keep: Key[]; allowShrink?: boolean; dryRun?: boolean }, { deleted: string[] }>(pruneStandards);
+  const record = (recordType: string, ageCategory: string, gender: string, weightClass: string) => ({ recordType, ageCategory, gender, weightClass, totalRecord: 200 });
+  const key = ({ ageCategory, gender, weightClass }: Key) => ({ ageCategory, gender, weightClass });
+  const names = (rows: Record<string, unknown>[]) => rows.map((r) => `${r.recordType ?? ''} ${r.ageCategory} ${r.gender} ${r.weightClass}`.trim());
+
+  it('deletes a class the source dropped, of that record type only, keeping the ones it lists', async () => {
+    const stored = [
+      record('USAW', 'Senior', 'Men', '71kg'),
+      record('USAW', 'Senior', 'Men', '70kg'),
+      record('USAW', 'U17', 'Women', '45kg'),
+      record('IWF', 'Senior', 'Men', '71kg'),
+    ];
+    const { db, rows } = fakeDb({ records: stored });
+    // The scraper sends lowercase ages and genders; stored rows are normalized.
+    const keep = [{ ageCategory: 'senior', gender: 'men', weightClass: '70kg' }, { ageCategory: 'u17', gender: 'women', weightClass: '45kg' }];
+    expect(await prune({ db }, { recordType: 'USAW', keep })).toEqual({ deleted: ['Senior Men 71kg'] });
+    expect(names(rows('records'))).toEqual(['USAW Senior Men 70kg', 'USAW U17 Women 45kg', 'IWF Senior Men 71kg']);
+  });
+
+  it('prunes only the groups a source read (a UMWF tab that failed keeps its classes)', async () => {
+    const stored = [
+      record('UMWF', 'Masters 50', 'Men', '94kg'),
+      record('UMWF', 'Masters 50', 'Men', '98kg'),
+      record('UMWF', 'Masters 55', 'Men', '98kg'),
+    ];
+    const { db, rows } = fakeDb({ records: stored });
+    const keep = [{ ageCategory: 'Masters 50', gender: 'men', weightClass: '94kg' }];
+    expect(await prune({ db }, { recordType: 'UMWF', keep, groups: [{ ageCategory: 'Masters 50', gender: 'men' }] })).toEqual({ deleted: ['Masters 50 Men 98kg'] });
+    expect(names(rows('records'))).toEqual(['UMWF Masters 50 Men 94kg', 'UMWF Masters 55 Men 98kg']);
+    await expect(prune({ db }, { recordType: 'UMWF', keep, groups: [{ ageCategory: 'Masters 55', gender: 'men' }] })).rejects.toThrow('outside the groups');
+  });
+
+  it('refuses to delete many classes at once without allowShrink, and refuses an empty payload', async () => {
+    const old = Array.from({ length: 40 }, (_, i) => record('USAW', 'Senior', 'Men', `${50 + i}kg`));
+    const { db, rows } = fakeDb({ records: old });
+    const keep = [key({ ageCategory: 'Senior', gender: 'Men', weightClass: '50kg' })];
+    await expect(prune({ db }, { recordType: 'USAW', keep })).rejects.toThrow('refusing to delete 39 of 40 stored USAW record classes');
+    expect(rows('records')).toHaveLength(40);
+    await expect(prune({ db }, { recordType: 'USAW', keep: [] })).rejects.toThrow('empty payload');
+    expect((await prune({ db }, { recordType: 'USAW', keep, allowShrink: true })).deleted).toHaveLength(39);
+    expect(rows('records')).toHaveLength(1);
+  });
+
+  it('deletes the standards of classes the PDF no longer lists (#408)', async () => {
+    const standard = (gender: string, weightClass: string) => ({ ageCategory: 'Senior', gender, weightClass, standardA: 300, standardB: 280 });
+    const { db, rows } = fakeDb({ standards: [standard('Men', '71kg'), standard('Men', '70kg'), standard('Women', '48kg'), standard('Women', '49kg')] });
+    const keep = [key(standard('Men', '70kg')), key(standard('Women', '49kg'))];
+    expect(await pruneStd({ db }, { keep })).toEqual({ deleted: ['Senior Men 71kg', 'Senior Women 48kg'] });
+    expect(names(rows('standards'))).toEqual(['Senior Men 70kg', 'Senior Women 49kg']);
+  });
+
+  it('refuses to empty an age group the source no longer lists at all (relabelled, or missed by the parser)', async () => {
+    const stored = [record('USAW', 'U17', 'Men', '56kg'), record('USAW', 'U17', 'Men', '60kg'), ...Array.from({ length: 30 }, (_, i) => record('USAW', 'Senior', 'Men', `${50 + i}kg`))];
+    const { db, rows } = fakeDb({ records: stored });
+    const keep = stored.filter((r) => r.ageCategory === 'Senior').map(key);
+    await expect(prune({ db }, { recordType: 'USAW', keep })).rejects.toThrow('refusing to delete every stored USAW record class of U17 Men');
+    expect(rows('records')).toHaveLength(32);
+    // A class change keeps the group: the old classes go, the group stays.
+    const changed = [...keep, key({ ageCategory: 'U17', gender: 'Men', weightClass: '55kg' })];
+    expect((await prune({ db }, { recordType: 'USAW', keep: changed })).deleted).toEqual(['U17 Men 56kg', 'U17 Men 60kg']);
+  });
+
+  it('lists what it would delete on a dry run, refusing as the real prune would, and deletes nothing', async () => {
+    const old = Array.from({ length: 40 }, (_, i) => record('USAW', 'Senior', 'Men', `${50 + i}kg`));
+    const { db, rows } = fakeDb({ records: old });
+    const keep = [key({ ageCategory: 'Senior', gender: 'Men', weightClass: '50kg' })];
+    await expect(prune({ db }, { recordType: 'USAW', keep, dryRun: true })).rejects.toThrow('refusing to delete 39 of 40');
+    expect((await prune({ db }, { recordType: 'USAW', keep, dryRun: true, allowShrink: true })).deleted).toHaveLength(39);
+    expect(rows('records')).toHaveLength(40);
+    const std = fakeDb({ standards: [{ ageCategory: 'Senior', gender: 'Men', weightClass: '71kg', standardA: 1, standardB: 1 }, { ageCategory: 'Senior', gender: 'Men', weightClass: '70kg', standardA: 1, standardB: 1 }] });
+    expect(await pruneStd({ db: std.db }, { keep: [key({ ageCategory: 'Senior', gender: 'Men', weightClass: '70kg' })], dryRun: true })).toEqual({ deleted: ['Senior Men 71kg'] });
+    expect(std.rows('standards')).toHaveLength(2);
+  });
+});
+
