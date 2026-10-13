@@ -4,7 +4,11 @@ const REVENUECAT_JS_VERSION = "1.47.3";
 
 // Subresource Integrity for the pinned SDK files, so a compromised or
 // mis-served CDN file is refused instead of running with the Clerk session.
-// The CSP in vercel.json allows only these versions' directories. Changing a
+// The CSP in vercel.json allows only these versions' directories. Clerk's own
+// chunk loader fetches its lazily loaded chunks from those directories without
+// integrity hashes, so the chunks rest on the CSP pin and the npm version's
+// immutability alone; covering them too means serving the SDKs from this
+// site's origin. Changing a
 // version means changing its hash here and its path there
 // (tests/config/vercel.test.mjs checks they agree). To compute a hash:
 //   curl -sL <url> | openssl dgst -sha384 -binary | openssl base64 -A
@@ -32,7 +36,14 @@ function loadScript(src, attributes = {}) {
       script.dataset.loaded = "true";
       resolve();
     }, { once: true });
-    script.addEventListener("error", () => reject(new Error(`Failed to load ${src}`)), { once: true });
+    script.addEventListener("error", () => {
+      // A script element runs once: a failed one (offline, or refused by its
+      // integrity check) would never fire again, so a later call, such as the
+      // next data page's subscription check, would wait forever. Remove it so
+      // that call loads afresh and fails or succeeds on its own.
+      script.remove();
+      reject(new Error(`Failed to load ${src}`));
+    }, { once: true });
     if (!existing) document.head.appendChild(script);
   });
 }

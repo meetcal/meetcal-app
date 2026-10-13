@@ -42,9 +42,11 @@ deploy.
 
 `src/auth.rs` loads Clerk and RevenueCat's web SDKs through `src/auth_bridge.js`, from pinned
 versions on jsDelivr and unpkg. Each file loads with a Subresource Integrity hash, and the CSP
-allows only those versions' directories, so upgrading an SDK means changing its version and hash
-in `auth_bridge.js` and its path in `vercel.json` (`tests/config/vercel.test.mjs` checks they
-agree). The publishable keys are compiled in from
+allows only those versions' directories. The chunks Clerk loads later from those directories
+carry no integrity hash (Clerk's chunk loader doesn't set one), so only the CSP pin covers them.
+Upgrading an SDK means changing its version and hash in `auth_bridge.js` and its path in
+`vercel.json` (`tests/config/vercel.test.mjs` checks they agree). The publishable keys are
+compiled in from
 `CLERK_PUBLISHABLE_KEY` and `REVENUECAT_PUBLIC_API_KEY`.
 
 `SubscriptionGate` (`src/components/subscription_gate.rs`) wraps each competition data route in
