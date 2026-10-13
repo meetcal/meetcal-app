@@ -3,7 +3,6 @@ import { getChevronIcon } from "@/lib/start-list-utils";
 import { ThemedText } from "@/components/ui/ThemedText";
 import { ThemedView } from "@/components/ui/ThemedView";
 import { GenericFilterModal } from "@/components/ui/filters";
-import { useTheme } from "@/contexts/ThemeContext";
 import { useAppColors } from "@/hooks/useAppColors";
 import { useMutableResource } from "@/hooks/useMutableResource";
 import {
@@ -66,7 +65,6 @@ type CommitOptions = {
 export default function WidgetSettingsScreen() {
   const screenInsets = useScreenHorizontalInsets();
   const colors = useAppColors();
-  const { currentTheme } = useTheme();
   const insets = useSafeAreaInsets();
   const [settings, setSettings] = useState<WidgetSettings>(defaultWidgetSettings);
   const [settingsLoaded, setSettingsLoaded] = useState(false);
@@ -240,10 +238,10 @@ export default function WidgetSettingsScreen() {
           gestureDirection: "horizontal",
           animation: "slide_from_right",
           headerTitleStyle: {
-            color: currentTheme === "dark" ? "#fff" : "#000",
+            color: colors.headerTitle,
           },
           headerStyle: {
-            backgroundColor: currentTheme === "dark" ? "#000000" : "#F5F5F5",
+            backgroundColor: colors.headerBackground,
           },
           headerShadowVisible: false,
           headerBackButtonDisplayMode: "minimal",

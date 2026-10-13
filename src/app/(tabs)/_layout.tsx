@@ -2,21 +2,20 @@ import { HapticTab } from "@/components/ui/HapticTab";
 import { IconSymbol } from "@/components/ui/IconSymbol";
 import { useAppColors } from "@/hooks/useAppColors";
 import { isMaestroE2E } from "@/lib/e2e";
+import { jsTabBarLayout, usesNativeTabs } from "@/lib/tab-bar-layout";
 import { Tabs } from "expo-router";
 import { NativeTabs } from "expo-router/native-tabs";
 import { Platform, StyleSheet } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 export default function TabLayout() {
   const colors = useAppColors();
+  const insets = useSafeAreaInsets();
+  // Sized from the bottom inset, so Android's navigation bar and the iOS home
+  // indicator sit below the icons rather than over them.
+  const tabBar = jsTabBarLayout(insets.bottom);
 
-  // Check if iOS 26+ for NativeTabs
-  const iosVersion =
-    Platform.OS === "ios"
-      ? parseInt(String(Platform.Version).split(".")[0], 10)
-      : 0;
-  const isIOS26OrHigher = iosVersion >= 26 && !isMaestroE2E();
-
-  if (Platform.OS === "ios" && isIOS26OrHigher) {
+  if (usesNativeTabs(Platform.OS, Platform.Version, isMaestroE2E())) {
     return (
       <NativeTabs
         labelStyle={{ color: colors.secondaryText }}
@@ -57,8 +56,8 @@ export default function TabLayout() {
           right: 0,
           elevation: 0,
           shadowOpacity: 0,
-          height: 70,
-          paddingBottom: 15,
+          height: tabBar.height,
+          paddingBottom: tabBar.paddingBottom,
           paddingTop: 0,
         },
         tabBarItemStyle: {
