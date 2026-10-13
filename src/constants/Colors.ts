@@ -45,6 +45,13 @@ export const Colors = {
     danger: '#FF3B30',
     wrappedPrimary: '#1DB954',
     wrappedAccent: '#FF6B6B',
+    // Stack headers: the screen background, with a black title.
+    headerBackground: '#F5F5F5',
+    headerTitle: '#000000',
+    // The Schedule day-dots pill floats over content, so it is translucent.
+    pageIndicatorFill: 'rgba(0,0,0,0.08)',
+    pageIndicatorBorder: 'rgba(0,0,0,0.06)',
+    pageIndicatorDotShadow: 'rgba(0,0,0,0.2)',
   },
   dark: {
     text: '#ECEDEE',
@@ -81,6 +88,11 @@ export const Colors = {
     danger: '#FF3B30',
     wrappedPrimary: '#1DB954',
     wrappedAccent: '#FF6B6B',
+    headerBackground: '#000000',
+    headerTitle: '#FFFFFF',
+    pageIndicatorFill: 'rgba(58,58,60,0.65)',
+    pageIndicatorBorder: 'rgba(255,255,255,0.08)',
+    pageIndicatorDotShadow: 'rgba(0,0,0,0.35)',
   },
 };
 
