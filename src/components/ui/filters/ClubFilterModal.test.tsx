@@ -136,3 +136,27 @@ describe("ClubFilterModal", () => {
     expect(headerJson).not.toContain("Favorites");
   });
 });
+
+describe("screen reader selection state of the fixed rows", () => {
+  function headerRows(selectedClub: string) {
+    renderModal({ selectedClub, starredClubs: ["Club 001"] });
+    const header = flashListCalls.at(-1)?.ListHeaderComponent;
+    let tree!: ReturnType<typeof create>;
+    act(() => {
+      tree = create(<>{header}</>);
+    });
+    return tree.root.findAll(
+      (node) => node.props?.accessibilityRole === "button" && typeof node.props.onPress === "function",
+    );
+  }
+
+  it("marks All Clubs or Favorites as the selected option", () => {
+    const [allClubs, favorites] = headerRows("");
+    expect(allClubs.props.accessibilityState).toEqual({ selected: true });
+    expect(favorites.props.accessibilityState).toEqual({ selected: false });
+
+    const [allAgain, favoritesAgain] = headerRows(STARRED_CLUBS_FILTER);
+    expect(allAgain.props.accessibilityState).toEqual({ selected: false });
+    expect(favoritesAgain.props.accessibilityState).toEqual({ selected: true });
+  });
+});

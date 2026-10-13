@@ -16,6 +16,7 @@ import {
   StyleSheet,
   View,
 } from "react-native";
+import { FallbackHeader } from "@/components/ui/FallbackHeader";
 import { SubscriptionGate } from "@/components/ui/SubscriptionGate";
 import { useScreenHorizontalInsets } from "@/hooks/useScreenInsets";
 
@@ -74,6 +75,9 @@ function OfflineDataContent() {
           },
         ]}
       >
+        {/* The full header below is not rendered yet: without this the
+            spinner had no Back button. */}
+        <FallbackHeader title="Offline Data" />
         <ActivityIndicator size="large" color={colors.link} />
       </ThemedView>
     );
