@@ -571,6 +571,10 @@ export default function StartListScreen() {
             renderItem={renderListItem}
             removeClippedSubviews={false}
             drawDistance={350}
+            // With the search keyboard up, the first tap on an athlete expands
+            // the row instead of only hiding the keyboard.
+            keyboardShouldPersistTaps="handled"
+            keyboardDismissMode="on-drag"
             contentContainerStyle={[
               styles.listContent,
               { paddingBottom: 80 + insets.bottom },
