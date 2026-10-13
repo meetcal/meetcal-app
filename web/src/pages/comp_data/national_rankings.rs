@@ -218,7 +218,7 @@ pub fn NationalRankings() -> impl IntoView {
             heading="National Rankings"
             intro="Find each athlete’s best total for a USAW or USAMW division. Add a year to limit the rankings to that season."
         >
-            <NationalRankingsForm set_request />
+            <NationalRankingsForm submit=Callback::new(move |query| rankings.submit(|| set_request.set(Some(query)))) />
             <p class="data-help">"Division choices match the gender, age group, and weight classes used in the MeetCal app."</p>
 
             {move || if request.with(Option::is_none) {
@@ -235,7 +235,7 @@ pub fn NationalRankings() -> impl IntoView {
 }
 
 #[component]
-fn NationalRankingsForm(set_request: WriteSignal<Option<NationalRankingQuery>>) -> impl IntoView {
+fn NationalRankingsForm(submit: Callback<NationalRankingQuery>) -> impl IntoView {
     let (federation, set_federation) = signal("USAW".to_owned());
     let (gender, set_gender) = signal("Men".to_owned());
     let (age_group, set_age_group) = signal("Senior".to_owned());
@@ -248,7 +248,7 @@ fn NationalRankingsForm(set_request: WriteSignal<Option<NationalRankingQuery>>) 
             let age_category = division.get().trim().to_owned();
             if !age_category.is_empty() {
                 let selected_year = year.get().trim().to_owned();
-                set_request.set(Some(NationalRankingQuery { federation: federation.get(), age_category, year: (!selected_year.is_empty()).then_some(selected_year) }));
+                submit.run(NationalRankingQuery { federation: federation.get(), age_category, year: (!selected_year.is_empty()).then_some(selected_year) });
             }
         }>
             <label>"Federation"<select class="data-filter" on:change=move |event| set_federation.set(event_target_value(&event))><option value="USAW">"USAW"</option><option value="USAMW">"USAMW"</option></select></label>

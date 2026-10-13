@@ -105,6 +105,17 @@ where
             .with(|answer| read(current_state(answer.as_ref(), &key)))
     }
 
+    /// Runs `set_request`, which changes what `key()` reads, and sends the
+    /// request even when it is the one already shown: a search submitted
+    /// again searches again instead of keeping its earlier answer or error.
+    pub(crate) fn submit(&self, set_request: impl FnOnce()) {
+        let before = self.key.get_untracked();
+        set_request();
+        if self.key.get_untracked() == before {
+            self.retry();
+        }
+    }
+
     /// Sends the current request again.
     pub(crate) fn retry(&self) {
         self.attempts.try_update(|count| *count += 1);

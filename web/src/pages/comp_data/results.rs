@@ -65,7 +65,7 @@ pub fn Results() -> impl IntoView {
 
     view! {
         <DataPage heading="Results" intro="Search an athlete’s competition history.">
-            <ResultsSearchForm name set_name set_request />
+            <ResultsSearchForm name set_name submit=Callback::new(move |query| results.submit(|| set_request.set(Some(query)))) />
 
             {move || results.with(|state| match state {
                 LoadState::Loading => view! { <TableSkeleton columns=14 /> }.into_any(),
@@ -84,7 +84,7 @@ pub fn Results() -> impl IntoView {
 fn ResultsSearchForm(
     name: ReadSignal<String>,
     set_name: WriteSignal<String>,
-    set_request: WriteSignal<Option<AthleteSearchQuery>>,
+    submit: Callback<AthleteSearchQuery>,
 ) -> impl IntoView {
     view! {
         <form class="result-search" on:submit=move |event| {
@@ -92,7 +92,7 @@ fn ResultsSearchForm(
             let athlete = name.get().trim().to_owned();
             if !athlete.is_empty() {
                 let (start_date, end_date) = search_date_range();
-                set_request.set(Some(AthleteSearchQuery::between(athlete, start_date, end_date)));
+                submit.run(AthleteSearchQuery::between(athlete, start_date, end_date));
             }
         }>
             <AthleteAutocomplete value=name set_value=set_name input_id="results-athlete" />
