@@ -78,13 +78,37 @@ fn lift(value: Option<f64>) -> String {
     value.map_or_else(|| NO_VALUE.to_owned(), |value| value.to_string())
 }
 
-/// Why no WSO athlete is listed: the roster carries no WSOs at all (the
-/// synced entries have none), or none of them is this WSO.
-fn empty_message(roster_has_wso: bool) -> &'static str {
-    if roster_has_wso {
-        "No athletes from this WSO were found at the meet."
-    } else {
-        "This meet's start list doesn't include WSOs, so its WSO athletes can't be shown."
+/// How much of a meet's roster names a WSO: synced entries carry none, and
+/// a roster can mix them with a hand-loaded start list's rows.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum WsoCoverage {
+    None,
+    Partial,
+    Full,
+}
+
+/// The WSO athlete count: a number only when every roster row names a WSO;
+/// otherwise the athletes found and a `+` (some unlabeled ones may be this
+/// WSO's too), or a dash when none was found.
+fn wso_count(count: usize, coverage: WsoCoverage) -> String {
+    match coverage {
+        WsoCoverage::Full => count.to_string(),
+        WsoCoverage::Partial if count > 0 => format!("{count}+"),
+        _ => NO_VALUE.to_owned(),
+    }
+}
+
+/// Why no WSO athlete is listed: the roster carries no WSOs at all, only
+/// some (an unlabeled athlete may be this WSO's), or none of them is this one.
+fn empty_message(coverage: WsoCoverage) -> &'static str {
+    match coverage {
+        WsoCoverage::Full => "No athletes from this WSO were found at the meet.",
+        WsoCoverage::Partial => {
+            "No athletes are listed under this WSO, but part of this meet's start list doesn't include WSOs."
+        }
+        WsoCoverage::None => {
+            "This meet's start list doesn't include WSOs, so its WSO athletes can't be shown."
+        }
     }
 }
 
@@ -92,7 +116,7 @@ fn dashboard(athletes: &[Athlete], results: &[LiftingResult], selected_wso: &str
     let WsoDashboardData {
         meet_athletes,
         wso_athletes,
-        roster_has_wso,
+        wso_coverage,
         attempts,
         rows,
     } = build_dashboard_data(athletes, results, selected_wso);
@@ -102,8 +126,8 @@ fn dashboard(athletes: &[Athlete], results: &[LiftingResult], selected_wso: &str
     } else {
         format!("{}kg", attempts.volume)
     };
-    view! { <div class="data-metric-grid"><DataMetric label="Meet athletes" value=meet_athletes.to_string() /><DataMetric label="WSO athletes" value=if roster_has_wso { wso_athletes.to_string() } else { NO_VALUE.to_owned() } /><DataMetric label="Snatch makes" value=make_rate(attempts.snatch_makes, attempts.snatch_attempts) /><DataMetric label="C&J makes" value=make_rate(attempts.cj_makes, attempts.cj_attempts) /><DataMetric label="Combined makes" value=make_rate(attempts.makes(), attempts.attempts()) /><DataMetric label="Weight lifted" value=weight_lifted /></div>
-    <DataTable><thead><tr><th>"Athlete"</th><th>"Gender"</th><th>"Class"</th><th>"Club"</th><th>"Entry total"</th><th>"Snatch"</th><th>"C&J"</th><th>"Total"</th></tr></thead><tbody>{(wso_athletes == 0).then(|| view! { <EmptyTableRow columns=8 message=empty_message(roster_has_wso) /> })}{rows}</tbody></DataTable> }.into_any()
+    view! { <div class="data-metric-grid"><DataMetric label="Meet athletes" value=meet_athletes.to_string() /><DataMetric label="WSO athletes" value=wso_count(wso_athletes, wso_coverage) /><DataMetric label="Snatch makes" value=make_rate(attempts.snatch_makes, attempts.snatch_attempts) /><DataMetric label="C&J makes" value=make_rate(attempts.cj_makes, attempts.cj_attempts) /><DataMetric label="Combined makes" value=make_rate(attempts.makes(), attempts.attempts()) /><DataMetric label="Weight lifted" value=weight_lifted /></div>
+    <DataTable><thead><tr><th>"Athlete"</th><th>"Gender"</th><th>"Class"</th><th>"Club"</th><th>"Entry total"</th><th>"Snatch"</th><th>"C&J"</th><th>"Total"</th></tr></thead><tbody>{(wso_athletes == 0).then(|| view! { <EmptyTableRow columns=8 message=empty_message(wso_coverage) /> })}{rows}</tbody></DataTable> }.into_any()
 }
 
 struct WsoAthleteRow {
@@ -121,8 +145,8 @@ struct WsoAthleteRow {
 struct WsoDashboardData {
     meet_athletes: usize,
     wso_athletes: usize,
-    /// Whether any roster row names a WSO (synced entries carry none).
-    roster_has_wso: bool,
+    /// How many roster rows name a WSO (synced entries carry none).
+    wso_coverage: WsoCoverage,
     attempts: AttemptSummary,
     rows: Vec<WsoAthleteRow>,
 }
@@ -181,12 +205,24 @@ fn build_dashboard_data(
     WsoDashboardData {
         meet_athletes: athletes.len(),
         wso_athletes: members.len(),
-        roster_has_wso: athletes.iter().any(|athlete| {
-            athlete
-                .wso
-                .as_deref()
-                .is_some_and(|wso| !wso.trim().is_empty())
-        }),
+        wso_coverage: {
+            let labeled = athletes
+                .iter()
+                .filter(|athlete| {
+                    athlete
+                        .wso
+                        .as_deref()
+                        .is_some_and(|wso| !wso.trim().is_empty())
+                })
+                .count();
+            if labeled == 0 {
+                WsoCoverage::None
+            } else if labeled < athletes.len() {
+                WsoCoverage::Partial
+            } else {
+                WsoCoverage::Full
+            }
+        },
         attempts: summary,
         rows,
     }
@@ -327,7 +363,7 @@ mod tests {
         assert_eq!(data.rows.len(), 1);
         assert_eq!(data.rows[0].name, "Alex");
         assert_eq!(data.rows[0].total, Some(215.0));
-        assert!(data.roster_has_wso);
+        assert_eq!(data.wso_coverage, WsoCoverage::Full);
     }
 
     #[test]
@@ -345,9 +381,9 @@ mod tests {
             session_platform: None,
         };
         let data = build_dashboard_data(&[athlete(None), athlete(Some(" "))], &[], "Carolina");
-        assert!(!data.roster_has_wso);
+        assert_eq!(data.wso_coverage, WsoCoverage::None);
         assert_eq!(
-            empty_message(data.roster_has_wso),
+            empty_message(data.wso_coverage),
             "This meet's start list doesn't include WSOs, so its WSO athletes can't be shown."
         );
 
@@ -357,5 +393,32 @@ mod tests {
         assert_eq!(lift(data.rows[0].total), "\u{2014}");
         assert_eq!(make_rate(0, data.attempts.attempts()), "\u{2014}");
         assert_eq!(make_rate(1, 2), "50.0%");
+    }
+
+    #[test]
+    fn a_roster_with_some_wsos_never_claims_none_attended() {
+        let athlete = |name: &str, wso: Option<&str>| Athlete {
+            name: name.to_owned(),
+            age: 30.0,
+            club: "C".to_owned(),
+            wso: wso.map(str::to_owned),
+            gender: "Men".to_owned(),
+            weight_class: "88".to_owned(),
+            entry_total: 250.0,
+            adaptive: false,
+            session_number: None,
+            session_platform: None,
+        };
+        let roster = [athlete("Dana", Some("Colorado")), athlete("Eli", None)];
+        let data = build_dashboard_data(&roster, &[], "California North");
+        assert_eq!(data.wso_coverage, WsoCoverage::Partial);
+        assert_eq!(wso_count(data.wso_athletes, data.wso_coverage), "\u{2014}");
+        assert_ne!(
+            empty_message(data.wso_coverage),
+            "No athletes from this WSO were found at the meet."
+        );
+        let data = build_dashboard_data(&roster, &[], "Colorado");
+        assert_eq!(wso_count(data.wso_athletes, data.wso_coverage), "1+");
+        assert_eq!(wso_count(2, WsoCoverage::Full), "2");
     }
 }
