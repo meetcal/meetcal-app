@@ -7,20 +7,29 @@
  * used to match the raw query as a single substring, untrimmed.
  */
 
-/** The query's lowercase words; `[]` for a blank query (which matches every name). */
+/**
+ * A name or query folded for substring search: Unicode NFC, then lowercase.
+ * NFC, like the name key (`normalizeAthleteName`), so "José" typed with a
+ * precomposed é finds a roster name stored with a combining accent.
+ */
+export function foldForNameSearch(text: string): string {
+  return text.normalize('NFC').toLowerCase();
+}
+
+/** The query's folded words; `[]` for a blank query (which matches every name). */
 export function searchWords(query: string): string[] {
-  const trimmed = query.trim().toLowerCase();
+  const trimmed = foldForNameSearch(query).trim();
   return trimmed ? trimmed.split(/\s+/) : [];
 }
 
 /** Whether `name` contains every word in `words` (from `searchWords`). */
 export function nameMatchesSearchWords(name: string, words: readonly string[]): boolean {
-  return lowerNameMatchesSearchWords(name.toLowerCase(), words);
+  return lowerNameMatchesSearchWords(foldForNameSearch(name), words);
 }
 
 /**
- * `nameMatchesSearchWords` for a name already lowercased, so a list filtered
- * on every keystroke can lowercase its names once.
+ * `nameMatchesSearchWords` for a name already folded (`foldForNameSearch`),
+ * so a list filtered on every keystroke can fold its names once.
  */
 export function lowerNameMatchesSearchWords(
   lowerName: string,
