@@ -34,7 +34,11 @@ What the writers match on:
 
 The club-list builder reads at most 100 distinct club names per query and publishes the completed list in one mutation. A roster write during the scan renews the club hint, so the view stays stale for another refresh rather than marking mixed data fresh.
 
-National ranking builders and their live parity checks read at most 1,000 results per query, merging each athlete's best total across pages. Builders publish only the complete ranking, with the same freshness guarantee.
+National ranking builders and their live parity checks read at most 1,000 results per query, merging each athlete's best total across pages. Builders publish only the complete ranking, with the same freshness guarantee. An athlete is one ranking row under any spelling of their name (folded, as `normalizeName` folds it), shown under the spelling of their best result. A result whose numbers cannot be real is not ranked (`lib/plausible.ts`: a total that is not snatch + clean & jerk, a made attempt one and a half times the lifter's other attempts in the lift and 20 kg heavier, as a `633` typed for `63` is, or a lift or total over the world records). The rankings are views, so after a deploy that changes this rule, rebuild them (`views:rebuildAll`).
+
+`scripts/usamw-results.ts` checks every row it parses the same way, and also refuses a body weight outside 20-250 kg and attempts that go down within a lift: it prints each failing row with its PDF line and writes nothing unless `--skip-invalid` (which writes the rows that pass). It refuses a PDF in which no attempt reads as a miss while most totals disagree with the bests (misses marked other than in red) outright.
+
+Some events' results were stored by an earlier loader under each lifter's birth date, or one day per lifter. `npx convex run migrations:resultDateProblems` lists the events whose results carry about one date per lifter; `migrations:redateEventResults '{"eventId":"…","meet":"…","date":"YYYY-MM-DD"}'` shows what it would change, and with `"dryRun":false` gives those rows the event's date through the write path (200 a call; rerun until `remaining` is 0).
 
 National rankings and the club list are served from their last build even while a change to them is pending: computing them live is more than one query may read. A ranking class or club list with no view yet is answered live only when it fits one page, and otherwise fails with "being built" until the refresh builds it.
 
