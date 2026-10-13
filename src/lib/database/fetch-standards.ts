@@ -40,8 +40,8 @@ function mapRows(rows: readonly CompleteStandardsRow[]): StandardsData {
     if (!result[ageKey] || !result[ageKey][genderKey]) return;
     result[ageKey][genderKey].push({
       weightClass: row.weight_class,
-      a: row.standard_a ?? 0,
-      b: row.standard_b ?? 0,
+      a: row.standard_a,
+      b: row.standard_b,
     });
   });
 
