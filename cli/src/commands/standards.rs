@@ -4,6 +4,7 @@ use comfy_table::Table;
 use serde::Deserialize;
 
 use crate::utils::backend::{NoArgs, queries, query};
+use crate::utils::filters::{Filter, no_match};
 use crate::utils::output::{self, Report};
 
 #[derive(Debug, Deserialize)]
@@ -36,12 +37,28 @@ pub async fn run(args: StandardsArgs) -> Result<()> {
     let age = args.age;
     let gender = args.gender;
     let standards: Vec<Standards> = query(queries::STANDARDS, &NoArgs {}).await?;
-    let mut filtered: Vec<Standards> = standards
-        .into_iter()
-        .filter(|row| {
-            row.age_category.eq_ignore_ascii_case(&age) && row.gender.eq_ignore_ascii_case(&gender)
-        })
-        .collect();
+    let (mut filtered, others): (Vec<Standards>, Vec<Standards>) =
+        standards.into_iter().partition(|row| {
+            row.age_category.eq_ignore_ascii_case(age.trim())
+                && row.gender.eq_ignore_ascii_case(gender.trim())
+        });
+    if filtered.is_empty() {
+        let filters = [
+            Filter {
+                option: "--age",
+                value: &age,
+            },
+            Filter {
+                option: "--gender",
+                value: &gender,
+            },
+        ];
+        let rows: Vec<Vec<&str>> = others
+            .iter()
+            .map(|row| vec![row.age_category.as_str(), row.gender.as_str()])
+            .collect();
+        return Err(no_match("standards", &filters, &rows));
+    }
 
     // sort by weight class low to high
     filtered.sort_by(|a, b| a.standard_a.total_cmp(&b.standard_a));

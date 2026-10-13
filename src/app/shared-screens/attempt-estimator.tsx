@@ -36,6 +36,7 @@ import {
   StyleSheet,
   View,
 } from "react-native";
+import { SubscriptionGate } from "@/components/ui/SubscriptionGate";
 import { useScreenHorizontalInsets } from "@/hooks/useScreenInsets";
 import { Palette } from "@/constants/Palette";
 
@@ -65,7 +66,20 @@ function SkeletonCard({ colors }: { colors: ReturnType<typeof useAppColors> }) {
   );
 }
 
+/**
+ * A premium screen. The buttons that open it check the subscription, but a
+ * `meetcal://` deep link reaches the route directly, so it gates itself like
+ * every other premium screen.
+ */
 export default function AttemptEstimatorScreen() {
+  return (
+    <SubscriptionGate feature="attempt-estimator">
+      <AttemptEstimatorContent />
+    </SubscriptionGate>
+  );
+}
+
+function AttemptEstimatorContent() {
   const screenInsets = useScreenHorizontalInsets();
   const colors = useAppColors();
   const params = useLocalSearchParams<{
