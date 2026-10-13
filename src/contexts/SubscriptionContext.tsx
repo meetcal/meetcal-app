@@ -226,15 +226,59 @@ export function SubscriptionProvider({ children }: { children: React.ReactNode }
     }
   }, []);
 
+  // Each confirmation takes a number; only the newest may publish.
+  const confirmationRef = useRef(0);
+  /**
+   * Re-derive `confirmedEntitlement` the way a check does, reading the app
+   * user id on both sides of `getCustomerInfo`, without touching what the
+   * screens show (`isSubscribed`, `isLoading`, the cache). Unknown on a
+   * failure or an identity change mid-request.
+   */
+  const confirmEntitlement = useCallback(async () => {
+    const confirmation = ++confirmationRef.current;
+    const simulatedStatus = getSimulatedSubscriptionStatus();
+    if (simulatedStatus !== null) {
+      setConfirmedEntitlement({ appUserId: null, isSubscribed: simulatedStatus, simulated: true });
+      return;
+    }
+    try {
+      const requestedFor = await currentAppUserId();
+      const info = await Purchases.getCustomerInfo();
+      const answeredFor = await currentAppUserId();
+      if (confirmation !== confirmationRef.current) return;
+      if (!answeredFor || requestedFor !== answeredFor) return;
+      const isSubscribed = info.entitlements.active[SUBSCRIPTION_ENTITLEMENT_ID] != null;
+      setConfirmedEntitlement({ appUserId: answeredFor, isSubscribed });
+    } catch (error) {
+      devWarn('Could not confirm the entitlement for this user', error);
+    }
+  }, []);
+
+  /**
+   * `confirmedFor`: the RevenueCat user the answer is known to describe,
+   * which only a check can say (it reads the app user id on both sides of
+   * `getCustomerInfo`). A pushed CustomerInfo or a restore can't: a sign-in
+   * between the answer and reading the id would stamp one account's
+   * entitlement on the other. Those clear the confirmation instead and
+   * re-confirm it with a bracketed request, so a destructive write gated on
+   * it waits a moment rather than trusting the wrong account.
+   */
   const recordConfirmedMembership = useCallback((
     subscribed: boolean,
     type: 'free' | 'quarterly' | 'lifetime',
-    appUserId: string | null,
+    confirmedFor: string | null,
   ) => {
     confirmedMembershipRef.current = { subscribed, type };
-    setConfirmedEntitlement({ appUserId, isSubscribed: subscribed });
+    if (confirmedFor) {
+      // Supersedes any re-confirmation still in flight.
+      confirmationRef.current += 1;
+      setConfirmedEntitlement({ appUserId: confirmedFor, isSubscribed: subscribed });
+    } else {
+      setConfirmedEntitlement(null);
+      void confirmEntitlement();
+    }
     void syncOneSignalMembershipTags(subscribed, type);
-  }, [syncOneSignalMembershipTags]);
+  }, [confirmEntitlement, syncOneSignalMembershipTags]);
 
   // A CustomerInfo refresh can finish before OneSignal finishes switching to the
   // signed-in user. Retry the latest confirmed status when that identity arrives.
@@ -519,12 +563,10 @@ export function SubscriptionProvider({ children }: { children: React.ReactNode }
           devLog('Customer info updated. Active entitlements:', Object.keys(info.entitlements.active));
           setIsLoading(true);
           const [hasActiveSubscription, type] = await checkEntitlementStatus(info);
-          // The pushed CustomerInfo is for RevenueCat's current user.
-          const appUserId = await currentAppUserId();
           if (!isCurrentAnswer(generation)) return;
           devLog('Subscription update received:', { hasActiveSubscription, type });
 
-          recordConfirmedMembership(hasActiveSubscription, type, appUserId);
+          recordConfirmedMembership(hasActiveSubscription, type, null);
           setIsSubscribed(hasActiveSubscription);
           setSubscriptionType(type);
           setIsLoading(false);
@@ -596,10 +638,7 @@ export function SubscriptionProvider({ children }: { children: React.ReactNode }
   ) => {
     if (!isCurrentAnswer(generation)) return;
     try {
-      // A restore or purchase answers for RevenueCat's current user.
-      const appUserId = await currentAppUserId();
-      if (!isCurrentAnswer(generation)) return;
-      recordConfirmedMembership(value, type, appUserId);
+      recordConfirmedMembership(value, type, null);
       setIsSubscribed(value);
       setSubscriptionType(type);
       // A check this answer superseded will not clear its own loading flag.

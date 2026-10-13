@@ -153,6 +153,26 @@ describe("NotificationSettings", () => {
     );
   });
 
+  it("keeps showing the default-on policy, with no toast, when the first-run write fails", async () => {
+    jest.spyOn(console, "error").mockImplementation(() => {});
+    const realSetItem = setItemSpy.getMockImplementation();
+    let failed = false;
+    setItemSpy.mockImplementation(async (key: string, value: string) => {
+      if (key === NOTIFICATION_ENABLED_KEY && !failed) {
+        failed = true;
+        throw new Error("storage full");
+      }
+      return realSetItem ? realSetItem(key, value) : undefined;
+    });
+
+    const renderer = await mount("quarterly");
+
+    expect(failed).toBe(true);
+    // Never written, so the reminder policy is still "on" for a subscriber.
+    expect(theSwitch(renderer).props.value).toBe(true);
+    expect(showToast).not.toHaveBeenCalled();
+  });
+
   it("auto-enables while the sign-in check is still resolving, without a toast", async () => {
     // `useAuthGuard` answers null until its cache and network reads land,
     // which can be after this screen's own storage read.

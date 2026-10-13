@@ -186,6 +186,10 @@ export function NotificationSettings({
 
     // The first-run default turns reminders on; a tap flips what is shown.
     const newEnabledState = auto ? true : !effectiveEnabled;
+    // What a failed write goes back to: the stored value *and* whether it
+    // was ever written, so a failed first-run enable shows the default-on
+    // policy again rather than "off".
+    const previous = { enabled: isEnabled, neverWritten: isNeverWritten };
 
     try {
       if (newEnabledState) {
@@ -238,12 +242,16 @@ export function NotificationSettings({
       if (newEnabledState && !auto) await offerExactAlarmSettingsOnce();
     } catch (error) {
       console.error("Error toggling notifications:", error);
-      showToast({
-        type: "error",
-        message: "Failed to update notification settings. Please try again.",
-      });
+      // The first-run default fails quietly: the user did not tap anything.
+      if (!auto) {
+        showToast({
+          type: "error",
+          message: "Failed to update notification settings. Please try again.",
+        });
+      }
       // Revert UI state if there was an error
-      setIsEnabled(!newEnabledState);
+      setIsEnabled(previous.enabled);
+      setIsNeverWritten(previous.neverWritten);
     }
   };
 
