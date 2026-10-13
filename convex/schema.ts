@@ -250,6 +250,11 @@ export default defineSchema({
 
   wso_records: defineTable(wsoRecordsFields).index('by_wso', ['wso']),
 
+  // Users whose account was deleted in Clerk (`users.deleteUserData`): only
+  // the id, so a request still carrying a valid token for it cannot store
+  // their data again.
+  deleted_users: defineTable({ userId: v.string(), deletedAt: v.number() }).index('by_userId', ['userId']),
+
   user_preferences: defineTable({
     userId: v.string(),
     autoUnsaveStartedSessions: v.boolean(),
