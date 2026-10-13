@@ -67,6 +67,7 @@ pub async fn run(args: ResultsArgs) -> Result<()> {
         category: args.category.as_deref().map(category).transpose()?,
         division: args.division,
         federation: args.federation,
+        keep_bwl: true,
         adaptive: true,
     };
 
