@@ -15,6 +15,13 @@ export type MutableResourceConfig<T, TParams extends readonly unknown[]> = {
   ) => Promise<ResourceCacheEntry<T> | null | void>;
   clearCached?: (...params: TParams) => Promise<void>;
   isEqual?: (left: T, right: T) => boolean;
+  /**
+   * True when a fresh answer must not replace the cached data (for a roster,
+   * an empty answer over cached athletes). The cached data is then the
+   * result, and the fresh answer is neither persisted nor shown. Only asked
+   * when there is a cache entry.
+   */
+  keepCached?: (cached: T, fresh: T) => boolean;
 };
 
 export type MutableResource<T, TParams extends readonly unknown[]> = {
@@ -127,6 +134,14 @@ export function createMutableResource<T, TParams extends readonly unknown[]>(
         ? await config.loadCached(...params)
         : cached;
       const fresh = await config.fetchFresh(...params);
+      if (cacheEntry && config.keepCached?.(cacheEntry.data, fresh)) {
+        return {
+          data: cacheEntry.data,
+          changed: false,
+          lastUpdatedAt: cacheEntry.lastUpdatedAt ?? Date.now(),
+          source: "network" as const,
+        };
+      }
       const changed = !cacheEntry || !isEqual(cacheEntry.data, fresh);
       // The fresh data is the result; the cache write is a side effect. A
       // failed write (storage full, a validator rejecting one row) used to

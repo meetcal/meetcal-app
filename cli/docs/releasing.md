@@ -32,9 +32,16 @@ git tag cli-v2.1.0
 git push origin cli-v2.1.0
 ```
 
-The workflow builds `darwin-arm64`, `darwin-x64`, `linux-arm64` and `linux-x64`, each a
-`.tar.gz` holding one `meetcal` binary, and attaches them to the release. It does not mark the
-release as the repository's latest.
+The workflow first runs the tests and `cargo audit` on the tagged commit; a failure stops the
+release before anything is built. It then builds `darwin-arm64`, `darwin-x64`, `linux-arm64` and
+`linux-x64`, each a `.tar.gz` holding one `meetcal` binary, and attaches them to the release. It
+does not mark the release as the repository's latest.
+
+The Linux binaries are built with `cargo zigbuild` against glibc 2.17, so they start on older
+distributions than the runner (Ubuntu 22.04, Debian 12, RHEL 9, Amazon Linux 2023). A binary
+built on the runner itself would need the runner's glibc and fail at its first run elsewhere with
+``version `GLIBC_2.38' not found``. The workflow fails a build whose binary needs a newer glibc
+than 2.17, and runs each one in a Debian 11 container before uploading it.
 
 Verify:
 
@@ -68,4 +75,11 @@ git push origin main
 brew update
 brew upgrade meetcal   # or: brew install meetcal/tap/meetcal
 meetcal --version
+```
+
+On Linux, also check a binary on an older distribution than your own, for example:
+
+```sh
+curl -sL https://github.com/meetcal/meetcal-app/releases/download/cli-v2.1.0/linux-x64.tar.gz | tar -xz
+docker run --rm -v "$PWD:/m" ubuntu:22.04 /m/meetcal --version
 ```

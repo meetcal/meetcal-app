@@ -1,5 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { MeetName } from '@/data/types/meet';
+import { isAccountDeleted } from '@/lib/deleted-accounts';
 import { getSavedSessionsKey } from '@/utils/session';
 
 /**
@@ -145,6 +146,11 @@ export async function readStoredSessions(
 ): Promise<SavedSession[]> {
   if (!userId) return [];
   const { cache } = store;
+  // A deleted account's list is gone, cached copy included.
+  if (isAccountDeleted(userId)) {
+    if (cache.owner === userId) clearSavedSessionsCache(cache);
+    return [];
+  }
   const sameOwner = cache.owner === userId;
   if (!forceStorageRead && sameOwner && cache.raw !== null) {
     return cache.sessions;
@@ -173,12 +179,20 @@ export async function commitStoredSessions(
   userId: string | null,
   nextSessions: SavedSession[],
 ): Promise<void> {
-  if (!userId || !store.isActive(userId)) return;
+  // A deleted account's list is gone from the device for good.
+  if (!userId || !store.isActive(userId) || isAccountDeleted(userId)) return;
   const { cache } = store;
   const serialized = JSON.stringify(nextSessions);
   const unchanged = cache.owner === userId && cache.raw === serialized;
   if (!unchanged) {
     await AsyncStorage.setItem(getSavedSessionsKey(userId), serialized);
+    // Deleted while the write was in flight (the user signed out as well, so
+    // checked before `isActive`): its device data was cleared just now, so
+    // undo the write, and neither cache nor publish the list.
+    if (isAccountDeleted(userId)) {
+      await AsyncStorage.removeItem(getSavedSessionsKey(userId));
+      return;
+    }
     if (!store.isActive(userId)) return;
     cache.raw = serialized;
     cache.sessions = nextSessions;
