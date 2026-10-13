@@ -12,6 +12,7 @@ import {
   StyleSheet,
   View,
 } from "react-native";
+import { ToastHost } from "@/components/ui/Toast";
 
 interface CalendarDestinationPickerModalProps {
   visible: boolean;
@@ -160,6 +161,9 @@ export function CalendarDestinationPickerModal({
           )}
         </Pressable>
       </Pressable>
+      {/* A modal is its own native window above the root toast host: errors
+          raised while it is open must show here to be seen. */}
+      <ToastHost />
     </Modal>
   );
 }
