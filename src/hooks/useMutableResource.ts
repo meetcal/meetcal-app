@@ -73,6 +73,9 @@ export function useMutableResource<T, TParams extends readonly unknown[]>(
   const [lastUpdatedAt, setLastUpdatedAt] = useState<number | null>(null);
   const [source, setSource] = useState<ResourceSource | null>(null);
   sourceRef.current = source;
+  // What is on screen, for a refresh to compare the fresh answer with.
+  const shownRef = useRef<ResourceCacheEntry<T>>({ data, lastUpdatedAt });
+  shownRef.current = { data, lastUpdatedAt };
 
   const refresh = useCallback(
     async (
@@ -102,10 +105,20 @@ export function useMutableResource<T, TParams extends readonly unknown[]>(
         return current === null || resource.getKey(...current) !== requestKey;
       };
 
+      // Compared with what is on screen when something is: re-reading the
+      // stored copy cost a disk read and parse (for the schedule, the whole
+      // meet), and handed back a new object even when nothing changed, so
+      // every consumer re-rendered on each reconnect and pull-to-refresh.
+      const compareWith =
+        preloadedCache !== undefined
+          ? preloadedCache
+          : sourceRef.current !== null
+            ? shownRef.current
+            : undefined;
       try {
-        const result = preloadedCache === undefined
+        const result = compareWith === undefined
           ? await resource.revalidate(...activeParams)
-          : await resource.revalidateWithCached(preloadedCache, ...activeParams);
+          : await resource.revalidateWithCached(compareWith, ...activeParams);
         if (isStale()) return;
         setData(result.data);
         setLastUpdatedAt(result.lastUpdatedAt);

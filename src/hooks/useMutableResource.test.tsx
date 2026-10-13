@@ -53,6 +53,31 @@ describe("useMutableResource", () => {
     captured = null;
   });
 
+  // A reconnect or pull-to-refresh re-read and re-parsed the stored copy to
+  // compare (for the schedule, the whole meet) and handed every consumer a
+  // new object even when nothing changed.
+  it("compares a refresh with what is on screen and keeps its identity when unchanged", async () => {
+    const loadCached = jest.fn(async () => ({ data: [{ id: "same" }], lastUpdatedAt: 1 }));
+    const resource = createMutableResource<Row[], [string]>({
+      getKey: (param) => `identity:${param}`,
+      loadCached,
+      fetchFresh: async () => [{ id: "same" }],
+      persistFresh: async (data) => ({ data, lastUpdatedAt: 2 }),
+    });
+    harness(resource, "a");
+    await flush();
+    await flush();
+    const shown = captured!.data;
+    loadCached.mockClear();
+
+    await act(async () => {
+      await captured!.refresh();
+    });
+
+    expect(loadCached).not.toHaveBeenCalled();
+    expect(captured!.data).toBe(shown);
+  });
+
   it("keeps cached rows on screen when the background revalidate fails", async () => {
     const cached: ResourceCacheEntry<Row[]> = {
       data: [{ id: "cached" }],

@@ -145,6 +145,16 @@ describe("readStoredSessions / commitStoredSessions", () => {
     expect(published).toHaveLength(2);
   });
 
+  // Each load commits a freshly built list; a new identity for the same
+  // content re-ran the widget write, the Spotlight reindex and the reminder
+  // sync on every Saved tab focus.
+  it("republishes the list already published when the content is unchanged", async () => {
+    const { store, published } = makeStore();
+    await commitStoredSessions(store, USER, [session()]);
+    await commitStoredSessions(store, USER, [session()]);
+    expect(published[1]).toBe(published[0]);
+  });
+
   it("does nothing for a user who is not active", async () => {
     const { store, published } = makeStore(OTHER);
     await commitStoredSessions(store, USER, [session()]);

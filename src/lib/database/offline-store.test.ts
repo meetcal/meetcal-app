@@ -14,7 +14,6 @@ import {
   getStoredAthleteBestsForNames,
   isAthleteBestsFresh,
   listStoredMeets,
-  getAthleteLiftingResults,
   getExplicitlyDownloadedMeetIds,
   getMeetData,
   getMeetLiftingResults,
@@ -25,12 +24,15 @@ import {
   markMeetExplicitlyDownloaded,
   pruneOrphanedAthleteHistory,
   saveAthleteBestsBatch,
-  saveAthleteHistory,
   saveAthleteHistoryBatch,
   saveMeetAthletes,
   saveMeetLiftingResults,
   saveMeetSchedule,
 } from "@/lib/database/offline-store";
+
+/** One athlete's history, through the batch writer every caller uses. */
+const saveAthleteHistory = (name: string, results: Parameters<typeof saveAthleteHistoryBatch>[0][number]["results"]) =>
+  saveAthleteHistoryBatch([{ name, results }]);
 
 const mockStorage = new Map<string, string>();
 
@@ -92,7 +94,7 @@ describe("offline-store athlete lifting results", () => {
       },
     ] as any);
 
-    const results = await getAthleteLiftingResults("Test Meet" as any, "jane doe");
+    const results = await getAllCachedLiftingResultsForAthlete("jane doe");
 
     expect(results).toHaveLength(1);
     expect(results[0].name).toBe("  JANE   DOE ");
@@ -297,6 +299,29 @@ describe("offline-store athlete lifting results", () => {
     await expect(getMeetSchedule("Test Meet")).resolves.toEqual(schedule);
   });
 
+  // Every schedule reader (each schedule screen, the reminder sync, the
+  // auto-unsave prune) used to read and normalize the whole roster too, and
+  // add an index entry for a meet it had never stored.
+  it("reads a schedule without touching the roster or writing the index", async () => {
+    await saveMeetSchedule("Test Meet", [
+      {
+        date: "2026-06-20",
+        fullDate: "2026-06-20",
+        sessions: [{ id: "Test Meet-1-Red", number: 1, startTime: "", weighInTime: "", platforms: [] }],
+      },
+    ] as never);
+    const getItem = AsyncStorage.getItem as jest.Mock;
+    const setItem = AsyncStorage.setItem as jest.Mock;
+    getItem.mockClear();
+    setItem.mockClear();
+
+    await expect(getMeetSchedule("Test Meet")).resolves.toHaveLength(1);
+    await expect(getMeetSchedule("Never Stored")).resolves.toEqual([]);
+
+    expect(getItem.mock.calls.map(([key]) => key)).not.toContain("meetcal_athletes_Test Meet");
+    expect(setItem).not.toHaveBeenCalled();
+  });
+
   it("does not rewrite an unchanged schedule payload", async () => {
     const schedule = [
       {
@@ -475,9 +500,9 @@ describe("offline-store corrupt payload handling", () => {
     await expect(getMeetLiftingResults("Test Meet")).resolves.toEqual([]);
   });
 
-  // `getMeetSchedule` now returns `getMeetData`'s already-parsed schedule
-  // instead of re-reading and re-parsing the same key. These pin the three
-  // degraded payloads where the two readers had to agree for that to be safe.
+  // `getMeetSchedule` reads the schedule key on its own (no roster) and
+  // `getMeetData` parses the same key. These pin the three degraded payloads
+  // where the two readers must agree.
   it.each([
     ["invalid JSON", "{\"not\": "],
     ["valid JSON that is not an array", "{\"sessions\":[]}"],
@@ -1843,10 +1868,10 @@ describe("store index writes", () => {
 
     await expect(getMeetSchedule("Some Meet")).resolves.toEqual([]);
 
-    // Only the chained entry write lands, not a separate `{ meets: {} }` reset.
+    // A read writes nothing: no `{ meets: {} }` reset and no entry for the meet.
     const indexWrites = setItem.mock.calls.filter(([key]) => key === "meetcal_offline_store");
-    expect(indexWrites).toHaveLength(1);
-    expect(storedMeetIds()).toEqual(["Some Meet"]);
+    expect(indexWrites).toHaveLength(0);
+    expect(mockStorage.get("meetcal_offline_store")).toBe("{truncated");
   });
 });
 

@@ -176,15 +176,18 @@ export async function commitStoredSessions(
   if (!userId || !store.isActive(userId)) return;
   const { cache } = store;
   const serialized = JSON.stringify(nextSessions);
-  const sameOwner = cache.owner === userId;
-  if (!sameOwner || cache.raw !== serialized) {
+  const unchanged = cache.owner === userId && cache.raw === serialized;
+  if (!unchanged) {
     await AsyncStorage.setItem(getSavedSessionsKey(userId), serialized);
     if (!store.isActive(userId)) return;
     cache.raw = serialized;
+    cache.sessions = nextSessions;
   }
   cache.owner = userId;
-  cache.sessions = nextSessions;
-  store.publish(nextSessions);
+  // An unchanged list keeps the array already published. Every load commits
+  // a freshly built one, and a new identity re-ran the widget write and
+  // reload, the Spotlight reindex and a full reminder sync each time.
+  store.publish(cache.sessions);
 }
 
 /** Remove the user's list from storage and publish an empty one. */
