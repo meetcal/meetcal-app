@@ -52,10 +52,13 @@ pub(crate) fn results_url(athlete: &str) -> String {
 /// What one Results search answered, ready to show.
 #[derive(Debug)]
 enum ResultsAnswer {
-    /// Nothing matched `query`; `suggestions` are names to try.
+    /// Nothing matched `query`; `suggestions` are names to try. With `cut`,
+    /// the server stopped before reading every matching name, so a name it
+    /// did not reach may have results: the query needs narrowing.
     Empty {
         query: String,
         suggestions: Vec<String>,
+        cut: bool,
     },
     /// One athlete's history, under the athlete's stored spelling.
     Athlete {
@@ -72,6 +75,17 @@ enum ResultsAnswer {
         names: Vec<String>,
         more_than_shown: bool,
     },
+}
+
+/// What an empty answer says: a cut one was not a full search.
+fn empty_message(query: &str, cut: bool) -> String {
+    if cut {
+        format!(
+            "Too many names contain {query} to search them all, and none searched has results. Type more of the name."
+        )
+    } else {
+        format!("No results found for {query}.")
+    }
 }
 
 /// How to show `response` to a search for `query`.
@@ -92,6 +106,7 @@ fn results_answer(query: &str, response: AthleteSearchResponse) -> ResultsAnswer
         return ResultsAnswer::Empty {
             query: query.to_owned(),
             suggestions,
+            cut: truncated,
         };
     }
     if let Some(matched) = matched_name {
@@ -128,6 +143,7 @@ fn results_answer(query: &str, response: AthleteSearchResponse) -> ResultsAnswer
         return ResultsAnswer::Empty {
             query: query.to_owned(),
             suggestions,
+            cut: truncated,
         };
     }
     let more_than_shown = truncated || athletes.len() > MAX_ATHLETE_CHOICES;
@@ -190,8 +206,8 @@ pub fn Results() -> impl IntoView {
                     <DataStatus message="Enter an athlete name to search." />
                 }
                 .into_any(),
-                LoadState::Ready(Some(ResultsAnswer::Empty { query, suggestions })) => view! {
-                    <p class="data-status" role="status">{format!("No results found for {query}.")}</p>
+                LoadState::Ready(Some(ResultsAnswer::Empty { query, suggestions, cut })) => view! {
+                    <p class="data-status" role="status">{empty_message(query, *cut)}</p>
                     <Suggestions names=suggestions.clone() />
                 }
                 .into_any(),
@@ -425,12 +441,29 @@ mod tests {
 
     #[test]
     fn no_rows_is_an_empty_answer_with_suggestions() {
-        let ResultsAnswer::Empty { query, suggestions } =
-            results_answer("zzqx", answer(None, &[], false))
+        let ResultsAnswer::Empty {
+            query,
+            suggestions,
+            cut,
+        } = results_answer("zzqx", answer(None, &[], false))
         else {
             panic!("expected an empty answer");
         };
         assert_eq!(query, "zzqx");
         assert_eq!(suggestions, ["Ann Lee"]);
+        assert!(!cut);
+        assert_eq!(empty_message("zzqx", cut), "No results found for zzqx.");
+    }
+
+    #[test]
+    fn a_cut_empty_answer_asks_to_narrow_the_search() {
+        let ResultsAnswer::Empty { query, cut, .. } = results_answer("an", answer(None, &[], true))
+        else {
+            panic!("expected an empty answer");
+        };
+        assert!(cut);
+        let message = empty_message(&query, cut);
+        assert!(message.contains("Type more of the name"), "{message}");
+        assert!(!message.starts_with("No results found"), "{message}");
     }
 }

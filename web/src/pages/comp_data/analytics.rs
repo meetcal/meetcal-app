@@ -34,21 +34,54 @@ fn attempts(row: &LiftResult) -> [f64; 6] {
     ]
 }
 
+/// The most days apart one meet's rows can be filed: the app's
+/// `MEET_EDITION_SPAN_DAYS`. Further apart, a meet with the same name is
+/// another edition (a monthly local open), and its rows are separate lifts.
+const MEET_EDITION_SPAN_DAYS: i64 = 10;
+
+/// Days since 1970-01-01 for a `YYYY-MM-DD` calendar date, or `None`.
+fn calendar_day(date: &str) -> Option<i64> {
+    let year: i64 = date.get(0..4)?.parse().ok()?;
+    let month: i64 = date.get(5..7)?.parse().ok()?;
+    let day: i64 = date.get(8..10)?.parse().ok()?;
+    if date.get(4..5)? != "-" || date.get(7..8)? != "-" || !(1..=12).contains(&month) {
+        return None;
+    }
+    // Days from civil (Howard Hinnant's algorithm).
+    let year = if month <= 2 { year - 1 } else { year };
+    let era = year.div_euclid(400);
+    let year_of_era = year - era * 400;
+    let day_of_year = (153 * (month + if month > 2 { -3 } else { 9 }) + 2) / 5 + day - 1;
+    let day_of_era = year_of_era * 365 + year_of_era / 4 - year_of_era / 100 + day_of_year;
+    Some(era * 146_097 + day_of_era - 719_468)
+}
+
+/// Two rows' dates are within one meet's span; unparseable dates never are.
+fn within_one_edition(left: &str, right: &str) -> bool {
+    match (calendar_day(left), calendar_day(right)) {
+        (Some(left), Some(right)) => (left - right).abs() <= MEET_EDITION_SPAN_DAYS,
+        _ => false,
+    }
+}
+
 /// The rows that are distinct lifts, in order: the app's `distinctLifts`
 /// (`src/lib/wrapped-stats.ts`).
 ///
 /// One lift can come back as several rows: one meet listed under two age
 /// divisions or filed under two dates, or one lift filed under two meet names
 /// (Youth and Junior Championships) on one date. Two rows are the same lift
-/// when all six attempts and the total are equal and they share the date or
-/// the meet name (trimmed, any case); the first is kept.
+/// when all six attempts and the total are equal and they share the date, or
+/// share the meet name (trimmed, any case) within `MEET_EDITION_SPAN_DAYS`;
+/// the first is kept. Two editions of a recurring meet stay two lifts.
 fn distinct_lifts<'a>(rows: &[&'a LiftResult]) -> Vec<&'a LiftResult> {
     let mut kept: Vec<&LiftResult> = Vec::new();
     for row in rows {
         let duplicate = kept.iter().any(|other| {
             attempts(other) == attempts(row)
                 && other.total == row.total
-                && (other.date == row.date || meet_key(&other.meet) == meet_key(&row.meet))
+                && (other.date == row.date
+                    || (meet_key(&other.meet) == meet_key(&row.meet)
+                        && within_one_edition(&other.date, &row.date)))
         });
         if !duplicate {
             kept.push(row);
@@ -69,8 +102,9 @@ pub(crate) fn wrapped_stats(results: &[LiftResult]) -> WrappedStats {
     let mut streak = 0usize;
     let mut attempt_makes = [0usize; 3];
     let mut totals = Vec::new();
-    // Each meet's best total, in the order the meets first appear.
-    let mut meet_totals: Vec<(String, f64)> = Vec::new();
+    // Each meet's best total, in the order the meets first appear, with the
+    // name it was first listed under.
+    let mut meet_totals: Vec<(String, String, f64)> = Vec::new();
     let mut meets: Vec<String> = Vec::new();
 
     for row in &ordered {
@@ -98,9 +132,9 @@ pub(crate) fn wrapped_stats(results: &[LiftResult]) -> WrappedStats {
         }
         if row.total > 0.0 {
             totals.push(row.total);
-            match meet_totals.iter_mut().find(|(name, _)| *name == meet) {
-                Some((_, best)) => *best = best.max(row.total),
-                None => meet_totals.push((meet, row.total)),
+            match meet_totals.iter_mut().find(|(key, _, _)| *key == meet) {
+                Some((_, _, best)) => *best = best.max(row.total),
+                None => meet_totals.push((meet, row.meet.clone(), row.total)),
             }
         }
     }
@@ -112,21 +146,22 @@ pub(crate) fn wrapped_stats(results: &[LiftResult]) -> WrappedStats {
     }
     // First to last meet with a total, one total per meet (its best): one
     // meet, even listed in two divisions, has nothing to compare.
-    if let ([(_, first), ..], [.., (_, last)]) = (meet_totals.as_slice(), meet_totals.as_slice())
+    if let ([(_, _, first), ..], [.., (_, _, last)]) =
+        (meet_totals.as_slice(), meet_totals.as_slice())
         && meet_totals.len() >= 2
     {
         stats.improvement = Some(last - first);
     }
     stats.favorite_attempt = favorite_attempt(attempt_makes);
-    // The first meet reaching the best total (as the app picks it).
-    stats.top_meet = ordered
+    // The meet with the best total; on a tie, the later meet, as the app's
+    // `topMeet` reduce picks it.
+    stats.top_meet = meet_totals
         .iter()
-        .filter(|row| row.total > 0.0)
-        .fold(None::<&&LiftResult>, |best, row| match best {
-            Some(best) if best.total >= row.total => Some(best),
-            _ => Some(row),
+        .fold(None::<&(String, String, f64)>, |best, meet| match best {
+            Some(best) if best.2 > meet.2 => Some(best),
+            _ => Some(meet),
         })
-        .map(|row| row.meet.clone());
+        .map(|(_, name, _)| name.clone());
     stats
 }
 
@@ -266,6 +301,59 @@ mod tests {
             ),
         ]);
         assert_eq!(stats.improvement, Some(-10.0));
+    }
+
+    #[test]
+    fn two_editions_of_a_recurring_meet_are_two_lifts() {
+        let lift = [100.0, -105.0, -105.0, 120.0, -125.0, -125.0];
+        let stats = wrapped_stats(&[
+            result_at("Annual Open", "2025-03-01", 220.0, lift),
+            result_at("Annual Open", "2026-03-01", 220.0, lift),
+            // Within one meet's span, the same numbers are one lift.
+            result_at("Summer Slam", "2026-05-16", 220.0, lift),
+            result_at("summer slam ", "2026-05-26", 220.0, lift),
+        ]);
+        assert_eq!(stats.total_weight_lifted, 3.0 * 220.0);
+        assert_eq!(stats.make_percentage, percentage(6, 18));
+    }
+
+    #[test]
+    fn calendar_days_count_across_months_and_years() {
+        assert_eq!(calendar_day("1970-01-01"), Some(0));
+        assert_eq!(calendar_day("2026-03-01"), Some(20_513));
+        assert_eq!(
+            calendar_day("2024-03-01")
+                .zip(calendar_day("2024-02-28"))
+                .map(|(a, b)| a - b),
+            Some(2)
+        );
+        assert_eq!(calendar_day("2026-1-01"), None);
+        assert_eq!(calendar_day(""), None);
+        assert!(within_one_edition("2025-12-28", "2026-01-07"));
+        assert!(!within_one_edition("2025-12-28", "2026-01-08"));
+        assert!(!within_one_edition("bad", "bad"));
+    }
+
+    #[test]
+    fn a_tied_top_total_names_the_later_meet_as_the_app_does() {
+        let lift = [90.0, 95.0, 0.0, 110.0, 115.0, 0.0];
+        let stats = wrapped_stats(&[
+            result_at("Winter Open", "2026-01-10", 210.0, lift),
+            result_at(
+                "Spring Open",
+                "2026-04-10",
+                205.0,
+                [90.0, 95.0, 0.0, 110.0, -115.0, 0.0],
+            ),
+            result_at(
+                "Fall Open",
+                "2026-09-10",
+                210.0,
+                [90.0, 95.0, 0.0, 110.0, 115.0, -120.0],
+            ),
+        ]);
+        assert_eq!(stats.top_meet.as_deref(), Some("Fall Open"));
+        assert_eq!(wrapped_stats(&[]).top_meet, None);
     }
 
     #[test]
