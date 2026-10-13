@@ -410,6 +410,34 @@ describe("full athlete history download", () => {
     expect(mockSaveAthleteHistory).toHaveBeenCalledWith("Athlete C", []);
   });
 
+  it("files result rows in another Unicode form under the roster's name (#268)", async () => {
+    // The server matches across NFC and NFD and returns each row with its
+    // stored spelling. Grouped under a key without NFC, the NFD roster name
+    // found nothing and its history was overwritten with [].
+    const nfc = "José Núñez".normalize("NFC");
+    const nfd = nfc.normalize("NFD");
+    mockFetchApiMeetPackage.mockResolvedValue({
+      meet: {},
+      schedule: [],
+      athletes: [buildAthlete(nfd)],
+      meet_results: [],
+      recent_results_by_name: {},
+      year_bests_by_name: {},
+    });
+    mockFetchApiResultsByNames.mockResolvedValue([
+      { name: nfc, date: "2025-06-01" },
+      { name: nfc, date: "2024-06-01" },
+    ]);
+
+    await prefetchMeetData("History Meet NFC" as any);
+
+    expect(mockSaveAthleteHistory).toHaveBeenCalledTimes(1);
+    expect(mockSaveAthleteHistory).toHaveBeenCalledWith(nfd, [
+      { name: nfc, date: "2025-06-01" },
+      { name: nfc, date: "2024-06-01" },
+    ]);
+  });
+
   it("fetches history in sequential batches to keep peak memory bounded", async () => {
     const athleteNames = Array.from({ length: 50 }, (_, i) => `Athlete ${i + 1}`);
     mockFetchApiMeetPackage.mockResolvedValue({
