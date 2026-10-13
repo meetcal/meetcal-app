@@ -55,6 +55,8 @@ const FilterChipGroup = ({
                 pressed && { opacity: 0.7 },
               ]}
               onPress={() => onSelect(chip.value)}
+              accessibilityRole="button"
+              accessibilityState={{ selected: isSelected }}
             >
               <ThemedText
                 style={[

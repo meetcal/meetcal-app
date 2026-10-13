@@ -48,6 +48,8 @@ const FilterModalOptions = ({
             pressed && { opacity: 0.8 },
           ]}
           onPress={() => onSelect("")}
+          accessibilityRole="button"
+          accessibilityState={{ selected: selectedValue === "" }}
         >
           <ThemedText
             style={[
@@ -77,6 +79,8 @@ const FilterModalOptions = ({
             pressed && { opacity: 0.8 },
           ]}
           onPress={() => onSelect(option.value)}
+          accessibilityRole="button"
+          accessibilityState={{ selected: selectedValue === option.value }}
         >
           {option.icon ? (
             <View style={styles.filterOptionContent}>

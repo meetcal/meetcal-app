@@ -89,6 +89,7 @@ function AdaptiveRecordsScreenContent() {
             styles.segmentedControl,
             { backgroundColor: colors.card, borderColor: colors.border },
           ]}
+          accessibilityRole="tablist"
         >
           {(["Men", "Women"] as Gender[]).map((gender) => (
             <Pressable
@@ -99,6 +100,8 @@ function AdaptiveRecordsScreenContent() {
                 pressed && { opacity: 0.85 },
               ]}
               onPress={() => setAppliedGender(gender)}
+              accessibilityRole="tab"
+              accessibilityState={{ selected: appliedGender === gender }}
             >
               <ThemedText
                 style={[
