@@ -79,7 +79,7 @@ describe('results titles of a meet (#362)', () => {
     const store = world();
     await link(store.ctx, { meet: NATIONALS, titles: [JUNIOR, YOUTH] });
     const answer = await handlerOf<{ meets: string[] }, { json: string }>(attendance)(store.ctx, { meets: [NATIONALS] });
-    expect(JSON.parse(answer.json)).toEqual([expect.objectContaining({ meet: NATIONALS, lifters: 3, registrations: 3, first_date: '2026-06-20' })]);
+    expect(JSON.parse(answer.json)).toEqual([expect.objectContaining({ meet: NATIONALS, lifters: 3, registrations: 3, first_date: '2026-06-20', results_titles: [JUNIOR, YOUTH] })]);
   });
 
   it('looks up linked titles only for results writes', async () => {
