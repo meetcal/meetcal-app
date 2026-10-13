@@ -82,12 +82,18 @@ body::before {
     mask-image: linear-gradient(#000 15%, transparent 78%);
 }
 
-main {
+/* The page frame: header, main and footer are siblings here, so each is its
+   own landmark. */
+.site-shell {
     text-align: center;
     padding: 0 20px 0;
     max-width: 100%;
     overflow-x: hidden;
     counter-reset: feature;
+}
+
+main {
+    display: block;
 }
 
 button {
@@ -1674,7 +1680,7 @@ main > div:has(> h4) > p {
     line-height: 1.65;
 }
 
-main main:not(.features-page) {
+.legal-page {
     display: block;
     text-align: left;
     max-width: 740px;
@@ -1687,48 +1693,86 @@ main main:not(.features-page) {
     overflow-x: visible;
 }
 
-main main:not(.features-page) h1 {
+.legal-page h1 {
     font-size: clamp(1.8rem, 4vw, 2.4rem);
     font-weight: 800;
     letter-spacing: -0.035em;
     margin: 0 0 4px;
 }
 
-main main:not(.features-page) h1 + div > p:first-of-type,
-main main:not(.features-page) h1 ~ div > p:first-child {
+.legal-page h1 + div > p:first-of-type,
+.legal-page h1 ~ div > p:first-child {
     color: var(--text-secondary);
     font-size: 0.9rem;
 }
 
-main main:not(.features-page) h2 {
+.legal-page h2 {
     font-size: 1.22rem;
     font-weight: 700;
     letter-spacing: -0.015em;
     margin: 38px 0 8px;
 }
 
-main main:not(.features-page) p {
+.legal-page p {
     margin: 0 0 14px;
     color: var(--text);
     font-size: 0.98rem;
 }
 
-main main:not(.features-page) ul,
-main main:not(.features-page) ol {
+.legal-page ul,
+.legal-page ol {
     margin: 0 0 14px;
     padding-left: 22px;
 }
 
-main main:not(.features-page) li {
+.legal-page li {
     margin-bottom: 6px;
 }
 
-main main:not(.features-page) a {
+.legal-page a {
     color: var(--accent);
 }
 
-main main:not(.features-page) a:hover {
+.legal-page a:hover {
     text-decoration: underline;
+}
+
+.not-found {
+    padding: clamp(48px, 10vh, 96px) 0;
+}
+
+.not-found h1 {
+    margin: 0 0 10px;
+    font-size: clamp(1.8rem, 4vw, 2.4rem);
+    letter-spacing: -0.035em;
+}
+
+.not-found p {
+    margin: 0 0 22px;
+    color: var(--text-secondary);
+}
+
+.not-found-links {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 12px;
+}
+
+.not-found-links a {
+    display: inline-flex;
+    align-items: center;
+    min-height: 44px;
+    padding: 10px 20px;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    background: var(--card);
+    color: var(--accent);
+    font-weight: 650;
+}
+
+.not-found-links a:hover {
+    border-color: var(--accent);
 }
 
 /* ---------- Small screens ---------- */
