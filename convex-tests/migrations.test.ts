@@ -214,6 +214,12 @@ describe('cleanupRosterRows (#384, #386)', () => {
       entrant('Kimberly Wiese', '140203020', 'Finals'),
       entrant('Kimberly Wiese', '1027360', 'Finals', { weightClass: '77' }),
       entrant('Lone Oneoff', '140203021', 'Finals'),
+      // Not copies: another athlete of the same name in another class, and an
+      // old id beside a same-name athlete of another age.
+      entrant('John Smith', '111', 'Nationals', { gender: 'Men', weightClass: '89', sessionNumber: 2, sessionPlatform: 'Red' }),
+      entrant('John Smith', '222', 'Nationals', { gender: 'Men', weightClass: '61' }),
+      entrant('Alex Lee', '123456789', 'Finals', { age: 18 }),
+      entrant('Alex Lee', '7654321', 'Finals', { age: 35 }),
       // Sport80's empty-table placeholder.
       entrant('undefined undefined', 'No Member Entries', 'Iowa WSO', { gender: '', weightClass: '', age: 0 }),
       entrant('Real Lifter', '1000002', 'Iowa WSO'),
@@ -225,7 +231,7 @@ describe('cleanupRosterRows (#384, #386)', () => {
   it('logs what it would delete and deletes nothing by default', async () => {
     const store = fakeMutationCtx(seed());
     await runPaged('migrations:cleanupRosterRows', handlerOf<Paged, void>(cleanupRosterRows), store);
-    expect(store.rows('athletes')).toHaveLength(9);
+    expect(store.rows('athletes')).toHaveLength(13);
     expect(store.rows('view_hints')).toHaveLength(0);
     const logged = jest.mocked(console.log).mock.calls.map((call) => String(call[0])).join('\n');
     expect(logged).toContain('4 roster rows to delete');
@@ -240,12 +246,16 @@ describe('cleanupRosterRows (#384, #386)', () => {
       ['Nationals', 'Scratched Sam', '1000001'],
       ['Finals', 'Kimberly Wiese', '1027360'],
       ['Finals', 'Lone Oneoff', '140203021'],
+      ['Nationals', 'John Smith', '111'],
+      ['Nationals', 'John Smith', '222'],
+      ['Finals', 'Alex Lee', '123456789'],
+      ['Finals', 'Alex Lee', '7654321'],
       ['Iowa WSO', 'Real Lifter', '1000002'],
     ]);
     expect(store.rows('view_hints').map((h) => `${h.kind}:${h.key}`).sort()).toEqual(
       ['meet:Finals', 'meet:Iowa WSO', 'meet:Nationals', 'meet:Your choice regarding cookies on this site', 'table:athletes'].sort(),
     );
     await run(store.ctx, { dryRun: false });
-    expect(store.rows('athletes')).toHaveLength(5);
+    expect(store.rows('athletes')).toHaveLength(9);
   });
 });

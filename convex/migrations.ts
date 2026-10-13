@@ -5,7 +5,7 @@ import type { Doc } from './_generated/dataModel';
 import { normalizeName } from './lib/names';
 import { normalizeAgeCategory, normalizeGender } from './lib/normalize';
 import { canonicalMeetDate } from './lib/validation';
-import { hasSession, isJunkEntrant, isJunkMeetName } from './lib/roster';
+import { bareWeightClass, hasSession, isJunkEntrant, isJunkMeetName } from './lib/roster';
 import { deleteResultRows, eventResultsByKey, recordWrite, sameEditionDates, sameResultValues } from './ingest';
 
 const BACKFILL_PAGE_SIZE = 500;
@@ -359,20 +359,27 @@ const ONE_OFF_MEMBER_ID = /^[1-9]\d{8}$/;
  * - `junk meet`: the meet is named after a cookie banner or a CSV line;
  * - `placeholder`: Sport80's empty-table placeholder (`undefined undefined`);
  * - `start list copy`: an unscheduled row of a meet whose start list is out,
- *   with the folded name of a scheduled one (added before #133 was fixed);
+ *   with the folded name, gender and weight class of a scheduled one (added
+ *   before #133 was fixed);
  * - `stale one-off id`: an unscheduled row with a nine-digit id the old
- *   scraper minted, beside a row of the same name and gender with a real one.
+ *   scraper minted, beside a row of the same name, gender and age (within a
+ *   year) with a real one.
  */
 export function rosterLeftover(row: Doc<'athletes'>, meetRows: readonly Doc<'athletes'>[], junkMeet: boolean): string | null {
   if (junkMeet) return 'junk meet';
   if (isJunkEntrant(row)) return 'placeholder';
   if (hasSession(row)) return null;
   const key = normalizeName(row.name);
-  const same = meetRows.filter((other) => other._id !== row._id && normalizeName(other.name) === key);
-  if (same.some(hasSession)) return 'start list copy';
+  // The same athlete: the folded name, gender and, for a copy, weight class
+  // (another athlete of the same name keeps their row, and an ambiguous one
+  // is left for a person).
+  const same = meetRows.filter(
+    (other) => other._id !== row._id && normalizeName(other.name) === key && normalizeGender(other.gender) === normalizeGender(row.gender),
+  );
+  if (same.some((other) => hasSession(other) && bareWeightClass(other.weightClass) === bareWeightClass(row.weightClass))) return 'start list copy';
   if (
     ONE_OFF_MEMBER_ID.test(row.memberId) &&
-    same.some((other) => normalizeGender(other.gender) === normalizeGender(row.gender) && !ONE_OFF_MEMBER_ID.test(other.memberId) && !other.memberId.startsWith('noid:'))
+    same.some((other) => Math.abs(other.age - row.age) <= 1 && !ONE_OFF_MEMBER_ID.test(other.memberId) && !other.memberId.startsWith('noid:'))
   ) {
     return 'stale one-off id';
   }

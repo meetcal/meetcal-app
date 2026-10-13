@@ -295,6 +295,21 @@ describe('entries a list no longer has, and renamed or re-numbered entrants (#25
     expect(rows('athletes')).toEqual([expect.objectContaining({ name: 'Kimberly Wiese', memberId: '1027360', weightClass: '77' })]);
   });
 
+  it("leaves a same-name athlete of another age alone rather than take over their nine-digit id", async () => {
+    const { db, rows } = fakeDb({ athletes: [athlete('Alex Lee', '123456789', { age: 18 })] });
+    expect(await upsert({ db }, { meet: 'Meet', rows: [entry('Alex Lee', '7654321', { age: 35 })] })).toMatchObject({ inserted: 1, updated: 0 });
+    expect(rows('athletes').map((a) => [a.memberId, a.age]).sort()).toEqual([
+      ['123456789', 18],
+      ['7654321', 35],
+    ]);
+  });
+
+  it('stores an entrant listed twice once, with the last listing', async () => {
+    const { db, rows } = fakeDb();
+    expect(await upsert({ db }, { meet: 'Meet', rows: [entry('Ann Lee', '123', { entryTotal: 140 }), entry('ANN  LEE', '123', { entryTotal: 150 })] })).toMatchObject({ inserted: 1 });
+    expect(rows('athletes')).toEqual([expect.objectContaining({ memberId: '123', entryTotal: 150 })]);
+  });
+
   it('leaves a nine-digit id another meet also holds (a real number), and stores no placeholder rows', async () => {
     const { db, rows } = fakeDb({ athletes: [athlete('Kim Lee', '123456789'), athlete('Kim Lee', '123456789', { meet: 'Other' })] });
     const counts = await upsert({ db }, { meet: 'Meet', rows: [entry('Kim Lee', '7654321'), entry('undefined undefined', 'No Member Entries'), entry(' ', '5')] });

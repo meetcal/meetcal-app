@@ -820,8 +820,14 @@ export const upsertEntryAthletes = internalMutation({
     const stored = [...existing];
     const published = existing.some(hasSession);
     const counts = { inserted: 0, updated: 0, unchanged: 0, sessionSkipped: 0, notOnStartList: 0, rejected: 0, deleted: 0 };
-    const accepted = rows.filter((row) => !isJunkEntrant(row) && isStoredMemberId(row.memberId));
-    counts.rejected = rows.length - accepted.length;
+    const valid = rows.filter((row) => !isJunkEntrant(row) && isStoredMemberId(row.memberId));
+    counts.rejected = rows.length - valid.length;
+    // One entrant listed twice (two source rows for one member and name) is
+    // one roster row, as it was when the second updated the first: the last
+    // listing wins.
+    const byIdentity = new Map<string, (typeof rows)[number]>();
+    for (const row of valid) byIdentity.set(JSON.stringify([row.memberId, normalizeName(row.name)]), row);
+    const accepted = [...byIdentity.values()];
     if (counts.rejected) console.warn(`upsertEntryAthletes: ${meet}: ${counts.rejected} placeholder row(s) not stored`);
     const incomingKeys = new Set(accepted.map((row) => normalizeName(row.name)));
     // Stored rows an incoming entrant is: kept, and not taken by another.
@@ -868,6 +874,9 @@ export const upsertEntryAthletes = internalMutation({
         // The same athlete under an id the old scraper minted per run (#386).
         for (const a of existing) {
           if (!unclaimed(a) || hasSession(a) || normalizeName(a.name) !== nameKey || normalizeGender(a.gender) !== gender) continue;
+          // The same age, give or take the year it turns over: another
+          // athlete of the same name keeps their row.
+          if (Math.abs(a.age - row.age) > 1) continue;
           if (await isOneOff(a.memberId)) {
             match = a;
             break;
