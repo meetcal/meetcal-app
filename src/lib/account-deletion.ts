@@ -38,9 +38,10 @@ export function subscriptionManagementUrl(os: string): string {
 
 /**
  * Removes what this device stores under a user's id: their saved sessions
- * (under the current key and every legacy one older builds used), the outbox of writes not yet sent, and the outbox's seeded flag. Run after
- * the user signs out of the account screen they opened to delete their
- * account, when the account (and so every write still queued for it) is gone.
+ * (under the current key and every legacy one older builds used), the outbox
+ * of writes not yet sent, and the outbox's seeded flag. Run when the user
+ * signs out inside Clerk's account sheet (`useAccountSheetCleanup`), which
+ * may be the account's deletion.
  */
 export async function clearLocalUserData(userId: string): Promise<void> {
   // Before the removal, so a write still in flight for the account skips
