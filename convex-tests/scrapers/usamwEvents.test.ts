@@ -1,4 +1,4 @@
-import { parseDates, parseLocation, parseUsamwEvents, timeZoneFor, type UsamwEvent } from '../../convex/scrapers/parse/usamwEvents';
+import { parseDates, parseLocation, parseUsamwEvents, timeZoneFor } from '../../convex/scrapers/parse/usamwEvents';
 import { usamwEventFailures } from '../../convex/scrapers/usamwEvents';
 import { afterRun, describeFailure, sourcesFailed } from '../../convex/lib/cronAlerts';
 
@@ -48,26 +48,36 @@ describe('USA Masters events (usamasters.net)', () => {
   });
 
   describe('problems that need a person (#254)', () => {
-    const event = (name: string): UsamwEvent => ({ name, startDate: '2027-03-03', endDate: '2027-03-05', venueName: 'TBD', venueCity: 'TBD', venueState: 'TBD' });
-    const events = [event('Spring Open'), event('2027 Masters Open'), event('2027 Masters Open 2')];
+    const ambiguous = (event: string, ...meets: string[]) => ({ event, meets });
+    const renamed = (event: string, storedAs: string) => ({ event, storedAs });
 
     it('names one stable source per ambiguous event and per renamed meet', () => {
-      const failures = usamwEventFailures(events, {
-        ambiguous: ['Spring Open: Meet A / Meet B'],
-        renamed: ['2027 Masters Open (USAMW)', '2027 Masters Open 2 (USAMW 2)'],
+      const failures = usamwEventFailures({
+        ambiguousEvents: [ambiguous('Spring Open', 'Meet A', 'Meet B')],
+        renamedEvents: [renamed('2027 Masters Open', '2027 Masters Open (USAMW)'), renamed('2027 Masters Open 2', '2027 Masters Open 2 (USAMW 2)')],
       });
       expect(failures.map((f) => f.source)).toEqual(['event Spring Open', 'meet 2027 Masters Open', 'meet 2027 Masters Open 2']);
       expect(failures[0].error).toContain('Meet A / Meet B');
       expect(failures[1].error).toContain('"2027 Masters Open (USAMW)"');
-      expect(usamwEventFailures(events, { ambiguous: [], renamed: [] })).toEqual([]);
+      expect(usamwEventFailures({ ambiguousEvents: [], renamedEvents: [] })).toEqual([]);
+    });
+
+    it('names the event, not a longer event a meet name happens to complete', () => {
+      // Events "Open" and "Open: Spring" both exist; "Open" overlaps meets
+      // whose names start with "Spring". The source is still "event Open".
+      const failures = usamwEventFailures({ ambiguousEvents: [ambiguous('Open', 'Spring Classic', 'Spring Open')], renamedEvents: [] });
+      expect(failures.map((f) => f.source)).toEqual(['event Open']);
     });
 
     it('emails a rename that turns up while an ambiguous event keeps the job failing', () => {
-      const day1 = describeFailure(sourcesFailed('usamw events', usamwEventFailures(events, { ambiguous: ['Spring Open: Meet A / Meet B'], renamed: [] })));
+      const day1 = describeFailure(sourcesFailed('usamw events', usamwEventFailures({ ambiguousEvents: [ambiguous('Spring Open', 'Meet A', 'Meet B')], renamedEvents: [] })));
       const first = afterRun('usamw-events', undefined, { ok: false, ...day1 });
       expect(first.notice?.kind).toBe('failed');
       const day2 = describeFailure(
-        sourcesFailed('usamw events', usamwEventFailures(events, { ambiguous: ['Spring Open: Meet A / Meet B'], renamed: ['2027 Masters Open (USAMW)'] })),
+        sourcesFailed(
+          'usamw events',
+          usamwEventFailures({ ambiguousEvents: [ambiguous('Spring Open', 'Meet A', 'Meet B')], renamedEvents: [renamed('2027 Masters Open', '2027 Masters Open (USAMW)')] }),
+        ),
       );
       const second = afterRun('usamw-events', first.alerting, { ok: false, ...day2 }, first.failedSources);
       expect(second.notice?.detail).toContain('now also failing: meet 2027 Masters Open');
