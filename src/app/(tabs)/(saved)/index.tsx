@@ -13,10 +13,9 @@ import { useAppColors } from "@/hooks/useAppColors";
 import { useCalendarSessionsExport } from "@/hooks/useCalendarSessionsExport";
 import { useSavedScheduleLookup } from "@/hooks/saved-sessions/useSavedScheduleLookup";
 import { calendarSessionsFromSaved } from "@/lib/calendar-export";
-import { countSessionsOutsideMeet } from "@/lib/saved-sessions-list";
+import { countSessionsOutsideMeet, savedTabMeetNames } from "@/lib/saved-sessions-list";
 import { LegacySavedSession } from "@/types/saved";
 import { useAuthGuard } from "@/utils/authGuard";
-import { useUser } from "@clerk/expo";
 import { useFocusEffect, useNavigation, useRouter } from "expo-router";
 import React, {
   useCallback,
@@ -42,7 +41,6 @@ import { premiumActionFor, resolvePremiumAccess } from "@/lib/premium-access";
 
 export default function SavedScreen() {
   const screenInsets = useScreenHorizontalInsets();
-  const { user } = useUser();
   const {
     savedSessions,
     isLoading,
@@ -54,8 +52,8 @@ export default function SavedScreen() {
   } = useSavedSessions();
   const { selectedMeet, availableMeets, meetDetails } = useSelectedMeet();
   const allowedMeetNames = useMemo(
-    () => new Set(availableMeets.map((m) => m.name)),
-    [availableMeets],
+    () => savedTabMeetNames(availableMeets, selectedMeet),
+    [availableMeets, selectedMeet],
   );
   const router = useRouter();
   const navigation = useNavigation();
@@ -95,9 +93,9 @@ export default function SavedScreen() {
     if (authResult === null || authResult === false) {
       return;
     }
-
-    // At this point, user must be authenticated
-    if (!user?.id) return;
+    // No Clerk `user` check here: offline Clerk never loads, while
+    // `requireAuth` trusts the cached sign-in and the reset runs for the
+    // hook's cached user, queued through the outbox.
 
     // The hook clears the selected meet only (legacy storage keys included),
     // or everything when no meet is selected. Say which one is about to happen.
@@ -126,7 +124,7 @@ export default function SavedScreen() {
         },
       ],
     );
-  }, [requireAuth, user, resetAllSessions, selectedMeet]);
+  }, [requireAuth, resetAllSessions, selectedMeet]);
 
   // `meetDetails.time.abbreviation` is resolved once, in `mapApiMeet`, at the
   // meet's own start date. Re-deriving it here with
@@ -141,12 +139,14 @@ export default function SavedScreen() {
 
   // Pre-meet rows are folded into the current list by the hook, which owns
   // the storage keys; this screen only decides when to ask.
+  // Runs for the hook's user (Clerk's, or the cached one offline), and is
+  // marked done only once it has: with no user yet the hook answers false,
+  // and the new `migrateLegacySessions` a resolved user brings retries it.
   const migrateSessions = useCallback(async () => {
-    if (!user?.id || !selectedMeet) return;
+    if (!selectedMeet) return;
     devLog("Starting session migration");
-    await migrateLegacySessions(selectedMeet);
-    setHasMigrated(true);
-  }, [selectedMeet, migrateLegacySessions, user?.id]);
+    if (await migrateLegacySessions(selectedMeet)) setHasMigrated(true);
+  }, [selectedMeet, migrateLegacySessions]);
 
   // Only the selected meet's sessions are listed.
   const filteredSessions = useMemo(
