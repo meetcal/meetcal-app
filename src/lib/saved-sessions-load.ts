@@ -31,9 +31,24 @@ import { resolveWeighInTime } from '@/utils/time';
  * reconcile the two, then apply the auto-unsave preference.
  */
 
-/** Map the API's rows into the app's saved-session shape. */
+/**
+ * One row per session id, the newest by `updated_at` (the first on a tie),
+ * in first-seen order. A backend from before `users:savedSessions` did this
+ * itself lists a legacy duplicate's rows in creation order, so keeping the
+ * first would keep the oldest edit.
+ */
+export function newestApiRowPerSession(apiSessions: ApiSavedSession[]): ApiSavedSession[] {
+  const newest = new Map<string, ApiSavedSession>();
+  for (const row of apiSessions) {
+    const kept = newest.get(row.session_id);
+    if (kept === undefined || row.updated_at > kept.updated_at) newest.set(row.session_id, row);
+  }
+  return [...newest.values()];
+}
+
+/** Map the API's rows into the app's saved-session shape, one per session. */
 export function sessionsFromApi(apiSessions: ApiSavedSession[]): SavedSession[] {
-  return apiSessions.map(s => ({
+  return newestApiRowPerSession(apiSessions).map(s => ({
     id: s.session_id,
     meet: s.meet as MeetName,
     sessionNumber: s.session_number,
@@ -87,6 +102,40 @@ export function createLoadChain(): LoadChain {
       };
       promise.then(release, release);
       return promise;
+    },
+  };
+}
+
+/**
+ * The shortest gap between two background refreshes of the saved list (app
+ * foreground, network back). Each one is a token read, an outbox flush and a
+ * GET; iOS reports `active` for every Control Center pull, and venue Wi-Fi
+ * flaps, so these are throttled. A load the user asked for (pull to refresh,
+ * the Saved tab gaining focus, a sign-in) is not.
+ */
+export const SAVED_SESSIONS_REFRESH_MIN_INTERVAL_MS = 60_000;
+
+export interface RefreshThrottle {
+  /** Note that a load started now (any load, throttled or not). */
+  markRun(): void;
+  /** Whether a background refresh may run now: the last load is old enough. */
+  shouldRun(): boolean;
+}
+
+export function createRefreshThrottle(
+  minIntervalMs: number = SAVED_SESSIONS_REFRESH_MIN_INTERVAL_MS,
+  now: () => number = Date.now,
+): RefreshThrottle {
+  let lastRunAt: number | null = null;
+  return {
+    markRun() {
+      lastRunAt = now();
+    },
+    shouldRun() {
+      if (lastRunAt === null) return true;
+      const elapsed = now() - lastRunAt;
+      // A clock set backwards since the last load: treat it as old.
+      return elapsed < 0 || elapsed >= minIntervalMs;
     },
   };
 }

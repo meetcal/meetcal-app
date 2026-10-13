@@ -829,6 +829,23 @@ export async function initStore(): Promise<void> {
   }
 }
 
+/**
+ * The schedule stored under `scheduleKey`, or null. A truncated or legacy
+ * payload degrades to "no cached schedule", not an error that takes the
+ * whole meet down.
+ */
+async function readCachedSchedule(scheduleKey: string): Promise<Schedule | null> {
+  const scheduleString = await AsyncStorage.getItem(scheduleKey);
+  if (!scheduleString) return null;
+  try {
+    const parsed: unknown = JSON.parse(scheduleString);
+    return Array.isArray(parsed) ? (parsed as Schedule) : null;
+  } catch (parseError) {
+    console.warn('Ignoring invalid cached schedule payload:', parseError);
+    return null;
+  }
+}
+
 // Get meet data from store
 export async function getMeetData(meetId: MeetName): Promise<MeetData> {
   try {
@@ -842,24 +859,7 @@ export async function getMeetData(meetId: MeetName): Promise<MeetData> {
 
     // Get the schedule if it exists
     const scheduleKey = entry.scheduleKey;
-    let schedule: Schedule | null = null;
-    
-    if (scheduleKey) {
-      const scheduleString = await AsyncStorage.getItem(scheduleKey);
-      if (scheduleString) {
-        // A truncated or legacy payload must degrade to "no cached schedule",
-        // not take the whole meet down: `MeetData.schedule` is typed
-        // `Schedule | null`, and the sibling reader `getMeetSchedule` already
-        // guards exactly this way.
-        try {
-          const parsed: unknown = JSON.parse(scheduleString);
-          schedule = Array.isArray(parsed) ? (parsed as Schedule) : null;
-        } catch (parseError) {
-          console.warn('Ignoring invalid cached schedule payload:', parseError);
-          schedule = null;
-        }
-      }
-    }
+    const schedule = scheduleKey ? await readCachedSchedule(scheduleKey) : null;
     
     const athletesKey = entry.athletesKey || `${ATHLETES_KEY_PREFIX}${meetId}`;
     const athletes = await readStoredAthletes(
@@ -1457,19 +1457,58 @@ export async function clearMeetSchedule(meetId: string): Promise<void> {
   });
 }
 
+/**
+ * A meet's stored schedule, or `[]`. Reads the index and the schedule only:
+ * the schedule resource calls this on every screen mount and on every
+ * background schedule sync, and going through `getMeetData` read and
+ * normalized the meet's whole roster (hundreds of KB) to get at it.
+ */
 export async function getMeetSchedule(meetId: string): Promise<Schedule> {
   try {
-    // `getMeetData` has already read `scheduleKey` and parsed it into
-    // `MeetData.schedule`, applying the same "not an array / bad JSON means no
-    // cached schedule" rule this function used to apply itself. Re-reading the
-    // key here was a second AsyncStorage read and a second `JSON.parse` of the
-    // exact same payload.
-    const meetData = await getMeetData(meetId as MeetName);
-    return meetData.schedule ?? [];
+    const store = await getStore();
+    const scheduleKey = store.meets[meetId]?.scheduleKey;
+    if (!scheduleKey) return [];
+    return (await readCachedSchedule(scheduleKey)) ?? [];
   } catch (error) {
     console.error('Error getting meet schedule:', error);
     return [];
   }
+}
+
+/**
+ * How stale a meet's "synced" time may get while its schedule keeps being
+ * checked and found unchanged. Every check stamping it rewrote the whole
+ * index every 5 minutes; never stamping it left the offline banner saying
+ * "synced 2d ago" about a schedule checked minutes ago.
+ */
+export const UNCHANGED_SYNC_STAMP_INTERVAL_MS = 15 * 60 * 1000;
+
+/**
+ * Record that a stored meet's schedule was just checked against the server
+ * and had not changed (`saveMeetSchedule` stamps a changed one). Writes only
+ * when the stamp is at least `minIntervalMs` old. Returns whether it wrote.
+ */
+export async function markMeetScheduleVerified(
+  meetId: string,
+  now: number = Date.now(),
+  minIntervalMs: number = UNCHANGED_SYNC_STAMP_INTERVAL_MS,
+): Promise<boolean> {
+  const entry = (await getStore()).meets[meetId];
+  if (!entry?.scheduleKey) return false;
+  const age = now - (entry.lastSyncTime ?? 0);
+  if (age >= 0 && age < minIntervalMs) return false;
+  let wrote = false;
+  await updateStore((store) => {
+    // Re-checked on the chain: a schedule save (or another check) may have
+    // stamped a newer time while this waited, and must not be rewound.
+    const current = store.meets[meetId];
+    if (!current?.scheduleKey) return;
+    const currentAge = now - (current.lastSyncTime ?? 0);
+    if (currentAge < minIntervalMs) return;
+    current.lastSyncTime = now;
+    wrote = true;
+  });
+  return wrote;
 }
 
 /**

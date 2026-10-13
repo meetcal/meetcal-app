@@ -210,3 +210,19 @@ export function countSessionsOutsideMeet(
 ): number {
   return sessions.filter((session) => session.meet !== meet).length;
 }
+
+/**
+ * The meets whose saved sessions the Saved tab shows: the meets list plus
+ * the selected meet. `SelectedMeetContext` keeps a meet selected after it
+ * leaves the meets list (it ended, or it was opened by link outside the
+ * list's window), and the tab lists only that meet's sessions; without it
+ * here every card rendered nothing and the tab went blank.
+ */
+export function savedTabMeetNames(
+  availableMeets: readonly { name: string }[],
+  selectedMeet: MeetName | null,
+): Set<string> {
+  const names = new Set(availableMeets.map((meet) => meet.name));
+  if (selectedMeet) names.add(selectedMeet);
+  return names;
+}
