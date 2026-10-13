@@ -935,13 +935,6 @@ function getAthleteBestsKey(normalizedName: string): string {
   return `${ATHLETE_BESTS_KEY_PREFIX}${normalizedName}`;
 }
 
-export async function saveAthleteHistory(
-  athleteName: string,
-  results: SupabaseLiftResult[],
-): Promise<void> {
-  await saveAthleteHistoryBatch([{ name: athleteName, results }]);
-}
-
 export type AthleteHistoryEntry = {
   name: string;
   results: SupabaseLiftResult[];
@@ -1261,28 +1254,6 @@ export async function getAllCachedLiftingResultsForAthlete(
   return byName[athleteName] ?? [];
 }
 
-export async function getAthleteLiftingResults(meetId: MeetName, athleteName: string): Promise<SupabaseLiftResult[]> {
-  try {
-    const meetData = await getMeetData(meetId);
-    const liftingResultsKey = meetData.liftingResultsKey;
-    
-    if (!liftingResultsKey) {
-      return [];
-    }
-    
-    const allResults = await readStoredLiftingResults(liftingResultsKey);
-    const normalizedTargetName = normalizeAthleteName(athleteName);
-    const filteredResults = allResults.filter(
-      result => normalizeAthleteName(result.name) === normalizedTargetName
-    );
-
-    return filteredResults;
-  } catch (error) {
-    console.error('Error getting athlete lifting results:', error);
-    return [];
-  }
-}
-
 // Get all cached lifting results for a meet
 export async function getMeetLiftingResults(meetId: MeetName): Promise<SupabaseLiftResult[]> {
   try {
@@ -1517,17 +1488,27 @@ export async function clearMeetSchedule(meetId: string): Promise<void> {
 }
 
 /**
- * A meet's stored schedule, or `[]`. Reads the index and the schedule only:
- * the schedule resource calls this on every screen mount and on every
- * background schedule sync, and going through `getMeetData` read and
- * normalized the meet's whole roster (hundreds of KB) to get at it.
+ * A meet's stored schedule, `[]` when there is none (or it does not parse).
+ *
+ * Reads the schedule key only. It used to go through `getMeetData`, which
+ * also read, parsed and normalized the meet's whole roster (~0.5 MB for a
+ * national meet) and threw it away. Every schedule reader paid that on the
+ * JS thread: the schedule resource on each screen mount and background
+ * schedule sync, every reconnect, the reminder sync and the auto-unsave
+ * prune, once per saved meet.
  */
 export async function getMeetSchedule(meetId: string): Promise<Schedule> {
   try {
-    const store = await getStore();
-    const scheduleKey = store.meets[meetId]?.scheduleKey;
-    if (!scheduleKey) return [];
-    return (await readCachedSchedule(scheduleKey)) ?? [];
+    // `saveMeetSchedule` always writes the fixed key (a meet with no index
+    // entry reads it too, as `getMeetData` does); the index is read only when
+    // that key is empty, for an entry naming another one.
+    const fixedKey = `${SCHEDULE_KEY_PREFIX}${meetId}`;
+    const fromFixedKey = await readCachedSchedule(fixedKey);
+    if (fromFixedKey) return fromFixedKey;
+    const indexed = (await getStore()).meets[meetId]?.scheduleKey;
+    if (!indexed || indexed === fixedKey) return [];
+    // A truncated or legacy payload degrades to "no cached schedule".
+    return (await readCachedSchedule(indexed)) ?? [];
   } catch (error) {
     console.error('Error getting meet schedule:', error);
     return [];
