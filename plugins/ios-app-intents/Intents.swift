@@ -32,6 +32,120 @@ enum IntentFailure {
     }
 }
 
+// MARK: - Premium gate
+
+/// The premium answers. In the app each is behind `SubscriptionGate` (the
+/// comp-data screens) or `requirePremium` (athlete results); Siri applies the
+/// same soft gate from the entitlement hint the app mirrors into the App
+/// Group (`SharedStore.hasPremiumEntitlement`).
+enum PremiumFeature: String, AppEnum {
+    case qualifyingTotals
+    case standards
+    case rankings
+    case records
+    case athleteResults
+
+    static var typeDisplayRepresentation = TypeDisplayRepresentation(name: "Premium Feature")
+
+    static var caseDisplayRepresentations: [PremiumFeature: DisplayRepresentation] = [
+        .qualifyingTotals: "Qualifying Totals",
+        .standards: "A/B Standards",
+        .rankings: "International Rankings",
+        .records: "Records",
+        .athleteResults: "Athlete Results",
+    ]
+
+    var title: String {
+        switch self {
+        case .qualifyingTotals: return "Qualifying Totals"
+        case .standards: return "A/B Standards"
+        case .rankings: return "International Rankings"
+        case .records: return "Records"
+        case .athleteResults: return "Athlete Results"
+        }
+    }
+
+    /// What the answer would have shown, for "Subscribe in MeetCal to see …".
+    var noun: String {
+        switch self {
+        case .qualifyingTotals: return "qualifying totals"
+        case .standards: return "A/B standards"
+        case .rankings: return "international rankings"
+        case .records: return "records"
+        case .athleteResults: return "athlete results"
+        }
+    }
+
+    var systemImage: String {
+        switch self {
+        case .qualifyingTotals: return "target"
+        case .standards: return "chart.bar"
+        case .rankings: return "globe.americas.fill"
+        case .records: return "medal.fill"
+        case .athleteResults: return "trophy.fill"
+        }
+    }
+
+    /// Where "Subscribe" goes. A comp-data screen shows the paywall inline
+    /// (its `SubscriptionGate`) and the data after a purchase; athlete results
+    /// have no screen of their own to land on, so they open the paywall.
+    var url: URL {
+        switch self {
+        case .qualifyingTotals: return MeetCalDeepLinks.qualifyingTotals
+        case .standards: return MeetCalDeepLinks.standards
+        case .rankings: return MeetCalDeepLinks.rankings
+        case .records: return MeetCalDeepLinks.records
+        case .athleteResults: return URL(string: "meetcal:///shared-screens/paywall?feature=athlete-results")!
+        }
+    }
+}
+
+enum PremiumGate {
+    /// False unless the app last saw the premium entitlement: an absent hint
+    /// (the app has not run since updating, or RevenueCat never answered)
+    /// fails closed.
+    static var isUnlocked: Bool {
+        SharedStore.hasPremiumEntitlement
+    }
+
+    /// The answer a user without the entitlement gets: no data, and a
+    /// Subscribe button that opens MeetCal on the paywall.
+    static func lockedAnswer(_ feature: PremiumFeature) -> (IntentDialog, SnippetListView) {
+        let message = "Subscribe in MeetCal to see \(feature.noun)."
+        let view = SnippetListView(
+            title: feature.title,
+            subtitle: "Subscription required",
+            rows: [],
+            emptyMessage: message,
+            systemImage: feature.systemImage,
+            subscribeFeature: feature
+        )
+        return ("\(message)", view)
+    }
+}
+
+/// Opens MeetCal where a premium feature's paywall is. Run from the
+/// Subscribe button of a locked answer; not offered on its own.
+struct OpenPremiumFeatureIntent: AppIntent {
+    static var title: LocalizedStringResource = "Subscribe in MeetCal"
+    static var description = IntentDescription("Open MeetCal's subscription screen for a premium feature.")
+    static var openAppWhenRun = true
+    static var isDiscoverable = false
+
+    @Parameter(title: "Feature")
+    var feature: PremiumFeature
+
+    init() {}
+
+    init(feature: PremiumFeature) {
+        self.feature = feature
+    }
+
+    func perform() async throws -> some IntentResult & OpensIntent {
+        .result(opensIntent: OpenURLIntent(feature.url))
+    }
+}
+
 // MARK: - FindMeetsIntent
 
 struct FindMeetsIntent: AppIntent {
@@ -179,8 +293,10 @@ struct GetSessionScheduleIntent: AppIntent {
         }
         let limited = Array(sessions.prefix(12))
         let rows = limited.map { session -> SnippetRow in
-            var subtitleParts: [String] = []
-            if let wc = session.weightClass, !wc.isEmpty { subtitleParts.append(wc) }
+            // The day first: a multi-day meet's sessions otherwise read as one day.
+            let subtitleParts = [APIDayFormat.short(session.date), session.weightClass]
+                .compactMap { $0 }
+                .filter { !$0.isEmpty }
             return SnippetRow(
                 leading: session.platform,
                 title: "Session \(session.sessionNumber)",
@@ -282,6 +398,11 @@ struct GetAthleteResultsIntent: AppIntent {
     }
 
     func perform() async throws -> some IntentResult & ProvidesDialog & ShowsSnippetView {
+        guard PremiumGate.isUnlocked else {
+            let (dialog, view) = PremiumGate.lockedAnswer(.athleteResults)
+            return .result(dialog: dialog, view: view)
+        }
+
         // Bests and recent meets are independent: show whichever arrived.
         async let bestsTask = MeetCalAPI.shared.bests(names: [name])
         async let resultsTask = MeetCalAPI.shared.resultsByNames([name], limitPerName: Self.recentResultCount)
@@ -289,13 +410,16 @@ struct GetAthleteResultsIntent: AppIntent {
         let fetchedResults = try? await resultsTask
         let bests = fetchedBests ?? [:]
         let results = fetchedResults ?? []
+        // `bests(names:)` leaves out a name with no bests, so an unknown name
+        // (a typo) has none and reaches "I couldn't find results".
+        let best = bests[name] ?? bests.values.first
 
         var rows: [SnippetRow] = []
 
-        if let best = bests[name] ?? bests.values.first {
-            let snatch = best.best_snatch.map { Int($0) }
-            let cj = best.best_cj.map { Int($0) }
-            let total = best.best_total.map { Int($0) }
+        if let best {
+            let snatch = positiveKg(best.best_snatch)
+            let cj = positiveKg(best.best_cj)
+            let total = positiveKg(best.best_total)
             rows.append(SnippetRow(
                 leading: "",
                 title: Self.bestsTitle,
@@ -305,11 +429,13 @@ struct GetAthleteResultsIntent: AppIntent {
         }
 
         for result in results.prefix(Self.recentResultCount) {
-            let total = result.total.map { "\($0) kg" } ?? "—"
+            let total = positiveKg(result.total.map(Double.init)).map { "\($0) kg" } ?? "—"
+            // A body weight sent as 0 is missing, not "0.0 kg BW".
+            let bodyWeight = result.body_weight.flatMap { $0 > 0 ? "\(kgString($0)) BW" : nil }
             rows.append(SnippetRow(
                 leading: "",
                 title: result.meet ?? "Meet",
-                subtitle: [result.date.map { APIDateFormat.pretty($0) }, result.body_weight.map { "\($0) kg BW" }].compactMap { $0 }.joined(separator: " • "),
+                subtitle: [result.date.map { APIDateFormat.pretty($0) }, bodyWeight].compactMap { $0 }.joined(separator: " • "),
                 trailing: total
             ))
         }
@@ -326,8 +452,8 @@ struct GetAthleteResultsIntent: AppIntent {
         let dialog: IntentDialog
         if rows.isEmpty {
             dialog = "I couldn't find results for \(name)."
-        } else if let best = bests[name] ?? bests.values.first, let total = best.best_total {
-            dialog = "\(name)'s best total over \(Self.bestsWindow) is \(Int(total)) kilograms."
+        } else if let total = positiveKg(best?.best_total) {
+            dialog = "\(name)'s best total over \(Self.bestsWindow) is \(total) kilograms."
         } else {
             dialog = "Here are recent results for \(name)."
         }
@@ -347,8 +473,18 @@ struct GetAthleteResultsIntent: AppIntent {
 
 // MARK: - Comp-data intents (App Group payloads)
 
+/// A lift or total in whole kilograms, or nil when missing or not positive:
+/// the API sends 0 for "no lift", which is never a real 0 kg best.
+private func positiveKg(_ value: Double?) -> Int? {
+    guard let value, value > 0 else { return nil }
+    return Int(value)
+}
+
+/// A weight in kg, or "—" for none. The reference tables answer `0` for "no
+/// record set / no standard" (every U15 B standard), so `<= 0` is none too,
+/// as in the app's `formatReferenceKg` (src/lib/reference-values.ts).
 private func kgString(_ value: Double?) -> String {
-    guard let value else { return "—" }
+    guard let value, value.isFinite, value > 0 else { return "—" }
     if value.rounded() == value {
         return "\(Int(value))kg"
     }
@@ -414,6 +550,60 @@ private func matchContains(_ value: String?, _ filter: String?) -> Bool {
     return (value ?? "").range(of: filter, options: .caseInsensitive) != nil
 }
 
+/// Weight classes as the tables spell them ("89", "89kg", "+109kg", "109+kg",
+/// ">86") and as Siri hears them ("89 kg", "109 plus"), reduced to one key:
+/// the number, marked when it is a plus class. "109" and "+109" stay apart.
+func weightClassKey(_ value: String) -> String {
+    var compact = value.lowercased().filter { !$0.isWhitespace }
+    // A trailing unit ("109 plus kg", "89kg") says nothing about plus or not.
+    if compact.hasSuffix("kg") { compact.removeLast(2) }
+    let number = compact.filter { $0.isASCII && ($0.isNumber || $0 == ".") }
+    guard !number.isEmpty else { return compact }
+    let isPlus = compact.contains("+") || compact.contains(">") || compact.hasSuffix("plus")
+    return isPlus ? "+\(number)" : number
+}
+
+/// Weight-class match through `weightClassKey`; a `nil`/empty filter matches
+/// everything.
+private func matchWeightClass(_ value: String?, _ filter: String?) -> Bool {
+    guard let filter, !filter.isEmpty else { return true }
+    return weightClassKey(value ?? "") == weightClassKey(filter)
+}
+
+/// The rows an answer shows. The table's own rows only when the user gave no
+/// filters at all (the Nationals / Men / Senior defaults found nothing);
+/// filters the user gave that match nothing answer nothing, never another
+/// category's rows.
+private func rowsToShow<Row>(filtered: [Row], all: [Row], filters: CompDataFilters) -> [Row] {
+    filtered.isEmpty && filters.isEmpty ? all : filtered
+}
+
+/// "I couldn't find standards for Women U17. Standards exist for Junior,
+/// Senior and Youth." The second sentence only when the asked-for age
+/// category is not in the table at all (the Siri picker offers categories
+/// some tables do not have).
+private func missDialog(
+    noun: String,
+    filterLabels: [String?],
+    askedAgeCategory: String?,
+    tableAgeCategories: [String?]
+) -> IntentDialog {
+    let described = filterLabels.compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: " ")
+    var text = described.isEmpty
+        ? "I couldn't find \(noun)."
+        : "I couldn't find \(noun) for \(described)."
+    let available = Array(Set(tableAgeCategories.compactMap { $0 }.filter { !$0.isEmpty })).sorted()
+    if let askedAgeCategory,
+       !available.isEmpty,
+       !available.contains(where: { $0.caseInsensitiveCompare(askedAgeCategory) == .orderedSame }) {
+        let list = available.count == 1
+            ? available[0]
+            : available.dropLast().joined(separator: ", ") + " and " + (available.last ?? "")
+        text += " \(noun.prefix(1).uppercased() + noun.dropFirst()) exist for \(list)."
+    }
+    return "\(text)"
+}
+
 /// Builds a " • "-joined subtitle from the non-empty applied filter labels.
 private func filterSubtitle(_ parts: [String?]) -> String {
     let joined = parts.compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: " • ")
@@ -444,9 +634,9 @@ private func liveQualifyingTotalsResult(filters: CompDataFilters) async throws -
         matchEq($0.gender, gender)
             && matchEq($0.age_category, age)
             && matchContains($0.event_name, event)
-            && matchEq($0.weight_class, filters.weightClass)
+            && matchWeightClass($0.weight_class, filters.weightClass)
     }
-    let selected = filtered.isEmpty ? apiRows : filtered
+    let selected = rowsToShow(filtered: filtered, all: apiRows, filters: filters)
     let rows = selected.prefix(8).map {
         SnippetRow(
             leading: $0.weight_class ?? "",
@@ -457,13 +647,18 @@ private func liveQualifyingTotalsResult(filters: CompDataFilters) async throws -
     }
     let view = SnippetListView(
         title: "Qualifying Totals",
-        subtitle: filtered.isEmpty ? "Latest data" : filterSubtitle([event, gender, age, filters.weightClass]),
+        subtitle: filtered.isEmpty && filters.isEmpty ? "Latest data" : filterSubtitle([event, gender, age, filters.weightClass]),
         rows: rows,
         emptyMessage: "No qualifying totals found",
         systemImage: "target"
     )
     let dialog: IntentDialog = rows.isEmpty
-        ? "I couldn't find qualifying totals."
+        ? missDialog(
+            noun: "qualifying totals",
+            filterLabels: [event, gender, age, filters.weightClass],
+            askedAgeCategory: filters.ageCategory,
+            tableAgeCategories: apiRows.map(\.age_category)
+        )
         : "Here are qualifying totals from MeetCal."
     return (dialog, view, compDataEntities(category: "Qualifying Totals", rows: rows))
 }
@@ -475,9 +670,9 @@ private func liveStandardsResult(filters: CompDataFilters) async throws -> (Inte
     let filtered = apiRows.filter {
         matchEq($0.gender, gender)
             && matchEq($0.age_category, age)
-            && matchEq($0.weight_class, filters.weightClass)
+            && matchWeightClass($0.weight_class, filters.weightClass)
     }
-    let selected = filtered.isEmpty ? apiRows : filtered
+    let selected = rowsToShow(filtered: filtered, all: apiRows, filters: filters)
     let rows = selected.prefix(8).map {
         SnippetRow(
             leading: $0.weight_class ?? "",
@@ -488,13 +683,18 @@ private func liveStandardsResult(filters: CompDataFilters) async throws -> (Inte
     }
     let view = SnippetListView(
         title: "A/B Standards",
-        subtitle: filtered.isEmpty ? "Latest data" : filterSubtitle([gender, age, filters.weightClass]),
+        subtitle: filtered.isEmpty && filters.isEmpty ? "Latest data" : filterSubtitle([gender, age, filters.weightClass]),
         rows: rows,
         emptyMessage: "No standards found",
         systemImage: "chart.bar"
     )
     let dialog: IntentDialog = rows.isEmpty
-        ? "I couldn't find standards."
+        ? missDialog(
+            noun: "standards",
+            filterLabels: [gender, age, filters.weightClass],
+            askedAgeCategory: filters.ageCategory,
+            tableAgeCategories: apiRows.map(\.age_category)
+        )
         : "Here are A and B standards from MeetCal."
     return (dialog, view, compDataEntities(category: "A/B Standards", rows: rows))
 }
@@ -509,9 +709,9 @@ private func liveRankingsResult(filters: CompDataFilters) async throws -> (Inten
         matchContains($0.meet, meet)
             && matchEq($0.gender, gender)
             && matchEq($0.age_category, age)
-            && matchEq($0.weight_class, filters.weightClass)
+            && matchWeightClass($0.weight_class, filters.weightClass)
     }
-    let unsorted = filtered.isEmpty ? apiRows : filtered
+    let unsorted = rowsToShow(filtered: filtered, all: apiRows, filters: filters)
     // Sort by ranking ascending; rows without a ranking go last.
     let selected = unsorted.sorted { ($0.ranking ?? Int.max) < ($1.ranking ?? Int.max) }
     let rows = selected.prefix(8).map {
@@ -524,13 +724,18 @@ private func liveRankingsResult(filters: CompDataFilters) async throws -> (Inten
     }
     let view = SnippetListView(
         title: "International Rankings",
-        subtitle: filtered.isEmpty ? "Latest data" : filterSubtitle([meet, gender, age, filters.weightClass]),
+        subtitle: filtered.isEmpty && filters.isEmpty ? "Latest data" : filterSubtitle([meet, gender, age, filters.weightClass]),
         rows: rows,
         emptyMessage: "No rankings found",
         systemImage: "globe.americas.fill"
     )
     let dialog: IntentDialog = rows.isEmpty
-        ? "I couldn't find international rankings."
+        ? missDialog(
+            noun: "international rankings",
+            filterLabels: [meet, gender, age, filters.weightClass],
+            askedAgeCategory: filters.ageCategory,
+            tableAgeCategories: apiRows.map(\.age_category)
+        )
         : "Here are international rankings from MeetCal."
     return (dialog, view, compDataEntities(category: "International Rankings", rows: rows))
 }
@@ -544,9 +749,9 @@ private func liveRecordsResult(filters: CompDataFilters) async throws -> (Intent
         matchContains($0.record_type, recordType)
             && matchEq($0.gender, gender)
             && matchEq($0.age_category, age)
-            && matchEq($0.weight_class, filters.weightClass)
+            && matchWeightClass($0.weight_class, filters.weightClass)
     }
-    let selected = filtered.isEmpty ? apiRows : filtered
+    let selected = rowsToShow(filtered: filtered, all: apiRows, filters: filters)
     let rows = selected.prefix(8).map {
         SnippetRow(
             leading: $0.weight_class ?? "",
@@ -557,13 +762,18 @@ private func liveRecordsResult(filters: CompDataFilters) async throws -> (Intent
     }
     let view = SnippetListView(
         title: "Records",
-        subtitle: filtered.isEmpty ? "Latest data" : filterSubtitle([recordType, gender, age, filters.weightClass]),
+        subtitle: filtered.isEmpty && filters.isEmpty ? "Latest data" : filterSubtitle([recordType, gender, age, filters.weightClass]),
         rows: rows,
         emptyMessage: "No records found",
         systemImage: "medal.fill"
     )
     let dialog: IntentDialog = rows.isEmpty
-        ? "I couldn't find records."
+        ? missDialog(
+            noun: "records",
+            filterLabels: [recordType, gender, age, filters.weightClass],
+            askedAgeCategory: filters.ageCategory,
+            tableAgeCategories: apiRows.map(\.age_category)
+        )
         : "Here are records from MeetCal."
     return (dialog, view, compDataEntities(category: "Records", rows: rows))
 }
@@ -585,11 +795,15 @@ struct GetQualifyingTotalsIntent: AppIntent {
     var event: String?
 
     func perform() async throws -> some IntentResult & ReturnsValue<[CompDataRowEntity]> & ProvidesDialog & ShowsSnippetView {
+        guard PremiumGate.isUnlocked else {
+            let (dialog, view) = PremiumGate.lockedAnswer(.qualifyingTotals)
+            return .result(value: [CompDataRowEntity](), dialog: dialog, view: view)
+        }
         let filters = CompDataFilters(
             gender: gender?.apiValue,
             ageCategory: ageCategory?.apiValue,
-            weightClass: weightClass,
-            event: event
+            weightClass: CompDataFilters.clean(weightClass),
+            event: CompDataFilters.clean(event)
         )
         // No filters given: prefer the app's last-used selection, then live default.
         if filters.isEmpty {
@@ -626,10 +840,14 @@ struct GetStandardsIntent: AppIntent {
     var weightClass: String?
 
     func perform() async throws -> some IntentResult & ReturnsValue<[CompDataRowEntity]> & ProvidesDialog & ShowsSnippetView {
+        guard PremiumGate.isUnlocked else {
+            let (dialog, view) = PremiumGate.lockedAnswer(.standards)
+            return .result(value: [CompDataRowEntity](), dialog: dialog, view: view)
+        }
         let filters = CompDataFilters(
             gender: gender?.apiValue,
             ageCategory: ageCategory?.apiValue,
-            weightClass: weightClass
+            weightClass: CompDataFilters.clean(weightClass)
         )
         if filters.isEmpty {
             var (dialog, view, rows) = compDataResult(
@@ -668,11 +886,15 @@ struct GetRankingsIntent: AppIntent {
     var weightClass: String?
 
     func perform() async throws -> some IntentResult & ReturnsValue<[CompDataRowEntity]> & ProvidesDialog & ShowsSnippetView {
+        guard PremiumGate.isUnlocked else {
+            let (dialog, view) = PremiumGate.lockedAnswer(.rankings)
+            return .result(value: [CompDataRowEntity](), dialog: dialog, view: view)
+        }
         let filters = CompDataFilters(
             gender: gender?.apiValue,
             ageCategory: ageCategory?.apiValue,
-            weightClass: weightClass,
-            meet: meet
+            weightClass: CompDataFilters.clean(weightClass),
+            meet: CompDataFilters.clean(meet)
         )
         if filters.isEmpty {
             var (dialog, view, rows) = compDataResult(
@@ -711,11 +933,15 @@ struct GetRecordsIntent: AppIntent {
     var weightClass: String?
 
     func perform() async throws -> some IntentResult & ReturnsValue<[CompDataRowEntity]> & ProvidesDialog & ShowsSnippetView {
+        guard PremiumGate.isUnlocked else {
+            let (dialog, view) = PremiumGate.lockedAnswer(.records)
+            return .result(value: [CompDataRowEntity](), dialog: dialog, view: view)
+        }
         let filters = CompDataFilters(
             gender: gender?.apiValue,
             ageCategory: ageCategory?.apiValue,
-            weightClass: weightClass,
-            recordType: recordType
+            weightClass: CompDataFilters.clean(weightClass),
+            recordType: CompDataFilters.clean(recordType)
         )
         let (dialog, view, rows) = await liveOrUnreachable(title: "Records", systemImage: "medal.fill") {
             try await liveRecordsResult(filters: filters)

@@ -8,7 +8,8 @@ use comfy_table::Table;
 use serde_json::json;
 
 use crate::commands::group_wrapped::{
-    ClubMembership, filter_membership_results, get_club_memberships, get_wso_memberships,
+    ClubMembership, distinct_names, filter_membership_results, get_club_memberships,
+    get_wso_memberships,
 };
 use crate::commands::wso_results::{
     RosterClasses, calculate_medal_details, needs_roster, roster_classes,
@@ -93,15 +94,7 @@ pub async fn run_wso(args: WsoTrendsArgs) -> Result<()> {
 }
 
 async fn run(title: &str, memberships: &[ClubMembership], with_medals: bool) -> Result<()> {
-    let mut names: Vec<String> = Vec::new();
-    for membership in memberships {
-        if !names
-            .iter()
-            .any(|name| fold(name) == fold(&membership.name))
-        {
-            names.push(membership.name.clone());
-        }
-    }
+    let names = distinct_names(memberships);
     let by_name = histories(&names).await?;
 
     // PRs are judged against each athlete's whole history, not just the group's meets.
@@ -152,9 +145,13 @@ async fn medals_by_year(
             .filter(|m| equivalent_meets(&m.meet, &meet))
             .map(|m| m.name.clone())
             .collect();
-        // `meet` is a results meet already (the group's rows name it), so no aliases.
-        let meet_rows: Vec<LiftingResults> =
-            query(queries::MEET_RESULTS, &json!({ "meet": meet })).await?;
+        // `meet` is a results meet already (the group's rows name it), so no
+        // aliases. A meet also answers the results titles linked to it, which
+        // the group's rows name (and this loop ranks) on their own.
+        let meet_rows = own_title_rows(
+            &meet,
+            query(queries::MEET_RESULTS, &json!({ "meet": meet })).await?,
+        );
         // Divisions without a weight class place by the roster's class, as on the server.
         let roster = if needs_roster(&meet_rows) {
             let athletes: Vec<Athletes> =
@@ -170,6 +167,14 @@ async fn medals_by_year(
         }
     }
     Ok(medals)
+}
+
+/// The rows of `meet`'s own results title, leaving out the linked titles a
+/// meet also answers (each is ranked when the group's rows name it).
+fn own_title_rows(meet: &str, rows: Vec<LiftingResults>) -> Vec<LiftingResults> {
+    rows.into_iter()
+        .filter(|row| fold(&row.meet) == fold(meet))
+        .collect()
 }
 
 fn year(date: &str) -> String {
@@ -300,40 +305,49 @@ pub fn report(
             .total_cmp(&a.0.total)
             .then_with(|| a.0.name.cmp(&b.0.name))
     });
-    let mut top = Table::new();
-    top.set_header(vec![
+    let best_sinclair = format!("Best {SINCLAIR_LABEL}");
+    let top_header = vec![
         "Rank",
         "Athlete",
         "Best Total",
         "Division",
         "Date",
-        &format!("Best {SINCLAIR_LABEL}"),
+        best_sinclair.as_str(),
         "Best Q-points",
         "Results",
         "First",
         "Latest",
-    ]);
+    ];
+    // Shown with US dates, exported with ISO ones.
+    let mut top = Table::new();
+    top.set_header(top_header.clone());
+    let mut top_data = Table::new();
+    top_data.set_header(top_header);
     for (rank, (row, sinclair, results, first, last)) in
         (1..).zip(lifters.into_iter().take(TOP_LIFTERS))
     {
-        top.add_row(vec![
-            rank.to_string(),
-            row.name.clone(),
-            number(row.total),
-            row.age.clone(),
-            us_date(&row.date),
-            points(sinclair),
-            points(best_qpoints.get(&fold(&row.name)).copied()),
-            results.to_string(),
-            us_date(&first),
-            us_date(&last),
-        ]);
+        let cells = |date: String, first: String, last: String| {
+            vec![
+                rank.to_string(),
+                row.name.clone(),
+                number(row.total),
+                row.age.clone(),
+                date,
+                points(sinclair),
+                points(best_qpoints.get(&fold(&row.name)).copied()),
+                results.to_string(),
+                first,
+                last,
+            ]
+        };
+        top.add_row(cells(us_date(&row.date), us_date(&first), us_date(&last)));
+        top_data.add_row(cells(row.date.clone(), first, last));
     }
 
     Report::new()
         .titled(format!("TRENDS — {title}"))
         .headed("by_year", "BY YEAR", by_year)
-        .headed("top_lifters", "TOP LIFTERS (ALL TIME)", top)
+        .headed_with_data("top_lifters", "TOP LIFTERS (ALL TIME)", top, top_data)
         .when_empty("No results found at meets where these athletes were registered.")
 }
 
@@ -341,6 +355,31 @@ pub fn report(
 mod tests {
     use super::*;
     use crate::utils::stats::tests::row;
+
+    #[test]
+    fn a_meet_is_ranked_on_its_own_title_not_its_linked_ones() {
+        let lift = |name: &str, meet: &str| {
+            row(
+                name,
+                "2026-06-20",
+                meet,
+                "Open Women's 64kg",
+                63.0,
+                [80.0, 0.0, 0.0],
+                [100.0, 0.0, 0.0],
+            )
+        };
+        let rows = vec![
+            lift("Ann", "Nationals"),
+            lift("Ada", "Junior"),
+            lift("Bea", "nationals "),
+        ];
+        let names = own_title_rows("Nationals", rows)
+            .into_iter()
+            .map(|row| row.name)
+            .collect::<Vec<_>>();
+        assert_eq!(names, ["Ann", "Bea"]);
+    }
 
     #[test]
     fn years_count_athletes_meets_prs_and_medals() {

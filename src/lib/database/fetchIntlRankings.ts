@@ -79,7 +79,18 @@ async function fetchIntlRankingsFresh(): Promise<IntlRanking[]> {
   return rankings;
 }
 
+/**
+ * No ranking at all. Neither the explicit download nor the browse path
+ * (which writes to the download's key) stores such an answer: it would
+ * replace a real download with nothing. The screen still shows the empty
+ * answer; the stored copy stays.
+ */
+export function isIntlRankingsEmpty(rankings: readonly IntlRanking[]): boolean {
+  return rankings.length === 0;
+}
+
 async function persistIntlRankings(rankings: IntlRanking[]) {
+  if (isIntlRankingsEmpty(rankings)) return null;
   const entry = await setOfflineCache(OFFLINE_CACHE_KEYS.intlRankings, rankings);
   return { data: entry.data, lastUpdatedAt: entry.lastSynced };
 }
@@ -91,7 +102,7 @@ async function persistIntlRankings(rankings: IntlRanking[]) {
  */
 export async function downloadIntlRankingsForOffline(): Promise<void> {
   const rankings = await fetchIntlRankingsFresh();
-  if (rankings.length === 0) {
+  if (isIntlRankingsEmpty(rankings)) {
     throw new Error('International rankings download returned no rows');
   }
   await replaceOfflineCache(OFFLINE_CACHE_KEYS.intlRankings, rankings);

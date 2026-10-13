@@ -7,6 +7,7 @@
 //
 
 import SwiftUI
+import AppIntents
 
 struct SnippetPlatformChip: View {
     let text: String
@@ -56,6 +57,9 @@ struct SnippetListView: View {
     let rows: [SnippetRow]
     let emptyMessage: String
     var systemImage: String = "calendar"
+    /// Set on a premium answer for a user without the entitlement: shows a
+    /// Subscribe button that opens MeetCal on the paywall.
+    var subscribeFeature: PremiumFeature? = nil
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -83,6 +87,12 @@ struct SnippetListView: View {
                 Text(emptyMessage)
                     .font(.subheadline)
                     .foregroundStyle(.primary.opacity(0.7))
+                if let subscribeFeature {
+                    Button(intent: OpenPremiumFeatureIntent(feature: subscribeFeature)) {
+                        Label("Subscribe", systemImage: "lock.open.fill")
+                    }
+                    .buttonStyle(.borderedProminent)
+                }
             } else {
                 ForEach(rows.prefix(8)) { row in
                     HStack(alignment: .center, spacing: 8) {

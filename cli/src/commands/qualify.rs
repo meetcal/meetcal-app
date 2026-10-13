@@ -10,6 +10,7 @@ use crate::types::lifting_results::LiftingResults;
 use crate::utils::athletes::history;
 use crate::utils::backend::{NoArgs, queries, query};
 use crate::utils::bests::{YEAR_BESTS_YEARS, cutoff_date};
+use crate::utils::filters;
 use crate::utils::format::us_date;
 use crate::utils::output::{self, Report};
 use crate::utils::stats::{
@@ -236,9 +237,10 @@ pub fn target(
     let Some(gender) = division.gender else {
         bail!("Could not tell the gender from the latest result's division");
     };
-    let primary = category
-        .map(str::to_string)
-        .or_else(|| division.category.clone());
+    let primary = match category {
+        Some(category) => Some(filters::category(category)?),
+        None => division.category.clone(),
+    };
     let (class, retired) = match class {
         Some(class) => match weight_class(class) {
             Some(class) => (class, None),

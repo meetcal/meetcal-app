@@ -4,13 +4,16 @@ use anyhow::Result;
 use comfy_table::Table;
 use serde::Deserialize;
 
-use crate::commands::compare::{MetricComparison, MetricUnit, percent_change};
+use crate::commands::compare::{
+    MetricComparison, MetricUnit, comparison_tables, format_metric, percent_change,
+};
 use crate::commands::wrapped::calculate_wrapped_stats;
 use crate::types::lifting_results::LiftingResults;
 use crate::types::wrapped::WrappedStats;
 use crate::utils::backend::{queries, query, query_all_pages};
 use crate::utils::meet_names::equivalent_meets;
 use crate::utils::output::Report;
+use crate::utils::stats::{fold, number};
 use serde_json::json;
 
 const RESULTS_REQUEST_BATCH_SIZE: usize = 50;
@@ -76,17 +79,21 @@ async fn get_membership_results_since(
     memberships: Vec<ClubMembership>,
     cutoff_date: &str,
 ) -> Result<(Vec<ClubMembership>, Vec<LiftingResults>)> {
-    let mut seen = HashSet::new();
-    let names: Vec<_> = memberships
-        .iter()
-        .filter_map(|membership| {
-            let normalized = normalize(&membership.name);
-            seen.insert(normalized).then(|| membership.name.clone())
-        })
-        .collect();
+    let names = distinct_names(&memberships);
     let results = get_recent_results(&names, cutoff_date).await?;
     let filtered = filter_membership_results(&memberships, results);
     Ok((memberships, filtered))
+}
+
+/// Each member's name once (the first spelling), in registration order; names that differ only
+/// in case or spacing are one athlete.
+pub fn distinct_names(memberships: &[ClubMembership]) -> Vec<String> {
+    let mut seen = HashSet::new();
+    memberships
+        .iter()
+        .filter(|membership| seen.insert(fold(&membership.name)))
+        .map(|membership| membership.name.clone())
+        .collect()
 }
 
 pub fn filter_membership_results(
@@ -98,7 +105,7 @@ pub fn filter_membership_results(
     let mut meets_by_athlete: HashMap<String, HashSet<&str>> = HashMap::new();
     for membership in memberships {
         meets_by_athlete
-            .entry(normalize(&membership.name))
+            .entry(fold(&membership.name))
             .or_default()
             .insert(membership.meet.as_str());
     }
@@ -107,7 +114,7 @@ pub fn filter_membership_results(
         .into_iter()
         .filter(|result| {
             meets_by_athlete
-                .get(&normalize(&result.name))
+                .get(&fold(&result.name))
                 .is_some_and(|meets| {
                     meets
                         .iter()
@@ -149,7 +156,7 @@ pub fn split_comparison_years(
 pub fn calculate_group_stats(results: &[LiftingResults]) -> GroupWrappedStats {
     let athlete_count = results
         .iter()
-        .map(|result| normalize(&result.name))
+        .map(|result| fold(&result.name))
         .collect::<HashSet<_>>()
         .len();
 
@@ -180,7 +187,7 @@ pub fn group_wrapped_report(
         stats.athlete_count.to_string(),
         stats.wrapped.total_meets.to_string(),
         format!("{:.1}%", stats.wrapped.make_percentage),
-        format!("{}kg", format_number(stats.wrapped.average_total)),
+        format!("{}kg", number(stats.wrapped.average_total)),
     ]);
 
     let mut lifts = Table::new();
@@ -191,10 +198,10 @@ pub fn group_wrapped_report(
         "Best Total",
     ]);
     lifts.add_row(vec![
-        format!("{}kg", format_number(stats.wrapped.total_weight_lifted)),
-        format!("{}kg", format_number(stats.wrapped.best_snatch)),
-        format!("{}kg", format_number(stats.wrapped.best_clean_jerk)),
-        format!("{}kg", format_number(stats.wrapped.best_total)),
+        format!("{}kg", number(stats.wrapped.total_weight_lifted)),
+        format!("{}kg", number(stats.wrapped.best_snatch)),
+        format!("{}kg", number(stats.wrapped.best_clean_jerk)),
+        format!("{}kg", number(stats.wrapped.best_total)),
     ]);
 
     let mut top = Table::new();
@@ -262,60 +269,27 @@ pub fn group_comparison_report(
     previous: &GroupWrappedStats,
     current: &GroupWrappedStats,
 ) -> Report {
-    let mut table = Table::new();
-    table.set_header(vec![
-        "Metric".to_string(),
-        previous_year.to_string(),
-        current_year.to_string(),
-        "% Difference".to_string(),
-    ]);
-
-    for metric in group_comparisons(previous, current) {
-        table.add_row(vec![
-            metric.label.to_string(),
-            format_metric(metric.previous, metric.unit),
-            format_metric(metric.current, metric.unit),
-            metric
-                .percent_change
-                .map(|value| format!("{value:+.1}%"))
-                .unwrap_or_else(|| "N/A".to_string()),
-        ]);
-    }
-
-    Report::single("comparison", table).titled(format!(
-        "{} — {group_name}\n{previous_year} VS {current_year} CALENDAR YEAR",
-        group_kind.to_uppercase()
-    ))
-}
-
-fn format_metric(value: f64, unit: MetricUnit) -> String {
-    match unit {
-        MetricUnit::Count => format!("{value:.0}"),
-        MetricUnit::Kilograms => format!("{}kg", format_number(value)),
-        MetricUnit::Percent => format!("{value:.1}%"),
-    }
-}
-
-fn format_number(value: f64) -> String {
-    if value == 0.0 {
-        return "0".to_string();
-    }
-    if value.fract() == 0.0 {
-        format!("{value:.0}")
-    } else {
-        format!("{value:.2}")
-            .trim_end_matches('0')
-            .trim_end_matches('.')
-            .to_string()
-    }
-}
-
-pub fn normalize(value: &str) -> String {
-    value
-        .split_whitespace()
-        .collect::<Vec<_>>()
-        .join(" ")
-        .to_lowercase()
+    let rows = group_comparisons(previous, current)
+        .into_iter()
+        .map(|metric| {
+            [
+                metric.label.to_string(),
+                format_metric(metric.previous, metric.unit),
+                format_metric(metric.current, metric.unit),
+                metric
+                    .percent_change
+                    .map(|value| format!("{value:+.1}%"))
+                    .unwrap_or_else(|| "N/A".to_string()),
+            ]
+        })
+        .collect();
+    let (table, data) = comparison_tables(previous_year, current_year, rows);
+    Report::new()
+        .table_with_data("comparison", table, data)
+        .titled(format!(
+            "{} — {group_name}\n{previous_year} VS {current_year} CALENDAR YEAR",
+            group_kind.to_uppercase()
+        ))
 }
 
 #[cfg(test)]
@@ -332,6 +306,17 @@ mod tests {
             member_id: "1".to_string(),
             entry_total: 180.0,
         }
+    }
+
+    #[test]
+    fn distinct_names_keep_the_first_spelling_of_each_athlete() {
+        let memberships = vec![
+            membership("Jane Doe", "A"),
+            membership("jane  doe", "B"),
+            membership("John Roe", "A"),
+            membership(" Jane Doe ", "C"),
+        ];
+        assert_eq!(distinct_names(&memberships), ["Jane Doe", "John Roe"]);
     }
 
     /// A result whose total is its snatch (75) plus clean & jerk.

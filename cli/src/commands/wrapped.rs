@@ -1,7 +1,7 @@
 use std::collections::{HashMap, HashSet};
 
 use anyhow::{Result, bail};
-use chrono::{Datelike, Utc};
+use chrono::{Datelike, Local};
 use clap::Parser;
 use comfy_table::Table;
 
@@ -9,7 +9,7 @@ use crate::types::lifting_results::LiftingResults;
 use crate::types::wrapped::{SearchResponse, WrappedStats};
 use crate::utils::backend::{queries, query};
 use crate::utils::output::{self, Report};
-use crate::utils::stats::{Lift, valid_lift, valid_total};
+use crate::utils::stats::{Lift, fold, number, valid_lift, valid_total};
 
 /// Show an athlete's calendar year in lifting.
 ///
@@ -42,8 +42,10 @@ pub async fn run(args: WrappedArgs) -> Result<()> {
     Ok(())
 }
 
+/// The year on the user's clock, the default for every "this year" report. Not UTC's: from
+/// 7 pm Eastern on December 31 UTC is already in the next year.
 pub fn current_year() -> i32 {
-    Utc::now().year()
+    Local::now().year()
 }
 
 pub async fn get_athlete_year(name: &str, year: i32) -> Result<SearchResponse> {
@@ -97,10 +99,10 @@ pub fn refuse_cut_year(
 }
 
 pub fn filter_exact_name(name: &str, results: Vec<LiftingResults>) -> Vec<LiftingResults> {
-    let normalized_name = normalize(name);
+    let normalized_name = fold(name);
     results
         .into_iter()
-        .filter(|row| normalize(&row.name) == normalized_name)
+        .filter(|row| fold(&row.name) == normalized_name)
         .collect()
 }
 
@@ -170,7 +172,7 @@ pub fn calculate_wrapped_stats(results: &[LiftingResults]) -> WrappedStats {
 
     let total_meets = ordered
         .iter()
-        .map(|result| normalize(&result.meet))
+        .map(|result| fold(&result.meet))
         .collect::<HashSet<_>>()
         .len();
     let make_percentage = percentage(successful_attempts, recorded_attempts);
@@ -235,7 +237,7 @@ pub fn wrapped_report(name: &str, year: i32, stats: &WrappedStats) -> Report {
     headline.add_row(vec![
         stats.total_meets.to_string(),
         format!("{:.1}%", stats.make_percentage),
-        format!("{}kg", format_weight(stats.best_total)),
+        format!("{}kg", number(stats.best_total)),
         stats.year_rank.to_string(),
     ]);
 
@@ -247,10 +249,10 @@ pub fn wrapped_report(name: &str, year: i32, stats: &WrappedStats) -> Report {
         "Average Total",
     ]);
     volume.add_row(vec![
-        format!("{}kg", format_weight(stats.total_weight_lifted)),
-        format!("{}kg", format_weight(stats.best_snatch)),
-        format!("{}kg", format_weight(stats.best_clean_jerk)),
-        format!("{}kg", format_weight(stats.average_total)),
+        format!("{}kg", number(stats.total_weight_lifted)),
+        format!("{}kg", number(stats.best_snatch)),
+        format!("{}kg", number(stats.best_clean_jerk)),
+        format!("{}kg", number(stats.average_total)),
     ]);
 
     let mut journey = Table::new();
@@ -262,7 +264,7 @@ pub fn wrapped_report(name: &str, year: i32, stats: &WrappedStats) -> Report {
     ]);
     journey.add_row(vec![
         stats.top_meet.clone().unwrap_or_else(|| "N/A".to_string()),
-        format!("{:+}kg", format_weight(stats.improvement_from_first)),
+        format!("{:+}kg", number(stats.improvement_from_first)),
         stats.consecutive_makes.to_string(),
         stats
             .favorite_attempt
@@ -292,28 +294,6 @@ fn ordinal(attempt: usize) -> String {
         3 => "3rd".to_string(),
         _ => attempt.to_string(),
     }
-}
-
-fn format_weight(value: f64) -> String {
-    if value == 0.0 {
-        return "0".to_string();
-    }
-    if value.fract() == 0.0 {
-        format!("{value:.0}")
-    } else {
-        format!("{value:.2}")
-            .trim_end_matches('0')
-            .trim_end_matches('.')
-            .to_string()
-    }
-}
-
-fn normalize(value: &str) -> String {
-    value
-        .split_whitespace()
-        .collect::<Vec<_>>()
-        .join(" ")
-        .to_lowercase()
 }
 
 #[cfg(test)]

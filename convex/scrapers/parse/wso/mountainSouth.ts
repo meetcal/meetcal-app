@@ -40,17 +40,19 @@ export function mountainSouthPdfUrls(html: string): string[] {
   return loose;
 }
 
-/** "YOUTH MEN U17 - SNATCH" -> ["U17", "Men"], "MASTERS WOMEN 35-39 - TOTAL" -> ["Masters 35", "Women"]. */
+/** "YOUTH MEN U17 - SNATCH" -> ["U17", "Men"], "YOUTH WOMEN U11 - TOTAL" -> ["U11", "Women"], "MASTERS WOMEN 35-39 - TOTAL" -> ["Masters 35", "Women"]. */
 export function mountainSouthSection(line: string): [age: string, gender: 'Men' | 'Women'] | null {
   const header = line.trim().toUpperCase();
   const gender = header.includes('MEN') && !header.includes('WOMEN') ? 'Men' : header.includes('WOMEN') ? 'Women' : null;
   if (!gender) return null;
   if (header.includes('OPEN')) return ['Senior', gender];
   if (header.includes('JUNIOR')) return ['Junior', gender];
-  if (['YOUTH', 'U17', 'U15', 'U13'].some((word) => header.includes(word))) {
+  if (['YOUTH', 'U17', 'U15', 'U13', 'U11'].some((word) => header.includes(word))) {
     if (header.includes('17')) return ['U17', gender];
     if (header.includes('15')) return ['U15', gender];
     if (header.includes('13')) return ['U13', gender];
+    // "YOUTH MEN U11", the age group every other WSO stores as U11.
+    if (header.includes('11')) return ['U11', gender];
     return ['Youth', gender];
   }
   if (header.includes('MASTERS')) {

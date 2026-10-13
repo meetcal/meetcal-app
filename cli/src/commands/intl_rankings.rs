@@ -4,6 +4,7 @@ use comfy_table::Table;
 use serde::Deserialize;
 
 use crate::utils::backend::{NoArgs, queries, query};
+use crate::utils::filters::{Filter, no_match};
 use crate::utils::output::{self, Report};
 
 #[derive(Debug, Deserialize)]
@@ -46,11 +47,45 @@ pub async fn run(args: IntlRankingsArgs) -> Result<()> {
 
     let rankings: Vec<Rankings> = query(queries::INTL_RANKINGS, &NoArgs {}).await?;
 
+    let (matching, others): (Vec<Rankings>, Vec<Rankings>) =
+        rankings.into_iter().partition(|row| {
+            row.age_category.eq_ignore_ascii_case(age.trim())
+                && row.gender.eq_ignore_ascii_case(gender.trim())
+                && row.meet.eq_ignore_ascii_case(meet.trim())
+        });
+    if matching.is_empty() {
+        let filters = [
+            Filter {
+                option: "--age",
+                value: &age,
+            },
+            Filter {
+                option: "--gender",
+                value: &gender,
+            },
+            Filter {
+                option: "--meet",
+                value: &meet,
+            },
+        ];
+        let rows: Vec<Vec<&str>> = others
+            .iter()
+            .map(|row| {
+                vec![
+                    row.age_category.as_str(),
+                    row.gender.as_str(),
+                    row.meet.as_str(),
+                ]
+            })
+            .collect();
+        return Err(no_match("international rankings", &filters, &rows));
+    }
+
     // push to table
     let mut table = Table::new();
     table.set_header(vec!["Rank", "Name", "Class", "Percent A", "Total"]);
 
-    for total in selected(rankings, &age, &gender, &meet) {
+    for total in best_first(matching) {
         table.add_row(vec![
             total.ranking.to_string(),
             total.name,
@@ -65,17 +100,8 @@ pub async fn run(args: IntlRankingsArgs) -> Result<()> {
     Ok(())
 }
 
-/// The rankings for one age category, gender and meet, best (rank 1) first. The server answers
-/// the highest rank number first.
-pub fn selected(rankings: Vec<Rankings>, age: &str, gender: &str, meet: &str) -> Vec<Rankings> {
-    let mut rows: Vec<Rankings> = rankings
-        .into_iter()
-        .filter(|row| {
-            row.age_category.eq_ignore_ascii_case(age)
-                && row.gender.eq_ignore_ascii_case(gender)
-                && row.meet.eq_ignore_ascii_case(meet)
-        })
-        .collect();
+/// Rankings best (rank 1) first. The server answers the highest rank number first.
+pub fn best_first(mut rows: Vec<Rankings>) -> Vec<Rankings> {
     rows.sort_by(|a, b| a.ranking.total_cmp(&b.ranking));
     rows
 }
@@ -99,12 +125,11 @@ mod tests {
 
     #[test]
     fn rank_one_comes_first() {
-        let rows = selected(
-            vec![ranked(10.0, "Ten"), ranked(9.0, "Nine"), ranked(1.0, "One")],
-            "senior",
-            "men",
-            "worlds",
-        );
+        let rows = best_first(vec![
+            ranked(10.0, "Ten"),
+            ranked(9.0, "Nine"),
+            ranked(1.0, "One"),
+        ]);
         let names: Vec<&str> = rows.iter().map(|row| row.name.as_str()).collect();
         assert_eq!(names, ["One", "Nine", "Ten"]);
     }

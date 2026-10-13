@@ -168,6 +168,18 @@ export function normalizeDeepLinkHref(value: string): Href | null {
   }
 }
 
+/**
+ * Whether `url` (a `meetcal:` link or an in-app path) opens `pathname`,
+ * whatever its query. A screen uses it to notice a link to itself arriving
+ * while it is already on top.
+ */
+export function deepLinkOpensPath(url: string, pathname: string): boolean {
+  const href = normalizeDeepLinkHref(url);
+  if (typeof href !== "string") return false;
+  const path = href.split(/[?#]/, 1)[0].replace(/\/+$/, "") || "/";
+  return path === (pathname.replace(/\/+$/, "") || "/");
+}
+
 export async function openExternalLink(value: string) {
   const supported = await Linking.canOpenURL(value);
   if (supported) {

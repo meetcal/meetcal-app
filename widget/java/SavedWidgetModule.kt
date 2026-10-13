@@ -64,6 +64,18 @@ class SavedWidgetModule(private val reactContext: ReactApplicationContext) : Rea
     DataWidgetProvider.updateAllWidgets(reactContext, IntlRankingsWidgetProvider::class.java)
   }
 
+  // The app's last known premium entitlement, next to the data widget payloads.
+  // Mirrors the iOS App Group key the App Intents read; Android has no Siri
+  // surface and no widget reads it (the data widgets get "subscribe" payloads
+  // from JS), so this only keeps the contract the same on both platforms.
+  @ReactMethod
+  fun updateEntitlementHint(isSubscribed: Boolean) {
+    reactContext.getSharedPreferences(DataWidgetProvider.PREFS_NAME, Context.MODE_PRIVATE)
+      .edit()
+      .putBoolean(DataWidgetProvider.KEY_ENTITLEMENT_HINT, isSubscribed)
+      .apply()
+  }
+
   // Clears only the saved-sessions widget (the signed-in user's data). The data
   // widget payloads are public reference data, need no sign-in, and are only
   // rewritten when the app refreshes them, so sign-out leaves them in place.
