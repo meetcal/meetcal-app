@@ -10,6 +10,7 @@ import {
   formatImprovement,
 } from "@/lib/wrapped-stats";
 import { selectWrappedRows } from "@/lib/wrapped-search";
+import { wrappedTapDirection } from "@/lib/wrapped-tap-zones";
 import { WrappedStats } from "@/types/wrapped";
 import { LinearGradient } from "expo-linear-gradient";
 import { Stack, useRouter } from "expo-router";
@@ -63,6 +64,8 @@ const SLIDE_GRADIENTS: [string, string, string][] = [
 ];
 
 const SLIDE_COUNT = 7;
+/** The search page's side padding, inside any side insets. */
+const SEARCH_PAGE_SIDE_PADDING = 28;
 /** Each slide dot's touch height; the dot itself is 8pt. */
 const SLIDE_DOT_TOUCH_HEIGHT = 44;
 
@@ -192,6 +195,9 @@ export default function WeightliftingWrappedScreen() {
   const [selectedYear, setSelectedYear] = useState(() => new Date().getFullYear());
   const [loading, setLoading] = useState(false);
   const [wrappedStats, setWrappedStats] = useState<WrappedStats | null>(null);
+  // The year the shown stats are for: the year selected when their search
+  // started, not the year pill now, which can change while a search runs.
+  const [wrappedYear, setWrappedYear] = useState(selectedYear);
   const [showStats, setShowStats] = useState(false);
   const [currentSlide, setCurrentSlide] = useState(0);
   const [athleteName, setAthleteName] = useState("");
@@ -246,11 +252,12 @@ export default function WeightliftingWrappedScreen() {
     dismissSuggestions();
     setDidYouMean(false);
     setLoading(true);
+    const year = selectedYear;
     try {
       const normalizedName = searchQuery.trim();
       // `results:search` includes both ends of the range.
-      const startDate = `${selectedYear}-01-01`;
-      const endDate = `${selectedYear}-12-31`;
+      const startDate = `${year}-01-01`;
+      const endDate = `${year}-12-31`;
 
       const response = await searchApi(normalizedName, startDate, endDate);
       const selection = selectWrappedRows(response);
@@ -258,7 +265,7 @@ export default function WeightliftingWrappedScreen() {
       if (selection.kind === "none") {
         showToast({
           type: "info",
-          message: `No results found for ${searchQuery} in ${selectedYear}`,
+          message: `No results found for ${searchQuery} in ${year}`,
         });
         return;
       }
@@ -272,7 +279,7 @@ export default function WeightliftingWrappedScreen() {
       if (selection.kind === "tooManyResults") {
         showToast({
           type: "error",
-          message: `${selection.name} has more ${selectedYear} results than a Wrapped can hold.`,
+          message: `${selection.name} has more ${year} results than a Wrapped can hold.`,
         });
         return;
       }
@@ -292,6 +299,7 @@ export default function WeightliftingWrappedScreen() {
       setAthleteName(selection.name);
       const stats = calculateWrappedStats(selection.rows);
       setWrappedStats(stats);
+      setWrappedYear(year);
       setCurrentSlide(0);
       setShowStats(true);
     } catch (error) {
@@ -310,22 +318,26 @@ export default function WeightliftingWrappedScreen() {
     }
   }, []);
 
-  const handleTap = useCallback((x: number) => {
-    if (x < screenWidth * 0.3) {
-      goToSlide(currentSlide - 1);
-    } else if (x > screenWidth * 0.7) {
-      goToSlide(currentSlide + 1);
-    }
-  }, [currentSlide, screenWidth, goToSlide]);
+  // `pageX` is the tap's screen position; `locationX` would be relative to
+  // whichever slide element took the touch.
+  const handleTap = useCallback((pageX: number) => {
+    const direction = wrappedTapDirection({
+      pageX,
+      windowWidth: screenWidth,
+      insetLeft: insets.left,
+      insetRight: insets.right,
+    });
+    if (direction !== 0) goToSlide(currentSlide + direction);
+  }, [currentSlide, screenWidth, insets.left, insets.right, goToSlide]);
 
   const shareWrapped = async () => {
     try {
       if (!viewShotRef.current) return;
       const uri = await captureViewAsPng(viewShotRef);
-      await shareImageFile(uri, `My ${selectedYear} Weightlifting Wrapped!`);
+      await shareImageFile(uri, `My ${wrappedYear} Weightlifting Wrapped!`);
     } catch {
       if (!wrappedStats) return;
-      const shareText = buildWrappedShareText(wrappedStats, selectedYear);
+      const shareText = buildWrappedShareText(wrappedStats, wrappedYear);
       // The text share is the fallback for a failed image share, so it runs
       // inside the `catch`; without its own guard a failure here was an
       // unhandled rejection and the tap did nothing visible.
@@ -371,33 +383,33 @@ export default function WeightliftingWrappedScreen() {
               paddingRight: insets.right + 24,
             },
           ]}
-          onPress={(e) => handleTap(e.nativeEvent.locationX)}
+          onPress={(e) => handleTap(e.nativeEvent.pageX)}
         >
           <SlideContent active={isActive}>
             {index === 0 && (
               <TitleSlide
                 name={athleteName}
-                year={selectedYear}
+                year={wrappedYear}
                 stats={wrappedStats}
               />
             )}
             {index === 1 && <TotalWeightSlide stats={wrappedStats} active={isActive} />}
-            {index === 2 && <YearBestsSlide stats={wrappedStats} year={selectedYear} active={isActive} />}
+            {index === 2 && <YearBestsSlide stats={wrappedStats} year={wrappedYear} active={isActive} />}
             {index === 3 && <ConsistencySlide stats={wrappedStats} active={isActive} />}
-            {index === 4 && <MeetJourneySlide stats={wrappedStats} year={selectedYear} active={isActive} />}
+            {index === 4 && <MeetJourneySlide stats={wrappedStats} year={wrappedYear} active={isActive} />}
             {index === 5 && <FavoriteAttemptSlide stats={wrappedStats} />}
             {index === 6 && (
               <ShareSlide
                 stats={wrappedStats}
                 name={athleteName}
-                year={selectedYear}
+                year={wrappedYear}
               />
             )}
           </SlideContent>
         </Pressable>
       </View>
     );
-  }, [wrappedStats, currentSlide, screenWidth, screenHeight, insets, athleteName, selectedYear, handleTap]);
+  }, [wrappedStats, currentSlide, screenWidth, screenHeight, insets, athleteName, wrappedYear, handleTap]);
 
   if (showStats && wrappedStats) {
     return (
@@ -542,8 +554,11 @@ export default function WeightliftingWrappedScreen() {
           {
             paddingTop: insets.top + 40,
             paddingBottom: insets.bottom + 40,
-            paddingLeft: insets.left,
-            paddingRight: insets.right,
+            // Added to the page's own side padding: a set edge replaces
+            // `paddingHorizontal`, so `insets.left` alone (0 on most phones)
+            // put the page flush with the screen edges.
+            paddingLeft: insets.left + SEARCH_PAGE_SIDE_PADDING,
+            paddingRight: insets.right + SEARCH_PAGE_SIDE_PADDING,
           },
         ]}
         keyboardShouldPersistTaps="handled"
@@ -617,10 +632,12 @@ LIFTING
                 <Pressable
                   key={year}
                   onPress={() => setSelectedYear(year)}
+                  // The running search is for the selected year.
+                  disabled={loading}
                   style={[styles.yearPill, isSelected && styles.yearPillActive]}
                   accessibilityRole="button"
                   accessibilityLabel={String(year)}
-                  accessibilityState={{ selected: isSelected }}
+                  accessibilityState={{ selected: isSelected, disabled: loading }}
                 >
                   <Text style={[styles.yearPillText, isSelected && styles.yearPillTextActive]}>
                     {year}
@@ -1094,7 +1111,6 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   searchScrollContent: {
-    paddingHorizontal: 28,
     flexGrow: 1,
     justifyContent: "center",
   },
