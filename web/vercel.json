@@ -32,6 +32,11 @@
       "source": "/atlas",
       "destination": "https://atlas.meetcal.app/",
       "permanent": true
+    },
+    {
+      "source": "/eula",
+      "destination": "/terms",
+      "permanent": false
     }
   ],
   "rewrites": [
@@ -103,5 +108,6 @@
       "source": "/subscription",
       "destination": "/seo/subscription.html"
     }
-  ]
+  ],
+  "trailingSlash": false
 }

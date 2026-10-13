@@ -10,7 +10,9 @@ import {
   FlatList,
   type NativeScrollEvent,
   type NativeSyntheticEvent,
+  ScrollView,
   Share,
+  StyleSheet,
   Text,
   TextInput,
 } from "react-native";
@@ -438,5 +440,123 @@ describe("WeightliftingWrappedScreen slide pager", () => {
     });
     expect(scrollToOffset).toHaveBeenCalledTimes(1);
     expect(scrollToOffset).toHaveBeenCalledWith({ offset: 3 * 382, animated: false });
+  });
+});
+
+describe("WeightliftingWrappedScreen search page padding", () => {
+  it("keeps its side padding when the side insets are zero", () => {
+    // Regression (#280): `paddingLeft: insets.left` overrode the 28pt
+    // `paddingHorizontal`, so on a regular phone the page sat flush with the
+    // screen edges.
+    const page = tree.root
+      .findAllByType(ScrollView)
+      .find((n) => n.props.keyboardShouldPersistTaps === "handled");
+    expect(page).toBeDefined();
+    const style = StyleSheet.flatten(page!.props.contentContainerStyle);
+    expect(style.paddingLeft).toBe(28);
+    expect(style.paddingRight).toBe(28);
+  });
+});
+
+function yearPill(year: number) {
+  return tree.root.find(
+    (n) => typeof n.props.onPress === "function" && n.props.accessibilityLabel === String(year),
+  );
+}
+
+describe("WeightliftingWrappedScreen search year", () => {
+  it("labels the Wrapped with the year it searched, even if the year changes mid-search", async () => {
+    // Regression (#303): the slides and share caption read the live year
+    // pill, so tapping another year while the search ran labelled one year's
+    // results with the other year.
+    const thisYear = new Date().getFullYear();
+    const lastYear = thisYear - 1;
+    let finish!: (response: SearchResponse) => void;
+    jest.mocked(searchApi).mockImplementation((_query: string, startDate?: string) =>
+      startDate
+        ? new Promise<SearchResponse>((resolve) => (finish = resolve))
+        : Promise.resolve(suggestionResponse([])),
+    );
+    act(() => {
+      input().props.onChangeText("John Smith");
+    });
+    await act(async () => {
+      void input().props.onSubmitEditing();
+    });
+    const [, startDate] = jest.mocked(searchApi).mock.calls.find(([, start]) => start)!;
+    expect(startDate).toBe(`${thisYear}-01-01`);
+
+    // The pills are disabled while the search runs; a press that still gets
+    // through must not relabel the result.
+    expect(yearPill(lastYear).props.disabled).toBe(true);
+    act(() => {
+      yearPill(lastYear).props.onPress();
+    });
+    await act(async () => {
+      finish({
+        matchedName: "John Smith",
+        suggestions: [],
+        truncated: false,
+        results: [liftRow("John Smith", `${thisYear}-03-01`, 300)],
+      });
+    });
+
+    expect(tree.root.findAllByType(FlatList)).toHaveLength(1);
+    expect(texts()).toContain(`BEST OF ${thisYear}`);
+    expect(texts()).not.toContain(`BEST OF ${lastYear}`);
+  });
+});
+
+describe("WeightliftingWrappedScreen tap to advance", () => {
+  async function openWrapped() {
+    rangedSearchAnswers({
+      matchedName: "John Smith",
+      suggestions: [],
+      truncated: false,
+      results: [liftRow("John Smith", "2025-03-01", 300)],
+    });
+    await submit("John Smith");
+  }
+
+  function selectedDot(): string | undefined {
+    return tree.root
+      .findAll(
+        (n) =>
+          typeof n.props.accessibilityLabel === "string" &&
+          n.props.accessibilityLabel.startsWith("Slide ") &&
+          n.props.accessibilityState?.selected === true,
+      )
+      .map((n) => n.props.accessibilityLabel as string)[0];
+  }
+
+  function tapSlide(index: number, pageX: number, locationX: number) {
+    const slides = tree.root.findAll(
+      (n) =>
+        typeof n.props.onPress === "function" &&
+        StyleSheet.flatten(n.props.style)?.paddingLeft === 24,
+    );
+    act(() => {
+      slides[index].props.onPress({ nativeEvent: { pageX, locationX } });
+    });
+  }
+
+  it("reads the tap's screen position, not its position inside the touched element", async () => {
+    // Regression (#304): `locationX` is relative to the touched element, so
+    // the right half of a narrow centred card went back a slide.
+    await openWrapped();
+    const pager = tree.root.findByType(FlatList).instance as FlatList;
+    jest.spyOn(pager, "scrollToIndex").mockImplementation(() => {});
+    expect(selectedDot()).toBe("Slide 1 of 7");
+
+    // Width 466: the right zone starts past 326.
+    tapSlide(0, 400, 20);
+    expect(selectedDot()).toBe("Slide 2 of 7");
+
+    // Middle of the screen, left edge of a card: no change.
+    tapSlide(1, 233, 5);
+    expect(selectedDot()).toBe("Slide 2 of 7");
+
+    tapSlide(1, 40, 300);
+    expect(selectedDot()).toBe("Slide 1 of 7");
   });
 });

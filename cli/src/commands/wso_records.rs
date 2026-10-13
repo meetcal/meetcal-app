@@ -47,7 +47,7 @@ pub async fn run(args: WsoRecordsArgs) -> Result<()> {
         let groups = wso_age_groups(&wso).await.unwrap_or_default();
         if groups.is_empty() {
             let message = format!("No records found for WSO \"{wso}\"");
-            return Err(not_found(NameKind::Wso, &wso, message).await);
+            return Err(not_found(NameKind::RecordWso, &wso, message).await);
         }
         bail!(
             "No {gender} {age} records for WSO \"{wso}\". Its age groups: {}",

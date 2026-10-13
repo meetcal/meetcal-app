@@ -1,10 +1,7 @@
 pub mod athletes;
 pub mod club;
-pub mod club_results;
 pub mod lifting_results;
 pub mod meets;
 pub mod records;
-pub mod usamw_records;
-pub mod usamw_results_scraper;
 pub mod wrapped;
 pub mod wso;

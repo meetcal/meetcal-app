@@ -1,8 +1,5 @@
 use clap::Parser;
-use meetcal::{
-    parser::{Cli, Commands},
-    types::athletes::Platform,
-};
+use meetcal::parser::{Cli, Commands};
 
 #[test]
 fn parses_meet_command() {
@@ -33,7 +30,18 @@ fn parses_meet_with_flags() {
 
     assert_eq!(args.name, "2026 VIRUS Weightlifting Series 1");
     assert_eq!(args.session_number, Some("1".to_string()));
-    assert!(matches!(args.session_platform, Some(Platform::Red)));
+    assert_eq!(args.session_platform.as_deref(), Some("red"));
+}
+
+#[test]
+fn takes_any_platform_name() {
+    let cli = Cli::parse_from(["meetcal", "meet", "Meet", "--session-platform", "Gold"]);
+
+    let Commands::Meet(args) = cli.command else {
+        panic!("expected meet command");
+    };
+
+    assert_eq!(args.session_platform.as_deref(), Some("Gold"));
 }
 
 #[test]

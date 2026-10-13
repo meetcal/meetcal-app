@@ -163,6 +163,8 @@ export default defineSchema({
     .index('by_meet', ['meet'])
     .index('by_meet_and_session', ['meet', 'sessionNumber', 'sessionPlatform'])
     .index('by_memberId', ['memberId'])
+    // A member's registrations naming a WSO, for the entries sync (#345).
+    .index('by_memberId_and_wso', ['memberId', 'wso'])
     .index('by_club', ['club'])
     .index('by_club_and_meet', ['club', 'meet'])
     .index('by_wso', ['wso']),
