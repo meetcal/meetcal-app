@@ -12,6 +12,7 @@ import {
   normalizeLiftResults,
   normalizePlatformKey,
 } from "@/lib/athletes";
+import { normalizeName as serverNormalizeName } from "../../convex/lib/names";
 
 const athlete = (
   name: string,
@@ -36,6 +37,28 @@ describe("normalizeAthleteName", () => {
   it("maps missing names to the empty string", () => {
     expect(normalizeAthleteName(null)).toBe("");
     expect(normalizeAthleteName(undefined)).toBe("");
+  });
+
+  it("gives a precomposed and a decomposed accent the same key (#268)", () => {
+    const nfc = "José Núñez".normalize("NFC");
+    const nfd = nfc.normalize("NFD");
+    expect(nfd).not.toBe(nfc);
+    expect(normalizeAthleteName(nfd)).toBe(normalizeAthleteName(nfc));
+    expect(normalizeAthleteName(nfd)).toBe("josé núñez".normalize("NFC"));
+  });
+
+  it.each([
+    "José Núñez",
+    "José Núñez".normalize("NFD"),
+    "  Mary\u00a0Jane\tDoe\n",
+    "ZOË  O\u2019BRIEN",
+    "\u212bngstr\u00f6m",
+    "\ufeff\u3000Ana\u2028\u2029Lima\u200b ",
+    "\u0130STANBUL",
+    "",
+    "   ",
+  ])("matches the server's name key for %j", (name) => {
+    expect(normalizeAthleteName(name)).toBe(serverNormalizeName(name));
   });
 });
 

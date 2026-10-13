@@ -15,6 +15,7 @@ import {
   type ViewStyle,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { ToastHost } from "@/components/ui/Toast";
 
 /**
  * The page-sheet shell every share preview uses: a centred title, a Done
@@ -92,6 +93,9 @@ export function PreviewModalShell({
           {children}
         </ScrollView>
       </ThemedView>
+      {/* A modal is its own native window above the root toast host: errors
+          raised while it is open must show here to be seen. */}
+      <ToastHost />
     </Modal>
   );
 }
