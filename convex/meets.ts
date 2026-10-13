@@ -10,11 +10,14 @@ import {
   computeTimelines,
   joinRoster,
   meetByName,
+  meetResultDocs,
+  meetResultTitles,
   meetLocalDate,
   narrowSessions,
   packageAthlete,
   packageStaticText,
   plainRoster,
+  rosterNames,
   toApiMeet,
   yearBestsFromTimelines,
   type ApiScheduleRow,
@@ -27,7 +30,7 @@ import { normalizeName } from './lib/names';
 import { compareBytes } from './lib/sort';
 import { meetKey, meetSessionKey } from './lib/viewKeys';
 import { readFreshView } from './lib/views';
-import { apiError, requireIsoDate, requireNonEmpty } from './lib/validation';
+import { apiError, isMeetTimeZone, requireIsoDate, requireNonEmpty } from './lib/validation';
 
 // `GET /meets*`: each query answers the JSON of the Rust route of the same
 // name in `meetcal-backend/app/src/routes/meets`, from the meet's views when
@@ -70,6 +73,16 @@ export function upcomingWindowNow(clientNow: number, serverNow: number): number 
   return Math.floor(serverNow / HOUR_MS) * HOUR_MS;
 }
 
+/**
+ * A row that is no event: a test entry typed into a source, with its venue
+ * written as one character ("q") and a time zone that is no IANA zone ("q",
+ * "America_New_York"). The meet lists leave it out; a real meet whose zone
+ * is unknown (blank) still has a venue, or a "TBD" one.
+ */
+export function isPlaceholderMeet(meet: { timeZone: string; venueName: string; venueCity: string }): boolean {
+  return !isMeetTimeZone(meet.timeZone) && [meet.venueName, meet.venueCity].every((field) => field.trim().length === 1);
+}
+
 export const list = query({
   args: { now: v.number(), ifNoneMatch: v.optional(v.string()) },
   handler: async (ctx, { now: clientNow, ifNoneMatch }) => {
@@ -84,13 +97,13 @@ export const list = query({
     );
     const formatters: ZoneFormatters = new Map();
     const meets = [...upcoming, ...ongoing]
-      .filter((meet) => meet.startDate <= addMonths(meetLocalDate(now, meet.timeZone, formatters), UPCOMING_WINDOW_MONTHS))
+      .filter((meet) => !isPlaceholderMeet(meet) && meet.startDate <= addMonths(meetLocalDate(now, meet.timeZone, formatters), UPCOMING_WINDOW_MONTHS))
       .sort((a, b) => compareBytes(a.startDate, b.startDate));
     return revalidated(meets.map(toApiMeet), ifNoneMatch);
   },
 });
 
-/** `GET /meets/completed`: completed meets, newest first. */
+/** `GET /meets/completed`: completed meets, newest first (test entries left out, `isPlaceholderMeet`). */
 export const completed = query({
   args: { ifNoneMatch: v.optional(v.string()) },
   handler: async (ctx, { ifNoneMatch }) => {
@@ -99,7 +112,7 @@ export const completed = query({
       .withIndex('by_status_and_start_date', (q) => q.eq('status', 'completed'))
       .order('desc')
       .collect();
-    return revalidated(meets.map(toApiMeet), ifNoneMatch);
+    return revalidated(meets.filter((meet) => !isPlaceholderMeet(meet)).map(toApiMeet), ifNoneMatch);
   },
 });
 
@@ -165,11 +178,10 @@ export const attendance = query({
     }
     const rows = [];
     for (const meet of meets) {
-      const [results, registrations, meetRow] = await Promise.all([
-        ctx.db
-          .query('lifting_results')
-          .withIndex('by_meet', (q) => q.eq('meet', meet))
-          .collect(),
+      const [results, titles, registrations, meetRow] = await Promise.all([
+        // Its linked results titles too (a combined national event, #362).
+        meetResultDocs(ctx, meet),
+        meetResultTitles(ctx, meet),
         ctx.db
           .query('athletes')
           .withIndex('by_meet', (q) => q.eq('meet', meet))
@@ -186,6 +198,9 @@ export const attendance = query({
         start_date: meetRow?.startDate ?? null,
         end_date: meetRow?.endDate ?? null,
         status: meetRow?.status ?? null,
+        // The linked results titles counted here, so a caller that also
+        // asks for them by name does not count their lifters twice.
+        results_titles: titles.slice(1),
       });
     }
     return { json: JSON.stringify(rows) };
@@ -355,6 +370,18 @@ export const packageForMeet = query({
           yearBests = names.length > 0 ? yearBestsFromTimelines(names, timelines as Timeline[], bestsSince) : [];
         }
       }
+      return textAnswer(closePackage(staticText, yearBests), ifNoneMatch);
+    }
+
+    // Only the year bests are stale (a roster athlete's results changed): the
+    // static part still serves, and only the bests are computed (#216).
+    if (staticView && bestsSince !== undefined) {
+      const names = await rosterNames(ctx, meet);
+      const [staticText, timelines] = await Promise.all([
+        staticView.text(),
+        names.length > 0 ? computeTimelines(ctx, names, bestsSince) : Promise.resolve([]),
+      ]);
+      const yearBests = names.length > 0 ? yearBestsFromTimelines(names, timelines, bestsSince) : [];
       return textAnswer(closePackage(staticText, yearBests), ifNoneMatch);
     }
 

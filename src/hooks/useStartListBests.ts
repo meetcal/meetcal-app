@@ -9,11 +9,12 @@ import {
 
 /**
  * The start list opens on the "A" letter filter, so the names the user is
- * about to see get their year bests warmed first. The cap bounds it: a
- * federation-scale roster has hundreds of A-names and `preloadYearBests`
- * chunks them into `SMALL_ROWS_NAMES_CHUNK_SIZE` requests, so an uncapped warm
- * would fire a dozen background requests against the screen the user is
- * actively scrolling.
+ * about to see get their year bests fetched first, so expanding a row reads
+ * them from memory instead of sending its own requests. The cap bounds it: a
+ * federation-scale roster has hundreds of A-names, and the cap keeps the warm
+ * inside one `SMALL_ROWS_NAMES_CHUNK_SIZE` request (plus one `latest_only`
+ * request for the names with nothing in the window) rather than a dozen
+ * against the screen the user is actively scrolling.
  */
 export const YEAR_BESTS_PREFETCH_NAME_CAP = 80;
 

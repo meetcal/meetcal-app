@@ -179,3 +179,33 @@ export function pickNewestEvents(events: Dict[], count = RECENT_EVENTS): { newes
   const oldestPicked = newest.length < count ? -Infinity : Math.min(...newest.map(idNumber));
   return { newest, unreadable: undated.map((entry) => ({ ...entry, recent: idNumber(entry.event) > oldestPicked })) };
 }
+
+/**
+ * The events a run asked for by id (`only`), from the whole index, however
+ * many newer events there are: the override for a refused prune must reach
+ * the event it names after newer ones push it out of the newest
+ * (`pickNewestEvents`). `missing` are the ids the index does not have, which
+ * the sync fails on rather than report a run that did nothing as done. One
+ * with an unreadable date, or none, is `unreadable` (and `recent`: it was
+ * asked for).
+ */
+export function pickRequestedEvents(
+  events: Dict[],
+  only: readonly string[],
+): { picked: Dict[]; unreadable: { event: Dict; date: string; recent: boolean }[]; missing: string[] } {
+  const wanted = new Set(only);
+  const found = new Set<string>();
+  const picked: Dict[] = [];
+  const unreadable: { event: Dict; date: string; recent: boolean }[] = [];
+  for (const event of events) {
+    const id = eventIdOf(event);
+    if (!id || !wanted.has(id) || found.has(id)) continue;
+    found.add(id);
+    // No date at all is as unreadable as one in an unknown format: its rows
+    // would be stored undated.
+    const date = eventDate(event) === null ? (unreadableEventDate(event) ?? '') : null;
+    if (date === null) picked.push(event);
+    else unreadable.push({ event, date, recent: true });
+  }
+  return { picked, unreadable, missing: [...wanted].filter((id) => !found.has(id)) };
+}
