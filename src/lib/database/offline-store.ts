@@ -1278,6 +1278,10 @@ export async function saveSessionAthletes(
   platform: string,
   athletes: LiftResult[],
 ): Promise<void> {
+  // An empty answer (a re-import, a transient filter miss) is not stored
+  // over a session's athletes: offline it would read back as "nobody in this
+  // session". `saveMeetAthletes` refuses an empty roster the same way.
+  if (athletes.length === 0) return;
   return meetDataWrites(String(meetId), async () => {
     try {
       const key = getSessionAthletesKey(meetId, sessionNumber, platform);

@@ -1,4 +1,9 @@
-import { loadAthleteResults, type AthleteResultsLoad } from '@/lib/athlete-results-load';
+import {
+  loadAthleteResults,
+  partialResultsStatus,
+  showsCareerStats,
+  type AthleteResultsLoad,
+} from '@/lib/athlete-results-load';
 import type { SupabaseLiftResult } from '@/types/athlete-results';
 
 function row(meet: string): SupabaseLiftResult {
@@ -76,7 +81,8 @@ describe('loadAthleteResults', () => {
       readOffline: async () => [row('Local')],
       fetchFull: async () => [],
     });
-    await loadAthleteResults(load);
+    // What stays on screen is still only the on-device copy.
+    await expect(loadAthleteResults(load)).resolves.toBe('offline-partial');
     expect(painted).toEqual([{ source: 'offline', meets: ['Local'] }]);
   });
 
@@ -86,7 +92,9 @@ describe('loadAthleteResults', () => {
     expect(painted).toEqual([{ source: 'api', meets: [] }]);
   });
 
-  it('keeps the on-device rows when the request fails, and never rejects', async () => {
+  // Regression (#312): this returned 'shown', so the screen presented one
+  // cached meet as the whole career, PR badges and success rates included.
+  it('keeps the on-device rows when the request fails, says they are partial, and never rejects', async () => {
     const full = deferred<SupabaseLiftResult[]>();
     const offline = deferred<SupabaseLiftResult[]>();
     const { load, painted } = makeLoad({
@@ -98,7 +106,7 @@ describe('loadAthleteResults', () => {
     full.reject(new Error('offline'));
     await Promise.resolve();
     offline.resolve([row('Local')]);
-    await expect(done).resolves.toBe('shown');
+    await expect(done).resolves.toBe('offline-partial');
     expect(painted).toEqual([{ source: 'offline', meets: ['Local'] }]);
     expect(console.error).not.toHaveBeenCalled();
   });
@@ -132,9 +140,20 @@ describe('loadAthleteResults', () => {
       readOffline,
       fetchFull: async () => [],
     });
-    await loadAthleteResults(load);
+    await expect(loadAthleteResults(load)).resolves.toBe('shown');
     expect(readOffline).not.toHaveBeenCalled();
     // Empty answer over already-shown rows: nothing repainted.
+    expect(painted).toEqual([]);
+  });
+
+  it('keeps rows the API already answered complete when a later request fails', async () => {
+    const { load, painted } = makeLoad({
+      shown: [row('Memo')],
+      fetchFull: async () => {
+        throw new Error('offline');
+      },
+    });
+    await expect(loadAthleteResults(load)).resolves.toBe('shown');
     expect(painted).toEqual([]);
   });
 
@@ -181,5 +200,34 @@ describe('loadAthleteResults', () => {
     await expect(done).resolves.toBe('superseded');
     expect(painted).toEqual([]);
     expect(console.error).not.toHaveBeenCalled();
+  });
+});
+
+describe('showsCareerStats', () => {
+  it('only trusts PRs and success rates computed from the API history', () => {
+    expect(showsCareerStats('api')).toBe(true);
+    expect(showsCareerStats('offline')).toBe(false);
+    expect(showsCareerStats(null)).toBe(false);
+  });
+});
+
+describe('partialResultsStatus', () => {
+  it('says nothing over the API history', () => {
+    expect(partialResultsStatus({ source: 'api', outcome: 'offline-partial', isOffline: true })).toBeNull();
+    expect(partialResultsStatus({ source: null, outcome: null, isOffline: true })).toBeNull();
+  });
+
+  it('says the full history is still loading behind on-device rows', () => {
+    expect(partialResultsStatus({ source: 'offline', outcome: null, isOffline: false })).toMatch(/Loading full history/);
+  });
+
+  it('matches the attempt estimator when offline', () => {
+    expect(partialResultsStatus({ source: 'offline', outcome: 'offline-partial', isOffline: true }))
+      .toMatch(/^Offline\. Showing downloaded data/);
+  });
+
+  it('says the full history is unavailable when online', () => {
+    expect(partialResultsStatus({ source: 'offline', outcome: 'offline-partial', isOffline: false }))
+      .toMatch(/^Full history unavailable\. Showing downloaded data/);
   });
 });
