@@ -10,6 +10,9 @@ const ACCESS_RECHECK_AFTER_MS: f64 = 10.0 * 60.0 * 1000.0;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 enum AccessState {
+    /// Signed in, and not checked: no data page has opened since the user
+    /// signed in. The first gate to open checks.
+    Unchecked,
     Checking,
     SignedOut,
     Paid,
@@ -19,9 +22,11 @@ enum AccessState {
 
 /// The signed-in user's access to the data pages, shared by every route's
 /// gate, so moving between data pages neither re-checks it nor rebuilds the
-/// page. It is checked again when the user changes, when a page opens after
-/// a failed or unpaid answer, and in the background once a granted answer is
-/// older than `ACCESS_RECHECK_AFTER_MS`.
+/// page. It is checked only while a data page is open: when the user changes,
+/// when a page opens after a failed or unpaid answer, in the background once
+/// a granted answer is older than `ACCESS_RECHECK_AFTER_MS`, and in the
+/// background when the tab is shown again over an unpaid answer (the user
+/// may have subscribed in the app meanwhile). Public pages never check.
 #[derive(Clone, Copy)]
 pub struct AccessContext {
     auth: AuthContext,
@@ -30,6 +35,8 @@ pub struct AccessContext {
     checked: StoredValue<Option<(String, f64)>>,
     /// Numbers checks, so only the newest may publish its answer.
     latest_check: StoredValue<u64>,
+    /// Gates mounted now (more than one while a route change swaps them).
+    open_gates: StoredValue<usize>,
 }
 
 /// Provides the shared access state; call once, after `provide_auth`.
@@ -40,6 +47,7 @@ pub fn provide_access() {
         state: RwSignal::new(AccessState::Checking),
         checked: StoredValue::new(None),
         latest_check: StoredValue::new(0),
+        open_gates: StoredValue::new(0),
     };
     provide_context(access);
 
@@ -51,11 +59,45 @@ pub fn provide_access() {
             access.show(AccessState::SignedOut);
         }
         AuthState::ConfigurationError(message) => access.show(AccessState::Error(message)),
-        AuthState::SignedIn(user_id) => access.check(user_id, true),
+        AuthState::SignedIn(user_id) if access.gate_open() => access.check(user_id, true),
+        AuthState::SignedIn(_) => access.forget(),
+    });
+
+    // Clerk does not report the same user again (see `provide_auth`), so an
+    // unpaid user back from subscribing in the app is checked on return.
+    // Dropping the handle keeps the listener, for as long as the app runs.
+    let _ = window_event_listener(leptos::ev::visibilitychange, move |_| {
+        access.recheck_unpaid();
     });
 }
 
 impl AccessContext {
+    fn gate_open(&self) -> bool {
+        self.open_gates.try_get_value().is_some_and(|open| open > 0)
+    }
+
+    /// Drops any check and answer for a user no data page is showing; the
+    /// next gate to open checks.
+    fn forget(self) {
+        self.latest_check.update_value(|latest| *latest += 1);
+        self.checked.set_value(None);
+        self.show(AccessState::Unchecked);
+    }
+
+    /// The tab was shown again: check an unpaid answer in the background,
+    /// keeping the page unless access is granted.
+    fn recheck_unpaid(self) {
+        let visible = web_sys::window()
+            .and_then(|window| window.document())
+            .is_some_and(|document| !document.hidden());
+        if !visible || !self.gate_open() || self.state.get_untracked() != AccessState::Unpaid {
+            return;
+        }
+        if let AuthState::SignedIn(user_id) = self.auth.state.get_untracked() {
+            self.check(user_id, false);
+        }
+    }
+
     /// Shows `next`, notifying only on a change: the gate rebuilds its page
     /// for every notification.
     fn show(&self, next: AccessState) {
@@ -161,18 +203,27 @@ fn recheck_on_open(state: &AccessState, checked_at: Option<f64>, now: f64) -> Re
             Some(at) if now - at < ACCESS_RECHECK_AFTER_MS => Recheck::No,
             _ => Recheck::InBackground,
         },
-        AccessState::SignedOut | AccessState::Unpaid | AccessState::Error(_) => Recheck::Showing,
+        AccessState::Unchecked
+        | AccessState::SignedOut
+        | AccessState::Unpaid
+        | AccessState::Error(_) => Recheck::Showing,
     }
 }
 
 #[component]
 pub fn SubscriptionGate(children: ChildrenFn) -> impl IntoView {
     let access = expect_context::<AccessContext>();
+    access.open_gates.update_value(|open| *open += 1);
+    on_cleanup(move || {
+        access
+            .open_gates
+            .try_update_value(|open| *open = open.saturating_sub(1));
+    });
     access.refresh();
 
     view! {
         {move || match access.state.get() {
-            AccessState::Checking => view! {
+            AccessState::Unchecked | AccessState::Checking => view! {
                 <AccessShell>
                     <div class="access-status" role="status" aria-live="polite">
                         <span class="access-spinner" aria-hidden="true"></span>
@@ -295,6 +346,14 @@ mod tests {
         assert_eq!(
             recheck_on_open(&AccessState::Paid, None, now),
             Recheck::InBackground
+        );
+    }
+
+    #[test]
+    fn a_user_no_page_has_checked_is_checked_when_one_opens() {
+        assert_eq!(
+            recheck_on_open(&AccessState::Unchecked, None, 0.0),
+            Recheck::Showing
         );
     }
 

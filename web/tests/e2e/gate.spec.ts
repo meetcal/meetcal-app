@@ -5,6 +5,8 @@ type AuthMockState = {
   signInMounts: Array<Record<string, unknown>>;
   customerInfoCalls: number;
   customerInfoError?: string;
+  /** Replaces the entitlements the mock grants `user_ci`. */
+  activeEntitlements?: Record<string, unknown>;
   notify: () => void;
   setUser: (id: string | null) => void;
 };
@@ -168,4 +170,43 @@ test("a stale grant is checked again in the background, and a failed check keeps
   await expect.poll(async () => (await authMock(page)).customerInfoCalls).toBe(2);
   await expect(page.getByRole("heading", { level: 1, name: "Standards" })).toBeVisible();
   await expect(page.getByRole("heading", { level: 1, name: "We couldn’t verify your access" })).toHaveCount(0);
+});
+
+test("a signed-in visit to a public page never checks the subscription; the first data page does", async ({ page }) => {
+  let scriptRequests = 0;
+  await mockAuth(page);
+  await page.route(/unpkg\.com\/@revenuecat\/purchases-js@/, async (route) => {
+    scriptRequests += 1;
+    await route.fallback();
+  });
+  await routeQuery(page, "reference:standards", (route) => route.fulfill(textAnswer([])));
+
+  await page.goto("/");
+  await expect(page.locator(".site-nav")).toBeVisible();
+  await page.waitForTimeout(300);
+  expect(scriptRequests).toBe(0);
+
+  await openFromHeader(page, "/standards");
+  await expect(page.getByRole("heading", { level: 1, name: "Standards" })).toBeVisible();
+  expect(scriptRequests).toBe(1);
+  expect((await authMock(page)).customerInfoCalls).toBe(1);
+});
+
+test("an unpaid user who subscribes in the app gets in on returning to the tab", async ({ page }) => {
+  await mockAuth(page, { entitlements: [] });
+  await routeQuery(page, "reference:records", (route) => route.fulfill(textAnswer([])));
+
+  await page.goto("/records");
+  await expect(page.getByRole("heading", { level: 1, name: "Continue in the MeetCal app" })).toBeVisible();
+  expect((await authMock(page)).customerInfoCalls).toBe(1);
+
+  // Subscribed in the app; Clerk reports the same user, so only the return to the tab rechecks.
+  await page.evaluate(() => {
+    const mock = (window as unknown as { __authMock: AuthMockState }).__authMock;
+    mock.activeEntitlements = { Subscriptions: { identifier: "Subscriptions" } };
+    mock.notify();
+    document.dispatchEvent(new Event("visibilitychange", { bubbles: true }));
+  });
+  await expect(page.getByRole("heading", { level: 1, name: "Records" })).toBeVisible();
+  expect((await authMock(page)).customerInfoCalls).toBe(2);
 });

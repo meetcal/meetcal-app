@@ -63,7 +63,7 @@ export async function mockAuth(page: Page, { signedIn = true, entitlements = ["S
           getCustomerInfo: async () => {
             mock.customerInfoCalls += 1;
             if (mock.customerInfoError) throw new Error(mock.customerInfoError);
-            return { entitlements: { active: appUserId === "user_ci" ? ${JSON.stringify(active)} : {} } };
+            return { entitlements: { active: appUserId === "user_ci" ? (mock.activeEntitlements ?? ${JSON.stringify(active)}) : {} } };
           }
         };
         window.Purchases = { Purchases: {
