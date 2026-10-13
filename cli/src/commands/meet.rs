@@ -30,7 +30,8 @@ pub struct MeetArgs {
     #[arg(long, short = 's')]
     pub session_number: Option<String>,
 
-    /// Session platform to search for
+    /// Session platform, as the meet names it, e.g. Red, White, Blue, Stars, Stripes, Rogue or
+    /// Gold (case-insensitive)
     #[arg(long, short = 'p')]
     pub session_platform: Option<String>,
 
