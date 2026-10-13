@@ -238,6 +238,15 @@ export default defineSchema({
     .index('by_userId_and_device_and_meet', ['userId', 'device', 'meet'])
     .index('by_userId_and_updatedAt', ['userId', 'updatedAt']),
 
+  // The results titles a meet's results are also stored under (#362): a
+  // combined national event is one Sport80 entries event (the meet) and
+  // several results events, each with its own title. Set by hand
+  // (`ingest:setMeetResultTitles`); every reader of a meet's results reads
+  // its own title and these.
+  meet_result_titles: defineTable({ meet: v.string(), title: v.string() })
+    .index('by_meet', ['meet'])
+    .index('by_title', ['title']),
+
   session_schedule: defineTable(sessionScheduleFields).index('by_meet', ['meet']),
 
   standards: defineTable(standardsFields).index('by_age_gender', ['ageCategory', 'gender']),

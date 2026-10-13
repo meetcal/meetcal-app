@@ -383,11 +383,29 @@ export function narrowSessions(rows: readonly SessionRow[], sessionNumber?: numb
 // Results, bests
 // ---------------------------------------------------------------------------
 
-async function meetResultDocs(ctx: QueryCtx, meet: string): Promise<Doc<'lifting_results'>[]> {
-  return await ctx.db
-    .query('lifting_results')
+/**
+ * The titles a meet's results are stored under: its own name, then the
+ * results titles linked to it (`meet_result_titles`, #362).
+ */
+export async function meetResultTitles(ctx: QueryCtx, meet: string): Promise<string[]> {
+  const linked = await ctx.db
+    .query('meet_result_titles')
     .withIndex('by_meet', (q) => q.eq('meet', meet))
     .collect();
+  return [meet, ...linked.map((row) => row.title).filter((title) => title !== meet)];
+}
+
+async function meetResultDocs(ctx: QueryCtx, meet: string): Promise<Doc<'lifting_results'>[]> {
+  const titles = await meetResultTitles(ctx, meet);
+  const groups = await Promise.all(
+    titles.map((title) =>
+      ctx.db
+        .query('lifting_results')
+        .withIndex('by_meet', (q) => q.eq('meet', title))
+        .collect(),
+    ),
+  );
+  return groups.flat();
 }
 
 /** The package's `meet_results`: by name (SQL text order), newest first within a name. */
