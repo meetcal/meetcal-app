@@ -48,7 +48,7 @@ export const run = internalAction({
       const previous = await ctx.runQuery(internal.scrapers.watchedPageState.get, { url: page.url });
       let text: string;
       try {
-        text = pageText(await fetchText(page.url, 30_000), page.selector);
+        text = pageText(await fetchText(page.url, 30_000), page.selector, { pdfLinks: page.pdfLinks });
         if (!text) throw new Error(`"${page.selector}" matched nothing`);
       } catch (error) {
         const result: PageResult = { name: page.name, url: page.url, status: 'error', error: (error as Error).message };

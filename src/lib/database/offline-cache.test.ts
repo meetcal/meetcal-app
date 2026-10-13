@@ -9,9 +9,18 @@ import {
 } from "@/lib/database/offline-cache";
 
 const mockMemory = new Map<string, string>();
+/**
+ * While set, a read takes its value when it is issued but resolves only once
+ * the gate opens: a read-modify-write still parsing an old copy.
+ */
+let mockReadGate: Promise<void> | null = null;
 
 jest.mock("@react-native-async-storage/async-storage", () => ({
-  getItem: jest.fn(async (key: string) => mockMemory.get(key) ?? null),
+  getItem: jest.fn(async (key: string) => {
+    const value = mockMemory.get(key) ?? null;
+    if (mockReadGate) await mockReadGate;
+    return value;
+  }),
   setItem: jest.fn(async (key: string, value: string) => {
     mockMemory.set(key, value);
   }),
@@ -57,6 +66,7 @@ describe("bounded browse caches", () => {
 
   beforeEach(() => {
     mockMemory.clear();
+    mockReadGate = null;
     jest.spyOn(Date, "now").mockReturnValue(1000);
   });
 
@@ -144,5 +154,37 @@ describe("bounded browse caches", () => {
         OFFLINE_CACHE_KEYS.wsoRecordsFiltered,
       ]),
     );
+  });
+
+  it("overlapping writes to one cache keep both entries", async () => {
+    // Switching class A -> class B while A's request is still running: both
+    // persist into the same blob, and the second must read the first's entry.
+    await Promise.all([
+      writeBoundedCacheEntry(KEY, "a", "A", 5),
+      writeBoundedCacheEntry(KEY, "b", "B", 5),
+    ]);
+
+    await expect(readBoundedCacheEntry(KEY, "a")).resolves.toMatchObject({ data: "A" });
+    await expect(readBoundedCacheEntry(KEY, "b")).resolves.toMatchObject({ data: "B" });
+  });
+
+  it("a write in progress when a clear starts does not write the cleared entries back", async () => {
+    const cacheKey = OFFLINE_CACHE_KEYS.nationalRankings;
+    await writeBoundedCacheEntry(cacheKey, "old", "browsed before the clear", 5);
+
+    let openGate = () => {};
+    mockReadGate = new Promise<void>((resolve) => {
+      openGate = resolve;
+    });
+    const write = writeBoundedCacheEntry(cacheKey, "new", "in flight", 5);
+    const clear = clearBrowseCaches();
+    // Let the clear run as far as it can before the write's read returns.
+    await new Promise((resolve) => setImmediate(resolve));
+    openGate();
+    await Promise.all([write, clear]);
+    mockReadGate = null;
+
+    expect(mockMemory.has(cacheKey)).toBe(false);
+    await expect(readBoundedCacheEntry(cacheKey, "old")).resolves.toBeNull();
   });
 });

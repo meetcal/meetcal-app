@@ -3,6 +3,7 @@ use super::{
         ClassificationFilters, ClassifiedRow, SortDirection, classified_rows, filter_options,
         sort_numeric, weight_class_options,
     },
+    format::reference_value,
     loading::{load_query, table_response},
     ui::{DataPage, DataTable, EmptyTableRow, FilterSelect, SortSelect},
 };
@@ -15,6 +16,7 @@ struct Standard {
     age_category: String,
     gender: String,
     standard_a: f64,
+    /// `0` for no standard (every U15 class has no B standard).
     standard_b: f64,
     weight_class: String,
 }
@@ -75,8 +77,8 @@ pub fn Standards() -> impl IntoView {
                             <td>{row.gender.clone()}</td>
                             <td>{row.age_category.clone()}</td>
                             <td>{row.weight_class.clone()}</td>
-                            <td>{row.standard_a}</td>
-                            <td>{row.standard_b}</td>
+                            <td>{reference_value(Some(row.standard_a))}</td>
+                            <td>{reference_value(Some(row.standard_b))}</td>
                         </tr>
                     })
                     .collect_view();
@@ -123,5 +125,17 @@ mod tests {
 
         assert_eq!(standard.standard_a, 285.0);
         assert_eq!(standard.standard_b, 260.0);
+    }
+
+    // U15 has no B standard; the table answers 0, shown as "—" rather than "0".
+    #[test]
+    fn u15_b_standard_of_zero_shows_none() {
+        let standard: Standard = serde_json::from_str(
+            r#"{"age_category":"U15","gender":"Men","standard_a":184.0,"standard_b":0.0,"weight_class":"55kg"}"#,
+        )
+        .unwrap();
+
+        assert_eq!(reference_value(Some(standard.standard_a)), "184");
+        assert_eq!(reference_value(Some(standard.standard_b)), "—");
     }
 }

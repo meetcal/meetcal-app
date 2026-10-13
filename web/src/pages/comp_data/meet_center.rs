@@ -38,14 +38,40 @@ fn meet_catalog(upcoming: &[Meet], completed: &[Meet]) -> Vec<Meet> {
     meets
 }
 
+/// Apostrophes meet names are written with (typewriter, curly, modifier
+/// letter, accents used in their place): dropped by `fold_meet_search`.
+const APOSTROPHES: [char; 7] = [
+    '\'', '\u{2019}', '\u{2018}', '\u{02bc}', '\u{00b4}', '`', '\u{2032}',
+];
+
+/// A meet name or query folded for matching: lowercase, apostrophes dropped
+/// (so "masters" finds "Master's"), and each run of whitespace, a
+/// non-breaking space included, one space (so "2026 IMWA" finds
+/// "2026\u{a0}IMWA").
+fn fold_meet_search(value: &str) -> String {
+    value
+        .chars()
+        .filter(|ch| !APOSTROPHES.contains(ch))
+        .collect::<String>()
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+        .to_lowercase()
+}
+
 fn meet_suggestions(meets: &[Meet], query: &str, limit: usize) -> Vec<String> {
-    let query = query.trim().to_lowercase();
-    if query.chars().count() < 3 {
+    // The minimum is on the query as typed, as the picker checks it: `A's`
+    // folds to two letters but is three characters the user typed.
+    if query.trim().chars().count() < 3 {
+        return Vec::new();
+    }
+    let query = fold_meet_search(query);
+    if query.is_empty() {
         return Vec::new();
     }
     meets
         .iter()
-        .filter(|row| row.name.to_lowercase().contains(&query))
+        .filter(|row| fold_meet_search(&row.name).contains(&query))
         .take(limit)
         .map(|row| row.name.clone())
         .collect()
@@ -214,5 +240,41 @@ mod tests {
             meet_suggestions(&meets, "nat", 1),
             ["National Championships"]
         );
+    }
+
+    #[test]
+    fn meet_suggestions_fold_spaces_and_apostrophes() {
+        let meets = [
+            meet(
+                "2026\u{a0}IMWA WORLD MASTERS WEIGHTLIFTING CHAMPIONSHIP",
+                "2026-10-01",
+            ),
+            meet("USAW Master\u{2019}s Nationals", "2026-03-01"),
+            meet("USAMW Master's Nationals", "2026-04-01"),
+        ];
+        assert_eq!(
+            meet_suggestions(&meets, "2026 IMWA", 8),
+            ["2026\u{a0}IMWA WORLD MASTERS WEIGHTLIFTING CHAMPIONSHIP"]
+        );
+        assert_eq!(
+            meet_suggestions(&meets, "masters  nationals", 8),
+            ["USAW Master\u{2019}s Nationals", "USAMW Master's Nationals"]
+        );
+        assert_eq!(meet_suggestions(&meets, "master\u{2019}s", 8).len(), 3);
+    }
+
+    #[test]
+    fn meet_suggestions_count_a_short_query_as_typed() {
+        let meets = [
+            meet("A's Open", "2026-01-01"),
+            meet("Bass Classic", "2025-01-01"),
+        ];
+        assert_eq!(
+            meet_suggestions(&meets, "A's", 8),
+            ["A's Open", "Bass Classic"]
+        );
+        assert_eq!(meet_suggestions(&meets, "A\u{2019}s", 8).len(), 2);
+        assert!(meet_suggestions(&meets, "'''", 8).is_empty());
+        assert!(meet_suggestions(&meets, "A'", 8).is_empty());
     }
 }

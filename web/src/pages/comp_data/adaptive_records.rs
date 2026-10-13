@@ -1,5 +1,6 @@
 use super::{
     filters::{compare_weight_classes, matches_filter, weight_class_options},
+    format::reference_value,
     loading::{Load, table_response},
     ui::{DataPage, DataTable, EmptyTableRow, FilterSelect, SortSelect},
 };
@@ -84,7 +85,7 @@ pub fn AdaptiveRecords() -> impl IntoView {
                 }
                 let is_empty = filtered.is_empty();
                 let rows = filtered.into_iter().map(|row| view! {
-                    <tr><td>{row.weight_class.clone()}</td><td>{row.snatch}</td><td>{row.cj}</td><td>{row.total}</td></tr>
+                    <tr><td>{row.weight_class.clone()}</td><td>{reference_value(Some(row.snatch))}</td><td>{reference_value(Some(row.cj))}</td><td>{reference_value(Some(row.total))}</td></tr>
                 }).collect_view();
 
                 view! {
