@@ -270,3 +270,25 @@ describe("usePaginatedSchedule header title (#286)", () => {
     expect(onTitleChange).toHaveBeenCalledTimes(3);
   });
 });
+
+describe("usePaginatedSchedule header style change", () => {
+  it("re-applies the current title when the title setter changes (Duo fold)", () => {
+    setWidth(400);
+    setInsets();
+    const first = jest.fn();
+    const second = jest.fn();
+    let captured: ReturnType<typeof usePaginatedSchedule> | null = null;
+    function Harness({ onTitleChange }: { onTitleChange: (title: string) => void }) {
+      captured = usePaginatedSchedule({ schedule, onTitleChange, formatDayTitle: (d) => d.date });
+      return null;
+    }
+    let tree!: ReturnType<typeof create>;
+    act(() => {
+      tree = create(<Harness onTitleChange={first} />);
+    });
+    act(() => captured!.setHeaderTitle("Jul 11, 2026"));
+    expect(first).toHaveBeenLastCalledWith("Jul 11, 2026");
+    act(() => tree.update(<Harness onTitleChange={second} />));
+    expect(second).toHaveBeenCalledWith("Jul 11, 2026");
+  });
+});

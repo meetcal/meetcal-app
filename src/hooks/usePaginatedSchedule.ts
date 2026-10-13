@@ -61,6 +61,16 @@ export function usePaginatedSchedule({
     [onTitleChange],
   );
 
+  // A new `onTitleChange` (the Schedule screen switching between the native
+  // and the iPhone Duo custom header on fold/unfold) re-applies the title
+  // the header already shows, in the new style.
+  const appliedOnTitleChangeRef = useRef(onTitleChange);
+  useEffect(() => {
+    if (appliedOnTitleChangeRef.current === onTitleChange) return;
+    appliedOnTitleChangeRef.current = onTitleChange;
+    if (previousHeaderTitleRef.current) onTitleChange(previousHeaderTitleRef.current);
+  }, [onTitleChange]);
+
   const viewabilityConfig = useRef({
     itemVisiblePercentThreshold: 50,
   }).current;
