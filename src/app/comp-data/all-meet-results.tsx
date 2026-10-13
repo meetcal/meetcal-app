@@ -66,6 +66,8 @@ function AllMeetResultsScreenContent() {
   // version, and the effect re-arms only when `searchText` changes.
   const performSearch = useEffectEvent(async (query: string) => {
     const requestVersion = ++searchRequestVersion.current;
+    // Drop the previous query's list so the spinner shows, not stale names.
+    setSearchResults([]);
     setIsLoading(true);
     setError(null);
     const hasNetwork = await isNetworkAvailable();
@@ -109,7 +111,11 @@ function AllMeetResultsScreenContent() {
         setSearchResults([]);
         setError(null);
       } else {
+        // Too short to search: drop the previous query's results so the
+        // "at least 3 characters" prompt shows.
         searchRequestVersion.current += 1;
+        setSearchResults([]);
+        setError(null);
         setIsLoading(false);
       }
     }, SEARCH_DEBOUNCE_MS);
@@ -346,6 +352,10 @@ function AllMeetResultsScreenContent() {
           data={searchResults}
           renderItem={renderAthleteItem}
           keyExtractor={(item) => item}
+          // The first tap on a result opens it instead of only hiding the
+          // keyboard; scrolling hides the keyboard.
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="on-drag"
           contentContainerStyle={{
             paddingBottom: Math.max(80, insets.bottom + 60),
           }}

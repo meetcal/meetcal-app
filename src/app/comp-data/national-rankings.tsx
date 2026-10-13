@@ -14,6 +14,7 @@ import {
   NationalRanking,
   nationalRankingsResource,
 } from "@/lib/database/fetch-national-rankings";
+import { competitionRanks } from "@/lib/competition-rank";
 import { isNetworkAvailable } from "@/lib/networkUtils";
 import { FilterState, Gender } from "@/types/nat-rankings";
 import { getWeightClasses } from "@/utils/nat-rankings";
@@ -80,6 +81,10 @@ function NationalRankingsScreenContent() {
     params: resourceParams,
     initialData: EMPTY_RANKINGS,
   });
+  const ranks = useMemo(
+    () => competitionRanks(rankings.map((athlete) => athlete.total)),
+    [rankings],
+  );
   useEffect(() => {
     if (!error) {
       setFetchError(null);
@@ -203,7 +208,7 @@ function NationalRankingsScreenContent() {
               },
             ]}
           >
-            <ThemedText style={styles.rankText}>{index + 1}</ThemedText>
+            <ThemedText style={styles.rankText}>{ranks[index]}</ThemedText>
             <ThemedText style={styles.nameText}>
               {athlete.name}
             </ThemedText>
@@ -218,7 +223,13 @@ function NationalRankingsScreenContent() {
       <GenericFilterModal
         {...filterModalProps}
         sections={buildFilterSections}
-        resultCount={rankings.length}
+        // Rankings are fetched one weight class at a time, so the count is only
+        // known while the sheet's weight class is the one on screen.
+        resultCount={(modalTempFilters) =>
+          !loading && modalTempFilters.weightClass === filters.weightClass
+            ? rankings.length
+            : undefined
+        }
         resultLabel="rankings"
       />
     </ThemedView>

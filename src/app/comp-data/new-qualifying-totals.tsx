@@ -12,6 +12,7 @@ import {
   QualifyingTotalsData,
   qualifyingTotalsResource,
 } from "@/lib/database/fetch-qualifying-totals";
+import { selectQualifyingTotals } from "@/lib/comp-data-filters";
 import { sortAgeGroups } from "@/lib/sortAgeGroups";
 import { Filters } from "@/types/qual_totals";
 import { Stack, useLocalSearchParams } from "expo-router";
@@ -68,20 +69,10 @@ function QualifyingTotalsScreenContent() {
     return parts.join(" • ");
   };
 
-  const totals = useMemo(() => {
-    // Defensive: check all keys exist
-    const eventData = totalsData[filters.event];
-    if (!eventData) return [];
-    const ageData = eventData[filters.ageGroup];
-    if (!ageData) return [];
-    const genderData = ageData[filters.gender as 'Men' | 'Women'];
-    if (!genderData) return [];
-    // genderData is now { [weightClass]: number }
-    return Object.entries(genderData).map(([weightClass, qt]) => ({
-      bodyweightDivision: weightClass,
-      qt,
-    }));
-  }, [totalsData, filters.event, filters.ageGroup, filters.gender]);
+  const totals = useMemo(
+    () => selectQualifyingTotals(totalsData, filters),
+    [totalsData, filters],
+  );
 
   const eventOptions = useMemo(() => {
     return Object.keys(totalsData ?? {})
@@ -235,7 +226,9 @@ function QualifyingTotalsScreenContent() {
       <GenericFilterModal
         {...filterModalProps}
         sections={buildFilterSections}
-        resultCount={totals.length}
+        resultCount={(modalTempFilters) =>
+          selectQualifyingTotals(totalsData, modalTempFilters).length
+        }
         resultLabel="weight classes"
       />
     </ThemedView>

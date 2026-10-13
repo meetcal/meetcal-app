@@ -285,6 +285,8 @@ function ClubMeetsListScreenContent() {
           data={uniqueMeets}
           renderItem={renderMeetItem}
           keyExtractor={(item) => item}
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="on-drag"
           contentContainerStyle={[
             styles.listContent,
             {

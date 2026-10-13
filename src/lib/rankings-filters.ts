@@ -52,3 +52,26 @@ export function computeDefaultRankingFilters(
     gender: genders.includes(PREFERRED_GENDER) ? PREFERRED_GENDER : genders[0] ?? '',
   };
 }
+
+/**
+ * The International Rankings rows a set of filters shows, best rank first. An
+ * empty filter value matches every row. The screen's table and the filter
+ * sheet's count (for the sheet's edited values) both use this.
+ */
+export function filterIntlRankings(
+  rankings: readonly IntlRanking[],
+  filters: Readonly<Record<string, string | undefined>>,
+): IntlRanking[] {
+  return rankings
+    .filter(
+      (r) =>
+        (!filters.meet || r.meet === filters.meet) &&
+        (!filters.age_category || r.ageCategory === filters.age_category) &&
+        (!filters.gender || r.gender === filters.gender),
+    )
+    .sort(
+      (a, b) =>
+        (a.ranking ?? Number.MAX_SAFE_INTEGER) -
+        (b.ranking ?? Number.MAX_SAFE_INTEGER),
+    );
+}

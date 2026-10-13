@@ -52,12 +52,44 @@ interface GenericFilterModalProps {
   filters: Record<string, string>;
   onApplyFilters: (filters: Record<string, string>) => void;
   onResetFilters: () => void;
-  resultCount?: number | ((tempFilters: Record<string, string>) => number);
+  /**
+   * The footer count. A function gets the sheet's edited values, so the count
+   * follows edits before Apply; return `undefined` when the screen cannot know
+   * it for those values, and the footer shows none.
+   */
+  resultCount?:
+    | number
+    | ((tempFilters: Record<string, string>) => number | undefined);
   resultLabel?: string;
   footerBottomInset?: number;
 }
 
-const GenericFilterModal: React.FC<GenericFilterModalProps> = ({
+/**
+ * The sheet's edited values live in `GenericFilterModalBody`, which is
+ * remounted on every open so it starts from the applied `filters`. Seeding an
+ * existing body from an effect left the dependency pass below one render
+ * behind: it saw the previous open's values (or `{}`) next to the new ones,
+ * took that for a dependency change and replaced the dependent section with
+ * its first option (#270). The body stays mounted while the sheet closes, so
+ * it slides out unchanged.
+ */
+const GenericFilterModal: React.FC<GenericFilterModalProps> = (props) => {
+  const { visible, onClose } = props;
+  const [openCount, setOpenCount] = useState(0);
+  const [wasVisible, setWasVisible] = useState(visible);
+  if (visible !== wasVisible) {
+    setWasVisible(visible);
+    if (visible) setOpenCount((count) => count + 1);
+  }
+
+  return (
+    <FilterSheet visible={visible} onClose={onClose}>
+      <GenericFilterModalBody key={openCount} {...props} />
+    </FilterSheet>
+  );
+};
+
+const GenericFilterModalBody: React.FC<GenericFilterModalProps> = ({
   visible,
   onClose,
   sections,
@@ -71,23 +103,15 @@ const GenericFilterModal: React.FC<GenericFilterModalProps> = ({
   const colors = useAppColors();
   const insets = useSafeAreaInsets();
   const [expandedSection, setExpandedSection] = useState<string | null>(null);
-  const [tempFilters, setTempFilters] = useState<Record<string, string>>({});
-  const prevTempFiltersRef = useRef<Record<string, string>>({});
+  const [tempFilters, setTempFilters] =
+    useState<Record<string, string>>(filters);
+  const prevTempFiltersRef = useRef<Record<string, string>>(filters);
   const pendingDependencyResetRef = useRef<Record<string, boolean>>({});
   const scrollViewRef = useRef<React.ComponentRef<typeof ScrollView>>(null);
   const sectionLayoutsRef = useRef<Record<string, number>>({});
 
   const { height: windowHeight } = useWindowDimensions();
   const maxOptionsHeight = windowHeight * 0.3;
-
-  React.useEffect(() => {
-    if (visible) {
-      setTempFilters(filters);
-      prevTempFiltersRef.current = { ...filters };
-      pendingDependencyResetRef.current = {};
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [visible]);
 
   const currentSections =
     typeof sections === "function" ? sections(tempFilters) : sections;
@@ -175,25 +199,11 @@ const GenericFilterModal: React.FC<GenericFilterModalProps> = ({
     onClose();
   };
 
+  // The next open remounts the body from the screen's reset filters.
   const handleReset = () => {
     lightImpact();
-    const resetFilters = Object.keys(filters).reduce<Record<string, string>>(
-      (acc, key) => {
-        acc[key] = "";
-        return acc;
-      },
-      {},
-    );
-    setTempFilters(resetFilters);
-    prevTempFiltersRef.current = { ...resetFilters };
-    pendingDependencyResetRef.current = {};
     setExpandedSection(null);
     onResetFilters();
-    onClose();
-  };
-
-  const handleClose = () => {
-    setExpandedSection(null);
     onClose();
   };
 
@@ -211,7 +221,7 @@ const GenericFilterModal: React.FC<GenericFilterModalProps> = ({
   };
 
   return (
-    <FilterSheet visible={visible} onClose={handleClose}>
+    <>
       <ScrollView
         ref={scrollViewRef}
         bounces={false}
@@ -321,7 +331,7 @@ const GenericFilterModal: React.FC<GenericFilterModalProps> = ({
           </Pressable>
         </View>
       </View>
-    </FilterSheet>
+    </>
   );
 };
 
