@@ -1,20 +1,21 @@
 use std::collections::HashMap;
-use std::io::Write;
 
 use anyhow::{Result, bail};
-use chrono::{Datelike, Utc};
 use clap::{Parser, ValueEnum};
 use comfy_table::Table;
 
 use crate::commands::group_wrapped::{
-    ClubMembership, filter_membership_results, get_club_memberships, get_recent_results,
-    get_wso_memberships,
+    ClubMembership, distinct_names, filter_membership_results, get_club_memberships,
+    get_recent_results, get_wso_memberships,
 };
+use crate::commands::wrapped::current_year;
 use crate::types::lifting_results::LiftingResults;
 use crate::utils::athletes::results_between;
+use crate::utils::filters::{category, parse_date, unknown_federation};
 use crate::utils::format::us_date;
 use crate::utils::names::{NameKind, not_found};
 use crate::utils::output::{self, Report};
+use crate::utils::progress::Progress;
 use crate::utils::stats::{
     Division, Gender, QPOINTS_LABEL, SINCLAIR_LABEL, fold, number, plausible, points, row_qpoints,
     row_sinclair,
@@ -76,11 +77,11 @@ pub struct LeaderboardArgs {
     pub year: Option<i32>,
 
     /// Start of the range, YYYY-MM-DD (with --to)
-    #[arg(long, requires = "to")]
+    #[arg(long, requires = "to", value_parser = parse_date)]
     pub from: Option<String>,
 
     /// End of the range, YYYY-MM-DD (with --from)
-    #[arg(long, requires = "from")]
+    #[arg(long, requires = "from", value_parser = parse_date)]
     pub to: Option<String>,
 
     /// Men or Women
@@ -121,7 +122,7 @@ pub fn range(year: Option<i32>, from: Option<&str>, to: Option<&str>) -> (String
     match (from, to) {
         (Some(from), Some(to)) => (from.trim().to_string(), to.trim().to_string()),
         _ => {
-            let year = year.unwrap_or_else(|| Utc::now().year());
+            let year = year.unwrap_or_else(current_year);
             (format!("{year:04}-01-01"), format!("{year:04}-12-31"))
         }
     }
@@ -215,7 +216,7 @@ pub async fn run(args: LeaderboardArgs) -> Result<()> {
     }
     let filters = Filters {
         gender,
-        category: args.category.clone(),
+        category: args.category.as_deref().map(category).transpose()?,
         division: args.division.clone(),
         federation: args.federation.clone(),
         keep_bwl: false,
@@ -243,17 +244,9 @@ pub async fn run(args: LeaderboardArgs) -> Result<()> {
             group_rows(&memberships, &from, &to).await?,
         )
     } else {
-        let show_progress = std::io::IsTerminal::is_terminal(&std::io::stderr());
-        let rows = results_between(&from, &to, |count| {
-            if show_progress {
-                eprint!("\rReading results… {count}");
-                let _ = std::io::stderr().flush();
-            }
-        })
-        .await?;
-        if show_progress {
-            eprint!("\r\x1b[2K");
-        }
+        let mut progress = Progress::new("Reading results");
+        let rows = results_between(&from, &to, |count| progress.update(count)).await?;
+        drop(progress);
         ("all athletes".to_string(), rows)
     };
     let scope = match &args.federation {
@@ -261,6 +254,12 @@ pub async fn run(args: LeaderboardArgs) -> Result<()> {
         None => format!("{scope}, {EXCLUDED_FEDERATION} results left out"),
     };
 
+    if let Some(error) = unknown_federation(
+        args.federation.as_deref(),
+        rows.iter().map(|row| row.federation.as_str()),
+    ) {
+        return Err(error);
+    }
     let ranked = rank(&rows, args.by, &filters, args.limit);
     let metric = match args.by {
         Metric::Total => "total",
@@ -275,7 +274,12 @@ pub async fn run(args: LeaderboardArgs) -> Result<()> {
         us_date(&to)
     );
     output::emit(
-        Report::single("leaderboard", table(&ranked))
+        Report::new()
+            .table_with_data(
+                "leaderboard",
+                table(&ranked, us_date),
+                table(&ranked, str::to_string),
+            )
             .titled(title)
             .when_empty("No results match those filters."),
     );
@@ -288,15 +292,7 @@ async fn group_rows(
     from: &str,
     to: &str,
 ) -> Result<Vec<LiftingResults>> {
-    let mut names: Vec<String> = Vec::new();
-    for membership in memberships {
-        if !names
-            .iter()
-            .any(|name| fold(name) == fold(&membership.name))
-        {
-            names.push(membership.name.clone());
-        }
-    }
+    let names = distinct_names(memberships);
     let results = get_recent_results(&names, from).await?;
     Ok(filter_membership_results(memberships, results)
         .into_iter()
@@ -304,7 +300,8 @@ async fn group_rows(
         .collect())
 }
 
-pub fn table(ranked: &[(&LiftingResults, f64)]) -> Table {
+/// The ranked rows, with dates written by `date` (US dates to show, ISO ones to export).
+pub fn table(ranked: &[(&LiftingResults, f64)], date: fn(&str) -> String) -> Table {
     let mut table = Table::new();
     table.set_header(vec![
         "Rank",
@@ -330,7 +327,7 @@ pub fn table(ranked: &[(&LiftingResults, f64)]) -> Table {
             number(row.total),
             points(row_sinclair(row)),
             points(row_qpoints(row)),
-            us_date(&row.date),
+            date(&row.date),
             row.meet.clone(),
         ]);
     }

@@ -45,7 +45,7 @@ pub async fn run(args: MeetResultsArgs) -> Result<()> {
     let results = meet_rows(&name).await?;
     if results.is_empty() {
         let message = format!("No results found for meet \"{name}\"");
-        return Err(not_found(NameKind::Meet, &name, message).await);
+        return Err(not_found(NameKind::ResultsMeet, &name, message).await);
     }
 
     let mut editions = vec![(name.clone(), summarize(&results))];
@@ -58,7 +58,7 @@ pub async fn run(args: MeetResultsArgs) -> Result<()> {
         }
     }
 
-    output::emit(report(&results, &editions));
+    output::emit(report(&results, &editions, !args.no_history));
     Ok(())
 }
 
@@ -159,7 +159,14 @@ fn top_table(
     top
 }
 
-pub fn report(results: &[LiftingResults], editions: &[(String, MeetSummary)]) -> Report {
+/// The meet's report. `editions` holds the meet itself, then the earlier editions found; with
+/// `history` (no `--no-history`) JSON and CSV always carry the `editions` table, which table
+/// format shows only when there are earlier editions to compare.
+pub fn report(
+    results: &[LiftingResults],
+    editions: &[(String, MeetSummary)],
+    history: bool,
+) -> Report {
     let mut sorted: Vec<&LiftingResults> = results.iter().collect();
     sorted.sort_by(|a, b| b.total.total_cmp(&a.total));
 
@@ -282,7 +289,7 @@ pub fn report(results: &[LiftingResults], editions: &[(String, MeetSummary)]) ->
         .headed("make_rate_by_attempt", "MAKE RATES", by_attempt)
         .table("make_rate", by_lift);
 
-    if editions.len() > 1 {
+    if history {
         let mut history = Table::new();
         history.set_header(vec![
             "Meet",
@@ -320,7 +327,11 @@ pub fn report(results: &[LiftingResults], editions: &[(String, MeetSummary)]) ->
             }
             history.add_row(cells);
         }
-        report = report.headed("editions", "THIS MEET IN EARLIER YEARS", history);
+        report = if editions.len() > 1 {
+            report.headed("editions", "THIS MEET IN EARLIER YEARS", history)
+        } else {
+            report.exported("editions", history)
+        };
     }
     report
 }
@@ -383,11 +394,17 @@ mod tests {
         // Bo bombed out: no men's score.
         assert_eq!(summary.best_sinclair[0], None);
 
-        let json = report(&rows, &[("M".into(), summary)]).to_json();
+        let editions = [("M".into(), summary)];
+        let json = report(&rows, &editions, false).to_json();
         assert_eq!(json["heaviest_lifts"][2]["athlete"], "Ada");
         assert_eq!(json["top_sinclair_women"].as_array().unwrap().len(), 1);
         assert_eq!(json["top_sinclair_men"].as_array().unwrap().len(), 0);
-        assert!(json.get("editions").is_none());
+        assert!(json.get("editions").is_none(), "--no-history leaves it out");
+
+        // Asked for, the table is always exported, even with no earlier editions found.
+        let with_history = report(&rows, &editions, true);
+        assert_eq!(with_history.to_json()["editions"][0]["meet"], "M");
+        assert!(!with_history.to_text().contains("EARLIER YEARS"));
     }
 
     #[test]
@@ -423,7 +440,7 @@ mod tests {
         ];
         let summary = summarize(&rows);
         assert_eq!(summary.average_total, Some(287.5));
-        let json = report(&rows, &[("M".into(), summary)]).to_json();
+        let json = report(&rows, &[("M".into(), summary)], false).to_json();
         assert_eq!(json["top_qpoints_men"][0]["athlete"], "Hampton");
         assert_eq!(json["top_qpoints_women"][0]["athlete"], "Olivia");
         assert_eq!(json["top_sinclair_men"].as_array().unwrap().len(), 1);

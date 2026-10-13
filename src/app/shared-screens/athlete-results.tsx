@@ -4,19 +4,27 @@ import { ThemedText } from "@/components/ui/ThemedText";
 import { ThemedView } from "@/components/ui/ThemedView";
 import { AppColors, useAppColors } from "@/hooks/useAppColors";
 import { useIsOffline } from "@/hooks/useIsOffline";
+import { useRetryOnReconnect } from "@/hooks/useRetryOnReconnect";
 import { calculateAthleteMakeRates } from "@/lib/athlete-make-rates";
-import { findPRIndexes } from "@/lib/athlete-prs";
+import { findPRIndexes, type PRIndexes } from "@/lib/athlete-prs";
 import { getAllCachedLiftingResultsForAthlete } from "@/lib/database/offline-store";
 import { fetchAllResultsForName } from "@/lib/database/queries";
-import { loadAthleteResults } from "@/lib/athlete-results-load";
+import {
+  loadAthleteResults,
+  partialResultsStatus,
+  showsCareerStats,
+  type AthleteResultsOutcome,
+  type ShownResultsSource,
+} from "@/lib/athlete-results-load";
 import { loadFailureCopy } from "@/lib/load-failure";
 import { SupabaseLiftResult } from "@/types/athlete-results";
 import { FlashList } from "@shopify/flash-list";
 import { Stack, useLocalSearchParams } from "expo-router";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ActivityIndicator, ScrollView, StyleSheet, View } from "react-native";
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, View } from "react-native";
 import Animated, { FadeIn } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { SubscriptionGate } from "@/components/ui/SubscriptionGate";
 import { useScreenHorizontalInsets } from "@/hooks/useScreenInsets";
 import { Palette } from "@/constants/Palette";
 
@@ -286,11 +294,27 @@ const MeetResultCard = React.memo(function MeetResultCard({
   );
 });
 
+/** No meet is a PR: what the on-device copy shows (see `showsCareerStats`). */
+const NO_PR_INDEXES: PRIndexes = { snatch: -1, cj: -1, total: -1 };
+
 function meetResultKey(result: SupabaseLiftResult, index: number): string {
   return `${result.event_id}-${result.meet}-${result.date}-${result.name}-${index}`;
 }
 
+/**
+ * A premium screen. The buttons that open it check the subscription, but a
+ * `meetcal://` deep link reaches the route directly, so it gates itself like
+ * every other premium screen.
+ */
 export default function AthleteResultsScreen() {
+  return (
+    <SubscriptionGate feature="athlete-results">
+      <AthleteResultsContent />
+    </SubscriptionGate>
+  );
+}
+
+function AthleteResultsContent() {
   const screenInsets = useScreenHorizontalInsets();
   const colors = useAppColors();
   const { name } = useLocalSearchParams<{ name?: string }>();
@@ -303,10 +327,18 @@ export default function AthleteResultsScreen() {
   // answer: "No meet results found" read as "never competed" when the
   // device was only offline.
   const [loadFailed, setLoadFailed] = useState(false);
+  // Where the rows on screen came from, and how the load ended (null while
+  // the API request is in flight). On-device rows are a partial history.
+  const [rowsSource, setRowsSource] = useState<ShownResultsSource | null>(null);
+  const [loadOutcome, setLoadOutcome] = useState<AthleteResultsOutcome | null>(null);
   const [retryCount, setRetryCount] = useState(0);
   const [isOffline] = useIsOffline();
   const resultsCacheRef = useRef<Map<string, SupabaseLiftResult[]>>(new Map());
   const requestIdRef = useRef(0);
+  // The athlete whose on-device rows are on screen, and the rows, so a retry
+  // for that athlete keeps them up (instead of blanking the list behind a
+  // spinner) and the load knows they are there and partial.
+  const offlineRowsRef = useRef<{ name: string; rows: SupabaseLiftResult[] } | null>(null);
 
   // Each cached entry can hold an athlete's entire competition history. Without
   // this cleanup the map grows for every athlete opened during a session and is
@@ -326,13 +358,19 @@ export default function AthleteResultsScreen() {
       const cacheKey = `all::${nameStr}`;
       const cachedResults = resultsCacheRef.current.get(cacheKey);
       setLoadFailed(false);
+      setLoadOutcome(null);
       if (cachedResults) {
+        offlineRowsRef.current = null;
         setAthleteResults(cachedResults);
+        setRowsSource("api");
         setLoading(false);
-      } else {
+      } else if (offlineRowsRef.current?.name !== nameStr) {
+        offlineRowsRef.current = null;
         setAthleteResults([]);
+        setRowsSource(null);
         setLoading(true);
       }
+      const keptOffline = cachedResults ? undefined : offlineRowsRef.current?.rows;
 
       const requestId = ++requestIdRef.current;
       try {
@@ -341,7 +379,8 @@ export default function AthleteResultsScreen() {
         // The API request starts before the offline read (see
         // `loadAthleteResults`).
         const outcome = await loadAthleteResults({
-          shown: cachedResults,
+          shown: cachedResults ?? keptOffline,
+          shownSource: cachedResults ? "api" : "offline",
           readOffline: () => getAllCachedLiftingResultsForAthlete(nameStr),
           fetchFull: () => fetchAllResultsForName(nameStr),
           isCurrent: () => requestId === requestIdRef.current,
@@ -349,10 +388,14 @@ export default function AthleteResultsScreen() {
             if (source === "api") {
               resultsCacheRef.current.set(cacheKey, rows);
             }
+            offlineRowsRef.current = source === "offline" ? { name: nameStr, rows } : null;
             setAthleteResults(rows);
+            setRowsSource(source);
             if (source === "offline") setLoading(false);
           },
         });
+        if (outcome === "superseded") return;
+        setLoadOutcome(outcome);
         if (outcome === "failed") setLoadFailed(true);
       } catch (error) {
         console.error("Error in fetchAthleteResults:", error);
@@ -371,13 +414,26 @@ export default function AthleteResultsScreen() {
     };
   }, [name, retryCount]);
 
+  // On-device rows stand in for the full history only until it can load:
+  // the connection coming back, or the note's Retry, asks again.
+  const retryLoad = useCallback(() => setRetryCount((count) => count + 1), []);
+  useRetryOnReconnect(loadOutcome === "offline-partial", retryLoad);
+
   // For each lift, the index of the meet where the athlete's PR was set.
   // If the same best is hit at multiple meets, only the earliest one counts
   // as the PR — matching it later isn't a new PR.
+  // Not from the on-device copy: it holds only the downloaded meets, and
+  // one cached meet would read as a PR on every lift.
+  const careerStats = showsCareerStats(rowsSource);
   const prIndexes = useMemo(
-    () => findPRIndexes(athleteResults),
-    [athleteResults],
+    () => (careerStats ? findPRIndexes(athleteResults) : NO_PR_INDEXES),
+    [athleteResults, careerStats],
   );
+  const partialStatus = partialResultsStatus({
+    source: rowsSource,
+    outcome: loadOutcome,
+    isOffline,
+  });
 
   // FlashList recycles cells, so it needs to be told when something outside
   // `data` changes what a row renders. Both of these do.
@@ -482,7 +538,36 @@ export default function AthleteResultsScreen() {
           keyExtractor={meetResultKey}
           renderItem={renderResultCard}
           ListHeaderComponent={
-            <AthleteStats results={athleteResults} colors={colors} />
+            <>
+              {partialStatus ? (
+                <View
+                  style={styles.statusRow}
+                  accessible
+                  accessibilityLiveRegion="polite"
+                  testID="athlete-results-partial-status"
+                >
+                  <ThemedText style={[styles.statusText, { color: colors.secondaryText }]}>
+                    {partialStatus}
+                  </ThemedText>
+                  {loadOutcome === "offline-partial" ? (
+                    <Pressable
+                      onPress={retryLoad}
+                      accessibilityRole="button"
+                      accessibilityLabel="Retry loading the full history"
+                      hitSlop={8}
+                      testID="athlete-results-partial-retry"
+                    >
+                      <ThemedText style={[styles.statusText, styles.statusRetry, { color: colors.link }]}>
+                        Retry
+                      </ThemedText>
+                    </Pressable>
+                  ) : null}
+                </View>
+              ) : null}
+              {careerStats ? (
+                <AthleteStats results={athleteResults} colors={colors} />
+              ) : null}
+            </>
           }
           contentContainerStyle={{
             paddingHorizontal: 16,
@@ -599,6 +684,18 @@ const styles = StyleSheet.create({
     fontSize: 20,
     fontWeight: "600",
     textAlign: "center",
+  },
+  statusRow: {
+    paddingTop: 16,
+    alignItems: "center",
+  },
+  statusText: {
+    fontSize: 13,
+    textAlign: "center",
+  },
+  statusRetry: {
+    fontWeight: "600",
+    marginTop: 4,
   },
   emptyStateContainer: {
     padding: 20,

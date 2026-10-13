@@ -21,6 +21,13 @@ export const WIDGET_STORAGE_KEYS = {
   qualifyingTotals: "qualifyingTotalsWidgetData",
   standards: "standardsWidgetData",
   intlRankings: "intlRankingsWidgetData",
+  /**
+   * Boolean: the app's last known premium entitlement, so Siri (which runs
+   * without the JS app) can apply the same soft gate the app does. Written
+   * only once RevenueCat (or its cache) has answered; an absent key reads as
+   * not subscribed. A hint for the UI, never a source of truth.
+   */
+  entitlementHint: "premiumEntitlementHint",
 } as const;
 
 /**

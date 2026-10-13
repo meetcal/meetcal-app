@@ -92,11 +92,14 @@ describe("club stats mappers", () => {
     expect(await AsyncStorage.getItem(OFFLINE_CACHE_KEYS.clubMeetStats)).not.toContain("Athlete A");
 
     mockFetchApiClubAthletes.mockResolvedValue([
-      { member_id: "1", name: "Athlete A", meet: "Meet", club: "Club", gender: "Men" },
+      { member_id: "1", name: "Athlete A", meet: "Meet", club: "Club", gender: "Men", meet_date: "2026-03-27" },
+      { member_id: "2", name: "Athlete B", meet: "Meet", club: "Club", meet_date: 7 },
     ]);
     const athletes = await clubAthletesResource.revalidate("Club");
+    // The meet's date is kept for sorting the club's meets (#341); anything but text is no date.
     expect(athletes.data).toEqual([
-      { member_id: "1", name: "Athlete A", meet: "Meet", club: "Club" },
+      { member_id: "1", name: "Athlete A", meet: "Meet", club: "Club", meet_date: "2026-03-27" },
+      { member_id: "2", name: "Athlete B", meet: "Meet", club: "Club", meet_date: null },
     ]);
   });
 });
@@ -188,8 +191,8 @@ describe("club endpoint boundary validation", () => {
     const athletes = await clubAthletesResource.revalidate("Club");
 
     expect(athletes.data).toEqual([
-      { member_id: "1", name: "Athlete A", meet: "Meet", club: "Club" },
-      { member_id: "4", name: "Athlete D", meet: "Meet", club: "Club" },
+      { member_id: "1", name: "Athlete A", meet: "Meet", club: "Club", meet_date: null },
+      { member_id: "4", name: "Athlete D", meet: "Meet", club: "Club", meet_date: null },
     ]);
     expect(console.warn).toHaveBeenCalledWith(
       "[api] /clubs/athletes: dropped 3 of 5 malformed athlete rows",

@@ -79,7 +79,7 @@ function makeProps(overrides: Partial<AthleteRowProps> = {}): AthleteRowProps {
     index: 0,
     currentTheme: "light",
     validMeet: "Test Meet",
-    timeZoneAbbr: "MDT",
+    meetZone: { timeZoneIdentifier: "America/Denver", abbreviation: "MDT" },
     isSubscribed: false,
     onSeeAllResults: jest.fn(),
     ...overrides,
@@ -153,8 +153,12 @@ describe("AthleteItem", () => {
     });
   });
 
-  it("formats the session time with the abbreviation it was given", async () => {
-    const props = makeProps({ timeZoneAbbr: "EST" });
+  // #284: a New York meet that started before DST ended; this session is after.
+  it("labels the session time with the meet's zone at the session's own date", async () => {
+    const props = makeProps({
+      meetZone: { timeZoneIdentifier: "America/New_York", abbreviation: "EDT" },
+      athlete: { ...ATHLETE, session: { ...ATHLETE.session!, date: "2026-11-02" } },
+    });
     let tree!: ReturnType<typeof create>;
     act(() => {
       tree = create(<Parent props={props} />);
@@ -236,7 +240,7 @@ describe("AthleteItem session link", () => {
       pathname: "/shared-screens/schedule-details",
       params: {
         id: "session-4-Red",
-        sessionNumber: 4,
+        sessionNumber: "4",
         platform: "Red",
         weightClass: "59",
         startTime: "9:00 AM",
@@ -279,7 +283,9 @@ describe("AthleteItem session link", () => {
     act(() => tree.unmount());
   });
 
-  it("does not navigate to a session it cannot place in time", async () => {
+  // #314: session details needs only the meet, session and platform; the
+  // link did nothing when the schedule had no row for the session.
+  it("opens session details without a schedule row, sending only what is known", async () => {
     const props = makeProps({
       athlete: { ...ATHLETE, session: { number: 4, platform: "Blue" } },
       getSessionDetails: () => null,
@@ -289,7 +295,43 @@ describe("AthleteItem session link", () => {
     const [, sessionLink] = findPressables(tree);
     act(() => sessionLink.props.onPress());
 
-    expect(props.router.push).not.toHaveBeenCalled();
+    expect(props.router.push).toHaveBeenCalledWith({
+      pathname: "/shared-screens/schedule-details",
+      params: {
+        id: "session-4-Blue",
+        sessionNumber: "4",
+        platform: "Blue",
+        athleteName: "Jane Doe",
+        weightClass: "59",
+        meet: "Test Meet",
+      },
+    });
+    act(() => tree.unmount());
+  });
+
+  // #281: a platform's own published weigh-in wins over start minus 2 h.
+  it("sends the platform's published weigh-in", async () => {
+    const props = makeProps({
+      athlete: { ...ATHLETE, session: { number: 4, platform: "Blue" } },
+      getSessionDetails: () => ({
+        date: "2026-06-21",
+        displayDate: "Sunday",
+        startTime: "8:00 AM",
+        weighInTime: "6:00 AM",
+        platforms: [
+          { platform: "Red", platformStartTime: "8:00 AM", platformWeighInTime: "6:00 AM" },
+          { platform: "Blue", platformStartTime: "1:00 PM", platformWeighInTime: "10:30 AM" },
+        ],
+      }),
+    });
+    const tree = mountRow(props);
+    await toggleRow(tree);
+    const [, sessionLink] = findPressables(tree);
+    act(() => sessionLink.props.onPress());
+
+    expect(jest.mocked(props.router.push).mock.calls[0][0]).toMatchObject({
+      params: { startTime: "1:00 PM", weighInTime: "10:30 AM", date: "2026-06-21" },
+    });
     act(() => tree.unmount());
   });
 });

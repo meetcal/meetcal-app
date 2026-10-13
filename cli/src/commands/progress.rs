@@ -1,3 +1,5 @@
+use std::collections::HashSet;
+
 use anyhow::Result;
 use clap::Parser;
 use comfy_table::Table;
@@ -7,7 +9,7 @@ use crate::utils::athletes::history;
 use crate::utils::format::us_date;
 use crate::utils::output::{self, Report};
 use crate::utils::stats::{
-    Lift, QPOINTS_LABEL, SINCLAIR_LABEL, attempt_habits, bombed_out, chronological, number,
+    Lift, QPOINTS_LABEL, SINCLAIR_LABEL, attempt_habits, bombed_out, chronological, fold, number,
     percent, points, pr_flags, row_qpoints, row_sinclair, signed_kg, valid_total,
 };
 
@@ -51,8 +53,7 @@ pub fn report(name: &str, rows: &[LiftingResults], since: Option<i32>) -> Report
         .collect();
     let rows: Vec<&LiftingResults> = shown.iter().map(|(row, _)| *row).collect();
 
-    let mut results = Table::new();
-    results.set_header(vec![
+    let header = vec![
         "Date",
         "Meet",
         "Division",
@@ -63,10 +64,14 @@ pub fn report(name: &str, rows: &[LiftingResults], since: Option<i32>) -> Report
         SINCLAIR_LABEL,
         QPOINTS_LABEL,
         "PRs",
-    ]);
+    ];
+    // Shown with US dates, exported with ISO ones.
+    let mut results = Table::new();
+    results.set_header(header.clone());
+    let mut results_data = Table::new();
+    results_data.set_header(header);
     for (row, flags) in &shown {
-        results.add_row(vec![
-            us_date(&row.date),
+        let cells = vec![
             row.meet.clone(),
             row.age.clone(),
             number(row.body_weight),
@@ -76,18 +81,39 @@ pub fn report(name: &str, rows: &[LiftingResults], since: Option<i32>) -> Report
             points(row_sinclair(row)),
             points(row_qpoints(row)),
             flags.marks(),
-        ]);
+        ];
+        results.add_row([vec![us_date(&row.date)], cells.clone()].concat());
+        results_data.add_row([vec![row.date.clone()], cells].concat());
     }
 
+    let (mut trend, mut trend_data) = trend(&rows);
+    let mut attempts = attempts(&rows);
+    if rows.is_empty() {
+        // Nothing in the range: every table is empty, so table format shows the message and
+        // JSON and CSV carry empty tables, not a row of zeros.
+        for table in [&mut trend, &mut trend_data, &mut attempts] {
+            *table = header_only(table);
+        }
+    }
     Report::new()
         .titled(format!("PROGRESSION — {name}"))
-        .table("results", results)
-        .headed("trend", "TREND", trend(&rows))
-        .headed("attempts", "ATTEMPT HABITS", attempts(&rows))
+        .table_with_data("results", results, results_data)
+        .headed_with_data("trend", "TREND", trend, trend_data)
+        .headed("attempts", "ATTEMPT HABITS", attempts)
         .when_empty(format!("No results for {name} in that range."))
 }
 
-fn trend(rows: &[&LiftingResults]) -> Table {
+/// `table`'s header without its rows.
+fn header_only(table: &Table) -> Table {
+    let mut empty = Table::new();
+    if let Some(header) = table.header() {
+        empty.set_header(header.cell_iter().map(|cell| cell.content()));
+    }
+    empty
+}
+
+/// The trend as shown, and as exported (ISO dates, the bomb-outs as a count).
+fn trend(rows: &[&LiftingResults]) -> (Table, Table) {
     // Source errors (`valid_total`) are neither the best nor the latest total.
     let totals: Vec<&&LiftingResults> = rows
         .iter()
@@ -107,9 +133,13 @@ fn trend(rows: &[&LiftingResults]) -> Table {
         _ => None,
     };
     let bombs = rows.iter().filter(|row| bombed_out(row)).count();
+    // Meets, not result rows: an athlete entered in two divisions of one meet has two rows.
+    let meets: HashSet<(String, &str)> = rows
+        .iter()
+        .map(|row| (fold(&row.meet), row.date.as_str()))
+        .collect();
 
-    let mut table = Table::new();
-    table.set_header(vec![
+    let header = vec![
         "Meets",
         "First Meet",
         "Latest Total",
@@ -119,24 +149,37 @@ fn trend(rows: &[&LiftingResults]) -> Table {
         "Best Q-points",
         "First-to-Latest Total",
         "Bomb-outs",
-    ]);
-    table.add_row(vec![
-        rows.len().to_string(),
-        rows.first()
-            .map(|row| us_date(&row.date))
-            .unwrap_or_default(),
-        totals
-            .last()
-            .map(|row| number(row.total))
-            .unwrap_or_default(),
-        best.map(|row| number(row.total)).unwrap_or_default(),
-        best.map(|row| us_date(&row.date)).unwrap_or_default(),
-        points(best_sinclair.map(|(score, _)| score)),
-        points(best_qpoints),
-        signed_kg(change),
+    ];
+    let first_date = rows.first().map(|row| row.date.clone()).unwrap_or_default();
+    let best_date = best.map(|row| row.date.clone()).unwrap_or_default();
+    let cells = |first_date: String, best_date: String, bombs: String| {
+        vec![
+            meets.len().to_string(),
+            first_date,
+            totals
+                .last()
+                .map(|row| number(row.total))
+                .unwrap_or_default(),
+            best.map(|row| number(row.total)).unwrap_or_default(),
+            best_date,
+            points(best_sinclair.map(|(score, _)| score)),
+            points(best_qpoints),
+            signed_kg(change),
+            bombs,
+        ]
+    };
+
+    let mut table = Table::new();
+    table.set_header(header.clone());
+    table.add_row(cells(
+        us_date(&first_date),
+        us_date(&best_date),
         format!("{bombs} of {}", rows.len()),
-    ]);
-    table
+    ));
+    let mut data = Table::new();
+    data.set_header(header);
+    data.add_row(cells(first_date, best_date, bombs.to_string()));
+    (table, data)
 }
 
 /// Attempt habits for each lift: make rate by attempt, jumps, and openers.
@@ -201,7 +244,50 @@ mod tests {
         assert_eq!(results[0]["total"], 193);
         let trend = &json["trend"][0];
         assert_eq!(trend["meets"], 1);
-        assert_eq!(trend["bomb_outs"], "0 of 1");
+        assert_eq!(trend["bomb_outs"], 0);
+        assert_eq!(results[0]["date"], "2025-03-01");
+        assert_eq!(trend["first_meet"], "2025-03-01");
+        assert_eq!(trend["best_total_date"], "2025-03-01");
+        let text = report.to_text();
+        assert!(text.contains("Mar 1, 2025"));
+        assert!(text.contains("0 of 1"));
+    }
+
+    #[test]
+    fn a_range_with_no_results_says_so() {
+        let rows = vec![row(
+            "Ada",
+            "2024-03-01",
+            "M1",
+            "Open Women's 64kg",
+            63.0,
+            [80.0, 85.0, -88.0],
+            [100.0, 105.0, 0.0],
+        )];
+        let report = report("Ada", &rows, Some(2026));
+        assert_eq!(report.to_text(), "No results for Ada in that range.");
+        let json = report.to_json();
+        assert_eq!(json["results"], serde_json::json!([]));
+        assert_eq!(json["trend"], serde_json::json!([]));
+        assert_eq!(json["attempts"], serde_json::json!([]));
+    }
+
+    #[test]
+    fn meets_count_meets_not_rows() {
+        let entry = |division: &str| {
+            row(
+                "Ada",
+                "2025-03-01",
+                "M1",
+                division,
+                63.0,
+                [80.0, 0.0, 0.0],
+                [100.0, 0.0, 0.0],
+            )
+        };
+        let rows = vec![entry("Open Women's 64kg"), entry("Junior Women's 64kg")];
+        let json = report("Ada", &rows, None).to_json();
+        assert_eq!(json["trend"][0]["meets"], 1);
     }
 
     #[test]

@@ -42,18 +42,43 @@ pub async fn run(args: MeetsArgs) -> Result<()> {
         None => format!("No {which} meets."),
     };
 
+    output::emit(
+        Report::new()
+            .table_with_data("meets", table(&meets), data(&meets))
+            .when_empty(empty),
+    );
+    Ok(())
+}
+
+/// The meets as shown: a date range for reading.
+pub fn table(meets: &[Meet]) -> Table {
     let mut table = Table::new();
     table.set_header(vec!["Meet", "Dates", "Location", "Status"]);
     for meet in meets {
         table.add_row(vec![
             meet.name.clone(),
             date_range(&meet.start_date, &meet.end_date),
-            location(&meet),
+            location(meet),
             meet.status.clone(),
         ]);
     }
-    output::emit(Report::single("meets", table).when_empty(empty));
-    Ok(())
+    table
+}
+
+/// The meets as exported: the first and last day, `YYYY-MM-DD`.
+pub fn data(meets: &[Meet]) -> Table {
+    let mut table = Table::new();
+    table.set_header(vec!["Meet", "Start Date", "End Date", "Location", "Status"]);
+    for meet in meets {
+        table.add_row(vec![
+            meet.name.clone(),
+            meet.start_date.clone(),
+            meet.end_date.clone(),
+            location(meet),
+            meet.status.clone(),
+        ]);
+    }
+    table
 }
 
 /// The meets whose name contains `search`, ignoring case; all of them without one.

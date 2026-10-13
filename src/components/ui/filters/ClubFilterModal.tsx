@@ -164,6 +164,8 @@ const ClubFilterModal: React.FC<ClubFilterModalProps> = ({
           pressed && { opacity: 0.8 },
         ]}
         onPress={() => handleSelect("")}
+        accessibilityRole="button"
+        accessibilityState={{ selected: selectedClub === "" }}
       >
         <ThemedText
           style={[
@@ -189,6 +191,9 @@ const ClubFilterModal: React.FC<ClubFilterModalProps> = ({
             pressed && { opacity: 0.8 },
           ]}
           onPress={() => handleSelect(STARRED_CLUBS_FILTER)}
+          accessibilityRole="button"
+          accessibilityLabel="Favorites"
+          accessibilityState={{ selected: selectedClub === STARRED_CLUBS_FILTER }}
         >
           <View style={styles.optionContent}>
             <ThemedText

@@ -2,6 +2,7 @@ import { Redirect } from 'expo-router'
 import { useAuth } from '@clerk/expo'
 import { ActivityIndicator, View } from 'react-native'
 import { useEffect } from 'react'
+import { DismissToRedirect } from '@/components/navigation/DismissToRedirect'
 import * as WebBrowser from 'expo-web-browser'
 
 WebBrowser.maybeCompleteAuthSession()
@@ -22,5 +23,8 @@ export default function OAuthNativeCallback() {
     )
   }
 
-  return <Redirect href={isSignedIn ? '/(tabs)/(index)' : '/(auth)/sign-in'} />
+  // Signed in, pop back to the running tabs rather than stacking a second
+  // tabs navigator; sign-in stays inside the auth stack.
+  if (isSignedIn) return <DismissToRedirect href="/(tabs)/(index)" />
+  return <Redirect href="/(auth)/sign-in" />
 }

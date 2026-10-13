@@ -2,7 +2,9 @@ import {
   convertZonedLocalToUTC,
   getOffsetMinutesAtInstant,
   isValidTimeZone,
+  meetTimeZoneLabel,
   parseClockTime,
+  resolvedMeetTimeZone,
 } from "@/utils/timezone";
 
 describe("timezone utilities", () => {
@@ -338,5 +340,74 @@ describe("zones outside the US", () => {
     // later 2:30.
     expect(at("2026-04-05", "2:30 AM", "Pacific/Auckland")).toBe("2026-04-04T13:30:00.000Z");
     expect(at("2026-04-05", "3:30 AM", "Pacific/Auckland")).toBe("2026-04-04T15:30:00.000Z");
+  });
+});
+
+// #284: one label per meet, read at its start date, mislabelled every day
+// after a DST change.
+describe("meetTimeZoneLabel", () => {
+  const newYork = { timeZoneIdentifier: "America/New_York", abbreviation: "EDT" };
+  const chicago = { timeZoneIdentifier: "America/Chicago", abbreviation: "CST" };
+
+  it("labels each day of a meet that spans a DST change with its own zone", () => {
+    expect(meetTimeZoneLabel(newYork, "2026-10-31")).toBe("EDT");
+    expect(meetTimeZoneLabel(newYork, "2026-11-01")).toBe("EST");
+    expect(meetTimeZoneLabel(newYork, "2026-11-02")).toBe("EST");
+    expect(meetTimeZoneLabel(chicago, "2026-03-07")).toBe("CST");
+    expect(meetTimeZoneLabel(chicago, "2026-03-08")).toBe("CDT");
+  });
+
+  it("reads an ISO date-time by its date part", () => {
+    expect(meetTimeZoneLabel(newYork, "2026-11-02T00:00:00")).toBe("EST");
+  });
+
+  it("labels a zone with no lettered name by its offset", () => {
+    expect(
+      meetTimeZoneLabel({ timeZoneIdentifier: "Asia/Tokyo", abbreviation: "GMT+9" }, "2026-06-20"),
+    ).toBe("GMT+9");
+  });
+
+  it("falls back to the meet's label without a usable date or zone", () => {
+    expect(meetTimeZoneLabel(newYork, "")).toBe("EDT");
+    expect(meetTimeZoneLabel(newYork, undefined)).toBe("EDT");
+    expect(meetTimeZoneLabel(newYork, "2026-02-30")).toBe("EDT");
+    expect(meetTimeZoneLabel({ timeZoneIdentifier: "", abbreviation: "MDT" }, "2026-06-20")).toBe("MDT");
+  });
+
+  it("is blank without a meet", () => {
+    expect(meetTimeZoneLabel(null, "2026-06-20")).toBe("");
+    expect(meetTimeZoneLabel(undefined, "2026-06-20")).toBe("");
+  });
+});
+
+describe("resolvedMeetTimeZone", () => {
+  const time = (timeZone: string, timeZoneIdentifier: string) => ({ timeZone, timeZoneIdentifier });
+
+  it("is the meet's zone when it is known", () => {
+    expect(resolvedMeetTimeZone({ time: time("America/Los_Angeles", "America/Los_Angeles") })).toBe(
+      "America/Los_Angeles",
+    );
+    expect(
+      resolvedMeetTimeZone({ time: time("Asia/Tokyo", "Asia/Tokyo"), timeZoneUnknown: false }),
+    ).toBe("Asia/Tokyo");
+  });
+
+  it("is null for the mapper's fallback, never New York", () => {
+    expect(
+      resolvedMeetTimeZone({ time: time("", "America/New_York"), timeZoneUnknown: true }),
+    ).toBeNull();
+    expect(
+      resolvedMeetTimeZone({ time: time("Mars/Olympus", "America/New_York"), timeZoneUnknown: true }),
+    ).toBeNull();
+    // A meet cached without the flag still has its blank raw zone.
+    expect(resolvedMeetTimeZone({ time: time(" ", "America/New_York") })).toBeNull();
+  });
+
+  it("is null with no config, no time, or an identifier Intl does not know", () => {
+    expect(resolvedMeetTimeZone(null)).toBeNull();
+    expect(resolvedMeetTimeZone(undefined)).toBeNull();
+    expect(resolvedMeetTimeZone({})).toBeNull();
+    expect(resolvedMeetTimeZone({ time: { timeZoneIdentifier: "" } })).toBeNull();
+    expect(resolvedMeetTimeZone({ time: { timeZoneIdentifier: "__proto__" } })).toBeNull();
   });
 });
