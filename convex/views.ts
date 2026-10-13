@@ -844,6 +844,8 @@ type RefreshBegin = {
   overflow: boolean;
   /** More hints are pending than this refresh read (MAX_REFRESH_HINTS). */
   more?: boolean;
+  /** The creation time of the last hint read, where the next page starts. */
+  lastRead?: number | null;
   rebuilding: boolean;
   rebuildHeartbeat: number | null;
   rebuildPosition: RebuildPosition | null;
@@ -893,7 +895,7 @@ function storedPosition(position: { stage: string; offset: number; after?: strin
 export const beginRefresh = internalMutation({
   // `retry: false`: a caller that retries itself when busy (rebuildAll), so
   // no refresh is queued for it.
-  args: { lease: v.optional(v.boolean()), retry: v.optional(v.boolean()) },
+  args: { lease: v.optional(v.boolean()), retry: v.optional(v.boolean()), after: v.optional(v.number()) },
   handler: async (ctx, args): Promise<RefreshBegin> => {
     const state = await refreshState(ctx);
     const now = Date.now();
@@ -908,7 +910,14 @@ export const beginRefresh = internalMutation({
     const lease = args.lease ? now : null;
     if (state) await ctx.db.patch(state._id, { scheduled: false, ...(lease !== null ? { refreshLease: lease } : {}) });
     else if (lease !== null) await ctx.db.insert('view_state', { name: 'refresh', scheduled: false, baseline: [], refreshLease: lease });
-    const all = await ctx.db.query('view_hints').take(MAX_REFRESH_HINTS + 1);
+    const after = args.after;
+    const all =
+      after === undefined
+        ? await ctx.db.query('view_hints').take(MAX_REFRESH_HINTS + 1)
+        : await ctx.db
+            .query('view_hints')
+            .withIndex('by_creation_time', (q) => q.gt('_creationTime', after))
+            .take(MAX_REFRESH_HINTS + 1);
     const rows = all.slice(0, MAX_REFRESH_HINTS);
     // A rebuild's failed targets are retried here, never by another rebuild:
     // a build that fails everywhere would otherwise loop full rebuilds.
@@ -917,6 +926,7 @@ export const beginRefresh = internalMutation({
       hints: rows.map((h) => ({ id: h._id, kind: h.kind, key: h.key, seq: h.seq ?? 0, since: h.since })),
       overflow: costly > MAX_TARGETED_HINTS,
       more: all.length > MAX_REFRESH_HINTS,
+      lastRead: rows.length > 0 ? rows[rows.length - 1]._creationTime : null,
       rebuilding: state?.rebuilding ?? false,
       rebuildHeartbeat: state?.rebuildHeartbeat ?? null,
       rebuildPosition: storedPosition(state?.rebuildPosition),
@@ -1433,8 +1443,11 @@ export const rebuildAll = internalAction({
  * - `name` raw name: a result row carries this name (search directory).
  */
 export const refresh = internalAction({
-  args: {},
-  handler: async (ctx): Promise<Record<string, number>> => await runRefresh(ctx),
+  // `after`: read only hints written after this creation time (the last
+  // one the previous page held), so a backlog is paged past hints whose
+  // builds keep failing (#215). A scheduled refresh reads from the start.
+  args: { after: v.optional(v.number()) },
+  handler: async (ctx, { after }): Promise<Record<string, number>> => await runRefresh(ctx, after),
 });
 
 /** A refresh has failed to keep up once a write has waited this long. */
@@ -1498,8 +1511,8 @@ export const refreshJob = internalAction({
   },
 });
 
-async function runRefresh(ctx: ActionCtx): Promise<Record<string, number>> {
-  const begin: RefreshBegin = await ctx.runMutation(internal.views.beginRefresh, { lease: true });
+async function runRefresh(ctx: ActionCtx, after?: number): Promise<Record<string, number>> {
+  const begin: RefreshBegin = await ctx.runMutation(internal.views.beginRefresh, { lease: true, ...(after === undefined ? {} : { after }) });
   if (begin.busy) return { busy: 1 };
   try {
     return await refreshWith(ctx, begin);
@@ -1534,11 +1547,13 @@ async function refreshWith(ctx: ActionCtx, begin: RefreshBegin): Promise<Record<
     return { full: 1 };
   }
   const result = await refreshTargets(ctx, begin.hints);
-  // More hints than one refresh reads: the rest next, at once, unless this
-  // one already queued itself (deferred), or handled nothing (every hint it
-  // read failed again), which would only reread the same page.
-  if (begin.more && result.deferred === 0 && result.handled > 0) {
-    await ctx.runMutation(internal.views.queueRefresh, { delayMs: 0 });
+  // More hints than one refresh reads: the next page at once, from after the
+  // last hint read, unless this one already queued itself (deferred). Paged
+  // by creation time, so hints whose builds failed again (kept, and read
+  // first by every refresh) cannot keep the rest from being reached; they
+  // are retried by the next refresh from the start.
+  if (begin.more && result.deferred === 0 && begin.lastRead != null) {
+    await ctx.scheduler.runAfter(0, internal.views.refresh, { after: begin.lastRead });
     return { ...result, more: 1 };
   }
   return result;

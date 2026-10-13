@@ -236,6 +236,8 @@ function freshView<T>(ctx: QueryCtx, key: string, header: { etag: string; meta?:
  * the query well under the index reads one function may make.
  */
 const ROSTER_KEYS_LOOKED_UP = 1500;
+/** Roster key lookups in flight at once, well under the 1,000 one function may have. */
+const ROSTER_LOOKUP_BATCH = 250;
 /**
  * Pending athlete hints a freshness check of a roster too large to look up
  * key by key reads; with more pending than this, its views count as stale
@@ -265,15 +267,20 @@ async function rosterChangePending(
 ): Promise<boolean> {
   const roster = JSON.parse((await readViewJsonAnyAge(ctx, meetKey(meet, 'keys'))) ?? '[]') as string[];
   if (roster.length <= ROSTER_KEYS_LOOKED_UP) {
-    const hints = await Promise.all(
-      roster.map((key) =>
-        ctx.db
-          .query('view_hints')
-          .withIndex('by_kind_key', (q) => q.eq('kind', 'athlete').eq('key', key))
-          .first(),
-      ),
-    );
-    return hints.some((hint) => hint !== null && athleteChangeAffects(part, hint.since, meta));
+    // In batches: a national meet's roster is more lookups than one function
+    // may have in flight at once.
+    for (let i = 0; i < roster.length; i += ROSTER_LOOKUP_BATCH) {
+      const hints = await Promise.all(
+        roster.slice(i, i + ROSTER_LOOKUP_BATCH).map((key) =>
+          ctx.db
+            .query('view_hints')
+            .withIndex('by_kind_key', (q) => q.eq('kind', 'athlete').eq('key', key))
+            .first(),
+        ),
+      );
+      if (hints.some((hint) => hint !== null && athleteChangeAffects(part, hint.since, meta))) return true;
+    }
+    return false;
   }
   const pending = await ctx.db
     .query('view_hints')

@@ -121,6 +121,37 @@ describe('readFreshView, per key', () => {
     expect(await readFreshView(ctx, meetKey('Spring Open', 'timelines'))).toBeNull();
   });
 
+  it('looks a national-meet roster up in batches, never over the lookups one function may have in flight', async () => {
+    const { ctx, fake } = await world();
+    const roster = Array.from({ length: 1400 }, (_, i) => `lifter ${i}`);
+    await writeView(ctx, meetKey('Spring Open', 'keys'), jsonChunks(roster), STAMP);
+    let inFlight = 0;
+    let peak = 0;
+    const query = fake.db.query;
+    fake.db.query = ((table: string) => {
+      const chain = query(table);
+      const withIndex = chain.withIndex;
+      chain.withIndex = ((index: string, build?: (q: unknown) => unknown) => {
+        const indexed = withIndex(index, build);
+        const first = indexed.first;
+        indexed.first = async () => {
+          inFlight += 1;
+          peak = Math.max(peak, inFlight);
+          await Promise.resolve();
+          try {
+            return await first();
+          } finally {
+            inFlight -= 1;
+          }
+        };
+        return indexed;
+      }) as typeof chain.withIndex;
+      return chain;
+    }) as typeof fake.db.query;
+    expect(await readFreshView(ctx, meetKey('Spring Open', 'timelines'))).not.toBeNull();
+    expect(peak).toBeLessThanOrEqual(250);
+  });
+
   it('counts a roster too large to look up key by key stale when more athlete changes are pending than it checks', async () => {
     const hints = Array.from({ length: 201 }, (_, i) => ({ kind: 'athlete', key: `athlete ${String(i).padStart(3, '0')}`, since: '2099-01-01' }));
     const { ctx } = await world(hints);

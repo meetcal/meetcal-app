@@ -115,10 +115,28 @@ describe('targeted refresh', () => {
     expect(first).toMatchObject({ hints: 3500, more: 1, deferred: 0 });
     expect(h.hints()).toHaveLength(500);
     expect(h.scheduled.map((s) => s.name)).toEqual(['views:refresh']);
-    expect(await refresh(h)).toMatchObject({ hints: 500, deferred: 0 });
+    expect(await handlerOf(views.refresh)(h.ctx, h.scheduled[0].args)).toMatchObject({ hints: 500, deferred: 0 });
     expect(h.hints()).toEqual([]);
     expect(h.calls.some((c) => c.name === 'rebuildStage')).toBe(false);
     expect(h.scheduled.filter((s) => s.name === 'views:rebuildStage')).toEqual([]);
+  });
+
+  it('pages past a full page of hints whose builds keep failing, so later ones are built (#215)', async () => {
+    const failing = Array.from({ length: 3500 }, (_, i) => ({ ...hint('nat', nat(`Broken ${i}`)), retry: true }));
+    const h = harness(
+      { view_hints: [...failing, hint('table', 'records')] },
+      builders({ buildNat: () => { throw new Error('still broken'); } }),
+    );
+    const error = jest.spyOn(console, 'error').mockImplementation(() => {});
+    expect(await refresh(h)).toMatchObject({ hints: 3500, handled: 0, more: 1 });
+    expect(h.called('buildReferenceTables')).toHaveLength(0);
+    const next = h.scheduled.find((s) => s.name === 'views:refresh' && s.args.after !== undefined)!;
+    expect(next).toBeDefined();
+    expect(await handlerOf(views.refresh)(h.ctx, next.args)).toMatchObject({ hints: 1, failed: 0 });
+    error.mockRestore();
+    expect(h.called('buildReferenceTables')).toHaveLength(1);
+    expect(h.hints()).toHaveLength(3500);
+    expect(h.hints()).not.toContain('table:records');
   });
 
   it('waits for a running rebuild, keeping the hints for after it', async () => {
