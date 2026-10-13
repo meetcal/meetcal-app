@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { mockSubscribedUser, retryableResponse, routeQuery, textAnswer, valueAnswer } from "./support/api";
+import { errorAnswer, mockSubscribedUser, retryableResponse, routeQuery, textAnswer, valueAnswer } from "./support/api";
 
 test("subscribed users can filter and sort qualifying totals", async ({ page }) => {
   await mockSubscribedUser(page);
@@ -242,7 +242,7 @@ test("meet center joins details, schedule, start list, and full results", async 
   await routeQuery(page, "results:byMeet", (route) => route.fulfill(textAnswer([completeResult])));
   await routeQuery(page, "results:search", (route) => route.fulfill(valueAnswer({ matched_name: "Test Athlete", suggestions: [], results: [completeResult] })));
   await page.goto("/meet-center");
-  const meetSearch = page.getByRole("searchbox", { name: "Meet" });
+  const meetSearch = page.locator("#meet-search-input");
   await meetSearch.fill("me");
   await expect(page.getByRole("listbox", { name: "Meet suggestions" })).toHaveCount(0);
   await meetSearch.fill("mee");
@@ -284,8 +284,8 @@ test("club and WSO dashboards expose meet performance metrics", async ({ page })
   await routeQuery(page, "reference:clubMeetStats", (route) => route.fulfill(valueAnswer({ total_athletes: 1, gold_medals: 1, silver_medals: 0, bronze_medals: 0, total_prs: 1, perfect_6_for_6: 0, total_weight_lifted: 225, snatch_make_rate: 67, cj_make_rate: 67, combined_make_rate: 67, athlete_results: [{ name: "Test Athlete", weight_class: "69kg", snatch_best: 100, cj_best: 125, total: 225, body_weight: 70.5, medal: "Gold", snatch_medal: "Gold", cj_medal: "Gold", total_medal: "Gold", is_pr: true, perfect_lifts: false }] })));
   await page.goto("/club-dashboard");
   await page.getByLabel("Club").selectOption("Test Barbell");
-  await expect(page.getByRole("combobox", { name: "Meet" }).locator("option")).toHaveText(["Choose a completed meet", "Test Meet", "Older Meet"]);
-  await page.getByRole("combobox", { name: "Meet" }).selectOption("Test Meet");
+  await expect(page.locator("select").and(page.getByRole("combobox", { name: "Meet" })).locator("option")).toHaveText(["Choose a completed meet", "Test Meet", "Older Meet"]);
+  await page.locator("select").and(page.getByRole("combobox", { name: "Meet" })).selectOption("Test Meet");
   await expect(page.getByText("Gold medals")).toBeVisible();
   await expect(page.locator("tbody")).toContainText("Test Athlete");
   await expect(page.locator("tbody")).toContainText("Gold");
@@ -297,7 +297,7 @@ test("club and WSO dashboards expose meet performance metrics", async ({ page })
   await routeQuery(page, "meets:athletes", (route) => route.fulfill(textAnswer([entrant, { ...entrant, member_id: "2", name: "Other Athlete", wso: "Tennessee" }])));
   await routeQuery(page, "results:byMeet", (route) => route.fulfill(textAnswer([completeResult])));
   await page.goto("/wso-dashboard");
-  await page.getByRole("combobox", { name: "Meet" }).selectOption("Test Meet");
+  await page.locator("select").and(page.getByRole("combobox", { name: "Meet" })).selectOption("Test Meet");
   await expect(page.getByLabel("WSO").locator("option")).toHaveText(["Choose a WSO", "California North", "Tennessee"]);
   await page.getByLabel("WSO").selectOption("California North");
   await expect(page.getByText("WSO athletes")).toBeVisible();
@@ -310,7 +310,7 @@ test("club and WSO dashboards expose meet performance metrics", async ({ page })
   await routeQuery(page, "meets:athletes", (route) => route.fulfill(textAnswer([synced])));
   await routeQuery(page, "results:byMeet", (route) => route.fulfill(textAnswer([])));
   await page.goto("/wso-dashboard");
-  await page.getByRole("combobox", { name: "Meet" }).selectOption("Test Meet");
+  await page.locator("select").and(page.getByRole("combobox", { name: "Meet" })).selectOption("Test Meet");
   await expect(page.getByText("This meet’s start list doesn’t list athletes’ WSOs.")).toBeVisible();
   await expect(page.getByLabel("WSO")).toHaveCount(0);
 
@@ -318,7 +318,7 @@ test("club and WSO dashboards expose meet performance metrics", async ({ page })
   // the count says more may attend, and there are no 0% make rates or 0kg lifted.
   await routeQuery(page, "meets:athletes", (route) => route.fulfill(textAnswer([entrant, synced])));
   await page.goto("/wso-dashboard");
-  await page.getByRole("combobox", { name: "Meet" }).selectOption("Test Meet");
+  await page.locator("select").and(page.getByRole("combobox", { name: "Meet" })).selectOption("Test Meet");
   await page.getByLabel("WSO").selectOption("California North");
   await expect(page.locator(".data-metric-grid")).toContainText("1+");
   await expect(page.locator(".data-metric-grid")).not.toContainText("0.0%");
@@ -450,4 +450,161 @@ test("a slow earlier athlete search cannot replace newer suggestions", async ({ 
   await page.waitForTimeout(100);
   await expect(page.getByRole("option", { name: "Ann Stale" })).toHaveCount(0);
   await expect(page.getByRole("option", { name: "Bob Current" })).toBeVisible();
+});
+
+test("the athlete search is a keyboard-operable combobox", async ({ page }) => {
+  await mockSubscribedUser(page);
+  const searches: Array<Record<string, unknown>> = [];
+  await routeQuery(page, "results:search", async (route, args) => {
+    searches.push(args);
+    await route.fulfill(valueAnswer("startDate" in args
+      ? { matched_name: String(args.query), suggestions: [], results: [completeResult] }
+      : { matched_name: null, suggestions: ["Test Athlete", "Tess Lifter"], results: [] }));
+  });
+  await page.goto("/results");
+  const athlete = page.getByRole("combobox", { name: "Athlete" });
+  await expect(athlete).toHaveAttribute("aria-expanded", "false");
+  await athlete.fill("Tes");
+  const listbox = page.getByRole("listbox", { name: "Athlete suggestions" });
+  await expect(listbox.getByRole("option")).toHaveText(["Test Athlete", "Tess Lifter"]);
+  await expect(athlete).toHaveAttribute("aria-expanded", "true");
+  await expect(athlete).toHaveAttribute("aria-controls", (await listbox.getAttribute("id"))!);
+  await expect(page.getByRole("status").filter({ hasText: "2 suggestions" })).toBeAttached();
+
+  await athlete.press("ArrowDown");
+  await athlete.press("ArrowDown");
+  const second = listbox.getByRole("option", { name: "Tess Lifter" });
+  await expect(second).toHaveAttribute("aria-selected", "true");
+  await expect(athlete).toHaveAttribute("aria-activedescendant", (await second.getAttribute("id"))!);
+  await athlete.press("ArrowUp");
+  await expect(listbox.getByRole("option", { name: "Test Athlete" })).toHaveAttribute("aria-selected", "true");
+  await expect(athlete).toBeFocused();
+
+  await athlete.press("Escape");
+  await expect(listbox).toBeHidden();
+  await expect(athlete).toHaveValue("Tes");
+
+  // Down reopens the list on its first option.
+  await athlete.press("ArrowDown");
+  await expect(listbox.getByRole("option", { name: "Test Athlete" })).toHaveAttribute("aria-selected", "true");
+  await athlete.press("Enter");
+  await expect(athlete).toHaveValue("Test Athlete");
+  await expect(listbox).toBeHidden();
+  expect(searches.filter((args) => "startDate" in args)).toHaveLength(0);
+
+  await athlete.press("Enter");
+  await expect(page.getByText("Results for")).toBeVisible();
+  expect(searches.filter((args) => "startDate" in args)).toHaveLength(1);
+});
+
+test("submitting the athlete search closes its suggestions for good", async ({ page }) => {
+  await mockSubscribedUser(page);
+  await routeQuery(page, "results:search", async (route, args) => {
+    await route.fulfill(valueAnswer("startDate" in args
+      ? { matched_name: String(args.query), suggestions: [], results: [completeResult] }
+      : { matched_name: null, suggestions: ["Test Athlete"], results: [] }));
+  });
+  await page.goto("/results");
+  const athlete = page.getByRole("combobox", { name: "Athlete" });
+  // Submit before the debounced suggestion search runs.
+  await athlete.fill("Test Athlete");
+  await athlete.press("Enter");
+  await expect(page.getByText("Results for")).toBeVisible();
+  await page.waitForTimeout(600);
+  await expect(page.getByRole("listbox", { name: "Athlete suggestions" })).toBeHidden();
+  await expect(page.locator(".athlete-suggestions")).toBeHidden();
+});
+
+test("a failed suggestion search says so instead of showing no matches", async ({ page }) => {
+  await mockSubscribedUser(page);
+  await routeQuery(page, "results:search", (route) => route.fulfill(errorAnswer("boom")));
+  await page.goto("/results");
+  await page.getByRole("combobox", { name: "Athlete" }).fill("Tes");
+  await expect(page.locator(".athlete-suggestions")).toContainText("Couldn’t load athlete suggestions");
+  await expect(page.getByText("No matching athletes")).toHaveCount(0);
+});
+
+test("a Wrapped choice drops the suggestions for the name it replaced", async ({ page }) => {
+  await mockSubscribedUser(page);
+  await routeQuery(page, "results:search", async (route, args) => {
+    const query = String(args.query ?? "");
+    if (!("startDate" in args)) {
+      await route.fulfill(valueAnswer({ matched_name: null, suggestions: ["Bob Smith", "Cal Smith"], results: [] }));
+      return;
+    }
+    if (query === "Smith") {
+      const rows = ["Ann Smith", "Dee Smith"].map((name) => ({ ...completeResult, name, date: "2026-03-01" }));
+      await route.fulfill(valueAnswer({ matched_name: null, suggestions: [], results: rows }));
+      return;
+    }
+    await route.fulfill(valueAnswer({ matched_name: query, suggestions: [], results: [{ ...completeResult, name: query }] }));
+  });
+  await page.goto("/wrapped");
+  const athlete = page.getByRole("combobox", { name: "Athlete" });
+  await athlete.fill("Smith");
+  const listbox = page.getByRole("listbox", { name: "Athlete suggestions" });
+  await expect(listbox.getByRole("option")).toHaveText(["Bob Smith", "Cal Smith"]);
+  await athlete.press("Escape");
+  await page.getByLabel("Year").fill("2026");
+  await page.getByRole("button", { name: "Build wrapped" }).click();
+  await page.getByRole("group", { name: "Matching athletes" }).getByRole("button", { name: "Ann Smith" }).click();
+  await expect(athlete).toHaveValue("Ann Smith");
+
+  await athlete.focus();
+  await athlete.press("ArrowDown");
+  await expect(listbox).toBeHidden();
+  await expect(page.locator(".athlete-suggestions")).toBeHidden();
+  await expect(athlete).toHaveAttribute("aria-expanded", "false");
+});
+
+test("the meet search is a keyboard-operable combobox", async ({ page }) => {
+  await mockSubscribedUser(page);
+  await routeQuery(page, "meets:list", (route) => route.fulfill(textAnswer([completedMeet])));
+  await routeQuery(page, "meets:completed", (route) => route.fulfill(textAnswer([])));
+  await routeQuery(page, "meets:schedule", (route) => route.fulfill(textAnswer([])));
+  await routeQuery(page, "meets:athletesSessions", (route) => route.fulfill(textAnswer([])));
+  await routeQuery(page, "results:byMeet", (route) => route.fulfill(textAnswer([])));
+  await page.goto("/meet-center");
+  const meet = page.getByRole("combobox", { name: "Meet" });
+  await meet.fill("Test");
+  await meet.press("ArrowDown");
+  await expect(page.getByRole("option", { name: "Test Meet" })).toHaveAttribute("aria-selected", "true");
+  await meet.press("Enter");
+  await expect(meet).toHaveValue("Test Meet");
+  await expect(page.getByRole("heading", { name: "Schedule" })).toBeVisible();
+});
+
+test("tapping a suggestion picks it on touch screens", async ({ page, isMobile }) => {
+  test.skip(!isMobile, "Touch-only interaction");
+  await mockSubscribedUser(page);
+  await routeQuery(page, "meets:list", (route) => route.fulfill(textAnswer([completedMeet])));
+  await routeQuery(page, "meets:completed", (route) => route.fulfill(textAnswer([])));
+  await routeQuery(page, "meets:schedule", (route) => route.fulfill(textAnswer([])));
+  await routeQuery(page, "meets:athletesSessions", (route) => route.fulfill(textAnswer([])));
+  await routeQuery(page, "results:byMeet", (route) => route.fulfill(textAnswer([])));
+  await page.goto("/meet-center");
+  const meet = page.getByRole("combobox", { name: "Meet" });
+  await meet.tap();
+  await meet.fill("Test");
+  await page.getByRole("option", { name: "Test Meet" }).tap();
+  await expect(meet).toHaveValue("Test Meet");
+  await expect(page.getByRole("heading", { name: "Schedule" })).toBeVisible();
+});
+
+test("data page fields are at least 16px on phones, so iOS doesn't zoom", async ({ page, isMobile }) => {
+  test.skip(!isMobile, "Phone-only layout assertion");
+  await mockSubscribedUser(page);
+  await routeQuery(page, "reference:standards", (route) => route.fulfill(textAnswer([])));
+  await routeQuery(page, "reference:nationalRankings", (route) => route.fulfill(textAnswer([])));
+  await routeQuery(page, "reference:nationalRankingsByYear", (route) => route.fulfill(textAnswer([])));
+  for (const path of ["/standards", "/national-rankings", "/wrapped", "/results"]) {
+    await page.goto(path);
+    await expect(page.locator("main input, main select").first()).toBeVisible();
+    const sizes = await page.locator("main input, main select").evaluateAll((fields) =>
+      fields.map((field) => [field.id || field.className, parseFloat(getComputedStyle(field).fontSize)] as const),
+    );
+    for (const [field, size] of sizes) {
+      expect(size, `${path} ${field}`).toBeGreaterThanOrEqual(16);
+    }
+  }
 });

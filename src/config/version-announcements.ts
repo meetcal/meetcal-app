@@ -1,10 +1,19 @@
 import Constants from "expo-constants";
+import { Platform } from "react-native";
+
+export type AnnouncementPlatform = "ios" | "android";
 
 export interface VersionAnnouncement {
   version: string;
   title: string;
   message: string;
   features?: string[];
+  /**
+   * Platforms the announcement is written for. Omitted means every platform.
+   * Both platforms share one app version, so content about one of them
+   * (iPhone Duo, iOS 27) must say so or Android users see it too.
+   */
+  platforms?: AnnouncementPlatform[];
 }
 
 export const VERSION_ANNOUNCEMENTS: Record<string, Omit<VersionAnnouncement, 'version'>> = {
@@ -16,6 +25,7 @@ export const VERSION_ANNOUNCEMENTS: Record<string, Omit<VersionAnnouncement, 've
       'Schedule keeps your place when you fold, unfold, or enter Split View',
       'Rebuilt on Expo SDK 58 for iOS 27'
     ],
+    platforms: ['ios'],
   },
   '6.1.0': {
     title: 'What\'s New',
@@ -28,8 +38,19 @@ export const VERSION_ANNOUNCEMENTS: Record<string, Omit<VersionAnnouncement, 've
   },
 };
 
-export function getAnnouncementForVersion(version: string): Omit<VersionAnnouncement, 'version'> | null {
-  return VERSION_ANNOUNCEMENTS[version] || null;
+export function getAnnouncementForVersion(
+  version: string,
+  platform: string = Platform.OS,
+): Omit<VersionAnnouncement, 'version'> | null {
+  const announcement = VERSION_ANNOUNCEMENTS[version];
+  if (!announcement) return null;
+  if (
+    announcement.platforms &&
+    !announcement.platforms.some((allowed) => allowed === platform)
+  ) {
+    return null;
+  }
+  return announcement;
 }
 
 export const VERSION_ANNOUNCEMENT_KEY = "@version_announcement_seen";

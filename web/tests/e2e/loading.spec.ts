@@ -50,7 +50,7 @@ test("a new meet loads at once and never shows the previous meet's answer or a f
   await routeQuery(page, "results:byMeet", answer(() => []));
 
   await page.goto("/meet-center");
-  const meetSearch = page.getByRole("searchbox", { name: "Meet" });
+  const meetSearch = page.locator("#meet-search-input");
   await meetSearch.fill("Meet Alpha");
   await page.getByRole("option", { name: "Meet Alpha" }).click();
 

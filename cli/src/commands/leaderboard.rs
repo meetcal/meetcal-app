@@ -17,8 +17,8 @@ use crate::utils::names::{NameKind, not_found};
 use crate::utils::output::{self, Report};
 use crate::utils::progress::Progress;
 use crate::utils::stats::{
-    Division, Gender, QPOINTS_LABEL, SINCLAIR_LABEL, consistent_total, fold, number, points,
-    row_qpoints, row_sinclair,
+    Division, Gender, QPOINTS_LABEL, SINCLAIR_LABEL, fold, number, plausible, points, row_qpoints,
+    row_sinclair,
 };
 
 /// What a leaderboard ranks by.
@@ -35,7 +35,7 @@ pub enum Metric {
 
 impl Metric {
     fn value(self, row: &LiftingResults) -> Option<f64> {
-        if !consistent_total(row) {
+        if !plausible(row) {
             return None;
         }
         let value = match self {
@@ -53,9 +53,13 @@ impl Metric {
 /// date range,
 /// across every class, filtered by gender, age category, division, federation, WSO or club.
 ///
-/// Without --club or --wso it reads every result in the range (a year is about 28,000). Results
-/// whose total is not their snatch plus clean & jerk (a source error) are left out, and Sinclair
-/// is not computed for impossible bodyweights.
+/// Without --club or --wso it reads every result in the range (a year is about 28,000). Source
+/// errors are left out: totals that are not the snatch plus clean & jerk, typo'd attempts (633 for
+/// 63) and lifts over the world records. Sinclair is not computed for impossible bodyweights.
+///
+/// Sinclair and Q-points score men and women on separate scales, so --by sinclair and --by
+/// qpoints need --gender. British Weightlifting (BWL) results are left out unless --federation
+/// BWL asks for them.
 ///
 /// Examples:
 ///   meetcal leaderboard --by sinclair --gender women
@@ -92,7 +96,7 @@ pub struct LeaderboardArgs {
     #[arg(long, short = 'd')]
     pub division: Option<String>,
 
-    /// Only this federation, e.g. USAW or USAMW
+    /// Only this federation, e.g. USAW, USAMW or BWL (default: every federation but BWL)
     #[arg(long, short = 'f')]
     pub federation: Option<String>,
 
@@ -131,6 +135,8 @@ pub struct Filters {
     pub category: Option<String>,
     pub division: Option<String>,
     pub federation: Option<String>,
+    /// Keep BWL results without --federation (`results` lists every row; rankings leave BWL out).
+    pub keep_bwl: bool,
     pub adaptive: bool,
 }
 
@@ -138,7 +144,9 @@ impl Filters {
     pub fn keeps(&self, row: &LiftingResults) -> bool {
         let division = Division::parse(&row.age);
         (self.adaptive || !row.adaptive)
-            && self.gender.is_none_or(|gender| division.gender == gender)
+            && self
+                .gender
+                .is_none_or(|gender| division.gender == Some(gender))
             && self.category.as_deref().is_none_or(|wanted| {
                 division
                     .category
@@ -149,12 +157,16 @@ impl Filters {
                 .division
                 .as_deref()
                 .is_none_or(|text| row.age.to_lowercase().contains(&text.trim().to_lowercase()))
-            && self
-                .federation
-                .as_deref()
-                .is_none_or(|federation| row.federation.eq_ignore_ascii_case(federation.trim()))
+            && match self.federation.as_deref() {
+                Some(federation) => row.federation.eq_ignore_ascii_case(federation.trim()),
+                None => self.keep_bwl || !row.federation.eq_ignore_ascii_case(EXCLUDED_FEDERATION),
+            }
     }
 }
+
+/// The federation left out unless asked for: British Weightlifting, outside USA comparisons (the
+/// adaptive records and the server's club stats leave it out too).
+pub const EXCLUDED_FEDERATION: &str = "BWL";
 
 /// Each athlete's best row by `metric` among `rows` that pass `filters`, best first (ties: the
 /// earlier result), at most `limit`.
@@ -199,11 +211,17 @@ pub async fn run(args: LeaderboardArgs) -> Result<()> {
         },
         None => None,
     };
+    if gender.is_none() && matches!(args.by, Metric::Sinclair | Metric::Qpoints) {
+        bail!(
+            "Sinclair and Q-points score men and women on separate scales: add --gender men or --gender women"
+        );
+    }
     let filters = Filters {
         gender,
         category: args.category.as_deref().map(category).transpose()?,
         division: args.division.clone(),
         federation: args.federation.clone(),
+        keep_bwl: false,
         adaptive: args.adaptive,
     };
 
@@ -232,6 +250,10 @@ pub async fn run(args: LeaderboardArgs) -> Result<()> {
         let rows = results_between(&from, &to, |count| progress.update(count)).await?;
         drop(progress);
         ("all athletes".to_string(), rows)
+    };
+    let scope = match &args.federation {
+        Some(federation) => format!("{scope}, federation {}", federation.trim()),
+        None => format!("{scope}, {EXCLUDED_FEDERATION} results left out"),
     };
 
     if let Some(error) = unknown_federation(
@@ -413,6 +435,34 @@ mod tests {
         let names: Vec<&str> = ranked.iter().map(|(r, _)| r.name.as_str()).collect();
         assert!(!names.contains(&"Yu"), "youth divisions have no Q-points");
         assert_eq!(names.len(), 3);
+    }
+
+    #[test]
+    fn british_results_are_ranked_only_when_asked_for() {
+        let mut rows = rows();
+        let mut british = row(
+            "Ramiro",
+            "2025-06-01",
+            "British Senior Championships 2025",
+            "Men's Senior 110Kg",
+            109.0,
+            [170.0, 0.0, 0.0],
+            [202.0, 0.0, 0.0],
+        );
+        british.federation = "BWL".into();
+        rows.push(british);
+        let names = |filters: &Filters| -> Vec<String> {
+            rank(&rows, Metric::Total, filters, 10)
+                .iter()
+                .map(|(row, _)| row.name.clone())
+                .collect()
+        };
+        assert!(!names(&Filters::default()).contains(&"Ramiro".to_string()));
+        let bwl = Filters {
+            federation: Some("bwl".into()),
+            ..Filters::default()
+        };
+        assert_eq!(names(&bwl), ["Ramiro"]);
     }
 
     #[test]

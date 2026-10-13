@@ -6,7 +6,6 @@ import { ThemedText } from "@/components/ui/ThemedText";
 import { ThemedView } from "@/components/ui/ThemedView";
 import { FilterSection, GenericFilterModal } from "@/components/ui/filters";
 import { AGE_GROUPS } from "@/constants/nat-rankings";
-import { useTheme } from "@/contexts/ThemeContext";
 import { useAppColors } from "@/hooks/useAppColors";
 import { useFilterState } from "@/hooks/useFilterState";
 import { useMutableResource } from "@/hooks/useMutableResource";
@@ -14,6 +13,7 @@ import {
   NationalRanking,
   nationalRankingsResource,
 } from "@/lib/database/fetch-national-rankings";
+import { competitionRanks } from "@/lib/competition-rank";
 import { isNetworkAvailable } from "@/lib/networkUtils";
 import { FilterState, Gender } from "@/types/nat-rankings";
 import { getWeightClasses, getWeightClassOptions } from "@/utils/nat-rankings";
@@ -35,7 +35,6 @@ export default function NationalRankingsScreen() {
 function NationalRankingsScreenContent() {
   const screenInsets = useScreenHorizontalInsets();
   const colors = useAppColors();
-  const { currentTheme } = useTheme();
 
   const {
     filters,
@@ -80,6 +79,10 @@ function NationalRankingsScreenContent() {
     params: resourceParams,
     initialData: EMPTY_RANKINGS,
   });
+  const ranks = useMemo(
+    () => competitionRanks(rankings.map((athlete) => athlete.total)),
+    [rankings],
+  );
   useEffect(() => {
     if (!error) {
       setFetchError(null);
@@ -150,10 +153,10 @@ function NationalRankingsScreenContent() {
           gestureDirection: "horizontal",
           animation: "slide_from_right",
           headerTitleStyle: {
-            color: currentTheme === "dark" ? "#fff" : "#000",
+            color: colors.headerTitle,
           },
           headerStyle: {
-            backgroundColor: currentTheme === "dark" ? "#000000" : "#F5F5F5",
+            backgroundColor: colors.headerBackground,
           },
           headerShadowVisible: false,
           headerBackButtonDisplayMode: "minimal",
@@ -203,7 +206,7 @@ function NationalRankingsScreenContent() {
               },
             ]}
           >
-            <ThemedText style={styles.rankText}>{index + 1}</ThemedText>
+            <ThemedText style={styles.rankText}>{ranks[index]}</ThemedText>
             <ThemedText style={styles.nameText}>
               {athlete.name}
             </ThemedText>
@@ -218,7 +221,13 @@ function NationalRankingsScreenContent() {
       <GenericFilterModal
         {...filterModalProps}
         sections={buildFilterSections}
-        resultCount={rankings.length}
+        // Rankings are fetched one weight class at a time, so the count is only
+        // known while the sheet's weight class is the one on screen.
+        resultCount={(modalTempFilters) =>
+          !loading && modalTempFilters.weightClass === filters.weightClass
+            ? rankings.length
+            : undefined
+        }
         resultLabel="rankings"
       />
     </ThemedView>
