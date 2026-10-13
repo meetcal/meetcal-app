@@ -17,7 +17,7 @@ import {
   type FlushResult,
   readOutbox,
 } from '@/lib/saved-sessions-outbox';
-import { clearAccountDeleted } from '@/lib/deleted-accounts';
+import { clearAccountDeleted, onAccountDeleted } from '@/lib/deleted-accounts';
 import { createSerialQueue } from '@/lib/saved-sessions-queue';
 import {
   clearSavedSessionsCache,
@@ -130,6 +130,21 @@ export function useSavedSessions() {
     };
   }
   const store = storeRef.current;
+
+  // The active account was deleted on this device (`clearLocalUserData`):
+  // blank its list and widget now, as a sign-out does; offline, the cached
+  // user can stay active, so the effect below would not.
+  useEffect(
+    () =>
+      onAccountDeleted((userId) => {
+        if (activeUserIdRef.current !== userId) return;
+        setSavedSessions([]);
+        pendingWriteCountRef.current = 0;
+        clearSavedWidget();
+        clearSavedSessionsCache(store.cache);
+      }),
+    [store],
+  );
 
   useEffect(() => {
     if (!hasResolvedUser || activeUserId) return;

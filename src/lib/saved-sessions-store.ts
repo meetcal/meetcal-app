@@ -186,13 +186,14 @@ export async function commitStoredSessions(
   const sameOwner = cache.owner === userId;
   if (!sameOwner || cache.raw !== serialized) {
     await AsyncStorage.setItem(getSavedSessionsKey(userId), serialized);
-    if (!store.isActive(userId)) return;
-    // Deleted while the write was in flight: its device data was cleared
-    // just now (or is about to be), so neither cache nor publish the list.
+    // Deleted while the write was in flight (the user signed out as well, so
+    // checked before `isActive`): its device data was cleared just now, so
+    // undo the write, and neither cache nor publish the list.
     if (isAccountDeleted(userId)) {
       await AsyncStorage.removeItem(getSavedSessionsKey(userId));
       return;
     }
+    if (!store.isActive(userId)) return;
     cache.raw = serialized;
   }
   cache.owner = userId;

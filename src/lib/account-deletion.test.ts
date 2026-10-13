@@ -67,7 +67,7 @@ describe("account deletion", () => {
   it("keeps a deleted account's sessions out of the memory cache too", async () => {
     const session: SavedSession = { id: "s1", meet: "Test Meet" as never, sessionNumber: 1, platform: "Red", weightClass: "71kg", startTime: "10:00 AM", weighInTime: "8:00 AM", date: "2099-06-20", notes: "private" };
     const published: SavedSession[][] = [];
-    const store = { cache: createSavedSessionsCache(), isActive: () => true, publish: (list: SavedSession[]) => published.push(list) };
+    const store = { cache: createSavedSessionsCache(), isActive: (): boolean => true, publish: (list: SavedSession[]) => published.push(list) };
     await AsyncStorage.clear();
     clearAccountDeleted("user_8");
     await commitStoredSessions(store as never, "user_8", [session]);
@@ -75,14 +75,19 @@ describe("account deletion", () => {
 
     // Deleted while a write is in flight: the write is undone, and nothing is cached or published.
     const setItem = AsyncStorage.setItem;
+    let active = true;
+    store.isActive = () => active;
     jest.spyOn(AsyncStorage, "setItem").mockImplementationOnce(async (key, value) => {
+      // Deleted (and so signed out) while the write is in flight.
       markAccountDeleted("user_8");
+      active = false;
       await setItem(key, value);
     });
     await commitStoredSessions(store as never, "user_8", [session, { ...session, id: "s2" }]);
     expect(published).toHaveLength(1);
     expect(await AsyncStorage.getItem("@saved_sessions_user_8")).toBeNull();
     // And the cached list from before is not served.
+    active = true;
     expect(await readStoredSessions(store as never, "user_8")).toEqual([]);
     expect(store.cache.owner).toBeNull();
     clearAccountDeleted("user_8");
