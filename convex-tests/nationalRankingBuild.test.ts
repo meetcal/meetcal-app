@@ -26,7 +26,7 @@ describe('paged national ranking computation', () => {
   it('keeps the best total across page boundaries and sorts ties by name', async () => {
     const rows: Row[] = [
       { name: 'Ada', total: 300 },
-      ...Array.from({ length: 1100 }, (_, i) => ({ name: `Lifter ${i % 20}`, total: i + 1 })),
+      ...Array.from({ length: 1100 }, (_, i) => ({ name: `Lifter ${i % 20}`, total: (i % 300) + 1 })),
       { name: 'Ada', total: 400 }, { name: 'Bo', total: 400 },
       { name: 'No total' }, { name: 'Bombout', total: 0 },
     ];
@@ -39,6 +39,43 @@ describe('paged national ranking computation', () => {
     expect(result).toEqual({ chunks: [JSON.stringify(expected)], sources: [{ table: 'lifting_results', version: 4 }] });
     expect(expected.filter((r) => r.total === 400).map((r) => r.name)).toEqual(['Ada', 'Bo']);
     expect(runQuery).toHaveBeenCalledTimes(2);
+  });
+
+  it('ranks one athlete once across pages whatever the spelling, under their best row (#217)', async () => {
+    const rows: Row[] = [
+      { name: 'Maria Lopez', total: 180 },
+      ...Array.from({ length: 999 }, (_, i) => ({ name: `Lifter ${i}`, total: 100 })),
+      { name: 'maria  lopez', total: 185 },
+      { name: 'MARIA LOPEZ', total: 170 },
+    ];
+    const { ctx } = pageCtx(rows);
+    const runQuery = jest.fn(async (_fn, { cursor }: { cursor: string | null }) => ({
+      ...(await nationalRankingPage(ctx, 'USAW', 'Open', cursor)), sources: [{ table: 'lifting_results', version: 4 }],
+    }));
+    const result = await runHandler(computeNat, { runQuery });
+    const ranked = JSON.parse(result.chunks.join('')) as Row[];
+    expect(ranked.filter((r) => r.name.toLowerCase().includes('lopez'))).toEqual([{ name: 'maria  lopez', total: 185 }]);
+    expect(ranked).toHaveLength(1000);
+  });
+
+  it('leaves out rows whose numbers cannot be real (#400)', async () => {
+    const rows = [
+      // Missouri Valley Championships 2018: a `223` typed for `22`.
+      { name: 'Danielle King', snatch1: 19, snatch2: 21, snatch3: -23, snatchBest: 21, cj1: 223, cj2: 27, cj3: -30, cjBest: 223, total: 244 },
+      { name: 'Danielle King', snatch1: 18, snatch2: 20, snatch3: 21, snatchBest: 21, cj1: 20, cj2: 22, cj3: -24, cjBest: 22, total: 43 },
+      // Stored twice, once with `201` for `20`.
+      { name: 'McKynzie Chuna', snatch1: 16, snatch2: 18, snatch3: -19, snatchBest: 18, cj1: 201, cj2: 21, cj3: 23, cjBest: 201, total: 219 },
+      { name: 'Mia Rhodes', snatch1: 60, snatch2: 63, snatch3: -65, snatchBest: 63, cj1: 75, cj2: 78, cj3: -80, cjBest: 78, total: 141 },
+      // Total not the sum of the bests (a shifted column).
+      { name: 'Shifted', snatchBest: 69, cjBest: 48, total: 51 },
+      // Over any world record.
+      { name: 'Christian Green', total: 1184 },
+    ];
+    const { ctx } = pageCtx(rows as Row[]);
+    expect((await nationalRankingPage(ctx, 'USAW', 'Open', null)).rows).toEqual([
+      { name: 'Mia Rhodes', total: 141 },
+      { name: 'Danielle King', total: 43 },
+    ]);
   });
 
   it('handles a zero-total page without stopping before later valid results', async () => {
@@ -77,7 +114,7 @@ describe('paged national ranking computation', () => {
   });
 
   it('transfers more than 8192 ranked athletes as JSON chunks instead of a Convex array', async () => {
-    const rows = Array.from({ length: 8200 }, (_, i) => ({ name: `Lifter ${i}`, total: i + 1 }));
+    const rows = Array.from({ length: 8200 }, (_, i) => ({ name: `Lifter ${i}`, total: 100 + (i % 400) }));
     const { ctx } = pageCtx(rows);
     const runQuery = jest.fn(async (_fn, { cursor }: { cursor: string | null }) => ({
       ...(await nationalRankingPage(ctx, 'USAW', 'Open', cursor)), sources: [{ table: 'lifting_results', version: 4 }],
