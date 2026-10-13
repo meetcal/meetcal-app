@@ -146,6 +146,11 @@ export async function readStoredSessions(
 ): Promise<SavedSession[]> {
   if (!userId) return [];
   const { cache } = store;
+  // A deleted account's list is gone, cached copy included.
+  if (isAccountDeleted(userId)) {
+    if (cache.owner === userId) clearSavedSessionsCache(cache);
+    return [];
+  }
   const sameOwner = cache.owner === userId;
   if (!forceStorageRead && sameOwner && cache.raw !== null) {
     return cache.sessions;
@@ -182,6 +187,12 @@ export async function commitStoredSessions(
   if (!sameOwner || cache.raw !== serialized) {
     await AsyncStorage.setItem(getSavedSessionsKey(userId), serialized);
     if (!store.isActive(userId)) return;
+    // Deleted while the write was in flight: its device data was cleared
+    // just now (or is about to be), so neither cache nor publish the list.
+    if (isAccountDeleted(userId)) {
+      await AsyncStorage.removeItem(getSavedSessionsKey(userId));
+      return;
+    }
     cache.raw = serialized;
   }
   cache.owner = userId;

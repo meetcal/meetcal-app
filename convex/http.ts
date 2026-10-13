@@ -1,7 +1,7 @@
 import { httpRouter } from 'convex/server';
 import { internal } from './_generated/api';
 import { httpAction } from './_generated/server';
-import { verifyWebhook } from './lib/webhookSignature';
+import { UNREADABLE_SECRET, verifyWebhook } from './lib/webhookSignature';
 
 const http = httpRouter();
 
@@ -28,7 +28,16 @@ export const clerkWebhook = httpAction(async (ctx, request) => {
     body,
     Date.now(),
   );
-  if (!verdict.ok) return new Response(verdict.reason, { status: 400 });
+  if (!verdict.ok) {
+    // A secret that is set but unreadable is this deployment's fault, not
+    // the request's: 500, so Clerk retries the event once it is fixed rather
+    // than dropping it (a 400 is not retried).
+    if (verdict.reason === UNREADABLE_SECRET) {
+      console.error('clerk webhook: CLERK_WEBHOOK_SECRET is not a valid whsec_ secret');
+      return new Response('webhook not configured', { status: 500 });
+    }
+    return new Response(verdict.reason, { status: 400 });
+  }
   let event: unknown;
   try {
     event = JSON.parse(body);

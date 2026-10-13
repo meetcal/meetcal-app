@@ -1,8 +1,8 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { accountDeletionMessage, clearLocalUserData, subscriptionManagementUrl } from "@/lib/account-deletion";
-import { clearAccountDeleted } from "@/lib/deleted-accounts";
+import { clearAccountDeleted, markAccountDeleted } from "@/lib/deleted-accounts";
 import { markSessionPut } from "@/lib/saved-sessions-outbox";
-import { commitStoredSessions, createSavedSessionsCache } from "@/lib/saved-sessions-store";
+import { commitStoredSessions, createSavedSessionsCache, readStoredSessions } from "@/lib/saved-sessions-store";
 import type { SavedSession } from "@/lib/saved-sessions-store";
 
 describe("account deletion", () => {
@@ -62,6 +62,30 @@ describe("account deletion", () => {
     clearAccountDeleted("user_9");
     await commitStoredSessions(store as never, "user_9", [session]);
     expect(await AsyncStorage.getItem("@saved_sessions_user_9")).toContain("private");
+  });
+
+  it("keeps a deleted account's sessions out of the memory cache too", async () => {
+    const session = { id: "s1", meet: "Test Meet" as never, sessionNumber: 1, platform: "Red", date: "2099-06-20", notes: "private" } as SavedSession;
+    const published: SavedSession[][] = [];
+    const store = { cache: createSavedSessionsCache(), isActive: () => true, publish: (list: SavedSession[]) => published.push(list) };
+    await AsyncStorage.clear();
+    clearAccountDeleted("user_8");
+    await commitStoredSessions(store as never, "user_8", [session]);
+    expect(await readStoredSessions(store as never, "user_8")).toHaveLength(1);
+
+    // Deleted while a write is in flight: the write is undone, and nothing is cached or published.
+    const setItem = AsyncStorage.setItem;
+    jest.spyOn(AsyncStorage, "setItem").mockImplementationOnce(async (key, value) => {
+      markAccountDeleted("user_8");
+      await setItem(key, value);
+    });
+    await commitStoredSessions(store as never, "user_8", [session, { ...session, id: "s2" }]);
+    expect(published).toHaveLength(1);
+    expect(await AsyncStorage.getItem("@saved_sessions_user_8")).toBeNull();
+    // And the cached list from before is not served.
+    expect(await readStoredSessions(store as never, "user_8")).toEqual([]);
+    expect(store.cache.owner).toBeNull();
+    clearAccountDeleted("user_8");
   });
 });
 

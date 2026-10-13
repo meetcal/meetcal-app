@@ -68,5 +68,10 @@ describe('Clerk webhook endpoint (#250)', () => {
     const forged = await call(await post(body, `whsec_${Buffer.from('forged').toString('base64')}`));
     expect(forged.response.status).toBe(400);
     expect(forged.runMutation).not.toHaveBeenCalled();
+    // A secret set but unreadable is the deployment's fault: 500, so Clerk retries.
+    process.env.CLERK_WEBHOOK_SECRET = 'whsec_not base64!';
+    const misconfigured = await call(await post(body));
+    expect(misconfigured.response.status).toBe(500);
+    expect(misconfigured.runMutation).not.toHaveBeenCalled();
   });
 });

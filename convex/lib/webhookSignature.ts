@@ -15,6 +15,9 @@ export type WebhookHeaders = { id: string | null; timestamp: string | null; sign
 
 export type WebhookVerdict = { ok: true } | { ok: false; reason: string };
 
+/** The verdict's reason when the configured secret cannot be decoded (a deployment fault, not the request's). */
+export const UNREADABLE_SECRET = 'unreadable webhook secret';
+
 function base64ToBytes(text: string): Uint8Array<ArrayBuffer> {
   const binary = atob(text);
   const bytes = new Uint8Array(new ArrayBuffer(binary.length));
@@ -57,7 +60,7 @@ export async function verifyWebhook(secret: string, headers: WebhookHeaders, bod
   try {
     expected = await webhookSignature(secret, id, timestamp, body);
   } catch {
-    return { ok: false, reason: 'unreadable webhook secret' };
+    return { ok: false, reason: UNREADABLE_SECRET };
   }
   const matches = signature
     .split(' ')
