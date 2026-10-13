@@ -5,8 +5,8 @@ use clap::{Parser, ValueEnum};
 use comfy_table::Table;
 
 use crate::commands::group_wrapped::{
-    ClubMembership, filter_membership_results, get_club_memberships, get_recent_results,
-    get_wso_memberships,
+    ClubMembership, distinct_names, filter_membership_results, get_club_memberships,
+    get_recent_results, get_wso_memberships,
 };
 use crate::commands::wrapped::current_year;
 use crate::types::lifting_results::LiftingResults;
@@ -272,15 +272,7 @@ async fn group_rows(
     from: &str,
     to: &str,
 ) -> Result<Vec<LiftingResults>> {
-    let mut names: Vec<String> = Vec::new();
-    for membership in memberships {
-        if !names
-            .iter()
-            .any(|name| fold(name) == fold(&membership.name))
-        {
-            names.push(membership.name.clone());
-        }
-    }
+    let names = distinct_names(memberships);
     let results = get_recent_results(&names, from).await?;
     Ok(filter_membership_results(memberships, results)
         .into_iter()

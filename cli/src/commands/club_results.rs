@@ -6,6 +6,7 @@ use crate::types::club::ClubMeetStats;
 use crate::utils::backend::{queries, query};
 use crate::utils::names::{NameKind, clubs, not_found, not_found_message};
 use crate::utils::output::{self, Report};
+use crate::utils::stats::number;
 
 /// Analyze club performance stats for a meet.
 ///
@@ -87,7 +88,7 @@ pub fn report(club: &str, meet: &str, stats: &ClubMeetStats) -> Report {
         "6 for 6",
     ]);
     performance.add_row(vec![
-        format!("{}kg", format_weight(stats.total_weight_lifted)),
+        format!("{}kg", number(stats.total_weight_lifted)),
         format!("{}%", stats.snatch_make_rate),
         format!("{}%", stats.cj_make_rate),
         format!("{}%", stats.combined_make_rate),
@@ -129,10 +130,10 @@ pub fn report(club: &str, meet: &str, stats: &ClubMeetStats) -> Report {
             athletes.add_row(vec![
                 result.name.clone(),
                 result.weight_class.clone(),
-                format_weight(result.body_weight),
-                format_weight(result.snatch_best),
-                format_weight(result.cj_best),
-                format_weight(result.total),
+                number(result.body_weight),
+                number(result.snatch_best),
+                number(result.cj_best),
+                number(result.total),
                 yes_no(result.is_pr),
                 yes_no(result.perfect_lifts),
                 medal_name(result.snatch_medal.as_deref()),
@@ -161,21 +162,6 @@ fn medal_name(medal: Option<&str>) -> String {
             }
         })
         .unwrap_or_else(|| "-".to_string())
-}
-
-fn format_weight(value: f64) -> String {
-    if value == 0.0 {
-        return "0".to_string();
-    }
-
-    if value.fract() == 0.0 {
-        format!("{value:.0}")
-    } else {
-        format!("{value:.2}")
-            .trim_end_matches('0')
-            .trim_end_matches('.')
-            .to_string()
-    }
 }
 
 #[cfg(test)]
@@ -309,10 +295,10 @@ mod tests {
 
     #[test]
     fn formats_fractional_and_whole_weights_without_noise() {
-        assert_eq!(format_weight(187.5), "187.5");
-        assert_eq!(format_weight(200.0), "200");
-        assert_eq!(format_weight(82.25), "82.25");
-        assert_eq!(format_weight(-0.0), "0");
+        assert_eq!(number(187.5), "187.5");
+        assert_eq!(number(200.0), "200");
+        assert_eq!(number(82.25), "82.25");
+        assert_eq!(number(-0.0), "0");
     }
 
     #[test]
