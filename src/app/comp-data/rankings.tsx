@@ -13,7 +13,10 @@ import {
   IntlRanking,
   intlRankingsResource,
 } from "@/lib/database/fetchIntlRankings";
-import { computeDefaultRankingFilters } from "@/lib/rankings-filters";
+import {
+  computeDefaultRankingFilters,
+  filterIntlRankings,
+} from "@/lib/rankings-filters";
 import { sortAgeGroups } from "@/lib/sortAgeGroups";
 import { Filters } from "@/types/rankings";
 import { Stack, useLocalSearchParams } from "expo-router";
@@ -131,22 +134,10 @@ function IntlRankingsScreenContent() {
     [intlRankings],
   );
 
-  // Filter intlRankings based on selected filters and sort by rank
-  const filteredRankings = useMemo(() => {
-    return intlRankings
-      .filter(
-        (r) =>
-          (!filters.meet || r.meet === filters.meet) &&
-          (!filters.age_category || r.ageCategory === filters.age_category) &&
-          (!filters.gender || r.gender === filters.gender),
-      )
-      .sort((a, b) => {
-        // Handle cases where ranking might be null/undefined
-        const rankA = a.ranking ?? Number.MAX_SAFE_INTEGER;
-        const rankB = b.ranking ?? Number.MAX_SAFE_INTEGER;
-        return rankA - rankB;
-      });
-  }, [intlRankings, filters]);
+  const filteredRankings = useMemo(
+    () => filterIntlRankings(intlRankings, filters),
+    [intlRankings, filters],
+  );
 
   const getFilterDisplayText = () => {
     const meet = filters.meet;
@@ -280,7 +271,9 @@ function IntlRankingsScreenContent() {
         {...filterModalProps}
         sections={buildFilterSections}
         onResetFilters={handleResetFilters}
-        resultCount={filteredRankings.length}
+        resultCount={(modalTempFilters) =>
+          filterIntlRankings(intlRankings, modalTempFilters).length
+        }
         resultLabel="rankings"
       />
     </ThemedView>
