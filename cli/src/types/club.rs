@@ -1,15 +1,6 @@
 use serde::Deserialize;
 
 #[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct AthleteClub {
-    pub member_id: String,
-    pub name: String,
-    pub club: String,
-    pub meet: String,
-}
-
-#[derive(Debug, Deserialize)]
 pub struct ClubMeetStats {
     pub total_athletes: u64,
     pub gold_medals: u64,
@@ -38,27 +29,4 @@ pub struct AthleteMeetResult {
     pub total_medal: Option<String>,
     pub is_pr: bool,
     pub perfect_lifts: bool,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct AthleteInfo {
-    pub name: String,
-    pub age: u32,
-    pub gender: String,
-    pub weight_class: String,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct AthleteWeightClass {
-    pub name: String,
-    pub weight_class: String,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct MeetStatus {
-    pub name: String,
-    pub status: String,
 }

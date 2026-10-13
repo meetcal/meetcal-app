@@ -88,4 +88,14 @@ describe("fetchIntlRankings", () => {
     await expect(fetchIntlRankings()).rejects.toThrow("down");
     expect(mockSetOfflineCache).not.toHaveBeenCalled();
   });
+
+  it("shows an empty fresh answer but leaves the stored download untouched", async () => {
+    // The browse path shares the download's key; rows that all fail the per-row checks used to be
+    // persisted over a real download, which then read as "downloaded" offline.
+    mockGetOfflineCache.mockResolvedValue({ data: [{ meet: "Worlds", ranking: 1, name: "Athlete A", weightClass: "89kg", total: 380, percentA: 101.5, gender: "Men", ageCategory: "Senior" }], lastSynced: 5 });
+    mockGetJsonArray.mockResolvedValue([row({ gender: "Mixed" })]);
+
+    await expect(fetchIntlRankings()).resolves.toEqual([]);
+    expect(mockSetOfflineCache).not.toHaveBeenCalled();
+  });
 });

@@ -7,6 +7,8 @@ import { FilterSection, GenericFilterModal } from "@/components/ui/filters";
 import { useTheme } from "@/contexts/ThemeContext";
 import { useAppColors } from "@/hooks/useAppColors";
 import { useFilterState } from "@/hooks/useFilterState";
+import { useRouteFilterKey } from "@/hooks/useRouteFilterKey";
+import { DEEP_LINKS } from "@/utils/deepLinks";
 import { useMutableResource } from "@/hooks/useMutableResource";
 import { standardsResource } from "@/lib/database/fetch-standards";
 import { formatAgeGroupLabel } from "@/lib/sortAgeGroups";
@@ -15,6 +17,7 @@ import { Stack, useLocalSearchParams } from "expo-router";
 import React, { useMemo } from "react";
 import { StyleSheet, View } from "react-native";
 import { useScreenHorizontalInsets } from "@/hooks/useScreenInsets";
+import { formatReferenceKg } from "@/lib/reference-values";
 
 
 export default function NewStandardsScreen() {
@@ -40,8 +43,13 @@ function NewStandardsScreenContent() {
     }),
     [routeParams.ageGroup, routeParams.gender],
   );
+  const filterResetKey = useRouteFilterKey(DEEP_LINKS.standards, [
+    routeParams.gender,
+    routeParams.ageGroup,
+  ]);
   const { filters, openFilters, filterModalProps } = useFilterState<Filters>({
     defaultFilters,
+    resetKey: filterResetKey,
   });
 
   const {
@@ -144,12 +152,10 @@ function NewStandardsScreenContent() {
               {record.weightClass}
             </ThemedText>
             <ThemedText style={dataTableStyles.cell}>
-              {record.a}
-              kg
+              {formatReferenceKg(record.a)}
             </ThemedText>
             <ThemedText style={dataTableStyles.cell}>
-              {record.b}
-              kg
+              {formatReferenceKg(record.b)}
             </ThemedText>
           </View>
         )}
