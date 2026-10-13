@@ -1,4 +1,7 @@
-use crate::auth::{AuthContext, AuthState, has_comp_data_access, mount_sign_in, unmount_sign_in};
+use crate::{
+    auth::{AuthContext, AuthState, has_comp_data_access, mount_sign_in, unmount_sign_in},
+    components::store_links::{APP_STORE_URL, PLAY_STORE_URL},
+};
 use leptos::prelude::*;
 
 /// How long a granted subscription is trusted before a data page checks it
@@ -301,10 +304,10 @@ pub fn MobileSubscriptionPage() -> impl IntoView {
                 <span>"Competition records"</span>
             </div>
             <div class="mobile-subscription-links" aria-label="Open MeetCal on mobile">
-                <a class="access-button" href="https://apps.apple.com/us/app/meetcal/id6741133286">"Open on iPhone or iPad"</a>
-                <a class="access-button access-button-secondary" href="https://play.google.com/store/apps/details?id=com.memohnsen.meetcal">"Open on Android"</a>
+                <a class="access-button" href=APP_STORE_URL>"Open on iPhone or iPad"</a>
+                <a class="access-button access-button-secondary" href=PLAY_STORE_URL>"Open on Android"</a>
             </div>
-            <p class="purchase-disclaimer">"In the app, open Settings to start, change, restore, or cancel a subscription. Existing access will appear here after the app store and MeetCal finish syncing your account."</p>
+            <p class="purchase-disclaimer">"In the app, open any premium feature to subscribe, or open My Profile, then Customer Support, to change, restore, or cancel a subscription. Existing access will appear here after the app store and MeetCal finish syncing your account."</p>
         </AccessShell>
     }
 }
