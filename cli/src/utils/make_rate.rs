@@ -1,99 +1,74 @@
 use comfy_table::Table;
 
 use crate::types::lifting_results::LiftingResults;
+use crate::utils::stats::{Lift, attempt_habits, percent};
 
-/// Make rates by attempt number, then by lift, as two tables.
-pub fn make_rate_tables(vector: &[LiftingResults]) -> (Table, Table) {
-    let mut attempt_make_rate = Table::new();
+/// Make rates by attempt number, then by lift, as two tables. An attempt recorded as 0 was not
+/// taken and is not counted (`stats::attempt_habits`, the server's `makeRatePercent`); with no
+/// attempts taken a rate is `N/A`.
+pub fn make_rate_tables(results: &[LiftingResults]) -> (Table, Table) {
+    let rows: Vec<&LiftingResults> = results.iter().collect();
+    let snatch = attempt_habits(&rows, Lift::Snatch);
+    let cj = attempt_habits(&rows, Lift::CleanAndJerk);
 
-    attempt_make_rate.set_header(vec!["Sn1 Make Rate", "Sn2", "Sn3", "CJ1", "CJ2", "CJ3"]);
+    let mut by_attempt = Table::new();
+    by_attempt.set_header(vec!["Sn1 Make Rate", "Sn2", "Sn3", "CJ1", "CJ2", "CJ3"]);
+    by_attempt.add_row(
+        [&snatch, &cj]
+            .iter()
+            .flat_map(|habits| (0..3).map(|attempt| percent(habits.make_rate(attempt))))
+            .collect::<Vec<_>>(),
+    );
 
-    attempt_make_rate.add_row(vec![
-        calc_make_rate_by_attempt(vector, "snatch", 1),
-        calc_make_rate_by_attempt(vector, "snatch", 2),
-        calc_make_rate_by_attempt(vector, "snatch", 3),
-        calc_make_rate_by_attempt(vector, "cj", 1),
-        calc_make_rate_by_attempt(vector, "cj", 2),
-        calc_make_rate_by_attempt(vector, "cj", 3),
+    let rate = |made: usize, taken: usize| (taken > 0).then(|| made as f64 * 100.0 / taken as f64);
+    let sum = |counts: [usize; 3]| counts.iter().sum::<usize>();
+    let (snatch_made, snatch_taken) = (sum(snatch.made), sum(snatch.taken));
+    let (cj_made, cj_taken) = (sum(cj.made), sum(cj.taken));
+
+    let mut by_lift = Table::new();
+    by_lift.set_header(vec!["Snatch Make Rate", "CJ Make Rate", "Total Make Rate"]);
+    by_lift.add_row(vec![
+        percent(rate(snatch_made, snatch_taken)),
+        percent(rate(cj_made, cj_taken)),
+        percent(rate(snatch_made + cj_made, snatch_taken + cj_taken)),
     ]);
 
-    let mut make_rate = Table::new();
-
-    make_rate.set_header(vec!["Snatch Make Rate", "CJ Make Rate", "Total Make Rate"]);
-
-    make_rate.add_row(vec![
-        calc_make_rate(vector, "snatch"),
-        calc_make_rate(vector, "cj"),
-        calc_make_rate(vector, "both"),
-    ]);
-
-    (attempt_make_rate, make_rate)
+    (by_attempt, by_lift)
 }
 
-pub fn calc_make_rate(results: &[LiftingResults], lift: &str) -> String {
-    let mut count = 0.0;
-    let mut made = 0.0;
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::utils::output::Report;
+    use crate::utils::stats::tests::row;
 
-    for meet in results {
-        let attempts = match lift {
-            "snatch" => vec![meet.snatch1, meet.snatch2, meet.snatch3],
-            "cj" => vec![meet.cj1, meet.cj2, meet.cj3],
-            "both" => vec![
-                meet.snatch1,
-                meet.snatch2,
-                meet.snatch3,
-                meet.cj1,
-                meet.cj2,
-                meet.cj3,
-            ],
-            _ => return "invalid".to_string(),
-        };
-
-        for attempt in attempts {
-            if attempt >= 0.0 {
-                count += 1.0;
-                made += 1.0;
-            } else {
-                count += 1.0
-            }
-        }
+    #[test]
+    fn untaken_attempts_are_not_makes() {
+        let rows = vec![row(
+            "A",
+            "2026-01-01",
+            "M",
+            "Open Men's 89kg",
+            88.0,
+            [100.0, -105.0, 0.0],
+            [130.0, 0.0, 0.0],
+        )];
+        let (by_attempt, by_lift) = make_rate_tables(&rows);
+        let json = Report::new()
+            .table("by_attempt", by_attempt)
+            .table("by_lift", by_lift)
+            .to_json();
+        assert_eq!(json["by_attempt"][0]["sn2"], 0);
+        assert_eq!(json["by_attempt"][0]["sn3"], serde_json::Value::Null);
+        assert_eq!(json["by_lift"][0]["snatch_make_rate"], 50);
+        assert_eq!(json["by_lift"][0]["total_make_rate"], 66.7);
     }
 
-    let percent = (made / count) * 100.0;
-    format!("{percent:.2}%")
-}
-
-pub fn calc_make_rate_by_attempt(
-    results: &[LiftingResults],
-    lift: &str,
-    attempt_num: u8,
-) -> String {
-    let mut count = 0.0;
-    let mut made = 0.0;
-
-    for meet in results {
-        let attempt = match (lift, attempt_num) {
-            ("snatch", 1) => meet.snatch1,
-            ("snatch", 2) => meet.snatch2,
-            ("snatch", 3) => meet.snatch3,
-            ("cj", 1) => meet.cj1,
-            ("cj", 2) => meet.cj2,
-            ("cj", 3) => meet.cj3,
-            _ => return "invalid".to_string(),
-        };
-
-        if attempt >= 0.0 {
-            count += 1.0;
-            made += 1.0;
-        } else {
-            count += 1.0;
-        }
+    #[test]
+    fn no_rows_make_no_rate() {
+        let (_, by_lift) = make_rate_tables(&[]);
+        let json = Report::single("by_lift", by_lift).to_json();
+        assert_eq!(json[0]["total_make_rate"], serde_json::Value::Null);
+        assert!(!Report::single("t", make_rate_tables(&[]).1).to_text().contains("NaN"));
     }
-
-    if count == 0.0 {
-        return "N/A".to_string();
-    }
-
-    let percent = (made / count) * 100.0;
-    format!("{percent:.2}%")
 }

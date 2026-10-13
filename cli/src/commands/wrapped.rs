@@ -9,6 +9,7 @@ use crate::types::lifting_results::LiftingResults;
 use crate::types::wrapped::{SearchResponse, WrappedStats};
 use crate::utils::backend::{queries, query};
 use crate::utils::output::{self, Report};
+use crate::utils::stats::{signed_kg, valid_total};
 
 /// Show an athlete's calendar year in lifting.
 ///
@@ -61,8 +62,9 @@ pub fn exact_name_results(
 ) -> Result<Vec<LiftingResults>> {
     let results = filter_exact_name(name, response.results);
     refuse_cut_year(name, year, response.truncated, &results)?;
+    let suggestions = other_names(name, response.suggestions);
 
-    if results.is_empty() && !response.suggestions.is_empty() {
+    if results.is_empty() && !suggestions.is_empty() {
         let narrow = if response.truncated {
             " (more athletes match; type more of the name)"
         } else {
@@ -70,7 +72,7 @@ pub fn exact_name_results(
         };
         bail!(
             "No exact results found for \"{name}\". Suggestions: {}{narrow}",
-            response.suggestions.join(", ")
+            suggestions.join(", ")
         );
     }
 
@@ -93,6 +95,16 @@ pub fn refuse_cut_year(
         );
     }
     Ok(())
+}
+
+/// Suggestions other than the typed name itself: the search falls back to name matching for an
+/// athlete with no results in the range and suggests their own name, which is no suggestion.
+pub fn other_names(name: &str, suggestions: Vec<String>) -> Vec<String> {
+    let typed = normalize(name);
+    suggestions
+        .into_iter()
+        .filter(|suggestion| normalize(suggestion) != typed)
+        .collect()
 }
 
 pub fn filter_exact_name(name: &str, results: Vec<LiftingResults>) -> Vec<LiftingResults> {
@@ -176,10 +188,7 @@ pub fn calculate_wrapped_stats(results: &[LiftingResults]) -> WrappedStats {
     } else {
         positive_totals.iter().sum::<f64>() / positive_totals.len() as f64
     };
-    let improvement_from_first = match (positive_totals.first(), positive_totals.last()) {
-        (Some(first), Some(last)) => last - first,
-        _ => 0.0,
-    };
+    let improvement_from_first = first_to_last_meet(&ordered);
     let top_meet = meet_best_totals
         .into_iter()
         .max_by(|(left_name, left_total), (right_name, right_total)| {
@@ -259,7 +268,7 @@ pub fn wrapped_report(name: &str, year: i32, stats: &WrappedStats) -> Report {
     ]);
     journey.add_row(vec![
         stats.top_meet.clone().unwrap_or_else(|| "N/A".to_string()),
-        format!("{:+}kg", format_weight(stats.improvement_from_first)),
+        signed_kg(stats.improvement_from_first),
         stats.consecutive_makes.to_string(),
         stats
             .favorite_attempt
@@ -272,6 +281,27 @@ pub fn wrapped_report(name: &str, year: i32, stats: &WrappedStats) -> Report {
         .table("headline", headline)
         .table("volume", volume)
         .table("journey", journey)
+}
+
+/// The change from the year's first meet with a total to its last, one total per meet (its
+/// best); `None` with fewer than two such meets. The app's rule (#123): two rows from one meet,
+/// the same lifts listed in two divisions, are not progress. `ordered` is oldest first.
+fn first_to_last_meet(ordered: &[&LiftingResults]) -> Option<f64> {
+    let mut meets: Vec<(String, f64)> = Vec::new();
+    for row in ordered {
+        let Some(total) = valid_total(row) else {
+            continue;
+        };
+        let meet = normalize(&row.meet);
+        match meets.iter_mut().find(|(name, _)| *name == meet) {
+            Some((_, best)) => *best = best.max(total),
+            None => meets.push((meet, total)),
+        }
+    }
+    match (meets.first(), meets.last()) {
+        (Some(first), Some(last)) if meets.len() >= 2 => Some(last.1 - first.1),
+        _ => None,
+    }
 }
 
 fn percentage(successes: usize, attempts: usize) -> f64 {
@@ -384,7 +414,7 @@ mod tests {
         assert_eq!(stats.best_total, 180.0);
         assert_eq!(stats.average_total, 175.0);
         assert_eq!(stats.top_meet.as_deref(), Some("Best Meet"));
-        assert_eq!(stats.improvement_from_first, 10.0);
+        assert_eq!(stats.improvement_from_first, Some(10.0));
         assert_eq!(stats.consecutive_makes, 6);
         assert_eq!(stats.favorite_attempt, Some(1));
         assert_eq!(stats.year_rank, "Rising Star");
@@ -413,7 +443,7 @@ mod tests {
 
         let stats = calculate_wrapped_stats(&results);
 
-        assert_eq!(stats.improvement_from_first, 22.0);
+        assert_eq!(stats.improvement_from_first, Some(22.0));
         assert_eq!(stats.consecutive_makes, 10);
     }
 
@@ -434,7 +464,79 @@ mod tests {
         assert_eq!(stats.make_percentage, 50.0);
         assert_eq!(stats.best_snatch, 0.0);
         assert_eq!(stats.average_total, 0.0);
-        assert_eq!(stats.improvement_from_first, 0.0);
+        assert_eq!(stats.improvement_from_first, None);
+    }
+
+    #[test]
+    fn one_meet_has_no_first_to_last_change() {
+        let one = vec![result(
+            "2026-03-01",
+            "Only Meet",
+            [70.0, 75.0, 0.0, 90.0, 95.0, 0.0],
+            75.0,
+            95.0,
+            170.0,
+        )];
+        let stats = calculate_wrapped_stats(&one);
+        assert_eq!(stats.improvement_from_first, None);
+        let text = wrapped_report("Jane Doe", 2026, &stats).to_text();
+        assert!(text.contains("N/A"));
+        assert!(!text.contains("0kg |"));
+
+        // The same lifts listed in two divisions at one meet are not progress.
+        let mut masters = one[0].clone();
+        masters.age = "Women's Masters (35-39) 69kg".into();
+        masters.total = 175.0;
+        masters.cj_best = 100.0;
+        masters.cj2 = 100.0;
+        let stats = calculate_wrapped_stats(&[one[0].clone(), masters]);
+        assert_eq!(stats.improvement_from_first, None);
+    }
+
+    #[test]
+    fn an_improvement_shows_its_sign() {
+        let results = vec![
+            result(
+                "2026-01-01",
+                "First",
+                [70.0, 0.0, 0.0, 90.0, 0.0, 0.0],
+                70.0,
+                90.0,
+                160.0,
+            ),
+            result(
+                "2026-06-01",
+                "Second",
+                [75.0, 0.0, 0.0, 100.0, 0.0, 0.0],
+                75.0,
+                100.0,
+                175.0,
+            ),
+        ];
+        let stats = calculate_wrapped_stats(&results);
+        let json = wrapped_report("Jane Doe", 2026, &stats).to_json();
+        assert_eq!(json["journey"][0]["first_to_last_total"], 15);
+        assert!(
+            wrapped_report("Jane Doe", 2026, &stats)
+                .to_text()
+                .contains("+15kg")
+        );
+    }
+
+    #[test]
+    fn the_typed_name_is_no_suggestion() {
+        let response = SearchResponse {
+            matched_name: None,
+            suggestions: vec!["Maddisen Mohnsen".into()],
+            results: Vec::new(),
+            truncated: false,
+        };
+        let results = exact_name_results("maddisen  mohnsen", 2025, response).unwrap();
+        assert!(results.is_empty());
+        assert_eq!(
+            other_names("Ada", vec!["ADA".into(), "Adam".into()]),
+            ["Adam"]
+        );
     }
 
     #[test]

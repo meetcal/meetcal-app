@@ -243,7 +243,8 @@ pub fn report(
             row.date.clone(),
             row.date.clone(),
         ));
-        if row.total > entry.0.total {
+        // The first of tied bests, when it was set (rows arrive newest first).
+        if row.total > entry.0.total || (row.total == entry.0.total && row.date < entry.0.date) {
             entry.0 = row;
         }
         if let Some(score) = row_sinclair(row) {
@@ -363,5 +364,24 @@ mod tests {
         assert_eq!(top[0]["athlete"], "Bo");
         assert_eq!(top[1]["best_total"], 194);
         assert_eq!(top[1]["results"], 2);
+    }
+
+    #[test]
+    fn a_tied_best_total_is_dated_when_it_was_first_set() {
+        let lift = |date: &str| {
+            row(
+                "Carter",
+                date,
+                date,
+                "Open Men's 81kg",
+                80.0,
+                [93.0, 0.0, 0.0],
+                [115.0, 0.0, 0.0],
+            )
+        };
+        // Newest first, as `results:byNames` answers.
+        let rows = vec![lift("2026-01-31"), lift("2025-03-08"), lift("2025-02-01")];
+        let json = report("CLUB — Test", &rows, &HashSet::new(), None).to_json();
+        assert_eq!(json["top_lifters"][0]["date"], "Feb 1, 2025");
     }
 }
