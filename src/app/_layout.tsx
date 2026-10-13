@@ -50,12 +50,16 @@ import { useDataWidgetRefresh } from "@/hooks/useDataWidgetRefresh";
 import { isNetworkAvailable } from "@/lib/networkUtils";
 import { checkOnboardingComplete } from "@/lib/onboarding";
 import { isMaestroE2E } from "@/lib/e2e";
+import { ROOT_STACK_SETTINGS } from "@/lib/root-navigation";
 import {
   confirmRevenueCatIdentity,
   forgetRevenueCatIdentity,
   hasSubscriptionEntitlement,
   paywallRouteFor,
 } from "@/lib/premium-intent";
+
+// A cold-start deep link opens on top of the tabs (see `ROOT_STACK_SETTINGS`).
+export const unstable_settings = ROOT_STACK_SETTINGS;
 
 const SENTRY_ENVIRONMENT =
   process.env.EXPO_PUBLIC_SENTRY_ENVIRONMENT ??
@@ -243,8 +247,8 @@ function RootLayoutContent({ fontsLoaded }: { fontsLoaded: boolean }) {
     user,
   } = useUser();
 
-  // The data widgets hold public reference data; keep them current without
-  // the Widget Settings screen being open.
+  // Keep the data widgets current without the Widget Settings screen being
+  // open, and mirror the premium entitlement for them and for Siri.
   useDataWidgetRefresh();
 
   // Keep the offline auth hint's seven-day window sliding for every verified

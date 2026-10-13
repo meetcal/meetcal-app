@@ -17,6 +17,14 @@ import type { ToastOptions } from "@/lib/toast";
  */
 export type PremiumAccess = "granted" | "denied" | "checking" | "unknown";
 
+/**
+ * Whether "Add to Calendar" (the Saved tab, the Start List and session
+ * details alike) is a premium action. `false` makes it free on all three
+ * screens, with no sign-in, and unlocks the Start List's download-sheet row;
+ * also drop "add-to-calendar" from `PREMIUM_FEATURES` in `lib/premium-intent`.
+ */
+export const CALENDAR_EXPORT_IS_PREMIUM = true;
+
 export function resolvePremiumAccess({
   isSubscribed,
   isLoading,

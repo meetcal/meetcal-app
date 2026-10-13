@@ -1,85 +1,9 @@
 import { DaySchedule, Schedule } from "@/types/schedule";
-import { getOffsetMinutesAtInstant } from "@/utils/timezone";
 
-/**
- * How many timezone formatters stay resident. Meets span a handful of zones,
- * so this never fills in practice; it is the bound that keeps a malformed
- * feed from growing the map without limit.
- */
-const ABBREVIATION_FORMATTER_CACHE_LIMIT = 32;
-
-/**
- * `new Intl.DateTimeFormat(...)` costs roughly ten times a `formatToParts`
- * call on an existing instance, and `mapApiMeet` builds two per meet for the
- * whole `/meets` list on every app start, every five-minute refresh and every
- * reconnect. A formatter carries no per-call state, so one instance per zone
- * is reused across instants — the abbreviation still varies with `instant`
- * (EST vs EDT), because that is decided by `formatToParts`, not by the
- * constructor.
- */
-const abbreviationFormatterCache = new Map<string, Intl.DateTimeFormat>();
-
-function getAbbreviationFormatter(timeZoneIdentifier: string): Intl.DateTimeFormat {
-  const cached = abbreviationFormatterCache.get(timeZoneIdentifier);
-  if (cached) return cached;
-
-  // Throws for an unknown identifier. Deliberately not cached: the caller
-  // turns it into "Local" and a later valid id must still be able to resolve.
-  const formatter = new Intl.DateTimeFormat("en-US", {
-    timeZone: timeZoneIdentifier,
-    timeZoneName: "short",
-  });
-
-  // Insertion-ordered eviction: `Map` keys iterate oldest-first.
-  while (abbreviationFormatterCache.size >= ABBREVIATION_FORMATTER_CACHE_LIMIT) {
-    const oldest = abbreviationFormatterCache.keys().next();
-    if (oldest.done) break;
-    abbreviationFormatterCache.delete(oldest.value);
-  }
-  abbreviationFormatterCache.set(timeZoneIdentifier, formatter);
-  return formatter;
-}
-
-/** A zone name made of letters only ("EDT", "HST", "GMT", "UTC"). */
-const LETTER_ZONE_NAME = /^[A-Z]{2,5}$/;
-
-/**
- * "GMT+9", "GMT+5:30", "GMT-3" or "GMT" for an offset east of UTC in minutes.
- * The en-US short name of most zones outside North America is already this
- * shape, but engines spell it differently (V8 "GMT+5:30", others "GMT+05:30"
- * or "UTC+5:30"), so the app builds it from the offset itself.
- */
-export function formatGmtOffset(offsetMinutes: number): string {
-  if (offsetMinutes === 0) return "GMT";
-  const sign = offsetMinutes > 0 ? "+" : "-";
-  const hours = Math.floor(Math.abs(offsetMinutes) / 60);
-  const minutes = Math.abs(offsetMinutes) % 60;
-  return `GMT${sign}${hours}${minutes ? `:${String(minutes).padStart(2, "0")}` : ""}`;
-}
-
-/**
- * The label shown after a meet-local time: the zone's en-US short name when
- * it has a lettered one (US zones: "EDT", "MST", "HST"; also "GMT", "UTC"),
- * otherwise its offset at `instant` ("GMT+9" for Tokyo, "GMT+5:30" for
- * Kolkata, "GMT+11" for Sydney in January). Either way it is read at
- * `instant`, so daylight time is the one in force then.
- * @param timeZoneIdentifier - IANA timezone identifier (e.g., "America/New_York")
- * @returns The label, or "Local" when the zone is not one the device knows
- */
-export function getTimeZoneAbbreviation(
-  timeZoneIdentifier: string,
-  instant: Date = new Date(),
-): string {
-  try {
-    const name = getAbbreviationFormatter(timeZoneIdentifier)
-      .formatToParts(instant)
-      .find((part) => part.type === "timeZoneName")?.value;
-    if (name && LETTER_ZONE_NAME.test(name)) return name;
-    return formatGmtOffset(getOffsetMinutesAtInstant(timeZoneIdentifier, instant));
-  } catch {
-    return "Local";
-  }
-}
+// The zone label lives with the other zone helpers in `utils/timezone`, which
+// labels each session's own date with it (`meetTimeZoneLabel`). Re-exported
+// for the modules that import it from here.
+export { formatGmtOffset, getTimeZoneAbbreviation } from "@/utils/timezone";
 
 /**
  * Formats a meet calendar date (`YYYY-MM-DD`, or any ISO string) into a

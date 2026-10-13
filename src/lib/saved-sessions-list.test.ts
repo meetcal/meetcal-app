@@ -3,6 +3,7 @@ import {
   countSessionsOutsideMeet,
   mergeWithStoredSession,
   revertRefusedSave,
+  savedTabMeetNames,
   sessionsFromAthletes,
   upsertSession,
 } from "@/lib/saved-sessions-list";
@@ -191,5 +192,16 @@ describe("countSessionsOutsideMeet", () => {
     expect(countSessionsOutsideMeet(sessions, MEET)).toBe(2);
     expect(countSessionsOutsideMeet(sessions, null)).toBe(3);
     expect(countSessionsOutsideMeet([], MEET)).toBe(0);
+  });
+});
+
+describe("savedTabMeetNames", () => {
+  it("keeps the selected meet after it leaves the meets list (#269)", () => {
+    const names = savedTabMeetNames([{ name: "Other Meet" }], MEET);
+    expect([...names].sort()).toEqual(["Other Meet", MEET].sort());
+  });
+
+  it("is the meets list alone with no meet selected", () => {
+    expect([...savedTabMeetNames([{ name: "A" }, { name: "B" }], null)]).toEqual(["A", "B"]);
   });
 });

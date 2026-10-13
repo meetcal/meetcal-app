@@ -23,7 +23,7 @@ import {
   type SavedSession,
   type SavedSessionsStore,
 } from '@/lib/saved-sessions-store';
-import { calculateWeighInTime } from '@/utils/time';
+import { resolveWeighInTime } from '@/utils/time';
 
 /**
  * Loading the saved-sessions list: hydrate from storage, then (with a
@@ -31,16 +31,33 @@ import { calculateWeighInTime } from '@/utils/time';
  * reconcile the two, then apply the auto-unsave preference.
  */
 
-/** Map the API's rows into the app's saved-session shape. */
+/**
+ * One row per session id, the newest by `updated_at` (the first on a tie),
+ * in first-seen order. A backend from before `users:savedSessions` did this
+ * itself lists a legacy duplicate's rows in creation order, so keeping the
+ * first would keep the oldest edit.
+ */
+export function newestApiRowPerSession(apiSessions: ApiSavedSession[]): ApiSavedSession[] {
+  const newest = new Map<string, ApiSavedSession>();
+  for (const row of apiSessions) {
+    const kept = newest.get(row.session_id);
+    if (kept === undefined || row.updated_at > kept.updated_at) newest.set(row.session_id, row);
+  }
+  return [...newest.values()];
+}
+
+/** Map the API's rows into the app's saved-session shape, one per session. */
 export function sessionsFromApi(apiSessions: ApiSavedSession[]): SavedSession[] {
-  return apiSessions.map(s => ({
+  return newestApiRowPerSession(apiSessions).map(s => ({
     id: s.session_id,
     meet: s.meet as MeetName,
     sessionNumber: s.session_number,
     platform: s.platform,
     weightClass: s.weight_class ?? '',
     startTime: s.start_time ?? '',
-    weighInTime: calculateWeighInTime(s.start_time ?? ''),
+    // The API keeps no weigh-in for a saved session; the schedule lookup
+    // replaces this with the published one (`withScheduleTimes`).
+    weighInTime: resolveWeighInTime(s.start_time, null),
     date: s.date ?? '',
     notes: s.notes ?? undefined,
     athleteNames: s.athlete_names,
@@ -56,20 +73,26 @@ export function savedSessionsLoadKey(userId: string | null | undefined, verified
 }
 
 export interface LoadChain {
-  run(key: string, task: () => Promise<void>): Promise<void>;
+  /**
+   * `fresh`: run the task again even when one for the same key is running,
+   * after it. For a caller whose reason to load arrived after the running
+   * load read its inputs (RevenueCat confirming the subscription after the
+   * load's prune skipped), so joining it would miss that reason.
+   */
+  run(key: string, task: () => Promise<void>, options?: { fresh?: boolean }): Promise<void>;
 }
 
 /**
  * Single-flight per key: a call while a task for the same key is running
- * shares it instead of starting a second one. A call for a new key queues
- * behind the running task.
+ * shares it instead of starting a second one, unless it asks for a `fresh`
+ * run. A call for a new key, or a fresh one, queues behind the running task.
  */
 export function createLoadChain(): LoadChain {
   let current: { key: string; promise: Promise<void> } | null = null;
   return {
-    run(key, task) {
+    run(key, task, options) {
       const running = current;
-      if (running && running.key === key) return running.promise;
+      if (running && running.key === key && !options?.fresh) return running.promise;
       const previous = running?.promise ?? Promise.resolve();
       const promise = previous.catch(() => undefined).then(() => task());
       const entry = { key, promise };
@@ -79,6 +102,40 @@ export function createLoadChain(): LoadChain {
       };
       promise.then(release, release);
       return promise;
+    },
+  };
+}
+
+/**
+ * The shortest gap between two background refreshes of the saved list (app
+ * foreground, network back). Each one is a token read, an outbox flush and a
+ * GET; iOS reports `active` for every Control Center pull, and venue Wi-Fi
+ * flaps, so these are throttled. A load the user asked for (pull to refresh,
+ * the Saved tab gaining focus, a sign-in) is not.
+ */
+export const SAVED_SESSIONS_REFRESH_MIN_INTERVAL_MS = 60_000;
+
+export interface RefreshThrottle {
+  /** Note that a load started now (any load, throttled or not). */
+  markRun(): void;
+  /** Whether a background refresh may run now: the last load is old enough. */
+  shouldRun(): boolean;
+}
+
+export function createRefreshThrottle(
+  minIntervalMs: number = SAVED_SESSIONS_REFRESH_MIN_INTERVAL_MS,
+  now: () => number = Date.now,
+): RefreshThrottle {
+  let lastRunAt: number | null = null;
+  return {
+    markRun() {
+      lastRunAt = now();
+    },
+    shouldRun() {
+      if (lastRunAt === null) return true;
+      const elapsed = now() - lastRunAt;
+      // A clock set backwards since the last load: treat it as old.
+      return elapsed < 0 || elapsed >= minIntervalMs;
     },
   };
 }

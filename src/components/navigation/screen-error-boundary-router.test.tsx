@@ -5,9 +5,10 @@
  * - `unstable_screenErrorBoundary`: expo-router passes the boundary down by
  *   context and wraps leaf routes only, never the `(tabs)` layout, so a tab
  *   screen that throws keeps the tab bar and the other tabs.
- * - `DismissToRedirect`: a link pushed over the running tabs pops back to
- *   them instead of stacking a second tabs navigator, and a cold start into
- *   the link still lands on one.
+ * - The `/open/saved` widget link (`useRedirectIntoTabs`, which
+ *   `DismissToRedirect` wraps): a link pushed over the running tabs pops
+ *   back to them instead of stacking a second tabs navigator, and a cold
+ *   start into the link still lands on one.
  */
 import React from "react";
 import { Text } from "react-native";
@@ -15,7 +16,7 @@ import { act, create, type ReactTestRenderer } from "react-test-renderer";
 import { ExpoRoot, router, Stack, Tabs } from "expo-router";
 import { navigationRef } from "expo-router/build/global-state/navigationRef";
 import { getMockContext } from "expo-router/build/testing-library/mock-config";
-import { DismissToRedirect } from "@/components/navigation/DismissToRedirect";
+import OpenSavedScreen from "@/app/open/saved";
 import { ScreenErrorBoundary } from "@/components/navigation/ScreenErrorBoundary";
 
 jest.mock("@sentry/react-native", () => ({ captureException: jest.fn() }));
@@ -85,7 +86,7 @@ describe("unstable_screenErrorBoundary on the root Stack", () => {
   });
 });
 
-describe("DismissToRedirect", () => {
+describe("redirecting into the running tabs", () => {
   let mounted: ReactTestRenderer | undefined;
 
   beforeEach(() => {
@@ -113,7 +114,7 @@ describe("DismissToRedirect", () => {
       "(tabs)/(saved)/_layout": () => <Stack />,
       "(tabs)/(saved)/index": () => <Text>Saved sessions</Text>,
       "comp-data/records": () => <Text>Records</Text>,
-      "open/saved": () => <DismissToRedirect href="/(tabs)/(saved)" />,
+      "open/saved": OpenSavedScreen,
     });
   }
 

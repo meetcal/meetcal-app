@@ -12,6 +12,7 @@ import type { SavedSession } from '@/lib/saved-sessions-store';
 import type { SessionScheduleLookup } from '@/types/saved';
 import type { Schedule } from '@/types/schedule';
 import { hasSessionPassedAutoUnsaveWindow } from '@/utils/time';
+import { resolvedMeetTimeZone } from '@/utils/timezone';
 
 /**
  * The "auto-remove saved sessions 2 hours after they start" preference. The
@@ -21,8 +22,11 @@ import { hasSessionPassedAutoUnsaveWindow } from '@/utils/time';
 /**
  * Ids of the sessions that have passed the auto-unsave window at `now`.
  * Start times are meet-local, so each meet's time zone is looked up once.
- * Rows with no start time or date, whose time does not convert, or whose
- * meet's time zone cannot be resolved are kept.
+ * Rows with no start time on either the saved row or the schedule, whose
+ * saved time does not convert, or whose meet's time zone is unknown are kept.
+ * A meet whose zone the API left blank is unknown too
+ * (`resolvedMeetTimeZone`): its New York fallback deleted a Los Angeles
+ * session three hours early.
  *
  * The zone lookup used to fall back to UTC. A meet outside the cached list
  * whose `/meets/details` request failed (venue Wi-Fi) then had its wall-clock
@@ -37,7 +41,10 @@ import { hasSessionPassedAutoUnsaveWindow } from '@/utils/time';
  * started. A row is pruned only once the later of its saved start and its
  * schedule start is past the window: the offline schedule copy can be older
  * than a row saved from a fresh fetch, and pruning is destructive, so the
- * more cautious of the two wins.
+ * more cautious of the two wins. A row saved before the schedule was
+ * published has no saved start, and is judged by the schedule's alone, as the
+ * reminders, the widget and the Saved card already did; it used to be kept
+ * forever.
  */
 export async function findExpiredSessionIds(
   sessions: SavedSession[],
@@ -60,13 +67,14 @@ export async function findExpiredSessionIds(
   };
 
   for (const session of sessions) {
-    if (!session.startTime || !session.date) continue;
+    const hasSavedStart = Boolean(session.startTime && session.date);
+    // With no saved start and no schedule to read, there is nothing to judge.
+    if (!hasSavedStart && !readSchedule) continue;
 
     let timeZone = timeZoneByMeet.get(session.meet);
     if (timeZone === undefined) {
       try {
-        const config = await getMeetConfig(session.meet);
-        timeZone = config?.time?.timeZoneIdentifier || null;
+        timeZone = resolvedMeetTimeZone(await getMeetConfig(session.meet));
       } catch {
         timeZone = null;
       }
@@ -74,8 +82,10 @@ export async function findExpiredSessionIds(
     }
     if (timeZone === null) continue;
 
-    const savedStart = startOf(session, timeZone);
-    if (savedStart === null) continue;
+    // A saved start that is there but does not convert is a corrupt row:
+    // keep it rather than trust anything else about it.
+    const savedStart = hasSavedStart ? startOf(session, timeZone) : null;
+    if (hasSavedStart && savedStart === null) continue;
 
     let lookup = lookupByMeet.get(session.meet);
     if (lookup === undefined) {
@@ -87,7 +97,9 @@ export async function findExpiredSessionIds(
     }
     const scheduled = withScheduleTimes(session, lookup);
     const scheduleStart = scheduled === session ? null : startOf(scheduled, timeZone);
-    const latestStart = Math.max(savedStart, scheduleStart ?? savedStart);
+    const latestStart =
+      savedStart === null ? scheduleStart : Math.max(savedStart, scheduleStart ?? savedStart);
+    if (latestStart === null) continue;
 
     if (hasSessionPassedAutoUnsaveWindow(new Date(latestStart), now)) {
       expiredIds.push(session.id);
@@ -99,6 +111,12 @@ export async function findExpiredSessionIds(
 export interface PruneStartedSessionsDeps {
   /** The Clerk-verified user; nothing is pruned without one. */
   clerkUserId: string | null | undefined;
+  /**
+   * The subscription as RevenueCat confirmed it (`null` until it answers;
+   * never the cached hint). Auto-remove is a premium setting: nothing is
+   * pruned unless this is `true`.
+   */
+  isSubscribed: () => boolean | null;
   /** Whether `userId` is still the active user. */
   isActive: (userId: string) => boolean;
   getToken: () => Promise<string | null>;
@@ -110,7 +128,14 @@ export interface PruneStartedSessionsDeps {
 
 /**
  * Remove saved sessions that started more than 2 hours ago, when the user
- * has the preference enabled.
+ * has the preference enabled and is subscribed.
+ *
+ * The server stores the preference with no entitlement check, so it outlives
+ * a lapsed subscription. Only the stored flag used to be read: a lapsed user
+ * kept losing sessions (server copy and notes included) while Profile showed
+ * the setting off and locked. Unconfirmed (RevenueCat still loading, or only
+ * the cached hint, which can be days stale) skips too: pruning is
+ * destructive, and late is harmless.
  *
  * Destructive, and it spans several awaits: every step re-checks that the
  * signed-in user is still the one whose sessions and preference these are.
@@ -118,7 +143,7 @@ export interface PruneStartedSessionsDeps {
  * user A's list and queue deletions in A's outbox.
  */
 export async function pruneStartedSessions(deps: PruneStartedSessionsDeps): Promise<void> {
-  if (!deps.clerkUserId) return;
+  if (!deps.clerkUserId || deps.isSubscribed() !== true) return;
   const userId = deps.clerkUserId;
   const stillThisUser = () => deps.isActive(userId);
 
@@ -169,7 +194,7 @@ export async function pruneStartedSessions(deps: PruneStartedSessionsDeps): Prom
   );
 
   for (const id of expiredIds) {
-    if (!stillThisUser()) return;
+    if (!stillThisUser() || deps.isSubscribed() !== true) return;
     await deps.removeSession(id);
   }
 }

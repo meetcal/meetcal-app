@@ -7,7 +7,7 @@ use serde_json::json;
 
 use crate::types::meets::ScheduleRow;
 use crate::utils::backend::{queries, query};
-use crate::utils::format::{us_date, us_time};
+use crate::utils::format::{time_24h, us_date, us_time};
 use crate::utils::names::{NameKind, not_found};
 use crate::utils::output::{self, Report};
 
@@ -65,6 +65,21 @@ pub async fn run(args: ScheduleArgs) -> Result<()> {
         })
         .collect();
 
+    output::emit(
+        Report::new()
+            .table_with_data(
+                "sessions",
+                table(&sessions, us_date, us_time),
+                table(&sessions, str::to_string, time_24h),
+            )
+            .when_empty("No sessions match those filters."),
+    );
+    Ok(())
+}
+
+/// The sessions, with dates and times written by `date` and `time`: US dates and 12-hour times
+/// to show, `YYYY-MM-DD` and 24-hour `HH:MM` to export.
+pub fn table(sessions: &[Session], date: fn(&str) -> String, time: fn(&str) -> String) -> Table {
     let mut table = Table::new();
     table.set_header(vec![
         "Date",
@@ -76,16 +91,15 @@ pub async fn run(args: ScheduleArgs) -> Result<()> {
     ]);
     for session in sessions {
         table.add_row(vec![
-            us_date(&session.date),
+            date(&session.date),
             session.session.to_string(),
-            session.platform,
-            us_time(&session.weigh_in_time),
-            us_time(&session.start_time),
+            session.platform.clone(),
+            time(&session.weigh_in_time),
+            time(&session.start_time),
             session.weight_classes.join(", "),
         ]);
     }
-    output::emit(Report::single("sessions", table).when_empty("No sessions match those filters."));
-    Ok(())
+    table
 }
 
 /// Schedule rows (one per session, platform and weight class) grouped into sessions, in the

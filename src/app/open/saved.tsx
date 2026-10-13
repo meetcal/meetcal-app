@@ -1,7 +1,7 @@
-import { DismissToRedirect } from "@/components/navigation/DismissToRedirect";
+import { useRedirectIntoTabs } from "@/lib/tab-redirect";
 
-// The Saved widget's `meetcal:///open/saved` link. Pops back to the running
-// tabs rather than stacking another tabs navigator on each widget tap.
+/** `meetcal:///open/saved` (the saved widget): the Saved tab, in the tabs underneath. */
 export default function OpenSavedScreen() {
-  return <DismissToRedirect href="/(tabs)/(saved)" />;
+  useRedirectIntoTabs("/(tabs)/(saved)");
+  return null;
 }
