@@ -36,6 +36,12 @@ export interface MeetConfig {
   venue: Venue;
   time: TimeConfig;
   dates: DateRange;
+  /**
+   * `time` is the mapper's fallback zone, not the meet's (see `Meet`). Read
+   * it through `resolvedMeetTimeZone` (utils/timezone.ts) before computing an
+   * instant.
+   */
+  timeZoneUnknown?: boolean;
 }
 
 export interface Meet {

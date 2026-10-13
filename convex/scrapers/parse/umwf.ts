@@ -77,7 +77,8 @@ function sheetDate(text: string): string {
 }
 
 /**
- * One tab: a `… kg Category` row opens a weight class, then `Snatch`,
+ * One tab: a `… kg Category` row opens a weight class (unless it says the
+ * class is retired), then `Snatch`,
  * `Clean & Jerk` and `Total` rows fill it (a blank or `Standard` value
  * leaves a lift at 0; any other value that is not a number throws). A
  * lift's holder is its row's Name ("Standard" when unclaimed), Date and
@@ -92,7 +93,10 @@ export function parseUmwfSheet(csv: string, ageCategory: string, gender: string)
     if (row[1].includes('kg Category')) {
       columns = holderColumns(row, columns);
       if (current) records.push(current);
-      const weightClass = formatWeightClass(row[1]);
+      // A class the heading calls retired ("98 kg Category (retired after
+      // Singapore World Cup)") no longer exists: its rows are skipped, so the
+      // sync prunes it rather than serve it beside the current classes.
+      const weightClass = /\(\s*retired\b/i.test(row[1]) ? null : formatWeightClass(row[1]);
       current = weightClass
         ? { record_type: 'UMWF', age_category: ageCategory, gender, weight_class: weightClass, snatch_record: 0, cj_record: 0, total_record: 0 }
         : null;

@@ -1,22 +1,15 @@
-import { SupabaseLiftResult } from '@/data/types/athletes';
-import {
-  fetchApiResultsByNames,
-  fetchApiYearBests,
-  fetchApiYearBestsByNames,
-} from '@/lib/api/meetcal-api';
-import { normalizeAthleteName } from '@/lib/athletes';
+import type { SupabaseBests } from '@/data/types/athletes';
 import {
   getAllCachedLiftingResultsForAthlete,
   getStoredAthleteBestsForNames,
   isAthleteBestsFresh,
-  saveAthleteBestsBatch,
   type StoredAthleteBests,
 } from '@/lib/database/offline-store';
 import {
-  getHistoryCutoffDate,
-  toMeetCalendarDate,
-  YEAR_BESTS_YEARS,
-} from '@/utils/dateTime';
+  deriveDownloadedBests,
+  lookUpAthleteBests,
+  type AthleteBestsLookup,
+} from '@/lib/year-bests';
 
 export type YearBests = { bestSnatch: number; bestCJ: number; bestTotal: number };
 
@@ -64,80 +57,8 @@ function getCachedBests(name: string): YearBests | null {
 
 const ZERO_BESTS: YearBests = { bestSnatch: 0, bestCJ: 0, bestTotal: 0 };
 
-function maxPositive(values: (number | null | undefined)[]): number {
-  return values.reduce<number>((max, v) => (typeof v === 'number' && v > 0 && v > max ? v : max), 0);
-}
-
-function deriveBestsFromResults(results: SupabaseLiftResult[]): YearBests {
-  let bestSnatch = 0;
-  let bestCJ = 0;
-  let bestTotal = 0;
-  for (const r of results) {
-    const sn = maxPositive([r.snatch_best, r.snatch1, r.snatch2, r.snatch3]);
-    const cj = maxPositive([r.cj_best, r.cj1, r.cj2, r.cj3]);
-    const tot = typeof r.total === 'number' && r.total > 0 ? r.total : sn + cj;
-    if (sn > bestSnatch) bestSnatch = sn;
-    if (cj > bestCJ) bestCJ = cj;
-    if (tot > bestTotal) bestTotal = tot;
-  }
-  return { bestSnatch, bestCJ, bestTotal };
-}
-
 function hasRealBests(bests: YearBests): boolean {
   return bests.bestSnatch > 0 || bests.bestCJ > 0 || bests.bestTotal > 0;
-}
-
-/**
- * Bests from an athlete's most recent meet only. Used as the fallback for
- * athletes with no results inside the year-bests window, so the start list
- * shows their last competition's numbers instead of "—".
- */
-function deriveMostRecentMeetBests(results: SupabaseLiftResult[]): YearBests {
-  if (results.length === 0) return ZERO_BESTS;
-  const latest = results.reduce((newest, r) =>
-    (r.date ?? '') > (newest.date ?? '') ? r : newest,
-  );
-  const latestMeetRows = results.filter(
-    (r) => r.date === latest.date && r.meet === latest.meet,
-  );
-  return deriveBestsFromResults(latestMeetRows);
-}
-
-/**
- * Fetches each athlete's most recent meet date rows (`latest_only`) for
- * athletes whose year-bests came back empty and derives their bests from that
- * meet. `deriveMostRecentMeetBests` only ever reads the newest date's rows, so
- * the full career history it used to download changed nothing.
- *
- * @returns null when the request failed: the callers must not store (or
- * memoize) a failed lookup as "no results".
- */
-async function getMostRecentMeetBestsBatch(
-  names: string[],
-): Promise<Record<string, YearBests> | null> {
-  const byName: Record<string, YearBests> = {};
-  if (names.length === 0) return byName;
-  try {
-    const rows = await fetchApiResultsByNames(names, { latestOnly: true });
-    const grouped = new Map<string, SupabaseLiftResult[]>();
-    rows.forEach((row) => {
-      // `latest_only` bounds rows per normalized name (the API's
-      // `normalize_name`), so group the same way rather than by raw spelling.
-      const key = normalizeAthleteName(row.name);
-      const group = grouped.get(key);
-      if (group) {
-        group.push(row);
-      } else {
-        grouped.set(key, [row]);
-      }
-    });
-    names.forEach((name) => {
-      byName[name] = deriveMostRecentMeetBests(grouped.get(normalizeAthleteName(name)) ?? []);
-    });
-  } catch {
-    return null;
-  }
-  return byName;
 }
 
 function toStoredBests(bests: YearBests) {
@@ -148,11 +69,7 @@ function toStoredBests(bests: YearBests) {
   };
 }
 
-function fromStoredBests(bests: {
-  snatch_best: number | null;
-  cj_best: number | null;
-  total: number | null;
-}): YearBests {
+function fromStoredBests(bests: SupabaseBests): YearBests {
   return {
     bestSnatch: bests.snatch_best ?? 0,
     bestCJ: bests.cj_best ?? 0,
@@ -160,50 +77,16 @@ function fromStoredBests(bests: {
   };
 }
 
+/**
+ * What the downloaded meets say, with the same meaning as an online answer
+ * (`deriveDownloadedBests`). Shown offline, never stored.
+ */
 async function getOfflineFallback(athleteName: string): Promise<YearBests> {
   try {
     const results = await getAllCachedLiftingResultsForAthlete(athleteName);
-    if (results.length === 0) return ZERO_BESTS;
-    const cutoff = getHistoryCutoffDate(YEAR_BESTS_YEARS);
-    // Result dates are calendar dates. `new Date("2025-06-01")` is UTC
-    // midnight, and a date-only string is compared as a string.
-    const recent = results.filter(r => {
-      const day = toMeetCalendarDate(r.date);
-      if (!day) return true;
-      return day >= cutoff;
-    });
-    if (recent.length === 0) return deriveMostRecentMeetBests(results);
-    return deriveBestsFromResults(recent);
+    return fromStoredBests(deriveDownloadedBests(results));
   } catch {
     return ZERO_BESTS;
-  }
-}
-
-export async function getLastYearBests(athleteName: string): Promise<YearBests> {
-  const cached = getCachedBests(athleteName);
-  if (cached != null) return cached;
-  const active = inFlight.get(athleteName);
-  if (active) return active;
-
-  const request = getLastYearBestsUncached(athleteName).finally(() => {
-    inFlight.delete(athleteName);
-  });
-  inFlight.set(athleteName, request);
-  return request;
-}
-
-/**
- * Stores what the API answered. A failed write only costs the next view a
- * lookup, so it does not fail the bests that were just resolved.
- */
-async function persistBests(bestsByName: Record<string, YearBests>): Promise<void> {
-  const rows: Record<string, ReturnType<typeof toStoredBests>> = {};
-  for (const [name, bests] of Object.entries(bestsByName)) rows[name] = toStoredBests(bests);
-  if (Object.keys(rows).length === 0) return;
-  try {
-    await saveAthleteBestsBatch(rows);
-  } catch (error) {
-    console.warn('Could not store athlete bests:', error);
   }
 }
 
@@ -212,6 +95,67 @@ function staleRealBests(stored: StoredAthleteBests | undefined): YearBests | nul
   if (!stored) return null;
   const bests = fromStoredBests(stored.bests);
   return hasRealBests(bests) ? bests : null;
+}
+
+/**
+ * Batch lookups still running, by name, with the stored entry each name had.
+ * A row expanded while the warm-up (or a sort) is looking its athlete up
+ * waits for that answer instead of sending its own two requests.
+ */
+const lookupsInFlight = new Map<
+  string,
+  { lookup: Promise<AthleteBestsLookup>; stored: StoredAthleteBests | undefined }
+>();
+
+/**
+ * The largest batch a row joins: one `results:bests` request (the warm-up's
+ * size). A best-lift sort looks the whole roster up, which for a national
+ * meet is 16 sequential requests plus the store write; a row joining that
+ * waited for all of it, so it sends its own lookup instead.
+ */
+const JOINABLE_LOOKUP_MAX_NAMES = 100; // `SMALL_ROWS_NAMES_CHUNK_SIZE` in meetcal-api
+
+/**
+ * One name's bests from a lookup (`lookUpAthleteBests` already stored the
+ * answer). Neither the stale copy nor the downloaded meets are an answer, so
+ * when the lookup failed nothing is memoized: memoizing it used to turn one
+ * offline view into "—" for good.
+ */
+async function settleFromLookup(
+  athleteName: string,
+  stored: StoredAthleteBests | undefined,
+  lookup: Promise<AthleteBestsLookup>,
+): Promise<YearBests> {
+  let result: AthleteBestsLookup;
+  try {
+    result = await lookup;
+  } catch {
+    // Offline or the request failed.
+    return staleRealBests(stored) ?? (await getOfflineFallback(athleteName));
+  }
+  const answer = result.answered[athleteName];
+  if (!answer) {
+    // The most-recent-meet lookup failed.
+    return staleRealBests(stored) ?? ZERO_BESTS;
+  }
+  const bests = fromStoredBests(answer);
+  cacheBests(athleteName, bests);
+  return bests;
+}
+
+export async function getLastYearBests(athleteName: string): Promise<YearBests> {
+  const cached = getCachedBests(athleteName);
+  if (cached != null) return cached;
+  const active = inFlight.get(athleteName);
+  if (active) return active;
+  const batch = lookupsInFlight.get(athleteName);
+  if (batch) return settleFromLookup(athleteName, batch.stored, batch.lookup);
+
+  const request = getLastYearBestsUncached(athleteName).finally(() => {
+    inFlight.delete(athleteName);
+  });
+  inFlight.set(athleteName, request);
+  return request;
 }
 
 async function getLastYearBestsUncached(athleteName: string): Promise<YearBests> {
@@ -224,39 +168,7 @@ async function getLastYearBestsUncached(athleteName: string): Promise<YearBests>
     cacheBests(athleteName, result, stored.fetchedAt);
     return result;
   }
-
-  try {
-    const cutoffDate = getHistoryCutoffDate(YEAR_BESTS_YEARS);
-    const results = await fetchApiYearBests(athleteName, cutoffDate);
-    const result: YearBests =
-      results.length === 0
-        ? ZERO_BESTS
-        : {
-            bestSnatch: Math.max(...results.map(r => r.bestSnatch || 0)),
-            bestCJ: Math.max(...results.map(r => r.bestCJ || 0)),
-            bestTotal: Math.max(...results.map(r => r.bestTotal || 0)),
-          };
-    if (!hasRealBests(result)) {
-      // Nothing inside the window: fall back to the most recent meet the
-      // athlete ever competed at.
-      const fallbackByName = await getMostRecentMeetBestsBatch([athleteName]);
-      if (!fallbackByName) {
-        return staleRealBests(stored) ?? ZERO_BESTS;
-      }
-      const fallback = fallbackByName[athleteName] ?? ZERO_BESTS;
-      cacheBests(athleteName, fallback);
-      await persistBests({ [athleteName]: fallback });
-      return fallback;
-    }
-    cacheBests(athleteName, result);
-    await persistBests({ [athleteName]: result });
-    return result;
-  } catch {
-    // Offline or the request failed. Neither the stale copy nor what the
-    // downloaded meets say is an answer, so nothing is stored or memoized:
-    // storing it used to turn one offline view into "—" for good.
-    return staleRealBests(stored) ?? (await getOfflineFallback(athleteName));
-  }
+  return settleFromLookup(athleteName, stored, lookUpAthleteBests([athleteName]));
 }
 
 /**
@@ -264,10 +176,7 @@ async function getLastYearBestsUncached(athleteName: string): Promise<YearBests>
  * answer get it and names without one are left out of the result (it
  * rejects when no name has one).
  */
-export async function getLastYearBestsBatch(
-  names: string[],
-  options: { fetchMissing?: boolean } = {},
-): Promise<Record<string, YearBests>> {
+export async function getLastYearBestsBatch(names: string[]): Promise<Record<string, YearBests>> {
   const uniqueNames = Array.from(new Set(names.filter(Boolean)));
   const byName: Record<string, YearBests> = {};
 
@@ -279,106 +188,109 @@ export async function getLastYearBestsBatch(
   });
 
   const missingMemory = uniqueNames.filter((name) => byName[name] == null);
-  // Stale stored answers with real numbers, shown when no lookup runs.
+  const stored: Record<string, StoredAthleteBests> =
+    missingMemory.length > 0 ? await getStoredAthleteBestsForNames(missingMemory) : {};
+  // Stale stored answers with real numbers, shown when no lookup answers.
   const staleByName: Record<string, YearBests> = {};
-  if (missingMemory.length > 0) {
-    const stored = await getStoredAthleteBestsForNames(missingMemory);
-    missingMemory.forEach((name) => {
-      const entry = stored[name];
-      if (!entry) return;
-      // A fresh entry is final, "no results" included (it expires sooner).
-      // A stale one is looked up again, which is also what gives rows
-      // stored before entries carried a time another chance.
-      if (entry.isFresh) {
-        const result = fromStoredBests(entry.bests);
-        cacheBests(name, result, entry.fetchedAt);
-        byName[name] = result;
-        return;
-      }
-      const stale = staleRealBests(entry);
-      if (stale) staleByName[name] = stale;
-    });
-  }
+  missingMemory.forEach((name) => {
+    const entry = stored[name];
+    if (!entry) return;
+    // A fresh entry is final, "no results" included (it expires sooner).
+    // A stale one is looked up again, which is also what gives rows
+    // stored before entries carried a time another chance.
+    if (entry.isFresh) {
+      const result = fromStoredBests(entry.bests);
+      cacheBests(name, result, entry.fetchedAt);
+      byName[name] = result;
+      return;
+    }
+    const stale = staleRealBests(entry);
+    if (stale) staleByName[name] = stale;
+  });
 
-  const missing = uniqueNames.filter((name) => byName[name] == null);
-  if (options.fetchMissing === false) {
-    missing.forEach((name) => {
-      byName[name] = staleByName[name] ?? ZERO_BESTS;
-    });
+  // Names a row (or another batch) is already looking up join that lookup
+  // instead of asking again. Checked after the storage read, with no await
+  // before this batch registers its own names below.
+  const joined = new Map<string, Promise<YearBests>>();
+  const missing = uniqueNames.filter((name) => {
+    if (byName[name] != null) return false;
+    const single = inFlight.get(name);
+    if (single) {
+      joined.set(name, single);
+      return false;
+    }
+    const batch = lookupsInFlight.get(name);
+    if (batch) {
+      joined.set(name, settleFromLookup(name, batch.stored, batch.lookup));
+      return false;
+    }
+    return true;
+  });
+  const settleJoined = async () => {
+    for (const [name, pending] of joined) {
+      try {
+        byName[name] = await pending;
+      } catch {
+        // That lookup's own caller hears about it; this one leaves it out.
+      }
+    }
+  };
+  if (missing.length === 0) {
+    await settleJoined();
     return byName;
   }
 
-  if (missing.length > 0) {
-    const cutoffDate = getHistoryCutoffDate(YEAR_BESTS_YEARS);
-    let fetched: Awaited<ReturnType<typeof fetchApiYearBestsByNames>>;
-    try {
-      fetched = await fetchApiYearBestsByNames(missing, cutoffDate);
-    } catch (error) {
-      // Offline or failed. The stale copies are better than nothing; with
-      // none at all the caller still gets the failure. A name with no stale
-      // copy is left out rather than given zeros: nothing answered that it
-      // has no results.
-      if (!missing.some((name) => staleByName[name])) throw error;
+  const lookup = lookUpAthleteBests(missing);
+  if (missing.length <= JOINABLE_LOOKUP_MAX_NAMES) {
+    missing.forEach((name) => lookupsInFlight.set(name, { lookup, stored: stored[name] }));
+    const forget = () => {
       missing.forEach((name) => {
-        const stale = staleByName[name];
-        if (stale) byName[name] = stale;
+        if (lookupsInFlight.get(name)?.lookup === lookup) lookupsInFlight.delete(name);
       });
-      return byName;
-    }
-    // The API keys its answer by the cleaned name (trimmed, whitespace
-    // folded), so a roster spelling like ' Jane Doe' never matched its own
-    // row under the raw key and was persisted as "no results". Match the way
-    // `getMostRecentMeetBestsBatch` already does.
-    const fetchedByNormalized = new Map<string, (typeof fetched)[string]>();
-    for (const [key, row] of Object.entries(fetched)) {
-      fetchedByNormalized.set(normalizeAthleteName(key), row);
-    }
-    const persisted: Record<string, YearBests> = {};
-
-    const emptyNames: string[] = [];
-    missing.forEach((name) => {
-      const row = fetchedByNormalized.get(normalizeAthleteName(name));
-      const bests = row
-        ? {
-            bestSnatch: row.bestSnatch || 0,
-            bestCJ: row.bestCJ || 0,
-            bestTotal: row.bestTotal || 0,
-          }
-        : ZERO_BESTS;
-      if (!hasRealBests(bests)) {
-        emptyNames.push(name);
-        return;
-      }
-      byName[name] = bests;
-      cacheBests(name, bests);
-      persisted[name] = bests;
-    });
-
-    // Athletes with nothing inside the window: show their most recent
-    // meet's numbers instead of "—".
-    if (emptyNames.length > 0) {
-      const fallbacks = await getMostRecentMeetBestsBatch(emptyNames);
-      emptyNames.forEach((name) => {
-        if (!fallbacks) {
-          // The fallback lookup failed: not an answer, so not stored.
-          byName[name] = staleByName[name] ?? ZERO_BESTS;
-          return;
-        }
-        // Both lookups answered: all-zero is the API's "no results", stored
-        // under the shorter empty TTL.
-        const bests = fallbacks[name] ?? ZERO_BESTS;
-        byName[name] = bests;
-        cacheBests(name, bests);
-        persisted[name] = bests;
-      });
-    }
-
-    await persistBests(persisted);
+    };
+    // Both branches, so a failed lookup is not also an unhandled rejection here.
+    lookup.then(forget, forget);
   }
 
+  let result: AthleteBestsLookup;
+  try {
+    result = await lookup;
+  } catch (error) {
+    await settleJoined();
+    // Offline or failed. The stale copies are better than nothing; with
+    // none at all the caller still gets the failure. A name with no stale
+    // copy is left out rather than given zeros: nothing answered that it
+    // has no results.
+    if (!missing.some((name) => staleByName[name])) throw error;
+    missing.forEach((name) => {
+      const stale = staleByName[name];
+      if (stale) byName[name] = stale;
+    });
+    return byName;
+  }
+  await settleJoined();
+
+  missing.forEach((name) => {
+    const answer = result.answered[name];
+    if (!answer) {
+      // The most-recent-meet lookup failed: not an answer, so not memoized.
+      byName[name] = staleByName[name] ?? ZERO_BESTS;
+      return;
+    }
+    const bests = fromStoredBests(answer);
+    byName[name] = bests;
+    cacheBests(name, bests);
+  });
   return byName;
 }
 
+/**
+ * Warms the bests of the names the start list opens on, so expanding a row
+ * reads them from memory instead of sending its own requests. The caller
+ * caps the names (`YEAR_BESTS_PREFETCH_NAME_CAP`), so this is one
+ * `results:bests` request plus, for the names with nothing in the window,
+ * one `latest_only` request. A failure is left to the rows' own lookups.
+ */
 export function preloadYearBests(names: string[]): void {
-  void getLastYearBestsBatch(names, { fetchMissing: false });
+  getLastYearBestsBatch(names).catch(() => {});
 }

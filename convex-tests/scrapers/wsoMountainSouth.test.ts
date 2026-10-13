@@ -14,6 +14,10 @@ describe('Mountain South WSO PDFs (port of scraper_pdf_mountainsouth.py)', () =>
     expect(mountainSouthSection('OPEN MEN - SNATCH')).toEqual(['Senior', 'Men']);
     expect(mountainSouthSection('JUNIOR WOMEN U20 - TOTAL')).toEqual(['Junior', 'Women']);
     expect(mountainSouthSection('YOUTH MEN U15 - CLEAN & JERK')).toEqual(['U15', 'Men']);
+    expect(mountainSouthSection('YOUTH MEN U13 - SNATCH')).toEqual(['U13', 'Men']);
+    // The under-11 sections are U11, as every other WSO stores them, not a "Youth" group.
+    expect(mountainSouthSection('YOUTH MEN U11 - SNATCH')).toEqual(['U11', 'Men']);
+    expect(mountainSouthSection('YOUTH WOMEN U11 - TOTAL')).toEqual(['U11', 'Women']);
     expect(mountainSouthSection('YOUTH MEN - SNATCH')).toEqual(['Youth', 'Men']);
     expect(mountainSouthSection('MASTERS WOMEN 35-39 - SNATCH')).toEqual(['Masters 35', 'Women']);
   });

@@ -3,6 +3,7 @@ import {
   calculateWeighInTime,
   formatTo12Hour,
   hasSessionPassedAutoUnsaveWindow,
+  resolveWeighInTime,
 } from "@/utils/time";
 
 describe("formatTo12Hour", () => {
@@ -108,5 +109,23 @@ describe("hasSessionPassedAutoUnsaveWindow", () => {
 
   it("returns false for an invalid date", () => {
     expect(hasSessionPassedAutoUnsaveWindow(new Date("nope"), now)).toBe(false);
+  });
+});
+
+describe("resolveWeighInTime", () => {
+  it("prefers the published weigh-in", () => {
+    expect(resolveWeighInTime("9:30 AM", "7:00 AM")).toBe("7:00 AM");
+    expect(resolveWeighInTime("", " 7:15 AM ")).toBe("7:15 AM");
+  });
+
+  it("falls back to two hours before the start", () => {
+    expect(resolveWeighInTime("9:30 AM", "")).toBe("7:30 AM");
+    expect(resolveWeighInTime("9:30 AM", null)).toBe("7:30 AM");
+    expect(resolveWeighInTime("9:30 AM", undefined)).toBe("7:30 AM");
+  });
+
+  it("is unknown with neither", () => {
+    expect(resolveWeighInTime("", "")).toBe("");
+    expect(resolveWeighInTime(null, null)).toBe("");
   });
 });
