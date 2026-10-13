@@ -6,6 +6,7 @@ use crate::types::club::ClubMeetStats;
 use crate::utils::backend::{queries, query};
 use crate::utils::names::{NameKind, clubs, not_found, not_found_message};
 use crate::utils::output::{self, Report};
+use crate::utils::stats::number;
 
 /// Analyze club performance stats for a meet.
 ///
@@ -24,26 +25,27 @@ pub struct ClubResultsArgs {
 }
 
 pub async fn run(args: ClubResultsArgs) -> Result<()> {
-    let stats = get_club_meet_stats(&args.club, &args.meet).await?;
-    if let Err(error) = validate_stats(&stats, &args.club, &args.meet) {
+    // Trimmed once, so the query and the known-club check below see the same name.
+    let club = args.club.trim();
+    let meet = args.meet.trim();
+    let stats = get_club_meet_stats(club, meet).await?;
+    if let Err(error) = validate_stats(&stats, club, meet) {
         let message = error.to_string();
         let clubs = clubs().await.unwrap_or_default();
-        let club_known = clubs
-            .iter()
-            .any(|club| club.eq_ignore_ascii_case(args.club.trim()));
-        return Err(if !clubs.is_empty() && !club_known {
-            anyhow!(not_found_message(
-                NameKind::Club,
-                &args.club,
-                &clubs,
-                message
-            ))
+        return Err(if !clubs.is_empty() && !club_known(&clubs, club) {
+            anyhow!(not_found_message(NameKind::Club, club, &clubs, message))
         } else {
-            not_found(NameKind::Meet, &args.meet, message).await
+            not_found(NameKind::ResultsMeet, meet, message).await
         });
     }
-    output::emit(report(&args.club, &args.meet, &stats));
+    output::emit(report(club, meet, &stats));
     Ok(())
+}
+
+/// Whether `club` is a known club exactly as the stats query was given it: the query matches
+/// the name exactly, so a name differing in case or spacing is a club to suggest.
+pub fn club_known(clubs: &[String], club: &str) -> bool {
+    clubs.iter().any(|known| known == club)
 }
 
 pub async fn get_club_meet_stats(club: &str, meet: &str) -> Result<ClubMeetStats> {
@@ -86,7 +88,7 @@ pub fn report(club: &str, meet: &str, stats: &ClubMeetStats) -> Report {
         "6 for 6",
     ]);
     performance.add_row(vec![
-        format!("{}kg", format_weight(stats.total_weight_lifted)),
+        format!("{}kg", number(stats.total_weight_lifted)),
         format!("{}%", stats.snatch_make_rate),
         format!("{}%", stats.cj_make_rate),
         format!("{}%", stats.combined_make_rate),
@@ -128,10 +130,10 @@ pub fn report(club: &str, meet: &str, stats: &ClubMeetStats) -> Report {
             athletes.add_row(vec![
                 result.name.clone(),
                 result.weight_class.clone(),
-                format_weight(result.body_weight),
-                format_weight(result.snatch_best),
-                format_weight(result.cj_best),
-                format_weight(result.total),
+                number(result.body_weight),
+                number(result.snatch_best),
+                number(result.cj_best),
+                number(result.total),
                 yes_no(result.is_pr),
                 yes_no(result.perfect_lifts),
                 medal_name(result.snatch_medal.as_deref()),
@@ -160,21 +162,6 @@ fn medal_name(medal: Option<&str>) -> String {
             }
         })
         .unwrap_or_else(|| "-".to_string())
-}
-
-fn format_weight(value: f64) -> String {
-    if value == 0.0 {
-        return "0".to_string();
-    }
-
-    if value.fract() == 0.0 {
-        format!("{value:.0}")
-    } else {
-        format!("{value:.2}")
-            .trim_end_matches('0')
-            .trim_end_matches('.')
-            .to_string()
-    }
 }
 
 #[cfg(test)]
@@ -213,6 +200,14 @@ mod tests {
             combined_make_rate: 75,
             athlete_results: vec![athlete_result()],
         }
+    }
+
+    #[test]
+    fn a_club_is_known_only_as_the_query_was_given_it() {
+        let clubs = vec!["Florida".to_string()];
+        assert!(club_known(&clubs, "Florida"));
+        assert!(!club_known(&clubs, " Florida "));
+        assert!(!club_known(&clubs, "florida"));
     }
 
     #[test]
@@ -300,10 +295,10 @@ mod tests {
 
     #[test]
     fn formats_fractional_and_whole_weights_without_noise() {
-        assert_eq!(format_weight(187.5), "187.5");
-        assert_eq!(format_weight(200.0), "200");
-        assert_eq!(format_weight(82.25), "82.25");
-        assert_eq!(format_weight(-0.0), "0");
+        assert_eq!(number(187.5), "187.5");
+        assert_eq!(number(200.0), "200");
+        assert_eq!(number(82.25), "82.25");
+        assert_eq!(number(-0.0), "0");
     }
 
     #[test]

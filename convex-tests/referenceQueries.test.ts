@@ -1,7 +1,7 @@
 import { computeAdaptiveRecords, RANKING_DIVISIONS } from '../convex/lib/referenceData';
 import { natKey, REF_VIEWS } from '../convex/lib/viewKeys';
 import { jsonChunks, writeView } from '../convex/lib/views';
-import { clubAthletes, clubMeetStats, clubs, nationalRankings, wsoAthletes, wsoList } from '../convex/reference';
+import { clubAthletes, clubMeetStats, clubs, nationalRankings, registrationWsos, wsoAthletes, wsoList } from '../convex/reference';
 import { storeClubs } from '../convex/views';
 import { clubKey, clubLabels } from '../convex/lib/clubs';
 import { fakeDb, handlerOf } from './fakeDb';
@@ -249,3 +249,21 @@ describe('one club under several spellings (#363) and its meets by date (#341)',
   });
 });
 
+describe('registration WSO names', () => {
+  it('lists each WSO registrations name once, without missing or blank ones', async () => {
+    const fake = fakeDb({
+      athletes: [
+        { wso: 'Mountain North' },
+        { wso: 'California North Central' },
+        {},
+        { wso: 'Mountain North' },
+        { wso: '' },
+        { wso: ' ' },
+        { wso: 'Florida' },
+      ],
+    });
+    expect(await query(registrationWsos, fake.db, {})).toEqual(['California North Central', 'Florida', 'Mountain North']);
+    // One read per WSO (and the blank one), not one per registration.
+    expect(fake.reads.count).toBeLessThanOrEqual(5);
+  });
+});
