@@ -2,8 +2,8 @@ import { isMeetName, type MeetName } from '@/data/types/meet';
 import type { SavedSession } from '@/lib/saved-sessions-store';
 import type { SessionScheduleLookup } from '@/types/saved';
 import type { Schedule } from '@/types/schedule';
+import { platformSessionTimes } from '@/lib/schedule-lookup';
 import { makeLookupKey } from '@/utils/session';
-import { calculateWeighInTime } from '@/utils/time';
 
 /** Per-meet `session-platform` → schedule row, as `SessionCard` reads it. */
 export type SessionLookupByMeet = Map<MeetName, Map<string, SessionScheduleLookup>>;
@@ -32,9 +32,10 @@ export function savedScheduleMeet(
 /**
  * Indexes one meet's schedule by `makeLookupKey(session, platform)`.
  *
- * A platform's own start time wins over the session's. `weighInTime` is ""
- * when the row has no start time, which the card and the calendar export both
- * read as "unknown".
+ * A platform's own start time wins over the session's; the weigh-in is the
+ * platform's published one, else start minus 2 h (`platformSessionTimes`).
+ * `weighInTime` is "" when the row has neither, which the card and the
+ * calendar export both read as "unknown".
  */
 export function buildSessionScheduleLookup(
   schedule: Schedule,
@@ -43,12 +44,12 @@ export function buildSessionScheduleLookup(
   for (const day of schedule) {
     for (const session of day.sessions) {
       for (const platformInfo of session.platforms) {
-        const startTime = platformInfo.platformStartTime || session.startTime;
+        const { startTime, weighInTime } = platformSessionTimes(session, platformInfo);
         lookup.set(makeLookupKey(session.number, platformInfo.platform), {
           displayDate: day.date,
           fullDate: day.fullDate,
           startTime,
-          weighInTime: calculateWeighInTime(startTime),
+          weighInTime,
           weightClass: platformInfo.weightClass,
         });
       }

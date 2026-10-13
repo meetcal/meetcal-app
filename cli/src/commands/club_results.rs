@@ -108,7 +108,7 @@ pub fn report(club: &str, meet: &str, stats: &ClubMeetStats) -> Report {
         .headed("results", "RESULTS", performance)
         .headed("medals", "MEDALS", medals);
 
-    if !stats.athlete_results.is_empty() {
+    {
         let mut athletes = Table::new();
         athletes.set_header(vec![
             "Athlete",
@@ -140,7 +140,7 @@ pub fn report(club: &str, meet: &str, stats: &ClubMeetStats) -> Report {
             ]);
         }
 
-        report = report.headed("athletes", "ATHLETE RESULTS", athletes);
+        report = report.headed_if_any("athletes", "ATHLETE RESULTS", athletes);
     }
 
     report

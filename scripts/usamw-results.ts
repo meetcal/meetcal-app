@@ -6,15 +6,22 @@
  *   bun scripts/usamw-results.ts --meet "2026 Elite Invitational" --date 2026-07-09 \
  *     --pdf https://drive.google.com/file/d/…/view --pdf https://… [--adaptive] [--dry-run] [--prod]
  *
- * PDFs may be Google Drive links. `--dry-run` prints what would be written;
- * `--prod` writes to the production deployment (otherwise the dev one).
- * Rows are upserted on (event, meet, folded name, age category), so a re-run
- * updates in place.
+ * PDFs may be Google Drive links. `--dry-run` prints what would be written,
+ * and the rows that fail the checks; `--prod` writes to the production
+ * deployment (otherwise the dev one). Rows are upserted on (event, meet,
+ * folded name, age category), so a re-run updates in place.
+ *
+ * Every row is checked first (`usamwRowProblems`: a body weight out of range,
+ * a total that is not the bests' sum, attempts going down, a typo). A row
+ * that fails is printed with its PDF line, and nothing is written unless
+ * `--skip-invalid` is passed, which writes only the rows that pass. A PDF
+ * whose misses were not read (none red, most totals off) is refused either
+ * way: every attempt in it would be stored as made.
  */
 import { spawnSync } from 'node:child_process';
 import { parseArgs } from 'node:util';
 import * as mupdf from 'mupdf';
-import { parseUsamwResults, type PdfWord, type UsamwResult } from '../convex/scrapers/parse/usamwResults';
+import { checkUsamwRows, parseUsamwRows, type PdfWord, type UsamwCheck, type UsamwResult } from '../convex/scrapers/parse/usamwResults';
 
 const TIMEOUT_MS = 45_000;
 
@@ -96,14 +103,25 @@ export function pdfWords(bytes: Uint8Array): PdfWord[][] {
   return pages;
 }
 
-export async function scrape(meet: string, date: string, urls: string[], adaptive: boolean): Promise<UsamwResult[]> {
-  const rows: UsamwResult[] = [];
+export type ScrapeResult = { rows: UsamwResult[]; rejected: UsamwCheck['rejected']; undetectedMisses: string[] };
+
+/** Every PDF's rows, checked one PDF at a time (each PDF marks misses its own way). */
+export async function scrape(meet: string, date: string, urls: string[], adaptive: boolean): Promise<ScrapeResult> {
+  const out: ScrapeResult = { rows: [], rejected: [], undetectedMisses: [] };
   for (const url of urls) {
-    const parsed = parseUsamwResults(pdfWords(await fetchPdf(url)), meet, date, adaptive);
-    console.log(`Parsed ${parsed.length} row(s) from ${url}`);
-    rows.push(...parsed);
+    const parsed = parseUsamwRows(pdfWords(await fetchPdf(url)), meet, date, adaptive);
+    const checked = checkUsamwRows(parsed);
+    console.log(`Parsed ${parsed.length} row(s) from ${url}: ${checked.rows.length} pass the checks, ${checked.rejected.length} do not`);
+    if (checked.missesUndetected) out.undetectedMisses.push(url);
+    out.rows.push(...checked.rows);
+    out.rejected.push(...checked.rejected);
   }
-  return rows;
+  return out;
+}
+
+/** Prints the rows that fail the checks, each with its PDF line (`*` marks a red attempt). */
+function reportRejected(rejected: ScrapeResult['rejected']) {
+  for (const { name, line, problems } of rejected) console.error(`  ${name}: ${problems.join('; ')}\n    ${line}`);
 }
 
 function ingest(rows: UsamwResult[], prod: boolean) {
@@ -129,25 +147,38 @@ async function main() {
       pdf: { type: 'string', multiple: true },
       adaptive: { type: 'boolean', default: false },
       'dry-run': { type: 'boolean', default: false },
+      'skip-invalid': { type: 'boolean', default: false },
       prod: { type: 'boolean', default: false },
     },
   });
   const meet = values.meet?.trim();
   if (!meet || !values.date || !values.pdf?.length) {
-    console.error('Usage: bun scripts/usamw-results.ts --meet "Meet Name" --date YYYY-MM-DD --pdf URL [--pdf URL] [--adaptive] [--dry-run] [--prod]');
+    console.error('Usage: bun scripts/usamw-results.ts --meet "Meet Name" --date YYYY-MM-DD --pdf URL [--pdf URL] [--adaptive] [--dry-run] [--skip-invalid] [--prod]');
     process.exit(2);
   }
   if (!/^\d{4}-\d{2}-\d{2}$/.test(values.date)) {
     console.error('--date must be YYYY-MM-DD');
     process.exit(2);
   }
-  const rows = await scrape(meet, values.date, values.pdf, values.adaptive ?? false);
-  if (!rows.length) throw new Error(`Parsed 0 lifting result rows for ${meet}`);
+  const { rows, rejected, undetectedMisses } = await scrape(meet, values.date, values.pdf, values.adaptive ?? false);
+  if (!rows.length && !rejected.length) throw new Error(`Parsed 0 lifting result rows for ${meet}`);
+  if (rejected.length) {
+    console.error(`${rejected.length} row(s) fail the checks:`);
+    reportRejected(rejected);
+  }
+  const refusal = undetectedMisses.length
+    ? `No attempt in ${undetectedMisses.join(', ')} reads as a miss, yet most totals disagree with the bests: the PDF marks misses some way other than red text. Nothing written.`
+    : rejected.length && !values['skip-invalid']
+      ? `Nothing written: fix the rows above, or pass --skip-invalid to write only the ${rows.length} that pass.`
+      : null;
   if (values['dry-run']) {
     console.log(JSON.stringify(rows, null, 1));
-    console.log(`${rows.length} row(s) parsed; nothing written (--dry-run).`);
+    console.log(`${rows.length} row(s) pass the checks, ${rejected.length} do not; nothing written (--dry-run).`);
+    if (refusal) console.error(refusal);
     return;
   }
+  if (refusal) throw new Error(refusal);
+  if (!rows.length) throw new Error(`No row of ${meet} passes the checks; nothing written`);
   const totals = ingest(rows, values.prod ?? false);
   console.log(`USAMW results for ${meet}: ${rows.length} parsed, ${totals.inserted} inserted, ${totals.updated} updated, ${totals.unchanged} unchanged`);
 }

@@ -157,6 +157,33 @@ describe("useStartListData", () => {
     expect(hook.refreshing).toBe(false);
   });
 
+  // Regression (#315): a forced refresh toasted only when both requests
+  // failed, so a timed-out roster behind a good schedule left the stale
+  // roster up with no word that it was stale.
+  it("tells the user when a pull-to-refresh gets the schedule but not the roster", async () => {
+    cache(Date.now());
+    await mount();
+    jest.mocked(fetchAthletesWithSession).mockRejectedValue(new Error("timeout"));
+    await act(async () => {
+      await hook.refresh();
+    });
+    expect(showToast).toHaveBeenCalledWith(expect.objectContaining({ type: "error" }));
+    expect(hook.athletes).toEqual(CACHED.athletes);
+    expect(hook.schedule).toEqual(FRESH.schedule);
+    expect(hook.refreshing).toBe(false);
+  });
+
+  it("does not toast a pull-to-refresh whose roster arrived", async () => {
+    cache(Date.now());
+    await mount();
+    jest.mocked(fetchSchedule).mockRejectedValue(new Error("down"));
+    await act(async () => {
+      await hook.refresh();
+    });
+    expect(showToast).not.toHaveBeenCalled();
+    expect(hook.athletes).toEqual(FRESH.athletes);
+  });
+
   it("does not let a slower load for the previous meet overwrite the new one", async () => {
     let resolveA!: (value: unknown) => void;
     jest

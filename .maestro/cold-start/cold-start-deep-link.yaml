@@ -1,0 +1,19 @@
+appId: ${APP_ID}
+name: A deep link that cold-starts the app opens on top of the tabs (#357)
+# Needs a build that loads its own bundle at launch (preview or release).
+# A development client cold-started by a link shows its launcher instead, so
+# this flow lives outside the default `.maestro` run; see docs/maestro.md.
+---
+- stopApp
+- openLink: "meetcal:///shared-screens/schedule-details?sessionNumber=1&platform=Red"
+- extendedWaitUntil:
+    visible: "Session 1"
+    timeout: 30000
+# The header's Back button (the same point flow 03 taps to leave details).
+- tapOn:
+    point: "10%,10%"
+- extendedWaitUntil:
+    visible:
+      id: "schedule-screen"
+    timeout: 30000
+- assertVisible: "Schedule tab"

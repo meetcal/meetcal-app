@@ -2,6 +2,8 @@ import * as FileSystem from "expo-file-system";
 import * as Sharing from "expo-sharing";
 
 import type { LiftResult } from "@/data/types/athletes";
+import { isSamePlatform } from "@/lib/athletes";
+import { platformSessionTimes } from "@/lib/schedule-lookup";
 import {
   compareCalendarDates,
   compareStartTimes,
@@ -30,33 +32,66 @@ export interface SessionExportRow {
   weightClass: string;
 }
 
-/** The athletes that have a session the schedule can place, in input order. */
+/** The Start List's athletes split into the rows an export can place and the rest. */
+export interface SessionExportRows {
+  /** The athletes that have a session the schedule can place, in input order. */
+  rows: SessionExportRow[];
+  /**
+   * Athletes entered in a session the schedule has no row for (not published
+   * yet, or the schedule request failed). Exports leave them out and say so.
+   */
+  unscheduled: LiftResult[];
+}
+
+/**
+ * Places each athlete in their session's schedule row. The start time is the
+ * platform's own and the weigh-in is resolved for that platform
+ * (`platformSessionTimes`), as on every other screen; it used to be the
+ * session-level published value whatever the platform.
+ */
 export function buildSessionExportRows(
   athletes: readonly LiftResult[],
   getSessionDetails: (sessionNumber: number) => SessionDetails | null,
-): SessionExportRow[] {
+): SessionExportRows {
   const rows: SessionExportRow[] = [];
+  const unscheduled: LiftResult[] = [];
   for (const athlete of athletes) {
     if (!athlete.session) continue;
     const sessionNumber = athlete.session.number;
     const details = getSessionDetails(sessionNumber);
-    if (!details) continue;
+    if (!details) {
+      unscheduled.push(athlete);
+      continue;
+    }
     const platform = athlete.session.platform || "";
-    const platformDetails = details.platforms.find(
-      (candidate) => candidate.platform === athlete.session?.platform,
+    const platformDetails = details.platforms.find((candidate) =>
+      isSamePlatform(candidate.platform, platform),
     );
+    const { startTime, weighInTime } = platformSessionTimes(details, platformDetails);
     rows.push({
       athlete,
       sessionNumber,
       platform,
       date: details.date,
       displayDate: details.displayDate,
-      startTime: platformDetails?.platformStartTime || details.startTime,
-      weighInTime: details.weighInTime,
+      startTime,
+      weighInTime,
       weightClass: athlete.weightClass,
     });
   }
-  return rows;
+  return { rows, unscheduled };
+}
+
+/**
+ * The warning shown before sharing a schedule image or CSV that leaves out
+ * some of the `total` athletes on screen (`total - included` of them have no
+ * session on the schedule), or `null` when every athlete is in it.
+ */
+export function describeIncompleteShare(total: number, included: number): string | null {
+  const missing = total - included;
+  if (missing <= 0) return null;
+  const athletes = (count: number) => `${count} athlete${count === 1 ? "" : "s"}`;
+  return `${athletes(missing)} of ${total} ${missing === 1 ? "has" : "have"} no session on the schedule yet and won't be included. Share anyway?`;
 }
 
 /** One CSV cell: quoted when it holds a quote, comma or newline. */

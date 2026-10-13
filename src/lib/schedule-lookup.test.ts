@@ -1,4 +1,4 @@
-import { findSessionPlatform } from '@/lib/schedule-lookup';
+import { findSessionPlatform, platformSessionTimes } from '@/lib/schedule-lookup';
 import type { Schedule } from '@/types/schedule';
 
 const schedule: Schedule = [
@@ -62,5 +62,47 @@ describe('findSessionPlatform', () => {
     expect(findSessionPlatform(schedule, 9, 'Red')).toBeNull();
     expect(findSessionPlatform([], 1, 'Red')).toBeNull();
     expect(findSessionPlatform(schedule, Number.NaN, 'Red')).toBeNull();
+  });
+});
+
+// #281: one weigh-in rule for every screen.
+describe('platformSessionTimes', () => {
+  const session = { startTime: '9:00 AM', weighInTime: '7:00 AM' };
+
+  it("uses the platform's own start and published weigh-in", () => {
+    expect(
+      platformSessionTimes(session, { platformStartTime: '9:30 AM', platformWeighInTime: '7:15 AM' }),
+    ).toEqual({ startTime: '9:30 AM', weighInTime: '7:15 AM' });
+  });
+
+  it('computes start minus 2 h when the platform published none', () => {
+    expect(
+      platformSessionTimes(session, { platformStartTime: '9:30 AM', platformWeighInTime: '' }),
+    ).toEqual({ startTime: '9:30 AM', weighInTime: '7:30 AM' });
+  });
+
+  it("uses a cached schedule's session weigh-in only for a platform starting with the session", () => {
+    expect(platformSessionTimes(session, { platformStartTime: '9:00 AM' })).toEqual({
+      startTime: '9:00 AM',
+      weighInTime: '7:00 AM',
+    });
+    expect(platformSessionTimes(session, { platformStartTime: '9:30 AM' })).toEqual({
+      startTime: '9:30 AM',
+      weighInTime: '7:30 AM',
+    });
+    expect(platformSessionTimes(session, null)).toEqual({ startTime: '9:00 AM', weighInTime: '7:00 AM' });
+  });
+
+  it("keeps a platform untimed rather than giving it the first platform's start", () => {
+    // Red published 9:00 (the session's start comes from its row); Blue has none.
+    expect(
+      platformSessionTimes(session, { platformStartTime: '', platformWeighInTime: '' }),
+    ).toEqual({ startTime: '', weighInTime: '' });
+  });
+
+  it('is unknown for an untimed row', () => {
+    expect(
+      platformSessionTimes({ startTime: '', weighInTime: '' }, { platformStartTime: '', platformWeighInTime: '' }),
+    ).toEqual({ startTime: '', weighInTime: '' });
   });
 });

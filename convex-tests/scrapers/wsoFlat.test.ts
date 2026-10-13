@@ -32,6 +32,24 @@ describe('flat WSO sheets (port of scraper_ga_pnw.py)', () => {
     ]);
   });
 
+  // California North's hidden tab of the classes retired on 1 August 2026 ends every row then.
+  it('skips rows whose endDate has passed, so a tab of retired records parses to nothing', () => {
+    const csv = [
+      'startDate,endDate,ageGroup,gender,bodyWeightMin,bodyWeightMax,lift,record',
+      '2025-05-30,2026-08-01,Open,M,,65,Snatch,120',
+      '2026-08-01,,Open,M,,70,Snatch,125',
+      '2026-08-01,2026-10-12,Open,M,,75,Snatch,130',
+    ].join('\n');
+    const today = new Date('2026-10-12T12:00:00Z');
+    expect(parseFlatSheet(csv, 'California North', FLAT_COLUMNS, today).map((r) => [r.weight_class, r.snatch_record])).toEqual([
+      ['70', 125],
+      ['75', 130],
+    ]);
+    expect(parseFlatSheet(csv.split('\n').slice(0, 2).join('\n'), 'California North', FLAT_COLUMNS, today)).toEqual([]);
+    // Before the change, the same rows still stood.
+    expect(parseFlatSheet(csv, 'California North', FLAT_COLUMNS, new Date('2026-07-01T12:00:00Z'))).toHaveLength(3);
+  });
+
   it('reads the tab a sheet URL points at', () => {
     expect(gidOf('https://docs.google.com/spreadsheets/d/abc/edit?gid=35344992#gid=35344992')).toBe('35344992');
     expect(gidOf('https://docs.google.com/spreadsheets/d/abc/edit#gid=0')).toBe('0');

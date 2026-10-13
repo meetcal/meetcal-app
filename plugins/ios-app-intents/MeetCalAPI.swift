@@ -83,6 +83,13 @@ struct APIYearBests: Decodable {
     let best_snatch: Double?
     let best_cj: Double?
     let best_total: Double?
+
+    /// `results:bests` answers every requested name, with zeros for a name it
+    /// has no results for in the window (a typo, a lifter who has not
+    /// competed lately). Zeros are "no bests", never a 0 kg best.
+    var hasAnyBest: Bool {
+        [best_snatch, best_cj, best_total].contains { ($0 ?? 0) > 0 }
+    }
 }
 
 struct APIQualifyingTotalRow: Decodable {
@@ -133,6 +140,71 @@ enum APIDateFormat {
         output.dateStyle = .medium
         output.timeStyle = .none
         return output.string(from: date)
+    }
+}
+
+/// Calendar-day labels for the schedule. A `YYYY-MM-DD` meet date is a
+/// calendar date, so it is parsed and formatted in UTC on both sides: the
+/// device zone never moves it to the day before.
+enum APIDayFormat {
+    private static let utc = TimeZone(identifier: "UTC") ?? TimeZone(secondsFromGMT: 0) ?? .current
+
+    /// "Sat, Jun 20" for `2026-06-20`; nil for anything that is not a date
+    /// ("TBD", empty).
+    static func short(_ iso: String?) -> String? {
+        guard let iso, iso.count >= 10 else { return nil }
+        let input = DateFormatter()
+        input.locale = Locale(identifier: "en_US_POSIX")
+        input.timeZone = utc
+        input.dateFormat = "yyyy-MM-dd"
+        input.isLenient = false
+        guard let date = input.date(from: String(iso.prefix(10))) else { return nil }
+        let output = DateFormatter()
+        output.timeZone = utc
+        output.setLocalizedDateFormatFromTemplate("EEEMMMd")
+        return output.string(from: date)
+    }
+}
+
+/// Session clock times as the app shows them. `meets:schedule` sends times
+/// as stored ("14:00:00"); the app formats them through `formatApiTime`
+/// (lib/api/meetcal-api.ts) and `parseClockTime` (utils/timezone.ts), and
+/// this accepts the same shapes: `H:MM`, `H:MM:SS`, `h:mm AM` and
+/// `h:mm:ss PM`. Wall-clock text only, never a `Date`, so no zone applies.
+enum APITimeFormat {
+    /// "2:00 PM" for "14:00:00"; anything unreadable as sent.
+    static func display(_ raw: String) -> String {
+        let input = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let (hour, minute) = parse(input) else { return input }
+        let period = hour >= 12 ? "PM" : "AM"
+        let displayHour = hour % 12 == 0 ? 12 : hour % 12
+        return "\(displayHour):\(minute < 10 ? "0" : "")\(minute) \(period)"
+    }
+
+    /// Hour (0-23) and minute, or nil when `input` is not a clock time.
+    static func parse(_ input: String) -> (hour: Int, minute: Int)? {
+        var text = input.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
+        var period: String?
+        for candidate in ["AM", "PM"] where text.hasSuffix(candidate) {
+            period = candidate
+            text = String(text.dropLast(2)).trimmingCharacters(in: .whitespaces)
+        }
+        let parts = text.split(separator: ":", omittingEmptySubsequences: false).map(String.init)
+        guard parts.count == 2 || parts.count == 3,
+              parts.allSatisfy({ !$0.isEmpty && $0.allSatisfy { $0.isASCII && $0.isNumber } }),
+              parts[0].count <= 2,
+              parts.dropFirst().allSatisfy({ $0.count == 2 }),
+              let hour = Int(parts[0]),
+              let minute = Int(parts[1]),
+              minute <= 59,
+              (parts.count == 2 ? 0 : Int(parts[2]) ?? 60) <= 59
+        else { return nil }
+        if let period {
+            guard (1...12).contains(hour) else { return nil }
+            return (hour % 12 + (period == "PM" ? 12 : 0), minute)
+        }
+        guard hour <= 23 else { return nil }
+        return (hour, minute)
     }
 }
 
@@ -288,7 +360,10 @@ actor MeetCalAPI {
                 args: ["names": chunk, "cutoffDate": cutoff]
             )
             for row in part {
-                merged[row.name] = APIYearBests(best_snatch: row.best_snatch, best_cj: row.best_cj, best_total: row.best_total)
+                let bests = APIYearBests(best_snatch: row.best_snatch, best_cj: row.best_cj, best_total: row.best_total)
+                // A name with no bests is left out, so the map is empty for an
+                // unknown name instead of holding a row of zeros.
+                if bests.hasAnyBest { merged[row.name] = bests }
             }
         }
         return merged
