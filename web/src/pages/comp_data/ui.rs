@@ -1,5 +1,4 @@
 use super::models::RecordHolder;
-use crate::components::{footer::Footer, header::Header};
 use leptos::prelude::*;
 
 #[component]
@@ -10,14 +9,12 @@ pub(crate) fn DataPage(
     children: Children,
 ) -> impl IntoView {
     view! {
-        <Header />
         <section class=section_class>
             <p class="data-eyebrow">"Competition Data"</p>
             <h1>{heading}</h1>
             <p class="data-intro">{intro}</p>
             {children()}
         </section>
-        <Footer />
     }
 }
 
