@@ -3,31 +3,38 @@ use std::collections::{HashMap, HashSet};
 use super::{
     analytics::percentage,
     filters::filter_options,
-    loading::{load_error, load_meet_data},
+    format::{display_gender, display_weight_class},
+    loading::{Load, LoadState, load_error, load_meet_data, load_query},
     models::{Athlete, LiftingResult, Meet, UpcomingMeetsQuery, normalize},
     ui::{DataMetric, DataPage, DataStatus, DataTable, EmptyTableRow, FilterSelect, TableSkeleton},
 };
-use crate::utils::api::{queries, query, query_with};
+use crate::utils::api::{queries, query_with};
 use leptos::prelude::*;
 
 #[component]
 pub fn WsoDashboard() -> impl IntoView {
     let (meet, set_meet) = signal(String::new());
     let (wso, set_wso) = signal(String::new());
-    let upcoming = LocalResource::new(|| async {
-        query_with::<Vec<Meet>, _>(queries::UPCOMING_MEETS, &UpcomingMeetsQuery::current()).await
-    });
-    let completed =
-        LocalResource::new(|| async { query::<Vec<Meet>>(queries::COMPLETED_MEETS).await });
-    let wsos = LocalResource::new(|| async { query::<Vec<String>>(queries::WSO_LIST).await });
-    let athletes =
-        LocalResource::new(move || load_meet_data::<Athlete>(meet.get(), queries::MEET_ATHLETES));
-    let results = LocalResource::new(move || {
-        load_meet_data::<LiftingResult>(meet.get(), queries::MEET_RESULTS)
-    });
+    let upcoming_meets = Load::new(
+        || (),
+        |()| async {
+            query_with::<Vec<Meet>, _>(queries::UPCOMING_MEETS, &UpcomingMeetsQuery::current())
+                .await
+                .map_err(|error| error.to_string())
+        },
+    );
+    let completed_meets = load_query::<Vec<Meet>>(queries::COMPLETED_MEETS);
+    let athletes = Load::new(
+        move || meet.get(),
+        |meet| load_meet_data::<Athlete>(meet, queries::MEET_ATHLETES),
+    );
+    let results = Load::new(
+        move || meet.get(),
+        |meet| load_meet_data::<LiftingResult>(meet, queries::MEET_RESULTS),
+    );
     view! { <DataPage heading="WSO Meet Dashboard" intro="See participation, make rates, lifted volume, and athlete totals for one WSO at a meet.">
-        {move || upcoming.with(|upcoming| completed.with(|completed| match (upcoming, completed) {
-            (Some(Ok(upcoming)), Some(Ok(completed))) => {
+        {move || upcoming_meets.with(|upcoming| completed_meets.with(|completed| match (upcoming, completed) {
+            (LoadState::Ready(upcoming), LoadState::Ready(completed)) => {
                 let mut meets = upcoming.iter().chain(completed.iter()).map(|row| row.name.clone()).collect::<Vec<_>>();
                 meets.sort();
                 meets.dedup();
@@ -36,28 +43,54 @@ pub fn WsoDashboard() -> impl IntoView {
                         label="Meet"
                         placeholder="Choose a meet"
                         values=meets
-                        selected=meet.get()
+                        selected=meet
                         wide=true
                         on_select=move |value: String| {
                             set_meet.set(value);
                             set_wso.set(String::new());
                         }
                     />
-                    {move || wsos.with(|response| match response {
-                        Some(Ok(rows)) if !meet.get().is_empty() => {
-                            let options = filter_options(rows.iter().map(String::as_str));
-                            view! { <FilterSelect label="WSO" placeholder="Choose a WSO" values=options selected=wso.get() wide=true on_select=move |value| set_wso.set(value) /> }.into_any()
-                        }
-                        Some(Err(error)) => load_error("WSOs", error),
-                        _ => ().into_any(),
-                    })}
+                    // The WSOs the meet's athletes registered under, spelled as
+                    // the roster spells them: every one can be chosen, and each
+                    // matches its athletes.
+                    {move || if meet.with(String::is_empty) { ().into_any() } else {
+                        athletes.with(|state| match state {
+                            LoadState::Ready(rows) => {
+                                let options = roster_wsos(rows);
+                                if options.is_empty() {
+                                    view! { <DataStatus message="This meet’s start list doesn’t list athletes’ WSOs." /> }.into_any()
+                                } else {
+                                    view! { <FilterSelect label="WSO" placeholder="Choose a WSO" values=options selected=wso wide=true on_select=move |value| set_wso.set(value) /> }.into_any()
+                                }
+                            }
+                            LoadState::Failed(error) => load_error("the meet’s WSOs", error, move || athletes.retry()),
+                            LoadState::Loading => view! { <DataStatus message="Loading the meet’s WSOs…" /> }.into_any(),
+                        })
+                    }}
                 </div> }.into_any()
             }
-            (Some(Err(error)), _) | (_, Some(Err(error))) => load_error("meets", error),
+            (LoadState::Failed(error), _) | (_, LoadState::Failed(error)) => load_error("meets", error, move || {
+                upcoming_meets.retry_failed();
+                completed_meets.retry_failed();
+            }),
             _ => view! { <DataStatus message="Loading meets…" /> }.into_any(),
         }))}
-        {move || if wso.get().is_empty() { view! { <DataStatus message="Choose a meet and WSO to view its dashboard." /> }.into_any() } else { athletes.with(|athlete_response| results.with(|result_response| match (athlete_response, result_response) { (Some(Ok(athletes)), Some(Ok(results))) => dashboard(athletes, results, &wso.get()), (Some(Err(error)), _) | (_, Some(Err(error))) => load_error("WSO dashboard", error), _ => view! { <TableSkeleton columns=8 /> }.into_any() })) }}
+        {move || if wso.get().is_empty() { view! { <DataStatus message="Choose a meet and WSO to view its dashboard." /> }.into_any() } else { athletes.with(|athlete_state| results.with(|result_state| match (athlete_state, result_state) { (LoadState::Ready(athletes), LoadState::Ready(results)) => dashboard(athletes, results, &wso.get()), (LoadState::Failed(error), _) | (_, LoadState::Failed(error)) => load_error("WSO dashboard", error, move || { athletes.retry_failed(); results.retry_failed(); }), _ => view! { <TableSkeleton columns=8 /> }.into_any() })) }}
     </DataPage> }
+}
+
+/// The WSOs a meet's athletes registered under, as the roster spells them.
+fn roster_wsos(athletes: &[Athlete]) -> Vec<String> {
+    let mut seen = HashSet::new();
+    let mut wsos = athletes
+        .iter()
+        .filter_map(|athlete| athlete.wso.as_deref())
+        .map(str::trim)
+        .filter(|wso| !wso.is_empty() && seen.insert(normalize(wso)))
+        .map(str::to_owned)
+        .collect::<Vec<_>>();
+    wsos.sort_by_key(|wso| normalize(wso));
+    wsos
 }
 
 fn dashboard(athletes: &[Athlete], results: &[LiftingResult], selected_wso: &str) -> AnyView {
@@ -65,10 +98,11 @@ fn dashboard(athletes: &[Athlete], results: &[LiftingResult], selected_wso: &str
         meet_athletes,
         wso_athletes,
         attempts,
+        weight_lifted,
         rows,
     } = build_dashboard_data(athletes, results, selected_wso);
-    let rows = rows.into_iter().map(|row| view! { <tr><td>{row.name}</td><td>{row.gender}</td><td>{row.weight_class}</td><td>{row.club}</td><td>{row.entry_total}</td><td>{row.snatch_best}</td><td>{row.cj_best}</td><td>{row.total}</td></tr> }).collect_view();
-    view! { <div class="data-metric-grid"><DataMetric label="Meet athletes" value=meet_athletes.to_string() /><DataMetric label="WSO athletes" value=wso_athletes.to_string() /><DataMetric label="Snatch makes" value=format!("{:.1}%", percentage(attempts.snatch_makes, attempts.snatch_attempts)) /><DataMetric label="C&J makes" value=format!("{:.1}%", percentage(attempts.cj_makes, attempts.cj_attempts)) /><DataMetric label="Combined makes" value=format!("{:.1}%", percentage(attempts.makes(), attempts.attempts())) /><DataMetric label="Weight lifted" value=format!("{}kg", attempts.volume) /></div>
+    let rows = rows.into_iter().map(|row| view! { <tr><td>{row.name}</td><td>{display_gender(&row.gender)}</td><td>{display_weight_class(&row.weight_class)}</td><td>{row.club}</td><td>{row.entry_total}</td><td>{row.snatch_best}</td><td>{row.cj_best}</td><td>{row.total}</td></tr> }).collect_view();
+    view! { <div class="data-metric-grid"><DataMetric label="Meet athletes" value=meet_athletes.to_string() /><DataMetric label="WSO athletes" value=wso_athletes.to_string() /><DataMetric label="Snatch makes" value=format!("{:.1}%", percentage(attempts.snatch_makes, attempts.snatch_attempts)) /><DataMetric label="C&J makes" value=format!("{:.1}%", percentage(attempts.cj_makes, attempts.cj_attempts)) /><DataMetric label="Combined makes" value=format!("{:.1}%", percentage(attempts.makes(), attempts.attempts())) /><DataMetric label="Weight lifted" value=format!("{weight_lifted}kg") /></div>
     <DataTable><thead><tr><th>"Athlete"</th><th>"Gender"</th><th>"Class"</th><th>"Club"</th><th>"Entry total"</th><th>"Snatch"</th><th>"C&J"</th><th>"Total"</th></tr></thead><tbody>{(wso_athletes == 0).then(|| view! { <EmptyTableRow columns=8 message="No athletes from this WSO were found at the meet." /> })}{rows}</tbody></DataTable> }.into_any()
 }
 
@@ -84,9 +118,14 @@ struct WsoAthleteRow {
 }
 
 struct WsoDashboardData {
+    /// Distinct athletes on the roster (by folded name): an athlete entered
+    /// in two divisions is one athlete, as the Club Dashboard counts them.
     meet_athletes: usize,
     wso_athletes: usize,
     attempts: AttemptSummary,
+    /// The sum of each WSO athlete's best total, as the Club Dashboard's
+    /// "Weight lifted" (`total_weight_lifted`) is a sum of totals.
+    weight_lifted: f64,
     rows: Vec<WsoAthleteRow>,
 }
 
@@ -95,6 +134,13 @@ fn build_dashboard_data(
     results: &[LiftingResult],
     selected_wso: &str,
 ) -> WsoDashboardData {
+    let meet_athletes = athletes
+        .iter()
+        .map(|athlete| normalize(&athlete.name))
+        .collect::<HashSet<_>>()
+        .len();
+    // Each WSO athlete once, as first listed.
+    let mut names = HashSet::new();
     let members = athletes
         .iter()
         .filter(|athlete| {
@@ -102,12 +148,9 @@ fn build_dashboard_data(
                 .wso
                 .as_deref()
                 .is_some_and(|wso| normalize(wso) == normalize(selected_wso))
+                && names.insert(normalize(&athlete.name))
         })
         .collect::<Vec<_>>();
-    let names = members
-        .iter()
-        .map(|row| normalize(&row.name))
-        .collect::<HashSet<_>>();
     let member_results = results
         .iter()
         .filter(|row| names.contains(&normalize(&row.name)))
@@ -125,6 +168,10 @@ fn build_dashboard_data(
             })
             .or_insert(result);
     }
+    let weight_lifted = best_results
+        .values()
+        .map(|row| row.total.max(0.0))
+        .sum();
     let rows = members
         .iter()
         .map(|athlete| {
@@ -142,9 +189,10 @@ fn build_dashboard_data(
         })
         .collect();
     WsoDashboardData {
-        meet_athletes: athletes.len(),
+        meet_athletes,
         wso_athletes: members.len(),
         attempts: summary,
+        weight_lifted,
         rows,
     }
 }
@@ -155,7 +203,6 @@ struct AttemptSummary {
     snatch_makes: usize,
     cj_attempts: usize,
     cj_makes: usize,
-    volume: f64,
 }
 
 impl AttemptSummary {
@@ -171,32 +218,22 @@ fn summarize_attempts<'a>(results: impl Iterator<Item = &'a LiftingResult>) -> A
     let mut summary = AttemptSummary::default();
     for row in results {
         for value in [row.snatch1, row.snatch2, row.snatch3] {
-            record(
-                value,
-                &mut summary.snatch_attempts,
-                &mut summary.snatch_makes,
-                &mut summary.volume,
-            );
+            record(value, &mut summary.snatch_attempts, &mut summary.snatch_makes);
         }
         for value in [row.cj1, row.cj2, row.cj3] {
-            record(
-                value,
-                &mut summary.cj_attempts,
-                &mut summary.cj_makes,
-                &mut summary.volume,
-            );
+            record(value, &mut summary.cj_attempts, &mut summary.cj_makes);
         }
     }
     summary
 }
-fn record(value: f64, attempts: &mut usize, makes: &mut usize, volume: &mut f64) {
+
+fn record(value: f64, attempts: &mut usize, makes: &mut usize) {
     if value == 0.0 || !value.is_finite() {
         return;
     }
     *attempts += 1;
     if value > 0.0 {
         *makes += 1;
-        *volume += value;
     }
 }
 
@@ -228,11 +265,11 @@ mod tests {
     }
     #[test]
     fn misses_count_but_unrecorded_attempts_do_not() {
-        let (mut attempts, mut makes, mut volume) = (0, 0, 0.0);
-        record(-100.0, &mut attempts, &mut makes, &mut volume);
-        record(0.0, &mut attempts, &mut makes, &mut volume);
-        record(105.0, &mut attempts, &mut makes, &mut volume);
-        assert_eq!((attempts, makes, volume), (2, 1, 105.0));
+        let (mut attempts, mut makes) = (0, 0);
+        record(-100.0, &mut attempts, &mut makes);
+        record(0.0, &mut attempts, &mut makes);
+        record(105.0, &mut attempts, &mut makes);
+        assert_eq!((attempts, makes), (2, 1));
     }
 
     #[test]
@@ -241,7 +278,6 @@ mod tests {
         let summary = summarize_attempts([&result].into_iter());
         assert_eq!((summary.snatch_attempts, summary.snatch_makes), (2, 1));
         assert_eq!((summary.cj_attempts, summary.cj_makes), (3, 2));
-        assert_eq!(summary.volume, 315.0);
     }
 
     #[test]

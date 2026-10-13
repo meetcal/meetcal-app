@@ -3,11 +3,12 @@ use super::{
         ClassificationFilters, ClassifiedRow, SortDirection, classified_rows, filter_options,
         sort_numeric, weight_class_options,
     },
-    loading::table_response,
+    format::display_weight_class,
+    loading::{load_rows, table_response},
     models::RecordHolder,
     ui::{DataPage, DataTable, EmptyTableRow, FilterSelect, RecordLift, SortSelect},
 };
-use crate::utils::api::{queries, query};
+use crate::utils::api::queries;
 use leptos::prelude::*;
 use serde::Deserialize;
 
@@ -26,6 +27,26 @@ struct Record {
     cj_by: Option<RecordHolder>,
     #[serde(default)]
     total_by: Option<RecordHolder>,
+}
+
+impl Record {
+    /// The record with its class in one form: IWF writes `+86kg` where USAW,
+    /// USAMW and UMWF write `86+kg`, which would otherwise be two filter
+    /// options that each hide the other's records.
+    fn shown(self) -> Self {
+        Self {
+            weight_class: display_weight_class(&self.weight_class),
+            ..self
+        }
+    }
+}
+
+/// The records the page lists: every type but BWL.
+fn listed(records: &[Record]) -> Vec<&Record> {
+    records
+        .iter()
+        .filter(|record| record.record_type != "BWL")
+        .collect()
 }
 
 impl ClassifiedRow for Record {
@@ -56,23 +77,20 @@ pub fn Records() -> impl IntoView {
     let (age, set_age) = signal(String::new());
     let (weight_class, set_weight_class) = signal(String::new());
     let (sort, set_sort) = signal("total_desc".to_string());
-    let records = LocalResource::new(|| async { query::<Vec<Record>>(queries::RECORDS).await });
+    let records = load_rows(queries::RECORDS, Record::shown);
 
     view! {
         <DataPage
             heading="Records"
             intro="Filter record performances by organization, division, and weight class."
         >
-            {move || records.with(|response| table_response(response, 7, "records", |records| {
-                let types = filter_options(
-                    records
-                        .iter()
-                        .filter(|record| record.record_type != "BWL")
-                        .map(|record| record.record_type.as_str()),
-                );
-                let genders = filter_options(records.iter().map(|record| record.gender.as_str()));
-                let ages = filter_options(records.iter().map(|record| record.age_category.as_str()));
-                let weights = weight_class_options(records.iter().map(|record| record.weight_class.as_str()));
+            {move || table_response(records, 7, "records", |records| {
+                // Options come from the listed records only, so none matches nothing.
+                let listed = listed(records);
+                let types = filter_options(listed.iter().map(|record| record.record_type.as_str()));
+                let genders = filter_options(listed.iter().map(|record| record.gender.as_str()));
+                let ages = filter_options(listed.iter().map(|record| record.age_category.as_str()));
+                let weights = weight_class_options(listed.iter().map(|record| record.weight_class.as_str()));
                 let selected_type = record_type.get();
                 let selected_gender = gender.get();
                 let selected_age = age.get();
@@ -109,11 +127,11 @@ pub fn Records() -> impl IntoView {
 
                 view! {
                     <div class="data-filters">
-                        <FilterSelect label="Organization" placeholder="All organizations" values=types selected=selected_type on_select=move |value| set_record_type.set(value) />
-                        <FilterSelect label="Gender" placeholder="All genders" values=genders selected=selected_gender on_select=move |value| set_gender.set(value) />
-                        <FilterSelect label="Age" placeholder="All ages" values=ages selected=selected_age on_select=move |value| set_age.set(value) />
-                        <FilterSelect label="Weight class" placeholder="All classes" values=weights selected=selected_weight on_select=move |value| set_weight_class.set(value) />
-                        <SortSelect options=SORT_OPTIONS set_sort />
+                        <FilterSelect label="Organization" placeholder="All organizations" values=types selected=record_type on_select=move |value| set_record_type.set(value) />
+                        <FilterSelect label="Gender" placeholder="All genders" values=genders selected=gender on_select=move |value| set_gender.set(value) />
+                        <FilterSelect label="Age" placeholder="All ages" values=ages selected=age on_select=move |value| set_age.set(value) />
+                        <FilterSelect label="Weight class" placeholder="All classes" values=weights selected=weight_class on_select=move |value| set_weight_class.set(value) />
+                        <SortSelect options=SORT_OPTIONS sort set_sort />
                     </div>
                     <DataTable>
                         <thead>
@@ -134,7 +152,7 @@ pub fn Records() -> impl IntoView {
                     </DataTable>
                 }
                 .into_any()
-            }))}
+            })}
         </DataPage>
     }
 }
@@ -168,5 +186,36 @@ mod tests {
         .unwrap();
 
         assert_eq!(record.snatch_by, None);
+    }
+
+    fn record(record_type: &str, age: &str, weight_class: &str) -> Record {
+        serde_json::from_value(serde_json::json!({
+            "age_category": age, "gender": "Women", "weight_class": weight_class,
+            "record_type": record_type, "snatch_record": 100.0, "cj_record": 120.0, "total_record": 220.0
+        }))
+        .unwrap()
+    }
+
+    #[test]
+    fn filters_offer_only_what_the_listed_records_hold_in_one_class_form() {
+        let records = [
+            record("USAW", "Senior", "86+kg"),
+            record("IWF", "Senior", "+86kg"),
+            record("BWL", "U20", "88+kg"),
+        ]
+        .map(Record::shown);
+        let listed = listed(&records);
+        assert_eq!(
+            filter_options(listed.iter().map(|record| record.age_category.as_str())),
+            ["Senior"]
+        );
+        assert_eq!(
+            weight_class_options(listed.iter().map(|record| record.weight_class.as_str())),
+            ["86+kg"]
+        );
+        assert_eq!(
+            filter_options(listed.iter().map(|record| record.record_type.as_str())),
+            ["IWF", "USAW"]
+        );
     }
 }

@@ -238,7 +238,7 @@ test("meet center joins details, schedule, start list, and full results", async 
     { ...completedMeet, name: "Past Meet", start_date: "2025-05-01", end_date: "2025-05-02" },
   ])));
   await routeQuery(page, "meets:schedule", (route) => route.fulfill(textAnswer([{ date: "2026-06-20", meet: "Test Meet", platform: "Red", session_id: 1, start_time: "10:00", weigh_in_time: "08:00", weight_class: "69kg" }])));
-  await routeQuery(page, "meets:athletesSessions", (route) => route.fulfill(textAnswer([{ member_id: "1", name: "Test Athlete", age: 27, club: "Test Barbell", wso: "California North", gender: "Women", weight_class: "69kg", entry_total: 220, adaptive: false, session_number: 1, session_platform: "Red", date: "2026-06-20", start_time: "10:00", weigh_in_time: "08:00" }])));
+  await routeQuery(page, "meets:athletes", (route) => route.fulfill(textAnswer([{ member_id: "1", meet: "Test Meet", name: "Test Athlete", age: 27, club: "Test Barbell", wso: "California North", gender: "Female", weight_class: "+69", entry_total: 220, adaptive: false, session_number: 1, session_platform: "Red" }])));
   await routeQuery(page, "results:byMeet", (route) => route.fulfill(textAnswer([completeResult])));
   await routeQuery(page, "results:search", (route) => route.fulfill(valueAnswer({ matched_name: "Test Athlete", suggestions: [], results: [completeResult] })));
   await page.goto("/meet-center");
@@ -259,6 +259,10 @@ test("meet center joins details, schedule, start list, and full results", async 
   await expect(page.locator("tbody").first()).toContainText("8:00 AM");
   await expect(page.locator("tbody").first()).toContainText("10:00 AM");
   await expect(page.locator("tbody").nth(1)).toContainText("Test Athlete");
+  // The roster's raw class and gender read as every other table does.
+  await expect(page.locator("tbody").nth(1)).toContainText("69+kg");
+  await expect(page.locator("tbody").nth(1)).toContainText("Women");
+  await expect(page.locator("tbody").nth(1)).not.toContainText("Female");
   await expect(page.locator("tbody").nth(2)).toContainText("Test Athlete");
   await expect(page.getByRole("columnheader").filter({ hasText: /^Total$/ })).toBeVisible();
   await page.getByRole("link", { name: "Test Athlete" }).click();

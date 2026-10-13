@@ -1,12 +1,12 @@
 use std::collections::HashSet;
 
 use super::{
-    format::{format_us_date, format_us_time, yes_no},
-    loading::{load_error, load_meet_data, table_response},
+    format::{display_gender, display_weight_class, format_us_date, format_us_time, yes_no},
+    loading::{Load, LoadState, load_error, load_meet_data, load_query, table_response},
     models::{Athlete, LiftingResult, Meet, ScheduleRow, UpcomingMeetsQuery, attempt},
     ui::{DataPage, DataStatus, DataTable, EmptyTableRow},
 };
-use crate::utils::api::{queries, query, query_with};
+use crate::utils::api::{queries, query_with};
 use leptos::prelude::*;
 
 fn session(value: Option<f64>) -> String {
@@ -55,42 +55,55 @@ fn meet_suggestions(meets: &[Meet], query: &str, limit: usize) -> Vec<String> {
 pub fn MeetCenter() -> impl IntoView {
     let (meet, set_meet) = signal(String::new());
     let (meet_search, set_meet_search) = signal(String::new());
-    let upcoming = LocalResource::new(|| async {
-        query_with::<Vec<Meet>, _>(queries::UPCOMING_MEETS, &UpcomingMeetsQuery::current()).await
-    });
-    let completed =
-        LocalResource::new(|| async { query::<Vec<Meet>>(queries::COMPLETED_MEETS).await });
-    let schedule = LocalResource::new(move || {
-        load_meet_data::<ScheduleRow>(meet.get(), queries::MEET_SCHEDULE)
-    });
-    let athletes = LocalResource::new(move || {
-        load_meet_data::<Athlete>(meet.get(), queries::MEET_ATHLETES_SESSIONS)
-    });
-    let results = LocalResource::new(move || {
-        load_meet_data::<LiftingResult>(meet.get(), queries::MEET_RESULTS)
-    });
+    let upcoming_meets = Load::new(
+        || (),
+        |()| async {
+            query_with::<Vec<Meet>, _>(queries::UPCOMING_MEETS, &UpcomingMeetsQuery::current())
+                .await
+                .map_err(|error| error.to_string())
+        },
+    );
+    let completed_meets = load_query::<Vec<Meet>>(queries::COMPLETED_MEETS);
+    let schedule = Load::new(
+        move || meet.get(),
+        |meet| load_meet_data::<ScheduleRow>(meet, queries::MEET_SCHEDULE),
+    );
+    let athletes = Load::new(
+        move || meet.get(),
+        // The plain roster, one row per athlete: the session join repeats an
+        // athlete once per schedule row of their session, and this table
+        // shows none of the joined fields.
+        |meet| load_meet_data::<Athlete>(meet, queries::MEET_ATHLETES),
+    );
+    let results = Load::new(
+        move || meet.get(),
+        |meet| load_meet_data::<LiftingResult>(meet, queries::MEET_RESULTS),
+    );
 
     view! {
         <DataPage
             heading="Meets"
             intro="Search all meets to see venue details, session schedules, start lists, and published results."
         >
-            {move || upcoming.with(|upcoming| completed.with(|completed| match (upcoming, completed) {
-                (Some(Ok(upcoming)), Some(Ok(completed))) => {
+            {move || upcoming_meets.with(|upcoming| completed_meets.with(|completed| match (upcoming, completed) {
+                (LoadState::Ready(upcoming), LoadState::Ready(completed)) => {
                     let meets = meet_catalog(upcoming, completed);
                     view! { <MeetPicker meets meet set_meet meet_search set_meet_search /> }.into_any()
                 }
-                (Some(Err(error)), _) | (_, Some(Err(error))) => load_error("meets", error),
+                (LoadState::Failed(error), _) | (_, LoadState::Failed(error)) => load_error("meets", error, move || {
+                    upcoming_meets.retry_failed();
+                    completed_meets.retry_failed();
+                }),
                 _ => view! { <DataStatus message="Loading meets…" /> }.into_any(),
             }))}
 
             {move || if meet.get().is_empty() { view! { <DataStatus message="Search for and select a meet to load its competition data." /> }.into_any() } else { view! {
                 <h2 class="data-section-title">"Schedule"</h2>
-                {move || schedule.with(|response| table_response(response, 7, "schedule", table_schedule))}
+                {move || table_response(schedule, 7, "schedule", table_schedule)}
                 <h2 class="data-section-title">"Start List"</h2>
-                {move || athletes.with(|response| table_response(response, 9, "start list", table_athletes))}
+                {move || table_response(athletes, 9, "start list", table_athletes)}
                 <h2 class="data-section-title">"Full Results"</h2>
-                {move || results.with(|response| table_response(response, 13, "meet results", table_results))}
+                {move || table_response(results, 13, "meet results", table_results)}
             }.into_any() }}
         </DataPage>
     }
@@ -137,7 +150,7 @@ fn table_schedule(rows: &[ScheduleRow]) -> AnyView {
 
 fn table_athletes(rows: &[Athlete]) -> AnyView {
     let is_empty = rows.is_empty();
-    let body = rows.iter().map(|row| view! { <tr><td>{row.name.clone()}</td><td>{row.gender.clone()}</td><td>{row.age}</td><td>{row.weight_class.clone()}</td><td>{row.entry_total}</td><td>{row.club.clone()}</td><td>{row.wso.clone().unwrap_or_else(|| "—".to_owned())}</td><td>{session(row.session_number)}</td><td>{row.session_platform.clone().unwrap_or_else(|| "—".to_owned())}</td><td>{yes_no(row.adaptive)}</td></tr> }).collect_view();
+    let body = rows.iter().map(|row| view! { <tr><td>{row.name.clone()}</td><td>{display_gender(&row.gender)}</td><td>{row.age}</td><td>{display_weight_class(&row.weight_class)}</td><td>{row.entry_total}</td><td>{row.club.clone()}</td><td>{row.wso.clone().unwrap_or_else(|| "—".to_owned())}</td><td>{session(row.session_number)}</td><td>{row.session_platform.clone().unwrap_or_else(|| "—".to_owned())}</td><td>{yes_no(row.adaptive)}</td></tr> }).collect_view();
     view! { <DataTable><thead><tr><th>"Athlete"</th><th>"Gender"</th><th>"Age"</th><th>"Weight class"</th><th>"Entry total"</th><th>"Club"</th><th>"WSO"</th><th>"Session"</th><th>"Platform"</th><th>"Adaptive"</th></tr></thead><tbody>{is_empty.then(|| view! { <EmptyTableRow columns=10 message="No start list has been published for this meet." /> })}{body}</tbody></DataTable> }.into_any()
 }
 

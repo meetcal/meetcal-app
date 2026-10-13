@@ -1,13 +1,14 @@
 use super::{
     filters::{SortDirection, sort_numeric},
-    loading::load_error,
+    format::format_us_date,
+    loading::{Load, LoadState, load_error},
     ui::{DataPage, DataStatus, DataTable, EmptyTableRow, SelectOptions, TableSkeleton},
 };
 use crate::utils::api::{queries, query_with};
 use leptos::prelude::*;
 use serde::{Deserialize, Serialize};
 
-#[derive(Clone, Serialize)]
+#[derive(Clone, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct NationalRankingQuery {
     federation: String,
@@ -109,24 +110,22 @@ fn division_options(gender: &str, age_group: &str) -> Vec<String> {
 pub fn NationalRankings() -> impl IntoView {
     let (request, set_request) = signal(None::<NationalRankingQuery>);
 
-    let rankings = LocalResource::new(move || {
-        let request = request.get();
-        async move {
-            match request {
-                Some(query) => {
-                    let convex_query = if query.year.is_some() {
-                        queries::NATIONAL_RANKINGS_BY_YEAR
-                    } else {
-                        queries::NATIONAL_RANKINGS
-                    };
-                    query_with::<Vec<NationalRanking>, _>(convex_query, &query)
-                        .await
-                        .map_err(|error| error.to_string())
-                }
-                None => Ok(Vec::new()),
-            }
-        }
-    });
+    let rankings = Load::new(
+        move || request.get(),
+        |request| async move {
+            let Some(query) = request else {
+                return Ok(Vec::new());
+            };
+            let convex_query = if query.year.is_some() {
+                queries::NATIONAL_RANKINGS_BY_YEAR
+            } else {
+                queries::NATIONAL_RANKINGS
+            };
+            query_with::<Vec<NationalRanking>, _>(convex_query, &query)
+                .await
+                .map_err(|error| error.to_string())
+        },
+    );
 
     view! {
         <DataPage
@@ -136,14 +135,15 @@ pub fn NationalRankings() -> impl IntoView {
             <NationalRankingsForm set_request />
             <p class="data-help">"Division choices match the gender, age group, and weight classes used in the MeetCal app."</p>
 
-            {move || rankings.with(|response| match response {
-                None => view! { <TableSkeleton columns=4 /> }.into_any(),
-                Some(Err(error)) => load_error("national rankings", error),
-                Some(Ok(_)) if request.get().is_none() => view! {
-                    <DataStatus message="Enter a division to view its national rankings." />
-                }.into_any(),
-                Some(Ok(rankings)) => view! { <NationalRankingsTable rankings=rankings.clone() /> }.into_any(),
-            })}
+            {move || if request.with(Option::is_none) {
+                view! { <DataStatus message="Enter a division to view its national rankings." /> }.into_any()
+            } else {
+                rankings.with(|state| match state {
+                    LoadState::Loading => view! { <TableSkeleton columns=4 /> }.into_any(),
+                    LoadState::Failed(error) => load_error("national rankings", error, move || rankings.retry()),
+                    LoadState::Ready(rankings) => view! { <NationalRankingsTable rankings=rankings.clone() /> }.into_any(),
+                })
+            }}
         </DataPage>
     }
 }
@@ -175,11 +175,26 @@ fn NationalRankingsForm(set_request: WriteSignal<Option<NationalRankingQuery>>) 
     }
 }
 
+/// Competition ranks for totals sorted highest first: a tie shares the rank
+/// and the next total skips past it (250, 250, 240 rank 1, 1, 3).
+fn competition_ranks(totals: &[f64]) -> Vec<usize> {
+    let mut ranks = Vec::with_capacity(totals.len());
+    for (index, total) in totals.iter().enumerate() {
+        let rank = match (index.checked_sub(1), ranks.last()) {
+            (Some(previous), Some(&previous_rank)) if totals[previous] == *total => previous_rank,
+            _ => index + 1,
+        };
+        ranks.push(rank);
+    }
+    ranks
+}
+
 #[component]
 fn NationalRankingsTable(rankings: Vec<NationalRanking>) -> impl IntoView {
     let mut ranked = rankings.iter().collect::<Vec<_>>();
     sort_numeric(&mut ranked, |row| row.total, SortDirection::Descending);
-    let rows = ranked.into_iter().enumerate().map(|(index, row)| view! { <tr><td>{index + 1}</td><td>{row.name.clone()}</td><td>{row.total}</td><td>{row.date.clone().unwrap_or_else(|| "—".to_owned())}</td></tr> }).collect_view();
+    let ranks = competition_ranks(&ranked.iter().map(|row| row.total).collect::<Vec<_>>());
+    let rows = ranked.into_iter().zip(ranks).map(|(row, rank)| view! { <tr><td>{rank}</td><td>{row.name.clone()}</td><td>{row.total}</td><td>{row.date.as_deref().map_or_else(|| "—".to_owned(), format_us_date)}</td></tr> }).collect_view();
     let empty = rankings.is_empty().then(|| view! { <EmptyTableRow columns=4 message="No rankings matched this federation and division." /> });
     view! { <DataTable><thead><tr><th>"Rank"</th><th>"Athlete"</th><th>"Total"</th><th>"Date"</th></tr></thead><tbody>{empty}{rows}</tbody></DataTable> }
 }
@@ -237,6 +252,16 @@ mod tests {
                 .map(String::as_str),
             Some("Open Men's 60kg")
         );
+    }
+
+    #[test]
+    fn tied_totals_share_a_rank() {
+        assert_eq!(
+            competition_ranks(&[330.0, 325.0, 325.0, 306.0, 305.0, 305.0, 305.0, 302.0]),
+            [1, 2, 2, 4, 5, 5, 5, 8]
+        );
+        assert_eq!(competition_ranks(&[]), Vec::<usize>::new());
+        assert_eq!(competition_ranks(&[200.0]), [1]);
     }
 
     #[test]

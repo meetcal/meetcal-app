@@ -2,6 +2,50 @@ pub(crate) fn yes_no(value: bool) -> &'static str {
     if value { "Yes" } else { "No" }
 }
 
+/// A weight class as every table shows it: `69` → `69kg`, and the open class
+/// written either way round (`+110`, `110+`, `+110kg`) → `110+kg`, the app's
+/// form (`src/lib/start-list-utils.ts`). Anything else is left as given.
+pub(crate) fn display_weight_class(value: &str) -> String {
+    let trimmed = value.trim();
+    let number = trimmed
+        .strip_suffix("kg")
+        .or_else(|| trimmed.strip_suffix("KG"))
+        .or_else(|| trimmed.strip_suffix("Kg"))
+        .unwrap_or(trimmed)
+        .trim();
+    let (open, digits) = match (number.strip_prefix('+'), number.strip_suffix('+')) {
+        (Some(rest), _) => (true, rest),
+        (None, Some(rest)) => (true, rest),
+        (None, None) => (false, number),
+    };
+    let is_class = !digits.is_empty()
+        && digits
+            .chars()
+            .all(|character| character.is_ascii_digit() || character == '.')
+        && digits
+            .chars()
+            .next()
+            .is_some_and(|character| character.is_ascii_digit());
+    match (is_class, open) {
+        (true, true) => format!("{digits}+kg"),
+        (true, false) => format!("{digits}kg"),
+        (false, _) => trimmed.to_owned(),
+    }
+}
+
+/// A gender as every table shows it: the roster's `Female` / `Male` read
+/// `Women` / `Men`, as on every other data page.
+pub(crate) fn display_gender(value: &str) -> String {
+    let trimmed = value.trim();
+    if trimmed.eq_ignore_ascii_case("female") {
+        "Women".to_owned()
+    } else if trimmed.eq_ignore_ascii_case("male") {
+        "Men".to_owned()
+    } else {
+        trimmed.to_owned()
+    }
+}
+
 pub(crate) fn format_us_date(value: &str) -> String {
     const MONTHS: [&str; 12] = [
         "January",
@@ -66,6 +110,34 @@ mod tests {
         assert_eq!(format_us_date("2026-06-20"), "June 20, 2026");
         assert_eq!(format_us_time("08:00:00"), "8:00 AM");
         assert_eq!(format_us_time("12:30"), "12:30 PM");
+    }
+
+    #[test]
+    fn weight_classes_read_the_same_whichever_way_the_answer_writes_them() {
+        for (raw, shown) in [
+            ("69", "69kg"),
+            ("86+", "86+kg"),
+            ("+86", "86+kg"),
+            ("110", "110kg"),
+            ("110+", "110+kg"),
+            ("+110", "110+kg"),
+            ("71kg", "71kg"),
+            ("+86kg", "86+kg"),
+            ("86+kg", "86+kg"),
+            (" 63 ", "63kg"),
+            ("", ""),
+            ("Open", "Open"),
+        ] {
+            assert_eq!(display_weight_class(raw), shown, "{raw:?}");
+        }
+    }
+
+    #[test]
+    fn roster_genders_read_women_and_men() {
+        assert_eq!(display_gender("Female"), "Women");
+        assert_eq!(display_gender("MALE"), "Men");
+        assert_eq!(display_gender("Women"), "Women");
+        assert_eq!(display_gender("Men"), "Men");
     }
 
     #[test]

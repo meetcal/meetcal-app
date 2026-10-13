@@ -3,10 +3,11 @@ use super::{
         ClassificationFilters, ClassifiedRow, SortDirection, classified_rows, filter_options,
         sort_numeric, weight_class_options,
     },
-    loading::table_response,
+    format::display_weight_class,
+    loading::{load_rows, table_response},
     ui::{DataPage, DataTable, EmptyTableRow, FilterSelect, SortSelect},
 };
-use crate::utils::api::{queries, query};
+use crate::utils::api::queries;
 use leptos::prelude::*;
 use serde::Deserialize;
 
@@ -20,6 +21,16 @@ struct Ranking {
     percent_a: f64,
     gender: String,
     age_category: String,
+}
+
+impl Ranking {
+    /// The ranking with its class as every table writes it (`65` → `65kg`).
+    fn shown(self) -> Self {
+        Self {
+            weight_class: display_weight_class(&self.weight_class),
+            ..self
+        }
+    }
 }
 
 impl ClassifiedRow for Ranking {
@@ -50,15 +61,14 @@ pub fn Rankings() -> impl IntoView {
     let (age, set_age) = signal(String::new());
     let (weight_class, set_weight_class) = signal(String::new());
     let (sort, set_sort) = signal("rank_asc".to_string());
-    let rankings =
-        LocalResource::new(|| async { query::<Vec<Ranking>>(queries::INTL_RANKINGS).await });
+    let rankings = load_rows(queries::INTL_RANKINGS, Ranking::shown);
 
     view! {
         <DataPage
             heading="International Rankings"
             intro="Search current international rankings by athlete, meet, division, or weight class."
         >
-            {move || rankings.with(|response| table_response(response, 8, "rankings", |rankings| {
+            {move || table_response(rankings, 8, "rankings", |rankings| {
                 let meets = filter_options(rankings.iter().map(|ranking| ranking.meet.as_str()));
                 let genders = filter_options(rankings.iter().map(|ranking| ranking.gender.as_str()));
                 let ages = filter_options(rankings.iter().map(|ranking| ranking.age_category.as_str()));
@@ -99,11 +109,11 @@ pub fn Rankings() -> impl IntoView {
 
                 view! {
                     <div class="data-filters">
-                        <FilterSelect label="Meet" placeholder="All meets" values=meets selected=selected_meet on_select=move |value| set_meet.set(value) />
-                        <FilterSelect label="Gender" placeholder="All genders" values=genders selected=selected_gender on_select=move |value| set_gender.set(value) />
-                        <FilterSelect label="Age" placeholder="All ages" values=ages selected=selected_age on_select=move |value| set_age.set(value) />
-                        <FilterSelect label="Weight class" placeholder="All classes" values=weights selected=selected_weight on_select=move |value| set_weight_class.set(value) />
-                        <SortSelect options=SORT_OPTIONS set_sort />
+                        <FilterSelect label="Meet" placeholder="All meets" values=meets selected=meet on_select=move |value| set_meet.set(value) />
+                        <FilterSelect label="Gender" placeholder="All genders" values=genders selected=gender on_select=move |value| set_gender.set(value) />
+                        <FilterSelect label="Age" placeholder="All ages" values=ages selected=age on_select=move |value| set_age.set(value) />
+                        <FilterSelect label="Weight class" placeholder="All classes" values=weights selected=weight_class on_select=move |value| set_weight_class.set(value) />
+                        <SortSelect options=SORT_OPTIONS sort set_sort />
                     </div>
                     <DataTable>
                         <thead>
@@ -125,7 +135,7 @@ pub fn Rankings() -> impl IntoView {
                     </DataTable>
                 }
                 .into_any()
-            }))}
+            })}
         </DataPage>
     }
 }

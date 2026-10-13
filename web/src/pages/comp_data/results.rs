@@ -2,7 +2,7 @@ use super::{
     athlete_autocomplete::AthleteAutocomplete,
     filters::{SortDirection, sort_numeric, sort_text},
     format::{format_us_date, yes_no},
-    loading::load_error,
+    loading::{Load, LoadState, load_error},
     models::{AthleteSearchQuery, AthleteSearchResponse, attempt},
     ui::{DataPage, DataStatus, DataTable, SortSelect, TableSkeleton},
 };
@@ -50,35 +50,31 @@ pub fn Results() -> impl IntoView {
     let (request, set_request) = signal(initial_request);
     let (sort, set_sort) = signal("date_desc".to_string());
 
-    let results = LocalResource::new(move || {
-        let request = request.get();
-        async move {
-            match request {
-                Some(query) => query_with::<AthleteSearchResponse, _>(queries::SEARCH, &query)
-                    .await
-                    .map_err(|error| error.to_string()),
-                None => Ok(AthleteSearchResponse {
-                    matched_name: None,
-                    suggestions: Vec::new(),
-                    results: Vec::new(),
-                    truncated: false,
-                }),
-            }
-        }
-    });
+    let results = Load::new(
+        move || request.get(),
+        |request| async move {
+            let Some(query) = request else {
+                return Ok(None);
+            };
+            query_with::<AthleteSearchResponse, _>(queries::SEARCH, &query)
+                .await
+                .map(Some)
+                .map_err(|error| error.to_string())
+        },
+    );
 
     view! {
         <DataPage heading="Results" intro="Search an athlete’s competition history.">
             <ResultsSearchForm name set_name set_request />
 
-            {move || results.with(|response| match response {
-                None => view! { <TableSkeleton columns=14 /> }.into_any(),
-                Some(Err(error)) => load_error("results", error),
-                Some(Ok(_)) if request.get().is_none() => view! {
+            {move || results.with(|state| match state {
+                LoadState::Loading => view! { <TableSkeleton columns=14 /> }.into_any(),
+                LoadState::Failed(error) => load_error("results", error, move || results.retry()),
+                LoadState::Ready(None) => view! {
                     <DataStatus message="Enter an athlete name to search." />
                 }
                 .into_any(),
-                Some(Ok(response)) => view! { <ResultsTable response=response.clone() sort set_sort /> }.into_any(),
+                LoadState::Ready(Some(response)) => view! { <ResultsTable response=response.clone() sort set_sort /> }.into_any(),
             })}
         </DataPage>
     }
@@ -131,7 +127,7 @@ fn ResultsTable(
         {suggestions}
         {truncated}
         <div class="data-filters">
-            <SortSelect options=SORT_OPTIONS set_sort />
+            <SortSelect options=SORT_OPTIONS sort set_sort />
         </div>
         <DataTable>
             <thead><tr><th>"Date"</th><th>"Meet"</th><th>"Division"</th><th>"Bodyweight"</th><th>"S1"</th><th>"S2"</th><th>"S3"</th><th>"Best snatch"</th><th>"C&J 1"</th><th>"C&J 2"</th><th>"C&J 3"</th><th>"Best C&J"</th><th>"Total"</th><th>"Adaptive"</th></tr></thead>
