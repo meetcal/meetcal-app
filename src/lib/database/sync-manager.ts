@@ -7,6 +7,8 @@ import { devLog } from '../logger';
 
 /** How often the selected meet's schedule is re-fetched while the app is open. */
 export const SYNC_INTERVAL_MS = 5 * 60 * 1000;
+/** How early an interval tick still counts as due (see `isSyncDue`). */
+const SYNC_TICK_SLACK_MS = 30 * 1000;
 
 export class SyncManager {
   private syncInterval: ReturnType<typeof setInterval> | null = null;
@@ -41,10 +43,15 @@ export class SyncManager {
     });
   }
 
-  private isSyncDue(now: number = Date.now()): boolean {
+  /**
+   * `slackMs`: how early a tick may count as an interval. The timer's own
+   * ticks land a hair under an interval after the sync they started (which
+   * stamps after the network check), and must not skip every other one.
+   */
+  private isSyncDue(now: number = Date.now(), slackMs = 0): boolean {
     if (this.lastSyncStartedAt === null) return true;
     const elapsed = now - this.lastSyncStartedAt;
-    return elapsed < 0 || elapsed >= SYNC_INTERVAL_MS;
+    return elapsed < 0 || elapsed >= SYNC_INTERVAL_MS - slackMs;
   }
 
   private runInBackground() {
@@ -61,7 +68,10 @@ export class SyncManager {
       clearInterval(this.syncInterval);
     }
 
-    this.syncInterval = setInterval(() => this.runInBackground(), SYNC_INTERVAL_MS);
+    // A foreground sync since the last tick already did this tick's work.
+    this.syncInterval = setInterval(() => {
+      if (this.isSyncDue(Date.now(), SYNC_TICK_SLACK_MS)) this.runInBackground();
+    }, SYNC_INTERVAL_MS);
   }
 
   /**

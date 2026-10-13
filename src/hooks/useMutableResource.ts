@@ -62,6 +62,8 @@ export function useMutableResource<T, TParams extends readonly unknown[]>(
   const previousKeyRef = useRef<string | null>(null);
   const mountedRef = useRef(true);
   const initialDataRef = useRef(initialData);
+  /** Revalidates published to this hook; a cache read started before one must not paint over it. */
+  const publishedCountRef = useRef(0);
   paramsRef.current = params;
   initialDataRef.current = initialData;
 
@@ -204,8 +206,15 @@ export function useMutableResource<T, TParams extends readonly unknown[]>(
         setIsInitialLoading(true);
       }
 
+      const publishedBefore = publishedCountRef.current;
       const cached = await resource.loadCached(...activeParams);
       if (cancelled) return;
+      // A revalidate published for this key while the disk read ran: what
+      // is on screen is newer than the disk copy, which must not repaint it.
+      if (publishedCountRef.current !== publishedBefore) {
+        setIsInitialLoading(false);
+        return;
+      }
 
       if (cached) {
         setData(cached.data);
@@ -241,6 +250,7 @@ export function useMutableResource<T, TParams extends readonly unknown[]>(
     if (!enabled || key === null) return;
     return resource.subscribe(key, (result) => {
       if (!mountedRef.current || previousKeyRef.current !== key) return;
+      publishedCountRef.current += 1;
       setData((current) => (resource.isEqual(current, result.data) ? current : result.data));
       setLastUpdatedAt(result.lastUpdatedAt);
       setSource(result.source);

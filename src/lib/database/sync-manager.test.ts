@@ -94,6 +94,36 @@ describe("SyncManager", () => {
     expect(listener).not.toHaveBeenCalled();
   });
 
+  it("skips an interval tick that a foreground sync already covered", async () => {
+    jest.useFakeTimers();
+    let listener: ((state: AppStateStatus) => void) | null = null;
+    jest.spyOn(AppState, "addEventListener").mockImplementation((_type, handler) => {
+      listener = handler as (state: AppStateStatus) => void;
+      return { remove: jest.fn() } as unknown as ReturnType<typeof AppState.addEventListener>;
+    });
+    mockFetchSchedule.mockResolvedValue([]);
+    const manager = new SyncManager("Test Meet");
+    manager.start();
+    try {
+      // Four minutes in, the app comes back and syncs.
+      await jest.advanceTimersByTimeAsync(4 * 60 * 1000);
+      listener!("active");
+      await jest.advanceTimersByTimeAsync(0);
+      expect(mockFetchSchedule).toHaveBeenCalledTimes(1);
+
+      // The tick a minute later is not due; the one after it is.
+      await jest.advanceTimersByTimeAsync(60 * 1000);
+      expect(mockFetchSchedule).toHaveBeenCalledTimes(1);
+      await jest.advanceTimersByTimeAsync(SYNC_INTERVAL_MS);
+      expect(mockFetchSchedule).toHaveBeenCalledTimes(2);
+      // Back-to-back ticks keep firing every interval.
+      await jest.advanceTimersByTimeAsync(SYNC_INTERVAL_MS);
+      expect(mockFetchSchedule).toHaveBeenCalledTimes(3);
+    } finally {
+      manager.stopSync();
+    }
+  });
+
   it("retries on the next foreground after a failed fetch", async () => {
     let listener: ((state: AppStateStatus) => void) | null = null;
     jest.spyOn(AppState, "addEventListener").mockImplementation((_type, handler) => {

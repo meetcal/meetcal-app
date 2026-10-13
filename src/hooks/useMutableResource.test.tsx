@@ -113,6 +113,43 @@ describe("useMutableResource", () => {
     expect(captured!.data).toEqual([{ id: "v2" }]);
   });
 
+  it("does not repaint a published answer with a disk copy read before it", async () => {
+    let releaseCache!: (entry: ResourceCacheEntry<Row[]>) => void;
+    const resource = createMutableResource<Row[], [string]>({
+      getKey: (param) => `race:${param}`,
+      loadCached: jest
+        .fn()
+        // The hook's own slow disk read...
+        .mockImplementationOnce(
+          () => new Promise<ResourceCacheEntry<Row[]>>((resolve) => {
+            releaseCache = resolve;
+          }),
+        )
+        // ...and the background revalidate's.
+        .mockResolvedValue(null),
+      fetchFresh: jest
+        .fn()
+        .mockResolvedValueOnce([{ id: "fresh" }])
+        // Any later revalidate stays out, so a stale repaint would show.
+        .mockImplementation(() => new Promise(() => {})),
+      persistFresh: async () => null,
+    });
+
+    harness(resource, "a");
+    await flush();
+    await act(async () => {
+      await resource.revalidate("a");
+    });
+    expect(captured!.data).toEqual([{ id: "fresh" }]);
+
+    await act(async () => {
+      releaseCache({ data: [{ id: "stale" }], lastUpdatedAt: 1 });
+    });
+    await flush();
+    expect(captured!.data).toEqual([{ id: "fresh" }]);
+    expect(captured!.isInitialLoading).toBe(false);
+  });
+
   it("reports an error when there is no cache to fall back on", async () => {
     const resource = createMutableResource<Row[], [string]>({
       getKey: (param) => `nocache:${param}`,
