@@ -47,6 +47,7 @@ function OfflineDataContent() {
     filteredMeets,
     downloadingItems,
     downloadStatuses,
+    statusesLoad,
     isRefreshingAll,
     isDeletingAll,
     competitionItems,
@@ -56,6 +57,9 @@ function OfflineDataContent() {
     confirmRefreshAll,
     confirmDeleteAll,
   } = useOfflineData();
+  // A row cannot say whether it is downloaded until the statuses are read,
+  // so its tap (download or remove) waits for them, and so does Refresh All.
+  const rowsDisabled = isRefreshingAll || isDeletingAll || statusesLoad !== "loaded";
 
   if (isMeetLoading) {
     return (
@@ -109,7 +113,7 @@ function OfflineDataContent() {
                       name: "arrow.clockwise" as const,
                     },
                     tintColor: colors.link,
-                    disabled: isRefreshingAll || isDeletingAll,
+                    disabled: rowsDisabled,
                     onPress: confirmRefreshAll,
                   },
                   {
@@ -127,7 +131,7 @@ function OfflineDataContent() {
                   <View style={styles.headerActions}>
                     <Pressable
                       onPress={confirmRefreshAll}
-                      disabled={isRefreshingAll || isDeletingAll}
+                      disabled={rowsDisabled}
                       style={({ pressed }) => [
                         styles.headerButton,
                         pressed && { opacity: 0.7 },
@@ -201,7 +205,7 @@ function OfflineDataContent() {
                   subtitle={formatLastSynced(status?.lastSynced)}
                   isDownloaded={status?.isDownloaded ?? false}
                   isDownloading={isDownloading}
-                  disabled={isRefreshingAll || isDeletingAll}
+                  disabled={rowsDisabled}
                   colors={colors}
                   onDownload={() =>
                     handleDownload(id, () => prefetchMeetData(meet.name))
@@ -235,7 +239,7 @@ function OfflineDataContent() {
                   subtitle={formatLastSynced(status?.lastSynced)}
                   isDownloaded={status?.isDownloaded ?? false}
                   isDownloading={isDownloading}
-                  disabled={isRefreshingAll || isDeletingAll}
+                  disabled={rowsDisabled}
                   colors={colors}
                   onDownload={() => handleDownload(item.id, item.onDownload)}
                   onDelete={() =>

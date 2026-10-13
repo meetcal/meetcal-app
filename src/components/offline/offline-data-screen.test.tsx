@@ -106,6 +106,7 @@ jest.mock("@/lib/database/meet-manager", () => ({
 }));
 
 let mockDownloadedMeets = new Set<string>();
+const mockGetExplicitlyDownloadedMeetIds = jest.fn(async () => new Set(mockDownloadedMeets));
 const mockClearMeetData = jest.fn(async (meet: string, _options?: unknown) => {
   mockDownloadedMeets.delete(meet);
 });
@@ -117,7 +118,7 @@ const mockMarkMeetExplicitlyDownloaded = jest.fn(
 jest.mock("@/lib/database/offline-store", () => ({
   clearAllAthleteHistory: jest.fn(async () => {}),
   clearMeetData: (meet: string, options?: unknown) => mockClearMeetData(meet, options),
-  getExplicitlyDownloadedMeetIds: async () => new Set(mockDownloadedMeets),
+  getExplicitlyDownloadedMeetIds: () => mockGetExplicitlyDownloadedMeetIds(),
   getLastSyncTime: async () => Date.UTC(2099, 5, 1),
   markMeetExplicitlyDownloaded: (meet: string, downloaded: boolean, options?: unknown) =>
     mockMarkMeetExplicitlyDownloaded(meet, downloaded, options),
@@ -197,6 +198,7 @@ beforeEach(async () => {
   mockIsSubscriptionLoading = false;
   mockScreenOptions = {};
   mockDownloadedMeets = new Set(["Meet A"]);
+  mockGetExplicitlyDownloadedMeetIds.mockImplementation(async () => new Set(mockDownloadedMeets));
   mockPrefetchMeetData.mockImplementation(async () => {});
   jest.spyOn(console, "error").mockImplementation(() => {});
   alertSpy = jest.spyOn(Alert, "alert").mockImplementation(() => undefined);
@@ -212,6 +214,33 @@ afterEach(() => {
 });
 
 describe("OfflineDataScreen", () => {
+  // Until the statuses landed every row read "Not downloaded yet", so tapping
+  // a downloaded meet re-downloaded it instead of offering Remove.
+  it("holds row taps and Refresh All until it knows what is downloaded", async () => {
+    const gate = deferred();
+    mockGetExplicitlyDownloadedMeetIds.mockImplementationOnce(async () => {
+      await gate.promise;
+      return new Set(mockDownloadedMeets);
+    });
+    let tree!: ReactTestRenderer;
+    await act(async () => {
+      tree = create(<OfflineDataScreen />);
+    });
+
+    expect(row(tree, "Meet A").props.subtitle).toBe("Checking…");
+    expect(rowPressable(tree, "Meet A").props.disabled).toBe(true);
+    expect(headerItem("Refresh all offline data").disabled).toBe(true);
+    await pressRow(tree, "Meet A");
+    expect(mockPrefetchMeetData).not.toHaveBeenCalled();
+
+    gate.resolve();
+    await flush();
+    expect(row(tree, "Meet A").props.isDownloaded).toBe(true);
+    expect(rowPressable(tree, "Meet A").props.disabled).toBe(false);
+    expect(headerItem("Refresh all offline data").disabled).toBe(false);
+    act(() => tree.unmount());
+  });
+
   it("lists the meets in the download window and every competition table", async () => {
     const tree = await mount();
     const titles = rows(tree).map((r) => r.props.title);

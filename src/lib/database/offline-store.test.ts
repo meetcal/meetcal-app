@@ -1939,6 +1939,47 @@ describe("downloaded meet expiry on the server's clock", () => {
     jest.restoreAllMocks();
   });
 
+  const listMeets = (meets: { name: string; end: string }[]) =>
+    mockStorage.set(
+      "@meets_list_cache_v1",
+      JSON.stringify(
+        meets.map(({ name, end }) => ({
+          name,
+          dates: { start: end, end },
+          time: { timeZoneIdentifier: "America/New_York" },
+        })),
+      ),
+    );
+
+  // Downloaded for Oct 10-12, then postponed to the 17th-19th: the date
+  // captured at download time deleted the meet's offline data before it ran.
+  it("expires a postponed meet on its current end date from the meets list, and remembers it", async () => {
+    await saveMeetAthletes("Postponed", [athlete("Postponed")] as never);
+    await markMeetExplicitlyDownloaded("Postponed" as never, true, { endDate: "2020-01-01" });
+    listMeets([{ name: "Postponed", end: "2099-06-20" }]);
+
+    await clearExpiredDownloadedMeets();
+
+    await expect(isMeetExplicitlyDownloadedFor("Postponed")).resolves.toBe(true);
+    const downloads = JSON.parse(mockStorage.get("meetcal_explicit_meet_downloads") ?? "{}");
+    expect(downloads.Postponed.endDate).toBe("2099-06-20");
+
+    // Off the list later, the remembered date still applies.
+    mockStorage.delete("@meets_list_cache_v1");
+    await clearExpiredDownloadedMeets();
+    await expect(isMeetExplicitlyDownloadedFor("Postponed")).resolves.toBe(true);
+  });
+
+  it("expires a meet the list says has ended even though the stored date is later", async () => {
+    await saveMeetAthletes("Moved Up", [athlete("Moved Up")] as never);
+    await markMeetExplicitlyDownloaded("Moved Up" as never, true, { endDate: "2099-06-20" });
+    listMeets([{ name: "Moved Up", end: "2020-01-01" }]);
+
+    await clearExpiredDownloadedMeets();
+
+    await expect(isMeetExplicitlyDownloadedFor("Moved Up")).resolves.toBe(false);
+  });
+
   async function isMeetExplicitlyDownloadedFor(meet: string): Promise<boolean> {
     return (await getExplicitlyDownloadedMeetIds()).has(meet);
   }

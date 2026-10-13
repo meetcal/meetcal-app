@@ -4,7 +4,7 @@ import { act, create } from "react-test-renderer";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { BROWSE_CACHE_KEYS, OFFLINE_CACHE_KEYS } from "@/lib/database/offline-cache";
 import { resetOfflineActivityForTests } from "@/lib/database/offline-activity";
-import { useOfflineData } from "@/utils/offline";
+import { describeDownloadStatus, useOfflineData } from "@/utils/offline";
 
 const mockIsNetworkAvailable = jest.fn<Promise<boolean>, []>(async () => true);
 jest.mock("@/lib/networkUtils", () => ({
@@ -50,6 +50,7 @@ jest.mock("@/lib/database/meet-manager", () => ({
   prefetchMeetData: (meet: string, options?: unknown) => mockPrefetchMeetData(meet, options),
 }));
 
+const mockGetExplicitlyDownloadedMeetIds = jest.fn(async () => new Set(["Meet A"]));
 const mockClearMeetData = jest.fn(async (_meet: string, _options?: unknown) => {});
 const mockClearAllAthleteHistory = jest.fn(async () => {});
 const mockMarkMeetExplicitlyDownloaded = jest.fn(async (..._args: unknown[]) => {});
@@ -61,7 +62,7 @@ const mockListStoredMeets = jest.fn(async (extra: readonly string[] = []) => ({
 jest.mock("@/lib/database/offline-store", () => ({
   clearAllAthleteHistory: () => mockClearAllAthleteHistory(),
   clearMeetData: (meet: string, options?: unknown) => mockClearMeetData(meet, options),
-  getExplicitlyDownloadedMeetIds: async () => new Set(["Meet A"]),
+  getExplicitlyDownloadedMeetIds: () => mockGetExplicitlyDownloadedMeetIds(),
   getLastSyncTime: async () => 1,
   markMeetExplicitlyDownloaded: (...args: unknown[]) => mockMarkMeetExplicitlyDownloaded(...args),
   listStoredMeets: (extra?: readonly string[]) => mockListStoredMeets(extra),
@@ -117,6 +118,7 @@ const freshEntry = JSON.stringify({ data: { any: "fresh rows" }, lastSynced: 2 }
 beforeEach(async () => {
   resetOfflineActivityForTests();
   jest.clearAllMocks();
+  mockGetExplicitlyDownloadedMeetIds.mockImplementation(async () => new Set(["Meet A"]));
   captured = null;
   mockIsNetworkAvailable.mockReset();
   mockIsNetworkAvailable.mockResolvedValue(true);
@@ -134,6 +136,56 @@ beforeEach(async () => {
 
 afterEach(() => {
   jest.restoreAllMocks();
+});
+
+describe("useOfflineData download statuses", () => {
+  it("says the statuses are loading until they are read, then loaded", async () => {
+    let tree!: ReturnType<typeof create>;
+    act(() => {
+      tree = create(<Harness />);
+    });
+    expect(captured!.statusesLoad).toBe("loading");
+    expect(captured!.formatLastSynced(null)).toBe("Checking…");
+
+    await flush();
+    expect(captured!.statusesLoad).toBe("loaded");
+    expect(captured!.downloadStatuses.standards?.isDownloaded).toBe(true);
+    act(() => tree.unmount());
+  });
+
+  // The read failing used to be logged only: every row said "Not downloaded
+  // yet" for good, and Refresh All said there was nothing to refresh.
+  it("reports a failed read and does not offer Refresh All on it", async () => {
+    mockGetExplicitlyDownloadedMeetIds.mockRejectedValueOnce(new Error("I/O error"));
+    const tree = await mount();
+
+    expect(captured!.statusesLoad).toBe("failed");
+    expect(captured!.formatLastSynced(null)).toBe("Couldn't read offline data");
+    const alerts = alertSpy.mock.calls.length;
+    act(() => captured!.confirmRefreshAll());
+    expect(alertSpy.mock.calls.length).toBe(alerts);
+    act(() => tree.unmount());
+  });
+
+  // Refresh All filtered on the statuses of the render that opened its
+  // confirmation, so an item whose status changed meanwhile was skipped.
+  it("refreshes what is downloaded when it runs, not when its confirmation opened", async () => {
+    const tree = await mount();
+    act(() => captured!.confirmRefreshAll());
+    await AsyncStorage.setItem(OFFLINE_CACHE_KEYS.qualifyingTotals, cacheEntry);
+
+    await tap("Refresh All");
+
+    expect(mockFetchQualifyingTotals).toHaveBeenCalledTimes(1);
+    act(() => tree.unmount());
+  });
+});
+
+describe("describeDownloadStatus", () => {
+  it("names the last sync once statuses are loaded", () => {
+    expect(describeDownloadStatus("loaded", null)).toBe("Not downloaded yet");
+    expect(describeDownloadStatus("loaded", Date.now() - 60_000)).toMatch(/^Last synced /);
+  });
 });
 
 describe("useOfflineData refresh all", () => {
