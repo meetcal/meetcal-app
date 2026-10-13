@@ -1,6 +1,6 @@
 import { Platform } from 'react-native';
 import { LiftResult } from '@/data/types/athletes';
-import { lowerNameMatchesSearchWords, searchWords } from '@/lib/name-search';
+import { foldForNameSearch, lowerNameMatchesSearchWords, searchWords } from '@/lib/name-search';
 import type { YearBests } from '@/lib/start-list-api';
 import type { Schedule } from '@/types/schedule';
 import type { SessionDetails } from '@/types/start-list';
@@ -413,7 +413,7 @@ export function normalizeStartListAthletes(
     athlete,
     weightClasses: parseWeightClasses(athlete.weightClass),
     ageCategory: getAgeCategory(athlete.age),
-    nameLower: athlete.name.toLowerCase(),
+    nameLower: foldForNameSearch(athlete.name),
     genderLower: athlete.gender.toLowerCase(),
     wso: athlete.wso?.trim() || '',
   }));

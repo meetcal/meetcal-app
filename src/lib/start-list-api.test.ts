@@ -388,6 +388,21 @@ describe("getLastYearBestsBatch", () => {
     expect(result["Jane  Doe"]).toEqual({ bestSnatch: 70, bestCJ: 90, bestTotal: 160 });
   });
 
+  it("matches latest_only rows in another Unicode form to the roster name (#268)", async () => {
+    const nfc = "José Núñez".normalize("NFC");
+    const nfd = nfc.normalize("NFD");
+    mockFetchApiYearBestsByNames.mockResolvedValue({
+      [nfd]: { bestSnatch: 0, bestCJ: 0, bestTotal: 0 },
+    });
+    mockFetchApiResultsByNames.mockResolvedValue([
+      liftRow({ name: nfc, meet: "Recent Meet", date: "2022-03-01", snatch_best: 70, cj_best: 90, total: 160 }),
+    ]);
+
+    const result = await startListApi.getLastYearBestsBatch([nfd]);
+
+    expect(result[nfd]).toEqual({ bestSnatch: 70, bestCJ: 90, bestTotal: 160 });
+  });
+
   it("matches a bests row keyed by the cleaned name to the roster's raw spelling", async () => {
     // The API trims and folds whitespace in the names it echoes back, so the
     // roster's ' Jane Doe' used to miss its own row and be stored as "—".

@@ -28,4 +28,11 @@ describe("nameMatchesSearchWords", () => {
   it("matches everyone for a blank query", () => {
     expect(matches("John Smith", "  ")).toBe(true);
   });
+
+  it("matches a name and a query written in different Unicode forms (#268)", () => {
+    const nfc = "José Núñez".normalize("NFC");
+    const nfd = nfc.normalize("NFD");
+    expect(matches(nfd, "josé")).toBe(true);
+    expect(matches(nfc, nfd.toLowerCase())).toBe(true);
+  });
 });

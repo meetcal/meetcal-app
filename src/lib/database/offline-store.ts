@@ -1604,6 +1604,11 @@ export async function readStorageKeysForMeetClear(
  * The normalized athlete name an athlete-history or athlete-bests key belongs
  * to, or null for any other key. Chunk keys are `<manifest key>__chunk_...`,
  * so one prefix strip covers manifests, chunks and legacy raw payloads.
+ *
+ * The name is normalized again: keys written before the name key applied
+ * Unicode NFC (#268) hold a decomposed spelling that nothing reads any more,
+ * and folding it onto today's key lets the per-meet and orphan prunes clear
+ * those keys with their athlete instead of leaving them behind.
  */
 function athleteNameOfStorageKey(key: string): string | null {
   const prefix = key.startsWith(ATHLETE_HISTORY_KEY_PREFIX)
@@ -1614,7 +1619,7 @@ function athleteNameOfStorageKey(key: string): string | null {
   if (!prefix) return null;
   const rest = key.slice(prefix.length);
   const chunkAt = rest.indexOf('__chunk_');
-  return chunkAt === -1 ? rest : rest.slice(0, chunkAt);
+  return normalizeAthleteName(chunkAt === -1 ? rest : rest.slice(0, chunkAt));
 }
 
 /**
