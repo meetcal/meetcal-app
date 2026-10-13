@@ -122,10 +122,18 @@ export const nationalRankingsByYear = query({
   },
 });
 
-/** `GET /data/wso/` */
+/**
+ * `GET /data/wso/`. A fresh view is filtered too: one built before the
+ * WSOs were limited to the maintained ones (`MAINTAINED_WSOS`) stays fresh
+ * until its rows change, and would offer WSOs whose records answer `[]`.
+ */
 export const wsoList = query({
   args: { ifNoneMatch },
-  handler: async (ctx, args) => await viewOrLive(ctx, REF_VIEWS.wso_list, args.ifNoneMatch, () => computeWsoList(ctx)),
+  handler: async (ctx, args) => {
+    const view = await readFreshView<string>(ctx, REF_VIEWS.wso_list);
+    const wsos = view ? (await view.items()).filter(isMaintainedWso) : await computeWsoList(ctx);
+    return revalidated(wsos, args.ifNoneMatch);
+  },
 });
 
 /**
