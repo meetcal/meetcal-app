@@ -2,12 +2,15 @@ import { ConvexError } from 'convex/values';
 import { AGE_GROUPS } from '../src/constants/nat-rankings';
 import { getWeightClasses } from '../src/utils/nat-rankings';
 import { completed as completedMeets, isPlaceholderMeet, list as listMeets, packageForMeet, upcomingWindowNow } from '../convex/meets';
-import { fakeDb } from './fakeDb';
+import { ANONYMOUS_AUTH, fakeDb } from './fakeDb';
 import { adaptiveRecords, nationalRankings, nationalRankingsByYear } from '../convex/reference';
 import { RANKING_DIVISIONS, isRankingDivision, requireAdaptiveGender, requireKnownRankingClass } from '../convex/lib/referenceData';
 import { requireSavedSessionWhen } from '../convex/users';
 import { toSavedSessionBody } from '../src/lib/saved-sessions-outbox';
 import type { SavedSession } from '../src/lib/saved-sessions-store';
+
+// Premium queries log each caller (`convex/lib/access.ts`).
+beforeEach(() => jest.spyOn(console, 'log').mockImplementation(() => {}));
 
 type Row = Record<string, unknown>;
 
@@ -41,12 +44,13 @@ function fakeCtx(tables: Record<string, Row[]> = {}) {
       }),
     },
   };
-  return { ctx: ctx as never, reads };
+  return { ctx: { ...ctx, auth: ANONYMOUS_AUTH } as never, reads };
 }
 
-/** A ctx whose database must not be touched: validation comes first. */
+/** A ctx whose database must not be touched: validation comes first. The caller is anonymous. */
 const NO_DB = {
   db: new Proxy({}, { get: () => () => { throw new Error('read before validating'); } }),
+  auth: ANONYMOUS_AUTH,
 } as never;
 
 async function statusOf(promise: Promise<unknown> | (() => unknown)): Promise<number | 'ok'> {

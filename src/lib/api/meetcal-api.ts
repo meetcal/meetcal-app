@@ -21,6 +21,7 @@ import {
   ValidatorCache,
   type ValidatorEntry,
 } from '@/lib/api/http-cache';
+import { dataTokenFor, wantsDataToken } from '@/lib/api/premium-queries';
 import { callApi, TransportRequestError, type ApiCall } from '@/lib/api/transport';
 
 // The app's backend is Convex (`convex/`). Each function below calls the
@@ -310,7 +311,7 @@ function assertHasFields(value: unknown, label: string, fields: string[]): Recor
 }
 
 function methodLabel(call: ApiCall): string {
-  return call.kind === 'mutation' ? 'POST' : 'GET';
+  return call.kind === 'mutation' || call.kind === 'action' ? 'POST' : 'GET';
 }
 
 /**
@@ -325,6 +326,9 @@ function methodLabel(call: ApiCall): string {
  */
 async function request(call: ApiCall, timeoutMs: number = DEFAULT_TIMEOUT_MS): Promise<unknown> {
   const startedAt = typeof performance !== 'undefined' ? performance.now() : Date.now();
+  // Before the timeout starts: the wait for Clerk is bounded on its own
+  // (`DATA_TOKEN_TIMEOUT_MS`). Every other call starts at once.
+  const dataToken = call.kind === 'query' && !call.token && wantsDataToken(call.fn) ? await dataTokenFor(call.fn) : undefined;
   let timeoutId: ReturnType<typeof setTimeout> | undefined;
   // The timeout also aborts the request, so it never lands later (a stale
   // save arriving after a newer unsave would bring the session back).
@@ -341,7 +345,8 @@ async function request(call: ApiCall, timeoutMs: number = DEFAULT_TIMEOUT_MS): P
       : null;
 
   try {
-    const result = await Promise.race([callApi(abort ? { ...call, signal: abort.signal } : call), timeout]);
+    const sent = { ...call, ...(dataToken ? { dataToken } : {}), ...(abort ? { signal: abort.signal } : {}) };
+    const result = await Promise.race([callApi(sent), timeout]);
     // Only the request that started the process's first sample waits for it;
     // refreshes of an existing sample, and requests that merely find one in
     // flight, never do.
@@ -1751,4 +1756,21 @@ export async function patchAutoUnsavePreference(
     throw new Error('/users/me/preferences/auto-unsave.auto_unsave_started_sessions expected a boolean');
   }
   return { auto_unsave_started_sessions: row.auto_unsave_started_sessions };
+}
+
+/**
+ * Asks the server to check the signed-in user's subscription with RevenueCat
+ * now (`entitlements:refresh`), so premium reads work right after a purchase
+ * and for subscribers the server has not heard about yet. Answers whether the
+ * server found it active.
+ */
+export async function refreshServerEntitlement(token: string): Promise<{ active: boolean }> {
+  const authToken = requireToken(token, 'refreshServerEntitlement');
+  const row = assertHasFields(
+    await userCall('/users/me/entitlement', 'entitlements:refresh', 'action', authToken),
+    '/users/me/entitlement',
+    ['active'],
+  );
+  if (typeof row.active !== 'boolean') throw new Error('/users/me/entitlement.active expected a boolean');
+  return { active: row.active };
 }

@@ -1,5 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
-import { mockAuth, routeQuery, textAnswer, valueAnswer } from "./support/api";
+import { jsonResponse, mockAuth, routeQuery, textAnswer, valueAnswer } from "./support/api";
 
 type AuthMockState = {
   signInMounts: Array<Record<string, unknown>>;
@@ -49,12 +49,13 @@ test("signed out, a data page shows the sign-in that returns to it, and reads no
 });
 
 test("signed in without the subscription, a data page hands off to the app and reads no data", async ({ page }) => {
-  await mockAuth(page, { entitlements: [] });
+  const { entitlementRefreshes } = await mockAuth(page, { entitlements: [] });
   const reads = countConvexReads(page);
 
   await page.goto("/records");
   await expect(page.getByRole("heading", { level: 1, name: "Continue in the MeetCal app" })).toBeVisible();
   expect(reads).toEqual([]);
+  expect(entitlementRefreshes).toEqual([]);
 });
 
 test("another entitlement than the app's Subscriptions does not unlock the data pages", async ({ page }) => {
@@ -241,4 +242,60 @@ test("an unpaid user who subscribes in the app gets in on returning to the tab",
   });
   await expect(page.getByRole("heading", { level: 1, name: "Records" })).toBeVisible();
   expect((await authMock(page)).customerInfoCalls).toBe(2);
+});
+
+test("a subscriber's subscription reads carry the Clerk session token, and public reads do not", async ({ page }) => {
+  await mockAuth(page);
+  const authorization = new Map<string, string | undefined>();
+  for (const [fn, rows] of [["reference:clubs", ["Test Barbell"]], ["meets:completed", []]] as const) {
+    await routeQuery(page, fn, (route) => {
+      authorization.set(fn, route.request().headers().authorization);
+      return route.fulfill(textAnswer(rows));
+    });
+  }
+
+  await page.goto("/club-dashboard");
+  await expect(page.getByLabel("Club").locator("option", { hasText: "Test Barbell" })).toHaveCount(1);
+  await expect.poll(() => authorization.size).toBe(2);
+  expect(authorization.get("reference:clubs")).toBe("Bearer token_user_ci");
+  // Anonymous, so it keeps sharing Convex's query cache.
+  expect(authorization.get("meets:completed")).toBeUndefined();
+});
+
+for (const status of [401, 403]) {
+  test(`a session token Convex refuses (${status}) is dropped and the read goes out again without it`, async ({ page }) => {
+    await mockAuth(page);
+    const sent: Array<string | undefined> = [];
+    await routeQuery(page, "reference:standards", (route) => {
+      const token = route.request().headers().authorization;
+      sent.push(token);
+      return token
+        ? route.fulfill({ ...jsonResponse({ code: "InvalidAuthHeader", message: "Could not verify token" }), status })
+        : route.fulfill(textAnswer([]));
+    });
+
+    await page.goto("/standards");
+    await expect(page.getByRole("heading", { level: 1, name: "Standards" })).toBeVisible();
+    await expect.poll(() => sent).toEqual(["Bearer token_user_ci", undefined]);
+    await expect(page.getByRole("alert")).toHaveCount(0);
+  });
+}
+
+test("a subscriber's entitlement is refreshed in Convex once per page load", async ({ page }) => {
+  const { entitlementRefreshes } = await mockAuth(page);
+  await routeQuery(page, "reference:records", (route) => route.fulfill(textAnswer([])));
+  await routeQuery(page, "reference:standards", (route) => route.fulfill(textAnswer([])));
+
+  await page.goto("/records");
+  await expect(page.getByRole("heading", { level: 1, name: "Records" })).toBeVisible();
+  await expect.poll(() => entitlementRefreshes).toEqual(["Bearer token_user_ci"]);
+
+  // Another data page, and the same user again after another, check again but do not refresh again.
+  await openFromHeader(page, "/standards");
+  await expect(page.getByRole("heading", { level: 1, name: "Standards" })).toBeVisible();
+  await page.evaluate(() => (window as unknown as { __authMock: AuthMockState }).__authMock.setUser("user_other"));
+  await expect(page.getByRole("heading", { level: 1, name: "Continue in the MeetCal app" })).toBeVisible();
+  await page.evaluate(() => (window as unknown as { __authMock: AuthMockState }).__authMock.setUser("user_ci"));
+  await expect(page.getByRole("heading", { level: 1, name: "Standards" })).toBeVisible();
+  expect(entitlementRefreshes).toEqual(["Bearer token_user_ci"]);
 });

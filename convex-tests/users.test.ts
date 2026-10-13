@@ -55,6 +55,22 @@ async function status(promise: Promise<unknown>): Promise<number | 'ok'> {
 const put = (sessionId: string, extra: Args = {}) => ({ sessionId, meet: 'Spring Open', session_number: 1, platform: 'Red', ...extra });
 
 describe('users.ts scoping (#220)', () => {
+  it("refuses a MeetCal-issued token (the CLI's, Siri's): it reads premium data only", async () => {
+    const site = 'https://example.convex.site';
+    const previous = process.env.CONVEX_SITE_URL;
+    process.env.CONVEX_SITE_URL = site;
+    try {
+      const store = server({ saved_sessions: [saved(A, 's1')], api_tokens: [{ tokenId: 't1', userId: A, client: 'cli', createdAt: 1, expiresAt: 2 }] });
+      const ctx = { ...store.ctx, auth: { getUserIdentity: async () => ({ subject: A, issuer: site, tid: 't1' }) } };
+      expect(await status(handlerOf<Args>(savedSessions)(ctx, {}))).toBe(401);
+      expect(await status(handlerOf<Args>(putSavedSession)(ctx, put('s2')))).toBe(401);
+      expect(store.rows('saved_sessions')).toHaveLength(1);
+    } finally {
+      if (previous === undefined) delete process.env.CONVEX_SITE_URL;
+      else process.env.CONVEX_SITE_URL = previous;
+    }
+  });
+
   it('refuses every handler without an identity, before reading or writing', async () => {
     const store = server({ saved_sessions: [saved(A, 's1')], user_preferences: [{ userId: A, autoUnsaveStartedSessions: true, updatedAt: 1 }] });
     const anonymous = store.as(null);
@@ -138,17 +154,25 @@ describe('deleteUserData (#250)', () => {
       { userId: A, device: 'phone', meet: null, rev: 2, updatedAt: 1 },
       { userId: B, device: 'phone', meet: null, rev: 2, updatedAt: 1 },
     ],
+    entitlements: [
+      { userId: A, active: true, expiresAt: null, productId: 'lifetime', syncedAt: 1 },
+      { userId: B, active: true, expiresAt: null, productId: 'lifetime', syncedAt: 1 },
+    ],
+    api_tokens: [
+      { tokenId: 't_a', userId: A, client: 'cli', createdAt: 1, expiresAt: 2 },
+      { tokenId: 't_b', userId: B, client: 'cli', createdAt: 1, expiresAt: 2 },
+    ],
   });
   const run = handlerOf<{ userId: string }, Record<string, unknown>>(deleteUserData);
 
   it("deletes every row of the user and nobody else's", async () => {
     const store = fakeMutationCtx(seed());
-    expect(await run(store.ctx, { userId: A })).toEqual({ sessions: 1, preferences: 1, revisions: 1, resets: 1, more: false });
-    for (const table of ['saved_sessions', 'user_preferences', 'saved_session_revisions', 'saved_session_resets']) {
+    expect(await run(store.ctx, { userId: A })).toEqual({ sessions: 1, preferences: 1, revisions: 1, resets: 1, entitlements: 1, apiTokens: 1, more: false });
+    for (const table of ['saved_sessions', 'user_preferences', 'saved_session_revisions', 'saved_session_resets', 'entitlements', 'api_tokens']) {
       expect(store.rows(table).map((r) => r.userId)).toEqual([B]);
     }
     expect(store.scheduled).toEqual([]);
-    expect(await run(store.ctx, { userId: A })).toEqual({ sessions: 0, preferences: 0, revisions: 0, resets: 0, more: false });
+    expect(await run(store.ctx, { userId: A })).toEqual({ sessions: 0, preferences: 0, revisions: 0, resets: 0, entitlements: 0, apiTokens: 0, more: false });
   });
 
   it('continues in another call past a batch, and refuses a blank id', async () => {

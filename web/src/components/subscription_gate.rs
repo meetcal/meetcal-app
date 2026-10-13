@@ -1,6 +1,7 @@
 use crate::{
     auth::{AuthContext, AuthState, has_comp_data_access, mount_sign_in, unmount_sign_in},
     components::store_links::{APP_STORE_URL, PLAY_STORE_URL},
+    utils::api::refresh_entitlement,
 };
 use leptos::prelude::*;
 
@@ -37,6 +38,8 @@ pub struct AccessContext {
     latest_check: StoredValue<u64>,
     /// Gates mounted now (more than one while a route change swaps them).
     open_gates: StoredValue<usize>,
+    /// Users this page load has asked Convex to refresh the entitlement of.
+    refreshed: StoredValue<Vec<String>>,
 }
 
 /// Provides the shared access state; call once, after `provide_auth`.
@@ -48,6 +51,7 @@ pub fn provide_access() {
         checked: StoredValue::new(None),
         latest_check: StoredValue::new(0),
         open_gates: StoredValue::new(0),
+        refreshed: StoredValue::new(Vec::new()),
     };
     provide_context(access);
 
@@ -141,8 +145,33 @@ impl AccessContext {
                 self.checked.set_value(previous);
                 return;
             }
+            if result == Ok(true) {
+                self.refresh_server_entitlement(&user_id);
+            }
             self.checked.set_value(Some((user_id, js_sys::Date::now())));
             self.show(access_for(result));
+        });
+    }
+
+    /// RevenueCat granted `user_id` the entitlement: ask Convex, once per page
+    /// load per user, to record it too (see `refresh_entitlement`). Nothing
+    /// waits on it, and a failure is only logged.
+    fn refresh_server_entitlement(self, user_id: &str) {
+        let first = self
+            .refreshed
+            .try_update_value(|refreshed| first_refresh(refreshed, user_id))
+            .unwrap_or(false);
+        if !first {
+            return;
+        }
+        leptos::task::spawn_local(async move {
+            match refresh_entitlement().await {
+                Ok(true) => {}
+                Ok(false) => leptos::logging::warn!(
+                    "Convex found no active entitlement for a user RevenueCat granted"
+                ),
+                Err(error) => leptos::logging::warn!("Entitlement refresh failed: {error}"),
+            }
         });
     }
 
@@ -185,6 +214,15 @@ fn access_for(result: Result<bool, String>) -> AccessState {
         Ok(false) => AccessState::Unpaid,
         Err(message) => AccessState::Error(message),
     }
+}
+
+/// Whether `user_id` is not yet in `refreshed`; adds it.
+fn first_refresh(refreshed: &mut Vec<String>, user_id: &str) -> bool {
+    if refreshed.iter().any(|refreshed| refreshed == user_id) {
+        return false;
+    }
+    refreshed.push(user_id.to_owned());
+    true
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -369,6 +407,15 @@ mod tests {
             recheck_on_open(&AccessState::Error("offline".to_owned()), None, 0.0),
             Recheck::Showing
         );
+    }
+
+    #[test]
+    fn convex_is_asked_to_refresh_each_user_once() {
+        let mut refreshed = Vec::new();
+        assert!(first_refresh(&mut refreshed, "user_1"));
+        assert!(!first_refresh(&mut refreshed, "user_1"));
+        assert!(first_refresh(&mut refreshed, "user_2"));
+        assert!(!first_refresh(&mut refreshed, "user_1"));
     }
 
     #[test]

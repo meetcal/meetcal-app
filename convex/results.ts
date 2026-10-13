@@ -1,4 +1,5 @@
 import { v } from 'convex/values';
+import { premiumQuery, premiumRead } from './lib/access';
 import { query, type QueryCtx } from './_generated/server';
 import { nameMatcher, queryBigrams, searchDirectory } from './lib/directory';
 import { readHistories, readSummaries, type Mark, type Summary } from './lib/history';
@@ -35,7 +36,7 @@ export const MAX_RESULTS_PAGE_SIZE = 2000;
  * back `continueCursor` until `isDone`. For clients that compute across all results (the CLI's
  * leaderboards and exports). Answers `{ json, isDone, continueCursor }`, the rows as JSON text.
  */
-export const page = query({
+export const page = premiumQuery('results:page', {
   args: {
     startDate: v.string(),
     endDate: v.string(),
@@ -63,7 +64,7 @@ export const page = query({
 });
 
 /** `GET /lifting-results`: a meet's results, by name. Answers `{ json }`. */
-export const byMeet = query({
+export const byMeet = premiumQuery('results:byMeet', {
   args: { meet: v.string() },
   handler: async (ctx, { meet }) => {
     requireNonEmpty('meet', meet);
@@ -136,7 +137,7 @@ function checkLimit(limit: number | undefined): void {
  * `latestOnly` keeps each athlete's most recent meet date; `limitPerName`
  * caps each athlete's rows (newest first). Answers `{ json }`.
  */
-export const byNames = query({
+export const byNames = premiumQuery('results:byNames', {
   args: {
     names: v.array(v.string()),
     latestOnly: v.optional(v.boolean()),
@@ -153,7 +154,7 @@ export const byNames = query({
 });
 
 /** `POST /lifting-results/recent`: results since `cutoffDate`, newest first. Answers `{ json }`. */
-export const recent = query({
+export const recent = premiumQuery('results:recent', {
   args: { names: v.array(v.string()), cutoffDate: v.optional(v.string()) },
   handler: async (ctx, args) => {
     const names = cleanNameList(args.names);
@@ -164,7 +165,7 @@ export const recent = query({
 });
 
 /** `GET /lifting-results/year`: one athlete's bests since `cutoffDate`. */
-export const yearBests = query({
+export const yearBests = premiumQuery('results:yearBests', {
   args: { name: v.string(), cutoffDate: v.optional(v.string()) },
   handler: async (ctx, args): Promise<YearBests> => {
     requireNonEmpty('name', args.name);
@@ -179,7 +180,7 @@ export const yearBests = query({
  * spelling (unknown names get zeros), as a list in byte order of name; see
  * `NamedBests` for why not a name-keyed map.
  */
-export const bests = query({
+export const bests = premiumQuery('results:bests', {
   args: { names: v.array(v.string()), cutoffDate: v.optional(v.string()) },
   handler: async (ctx, args): Promise<NamedBests[]> => {
     const names = cleanNameList(args.names);
@@ -325,6 +326,8 @@ export const search = query({
     if (args.startDate === undefined || args.endDate === undefined) {
       return { matched_name: null, suggestions: await matchingNames(MAX_SEARCH_SUGGESTIONS), results: [], truncated: false };
     }
+    // Results are premium; name suggestions alone are not.
+    await premiumRead(ctx, 'results:search');
     const start = args.startDate;
     const end = args.endDate;
     if (end < start) throw apiError(400, 'end_date must not be before start_date');

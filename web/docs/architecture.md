@@ -31,6 +31,12 @@ POST https://disciplined-hare-790.convex.cloud/api/query
   200 or 560. Our functions throw `{ status, error }` as `errorData`; the site shows `error`.
 - 429 and 503 are retried twice, honoring `Retry-After` (1 to 10 seconds). Every call is a read,
   so a retry is safe.
+- The subscription functions (`SUBSCRIPTION_FUNCTIONS` in `api.rs`, the list Convex reads the
+  caller on) go out with `Authorization: Bearer <Clerk session token>` when the user is signed in
+  (`auth::session_token`, Clerk's default token, as the app sends). Every other query goes out
+  without it, so it shares Convex's query cache. A read whose token Convex refuses (401 or 403) is
+  sent once more without it; no token (signed out, or Clerk could not hand one over within five
+  seconds) sends it anonymously, as before.
 - `MEETCAL_CONVEX_URL` (compile time) points a build at another deployment. Production's CSP allows
   only the production deployment, so a preview built against dev is blocked on Vercel.
 
@@ -60,8 +66,16 @@ between data pages neither checks again nor rebuilds the page. It is checked aga
 Clerk user changes, when a page opens after a refusal or an error, and in the background when a
 page opens more than ten minutes after the last grant.
 
-The gate is a soft, client-side check, like the app's paywall. The data it guards is public in
-Convex.
+When RevenueCat grants the entitlement, the gate also calls Convex's `entitlements:refresh`
+action (`POST /api/action`, with the session token) once per page load per user, without waiting
+on it and only logging a failure. Convex asks RevenueCat for the user's entitlement and records
+it, so it knows every subscriber before it enforces the subscription: a lifetime purchase never
+renews, so RevenueCat's webhook alone would never report it.
+
+The gate is a client-side check, like the app's paywall. Convex is moving to enforce the
+subscription itself: for now it reads the caller on the subscription functions and only logs who
+asks, answering everyone; later it will refuse non-subscribers. Until then the data the gate
+guards is still public in Convex.
 
 ## Routes and metadata
 

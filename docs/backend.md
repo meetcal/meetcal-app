@@ -68,7 +68,35 @@ Check the result with `npx convex run parity:run`. It compares every fast path (
 
 Saved sessions (`convex/users.ts`) are user data, not competition data: they feed no view, history, summary or search shard, so a write to them needs nothing rebuilt. The app's outbox sends each write with its install id and revision (`device`, `rev`), and the server ignores a write that arrives after a newer one from the same install, such as a save that lands after the client timed out and then unsaved. It remembers the last revision each install applied to a session (`saved_session_revisions`, kept after a delete as the session's tombstone) and to a reset of a meet or of everything (`saved_session_resets`). A write from another install, or from an app too old to send a revision, applies as it arrives. Each ordered write deletes up to 32 of the user's records older than 7 days from each table; they only have to outlive a delayed request.
 
-When a user deletes their account in Clerk, Clerk's `user.deleted` webhook (`POST /clerk/webhook` on the deployment's `.convex.site` host, Svix-signed with `CLERK_WEBHOOK_SECRET`) runs `users:deleteUserData`, which deletes their saved sessions, preferences and write-order records and keeps only their id in `deleted_users`, so a request still carrying a valid token for the account is refused (403) rather than storing its data again.
+When a user deletes their account in Clerk, Clerk's `user.deleted` webhook (`POST /clerk/webhook` on the deployment's `.convex.site` host, Svix-signed with `CLERK_WEBHOOK_SECRET`) runs `users:deleteUserData`, which deletes their saved sessions, preferences, write-order records, stored entitlement and MeetCal-issued tokens, and keeps only their id in `deleted_users`, so a request still carrying a valid token for the account is refused (403) rather than storing its data again.
+
+## Premium data
+
+The queries that answer what the app's paywall gates (records, standards, rankings, club and WSO data, athlete results and bests, meet results, the offline meet package, and `results:search` when asked for results) are listed in `PREMIUM_FUNCTIONS` (`convex/lib/access.ts`) and run `premiumRead` before anything else. Schedules, start lists, meet lists and name suggestions stay public. `PREMIUM_MODE` decides what the gate does:
+
+- `log` (now): everyone is answered, and each run that misses Convex's query cache logs `[premium] <function> <caller>`: `anonymous`, or `free`/`subscriber` with the user id and how they signed in. Use the logs to see who still reads premium data anonymously, and how much.
+- `enforce`: anonymous callers get 401 and signed-in callers without the entitlement 403. Switch to it only once nearly every active subscriber runs an app that sends its token and Siri and the CLI send theirs, and once the app:
+  - waits (briefly) for Clerk before a premium read while the SecureStore auth hint says someone is signed in, since reads made while Clerk loads or offline go anonymously today;
+  - calls `entitlements:refresh` and retries once when a premium read gets 403 while RevenueCat says the user subscribes, so a missed renewal webhook cannot lock a subscriber out until relaunch;
+  - and lifetime subscribers who never opened a token-sending app are backfilled with `entitlements:sync`.
+
+A caller is a subscriber when their `entitlements` row (`convex/entitlements.ts`) is active and not past `expiresAt`. The row is RevenueCat's answer for the Clerk user id (the app user id RevenueCat knows them by), fetched from RevenueCat's REST API whenever:
+
+- RevenueCat's webhook (`POST /revenuecat/webhook` on the `.convex.site` host) reports any event for the user. Configure it in RevenueCat with every event type and an Authorization header value, and set that value as `REVENUECAT_WEBHOOK_AUTH`. A failure answers 500, so RevenueCat retries.
+- The app or website calls `entitlements:refresh` after RevenueCat confirms an active subscription (once per launch or page load, and at most once a minute per user on the server). This covers a purchase before its webhook lands, and lifetime purchases, which never send a renewal.
+- `npx convex run entitlements:sync '{"userId":"user_…"}'`, for support.
+
+The REST calls need `REVENUECAT_SECRET_API_KEY` (a v1 secret key from RevenueCat's API keys page). A sandbox purchase (TestFlight, a Play license tester, a test card) counts only where `REVENUECAT_COUNT_SANDBOX` is `true`: set it on dev, never on prod. An answer RevenueCat gave before the stored one is dropped, so events handled out of order cannot bring back a stale state.
+
+The app sends the user's Clerk token with premium queries only, and only while it believes the user subscribes (`src/hooks/useServerDataAccess.ts`, `src/lib/api/premium-queries.ts`); the website sends it with premium queries, which only its subscribers reach (`web/src/utils/api.rs`). Everything else goes anonymously and shares one cache entry across users: a query that reads its caller is cached per caller. When Convex refuses a token the read is sent again without it, so a stale token never breaks a read the gate would answer.
+
+Clients that cannot hold a Clerk session (the CLI, Siri's App Intents) use MeetCal-issued tokens (`convex/apiTokens.ts`): `apiTokens:issue` gives a signed-in Clerk user a 90-day ES256 JWT for this deployment, which Convex accepts as a second auth provider (`convex/auth.config.ts`; issuer `CONVEX_SITE_URL`, keys at `/.well-known/jwks.json`). One is honoured only while its `api_tokens` row exists: `apiTokens:revoke` and account deletion delete it. These tokens read premium data only; saved sessions and preferences refuse them. Set the signing key once per deployment:
+
+```sh
+npx convex env set MEETCAL_TOKEN_SIGNING_KEY "$(mise exec -- bun scripts/generate-token-signing-key.ts)"
+```
+
+Replacing it ends every MeetCal-issued token. Account deletion also deletes the user's `entitlements` row and tokens.
 
 ## Meet time zones and dates
 

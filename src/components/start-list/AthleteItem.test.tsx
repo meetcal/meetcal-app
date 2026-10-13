@@ -427,4 +427,12 @@ describe("AthleteItem year bests", () => {
     expect(getLastYearBests).not.toHaveBeenCalled();
     act(() => tree.unmount());
   });
+
+  it("does not request bests for a non-subscriber, who is not shown them", async () => {
+    const tree = mountRow(makeProps({ isSubscribed: false }));
+    await toggleRow(tree);
+    await settle();
+    expect(getLastYearBests).not.toHaveBeenCalled();
+    act(() => tree.unmount());
+  });
 });

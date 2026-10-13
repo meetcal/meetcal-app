@@ -47,6 +47,7 @@ import * as Sentry from '@sentry/react-native';
 import { devLog } from "@/lib/logger";
 import { refreshAuthCacheForVerifiedUser } from "@/lib/authCache";
 import { useDataWidgetRefresh } from "@/hooks/useDataWidgetRefresh";
+import { useServerDataAccess } from "@/hooks/useServerDataAccess";
 import { isNetworkAvailable } from "@/lib/networkUtils";
 import { checkOnboardingComplete } from "@/lib/onboarding";
 import { isMaestroE2E } from "@/lib/e2e";
@@ -250,6 +251,10 @@ function RootLayoutContent({ fontsLoaded }: { fontsLoaded: boolean }) {
   // Keep the data widgets current without the Widget Settings screen being
   // open, and mirror the premium entitlement for them and for Siri.
   useDataWidgetRefresh();
+
+  // Premium reads carry the user's token, and the server learns about a
+  // confirmed subscription.
+  useServerDataAccess();
 
   // Keep the offline auth hint's seven-day window sliding for every verified
   // session, not only on screens that happen to mount `useAuthGuard`.

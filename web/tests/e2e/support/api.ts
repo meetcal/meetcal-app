@@ -24,7 +24,11 @@ export type AuthMock = {
  * `setUser(id | null)` switches or signs out the Clerk user and notifies;
  * setting `customerInfoError` makes later checks fail, and
  * `activeEntitlements` replaces the granted entitlements. Only `user_ci`
- * holds entitlements.
+ * holds entitlements. A signed-in user's session token is `token_<id>`.
+ *
+ * Also answers Convex's `entitlements:refresh` action (`{ active: true }`),
+ * so no test reaches the real deployment; the returned
+ * `entitlementRefreshes` holds the Authorization header of each call.
  */
 export async function mockAuth(page: Page, { signedIn = true, entitlements = ["Subscriptions"], revenueCatError, loadRevenueCat = false }: AuthMock = {}) {
   const active = Object.fromEntries(entitlements.map((id) => [id, { identifier: id }]));
@@ -61,6 +65,10 @@ export async function mockAuth(page: Page, { signedIn = true, entitlements = ["S
       },
       unmountSignIn: () => {},
       openSignIn: () => {},
+      get session() {
+        const user = clerk.user;
+        return clerk.isSignedIn && user ? { getToken: async () => `token_${user.id}` } : null;
+      },
     };
     let appUserId: string | null = null;
     const purchases = {
@@ -85,6 +93,23 @@ export async function mockAuth(page: Page, { signedIn = true, entitlements = ["S
     Object.assign(window, { __authMock: mock, __internal_ClerkUICtor: function ClerkUI() {}, Clerk: clerk });
     if (!loadRevenueCat) mock.installPurchases();
   }, { signedIn, active, revenueCatError, loadRevenueCat });
+
+  const entitlementRefreshes: Array<string | undefined> = [];
+  await page.route(CONVEX_ACTION_URL, async (route) => {
+    const request = route.request();
+    if (request.method() === "OPTIONS") {
+      await route.fulfill({ status: 204, headers: CORS_HEADERS });
+      return;
+    }
+    const body = request.postDataJSON() as { path?: string } | null;
+    if (body?.path !== "entitlements:refresh") {
+      await route.fallback();
+      return;
+    }
+    entitlementRefreshes.push(request.headers().authorization);
+    await route.fulfill(valueAnswer({ active: true }));
+  });
+  return { entitlementRefreshes };
 }
 
 /** A signed-in user with the app's subscription entitlement. */
@@ -115,11 +140,14 @@ export function retryableResponse(status: 429 | 503, retryAfter?: string) {
 
 /** Every read is a `POST` of `{ path, args }` here (see src/utils/api.rs). */
 const CONVEX_QUERY_URL = "https://disciplined-hare-790.convex.cloud/api/query";
+/** The one action the site calls, `entitlements:refresh`. */
+const CONVEX_ACTION_URL = "https://disciplined-hare-790.convex.cloud/api/action";
 
+/** Subscription reads carry `Authorization`, so the preflight must allow it. */
 const CORS_HEADERS = {
   "access-control-allow-origin": "*",
   "access-control-allow-methods": "POST, OPTIONS",
-  "access-control-allow-headers": "content-type",
+  "access-control-allow-headers": "authorization, content-type",
 };
 
 /**

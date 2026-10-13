@@ -52,10 +52,12 @@ import {
   SMALL_ROWS_NAMES_CHUNK_SIZE,
   patchAutoUnsavePreference,
   putSavedSession,
+  refreshServerEntitlement,
   searchApi,
 } from './meetcal-api';
 import { HTTP_VALIDATOR_CACHE_LIMIT } from './http-cache';
 import { callQuery, isClockCall } from './json-transport-stub';
+import { setDataTokenSource } from './premium-queries';
 import { setApiTransportForTests, TransportRequestError, type ApiCall } from './transport';
 import { UNKNOWN_PLATFORM } from '@/data/types/athletes';
 import { generateSessionId } from '@/utils/session';
@@ -2710,5 +2712,33 @@ describe('mapApiSchedule platform weigh-ins', () => {
       ['Red', '9:00 AM', '7:00 AM'],
       ['Blue', '9:30 AM', ''],
     ]);
+  });
+});
+
+describe('premium reads and the signed-in user', () => {
+  afterEach(() => setDataTokenSource(null));
+
+  it("carry the user's token on premium queries only, and none when signed out", async () => {
+    const { dataCalls } = installTransport(() => ({ etag: '"r1"', json: '[]' }));
+    await fetchApiRecords();
+    await fetchApiSchedule('Spring Open' as never).catch(() => {});
+    setDataTokenSource(async () => 'clerk-token');
+    clearHttpValidatorCache();
+    await fetchApiRecords();
+    await fetchApiSchedule('Spring Open' as never).catch(() => {});
+    expect(dataCalls().map((call) => [call.fn, call.dataToken])).toEqual([
+      ['reference:records', undefined],
+      ['meets:schedule', undefined],
+      ['reference:records', 'clerk-token'],
+      ['meets:schedule', undefined],
+    ]);
+  });
+
+  it('asks the server to check the subscription with the Clerk token', async () => {
+    const { lastCall } = installTransport(() => ({ active: true }));
+    await expect(refreshServerEntitlement('clerk-token')).resolves.toEqual({ active: true });
+    expect(lastCall()).toMatchObject({ fn: 'entitlements:refresh', kind: 'action', token: 'clerk-token' });
+    installTransport(() => ({ active: 'yes' }));
+    await expect(refreshServerEntitlement('clerk-token')).rejects.toThrow('expected a boolean');
   });
 });

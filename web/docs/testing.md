@@ -20,7 +20,8 @@ shape, including fields that may be absent or `null`.
 
 `src/utils/api.rs` tests the transport without a network: request bodies, both
 answer forms (`Body::Value` and `Body::JsonText`), function errors, retry
-timing, and whole-number floats becoming integers.
+timing, whole-number floats becoming integers, which queries carry the session
+token, and which statuses drop a refused token.
 
 ## Browser checks
 
@@ -81,7 +82,11 @@ await routeQuery(page, "results:search", (route, args) =>
   on the page (through `page.addInitScript`) as a signed-in, subscribed user,
   so gated pages render. The auth bridge uses an SDK already on the page
   instead of loading it. Don't mock the CDN files with `page.route`: they load
-  with Subresource Integrity, so the browser refuses any other body.
+  with Subresource Integrity, so the browser refuses any other body. The
+  signed-in stand-in's session token is `token_<user id>`, so a subscription
+  read sends `Authorization: Bearer token_user_ci` (the mocks' CORS preflight
+  allows it). `mockAuth` also answers the `entitlements:refresh` action and
+  returns `entitlementRefreshes`, the Authorization header of each call.
 
 Assert on what a user sees, and on the arguments a page sends when they
 matter (`expect(args).toEqual({ federation: "USAMW", ... })`).

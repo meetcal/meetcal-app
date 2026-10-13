@@ -1,6 +1,12 @@
 //! The site's one way to read MeetCal data: the Convex queries in `convex/`,
 //! called over Convex's HTTP API (`POST /api/query`), the same queries the app
 //! reads. Every call is a read, so repeating one is safe.
+//!
+//! The subscription data queries (`SUBSCRIPTION_FUNCTIONS`) carry the signed-in
+//! user's Clerk session token, so Convex knows who is asking; every other query
+//! goes out anonymously and shares Convex's query cache. For now Convex only
+//! logs who asks and still answers everyone; it will refuse non-subscribers
+//! later, so a subscription read must never drop the token when it has one.
 
 use anyhow::{Result, anyhow};
 use reqwest::{StatusCode, header::RETRY_AFTER};
@@ -22,6 +28,41 @@ const MAX_RETRY_DELAY_SECS: u64 = 10;
 
 /// Convex answers a function that ran but failed with this status (or 200).
 const FUNCTION_FAILED: u16 = 560;
+
+/// The Convex functions that read the caller and will answer only subscribers:
+/// the site sends these the signed-in user's session token. The list is
+/// Convex's (`convex/`), including functions the site does not call yet, so a
+/// page that starts calling one sends the token without another change.
+/// `results:search` needs it only with dates; it is sent every time.
+pub(crate) const SUBSCRIPTION_FUNCTIONS: &[&str] = &[
+    "reference:records",
+    "reference:standards",
+    "reference:qualifyingTotals",
+    "reference:intlRankings",
+    "reference:nationalRankings",
+    "reference:nationalRankingsByYear",
+    "reference:wsoList",
+    "reference:registrationWsos",
+    "reference:wsoAgeGroups",
+    "reference:wsoRecords",
+    "reference:adaptiveRecords",
+    "reference:clubs",
+    "reference:clubAthletes",
+    "reference:wsoAthletes",
+    "reference:clubMeetStats",
+    "results:page",
+    "results:byMeet",
+    "results:byNames",
+    "results:recent",
+    "results:yearBests",
+    "results:bests",
+    "results:search",
+    "meets:packageForMeet",
+];
+
+/// The action that asks RevenueCat for the caller's entitlement and records
+/// it in Convex; it answers `{ active }` and refuses an anonymous caller.
+const REFRESH_ENTITLEMENT: &str = "entitlements:refresh";
 
 /// Most pages `query_all_pages` reads before giving up. A club's entries
 /// arrive 2,000 rows a page, so this allows 200,000 rows; an answer that never
@@ -76,6 +117,11 @@ pub(crate) struct Query {
 }
 
 impl Query {
+    /// Whether this query carries the signed-in user's session token.
+    pub(crate) fn sends_session_token(self) -> bool {
+        SUBSCRIPTION_FUNCTIONS.contains(&self.function)
+    }
+
     const fn value(function: &'static str) -> Self {
         Self {
             function,
@@ -186,6 +232,14 @@ pub(crate) fn is_retryable_status(status: StatusCode) -> bool {
         status,
         StatusCode::TOO_MANY_REQUESTS | StatusCode::SERVICE_UNAVAILABLE
     )
+}
+
+/// Whether Convex refused the request's session token (an expired or
+/// unrecognized one) rather than the function failing. A request refused this
+/// way is sent once more without the token, so a token problem never breaks
+/// a page that reads anonymously today.
+pub(crate) fn is_token_refused(status: StatusCode) -> bool {
+    matches!(status, StatusCode::UNAUTHORIZED | StatusCode::FORBIDDEN)
 }
 
 /// Whether to retry a response with `status` after `retries_so_far` retries.
@@ -405,7 +459,9 @@ where
 }
 
 /// Sends `query` with `args`, retrying throttled (429) and overloaded (503)
-/// responses, and returns Convex's answer.
+/// responses, and returns Convex's answer. A subscription query carries the
+/// session token when the user is signed in, and goes again without it if
+/// Convex refuses the token.
 async fn send<A>(query: Query, args: &A) -> Result<QueryResponse>
 where
     A: Serialize + ?Sized,
@@ -417,18 +473,33 @@ where
         args,
         format: "json",
     };
+    let mut token = if query.sends_session_token() {
+        crate::auth::session_token().await
+    } else {
+        None
+    };
 
     let mut retries = 0;
     let response = loop {
-        let response = client
-            .post(&url)
-            .timeout(REQUEST_TIMEOUT)
-            .json(&request)
+        let mut builder = client.post(&url).timeout(REQUEST_TIMEOUT).json(&request);
+        if let Some(token) = &token {
+            builder = builder.bearer_auth(token);
+        }
+        let response = builder
             .send()
             .await
             .map_err(|error| transport_error(query, &error))?;
         let status = response.status();
 
+        if token.is_some() && is_token_refused(status) {
+            leptos::logging::warn!(
+                "Convex refused the session token for {} (HTTP {}); reading without it",
+                query.function,
+                status.as_u16()
+            );
+            token = None;
+            continue;
+        }
         if should_retry(status, retries) {
             let retry_after = response
                 .headers()
@@ -467,6 +538,41 @@ pub(crate) async fn query<T: DeserializeOwned>(query: Query) -> Result<T> {
     query_with(query, &NoArgs {}).await
 }
 
+/// Asks Convex to fetch the signed-in user's entitlement from RevenueCat and
+/// record it (`entitlements:refresh`), so Convex knows a subscriber before it
+/// starts refusing others: a lifetime purchase never renews, so RevenueCat's
+/// webhook alone would never report it. Answers whether the entitlement is
+/// active. Not retried; the next page load asks again.
+pub(crate) async fn refresh_entitlement() -> Result<bool> {
+    let token = crate::auth::session_token()
+        .await
+        .ok_or_else(|| anyhow!("no session token"))?;
+    let response = reqwest::Client::new()
+        .post(format!("{}/api/action", convex_url()))
+        .timeout(REQUEST_TIMEOUT)
+        .bearer_auth(token)
+        .json(&QueryRequest {
+            path: REFRESH_ENTITLEMENT,
+            args: &NoArgs {},
+            format: "json",
+        })
+        .send()
+        .await?;
+    let status = response.status();
+    if status != StatusCode::OK && status.as_u16() != FUNCTION_FAILED {
+        return Err(anyhow!("HTTP {}", status.as_u16()));
+    }
+    read_entitlement(serde_json::from_slice(&response.bytes().await?)?)
+}
+
+/// Whether `entitlements:refresh` answered an active entitlement.
+fn read_entitlement(response: QueryResponse) -> Result<bool> {
+    answer_value(response)?
+        .get("active")
+        .and_then(Value::as_bool)
+        .ok_or_else(|| anyhow!("answer has no active flag"))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -503,6 +609,72 @@ mod tests {
             json!({"path": "reference:nationalRankings", "args": {"ageCategory": "Open Men's 60kg"}, "format": "json"})
         );
         assert_eq!(serde_json::to_value(NoArgs {}).unwrap(), json!({}));
+    }
+
+    #[test]
+    fn subscription_queries_carry_the_session_token_and_the_rest_do_not() {
+        for query in [
+            queries::MEET_RESULTS,
+            queries::SEARCH,
+            queries::RECORDS,
+            queries::STANDARDS,
+            queries::QUALIFYING_TOTALS,
+            queries::INTL_RANKINGS,
+            queries::NATIONAL_RANKINGS,
+            queries::NATIONAL_RANKINGS_BY_YEAR,
+            queries::WSO_LIST,
+            queries::WSO_RECORDS,
+            queries::ADAPTIVE_RECORDS,
+            queries::CLUBS,
+            queries::CLUB_ATHLETES,
+            queries::CLUB_MEET_STATS,
+        ] {
+            assert!(query.sends_session_token(), "{}", query.function);
+        }
+        // Anonymous, so they keep sharing Convex's query cache.
+        for query in [
+            queries::UPCOMING_MEETS,
+            queries::COMPLETED_MEETS,
+            queries::MEET_SCHEDULE,
+            queries::MEET_ATHLETES,
+        ] {
+            assert!(!query.sends_session_token(), "{}", query.function);
+        }
+        assert_eq!(SUBSCRIPTION_FUNCTIONS.len(), 23);
+        assert!(!SUBSCRIPTION_FUNCTIONS.contains(&REFRESH_ENTITLEMENT));
+    }
+
+    #[test]
+    fn only_a_refused_token_sends_the_read_again_without_it() {
+        assert!(is_token_refused(StatusCode::UNAUTHORIZED));
+        assert!(is_token_refused(StatusCode::FORBIDDEN));
+        for status in [
+            StatusCode::OK,
+            StatusCode::BAD_REQUEST,
+            StatusCode::NOT_FOUND,
+            StatusCode::TOO_MANY_REQUESTS,
+            StatusCode::SERVICE_UNAVAILABLE,
+        ] {
+            assert!(!is_token_refused(status), "{status}");
+        }
+        assert!(!is_token_refused(
+            StatusCode::from_u16(FUNCTION_FAILED).unwrap()
+        ));
+    }
+
+    #[test]
+    fn entitlement_refreshes_answer_whether_the_entitlement_is_active() {
+        for active in [true, false] {
+            let response = answer(json!({"status": "success", "value": {"active": active}}));
+            assert_eq!(read_entitlement(response).unwrap(), active);
+        }
+        assert!(read_entitlement(answer(json!({"status": "success", "value": {}}))).is_err());
+        assert!(
+            read_entitlement(answer(
+                json!({"status": "error", "errorMessage": "Unauthenticated"})
+            ))
+            .is_err()
+        );
     }
 
     #[test]

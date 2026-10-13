@@ -4,14 +4,17 @@ import { jsonChunks, writeView } from '../convex/lib/views';
 import { clubAthletes, clubMeetStats, clubs, nationalRankings, registrationWsos, wsoAthletes, wsoList } from '../convex/reference';
 import { storeClubs } from '../convex/views';
 import { clubKey, clubLabels } from '../convex/lib/clubs';
-import { fakeDb, handlerOf } from './fakeDb';
+import { ANONYMOUS_AUTH, fakeDb, handlerOf } from './fakeDb';
+
+// Premium queries log each caller (`convex/lib/access.ts`).
+beforeEach(() => jest.spyOn(console, 'log').mockImplementation(() => {}));
 
 const STAMP = [{ table: 'lifting_results', version: 1 }];
 /** A current division: a known ranking class with or without results (`requireKnownRankingClass`). */
 const DIVISION = [...RANKING_DIVISIONS][0];
 
 function query<Args>(fn: unknown, db: unknown, args: Args) {
-  return handlerOf<Args, Record<string, unknown> | unknown[]>(fn)({ db }, args);
+  return handlerOf<Args, Record<string, unknown> | unknown[]>(fn)({ db, auth: ANONYMOUS_AUTH }, args);
 }
 
 const parse = (answer: unknown) => JSON.parse((answer as { json: string }).json) as unknown;
