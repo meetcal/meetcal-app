@@ -1,7 +1,7 @@
 use std::collections::{HashMap, HashSet};
 
 use anyhow::{Result, bail};
-use chrono::{Datelike, Utc};
+use chrono::{Datelike, NaiveDate, Utc};
 use clap::Parser;
 use comfy_table::Table;
 
@@ -285,24 +285,45 @@ pub fn wrapped_report(name: &str, year: i32, stats: &WrappedStats) -> Report {
         .table("journey", journey)
 }
 
+/// Rows of one meet name dated at most this many days after its first row are one meet (a
+/// national championships runs about ten days); later ones are another edition of a name used
+/// more than once a year.
+const MEET_SPAN_DAYS: i64 = 14;
+
 /// The change from the year's first meet with a total to its last, one total per meet (its
 /// best); `None` with fewer than two such meets. The app's rule (#123): two rows from one meet,
-/// the same lifts listed in two divisions, are not progress. `ordered` is oldest first.
+/// the same lifts listed in two divisions, are not progress. A meet is its name and its dates
+/// ([`MEET_SPAN_DAYS`]), so two editions of one name in a year are two meets. `ordered` is
+/// oldest first.
 fn first_to_last_meet(ordered: &[&LiftingResults]) -> Option<f64> {
-    let mut meets: Vec<(String, f64)> = Vec::new();
+    // (name, first date, best total)
+    let mut meets: Vec<(String, &str, f64)> = Vec::new();
     for row in ordered {
         let Some(total) = valid_total(row) else {
             continue;
         };
         let meet = normalize(&row.meet);
-        match meets.iter_mut().find(|(name, _)| *name == meet) {
-            Some((_, best)) => *best = best.max(total),
-            None => meets.push((meet, total)),
+        let edition = meets
+            .iter_mut()
+            .rev()
+            .find(|(name, start, _)| *name == meet && same_meet_dates(start, &row.date));
+        match edition {
+            Some((_, _, best)) => *best = best.max(total),
+            None => meets.push((meet, row.date.as_str(), total)),
         }
     }
     match (meets.first(), meets.last()) {
-        (Some(first), Some(last)) if meets.len() >= 2 => Some(last.1 - first.1),
+        (Some(first), Some(last)) if meets.len() >= 2 => Some(last.2 - first.2),
         _ => None,
+    }
+}
+
+/// Whether `date` is within [`MEET_SPAN_DAYS`] of `start` (`YYYY-MM-DD`); unreadable dates are.
+fn same_meet_dates(start: &str, date: &str) -> bool {
+    let parse = |value: &str| NaiveDate::parse_from_str(value, "%Y-%m-%d").ok();
+    match (parse(start), parse(date)) {
+        (Some(start), Some(date)) => (date - start).num_days().abs() <= MEET_SPAN_DAYS,
+        _ => true,
     }
 }
 
@@ -484,6 +505,44 @@ mod tests {
         masters.cj_best = 100.0;
         masters.cj2 = 100.0;
         let stats = calculate_wrapped_stats(&[one[0].clone(), masters]);
+        assert_eq!(stats.improvement_from_first, None);
+    }
+
+    #[test]
+    fn two_editions_of_one_meet_name_in_a_year_are_two_meets() {
+        let lift = |date: &str, total: f64| {
+            result(
+                date,
+                "Open",
+                [70.0, 0.0, 0.0, total - 70.0, 0.0, 0.0],
+                70.0,
+                total - 70.0,
+                total,
+            )
+        };
+        let stats =
+            calculate_wrapped_stats(&[lift("2026-01-10", 160.0), lift("2026-12-05", 175.0)]);
+        assert_eq!(stats.improvement_from_first, Some(15.0));
+
+        // With a meet between them, the last edition is still the last meet.
+        let middle = result(
+            "2026-06-01",
+            "Summer",
+            [70.0, 0.0, 0.0, 95.0, 0.0, 0.0],
+            70.0,
+            95.0,
+            165.0,
+        );
+        let stats = calculate_wrapped_stats(&[
+            lift("2026-01-10", 160.0),
+            middle,
+            lift("2026-12-05", 175.0),
+        ]);
+        assert_eq!(stats.improvement_from_first, Some(15.0));
+
+        // Days of one meet (divisions on different days) stay one meet.
+        let stats =
+            calculate_wrapped_stats(&[lift("2026-06-20", 160.0), lift("2026-06-27", 170.0)]);
         assert_eq!(stats.improvement_from_first, None);
     }
 
