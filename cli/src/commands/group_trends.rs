@@ -8,7 +8,8 @@ use comfy_table::Table;
 use serde_json::json;
 
 use crate::commands::group_wrapped::{
-    ClubMembership, filter_membership_results, get_club_memberships, get_wso_memberships,
+    ClubMembership, distinct_names, filter_membership_results, get_club_memberships,
+    get_wso_memberships,
 };
 use crate::commands::wso_results::calculate_medal_details;
 use crate::types::lifting_results::LiftingResults;
@@ -90,15 +91,7 @@ pub async fn run_wso(args: WsoTrendsArgs) -> Result<()> {
 }
 
 async fn run(title: &str, memberships: &[ClubMembership], with_medals: bool) -> Result<()> {
-    let mut names: Vec<String> = Vec::new();
-    for membership in memberships {
-        if !names
-            .iter()
-            .any(|name| fold(name) == fold(&membership.name))
-        {
-            names.push(membership.name.clone());
-        }
-    }
+    let names = distinct_names(memberships);
     let by_name = histories(&names).await?;
 
     // PRs are judged against each athlete's whole history, not just the group's meets.

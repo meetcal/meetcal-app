@@ -8,6 +8,7 @@ use crate::commands::wrapped::{
 use crate::types::lifting_results::LiftingResults;
 use crate::types::wrapped::{SearchResponse, WrappedStats};
 use crate::utils::output::{self, Report};
+use crate::utils::stats::number;
 
 /// Compare an athlete's current calendar year with the previous calendar year.
 ///
@@ -211,25 +212,12 @@ pub fn comparison_report(
     ))
 }
 
-fn format_metric(value: f64, unit: MetricUnit) -> String {
+/// A metric's value as the comparison tables show it.
+pub fn format_metric(value: f64, unit: MetricUnit) -> String {
     match unit {
         MetricUnit::Count => format!("{value:.0}"),
-        MetricUnit::Kilograms => format!("{}kg", format_number(value)),
+        MetricUnit::Kilograms => format!("{}kg", number(value)),
         MetricUnit::Percent => format!("{value:.1}%"),
-    }
-}
-
-fn format_number(value: f64) -> String {
-    if value == 0.0 {
-        return "0".to_string();
-    }
-    if value.fract() == 0.0 {
-        format!("{value:.0}")
-    } else {
-        format!("{value:.2}")
-            .trim_end_matches('0')
-            .trim_end_matches('.')
-            .to_string()
     }
 }
 
