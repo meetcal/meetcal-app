@@ -2,6 +2,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import {
   createReminderSyncRunner,
   defaultReminderSyncDeps,
+  REMINDER_CLOCK_SAMPLE_MAX_AGE_MS,
   reminderClockSkewMs,
   MAX_PENDING_REMINDERS,
   type DesiredReminder,
@@ -487,10 +488,17 @@ describe("createReminderSyncRunner", () => {
 });
 
 describe("reminderClockSkewMs", () => {
+  const T = 1_000_000_000;
   it("is null before any sample and the sample's skew after, however large", () => {
-    expect(reminderClockSkewMs(null)).toBeNull();
-    expect(reminderClockSkewMs({ skewMs: 1500, sampledAt: 1 })).toBe(1500);
-    expect(reminderClockSkewMs({ skewMs: -2 * 60 * 60 * 1000, sampledAt: 1 })).toBe(-2 * 60 * 60 * 1000);
-    expect(reminderClockSkewMs({ skewMs: Number.NaN, sampledAt: 1 })).toBeNull();
+    expect(reminderClockSkewMs(null, T)).toBeNull();
+    expect(reminderClockSkewMs({ skewMs: 1500, sampledAt: T - 1 }, T)).toBe(1500);
+    expect(reminderClockSkewMs({ skewMs: -2 * 60 * 60 * 1000, sampledAt: T }, T)).toBe(-2 * 60 * 60 * 1000);
+    expect(reminderClockSkewMs({ skewMs: Number.NaN, sampledAt: T }, T)).toBeNull();
+  });
+
+  it("is unknown for a sample too old, or taken in the device's future (clock set back)", () => {
+    expect(reminderClockSkewMs({ skewMs: 1500, sampledAt: T - REMINDER_CLOCK_SAMPLE_MAX_AGE_MS }, T)).toBe(1500);
+    expect(reminderClockSkewMs({ skewMs: 1500, sampledAt: T - REMINDER_CLOCK_SAMPLE_MAX_AGE_MS - 1 }, T)).toBeNull();
+    expect(reminderClockSkewMs({ skewMs: 1500, sampledAt: T + 60_000 }, T)).toBeNull();
   });
 });

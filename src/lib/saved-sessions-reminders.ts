@@ -70,6 +70,14 @@ export function reminderTriggerDate(sessionStart: Date): Date {
 export const REMINDER_FIRE_TOLERANCE_MS = 60 * 1000;
 
 /**
+ * How old a server clock sample may be and still correct reminders. The app
+ * resamples every `SERVER_CLOCK_RESAMPLE_MS` (10 minutes) while it talks to
+ * the backend, so an hour covers a normal session without trusting a sample
+ * from before a clock change.
+ */
+export const REMINDER_CLOCK_SAMPLE_MAX_AGE_MS = 60 * 60 * 1000;
+
+/**
  * Server time minus device time to correct reminders by: the last sample's
  * skew, or `null` before this process has one.
  *
@@ -83,8 +91,17 @@ export const REMINDER_FIRE_TOLERANCE_MS = 60 * 1000;
  * reading that as "the device clock is right" rescheduled every corrected
  * reminder on the wrong clock and cancelled those due within the skew.
  */
-export function reminderClockSkewMs(sample: ServerClockSample | null): number | null {
+export function reminderClockSkewMs(
+  sample: ServerClockSample | null,
+  deviceNowMs: number = Date.now(),
+): number | null {
   if (!sample || !Number.isFinite(sample.skewMs)) return null;
+  // A sample measures the device clock as it was then. One taken in the
+  // device's future (the clock was set back since) or long ago (it may have
+  // jumped since, by NTP or by hand) says nothing reliable about it now:
+  // unknown, which keeps pending reminders rather than moving them.
+  const ageMs = deviceNowMs - sample.sampledAt;
+  if (ageMs < 0 || ageMs > REMINDER_CLOCK_SAMPLE_MAX_AGE_MS) return null;
   if (Math.abs(sample.skewMs) > MAX_PLAUSIBLE_CLOCK_SKEW_MS) {
     devLog('Session reminders: device clock is off by', sample.skewMs, 'ms; correcting for it');
   }
