@@ -53,7 +53,6 @@ impl Division {
     pub fn parse(division: &str) -> Division {
         let lower = division.to_ascii_lowercase();
         Division {
-            gender,
             gender: gender(&lower),
             category: category(&lower),
             weight_class: division.split_whitespace().last().and_then(weight_class),
@@ -69,7 +68,9 @@ fn gender(lower: &str) -> Option<Gender> {
         .filter(|word| !word.is_empty())
         .collect();
     let names = |markers: &[&str]| words.iter().any(|word| markers.contains(word));
-    let women = names(&["women", "woman", "womens", "female", "females", "girl", "girls"]);
+    let women = names(&[
+        "women", "woman", "womens", "female", "females", "girl", "girls",
+    ]);
     let men = names(&["men", "man", "mens", "male", "males", "boy", "boys"]);
     match (men, women) {
         (true, false) => Some(Gender::Men),
@@ -187,29 +188,90 @@ pub fn qpoints_apply(division: &Division) -> bool {
     )
 }
 
-/// A result row's Q-points; `None` for youth divisions and rows whose total is not their snatch
-/// plus clean & jerk.
+/// A result row's Q-points; `None` for youth divisions and source errors ([`plausible`]).
 pub fn row_qpoints(row: &LiftingResults) -> Option<f64> {
     let division = Division::parse(&row.age);
-    if !consistent_total(row) || !qpoints_apply(&division) {
+    if !plausible(row) || !qpoints_apply(&division) {
         return None;
     }
     qpoints(row.total, row.body_weight, division.gender?)
 }
 
-/// A result row's Sinclair score, from its division's gender (none without one); `None` for a row whose total is
-/// not its snatch plus clean & jerk.
+/// A result row's Sinclair score, from its division's gender; `None` for a division with no
+/// gender, or for source errors ([`plausible`]).
 pub fn row_sinclair(row: &LiftingResults) -> Option<f64> {
-    if !consistent_total(row) {
+    if !plausible(row) {
         return None;
     }
-    sinclair(row.total, row.body_weight, Division::parse(&row.age).gender?)
+    sinclair(
+        row.total,
+        row.body_weight,
+        Division::parse(&row.age).gender?,
+    )
 }
 
 /// Whether a row's total is its best snatch plus best clean & jerk (or it has no total). A few
 /// source rows have their columns shifted; leaderboards leave them out.
 pub fn consistent_total(row: &LiftingResults) -> bool {
     row.total <= 0.0 || (row.total - (row.snatch_best + row.cj_best)).abs() <= 0.5
+}
+
+/// The heaviest best snatch, best clean & jerk and total a result can plausibly hold: a little
+/// over the senior world records (225, 267 and 492 kg). Heavier ones are source errors, such as a
+/// placeholder row of `[100, 200, 300]`.
+pub const MAX_SNATCH: f64 = 230.0;
+pub const MAX_CJ: f64 = 275.0;
+pub const MAX_TOTAL: f64 = 500.0;
+/// A made attempt more than this many times the heaviest other attempt taken in the same lift is
+/// a typo (`633` for `63` between `-63` and `65`), not a jump a lifter makes.
+pub const MAX_ATTEMPT_JUMP: f64 = 1.5;
+
+/// Whether a row can be trusted for a best, a ranking or a score: its total is its snatch plus
+/// clean & jerk ([`consistent_total`]), no lift is over the [`MAX_SNATCH`] / [`MAX_CJ`] /
+/// [`MAX_TOTAL`] ceilings, and no made attempt is more than [`MAX_ATTEMPT_JUMP`] times the
+/// heaviest other attempt in its lift. The total check alone passes a typo'd attempt, since the
+/// source computes the best and the total from the typo.
+pub fn plausible(row: &LiftingResults) -> bool {
+    consistent_total(row)
+        && row.total <= MAX_TOTAL
+        && plausible_lift(row, Lift::Snatch)
+        && plausible_lift(row, Lift::CleanAndJerk)
+}
+
+fn plausible_lift(row: &LiftingResults, lift: Lift) -> bool {
+    let ceiling = match lift {
+        Lift::Snatch => MAX_SNATCH,
+        Lift::CleanAndJerk => MAX_CJ,
+    };
+    if lift.best(row) > ceiling {
+        return false;
+    }
+    let weights = lift.attempts(row).map(f64::abs);
+    lift.attempts(row)
+        .iter()
+        .enumerate()
+        .all(|(index, attempt)| {
+            let heaviest_other = weights
+                .iter()
+                .enumerate()
+                .filter(|(other, weight)| *other != index && **weight > 0.0)
+                .map(|(_, weight)| *weight)
+                .fold(0.0, f64::max);
+            *attempt <= 0.0
+                || heaviest_other == 0.0
+                || *attempt <= heaviest_other * MAX_ATTEMPT_JUMP
+        })
+}
+
+/// A row's total when it has one and the row is [`plausible`]: what to maximize, average or rank.
+pub fn valid_total(row: &LiftingResults) -> Option<f64> {
+    (row.total > 0.0 && plausible(row)).then_some(row.total)
+}
+
+/// A row's best `lift` when it made one and the row is [`plausible`].
+pub fn valid_lift(row: &LiftingResults, lift: Lift) -> Option<f64> {
+    let best = lift.best(row);
+    (best > 0.0 && plausible(row)).then_some(best)
 }
 
 /// A score to two decimals.
@@ -333,12 +395,16 @@ impl PrFlags {
 }
 
 /// For each result, oldest first, which lifts beat everything before it. An athlete's first
-/// result sets their marks but is not a PR.
+/// result sets their marks but is not a PR. A source error ([`plausible`]) is never a PR and sets
+/// no marks, so a typo'd lift does not hide every later real PR.
 pub fn pr_flags(rows: &[&LiftingResults]) -> Vec<PrFlags> {
     let mut best = (0.0f64, 0.0f64, 0.0f64);
     let mut seen = false;
     rows.iter()
         .map(|row| {
+            if !plausible(row) {
+                return PrFlags::default();
+            }
             let flags = PrFlags {
                 snatch: seen && row.snatch_best > best.0,
                 cj: seen && row.cj_best > best.1,
@@ -493,7 +559,9 @@ pub(crate) mod tests {
         assert_eq!(boys.gender, Some(Gender::Men));
         assert_eq!(boys.category.as_deref(), Some("U13"));
         assert_eq!(
-            Division::parse("Men's/Women's Under 23").category.as_deref(),
+            Division::parse("Men's/Women's Under 23")
+                .category
+                .as_deref(),
             Some("U23")
         );
         assert_eq!(
@@ -684,6 +752,68 @@ pub(crate) mod tests {
             }
         );
         assert_eq!(flags[2].marks(), "CJ T");
+    }
+
+    /// A row with its attempts as given and its bests and total computed from them, typos and
+    /// all, the way the source does.
+    pub fn raw_row(snatch: [f64; 3], cj: [f64; 3]) -> LiftingResults {
+        row(
+            "A",
+            "2026-04-04",
+            "M",
+            "Men's 14-15 Age Group 79+kg",
+            90.8,
+            snatch,
+            cj,
+        )
+    }
+
+    #[test]
+    fn typo_attempts_and_lifts_over_the_world_records_are_source_errors() {
+        // 2026 Texas Barbell Spring Showdown: snatch [-63, 633, 65] gives 633 + 90 = 723.
+        let typo = raw_row([-63.0, 633.0, 65.0], [85.0, 90.0, -95.0]);
+        assert!(consistent_total(&typo));
+        assert!(!plausible(&typo));
+        assert_eq!(valid_total(&typo), None);
+        assert_eq!(row_sinclair(&typo), None);
+        assert!(!plausible(&raw_row(
+            [8686.0, 90.0, -93.0],
+            [110.0, 0.0, 0.0]
+        )));
+        assert!(!plausible(&raw_row(
+            [136.0, 0.0, 0.0],
+            [136.0, 1411.0, 145.0]
+        )));
+        // Placeholder rows.
+        assert!(!plausible(&raw_row(
+            [100.0, 200.0, 300.0],
+            [100.0, 0.0, 0.0]
+        )));
+        assert!(!plausible(&raw_row([200.0, 0.0, 0.0], [300.0, 0.0, 0.0])));
+        // Real lifts, including a big jump after a missed opener and a lone attempt.
+        assert!(plausible(&raw_row(
+            [-60.0, 60.0, 66.0],
+            [80.0, 85.0, -90.0]
+        )));
+        assert!(plausible(&raw_row([20.0, 25.0, 30.0], [25.0, 30.0, 0.0])));
+        assert!(plausible(&raw_row([225.0, 0.0, 0.0], [267.0, 0.0, 0.0])));
+        assert_eq!(
+            valid_lift(
+                &raw_row([100.0, 0.0, 0.0], [-120.0, -120.0, -120.0]),
+                Lift::Snatch
+            ),
+            Some(100.0)
+        );
+    }
+
+    #[test]
+    fn a_typo_is_no_pr_and_does_not_block_later_prs() {
+        let first = raw_row([60.0, 63.0, 65.0], [85.0, 90.0, 95.0]);
+        let typo = raw_row([-63.0, 633.0, 65.0], [85.0, 90.0, -95.0]);
+        let real = raw_row([66.0, 68.0, 70.0], [90.0, 95.0, 98.0]);
+        let flags = pr_flags(&[&first, &typo, &real]);
+        assert_eq!(flags[1], PrFlags::default());
+        assert!(flags[2].snatch && flags[2].cj && flags[2].total);
     }
 
     #[test]

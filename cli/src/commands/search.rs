@@ -4,6 +4,7 @@ use crate::{
         backend::{queries, query},
         make_rate::make_rate_tables,
         output::{self, Report},
+        stats::{Lift, valid_lift, valid_total},
     },
 };
 use anyhow::Result;
@@ -72,6 +73,8 @@ pub async fn run(args: SearchArgs) -> Result<()> {
     Ok(())
 }
 
+/// The athlete's best snatch, clean & jerk and total, leaving out source errors
+/// (`stats::plausible`).
 pub fn get_prs(results: &[LiftingResults]) -> PRs {
     results.iter().fold(
         PRs {
@@ -80,9 +83,28 @@ pub fn get_prs(results: &[LiftingResults]) -> PRs {
             total_best: 0.0,
         },
         |acc, meet| PRs {
-            snatch_best: acc.snatch_best.max(meet.snatch_best),
-            cj_best: acc.cj_best.max(meet.cj_best),
-            total_best: acc.total_best.max(meet.total),
+            snatch_best: acc
+                .snatch_best
+                .max(valid_lift(meet, Lift::Snatch).unwrap_or(0.0)),
+            cj_best: acc
+                .cj_best
+                .max(valid_lift(meet, Lift::CleanAndJerk).unwrap_or(0.0)),
+            total_best: acc.total_best.max(valid_total(meet).unwrap_or(0.0)),
         },
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::utils::stats::tests::raw_row;
+
+    #[test]
+    fn prs_leave_out_source_errors() {
+        let real = raw_row([60.0, 63.0, 65.0], [85.0, 90.0, 95.0]);
+        let typo = raw_row([-63.0, 633.0, 65.0], [85.0, 90.0, -95.0]);
+        let prs = get_prs(&[real, typo]);
+        assert_eq!(prs.snatch_best, 65.0);
+        assert_eq!(prs.total_best, 160.0);
+    }
 }

@@ -9,6 +9,7 @@ use crate::types::lifting_results::LiftingResults;
 use crate::types::wrapped::{SearchResponse, WrappedStats};
 use crate::utils::backend::{queries, query};
 use crate::utils::output::{self, Report};
+use crate::utils::stats::{Lift, valid_lift, valid_total};
 
 /// Show an athlete's calendar year in lifting.
 ///
@@ -152,16 +153,18 @@ pub fn calculate_wrapped_stats(results: &[LiftingResults]) -> WrappedStats {
             }
         }
 
-        best_snatch = best_snatch.max(positive(result.snatch_best));
-        best_clean_jerk = best_clean_jerk.max(positive(result.cj_best));
-        best_total = best_total.max(positive(result.total));
+        // Bests, averages and the top meet leave out source errors (`stats::plausible`).
+        best_snatch = best_snatch.max(valid_lift(result, Lift::Snatch).unwrap_or(0.0));
+        best_clean_jerk =
+            best_clean_jerk.max(valid_lift(result, Lift::CleanAndJerk).unwrap_or(0.0));
 
-        if result.total > 0.0 && result.total.is_finite() {
-            positive_totals.push(result.total);
+        if let Some(total) = valid_total(result).filter(|total| total.is_finite()) {
+            best_total = best_total.max(total);
+            positive_totals.push(total);
             meet_best_totals
                 .entry(result.meet.clone())
-                .and_modify(|best| *best = best.max(result.total))
-                .or_insert(result.total);
+                .and_modify(|best| *best = best.max(total))
+                .or_insert(total);
         }
     }
 
@@ -279,14 +282,6 @@ fn percentage(successes: usize, attempts: usize) -> f64 {
         0.0
     } else {
         successes as f64 / attempts as f64 * 100.0
-    }
-}
-
-fn positive(value: f64) -> f64 {
-    if value > 0.0 && value.is_finite() {
-        value
-    } else {
-        0.0
     }
 }
 
