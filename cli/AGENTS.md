@@ -81,3 +81,5 @@ CI (`.github/workflows/cli.yml` at the root) runs `cargo fmt --check`, `clippy -
 - Sinclair uses the IWF's 2021–2024 coefficients (`SINCLAIR_MEN` / `SINCLAIR_WOMEN` in `stats.rs`), the latest set we could confirm; when the IWF publishes a newer set, change them there and the `SINCLAIR_LABEL`.
 - Reading every result or every meet name is paged on the server (`results:page`, `meets:namesPage`); a single query that scans a large table passes on dev and fails on production.
 - USA Weightlifting publishes some national events' start lists under one combined name and their results under separate ones. Go through `meet_names.rs` (`equivalent_meets`, `result_meet_aliases`) rather than comparing meet names directly.
+- Many results meets keep one name every year (`Testify Leprechaun Lift-off`), and `results:byMeet` answers every year's rows for that name. A meet name alone is not one event: split rows into editions by year (`meet_names::editions_by_year`), and find a meet's other editions by `meet_names::series_name`, not by swapping the year in its name.
+- Names are folded with Unicode NFC, like the server's `normalizeName`: use `stats::fold` for every name match.

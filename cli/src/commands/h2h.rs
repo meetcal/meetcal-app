@@ -7,6 +7,7 @@ use crate::types::lifting_results::LiftingResults;
 use crate::utils::athletes::history;
 use crate::utils::bests::{YEAR_BESTS_YEARS, cutoff_date};
 use crate::utils::format::us_date;
+use crate::utils::meet_names::result_year;
 use crate::utils::output::{self, Report};
 use crate::utils::stats::{
     Lift, SINCLAIR_LABEL, chronological, fold, number, points, row_qpoints, row_sinclair,
@@ -48,20 +49,41 @@ pub struct Meeting<'a> {
     pub second: &'a LiftingResults,
 }
 
-/// The meets both athletes entered (same meet name and date), oldest first.
+/// The meets both athletes entered, oldest first: the same meet name in the same year. A results
+/// row's date is the day that athlete lifted, so at a multi-day meet the two dates can differ;
+/// the year keeps apart the editions of a meet held under one name every year. An athlete with
+/// two rows at one meet (two divisions) is represented by the higher total.
 pub fn meetings<'a>(first: &'a [LiftingResults], second: &'a [LiftingResults]) -> Vec<Meeting<'a>> {
-    chronological(first)
+    let second = best_per_meet(second);
+    best_per_meet(first)
         .into_iter()
         .filter_map(|a| {
             second
                 .iter()
-                .find(|b| b.date == a.date && fold(&b.meet) == fold(&a.meet))
+                .find(|b| meet_key(b) == meet_key(a))
                 .map(|b| Meeting {
                     first: a,
                     second: b,
                 })
         })
         .collect()
+}
+
+fn meet_key(row: &LiftingResults) -> (String, String) {
+    (fold(&row.meet), result_year(row))
+}
+
+/// Each meet's row with the highest total, oldest first.
+fn best_per_meet(rows: &[LiftingResults]) -> Vec<&LiftingResults> {
+    let mut best: Vec<&LiftingResults> = Vec::new();
+    for row in chronological(rows) {
+        match best.iter_mut().find(|kept| meet_key(kept) == meet_key(row)) {
+            Some(kept) if row.total > kept.total => *kept = row,
+            Some(_) => {}
+            None => best.push(row),
+        }
+    }
+    best
 }
 
 pub fn report(first: &[LiftingResults], second: &[LiftingResults], cutoff: &str) -> Report {
@@ -279,5 +301,48 @@ mod tests {
         assert_eq!(json["summary"][0]["best_snatch"], 0);
         assert_eq!(json["summary"][0]["best_total"], 0);
         assert_eq!(json["summary"][1]["best_total"], 220);
+    }
+
+    #[test]
+    fn athletes_lifting_on_different_days_of_one_meet_met() {
+        let lift = |name: &str, date: &str, meet: &str, age: &str, cj: f64| {
+            row(
+                name,
+                date,
+                meet,
+                age,
+                88.0,
+                [140.0, 0.0, 0.0],
+                [cj, 0.0, 0.0],
+            )
+        };
+        let nationals = "2025 USA Weightlifting National Championships";
+        let a = vec![
+            lift("Ada", "2025-06-28", nationals, "Open Men's 89kg", 180.0),
+            lift("Ada", "2025-06-28", nationals, "Junior Men's 89kg", 180.0),
+            lift(
+                "Ada",
+                "2024-03-16",
+                "Leprechaun Lift-off",
+                "Open Men's 89kg",
+                170.0,
+            ),
+        ];
+        let b = vec![
+            lift("Bo", "2025-06-27", nationals, "Open Men's 89kg", 185.0),
+            // The same meet name a year later is another edition.
+            lift(
+                "Bo",
+                "2025-03-15",
+                "Leprechaun Lift-off",
+                "Open Men's 89kg",
+                170.0,
+            ),
+        ];
+        let found = meetings(&a, &b);
+        assert_eq!(found.len(), 1);
+        assert_eq!(found[0].second.date, "2025-06-27");
+        let json = report(&a, &b, "2025-01-01").to_json();
+        assert_eq!(json["summary"][1]["higher_total_in"], 1);
     }
 }
