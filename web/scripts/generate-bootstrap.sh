@@ -15,12 +15,39 @@ fi
 javascript_file="$(basename "${javascript_candidates[0]}")"
 wasm_file="$(basename "${wasm_candidates[0]}")"
 
-printf '%s\n' \
-  "import init, * as bindings from '/${javascript_file}';" \
-  "const wasm = await init({ module_or_path: '/${wasm_file}' });" \
-  "window.wasmBindings = bindings;" \
-  'dispatchEvent(new CustomEvent("TrunkApplicationStarted", { detail: { wasm } }));' \
-  > "${dist_dir}/app-bootstrap.js"
+# The bootstrap loads the app and then removes index.html's loading shell
+# (#app-loading). If the JavaScript loader or the Wasm binary can't load, it
+# turns the shell into an error with a retry instead of leaving a blank page.
+cat > "${dist_dir}/app-bootstrap.js" <<EOF
+const shell = document.getElementById("app-loading");
+
+function showLoadError() {
+  if (!shell) return;
+  shell.setAttribute("role", "alert");
+  const message = shell.querySelector("[data-app-loading-message]");
+  if (message) {
+    message.className = "app-loading-error";
+    message.textContent = "MeetCal couldn\u2019t load. Check your connection and try again.";
+  }
+  const retry = document.createElement("button");
+  retry.type = "button";
+  retry.className = "app-loading-retry";
+  retry.textContent = "Try again";
+  retry.addEventListener("click", () => location.reload());
+  shell.appendChild(retry);
+}
+
+try {
+  const bindings = await import("/${javascript_file}");
+  const wasm = await bindings.default({ module_or_path: "/${wasm_file}" });
+  window.wasmBindings = bindings;
+  shell?.remove();
+  dispatchEvent(new CustomEvent("TrunkApplicationStarted", { detail: { wasm } }));
+} catch (error) {
+  console.error("MeetCal failed to load", error);
+  showLoadError();
+}
+EOF
 
 seo_dir="${dist_dir}/seo"
 mkdir -p "${seo_dir}"
