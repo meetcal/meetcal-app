@@ -7,73 +7,84 @@ export type AuthMock = {
   entitlements?: string[];
   /** `getCustomerInfo` rejects with this message. */
   revenueCatError?: string;
+  /**
+   * Leave RevenueCat off the page, so the bridge loads its script (which a
+   * test can then route); `window.__authMock.installPurchases()` puts the
+   * stand-in on the page later.
+   */
+  loadRevenueCat?: boolean;
 };
 
 /**
- * Replaces Clerk's and RevenueCat's scripts with stubs. The stubs record what
- * the site asked of them on `window.__authMock`: `mountSignIn` options and
+ * Puts stand-ins for the Clerk and RevenueCat SDKs on the page: the auth
+ * bridge uses an SDK already on the page instead of loading it, and a mocked
+ * CDN file would fail its integrity check. The stand-ins record what the site
+ * asked of them on `window.__authMock`: `mountSignIn` options and
  * `getCustomerInfo` calls. `notify()` calls Clerk's listeners again;
  * `setUser(id | null)` switches or signs out the Clerk user and notifies;
- * setting `customerInfoError` makes later checks fail. Only `user_ci` holds
- * `entitlements`.
+ * setting `customerInfoError` makes later checks fail, and
+ * `activeEntitlements` replaces the granted entitlements. Only `user_ci`
+ * holds entitlements.
  */
-export async function mockAuth(page: Page, { signedIn = true, entitlements = ["Subscriptions"], revenueCatError }: AuthMock = {}) {
-  await page.route(/cdn\.jsdelivr\.net\/npm\/@clerk\/ui@/, async (route) => {
-    await route.fulfill({
-      contentType: "application/javascript",
-      body: "window.__internal_ClerkUICtor = function ClerkUI() {};",
-    });
-  });
-  await page.route(/cdn\.jsdelivr\.net\/npm\/@clerk\/clerk-js@/, async (route) => {
-    await route.fulfill({
-      contentType: "application/javascript",
-      body: `(() => {
-        const mock = window.__authMock = window.__authMock || { signInMounts: [], customerInfoCalls: 0, listeners: [] };
-        mock.notify = () => mock.listeners.forEach((listener) => listener());
-        mock.setUser = (id) => {
-          window.Clerk.isSignedIn = id !== null;
-          window.Clerk.user = id === null ? null : { id };
-          mock.notify();
-        };
-        window.Clerk = {
-          isSignedIn: ${signedIn},
-          user: ${signedIn ? '{ id: "user_ci" }' : "null"},
-          load: async () => {},
-          addListener: (listener) => { mock.listeners.push(listener); },
-          mountUserButton: (element) => { element.textContent = "Test User"; },
-          unmountUserButton: () => {},
-          mountSignIn: (element, options) => { mock.signInMounts.push(options); },
-          unmountSignIn: () => {},
-          openSignIn: () => {}
-        };
-      })();`,
-    });
-  });
-  await page.route(/unpkg\.com\/@revenuecat\/purchases-js@/, async (route) => {
-    const active = Object.fromEntries(entitlements.map((id) => [id, { identifier: id }]));
-    await route.fulfill({
-      contentType: "application/javascript",
-      body: `(() => {
-        const mock = window.__authMock = window.__authMock || { signInMounts: [], customerInfoCalls: 0, listeners: [] };
-        ${revenueCatError === undefined ? "" : `mock.customerInfoError = ${JSON.stringify(revenueCatError)};`}
-        let appUserId = null;
-        const purchases = {
-          getAppUserId: () => appUserId,
-          changeUser: async (id) => { appUserId = id; },
-          getCustomerInfo: async () => {
-            mock.customerInfoCalls += 1;
-            if (mock.customerInfoError) throw new Error(mock.customerInfoError);
-            return { entitlements: { active: appUserId === "user_ci" ? (mock.activeEntitlements ?? ${JSON.stringify(active)}) : {} } };
-          }
-        };
-        window.Purchases = { Purchases: {
-          isConfigured: () => appUserId !== null,
-          configure: ({ appUserId: id }) => { appUserId = id; return purchases; },
-          getSharedInstance: () => purchases
-        }};
-      })();`,
-    });
-  });
+export async function mockAuth(page: Page, { signedIn = true, entitlements = ["Subscriptions"], revenueCatError, loadRevenueCat = false }: AuthMock = {}) {
+  const active = Object.fromEntries(entitlements.map((id) => [id, { identifier: id }]));
+  await page.addInitScript(({ signedIn, active, revenueCatError, loadRevenueCat }) => {
+    type Listener = () => void;
+    const mock = {
+      signInMounts: [] as unknown[],
+      customerInfoCalls: 0,
+      listeners: [] as Listener[],
+      customerInfoError: revenueCatError as string | undefined,
+      activeEntitlements: undefined as Record<string, unknown> | undefined,
+      notify: () => mock.listeners.forEach((listener) => listener()),
+      setUser: (id: string | null) => {
+        clerk.isSignedIn = id !== null;
+        clerk.user = id === null ? null : { id };
+        mock.notify();
+      },
+      installPurchases: () => Object.assign(window, { Purchases: { Purchases: revenueCat } }),
+    };
+    const clerk = {
+      isSignedIn: signedIn,
+      user: signedIn ? ({ id: "user_ci" } as { id: string } | null) : null,
+      load: async () => {},
+      addListener: (listener: Listener) => {
+        mock.listeners.push(listener);
+      },
+      mountUserButton: (element: HTMLElement, options: unknown) => {
+        element.textContent = "Test User";
+        Object.assign(window, { __userButtonOptions: options });
+      },
+      unmountUserButton: () => {},
+      mountSignIn: (_element: HTMLElement, options: unknown) => {
+        mock.signInMounts.push(options);
+      },
+      unmountSignIn: () => {},
+      openSignIn: () => {},
+    };
+    let appUserId: string | null = null;
+    const purchases = {
+      getAppUserId: () => appUserId,
+      changeUser: async (id: string) => {
+        appUserId = id;
+      },
+      getCustomerInfo: async () => {
+        mock.customerInfoCalls += 1;
+        if (mock.customerInfoError) throw new Error(mock.customerInfoError);
+        return { entitlements: { active: appUserId === "user_ci" ? (mock.activeEntitlements ?? active) : {} } };
+      },
+    };
+    const revenueCat = {
+      isConfigured: () => appUserId !== null,
+      configure: ({ appUserId: id }: { appUserId: string }) => {
+        appUserId = id;
+        return purchases;
+      },
+      getSharedInstance: () => purchases,
+    };
+    Object.assign(window, { __authMock: mock, __internal_ClerkUICtor: function ClerkUI() {}, Clerk: clerk });
+    if (!loadRevenueCat) mock.installPurchases();
+  }, { signedIn, active, revenueCatError, loadRevenueCat });
 }
 
 /** A signed-in user with the app's subscription entitlement. */

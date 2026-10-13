@@ -11,18 +11,21 @@ use crate::commands::group_wrapped::{
     ClubMembership, distinct_names, filter_membership_results, get_club_memberships,
     get_wso_memberships,
 };
-use crate::commands::wso_results::calculate_medal_details;
+use crate::commands::wso_results::{
+    RosterClasses, calculate_medal_details, needs_roster, roster_classes,
+};
+use crate::types::athletes::Athletes;
 use crate::types::lifting_results::LiftingResults;
 use crate::types::wso::Movement;
 use crate::utils::athletes::histories;
 use crate::utils::backend::{queries, query};
 use crate::utils::format::us_date;
-use crate::utils::meet_names::equivalent_meets;
+use crate::utils::meet_names::{editions_by_year, equivalent_meets};
 use crate::utils::names::{NameKind, not_found};
 use crate::utils::output::{self, Report};
 use crate::utils::stats::{
     Lift, SINCLAIR_LABEL, attempt_habits, fold, number, percent, points, pr_flags, row_qpoints,
-    row_sinclair,
+    row_sinclair, valid_total,
 };
 
 /// Lifters in the all-time table.
@@ -129,33 +132,76 @@ async fn medals_by_year(
     memberships: &[ClubMembership],
     group_rows: &[LiftingResults],
 ) -> Result<BTreeMap<String, [usize; 3]>> {
-    let mut meets: Vec<(String, String)> = Vec::new();
-    for row in group_rows {
-        if !meets.iter().any(|(meet, _)| fold(meet) == fold(&row.meet)) {
-            meets.push((row.meet.clone(), year(&row.date)));
-        }
-    }
     let mut medals: BTreeMap<String, [usize; 3]> = BTreeMap::new();
-    for (meet, meet_year) in meets {
+    for (spellings, years) in meet_editions(group_rows) {
         let members: Vec<String> = memberships
             .iter()
-            .filter(|m| equivalent_meets(&m.meet, &meet))
+            .filter(|m| spellings.iter().any(|meet| equivalent_meets(&m.meet, meet)))
             .map(|m| m.name.clone())
             .collect();
-        // `meet` is a results meet already (the group's rows name it), so no
-        // aliases. A meet also answers the results titles linked to it, which
-        // the group's rows name (and this loop ranks) on their own.
-        let meet_rows = own_title_rows(
-            &meet,
-            query(queries::MEET_RESULTS, &json!({ "meet": meet })).await?,
-        );
-        for detail in calculate_medal_details(&members, &meet_rows) {
-            if detail.movement == Movement::Total && (1..=3).contains(&detail.place) {
-                medals.entry(meet_year.clone()).or_default()[detail.place - 1] += 1;
+        // Each spelling is a results meet already (the group's rows name it), so no aliases.
+        // `results:byMeet` matches a name exactly, so each spelling is asked for. A meet also
+        // answers the results titles linked to it: those spelled like it are the same meet and
+        // kept, others are ranked when the group's rows name them. A title already read (as
+        // another spelling's linked title) is not counted twice.
+        let mut meet_rows: Vec<LiftingResults> = Vec::new();
+        let mut titles: HashSet<String> = HashSet::new();
+        for meet in &spellings {
+            if titles.contains(meet) {
+                continue;
+            }
+            let rows: Vec<LiftingResults> =
+                query(queries::MEET_RESULTS, &json!({ "meet": meet })).await?;
+            let fresh: Vec<LiftingResults> = own_title_rows(meet, rows)
+                .into_iter()
+                .filter(|row| !titles.contains(&row.meet))
+                .collect();
+            titles.extend(fresh.iter().map(|row| row.meet.clone()));
+            meet_rows.extend(fresh);
+        }
+        // Divisions without a weight class place by the roster's class, as on the server.
+        let roster = if needs_roster(&meet_rows) {
+            let mut athletes: Vec<Athletes> = Vec::new();
+            for meet in &spellings {
+                let rows: Vec<Athletes> =
+                    query(queries::MEET_ATHLETES, &json!({ "meet": meet })).await?;
+                athletes.extend(rows);
+            }
+            roster_classes(&athletes)
+        } else {
+            RosterClasses::new()
+        };
+        let mut editions = editions_by_year(meet_rows);
+        for meet_year in years {
+            let Some(edition) = editions.remove(&meet_year) else {
+                continue;
+            };
+            for detail in calculate_medal_details(&members, &edition, &roster) {
+                if detail.movement == Movement::Total && (1..=3).contains(&detail.place) {
+                    medals.entry(meet_year.clone()).or_default()[detail.place - 1] += 1;
+                }
             }
         }
     }
     Ok(medals)
+}
+
+/// The meets the group's rows come from, one entry per meet whatever its case or spacing: every
+/// raw spelling of its name, and the years the group lifted there. A meet name held every year is
+/// a separate meet each year, and one meet's name can be spelled differently between years.
+pub fn meet_editions(group_rows: &[LiftingResults]) -> Vec<(Vec<String>, Vec<String>)> {
+    let mut meets: BTreeMap<String, (Vec<String>, Vec<String>)> = BTreeMap::new();
+    for row in group_rows {
+        let (spellings, years) = meets.entry(fold(&row.meet)).or_default();
+        if !spellings.contains(&row.meet) {
+            spellings.push(row.meet.clone());
+        }
+        let row_year = year(&row.date);
+        if !years.contains(&row_year) {
+            years.push(row_year);
+        }
+    }
+    meets.into_values().collect()
 }
 
 /// The rows of `meet`'s own results title, leaving out the linked titles a
@@ -169,6 +215,16 @@ fn own_title_rows(meet: &str, rows: Vec<LiftingResults>) -> Vec<LiftingResults> 
 fn year(date: &str) -> String {
     date.get(..4).unwrap_or(date).to_string()
 }
+
+/// An athlete's best-total row (none while every row is a source error), best Sinclair, results,
+/// and first and latest dates.
+type LifterEntry<'a> = (
+    Option<&'a LiftingResults>,
+    Option<f64>,
+    usize,
+    String,
+    String,
+);
 
 pub fn report(
     title: &str,
@@ -215,7 +271,10 @@ pub fn report(
                     .sum::<f64>()
             })
             .sum();
-        let best = rows.iter().map(|row| row.total).fold(0.0, f64::max);
+        let best = rows
+            .iter()
+            .filter_map(|row| valid_total(row))
+            .fold(0.0, f64::max);
         let prs = rows
             .iter()
             .filter(|row| pr_totals.contains(&pr_key(row)))
@@ -237,19 +296,20 @@ pub fn report(
         by_year.add_row(cells);
     }
 
-    // Each athlete's best total with the group, and best Sinclair.
-    let mut best: HashMap<String, (&LiftingResults, Option<f64>, usize, String, String)> =
-        HashMap::new();
+    // Each athlete's best total with the group (source errors left out), and best Sinclair.
+    let mut best: HashMap<String, LifterEntry> = HashMap::new();
     for row in group_rows {
         let entry = best.entry(fold(&row.name)).or_insert((
-            row,
+            None,
             None,
             0,
             row.date.clone(),
             row.date.clone(),
         ));
-        if row.total > entry.0.total {
-            entry.0 = row;
+        if let Some(total) = valid_total(row)
+            && entry.0.is_none_or(|kept| total > kept.total)
+        {
+            entry.0 = Some(row);
         }
         if let Some(score) = row_sinclair(row) {
             entry.1 = Some(entry.1.map_or(score, |current: f64| current.max(score)));
@@ -271,7 +331,9 @@ pub fn report(
     }
     let mut lifters: Vec<_> = best
         .into_values()
-        .filter(|entry| entry.0.total > 0.0)
+        .filter_map(|(row, sinclair, results, first, last)| {
+            row.map(|row| (row, sinclair, results, first, last))
+        })
         .collect();
     lifters.sort_by(|a, b| {
         b.0.total
@@ -402,5 +464,73 @@ mod tests {
         assert_eq!(top[0]["athlete"], "Bo");
         assert_eq!(top[1]["best_total"], 194);
         assert_eq!(top[1]["results"], 2);
+    }
+
+    #[test]
+    fn a_source_error_tops_no_table() {
+        let real = row(
+            "Ada",
+            "2025-03-01",
+            "M1",
+            "Open Women's 64kg",
+            63.0,
+            [80.0, 0.0, 0.0],
+            [100.0, 0.0, 0.0],
+        );
+        let mut shifted = row(
+            "Bo",
+            "2025-04-01",
+            "M2",
+            "Open Men's 89kg",
+            88.0,
+            [127.0, 0.0, 0.0],
+            [135.0, 0.0, 0.0],
+        );
+        shifted.total = 820.0;
+        let typo = row(
+            "Cy",
+            "2025-05-01",
+            "M3",
+            "Open Men's 89kg",
+            88.0,
+            [-63.0, 633.0, 65.0],
+            [85.0, 90.0, -95.0],
+        );
+        let json = report("CLUB — Test", &[real, shifted, typo], &HashSet::new(), None).to_json();
+        assert_eq!(json["by_year"][0]["best_total"], 180);
+        let top = json["top_lifters"].as_array().unwrap();
+        assert_eq!(top.len(), 1);
+        assert_eq!(top[0]["athlete"], "Ada");
+    }
+
+    #[test]
+    fn a_meet_spelled_differently_between_years_keeps_every_spelling() {
+        let lift = |meet: &str, date: &str| {
+            row(
+                "Ada",
+                date,
+                meet,
+                "Open Women's 64kg",
+                63.0,
+                [80.0, 0.0, 0.0],
+                [100.0, 0.0, 0.0],
+            )
+        };
+        let editions = meet_editions(&[
+            lift("Spring Open", "2024-04-01"),
+            lift("spring  open", "2025-04-01"),
+            lift("Spring Open", "2024-04-01"),
+            lift("Fall Open", "2025-10-01"),
+        ]);
+        assert_eq!(
+            editions,
+            [
+                (vec!["Fall Open".to_string()], vec!["2025".to_string()]),
+                (
+                    vec!["Spring Open".to_string(), "spring  open".to_string()],
+                    vec!["2024".to_string(), "2025".to_string()]
+                ),
+            ]
+        );
     }
 }

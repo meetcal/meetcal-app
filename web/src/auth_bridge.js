@@ -8,6 +8,22 @@ const SUBSCRIPTION_ENTITLEMENT_ID = "Subscriptions";
 // Longest one RevenueCat check may hold the queue, so a stuck call cannot
 // block every later check for the rest of the session.
 const REVENUECAT_OPERATION_TIMEOUT_MS = 20_000;
+
+// Subresource Integrity for the pinned SDK files, so a compromised or
+// mis-served CDN file is refused instead of running with the Clerk session.
+// The CSP in vercel.json allows only these versions' directories. Clerk's own
+// chunk loader fetches its lazily loaded chunks from those directories without
+// integrity hashes, so the chunks rest on the CSP pin and the npm version's
+// immutability alone; covering them too means serving the SDKs from this
+// site's origin. Changing a
+// version means changing its hash here and its path there
+// (tests/config/vercel.test.mjs checks they agree). To compute a hash:
+//   curl -sL <url> | openssl dgst -sha384 -binary | openssl base64 -A
+// An SDK already on the page (window.Clerk and so on) is used as it is; the
+// Playwright tests put stand-ins there, since SRI refuses a mocked file.
+const CLERK_UI_INTEGRITY = "sha384-1bG6zomvWoiEKel4ssWZFXxTG1vUyWR1Yi8dCSRBg59G5Zb5/tCR7EDtTqTc8GiH";
+const CLERK_JS_INTEGRITY = "sha384-f4psDrrkr4x7x3UCVrkr3dz+q3oPInry3lNTkjprqzRjPeMrgdGtLHBsIvZ3FViN";
+const REVENUECAT_JS_INTEGRITY = "sha384-uxK23EQfDmI/oo6YmVrqk+9HhGysN0x/nGR3rCt/WWke/GFeWKQDTigtWvgCEZrF";
 let revenueCatOperationQueue = Promise.resolve();
 // One load per script URL. A failed load is forgotten and its tag removed,
 // so the next call inserts a fresh tag instead of waiting on a dead one.
@@ -28,6 +44,10 @@ function loadScript(src, label, attributes = {}) {
       resolve();
     }, { once: true });
     script.addEventListener("error", () => {
+      // A script element runs once: a failed one (offline, or refused by its
+      // integrity check) would never fire again, so a later call, such as the
+      // next data page's subscription check, would wait forever. Remove it and
+      // forget the load so that call loads afresh and fails or succeeds on its own.
       script.remove();
       scriptLoads.delete(src);
       reject(new Error(`The ${label} service could not be loaded. Check your connection and try again.`));
@@ -56,8 +76,16 @@ export async function initialize_clerk(publishableKey, onAuthChanged) {
   const uiUrl = `https://cdn.jsdelivr.net/npm/@clerk/ui@${CLERK_UI_VERSION}/dist/ui.browser.js`;
   const clerkUrl = `https://cdn.jsdelivr.net/npm/@clerk/clerk-js@${CLERK_JS_VERSION}/dist/clerk.browser.js`;
 
-  await loadScript(uiUrl, "sign-in");
-  await loadScript(clerkUrl, "sign-in", { "data-clerk-publishable-key": publishableKey });
+  if (!window.__internal_ClerkUICtor) {
+    await loadScript(uiUrl, "sign-in", { integrity: CLERK_UI_INTEGRITY });
+  }
+  if (!window.Clerk) {
+    await loadScript(clerkUrl, "sign-in", {
+      integrity: CLERK_JS_INTEGRITY,
+      "data-clerk-publishable-key": publishableKey,
+    });
+  }
+  if (!window.Clerk) throw new Error("Clerk did not initialize");
   await window.Clerk.load({
     ui: { ClerkUI: window.__internal_ClerkUICtor },
     appearance: {
@@ -84,7 +112,10 @@ export function mount_clerk_user_button(element) {
     appearance: {
       elements: {
         userButtonBox: { flexDirection: "row-reverse" },
-        userButtonOuterIdentifier: { fontWeight: "700", color: "#10223b" },
+        // The name sits on the page header, not on one of Clerk's white
+        // surfaces, so it takes the page's text color, which is light in dark
+        // mode (#324).
+        userButtonOuterIdentifier: { fontWeight: "700", color: "var(--text)" },
       },
     },
     customMenuItems: [{
@@ -124,7 +155,13 @@ export function open_clerk_sign_in() {
 
 async function revenueCatForUser(apiKey, appUserId) {
   if (!apiKey) throw new Error("REVENUECAT_PUBLIC_API_KEY is not configured");
-  await loadScript(`https://unpkg.com/@revenuecat/purchases-js@${REVENUECAT_JS_VERSION}/dist/Purchases.umd.js`, "subscription");
+  if (!window.Purchases) {
+    await loadScript(
+      `https://unpkg.com/@revenuecat/purchases-js@${REVENUECAT_JS_VERSION}/dist/Purchases.umd.js`,
+      "subscription",
+      { integrity: REVENUECAT_JS_INTEGRITY },
+    );
+  }
 
   const Purchases = window.Purchases?.Purchases;
   if (!Purchases) throw new Error("RevenueCat Web SDK did not initialize");

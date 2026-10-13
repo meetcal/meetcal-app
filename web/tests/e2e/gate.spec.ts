@@ -9,6 +9,7 @@ type AuthMockState = {
   activeEntitlements?: Record<string, unknown>;
   notify: () => void;
   setUser: (id: string | null) => void;
+  installPurchases: () => void;
 };
 
 /** Counts the Convex reads a page makes; a gated page that is not unlocked must make none. */
@@ -81,24 +82,28 @@ test("a failed RevenueCat check explains itself and Try again checks again", asy
 
 test("a RevenueCat script that failed to load is fetched again on the next data page", async ({ page }) => {
   let scriptRequests = 0;
-  await mockAuth(page);
-  // Registered after the mock, so it answers first: fail the first load only.
+  // RevenueCat is left off the page, so the bridge loads its script, which fails here.
+  await mockAuth(page, { loadRevenueCat: true });
   await page.route(/unpkg\.com\/@revenuecat\/purchases-js@/, async (route) => {
     scriptRequests += 1;
-    if (scriptRequests === 1) {
-      await route.abort("failed");
-      return;
-    }
-    await route.fallback();
+    await route.abort("failed");
   });
   await routeQuery(page, "reference:standards", (route) => route.fulfill(textAnswer([])));
 
   await page.goto("/records");
   await expect(page.getByRole("heading", { level: 1, name: "We couldn’t verify your access" })).toBeVisible();
+  await expect(page.getByRole("alert")).toContainText("The subscription service could not be loaded");
+  expect(scriptRequests).toBe(1);
 
+  // The next data page loads the script afresh instead of waiting on the failed tag.
   await openFromHeader(page, "/standards");
+  await expect.poll(() => scriptRequests).toBe(2);
+  await expect(page.getByRole("heading", { level: 1, name: "We couldn’t verify your access" })).toBeVisible();
+
+  // Once RevenueCat is available, Try again unlocks the page.
+  await page.evaluate(() => (window as unknown as { __authMock: AuthMockState }).__authMock.installPurchases());
+  await page.getByRole("button", { name: "Try again" }).click();
   await expect(page.getByRole("heading", { level: 1, name: "Standards" })).toBeVisible();
-  expect(scriptRequests).toBe(2);
 });
 
 test("moving between data pages and Clerk updates for the same user keep the page and its access", async ({ page }) => {
@@ -174,10 +179,10 @@ test("a stale grant is checked again in the background, and a failed check keeps
 
 test("a signed-in visit to a public page never checks the subscription; the first data page does", async ({ page }) => {
   let scriptRequests = 0;
-  await mockAuth(page);
+  await mockAuth(page, { loadRevenueCat: true });
   await page.route(/unpkg\.com\/@revenuecat\/purchases-js@/, async (route) => {
     scriptRequests += 1;
-    await route.fallback();
+    await route.abort("failed");
   });
   await routeQuery(page, "reference:standards", (route) => route.fulfill(textAnswer([])));
 
@@ -185,10 +190,12 @@ test("a signed-in visit to a public page never checks the subscription; the firs
   await expect(page.getByRole("heading", { level: 1 }).first()).toBeVisible();
   await page.waitForTimeout(300);
   expect(scriptRequests).toBe(0);
+  expect((await authMock(page)).customerInfoCalls).toBe(0);
 
+  // The first data page checks the entitlement.
+  await page.evaluate(() => (window as unknown as { __authMock: AuthMockState }).__authMock.installPurchases());
   await openFromHeader(page, "/standards");
   await expect(page.getByRole("heading", { level: 1, name: "Standards" })).toBeVisible();
-  expect(scriptRequests).toBe(1);
   expect((await authMock(page)).customerInfoCalls).toBe(1);
 });
 

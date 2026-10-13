@@ -32,8 +32,6 @@ test("CSP preserves the application's existing provider integrations", () => {
   const csp = globalHeaders["content-security-policy"];
   for (const source of [
     "'wasm-unsafe-eval'",
-    "https://cdn.jsdelivr.net",
-    "https://unpkg.com",
     "https://*.clerk.accounts.dev",
     "https://api.revenuecat.com",
     "https://e.revenue.cat",
@@ -108,4 +106,36 @@ test("every deployment reads Convex directly, with no API proxy", () => {
     !globalHeaders["content-security-policy"].includes("api.meetcal.app"),
     "CSP must not allow the retired Rust API",
   );
+});
+
+test("script-src allows only the pinned SDK versions, which load with SRI", async () => {
+  const bridge = await readFile(new URL("../../src/auth_bridge.js", import.meta.url), "utf8");
+  const constant = (name) => bridge.match(new RegExp(`const ${name} = "([^"]+)";`))?.[1];
+  const scriptSrc = globalHeaders["content-security-policy"]
+    .split(";")
+    .map((directive) => directive.trim())
+    .find((directive) => directive.startsWith("script-src "))
+    .split(" ")
+    .slice(1);
+
+  const pinned = [
+    ["CLERK_UI", "https://cdn.jsdelivr.net/npm/@clerk/ui@"],
+    ["CLERK_JS", "https://cdn.jsdelivr.net/npm/@clerk/clerk-js@"],
+    ["REVENUECAT_JS", "https://unpkg.com/@revenuecat/purchases-js@"],
+  ];
+  for (const [name, prefix] of pinned) {
+    const version = constant(`${name}_VERSION`);
+    assert.match(version ?? "", /^\d+\.\d+\.\d+$/, `${name}_VERSION`);
+    assert.ok(scriptSrc.includes(`${prefix}${version}/`), `script-src must allow ${prefix}${version}/`);
+    assert.match(constant(`${name}_INTEGRITY`) ?? "", /^sha384-[A-Za-z0-9+/]{64}$/, `${name}_INTEGRITY`);
+  }
+  assert.equal((bridge.match(/integrity: [A-Z_]+_INTEGRITY/g) ?? []).length, pinned.length);
+
+  // No whole CDN host: anything published there could otherwise run here.
+  for (const host of ["https://cdn.jsdelivr.net", "https://unpkg.com"]) {
+    assert.ok(!scriptSrc.includes(host) && !scriptSrc.includes(`${host}/`), `script-src allows all of ${host}`);
+  }
+  for (const source of scriptSrc.filter((source) => /jsdelivr|unpkg/.test(source))) {
+    assert.ok(pinned.some(([name, prefix]) => source === `${prefix}${constant(`${name}_VERSION`)}/`), source);
+  }
 });
