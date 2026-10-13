@@ -230,8 +230,8 @@ function RootLayoutContent({ fontsLoaded }: { fontsLoaded: boolean }) {
     user,
   } = useUser();
 
-  // The data widgets hold public reference data; keep them current without
-  // the Widget Settings screen being open.
+  // Keep the data widgets current without the Widget Settings screen being
+  // open, and mirror the premium entitlement for them and for Siri.
   useDataWidgetRefresh();
 
   // Keep the offline auth hint's seven-day window sliding for every verified
