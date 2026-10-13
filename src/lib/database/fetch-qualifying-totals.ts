@@ -54,9 +54,21 @@ async function fetchQualifyingTotalsFresh(): Promise<QualifyingTotalsData> {
   return result;
 }
 
+/**
+ * No qualifying total in any event (an event is only added with a row in it,
+ * so no events means no rows). Neither the explicit download nor the browse
+ * path (which writes to the download's key) stores such an answer: it would
+ * replace a real download with nothing. The screen still shows the empty
+ * answer; the stored copy stays.
+ */
+export function isQualifyingTotalsDataEmpty(data: QualifyingTotalsData): boolean {
+  return Object.keys(data).length === 0;
+}
+
 async function persistQualifyingTotals(
   data: QualifyingTotalsData,
 ) {
+  if (isQualifyingTotalsDataEmpty(data)) return null;
   const entry = await setOfflineCache(OFFLINE_CACHE_KEYS.qualifyingTotals, data);
   return { data: entry.data, lastUpdatedAt: entry.lastSynced };
 }
@@ -67,9 +79,7 @@ async function persistQualifyingTotals(
  */
 export async function downloadQualifyingTotalsForOffline(): Promise<void> {
   const data = await fetchQualifyingTotalsFresh();
-  // An event is only added with a row in it, so no events means no rows. An
-  // empty table would replace a real download with nothing.
-  if (Object.keys(data).length === 0) {
+  if (isQualifyingTotalsDataEmpty(data)) {
     throw new Error('Qualifying totals download returned no rows');
   }
   await replaceOfflineCache(OFFLINE_CACHE_KEYS.qualifyingTotals, data);

@@ -313,7 +313,11 @@ describe('meet writes', () => {
 
     it("inserts a new event under a disambiguated name when another federation's meet has its name (#159)", async () => {
       const { ctx, rows } = fakeMutationCtx({ meets: [{ ...meetRow('Spring Classic'), updatedAt: 1 }] });
-      expect(await sync(ctx, { events: [event('Spring Classic')] })).toMatchObject({ inserted: ['Spring Classic (USAMW)'], renamed: ['Spring Classic (USAMW)'] });
+      expect(await sync(ctx, { events: [event('Spring Classic')] })).toMatchObject({
+        inserted: ['Spring Classic (USAMW)'],
+        renamed: ['Spring Classic (USAMW)'],
+        renamedEvents: [{ event: 'Spring Classic', storedAs: 'Spring Classic (USAMW)' }],
+      });
       // Reported once, when stored: the next sync just finds it.
       expect(await sync(ctx, { events: [event('Spring Classic')] })).toMatchObject({ unchanged: ['Spring Classic (USAMW)'], renamed: [] });
       expect(rows('meets').map((m) => [m.name, m.federation, m.sourceName])).toEqual([
@@ -359,7 +363,10 @@ describe('meet writes', () => {
       const one = fakeMutationCtx({ meets: [masters('Nationals')] });
       expect((await sync(one.ctx, { events: [event('National Masters')] })).updated).toHaveLength(1);
       const two = fakeMutationCtx({ meets: [masters('A'), masters('B')] });
-      expect((await sync(two.ctx, { events: [event('National Masters')] })).ambiguous).toEqual(['National Masters: A / B']);
+      expect(await sync(two.ctx, { events: [event('National Masters')] })).toMatchObject({
+        ambiguous: ['National Masters: A / B'],
+        ambiguousEvents: [{ event: 'National Masters', meets: ['A', 'B'] }],
+      });
     });
   });
 

@@ -17,6 +17,7 @@ import { Stack } from "expo-router";
 import React, { useEffect, useMemo, useState } from "react";
 import { StyleSheet, View } from "react-native";
 import { useScreenHorizontalInsets } from "@/hooks/useScreenInsets";
+import { formatReferenceKg } from "@/lib/reference-values";
 
 const EMPTY_RECORDS_DATA: RecordsData = {} as RecordsData;
 const HARDCODED_FEDERATIONS = ["USAW", "USAMW", "IWF", "UMWF", "BWL"];
@@ -268,16 +269,13 @@ function RecordsScreenContent() {
               {record.weightClass}
             </ThemedText>
             <ThemedText style={dataTableStyles.cell}>
-              {record.snatchRecord}
-              kg
+              {formatReferenceKg(record.snatchRecord)}
             </ThemedText>
             <ThemedText style={dataTableStyles.cell}>
-              {record.cjRecord}
-              kg
+              {formatReferenceKg(record.cjRecord)}
             </ThemedText>
             <ThemedText style={dataTableStyles.cell}>
-              {record.totalRecord}
-              kg
+              {formatReferenceKg(record.totalRecord)}
             </ThemedText>
           </View>
         )}

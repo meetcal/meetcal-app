@@ -6,6 +6,8 @@ import { ThemedView } from "@/components/ui/ThemedView";
 import { FilterSection, GenericFilterModal } from "@/components/ui/filters";
 import { useAppColors } from "@/hooks/useAppColors";
 import { useFilterState } from "@/hooks/useFilterState";
+import { useRouteFilterKey } from "@/hooks/useRouteFilterKey";
+import { DEEP_LINKS } from "@/utils/deepLinks";
 import { useMutableResource } from "@/hooks/useMutableResource";
 import {
   QualifyingTotalsData,
@@ -42,9 +44,15 @@ function QualifyingTotalsScreenContent() {
     }),
     [routeParams.ageGroup, routeParams.event, routeParams.gender],
   );
+  const filterResetKey = useRouteFilterKey(DEEP_LINKS.qualifyingTotals, [
+    routeParams.event,
+    routeParams.gender,
+    routeParams.ageGroup,
+  ]);
   const { filters, setFilters, setTempFilters, openFilters, filterModalProps } =
     useFilterState<Filters>({
     defaultFilters,
+    resetKey: filterResetKey,
   });
   const {
     data: totalsData,

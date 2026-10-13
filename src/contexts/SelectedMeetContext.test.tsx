@@ -14,6 +14,8 @@ const mockGetCachedMeets = jest.fn<Promise<Meet[]>, []>();
 const mockFetchMeetsFresh = jest.fn<Promise<Meet[]>, []>();
 const mockWarmMeetData = jest.fn<Promise<void>, [string]>(async () => {});
 const mockPrefetchMeetData = jest.fn<Promise<void>, [string]>(async () => {});
+const mockPrefetchCriticalMeetData = jest.fn<Promise<void>, [string]>(async () => {});
+const mockIsMeetExplicitlyDownloaded = jest.fn<Promise<boolean>, [string]>(async () => true);
 const mockFetchApiMeetByName = jest.fn<Promise<Meet | null>, [string]>();
 const mockClearExpiredDownloadedMeets = jest.fn(async () => {});
 const mockReindexAppEntities = jest.fn(async () => {});
@@ -27,10 +29,12 @@ jest.mock("@/lib/database/meet-manager", () => ({
   fetchMeetsFresh: (...args: []) => mockFetchMeetsFresh(...args),
   warmMeetData: (...args: [string]) => mockWarmMeetData(...args),
   prefetchMeetData: (...args: [string]) => mockPrefetchMeetData(...args),
+  prefetchCriticalMeetData: (...args: [string]) => mockPrefetchCriticalMeetData(...args),
 }));
 
 jest.mock("@/lib/database/offline-store", () => ({
   clearExpiredDownloadedMeets: () => mockClearExpiredDownloadedMeets(),
+  isMeetExplicitlyDownloaded: (meet: string) => mockIsMeetExplicitlyDownloaded(meet),
 }));
 
 jest.mock("@/lib/api/meetcal-api", () => ({
@@ -619,6 +623,46 @@ describe("SelectedMeetProvider persisted selection", () => {
     act(() => tree.unmount());
   });
 
+  // The sweep ran before the fresh list, so a meet postponed while the app
+  // was closed expired on its old end date before the new one arrived.
+  it("runs the expiry sweep only once the fresh meets list has settled", async () => {
+    let answer!: (meets: Meet[]) => void;
+    mockFetchMeetsFresh.mockImplementation(
+      () =>
+        new Promise<Meet[]>((resolve) => {
+          answer = resolve;
+        }),
+    );
+    let tree!: ReturnType<typeof create>;
+    act(() => {
+      tree = create(
+        <SelectedMeetProvider>
+          <Harness />
+        </SelectedMeetProvider>,
+      );
+    });
+    await flush();
+    expect(mockFetchMeetsFresh).toHaveBeenCalled();
+    expect(mockClearExpiredDownloadedMeets).not.toHaveBeenCalled();
+
+    await act(async () => {
+      answer([makeMeet("Window Meet")]);
+    });
+    await flush();
+    expect(mockClearExpiredDownloadedMeets).toHaveBeenCalledTimes(1);
+
+    mockClearExpiredDownloadedMeets.mockClear();
+    mockFetchMeetsFresh.mockImplementation(async () => {
+      expect(mockClearExpiredDownloadedMeets).not.toHaveBeenCalled();
+      return [makeMeet("Window Meet")];
+    });
+    await act(async () => {
+      await captured!.refreshAvailableMeets();
+    });
+    expect(mockClearExpiredDownloadedMeets).toHaveBeenCalledTimes(1);
+    act(() => tree.unmount());
+  });
+
   it("forceSync rejects when the selected meet cannot be re-downloaded", async () => {
     mockFetchMeetsFresh.mockResolvedValue([makeMeet("Window Meet")]);
     const tree = await mount();
@@ -633,6 +677,21 @@ describe("SelectedMeetProvider persisted selection", () => {
 
     expect(mockPrefetchMeetData).toHaveBeenCalledWith("Window Meet");
     expect(failure).toBe(down);
+    act(() => tree.unmount());
+  });
+
+  it("forceSync re-syncs a meet that is not downloaded without the full package and history", async () => {
+    mockFetchMeetsFresh.mockResolvedValue([makeMeet("Window Meet")]);
+    const tree = await mount();
+    mockIsMeetExplicitlyDownloaded.mockResolvedValueOnce(false);
+    mockPrefetchMeetData.mockClear();
+
+    await act(async () => {
+      await captured!.forceSync();
+    });
+
+    expect(mockPrefetchCriticalMeetData).toHaveBeenCalledWith("Window Meet");
+    expect(mockPrefetchMeetData).not.toHaveBeenCalled();
     act(() => tree.unmount());
   });
 });

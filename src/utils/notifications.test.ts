@@ -1,12 +1,17 @@
+import { Platform } from "react-native";
 import { getNotificationDeepLink, normalizeDeepLinkHref } from "@/utils/deepLinks";
 const mockScheduleNotificationAsync = jest.fn(async (_request: unknown) => "notif-1");
 const mockCancelScheduledNotificationAsync = jest.fn(async (_id: string) => {});
 const mockSetNotificationHandler = jest.fn();
+const mockSetNotificationChannelAsync = jest.fn(async (_id: string, _channel: unknown) => null);
 
 jest.mock("expo-notifications", () => ({
   AndroidNotificationPriority: { HIGH: "high" },
-  SchedulableTriggerInputTypes: { TIME_INTERVAL: "timeInterval" },
+  AndroidImportance: { MAX: 5 },
+  SchedulableTriggerInputTypes: { TIME_INTERVAL: "timeInterval", DATE: "date" },
   setNotificationHandler: (handler: unknown) => mockSetNotificationHandler(handler),
+  setNotificationChannelAsync: (id: string, channel: unknown) =>
+    mockSetNotificationChannelAsync(id, channel),
   scheduleNotificationAsync: (request: unknown) => mockScheduleNotificationAsync(request),
   cancelScheduledNotificationAsync: (id: string) => mockCancelScheduledNotificationAsync(id),
 }));
@@ -14,14 +19,19 @@ jest.mock("expo-notifications", () => ({
 
 // Required, not imported: the module registers its handler at load, and an
 // import would be hoisted above the mock functions it calls.
-const { ANDROID_NOTIFICATION_CHANNEL_ID, cancelNotification, scheduleNotification } =
-  require("@/utils/notifications") as typeof import("@/utils/notifications");
+const {
+  ANDROID_NOTIFICATION_CHANNEL_ID,
+  cancelNotification,
+  ensureReminderChannel,
+  resetReminderChannelForTests,
+  scheduleNotification,
+} = require("@/utils/notifications") as typeof import("@/utils/notifications");
 
 const NOW = Date.UTC(2026, 5, 20, 15, 0, 0);
 
 type ScheduledRequest = {
   content: { title: string; body: string; data: Record<string, unknown> };
-  trigger: { type: string; seconds: number; repeats: boolean; channelId?: string };
+  trigger: { type: string; date: number; channelId?: string };
   identifier?: string;
 };
 
@@ -54,7 +64,7 @@ describe("notification handler", () => {
 });
 
 describe("scheduleNotification", () => {
-  it("schedules a one-shot interval of whole seconds until the trigger", async () => {
+  it("schedules a wall-clock trigger at the instant", async () => {
     const trigger = new Date(NOW + 90_999);
     await expect(
       scheduleNotification("Session soon", "Session 4 starts in 30 min", trigger, "sess-4"),
@@ -62,9 +72,8 @@ describe("scheduleNotification", () => {
 
     const request = lastRequest();
     expect(request.trigger).toEqual({
-      type: "timeInterval",
-      seconds: 90,
-      repeats: false,
+      type: "date",
+      date: NOW + 90_999,
       channelId: "default",
     });
     expect(request.identifier).toBe("sess-4");
@@ -84,7 +93,7 @@ describe("scheduleNotification", () => {
   it.each([
     ["in the past", NOW - 60_000],
     ["now", NOW],
-    ["under a second away", NOW + 999],
+    ["that is not a date", Number.NaN],
   ])("does not schedule a trigger %s", async (_label, at) => {
     await expect(scheduleNotification("t", "b", new Date(at), "id")).resolves.toBeUndefined();
     expect(mockScheduleNotificationAsync).not.toHaveBeenCalled();
@@ -122,6 +131,65 @@ describe("scheduleNotification", () => {
     await expect(scheduleNotification("t", "b", new Date(NOW + 60_000))).rejects.toThrow(
       "permission denied",
     );
+  });
+});
+
+describe("ensureReminderChannel", () => {
+  beforeEach(() => {
+    resetReminderChannelForTests();
+    mockSetNotificationChannelAsync.mockReset();
+    mockSetNotificationChannelAsync.mockResolvedValue(null);
+  });
+
+  it("creates the named, high-importance reminders channel once on Android", async () => {
+    jest.replaceProperty(Platform, "OS", "android");
+
+    await ensureReminderChannel();
+    await ensureReminderChannel();
+    await scheduleNotification("t", "b", new Date(NOW + 60_000), "sess-4");
+
+    expect(mockSetNotificationChannelAsync).toHaveBeenCalledTimes(1);
+    expect(mockSetNotificationChannelAsync).toHaveBeenCalledWith(ANDROID_NOTIFICATION_CHANNEL_ID, {
+      name: "Session reminders",
+      importance: 5,
+      vibrationPattern: [0, 250, 250, 250],
+      lightColor: "#FF231F7C",
+    });
+  });
+
+  it("creates the channel before scheduling, however reminders were reached", async () => {
+    jest.replaceProperty(Platform, "OS", "android");
+    const order: string[] = [];
+    mockSetNotificationChannelAsync.mockImplementation(async () => {
+      order.push("channel");
+      return null;
+    });
+    mockScheduleNotificationAsync.mockImplementationOnce(async () => {
+      order.push("schedule");
+      return "notif-1";
+    });
+
+    await scheduleNotification("t", "b", new Date(NOW + 60_000), "sess-4");
+
+    expect(order).toEqual(["channel", "schedule"]);
+  });
+
+  it("logs a failure, still schedules, and tries again next time", async () => {
+    jest.replaceProperty(Platform, "OS", "android");
+    const errorSpy = jest.spyOn(console, "error").mockImplementation(() => {});
+    mockSetNotificationChannelAsync.mockRejectedValueOnce(new Error("binder"));
+
+    await expect(scheduleNotification("t", "b", new Date(NOW + 60_000))).resolves.toBe("notif-1");
+    await ensureReminderChannel();
+
+    expect(mockSetNotificationChannelAsync).toHaveBeenCalledTimes(2);
+    expect(errorSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it("does nothing on iOS", async () => {
+    jest.replaceProperty(Platform, "OS", "ios");
+    await ensureReminderChannel();
+    expect(mockSetNotificationChannelAsync).not.toHaveBeenCalled();
   });
 });
 

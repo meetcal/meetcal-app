@@ -24,7 +24,7 @@ import {
   buildStandardsWidgetPayload,
   DataWidgetPayloads,
   defaultWidgetSettings,
-  hasResolvedWidgetFilters,
+  canSyncDataWidgets,
   loadWidgetSettings,
   markDataWidgetCommitStarted,
   normalizeWidgetSettings,
@@ -47,6 +47,8 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { showToast } from "@/components/ui/Toast";
 import { useScreenHorizontalInsets } from "@/hooks/useScreenInsets";
 import { Palette } from "@/constants/Palette";
+import { SubscriptionGate } from "@/components/ui/SubscriptionGate";
+import { DEEP_LINKS } from "@/utils/deepLinks";
 
 type ActiveModal = WidgetKind | null;
 
@@ -62,7 +64,24 @@ type CommitOptions = {
   dedupe?: boolean;
 };
 
+/**
+ * Gated by the shared `SubscriptionGate`, like the premium screens whose
+ * tables these widgets show (the widgets themselves show a "subscribe"
+ * payload without the entitlement, see `lib/data-widgets-refresh.ts`).
+ */
 export default function WidgetSettingsScreen() {
+  return (
+    <SubscriptionGate from={DEEP_LINKS.widgetSettings} feature="widget-settings">
+      <WidgetSettingsContent />
+    </SubscriptionGate>
+  );
+}
+
+/** Why an interactive commit saved the filters but left the widgets alone. */
+const UNSYNCED_WIDGETS_MESSAGE =
+  "Widget settings saved. Your widgets will update once the widget data loads.";
+
+function WidgetSettingsContent() {
   const screenInsets = useScreenHorizontalInsets();
   const colors = useAppColors();
   const insets = useSafeAreaInsets();
@@ -135,16 +154,32 @@ export default function WidgetSettingsScreen() {
     [intlRankings, standardsData, totalsData],
   );
 
+  const loading = totalsLoading || standardsLoading || rankingsLoading;
+  const error = totalsError || standardsError || rankingsError;
+
   /**
    * The single write path. Persist first, then push to the native widget, so a
    * widget never renders settings that failed to store. `dedupe` lets the
    * background commit skip a payload byte-identical to the one already written
    * — including one the user just applied by hand.
+   *
+   * Payloads built from data that is loading, failed or does not resolve the
+   * filters are never written, whoever starts the commit: the filters are
+   * saved, and the widgets update once the data loads (the background commit
+   * below, or the next app-wide refresh).
    */
   const commitWidgets = useCallback(
     async (next: WidgetSettings, options: CommitOptions = {}) => {
       const payloads = buildPayloads(next);
       const signature = JSON.stringify({ settings: next, payloads });
+      const syncable = canSyncDataWidgets({
+        loading,
+        error,
+        settings: next,
+        totalsData,
+        standardsData,
+        intlRankings,
+      });
       if (options.interactive) {
         pendingInteractiveCommits.current += 1;
         setIsSaving(true);
@@ -157,6 +192,12 @@ export default function WidgetSettingsScreen() {
         markDataWidgetCommitStarted();
         try {
           await saveWidgetSettings(next);
+          if (!syncable) {
+            if (options.interactive) {
+              showToast({ type: "info", message: UNSYNCED_WIDGETS_MESSAGE });
+            }
+            return;
+          }
           syncDataWidgets(payloads);
           lastCommittedSignature.current = signature;
           if (options.announceSuccess) {
@@ -186,7 +227,7 @@ export default function WidgetSettingsScreen() {
         }
       }
     },
-    [buildPayloads],
+    [buildPayloads, error, intlRankings, loading, standardsData, totalsData],
   );
 
   const handleApply = (kind: WidgetKind, filters: Record<string, string>) => {
@@ -199,9 +240,6 @@ export default function WidgetSettingsScreen() {
     void commitWidgets(nextSettings, { interactive: true });
   };
 
-  const loading = totalsLoading || standardsLoading || rankingsLoading;
-  const error = totalsError || standardsError || rankingsError;
-
   const {
     qualifyingTotals,
     standards,
@@ -209,9 +247,16 @@ export default function WidgetSettingsScreen() {
   } = useMemo(() => buildPayloads(settings), [buildPayloads, settings]);
 
   useEffect(() => {
-    if (!settingsLoaded || loading || error) return;
+    if (!settingsLoaded) return;
     if (
-      !hasResolvedWidgetFilters(settings, totalsData, standardsData, intlRankings)
+      !canSyncDataWidgets({
+        loading,
+        error,
+        settings,
+        totalsData,
+        standardsData,
+        intlRankings,
+      })
     ) {
       return;
     }
@@ -226,6 +271,9 @@ export default function WidgetSettingsScreen() {
     standardsData,
     totalsData,
   ]);
+
+  // Failed data would write empty widgets; the error row says why.
+  const updateDisabled = isSaving || loading || !!error;
 
   return (
     <ThemedView style={[styles.container, { backgroundColor: colors.background }, screenInsets]}>
@@ -294,12 +342,12 @@ export default function WidgetSettingsScreen() {
         </View>
 
         <Pressable
-          disabled={isSaving || loading}
+          disabled={updateDisabled}
           style={({ pressed }) => [
             styles.saveButton,
             { backgroundColor: colors.link },
-            (isSaving || loading) && styles.disabled,
-            pressed && !isSaving && !loading && { opacity: 0.85 },
+            updateDisabled && styles.disabled,
+            pressed && !updateDisabled && { opacity: 0.85 },
           ]}
           onPress={() =>
             void commitWidgets(settings, {
