@@ -60,8 +60,13 @@ fn fold_meet_search(value: &str) -> String {
 }
 
 fn meet_suggestions(meets: &[Meet], query: &str, limit: usize) -> Vec<String> {
+    // The minimum is on the query as typed, as the picker checks it: `A's`
+    // folds to two letters but is three characters the user typed.
+    if query.trim().chars().count() < 3 {
+        return Vec::new();
+    }
     let query = fold_meet_search(query);
-    if query.chars().count() < 3 {
+    if query.is_empty() {
         return Vec::new();
     }
     meets
@@ -246,5 +251,20 @@ mod tests {
             ["USAW Master\u{2019}s Nationals", "USAMW Master's Nationals"]
         );
         assert_eq!(meet_suggestions(&meets, "master\u{2019}s", 8).len(), 3);
+    }
+
+    #[test]
+    fn meet_suggestions_count_a_short_query_as_typed() {
+        let meets = [
+            meet("A's Open", "2026-01-01"),
+            meet("Bass Classic", "2025-01-01"),
+        ];
+        assert_eq!(
+            meet_suggestions(&meets, "A's", 8),
+            ["A's Open", "Bass Classic"]
+        );
+        assert_eq!(meet_suggestions(&meets, "A\u{2019}s", 8).len(), 2);
+        assert!(meet_suggestions(&meets, "'''", 8).is_empty());
+        assert!(meet_suggestions(&meets, "A'", 8).is_empty());
     }
 }
