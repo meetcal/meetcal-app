@@ -1,19 +1,16 @@
-use crate::components::{footer::Footer, header::Header};
 use leptos::prelude::*;
 
 #[component]
 pub fn TermsPage() -> impl IntoView {
     view! {
-        <Header />
         <TermsOfUse />
-        <Footer />
     }
 }
 
 #[component]
 pub fn TermsOfUse() -> impl IntoView {
     view! {
-        <main>
+        <article class="legal-page">
             <div>
                 <h1>
                     "Terms of Use"
@@ -110,6 +107,6 @@ pub fn TermsOfUse() -> impl IntoView {
                     </p>
                 </div>
             </div>
-        </main>
+        </article>
     }
 }

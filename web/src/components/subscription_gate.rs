@@ -1,7 +1,4 @@
-use crate::{
-    auth::{AuthContext, AuthState, has_comp_data_access, mount_sign_in, unmount_sign_in},
-    components::{footer::Footer, header::Header},
-};
+use crate::auth::{AuthContext, AuthState, has_comp_data_access, mount_sign_in, unmount_sign_in};
 use leptos::prelude::*;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -86,11 +83,9 @@ pub fn SubscriptionGate(children: ChildrenFn) -> impl IntoView {
 #[component]
 fn AccessShell(children: Children) -> impl IntoView {
     view! {
-        <Header />
         <div class="access-page">
             <section class="access-card">{children()}</section>
         </div>
-        <Footer />
     }
 }
 
