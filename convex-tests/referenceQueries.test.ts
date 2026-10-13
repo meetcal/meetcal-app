@@ -1,7 +1,7 @@
 import { computeAdaptiveRecords, RANKING_DIVISIONS } from '../convex/lib/referenceData';
 import { natKey, REF_VIEWS } from '../convex/lib/viewKeys';
 import { jsonChunks, writeView } from '../convex/lib/views';
-import { clubAthletes, clubs, nationalRankings, wsoAthletes } from '../convex/reference';
+import { clubAthletes, clubs, nationalRankings, registrationWsos, wsoAthletes } from '../convex/reference';
 import { fakeDb, handlerOf } from './fakeDb';
 
 const STAMP = [{ table: 'lifting_results', version: 1 }];
@@ -134,5 +134,24 @@ describe('adaptive records', () => {
     expect(await computeAdaptiveRecords({ db: fake.db } as never, 'men', 'BWL', '2026')).toEqual([{ weight_class: '88', snatch: 90, cj: 110, total: 200 }]);
     // One index range: the earlier season's row is never read.
     expect(fake.reads.count).toBe(2);
+  });
+});
+
+describe('registration WSO names', () => {
+  it('lists each WSO registrations name once, without missing or blank ones', async () => {
+    const fake = fakeDb({
+      athletes: [
+        { wso: 'Mountain North' },
+        { wso: 'California North Central' },
+        {},
+        { wso: 'Mountain North' },
+        { wso: '' },
+        { wso: ' ' },
+        { wso: 'Florida' },
+      ],
+    });
+    expect(await query(registrationWsos, fake.db, {})).toEqual(['California North Central', 'Florida', 'Mountain North']);
+    // One read per WSO (and the blank one), not one per registration.
+    expect(fake.reads.count).toBeLessThanOrEqual(5);
   });
 });

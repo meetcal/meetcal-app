@@ -273,40 +273,49 @@ pub fn report(
             .total_cmp(&a.0.total)
             .then_with(|| a.0.name.cmp(&b.0.name))
     });
-    let mut top = Table::new();
-    top.set_header(vec![
+    let best_sinclair = format!("Best {SINCLAIR_LABEL}");
+    let top_header = vec![
         "Rank",
         "Athlete",
         "Best Total",
         "Division",
         "Date",
-        &format!("Best {SINCLAIR_LABEL}"),
+        best_sinclair.as_str(),
         "Best Q-points",
         "Results",
         "First",
         "Latest",
-    ]);
+    ];
+    // Shown with US dates, exported with ISO ones.
+    let mut top = Table::new();
+    top.set_header(top_header.clone());
+    let mut top_data = Table::new();
+    top_data.set_header(top_header);
     for (rank, (row, sinclair, results, first, last)) in
         (1..).zip(lifters.into_iter().take(TOP_LIFTERS))
     {
-        top.add_row(vec![
-            rank.to_string(),
-            row.name.clone(),
-            number(row.total),
-            row.age.clone(),
-            us_date(&row.date),
-            points(sinclair),
-            points(best_qpoints.get(&fold(&row.name)).copied()),
-            results.to_string(),
-            us_date(&first),
-            us_date(&last),
-        ]);
+        let cells = |date: String, first: String, last: String| {
+            vec![
+                rank.to_string(),
+                row.name.clone(),
+                number(row.total),
+                row.age.clone(),
+                date,
+                points(sinclair),
+                points(best_qpoints.get(&fold(&row.name)).copied()),
+                results.to_string(),
+                first,
+                last,
+            ]
+        };
+        top.add_row(cells(us_date(&row.date), us_date(&first), us_date(&last)));
+        top_data.add_row(cells(row.date.clone(), first, last));
     }
 
     Report::new()
         .titled(format!("TRENDS — {title}"))
         .headed("by_year", "BY YEAR", by_year)
-        .headed("top_lifters", "TOP LIFTERS (ALL TIME)", top)
+        .headed_with_data("top_lifters", "TOP LIFTERS (ALL TIME)", top, top_data)
         .when_empty("No results found at meets where these athletes were registered.")
 }
 

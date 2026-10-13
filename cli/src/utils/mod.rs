@@ -1,6 +1,7 @@
 pub mod athletes;
 pub mod backend;
 pub mod bests;
+pub mod filters;
 pub mod format;
 pub mod make_rate;
 pub mod meet_names;

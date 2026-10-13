@@ -1,4 +1,3 @@
-use clap::ValueEnum;
 use serde::Deserialize;
 
 #[derive(Debug, Deserialize)]
@@ -14,7 +13,7 @@ pub struct Athletes {
     pub member_id: String,
     pub name: String,
     pub session_number: Option<f64>,
-    /// As the meet names it; meets use more platforms than `Platform` lists.
+    /// As the meet names it (Red, White, Gold, Platform A, …).
     pub session_platform: Option<String>,
     pub weight_class: String,
     pub wso: Option<String>,
@@ -26,14 +25,4 @@ pub struct Athletes {
     pub weigh_in_time: Option<String>,
     #[serde(default)]
     pub start_time: Option<String>,
-}
-
-#[derive(Debug, Clone, ValueEnum, Deserialize)]
-pub enum Platform {
-    Red,
-    White,
-    Blue,
-    Stars,
-    Stripes,
-    Rogue,
 }

@@ -9,6 +9,7 @@ use tokio::task::JoinSet;
 
 use crate::utils::backend::{queries, query};
 use crate::utils::format::{date_range, us_date};
+use crate::utils::names::{MAX_NAME_PAGES, just_before, meet_names_between};
 use crate::utils::output::{self, Report};
 use crate::utils::progress::Progress;
 
@@ -46,17 +47,6 @@ pub struct AttendanceArgs {
     /// Leave out meets whose name contains this text (repeatable)
     #[arg(long, short = 'x')]
     pub exclude: Vec<String>,
-}
-
-#[derive(Debug, Deserialize)]
-struct NamesPage {
-    json: String,
-    next: Option<String>,
-}
-
-#[derive(Debug, Deserialize)]
-struct MeetName {
-    meet: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -126,26 +116,13 @@ pub fn matches(meet: &str, words: &[String], exclude: &[String]) -> bool {
     })
 }
 
+/// One name range's meet names, every page of it.
 async fn list_range(
     source: &'static str,
     from: Option<String>,
     before: Option<String>,
 ) -> Result<Vec<String>> {
-    let mut names = Vec::new();
-    let mut after = from;
-    loop {
-        let mut args = json!({ "source": source, "after": after });
-        if let Some(before) = &before {
-            args["before"] = json!(before);
-        }
-        let page: NamesPage = query(queries::MEET_NAMES_PAGE, &args).await?;
-        let meets: Vec<MeetName> = serde_json::from_str(&page.json)?;
-        names.extend(meets.into_iter().map(|m| m.meet));
-        match page.next {
-            Some(next) => after = Some(next),
-            None => return Ok(names),
-        }
-    }
+    meet_names_between(source, from, before, MAX_NAME_PAGES, false).await
 }
 
 /// Every meet name in the results and the registrations.
@@ -182,18 +159,6 @@ async fn all_meet_names() -> Result<Vec<String>> {
     names.sort();
     names.dedup();
     Ok(names)
-}
-
-/// The greatest string sorting before `boundary` for our purposes: `boundary` with its last
-/// character stepped back and a high character appended, so `after` it includes `boundary`.
-fn just_before(boundary: &str) -> String {
-    let mut chars: Vec<char> = boundary.chars().collect();
-    let last = chars.pop().expect("boundaries are not empty");
-    let previous = char::from_u32(last as u32 - 1).unwrap_or(last);
-    chars.push(previous);
-    let mut out: String = chars.into_iter().collect();
-    out.push('\u{10FFFF}');
-    out
 }
 
 pub async fn run(args: AttendanceArgs) -> Result<()> {
@@ -240,16 +205,27 @@ pub fn report(search: &str, editions: &[Edition]) -> Report {
         "Lifters With Results",
         "Status",
     ]);
+    // Exported with the first and last day in columns of their own, `YYYY-MM-DD`.
+    let mut meets_data = Table::new();
+    meets_data.set_header(vec![
+        "Year",
+        "Meet",
+        "Start Date",
+        "End Date",
+        "Registered",
+        "Lifters With Results",
+        "Status",
+    ]);
     for edition in &sorted {
-        let dates = match (
+        let (start, end) = match (
             &edition.first_date,
             &edition.last_date,
             &edition.start_date,
             &edition.end_date,
         ) {
-            (Some(first), Some(last), _, _) => date_range(first, last),
-            (_, _, Some(start), Some(end)) => date_range(start, end),
-            _ => String::new(),
+            (Some(first), Some(last), _, _) => (first.clone(), last.clone()),
+            (_, _, Some(start), Some(end)) => (start.clone(), end.clone()),
+            _ => (String::new(), String::new()),
         };
         let status = match (edition.lifters > 0, edition.registrations > 0) {
             (true, _) => "Results in".to_string(),
@@ -266,7 +242,16 @@ pub fn report(search: &str, editions: &[Edition]) -> Report {
         meets.add_row(vec![
             edition.year().unwrap_or_default(),
             edition.meet.clone(),
-            dates,
+            date_range(&start, &end),
+            count(edition.registrations),
+            count(edition.lifters),
+            status.clone(),
+        ]);
+        meets_data.add_row(vec![
+            edition.year().unwrap_or_default(),
+            edition.meet.clone(),
+            start,
+            end,
             count(edition.registrations),
             count(edition.lifters),
             status,
@@ -333,10 +318,11 @@ pub fn report(search: &str, editions: &[Edition]) -> Report {
                 .unwrap_or_default()
         ))
         .headed("by_year", "BY YEAR", by_year)
-        .headed("editions", "EDITIONS", meets)
+        .headed_with_data("editions", "EDITIONS", meets, meets_data)
 }
 
-/// A count, or a dash for none (registrations exist only for meets MeetCal tracked).
+/// A count, or a dash for none (registrations exist only for meets MeetCal tracked). JSON and
+/// CSV carry the dash as null.
 fn count(value: usize) -> String {
     if value == 0 {
         "—".into()
@@ -443,6 +429,10 @@ mod tests {
         );
         let editions = json["editions"].as_array().unwrap();
         assert_eq!(editions[2]["status"], "Registrations only (upcoming)");
-        assert_eq!(editions[0]["registered"], "—");
+        assert_eq!(editions[0]["registered"], serde_json::Value::Null);
+        assert_eq!(editions[0]["lifters_with_results"], 174);
+        assert_eq!(editions[1]["start_date"], "2025-08-17");
+        assert_eq!(editions[2]["start_date"], "2026-10-10");
+        assert_eq!(editions[2]["end_date"], "2026-10-10");
     }
 }

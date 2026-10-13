@@ -28,9 +28,9 @@ pub async fn run(args: ClubResultsArgs) -> Result<()> {
     if let Err(error) = validate_stats(&stats, &args.club, &args.meet) {
         let message = error.to_string();
         let clubs = clubs().await.unwrap_or_default();
-        let club_known = clubs
-            .iter()
-            .any(|club| club.eq_ignore_ascii_case(args.club.trim()));
+        // Exactly: the query matches the club's name exactly, so a name differing in case
+        // only is a club to suggest.
+        let club_known = clubs.iter().any(|club| club == args.club.trim());
         return Err(if !clubs.is_empty() && !club_known {
             anyhow!(not_found_message(
                 NameKind::Club,
@@ -39,7 +39,7 @@ pub async fn run(args: ClubResultsArgs) -> Result<()> {
                 message
             ))
         } else {
-            not_found(NameKind::Meet, &args.meet, message).await
+            not_found(NameKind::ResultsMeet, &args.meet, message).await
         });
     }
     output::emit(report(&args.club, &args.meet, &stats));
@@ -108,7 +108,7 @@ pub fn report(club: &str, meet: &str, stats: &ClubMeetStats) -> Report {
         .headed("results", "RESULTS", performance)
         .headed("medals", "MEDALS", medals);
 
-    if !stats.athlete_results.is_empty() {
+    {
         let mut athletes = Table::new();
         athletes.set_header(vec![
             "Athlete",
@@ -140,7 +140,7 @@ pub fn report(club: &str, meet: &str, stats: &ClubMeetStats) -> Report {
             ]);
         }
 
-        report = report.headed("athletes", "ATHLETE RESULTS", athletes);
+        report = report.headed_if_any("athletes", "ATHLETE RESULTS", athletes);
     }
 
     report

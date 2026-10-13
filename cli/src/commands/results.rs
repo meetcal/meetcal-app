@@ -5,6 +5,7 @@ use comfy_table::Table;
 use crate::commands::leaderboard::{Filters, range};
 use crate::types::lifting_results::LiftingResults;
 use crate::utils::athletes::results_between;
+use crate::utils::filters::{category, parse_date, unknown_federation};
 use crate::utils::output::{self, Format, Report};
 use crate::utils::progress::Progress;
 use crate::utils::stats::{
@@ -25,11 +26,11 @@ pub struct ResultsArgs {
     pub year: Option<i32>,
 
     /// Start of the range, YYYY-MM-DD (with --to)
-    #[arg(long, requires = "to")]
+    #[arg(long, requires = "to", value_parser = parse_date)]
     pub from: Option<String>,
 
     /// End of the range, YYYY-MM-DD (with --from)
-    #[arg(long, requires = "from")]
+    #[arg(long, requires = "from", value_parser = parse_date)]
     pub to: Option<String>,
 
     /// Men or Women
@@ -63,7 +64,7 @@ pub async fn run(args: ResultsArgs) -> Result<()> {
     };
     let filters = Filters {
         gender,
-        category: args.category,
+        category: args.category.as_deref().map(category).transpose()?,
         division: args.division,
         federation: args.federation,
         adaptive: true,
@@ -73,6 +74,12 @@ pub async fn run(args: ResultsArgs) -> Result<()> {
     let rows = results_between(&from, &to, |count| progress.update(count)).await?;
     drop(progress);
 
+    if let Some(error) = unknown_federation(
+        filters.federation.as_deref(),
+        rows.iter().map(|row| row.federation.as_str()),
+    ) {
+        return Err(error);
+    }
     let rows: Vec<&LiftingResults> = rows.iter().filter(|row| filters.keeps(row)).collect();
     let empty = format!("No results between {from} and {to} match those filters.");
     output::emit(Report::single("results", table(&rows)).when_empty(empty));
