@@ -51,8 +51,7 @@ pub fn report(name: &str, rows: &[LiftingResults], since: Option<i32>) -> Report
         .collect();
     let rows: Vec<&LiftingResults> = shown.iter().map(|(row, _)| *row).collect();
 
-    let mut results = Table::new();
-    results.set_header(vec![
+    let header = vec![
         "Date",
         "Meet",
         "Division",
@@ -63,10 +62,14 @@ pub fn report(name: &str, rows: &[LiftingResults], since: Option<i32>) -> Report
         SINCLAIR_LABEL,
         QPOINTS_LABEL,
         "PRs",
-    ]);
+    ];
+    // Shown with US dates, exported with ISO ones.
+    let mut results = Table::new();
+    results.set_header(header.clone());
+    let mut results_data = Table::new();
+    results_data.set_header(header);
     for (row, flags) in &shown {
-        results.add_row(vec![
-            us_date(&row.date),
+        let cells = vec![
             row.meet.clone(),
             row.age.clone(),
             number(row.body_weight),
@@ -76,18 +79,22 @@ pub fn report(name: &str, rows: &[LiftingResults], since: Option<i32>) -> Report
             points(row_sinclair(row)),
             points(row_qpoints(row)),
             flags.marks(),
-        ]);
+        ];
+        results.add_row([vec![us_date(&row.date)], cells.clone()].concat());
+        results_data.add_row([vec![row.date.clone()], cells].concat());
     }
 
+    let (trend, trend_data) = trend(&rows);
     Report::new()
         .titled(format!("PROGRESSION — {name}"))
-        .table("results", results)
-        .headed("trend", "TREND", trend(&rows))
+        .table_with_data("results", results, results_data)
+        .headed_with_data("trend", "TREND", trend, trend_data)
         .headed("attempts", "ATTEMPT HABITS", attempts(&rows))
         .when_empty(format!("No results for {name} in that range."))
 }
 
-fn trend(rows: &[&LiftingResults]) -> Table {
+/// The trend as shown, and as exported (ISO dates, the bomb-outs as a count).
+fn trend(rows: &[&LiftingResults]) -> (Table, Table) {
     let totals: Vec<&&LiftingResults> = rows.iter().filter(|row| row.total > 0.0).collect();
     let best = totals.iter().max_by(|a, b| a.total.total_cmp(&b.total));
     let best_sinclair = rows
@@ -104,8 +111,7 @@ fn trend(rows: &[&LiftingResults]) -> Table {
     };
     let bombs = rows.iter().filter(|row| bombed_out(row)).count();
 
-    let mut table = Table::new();
-    table.set_header(vec![
+    let header = vec![
         "Meets",
         "First Meet",
         "Latest Total",
@@ -115,24 +121,37 @@ fn trend(rows: &[&LiftingResults]) -> Table {
         "Best Q-points",
         "First-to-Latest Total",
         "Bomb-outs",
-    ]);
-    table.add_row(vec![
-        rows.len().to_string(),
-        rows.first()
-            .map(|row| us_date(&row.date))
-            .unwrap_or_default(),
-        totals
-            .last()
-            .map(|row| number(row.total))
-            .unwrap_or_default(),
-        best.map(|row| number(row.total)).unwrap_or_default(),
-        best.map(|row| us_date(&row.date)).unwrap_or_default(),
-        points(best_sinclair.map(|(score, _)| score)),
-        points(best_qpoints),
-        signed_kg(change),
+    ];
+    let first_date = rows.first().map(|row| row.date.clone()).unwrap_or_default();
+    let best_date = best.map(|row| row.date.clone()).unwrap_or_default();
+    let cells = |first_date: String, best_date: String, bombs: String| {
+        vec![
+            rows.len().to_string(),
+            first_date,
+            totals
+                .last()
+                .map(|row| number(row.total))
+                .unwrap_or_default(),
+            best.map(|row| number(row.total)).unwrap_or_default(),
+            best_date,
+            points(best_sinclair.map(|(score, _)| score)),
+            points(best_qpoints),
+            signed_kg(change),
+            bombs,
+        ]
+    };
+
+    let mut table = Table::new();
+    table.set_header(header.clone());
+    table.add_row(cells(
+        us_date(&first_date),
+        us_date(&best_date),
         format!("{bombs} of {}", rows.len()),
-    ]);
-    table
+    ));
+    let mut data = Table::new();
+    data.set_header(header);
+    data.add_row(cells(first_date, best_date, bombs.to_string()));
+    (table, data)
 }
 
 /// Attempt habits for each lift: make rate by attempt, jumps, and openers.
@@ -197,6 +216,12 @@ mod tests {
         assert_eq!(results[0]["total"], 193);
         let trend = &json["trend"][0];
         assert_eq!(trend["meets"], 1);
-        assert_eq!(trend["bomb_outs"], "0 of 1");
+        assert_eq!(trend["bomb_outs"], 0);
+        assert_eq!(results[0]["date"], "2025-03-01");
+        assert_eq!(trend["first_meet"], "2025-03-01");
+        assert_eq!(trend["best_total_date"], "2025-03-01");
+        let text = report.to_text();
+        assert!(text.contains("Mar 1, 2025"));
+        assert!(text.contains("0 of 1"));
     }
 }

@@ -245,16 +245,27 @@ pub fn report(search: &str, editions: &[Edition]) -> Report {
         "Lifters With Results",
         "Status",
     ]);
+    // Exported with the first and last day in columns of their own, `YYYY-MM-DD`.
+    let mut meets_data = Table::new();
+    meets_data.set_header(vec![
+        "Year",
+        "Meet",
+        "Start Date",
+        "End Date",
+        "Registered",
+        "Lifters With Results",
+        "Status",
+    ]);
     for edition in &sorted {
-        let dates = match (
+        let (start, end) = match (
             &edition.first_date,
             &edition.last_date,
             &edition.start_date,
             &edition.end_date,
         ) {
-            (Some(first), Some(last), _, _) => date_range(first, last),
-            (_, _, Some(start), Some(end)) => date_range(start, end),
-            _ => String::new(),
+            (Some(first), Some(last), _, _) => (first.clone(), last.clone()),
+            (_, _, Some(start), Some(end)) => (start.clone(), end.clone()),
+            _ => (String::new(), String::new()),
         };
         let status = match (edition.lifters > 0, edition.registrations > 0) {
             (true, _) => "Results in".to_string(),
@@ -271,7 +282,16 @@ pub fn report(search: &str, editions: &[Edition]) -> Report {
         meets.add_row(vec![
             edition.year().unwrap_or_default(),
             edition.meet.clone(),
-            dates,
+            date_range(&start, &end),
+            count(edition.registrations),
+            count(edition.lifters),
+            status.clone(),
+        ]);
+        meets_data.add_row(vec![
+            edition.year().unwrap_or_default(),
+            edition.meet.clone(),
+            start,
+            end,
             count(edition.registrations),
             count(edition.lifters),
             status,
@@ -338,10 +358,11 @@ pub fn report(search: &str, editions: &[Edition]) -> Report {
                 .unwrap_or_default()
         ))
         .headed("by_year", "BY YEAR", by_year)
-        .headed("editions", "EDITIONS", meets)
+        .headed_with_data("editions", "EDITIONS", meets, meets_data)
 }
 
-/// A count, or a dash for none (registrations exist only for meets MeetCal tracked).
+/// A count, or a dash for none (registrations exist only for meets MeetCal tracked). JSON and
+/// CSV carry the dash as null.
 fn count(value: usize) -> String {
     if value == 0 {
         "—".into()
@@ -448,6 +469,10 @@ mod tests {
         );
         let editions = json["editions"].as_array().unwrap();
         assert_eq!(editions[2]["status"], "Registrations only (upcoming)");
-        assert_eq!(editions[0]["registered"], "—");
+        assert_eq!(editions[0]["registered"], serde_json::Value::Null);
+        assert_eq!(editions[0]["lifters_with_results"], 174);
+        assert_eq!(editions[1]["start_date"], "2025-08-17");
+        assert_eq!(editions[2]["start_date"], "2026-10-10");
+        assert_eq!(editions[2]["end_date"], "2026-10-10");
     }
 }

@@ -1,10 +1,11 @@
 use crate::utils::output::{self, Report};
 use crate::{
     types::athletes::{Athletes, Platform},
+    types::meets::NamedBests,
     utils::{
         backend::{queries, query},
         bests::{bests_cell, year_bests},
-        format::{us_date, us_time},
+        format::{kg, time_24h, us_date, us_time},
         names::{NameKind, not_found},
     },
 };
@@ -76,15 +77,24 @@ pub async fn run(args: MeetArgs) -> Result<()> {
     }
 
     let bests = if args.no_bests {
-        HashMap::new()
+        None
     } else {
         let names: Vec<String> = response
             .iter()
             .map(|athlete| athlete.name.clone())
             .collect();
-        year_bests(&names).await?
+        Some(year_bests(&names).await?)
     };
 
+    output::emit(report(&response, bests.as_ref()));
+
+    Ok(())
+}
+
+/// The start list: shown with US dates, 12-hour times, and the session, platform and past-year
+/// bests packed into cells; exported with ISO dates, 24-hour times and a column for each.
+/// `bests` is `None` when they were not asked for.
+pub fn report(athletes: &[Athletes], bests: Option<&HashMap<String, NamedBests>>) -> Report {
     let mut table = Table::new();
     let mut header = vec![
         "Name",
@@ -99,42 +109,84 @@ pub async fn run(args: MeetArgs) -> Result<()> {
         "Weigh-in",
         "Start",
     ];
-    if !args.no_bests {
+    if bests.is_some() {
         header.push("Past-year bests\n(Sn / CJ / Total)");
     }
     table.set_header(header);
 
-    for athlete in response {
-        let mut row = vec![
+    let mut data = Table::new();
+    let mut data_header = vec![
+        "Name",
+        "Age",
+        "Gender",
+        "Adaptive",
+        "Club",
+        "Class",
+        "Entry Total",
+        "Session",
+        "Platform",
+        "Date",
+        "Weigh-in",
+        "Start",
+    ];
+    if bests.is_some() {
+        data_header.extend([
+            "Past-Year Best Snatch",
+            "Past-Year Best CJ",
+            "Past-Year Best Total",
+        ]);
+    }
+    data.set_header(data_header);
+
+    for athlete in athletes {
+        let date = athlete.date.clone().unwrap_or_default();
+        let weigh_in = athlete.weigh_in_time.clone().unwrap_or_default();
+        let start = athlete.start_time.clone().unwrap_or_default();
+        let common = vec![
             athlete.name.clone(),
             athlete.age.to_string(),
-            athlete.gender,
+            athlete.gender.clone(),
             athlete.adaptive.to_string(),
-            athlete.club,
-            athlete.weight_class,
+            athlete.club.clone(),
+            athlete.weight_class.clone(),
             athlete.entry_total.to_string(),
-            session_label(athlete.session_number, athlete.session_platform.as_deref()),
-            athlete.date.as_deref().map(us_date).unwrap_or_default(),
-            athlete
-                .weigh_in_time
-                .as_deref()
-                .map(us_time)
-                .unwrap_or_default(),
-            athlete
-                .start_time
-                .as_deref()
-                .map(us_time)
-                .unwrap_or_default(),
         ];
-        if !args.no_bests {
-            row.push(bests_cell(bests.get(&athlete.name)));
+
+        let mut row = common.clone();
+        row.extend([
+            session_label(athlete.session_number, athlete.session_platform.as_deref()),
+            us_date(&date),
+            us_time(&weigh_in),
+            us_time(&start),
+        ]);
+        let mut data_row = common;
+        data_row.extend([
+            athlete
+                .session_number
+                .map(|number| number.to_string())
+                .unwrap_or_default(),
+            athlete.session_platform.clone().unwrap_or_default(),
+            date,
+            time_24h(&weigh_in),
+            time_24h(&start),
+        ]);
+        if let Some(bests) = bests {
+            let best = bests.get(&athlete.name);
+            row.push(bests_cell(best));
+            data_row.extend(
+                [
+                    best.map(|best| best.best_snatch),
+                    best.map(|best| best.best_cj),
+                    best.map(|best| best.best_total),
+                ]
+                .map(|lift| lift.map(kg).unwrap_or_default()),
+            );
         }
         table.add_row(row);
+        data.add_row(data_row);
     }
 
-    output::emit(Report::single("start_list", table));
-
-    Ok(())
+    Report::new().table_with_data("start_list", table, data)
 }
 
 /// `1 · Red`, whichever part the athlete has, or `Not set`.
@@ -220,6 +272,49 @@ mod tests {
         assert_eq!(athletes[0].date.as_deref(), Some("2026-10-03"));
         assert_eq!(athletes[0].weigh_in_time.as_deref(), Some("08:00"));
         assert_eq!(athletes[0].start_time.as_deref(), Some("10:00"));
+    }
+
+    #[test]
+    fn exports_dates_times_session_platform_and_bests_apart() {
+        let rows = r#"[{
+            "adaptive": false, "age": 31, "club": "Test Club", "entry_total": 180,
+            "gender": "Women", "member_id": "9", "name": "Ada Lift", "session_number": 4,
+            "session_platform": "Red", "weight_class": "63kg", "wso": "Florida",
+            "date": "2026-10-03", "start_time": "10:00:00", "weigh_in_time": "08:00"
+        }, {
+            "adaptive": true, "age": 40, "club": "Test Club", "entry_total": 150,
+            "gender": "Men", "member_id": "10", "name": "Bo Lift", "session_number": null,
+            "session_platform": null, "weight_class": "81kg", "wso": null
+        }]"#;
+        let athletes: Vec<Athletes> = serde_json::from_str(rows).unwrap();
+        let mut bests = HashMap::new();
+        bests.insert(
+            "Ada Lift".to_string(),
+            NamedBests {
+                name: "Ada Lift".to_string(),
+                best_snatch: 80.0,
+                best_cj: 100.0,
+                best_total: 180.0,
+            },
+        );
+        let report = report(&athletes, Some(&bests));
+        let json = report.to_json();
+        assert_eq!(json[0]["session"], 4);
+        assert_eq!(json[0]["platform"], "Red");
+        assert_eq!(json[0]["date"], "2026-10-03");
+        assert_eq!(json[0]["weigh_in"], "08:00");
+        assert_eq!(json[0]["start"], "10:00");
+        assert_eq!(json[0]["adaptive"], false);
+        assert_eq!(json[0]["past_year_best_total"], 180);
+        assert_eq!(json[1]["session"], serde_json::Value::Null);
+        assert_eq!(json[1]["platform"], serde_json::Value::Null);
+        assert_eq!(json[1]["adaptive"], true);
+        assert_eq!(json[1]["past_year_best_snatch"], serde_json::Value::Null);
+        let text = report.to_text();
+        assert!(text.contains("4 · Red"));
+        assert!(text.contains("Oct 3, 2026"));
+        assert!(text.contains("10:00 AM"));
+        assert!(text.contains("Not set"));
     }
 
     #[test]
