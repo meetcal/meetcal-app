@@ -28,7 +28,7 @@ import { scheduleRefresh } from './views';
  */
 
 /** `since`: the earliest date of the results an `athlete` hint's write changed. */
-type WriteHint = { kind: string; key: string; since?: string };
+export type WriteHint = { kind: string; key: string; since?: string };
 
 export async function recordWrite(ctx: MutationCtx, table: SourceTable, hints: WriteHint[]): Promise<void> {
   await bumpVersion(ctx, table);
@@ -140,7 +140,7 @@ async function resultCounts(ctx: MutationCtx, titles: readonly string[]): Promis
 type ResultFields = Pick<Doc<'lifting_results'>, 'federation' | 'age' | 'meet' | 'name' | 'adaptive' | 'date'>;
 
 /** Everything a result row feeds: its ranking class, meet, athlete, name. */
-function resultHints(row: ResultFields): WriteHint[] {
+export function resultHints(row: ResultFields): WriteHint[] {
   const hints: WriteHint[] = [
     { kind: 'meet', key: row.meet },
     { kind: 'athlete', key: normalizeName(row.name), since: row.date },
@@ -154,7 +154,7 @@ function resultHints(row: ResultFields): WriteHint[] {
 }
 
 /** The athletes a batch of result hints touched; their histories are rewritten in the same transaction. */
-function athleteKeys(hints: WriteHint[]): string[] {
+export function athleteKeys(hints: WriteHint[]): string[] {
   return hints.filter((h) => h.kind === 'athlete').map((h) => h.key);
 }
 
