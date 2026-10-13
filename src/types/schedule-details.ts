@@ -9,6 +9,7 @@ export interface Session {
 export interface SessionPlatformDetails {
   platform: string;
   platformStartTime?: string;
+  platformWeighInTime?: string;
   weightClass?: string;
 }
 
@@ -24,6 +25,8 @@ export interface HeaderSectionProps {
   sessionWeightClass: string;
   platformStartTime: string;
   platformWeighInTime: string;
+  /** The meet calendar date (`YYYY-MM-DD`), "" when the schedule has no row. */
+  sessionFullDate: string;
   athleteName?: string;
 }
 

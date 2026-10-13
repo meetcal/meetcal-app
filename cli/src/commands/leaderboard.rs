@@ -255,7 +255,12 @@ pub async fn run(args: LeaderboardArgs) -> Result<()> {
         us_date(&to)
     );
     output::emit(
-        Report::single("leaderboard", table(&ranked))
+        Report::new()
+            .table_with_data(
+                "leaderboard",
+                table(&ranked, us_date),
+                table(&ranked, str::to_string),
+            )
             .titled(title)
             .when_empty("No results match those filters."),
     );
@@ -284,7 +289,8 @@ async fn group_rows(
         .collect())
 }
 
-pub fn table(ranked: &[(&LiftingResults, f64)]) -> Table {
+/// The ranked rows, with dates written by `date` (US dates to show, ISO ones to export).
+pub fn table(ranked: &[(&LiftingResults, f64)], date: fn(&str) -> String) -> Table {
     let mut table = Table::new();
     table.set_header(vec![
         "Rank",
@@ -310,7 +316,7 @@ pub fn table(ranked: &[(&LiftingResults, f64)]) -> Table {
             number(row.total),
             points(row_sinclair(row)),
             points(row_qpoints(row)),
-            us_date(&row.date),
+            date(&row.date),
             row.meet.clone(),
         ]);
     }

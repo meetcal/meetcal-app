@@ -1,4 +1,4 @@
-import { canonicalizePlatform, filterSessionAthletes, isLiftResult } from '@/lib/athletes';
+import { canonicalizePlatform, filterSessionAthletes, isLiftResult, normalizeAthleteName } from '@/lib/athletes';
 import { LiftResult, Platform, SupabaseLiftResult } from '@/data/types/athletes';
 import { Meet, MeetName } from '@/data/types/meet';
 import type { Schedule } from '@/types/schedule';
@@ -587,7 +587,17 @@ export type ApiMeetPackage = {
       session_id: number;
       start_time: string;
       weigh_in_time: string;
-      platforms: { platform: string; weight_class: string }[];
+      /**
+       * `start_time` / `weigh_in_time` per platform: platforms of one session
+       * can start at different times. Absent from packages built before they
+       * were added; the session's (its first platform's) times apply then.
+       */
+      platforms: {
+        platform: string;
+        weight_class: string;
+        start_time?: string | null;
+        weigh_in_time?: string | null;
+      }[];
     }[];
   }[];
   athletes: (ApiAthlete & {
@@ -770,6 +780,9 @@ export function mapApiSchedule(rows: ApiScheduleRow[]): Schedule {
       platform: normalizePlatform(row.platform),
       weightClass: nullableString(row.weight_class) ?? '',
       platformStartTime: formatApiTime(row.start_time),
+      // Each platform row carries its own published weigh-in; the session's
+      // `weighInTime` is only the first row's.
+      platformWeighInTime: formatApiTime(row.weigh_in_time),
     });
   });
 
@@ -788,8 +801,11 @@ export function mapPackageSchedule(pkg: ApiMeetPackage): Schedule {
         meet: pkg.meet.name,
         platform: platform.platform,
         session_id: session.session_id,
-        start_time: session.start_time,
-        weigh_in_time: session.weigh_in_time,
+        // The platform's own time, as `/meets/schedule` reports it: copying
+        // the session's (first platform's) time onto every platform put a
+        // 9:30 Blue session at 9:00 offline, reminders included.
+        start_time: platform.start_time ?? session.start_time,
+        weigh_in_time: platform.weigh_in_time ?? session.weigh_in_time,
         weight_class: platform.weight_class,
       })),
     ),
@@ -1075,47 +1091,55 @@ export async function fetchApiRecentResultsByNames(
   return rows;
 }
 
-export async function fetchApiYearBests(
-  name: string,
-  cutoffDate: string = getHistoryCutoffDate(YEAR_BESTS_YEARS),
-) {
-  const row = assertHasFields(
-    await readQuery('/lifting-results/year', 'results:yearBests', { name, cutoffDate }),
-    '/lifting-results/year',
-    ['best_snatch', 'best_cj', 'best_total'],
-  ) as ApiYearBests;
-  return [mapApiYearBests(row)];
+/**
+ * Name-keyed bests arrive as `[{ name, best_snatch, best_cj, best_total }]`
+ * (Convex object keys must be ASCII; athlete names are not). One parser for
+ * `results:bests` and the package's `year_bests`: a malformed row fails the
+ * answer, naming its index, and a missing or mistyped best reads as 0.
+ */
+function parseNamedBests(rows: unknown[], label: string): { name: string; bests: ApiYearBests }[] {
+  return rows.map((row, index) => {
+    const fields = assertHasFields(row, `${label}[${index}]`, ['name', 'best_snatch', 'best_cj', 'best_total']);
+    if (typeof fields.name !== 'string') throw new Error(`${label}[${index}] has invalid name`);
+    return {
+      name: fields.name,
+      bests: {
+        best_snatch: toFiniteNumber(fields.best_snatch),
+        best_cj: toFiniteNumber(fields.best_cj),
+        best_total: toFiniteNumber(fields.best_total),
+      },
+    };
+  });
 }
 
 /**
- * Name-keyed bests arrive as `[{ name, best_snatch, best_cj, best_total }]`
- * (Convex object keys must be ASCII; athlete names are not) and leave here as
- * the name-keyed map the app has always used.
+ * Bests since `cutoffDate`, keyed by the caller's own spellings. The server
+ * echoes each name cleaned (trimmed, whitespace folded), so a roster's
+ * ' Jane Doe' is matched to its row through `normalizeAthleteName` here,
+ * once, rather than by every caller (a caller that forgot stored the athlete
+ * as "no results"). A name the answer does not cover is left out.
  */
-function namedBestsToMap(rows: unknown[], label: string): Record<string, ReturnType<typeof mapApiYearBests>> {
-  const byName: Record<string, ReturnType<typeof mapApiYearBests>> = {};
-  rows.forEach((row, index) => {
-    const fields = assertHasFields(row, `${label}[${index}]`, ['name', 'best_snatch', 'best_cj', 'best_total']);
-    if (typeof fields.name !== 'string') throw new Error(`${label}[${index}] has invalid name`);
-    byName[fields.name] = mapApiYearBests(fields as unknown as ApiYearBests);
-  });
-  return byName;
-}
-
 export async function fetchApiYearBestsByNames(
   names: string[],
   cutoffDate: string = getHistoryCutoffDate(YEAR_BESTS_YEARS),
 ): Promise<Record<string, ReturnType<typeof mapApiYearBests>>> {
   if (names.length === 0) return {};
-  const merged: Record<string, ReturnType<typeof mapApiYearBests>> = {};
+  const byFoldedName = new Map<string, ReturnType<typeof mapApiYearBests>>();
   for (const chunk of chunkValues(names, SMALL_ROWS_NAMES_CHUNK_SIZE)) {
     const rows = assertArray<unknown>(
       await readQuery('/lifting-results/bests', 'results:bests', { names: chunk, cutoffDate }),
       '/lifting-results/bests',
     );
-    Object.assign(merged, namedBestsToMap(rows, '/lifting-results/bests'));
+    for (const { name, bests } of parseNamedBests(rows, '/lifting-results/bests')) {
+      byFoldedName.set(normalizeAthleteName(name), mapApiYearBests(bests));
+    }
   }
-  return merged;
+  const byName: Record<string, ReturnType<typeof mapApiYearBests>> = {};
+  for (const name of names) {
+    const bests = byFoldedName.get(normalizeAthleteName(name));
+    if (bests) byName[name] = bests;
+  }
+  return byName;
 }
 
 /**
@@ -1199,24 +1223,15 @@ export async function fetchApiMeetPackageConditional(
   assertArray(pkg.athletes, '/meets/package.athletes');
   assertArray(pkg.meet_results, '/meets/package.meet_results');
   if ('year_bests' in pkg) {
-    // Sent as a list (see `namedBestsToMap`); the rest of the app reads the
-    // map the Rust API sent, with the API's snake_case fields.
+    // Sent as a list (see `parseNamedBests`); the rest of the app reads the
+    // map the Rust API sent, with the API's snake_case fields. Keyed by the
+    // server's spelling: there is no caller's spelling here, and the store
+    // folds the key (`saveAthleteBestsBatch`).
     const byName: Record<string, ApiYearBests> = {};
-    assertArray<unknown>(pkg.year_bests, '/meets/package.year_bests').forEach((row, index) => {
-      const fields = assertHasFields(row, `/meets/package.year_bests[${index}]`, [
-        'name',
-        'best_snatch',
-        'best_cj',
-        'best_total',
-      ]);
-      if (typeof fields.name !== 'string') throw new Error(`/meets/package.year_bests[${index}] has invalid name`);
-      // Same numeric policy as `mapApiYearBests`: 0 for a missing or mistyped best.
-      byName[fields.name] = {
-        best_snatch: toFiniteNumber(fields.best_snatch),
-        best_cj: toFiniteNumber(fields.best_cj),
-        best_total: toFiniteNumber(fields.best_total),
-      };
-    });
+    const rows = assertArray<unknown>(pkg.year_bests, '/meets/package.year_bests');
+    for (const { name, bests } of parseNamedBests(rows, '/meets/package.year_bests')) {
+      byName[name] = bests;
+    }
     const { year_bests: _wire, ...rest } = pkg;
     return { status: 'fresh', etag: answer.etag, package: { ...rest, year_bests_by_name: byName } as ApiMeetPackage };
   }

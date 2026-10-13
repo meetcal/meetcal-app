@@ -92,6 +92,13 @@ describe("usePreloadYearBests", () => {
     expect(names).not.toContain("Bob Smith");
   });
 
+  it("caps the warm to one bests request", () => {
+    const { SMALL_ROWS_NAMES_CHUNK_SIZE } = jest.requireActual<
+      typeof import("@/lib/api/meetcal-api")
+    >("@/lib/api/meetcal-api");
+    expect(YEAR_BESTS_PREFETCH_NAME_CAP).toBeLessThanOrEqual(SMALL_ROWS_NAMES_CHUNK_SIZE);
+  });
+
   it("cancels the warm when the screen goes away first", () => {
     act(() => {
       tree = create(<PreloadHarness athletes={[lifter("Al")]} />);

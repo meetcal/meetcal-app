@@ -12,7 +12,6 @@ import {
   fetchApiRecentResultsByNames,
   fetchApiResultsByNames,
   fetchApiSchedule,
-  fetchApiYearBests,
   fetchApiYearBestsByNames,
   fetchSavedSessions,
   fetchApiClubMeetStats,
@@ -586,12 +585,6 @@ describe('meetcal API boundary under corrupted payloads (properties)', () => {
   });
 
   it('rejects corrupted year bests or answers finite numbers', async () => {
-    await fc.assert(
-      fc.asyncProperty(corrupt(yearBestsArb), answerFormArb, async (payload, form) => {
-        serve(() => payload, form);
-        await rejectsOrSatisfies(() => fetchApiYearBests('Athlete A'), (rows) => rows.forEach(expectBests));
-      }),
-    );
     await fc.assert(
       fc.asyncProperty(corrupt(namedBestsArb.filter((rows) => rows.length > 0)), answerFormArb, async (payload, form) => {
         serve(() => payload, form);

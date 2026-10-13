@@ -190,6 +190,16 @@ describe("storage keys and App Group", () => {
     expect(SWIFT_SHARED_STORE).not.toContain("group.com.");
   });
 
+  it("both native writers store the entitlement hint JS sends, under the key Siri reads", () => {
+    expect(read("src/utils/dataWidgets.ts")).toContain("module.updateEntitlementHint(");
+    expect(OBJC_MODULE).toMatch(/RCT_EXPORT_METHOD\(updateEntitlementHint:\(BOOL\)/);
+    expect(OBJC_MODULE).toContain("forKey:MeetCalEntitlementHintKey");
+    expect(KOTLIN_MODULE).toMatch(/fun updateEntitlementHint\(isSubscribed: Boolean\)/);
+    expect(KOTLIN_MODULE).toContain("KEY_ENTITLEMENT_HINT");
+    // Siri fails closed: `bool(forKey:)` is false for an absent key.
+    expect(SWIFT_SHARED).toContain("defaults.bool(forKey: Key.entitlementHint)");
+  });
+
   it("the native saved-session clear leaves the data widgets alone", () => {
     const objcClear = /RCT_EXPORT_METHOD\(clearSavedWidget\)\s*\{([\s\S]*?)\n\}/.exec(OBJC_MODULE)?.[1];
     expect(objcClear).toBeDefined();

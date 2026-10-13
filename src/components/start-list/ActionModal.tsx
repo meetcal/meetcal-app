@@ -2,6 +2,7 @@ import { IconSymbol } from "@/components/ui/IconSymbol";
 import { MaterialSurface } from "@/components/ui/MaterialSurface";
 import { ThemedText } from "@/components/ui/ThemedText";
 import { useAppColors } from "@/hooks/useAppColors";
+import { CALENDAR_EXPORT_IS_PREMIUM } from "@/lib/premium-access";
 import { getChevronIcon, getCloseIcon } from "@/lib/start-list-utils";
 import { ActionModalProps } from "@/types/start-list";
 import { lightImpact as selectionHaptic } from "@/lib/haptics";
@@ -22,6 +23,7 @@ const ActionModal: React.FC<ActionModalProps> = ({
   const colors = useAppColors();
   // A modal is above every screen's padding: clear the Duo band here.
   const screenInsets = useScreenHorizontalInsets();
+  const calendarLocked = CALENDAR_EXPORT_IS_PREMIUM && !isSubscribed;
 
   return (
     <Modal
@@ -128,14 +130,14 @@ const ActionModal: React.FC<ActionModalProps> = ({
               <IconSymbol
                 name="calendar"
                 size={22}
-                color={!isSubscribed ? colors.secondaryText : colors.text}
+                color={calendarLocked ? colors.secondaryText : colors.text}
               />
               <View style={styles.saveOptionText}>
                 <ThemedText
                   style={[
                     styles.saveOptionTitle,
                     {
-                      color: !isSubscribed ? colors.secondaryText : colors.text,
+                      color: calendarLocked ? colors.secondaryText : colors.text,
                     },
                   ]}
                 >

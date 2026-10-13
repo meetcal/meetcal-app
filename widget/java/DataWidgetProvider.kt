@@ -149,6 +149,8 @@ abstract class DataWidgetProvider : AppWidgetProvider() {
     const val KEY_QUALIFYING = "qualifyingTotalsWidgetData"
     const val KEY_STANDARDS = "standardsWidgetData"
     const val KEY_INTL = "intlRankingsWidgetData"
+    /** Written by `SavedWidgetModule.updateEntitlementHint`; see there. */
+    const val KEY_ENTITLEMENT_HINT = "premiumEntitlementHint"
 
     val ROW_IDS = intArrayOf(
       R.id.row1, R.id.row2, R.id.row3, R.id.row4, R.id.row5,
