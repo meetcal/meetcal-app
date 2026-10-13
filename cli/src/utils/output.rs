@@ -1,15 +1,35 @@
 //! How a command's results are printed: as tables (the default), or as JSON or CSV for other
 //! tools (`--format json|csv`).
 //!
-//! Commands build a [`Report`] of named tables and hand it to [`emit`]. In the machine formats,
-//! each table becomes rows keyed by its column headers in snake_case; cells that are numbers
-//! (optionally with a `kg` or `%` unit, or a sign) become numbers, and `N/A` or empty cells
-//! become null.
+//! Commands build a [`Report`] of named tables and hand it to [`emit`].
+//!
+//! # The export schema
+//!
+//! JSON and CSV are for scripts, so what they carry does not depend on the data or the input:
+//!
+//! - A report of one table is an array of rows; a report of several is an object with one key
+//!   per table, and every table is there even when it has no rows (`[]` in JSON, a header line in
+//!   CSV).
+//! - Each row is keyed by its table's column headers in snake_case. Headers never come from the
+//!   input or the data (athlete names, years): a command whose table shows them exports a data
+//!   table with fixed headers instead ([`Report::table_with_data`]).
+//! - Cells that are numbers (optionally with a `kg` or `%` unit, or a sign) are numbers; `true`
+//!   and `false` (and `Yes` and `No`) are booleans; `N/A`, a dash and empty cells are null.
+//!   Weight classes stay text.
+//! - Dates are `YYYY-MM-DD`, times `HH:MM` on a 24-hour clock, both as the data stores them in
+//!   the meet's own time zone; a range is two columns (`start_date`, `end_date`). One cell holds
+//!   one value: what the table packs into one cell (a total and its division) is split into
+//!   columns.
+//!
+//! Table format can differ from all of this: it shows US dates, 12-hour times, dashes and
+//! packed cells, wraps its tables to the terminal's width, and leaves out a table that is
+//! optional and empty.
 
+use std::io::{self, Write};
 use std::sync::OnceLock;
 
 use clap::ValueEnum;
-use comfy_table::Table;
+use comfy_table::{ContentArrangement, Table};
 use serde_json::{Map, Value};
 
 /// How results are printed.
@@ -46,8 +66,20 @@ pub struct Section {
     /// What table format shows.
     pub table: Table,
     /// What JSON and CSV export instead of `table`, when the display packs several values into
-    /// one cell (a record's holder under its weight).
+    /// one cell (a record's holder under its weight) or shows dates for reading.
     pub data: Option<Table>,
+    /// When table format shows the table; JSON and CSV always carry it.
+    pub shown: Shown,
+}
+
+/// When table format shows a section.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Shown {
+    Always,
+    /// Only when it has rows.
+    WithRows,
+    /// Never: the table is for JSON and CSV only.
+    Never,
 }
 
 /// A command's output: an optional title and its tables.
@@ -74,33 +106,58 @@ impl Report {
         self
     }
 
-    pub fn table(mut self, key: &str, table: Table) -> Self {
-        self.sections.push(Section {
-            key: key.to_string(),
-            heading: None,
-            table,
-            data: None,
-        });
-        self
+    pub fn table(self, key: &str, table: Table) -> Self {
+        self.section(key, None, table, None, Shown::Always)
     }
 
-    pub fn headed(mut self, key: &str, heading: impl Into<String>, table: Table) -> Self {
-        self.sections.push(Section {
-            key: key.to_string(),
-            heading: Some(heading.into()),
-            table,
-            data: None,
-        });
-        self
+    pub fn headed(self, key: &str, heading: impl Into<String>, table: Table) -> Self {
+        self.section(key, Some(heading.into()), table, None, Shown::Always)
     }
 
     /// A table shown as `table` but exported as `data`.
-    pub fn table_with_data(mut self, key: &str, table: Table, data: Table) -> Self {
+    pub fn table_with_data(self, key: &str, table: Table, data: Table) -> Self {
+        self.section(key, None, table, Some(data), Shown::Always)
+    }
+
+    /// A headed table shown as `table` but exported as `data`.
+    pub fn headed_with_data(
+        self,
+        key: &str,
+        heading: impl Into<String>,
+        table: Table,
+        data: Table,
+    ) -> Self {
+        self.section(key, Some(heading.into()), table, Some(data), Shown::Always)
+    }
+
+    /// A headed table that table format shows only when it has rows; JSON and CSV always carry
+    /// it, so a script finds the key whatever the data.
+    pub fn headed_if_any(self, key: &str, heading: impl Into<String>, table: Table) -> Self {
+        self.section(key, Some(heading.into()), table, None, Shown::WithRows)
+    }
+
+    /// A table that only JSON and CSV carry, for a key they must always have.
+    pub fn exported(self, key: &str, table: Table) -> Self {
+        self.section(key, None, table, None, Shown::Never)
+    }
+
+    fn section(
+        mut self,
+        key: &str,
+        heading: Option<String>,
+        mut table: Table,
+        data: Option<Table>,
+        shown: Shown,
+    ) -> Self {
+        // Fit the table to the terminal, wrapping long cells. Without a terminal (output piped
+        // or redirected) there is no width to fit, and the table prints as it is.
+        table.set_content_arrangement(ContentArrangement::Dynamic);
         self.sections.push(Section {
             key: key.to_string(),
-            heading: None,
+            heading,
             table,
-            data: Some(data),
+            data,
+            shown,
         });
         self
     }
@@ -126,6 +183,10 @@ impl Report {
             parts.push(title.clone());
         }
         for section in &self.sections {
+            let has_rows = section.table.row_iter().next().is_some();
+            if section.shown == Shown::Never || (section.shown == Shown::WithRows && !has_rows) {
+                continue;
+            }
             if let Some(heading) = &section.heading {
                 parts.push(heading.clone());
             }
@@ -168,14 +229,32 @@ impl Report {
 }
 
 /// Prints `report` in the run's format.
+///
+/// A reader that stops early (`meetcal results | head`, quitting `less`) closes the pipe; the
+/// run then ends quietly with status 0, as other command line tools do, instead of panicking
+/// in `println!`. Any other failure to write ends it with status 1.
 pub fn emit(report: Report) {
-    match format() {
-        Format::Table => println!("{}", report.to_text()),
-        Format::Json => println!(
+    let mut stdout = io::stdout().lock();
+    let written = write(&mut stdout, &report, format()).and_then(|()| stdout.flush());
+    if let Err(error) = written {
+        if error.kind() == io::ErrorKind::BrokenPipe {
+            std::process::exit(0);
+        }
+        eprintln!("Error: could not write the output: {error}");
+        std::process::exit(1);
+    }
+}
+
+/// Writes `report` to `out` in `format`.
+pub fn write(out: &mut impl Write, report: &Report, format: Format) -> io::Result<()> {
+    match format {
+        Format::Table => writeln!(out, "{}", report.to_text()),
+        Format::Json => writeln!(
+            out,
             "{}",
             serde_json::to_string_pretty(&report.to_json()).unwrap_or_else(|_| "null".into())
         ),
-        Format::Csv => print!("{}", report.to_csv()),
+        Format::Csv => write!(out, "{}", report.to_csv()),
     }
 }
 
@@ -287,12 +366,18 @@ fn text_value(cell: &str) -> Value {
     }
 }
 
-/// A cell as a JSON value: a number when it is one (units `kg` and `%` and a sign allowed),
-/// null when empty or `N/A`, the text otherwise.
+/// A cell as a JSON value: a number when it is one (units `kg` and `%` and a sign allowed), a
+/// boolean for `true`/`false` and `Yes`/`No`, null when empty, `N/A` or a dash, the text
+/// otherwise.
 pub fn value(cell: &str) -> Value {
     let text = cell.trim();
-    if text.is_empty() || text.eq_ignore_ascii_case("n/a") {
+    if text.is_empty() || text.eq_ignore_ascii_case("n/a") || matches!(text, "—" | "–" | "-") {
         return Value::Null;
+    }
+    match text {
+        "true" | "Yes" => return Value::Bool(true),
+        "false" | "No" => return Value::Bool(false),
+        _ => {}
     }
     let number = text
         .strip_suffix("kg")
@@ -377,6 +462,62 @@ mod tests {
         let data = table(&["Snatch", "Snatch Holder"], &[&["130", "Lift, Ada"]]);
         let report = Report::new().table_with_data("records", shown, data);
         assert_eq!(report.to_csv(), "snatch,snatch_holder\n130,\"Lift, Ada\"\n");
+    }
+
+    #[test]
+    fn placeholders_become_null_and_yes_no_booleans() {
+        assert_eq!(value("—"), Value::Null);
+        assert_eq!(value("-"), Value::Null);
+        assert_eq!(value("true"), json!(true));
+        assert_eq!(value("Yes"), json!(true));
+        assert_eq!(value("false"), json!(false));
+        assert_eq!(value("No"), json!(false));
+        assert_eq!(value("Not set"), json!("Not set"));
+    }
+
+    #[test]
+    fn optional_tables_are_always_exported_but_shown_only_with_rows() {
+        let report = Report::new()
+            .headed("summary", "SUMMARY", table(&["Athletes"], &[&["3"]]))
+            .headed_if_any("medals", "MEDALS", table(&["Athlete", "Place"], &[]));
+        assert_eq!(
+            report.to_json(),
+            json!({ "summary": [{ "athletes": 3 }], "medals": [] })
+        );
+        assert_eq!(
+            report.to_csv(),
+            "# summary\nathletes\n3\n\n# medals\nathlete,place\n"
+        );
+        assert!(!report.to_text().contains("MEDALS"));
+    }
+
+    #[test]
+    fn tables_wrap_to_the_width_they_are_given() {
+        let long = "A meet name long enough to need wrapping in a narrow terminal";
+        let mut report = Report::single("meets", table(&["Meet", "Dates"], &[&[long, "Jun 1"]]));
+        report.sections[0].table.set_width(40);
+        let text = report.to_text();
+        assert!(text.lines().count() > 3, "{text}");
+        assert!(
+            text.lines().all(|line| line.chars().count() <= 40),
+            "{text}"
+        );
+    }
+
+    #[test]
+    fn write_reports_a_closed_pipe() {
+        struct Closed;
+        impl Write for Closed {
+            fn write(&mut self, _: &[u8]) -> io::Result<usize> {
+                Err(io::ErrorKind::BrokenPipe.into())
+            }
+            fn flush(&mut self) -> io::Result<()> {
+                Ok(())
+            }
+        }
+        let report = Report::single("meets", table(&["Meet"], &[&["A"]]));
+        let error = write(&mut Closed, &report, Format::Csv).unwrap_err();
+        assert_eq!(error.kind(), io::ErrorKind::BrokenPipe);
     }
 
     #[test]
