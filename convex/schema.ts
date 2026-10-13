@@ -176,15 +176,12 @@ export default defineSchema({
   lifting_results: defineTable(liftingResultsFields)
     .index('by_meet', ['meet'])
     .index('by_date', ['date'])
-    .index('by_adaptive', ['adaptive'])
     .index('by_event_and_name', ['eventId', 'name'])
-    .index('by_federation_and_age', ['federation', 'age'])
     .index('by_federation_age_and_date', ['federation', 'age', 'date'])
     .index('by_adaptive_and_date', ['adaptive', 'date'])
     .index('by_nameKey_and_date', ['nameKey', 'date']),
 
   meets: defineTable(meetsFields)
-    .index('by_status', ['status'])
     .index('by_status_and_start_date', ['status', 'startDate'])
     .index('by_name', ['name'])
     .index('by_end_date', ['endDate']),

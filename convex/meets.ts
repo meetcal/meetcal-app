@@ -15,6 +15,7 @@ import {
   packageAthlete,
   packageStaticText,
   plainRoster,
+  rosterNames,
   toApiMeet,
   yearBestsFromTimelines,
   type ApiScheduleRow,
@@ -365,6 +366,18 @@ export const packageForMeet = query({
           yearBests = names.length > 0 ? yearBestsFromTimelines(names, timelines as Timeline[], bestsSince) : [];
         }
       }
+      return textAnswer(closePackage(staticText, yearBests), ifNoneMatch);
+    }
+
+    // Only the year bests are stale (a roster athlete's results changed): the
+    // static part still serves, and only the bests are computed (#216).
+    if (staticView && bestsSince !== undefined) {
+      const names = await rosterNames(ctx, meet);
+      const [staticText, timelines] = await Promise.all([
+        staticView.text(),
+        names.length > 0 ? computeTimelines(ctx, names, bestsSince) : Promise.resolve([]),
+      ]);
+      const yearBests = names.length > 0 ? yearBestsFromTimelines(names, timelines, bestsSince) : [];
       return textAnswer(closePackage(staticText, yearBests), ifNoneMatch);
     }
 
