@@ -45,12 +45,16 @@ import { useDataWidgetRefresh } from "@/hooks/useDataWidgetRefresh";
 import { isNetworkAvailable } from "@/lib/networkUtils";
 import { checkOnboardingComplete } from "@/lib/onboarding";
 import { isMaestroE2E } from "@/lib/e2e";
+import { ROOT_STACK_SETTINGS } from "@/lib/root-navigation";
 import {
   confirmRevenueCatIdentity,
   forgetRevenueCatIdentity,
   hasSubscriptionEntitlement,
   paywallRouteFor,
 } from "@/lib/premium-intent";
+
+// A cold-start deep link opens on top of the tabs (see `ROOT_STACK_SETTINGS`).
+export const unstable_settings = ROOT_STACK_SETTINGS;
 
 const SENTRY_ENVIRONMENT =
   process.env.EXPO_PUBLIC_SENTRY_ENVIRONMENT ??
