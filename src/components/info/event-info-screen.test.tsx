@@ -10,6 +10,9 @@ jest.mock("@/contexts/SelectedMeetContext", () => ({
 jest.mock("@/contexts/ThemeContext", () => ({ useTheme: () => ({ currentTheme: "light" }) }));
 jest.mock("@/components/ui/IconSymbol", () => ({ IconSymbol: () => null }));
 jest.mock("expo-web-browser", () => ({ openBrowserAsync: jest.fn() }));
+jest.mock("react-native-safe-area-context", () => ({
+  useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }),
+}));
 
 /** Rows drawn as tappable links (a chevron). */
 const chevrons = (tree: ReturnType<typeof create>) =>

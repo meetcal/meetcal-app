@@ -115,6 +115,19 @@ describe("calculateEstimates", () => {
     expect(estimate.bestSnatch).toBe(100);
   });
 
+  it("matches a roster name and result rows written in different Unicode forms (#268)", () => {
+    // The server matches names across NFC and NFD and returns each row with
+    // its stored spelling; the roster can carry the other form.
+    const nfc = "José Núñez".normalize("NFC");
+    const history = [result({ name: nfc, snatch_best: 100, cj_best: 120 })];
+    const [estimate] = calculateEstimates(
+      [athlete({ name: nfc.normalize("NFD") })],
+      history,
+    );
+    expect(estimate.bestSnatch).toBe(100);
+    expect(estimate.bestCJ).toBe(120);
+  });
+
   it("computes attempts-out ordering across athletes by opener weight", () => {
     const history = [
       result({ name: "Light", snatch_best: 80 }),

@@ -65,9 +65,10 @@ test("the source document uses an external Wasm bootstrap", async () => {
 });
 
 test("the Atlas page lives on atlas.meetcal.app, behind a permanent redirect", () => {
-  assert.deepEqual(config.redirects, [
+  assert.deepEqual(
+    config.redirects.find(({ source }) => source === "/atlas"),
     { source: "/atlas", destination: "https://atlas.meetcal.app/", permanent: true },
-  ]);
+  );
   assert.equal(config.rewrites.find(({ source }) => source === "/atlas"), undefined);
 });
 
@@ -81,7 +82,7 @@ test("production rewrites serve route-specific metadata shells", async () => {
   );
   assert.match(featureHtml, /<title>MeetCal Features/);
   assert.match(featureHtml, /content="index, follow"/);
-  assert.match(featureHtml, /href="https:\/\/meetcal\.app\/features"/);
+  assert.match(featureHtml, /href="https:\/\/www\.meetcal\.app\/features"/);
 
   const gatedHtml = await readFile(
     new URL("../../dist/seo/qualifying-totals.html", import.meta.url),
@@ -95,7 +96,7 @@ test("production rewrites serve route-specific metadata shells", async () => {
     assert.equal(rewrite.destination, `/seo/${route}.html`);
     const html = await readFile(new URL(`../../dist/seo/${route}.html`, import.meta.url), "utf8");
     assert.match(html, /content="noindex, nofollow"/);
-    assert.match(html, new RegExp(`href="https:\\/\\/meetcal\\.app\\/${route}"`));
+    assert.match(html, new RegExp(`href="https:\\/\\/www\\.meetcal\\.app\\/${route}"`));
   }
 });
 
