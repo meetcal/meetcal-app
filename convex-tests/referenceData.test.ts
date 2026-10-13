@@ -61,6 +61,39 @@ describe('record holders', () => {
     expect(row.total_by).toBeNull();
   });
 
+  // A UMWF or USAMW class with one blank lift used to vanish whole, its
+  // claimed lifts and their holders with it. The unset lift answers 0, not
+  // null: released CLIs read every lift as a number.
+  it('answers a class with an unset lift, with 0 for that lift', async () => {
+    const ctx = fakeCtx({
+      records: [
+        {
+          recordType: 'UMWF',
+          ageCategory: 'Masters 60',
+          gender: 'Women',
+          weightClass: '58kg',
+          snatchRecord: 40,
+          snatchBy: { name: 'Ada Lift' },
+        },
+      ],
+    });
+
+    expect(await computeRecords(ctx)).toEqual([
+      {
+        age_category: 'Masters 60',
+        cj_record: 0,
+        snatch_record: 40,
+        total_record: 0,
+        weight_class: '58kg',
+        gender: 'Women',
+        record_type: 'UMWF',
+        snatch_by: { name: 'Ada Lift', date: null, location: null },
+        cj_by: null,
+        total_by: null,
+      },
+    ]);
+  });
+
   it('answers WSO record holders the same way', async () => {
     const ctx = fakeCtx({
       wso_records: [
