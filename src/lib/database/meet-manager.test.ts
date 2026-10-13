@@ -9,6 +9,7 @@ import {
   HISTORY_RETRY_AFTER_MAX_MS,
   historyRetryDelayMs,
   planHistoryDownload,
+  namesWithChangedPackageData,
   prefetchMeetData,
   pruneHistorySyncedAt,
   prunePendingHistory,
@@ -17,6 +18,7 @@ import {
   warmMeetData,
 } from "@/lib/database/meet-manager";
 import type { Schedule } from "@/types/schedule";
+import { mapApiLiftingResult } from "@/lib/api/meetcal-api";
 
 jest.mock("@react-native-async-storage/async-storage", () => ({
   __esModule: true,
@@ -86,6 +88,11 @@ let mockIsExplicitlyDownloaded: (meet: string) => boolean = () => true;
 const setExplicitlyDownloaded = (predicate: (meet: string) => boolean) => {
   mockIsExplicitlyDownloaded = predicate;
 };
+// The stored copy a changed package is compared against: nothing by default.
+const mockGetMeetLiftingResults = jest.fn(async (_meet: string): Promise<any[]> => []);
+const mockGetStoredAthleteBestsForNames = jest.fn(
+  async (_names: readonly string[]): Promise<Record<string, { bests: unknown }>> => ({}),
+);
 const mockClearMeetData = jest.fn(
   async (_meet: string): Promise<void> => undefined,
 );
@@ -139,6 +146,8 @@ jest.mock("@/lib/database/offline-store", () => ({
     mockSaveMeetSchedule.apply(null, args),
   findAthleteNamesWithoutHistory: (names: readonly string[]) =>
     mockFindAthleteNamesWithoutHistory(names),
+  getMeetLiftingResults: (meet: string) => mockGetMeetLiftingResults(meet),
+  getStoredAthleteBestsForNames: (names: readonly string[]) => mockGetStoredAthleteBestsForNames(names),
   PACKAGE_ETAG_STORAGE_KEY: "@meet_package_etag_v1",
 }));
 
@@ -1258,7 +1267,9 @@ describe("package revalidation with ETag", () => {
     expect(savedEtags().at(-1)).toEqual({});
   });
 
-  it("refreshes the whole roster when the package changed during an unfinished refresh", async () => {
+  // A new package can carry new results for athletes the unfinished refresh
+  // already reached: those are added to what it still owes.
+  it("resumes an unfinished refresh together with a changed package's athletes", async () => {
     mockGetItem.mockImplementation(async (key: string) => {
       if (key === PACKAGE_ETAG_KEY) return JSON.stringify({ "Etag Meet Changed": '"old"' });
       if (key === "@meet_history_pending_v1") {
@@ -1276,7 +1287,50 @@ describe("package revalidation with ETag", () => {
 
     await prefetchMeetData("Etag Meet Changed" as any);
 
-    expect(mockFetchApiResultsByNames).toHaveBeenCalledWith(["Athlete A", "Athlete B"]);
+    expect(mockFetchApiResultsByNames).toHaveBeenCalledWith(["Athlete B", "Athlete A"]);
+  });
+
+  // During a live meet every posted result changes the package tag, and each
+  // open of the meet re-fetched history for the whole roster (~38 requests
+  // at a national meet) though almost none of it had changed.
+  it("fetches only the athletes whose results or year bests changed when a known package changes", async () => {
+    mockGetItem.mockImplementation(async (key: string) => {
+      if (key === PACKAGE_ETAG_KEY) return JSON.stringify({ "Etag Meet Live": '"old"' });
+      if (key === "@meet_history_synced_at_v1") {
+        return JSON.stringify({ "Etag Meet Live": Date.now() - 60_000 });
+      }
+      return null;
+    });
+    const unchanged = { name: "Athlete A", date: "2026-10-10", total: 200 };
+    // Stored as the ingest stored it: mapped.
+    mockGetMeetLiftingResults.mockResolvedValueOnce([mapApiLiftingResult(unchanged as any)]);
+    mockGetStoredAthleteBestsForNames.mockResolvedValueOnce({
+      "Athlete C": { bests: { snatch_best: 90, cj_best: 110, total: 200 } },
+    });
+    mockFetchApiMeetPackageConditional.mockResolvedValueOnce({
+      status: "fresh",
+      etag: '"new"',
+      package: {
+        ...freshPackage,
+        athletes: ["Athlete A", "Athlete B", "Athlete C", "Athlete D"].map(athlete),
+        meet_results: [unchanged, { name: "Athlete B", date: "2026-10-10", total: 180 }],
+        year_bests_by_name: {
+          "Athlete C": { best_snatch: 90, best_cj: 110, best_total: 200 },
+          "Athlete D": { best_snatch: 70, best_cj: 90, best_total: 160 },
+        },
+      },
+    });
+
+    await prefetchMeetData("Etag Meet Live" as any);
+
+    expect(mockFetchApiResultsByNames).toHaveBeenCalledTimes(1);
+    expect([...mockFetchApiResultsByNames.mock.calls[0][0]].sort()).toEqual([
+      "Athlete B",
+      "Athlete D",
+    ]);
+    // Not a full refresh: the sync stamp is not renewed.
+    const stampWrites = mockSetItem.mock.calls.filter(([key]) => key === "@meet_history_synced_at_v1");
+    expect(stampWrites).toHaveLength(0);
   });
 
   it("stores only the package's real year bests, not its zero rows", async () => {
@@ -1389,8 +1443,9 @@ describe("package revalidation with ETag", () => {
     const pendingWrites = mockSetItem.mock.calls
       .filter(([key]) => key === "@meet_history_pending_v1")
       .map(([, value]) => JSON.parse(value as string));
+    // A changed package's athlete, owed without stamping a full sync.
     expect(pendingWrites[pendingWrites.length - 1]).toEqual({
-      "Etag Meet D": { names: ["Athlete A"], since: expect.any(Number) },
+      "Etag Meet D": { names: ["Athlete A"], since: expect.any(Number), full: false },
     });
   });
 
@@ -1491,7 +1546,52 @@ describe("planHistoryDownload", () => {
       names: ["Athlete B"],
       fullRefresh: false,
       since: now,
+      track: false,
     });
+  });
+
+  it("fetches a changed package's athletes and the gaps, tracked but not a full refresh", async () => {
+    const findMissing = jest.fn(async () => ["Athlete B"]);
+    await expect(
+      planHistoryDownload({
+        ...base,
+        packageChanged: true,
+        changedNames: ["athlete a", "Not On Roster"],
+        findMissing,
+      }),
+    ).resolves.toEqual({
+      names: ["Athlete A", "Athlete B"],
+      fullRefresh: false,
+      since: now,
+      track: true,
+    });
+  });
+
+  it("still refreshes the whole roster for a changed package once the last full sync is stale", async () => {
+    const findMissing = jest.fn(async () => []);
+    await expect(
+      planHistoryDownload({
+        ...base,
+        syncedAt: now - HISTORY_REFRESH_TTL_MS,
+        packageChanged: true,
+        changedNames: ["Athlete A"],
+        findMissing,
+      }),
+    ).resolves.toEqual({ names: roster, fullRefresh: true, since: now, track: true });
+  });
+
+  it("resumes an unfinished changed-package pass without stamping a full sync", async () => {
+    const since = now - 60_000;
+    const findMissing = jest.fn(async () => []);
+    await expect(
+      planHistoryDownload({
+        ...base,
+        pending: { names: ["Athlete C"], since, full: false },
+        packageChanged: true,
+        changedNames: ["Athlete A"],
+        findMissing,
+      }),
+    ).resolves.toEqual({ names: ["Athlete C", "Athlete A"], fullRefresh: false, since, track: true });
   });
 
   it("refreshes the whole roster for a changed package or a stale sync, without probing storage", async () => {
@@ -1505,6 +1605,7 @@ describe("planHistoryDownload", () => {
         names: roster,
         fullRefresh: true,
         since: now,
+        track: true,
       });
     }
     expect(findMissing).not.toHaveBeenCalled();
@@ -1520,13 +1621,13 @@ describe("planHistoryDownload", () => {
         pending: { names: ["athlete c", "Not On Roster"], since },
         findMissing,
       }),
-    ).resolves.toEqual({ names: ["Athlete C", "Athlete A"], fullRefresh: true, since });
+    ).resolves.toEqual({ names: ["Athlete C", "Athlete A"], fullRefresh: true, since, track: true });
   });
 
-  // A new package can carry new results for athletes the unfinished refresh
-  // already reached; resuming fetched only its remainder and then stamped
-  // the whole roster as current.
-  it("refreshes the whole roster for a changed package, over a young unfinished refresh", async () => {
+  // A package new here (no copy to compare with) can carry new results for
+  // athletes the unfinished refresh already reached; resuming fetched only
+  // its remainder and then stamped the whole roster as current.
+  it("refreshes the whole roster for a package new here, over a young unfinished refresh", async () => {
     const findMissing = jest.fn(async () => []);
     await expect(
       planHistoryDownload({
@@ -1535,7 +1636,7 @@ describe("planHistoryDownload", () => {
         pending: { names: ["Athlete C"], since: now - 60_000 },
         findMissing,
       }),
-    ).resolves.toEqual({ names: roster, fullRefresh: true, since: now });
+    ).resolves.toEqual({ names: roster, fullRefresh: true, since: now, track: true });
     expect(findMissing).not.toHaveBeenCalled();
   });
 
@@ -1755,5 +1856,30 @@ describe("eviction during a full prefetch", () => {
     await expect(download).resolves.toBeUndefined();
     expect(mockClearMeetData.mock.calls.map(([name]) => name)).not.toContain("D");
     expect(JSON.parse(store.get(MEET_CACHE_KEY) ?? "{}").meets.D).toBeDefined();
+  });
+});
+
+describe("namesWithChangedPackageData", () => {
+  const row = (name: string, total: number) => ({ name, date: "2026-10-10", total }) as any;
+  const bests = (total: number) => ({ snatch_best: 90, cj_best: total - 90, total });
+
+  it("names athletes with new, changed or removed result rows and changed year bests", () => {
+    const changed = namesWithChangedPackageData({
+      results: [row("Same", 200), row("Changed", 190), row("New", 150)],
+      storedResults: [row("Same", 200), row("Changed", 180), row("Removed", 170)],
+      yearBests: { "Same Best": bests(200), "New Best": bests(210) },
+      storedBests: { "same best": { bests: bests(200) }, "New Best": { bests: bests(205) } },
+    });
+    expect([...changed].sort()).toEqual(["changed", "new", "new best", "removed"]);
+  });
+
+  it("ignores a best that only left the window", () => {
+    const changed = namesWithChangedPackageData({
+      results: [],
+      storedResults: [],
+      yearBests: {},
+      storedBests: { Gone: { bests: bests(200) } },
+    });
+    expect(changed.size).toBe(0);
   });
 });

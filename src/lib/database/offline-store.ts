@@ -1289,12 +1289,19 @@ export async function saveSessionAthletes(
   });
 }
 
+/**
+ * Rewrites a meet's per-session caches from its new roster, and removes the
+ * caches of sessions the roster no longer has. They used to stay: a session
+ * merged into another (12 Blue into 12 Red) or renumbered kept its old
+ * athletes under its key, and `getSessionAthletesFromMeetCache` prefers that
+ * key over the roster, so offline the saved 12 Blue still listed lifters now
+ * on Red. Runs only when the roster changed (the key listing is not free).
+ */
 async function saveSessionAthleteCaches(
   meetId: MeetName | string,
   athletes: LiftResult[],
 ): Promise<void> {
   const grouped = groupAthletesBySession(athletes);
-  if (grouped.size === 0) return;
 
   const entries = Array.from(grouped.entries()).map(([groupKey, group]) => {
     const [sessionNumber, platform] = groupKey.split(':');
@@ -1304,7 +1311,14 @@ async function saveSessionAthleteCaches(
     ] as [string, string];
   });
 
-  await AsyncStorage.multiSet(entries);
+  if (entries.length > 0) await AsyncStorage.multiSet(entries);
+
+  const current = new Set(entries.map(([key]) => key));
+  const prefix = `${SESSION_ATHLETES_KEY_PREFIX}${encodeURIComponent(meetId)}:`;
+  const stale = (await AsyncStorage.getAllKeys()).filter(
+    (key) => key.startsWith(prefix) && !current.has(key),
+  );
+  await multiRemoveBatched(stale);
 }
 
 // Get athletes for a specific session/platform from cached meet data
