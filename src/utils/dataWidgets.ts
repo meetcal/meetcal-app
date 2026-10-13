@@ -7,9 +7,11 @@ import { IntlRanking } from "@/lib/database/fetchIntlRankings";
 import { sortAgeGroups } from "@/lib/sortAgeGroups";
 import { StandardsData } from "@/types/standards";
 import {
+  createAppDeepLink,
   createIntlRankingsDeepLink,
   createQualifyingTotalsDeepLink,
   createStandardsDeepLink,
+  DEEP_LINKS,
 } from "@/utils/deepLinks";
 import { devLog } from "@/lib/logger";
 import type { DataWidgetPayloadKey } from "@/utils/widgetContract";
@@ -301,6 +303,56 @@ export function buildDataWidgetPayloads(
   };
 }
 
+/** Subtitle the data widgets show a user without the premium entitlement. */
+export const LOCKED_DATA_WIDGET_SUBTITLE = "Subscription required";
+
+function lockedPayload(
+  title: string,
+  noun: string,
+  path: string,
+  maxRows: number,
+): DataWidgetPayload {
+  return {
+    title,
+    subtitle: LOCKED_DATA_WIDGET_SUBTITLE,
+    emptyMessage: `Subscribe in MeetCal to see ${noun}.`,
+    // The premium screen itself: its `SubscriptionGate` shows the paywall and,
+    // after a purchase, the data the widget was asking for.
+    linkURL: createAppDeepLink(path),
+    maxRows,
+    rows: [],
+  };
+}
+
+/**
+ * What the data widgets show a user without the premium entitlement: the
+ * tables are premium in the app (each screen is behind `SubscriptionGate`),
+ * so the home screen must not show them either. No rows, and a tap opens the
+ * premium screen, which shows the paywall.
+ */
+export function buildLockedDataWidgetPayloads(): DataWidgetPayloads {
+  return {
+    qualifyingTotals: lockedPayload(
+      "Qualifying Totals",
+      "qualifying totals",
+      DEEP_LINKS.qualifyingTotals,
+      QUALIFYING_TOTALS_WIDGET_MAX_ROWS,
+    ),
+    standards: lockedPayload(
+      "A/B Standards",
+      "A/B standards",
+      DEEP_LINKS.standards,
+      STANDARDS_WIDGET_MAX_ROWS,
+    ),
+    intlRankings: lockedPayload(
+      "International Rankings",
+      "international rankings",
+      DEEP_LINKS.intlRankings,
+      INTL_RANKINGS_WIDGET_MAX_ROWS,
+    ),
+  };
+}
+
 let dataWidgetWriteCount = 0;
 
 /**
@@ -339,6 +391,32 @@ export function syncDataWidgets(payloads: DataWidgetPayloads) {
 
   dataWidgetWriteCount += 1;
   module.updateDataWidgets(JSON.stringify(payloads));
+}
+
+/**
+ * Mirrors the app's premium entitlement next to the widget payloads
+ * (`WIDGET_STORAGE_KEYS.entitlementHint`), where Siri reads it: the App
+ * Intents run without the JS app, so this is how they apply the same soft
+ * gate. Unknown (`null`) writes nothing and keeps the last known answer, as
+ * the in-app gate does; the native side reads an absent key as not
+ * subscribed. A binary without the method (an OTA ahead of the native build)
+ * skips the write.
+ */
+export function syncPremiumEntitlementHint(isSubscribed: boolean | null): void {
+  if (isSubscribed === null) return;
+  if (Platform.OS !== "ios" && Platform.OS !== "android") return;
+
+  const module = NativeModules.SavedWidget;
+  if (typeof module?.updateEntitlementHint !== "function") {
+    devLog("[Widget] Entitlement hint method not available");
+    return;
+  }
+
+  try {
+    module.updateEntitlementHint(isSubscribed);
+  } catch (error) {
+    console.warn("[Widget] Entitlement hint update failed", error);
+  }
 }
 
 export function formatAgeGroup(ageGroup: string) {
@@ -514,6 +592,30 @@ export function hasResolvedWidgetFilters(
       settings.qualifyingTotals.event,
     ).includes(settings.qualifyingTotals.ageGroup) &&
     rankingMeets.includes(settings.intlRankings.meet)
+  );
+}
+
+/**
+ * Whether the Widget Settings screen may write payloads built from what it
+ * loaded. Every commit, the background one and the ones a tap starts, goes
+ * through this: a screen whose data is still loading, failed (the resource
+ * then holds its empty initial value), or does not resolve the filters would
+ * otherwise overwrite good widgets with empty ones.
+ */
+export function canSyncDataWidgets(state: {
+  loading: boolean;
+  error: unknown;
+  settings: WidgetSettings;
+  totalsData: QualifyingTotalsData;
+  standardsData: StandardsData;
+  intlRankings: IntlRanking[];
+}): boolean {
+  if (state.loading || state.error) return false;
+  return hasResolvedWidgetFilters(
+    state.settings,
+    state.totalsData,
+    state.standardsData,
+    state.intlRankings,
   );
 }
 
