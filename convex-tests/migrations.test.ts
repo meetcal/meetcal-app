@@ -6,6 +6,9 @@ import {
   duplicateMeetNames,
   normalizeAthleteGenders,
   normalizeReferenceCasing,
+  redateEventResults,
+  resultDatePage,
+  suspectResultDates,
 } from '../convex/migrations';
 
 type Row = Record<string, unknown>;
@@ -247,5 +250,88 @@ describe('dedupeSavedSessions (#319)', () => {
     expect(store.rows('saved_sessions')).toHaveLength(501);
     const logged = (console.log as jest.Mock).mock.calls.map(([line]) => String(line));
     expect(logged.at(-1)).toContain('1 duplicate rows to delete');
+  });
+});
+
+describe('redateEventResults and resultDateProblems (#402)', () => {
+  // Event 6959: the lifters' birth dates as result dates; another edition's
+  // rows under the same id and another title are left alone.
+  const seed = () => [
+    result('Ann Lee', '6959', { meet: 'Summer Open', date: '1963-05-25', total: 150 }),
+    result('Bo Kim', '6959', { meet: 'Summer Open', date: '2001-02-03', total: 160 }),
+    result('Cy Day', '6959', { meet: 'Summer Open', date: '2025-07-12', total: 170 }),
+    result('Di Ray', '6959', { meet: 'Summer Open 2019', date: '2019-07-13', total: 140 }),
+  ];
+  type Redate = { eventId: string; meet: string; date?: string; dryRun?: boolean };
+
+  it('dry-runs by default, then re-dates only the named rows through the write path', async () => {
+    const store = fakeMutationCtx({ lifting_results: seed() });
+    const redate = handlerOf<Redate, { redated: number; remaining: number; wrong: number; dates: Record<string, number> }>(redateEventResults);
+    const dry = await redate(store.ctx, { eventId: '6959', meet: 'Summer Open', date: '2025-07-12' });
+    expect(dry).toMatchObject({ wrong: 2, redated: 0, remaining: 2, dates: { '1963-05-25': 1, '2001-02-03': 1 } });
+    expect(store.rows('view_hints')).toHaveLength(0);
+
+    const done = await redate(store.ctx, { eventId: '6959', meet: 'Summer Open', date: '2025-07-12', dryRun: false });
+    expect(done).toMatchObject({ redated: 2, remaining: 0 });
+    expect(store.rows('lifting_results').map((r) => [r.name, r.date])).toEqual([
+      ['Ann Lee', '2025-07-12'],
+      ['Bo Kim', '2025-07-12'],
+      ['Cy Day', '2025-07-12'],
+      ['Di Ray', '2019-07-13'],
+    ]);
+    expect(JSON.parse(store.rows('athlete_history').find((h) => h.nameKey === 'ann lee')!.json as string)[0].date).toBe('2025-07-12');
+    expect(store.rows('view_hints').find((h) => h.kind === 'athlete' && h.key === 'ann lee')?.since).toBe('1963-05-25');
+    expect(store.scheduled.map((s) => s.name)).toContain('views:refresh');
+    expect(await redate(store.ctx, { eventId: '6959', meet: 'Summer Open', date: '2025-07-12', dryRun: false })).toMatchObject({ redated: 0, remaining: 0 });
+  });
+
+  it("never moves another edition's results under a reused event id and title unasked", async () => {
+    // Event 4598: the Dallas meet in 2020 and 2021 under one id and title,
+    // and two 2020 rows stored under birth dates.
+    const dallas = (name: string, date: string) => result(name, '4598', { meet: 'Dallas', date, total: 150 });
+    const seed2 = () => [
+      ...['A', 'B', 'C', 'D'].map((n) => dallas(`2020 ${n}`, '2020-10-31')),
+      dallas('Born Early', '1971-02-03'),
+      dallas('Born Late', '1999-08-09'),
+      ...['A', 'B', 'C', 'D', 'E'].map((n) => dallas(`2021 ${n}`, '2021-10-24')),
+    ];
+    type Answer = { crowded: string[]; wrong: number; redated: number; remaining: number };
+    const redate = handlerOf<Redate & { keepDates?: string[]; moveDates?: string[] }, Answer>(redateEventResults);
+    const store = fakeMutationCtx({ lifting_results: seed2() });
+    expect(await redate(store.ctx, { eventId: '4598', meet: 'Dallas', date: '2020-10-31' })).toMatchObject({ crowded: ['2021-10-24'], wrong: 7 });
+    await expect(redate(store.ctx, { eventId: '4598', meet: 'Dallas', date: '2020-10-31', dryRun: false })).rejects.toThrow('another edition or day');
+    expect(store.rows('lifting_results').filter((r) => r.date === '2021-10-24')).toHaveLength(5);
+
+    expect(await redate(store.ctx, { eventId: '4598', meet: 'Dallas', date: '2020-10-31', dryRun: false, keepDates: ['2021-10-24'] })).toMatchObject({ redated: 2, remaining: 0 });
+    const byDate: Record<string, number> = {};
+    for (const row of store.rows('lifting_results')) byDate[row.date as string] = (byDate[row.date as string] ?? 0) + 1;
+    expect(byDate).toEqual({ '2020-10-31': 6, '2021-10-24': 5 });
+
+    // `moveDates` moves a crowded date when that is what is wanted.
+    const forced = fakeMutationCtx({ lifting_results: seed2() });
+    expect(await redate(forced.ctx, { eventId: '4598', meet: 'Dallas', date: '2020-10-31', dryRun: false, moveDates: ['2021-10-24'] })).toMatchObject({ redated: 7 });
+  });
+
+  it('takes the stored meet date when none is given, and refuses a bad one', async () => {
+    const store = fakeMutationCtx({ lifting_results: seed(), meets: [{ name: 'Summer Open', startDate: '2025-07-12', endDate: '2025-07-13' }] });
+    const redate = handlerOf<Redate, { date: string; wrong: number }>(redateEventResults);
+    expect(await redate(store.ctx, { eventId: '6959', meet: 'Summer Open' })).toMatchObject({ date: '2025-07-12', wrong: 2 });
+    await expect(redate(store.ctx, { eventId: '6959', meet: 'Summer Open 2019' })).rejects.toThrow('pass the event');
+    await expect(redate(store.ctx, { eventId: '6959', meet: 'Summer Open', date: '2025-7-12' })).rejects.toThrow('not a YYYY-MM-DD');
+  });
+
+  it('flags one date per lifter, not a meet\'s days or an event\'s editions', async () => {
+    expect(suspectResultDates({ '2022-10-08': 1, '2022-10-09': 1, '2022-10-10': 1, '2022-10-11': 1, '2022-10-12': 1, '2022-10-13': 1 })).toBe(true);
+    expect(suspectResultDates({ '2026-06-20': 300, '2026-06-21': 280, '2026-06-22': 310, '2026-06-23': 250, '2026-06-24': 200 })).toBe(false);
+    expect(suspectResultDates({ '2020-03-01': 40, '2021-03-06': 45 })).toBe(false);
+    const store = fakeMutationCtx({ lifting_results: seed() });
+    const page = await handlerOf<{ cursor: null }, { groups: unknown[]; isDone: boolean }>(resultDatePage)(store.ctx, { cursor: null });
+    expect(page).toMatchObject({
+      isDone: true,
+      groups: [
+        { eventId: '6959', meet: 'Summer Open', dates: { '1963-05-25': 1, '2001-02-03': 1, '2025-07-12': 1 } },
+        { eventId: '6959', meet: 'Summer Open 2019', dates: { '2019-07-13': 1 } },
+      ],
+    });
   });
 });

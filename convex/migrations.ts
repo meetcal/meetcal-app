@@ -1,11 +1,21 @@
 import { v } from 'convex/values';
-import { internalMutation, internalQuery } from './_generated/server';
+import { internalAction, internalMutation, internalQuery } from './_generated/server';
 import { internal } from './_generated/api';
 import type { Doc } from './_generated/dataModel';
 import { normalizeName } from './lib/names';
 import { normalizeAgeCategory, normalizeGender } from './lib/normalize';
-import { canonicalMeetDate } from './lib/validation';
-import { deleteResultRows, eventResultsByKey, recordWrite, sameEditionDates, sameResultValues } from './ingest';
+import { canonicalMeetDate, isValidIsoDate } from './lib/validation';
+import { writeHistories } from './lib/history';
+import {
+  athleteKeys,
+  deleteResultRows,
+  eventResultsByKey,
+  recordWrite,
+  resultHints,
+  sameEditionDates,
+  sameResultValues,
+  type WriteHint,
+} from './ingest';
 
 const BACKFILL_PAGE_SIZE = 500;
 /**
@@ -405,5 +415,169 @@ export const dedupeSavedSessions = internalMutation({
       deleted: total,
       ...(dryRun ? { dryRun } : {}),
     });
+  },
+});
+
+/**
+ * Rows one re-date mutation patches at most: each rewrites its athlete's
+ * history, as a batch of upserts does.
+ */
+const REDATE_BATCH = 200;
+/** Rows on one date past which `redateEventResults` takes it for a real meet date, not one lifter's. */
+const CROWDED_DATE_ROWS = 3;
+
+/**
+ * Gives an event's results stored under a wrong date the meet's date (#402):
+ * an earlier loader stamped some events' rows with each lifter's birth date,
+ * or with one day per lifter. `meet` names the rows (an event id the
+ * pre-Convex import reused can hold another edition's rows under another
+ * title, which are left alone); `date` defaults to the start date of the meet
+ * stored under that name. Dry run by default: returns how many rows would
+ * move and the dates they hold now. Patches at most REDATE_BATCH rows a call
+ * (rerun until `remaining` is 0) through the write path, so histories,
+ * summaries, rankings, views and search follow. Idempotent. Find the events
+ * with `migrations:resultDateProblems`; afterwards, run
+ * `migrations:dedupeLiftingResults` in case the current sync had also stored
+ * the rows under the right date.
+ *
+ * Only dates that look like one lifter's each are moved. A date holding more
+ * than CROWDED_DATE_ROWS rows is another edition of a meet whose event id
+ * and title recur across years, or another day of the meet, and is never
+ * moved unasked: the dry run lists such dates as `crowded`, and a run that
+ * finds any refuses until each is listed in `keepDates` (left as they are)
+ * or `moveDates` (moved after all). `keepDates` also leaves any other date
+ * alone.
+ *
+ *   npx convex run migrations:redateEventResults '{"eventId":"6959","meet":"4th Annual Steve Sakoulas Summer Open","date":"2025-07-12"}'
+ *   npx convex run migrations:redateEventResults '{"eventId":"6959","meet":"4th Annual Steve Sakoulas Summer Open","date":"2025-07-12","dryRun":false}'
+ */
+export const redateEventResults = internalMutation({
+  args: {
+    eventId: v.string(),
+    meet: v.string(),
+    date: v.optional(v.string()),
+    dryRun: v.optional(v.boolean()),
+    keepDates: v.optional(v.array(v.string())),
+    moveDates: v.optional(v.array(v.string())),
+  },
+  handler: async (ctx, { eventId, meet, date, dryRun = true, keepDates = [], moveDates = [] }) => {
+    const target =
+      date ??
+      (
+        await ctx.db
+          .query('meets')
+          .withIndex('by_name', (q) => q.eq('name', meet))
+          .first()
+      )?.startDate;
+    if (target === undefined) throw new Error(`no meet named ${JSON.stringify(meet)}: pass the event's "date"`);
+    if (!isValidIsoDate(target)) throw new Error(`not a YYYY-MM-DD date: ${JSON.stringify(target)}`);
+    const rows = (
+      await ctx.db
+        .query('lifting_results')
+        .withIndex('by_event_and_name', (q) => q.eq('eventId', eventId))
+        .collect()
+    ).filter((row) => row.meet === meet);
+    if (rows.length === 0) throw new Error(`event ${eventId} holds no results of ${JSON.stringify(meet)}`);
+    const keep = new Set(keepDates);
+    const move = new Set(moveDates);
+    const wrong = rows.filter((row) => row.date !== target && !keep.has(row.date));
+    const dates: Record<string, number> = {};
+    for (const row of wrong) dates[row.date] = (dates[row.date] ?? 0) + 1;
+    // Another edition or day of the meet, unless the caller said otherwise.
+    const crowded = Object.entries(dates)
+      .filter(([day, count]) => count > CROWDED_DATE_ROWS && !move.has(day))
+      .map(([day]) => day)
+      .sort();
+    const summary = { date: target, rows: rows.length, wrong: wrong.length, dates, crowded };
+    if (dryRun) return { ...summary, redated: 0, remaining: wrong.length };
+    if (crowded.length > 0) {
+      throw new Error(
+        `event ${eventId} ${JSON.stringify(meet)} holds over ${CROWDED_DATE_ROWS} results on ${crowded.join(', ')}: another edition or day of the meet? ` +
+          `List each in "keepDates" to leave it, or "moveDates" to move it`,
+      );
+    }
+    const batch = wrong.slice(0, REDATE_BATCH);
+    const hints: WriteHint[] = [];
+    for (const row of batch) {
+      hints.push(...resultHints(row), ...resultHints({ ...row, date: target }));
+      await ctx.db.patch(row._id, { date: target });
+    }
+    if (batch.length > 0) {
+      await writeHistories(ctx, athleteKeys(hints));
+      await recordWrite(ctx, 'lifting_results', hints);
+    }
+    return { ...summary, redated: batch.length, remaining: wrong.length - batch.length };
+  },
+});
+
+/** One event's rows under one meet title on one page of `resultDatePage`, counted by date. */
+type EventDates = { eventId: string; meet: string; dates: Record<string, number> };
+
+/** Rows `resultDatePage` reads per query. */
+const RESULT_DATE_PAGE = 4000;
+
+export const resultDatePage = internalQuery({
+  args: { cursor: v.union(v.string(), v.null()) },
+  handler: async (ctx, { cursor }): Promise<{ groups: EventDates[]; cursor: string; isDone: boolean }> => {
+    const page = await ctx.db
+      .query('lifting_results')
+      .withIndex('by_event_and_name')
+      .paginate({ cursor, numItems: RESULT_DATE_PAGE });
+    const groups = new Map<string, EventDates>();
+    for (const row of page.page) {
+      const id = JSON.stringify([row.eventId, row.meet]);
+      const group = groups.get(id) ?? { eventId: row.eventId, meet: row.meet, dates: {} };
+      group.dates[row.date] = (group.dates[row.date] ?? 0) + 1;
+      groups.set(id, group);
+    }
+    return { groups: [...groups.values()], cursor: page.continueCursor, isDone: page.isDone };
+  },
+});
+
+/** An event's distinct result dates past which they look like one per lifter, not a meet's days or editions. */
+const MANY_DATES = 5;
+
+/**
+ * Whether an event's results under one title carry dates no meet has (#402):
+ * nearly one date per lifter (birth dates, or a spreadsheet's dragged date
+ * column), where a meet's rows share its date (a multi-day meet a few, an
+ * event id the pre-Convex import reused across editions one per edition).
+ */
+export function suspectResultDates(dates: Record<string, number>): boolean {
+  const counts = Object.values(dates);
+  const rows = counts.reduce((sum, n) => sum + n, 0);
+  return counts.length >= MANY_DATES && counts.length * 3 >= rows;
+}
+
+/**
+ * Read-only: the events whose results carry suspect dates
+ * (`suspectResultDates`), with their row count and date range, to repair
+ * with `migrations:redateEventResults`. Reads every result a page per query.
+ *
+ *   npx convex run migrations:resultDateProblems
+ */
+export const resultDateProblems = internalAction({
+  args: {},
+  handler: async (ctx): Promise<{ eventId: string; meet: string; rows: number; dates: number; first: string; last: string }[]> => {
+    const merged = new Map<string, EventDates>();
+    let cursor: string | null = null;
+    for (;;) {
+      const page: { groups: EventDates[]; cursor: string; isDone: boolean } = await ctx.runQuery(internal.migrations.resultDatePage, { cursor });
+      for (const group of page.groups) {
+        const id = JSON.stringify([group.eventId, group.meet]);
+        const into = merged.get(id);
+        if (!into) merged.set(id, group);
+        else for (const [date, n] of Object.entries(group.dates)) into.dates[date] = (into.dates[date] ?? 0) + n;
+      }
+      if (page.isDone) break;
+      cursor = page.cursor;
+    }
+    return [...merged.values()]
+      .filter((group) => suspectResultDates(group.dates))
+      .map(({ eventId, meet, dates }) => {
+        const sorted = Object.keys(dates).sort();
+        return { eventId, meet, rows: Object.values(dates).reduce((sum, n) => sum + n, 0), dates: sorted.length, first: sorted[0], last: sorted[sorted.length - 1] };
+      })
+      .sort((a, b) => (a.eventId < b.eventId ? -1 : a.eventId > b.eventId ? 1 : 0));
   },
 });
