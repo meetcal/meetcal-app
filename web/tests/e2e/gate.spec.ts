@@ -182,7 +182,7 @@ test("a signed-in visit to a public page never checks the subscription; the firs
   await routeQuery(page, "reference:standards", (route) => route.fulfill(textAnswer([])));
 
   await page.goto("/");
-  await expect(page.locator(".site-nav")).toBeVisible();
+  await expect(page.getByRole("heading", { level: 1 }).first()).toBeVisible();
   await page.waitForTimeout(300);
   expect(scriptRequests).toBe(0);
 
