@@ -58,15 +58,16 @@ export async function recordWrite(ctx: MutationCtx, table: SourceTable, hints: W
  */
 async function linkedMeetHints(ctx: MutationCtx, hints: readonly WriteHint[]): Promise<WriteHint[]> {
   const titles = [...new Set(hints.filter((hint) => hint.kind === 'meet').map((hint) => hint.key))];
+  // A title is linked to one meet at most (`setMeetResultTitles`).
   const links = await Promise.all(
     titles.map((title) =>
       ctx.db
         .query('meet_result_titles')
         .withIndex('by_title', (q) => q.eq('title', title))
-        .collect(),
+        .first(),
     ),
   );
-  return links.flat().map((link) => ({ kind: 'meet', key: link.meet }));
+  return links.flatMap((link) => (link ? [{ kind: 'meet', key: link.meet }] : []));
 }
 
 /**
