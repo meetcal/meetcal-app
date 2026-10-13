@@ -229,4 +229,22 @@ mod tests {
         assert_eq!(json["trend"][0]["best_total"], 208);
         assert_eq!(json["trend"][0]["best_total_date"], "Feb 1, 2025");
     }
+
+    #[test]
+    fn a_source_error_total_is_not_the_best_or_latest() {
+        let lift = |date: &str, snatch: [f64; 3], cj: [f64; 3]| {
+            row("Ada", date, "M", "Open Men's 89kg", 88.0, snatch, cj)
+        };
+        let rows = vec![
+            lift("2024-03-01", [70.0, 0.0, 0.0], [90.0, 0.0, 0.0]),
+            lift("2025-03-01", [72.0, 0.0, 0.0], [96.0, 0.0, 0.0]),
+            // 633 for 63: the source's best and total come from the typo.
+            lift("2026-03-01", [-63.0, 633.0, 65.0], [90.0, 0.0, 0.0]),
+        ];
+        let json = report("Ada", &rows, None).to_json();
+        let trend = &json["trend"][0];
+        assert_eq!(trend["best_total"], 168);
+        assert_eq!(trend["latest_total"], 168);
+        assert_eq!(trend["first_to_latest_total"], 8);
+    }
 }
