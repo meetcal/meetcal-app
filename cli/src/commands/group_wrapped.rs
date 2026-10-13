@@ -319,6 +319,7 @@ mod tests {
         assert_eq!(distinct_names(&memberships), ["Jane Doe", "John Roe"]);
     }
 
+    /// A result whose total is its snatch (75) plus clean & jerk.
     fn result(name: &str, meet: &str, date: &str, total: f64) -> LiftingResults {
         LiftingResults {
             federation: "USAW".to_string(),
@@ -332,9 +333,9 @@ mod tests {
             snatch3: -78.0,
             snatch_best: 75.0,
             cj1: 90.0,
-            cj2: 95.0,
+            cj2: total - 75.0,
             cj3: 0.0,
-            cj_best: 95.0,
+            cj_best: total - 75.0,
             total,
             adaptive: false,
         }
