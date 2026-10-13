@@ -14,7 +14,6 @@ import {
   getStoredAthleteBestsForNames,
   isAthleteBestsFresh,
   listStoredMeets,
-  getAthleteLiftingResults,
   getExplicitlyDownloadedMeetIds,
   getMeetData,
   getMeetLiftingResults,
@@ -26,7 +25,6 @@ import {
   markMeetScheduleVerified,
   pruneOrphanedAthleteHistory,
   saveAthleteBestsBatch,
-  saveAthleteHistory,
   saveAthleteHistoryBatch,
   saveMeetAthletes,
   saveMeetLiftingResults,
@@ -39,6 +37,10 @@ import {
   resetOfflineClearsForTests,
   wasClearedSince,
 } from "@/lib/database/offline-clears";
+
+/** One athlete's history, through the batch writer every caller uses. */
+const saveAthleteHistory = (name: string, results: Parameters<typeof saveAthleteHistoryBatch>[0][number]["results"]) =>
+  saveAthleteHistoryBatch([{ name, results }]);
 
 const mockStorage = new Map<string, string>();
 
@@ -100,7 +102,7 @@ describe("offline-store athlete lifting results", () => {
       },
     ] as any);
 
-    const results = await getAthleteLiftingResults("Test Meet" as any, "jane doe");
+    const results = await getAllCachedLiftingResultsForAthlete("jane doe");
 
     expect(results).toHaveLength(1);
     expect(results[0].name).toBe("  JANE   DOE ");
@@ -328,6 +330,29 @@ describe("offline-store athlete lifting results", () => {
     await expect(getMeetSchedule("Test Meet")).resolves.toEqual(schedule);
   });
 
+  // Every schedule reader (each schedule screen, the reminder sync, the
+  // auto-unsave prune) used to read and normalize the whole roster too, and
+  // add an index entry for a meet it had never stored.
+  it("reads a schedule without touching the roster or writing the index", async () => {
+    await saveMeetSchedule("Test Meet", [
+      {
+        date: "2026-06-20",
+        fullDate: "2026-06-20",
+        sessions: [{ id: "Test Meet-1-Red", number: 1, startTime: "", weighInTime: "", platforms: [] }],
+      },
+    ] as never);
+    const getItem = AsyncStorage.getItem as jest.Mock;
+    const setItem = AsyncStorage.setItem as jest.Mock;
+    getItem.mockClear();
+    setItem.mockClear();
+
+    await expect(getMeetSchedule("Test Meet")).resolves.toHaveLength(1);
+    await expect(getMeetSchedule("Never Stored")).resolves.toEqual([]);
+
+    expect(getItem.mock.calls.map(([key]) => key)).not.toContain("meetcal_athletes_Test Meet");
+    expect(setItem).not.toHaveBeenCalled();
+  });
+
   it("does not rewrite an unchanged schedule payload", async () => {
     const schedule = [
       {
@@ -441,6 +466,48 @@ describe("offline-store athlete lifting results", () => {
   });
 });
 
+describe("per-session roster caches", () => {
+  beforeEach(async () => {
+    mockStorage.clear();
+    await initStore();
+  });
+
+  const lifter = (name: string, platform: string) => ({
+    memberId: name,
+    name,
+    age: 25,
+    club: "Club",
+    gender: "Women",
+    weightClass: "71kg",
+    entryTotal: 200,
+    adaptive: false,
+    session: { number: 12, platform, date: "2026-06-20", startTime: "9:00 AM", weighInTime: "7:00 AM" },
+  });
+
+  // Session 12 Blue merged into 12 Red: the Blue key kept its old rows, and
+  // offline a saved 12 Blue listed lifters who now lift on Red.
+  it("drops the cache of a session the new roster no longer has", async () => {
+    await saveMeetAthletes("Merge Meet", [lifter("Ann", "Red"), lifter("Bea", "Blue")] as never);
+    await expect(getSessionAthletesFromMeetCache("Merge Meet" as never, 12, "Blue")).resolves.toHaveLength(1);
+
+    await saveMeetAthletes("Merge Meet", [lifter("Ann", "Red"), lifter("Bea", "Red")] as never);
+
+    const sessionKeys = Array.from(mockStorage.keys()).filter((key) =>
+      key.startsWith("meetcal_session_athletes_Merge%20Meet:"),
+    );
+    expect(sessionKeys).toHaveLength(1);
+    await expect(getSessionAthletesFromMeetCache("Merge Meet" as never, 12, "Blue")).resolves.toEqual([]);
+    await expect(getSessionAthletesFromMeetCache("Merge Meet" as never, 12, "Red")).resolves.toHaveLength(2);
+  });
+
+  it("leaves other meets' session caches alone", async () => {
+    await saveMeetAthletes("Other Meet", [lifter("Cat", "Blue")] as never);
+    await saveMeetAthletes("Merge Meet", [lifter("Ann", "Red")] as never);
+
+    await expect(getSessionAthletesFromMeetCache("Other Meet" as never, 12, "Blue")).resolves.toHaveLength(1);
+  });
+});
+
 describe("roster freshness stamp", () => {
   beforeEach(async () => {
     mockStorage.clear();
@@ -506,9 +573,9 @@ describe("offline-store corrupt payload handling", () => {
     await expect(getMeetLiftingResults("Test Meet")).resolves.toEqual([]);
   });
 
-  // `getMeetSchedule` now returns `getMeetData`'s already-parsed schedule
-  // instead of re-reading and re-parsing the same key. These pin the three
-  // degraded payloads where the two readers had to agree for that to be safe.
+  // `getMeetSchedule` reads the schedule key on its own (no roster) and
+  // `getMeetData` parses the same key. These pin the three degraded payloads
+  // where the two readers must agree.
   it.each([
     ["invalid JSON", "{\"not\": "],
     ["valid JSON that is not an array", "{\"sessions\":[]}"],

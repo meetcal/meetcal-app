@@ -587,7 +587,17 @@ export type ApiMeetPackage = {
       session_id: number;
       start_time: string;
       weigh_in_time: string;
-      platforms: { platform: string; weight_class: string }[];
+      /**
+       * `start_time` / `weigh_in_time` per platform: platforms of one session
+       * can start at different times. Absent from packages built before they
+       * were added; the session's (its first platform's) times apply then.
+       */
+      platforms: {
+        platform: string;
+        weight_class: string;
+        start_time?: string | null;
+        weigh_in_time?: string | null;
+      }[];
     }[];
   }[];
   athletes: (ApiAthlete & {
@@ -791,8 +801,11 @@ export function mapPackageSchedule(pkg: ApiMeetPackage): Schedule {
         meet: pkg.meet.name,
         platform: platform.platform,
         session_id: session.session_id,
-        start_time: session.start_time,
-        weigh_in_time: session.weigh_in_time,
+        // The platform's own time, as `/meets/schedule` reports it: copying
+        // the session's (first platform's) time onto every platform put a
+        // 9:30 Blue session at 9:00 offline, reminders included.
+        start_time: platform.start_time ?? session.start_time,
+        weigh_in_time: platform.weigh_in_time ?? session.weigh_in_time,
         weight_class: platform.weight_class,
       })),
     ),
