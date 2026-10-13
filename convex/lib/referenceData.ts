@@ -102,7 +102,7 @@ const NATIONAL_RANKING_PAGE_SIZE = 1000;
 
 export async function nationalRankingPage(ctx: QueryCtx, federation: string, ageCategory: string, cursor: string | null) {
   const page = await ctx.db.query('lifting_results')
-    .withIndex('by_federation_and_age', (q) => q.eq('federation', federation).eq('age', ageCategory))
+    .withIndex('by_federation_age_and_date', (q) => q.eq('federation', federation).eq('age', ageCategory))
     .paginate({ cursor, numItems: NATIONAL_RANKING_PAGE_SIZE });
   const rows = page.page.flatMap((row) => (rankable(row) ? [{ name: row.name, total: row.total }] : []));
   return { rows: bestTotalPerAthlete(rows), cursor: page.continueCursor, isDone: page.isDone };
@@ -223,14 +223,14 @@ export async function requireKnownRankingClass(ctx: QueryCtx, federation: string
   if (!RANKING_FEDERATIONS.has(federation)) {
     const anyInFederation = await ctx.db
       .query('lifting_results')
-      .withIndex('by_federation_and_age', (q) => q.eq('federation', federation))
+      .withIndex('by_federation_age_and_date', (q) => q.eq('federation', federation))
       .first();
     if (anyInFederation === null) throw apiError(404, `unknown federation '${federation}'`);
   }
   if (isRankingDivision(ageCategory)) return;
   const anyInClass = await ctx.db
     .query('lifting_results')
-    .withIndex('by_federation_and_age', (q) => q.eq('federation', federation).eq('age', ageCategory))
+    .withIndex('by_federation_age_and_date', (q) => q.eq('federation', federation).eq('age', ageCategory))
     .first();
   if (anyInClass === null) throw apiError(404, `unknown age category '${ageCategory}' for ${federation}`);
 }

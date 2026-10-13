@@ -10,11 +10,14 @@ import {
   computeTimelines,
   joinRoster,
   meetByName,
+  meetResultDocs,
+  meetResultTitles,
   meetLocalDate,
   narrowSessions,
   packageAthlete,
   packageStaticText,
   plainRoster,
+  rosterNames,
   toApiMeet,
   yearBestsFromTimelines,
   type ApiScheduleRow,
@@ -175,11 +178,10 @@ export const attendance = query({
     }
     const rows = [];
     for (const meet of meets) {
-      const [results, registrations, meetRow] = await Promise.all([
-        ctx.db
-          .query('lifting_results')
-          .withIndex('by_meet', (q) => q.eq('meet', meet))
-          .collect(),
+      const [results, titles, registrations, meetRow] = await Promise.all([
+        // Its linked results titles too (a combined national event, #362).
+        meetResultDocs(ctx, meet),
+        meetResultTitles(ctx, meet),
         ctx.db
           .query('athletes')
           .withIndex('by_meet', (q) => q.eq('meet', meet))
@@ -196,6 +198,9 @@ export const attendance = query({
         start_date: meetRow?.startDate ?? null,
         end_date: meetRow?.endDate ?? null,
         status: meetRow?.status ?? null,
+        // The linked results titles counted here, so a caller that also
+        // asks for them by name does not count their lifters twice.
+        results_titles: titles.slice(1),
       });
     }
     return { json: JSON.stringify(rows) };
@@ -365,6 +370,18 @@ export const packageForMeet = query({
           yearBests = names.length > 0 ? yearBestsFromTimelines(names, timelines as Timeline[], bestsSince) : [];
         }
       }
+      return textAnswer(closePackage(staticText, yearBests), ifNoneMatch);
+    }
+
+    // Only the year bests are stale (a roster athlete's results changed): the
+    // static part still serves, and only the bests are computed (#216).
+    if (staticView && bestsSince !== undefined) {
+      const names = await rosterNames(ctx, meet);
+      const [staticText, timelines] = await Promise.all([
+        staticView.text(),
+        names.length > 0 ? computeTimelines(ctx, names, bestsSince) : Promise.resolve([]),
+      ]);
+      const yearBests = names.length > 0 ? yearBestsFromTimelines(names, timelines, bestsSince) : [];
       return textAnswer(closePackage(staticText, yearBests), ifNoneMatch);
     }
 

@@ -176,15 +176,12 @@ export default defineSchema({
   lifting_results: defineTable(liftingResultsFields)
     .index('by_meet', ['meet'])
     .index('by_date', ['date'])
-    .index('by_adaptive', ['adaptive'])
     .index('by_event_and_name', ['eventId', 'name'])
-    .index('by_federation_and_age', ['federation', 'age'])
     .index('by_federation_age_and_date', ['federation', 'age', 'date'])
     .index('by_adaptive_and_date', ['adaptive', 'date'])
     .index('by_nameKey_and_date', ['nameKey', 'date']),
 
   meets: defineTable(meetsFields)
-    .index('by_status', ['status'])
     .index('by_status_and_start_date', ['status', 'startDate'])
     .index('by_name', ['name'])
     .index('by_end_date', ['endDate']),
@@ -237,6 +234,15 @@ export default defineSchema({
   })
     .index('by_userId_and_device_and_meet', ['userId', 'device', 'meet'])
     .index('by_userId_and_updatedAt', ['userId', 'updatedAt']),
+
+  // The results titles a meet's results are also stored under (#362): a
+  // combined national event is one Sport80 entries event (the meet) and
+  // several results events, each with its own title. Set by hand
+  // (`ingest:setMeetResultTitles`); every reader of a meet's results reads
+  // its own title and these.
+  meet_result_titles: defineTable({ meet: v.string(), title: v.string() })
+    .index('by_meet', ['meet'])
+    .index('by_title', ['title']),
 
   session_schedule: defineTable(sessionScheduleFields).index('by_meet', ['meet']),
 

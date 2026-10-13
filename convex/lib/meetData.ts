@@ -1,5 +1,6 @@
 import type { QueryCtx } from '../_generated/server';
 import type { Doc } from '../_generated/dataModel';
+import { clubKey, sameClub } from './clubs';
 import { normalizeName } from './names';
 import { athleteGenderLabel, normalizeGender } from './normalize';
 import {
@@ -250,6 +251,11 @@ async function rosterDocs(ctx: QueryCtx, meet: string): Promise<Doc<'athletes'>[
     .collect();
 }
 
+/** Every roster athlete's name as stored (the names a package's year bests are for). */
+export async function rosterNames(ctx: QueryCtx, meet: string): Promise<string[]> {
+  return (await rosterDocs(ctx, meet)).map((athlete) => athlete.name);
+}
+
 function scheduleKey(sessionId: number, platform: string): string {
   return `${sessionId}\u0000${platform}`;
 }
@@ -383,11 +389,30 @@ export function narrowSessions(rows: readonly SessionRow[], sessionNumber?: numb
 // Results, bests
 // ---------------------------------------------------------------------------
 
-async function meetResultDocs(ctx: QueryCtx, meet: string): Promise<Doc<'lifting_results'>[]> {
-  return await ctx.db
-    .query('lifting_results')
+/**
+ * The titles a meet's results are stored under: its own name, then the
+ * results titles linked to it (`meet_result_titles`, #362).
+ */
+export async function meetResultTitles(ctx: QueryCtx, meet: string): Promise<string[]> {
+  const linked = await ctx.db
+    .query('meet_result_titles')
     .withIndex('by_meet', (q) => q.eq('meet', meet))
     .collect();
+  return [meet, ...linked.map((row) => row.title).filter((title) => title !== meet)];
+}
+
+/** A meet's results under its own name and every results title linked to it. */
+export async function meetResultDocs(ctx: QueryCtx, meet: string): Promise<Doc<'lifting_results'>[]> {
+  const titles = await meetResultTitles(ctx, meet);
+  const groups = await Promise.all(
+    titles.map((title) =>
+      ctx.db
+        .query('lifting_results')
+        .withIndex('by_meet', (q) => q.eq('meet', title))
+        .collect(),
+    ),
+  );
+  return groups.flat();
 }
 
 /** The package's `meet_results`: by name (SQL text order), newest first within a name. */
@@ -571,7 +596,7 @@ type StatsGroups = Map<string, { snatch: LiftKey[]; cj: LiftKey[]; total: LiftKe
 
 /**
  * An athlete's previous best total before a date: the best of their earlier
- * results that have a total, BWL excluded; null when there is none.
+ * results with a total above 0, BWL excluded; null when there is none.
  */
 export type PreviousBest = { key: string; before: string; best: number | null };
 
@@ -600,33 +625,36 @@ function isBetterResult(row: Doc<'lifting_results'>, current: Doc<'lifting_resul
 async function statsEntries(ctx: QueryCtx, meet: string): Promise<{ joined: StatsEntry[]; groups: StatsGroups }> {
   const [athletes, results] = await Promise.all([rosterDocs(ctx, meet), meetResultDocs(ctx, meet)]);
 
-  // DISTINCT ON (key) ORDER BY key, name, weight_class, club
-  const roster = new Map<string, Doc<'athletes'>>();
+  // Every roster entry under each folded name, in the order DISTINCT ON
+  // (key) ORDER BY key, name, weight_class, club kept the first of.
+  const roster = new Map<string, Doc<'athletes'>[]>();
   for (const athlete of [...athletes].sort(
     (a, b) =>
       compareCollated(a.name, b.name) || compareCollated(a.weightClass, b.weightClass) || compareCollated(a.club, b.club),
   )) {
     const key = normalizeName(athlete.name);
-    if (!roster.has(key)) roster.set(key, athlete);
+    roster.set(key, [...(roster.get(key) ?? []), athlete]);
   }
 
-  // The best result per folded name, overall (the one reported) and within
-  // each ranking group (the ones ranked).
-  const best = new Map<string, Doc<'lifting_results'>>();
+  // The best result per lifter (folded name and roster entry), overall (the
+  // one reported) and within each ranking group (the ones ranked).
+  const best = new Map<string, { key: string; row: Doc<'lifting_results'>; athlete: Doc<'athletes'> | undefined }>();
   const members = new Map<string, Map<string, Doc<'lifting_results'>>>();
   for (const row of results) {
     const key = normalizeName(row.name);
-    if (isBetterResult(row, best.get(key))) best.set(key, row);
-    const group = rankingGroup(row.age, roster.get(key));
+    const entries = roster.get(key);
+    const athlete = rosterEntryFor(entries, row.age);
+    const lifter = `${key}\u0000${athlete ? entries!.indexOf(athlete) : -1}`;
+    if (isBetterResult(row, best.get(lifter)?.row)) best.set(lifter, { key, row, athlete });
+    const group = rankingGroup(row.age, athlete);
     if (group === null) continue;
     const inGroup = members.get(group) ?? new Map<string, Doc<'lifting_results'>>();
-    if (isBetterResult(row, inGroup.get(key))) inGroup.set(key, row);
+    if (isBetterResult(row, inGroup.get(lifter))) inGroup.set(lifter, row);
     members.set(group, inGroup);
   }
 
   const joined: StatsEntry[] = [];
-  for (const [key, row] of best) {
-    const athlete = roster.get(key);
+  for (const { key, row, athlete } of best.values()) {
     if (athlete) joined.push({ key, row, athlete, group: rankingGroup(row.age, athlete)! });
   }
   const groups: StatsGroups = new Map();
@@ -639,6 +667,31 @@ async function statsEntries(ctx: QueryCtx, meet: string): Promise<{ joined: Stat
     });
   }
   return { joined, groups };
+}
+
+/** A weight class as `86+`: `kg` and spaces dropped, a leading plus moved to the end. */
+function bareWeightClass(text: string): string {
+  const bare = text.replace(/kg/gi, '').replace(/\s+/g, '');
+  return bare.startsWith('+') ? `${bare.slice(1)}+` : bare;
+}
+
+/** The weight class a division names ("Open Men's 89kg" -> "89", "... 86+kg" -> "86+"), or null. */
+function divisionWeightClass(age: string | undefined): string | null {
+  const match = age === undefined ? null : /(\d+\+?)\s*kg\s*$/i.exec(age);
+  return match ? match[1] : null;
+}
+
+/**
+ * The roster entry a result is a lifter's: the only one under its folded
+ * name, or, when two lifters at the meet share the name (#247), the one
+ * entered in the weight class the result's division names. Failing that
+ * (no class, or none or both match), the first, as before.
+ */
+function rosterEntryFor(entries: readonly Doc<'athletes'>[] | undefined, age: string | undefined): Doc<'athletes'> | undefined {
+  if (!entries || entries.length <= 1) return entries?.[0];
+  const weightClass = divisionWeightClass(age);
+  const inClass = weightClass === null ? [] : entries.filter((entry) => bareWeightClass(entry.weightClass) === weightClass);
+  return new Set(inClass.map((entry) => clubKey(entry.club))).size === 1 ? inClass[0] : entries[0];
 }
 
 /**
@@ -673,7 +726,9 @@ async function previousBest(ctx: QueryCtx, key: string, before: string): Promise
     .collect();
   let best: number | null = null;
   for (const p of previous) {
-    if (p.federation === 'BWL' || p.total === undefined) continue;
+    // A bomb-out (a total of 0) is no previous best: a first real total
+    // after one is not a PR, as it is not for a first-timer (#248).
+    if (p.federation === 'BWL' || p.total === undefined || !(p.total > 0)) continue;
     best = best === null ? p.total : Math.max(best, p.total);
   }
   return best;
@@ -710,7 +765,7 @@ export async function computeStats(
   known: readonly PreviousBest[] = [],
 ): Promise<{ rows: StatsRow[]; latest: string }> {
   const { joined, groups } = await statsEntries(ctx, meet);
-  const wanted = onlyClub === undefined ? joined : joined.filter(({ athlete }) => athlete.club === onlyClub);
+  const wanted = onlyClub === undefined ? joined : joined.filter(({ athlete }) => sameClub(athlete.club, onlyClub));
   const found = new Map(known.map((p) => [previousBestId(p.key, p.before), p.best]));
   const missing = wanted
     .filter(({ key, row }) => !found.has(previousBestId(key, row.date)))
@@ -787,7 +842,7 @@ function makeRatePercent(attempts: number[]): number {
 
 /** `GET /clubs/meet-stats` from the meet's stats rows and the club's roster count. */
 export function clubStats(rows: readonly StatsRow[], club: string, totalAthletes: number) {
-  const clubRows = rows.filter((r) => r.club === club).sort((a, b) => compareCollated(a.name, b.name));
+  const clubRows = rows.filter((r) => sameClub(r.club, club)).sort((a, b) => compareCollated(a.name, b.name));
   let gold = 0;
   let silver = 0;
   let bronze = 0;
@@ -835,18 +890,19 @@ export function clubStats(rows: readonly StatsRow[], club: string, totalAthletes
   };
 }
 
-/** `COUNT(DISTINCT folded name)` of the club's entries at the meet. */
+/** `COUNT(DISTINCT folded name)` of the club's entries at the meet, under any spelling of it (`clubKey`). */
 export function clubAthleteCount(roster: readonly { name: string; club: string }[], club: string): number {
-  return new Set(roster.filter((a) => a.club === club).map((a) => normalizeName(a.name))).size;
+  return new Set(roster.filter((a) => sameClub(a.club, club)).map((a) => normalizeName(a.name))).size;
 }
 
-/** Each club's `COUNT(DISTINCT folded name)` at the meet, as `[club, count]` pairs. */
+/** Each club's `COUNT(DISTINCT folded name)` at the meet, as `[clubKey, count]` pairs. */
 export function clubAthleteCounts(roster: readonly { name: string; club: string }[]): [string, number][] {
   const byClub = new Map<string, Set<string>>();
   for (const athlete of roster) {
-    const keys = byClub.get(athlete.club) ?? new Set<string>();
+    const key = clubKey(athlete.club);
+    const keys = byClub.get(key) ?? new Set<string>();
     keys.add(normalizeName(athlete.name));
-    byClub.set(athlete.club, keys);
+    byClub.set(key, keys);
   }
   return [...byClub.entries()].map(([club, keys]): [string, number] => [club, keys.size]).sort((a, b) => compareBytes(a[0], b[0]));
 }
