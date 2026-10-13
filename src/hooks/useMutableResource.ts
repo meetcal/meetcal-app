@@ -26,7 +26,12 @@ export type MutableResourceState<T> = {
   isRefreshing: boolean;
   lastUpdatedAt: number | null;
   source: ResourceSource | null;
-  refresh: () => Promise<void>;
+  /**
+   * Revalidate. Never rejects: resolves `false` when the request failed (the
+   * failure is in `error` or `refreshError`), so a pull-to-refresh can say
+   * so; `true` otherwise, a request the screen moved on from included.
+   */
+  refresh: () => Promise<boolean>;
   invalidate: () => Promise<void>;
 };
 
@@ -80,9 +85,9 @@ export function useMutableResource<T, TParams extends readonly unknown[]>(
     async (
       forceBackground = false,
       preloadedCache?: ResourceCacheEntry<T> | null,
-    ) => {
+    ): Promise<boolean> => {
       const activeParams = paramsRef.current;
-      if (activeParams === null) return;
+      if (activeParams === null) return true;
 
       // Data is already on screen when a source has been rendered, or when we
       // are revalidating on top of a cache entry that was just painted.
@@ -108,14 +113,15 @@ export function useMutableResource<T, TParams extends readonly unknown[]>(
         const result = preloadedCache === undefined
           ? await resource.revalidate(...activeParams)
           : await resource.revalidateWithCached(preloadedCache, ...activeParams);
-        if (isStale()) return;
+        if (isStale()) return true;
         setData(result.data);
         setLastUpdatedAt(result.lastUpdatedAt);
         setSource(result.source);
         setError(null);
         setRefreshError(null);
+        return true;
       } catch (caughtError) {
-        if (isStale()) return;
+        if (isStale()) return true;
         const message =
           caughtError instanceof Error
             ? caughtError.message
@@ -127,6 +133,7 @@ export function useMutableResource<T, TParams extends readonly unknown[]>(
         } else {
           setError(message);
         }
+        return false;
       } finally {
         if (!isStale()) {
           setIsRefreshing(false);

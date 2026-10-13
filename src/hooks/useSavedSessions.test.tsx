@@ -3,6 +3,8 @@ import { act, create } from "react-test-renderer";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { AppState, type AppStateStatus } from "react-native";
 import { useSavedSessions } from "@/hooks/useSavedSessions";
+import { clearLocalUserData } from "@/lib/account-deletion";
+import { clearAccountDeleted } from "@/lib/deleted-accounts";
 import { fetchSchedule } from "@/lib/database/queries";
 import {
   NOTIFICATION_ENABLED_KEY,
@@ -1293,6 +1295,24 @@ describe("signed-out Clerk and the cached user", () => {
     await flush();
 
     expect(hook.current.savedSessions).toEqual([]);
+  });
+
+  it("blanks a deleted account's sessions and widget at once, even offline with the cached user active (#250)", async () => {
+    mockIsNetworkAvailable = false;
+    mockClerkLoaded = true;
+    const hook = await mountHook();
+    expect(hook.current.savedSessions).toHaveLength(1);
+    (clearSavedWidget as jest.Mock).mockClear();
+
+    await act(async () => {
+      await clearLocalUserData("user_1");
+    });
+    await flush();
+
+    expect(hook.current.savedSessions).toEqual([]);
+    expect(clearSavedWidget).toHaveBeenCalled();
+    expect(await AsyncStorage.getItem(SESSION_KEY)).toBeNull();
+    clearAccountDeleted("user_1");
   });
 });
 

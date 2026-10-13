@@ -258,14 +258,41 @@ describe("useMutableResource", () => {
     expect(captured!.refreshError).toBe("Offline");
 
     shouldFail = false;
+    let refreshed: boolean | undefined;
     await act(async () => {
-      await captured!.refresh();
+      refreshed = await captured!.refresh();
     });
     await flush();
 
+    expect(refreshed).toBe(true);
     expect(captured!.data).toEqual([{ id: "fresh" }]);
     expect(captured!.refreshError).toBeNull();
     expect(captured!.error).toBeNull();
+  });
+
+  // A pull-to-refresh awaits `refresh` and has to know it failed: the
+  // failure only lands in state, which its closure cannot see.
+  it("resolves false from a refresh that failed, without rejecting", async () => {
+    const resource = createMutableResource<Row[], [string]>({
+      getKey: (param) => `refresh-outcome:${param}`,
+      loadCached: async () => ({ data: [{ id: "cached" }], lastUpdatedAt: 1 }),
+      fetchFresh: async () => {
+        throw new Error("Offline");
+      },
+      persistFresh: async (data) => ({ data, lastUpdatedAt: Date.now() }),
+    });
+
+    harness(resource, "a");
+    await flush();
+
+    let refreshed: boolean | undefined;
+    await act(async () => {
+      refreshed = await captured!.refresh();
+    });
+
+    expect(refreshed).toBe(false);
+    expect(captured!.data).toEqual([{ id: "cached" }]);
+    expect(captured!.refreshError).toBe("Offline");
   });
   it("clears previous rows and metadata when selection becomes unavailable", async () => {
     const resource = createMutableResource<Row[], [string]>({

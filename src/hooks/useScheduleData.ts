@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { MeetName } from "@/data/types/meet";
 import { Schedule } from "@/types/schedule";
 import { calculateInitialPage } from "@/utils/dateTime";
@@ -48,6 +48,11 @@ export function useScheduleData(
     initialData: emptySchedule,
   });
 
+  // The schedule tab's refresh controls take a `Promise<void>`.
+  const refreshSchedule = useCallback(async () => {
+    await refresh();
+  }, [refresh]);
+
   const initialScrollIndex = useMemo(() => {
     if (!schedule.length) return 0;
     return calculateInitialPage(schedule, timeZoneIdentifier);
@@ -64,6 +69,6 @@ export function useScheduleData(
     loadError: schedule.length === 0 ? (error ?? refreshError) : null,
     refreshError,
     initialScrollIndex,
-    refreshSchedule: refresh,
+    refreshSchedule,
   };
 }

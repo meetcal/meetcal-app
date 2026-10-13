@@ -5,6 +5,7 @@ import {
   createRecordsDeepLink,
   createSessionDetailsDeepLink,
   createStandardsDeepLink,
+  deepLinkOpensPath,
   getNotificationDeepLink,
   getOneSignalDeepLink,
   normalizeDeepLinkHref,
@@ -141,5 +142,19 @@ describe("deep link helpers", () => {
         },
       }),
     ).toBe("/shared-screens/schedule-details");
+  });
+});
+
+describe("deepLinkOpensPath", () => {
+  it("matches a link to the screen whatever its query", () => {
+    expect(deepLinkOpensPath("meetcal:///comp-data/rankings?meet=X&gender=Women", "/comp-data/rankings")).toBe(true);
+    expect(deepLinkOpensPath("meetcal:///comp-data/rankings", "/comp-data/rankings")).toBe(true);
+    expect(deepLinkOpensPath("/comp-data/rankings/?meet=X", "/comp-data/rankings")).toBe(true);
+  });
+
+  it("does not match another screen, another scheme or a malformed link", () => {
+    expect(deepLinkOpensPath("meetcal:///comp-data/rankings-old", "/comp-data/rankings")).toBe(false);
+    expect(deepLinkOpensPath("https://meetcal.app/comp-data/rankings", "/comp-data/rankings")).toBe(false);
+    expect(deepLinkOpensPath("", "/comp-data/rankings")).toBe(false);
   });
 });

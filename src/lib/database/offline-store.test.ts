@@ -31,6 +31,7 @@ import {
   saveMeetAthletes,
   saveMeetLiftingResults,
   saveMeetSchedule,
+  saveSessionAthletes,
 } from "@/lib/database/offline-store";
 import {
   captureClearEpoch,
@@ -231,6 +232,29 @@ describe("offline-store athlete lifting results", () => {
     expect(meetData.athletes).toHaveLength(1);
     // The kept roster is not presented as freshly synced.
     expect(meetData.athletesSyncedAt).toBe(syncedAt);
+    await expect(
+      getSessionAthletesFromMeetCache("Test Meet" as any, 4, "Red"),
+    ).resolves.toHaveLength(1);
+  });
+
+  // Regression (#313): an empty session answer was written over the
+  // session key, so offline the session read back as having nobody in it.
+  it("never writes an empty answer over a session's athletes", async () => {
+    const athlete = {
+      memberId: "123", name: "Jane Doe", age: 25, club: "Club",
+      gender: "Women", weightClass: "71kg", entryTotal: 200, adaptive: false,
+      session: { number: 4, platform: "Red" },
+    };
+    await saveSessionAthletes("Test Meet", 4, "Red", [athlete] as never);
+    const sessionKey = Array.from(mockStorage.keys()).find((key) =>
+      key.includes("session_athletes") && key.endsWith(":4:red"),
+    );
+    expect(sessionKey).toBeDefined();
+    const payload = mockStorage.get(sessionKey!);
+
+    await saveSessionAthletes("Test Meet", 4, "Red", []);
+
+    expect(mockStorage.get(sessionKey!)).toBe(payload);
     await expect(
       getSessionAthletesFromMeetCache("Test Meet" as any, 4, "Red"),
     ).resolves.toHaveLength(1);

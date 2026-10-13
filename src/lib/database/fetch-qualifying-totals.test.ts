@@ -76,4 +76,14 @@ describe("qualifyingTotalsResource", () => {
     await expect(fetchQualifyingTotals()).rejects.toThrow("down");
     expect(mockSetOfflineCache).not.toHaveBeenCalled();
   });
+
+  it("shows an empty fresh answer but leaves the stored download untouched", async () => {
+    // The browse path shares the download's key; an empty table used to be
+    // persisted over a real download, which then read as "downloaded" offline.
+    mockGetOfflineCache.mockResolvedValue({ data: { Nationals: { Senior: { Men: { "89kg": 300 }, Women: {} } } }, lastSynced: 5 });
+    mockGetJsonArray.mockResolvedValue([]);
+
+    await expect(fetchQualifyingTotals()).resolves.toEqual({});
+    expect(mockSetOfflineCache).not.toHaveBeenCalled();
+  });
 });
