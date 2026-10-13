@@ -199,7 +199,10 @@ pub fn Results() -> impl IntoView {
         <DataPage heading="Results" intro="Search an athlete’s competition history.">
             <ResultsSearchForm name set_name current=athlete search_again=Callback::new(move |()| results.retry()) />
 
-            {move || results.with(|state| match state {
+            // Nothing asked yet is the prompt at once, never a loading skeleton.
+            {move || if request.with(Option::is_none) {
+                view! { <DataStatus message="Enter an athlete name to search." /> }.into_any()
+            } else { results.with(|state| match state {
                 LoadState::Loading => view! { <TableSkeleton columns=14 /> }.into_any(),
                 LoadState::Failed(error) => load_error("results", error, move || results.retry()),
                 LoadState::Ready(None) => view! {
@@ -229,7 +232,7 @@ pub fn Results() -> impl IntoView {
                     <ResultsTable name=name.clone() rows=rows.clone() truncated=*truncated suggestions=suggestions.clone() sort set_sort />
                 }
                 .into_any(),
-            })}
+            }) }}
         </DataPage>
     }
 }

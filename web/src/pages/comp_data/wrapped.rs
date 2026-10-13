@@ -74,14 +74,17 @@ pub fn Wrapped() -> impl IntoView {
             <label>"Year"<input class="data-filter data-year-input" inputmode="numeric" maxlength="4" prop:value=current_year on:input=move |event| set_year.set(event_target_value(&event)) /></label>
             <button class="data-search-button" type="submit">"Build wrapped"</button>
         </form>
-        {move || wrapped.with(|state| match state {
+        // Nothing asked yet is the prompt at once, never a loading skeleton.
+        {move || if request.with(Option::is_none) {
+            view! { <DataStatus message="Enter an athlete to build their yearly recap." /> }.into_any()
+        } else { wrapped.with(|state| match state {
             LoadState::Loading => view! { <TableSkeleton columns=3 /> }.into_any(),
             LoadState::Failed(error) => load_error("wrapped", error, move || wrapped.retry()),
             LoadState::Ready(None) => view! { <DataStatus message="Enter an athlete to build their yearly recap." /> }.into_any(),
             LoadState::Ready(Some(WrappedResponse::Report { athlete_name, year, stats })) => report(athlete_name, *year, stats),
             LoadState::Ready(Some(WrappedResponse::Choices { query, year, names, more_than_shown })) => choices(query, *year, names, *more_than_shown, set_athlete_name, set_request),
             LoadState::Ready(Some(WrappedResponse::Unavailable(message))) => view! { <p class="data-status error">{format!("Could not build wrapped: {message}")}</p> }.into_any(),
-        })}
+        }) }}
     </DataPage> }
 }
 

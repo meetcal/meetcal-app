@@ -114,3 +114,24 @@ test("an exact match is headed with the athlete's name, not the search's typing"
   await expect(page.getByText("Results for Amelia Phillips")).toBeVisible();
   await expect(page.locator(".data-status strong")).toHaveText("Amelia Phillips", { useInnerText: true });
 });
+
+for (const [path, prompt] of [
+  ["/results", "Enter an athlete name to search."],
+  ["/wrapped", "Enter an athlete to build their yearly recap."],
+]) {
+  test(`${path} with nothing asked shows its prompt without a loading skeleton`, async ({ page }) => {
+    await mockSubscribedUser(page);
+    await page.addInitScript(() => {
+      const seen = { skeleton: false };
+      (window as unknown as { __seen: typeof seen }).__seen = seen;
+      new MutationObserver(() => {
+        if (document.querySelector('[aria-label="Loading data"]')) seen.skeleton = true;
+      }).observe(document, { childList: true, subtree: true });
+    });
+
+    await page.goto(path);
+    await expect(page.getByText(prompt)).toBeVisible();
+    await page.waitForTimeout(200);
+    expect(await page.evaluate(() => (window as unknown as { __seen: { skeleton: boolean } }).__seen.skeleton)).toBe(false);
+  });
+}
