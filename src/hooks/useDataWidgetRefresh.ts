@@ -18,7 +18,12 @@ import { syncPremiumEntitlementHint } from '@/utils/dataWidgets';
  * foreground.
  */
 export function useDataWidgetRefresh(): void {
-  const { isSubscribed } = useSubscription();
+  const { isSubscribed: answer, isLoading } = useSubscription();
+  // Unknown once the provider has settled (offline with no cache, or a
+  // failed check with none) is not a subscription: the premium screens
+  // don't open on it, so the widgets and Siri lock too. Unknown while it is
+  // still loading (the first frames of a launch) leaves them alone.
+  const isSubscribed = answer ?? (isLoading ? null : false);
 
   useEffect(() => {
     syncPremiumEntitlementHint(isSubscribed);

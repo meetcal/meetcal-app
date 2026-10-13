@@ -339,6 +339,30 @@ describe("createDataWidgetRefresher", () => {
       );
     });
 
+    it("drops a queued answer the entitlement changed back from (true, false, true)", async () => {
+      let release: (value: DataWidgetSourceData) => void = () => {};
+      const { deps, refresher } = setup({
+        loadSource: jest.fn(
+          () =>
+            new Promise<DataWidgetSourceData>((resolve) => {
+              release = resolve;
+            }),
+        ),
+      });
+
+      const first = refresher.refresh(true);
+      const lapsed = refresher.refresh(false);
+      const back = refresher.refresh(true);
+      release(source);
+
+      await expect(first).resolves.toBe("synced");
+      await expect(back).resolves.toBe("synced");
+      await expect(lapsed).resolves.toBe("superseded");
+      // The subscriber's data is what the widgets end on.
+      expect(deps.sync).toHaveBeenCalledTimes(1);
+      expect(jest.mocked(deps.sync).mock.calls.at(-1)?.[0]).not.toEqual(buildLockedDataWidgetPayloads());
+    });
+
     it("does not rewrite the subscribe payloads it already wrote", async () => {
       const { deps, refresher, advance } = setup();
 

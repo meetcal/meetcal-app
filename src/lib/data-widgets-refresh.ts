@@ -130,6 +130,8 @@ export function createDataWidgetRefresher(deps: DataWidgetRefreshDeps) {
   let inFlightEntitlement: boolean | null = null;
   let lastStartedAt: number | null = null;
   let lastEntitlement: boolean | null = null;
+  /** The newest answer a caller asked for; a queued run for an older one is dropped. */
+  let latestEntitlement: boolean | null = null;
   let lastWrite: { signature: string; writeCount: number } | null = null;
 
   /** True when these exact payloads are what this refresher last wrote. */
@@ -200,9 +202,14 @@ export function createDataWidgetRefresher(deps: DataWidgetRefreshDeps) {
   const refresh = (isSubscribed: boolean | null): Promise<DataWidgetRefreshOutcome> => {
     if (!deps.isAvailable()) return Promise.resolve('unavailable');
     if (isSubscribed === null) return Promise.resolve('entitlement-unknown');
+    latestEntitlement = isSubscribed;
     if (inFlight) {
       if (inFlightEntitlement === isSubscribed) return inFlight;
-      return inFlight.then(() => refresh(isSubscribed));
+      // Queued behind the run in flight, and dropped if the answer changed
+      // again meanwhile (true -> false -> true must not end on "locked").
+      return inFlight.then(() =>
+        latestEntitlement === isSubscribed ? refresh(isSubscribed) : ('superseded' as const),
+      );
     }
     const now = deps.now();
     if (

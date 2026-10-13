@@ -142,14 +142,12 @@ struct SessionQuery: EntityStringQuery {
         return meet.isEmpty ? nil : meet
     }
 
-    /// Bound on distinct meets one id lookup loads (one schedule request
-    /// each). Siri and Shortcuts resolve a handful of ids at a time.
-    static let maxMeetsPerLookup = 5
-
     /// Resolves ids against the schedule of the meet each id names, not the
     /// meet selected in the app now: an id from another meet (a schedule
     /// asked for by name, a Spotlight item indexed before the user switched
-    /// meets) still resolves.
+    /// meets) still resolves. One schedule request per distinct meet, one at
+    /// a time; the meets are never more than the ids the system passed, so
+    /// every valid id resolves rather than a capped few.
     static func sessions(withIDs identifiers: [String]) async throws -> [SessionEntity] {
         var meets: [String] = []
         for id in identifiers {
@@ -157,7 +155,7 @@ struct SessionQuery: EntityStringQuery {
         }
         let wanted = Set(identifiers)
         var found: [SessionEntity] = []
-        for meet in meets.prefix(maxMeetsPerLookup) {
+        for meet in meets {
             found += try await sessions(forMeet: meet).filter { wanted.contains($0.id) }
         }
         return found
