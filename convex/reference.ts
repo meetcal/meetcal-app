@@ -127,6 +127,32 @@ export const wsoList = query({
   handler: async (ctx, args) => await viewOrLive(ctx, REF_VIEWS.wso_list, args.ifNoneMatch, () => computeWsoList(ctx)),
 });
 
+/** The most names `registrationWsos` reads (one index read each); there are about 30 WSOs. */
+export const MAX_REGISTRATION_WSOS = 200;
+
+/**
+ * Every WSO name on registrations (`athletes.wso`), the names `wsoAthletes` matches. They differ
+ * from the record sheets' (`wsoList`): "California North Central" registers athletes, "California
+ * North" keeps records, and several WSOs keep none. A skip-scan of the `by_wso` index, one read
+ * per WSO; answers the names in the list order (`distinctCollated`).
+ */
+export const registrationWsos = query({
+  args: {},
+  handler: async (ctx) => {
+    const names: string[] = [];
+    // Strings sort after missing and null values, so `> ''` starts at the first named WSO.
+    let last = '';
+    for (let i = 0; i < MAX_REGISTRATION_WSOS; i += 1) {
+      const lower = last;
+      const row = await ctx.db.query('athletes').withIndex('by_wso', (q) => q.gt('wso', lower)).first();
+      if (!row || typeof row.wso !== 'string') break;
+      names.push(row.wso);
+      last = row.wso;
+    }
+    return distinctCollated(names.filter((name) => name.trim() !== ''));
+  },
+});
+
 /**
  * A WSO's records, from a fresh view or live. Answers derived from them are
  * tagged with the hash of their body on both paths, so a client's tag

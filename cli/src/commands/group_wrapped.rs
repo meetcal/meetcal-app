@@ -4,7 +4,9 @@ use anyhow::Result;
 use comfy_table::Table;
 use serde::Deserialize;
 
-use crate::commands::compare::{MetricComparison, MetricUnit, format_metric, percent_change};
+use crate::commands::compare::{
+    MetricComparison, MetricUnit, comparison_tables, format_metric, percent_change,
+};
 use crate::commands::wrapped::calculate_wrapped_stats;
 use crate::types::lifting_results::LiftingResults;
 use crate::types::wrapped::WrappedStats;
@@ -267,30 +269,27 @@ pub fn group_comparison_report(
     previous: &GroupWrappedStats,
     current: &GroupWrappedStats,
 ) -> Report {
-    let mut table = Table::new();
-    table.set_header(vec![
-        "Metric".to_string(),
-        previous_year.to_string(),
-        current_year.to_string(),
-        "% Difference".to_string(),
-    ]);
-
-    for metric in group_comparisons(previous, current) {
-        table.add_row(vec![
-            metric.label.to_string(),
-            format_metric(metric.previous, metric.unit),
-            format_metric(metric.current, metric.unit),
-            metric
-                .percent_change
-                .map(|value| format!("{value:+.1}%"))
-                .unwrap_or_else(|| "N/A".to_string()),
-        ]);
-    }
-
-    Report::single("comparison", table).titled(format!(
-        "{} — {group_name}\n{previous_year} VS {current_year} CALENDAR YEAR",
-        group_kind.to_uppercase()
-    ))
+    let rows = group_comparisons(previous, current)
+        .into_iter()
+        .map(|metric| {
+            [
+                metric.label.to_string(),
+                format_metric(metric.previous, metric.unit),
+                format_metric(metric.current, metric.unit),
+                metric
+                    .percent_change
+                    .map(|value| format!("{value:+.1}%"))
+                    .unwrap_or_else(|| "N/A".to_string()),
+            ]
+        })
+        .collect();
+    let (table, data) = comparison_tables(previous_year, current_year, rows);
+    Report::new()
+        .table_with_data("comparison", table, data)
+        .titled(format!(
+            "{} — {group_name}\n{previous_year} VS {current_year} CALENDAR YEAR",
+            group_kind.to_uppercase()
+        ))
 }
 
 #[cfg(test)]

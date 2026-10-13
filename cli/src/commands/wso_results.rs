@@ -449,7 +449,7 @@ pub fn report(
         .table("volume", volume_table)
         .table("prs", pr_table);
 
-    if !prs.details.is_empty() {
+    {
         let mut table = Table::new();
         table.set_header(vec!["Athlete", "Movement", "New PR", "Previous PR"]);
         for detail in &prs.details {
@@ -460,10 +460,10 @@ pub fn report(
                 number(detail.previous_pr),
             ]);
         }
-        report = report.headed("pr_details", "ATHLETES WITH PRS", table);
+        report = report.headed_if_any("pr_details", "ATHLETES WITH PRS", table);
     }
 
-    if !medals.is_empty() {
+    {
         let mut table = Table::new();
         table.set_header(vec!["Athlete", "Age", "Movement", "Place", "Result"]);
         for detail in medals {
@@ -475,7 +475,7 @@ pub fn report(
                 number(detail.result),
             ]);
         }
-        report = report.headed("medals", "ATHLETES WITH MEDALS", table);
+        report = report.headed_if_any("medals", "ATHLETES WITH MEDALS", table);
     }
 
     report
@@ -587,6 +587,51 @@ mod tests {
             .to_string();
 
         assert_eq!(error, "No athletes found for meet \"Missing Meet\"");
+    }
+
+    #[test]
+    fn exports_every_section_even_with_no_prs_or_medals() {
+        let performance = PerformanceStats {
+            snatch_attempts: 3,
+            snatch_makes: 2,
+            cj_attempts: 3,
+            cj_makes: 3,
+            total_weight_lifted: 500.0,
+        };
+        let prs = PrStats {
+            snatch_count: 0,
+            cj_count: 0,
+            total_count: 0,
+            details: Vec::new(),
+            target_meet_rows: Vec::new(),
+            missing_names: Vec::new(),
+        };
+        let report = report("Florida", "Meet", 10, 1, &performance, &prs, &[]);
+        let json = report.to_json();
+        let keys: Vec<&str> = json
+            .as_object()
+            .unwrap()
+            .keys()
+            .map(String::as_str)
+            .collect();
+        assert_eq!(
+            keys,
+            [
+                "athletes",
+                "make_rates",
+                "volume",
+                "prs",
+                "pr_details",
+                "medals"
+            ]
+        );
+        assert_eq!(json["medals"], serde_json::json!([]));
+        assert!(
+            report
+                .to_csv()
+                .contains("# medals\nathlete,age,movement,place,result\n")
+        );
+        assert!(!report.to_text().contains("ATHLETES WITH MEDALS"));
     }
 
     #[test]

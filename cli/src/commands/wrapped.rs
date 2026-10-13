@@ -1,7 +1,7 @@
 use std::collections::{HashMap, HashSet};
 
 use anyhow::{Result, bail};
-use chrono::{Datelike, Utc};
+use chrono::{Datelike, Local};
 use clap::Parser;
 use comfy_table::Table;
 
@@ -42,8 +42,10 @@ pub async fn run(args: WrappedArgs) -> Result<()> {
     Ok(())
 }
 
+/// The year on the user's clock, the default for every "this year" report. Not UTC's: from
+/// 7 pm Eastern on December 31 UTC is already in the next year.
 pub fn current_year() -> i32 {
-    Utc::now().year()
+    Local::now().year()
 }
 
 pub async fn get_athlete_year(name: &str, year: i32) -> Result<SearchResponse> {

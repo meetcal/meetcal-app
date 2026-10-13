@@ -2,13 +2,15 @@
 
 use std::collections::HashMap;
 
-use anyhow::{Result, anyhow};
+use anyhow::{Context, Result, anyhow};
+use chrono::{Datelike, NaiveDate};
 use serde::Deserialize;
 use serde_json::json;
+use tokio::task::JoinSet;
 
 use crate::types::lifting_results::LiftingResults;
 use crate::types::wrapped::SearchResponse;
-use crate::utils::backend::{queries, query};
+use crate::utils::backend::{Page, collect_pages, queries, query};
 use crate::utils::names::{MAX_SUGGESTIONS, closest};
 use crate::utils::stats::fold;
 
@@ -104,39 +106,137 @@ struct ResultsPage {
     continue_cursor: String,
 }
 
-/// Every result dated `from` to `to` (inclusive, `YYYY-MM-DD`), oldest first, read a page at a
-/// time. `progress` is told the running count after each page.
+/// Date slices of a range read side by side. Each slice is its own cursor chain, so a year's
+/// 15 pages are not read one after another.
+pub const RESULTS_CONCURRENCY: usize = 8;
+
+/// Every result dated `from` to `to` (inclusive, `YYYY-MM-DD`), oldest first. The range is read
+/// a month at a time, [`RESULTS_CONCURRENCY`] months at once, each a page at a time (at most
+/// `backend::MAX_PAGES` pages a month). `progress` is told the running count as each month
+/// arrives.
 pub async fn results_between(
     from: &str,
     to: &str,
     mut progress: impl FnMut(usize),
 ) -> Result<Vec<LiftingResults>> {
-    let mut rows = Vec::new();
-    let mut cursor: Option<String> = None;
-    loop {
-        let page: ResultsPage = query(
-            queries::RESULTS_PAGE,
-            &json!({
-                "startDate": from,
-                "endDate": to,
-                "cursor": cursor,
-                "numItems": RESULTS_PAGE_SIZE,
-            }),
-        )
-        .await?;
-        let mut batch: Vec<LiftingResults> = serde_json::from_str(&page.json)?;
-        rows.append(&mut batch);
-        progress(rows.len());
-        if page.is_done {
-            return Ok(rows);
-        }
-        cursor = Some(page.continue_cursor);
+    let parse = |value: &str| {
+        NaiveDate::parse_from_str(value, "%Y-%m-%d")
+            .with_context(|| format!("Expected a date as YYYY-MM-DD, not \"{value}\""))
+    };
+    let slices = month_slices(parse(from)?, parse(to)?);
+    let mut pending = slices.iter().cloned().enumerate();
+    let mut tasks = JoinSet::new();
+    for (index, (start, end)) in pending.by_ref().take(RESULTS_CONCURRENCY) {
+        tasks.spawn(async move { (index, results_in_slice(start, end).await) });
     }
+    let mut by_slice: Vec<Vec<LiftingResults>> = vec![Vec::new(); slices.len()];
+    let mut count = 0;
+    while let Some(joined) = tasks.join_next().await {
+        let (index, rows) = joined.context("A results read stopped unexpectedly")?;
+        let rows = rows?;
+        count += rows.len();
+        by_slice[index] = rows;
+        progress(count);
+        if let Some((index, (start, end))) = pending.next() {
+            tasks.spawn(async move { (index, results_in_slice(start, end).await) });
+        }
+    }
+    Ok(by_slice.into_iter().flatten().collect())
+}
+
+/// Every result of one slice, `start` to `end` inclusive.
+async fn results_in_slice(start: NaiveDate, end: NaiveDate) -> Result<Vec<LiftingResults>> {
+    let (start, end) = (iso(start), iso(end));
+    collect_pages(queries::RESULTS_PAGE.function, |cursor| {
+        let (start, end) = (start.clone(), end.clone());
+        async move {
+            let page: ResultsPage = query(
+                queries::RESULTS_PAGE,
+                &json!({
+                    "startDate": start,
+                    "endDate": end,
+                    "cursor": cursor,
+                    "numItems": RESULTS_PAGE_SIZE,
+                }),
+            )
+            .await?;
+            Ok(Page {
+                json: page.json,
+                cursor: page.continue_cursor,
+                is_done: page.is_done,
+            })
+        }
+    })
+    .await
+}
+
+fn iso(date: NaiveDate) -> String {
+    date.format("%Y-%m-%d").to_string()
+}
+
+/// `from` to `to` (inclusive) cut at each month's end: the slices cover every day once, each
+/// starting the day after the last ends. Empty when `to` is before `from`.
+pub fn month_slices(from: NaiveDate, to: NaiveDate) -> Vec<(NaiveDate, NaiveDate)> {
+    let mut slices = Vec::new();
+    let mut start = from;
+    while start <= to {
+        let next_month = if start.month() == 12 {
+            NaiveDate::from_ymd_opt(start.year() + 1, 1, 1)
+        } else {
+            NaiveDate::from_ymd_opt(start.year(), start.month() + 1, 1)
+        };
+        let month_end = next_month.and_then(|next| next.pred_opt()).unwrap_or(to);
+        let end = month_end.min(to);
+        slices.push((start, end));
+        match end.succ_opt() {
+            Some(next) => start = next,
+            None => break,
+        }
+    }
+    slices
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn date(value: &str) -> NaiveDate {
+        NaiveDate::parse_from_str(value, "%Y-%m-%d").unwrap()
+    }
+
+    #[test]
+    fn month_slices_cover_the_range_without_gaps_or_overlaps() {
+        for (from, to) in [
+            ("2025-01-01", "2025-12-31"),
+            ("2024-02-10", "2024-03-05"),
+            ("2026-06-01", "2026-06-30"),
+            ("2026-06-15", "2026-06-15"),
+            ("2023-11-30", "2025-01-01"),
+        ] {
+            let slices = month_slices(date(from), date(to));
+            assert_eq!(slices.first().unwrap().0, date(from));
+            assert_eq!(slices.last().unwrap().1, date(to));
+            for (start, end) in &slices {
+                assert!(start <= end);
+                assert_eq!(start.month(), end.month(), "{start} to {end}");
+            }
+            for pair in slices.windows(2) {
+                assert_eq!(pair[0].1.succ_opt().unwrap(), pair[1].0);
+            }
+        }
+        assert_eq!(
+            month_slices(date("2025-01-01"), date("2025-12-31")).len(),
+            12
+        );
+        assert_eq!(
+            month_slices(date("2024-02-10"), date("2024-03-05")),
+            [
+                (date("2024-02-10"), date("2024-02-29")),
+                (date("2024-03-01"), date("2024-03-05"))
+            ]
+        );
+        assert!(month_slices(date("2025-02-01"), date("2025-01-01")).is_empty());
+    }
 
     #[test]
     fn search_pieces_survive_a_typo_in_any_word() {

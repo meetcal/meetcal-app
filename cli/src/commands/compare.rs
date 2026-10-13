@@ -187,29 +187,69 @@ pub fn comparison_report(
     previous: &WrappedStats,
     current: &WrappedStats,
 ) -> Report {
+    let rows = comparisons(previous, current)
+        .into_iter()
+        .map(|metric| {
+            [
+                metric.label.to_string(),
+                format_metric(metric.previous, metric.unit),
+                format_metric(metric.current, metric.unit),
+                metric
+                    .percent_change
+                    .map(|value| format!("{value:+.1}%"))
+                    .unwrap_or_else(|| "N/A".to_string()),
+            ]
+        })
+        .collect();
+    let (table, data) = comparison_tables(previous_year, current_year, rows);
+    Report::new()
+        .table_with_data("comparison", table, data)
+        .titled(format!(
+            "{name} — {previous_year} VS {current_year} CALENDAR YEAR"
+        ))
+}
+
+/// A year-over-year comparison of `rows` (metric, previous, current, % difference): shown with
+/// the years as column headers, exported with fixed keys and the years as values, so a script
+/// reads `.previous` whatever the years.
+pub fn comparison_tables(
+    previous_year: i32,
+    current_year: i32,
+    rows: Vec<[String; 4]>,
+) -> (Table, Table) {
     let mut table = Table::new();
     table.set_header(vec![
+        "Metric".to_string(),
+        previous_year.to_string(),
+        current_year.to_string(),
+        "% Difference".to_string(),
+    ]);
+    let mut data = Table::new();
+    data.set_header(vec![
         "Metric",
-        previous_year.to_string().as_str(),
-        current_year.to_string().as_str(),
+        "Previous Year",
+        "Previous",
+        "Current Year",
+        "Current",
         "% Difference",
     ]);
-
-    for metric in comparisons(previous, current) {
+    for [label, previous, current, difference] in rows {
         table.add_row(vec![
-            metric.label.to_string(),
-            format_metric(metric.previous, metric.unit),
-            format_metric(metric.current, metric.unit),
-            metric
-                .percent_change
-                .map(|value| format!("{value:+.1}%"))
-                .unwrap_or_else(|| "N/A".to_string()),
+            label.clone(),
+            previous.clone(),
+            current.clone(),
+            difference.clone(),
+        ]);
+        data.add_row(vec![
+            label,
+            previous_year.to_string(),
+            previous,
+            current_year.to_string(),
+            current,
+            difference,
         ]);
     }
-
-    Report::single("comparison", table).titled(format!(
-        "{name} — {previous_year} VS {current_year} CALENDAR YEAR"
-    ))
+    (table, data)
 }
 
 /// A metric's value as the comparison tables show it.
@@ -270,6 +310,30 @@ mod tests {
             results,
             truncated,
         }
+    }
+
+    #[test]
+    fn exports_fixed_keys_with_the_years_as_values() {
+        let report = comparison_report(
+            "Jane Doe",
+            2025,
+            2026,
+            &stats(1000.0, 2, 80.0, 200.0),
+            &stats(1500.0, 3, 75.0, 210.0),
+        );
+        let json = report.to_json();
+        let total = json
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|row| row["metric"] == "Best Total")
+            .expect("a best total row");
+        assert_eq!(total["previous_year"], 2025);
+        assert_eq!(total["previous"], 200);
+        assert_eq!(total["current_year"], 2026);
+        assert_eq!(total["current"], 210);
+        assert_eq!(total["difference"], 5);
+        assert!(report.to_text().contains("2025"));
     }
 
     #[test]

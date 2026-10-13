@@ -157,6 +157,9 @@ pub mod queries {
     pub const CLUBS: Query = Query::text("reference:clubs");
     /// `GET /data/wso`: every WSO with records.
     pub const WSO_LIST: Query = Query::text("reference:wsoList");
+    /// Every WSO name on registrations: the names `reference:wsoAthletes` matches, which differ
+    /// from the record sheets' (`reference:wsoList`).
+    pub const REGISTRATION_WSOS: Query = Query::value("reference:registrationWsos");
     /// `GET /data/wso/age-groups`: the age groups a WSO keeps records for; takes `wso`.
     pub const WSO_AGE_GROUPS: Query = Query::text("reference:wsoAgeGroups");
     /// `GET /clubs/athletes`; takes `club`, and `cursor` (null to start) to page. Read it with
@@ -207,10 +210,10 @@ struct PagedArgs<'a, A: Serialize + ?Sized> {
 /// One page of a paged query: its rows as JSON text, and where the next page starts.
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct Page {
-    json: String,
-    cursor: String,
-    is_done: bool,
+pub struct Page {
+    pub json: String,
+    pub cursor: String,
+    pub is_done: bool,
 }
 
 /// Runs `query` with `args` on the production deployment (or `MEETCAL_CONVEX_URL`).
@@ -280,9 +283,10 @@ where
     .await
 }
 
-/// The paging loop of [`query_all_pages_from`], over any page source: `fetch` gets `None` first,
-/// then each cursor a page returned, at most [`MAX_PAGES`] times.
-async fn collect_pages<T, F, Fut>(function: &str, mut fetch: F) -> Result<Vec<T>>
+/// The paging loop of every paged read, over any page source: `fetch` gets `None` first, then
+/// each cursor a page returned, at most [`MAX_PAGES`] times. `function` names the query in
+/// errors. A query whose page names its fields differently maps it to a [`Page`].
+pub async fn collect_pages<T, F, Fut>(function: &str, mut fetch: F) -> Result<Vec<T>>
 where
     T: DeserializeOwned,
     F: FnMut(Option<String>) -> Fut,
