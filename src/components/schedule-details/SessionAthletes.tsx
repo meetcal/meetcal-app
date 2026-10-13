@@ -14,7 +14,7 @@ import { LiftResult, SupabaseBests } from "@/data/types/athletes";
 import { MeetName } from "@/data/types/meet";
 import { useAppColors } from "@/hooks/useAppColors";
 import { useIsOffline } from "@/hooks/useIsOffline";
-import { useSessionAthletes } from "@/hooks/useMeetAthletes";
+import type { UseMeetAthletesReturn } from "@/hooks/useMeetAthletes";
 import { useRequirePremium } from "@/hooks/useRequirePremium";
 import { loadFailureCopy } from "@/lib/load-failure";
 import { SessionAthlete } from "@/types/schedule-details";
@@ -53,16 +53,21 @@ function toSessionAthletesByPlatform(
   };
 }
 
+/**
+ * The session's athletes card. The screen owns the roster (`athletesState`,
+ * from `useSessionAthletes`) so its pull-to-refresh can await the athletes
+ * refresh with the schedule's and report a failure; this card only renders it.
+ */
 export default function SessionAthletes({
   sessionNumber,
   platform,
   meetId,
-  refreshKey,
+  athletesState,
 }: {
   sessionNumber: number;
   platform: string;
   meetId: MeetName;
-  refreshKey: number;
+  athletesState: UseMeetAthletesReturn;
 }) {
   const router = useRouter();
   const colors = useAppColors();
@@ -72,7 +77,7 @@ export default function SessionAthletes({
     isRefreshing,
     loadError,
     refreshAthletes,
-  } = useSessionAthletes(meetId, sessionNumber, platform);
+  } = athletesState;
   const [isOffline] = useIsOffline();
   const [athleteBests, setAthleteBests] = useState<
     Record<string, SupabaseBests>
@@ -83,7 +88,6 @@ export default function SessionAthletes({
   // the paywall: `requirePremium` says it can't confirm the subscription.
   const { requirePremium, requireAuth, access } = useRequirePremium();
   const isSubscribed = access === "granted";
-  const refreshKeyRef = useRef(refreshKey);
   // Where sign-in and the paywall send the user back to. The bare route path
   // used to be passed, so the return landed on a details screen with no
   // meet, session or platform and rendered blank.
@@ -193,15 +197,6 @@ export default function SessionAthletes({
       cancelled = true;
     };
   }, [isSubscribed, meetId, platform, sessionAthletes, sessionNumber]);
-
-  useEffect(() => {
-    if (refreshKeyRef.current === refreshKey) {
-      return;
-    }
-
-    refreshKeyRef.current = refreshKey;
-    void refreshAthletes();
-  }, [refreshAthletes, refreshKey]);
 
   const sortedAthletes = useMemo(() => {
     const entries = Object.entries(athletes).map(
@@ -361,7 +356,34 @@ export default function SessionAthletes({
         </View>
       );
     }
-    return null;
+    // No meet to ask about (a broken link): nothing to say about athletes.
+    if (!meetId) return null;
+    // An answer with nobody in it: the card stays, with a message, instead
+    // of vanishing (which read the same as a failed load used to).
+    return (
+      <View>
+        <View style={[styles.card, { backgroundColor: colors.card }]}>
+          <View
+            style={[
+              styles.titleSection,
+              { borderBottomColor: colors.border },
+            ]}
+          >
+            <ThemedText style={styles.athletesTitle}>
+              Session Athletes
+            </ThemedText>
+          </View>
+          <View style={styles.loadingContainer} testID="session-athletes-empty">
+            <ThemedText
+              style={[styles.loadingText, { color: colors.secondaryText, textAlign: "center" }]}
+            >
+              No athletes yet. They will appear here once the start list is
+              published.
+            </ThemedText>
+          </View>
+        </View>
+      </View>
+    );
   }
 
   return (
