@@ -74,7 +74,7 @@ impl std::ops::Deref for LiftingResult {
     }
 }
 
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct AthleteSearchQuery {
     pub query: String,

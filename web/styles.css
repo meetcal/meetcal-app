@@ -484,6 +484,9 @@ a {
 .data-filters .data-sort .data-filter { width: 220px; }
 .data-status { margin: 22px 0; color: var(--text-secondary); }
 .data-status.error { color: #c43b3b; }
+.data-status.error p { margin: 0; }
+.data-retry-button { margin-top: 10px; min-height: 40px; padding: 8px 15px; border: 1px solid currentColor; border-radius: 9px; background: transparent; color: inherit; font-weight: 700; }
+.data-retry-button:hover { background: rgba(196, 59, 59, 0.08); }
 .data-help { margin: 10px 0 0; color: var(--text-secondary); font-size: 0.82rem; }
 .data-filters-secondary { margin-top: 22px; }
 .data-query-form { display: flex; flex-wrap: wrap; align-items: end; gap: 12px; }
