@@ -919,7 +919,11 @@ export const upsertEntryAthletes = internalMutation({
       Object.assign(match, values);
       counts.updated += 1;
     }
-    if (complete && !published && accepted.length > 0) {
+    // Any session information at all (even half a session, which reads as
+    // unscheduled) means a start list was loaded: its athletes need not be
+    // on Sport80's entries list, so nothing is pruned.
+    const startListLoaded = existing.some((a) => a.sessionNumber !== undefined || (a.sessionPlatform ?? '').trim() !== '');
+    if (complete && !startListLoaded && accepted.length > 0) {
       // Entrants the whole list no longer has: withdrawn before the meet.
       const withdrawn = stored.filter((a) => !claimed.has(a._id) && !hasSession(a) && !a.adaptive);
       if (!allowShrink && exceedsShrink(withdrawn.length, stored.length, ENTRY_PRUNE_LIMIT)) {

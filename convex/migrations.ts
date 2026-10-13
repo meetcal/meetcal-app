@@ -434,10 +434,25 @@ export const cleanupRosterRows = internalMutation({
           .query('meets')
           .withIndex('by_name', (q) => q.eq('name', meet))
           .first()) === null;
-      const doomed = rows.flatMap((row) => {
+      const candidates = rows.flatMap((row) => {
         const reason = rosterLeftover(row, rows, junkMeet);
         return reason === null ? [] : [{ row, reason }];
       });
+      // A nine-digit id another meet also holds is a real membership number,
+      // not one the old scraper minted per run (as `upsertEntryAthletes`
+      // judges it): kept.
+      const doomed = [];
+      for (const candidate of candidates) {
+        if (candidate.reason === 'stale one-off id') {
+          const elsewhere = await ctx.db
+            .query('athletes')
+            .withIndex('by_memberId', (q) => q.eq('memberId', candidate.row.memberId))
+            .filter((q) => q.neq(q.field('meet'), meet))
+            .first();
+          if (elsewhere) continue;
+        }
+        doomed.push(candidate);
+      }
       if (doomed.length === 0) continue;
       const reasons: Record<string, number> = {};
       for (const { reason } of doomed) reasons[reason] = (reasons[reason] ?? 0) + 1;

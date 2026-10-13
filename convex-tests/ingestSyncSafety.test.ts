@@ -272,6 +272,12 @@ describe('entries a list no longer has, and renamed or re-numbered entrants (#25
     expect(adaptive.rows('athletes').map((a) => a.name)).toEqual(['Ann', 'Adaptive Al']);
   });
 
+  it("never prunes a start list loaded with only half its sessions, whose athletes aren't on Sport80's list", async () => {
+    const { db, rows } = fakeDb({ athletes: [athlete('Start List Only', '4225', { sessionNumber: 3 }), athlete('Ann', '1')] });
+    expect(await upsert({ db }, { meet: 'Meet', rows: [entry('Ann', '1')], complete: true })).toMatchObject({ deleted: 0 });
+    expect(rows('athletes').map((a) => a.name)).toEqual(['Start List Only', 'Ann']);
+  });
+
   it('refuses to delete a large share of the entrants without allowShrink', async () => {
     const seed = () => fakeDb({ athletes: names(40).map((name, i) => athlete(name, String(i + 1))) });
     const list = names(20).map((name, i) => entry(name, String(i + 1)));
