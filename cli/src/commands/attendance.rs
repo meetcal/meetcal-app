@@ -1,5 +1,4 @@
 use std::collections::{BTreeMap, HashSet};
-use std::io::Write;
 
 use anyhow::{Result, bail};
 use clap::Parser;
@@ -12,6 +11,7 @@ use crate::utils::backend::{queries, query};
 use crate::utils::format::{date_range, us_date};
 use crate::utils::names::{MAX_NAME_PAGES, just_before, meet_names_between};
 use crate::utils::output::{self, Report};
+use crate::utils::progress::Progress;
 
 /// Meets `meets:attendance` counts per call (its limit).
 pub const ATTENDANCE_BATCH: usize = 8;
@@ -146,7 +146,7 @@ async fn all_meet_names() -> Result<Vec<String>> {
     let mut tasks = JoinSet::new();
     let total = RANGE_BOUNDARIES.len() + 1;
     let mut done = 0;
-    let show_progress = std::io::IsTerminal::is_terminal(&std::io::stderr());
+    let mut progress = Progress::new("Listing meets");
     for (from, before) in pending.by_ref().take(CONCURRENCY) {
         tasks.spawn(list_range("results", from, before));
     }
@@ -154,17 +154,12 @@ async fn all_meet_names() -> Result<Vec<String>> {
     while let Some(result) = tasks.join_next().await {
         names.extend(result??);
         done += 1;
-        if show_progress {
-            eprint!("\rListing meets… {}/{}", done.min(total), total);
-            let _ = std::io::stderr().flush();
-        }
+        progress.update(format!("{}/{}", done.min(total), total));
         if let Some((from, before)) = pending.next() {
             tasks.spawn(list_range("results", from, before));
         }
     }
-    if show_progress {
-        eprint!("\r\x1b[2K");
-    }
+    drop(progress);
     names.sort();
     names.dedup();
     Ok(names)

@@ -1,5 +1,3 @@
-use std::io::Write;
-
 use anyhow::{Result, bail};
 use clap::Parser;
 use comfy_table::Table;
@@ -9,6 +7,7 @@ use crate::types::lifting_results::LiftingResults;
 use crate::utils::athletes::results_between;
 use crate::utils::filters::{category, parse_date, unknown_federation};
 use crate::utils::output::{self, Format, Report};
+use crate::utils::progress::Progress;
 use crate::utils::stats::{
     Gender, QPOINTS_LABEL, SINCLAIR_LABEL, number, points, row_qpoints, row_sinclair,
 };
@@ -71,17 +70,9 @@ pub async fn run(args: ResultsArgs) -> Result<()> {
         adaptive: true,
     };
 
-    let show_progress = std::io::IsTerminal::is_terminal(&std::io::stderr());
-    let rows = results_between(&from, &to, |count| {
-        if show_progress {
-            eprint!("\rReading results… {count}");
-            let _ = std::io::stderr().flush();
-        }
-    })
-    .await?;
-    if show_progress {
-        eprint!("\r\x1b[2K");
-    }
+    let mut progress = Progress::new("Reading results");
+    let rows = results_between(&from, &to, |count| progress.update(count)).await?;
+    drop(progress);
 
     if let Some(error) = unknown_federation(
         filters.federation.as_deref(),
