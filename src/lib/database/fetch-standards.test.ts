@@ -71,4 +71,14 @@ describe("standardsResource", () => {
     await expect(fetchStandards()).rejects.toThrow("down");
     expect(mockSetOfflineCache).not.toHaveBeenCalled();
   });
+
+  it("shows an empty fresh answer but leaves the stored download untouched", async () => {
+    // The browse path shares the download's key; rows that all fail the per-row checks used to be
+    // persisted over a real download, which then read as "downloaded" offline.
+    mockGetOfflineCache.mockResolvedValue({ data: { u15: { men: [], women: [] }, youth: { men: [], women: [] }, junior: { men: [], women: [] }, senior: { men: [{ weightClass: "89kg", a: 300, b: 280 }], women: [] } }, lastSynced: 5 });
+    mockGetJsonArray.mockResolvedValue([row({ age_category: "Masters" })]);
+
+    await expect(fetchStandards()).resolves.toEqual({ u15: { men: [], women: [] }, youth: { men: [], women: [] }, junior: { men: [], women: [] }, senior: { men: [], women: [] } });
+    expect(mockSetOfflineCache).not.toHaveBeenCalled();
+  });
 });
