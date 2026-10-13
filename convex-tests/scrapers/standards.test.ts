@@ -1,3 +1,4 @@
+import { JOBS } from '../../convex/cronJobs';
 import { usawToday } from '../../convex/scrapers/standards';
 import { currentStandards, findStandardsPdfUrl, normalizeWeightClass, parseStandards, standardsPeriod } from '../../convex/scrapers/parse/standards';
 
@@ -53,6 +54,14 @@ describe('standards parser (port of usaw/standards_scraper)', () => {
     // 03:15 UTC on Aug 1 (the cron's time) is still July 31 in Colorado Springs.
     expect(usawToday(new Date('2027-08-01T03:15:00Z'))).toBe('2027-07-31');
     expect(usawToday(new Date('2027-08-01T07:00:00Z'))).toBe('2027-08-01');
+  });
+
+  it('runs after midnight in Colorado Springs, so a set taking effect that day is stored the same day', () => {
+    const [minute, hour] = JOBS.standards.schedule.split(' ').map(Number);
+    const at = (day: string) => new Date(`${day}T${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}:00Z`);
+    // Daylight time (August) and standard time (January).
+    expect(usawToday(at('2026-08-01'))).toBe('2026-08-01');
+    expect(usawToday(at('2027-01-01'))).toBe('2027-01-01');
   });
 
   it('reads the period a half names', () => {
