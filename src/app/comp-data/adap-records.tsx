@@ -17,6 +17,7 @@ import {
   View,
 } from "react-native";
 import { useScreenHorizontalInsets } from "@/hooks/useScreenInsets";
+import { formatReferenceKg } from "@/lib/reference-values";
 import { Palette } from "@/constants/Palette";
 
 type Gender = "Men" | "Women";
@@ -150,16 +151,13 @@ function AdaptiveRecordsScreenContent() {
               {record.weightClass}
             </ThemedText>
             <ThemedText style={dataTableStyles.cell}>
-              {record.snatchRecord}
-              kg
+              {formatReferenceKg(record.snatchRecord)}
             </ThemedText>
             <ThemedText style={dataTableStyles.cell}>
-              {record.cjRecord}
-              kg
+              {formatReferenceKg(record.cjRecord)}
             </ThemedText>
             <ThemedText style={dataTableStyles.cell}>
-              {record.totalRecord}
-              kg
+              {formatReferenceKg(record.totalRecord)}
             </ThemedText>
           </View>
         )}

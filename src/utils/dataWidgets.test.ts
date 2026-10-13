@@ -115,6 +115,22 @@ describe("data widget payloads", () => {
       trailing: "300kg",
     });
 
+    // U15 has no B standard; the table answers 0 for it.
+    expect(
+      buildStandardsWidgetPayload(
+        {
+          u15: {
+            men: [{ weightClass: "55", a: 184, b: 0 }],
+          },
+        },
+        { gender: "men", ageGroup: "u15" },
+      ).rows[0],
+    ).toMatchObject({
+      leading: "55",
+      title: "184kg",
+      trailing: "—",
+    });
+
     const rankingsPayload = buildIntlRankingsWidgetPayload(
       Array.from({ length: 8 }, (_, index) => ({
         ranking: index + 1,

@@ -58,12 +58,24 @@ describe("standardsResource", () => {
     const standards = await fetchStandards();
 
     expect(standards.senior.men).toEqual([
-      { weightClass: "67kg", a: 0, b: 0 },
+      { weightClass: "67kg", a: null, b: null },
       { weightClass: "89kg", a: 300, b: 280 },
     ]);
     expect(standards.senior.women).toEqual([]);
     expect(Object.keys(standards).sort()).toEqual(["junior", "senior", "u15", "youth"]);
     expect(mockSetOfflineCache).toHaveBeenCalledWith("@offline_cache/standards", standards);
+  });
+
+  // U15 has no B standard; the table answers 0, which the screen, widget and
+  // Siri show as "—" rather than "0kg".
+  it("keeps a U15 row whose B standard is 0", async () => {
+    mockGetJsonArray.mockResolvedValue([
+      row({ age_category: "U15", weight_class: "55kg", standard_a: 184, standard_b: 0 }),
+    ]);
+
+    const standards = await fetchStandards();
+
+    expect(standards.u15.men).toEqual([{ weightClass: "55kg", a: 184, b: 0 }]);
   });
 
   it("rejects when the API fails, leaving the cached copy to the screen", async () => {

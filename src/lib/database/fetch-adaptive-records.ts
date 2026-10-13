@@ -27,9 +27,9 @@ async function fetchAdaptiveRecordsForGender(gender: Gender): Promise<WeightClas
       weightClass: row.weight_class.endsWith('kg')
         ? row.weight_class
         : `${row.weight_class}kg`,
-      snatchRecord: row.snatch ?? 0,
-      cjRecord: row.cj ?? 0,
-      totalRecord: row.total ?? 0,
+      snatchRecord: row.snatch,
+      cjRecord: row.cj,
+      totalRecord: row.total,
     }));
 
   records.sort((a, b) => weightClassSort(a.weightClass, b.weightClass));
