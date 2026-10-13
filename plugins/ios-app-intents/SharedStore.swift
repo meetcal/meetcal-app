@@ -32,6 +32,12 @@ enum SharedStore {
         MeetCalShared.upcomingSavedSessions(in: defaults)
     }
 
+    /// See `MeetCalShared.hasPremiumEntitlementHint`: false unless the app
+    /// last saw the premium entitlement.
+    static var hasPremiumEntitlement: Bool {
+        MeetCalShared.hasPremiumEntitlementHint(in: defaults)
+    }
+
     static func qualifyingTotalsPayload() -> SharedDataPayload? {
         MeetCalShared.dataPayload(forKey: Key.qualifyingTotals, in: defaults)
     }
