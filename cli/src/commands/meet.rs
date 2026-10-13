@@ -1,6 +1,6 @@
 use crate::utils::output::{self, Report};
 use crate::{
-    types::athletes::{Athletes, Platform},
+    types::athletes::Athletes,
     types::meets::NamedBests,
     utils::{
         backend::{queries, query},
@@ -30,9 +30,10 @@ pub struct MeetArgs {
     #[arg(long, short = 's')]
     pub session_number: Option<String>,
 
-    /// Session platform to search for
+    /// Session platform, as the meet names it, e.g. Red, White, Blue, Stars, Stripes, Rogue or
+    /// Gold (case-insensitive)
     #[arg(long, short = 'p')]
-    pub session_platform: Option<Platform>,
+    pub session_platform: Option<String>,
 
     /// Leave out each athlete's past-year bests (one fewer lookup per 100 athletes)
     #[arg(long)]
@@ -43,14 +44,7 @@ pub async fn run(args: MeetArgs) -> Result<()> {
     let meet_name = args.name.clone();
     let session_number = args.session_number.clone();
     let narrowed = session_number.is_some() || args.session_platform.is_some();
-    let session_platform = args.session_platform.clone().map(|p| match p {
-        Platform::Red => String::from("Red"),
-        Platform::White => String::from("White"),
-        Platform::Blue => String::from("Blue"),
-        Platform::Stars => String::from("Stars"),
-        Platform::Stripes => String::from("Stripes"),
-        Platform::Rogue => String::from("Rogue"),
-    });
+    let session_platform = session_platform(args.session_platform.as_deref())?;
 
     let mut query_args = serde_json::json!({ "meet": meet_name });
     if let Some(session_number) = session_number {
@@ -65,15 +59,22 @@ pub async fn run(args: MeetArgs) -> Result<()> {
 
     let response: Vec<Athletes> = query(queries::MEET_ATHLETES_SESSIONS, &query_args).await?;
     if response.is_empty() {
-        let message = if narrowed {
-            format!("No athletes found in that session of meet \"{meet_name}\"")
+        // An empty session and a misspelled meet both answer nothing: the whole start list
+        // tells them apart.
+        let roster: Vec<Athletes> = if narrowed {
+            query(
+                queries::MEET_ATHLETES_SESSIONS,
+                &serde_json::json!({ "meet": meet_name }),
+            )
+            .await?
         } else {
-            format!("No athletes found for meet \"{meet_name}\"")
+            Vec::new()
         };
-        if narrowed {
-            bail!(message);
+        if roster.is_empty() {
+            let message = format!("No athletes found for meet \"{meet_name}\"");
+            return Err(not_found(NameKind::Meet, &meet_name, message).await);
         }
-        return Err(not_found(NameKind::Meet, &meet_name, message).await);
+        bail!(empty_session_message(&meet_name, &roster));
     }
 
     let bests = if args.no_bests {
@@ -89,6 +90,20 @@ pub async fn run(args: MeetArgs) -> Result<()> {
     output::emit(report(&response, bests.as_ref()));
 
     Ok(())
+}
+
+/// The platform filter to send, trimmed. Platforms are the meet's own names (Red, Gold,
+/// Platform A); the server matches them ignoring case. A blank one is an error: dropping it
+/// would print the whole roster as though it matched.
+pub fn session_platform(platform: Option<&str>) -> Result<Option<String>> {
+    let Some(platform) = platform else {
+        return Ok(None);
+    };
+    let platform = platform.trim();
+    if platform.is_empty() {
+        bail!("Session platform must not be blank: give the platform's name, e.g. Red or Gold");
+    }
+    Ok(Some(platform.to_string()))
 }
 
 /// The start list: shown with US dates, 12-hour times, and the session, platform and past-year
@@ -186,6 +201,42 @@ pub fn report(athletes: &[Athletes], bests: Option<&HashMap<String, NamedBests>>
     Report::new().table_with_data("start_list", table, data)
 }
 
+/// Why a session filter found no one at a meet that has a start list: the sessions it does have,
+/// one line per session number with its platforms.
+pub fn empty_session_message(meet: &str, roster: &[Athletes]) -> String {
+    let mut sessions: std::collections::BTreeMap<u64, Vec<String>> = Default::default();
+    for athlete in roster {
+        let Some(number) = athlete.session_number else {
+            continue;
+        };
+        let platforms = sessions.entry(number as u64).or_default();
+        if let Some(platform) = athlete.session_platform.as_deref()
+            && !platforms.iter().any(|known| known == platform)
+        {
+            platforms.push(platform.to_string());
+        }
+    }
+    let message = format!("No athletes found in that session of meet \"{meet}\"");
+    if sessions.is_empty() {
+        return format!("{message}; its athletes have no sessions yet.");
+    }
+    let list: Vec<String> = sessions
+        .into_iter()
+        .map(|(number, mut platforms)| {
+            platforms.sort();
+            if platforms.is_empty() {
+                format!("  {number}")
+            } else {
+                format!("  {number}: {}", platforms.join(", "))
+            }
+        })
+        .collect();
+    format!(
+        "{message}. Its sessions (--session-number: --session-platform):\n{}",
+        list.join("\n")
+    )
+}
+
 /// `1 · Red`, whichever part the athlete has, or `Not set`.
 pub fn session_label(number: Option<f64>, platform: Option<&str>) -> String {
     match (number, platform) {
@@ -216,6 +267,17 @@ mod tests {
             "wso": null
         }
     ]"#;
+
+    #[test]
+    fn a_blank_platform_is_an_error_not_the_whole_roster() {
+        assert!(session_platform(Some("  ")).is_err());
+        assert!(session_platform(Some("")).is_err());
+        assert_eq!(session_platform(None).unwrap(), None);
+        assert_eq!(
+            session_platform(Some(" Red ")).unwrap().as_deref(),
+            Some("Red")
+        );
+    }
 
     #[test]
     fn parse_backend_response() {
@@ -269,6 +331,31 @@ mod tests {
         assert_eq!(athletes[0].date.as_deref(), Some("2026-10-03"));
         assert_eq!(athletes[0].weigh_in_time.as_deref(), Some("08:00"));
         assert_eq!(athletes[0].start_time.as_deref(), Some("10:00"));
+    }
+
+    #[test]
+    fn an_empty_session_lists_the_meet_s_sessions() {
+        let rows = r#"[
+            { "adaptive": false, "age": 31, "club": "C", "entry_total": 180, "gender": "Women",
+              "member_id": "1", "name": "A", "session_number": 2, "session_platform": "Gold",
+              "weight_class": "63kg", "wso": null },
+            { "adaptive": false, "age": 31, "club": "C", "entry_total": 180, "gender": "Women",
+              "member_id": "2", "name": "B", "session_number": 1, "session_platform": "Red",
+              "weight_class": "63kg", "wso": null },
+            { "adaptive": false, "age": 31, "club": "C", "entry_total": 180, "gender": "Women",
+              "member_id": "3", "name": "C", "session_number": 2, "session_platform": "Gold",
+              "weight_class": "63kg", "wso": null }
+        ]"#;
+        let roster: Vec<Athletes> = serde_json::from_str(rows).unwrap();
+        assert_eq!(
+            empty_session_message("Meet", &roster),
+            "No athletes found in that session of meet \"Meet\". Its sessions \
+             (--session-number: --session-platform):\n  1: Red\n  2: Gold"
+        );
+        assert_eq!(
+            empty_session_message("Meet", &[]),
+            "No athletes found in that session of meet \"Meet\"; its athletes have no sessions yet."
+        );
     }
 
     #[test]

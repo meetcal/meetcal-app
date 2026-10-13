@@ -11,6 +11,10 @@ import {
   View,
 } from "react-native";
 import { BlackAlpha, Palette } from "@/constants/Palette";
+import { useScreenHorizontalInsets } from "@/hooks/useScreenInsets";
+
+/** Space between the dialog and the screen edge (or the Duo side band). */
+const BACKDROP_PADDING = 24;
 
 export function UpdateNotification() {
   const {
@@ -21,6 +25,7 @@ export function UpdateNotification() {
     dismissUpdate,
   } = useOTAUpdates();
   const colors = useAppColors();
+  const screenInsets = useScreenHorizontalInsets();
 
   const visible = isUpdateAvailable || !!error;
 
@@ -37,7 +42,19 @@ export function UpdateNotification() {
       statusBarTranslucent
       {...(Platform.OS === "ios" && { presentationStyle: "overFullScreen" })}
     >
-      <Pressable style={styles.backdrop} onPress={() => { if (!isDownloading) dismissUpdate(); }}>
+      <Pressable
+        testID="update-notification-backdrop"
+        style={[
+          styles.backdrop,
+          {
+            // Mounted in the root layout, above every screen's padding:
+            // clear the iPhone Duo side band here.
+            paddingLeft: BACKDROP_PADDING + screenInsets.paddingLeft,
+            paddingRight: BACKDROP_PADDING + screenInsets.paddingRight,
+          },
+        ]}
+        onPress={() => { if (!isDownloading) dismissUpdate(); }}
+      >
         <Pressable
           style={[styles.modalCard, { backgroundColor: colors.card }]}
           onPress={(e) => e.stopPropagation()}
@@ -114,7 +131,7 @@ const styles = StyleSheet.create({
     backgroundColor: BlackAlpha[50],
     justifyContent: "center",
     alignItems: "center",
-    padding: 24,
+    paddingVertical: BACKDROP_PADDING,
   },
   modalCard: {
     width: "100%",

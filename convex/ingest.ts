@@ -848,6 +848,9 @@ const entryRow = v.object({
   weightClass: v.string(),
   entryTotal: v.number(),
   meet: v.string(),
+  // The member's WSO from their other registrations (Sport80's entries list
+  // has none, #345); absent when none is known, which never clears one.
+  wso: v.optional(v.string()),
 });
 
 const isPlaceholderMemberId = (id: string) => id === '' || id.startsWith('noid:');
@@ -993,6 +996,9 @@ export const upsertEntryAthletes = internalMutation({
         gender,
         weightClass: row.weightClass,
         entryTotal: row.entryTotal,
+        // Set when known, never cleared: a start list loaded by hand can
+        // carry a WSO the entries list does not.
+        ...(row.wso?.trim() ? { wso: row.wso.trim() } : {}),
       };
       if (!match && published) {
         counts.notOnStartList += 1;
@@ -1007,7 +1013,15 @@ export const upsertEntryAthletes = internalMutation({
         continue;
       }
       if (hasSession(match)) {
-        counts.sessionSkipped += 1;
+        // A placed entrant keeps its start list, but gains a WSO it lacks:
+        // that undoes nothing the start list said.
+        if (values.wso && (match.wso ?? '').trim() === '') {
+          await ctx.db.patch(match._id, { wso: values.wso });
+          match.wso = values.wso;
+          counts.updated += 1;
+        } else {
+          counts.sessionSkipped += 1;
+        }
         continue;
       }
       const changed = (Object.keys(values) as (keyof typeof values)[]).some((key) => match[key] !== values[key]);

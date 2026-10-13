@@ -33,6 +33,8 @@ pub async fn run(args: H2hArgs) -> Result<()> {
     }
     let first = history(&args.first).await?;
     let second = history(&args.second).await?;
+    // UTC, as the past-year bests in `meet` and `qualify` (and the app's start list) count it,
+    // so the three agree.
     let cutoff = cutoff_date(Utc::now().date_naive(), YEAR_BESTS_YEARS);
     output::emit(report(&first, &second, &cutoff));
     Ok(())
