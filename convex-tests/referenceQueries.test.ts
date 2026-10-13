@@ -1,7 +1,9 @@
 import { computeAdaptiveRecords, RANKING_DIVISIONS } from '../convex/lib/referenceData';
 import { natKey, REF_VIEWS } from '../convex/lib/viewKeys';
 import { jsonChunks, writeView } from '../convex/lib/views';
-import { clubAthletes, clubs, nationalRankings, wsoAthletes } from '../convex/reference';
+import { clubAthletes, clubMeetStats, clubs, nationalRankings, wsoAthletes } from '../convex/reference';
+import { storeClubs } from '../convex/views';
+import { clubKey, clubLabels } from '../convex/lib/clubs';
 import { fakeDb, handlerOf } from './fakeDb';
 
 const STAMP = [{ table: 'lifting_results', version: 1 }];
@@ -94,7 +96,7 @@ describe('club and WSO athlete lists', () => {
     const rows = (await query(clubAthletes, fake.db, { club: 'Big Club' })) as { name: string; member_id: string }[];
     expect(Array.isArray(rows)).toBe(true);
     expect(rows).toHaveLength(8192);
-    expect(rows[0]).toEqual({ name: 'Lifter 08191', meet: 'Meet 31', club: 'Big Club', gender: 'Female', weight_class: '64', entry_total: 150, member_id: '8191' });
+    expect(rows[0]).toEqual({ name: 'Lifter 08191', meet: 'Meet 31', meet_date: null, club: 'Big Club', gender: 'Female', weight_class: '64', entry_total: 150, member_id: '8191' });
     expect(parse(await query(wsoAthletes, fake.db, { wso: 'California' }))).toHaveLength(8192);
   });
 
@@ -136,3 +138,70 @@ describe('adaptive records', () => {
     expect(fake.reads.count).toBe(2);
   });
 });
+
+describe('one club under several spellings (#363) and its meets by date (#341)', () => {
+  const SPELLINGS = ['Ong Weightlifting', 'ONG weightlifting', 'ONG Weightlifting', 'Rose City', 'RoseCity', 'Rose City.', 'Boise Barbell'];
+  const entry = (name: string, club: string, meet: string) => ({ name, club, meet, gender: 'Men', weightClass: '89', entryTotal: 200, memberId: name, age: 40, adaptive: false });
+
+  async function seeded() {
+    const fake = fakeDb({
+      athletes: [
+        entry('Al', 'Ong Weightlifting', '2026 USA Masters Nationals'),
+        entry('Bo', 'ONG weightlifting', '2026 USA Masters Nationals'),
+        entry('Cy', 'ONG Weightlifting', '2025 Howard Cohen'),
+        entry('Al', 'ONG Weightlifting', '2025 Howard Cohen'),
+        entry('Di', 'Rose City', 'Arnold'),
+        entry('Ed', 'Boise Barbell', 'Arnold'),
+      ],
+      meets: [
+        { name: '2026 USA Masters Nationals', startDate: '2026-03-27', endDate: '2026-03-29' },
+        { name: '2025 Howard Cohen', startDate: '2025-12-11', endDate: '2025-12-14' },
+      ],
+    });
+    await handlerOf<{ clubs: string[]; sources: unknown }>(storeClubs)({ db: fake.db }, { clubs: SPELLINGS, sources: [{ table: 'athletes', version: 1 }] });
+    return fake;
+  }
+
+  it('fold case, spaces and punctuation into one key, and list one label per club', () => {
+    expect(clubKey('ONG  weightlifting')).toBe(clubKey('Ong Weightlifting'));
+    expect(clubKey('RoseCity')).toBe(clubKey('Rose City.'));
+    expect(clubKey('FXT BB')).not.toBe(clubKey('FXT Barbell'));
+    expect(clubLabels(SPELLINGS)).toHaveLength(3);
+    expect(clubLabels(['ATLANTA PERFORMANCE', 'atlanta performance', 'Atlanta Performance'])).toEqual(['Atlanta Performance']);
+  });
+
+  it('list each club once, and answer its registrations under every spelling, with meet dates', async () => {
+    const fake = await seeded();
+    const listed = parse(await query(clubs, fake.db, {})) as string[];
+    expect(listed).toHaveLength(3);
+    expect(listed).toContain('Boise Barbell');
+
+    const unpaged = (await query(clubAthletes, fake.db, { club: 'ong weightlifting' })) as { name: string; club: string; meet: string; meet_date: string | null }[];
+    expect(unpaged.map((r) => [r.name, r.club, r.meet_date]).sort()).toEqual([
+      ['Al', 'ONG Weightlifting', '2025-12-11'],
+      ['Al', 'Ong Weightlifting', '2026-03-27'],
+      ['Bo', 'ONG weightlifting', '2026-03-27'],
+      ['Cy', 'ONG Weightlifting', '2025-12-11'],
+    ]);
+    const rose = (await query(clubAthletes, fake.db, { club: 'RoseCity' })) as { meet_date: string | null }[];
+    expect(rose).toEqual([expect.objectContaining({ name: 'Di', meet_date: null })]);
+
+    // Paged: one spelling after another until done.
+    const seen: string[] = [];
+    let cursor: string | null = null;
+    for (let pages = 0; pages < 10; pages += 1) {
+      const page = (await query(clubAthletes, fake.db, { club: 'Ong Weightlifting', cursor })) as { json: string; cursor: string; isDone: boolean };
+      seen.push(...(JSON.parse(page.json) as { name: string; club: string }[]).map((r) => `${r.name}|${r.club}`));
+      if (page.isDone) break;
+      cursor = page.cursor;
+    }
+    expect(seen.sort()).toEqual(['Al|ONG Weightlifting', 'Al|Ong Weightlifting', 'Bo|ONG weightlifting', 'Cy|ONG Weightlifting']);
+  });
+
+  it("count a club's athletes at a meet under every spelling", async () => {
+    const fake = await seeded();
+    const stats = (await query(clubMeetStats, fake.db, { club: 'ONG Weightlifting', meet: '2026 USA Masters Nationals' })) as { total_athletes: number };
+    expect(stats.total_athletes).toBe(2);
+  });
+});
+

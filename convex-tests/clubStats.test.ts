@@ -364,3 +364,32 @@ describe('club meet stats from Sport80 rows', () => {
     expect(clubStats(rows, 'South', 2)).toMatchObject({ gold_medals: 0, silver_medals: 3, bronze_medals: 1 });
   });
 });
+
+describe('club meet stats for two lifters of one name (#247)', () => {
+  const lifter = (club: string, weightClass: string, age: string, snatch: number, cj: number): [Row, Row] => [
+    { name: 'John Smith', meet: 'Open', club, gender: 'M', weightClass },
+    { ...result('John Smith', snatch, cj), age },
+  ];
+
+  it("credits each lifter's result to their own club, matched on the class their division names", async () => {
+    const [x, xResult] = lifter('Club X', '61', "Open Men's 61kg", 110, 140);
+    const [y, yResult] = lifter('Club Y', '89', "Open Men's 89kg", 130, 170);
+    const ctx = fakeCtx({ athletes: [x, y], lifting_results: [xResult, yResult] });
+    const rows = await computeStatsRows(ctx, 'Open');
+    expect(rows.map((r) => [r.club, r.weight_class, r.total]).sort()).toEqual([
+      ['Club X', '61', 250],
+      ['Club Y', '89', 300],
+    ]);
+    expect(clubStats(rows, 'Club X', 1).athlete_results.map((r) => [r.weight_class, r.total, r.total_medal])).toEqual([['61', 250, 'gold']]);
+    expect(clubStats(rows, 'Club Y', 1).athlete_results.map((r) => [r.weight_class, r.total, r.total_medal])).toEqual([['89', 300, 'gold']]);
+  });
+
+  it('reads a superheavy class either way round, and falls back to the first entry when no class matches', async () => {
+    const [x, xResult] = lifter('Club X', '+109', "Open Men's 109+kg", 150, 190);
+    const [y] = lifter('Club Y', '89', "Open Men's 89kg", 0, 0);
+    expect((await computeStatsRows(fakeCtx({ athletes: [y, x], lifting_results: [xResult] }), 'Open')).map((r) => r.club)).toEqual(['Club X']);
+    const [, other] = lifter('Club Z', '96', "Open Men's 96kg", 140, 170);
+    expect((await computeStatsRows(fakeCtx({ athletes: [x, y], lifting_results: [other] }), 'Open')).map((r) => r.club)).toEqual(['Club X']);
+  });
+});
+

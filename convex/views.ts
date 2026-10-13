@@ -27,7 +27,6 @@ import {
   ADAPTIVE_RECORDS_SEASON_START,
   computeAdaptiveRecords,
   clubNamesPage,
-  distinctCollated,
   computeIntlRankings,
   bestTotalPerAthlete,
   nationalRankingPage,
@@ -76,6 +75,7 @@ import {
   type SourceVersion,
   viewKeysWithPrefix as keysWithPrefix,
 } from './lib/views';
+import { clubLabels, clubSpellingGroups } from './lib/clubs';
 import { directoryNames, directoryText, nameBigrams, shardDirectory } from './lib/directory';
 
 // Builders and refresh for the views in `lib/viewKeys.ts`. Every builder is a
@@ -348,7 +348,9 @@ export const storeClubs = internalMutation({
   args: { clubs: v.array(v.string()), sources: v.array(v.object({ table: v.string(), version: v.number() })) },
   returns: v.null(),
   handler: async (ctx, { clubs, sources }) => {
-    await writeView(ctx, REF_VIEWS.clubs, jsonChunks(distinctCollated(clubs)), sources);
+    // One label per club, and every spelling of each (#363).
+    await writeView(ctx, REF_VIEWS.clubs, jsonChunks(clubLabels(clubs)), sources);
+    await writeView(ctx, REF_VIEWS.club_spellings, jsonChunks(clubSpellingGroups(clubs)), sources);
     return null;
   },
 });
@@ -387,7 +389,7 @@ async function readClubs(ctx: ActionCtx): Promise<{ clubs: string[]; sources: So
 export const computeClubs = internalAction({
   args: {},
   returns: v.string(),
-  handler: async (ctx): Promise<string> => JSON.stringify(distinctCollated((await readClubs(ctx)).clubs)),
+  handler: async (ctx): Promise<string> => JSON.stringify(clubLabels((await readClubs(ctx)).clubs)),
 });
 
 export const buildWso = internalMutation({

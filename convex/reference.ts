@@ -2,7 +2,8 @@ import { v } from 'convex/values';
 import { query, type QueryCtx } from './_generated/server';
 import { revalidated, revalidatedText, type Revalidated } from './lib/etag';
 import type { Doc } from './_generated/dataModel';
-import { clubAthleteCount, clubStats, computeStatsRows, readStatsViewItems } from './lib/meetData';
+import { clubKey, clubLabels } from './lib/clubs';
+import { clubAthleteCount, clubStats, computeStatsRows, meetByName, readStatsViewItems } from './lib/meetData';
 import {
   ADAPTIVE_RECORDS_SEASON_START,
   clubNamesPage,
@@ -14,7 +15,6 @@ import {
   computeStandards,
   computeWsoList,
   computeWsoRows,
-  distinctCollated,
   filterWsoRows,
   nationalRankingPage,
   requireAdaptiveGender,
@@ -25,7 +25,7 @@ import {
 import { athleteGenderLabel } from './lib/normalize';
 import { compareCollated } from './lib/sort';
 import { adaptiveKey, ADAPTIVE_VIEW_ARGS, meetKey, natKey, REF_VIEWS, wsoKey } from './lib/viewKeys';
-import { readFreshView, readViewAnyAge } from './lib/views';
+import { readFreshView, readViewAnyAge, readViewJsonAnyAge } from './lib/views';
 import { apiError, requireNonEmpty } from './lib/validation';
 
 // Reference data and clubs: each query answers the JSON of the Rust route of
@@ -182,15 +182,31 @@ export const adaptiveRecords = query({
   },
 });
 
-/** `GET /clubs`: distinct non-empty club names. */
+/**
+ * `GET /clubs`: one name per club, however many ways its registrants spelled
+ * it (`clubLabels`, #363); the club answers below take any spelling.
+ */
 export const clubs = query({
   args: { ifNoneMatch },
   handler: async (ctx, args) =>
     await viewAnyAgeOrBounded(ctx, REF_VIEWS.clubs, args.ifNoneMatch, async () => {
       const page = await clubNamesPage(ctx, null);
-      return page.after === null ? distinctCollated(page.clubs) : null;
+      return page.after === null ? clubLabels(page.clubs) : null;
     }),
 });
+
+/**
+ * Every stored spelling of `club` (`clubKey`), the one asked for first, from
+ * the club spellings view whatever its age: a spelling first registered
+ * since the last build is missing for seconds, and the one asked for is
+ * always read.
+ */
+export async function clubSpellings(ctx: QueryCtx, club: string): Promise<string[]> {
+  const text = await readViewJsonAnyAge(ctx, REF_VIEWS.club_spellings);
+  const key = clubKey(club);
+  const group = text === null ? undefined : (JSON.parse(text) as [string, string[]][]).find(([k]) => k === key)?.[1];
+  return [club, ...(group ?? []).filter((spelling) => spelling !== club)];
+}
 
 /** Registrations per page of `clubAthletes` / `wsoAthletes`. */
 const ATHLETE_PAGE_SIZE = 2000;
@@ -221,6 +237,20 @@ function clubAthleteRow(r: Doc<'athletes'>) {
   };
 }
 
+/** The start date of each distinct meet of `rows`, one meet read each. */
+async function meetDatesOf(ctx: QueryCtx, rows: readonly Doc<'athletes'>[]): Promise<Map<string, string | null>> {
+  const meets = [...new Set(rows.map((r) => r.meet))];
+  const dates = await Promise.all(meets.map(async (meet) => (await meetByName(ctx, meet))?.startDate ?? null));
+  return new Map(meets.map((meet, i) => [meet, dates[i]]));
+}
+
+async function clubAthleteRows(ctx: QueryCtx, rows: Doc<'athletes'>[]) {
+  const meetDates = await meetDatesOf(ctx, rows);
+  // The meet's first day, for listing a club's meets newest first (#341);
+  // null for a roster with no meet row.
+  return rows.sort(namesDescending).map((r) => ({ ...clubAthleteRow(r), meet_date: meetDates.get(r.meet) ?? null }));
+}
+
 const namesDescending = (a: Doc<'athletes'>, b: Doc<'athletes'>) => compareCollated(b.name, a.name);
 
 /**
@@ -229,7 +259,16 @@ const namesDescending = (a: Doc<'athletes'>, b: Doc<'athletes'>) => compareColla
  * club entered (the app lists a club's meets from this answer, so none goes
  * missing), then the most recently written for the rest.
  */
-async function unpagedClubAthletes(ctx: QueryCtx, club: string): Promise<Doc<'athletes'>[]> {
+async function unpagedClubAthletes(ctx: QueryCtx, spellings: readonly string[]): Promise<Doc<'athletes'>[]> {
+  const rows: Doc<'athletes'>[] = [];
+  for (const club of spellings) {
+    if (rows.length >= UNPAGED_CLUB_ATHLETE_LIMIT) break;
+    rows.push(...(await unpagedSpellingAthletes(ctx, club)).slice(0, UNPAGED_CLUB_ATHLETE_LIMIT - rows.length));
+  }
+  return rows;
+}
+
+async function unpagedSpellingAthletes(ctx: QueryCtx, club: string): Promise<Doc<'athletes'>[]> {
   const recent = await ctx.db
     .query('athletes')
     .withIndex('by_club', (q) => q.eq('club', club))
@@ -257,25 +296,54 @@ async function unpagedClubAthletes(ctx: QueryCtx, club: string): Promise<Doc<'at
 }
 
 /**
- * `GET /clubs/athletes`: a club's entries across meets, names descending.
+ * Where a paged `clubAthletes` is: the spelling it is reading (an index into
+ * `clubSpellings`) and its cursor there. A cursor from before spellings were
+ * read (a bare Convex cursor) is the first spelling's: the one asked for.
+ */
+function clubCursor(cursor: string | null): { spelling: number; cursor: string | null } {
+  if (cursor === null) return { spelling: 0, cursor: null };
+  try {
+    const parsed: unknown = JSON.parse(cursor);
+    if (Array.isArray(parsed) && parsed[0] === 'club' && Number.isInteger(parsed[1]) && (typeof parsed[2] === 'string' || parsed[2] === null)) {
+      return { spelling: parsed[1] as number, cursor: parsed[2] as string | null };
+    }
+  } catch {
+    // A bare Convex cursor.
+  }
+  return { spelling: 0, cursor };
+}
+
+/**
+ * `GET /clubs/athletes`: a club's entries across meets, names descending,
+ * under every spelling of the club (`clubSpellings`, #363), each with its
+ * meet's date (`meet_date`).
  *
  * With `cursor` (null for the first page) it answers a page,
  * `{ json, cursor, isDone }`: call again with `cursor` until `isDone`. Each
- * page is in name order; pages are not merged, and a roster replaced while a
- * client pages can appear twice. Without it (clients that predate paging),
- * the plain array of `unpagedClubAthletes`.
+ * page is in name order and holds one spelling's entries; pages are not
+ * merged, and a roster replaced while a client pages can appear twice.
+ * Without it (clients that predate paging), the plain array of
+ * `unpagedClubAthletes`.
  */
 export const clubAthletes = query({
   args: { club: v.string(), cursor: athleteCursor },
   handler: async (ctx, args) => {
     requireNonEmpty('club', args.club);
-    const rows = ctx.db.query('athletes').withIndex('by_club', (q) => q.eq('club', args.club));
+    const spellings = await clubSpellings(ctx, args.club);
     if (args.cursor !== undefined) {
-      const page = await rows.paginate({ cursor: args.cursor, numItems: ATHLETE_PAGE_SIZE });
-      const json = JSON.stringify(page.page.sort(namesDescending).map(clubAthleteRow));
-      return { json, cursor: page.continueCursor, isDone: page.isDone };
+      const at = clubCursor(args.cursor);
+      const club = spellings[at.spelling];
+      if (club === undefined) return { json: '[]', cursor: JSON.stringify(['club', at.spelling, null]), isDone: true };
+      const page = await ctx.db
+        .query('athletes')
+        .withIndex('by_club', (q) => q.eq('club', club))
+        .paginate({ cursor: at.cursor, numItems: ATHLETE_PAGE_SIZE });
+      const json = JSON.stringify(await clubAthleteRows(ctx, page.page));
+      const last = at.spelling + 1 >= spellings.length;
+      if (page.isDone && !last) return { json, cursor: JSON.stringify(['club', at.spelling + 1, null]), isDone: false };
+      return { json, cursor: JSON.stringify(['club', at.spelling, page.continueCursor]), isDone: page.isDone };
     }
-    return (await unpagedClubAthletes(ctx, args.club)).sort(namesDescending).map(clubAthleteRow);
+    return await clubAthleteRows(ctx, await unpagedClubAthletes(ctx, spellings));
   },
 });
 
@@ -312,15 +380,21 @@ export const clubMeetStats = query({
     const statsView = await readFreshView(ctx, meetKey(meet, 'stats'));
     if (statsView) {
       const { rows, club_counts } = readStatsViewItems(await statsView.items());
-      return clubStats(rows, club, club_counts.find(([name]) => name === club)?.[1] ?? 0);
+      // Counts are keyed by `clubKey`; a view built before that holds one per spelling.
+      const key = clubKey(club);
+      const count = club_counts.filter(([name]) => clubKey(name) === key).reduce((sum, [, n]) => sum + n, 0);
+      return clubStats(rows, club, count);
     }
-    const [rows, roster] = await Promise.all([
+    const spellings = await clubSpellings(ctx, club);
+    const [rows, ...rosters] = await Promise.all([
       computeStatsRows(ctx, meet, club),
-      ctx.db
-        .query('athletes')
-        .withIndex('by_club_and_meet', (q) => q.eq('club', club).eq('meet', meet))
-        .collect(),
+      ...spellings.map((spelling) =>
+        ctx.db
+          .query('athletes')
+          .withIndex('by_club_and_meet', (q) => q.eq('club', spelling).eq('meet', meet))
+          .collect(),
+      ),
     ]);
-    return clubStats(rows, club, clubAthleteCount(roster, club));
+    return clubStats(rows, club, clubAthleteCount(rosters.flat(), club));
   },
 });

@@ -72,6 +72,9 @@ export const REF_VIEWS = {
   qualifying_totals: 'ref|qualifying_totals',
   intl_rankings: 'ref|intl_rankings',
   clubs: 'ref|clubs',
+  // Every stored spelling of each club, `[clubKey, spellings][]`, for the
+  // club answers to read every spelling of the one asked for (#363).
+  club_spellings: 'ref|club_spellings',
   wso_list: 'ref|wso_list',
 } as const;
 
@@ -197,6 +200,7 @@ const REF_VIEW_TABLES: Record<string, string> = {
   [REF_VIEWS.intl_rankings]: 'intl_rankings',
   // The club list is every roster's clubs; roster writes leave this hint.
   [REF_VIEWS.clubs]: 'athletes',
+  [REF_VIEWS.club_spellings]: 'athletes',
   [REF_VIEWS.wso_list]: 'wso_records',
 };
 
