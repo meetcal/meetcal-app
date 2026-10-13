@@ -19,6 +19,7 @@ import {
   storageFaultArb,
   transportFaultArb,
   type ChaosTransport,
+  type StorageFault,
   type TransportFault,
 } from '@/test-support/chaos';
 
@@ -172,13 +173,36 @@ function backend(names: readonly string[], state: ServerState): Transport {
     state.inFlight += 1;
     state.maxInFlight = Math.max(state.maxInFlight, state.inFlight);
     try {
-      await new Promise((resolve) => setTimeout(resolve, SERVER_LATENCY_MS));
+      // Abortable, as fetch is: a request the client timed out (and so
+      // aborted) is no longer in flight for it. Ignoring the abort counted a
+      // batch whose answer was due on the very millisecond of the timeout as
+      // still running when the next batch started.
+      await latency(call.signal);
       return await rows(call);
     } finally {
       state.inFlight -= 1;
       if (byNamesStarted() !== startedBefore) state.overlapped = true;
     }
   };
+}
+
+/** `SERVER_LATENCY_MS`, or a rejection as soon as `signal` aborts. */
+function latency(signal: AbortSignal | undefined): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if (signal?.aborted) {
+      reject(new Error('aborted'));
+      return;
+    }
+    const onAbort = () => {
+      clearTimeout(timer);
+      reject(new Error('aborted'));
+    };
+    const timer = setTimeout(() => {
+      signal?.removeEventListener('abort', onAbort);
+      resolve();
+    }, SERVER_LATENCY_MS);
+    signal?.addEventListener('abort', onAbort, { once: true });
+  });
 }
 
 function isRetryable(fault: TransportFault): boolean {
@@ -316,6 +340,68 @@ afterEach(() => {
   jest.restoreAllMocks();
 });
 
+/**
+ * One faulted download, then a healthy one: the property's body (see the
+ * test below), also replayed for counterexamples worth keeping.
+ */
+async function checkDownloadUnderChaos(
+  athleteCount: number,
+  entry: 'prefetch' | 'warm',
+  transportPlan: TransportFault[],
+  storagePlan: StorageFault[],
+): Promise<void> {
+    await AsyncStorage.clear();
+    const names = Array.from({ length: athleteCount }, (_, i) => athleteName(i));
+    expect(mapApiAthletes(packageFor(names).athletes as never, 'test')).toHaveLength(athleteCount);
+    if (entry === 'warm') await markMeetExplicitlyDownloaded(MEET, true);
+
+    // The faulted run.
+    const state: ServerState = { chaos: null, inFlight: 0, maxInFlight: 0, overlapped: false };
+    state.chaos = installChaosTransport(backend(names, state), transportPlan);
+    const storageChaos = installStorageChaos(storagePlan);
+    let outcome: 'resolved' | 'rejected';
+    try {
+      outcome = await runDownload(entry);
+    } finally {
+      storageChaos.restore();
+      state.chaos.restore();
+    }
+
+    expect(state.maxInFlight).toBeLessThanOrEqual(1);
+    expect(state.overlapped).toBe(false);
+    assertRetryPolicy(state.chaos);
+
+    // Nothing claims a complete download that is not. Complete means
+    // every athlete has a history blob; the rows are the server's unless
+    // a fault answered with a well-formed array (`[]` is "no history"),
+    // which the client has no way to tell from the truth. The package
+    // ETag is not a claim: it means "package ingested" and is saved
+    // before the history pass, which the healthy run below resumes.
+    const plausibleWrongAnswer = transportPlan.some(
+      (fault) => fault.kind === 'garbage' && Array.isArray(fault.value),
+    );
+    const claimed = outcome === 'resolved' || storedJson(HISTORY_SYNCED_AT_KEY)[MEET] !== undefined;
+    if (claimed) {
+      expect(await findAthleteNamesWithoutHistory(names)).toEqual([]);
+      if (!plausibleWrongAnswer) expect(await historyComplete(names)).toBe(true);
+    }
+
+    // A later healthy run completes, whatever the first one left.
+    const healthy: ServerState = { chaos: null, inFlight: 0, maxInFlight: 0, overlapped: false };
+    healthy.chaos = installChaosTransport(backend(names, healthy), []);
+    try {
+      expect(await runDownload('prefetch')).toBe('resolved');
+    } finally {
+      healthy.chaos.restore();
+    }
+    expect(healthy.maxInFlight).toBeLessThanOrEqual(1);
+    expect(await findAthleteNamesWithoutHistory(names)).toEqual([]);
+    // A wrong-but-well-formed answer that completed the first run is
+    // kept until the history TTL or a forced refresh, by design.
+    if (!plausibleWrongAnswer) expect(await historyComplete(names)).toBe(true);
+    expect(storedJson(ETAG_KEY)[MEET]).toBe(ETAG);
+}
+
 describe('offline meet download under transport and storage chaos', () => {
   it('keeps history batches sequential, retries only as allowed, marks only complete downloads, and recovers', async () => {
     await fc.assert(
@@ -324,60 +410,16 @@ describe('offline meet download under transport and storage chaos', () => {
         fc.constantFrom('prefetch' as const, 'warm' as const),
         faultPlanArb(transportFaultArb, 8),
         faultPlanArb(storageFaultArb, 10),
-        async (athleteCount, entry, transportPlan, storagePlan) => {
-          await AsyncStorage.clear();
-          const names = Array.from({ length: athleteCount }, (_, i) => athleteName(i));
-          expect(mapApiAthletes(packageFor(names).athletes as never, 'test')).toHaveLength(athleteCount);
-          if (entry === 'warm') await markMeetExplicitlyDownloaded(MEET, true);
-
-          // The faulted run.
-          const state: ServerState = { chaos: null, inFlight: 0, maxInFlight: 0, overlapped: false };
-          state.chaos = installChaosTransport(backend(names, state), transportPlan);
-          const storageChaos = installStorageChaos(storagePlan);
-          let outcome: 'resolved' | 'rejected';
-          try {
-            outcome = await runDownload(entry);
-          } finally {
-            storageChaos.restore();
-            state.chaos.restore();
-          }
-
-          expect(state.maxInFlight).toBeLessThanOrEqual(1);
-          expect(state.overlapped).toBe(false);
-          assertRetryPolicy(state.chaos);
-
-          // Nothing claims a complete download that is not. Complete means
-          // every athlete has a history blob; the rows are the server's unless
-          // a fault answered with a well-formed array (`[]` is "no history"),
-          // which the client has no way to tell from the truth. The package
-          // ETag is not a claim: it means "package ingested" and is saved
-          // before the history pass, which the healthy run below resumes.
-          const plausibleWrongAnswer = transportPlan.some(
-            (fault) => fault.kind === 'garbage' && Array.isArray(fault.value),
-          );
-          const claimed = outcome === 'resolved' || storedJson(HISTORY_SYNCED_AT_KEY)[MEET] !== undefined;
-          if (claimed) {
-            expect(await findAthleteNamesWithoutHistory(names)).toEqual([]);
-            if (!plausibleWrongAnswer) expect(await historyComplete(names)).toBe(true);
-          }
-
-          // A later healthy run completes, whatever the first one left.
-          const healthy: ServerState = { chaos: null, inFlight: 0, maxInFlight: 0, overlapped: false };
-          healthy.chaos = installChaosTransport(backend(names, healthy), []);
-          try {
-            expect(await runDownload('prefetch')).toBe('resolved');
-          } finally {
-            healthy.chaos.restore();
-          }
-          expect(healthy.maxInFlight).toBeLessThanOrEqual(1);
-          expect(await findAthleteNamesWithoutHistory(names)).toEqual([]);
-          // A wrong-but-well-formed answer that completed the first run is
-          // kept until the history TTL or a forced refresh, by design.
-          if (!plausibleWrongAnswer) expect(await historyComplete(names)).toBe(true);
-          expect(storedJson(ETAG_KEY)[MEET]).toBe(ETAG);
-        },
+        checkDownloadUnderChaos,
       ),
     );
+  });
+
+  // Seed 1787336259: the first batch's delayed answer was due on the same
+  // millisecond as the client's 10 s timeout. The client aborted it and sent
+  // the next batch, and the stub server, ignoring the abort, counted both.
+  it('does not count a batch the client timed out as still in flight', async () => {
+    await checkDownloadUnderChaos(41, 'prefetch', [{ kind: 'pass' }, { kind: 'delay', ms: 9950 }], []);
   });
 
   it('a 304 revalidation over any stored history-stamp bytes still fills in missing history', async () => {
