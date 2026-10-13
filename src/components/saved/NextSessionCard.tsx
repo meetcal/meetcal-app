@@ -16,6 +16,7 @@ import {
 } from "react-native";
 import Animated, { FadeInDown } from "react-native-reanimated";
 import { ThemedText } from "@/components/ui/ThemedText";
+import { meetTimeZoneLabel } from "@/utils/timezone";
 
 /** Only called with a positive remainder; the caller owns the "in progress" case. */
 function formatCountdown(msRemaining: number): string {
@@ -56,13 +57,6 @@ export function NextSessionCard({
     }, []),
   );
 
-  // `meetDetails.time.abbreviation` is resolved once, in `mapApiMeet`, at the
-  // meet's own start date. Re-deriving it here with
-  // `getTimeZoneAbbreviation(id)` formats *today* instead: open a December New
-  // York meet in September and every row reads "EDT" when the sessions are
-  // actually EST, which looks to the user like the times are an hour wrong.
-  const timeZoneAbbr = meetDetails?.time.abbreviation ?? "";
-
   // Find the soonest saved session for this meet that is still upcoming (or
   // started within the grace window). Uses the shared convertToUTC timezone
   // math rather than re-deriving instants.
@@ -75,6 +69,8 @@ export function NextSessionCard({
 
   const { session, startMs } = nextSession;
   const msRemaining = startMs - now;
+  // The zone at the session's own date, not the meet's first day.
+  const timeZoneAbbr = meetTimeZoneLabel(meetDetails?.time, session.date);
   const countdownLabel =
     msRemaining <= 0 ? "in progress" : `starts ${formatCountdown(msRemaining)}`;
   const weighInLabel = session.weighInTime

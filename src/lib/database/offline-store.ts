@@ -6,6 +6,7 @@ import { meetCalendarDateAnchor } from '@/utils/dateTime';
 import { getTrustedNow } from '@/lib/api/meetcal-api';
 import { devLog } from '@/lib/logger';
 import { createKeyedWriteChain, createWriteChain } from '@/lib/data/write-chain';
+import { getCachedMeets } from './meets-list-cache';
 import {
   clearAllPackageEtags,
   clearPackageEtag,
@@ -158,6 +159,29 @@ export async function markMeetExplicitlyDownloaded(
   await write;
 }
 
+/**
+ * Writes each downloaded meet's current end date over the one stored when it
+ * was downloaded, for meets in `endDates` that are still marked downloaded.
+ * No write when nothing changed.
+ */
+async function updateDownloadEndDates(endDates: ReadonlyMap<string, string>): Promise<void> {
+  const write = explicitDownloadsWriteChain
+    .catch(() => undefined)
+    .then(async () => {
+      const downloads = await getExplicitMeetDownloads();
+      let changed = false;
+      for (const [meetId, endDate] of endDates) {
+        const entry = downloads[meetId];
+        if (!entry || entry.endDate === endDate) continue;
+        downloads[meetId] = { ...entry, endDate };
+        changed = true;
+      }
+      if (changed) await saveExplicitMeetDownloads(downloads);
+    });
+  explicitDownloadsWriteChain = write;
+  await write;
+}
+
 export async function isMeetExplicitlyDownloaded(meetId: MeetName): Promise<boolean> {
   const downloads = await getExplicitMeetDownloads();
   return Boolean(downloads[meetId]);
@@ -210,7 +234,14 @@ export function hasMeetEnded(endDate: string, now: number): boolean {
 
 /**
  * Clears every downloaded meet whose end date has passed — on the server's
- * clock. This runs from every meets refresh, offline included, so a device
+ * clock.
+ *
+ * The end date is the meets list's (the cached `/meets` answer, refreshed
+ * every few minutes) whenever the meet is on it, and is saved over the one
+ * captured at download time; the stored date only applies to a meet no
+ * longer listed. Only the date from the download used to count, so a meet
+ * postponed by a week lost its offline data the day after its old end date.
+ * This runs from every meets refresh, offline included, so a device
  * clock a day ahead used to wipe the meet the user was standing at. With no
  * server sample yet (a cold start offline) nothing is cleared: expiring a
  * meet late is harmless, expiring it early is data loss. One meet failing
@@ -225,8 +256,22 @@ export async function clearExpiredDownloadedMeets(): Promise<void> {
     }
     const now = trustedNow.getTime();
     const downloads = await getExplicitMeetDownloads();
-    const expiredMeetIds = Object.keys(downloads).filter((meetId) => {
-      const endDate = downloads[meetId]?.endDate;
+    const downloadedIds = Object.keys(downloads);
+    // Nothing downloaded is the common case: no meets list read at all.
+    if (downloadedIds.length === 0) return;
+    const listedEndDates = new Map<string, string>();
+    for (const meet of await getCachedMeets()) {
+      if (downloads[meet.name] && meet.dates.end) listedEndDates.set(meet.name, meet.dates.end);
+    }
+    // Expiry does not depend on saving the dates: with storage full, the
+    // sweep is what frees space.
+    try {
+      await updateDownloadEndDates(listedEndDates);
+    } catch (error) {
+      console.warn('Could not save downloaded meets\' current end dates:', error);
+    }
+    const expiredMeetIds = downloadedIds.filter((meetId) => {
+      const endDate = listedEndDates.get(meetId) ?? downloads[meetId]?.endDate;
       return endDate ? hasMeetEnded(endDate, now) : false;
     });
     // This runs on every meets refresh — app start, every five minutes, and
@@ -1271,12 +1316,19 @@ export async function saveSessionAthletes(
   });
 }
 
+/**
+ * Rewrites a meet's per-session caches from its new roster, and removes the
+ * caches of sessions the roster no longer has. They used to stay: a session
+ * merged into another (12 Blue into 12 Red) or renumbered kept its old
+ * athletes under its key, and `getSessionAthletesFromMeetCache` prefers that
+ * key over the roster, so offline the saved 12 Blue still listed lifters now
+ * on Red. Runs only when the roster changed (the key listing is not free).
+ */
 async function saveSessionAthleteCaches(
   meetId: MeetName | string,
   athletes: LiftResult[],
 ): Promise<void> {
   const grouped = groupAthletesBySession(athletes);
-  if (grouped.size === 0) return;
 
   const entries = Array.from(grouped.entries()).map(([groupKey, group]) => {
     const [sessionNumber, platform] = groupKey.split(':');
@@ -1286,7 +1338,14 @@ async function saveSessionAthleteCaches(
     ] as [string, string];
   });
 
-  await AsyncStorage.multiSet(entries);
+  if (entries.length > 0) await AsyncStorage.multiSet(entries);
+
+  const current = new Set(entries.map(([key]) => key));
+  const prefix = `${SESSION_ATHLETES_KEY_PREFIX}${encodeURIComponent(meetId)}:`;
+  const stale = (await AsyncStorage.getAllKeys()).filter(
+    (key) => key.startsWith(prefix) && !current.has(key),
+  );
+  await multiRemoveBatched(stale);
 }
 
 // Get athletes for a specific session/platform from cached meet data
