@@ -14,6 +14,7 @@ import {
 import { clearCachedMeetData, clearCacheToast } from "@/lib/database/clear-cache";
 import { MEETS_LIST_CACHE_KEY } from "@/lib/database/meets-list-cache";
 import { BROWSE_CACHE_KEYS } from "@/lib/database/offline-cache";
+import * as offlineStore from "@/lib/database/offline-store";
 import {
   getExplicitMeetDownloadEntries,
   markMeetExplicitlyDownloaded,
@@ -199,6 +200,38 @@ describe("clearCachedMeetData", () => {
     await expect(getExplicitMeetDownloadEntries()).resolves.toEqual([
       { meet: "Meet A", endDate: "2099-06-20" },
     ]);
+  });
+
+  // A timed-out /meets request used to skip every re-download after the
+  // downloads had been deleted, though each is fetched by name.
+  it("still re-downloads the offline downloads when the meets list refresh fails", async () => {
+    await markMeetExplicitlyDownloaded("Meet A" as never, true, { endDate: "2099-06-20" });
+    const error = new Error("timeout");
+    const refreshSelectedMeet = jest.fn(async () => {});
+
+    const outcome = await clearCachedMeetData(
+      deps({ refreshAvailableMeets: jest.fn(async () => Promise.reject(error)), refreshSelectedMeet }),
+    );
+
+    expect(mockPrefetchMeetData).toHaveBeenCalledWith("Meet A", { forceHistoryRefresh: true });
+    expect(refreshSelectedMeet).toHaveBeenCalledTimes(1);
+    expect(outcome).toEqual({ status: "refresh-failed", error });
+    await expect(getExplicitMeetDownloadEntries()).resolves.toEqual([
+      { meet: "Meet A", endDate: "2099-06-20" },
+    ]);
+  });
+
+  it("reports meets it could not clear instead of success", async () => {
+    jest.spyOn(offlineStore, "clearAllMeetData").mockResolvedValueOnce({ failed: 2 });
+
+    const outcome = await clearCachedMeetData(deps());
+
+    expect(outcome).toEqual({ status: "clear-incomplete", failed: 2 });
+    expect(clearCacheToast(outcome)).toEqual({
+      type: "error",
+      message: "Some cached meet data could not be cleared. Try Clear Cache again.",
+    });
+    expect(getOfflineActivity().bulk).toBeNull();
   });
 
   it.each(["refreshAvailableMeets", "refreshSelectedMeet"] as const)(

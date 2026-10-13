@@ -20,7 +20,9 @@ export type ClearCacheOutcome =
   /** The cache was cleared but re-downloading failed. */
   | { status: 'refresh-failed'; error: unknown }
   /** Cleared and refreshed, but these offline downloads could not be re-downloaded. */
-  | { status: 'downloads-failed'; failed: string[] };
+  | { status: 'downloads-failed'; failed: string[] }
+  /** Some meets' cached data could not be removed (the rest ran as usual). */
+  | { status: 'clear-incomplete'; failed: number };
 
 export interface ClearCacheDeps {
   /** Re-fetch the meets list. Must reject when it could not. */
@@ -51,7 +53,9 @@ export interface ClearCacheDeps {
  *
  * Refuses before touching anything when offline or when another offline
  * action holds the lock; holds the `delete` bulk claim for the whole run; and
- * reports success only when both refreshes resolved.
+ * reports success only when every meet was cleared and everything came back.
+ * Each refresh is tried whatever the others did: the downloads are fetched
+ * by name, so a failed meets-list request no longer leaves them deleted.
  */
 export async function clearCachedMeetData(deps: ClearCacheDeps): Promise<ClearCacheOutcome> {
   if (!(await isNetworkAvailable())) return { status: 'offline' };
@@ -64,27 +68,40 @@ export async function clearCachedMeetData(deps: ClearCacheDeps): Promise<ClearCa
     const downloads = (await getExplicitMeetDownloadEntries()).filter(
       ({ endDate }) => !(now !== undefined && endDate && hasMeetEnded(endDate, now)),
     );
-    await clearAllMeetData();
+    const { failed: notCleared } = await clearAllMeetData();
     await clearAllAthleteHistory();
     await clearCachedMeetsList();
     await clearBrowseCaches();
 
-    let failedDownloads: string[] = [];
+    let refreshError: { error: unknown } | null = null;
     try {
       await deps.refreshAvailableMeets();
-      if (downloads.length > 0) {
+    } catch (error) {
+      refreshError = { error };
+    }
+    let failedDownloads: string[] = [];
+    if (downloads.length > 0) {
+      try {
         const refreshed = await refreshOfflineDownloads(
           [],
           downloads.map(({ meet, endDate }) => ({ name: meet, endDate })),
         );
         failedDownloads =
           refreshed.status === 'offline' ? downloads.map(({ meet }) => meet) : refreshed.failed;
+      } catch (error) {
+        console.error('Clear Cache could not re-download offline meets:', error);
+        failedDownloads = downloads.map(({ meet }) => meet);
       }
+    }
+    try {
       await deps.refreshSelectedMeet();
     } catch (error) {
-      return { status: 'refresh-failed', error };
+      refreshError ??= { error };
     }
+
+    if (notCleared > 0) return { status: 'clear-incomplete', failed: notCleared };
     if (failedDownloads.length > 0) return { status: 'downloads-failed', failed: failedDownloads };
+    if (refreshError) return { status: 'refresh-failed', error: refreshError.error };
     return { status: 'cleared' };
   } finally {
     releaseOfflineBulk('delete');
@@ -113,6 +130,11 @@ export function clearCacheToast(outcome: ClearCacheOutcome): {
       return {
         type: 'error',
         message: 'Cache cleared, but fresh meet data could not be downloaded. Pull to refresh or try again.',
+      };
+    case 'clear-incomplete':
+      return {
+        type: 'error',
+        message: 'Some cached meet data could not be cleared. Try Clear Cache again.',
       };
     case 'downloads-failed':
       return {

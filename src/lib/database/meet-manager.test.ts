@@ -1903,6 +1903,72 @@ describe("downloads and the clears that remove their data", () => {
     expect(mockFetchApiMeetPackageConditional).toHaveBeenCalledTimes(1);
   });
 
+  // A forced download waiting for a superseded one used to start as soon as
+  // that settled, while the clear that superseded it was still deleting.
+  it("waits for a clear that started while it waited for a superseded download", async () => {
+    mockFetchApiMeetPackage.mockResolvedValue(packageOf(1));
+    let answerOld!: (value: unknown) => void;
+    mockFetchApiMeetPackageConditional.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          answerOld = resolve as (value: unknown) => void;
+        }),
+    );
+    const old = prefetchMeetData("Forced Meet" as any).catch((error: unknown) => error);
+    await until(() => mockFetchApiMeetPackageConditional.mock.calls.length === 1);
+    const forced = prefetchMeetData("Forced Meet" as any, { forceHistoryRefresh: true });
+    await tick();
+
+    let finishClear!: () => void;
+    const clearing = runMeetClear(
+      "Forced Meet",
+      () =>
+        new Promise<void>((resolve) => {
+          finishClear = resolve;
+        }),
+    );
+    answerOld({ status: "fresh", etag: null, package: packageOf(1) });
+    await expect(old).resolves.toBeInstanceOf(PrefetchCancelledError);
+    await until(() => typeof finishClear === "function");
+    await tick();
+    // The clear is still deleting: the forced download has not fetched.
+    expect(mockFetchApiMeetPackageConditional).toHaveBeenCalledTimes(1);
+
+    finishClear();
+    await clearing;
+    await forced;
+    expect(mockFetchApiMeetPackageConditional).toHaveBeenCalledTimes(2);
+  });
+
+  // The warm timer read the download mark while a Remove was still waiting
+  // out a download, before it un-marked the meet, and then downloaded it again.
+  it("does not start the deferred prefetch for a meet a running clear un-marks", async () => {
+    jest.useFakeTimers();
+    let downloaded = true;
+    setExplicitlyDownloaded(() => downloaded);
+    mockFetchSchedule.mockResolvedValue([]);
+    try {
+      await warmMeetData("Warm Removed" as any);
+      let finishClear!: () => void;
+      const clearing = runMeetClear(
+        "Warm Removed",
+        () =>
+          new Promise<void>((resolve) => {
+            finishClear = resolve;
+          }),
+      );
+      await jest.advanceTimersByTimeAsync(5000);
+      downloaded = false;
+      finishClear();
+      await clearing;
+      await jest.advanceTimersByTimeAsync(0);
+      expect(mockFetchApiMeetPackageConditional).not.toHaveBeenCalled();
+      expect(mockFetchApiMeetPackage).not.toHaveBeenCalled();
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
   it("still joins a download that started after the last clear", async () => {
     await beginMeetClear("Joined Meet");
     mockFetchApiMeetPackage.mockResolvedValue(packageOf(1));

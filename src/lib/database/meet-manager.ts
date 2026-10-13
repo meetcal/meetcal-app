@@ -715,18 +715,25 @@ export async function prefetchMeetData(
   meet: MeetName,
   options: PrefetchMeetOptions = {},
 ): Promise<void> {
-  // A clear of this meet still running would delete what this download reads
-  // (its ETag, its roster) after it read them; start once it is done.
-  if (isClearRunning(meet)) await waitForClears(meet);
-  const inFlight = fullPrefetchRequests.get(meet);
-  if (inFlight) {
+  // Checked again after every wait, with no await between the last check and
+  // the new request's registration below.
+  let waitedForOne = false;
+  for (;;) {
+    // A clear of this meet still running would delete what this download
+    // reads (its ETag, its roster) after it read them; start once it is done.
+    // A clear can also start while this waits for a superseded request.
+    if (isClearRunning(meet)) {
+      await waitForClears(meet);
+      continue;
+    }
+    const inFlight = fullPrefetchRequests.get(meet);
+    if (!inFlight) break;
     const superseded = wasClearedSince(meet, inFlight.startedAt);
-    if (!options.forceHistoryRefresh && !superseded) return inFlight.promise;
+    if (!superseded && (!options.forceHistoryRefresh || waitedForOne)) return inFlight.promise;
     // A background warm-up may not refresh history; let it finish (its
     // outcome is not this caller's) and then run the forced one.
     await inFlight.promise.catch(() => undefined);
-    const next = fullPrefetchRequests.get(meet);
-    if (next && !wasClearedSince(meet, next.startedAt)) return next.promise;
+    waitedForOne = true;
   }
 
   const startedAt = captureClearEpoch();
@@ -1178,8 +1185,13 @@ export function warmMeetData(meet: MeetName): Promise<void> {
 
     setTimeout(async () => {
       // Asked again: a Remove, Delete All or Clear Cache in the meantime
-      // turns this into a full download of a meet nobody downloaded.
+      // turns this into a full download of a meet nobody downloaded. A clear
+      // still running has not un-marked the meet yet, so it is waited out
+      // first, and one that starts while the mark is read wins.
+      await waitForClears(meet);
+      const epoch = captureClearEpoch();
       if (!(await isMeetExplicitlyDownloaded(meet).catch(() => false))) return;
+      if (wasClearedSince(meet, epoch)) return;
       prefetchMeetData(meet).catch((error) => {
         if (error instanceof PrefetchCancelledError) {
           devLog('Deferred full meet prefetch stopped by a clear', { meet });
