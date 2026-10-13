@@ -5,6 +5,7 @@ import type { Doc } from './_generated/dataModel';
 import { normalizeName } from './lib/names';
 import { normalizeAgeCategory, normalizeGender } from './lib/normalize';
 import { canonicalMeetDate } from './lib/validation';
+import { isMaintainedWso } from './lib/wsoSources';
 import { deleteResultRows, eventResultsByKey, recordWrite, sameEditionDates, sameResultValues } from './ingest';
 
 const BACKFILL_PAGE_SIZE = 500;
@@ -345,5 +346,32 @@ export const padMeetDates = internalMutation({
     }
     if (hints.length > 0) await recordWrite(ctx, 'meets', hints);
     return { padded: hints.map((hint) => hint.key), unreadable };
+  },
+});
+
+/**
+ * Deletes the WSO records of WSOs no job keeps current (not in
+ * `MAINTAINED_WSOS`): Michigan's and Wisconsin's, loaded once from the
+ * Postgres import with the weight classes retired in 2018-2025 and no
+ * holders (#412). The WSO records answers already leave them out; this
+ * removes the rows. Writes through `recordWrite`, so the WSO views are
+ * rebuilt on their own. Idempotent; `dryRun` only counts. Returns the rows
+ * (to be) deleted per WSO.
+ *
+ *   npx convex run migrations:deleteUnmaintainedWsoRecords '{"dryRun":true}'
+ *   npx convex run migrations:deleteUnmaintainedWsoRecords
+ */
+export const deleteUnmaintainedWsoRecords = internalMutation({
+  args: { dryRun: v.optional(v.boolean()) },
+  handler: async (ctx, { dryRun }) => {
+    const deleted: Record<string, number> = {};
+    for (const row of await ctx.db.query('wso_records').collect()) {
+      if (isMaintainedWso(row.wso)) continue;
+      deleted[row.wso] = (deleted[row.wso] ?? 0) + 1;
+      if (!dryRun) await ctx.db.delete(row._id);
+    }
+    if (!dryRun && Object.keys(deleted).length > 0) await recordWrite(ctx, 'wso_records', [{ kind: 'table', key: 'wso_records' }]);
+    console.log(`deleteUnmaintainedWsoRecords${dryRun ? ' (dry run)' : ''}: ${JSON.stringify(deleted)}`);
+    return deleted;
   },
 });

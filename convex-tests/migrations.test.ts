@@ -2,6 +2,7 @@ import { fakeMutationCtx, handlerOf } from './fakeDb';
 import {
   backfillNameKeys,
   dedupeLiftingResults,
+  deleteUnmaintainedWsoRecords,
   duplicateMeetNames,
   normalizeAthleteGenders,
   normalizeReferenceCasing,
@@ -186,5 +187,22 @@ describe('duplicateMeetNames (#159)', () => {
         ],
       },
     ]);
+  });
+});
+
+describe('deleteUnmaintainedWsoRecords (#412)', () => {
+  const wsoRow = (wso: string, weightClass: string): Row => ({ wso, ageCategory: 'Senior', gender: 'Men', weightClass, snatchRecord: 100 });
+
+  it('deletes only the WSOs no job maintains, counts on a dry run, and is idempotent', async () => {
+    const store = fakeMutationCtx({ wso_records: [wsoRow('Michigan', '55'), wsoRow('Carolina', '60'), wsoRow('Wisconsin', '+109'), wsoRow('Wisconsin', '109')] });
+    const run = handlerOf<{ dryRun?: boolean }, Record<string, number>>(deleteUnmaintainedWsoRecords);
+    expect(await run(store.ctx, { dryRun: true })).toEqual({ Michigan: 1, Wisconsin: 2 });
+    expect(store.rows('wso_records')).toHaveLength(4);
+    expect(store.scheduled).toEqual([]);
+    expect(await run(store.ctx, {})).toEqual({ Michigan: 1, Wisconsin: 2 });
+    expect(store.rows('wso_records').map((r) => r.wso)).toEqual(['Carolina']);
+    // The WSO views are told to rebuild.
+    expect(store.rows('view_hints')).toEqual([expect.objectContaining({ kind: 'table', key: 'wso_records' })]);
+    expect(await run(store.ctx, {})).toEqual({});
   });
 });

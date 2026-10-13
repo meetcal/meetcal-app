@@ -4,6 +4,7 @@ import type { recordHolder } from '../schema';
 import { normalizeGender } from './normalize';
 import { compareBytes, compareCollated, sortByWeightClass } from './sort';
 import { apiError } from './validation';
+import { isMaintainedWso } from './wsoSources';
 
 // Reference answers, each the JSON of the Rust route named on it. Queries
 // serve them from a view when one is fresh and compute them here otherwise;
@@ -251,10 +252,10 @@ export async function clubNamesPage(ctx: QueryCtx, after: string | null): Promis
   return { clubs, after: last };
 }
 
-/** `GET /data/wso/` */
+/** `GET /data/wso/`: the WSOs with stored records that a job keeps current (`MAINTAINED_WSOS`). */
 export async function computeWsoList(ctx: QueryCtx): Promise<string[]> {
   const rows = await ctx.db.query('wso_records').collect();
-  return distinctCollated(rows.map((r) => r.wso));
+  return distinctCollated(rows.map((r) => r.wso).filter(isMaintainedWso));
 }
 
 export type WsoRecordRow = {
@@ -276,6 +277,8 @@ export type WsoRecordRow = {
  * this list, which keeps its order.
  */
 export async function computeWsoRows(ctx: QueryCtx, wso: string): Promise<WsoRecordRow[]> {
+  // A WSO no job maintains has no records to offer (`MAINTAINED_WSOS`).
+  if (!isMaintainedWso(wso)) return [];
   const rows = (
     await ctx.db
       .query('wso_records')
