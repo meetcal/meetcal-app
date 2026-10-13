@@ -4,6 +4,7 @@ use comfy_table::Table;
 use serde::Deserialize;
 
 use crate::utils::backend::{NoArgs, queries, query};
+use crate::utils::filters::{Filter, no_match};
 use crate::utils::output::{self, Report};
 
 #[derive(Debug, Deserialize)]
@@ -46,15 +47,45 @@ pub async fn run(args: IntlRankingsArgs) -> Result<()> {
 
     let rankings: Vec<Rankings> = query(queries::INTL_RANKINGS, &NoArgs {}).await?;
 
+    let (matching, others): (Vec<Rankings>, Vec<Rankings>) =
+        rankings.into_iter().partition(|row| {
+            row.age_category.eq_ignore_ascii_case(age.trim())
+                && row.gender.eq_ignore_ascii_case(gender.trim())
+                && row.meet.eq_ignore_ascii_case(meet.trim())
+        });
+    if matching.is_empty() {
+        let filters = [
+            Filter {
+                option: "--age",
+                value: &age,
+            },
+            Filter {
+                option: "--gender",
+                value: &gender,
+            },
+            Filter {
+                option: "--meet",
+                value: &meet,
+            },
+        ];
+        let rows: Vec<Vec<&str>> = others
+            .iter()
+            .map(|row| {
+                vec![
+                    row.age_category.as_str(),
+                    row.gender.as_str(),
+                    row.meet.as_str(),
+                ]
+            })
+            .collect();
+        return Err(no_match("international rankings", &filters, &rows));
+    }
+
     // push to table
     let mut table = Table::new();
     table.set_header(vec!["Rank", "Name", "Class", "Percent A", "Total"]);
 
-    for total in rankings.into_iter().filter(|row| {
-        row.age_category.eq_ignore_ascii_case(&age)
-            && row.gender.eq_ignore_ascii_case(&gender)
-            && row.meet.eq_ignore_ascii_case(&meet)
-    }) {
+    for total in matching {
         table.add_row(vec![
             total.ranking.to_string(),
             total.name,

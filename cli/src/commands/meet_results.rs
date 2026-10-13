@@ -44,7 +44,7 @@ pub async fn run(args: MeetResultsArgs) -> Result<()> {
     let results = meet_rows(&name).await?;
     if results.is_empty() {
         let message = format!("No results found for meet \"{name}\"");
-        return Err(not_found(NameKind::Meet, &name, message).await);
+        return Err(not_found(NameKind::ResultsMeet, &name, message).await);
     }
 
     let mut editions = vec![(name.clone(), summarize(&results))];

@@ -16,7 +16,10 @@ pub const BESTS_BATCH_SIZE: usize = 100;
 /// How far back "year bests" look, as in the app.
 pub const YEAR_BESTS_YEARS: i32 = 1;
 
-/// The UTC date `years` before `today`, as the app computes it (29 February falls to 1 March).
+/// The date `years` before `today`, as the app computes it (29 February falls to 1 March).
+///
+/// Callers pass today's UTC date, not the user's: the app's start list computes its cutoff in
+/// UTC (`getHistoryCutoffDate`), and the CLI's past-year bests must be the same numbers.
 pub fn cutoff_date(today: NaiveDate, years: i32) -> String {
     let year = today.year() - years;
     today
