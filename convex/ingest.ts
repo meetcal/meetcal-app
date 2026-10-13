@@ -947,8 +947,8 @@ const storedGender = (gender: string | undefined) => (gender === undefined ? nul
 
 /**
  * Inserts or updates standards matched on (age category, gender, weight
- * class), normalized like `upsert_standard`. Never deletes: a class the PDF
- * stops listing keeps its last standards, as it did in Postgres.
+ * class), normalized like `upsert_standard`. Deletes nothing: the standards
+ * sync then deletes the classes the PDF no longer lists (`pruneStandards`).
  */
 export const upsertStandards = internalMutation({
   args: {
@@ -1022,7 +1022,8 @@ const recordRow = v.object({
 /**
  * Inserts or updates records matched on (type, age, gender, class),
  * normalized like `upsert_record`. A lift missing from the row clears it, as
- * the Python writer's `None` did. Never deletes. Without `allowShrink`, a
+ * the Python writer's `None` did. Deletes nothing (the syncs then prune the
+ * classes their source no longer lists, `pruneRecords`). Without `allowShrink`, a
  * payload that clears more of the matched records' stored lifts than
  * `exceedsShrink` allows is refused (nothing written): a lift row the parser
  * stopped finding reads as no record for every class at once. A key the
@@ -1088,6 +1089,90 @@ export const upsertRecords = internalMutation({
     }
     if (outcomes.some((o) => o.wasChanged)) await recordWrite(ctx, 'records', [{ kind: 'table', key: 'records' }]);
     return outcomes;
+  },
+});
+
+/** A stored class (record or standard) as the prunes compare it: age and gender normalized. */
+const classKey = (r: { ageCategory: string; gender: string; weightClass: string }) =>
+  JSON.stringify([normalizeAgeCategory(r.ageCategory), normalizeGender(r.gender), r.weightClass]);
+const groupKey = (r: { ageCategory: string; gender: string }) => JSON.stringify([normalizeAgeCategory(r.ageCategory), normalizeGender(r.gender)]);
+const classArg = v.object({ ageCategory: v.string(), gender: v.string(), weightClass: v.string() });
+
+/**
+ * The stored rows a source no longer lists, of `stored` (the rows in the
+ * sync's scope). Without `allowShrink` it refuses to delete more than
+ * `exceedsShrink` allows, or every class of an (age, gender) group: a
+ * source that partly broke (an age group relabelled, a table the parser
+ * stopped finding) looks the same as classes that went away, while a class
+ * change keeps every group with classes.
+ */
+function droppedClasses<T extends { ageCategory: string; gender: string; weightClass: string }>(
+  what: string,
+  stored: readonly T[],
+  keep: readonly { ageCategory: string; gender: string; weightClass: string }[],
+  allowShrink: boolean | undefined,
+): T[] {
+  if (!keep.length) throw new Error(`refusing to prune ${what} against an empty payload`);
+  const kept = new Set(keep.map(classKey));
+  const dropped = stored.filter((row) => !kept.has(classKey(row)));
+  if (allowShrink) return dropped;
+  const rerun = `If it really dropped them (a class change), check the source by hand and rerun its sync with '{"allowShrink":true}' (its '{"dryRun":true}' lists them)`;
+  const keptGroups = new Set(keep.map(groupKey));
+  const emptied = [...new Set(dropped.filter((row) => !keptGroups.has(groupKey(row))).map((row) => `${normalizeAgeCategory(row.ageCategory)} ${normalizeGender(row.gender)}`))];
+  if (emptied.length) {
+    throw new Error(`refusing to delete every stored ${what} class of ${emptied.join(', ')}: the source lists none (an age group it relabelled or the parser missed?). ${rerun}`);
+  }
+  if (exceedsShrink(dropped.length, stored.length)) {
+    throw new Error(`refusing to delete ${dropped.length} of ${stored.length} stored ${what} classes the source no longer lists (the source may be partly broken). ${rerun}`);
+  }
+  return dropped;
+}
+
+/**
+ * Deletes the standards classes the PDF no longer lists (`keep` is every
+ * class the sync just wrote), so retired classes are not listed beside the
+ * current ones. The standards sync is one PDF for every class: an exact set.
+ */
+export const pruneStandards = internalMutation({
+  // `dryRun`: check the guard and list what would be deleted, deleting nothing.
+  args: { keep: v.array(classArg), allowShrink: v.optional(v.boolean()), dryRun: v.optional(v.boolean()) },
+  handler: async (ctx, { keep, allowShrink, dryRun }) => {
+    const dropped = droppedClasses('standards', await ctx.db.query('standards').collect(), keep, allowShrink);
+    if (dryRun) return { deleted: dropped.map((r) => `${r.ageCategory} ${r.gender} ${r.weightClass}`) };
+    for (const row of dropped) await ctx.db.delete(row._id);
+    if (dropped.length) await recordWrite(ctx, 'standards', [{ kind: 'table', key: 'standards' }]);
+    return { deleted: dropped.map((r) => `${r.ageCategory} ${r.gender} ${r.weightClass}`) };
+  },
+});
+
+/**
+ * Deletes the classes of `recordType` its source no longer lists (`keep` is
+ * every class the sync just wrote), within `groups` (age and gender) when
+ * given: a source read in parts (UMWF's tabs) prunes only the parts it read,
+ * so a tab that failed keeps its classes.
+ */
+export const pruneRecords = internalMutation({
+  args: {
+    recordType: v.string(),
+    keep: v.array(classArg),
+    groups: v.optional(v.array(v.object({ ageCategory: v.string(), gender: v.string() }))),
+    allowShrink: v.optional(v.boolean()),
+    // Check the guard and list what would be deleted, deleting nothing.
+    dryRun: v.optional(v.boolean()),
+  },
+  handler: async (ctx, { recordType, keep, groups, allowShrink, dryRun }) => {
+    if (keep.some((row) => groups !== undefined && !groups.some((g) => groupKey(g) === groupKey(row)))) {
+      throw new Error(`a ${recordType} class to keep is outside the groups pruned`);
+    }
+    const scope = groups === undefined ? null : new Set(groups.map(groupKey));
+    const stored = (await ctx.db.query('records').withIndex('by_record_type', (q) => q.eq('recordType', recordType)).collect()).filter(
+      (row) => scope === null || scope.has(groupKey(row)),
+    );
+    const dropped = droppedClasses(`${recordType} record`, stored, keep, allowShrink);
+    if (dryRun) return { deleted: dropped.map((r) => `${r.ageCategory} ${r.gender} ${r.weightClass}`) };
+    for (const row of dropped) await ctx.db.delete(row._id);
+    if (dropped.length) await recordWrite(ctx, 'records', [{ kind: 'table', key: 'records' }]);
+    return { deleted: dropped.map((r) => `${r.ageCategory} ${r.gender} ${r.weightClass}`) };
   },
 });
 
