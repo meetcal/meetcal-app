@@ -198,7 +198,9 @@ describe("PaywallScreen", () => {
       title: "Premium Features",
       headerBackTitle: "Back",
     });
-    expect(mockScreenOptions.some((options) => "headerTitle" in options)).toBe(false);
+    expect(
+      mockScreenOptions.every((options) => options.headerTitle === undefined),
+    ).toBe(true);
 
     await act(async () => {
       rejectOfferings(new Error("rc down"));
@@ -210,6 +212,23 @@ describe("PaywallScreen", () => {
     await pressTryAgain(renderer);
     expect(lastPaywall().options.offering).toBe(CURRENT);
     expect(mockScreenOptions.at(-1)).toEqual({ headerShown: false });
+  });
+
+  it("replaces the title a premium screen set before its entitlement lapsed", async () => {
+    mockGetOfferings.mockRejectedValue(new Error("rc down"));
+    const renderer = await mount(
+      <PaywallScreen from="/shared-screens/athlete-results" feature="athlete-results" inline />,
+    );
+    expect(texts(renderer)).toContain("Couldn't load plans");
+
+    // `setOptions` merges into what the subscribed screen already set and
+    // never resets it, and `headerTitle` outranks `title`.
+    const merged: Record<string, unknown> = Object.assign(
+      { headerShown: true, headerTitle: "Jane Doe" },
+      ...mockScreenOptions,
+    );
+    expect(merged.headerTitle).toBeUndefined();
+    expect(merged.title).toBe("Premium Features");
   });
 
   it("inline and signed out, signs in back to the gated screen without queueing a second paywall", async () => {
@@ -224,7 +243,8 @@ describe("PaywallScreen", () => {
 
     expect(mockRouter.replace).toHaveBeenCalledWith({
       pathname: "/(auth)/sign-in",
-      params: { from: "/shared-screens/athlete-results?name=Jane%20Doe", feature: "subscription" },
+      // `%` escaped: `useLocalSearchParams` decodes the param a second time.
+      params: { from: "/shared-screens/athlete-results?name=Jane%2520Doe", feature: "subscription" },
     });
     expect(isPremiumFeature("subscription")).toBe(false);
   });

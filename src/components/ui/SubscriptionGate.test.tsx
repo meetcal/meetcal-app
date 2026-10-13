@@ -15,6 +15,7 @@ import {
   gateOrigin,
   SubscriptionGate,
 } from "@/components/ui/SubscriptionGate";
+import { originRouteParam } from "@/utils/returnToOrigin";
 
 const mockSecureStore = new Map<string, string>();
 jest.mock("expo-secure-store", () => ({
@@ -195,7 +196,8 @@ describe("SubscriptionGate", () => {
     // The screen's own header is not rendered yet: the spinner brings one,
     // so there is a Back button.
     expect(mockScreenOptions).toMatchObject({ headerShown: true, title: "" });
-    expect(mockScreenOptions).not.toHaveProperty("headerTitle");
+    // Cleared, not set: a `headerTitle` would outrank the screen's own title.
+    expect(mockScreenOptions).toHaveProperty("headerTitle", undefined);
 
     await act(async () => {
       finishRead();
@@ -361,4 +363,35 @@ describe("gateOrigin", () => {
       "athlete-results",
     );
   });
+});
+
+/** A query string's params, decoded once, as expo-router's href parser does. */
+function parseQuery(href: string): Record<string, string> {
+  const query = href.split("?")[1] ?? "";
+  return Object.fromEntries(
+    query
+      .split("&")
+      .filter(Boolean)
+      .map((pair) => pair.split("=").map((part) => decodeURIComponent(part))),
+  );
+}
+
+describe("gateOrigin through sign-in", () => {
+  it.each(["A & B", "C+D", "100% Club", "Club #1", "Zoë Smith"])(
+    "brings a gated route's params back from sign-in intact: %s",
+    (meet) => {
+      const from = gateOrigin("/shared-screens/attempt-estimator", {
+        meet,
+        sessionNumber: "1",
+      });
+      // The paywall navigates to sign-in with `params: { from }`: expo-router
+      // encodes the value into the href, parses it back (one decode), and
+      // `useLocalSearchParams` decodes it again.
+      const href = `/(auth)/sign-in?from=${encodeURIComponent(originRouteParam(from))}`;
+      const received = decodeURIComponent(parseQuery(href).from);
+
+      expect(received).toBe(from);
+      expect(parseQuery(received)).toEqual({ meet, sessionNumber: "1" });
+    },
+  );
 });

@@ -8,7 +8,7 @@ import { useUser } from '@clerk/expo';
 import { useScreenHorizontalInsets } from '@/hooks/useScreenInsets';
 import { useIsOffline } from '@/hooks/useIsOffline';
 import { isInternalRoutePath } from '@/utils/authGuard';
-import { DEFAULT_ORIGIN, returnToOrigin } from '@/utils/returnToOrigin';
+import { DEFAULT_ORIGIN, originRouteParam, returnToOrigin } from '@/utils/returnToOrigin';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { FallbackHeader } from '@/components/ui/FallbackHeader';
 import { useAppColors } from '@/hooks/useAppColors';
@@ -77,7 +77,7 @@ export default function PaywallScreen({
       router.replace({
         pathname: '/(auth)/sign-in',
         params: {
-          from: isInternalRoutePath(from) ? from : '/(tabs)',
+          from: originRouteParam(isInternalRoutePath(from) ? from : '/(tabs)'),
           // Inline, sign-in returns to the gated screen, whose gate shows
           // this paywall again. A premium feature name (the estimator's,
           // athlete results') would also queue a routed paywall on top
