@@ -1684,6 +1684,35 @@ describe("other devices' changes reach the list on resume (#399)", () => {
     expect(hook.current.savedSessions.map((s) => s.id)).toEqual(["Test-Meet-14-Red"]);
   });
 
+  it("sends queued writes after a load that was still failing when the network came back", async () => {
+    mockFetchSavedSessions.mockResolvedValue([]);
+    const hook = await mountHook();
+
+    // A foreground load passes its (empty) outbox flush and waits on the
+    // server; then a save made offline is queued behind it.
+    let fail!: () => void;
+    mockFetchSavedSessions.mockImplementationOnce(
+      () => new Promise((_resolve, reject) => {
+        fail = () => reject(new Error("Network request failed"));
+      }),
+    );
+    await resumeAfter(5 * 60_000);
+    mockPutSavedSession.mockRejectedValueOnce(new Error("Network request failed"));
+    await act(async () => {
+      await hook.current.saveSession(makeSession("Test-Meet-1-Red"));
+    });
+    expect(countPendingWrites(await readOutbox("user_1"))).toBe(1);
+    await act(async () => {
+      mockNetworkListener(false);
+      mockNetworkListener(true);
+    });
+    await flush();
+    await act(async () => fail());
+    await flush();
+
+    expect(countPendingWrites(await readOutbox("user_1"))).toBe(0);
+  });
+
   it("re-fetches when the network comes back with nothing queued", async () => {
     mockFetchSavedSessions.mockResolvedValue([apiRow("Test-Meet-9-Blue")]);
     const hook = await mountHook();

@@ -348,13 +348,13 @@ export function useSavedSessions() {
     }
   }, [activeUserId, clerkUserId, confirmedIsSubscribed, loadChain, runLoad, trackLoad]);
 
-  // Back online: queued writes go out at once (the load sends the outbox
-  // before it fetches); with nothing queued it is a throttled refresh. A
-  // load still running then may be one that is about to fail offline (and
-  // it counts against the throttle), so a fresh load queues behind it.
+  // Back online. A load still running may be one that is about to fail
+  // offline, past its outbox flush and counted against the throttle, so a
+  // fresh load queues behind it (it sends any queued writes first).
+  // Otherwise queued writes go out at once (the load sends the outbox
+  // before it fetches), and with nothing queued it is a throttled refresh.
   const reconnect = useCallback(
     (hasPendingWrites: boolean): Promise<void> => {
-      if (hasPendingWrites) return loadSavedSessions();
       if (loadsInFlightRef.current > 0 && activeUserId) {
         refreshThrottle.markRun();
         return trackLoad(
@@ -363,6 +363,7 @@ export function useSavedSessions() {
           }),
         );
       }
+      if (hasPendingWrites) return loadSavedSessions();
       return refreshSavedSessions();
     },
     [activeUserId, clerkUserId, loadChain, loadSavedSessions, refreshSavedSessions, refreshThrottle, runLoad, trackLoad],
