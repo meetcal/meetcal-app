@@ -193,16 +193,16 @@ export function getOffsetMinutesAtInstant(
   return (toUtcTimestamp(zonedParts) - minuteStart) / MS_PER_MINUTE;
 }
 
-export function convertZonedLocalToUTC(
+/**
+ * A real `YYYY-MM-DD` calendar day, or null (a placeholder such as `TBD`,
+ * or a day that does not exist). The date rule `convertZonedLocalToUTC`
+ * applies, for callers that must skip what it would reject.
+ */
+export function parseMeetCalendarDay(
   date: string,
-  time: string,
-  timeZone: string,
-): Date {
+): { year: number; month: number; day: number } | null {
   const dateMatch = /^(\d{4})-(\d{2})-(\d{2})$/.exec(date.trim());
-  if (!dateMatch) {
-    throw new Error(`Invalid date: ${date}`);
-  }
-
+  if (!dateMatch) return null;
   const year = Number(dateMatch[1]);
   const month = Number(dateMatch[2]);
   const day = Number(dateMatch[3]);
@@ -211,9 +211,20 @@ export function convertZonedLocalToUTC(
   // a real instant on another day. Day 0 of the next month is this month's
   // last day, which also gets leap years right.
   const daysInMonth = new Date(Date.UTC(year, month, 0)).getUTCDate();
-  if (month < 1 || month > 12 || day < 1 || day > daysInMonth) {
+  if (month < 1 || month > 12 || day < 1 || day > daysInMonth) return null;
+  return { year, month, day };
+}
+
+export function convertZonedLocalToUTC(
+  date: string,
+  time: string,
+  timeZone: string,
+): Date {
+  const calendarDay = parseMeetCalendarDay(date);
+  if (!calendarDay) {
     throw new Error(`Invalid date: ${date}`);
   }
+  const { year, month, day } = calendarDay;
   const { hour, minute } = parseClockTime(time);
 
   const naiveUtcTimestamp = Date.UTC(year, month - 1, day, hour, minute, 0, 0);

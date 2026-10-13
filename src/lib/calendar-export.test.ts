@@ -49,11 +49,15 @@ describe("groupCalendarSessions", () => {
         { ...row(2, "Red", "81kg"), startTime: "", weighInTime: "" },
         { ...row(3, "Blue", "87kg"), startTime: "soon" },
         { ...row(4, "Blue", "96kg"), date: "" },
+        // A scraped placeholder, and a day that doesn't exist: the writer
+        // rejects both, so they are skipped, not failed.
+        { ...row(5, "Blue", "102kg"), date: "TBD" },
+        { ...row(6, "Blue", "109kg"), date: "2099-02-30" },
       ],
       MEET,
     );
     expect(sessions.map((s) => s.sessionNumber)).toEqual(["1"]);
-    expect(skipped).toBe(3);
+    expect(skipped).toBe(5);
   });
 
   it("counts the sessions of athletes the schedule cannot place, once each", () => {
@@ -139,5 +143,30 @@ describe("calendarSessionsFromSaved", () => {
     // Session 9 has no schedule row (no date); Meet B has no schedule loaded;
     // the unknown meet is not one the app lists.
     expect(result.skipped).toBe(3);
+  });
+
+  it("skips a session whose schedule row no longer has a start, not writing its saved time", () => {
+    const untimed: SessionLookupByMeet = new Map([
+      [
+        MEET,
+        buildSessionScheduleLookup([
+          {
+            date: "Saturday, June 20",
+            fullDate: "2099-06-20",
+            sessions: [
+              {
+                id: "s-1",
+                number: 1,
+                startTime: "",
+                weighInTime: "",
+                platforms: [{ platform: "Red", weightClass: "71kg", platformStartTime: "" }],
+              },
+            ],
+          },
+        ] as unknown as Schedule),
+      ],
+    ]);
+    const result = calendarSessionsFromSaved([saved(1)], untimed, new Set([MEET]));
+    expect(result).toEqual({ sessions: [], skipped: 1 });
   });
 });

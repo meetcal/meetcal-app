@@ -63,13 +63,14 @@ export default function SessionDetailsScreen() {
   const sessionWeightClass =
     sessionMatch?.platform?.weightClass || params.weightClass;
   const sessionDate = sessionMatch?.day.date || `Session ${params.sessionNumber}`;
-  // The schedule's row for this platform wins over the times passed in; the
-  // weigh-in is the platform's published one, else start minus 2 h. Without
-  // a row (schedule not loaded), the link's own pair, resolved the same way.
+  // The schedule's row for this platform wins over the times passed in, even
+  // when it has no start (the schedule stopped timing it: untimed, not the
+  // link's older time); the weigh-in is the platform's published one, else
+  // start minus 2 h. Without a row (schedule not loaded), the link's own
+  // pair, resolved the same way.
   const { startTime: platformStartTime, weighInTime: platformWeighInTime } = useMemo(() => {
     if (sessionMatch) {
-      const times = platformSessionTimes(sessionMatch.session, sessionMatch.platform);
-      if (times.startTime) return times;
+      return platformSessionTimes(sessionMatch.session, sessionMatch.platform);
     }
     return {
       startTime: params.startTime,

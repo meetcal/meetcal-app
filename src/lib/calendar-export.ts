@@ -5,7 +5,7 @@ import type { SavedSession } from '@/lib/saved-sessions-store';
 import type { CalendarSession } from '@/utils/calendar';
 import { makeLookupKey } from '@/utils/session';
 import { resolveWeighInTime } from '@/utils/time';
-import { parseClockTime } from '@/utils/timezone';
+import { parseClockTime, parseMeetCalendarDay } from '@/utils/timezone';
 
 /**
  * The calendar events each screen exports, built in one place. The writing
@@ -31,7 +31,9 @@ export interface CalendarExportRow {
  * and the toast said to try again, which could never succeed.
  */
 export function hasCalendarTimes(date: string, startTime: string): boolean {
-  if (!date || !startTime) return false;
+  // A placeholder date (`TBD`) or a day that doesn't exist is rejected by
+  // the writer too; skip it here so the toast counts it, not a failure.
+  if (!date || !startTime || !parseMeetCalendarDay(date)) return false;
   try {
     parseClockTime(startTime);
     return true;
@@ -122,7 +124,10 @@ export function calendarSessionsFromSaved(
     const meetLookup = lookupByMeet.get(session.meet);
     if (!meetLookup) continue;
     const lookup = meetLookup.get(makeLookupKey(session.sessionNumber, session.platform));
-    const startTime = lookup?.startTime || session.startTime;
+    // The schedule row's start, even when blank: a row the schedule has
+    // stopped timing is untimed now, not at the time it was saved with. (No
+    // row at all has no date either, so it is skipped below.)
+    const startTime = lookup ? lookup.startTime : session.startTime;
     // The schedule's weigh-in (published, else start minus 2 h); without a
     // timed row, the saved pair, which was resolved by the same rule.
     const weighInTime =
