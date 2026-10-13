@@ -136,7 +136,8 @@ describe('parseStoredSessions', () => {
 
   it('reads back a stored list of valid sessions unchanged', () => {
     fc.assert(
-      fc.property(fc.array(sessionArb, { maxLength: 6 }), (sessions) => {
+      // Unique ids: a repeated id is a legacy duplicate the read drops.
+      fc.property(fc.uniqueArray(sessionArb, { selector: (session) => session.id, maxLength: 6 }), (sessions) => {
         expect(parseStoredSessions(JSON.stringify(sessions))).toEqual(sessions);
       }),
     );

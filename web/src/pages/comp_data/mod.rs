@@ -3,6 +3,7 @@ pub(crate) mod analytics;
 pub(crate) mod athlete_autocomplete;
 pub mod catalog;
 pub mod club_dashboard;
+pub(crate) mod combobox;
 pub mod data_home;
 pub(crate) mod filters;
 pub(crate) mod format;

@@ -10,6 +10,7 @@ import { useFilterState } from "@/hooks/useFilterState";
 import { useRouteFilterKey } from "@/hooks/useRouteFilterKey";
 import { DEEP_LINKS } from "@/utils/deepLinks";
 import { useMutableResource } from "@/hooks/useMutableResource";
+import { selectStandards } from "@/lib/comp-data-filters";
 import { standardsResource } from "@/lib/database/fetch-standards";
 import { formatAgeGroupLabel } from "@/lib/sortAgeGroups";
 import { AgeGroup, Filters, Gender, StandardsData } from "@/types/standards";
@@ -62,11 +63,10 @@ function NewStandardsScreenContent() {
     initialData: {} as StandardsData,
   });
 
-  const standardsData = useMemo(() => {
-    if (!allStandards[filters.ageGroup]) return [];
-    if (!allStandards[filters.ageGroup][filters.gender]) return [];
-    return allStandards[filters.ageGroup][filters.gender];
-  }, [allStandards, filters.ageGroup, filters.gender]);
+  const standardsData = useMemo(
+    () => selectStandards(allStandards, filters),
+    [allStandards, filters],
+  );
 
   const getFilterDisplayText = () => {
     const genderText = filters.gender === "men" ? "Men" : "Women";
@@ -164,7 +164,9 @@ function NewStandardsScreenContent() {
       <GenericFilterModal
         {...filterModalProps}
         sections={filterSections}
-        resultCount={standardsData.length}
+        resultCount={(modalTempFilters) =>
+          selectStandards(allStandards, modalTempFilters).length
+        }
         resultLabel="standards"
       />
     </ThemedView>
