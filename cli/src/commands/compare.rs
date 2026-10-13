@@ -3,7 +3,8 @@ use clap::Parser;
 use comfy_table::Table;
 
 use crate::commands::wrapped::{
-    calculate_wrapped_stats, current_year, filter_exact_name, get_athlete_year, refuse_cut_year,
+    calculate_wrapped_stats, current_year, filter_exact_name, get_athlete_year, other_names,
+    refuse_cut_year,
 };
 use crate::types::lifting_results::LiftingResults;
 use crate::types::wrapped::{SearchResponse, WrappedStats};
@@ -86,8 +87,8 @@ pub fn compared_years(
     refuse_cut_year(name, current, current_response.truncated, &current_results)?;
 
     if current_results.is_empty() && previous_results.is_empty() {
-        let mut suggestions = current_response.suggestions;
-        suggestions.extend(previous_response.suggestions);
+        let mut suggestions = other_names(name, current_response.suggestions);
+        suggestions.extend(other_names(name, previous_response.suggestions));
         suggestions.sort();
         suggestions.dedup();
         let suffix = if suggestions.is_empty() {
@@ -275,7 +276,7 @@ mod tests {
             best_total: total,
             average_total: total - 10.0,
             top_meet: None,
-            improvement_from_first: 0.0,
+            improvement_from_first: None,
             consecutive_makes: 0,
             favorite_attempt: None,
             year_rank: "Rising Star",
