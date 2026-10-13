@@ -271,11 +271,21 @@ export function SelectedMeetProvider({ children }: { children: React.ReactNode }
       // True once a newer run has started (or the provider unmounted). Checked
       // after every await, before anything is committed.
       const isStale = () => !isMountedRef.current || loadRunRef.current !== runId;
-
-      try {
+      // The expiry sweep runs once the meets list refresh below has settled,
+      // so it reads current end dates: a meet postponed while the app was
+      // closed was otherwise expired on its old date before the new one
+      // arrived. Offline, the request fails at once and the sweep uses the
+      // cached list. Unawaited, once per run.
+      let swept = false;
+      const sweepExpired = () => {
+        if (swept) return;
+        swept = true;
         void clearExpiredDownloadedMeets().catch((error) => {
           console.error('Error clearing expired downloaded meets:', error);
         });
+      };
+
+      try {
 
         const [cachedMeets, stored, storedDetailsRaw] = await Promise.all([
           getCachedMeets(),
@@ -363,7 +373,12 @@ export function SelectedMeetProvider({ children }: { children: React.ReactNode }
           }
         }
 
-        const freshMeets = await fetchMeetsFresh();
+        let freshMeets: Meet[];
+        try {
+          freshMeets = await fetchMeetsFresh();
+        } finally {
+          sweepExpired();
+        }
         if (isStale()) return;
         setAvailableMeets((current) => {
           const currentSerialized = JSON.stringify(current);
@@ -443,6 +458,9 @@ export function SelectedMeetProvider({ children }: { children: React.ReactNode }
           }
         }
       } catch (error) {
+        // Failed before the list request: the sweep still runs, on the
+        // cached list.
+        sweepExpired();
         console.error('Error loading available meets:', error);
       } finally {
         // A superseded run must not clear the spinner out from under the run
@@ -522,8 +540,15 @@ export function SelectedMeetProvider({ children }: { children: React.ReactNode }
   // refreshed list from an empty one; the meet picker catches it.
   const refreshAvailableMeets = useCallback(async () => {
     try {
-      await clearExpiredDownloadedMeets();
-      const fresh = await fetchMeetsFresh();
+      // The list first, so the sweep reads current end dates.
+      let fresh: Meet[];
+      try {
+        fresh = await fetchMeetsFresh();
+      } finally {
+        await clearExpiredDownloadedMeets().catch((error) => {
+          console.error('Error clearing expired downloaded meets:', error);
+        });
+      }
       setAvailableMeets((current) =>
         JSON.stringify(current) === JSON.stringify(fresh) ? current : fresh,
       );

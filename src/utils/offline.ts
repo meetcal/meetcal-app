@@ -45,10 +45,18 @@ import {
 } from "react";
 import { Alert } from "react-native";
 
-type DownloadStatus = {
+export type DownloadStatus = {
   isDownloaded: boolean;
   lastSynced: number | null;
 };
+
+/**
+ * Whether the stored statuses have been read. Until they are, a row cannot
+ * say whether its item is downloaded: every row used to read "Not downloaded
+ * yet" meanwhile (or for good, when the read failed), so a tap re-downloaded
+ * a downloaded item instead of offering Remove, and Refresh All found nothing.
+ */
+export type DownloadStatusesLoad = "loading" | "loaded" | "failed";
 
 type DownloadItem = {
   id: string;
@@ -98,6 +106,30 @@ export function selectDownloadableMeets<
   });
 }
 
+/** A row's subtitle: its last sync, or why its status is not known yet. */
+export function describeDownloadStatus(
+  load: DownloadStatusesLoad,
+  status: DownloadStatus | undefined,
+): string {
+  if (load === "failed") return "Couldn't read offline data";
+  // No entry yet: a row the meets list added after the last read.
+  if (load === "loading" || !status) return "Checking…";
+  if (!status.lastSynced) return "Not downloaded yet";
+  return `Last synced ${formatDistanceToNow(new Date(status.lastSynced), { addSuffix: true })}`;
+}
+
+/**
+ * Whether a row can act (download or remove). Not until its status has been
+ * read: a meet the meets list adds after a read has no entry until the next
+ * one lands, and its tap would download a meet that may be downloaded.
+ */
+export function isRowStatusKnown(
+  load: DownloadStatusesLoad,
+  status: DownloadStatus | undefined,
+): boolean {
+  return load === "loaded" && status !== undefined;
+}
+
 const getMeetDownloadId = (meetName: string) => `meet:${meetName}`;
 
 const getMeetNameFromDownloadId = (
@@ -118,6 +150,8 @@ export const useOfflineData = () => {
   const [downloadStatuses, setDownloadStatuses] = useState<
     Record<string, DownloadStatus>
   >({});
+  const [statusesLoad, setStatusesLoad] =
+    useState<DownloadStatusesLoad>("loading");
   // Busy flags live in `offline-activity`, not in this hook: they are read
   // synchronously (an alert's button holds the closure of the render that
   // opened it, so render-time state still said "not busy"), and they outlive
@@ -143,11 +177,12 @@ export const useOfflineData = () => {
   );
 
   const formatLastSynced = useCallback(
-    (lastSynced: number | null | undefined) => {
-      if (!lastSynced) return "Not downloaded yet";
-      return `Last synced ${formatDistanceToNow(new Date(lastSynced), { addSuffix: true })}`;
-    },
-    []
+    (status: DownloadStatus | undefined) => describeDownloadStatus(statusesLoad, status),
+    [statusesLoad],
+  );
+  const isRowReady = useCallback(
+    (status: DownloadStatus | undefined) => isRowStatusKnown(statusesLoad, status),
+    [statusesLoad],
   );
 
   const competitionItems: Omit<DownloadItem, "status" | "isDownloading">[] =
@@ -284,9 +319,12 @@ export const useOfflineData = () => {
           .then((nextStatuses) => {
             if (cancelled) return;
             setDownloadStatuses(nextStatuses);
+            setStatusesLoad("loaded");
           })
           .catch((error) => {
             console.error("Failed to load offline download statuses:", error);
+            if (cancelled) return;
+            setStatusesLoad("failed");
           });
         return () => {
           cancelled = true;
@@ -365,11 +403,14 @@ export const useOfflineData = () => {
         if (!claimBulkAction("refresh")) return;
 
         try {
+          // Read now, not from the render that opened the confirmation: the
+          // statuses may have landed (or changed) since.
+          const statuses = await loadStatuses();
           // Download-then-swap (see `refreshOfflineDownloads`): nothing is
           // deleted, so a failed item keeps its previous copy.
           const result = await refreshOfflineDownloads(
             competitionItems
-              .filter((item) => downloadStatuses[item.id]?.isDownloaded)
+              .filter((item) => statuses[item.id]?.isDownloaded)
               .map((item) => ({
                 id: item.id,
                 title: item.title,
@@ -378,7 +419,7 @@ export const useOfflineData = () => {
             availableMeets
               .filter(
                 (meet) =>
-                  downloadStatuses[getMeetDownloadId(meet.name)]?.isDownloaded,
+                  statuses[getMeetDownloadId(meet.name)]?.isDownloaded,
               )
               .map((meet) => ({ name: meet.name, endDate: meet.dates?.end })),
           );
@@ -432,7 +473,7 @@ export const useOfflineData = () => {
       };
     
       const confirmRefreshAll = () => {
-        if (isRefreshingAll || isDeletingAll) return;
+        if (isRefreshingAll || isDeletingAll || statusesLoad !== "loaded") return;
         Alert.alert(
           "Refresh All Downloads",
           "This will re-download everything you already saved for offline use.",
@@ -464,10 +505,12 @@ export const useOfflineData = () => {
     filteredMeets,
     downloadingItems,
     downloadStatuses,
+    statusesLoad,
     isRefreshingAll,
     isDeletingAll,
     competitionItems,
     formatLastSynced,
+    isRowReady,
     handleDownload,
     handleDelete,
     confirmRefreshAll,

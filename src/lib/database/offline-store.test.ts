@@ -2160,6 +2160,72 @@ describe("downloaded meet expiry on the server's clock", () => {
     jest.restoreAllMocks();
   });
 
+  const listMeets = (meets: { name: string; end: string }[]) =>
+    mockStorage.set(
+      "@meets_list_cache_v1",
+      JSON.stringify(
+        meets.map(({ name, end }) => ({
+          name,
+          dates: { start: end, end },
+          time: { timeZoneIdentifier: "America/New_York" },
+        })),
+      ),
+    );
+
+  // Downloaded for Oct 10-12, then postponed to the 17th-19th: the date
+  // captured at download time deleted the meet's offline data before it ran.
+  it("expires a postponed meet on its current end date from the meets list, and remembers it", async () => {
+    await saveMeetAthletes("Postponed", [athlete("Postponed")] as never);
+    await markMeetExplicitlyDownloaded("Postponed" as never, true, { endDate: "2020-01-01" });
+    listMeets([{ name: "Postponed", end: "2099-06-20" }]);
+
+    await clearExpiredDownloadedMeets();
+
+    await expect(isMeetExplicitlyDownloadedFor("Postponed")).resolves.toBe(true);
+    const downloads = JSON.parse(mockStorage.get("meetcal_explicit_meet_downloads") ?? "{}");
+    expect(downloads.Postponed.endDate).toBe("2099-06-20");
+
+    // Off the list later, the remembered date still applies.
+    mockStorage.delete("@meets_list_cache_v1");
+    await clearExpiredDownloadedMeets();
+    await expect(isMeetExplicitlyDownloadedFor("Postponed")).resolves.toBe(true);
+  });
+
+  it("expires a meet the list says has ended even though the stored date is later", async () => {
+    await saveMeetAthletes("Moved Up", [athlete("Moved Up")] as never);
+    await markMeetExplicitlyDownloaded("Moved Up" as never, true, { endDate: "2099-06-20" });
+    listMeets([{ name: "Moved Up", end: "2020-01-01" }]);
+
+    await clearExpiredDownloadedMeets();
+
+    await expect(isMeetExplicitlyDownloadedFor("Moved Up")).resolves.toBe(false);
+  });
+
+  // With storage full, saving a changed end date failed and aborted the
+  // sweep, keeping the expired downloads that would have freed space.
+  it("still clears ended meets when saving the listed end dates fails", async () => {
+    jest.spyOn(console, "warn").mockImplementation(() => {});
+    await saveMeetAthletes("Ended", [athlete("Ended")] as never);
+    await markMeetExplicitlyDownloaded("Ended" as never, true, { endDate: "2020-01-01" });
+    await markMeetExplicitlyDownloaded("Moved" as never, true, { endDate: "2099-06-20" });
+    listMeets([{ name: "Moved", end: "2099-07-01" }]);
+    const setItem = AsyncStorage.setItem as jest.Mock;
+    const realSet = setItem.getMockImplementation();
+    setItem.mockImplementationOnce(async () => {
+      throw new Error("database or disk is full (code 13 SQLITE_FULL)");
+    });
+
+    try {
+      await clearExpiredDownloadedMeets();
+    } finally {
+      if (realSet) setItem.mockImplementation(realSet);
+    }
+
+    await expect(isMeetExplicitlyDownloadedFor("Ended")).resolves.toBe(false);
+    await expect(getMeetData("Ended" as never)).resolves.toMatchObject({ athletes: [] });
+    jest.restoreAllMocks();
+  });
+
   async function isMeetExplicitlyDownloadedFor(meet: string): Promise<boolean> {
     return (await getExplicitlyDownloadedMeetIds()).has(meet);
   }
