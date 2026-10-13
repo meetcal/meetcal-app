@@ -148,6 +148,22 @@ describe("attempt estimator states", () => {
     act(() => tree.unmount());
   });
 
+  // Regression (#313): an empty answer replaced estimates painted from the
+  // downloaded session with "No athletes in this session", while the Start
+  // List kept the same roster.
+  it("keeps cached estimates when the refresh answers with no athletes", async () => {
+    jest.mocked(getSessionAthletesFromMeetCache).mockResolvedValue([athlete("Cached Lifter")]);
+    jest.mocked(fetchAthletesWithSession).mockResolvedValue([]);
+
+    const tree = await render();
+
+    expect(textOf(tree)).toContain("Cached Lifter");
+    expect(textOf(tree)).not.toContain("No athletes in this session");
+    expect(textOf(tree)).not.toContain("Refreshing");
+    expect(fetchRecentAthleteHistoryForNames).not.toHaveBeenCalled();
+    act(() => tree.unmount());
+  });
+
   it("explains an offline session that was never downloaded", async () => {
     jest.mocked(isNetworkAvailable).mockResolvedValue(false);
 
