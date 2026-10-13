@@ -32,6 +32,30 @@ test("unknown routes render the not-found page", async ({ page }) => {
   await expect(page.getByRole("heading", { level: 1, name: "Your Competition Schedule, Simplified" })).toBeVisible();
 });
 
+test("the canonical link follows navigation into and out of the Not Found page", async ({ page }) => {
+  // Vercel answers a missing path with dist/404.html, whose shell has no
+  // canonical link; the static test server would answer with index.html.
+  await page.route("**/does-not-exist", (route) =>
+    route.fulfill({ status: 404, contentType: "text/html", path: "dist/404.html" }),
+  );
+  const canonical = page.locator('link[rel="canonical"]');
+  await page.goto("/does-not-exist");
+  await expect(page.getByRole("heading", { name: /not found/i })).toBeVisible();
+  await expect(canonical).toHaveCount(0);
+
+  await page.getByRole("link", { name: "Go to the home page" }).click();
+  await expect(page.getByRole("heading", { level: 1, name: "Your Competition Schedule, Simplified" })).toBeVisible();
+  await expect(canonical).toHaveCount(1);
+  await expect(canonical).toHaveAttribute("href", "https://www.meetcal.app/");
+
+  await page.goBack();
+  await expect(page.getByRole("heading", { name: /not found/i })).toBeVisible();
+  await expect(canonical).toHaveCount(0);
+
+  await page.goForward();
+  await expect(canonical).toHaveAttribute("href", "https://www.meetcal.app/");
+});
+
 test("subscription page only offers mobile-store handoffs", async ({ page }) => {
   await page.goto("/subscription");
   await expect(page.getByRole("link", { name: "Open on iPhone or iPad" })).toHaveAttribute("href", /apps\.apple\.com/);

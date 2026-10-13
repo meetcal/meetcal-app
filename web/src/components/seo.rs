@@ -12,6 +12,9 @@ pub struct PageMetadata {
     pub title: &'static str,
     pub description: &'static str,
     pub indexable: bool,
+    /// False for a path the router does not know (the Not Found page), which
+    /// has no canonical URL.
+    pub canonical: bool,
 }
 
 pub fn metadata_for_path(path: &str) -> PageMetadata {
@@ -24,32 +27,38 @@ pub fn metadata_for_path(path: &str) -> PageMetadata {
             title: "MeetCal — Weightlifting Meet Schedules & Competition Data",
             description: "Explore Olympic weightlifting meet schedules, start lists, rankings, records, and competition tools with MeetCal.",
             indexable: true,
+            canonical: true,
         },
         "/features" => PageMetadata {
             title: "MeetCal Features — Schedules, Start Lists & Rankings",
             description: "See how MeetCal helps athletes, coaches, and fans navigate weightlifting schedules, start lists, rankings, reminders, and meet-day details.",
             indexable: true,
+            canonical: true,
         },
         "/privacy" => PageMetadata {
             title: "Privacy Policy — MeetCal",
             description: "Learn how MeetCal collects, uses, shares, and protects information across its apps, website, and related services.",
             indexable: true,
+            canonical: true,
         },
         "/terms" => PageMetadata {
             title: "Terms of Use — MeetCal",
             description: "Read the terms that apply when using the MeetCal apps, website, competition data, and related services.",
             indexable: true,
+            canonical: true,
         },
         "/subscription" => PageMetadata {
             title: "Manage Your MeetCal Subscription in the App",
             description: "Open MeetCal on iOS or Android to start, change, restore, or cancel your subscription.",
             indexable: false,
+            canonical: true,
         },
         "/comp-data" => competition_metadata("Competition Data"),
         _ => PageMetadata {
             title: "Page Not Found — MeetCal",
             description: "The requested MeetCal page could not be found.",
             indexable: false,
+            canonical: false,
         },
     }
 }
@@ -59,6 +68,7 @@ fn competition_metadata(name: &'static str) -> PageMetadata {
         title: name,
         description: "Sign in with your MeetCal account to explore subscription competition data on the web.",
         indexable: false,
+        canonical: true,
     }
 }
 
@@ -92,11 +102,44 @@ pub fn RouteMetadata() -> impl IntoView {
         set_content(&document, "meta-twitter-image", SOCIAL_IMAGE);
 
         let canonical = format!("{SITE_URL}{path}");
-        set_attribute(&document, "canonical-url", "href", &canonical);
+        // The 404 shell has no canonical link and the router keeps the
+        // document across navigations, so create the link on a known route
+        // and remove it on an unknown one, whichever way the visitor goes.
+        set_canonical_link(&document, metadata.canonical.then_some(canonical.as_str()));
         set_content(&document, "meta-og-url", &canonical);
     });
 
     view! { <></> }
+}
+
+const CANONICAL_ID: &str = "canonical-url";
+
+fn set_canonical_link(document: &web_sys::Document, href: Option<&str>) {
+    let existing = document.get_element_by_id(CANONICAL_ID);
+    let Some(href) = href else {
+        if let Some(link) = existing {
+            link.remove();
+        }
+        return;
+    };
+    let link = match existing {
+        Some(link) => link,
+        None => {
+            let Ok(link) = document.create_element("link") else {
+                return;
+            };
+            let Ok(Some(head)) = document.query_selector("head") else {
+                return;
+            };
+            link.set_id(CANONICAL_ID);
+            let _ = link.set_attribute("rel", "canonical");
+            if head.append_child(&link).is_err() {
+                return;
+            }
+            link
+        }
+    };
+    let _ = link.set_attribute("href", href);
 }
 
 fn set_content(document: &web_sys::Document, id: &str, value: &str) {
@@ -140,6 +183,23 @@ mod tests {
                 "{path} should not be indexed"
             );
         }
+    }
+
+    #[test]
+    fn only_unknown_pages_lack_a_canonical_url() {
+        for path in [
+            "/",
+            "/features",
+            "/comp-data",
+            "/qualifying-totals",
+            "/subscription",
+        ] {
+            assert!(
+                metadata_for_path(path).canonical,
+                "{path} should have a canonical URL"
+            );
+        }
+        assert!(!metadata_for_path("/missing").canonical);
     }
 
     #[test]
