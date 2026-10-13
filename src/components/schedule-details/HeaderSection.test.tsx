@@ -117,6 +117,13 @@ describe("HeaderSection time-zone label", () => {
     await expect(summaryFor("Other Open")).resolves.toBe("Session 3 • 9:00 AM EST");
   });
 
+  it("reads TBD, with no stray zone, for a row the schedule has not timed", async () => {
+    mockSelection = { meetDetails: selected, availableMeets: [selected, other] };
+    const renderer = await render("Selected Open", { platformStartTime: "" });
+    const first = renderer.root.findAllByType(Text)[0];
+    expect(([] as unknown[]).concat(first.props.children).join("")).toBe("Session 3 • TBD");
+  });
+
   it("omits the label when the shown meet is not known", async () => {
     mockSelection = { meetDetails: selected, availableMeets: [selected] };
     await expect(summaryFor("Unlisted Open")).resolves.toBe("Session 3 • 9:00 AM");

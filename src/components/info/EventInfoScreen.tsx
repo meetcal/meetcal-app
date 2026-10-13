@@ -59,6 +59,14 @@ export default function EventInfoScreen() {
   // same formatter as the calendar event location).
   const venueLines = venueAddressLines(meetDetails?.venue);
   const venueLocation = formatVenueLocation(meetDetails?.venue, meetDetails?.name);
+  const addressLines = [venueLines.name, venueLines.street, venueLines.locality].filter(
+    (line): line is string => Boolean(line),
+  );
+  // Without a findable location, what is left is shown as text, minus the
+  // stand-in venue name that only repeats the meet's title.
+  const plainVenueLines = venueLocation
+    ? []
+    : addressLines.filter((line) => line !== meetDetails?.name?.trim());
 
   const handleAddressPress = async () => {
     if (!venueLocation) return;
@@ -115,29 +123,41 @@ export default function EventInfoScreen() {
 
         <View style={[styles.divider, { backgroundColor: colors.border }]} />
 
-        <Pressable
-          style={({ pressed }) => [
-            styles.section,
-            styles.lastSection,
-            pressed && { backgroundColor: colors.pressed },
-          ]}
-          onPress={handleAddressPress}
-        >
-          <View>
-            <View style={styles.addressContainer}>
-              <View>
-                {[venueLines.name, venueLines.street, venueLines.locality]
-                  .filter(Boolean)
-                  .map((line, index) => (
+        {venueLocation ? (
+          <Pressable
+            testID="info-venue-address"
+            accessibilityRole="link"
+            style={({ pressed }) => [
+              styles.section,
+              styles.lastSection,
+              pressed && { backgroundColor: colors.pressed },
+            ]}
+            onPress={handleAddressPress}
+          >
+            <View>
+              <View style={styles.addressContainer}>
+                <View>
+                  {addressLines.map((line, index) => (
                     <ThemedText key={`${index}-${line}`} style={[styles.link, { color: colors.link }]}>
                       {line}
                     </ThemedText>
                   ))}
+                </View>
+                <IconSymbol name="chevron.right" size={20} color={colors.link} />
               </View>
-              <IconSymbol name="chevron.right" size={20} color={colors.link} />
             </View>
+          </Pressable>
+        ) : plainVenueLines.length > 0 ? (
+          // Only the backend's stand-in venue (the meet's own name): nothing
+          // Maps can find, so plain text with no chevron.
+          <View testID="info-venue-name" style={[styles.section, styles.lastSection]}>
+            {plainVenueLines.map((line, index) => (
+              <ThemedText key={`${index}-${line}`} style={{ color: colors.secondaryText }}>
+                {line}
+              </ThemedText>
+            ))}
           </View>
-        </Pressable>
+        ) : null}
 
         <View style={[styles.divider, { backgroundColor: colors.border }]} />
 

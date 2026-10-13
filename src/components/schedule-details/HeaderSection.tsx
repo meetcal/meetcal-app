@@ -182,8 +182,9 @@ const HeaderSection: React.FC<HeaderSectionProps> = ({
           {sessionNumber}
           {" "}
           •{" "}
-          {platformStartTime}
-          {timeZoneAbbr ? ` ${timeZoneAbbr}` : ""}
+          {/* An untimed row reads TBD, as on the Saved card, not a bare zone. */}
+          {platformStartTime || "TBD"}
+          {platformStartTime && timeZoneAbbr ? ` ${timeZoneAbbr}` : ""}
         </ThemedText>
       </View>
 
