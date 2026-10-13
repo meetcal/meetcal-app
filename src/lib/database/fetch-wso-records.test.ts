@@ -136,13 +136,32 @@ describe("wsoRecordsResource offline cache", () => {
     await expect(wsoRecordsResource.loadCached("Ohio", "Senior", "Men")).resolves.toBeNull();
   });
 
-  it("prefers the exact filtered copy over the derived view", async () => {
+  it("prefers a filtered copy written after the download over the derived view", async () => {
     const filtered = { Senior: { Men: [{ weightClass: "96kg", snatchRecord: 9, cjRecord: 9, totalRecord: 18 }], Women: [] } };
     // The shape the filtered cache held before it was bounded.
     await seed(FILTERED_KEY, { "Carolina:Senior:Men": filtered }, 15);
     await expect(wsoRecordsResource.loadCached("Carolina", "Senior", "Men")).resolves.toEqual({
       data: filtered,
       lastUpdatedAt: 15,
+    });
+  });
+
+  it("prefers a download written after the filtered copy", async () => {
+    // Browsed in January, Refresh All in March: offline shows March.
+    const january = { Senior: { Men: [{ weightClass: "96kg", snatchRecord: 9, cjRecord: 9, totalRecord: 18 }], Women: [] } };
+    await seed(FILTERED_KEY, [{ key: "Carolina:Senior:Men", data: january, lastSynced: 5 }], 5);
+    await expect(wsoRecordsResource.loadCached("Carolina", "Senior", "Men")).resolves.toEqual({
+      data: { Senior: { Men: senior.Men, Women: [] } },
+      lastUpdatedAt: 10,
+    });
+  });
+
+  it("keeps a filtered copy for a WSO the download does not have", async () => {
+    const view = { Senior: { Men: [{ weightClass: "96kg", snatchRecord: 9, cjRecord: 9, totalRecord: 18 }], Women: [] } };
+    await seed(FILTERED_KEY, [{ key: "Ohio:Senior:Men", data: view, lastSynced: 5 }], 5);
+    await expect(wsoRecordsResource.loadCached("Ohio", "Senior", "Men")).resolves.toEqual({
+      data: view,
+      lastUpdatedAt: 5,
     });
   });
 
