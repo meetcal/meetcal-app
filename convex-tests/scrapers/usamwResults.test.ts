@@ -106,4 +106,20 @@ describe('USAMW result PDFs (port of usamw_results.py)', () => {
     )[0];
     expect(usamwRowProblems(row)).toEqual(['body weight 970', 'snatch attempts 40, 38, 42 go down']);
   });
+
+  it('finds the nationality past a bare ADT marker or a three-letter surname in a class table (#404)', () => {
+    const page = [
+      ...line(10, ['Age', 'Group', 'M40', 'Weight', 'Category', '88']),
+      ...line(20, ['1', '7', 'FARROW', 'Jason', 'ADT', 'USA', '87.50', '41', '100', '105', '110', '130', '135', '140', '250']),
+      ...line(30, ['2', '8', 'ADT2', 'ROE', 'Sam', 'USA', '86.10', '42', '90', '95', '100', '120', '125', '130', '230']),
+      ...line(40, ['3', '9', 'LEE', 'Ann', 'USA', '85.00', '43', '80', '85', '90', '100', '105', '110', '200']),
+    ];
+    const rows = parseUsamwResults([page], 'Meet', '2026-03-29');
+    expect(rows.map((r) => [r.name, r.bodyWeight, r.total])).toEqual([
+      ['Jason Farrow', 87.5, 250],
+      ['Sam Roe', 86.1, 230],
+      ['Ann Lee', 85, 200],
+    ]);
+  });
 });
+

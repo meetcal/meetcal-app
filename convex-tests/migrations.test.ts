@@ -224,6 +224,33 @@ describe('redateEventResults and resultDateProblems (#402)', () => {
     expect(await redate(store.ctx, { eventId: '6959', meet: 'Summer Open', date: '2025-07-12', dryRun: false })).toMatchObject({ redated: 0, remaining: 0 });
   });
 
+  it("never moves another edition's results under a reused event id and title unasked", async () => {
+    // Event 4598: the Dallas meet in 2020 and 2021 under one id and title,
+    // and two 2020 rows stored under birth dates.
+    const dallas = (name: string, date: string) => result(name, '4598', { meet: 'Dallas', date, total: 150 });
+    const seed2 = () => [
+      ...['A', 'B', 'C', 'D'].map((n) => dallas(`2020 ${n}`, '2020-10-31')),
+      dallas('Born Early', '1971-02-03'),
+      dallas('Born Late', '1999-08-09'),
+      ...['A', 'B', 'C', 'D', 'E'].map((n) => dallas(`2021 ${n}`, '2021-10-24')),
+    ];
+    type Answer = { crowded: string[]; wrong: number; redated: number; remaining: number };
+    const redate = handlerOf<Redate & { keepDates?: string[]; moveDates?: string[] }, Answer>(redateEventResults);
+    const store = fakeMutationCtx({ lifting_results: seed2() });
+    expect(await redate(store.ctx, { eventId: '4598', meet: 'Dallas', date: '2020-10-31' })).toMatchObject({ crowded: ['2021-10-24'], wrong: 7 });
+    await expect(redate(store.ctx, { eventId: '4598', meet: 'Dallas', date: '2020-10-31', dryRun: false })).rejects.toThrow('another edition or day');
+    expect(store.rows('lifting_results').filter((r) => r.date === '2021-10-24')).toHaveLength(5);
+
+    expect(await redate(store.ctx, { eventId: '4598', meet: 'Dallas', date: '2020-10-31', dryRun: false, keepDates: ['2021-10-24'] })).toMatchObject({ redated: 2, remaining: 0 });
+    const byDate: Record<string, number> = {};
+    for (const row of store.rows('lifting_results')) byDate[row.date as string] = (byDate[row.date as string] ?? 0) + 1;
+    expect(byDate).toEqual({ '2020-10-31': 6, '2021-10-24': 5 });
+
+    // `moveDates` moves a crowded date when that is what is wanted.
+    const forced = fakeMutationCtx({ lifting_results: seed2() });
+    expect(await redate(forced.ctx, { eventId: '4598', meet: 'Dallas', date: '2020-10-31', dryRun: false, moveDates: ['2021-10-24'] })).toMatchObject({ redated: 7 });
+  });
+
   it('takes the stored meet date when none is given, and refuses a bad one', async () => {
     const store = fakeMutationCtx({ lifting_results: seed(), meets: [{ name: 'Summer Open', startDate: '2025-07-12', endDate: '2025-07-13' }] });
     const redate = handlerOf<Redate, { date: string; wrong: number }>(redateEventResults);

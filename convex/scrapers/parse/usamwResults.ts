@@ -159,8 +159,12 @@ function parseClassTables(pages: readonly PdfWord[][], ctx: Context): ParsedRow[
         continue;
       }
       if (!age || line.length < 12 || !/^\d{1,4}$/.test(texts[0]) || !/^\d{1,4}$/.test(texts[1])) continue;
-      const natIndex = texts.findIndex((text, index) => index >= 2 && /^[A-Z]{3}$/.test(text));
-      if (natIndex <= 2) continue;
+      // The nationality is the word right before the row's first number: a
+      // three-letter surname (`LEE`) or a bare `ADT` marker in the name has
+      // the same shape, and taken first, skipped the row.
+      const firstNumber = texts.findIndex((text, index) => index >= 3 && /^\d/.test(text));
+      const natIndex = firstNumber - 1;
+      if (natIndex <= 2 || !/^[A-Z]{3}$/.test(texts[natIndex]) || /^ADT/.test(texts[natIndex])) continue;
       const name = normalizeResultName(texts.slice(2, natIndex).join(' '));
       const after = line.slice(natIndex + 1);
       const data = after.slice(bodyWeightIndex(after.map((word) => word.text)));

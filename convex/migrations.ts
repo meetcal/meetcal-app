@@ -363,6 +363,8 @@ export const padMeetDates = internalMutation({
  * history, as a batch of upserts does.
  */
 const REDATE_BATCH = 200;
+/** Rows on one date past which `redateEventResults` takes it for a real meet date, not one lifter's. */
+const CROWDED_DATE_ROWS = 3;
 
 /**
  * Gives an event's results stored under a wrong date the meet's date (#402):
@@ -378,12 +380,27 @@ const REDATE_BATCH = 200;
  * `migrations:dedupeLiftingResults` in case the current sync had also stored
  * the rows under the right date.
  *
+ * Only dates that look like one lifter's each are moved. A date holding more
+ * than CROWDED_DATE_ROWS rows is another edition of a meet whose event id
+ * and title recur across years, or another day of the meet, and is never
+ * moved unasked: the dry run lists such dates as `crowded`, and a run that
+ * finds any refuses until each is listed in `keepDates` (left as they are)
+ * or `moveDates` (moved after all). `keepDates` also leaves any other date
+ * alone.
+ *
  *   npx convex run migrations:redateEventResults '{"eventId":"6959","meet":"4th Annual Steve Sakoulas Summer Open","date":"2025-07-12"}'
  *   npx convex run migrations:redateEventResults '{"eventId":"6959","meet":"4th Annual Steve Sakoulas Summer Open","date":"2025-07-12","dryRun":false}'
  */
 export const redateEventResults = internalMutation({
-  args: { eventId: v.string(), meet: v.string(), date: v.optional(v.string()), dryRun: v.optional(v.boolean()) },
-  handler: async (ctx, { eventId, meet, date, dryRun = true }) => {
+  args: {
+    eventId: v.string(),
+    meet: v.string(),
+    date: v.optional(v.string()),
+    dryRun: v.optional(v.boolean()),
+    keepDates: v.optional(v.array(v.string())),
+    moveDates: v.optional(v.array(v.string())),
+  },
+  handler: async (ctx, { eventId, meet, date, dryRun = true, keepDates = [], moveDates = [] }) => {
     const target =
       date ??
       (
@@ -401,11 +418,24 @@ export const redateEventResults = internalMutation({
         .collect()
     ).filter((row) => row.meet === meet);
     if (rows.length === 0) throw new Error(`event ${eventId} holds no results of ${JSON.stringify(meet)}`);
-    const wrong = rows.filter((row) => row.date !== target);
+    const keep = new Set(keepDates);
+    const move = new Set(moveDates);
+    const wrong = rows.filter((row) => row.date !== target && !keep.has(row.date));
     const dates: Record<string, number> = {};
     for (const row of wrong) dates[row.date] = (dates[row.date] ?? 0) + 1;
-    const summary = { date: target, rows: rows.length, wrong: wrong.length, dates };
+    // Another edition or day of the meet, unless the caller said otherwise.
+    const crowded = Object.entries(dates)
+      .filter(([day, count]) => count > CROWDED_DATE_ROWS && !move.has(day))
+      .map(([day]) => day)
+      .sort();
+    const summary = { date: target, rows: rows.length, wrong: wrong.length, dates, crowded };
     if (dryRun) return { ...summary, redated: 0, remaining: wrong.length };
+    if (crowded.length > 0) {
+      throw new Error(
+        `event ${eventId} ${JSON.stringify(meet)} holds over ${CROWDED_DATE_ROWS} results on ${crowded.join(', ')}: another edition or day of the meet? ` +
+          `List each in "keepDates" to leave it, or "moveDates" to move it`,
+      );
+    }
     const batch = wrong.slice(0, REDATE_BATCH);
     const hints: WriteHint[] = [];
     for (const row of batch) {
