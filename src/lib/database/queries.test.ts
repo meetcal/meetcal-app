@@ -1,6 +1,5 @@
 import {
   fetchAllResultsForName,
-  fetchAthleteBestsForNames,
   fetchAthletesWithSession,
   fetchRecentAthleteHistoryForNames,
   fetchSchedule,
@@ -12,7 +11,6 @@ const mockFetchApiAthletesWithSession = jest.fn();
 const mockFetchApiAthletes = jest.fn();
 const mockFetchApiRecentResultsByNames = jest.fn();
 const mockFetchApiResultsByNames = jest.fn();
-const mockFetchApiYearBestsByNames = jest.fn();
 const mockSearchApi = jest.fn();
 
 jest.mock("@/lib/api/meetcal-api", () => ({
@@ -23,8 +21,6 @@ jest.mock("@/lib/api/meetcal-api", () => ({
   fetchApiRecentResultsByNames: (...args: unknown[]) =>
     mockFetchApiRecentResultsByNames(...args),
   fetchApiResultsByNames: (...args: unknown[]) => mockFetchApiResultsByNames(...args),
-  fetchApiYearBestsByNames: (...args: unknown[]) =>
-    mockFetchApiYearBestsByNames(...args),
   searchApi: (...args: unknown[]) => mockSearchApi(...args),
 }));
 
@@ -152,36 +148,6 @@ describe("history and bests facades", () => {
     mockFetchApiResultsByNames.mockResolvedValue([]);
     await fetchAllResultsForName("Athlete A");
     expect(mockFetchApiResultsByNames).toHaveBeenCalledWith(["Athlete A"]);
-  });
-
-  it("maps year bests per requested name, nulling zero and missing values", async () => {
-    mockFetchApiYearBestsByNames.mockResolvedValue({
-      "Athlete A": { bestSnatch: 100, bestCJ: 0, bestTotal: 220 },
-    });
-
-    await expect(
-      fetchAthleteBestsForNames(["Athlete A", "Athlete B"], "2025-09-23"),
-    ).resolves.toEqual({
-      "Athlete A": { snatch_best: 100, cj_best: null, total: 220 },
-      "Athlete B": { snatch_best: null, cj_best: null, total: null },
-    });
-    expect(mockFetchApiYearBestsByNames).toHaveBeenCalledWith(
-      ["Athlete A", "Athlete B"],
-      "2025-09-23",
-    );
-  });
-
-  it("matches year-bests rows keyed by the cleaned name to the raw spelling", async () => {
-    // The API echoes names trimmed and whitespace-folded, so the roster's
-    // ' Jane Doe' used to miss its row and resolve to "no results".
-    mockFetchApiYearBestsByNames.mockResolvedValue({
-      "Jane Doe": { bestSnatch: 80, bestCJ: 100, bestTotal: 180 },
-    });
-
-    await expect(fetchAthleteBestsForNames([" Jane Doe", "jane  doe"])).resolves.toEqual({
-      " Jane Doe": { snatch_best: 80, cj_best: 100, total: 180 },
-      "jane  doe": { snatch_best: 80, cj_best: 100, total: 180 },
-    });
   });
 
   it("returns suggestions from search and rethrows failures", async () => {

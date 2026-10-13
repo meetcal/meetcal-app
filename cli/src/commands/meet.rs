@@ -130,7 +130,7 @@ pub fn report(athletes: &[Athletes], bests: Option<&HashMap<String, NamedBests>>
     table.set_header(header);
 
     let mut data = Table::new();
-    let mut data_header = vec![
+    let data_header = vec![
         "Name",
         "Age",
         "Gender",
@@ -143,14 +143,11 @@ pub fn report(athletes: &[Athletes], bests: Option<&HashMap<String, NamedBests>>
         "Date",
         "Weigh-in",
         "Start",
+        // Always exported, null with --no-bests, so the keys don't depend on the flag.
+        "Past-Year Best Snatch",
+        "Past-Year Best CJ",
+        "Past-Year Best Total",
     ];
-    if bests.is_some() {
-        data_header.extend([
-            "Past-Year Best Snatch",
-            "Past-Year Best CJ",
-            "Past-Year Best Total",
-        ]);
-    }
     data.set_header(data_header);
 
     for athlete in athletes {
@@ -185,18 +182,18 @@ pub fn report(athletes: &[Athletes], bests: Option<&HashMap<String, NamedBests>>
             time_24h(&weigh_in),
             time_24h(&start),
         ]);
-        if let Some(bests) = bests {
-            let best = bests.get(&athlete.name);
+        let best = bests.and_then(|bests| bests.get(&athlete.name));
+        if bests.is_some() {
             row.push(bests_cell(best));
-            data_row.extend(
-                [
-                    best.map(|best| best.best_snatch),
-                    best.map(|best| best.best_cj),
-                    best.map(|best| best.best_total),
-                ]
-                .map(|lift| lift.map(kg).unwrap_or_default()),
-            );
         }
+        data_row.extend(
+            [
+                best.map(|best| best.best_snatch),
+                best.map(|best| best.best_cj),
+                best.map(|best| best.best_total),
+            ]
+            .map(|lift| lift.map(kg).unwrap_or_default()),
+        );
         table.add_row(row);
         data.add_row(data_row);
     }
@@ -402,6 +399,14 @@ mod tests {
         assert!(text.contains("Oct 3, 2026"));
         assert!(text.contains("10:00 AM"));
         assert!(text.contains("Not set"));
+
+        // --no-bests keeps the keys, with nulls, so the schema doesn't change with the flag.
+        let without = super::report(&athletes, None).to_json();
+        let keys = |row: &serde_json::Value| -> Vec<String> {
+            row.as_object().unwrap().keys().cloned().collect()
+        };
+        assert_eq!(keys(&without[0]), keys(&json[0]));
+        assert_eq!(without[0]["past_year_best_total"], serde_json::Value::Null);
     }
 
     #[test]

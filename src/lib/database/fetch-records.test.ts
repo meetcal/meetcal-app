@@ -69,14 +69,13 @@ describe("federationRecordsResource and fetchAgeGroups", () => {
     jest.restoreAllMocks();
   });
 
-  it("drops incomplete rows, keeps the requested federation, and sorts weight classes", async () => {
+  it("drops rows without their keys, keeps the requested federation, and sorts weight classes", async () => {
     mockGetJsonArray.mockResolvedValue([
       row({}),
       row({ weight_class: "67kg", snatch_record: 140, cj_record: 170, total_record: 300 }),
       row({ gender: "women", weight_class: "71kg" }),
       row({ record_type: "IWF" }),
       row({ age_category: null }),
-      row({ snatch_record: null }),
       row({ record_type: null }),
       row({ weight_class: "" }),
     ]);
@@ -91,6 +90,24 @@ describe("federationRecordsResource and fetchAgeGroups", () => {
       data: records,
       lastUpdatedAt: expect.any(Number),
     });
+  });
+
+  // A class with one unset lift used to vanish, its claimed lifts with it;
+  // the screen shows the unset lift (null or 0) as "—".
+  it("keeps a class with an unset lift, and an all-zero masters class", async () => {
+    mockGetJsonArray.mockResolvedValue([
+      row({ age_category: "Masters 60", weight_class: "58kg", snatch_record: 40, cj_record: null, total_record: null }),
+      row({ age_category: "Masters 85", gender: "Women", weight_class: "48kg", snatch_record: 0, cj_record: 0, total_record: 0 }),
+    ]);
+
+    const records = await fetchRecords("USAW");
+
+    expect(records["Masters 60"].Men).toEqual([
+      { weightClass: "58kg", snatchRecord: 40, cjRecord: null, totalRecord: null },
+    ]);
+    expect(records["Masters 85"].Women).toEqual([
+      { weightClass: "48kg", snatchRecord: 0, cjRecord: 0, totalRecord: 0 },
+    ]);
   });
 
   // Browsing used to merge into the download's entry and reset its

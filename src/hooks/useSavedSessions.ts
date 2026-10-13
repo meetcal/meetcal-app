@@ -3,8 +3,10 @@ import { LiftResult } from '@/data/types/athletes';
 import { MeetName } from '@/data/types/meet';
 import { useAuth, useUser } from '@clerk/expo';
 import { getMeetConfig } from '@/data/meets/config';
+import { resolvedMeetTimeZone } from '@/utils/timezone';
 import { useSelectedMeet } from '@/contexts/SelectedMeetContext';
 import { useSubscription } from '@/contexts/SubscriptionContext';
+import { confirmedSubscriptionFor } from '@/lib/confirmed-entitlement';
 import { getMeetSchedule } from '@/lib/database/offline-store';
 import { syncSavedWidget, clearSavedWidget } from '@/utils/savedWidget';
 import { reindexAppEntities } from '@/utils/appIntents';
@@ -15,6 +17,7 @@ import {
   type FlushResult,
   readOutbox,
 } from '@/lib/saved-sessions-outbox';
+import { clearAccountDeleted, onAccountDeleted } from '@/lib/deleted-accounts';
 import { createSerialQueue } from '@/lib/saved-sessions-queue';
 import {
   clearSavedSessionsCache,
@@ -65,7 +68,7 @@ export function useSavedSessions() {
   const { user, isLoaded: isClerkLoaded } = useUser();
   const { getToken } = useAuth();
   const { selectedMeet } = useSelectedMeet();
-  const { isSubscribed } = useSubscription();
+  const { isSubscribed, confirmedEntitlement } = useSubscription();
   const [storedSessions, setSavedSessions] = useState<SavedSession[]>([]);
   // What every consumer reads (the screens, the widget, the reminders): the
   // stored rows, with the selected meet's on its current schedule times.
@@ -73,6 +76,11 @@ export function useSavedSessions() {
   const [isLoading, setIsLoading] = useState(true);
   const clerkUserId = user?.id;
   const { storageUserId, hasResolvedUser } = useStorageUser(clerkUserId, Boolean(isClerkLoaded));
+  // Signed in as this user: an account this device cleared as deleted was
+  // only signed out of, and its saves are stored again (`deleted-accounts.ts`).
+  useEffect(() => {
+    if (clerkUserId) clearAccountDeleted(clerkUserId);
+  }, [clerkUserId]);
   /**
    * The API answered 401 to a `/users/me/*` call. The Clerk session Clerk
    * still reports as signed in no longer authorises writes, so nothing is
@@ -92,6 +100,13 @@ export function useSavedSessions() {
   // re-run on; they read the latest one through this ref instead.
   const getTokenRef = useRef(getToken);
   getTokenRef.current = getToken;
+  // Read by the prune at the moment it would delete, not when it was built.
+  // RevenueCat's own answer for *this* Clerk user, not the cached hint
+  // `isSubscribed` starts from, and not the previous account's answer right
+  // after a switch: the prune deletes on the server.
+  const confirmedIsSubscribed = confirmedSubscriptionFor(confirmedEntitlement, clerkUserId);
+  const confirmedIsSubscribedRef = useRef(confirmedIsSubscribed);
+  confirmedIsSubscribedRef.current = confirmedIsSubscribed;
   // Every local mutation runs through this queue, so two concurrent saves
   // cannot both read the same list and have the later commit drop the
   // earlier row. Not re-entrant: batch callers loop over the leaf mutations.
@@ -116,6 +131,21 @@ export function useSavedSessions() {
   }
   const store = storeRef.current;
 
+  // The active account was deleted on this device (`clearLocalUserData`):
+  // blank its list and widget now, as a sign-out does; offline, the cached
+  // user can stay active, so the effect below would not.
+  useEffect(
+    () =>
+      onAccountDeleted((userId) => {
+        if (activeUserIdRef.current !== userId) return;
+        setSavedSessions([]);
+        pendingWriteCountRef.current = 0;
+        clearSavedWidget();
+        clearSavedSessionsCache(store.cache);
+      }),
+    [store],
+  );
+
   useEffect(() => {
     if (!hasResolvedUser || activeUserId) return;
     setSavedSessions([]);
@@ -139,10 +169,10 @@ export function useSavedSessions() {
     // meet or a session the user had already moved away from.
     let cancelled = false;
     getMeetConfig(selectedMeet)
-      // No UTC fallback: when the config cannot be read, the widget gets no
-      // start instants rather than hiding sessions hours early (see
-      // utils/savedWidget.ts).
-      .then(config => config?.time?.timeZoneIdentifier || undefined, () => undefined)
+      // No UTC fallback: when the config cannot be read, or the meet's zone
+      // is unknown, the widget gets no start instants rather than hiding
+      // sessions hours early (see utils/savedWidget.ts).
+      .then(config => resolvedMeetTimeZone(config) ?? undefined, () => undefined)
       .then(timeZone => {
         if (cancelled) return;
         syncSavedWidget(selectedMeet, savedSessions, timeZone);
@@ -216,9 +246,11 @@ export function useSavedSessions() {
   );
 
   // Removes saved sessions that started more than 2 hours ago, but only when the
-  // user has the "auto-remove started sessions" preference enabled. Runs on load.
+  // user has the "auto-remove started sessions" preference enabled and
+  // RevenueCat has confirmed the subscription. Runs on load.
   const pruneStartedSessions = useCallback(() => pruneStartedSessionsFor({
     clerkUserId,
+    isSubscribed: () => confirmedIsSubscribedRef.current,
     isActive: store.isActive,
     getToken: () => getTokenRef.current(),
     readStoredSessions: () => readStoredSessions(),
@@ -286,6 +318,25 @@ export function useSavedSessions() {
     lastLoadKeyRef.current = loadKey;
     void loadSavedSessions();
   }, [activeUserId, clerkUserId, hasResolvedUser, loadSavedSessions]);
+
+  // The prune waits for RevenueCat's own answer, which reaches a subscriber
+  // whose entitlement was cached only seconds after the first load (the
+  // provider's delayed refresh). Load again once it confirms, so that load's
+  // prune runs instead of waiting for the next focus.
+  // A fresh load, never joining one already running: that load's prune may
+  // have read the subscription before it confirmed and skipped.
+  // Only a confirmation for the same signed-in user: a new user (Clerk
+  // resolving, an account switch) gets its own identity load above, whose
+  // prune reads the answer then.
+  const lastConfirmedRef = useRef({ userId: clerkUserId, confirmed: confirmedIsSubscribed });
+  useEffect(() => {
+    const last = lastConfirmedRef.current;
+    lastConfirmedRef.current = { userId: clerkUserId, confirmed: confirmedIsSubscribed };
+    if (!clerkUserId || last.userId !== clerkUserId) return;
+    if (confirmedIsSubscribed === true && last.confirmed !== true) {
+      void loadChain.run(savedSessionsLoadKey(activeUserId, true), runLoad, { fresh: true });
+    }
+  }, [activeUserId, clerkUserId, confirmedIsSubscribed, loadChain, runLoad]);
 
   useReconnectReplay(clerkUserId, pendingWriteCountRef, syncOutbox);
 

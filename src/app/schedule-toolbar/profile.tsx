@@ -10,6 +10,7 @@ import { ThemedView } from "@/components/ui/ThemedView";
 import { showToast } from "@/components/ui/Toast";
 import { useSelectedMeet } from "@/contexts/SelectedMeetContext";
 import { useSubscription } from "@/contexts/SubscriptionContext";
+import { useAccountSheetCleanup } from "@/hooks/useAccountSheetCleanup";
 import { useAppColors } from "@/hooks/useAppColors";
 import {
   ACCOUNT_DELETION_TITLE,
@@ -87,6 +88,7 @@ export default function ProfileScreen() {
   const router = useRouter();
   const pathname = usePathname();
   const [isAccountOpen, setIsAccountOpen] = useState(false);
+  const accountSheet = useAccountSheetCleanup();
   const [isClearingCache, setIsClearingCache] = useState(false);
   const insets = useSafeAreaInsets();
   const {
@@ -135,15 +137,24 @@ export default function ProfileScreen() {
       {
         text: "Continue",
         style: "destructive",
-        onPress: () => setIsAccountOpen(true),
+        onPress: () => {
+          accountSheet.opened(user?.id);
+          setIsAccountOpen(true);
+        },
       },
     ]);
   };
   // Signed out from inside Clerk's account screen: Clerk already ended the
   // session, so only the app's own auth cache and route are left to reset.
+  // The sign-out may be an account deletion (from the warning or from Edit
+  // Profile, which opens the same screen): the device's copy of that user's
+  // saved sessions and queued writes goes too (#250).
+  const { signedOut: clearAccountSheetUser } = accountSheet;
   const handleSignedOutInAccount = useCallback(() => {
-    void clearAuthCache().finally(() => router.replace("/(tabs)/(index)"));
-  }, [router]);
+    void clearAccountSheetUser()
+      .then(clearAuthCache)
+      .finally(() => router.replace("/(tabs)/(index)"));
+  }, [clearAccountSheetUser, router]);
 
   const sendEmailFeedback = () => {
     const email = "maddisen@meetcal.app";
@@ -218,7 +229,10 @@ export default function ProfileScreen() {
           <ProfileField
             label="Edit Profile"
             value={user?.primaryEmailAddress?.emailAddress || ""}
-            onPress={() => setIsAccountOpen(true)}
+            onPress={() => {
+              accountSheet.opened(user?.id);
+              setIsAccountOpen(true);
+            }}
           />
         </View>
 
