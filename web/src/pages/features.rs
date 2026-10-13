@@ -1,11 +1,9 @@
-use crate::components::{footer::Footer, header::Header};
 use leptos::prelude::*;
 
 #[component]
 pub fn FeaturesPage() -> impl IntoView {
     view! {
-        <Header />
-        <main class="features-page">
+        <div class="features-page">
             <section class="features-hero">
                 <p class="features-eyebrow">"Meet day, without the PDF hunt"</p>
                 <h1>"Everything you need before the bar is loaded"</h1>
@@ -72,7 +70,6 @@ pub fn FeaturesPage() -> impl IntoView {
                     </p>
                 </div>
             </section>
-        </main>
-        <Footer />
+        </div>
     }
 }

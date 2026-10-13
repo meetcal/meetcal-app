@@ -15,9 +15,14 @@ import {
   View,
 } from "react-native";
 import { Palette } from "@/constants/Palette";
+import { useScreenHorizontalInsets } from "@/hooks/useScreenInsets";
+
+/** Space between the venue map card and the screen edge (or the Duo band). */
+const OVERLAY_PADDING = 20;
 
 export default function EventInfoScreen() {
   const colors = useAppColors();
+  const screenInsets = useScreenHorizontalInsets();
   const { meetDetails, isLoading } = useSelectedMeet();
   const [showVenueMapModal, setShowVenueMapModal] = useState(false);
 
@@ -193,7 +198,17 @@ export default function EventInfoScreen() {
         onRequestClose={() => setShowVenueMapModal(false)}
       >
         <Pressable
-          style={[styles.modalOverlay, { backgroundColor: colors.modalBackground }]}
+          testID="venue-map-overlay"
+          style={[
+            styles.modalOverlay,
+            {
+              backgroundColor: colors.modalBackground,
+              // A modal is above the Info tab's padding: clear the iPhone
+              // Duo side band here.
+              paddingLeft: OVERLAY_PADDING + screenInsets.paddingLeft,
+              paddingRight: OVERLAY_PADDING + screenInsets.paddingRight,
+            },
+          ]}
           onPress={() => setShowVenueMapModal(false)}
         >
           <Pressable
@@ -317,7 +332,7 @@ const styles = StyleSheet.create({
   modalOverlay: {
     flex: 1,
     justifyContent: "center",
-    padding: 20,
+    paddingVertical: OVERLAY_PADDING,
   },
   modalContent: {
     borderRadius: 16,

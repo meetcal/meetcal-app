@@ -935,6 +935,19 @@ function getAthleteBestsKey(normalizedName: string): string {
   return `${ATHLETE_BESTS_KEY_PREFIX}${normalizedName}`;
 }
 
+/**
+ * The key name an athlete's history and bests were stored under before the
+ * name key applied Unicode NFC (#268), or null when it is today's. A roster
+ * name with a combining accent was keyed without composing it, and a device
+ * that updates while offline cannot download those blobs again, so readers
+ * fall back to this key when today's is empty. Keep this derivation exactly
+ * as `normalizeAthleteName` was before #268.
+ */
+function legacyAthleteKeyName(name: string): string | null {
+  const legacy = name.trim().toLowerCase().replace(/\s+/g, ' ');
+  return legacy.length > 0 && legacy !== normalizeAthleteName(name) ? legacy : null;
+}
+
 export type AthleteHistoryEntry = {
   name: string;
   results: SupabaseLiftResult[];
@@ -987,10 +1000,20 @@ export async function findAthleteNamesWithoutHistory(
     const entries = await AsyncStorage.multiGet(
       batch.map((name) => getAthleteHistoryKey(normalizeAthleteName(name))),
     );
-    batch.forEach((name, index) => {
-      const payload = entries[index]?.[1];
-      if (!payload) missing.push(name);
+    const stillMissing = batch.filter((_name, index) => !entries[index]?.[1]);
+    // Only names with a pre-NFC key (#268) cost a second read.
+    const legacy = stillMissing.flatMap((name) => {
+      const legacyName = legacyAthleteKeyName(name);
+      return legacyName ? [{ name, key: getAthleteHistoryKey(legacyName) }] : [];
     });
+    const legacyEntries =
+      legacy.length > 0 ? await AsyncStorage.multiGet(legacy.map(({ key }) => key)) : [];
+    const foundLegacy = new Set(
+      legacy.filter((_entry, index) => legacyEntries[index]?.[1]).map(({ name }) => name),
+    );
+    for (const name of stillMissing) {
+      if (!foundLegacy.has(name)) missing.push(name);
+    }
   }
   return missing;
 }
@@ -1124,9 +1147,21 @@ export async function getStoredAthleteBestsForNames(
 
   try {
     const payloads = await multiGetBatched(keysByName.map(({ key }) => key));
+    // Names stored only under their pre-NFC key (#268), in one more batched read.
+    const legacyKeys = new Map<string, string>();
+    for (const { name, key } of keysByName) {
+      if (payloads.get(key)) continue;
+      const legacyName = legacyAthleteKeyName(name);
+      if (legacyName) legacyKeys.set(name, getAthleteBestsKey(legacyName));
+    }
+    const legacyPayloads =
+      legacyKeys.size > 0
+        ? await multiGetBatched(Array.from(legacyKeys.values()))
+        : new Map<string, string | null>();
     const byName: Record<string, StoredAthleteBests> = {};
     for (const { name, key } of keysByName) {
-      const payload = payloads.get(key);
+      const legacyKey = legacyKeys.get(name);
+      const payload = payloads.get(key) ?? (legacyKey ? legacyPayloads.get(legacyKey) : undefined);
       if (!payload) continue;
       const stored = parseStoredAthleteBests(payload);
       if (!stored) continue;
@@ -1173,9 +1208,13 @@ export async function getAllCachedLiftingResultsForAthletes(
   for (const athleteName of uniqueNames) {
     byName[athleteName] = [];
     try {
-      const fromHistory = await readStoredLiftingResults(
+      let fromHistory = await readStoredLiftingResults(
         getAthleteHistoryKey(normalizeAthleteName(athleteName)),
       );
+      const legacyName = legacyAthleteKeyName(athleteName);
+      if (fromHistory.length === 0 && legacyName) {
+        fromHistory = await readStoredLiftingResults(getAthleteHistoryKey(legacyName));
+      }
       if (fromHistory.length > 0) {
         byName[athleteName] = fromHistory;
         continue;
@@ -1694,6 +1733,11 @@ export async function readStorageKeysForMeetClear(
  * The normalized athlete name an athlete-history or athlete-bests key belongs
  * to, or null for any other key. Chunk keys are `<manifest key>__chunk_...`,
  * so one prefix strip covers manifests, chunks and legacy raw payloads.
+ *
+ * The name is normalized again: keys written before the name key applied
+ * Unicode NFC (#268) hold a decomposed spelling that nothing reads any more,
+ * and folding it onto today's key lets the per-meet and orphan prunes clear
+ * those keys with their athlete instead of leaving them behind.
  */
 function athleteNameOfStorageKey(key: string): string | null {
   const prefix = key.startsWith(ATHLETE_HISTORY_KEY_PREFIX)
@@ -1704,7 +1748,7 @@ function athleteNameOfStorageKey(key: string): string | null {
   if (!prefix) return null;
   const rest = key.slice(prefix.length);
   const chunkAt = rest.indexOf('__chunk_');
-  return chunkAt === -1 ? rest : rest.slice(0, chunkAt);
+  return normalizeAthleteName(chunkAt === -1 ? rest : rest.slice(0, chunkAt));
 }
 
 /**
