@@ -17,6 +17,17 @@ fn suggestion_query(input: &str) -> Option<String> {
     (trimmed.chars().count() >= MIN_SUGGESTION_CHARS).then(|| trimmed.to_owned())
 }
 
+/// The suggestions to offer for the field's current text. Suggestions answer
+/// the query they were searched for; once the text no longer matches it, as
+/// when a Wrapped choice replaces the name without typing, there are none.
+fn suggestions_for(input: &str, searched: Option<&str>, suggestions: Suggestions) -> Suggestions {
+    if suggestion_query(input).as_deref() == searched {
+        suggestions
+    } else {
+        Suggestions::Idle
+    }
+}
+
 /// Numbers suggestion requests so only the newest one may publish results.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 struct RequestSequence {
@@ -43,6 +54,8 @@ pub(crate) fn AthleteAutocomplete(
     #[prop(default = "")] wrapper_class: &'static str,
 ) -> impl IntoView {
     let (suggestions, set_suggestions) = signal(Suggestions::Idle);
+    // The query `suggestions` answers (or is searching for).
+    let (searched, set_searched) = signal(None::<String>);
     let sequence = StoredValue::new(RequestSequence::default());
     let pending_search = StoredValue::new(None::<TimeoutHandle>);
 
@@ -60,7 +73,9 @@ pub(crate) fn AthleteAutocomplete(
         let Some(request) = sequence.try_update_value(RequestSequence::next) else {
             return;
         };
-        let Some(query) = suggestion_query(input) else {
+        let query = suggestion_query(input);
+        set_searched.set(query.clone());
+        let Some(query) = query else {
             set_suggestions.set(Suggestions::Idle);
             return;
         };
@@ -110,7 +125,13 @@ pub(crate) fn AthleteAutocomplete(
             list_class="athlete-suggestions"
             required=true
             value=value
-            suggestions=suggestions
+            suggestions=Signal::derive(move || {
+                value.with(|input| {
+                    searched.with(|searched| {
+                        suggestions_for(input, searched.as_deref(), suggestions.get())
+                    })
+                })
+            })
             copy=SuggestionCopy {
                 list_label: "Athlete suggestions",
                 no_matches: "No matching athletes",
@@ -149,6 +170,29 @@ mod tests {
         assert_eq!(suggestion_query("Tes"), Some("Tes".to_owned()));
         assert_eq!(suggestion_query("  Test  "), Some("Test".to_owned()));
         assert_eq!(suggestion_query("Zoë"), Some("Zoë".to_owned()));
+    }
+
+    #[test]
+    fn suggestions_belong_to_the_query_they_answer() {
+        let ready = Suggestions::Ready(vec!["Ann Smith".to_owned()]);
+        assert_eq!(
+            suggestions_for("Smith", Some("Smith"), ready.clone()),
+            ready
+        );
+        assert_eq!(
+            suggestions_for("  Smith ", Some("Smith"), ready.clone()),
+            ready
+        );
+        // The name changed without typing (a Wrapped choice): stale.
+        assert_eq!(
+            suggestions_for("Ann Smith", Some("Smith"), ready.clone()),
+            Suggestions::Idle
+        );
+        assert_eq!(
+            suggestions_for("", None, Suggestions::Idle),
+            Suggestions::Idle
+        );
+        assert_eq!(suggestions_for("Smith", None, ready), Suggestions::Idle);
     }
 
     #[test]
