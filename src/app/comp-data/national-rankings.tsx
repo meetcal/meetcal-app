@@ -6,7 +6,6 @@ import { ThemedText } from "@/components/ui/ThemedText";
 import { ThemedView } from "@/components/ui/ThemedView";
 import { FilterSection, GenericFilterModal } from "@/components/ui/filters";
 import { AGE_GROUPS } from "@/constants/nat-rankings";
-import { useTheme } from "@/contexts/ThemeContext";
 import { useAppColors } from "@/hooks/useAppColors";
 import { useFilterState } from "@/hooks/useFilterState";
 import { useMutableResource } from "@/hooks/useMutableResource";
@@ -36,7 +35,6 @@ export default function NationalRankingsScreen() {
 function NationalRankingsScreenContent() {
   const screenInsets = useScreenHorizontalInsets();
   const colors = useAppColors();
-  const { currentTheme } = useTheme();
 
   const {
     filters,
@@ -155,10 +153,10 @@ function NationalRankingsScreenContent() {
           gestureDirection: "horizontal",
           animation: "slide_from_right",
           headerTitleStyle: {
-            color: currentTheme === "dark" ? "#fff" : "#000",
+            color: colors.headerTitle,
           },
           headerStyle: {
-            backgroundColor: currentTheme === "dark" ? "#000000" : "#F5F5F5",
+            backgroundColor: colors.headerBackground,
           },
           headerShadowVisible: false,
           headerBackButtonDisplayMode: "minimal",
