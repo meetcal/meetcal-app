@@ -3,31 +3,38 @@ use std::collections::{HashMap, HashSet};
 use super::{
     analytics::percentage,
     filters::filter_options,
-    loading::{load_error, load_meet_data},
+    loading::{Load, LoadState, load_error, load_meet_data, load_query},
     models::{Athlete, LiftingResult, Meet, UpcomingMeetsQuery, normalize},
     ui::{DataMetric, DataPage, DataStatus, DataTable, EmptyTableRow, FilterSelect, TableSkeleton},
 };
-use crate::utils::api::{queries, query, query_with};
+use crate::utils::api::{queries, query_with};
 use leptos::prelude::*;
 
 #[component]
 pub fn WsoDashboard() -> impl IntoView {
     let (meet, set_meet) = signal(String::new());
     let (wso, set_wso) = signal(String::new());
-    let upcoming = LocalResource::new(|| async {
-        query_with::<Vec<Meet>, _>(queries::UPCOMING_MEETS, &UpcomingMeetsQuery::current()).await
-    });
-    let completed =
-        LocalResource::new(|| async { query::<Vec<Meet>>(queries::COMPLETED_MEETS).await });
-    let wsos = LocalResource::new(|| async { query::<Vec<String>>(queries::WSO_LIST).await });
-    let athletes =
-        LocalResource::new(move || load_meet_data::<Athlete>(meet.get(), queries::MEET_ATHLETES));
-    let results = LocalResource::new(move || {
-        load_meet_data::<LiftingResult>(meet.get(), queries::MEET_RESULTS)
-    });
+    let upcoming_meets = Load::new(
+        || (),
+        |()| async {
+            query_with::<Vec<Meet>, _>(queries::UPCOMING_MEETS, &UpcomingMeetsQuery::current())
+                .await
+                .map_err(|error| error.to_string())
+        },
+    );
+    let completed_meets = load_query::<Vec<Meet>>(queries::COMPLETED_MEETS);
+    let wsos = load_query::<Vec<String>>(queries::WSO_LIST);
+    let athletes = Load::new(
+        move || meet.get(),
+        |meet| load_meet_data::<Athlete>(meet, queries::MEET_ATHLETES),
+    );
+    let results = Load::new(
+        move || meet.get(),
+        |meet| load_meet_data::<LiftingResult>(meet, queries::MEET_RESULTS),
+    );
     view! { <DataPage heading="WSO Meet Dashboard" intro="See participation, make rates, lifted volume, and athlete totals for one WSO at a meet.">
-        {move || upcoming.with(|upcoming| completed.with(|completed| match (upcoming, completed) {
-            (Some(Ok(upcoming)), Some(Ok(completed))) => {
+        {move || upcoming_meets.with(|upcoming| completed_meets.with(|completed| match (upcoming, completed) {
+            (LoadState::Ready(upcoming), LoadState::Ready(completed)) => {
                 let mut meets = upcoming.iter().chain(completed.iter()).map(|row| row.name.clone()).collect::<Vec<_>>();
                 meets.sort();
                 meets.dedup();
@@ -36,27 +43,30 @@ pub fn WsoDashboard() -> impl IntoView {
                         label="Meet"
                         placeholder="Choose a meet"
                         values=meets
-                        selected=meet.get()
+                        selected=meet
                         wide=true
                         on_select=move |value: String| {
                             set_meet.set(value);
                             set_wso.set(String::new());
                         }
                     />
-                    {move || wsos.with(|response| match response {
-                        Some(Ok(rows)) if !meet.get().is_empty() => {
+                    {move || wsos.with(|state| match state {
+                        LoadState::Ready(rows) if !meet.get().is_empty() => {
                             let options = filter_options(rows.iter().map(String::as_str));
-                            view! { <FilterSelect label="WSO" placeholder="Choose a WSO" values=options selected=wso.get() wide=true on_select=move |value| set_wso.set(value) /> }.into_any()
+                            view! { <FilterSelect label="WSO" placeholder="Choose a WSO" values=options selected=wso wide=true on_select=move |value| set_wso.set(value) /> }.into_any()
                         }
-                        Some(Err(error)) => load_error("WSOs", error),
+                        LoadState::Failed(error) => load_error("WSOs", error, move || wsos.retry()),
                         _ => ().into_any(),
                     })}
                 </div> }.into_any()
             }
-            (Some(Err(error)), _) | (_, Some(Err(error))) => load_error("meets", error),
+            (LoadState::Failed(error), _) | (_, LoadState::Failed(error)) => load_error("meets", error, move || {
+                upcoming_meets.retry_failed();
+                completed_meets.retry_failed();
+            }),
             _ => view! { <DataStatus message="Loading meets…" /> }.into_any(),
         }))}
-        {move || if wso.get().is_empty() { view! { <DataStatus message="Choose a meet and WSO to view its dashboard." /> }.into_any() } else { athletes.with(|athlete_response| results.with(|result_response| match (athlete_response, result_response) { (Some(Ok(athletes)), Some(Ok(results))) => dashboard(athletes, results, &wso.get()), (Some(Err(error)), _) | (_, Some(Err(error))) => load_error("WSO dashboard", error), _ => view! { <TableSkeleton columns=8 /> }.into_any() })) }}
+        {move || if wso.get().is_empty() { view! { <DataStatus message="Choose a meet and WSO to view its dashboard." /> }.into_any() } else { athletes.with(|athlete_state| results.with(|result_state| match (athlete_state, result_state) { (LoadState::Ready(athletes), LoadState::Ready(results)) => dashboard(athletes, results, &wso.get()), (LoadState::Failed(error), _) | (_, LoadState::Failed(error)) => load_error("WSO dashboard", error, move || { athletes.retry_failed(); results.retry_failed(); }), _ => view! { <TableSkeleton columns=8 /> }.into_any() })) }}
     </DataPage> }
 }
 

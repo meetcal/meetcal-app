@@ -1,6 +1,6 @@
 use super::{
     filters::{compare_weight_classes, matches_filter, weight_class_options},
-    loading::table_response,
+    loading::{Load, table_response},
     ui::{DataPage, DataTable, EmptyTableRow, FilterSelect, SortSelect},
 };
 use crate::utils::api::{queries, query_with};
@@ -34,20 +34,42 @@ pub fn AdaptiveRecords() -> impl IntoView {
     let (gender, set_gender) = signal("Men".to_owned());
     let (weight_class, set_weight_class) = signal(String::new());
     let (sort, set_sort) = signal("weight_asc".to_owned());
-    let records = LocalResource::new(move || {
-        let query = AdaptiveQuery {
-            exclude_federation: "BWL",
-            gender: gender.get(),
-        };
-        async move { query_with::<Vec<AdaptiveRecord>, _>(queries::ADAPTIVE_RECORDS, &query).await }
-    });
+    let records = Load::new(
+        move || gender.get(),
+        |gender| async move {
+            let query = AdaptiveQuery {
+                exclude_federation: "BWL",
+                gender,
+            };
+            query_with::<Vec<AdaptiveRecord>, _>(queries::ADAPTIVE_RECORDS, &query)
+                .await
+                .map_err(|error| error.to_string())
+        },
+    );
 
     view! {
         <DataPage
             heading="Adaptive Records"
             intro="Top USAW and USAMW adaptive performances by gender and weight class."
         >
-            {move || records.with(|response| table_response(response, 4, "adaptive records", |records| {
+            // The query's own choice stays usable while its answer loads or after it fails.
+            <div class="data-filters">
+                <label>
+                    "Gender"
+                    <select
+                        class="data-filter"
+                        prop:value=move || gender.get()
+                        on:change=move |event| {
+                            set_gender.set(event_target_value(&event));
+                            set_weight_class.set(String::new());
+                        }
+                    >
+                        <option value="Men">"Men"</option>
+                        <option value="Women">"Women"</option>
+                    </select>
+                </label>
+            </div>
+            {move || table_response(records, 4, "adaptive records", |records| {
                 let weights = weight_class_options(records.iter().map(|row| row.weight_class.as_str()));
                 let selected_weight = weight_class.get();
                 let mut filtered = records
@@ -66,17 +88,16 @@ pub fn AdaptiveRecords() -> impl IntoView {
                 }).collect_view();
 
                 view! {
-                    <div class="data-filters">
-                        <label>"Gender"<select class="data-filter" on:change=move |event| { set_gender.set(event_target_value(&event)); set_weight_class.set(String::new()); }><option value="Men">"Men"</option><option value="Women">"Women"</option></select></label>
-                        <FilterSelect label="Weight class" placeholder="All classes" values=weights selected=selected_weight on_select=move |value| set_weight_class.set(value) />
-                        <SortSelect options=SORT_OPTIONS set_sort />
+                    <div class="data-filters data-filters-secondary">
+                        <FilterSelect label="Weight class" placeholder="All classes" values=weights selected=weight_class on_select=move |value| set_weight_class.set(value) />
+                        <SortSelect options=SORT_OPTIONS sort set_sort />
                     </div>
                     <DataTable>
                         <thead><tr><th>"Weight class"</th><th>"Snatch"</th><th>"Clean & jerk"</th><th>"Total"</th></tr></thead>
                         <tbody>{is_empty.then(|| view! { <EmptyTableRow columns=4 message="No adaptive records match these filters." /> })}{rows}</tbody>
                     </DataTable>
                 }.into_any()
-            }))}
+            })}
         </DataPage>
     }
 }

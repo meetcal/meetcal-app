@@ -1,13 +1,13 @@
 use super::{
     filters::{SortDirection, sort_numeric},
-    loading::load_error,
+    loading::{Load, LoadState, load_error},
     ui::{DataPage, DataStatus, DataTable, EmptyTableRow, SelectOptions, TableSkeleton},
 };
 use crate::utils::api::{queries, query_with};
 use leptos::prelude::*;
 use serde::{Deserialize, Serialize};
 
-#[derive(Clone, Serialize)]
+#[derive(Clone, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct NationalRankingQuery {
     federation: String,
@@ -109,24 +109,22 @@ fn division_options(gender: &str, age_group: &str) -> Vec<String> {
 pub fn NationalRankings() -> impl IntoView {
     let (request, set_request) = signal(None::<NationalRankingQuery>);
 
-    let rankings = LocalResource::new(move || {
-        let request = request.get();
-        async move {
-            match request {
-                Some(query) => {
-                    let convex_query = if query.year.is_some() {
-                        queries::NATIONAL_RANKINGS_BY_YEAR
-                    } else {
-                        queries::NATIONAL_RANKINGS
-                    };
-                    query_with::<Vec<NationalRanking>, _>(convex_query, &query)
-                        .await
-                        .map_err(|error| error.to_string())
-                }
-                None => Ok(Vec::new()),
-            }
-        }
-    });
+    let rankings = Load::new(
+        move || request.get(),
+        |request| async move {
+            let Some(query) = request else {
+                return Ok(Vec::new());
+            };
+            let convex_query = if query.year.is_some() {
+                queries::NATIONAL_RANKINGS_BY_YEAR
+            } else {
+                queries::NATIONAL_RANKINGS
+            };
+            query_with::<Vec<NationalRanking>, _>(convex_query, &query)
+                .await
+                .map_err(|error| error.to_string())
+        },
+    );
 
     view! {
         <DataPage
@@ -136,14 +134,15 @@ pub fn NationalRankings() -> impl IntoView {
             <NationalRankingsForm set_request />
             <p class="data-help">"Division choices match the gender, age group, and weight classes used in the MeetCal app."</p>
 
-            {move || rankings.with(|response| match response {
-                None => view! { <TableSkeleton columns=4 /> }.into_any(),
-                Some(Err(error)) => load_error("national rankings", error),
-                Some(Ok(_)) if request.get().is_none() => view! {
-                    <DataStatus message="Enter a division to view its national rankings." />
-                }.into_any(),
-                Some(Ok(rankings)) => view! { <NationalRankingsTable rankings=rankings.clone() /> }.into_any(),
-            })}
+            {move || if request.with(Option::is_none) {
+                view! { <DataStatus message="Enter a division to view its national rankings." /> }.into_any()
+            } else {
+                rankings.with(|state| match state {
+                    LoadState::Loading => view! { <TableSkeleton columns=4 /> }.into_any(),
+                    LoadState::Failed(error) => load_error("national rankings", error, move || rankings.retry()),
+                    LoadState::Ready(rankings) => view! { <NationalRankingsTable rankings=rankings.clone() /> }.into_any(),
+                })
+            }}
         </DataPage>
     }
 }

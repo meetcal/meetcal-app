@@ -3,10 +3,10 @@ use super::{
         ClassificationFilters, ClassifiedRow, SortDirection, classified_rows, filter_options,
         sort_numeric, sort_text, weight_class_options,
     },
-    loading::table_response,
+    loading::{load_query, table_response},
     ui::{DataPage, DataTable, EmptyTableRow, FilterSelect, SortSelect},
 };
-use crate::utils::api::{queries, query};
+use crate::utils::api::queries;
 use leptos::prelude::*;
 use serde::Deserialize;
 
@@ -46,9 +46,7 @@ pub fn QualifyingTotals() -> impl IntoView {
     let (weight_class, set_weight_class) = signal(String::new());
     let (sort, set_sort) = signal("total_asc".to_string());
 
-    let totals = LocalResource::new(move || async move {
-        query::<Vec<QualifyingTotal>>(queries::QUALIFYING_TOTALS).await
-    });
+    let totals = load_query::<Vec<QualifyingTotal>>(queries::QUALIFYING_TOTALS);
 
     view! {
         <DataPage
@@ -56,7 +54,7 @@ pub fn QualifyingTotals() -> impl IntoView {
             intro="Filter qualification totals by event, gender, age category, or weight class."
         >
             {move || {
-                totals.with(|response| table_response(response, 5, "qualifying totals", |rows| {
+                table_response(totals, 5, "qualifying totals", |rows| {
                     let meets = filter_options(rows.iter().map(|row| row.event_name.as_str()));
                     let genders = filter_options(rows.iter().map(|row| row.gender.as_str()));
                     let ages = filter_options(rows.iter().map(|row| row.age_category.as_str()));
@@ -95,11 +93,11 @@ pub fn QualifyingTotals() -> impl IntoView {
 
                     view! {
                         <div class="data-filters">
-                            <FilterSelect label="Event" placeholder="All events" values=meets selected=selected_meet on_select=move |value| set_meet.set(value) />
-                            <FilterSelect label="Gender" placeholder="All genders" values=genders selected=selected_gender on_select=move |value| set_gender.set(value) />
-                            <FilterSelect label="Age" placeholder="All ages" values=ages selected=selected_age on_select=move |value| set_age.set(value) />
-                            <FilterSelect label="Weight class" placeholder="All classes" values=weights selected=selected_weight on_select=move |value| set_weight_class.set(value) />
-                            <SortSelect options=SORT_OPTIONS set_sort />
+                            <FilterSelect label="Event" placeholder="All events" values=meets selected=meet on_select=move |value| set_meet.set(value) />
+                            <FilterSelect label="Gender" placeholder="All genders" values=genders selected=gender on_select=move |value| set_gender.set(value) />
+                            <FilterSelect label="Age" placeholder="All ages" values=ages selected=age on_select=move |value| set_age.set(value) />
+                            <FilterSelect label="Weight class" placeholder="All classes" values=weights selected=weight_class on_select=move |value| set_weight_class.set(value) />
+                            <SortSelect options=SORT_OPTIONS sort set_sort />
                         </div>
                         <DataTable>
                             <thead>
@@ -118,7 +116,7 @@ pub fn QualifyingTotals() -> impl IntoView {
                         </DataTable>
                     }
                     .into_any()
-                }))
+                })
             }}
         </DataPage>
     }

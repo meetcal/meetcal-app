@@ -1,5 +1,6 @@
 use super::format::format_us_date;
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
 
 #[derive(Clone, Debug, Deserialize)]
 pub(crate) struct Meet {
@@ -74,7 +75,7 @@ impl std::ops::Deref for LiftingResult {
     }
 }
 
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct AthleteSearchQuery {
     pub query: String,
@@ -164,12 +165,36 @@ impl RecordHolder {
     }
 }
 
+/// A name folded for matching, as the server folds it (`normalizeName` in
+/// `convex/lib/names.ts`): composed to Unicode NFC, so "José" typed as `é` or
+/// as `e` + U+0301 is one name, with runs of whitespace as one space and
+/// lowercased.
 pub(crate) fn normalize(value: &str) -> String {
-    value
+    icu_normalizer::ComposingNormalizerBorrowed::new_nfc()
+        .normalize(value)
         .split_whitespace()
         .collect::<Vec<_>>()
         .join(" ")
         .to_lowercase()
+}
+
+/// Most athletes offered to pick from when a name search matches several;
+/// the list renders under the search, so it is capped (as the app's is).
+pub(crate) const MAX_ATHLETE_CHOICES: usize = 8;
+
+/// The distinct athletes among a search's rows: folded name (which also
+/// orders them) to the first spelling seen. Rows without a name are skipped.
+pub(crate) fn distinct_athletes(rows: &[LiftingResult]) -> BTreeMap<String, String> {
+    let mut athletes = BTreeMap::new();
+    for row in rows {
+        let key = normalize(&row.name);
+        if !key.is_empty() {
+            athletes
+                .entry(key)
+                .or_insert_with(|| row.name.trim().to_owned());
+        }
+    }
+    athletes
 }
 
 pub(crate) fn attempt(value: f64) -> String {
@@ -212,6 +237,38 @@ mod tests {
         );
         assert_eq!(holder(None, Some(" ")).detail(), None);
         assert_eq!(holder(None, None).detail(), None);
+    }
+
+    #[test]
+    fn names_fold_like_the_servers_including_unicode_composition() {
+        assert_eq!(normalize("  Ann   LEE "), "ann lee");
+        assert_eq!(normalize("Jos\u{e9} Cruz"), normalize("Jose\u{301} Cruz"));
+        assert_eq!(normalize("Jose\u{301}"), "jos\u{e9}");
+    }
+
+    fn named(name: &str) -> LiftingResult {
+        serde_json::from_value(serde_json::json!({
+            "name": name, "meet": "Meet", "date": "2026-01-01", "age": "Senior", "body_weight": 70.0,
+            "snatch1": 0.0, "snatch2": 0.0, "snatch3": 0.0, "snatch_best": 0.0,
+            "cj1": 0.0, "cj2": 0.0, "cj3": 0.0, "cj_best": 0.0, "total": 0.0, "adaptive": false
+        }))
+        .unwrap()
+    }
+
+    #[test]
+    fn distinct_athletes_are_folded_ordered_and_keep_the_first_spelling() {
+        let rows = [
+            named("John Smith"),
+            named("Jos\u{e9} Smith"),
+            named(" john  smith"),
+            named("Jose\u{301} Smith"),
+            named(""),
+        ];
+        let athletes = distinct_athletes(&rows);
+        assert_eq!(
+            athletes.into_values().collect::<Vec<_>>(),
+            ["John Smith", "Jos\u{e9} Smith"]
+        );
     }
 
     #[test]

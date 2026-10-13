@@ -1,19 +1,18 @@
 use super::{
     analytics::{WrappedStats, wrapped_stats},
     athlete_autocomplete::AthleteAutocomplete,
-    models::{AthleteSearchQuery, AthleteSearchResponse, LiftResult, normalize},
+    loading::{Load, LoadState, load_error},
+    models::{
+        AthleteSearchQuery, AthleteSearchResponse, LiftResult, MAX_ATHLETE_CHOICES,
+        distinct_athletes, normalize,
+    },
     ui::{DataMetric, DataPage, DataStatus, TableSkeleton},
 };
 use crate::utils::api::{queries, query_with};
 use js_sys::Date;
 use leptos::prelude::*;
-use std::collections::BTreeMap;
 
-/// Athletes offered to pick from when several match; the list renders under
-/// the form, so it is capped (as the app's is).
-const MAX_WRAPPED_NAME_CHOICES: usize = 8;
-
-#[derive(Clone)]
+#[derive(Clone, PartialEq)]
 struct WrappedRequest {
     athlete: String,
     year: i32,
@@ -37,6 +36,9 @@ enum WrappedResponse {
         names: Vec<String>,
         more_than_shown: bool,
     },
+    /// The search answered, but there is no Wrapped to build (no results,
+    /// or too many to score); says why.
+    Unavailable(String),
 }
 
 /// What one Wrapped search found.
@@ -57,56 +59,67 @@ pub fn Wrapped() -> impl IntoView {
     let (athlete_name, set_athlete_name) = signal(String::new());
     let (year, set_year) = signal(current_year.to_string());
     let (request, set_request) = signal(None::<WrappedRequest>);
-    let wrapped = LocalResource::new(move || {
-        let request = request.get();
-        async move {
+    let wrapped = Load::new(
+        move || request.get(),
+        |request| async move {
             match request {
-                Some(request) => load_wrapped(request).await,
+                Some(request) => load_wrapped(request).await.map(Some),
                 None => Ok(None),
             }
-        }
-    });
+        },
+    );
     view! { <DataPage heading="Athlete Wrapped" intro="Summarize an athlete’s competition year, best lifts, make rate, and progress.">
         <form class="data-query-form" on:submit=move |event| { event.prevent_default(); let athlete = athlete_name.get().trim().to_owned(); if athlete.is_empty() { return; } let selected_year = year.get().parse().unwrap_or(current_year); set_request.set(Some(WrappedRequest { athlete, year: selected_year, picked: false })); }>
             <AthleteAutocomplete value=athlete_name set_value=set_athlete_name input_id="wrapped-athlete" wrapper_class="data-query-grow" />
             <label>"Year"<input class="data-filter data-year-input" inputmode="numeric" maxlength="4" prop:value=current_year on:input=move |event| set_year.set(event_target_value(&event)) /></label>
             <button class="data-search-button" type="submit">"Build wrapped"</button>
         </form>
-        // A pick's search never answers with a pick list, so a list shown
-        // while a pick is the request is the answer before it: still loading.
-        {move || wrapped.with(|response| match response { None if request.get().is_some() => view! { <TableSkeleton columns=3 /> }.into_any(), Some(Err(error)) => view! { <p class="data-status error">{format!("Could not build wrapped: {error}")}</p> }.into_any(), Some(Ok(Some(WrappedResponse::Report { athlete_name, year, stats }))) => report(athlete_name, *year, stats), Some(Ok(Some(WrappedResponse::Choices { .. }))) if request.get().is_some_and(|request| request.picked) => view! { <TableSkeleton columns=3 /> }.into_any(), Some(Ok(Some(WrappedResponse::Choices { query, year, names, more_than_shown }))) => choices(query, *year, names, *more_than_shown, set_athlete_name, set_request), _ => view! { <DataStatus message="Enter an athlete to build their yearly recap." /> }.into_any() })}
+        {move || wrapped.with(|state| match state {
+            LoadState::Loading => view! { <TableSkeleton columns=3 /> }.into_any(),
+            LoadState::Failed(error) => load_error("wrapped", error, move || wrapped.retry()),
+            LoadState::Ready(None) => view! { <DataStatus message="Enter an athlete to build their yearly recap." /> }.into_any(),
+            LoadState::Ready(Some(WrappedResponse::Report { athlete_name, year, stats })) => report(athlete_name, *year, stats),
+            LoadState::Ready(Some(WrappedResponse::Choices { query, year, names, more_than_shown })) => choices(query, *year, names, *more_than_shown, set_athlete_name, set_request),
+            LoadState::Ready(Some(WrappedResponse::Unavailable(message))) => view! { <p class="data-status error">{format!("Could not build wrapped: {message}")}</p> }.into_any(),
+        })}
     </DataPage> }
 }
 
-async fn load_wrapped(request: WrappedRequest) -> Result<Option<WrappedResponse>, String> {
+async fn load_wrapped(request: WrappedRequest) -> Result<WrappedResponse, String> {
     let year = request.year;
-    // `results:search` includes both ends of the range.
-    let query = AthleteSearchQuery::between(
-        request.athlete.clone(),
-        format!("{year:04}-01-01"),
-        format!("{year:04}-12-31"),
-    );
+    let query = wrapped_search_query(&request.athlete, year);
     let response: AthleteSearchResponse = query_with(queries::SEARCH, &query)
         .await
         .map_err(|error| error.to_string())?;
-    Ok(Some(
-        match select_wrapped(&request.athlete, year, request.picked, response)? {
-            WrappedSelection::Athlete { name, rows } => WrappedResponse::Report {
+    Ok(
+        match select_wrapped(&request.athlete, year, request.picked, response) {
+            Ok(WrappedSelection::Athlete { name, rows }) => WrappedResponse::Report {
                 athlete_name: name,
                 year,
                 stats: wrapped_stats(&rows),
             },
-            WrappedSelection::Choose {
+            Ok(WrappedSelection::Choose {
                 names,
                 more_than_shown,
-            } => WrappedResponse::Choices {
+            }) => WrappedResponse::Choices {
                 query: request.athlete,
                 year,
                 names,
                 more_than_shown,
             },
+            Err(message) => WrappedResponse::Unavailable(message),
         },
-    ))
+    )
+}
+
+/// The search for `athlete`'s results in `year`: January 1 through
+/// December 31, both included, as `results:search` reads its range.
+fn wrapped_search_query(athlete: &str, year: i32) -> AthleteSearchQuery {
+    AthleteSearchQuery::between(
+        athlete.to_owned(),
+        format!("{year:04}-01-01"),
+        format!("{year:04}-12-31"),
+    )
 }
 
 /// Which rows one Wrapped scores, the athletes to pick from, or why there
@@ -165,15 +178,7 @@ fn select_wrapped(
 
     // Distinct athletes among the fallback rows, keyed by folded name (which
     // also orders them), keeping the first spelling seen.
-    let mut athletes = BTreeMap::new();
-    for row in &response.results {
-        let key = normalize(&row.name);
-        if !key.is_empty() {
-            athletes
-                .entry(key)
-                .or_insert_with(|| row.name.trim().to_owned());
-        }
-    }
+    let mut athletes = distinct_athletes(&response.results);
     if athletes.is_empty() {
         return Err(if response.truncated { narrow() } else { none() });
     }
@@ -194,18 +199,25 @@ fn select_wrapped(
     }
     // The athletes that lifted in the year, so each pick has a Wrapped; the
     // answer's `suggestions` span every year.
-    let more_than_shown = response.truncated || athletes.len() > MAX_WRAPPED_NAME_CHOICES;
+    let more_than_shown = response.truncated || athletes.len() > MAX_ATHLETE_CHOICES;
     Ok(WrappedSelection::Choose {
-        names: athletes
-            .into_values()
-            .take(MAX_WRAPPED_NAME_CHOICES)
-            .collect(),
+        names: athletes.into_values().take(MAX_ATHLETE_CHOICES).collect(),
         more_than_shown,
     })
 }
 
+/// The first-to-last change as shown, the app's `formatImprovement`:
+/// "+12kg", "-5kg", "Steady" for none, and "—" with fewer than two meets.
+fn format_improvement(improvement: Option<f64>) -> String {
+    match improvement {
+        None => "—".to_owned(),
+        Some(0.0) => "Steady".to_owned(),
+        Some(change) => format!("{change:+}kg"),
+    }
+}
+
 fn report(athlete_name: &str, year: i32, stats: &WrappedStats) -> AnyView {
-    view! { <h2 class="data-section-title">{format!("{year} Wrapped — {athlete_name}")}</h2><div class="data-metric-grid"><DataMetric label="Meets" value=stats.total_meets.to_string() /><DataMetric label="Make rate" value=format!("{:.1}%", stats.make_percentage) /><DataMetric label="Best snatch" value=format!("{}kg", stats.best_snatch) /><DataMetric label="Best C&J" value=format!("{}kg", stats.best_cj) /><DataMetric label="Best total" value=format!("{}kg", stats.best_total) /><DataMetric label="Average total" value=format!("{:.1}kg", stats.average_total) /><DataMetric label="Weight lifted" value=format!("{}kg", stats.total_weight_lifted) /><DataMetric label="First-to-last" value=format!("{:+}kg", stats.improvement) /><DataMetric label="Longest make streak" value=stats.longest_streak.to_string() /><DataMetric label="Favorite attempt" value=stats.favorite_attempt.map(|value| value.to_string()).unwrap_or_else(|| "—".to_owned()) /></div><div class="wrapped-top-meet"><span>"Top meet"</span><strong>{stats.top_meet.clone().unwrap_or_else(|| "—".to_owned())}</strong></div> }.into_any()
+    view! { <h2 class="data-section-title">{format!("{year} Wrapped — {athlete_name}")}</h2><div class="data-metric-grid"><DataMetric label="Meets" value=stats.total_meets.to_string() /><DataMetric label="Make rate" value=format!("{:.1}%", stats.make_percentage) /><DataMetric label="Best snatch" value=format!("{}kg", stats.best_snatch) /><DataMetric label="Best C&J" value=format!("{}kg", stats.best_cj) /><DataMetric label="Best total" value=format!("{}kg", stats.best_total) /><DataMetric label="Average total" value=format!("{:.1}kg", stats.average_total) /><DataMetric label="Weight lifted" value=format!("{}kg", stats.total_weight_lifted) /><DataMetric label="First-to-last" value=format_improvement(stats.improvement) /><DataMetric label="Longest make streak" value=stats.longest_streak.to_string() /><DataMetric label="Favorite attempt" value=stats.favorite_attempt.map(|value| value.to_string()).unwrap_or_else(|| "—".to_owned()) /></div><div class="wrapped-top-meet"><span>"Top meet"</span><strong>{stats.top_meet.clone().unwrap_or_else(|| "—".to_owned())}</strong></div> }.into_any()
 }
 
 /// The athletes a search matched, each building that athlete's Wrapped.
@@ -243,14 +255,20 @@ fn choices(
 mod tests {
     use super::*;
     #[test]
-    fn search_query_uses_exclusive_next_year() {
-        let query = serde_json::to_value(AthleteSearchQuery::between(
-            "Test Athlete".to_owned(),
-            "2026-01-01".to_owned(),
-            "2027-01-01".to_owned(),
-        ))
-        .unwrap();
-        assert_eq!(query["endDate"], "2027-01-01");
+    fn first_to_last_reads_like_the_apps() {
+        assert_eq!(format_improvement(None), "—");
+        assert_eq!(format_improvement(Some(0.0)), "Steady");
+        assert_eq!(format_improvement(Some(12.0)), "+12kg");
+        assert_eq!(format_improvement(Some(-5.5)), "-5.5kg");
+    }
+
+    #[test]
+    fn search_query_covers_the_calendar_year_inclusively() {
+        let query = serde_json::to_value(wrapped_search_query("Test Athlete", 2026)).unwrap();
+        assert_eq!(
+            query,
+            serde_json::json!({"query": "Test Athlete", "startDate": "2026-01-01", "endDate": "2026-12-31"})
+        );
     }
 
     fn search_response(json: &str) -> AthleteSearchResponse {
@@ -429,7 +447,7 @@ mod tests {
         else {
             panic!("expected a pick list");
         };
-        assert_eq!(names.len(), MAX_WRAPPED_NAME_CHOICES);
+        assert_eq!(names.len(), MAX_ATHLETE_CHOICES);
         assert_eq!(names[0], "Athlete 00");
         // The answer was whole, but the list hides some athletes.
         assert!(more_than_shown);
