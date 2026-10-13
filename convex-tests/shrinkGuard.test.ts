@@ -1,3 +1,4 @@
+import { describeFailure } from '../convex/lib/cronAlerts';
 import { clearedColumns, clearedLifts, exceedsShrink, liftCount, MAX_SHRINK_SHARE, MIN_SHRINK_ALLOWED } from '../convex/lib/shrinkGuard';
 import { targetExpired, TARGET_RETENTION_DAYS } from '../convex/scrapers/entries';
 import { joinPages, MAX_UNREADABLE_SHARE, run as sport80Run, tableComplete, tooManyUnreadable } from '../convex/scrapers/sport80';
@@ -131,5 +132,33 @@ describe('Sport80 sync prunes only a table read in full (#97)', () => {
     await expect(handlerOf<Record<string, never>, unknown>(sport80Run)(c, {})).rejects.toThrow('stale results not deleted: the table reports no row count');
     expect(c.runMutation).toHaveBeenCalled();
     expect(pruneCalls(c)).toHaveLength(0);
+  });
+
+  describe('the override for one event (#265)', () => {
+    type Only = { only: string[]; allowShrink?: boolean };
+    beforeEach(() => jest.spyOn(console, 'error').mockImplementation(() => {}));
+
+    it('syncs and prunes the event it names', async () => {
+      sport80({ data: results, total: 2 });
+      const c = ctx();
+      await handlerOf<Only, unknown>(sport80Run)(c, { only: ['123'], allowShrink: true });
+      expect(pruneCalls(c)).toHaveLength(1);
+      expect(pruneCalls(c)[0][1]).toMatchObject({ eventId: '123', allowShrink: true });
+    });
+
+    it('fails naming an id the event index does not have, instead of finishing as if done', async () => {
+      sport80({ data: results, total: 2 });
+      const c = ctx();
+      const failure = await handlerOf<Only, unknown>(sport80Run)(c, { only: ['999'] }).catch((error: unknown) => error);
+      expect(describeFailure(failure)).toMatchObject({ failedSources: ['event 999'], error: expect.stringContaining('not in the event index read') });
+      expect(c.runMutation).not.toHaveBeenCalled();
+    });
+
+    it('fails naming an event it found but read no results for', async () => {
+      sport80({ data: [], total: 0 });
+      const c = ctx();
+      const failure = await handlerOf<Only, unknown>(sport80Run)(c, { only: ['123'] }).catch((error: unknown) => error);
+      expect(describeFailure(failure)).toMatchObject({ failedSources: ['event 123'], error: expect.stringContaining('no results read') });
+    });
   });
 });
