@@ -14,6 +14,8 @@ const mockGetCachedMeets = jest.fn<Promise<Meet[]>, []>();
 const mockFetchMeetsFresh = jest.fn<Promise<Meet[]>, []>();
 const mockWarmMeetData = jest.fn<Promise<void>, [string]>(async () => {});
 const mockPrefetchMeetData = jest.fn<Promise<void>, [string]>(async () => {});
+const mockPrefetchCriticalMeetData = jest.fn<Promise<void>, [string]>(async () => {});
+const mockIsMeetExplicitlyDownloaded = jest.fn<Promise<boolean>, [string]>(async () => true);
 const mockFetchApiMeetByName = jest.fn<Promise<Meet | null>, [string]>();
 const mockClearExpiredDownloadedMeets = jest.fn(async () => {});
 const mockReindexAppEntities = jest.fn(async () => {});
@@ -27,10 +29,12 @@ jest.mock("@/lib/database/meet-manager", () => ({
   fetchMeetsFresh: (...args: []) => mockFetchMeetsFresh(...args),
   warmMeetData: (...args: [string]) => mockWarmMeetData(...args),
   prefetchMeetData: (...args: [string]) => mockPrefetchMeetData(...args),
+  prefetchCriticalMeetData: (...args: [string]) => mockPrefetchCriticalMeetData(...args),
 }));
 
 jest.mock("@/lib/database/offline-store", () => ({
   clearExpiredDownloadedMeets: () => mockClearExpiredDownloadedMeets(),
+  isMeetExplicitlyDownloaded: (meet: string) => mockIsMeetExplicitlyDownloaded(meet),
 }));
 
 jest.mock("@/lib/api/meetcal-api", () => ({
@@ -633,6 +637,21 @@ describe("SelectedMeetProvider persisted selection", () => {
 
     expect(mockPrefetchMeetData).toHaveBeenCalledWith("Window Meet");
     expect(failure).toBe(down);
+    act(() => tree.unmount());
+  });
+
+  it("forceSync re-syncs a meet that is not downloaded without the full package and history", async () => {
+    mockFetchMeetsFresh.mockResolvedValue([makeMeet("Window Meet")]);
+    const tree = await mount();
+    mockIsMeetExplicitlyDownloaded.mockResolvedValueOnce(false);
+    mockPrefetchMeetData.mockClear();
+
+    await act(async () => {
+      await captured!.forceSync();
+    });
+
+    expect(mockPrefetchCriticalMeetData).toHaveBeenCalledWith("Window Meet");
+    expect(mockPrefetchMeetData).not.toHaveBeenCalled();
     act(() => tree.unmount());
   });
 });

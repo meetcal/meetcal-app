@@ -142,9 +142,13 @@ async fn medals_by_year(
             .filter(|m| equivalent_meets(&m.meet, &meet))
             .map(|m| m.name.clone())
             .collect();
-        // `meet` is a results meet already (the group's rows name it), so no aliases.
-        let meet_rows: Vec<LiftingResults> =
-            query(queries::MEET_RESULTS, &json!({ "meet": meet })).await?;
+        // `meet` is a results meet already (the group's rows name it), so no
+        // aliases. A meet also answers the results titles linked to it, which
+        // the group's rows name (and this loop ranks) on their own.
+        let meet_rows = own_title_rows(
+            &meet,
+            query(queries::MEET_RESULTS, &json!({ "meet": meet })).await?,
+        );
         for detail in calculate_medal_details(&members, &meet_rows) {
             if detail.movement == Movement::Total && (1..=3).contains(&detail.place) {
                 medals.entry(meet_year.clone()).or_default()[detail.place - 1] += 1;
@@ -152,6 +156,14 @@ async fn medals_by_year(
         }
     }
     Ok(medals)
+}
+
+/// The rows of `meet`'s own results title, leaving out the linked titles a
+/// meet also answers (each is ranked when the group's rows name it).
+fn own_title_rows(meet: &str, rows: Vec<LiftingResults>) -> Vec<LiftingResults> {
+    rows.into_iter()
+        .filter(|row| fold(&row.meet) == fold(meet))
+        .collect()
 }
 
 fn year(date: &str) -> String {
@@ -316,6 +328,31 @@ pub fn report(
 mod tests {
     use super::*;
     use crate::utils::stats::tests::row;
+
+    #[test]
+    fn a_meet_is_ranked_on_its_own_title_not_its_linked_ones() {
+        let lift = |name: &str, meet: &str| {
+            row(
+                name,
+                "2026-06-20",
+                meet,
+                "Open Women's 64kg",
+                63.0,
+                [80.0, 0.0, 0.0],
+                [100.0, 0.0, 0.0],
+            )
+        };
+        let rows = vec![
+            lift("Ann", "Nationals"),
+            lift("Ada", "Junior"),
+            lift("Bea", "nationals "),
+        ];
+        let names = own_title_rows("Nationals", rows)
+            .into_iter()
+            .map(|row| row.name)
+            .collect::<Vec<_>>();
+        assert_eq!(names, ["Ann", "Bea"]);
+    }
 
     #[test]
     fn years_count_athletes_meets_prs_and_medals() {

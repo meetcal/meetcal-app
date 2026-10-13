@@ -25,26 +25,27 @@ pub struct ClubResultsArgs {
 }
 
 pub async fn run(args: ClubResultsArgs) -> Result<()> {
-    let stats = get_club_meet_stats(&args.club, &args.meet).await?;
-    if let Err(error) = validate_stats(&stats, &args.club, &args.meet) {
+    // Trimmed once, so the query and the known-club check below see the same name.
+    let club = args.club.trim();
+    let meet = args.meet.trim();
+    let stats = get_club_meet_stats(club, meet).await?;
+    if let Err(error) = validate_stats(&stats, club, meet) {
         let message = error.to_string();
         let clubs = clubs().await.unwrap_or_default();
-        // Exactly: the query matches the club's name exactly, so a name differing in case
-        // only is a club to suggest.
-        let club_known = clubs.iter().any(|club| club == args.club.trim());
-        return Err(if !clubs.is_empty() && !club_known {
-            anyhow!(not_found_message(
-                NameKind::Club,
-                &args.club,
-                &clubs,
-                message
-            ))
+        return Err(if !clubs.is_empty() && !club_known(&clubs, club) {
+            anyhow!(not_found_message(NameKind::Club, club, &clubs, message))
         } else {
-            not_found(NameKind::ResultsMeet, &args.meet, message).await
+            not_found(NameKind::ResultsMeet, meet, message).await
         });
     }
-    output::emit(report(&args.club, &args.meet, &stats));
+    output::emit(report(club, meet, &stats));
     Ok(())
+}
+
+/// Whether `club` is a known club exactly as the stats query was given it: the query matches
+/// the name exactly, so a name differing in case or spacing is a club to suggest.
+pub fn club_known(clubs: &[String], club: &str) -> bool {
+    clubs.iter().any(|known| known == club)
 }
 
 pub async fn get_club_meet_stats(club: &str, meet: &str) -> Result<ClubMeetStats> {
@@ -199,6 +200,14 @@ mod tests {
             combined_make_rate: 75,
             athlete_results: vec![athlete_result()],
         }
+    }
+
+    #[test]
+    fn a_club_is_known_only_as_the_query_was_given_it() {
+        let clubs = vec!["Florida".to_string()];
+        assert!(club_known(&clubs, "Florida"));
+        assert!(!club_known(&clubs, " Florida "));
+        assert!(!club_known(&clubs, "florida"));
     }
 
     #[test]

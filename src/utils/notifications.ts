@@ -1,4 +1,8 @@
 import * as Notifications from 'expo-notifications';
+// Named import: eslint-plugin-import cannot see enums re-exported through
+// expo-notifications' nested `export *` chain on the namespace object.
+import { AndroidImportance } from 'expo-notifications';
+import { Platform } from 'react-native';
 
 import { createSessionDetailsDeepLink } from '@/utils/deepLinks';
 import { devLog } from '@/lib/logger';
@@ -18,14 +22,59 @@ export const NOTIFICATION_ENABLED_KEY = '@notification_enabled';
 export const NOTIFICATION_PROMPT_SHOWN_KEY = 'hasCheckedNotifications';
 
 /**
- * The Android channel every reminder is delivered on. It is the one the
- * onboarding and profile screens create with `AndroidImportance.MAX`,
- * vibration and a light; a trigger that names no channel lands on
+ * The Android channel every reminder is delivered on, created by
+ * `ensureReminderChannel` with `AndroidImportance.MAX`, vibration and a light.
+ * A trigger that names a channel that does not exist lands on
  * expo-notifications' fallback "Miscellaneous" channel instead, which is
  * created at default importance and so shows no heads-up banner. Ignored on
  * iOS.
+ *
+ * The id stays `default`: installs that already have it (created by earlier
+ * builds at the same importance) keep the user's choices for it, and only its
+ * name changes. Android lets an app rename a channel, never raise its
+ * importance, so a new id would gain nothing.
  */
 export const ANDROID_NOTIFICATION_CHANNEL_ID = 'default';
+
+/** The channel's name in Android's notification settings. */
+export const ANDROID_NOTIFICATION_CHANNEL_NAME = 'Session reminders';
+
+let reminderChannelReady: Promise<void> | null = null;
+
+/**
+ * Create (or rename) the reminders channel. Run once at startup and awaited
+ * before every reminder and permission prompt, so it exists however the user
+ * reached reminders. It used to be created only by onboarding's Done button
+ * and the Profile switch, so a subscriber who backed out of onboarding and
+ * never opened Profile had reminders posted to the fallback channel. On
+ * Android 13+ a channel must also exist before the permission prompt shows.
+ * Calling it for an existing channel only updates its name. A failure is
+ * logged and retried on the next call; it never fails a caller.
+ */
+export function ensureReminderChannel(): Promise<void> {
+  if (Platform.OS !== 'android') return Promise.resolve();
+  reminderChannelReady ??= Notifications.setNotificationChannelAsync(
+    ANDROID_NOTIFICATION_CHANNEL_ID,
+    {
+      name: ANDROID_NOTIFICATION_CHANNEL_NAME,
+      importance: AndroidImportance.MAX,
+      vibrationPattern: [0, 250, 250, 250],
+      lightColor: '#FF231F7C',
+    },
+  ).then(
+    () => undefined,
+    (error: unknown) => {
+      reminderChannelReady = null;
+      console.error('Notifications: could not create the reminders channel', error);
+    },
+  );
+  return reminderChannelReady;
+}
+
+/** Forget the created channel. For tests. */
+export function resetReminderChannelForTests(): void {
+  reminderChannelReady = null;
+}
 
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
@@ -36,6 +85,8 @@ Notifications.setNotificationHandler({
     shouldShowList: true,
   }),
 });
+
+void ensureReminderChannel();
 
 type SessionNotificationData = {
   id?: string;
@@ -48,6 +99,21 @@ type SessionNotificationData = {
   date?: string;
 };
 
+/**
+ * Schedule a local notification for `trigger`, an instant on the device's
+ * clock (the OS fires by it).
+ *
+ * A wall-clock (`DATE`) trigger at that instant, since the caller already
+ * has one (`fireAtMs`), rather than a delay worked out from it.
+ *
+ * The trigger type does not decide exactness. On Android either type
+ * becomes one RTC alarm, and expo-notifications makes it exact
+ * (`setExactAndAllowWhileIdle`, which fires on time in Doze) only while the
+ * app holds `SCHEDULE_EXACT_ALARM` (declared in app.config.js). Without the
+ * permission, which is denied by default for new installs on Android 14+,
+ * the alarm is inexact (`setAndAllowWhileIdle`) and Android may defer it,
+ * by longer in Doze. See `lib/exact-alarms.ts`.
+ */
 export async function scheduleNotification(
   title: string,
   body: string,
@@ -56,12 +122,13 @@ export async function scheduleNotification(
   session?: SessionNotificationData,
   extraData?: Record<string, unknown>,
 ): Promise<string | undefined> {
-  const seconds = Math.max(0, Math.floor((trigger.getTime() - Date.now()) / 1000));
-
-  if (seconds <= 0) {
-    devLog(`scheduleNotification: Calculated trigger time is in the past or now (${seconds}s). Not scheduling.`);
+  const fireAtMs = trigger.getTime();
+  if (!Number.isFinite(fireAtMs) || fireAtMs <= Date.now()) {
+    devLog('scheduleNotification: trigger time is in the past or invalid. Not scheduling.', fireAtMs);
     return undefined;
   }
+
+  await ensureReminderChannel();
 
   const notificationId = await Notifications.scheduleNotificationAsync({
     content: {
@@ -76,9 +143,8 @@ export async function scheduleNotification(
       },
     },
     trigger: {
-      type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL,
-      seconds,
-      repeats: false,
+      type: Notifications.SchedulableTriggerInputTypes.DATE,
+      date: fireAtMs,
       channelId: ANDROID_NOTIFICATION_CHANNEL_ID,
     },
     identifier,

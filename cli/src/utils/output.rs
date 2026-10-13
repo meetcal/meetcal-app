@@ -326,12 +326,22 @@ fn csv_table(table: &Table) -> String {
     for row in cells(table) {
         lines.push(
             row.iter()
-                .map(|cell| csv_field(cell))
+                .map(|cell| csv_field(&csv_value(cell)))
                 .collect::<Vec<_>>()
                 .join(","),
         );
     }
     lines.join("\n") + "\n"
+}
+
+/// A cell as CSV writes it: the same value JSON gets, so the two formats agree. Placeholders
+/// are empty, booleans `true`/`false`, numbers without their unit, text as it is.
+fn csv_value(cell: &str) -> String {
+    match value(cell) {
+        Value::Null => String::new(),
+        Value::String(text) => text,
+        other => other.to_string(),
+    }
 }
 
 fn csv_field(value: &str) -> String {
@@ -462,6 +472,28 @@ mod tests {
         let data = table(&["Snatch", "Snatch Holder"], &[&["130", "Lift, Ada"]]);
         let report = Report::new().table_with_data("records", shown, data);
         assert_eq!(report.to_csv(), "snatch,snatch_holder\n130,\"Lift, Ada\"\n");
+    }
+
+    #[test]
+    fn csv_carries_the_values_json_does() {
+        let report = Report::single(
+            "editions",
+            table(
+                &[
+                    "Registered",
+                    "Lifters",
+                    "Adaptive",
+                    "Lifted",
+                    "Change",
+                    "Meet",
+                ],
+                &[&["—", "174", "Yes", "620kg", "N/A", "Ohio Open"]],
+            ),
+        );
+        assert_eq!(
+            report.to_csv(),
+            "registered,lifters,adaptive,lifted,change,meet\n,174,true,620,,Ohio Open\n"
+        );
     }
 
     #[test]

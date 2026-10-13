@@ -3,7 +3,7 @@
 use std::collections::HashMap;
 
 use anyhow::{Context, Result, anyhow};
-use chrono::{Datelike, NaiveDate};
+use chrono::{Datelike, Months, NaiveDate};
 use serde::Deserialize;
 use serde_json::json;
 use tokio::task::JoinSet;
@@ -110,10 +110,15 @@ struct ResultsPage {
 /// 15 pages are not read one after another.
 pub const RESULTS_CONCURRENCY: usize = 8;
 
+/// The most slices a range is read in. A range longer than this many months is read in slices
+/// of several whole months, so a wide or sparse range (`--from 1900-01-01`) costs at most this
+/// many first-page requests rather than one per month.
+pub const MAX_RESULT_SLICES: u32 = 48;
+
 /// Every result dated `from` to `to` (inclusive, `YYYY-MM-DD`), oldest first. The range is read
-/// a month at a time, [`RESULTS_CONCURRENCY`] months at once, each a page at a time (at most
-/// `backend::MAX_PAGES` pages a month). `progress` is told the running count as each month
-/// arrives.
+/// a month at a time (several months at a time past [`MAX_RESULT_SLICES`] months),
+/// [`RESULTS_CONCURRENCY`] slices at once, each a page at a time (at most `backend::MAX_PAGES`
+/// pages a slice). `progress` is told the running count as each slice arrives.
 pub async fn results_between(
     from: &str,
     to: &str,
@@ -174,19 +179,27 @@ fn iso(date: NaiveDate) -> String {
     date.format("%Y-%m-%d").to_string()
 }
 
-/// `from` to `to` (inclusive) cut at each month's end: the slices cover every day once, each
-/// starting the day after the last ends. Empty when `to` is before `from`.
+/// `from` to `to` (inclusive) cut at month ends: the slices cover every day once, each starting
+/// the day after the last ends. A slice is one month, or, when the range spans more than
+/// [`MAX_RESULT_SLICES`] months, the fewest whole months that keep the count within it. Empty
+/// when `to` is before `from`.
 pub fn month_slices(from: NaiveDate, to: NaiveDate) -> Vec<(NaiveDate, NaiveDate)> {
+    if to < from {
+        return Vec::new();
+    }
+    // At least 1, since `to` is not before `from`.
+    let months = ((to.year() - from.year()) * 12 + to.month() as i32 - from.month() as i32 + 1)
+        .unsigned_abs();
+    let step = months.div_ceil(MAX_RESULT_SLICES);
     let mut slices = Vec::new();
     let mut start = from;
     while start <= to {
-        let next_month = if start.month() == 12 {
-            NaiveDate::from_ymd_opt(start.year() + 1, 1, 1)
-        } else {
-            NaiveDate::from_ymd_opt(start.year(), start.month() + 1, 1)
-        };
-        let month_end = next_month.and_then(|next| next.pred_opt()).unwrap_or(to);
-        let end = month_end.min(to);
+        let slice_end = start
+            .with_day(1)
+            .and_then(|first| first.checked_add_months(Months::new(step)))
+            .and_then(|next| next.pred_opt())
+            .unwrap_or(to);
+        let end = slice_end.min(to);
         slices.push((start, end));
         match end.succ_opt() {
             Some(next) => start = next,
@@ -236,6 +249,35 @@ mod tests {
             ]
         );
         assert!(month_slices(date("2025-02-01"), date("2025-01-01")).is_empty());
+    }
+
+    #[test]
+    fn a_wide_range_is_read_in_at_most_max_result_slices() {
+        for (from, to) in [
+            ("1900-01-01", "2026-12-31"),
+            ("2010-01-15", "2014-01-14"),
+            ("2010-01-01", "2014-12-31"),
+            ("0001-01-01", "9999-12-31"),
+        ] {
+            let slices = month_slices(date(from), date(to));
+            assert!(slices.len() <= MAX_RESULT_SLICES as usize, "{from} to {to}");
+            assert_eq!(slices.first().unwrap().0, date(from));
+            assert_eq!(slices.last().unwrap().1, date(to));
+            for pair in slices.windows(2) {
+                assert_eq!(pair[0].1.succ_opt().unwrap(), pair[1].0);
+                // Cut at month ends.
+                assert_eq!(pair[1].0.day(), 1);
+            }
+        }
+        // 127 years: slices of 32 months, the last one shorter.
+        let slices = month_slices(date("1900-01-01"), date("2026-12-31"));
+        assert_eq!(slices.len(), 48);
+        assert_eq!(slices[0], (date("1900-01-01"), date("1902-08-31")));
+        // Exactly MAX_RESULT_SLICES months still reads a month at a time.
+        assert_eq!(
+            month_slices(date("2021-01-01"), date("2024-12-31")).len(),
+            48
+        );
     }
 
     #[test]

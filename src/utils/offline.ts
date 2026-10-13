@@ -17,11 +17,10 @@ import {
 } from "@/lib/database/offline-cache";
 import {
   clearAllAthleteHistory,
-  clearMeetData,
+  clearAllMeetData,
   getExplicitlyDownloadedMeetIds,
   getLastSyncTime,
   markMeetExplicitlyDownloaded,
-  listStoredMeets,
 } from "@/lib/database/offline-store";
 import {
   getAnywhereOnEarthDate,
@@ -410,21 +409,15 @@ export const useOfflineData = () => {
             clearBrowseCaches(),
           ]);
     
-          // Every meet with data on the device, not only the ones in today's
-          // window: a meet browsed last month, or one whose index entry was
-          // lost, kept its schedule and results otherwise. One key listing
-          // is shared by every meet. Each `clearMeetData` has to scan all
-          // storage keys for that meet's session-athlete entries, and at this
-          // point the athlete-history keys — 1500 to 4500 of them for a
-          // downloaded meet — have not been removed yet, so the listing is at
-          // its largest exactly while it was being repeated once per meet.
-          const { meetIds, storageKeys } = await listStoredMeets(
-            availableMeets.map((meet) => meet.name),
-          );
-          for (const meetId of meetIds) {
-            await clearMeetData(meetId, { storageKeys });
-          }
+          // Every meet with data on the device or marked downloaded, not only
+          // the ones in today's window, through the same clear-all as Clear
+          // Cache (one shared key listing, no per-meet history prune: all
+          // history goes right after).
+          const { failed } = await clearAllMeetData();
           await clearAllAthleteHistory();
+          if (failed > 0) {
+            throw new Error(`Could not clear ${failed} offline meet(s)`);
+          }
 
           Alert.alert(
             "Deleted",

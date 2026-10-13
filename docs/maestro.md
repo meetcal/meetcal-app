@@ -34,6 +34,14 @@ The default `APP_ID` is `com.memohnsen.meetcal`. `bun run maestro:test` first bo
 - `02-search-and-clubs.yaml`: all meet results search, Weightlifting Wrapped search, club list search, club meet list, and club results report route.
 - `03-shared-and-settings.yaml`: offline data, profile/settings, sign-in, athlete results empty state, attempt estimator missing-param state, and partners screen.
 
+## Cold-Start Deep Links
+
+`cold-start/cold-start-deep-link.yaml` kills the app, opens a `meetcal:///shared-screens/schedule-details` link (as a widget row or calendar event does) and checks that Back returns to the Schedule tab. A development client cold-started by a link shows its launcher instead of the app, so the flow is outside the default `.maestro` run; run it against a preview or release build:
+
+```sh
+maestro test -e APP_ID=com.memohnsen.meetcal .maestro/cold-start/cold-start-deep-link.yaml
+```
+
 ## States Still Needing Seeded Test Data
 
 - Full signed-in Clerk flows.

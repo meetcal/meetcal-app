@@ -43,7 +43,16 @@ export default ({ config }) => ({
     },
     package: 'com.memohnsen.meetcal',
     versionCode: 1,
-    permissions: ["READ_CALENDAR", "WRITE_CALENDAR"]
+    permissions: [
+      "READ_CALENDAR",
+      "WRITE_CALENDAR",
+      // Lets session reminders be exact alarms (src/utils/notifications.ts).
+      // Without it Android 12+ schedules them inexactly and may deliver them
+      // late, later still in Doze. Granted at install on Android 12-13;
+      // denied by default for new installs on 14+, where the user allows it
+      // under "Alarms & reminders".
+      "android.permission.SCHEDULE_EXACT_ALARM",
+    ]
   },
   web: {
     favicon: './assets/favicon.png'
@@ -56,6 +65,9 @@ export default ({ config }) => ({
       'onesignal-expo-plugin',
       { mode: 'production', iPhoneDeploymentTarget: '18.0' }
     ],
+    // The app's click listener opens a push's launch URL; OneSignal must not
+    // open it a second time.
+    './plugins/withOneSignalSuppressLaunchURLs',
     'expo-font',
     'expo-localization',
     'expo-router',
