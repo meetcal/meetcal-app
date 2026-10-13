@@ -80,6 +80,21 @@ describe("useFilterState with route filters (#358)", () => {
     act(() => tree.unmount());
   });
 
+  it("closes an open filter sheet when a link resets the filters", () => {
+    let tree!: ReturnType<typeof create>;
+    act(() => {
+      tree = create(<Screen gender="men" ageGroup="senior" />);
+    });
+    act(() => latest.current!.openFilters());
+    expect(latest.current!.filterModalProps.visible).toBe(true);
+
+    act(() => {
+      tree.update(<Screen gender="women" ageGroup="junior" />);
+    });
+    expect(latest.current!.filterModalProps.visible).toBe(false);
+    expect(latest.current!.filters).toEqual({ gender: "women", ageGroup: "junior" });
+  });
+
   it("keeps in-app filter changes while the route params stay the same", () => {
     let tree!: ReturnType<typeof create>;
     act(() => {

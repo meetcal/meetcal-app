@@ -84,7 +84,16 @@ function IntlRankingsScreenContent() {
   const [defaultsResetKey, setDefaultsResetKey] = useState(filterResetKey);
   if (defaultsResetKey !== filterResetKey) {
     setDefaultsResetKey(filterResetKey);
-    setHasSetDefaultFilters(hasRouteFilters);
+    if (!hasRouteFilters && intlRankings.length > 0) {
+      // Rankings already loaded: their defaults now, in this render, not
+      // after a frame of the empty route defaults (which match every row).
+      const defaults = computeDefaultRankingFilters(intlRankings);
+      setFilters(defaults);
+      setTempFilters(defaults);
+      setHasSetDefaultFilters(true);
+    } else {
+      setHasSetDefaultFilters(hasRouteFilters);
+    }
   }
   useEffect(() => {
     if (!hasSetDefaultFilters && intlRankings.length > 0) {

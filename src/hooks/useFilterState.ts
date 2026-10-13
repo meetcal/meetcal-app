@@ -27,6 +27,9 @@ export function useFilterState<T extends Record<string, string>>(
     setAppliedResetKey(resetKey);
     setFilters(defaultFilters);
     setTempFilters(defaultFilters);
+    // An open filter sheet holds its own draft of the old filters, and
+    // Apply would put them back: close it, so the link's filters stand.
+    setShowFilterModal(false);
   }
 
   const openFilters = useCallback(() => {
