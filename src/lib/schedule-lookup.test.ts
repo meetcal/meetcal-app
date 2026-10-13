@@ -93,6 +93,13 @@ describe('platformSessionTimes', () => {
     expect(platformSessionTimes(session, null)).toEqual({ startTime: '9:00 AM', weighInTime: '7:00 AM' });
   });
 
+  it("keeps a platform untimed rather than giving it the first platform's start", () => {
+    // Red published 9:00 (the session's start comes from its row); Blue has none.
+    expect(
+      platformSessionTimes(session, { platformStartTime: '', platformWeighInTime: '' }),
+    ).toEqual({ startTime: '', weighInTime: '' });
+  });
+
   it('is unknown for an untimed row', () => {
     expect(
       platformSessionTimes({ startTime: '', weighInTime: '' }, { platformStartTime: '', platformWeighInTime: '' }),
