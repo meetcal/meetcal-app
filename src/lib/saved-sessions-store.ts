@@ -190,8 +190,8 @@ export async function commitStoredSessions(
   if (!userId || !store.isActive(userId) || isAccountDeleted(userId)) return;
   const { cache } = store;
   const serialized = JSON.stringify(nextSessions);
-  const sameOwner = cache.owner === userId;
-  if (!sameOwner || cache.raw !== serialized) {
+  const unchanged = cache.owner === userId && cache.raw === serialized;
+  if (!unchanged) {
     await AsyncStorage.setItem(getSavedSessionsKey(userId), serialized);
     // Deleted while the write was in flight (the user signed out as well, so
     // checked before `isActive`): its device data was cleared just now, so
@@ -202,10 +202,13 @@ export async function commitStoredSessions(
     }
     if (!store.isActive(userId)) return;
     cache.raw = serialized;
+    cache.sessions = nextSessions;
   }
   cache.owner = userId;
-  cache.sessions = nextSessions;
-  store.publish(nextSessions);
+  // An unchanged list keeps the array already published. Every load commits
+  // a freshly built one, and a new identity re-ran the widget write and
+  // reload, the Spotlight reindex and a full reminder sync each time.
+  store.publish(cache.sessions);
 }
 
 /** Remove the user's list from storage and publish an empty one. */

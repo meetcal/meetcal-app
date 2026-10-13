@@ -36,6 +36,8 @@ export type ResourceRevalidation<T> = {
   changed: boolean;
   lastUpdatedAt: number | null;
   source: "network";
+  /** False when the answer changed and could not be stored. */
+  stored?: boolean;
 };
 
 export type MutableResource<T, TParams extends readonly unknown[]> = {
@@ -48,6 +50,8 @@ export type MutableResource<T, TParams extends readonly unknown[]> = {
     changed: boolean;
     lastUpdatedAt: number | null;
     source: "network";
+    /** False when the answer changed and could not be stored. */
+    stored?: boolean;
   }>;
   revalidateWithCached: (
     cached: ResourceCacheEntry<unknown> | null,
@@ -57,6 +61,8 @@ export type MutableResource<T, TParams extends readonly unknown[]> = {
     changed: boolean;
     lastUpdatedAt: number | null;
     source: "network";
+    /** False when the answer changed and could not be stored. */
+    stored?: boolean;
   }>;
   invalidate: (...params: TParams) => Promise<void>;
   /**
@@ -139,6 +145,7 @@ export function createMutableResource<T, TParams extends readonly unknown[]>(
         changed: boolean;
         lastUpdatedAt: number | null;
         source: "network";
+        stored?: boolean;
       }>;
     }
 
@@ -153,6 +160,7 @@ export function createMutableResource<T, TParams extends readonly unknown[]>(
       changed: boolean;
       lastUpdatedAt: number | null;
       source: "network";
+      stored?: boolean;
     }>;
     const releaseKey = () => {
       if (inFlightRequests.get(key) === request) {
@@ -179,10 +187,12 @@ export function createMutableResource<T, TParams extends readonly unknown[]>(
       // reject the whole refresh, so the screen kept showing the stale copy —
       // or "nothing yet" — of data that had already arrived.
       let persisted: ResourceCacheEntry<T> | null | void = null;
+      let stored = true;
       if (changed) {
         try {
           persisted = await config.persistFresh(fresh, ...params);
         } catch (persistError) {
+          stored = false;
           console.warn("Failed to persist fresh resource data; serving it uncached", {
             key,
             error: persistError,
@@ -196,6 +206,7 @@ export function createMutableResource<T, TParams extends readonly unknown[]>(
         lastUpdatedAt:
           persisted?.lastUpdatedAt ?? cacheEntry?.lastUpdatedAt ?? Date.now(),
         source: "network",
+        stored,
       };
       publish(key, result);
       return result;
