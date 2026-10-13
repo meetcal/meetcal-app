@@ -127,4 +127,26 @@ describe('computeNationalRankingsForYear', () => {
       { name: 'Ada', total: 260, date: '2026-06-01' },
     ]);
   });
+
+  it('leaves out a typo row, ranking the athlete by their real best (#400), and folds spellings (#217)', async () => {
+    const lifts = (sn: number[], cj: number[], total: number) => ({
+      snatch1: sn[0], snatch2: sn[1], snatch3: sn[2], snatchBest: Math.max(0, ...sn),
+      cj1: cj[0], cj2: cj[1], cj3: cj[2], cjBest: Math.max(0, ...cj), total,
+    });
+    const age = "Men's 14-15 Age Group 79+kg";
+    const ctx = fakeCtx({
+      lifting_results: [
+        // 2026 Texas Barbell Spring Showdown: a `633` typed for `63`.
+        { ...result('Gunner Guillory', '2026-04-04', 723, age), ...lifts([-63, 633, 65], [83, 86, 90], 723) },
+        { ...result('Gunner Guillory', '2026-05-02', 166, age), ...lifts([65, 68, 71], [88, 92, 95], 166) },
+        { ...result('Sidney Porter', '2026-03-01', 253, age), ...lifts([105, 110, -113], [135, 140, 143], 253) },
+        { ...result('sidney  porter', '2026-06-01', 250, age), ...lifts([105, 108, -113], [135, 142, -146], 250) },
+      ],
+    });
+
+    expect(await computeNationalRankingsForYear(ctx, 'USAW', age, '2026')).toEqual([
+      { name: 'Sidney Porter', total: 253, date: '2026-03-01' },
+      { name: 'Gunner Guillory', total: 166, date: '2026-05-02' },
+    ]);
+  });
 });

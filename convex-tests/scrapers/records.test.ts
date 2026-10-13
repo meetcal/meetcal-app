@@ -1,4 +1,4 @@
-import { ageCategory, findRecordsPdfUrl, formatWeightClass, parseRecords } from '../../convex/scrapers/parse/records';
+import { ageCategory, findRecordsPdfUrl, formatWeightClass, parseRecords, parseRecordsReport } from '../../convex/scrapers/parse/records';
 
 const PAGE = 'https://www.usaweightlifting.org/american-records';
 
@@ -6,7 +6,6 @@ describe('records parser (port of usaw/records_scraper)', () => {
   it('reads kept rows by token position and merges the three lifts per class', () => {
     const lines = [
       'AgeGroup M/F Bodyweight Lift Record Name Date Place Event',
-      '11 & Under F 30 SNATCH 22 Standard 2026-08-01',
       'OPEN F 49 SNATCH 91 DOE, Jane 2026-06-20 Colorado Springs, CO 2026 Nationals',
       'OPEN F 49 CLEANJERK 115 DOE, Jane 2026-06-20',
       'OPEN F 49 TOTAL 206 DOE, Jane 2026-06-20',
@@ -52,11 +51,58 @@ describe('records parser (port of usaw/records_scraper)', () => {
     expect(ageCategory('UNI')).toBe('university');
     expect(ageCategory('Open')).toBe('senior');
     expect(ageCategory('M70')).toBe('Masters 70');
-    expect(ageCategory('11 & Under')).toBeNull();
+    expect(ageCategory('U17')).toBe('u17');
+    expect(ageCategory('ADAP')).toBeNull();
     expect(formatWeightClass('$>86$')).toBe('86+kg');
     expect(formatWeightClass('+109kg')).toBe('109+kg');
     expect(formatWeightClass('48')).toBe('48kg');
     expect(formatWeightClass('Bodyweight')).toBeNull();
+  });
+
+  it('reads the age groups the PDF writes since the August 2026 class change (#406)', () => {
+    expect(ageCategory('11 & Under')).toBe('u11');
+    expect(ageCategory('12-13yo')).toBe('u13');
+    expect(ageCategory('14-15yo')).toBe('u15');
+    expect(ageCategory('16-17yo')).toBe('u17');
+    expect(ageCategory('University')).toBe('university');
+    // Lines as the "Post August 1, 2026" PDF (updated Oct 8, 2026) has them.
+    const lines = [
+      '11 & Under F 37 SNATCH 34 AOKI BLANCHARD, Charlotte 2026-09-12 Fort Worth, TX 2026 Virus Weightlifting Series 2',
+      '11 & Under F 37 CLEANJERK 40 AOKI BLANCHARD, Charlotte 2026-09-12',
+      '11 & Under F 37 TOTAL 74 AOKI BLANCHARD, Charlotte 2026-09-12',
+      '12-13yo M 55 TOTAL 144 GRAFTON, David 2026-09-12',
+      '14-15yo M 70 TOTAL 225 BUJANDA, Liam 2026-09-12',
+      '16-17yo M 85 SNATCH 130 WHITLOCK, Robert 2026-08-29 Guayaquil, Ecuador 2026 Pan American Youth Championships',
+      'University M 110 TOTAL 369 UPMEYER, George 2026-09-12 Doha, QAT 2026 FISU World University Championships',
+      // Adaptive records are another table's: never read as these.
+      'ADAP - Physical - 11 & Under F 30 SNATCH 0 Standard 2026-08-01',
+      'ADAP - Visual Impairment - OPEN M 60 TOTAL 100 Standard 2026-08-01',
+    ];
+    const { records, unknownAgeGroups } = parseRecordsReport([lines]);
+    expect(records.map((r) => [r.age_category, r.gender, r.weight_class, r.snatch_record, r.cj_record, r.total_record])).toEqual([
+      ['u11', 'women', '37kg', 34, 40, 74],
+      ['u13', 'men', '55kg', 0, 0, 144],
+      ['u15', 'men', '70kg', 0, 0, 225],
+      ['u17', 'men', '85kg', 130, 0, 0],
+      ['university', 'men', '110kg', 0, 0, 369],
+    ]);
+    expect(records[0].snatch_by).toEqual({ name: 'AOKI BLANCHARD, Charlotte', date: '2026-09-12', location: '2026 Virus Weightlifting Series 2, Fort Worth, TX' });
+    expect(unknownAgeGroups).toEqual([]);
+  });
+
+  it('names an age group it does not know instead of dropping its rows silently (#406)', () => {
+    const { records, unknownAgeGroups } = parseRecordsReport([
+      [
+        '18-20yo F 49 SNATCH 80 DOE, Jane 2026-09-01',
+        'Under 9 M 30 TOTAL 20 Standard 2026-08-01',
+        '12-13 yo M 55 TOTAL 144 GRAFTON, David 2026-09-12',
+        'JR F 49 SNATCH 81 ROE, Ann 2026-09-01',
+        'AgeGroup M/F Bodyweight Lift Record Name Date Place Event',
+        'Total records: 5',
+      ],
+    ]);
+    expect(records.map((r) => r.age_category)).toEqual(['junior']);
+    expect(unknownAgeGroups).toEqual(['12-13 yo', '18-20yo', 'Under 9']);
   });
 
   it('picks the current records PDF, ignoring CSS inlined in the button and former records', () => {
