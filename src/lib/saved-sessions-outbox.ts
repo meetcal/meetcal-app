@@ -469,6 +469,10 @@ function isCoveredByReset(meet: string, rev: number | undefined, outbox: SavedSe
  * appended, using the body stored in the outbox. Everything else is the
  * server's word, including an empty list: a session removed on another
  * device disappears here too.
+ *
+ * One row per session id: the server can still hold a legacy duplicate row
+ * for a session (`convex/users.ts`), and the list is keyed by id on screen
+ * and in the widget, so only the first row for an id is kept.
  */
 export function mergeServerSessions(
   serverSessions: SavedSession[],
@@ -479,6 +483,7 @@ export function mergeServerSessions(
   const merged: SavedSession[] = [];
   const seen = new Set<string>();
   for (const session of base) {
+    if (seen.has(session.id)) continue;
     const entry = outbox.sessions[session.id];
     if (entry?.op === 'delete') continue;
     if (isCoveredByReset(session.meet, entry?.rev, outbox)) continue;

@@ -6,6 +6,7 @@ import { meetCalendarDateAnchor } from '@/utils/dateTime';
 import { getTrustedNow } from '@/lib/api/meetcal-api';
 import { devLog } from '@/lib/logger';
 import { createKeyedWriteChain, createWriteChain } from '@/lib/data/write-chain';
+import { getCachedMeets } from './meets-list-cache';
 import {
   clearAllPackageEtags,
   clearPackageEtag,
@@ -158,6 +159,29 @@ export async function markMeetExplicitlyDownloaded(
   await write;
 }
 
+/**
+ * Writes each downloaded meet's current end date over the one stored when it
+ * was downloaded, for meets in `endDates` that are still marked downloaded.
+ * No write when nothing changed.
+ */
+async function updateDownloadEndDates(endDates: ReadonlyMap<string, string>): Promise<void> {
+  const write = explicitDownloadsWriteChain
+    .catch(() => undefined)
+    .then(async () => {
+      const downloads = await getExplicitMeetDownloads();
+      let changed = false;
+      for (const [meetId, endDate] of endDates) {
+        const entry = downloads[meetId];
+        if (!entry || entry.endDate === endDate) continue;
+        downloads[meetId] = { ...entry, endDate };
+        changed = true;
+      }
+      if (changed) await saveExplicitMeetDownloads(downloads);
+    });
+  explicitDownloadsWriteChain = write;
+  await write;
+}
+
 export async function isMeetExplicitlyDownloaded(meetId: MeetName): Promise<boolean> {
   const downloads = await getExplicitMeetDownloads();
   return Boolean(downloads[meetId]);
@@ -210,7 +234,14 @@ export function hasMeetEnded(endDate: string, now: number): boolean {
 
 /**
  * Clears every downloaded meet whose end date has passed — on the server's
- * clock. This runs from every meets refresh, offline included, so a device
+ * clock.
+ *
+ * The end date is the meets list's (the cached `/meets` answer, refreshed
+ * every few minutes) whenever the meet is on it, and is saved over the one
+ * captured at download time; the stored date only applies to a meet no
+ * longer listed. Only the date from the download used to count, so a meet
+ * postponed by a week lost its offline data the day after its old end date.
+ * This runs from every meets refresh, offline included, so a device
  * clock a day ahead used to wipe the meet the user was standing at. With no
  * server sample yet (a cold start offline) nothing is cleared: expiring a
  * meet late is harmless, expiring it early is data loss. One meet failing
@@ -225,8 +256,22 @@ export async function clearExpiredDownloadedMeets(): Promise<void> {
     }
     const now = trustedNow.getTime();
     const downloads = await getExplicitMeetDownloads();
-    const expiredMeetIds = Object.keys(downloads).filter((meetId) => {
-      const endDate = downloads[meetId]?.endDate;
+    const downloadedIds = Object.keys(downloads);
+    // Nothing downloaded is the common case: no meets list read at all.
+    if (downloadedIds.length === 0) return;
+    const listedEndDates = new Map<string, string>();
+    for (const meet of await getCachedMeets()) {
+      if (downloads[meet.name] && meet.dates.end) listedEndDates.set(meet.name, meet.dates.end);
+    }
+    // Expiry does not depend on saving the dates: with storage full, the
+    // sweep is what frees space.
+    try {
+      await updateDownloadEndDates(listedEndDates);
+    } catch (error) {
+      console.warn('Could not save downloaded meets\' current end dates:', error);
+    }
+    const expiredMeetIds = downloadedIds.filter((meetId) => {
+      const endDate = listedEndDates.get(meetId) ?? downloads[meetId]?.endDate;
       return endDate ? hasMeetEnded(endDate, now) : false;
     });
     // This runs on every meets refresh — app start, every five minutes, and
@@ -829,6 +874,23 @@ export async function initStore(): Promise<void> {
   }
 }
 
+/**
+ * The schedule stored under `scheduleKey`, or null. A truncated or legacy
+ * payload degrades to "no cached schedule", not an error that takes the
+ * whole meet down.
+ */
+async function readCachedSchedule(scheduleKey: string): Promise<Schedule | null> {
+  const scheduleString = await AsyncStorage.getItem(scheduleKey);
+  if (!scheduleString) return null;
+  try {
+    const parsed: unknown = JSON.parse(scheduleString);
+    return Array.isArray(parsed) ? (parsed as Schedule) : null;
+  } catch (parseError) {
+    console.warn('Ignoring invalid cached schedule payload:', parseError);
+    return null;
+  }
+}
+
 // Get meet data from store
 export async function getMeetData(meetId: MeetName): Promise<MeetData> {
   try {
@@ -842,24 +904,7 @@ export async function getMeetData(meetId: MeetName): Promise<MeetData> {
 
     // Get the schedule if it exists
     const scheduleKey = entry.scheduleKey;
-    let schedule: Schedule | null = null;
-    
-    if (scheduleKey) {
-      const scheduleString = await AsyncStorage.getItem(scheduleKey);
-      if (scheduleString) {
-        // A truncated or legacy payload must degrade to "no cached schedule",
-        // not take the whole meet down: `MeetData.schedule` is typed
-        // `Schedule | null`, and the sibling reader `getMeetSchedule` already
-        // guards exactly this way.
-        try {
-          const parsed: unknown = JSON.parse(scheduleString);
-          schedule = Array.isArray(parsed) ? (parsed as Schedule) : null;
-        } catch (parseError) {
-          console.warn('Ignoring invalid cached schedule payload:', parseError);
-          schedule = null;
-        }
-      }
-    }
+    const schedule = scheduleKey ? await readCachedSchedule(scheduleKey) : null;
     
     const athletesKey = entry.athletesKey || `${ATHLETES_KEY_PREFIX}${meetId}`;
     const athletes = await readStoredAthletes(
@@ -1471,19 +1516,58 @@ export async function clearMeetSchedule(meetId: string): Promise<void> {
   });
 }
 
+/**
+ * A meet's stored schedule, or `[]`. Reads the index and the schedule only:
+ * the schedule resource calls this on every screen mount and on every
+ * background schedule sync, and going through `getMeetData` read and
+ * normalized the meet's whole roster (hundreds of KB) to get at it.
+ */
 export async function getMeetSchedule(meetId: string): Promise<Schedule> {
   try {
-    // `getMeetData` has already read `scheduleKey` and parsed it into
-    // `MeetData.schedule`, applying the same "not an array / bad JSON means no
-    // cached schedule" rule this function used to apply itself. Re-reading the
-    // key here was a second AsyncStorage read and a second `JSON.parse` of the
-    // exact same payload.
-    const meetData = await getMeetData(meetId as MeetName);
-    return meetData.schedule ?? [];
+    const store = await getStore();
+    const scheduleKey = store.meets[meetId]?.scheduleKey;
+    if (!scheduleKey) return [];
+    return (await readCachedSchedule(scheduleKey)) ?? [];
   } catch (error) {
     console.error('Error getting meet schedule:', error);
     return [];
   }
+}
+
+/**
+ * How stale a meet's "synced" time may get while its schedule keeps being
+ * checked and found unchanged. Every check stamping it rewrote the whole
+ * index every 5 minutes; never stamping it left the offline banner saying
+ * "synced 2d ago" about a schedule checked minutes ago.
+ */
+export const UNCHANGED_SYNC_STAMP_INTERVAL_MS = 15 * 60 * 1000;
+
+/**
+ * Record that a stored meet's schedule was just checked against the server
+ * and had not changed (`saveMeetSchedule` stamps a changed one). Writes only
+ * when the stamp is at least `minIntervalMs` old. Returns whether it wrote.
+ */
+export async function markMeetScheduleVerified(
+  meetId: string,
+  now: number = Date.now(),
+  minIntervalMs: number = UNCHANGED_SYNC_STAMP_INTERVAL_MS,
+): Promise<boolean> {
+  const entry = (await getStore()).meets[meetId];
+  if (!entry?.scheduleKey) return false;
+  const age = now - (entry.lastSyncTime ?? 0);
+  if (age >= 0 && age < minIntervalMs) return false;
+  let wrote = false;
+  await updateStore((store) => {
+    // Re-checked on the chain: a schedule save (or another check) may have
+    // stamped a newer time while this waited, and must not be rewound.
+    const current = store.meets[meetId];
+    if (!current?.scheduleKey) return;
+    const currentAge = now - (current.lastSyncTime ?? 0);
+    if (currentAge < minIntervalMs) return;
+    current.lastSyncTime = now;
+    wrote = true;
+  });
+  return wrote;
 }
 
 /**

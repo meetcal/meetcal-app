@@ -443,6 +443,22 @@ describe("mergeServerSessions", () => {
     expect(ids(merged)).toEqual(["saved-after"]);
   });
 
+  it("keeps one row for a session the server lists twice (legacy duplicate)", async () => {
+    await markSessionPut(USER, session("pending-twice", { notes: "local" }));
+    const merged = mergeServerSessions(
+      [
+        session("dup", { notes: "first" }),
+        session("dup", { notes: "second" }),
+        session("pending-twice", { notes: "server-a" }),
+        session("pending-twice", { notes: "server-b" }),
+      ],
+      await readOutbox(USER),
+    );
+    expect(ids(merged)).toEqual(["dup", "pending-twice"]);
+    expect(merged[0].notes).toBe("first");
+    expect(merged[1].notes).toBe("local");
+  });
+
   it("trusts an empty server list: a clean row removed elsewhere goes", () => {
     expect(mergeServerSessions([], { sessions: {}, resets: {}, nextRev: 1 })).toEqual([]);
   });

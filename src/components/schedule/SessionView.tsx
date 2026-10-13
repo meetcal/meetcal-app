@@ -109,9 +109,10 @@ function PlatformRow({
             style={[styles.platformTimeText, { color: colors.secondaryText }]}
           >
             Start:{" "}
-            {platform.platformStartTime || session.startTime}
-            {" "}
-            {timeZone}
+            {/* The platform's own start (untimed: TBD), not the session's
+                first-row clock; the same rule as `platformSessionTimes`. */}
+            {(platform.platformStartTime ?? session.startTime) || "TBD"}
+            {(platform.platformStartTime ?? session.startTime) && timeZone ? ` ${timeZone}` : ""}
           </ThemedText>
         </View>
       </View>

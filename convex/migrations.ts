@@ -484,6 +484,66 @@ export const cleanupRosterRows = internalMutation({
 });
 
 /**
+ * Deletes legacy duplicate `saved_sessions` rows (two rows for one user and
+ * session, left by the pre-port upsert): keeps each pair's newest row by
+ * `updatedAt`, as `users:savedSessions` already lists it, and deletes the
+ * rest, a page per mutation. Idempotent: a session with one row is left
+ * alone, and a group split across two pages is settled on the first.
+ * Production write: run only when the owner authorizes it, dry run first.
+ *
+ *   npx convex run migrations:dedupeSavedSessions '{"dryRun":true}'
+ *   npx convex run migrations:dedupeSavedSessions
+ */
+export const dedupeSavedSessions = internalMutation({
+  args: {
+    cursor: v.optional(v.union(v.string(), v.null())),
+    // The previous page's last group: rows come in (session, user) order, so
+    // a group split across pages was already settled (or counted) there.
+    lastGroup: v.optional(v.string()),
+    deleted: v.optional(v.number()),
+    dryRun: v.optional(v.boolean()),
+  },
+  handler: async (ctx, { cursor, lastGroup, deleted = 0, dryRun = false }) => {
+    const page = await ctx.db
+      .query('saved_sessions')
+      .withIndex('by_sessionId_and_userId')
+      .paginate({ cursor: cursor ?? null, numItems: BACKFILL_PAGE_SIZE });
+    const groups = new Map<string, { sessionId: string; userId: string }>();
+    const groupKey = (row: { sessionId: string; userId: string }) => `${row.sessionId}\u0000${row.userId}`;
+    for (const row of page.page) {
+      const key = groupKey(row);
+      if (key !== lastGroup) groups.set(key, { sessionId: row.sessionId, userId: row.userId });
+    }
+    let removed = 0;
+    for (const { sessionId, userId } of groups.values()) {
+      const rows = await ctx.db
+        .query('saved_sessions')
+        .withIndex('by_sessionId_and_userId', (q) => q.eq('sessionId', sessionId).eq('userId', userId))
+        .collect();
+      if (rows.length < 2) continue;
+      const kept = rows.reduce((newest, row) => (row.updatedAt > newest.updatedAt ? row : newest));
+      for (const row of rows) {
+        if (row._id === kept._id) continue;
+        removed += 1;
+        if (!dryRun) await ctx.db.delete(row._id);
+      }
+    }
+    const total = deleted + removed;
+    if (page.isDone) {
+      console.log(`dedupeSavedSessions: done${dryRun ? ' (dry run)' : ''}, ${total} duplicate rows ${dryRun ? 'to delete' : 'deleted'}`);
+      return;
+    }
+    const lastRow = page.page[page.page.length - 1];
+    await ctx.scheduler.runAfter(0, internal.migrations.dedupeSavedSessions, {
+      cursor: page.continueCursor,
+      ...(lastRow ? { lastGroup: groupKey(lastRow) } : lastGroup === undefined ? {} : { lastGroup }),
+      deleted: total,
+      ...(dryRun ? { dryRun } : {}),
+    });
+  },
+});
+
+/**
  * Rows one re-date mutation patches at most: each rewrites its athlete's
  * history, as a batch of upserts does.
  */
