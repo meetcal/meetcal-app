@@ -1,9 +1,10 @@
-import { Redirect, Stack } from 'expo-router'
+import { Stack } from 'expo-router'
 import { useAuth } from '@clerk/expo'
 import { useEffect, useState } from 'react'
 import { getCachedAuthState } from '@/lib/authCache'
 import { isNetworkAvailable, subscribeToNetworkChanges } from '@/lib/networkUtils'
 import { resolveAuthRouteTarget } from '@/utils/authGuard'
+import { DismissToRedirect } from '@/components/navigation/DismissToRedirect'
 
 export default function AuthRoutesLayout() {
   const { isSignedIn, isLoaded: isClerkLoaded } = useAuth()
@@ -95,5 +96,6 @@ export default function AuthRoutesLayout() {
     return <Stack screenOptions={{ headerShown: false }} />
   }
   if (target === 'loading') return null
-  return <Redirect href="/(tabs)/(index)" />
+  // Pop back to the running tabs: a replace stacked a second tabs navigator.
+  return <DismissToRedirect href="/(tabs)/(index)" />
 }
