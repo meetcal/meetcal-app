@@ -40,7 +40,9 @@ fn meet_catalog(upcoming: &[Meet], completed: &[Meet]) -> Vec<Meet> {
 
 /// Apostrophes meet names are written with (typewriter, curly, modifier
 /// letter, accents used in their place): dropped by `fold_meet_search`.
-const APOSTROPHES: [char; 7] = ['\'', '\u{2019}', '\u{2018}', '\u{02bc}', '\u{00b4}', '`', '\u{2032}'];
+const APOSTROPHES: [char; 7] = [
+    '\'', '\u{2019}', '\u{2018}', '\u{02bc}', '\u{00b4}', '`', '\u{2032}',
+];
 
 /// A meet name or query folded for matching: lowercase, apostrophes dropped
 /// (so "masters" finds "Master's"), and each run of whitespace, a
@@ -228,7 +230,10 @@ mod tests {
     #[test]
     fn meet_suggestions_fold_spaces_and_apostrophes() {
         let meets = [
-            meet("2026\u{a0}IMWA WORLD MASTERS WEIGHTLIFTING CHAMPIONSHIP", "2026-10-01"),
+            meet(
+                "2026\u{a0}IMWA WORLD MASTERS WEIGHTLIFTING CHAMPIONSHIP",
+                "2026-10-01",
+            ),
             meet("USAW Master\u{2019}s Nationals", "2026-03-01"),
             meet("USAMW Master's Nationals", "2026-04-01"),
         ];
@@ -240,9 +245,6 @@ mod tests {
             meet_suggestions(&meets, "masters  nationals", 8),
             ["USAW Master\u{2019}s Nationals", "USAMW Master's Nationals"]
         );
-        assert_eq!(
-            meet_suggestions(&meets, "master\u{2019}s", 8).len(),
-            3
-        );
+        assert_eq!(meet_suggestions(&meets, "master\u{2019}s", 8).len(), 3);
     }
 }
