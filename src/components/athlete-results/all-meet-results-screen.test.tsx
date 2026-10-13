@@ -1,5 +1,5 @@
 import React from "react";
-import { TextInput } from "react-native";
+import { FlatList, TextInput } from "react-native";
 import { act, create } from "react-test-renderer";
 import AllMeetResultsScreen from "@/app/comp-data/all-meet-results";
 import { searchAthletesByName } from "@/lib/database/queries";
@@ -116,4 +116,100 @@ it("drops a slower earlier response once a newer query has been sent", async () 
   const rendered = JSON.stringify(tree.toJSON());
   expect(rendered).toContain("Newer Result");
   expect(rendered).not.toContain("Stale Result");
+});
+
+it("drops an earlier response that lands while the new query is still debouncing", async () => {
+  let resolveFirst!: (names: string[]) => void;
+  mockSearch
+    .mockReturnValueOnce(new Promise((resolve) => { resolveFirst = resolve; }))
+    .mockResolvedValueOnce(["Ann Jones"]);
+  await render();
+
+  await type("Smith");
+  await advance(SEARCH_DEBOUNCE_MS);
+  expect(mockSearch).toHaveBeenCalledWith("Smith");
+
+  // The Smith request is still in flight when the query changes, and it
+  // resolves before the Jones request has gone out.
+  await type("Jones");
+  await advance(SEARCH_DEBOUNCE_MS - 1);
+  await act(async () => {
+    resolveFirst(["Jane Smith"]);
+  });
+
+  let rendered = JSON.stringify(tree.toJSON());
+  expect(rendered).not.toContain("Jane Smith");
+  expect(rendered).toContain("Searching...");
+  expect(mockSearch).toHaveBeenCalledTimes(1);
+
+  await advance(1);
+  rendered = JSON.stringify(tree.toJSON());
+  expect(mockSearch).toHaveBeenLastCalledWith("Jones");
+  expect(rendered).toContain("Ann Jones");
+  expect(rendered).not.toContain("Jane Smith");
+});
+
+it("hides the previous list as soon as the query is edited", async () => {
+  mockSearch.mockResolvedValue(["Jane Smith"]);
+  await render();
+
+  await type("smith");
+  await advance(SEARCH_DEBOUNCE_MS);
+  expect(JSON.stringify(tree.toJSON())).toContain("Jane Smith");
+
+  await type("jones");
+  const rendered = JSON.stringify(tree.toJSON());
+  expect(rendered).not.toContain("Jane Smith");
+  expect(rendered).toContain("Searching...");
+});
+
+it("drops the previous results when the query is shortened below 3 characters", async () => {
+  mockSearch.mockResolvedValue(["Jane Smith"]);
+  await render();
+
+  await type("smith");
+  await advance(SEARCH_DEBOUNCE_MS);
+  expect(JSON.stringify(tree.toJSON())).toContain("Jane Smith");
+
+  await type("sm");
+  await advance(SEARCH_DEBOUNCE_MS);
+
+  const rendered = JSON.stringify(tree.toJSON());
+  expect(rendered).not.toContain("Jane Smith");
+  expect(rendered).toContain("Type at least");
+  expect(mockSearch).toHaveBeenCalledTimes(1);
+});
+
+it("shows the spinner, not the previous list, while a new query is searching", async () => {
+  let resolveSecond!: (names: string[]) => void;
+  mockSearch
+    .mockResolvedValueOnce(["Jane Smith"])
+    .mockReturnValueOnce(new Promise((resolve) => { resolveSecond = resolve; }));
+  await render();
+
+  await type("smith");
+  await advance(SEARCH_DEBOUNCE_MS);
+  await type("jones");
+  await advance(SEARCH_DEBOUNCE_MS);
+
+  let rendered = JSON.stringify(tree.toJSON());
+  expect(rendered).not.toContain("Jane Smith");
+  expect(rendered).toContain("Searching...");
+
+  await act(async () => {
+    resolveSecond(["Ann Jones"]);
+  });
+  rendered = JSON.stringify(tree.toJSON());
+  expect(rendered).toContain("Ann Jones");
+});
+
+it("lets the first tap on a result reach the row while the keyboard is up", async () => {
+  mockSearch.mockResolvedValue(["Jane Smith"]);
+  await render();
+  await type("smith");
+  await advance(SEARCH_DEBOUNCE_MS);
+
+  const list = tree.root.findByType(FlatList);
+  expect(list.props.keyboardShouldPersistTaps).toBe("handled");
+  expect(list.props.keyboardDismissMode).toBe("on-drag");
 });
