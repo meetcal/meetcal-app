@@ -667,7 +667,7 @@ function rosterEntryFor(entries: readonly Doc<'athletes'>[] | undefined, age: st
   if (!entries || entries.length <= 1) return entries?.[0];
   const weightClass = divisionWeightClass(age);
   const inClass = weightClass === null ? [] : entries.filter((entry) => bareWeightClass(entry.weightClass) === weightClass);
-  return new Set(inClass.map((entry) => entry.club)).size === 1 ? inClass[0] : entries[0];
+  return new Set(inClass.map((entry) => clubKey(entry.club))).size === 1 ? inClass[0] : entries[0];
 }
 
 /**

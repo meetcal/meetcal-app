@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { clubStats, computeStatsRows, liftKey, medalFor, rankingGroup, rankOf, type StatsRow } from '../convex/lib/meetData';
 import { formatResults } from '../convex/scrapers/parse/sport80';
+import { clubKey } from '../convex/lib/clubs';
 
 type Row = Record<string, unknown>;
 
@@ -382,6 +383,16 @@ describe('club meet stats for two lifters of one name (#247)', () => {
     ]);
     expect(clubStats(rows, 'Club X', 1).athlete_results.map((r) => [r.weight_class, r.total, r.total_medal])).toEqual([['61', 250, 'gold']]);
     expect(clubStats(rows, 'Club Y', 1).athlete_results.map((r) => [r.weight_class, r.total, r.total_medal])).toEqual([['89', 300, 'gold']]);
+  });
+
+  it('takes the class match when its club is spelled two ways (one club)', async () => {
+    const [x] = lifter('Club X', '61', "Open Men's 61kg", 0, 0);
+    const [y, yResult] = lifter('ONG Weightlifting', '89', "Open Men's 89kg", 130, 170);
+    const yAgain = { ...y, club: 'Ong  Weightlifting' };
+    // Club X's row sorts first; the 89 kg rows are one club under two spellings.
+    const rows = await computeStatsRows(fakeCtx({ athletes: [x, y, yAgain], lifting_results: [yResult] }), 'Open');
+    expect(rows.map((r) => [r.weight_class, r.total])).toEqual([['89', 300]]);
+    expect(clubKey(rows[0].club)).toBe(clubKey('Ong Weightlifting'));
   });
 
   it('reads a superheavy class either way round, and falls back to the first entry when no class matches', async () => {
