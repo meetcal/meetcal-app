@@ -24,6 +24,10 @@ describe("account deletion", () => {
       ["@saved_sessions_user_1", "[]"],
       ["@saved_sessions_outbox_user_1", "[]"],
       ["@saved_sessions_outbox_seeded_user_1", "1"],
+      // Keys older builds stored saved sessions under.
+      ["savedSessions_user_1", "[]"],
+      ["@savedSessions_user_1", "[]"],
+      ["sessions_user_1", "[]"],
       ["@saved_sessions_user_2", "[]"],
     ]);
     await clearLocalUserData("user_1");

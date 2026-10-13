@@ -1,6 +1,6 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { getOutboxSeededKey, getSavedSessionsOutboxKey } from "@/lib/saved-sessions-outbox";
-import { getSavedSessionsKey } from "@/utils/session";
+import { getAllSavedSessionsKeys } from "@/utils/session";
 
 /**
  * Account deletion starts in the app (App Store guideline 5.1.1(v)), in
@@ -36,11 +36,11 @@ export function subscriptionManagementUrl(os: string): string {
 }
 
 /**
- * Removes what this device stores under a user's id: their saved sessions,
- * the outbox of writes not yet sent, and the outbox's seeded flag. Run after
+ * Removes what this device stores under a user's id: their saved sessions
+ * (under the current key and every legacy one older builds used), the outbox of writes not yet sent, and the outbox's seeded flag. Run after
  * the user signs out of the account screen they opened to delete their
  * account, when the account (and so every write still queued for it) is gone.
  */
 export async function clearLocalUserData(userId: string): Promise<void> {
-  await AsyncStorage.multiRemove([getSavedSessionsKey(userId), getSavedSessionsOutboxKey(userId), getOutboxSeededKey(userId)]);
+  await AsyncStorage.multiRemove([...getAllSavedSessionsKeys(userId), getSavedSessionsOutboxKey(userId), getOutboxSeededKey(userId)]);
 }
