@@ -3,10 +3,37 @@ import { recordHolder } from '../holder';
 import { intOrNull, type WsoRecord } from './common';
 
 // New Jersey (port of `auto_scrapers/scraper_newjersey.py`): a tab per age
-// group, one row per class, women in columns 1-6 and men in 8-13 (class,
-// athlete, date and meet, snatch, C&J, total). A blank class is the open
-// class above the last one read. The row's athlete and date hold whichever
-// of its lifts have a value ("Vacant" rows have none).
+// group (`NEW_JERSEY_TABS`), one row per class, women in columns 1-6 and men
+// in 8-13 (class, athlete, date and meet, snatch, C&J, total). A blank
+// class is the open class above the last one read. The row's athlete and
+// date hold whichever of its lifts have a value ("Vacant" rows have none).
+
+/**
+ * Each tab the source reads, by name, and the age group it holds. Read by
+ * name: the gids of the Junior and 16-17 tabs were once swapped here, filing
+ * each age group's records under the other. "80-85 Master Records" is left
+ * out: a vacant copy of "80-84" (October 2026).
+ */
+export const NEW_JERSEY_TABS: readonly [name: string, age: string][] = [
+  ['Open Records (all ages)', 'Senior'],
+  ['Junior Records (15-20)', 'Junior'],
+  ['16-17 Youth Records', 'U17'],
+  ['14-15 Youth Records', 'U15'],
+  ['Under 13 Youth Records', 'U13'],
+  ['Under 11 Youth Records', 'U11'],
+  ['35-39 Masters Records', 'Masters 35'],
+  ['40-44 Masters Records', 'Masters 40'],
+  ['45-49 Masters Records', 'Masters 45'],
+  ['50-54 Masters Records', 'Masters 50'],
+  ['55-59 Masters Records', 'Masters 55'],
+  ['60-64 Masters Records', 'Masters 60'],
+  ['65-69 Masters Records', 'Masters 65'],
+  ['70-74 Masters Records', 'Masters 70'],
+  ['75-79 Masters Records', 'Masters 75'],
+  ['80-84 Master Records', 'Masters 80'],
+  ['85-89 Master Records', 'Masters 85'],
+  ['90+ Master Records', 'Masters 90'],
+];
 
 const cell = (row: readonly string[], column: number) => (row.length > column ? row[column].trim() : '');
 
