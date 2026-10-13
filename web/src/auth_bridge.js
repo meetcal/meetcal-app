@@ -8,6 +8,11 @@ const SUBSCRIPTION_ENTITLEMENT_ID = "Subscriptions";
 // Longest one RevenueCat check may hold the queue, so a stuck call cannot
 // block every later check for the rest of the session.
 const REVENUECAT_OPERATION_TIMEOUT_MS = 20_000;
+// Longest one SDK script may take to load. A load that neither loads nor
+// fails by then is given up and forgotten, so the next call (Try again, the
+// next data page) fetches the script afresh instead of reusing a hung load.
+// Shorter than the operation timeout, so the check reports this failure.
+const SCRIPT_LOAD_TIMEOUT_MS = 15_000;
 
 // Subresource Integrity for the pinned SDK files, so a compromised or
 // mis-served CDN file is refused instead of running with the Clerk session.
@@ -35,11 +40,20 @@ function loadScript(src, label, attributes = {}) {
 
   const load = new Promise((resolve, reject) => {
     const script = document.createElement("script");
+    const fail = () => {
+      clearTimeout(timer);
+      script.remove();
+      // Only this load: a later call may already have started a fresh one.
+      if (scriptLoads.get(src) === load) scriptLoads.delete(src);
+      reject(new Error(`The ${label} service could not be loaded. Check your connection and try again.`));
+    };
+    const timer = setTimeout(fail, SCRIPT_LOAD_TIMEOUT_MS);
     Object.entries(attributes).forEach(([name, value]) => script.setAttribute(name, value));
     script.src = src;
     script.defer = true;
     script.crossOrigin = "anonymous";
     script.addEventListener("load", () => {
+      clearTimeout(timer);
       script.dataset.loaded = "true";
       resolve();
     }, { once: true });
@@ -48,9 +62,7 @@ function loadScript(src, label, attributes = {}) {
       // integrity check) would never fire again, so a later call, such as the
       // next data page's subscription check, would wait forever. Remove it and
       // forget the load so that call loads afresh and fails or succeeds on its own.
-      script.remove();
-      scriptLoads.delete(src);
-      reject(new Error(`The ${label} service could not be loaded. Check your connection and try again.`));
+      fail();
     }, { once: true });
     document.head.appendChild(script);
   });

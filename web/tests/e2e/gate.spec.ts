@@ -106,6 +106,31 @@ test("a RevenueCat script that failed to load is fetched again on the next data 
   await expect(page.getByRole("heading", { level: 1, name: "Standards" })).toBeVisible();
 });
 
+test("a RevenueCat script that never finishes loading is given up, and Try again loads it afresh", async ({ page }) => {
+  await page.clock.install();
+  await mockAuth(page, { loadRevenueCat: true });
+  // The script never arrives. (The browser may share one stalled request
+  // between tags for the same URL, so this counts tags, not requests.)
+  await page.route(/unpkg\.com\/@revenuecat\/purchases-js@/, () => {});
+  const revenueCatTags = page.locator('script[src*="@revenuecat/purchases-js@"]');
+
+  await page.goto("/records");
+  await expect(revenueCatTags).toHaveCount(1);
+  await page.clock.fastForward("00:16");
+  await expect(page.getByRole("alert")).toContainText("The subscription service could not be loaded");
+  // The hung tag is given up, not left for the next check to wait on.
+  await expect(revenueCatTags).toHaveCount(0);
+
+  // Try again inserts a fresh tag, and once RevenueCat is available the page unlocks.
+  await page.getByRole("button", { name: "Try again" }).click();
+  await expect(revenueCatTags).toHaveCount(1);
+  await page.evaluate(() => (window as unknown as { __authMock: AuthMockState }).__authMock.installPurchases());
+  await page.clock.fastForward("00:16");
+  await expect(page.getByRole("alert")).toContainText("The subscription service could not be loaded");
+  await page.getByRole("button", { name: "Try again" }).click();
+  await expect(page.getByRole("heading", { level: 1, name: "Records" })).toBeVisible();
+});
+
 test("moving between data pages and Clerk updates for the same user keep the page and its access", async ({ page }) => {
   await mockAuth(page);
   await routeQuery(page, "reference:records", (route) => route.fulfill(textAnswer([])));
