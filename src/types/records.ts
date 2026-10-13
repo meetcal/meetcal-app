@@ -1,8 +1,9 @@
 export interface WeightClassRecord {
   weightClass: string;
-  snatchRecord: number;
-  cjRecord: number;
-  totalRecord: number;
+  /** `null` (or `0`, as some tables answer) for a lift with no record set. */
+  snatchRecord: number | null;
+  cjRecord: number | null;
+  totalRecord: number | null;
 }
 
 export type AgeGroupRecords = {
