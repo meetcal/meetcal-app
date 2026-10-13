@@ -53,6 +53,13 @@ describe("National Rankings divisions", () => {
     expect(getWeightClasses("Men", "U17")[0]).toBe("Men's 16-17 Age Group 55kg");
   });
 
+  it("offer nothing for an age group spelled other than the picker writes it", () => {
+    for (const ageGroup of ["Masters 40.0", "Masters 040", "Masters 41", "Masters 95", "Masters"]) {
+      expect(getWeightClasses("Women", ageGroup)).toEqual([]);
+    }
+    expect(getWeightClasses("Women", "Masters 90+")).not.toEqual([]);
+  });
+
   it("list the retired 2025 classes after the current ones, once each", () => {
     expect(getWeightClassGroups("Men", "Junior")).toEqual([
       {

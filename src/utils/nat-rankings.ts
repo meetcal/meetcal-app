@@ -13,7 +13,8 @@ function mastersBand(ageGroup: string): string | null {
   const start = ageGroup.slice("Masters ".length);
   if (start === "90+") return start;
   const lower = Number(start);
-  if (!Number.isInteger(lower) || lower < 35 || lower > 85 || lower % 5 !== 0) return null;
+  // Only the label as written ("Masters 40"), not another spelling of it ("Masters 40.0", "Masters 040").
+  if (String(lower) !== start || lower < 35 || lower > 85 || lower % 5 !== 0) return null;
   return `${lower}-${lower + 4}`;
 }
 
