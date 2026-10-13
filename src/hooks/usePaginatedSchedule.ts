@@ -27,6 +27,13 @@ interface UsePaginatedScheduleReturn {
   }) => void;
   onMomentumScrollEnd: (event: NativeSyntheticEvent<NativeScrollEvent>) => void;
   viewabilityConfig: { itemVisiblePercentThreshold: number };
+  /**
+   * Set the header title from outside the day list (the meet's start date
+   * while it has no schedule). The one way to set it besides scrolling, so
+   * the list knows what the header shows: a title set behind its back left
+   * the header on another meet's date after switching back (#286).
+   */
+  setHeaderTitle: (title: string) => void;
 }
 
 export function usePaginatedSchedule({
@@ -44,6 +51,15 @@ export function usePaginatedSchedule({
   const [currentPage, setCurrentPage] = useState(0);
   const flatListRef = useRef<FlatListInstance>(null);
   const previousHeaderTitleRef = useRef<string>("");
+
+  const setHeaderTitle = useCallback(
+    (title: string) => {
+      if (previousHeaderTitleRef.current === title) return;
+      previousHeaderTitleRef.current = title;
+      onTitleChange(title);
+    },
+    [onTitleChange],
+  );
 
   const viewabilityConfig = useRef({
     itemVisiblePercentThreshold: 50,
@@ -65,13 +81,10 @@ export function usePaginatedSchedule({
           setCurrentPage(first.index);
         }
         const currentItem = first.item as DaySchedule;
-        const formattedTitle = formatDayTitle(currentItem);
-        if (previousHeaderTitleRef.current === formattedTitle) return;
-        previousHeaderTitleRef.current = formattedTitle;
-        onTitleChange(formattedTitle);
+        setHeaderTitle(formatDayTitle(currentItem));
       }
     },
-    [formatDayTitle, onTitleChange, lastPage],
+    [formatDayTitle, setHeaderTitle, lastPage],
   );
 
   const handlePageChange = useCallback(
@@ -130,5 +143,6 @@ export function usePaginatedSchedule({
     onViewableItemsChanged,
     onMomentumScrollEnd,
     viewabilityConfig,
+    setHeaderTitle,
   };
 }
