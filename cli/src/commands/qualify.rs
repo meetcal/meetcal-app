@@ -6,6 +6,7 @@ use serde::Deserialize;
 use crate::utils::athletes::history;
 use crate::utils::backend::{NoArgs, queries, query};
 use crate::utils::bests::year_bests;
+use crate::utils::filters;
 use crate::utils::output::{self, Report};
 use crate::utils::stats::{Division, Gender, chronological, number, weight_class};
 
@@ -132,9 +133,10 @@ pub fn target(division: &Division, category: Option<&str>, class: Option<&str>) 
             None => bail!("Could not tell the weight class from the latest result; pass --class"),
         },
     };
-    let primary = category
-        .map(str::to_string)
-        .or_else(|| division.category.clone());
+    let primary = match category {
+        Some(category) => Some(filters::category(category)?),
+        None => division.category.clone(),
+    };
     let mut categories: Vec<String> = primary.into_iter().collect();
     if !categories.iter().any(|c| c.eq_ignore_ascii_case("Senior")) {
         categories.push("Senior".into());
