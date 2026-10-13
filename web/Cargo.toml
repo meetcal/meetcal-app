@@ -5,6 +5,7 @@ edition = "2024"
 
 [dependencies]
 anyhow = "1.0.103"
+futures = "0.3.32"
 js-sys = "0.3.103"
 leptos = { version = "0.8.20", features = ["csr"] }
 leptos_router = "0.8.14"

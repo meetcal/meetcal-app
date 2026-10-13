@@ -4,11 +4,11 @@ use super::{
         sort_numeric, weight_class_options,
     },
     format::reference_value,
-    loading::table_response,
+    loading::{load_query, table_response},
     models::RecordHolder,
     ui::{DataPage, DataTable, EmptyTableRow, FilterSelect, RecordLift, SortSelect},
 };
-use crate::utils::api::{queries, query};
+use crate::utils::api::queries;
 use leptos::prelude::*;
 use serde::Deserialize;
 
@@ -61,14 +61,14 @@ pub fn Records() -> impl IntoView {
     let (age, set_age) = signal(String::new());
     let (weight_class, set_weight_class) = signal(String::new());
     let (sort, set_sort) = signal("total_desc".to_string());
-    let records = LocalResource::new(|| async { query::<Vec<Record>>(queries::RECORDS).await });
+    let records = load_query::<Vec<Record>>(queries::RECORDS);
 
     view! {
         <DataPage
             heading="Records"
             intro="Filter record performances by organization, division, and weight class."
         >
-            {move || records.with(|response| table_response(response, 7, "records", |records| {
+            {move || table_response(records, 7, "records", |records| {
                 let types = filter_options(
                     records
                         .iter()
@@ -114,11 +114,11 @@ pub fn Records() -> impl IntoView {
 
                 view! {
                     <div class="data-filters">
-                        <FilterSelect label="Organization" placeholder="All organizations" values=types selected=selected_type on_select=move |value| set_record_type.set(value) />
-                        <FilterSelect label="Gender" placeholder="All genders" values=genders selected=selected_gender on_select=move |value| set_gender.set(value) />
-                        <FilterSelect label="Age" placeholder="All ages" values=ages selected=selected_age on_select=move |value| set_age.set(value) />
-                        <FilterSelect label="Weight class" placeholder="All classes" values=weights selected=selected_weight on_select=move |value| set_weight_class.set(value) />
-                        <SortSelect options=SORT_OPTIONS set_sort />
+                        <FilterSelect label="Organization" placeholder="All organizations" values=types selected=record_type on_select=move |value| set_record_type.set(value) />
+                        <FilterSelect label="Gender" placeholder="All genders" values=genders selected=gender on_select=move |value| set_gender.set(value) />
+                        <FilterSelect label="Age" placeholder="All ages" values=ages selected=age on_select=move |value| set_age.set(value) />
+                        <FilterSelect label="Weight class" placeholder="All classes" values=weights selected=weight_class on_select=move |value| set_weight_class.set(value) />
+                        <SortSelect options=SORT_OPTIONS sort set_sort />
                     </div>
                     <DataTable>
                         <thead>
@@ -139,7 +139,7 @@ pub fn Records() -> impl IntoView {
                     </DataTable>
                 }
                 .into_any()
-            }))}
+            })}
         </DataPage>
     }
 }

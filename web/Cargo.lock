@@ -1254,6 +1254,7 @@ name = "meetcal-web"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "futures",
  "js-sys",
  "leptos",
  "leptos_router",
