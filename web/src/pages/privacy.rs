@@ -1,19 +1,16 @@
-use crate::components::{footer::Footer, header::Header};
 use leptos::prelude::*;
 
 #[component]
 pub fn PrivacyPage() -> impl IntoView {
     view! {
-        <Header />
         <PrivacyPolicy />
-        <Footer />
     }
 }
 
 #[component]
 pub fn PrivacyPolicy() -> impl IntoView {
     view! {
-        <main>
+        <article class="legal-page">
             <div>
                 <h1>"Privacy Policy"</h1>
 
@@ -122,6 +119,6 @@ pub fn PrivacyPolicy() -> impl IntoView {
                     </p>
                 </div>
             </div>
-        </main>
+        </article>
     }
 }

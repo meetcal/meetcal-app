@@ -7,6 +7,7 @@ import { ThemedView } from "@/components/ui/ThemedView";
 import { useAppColors } from "@/hooks/useAppColors";
 import { useMutableResource } from "@/hooks/useMutableResource";
 import { clubsResource } from "@/lib/database/fetch-club-stats";
+import { nameMatchesSearchWords, searchWords } from "@/lib/name-search";
 import { posthog } from "@/lib/posthog";
 import { Stack, useRouter } from "expo-router";
 import { useCallback, useEffect, useState } from "react";
@@ -61,13 +62,14 @@ function ShareResultsByClubScreenContent() {
     await refresh();
   }, [refresh]);
 
-  // Filter clubs based on search text
+  // Every word of the query, trimmed, so a keyboard's trailing space still
+  // matches (the Start List and meets list do the same).
+  const clubQuery = searchText.trim();
+  const queryWords = searchWords(clubQuery);
   const filteredClubs =
-    searchText.trim().length === 0
+    queryWords.length === 0
       ? allClubs
-      : allClubs.filter((club) =>
-          club.toLowerCase().includes(searchText.toLowerCase()),
-        );
+      : allClubs.filter((club) => nameMatchesSearchWords(club, queryWords));
 
   const handleClubPress = useCallback(
     (club: string) => {
@@ -123,13 +125,13 @@ function ShareResultsByClubScreenContent() {
       );
     }
 
-    if (filteredClubs.length === 0 && searchText.trim().length > 0) {
+    if (filteredClubs.length === 0 && clubQuery.length > 0) {
       return (
         <View style={styles.centerContainer}>
           <ThemedText
             style={[styles.emptyText, { color: colors.secondaryText }]}
           >
-            {`No clubs found matching "${searchText}"`}
+            {`No clubs found matching "${clubQuery}"`}
           </ThemedText>
         </View>
       );
@@ -281,6 +283,8 @@ function ShareResultsByClubScreenContent() {
           data={filteredClubs}
           renderItem={renderClubItem}
           keyExtractor={(item) => item}
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="on-drag"
           contentContainerStyle={[
             styles.listContent,
             { paddingBottom: 80 + insets.bottom },
