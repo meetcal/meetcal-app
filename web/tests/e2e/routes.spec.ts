@@ -1,5 +1,6 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test } from "@playwright/test";
+import { mockAuth } from "./support/api";
 import { protectedDataRoutes, publicRoutes } from "./support/routes";
 
 for (const [path, heading] of publicRoutes) {
@@ -13,10 +14,11 @@ for (const [path, heading] of publicRoutes) {
 
 for (const path of protectedDataRoutes) {
   test(`${path} deep link reaches the subscription gate`, async ({ page }) => {
+    await mockAuth(page, { signedIn: false });
     await page.goto(path);
     await expect(page.locator("header.site-header")).toBeVisible();
     await expect(page.locator("footer.site-footer")).toBeVisible();
-    await expect(page.getByRole("heading", { level: 1, name: /sign in to continue|couldn’t verify your access/i })).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByRole("heading", { level: 1, name: "Sign in to continue" })).toBeVisible();
     await expect(page.getByRole("button", { name: /choose plan|checkout|purchase/i })).toHaveCount(0);
   });
 }

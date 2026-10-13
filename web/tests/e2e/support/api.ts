@@ -1,6 +1,23 @@
 import type { Page, Route } from "@playwright/test";
 
-export async function mockSubscribedUser(page: Page) {
+export type AuthMock = {
+  /** Clerk reports a signed-in user (`user_ci`). Default true. */
+  signedIn?: boolean;
+  /** The active RevenueCat entitlements. Default `["Subscriptions"]`, the one the app checks. */
+  entitlements?: string[];
+  /** `getCustomerInfo` rejects with this message. */
+  revenueCatError?: string;
+};
+
+/**
+ * Replaces Clerk's and RevenueCat's scripts with stubs. The stubs record what
+ * the site asked of them on `window.__authMock`: `mountSignIn` options and
+ * `getCustomerInfo` calls. `notify()` calls Clerk's listeners again;
+ * `setUser(id | null)` switches or signs out the Clerk user and notifies;
+ * setting `customerInfoError` makes later checks fail. Only `user_ci` holds
+ * `entitlements`.
+ */
+export async function mockAuth(page: Page, { signedIn = true, entitlements = ["Subscriptions"], revenueCatError }: AuthMock = {}) {
   await page.route(/cdn\.jsdelivr\.net\/npm\/@clerk\/ui@/, async (route) => {
     await route.fulfill({
       contentType: "application/javascript",
@@ -10,36 +27,58 @@ export async function mockSubscribedUser(page: Page) {
   await page.route(/cdn\.jsdelivr\.net\/npm\/@clerk\/clerk-js@/, async (route) => {
     await route.fulfill({
       contentType: "application/javascript",
-      body: `window.Clerk = {
-        isSignedIn: true,
-        user: { id: "user_ci" },
-        load: async () => {},
-        addListener: () => {},
-        mountUserButton: (element) => { element.textContent = "Test User"; },
-        unmountUserButton: () => {},
-        mountSignIn: () => {},
-        unmountSignIn: () => {},
-        openSignIn: () => {}
-      };`,
+      body: `(() => {
+        const mock = window.__authMock = window.__authMock || { signInMounts: [], customerInfoCalls: 0, listeners: [] };
+        mock.notify = () => mock.listeners.forEach((listener) => listener());
+        mock.setUser = (id) => {
+          window.Clerk.isSignedIn = id !== null;
+          window.Clerk.user = id === null ? null : { id };
+          mock.notify();
+        };
+        window.Clerk = {
+          isSignedIn: ${signedIn},
+          user: ${signedIn ? '{ id: "user_ci" }' : "null"},
+          load: async () => {},
+          addListener: (listener) => { mock.listeners.push(listener); },
+          mountUserButton: (element) => { element.textContent = "Test User"; },
+          unmountUserButton: () => {},
+          mountSignIn: (element, options) => { mock.signInMounts.push(options); },
+          unmountSignIn: () => {},
+          openSignIn: () => {}
+        };
+      })();`,
     });
   });
   await page.route(/unpkg\.com\/@revenuecat\/purchases-js@/, async (route) => {
+    const active = Object.fromEntries(entitlements.map((id) => [id, { identifier: id }]));
     await route.fulfill({
       contentType: "application/javascript",
       body: `(() => {
+        const mock = window.__authMock = window.__authMock || { signInMounts: [], customerInfoCalls: 0, listeners: [] };
+        ${revenueCatError === undefined ? "" : `mock.customerInfoError = ${JSON.stringify(revenueCatError)};`}
+        let appUserId = null;
         const purchases = {
-          getAppUserId: () => "user_ci",
-          changeUser: async () => {},
-          getCustomerInfo: async () => ({ entitlements: { active: { pro: {} } } })
+          getAppUserId: () => appUserId,
+          changeUser: async (id) => { appUserId = id; },
+          getCustomerInfo: async () => {
+            mock.customerInfoCalls += 1;
+            if (mock.customerInfoError) throw new Error(mock.customerInfoError);
+            return { entitlements: { active: appUserId === "user_ci" ? ${JSON.stringify(active)} : {} } };
+          }
         };
         window.Purchases = { Purchases: {
-          isConfigured: () => false,
-          configure: () => purchases,
+          isConfigured: () => appUserId !== null,
+          configure: ({ appUserId: id }) => { appUserId = id; return purchases; },
           getSharedInstance: () => purchases
         }};
       })();`,
     });
   });
+}
+
+/** A signed-in user with the app's subscription entitlement. */
+export async function mockSubscribedUser(page: Page) {
+  await mockAuth(page);
 }
 
 export function jsonResponse(body: unknown) {

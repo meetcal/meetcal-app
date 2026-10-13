@@ -19,7 +19,7 @@ use meetcal_web::{
     auth::provide_auth,
     components::{
         seo::RouteMetadata,
-        subscription_gate::{MobileSubscriptionPage, SubscriptionGate},
+        subscription_gate::{MobileSubscriptionPage, SubscriptionGate, provide_access},
     },
 };
 
@@ -30,6 +30,7 @@ fn main() {
 #[component]
 fn App() -> impl IntoView {
     provide_auth();
+    provide_access();
 
     view! {
         <Router>

@@ -1,17 +1,24 @@
 const CLERK_UI_VERSION = "1.25.5";
 const CLERK_JS_VERSION = "6.25.5";
 const REVENUECAT_JS_VERSION = "1.47.3";
+// The RevenueCat entitlement that unlocks the data pages: the app's
+// `SUBSCRIPTION_ENTITLEMENT_ID` (src/lib/premium-intent.ts). Any other
+// entitlement in the project must not unlock them.
+const SUBSCRIPTION_ENTITLEMENT_ID = "Subscriptions";
+// Longest one RevenueCat check may hold the queue, so a stuck call cannot
+// block every later check for the rest of the session.
+const REVENUECAT_OPERATION_TIMEOUT_MS = 20_000;
 let revenueCatOperationQueue = Promise.resolve();
+// One load per script URL. A failed load is forgotten and its tag removed,
+// so the next call inserts a fresh tag instead of waiting on a dead one.
+const scriptLoads = new Map();
 
-function loadScript(src, attributes = {}) {
-  return new Promise((resolve, reject) => {
-    const existing = document.querySelector(`script[src="${src}"]`);
-    if (existing?.dataset.loaded === "true") {
-      resolve();
-      return;
-    }
+function loadScript(src, label, attributes = {}) {
+  const pending = scriptLoads.get(src);
+  if (pending) return pending;
 
-    const script = existing || document.createElement("script");
+  const load = new Promise((resolve, reject) => {
+    const script = document.createElement("script");
     Object.entries(attributes).forEach(([name, value]) => script.setAttribute(name, value));
     script.src = src;
     script.defer = true;
@@ -20,9 +27,23 @@ function loadScript(src, attributes = {}) {
       script.dataset.loaded = "true";
       resolve();
     }, { once: true });
-    script.addEventListener("error", () => reject(new Error(`Failed to load ${src}`)), { once: true });
-    if (!existing) document.head.appendChild(script);
+    script.addEventListener("error", () => {
+      script.remove();
+      scriptLoads.delete(src);
+      reject(new Error(`The ${label} service could not be loaded. Check your connection and try again.`));
+    }, { once: true });
+    document.head.appendChild(script);
   });
+  scriptLoads.set(src, load);
+  return load;
+}
+
+function withTimeout(promise, milliseconds, message) {
+  let timer;
+  const timeout = new Promise((_, reject) => {
+    timer = setTimeout(() => reject(new Error(message)), milliseconds);
+  });
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
 }
 
 function clerkUserId() {
@@ -35,8 +56,8 @@ export async function initialize_clerk(publishableKey, onAuthChanged) {
   const uiUrl = `https://cdn.jsdelivr.net/npm/@clerk/ui@${CLERK_UI_VERSION}/dist/ui.browser.js`;
   const clerkUrl = `https://cdn.jsdelivr.net/npm/@clerk/clerk-js@${CLERK_JS_VERSION}/dist/clerk.browser.js`;
 
-  await loadScript(uiUrl);
-  await loadScript(clerkUrl, { "data-clerk-publishable-key": publishableKey });
+  await loadScript(uiUrl, "sign-in");
+  await loadScript(clerkUrl, "sign-in", { "data-clerk-publishable-key": publishableKey });
   await window.Clerk.load({
     ui: { ClerkUI: window.__internal_ClerkUICtor },
     appearance: {
@@ -83,7 +104,12 @@ export function unmount_clerk_user_button(element) {
 
 export function mount_clerk_sign_in(element) {
   element.replaceChildren();
+  // A mounted sign-in returns to "/" by default; return to the gated page
+  // (with its query, such as `/results?athlete=…`) instead.
+  const here = window.location.href;
   window.Clerk.mountSignIn(element, {
+    fallbackRedirectUrl: here,
+    signUpFallbackRedirectUrl: here,
     appearance: { elements: { rootBox: { margin: "0 auto" } } },
   });
 }
@@ -98,7 +124,7 @@ export function open_clerk_sign_in() {
 
 async function revenueCatForUser(apiKey, appUserId) {
   if (!apiKey) throw new Error("REVENUECAT_PUBLIC_API_KEY is not configured");
-  await loadScript(`https://unpkg.com/@revenuecat/purchases-js@${REVENUECAT_JS_VERSION}/dist/Purchases.umd.js`);
+  await loadScript(`https://unpkg.com/@revenuecat/purchases-js@${REVENUECAT_JS_VERSION}/dist/Purchases.umd.js`, "subscription");
 
   const Purchases = window.Purchases?.Purchases;
   if (!Purchases) throw new Error("RevenueCat Web SDK did not initialize");
@@ -117,16 +143,27 @@ function withRevenueCatUser(apiKey, appUserId, operation) {
     if (clerkUserId() !== appUserId) throw new Error("Your signed-in account changed. Please try again.");
     const purchases = await revenueCatForUser(apiKey, appUserId);
     if (clerkUserId() !== appUserId) throw new Error("Your signed-in account changed. Please try again.");
-    return operation(purchases);
+    const result = await operation(purchases);
+    // A timed-out call for another user may have switched the shared
+    // instance meanwhile; never answer with someone else's entitlements.
+    if (purchases.getAppUserId() !== appUserId || clerkUserId() !== appUserId) {
+      throw new Error("Your signed-in account changed. Please try again.");
+    }
+    return result;
   };
 
-  const result = revenueCatOperationQueue.then(run, run);
+  const timedRun = () => withTimeout(
+    run(),
+    REVENUECAT_OPERATION_TIMEOUT_MS,
+    "Checking your subscription took too long. Please try again.",
+  );
+  const result = revenueCatOperationQueue.then(timedRun, timedRun);
   revenueCatOperationQueue = result.catch(() => undefined);
   return result;
 }
 
 function hasActiveEntitlement(customerInfo) {
-  return Object.keys(customerInfo.entitlements.active).length > 0;
+  return customerInfo?.entitlements?.active?.[SUBSCRIPTION_ENTITLEMENT_ID] != null;
 }
 
 export async function check_revenuecat_entitlement(apiKey, appUserId) {
