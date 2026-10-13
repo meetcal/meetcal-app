@@ -118,6 +118,51 @@ it("drops a slower earlier response once a newer query has been sent", async () 
   expect(rendered).not.toContain("Stale Result");
 });
 
+it("drops an earlier response that lands while the new query is still debouncing", async () => {
+  let resolveFirst!: (names: string[]) => void;
+  mockSearch
+    .mockReturnValueOnce(new Promise((resolve) => { resolveFirst = resolve; }))
+    .mockResolvedValueOnce(["Ann Jones"]);
+  await render();
+
+  await type("Smith");
+  await advance(SEARCH_DEBOUNCE_MS);
+  expect(mockSearch).toHaveBeenCalledWith("Smith");
+
+  // The Smith request is still in flight when the query changes, and it
+  // resolves before the Jones request has gone out.
+  await type("Jones");
+  await advance(SEARCH_DEBOUNCE_MS - 1);
+  await act(async () => {
+    resolveFirst(["Jane Smith"]);
+  });
+
+  let rendered = JSON.stringify(tree.toJSON());
+  expect(rendered).not.toContain("Jane Smith");
+  expect(rendered).toContain("Searching...");
+  expect(mockSearch).toHaveBeenCalledTimes(1);
+
+  await advance(1);
+  rendered = JSON.stringify(tree.toJSON());
+  expect(mockSearch).toHaveBeenLastCalledWith("Jones");
+  expect(rendered).toContain("Ann Jones");
+  expect(rendered).not.toContain("Jane Smith");
+});
+
+it("hides the previous list as soon as the query is edited", async () => {
+  mockSearch.mockResolvedValue(["Jane Smith"]);
+  await render();
+
+  await type("smith");
+  await advance(SEARCH_DEBOUNCE_MS);
+  expect(JSON.stringify(tree.toJSON())).toContain("Jane Smith");
+
+  await type("jones");
+  const rendered = JSON.stringify(tree.toJSON());
+  expect(rendered).not.toContain("Jane Smith");
+  expect(rendered).toContain("Searching...");
+});
+
 it("drops the previous results when the query is shortened below 3 characters", async () => {
   mockSearch.mockResolvedValue(["Jane Smith"]);
   await render();

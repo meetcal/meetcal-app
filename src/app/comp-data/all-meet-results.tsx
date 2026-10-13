@@ -101,23 +101,23 @@ function AllMeetResultsScreenContent() {
     }
   });
 
-  // Debounced search effect
+  // Every edit invalidates the previous query at once, so neither its list nor
+  // a late response for it shows under the new text during the debounce. A
+  // searchable query shows the spinner until its request settles.
+  const handleSearchTextChange = useCallback((text: string) => {
+    searchRequestVersion.current += 1;
+    setSearchText(text);
+    setSearchResults([]);
+    setError(null);
+    setIsLoading(text.trim().length >= MIN_SEARCH_QUERY_LENGTH);
+  }, []);
+
+  // Debounced search effect: only the request waits for typing to pause.
   useEffect(() => {
+    const query = searchText.trim();
+    if (query.length < MIN_SEARCH_QUERY_LENGTH) return;
     const timer = setTimeout(() => {
-      if (searchText.trim().length >= MIN_SEARCH_QUERY_LENGTH) {
-        performSearch(searchText.trim());
-      } else if (searchText.trim().length === 0) {
-        searchRequestVersion.current += 1;
-        setSearchResults([]);
-        setError(null);
-      } else {
-        // Too short to search: drop the previous query's results so the
-        // "at least 3 characters" prompt shows.
-        searchRequestVersion.current += 1;
-        setSearchResults([]);
-        setError(null);
-        setIsLoading(false);
-      }
+      performSearch(query);
     }, SEARCH_DEBOUNCE_MS);
 
     return () => clearTimeout(timer);
@@ -324,7 +324,7 @@ function AllMeetResultsScreenContent() {
             placeholder="Search for an athlete"
             placeholderTextColor={colors.placeholder}
             value={searchText}
-            onChangeText={setSearchText}
+            onChangeText={handleSearchTextChange}
             autoCapitalize="words"
             autoCorrect={false}
             spellCheck={false}
@@ -332,7 +332,7 @@ function AllMeetResultsScreenContent() {
           />
           {searchText.length > 0 && (
             <Pressable
-              onPress={() => setSearchText("")}
+              onPress={() => handleSearchTextChange("")}
               style={styles.clearButton}
             >
               <IconSymbol
