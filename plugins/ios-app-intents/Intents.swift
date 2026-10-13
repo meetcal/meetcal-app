@@ -554,7 +554,9 @@ private func matchContains(_ value: String?, _ filter: String?) -> Bool {
 /// ">86") and as Siri hears them ("89 kg", "109 plus"), reduced to one key:
 /// the number, marked when it is a plus class. "109" and "+109" stay apart.
 func weightClassKey(_ value: String) -> String {
-    let compact = value.lowercased().filter { !$0.isWhitespace }
+    var compact = value.lowercased().filter { !$0.isWhitespace }
+    // A trailing unit ("109 plus kg", "89kg") says nothing about plus or not.
+    if compact.hasSuffix("kg") { compact.removeLast(2) }
     let number = compact.filter { $0.isASCII && ($0.isNumber || $0 == ".") }
     guard !number.isEmpty else { return compact }
     let isPlus = compact.contains("+") || compact.contains(">") || compact.hasSuffix("plus")

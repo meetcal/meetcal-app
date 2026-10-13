@@ -206,6 +206,31 @@ describe("createDataWidgetRefresher", () => {
     expect(deps.sync).not.toHaveBeenCalled();
   });
 
+  it("does not hold back the next refresh after the settings screen superseded one", async () => {
+    // The screen started a commit while its data was loading, then closed
+    // before writing: the next foreground must still write the widgets.
+    let release: (value: DataWidgetSourceData) => void = () => {};
+    const { deps, refresher, simulateScreenWrite } = setup({
+      loadSource: jest
+        .fn()
+        .mockImplementationOnce(
+          () =>
+            new Promise<DataWidgetSourceData>((resolve) => {
+              release = resolve;
+            }),
+        )
+        .mockResolvedValue(source),
+    });
+
+    const pending = refresher.refresh(true);
+    simulateScreenWrite();
+    release(source);
+    await expect(pending).resolves.toBe("superseded");
+
+    await expect(refresher.refresh(true)).resolves.toBe("synced");
+    expect(deps.sync).toHaveBeenCalledTimes(1);
+  });
+
   it("does not save healed filters once the settings screen has started a commit", async () => {
     let release: (value: DataWidgetSourceData) => void = () => {};
     const { deps, refresher, simulateScreenWrite } = setup({

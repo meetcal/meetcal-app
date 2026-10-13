@@ -155,9 +155,17 @@ struct SessionQuery: EntityStringQuery {
         }
         let wanted = Set(identifiers)
         var found: [SessionEntity] = []
+        var firstError: Error?
         for meet in meets {
-            found += try await sessions(forMeet: meet).filter { wanted.contains($0.id) }
+            // One meet's failed request doesn't lose the others' sessions.
+            do {
+                found += try await sessions(forMeet: meet).filter { wanted.contains($0.id) }
+            } catch {
+                firstError = firstError ?? error
+            }
         }
+        // Nothing resolved and a request failed: report it rather than "no such sessions".
+        if found.isEmpty, let firstError { throw firstError }
         return found
     }
 

@@ -228,7 +228,10 @@ export function createDataWidgetRefresher(deps: DataWidgetRefreshDeps) {
         return 'no-data' as const;
       })
       .then((outcome) => {
-        if (outcome === 'no-data') lastStartedAt = null;
+        // Neither wrote: a run with no data, or one the settings screen
+        // superseded (which may unmount before its own data loads). Neither
+        // holds back the next foreground's run.
+        if (outcome === 'no-data' || outcome === 'superseded') lastStartedAt = null;
         devLog(`[Widget] Data widget refresh: ${outcome}`);
         return outcome;
       })
