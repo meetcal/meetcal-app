@@ -1,4 +1,9 @@
-import { originHref, returnToOrigin, type OriginRouter } from "@/utils/returnToOrigin";
+import {
+  originHref,
+  originRouteParam,
+  returnToOrigin,
+  type OriginRouter,
+} from "@/utils/returnToOrigin";
 
 function router(canGoBack = false): jest.Mocked<OriginRouter> {
   return {
@@ -50,5 +55,16 @@ describe("originHref", () => {
     expect(originHref("info")).toBeNull();
     expect(originHref("//host")).toBeNull();
     expect(originHref(undefined)).toBeNull();
+  });
+});
+
+describe("originRouteParam", () => {
+  it("escapes `%` so the second decode in `useLocalSearchParams` restores the path", () => {
+    const from = "/shared-screens/athlete-results?name=A%20%26%20B";
+    expect(decodeURIComponent(originRouteParam(from))).toBe(from);
+  });
+
+  it("leaves a path with no escapes unchanged", () => {
+    expect(originRouteParam("/schedule-toolbar/profile")).toBe("/schedule-toolbar/profile");
   });
 });
