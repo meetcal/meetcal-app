@@ -14,6 +14,23 @@ import {
 import { clearCachedMeetData, clearCacheToast } from "@/lib/database/clear-cache";
 import { MEETS_LIST_CACHE_KEY } from "@/lib/database/meets-list-cache";
 import { BROWSE_CACHE_KEYS } from "@/lib/database/offline-cache";
+import {
+  getExplicitMeetDownloadEntries,
+  markMeetExplicitlyDownloaded,
+} from "@/lib/database/offline-store";
+
+// The meet download itself (network + ingest) is meet-manager's; here only
+// what Clear Cache asks of it matters.
+const mockPrefetchMeetData = jest.fn(async (_meet: string, _options?: unknown) => {});
+let mockTrustedNow: Date | null = null;
+jest.mock("@/lib/api/meetcal-api", () => ({
+  ...jest.requireActual("@/lib/api/meetcal-api"),
+  getTrustedNow: () => mockTrustedNow,
+}));
+jest.mock("@/lib/database/meet-manager", () => ({
+  ...jest.requireActual("@/lib/database/meet-manager"),
+  prefetchMeetData: (meet: string, options?: unknown) => mockPrefetchMeetData(meet, options),
+}));
 
 jest.mock("@/lib/networkUtils", () => ({
   isNetworkAvailable: jest.fn(async () => true),
@@ -41,6 +58,9 @@ function deps(overrides: Partial<Parameters<typeof clearCachedMeetData>[0]> = {}
 describe("clearCachedMeetData", () => {
   beforeEach(async () => {
     jest.clearAllMocks();
+    mockPrefetchMeetData.mockReset();
+    mockTrustedNow = null;
+    mockPrefetchMeetData.mockImplementation(async () => {});
     jest.spyOn(console, "error").mockImplementation(() => {});
     resetOfflineActivityForTests();
     await AsyncStorage.clear();
@@ -122,6 +142,63 @@ describe("clearCachedMeetData", () => {
     }
     expect(order).toEqual(["meets", "selected"]);
     expect(clearCacheToast(outcome).type).toBe("success");
+  });
+
+  // Clear Cache wiped every offline download and re-synced only the selected
+  // meet, which came back unmarked: no expiry date, no background refresh,
+  // open to LRU eviction. A second meet downloaded for a trip was just gone.
+  it("re-downloads every downloaded meet and keeps it marked downloaded, before the selected meet", async () => {
+    await markMeetExplicitlyDownloaded("Meet A" as never, true, { endDate: "2099-06-20" });
+    await markMeetExplicitlyDownloaded("Meet B" as never, true, { endDate: "2099-07-01" });
+    const order: string[] = [];
+    mockPrefetchMeetData.mockImplementation(async (meet) => {
+      order.push(`download:${meet}`);
+    });
+    const d = deps({
+      refreshSelectedMeet: jest.fn(async () => {
+        order.push("selected");
+      }),
+    });
+
+    const outcome = await clearCachedMeetData(d);
+
+    expect(outcome).toEqual({ status: "cleared" });
+    expect(order).toEqual(["download:Meet A", "download:Meet B", "selected"]);
+    expect(mockPrefetchMeetData).toHaveBeenCalledWith("Meet A", { forceHistoryRefresh: true });
+    await expect(getExplicitMeetDownloadEntries()).resolves.toEqual([
+      { meet: "Meet A", endDate: "2099-06-20" },
+      { meet: "Meet B", endDate: "2099-07-01" },
+    ]);
+  });
+
+  it("does not bring back a download whose meet has ended on the server's clock", async () => {
+    mockTrustedNow = new Date();
+    await markMeetExplicitlyDownloaded("Ended" as never, true, { endDate: "2020-01-01" });
+    await markMeetExplicitlyDownloaded("Upcoming" as never, true, { endDate: "2099-06-20" });
+
+    await clearCachedMeetData(deps());
+
+    expect(mockPrefetchMeetData.mock.calls.map(([meet]) => meet)).toEqual(["Upcoming"]);
+  });
+
+  it("says which downloads could not be re-downloaded instead of reporting success", async () => {
+    await markMeetExplicitlyDownloaded("Meet A" as never, true, { endDate: "2099-06-20" });
+    await markMeetExplicitlyDownloaded("Meet B" as never, true, { endDate: "2099-07-01" });
+    mockPrefetchMeetData.mockImplementation(async (meet) => {
+      if (meet === "Meet B") throw new Error("timeout");
+    });
+
+    const outcome = await clearCachedMeetData(deps());
+
+    expect(outcome).toEqual({ status: "downloads-failed", failed: ["Meet B"] });
+    expect(clearCacheToast(outcome)).toEqual({
+      type: "error",
+      message:
+        "Cache cleared, but an offline download could not be re-downloaded. Download it again from Offline Data.",
+    });
+    await expect(getExplicitMeetDownloadEntries()).resolves.toEqual([
+      { meet: "Meet A", endDate: "2099-06-20" },
+    ]);
   });
 
   it.each(["refreshAvailableMeets", "refreshSelectedMeet"] as const)(

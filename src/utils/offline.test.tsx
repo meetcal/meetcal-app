@@ -53,18 +53,14 @@ jest.mock("@/lib/database/meet-manager", () => ({
 const mockClearMeetData = jest.fn(async (_meet: string, _options?: unknown) => {});
 const mockClearAllAthleteHistory = jest.fn(async () => {});
 const mockMarkMeetExplicitlyDownloaded = jest.fn(async (..._args: unknown[]) => {});
-// Also reports a meet that is on disk without being in today's window.
-const mockListStoredMeets = jest.fn(async (extra: readonly string[] = []) => ({
-  meetIds: [...extra, "Old Browsed Meet"],
-  storageKeys: ["k1", "k2"],
-}));
+const mockClearAllMeetData = jest.fn(async () => ({ failed: 0 }));
 jest.mock("@/lib/database/offline-store", () => ({
   clearAllAthleteHistory: () => mockClearAllAthleteHistory(),
   clearMeetData: (meet: string, options?: unknown) => mockClearMeetData(meet, options),
   getExplicitlyDownloadedMeetIds: async () => new Set(["Meet A"]),
   getLastSyncTime: async () => 1,
   markMeetExplicitlyDownloaded: (...args: unknown[]) => mockMarkMeetExplicitlyDownloaded(...args),
-  listStoredMeets: (extra?: readonly string[]) => mockListStoredMeets(extra),
+  clearAllMeetData: () => mockClearAllMeetData(),
 }));
 
 type Hook = ReturnType<typeof useOfflineData>;
@@ -251,7 +247,7 @@ describe("useOfflineData refresh all, partial failure", () => {
 });
 
 describe("useOfflineData delete all", () => {
-  it("removes every cache, each stored meet with one shared key listing, and athlete history", async () => {
+  it("removes every cache, every stored meet through the shared clear-all, and athlete history", async () => {
     await AsyncStorage.setItem(OFFLINE_CACHE_KEYS.qualifyingTotals, cacheEntry);
     const tree = await mount();
 
@@ -260,14 +256,10 @@ describe("useOfflineData delete all", () => {
 
     await expect(AsyncStorage.getItem(OFFLINE_CACHE_KEYS.standards)).resolves.toBeNull();
     await expect(AsyncStorage.getItem(OFFLINE_CACHE_KEYS.qualifyingTotals)).resolves.toBeNull();
-    expect(mockListStoredMeets).toHaveBeenCalledTimes(1);
-    expect(mockListStoredMeets).toHaveBeenCalledWith(["Meet A", "Meet B"]);
-    // A meet outside today's window that still has data on disk goes too.
-    expect(mockClearMeetData.mock.calls).toEqual([
-      ["Meet A", { storageKeys: ["k1", "k2"] }],
-      ["Meet B", { storageKeys: ["k1", "k2"] }],
-      ["Old Browsed Meet", { storageKeys: ["k1", "k2"] }],
-    ]);
+    // The same clear-all as Clear Cache (no per-meet history prune), not a
+    // second loop that re-read every roster per meet.
+    expect(mockClearAllMeetData).toHaveBeenCalledTimes(1);
+    expect(mockClearMeetData).not.toHaveBeenCalled();
     expect(mockClearAllAthleteHistory).toHaveBeenCalledTimes(1);
     expect(alertSpy.mock.calls.at(-1)?.[0]).toBe("Deleted");
     act(() => tree.unmount());
@@ -482,7 +474,7 @@ describe("useOfflineData single actions vs bulk actions", () => {
     act(() => captured!.confirmDeleteAll());
     await tap("Delete All");
     expect(alertSpy.mock.calls.at(-1)?.[0]).toBe("Download in Progress");
-    expect(mockClearMeetData).not.toHaveBeenCalled();
+    expect(mockClearAllMeetData).not.toHaveBeenCalled();
     await expect(AsyncStorage.getItem(OFFLINE_CACHE_KEYS.standards)).resolves.toBe(cacheEntry);
 
     await act(async () => {
@@ -560,7 +552,7 @@ describe("useOfflineData across a remount of the screen", () => {
         .find((b) => b.text === "Delete All")
         ?.onPress?.();
     });
-    expect(mockClearMeetData).not.toHaveBeenCalled();
+    expect(mockClearAllMeetData).not.toHaveBeenCalled();
     expect(mockClearAllAthleteHistory).not.toHaveBeenCalled();
 
     await act(async () => {
@@ -634,6 +626,18 @@ describe("useOfflineData failure paths release their claim", () => {
     await tap("Delete All");
     expect(mockClearAllAthleteHistory).toHaveBeenCalledTimes(2);
     expect(alertSpy.mock.calls.at(-1)?.[0]).toBe("Deleted");
+    act(() => tree.unmount());
+  });
+
+  it("Delete All reports a meet it could not clear instead of Deleted", async () => {
+    mockClearAllMeetData.mockResolvedValueOnce({ failed: 1 });
+    const tree = await mount();
+
+    act(() => captured!.confirmDeleteAll());
+    await tap("Delete All");
+
+    expect(alertSpy.mock.calls.at(-1)?.[0]).toBe("Delete Failed");
+    expect(captured!.isDeletingAll).toBe(false);
     act(() => tree.unmount());
   });
 

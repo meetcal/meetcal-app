@@ -1,7 +1,14 @@
 import { clearCachedMeetsList } from '@/lib/database/meet-manager';
 import { claimOfflineBulk, releaseOfflineBulk } from '@/lib/database/offline-activity';
 import { clearBrowseCaches } from '@/lib/database/offline-cache';
-import { clearAllAthleteHistory, clearAllMeetData } from '@/lib/database/offline-store';
+import { refreshOfflineDownloads } from '@/lib/database/offline-refresh';
+import {
+  clearAllAthleteHistory,
+  clearAllMeetData,
+  getExplicitMeetDownloadEntries,
+  hasMeetEnded,
+} from '@/lib/database/offline-store';
+import { getTrustedNow } from '@/lib/api/meetcal-api';
 import { isNetworkAvailable } from '@/lib/networkUtils';
 
 export type ClearCacheOutcome =
@@ -11,19 +18,30 @@ export type ClearCacheOutcome =
   /** Nothing was touched: an Offline Data download, removal or bulk action is running. */
   | { status: 'busy' }
   /** The cache was cleared but re-downloading failed. */
-  | { status: 'refresh-failed'; error: unknown };
+  | { status: 'refresh-failed'; error: unknown }
+  /** Cleared and refreshed, but these offline downloads could not be re-downloaded. */
+  | { status: 'downloads-failed'; failed: string[] };
 
 export interface ClearCacheDeps {
   /** Re-fetch the meets list. Must reject when it could not. */
   refreshAvailableMeets: () => Promise<void>;
-  /** Re-download the selected meet. Must reject when it could not. */
+  /**
+   * Re-sync the selected meet. Must reject when it could not. Runs after the
+   * offline downloads are back, so a downloaded selected meet is one already.
+   */
   refreshSelectedMeet: () => Promise<void>;
 }
 
 /**
- * The profile screen's "Clear Cache": drop every downloaded meet, all athlete
+ * The profile screen's "Clear Cache": drop every cached meet, all athlete
  * history, the browse caches (rankings, clubs, WSO views) and the cached meets
- * list, then download fresh copies.
+ * list, then download fresh copies: the meets list, every meet the user had
+ * downloaded for offline use (re-marked downloaded, with its end date), and
+ * the selected meet.
+ *
+ * Downloads used to be wiped and never restored: a second meet downloaded
+ * for a trip was simply gone, and the selected one came back unmarked (no
+ * expiry date, no background refresh, open to LRU eviction).
  *
  * This used to run in the screen with no guards. Offline, it deleted every
  * download and then reported success because both refreshes swallowed their
@@ -40,17 +58,33 @@ export async function clearCachedMeetData(deps: ClearCacheDeps): Promise<ClearCa
 
   if (claimOfflineBulk('delete') !== 'claimed') return { status: 'busy' };
   try {
+    // Read before the clear un-marks them. A meet that has ended (on the
+    // server's clock, as the expiry sweep judges it) is not brought back.
+    const now = getTrustedNow()?.getTime();
+    const downloads = (await getExplicitMeetDownloadEntries()).filter(
+      ({ endDate }) => !(now !== undefined && endDate && hasMeetEnded(endDate, now)),
+    );
     await clearAllMeetData();
     await clearAllAthleteHistory();
     await clearCachedMeetsList();
     await clearBrowseCaches();
 
+    let failedDownloads: string[] = [];
     try {
       await deps.refreshAvailableMeets();
+      if (downloads.length > 0) {
+        const refreshed = await refreshOfflineDownloads(
+          [],
+          downloads.map(({ meet, endDate }) => ({ name: meet, endDate })),
+        );
+        failedDownloads =
+          refreshed.status === 'offline' ? downloads.map(({ meet }) => meet) : refreshed.failed;
+      }
       await deps.refreshSelectedMeet();
     } catch (error) {
       return { status: 'refresh-failed', error };
     }
+    if (failedDownloads.length > 0) return { status: 'downloads-failed', failed: failedDownloads };
     return { status: 'cleared' };
   } finally {
     releaseOfflineBulk('delete');
@@ -79,6 +113,11 @@ export function clearCacheToast(outcome: ClearCacheOutcome): {
       return {
         type: 'error',
         message: 'Cache cleared, but fresh meet data could not be downloaded. Pull to refresh or try again.',
+      };
+    case 'downloads-failed':
+      return {
+        type: 'error',
+        message: `Cache cleared, but ${outcome.failed.length === 1 ? 'an offline download' : `${outcome.failed.length} offline downloads`} could not be re-downloaded. Download ${outcome.failed.length === 1 ? 'it' : 'them'} again from Offline Data.`,
       };
   }
 }
