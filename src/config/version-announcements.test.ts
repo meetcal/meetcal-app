@@ -1,4 +1,8 @@
-import { parseSeenVersions } from "@/config/version-announcements";
+import {
+  getAnnouncementForVersion,
+  parseSeenVersions,
+  VERSION_ANNOUNCEMENTS,
+} from "@/config/version-announcements";
 
 describe("parseSeenVersions", () => {
   it("returns an empty list when nothing is stored", () => {
@@ -26,5 +30,22 @@ describe("parseSeenVersions", () => {
 
   it("drops non-string entries", () => {
     expect(parseSeenVersions('["6.1.0",null,7,{"a":1}]')).toEqual(["6.1.0"]);
+  });
+});
+
+describe("getAnnouncementForVersion", () => {
+  it("shows the iPhone Duo / iOS 27 announcement on iOS only", () => {
+    expect(VERSION_ANNOUNCEMENTS["6.2.0"].platforms).toEqual(["ios"]);
+    expect(getAnnouncementForVersion("6.2.0", "ios")?.message).toMatch(/iPhone Duo/);
+    expect(getAnnouncementForVersion("6.2.0", "android")).toBeNull();
+  });
+
+  it("shows an announcement without platforms everywhere", () => {
+    expect(getAnnouncementForVersion("6.1.0", "ios")).not.toBeNull();
+    expect(getAnnouncementForVersion("6.1.0", "android")).not.toBeNull();
+  });
+
+  it("has nothing for a version without an announcement", () => {
+    expect(getAnnouncementForVersion("0.0.1", "ios")).toBeNull();
   });
 });

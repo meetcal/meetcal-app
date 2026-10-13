@@ -1,5 +1,5 @@
 import type { IntlRanking } from '@/lib/database/fetchIntlRankings';
-import { computeDefaultRankingFilters } from '@/lib/rankings-filters';
+import { computeDefaultRankingFilters, filterIntlRankings } from '@/lib/rankings-filters';
 
 function ranking(overrides: Partial<IntlRanking>): IntlRanking {
   return {
@@ -89,5 +89,36 @@ describe('computeDefaultRankingFilters', () => {
       age_category: '',
       gender: '',
     });
+  });
+});
+
+describe('filterIntlRankings', () => {
+  const rows = [
+    ranking({ name: 'B', ranking: 2 }),
+    ranking({ name: 'A', ranking: 1 }),
+    ranking({ name: 'W', gender: 'Women', ranking: 1 }),
+    ranking({ name: 'J', ageCategory: 'Junior', ranking: 1 }),
+    ranking({ name: 'X', meet: 'Asian Games', ranking: 1 }),
+  ];
+
+  it('keeps the rows matching every filter, best rank first', () => {
+    expect(
+      filterIntlRankings(rows, {
+        meet: 'World Championships',
+        age_category: 'Senior',
+        gender: 'Men',
+      }).map((r) => r.name),
+    ).toEqual(['A', 'B']);
+  });
+
+  it('gives a different count when only the gender changes', () => {
+    // The filter sheet counts the edited values with this, not the applied ones.
+    const base = { meet: 'World Championships', age_category: 'Senior' };
+    expect(filterIntlRankings(rows, { ...base, gender: 'Men' })).toHaveLength(2);
+    expect(filterIntlRankings(rows, { ...base, gender: 'Women' })).toHaveLength(1);
+  });
+
+  it('treats an empty filter value as matching every row', () => {
+    expect(filterIntlRankings(rows, { meet: '', age_category: '', gender: '' })).toHaveLength(5);
   });
 });

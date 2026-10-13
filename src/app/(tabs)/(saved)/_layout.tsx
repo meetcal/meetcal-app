@@ -1,17 +1,17 @@
-import { useTheme } from '@/contexts/ThemeContext';
+import { useAppColors } from '@/hooks/useAppColors';
 import { Stack } from 'expo-router';
 
 export default function SavedLayout() {
-  const { currentTheme } = useTheme();
+  const colors = useAppColors();
   return (
     <Stack 
       screenOptions={{ 
         title: 'Saved', 
         headerStyle: { 
-          backgroundColor: currentTheme === 'dark' ? '#000000' : '#F5F5F5' 
+          backgroundColor: colors.headerBackground,
         },
         headerTitleStyle: {
-          color: currentTheme === 'dark' ? '#fff' : '#000' ,
+          color: colors.headerTitle,
         } 
       }} 
     />

@@ -35,6 +35,8 @@ const mockActionModal = jest.fn((_props: ActionModalProps) => null);
 const mockClubModal = jest.fn((_props: ClubModalProps) => null);
 type FlashListProps = {
   data: LiftResult[];
+  keyboardShouldPersistTaps?: string;
+  keyboardDismissMode?: string;
   renderItem: (info: { item: LiftResult; index: number }) => React.ReactElement<{
     onSeeAllResults: (name: string) => void;
   }>;
@@ -265,6 +267,14 @@ describe("Start List search", () => {
     expect(shownNames()).toEqual(["John Smith"]);
     search("smith jane");
     expect(shownNames()).toEqual([]);
+  });
+
+  it("lets the first tap on a result reach the row while the keyboard is up", async () => {
+    await mount();
+    search("smith");
+    // The default "never" spends the first tap dismissing the keyboard.
+    expect(lastCall(mockFlashList).keyboardShouldPersistTaps).toBe("handled");
+    expect(lastCall(mockFlashList).keyboardDismissMode).toBe("on-drag");
   });
 });
 

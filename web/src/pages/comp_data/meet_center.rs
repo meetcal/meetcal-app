@@ -1,6 +1,7 @@
 use std::collections::HashSet;
 
 use super::{
+    combobox::{Combobox, SuggestionCopy, Suggestions},
     format::{format_us_date, format_us_time, yes_no},
     loading::{Load, LoadState, load_error, load_meet_data, load_query, table_response},
     models::{Athlete, LiftingResult, Meet, ScheduleRow, UpcomingMeetsQuery, attempt},
@@ -142,20 +143,38 @@ fn MeetPicker(
 ) -> impl IntoView {
     let meets = StoredValue::new(meets);
     view! {
-        <div class="meet-search">
-            <label for="meet-search-input">"Meet"</label>
-            <input id="meet-search-input" class="data-filter data-filter-wide" type="search" autocomplete="off" placeholder="Type at least 3 characters" prop:value=move || meet_search.get() on:input=move |event| { let value = event_target_value(&event); set_meet_search.set(value.clone()); if meet.get() != value { set_meet.set(String::new()); } } />
-            {move || meets.with_value(|meets| {
-                let query = meet_search.get();
-                (meet.get().is_empty() && query.trim().chars().count() >= 3).then(|| {
-                    let matches = meet_suggestions(meets, &query, 8);
-                    view! { <div class="meet-suggestions" role="listbox" aria-label="Meet suggestions">
-                        {matches.is_empty().then(|| view! { <p>"No matching meets"</p> })}
-                        {matches.into_iter().map(|name| { let selected_name = name.clone(); view! { <button type="button" role="option" on:click=move |_| { set_meet_search.set(selected_name.clone()); set_meet.set(selected_name.clone()); }>{name}</button> } }).collect_view()}
-                    </div> }
+        <Combobox
+                input_id="meet-search-input"
+                label="Meet"
+                placeholder="Type at least 3 characters"
+                input_class="data-filter data-filter-wide"
+                wrapper_class="meet-search"
+                list_class="meet-suggestions"
+                value=meet_search
+                suggestions=Signal::derive(move || {
+                    let query = meet_search.get();
+                    if !meet.get().is_empty() || query.trim().chars().count() < 3 {
+                        return Suggestions::Idle;
+                    }
+                    Suggestions::Ready(meets.with_value(|meets| meet_suggestions(meets, &query, 8)))
                 })
-            })}
-        </div>
+                copy=SuggestionCopy {
+                    list_label: "Meet suggestions",
+                    no_matches: "No matching meets",
+                    failed: "Couldn’t load meets",
+                }
+                on_input=move |value: String| {
+                    set_meet_search.set(value.clone());
+                    if meet.get_untracked() != value {
+                        set_meet.set(String::new());
+                    }
+                }
+                on_select=move |name: String| {
+                    set_meet_search.set(name.clone());
+                    set_meet.set(name);
+                }
+                on_dismiss=|()| {}
+            />
         {move || meets.with_value(|meets| meets.iter().find(|row| row.name == meet.get()).cloned()).map(|row| view! {
             <article class="meet-summary"><div><span class="data-badge">{row.status}</span><h2>{row.name}</h2>
             <p>{format!("{} – {} · {}", format_us_date(&row.start_date), format_us_date(&row.end_date), row.time_zone)}</p>

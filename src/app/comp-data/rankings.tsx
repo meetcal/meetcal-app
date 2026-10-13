@@ -4,7 +4,6 @@ import { SubscriptionGate } from "@/components/ui/SubscriptionGate";
 import { ThemedText } from "@/components/ui/ThemedText";
 import { ThemedView } from "@/components/ui/ThemedView";
 import { FilterSection, GenericFilterModal } from "@/components/ui/filters";
-import { useTheme } from "@/contexts/ThemeContext";
 import { useAppColors } from "@/hooks/useAppColors";
 import { useFilterState } from "@/hooks/useFilterState";
 import { useRouteFilterKey } from "@/hooks/useRouteFilterKey";
@@ -14,7 +13,10 @@ import {
   IntlRanking,
   intlRankingsResource,
 } from "@/lib/database/fetchIntlRankings";
-import { computeDefaultRankingFilters } from "@/lib/rankings-filters";
+import {
+  computeDefaultRankingFilters,
+  filterIntlRankings,
+} from "@/lib/rankings-filters";
 import { sortAgeGroups } from "@/lib/sortAgeGroups";
 import { Filters } from "@/types/rankings";
 import { Stack, useLocalSearchParams } from "expo-router";
@@ -35,7 +37,6 @@ export default function IntlRankingsScreen() {
 function IntlRankingsScreenContent() {
   const screenInsets = useScreenHorizontalInsets();
   const colors = useAppColors();
-  const { currentTheme } = useTheme();
   const routeParams = useLocalSearchParams<{
     meet?: string;
     age_category?: string;
@@ -133,22 +134,10 @@ function IntlRankingsScreenContent() {
     [intlRankings],
   );
 
-  // Filter intlRankings based on selected filters and sort by rank
-  const filteredRankings = useMemo(() => {
-    return intlRankings
-      .filter(
-        (r) =>
-          (!filters.meet || r.meet === filters.meet) &&
-          (!filters.age_category || r.ageCategory === filters.age_category) &&
-          (!filters.gender || r.gender === filters.gender),
-      )
-      .sort((a, b) => {
-        // Handle cases where ranking might be null/undefined
-        const rankA = a.ranking ?? Number.MAX_SAFE_INTEGER;
-        const rankB = b.ranking ?? Number.MAX_SAFE_INTEGER;
-        return rankA - rankB;
-      });
-  }, [intlRankings, filters]);
+  const filteredRankings = useMemo(
+    () => filterIntlRankings(intlRankings, filters),
+    [intlRankings, filters],
+  );
 
   const getFilterDisplayText = () => {
     const meet = filters.meet;
@@ -229,10 +218,10 @@ function IntlRankingsScreenContent() {
           gestureDirection: "horizontal",
           animation: "slide_from_right",
           headerTitleStyle: {
-            color: currentTheme === "dark" ? "#fff" : "#000",
+            color: colors.headerTitle,
           },
           headerStyle: {
-            backgroundColor: currentTheme === "dark" ? "#000000" : "#F5F5F5",
+            backgroundColor: colors.headerBackground,
           },
           headerShadowVisible: false,
           headerBackButtonDisplayMode: "minimal",
@@ -282,7 +271,9 @@ function IntlRankingsScreenContent() {
         {...filterModalProps}
         sections={buildFilterSections}
         onResetFilters={handleResetFilters}
-        resultCount={filteredRankings.length}
+        resultCount={(modalTempFilters) =>
+          filterIntlRankings(intlRankings, modalTempFilters).length
+        }
         resultLabel="rankings"
       />
     </ThemedView>
