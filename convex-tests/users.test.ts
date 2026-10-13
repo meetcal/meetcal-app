@@ -159,4 +159,19 @@ describe('deleteUserData (#250)', () => {
     expect(await run(store.ctx, { userId: A })).toMatchObject({ revisions: 3, more: false });
     await expect(run(store.ctx, { userId: ' ' })).rejects.toThrow('userId is required');
   });
+
+  it("refuses a deleted account's requests still carrying a valid token, so nothing is stored again", async () => {
+    const store = server(seed());
+    await run(store.ctx, { userId: A });
+    expect(await status(store.as(A)(putSavedSession, put('s9', { notes: 'late' })))).toBe(403);
+    expect(await status(store.as(A)(savedSessions))).toBe(403);
+    expect(await status(store.as(A)(setAutoUnsave, { enabled: true }))).toBe(403);
+    expect(store.rows('saved_sessions').map((r) => r.userId)).toEqual([B]);
+    expect(store.rows('deleted_users')).toEqual([expect.objectContaining({ userId: A })]);
+    // Another user is unaffected, and deleting again keeps one tombstone.
+    expect(await status(store.as(B)(putSavedSession, put('s10')))).toBe('ok');
+    await run(store.ctx, { userId: A });
+    expect(store.rows('deleted_users')).toHaveLength(1);
+  });
 });
+

@@ -1,5 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { MeetName } from '@/data/types/meet';
+import { isAccountDeleted } from '@/lib/deleted-accounts';
 import { getSavedSessionsKey } from '@/utils/session';
 
 /**
@@ -173,7 +174,8 @@ export async function commitStoredSessions(
   userId: string | null,
   nextSessions: SavedSession[],
 ): Promise<void> {
-  if (!userId || !store.isActive(userId)) return;
+  // A deleted account's list is gone from the device for good.
+  if (!userId || !store.isActive(userId) || isAccountDeleted(userId)) return;
   const { cache } = store;
   const serialized = JSON.stringify(nextSessions);
   const sameOwner = cache.owner === userId;

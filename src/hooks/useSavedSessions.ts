@@ -15,6 +15,7 @@ import {
   type FlushResult,
   readOutbox,
 } from '@/lib/saved-sessions-outbox';
+import { clearAccountDeleted } from '@/lib/deleted-accounts';
 import { createSerialQueue } from '@/lib/saved-sessions-queue';
 import {
   clearSavedSessionsCache,
@@ -73,6 +74,11 @@ export function useSavedSessions() {
   const [isLoading, setIsLoading] = useState(true);
   const clerkUserId = user?.id;
   const { storageUserId, hasResolvedUser } = useStorageUser(clerkUserId, Boolean(isClerkLoaded));
+  // Signed in as this user: an account this device cleared as deleted was
+  // only signed out of, and its saves are stored again (`deleted-accounts.ts`).
+  useEffect(() => {
+    if (clerkUserId) clearAccountDeleted(clerkUserId);
+  }, [clerkUserId]);
   /**
    * The API answered 401 to a `/users/me/*` call. The Clerk session Clerk
    * still reports as signed in no longer authorises writes, so nothing is

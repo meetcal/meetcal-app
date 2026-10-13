@@ -1,5 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Crypto from 'expo-crypto';
+import { isAccountDeleted } from '@/lib/deleted-accounts';
 import { normalizeStoredSession, type SavedSession } from '@/lib/saved-sessions-store';
 import {
   deleteSavedSession,
@@ -231,6 +232,9 @@ export async function readOutbox(userId: string): Promise<SavedSessionsOutbox> {
 }
 
 async function writeOutbox(userId: string, outbox: SavedSessionsOutbox): Promise<void> {
+  // A deleted account's outbox is gone from the device for good: a send that
+  // finishes after the cleanup must not write it back.
+  if (isAccountDeleted(userId)) return;
   // Written even when empty so `nextRev` never restarts: a rev must never be
   // reused while a send that carries an older copy of it may still clear it.
   await AsyncStorage.setItem(getSavedSessionsOutboxKey(userId), JSON.stringify(outbox));
@@ -352,7 +356,7 @@ export async function adoptPreOutboxSessions(
       }
     });
   }
-  await AsyncStorage.setItem(seededKey, '1');
+  if (!isAccountDeleted(userId)) await AsyncStorage.setItem(seededKey, '1');
   return adopted;
 }
 

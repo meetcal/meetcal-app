@@ -28,6 +28,14 @@ export const SAVED_SESSION_WRITE_ORDER_PRUNE_BATCH = 32;
 async function requireUserId(ctx: QueryCtx): Promise<string> {
   const identity = await ctx.auth.getUserIdentity();
   if (!identity) throw apiError(401, 'unauthorized');
+  // A deleted account's token stays valid for a minute or so: a request it
+  // carries (a save still in flight, another device's sync) must not store
+  // the user's data again after `deleteUserData`.
+  const deleted = await ctx.db
+    .query('deleted_users')
+    .withIndex('by_userId', (q) => q.eq('userId', identity.subject))
+    .first();
+  if (deleted) throw apiError(403, 'account deleted');
   return identity.subject;
 }
 
@@ -455,7 +463,9 @@ export const USER_DATA_DELETE_BATCH = 500;
 /**
  * Deletes everything stored under a user id: saved sessions (with their
  * notes and athlete names), preferences, and the saved-session revisions and
- * reset markers. Called by Clerk's `user.deleted` webhook (`convex/http.ts`),
+ * reset markers. Keeps the id alone (`deleted_users`), so a request still
+ * carrying a valid token for the account is refused rather than storing its
+ * data again. Called by Clerk's `user.deleted` webhook (`convex/http.ts`),
  * so an account deleted in Clerk leaves nothing behind (#250). At most
  * USER_DATA_DELETE_BATCH rows per table a call; a call that hit the limit
  * schedules the next. Idempotent: a user with no rows is a no-op.
@@ -466,6 +476,12 @@ export const deleteUserData = internalMutation({
   args: { userId: v.string() },
   handler: async (ctx, { userId }) => {
     if (userId.trim() === '') throw new Error('userId is required');
+    // First, so no request of this user stores anything from here on.
+    const tombstone = await ctx.db
+      .query('deleted_users')
+      .withIndex('by_userId', (q) => q.eq('userId', userId))
+      .first();
+    if (!tombstone) await ctx.db.insert('deleted_users', { userId, deletedAt: Date.now() });
     const batches = await Promise.all([
       ctx.db.query('saved_sessions').withIndex('by_userId', (q) => q.eq('userId', userId)).take(USER_DATA_DELETE_BATCH),
       ctx.db.query('user_preferences').withIndex('by_userId', (q) => q.eq('userId', userId)).take(USER_DATA_DELETE_BATCH),

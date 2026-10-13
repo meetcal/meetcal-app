@@ -1,5 +1,9 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { accountDeletionMessage, clearLocalUserData, subscriptionManagementUrl } from "@/lib/account-deletion";
+import { clearAccountDeleted } from "@/lib/deleted-accounts";
+import { markSessionPut } from "@/lib/saved-sessions-outbox";
+import { commitStoredSessions, createSavedSessionsCache } from "@/lib/saved-sessions-store";
+import type { SavedSession } from "@/lib/saved-sessions-store";
 
 describe("account deletion", () => {
   it.each([
@@ -33,4 +37,31 @@ describe("account deletion", () => {
     await clearLocalUserData("user_1");
     expect(await AsyncStorage.getAllKeys()).toEqual(["@saved_sessions_user_2"]);
   });
+
+  it("keeps a write still in flight from storing the deleted account's data again, until the user signs in again", async () => {
+    const session: SavedSession = {
+      id: "s1",
+      meet: "Test Meet" as never,
+      sessionNumber: 1,
+      platform: "Red",
+      weightClass: "71kg",
+      startTime: "10:00 AM",
+      weighInTime: "8:00 AM",
+      date: "2099-06-20",
+      notes: "private",
+    };
+    const store = { cache: createSavedSessionsCache(), isActive: () => true, publish: () => {} };
+    await AsyncStorage.clear();
+    await clearLocalUserData("user_9");
+    // A save and an outbox update that were already past their signed-in check.
+    await commitStoredSessions(store as never, "user_9", [session]);
+    await markSessionPut("user_9", session);
+    expect(await AsyncStorage.getAllKeys()).toEqual([]);
+
+    // Only signed out: signing in as the same user stores again.
+    clearAccountDeleted("user_9");
+    await commitStoredSessions(store as never, "user_9", [session]);
+    expect(await AsyncStorage.getItem("@saved_sessions_user_9")).toContain("private");
+  });
 });
+

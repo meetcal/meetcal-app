@@ -1,4 +1,5 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { markAccountDeleted } from "@/lib/deleted-accounts";
 import { getOutboxSeededKey, getSavedSessionsOutboxKey } from "@/lib/saved-sessions-outbox";
 import { getAllSavedSessionsKeys } from "@/utils/session";
 
@@ -42,5 +43,8 @@ export function subscriptionManagementUrl(os: string): string {
  * account, when the account (and so every write still queued for it) is gone.
  */
 export async function clearLocalUserData(userId: string): Promise<void> {
+  // Before the removal, so a write still in flight for the account skips
+  // storing it again (`deleted-accounts.ts`).
+  markAccountDeleted(userId);
   await AsyncStorage.multiRemove([...getAllSavedSessionsKeys(userId), getSavedSessionsOutboxKey(userId), getOutboxSeededKey(userId)]);
 }
