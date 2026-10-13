@@ -82,16 +82,23 @@ export function normalizeStoredSession(value: unknown): SavedSession | null {
   return session;
 }
 
-/** Parse a stored list; a missing, non-JSON or non-array value is empty. */
+/**
+ * Parse a stored list; a missing, non-JSON or non-array value is empty. One
+ * row per session id (the first): a list stored before the reconcile dropped
+ * the server's legacy duplicate rows can still hold two.
+ */
 export function parseStoredSessions(raw: string | null): SavedSession[] {
   if (!raw) return [];
   try {
     const parsed: unknown = JSON.parse(raw);
     if (!Array.isArray(parsed)) return [];
     const sessions: SavedSession[] = [];
+    const seen = new Set<string>();
     for (const value of parsed) {
       const session = normalizeStoredSession(value);
-      if (session) sessions.push(session);
+      if (!session || seen.has(session.id)) continue;
+      seen.add(session.id);
+      sessions.push(session);
     }
     return sessions;
   } catch {

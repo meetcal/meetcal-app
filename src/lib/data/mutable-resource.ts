@@ -16,12 +16,28 @@ export type MutableResourceConfig<T, TParams extends readonly unknown[]> = {
   clearCached?: (...params: TParams) => Promise<void>;
   isEqual?: (left: T, right: T) => boolean;
   /**
+   * Whether a fresh answer is handed to every subscriber of its key (see
+   * `subscribe`). Default: always. The schedule says no for an empty one, so
+   * a background refresh that catches a schedule briefly unpublished does
+   * not blank every screen showing it; the caller that asked still gets it.
+   */
+  isPublishable?: (data: T) => boolean;
+  /**
    * True when a fresh answer must not replace the cached data (for a roster,
    * an empty answer over cached athletes). The cached data is then the
    * result, and the fresh answer is neither persisted nor shown. Only asked
    * when there is a cache entry.
    */
   keepCached?: (cached: T, fresh: T) => boolean;
+};
+
+export type ResourceRevalidation<T> = {
+  data: T;
+  changed: boolean;
+  lastUpdatedAt: number | null;
+  source: "network";
+  /** False when the answer changed and could not be stored. */
+  stored?: boolean;
 };
 
 export type MutableResource<T, TParams extends readonly unknown[]> = {
@@ -49,6 +65,18 @@ export type MutableResource<T, TParams extends readonly unknown[]> = {
     stored?: boolean;
   }>;
   invalidate: (...params: TParams) => Promise<void>;
+  /**
+   * Hear every successful revalidate of `key`, whoever started it (a screen,
+   * a pull to refresh, the background `SyncManager`), so every mounted copy
+   * of the data moves together. Returns the unsubscribe.
+   */
+  subscribe: (key: string, listener: (result: ResourceRevalidation<T>) => void) => () => void;
+  /**
+   * The resource's own equality, for a subscriber to skip an unchanged
+   * answer. Method syntax on purpose: it keeps the type usable where a hook
+   * widens `T` (a `MutableResource<Stats>` read as `Stats | null`).
+   */
+  isEqual(left: T, right: T): boolean;
 };
 
 const inFlightRequests = new Map<string, Promise<unknown>>();
@@ -94,6 +122,17 @@ export function createMutableResource<T, TParams extends readonly unknown[]>(
   config: MutableResourceConfig<T, TParams>,
 ): MutableResource<T, TParams> {
   const isEqual = config.isEqual ?? defaultIsEqual<T>;
+  const listeners = new Map<string, Set<(result: ResourceRevalidation<T>) => void>>();
+  const publish = (key: string, result: ResourceRevalidation<T>) => {
+    if (config.isPublishable && !config.isPublishable(result.data)) return;
+    for (const listener of [...(listeners.get(key) ?? [])]) {
+      try {
+        listener(result);
+      } catch (listenerError) {
+        console.error("Resource subscriber failed", { key, error: listenerError });
+      }
+    }
+  };
   const revalidateWithCached = async (
     cached: ResourceCacheEntry<T> | null | undefined,
     ...params: TParams
@@ -161,14 +200,16 @@ export function createMutableResource<T, TParams extends readonly unknown[]>(
         }
       }
 
-      return {
+      const result: ResourceRevalidation<T> = {
         data: changed ? fresh : cacheEntry.data,
         changed,
         lastUpdatedAt:
           persisted?.lastUpdatedAt ?? cacheEntry?.lastUpdatedAt ?? Date.now(),
-        source: "network" as const,
+        source: "network",
         stored,
       };
+      publish(key, result);
+      return result;
     })().finally(releaseKey);
 
     inFlightRequests.set(key, request);
@@ -188,5 +229,20 @@ export function createMutableResource<T, TParams extends readonly unknown[]>(
         await config.clearCached(...params);
       }
     },
+    subscribe: (key, listener) => {
+      let keyListeners = listeners.get(key);
+      if (!keyListeners) {
+        keyListeners = new Set();
+        listeners.set(key, keyListeners);
+      }
+      keyListeners.add(listener);
+      return () => {
+        const current = listeners.get(key);
+        if (!current) return;
+        current.delete(listener);
+        if (current.size === 0) listeners.delete(key);
+      };
+    },
+    isEqual,
   };
 }

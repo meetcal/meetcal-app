@@ -98,6 +98,13 @@ describe("parseStoredSessions", () => {
     const raw = JSON.stringify([session(), { id: "" }, session({ id: "b" })]);
     expect(parseStoredSessions(raw).map((s) => s.id)).toEqual(["Test-Meet-1-Red", "b"]);
   });
+
+  it("keeps the first row of a session stored twice", () => {
+    const raw = JSON.stringify([session({ notes: "first" }), session({ notes: "second" })]);
+    const parsed = parseStoredSessions(raw);
+    expect(parsed).toHaveLength(1);
+    expect(parsed[0].notes).toBe("first");
+  });
 });
 
 describe("readStoredSessions / commitStoredSessions", () => {

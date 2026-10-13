@@ -143,6 +143,7 @@ export default function ScheduleScreen() {
     onViewableItemsChanged,
     onMomentumScrollEnd,
     viewabilityConfig,
+    setHeaderTitle,
   } = usePaginatedSchedule({
     schedule,
     onTitleChange: handleTitleChange,
@@ -304,22 +305,17 @@ export default function ScheduleScreen() {
       // The meet start date is a calendar date in the meet's timezone. Format
       // it through the shared UTC-safe helper; `new Date("2026-06-20")` is UTC
       // midnight and renders as Jun 19 on any US device.
+      // Through the day list's setter, so it knows the header no longer
+      // shows its day: switching back to a meet with a schedule then sets
+      // that meet's day again instead of keeping this date.
       const formattedDate = formatIsoDateTitle(meetDetails.dates.start);
-      if (formattedDate) {
-        navigation.setOptions({
-          title: formattedDate,
-          headerTitle: shouldUseCustomHeader
-            ? () => <HeaderDate>{formattedDate}</HeaderDate>
-            : undefined,
-        });
-      }
+      if (formattedDate) setHeaderTitle(formattedDate);
     }
   }, [
     isLoading,
     schedule.length,
     meetDetails,
-    navigation,
-    shouldUseCustomHeader,
+    setHeaderTitle,
   ]);
 
   // Handle refreshing available meets in modal
