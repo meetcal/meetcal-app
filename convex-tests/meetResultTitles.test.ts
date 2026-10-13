@@ -1,6 +1,7 @@
 import { recordWrite, setMeetResultTitles } from '../convex/ingest';
 import { computeStatsRows } from '../convex/lib/meetData';
 import { byMeet } from '../convex/results';
+import { attendance } from '../convex/meets';
 import { fakeMutationCtx, handlerOf } from './fakeDb';
 
 /**
@@ -72,6 +73,21 @@ describe('results titles of a meet (#362)', () => {
     for (const row of store.docs('view_hints')) await store.ctx.db.delete(row._id as string);
     await recordWrite(store.ctx as never, 'lifting_results', [{ kind: 'meet', key: JUNIOR }]);
     expect(store.rows('view_hints').map((h) => `${h.kind}:${h.key}`).sort()).toEqual([`meet:${JUNIOR}`, `meet:${NATIONALS}`].sort());
+  });
+
+  it("counts a combined event's lifters under its linked titles in attendance", async () => {
+    const store = world();
+    await link(store.ctx, { meet: NATIONALS, titles: [JUNIOR, YOUTH] });
+    const answer = await handlerOf<{ meets: string[] }, { json: string }>(attendance)(store.ctx, { meets: [NATIONALS] });
+    expect(JSON.parse(answer.json)).toEqual([expect.objectContaining({ meet: NATIONALS, lifters: 3, registrations: 3, first_date: '2026-06-20' })]);
+  });
+
+  it('looks up linked titles only for results writes', async () => {
+    const store = world();
+    await link(store.ctx, { meet: NATIONALS, titles: [JUNIOR] });
+    for (const row of store.docs('view_hints')) await store.ctx.db.delete(row._id as string);
+    await recordWrite(store.ctx as never, 'meets', [{ kind: 'meet', key: JUNIOR }]);
+    expect(store.rows('view_hints').map((h) => `${h.kind}:${h.key}`)).toEqual([`meet:${JUNIOR}`]);
   });
 
   it('refuses a title of another meet, a meet name, the meet itself or an unknown meet, and unlinks with []', async () => {

@@ -33,7 +33,9 @@ type WriteHint = { kind: string; key: string; since?: string };
 export async function recordWrite(ctx: MutationCtx, table: SourceTable, hints: WriteHint[]): Promise<void> {
   await bumpVersion(ctx, table);
   const unique = new Map<string, WriteHint>();
-  for (const hint of [...hints, ...(await linkedMeetHints(ctx, hints))]) {
+  // Only a results write can be under a linked results title.
+  const linked = table === 'lifting_results' ? await linkedMeetHints(ctx, hints) : [];
+  for (const hint of [...hints, ...linked]) {
     const id = `${hint.kind}\u0000${hint.key}`;
     const seen = unique.get(id);
     unique.set(id, seen ? { ...hint, since: earliestSince(seen.since, hint.since) } : hint);
@@ -56,18 +58,26 @@ export async function recordWrite(ctx: MutationCtx, table: SourceTable, hints: W
  * A change under a results title linked to a meet (`meet_result_titles`)
  * changes that meet's views too: its hint, for each `meet` hint naming one.
  */
+/** Linked-title lookups in flight at once, well under a function's 1,000. */
+const LINK_LOOKUP_BATCH = 250;
+
 async function linkedMeetHints(ctx: MutationCtx, hints: readonly WriteHint[]): Promise<WriteHint[]> {
   const titles = [...new Set(hints.filter((hint) => hint.kind === 'meet').map((hint) => hint.key))];
-  // A title is linked to one meet at most (`setMeetResultTitles`).
-  const links = await Promise.all(
-    titles.map((title) =>
-      ctx.db
-        .query('meet_result_titles')
-        .withIndex('by_title', (q) => q.eq('title', title))
-        .first(),
-    ),
-  );
-  return links.flatMap((link) => (link ? [{ kind: 'meet', key: link.meet }] : []));
+  // A title is linked to one meet at most (`setMeetResultTitles`). In
+  // batches: a bulk write can name many meets.
+  const linked: WriteHint[] = [];
+  for (let i = 0; i < titles.length; i += LINK_LOOKUP_BATCH) {
+    const links = await Promise.all(
+      titles.slice(i, i + LINK_LOOKUP_BATCH).map((title) =>
+        ctx.db
+          .query('meet_result_titles')
+          .withIndex('by_title', (q) => q.eq('title', title))
+          .first(),
+      ),
+    );
+    for (const link of links) if (link) linked.push({ kind: 'meet', key: link.meet });
+  }
+  return linked;
 }
 
 /**

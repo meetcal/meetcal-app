@@ -395,7 +395,8 @@ export async function meetResultTitles(ctx: QueryCtx, meet: string): Promise<str
   return [meet, ...linked.map((row) => row.title).filter((title) => title !== meet)];
 }
 
-async function meetResultDocs(ctx: QueryCtx, meet: string): Promise<Doc<'lifting_results'>[]> {
+/** A meet's results under its own name and every results title linked to it. */
+export async function meetResultDocs(ctx: QueryCtx, meet: string): Promise<Doc<'lifting_results'>[]> {
   const titles = await meetResultTitles(ctx, meet);
   const groups = await Promise.all(
     titles.map((title) =>

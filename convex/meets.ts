@@ -10,6 +10,7 @@ import {
   computeTimelines,
   joinRoster,
   meetByName,
+  meetResultDocs,
   meetLocalDate,
   narrowSessions,
   packageAthlete,
@@ -166,10 +167,8 @@ export const attendance = query({
     const rows = [];
     for (const meet of meets) {
       const [results, registrations, meetRow] = await Promise.all([
-        ctx.db
-          .query('lifting_results')
-          .withIndex('by_meet', (q) => q.eq('meet', meet))
-          .collect(),
+        // Its linked results titles too (a combined national event, #362).
+        meetResultDocs(ctx, meet),
         ctx.db
           .query('athletes')
           .withIndex('by_meet', (q) => q.eq('meet', meet))
