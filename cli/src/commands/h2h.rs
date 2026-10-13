@@ -9,7 +9,8 @@ use crate::utils::bests::{YEAR_BESTS_YEARS, cutoff_date};
 use crate::utils::format::us_date;
 use crate::utils::output::{self, Report};
 use crate::utils::stats::{
-    SINCLAIR_LABEL, chronological, fold, number, points, row_qpoints, row_sinclair,
+    Lift, SINCLAIR_LABEL, chronological, fold, number, points, row_qpoints, row_sinclair,
+    valid_lift, valid_total,
 };
 
 /// Compare two athletes head to head: the meets they both entered, who totalled more at each, and
@@ -78,14 +79,19 @@ pub fn report(first: &[LiftingResults], second: &[LiftingResults], cutoff: &str)
     let (mut first_wins, mut second_wins) = (0, 0);
     for meeting in &meetings {
         let (a, b) = (meeting.first.total, meeting.second.total);
-        let winner = if a > b {
-            first_wins += 1;
-            first_name.clone()
-        } else if b > a {
-            second_wins += 1;
-            second_name.clone()
-        } else {
-            "Tie".into()
+        // A source error's total decides nothing (`stats::plausible`).
+        let winner = match (valid_total(meeting.first), valid_total(meeting.second)) {
+            (None, _) if a > 0.0 => "Unknown (source error)".into(),
+            (_, None) if b > 0.0 => "Unknown (source error)".into(),
+            _ if a > b => {
+                first_wins += 1;
+                first_name.clone()
+            }
+            _ if b > a => {
+                second_wins += 1;
+                second_name.clone()
+            }
+            _ => "Tie".into(),
         };
         table.add_row(vec![
             us_date(&meeting.first.date),
@@ -112,7 +118,8 @@ pub fn report(first: &[LiftingResults], second: &[LiftingResults], cutoff: &str)
         (&first_name, first, first_wins),
         (&second_name, second, second_wins),
     ] {
-        let max = |f: fn(&LiftingResults) -> f64| rows.iter().map(f).fold(0.0, f64::max);
+        let max =
+            |f: fn(&LiftingResults) -> Option<f64>| rows.iter().filter_map(f).fold(0.0, f64::max);
         let best_sinclair = rows
             .iter()
             .filter_map(row_sinclair)
@@ -128,14 +135,14 @@ pub fn report(first: &[LiftingResults], second: &[LiftingResults], cutoff: &str)
         let recent = rows
             .iter()
             .filter(|row| row.date.as_str() >= cutoff)
-            .map(|row| row.total)
+            .filter_map(valid_total)
             .fold(0.0, f64::max);
         summary.add_row(vec![
             name.clone(),
             format!("{wins} of {}", meetings.len()),
-            number(max(|r| r.snatch_best)),
-            number(max(|r| r.cj_best)),
-            number(max(|r| r.total)),
+            number(max(|r| valid_lift(r, Lift::Snatch))),
+            number(max(|r| valid_lift(r, Lift::CleanAndJerk))),
+            number(max(valid_total)),
             points(best_sinclair),
             points(best_qpoints),
             number(recent),
@@ -201,5 +208,36 @@ mod tests {
         assert_eq!(json["meetings"][0]["margin"], 4);
         assert_eq!(json["summary"][1]["higher_total_in"], "1 of 1");
         assert_eq!(json["summary"][1]["best_total"], 205);
+    }
+
+    #[test]
+    fn a_source_error_decides_no_meeting_and_sets_no_best() {
+        let a = vec![row(
+            "Ada",
+            "2026-04-04",
+            "Showdown",
+            "Open Men's 89kg",
+            88.0,
+            [-63.0, 633.0, 65.0],
+            [85.0, 90.0, -95.0],
+        )];
+        let b = vec![row(
+            "Bea",
+            "2026-04-04",
+            "Showdown",
+            "Open Men's 89kg",
+            88.0,
+            [100.0, 0.0, 0.0],
+            [120.0, 0.0, 0.0],
+        )];
+        let json = report(&a, &b, "2026-01-01").to_json();
+        assert_eq!(
+            json["meetings"][0]["higher_total"],
+            "Unknown (source error)"
+        );
+        assert_eq!(json["summary"][0]["higher_total_in"], "0 of 1");
+        assert_eq!(json["summary"][0]["best_snatch"], 0);
+        assert_eq!(json["summary"][0]["best_total"], 0);
+        assert_eq!(json["summary"][1]["best_total"], 220);
     }
 }

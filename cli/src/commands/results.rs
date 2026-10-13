@@ -67,6 +67,7 @@ pub async fn run(args: ResultsArgs) -> Result<()> {
         category: args.category,
         division: args.division,
         federation: args.federation,
+        keep_bwl: true,
         adaptive: true,
     };
 

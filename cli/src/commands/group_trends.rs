@@ -21,7 +21,7 @@ use crate::utils::names::{NameKind, not_found};
 use crate::utils::output::{self, Report};
 use crate::utils::stats::{
     Lift, SINCLAIR_LABEL, attempt_habits, fold, number, percent, points, pr_flags, row_qpoints,
-    row_sinclair,
+    row_sinclair, valid_total,
 };
 
 /// Lifters in the all-time table.
@@ -165,6 +165,16 @@ fn year(date: &str) -> String {
     date.get(..4).unwrap_or(date).to_string()
 }
 
+/// An athlete's best-total row (none while every row is a source error), best Sinclair, results,
+/// and first and latest dates.
+type LifterEntry<'a> = (
+    Option<&'a LiftingResults>,
+    Option<f64>,
+    usize,
+    String,
+    String,
+);
+
 pub fn report(
     title: &str,
     group_rows: &[LiftingResults],
@@ -210,7 +220,10 @@ pub fn report(
                     .sum::<f64>()
             })
             .sum();
-        let best = rows.iter().map(|row| row.total).fold(0.0, f64::max);
+        let best = rows
+            .iter()
+            .filter_map(|row| valid_total(row))
+            .fold(0.0, f64::max);
         let prs = rows
             .iter()
             .filter(|row| pr_totals.contains(&pr_key(row)))
@@ -232,20 +245,24 @@ pub fn report(
         by_year.add_row(cells);
     }
 
-    // Each athlete's best total with the group, and best Sinclair.
-    let mut best: HashMap<String, (&LiftingResults, Option<f64>, usize, String, String)> =
-        HashMap::new();
+    // Each athlete's best total with the group (source errors left out), and best Sinclair.
+    let mut best: HashMap<String, LifterEntry> = HashMap::new();
     for row in group_rows {
         let entry = best.entry(fold(&row.name)).or_insert((
-            row,
+            None,
             None,
             0,
             row.date.clone(),
             row.date.clone(),
         ));
-        // The first of tied bests, when it was set (rows arrive newest first).
-        if row.total > entry.0.total || (row.total == entry.0.total && row.date < entry.0.date) {
-            entry.0 = row;
+        // Source errors never count; of tied bests, the first, when it was set (rows arrive
+        // newest first).
+        if let Some(total) = valid_total(row)
+            && entry.0.is_none_or(|kept| {
+                total > kept.total || (total == kept.total && row.date < kept.date)
+            })
+        {
+            entry.0 = Some(row);
         }
         if let Some(score) = row_sinclair(row) {
             entry.1 = Some(entry.1.map_or(score, |current: f64| current.max(score)));
@@ -267,7 +284,9 @@ pub fn report(
     }
     let mut lifters: Vec<_> = best
         .into_values()
-        .filter(|entry| entry.0.total > 0.0)
+        .filter_map(|(row, sinclair, results, first, last)| {
+            row.map(|row| (row, sinclair, results, first, last))
+        })
         .collect();
     lifters.sort_by(|a, b| {
         b.0.total
@@ -383,5 +402,42 @@ mod tests {
         let rows = vec![lift("2026-01-31"), lift("2025-03-08"), lift("2025-02-01")];
         let json = report("CLUB — Test", &rows, &HashSet::new(), None).to_json();
         assert_eq!(json["top_lifters"][0]["date"], "Feb 1, 2025");
+    }
+
+    #[test]
+    fn a_source_error_tops_no_table() {
+        let real = row(
+            "Ada",
+            "2025-03-01",
+            "M1",
+            "Open Women's 64kg",
+            63.0,
+            [80.0, 0.0, 0.0],
+            [100.0, 0.0, 0.0],
+        );
+        let mut shifted = row(
+            "Bo",
+            "2025-04-01",
+            "M2",
+            "Open Men's 89kg",
+            88.0,
+            [127.0, 0.0, 0.0],
+            [135.0, 0.0, 0.0],
+        );
+        shifted.total = 820.0;
+        let typo = row(
+            "Cy",
+            "2025-05-01",
+            "M3",
+            "Open Men's 89kg",
+            88.0,
+            [-63.0, 633.0, 65.0],
+            [85.0, 90.0, -95.0],
+        );
+        let json = report("CLUB — Test", &[real, shifted, typo], &HashSet::new(), None).to_json();
+        assert_eq!(json["by_year"][0]["best_total"], 180);
+        let top = json["top_lifters"].as_array().unwrap();
+        assert_eq!(top.len(), 1);
+        assert_eq!(top[0]["athlete"], "Ada");
     }
 }

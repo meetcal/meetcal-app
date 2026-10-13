@@ -50,11 +50,7 @@ pub async fn run(args: IntlRankingsArgs) -> Result<()> {
     let mut table = Table::new();
     table.set_header(vec!["Rank", "Name", "Class", "Percent A", "Total"]);
 
-    for total in rankings.into_iter().filter(|row| {
-        row.age_category.eq_ignore_ascii_case(&age)
-            && row.gender.eq_ignore_ascii_case(&gender)
-            && row.meet.eq_ignore_ascii_case(&meet)
-    }) {
+    for total in selected(rankings, &age, &gender, &meet) {
         table.add_row(vec![
             total.ranking.to_string(),
             total.name,
@@ -67,4 +63,49 @@ pub async fn run(args: IntlRankingsArgs) -> Result<()> {
     output::emit(Report::single("intl_rankings", table));
 
     Ok(())
+}
+
+/// The rankings for one age category, gender and meet, best (rank 1) first. The server answers
+/// the highest rank number first.
+pub fn selected(rankings: Vec<Rankings>, age: &str, gender: &str, meet: &str) -> Vec<Rankings> {
+    let mut rows: Vec<Rankings> = rankings
+        .into_iter()
+        .filter(|row| {
+            row.age_category.eq_ignore_ascii_case(age)
+                && row.gender.eq_ignore_ascii_case(gender)
+                && row.meet.eq_ignore_ascii_case(meet)
+        })
+        .collect();
+    rows.sort_by(|a, b| a.ranking.total_cmp(&b.ranking));
+    rows
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn ranked(ranking: f64, name: &str) -> Rankings {
+        Rankings {
+            ranking,
+            name: name.into(),
+            weight_class: "88".into(),
+            percent_a: 95.0,
+            total: 349.0,
+            meet: "Worlds".into(),
+            gender: "Men".into(),
+            age_category: "Senior".into(),
+        }
+    }
+
+    #[test]
+    fn rank_one_comes_first() {
+        let rows = selected(
+            vec![ranked(10.0, "Ten"), ranked(9.0, "Nine"), ranked(1.0, "One")],
+            "senior",
+            "men",
+            "worlds",
+        );
+        let names: Vec<&str> = rows.iter().map(|row| row.name.as_str()).collect();
+        assert_eq!(names, ["One", "Nine", "Ten"]);
+    }
 }

@@ -69,6 +69,10 @@ mod tests {
         let (_, by_lift) = make_rate_tables(&[]);
         let json = Report::single("by_lift", by_lift).to_json();
         assert_eq!(json[0]["total_make_rate"], serde_json::Value::Null);
-        assert!(!Report::single("t", make_rate_tables(&[]).1).to_text().contains("NaN"));
+        assert!(
+            !Report::single("t", make_rate_tables(&[]).1)
+                .to_text()
+                .contains("NaN")
+        );
     }
 }
