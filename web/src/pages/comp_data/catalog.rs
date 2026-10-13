@@ -21,7 +21,7 @@ pub const DATA_PAGES: [DataPageLink; 12] = [
     DataPageLink {
         path: "/results",
         label: "Results",
-        description: "Search an athlete’s competition results over a date range.",
+        description: "Search an athlete’s competition results from the last 20 years.",
         seo_title: "Athlete Competition Results",
     },
     DataPageLink {

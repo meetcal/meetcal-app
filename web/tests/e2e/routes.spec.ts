@@ -33,6 +33,26 @@ test("subscription page only offers mobile-store handoffs", async ({ page }) => 
   await expect(page.getByText(/created and managed only in the mobile app/i)).toBeVisible();
   await expect(page.getByRole("button", { name: /choose plan|checkout|purchase/i })).toHaveCount(0);
   await expect(page.getByText(/secure checkout/i)).toHaveCount(0);
+  // The app has no Settings screen: subscriptions are managed from My Profile.
+  await expect(page.getByText(/open My Profile, then Customer Support/i)).toBeVisible();
+  await expect(page.getByText(/open Settings/i)).toHaveCount(0);
+});
+
+test("every app download link offers both the App Store and Google Play", async ({ page }) => {
+  await page.goto("/");
+  const footer = page.locator("footer.site-footer");
+  await expect(footer.getByRole("link", { name: "Download for iOS" })).toHaveAttribute("href", /apps\.apple\.com/);
+  await expect(footer.getByRole("link", { name: "Download for Android" })).toHaveAttribute("href", /play\.google\.com/);
+  const appCard = page.locator(".interaction-card").filter({ hasText: "The app" });
+  await expect(appCard.getByRole("link", { name: /iPhone or iPad/ })).toHaveAttribute("href", /apps\.apple\.com/);
+  await expect(appCard.getByRole("link", { name: /Android/ })).toHaveAttribute("href", /play\.google\.com/);
+});
+
+test("the CLI card's Cargo command installs from this repository", async ({ page }) => {
+  await page.goto("/");
+  await expect(page.locator(".cli-command code").filter({ hasText: "cargo install" })).toHaveText(
+    "cargo install --git https://github.com/meetcal/meetcal-app.git meetcal",
+  );
 });
 
 test("legal pages expose the declared privacy services and cross-link", async ({ page }) => {
@@ -40,6 +60,10 @@ test("legal pages expose the declared privacy services and cross-link", async ({
   await expect(page.getByText("Clerk, for authentication and account management.", { exact: true })).toBeVisible();
   await expect(page.getByText(/RevenueCat, Apple, and Google, for subscriptions/i)).toBeVisible();
   await expect(page.getByText("PostHog, for product analytics and diagnostics.", { exact: true })).toBeVisible();
+  await expect(page.getByText("OneSignal, for push notifications and in-app messages.", { exact: true })).toBeVisible();
+  await expect(page.getByText("Sentry, for crash and error diagnostics.", { exact: true })).toBeVisible();
+  await expect(page.getByText(/asks for permission to send notifications/i)).toBeVisible();
+  await expect(page.getByText(/open My Profile, then Delete Your Account/i)).toBeVisible();
   await expect(page.getByText(/only through the MeetCal mobile app/i)).toBeVisible();
   await expect(page.getByText(/does not currently provide a separate analytics preference control/i)).toBeVisible();
   await expect(page.getByText(/manage analytics through available browser or device controls/i)).toHaveCount(0);

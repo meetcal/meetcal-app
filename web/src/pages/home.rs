@@ -1,4 +1,5 @@
 use crate::components::feature::FeatureSection;
+use crate::components::store_links::{APP_STORE_URL, PLAY_STORE_URL};
 use crate::components::{footer::Footer, header::Header};
 use leptos::prelude::*;
 use leptos_router::components::A;
@@ -38,10 +39,10 @@ pub fn DownloadSection() -> impl IntoView {
                 <p>"Save sessions, follow your club, and be ready for anything"</p>
             </div>
             <div class="store-links" aria-label="Download the MeetCal mobile app">
-                <a class="store-link store-link-primary" href="https://apps.apple.com/us/app/meetcal/id6741133286">
+                <a class="store-link store-link-primary" href=APP_STORE_URL>
                     <span>"Download for iOS"</span>
                 </a>
-                <a class="store-link store-link-secondary" href="https://play.google.com/store/apps/details?id=com.memohnsen.meetcal">
+                <a class="store-link store-link-secondary" href=PLAY_STORE_URL>
                     <span>"Download for Android"</span>
                 </a>
             </div>
@@ -65,7 +66,10 @@ pub fn InteractionSection() -> impl IntoView {
                     <p class="interaction-label">"The app"</p>
                     <h3>"Stay ready on meet day"</h3>
                     <p>"Browse schedules, save sessions, and follow athletes or teams from your phone or tablet."</p>
-                    <a class="interaction-link" href="https://apps.apple.com/us/app/meetcal/id6741133286">"Get the mobile app" <span aria-hidden="true">"→"</span></a>
+                    <div class="interaction-links">
+                        <a class="interaction-link" href=APP_STORE_URL>"Get it for iPhone or iPad" <span aria-hidden="true">"→"</span></a>
+                        <a class="interaction-link" href=PLAY_STORE_URL>"Get it for Android" <span aria-hidden="true">"→"</span></a>
+                    </div>
                 </article>
 
                 <article class="interaction-card interaction-card-cli">
@@ -74,14 +78,8 @@ pub fn InteractionSection() -> impl IntoView {
                     <h3>"Work directly with the data"</h3>
                     <p>"Search and explore the full MeetCal database from USAW and USAMW without leaving your terminal."</p>
                     <div class="cli-install-options">
-                        <CopyCommand
-                            label="Homebrew"
-                            command="brew tap meetcal/tap && brew install meetcal"
-                        />
-                        <CopyCommand
-                            label="Cargo"
-                            command="cargo install --git https://github.com/meetcal/meetcal-cli.git meetcal"
-                        />
+                        <CopyCommand label="Homebrew" command=HOMEBREW_INSTALL />
+                        <CopyCommand label="Cargo" command=CARGO_INSTALL />
                     </div>
                 </article>
 
@@ -96,6 +94,12 @@ pub fn InteractionSection() -> impl IntoView {
         </section>
     }
 }
+
+/// The CLI's install commands, as `cli/README.md` gives them. The CLI lives in
+/// this repository's `cli/`; the old meetcal-cli repository is archived (#240).
+const HOMEBREW_INSTALL: &str = "brew tap meetcal/tap && brew install meetcal";
+const CARGO_INSTALL: &str =
+    "cargo install --git https://github.com/meetcal/meetcal-app.git meetcal";
 
 #[component]
 fn CopyCommand(label: &'static str, command: &'static str) -> impl IntoView {
@@ -241,5 +245,26 @@ pub fn HighlightSection() -> impl IntoView {
                 </div>
             </div>
         </section>
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn cli_install_commands_match_the_cli_readme() {
+        let readme = include_str!("../../../cli/README.md");
+        // The README gives the Homebrew command as two lines; the page joins them.
+        for command in HOMEBREW_INSTALL.split(" && ").chain([CARGO_INSTALL]) {
+            assert!(
+                readme.lines().any(|line| line == command),
+                "cli/README.md doesn't give `{command}`"
+            );
+        }
+        assert!(
+            !CARGO_INSTALL.contains("meetcal-cli"),
+            "the meetcal-cli repository is archived"
+        );
     }
 }

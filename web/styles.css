@@ -1473,11 +1473,18 @@ main > div:has(> h4) > p {
     line-height: 1.15;
 }
 
+.footer-ctas {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 12px;
+    margin: 22px 0 32px;
+}
+
 .footer-cta {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    margin: 22px 0 32px;
     padding: 15px 32px;
     border-radius: 14px;
     background: linear-gradient(180deg, #1a8cff, var(--accent) 45%, var(--accent-deep));
@@ -1492,6 +1499,23 @@ main > div:has(> h4) > p {
 .footer-cta:hover {
     filter: brightness(1.06);
     transform: translateY(-2px);
+}
+
+.footer-cta-secondary {
+    border: 1px solid rgba(242, 244, 246, 0.35);
+    background: rgba(242, 244, 246, 0.08);
+    box-shadow: none;
+}
+
+.interaction-links {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px 22px;
+    margin-top: auto;
+}
+
+.interaction-links .interaction-link {
+    margin-top: 0;
 }
 
 .site-footer p {
