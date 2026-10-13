@@ -5,6 +5,7 @@ import type { MutableResource } from '@/lib/data/mutable-resource';
 import { devLog } from '@/lib/logger';
 import {
   buildDataWidgetPayloads,
+  buildLockedDataWidgetPayloads,
   getDataWidgetWriteCount,
   hasResolvedWidgetFilters,
   isDataWidgetModuleAvailable,
@@ -20,8 +21,13 @@ import {
 /**
  * Keeps the qualifying totals, standards and international rankings widgets
  * current without the Widget Settings screen being open. The app calls
- * `refreshDataWidgets` at launch and on every foreground; this module bounds
- * what that costs.
+ * `refreshDataWidgets` at launch, on every foreground and whenever the
+ * premium entitlement changes; this module bounds what that costs.
+ *
+ * The tables are premium (each screen is behind `SubscriptionGate`), so the
+ * refresh takes the entitlement: a subscriber gets the data, a user without
+ * the entitlement gets the "subscribe" payloads (and nothing is fetched), and
+ * an entitlement still unknown leaves the widgets as they are.
  */
 
 /** Minimum spacing between background refreshes (launch, foregrounds). */
@@ -37,6 +43,13 @@ export const DATA_WIDGET_SOURCE_MAX_AGE_MS = 6 * 60 * 60 * 1000;
 export type DataWidgetRefreshOutcome =
   /** No native data-widget module (web, Expo Go, tests). Nothing fetched. */
   | 'unavailable'
+  /**
+   * RevenueCat (or its cache) has not answered yet. Widgets untouched; the
+   * caller refreshes again once it does.
+   */
+  | 'entitlement-unknown'
+  /** No premium entitlement: the "subscribe" payloads were written. */
+  | 'locked'
   /** A refresh reached the data less than `DATA_WIDGET_REFRESH_MIN_INTERVAL_MS` ago. */
   | 'throttled'
   /** A source could not be read from cache or network. Widgets untouched. */
@@ -114,8 +127,31 @@ async function loadDefaultSource(now: number): Promise<DataWidgetSourceData | nu
 
 export function createDataWidgetRefresher(deps: DataWidgetRefreshDeps) {
   let inFlight: Promise<DataWidgetRefreshOutcome> | null = null;
+  let inFlightEntitlement: boolean | null = null;
   let lastStartedAt: number | null = null;
+  let lastEntitlement: boolean | null = null;
+  /** The newest answer a caller asked for; a queued run for an older one is dropped. */
+  let latestEntitlement: boolean | null = null;
   let lastWrite: { signature: string; writeCount: number } | null = null;
+
+  /** True when these exact payloads are what this refresher last wrote. */
+  const isLastWrite = (signature: string) =>
+    lastWrite !== null &&
+    lastWrite.signature === signature &&
+    lastWrite.writeCount === deps.getWriteCount();
+
+  const write = (payloads: DataWidgetPayloads, signature: string) => {
+    deps.sync(payloads);
+    lastWrite = { signature, writeCount: deps.getWriteCount() };
+  };
+
+  const runLocked = async (): Promise<DataWidgetRefreshOutcome> => {
+    const payloads = buildLockedDataWidgetPayloads();
+    const signature = JSON.stringify(payloads);
+    if (isLastWrite(signature)) return 'unchanged';
+    write(payloads, signature);
+    return 'locked';
+  };
 
   const run = async (): Promise<DataWidgetRefreshOutcome> => {
     const writeCountAtStart = deps.getWriteCount();
@@ -143,48 +179,59 @@ export function createDataWidgetRefresher(deps: DataWidgetRefreshDeps) {
 
     const payloads = buildDataWidgetPayloads(source, settings);
     const signature = JSON.stringify(payloads);
-    if (
-      lastWrite &&
-      lastWrite.signature === signature &&
-      lastWrite.writeCount === deps.getWriteCount()
-    ) {
-      return 'unchanged';
-    }
+    if (isLastWrite(signature)) return 'unchanged';
 
     // Persist healed filters first, as the settings screen does, so the screen
     // and the widget never disagree about what is selected.
     if (settings !== stored) await deps.saveSettings(settings);
     if (deps.getWriteCount() !== writeCountAtStart) return 'superseded';
 
-    deps.sync(payloads);
-    lastWrite = { signature, writeCount: deps.getWriteCount() };
+    write(payloads, signature);
     return 'synced';
   };
 
   /**
-   * Never rejects. Concurrent callers share one run; calls within
-   * `DATA_WIDGET_REFRESH_MIN_INTERVAL_MS` of the last run that reached the
-   * data are skipped. A run that found no data (no cache and no network, or a
+   * Never rejects. `isSubscribed` is the app's current entitlement answer
+   * (`useSubscription().isSubscribed`). Concurrent callers with the same
+   * answer share one run; calls within `DATA_WIDGET_REFRESH_MIN_INTERVAL_MS`
+   * of the last run that reached the data are skipped unless the answer
+   * changed since (a purchase, an expiry), which runs at once, after any run
+   * in flight. A run that found no data (no cache and no network, or a
    * storage error) does not hold back the next foreground.
    */
-  const refresh = (): Promise<DataWidgetRefreshOutcome> => {
+  const refresh = (isSubscribed: boolean | null): Promise<DataWidgetRefreshOutcome> => {
     if (!deps.isAvailable()) return Promise.resolve('unavailable');
-    if (inFlight) return inFlight;
+    if (isSubscribed === null) return Promise.resolve('entitlement-unknown');
+    latestEntitlement = isSubscribed;
+    if (inFlight) {
+      if (inFlightEntitlement === isSubscribed) return inFlight;
+      // Queued behind the run in flight, and dropped if the answer changed
+      // again meanwhile (true -> false -> true must not end on "locked").
+      return inFlight.then(() =>
+        latestEntitlement === isSubscribed ? refresh(isSubscribed) : ('superseded' as const),
+      );
+    }
     const now = deps.now();
     if (
+      lastEntitlement === isSubscribed &&
       lastStartedAt !== null &&
       now - lastStartedAt < DATA_WIDGET_REFRESH_MIN_INTERVAL_MS
     ) {
       return Promise.resolve('throttled');
     }
     lastStartedAt = now;
-    inFlight = run()
+    lastEntitlement = isSubscribed;
+    inFlightEntitlement = isSubscribed;
+    inFlight = (isSubscribed ? run() : runLocked())
       .catch((error: unknown) => {
         console.warn('[Widget] Data widget refresh failed', error);
         return 'no-data' as const;
       })
       .then((outcome) => {
-        if (outcome === 'no-data') lastStartedAt = null;
+        // Neither wrote: a run with no data, or one the settings screen
+        // superseded (which may unmount before its own data loads). Neither
+        // holds back the next foreground's run.
+        if (outcome === 'no-data' || outcome === 'superseded') lastStartedAt = null;
         devLog(`[Widget] Data widget refresh: ${outcome}`);
         return outcome;
       })
@@ -207,7 +254,12 @@ const defaultRefresher = createDataWidgetRefresher({
   getWriteCount: getDataWidgetWriteCount,
 });
 
-/** Rebuilds the data widgets from the stored settings. See module comment. */
-export function refreshDataWidgets(): Promise<DataWidgetRefreshOutcome> {
-  return defaultRefresher.refresh();
+/**
+ * Rebuilds the data widgets from the stored settings for a subscriber, or
+ * writes the "subscribe" payloads for anyone else. See module comment.
+ */
+export function refreshDataWidgets(
+  isSubscribed: boolean | null,
+): Promise<DataWidgetRefreshOutcome> {
+  return defaultRefresher.refresh(isSubscribed);
 }

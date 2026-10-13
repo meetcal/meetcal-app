@@ -4,6 +4,11 @@ import WidgetSettingsScreen from "@/app/schedule-toolbar/widget-settings";
 import { GenericFilterModal } from "@/components/ui/filters";
 import { defaultWidgetSettings, saveWidgetSettings, syncDataWidgets } from "@/utils/dataWidgets";
 
+let mockSyncable = false;
+
+jest.mock("@/components/ui/SubscriptionGate", () => ({
+  SubscriptionGate: ({ children }: { children: React.ReactNode }) => children,
+}));
 jest.mock("@/components/ui/Toast", () => ({ showToast: jest.fn() }));
 jest.mock("@/contexts/ThemeContext", () => ({ useTheme: () => ({ currentTheme: "light" }) }));
 jest.mock("expo-router", () => ({ Stack: { Screen: () => null } }));
@@ -23,24 +28,37 @@ jest.mock("@/utils/dataWidgets", () => {
     loadWidgetSettings: jest.fn(async () => actual.defaultWidgetSettings),
     saveWidgetSettings: jest.fn(async () => {}),
     syncDataWidgets: jest.fn(),
-    hasResolvedWidgetFilters: () => false,
+    // False while the screen mounts, so the background commit stays out of
+    // the way; true once a test applies filters, as with loaded data.
+    canSyncDataWidgets: () => mockSyncable,
   };
 });
 
 describe("widget settings commits", () => {
-  beforeEach(() => { jest.clearAllMocks(); });
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockSyncable = false;
+  });
 
   it("continues saving after an earlier storage write rejects", async () => {
     const errorLog = jest.spyOn(console, "error").mockImplementation(() => {});
     jest.mocked(saveWidgetSettings).mockRejectedValueOnce(new Error("Storage failed"));
     let tree!: ReturnType<typeof create>;
     await act(async () => { tree = create(<WidgetSettingsScreen />); });
+    mockSyncable = true;
     const apply = () => tree.root.findAllByType(GenericFilterModal)[1].props.onApplyFilters;
     await act(async () => { apply()({ gender: "women", ageGroup: "senior" }); });
-    expect(syncDataWidgets).not.toHaveBeenCalled();
-    await act(async () => { apply()({ gender: "men", ageGroup: "junior" }); });
+    // The rejected save wrote no widget; the background commit (the data is
+    // loaded) then saves the same filters again and writes them.
     expect(saveWidgetSettings).toHaveBeenCalledTimes(2);
     expect(syncDataWidgets).toHaveBeenCalledTimes(1);
+    await act(async () => { apply()({ gender: "men", ageGroup: "junior" }); });
+    expect(saveWidgetSettings).toHaveBeenCalledTimes(3);
+    expect(saveWidgetSettings).toHaveBeenLastCalledWith({
+      ...defaultWidgetSettings,
+      standards: { gender: "men", ageGroup: "junior" },
+    });
+    expect(syncDataWidgets).toHaveBeenCalledTimes(2);
     await act(async () => { tree.unmount(); });
     errorLog.mockRestore();
   });
@@ -51,6 +69,7 @@ describe("widget settings commits", () => {
     );
     let tree!: ReturnType<typeof create>;
     await act(async () => { tree = create(<WidgetSettingsScreen />); });
+    mockSyncable = true;
     const standardsModal = () => tree.root.findAllByType(GenericFilterModal)[1];
     await act(async () => {
       standardsModal().props.onApplyFilters({ gender: "women", ageGroup: "senior" });

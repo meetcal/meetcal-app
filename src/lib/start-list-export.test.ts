@@ -10,6 +10,7 @@ import {
   buildScheduleCsv,
   buildSessionExportRows,
   csvEscape,
+  describeIncompleteShare,
   scheduleCsvFileName,
   shareScheduleCsv,
 } from "@/lib/start-list-export";
@@ -91,7 +92,10 @@ const athletes = [
 
 describe("buildSessionExportRows", () => {
   it("places athletes the schedule knows, with the platform's own start time", () => {
-    const rows = buildSessionExportRows(athletes, lookup);
+    const { rows, unscheduled } = buildSessionExportRows(athletes, lookup);
+    // Entered in a session the schedule has no row for: left out, but kept
+    // so the exports can say so. An athlete with no session is neither.
+    expect(unscheduled.map((a) => a.name)).toEqual(["Unknown Session"]);
     expect(rows.map((r) => r.athlete.name)).toEqual([
       "Zed Sunday",
       "Bea Blue",
@@ -103,17 +107,75 @@ describe("buildSessionExportRows", () => {
       platform: "Blue",
       date: "2026-06-20",
       startTime: "11:00",
-      weighInTime: "7:00 AM",
+      // The session's published 7:00 AM is the Red row's; Blue starts at
+      // 11:00, so its weigh-in is 9:00 AM (#281).
+      weighInTime: "9:00 AM",
       weightClass: "96",
     });
     expect(rows[2].startTime).toBe("9:00 AM");
+  });
+
+  // #281: Red at 9:00 and Blue at 9:30 with the session's published weigh-in
+  // 7:00 (Red's row). Blue's event said 7:00 here and 7:30 everywhere else.
+  it("resolves each platform's weigh-in by the shared rule", () => {
+    const schedule: Schedule = [
+      {
+        date: "Saturday",
+        fullDate: "2026-06-20",
+        sessions: [
+          {
+            id: "s5",
+            number: 5,
+            startTime: "9:00 AM",
+            weighInTime: "7:00 AM",
+            platforms: [
+              { platform: "Red", weightClass: "89", platformStartTime: "9:00 AM", platformWeighInTime: "7:00 AM" },
+              { platform: "Blue", weightClass: "96", platformStartTime: "9:30 AM", platformWeighInTime: "" },
+              { platform: "White", weightClass: "102", platformStartTime: "10:00 AM", platformWeighInTime: "8:15 AM" },
+            ],
+          },
+        ],
+      },
+    ];
+    const { rows } = buildSessionExportRows(
+      [
+        lifter("Red", { number: 5, platform: "Red" }),
+        lifter("Blue", { number: 5, platform: "Blue" }),
+        lifter("White", { number: 5, platform: "White" }),
+      ],
+      buildSessionDetailsLookup(schedule),
+    );
+    expect(rows.map((r) => [r.startTime, r.weighInTime])).toEqual([
+      ["9:00 AM", "7:00 AM"],
+      ["9:30 AM", "7:30 AM"],
+      ["10:00 AM", "8:15 AM"],
+    ]);
+  });
+});
+
+describe("describeIncompleteShare", () => {
+  it("is null when every athlete is in the schedule", () => {
+    expect(describeIncompleteShare(3, 3)).toBeNull();
+    expect(describeIncompleteShare(0, 0)).toBeNull();
+  });
+
+  it("says how many athletes a share leaves out", () => {
+    expect(describeIncompleteShare(40, 0)).toBe(
+      "40 athletes of 40 have no session on the schedule yet and won't be included. Share anyway?",
+    );
+    expect(describeIncompleteShare(5, 4)).toBe(
+      "1 athlete of 5 has no session on the schedule yet and won't be included. Share anyway?",
+    );
   });
 });
 
 // The Start List's Add to Calendar: its rows grouped by `groupCalendarSessions`.
 describe("calendar events from the export rows", () => {
   it("makes one event per session and platform naming every weight class", () => {
-    const sessions = groupCalendarSessions(buildSessionExportRows(athletes, lookup), "Nationals");
+    const { rows, unscheduled } = buildSessionExportRows(athletes, lookup);
+    const { sessions, skipped } = groupCalendarSessions(rows, "Nationals", unscheduled);
+    // Session 9 / Red has no schedule row: counted, so the toast says 3 of 4.
+    expect(skipped).toBe(1);
     expect(sessions).toEqual([
       {
         date: "2026-06-21",
@@ -141,7 +203,7 @@ describe("csvEscape", () => {
 
 describe("buildScheduleCsv", () => {
   it("orders by meet date, then start time, then name, in meet-calendar dates", () => {
-    const csv = buildScheduleCsv(buildSessionExportRows(athletes, lookup), {
+    const csv = buildScheduleCsv(buildSessionExportRows(athletes, lookup).rows, {
       group: "Barbell, Inc",
       meet: "Nationals",
     });

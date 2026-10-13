@@ -261,8 +261,8 @@ describe('meetcal API contract (serde output through the real client)', () => {
             startTime: '8:00 AM',
             weighInTime: '6:00 AM',
             platforms: [
-              { platform: 'Red', weightClass: '+110', platformStartTime: '8:00 AM' },
-              { platform: 'Blue', weightClass: '110', platformStartTime: '8:00 AM' },
+              { platform: 'Red', weightClass: '+110', platformStartTime: '8:00 AM', platformWeighInTime: '6:00 AM' },
+              { platform: 'Blue', weightClass: '110', platformStartTime: '8:00 AM', platformWeighInTime: '6:00 AM' },
             ],
           },
         ],
@@ -377,7 +377,9 @@ describe('meetcal API contract (serde output through the real client)', () => {
             number: 1,
             startTime: '9:00 AM',
             weighInTime: '7:00 AM',
-            platforms: [{ platform: 'Red', weightClass: '89', platformStartTime: '9:00 AM' }],
+            platforms: [
+              { platform: 'Red', weightClass: '89', platformStartTime: '9:00 AM', platformWeighInTime: '7:00 AM' },
+            ],
           },
         ],
       },

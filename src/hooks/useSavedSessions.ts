@@ -17,6 +17,7 @@ import {
   type FlushResult,
   readOutbox,
 } from '@/lib/saved-sessions-outbox';
+import { clearAccountDeleted, onAccountDeleted } from '@/lib/deleted-accounts';
 import { createSerialQueue } from '@/lib/saved-sessions-queue';
 import {
   clearSavedSessionsCache,
@@ -28,6 +29,7 @@ import {
 } from '@/lib/saved-sessions-store';
 import {
   createLoadChain,
+  createRefreshThrottle,
   loadSavedSessionsFor,
   savedSessionsLoadKey,
 } from '@/lib/saved-sessions-load';
@@ -44,6 +46,7 @@ import {
 } from '@/lib/saved-sessions-actions';
 import { useStorageUser } from '@/hooks/saved-sessions/useStorageUser';
 import { useReconnectReplay } from '@/hooks/saved-sessions/useReconnectReplay';
+import { useForegroundRefresh } from '@/hooks/saved-sessions/useForegroundRefresh';
 import { useReminderSync } from '@/hooks/saved-sessions/useReminderSync';
 import { useScheduleTimedSessions } from '@/hooks/saved-sessions/useScheduleTimedSessions';
 
@@ -75,6 +78,11 @@ export function useSavedSessions() {
   const [isLoading, setIsLoading] = useState(true);
   const clerkUserId = user?.id;
   const { storageUserId, hasResolvedUser } = useStorageUser(clerkUserId, Boolean(isClerkLoaded));
+  // Signed in as this user: an account this device cleared as deleted was
+  // only signed out of, and its saves are stored again (`deleted-accounts.ts`).
+  useEffect(() => {
+    if (clerkUserId) clearAccountDeleted(clerkUserId);
+  }, [clerkUserId]);
   /**
    * The API answered 401 to a `/users/me/*` call. The Clerk session Clerk
    * still reports as signed in no longer authorises writes, so nothing is
@@ -88,6 +96,8 @@ export function useSavedSessions() {
    * identical to "nothing saved".
    */
   const [syncFailed, setSyncFailed] = useState(false);
+  const syncFailedRef = useRef(syncFailed);
+  syncFailedRef.current = syncFailed;
   /** Writes recorded in the outbox that have not yet reached the server. */
   const pendingWriteCountRef = useRef(0);
   // Clerk's `getToken` identity is not something the effects below should
@@ -124,6 +134,21 @@ export function useSavedSessions() {
     };
   }
   const store = storeRef.current;
+
+  // The active account was deleted on this device (`clearLocalUserData`):
+  // blank its list and widget now, as a sign-out does; offline, the cached
+  // user can stay active, so the effect below would not.
+  useEffect(
+    () =>
+      onAccountDeleted((userId) => {
+        if (activeUserIdRef.current !== userId) return;
+        setSavedSessions([]);
+        pendingWriteCountRef.current = 0;
+        clearSavedWidget();
+        clearSavedSessionsCache(store.cache);
+      }),
+    [store],
+  );
 
   useEffect(() => {
     if (!hasResolvedUser || activeUserId) return;
@@ -270,11 +295,38 @@ export function useSavedSessions() {
    * confirming the cached user) queues behind the running one.
    */
   const loadChain = useRef(createLoadChain()).current;
-  const loadSavedSessions = useCallback(
-    (): Promise<void> =>
+  const refreshThrottle = useRef(createRefreshThrottle()).current;
+  // Loads started and not yet settled, joined calls included.
+  const loadsInFlightRef = useRef(0);
+  const trackLoad = useCallback((load: Promise<void>): Promise<void> => {
+    loadsInFlightRef.current += 1;
+    const settle = () => {
+      loadsInFlightRef.current -= 1;
+    };
+    load.then(settle, settle);
+    return load;
+  }, []);
+  const loadSavedSessions = useCallback((): Promise<void> => {
+    refreshThrottle.markRun();
+    return trackLoad(
       loadChain.run(savedSessionsLoadKey(activeUserId, Boolean(clerkUserId)), runLoad),
-    [activeUserId, clerkUserId, loadChain, runLoad],
-  );
+    );
+  }, [activeUserId, clerkUserId, loadChain, refreshThrottle, runLoad, trackLoad]);
+
+  /**
+   * A load nobody asked for: the app returning to the foreground, or the
+   * network coming back. The list, and through it the reminders, the widget,
+   * Siri and Spotlight, then follow saves and unsaves made on another device
+   * without a visit to the Saved tab. Throttled, except after a load that
+   * could not reach the server (a foreground while offline must not hold
+   * off the reload when the network returns); skipped with no user.
+   */
+  const refreshSavedSessions = useCallback(async (): Promise<void> => {
+    if (!activeUserId) return;
+    if (!syncFailedRef.current && !refreshThrottle.shouldRun()) return;
+    await loadSavedSessions();
+  }, [activeUserId, loadSavedSessions, refreshThrottle]);
+  useForegroundRefresh(Boolean(activeUserId), refreshSavedSessions);
 
   // Load on every step of user resolution that changes what a load can do:
   // the cached id (local only) and then Clerk's id (server reconcile). Keyed
@@ -313,11 +365,31 @@ export function useSavedSessions() {
     lastConfirmedRef.current = { userId: clerkUserId, confirmed: confirmedIsSubscribed };
     if (!clerkUserId || last.userId !== clerkUserId) return;
     if (confirmedIsSubscribed === true && last.confirmed !== true) {
-      void loadChain.run(savedSessionsLoadKey(activeUserId, true), runLoad, { fresh: true });
+      void trackLoad(loadChain.run(savedSessionsLoadKey(activeUserId, true), runLoad, { fresh: true }));
     }
-  }, [activeUserId, clerkUserId, confirmedIsSubscribed, loadChain, runLoad]);
+  }, [activeUserId, clerkUserId, confirmedIsSubscribed, loadChain, runLoad, trackLoad]);
 
-  useReconnectReplay(clerkUserId, pendingWriteCountRef, syncOutbox);
+  // Back online. A load still running may be one that is about to fail
+  // offline, past its outbox flush and counted against the throttle, so a
+  // fresh load queues behind it (it sends any queued writes first).
+  // Otherwise queued writes go out at once (the load sends the outbox
+  // before it fetches), and with nothing queued it is a throttled refresh.
+  const reconnect = useCallback(
+    (hasPendingWrites: boolean): Promise<void> => {
+      if (loadsInFlightRef.current > 0 && activeUserId) {
+        refreshThrottle.markRun();
+        return trackLoad(
+          loadChain.run(savedSessionsLoadKey(activeUserId, Boolean(clerkUserId)), runLoad, {
+            fresh: true,
+          }),
+        );
+      }
+      if (hasPendingWrites) return loadSavedSessions();
+      return refreshSavedSessions();
+    },
+    [activeUserId, clerkUserId, loadChain, loadSavedSessions, refreshSavedSessions, refreshThrottle, runLoad, trackLoad],
+  );
+  useReconnectReplay(clerkUserId, pendingWriteCountRef, reconnect);
 
   // Once the list for the resolved user has loaded. "No user" is only an
   // answer once Clerk has loaded: with an expired auth hint and Clerk still

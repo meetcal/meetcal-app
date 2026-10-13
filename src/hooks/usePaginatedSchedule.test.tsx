@@ -229,3 +229,66 @@ describe("usePaginatedSchedule width changes", () => {
   });
 
 });
+
+describe("usePaginatedSchedule header title (#286)", () => {
+  it("sets the day's title again after the header showed another meet's start date", () => {
+    setWidth(400);
+    setInsets();
+    const onTitleChange = jest.fn();
+    let captured: ReturnType<typeof usePaginatedSchedule> | null = null;
+    function Harness() {
+      captured = usePaginatedSchedule({
+        schedule,
+        onTitleChange,
+        formatDayTitle: (d) => `Day ${d.date}`,
+      });
+      return null;
+    }
+    act(() => {
+      create(<Harness />);
+    });
+    const show = (index: number) =>
+      act(() => {
+        captured!.onViewableItemsChanged({
+          viewableItems: [{ index, item: schedule[index], key: String(index), isViewable: true }],
+          changed: [],
+        } as never);
+      });
+
+    // Meet A: the list opens on its first day.
+    show(0);
+    expect(onTitleChange).toHaveBeenLastCalledWith("Day 2026-06-20");
+    // Meet B has no schedule: the screen shows its start date.
+    act(() => captured!.setHeaderTitle("Jul 11, 2026"));
+    expect(onTitleChange).toHaveBeenLastCalledWith("Jul 11, 2026");
+    // Back to meet A, on the same day as before.
+    show(0);
+    expect(onTitleChange).toHaveBeenLastCalledWith("Day 2026-06-20");
+    expect(onTitleChange).toHaveBeenCalledTimes(3);
+    // Scrolling within a day does not re-set the same title.
+    show(0);
+    expect(onTitleChange).toHaveBeenCalledTimes(3);
+  });
+});
+
+describe("usePaginatedSchedule header style change", () => {
+  it("re-applies the current title when the title setter changes (Duo fold)", () => {
+    setWidth(400);
+    setInsets();
+    const first = jest.fn();
+    const second = jest.fn();
+    let captured: ReturnType<typeof usePaginatedSchedule> | null = null;
+    function Harness({ onTitleChange }: { onTitleChange: (title: string) => void }) {
+      captured = usePaginatedSchedule({ schedule, onTitleChange, formatDayTitle: (d) => d.date });
+      return null;
+    }
+    let tree!: ReturnType<typeof create>;
+    act(() => {
+      tree = create(<Harness onTitleChange={first} />);
+    });
+    act(() => captured!.setHeaderTitle("Jul 11, 2026"));
+    expect(first).toHaveBeenLastCalledWith("Jul 11, 2026");
+    act(() => tree.update(<Harness onTitleChange={second} />));
+    expect(second).toHaveBeenCalledWith("Jul 11, 2026");
+  });
+});

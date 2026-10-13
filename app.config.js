@@ -1,3 +1,12 @@
+/**
+ * The iOS calendar permission prompt (iOS 17+ shows the full-access string;
+ * the expo-calendar plugin sets it and the pre-17 key from this one value).
+ * Accurate about reading: the export looks up the events MeetCal created so
+ * it can update them instead of adding duplicates (`src/utils/calendar.ts`).
+ */
+const CALENDAR_PERMISSION =
+  "MeetCal adds the sessions you choose to your calendar, with a reminder before each one, and updates those events when a session's time changes. MeetCal only reads back the events it created; it does not read your other events.";
+
 export default ({ config }) => ({
   name: 'MeetCal',
   slug: 'meetcal',
@@ -28,7 +37,6 @@ export default ({ config }) => ({
       usesNonExemptEncryption: false
     },
     infoPlist: {
-      NSCalendarsUsageDescription: "MeetCal needs calendar access to add weightlifting competition sessions to your calendar. This allows you to receive reminders for your weigh-in and competition times. MeetCal will only ever write new events on your calendar, it will not read your current events.",
       NSLocationWhenInUseUsageDescription: "MeetCal does not use your location, but frameworks we use have location-related things so I have to include this.",
       UIBackgroundModes: ["remote-notification"],
       // Read by the Siri / App Intents client (plugins/ios-app-intents/MeetCalAPI.swift).
@@ -65,6 +73,17 @@ export default ({ config }) => ({
       'onesignal-expo-plugin',
       { mode: 'production', iPhoneDeploymentTarget: '18.0' }
     ],
+    // Listed so its prompt uses CALENDAR_PERMISSION. Unlisted, prebuild still
+    // applied it with Expo's generic "Allow MeetCal to access your calendars"
+    // full-access string and added Reminders strings the app never uses
+    // (`false` removes them).
+    [
+      'expo-calendar',
+      { calendarPermission: CALENDAR_PERMISSION, remindersPermission: false },
+    ],
+    // The app's click listener opens a push's launch URL; OneSignal must not
+    // open it a second time.
+    './plugins/withOneSignalSuppressLaunchURLs',
     'expo-font',
     'expo-localization',
     'expo-router',

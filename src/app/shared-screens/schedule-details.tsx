@@ -7,9 +7,9 @@ import { MeetName } from "@/data/types/meet";
 import { useAppColors } from "@/hooks/useAppColors";
 import { useSessionAthletes } from "@/hooks/useMeetAthletes";
 import { useScheduleData } from "@/hooks/useScheduleData";
-import { findSessionPlatform } from "@/lib/schedule-lookup";
+import { findSessionPlatform, platformSessionTimes } from "@/lib/schedule-lookup";
 import { generateSessionId } from "@/utils/session";
-import { calculateWeighInTime } from "@/utils/time";
+import { resolveWeighInTime } from "@/utils/time";
 import { Stack, useLocalSearchParams } from "expo-router";
 import React, { useCallback, useMemo, useState } from "react";
 import { RefreshControl, ScrollView, StyleSheet, View } from "react-native";
@@ -73,14 +73,22 @@ export default function SessionDetailsScreen() {
   const sessionWeightClass =
     sessionMatch?.platform?.weightClass || params.weightClass;
   const sessionDate = sessionMatch?.day.date || `Session ${params.sessionNumber}`;
-  // The platform's own start time wins over the one passed in.
-  const platformStartTime =
-    sessionMatch?.platform?.platformStartTime || params.startTime;
-
-  // Calculate weigh-in time based on platform start time
-  const platformWeighInTime = useMemo(() => {
-    return calculateWeighInTime(platformStartTime);
-  }, [platformStartTime]);
+  // The schedule's row for this platform wins over the times passed in, even
+  // when it has no start (the schedule stopped timing it: untimed, not the
+  // link's older time); the weigh-in is the platform's published one, else
+  // start minus 2 h. Without a row (schedule not loaded), the link's own
+  // pair, resolved the same way.
+  const { startTime: platformStartTime, weighInTime: platformWeighInTime } = useMemo(() => {
+    if (sessionMatch) {
+      return platformSessionTimes(sessionMatch.session, sessionMatch.platform);
+    }
+    return {
+      startTime: params.startTime,
+      weighInTime: resolveWeighInTime(params.startTime, params.weighInTime),
+    };
+  }, [sessionMatch, params.startTime, params.weighInTime]);
+  // The session's meet calendar date: its zone label and calendar event.
+  const sessionFullDate = sessionMatch?.day.fullDate || params.date;
 
   // Both refreshes are awaited, so the spinner covers the athletes too, and
   // a failed athletes refresh is said out loud: it used to run from an effect
@@ -151,6 +159,7 @@ export default function SessionDetailsScreen() {
             sessionWeightClass={sessionWeightClass || params.weightClass}
             platformStartTime={platformStartTime}
             platformWeighInTime={platformWeighInTime}
+            sessionFullDate={sessionFullDate}
             athleteName={params.athleteName}
           />
           <SessionAthletes

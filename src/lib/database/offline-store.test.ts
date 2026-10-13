@@ -23,6 +23,7 @@ import {
   hasMeetEnded,
   initStore,
   markMeetExplicitlyDownloaded,
+  markMeetScheduleVerified,
   pruneOrphanedAthleteHistory,
   saveAthleteBestsBatch,
   saveAthleteHistory,
@@ -954,6 +955,62 @@ describe("saveMeetSchedule validation", () => {
       ] as any),
     ).rejects.toThrow("Invalid session structure");
     error.mockRestore();
+  });
+});
+
+describe("schedule sync stamp (#397)", () => {
+  const SCHEDULE = [
+    {
+      date: "June 20, 2026",
+      fullDate: "2026-06-20",
+      sessions: [
+        { id: "1", number: 1, startTime: "9:00 AM", weighInTime: "7:00 AM", platforms: [{ platform: "Red", weightClass: "60kg" }] },
+      ],
+    },
+  ] as any;
+
+  beforeEach(async () => {
+    mockStorage.clear();
+    await initStore();
+  });
+
+  it("restamps a checked, unchanged schedule only once the stamp is old enough", async () => {
+    await saveMeetSchedule("Stamp Meet", SCHEDULE);
+    const savedAt = (await getMeetData("Stamp Meet" as never)).lastSyncTime;
+
+    await expect(markMeetScheduleVerified("Stamp Meet", savedAt + 60_000, 15 * 60_000)).resolves.toBe(false);
+    expect((await getMeetData("Stamp Meet" as never)).lastSyncTime).toBe(savedAt);
+
+    await expect(markMeetScheduleVerified("Stamp Meet", savedAt + 15 * 60_000, 15 * 60_000)).resolves.toBe(true);
+    expect((await getMeetData("Stamp Meet" as never)).lastSyncTime).toBe(savedAt + 15 * 60_000);
+  });
+
+  it("does not rewind a newer stamp a save wrote while the check waited", async () => {
+    await saveMeetSchedule("Stamp Meet", SCHEDULE);
+    const index = JSON.parse(mockStorage.get("meetcal_offline_store")!);
+    const savedAt: number = index.meets["Stamp Meet"].lastSyncTime;
+    // What the check read before it joined the write chain: an old stamp.
+    const stale = JSON.parse(JSON.stringify(index));
+    stale.meets["Stamp Meet"].lastSyncTime = savedAt - 60 * 60_000;
+    jest.mocked(AsyncStorage.getItem).mockImplementationOnce(async () => JSON.stringify(stale));
+
+    // Checked at a time before the save's stamp.
+    await expect(markMeetScheduleVerified("Stamp Meet", savedAt - 1, 15 * 60_000)).resolves.toBe(false);
+    expect((await getMeetData("Stamp Meet" as never)).lastSyncTime).toBe(savedAt);
+  });
+
+  it("does not create an entry for a meet with nothing stored", async () => {
+    await expect(markMeetScheduleVerified("Unknown Meet")).resolves.toBe(false);
+    expect(JSON.parse(mockStorage.get("meetcal_offline_store") ?? "{}").meets?.["Unknown Meet"]).toBeUndefined();
+  });
+
+  it("reads the schedule without the roster", async () => {
+    await saveMeetSchedule("Stamp Meet", SCHEDULE);
+    const getItem = jest.mocked(AsyncStorage.getItem);
+    getItem.mockClear();
+    await expect(getMeetSchedule("Stamp Meet")).resolves.toEqual(SCHEDULE);
+    const keys = getItem.mock.calls.map(([key]) => key);
+    expect(keys.some((key) => /athlete/i.test(String(key)))).toBe(false);
   });
 });
 
@@ -1987,7 +2044,11 @@ describe("store index writes", () => {
     const setItem = AsyncStorage.setItem as jest.Mock;
     setItem.mockClear();
 
+    // A schedule read writes nothing at all.
     await expect(getMeetSchedule("Some Meet")).resolves.toEqual([]);
+    expect(setItem.mock.calls.filter(([key]) => key === "meetcal_offline_store")).toHaveLength(0);
+
+    await getMeetData("Some Meet" as never);
 
     // A read writes nothing: no `{ meets: {} }` reset and no entry for the meet.
     const indexWrites = setItem.mock.calls.filter(([key]) => key === "meetcal_offline_store");
