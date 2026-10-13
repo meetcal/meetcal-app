@@ -1,92 +1,109 @@
 import { parseCsv } from '../../lib/csv';
-import { recordHolder, type RecordHolder } from '../holder';
-import { intOrNull, type WsoRecord } from './common';
+import { recordHolder } from '../holder';
+import { blankRecord, intOrNull, plusLast, setLift, type LiftName, type SheetTab, type WsoRecord } from './common';
 
-// Tennessee-Kentucky (port of `auto_scrapers/scraper_tnky.py`): one tab of
-// horizontal sections. Each starts with a header ("MASTERS: MEN" in column 0,
-// "35-39 years old" in column 2) on or just above a row of classes ("44 KG"),
-// then three rows (value, name, date) for each of snatch, C&J and total.
-// A class marked "77 KG*" is footnoted "*Unsubmitted"; its record and holder
-// are kept as written.
+// Tennessee-Kentucky: a tab per age group and gender, titled for it
+// ("6/1/25-8/1/26 Youth Men <13", "Copy of Masters Women 50-55"). Each lists
+// its classes in turn: a class row (",40KG"; "77KG*" is footnoted
+// unsubmitted, kept as written), then a row per lift laid out as the header
+// says: Lift, Name, Weight, Date, Meet.
+//
+// The single tab of horizontal sections the Python scraper read
+// (`scraper_tnky.py`, gid 867133960) is hidden and has not been updated
+// since October 2025; the group tabs replaced it.
 
-/** "YOUTH: WOMEN 14-17 YO" -> ["U17", "Women"]; null when it is no section header. */
-export function tnkySection(header: string): [age: string, gender: 'Men' | 'Women'] | null {
-  const text = header.trim().toUpperCase();
-  const gender = text.includes('WOMEN') ? 'Women' : text.includes('MEN') ? 'Men' : null;
+export const TNKY_SHEET_ID = '11uUA0t05sEvHRjvDksC0VP1Yr2p_rC0JjHgVPEuYzhU';
+
+type Group = [age: string, gender: 'Men' | 'Women'];
+
+/**
+ * The groups the sheet has a tab for (October 2026). A tab for one of them
+ * going missing fails the source rather than deleting its records.
+ */
+export const TNKY_GROUPS: readonly Group[] = [
+  ...(['U13', 'U17', 'Junior', 'Senior', 'Masters 35', 'Masters 40', 'Masters 45', 'Masters 50', 'Masters 55', 'Masters 60'] as const).flatMap(
+    (age): Group[] => [
+      [age, 'Men'],
+      [age, 'Women'],
+    ],
+  ),
+  ['Masters 65', 'Men'],
+];
+
+/**
+ * A tab's age group and gender from its title: "Youth Women <13" -> U13,
+ * "Youth Men 14-17" -> U17, "Juniors Men 15-20", "Seniors Women >15",
+ * "Masters Men 35-39" -> Masters 35. Null for any other tab (the archived
+ * "TN-KY WSO Records through May 31, 2025").
+ */
+export function tnkyTabGroup(title: string): Group | null {
+  const text = title.replace(/\s+/g, ' ').trim().toLowerCase();
+  const gender = /\bwomen\b/.test(text) ? 'Women' : /\bmen\b/.test(text) ? 'Men' : null;
   if (!gender) return null;
-  if (text.includes('13') && text.includes('UNDER')) return ['U13', gender];
-  if (text.includes('14-17') || text.includes('14 - 17')) return ['U17', gender];
-  if (text.includes('SENIOR')) return ['Senior', gender];
-  if (text.includes('JUNIOR')) return ['Junior', gender];
-  if (text.includes('MASTER')) {
-    const range = /(\d+)\s*-\s*(\d+)/.exec(text);
-    if (range) return [`Masters ${range[1]}`, gender];
+  if (/\byouth\b/.test(text)) {
+    if (/<\s*13\b|\b13\s*(?:&|and)?\s*under\b|\bu13\b/.test(text)) return ['U13', gender];
+    if (/\b14\s*-\s*17\b/.test(text)) return ['U17', gender];
+    return null;
   }
+  if (/\bjuniors?\b/.test(text)) return ['Junior', gender];
+  if (/\bseniors?\b/.test(text)) return ['Senior', gender];
+  const masters = /\bmasters?\s+(?:wo)?men\s+(\d{2})\s*-\s*\d{2}\b/.exec(text);
+  if (masters) return [`Masters ${masters[1]}`, gender];
   return null;
 }
 
-/** The class in each column after the first ("65+ KG" -> "65+"), null where there is none. */
-function weightClasses(row: readonly string[]): (string | null)[] {
-  return row.slice(1).map((raw) => {
-    const text = raw.trim();
-    if (!text.toUpperCase().includes('KG')) return null;
-    return /(\d+\+?)\s*KG/i.exec(text)?.[1] ?? null;
-  });
-}
+export type TnkyTab = SheetTab & { age: string; gender: 'Men' | 'Women' };
 
 /**
- * Each class's value in a lift's value row and who set it, from the name and
- * date rows below it (a later column wins for a repeated class).
+ * The sheet's group tabs, from its visible tabs (`sheetTabList`). Two tabs
+ * for one group (an old period's beside the new) or a group in
+ * `TNKY_GROUPS` with none throws: which is current is for a person to say.
  */
-function liftValues(
-  [row, names, dates]: readonly (readonly string[])[],
-  classes: readonly (string | null)[],
-): Map<string, { value: number; by: RecordHolder | undefined }> {
-  const values = new Map<string, { value: number; by: RecordHolder | undefined }>();
-  classes.forEach((weightClass, index) => {
-    if (!weightClass || index + 1 >= row.length) return;
-    const text = row[index + 1].trim();
-    const value = text ? intOrNull(text) : null;
-    if (value !== null) values.set(weightClass, { value, by: recordHolder(value, names[index + 1], dates[index + 1]) });
-  });
-  return values;
+export function tnkyTabs(list: readonly SheetTab[]): TnkyTab[] {
+  const tabs: TnkyTab[] = [];
+  const problems: string[] = [];
+  for (const tab of list) {
+    const group = tnkyTabGroup(tab.name);
+    if (!group) continue;
+    const twin = tabs.find((t) => t.age === group[0] && t.gender === group[1]);
+    if (twin) problems.push(`tabs ${JSON.stringify(twin.name)} and ${JSON.stringify(tab.name)} are both ${group.join(' ')}`);
+    else tabs.push({ ...tab, age: group[0], gender: group[1] });
+  }
+  for (const [age, gender] of TNKY_GROUPS) {
+    if (!tabs.some((t) => t.age === age && t.gender === gender)) problems.push(`no visible tab for ${age} ${gender} (renamed or hidden?)`);
+  }
+  if (problems.length) throw new Error(problems.join('; '));
+  return tabs;
 }
 
-export function parseTnky(csv: string, wso: string): WsoRecord[] {
-  const rows = parseCsv(csv);
-  const records: WsoRecord[] = [];
-  for (let i = 0; i < rows.length; i++) {
-    const row = rows[i];
-    if (!row.length || !row[0]) continue;
-    const section = tnkySection(`${row[0].trim()} ${row.length > 2 ? row[2].trim() : ''}`);
-    if (!section) continue;
-    let classes: (string | null)[] = [];
-    if (row.slice(1, 9).some((cell) => cell.toUpperCase().includes('KG'))) {
-      classes = weightClasses(row);
-    } else if (i + 1 < rows.length) {
-      i += 1;
-      classes = weightClasses(rows[i]);
+const LIFTS: Record<string, LiftName> = { snatch: 'snatch', 'c&j': 'cj', cleanandjerk: 'cj', 'clean&jerk': 'cj', total: 'total' };
+
+/** "40KG", "65+KG", "77KG*" -> the class ("65+"); null for any other cell. */
+const classOf = (cell: string) => {
+  const match = /^(\+?\d+\+?)\s*kg\b/i.exec(cell.trim());
+  return match ? plusLast(match[1]) : null;
+};
+
+/**
+ * One group tab's records, a class per class row, its lifts from the rows
+ * below it. A class listed twice keeps the later listing.
+ */
+export function parseTnkyTab(csv: string, wso: string, age: string, gender: 'Men' | 'Women'): WsoRecord[] {
+  const byClass = new Map<string, WsoRecord>();
+  let current: WsoRecord | null = null;
+  for (const row of parseCsv(csv)) {
+    const cell = (column: number) => (row[column] ?? '').trim();
+    const weightClass = cell(0) ? null : classOf(cell(1));
+    if (weightClass) {
+      current = blankRecord(wso, age, gender, weightClass);
+      byClass.set(weightClass, current);
+      continue;
     }
-    if (i + 9 >= rows.length) continue;
-    const [snatch, cj, total] = [i + 1, i + 4, i + 7].map((at) => liftValues(rows.slice(at, at + 3), classes));
-    for (const weightClass of classes) {
-      if (!weightClass) continue;
-      const [snatchLift, cjLift, totalLift] = [snatch, cj, total].map((lift) => lift.get(weightClass));
-      const record: WsoRecord = {
-        wso,
-        age_category: section[0],
-        gender: section[1],
-        weight_class: weightClass,
-        snatch_record: snatchLift?.value ?? null,
-        cj_record: cjLift?.value ?? null,
-        total_record: totalLift?.value ?? null,
-      };
-      if (snatchLift?.by) record.snatch_by = snatchLift.by;
-      if (cjLift?.by) record.cj_by = cjLift.by;
-      if (totalLift?.by) record.total_by = totalLift.by;
-      records.push(record);
-    }
-    i += 9;
+    const lift = LIFTS[cell(0).toLowerCase().replace(/\s+/g, '')];
+    if (!lift) continue;
+    if (!current) throw new Error(`${wso} ${age} ${gender}: a ${cell(0)} row before any class`);
+    const value = intOrNull(cell(2));
+    setLift(current, lift, value, recordHolder(value, cell(1), cell(3), cell(4)));
   }
-  return records;
+  return [...byClass.values()];
 }

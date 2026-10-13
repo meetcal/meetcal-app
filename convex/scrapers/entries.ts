@@ -67,13 +67,17 @@ type MeetResult = {
   unchanged?: number;
   sessionSkipped?: number;
   notOnStartList?: number;
+  rejected?: number;
+  deleted?: number;
   skipped?: string;
   error?: string;
 };
 
 export const run = internalAction({
-  args: { dryRun: v.optional(v.boolean()), only: v.optional(v.array(v.string())) },
-  handler: async (ctx, { dryRun, only }): Promise<MeetResult[]> => {
+  // `allowShrink`: let a meet's entrants no longer on its list be deleted
+  // past the share `ingest.upsertEntryAthletes` allows, after checking by hand.
+  args: { dryRun: v.optional(v.boolean()), only: v.optional(v.array(v.string())), allowShrink: v.optional(v.boolean()) },
+  handler: async (ctx, { dryRun, only, allowShrink }): Promise<MeetResult[]> => {
     const targets = (await ctx.runQuery(internal.scrapers.entryTargets.list, {})).filter((t) => !only || only.includes(t.label) || only.includes(t.url));
     const results: MeetResult[] = [];
     for (const target of targets) {
@@ -94,9 +98,10 @@ export const run = internalAction({
         const entries = await fetchEntries(target.url, meet);
         result.entries = entries.length;
         if (dryRun || entries.length === 0) continue;
-        const counts: { inserted: number; updated: number; unchanged: number; sessionSkipped: number; notOnStartList: number } = await ctx.runMutation(
+        const counts: { inserted: number; updated: number; unchanged: number; sessionSkipped: number; notOnStartList: number; rejected: number; deleted: number } = await ctx.runMutation(
           internal.ingest.upsertEntryAthletes,
-          { meet, rows: entries },
+          // `fetchEntries` checked the list against its total: it is the whole list.
+          { meet, rows: entries, complete: true, ...(allowShrink ? { allowShrink } : {}) },
         );
         Object.assign(result, counts);
       } catch (error) {

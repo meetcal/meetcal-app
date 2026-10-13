@@ -51,6 +51,9 @@ export async function getMeetConfig(meetName: MeetName): Promise<MeetConfig> {
     venue: meet.venue,
     time: meet.time,
     dates: meet.dates,
+    // Dropping this made the fallback zone look like the meet's own to the
+    // prune, the reminders, the widget and the calendar export.
+    timeZoneUnknown: meet.timeZoneUnknown === true,
   };
 
   meetConfigCache.set(meetName, { config, fetchedAt: Date.now() });

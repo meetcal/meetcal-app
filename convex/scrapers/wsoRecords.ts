@@ -6,10 +6,21 @@ import { internal } from '../_generated/api';
 import { absoluteUrl, fetchBytes, fetchText } from './lib/http';
 import { unescapeHtml } from './lib/html';
 import { pdfLines, pdfRunLines } from './lib/pdf';
-import { copiedTabs, gidOf, gvizCsvByGid, gvizCsvFirstTab, sheetIdOf, type WsoRecord } from './parse/wso/common';
+import {
+  gidOf,
+  gvizCsvByGid,
+  gvizCsvFirstTab,
+  resolveTabs,
+  sheetHtmlViewUrl,
+  sheetIdOf,
+  sheetTabList,
+  type SheetTab,
+  type TabRef,
+  type WsoRecord,
+} from './parse/wso/common';
 import { carolinaLayout, floridaLayout, parseSideBySide, type SideBySide } from './parse/wso/sideBySide';
-import { consolidateRecords, parseNewJerseyTab } from './parse/wso/newJersey';
-import { parseTnky } from './parse/wso/tnky';
+import { consolidateRecords, NEW_JERSEY_TABS, parseNewJerseyTab } from './parse/wso/newJersey';
+import { parseTnkyTab, TNKY_SHEET_ID, tnkyTabs } from './parse/wso/tnky';
 import { OHIO_SHEET_ID, OHIO_TAB_GIDS, OHIO_TABS, parseOhioTab } from './parse/wso/ohio';
 import { PAWV_TABS, parsePawvTab, pawvCsvUrl } from './parse/wso/pawv';
 import { illinoisPdfHref, parseIllinois } from './parse/wso/illinois';
@@ -39,38 +50,42 @@ type WsoSource = {
   scrape: () => Promise<WsoRecord[]>;
 };
 
-/**
- * The tabs' CSVs by gid, refusing any that came back as Google's fallback
- * for a tab that is gone (see `copiedTabs`), which would otherwise replace a
- * WSO's records with whatever the first tab holds. `firstTab` is the gid of
- * the sheet's first tab when it is one of `gids` (as the sources below were
- * in October 2026); otherwise the first tab is fetched too, to compare
- * against. A tab moved to first place fails until its source says so.
- */
-async function fetchTabs(sheetId: string, gids: readonly string[], firstTab?: string): Promise<string[]> {
-  const urls = gids.map((gid) => gvizCsvByGid(sheetId, gid));
-  if (firstTab === undefined) urls.push(gvizCsvFirstTab(sheetId));
-  const texts = await Promise.all(urls.map((url) => fetchText(url, 60_000)));
-  const tabs = texts.slice(0, gids.length);
-  const problem = copiedTabs(gids, tabs, firstTab === undefined ? { csv: texts[gids.length] } : { gid: firstTab });
-  if (problem) throw new Error(problem);
-  return tabs;
+/** The sheet's visible tabs, from its HTML view. */
+async function fetchTabList(sheetId: string): Promise<SheetTab[]> {
+  return sheetTabList(await fetchText(sheetHtmlViewUrl(sheetId), 60_000));
 }
 
 /**
- * The tab the configured URL points at (its `gid`; `isFirstTab` when that is
- * the sheet's first tab). The Python scraper asked for the tab named
- * "Current Records", and California North's tab of that name switched to a
- * human-readable layout the parser cannot read: 0 records a night, while the
- * gid tab still holds the flat data. A name Google does not know serves the
- * first tab, so a URL without a gid is refused rather than read by name.
+ * The tabs' CSVs, each tab named by gid or by name and checked against the
+ * sheet's visible tabs first (`resolveTabs`): a tab hidden, renamed or
+ * deleted fails the source, rather than Google serving the hidden tab's
+ * stale records, or its first tab in place of a deleted one. `headers` is
+ * passed on to `gvizCsvByGid`; `list` is the tab list when already fetched.
  */
-const flat = (wso: string, sheetUrl: string, { columns = FLAT_COLUMNS, isFirstTab = false }: { columns?: FlatColumns; isFirstTab?: boolean } = {}): WsoSource => ({
+async function fetchTabs(sheetId: string, refs: readonly TabRef[], { headers, list }: { headers?: number; list?: readonly SheetTab[] } = {}): Promise<string[]> {
+  const gids = resolveTabs(list ?? (await fetchTabList(sheetId)), refs);
+  return await Promise.all(gids.map((gid) => fetchText(gvizCsvByGid(sheetId, gid, headers), 60_000)));
+}
+
+/**
+ * A flat sheet's tab: `tab` by name, else the tab the URL points at (its
+ * `gid`). The Python scraper asked Google for the tab named "Current
+ * Records", and California North's tab of that name switched to a
+ * human-readable layout the parser cannot read: 0 records a night. A name
+ * Google does not know serves the first tab, so names are only looked up
+ * in the sheet's tab list, and a URL without a gid or `tab` is refused.
+ */
+const flat = (
+  wso: string,
+  sheetUrl: string,
+  { columns = FLAT_COLUMNS, tab, headers }: { columns?: FlatColumns; tab?: string; headers?: number } = {},
+): WsoSource => ({
   wso,
   scrape: async () => {
     const gid = gidOf(sheetUrl);
-    if (!gid) throw new Error(`${wso}: the sheet URL names no tab (gid)`);
-    const [csv] = await fetchTabs(sheetIdOf(sheetUrl), [gid], isFirstTab ? gid : undefined);
+    const ref: TabRef | null = tab !== undefined ? { name: tab } : gid ? { gid } : null;
+    if (!ref) throw new Error(`${wso}: the sheet URL names no tab (gid)`);
+    const [csv] = await fetchTabs(sheetIdOf(sheetUrl), [ref], { headers });
     return parseFlatSheet(csv, wso, columns);
   },
 });
@@ -98,20 +113,19 @@ function everyPart(wso: string, parts: WsoRecord[][], label: (i: number) => stri
   return parts.flat();
 }
 
-/**
- * Sheets with a tab per age group (or stack of them), fetched together;
- * `firstTab` is the gid of the sheet's first tab when it is one of them.
- */
+const tabLabel = (ref: TabRef) => ('gid' in ref ? `tab gid ${ref.gid}` : `tab ${JSON.stringify(ref.name)}`);
+
+/** Sheets with a tab per age group (or stack of them), fetched together. */
 const tabbed = (
   wso: string,
   sheetUrl: string,
-  tabs: [gid: string, parse: TabParser][],
-  { finish = (records: WsoRecord[]) => records, firstTab }: { finish?: (records: WsoRecord[]) => WsoRecord[]; firstTab?: string } = {},
+  tabs: [tab: TabRef, parse: TabParser][],
+  { finish = (records: WsoRecord[]) => records }: { finish?: (records: WsoRecord[]) => WsoRecord[] } = {},
 ): WsoSource => ({
   wso,
   scrape: async () => {
-    const texts = await fetchTabs(sheetIdOf(sheetUrl), tabs.map(([gid]) => gid), firstTab);
-    return finish(everyPart(wso, tabs.map(([, parse], i) => parse(texts[i], wso)), (i) => `tab gid ${tabs[i][0]}`));
+    const texts = await fetchTabs(sheetIdOf(sheetUrl), tabs.map(([tab]) => tab));
+    return finish(everyPart(wso, tabs.map(([, parse], i) => parse(texts[i], wso)), (i) => tabLabel(tabs[i][0])));
   },
 });
 
@@ -136,64 +150,57 @@ const DMV_COLUMNS: FlatColumns = { age: 'Age Group', gender: 'Gender', min: 'bod
 
 export const WSO_SOURCES: WsoSource[] = [
   flat('Georgia', 'https://docs.google.com/spreadsheets/d/1HM1H51pUmhoWDdSUp2RT-mCaUX2a8NB7aUSYVwWT0AU/edit?gid=908416148#gid=908416148'),
-  flat('Pacific Northwest', 'https://docs.google.com/spreadsheets/d/1pmZ1j3KJyms0Dlk3xz_VVf6mWq6tqdZj/edit?gid=1648178012#gid=1648178012', { isFirstTab: true }),
-  flat('California North', 'https://docs.google.com/spreadsheets/d/1ZAs27jQCPYTVgLuQ-feBHSO-BgGjGCewUs0djG23pXQ/edit?gid=35344992#gid=35344992'),
-  flat('DMV', 'https://docs.google.com/spreadsheets/d/1vYD2H6si9FyEO-Tc24DoFZOmST0r5hCn/edit?gid=799684986#gid=799684986', { columns: DMV_COLUMNS, isFirstTab: true }),
+  flat('Pacific Northwest', 'https://docs.google.com/spreadsheets/d/1pmZ1j3KJyms0Dlk3xz_VVf6mWq6tqdZj/edit?gid=1648178012#gid=1648178012'),
+  // The tab of the classes in force since 1 August 2026, by name. The gid
+  // read before (35344992) is a hidden tab of the classes retired then.
+  // Google guesses a header for this tab that drops some column names.
+  flat('California North', 'https://docs.google.com/spreadsheets/d/1ZAs27jQCPYTVgLuQ-feBHSO-BgGjGCewUs0djG23pXQ/edit', { tab: 'Post-Aug2026', headers: 1 }),
+  flat('DMV', 'https://docs.google.com/spreadsheets/d/1vYD2H6si9FyEO-Tc24DoFZOmST0r5hCn/edit?gid=799684986#gid=799684986', { columns: DMV_COLUMNS }),
   tabbed('Florida', 'https://docs.google.com/spreadsheets/d/16sNrOTnGrGeXE4L5skgCfE5vLTA7ggpaHWfMQNh0DfQ/view?gid=490899077#gid=490899077', [
-    ['490899077', sideBySide(floridaLayout('U13'))],
-    ['1300164988', sideBySide(floridaLayout('U15'))],
-    ['1950298087', sideBySide(floridaLayout('U17'))],
-    ['660284224', sideBySide(floridaLayout('Junior'))],
-    ['662417948', sideBySide(floridaLayout('Senior'))],
-    ['1222085467', sideBySide(floridaLayout('Masters 35'))],
-    ['1267986954', sideBySide(floridaLayout('Masters 40'))],
-    ['411054882', sideBySide(floridaLayout('Masters 45'))],
-    ['1758139651', sideBySide(floridaLayout('Masters 50'))],
-    ['1041309770', sideBySide(floridaLayout('Masters 55'))],
-    ['1879007867', sideBySide(floridaLayout('Masters 60'))],
-    ['1005330611', sideBySide(floridaLayout('Masters 65'))],
-    ['1193133330', sideBySide(floridaLayout('Masters 70'))],
-    ['373452428', sideBySide(floridaLayout('Masters 75'))],
-    ['851164639', sideBySide(floridaLayout('Masters 80'))],
-    ['1894058438', sideBySide(floridaLayout('Masters 85'))],
-    ['575067900', sideBySide(floridaLayout('Masters 90'))],
+    [{ gid: '490899077' }, sideBySide(floridaLayout('U13'))],
+    [{ gid: '1300164988' }, sideBySide(floridaLayout('U15'))],
+    [{ gid: '1950298087' }, sideBySide(floridaLayout('U17'))],
+    [{ gid: '660284224' }, sideBySide(floridaLayout('Junior'))],
+    [{ gid: '662417948' }, sideBySide(floridaLayout('Senior'))],
+    [{ gid: '1222085467' }, sideBySide(floridaLayout('Masters 35'))],
+    [{ gid: '1267986954' }, sideBySide(floridaLayout('Masters 40'))],
+    [{ gid: '411054882' }, sideBySide(floridaLayout('Masters 45'))],
+    [{ gid: '1758139651' }, sideBySide(floridaLayout('Masters 50'))],
+    [{ gid: '1041309770' }, sideBySide(floridaLayout('Masters 55'))],
+    [{ gid: '1879007867' }, sideBySide(floridaLayout('Masters 60'))],
+    [{ gid: '1005330611' }, sideBySide(floridaLayout('Masters 65'))],
+    [{ gid: '1193133330' }, sideBySide(floridaLayout('Masters 70'))],
+    [{ gid: '373452428' }, sideBySide(floridaLayout('Masters 75'))],
+    [{ gid: '851164639' }, sideBySide(floridaLayout('Masters 80'))],
+    [{ gid: '1894058438' }, sideBySide(floridaLayout('Masters 85'))],
+    [{ gid: '575067900' }, sideBySide(floridaLayout('Masters 90'))],
   ]),
   tabbed('Carolina', 'https://docs.google.com/spreadsheets/d/1rKFzpkLCT-FE2SzM0qpUOoZ788YHl7dg/view?gid=1785893123#gid=1785893123', [
-    ['1785893123', sideBySide(carolinaLayout('Youth'))],
-    ['1157313505', sideBySide(carolinaLayout('Junior'))],
-    ['2109027801', sideBySide(carolinaLayout('Senior'))],
-    ['448005775', sideBySide(carolinaLayout('Masters'))],
-  ], { firstTab: '1785893123' }),
+    [{ gid: '1785893123' }, sideBySide(carolinaLayout('Youth'))],
+    [{ gid: '1157313505' }, sideBySide(carolinaLayout('Junior'))],
+    [{ gid: '2109027801' }, sideBySide(carolinaLayout('Senior'))],
+    [{ gid: '448005775' }, sideBySide(carolinaLayout('Masters'))],
+  ]),
   tabbed(
     'New Jersey',
     'https://docs.google.com/spreadsheets/d/1y8mXDBLfqmszlzWhv-4wkeWQZS5Kb9Aj4RnB39CBJmw/edit?gid=0#gid=0',
-    [
-      ['0', newJersey('Senior')],
-      ['336358523', newJersey('Junior')],
-      ['2116279815', newJersey('U17')],
-      ['1466042495', newJersey('U15')],
-      ['1569406083', newJersey('U13')],
-      ['575793496', newJersey('Masters 35')],
-      ['2006037821', newJersey('Masters 40')],
-      ['1977742090', newJersey('Masters 45')],
-      ['1673511438', newJersey('Masters 50')],
-      ['1894823432', newJersey('Masters 55')],
-      ['1933132040', newJersey('Masters 60')],
-      ['127836685', newJersey('Masters 65')],
-      ['239397826', newJersey('Masters 70')],
-      // 75-79 men, 75+ women. The men's 80+ tab the Python listed (gid
-      // 389932308, all vacant) is gone; that gid is now the welcome page.
-      ['2047529058', newJersey('Masters 75')],
-    ],
+    NEW_JERSEY_TABS.map(([name, age]) => [{ name }, newJersey(age)]),
     { finish: consolidateRecords },
   ),
-  tabbed('Tennessee-Kentucky', 'https://docs.google.com/spreadsheets/d/11uUA0t05sEvHRjvDksC0VP1Yr2p_rC0JjHgVPEuYzhU/view?gid=867133960#gid=867133960', [
-    ['867133960', parseTnky],
-  ], { firstTab: '867133960' }),
+  // A tab per group, found by its title (`tnkyTabs`), read with one header row.
+  {
+    wso: 'Tennessee-Kentucky',
+    scrape: async () => {
+      const list = await fetchTabList(TNKY_SHEET_ID);
+      const tabs = tnkyTabs(list);
+      const texts = await fetchTabs(TNKY_SHEET_ID, tabs.map(({ gid }) => ({ gid })), { headers: 1, list });
+      return everyPart('Tennessee-Kentucky', tabs.map((tab, i) => parseTnkyTab(texts[i], 'Tennessee-Kentucky', tab.age, tab.gender)), (i) => `tab ${JSON.stringify(tabs[i].name)}`);
+    },
+  },
   {
     wso: 'Ohio',
     scrape: async () => {
-      const texts = await fetchTabs(OHIO_SHEET_ID, OHIO_TABS.map((tab) => OHIO_TAB_GIDS[tab]), OHIO_TAB_GIDS['Youth Women']);
+      const texts = await fetchTabs(OHIO_SHEET_ID, OHIO_TABS.map((tab) => ({ gid: OHIO_TAB_GIDS[tab] })));
       return everyPart('Ohio', OHIO_TABS.map((tab, i) => parseOhioTab(texts[i], 'Ohio', tab)), (i) => `tab ${JSON.stringify(OHIO_TABS[i])}`);
     },
   },
@@ -259,7 +266,7 @@ export const WSO_SOURCES: WsoSource[] = [
   {
     wso: 'Texas-Oklahoma',
     scrape: async () => {
-      const [detailed] = await fetchTabs('1gbLq6S4ebW7SGJy4ZyYJZ7ZjOCLjBedjIJzfp9AqIpI', ['1649080864']);
+      const [detailed] = await fetchTabs('1gbLq6S4ebW7SGJy4ZyYJZ7ZjOCLjBedjIJzfp9AqIpI', [{ gid: '1649080864' }]);
       return usawTemplate(detailed, 'Texas-Oklahoma');
     },
   },

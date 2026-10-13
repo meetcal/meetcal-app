@@ -112,9 +112,9 @@ async function fetchWSORecordsFresh(
 
     result[ageKey][genderKey].push({
       weightClass: row.weight_class,
-      snatchRecord: row.snatch_record ?? 0,
-      cjRecord: row.cj_record ?? 0,
-      totalRecord: row.total_record ?? 0,
+      snatchRecord: row.snatch_record,
+      cjRecord: row.cj_record,
+      totalRecord: row.total_record,
     });
   });
 

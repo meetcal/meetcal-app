@@ -89,9 +89,9 @@ describe("WSO records mapping and list", () => {
     expect(records.Senior.Men.map((record) => record.weightClass)).toEqual(["67kg", "89kg"]);
     expect(records.Senior.Men[0]).toEqual({
       weightClass: "67kg",
-      snatchRecord: 0,
-      cjRecord: 0,
-      totalRecord: 0,
+      snatchRecord: null,
+      cjRecord: null,
+      totalRecord: null,
     });
     expect(records.Senior.Women).toEqual([]);
     expect(mockGetJsonArray).toHaveBeenCalledWith("/data/wso/records", { wso: "Carolina" });

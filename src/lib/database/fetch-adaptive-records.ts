@@ -27,13 +27,22 @@ async function fetchAdaptiveRecordsForGender(gender: Gender): Promise<WeightClas
       weightClass: row.weight_class.endsWith('kg')
         ? row.weight_class
         : `${row.weight_class}kg`,
-      snatchRecord: row.snatch ?? 0,
-      cjRecord: row.cj ?? 0,
-      totalRecord: row.total ?? 0,
+      snatchRecord: row.snatch,
+      cjRecord: row.cj,
+      totalRecord: row.total,
     }));
 
   records.sort((a, b) => weightClassSort(a.weightClass, b.weightClass));
   return records;
+}
+
+/**
+ * One gender's adaptive records, every class the answer holds. USAW changes
+ * its classes (Aug 1, 2026: men's 85 and 95 kg replaced 79, 88 and 94), so
+ * the table lists what the season has records in rather than a fixed list.
+ */
+export function adaptiveRecordsFor(data: RecordsData, gender: Gender): WeightClassRecord[] {
+  return data[AGE_GROUP_KEY]?.[gender] ?? [];
 }
 
 async function readAdaptiveRecordsCache() {

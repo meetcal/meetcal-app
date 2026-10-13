@@ -1,6 +1,6 @@
 import { jsonTransportStub } from "@/lib/api/json-transport-stub";
 import { setApiTransportForTests } from "@/lib/api/transport";
-import { adaptiveRecordsResource } from "@/lib/database/fetch-adaptive-records";
+import { adaptiveRecordsFor, adaptiveRecordsResource } from "@/lib/database/fetch-adaptive-records";
 
 const mockGetJsonArray = jest.fn();
 const mockGetOfflineCache = jest.fn();
@@ -50,7 +50,7 @@ describe("adaptiveRecordsResource", () => {
     const records = await fetchAdaptiveRecords();
 
     expect(records.Adaptive.Men).toEqual([
-      { weightClass: "67kg", snatchRecord: 0, cjRecord: 0, totalRecord: 0 },
+      { weightClass: "67kg", snatchRecord: null, cjRecord: null, totalRecord: null },
       { weightClass: "102kg", snatchRecord: 100, cjRecord: 120, totalRecord: 220 },
     ]);
     expect(records.Adaptive.Women).toEqual([]);
@@ -71,5 +71,21 @@ describe("adaptiveRecordsResource", () => {
 
     await expect(fetchAdaptiveRecords()).resolves.toEqual({ Adaptive: { Men: [], Women: [] } });
     expect(mockSetOfflineCache).not.toHaveBeenCalled();
+  });
+});
+
+describe("adaptiveRecordsFor", () => {
+  const record = (weightClass: string) => ({ weightClass, snatchRecord: 1, cjRecord: 1, totalRecord: 2 });
+
+  it("lists every class the season's answer holds, the Aug 1, 2026 classes included", () => {
+    const men = ["60kg", "85kg", "95kg"].map(record);
+    const women = ["61kg", "69kg", "77kg", "86kg", "86+kg"].map(record);
+    const data = { Adaptive: { Men: men, Women: women } };
+    expect(adaptiveRecordsFor(data, "Men").map((r) => r.weightClass)).toEqual(["60kg", "85kg", "95kg"]);
+    expect(adaptiveRecordsFor(data, "Women").map((r) => r.weightClass)).toEqual(["61kg", "69kg", "77kg", "86kg", "86+kg"]);
+  });
+
+  it("is empty before the first load", () => {
+    expect(adaptiveRecordsFor({} as never, "Men")).toEqual([]);
   });
 });

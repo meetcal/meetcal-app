@@ -33,6 +33,23 @@ describe('UMWF sheet parser (port of umwf_records.py)', () => {
     ]);
   });
 
+  it('skips a class its heading calls retired, and its lifts (#414)', () => {
+    const sheet = [
+      ',94 kg Category,Weight,Name,Year Born,Nation,Date,Where,Age',
+      ',Snatch,100,"ROE, Rick",1971,USA,13-June-2025,Singapore,54',
+      ',98 kg Category (retired after Singapore World Cup),Weight,Name,Year Born,Nation,Date,Where,Age',
+      ',Snatch,92,"SCHULTZ, Anthony",1971,AUS,13-June-2025,Singapore,54',
+      ',Clean & Jerk,110,"SCHULTZ, Anthony",1971,AUS,13-June-2025,Singapore,54',
+      ',Total,202,"SCHULTZ, Anthony",1971,AUS,13-June-2025,Singapore,54',
+      ',110 kg Category,Weight,Name,Year Born,Nation,Date,Where,Age',
+      ',Total,250,"DOE, John",1971,USA,13-June-2025,Singapore,54',
+    ].join('\n');
+    expect(parseUmwfSheet(sheet, 'Masters 50', 'men').map((r) => [r.weight_class, r.snatch_record, r.total_record])).toEqual([
+      ['94kg', 100, 0],
+      ['110kg', 0, 250],
+    ]);
+  });
+
   it('records who set each lift from the Name, Date and Where columns', () => {
     const sheet = [
       ',MEN 35 - 39,,,,,,,,',
@@ -40,20 +57,20 @@ describe('UMWF sheet parser (port of umwf_records.py)', () => {
       ',Snatch,76,"PUFF, Derick",1989,USA,07-December-2025,"Daytona Beach, FL",36,X',
       ',Clean & Jerk,88,Standard,,,,,,X',
       ',Total,150,"YATES, Leora",1975,AUS,10-June_2026,"Adelaide, SA",51,x',
-      ',98 kg Category (retired),,,,13-June-2025,Singapore,,x',
+      ',94 kg Category,,,,13-June-2025,Singapore,,x',
       ',Snatch,,Standard,,,,,,x',
       ',Clean & Jerk,Standard,,,,,,,x',
       ',Total,210,"CASSIDY, Wes",1969,AUS,10-June-0206,"Adelaide, SA",57,',
     ].join('\n');
-    const [light, retired] = parseUmwfSheet(sheet, 'Masters 35', 'men');
+    const [light, heavy] = parseUmwfSheet(sheet, 'Masters 35', 'men');
     expect(light.snatch_by).toEqual({ name: 'PUFF, Derick', date: '2025-12-07', location: 'Daytona Beach, FL' });
     expect(light.cj_by).toEqual({ name: 'Standard' });
     // "10-June_2026" is still a readable date.
     expect(light.total_by).toEqual({ name: 'YATES, Leora', date: '2026-06-10', location: 'Adelaide, SA' });
     // No value (blank or "Standard"): no holder; the sheet's "0206" is corrected (`correctRecordDate`).
-    expect(retired).not.toHaveProperty('snatch_by');
-    expect(retired).not.toHaveProperty('cj_by');
-    expect(retired.total_by).toEqual({ name: 'CASSIDY, Wes', date: '2026-06-10', location: 'Adelaide, SA' });
+    expect(heavy).not.toHaveProperty('snatch_by');
+    expect(heavy).not.toHaveProperty('cj_by');
+    expect(heavy.total_by).toEqual({ name: 'CASSIDY, Wes', date: '2026-06-10', location: 'Adelaide, SA' });
   });
 
   it('fails the tab on a lift it cannot read instead of reading it as 0', () => {
