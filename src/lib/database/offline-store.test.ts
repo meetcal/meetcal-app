@@ -37,6 +37,7 @@ import {
   resetOfflineClearsForTests,
   wasClearedSince,
 } from "@/lib/database/offline-clears";
+import { normalizeAthleteName } from "@/lib/athletes";
 
 /** One athlete's history, through the batch writer every caller uses. */
 const saveAthleteHistory = (name: string, results: Parameters<typeof saveAthleteHistoryBatch>[0][number]["results"]) =>
@@ -685,6 +686,16 @@ describe("getAllCachedLiftingResultsForAthletes", () => {
       "2026-05-01",
       "2025-03-01",
     ]);
+  });
+
+  it("matches cached meet rows in another Unicode form to the requested name (#268)", async () => {
+    const nfc = "José Núñez".normalize("NFC");
+    const nfd = nfc.normalize("NFD");
+    await saveMeetLiftingResults("Meet A", [row({ event_id: "a", name: nfc })]);
+
+    const byName = await getAllCachedLiftingResultsForAthletes([nfd]);
+
+    expect(byName[nfd]).toHaveLength(1);
   });
 
   it("matches names case-insensitively and with whitespace normalization", async () => {
@@ -1930,6 +1941,67 @@ describe("athlete history pruning", () => {
     await expect(pruneOrphanedAthleteHistory()).resolves.toBe(0);
 
     expect(AsyncStorage.getItem).not.toHaveBeenCalled();
+  });
+
+  it("stores history and bests for one athlete under one key, whichever Unicode form is used (#268)", async () => {
+    const nfc = "José Núñez".normalize("NFC");
+    const nfd = nfc.normalize("NFD");
+    await saveAthleteHistoryBatch([{ name: nfd, results: [row(nfd)] }]);
+    await saveAthleteBestsBatch({ [nfd]: { snatch_best: 1, cj_best: 2, total: 3 } });
+
+    await expect(findAthleteNamesWithoutHistory([nfc])).resolves.toEqual([]);
+    await expect(getAllCachedLiftingResultsForAthlete(nfc)).resolves.toHaveLength(1);
+    const bests = await getStoredAthleteBestsForNames([nfc]);
+    expect(bests[nfc]?.bests).toEqual({ snatch_best: 1, cj_best: 2, total: 3 });
+    expect(keysFor("josé núñez".normalize("NFC")).sort()).toEqual([
+      `${BESTS_PREFIX}josé núñez`.normalize("NFC"),
+      `${HISTORY_PREFIX}josé núñez`.normalize("NFC"),
+      `${HISTORY_PREFIX}josé núñez__chunk_0`.normalize("NFC"),
+    ]);
+  });
+
+  it("reads history and bests stored under a name's older, non-NFC key (#268)", async () => {
+    // A device that updates while offline cannot download again: blobs
+    // written under the pre-NFC key for a decomposed roster name must still
+    // be found for that roster name.
+    const nfd = "José Núñez".normalize("NFD");
+    const newKey = normalizeAthleteName(nfd);
+    const oldKey = nfd.toLowerCase();
+    expect(oldKey).not.toBe(newKey);
+    await saveAthleteHistoryBatch([{ name: nfd, results: [row(nfd)] }]);
+    await saveAthleteBestsBatch({ [nfd]: { snatch_best: 1, cj_best: 2, total: 3 } });
+    for (const prefix of [HISTORY_PREFIX, BESTS_PREFIX]) {
+      for (const key of Array.from(mockStorage.keys())) {
+        if (!key.startsWith(`${prefix}${newKey}`)) continue;
+        mockStorage.set(`${prefix}${oldKey}${key.slice(`${prefix}${newKey}`.length)}`, mockStorage.get(key)!);
+        mockStorage.delete(key);
+      }
+    }
+
+    await expect(findAthleteNamesWithoutHistory([nfd, "Nobody"])).resolves.toEqual(["Nobody"]);
+    await expect(getAllCachedLiftingResultsForAthlete(nfd)).resolves.toHaveLength(1);
+    const bests = await getStoredAthleteBestsForNames([nfd]);
+    expect(bests[nfd]?.bests).toEqual({ snatch_best: 1, cj_best: 2, total: 3 });
+  });
+
+  it("clears keys stored under a name's older, non-NFC key with the athlete (#268)", async () => {
+    // Before #268 the key skipped NFC, so a decomposed roster name was stored
+    // under a decomposed key that nothing reads any more.
+    const nfc = "José Núñez".normalize("NFC");
+    const oldKey = nfc.normalize("NFD").toLowerCase();
+    await saveMeetAthletes("Browsed", [athlete("Browsed", nfc)] as never);
+    mockStorage.set(`${HISTORY_PREFIX}${oldKey}`, "old manifest");
+    mockStorage.set(`${HISTORY_PREFIX}${oldKey}__chunk_0`, "old chunk");
+    mockStorage.set(`${BESTS_PREFIX}${oldKey}`, "old bests");
+    await saveAthleteHistoryBatch([{ name: nfc, results: [row(nfc)] }]);
+
+    await clearMeetData("Browsed" as never);
+
+    expect(
+      Array.from(mockStorage.keys()).filter(
+        (k) => k.startsWith(HISTORY_PREFIX) || k.startsWith(BESTS_PREFIX),
+      ),
+    ).toEqual([]);
   });
 
   // Every viewed start list stores bests for its whole roster. When only
