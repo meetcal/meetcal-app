@@ -1,4 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { createKeyedWriteChain } from '@/lib/data/write-chain';
 
 export type OfflineCacheEntry<T> = {
   data: T;
@@ -79,6 +80,13 @@ export async function clearOfflineCache(key: string): Promise<void> {
   }
 }
 
+/**
+ * Serializes every write to a browse cache (`writeBoundedCacheEntry`,
+ * `clearBrowseCaches`) per cache key, so each read-modify-write sees the
+ * previous one's result and a clear waits for writes already queued.
+ */
+const browseCacheWrites = createKeyedWriteChain();
+
 /** One entry of a bounded browse cache, with its own write time. */
 type BoundedCacheRecord = { key: string; data: unknown; lastSynced: number };
 
@@ -132,6 +140,11 @@ export async function readBoundedCacheEntry<T>(
  * ranking classes measured 1.7MB and ~30ms per switch). Writing an entry
  * again makes it the newest. Like `setOfflineCache`, a failed write is logged,
  * not thrown: the fresh data is still shown.
+ *
+ * The read-modify-write runs on `browseCacheWrites` under `cacheKey`: a
+ * browse request persists after the screen may have moved to another entry,
+ * so two writes to one blob can overlap, and the second used to drop the
+ * first one's entry.
  */
 export async function writeBoundedCacheEntry<T>(
   cacheKey: string,
@@ -142,16 +155,18 @@ export async function writeBoundedCacheEntry<T>(
   if (!Number.isInteger(maxEntries) || maxEntries < 1) {
     throw new Error(`Bounded cache ${cacheKey} needs maxEntries >= 1, got ${maxEntries}`);
   }
-  const lastSynced = Date.now();
-  const kept = readBoundedRecords(await getOfflineCache<unknown>(cacheKey)).filter(
-    (r) => r.key !== entryKey,
-  );
-  const next: BoundedCacheRecord[] = [
-    ...kept.slice(Math.max(0, kept.length - (maxEntries - 1))),
-    { key: entryKey, data, lastSynced },
-  ];
-  await setOfflineCache(cacheKey, next);
-  return { data, lastUpdatedAt: lastSynced };
+  return browseCacheWrites(cacheKey, async () => {
+    const lastSynced = Date.now();
+    const kept = readBoundedRecords(await getOfflineCache<unknown>(cacheKey)).filter(
+      (r) => r.key !== entryKey,
+    );
+    const next: BoundedCacheRecord[] = [
+      ...kept.slice(Math.max(0, kept.length - (maxEntries - 1))),
+      { key: entryKey, data, lastSynced },
+    ];
+    await setOfflineCache(cacheKey, next);
+    return { data, lastUpdatedAt: lastSynced };
+  });
 }
 
 /**
@@ -168,9 +183,13 @@ export const BROWSE_CACHE_KEYS = [
   OFFLINE_CACHE_KEYS.wsoRecordsFiltered,
 ] as const;
 
-/** Removes every browse cache (`BROWSE_CACHE_KEYS`). */
+/**
+ * Removes every browse cache (`BROWSE_CACHE_KEYS`). Each removal waits for
+ * that key's queued writes: one that read the blob just before the clear
+ * used to write the whole old blob back after it.
+ */
 export async function clearBrowseCaches(): Promise<void> {
   for (const key of BROWSE_CACHE_KEYS) {
-    await clearOfflineCache(key);
+    await browseCacheWrites(key, () => clearOfflineCache(key));
   }
 }

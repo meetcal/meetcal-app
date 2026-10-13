@@ -62,6 +62,16 @@ describe("adaptiveRecordsResource", () => {
     await expect(fetchAdaptiveRecords()).rejects.toThrow("down");
     expect(mockSetOfflineCache).not.toHaveBeenCalled();
   });
+
+  it("shows an empty fresh answer but leaves the stored download untouched", async () => {
+    // The browse path shares the download's key; an empty table used to be
+    // persisted over a real download, which then read as "downloaded" offline.
+    mockGetOfflineCache.mockResolvedValue({ data: { Adaptive: { Men: [{ weightClass: "67kg", snatchRecord: 1, cjRecord: 2, totalRecord: 3 }], Women: [] } }, lastSynced: 5 });
+    mockGetJsonArray.mockResolvedValue([]);
+
+    await expect(fetchAdaptiveRecords()).resolves.toEqual({ Adaptive: { Men: [], Women: [] } });
+    expect(mockSetOfflineCache).not.toHaveBeenCalled();
+  });
 });
 
 describe("adaptiveRecordsFor", () => {
