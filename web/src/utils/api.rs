@@ -33,6 +33,17 @@ pub(crate) const RATE_LIMITED_MESSAGE: &str =
 pub(crate) const OVERLOADED_MESSAGE: &str =
     "MeetCal is busy right now; please try again in a moment";
 
+/// Longest one request may take, from sending it to reading its whole answer.
+/// Browser `fetch` has no timeout of its own, so a stalled connection would
+/// otherwise leave a page loading for good.
+pub(crate) const REQUEST_TIMEOUT: Duration = Duration::from_secs(20);
+
+pub(crate) const TIMED_OUT_MESSAGE: &str = "MeetCal took too long to answer; please try again";
+pub(crate) const OFFLINE_MESSAGE: &str =
+    "You appear to be offline; reconnect and it will load again";
+pub(crate) const UNREACHABLE_MESSAGE: &str =
+    "MeetCal couldn't be reached; check your connection and try again";
+
 fn convex_url() -> &'static str {
     option_env!("MEETCAL_CONVEX_URL")
         .filter(|url| !url.is_empty())
@@ -187,6 +198,24 @@ pub(crate) fn retry_delay(retry_after: Option<&str>) -> Duration {
         .unwrap_or(DEFAULT_RETRY_DELAY_SECS)
         .clamp(MIN_RETRY_DELAY_SECS, MAX_RETRY_DELAY_SECS);
     Duration::from_secs(seconds)
+}
+
+/// What to tell a user whose request never got an answer. The function and
+/// the underlying error go to the console instead: they mean nothing to a user.
+pub(crate) fn transport_message(timed_out: bool, offline: bool) -> &'static str {
+    if timed_out {
+        TIMED_OUT_MESSAGE
+    } else if offline {
+        OFFLINE_MESSAGE
+    } else {
+        UNREACHABLE_MESSAGE
+    }
+}
+
+fn transport_error(query: Query, error: &reqwest::Error) -> anyhow::Error {
+    leptos::logging::warn!("MeetCal request for {} failed: {error}", query.function);
+    let offline = web_sys::window().is_some_and(|window| !window.navigator().on_line());
+    anyhow!(transport_message(error.is_timeout(), offline))
 }
 
 fn exhausted_retries_message(status: StatusCode) -> &'static str {
@@ -370,10 +399,11 @@ where
     let response = loop {
         let response = client
             .post(&url)
+            .timeout(REQUEST_TIMEOUT)
             .json(&request)
             .send()
             .await
-            .with_context(|| format!("Could not reach MeetCal for {}", query.function))?;
+            .map_err(|error| transport_error(query, &error))?;
         let status = response.status();
 
         if should_retry(status, retries) {
@@ -397,10 +427,17 @@ where
         break response;
     };
 
-    response
-        .json::<QueryResponse>()
-        .await
-        .with_context(|| format!("MeetCal sent an unreadable answer to {}", query.function))
+    // The timeout covers reading the answer too.
+    response.json::<QueryResponse>().await.map_err(|error| {
+        if error.is_timeout() || error.is_request() || error.is_body() {
+            transport_error(query, &error)
+        } else {
+            anyhow!(error).context(format!(
+                "MeetCal sent an unreadable answer to {}",
+                query.function
+            ))
+        }
+    })
 }
 
 /// Runs `query`, which takes no arguments.
@@ -739,6 +776,18 @@ mod tests {
         ] {
             assert_eq!(retry_delay(value), Duration::from_secs(1), "{value:?}");
         }
+    }
+
+    #[test]
+    fn requests_that_get_no_answer_explain_themselves_without_the_function() {
+        assert_eq!(transport_message(true, false), TIMED_OUT_MESSAGE);
+        assert_eq!(transport_message(true, true), TIMED_OUT_MESSAGE);
+        assert_eq!(transport_message(false, true), OFFLINE_MESSAGE);
+        assert_eq!(transport_message(false, false), UNREACHABLE_MESSAGE);
+        for message in [TIMED_OUT_MESSAGE, OFFLINE_MESSAGE, UNREACHABLE_MESSAGE] {
+            assert!(!message.contains(':'), "{message}");
+        }
+        assert_eq!(REQUEST_TIMEOUT, Duration::from_secs(20));
     }
 
     #[test]

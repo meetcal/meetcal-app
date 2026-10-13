@@ -61,7 +61,8 @@ CI (`.github/workflows/web.yml` at the root) runs the same gates plus both audit
 
 - Every data call goes through `src/utils/api.rs`: add a query to `queries`, never build a Convex URL in a page. Arguments are the query's own, camelCase; use `#[serde(rename_all = "camelCase")]` on argument structs.
 - Answer types live beside the page that reads them (or in `models.rs` when shared). Fields a newer answer adds and an older one lacks are `#[serde(default)]` optionals, so a deploy and a view rebuild can land in either order.
-- Pages load through `loading.rs` (`table_response`, `select_response`, `load_meet_data`): one skeleton, one error line, one empty state.
+- Pages load through `loading.rs`: a `Load` (or `load_query`) per answer, keyed by the request, read with `table_response` / `select_response`: one skeleton, one error line with a Try again button, one empty state. Never read a `LocalResource` directly: it shows the previous answer while the next one loads, and queues each request behind the last.
+- Every request has a timeout (`REQUEST_TIMEOUT` in `api.rs`); errors shown to users never name the Convex function.
 - The subscription gate is a client-side soft gate over RevenueCat's entitlement check, like the app's paywall. All competition data is public in Convex; do not treat the gate as access control, and do not put anything in a page that must stay private.
 - New third-party origins need a CSP entry in `vercel.json` (and the config test that pins it). Keep the CSP as narrow as the feature needs.
 - Keep the page and its metadata shell in step: a new route touches several files (see [docs/architecture.md](docs/architecture.md#adding-a-page)).
