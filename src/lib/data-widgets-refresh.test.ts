@@ -7,6 +7,7 @@ import {
 } from "@/lib/data-widgets-refresh";
 import type { MutableResource } from "@/lib/data/mutable-resource";
 import {
+  buildLockedDataWidgetPayloads,
   defaultWidgetSettings,
   type DataWidgetSourceData,
   type WidgetSettings,
@@ -82,7 +83,7 @@ describe("createDataWidgetRefresher", () => {
   it("builds the payloads from the stored settings and writes them", async () => {
     const { deps, refresher } = setup();
 
-    await expect(refresher.refresh()).resolves.toBe("synced");
+    await expect(refresher.refresh(true)).resolves.toBe("synced");
 
     expect(deps.sync).toHaveBeenCalledTimes(1);
     const payloads = jest.mocked(deps.sync).mock.calls[0][0];
@@ -96,7 +97,7 @@ describe("createDataWidgetRefresher", () => {
 
   it("does nothing, and fetches nothing, without the native module", async () => {
     const { deps, refresher } = setup({ isAvailable: () => false });
-    await expect(refresher.refresh()).resolves.toBe("unavailable");
+    await expect(refresher.refresh(true)).resolves.toBe("unavailable");
     expect(deps.loadSource).not.toHaveBeenCalled();
   });
 
@@ -111,8 +112,8 @@ describe("createDataWidgetRefresher", () => {
       ),
     });
 
-    const first = refresher.refresh();
-    const second = refresher.refresh();
+    const first = refresher.refresh(true);
+    const second = refresher.refresh(true);
     release(source);
 
     await expect(first).resolves.toBe("synced");
@@ -124,13 +125,13 @@ describe("createDataWidgetRefresher", () => {
   it("throttles repeat refreshes (foregrounds) inside the minimum interval", async () => {
     const { deps, refresher, advance } = setup();
 
-    await refresher.refresh();
+    await refresher.refresh(true);
     advance(DATA_WIDGET_REFRESH_MIN_INTERVAL_MS - 1);
-    await expect(refresher.refresh()).resolves.toBe("throttled");
+    await expect(refresher.refresh(true)).resolves.toBe("throttled");
     expect(deps.loadSource).toHaveBeenCalledTimes(1);
 
     advance(1);
-    await expect(refresher.refresh()).resolves.toBe("unchanged");
+    await expect(refresher.refresh(true)).resolves.toBe("unchanged");
     expect(deps.loadSource).toHaveBeenCalledTimes(2);
     // Identical payloads are not rewritten.
     expect(deps.sync).toHaveBeenCalledTimes(1);
@@ -139,17 +140,17 @@ describe("createDataWidgetRefresher", () => {
   it("rewrites identical payloads after another writer touched the widgets", async () => {
     const { deps, refresher, advance, simulateScreenWrite } = setup();
 
-    await refresher.refresh();
+    await refresher.refresh(true);
     simulateScreenWrite();
     advance(DATA_WIDGET_REFRESH_MIN_INTERVAL_MS);
 
-    await expect(refresher.refresh()).resolves.toBe("synced");
+    await expect(refresher.refresh(true)).resolves.toBe("synced");
     expect(deps.sync).toHaveBeenCalledTimes(2);
   });
 
   it("leaves the widgets alone when a source cannot be read", async () => {
     const { deps, refresher } = setup({ loadSource: jest.fn(async () => null) });
-    await expect(refresher.refresh()).resolves.toBe("no-data");
+    await expect(refresher.refresh(true)).resolves.toBe("no-data");
     expect(deps.sync).not.toHaveBeenCalled();
   });
 
@@ -157,7 +158,7 @@ describe("createDataWidgetRefresher", () => {
     const { deps, refresher } = setup({
       loadSource: jest.fn(async () => ({ ...source, intlRankings: [] })),
     });
-    await expect(refresher.refresh()).resolves.toBe("unresolved");
+    await expect(refresher.refresh(true)).resolves.toBe("unresolved");
     expect(deps.sync).not.toHaveBeenCalled();
   });
 
@@ -177,7 +178,7 @@ describe("createDataWidgetRefresher", () => {
       order.push("sync");
     });
 
-    await expect(refresher.refresh()).resolves.toBe("synced");
+    await expect(refresher.refresh(true)).resolves.toBe("synced");
     expect(deps.saveSettings).toHaveBeenCalledWith(
       expect.objectContaining({
         intlRankings: expect.objectContaining({ meet: "Worlds" }),
@@ -197,12 +198,37 @@ describe("createDataWidgetRefresher", () => {
       ),
     });
 
-    const pending = refresher.refresh();
+    const pending = refresher.refresh(true);
     simulateScreenWrite();
     release(source);
 
     await expect(pending).resolves.toBe("superseded");
     expect(deps.sync).not.toHaveBeenCalled();
+  });
+
+  it("does not hold back the next refresh after the settings screen superseded one", async () => {
+    // The screen started a commit while its data was loading, then closed
+    // before writing: the next foreground must still write the widgets.
+    let release: (value: DataWidgetSourceData) => void = () => {};
+    const { deps, refresher, simulateScreenWrite } = setup({
+      loadSource: jest
+        .fn()
+        .mockImplementationOnce(
+          () =>
+            new Promise<DataWidgetSourceData>((resolve) => {
+              release = resolve;
+            }),
+        )
+        .mockResolvedValue(source),
+    });
+
+    const pending = refresher.refresh(true);
+    simulateScreenWrite();
+    release(source);
+    await expect(pending).resolves.toBe("superseded");
+
+    await expect(refresher.refresh(true)).resolves.toBe("synced");
+    expect(deps.sync).toHaveBeenCalledTimes(1);
   });
 
   it("does not save healed filters once the settings screen has started a commit", async () => {
@@ -220,7 +246,7 @@ describe("createDataWidgetRefresher", () => {
       })),
     });
 
-    const pending = refresher.refresh();
+    const pending = refresher.refresh(true);
     // `markDataWidgetCommitStarted`: the screen's save is still in flight and
     // it has not synced the widget yet.
     simulateScreenWrite();
@@ -242,7 +268,7 @@ describe("createDataWidgetRefresher", () => {
       }),
     });
 
-    await expect(refresher.refresh()).resolves.toBe("superseded");
+    await expect(refresher.refresh(true)).resolves.toBe("superseded");
     expect(deps.sync).not.toHaveBeenCalled();
   });
 
@@ -254,8 +280,8 @@ describe("createDataWidgetRefresher", () => {
         .mockResolvedValue(storedSettings),
     });
 
-    await expect(refresher.refresh()).resolves.toBe("no-data");
-    await expect(refresher.refresh()).resolves.toBe("synced");
+    await expect(refresher.refresh(true)).resolves.toBe("no-data");
+    await expect(refresher.refresh(true)).resolves.toBe("synced");
     expect(deps.sync).toHaveBeenCalledTimes(1);
   });
 
@@ -266,9 +292,110 @@ describe("createDataWidgetRefresher", () => {
       .mockResolvedValue(source);
     const { refresher } = setup({ loadSource });
 
-    await expect(refresher.refresh()).resolves.toBe("no-data");
-    await expect(refresher.refresh()).resolves.toBe("synced");
+    await expect(refresher.refresh(true)).resolves.toBe("no-data");
+    await expect(refresher.refresh(true)).resolves.toBe("synced");
     expect(loadSource).toHaveBeenCalledTimes(2);
+  });
+
+  describe("premium entitlement", () => {
+    it("writes the subscribe payloads, and fetches nothing, without the entitlement", async () => {
+      const { deps, refresher } = setup();
+
+      await expect(refresher.refresh(false)).resolves.toBe("locked");
+
+      expect(deps.loadSource).not.toHaveBeenCalled();
+      expect(deps.sync).toHaveBeenCalledTimes(1);
+      const payloads = jest.mocked(deps.sync).mock.calls[0][0];
+      expect(payloads).toEqual(buildLockedDataWidgetPayloads());
+      for (const payload of Object.values(payloads)) {
+        expect(payload.rows).toEqual([]);
+        expect(payload.emptyMessage).toMatch(/^Subscribe in MeetCal/);
+      }
+    });
+
+    it("leaves the widgets alone while the entitlement is unknown", async () => {
+      const { deps, refresher } = setup();
+
+      await expect(refresher.refresh(null)).resolves.toBe("entitlement-unknown");
+      expect(deps.loadSource).not.toHaveBeenCalled();
+      expect(deps.sync).not.toHaveBeenCalled();
+      // Unknown does not count as a run: the known answer refreshes at once.
+      await expect(refresher.refresh(true)).resolves.toBe("synced");
+    });
+
+    it("writes the data at once after a purchase, inside the throttle window", async () => {
+      const { deps, refresher, advance } = setup();
+
+      await expect(refresher.refresh(false)).resolves.toBe("locked");
+      advance(1);
+      await expect(refresher.refresh(true)).resolves.toBe("synced");
+      expect(jest.mocked(deps.sync).mock.calls[1][0].qualifyingTotals.rows).toHaveLength(1);
+    });
+
+    it("locks the widgets at once when the entitlement ends", async () => {
+      const { deps, refresher, advance } = setup();
+
+      await refresher.refresh(true);
+      advance(1);
+      await expect(refresher.refresh(false)).resolves.toBe("locked");
+      expect(jest.mocked(deps.sync).mock.calls[1][0]).toEqual(buildLockedDataWidgetPayloads());
+    });
+
+    it("runs a changed answer after the run in flight instead of sharing it", async () => {
+      let release: (value: DataWidgetSourceData) => void = () => {};
+      const { deps, refresher } = setup({
+        loadSource: jest.fn(
+          () =>
+            new Promise<DataWidgetSourceData>((resolve) => {
+              release = resolve;
+            }),
+        ),
+      });
+
+      const subscribed = refresher.refresh(true);
+      const expired = refresher.refresh(false);
+      release(source);
+
+      await expect(subscribed).resolves.toBe("synced");
+      await expect(expired).resolves.toBe("locked");
+      // The locked payloads land last.
+      expect(jest.mocked(deps.sync).mock.calls.at(-1)?.[0]).toEqual(
+        buildLockedDataWidgetPayloads(),
+      );
+    });
+
+    it("drops a queued answer the entitlement changed back from (true, false, true)", async () => {
+      let release: (value: DataWidgetSourceData) => void = () => {};
+      const { deps, refresher } = setup({
+        loadSource: jest.fn(
+          () =>
+            new Promise<DataWidgetSourceData>((resolve) => {
+              release = resolve;
+            }),
+        ),
+      });
+
+      const first = refresher.refresh(true);
+      const lapsed = refresher.refresh(false);
+      const back = refresher.refresh(true);
+      release(source);
+
+      await expect(first).resolves.toBe("synced");
+      await expect(back).resolves.toBe("synced");
+      await expect(lapsed).resolves.toBe("superseded");
+      // The subscriber's data is what the widgets end on.
+      expect(deps.sync).toHaveBeenCalledTimes(1);
+      expect(jest.mocked(deps.sync).mock.calls.at(-1)?.[0]).not.toEqual(buildLockedDataWidgetPayloads());
+    });
+
+    it("does not rewrite the subscribe payloads it already wrote", async () => {
+      const { deps, refresher, advance } = setup();
+
+      await refresher.refresh(false);
+      advance(DATA_WIDGET_REFRESH_MIN_INTERVAL_MS);
+      await expect(refresher.refresh(false)).resolves.toBe("unchanged");
+      expect(deps.sync).toHaveBeenCalledTimes(1);
+    });
   });
 });
 
@@ -290,6 +417,8 @@ describe("readWidgetSource", () => {
         source: "network" as const,
       })),
       invalidate: jest.fn(),
+      subscribe: jest.fn(() => () => {}),
+      isEqual: (left, right) => left === right,
     };
   }
 

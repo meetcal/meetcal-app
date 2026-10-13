@@ -256,15 +256,32 @@ function toApiSavedSession(row: Doc<'saved_sessions'>) {
   };
 }
 
+/**
+ * One row per session id: the newest by `updatedAt` (the first on a tie). A
+ * legacy duplicate (see `savedSessionRows`) stays in the table until the
+ * user's next save or unsave of that session, but the list never shows a
+ * session twice.
+ */
+export function newestRowPerSession<T extends { sessionId: string; updatedAt: number }>(rows: T[]): T[] {
+  const newest = new Map<string, T>();
+  for (const row of rows) {
+    const kept = newest.get(row.sessionId);
+    if (kept === undefined || row.updatedAt > kept.updatedAt) newest.set(row.sessionId, row);
+  }
+  return [...newest.values()];
+}
+
 /** `GET /users/me/saved-sessions`, ordered by meet, date, session, platform. */
 export const savedSessions = query({
   args: {},
   handler: async (ctx) => {
     const userId = await requireUserId(ctx);
-    const rows = await ctx.db
-      .query('saved_sessions')
-      .withIndex('by_userId', (q) => q.eq('userId', userId))
-      .collect();
+    const rows = newestRowPerSession(
+      await ctx.db
+        .query('saved_sessions')
+        .withIndex('by_userId', (q) => q.eq('userId', userId))
+        .collect(),
+    );
     rows.sort(
       (a, b) =>
         compareCollated(a.meet, b.meet) ||
