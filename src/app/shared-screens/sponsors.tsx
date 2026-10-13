@@ -1,7 +1,7 @@
 import { IconSymbol } from "@/components/ui/IconSymbol";
 import { ThemedText } from "@/components/ui/ThemedText";
 import { ThemedView } from "@/components/ui/ThemedView";
-import { useTheme } from "@/contexts/ThemeContext";
+import { useAppColors } from "@/hooks/useAppColors";
 import { posthog } from "@/lib/posthog";
 import { Sponsor } from "@/types/sponsors";
 import { Stack } from "expo-router";
@@ -47,22 +47,8 @@ const sponsors: Sponsor[] = [
 
 export default function SponsorsScreen() {
   const screenInsets = useScreenHorizontalInsets();
-  const { currentTheme } = useTheme();
+  const colors = useAppColors();
   const insets = useSafeAreaInsets();
-
-  // Define theme colors
-  const colors = {
-    background: currentTheme === "dark" ? "#000000" : "#F5F5F5",
-    card: currentTheme === "dark" ? "#1C1C1E" : "#FFFFFF",
-    border: currentTheme === "dark" ? "#38383A" : "#E1E1E1",
-    text: currentTheme === "dark" ? "#FFFFFF" : "#000000",
-    secondaryText: currentTheme === "dark" ? "#8E8E93" : "#6B6B6B",
-    pressed: currentTheme === "dark" ? "#2C2C2E" : "#F5F5F5",
-    link: "#007AFF", // iOS blue stays the same in both modes
-    gold: "#FFD700",
-    silver: "#C0C0C0",
-    bronze: "#CD7F32",
-  };
 
   const handleOpenWebsite = (url: string, sponsorName: string) => {
     // Track the sponsor click event
@@ -83,10 +69,10 @@ export default function SponsorsScreen() {
         options={{
           headerTitle: "Partners",
           headerTitleStyle: {
-            color: colors.text,
+            color: colors.headerTitle,
           },
           headerStyle: {
-            backgroundColor: currentTheme === "dark" ? "#000000" : "#FFFFFF",
+            backgroundColor: colors.headerBackground,
           },
           headerShadowVisible: false,
         }}

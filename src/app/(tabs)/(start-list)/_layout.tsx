@@ -1,17 +1,17 @@
-import { useTheme } from '@/contexts/ThemeContext';
+import { useAppColors } from '@/hooks/useAppColors';
 import { Stack } from 'expo-router';
 
 export default function StartListLayout() {
-  const { currentTheme } = useTheme();
+  const colors = useAppColors();
   return (
     <Stack 
       screenOptions={{ 
         title: 'Start List', 
         headerStyle: { 
-          backgroundColor: currentTheme === 'dark' ? '#000000' : '#F5F5F5' 
+          backgroundColor: colors.headerBackground,
         },
         headerTitleStyle: {
-          color: currentTheme === 'dark' ? '#fff' : '#000' ,
+          color: colors.headerTitle,
         } 
       }} 
     />
