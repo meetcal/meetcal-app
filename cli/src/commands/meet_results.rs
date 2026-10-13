@@ -255,7 +255,7 @@ pub fn summarize(rows: &[LiftingResults]) -> MeetSummary {
     }
     let best = |score: fn(&LiftingResults) -> Option<f64>, gender: Gender| {
         rows.iter()
-            .filter(|row| Division::parse(&row.age).gender == gender)
+            .filter(|row| Division::parse(&row.age).gender == Some(gender))
             .filter_map(|row| score(row).map(|value| (value, row.name.clone())))
             .max_by(|a, b| a.0.total_cmp(&b.0))
     };
@@ -278,7 +278,7 @@ fn top_table(
 ) -> Table {
     let mut ranked: Vec<(&LiftingResults, f64)> = results
         .iter()
-        .filter(|row| Division::parse(&row.age).gender == gender)
+        .filter(|row| Division::parse(&row.age).gender == Some(gender))
         .filter_map(|row| score(row).map(|value| (row, value)))
         .collect();
     ranked.sort_by(|a, b| b.1.total_cmp(&a.1));
