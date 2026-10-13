@@ -55,7 +55,7 @@ pub fn Rankings() -> impl IntoView {
     view! {
         <DataPage
             heading="International Rankings"
-            intro="Search current international rankings by athlete, meet, division, or weight class."
+            intro="Browse current international rankings by meet, gender, age, or weight class."
         >
             {move || table_response(rankings, 8, "rankings", |rankings| {
                 let meets = filter_options(rankings.iter().map(|ranking| ranking.meet.as_str()));
