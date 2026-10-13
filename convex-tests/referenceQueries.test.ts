@@ -1,7 +1,7 @@
 import { computeAdaptiveRecords, RANKING_DIVISIONS } from '../convex/lib/referenceData';
 import { natKey, REF_VIEWS } from '../convex/lib/viewKeys';
 import { jsonChunks, writeView } from '../convex/lib/views';
-import { clubAthletes, clubMeetStats, clubs, nationalRankings, wsoAthletes } from '../convex/reference';
+import { clubAthletes, clubMeetStats, clubs, nationalRankings, wsoAthletes, wsoList } from '../convex/reference';
 import { storeClubs } from '../convex/views';
 import { clubKey, clubLabels } from '../convex/lib/clubs';
 import { fakeDb, handlerOf } from './fakeDb';
@@ -49,6 +49,14 @@ describe('national rankings and the club list while their views are stale or mis
     });
     await expect(query(nationalRankings, fake.db, { federation: 'USAW', ageCategory: 'Big' })).rejects.toMatchObject({ data: { status: 503 } });
     await expect(query(clubs, fake.db, {})).rejects.toMatchObject({ data: { status: 503 } });
+  });
+});
+
+describe('WSO list (#412)', () => {
+  it('leaves unmaintained WSOs out of a fresh view built before the filter', async () => {
+    const fake = fakeDb({});
+    await writeView({ db: fake.db } as never, REF_VIEWS.wso_list, jsonChunks(['Georgia', 'Michigan', 'Wisconsin']), [{ table: 'wso_records', version: 0 }]);
+    expect(parse(await query(wsoList, fake.db, {}))).toEqual(['Georgia']);
   });
 });
 

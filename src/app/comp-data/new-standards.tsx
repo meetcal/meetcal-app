@@ -17,6 +17,7 @@ import { Stack, useLocalSearchParams } from "expo-router";
 import React, { useMemo } from "react";
 import { StyleSheet, View } from "react-native";
 import { useScreenHorizontalInsets } from "@/hooks/useScreenInsets";
+import { formatReferenceKg } from "@/lib/reference-values";
 
 
 export default function NewStandardsScreen() {
@@ -151,12 +152,10 @@ function NewStandardsScreenContent() {
               {record.weightClass}
             </ThemedText>
             <ThemedText style={dataTableStyles.cell}>
-              {record.a}
-              kg
+              {formatReferenceKg(record.a)}
             </ThemedText>
             <ThemedText style={dataTableStyles.cell}>
-              {record.b}
-              kg
+              {formatReferenceKg(record.b)}
             </ThemedText>
           </View>
         )}

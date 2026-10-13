@@ -5,7 +5,9 @@ import type { Doc } from './_generated/dataModel';
 import { normalizeName } from './lib/names';
 import { normalizeAgeCategory, normalizeGender } from './lib/normalize';
 import { canonicalMeetDate, isValidIsoDate } from './lib/validation';
+import { isMaintainedWso } from './lib/wsoSources';
 import { writeHistories } from './lib/history';
+import { bareWeightClass, hasSession, isJunkEntrant, isJunkMeetName } from './lib/roster';
 import {
   athleteKeys,
   deleteResultRows,
@@ -358,6 +360,129 @@ export const padMeetDates = internalMutation({
   },
 });
 
+/** A membership number the old entries scraper minted per run (`ingest.upsertEntryAthletes`). */
+const ONE_OFF_MEMBER_ID = /^[1-9]\d{8}$/;
+
+/**
+ * Why a roster row is a leftover of an old entries scraper, or null for a
+ * row to keep (#384, #386), given every row of its meet and whether the meet
+ * name is page chrome with no meet row:
+ * - `junk meet`: the meet is named after a cookie banner or a CSV line;
+ * - `placeholder`: Sport80's empty-table placeholder (`undefined undefined`);
+ * - `start list copy`: an unscheduled row of a meet whose start list is out,
+ *   with the folded name, gender and weight class of a scheduled one (added
+ *   before #133 was fixed);
+ * - `stale one-off id`: an unscheduled row with a nine-digit id the old
+ *   scraper minted, beside a row of the same name, gender and age (within a
+ *   year) with a real one.
+ */
+export function rosterLeftover(row: Doc<'athletes'>, meetRows: readonly Doc<'athletes'>[], junkMeet: boolean): string | null {
+  if (junkMeet) return 'junk meet';
+  if (isJunkEntrant(row)) return 'placeholder';
+  if (hasSession(row)) return null;
+  const key = normalizeName(row.name);
+  // The same athlete: the folded name, gender and, for a copy, weight class
+  // (another athlete of the same name keeps their row, and an ambiguous one
+  // is left for a person).
+  const same = meetRows.filter(
+    (other) => other._id !== row._id && normalizeName(other.name) === key && normalizeGender(other.gender) === normalizeGender(row.gender),
+  );
+  if (same.some((other) => hasSession(other) && bareWeightClass(other.weightClass) === bareWeightClass(row.weightClass))) return 'start list copy';
+  if (
+    ONE_OFF_MEMBER_ID.test(row.memberId) &&
+    same.some((other) => Math.abs(other.age - row.age) <= 1 && !ONE_OFF_MEMBER_ID.test(other.memberId) && !other.memberId.startsWith('noid:'))
+  ) {
+    return 'stale one-off id';
+  }
+  return null;
+}
+
+/**
+ * Deletes the roster rows old entries scrapers left (`rosterLeftover`):
+ * placeholder entrants, meets named after page chrome, unscheduled copies of
+ * start-list athletes, and one-off ids beside the athlete's real number
+ * (#384, #386). Dry run by default: logs each meet's rows by reason and
+ * deletes nothing. Walks the roster in meet order a page per mutation,
+ * reading each meet whole once; deletes through `recordWrite`, so the
+ * meets' views and the club list follow. Idempotent.
+ *
+ *   npx convex run migrations:cleanupRosterRows
+ *   npx convex run migrations:cleanupRosterRows '{"dryRun":false}'
+ */
+export const cleanupRosterRows = internalMutation({
+  args: {
+    cursor: v.optional(v.union(v.string(), v.null())),
+    lastMeet: v.optional(v.string()),
+    deleted: v.optional(v.number()),
+    dryRun: v.optional(v.boolean()),
+  },
+  handler: async (ctx, { cursor, lastMeet, deleted = 0, dryRun = true }) => {
+    const page = await ctx.db
+      .query('athletes')
+      .withIndex('by_meet')
+      .paginate({ cursor: cursor ?? null, numItems: BACKFILL_PAGE_SIZE });
+    const meets = [...new Set(page.page.map((row) => row.meet))].filter((meet) => meet !== lastMeet);
+    const found: string[] = [];
+    let count = deleted;
+    for (const meet of meets) {
+      const rows = await ctx.db
+        .query('athletes')
+        .withIndex('by_meet', (q) => q.eq('meet', meet))
+        .collect();
+      const junkMeet =
+        isJunkMeetName(meet) &&
+        (await ctx.db
+          .query('meets')
+          .withIndex('by_name', (q) => q.eq('name', meet))
+          .first()) === null;
+      const candidates = rows.flatMap((row) => {
+        const reason = rosterLeftover(row, rows, junkMeet);
+        return reason === null ? [] : [{ row, reason }];
+      });
+      // A nine-digit id another meet also holds is a real membership number,
+      // not one the old scraper minted per run (as `upsertEntryAthletes`
+      // judges it): kept.
+      const doomed = [];
+      for (const candidate of candidates) {
+        if (candidate.reason === 'stale one-off id') {
+          const elsewhere = await ctx.db
+            .query('athletes')
+            .withIndex('by_memberId', (q) => q.eq('memberId', candidate.row.memberId))
+            .filter((q) => q.neq(q.field('meet'), meet))
+            .first();
+          if (elsewhere) continue;
+        }
+        doomed.push(candidate);
+      }
+      if (doomed.length === 0) continue;
+      const reasons: Record<string, number> = {};
+      for (const { reason } of doomed) reasons[reason] = (reasons[reason] ?? 0) + 1;
+      const examples = doomed.slice(0, 3).map(({ row, reason }) => `${row.name} (${row.memberId}, ${reason})`);
+      found.push(`${JSON.stringify(meet)}: ${doomed.length} of ${rows.length} ${JSON.stringify(reasons)}, e.g. ${examples.join('; ')}`);
+      count += doomed.length;
+      if (dryRun) continue;
+      for (const { row } of doomed) await ctx.db.delete(row._id);
+      await recordWrite(ctx, 'athletes', [
+        { kind: 'meet', key: meet },
+        { kind: 'table', key: 'athletes' },
+      ]);
+    }
+    for (let i = 0; i < found.length; i += LEFT_PER_LOG_LINE) {
+      console.log(`cleanupRosterRows${dryRun ? ' (dry run)' : ''}:\n${found.slice(i, i + LEFT_PER_LOG_LINE).join('\n')}`);
+    }
+    if (page.isDone) {
+      console.log(`cleanupRosterRows: done${dryRun ? ' (dry run)' : ''}, ${count} roster rows ${dryRun ? 'to delete' : 'deleted'}`);
+      return;
+    }
+    await ctx.scheduler.runAfter(0, internal.migrations.cleanupRosterRows, {
+      cursor: page.continueCursor,
+      lastMeet: page.page[page.page.length - 1]?.meet ?? lastMeet,
+      deleted: count,
+      ...(dryRun ? {} : { dryRun }),
+    });
+  },
+});
+
 /**
  * Rows one re-date mutation patches at most: each rewrites its athlete's
  * history, as a batch of upserts does.
@@ -519,5 +644,32 @@ export const resultDateProblems = internalAction({
         return { eventId, meet, rows: Object.values(dates).reduce((sum, n) => sum + n, 0), dates: sorted.length, first: sorted[0], last: sorted[sorted.length - 1] };
       })
       .sort((a, b) => (a.eventId < b.eventId ? -1 : a.eventId > b.eventId ? 1 : 0));
+  },
+});
+
+/**
+ * Deletes the WSO records of WSOs no job keeps current (not in
+ * `MAINTAINED_WSOS`): Michigan's and Wisconsin's, loaded once from the
+ * Postgres import with the weight classes retired in 2018-2025 and no
+ * holders (#412). The WSO records answers already leave them out; this
+ * removes the rows. Writes through `recordWrite`, so the WSO views are
+ * rebuilt on their own. Idempotent; `dryRun` only counts. Returns the rows
+ * (to be) deleted per WSO.
+ *
+ *   npx convex run migrations:deleteUnmaintainedWsoRecords '{"dryRun":true}'
+ *   npx convex run migrations:deleteUnmaintainedWsoRecords
+ */
+export const deleteUnmaintainedWsoRecords = internalMutation({
+  args: { dryRun: v.optional(v.boolean()) },
+  handler: async (ctx, { dryRun }) => {
+    const deleted: Record<string, number> = {};
+    for (const row of await ctx.db.query('wso_records').collect()) {
+      if (isMaintainedWso(row.wso)) continue;
+      deleted[row.wso] = (deleted[row.wso] ?? 0) + 1;
+      if (!dryRun) await ctx.db.delete(row._id);
+    }
+    if (!dryRun && Object.keys(deleted).length > 0) await recordWrite(ctx, 'wso_records', [{ kind: 'table', key: 'wso_records' }]);
+    console.log(`deleteUnmaintainedWsoRecords${dryRun ? ' (dry run)' : ''}: ${JSON.stringify(deleted)}`);
+    return deleted;
   },
 });
