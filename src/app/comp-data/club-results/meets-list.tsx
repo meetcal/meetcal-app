@@ -6,6 +6,7 @@ import { ThemedText } from "@/components/ui/ThemedText";
 import { ThemedView } from "@/components/ui/ThemedView";
 import { useAppColors } from "@/hooks/useAppColors";
 import { useMutableResource } from "@/hooks/useMutableResource";
+import { clubMeetsNewestFirst, formatClubMeetDate, type ClubMeet } from "@/lib/club-meets";
 import { clubAthletesResource } from "@/lib/database/fetch-club-stats";
 import { posthog } from "@/lib/posthog";
 import type { AthleteClub } from "@/types/club";
@@ -65,15 +66,13 @@ function ClubMeetsListScreenContent() {
     await refresh();
   }, [refresh]);
 
-  // Get unique meets from athletes
-  const allMeets = Array.from(
-    new Set(athletesInClub.map((a) => a.meet)),
-  ).sort();
+  // The club's meets, newest first.
+  const allMeets = clubMeetsNewestFirst(athletesInClub);
 
   // Filter meets based on search query
   const meetQuery = searchQuery.trim();
   const uniqueMeets = meetQuery
-    ? allMeets.filter((meet) =>
+    ? allMeets.filter(({ meet }) =>
         meet.toLowerCase().includes(meetQuery.toLowerCase()),
       )
     : allMeets;
@@ -172,7 +171,9 @@ function ClubMeetsListScreenContent() {
     return null;
   };
 
-  const renderMeetItem = ({ item }: { item: string }) => (
+  const renderMeetItem = ({ item }: { item: ClubMeet }) => {
+    const date = formatClubMeetDate(item.date);
+    return (
     <Pressable
       style={({ pressed }) => [
         styles.meetItem,
@@ -182,21 +183,29 @@ function ClubMeetsListScreenContent() {
         },
         pressed && { backgroundColor: colors.pressed },
       ]}
-      onPress={() => handleMeetPress(item)}
+      onPress={() => handleMeetPress(item.meet)}
       accessibilityRole="button"
-      accessibilityLabel={item}
+      accessibilityLabel={date ? `${item.meet}, ${date}` : item.meet}
       accessibilityHint="Shows the club's recap for this meet"
     >
-      <ThemedText style={[styles.meetName, { color: colors.text }]}>
-        {item}
-      </ThemedText>
+      <View style={styles.meetText}>
+        <ThemedText style={[styles.meetName, { color: colors.text }]}>
+          {item.meet}
+        </ThemedText>
+        {date ? (
+          <ThemedText style={[styles.meetDate, { color: colors.secondaryText }]}>
+            {date}
+          </ThemedText>
+        ) : null}
+      </View>
       <IconSymbol
         name={getChevronIcon("right")}
         size={20}
         color={colors.link}
       />
     </Pressable>
-  );
+    );
+  };
 
   return (
     <ThemedView
@@ -284,7 +293,7 @@ function ClubMeetsListScreenContent() {
         <FlatList
           data={uniqueMeets}
           renderItem={renderMeetItem}
-          keyExtractor={(item) => item}
+          keyExtractor={(item) => item.meet}
           contentContainerStyle={[
             styles.listContent,
             {
@@ -370,9 +379,15 @@ const styles = StyleSheet.create({
     alignItems: "center",
     padding: 16,
   },
+  meetText: {
+    flex: 1,
+  },
   meetName: {
     fontSize: 17,
-    flex: 1,
+  },
+  meetDate: {
+    fontSize: 13,
+    marginTop: 2,
   },
   retryButton: {
     marginTop: 16,
