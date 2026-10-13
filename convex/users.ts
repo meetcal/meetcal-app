@@ -1,4 +1,6 @@
-import { mutation, query, type MutationCtx, type QueryCtx } from './_generated/server';
+import { v } from 'convex/values';
+import { internal } from './_generated/api';
+import { internalMutation, mutation, query, type MutationCtx, type QueryCtx } from './_generated/server';
 import type { Doc } from './_generated/dataModel';
 import { compareCollated } from './lib/sort';
 import { apiError, isValidIsoDate, requireNonEmpty } from './lib/validation';
@@ -26,6 +28,14 @@ export const SAVED_SESSION_WRITE_ORDER_PRUNE_BATCH = 32;
 async function requireUserId(ctx: QueryCtx): Promise<string> {
   const identity = await ctx.auth.getUserIdentity();
   if (!identity) throw apiError(401, 'unauthorized');
+  // A deleted account's token stays valid for a minute or so: a request it
+  // carries (a save still in flight, another device's sync) must not store
+  // the user's data again after `deleteUserData`.
+  const deleted = await ctx.db
+    .query('deleted_users')
+    .withIndex('by_userId', (q) => q.eq('userId', identity.subject))
+    .first();
+  if (deleted) throw apiError(403, 'account deleted');
   return identity.subject;
 }
 
@@ -246,15 +256,32 @@ function toApiSavedSession(row: Doc<'saved_sessions'>) {
   };
 }
 
+/**
+ * One row per session id: the newest by `updatedAt` (the first on a tie). A
+ * legacy duplicate (see `savedSessionRows`) stays in the table until the
+ * user's next save or unsave of that session, but the list never shows a
+ * session twice.
+ */
+export function newestRowPerSession<T extends { sessionId: string; updatedAt: number }>(rows: T[]): T[] {
+  const newest = new Map<string, T>();
+  for (const row of rows) {
+    const kept = newest.get(row.sessionId);
+    if (kept === undefined || row.updatedAt > kept.updatedAt) newest.set(row.sessionId, row);
+  }
+  return [...newest.values()];
+}
+
 /** `GET /users/me/saved-sessions`, ordered by meet, date, session, platform. */
 export const savedSessions = query({
   args: {},
   handler: async (ctx) => {
     const userId = await requireUserId(ctx);
-    const rows = await ctx.db
-      .query('saved_sessions')
-      .withIndex('by_userId', (q) => q.eq('userId', userId))
-      .collect();
+    const rows = newestRowPerSession(
+      await ctx.db
+        .query('saved_sessions')
+        .withIndex('by_userId', (q) => q.eq('userId', userId))
+        .collect(),
+    );
     rows.sort(
       (a, b) =>
         compareCollated(a.meet, b.meet) ||
@@ -444,5 +471,44 @@ export const setAutoUnsave = mutation({
     if (existing) await ctx.db.replace(existing._id, row);
     else await ctx.db.insert('user_preferences', row);
     return { auto_unsave_started_sessions: enabled };
+  },
+});
+
+/** A user's rows one `deleteUserData` call deletes per table at most; it reschedules itself for the rest. */
+export const USER_DATA_DELETE_BATCH = 500;
+
+/**
+ * Deletes everything stored under a user id: saved sessions (with their
+ * notes and athlete names), preferences, and the saved-session revisions and
+ * reset markers. Keeps the id alone (`deleted_users`), so a request still
+ * carrying a valid token for the account is refused rather than storing its
+ * data again. Called by Clerk's `user.deleted` webhook (`convex/http.ts`),
+ * so an account deleted in Clerk leaves nothing behind (#250). At most
+ * USER_DATA_DELETE_BATCH rows per table a call; a call that hit the limit
+ * schedules the next. Idempotent: a user with no rows is a no-op.
+ *
+ *   npx convex run users:deleteUserData '{"userId":"user_…"}'
+ */
+export const deleteUserData = internalMutation({
+  args: { userId: v.string() },
+  handler: async (ctx, { userId }) => {
+    if (userId.trim() === '') throw new Error('userId is required');
+    // First, so no request of this user stores anything from here on.
+    const tombstone = await ctx.db
+      .query('deleted_users')
+      .withIndex('by_userId', (q) => q.eq('userId', userId))
+      .first();
+    if (!tombstone) await ctx.db.insert('deleted_users', { userId, deletedAt: Date.now() });
+    const batches = await Promise.all([
+      ctx.db.query('saved_sessions').withIndex('by_userId', (q) => q.eq('userId', userId)).take(USER_DATA_DELETE_BATCH),
+      ctx.db.query('user_preferences').withIndex('by_userId', (q) => q.eq('userId', userId)).take(USER_DATA_DELETE_BATCH),
+      ctx.db.query('saved_session_revisions').withIndex('by_userId_and_updatedAt', (q) => q.eq('userId', userId)).take(USER_DATA_DELETE_BATCH),
+      ctx.db.query('saved_session_resets').withIndex('by_userId_and_updatedAt', (q) => q.eq('userId', userId)).take(USER_DATA_DELETE_BATCH),
+    ]);
+    for (const rows of batches) for (const row of rows) await ctx.db.delete(row._id);
+    const more = batches.some((rows) => rows.length === USER_DATA_DELETE_BATCH);
+    if (more) await ctx.scheduler.runAfter(0, internal.users.deleteUserData, { userId });
+    const [sessions, preferences, revisions, resets] = batches.map((rows) => rows.length);
+    return { sessions, preferences, revisions, resets, more };
   },
 });

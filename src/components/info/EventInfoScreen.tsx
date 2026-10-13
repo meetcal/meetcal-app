@@ -3,6 +3,7 @@ import { ThemedText } from "@/components/ui/ThemedText";
 import { ThemedView } from "@/components/ui/ThemedView";
 import { useSelectedMeet } from "@/contexts/SelectedMeetContext";
 import { useAppColors } from "@/hooks/useAppColors";
+import { formatVenueLocation, venueAddressLines } from "@/lib/venue-address";
 import * as WebBrowser from "expo-web-browser";
 import React, { useState } from "react";
 import {
@@ -59,20 +60,23 @@ export default function EventInfoScreen() {
 
   const venueMapLabel = venueMapPdfUrl && !venueMapAppleUrl ? "Venue Map (PDF)" : "Venue Map";
 
+  // Blank and "Unknown" placeholder parts left out (`lib/venue-address`, the
+  // same formatter as the calendar event location).
+  const venueLines = venueAddressLines(meetDetails?.venue);
+  const venueLocation = formatVenueLocation(meetDetails?.venue, meetDetails?.name);
+  const addressLines = [venueLines.name, venueLines.street, venueLines.locality].filter(
+    (line): line is string => Boolean(line),
+  );
+  // Without a findable location, what is left is shown as text, minus the
+  // stand-in venue name that only repeats the meet's title.
+  const plainVenueLines = venueLocation
+    ? []
+    : addressLines.filter((line) => line !== meetDetails?.name?.trim());
+
   const handleAddressPress = async () => {
-    if (!meetDetails?.venue) return;
+    if (!venueLocation) return;
 
-    const addr = meetDetails.venue.address;
-    const parts = [
-      meetDetails.venue.name,
-      addr?.street,
-      addr?.city,
-      addr?.state && addr?.zip ? `${addr.state} ${addr.zip}` : addr?.state || addr?.zip,
-    ].filter(Boolean);
-
-    if (parts.length === 0) return;
-
-    const encodedAddress = encodeURIComponent(parts.join(", "));
+    const encodedAddress = encodeURIComponent(venueLocation);
     const googleMapsUrl = `https://www.google.com/maps/search/?api=1&query=${encodedAddress}`;
 
     const mapsUrl = Platform.select({
@@ -124,38 +128,46 @@ export default function EventInfoScreen() {
 
         <View style={[styles.divider, { backgroundColor: colors.border }]} />
 
-        <Pressable
-          style={({ pressed }) => [
-            styles.section,
-            styles.lastSection,
-            pressed && { backgroundColor: colors.pressed },
-          ]}
-          onPress={handleAddressPress}
-        >
-          <View>
-            <View style={styles.addressContainer}>
-              <View>
-                <ThemedText style={[styles.link, { color: colors.link }]}>
-                  {meetDetails.venue?.name}
-                </ThemedText>
-                <ThemedText style={[styles.link, { color: colors.link }]}>
-                  {meetDetails.venue?.address?.street}
-                </ThemedText>
-                <ThemedText style={[styles.link, { color: colors.link }]}>
-                  {meetDetails.venue?.address?.city}
-,
-{" "}
-                  {meetDetails.venue?.address?.state}
-{" "}
-                  {meetDetails.venue?.address?.zip}
-                </ThemedText>
+        {venueLocation ? (
+          <Pressable
+            testID="info-venue-address"
+            accessibilityRole="link"
+            style={({ pressed }) => [
+              styles.section,
+              styles.lastSection,
+              pressed && { backgroundColor: colors.pressed },
+            ]}
+            onPress={handleAddressPress}
+          >
+            <View>
+              <View style={styles.addressContainer}>
+                <View>
+                  {addressLines.map((line, index) => (
+                    <ThemedText key={`${index}-${line}`} style={[styles.link, { color: colors.link }]}>
+                      {line}
+                    </ThemedText>
+                  ))}
+                </View>
+                <IconSymbol name="chevron.right" size={20} color={colors.link} />
               </View>
-              <IconSymbol name="chevron.right" size={20} color={colors.link} />
             </View>
+          </Pressable>
+        ) : plainVenueLines.length > 0 ? (
+          // Only the backend's stand-in venue (the meet's own name): nothing
+          // Maps can find, so plain text with no chevron.
+          <View testID="info-venue-name" style={[styles.section, styles.lastSection]}>
+            {plainVenueLines.map((line, index) => (
+              <ThemedText key={`${index}-${line}`} style={{ color: colors.secondaryText }}>
+                {line}
+              </ThemedText>
+            ))}
           </View>
-        </Pressable>
+        ) : null}
 
-        <View style={[styles.divider, { backgroundColor: colors.border }]} />
+        {/* Only after a venue row: with none, the divider above already separates. */}
+        {(venueLocation || plainVenueLines.length > 0) && (
+          <View testID="info-venue-divider" style={[styles.divider, { backgroundColor: colors.border }]} />
+        )}
 
         {hasVenueMap && (
           <Pressable

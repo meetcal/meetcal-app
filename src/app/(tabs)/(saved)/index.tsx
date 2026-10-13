@@ -11,12 +11,12 @@ import { useSelectedMeet } from "@/contexts/SelectedMeetContext";
 import { useSubscription } from "@/contexts/SubscriptionContext";
 import { useAppColors } from "@/hooks/useAppColors";
 import { useCalendarSessionsExport } from "@/hooks/useCalendarSessionsExport";
+import { useMeetZone } from "@/hooks/useMeetZone";
+import { useRequirePremium } from "@/hooks/useRequirePremium";
 import { useSavedScheduleLookup } from "@/hooks/saved-sessions/useSavedScheduleLookup";
 import { calendarSessionsFromSaved } from "@/lib/calendar-export";
-import { countSessionsOutsideMeet } from "@/lib/saved-sessions-list";
+import { countSessionsOutsideMeet, savedTabMeetNames } from "@/lib/saved-sessions-list";
 import { LegacySavedSession } from "@/types/saved";
-import { useAuthGuard } from "@/utils/authGuard";
-import { useUser } from "@clerk/expo";
 import { useFocusEffect, useNavigation, useRouter } from "expo-router";
 import React, {
   useCallback,
@@ -38,11 +38,9 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useScreenHorizontalInsets } from "@/hooks/useScreenInsets";
 import { devLog } from "@/lib/logger";
-import { premiumActionFor, resolvePremiumAccess } from "@/lib/premium-access";
 
 export default function SavedScreen() {
   const screenInsets = useScreenHorizontalInsets();
-  const { user } = useUser();
   const {
     savedSessions,
     isLoading,
@@ -54,16 +52,16 @@ export default function SavedScreen() {
   } = useSavedSessions();
   const { selectedMeet, availableMeets, meetDetails } = useSelectedMeet();
   const allowedMeetNames = useMemo(
-    () => new Set(availableMeets.map((m) => m.name)),
-    [availableMeets],
+    () => savedTabMeetNames(availableMeets, selectedMeet),
+    [availableMeets, selectedMeet],
   );
   const router = useRouter();
   const navigation = useNavigation();
   const insets = useSafeAreaInsets();
   const [refreshing, setRefreshing] = useState(false);
   const [hasMigrated, setHasMigrated] = useState(false);
-  const { isSubscribed, isLoading: isSubscriptionLoading } = useSubscription();
-  const { requireAuth } = useAuthGuard();
+  const { isSubscribed } = useSubscription();
+  const { requireAuth, requireCalendarExport } = useRequirePremium();
   const colors = useAppColors();
   const { exportSessions: exportToCalendar, picker: calendarPicker } =
     useCalendarSessionsExport();
@@ -95,9 +93,9 @@ export default function SavedScreen() {
     if (authResult === null || authResult === false) {
       return;
     }
-
-    // At this point, user must be authenticated
-    if (!user?.id) return;
+    // No Clerk `user` check here: offline Clerk never loads, while
+    // `requireAuth` trusts the cached sign-in and the reset runs for the
+    // hook's cached user, queued through the outbox.
 
     // The hook clears the selected meet only (legacy storage keys included),
     // or everything when no meet is selected. Say which one is about to happen.
@@ -126,14 +124,11 @@ export default function SavedScreen() {
         },
       ],
     );
-  }, [requireAuth, user, resetAllSessions, selectedMeet]);
+  }, [requireAuth, resetAllSessions, selectedMeet]);
 
-  // `meetDetails.time.abbreviation` is resolved once, in `mapApiMeet`, at the
-  // meet's own start date. Re-deriving it here with
-  // `getTimeZoneAbbreviation(id)` formats *today* instead: open a December New
-  // York meet in September and every row reads "EDT" when the sessions are
-  // actually EST, which looks to the user like the times are an hour wrong.
-  const timeZoneAbbr = meetDetails?.time.abbreviation ?? "";
+  // Each card labels its times with the zone at its own session date
+  // (`meetTimeZoneLabel`), not the meet's first day.
+  const meetZone = useMeetZone(meetDetails?.time);
 
   // Only the selected meet's schedule: it is the only meet this tab lists.
   const { sessionLookupByMeet, isLoading: isSchedulesLoading } =
@@ -141,12 +136,14 @@ export default function SavedScreen() {
 
   // Pre-meet rows are folded into the current list by the hook, which owns
   // the storage keys; this screen only decides when to ask.
+  // Runs for the hook's user (Clerk's, or the cached one offline), and is
+  // marked done only once it has: with no user yet the hook answers false,
+  // and the new `migrateLegacySessions` a resolved user brings retries it.
   const migrateSessions = useCallback(async () => {
-    if (!user?.id || !selectedMeet) return;
+    if (!selectedMeet) return;
     devLog("Starting session migration");
-    await migrateLegacySessions(selectedMeet);
-    setHasMigrated(true);
-  }, [selectedMeet, migrateLegacySessions, user?.id]);
+    if (await migrateLegacySessions(selectedMeet)) setHasMigrated(true);
+  }, [selectedMeet, migrateLegacySessions]);
 
   // Only the selected meet's sessions are listed.
   const filteredSessions = useMemo(
@@ -162,35 +159,10 @@ export default function SavedScreen() {
   );
 
   const handleSaveToCalendar = useCallback(() => {
-    // 1. Check authentication first
-    const authResult = requireAuth({
-      feature: "add-to-calendar",
-      message: "Sign in to add sessions to your calendar.",
-      returnPath: "/(tabs)/(saved)",
-    });
-    if (authResult === null || authResult === false) {
-      return;
-    }
-
-    // 2. Then check subscription. Unknown says so; it never opens the
-    // paywall in front of a subscriber whose entitlement can't be confirmed.
-    const premium = premiumActionFor(
-      resolvePremiumAccess({ isSubscribed, isLoading: isSubscriptionLoading }),
-    );
-    if (premium.kind === "notify") {
-      showToast(premium.toast);
-      return;
-    }
-    if (premium.kind === "paywall") {
-      router.push({
-        pathname: "/shared-screens/paywall",
-        params: {
-          from: "/(tabs)/(saved)",
-          feature: "add-to-calendar",
-        },
-      });
-      return;
-    }
+    // Sign-in, then the subscription: the same gate as the Start List and
+    // session details. Unknown says so; it never opens the paywall in front
+    // of a subscriber whose entitlement can't be confirmed.
+    if (!requireCalendarExport("/(tabs)/(saved)")) return;
 
     if (filteredSessions.length === 0) {
       showToast({ type: "info", message: "There are no sessions to add to calendar." });
@@ -211,7 +183,7 @@ export default function SavedScreen() {
       allowedMeetNames,
     );
     exportToCalendar(sessions, { skipped });
-  }, [requireAuth, isSubscribed, isSubscriptionLoading, router, filteredSessions, isSchedulesLoading, sessionLookupByMeet, allowedMeetNames, exportToCalendar]);
+  }, [requireCalendarExport, filteredSessions, isSchedulesLoading, sessionLookupByMeet, allowedMeetNames, exportToCalendar]);
 
   const forceLoadSessions = useCallback(async () => {
     if (refreshing) return;
@@ -256,7 +228,7 @@ export default function SavedScreen() {
           onPress={handleSessionPress}
           sessionLookupByMeet={sessionLookupByMeet}
           allowedMeetNames={allowedMeetNames}
-          timeZoneAbbr={timeZoneAbbr}
+          meetZone={meetZone}
         />
       );
     },
@@ -265,7 +237,7 @@ export default function SavedScreen() {
       handleSessionPress,
       sessionLookupByMeet,
       allowedMeetNames,
-      timeZoneAbbr,
+      meetZone,
     ],
   );
 

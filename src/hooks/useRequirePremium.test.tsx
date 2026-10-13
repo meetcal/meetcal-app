@@ -33,7 +33,7 @@ const OPTIONS = {
   returnPath: "/shared-screens/schedule-details",
 };
 
-function run(): boolean {
+function mountGate(): ReturnType<typeof useRequirePremium> {
   let captured!: ReturnType<typeof useRequirePremium>;
   function Harness() {
     captured = useRequirePremium();
@@ -42,7 +42,11 @@ function run(): boolean {
   act(() => {
     create(<Harness />);
   });
-  return captured.requirePremium(OPTIONS);
+  return captured;
+}
+
+function run(): boolean {
+  return mountGate().requirePremium(OPTIONS);
 }
 
 describe("useRequirePremium", () => {
@@ -96,4 +100,37 @@ describe("useRequirePremium", () => {
       );
     },
   );
+});
+
+// #340: one gate for "Add to Calendar" on the Saved tab, the Start List and
+// session details.
+describe("requireCalendarExport", () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockAuthResult = true;
+    mockSubscription = { isSubscribed: true, isLoading: false };
+  });
+
+  it("lets a signed-in subscriber through", () => {
+    expect(mountGate().requireCalendarExport("/(tabs)/(saved)")).toBe(true);
+  });
+
+  it("asks a signed-out user to sign in, with the calendar feature", () => {
+    mockAuthResult = false;
+    expect(mountGate().requireCalendarExport("/(tabs)/(saved)")).toBe(false);
+    expect(mockRequireAuth).toHaveBeenCalledWith({
+      feature: "add-to-calendar",
+      message: "Sign in to add sessions to your calendar.",
+      returnPath: "/(tabs)/(saved)",
+    });
+  });
+
+  it("sends a free user to the paywall and back", () => {
+    mockSubscription = { isSubscribed: false, isLoading: false };
+    expect(mountGate().requireCalendarExport("/shared-screens/schedule-details?x=1")).toBe(false);
+    expect(mockPush).toHaveBeenCalledWith({
+      pathname: "/shared-screens/paywall",
+      params: { from: "/shared-screens/schedule-details?x=1", feature: "add-to-calendar" },
+    });
+  });
 });

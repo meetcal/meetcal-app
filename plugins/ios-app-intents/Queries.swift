@@ -133,6 +133,42 @@ struct SessionQuery: EntityStringQuery {
         "\(meet)||\(sessionNumber)||\(platform)"
     }
 
+    /// The meet a session id was built for, or nil for an id not built by
+    /// `makeID`. Read from the right, so a meet name containing `||` survives.
+    static func meet(fromID id: String) -> String? {
+        let parts = id.components(separatedBy: "||")
+        guard parts.count >= 3, Int(parts[parts.count - 2]) != nil else { return nil }
+        let meet = parts.dropLast(2).joined(separator: "||")
+        return meet.isEmpty ? nil : meet
+    }
+
+    /// Resolves ids against the schedule of the meet each id names, not the
+    /// meet selected in the app now: an id from another meet (a schedule
+    /// asked for by name, a Spotlight item indexed before the user switched
+    /// meets) still resolves. One schedule request per distinct meet, one at
+    /// a time; the meets are never more than the ids the system passed, so
+    /// every valid id resolves rather than a capped few.
+    static func sessions(withIDs identifiers: [String]) async throws -> [SessionEntity] {
+        var meets: [String] = []
+        for id in identifiers {
+            if let meet = meet(fromID: id), !meets.contains(meet) { meets.append(meet) }
+        }
+        let wanted = Set(identifiers)
+        var found: [SessionEntity] = []
+        var firstError: Error?
+        for meet in meets {
+            // One meet's failed request doesn't lose the others' sessions.
+            do {
+                found += try await sessions(forMeet: meet).filter { wanted.contains($0.id) }
+            } catch {
+                firstError = firstError ?? error
+            }
+        }
+        // Nothing resolved and a request failed: report it rather than "no such sessions".
+        if found.isEmpty, let firstError { throw firstError }
+        return found
+    }
+
     static func sessions(forMeet meet: String) async throws -> [SessionEntity] {
         let rows = try await MeetCalAPI.shared.schedule(meet: meet)
         // Group by (session_id, platform); join weight classes.
@@ -145,31 +181,32 @@ struct SessionQuery: EntityStringQuery {
                     grouped[key] = existing
                 }
             } else {
+                // Times as the app shows them ("2:00 PM"), not as stored.
                 grouped[key] = SessionEntity(
                     id: key,
                     meet: meet,
                     sessionNumber: row.session_id,
                     platform: row.platform,
                     weightClass: row.weight_class,
-                    startTime: row.start_time,
-                    weighInTime: row.weigh_in_time,
+                    startTime: APITimeFormat.display(row.start_time),
+                    weighInTime: row.weigh_in_time.map(APITimeFormat.display),
                     date: row.date
                 )
             }
         }
-        return grouped.values.sorted {
-            $0.sessionNumber == $1.sessionNumber
-                ? $0.platform < $1.platform
-                : $0.sessionNumber < $1.sessionNumber
+        // Day, then session number, then platform, as the API orders them:
+        // a multi-day meet's session 1 on day two comes after day one.
+        return grouped.values.sorted { lhs, rhs in
+            let lhsDate = lhs.date ?? ""
+            let rhsDate = rhs.date ?? ""
+            if lhsDate != rhsDate { return lhsDate < rhsDate }
+            if lhs.sessionNumber != rhs.sessionNumber { return lhs.sessionNumber < rhs.sessionNumber }
+            return lhs.platform < rhs.platform
         }
     }
 
     func entities(for identifiers: [SessionEntity.ID]) async throws -> [SessionEntity] {
-        let meet = SharedStore.selectedMeet
-        guard !meet.isEmpty else { return [] }
-        let all = try await Self.sessions(forMeet: meet)
-        let wanted = Set(identifiers)
-        return all.filter { wanted.contains($0.id) }
+        try await Self.sessions(withIDs: identifiers)
     }
 
     func entities(matching string: String) async throws -> [SessionEntity] {

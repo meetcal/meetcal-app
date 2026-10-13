@@ -234,6 +234,18 @@ describe('saved-session write ordering', () => {
     expect(await s.list()).toEqual(['a:v1']);
   });
 
+  it('lists a session with a legacy duplicate row once, newest row first', async () => {
+    const row = { userId: USER, meet: MEET, sessionNumber: 1, platform: 'Red', athleteNames: [] };
+    const s = server({
+      saved_sessions: [
+        { ...row, sessionId: 'a', notes: 'older', updatedAt: 1 },
+        { ...row, sessionId: 'a', notes: 'newer', updatedAt: 2 },
+        { ...row, sessionId: 'b', notes: 'only', updatedAt: 1 },
+      ],
+    });
+    expect(await s.list()).toEqual(['a:newer', 'b:only']);
+  });
+
   it('keeps tombstones out of the list', async () => {
     const s = server();
     await s.put('a', 'v1', at(PHONE, 1));

@@ -1,79 +1,30 @@
 /**
- * Athlete lifetime bests, resolved for a whole session at once.
+ * Athlete bests for session details, resolved for a whole session at once.
+ * What they mean (the year window, else the most recent meet) and the lookup
+ * that stores them are `lib/year-bests`, shared with the start list.
  *
  * This is a data-access module — in-flight dedupe, a stored-bests cache layer,
- * an offline fallback that derives bests from downloaded meet results, and the
- * write-back that keeps the stored layer warm. It lives next to
+ * and an offline fallback that derives bests from downloaded meet results. It lives next to
  * `lib/athlete-prs` rather than under `components/` because it imports
  * `lib/database/*` and holds policy, not UI.
  */
 import { SupabaseBests, SupabaseLiftResult } from "@/data/types/athletes";
 import { MeetName } from "@/data/types/meet";
-import { maxSuccessfulAttempt, normalizeAthleteName } from "@/lib/athletes";
+import { normalizeAthleteName } from "@/lib/athletes";
 import {
   getAllCachedLiftingResultsForAthletes,
   getStoredAthleteBestsForNames,
   hasAnyAthleteBest,
-  saveAthleteBestsBatch,
   type StoredAthleteBests,
 } from "@/lib/database/offline-store";
-import { fetchAthleteBestsForNames } from "@/lib/database/queries";
 import { isNetworkAvailable } from "@/lib/networkUtils";
+import {
+  deriveDownloadedBests,
+  emptyBests,
+  lookUpAthleteBests,
+} from "@/lib/year-bests";
 
 const bestsBatchInFlight = new Map<string, Promise<Record<string, SupabaseBests>>>();
-
-function createEmptyBests(): SupabaseBests {
-  return { snatch_best: null, cj_best: null, total: null };
-}
-
-function deriveRowBests(row: {
-  snatch_best?: number | null;
-  cj_best?: number | null;
-  total?: number | null;
-  snatch1?: number | null;
-  snatch2?: number | null;
-  snatch3?: number | null;
-  cj1?: number | null;
-  cj2?: number | null;
-  cj3?: number | null;
-}) {
-  const snatchBest =
-    row.snatch_best ??
-    maxSuccessfulAttempt([row.snatch1, row.snatch2, row.snatch3]);
-  const cjBest =
-    row.cj_best ?? maxSuccessfulAttempt([row.cj1, row.cj2, row.cj3]);
-  const total = row.total ?? (snatchBest != null && cjBest != null ? snatchBest + cjBest : null);
-  return {
-    snatch_best: snatchBest,
-    cj_best: cjBest,
-    total,
-  };
-}
-
-function maxNullable(
-  current: number | null | undefined,
-  incoming: number | null | undefined,
-): number | null {
-  if (current == null && incoming == null) return null;
-  if (current == null) return incoming ?? null;
-  if (incoming == null) return current;
-  return Math.max(current, incoming);
-}
-
-function mergeIntoBests(
-  current: SupabaseBests,
-  next: {
-    snatch_best?: number | null;
-    cj_best?: number | null;
-    total?: number | null;
-  },
-): SupabaseBests {
-  return {
-    snatch_best: maxNullable(current.snatch_best, next.snatch_best),
-    cj_best: maxNullable(current.cj_best, next.cj_best),
-    total: maxNullable(current.total, next.total),
-  };
-}
 
 async function loadCachedBestsForNames(
   names: string[],
@@ -91,12 +42,10 @@ async function loadCachedBestsForNames(
     cachedResultsByName = await getAllCachedLiftingResultsForAthletes(names);
   } catch {}
 
+  // The same meaning as an online answer (`lib/year-bests`): the year
+  // window, else the most recent meet. It used to be every downloaded meet.
   for (const name of names) {
-    let bests = createEmptyBests();
-    for (const row of cachedResultsByName[name] ?? []) {
-      bests = mergeIntoBests(bests, deriveRowBests(row));
-    }
-    bestsByName[name] = bests;
+    bestsByName[name] = deriveDownloadedBests(cachedResultsByName[name] ?? []);
   }
 
   return bestsByName;
@@ -123,7 +72,7 @@ async function loadStoredBests(names: string[]): Promise<{
   const bestsByName: Record<string, SupabaseBests> = {};
 
   uniqueNames.forEach((name) => {
-    bestsByName[name] = createEmptyBests();
+    bestsByName[name] = emptyBests();
   });
 
   if (uniqueNames.length === 0) {
@@ -160,7 +109,7 @@ async function loadFallbackBests(
   for (const name of names) {
     const stored = storedByName[name]?.bests;
     bestsByName[name] =
-      stored && hasAnyAthleteBest(stored) ? stored : (derived[name] ?? createEmptyBests());
+      stored && hasAnyAthleteBest(stored) ? stored : (derived[name] ?? emptyBests());
   }
   return bestsByName;
 }
@@ -207,37 +156,22 @@ async function getAthleteBestsBatchUncached(
     return bestsByName;
   }
 
-  let fetchedBestsByName: Record<string, SupabaseBests>;
+  // `lookUpAthleteBests` is the start list's lookup too, so both screens
+  // store one meaning under the athlete's entry: the year window, else the
+  // most recent meet. It stores what the API answered.
+  let lookup: Awaited<ReturnType<typeof lookUpAthleteBests>>;
   try {
-    fetchedBestsByName = await fetchAthleteBestsForNames(namesNeedingLookup);
+    lookup = await lookUpAthleteBests(namesNeedingLookup);
   } catch {
     // A network error or timeout is not an answer either.
     Object.assign(bestsByName, await loadFallbackBests(namesNeedingLookup, storedByName));
     return bestsByName;
   }
 
-  Object.assign(bestsByName, fetchedBestsByName);
-
-  const missingNames = namesNeedingLookup.filter((name) => {
-    const bests = fetchedBestsByName[name];
-    return !bests || !hasAnyAthleteBest(bests);
-  });
-  if (missingNames.length > 0) {
-    const cachedBests = await loadCachedBestsForNames(missingNames);
-    missingNames.forEach((name) => {
-      bestsByName[name] = cachedBests[name] ?? createEmptyBests();
-    });
+  Object.assign(bestsByName, lookup.answered);
+  if (lookup.unanswered.length > 0) {
+    // The most-recent-meet lookup failed for these: shown, never stored.
+    Object.assign(bestsByName, await loadFallbackBests(lookup.unanswered, storedByName));
   }
-  // The API answered, so this is stored, all-null rows included: those are
-  // its "no results" and expire after `ATHLETE_BESTS_EMPTY_TTL_MS`. A failed
-  // write only costs the next view a lookup; the answer is still shown.
-  try {
-    await saveAthleteBestsBatch(
-      namesNeedingLookup.reduce<Record<string, SupabaseBests>>((acc, name) => {
-        acc[name] = bestsByName[name] ?? createEmptyBests();
-        return acc;
-      }, {}),
-    );
-  } catch {}
   return bestsByName;
 }
