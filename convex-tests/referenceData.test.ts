@@ -1,4 +1,4 @@
-import { computeNationalRankingsForYear, computeRecords, computeWsoRows } from '../convex/lib/referenceData';
+import { computeNationalRankingsForYear, computeRecords, computeWsoList, computeWsoRows } from '../convex/lib/referenceData';
 
 type Row = Record<string, unknown>;
 
@@ -81,6 +81,19 @@ describe('record holders', () => {
     expect(row.total_by).toEqual({ name: 'Bo Press', date: '2024-03-02', location: 'Raleigh' });
     expect(row.snatch_by).toBeNull();
     expect(row.cj_by).toBeNull();
+  });
+});
+
+describe('WSO records offered', () => {
+  const row = (wso: string, weightClass: string) => ({ wso, ageCategory: 'Senior', gender: 'Men', weightClass, _creationTime: 1, snatchRecord: 100 });
+
+  // Michigan's and Wisconsin's rows were loaded once, with retired classes and no holders, and no job updates them.
+  it('lists and answers only the WSOs a job keeps current', async () => {
+    const ctx = fakeCtx({ wso_records: [row('Carolina', '89'), row('Michigan', '89'), row('Wisconsin', '+109'), row('Georgia', '94')] });
+    expect(await computeWsoList(ctx)).toEqual(['Carolina', 'Georgia']);
+    expect(await computeWsoRows(ctx, 'Michigan')).toEqual([]);
+    expect(await computeWsoRows(ctx, 'Wisconsin')).toEqual([]);
+    expect(await computeWsoRows(ctx, 'Georgia')).toHaveLength(1);
   });
 });
 
