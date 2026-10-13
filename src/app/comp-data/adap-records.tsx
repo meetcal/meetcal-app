@@ -2,11 +2,11 @@ import { DataTable, dataTableStyles } from "@/components/ui/DataTable";
 import { SubscriptionGate } from "@/components/ui/SubscriptionGate";
 import { ThemedText } from "@/components/ui/ThemedText";
 import { ThemedView } from "@/components/ui/ThemedView";
-import { AGE_GROUP_KEY, EMPTY_RECORDS_DATA, MENS_WEIGHT_CLASSES, WOMENS_WEIGHT_CLASSES } from "@/constants/adapative";
+import { EMPTY_RECORDS_DATA } from "@/constants/adapative";
 import { useTheme } from "@/contexts/ThemeContext";
 import { useAppColors } from "@/hooks/useAppColors";
 import { useMutableResource } from "@/hooks/useMutableResource";
-import { adaptiveRecordsResource } from "@/lib/database/fetch-adaptive-records";
+import { adaptiveRecordsFor, adaptiveRecordsResource } from "@/lib/database/fetch-adaptive-records";
 import { RecordsData } from "@/types/records";
 import { Stack } from "expo-router";
 import React, { useMemo, useState } from "react";
@@ -46,14 +46,10 @@ function AdaptiveRecordsScreenContent() {
     initialData: EMPTY_RECORDS_DATA as RecordsData,
   });
 
-  const weightClasses =
-    appliedGender === "Men" ? MENS_WEIGHT_CLASSES : WOMENS_WEIGHT_CLASSES;
-
-  const filteredRecords = useMemo(() => {
-    const list = recordsData[AGE_GROUP_KEY]?.[appliedGender] || [];
-    const allowed = new Set(weightClasses);
-    return list.filter((record) => allowed.has(record.weightClass));
-  }, [recordsData, appliedGender, weightClasses]);
+  const filteredRecords = useMemo(
+    () => adaptiveRecordsFor(recordsData, appliedGender),
+    [recordsData, appliedGender],
+  );
 
   return (
     <ThemedView
