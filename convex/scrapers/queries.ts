@@ -118,3 +118,40 @@ export const meetEnds = internalQuery({
     return ends;
   },
 });
+
+/** Registrations read per member when looking for their WSO, newest first. */
+const MEMBER_WSO_READS = 50;
+
+/**
+ * Each member's WSO as their most recent registration that names one gives
+ * it, for the entries sync to store with entrants (#345): Sport80's entries
+ * list carries no WSO, start lists loaded by hand do. Membership numbers
+ * only (digits); a member with no registration naming a WSO is left out.
+ * At most 500 ids a call.
+ */
+export const memberWsos = internalQuery({
+  args: { memberIds: v.array(v.string()) },
+  handler: async (ctx, { memberIds }): Promise<Record<string, string>> => {
+    if (memberIds.length > 500) throw new Error('at most 500 memberIds per call');
+    const ids = [...new Set(memberIds.filter((id) => /^\d+$/.test(id)))];
+    const found: Record<string, string> = {};
+    for (let i = 0; i < ids.length; i += 250) {
+      const batch = ids.slice(i, i + 250);
+      const wsos = await Promise.all(
+        batch.map(async (memberId) => {
+          const rows = await ctx.db
+            .query('athletes')
+            .withIndex('by_memberId', (q) => q.eq('memberId', memberId))
+            .order('desc')
+            .take(MEMBER_WSO_READS);
+          return rows.find((row) => (row.wso ?? '').trim() !== '')?.wso?.trim() ?? null;
+        }),
+      );
+      batch.forEach((memberId, index) => {
+        const wso = wsos[index];
+        if (wso) found[memberId] = wso;
+      });
+    }
+    return found;
+  },
+});

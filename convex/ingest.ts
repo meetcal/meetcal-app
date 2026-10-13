@@ -848,6 +848,9 @@ const entryRow = v.object({
   weightClass: v.string(),
   entryTotal: v.number(),
   meet: v.string(),
+  // The member's WSO from their other registrations (Sport80's entries list
+  // has none, #345); absent when none is known, which never clears one.
+  wso: v.optional(v.string()),
 });
 
 const isPlaceholderMemberId = (id: string) => id === '' || id.startsWith('noid:');
@@ -993,6 +996,9 @@ export const upsertEntryAthletes = internalMutation({
         gender,
         weightClass: row.weightClass,
         entryTotal: row.entryTotal,
+        // Set when known, never cleared: a start list loaded by hand can
+        // carry a WSO the entries list does not.
+        ...(row.wso ? { wso: row.wso } : {}),
       };
       if (!match && published) {
         counts.notOnStartList += 1;
