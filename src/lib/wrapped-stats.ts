@@ -27,6 +27,9 @@ import type { WrappedStats } from '@/types/wrapped';
  * (`wasAttemptTaken` / `wasAttemptMade`), so a miss is a miss in both places.
  */
 
+/** `favoriteAttempt` for a year with no made attempt. */
+export const NO_FAVORITE_ATTEMPT = '—';
+
 /** Attempt slots on a result row, in competition order. */
 function attemptsOf(result: SupabaseLiftResult): (number | null)[] {
   return [
@@ -177,9 +180,17 @@ export function calculateWrappedStats(rows: readonly SupabaseLiftResult[]): Wrap
     if (wasAttemptMade(result.cj2)) attemptCounts['2nd']++;
     if (wasAttemptMade(result.cj3)) attemptCounts['3rd']++;
   }
-  const favoriteAttempt = (
-    Object.keys(attemptCounts) as (keyof typeof attemptCounts)[]
-  ).reduce((a, b) => (attemptCounts[a] > attemptCounts[b] ? a : b));
+  // The attempt made most often; a tie goes to the earlier attempt, and a
+  // year with no made attempt has none. The website's Wrapped
+  // (`web/src/pages/comp_data/analytics.rs`) uses the same rule.
+  let favoriteAttempt: string = NO_FAVORITE_ATTEMPT;
+  let favoriteMakes = 0;
+  for (const attempt of ['1st', '2nd', '3rd'] as const) {
+    if (attemptCounts[attempt] > favoriteMakes) {
+      favoriteAttempt = attempt;
+      favoriteMakes = attemptCounts[attempt];
+    }
+  }
 
   let yearRank = 'Rising Star';
   if (makePercentage >= 90) yearRank = 'Consistency King';

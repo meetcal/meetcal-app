@@ -3,6 +3,7 @@ import {
   buildWrappedShareText,
   calculateWrappedStats,
   formatImprovement,
+  NO_FAVORITE_ATTEMPT,
 } from '@/lib/wrapped-stats';
 
 function row(overrides: Partial<SupabaseLiftResult> = {}): SupabaseLiftResult {
@@ -195,6 +196,28 @@ describe('calculateWrappedStats', () => {
     ]);
 
     expect(stats.favoriteAttempt).toBe('2nd');
+  });
+
+  it('breaks a favourite-attempt tie toward the earlier attempt, as the website does', () => {
+    const stats = calculateWrappedStats([
+      row({ meet: 'Winter Open', snatch1: 100, snatch2: 105, snatch3: -110, cj1: 120, cj2: -125, cj3: -125 }),
+      row({ meet: 'Spring Open', date: '2026-04-01', snatch1: 100, snatch2: -105, snatch3: -105, cj1: 120, cj2: 125, cj3: -130 }),
+    ]);
+
+    // 1st: 4 makes, 2nd: 2 makes.
+    expect(stats.favoriteAttempt).toBe('1st');
+    expect(
+      calculateWrappedStats([row({ snatch1: 100, snatch2: 105, cj1: -120, cj2: -125 })]).favoriteAttempt,
+    ).toBe('1st');
+    expect(
+      calculateWrappedStats([row({ snatch2: 105, snatch3: 110, cj2: -125, cj3: -130 })]).favoriteAttempt,
+    ).toBe('2nd');
+  });
+
+  it('has no favourite attempt when nothing was made', () => {
+    const stats = calculateWrappedStats([row({ snatch1: -100, snatch2: -100, snatch3: -100 })]);
+
+    expect(stats.favoriteAttempt).toBe(NO_FAVORITE_ATTEMPT);
   });
 
   it('falls back to N/A when no row carries a total', () => {

@@ -21,7 +21,7 @@ use meetcal_web::{
         footer::Footer,
         header::Header,
         seo::RouteMetadata,
-        subscription_gate::{MobileSubscriptionPage, SubscriptionGate},
+        subscription_gate::{MobileSubscriptionPage, SubscriptionGate, provide_access},
     },
 };
 
@@ -32,6 +32,7 @@ fn main() {
 #[component]
 fn App() -> impl IntoView {
     provide_auth();
+    provide_access();
 
     view! {
         <Router>
