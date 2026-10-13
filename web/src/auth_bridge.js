@@ -4,9 +4,12 @@ const REVENUECAT_JS_VERSION = "1.47.3";
 
 // Subresource Integrity for the pinned SDK files, so a compromised or
 // mis-served CDN file is refused instead of running with the Clerk session.
-// Changing a version above means changing its hash here and its path in the
-// CSP in vercel.json (tests/config/vercel.test.mjs checks both). To compute:
+// The CSP in vercel.json allows only these versions' directories. Changing a
+// version means changing its hash here and its path there
+// (tests/config/vercel.test.mjs checks they agree). To compute a hash:
 //   curl -sL <url> | openssl dgst -sha384 -binary | openssl base64 -A
+// An SDK already on the page (window.Clerk and so on) is used as it is; the
+// Playwright tests put stand-ins there, since SRI refuses a mocked file.
 const CLERK_UI_INTEGRITY = "sha384-1bG6zomvWoiEKel4ssWZFXxTG1vUyWR1Yi8dCSRBg59G5Zb5/tCR7EDtTqTc8GiH";
 const CLERK_JS_INTEGRITY = "sha384-f4psDrrkr4x7x3UCVrkr3dz+q3oPInry3lNTkjprqzRjPeMrgdGtLHBsIvZ3FViN";
 const REVENUECAT_JS_INTEGRITY = "sha384-uxK23EQfDmI/oo6YmVrqk+9HhGysN0x/nGR3rCt/WWke/GFeWKQDTigtWvgCEZrF";
@@ -44,16 +47,22 @@ export async function initialize_clerk(publishableKey, onAuthChanged) {
   const uiUrl = `https://cdn.jsdelivr.net/npm/@clerk/ui@${CLERK_UI_VERSION}/dist/ui.browser.js`;
   const clerkUrl = `https://cdn.jsdelivr.net/npm/@clerk/clerk-js@${CLERK_JS_VERSION}/dist/clerk.browser.js`;
 
-  await loadScript(uiUrl, { integrity: CLERK_UI_INTEGRITY });
-  await loadScript(clerkUrl, {
-    integrity: CLERK_JS_INTEGRITY,
-    "data-clerk-publishable-key": publishableKey,
-  });
+  if (!window.__internal_ClerkUICtor) {
+    await loadScript(uiUrl, { integrity: CLERK_UI_INTEGRITY });
+  }
+  if (!window.Clerk) {
+    await loadScript(clerkUrl, {
+      integrity: CLERK_JS_INTEGRITY,
+      "data-clerk-publishable-key": publishableKey,
+    });
+  }
+  if (!window.Clerk) throw new Error("Clerk did not initialize");
   await window.Clerk.load({
     ui: { ClerkUI: window.__internal_ClerkUICtor },
     appearance: {
       variables: {
         colorPrimary: "#007aff",
+        colorText: "#10223b",
         borderRadius: "0.85rem",
         fontFamily: "Inter, ui-sans-serif, system-ui, sans-serif",
       },
@@ -74,9 +83,10 @@ export function mount_clerk_user_button(element) {
     appearance: {
       elements: {
         userButtonBox: { flexDirection: "row-reverse" },
-        // Its color comes from styles.css (var(--text)): it sits on the page,
-        // which is dark in dark mode, not on Clerk's white surfaces.
-        userButtonOuterIdentifier: { fontWeight: "700", color: "inherit" },
+        // The name sits on the page header, not on one of Clerk's white
+        // surfaces, so it takes the page's text color, which is light in dark
+        // mode (#324).
+        userButtonOuterIdentifier: { fontWeight: "700", color: "var(--text)" },
       },
     },
     customMenuItems: [{
@@ -111,10 +121,12 @@ export function open_clerk_sign_in() {
 
 async function revenueCatForUser(apiKey, appUserId) {
   if (!apiKey) throw new Error("REVENUECAT_PUBLIC_API_KEY is not configured");
-  await loadScript(
-    `https://unpkg.com/@revenuecat/purchases-js@${REVENUECAT_JS_VERSION}/dist/Purchases.umd.js`,
-    { integrity: REVENUECAT_JS_INTEGRITY },
-  );
+  if (!window.Purchases) {
+    await loadScript(
+      `https://unpkg.com/@revenuecat/purchases-js@${REVENUECAT_JS_VERSION}/dist/Purchases.umd.js`,
+      { integrity: REVENUECAT_JS_INTEGRITY },
+    );
+  }
 
   const Purchases = window.Purchases?.Purchases;
   if (!Purchases) throw new Error("RevenueCat Web SDK did not initialize");
