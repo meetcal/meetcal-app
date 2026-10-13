@@ -1,6 +1,7 @@
 import { fakeMutationCtx, handlerOf } from './fakeDb';
 import {
   backfillNameKeys,
+  cleanupRosterRows,
   dedupeLiftingResults,
   dedupeSavedSessions,
   deleteUnmaintainedWsoRecords,
@@ -251,6 +252,83 @@ describe('dedupeSavedSessions (#319)', () => {
     expect(store.rows('saved_sessions')).toHaveLength(501);
     const logged = (console.log as jest.Mock).mock.calls.map(([line]) => String(line));
     expect(logged.at(-1)).toContain('1 duplicate rows to delete');
+  });
+});
+
+describe('cleanupRosterRows (#384, #386)', () => {
+  const entrant = (name: string, memberId: string, meet: string, extra: Row = {}): Row => ({
+    memberId,
+    name,
+    age: 30,
+    club: 'Club',
+    gender: 'Women',
+    weightClass: '69',
+    entryTotal: 150,
+    meet,
+    adaptive: false,
+    ...extra,
+  });
+  const seed = () => ({
+    meets: [{ name: 'Nationals' }, { name: 'Finals' }, { name: 'Iowa WSO' }],
+    athletes: [
+      // Start list out: the unscheduled copy under the real number goes.
+      entrant('Aarynn Crawley', '4225', 'Nationals', { sessionNumber: 36, sessionPlatform: 'White' }),
+      entrant('AARYNN  CRAWLEY', '1078562', 'Nationals'),
+      entrant('Scratched Sam', '1000001', 'Nationals'),
+      // An old one-off id beside the real number.
+      entrant('Kimberly Wiese', '140203020', 'Finals'),
+      entrant('Kimberly Wiese', '1027360', 'Finals', { weightClass: '77' }),
+      entrant('Lone Oneoff', '140203021', 'Finals'),
+      // Not copies: another athlete of the same name in another class, and an
+      // old id beside a same-name athlete of another age.
+      entrant('John Smith', '111', 'Nationals', { gender: 'Men', weightClass: '89', sessionNumber: 2, sessionPlatform: 'Red' }),
+      entrant('John Smith', '222', 'Nationals', { gender: 'Men', weightClass: '61' }),
+      entrant('Alex Lee', '123456789', 'Finals', { age: 18 }),
+      entrant('Alex Lee', '7654321', 'Finals', { age: 35 }),
+      // A nine-digit id another meet holds too: a real number, kept.
+      entrant('Pat Real', '234567891', 'Finals'),
+      entrant('Pat Real', '1000009', 'Finals'),
+      entrant('Pat Real', '234567891', 'Iowa WSO'),
+      // Sport80's empty-table placeholder.
+      entrant('undefined undefined', 'No Member Entries', 'Iowa WSO', { gender: '', weightClass: '', age: 0 }),
+      entrant('Real Lifter', '1000002', 'Iowa WSO'),
+      // Page chrome as a meet name.
+      entrant('Aleigh Moore', '1000003', 'Your choice regarding cookies on this site'),
+    ],
+  });
+
+  it('logs what it would delete and deletes nothing by default', async () => {
+    const store = fakeMutationCtx(seed());
+    await runPaged('migrations:cleanupRosterRows', handlerOf<Paged, void>(cleanupRosterRows), store);
+    expect(store.rows('athletes')).toHaveLength(16);
+    expect(store.rows('view_hints')).toHaveLength(0);
+    const logged = jest.mocked(console.log).mock.calls.map((call) => String(call[0])).join('\n');
+    expect(logged).toContain('4 roster rows to delete');
+  });
+
+  it('deletes only the leftovers, through the write path, and is idempotent', async () => {
+    const store = fakeMutationCtx(seed());
+    const run = handlerOf<Paged, void>(cleanupRosterRows);
+    await run(store.ctx, { dryRun: false });
+    expect(store.rows('athletes').map((a) => [a.meet, a.name, a.memberId])).toEqual([
+      ['Nationals', 'Aarynn Crawley', '4225'],
+      ['Nationals', 'Scratched Sam', '1000001'],
+      ['Finals', 'Kimberly Wiese', '1027360'],
+      ['Finals', 'Lone Oneoff', '140203021'],
+      ['Nationals', 'John Smith', '111'],
+      ['Nationals', 'John Smith', '222'],
+      ['Finals', 'Alex Lee', '123456789'],
+      ['Finals', 'Alex Lee', '7654321'],
+      ['Finals', 'Pat Real', '234567891'],
+      ['Finals', 'Pat Real', '1000009'],
+      ['Iowa WSO', 'Pat Real', '234567891'],
+      ['Iowa WSO', 'Real Lifter', '1000002'],
+    ]);
+    expect(store.rows('view_hints').map((h) => `${h.kind}:${h.key}`).sort()).toEqual(
+      ['meet:Finals', 'meet:Iowa WSO', 'meet:Nationals', 'meet:Your choice regarding cookies on this site', 'table:athletes'].sort(),
+    );
+    await run(store.ctx, { dryRun: false });
+    expect(store.rows('athletes')).toHaveLength(12);
   });
 });
 
