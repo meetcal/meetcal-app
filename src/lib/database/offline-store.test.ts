@@ -955,6 +955,20 @@ describe("schedule sync stamp (#397)", () => {
     expect((await getMeetData("Stamp Meet" as never)).lastSyncTime).toBe(savedAt + 15 * 60_000);
   });
 
+  it("does not rewind a newer stamp a save wrote while the check waited", async () => {
+    await saveMeetSchedule("Stamp Meet", SCHEDULE);
+    const index = JSON.parse(mockStorage.get("meetcal_offline_store")!);
+    const savedAt: number = index.meets["Stamp Meet"].lastSyncTime;
+    // What the check read before it joined the write chain: an old stamp.
+    const stale = JSON.parse(JSON.stringify(index));
+    stale.meets["Stamp Meet"].lastSyncTime = savedAt - 60 * 60_000;
+    jest.mocked(AsyncStorage.getItem).mockImplementationOnce(async () => JSON.stringify(stale));
+
+    // Checked at a time before the save's stamp.
+    await expect(markMeetScheduleVerified("Stamp Meet", savedAt - 1, 15 * 60_000)).resolves.toBe(false);
+    expect((await getMeetData("Stamp Meet" as never)).lastSyncTime).toBe(savedAt);
+  });
+
   it("does not create an entry for a meet with nothing stored", async () => {
     await expect(markMeetScheduleVerified("Unknown Meet")).resolves.toBe(false);
     expect(JSON.parse(mockStorage.get("meetcal_offline_store") ?? "{}").meets?.["Unknown Meet"]).toBeUndefined();

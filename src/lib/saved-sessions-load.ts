@@ -31,9 +31,24 @@ import { calculateWeighInTime } from '@/utils/time';
  * reconcile the two, then apply the auto-unsave preference.
  */
 
-/** Map the API's rows into the app's saved-session shape. */
+/**
+ * One row per session id, the newest by `updated_at` (the first on a tie),
+ * in first-seen order. A backend from before `users:savedSessions` did this
+ * itself lists a legacy duplicate's rows in creation order, so keeping the
+ * first would keep the oldest edit.
+ */
+export function newestApiRowPerSession(apiSessions: ApiSavedSession[]): ApiSavedSession[] {
+  const newest = new Map<string, ApiSavedSession>();
+  for (const row of apiSessions) {
+    const kept = newest.get(row.session_id);
+    if (kept === undefined || row.updated_at > kept.updated_at) newest.set(row.session_id, row);
+  }
+  return [...newest.values()];
+}
+
+/** Map the API's rows into the app's saved-session shape, one per session. */
 export function sessionsFromApi(apiSessions: ApiSavedSession[]): SavedSession[] {
-  return apiSessions.map(s => ({
+  return newestApiRowPerSession(apiSessions).map(s => ({
     id: s.session_id,
     meet: s.meet as MeetName,
     sessionNumber: s.session_number,

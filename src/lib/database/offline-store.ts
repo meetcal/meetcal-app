@@ -1488,8 +1488,12 @@ export async function markMeetScheduleVerified(
   if (age >= 0 && age < minIntervalMs) return false;
   let wrote = false;
   await updateStore((store) => {
+    // Re-checked on the chain: a schedule save (or another check) may have
+    // stamped a newer time while this waited, and must not be rewound.
     const current = store.meets[meetId];
-    if (!current) return;
+    if (!current?.scheduleKey) return;
+    const currentAge = now - (current.lastSyncTime ?? 0);
+    if (currentAge < minIntervalMs) return;
     current.lastSyncTime = now;
     wrote = true;
   });

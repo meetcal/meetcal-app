@@ -94,6 +94,33 @@ describe("SyncManager", () => {
     expect(listener).not.toHaveBeenCalled();
   });
 
+  it("retries on the next foreground after a failed fetch", async () => {
+    let listener: ((state: AppStateStatus) => void) | null = null;
+    jest.spyOn(AppState, "addEventListener").mockImplementation((_type, handler) => {
+      listener = handler as (state: AppStateStatus) => void;
+      return { remove: jest.fn() } as unknown as ReturnType<typeof AppState.addEventListener>;
+    });
+    let now = Date.UTC(2026, 9, 12, 12);
+    jest.spyOn(Date, "now").mockImplementation(() => now);
+    mockFetchSchedule.mockRejectedValueOnce(new Error("timeout")).mockResolvedValue([]);
+    const manager = new SyncManager("Test Meet");
+    manager.start();
+    try {
+      listener!("active");
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(mockFetchSchedule).toHaveBeenCalledTimes(1);
+
+      // A minute later, back from the background: the failure did not count.
+      now += 60_000;
+      listener!("background");
+      listener!("active");
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(mockFetchSchedule).toHaveBeenCalledTimes(2);
+    } finally {
+      manager.stopSync();
+    }
+  });
+
   it("syncs on returning to the foreground once the last sync is an interval old", async () => {
     let listener: ((state: AppStateStatus) => void) | null = null;
     const remove = jest.fn();

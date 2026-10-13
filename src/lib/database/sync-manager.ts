@@ -77,6 +77,7 @@ export class SyncManager {
       return;
     }
 
+    const previousSyncStartedAt = this.lastSyncStartedAt;
     try {
       this.isSyncing = true;
       const hasNetwork = await isNetworkAvailable();
@@ -92,6 +93,9 @@ export class SyncManager {
       // unchanged one still counts as checked for the offline banner.
       if (!result.changed) await markMeetScheduleVerified(this.meetId);
     } catch (error) {
+      // A failed fetch (a timeout, a flaky venue network) must not hold off
+      // the next foreground's retry for the whole interval.
+      this.lastSyncStartedAt = previousSyncStartedAt;
       console.error('Sync failed:', error);
       throw error;
     } finally {

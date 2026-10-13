@@ -38,6 +38,28 @@ describe("sessionsFromApi", () => {
   });
 });
 
+describe("sessionsFromApi duplicates (#319)", () => {
+  const row = (notes: string, updatedAt: number) =>
+    ({
+      session_id: "Meet-1-Red",
+      meet: "Meet",
+      session_number: 1,
+      platform: "Red",
+      weight_class: null,
+      start_time: null,
+      date: null,
+      notes,
+      athlete_names: [],
+      updated_at: updatedAt,
+    }) as never;
+
+  it("keeps the newest row of a session an older backend lists twice, oldest first", () => {
+    const sessions = sessionsFromApi([row("old", 1), row("new", 2)]);
+    expect(sessions).toHaveLength(1);
+    expect(sessions[0].notes).toBe("new");
+  });
+});
+
 describe("savedSessionsLoadKey", () => {
   it("distinguishes the user and whether Clerk verified them", () => {
     expect(savedSessionsLoadKey("u", true)).toBe("u:verified");
