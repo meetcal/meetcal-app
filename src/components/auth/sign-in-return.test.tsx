@@ -196,6 +196,19 @@ describe("sign-in return path", () => {
       expect(confirmRevenueCatIdentity("user_1", true)).toBeNull();
     });
 
+    it("from an Info tab link, lands on the tapped screen and leaves the paywall to its gate", async () => {
+      confirmRevenueCatIdentity("user_1", false);
+      mockParams = { from: "/comp-data/new-qualifying-totals", feature: "info-qualifying-totals" };
+      const renderer = await mountLayout();
+
+      await signIn(renderer);
+
+      // The screen's `SubscriptionGate` shows the paywall inline; a routed
+      // one on top would show it twice.
+      expect(mockRouter.dismissTo).toHaveBeenCalledWith("/comp-data/new-qualifying-totals");
+      expect(paywallPushes()).toEqual([]);
+    });
+
     it("does not open the paywall after signing in for a free action", async () => {
       confirmRevenueCatIdentity("user_1", false);
       mockParams = { from: "/schedule-toolbar/profile", feature: "profile" };
