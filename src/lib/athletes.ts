@@ -95,10 +95,21 @@ export function normalizeLiftResults(values: readonly unknown[]): LiftResult[] {
 
 /**
  * Canonical form of an athlete name used for cache keys and cross-source
- * matching: trimmed, lowercased, inner whitespace collapsed.
+ * matching: composed to Unicode NFC, inner whitespace collapsed, trimmed,
+ * lowercased.
+ *
+ * The same key as the server's (`normalizeName` in `convex/lib/names.ts`):
+ * `trim` strips exactly the characters `\s` matches, so trimming and folding
+ * runs equals its split-and-join, without the arrays. The server matches
+ * "José" written precomposed and with a combining accent as one athlete and
+ * returns each row with its stored spelling, so a key that skipped NFC
+ * grouped those rows apart from a roster name in the other form: the
+ * athlete's history, bests and estimates came up empty. It is also the
+ * offline storage key (`meetcal_athlete_history_<key>`,
+ * `meetcal_athlete_bests_<key>`).
  */
 export function normalizeAthleteName(name: string | null | undefined): string {
-  return (name || '').trim().toLowerCase().replace(/\s+/g, ' ');
+  return (name || '').normalize('NFC').trim().replace(/\s+/g, ' ').toLowerCase();
 }
 
 /**
@@ -150,6 +161,18 @@ export function filterSessionAthletes(
     if (athleteSession.number !== sessionNumber) return false;
     return normalizePlatformKey(athleteSession.platform) === normalizedPlatform;
   });
+}
+
+/**
+ * Whether a fresh roster answer replaces the athletes already shown (or
+ * cached). An empty answer never does: the server briefly answers `[]` during
+ * a re-import or a transient filter miss, and a session that had athletes
+ * does not lose them all at once. With nothing shown, the empty answer is the
+ * truth ("no athletes yet"). One rule for the Start List, the session
+ * details card and the attempt estimator.
+ */
+export function freshRosterReplacesShown(freshCount: number, shownCount: number): boolean {
+  return freshCount > 0 || shownCount === 0;
 }
 
 /**

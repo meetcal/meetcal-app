@@ -3,7 +3,14 @@ import { Radius, Shadows, Spacing, Type } from "@/constants/Layout";
 import { useAppColors } from "@/hooks/useAppColors";
 import { errorNotification, successNotification } from "@/lib/haptics";
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { PanResponder, Pressable, StyleSheet, Text } from "react-native";
+import {
+  AccessibilityInfo,
+  PanResponder,
+  Platform,
+  Pressable,
+  StyleSheet,
+  Text,
+} from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Animated, {
   Easing,
@@ -13,21 +20,29 @@ import Animated, {
   withTiming,
 } from "react-native-reanimated";
 import { Palette } from "@/constants/Palette";
-import { registerToastHandler, type ToastOptions, type ToastType } from "@/lib/toast";
+import {
+  handOffToast,
+  registerToastHandler,
+  toastDurationMs,
+  type ToastDelivery,
+  type ToastOptions,
+  type ToastType,
+} from "@/lib/toast";
 
 export { showToast, type ToastOptions, type ToastType } from "@/lib/toast";
 
 interface ToastData extends ToastOptions {
   id: number;
+  alreadyAnnounced: boolean;
 }
 
-const DEFAULT_DURATION = 3500;
-const ERROR_DURATION = 6000;
 const HIDDEN_OFFSET = -200;
 
 /**
- * Mounts the single toast host. Callers reach the toast imperatively through
- * `showToast`, so there is no context value to provide.
+ * Mounts the root toast host. Callers reach the toast imperatively through
+ * `showToast`, so there is no context value to provide. A `Modal` mounts its
+ * own `ToastHost` inside it: the root host renders behind a modal's native
+ * window, where the toast was never seen.
  */
 export function ToastProvider({ children }: { children: React.ReactNode }) {
   return (
@@ -50,12 +65,45 @@ function getToastVisual(type: ToastType, colors: ReturnType<typeof useAppColors>
   }
 }
 
-function ToastHost() {
+/** Whether VoiceOver / TalkBack is on, kept current. */
+function useScreenReaderEnabled(): boolean {
+  const [enabled, setEnabled] = useState(false);
+  useEffect(() => {
+    let cancelled = false;
+    AccessibilityInfo.isScreenReaderEnabled()
+      .then((value) => {
+        if (!cancelled) setEnabled(value);
+      })
+      .catch(() => {});
+    const subscription = AccessibilityInfo.addEventListener("screenReaderChanged", setEnabled);
+    return () => {
+      cancelled = true;
+      subscription.remove();
+    };
+  }, []);
+  return enabled;
+}
+
+/**
+ * Renders toasts while it is the newest mounted host. The root layout mounts
+ * one through `ToastProvider`; mount another inside a `Modal`'s content so a
+ * toast raised while the modal is open shows above it.
+ */
+export function ToastHost() {
   const insets = useSafeAreaInsets();
   const colors = useAppColors();
   const [toast, setToast] = useState<ToastData | null>(null);
+  const isScreenReaderEnabled = useScreenReaderEnabled();
+  // The toast on screen, for the hand-off when this host unmounts. Set in
+  // `show` rather than from state: a modal that closes in the same update
+  // that raised the toast unmounts this host before it ever renders it.
+  const visibleToastRef = useRef<ToastData | null>(null);
+  // The id of the last toast this host announced.
+  const announcedIdRef = useRef(0);
   const translateY = useSharedValue(HIDDEN_OFFSET);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // When the toast on screen appeared, for rescheduling its auto-dismiss.
+  const shownAtRef = useRef(0);
   const idRef = useRef(0);
 
   const clearTimer = useCallback(() => {
@@ -65,51 +113,95 @@ function ToastHost() {
     }
   }, []);
 
+  const clearToast = useCallback(() => {
+    visibleToastRef.current = null;
+    setToast(null);
+  }, []);
+
   const dismiss = useCallback(() => {
     clearTimer();
+    // On its way out: a modal closing during the exit animation must not
+    // hand it to the host below, where it came back.
+    visibleToastRef.current = null;
     translateY.value = withTiming(HIDDEN_OFFSET, { duration: 250 }, (finished) => {
       if (finished) {
-        runOnJS(setToast)(null);
+        runOnJS(clearToast)();
       }
     });
-  }, [clearTimer, translateY]);
+  }, [clearTimer, clearToast, translateY]);
 
   const show = useCallback(
-    (options: ToastOptions) => {
+    (options: ToastOptions, delivery?: ToastDelivery) => {
       idRef.current += 1;
       // Replace any visible toast with the newest one.
-      setToast({ ...options, id: idRef.current });
+      const next = {
+        ...options,
+        id: idRef.current,
+        alreadyAnnounced: delivery?.alreadyAnnounced ?? false,
+      };
+      visibleToastRef.current = next;
+      setToast(next);
     },
     [],
   );
 
-  // Register the imperative handler while mounted.
-  useEffect(() => registerToastHandler(show), [show]);
+  // Register the imperative handler while mounted. A modal's host that goes
+  // away with a toast still showing passes it to the host below.
+  useEffect(() => {
+    const unregister = registerToastHandler(show);
+    return () => {
+      unregister();
+      const visible = visibleToastRef.current;
+      if (visible) {
+        handOffToast(
+          { type: visible.type, message: visible.message, duration: visible.duration },
+          visible.alreadyAnnounced || announcedIdRef.current === visible.id,
+        );
+      }
+    };
+  }, [show]);
 
   // Animate + schedule auto-dismiss whenever a new toast is shown.
   useEffect(() => {
     if (!toast) return;
 
-    if (toast.type === "success") {
-      successNotification();
-    } else if (toast.type === "error") {
-      errorNotification();
+    announcedIdRef.current = toast.id;
+    if (!toast.alreadyAnnounced) {
+      if (toast.type === "success") {
+        successNotification();
+      } else if (toast.type === "error") {
+        errorNotification();
+      }
+      // A view appearing is not announced on iOS (the "alert" role has no
+      // speech of its own); Android announces through the live region below.
+      if (Platform.OS === "ios") {
+        AccessibilityInfo.announceForAccessibility(toast.message);
+      }
     }
 
+    shownAtRef.current = Date.now();
     translateY.value = withTiming(0, {
       duration: 300,
       easing: Easing.out(Easing.cubic),
     });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [toast?.id]);
 
+  // Auto-dismiss, rescheduled when the screen-reader answer changes while the
+  // toast is up: a modal's host starts out assuming "off" until
+  // `isScreenReaderEnabled` resolves, and a toast raised before then used to
+  // keep the short timeout.
+  useEffect(() => {
+    if (!toast) return;
+    const elapsed = Date.now() - shownAtRef.current;
     clearTimer();
     timerRef.current = setTimeout(
       dismiss,
-      toast.duration ?? (toast.type === "error" ? ERROR_DURATION : DEFAULT_DURATION),
+      Math.max(0, toastDurationMs(toast, isScreenReaderEnabled) - elapsed),
     );
-
     return clearTimer;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [toast?.id]);
+  }, [toast?.id, isScreenReaderEnabled]);
 
   const panResponder = useRef(
     PanResponder.create({
@@ -159,6 +251,10 @@ function ToastHost() {
         onPress={dismiss}
         accessibilityRole="alert"
         accessibilityLabel={toast.message}
+        accessibilityHint="Double-tap to dismiss"
+        // A toast handed down from a closing modal was already read out;
+        // a new live region would make TalkBack read it again.
+        accessibilityLiveRegion={toast.alreadyAnnounced ? "none" : "assertive"}
         style={[
           styles.banner,
           Shadows.card,

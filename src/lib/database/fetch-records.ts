@@ -19,26 +19,20 @@ type RecordsCache = Record<string, RecordsData>;
  */
 export const MAX_BROWSED_RECORD_FEDERATIONS = 8;
 
-type CompleteRecordsRow = {
+type CompleteRecordsRow = Readonly<ApiRecordRow> & {
   age_category: string;
   gender: string;
   weight_class: string;
-  snatch_record: number;
-  cj_record: number;
-  total_record: number;
   record_type: string;
 };
 
+/**
+ * A row needs only its keys. A lift with no record set stays `null` and shows
+ * as "—"; requiring all three dropped a class with one unset lift, its claimed
+ * lifts and holders with it.
+ */
 function isCompleteRecordsRow(row: Readonly<ApiRecordRow>): row is CompleteRecordsRow {
-  return Boolean(
-    row.age_category &&
-      row.gender &&
-      row.weight_class &&
-      row.record_type &&
-      row.snatch_record != null &&
-      row.cj_record != null &&
-      row.total_record != null,
-  );
+  return Boolean(row.age_category && row.gender && row.weight_class && row.record_type);
 }
 
 function mapRowsToRecordsData(rows: readonly CompleteRecordsRow[]): RecordsData {

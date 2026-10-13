@@ -3,7 +3,7 @@ use super::{
         ClassificationFilters, ClassifiedRow, SortDirection, classified_rows, filter_options,
         sort_numeric, weight_class_options,
     },
-    format::display_weight_class,
+    format::{display_weight_class, reference_value},
     loading::{load_rows, table_response},
     models::RecordHolder,
     ui::{DataPage, DataTable, EmptyTableRow, FilterSelect, RecordLift, SortSelect},
@@ -18,9 +18,13 @@ struct Record {
     gender: String,
     weight_class: String,
     record_type: String,
-    snatch_record: f64,
-    cj_record: f64,
-    total_record: f64,
+    /// `0` for a lift with no record set; tolerate `null` too, as WSO records answer it.
+    #[serde(default)]
+    snatch_record: Option<f64>,
+    #[serde(default)]
+    cj_record: Option<f64>,
+    #[serde(default)]
+    total_record: Option<f64>,
     #[serde(default)]
     snatch_by: Option<RecordHolder>,
     #[serde(default)]
@@ -102,12 +106,12 @@ pub fn Records() -> impl IntoView {
                 });
 
                 match sort.get().as_str() {
-                    "snatch_desc" => sort_numeric(&mut filtered_records, |row| row.snatch_record, SortDirection::Descending),
-                    "snatch_asc" => sort_numeric(&mut filtered_records, |row| row.snatch_record, SortDirection::Ascending),
-                    "cj_desc" => sort_numeric(&mut filtered_records, |row| row.cj_record, SortDirection::Descending),
-                    "cj_asc" => sort_numeric(&mut filtered_records, |row| row.cj_record, SortDirection::Ascending),
-                    "total_asc" => sort_numeric(&mut filtered_records, |row| row.total_record, SortDirection::Ascending),
-                    _ => sort_numeric(&mut filtered_records, |row| row.total_record, SortDirection::Descending),
+                    "snatch_desc" => sort_numeric(&mut filtered_records, |row| row.snatch_record.unwrap_or_default(), SortDirection::Descending),
+                    "snatch_asc" => sort_numeric(&mut filtered_records, |row| row.snatch_record.unwrap_or_default(), SortDirection::Ascending),
+                    "cj_desc" => sort_numeric(&mut filtered_records, |row| row.cj_record.unwrap_or_default(), SortDirection::Descending),
+                    "cj_asc" => sort_numeric(&mut filtered_records, |row| row.cj_record.unwrap_or_default(), SortDirection::Ascending),
+                    "total_asc" => sort_numeric(&mut filtered_records, |row| row.total_record.unwrap_or_default(), SortDirection::Ascending),
+                    _ => sort_numeric(&mut filtered_records, |row| row.total_record.unwrap_or_default(), SortDirection::Descending),
                 }
                 let is_empty = filtered_records.is_empty();
                 let rows = filtered_records
@@ -118,9 +122,9 @@ pub fn Records() -> impl IntoView {
                             <td>{record.gender.clone()}</td>
                             <td>{record.age_category.clone()}</td>
                             <td>{record.weight_class.clone()}</td>
-                            <RecordLift value=record.snatch_record.to_string() holder=record.snatch_by.clone() />
-                            <RecordLift value=record.cj_record.to_string() holder=record.cj_by.clone() />
-                            <RecordLift value=record.total_record.to_string() holder=record.total_by.clone() />
+                            <RecordLift value=reference_value(record.snatch_record) holder=record.snatch_by.clone() />
+                            <RecordLift value=reference_value(record.cj_record) holder=record.cj_by.clone() />
+                            <RecordLift value=reference_value(record.total_record) holder=record.total_by.clone() />
                         </tr>
                     })
                     .collect_view();
@@ -169,7 +173,7 @@ mod tests {
         .unwrap();
 
         assert_eq!(record.record_type, "USAW");
-        assert_eq!(record.total_record, 287.0);
+        assert_eq!(record.total_record, Some(287.0));
         assert_eq!(
             record.snatch_by.map(|holder| holder.name).as_deref(),
             Some("Ada Lift")
@@ -217,5 +221,19 @@ mod tests {
             filter_options(listed.iter().map(|record| record.record_type.as_str())),
             ["IWF", "USAW"]
         );
+    }
+
+    // A class with one unset lift used to be missing from the answer; it now answers that lift
+    // as 0 (or null), shown as "—".
+    #[test]
+    fn record_with_an_unset_lift_deserializes_and_shows_none() {
+        let record: Record = serde_json::from_str(
+            r#"{"age_category":"Masters 60","gender":"Women","weight_class":"58kg","record_type":"UMWF","snatch_record":40.0,"cj_record":0.0,"total_record":null,"snatch_by":{"name":"Ada Lift","date":null,"location":null},"cj_by":null,"total_by":null}"#,
+        )
+        .unwrap();
+
+        assert_eq!(reference_value(record.snatch_record), "40");
+        assert_eq!(reference_value(record.cj_record), "—");
+        assert_eq!(reference_value(record.total_record), "—");
     }
 }

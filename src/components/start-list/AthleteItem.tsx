@@ -4,10 +4,12 @@ import { useExpandedRow } from "@/contexts/ExpandedIdContext";
 import type { MeetName } from "@/data/types/meet";
 import { getLastYearBests, type YearBests } from "@/lib/start-list-api";
 import {
+  athleteSessionLinkParams,
+  athleteSessionTimes,
   formatSessionDisplayDate,
   getChevronIcon,
 } from "@/lib/start-list-utils";
-import { calculateWeighInTime } from "@/utils/time";
+import { meetTimeZoneLabel, type MeetZone } from "@/utils/timezone";
 import { AthleteItemProps } from "@/types/start-list";
 import React, {
   useCallback,
@@ -39,8 +41,8 @@ export interface AthleteRowProps extends AthleteItemProps {
   currentTheme: "light" | "dark";
   /** The selected meet, or null when none / not a known meet name. */
   validMeet: MeetName | null;
-  /** `meetDetails.time.abbreviation`, resolved at the meet's own start date. */
-  timeZoneAbbr: string;
+  /** The selected meet's zone (`meetDetails.time`); labels are read per session date. */
+  meetZone: MeetZone | null;
   isSubscribed: boolean | null;
   /** Runs the auth + subscription gate and navigates; owned by the screen. */
   onSeeAllResults: (athleteName: string) => void;
@@ -54,7 +56,7 @@ export const AthleteItem = React.memo(function AthleteItem({
   index,
   currentTheme,
   validMeet,
-  timeZoneAbbr,
+  meetZone,
   isSubscribed,
   onSeeAllResults,
 }: AthleteRowProps) {
@@ -122,56 +124,27 @@ export const AthleteItem = React.memo(function AthleteItem({
     };
   }, [isExpanded, athlete.name]);
 
+  const sessionTimes = athlete.session
+    ? athleteSessionTimes(athlete, getSessionDetails)
+    : null;
+
   const handleSessionPress = useCallback(() => {
-    if (!athlete.session) return;
-    const hasEmbedded =
-      athlete.session.date != null &&
-      athlete.session.startTime != null &&
-      athlete.session.weighInTime != null;
-    let startTime: string;
-    let weighInTime: string;
-    let dateStr: string;
-    if (hasEmbedded) {
-      startTime = athlete.session.startTime!;
-      weighInTime = athlete.session.weighInTime!;
-      dateStr = athlete.session.date!;
-    } else {
-      const details = getSessionDetails(athlete.session.number);
-      const platform = details?.platforms.find(
-        (p) => p.platform === athlete.session?.platform,
-      );
-      startTime = platform?.platformStartTime || details?.startTime || "";
-      // `calculateWeighInTime` returns "" (not null) when it cannot parse, so
-      // the fallback has to be `||`.
-      weighInTime = startTime
-        ? calculateWeighInTime(startTime) || details?.weighInTime || ""
-        : details?.weighInTime || "";
-      dateStr = details?.date || "";
-    }
-    if (!startTime || !weighInTime || !dateStr) return;
-    router.push({
-      pathname: "/shared-screens/schedule-details",
-      params: {
-        id: `session-${athlete.session.number}-${athlete.session.platform}`,
-        sessionNumber: athlete.session.number,
-        platform: athlete.session.platform,
-        weightClass: athlete.weightClass,
-        startTime,
-        weighInTime,
-        date: dateStr,
-        athleteName: athlete.name,
-        ...(validMeet ? { meet: validMeet } : {}),
-      },
-    });
+    const params = athleteSessionLinkParams(
+      athlete,
+      athleteSessionTimes(athlete, getSessionDetails),
+      validMeet,
+    );
+    if (!params) return;
+    router.push({ pathname: "/shared-screens/schedule-details", params });
   }, [athlete, getSessionDetails, router, validMeet]);
 
-  const formatSessionTime = useCallback(
-    (time: string | undefined | null) => {
-      if (!time || !validMeet) return "TBD";
-      return `${time} ${timeZoneAbbr}`;
-    },
-    [validMeet, timeZoneAbbr],
-  );
+  // The zone label at this session's own date, so a meet that spans a DST
+  // change does not label Sunday with Saturday's zone.
+  const formatSessionTime = (time: string | undefined | null) => {
+    if (!time || !validMeet) return "TBD";
+    const label = meetTimeZoneLabel(meetZone, sessionTimes?.date);
+    return label ? `${time} ${label}` : time;
+  };
 
   const handleSeeAllResults = useCallback(() => {
     onSeeAllResults(athlete.name);
@@ -255,15 +228,7 @@ export const AthleteItem = React.memo(function AthleteItem({
 {" "}
                     •
 {" "}
-                    {formatSessionTime(
-                      athlete.session.startTime ??
-                        getSessionDetails(
-                          athlete.session.number,
-                        )?.platforms.find(
-                          (p) => p.platform === athlete.session?.platform,
-                        )?.platformStartTime ??
-                        getSessionDetails(athlete.session.number)?.startTime,
-                    )}
+                    {formatSessionTime(sessionTimes?.startTime)}
                   </ThemedText>
                 </View>
               )}

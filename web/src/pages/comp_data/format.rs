@@ -46,6 +46,17 @@ pub(crate) fn display_gender(value: &str) -> String {
     }
 }
 
+/// A record, lift or standard, or "—" when there is none. The reference tables answer `0` for
+/// "no record set / no standard" (every U15 B standard, unset masters records) and WSO records
+/// answer `null` for a lift the source left out; neither is a weight anyone has to beat. The app
+/// (`formatReferenceKg`) and the CLI's `kg` read `<= 0` the same way.
+pub(crate) fn reference_value(value: Option<f64>) -> String {
+    match value {
+        Some(value) if value.is_finite() && value > 0.0 => value.to_string(),
+        _ => "—".to_owned(),
+    }
+}
+
 pub(crate) fn format_us_date(value: &str) -> String {
     const MONTHS: [&str; 12] = [
         "January",
@@ -104,6 +115,16 @@ pub(crate) fn format_us_time(value: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn reference_values_show_none_for_zero_or_missing() {
+        assert_eq!(reference_value(Some(184.0)), "184");
+        assert_eq!(reference_value(Some(102.5)), "102.5");
+        assert_eq!(reference_value(Some(0.0)), "—");
+        assert_eq!(reference_value(Some(-1.0)), "—");
+        assert_eq!(reference_value(Some(f64::NAN)), "—");
+        assert_eq!(reference_value(None), "—");
+    }
 
     #[test]
     fn dates_and_times_use_us_display_formats() {

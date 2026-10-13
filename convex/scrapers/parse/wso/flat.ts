@@ -1,5 +1,5 @@
 import { parseCsvDicts } from '../../lib/csv';
-import { recordHolder } from '../holder';
+import { recordDate, recordHolder } from '../holder';
 import { intOrNull, type WsoRecord } from './common';
 
 // Flat-format sheets, one lift per row (port of `auto_scrapers/scraper_ga_pnw.py`;
@@ -29,8 +29,10 @@ export function normalizeAgeGroup(raw: string): string {
 /**
  * Where a sheet keeps each field. `name`, `date` and `location` (the meet)
  * say who set the lift, when and where; a sheet without one leaves it out.
+ * `end` is the last day a row's record stood (`endDate`), where the sheet
+ * keeps one.
  */
-export type FlatColumns = { age: string; gender: string; min: string; max: string; lift: string; record: string; name?: string; date?: string; location?: string };
+export type FlatColumns = { age: string; gender: string; min: string; max: string; lift: string; record: string; name?: string; date?: string; location?: string; end?: string };
 
 export const FLAT_COLUMNS: FlatColumns = {
   age: 'ageGroup',
@@ -42,14 +44,24 @@ export const FLAT_COLUMNS: FlatColumns = {
   name: 'name',
   date: 'date',
   location: 'place',
+  end: 'endDate',
 };
 
 const CJ = new Set(['clean & jerk', 'clean and jerk', 'c&j', 'cleanjerk']);
 
-/** Rows grouped by (age, gender, class), adaptive groups skipped, in first-seen order. */
-export function parseFlatSheet(csv: string, wso: string, columns: FlatColumns = FLAT_COLUMNS): WsoRecord[] {
+/**
+ * Rows grouped by (age, gender, class), adaptive groups skipped, in
+ * first-seen order. A row whose `end` date is before `today` is a record
+ * that no longer stands (California North's tab of the classes retired on
+ * 1 August 2026 ends every row then), so it is skipped: a tab of only those
+ * parses to nothing, which fails the source.
+ */
+export function parseFlatSheet(csv: string, wso: string, columns: FlatColumns = FLAT_COLUMNS, today: Date = new Date()): WsoRecord[] {
   const grouped = new Map<string, WsoRecord>();
+  const todayIso = today.toISOString().slice(0, 10);
   for (const row of parseCsvDicts(csv)) {
+    const ended = columns.end ? recordDate(row[columns.end]) : undefined;
+    if (ended && /^\d{4}-\d{2}-\d{2}$/.test(ended) && ended < todayIso) continue;
     const ageRaw = (row[columns.age] ?? '').trim();
     const genderRaw = (row[columns.gender] ?? '').trim();
     const weightMin = (row[columns.min] ?? '').trim();

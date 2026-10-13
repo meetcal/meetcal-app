@@ -14,7 +14,6 @@ import {
   getStoredAthleteBestsForNames,
   isAthleteBestsFresh,
   listStoredMeets,
-  getAthleteLiftingResults,
   getExplicitlyDownloadedMeetIds,
   getMeetData,
   getMeetLiftingResults,
@@ -23,14 +22,26 @@ import {
   hasMeetEnded,
   initStore,
   markMeetExplicitlyDownloaded,
+  markMeetScheduleVerified,
   pruneOrphanedAthleteHistory,
   saveAthleteBestsBatch,
-  saveAthleteHistory,
   saveAthleteHistoryBatch,
   saveMeetAthletes,
   saveMeetLiftingResults,
   saveMeetSchedule,
+  saveSessionAthletes,
 } from "@/lib/database/offline-store";
+import {
+  captureClearEpoch,
+  registerInFlightPrefetchSettler,
+  resetOfflineClearsForTests,
+  wasClearedSince,
+} from "@/lib/database/offline-clears";
+import { normalizeAthleteName } from "@/lib/athletes";
+
+/** One athlete's history, through the batch writer every caller uses. */
+const saveAthleteHistory = (name: string, results: Parameters<typeof saveAthleteHistoryBatch>[0][number]["results"]) =>
+  saveAthleteHistoryBatch([{ name, results }]);
 
 const mockStorage = new Map<string, string>();
 
@@ -92,7 +103,7 @@ describe("offline-store athlete lifting results", () => {
       },
     ] as any);
 
-    const results = await getAthleteLiftingResults("Test Meet" as any, "jane doe");
+    const results = await getAllCachedLiftingResultsForAthlete("jane doe");
 
     expect(results).toHaveLength(1);
     expect(results[0].name).toBe("  JANE   DOE ");
@@ -229,6 +240,29 @@ describe("offline-store athlete lifting results", () => {
     ).resolves.toHaveLength(1);
   });
 
+  // Regression (#313): an empty session answer was written over the
+  // session key, so offline the session read back as having nobody in it.
+  it("never writes an empty answer over a session's athletes", async () => {
+    const athlete = {
+      memberId: "123", name: "Jane Doe", age: 25, club: "Club",
+      gender: "Women", weightClass: "71kg", entryTotal: 200, adaptive: false,
+      session: { number: 4, platform: "Red" },
+    };
+    await saveSessionAthletes("Test Meet", 4, "Red", [athlete] as never);
+    const sessionKey = Array.from(mockStorage.keys()).find((key) =>
+      key.includes("session_athletes") && key.endsWith(":4:red"),
+    );
+    expect(sessionKey).toBeDefined();
+    const payload = mockStorage.get(sessionKey!);
+
+    await saveSessionAthletes("Test Meet", 4, "Red", []);
+
+    expect(mockStorage.get(sessionKey!)).toBe(payload);
+    await expect(
+      getSessionAthletesFromMeetCache("Test Meet" as any, 4, "Red"),
+    ).resolves.toHaveLength(1);
+  });
+
   it("stores an empty roster when nothing was stored before", async () => {
     await expect(saveMeetAthletes("Empty Meet", [])).resolves.toBe(true);
     expect(mockStorage.get("meetcal_athletes_Empty Meet")).toBe("[]");
@@ -295,6 +329,29 @@ describe("offline-store athlete lifting results", () => {
     const meetData = await getMeetData("Test Meet" as any);
     expect(meetData.scheduleKey).toBe("meetcal_schedule_Test Meet");
     await expect(getMeetSchedule("Test Meet")).resolves.toEqual(schedule);
+  });
+
+  // Every schedule reader (each schedule screen, the reminder sync, the
+  // auto-unsave prune) used to read and normalize the whole roster too, and
+  // add an index entry for a meet it had never stored.
+  it("reads a schedule without touching the roster or writing the index", async () => {
+    await saveMeetSchedule("Test Meet", [
+      {
+        date: "2026-06-20",
+        fullDate: "2026-06-20",
+        sessions: [{ id: "Test Meet-1-Red", number: 1, startTime: "", weighInTime: "", platforms: [] }],
+      },
+    ] as never);
+    const getItem = AsyncStorage.getItem as jest.Mock;
+    const setItem = AsyncStorage.setItem as jest.Mock;
+    getItem.mockClear();
+    setItem.mockClear();
+
+    await expect(getMeetSchedule("Test Meet")).resolves.toHaveLength(1);
+    await expect(getMeetSchedule("Never Stored")).resolves.toEqual([]);
+
+    expect(getItem.mock.calls.map(([key]) => key)).not.toContain("meetcal_athletes_Test Meet");
+    expect(setItem).not.toHaveBeenCalled();
   });
 
   it("does not rewrite an unchanged schedule payload", async () => {
@@ -410,6 +467,48 @@ describe("offline-store athlete lifting results", () => {
   });
 });
 
+describe("per-session roster caches", () => {
+  beforeEach(async () => {
+    mockStorage.clear();
+    await initStore();
+  });
+
+  const lifter = (name: string, platform: string) => ({
+    memberId: name,
+    name,
+    age: 25,
+    club: "Club",
+    gender: "Women",
+    weightClass: "71kg",
+    entryTotal: 200,
+    adaptive: false,
+    session: { number: 12, platform, date: "2026-06-20", startTime: "9:00 AM", weighInTime: "7:00 AM" },
+  });
+
+  // Session 12 Blue merged into 12 Red: the Blue key kept its old rows, and
+  // offline a saved 12 Blue listed lifters who now lift on Red.
+  it("drops the cache of a session the new roster no longer has", async () => {
+    await saveMeetAthletes("Merge Meet", [lifter("Ann", "Red"), lifter("Bea", "Blue")] as never);
+    await expect(getSessionAthletesFromMeetCache("Merge Meet" as never, 12, "Blue")).resolves.toHaveLength(1);
+
+    await saveMeetAthletes("Merge Meet", [lifter("Ann", "Red"), lifter("Bea", "Red")] as never);
+
+    const sessionKeys = Array.from(mockStorage.keys()).filter((key) =>
+      key.startsWith("meetcal_session_athletes_Merge%20Meet:"),
+    );
+    expect(sessionKeys).toHaveLength(1);
+    await expect(getSessionAthletesFromMeetCache("Merge Meet" as never, 12, "Blue")).resolves.toEqual([]);
+    await expect(getSessionAthletesFromMeetCache("Merge Meet" as never, 12, "Red")).resolves.toHaveLength(2);
+  });
+
+  it("leaves other meets' session caches alone", async () => {
+    await saveMeetAthletes("Other Meet", [lifter("Cat", "Blue")] as never);
+    await saveMeetAthletes("Merge Meet", [lifter("Ann", "Red")] as never);
+
+    await expect(getSessionAthletesFromMeetCache("Other Meet" as never, 12, "Blue")).resolves.toHaveLength(1);
+  });
+});
+
 describe("roster freshness stamp", () => {
   beforeEach(async () => {
     mockStorage.clear();
@@ -475,9 +574,9 @@ describe("offline-store corrupt payload handling", () => {
     await expect(getMeetLiftingResults("Test Meet")).resolves.toEqual([]);
   });
 
-  // `getMeetSchedule` now returns `getMeetData`'s already-parsed schedule
-  // instead of re-reading and re-parsing the same key. These pin the three
-  // degraded payloads where the two readers had to agree for that to be safe.
+  // `getMeetSchedule` reads the schedule key on its own (no roster) and
+  // `getMeetData` parses the same key. These pin the three degraded payloads
+  // where the two readers must agree.
   it.each([
     ["invalid JSON", "{\"not\": "],
     ["valid JSON that is not an array", "{\"sessions\":[]}"],
@@ -587,6 +686,16 @@ describe("getAllCachedLiftingResultsForAthletes", () => {
       "2026-05-01",
       "2025-03-01",
     ]);
+  });
+
+  it("matches cached meet rows in another Unicode form to the requested name (#268)", async () => {
+    const nfc = "José Núñez".normalize("NFC");
+    const nfd = nfc.normalize("NFD");
+    await saveMeetLiftingResults("Meet A", [row({ event_id: "a", name: nfc })]);
+
+    const byName = await getAllCachedLiftingResultsForAthletes([nfd]);
+
+    expect(byName[nfd]).toHaveLength(1);
   });
 
   it("matches names case-insensitively and with whitespace normalization", async () => {
@@ -842,11 +951,11 @@ describe("offline store metadata validation", () => {
     );
 
     await expect(getMeetSchedule("Good Meet")).resolves.toEqual([]);
-    // The validated store is written back on the next store write; asking
-    // for an unknown meet is the cheapest one.
-    await getMeetData("New Meet");
+    // The validated store is written back on the next store write; clearing
+    // a meet with no data is a cheap one.
+    await clearMeetData("New Meet" as never);
     const stored = JSON.parse(mockStorage.get(STORE_KEY) ?? "{}");
-    expect(Object.keys(stored.meets).sort()).toEqual(["Bare Meet", "Good Meet", "New Meet"]);
+    expect(Object.keys(stored.meets).sort()).toEqual(["Bare Meet", "Good Meet"]);
     expect(stored.meets["Good Meet"].lastSyncTime).toBe(5);
     // A present-but-empty entry is rebuilt from the meet id.
     expect(stored.meets["Bare Meet"]).toMatchObject({
@@ -924,6 +1033,62 @@ describe("saveMeetSchedule validation", () => {
       ] as any),
     ).rejects.toThrow("Invalid session structure");
     error.mockRestore();
+  });
+});
+
+describe("schedule sync stamp (#397)", () => {
+  const SCHEDULE = [
+    {
+      date: "June 20, 2026",
+      fullDate: "2026-06-20",
+      sessions: [
+        { id: "1", number: 1, startTime: "9:00 AM", weighInTime: "7:00 AM", platforms: [{ platform: "Red", weightClass: "60kg" }] },
+      ],
+    },
+  ] as any;
+
+  beforeEach(async () => {
+    mockStorage.clear();
+    await initStore();
+  });
+
+  it("restamps a checked, unchanged schedule only once the stamp is old enough", async () => {
+    await saveMeetSchedule("Stamp Meet", SCHEDULE);
+    const savedAt = (await getMeetData("Stamp Meet" as never)).lastSyncTime;
+
+    await expect(markMeetScheduleVerified("Stamp Meet", savedAt + 60_000, 15 * 60_000)).resolves.toBe(false);
+    expect((await getMeetData("Stamp Meet" as never)).lastSyncTime).toBe(savedAt);
+
+    await expect(markMeetScheduleVerified("Stamp Meet", savedAt + 15 * 60_000, 15 * 60_000)).resolves.toBe(true);
+    expect((await getMeetData("Stamp Meet" as never)).lastSyncTime).toBe(savedAt + 15 * 60_000);
+  });
+
+  it("does not rewind a newer stamp a save wrote while the check waited", async () => {
+    await saveMeetSchedule("Stamp Meet", SCHEDULE);
+    const index = JSON.parse(mockStorage.get("meetcal_offline_store")!);
+    const savedAt: number = index.meets["Stamp Meet"].lastSyncTime;
+    // What the check read before it joined the write chain: an old stamp.
+    const stale = JSON.parse(JSON.stringify(index));
+    stale.meets["Stamp Meet"].lastSyncTime = savedAt - 60 * 60_000;
+    jest.mocked(AsyncStorage.getItem).mockImplementationOnce(async () => JSON.stringify(stale));
+
+    // Checked at a time before the save's stamp.
+    await expect(markMeetScheduleVerified("Stamp Meet", savedAt - 1, 15 * 60_000)).resolves.toBe(false);
+    expect((await getMeetData("Stamp Meet" as never)).lastSyncTime).toBe(savedAt);
+  });
+
+  it("does not create an entry for a meet with nothing stored", async () => {
+    await expect(markMeetScheduleVerified("Unknown Meet")).resolves.toBe(false);
+    expect(JSON.parse(mockStorage.get("meetcal_offline_store") ?? "{}").meets?.["Unknown Meet"]).toBeUndefined();
+  });
+
+  it("reads the schedule without the roster", async () => {
+    await saveMeetSchedule("Stamp Meet", SCHEDULE);
+    const getItem = jest.mocked(AsyncStorage.getItem);
+    getItem.mockClear();
+    await expect(getMeetSchedule("Stamp Meet")).resolves.toEqual(SCHEDULE);
+    const keys = getItem.mock.calls.map(([key]) => key);
+    expect(keys.some((key) => /athlete/i.test(String(key)))).toBe(false);
   });
 });
 
@@ -1043,6 +1208,121 @@ describe("clearImplicitMeetData", () => {
       athletes: [expect.objectContaining({ name: "Athlete Opening" })],
     });
     await expect(getMeetData("Browsed" as never)).resolves.toMatchObject({ athletes: [] });
+  });
+
+  // The out-of-space recovery cleared a download still running in another
+  // row (not marked downloaded until it finishes), which was then marked
+  // downloaded with nothing on disk.
+  it("skips meets the caller says are still downloading", async () => {
+    for (const meet of ["Downloading", "Browsed", "Opening"]) {
+      await saveMeetAthletes(meet, [athlete(meet)] as never);
+    }
+
+    await clearImplicitMeetData("Opening" as never, {
+      skip: (meet) => meet === "Downloading",
+    });
+
+    await expect(getMeetData("Downloading" as never)).resolves.toMatchObject({
+      athletes: [expect.objectContaining({ name: "Athlete Downloading" })],
+    });
+    await expect(getMeetData("Browsed" as never)).resolves.toMatchObject({ athletes: [] });
+  });
+});
+
+describe("clearMeetData and the package ETag", () => {
+  beforeEach(async () => {
+    mockStorage.clear();
+    resetOfflineClearsForTests();
+    registerInFlightPrefetchSettler(null);
+    await initStore();
+  });
+
+  afterEach(() => {
+    registerInFlightPrefetchSettler(null);
+  });
+
+  // Remove, then browsing saved the roster again, then Download: the server
+  // answered `304` for the old ETag and the results and year bests this
+  // clear removed were never re-ingested.
+  it("drops the meet's ETag and keeps the other meets'", async () => {
+    mockStorage.set(
+      PACKAGE_ETAG_STORAGE_KEY,
+      JSON.stringify({ "Meet A": '"a"', "Meet B": '"b"' }),
+    );
+
+    await clearMeetData("Meet A" as never);
+
+    expect(JSON.parse(mockStorage.get(PACKAGE_ETAG_STORAGE_KEY) ?? "{}")).toEqual({
+      "Meet B": '"b"',
+    });
+  });
+
+  // A download that started before the clear must stop and finish writing
+  // before the clear deletes anything, or its writes land after it.
+  it("marks the meet cleared and waits for its earlier download before deleting", async () => {
+    await saveMeetAthletes("Meet A", [{ name: "Jane Doe", memberId: "1" }] as never);
+    const before = captureClearEpoch();
+    const order: string[] = [];
+    let release!: () => void;
+    registerInFlightPrefetchSettler(async (meet) => {
+      order.push(`settle:${meet}`);
+      await new Promise<void>((resolve) => {
+        release = resolve;
+      });
+    });
+
+    const clearing = clearMeetData("Meet A" as never);
+    expect(wasClearedSince("Meet A", before)).toBe(true);
+    expect(wasClearedSince("Meet B", before)).toBe(false);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    // Still waiting: nothing deleted yet.
+    expect(mockStorage.has("meetcal_athletes_Meet A")).toBe(true);
+    release();
+    await clearing;
+
+    expect(order).toEqual(["settle:Meet A"]);
+    expect(mockStorage.has("meetcal_athletes_Meet A")).toBe(false);
+  });
+
+  it("supersedes every download when all athlete history is cleared", async () => {
+    const before = captureClearEpoch();
+    const settled: (string | null)[] = [];
+    registerInFlightPrefetchSettler(async (meet) => {
+      settled.push(meet);
+    });
+
+    await clearAllAthleteHistory();
+
+    expect(wasClearedSince("Any Meet", before)).toBe(true);
+    expect(settled).toEqual([null]);
+  });
+});
+
+describe("clearAllMeetData", () => {
+  beforeEach(async () => {
+    mockStorage.clear();
+    await initStore();
+  });
+
+  // A start list opened from a saved session stores only that session's
+  // roster. Nothing gave such a meet an index entry, so no clear found it.
+  it("finds and clears a meet whose only data is a session's roster", async () => {
+    const key = `meetcal_session_athletes_${encodeURIComponent("Saved: Meet")}:3:Red`;
+    mockStorage.set(key, "[]");
+
+    const { meetIds } = await listStoredMeets();
+    expect(meetIds).toContain("Saved: Meet");
+
+    await clearAllMeetData();
+    expect(mockStorage.has(key)).toBe(false);
+  });
+
+  it("un-marks a downloaded meet even when none of its data is left, and reports no failures", async () => {
+    await markMeetExplicitlyDownloaded("Marked Only" as never, true, { endDate: "2099-06-20" });
+
+    await expect(clearAllMeetData()).resolves.toEqual({ failed: 0 });
+
+    expect(await getExplicitlyDownloadedMeetIds()).toEqual(new Set());
   });
 });
 
@@ -1663,6 +1943,67 @@ describe("athlete history pruning", () => {
     expect(AsyncStorage.getItem).not.toHaveBeenCalled();
   });
 
+  it("stores history and bests for one athlete under one key, whichever Unicode form is used (#268)", async () => {
+    const nfc = "José Núñez".normalize("NFC");
+    const nfd = nfc.normalize("NFD");
+    await saveAthleteHistoryBatch([{ name: nfd, results: [row(nfd)] }]);
+    await saveAthleteBestsBatch({ [nfd]: { snatch_best: 1, cj_best: 2, total: 3 } });
+
+    await expect(findAthleteNamesWithoutHistory([nfc])).resolves.toEqual([]);
+    await expect(getAllCachedLiftingResultsForAthlete(nfc)).resolves.toHaveLength(1);
+    const bests = await getStoredAthleteBestsForNames([nfc]);
+    expect(bests[nfc]?.bests).toEqual({ snatch_best: 1, cj_best: 2, total: 3 });
+    expect(keysFor("josé núñez".normalize("NFC")).sort()).toEqual([
+      `${BESTS_PREFIX}josé núñez`.normalize("NFC"),
+      `${HISTORY_PREFIX}josé núñez`.normalize("NFC"),
+      `${HISTORY_PREFIX}josé núñez__chunk_0`.normalize("NFC"),
+    ]);
+  });
+
+  it("reads history and bests stored under a name's older, non-NFC key (#268)", async () => {
+    // A device that updates while offline cannot download again: blobs
+    // written under the pre-NFC key for a decomposed roster name must still
+    // be found for that roster name.
+    const nfd = "José Núñez".normalize("NFD");
+    const newKey = normalizeAthleteName(nfd);
+    const oldKey = nfd.toLowerCase();
+    expect(oldKey).not.toBe(newKey);
+    await saveAthleteHistoryBatch([{ name: nfd, results: [row(nfd)] }]);
+    await saveAthleteBestsBatch({ [nfd]: { snatch_best: 1, cj_best: 2, total: 3 } });
+    for (const prefix of [HISTORY_PREFIX, BESTS_PREFIX]) {
+      for (const key of Array.from(mockStorage.keys())) {
+        if (!key.startsWith(`${prefix}${newKey}`)) continue;
+        mockStorage.set(`${prefix}${oldKey}${key.slice(`${prefix}${newKey}`.length)}`, mockStorage.get(key)!);
+        mockStorage.delete(key);
+      }
+    }
+
+    await expect(findAthleteNamesWithoutHistory([nfd, "Nobody"])).resolves.toEqual(["Nobody"]);
+    await expect(getAllCachedLiftingResultsForAthlete(nfd)).resolves.toHaveLength(1);
+    const bests = await getStoredAthleteBestsForNames([nfd]);
+    expect(bests[nfd]?.bests).toEqual({ snatch_best: 1, cj_best: 2, total: 3 });
+  });
+
+  it("clears keys stored under a name's older, non-NFC key with the athlete (#268)", async () => {
+    // Before #268 the key skipped NFC, so a decomposed roster name was stored
+    // under a decomposed key that nothing reads any more.
+    const nfc = "José Núñez".normalize("NFC");
+    const oldKey = nfc.normalize("NFD").toLowerCase();
+    await saveMeetAthletes("Browsed", [athlete("Browsed", nfc)] as never);
+    mockStorage.set(`${HISTORY_PREFIX}${oldKey}`, "old manifest");
+    mockStorage.set(`${HISTORY_PREFIX}${oldKey}__chunk_0`, "old chunk");
+    mockStorage.set(`${BESTS_PREFIX}${oldKey}`, "old bests");
+    await saveAthleteHistoryBatch([{ name: nfc, results: [row(nfc)] }]);
+
+    await clearMeetData("Browsed" as never);
+
+    expect(
+      Array.from(mockStorage.keys()).filter(
+        (k) => k.startsWith(HISTORY_PREFIX) || k.startsWith(BESTS_PREFIX),
+      ),
+    ).toEqual([]);
+  });
+
   // Every viewed start list stores bests for its whole roster. When only
   // history keys made an athlete a candidate, a browsed meet's bests were
   // never pruned and only accumulated.
@@ -1730,7 +2071,8 @@ describe("store index writes", () => {
     releaseListing();
     await clearing;
 
-    expect(storedMeetIds()).toEqual(["New Meet", "Old Meet"]);
+    // The cleared meet's entry is gone; the one saved meanwhile is kept.
+    expect(storedMeetIds()).toEqual(["New Meet"]);
     await expect(getMeetData("New Meet" as never)).resolves.toMatchObject({
       athletes: [expect.objectContaining({ name: "Athlete New Meet" })],
     });
@@ -1841,12 +2183,30 @@ describe("store index writes", () => {
     const setItem = AsyncStorage.setItem as jest.Mock;
     setItem.mockClear();
 
+    // A schedule read writes nothing at all.
     await expect(getMeetSchedule("Some Meet")).resolves.toEqual([]);
+    expect(setItem.mock.calls.filter(([key]) => key === "meetcal_offline_store")).toHaveLength(0);
 
-    // Only the chained entry write lands, not a separate `{ meets: {} }` reset.
+    await getMeetData("Some Meet" as never);
+
+    // A read writes nothing: no `{ meets: {} }` reset and no entry for the meet.
     const indexWrites = setItem.mock.calls.filter(([key]) => key === "meetcal_offline_store");
-    expect(indexWrites).toHaveLength(1);
-    expect(storedMeetIds()).toEqual(["Some Meet"]);
+    expect(indexWrites).toHaveLength(0);
+    expect(mockStorage.get("meetcal_offline_store")).toBe("{truncated");
+  });
+
+  // The index used to gain an entry for every meet ever asked about, and
+  // clears reset it to an empty one instead of removing it, so every walk of
+  // it (Delete All, the history prune, the offline results scan) grew forever.
+  it("adds no entry on a read and removes the entry when the meet is cleared", async () => {
+    await getMeetData("Only Read" as never);
+    expect(storedMeetIds()).toEqual([]);
+
+    await saveMeetAthletes("Opened", [athlete("Opened")] as never);
+    expect(storedMeetIds()).toEqual(["Opened"]);
+    await clearMeetData("Opened" as never);
+    expect(storedMeetIds()).toEqual([]);
+    expect(mockStorage.has("meetcal_athletes_Opened")).toBe(false);
   });
 });
 
@@ -1936,6 +2296,72 @@ describe("downloaded meet expiry on the server's clock", () => {
     }
 
     await expect(getMeetData("Good" as never)).resolves.toMatchObject({ athletes: [] });
+    jest.restoreAllMocks();
+  });
+
+  const listMeets = (meets: { name: string; end: string }[]) =>
+    mockStorage.set(
+      "@meets_list_cache_v1",
+      JSON.stringify(
+        meets.map(({ name, end }) => ({
+          name,
+          dates: { start: end, end },
+          time: { timeZoneIdentifier: "America/New_York" },
+        })),
+      ),
+    );
+
+  // Downloaded for Oct 10-12, then postponed to the 17th-19th: the date
+  // captured at download time deleted the meet's offline data before it ran.
+  it("expires a postponed meet on its current end date from the meets list, and remembers it", async () => {
+    await saveMeetAthletes("Postponed", [athlete("Postponed")] as never);
+    await markMeetExplicitlyDownloaded("Postponed" as never, true, { endDate: "2020-01-01" });
+    listMeets([{ name: "Postponed", end: "2099-06-20" }]);
+
+    await clearExpiredDownloadedMeets();
+
+    await expect(isMeetExplicitlyDownloadedFor("Postponed")).resolves.toBe(true);
+    const downloads = JSON.parse(mockStorage.get("meetcal_explicit_meet_downloads") ?? "{}");
+    expect(downloads.Postponed.endDate).toBe("2099-06-20");
+
+    // Off the list later, the remembered date still applies.
+    mockStorage.delete("@meets_list_cache_v1");
+    await clearExpiredDownloadedMeets();
+    await expect(isMeetExplicitlyDownloadedFor("Postponed")).resolves.toBe(true);
+  });
+
+  it("expires a meet the list says has ended even though the stored date is later", async () => {
+    await saveMeetAthletes("Moved Up", [athlete("Moved Up")] as never);
+    await markMeetExplicitlyDownloaded("Moved Up" as never, true, { endDate: "2099-06-20" });
+    listMeets([{ name: "Moved Up", end: "2020-01-01" }]);
+
+    await clearExpiredDownloadedMeets();
+
+    await expect(isMeetExplicitlyDownloadedFor("Moved Up")).resolves.toBe(false);
+  });
+
+  // With storage full, saving a changed end date failed and aborted the
+  // sweep, keeping the expired downloads that would have freed space.
+  it("still clears ended meets when saving the listed end dates fails", async () => {
+    jest.spyOn(console, "warn").mockImplementation(() => {});
+    await saveMeetAthletes("Ended", [athlete("Ended")] as never);
+    await markMeetExplicitlyDownloaded("Ended" as never, true, { endDate: "2020-01-01" });
+    await markMeetExplicitlyDownloaded("Moved" as never, true, { endDate: "2099-06-20" });
+    listMeets([{ name: "Moved", end: "2099-07-01" }]);
+    const setItem = AsyncStorage.setItem as jest.Mock;
+    const realSet = setItem.getMockImplementation();
+    setItem.mockImplementationOnce(async () => {
+      throw new Error("database or disk is full (code 13 SQLITE_FULL)");
+    });
+
+    try {
+      await clearExpiredDownloadedMeets();
+    } finally {
+      if (realSet) setItem.mockImplementation(realSet);
+    }
+
+    await expect(isMeetExplicitlyDownloadedFor("Ended")).resolves.toBe(false);
+    await expect(getMeetData("Ended" as never)).resolves.toMatchObject({ athletes: [] });
     jest.restoreAllMocks();
   });
 

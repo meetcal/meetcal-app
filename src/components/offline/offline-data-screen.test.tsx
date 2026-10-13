@@ -43,6 +43,7 @@ type ScreenOptions = { unstable_headerRightItems?: () => HeaderItem[] };
 let mockScreenOptions: ScreenOptions = {};
 jest.mock("expo-router", () => ({
   usePathname: () => "/schedule-toolbar/offline-data",
+  useLocalSearchParams: () => ({}),
   Stack: {
     Screen: ({ options }: { options: ScreenOptions }) => {
       mockScreenOptions = options;
@@ -74,8 +75,10 @@ const MEETS = [
   // Outside the 21-day window: never offered.
   { name: "Meet Far", dates: { start: "2099-09-01", end: "2099-09-02" } },
 ];
+// Replaced by a test that grows the list after the first read.
+let mockMeets = MEETS;
 jest.mock("@/contexts/SelectedMeetContext", () => ({
-  useSelectedMeet: () => ({ availableMeets: MEETS, isLoading: false }),
+  useSelectedMeet: () => ({ availableMeets: mockMeets, isLoading: false }),
 }));
 
 jest.mock("@/lib/networkUtils", () => ({ isNetworkAvailable: async () => true }));
@@ -106,6 +109,7 @@ jest.mock("@/lib/database/meet-manager", () => ({
 }));
 
 let mockDownloadedMeets = new Set<string>();
+const mockGetExplicitlyDownloadedMeetIds = jest.fn(async () => new Set(mockDownloadedMeets));
 const mockClearMeetData = jest.fn(async (meet: string, _options?: unknown) => {
   mockDownloadedMeets.delete(meet);
 });
@@ -117,7 +121,7 @@ const mockMarkMeetExplicitlyDownloaded = jest.fn(
 jest.mock("@/lib/database/offline-store", () => ({
   clearAllAthleteHistory: jest.fn(async () => {}),
   clearMeetData: (meet: string, options?: unknown) => mockClearMeetData(meet, options),
-  getExplicitlyDownloadedMeetIds: async () => new Set(mockDownloadedMeets),
+  getExplicitlyDownloadedMeetIds: () => mockGetExplicitlyDownloadedMeetIds(),
   getLastSyncTime: async () => Date.UTC(2099, 5, 1),
   markMeetExplicitlyDownloaded: (meet: string, downloaded: boolean, options?: unknown) =>
     mockMarkMeetExplicitlyDownloaded(meet, downloaded, options),
@@ -197,6 +201,8 @@ beforeEach(async () => {
   mockIsSubscriptionLoading = false;
   mockScreenOptions = {};
   mockDownloadedMeets = new Set(["Meet A"]);
+  mockMeets = MEETS;
+  mockGetExplicitlyDownloadedMeetIds.mockImplementation(async () => new Set(mockDownloadedMeets));
   mockPrefetchMeetData.mockImplementation(async () => {});
   jest.spyOn(console, "error").mockImplementation(() => {});
   alertSpy = jest.spyOn(Alert, "alert").mockImplementation(() => undefined);
@@ -212,6 +218,59 @@ afterEach(() => {
 });
 
 describe("OfflineDataScreen", () => {
+  // A meet the refreshed list adds after a read has no status until the
+  // next read lands; its row offered Download for a meet already downloaded.
+  it("holds a row the meets list added until its status is read", async () => {
+    const tree = await mount();
+    const gate = deferred();
+    mockGetExplicitlyDownloadedMeetIds.mockImplementationOnce(async () => {
+      await gate.promise;
+      return new Set(mockDownloadedMeets);
+    });
+    mockDownloadedMeets.add("Meet C");
+    mockMeets = [...MEETS.slice(0, 2), { name: "Meet C", dates: { start: "2099-06-25", end: "2099-06-26" } }, MEETS[2]];
+    await act(async () => {
+      tree.update(<OfflineDataScreen />);
+    });
+
+    expect(row(tree, "Meet C").props.subtitle).toBe("Checking…");
+    expect(rowPressable(tree, "Meet C").props.disabled).toBe(true);
+    expect(rowPressable(tree, "Meet A").props.disabled).toBe(false);
+
+    gate.resolve();
+    await flush();
+    expect(row(tree, "Meet C").props.isDownloaded).toBe(true);
+    expect(rowPressable(tree, "Meet C").props.disabled).toBe(false);
+    act(() => tree.unmount());
+  });
+
+  // Until the statuses landed every row read "Not downloaded yet", so tapping
+  // a downloaded meet re-downloaded it instead of offering Remove.
+  it("holds row taps and Refresh All until it knows what is downloaded", async () => {
+    const gate = deferred();
+    mockGetExplicitlyDownloadedMeetIds.mockImplementationOnce(async () => {
+      await gate.promise;
+      return new Set(mockDownloadedMeets);
+    });
+    let tree!: ReactTestRenderer;
+    await act(async () => {
+      tree = create(<OfflineDataScreen />);
+    });
+
+    expect(row(tree, "Meet A").props.subtitle).toBe("Checking…");
+    expect(rowPressable(tree, "Meet A").props.disabled).toBe(true);
+    expect(headerItem("Refresh all offline data").disabled).toBe(true);
+    await pressRow(tree, "Meet A");
+    expect(mockPrefetchMeetData).not.toHaveBeenCalled();
+
+    gate.resolve();
+    await flush();
+    expect(row(tree, "Meet A").props.isDownloaded).toBe(true);
+    expect(rowPressable(tree, "Meet A").props.disabled).toBe(false);
+    expect(headerItem("Refresh all offline data").disabled).toBe(false);
+    act(() => tree.unmount());
+  });
+
   it("lists the meets in the download window and every competition table", async () => {
     const tree = await mount();
     const titles = rows(tree).map((r) => r.props.title);

@@ -1,5 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Crypto from 'expo-crypto';
+import { isAccountDeleted } from '@/lib/deleted-accounts';
 import { normalizeStoredSession, type SavedSession } from '@/lib/saved-sessions-store';
 import {
   deleteSavedSession,
@@ -140,7 +141,7 @@ export function getSavedSessionsOutboxKey(userId: string): string {
   return `@saved_sessions_outbox_${userId}`;
 }
 
-function getOutboxSeededKey(userId: string): string {
+export function getOutboxSeededKey(userId: string): string {
   return `@saved_sessions_outbox_seeded_${userId}`;
 }
 
@@ -231,6 +232,9 @@ export async function readOutbox(userId: string): Promise<SavedSessionsOutbox> {
 }
 
 async function writeOutbox(userId: string, outbox: SavedSessionsOutbox): Promise<void> {
+  // A deleted account's outbox is gone from the device for good: a send that
+  // finishes after the cleanup must not write it back.
+  if (isAccountDeleted(userId)) return;
   // Written even when empty so `nextRev` never restarts: a rev must never be
   // reused while a send that carries an older copy of it may still clear it.
   await AsyncStorage.setItem(getSavedSessionsOutboxKey(userId), JSON.stringify(outbox));
@@ -352,7 +356,7 @@ export async function adoptPreOutboxSessions(
       }
     });
   }
-  await AsyncStorage.setItem(seededKey, '1');
+  if (!isAccountDeleted(userId)) await AsyncStorage.setItem(seededKey, '1');
   return adopted;
 }
 
@@ -465,6 +469,10 @@ function isCoveredByReset(meet: string, rev: number | undefined, outbox: SavedSe
  * appended, using the body stored in the outbox. Everything else is the
  * server's word, including an empty list: a session removed on another
  * device disappears here too.
+ *
+ * One row per session id: the server can still hold a legacy duplicate row
+ * for a session (`convex/users.ts`), and the list is keyed by id on screen
+ * and in the widget, so only the first row for an id is kept.
  */
 export function mergeServerSessions(
   serverSessions: SavedSession[],
@@ -475,6 +483,7 @@ export function mergeServerSessions(
   const merged: SavedSession[] = [];
   const seen = new Set<string>();
   for (const session of base) {
+    if (seen.has(session.id)) continue;
     const entry = outbox.sessions[session.id];
     if (entry?.op === 'delete') continue;
     if (isCoveredByReset(session.meet, entry?.rev, outbox)) continue;

@@ -2,7 +2,7 @@
 //! called over Convex's HTTP API (`POST /api/query`), the same queries the app
 //! reads. Every call is a read, so repeating one is safe.
 
-use anyhow::{Context, Result, anyhow};
+use anyhow::{Result, anyhow};
 use reqwest::{StatusCode, header::RETRY_AFTER};
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use serde_json::Value;
@@ -43,6 +43,13 @@ pub(crate) const OFFLINE_MESSAGE: &str =
     "You appear to be offline; reconnect and it will load again";
 pub(crate) const UNREACHABLE_MESSAGE: &str =
     "MeetCal couldn't be reached; check your connection and try again";
+/// An answer this site could not read: malformed JSON, a missing field, or
+/// a shape the page does not expect.
+pub(crate) const UNREADABLE_MESSAGE: &str =
+    "MeetCal sent an answer this page couldn't read; please try again";
+/// An answer longer than `MAX_PAGES` pages.
+pub(crate) const TOO_MANY_PAGES_MESSAGE: &str =
+    "MeetCal sent more of this list than this page can show";
 
 fn convex_url() -> &'static str {
     option_env!("MEETCAL_CONVEX_URL")
@@ -210,10 +217,28 @@ pub(crate) fn transport_message(timed_out: bool, offline: bool) -> &'static str 
     }
 }
 
+/// The error a user sees, `message`, which never names the Convex function:
+/// the function and `detail` go to the console instead.
+fn user_error(function: &str, message: &str, detail: impl std::fmt::Display) -> anyhow::Error {
+    leptos::logging::warn!("MeetCal request for {function} failed: {detail}");
+    anyhow!(message.to_owned())
+}
+
+/// Whether a failed body read was the request timeout. Reading the body
+/// rejects with the abort reason reqwest gave its timer, which reqwest
+/// reports as a decode error rather than a timeout.
+fn body_read_timed_out(detail: &str) -> bool {
+    detail.contains("reqwest::errors::TimedOut")
+}
+
 fn transport_error(query: Query, error: &reqwest::Error) -> anyhow::Error {
-    leptos::logging::warn!("MeetCal request for {} failed: {error}", query.function);
+    let timed_out = error.is_timeout() || body_read_timed_out(&format!("{error:?}"));
     let offline = web_sys::window().is_some_and(|window| !window.navigator().on_line());
-    anyhow!(transport_message(error.is_timeout(), offline))
+    user_error(
+        query.function,
+        transport_message(timed_out, offline),
+        format!("{error:?}"),
+    )
 }
 
 fn exhausted_retries_message(status: StatusCode) -> &'static str {
@@ -290,14 +315,17 @@ fn read_response<T: DeserializeOwned>(query: Query, response: QueryResponse) -> 
 fn read_body<T: DeserializeOwned>(query: Query, value: Value) -> Result<T> {
     match query.body {
         Body::Value => serde_json::from_value(whole_numbers_as_integers(value))
-            .with_context(|| format!("MeetCal sent an unexpected answer to {}", query.function)),
+            .map_err(|error| user_error(query.function, UNREADABLE_MESSAGE, error)),
         Body::JsonText => {
-            let text = value
-                .get("json")
-                .and_then(Value::as_str)
-                .ok_or_else(|| anyhow!("MeetCal sent {} without its body", query.function))?;
+            let text = value.get("json").and_then(Value::as_str).ok_or_else(|| {
+                user_error(
+                    query.function,
+                    UNREADABLE_MESSAGE,
+                    "answer has no json body",
+                )
+            })?;
             serde_json::from_str(text)
-                .with_context(|| format!("MeetCal sent an unexpected answer to {}", query.function))
+                .map_err(|error| user_error(query.function, UNREADABLE_MESSAGE, error))
         }
     }
 }
@@ -308,17 +336,12 @@ fn read_page<T: DeserializeOwned>(query: Query, response: QueryResponse) -> Resu
     let cursor = value
         .get("cursor")
         .and_then(Value::as_str)
-        .ok_or_else(|| {
-            anyhow!(
-                "MeetCal sent a page of {} without its cursor",
-                query.function
-            )
-        })?
+        .ok_or_else(|| user_error(query.function, UNREADABLE_MESSAGE, "page has no cursor"))?
         .to_owned();
     let is_done = value
         .get("isDone")
         .and_then(Value::as_bool)
-        .ok_or_else(|| anyhow!("MeetCal sent a page of {} without isDone", query.function))?;
+        .ok_or_else(|| user_error(query.function, UNREADABLE_MESSAGE, "page has no isDone"))?;
     let rows = read_body(query, value)?;
     Ok(Page {
         rows,
@@ -374,8 +397,10 @@ where
         }
         cursor = Some(page.cursor);
     }
-    Err(anyhow!(
-        "MeetCal sent {function} in more than {MAX_PAGES} pages"
+    Err(user_error(
+        function,
+        TOO_MANY_PAGES_MESSAGE,
+        format!("more than {MAX_PAGES} pages"),
     ))
 }
 
@@ -417,25 +442,24 @@ where
             return Err(anyhow!(exhausted_retries_message(status)));
         }
         if status != StatusCode::OK && status.as_u16() != FUNCTION_FAILED {
-            return Err(anyhow!(
-                "MeetCal could not answer {} (HTTP {status})",
-                query.function
+            return Err(user_error(
+                query.function,
+                &format!("MeetCal could not answer (HTTP {})", status.as_u16()),
+                status,
             ));
         }
         break response;
     };
 
-    // The timeout covers reading the answer too.
-    response.json::<QueryResponse>().await.map_err(|error| {
-        if error.is_timeout() || error.is_request() || error.is_body() {
-            transport_error(query, &error)
-        } else {
-            anyhow!(error).context(format!(
-                "MeetCal sent an unreadable answer to {}",
-                query.function
-            ))
-        }
-    })
+    // The timeout covers reading the answer too. A failed read is the
+    // connection's fault; only a body that arrives and does not parse is
+    // an unreadable answer.
+    let body = response
+        .bytes()
+        .await
+        .map_err(|error| transport_error(query, &error))?;
+    serde_json::from_slice::<QueryResponse>(&body)
+        .map_err(|error| user_error(query.function, UNREADABLE_MESSAGE, error))
 }
 
 /// Runs `query`, which takes no arguments.
@@ -533,7 +557,7 @@ mod tests {
             answer(json!({"status": "success", "value": {"etag": "\"x\""}})),
         )
         .unwrap_err();
-        assert_eq!(error.to_string(), "MeetCal sent test:text without its body");
+        assert_eq!(error.to_string(), UNREADABLE_MESSAGE);
     }
 
     /// Runs a future that never waits, as every page source in these tests is.
@@ -594,34 +618,19 @@ mod tests {
 
     #[test]
     fn a_malformed_page_is_an_error() {
-        for (value, message) in [
-            (
-                json!([1, 2]),
-                "MeetCal sent a page of reference:clubAthletes without its cursor",
-            ),
-            (
-                json!({"json": "[]", "isDone": true}),
-                "MeetCal sent a page of reference:clubAthletes without its cursor",
-            ),
-            (
-                json!({"json": "[]", "cursor": "c", "isDone": "yes"}),
-                "MeetCal sent a page of reference:clubAthletes without isDone",
-            ),
-            (
-                json!({"cursor": "c", "isDone": true}),
-                "MeetCal sent reference:clubAthletes without its body",
-            ),
-            (
-                json!({"json": "{}", "cursor": "c", "isDone": true}),
-                "MeetCal sent an unexpected answer to reference:clubAthletes",
-            ),
+        for value in [
+            json!([1, 2]),
+            json!({"json": "[]", "isDone": true}),
+            json!({"json": "[]", "cursor": "c", "isDone": "yes"}),
+            json!({"cursor": "c", "isDone": true}),
+            json!({"json": "{}", "cursor": "c", "isDone": true}),
         ] {
             let error = read_page::<u32>(
                 queries::CLUB_ATHLETES,
                 answer(json!({"status": "success", "value": value})),
             )
             .unwrap_err();
-            assert_eq!(error.to_string(), message);
+            assert_eq!(error.to_string(), UNREADABLE_MESSAGE, "{value}");
         }
     }
 
@@ -657,10 +666,7 @@ mod tests {
         }))
         .unwrap_err();
         assert_eq!(calls as usize, MAX_PAGES);
-        assert_eq!(
-            error.to_string(),
-            format!("MeetCal sent test:paged in more than {MAX_PAGES} pages")
-        );
+        assert_eq!(error.to_string(), TOO_MANY_PAGES_MESSAGE);
 
         let mut calls = 0;
         let rows = ready(collect_pages("test:paged", |_| {
@@ -774,6 +780,39 @@ mod tests {
         ] {
             assert_eq!(retry_delay(value), Duration::from_secs(1), "{value:?}");
         }
+    }
+
+    #[test]
+    fn unreadable_answers_never_name_the_function() {
+        let error = read_response::<Vec<u32>>(
+            Query::value("reference:standards"),
+            answer(json!({"status": "success", "value": {"not": "a list"}})),
+        )
+        .unwrap_err();
+        assert_eq!(error.to_string(), UNREADABLE_MESSAGE);
+
+        let error = read_response::<Vec<u32>>(
+            Query::text("reference:records"),
+            answer(json!({"status": "success", "value": {"json": "not json"}})),
+        )
+        .unwrap_err();
+        assert_eq!(error.to_string(), UNREADABLE_MESSAGE);
+
+        for message in [UNREADABLE_MESSAGE, TOO_MANY_PAGES_MESSAGE] {
+            assert!(!message.contains(':'), "{message}");
+        }
+    }
+
+    #[test]
+    fn a_body_read_cut_off_by_the_timeout_is_a_timeout() {
+        // What reqwest's wasm `Response::bytes` reports when the request's
+        // timer aborts the body read.
+        assert!(body_read_timed_out(
+            r#"reqwest::Error { kind: Decode, source: "JsValue(\"reqwest::errors::TimedOut\")" }"#
+        ));
+        assert!(!body_read_timed_out(
+            r#"reqwest::Error { kind: Decode, source: "JsValue(TypeError: network error)" }"#
+        ));
     }
 
     #[test]

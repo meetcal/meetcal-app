@@ -304,6 +304,25 @@ test("club and WSO dashboards expose meet performance metrics", async ({ page })
   await expect(page.locator("tbody")).toContainText("225");
   await expect(page.locator("tbody")).toContainText("69kg");
   await expect(page.locator("tbody")).toContainText("Women");
+
+  // A synced roster carries no WSOs: there is no WSO to choose, and the page says why.
+  const synced = { member_id: "2", meet: "Test Meet", name: "Synced Athlete", age: 30, club: "Test Barbell", wso: null, gender: "Men", weight_class: "88kg", entry_total: 250, adaptive: false, session_number: null, session_platform: null };
+  await routeQuery(page, "meets:athletes", (route) => route.fulfill(textAnswer([synced])));
+  await routeQuery(page, "results:byMeet", (route) => route.fulfill(textAnswer([])));
+  await page.goto("/wso-dashboard");
+  await page.getByRole("combobox", { name: "Meet" }).selectOption("Test Meet");
+  await expect(page.getByText("This meet’s start list doesn’t list athletes’ WSOs.")).toBeVisible();
+  await expect(page.getByLabel("WSO")).toHaveCount(0);
+
+  // Part of the roster names WSOs and the meet has no results yet (#345):
+  // the count says more may attend, and there are no 0% make rates or 0kg lifted.
+  await routeQuery(page, "meets:athletes", (route) => route.fulfill(textAnswer([entrant, synced])));
+  await page.goto("/wso-dashboard");
+  await page.getByRole("combobox", { name: "Meet" }).selectOption("Test Meet");
+  await page.getByLabel("WSO").selectOption("California North");
+  await expect(page.locator(".data-metric-grid")).toContainText("1+");
+  await expect(page.locator(".data-metric-grid")).not.toContainText("0.0%");
+  await expect(page.locator(".data-metric-grid")).not.toContainText("0kg");
 });
 
 test("wrapped builds a readable single-athlete yearly recap", async ({ page }) => {

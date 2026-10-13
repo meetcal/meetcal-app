@@ -11,8 +11,9 @@ export interface StandardsData {
   [ageGroup: string]: {
     [gender: string]: {
       weightClass: string;
-      a: number;
-      b: number;
+      /** `null` (or `0`, as U15's B standard answers) for no standard. */
+      a: number | null;
+      b: number | null;
     }[];
   };
 }
