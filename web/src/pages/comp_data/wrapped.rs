@@ -1,6 +1,7 @@
 use super::{
     analytics::{WrappedStats, wrapped_stats},
     athlete_autocomplete::AthleteAutocomplete,
+    loading::{Load, LoadState, load_error},
     models::{AthleteSearchQuery, AthleteSearchResponse, LiftResult, normalize},
     ui::{DataMetric, DataPage, DataStatus, TableSkeleton},
 };
@@ -13,7 +14,7 @@ use std::collections::BTreeMap;
 /// the form, so it is capped (as the app's is).
 const MAX_WRAPPED_NAME_CHOICES: usize = 8;
 
-#[derive(Clone)]
+#[derive(Clone, PartialEq)]
 struct WrappedRequest {
     athlete: String,
     year: i32,
@@ -37,6 +38,9 @@ enum WrappedResponse {
         names: Vec<String>,
         more_than_shown: bool,
     },
+    /// The search answered, but there is no Wrapped to build (no results,
+    /// or too many to score); says why.
+    Unavailable(String),
 }
 
 /// What one Wrapped search found.
@@ -57,28 +61,33 @@ pub fn Wrapped() -> impl IntoView {
     let (athlete_name, set_athlete_name) = signal(String::new());
     let (year, set_year) = signal(current_year.to_string());
     let (request, set_request) = signal(None::<WrappedRequest>);
-    let wrapped = LocalResource::new(move || {
-        let request = request.get();
-        async move {
+    let wrapped = Load::new(
+        move || request.get(),
+        |request| async move {
             match request {
-                Some(request) => load_wrapped(request).await,
+                Some(request) => load_wrapped(request).await.map(Some),
                 None => Ok(None),
             }
-        }
-    });
+        },
+    );
     view! { <DataPage heading="Athlete Wrapped" intro="Summarize an athlete’s competition year, best lifts, make rate, and progress.">
-        <form class="data-query-form" on:submit=move |event| { event.prevent_default(); let athlete = athlete_name.get().trim().to_owned(); if athlete.is_empty() { return; } let selected_year = year.get().parse().unwrap_or(current_year); set_request.set(Some(WrappedRequest { athlete, year: selected_year, picked: false })); }>
+        <form class="data-query-form" on:submit=move |event| { event.prevent_default(); let athlete = athlete_name.get().trim().to_owned(); if athlete.is_empty() { return; } let selected_year = year.get().parse().unwrap_or(current_year); wrapped.submit(|| set_request.set(Some(WrappedRequest { athlete, year: selected_year, picked: false }))); }>
             <AthleteAutocomplete value=athlete_name set_value=set_athlete_name input_id="wrapped-athlete" wrapper_class="data-query-grow" />
             <label>"Year"<input class="data-filter data-year-input" inputmode="numeric" maxlength="4" prop:value=current_year on:input=move |event| set_year.set(event_target_value(&event)) /></label>
             <button class="data-search-button" type="submit">"Build wrapped"</button>
         </form>
-        // A pick's search never answers with a pick list, so a list shown
-        // while a pick is the request is the answer before it: still loading.
-        {move || wrapped.with(|response| match response { None if request.get().is_some() => view! { <TableSkeleton columns=3 /> }.into_any(), Some(Err(error)) => view! { <p class="data-status error">{format!("Could not build wrapped: {error}")}</p> }.into_any(), Some(Ok(Some(WrappedResponse::Report { athlete_name, year, stats }))) => report(athlete_name, *year, stats), Some(Ok(Some(WrappedResponse::Choices { .. }))) if request.get().is_some_and(|request| request.picked) => view! { <TableSkeleton columns=3 /> }.into_any(), Some(Ok(Some(WrappedResponse::Choices { query, year, names, more_than_shown }))) => choices(query, *year, names, *more_than_shown, set_athlete_name, set_request), _ => view! { <DataStatus message="Enter an athlete to build their yearly recap." /> }.into_any() })}
+        {move || wrapped.with(|state| match state {
+            LoadState::Loading => view! { <TableSkeleton columns=3 /> }.into_any(),
+            LoadState::Failed(error) => load_error("wrapped", error, move || wrapped.retry()),
+            LoadState::Ready(None) => view! { <DataStatus message="Enter an athlete to build their yearly recap." /> }.into_any(),
+            LoadState::Ready(Some(WrappedResponse::Report { athlete_name, year, stats })) => report(athlete_name, *year, stats),
+            LoadState::Ready(Some(WrappedResponse::Choices { query, year, names, more_than_shown })) => choices(query, *year, names, *more_than_shown, set_athlete_name, set_request),
+            LoadState::Ready(Some(WrappedResponse::Unavailable(message))) => view! { <p class="data-status error">{format!("Could not build wrapped: {message}")}</p> }.into_any(),
+        })}
     </DataPage> }
 }
 
-async fn load_wrapped(request: WrappedRequest) -> Result<Option<WrappedResponse>, String> {
+async fn load_wrapped(request: WrappedRequest) -> Result<WrappedResponse, String> {
     let year = request.year;
     // `results:search` includes both ends of the range.
     let query = AthleteSearchQuery::between(
@@ -89,24 +98,25 @@ async fn load_wrapped(request: WrappedRequest) -> Result<Option<WrappedResponse>
     let response: AthleteSearchResponse = query_with(queries::SEARCH, &query)
         .await
         .map_err(|error| error.to_string())?;
-    Ok(Some(
-        match select_wrapped(&request.athlete, year, request.picked, response)? {
-            WrappedSelection::Athlete { name, rows } => WrappedResponse::Report {
+    Ok(
+        match select_wrapped(&request.athlete, year, request.picked, response) {
+            Ok(WrappedSelection::Athlete { name, rows }) => WrappedResponse::Report {
                 athlete_name: name,
                 year,
                 stats: wrapped_stats(&rows),
             },
-            WrappedSelection::Choose {
+            Ok(WrappedSelection::Choose {
                 names,
                 more_than_shown,
-            } => WrappedResponse::Choices {
+            }) => WrappedResponse::Choices {
                 query: request.athlete,
                 year,
                 names,
                 more_than_shown,
             },
+            Err(message) => WrappedResponse::Unavailable(message),
         },
-    ))
+    )
 }
 
 /// Which rows one Wrapped scores, the athletes to pick from, or why there

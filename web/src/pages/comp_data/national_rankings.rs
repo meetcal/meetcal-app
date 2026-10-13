@@ -1,13 +1,13 @@
 use super::{
     filters::{SortDirection, sort_numeric},
-    loading::load_error,
+    loading::{Load, LoadState, load_error},
     ui::{DataPage, DataStatus, DataTable, EmptyTableRow, SelectOptions, TableSkeleton},
 };
 use crate::utils::api::{queries, query_with};
 use leptos::prelude::*;
 use serde::{Deserialize, Serialize};
 
-#[derive(Clone, Serialize)]
+#[derive(Clone, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct NationalRankingQuery {
     federation: String,
@@ -196,47 +196,46 @@ fn DivisionOptions(groups: Vec<DivisionGroup>, selected: String) -> impl IntoVie
 pub fn NationalRankings() -> impl IntoView {
     let (request, set_request) = signal(None::<NationalRankingQuery>);
 
-    let rankings = LocalResource::new(move || {
-        let request = request.get();
-        async move {
-            match request {
-                Some(query) => {
-                    let convex_query = if query.year.is_some() {
-                        queries::NATIONAL_RANKINGS_BY_YEAR
-                    } else {
-                        queries::NATIONAL_RANKINGS
-                    };
-                    query_with::<Vec<NationalRanking>, _>(convex_query, &query)
-                        .await
-                        .map_err(|error| error.to_string())
-                }
-                None => Ok(Vec::new()),
-            }
-        }
-    });
+    let rankings = Load::new(
+        move || request.get(),
+        |request| async move {
+            let Some(query) = request else {
+                return Ok(Vec::new());
+            };
+            let convex_query = if query.year.is_some() {
+                queries::NATIONAL_RANKINGS_BY_YEAR
+            } else {
+                queries::NATIONAL_RANKINGS
+            };
+            query_with::<Vec<NationalRanking>, _>(convex_query, &query)
+                .await
+                .map_err(|error| error.to_string())
+        },
+    );
 
     view! {
         <DataPage
             heading="National Rankings"
             intro="Find each athlete’s best total for a USAW or USAMW division. Add a year to limit the rankings to that season."
         >
-            <NationalRankingsForm set_request />
+            <NationalRankingsForm submit=Callback::new(move |query| rankings.submit(|| set_request.set(Some(query)))) />
             <p class="data-help">"Division choices match the gender, age group, and weight classes used in the MeetCal app."</p>
 
-            {move || rankings.with(|response| match response {
-                None => view! { <TableSkeleton columns=4 /> }.into_any(),
-                Some(Err(error)) => load_error("national rankings", error),
-                Some(Ok(_)) if request.get().is_none() => view! {
-                    <DataStatus message="Enter a division to view its national rankings." />
-                }.into_any(),
-                Some(Ok(rankings)) => view! { <NationalRankingsTable rankings=rankings.clone() /> }.into_any(),
-            })}
+            {move || if request.with(Option::is_none) {
+                view! { <DataStatus message="Enter a division to view its national rankings." /> }.into_any()
+            } else {
+                rankings.with(|state| match state {
+                    LoadState::Loading => view! { <TableSkeleton columns=4 /> }.into_any(),
+                    LoadState::Failed(error) => load_error("national rankings", error, move || rankings.retry()),
+                    LoadState::Ready(rankings) => view! { <NationalRankingsTable rankings=rankings.clone() /> }.into_any(),
+                })
+            }}
         </DataPage>
     }
 }
 
 #[component]
-fn NationalRankingsForm(set_request: WriteSignal<Option<NationalRankingQuery>>) -> impl IntoView {
+fn NationalRankingsForm(submit: Callback<NationalRankingQuery>) -> impl IntoView {
     let (federation, set_federation) = signal("USAW".to_owned());
     let (gender, set_gender) = signal("Men".to_owned());
     let (age_group, set_age_group) = signal("Senior".to_owned());
@@ -249,7 +248,7 @@ fn NationalRankingsForm(set_request: WriteSignal<Option<NationalRankingQuery>>) 
             let age_category = division.get().trim().to_owned();
             if !age_category.is_empty() {
                 let selected_year = year.get().trim().to_owned();
-                set_request.set(Some(NationalRankingQuery { federation: federation.get(), age_category, year: (!selected_year.is_empty()).then_some(selected_year) }));
+                submit.run(NationalRankingQuery { federation: federation.get(), age_category, year: (!selected_year.is_empty()).then_some(selected_year) });
             }
         }>
             <label>"Federation"<select class="data-filter" on:change=move |event| set_federation.set(event_target_value(&event))><option value="USAW">"USAW"</option><option value="USAMW">"USAMW"</option></select></label>

@@ -1,11 +1,11 @@
 use super::{
     filters::{compare_weight_classes, filter_options, matches_filter, weight_class_options},
     format::reference_value,
-    loading::{select_response, table_response},
+    loading::{Load, load_query, select_response, table_response},
     models::RecordHolder,
     ui::{DataPage, DataStatus, DataTable, EmptyTableRow, FilterSelect, RecordLift, SortSelect},
 };
-use crate::utils::api::{queries, query, query_with};
+use crate::utils::api::{queries, query_with};
 use leptos::prelude::*;
 use serde::{Deserialize, Serialize};
 
@@ -45,35 +45,34 @@ pub fn WsoRecords() -> impl IntoView {
     let (weight_class, set_weight_class) = signal(String::new());
     let (sort, set_sort) = signal("total_desc".to_owned());
 
-    let organizations =
-        LocalResource::new(|| async { query::<Vec<String>>(queries::WSO_LIST).await });
-    let records = LocalResource::new(move || {
-        let selected_wso = wso.get();
-        async move {
+    let organizations = load_query::<Vec<String>>(queries::WSO_LIST);
+    let records = Load::new(
+        move || wso.get(),
+        |selected_wso| async move {
             if selected_wso.is_empty() {
-                Ok(Vec::new())
-            } else {
-                query_with::<Vec<WsoRecord>, _>(
-                    queries::WSO_RECORDS,
-                    &WsoRecordsQuery { wso: selected_wso },
-                )
-                .await
+                return Ok(Vec::new());
             }
-        }
-    });
+            query_with::<Vec<WsoRecord>, _>(
+                queries::WSO_RECORDS,
+                &WsoRecordsQuery { wso: selected_wso },
+            )
+            .await
+            .map_err(|error| error.to_string())
+        },
+    );
 
     view! {
         <DataPage
             heading="WSO Records"
             intro="Browse records published by USA Weightlifting state organizations."
         >
-            {move || organizations.with(|response| select_response(response, "Loading organizations…", "WSOs", |organizations| view! {
+            {move || select_response(organizations, "Loading organizations…", "WSOs", |organizations| view! {
                 <div class="data-filters">
                     <FilterSelect
                         label="Organization"
                         placeholder="Choose a WSO"
                         values=organizations.to_vec()
-                        selected=wso.get()
+                        selected=wso
                         on_select=move |value: String| {
                             set_wso.set(value);
                             set_gender.set(String::new());
@@ -82,12 +81,12 @@ pub fn WsoRecords() -> impl IntoView {
                         }
                     />
                 </div>
-            }.into_any()))}
+            }.into_any())}
 
             {move || if wso.get().is_empty() {
                 view! { <DataStatus message="Choose an organization to view its records." /> }.into_any()
             } else {
-                records.with(|response| table_response(response, 6, "WSO records", |records| {
+                table_response(records, 6, "WSO records", |records| {
                     let genders = filter_options(records.iter().map(|row| row.gender.as_str()));
                     let ages = filter_options(records.iter().map(|row| row.age_category.as_str()));
                     let weights = weight_class_options(records.iter().map(|row| row.weight_class.as_str()));
@@ -118,17 +117,17 @@ pub fn WsoRecords() -> impl IntoView {
 
                     view! {
                         <div class="data-filters data-filters-secondary">
-                            <FilterSelect label="Gender" placeholder="All genders" values=genders selected=selected_gender on_select=move |value| set_gender.set(value) />
-                            <FilterSelect label="Age" placeholder="All ages" values=ages selected=selected_age on_select=move |value| set_age.set(value) />
-                            <FilterSelect label="Weight class" placeholder="All classes" values=weights selected=selected_weight on_select=move |value| set_weight_class.set(value) />
-                            <SortSelect options=SORT_OPTIONS set_sort />
+                            <FilterSelect label="Gender" placeholder="All genders" values=genders selected=gender on_select=move |value| set_gender.set(value) />
+                            <FilterSelect label="Age" placeholder="All ages" values=ages selected=age on_select=move |value| set_age.set(value) />
+                            <FilterSelect label="Weight class" placeholder="All classes" values=weights selected=weight_class on_select=move |value| set_weight_class.set(value) />
+                            <SortSelect options=SORT_OPTIONS sort set_sort />
                         </div>
                         <DataTable>
                             <thead><tr><th>"Gender"</th><th>"Age"</th><th>"Weight class"</th><th>"Snatch"</th><th>"Clean & jerk"</th><th>"Total"</th></tr></thead>
                             <tbody>{is_empty.then(|| view! { <EmptyTableRow columns=6 message="No WSO records match these filters." /> })}{rows}</tbody>
                         </DataTable>
                     }.into_any()
-                }))
+                })
             }}
         </DataPage>
     }
