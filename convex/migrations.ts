@@ -347,3 +347,53 @@ export const padMeetDates = internalMutation({
     return { padded: hints.map((hint) => hint.key), unreadable };
   },
 });
+
+/**
+ * Meet rows that are no event, found on production in October 2026 (#405):
+ * two test entries with a venue of "q" and an unreadable zone, and a row of
+ * the retired Python events scraper that took another event's dates
+ * ("2025 World Masters Championships", dated March 2026 in "Aisling, CT").
+ */
+const BOGUS_MEETS_2026_10 = ['Virus Weightlifting Series 1', "USAMW Master's Nationals", '2025 World Masters Championships'];
+
+/**
+ * Deletes the named meet rows (by default `BOGUS_MEETS_2026_10`), but only a meet nothing refers to: no
+ * schedule, roster, result or saved session under its name (a meet is
+ * identified by name everywhere). A meet that has any is listed in `kept`
+ * for a person. Writes a meet hint through `recordWrite`, so the meet's
+ * views and the meet index follow. Idempotent; run with `dryRun` first.
+ *
+ *   npx convex run migrations:deleteMeetsWithoutData '{"dryRun":true}'
+ */
+export const deleteMeetsWithoutData = internalMutation({
+  args: { names: v.optional(v.array(v.string())), dryRun: v.optional(v.boolean()) },
+  handler: async (ctx, { names = BOGUS_MEETS_2026_10, dryRun }) => {
+    const deleted: string[] = [];
+    const kept: { name: string; has: string[] }[] = [];
+    const missing: string[] = [];
+    for (const name of new Set(names)) {
+      const rows = await ctx.db
+        .query('meets')
+        .withIndex('by_name', (q) => q.eq('name', name))
+        .collect();
+      if (!rows.length) {
+        missing.push(name);
+        continue;
+      }
+      const has: string[] = [];
+      if (await ctx.db.query('session_schedule').withIndex('by_meet', (q) => q.eq('meet', name)).first()) has.push('schedule');
+      if (await ctx.db.query('athletes').withIndex('by_meet', (q) => q.eq('meet', name)).first()) has.push('roster');
+      if (await ctx.db.query('lifting_results').withIndex('by_meet', (q) => q.eq('meet', name)).first()) has.push('results');
+      // No index by meet: a one-off scan of a small table.
+      if (await ctx.db.query('saved_sessions').filter((q) => q.eq(q.field('meet'), name)).first()) has.push('saved sessions');
+      if (has.length) {
+        kept.push({ name, has });
+        continue;
+      }
+      if (!dryRun) for (const row of rows) await ctx.db.delete(row._id);
+      deleted.push(name);
+    }
+    if (!dryRun && deleted.length) await recordWrite(ctx, 'meets', deleted.map((key) => ({ kind: 'meet' as const, key })));
+    return { dryRun: dryRun ?? false, deleted, kept, missing };
+  },
+});

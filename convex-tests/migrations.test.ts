@@ -2,6 +2,7 @@ import { fakeMutationCtx, handlerOf } from './fakeDb';
 import {
   backfillNameKeys,
   dedupeLiftingResults,
+  deleteMeetsWithoutData,
   duplicateMeetNames,
   normalizeAthleteGenders,
   normalizeReferenceCasing,
@@ -186,5 +187,35 @@ describe('duplicateMeetNames (#159)', () => {
         ],
       },
     ]);
+  });
+});
+
+describe('deleteMeetsWithoutData (#405)', () => {
+  const meet = (name: string): Row => ({ name, federation: 'USAW', startDate: '2025-02-27', endDate: '2025-02-27', status: 'completed', timeZone: 'q' });
+  const seed = () => ({
+    meets: [meet('Virus Weightlifting Series 1'), meet("USAMW Master's Nationals"), meet('2025 World Masters Championships'), meet('Real Meet')],
+    lifting_results: [{ meet: 'Real Meet', name: 'A', nameKey: 'a', eventId: '1', date: '2025-02-27' }],
+    saved_sessions: [{ meet: "USAMW Master's Nationals", userId: 'u', sessionId: 's', sessionNumber: 1, platform: 'Red', updatedAt: 1 }],
+  });
+  type Args = { names?: string[]; dryRun?: boolean };
+  type Result = { dryRun: boolean; deleted: string[]; kept: { name: string; has: string[] }[]; missing: string[] };
+
+  it('lists what it would delete on a dry run, and writes nothing', async () => {
+    const store = fakeMutationCtx(seed());
+    const result = await handlerOf<Args, Result>(deleteMeetsWithoutData)(store.ctx, { dryRun: true });
+    expect(result.deleted).toEqual(['Virus Weightlifting Series 1', '2025 World Masters Championships']);
+    expect(result.kept).toEqual([{ name: "USAMW Master's Nationals", has: ['saved sessions'] }]);
+    expect(store.rows('meets')).toHaveLength(4);
+    expect(store.rows('view_hints')).toHaveLength(0);
+  });
+
+  it('deletes only meets nothing refers to, with a meet hint each, and is idempotent', async () => {
+    const store = fakeMutationCtx(seed());
+    const run = handlerOf<Args, Result>(deleteMeetsWithoutData);
+    const first = await run(store.ctx, { names: ['Virus Weightlifting Series 1', 'Real Meet', 'Nope'] });
+    expect(first).toEqual({ dryRun: false, deleted: ['Virus Weightlifting Series 1'], kept: [{ name: 'Real Meet', has: ['results'] }], missing: ['Nope'] });
+    expect(store.rows('meets').map((m) => m.name)).not.toContain('Virus Weightlifting Series 1');
+    expect(store.rows('view_hints').map((h) => `${h.kind}:${h.key}`)).toEqual(['meet:Virus Weightlifting Series 1']);
+    expect((await run(store.ctx, { names: ['Virus Weightlifting Series 1'] })).missing).toEqual(['Virus Weightlifting Series 1']);
   });
 });
