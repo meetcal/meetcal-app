@@ -28,7 +28,7 @@ import { normalizeName } from './lib/names';
 import { compareBytes } from './lib/sort';
 import { meetKey, meetSessionKey } from './lib/viewKeys';
 import { readFreshView } from './lib/views';
-import { apiError, requireIsoDate, requireNonEmpty } from './lib/validation';
+import { apiError, isMeetTimeZone, requireIsoDate, requireNonEmpty } from './lib/validation';
 
 // `GET /meets*`: each query answers the JSON of the Rust route of the same
 // name in `meetcal-backend/app/src/routes/meets`, from the meet's views when
@@ -71,6 +71,16 @@ export function upcomingWindowNow(clientNow: number, serverNow: number): number 
   return Math.floor(serverNow / HOUR_MS) * HOUR_MS;
 }
 
+/**
+ * A row that is no event: a test entry typed into a source, with its venue
+ * written as one character ("q") and a time zone that is no IANA zone ("q",
+ * "America_New_York"). The meet lists leave it out; a real meet whose zone
+ * is unknown (blank) still has a venue, or a "TBD" one.
+ */
+export function isPlaceholderMeet(meet: { timeZone: string; venueName: string; venueCity: string }): boolean {
+  return !isMeetTimeZone(meet.timeZone) && [meet.venueName, meet.venueCity].every((field) => field.trim().length === 1);
+}
+
 export const list = query({
   args: { now: v.number(), ifNoneMatch: v.optional(v.string()) },
   handler: async (ctx, { now: clientNow, ifNoneMatch }) => {
@@ -85,13 +95,13 @@ export const list = query({
     );
     const formatters: ZoneFormatters = new Map();
     const meets = [...upcoming, ...ongoing]
-      .filter((meet) => meet.startDate <= addMonths(meetLocalDate(now, meet.timeZone, formatters), UPCOMING_WINDOW_MONTHS))
+      .filter((meet) => !isPlaceholderMeet(meet) && meet.startDate <= addMonths(meetLocalDate(now, meet.timeZone, formatters), UPCOMING_WINDOW_MONTHS))
       .sort((a, b) => compareBytes(a.startDate, b.startDate));
     return revalidated(meets.map(toApiMeet), ifNoneMatch);
   },
 });
 
-/** `GET /meets/completed`: completed meets, newest first. */
+/** `GET /meets/completed`: completed meets, newest first (test entries left out, `isPlaceholderMeet`). */
 export const completed = query({
   args: { ifNoneMatch: v.optional(v.string()) },
   handler: async (ctx, { ifNoneMatch }) => {
@@ -100,7 +110,7 @@ export const completed = query({
       .withIndex('by_status_and_start_date', (q) => q.eq('status', 'completed'))
       .order('desc')
       .collect();
-    return revalidated(meets.map(toApiMeet), ifNoneMatch);
+    return revalidated(meets.filter((meet) => !isPlaceholderMeet(meet)).map(toApiMeet), ifNoneMatch);
   },
 });
 
