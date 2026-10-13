@@ -7,6 +7,10 @@ import { getAllCachedLiftingResultsForAthlete } from "@/lib/database/offline-sto
 jest.mock("@/contexts/ThemeContext", () => ({ useTheme: () => ({ currentTheme: "light" }) }));
 
 let mockName = "First Athlete";
+// Gating is covered by premium-screens-gated.test.tsx; this file tests the content.
+jest.mock("@/components/ui/SubscriptionGate", () => ({
+  SubscriptionGate: ({ children }: { children: React.ReactNode }) => children,
+}));
 jest.mock("expo-router", () => ({
   Stack: { Screen: () => null },
   useLocalSearchParams: () => ({ name: mockName }),

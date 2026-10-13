@@ -364,6 +364,10 @@ pub fn by_athlete(rows: &[LiftingResults]) -> HashMap<String, Vec<&LiftingResult
 
 /// A number without a trailing `.0`.
 pub fn number(value: f64) -> String {
+    if value == 0.0 {
+        // Not `-0`.
+        return "0".to_string();
+    }
     if value.fract() == 0.0 {
         format!("{value:.0}")
     } else {
