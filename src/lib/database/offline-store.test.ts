@@ -30,7 +30,14 @@ import {
   saveMeetAthletes,
   saveMeetLiftingResults,
   saveMeetSchedule,
+  saveSessionAthletes,
 } from "@/lib/database/offline-store";
+import {
+  captureClearEpoch,
+  registerInFlightPrefetchSettler,
+  resetOfflineClearsForTests,
+  wasClearedSince,
+} from "@/lib/database/offline-clears";
 
 const mockStorage = new Map<string, string>();
 
@@ -224,6 +231,29 @@ describe("offline-store athlete lifting results", () => {
     expect(meetData.athletes).toHaveLength(1);
     // The kept roster is not presented as freshly synced.
     expect(meetData.athletesSyncedAt).toBe(syncedAt);
+    await expect(
+      getSessionAthletesFromMeetCache("Test Meet" as any, 4, "Red"),
+    ).resolves.toHaveLength(1);
+  });
+
+  // Regression (#313): an empty session answer was written over the
+  // session key, so offline the session read back as having nobody in it.
+  it("never writes an empty answer over a session's athletes", async () => {
+    const athlete = {
+      memberId: "123", name: "Jane Doe", age: 25, club: "Club",
+      gender: "Women", weightClass: "71kg", entryTotal: 200, adaptive: false,
+      session: { number: 4, platform: "Red" },
+    };
+    await saveSessionAthletes("Test Meet", 4, "Red", [athlete] as never);
+    const sessionKey = Array.from(mockStorage.keys()).find((key) =>
+      key.includes("session_athletes") && key.endsWith(":4:red"),
+    );
+    expect(sessionKey).toBeDefined();
+    const payload = mockStorage.get(sessionKey!);
+
+    await saveSessionAthletes("Test Meet", 4, "Red", []);
+
+    expect(mockStorage.get(sessionKey!)).toBe(payload);
     await expect(
       getSessionAthletesFromMeetCache("Test Meet" as any, 4, "Red"),
     ).resolves.toHaveLength(1);
@@ -884,11 +914,11 @@ describe("offline store metadata validation", () => {
     );
 
     await expect(getMeetSchedule("Good Meet")).resolves.toEqual([]);
-    // The validated store is written back on the next store write; asking
-    // for an unknown meet is the cheapest one.
-    await getMeetData("New Meet");
+    // The validated store is written back on the next store write; clearing
+    // a meet with no data is a cheap one.
+    await clearMeetData("New Meet" as never);
     const stored = JSON.parse(mockStorage.get(STORE_KEY) ?? "{}");
-    expect(Object.keys(stored.meets).sort()).toEqual(["Bare Meet", "Good Meet", "New Meet"]);
+    expect(Object.keys(stored.meets).sort()).toEqual(["Bare Meet", "Good Meet"]);
     expect(stored.meets["Good Meet"].lastSyncTime).toBe(5);
     // A present-but-empty entry is rebuilt from the meet id.
     expect(stored.meets["Bare Meet"]).toMatchObject({
@@ -1085,6 +1115,121 @@ describe("clearImplicitMeetData", () => {
       athletes: [expect.objectContaining({ name: "Athlete Opening" })],
     });
     await expect(getMeetData("Browsed" as never)).resolves.toMatchObject({ athletes: [] });
+  });
+
+  // The out-of-space recovery cleared a download still running in another
+  // row (not marked downloaded until it finishes), which was then marked
+  // downloaded with nothing on disk.
+  it("skips meets the caller says are still downloading", async () => {
+    for (const meet of ["Downloading", "Browsed", "Opening"]) {
+      await saveMeetAthletes(meet, [athlete(meet)] as never);
+    }
+
+    await clearImplicitMeetData("Opening" as never, {
+      skip: (meet) => meet === "Downloading",
+    });
+
+    await expect(getMeetData("Downloading" as never)).resolves.toMatchObject({
+      athletes: [expect.objectContaining({ name: "Athlete Downloading" })],
+    });
+    await expect(getMeetData("Browsed" as never)).resolves.toMatchObject({ athletes: [] });
+  });
+});
+
+describe("clearMeetData and the package ETag", () => {
+  beforeEach(async () => {
+    mockStorage.clear();
+    resetOfflineClearsForTests();
+    registerInFlightPrefetchSettler(null);
+    await initStore();
+  });
+
+  afterEach(() => {
+    registerInFlightPrefetchSettler(null);
+  });
+
+  // Remove, then browsing saved the roster again, then Download: the server
+  // answered `304` for the old ETag and the results and year bests this
+  // clear removed were never re-ingested.
+  it("drops the meet's ETag and keeps the other meets'", async () => {
+    mockStorage.set(
+      PACKAGE_ETAG_STORAGE_KEY,
+      JSON.stringify({ "Meet A": '"a"', "Meet B": '"b"' }),
+    );
+
+    await clearMeetData("Meet A" as never);
+
+    expect(JSON.parse(mockStorage.get(PACKAGE_ETAG_STORAGE_KEY) ?? "{}")).toEqual({
+      "Meet B": '"b"',
+    });
+  });
+
+  // A download that started before the clear must stop and finish writing
+  // before the clear deletes anything, or its writes land after it.
+  it("marks the meet cleared and waits for its earlier download before deleting", async () => {
+    await saveMeetAthletes("Meet A", [{ name: "Jane Doe", memberId: "1" }] as never);
+    const before = captureClearEpoch();
+    const order: string[] = [];
+    let release!: () => void;
+    registerInFlightPrefetchSettler(async (meet) => {
+      order.push(`settle:${meet}`);
+      await new Promise<void>((resolve) => {
+        release = resolve;
+      });
+    });
+
+    const clearing = clearMeetData("Meet A" as never);
+    expect(wasClearedSince("Meet A", before)).toBe(true);
+    expect(wasClearedSince("Meet B", before)).toBe(false);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    // Still waiting: nothing deleted yet.
+    expect(mockStorage.has("meetcal_athletes_Meet A")).toBe(true);
+    release();
+    await clearing;
+
+    expect(order).toEqual(["settle:Meet A"]);
+    expect(mockStorage.has("meetcal_athletes_Meet A")).toBe(false);
+  });
+
+  it("supersedes every download when all athlete history is cleared", async () => {
+    const before = captureClearEpoch();
+    const settled: (string | null)[] = [];
+    registerInFlightPrefetchSettler(async (meet) => {
+      settled.push(meet);
+    });
+
+    await clearAllAthleteHistory();
+
+    expect(wasClearedSince("Any Meet", before)).toBe(true);
+    expect(settled).toEqual([null]);
+  });
+});
+
+describe("clearAllMeetData", () => {
+  beforeEach(async () => {
+    mockStorage.clear();
+    await initStore();
+  });
+
+  // A start list opened from a saved session stores only that session's
+  // roster. Nothing gave such a meet an index entry, so no clear found it.
+  it("finds and clears a meet whose only data is a session's roster", async () => {
+    const key = `meetcal_session_athletes_${encodeURIComponent("Saved: Meet")}:3:Red`;
+    mockStorage.set(key, "[]");
+
+    const { meetIds } = await listStoredMeets();
+    expect(meetIds).toContain("Saved: Meet");
+
+    await clearAllMeetData();
+    expect(mockStorage.has(key)).toBe(false);
+  });
+
+  it("un-marks a downloaded meet even when none of its data is left, and reports no failures", async () => {
+    await markMeetExplicitlyDownloaded("Marked Only" as never, true, { endDate: "2099-06-20" });
+
+    await expect(clearAllMeetData()).resolves.toEqual({ failed: 0 });
+
+    expect(await getExplicitlyDownloadedMeetIds()).toEqual(new Set());
   });
 });
 
@@ -1772,7 +1917,8 @@ describe("store index writes", () => {
     releaseListing();
     await clearing;
 
-    expect(storedMeetIds()).toEqual(["New Meet", "Old Meet"]);
+    // The cleared meet's entry is gone; the one saved meanwhile is kept.
+    expect(storedMeetIds()).toEqual(["New Meet"]);
     await expect(getMeetData("New Meet" as never)).resolves.toMatchObject({
       athletes: [expect.objectContaining({ name: "Athlete New Meet" })],
     });
@@ -1885,10 +2031,24 @@ describe("store index writes", () => {
 
     await expect(getMeetSchedule("Some Meet")).resolves.toEqual([]);
 
-    // Only the chained entry write lands, not a separate `{ meets: {} }` reset.
+    // A read writes nothing: no `{ meets: {} }` reset and no entry for the meet.
     const indexWrites = setItem.mock.calls.filter(([key]) => key === "meetcal_offline_store");
-    expect(indexWrites).toHaveLength(1);
-    expect(storedMeetIds()).toEqual(["Some Meet"]);
+    expect(indexWrites).toHaveLength(0);
+    expect(mockStorage.get("meetcal_offline_store")).toBe("{truncated");
+  });
+
+  // The index used to gain an entry for every meet ever asked about, and
+  // clears reset it to an empty one instead of removing it, so every walk of
+  // it (Delete All, the history prune, the offline results scan) grew forever.
+  it("adds no entry on a read and removes the entry when the meet is cleared", async () => {
+    await getMeetData("Only Read" as never);
+    expect(storedMeetIds()).toEqual([]);
+
+    await saveMeetAthletes("Opened", [athlete("Opened")] as never);
+    expect(storedMeetIds()).toEqual(["Opened"]);
+    await clearMeetData("Opened" as never);
+    expect(storedMeetIds()).toEqual([]);
+    expect(mockStorage.has("meetcal_athletes_Opened")).toBe(false);
   });
 });
 

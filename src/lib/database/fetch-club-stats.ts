@@ -28,6 +28,7 @@ type ApiClubAthlete = {
   name: string;
   meet: string;
   club: string;
+  meet_date?: string | null;
   gender?: string;
   weight_class?: string;
   entry_total?: number;
@@ -173,6 +174,7 @@ async function fetchAthletesByClubFresh(club: string): Promise<AthleteClub[]> {
       name: row.name,
       club: row.club,
       meet: row.meet,
+      meet_date: typeof row.meet_date === 'string' ? row.meet_date : null,
     });
   }
   if (athletes.length !== rows.length) {

@@ -2,8 +2,14 @@ import React, { createContext, useContext, useState, useEffect, useCallback, use
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { MeetName, Meet } from '@/data/types/meet';
 import { SyncManager } from '@/lib/database/sync-manager';
-import { clearExpiredDownloadedMeets } from '@/lib/database/offline-store';
-import { prefetchMeetData, fetchMeetsFresh, getCachedMeets, warmMeetData } from '@/lib/database/meet-manager';
+import { clearExpiredDownloadedMeets, isMeetExplicitlyDownloaded } from '@/lib/database/offline-store';
+import {
+  prefetchCriticalMeetData,
+  prefetchMeetData,
+  fetchMeetsFresh,
+  getCachedMeets,
+  warmMeetData,
+} from '@/lib/database/meet-manager';
 import { fetchApiMeetByName } from '@/lib/api/meetcal-api';
 import { subscribeToNetworkChanges } from '@/lib/networkUtils';
 import {
@@ -494,7 +500,15 @@ export function SelectedMeetProvider({ children }: { children: React.ReactNode }
     if (!syncManager || !selectedMeet) return;
 
     try {
-      await prefetchMeetData(selectedMeet);
+      // A full package and roster-wide history pass only for a meet the user
+      // downloaded; any other meet re-syncs what opening it fetches. The full
+      // ingest on a browsed meet is the memory-heavy path `warmMeetData`
+      // keeps off, and it left the meet counted as browse cache anyway.
+      if (await isMeetExplicitlyDownloaded(selectedMeet)) {
+        await prefetchMeetData(selectedMeet);
+      } else {
+        await prefetchCriticalMeetData(selectedMeet);
+      }
     } catch (error) {
       console.error('Error forcing sync:', error);
       // Rethrown: "Clear Cache" reported success after a failed re-download.
