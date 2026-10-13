@@ -285,6 +285,35 @@ async function writePendingHistory(meet: MeetName, entry: PendingHistory | null)
 }
 
 /**
+ * Adds `names` to what a meet's history still owes, keeping an existing
+ * entry's start and kind, or starting a changed-package entry
+ * (`full: false`). Written before a changed package's results are saved over
+ * the stored copy: once they are, the comparison that found these names
+ * finds nothing, so an app killed before the history pass would never fetch
+ * them.
+ *
+ * @returns whether the write landed.
+ */
+async function addPendingHistoryNames(meet: MeetName, names: readonly string[]): Promise<boolean> {
+  if (names.length === 0) return true;
+  try {
+    await historyStateWrites(async () => {
+      const now = Date.now();
+      const next = prunePendingHistory(await readPendingHistory(), now);
+      const current = next[meet];
+      const merged = Array.from(new Set([...(current?.names ?? []), ...names]));
+      const full = current ? current.full !== false : false;
+      next[meet] = { names: merged, since: current?.since ?? now, ...(full ? {} : { full: false }) };
+      await AsyncStorage.setItem(HISTORY_PENDING_KEY, JSON.stringify(next));
+    });
+    return true;
+  } catch (error) {
+    console.warn('Could not record pending athlete history:', error);
+    return false;
+  }
+}
+
+/**
  * Which athletes a history pass downloads.
  *
  * - `force` (Refresh All), or a package that is new here (`packageChanged`
@@ -1052,6 +1081,8 @@ async function ingestMeetPackage(
     changedNames = Array.from(
       namesWithChangedPackageData({ results: liftingResults, storedResults, yearBests, storedBests }),
     );
+    // Not recorded: the whole roster is owed instead (nothing can be missed).
+    if (!(await addPendingHistoryNames(meet, changedNames))) changedNames = null;
   }
 
   if (schedule.length > 0) {

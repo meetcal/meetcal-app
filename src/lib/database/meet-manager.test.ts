@@ -1331,6 +1331,18 @@ describe("package revalidation with ETag", () => {
     // Not a full refresh: the sync stamp is not renewed.
     const stampWrites = mockSetItem.mock.calls.filter(([key]) => key === "@meet_history_synced_at_v1");
     expect(stampWrites).toHaveLength(0);
+    // Owed before the new results are saved: once they are, comparing again
+    // finds nothing, so an app killed in between would never fetch them.
+    const { saveMeetLiftingResults } = jest.requireMock("@/lib/database/offline-store");
+    const firstPending = mockSetItem.mock.calls.findIndex(([key]) => key === "@meet_history_pending_v1");
+    expect(firstPending).toBeGreaterThanOrEqual(0);
+    expect(JSON.parse(mockSetItem.mock.calls[firstPending][1] as string)["Etag Meet Live"]).toMatchObject({
+      names: expect.arrayContaining(["athlete b", "athlete d"]),
+      full: false,
+    });
+    expect(mockSetItem.mock.invocationCallOrder[firstPending]).toBeLessThan(
+      (saveMeetLiftingResults as jest.Mock).mock.invocationCallOrder[0],
+    );
   });
 
   it("stores only the package's real year bests, not its zero rows", async () => {
