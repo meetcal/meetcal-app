@@ -50,9 +50,15 @@ compiled in from
 `CLERK_PUBLISHABLE_KEY` and `REVENUECAT_PUBLIC_API_KEY`.
 
 `SubscriptionGate` (`src/components/subscription_gate.rs`) wraps each competition data route in
-`src/main.rs`: signed out, it mounts Clerk's sign-in; signed in, it asks RevenueCat whether the
-Clerk user has an active entitlement, and shows the page or the subscription handoff. Purchases
+`src/main.rs`: signed out, it mounts Clerk's sign-in, which returns to the same page; signed in,
+it asks RevenueCat whether the Clerk user has the `Subscriptions` entitlement (the one the app
+checks, `src/lib/premium-intent.ts`), and shows the page or the subscription handoff. Purchases
 happen in the mobile app only (`/subscription` sends users there).
+
+Every route's gate reads one shared answer (`provide_access`, next to `provide_auth`), so moving
+between data pages neither checks again nor rebuilds the page. It is checked again when the
+Clerk user changes, when a page opens after a refusal or an error, and in the background when a
+page opens more than ten minutes after the last grant.
 
 The gate is a soft, client-side check, like the app's paywall. The data it guards is public in
 Convex.
