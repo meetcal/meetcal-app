@@ -1,7 +1,9 @@
 import type { Infer } from 'convex/values';
 import type { QueryCtx } from '../_generated/server';
 import type { recordHolder } from '../schema';
+import { normalizeName } from './names';
 import { normalizeGender } from './normalize';
+import { isPlausibleResult } from './plausible';
 import { compareBytes, compareCollated, sortByWeightClass } from './sort';
 import { apiError } from './validation';
 
@@ -100,22 +102,33 @@ const NATIONAL_RANKING_PAGE_SIZE = 1000;
 
 export async function nationalRankingPage(ctx: QueryCtx, federation: string, ageCategory: string, cursor: string | null) {
   const page = await ctx.db.query('lifting_results')
-    .withIndex('by_federation_and_age', (q) => q.eq('federation', federation).eq('age', ageCategory))
+    .withIndex('by_federation_age_and_date', (q) => q.eq('federation', federation).eq('age', ageCategory))
     .paginate({ cursor, numItems: NATIONAL_RANKING_PAGE_SIZE });
-  const rows = page.page.flatMap((row) => row.total === undefined || row.total === 0 ? [] : [{ name: row.name, total: row.total }]);
+  const rows = page.page.flatMap((row) => (rankable(row) ? [{ name: row.name, total: row.total }] : []));
   return { rows: bestTotalPerAthlete(rows), cursor: page.continueCursor, isDone: page.isDone };
 }
 
 /**
- * One row per athlete, their heaviest total; heaviest first, equal totals in
- * name order (`best_total_per_athlete`).
+ * Whether a result is ranked: it has a total, and its numbers can be real
+ * (`isPlausibleResult`), so a typo such as a `633` snatch is not ranked
+ * first, nor hides the athlete's real best.
+ */
+function rankable<T extends Parameters<typeof isPlausibleResult>[0]>(row: T): row is T & { total: number } {
+  return typeof row.total === 'number' && row.total > 0 && isPlausibleResult(row);
+}
+
+/**
+ * One row per athlete (folded name, `normalizeName`, as their history is),
+ * their heaviest total under the spelling it was lifted under; heaviest
+ * first, equal totals in name order (`best_total_per_athlete`).
  */
 export function bestTotalPerAthlete<T extends RankedTotal>(rows: Iterable<T>): T[] {
   const best = new Map<string, T>();
   for (const row of rows) {
-    const existing = best.get(row.name);
+    const key = normalizeName(row.name);
+    const existing = best.get(key);
     if (existing && existing.total >= row.total) continue;
-    best.set(row.name, row);
+    best.set(key, row);
   }
   return Array.from(best.values()).sort((a, b) => b.total - a.total || compareBytes(a.name, b.name));
 }
@@ -141,8 +154,7 @@ export async function computeNationalRankingsForYear(
     .collect();
   const ranked: DatedTotal[] = [];
   for (const row of rows) {
-    if (row.total === undefined || row.total === 0) continue;
-    ranked.push({ name: row.name, total: row.total, date: row.date });
+    if (rankable(row)) ranked.push({ name: row.name, total: row.total, date: row.date });
   }
   return bestTotalPerAthlete(ranked);
 }
@@ -211,14 +223,14 @@ export async function requireKnownRankingClass(ctx: QueryCtx, federation: string
   if (!RANKING_FEDERATIONS.has(federation)) {
     const anyInFederation = await ctx.db
       .query('lifting_results')
-      .withIndex('by_federation_and_age', (q) => q.eq('federation', federation))
+      .withIndex('by_federation_age_and_date', (q) => q.eq('federation', federation))
       .first();
     if (anyInFederation === null) throw apiError(404, `unknown federation '${federation}'`);
   }
   if (isRankingDivision(ageCategory)) return;
   const anyInClass = await ctx.db
     .query('lifting_results')
-    .withIndex('by_federation_and_age', (q) => q.eq('federation', federation).eq('age', ageCategory))
+    .withIndex('by_federation_age_and_date', (q) => q.eq('federation', federation).eq('age', ageCategory))
     .first();
   if (anyInClass === null) throw apiError(404, `unknown age category '${ageCategory}' for ${federation}`);
 }
