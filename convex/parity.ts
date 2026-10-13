@@ -83,9 +83,10 @@ export const live = internalQuery({
       case 'adaptive':
         return JSON.stringify(await computeAdaptiveRecords(ctx, requireAdaptiveGender(a.gender), a.excludeFederation, ADAPTIVE_RECORDS_SEASON_START));
       case 'clubMeetStats': {
+        // The whole roster: the count is of every spelling of the club (`clubKey`).
         const roster = await ctx.db
           .query('athletes')
-          .withIndex('by_club_and_meet', (q) => q.eq('club', a.club).eq('meet', a.meet))
+          .withIndex('by_meet', (q) => q.eq('meet', a.meet))
           .collect();
         return JSON.stringify(clubStats(await computeStatsRows(ctx, a.meet, a.club), a.club, clubAthleteCount(roster, a.club)));
       }

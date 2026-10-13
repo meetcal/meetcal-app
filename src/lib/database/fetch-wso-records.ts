@@ -6,7 +6,6 @@ import {
   OFFLINE_CACHE_KEYS,
   readBoundedCacheEntry,
   replaceOfflineCache,
-  setOfflineCache,
   writeBoundedCacheEntry,
 } from './offline-cache';
 import {
@@ -39,8 +38,8 @@ async function readWSOCache() {
   return await getOfflineCache<WSORecordsCache>(OFFLINE_CACHE_KEYS.wsoRecords);
 }
 
-function getFilteredCacheKey(wso: string, ageGroup?: string, gender?: 'Men' | 'Women') {
-  return [wso, ageGroup || '', gender || ''].join(':');
+function getFilteredCacheKey(wso: string, ageGroup: string, gender: 'Men' | 'Women') {
+  return [wso, ageGroup, gender].join(':');
 }
 
 async function readWSORecordsCache(wso: string) {
@@ -49,24 +48,34 @@ async function readWSORecordsCache(wso: string) {
   return data ? { data, lastUpdatedAt: cached.lastSynced } : null;
 }
 
+/**
+ * One WSO + age group + gender view: the browsed copy or the view derived
+ * from the explicit download, whichever was written last (as
+ * `readFederationRecordsCache` does for Records). The browsed copy used to
+ * win whenever it existed, so a view browsed in January hid a Refresh All
+ * from March.
+ */
 async function readFilteredWSORecordsCache(
   wso: string,
-  ageGroup?: string,
-  gender?: 'Men' | 'Women',
+  ageGroup: string,
+  gender: 'Men' | 'Women',
 ) {
-  const filtered = await readBoundedCacheEntry<RecordsData>(
-    OFFLINE_CACHE_KEYS.wsoRecordsFiltered,
-    getFilteredCacheKey(wso, ageGroup, gender),
-  );
-  if (filtered) return filtered;
-
-  const cached = await readWSORecordsCache(wso);
-  return cached
+  const [browsed, downloaded] = await Promise.all([
+    readBoundedCacheEntry<RecordsData>(
+      OFFLINE_CACHE_KEYS.wsoRecordsFiltered,
+      getFilteredCacheKey(wso, ageGroup, gender),
+    ),
+    readWSORecordsCache(wso),
+  ]);
+  const fromDownload = downloaded
     ? {
-        data: filterRecordsData(cached.data, ageGroup, gender),
-        lastUpdatedAt: cached.lastUpdatedAt,
+        data: filterRecordsData(downloaded.data, ageGroup, gender),
+        lastUpdatedAt: downloaded.lastUpdatedAt,
       }
     : null;
+  if (!browsed) return fromDownload;
+  if (!fromDownload) return browsed;
+  return browsed.lastUpdatedAt > fromDownload.lastUpdatedAt ? browsed : fromDownload;
 }
 
 async function fetchWSORecordsFresh(
@@ -103,9 +112,9 @@ async function fetchWSORecordsFresh(
 
     result[ageKey][genderKey].push({
       weightClass: row.weight_class,
-      snatchRecord: row.snatch_record ?? 0,
-      cjRecord: row.cj_record ?? 0,
-      totalRecord: row.total_record ?? 0,
+      snatchRecord: row.snatch_record,
+      cjRecord: row.cj_record,
+      totalRecord: row.total_record,
     });
   });
 
@@ -126,16 +135,11 @@ async function fetchWSOListFresh(): Promise<string[]> {
   return fetchApiWsoList();
 }
 
-async function persistWSORecords(wso: string, result: RecordsData) {
-  const cached = await readWSOCache();
-  const nextCache: WSORecordsCache = {
-    ...(cached?.data || {}),
-    [wso]: result,
-  };
-  const entry = await setOfflineCache(OFFLINE_CACHE_KEYS.wsoRecords, nextCache);
-  return { data: result, lastUpdatedAt: entry.lastSynced };
-}
-
+/**
+ * Browsing keeps each view in its own bounded cache, never in the explicit
+ * download (`OFFLINE_CACHE_KEYS.wsoRecords`), whose `lastSynced` would
+ * otherwise read as a fresh download of every WSO.
+ */
 function persistFilteredWSORecords(
   wso: string,
   ageGroup: string,
@@ -182,12 +186,8 @@ export const wsoRecordsResource = createMutableResource<RecordsData, [string, st
   getKey: (wso, ageGroup, gender) => `${OFFLINE_CACHE_KEYS.wsoRecords}:${wso}:${ageGroup}:${gender}`,
   loadCached: (wso, ageGroup, gender) => readFilteredWSORecordsCache(wso, ageGroup, gender),
   fetchFresh: (wso, ageGroup, gender) => fetchWSORecordsFresh(wso, ageGroup, gender),
-  persistFresh: (data, wso, ageGroup, gender) => {
-    if (ageGroup || gender) {
-      return persistFilteredWSORecords(wso, ageGroup, gender, data);
-    }
-    return persistWSORecords(wso, data);
-  },
+  persistFresh: (data, wso, ageGroup, gender) =>
+    persistFilteredWSORecords(wso, ageGroup, gender, data),
 });
 
 export const wsoListResource = createMutableResource<string[], []>({

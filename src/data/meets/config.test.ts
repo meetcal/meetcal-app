@@ -1,5 +1,6 @@
 import { clearMeetConfigCache, getMeetConfig } from '@/data/meets/config';
 import { fetchMeetByName } from '@/lib/database/meet-manager';
+import { resolvedMeetTimeZone } from '@/utils/timezone';
 
 jest.mock('@/lib/database/meet-manager', () => ({
   fetchMeetByName: jest.fn(),
@@ -79,6 +80,30 @@ describe('getMeetConfig', () => {
     await expect(getMeetConfig('Test Open')).resolves.toMatchObject({
       time: { timeZoneIdentifier: 'America/Denver' },
     });
+  });
+
+  it("carries the mapper's unknown-zone flag, so the fallback zone is not read as the meet's", async () => {
+    // The API sent "PST", which Intl does not know; the mapper fell back to
+    // New York and flagged it.
+    mockFetchMeetByName.mockResolvedValue({
+      ...meet('America/New_York'),
+      time: { timeZone: 'PST', timeZoneIdentifier: 'America/New_York', abbreviation: 'EDT', utcOffset: 4 },
+      timeZoneUnknown: true,
+    } as unknown as Awaited<ReturnType<typeof fetchMeetByName>>);
+
+    const config = await getMeetConfig('Test Open');
+
+    expect(config.timeZoneUnknown).toBe(true);
+    expect(resolvedMeetTimeZone(config)).toBeNull();
+  });
+
+  it('marks a meet with a known zone as known', async () => {
+    mockFetchMeetByName.mockResolvedValue(meet('America/Denver'));
+
+    const config = await getMeetConfig('Test Open');
+
+    expect(config.timeZoneUnknown).toBe(false);
+    expect(resolvedMeetTimeZone(config)).toBe('America/Denver');
   });
 
   it('throws when there is no meet and nothing cached', async () => {

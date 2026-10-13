@@ -1,5 +1,6 @@
 import { MeetName } from "@/data/types/meet";
 import { SavedSession } from "@/hooks/useSavedSessions";
+import type { MeetZone } from "@/utils/timezone";
 
 // Add a type that extends SavedSession to include the legacy athleteName property
 export interface LegacySavedSession extends SavedSession {
@@ -27,5 +28,6 @@ export interface SessionCardProps {
   onPress: (session: LegacySavedSession) => void;
   sessionLookupByMeet: Map<MeetName, Map<string, SessionScheduleLookup>>;
   allowedMeetNames: ReadonlySet<string>;
-  timeZoneAbbr: string;
+  /** The selected meet's zone (`meetDetails.time`); labels are read per session date. */
+  meetZone: MeetZone | null;
 }
