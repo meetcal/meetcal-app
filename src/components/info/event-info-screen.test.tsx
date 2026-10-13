@@ -51,5 +51,7 @@ describe("EventInfoScreen venue", () => {
     expect(chevrons(tree)).toHaveLength(0);
     // The stand-in name only repeats the title, so nothing is shown for it.
     expect(tree.root.findAllByProps({ testID: "info-venue-name" })).toHaveLength(0);
+    // ...and no second divider stacked on the first.
+    expect(tree.root.findAllByProps({ testID: "info-venue-divider" })).toHaveLength(0);
   });
 });

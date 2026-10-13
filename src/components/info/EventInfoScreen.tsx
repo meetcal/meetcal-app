@@ -159,7 +159,10 @@ export default function EventInfoScreen() {
           </View>
         ) : null}
 
-        <View style={[styles.divider, { backgroundColor: colors.border }]} />
+        {/* Only after a venue row: with none, the divider above already separates. */}
+        {(venueLocation || plainVenueLines.length > 0) && (
+          <View testID="info-venue-divider" style={[styles.divider, { backgroundColor: colors.border }]} />
+        )}
 
         {hasVenueMap && (
           <Pressable
