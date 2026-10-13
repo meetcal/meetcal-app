@@ -44,14 +44,7 @@ pub async fn run(args: MeetArgs) -> Result<()> {
     let meet_name = args.name.clone();
     let session_number = args.session_number.clone();
     let narrowed = session_number.is_some() || args.session_platform.is_some();
-    // Platforms are the meet's own names (Red, Gold, Platform A); the server matches them
-    // ignoring case.
-    let session_platform = args
-        .session_platform
-        .as_deref()
-        .map(str::trim)
-        .filter(|platform| !platform.is_empty())
-        .map(str::to_string);
+    let session_platform = session_platform(args.session_platform.as_deref())?;
 
     let mut query_args = serde_json::json!({ "meet": meet_name });
     if let Some(session_number) = session_number {
@@ -97,6 +90,20 @@ pub async fn run(args: MeetArgs) -> Result<()> {
     output::emit(report(&response, bests.as_ref()));
 
     Ok(())
+}
+
+/// The platform filter to send, trimmed. Platforms are the meet's own names (Red, Gold,
+/// Platform A); the server matches them ignoring case. A blank one is an error: dropping it
+/// would print the whole roster as though it matched.
+pub fn session_platform(platform: Option<&str>) -> Result<Option<String>> {
+    let Some(platform) = platform else {
+        return Ok(None);
+    };
+    let platform = platform.trim();
+    if platform.is_empty() {
+        bail!("Session platform must not be blank: give the platform's name, e.g. Red or Gold");
+    }
+    Ok(Some(platform.to_string()))
 }
 
 /// The start list: shown with US dates, 12-hour times, and the session, platform and past-year
@@ -263,6 +270,17 @@ mod tests {
             "wso": null
         }
     ]"#;
+
+    #[test]
+    fn a_blank_platform_is_an_error_not_the_whole_roster() {
+        assert!(session_platform(Some("  ")).is_err());
+        assert!(session_platform(Some("")).is_err());
+        assert_eq!(session_platform(None).unwrap(), None);
+        assert_eq!(
+            session_platform(Some(" Red ")).unwrap().as_deref(),
+            Some("Red")
+        );
+    }
 
     #[test]
     fn parse_backend_response() {
