@@ -58,7 +58,7 @@ render_page() {
   local title="$3"
   local description="$4"
   local robots="$5"
-  local canonical="https://meetcal.app${path}"
+  local canonical="https://www.meetcal.app${path}"
 
   PAGE_TITLE="${title}" \
   PAGE_DESCRIPTION="${description}" \
@@ -118,3 +118,14 @@ club-dashboard|/club-dashboard|Weightlifting Club Meet Dashboard
 wso-dashboard|/wso-dashboard|USAW WSO Meet Dashboard
 wrapped|/wrapped|Weightlifting Athlete Wrapped
 EOF
+
+# Vercel serves dist/404.html, with status 404, for any path that has no file
+# or rewrite. It boots the app, whose router shows the Not Found page with
+# links back into the site (#207). A missing page has no canonical URL.
+render_page "404" "/" \
+  "Page Not Found — MeetCal" \
+  "The requested MeetCal page could not be found." \
+  "noindex, nofollow"
+perl -0pe 's{\n[ \t]*<link(?=[^>]*\bid="canonical-url")[^>]*>}{}s' \
+  "${seo_dir}/404.html" > "${dist_dir}/404.html"
+rm "${seo_dir}/404.html"

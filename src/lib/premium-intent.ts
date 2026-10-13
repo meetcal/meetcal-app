@@ -32,7 +32,9 @@ const DEFAULT_PAYWALL_FROM = "/(tabs)";
  * the Offline Data screen, the Info tab's links into them, the paywall's own
  * sign-in redirect with feature "subscription") are left out on purpose:
  * sign-in returns to the gated screen, which renders the paywall itself, and
- * pushing another one on top would show it twice.
+ * pushing another one on top would show it twice. The Info tab's Qualifying
+ * Totals link is "info-qualifying-totals" for that reason; "qualifying-totals"
+ * is the session screen's button, whose sign-in returns to the session.
  */
 const PREMIUM_FEATURES: ReadonlySet<string> = new Set([
   "qualifying-totals",

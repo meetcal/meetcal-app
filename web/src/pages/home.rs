@@ -1,19 +1,16 @@
 use crate::components::feature::FeatureSection;
-use crate::components::{footer::Footer, header::Header};
 use leptos::prelude::*;
 use leptos_router::components::A;
 
 #[component]
 pub fn Home() -> impl IntoView {
     view! {
-        <Header />
         <HeroSection />
         <DownloadSection />
         <InteractionSection />
         <BodySection />
         <ReviewsSection />
         <HighlightSection />
-        <Footer />
     }
 }
 

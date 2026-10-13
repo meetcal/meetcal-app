@@ -1,3 +1,5 @@
+use std::collections::HashSet;
+
 use anyhow::Result;
 use clap::Parser;
 use comfy_table::Table;
@@ -7,7 +9,7 @@ use crate::utils::athletes::history;
 use crate::utils::format::us_date;
 use crate::utils::output::{self, Report};
 use crate::utils::stats::{
-    Lift, QPOINTS_LABEL, SINCLAIR_LABEL, attempt_habits, bombed_out, chronological, number,
+    Lift, QPOINTS_LABEL, SINCLAIR_LABEL, attempt_habits, bombed_out, chronological, fold, number,
     percent, points, pr_flags, row_qpoints, row_sinclair, signed_kg,
 };
 
@@ -84,13 +86,30 @@ pub fn report(name: &str, rows: &[LiftingResults], since: Option<i32>) -> Report
         results_data.add_row([vec![row.date.clone()], cells].concat());
     }
 
-    let (trend, trend_data) = trend(&rows);
+    let (mut trend, mut trend_data) = trend(&rows);
+    let mut attempts = attempts(&rows);
+    if rows.is_empty() {
+        // Nothing in the range: every table is empty, so table format shows the message and
+        // JSON and CSV carry empty tables, not a row of zeros.
+        for table in [&mut trend, &mut trend_data, &mut attempts] {
+            *table = header_only(table);
+        }
+    }
     Report::new()
         .titled(format!("PROGRESSION — {name}"))
         .table_with_data("results", results, results_data)
         .headed_with_data("trend", "TREND", trend, trend_data)
-        .headed("attempts", "ATTEMPT HABITS", attempts(&rows))
+        .headed("attempts", "ATTEMPT HABITS", attempts)
         .when_empty(format!("No results for {name} in that range."))
+}
+
+/// `table`'s header without its rows.
+fn header_only(table: &Table) -> Table {
+    let mut empty = Table::new();
+    if let Some(header) = table.header() {
+        empty.set_header(header.cell_iter().map(|cell| cell.content()));
+    }
+    empty
 }
 
 /// The trend as shown, and as exported (ISO dates, the bomb-outs as a count).
@@ -110,6 +129,11 @@ fn trend(rows: &[&LiftingResults]) -> (Table, Table) {
         _ => None,
     };
     let bombs = rows.iter().filter(|row| bombed_out(row)).count();
+    // Meets, not result rows: an athlete entered in two divisions of one meet has two rows.
+    let meets: HashSet<(String, &str)> = rows
+        .iter()
+        .map(|row| (fold(&row.meet), row.date.as_str()))
+        .collect();
 
     let header = vec![
         "Meets",
@@ -126,7 +150,7 @@ fn trend(rows: &[&LiftingResults]) -> (Table, Table) {
     let best_date = best.map(|row| row.date.clone()).unwrap_or_default();
     let cells = |first_date: String, best_date: String, bombs: String| {
         vec![
-            rows.len().to_string(),
+            meets.len().to_string(),
             first_date,
             totals
                 .last()
@@ -223,5 +247,42 @@ mod tests {
         let text = report.to_text();
         assert!(text.contains("Mar 1, 2025"));
         assert!(text.contains("0 of 1"));
+    }
+
+    #[test]
+    fn a_range_with_no_results_says_so() {
+        let rows = vec![row(
+            "Ada",
+            "2024-03-01",
+            "M1",
+            "Open Women's 64kg",
+            63.0,
+            [80.0, 85.0, -88.0],
+            [100.0, 105.0, 0.0],
+        )];
+        let report = report("Ada", &rows, Some(2026));
+        assert_eq!(report.to_text(), "No results for Ada in that range.");
+        let json = report.to_json();
+        assert_eq!(json["results"], serde_json::json!([]));
+        assert_eq!(json["trend"], serde_json::json!([]));
+        assert_eq!(json["attempts"], serde_json::json!([]));
+    }
+
+    #[test]
+    fn meets_count_meets_not_rows() {
+        let entry = |division: &str| {
+            row(
+                "Ada",
+                "2025-03-01",
+                "M1",
+                division,
+                63.0,
+                [80.0, 0.0, 0.0],
+                [100.0, 0.0, 0.0],
+            )
+        };
+        let rows = vec![entry("Open Women's 64kg"), entry("Junior Women's 64kg")];
+        let json = report("Ada", &rows, None).to_json();
+        assert_eq!(json["trend"][0]["meets"], 1);
     }
 }

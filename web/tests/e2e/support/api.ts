@@ -1,43 +1,40 @@
 import type { Page, Route } from "@playwright/test";
 
+/**
+ * Puts stand-ins for the Clerk and RevenueCat SDKs on the page, as a signed-in
+ * subscriber. The auth bridge uses an SDK that is already on the page instead
+ * of loading it; a mocked CDN file would fail its integrity check.
+ */
 export async function mockSubscribedUser(page: Page) {
-  await page.route(/cdn\.jsdelivr\.net\/npm\/@clerk\/ui@/, async (route) => {
-    await route.fulfill({
-      contentType: "application/javascript",
-      body: "window.__internal_ClerkUICtor = function ClerkUI() {};",
-    });
-  });
-  await page.route(/cdn\.jsdelivr\.net\/npm\/@clerk\/clerk-js@/, async (route) => {
-    await route.fulfill({
-      contentType: "application/javascript",
-      body: `window.Clerk = {
+  await page.addInitScript(() => {
+    const purchases = {
+      getAppUserId: () => "user_ci",
+      changeUser: async () => {},
+      getCustomerInfo: async () => ({ entitlements: { active: { pro: {} } } }),
+    };
+    Object.assign(window, {
+      __internal_ClerkUICtor: function ClerkUI() {},
+      Clerk: {
         isSignedIn: true,
         user: { id: "user_ci" },
         load: async () => {},
         addListener: () => {},
-        mountUserButton: (element) => { element.textContent = "Test User"; },
+        mountUserButton: (element: HTMLElement, options: unknown) => {
+          element.textContent = "Test User";
+          Object.assign(window, { __userButtonOptions: options });
+        },
         unmountUserButton: () => {},
         mountSignIn: () => {},
         unmountSignIn: () => {},
-        openSignIn: () => {}
-      };`,
-    });
-  });
-  await page.route(/unpkg\.com\/@revenuecat\/purchases-js@/, async (route) => {
-    await route.fulfill({
-      contentType: "application/javascript",
-      body: `(() => {
-        const purchases = {
-          getAppUserId: () => "user_ci",
-          changeUser: async () => {},
-          getCustomerInfo: async () => ({ entitlements: { active: { pro: {} } } })
-        };
-        window.Purchases = { Purchases: {
+        openSignIn: () => {},
+      },
+      Purchases: {
+        Purchases: {
           isConfigured: () => false,
           configure: () => purchases,
-          getSharedInstance: () => purchases
-        }};
-      })();`,
+          getSharedInstance: () => purchases,
+        },
+      },
     });
   });
 }

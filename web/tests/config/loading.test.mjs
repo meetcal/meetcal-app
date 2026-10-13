@@ -42,7 +42,7 @@ test("the release build optimizes the Wasm binary for size", async () => {
 });
 
 test("every page shows a loading shell until the app mounts", async () => {
-  for (const file of ["index.html", "seo/features.html", "seo/results.html"]) {
+  for (const file of ["index.html", "seo/features.html", "seo/results.html", "404.html"]) {
     const html = await readFile(new URL(`../../dist/${file}`, import.meta.url), "utf8");
     assert.match(html, /<div id="app-loading"[^>]*role="status"/, `${file} has no loading shell`);
     assert.match(html, /<noscript>/, `${file} has no <noscript> message`);
