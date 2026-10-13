@@ -270,6 +270,28 @@ describe('calculateWrappedStats', () => {
     expect(stats.totalMeets).toBe(3);
   });
 
+  it('keeps the same numbers at two editions of a recurring meet', () => {
+    // A monthly "Local Open" lifted the same way twice is two lifts.
+    const lift = { meet: 'Local Open', snatch1: 45, cj1: 55, total: 100 };
+    const stats = calculateWrappedStats([
+      row({ ...lift, date: '2026-04-11' }),
+      row({ ...lift, date: '2026-05-09' }),
+    ]);
+
+    expect(stats.totalWeightLifted).toBe(200);
+    expect(stats.makePercentage).toBe(100);
+  });
+
+  it('keeps rows with an unreadable date apart from a same-named meet', () => {
+    const lift = { meet: 'Local Open', snatch1: 45, cj1: 55, total: 100 };
+    const stats = calculateWrappedStats([
+      row({ ...lift, date: '2026-04-11' }),
+      row({ ...lift, date: '' }),
+    ]);
+
+    expect(stats.totalWeightLifted).toBe(200);
+  });
+
   it('needs five distinct lifts, not five rows, to rank Meet Regular', () => {
     const lift = { snatch1: 50, snatch2: -55, cj1: 70, cj2: -75, total: 120 };
     const duplicated = [1, 2, 3].flatMap((month) => [

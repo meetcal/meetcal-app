@@ -44,6 +44,30 @@ function meetKey(meet: string): string {
 }
 
 /**
+ * The most days apart one meet's rows can be filed: a national championship
+ * runs about ten days. Further apart, a meet with the same name is another
+ * edition (a monthly local open), and its rows are separate lifts.
+ */
+export const MEET_EDITION_SPAN_DAYS = 10;
+
+const MS_PER_DAY = 24 * 60 * 60 * 1000;
+
+/** Days since the epoch for a `YYYY-MM-DD` calendar date, or null. */
+function calendarDay(date: string): number | null {
+  const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(date);
+  if (!match) return null;
+  return Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3])) / MS_PER_DAY;
+}
+
+/** Two rows' dates are within one meet's span. Unparseable dates never are. */
+function withinOneEdition(a: string, b: string): boolean {
+  const dayA = calendarDay(a);
+  const dayB = calendarDay(b);
+  if (dayA === null || dayB === null) return false;
+  return Math.abs(dayA - dayB) <= MEET_EDITION_SPAN_DAYS;
+}
+
+/**
  * The rows that are distinct lifts, in their original order.
  *
  * One lift can come back as several rows: the same meet listed under two age
@@ -52,9 +76,10 @@ function meetKey(meet: string): string {
  * count that lift's kilos, attempts and streak twice.
  *
  * The rule: two rows are the same lift when all six attempts and the total
- * are equal and they share the date or the meet name (trimmed, any case). The
- * first row is kept. Same numbers at a different meet on a different date
- * stay two lifts, and so do two different lifts on one date.
+ * are equal and they share the date, or share the meet name (trimmed, any
+ * case) within `MEET_EDITION_SPAN_DAYS`. The first row is kept. Same numbers
+ * at a different meet on a different date stay two lifts, as do two editions
+ * of a recurring meet and two different lifts on one date.
  */
 export function distinctLifts(data: readonly SupabaseLiftResult[]): SupabaseLiftResult[] {
   const keptBySignature = new Map<string, SupabaseLiftResult[]>();
@@ -63,7 +88,10 @@ export function distinctLifts(data: readonly SupabaseLiftResult[]): SupabaseLift
     const signature = JSON.stringify([...attemptsOf(result), result.total]);
     const sameNumbers = keptBySignature.get(signature) ?? [];
     const isDuplicate = sameNumbers.some(
-      (other) => other.date === result.date || meetKey(other.meet) === meetKey(result.meet),
+      (other) =>
+        other.date === result.date ||
+        (meetKey(other.meet) === meetKey(result.meet) &&
+          withinOneEdition(other.date, result.date)),
     );
     if (isDuplicate) continue;
     sameNumbers.push(result);
