@@ -17,7 +17,7 @@ import {
 import { competitionRanks } from "@/lib/competition-rank";
 import { isNetworkAvailable } from "@/lib/networkUtils";
 import { FilterState, Gender } from "@/types/nat-rankings";
-import { getWeightClasses } from "@/utils/nat-rankings";
+import { getWeightClasses, getWeightClassOptions } from "@/utils/nat-rankings";
 import { Stack } from "expo-router";
 import React, { useEffect, useMemo, useState } from "react";
 import { ActivityIndicator, StyleSheet, View } from "react-native";
@@ -117,7 +117,7 @@ function NationalRankingsScreenContent() {
   ): FilterSection[] => {
     const gender = (tempFilters.gender || "Men") as Gender;
     const ageGroup = tempFilters.ageGroup || "Senior";
-    const weightClasses = getWeightClasses(gender, ageGroup);
+    const weightClassOptions = getWeightClassOptions(gender, ageGroup);
 
     return [
       {
@@ -136,7 +136,7 @@ function NationalRankingsScreenContent() {
       {
         id: "weightClass",
         title: "Weight Class",
-        options: weightClasses.map((wc) => ({ value: wc, label: wc })),
+        options: weightClassOptions,
         dependsOn: ["gender", "ageGroup"],
       },
     ];

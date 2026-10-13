@@ -175,12 +175,27 @@ pub async fn get_lifting_results(
 
 pub async fn get_meet_results(meet: &str) -> Result<Vec<LiftingResults>> {
     let mut results = Vec::new();
+    let mut titles = HashSet::new();
     for alias in result_meet_aliases(meet) {
         let query_args = json!({ "meet": alias });
-        let mut rows = query(queries::MEET_RESULTS, &query_args).await?;
-        results.append(&mut rows);
+        let rows = query(queries::MEET_RESULTS, &query_args).await?;
+        add_new_titles(&mut results, &mut titles, rows);
     }
     Ok(results)
+}
+
+/// Adds the rows of results titles no earlier answer held. A meet whose
+/// results titles are linked to it on the server (a combined national event)
+/// answers them with its own, so asking for each title again would list
+/// every result twice; an unlinked one still gets them from the aliases.
+fn add_new_titles(
+    results: &mut Vec<LiftingResults>,
+    titles: &mut HashSet<String>,
+    rows: Vec<LiftingResults>,
+) {
+    let answered: HashSet<String> = rows.iter().map(|row| row.meet.clone()).collect();
+    results.extend(rows.into_iter().filter(|row| !titles.contains(&row.meet)));
+    titles.extend(answered);
 }
 
 pub fn is_pr(current: Option<f64>, previous: Option<f64>) -> bool {
@@ -451,7 +466,7 @@ pub fn report(
         .table("volume", volume_table)
         .table("prs", pr_table);
 
-    if !prs.details.is_empty() {
+    {
         let mut table = Table::new();
         table.set_header(vec!["Athlete", "Movement", "New PR", "Previous PR"]);
         for detail in &prs.details {
@@ -462,10 +477,10 @@ pub fn report(
                 format_weight(detail.previous_pr),
             ]);
         }
-        report = report.headed("pr_details", "ATHLETES WITH PRS", table);
+        report = report.headed_if_any("pr_details", "ATHLETES WITH PRS", table);
     }
 
-    if !medals.is_empty() {
+    {
         let mut table = Table::new();
         table.set_header(vec!["Athlete", "Age", "Movement", "Place", "Result"]);
         for detail in medals {
@@ -477,7 +492,7 @@ pub fn report(
                 format_weight(detail.result),
             ]);
         }
-        report = report.headed("medals", "ATHLETES WITH MEDALS", table);
+        report = report.headed_if_any("medals", "ATHLETES WITH MEDALS", table);
     }
 
     report
@@ -608,6 +623,51 @@ mod tests {
             .to_string();
 
         assert_eq!(error, "No athletes found for meet \"Missing Meet\"");
+    }
+
+    #[test]
+    fn exports_every_section_even_with_no_prs_or_medals() {
+        let performance = PerformanceStats {
+            snatch_attempts: 3,
+            snatch_makes: 2,
+            cj_attempts: 3,
+            cj_makes: 3,
+            total_weight_lifted: 500.0,
+        };
+        let prs = PrStats {
+            snatch_count: 0,
+            cj_count: 0,
+            total_count: 0,
+            details: Vec::new(),
+            target_meet_rows: Vec::new(),
+            missing_names: Vec::new(),
+        };
+        let report = report("Florida", "Meet", 10, 1, &performance, &prs, &[]);
+        let json = report.to_json();
+        let keys: Vec<&str> = json
+            .as_object()
+            .unwrap()
+            .keys()
+            .map(String::as_str)
+            .collect();
+        assert_eq!(
+            keys,
+            [
+                "athletes",
+                "make_rates",
+                "volume",
+                "prs",
+                "pr_details",
+                "medals"
+            ]
+        );
+        assert_eq!(json["medals"], serde_json::json!([]));
+        assert!(
+            report
+                .to_csv()
+                .contains("# medals\nathlete,age,movement,place,result\n")
+        );
+        assert!(!report.to_text().contains("ATHLETES WITH MEDALS"));
     }
 
     #[test]
@@ -838,5 +898,25 @@ mod tests {
         assert!(report.contains("ATHLETES WITH PRS"));
         assert!(report.contains("ATHLETES WITH MEDALS"));
         assert!(report.contains("220kg"));
+    }
+
+    #[test]
+    fn a_linked_title_answered_with_its_meet_is_not_added_again() {
+        let parent = vec![
+            result("Ann", "Nationals", "Open", 80.0, 100.0, 180.0),
+            result("Ada", "Junior", "Junior", 70.0, 90.0, 160.0),
+        ];
+        let junior = vec![result("Ada", "Junior", "Junior", 70.0, 90.0, 160.0)];
+        let youth = vec![result("Cy", "Youth", "Youth", 50.0, 60.0, 110.0)];
+        let mut results = Vec::new();
+        let mut titles = HashSet::new();
+        add_new_titles(&mut results, &mut titles, parent);
+        add_new_titles(&mut results, &mut titles, junior);
+        add_new_titles(&mut results, &mut titles, youth);
+        let names = results
+            .iter()
+            .map(|row| row.name.as_str())
+            .collect::<Vec<_>>();
+        assert_eq!(names, ["Ann", "Ada", "Cy"]);
     }
 }

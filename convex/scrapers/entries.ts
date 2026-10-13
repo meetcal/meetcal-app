@@ -1,7 +1,7 @@
 'use node';
 
 import { v } from 'convex/values';
-import { internalAction } from '../_generated/server';
+import { internalAction, type ActionCtx } from '../_generated/server';
 import { internal } from '../_generated/api';
 import { fetchJson } from './lib/http';
 import { entriesEndpoint, entryFromRow, meetFromTitle, type Entry, type EntryRow } from './parse/entries';
@@ -58,6 +58,20 @@ export function targetExpired(endDate: string, now: number, days = TARGET_RETENT
   return endDate < new Date(now - days * 86_400_000).toISOString().slice(0, 10);
 }
 
+/**
+ * Entries with each member's WSO from their other registrations, where one
+ * names it (`queries.memberWsos`, #345): Sport80's entries list has none, so
+ * without it the WSO dashboard and WSO registrations miss synced meets.
+ */
+async function withKnownWsos(ctx: ActionCtx, entries: Entry[]): Promise<Entry[]> {
+  const ids = entries.map((entry) => entry.memberId);
+  const wsos: Record<string, string> = {};
+  for (let i = 0; i < ids.length; i += 500) {
+    Object.assign(wsos, await ctx.runQuery(internal.scrapers.queries.memberWsos, { memberIds: ids.slice(i, i + 500) }));
+  }
+  return entries.map((entry) => (wsos[entry.memberId] ? { ...entry, wso: wsos[entry.memberId] } : entry));
+}
+
 type MeetResult = {
   label: string;
   meet?: string;
@@ -67,13 +81,19 @@ type MeetResult = {
   unchanged?: number;
   sessionSkipped?: number;
   notOnStartList?: number;
+  rejected?: number;
+  deleted?: number;
+  /** Entrants given a WSO from their other registrations. */
+  withWso?: number;
   skipped?: string;
   error?: string;
 };
 
 export const run = internalAction({
-  args: { dryRun: v.optional(v.boolean()), only: v.optional(v.array(v.string())) },
-  handler: async (ctx, { dryRun, only }): Promise<MeetResult[]> => {
+  // `allowShrink`: let a meet's entrants no longer on its list be deleted
+  // past the share `ingest.upsertEntryAthletes` allows, after checking by hand.
+  args: { dryRun: v.optional(v.boolean()), only: v.optional(v.array(v.string())), allowShrink: v.optional(v.boolean()) },
+  handler: async (ctx, { dryRun, only, allowShrink }): Promise<MeetResult[]> => {
     const targets = (await ctx.runQuery(internal.scrapers.entryTargets.list, {})).filter((t) => !only || only.includes(t.label) || only.includes(t.url));
     const results: MeetResult[] = [];
     for (const target of targets) {
@@ -91,12 +111,14 @@ export const run = internalAction({
           }
           continue;
         }
-        const entries = await fetchEntries(target.url, meet);
+        const entries = await withKnownWsos(ctx, await fetchEntries(target.url, meet));
         result.entries = entries.length;
+        result.withWso = entries.filter((entry) => entry.wso).length;
         if (dryRun || entries.length === 0) continue;
-        const counts: { inserted: number; updated: number; unchanged: number; sessionSkipped: number; notOnStartList: number } = await ctx.runMutation(
+        const counts: { inserted: number; updated: number; unchanged: number; sessionSkipped: number; notOnStartList: number; rejected: number; deleted: number } = await ctx.runMutation(
           internal.ingest.upsertEntryAthletes,
-          { meet, rows: entries },
+          // `fetchEntries` checked the list against its total: it is the whole list.
+          { meet, rows: entries, complete: true, ...(allowShrink ? { allowShrink } : {}) },
         );
         Object.assign(result, counts);
       } catch (error) {

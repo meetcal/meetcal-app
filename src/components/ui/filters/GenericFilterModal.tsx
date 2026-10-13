@@ -23,6 +23,8 @@ export interface FilterOption {
   label: string;
   icon?: string;
   iconColor?: string;
+  /** Heading listed above this option and the ones after it that share it. */
+  group?: string;
 }
 
 export interface FilterSection {
