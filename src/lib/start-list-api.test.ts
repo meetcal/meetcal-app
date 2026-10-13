@@ -1,11 +1,9 @@
 import type { SupabaseLiftResult } from "@/data/types/athletes";
 
-const mockFetchApiYearBests = jest.fn();
 const mockFetchApiYearBestsByNames = jest.fn();
 const mockFetchApiResultsByNames = jest.fn();
 
 jest.mock("@/lib/api/meetcal-api", () => ({
-  fetchApiYearBests: (...args: any[]) => mockFetchApiYearBests(...args),
   fetchApiYearBestsByNames: (...args: any[]) =>
     mockFetchApiYearBestsByNames(...args),
   fetchApiResultsByNames: (...args: any[]) => mockFetchApiResultsByNames(...args),
@@ -21,10 +19,19 @@ jest.mock("@/lib/database/offline-store", () => ({
   getStoredAthleteBestsForNames: (...args: any[]) =>
     mockGetStoredAthleteBestsForNames(...args),
   saveAthleteBestsBatch: (...args: any[]) => mockSaveAthleteBestsBatch(...args),
+  hasAnyAthleteBest: (...args: any[]) =>
+    jest.requireActual("@/lib/database/offline-store").hasAnyAthleteBest(...args),
   // The real freshness rule, so the in-memory cache expires on it too.
   isAthleteBestsFresh: (...args: any[]) =>
     jest.requireActual("@/lib/database/offline-store").isAthleteBestsFresh(...args),
 }));
+
+/** The window lookup answers every requested name with `bests`. */
+function answerWindow(bests: { bestSnatch: number; bestCJ: number; bestTotal: number }) {
+  mockFetchApiYearBestsByNames.mockImplementation(async (names: string[]) =>
+    Object.fromEntries(names.map((name) => [name, bests])),
+  );
+}
 
 /** A stored bests entry as `getStoredAthleteBestsForNames` reports it. */
 function storedBests(
@@ -72,9 +79,7 @@ beforeEach(() => {
 
 describe("getLastYearBests", () => {
   it("returns and persists windowed bests when the athlete has recent results", async () => {
-    mockFetchApiYearBests.mockResolvedValue([
-      { bestSnatch: 100, bestCJ: 120, bestTotal: 220 },
-    ]);
+    answerWindow({ bestSnatch: 100, bestCJ: 120, bestTotal: 220 });
 
     const result = await startListApi.getLastYearBests("Recent Athlete");
 
@@ -87,9 +92,7 @@ describe("getLastYearBests", () => {
 
   it("falls back to the MOST RECENT meet only (not career bests) for a stale athlete", async () => {
     // Nothing inside the year window.
-    mockFetchApiYearBests.mockResolvedValue([
-      { bestSnatch: 0, bestCJ: 0, bestTotal: 0 },
-    ]);
+    answerWindow({ bestSnatch: 0, bestCJ: 0, bestTotal: 0 });
     // Full history: an OLDER meet has bigger numbers than the most recent one.
     mockFetchApiResultsByNames.mockResolvedValue([
       liftRow({
@@ -124,9 +127,7 @@ describe("getLastYearBests", () => {
   });
 
   it("returns zeros for a never-competed athlete and stores the API's \"no results\"", async () => {
-    mockFetchApiYearBests.mockResolvedValue([
-      { bestSnatch: 0, bestCJ: 0, bestTotal: 0 },
-    ]);
+    answerWindow({ bestSnatch: 0, bestCJ: 0, bestTotal: 0 });
     mockFetchApiResultsByNames.mockResolvedValue([]);
 
     const result = await startListApi.getLastYearBests("Never Competed");
@@ -146,22 +147,20 @@ describe("getLastYearBests", () => {
     const result = await startListApi.getLastYearBests("Newcomer");
 
     expect(result).toEqual({ bestSnatch: 0, bestCJ: 0, bestTotal: 0 });
-    expect(mockFetchApiYearBests).not.toHaveBeenCalled();
+    expect(mockFetchApiYearBestsByNames).not.toHaveBeenCalled();
   });
 
   it("re-resolves a stale stored all-null row via fetch", async () => {
     mockGetStoredAthleteBestsForNames.mockResolvedValue({
       "Null Row Athlete": storedBests({ snatch_best: null, cj_best: null, total: null }, false),
     });
-    mockFetchApiYearBests.mockResolvedValue([
-      { bestSnatch: 90, bestCJ: 110, bestTotal: 200 },
-    ]);
+    answerWindow({ bestSnatch: 90, bestCJ: 110, bestTotal: 200 });
 
     const result = await startListApi.getLastYearBests("Null Row Athlete");
 
     expect(result).toEqual({ bestSnatch: 90, bestCJ: 110, bestTotal: 200 });
     // Proves the stored null row did not short-circuit the resolution.
-    expect(mockFetchApiYearBests).toHaveBeenCalledTimes(1);
+    expect(mockFetchApiYearBestsByNames).toHaveBeenCalledTimes(1);
   });
 
   it("returns a fresh stored real bests row without fetching", async () => {
@@ -172,13 +171,11 @@ describe("getLastYearBests", () => {
     const result = await startListApi.getLastYearBests("Cached Athlete");
 
     expect(result).toEqual({ bestSnatch: 80, bestCJ: 100, bestTotal: 180 });
-    expect(mockFetchApiYearBests).not.toHaveBeenCalled();
+    expect(mockFetchApiYearBestsByNames).not.toHaveBeenCalled();
   });
 
   it("returns zeros and does not crash when the full-history fetch throws", async () => {
-    mockFetchApiYearBests.mockResolvedValue([
-      { bestSnatch: 0, bestCJ: 0, bestTotal: 0 },
-    ]);
+    answerWindow({ bestSnatch: 0, bestCJ: 0, bestTotal: 0 });
     mockFetchApiResultsByNames.mockRejectedValue(new Error("network down"));
 
     const result = await startListApi.getLastYearBests("Erroring Athlete");
@@ -191,7 +188,7 @@ describe("getLastYearBests", () => {
     mockGetStoredAthleteBestsForNames.mockResolvedValue({
       "Old Athlete": storedBests({ snatch_best: 80, cj_best: 100, total: 180 }, false),
     });
-    mockFetchApiYearBests.mockRejectedValue(new Error("offline"));
+    mockFetchApiYearBestsByNames.mockRejectedValue(new Error("offline"));
 
     const result = await startListApi.getLastYearBests("Old Athlete");
 
@@ -200,7 +197,7 @@ describe("getLastYearBests", () => {
   });
 
   it("does not store an offline fallback derived from downloaded meets", async () => {
-    mockFetchApiYearBests.mockRejectedValue(new Error("offline"));
+    mockFetchApiYearBestsByNames.mockRejectedValue(new Error("offline"));
     mockGetAllCachedLiftingResultsForAthlete.mockResolvedValue([
       liftRow({ date: "2099-01-01", snatch_best: 100, cj_best: 120, total: 220 }),
     ]);
@@ -223,7 +220,6 @@ describe("offline fallback date window", () => {
     >("@/utils/dateTime");
     const cutoff = getHistoryCutoffDate(YEAR_BESTS_YEARS);
     mockFetchApiYearBestsByNames.mockRejectedValue(new Error("offline"));
-    mockFetchApiYearBests.mockRejectedValue(new Error("offline"));
     mockGetAllCachedLiftingResultsForAthlete.mockResolvedValue([
       liftRow({ date: cutoff, snatch_best: 100, cj_best: 120, total: 220 }),
       liftRow({ date: "2010-01-01", meet: "Old Meet", snatch_best: 150, cj_best: 180, total: 330 }),
@@ -403,34 +399,144 @@ describe("getLastYearBestsBatch", () => {
     expect(result[nfd]).toEqual({ bestSnatch: 70, bestCJ: 90, bestTotal: 160 });
   });
 
-  it("matches a bests row keyed by the cleaned name to the roster's raw spelling", async () => {
-    // The API trims and folds whitespace in the names it echoes back, so the
-    // roster's ' Jane Doe' used to miss its own row and be stored as "—".
+  it("does not invent a total from a bomb-out at the fallback meet", async () => {
+    // #275: a total of 0 is how a bomb-out is recorded. 80 + 0 used to show
+    // (and sort) as an 80 kg total.
     mockFetchApiYearBestsByNames.mockResolvedValue({
-      "Jane Doe": { bestSnatch: 80, bestCJ: 100, bestTotal: 180 },
+      Bombed: { bestSnatch: 0, bestCJ: 0, bestTotal: 0 },
     });
+    mockFetchApiResultsByNames.mockResolvedValue([
+      liftRow({
+        name: "Bombed",
+        meet: "Last Meet",
+        date: "2022-05-01",
+        snatch_best: 80,
+        cj1: -100,
+        cj2: -100,
+        cj3: -100,
+        cj_best: 0,
+        total: 0,
+      }),
+    ]);
 
-    const result = await startListApi.getLastYearBestsBatch([" Jane Doe", "jane  doe"]);
+    const result = await startListApi.getLastYearBestsBatch(["Bombed"]);
 
-    expect(result[" Jane Doe"]).toEqual({ bestSnatch: 80, bestCJ: 100, bestTotal: 180 });
-    expect(result["jane  doe"]).toEqual({ bestSnatch: 80, bestCJ: 100, bestTotal: 180 });
-    expect(mockFetchApiResultsByNames).not.toHaveBeenCalled();
+    expect(result.Bombed).toEqual({ bestSnatch: 80, bestCJ: 0, bestTotal: 0 });
     expect(mockSaveAthleteBestsBatch).toHaveBeenCalledWith({
-      " Jane Doe": { snatch_best: 80, cj_best: 100, total: 180 },
-      "jane  doe": { snatch_best: 80, cj_best: 100, total: 180 },
+      Bombed: { snatch_best: 80, cj_best: null, total: null },
     });
   });
 
-  it("returns zeros for missing names without fetching when fetchMissing is false", async () => {
-    const result = await startListApi.getLastYearBestsBatch(["A", "B"], {
-      fetchMissing: false,
+  it("does not invent a total from a downloaded bomb-out when offline", async () => {
+    mockFetchApiYearBestsByNames.mockRejectedValue(new Error("offline"));
+    mockGetAllCachedLiftingResultsForAthlete.mockResolvedValue([
+      liftRow({ date: "2099-01-01", snatch_best: 80, cj1: -100, cj2: -100, cj3: -100, cj_best: 0, total: 0 }),
+    ]);
+
+    const bests = await startListApi.getLastYearBests("Bombed");
+
+    expect(bests).toEqual({ bestSnatch: 80, bestCJ: 0, bestTotal: 0 });
+  });
+});
+
+describe("preloadYearBests", () => {
+  const flush = () => new Promise((resolve) => setImmediate(resolve));
+
+  it("fetches the warmed names in one batched request, so expanded rows send none", async () => {
+    // #321: the warm-up only read storage, so on a device with nothing stored
+    // every expanded row sent its own requests.
+    const names = Array.from({ length: 80 }, (_, i) => `Athlete ${i}`);
+    answerWindow({ bestSnatch: 100, bestCJ: 120, bestTotal: 220 });
+
+    startListApi.preloadYearBests(names);
+    await flush();
+
+    expect(mockFetchApiYearBestsByNames).toHaveBeenCalledTimes(1);
+    expect(mockFetchApiYearBestsByNames).toHaveBeenCalledWith(names, expect.any(String));
+    await expect(startListApi.getLastYearBests("Athlete 7")).resolves.toEqual({
+      bestSnatch: 100,
+      bestCJ: 120,
+      bestTotal: 220,
+    });
+    expect(mockFetchApiYearBestsByNames).toHaveBeenCalledTimes(1);
+    expect(mockFetchApiResultsByNames).not.toHaveBeenCalled();
+  });
+
+  it("lets a row expanded mid-warm-up wait for the batch instead of sending its own request", async () => {
+    let answer!: (value: unknown) => void;
+    mockFetchApiYearBestsByNames.mockReturnValue(new Promise((resolve) => (answer = resolve)));
+
+    startListApi.preloadYearBests(["A", "B"]);
+    await flush();
+    const row = startListApi.getLastYearBests("B");
+    answer({
+      A: { bestSnatch: 1, bestCJ: 2, bestTotal: 3 },
+      B: { bestSnatch: 90, bestCJ: 110, bestTotal: 200 },
     });
 
-    expect(result).toEqual({
-      A: { bestSnatch: 0, bestCJ: 0, bestTotal: 0 },
-      B: { bestSnatch: 0, bestCJ: 0, bestTotal: 0 },
+    await expect(row).resolves.toEqual({ bestSnatch: 90, bestCJ: 110, bestTotal: 200 });
+    expect(mockFetchApiYearBestsByNames).toHaveBeenCalledTimes(1);
+  });
+
+  // A row expanded just before the warm-up started its own lookup; the
+  // warm-up then asked for that athlete again.
+  it("joins a row's lookup already running instead of asking for that athlete again", async () => {
+    let answerRow!: (value: unknown) => void;
+    mockFetchApiYearBestsByNames
+      .mockReturnValueOnce(new Promise((resolve) => (answerRow = resolve)))
+      .mockImplementation(async (names: string[]) =>
+        Object.fromEntries(names.map((name) => [name, { bestSnatch: 1, bestCJ: 2, bestTotal: 3 }])),
+      );
+
+    const row = startListApi.getLastYearBests("B");
+    await flush();
+    const batch = startListApi.getLastYearBestsBatch(["A", "B"]);
+    await flush();
+    expect(mockFetchApiYearBestsByNames).toHaveBeenCalledTimes(2);
+    expect(mockFetchApiYearBestsByNames.mock.calls[1][0]).toEqual(["A"]);
+
+    answerRow({ B: { bestSnatch: 90, bestCJ: 110, bestTotal: 200 } });
+    await expect(row).resolves.toEqual({ bestSnatch: 90, bestCJ: 110, bestTotal: 200 });
+    await expect(batch).resolves.toEqual({
+      A: { bestSnatch: 1, bestCJ: 2, bestTotal: 3 },
+      B: { bestSnatch: 90, bestCJ: 110, bestTotal: 200 },
     });
-    expect(mockFetchApiYearBestsByNames).not.toHaveBeenCalled();
+  });
+
+  // A best-lift sort looks the whole roster up (16 sequential requests at a
+  // national meet); a row expanded meanwhile waited for all of them.
+  it("lets a row look itself up rather than wait for a roster-sized batch", async () => {
+    const names = Array.from({ length: 101 }, (_, i) => `Athlete ${i}`);
+    let answerBatch!: (value: unknown) => void;
+    mockFetchApiYearBestsByNames
+      .mockReturnValueOnce(new Promise((resolve) => (answerBatch = resolve)))
+      .mockResolvedValueOnce({ "Athlete 3": { bestSnatch: 90, bestCJ: 110, bestTotal: 200 } });
+
+    const batch = startListApi.getLastYearBestsBatch(names);
+    await flush();
+    await expect(startListApi.getLastYearBests("Athlete 3")).resolves.toEqual({
+      bestSnatch: 90,
+      bestCJ: 110,
+      bestTotal: 200,
+    });
+    expect(mockFetchApiYearBestsByNames).toHaveBeenCalledTimes(2);
+    answerBatch({});
+    await batch;
+  });
+
+  it("swallows a failed warm-up and leaves the row to look itself up", async () => {
+    mockFetchApiYearBestsByNames.mockRejectedValueOnce(new Error("offline"));
+
+    startListApi.preloadYearBests(["A"]);
+    await flush();
+    answerWindow({ bestSnatch: 90, bestCJ: 110, bestTotal: 200 });
+
+    await expect(startListApi.getLastYearBests("A")).resolves.toEqual({
+      bestSnatch: 90,
+      bestCJ: 110,
+      bestTotal: 200,
+    });
+    expect(mockFetchApiYearBestsByNames).toHaveBeenCalledTimes(2);
   });
 });
 
@@ -480,9 +586,7 @@ describe("in-memory bests cache bound", () => {
         isFresh: true,
       },
     });
-    mockFetchApiYearBests.mockResolvedValue([
-      { bestSnatch: 105, bestCJ: 125, bestTotal: 230 },
-    ]);
+    answerWindow({ bestSnatch: 105, bestCJ: 125, bestTotal: 230 });
 
     try {
       await expect(startListApi.getLastYearBests("A")).resolves.toEqual({
@@ -497,7 +601,7 @@ describe("in-memory bests cache bound", () => {
         bestCJ: 125,
         bestTotal: 230,
       });
-      expect(mockFetchApiYearBests).toHaveBeenCalledTimes(1);
+      expect(mockFetchApiYearBestsByNames).toHaveBeenCalledTimes(1);
     } finally {
       now.mockRestore();
     }

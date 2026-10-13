@@ -1,10 +1,13 @@
 import { Platform } from 'react-native';
 import { LiftResult } from '@/data/types/athletes';
+import { isSamePlatform } from '@/lib/athletes';
 import { foldForNameSearch, lowerNameMatchesSearchWords, searchWords } from '@/lib/name-search';
+import { platformSessionTimes } from '@/lib/schedule-lookup';
 import type { YearBests } from '@/lib/start-list-api';
 import type { Schedule } from '@/types/schedule';
 import type { SessionDetails } from '@/types/start-list';
 import { meetCalendarDateAnchor } from '@/utils/dateTime';
+import { resolveWeighInTime } from '@/utils/time';
 
 const WEIGHT_CLASS_NAN_SENTINEL = Infinity;
 
@@ -496,4 +499,66 @@ export function buildSessionDetailsLookup(
     }
   }
   return (sessionNumber) => index.get(sessionNumber) ?? null;
+}
+
+/** A Start List athlete's session date and times; "" for what is not known. */
+export interface AthleteSessionTimes {
+  /** The meet calendar date, `YYYY-MM-DD`. */
+  date: string;
+  startTime: string;
+  weighInTime: string;
+}
+
+/**
+ * Where and when `athlete`'s session is: the roster's own schedule row when
+ * it came joined with one, otherwise the schedule's row for the athlete's
+ * platform. The weigh-in is the platform's published one, else start minus
+ * 2 h (`resolveWeighInTime`), as on every other screen. `null` for an athlete
+ * with no session.
+ */
+export function athleteSessionTimes(
+  athlete: LiftResult,
+  getSessionDetails: (sessionNumber: number) => SessionDetails | null,
+): AthleteSessionTimes | null {
+  const session = athlete.session;
+  if (!session) return null;
+  if (session.date && session.startTime) {
+    return {
+      date: session.date,
+      startTime: session.startTime,
+      weighInTime: resolveWeighInTime(session.startTime, session.weighInTime),
+    };
+  }
+  const details = getSessionDetails(session.number);
+  if (!details) return { date: session.date ?? '', startTime: '', weighInTime: '' };
+  const platform = details.platforms.find((p) => isSamePlatform(p.platform, session.platform));
+  return { date: details.date, ...platformSessionTimes(details, platform) };
+}
+
+/**
+ * The session details route params for `athlete`'s session row link. Session
+ * details needs only the meet, session and platform (it looks the schedule up
+ * itself), so the link always navigates; the date and times go along only
+ * when known. It used to do nothing at all when the schedule had no row for
+ * the session (not published yet, or the request failed).
+ */
+export function athleteSessionLinkParams(
+  athlete: LiftResult,
+  times: AthleteSessionTimes | null,
+  meet: string | null,
+): Record<string, string> | null {
+  const session = athlete.session;
+  if (!session) return null;
+  const params: Record<string, string> = {
+    id: `session-${session.number}-${session.platform}`,
+    sessionNumber: String(session.number),
+    platform: session.platform,
+    athleteName: athlete.name,
+  };
+  if (athlete.weightClass) params.weightClass = athlete.weightClass;
+  if (meet) params.meet = meet;
+  if (times?.date) params.date = times.date;
+  if (times?.startTime) params.startTime = times.startTime;
+  if (times?.weighInTime) params.weighInTime = times.weighInTime;
+  return params;
 }

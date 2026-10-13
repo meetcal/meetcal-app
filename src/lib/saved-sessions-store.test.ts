@@ -98,6 +98,13 @@ describe("parseStoredSessions", () => {
     const raw = JSON.stringify([session(), { id: "" }, session({ id: "b" })]);
     expect(parseStoredSessions(raw).map((s) => s.id)).toEqual(["Test-Meet-1-Red", "b"]);
   });
+
+  it("keeps the first row of a session stored twice", () => {
+    const raw = JSON.stringify([session({ notes: "first" }), session({ notes: "second" })]);
+    const parsed = parseStoredSessions(raw);
+    expect(parsed).toHaveLength(1);
+    expect(parsed[0].notes).toBe("first");
+  });
 });
 
 describe("readStoredSessions / commitStoredSessions", () => {
@@ -143,6 +150,16 @@ describe("readStoredSessions / commitStoredSessions", () => {
     await commitStoredSessions(store, USER, [session()]);
     expect(setItem).toHaveBeenCalledTimes(1);
     expect(published).toHaveLength(2);
+  });
+
+  // Each load commits a freshly built list; a new identity for the same
+  // content re-ran the widget write, the Spotlight reindex and the reminder
+  // sync on every Saved tab focus.
+  it("republishes the list already published when the content is unchanged", async () => {
+    const { store, published } = makeStore();
+    await commitStoredSessions(store, USER, [session()]);
+    await commitStoredSessions(store, USER, [session()]);
+    expect(published[1]).toBe(published[0]);
   });
 
   it("does nothing for a user who is not active", async () => {

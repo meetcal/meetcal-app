@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashSet};
 use std::io::Write;
 
 use anyhow::{Result, bail};
@@ -75,6 +75,10 @@ pub struct Edition {
     pub start_date: Option<String>,
     pub end_date: Option<String>,
     pub status: Option<String>,
+    /// Results titles linked to this meet, whose lifters `lifters` counts
+    /// (a combined national event); older servers send none.
+    #[serde(default)]
+    pub results_titles: Vec<String>,
 }
 
 impl Edition {
@@ -245,16 +249,27 @@ pub fn report(search: &str, editions: &[Edition]) -> Report {
         "Lifters With Results",
         "Status",
     ]);
+    // Exported with the first and last day in columns of their own, `YYYY-MM-DD`.
+    let mut meets_data = Table::new();
+    meets_data.set_header(vec![
+        "Year",
+        "Meet",
+        "Start Date",
+        "End Date",
+        "Registered",
+        "Lifters With Results",
+        "Status",
+    ]);
     for edition in &sorted {
-        let dates = match (
+        let (start, end) = match (
             &edition.first_date,
             &edition.last_date,
             &edition.start_date,
             &edition.end_date,
         ) {
-            (Some(first), Some(last), _, _) => date_range(first, last),
-            (_, _, Some(start), Some(end)) => date_range(start, end),
-            _ => String::new(),
+            (Some(first), Some(last), _, _) => (first.clone(), last.clone()),
+            (_, _, Some(start), Some(end)) => (start.clone(), end.clone()),
+            _ => (String::new(), String::new()),
         };
         let status = match (edition.lifters > 0, edition.registrations > 0) {
             (true, _) => "Results in".to_string(),
@@ -271,7 +286,16 @@ pub fn report(search: &str, editions: &[Edition]) -> Report {
         meets.add_row(vec![
             edition.year().unwrap_or_default(),
             edition.meet.clone(),
-            dates,
+            date_range(&start, &end),
+            count(edition.registrations),
+            count(edition.lifters),
+            status.clone(),
+        ]);
+        meets_data.add_row(vec![
+            edition.year().unwrap_or_default(),
+            edition.meet.clone(),
+            start,
+            end,
             count(edition.registrations),
             count(edition.lifters),
             status,
@@ -281,7 +305,15 @@ pub fn report(search: &str, editions: &[Edition]) -> Report {
     // By year: an edition counts its lifters with results, or its registrations when it has no
     // results yet.
     let mut years: BTreeMap<String, (usize, usize, usize, bool)> = BTreeMap::new();
-    for edition in &sorted {
+    // A results title linked to a listed meet is counted with it already.
+    let counted_with_meet: HashSet<&str> = sorted
+        .iter()
+        .flat_map(|edition| edition.results_titles.iter().map(String::as_str))
+        .collect();
+    for edition in sorted
+        .iter()
+        .filter(|edition| !counted_with_meet.contains(edition.meet.as_str()))
+    {
         let entry = years
             .entry(edition.year().unwrap_or_else(|| "?".into()))
             .or_default();
@@ -338,10 +370,11 @@ pub fn report(search: &str, editions: &[Edition]) -> Report {
                 .unwrap_or_default()
         ))
         .headed("by_year", "BY YEAR", by_year)
-        .headed("editions", "EDITIONS", meets)
+        .headed_with_data("editions", "EDITIONS", meets, meets_data)
 }
 
-/// A count, or a dash for none (registrations exist only for meets MeetCal tracked).
+/// A count, or a dash for none (registrations exist only for meets MeetCal tracked). JSON and
+/// CSV carry the dash as null.
 fn count(value: usize) -> String {
     if value == 0 {
         "—".into()
@@ -407,7 +440,26 @@ mod tests {
             start_date: start.map(str::to_string),
             end_date: start.map(str::to_string),
             status: Some("upcoming".into()),
+            results_titles: Vec::new(),
         }
+    }
+
+    #[test]
+    fn a_linked_results_title_is_counted_once_in_the_years() {
+        let mut nationals = edition("2026 Nationals", 300, 320, Some("2026-06-20"), None);
+        nationals.results_titles = vec!["The 2026 National Junior Championships".into()];
+        let junior = edition(
+            "The 2026 National Junior Championships",
+            100,
+            0,
+            Some("2026-06-21"),
+            None,
+        );
+        let json = report("2026 national", &[nationals, junior]).to_json();
+        let by_year = json["by_year"].as_array().unwrap();
+        assert_eq!(by_year[0]["athletes"], 300);
+        assert_eq!(by_year[0]["meets"], 1);
+        assert_eq!(json["editions"].as_array().unwrap().len(), 2);
     }
 
     #[test]
@@ -448,6 +500,10 @@ mod tests {
         );
         let editions = json["editions"].as_array().unwrap();
         assert_eq!(editions[2]["status"], "Registrations only (upcoming)");
-        assert_eq!(editions[0]["registered"], "—");
+        assert_eq!(editions[0]["registered"], serde_json::Value::Null);
+        assert_eq!(editions[0]["lifters_with_results"], 174);
+        assert_eq!(editions[1]["start_date"], "2025-08-17");
+        assert_eq!(editions[2]["start_date"], "2026-10-10");
+        assert_eq!(editions[2]["end_date"], "2026-10-10");
     }
 }

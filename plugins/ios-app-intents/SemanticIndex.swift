@@ -45,10 +45,7 @@ extension SessionEntity: IndexedEntity {
     var attributeSet: CSSearchableItemAttributeSet {
         let attributes = CSSearchableItemAttributeSet(contentType: UTType.text)
         attributes.title = "Session \(sessionNumber) — \(meet)"
-        var descriptionParts: [String] = [platform]
-        if let weightClass, !weightClass.isEmpty { descriptionParts.append(weightClass) }
-        if let startTime, !startTime.isEmpty { descriptionParts.append(startTime) }
-        attributes.contentDescription = descriptionParts.joined(separator: " • ")
+        attributes.contentDescription = scheduleLine
         attributes.keywords = ["session", meet, platform, weightClass ?? ""].filter { !$0.isEmpty }
         return attributes
     }
@@ -192,11 +189,7 @@ struct SemanticSessionEntity: IndexedEntity, Identifiable {
 
     init(_ session: SessionEntity) {
         let title = "Session \(session.sessionNumber) — \(session.meet)"
-        let detail = [
-            session.platform,
-            session.weightClass,
-            session.startTime,
-        ].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: " • ")
+        let detail = session.scheduleLine
         let keywords = ["session", session.meet, session.platform, session.weightClass ?? ""]
             .filter { !$0.isEmpty }
 
@@ -212,12 +205,9 @@ struct SemanticSessionEntity: IndexedEntity, Identifiable {
 @available(iOS 18.4, *)
 struct SemanticSessionQuery: EntityQuery {
     func entities(for identifiers: [SemanticSessionEntity.ID]) async throws -> [SemanticSessionEntity] {
-        let selectedMeet = SharedStore.selectedMeet
-        guard !selectedMeet.isEmpty else { return [] }
-
-        let wanted = Set(identifiers)
-        return try await SessionQuery.sessions(forMeet: selectedMeet)
-            .filter { wanted.contains($0.id) }
+        // Each id names its meet: an item indexed before the user switched
+        // meets (kept while offline) must still open.
+        try await SessionQuery.sessions(withIDs: identifiers)
             .map(SemanticSessionEntity.init)
     }
 }

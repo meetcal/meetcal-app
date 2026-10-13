@@ -29,6 +29,15 @@ enum MeetCalShared {
         static let qualifyingTotals = "qualifyingTotalsWidgetData"
         static let standards = "standardsWidgetData"
         static let intlRankings = "intlRankingsWidgetData"
+        static let entitlementHint = "premiumEntitlementHint"
+    }
+
+    /// The app's last known premium entitlement (`updateEntitlementHint`).
+    /// A hint for a client-side soft gate, never a source of truth. Fails
+    /// closed: absent (the app has not run since updating, or RevenueCat has
+    /// never answered) reads as not subscribed.
+    static func hasPremiumEntitlementHint(in defaults: UserDefaults = MeetCalShared.defaults) -> Bool {
+        defaults.bool(forKey: Key.entitlementHint)
     }
 
     static func selectedMeet(in defaults: UserDefaults = MeetCalShared.defaults) -> String {

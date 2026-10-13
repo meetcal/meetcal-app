@@ -164,6 +164,18 @@ export function filterSessionAthletes(
 }
 
 /**
+ * Whether a fresh roster answer replaces the athletes already shown (or
+ * cached). An empty answer never does: the server briefly answers `[]` during
+ * a re-import or a transient filter miss, and a session that had athletes
+ * does not lose them all at once. With nothing shown, the empty answer is the
+ * truth ("no athletes yet"). One rule for the Start List, the session
+ * details card and the attempt estimator.
+ */
+export function freshRosterReplacesShown(freshCount: number, shownCount: number): boolean {
+  return freshCount > 0 || shownCount === 0;
+}
+
+/**
  * Heaviest made attempt, or null when every attempt was missed/absent.
  * Misses are stored as negative kilos, so only positive values count.
  */

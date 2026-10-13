@@ -3,6 +3,7 @@ import { UNKNOWN_PLATFORM } from "@/data/types/athletes";
 import {
   canonicalizePlatform,
   filterSessionAthletes,
+  freshRosterReplacesShown,
   isLiftResult,
   isSamePlatform,
   maxSuccessfulAttempt,
@@ -213,5 +214,20 @@ describe("normalizeLiftResult", () => {
   it("drops only unsalvageable rows from a list", () => {
     const rows = [athlete("Jane"), { ...athlete("Jo"), club: null }, { name: "" }];
     expect(normalizeLiftResults(rows).map((row) => row.name)).toEqual(["Jane", "Jo"]);
+  });
+});
+
+describe("freshRosterReplacesShown", () => {
+  it("keeps shown athletes over an empty answer", () => {
+    expect(freshRosterReplacesShown(0, 12)).toBe(false);
+  });
+
+  it("takes an empty answer when nothing is shown", () => {
+    expect(freshRosterReplacesShown(0, 0)).toBe(true);
+  });
+
+  it("takes any non-empty answer", () => {
+    expect(freshRosterReplacesShown(3, 12)).toBe(true);
+    expect(freshRosterReplacesShown(3, 0)).toBe(true);
   });
 });
