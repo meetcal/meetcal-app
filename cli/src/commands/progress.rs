@@ -119,7 +119,14 @@ fn trend(rows: &[&LiftingResults]) -> (Table, Table) {
         .iter()
         .filter(|row| valid_total(row).is_some())
         .collect();
-    let best = totals.iter().max_by(|a, b| a.total.total_cmp(&b.total));
+    // The first of tied bests: when the best was set, as the PR column marks it (`max_by` would
+    // keep the last).
+    let best = totals
+        .iter()
+        .fold(None::<&&&LiftingResults>, |best, row| match best {
+            Some(kept) if row.total <= kept.total => Some(kept),
+            _ => Some(row),
+        });
     let best_sinclair = rows
         .iter()
         .filter_map(|row| row_sinclair(row).map(|score| (score, row)))
@@ -288,6 +295,25 @@ mod tests {
         let rows = vec![entry("Open Women's 64kg"), entry("Junior Women's 64kg")];
         let json = report("Ada", &rows, None).to_json();
         assert_eq!(json["trend"][0]["meets"], 1);
+    }
+
+    #[test]
+    fn a_tied_best_total_is_dated_when_it_was_first_set() {
+        let lift = |date: &str| {
+            row(
+                "Carter",
+                date,
+                date,
+                "Open Men's 81kg",
+                80.0,
+                [93.0, 0.0, 0.0],
+                [115.0, 0.0, 0.0],
+            )
+        };
+        let rows = vec![lift("2025-02-01"), lift("2025-03-08"), lift("2026-01-31")];
+        let json = report("Carter", &rows, None).to_json();
+        assert_eq!(json["trend"][0]["best_total"], 208);
+        assert_eq!(json["trend"][0]["best_total_date"], "2025-02-01");
     }
 
     #[test]
