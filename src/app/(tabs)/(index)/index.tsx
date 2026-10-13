@@ -1,6 +1,7 @@
 import { IconSymbol } from "@/components/ui/IconSymbol";
 import { useNavigation, usePathname, useRouter } from "expo-router";
 import {
+  type ReactNode,
   useCallback,
   useEffect,
   useLayoutEffect,
@@ -372,16 +373,26 @@ export default function ScheduleScreen() {
     [pageWidth, timeZoneAbbreviation, refreshSchedule, isRefreshing, selectedMeet],
   );
 
-  if (isMeetLoading) {
-    return <ScheduleSkeleton label="Loading meets..." />;
-  }
-
+  // The tour is a modal that keeps its page in local state. It sits first in
+  // the same fragment on every branch below, skeletons included, so a meet
+  // list or schedule arriving mid-tour (a reconnect) cannot unmount it and
+  // send the user back to page 1.
   const onboarding = (
     <OnboardingView
       visible={onboardingStatus === "showing"}
       onComplete={() => setOnboardingStatus("done")}
     />
   );
+  const withOnboarding = (content: ReactNode) => (
+    <>
+      {onboarding}
+      {content}
+    </>
+  );
+
+  if (isMeetLoading) {
+    return withOnboarding(<ScheduleSkeleton label="Loading meets..." />);
+  }
 
   const meetSelectionModal = (
     <MeetSelectionModal
@@ -400,12 +411,11 @@ export default function ScheduleScreen() {
       isOffline,
       hasMeets: upcomingMeets.length > 0,
     });
-    return (
+    return withOnboarding(
       <ThemedView
         testID="schedule-no-meet"
         style={[styles.container, { backgroundColor: colors.background }, screenInsets]}
       >
-        {onboarding}
         <ScrollView
           contentContainerStyle={styles.emptyStateContainer}
           refreshControl={
@@ -435,16 +445,14 @@ export default function ScheduleScreen() {
   }
 
   if ((isLoading && schedule.length === 0) || isChangingMeet) {
-    return <ScheduleSkeleton label="Loading schedule..." />;
+    return withOnboarding(<ScheduleSkeleton label="Loading schedule..." />);
   }
 
-  return (
+  return withOnboarding(
     <ThemedView
       testID="schedule-screen"
       style={[styles.container, { backgroundColor: colors.background }, screenInsets]}
     >
-      {onboarding}
-
       <View
         style={[
           styles.filterContainer,

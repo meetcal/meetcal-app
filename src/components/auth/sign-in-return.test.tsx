@@ -62,6 +62,10 @@ jest.mock("expo-router", () => ({
     );
     return <SignIn />;
   },
+  useFocusEffect: (effect: () => void) => {
+    const { useEffect } = jest.requireActual<typeof import("react")>("react");
+    useEffect(effect, [effect]);
+  },
   Redirect: ({ href }: { href: unknown }) => {
     mockRedirects.push(href);
     return null;
@@ -237,6 +241,10 @@ describe("sign-in return path", () => {
 
     await mountLayout();
 
-    expect(mockRedirects).toEqual(["/(tabs)/(index)"]);
+    // Pops back to the running tabs; `<Redirect>`'s replace stacked a
+    // second tabs navigator over the first.
+    expect(mockRouter.dismissTo).toHaveBeenCalledWith("/(tabs)/(index)");
+    expect(mockRouter.replace).not.toHaveBeenCalled();
+    expect(mockRedirects).toEqual([]);
   });
 });

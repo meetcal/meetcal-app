@@ -19,6 +19,11 @@ import { OneSignal } from "react-native-onesignal";
 import Purchases from "react-native-purchases";
 import "react-native-reanimated";
 
+import { PostHogScreenTracker } from "@/components/navigation/PostHogScreenTracker";
+import {
+  RootErrorBoundary,
+  ScreenErrorBoundary,
+} from "@/components/navigation/ScreenErrorBoundary";
 import { OfflineIndicator } from "@/components/offline/OfflineIndicator";
 import { ToastProvider } from "@/components/ui/Toast";
 import { UpdateNotification } from "@/components/schedule/UpdateNotification";
@@ -152,6 +157,12 @@ const ONESIGNAL_APP_ID =
   process.env.EXPO_PUBLIC_ONESIGNAL_APP_ID ??
   "184c93ff-546a-4db8-945c-203091782fc9";
 
+/**
+ * Catches what the per-screen boundaries cannot: a render error in the root
+ * layout's own providers or navigator. expo-router wraps this route in it.
+ */
+export const ErrorBoundary = RootErrorBoundary;
+
 export default Sentry.wrap(function RootLayout() {
   const [appIsReady, setAppIsReady] = useState(false);
 
@@ -204,9 +215,11 @@ export default Sentry.wrap(function RootLayout() {
         publishableKey={process.env.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY!}
         tokenCache={tokenCache}
       >
+        {/* Screen views come from `PostHogScreenTracker` below: PostHog's
+            own screen capture needs a navigator this provider sits above. */}
         <PostHogProvider
           client={posthog}
-          autocapture={{ captureScreens: true }}
+          autocapture={{ captureScreens: false }}
         >
           <SubscriptionProvider>
             <SelectedMeetProvider>
@@ -458,7 +471,14 @@ function RootLayoutContent({ fontsLoaded }: { fontsLoaded: boolean }) {
       <ToastProvider>
         <UpdateNotification />
         <OfflineIndicator />
-        <Stack screenOptions={{ headerShown: false }}>
+        <PostHogScreenTracker />
+        {/* Every route below gets its own boundary, so one screen's render
+            error shows "Something went wrong" there instead of closing the
+            app. */}
+        <Stack
+          screenOptions={{ headerShown: false }}
+          unstable_screenErrorBoundary={ScreenErrorBoundary}
+        >
           <Stack.Screen name="(tabs)" options={{ animation: "none" }} />
           <Stack.Screen name="(auth)" />
           <Stack.Screen name="schedule-toolbar/offline-data" />

@@ -20,9 +20,16 @@ import { clearAuthCache } from "@/lib/authCache";
 import { clearCachedMeetData, clearCacheToast } from "@/lib/database/clear-cache";
 import { resolvePremiumAccess } from "@/lib/premium-access";
 import { useAuthGuard } from "@/utils/authGuard";
+import {
+  feedbackMailtoUrl,
+  NO_MAIL_APP_ALERT,
+  signOutThenForgetHint,
+} from "@/lib/profile-actions";
 import { useClerk, useUser } from "@clerk/expo";
+import * as Application from "expo-application";
+import * as Updates from "expo-updates";
 import { Stack, usePathname, useRouter } from "expo-router";
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -88,6 +95,9 @@ export default function ProfileScreen() {
   const pathname = usePathname();
   const [isAccountOpen, setIsAccountOpen] = useState(false);
   const [isClearingCache, setIsClearingCache] = useState(false);
+  const [isSigningOut, setIsSigningOut] = useState(false);
+  // State lags a fast double tap; the ref doesn't.
+  const signOutInFlight = useRef(false);
   const insets = useSafeAreaInsets();
   const {
     isSubscribed,
@@ -109,13 +119,21 @@ export default function ProfileScreen() {
   }, [pathname, user?.id]);
 
   const handleSignOut = async () => {
+    if (signOutInFlight.current) return;
+    signOutInFlight.current = true;
+    setIsSigningOut(true);
     try {
-      await clearAuthCache();
-      await signOut();
-      router.replace("/(tabs)/(index)");
+      // Clerk first: a failed sign-out must leave the offline sign-in hint.
+      await signOutThenForgetHint(signOut, clearAuthCache);
+      // Pop back to the running tabs; `replace` stacked a second tabs
+      // navigator over the first.
+      router.dismissTo("/(tabs)/(index)");
     } catch (err) {
       console.error("Error signing out:", err);
       showToast({ type: "error", message: "Failed to sign out. Please try again." });
+    } finally {
+      signOutInFlight.current = false;
+      setIsSigningOut(false);
     }
   };
 
@@ -142,28 +160,25 @@ export default function ProfileScreen() {
   // Signed out from inside Clerk's account screen: Clerk already ended the
   // session, so only the app's own auth cache and route are left to reset.
   const handleSignedOutInAccount = useCallback(() => {
-    void clearAuthCache().finally(() => router.replace("/(tabs)/(index)"));
+    void clearAuthCache().finally(() => router.dismissTo("/(tabs)/(index)"));
   }, [router]);
 
   const sendEmailFeedback = () => {
-    const email = "maddisen@meetcal.app";
-    const subject = "MeetCal App Feedback";
+    const url = feedbackMailtoUrl({
+      os: Platform.OS,
+      osVersion: Platform.Version,
+      appVersion: Application.nativeApplicationVersion,
+      buildVersion: Application.nativeBuildVersion,
+      updateId: Updates.updateId,
+      user,
+    });
 
-    const body = [
-      "---- Device Info ----",
-      `OS: ${Platform.OS} ${Platform.Version}`,
-      "",
-      "---- User Info ----",
-      `Name: ${user?.firstName} ${user?.lastName}`,
-      `User ID: ${user?.id}`,
-      "",
-      "---- Feedback ----",
-      "",
-    ].join("\n");
-
-    const url = `mailto:${email}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
-
-    Linking.openURL(url).catch((err) => console.error("Error", err));
+    // No mail app (or none configured) rejects: say where to write instead
+    // of leaving the button looking dead.
+    Linking.openURL(url).catch((err) => {
+      console.warn("[Profile] Could not open the feedback email", err);
+      Alert.alert(NO_MAIL_APP_ALERT.title, NO_MAIL_APP_ALERT.message);
+    });
   };
 
   const handleClearCache = async () => {
@@ -405,10 +420,17 @@ export default function ProfileScreen() {
         </Pressable>
 
         <TouchableOpacity
-          style={styles.signOutButton}
+          style={[styles.signOutButton, isSigningOut && styles.disabledSection]}
           onPress={handleSignOut}
+          disabled={isSigningOut}
+          accessibilityRole="button"
+          accessibilityState={{ disabled: isSigningOut, busy: isSigningOut }}
         >
-          <ThemedText style={styles.signOutButtonText}>Sign Out</ThemedText>
+          {isSigningOut ? (
+            <ActivityIndicator color={Palette.white} />
+          ) : (
+            <ThemedText style={styles.signOutButtonText}>Sign Out</ThemedText>
+          )}
         </TouchableOpacity>
       </ScrollView>
 
