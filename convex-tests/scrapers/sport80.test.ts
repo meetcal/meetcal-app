@@ -1,6 +1,6 @@
 import { readFileSync } from 'fs';
 import { join } from 'path';
-import { eventDate, eventIdOf, formatResults, nested, newestEvents, pickNewestEvents, unreadableEventDate } from '../../convex/scrapers/parse/sport80';
+import { eventDate, eventIdOf, formatResults, nested, newestEvents, pickNewestEvents, pickRequestedEvents, unreadableEventDate } from '../../convex/scrapers/parse/sport80';
 
 // The first events of the 2026 index as Sport80 sent them on 2026-10-11 (every
 // event of 2025 and 2026 had an ISO date).
@@ -59,6 +59,20 @@ describe('Sport80 results sync (port of update_supabase_from_sport80.py)', () =>
     ]);
     // Fewer readable events than wanted: any unreadable one could be among them.
     expect(pickNewestEvents([event('7300', '05/09/2025')], 2).unreadable[0].recent).toBe(true);
+  });
+
+  it('finds events asked for by id however many newer events there are, and names the ids the index lacks (#265)', () => {
+    // 7400 is far older than the newest 2: the override must still reach it.
+    const events = [event('7400', '2026-03-01'), event('7498', '2026-09-13'), event('7507', '2026-09-27'), event('7401', '03/08/2026'), event('7402', null), event('7400', '2026-03-01')];
+    expect(pickNewestEvents(events, 2).newest.map(eventIdOf)).not.toContain('7400');
+    const { picked, unreadable, missing } = pickRequestedEvents(events, ['7400', '7401', '7402', '9999']);
+    expect(picked.map(eventIdOf)).toEqual(['7400']);
+    // An unreadable date, or none at all (its rows would be stored undated).
+    expect(unreadable.map(({ event: e, date, recent }) => [eventIdOf(e), date, recent])).toEqual([
+      ['7401', '03/08/2026', true],
+      ['7402', '', true],
+    ]);
+    expect(missing).toEqual(['9999']);
   });
 
   it('formats result rows with the Python fallbacks and float conversion', () => {
