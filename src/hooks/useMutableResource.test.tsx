@@ -78,6 +78,35 @@ describe("useMutableResource", () => {
     expect(captured!.data).toBe(shown);
   });
 
+  // After a failed write the screen no longer matched storage, and every
+  // later refresh with the same answer compared equal to the screen and
+  // skipped the write: the stale stored copy came back offline.
+  it("writes an answer again after its earlier write failed", async () => {
+    const persistFresh = jest
+      .fn<Promise<ResourceCacheEntry<Row[]>>, [Row[]]>()
+      .mockRejectedValueOnce(new Error("disk full"))
+      .mockImplementation(async (data) => ({ data, lastUpdatedAt: 3 }));
+    jest.spyOn(console, "warn").mockImplementation(() => {});
+    const resource = createMutableResource<Row[], [string]>({
+      getKey: (param) => `stored-again:${param}`,
+      loadCached: async () => ({ data: [{ id: "old" }], lastUpdatedAt: 1 }),
+      fetchFresh: async () => [{ id: "new" }],
+      persistFresh: (data) => persistFresh(data),
+    });
+    harness(resource, "a");
+    await flush();
+    await flush();
+    expect(captured!.data).toEqual([{ id: "new" }]);
+    expect(persistFresh).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      await captured!.refresh();
+    });
+
+    expect(persistFresh).toHaveBeenCalledTimes(2);
+    jest.restoreAllMocks();
+  });
+
   it("keeps cached rows on screen when the background revalidate fails", async () => {
     const cached: ResourceCacheEntry<Row[]> = {
       data: [{ id: "cached" }],

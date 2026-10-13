@@ -73,9 +73,13 @@ export function useMutableResource<T, TParams extends readonly unknown[]>(
   const [lastUpdatedAt, setLastUpdatedAt] = useState<number | null>(null);
   const [source, setSource] = useState<ResourceSource | null>(null);
   sourceRef.current = source;
-  // What is on screen, for a refresh to compare the fresh answer with.
+  // What is on screen, for a refresh to compare the fresh answer with, and
+  // whether it is also what storage holds. After a failed write it is not:
+  // comparing with the screen would then skip every later write of the same
+  // answer and leave the stored copy stale for good.
   const shownRef = useRef<ResourceCacheEntry<T>>({ data, lastUpdatedAt });
   shownRef.current = { data, lastUpdatedAt };
+  const shownIsStoredRef = useRef(true);
 
   const refresh = useCallback(
     async (
@@ -112,7 +116,7 @@ export function useMutableResource<T, TParams extends readonly unknown[]>(
       const compareWith =
         preloadedCache !== undefined
           ? preloadedCache
-          : sourceRef.current !== null
+          : sourceRef.current !== null && shownIsStoredRef.current
             ? shownRef.current
             : undefined;
       try {
@@ -120,6 +124,7 @@ export function useMutableResource<T, TParams extends readonly unknown[]>(
           ? await resource.revalidate(...activeParams)
           : await resource.revalidateWithCached(compareWith, ...activeParams);
         if (isStale()) return;
+        shownIsStoredRef.current = result.stored !== false;
         setData(result.data);
         setLastUpdatedAt(result.lastUpdatedAt);
         setSource(result.source);
@@ -221,6 +226,7 @@ export function useMutableResource<T, TParams extends readonly unknown[]>(
       if (cancelled) return;
 
       if (cached) {
+        shownIsStoredRef.current = true;
         setData(cached.data);
         setLastUpdatedAt(cached.lastUpdatedAt);
         setSource("cache");
