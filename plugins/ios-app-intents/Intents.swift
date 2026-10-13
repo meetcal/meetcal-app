@@ -347,8 +347,11 @@ struct GetAthleteResultsIntent: AppIntent {
 
 // MARK: - Comp-data intents (App Group payloads)
 
+/// A weight in kg, or "—" for none. The reference tables answer `0` for "no
+/// record set / no standard" (every U15 B standard), so `<= 0` is none too,
+/// as in the app's `formatReferenceKg` (src/lib/reference-values.ts).
 private func kgString(_ value: Double?) -> String {
-    guard let value else { return "—" }
+    guard let value, value.isFinite, value > 0 else { return "—" }
     if value.rounded() == value {
         return "\(Int(value))kg"
     }

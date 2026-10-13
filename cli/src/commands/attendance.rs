@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashSet};
 use std::io::Write;
 
 use anyhow::{Result, bail};
@@ -75,6 +75,10 @@ pub struct Edition {
     pub start_date: Option<String>,
     pub end_date: Option<String>,
     pub status: Option<String>,
+    /// Results titles linked to this meet, whose lifters `lifters` counts
+    /// (a combined national event); older servers send none.
+    #[serde(default)]
+    pub results_titles: Vec<String>,
 }
 
 impl Edition {
@@ -281,7 +285,15 @@ pub fn report(search: &str, editions: &[Edition]) -> Report {
     // By year: an edition counts its lifters with results, or its registrations when it has no
     // results yet.
     let mut years: BTreeMap<String, (usize, usize, usize, bool)> = BTreeMap::new();
-    for edition in &sorted {
+    // A results title linked to a listed meet is counted with it already.
+    let counted_with_meet: HashSet<&str> = sorted
+        .iter()
+        .flat_map(|edition| edition.results_titles.iter().map(String::as_str))
+        .collect();
+    for edition in sorted
+        .iter()
+        .filter(|edition| !counted_with_meet.contains(edition.meet.as_str()))
+    {
         let entry = years
             .entry(edition.year().unwrap_or_else(|| "?".into()))
             .or_default();
@@ -407,7 +419,26 @@ mod tests {
             start_date: start.map(str::to_string),
             end_date: start.map(str::to_string),
             status: Some("upcoming".into()),
+            results_titles: Vec::new(),
         }
+    }
+
+    #[test]
+    fn a_linked_results_title_is_counted_once_in_the_years() {
+        let mut nationals = edition("2026 Nationals", 300, 320, Some("2026-06-20"), None);
+        nationals.results_titles = vec!["The 2026 National Junior Championships".into()];
+        let junior = edition(
+            "The 2026 National Junior Championships",
+            100,
+            0,
+            Some("2026-06-21"),
+            None,
+        );
+        let json = report("2026 national", &[nationals, junior]).to_json();
+        let by_year = json["by_year"].as_array().unwrap();
+        assert_eq!(by_year[0]["athletes"], 300);
+        assert_eq!(by_year[0]["meets"], 1);
+        assert_eq!(json["editions"].as_array().unwrap().len(), 2);
     }
 
     #[test]

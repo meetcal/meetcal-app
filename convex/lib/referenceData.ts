@@ -1,9 +1,12 @@
 import type { Infer } from 'convex/values';
 import type { QueryCtx } from '../_generated/server';
 import type { recordHolder } from '../schema';
+import { normalizeName } from './names';
 import { normalizeGender } from './normalize';
+import { isPlausibleResult } from './plausible';
 import { compareBytes, compareCollated, sortByWeightClass } from './sort';
 import { apiError } from './validation';
+import { isMaintainedWso } from './wsoSources';
 
 // Reference answers, each the JSON of the Rust route named on it. Queries
 // serve them from a view when one is fresh and compute them here otherwise;
@@ -17,21 +20,29 @@ function apiHolder(holder: Infer<typeof recordHolder> | undefined): ApiRecordHol
   return { name: holder.name, date: holder.date ?? null, location: holder.location ?? null };
 }
 
+/** A record lift with no record set, as the records table stores it. */
+const UNSET_RECORD = 0;
+
 /** Each lift's holder, as `snatch_by`, `cj_by` and `total_by`. */
 function apiHolders(row: { snatchBy?: Infer<typeof recordHolder>; cjBy?: Infer<typeof recordHolder>; totalBy?: Infer<typeof recordHolder> }) {
   return { snatch_by: apiHolder(row.snatchBy), cj_by: apiHolder(row.cjBy), total_by: apiHolder(row.totalBy) };
 }
 
-/** `GET /data/records`: rows with all three records, by weight class, with their holders. */
+/**
+ * `GET /data/records`: every row, by weight class, with its holders. A lift
+ * the source left unset answers `0`, the table's "no record set" (44 USAW
+ * masters classes already answer it), which the app and website show as "—".
+ * Requiring all three lifts dropped the whole class, its claimed lifts and
+ * holders with it. Not `null`, as `/data/wso/records` answers: released CLIs
+ * read these lifts as numbers and would fail the whole table on a `null`.
+ */
 export async function computeRecords(ctx: QueryCtx) {
-  const rows = (await ctx.db.query('records').collect()).filter(
-    (r) => r.snatchRecord !== undefined && r.cjRecord !== undefined && r.totalRecord !== undefined,
-  );
+  const rows = await ctx.db.query('records').collect();
   return sortByWeightClass(rows, (r) => r.weightClass).map((r) => ({
     age_category: r.ageCategory,
-    cj_record: r.cjRecord!,
-    snatch_record: r.snatchRecord!,
-    total_record: r.totalRecord!,
+    cj_record: r.cjRecord ?? UNSET_RECORD,
+    snatch_record: r.snatchRecord ?? UNSET_RECORD,
+    total_record: r.totalRecord ?? UNSET_RECORD,
     weight_class: r.weightClass,
     gender: normalizeGender(r.gender),
     record_type: r.recordType,
@@ -100,22 +111,33 @@ const NATIONAL_RANKING_PAGE_SIZE = 1000;
 
 export async function nationalRankingPage(ctx: QueryCtx, federation: string, ageCategory: string, cursor: string | null) {
   const page = await ctx.db.query('lifting_results')
-    .withIndex('by_federation_and_age', (q) => q.eq('federation', federation).eq('age', ageCategory))
+    .withIndex('by_federation_age_and_date', (q) => q.eq('federation', federation).eq('age', ageCategory))
     .paginate({ cursor, numItems: NATIONAL_RANKING_PAGE_SIZE });
-  const rows = page.page.flatMap((row) => row.total === undefined || row.total === 0 ? [] : [{ name: row.name, total: row.total }]);
+  const rows = page.page.flatMap((row) => (rankable(row) ? [{ name: row.name, total: row.total }] : []));
   return { rows: bestTotalPerAthlete(rows), cursor: page.continueCursor, isDone: page.isDone };
 }
 
 /**
- * One row per athlete, their heaviest total; heaviest first, equal totals in
- * name order (`best_total_per_athlete`).
+ * Whether a result is ranked: it has a total, and its numbers can be real
+ * (`isPlausibleResult`), so a typo such as a `633` snatch is not ranked
+ * first, nor hides the athlete's real best.
+ */
+function rankable<T extends Parameters<typeof isPlausibleResult>[0]>(row: T): row is T & { total: number } {
+  return typeof row.total === 'number' && row.total > 0 && isPlausibleResult(row);
+}
+
+/**
+ * One row per athlete (folded name, `normalizeName`, as their history is),
+ * their heaviest total under the spelling it was lifted under; heaviest
+ * first, equal totals in name order (`best_total_per_athlete`).
  */
 export function bestTotalPerAthlete<T extends RankedTotal>(rows: Iterable<T>): T[] {
   const best = new Map<string, T>();
   for (const row of rows) {
-    const existing = best.get(row.name);
+    const key = normalizeName(row.name);
+    const existing = best.get(key);
     if (existing && existing.total >= row.total) continue;
-    best.set(row.name, row);
+    best.set(key, row);
   }
   return Array.from(best.values()).sort((a, b) => b.total - a.total || compareBytes(a.name, b.name));
 }
@@ -141,8 +163,7 @@ export async function computeNationalRankingsForYear(
     .collect();
   const ranked: DatedTotal[] = [];
   for (const row of rows) {
-    if (row.total === undefined || row.total === 0) continue;
-    ranked.push({ name: row.name, total: row.total, date: row.date });
+    if (rankable(row)) ranked.push({ name: row.name, total: row.total, date: row.date });
   }
   return bestTotalPerAthlete(ranked);
 }
@@ -211,14 +232,14 @@ export async function requireKnownRankingClass(ctx: QueryCtx, federation: string
   if (!RANKING_FEDERATIONS.has(federation)) {
     const anyInFederation = await ctx.db
       .query('lifting_results')
-      .withIndex('by_federation_and_age', (q) => q.eq('federation', federation))
+      .withIndex('by_federation_age_and_date', (q) => q.eq('federation', federation))
       .first();
     if (anyInFederation === null) throw apiError(404, `unknown federation '${federation}'`);
   }
   if (isRankingDivision(ageCategory)) return;
   const anyInClass = await ctx.db
     .query('lifting_results')
-    .withIndex('by_federation_and_age', (q) => q.eq('federation', federation).eq('age', ageCategory))
+    .withIndex('by_federation_age_and_date', (q) => q.eq('federation', federation).eq('age', ageCategory))
     .first();
   if (anyInClass === null) throw apiError(404, `unknown age category '${ageCategory}' for ${federation}`);
 }
@@ -251,10 +272,10 @@ export async function clubNamesPage(ctx: QueryCtx, after: string | null): Promis
   return { clubs, after: last };
 }
 
-/** `GET /data/wso/` */
+/** `GET /data/wso/`: the WSOs with stored records that a job keeps current (`MAINTAINED_WSOS`). */
 export async function computeWsoList(ctx: QueryCtx): Promise<string[]> {
   const rows = await ctx.db.query('wso_records').collect();
-  return distinctCollated(rows.map((r) => r.wso));
+  return distinctCollated(rows.map((r) => r.wso).filter(isMaintainedWso));
 }
 
 export type WsoRecordRow = {
@@ -276,6 +297,8 @@ export type WsoRecordRow = {
  * this list, which keeps its order.
  */
 export async function computeWsoRows(ctx: QueryCtx, wso: string): Promise<WsoRecordRow[]> {
+  // A WSO no job maintains has no records to offer (`MAINTAINED_WSOS`).
+  if (!isMaintainedWso(wso)) return [];
   const rows = (
     await ctx.db
       .query('wso_records')
