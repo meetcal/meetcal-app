@@ -7,7 +7,11 @@ import React from "react";
 import { AccessibilityInfo, Modal, Platform, Text } from "react-native";
 import { act, create, type ReactTestRenderer } from "react-test-renderer";
 import { ToastHost } from "@/components/ui/Toast";
-import { showToast } from "@/lib/toast";
+import {
+  DEFAULT_TOAST_DURATION_MS,
+  SCREEN_READER_MIN_TOAST_DURATION_MS,
+  showToast,
+} from "@/lib/toast";
 
 jest.mock("@/components/ui/IconSymbol", () => ({ IconSymbol: () => null }));
 jest.mock("@/lib/haptics", () => ({
@@ -24,8 +28,15 @@ jest.mock("react-native-reanimated", () => ({
   runOnJS: (fn: (...args: unknown[]) => unknown) => fn,
   useSharedValue: (value: number) => ({ value }),
   useAnimatedStyle: () => ({}),
-  withTiming: (value: number) => value,
+  // A dismissal is the slide-out to the hidden offset; its completion
+  // callback (which unmounts the banner) is left to the native driver.
+  withTiming: (value: number) => {
+    if (value < 0) mockDismissals += 1;
+    return value;
+  },
 }));
+
+let mockDismissals = 0;
 
 const { successNotification } = jest.requireMock("@/lib/haptics") as {
   successNotification: jest.Mock;
@@ -41,6 +52,7 @@ describe("ToastHost", () => {
   beforeEach(() => {
     jest.useFakeTimers();
     jest.clearAllMocks();
+    mockDismissals = 0;
     announce = jest.spyOn(AccessibilityInfo, "announceForAccessibility").mockImplementation(() => {});
     jest.spyOn(AccessibilityInfo, "isScreenReaderEnabled").mockResolvedValue(false);
   });
@@ -140,6 +152,75 @@ describe("ToastHost", () => {
 
     expect(texts(renderer)).toEqual(["Shared"]);
     expect(successNotification).toHaveBeenCalledTimes(1);
+    act(() => renderer.unmount());
+  });
+
+  const ModalScreen = ({ modalOpen }: { modalOpen: boolean }) => (
+    <>
+      <ToastHost />
+      {modalOpen ? (
+        <Modal visible transparent>
+          <ToastHost />
+        </Modal>
+      ) : null}
+    </>
+  );
+
+  it("keeps a toast up for a screen reader that answers after the toast appeared", async () => {
+    let answer!: (enabled: boolean) => void;
+    jest.spyOn(AccessibilityInfo, "isScreenReaderEnabled").mockReturnValue(
+      new Promise<boolean>((resolve) => {
+        answer = resolve;
+      }),
+    );
+    let renderer!: ReactTestRenderer;
+    act(() => {
+      renderer = create(<ToastHost />);
+    });
+    act(() => showToast({ type: "success", message: "Saved" }));
+
+    act(() => jest.advanceTimersByTime(1000));
+    await act(async () => {
+      answer(true);
+    });
+    // Past the default 3.5 s, short of the screen-reader minimum.
+    act(() => jest.advanceTimersByTime(DEFAULT_TOAST_DURATION_MS));
+    expect(texts(renderer)).toEqual(["Saved"]);
+    expect(mockDismissals).toBe(0);
+
+    act(() => jest.advanceTimersByTime(SCREEN_READER_MIN_TOAST_DURATION_MS));
+    expect(mockDismissals).toBe(1);
+    act(() => renderer.unmount());
+  });
+
+  it("does not make TalkBack read a toast again when a closing modal hands it down", () => {
+    let renderer!: ReactTestRenderer;
+    act(() => {
+      renderer = create(<ModalScreen modalOpen />);
+    });
+    act(() => showToast({ type: "success", message: "Shared" }));
+
+    act(() => renderer.update(<ModalScreen modalOpen={false} />));
+
+    const banner = renderer.root.findAll((node) => node.props.accessibilityRole === "alert")[0];
+    expect(banner.props.accessibilityLabel).toBe("Shared");
+    expect(banner.props.accessibilityLiveRegion).toBe("none");
+    act(() => renderer.unmount());
+  });
+
+  it("does not bring back a dismissed toast when its modal closes during the exit animation", () => {
+    let renderer!: ReactTestRenderer;
+    act(() => {
+      renderer = create(<ModalScreen modalOpen />);
+    });
+    act(() => showToast({ type: "info", message: "Copied" }));
+    const banner = renderer.root.findAll((node) => node.props.accessibilityRole === "alert")[0];
+
+    // Tapped away; the modal closes before the slide-out finishes.
+    act(() => banner.props.onPress());
+    act(() => renderer.update(<ModalScreen modalOpen={false} />));
+
+    expect(texts(renderer)).toEqual([]);
     act(() => renderer.unmount());
   });
 });

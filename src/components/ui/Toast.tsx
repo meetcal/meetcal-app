@@ -102,6 +102,8 @@ export function ToastHost() {
   const announcedIdRef = useRef(0);
   const translateY = useSharedValue(HIDDEN_OFFSET);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // When the toast on screen appeared, for rescheduling its auto-dismiss.
+  const shownAtRef = useRef(0);
   const idRef = useRef(0);
 
   const clearTimer = useCallback(() => {
@@ -118,6 +120,9 @@ export function ToastHost() {
 
   const dismiss = useCallback(() => {
     clearTimer();
+    // On its way out: a modal closing during the exit animation must not
+    // hand it to the host below, where it came back.
+    visibleToastRef.current = null;
     translateY.value = withTiming(HIDDEN_OFFSET, { duration: 250 }, (finished) => {
       if (finished) {
         runOnJS(clearToast)();
@@ -174,17 +179,29 @@ export function ToastHost() {
       }
     }
 
+    shownAtRef.current = Date.now();
     translateY.value = withTiming(0, {
       duration: 300,
       easing: Easing.out(Easing.cubic),
     });
-
-    clearTimer();
-    timerRef.current = setTimeout(dismiss, toastDurationMs(toast, isScreenReaderEnabled));
-
-    return clearTimer;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [toast?.id]);
+
+  // Auto-dismiss, rescheduled when the screen-reader answer changes while the
+  // toast is up: a modal's host starts out assuming "off" until
+  // `isScreenReaderEnabled` resolves, and a toast raised before then used to
+  // keep the short timeout.
+  useEffect(() => {
+    if (!toast) return;
+    const elapsed = Date.now() - shownAtRef.current;
+    clearTimer();
+    timerRef.current = setTimeout(
+      dismiss,
+      Math.max(0, toastDurationMs(toast, isScreenReaderEnabled) - elapsed),
+    );
+    return clearTimer;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [toast?.id, isScreenReaderEnabled]);
 
   const panResponder = useRef(
     PanResponder.create({
@@ -235,7 +252,9 @@ export function ToastHost() {
         accessibilityRole="alert"
         accessibilityLabel={toast.message}
         accessibilityHint="Double-tap to dismiss"
-        accessibilityLiveRegion="assertive"
+        // A toast handed down from a closing modal was already read out;
+        // a new live region would make TalkBack read it again.
+        accessibilityLiveRegion={toast.alreadyAnnounced ? "none" : "assertive"}
         style={[
           styles.banner,
           Shadows.card,
