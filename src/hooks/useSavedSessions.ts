@@ -3,6 +3,7 @@ import { LiftResult } from '@/data/types/athletes';
 import { MeetName } from '@/data/types/meet';
 import { useAuth, useUser } from '@clerk/expo';
 import { getMeetConfig } from '@/data/meets/config';
+import { resolvedMeetTimeZone } from '@/utils/timezone';
 import { useSelectedMeet } from '@/contexts/SelectedMeetContext';
 import { useSubscription } from '@/contexts/SubscriptionContext';
 import { getMeetSchedule } from '@/lib/database/offline-store';
@@ -65,7 +66,7 @@ export function useSavedSessions() {
   const { user, isLoaded: isClerkLoaded } = useUser();
   const { getToken } = useAuth();
   const { selectedMeet } = useSelectedMeet();
-  const { isSubscribed } = useSubscription();
+  const { isSubscribed, confirmedIsSubscribed } = useSubscription();
   const [storedSessions, setSavedSessions] = useState<SavedSession[]>([]);
   // What every consumer reads (the screens, the widget, the reminders): the
   // stored rows, with the selected meet's on its current schedule times.
@@ -92,6 +93,11 @@ export function useSavedSessions() {
   // re-run on; they read the latest one through this ref instead.
   const getTokenRef = useRef(getToken);
   getTokenRef.current = getToken;
+  // Read by the prune at the moment it would delete, not when it was built.
+  // RevenueCat's own answer, not the cached hint `isSubscribed` starts from:
+  // the prune deletes on the server, and a stale cache must not authorize it.
+  const confirmedIsSubscribedRef = useRef(confirmedIsSubscribed);
+  confirmedIsSubscribedRef.current = confirmedIsSubscribed;
   // Every local mutation runs through this queue, so two concurrent saves
   // cannot both read the same list and have the later commit drop the
   // earlier row. Not re-entrant: batch callers loop over the leaf mutations.
@@ -139,10 +145,10 @@ export function useSavedSessions() {
     // meet or a session the user had already moved away from.
     let cancelled = false;
     getMeetConfig(selectedMeet)
-      // No UTC fallback: when the config cannot be read, the widget gets no
-      // start instants rather than hiding sessions hours early (see
-      // utils/savedWidget.ts).
-      .then(config => config?.time?.timeZoneIdentifier || undefined, () => undefined)
+      // No UTC fallback: when the config cannot be read, or the meet's zone
+      // is unknown, the widget gets no start instants rather than hiding
+      // sessions hours early (see utils/savedWidget.ts).
+      .then(config => resolvedMeetTimeZone(config) ?? undefined, () => undefined)
       .then(timeZone => {
         if (cancelled) return;
         syncSavedWidget(selectedMeet, savedSessions, timeZone);
@@ -216,9 +222,11 @@ export function useSavedSessions() {
   );
 
   // Removes saved sessions that started more than 2 hours ago, but only when the
-  // user has the "auto-remove started sessions" preference enabled. Runs on load.
+  // user has the "auto-remove started sessions" preference enabled and
+  // RevenueCat has confirmed the subscription. Runs on load.
   const pruneStartedSessions = useCallback(() => pruneStartedSessionsFor({
     clerkUserId,
+    isSubscribed: () => confirmedIsSubscribedRef.current,
     isActive: store.isActive,
     getToken: () => getTokenRef.current(),
     readStoredSessions: () => readStoredSessions(),
@@ -286,6 +294,19 @@ export function useSavedSessions() {
     lastLoadKeyRef.current = loadKey;
     void loadSavedSessions();
   }, [activeUserId, clerkUserId, hasResolvedUser, loadSavedSessions]);
+
+  // The prune waits for RevenueCat's own answer, which reaches a subscriber
+  // whose entitlement was cached only seconds after the first load (the
+  // provider's delayed refresh). Load again once it confirms, so that load's
+  // prune runs instead of waiting for the next focus.
+  const lastConfirmedRef = useRef(confirmedIsSubscribed);
+  useEffect(() => {
+    const wasConfirmed = lastConfirmedRef.current === true;
+    lastConfirmedRef.current = confirmedIsSubscribed;
+    if (confirmedIsSubscribed === true && !wasConfirmed && clerkUserId) {
+      void loadSavedSessions();
+    }
+  }, [clerkUserId, confirmedIsSubscribed, loadSavedSessions]);
 
   useReconnectReplay(clerkUserId, pendingWriteCountRef, syncOutbox);
 

@@ -119,6 +119,29 @@ describe("findExpiredSessionIds", () => {
     ]);
   });
 
+  it("deletes nothing for a meet whose zone the API left blank", async () => {
+    // The mapper's fallback: New York, flagged unknown. Read as New York, a
+    // Los Angeles session was deleted three hours early.
+    mockGetMeetConfig.mockResolvedValue({
+      time: { timeZone: "", timeZoneIdentifier: "America/New_York" },
+      timeZoneUnknown: true,
+    } as never);
+    const ids = await findExpiredSessionIds(
+      [session("a1", "2000-01-01T00:00:00.000Z"), session("a2", "2099-06-20T09:00:00.000Z")],
+      NOW,
+    );
+    expect(ids).toEqual([]);
+    expect(mockConvertToUTC).not.toHaveBeenCalled();
+  });
+
+  it("deletes nothing for a blank zone even without the flag (a meet cached before it)", async () => {
+    mockGetMeetConfig.mockResolvedValue({
+      time: { timeZone: "  ", timeZoneIdentifier: "America/New_York" },
+    } as never);
+    const ids = await findExpiredSessionIds([session("a1", "2000-01-01T00:00:00.000Z")], NOW);
+    expect(ids).toEqual([]);
+  });
+
   it("keeps a meet's rows when its config has no time zone", async () => {
     mockGetMeetConfig.mockResolvedValueOnce({ time: { timeZoneIdentifier: "" } } as never);
     const ids = await findExpiredSessionIds(
@@ -136,6 +159,7 @@ describe("pruneStartedSessions", () => {
   function deps(overrides: Partial<Parameters<typeof pruneStartedSessions>[0]> = {}) {
     return {
       clerkUserId: "user_1",
+      isSubscribed: (): boolean | null => true,
       isActive: (userId: string) => userId === "user_1",
       getToken: async () => jwtFor("user_1"),
       readStoredSessions: async () => [expired],
@@ -143,6 +167,30 @@ describe("pruneStartedSessions", () => {
       ...overrides,
     };
   }
+
+  it("removes nothing for a lapsed or unknown subscription, though the preference is on", async () => {
+    for (const isSubscribed of [false, null]) {
+      const d = deps({ isSubscribed: () => isSubscribed });
+      await pruneStartedSessions(d);
+      expect(d.removeSession).not.toHaveBeenCalled();
+    }
+    // Skipped before asking the server for the preference.
+    expect(mockFetchUserPreferences).not.toHaveBeenCalled();
+  });
+
+  it("stops removing once the subscription lapses mid-prune", async () => {
+    let subscribed = true;
+    const d = deps({
+      isSubscribed: () => subscribed,
+      readStoredSessions: async () => [expired, { ...expired, id: "old-2" }],
+      removeSession: jest.fn(async () => {
+        subscribed = false;
+        return true;
+      }),
+    });
+    await pruneStartedSessions(d);
+    expect(d.removeSession).toHaveBeenCalledTimes(1);
+  });
 
   it("removes expired sessions when the preference is on", async () => {
     const d = deps();
@@ -317,6 +365,50 @@ describe("findExpiredSessionIds with the current schedule", () => {
     );
     expect(ids).toEqual(["a", "b"]);
     expect(readSchedule).toHaveBeenCalledTimes(1);
+  });
+
+  it("judges a row saved before its time was known by the schedule's start", async () => {
+    // "Save All" before the schedule was published saves empty times.
+    const ids = await findExpiredSessionIds(
+      [
+        { ...session("untimed-past", ""), date: "" },
+        { ...session("untimed-later", ""), date: "", sessionNumber: 2 },
+      ],
+      NOW,
+      async () =>
+        [
+          {
+            date: "June 20, 2099",
+            fullDate: "2099-06-20",
+            sessions: [
+              {
+                id: "s1",
+                number: 1,
+                startTime: "2099-06-20T09:00:00.000Z",
+                weighInTime: "",
+                platforms: [{ platform: "Red", weightClass: "", platformStartTime: "" }],
+              },
+              {
+                id: "s2",
+                number: 2,
+                startTime: "2099-06-20T11:00:00.000Z",
+                weighInTime: "",
+                platforms: [{ platform: "Red", weightClass: "", platformStartTime: "" }],
+              },
+            ],
+          },
+        ] as never,
+    );
+    expect(ids).toEqual(["untimed-past"]);
+  });
+
+  it("keeps a row with no saved time when the schedule has none either", async () => {
+    const ids = await findExpiredSessionIds(
+      [{ ...session("untimed", ""), date: "" }],
+      NOW,
+      async () => [],
+    );
+    expect(ids).toEqual([]);
   });
 
   it("falls back to the saved time when the schedule cannot be read", async () => {

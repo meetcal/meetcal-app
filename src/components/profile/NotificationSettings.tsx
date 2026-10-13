@@ -2,23 +2,21 @@ import { SubscriptionStatus } from "@/app/schedule-toolbar/profile";
 import { showToast } from "@/components/ui/Toast";
 import { premiumPendingToast } from "@/lib/premium-access";
 import { AuthGuardOptions } from "@/utils/authGuard";
+import {
+  offerExactAlarmSettingsOnce,
+  remindersNeedExactAlarms,
+} from "@/lib/exact-alarms";
 import { setRemindersEnabled } from "@/lib/reminder-preference";
 import {
+  ensureReminderChannel,
   NOTIFICATION_ENABLED_KEY,
   NOTIFICATION_PROMPT_SHOWN_KEY,
 } from "@/utils/notifications";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Notifications from "expo-notifications";
-// Named import: eslint-plugin-import cannot see enums re-exported through
-// expo-notifications' nested `export *` chain on the namespace object.
-import { AndroidImportance } from "expo-notifications";
 import type { useRouter } from "expo-router";
-import React, { useEffect, useState } from "react";
-import {
-  Alert,
-  Linking,
-  Platform,
-} from "react-native";
+import React, { useEffect, useRef, useState } from "react";
+import { Alert, Linking } from "react-native";
 import { ProfileSwitchSetting } from "./ProfileSwitchSetting";
 import { devLog } from "@/lib/logger";
 
@@ -48,10 +46,20 @@ export function NotificationSettings({
   // been written is eligible.
   const [isNeverWritten, setIsNeverWritten] = useState(false);
   const [autoEnableAttempted, setAutoEnableAttempted] = useState(false);
+  // One toggle at a time. A tap that turned reminders off while the
+  // first-run auto-enable still awaited the OS was overwritten when the
+  // auto-enable wrote "true". The ref drops a second call before the
+  // re-render disables the switch.
+  const [isToggling, setIsToggling] = useState(false);
+  const togglingRef = useRef(false);
 
   // Fail closed: "unknown" (no cache, no network) is not a subscription, so
   // it must not auto-enable reminders or trigger the OS permission prompt.
   const isSubscribed = isSubscribedStatus(subscriptionStatus);
+  // What the reminder sync does (`resolveRemindersPolicy`): a subscriber who
+  // never chose gets reminders. Showing only the stored "true" left the
+  // switch off while reminders were being scheduled.
+  const effectiveEnabled = isEnabled || isNeverWritten;
 
   useEffect(() => {
     let isCancelled = false;
@@ -90,14 +98,8 @@ export function NotificationSettings({
   }, [isSubscribed, isNeverWritten, isLoading, autoEnableAttempted]);
 
   const requestPermissions = async () => {
-    if (Platform.OS === "android") {
-      await Notifications.setNotificationChannelAsync("default", {
-        name: "default",
-        importance: AndroidImportance.MAX,
-        vibrationPattern: [0, 250, 250, 250],
-        lightColor: "#FF231F7C",
-      });
-    }
+    // Android 13+ shows the prompt only once a channel exists.
+    await ensureReminderChannel();
 
     const { status: existingStatus } =
       await Notifications.getPermissionsAsync();
@@ -124,15 +126,33 @@ export function NotificationSettings({
     await setRemindersEnabled(false);
   };
 
-  const handleToggle = async ({ auto = false }: { auto?: boolean } = {}) => {
-    // 1. Check auth first
-    const authResult = requireAuth({
-      feature: "session-reminders",
-      message: "Sign in to enable session reminders.",
-      returnPath: "/schedule-toolbar/profile",
-    });
-    if (authResult === null || authResult === false) {
-      return;
+  const handleToggle = async (options: { auto?: boolean } = {}) => {
+    if (togglingRef.current) return;
+    togglingRef.current = true;
+    setIsToggling(true);
+    try {
+      await toggle(options);
+    } finally {
+      togglingRef.current = false;
+      setIsToggling(false);
+    }
+  };
+
+  const toggle = async ({ auto = false }: { auto?: boolean } = {}) => {
+    // 1. Check auth first, for a tap. Not for the first-run default: it only
+    // writes this device's preference, and the guard is still resolving its
+    // cache when this screen mounts. It used to answer `null` there, toast
+    // "Still checking your sign-in" at a user who tapped nothing, and give
+    // up for the visit.
+    if (!auto) {
+      const authResult = requireAuth({
+        feature: "session-reminders",
+        message: "Sign in to enable session reminders.",
+        returnPath: "/schedule-toolbar/profile",
+      });
+      if (authResult === null || authResult === false) {
+        return;
+      }
     }
 
     // 2. Check subscription. "unknown" is not "free": a subscriber offline
@@ -164,7 +184,8 @@ export function NotificationSettings({
       return;
     }
 
-    const newEnabledState = !isEnabled;
+    // The first-run default turns reminders on; a tap flips what is shown.
+    const newEnabledState = auto ? true : !effectiveEnabled;
 
     try {
       if (newEnabledState) {
@@ -204,16 +225,6 @@ export function NotificationSettings({
             return;
           }
         }
-
-        // Set up Android channel if needed
-        if (Platform.OS === "android") {
-          await Notifications.setNotificationChannelAsync("default", {
-            name: "default",
-            importance: AndroidImportance.MAX,
-            vibrationPattern: [0, 250, 250, 250],
-            lightColor: "#FF231F7C",
-          });
-        }
       }
 
       // Update the UI state first for better UX
@@ -223,6 +234,8 @@ export function NotificationSettings({
       // Save it; the reminder sync schedules every saved session's reminder
       // when this turns on and cancels them when it turns off.
       await setRemindersEnabled(newEnabledState);
+      // Only for a tap: the first-run default must not pop anything.
+      if (newEnabledState && !auto) await offerExactAlarmSettingsOnce();
     } catch (error) {
       console.error("Error toggling notifications:", error);
       showToast({
@@ -241,12 +254,16 @@ export function NotificationSettings({
   return (
     <ProfileSwitchSetting
       label="Session Reminders"
-      description="Get notified 1 hour before your sessions"
-      value={isEnabled && isSubscribed}
+      description={
+        remindersNeedExactAlarms()
+          ? "Get notified 1 hour before your sessions. If Alarms & reminders is off for MeetCal in Android settings, they may arrive late."
+          : "Get notified 1 hour before your sessions"
+      }
+      value={effectiveEnabled && isSubscribed}
       onToggle={() => void handleToggle()}
       showPremiumBadge={!isSubscribed}
       switchDisabled={!isSubscribed}
-      isLoading={isLoading}
+      isLoading={isLoading || isToggling}
     />
   );
 }

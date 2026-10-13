@@ -35,6 +35,14 @@ type SubscriptionContextType = {
   recheckSubscription: () => void;
   isUsingStaleCache: boolean;
   lastSyncTimestamp: number | null;
+  /**
+   * The entitlement as RevenueCat (or a restore, or the dev simulation)
+   * reported it in this process; `null` until it has answered. Never the
+   * SecureStore cache, which `isSubscribed` starts from: for destructive
+   * writes that a subscription gates (the auto-remove prune), where a stale
+   * "subscribed" would delete a lapsed user's sessions.
+   */
+  confirmedIsSubscribed: boolean | null;
 };
 
 interface SubscriptionCacheData {
@@ -162,6 +170,7 @@ export function SubscriptionProvider({ children }: { children: React.ReactNode }
   const [isLoading, setIsLoading] = useState(true);
   const [isUsingStaleCache, setIsUsingStaleCache] = useState(false);
   const [lastSyncTimestamp, setLastSyncTimestamp] = useState<number | null>(null);
+  const [confirmedIsSubscribed, setConfirmedIsSubscribed] = useState<boolean | null>(null);
   const confirmedMembershipRef = useRef<{
     subscribed: boolean;
     type: 'free' | 'quarterly' | 'lifetime';
@@ -219,6 +228,7 @@ export function SubscriptionProvider({ children }: { children: React.ReactNode }
     type: 'free' | 'quarterly' | 'lifetime'
   ) => {
     confirmedMembershipRef.current = { subscribed, type };
+    setConfirmedIsSubscribed(subscribed);
     void syncOneSignalMembershipTags(subscribed, type);
   }, [syncOneSignalMembershipTags]);
 
@@ -340,6 +350,7 @@ export function SubscriptionProvider({ children }: { children: React.ReactNode }
         devLog('Using simulated subscription status:', simulatedStatus);
         const type = simulatedStatus ? 'quarterly' : 'free';
         setIsSubscribed(simulatedStatus);
+        setConfirmedIsSubscribed(simulatedStatus);
         setSubscriptionType(type);
         setIsLoading(false);
         await saveSubscriptionCache(generation, simulatedStatus, type);
@@ -431,6 +442,7 @@ export function SubscriptionProvider({ children }: { children: React.ReactNode }
         if (simulatedStatus !== null) {
           const type = simulatedStatus ? 'quarterly' : 'free';
           setIsSubscribed(simulatedStatus);
+          setConfirmedIsSubscribed(simulatedStatus);
           setSubscriptionType(type);
           setIsLoading(false);
           return;
@@ -617,6 +629,7 @@ export function SubscriptionProvider({ children }: { children: React.ReactNode }
         recheckSubscription,
         isUsingStaleCache,
         lastSyncTimestamp,
+        confirmedIsSubscribed,
       }}
     >
       {children}
