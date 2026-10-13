@@ -9,7 +9,6 @@ import {
   getExplicitlyDownloadedMeetIds,
   getMeetData,
   getMeetLiftingResults,
-  getStoredAthleteBestsForNames,
   isMeetExplicitlyDownloaded,
   PACKAGE_ETAG_STORAGE_KEY,
   pruneOrphanedAthleteHistory,
@@ -322,7 +321,8 @@ async function addPendingHistoryNames(meet: MeetName, names: readonly string[]):
  * - An unfinished pass younger than the TTL: the athletes it did not reach,
  *   plus any with no history blob at all, plus a changed package's changed
  *   athletes. This is the resume: one failed batch used to make the next
- *   attempt start over from batch one.
+ *   attempt start over from batch one. A changed package's partial pass
+ *   (`full: false`) resumes only while the last full sync is fresh.
  * - A last full sync older than the TTL: the roster.
  * - A changed package (`changedNames`): those athletes and the gaps, tracked
  *   as pending so a failed one is retried, without stamping a full sync.
@@ -360,14 +360,21 @@ export async function planHistoryDownload(input: {
     }
   };
 
-  if (pending && now - pending.since < HISTORY_REFRESH_TTL_MS) {
+  const fullSyncDue = now - input.syncedAt >= HISTORY_REFRESH_TTL_MS;
+  // A changed package's partial pass never completes a full refresh, so it
+  // gives way to one that is due; an unfinished full refresh resumes.
+  if (
+    pending &&
+    now - pending.since < HISTORY_REFRESH_TTL_MS &&
+    (pending.full !== false || !fullSyncDue)
+  ) {
     const names = new Set<string>();
     addOnRoster(names, pending.names);
     addOnRoster(names, changedNames ?? []);
     for (const name of await input.findMissing(rosterNames)) names.add(name);
     return { names: Array.from(names), fullRefresh: pending.full !== false, since: pending.since, track: true };
   }
-  if (now - input.syncedAt >= HISTORY_REFRESH_TTL_MS) return wholeRoster;
+  if (fullSyncDue) return wholeRoster;
   if (changedNames !== null) {
     const names = new Set<string>();
     addOnRoster(names, changedNames);
@@ -1060,6 +1067,87 @@ async function runAthleteHistory(meet: MeetName, pass: HistoryPass): Promise<boo
  * fails throws, so the caller can retry the whole ingest after a SQLITE_FULL
  * cleanup.
  */
+/**
+ * Each downloaded meet's package year bests as last ingested here, by
+ * normalized name, as `[snatch, cj, total]` (0 for none). What a changed
+ * package's bests are compared with: the shared per-athlete bests store is
+ * not a snapshot of the package (a Start List lookup updates it on its own),
+ * so an athlete who lifted elsewhere, looked up first, compared equal and
+ * kept a history without that meet.
+ */
+const PACKAGE_BESTS_KEY = '@meet_package_year_bests_v1';
+type BestsSnapshot = Record<string, [number, number, number]>;
+const packageBestsWrites = createWriteChain();
+
+function isBestsSnapshot(value: unknown): value is BestsSnapshot {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  return Object.values(value).every(
+    (row) =>
+      Array.isArray(row) &&
+      row.length === 3 &&
+      row.every((n) => typeof n === 'number' && Number.isFinite(n)),
+  );
+}
+
+async function readPackageBestsSnapshots(): Promise<Record<string, BestsSnapshot>> {
+  try {
+    const raw = await AsyncStorage.getItem(PACKAGE_BESTS_KEY);
+    const parsed: unknown = raw ? JSON.parse(raw) : null;
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {};
+    const out: Record<string, BestsSnapshot> = {};
+    for (const [meet, snapshot] of Object.entries(parsed as Record<string, unknown>)) {
+      if (isBestsSnapshot(snapshot)) out[meet] = snapshot;
+    }
+    return out;
+  } catch {
+    return {};
+  }
+}
+
+/** The meet's last ingested package bests, null when there is none (compare nothing). */
+async function readPackageBestsSnapshot(
+  meet: MeetName,
+): Promise<Record<string, { bests: SupabaseBests }> | null> {
+  const snapshot = (await readPackageBestsSnapshots())[meet];
+  if (!snapshot) return null;
+  const byName: Record<string, { bests: SupabaseBests }> = {};
+  for (const [name, [snatch, cj, total]] of Object.entries(snapshot)) {
+    byName[name] = {
+      bests: { snatch_best: snatch || null, cj_best: cj || null, total: total || null },
+    };
+  }
+  return byName;
+}
+
+/**
+ * Records the ingested package's bests for the next comparison. Meets with no
+ * stored package ETag are dropped (removed, cleared or evicted), which bounds
+ * the blob by the meets downloaded. A failed write is logged: the next
+ * changed package then refreshes the whole roster.
+ */
+async function writePackageBestsSnapshot(
+  meet: MeetName,
+  yearBests: Readonly<Record<string, PackageBests>>,
+): Promise<void> {
+  const snapshot: BestsSnapshot = {};
+  for (const [name, bests] of Object.entries(yearBests)) {
+    snapshot[normalizeAthleteName(name)] = [bests.snatch_best ?? 0, bests.cj_best ?? 0, bests.total ?? 0];
+  }
+  try {
+    await packageBestsWrites(async () => {
+      const [current, etags] = await Promise.all([readPackageBestsSnapshots(), readPackageEtags()]);
+      const next: Record<string, BestsSnapshot> = {};
+      for (const [other, value] of Object.entries(current)) {
+        if (other !== meet && etags[other] !== undefined) next[other] = value;
+      }
+      next[meet] = snapshot;
+      await AsyncStorage.setItem(PACKAGE_BESTS_KEY, JSON.stringify(next));
+    });
+  } catch (error) {
+    console.warn('Could not record the package year bests:', error);
+  }
+}
+
 async function ingestMeetPackage(
   meet: MeetName,
   pkg: ApiMeetPackage,
@@ -1076,13 +1164,17 @@ async function ingestMeetPackage(
   if (options.findChanges) {
     const [storedResults, storedBests] = await Promise.all([
       getMeetLiftingResults(meet),
-      getStoredAthleteBestsForNames(Object.keys(yearBests)),
+      readPackageBestsSnapshot(meet),
     ]);
-    changedNames = Array.from(
-      namesWithChangedPackageData({ results: liftingResults, storedResults, yearBests, storedBests }),
-    );
-    // Not recorded: the whole roster is owed instead (nothing can be missed).
-    if (!(await addPendingHistoryNames(meet, changedNames))) changedNames = null;
+    // With no snapshot (none recorded yet, or it was lost) there is nothing
+    // to compare the bests with: the whole roster is owed.
+    if (storedBests) {
+      changedNames = Array.from(
+        namesWithChangedPackageData({ results: liftingResults, storedResults, yearBests, storedBests }),
+      );
+      // Not recorded: the whole roster is owed instead (nothing can be missed).
+      if (!(await addPendingHistoryNames(meet, changedNames))) changedNames = null;
+    }
   }
 
   if (schedule.length > 0) {
@@ -1096,6 +1188,7 @@ async function ingestMeetPackage(
   }
 
   await saveAthleteBestsBatch(yearBests);
+  await writePackageBestsSnapshot(meet, yearBests);
 
   // An empty roster that `saveMeetAthletes` refused to store over the
   // downloaded one: the history pass is for the roster still on disk, not

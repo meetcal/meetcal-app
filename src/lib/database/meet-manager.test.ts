@@ -90,9 +90,6 @@ const setExplicitlyDownloaded = (predicate: (meet: string) => boolean) => {
 };
 // The stored copy a changed package is compared against: nothing by default.
 const mockGetMeetLiftingResults = jest.fn(async (_meet: string): Promise<any[]> => []);
-const mockGetStoredAthleteBestsForNames = jest.fn(
-  async (_names: readonly string[]): Promise<Record<string, { bests: unknown }>> => ({}),
-);
 const mockClearMeetData = jest.fn(
   async (_meet: string): Promise<void> => undefined,
 );
@@ -147,7 +144,6 @@ jest.mock("@/lib/database/offline-store", () => ({
   findAthleteNamesWithoutHistory: (names: readonly string[]) =>
     mockFindAthleteNamesWithoutHistory(names),
   getMeetLiftingResults: (meet: string) => mockGetMeetLiftingResults(meet),
-  getStoredAthleteBestsForNames: (names: readonly string[]) => mockGetStoredAthleteBestsForNames(names),
   PACKAGE_ETAG_STORAGE_KEY: "@meet_package_etag_v1",
 }));
 
@@ -1277,6 +1273,7 @@ describe("package revalidation with ETag", () => {
           "Etag Meet Changed": { names: ["Athlete B"], since: Date.now() - 60_000 },
         });
       }
+      if (key === "@meet_package_year_bests_v1") return JSON.stringify({ "Etag Meet Changed": {} });
       return null;
     });
     mockFetchApiMeetPackageConditional.mockResolvedValueOnce({
@@ -1299,14 +1296,15 @@ describe("package revalidation with ETag", () => {
       if (key === "@meet_history_synced_at_v1") {
         return JSON.stringify({ "Etag Meet Live": Date.now() - 60_000 });
       }
+      // The bests of the package last ingested here.
+      if (key === "@meet_package_year_bests_v1") {
+        return JSON.stringify({ "Etag Meet Live": { "athlete c": [90, 110, 200] } });
+      }
       return null;
     });
     const unchanged = { name: "Athlete A", date: "2026-10-10", total: 200 };
     // Stored as the ingest stored it: mapped.
     mockGetMeetLiftingResults.mockResolvedValueOnce([mapApiLiftingResult(unchanged as any)]);
-    mockGetStoredAthleteBestsForNames.mockResolvedValueOnce({
-      "Athlete C": { bests: { snatch_best: 90, cj_best: 110, total: 200 } },
-    });
     mockFetchApiMeetPackageConditional.mockResolvedValueOnce({
       status: "fresh",
       etag: '"new"',
@@ -1343,6 +1341,60 @@ describe("package revalidation with ETag", () => {
     expect(mockSetItem.mock.invocationCallOrder[firstPending]).toBeLessThan(
       (saveMeetLiftingResults as jest.Mock).mock.invocationCallOrder[0],
     );
+    // The new package's bests are what the next one is compared with.
+    const snapshots = mockSetItem.mock.calls.filter(([key]) => key === "@meet_package_year_bests_v1");
+    expect(JSON.parse(snapshots[snapshots.length - 1][1] as string)).toEqual({
+      "Etag Meet Live": { "athlete c": [90, 110, 200], "athlete d": [70, 90, 160] },
+    });
+  });
+
+  // The shared bests store is updated by Start List lookups on their own: an
+  // athlete who lifted 95 elsewhere and was looked up first compared equal
+  // to the package's new 95, and kept a history without that meet.
+  it("compares a changed package's bests with the last ingested package, not the shared store", async () => {
+    mockGetItem.mockImplementation(async (key: string) => {
+      if (key === PACKAGE_ETAG_KEY) return JSON.stringify({ "Etag Meet Ada": '"old"' });
+      if (key === "@meet_history_synced_at_v1") {
+        return JSON.stringify({ "Etag Meet Ada": Date.now() - 60_000 });
+      }
+      if (key === "@meet_package_year_bests_v1") {
+        return JSON.stringify({ "Etag Meet Ada": { ada: [40, 50, 90] } });
+      }
+      return null;
+    });
+    mockFetchApiMeetPackageConditional.mockResolvedValueOnce({
+      status: "fresh",
+      etag: '"new"',
+      package: {
+        ...freshPackage,
+        athletes: ["Ada", "Bea"].map(athlete),
+        meet_results: [],
+        year_bests_by_name: { Ada: { best_snatch: 42, best_cj: 53, best_total: 95 } },
+      },
+    });
+
+    await prefetchMeetData("Etag Meet Ada" as any);
+
+    expect(mockFetchApiResultsByNames).toHaveBeenCalledWith(["Ada"]);
+  });
+
+  it("refreshes the whole roster for a changed package with no recorded bests to compare", async () => {
+    mockGetItem.mockImplementation(async (key: string) => {
+      if (key === PACKAGE_ETAG_KEY) return JSON.stringify({ "Etag Meet New Code": '"old"' });
+      if (key === "@meet_history_synced_at_v1") {
+        return JSON.stringify({ "Etag Meet New Code": Date.now() - 60_000 });
+      }
+      return null;
+    });
+    mockFetchApiMeetPackageConditional.mockResolvedValueOnce({
+      status: "fresh",
+      etag: '"new"',
+      package: { ...freshPackage, athletes: ["Ada", "Bea"].map(athlete), meet_results: [] },
+    });
+
+    await prefetchMeetData("Etag Meet New Code" as any);
+
+    expect(mockFetchApiResultsByNames).toHaveBeenCalledWith(["Ada", "Bea"]);
   });
 
   it("stores only the package's real year bests, not its zero rows", async () => {
@@ -1455,9 +1507,10 @@ describe("package revalidation with ETag", () => {
     const pendingWrites = mockSetItem.mock.calls
       .filter(([key]) => key === "@meet_history_pending_v1")
       .map(([, value]) => JSON.parse(value as string));
-    // A changed package's athlete, owed without stamping a full sync.
+    // No bests recorded from an earlier package to compare with: the whole
+    // roster is owed, as a full refresh.
     expect(pendingWrites[pendingWrites.length - 1]).toEqual({
-      "Etag Meet D": { names: ["Athlete A"], since: expect.any(Number), full: false },
+      "Etag Meet D": { names: ["Athlete A"], since: expect.any(Number) },
     });
   });
 
@@ -1587,6 +1640,20 @@ describe("planHistoryDownload", () => {
         syncedAt: now - HISTORY_REFRESH_TTL_MS,
         packageChanged: true,
         changedNames: ["Athlete A"],
+        findMissing,
+      }),
+    ).resolves.toEqual({ names: roster, fullRefresh: true, since: now, track: true });
+  });
+
+  // A partial pass resumed after the full sync fell due refreshed only its
+  // athletes and left everyone else past the TTL.
+  it("refreshes the whole roster over a partial pass once the full sync is due", async () => {
+    const findMissing = jest.fn(async () => []);
+    await expect(
+      planHistoryDownload({
+        ...base,
+        syncedAt: now - HISTORY_REFRESH_TTL_MS,
+        pending: { names: ["Athlete C"], since: now - 60_000, full: false },
         findMissing,
       }),
     ).resolves.toEqual({ names: roster, fullRefresh: true, since: now, track: true });
