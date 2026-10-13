@@ -5,6 +5,7 @@ import type { FilterSection } from "@/components/ui/filters/GenericFilterModal";
 import { QualifyingTotalsData } from "@/lib/database/fetch-qualifying-totals";
 import { IntlRanking } from "@/lib/database/fetchIntlRankings";
 import { sortAgeGroups } from "@/lib/sortAgeGroups";
+import { formatReferenceKg } from "@/lib/reference-values";
 import { StandardsData } from "@/types/standards";
 import {
   createIntlRankingsDeepLink,
@@ -235,8 +236,8 @@ export function buildStandardsWidgetPayload(
     maxRows: STANDARDS_WIDGET_MAX_ROWS,
     rows: standards.slice(0, WIDGET_PAYLOAD_ROW_LIMIT).map((standard) => ({
       leading: standard.weightClass,
-      title: `${standard.a}kg`,
-      trailing: `${standard.b}kg`,
+      title: formatReferenceKg(standard.a),
+      trailing: formatReferenceKg(standard.b),
     })),
   };
 }
