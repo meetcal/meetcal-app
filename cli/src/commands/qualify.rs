@@ -5,6 +5,7 @@ use serde::Deserialize;
 
 use chrono::Utc;
 
+use crate::commands::leaderboard::EXCLUDED_FEDERATION;
 use crate::types::lifting_results::LiftingResults;
 use crate::utils::athletes::history;
 use crate::utils::backend::{NoArgs, queries, query};
@@ -12,7 +13,8 @@ use crate::utils::bests::{YEAR_BESTS_YEARS, cutoff_date};
 use crate::utils::format::us_date;
 use crate::utils::output::{self, Report};
 use crate::utils::stats::{
-    Division, Gender, Lift, chronological, number, valid_lift, valid_total, weight_class,
+    Division, Gender, Lift, PLAUSIBLE_BODY_WEIGHT, chronological, number, valid_lift, valid_total,
+    weight_class,
 };
 
 /// Show how far an athlete's best lifts over the past year are from the USAW A/B standards and
@@ -94,11 +96,17 @@ pub fn class_limit(class: &str) -> f64 {
 
 /// The best snatch, clean & jerk and total among results dated on or after `cutoff` and made at
 /// or under the class's bodyweight `limit`. USA Weightlifting counts a total toward a class only
-/// when it was made at or under that class's limit; source errors are left out.
+/// when it was made at or under that class's limit, so a class with a limit needs a plausible
+/// bodyweight ([`PLAUSIBLE_BODY_WEIGHT`]: not a 0.9 kg source error). Source errors and British
+/// results ([`EXCLUDED_FEDERATION`]) are left out: these are USA Weightlifting's totals.
 pub fn bests_within(rows: &[LiftingResults], cutoff: &str, limit: f64) -> (f64, f64, f64) {
     rows.iter()
+        .filter(|row| !row.federation.eq_ignore_ascii_case(EXCLUDED_FEDERATION))
         .filter(|row| row.date.as_str() >= cutoff)
-        .filter(|row| limit.is_infinite() || (row.body_weight > 0.0 && row.body_weight <= limit))
+        .filter(|row| {
+            limit.is_infinite()
+                || (PLAUSIBLE_BODY_WEIGHT.contains(&row.body_weight) && row.body_weight <= limit)
+        })
         .fold((0.0, 0.0, 0.0), |(snatch, cj, total), row| {
             (
                 snatch.max(valid_lift(row, Lift::Snatch).unwrap_or(0.0)),
@@ -239,7 +247,9 @@ pub fn target(
         None => match &division.weight_class {
             Some(class) => match current_classes(gender, primary.as_deref()) {
                 Some(current) if !current.contains(&class.as_str()) => {
-                    match class_for(body_weight, current).filter(|_| body_weight > 0.0) {
+                    match class_for(body_weight, current)
+                        .filter(|_| PLAUSIBLE_BODY_WEIGHT.contains(&body_weight))
+                    {
                         Some(replacement) => (replacement, Some(class.clone())),
                         None => (class.clone(), None),
                     }
@@ -382,6 +392,11 @@ mod tests {
         // U13 classes are not ours to remap.
         let u13 = target_for("Men's 13 Under Age Group 44kg", 43.0);
         assert_eq!((u13.class.as_str(), u13.retired), ("44", None));
+        // A source-error bodyweight maps nowhere: the class stays as the division names it.
+        for body_weight in [0.9, 12.0] {
+            let error = target_for("Open Men's 79kg", body_weight);
+            assert_eq!((error.class.as_str(), error.retired), ("79", None));
+        }
     }
 
     fn target_for(division: &str, body_weight: f64) -> Target {
@@ -417,6 +432,39 @@ mod tests {
         assert_eq!(
             bests_within(&rows, "2025-10-12", class_limit("85")),
             (130.0, 163.0, 290.0)
+        );
+    }
+
+    #[test]
+    fn british_results_and_impossible_bodyweights_do_not_count() {
+        use crate::utils::stats::tests::row;
+        let lift = |bw: f64, snatch: f64, cj: f64| {
+            row(
+                "Ada",
+                "2026-03-01",
+                "M",
+                "Open Men's 79kg",
+                bw,
+                [snatch, 0.0, 0.0],
+                [cj, 0.0, 0.0],
+            )
+        };
+        let mut british = lift(74.0, 110.0, 130.0);
+        british.federation = "BWL".into();
+        let rows = vec![
+            british,
+            lift(0.9, 105.0, 125.0),
+            lift(0.0, 104.0, 124.0),
+            lift(74.5, 90.0, 110.0),
+        ];
+        assert_eq!(
+            bests_within(&rows, "2025-10-12", 75.0),
+            (90.0, 110.0, 200.0)
+        );
+        // A plus class has no limit, so a missing or wrong bodyweight does not matter there.
+        assert_eq!(
+            bests_within(&rows, "2025-10-12", f64::INFINITY),
+            (105.0, 125.0, 230.0)
         );
     }
 
