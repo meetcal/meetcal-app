@@ -8,6 +8,9 @@ on:
     paths: ["cli/**", "convex/**", ".github/workflows/cli.yml"]
   pull_request:
     paths: ["cli/**", "convex/**", ".github/workflows/cli.yml"]
+  # Advisories are published without any change here, so audit the lockfile weekly too.
+  schedule:
+    - cron: "17 6 * * 1"
   workflow_dispatch:
 
 permissions:
@@ -44,3 +47,20 @@ jobs:
 
       - name: Run tests
         run: cargo test --locked
+
+  dependency-audit:
+    name: Dependency audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-audit
+
+      # Unsound and yanked crates fail too, not only vulnerabilities: the release binaries carry
+      # whatever this lockfile holds. (Unmaintained crates only warn.)
+      - name: Audit Rust dependencies
+        run: cargo audit --deny unsound --deny yanked

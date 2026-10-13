@@ -10,6 +10,7 @@ import {
 } from "@/lib/database/offline-store";
 import { fetchAthletesWithSession, fetchSchedule } from "@/lib/database/queries";
 import { useRetryOnReconnect } from "@/hooks/useRetryOnReconnect";
+import { freshRosterReplacesShown } from "@/lib/athletes";
 import { emptyLoadFailure, type LoadFailure } from "@/lib/load-failure";
 import { devInfo } from "@/lib/logger";
 import { isNetworkAvailable } from "@/lib/networkUtils";
@@ -150,7 +151,10 @@ export function useStartListData(selectedMeet: string | null) {
       // `saveMeetAthletes` already refuses to store it over one.
       if (
         athletesResult.status === "fulfilled" &&
-        (athletesResult.value.length > 0 || snapshot.cachedAthletes.length === 0)
+        freshRosterReplacesShown(
+          athletesResult.value.length,
+          snapshot.cachedAthletes.length,
+        )
       ) {
         nextAthletes = athletesResult.value;
         saveMeetAthletes(validMeet, nextAthletes).catch(() => {});
@@ -163,11 +167,10 @@ export function useStartListData(selectedMeet: string | null) {
         }
       }
 
-      if (
-        athletesResult.status === "rejected" &&
-        scheduleResult.status === "rejected" &&
-        forceRefresh
-      ) {
+      // The roster is what the Start List is: a failed roster request leaves
+      // the saved one on screen, which the user must be told is stale even
+      // when the schedule came back.
+      if (athletesResult.status === "rejected" && forceRefresh) {
         showToast({ type: "error", message: REFRESH_FAILED_MESSAGE });
       }
 

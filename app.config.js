@@ -81,6 +81,9 @@ export default ({ config }) => ({
       'expo-calendar',
       { calendarPermission: CALENDAR_PERMISSION, remindersPermission: false },
     ],
+    // The app's click listener opens a push's launch URL; OneSignal must not
+    // open it a second time.
+    './plugins/withOneSignalSuppressLaunchURLs',
     'expo-font',
     'expo-localization',
     'expo-router',

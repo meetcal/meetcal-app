@@ -137,6 +137,15 @@ struct CompDataFilters {
         gender == nil && ageCategory == nil && weightClass == nil
             && event == nil && recordType == nil && meet == nil
     }
+
+    /// Free-text parameter input, trimmed; blank is "not given", so an empty
+    /// answer to a Shortcuts field does not count as a filter.
+    static func clean(_ value: String?) -> String? {
+        guard let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines), !trimmed.isEmpty else {
+            return nil
+        }
+        return trimmed
+    }
 }
 
 // MARK: - MeetEntity
@@ -245,13 +254,27 @@ struct SessionEntity: AppEntity, Identifiable {
         )
     }
 
+    /// "Sat, Jun 20 2:00 PM": the meet-local day and start time. Without the
+    /// day, a multi-day meet's sessions read as one day.
+    var whenLine: String {
+        [APIDayFormat.short(date), startTime]
+            .compactMap { $0 }
+            .filter { !$0.isEmpty }
+            .joined(separator: " ")
+    }
+
+    /// "Red • Sat, Jun 20 2:00 PM • 89kg, 96kg": the Session subtitle and
+    /// Spotlight description.
+    var scheduleLine: String {
+        [platform, whenLine, weightClass ?? ""]
+            .filter { !$0.isEmpty }
+            .joined(separator: " • ")
+    }
+
     var displayRepresentation: DisplayRepresentation {
-        var subtitleParts: [String] = [platform]
-        if let startTime, !startTime.isEmpty { subtitleParts.append(startTime) }
-        if let weightClass, !weightClass.isEmpty { subtitleParts.append(weightClass) }
-        return DisplayRepresentation(
+        DisplayRepresentation(
             title: "Session \(sessionNumber)",
-            subtitle: "\(subtitleParts.joined(separator: " • "))"
+            subtitle: "\(scheduleLine)"
         )
     }
 }

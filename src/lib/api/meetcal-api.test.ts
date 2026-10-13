@@ -24,7 +24,6 @@ import {
   fetchApiStandards,
   fetchApiYearBestsByNames,
   fetchApiWsoAgeGroups,
-  fetchApiYearBests,
   fetchApiWsoList,
   fetchApiWsoRecords,
   fetchSavedSessions,
@@ -268,16 +267,6 @@ describe('meetcal API client', () => {
       () => fetchApiAthletes('Test Meet' as never),
       { path: '/meets/athletes', fn: 'meets:athletes', args: { meet: 'Test Meet' } },
       [],
-    ],
-    [
-      'fetchApiYearBests',
-      () => fetchApiYearBests('Athlete A', '2025-06-20'),
-      {
-        path: '/lifting-results/year',
-        fn: 'results:yearBests',
-        args: { name: 'Athlete A', cutoffDate: '2025-06-20' },
-      },
-      { best_snatch: 100, best_cj: 120, best_total: 220 },
     ],
     [
       'searchApi',
@@ -578,6 +567,24 @@ describe('meetcal API client', () => {
     expect(Object.keys(bests)).toEqual(names);
     expect(bests['Andrés Álvarez']).toEqual({ bestSnatch: 80, bestCJ: 100, bestTotal: 180 });
     expect(bests['李娜']).toEqual({ bestSnatch: 82, bestCJ: 102, bestTotal: 184 });
+  });
+
+  it("keys batch year bests by the caller's spellings, matched through the name fold", async () => {
+    // #320: the server echoes names cleaned, so a roster's ' Jane Doe' missed
+    // its own row unless every caller re-folded the keys.
+    installTransport(
+      answer([
+        { name: 'Jane Doe', best_snatch: 80, best_cj: 100, best_total: 180 },
+        { name: 'Somebody Else', best_snatch: 1, best_cj: 1, best_total: 2 },
+      ]),
+    );
+
+    const bests = await fetchApiYearBestsByNames([' Jane Doe', 'jane  doe', 'Nobody']);
+
+    expect(bests).toEqual({
+      ' Jane Doe': { bestSnatch: 80, bestCJ: 100, bestTotal: 180 },
+      'jane  doe': { bestSnatch: 80, bestCJ: 100, bestTotal: 180 },
+    });
   });
 
   it('rejects a malformed batch year-bests row, naming its index', async () => {
@@ -1253,13 +1260,6 @@ describe('meetcal API client error and auth boundaries', () => {
     installTransport(answer({ athletes: [athlete] }));
     await expect(fetchApiAthletesWithSession('Test Meet' as never)).rejects.toThrow(
       '/meets/athletes-sessions expected an array response',
-    );
-  });
-
-  it('rejects a single-athlete year-bests payload missing a best', async () => {
-    installTransport(answer({ best_snatch: 100, best_cj: 120 }));
-    await expect(fetchApiYearBests('Athlete A', '2025-06-20')).rejects.toThrow(
-      '/lifting-results/year missing fields: best_total',
     );
   });
 
