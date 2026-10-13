@@ -1,9 +1,12 @@
 import type { Infer } from 'convex/values';
 import type { QueryCtx } from '../_generated/server';
 import type { recordHolder } from '../schema';
+import { normalizeName } from './names';
 import { normalizeGender } from './normalize';
+import { isPlausibleResult } from './plausible';
 import { compareBytes, compareCollated, sortByWeightClass } from './sort';
 import { apiError } from './validation';
+import { isMaintainedWso } from './wsoSources';
 
 // Reference answers, each the JSON of the Rust route named on it. Queries
 // serve them from a view when one is fresh and compute them here otherwise;
@@ -17,21 +20,29 @@ function apiHolder(holder: Infer<typeof recordHolder> | undefined): ApiRecordHol
   return { name: holder.name, date: holder.date ?? null, location: holder.location ?? null };
 }
 
+/** A record lift with no record set, as the records table stores it. */
+const UNSET_RECORD = 0;
+
 /** Each lift's holder, as `snatch_by`, `cj_by` and `total_by`. */
 function apiHolders(row: { snatchBy?: Infer<typeof recordHolder>; cjBy?: Infer<typeof recordHolder>; totalBy?: Infer<typeof recordHolder> }) {
   return { snatch_by: apiHolder(row.snatchBy), cj_by: apiHolder(row.cjBy), total_by: apiHolder(row.totalBy) };
 }
 
-/** `GET /data/records`: rows with all three records, by weight class, with their holders. */
+/**
+ * `GET /data/records`: every row, by weight class, with its holders. A lift
+ * the source left unset answers `0`, the table's "no record set" (44 USAW
+ * masters classes already answer it), which the app and website show as "—".
+ * Requiring all three lifts dropped the whole class, its claimed lifts and
+ * holders with it. Not `null`, as `/data/wso/records` answers: released CLIs
+ * read these lifts as numbers and would fail the whole table on a `null`.
+ */
 export async function computeRecords(ctx: QueryCtx) {
-  const rows = (await ctx.db.query('records').collect()).filter(
-    (r) => r.snatchRecord !== undefined && r.cjRecord !== undefined && r.totalRecord !== undefined,
-  );
+  const rows = await ctx.db.query('records').collect();
   return sortByWeightClass(rows, (r) => r.weightClass).map((r) => ({
     age_category: r.ageCategory,
-    cj_record: r.cjRecord!,
-    snatch_record: r.snatchRecord!,
-    total_record: r.totalRecord!,
+    cj_record: r.cjRecord ?? UNSET_RECORD,
+    snatch_record: r.snatchRecord ?? UNSET_RECORD,
+    total_record: r.totalRecord ?? UNSET_RECORD,
     weight_class: r.weightClass,
     gender: normalizeGender(r.gender),
     record_type: r.recordType,
@@ -100,22 +111,33 @@ const NATIONAL_RANKING_PAGE_SIZE = 1000;
 
 export async function nationalRankingPage(ctx: QueryCtx, federation: string, ageCategory: string, cursor: string | null) {
   const page = await ctx.db.query('lifting_results')
-    .withIndex('by_federation_and_age', (q) => q.eq('federation', federation).eq('age', ageCategory))
+    .withIndex('by_federation_age_and_date', (q) => q.eq('federation', federation).eq('age', ageCategory))
     .paginate({ cursor, numItems: NATIONAL_RANKING_PAGE_SIZE });
-  const rows = page.page.flatMap((row) => row.total === undefined || row.total === 0 ? [] : [{ name: row.name, total: row.total }]);
+  const rows = page.page.flatMap((row) => (rankable(row) ? [{ name: row.name, total: row.total }] : []));
   return { rows: bestTotalPerAthlete(rows), cursor: page.continueCursor, isDone: page.isDone };
 }
 
 /**
- * One row per athlete, their heaviest total; heaviest first, equal totals in
- * name order (`best_total_per_athlete`).
+ * Whether a result is ranked: it has a total, and its numbers can be real
+ * (`isPlausibleResult`), so a typo such as a `633` snatch is not ranked
+ * first, nor hides the athlete's real best.
+ */
+function rankable<T extends Parameters<typeof isPlausibleResult>[0]>(row: T): row is T & { total: number } {
+  return typeof row.total === 'number' && row.total > 0 && isPlausibleResult(row);
+}
+
+/**
+ * One row per athlete (folded name, `normalizeName`, as their history is),
+ * their heaviest total under the spelling it was lifted under; heaviest
+ * first, equal totals in name order (`best_total_per_athlete`).
  */
 export function bestTotalPerAthlete<T extends RankedTotal>(rows: Iterable<T>): T[] {
   const best = new Map<string, T>();
   for (const row of rows) {
-    const existing = best.get(row.name);
+    const key = normalizeName(row.name);
+    const existing = best.get(key);
     if (existing && existing.total >= row.total) continue;
-    best.set(row.name, row);
+    best.set(key, row);
   }
   return Array.from(best.values()).sort((a, b) => b.total - a.total || compareBytes(a.name, b.name));
 }
@@ -141,52 +163,86 @@ export async function computeNationalRankingsForYear(
     .collect();
   const ranked: DatedTotal[] = [];
   for (const row of rows) {
-    if (row.total === undefined || row.total === 0) continue;
-    ranked.push({ name: row.name, total: row.total, date: row.date });
+    if (rankable(row)) ranked.push({ name: row.name, total: row.total, date: row.date });
   }
   return bestTotalPerAthlete(ranked);
 }
 
 type RankingGender = 'Men' | 'Women';
 
-/** Senior, junior and masters weight classes (`getWeightClasses` in the app, `division_options` on the website). */
-const SENIOR_WEIGHTS: Record<RankingGender, readonly string[]> = {
-  Men: ['60', '65', '71', '79', '88', '94', '110', '110+'],
-  Women: ['48', '53', '58', '63', '69', '77', '86', '86+'],
-};
-const UNDER_13_WEIGHTS: Record<RankingGender, readonly string[]> = {
-  Men: ['40', '44', '48', '52', '56', '60', '65', '65+'],
-  Women: ['36', '40', '44', '48', '53', '58', '63', '63+'],
-};
-const YOUTH_WEIGHTS: Record<string, Record<RankingGender, readonly string[]>> = {
-  '11 Under Age Group': UNDER_13_WEIGHTS,
-  '13 Under Age Group': UNDER_13_WEIGHTS,
-  '14-15 Age Group': {
-    Men: ['48', '52', '56', '60', '65', '71', '79', '79+'],
-    Women: ['40', '44', '48', '53', '58', '63', '69', '69+'],
+type ClassSet = Record<RankingGender, readonly string[]>;
+type ClassEra = { senior: ClassSet; '16-17': ClassSet; '14-15': ClassSet; under13: ClassSet };
+
+/**
+ * USAW's weight classes, newest first: senior (Open, Junior and every
+ * Masters band), 16-17, 14-15, and 13 & Under / 11 & Under. The same table,
+ * with its dates, is the app's `WEIGHT_CLASS_ERAS` (`src/constants/
+ * weight-classes.ts`), which builds the app's picker (`getWeightClasses`) and
+ * the website's (`division_groups`); a test holds this one to it.
+ */
+const CLASS_ERAS: readonly ClassEra[] = [
+  // Since Aug 1, 2026.
+  {
+    senior: {
+      Men: ['60', '65', '70', '75', '85', '95', '110', '110+'],
+      Women: ['49', '53', '57', '61', '69', '77', '86', '86+'],
+    },
+    '16-17': {
+      Men: ['55', '60', '65', '70', '75', '85', '95', '95+'],
+      Women: ['45', '49', '53', '57', '61', '69', '77', '77+'],
+    },
+    '14-15': {
+      Men: ['50', '55', '60', '65', '70', '75', '85', '95', '95+'],
+      Women: ['45', '49', '53', '57', '61', '69', '77', '77+'],
+    },
+    under13: {
+      Men: ['32', '36', '40', '45', '50', '55', '60', '65', '70', '70+'],
+      Women: ['30', '33', '37', '41', '45', '49', '53', '57', '61', '61+'],
+    },
   },
-  '16-17 Age Group': {
-    Men: ['56', '60', '65', '71', '79', '88', '94', '94+'],
-    Women: ['44', '48', '53', '58', '63', '69', '77', '77+'],
+  // Jun 1, 2025 to Jul 31, 2026.
+  {
+    senior: {
+      Men: ['60', '65', '71', '79', '88', '94', '110', '110+'],
+      Women: ['48', '53', '58', '63', '69', '77', '86', '86+'],
+    },
+    '16-17': {
+      Men: ['56', '60', '65', '71', '79', '88', '94', '94+'],
+      Women: ['44', '48', '53', '58', '63', '69', '77', '77+'],
+    },
+    '14-15': {
+      Men: ['48', '52', '56', '60', '65', '71', '79', '79+'],
+      Women: ['40', '44', '48', '53', '58', '63', '69', '69+'],
+    },
+    under13: {
+      Men: ['32', '36', '40', '44', '48', '52', '56', '60', '65', '65+'],
+      Women: ['30', '33', '36', '40', '44', '48', '53', '58', '63', '63+'],
+    },
   },
-};
+];
 const MASTERS_BANDS = ['35-39', '40-44', '45-49', '50-54', '55-59', '60-64', '65-69', '70-74', '75-79', '80-84', '85-89', '90+'];
 
 /**
- * Every current ranking division, spelled as the app and the website send it
- * (`Open Men's 60kg`, `Women's 14-15 Age Group 48kg`, `Men's Masters (35-39)
- * 79kg`). Such a class is real even before anyone has a result in it.
+ * Every ranking division the app and the website offer, current and retired
+ * classes alike, spelled as they send it (`Open Men's 85kg`, `Women's 14-15
+ * Age Group 49kg`, `Men's Masters (35-39) 79kg`). Such a class is real even
+ * before anyone has a result in it.
  */
 export const RANKING_DIVISIONS: ReadonlySet<string> = (() => {
   const divisions = new Set<string>();
-  for (const gender of ['Men', 'Women'] as const) {
-    for (const weight of SENIOR_WEIGHTS[gender]) {
-      divisions.add(`Open ${gender}'s ${weight}kg`);
-      divisions.add(`Junior ${gender}'s ${weight}kg`);
-      for (const band of MASTERS_BANDS) divisions.add(`${gender}'s Masters (${band}) ${weight}kg`);
-    }
-    for (const [group, weights] of Object.entries(YOUTH_WEIGHTS)) {
-      for (const weight of weights[gender]) divisions.add(`${gender}'s ${group} ${weight}kg`);
+  for (const era of CLASS_ERAS) {
+    for (const gender of ['Men', 'Women'] as const) {
+      for (const weight of era.senior[gender]) {
+        divisions.add(`Open ${gender}'s ${weight}kg`);
+        divisions.add(`Junior ${gender}'s ${weight}kg`);
+        for (const band of MASTERS_BANDS) divisions.add(`${gender}'s Masters (${band}) ${weight}kg`);
+      }
+      for (const weight of era['16-17'][gender]) divisions.add(`${gender}'s 16-17 Age Group ${weight}kg`);
+      for (const weight of era['14-15'][gender]) divisions.add(`${gender}'s 14-15 Age Group ${weight}kg`);
+      for (const weight of era.under13[gender]) {
+        divisions.add(`${gender}'s 13 Under Age Group ${weight}kg`);
+        divisions.add(`${gender}'s 11 Under Age Group ${weight}kg`);
+      }
     }
   }
   return divisions;
@@ -203,22 +259,23 @@ const RANKING_FEDERATIONS: ReadonlySet<string> = new Set(['USAW', 'USAMW']);
  * Rejects a ranking class nobody could mean, so a typo or the wrong case
  * answers 404 instead of an empty ranking that looks like "nobody lifted".
  * The federation must be one the clients rank or have results; the age
- * category must be a current division (`isRankingDivision`) or have results
- * under that federation (a retired class such as `Open Men's 85 kg`). A
- * current division of USAW or USAMW costs no read; anything else one or two.
+ * category must be a division the clients offer (`isRankingDivision`) or
+ * have results under that federation (an older spelling such as `Open Men's
+ * 85 kg`). An offered division of USAW or USAMW costs no read; anything else
+ * one or two.
  */
 export async function requireKnownRankingClass(ctx: QueryCtx, federation: string, ageCategory: string): Promise<void> {
   if (!RANKING_FEDERATIONS.has(federation)) {
     const anyInFederation = await ctx.db
       .query('lifting_results')
-      .withIndex('by_federation_and_age', (q) => q.eq('federation', federation))
+      .withIndex('by_federation_age_and_date', (q) => q.eq('federation', federation))
       .first();
     if (anyInFederation === null) throw apiError(404, `unknown federation '${federation}'`);
   }
   if (isRankingDivision(ageCategory)) return;
   const anyInClass = await ctx.db
     .query('lifting_results')
-    .withIndex('by_federation_and_age', (q) => q.eq('federation', federation).eq('age', ageCategory))
+    .withIndex('by_federation_age_and_date', (q) => q.eq('federation', federation).eq('age', ageCategory))
     .first();
   if (anyInClass === null) throw apiError(404, `unknown age category '${ageCategory}' for ${federation}`);
 }
@@ -251,10 +308,10 @@ export async function clubNamesPage(ctx: QueryCtx, after: string | null): Promis
   return { clubs, after: last };
 }
 
-/** `GET /data/wso/` */
+/** `GET /data/wso/`: the WSOs with stored records that a job keeps current (`MAINTAINED_WSOS`). */
 export async function computeWsoList(ctx: QueryCtx): Promise<string[]> {
   const rows = await ctx.db.query('wso_records').collect();
-  return distinctCollated(rows.map((r) => r.wso));
+  return distinctCollated(rows.map((r) => r.wso).filter(isMaintainedWso));
 }
 
 export type WsoRecordRow = {
@@ -276,6 +333,8 @@ export type WsoRecordRow = {
  * this list, which keeps its order.
  */
 export async function computeWsoRows(ctx: QueryCtx, wso: string): Promise<WsoRecordRow[]> {
+  // A WSO no job maintains has no records to offer (`MAINTAINED_WSOS`).
+  if (!isMaintainedWso(wso)) return [];
   const rows = (
     await ctx.db
       .query('wso_records')
