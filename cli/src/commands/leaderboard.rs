@@ -137,7 +137,9 @@ impl Filters {
     pub fn keeps(&self, row: &LiftingResults) -> bool {
         let division = Division::parse(&row.age);
         (self.adaptive || !row.adaptive)
-            && self.gender.is_none_or(|gender| division.gender == gender)
+            && self
+                .gender
+                .is_none_or(|gender| division.gender == Some(gender))
             && self.category.as_deref().is_none_or(|wanted| {
                 division
                     .category
