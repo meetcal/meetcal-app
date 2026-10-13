@@ -215,12 +215,13 @@ fn build_dashboard_data(
                         .is_some_and(|wso| !wso.trim().is_empty())
                 })
                 .count();
-            if labeled == 0 {
-                WsoCoverage::None
-            } else if labeled < athletes.len() {
-                WsoCoverage::Partial
-            } else {
+            // An empty roster (no start list yet) lacks no WSOs: nobody is on it.
+            if labeled == athletes.len() {
                 WsoCoverage::Full
+            } else if labeled == 0 {
+                WsoCoverage::None
+            } else {
+                WsoCoverage::Partial
             }
         },
         attempts: summary,
@@ -420,5 +421,9 @@ mod tests {
         let data = build_dashboard_data(&roster, &[], "Colorado");
         assert_eq!(wso_count(data.wso_athletes, data.wso_coverage), "1+");
         assert_eq!(wso_count(2, WsoCoverage::Full), "2");
+
+        let empty = build_dashboard_data(&[], &[], "Colorado");
+        assert_eq!(empty.wso_coverage, WsoCoverage::Full);
+        assert_eq!(wso_count(empty.wso_athletes, empty.wso_coverage), "0");
     }
 }
