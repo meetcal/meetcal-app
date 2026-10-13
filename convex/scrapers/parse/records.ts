@@ -79,10 +79,30 @@ export function formatWeightClass(raw: string): string | null {
   return /^\d+$/.test(value) ? `${value}kg` : null;
 }
 
-/** `normalize_age_category`: PDF codes to the lowercase labels the scraper sends. */
+/**
+ * The PDF's age group to the label the sync sends (`normalizeAgeCategory`
+ * then capitalizes it). Since the August 2026 class change the PDF writes
+ * the youth groups by age (`11 & Under`, `12-13yo`, `14-15yo`, `16-17yo`)
+ * and spells out `University`; before, it wrote `U13`, `U15`, `U17`, `UNI`.
+ * Anything else is null: an age group this does not know.
+ */
 export function ageCategory(code: string): string | null {
-  const upper = code.trim().toUpperCase();
-  const fixed: Record<string, string> = { UNI: 'university', OPEN: 'senior', JUNIOR: 'junior', JR: 'junior', U13: 'u13', U15: 'u15', U17: 'u17' };
+  const upper = code.trim().replace(/\s+/g, ' ').toUpperCase();
+  const fixed: Record<string, string> = {
+    UNI: 'university',
+    UNIVERSITY: 'university',
+    OPEN: 'senior',
+    JUNIOR: 'junior',
+    JR: 'junior',
+    U11: 'u11',
+    '11 & UNDER': 'u11',
+    U13: 'u13',
+    '12-13YO': 'u13',
+    U15: 'u15',
+    '14-15YO': 'u15',
+    U17: 'u17',
+    '16-17YO': 'u17',
+  };
   if (fixed[upper]) return fixed[upper];
   if (/^[MW]\d+$/.test(upper)) return `Masters ${upper.slice(1)}`;
   return null;
@@ -112,21 +132,41 @@ function rowHolder(value: number, words: string[]): RecordHolder | undefined {
 }
 
 /**
- * Records from the PDF's text lines. Every age code the scraper keeps is one
- * token, so a kept row is `code gender bodyweight lift record name date place
- * event`; rows it drops ("11 & Under", headers, wrapped event names) fail a
- * token check. Each lift's holder comes from the row that set its value.
+ * A record row: `age gender bodyweight lift record [name date place event]`,
+ * found by its gender and lift columns, so an age group of any wording
+ * (`11 & Under`, `12-13 yo`, one this does not know) is still a record row
+ * and is reported when unknown rather than skipped unseen. Adaptive rows
+ * (`ADAP - Physical - OPEN F 49 …`) are another table's.
  */
-export function parseRecords(pages: string[][]): UsawRecord[] {
+const RECORD_ROW = /^(.+?) ([MF]) (\S+) (\S*(?:SNATCH|CLEAN|JERK|TOTAL)\S*) (\S+)(?: (.*))?$/i;
+const ADAPTIVE = /^ADAP\b/i;
+
+export type ParsedRecords = {
+  records: UsawRecord[];
+  /** Age groups of rows that look like records but that `ageCategory` does not know: those rows are not read. */
+  unknownAgeGroups: string[];
+};
+
+/**
+ * Records from the PDF's text lines, and the age groups it skipped. Each
+ * lift's holder comes from the row that set its value.
+ */
+export function parseRecordsReport(pages: string[][]): ParsedRecords {
   const byKey = new Map<string, UsawRecord>();
+  const unknown = new Set<string>();
   for (const lines of pages) {
     for (const line of lines) {
-      const tokens = line.split(' ');
-      if (tokens.length < 5) continue;
-      const [code, genderCode, bodyweight, lift, value] = tokens;
-      const age = ageCategory(code);
+      const text = line.replace(/\s+/g, ' ').trim();
+      const row = ADAPTIVE.test(text) ? null : RECORD_ROW.exec(text);
+      if (!row) continue;
+      const [, code, genderCode, bodyweight, lift, value, rest] = row;
       const gender = genderOf(genderCode);
-      if (!age || !gender) continue;
+      if (!gender) continue;
+      const age = ageCategory(code);
+      if (!age) {
+        unknown.add(code);
+        continue;
+      }
       const weightClass = formatWeightClass(bodyweight);
       if (!weightClass) continue;
       if (!value || value.toUpperCase() === 'STANDARD') continue;
@@ -144,7 +184,7 @@ export function parseRecords(pages: string[][]): UsawRecord[] {
       };
       const liftUpper = lift.toUpperCase();
       // A 0 kg standard ("W80 F 49 SNATCH 0 Standard") is no lift to hold.
-      const holder = weight === 0 ? undefined : rowHolder(weight, tokens.slice(5));
+      const holder = weight === 0 ? undefined : rowHolder(weight, rest ? rest.split(' ') : []);
       if (liftUpper.includes('SNATCH')) {
         record.snatch_record = weight;
         setHolder(record, 'snatch_by', holder);
@@ -158,5 +198,10 @@ export function parseRecords(pages: string[][]): UsawRecord[] {
       byKey.set(key, record);
     }
   }
-  return [...byKey.values()];
+  return { records: [...byKey.values()], unknownAgeGroups: [...unknown].sort() };
+}
+
+/** The records in the PDF's text lines (`parseRecordsReport` without the skipped age groups). */
+export function parseRecords(pages: string[][]): UsawRecord[] {
+  return parseRecordsReport(pages).records;
 }
