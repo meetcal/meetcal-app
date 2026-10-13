@@ -11,8 +11,44 @@ permissions:
   contents: write
 
 jobs:
+  # Nothing is built until the tagged commit passes the tests and the dependency audit: a release
+  # ships whatever the lockfile holds.
+  verify:
+    name: Test and audit
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: cli
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: cli
+
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-audit
+
+      - name: Check the tag matches the crate version
+        run: |
+          version="$(awk -F'"' '/^version = / { print $2; exit }' Cargo.toml)"
+          test "${GITHUB_REF_NAME}" = "cli-v${version}" || {
+            echo "Tag ${GITHUB_REF_NAME} does not match cli/Cargo.toml version ${version}"
+            exit 1
+          }
+
+      - name: Run tests
+        run: cargo test --locked
+
+      - name: Audit Rust dependencies
+        run: cargo audit --deny unsound --deny yanked
+
   build:
     name: build-${{ matrix.artifact }}
+    needs: verify
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -24,12 +60,18 @@ jobs:
           - os: macos-latest
             target: x86_64-apple-darwin
             artifact: darwin-x64
+          # Linux binaries link the C library of the system they are built against. They are
+          # built with Zig against glibc 2.17, so they start on any distribution from 2014 on
+          # (Ubuntu 22.04, Debian 12, RHEL 9 and Amazon Linux 2023 included), not only on one as
+          # new as the runner.
           - os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
             artifact: linux-x64
+            glibc: "2.17"
           - os: ubuntu-24.04-arm
             target: aarch64-unknown-linux-gnu
             artifact: linux-arm64
+            glibc: "2.17"
 
     steps:
       - uses: actions/checkout@v4
@@ -41,19 +83,26 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: cli
+          key: ${{ matrix.target }}
 
-      - name: Check the tag matches the crate version
-        working-directory: cli
-        run: |
-          version="$(awk -F'"' '/^version = / { print $2; exit }' Cargo.toml)"
-          test "${GITHUB_REF_NAME}" = "cli-v${version}" || {
-            echo "Tag ${GITHUB_REF_NAME} does not match cli/Cargo.toml version ${version}"
-            exit 1
-          }
+      - if: matrix.glibc
+        uses: mlugg/setup-zig@v2
+        with:
+          version: 0.16.0
+
+      - if: matrix.glibc
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-zigbuild
 
       - name: Build
         working-directory: cli
-        run: cargo build --release --locked --target ${{ matrix.target }}
+        run: |
+          if [ -n "${{ matrix.glibc }}" ]; then
+            cargo zigbuild --release --locked --target ${{ matrix.target }}.${{ matrix.glibc }}
+          else
+            cargo build --release --locked --target ${{ matrix.target }}
+          fi
 
       - name: Package
         working-directory: cli
@@ -62,6 +111,33 @@ jobs:
           cp target/${{ matrix.target }}/release/meetcal dist/${{ matrix.artifact }}/meetcal
           tar -czf dist/${{ matrix.artifact }}.tar.gz -C dist/${{ matrix.artifact }} meetcal
           shasum -a 256 dist/${{ matrix.artifact }}.tar.gz
+
+      # A binary that needs a newer glibc than its floor installs through Homebrew and then fails
+      # at its first run with "version `GLIBC_2.xx' not found". Weak references are optional at
+      # load time, so only strong ones count.
+      - name: Check the glibc floor
+        if: matrix.glibc
+        working-directory: cli
+        run: |
+          floor="${{ matrix.glibc }}"
+          newer="$(objdump -T dist/${{ matrix.artifact }}/meetcal \
+            | grep -v ' w ' \
+            | grep -oE 'GLIBC_[0-9]+\.[0-9]+' \
+            | sort -u \
+            | awk -F'[_.]' -v floor="$floor" '{ split(floor, f, "."); if ($2 > f[1] || ($2 == f[1] && $3 > f[2])) print }')"
+          if [ -n "$newer" ]; then
+            echo "The binary needs a glibc newer than ${floor}:"
+            echo "$newer"
+            exit 1
+          fi
+
+      # Run the archived binary on an older distribution than the runner.
+      - name: Smoke test on Debian 11
+        if: matrix.glibc
+        working-directory: cli
+        run: |
+          docker run --rm -v "$PWD/dist/${{ matrix.artifact }}:/opt/meetcal:ro" debian:11 \
+            /opt/meetcal/meetcal --version
 
       - uses: actions/upload-artifact@v4
         with:
