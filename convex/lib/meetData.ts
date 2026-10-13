@@ -187,7 +187,12 @@ export type PackageScheduleDay = {
     session_id: number;
     start_time: string;
     weigh_in_time: string;
-    platforms: { platform: string; weight_class: string }[];
+    /**
+     * Each platform's own times: platforms of one session can start at
+     * different times. The session's `start_time` / `weigh_in_time` are its
+     * first platform's, kept for older clients.
+     */
+    platforms: { platform: string; weight_class: string; start_time: string; weigh_in_time: string }[];
   }[];
 };
 
@@ -209,7 +214,12 @@ export function packageSchedule(rows: readonly ApiScheduleRow[]): PackageSchedul
       session = { session_id: row.session_id, start_time: row.start_time, weigh_in_time: row.weigh_in_time, platforms: [] };
       day.sessions.push(session);
     }
-    session.platforms.push({ platform: row.platform, weight_class: row.weight_class });
+    session.platforms.push({
+      platform: row.platform,
+      weight_class: row.weight_class,
+      start_time: row.start_time,
+      weigh_in_time: row.weigh_in_time,
+    });
   }
   return days;
 }

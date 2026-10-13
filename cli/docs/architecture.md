@@ -48,7 +48,7 @@ served from materialized views; `../docs/backend.md` explains when a view needs 
 | Meets | `meets`, `meet-info`, `schedule`, `meet`, `meet-results` | `meets:list`, `meets:completed`, `meets:details`, `meets:schedule`, `meets:athletesSessions` with `results:bests`, `results:byMeet` |
 | Attendance | `attendance` | `meets:namesPage`, `meets:attendance` |
 | All results | `leaderboard`, `results` | `results:page` (or, with `--wso`/`--club`, the group's registrations and `results:recent`) |
-| Names | `clubs`, `wsos` | `reference:clubs`, `reference:wsoList`, `reference:wsoAgeGroups` |
+| Names | `clubs`, `wsos` | `reference:clubs`, `reference:registrationWsos`, `reference:wsoList`, `reference:wsoAgeGroups` |
 | Clubs | `club-results`, `club-wrapped`, `club-compare`, `club-trends` | `reference:clubMeetStats`, `reference:clubAthletes`, `results:recent`, `results:byNames`, `results:byMeet` |
 | WSOs | `wso`, `wso-wrapped`, `wso-compare`, `wso-trends` | `meets:athletes`, `results:byNames`, `results:byMeet`, `reference:wsoAthletes`, `results:recent` |
 | Reference | `records`, `standards`, `qualifying-totals`, `intl-rankings`, `nat-rankings`, `nat-ranking-year`, `wso-records`, `adaptive-records` | the matching `reference:*` query |
@@ -80,11 +80,22 @@ and the meet's results under each alias.
 ### Names and suggestions
 
 Meet, club and WSO names are exact. When a command finds nothing for one, `src/utils/names.rs`
-fetches the names MeetCal knows (`meets:list` and `meets:completed`, `reference:clubs`,
-`reference:wsoList`) and suggests the closest: names containing the input first, then names
-matching most of its words, a word matching when it is the same, a prefix, or a typo or two away.
-If the input is itself a known name (the meet exists but has no results yet), no suggestions are
-shown.
+fetches the names MeetCal knows and suggests the closest: names containing the input first, then
+names matching most of its words, a word matching when it is the same, a prefix, or a typo or two
+away. If the input is exactly a known name (the meet exists but has no results yet), no suggestions
+are shown; a name differing from it only in case or punctuation is suggested alone.
+
+The candidates depend on what the command reads (`NameKind`):
+
+- Tracked meets (`meet`, `meet-info`, `schedule`, `wso`): `meets:list` and `meets:completed`.
+- Results meets (`meet-results`, `club-results`): those, plus the results meets whose names start
+  with the input's first word (`meets:namesPage` over that name range): there are over 7,000, too
+  many to list on every typo.
+- Clubs: `reference:clubs`.
+- WSOs in the club and WSO reports: `reference:registrationWsos`, the names on registrations.
+  Record sheets name some WSOs differently ("California North" keeps records, "California North
+  Central" registers athletes), so `wso-records` suggests from `reference:wsoList` instead.
+  `meetcal wsos` lists both.
 
 ### Past-year bests
 
