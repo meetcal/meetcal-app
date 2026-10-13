@@ -59,6 +59,9 @@
       <img class="app-loading-logo" src="/images/logo.png" alt="" width="48" height="48" />
       <p class="app-loading-name">MeetCal</p>
       <p class="app-loading-message" data-app-loading-message>Loading MeetCal…</p>
+      <!-- Revealed by CSS alone after a while: if app-bootstrap.js itself
+           can't load or run, no script is left to show its error and retry. -->
+      <p class="app-loading-slow">Taking too long? <a href="">Reload the page</a></p>
       <noscript>
         <p class="app-loading-error">MeetCal needs JavaScript. Turn it on and reload the page.</p>
       </noscript>

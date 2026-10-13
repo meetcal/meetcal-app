@@ -134,6 +134,35 @@ body::before {
     outline-offset: 3px;
 }
 
+/* The no-script fallback for a bootstrap that never loads or runs: hidden
+   (and out of the accessibility tree) until 10 s pass, then a plain reload
+   link. The bootstrap's own error, with its retry, replaces it. */
+.app-loading-slow {
+    margin: 12px 0 0;
+    color: var(--text-secondary);
+    visibility: hidden;
+    animation: app-loading-slow-reveal 0s linear 10s forwards;
+}
+
+.app-loading-slow a {
+    display: inline-block;
+    min-height: 44px;
+    padding: 10px 4px;
+    color: var(--text);
+    font-weight: 700;
+    text-decoration: underline;
+}
+
+.app-loading[role="alert"] .app-loading-slow {
+    display: none;
+}
+
+@keyframes app-loading-slow-reveal {
+    to {
+        visibility: visible;
+    }
+}
+
 main {
     text-align: center;
     padding: 0 20px 0;

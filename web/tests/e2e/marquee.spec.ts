@@ -26,6 +26,13 @@ test("the screenshot marquee can be paused and resumed", async ({ page }) => {
   await expect(pause).toHaveAttribute("aria-pressed", "false");
   expect(await animationState(page)).toEqual({ name: "scroll-screenshots", playState: "running" });
 
+  // Hovering the marquee also pauses it. Keep the pointer on the toggle, off
+  // the marquee: Chromium re-checks hover after the scroll that pressing the
+  // button causes, and its pointer's resting spot (0, 0) is then over the
+  // full-width marquee.
+  await pause.hover();
+  expect((await animationState(page)).playState).toBe("running");
+
   await pause.press("Enter");
   const play = page.getByRole("button", { name: "Play preview" });
   await expect(play).toHaveAttribute("aria-pressed", "true");
@@ -33,6 +40,15 @@ test("the screenshot marquee can be paused and resumed", async ({ page }) => {
 
   await play.press("Enter");
   await expect(page.getByRole("button", { name: "Pause preview" })).toBeVisible();
+  expect((await animationState(page)).playState).toBe("running");
+});
+
+test("hovering the screenshot marquee pauses it", async ({ page, isMobile }) => {
+  test.skip(isMobile, "Phones have no hover");
+  await page.goto("/");
+  await page.locator(".screenshot-marquee").hover();
+  expect((await animationState(page)).playState).toBe("paused");
+  await page.getByRole("button", { name: "Pause preview" }).hover();
   expect((await animationState(page)).playState).toBe("running");
 });
 

@@ -46,6 +46,8 @@ test("every page shows a loading shell until the app mounts", async () => {
     const html = await readFile(new URL(`../../dist/${file}`, import.meta.url), "utf8");
     assert.match(html, /<div id="app-loading"[^>]*role="status"/, `${file} has no loading shell`);
     assert.match(html, /<noscript>/, `${file} has no <noscript> message`);
+    // A reload that needs no script, for a bootstrap that never loads.
+    assert.match(html, /<p class="app-loading-slow">[^<]*<a href="">/, `${file} has no slow-load reload link`);
   }
 });
 
