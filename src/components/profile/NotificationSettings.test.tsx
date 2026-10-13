@@ -4,12 +4,13 @@
  * status must fail closed (no auto-enable, no OS permission prompt).
  */
 import React from "react";
-import { Alert, Switch } from "react-native";
+import { Alert, Platform, Switch } from "react-native";
 import { act, create, type ReactTestRenderer } from "react-test-renderer";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Notifications from "expo-notifications";
 import type { SubscriptionStatus } from "@/app/schedule-toolbar/profile";
 import { NOTIFICATION_ENABLED_KEY } from "@/utils/notifications";
+import { EXACT_ALARM_OFFERED_KEY } from "@/lib/exact-alarms";
 import { subscribeToReminderPreference } from "@/lib/reminder-preference";
 import { NotificationSettings } from "@/components/profile/NotificationSettings";
 import { showToast } from "@/components/ui/Toast";
@@ -150,6 +151,117 @@ describe("NotificationSettings", () => {
     expect(showToast).toHaveBeenCalledWith(
       expect.objectContaining({ message: expect.stringMatching(/confirm your subscription/) }),
     );
+  });
+
+  it("keeps showing the default-on policy, with no toast, when the first-run write fails", async () => {
+    jest.spyOn(console, "error").mockImplementation(() => {});
+    const realSetItem = setItemSpy.getMockImplementation();
+    let failed = false;
+    setItemSpy.mockImplementation(async (key: string, value: string) => {
+      if (key === NOTIFICATION_ENABLED_KEY && !failed) {
+        failed = true;
+        throw new Error("storage full");
+      }
+      return realSetItem ? realSetItem(key, value) : undefined;
+    });
+
+    const renderer = await mount("quarterly");
+
+    expect(failed).toBe(true);
+    // Never written, so the reminder policy is still "on" for a subscriber.
+    expect(theSwitch(renderer).props.value).toBe(true);
+    expect(showToast).not.toHaveBeenCalled();
+  });
+
+  it("auto-enables while the sign-in check is still resolving, without a toast", async () => {
+    // `useAuthGuard` answers null until its cache and network reads land,
+    // which can be after this screen's own storage read.
+    requireAuth.mockReturnValue(null as never);
+    try {
+      const renderer = await mount("quarterly");
+
+      expect(reminderWrites()).toEqual(["true"]);
+      expect(theSwitch(renderer).props.value).toBe(true);
+      expect(showToast).not.toHaveBeenCalled();
+    } finally {
+      requireAuth.mockReturnValue(true);
+    }
+  });
+
+  it("shows reminders on for a subscriber who never chose, and a tap meanwhile cannot be overwritten", async () => {
+    // The auto-enable is still waiting on the OS.
+    let answer!: (value: { status: string }) => void;
+    mockGetPermissions.mockReturnValueOnce(
+      new Promise((resolve) => {
+        answer = resolve;
+      }),
+    );
+    const renderer = await mount("quarterly");
+
+    expect(reminderWrites()).toEqual([]);
+    // The sync schedules reminders for this user, so the switch says so.
+    expect(theSwitch(renderer).props.value).toBe(true);
+    expect(theSwitch(renderer).props.disabled).toBe(true);
+
+    // A tap while it runs is dropped, not raced against it.
+    await act(async () => {
+      theSwitch(renderer).props.onValueChange(false);
+    });
+    await act(async () => {
+      answer({ status: "granted" });
+    });
+    await flush();
+
+    expect(reminderWrites()).toEqual(["true"]);
+    expect(theSwitch(renderer).props.disabled).toBe(false);
+
+    // Then one tap turns them off.
+    await act(async () => {
+      theSwitch(renderer).props.onValueChange(false);
+    });
+    await flush();
+
+    expect(reminderWrites()).toEqual(["true", "false"]);
+    expect(theSwitch(renderer).props.value).toBe(false);
+  });
+
+  describe("on Android 14", () => {
+    beforeEach(() => {
+      jest.replaceProperty(Platform, "OS", "android");
+      jest.spyOn(Platform, "Version", "get").mockReturnValue(34);
+    });
+
+    function exactAlarmAlerts(): unknown[] {
+      return (Alert.alert as jest.Mock).mock.calls.filter(
+        ([title]) => title === "Get reminders on time",
+      );
+    }
+
+    it("offers the exact-alarm settings once when the user turns reminders on", async () => {
+      await AsyncStorage.setItem(NOTIFICATION_ENABLED_KEY, "false");
+      setItemSpy.mockClear();
+      const renderer = await mount("quarterly");
+
+      for (let i = 0; i < 3; i += 1) {
+        await act(async () => {
+          theSwitch(renderer).props.onValueChange();
+        });
+        await flush();
+      }
+
+      expect(reminderWrites()).toEqual(["true", "false", "true"]);
+      expect(exactAlarmAlerts()).toHaveLength(1);
+      await expect(AsyncStorage.getItem(EXACT_ALARM_OFFERED_KEY)).resolves.toBe("true");
+    });
+
+    it("says reminders may arrive late, and pops nothing for the first-run default", async () => {
+      const renderer = await mount("quarterly");
+
+      expect(reminderWrites()).toEqual(["true"]);
+      expect(exactAlarmAlerts()).toHaveLength(0);
+      const text = JSON.stringify(renderer.toJSON());
+      expect(text).toContain("Alarms & reminders");
+    });
   });
 
   describe("when the OS permission is denied", () => {

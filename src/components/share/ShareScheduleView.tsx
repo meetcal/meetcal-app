@@ -6,7 +6,7 @@ import {
   compareStartTimes,
   formatSessionDisplayDate,
 } from "@/lib/start-list-utils";
-import { isSamePlatform } from "@/lib/athletes";
+import { buildSessionExportRows } from "@/lib/start-list-export";
 import { formatTo12Hour } from "@/utils/time";
 import {
   ShareBackgroundPresetId,
@@ -54,7 +54,6 @@ const getPresetVisual = (preset: ShareBackgroundPresetId): PresetVisual => {
 
 export default function ShareScheduleView({
   filteredAthletes,
-  schedule,
   selectedMeet,
   selectedGroup,
   backgroundPreset = "white",
@@ -62,49 +61,26 @@ export default function ShareScheduleView({
 }: ShareScheduleViewProps) {
   const presetVisual = getPresetVisual(backgroundPreset);
 
+  // The rows the CSV and the calendar export use, so the image, the CSV and
+  // the "won't be included" warning before sharing agree on who is in it.
   const athletesByDate = React.useMemo(() => {
-    const grouped: {
-      [key: string]: {
-        athlete: LiftResult;
-        startTime: string;
-      }[];
-    } = {};
+    const grouped = new Map<string, { athlete: LiftResult; startTime: string }[]>();
+    for (const row of buildSessionExportRows(filteredAthletes, getSessionDetails).rows) {
+      const group = grouped.get(row.date);
+      const item = { athlete: row.athlete, startTime: row.startTime };
+      if (group) group.push(item);
+      else grouped.set(row.date, [item]);
+    }
 
-    filteredAthletes.forEach((athlete) => {
-      if (!athlete.session) return;
-
-      const sessionDay = schedule.find((day) =>
-        day.sessions.some((s) => s.number === athlete.session?.number),
-      );
-
-      if (!sessionDay) return;
-
-      const sessionDetails = getSessionDetails(athlete.session.number);
-      if (!sessionDetails) return;
-      const platform = sessionDetails.platforms.find(
-        (p) => isSamePlatform(p.platform, athlete.session?.platform),
-      );
-      const startTime = platform?.platformStartTime || sessionDetails.startTime;
-
-      const dateKey = sessionDay.fullDate;
-      if (!grouped[dateKey]) {
-        grouped[dateKey] = [];
-      }
-
-      grouped[dateKey].push({ athlete, startTime });
-    });
-
-    return Object.entries(grouped)
-      .map(([date, athletes]) => ({
-        date,
-        athletes: athletes.sort((a, b) => {
-          const timeOrder = compareStartTimes(a.startTime, b.startTime);
-          if (timeOrder !== 0) return timeOrder;
-          return a.athlete.name.localeCompare(b.athlete.name);
-        }),
-      }))
-      .sort((a, b) => compareCalendarDates(a.date, b.date));
-  }, [filteredAthletes, schedule, getSessionDetails]);
+    return Array.from(grouped, ([date, athletes]) => ({
+      date,
+      athletes: athletes.sort((a, b) => {
+        const timeOrder = compareStartTimes(a.startTime, b.startTime);
+        if (timeOrder !== 0) return timeOrder;
+        return a.athlete.name.localeCompare(b.athlete.name);
+      }),
+    })).sort((a, b) => compareCalendarDates(a.date, b.date));
+  }, [filteredAthletes, getSessionDetails]);
 
   return (
     <View style={[styles.canvas, { backgroundColor: presetVisual.canvas }]}>

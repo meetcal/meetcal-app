@@ -7,6 +7,8 @@ import { FilterSection, GenericFilterModal } from "@/components/ui/filters";
 import { useTheme } from "@/contexts/ThemeContext";
 import { useAppColors } from "@/hooks/useAppColors";
 import { useFilterState } from "@/hooks/useFilterState";
+import { useRouteFilterKey } from "@/hooks/useRouteFilterKey";
+import { DEEP_LINKS } from "@/utils/deepLinks";
 import { useMutableResource } from "@/hooks/useMutableResource";
 import {
   IntlRanking,
@@ -50,6 +52,11 @@ function IntlRankingsScreenContent() {
   const hasRouteFilters = Boolean(
     defaultFilters.meet || defaultFilters.age_category || defaultFilters.gender,
   );
+  const filterResetKey = useRouteFilterKey(DEEP_LINKS.intlRankings, [
+    routeParams.meet,
+    routeParams.age_category,
+    routeParams.gender,
+  ]);
   const {
     filters,
     setFilters,
@@ -58,6 +65,7 @@ function IntlRankingsScreenContent() {
     filterModalProps,
   } = useFilterState<Filters>({
     defaultFilters,
+    resetKey: filterResetKey,
   });
 
   const {
@@ -70,8 +78,23 @@ function IntlRankingsScreenContent() {
     initialData: EMPTY_INTL_RANKINGS,
   });
 
-  // Only set default filters the first time rankings are loaded
+  // Only set default filters the first time rankings are loaded, and again
+  // when a link without filters replaces this screen's params.
   const [hasSetDefaultFilters, setHasSetDefaultFilters] = useState(hasRouteFilters);
+  const [defaultsResetKey, setDefaultsResetKey] = useState(filterResetKey);
+  if (defaultsResetKey !== filterResetKey) {
+    setDefaultsResetKey(filterResetKey);
+    if (!hasRouteFilters && intlRankings.length > 0) {
+      // Rankings already loaded: their defaults now, in this render, not
+      // after a frame of the empty route defaults (which match every row).
+      const defaults = computeDefaultRankingFilters(intlRankings);
+      setFilters(defaults);
+      setTempFilters(defaults);
+      setHasSetDefaultFilters(true);
+    } else {
+      setHasSetDefaultFilters(hasRouteFilters);
+    }
+  }
   useEffect(() => {
     if (!hasSetDefaultFilters && intlRankings.length > 0) {
       const defaults = computeDefaultRankingFilters(intlRankings);

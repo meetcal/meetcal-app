@@ -57,7 +57,7 @@ Run from this folder.
 
 List what you ran in the PR's test plan, and anything you could not run and why. Unit tests use answer shapes written by hand, and CI never calls a deployment, so this local run is the only check that a command still works against live data.
 
-CI (`.github/workflows/cli.yml` at the root) runs `cargo fmt --check`, `clippy -D warnings` and `cargo test --locked`.
+CI (`.github/workflows/cli.yml` at the root) runs `cargo fmt --check`, `clippy -D warnings`, `cargo test --locked` and `cargo audit` (also weekly, since advisories arrive without a change here). The release workflow runs the tests and the audit again before it builds.
 
 ## Code Quality
 

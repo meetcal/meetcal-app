@@ -40,8 +40,8 @@ function mapRows(rows: readonly CompleteStandardsRow[]): StandardsData {
     if (!result[ageKey] || !result[ageKey][genderKey]) return;
     result[ageKey][genderKey].push({
       weightClass: row.weight_class,
-      a: row.standard_a ?? 0,
-      b: row.standard_b ?? 0,
+      a: row.standard_a,
+      b: row.standard_b,
     });
   });
 
@@ -69,7 +69,18 @@ async function fetchStandardsFresh(): Promise<StandardsData> {
   return mapRows(rows.filter(isCompleteStandardsRow));
 }
 
+/**
+ * No standard in any age group or gender. Neither the explicit download nor
+ * the browse path (which writes to the download's key) stores such an
+ * answer: it would replace a real download with nothing. The screen still
+ * shows the empty answer; the stored copy stays.
+ */
+export function isStandardsDataEmpty(data: StandardsData): boolean {
+  return Object.values(data).every((group) => group.men.length + group.women.length === 0);
+}
+
 async function persistStandards(data: StandardsData) {
+  if (isStandardsDataEmpty(data)) return null;
   const entry = await setOfflineCache(OFFLINE_CACHE_KEYS.standards, data);
   return { data: entry.data, lastUpdatedAt: entry.lastSynced };
 }
@@ -81,12 +92,7 @@ async function persistStandards(data: StandardsData) {
  */
 export async function downloadStandardsForOffline(): Promise<void> {
   const data = await fetchStandardsFresh();
-  // An empty table would replace a real download with nothing.
-  const rowCount = Object.values(data).reduce(
-    (count, group) => count + group.men.length + group.women.length,
-    0,
-  );
-  if (rowCount === 0) {
+  if (isStandardsDataEmpty(data)) {
     throw new Error('Standards download returned no rows');
   }
   await replaceOfflineCache(OFFLINE_CACHE_KEYS.standards, data);

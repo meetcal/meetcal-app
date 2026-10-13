@@ -1,0 +1,879 @@
+{
+  "Men": {
+    "U11": [
+      {
+        "label": "Current classes",
+        "divisions": [
+          "Men's 11 Under Age Group 32kg",
+          "Men's 11 Under Age Group 36kg",
+          "Men's 11 Under Age Group 40kg",
+          "Men's 11 Under Age Group 45kg",
+          "Men's 11 Under Age Group 50kg",
+          "Men's 11 Under Age Group 55kg",
+          "Men's 11 Under Age Group 60kg",
+          "Men's 11 Under Age Group 65kg",
+          "Men's 11 Under Age Group 70kg",
+          "Men's 11 Under Age Group 70+kg"
+        ]
+      },
+      {
+        "label": "2025 classes (before Aug 1, 2026)",
+        "divisions": [
+          "Men's 11 Under Age Group 44kg",
+          "Men's 11 Under Age Group 48kg",
+          "Men's 11 Under Age Group 52kg",
+          "Men's 11 Under Age Group 56kg",
+          "Men's 11 Under Age Group 65+kg"
+        ]
+      }
+    ],
+    "U13": [
+      {
+        "label": "Current classes",
+        "divisions": [
+          "Men's 13 Under Age Group 32kg",
+          "Men's 13 Under Age Group 36kg",
+          "Men's 13 Under Age Group 40kg",
+          "Men's 13 Under Age Group 45kg",
+          "Men's 13 Under Age Group 50kg",
+          "Men's 13 Under Age Group 55kg",
+          "Men's 13 Under Age Group 60kg",
+          "Men's 13 Under Age Group 65kg",
+          "Men's 13 Under Age Group 70kg",
+          "Men's 13 Under Age Group 70+kg"
+        ]
+      },
+      {
+        "label": "2025 classes (before Aug 1, 2026)",
+        "divisions": [
+          "Men's 13 Under Age Group 44kg",
+          "Men's 13 Under Age Group 48kg",
+          "Men's 13 Under Age Group 52kg",
+          "Men's 13 Under Age Group 56kg",
+          "Men's 13 Under Age Group 65+kg"
+        ]
+      }
+    ],
+    "U15": [
+      {
+        "label": "Current classes",
+        "divisions": [
+          "Men's 14-15 Age Group 50kg",
+          "Men's 14-15 Age Group 55kg",
+          "Men's 14-15 Age Group 60kg",
+          "Men's 14-15 Age Group 65kg",
+          "Men's 14-15 Age Group 70kg",
+          "Men's 14-15 Age Group 75kg",
+          "Men's 14-15 Age Group 85kg",
+          "Men's 14-15 Age Group 95kg",
+          "Men's 14-15 Age Group 95+kg"
+        ]
+      },
+      {
+        "label": "2025 classes (before Aug 1, 2026)",
+        "divisions": [
+          "Men's 14-15 Age Group 48kg",
+          "Men's 14-15 Age Group 52kg",
+          "Men's 14-15 Age Group 56kg",
+          "Men's 14-15 Age Group 71kg",
+          "Men's 14-15 Age Group 79kg",
+          "Men's 14-15 Age Group 79+kg"
+        ]
+      }
+    ],
+    "U17": [
+      {
+        "label": "Current classes",
+        "divisions": [
+          "Men's 16-17 Age Group 55kg",
+          "Men's 16-17 Age Group 60kg",
+          "Men's 16-17 Age Group 65kg",
+          "Men's 16-17 Age Group 70kg",
+          "Men's 16-17 Age Group 75kg",
+          "Men's 16-17 Age Group 85kg",
+          "Men's 16-17 Age Group 95kg",
+          "Men's 16-17 Age Group 95+kg"
+        ]
+      },
+      {
+        "label": "2025 classes (before Aug 1, 2026)",
+        "divisions": [
+          "Men's 16-17 Age Group 56kg",
+          "Men's 16-17 Age Group 71kg",
+          "Men's 16-17 Age Group 79kg",
+          "Men's 16-17 Age Group 88kg",
+          "Men's 16-17 Age Group 94kg",
+          "Men's 16-17 Age Group 94+kg"
+        ]
+      }
+    ],
+    "Junior": [
+      {
+        "label": "Current classes",
+        "divisions": [
+          "Junior Men's 60kg",
+          "Junior Men's 65kg",
+          "Junior Men's 70kg",
+          "Junior Men's 75kg",
+          "Junior Men's 85kg",
+          "Junior Men's 95kg",
+          "Junior Men's 110kg",
+          "Junior Men's 110+kg"
+        ]
+      },
+      {
+        "label": "2025 classes (before Aug 1, 2026)",
+        "divisions": [
+          "Junior Men's 71kg",
+          "Junior Men's 79kg",
+          "Junior Men's 88kg",
+          "Junior Men's 94kg"
+        ]
+      }
+    ],
+    "Senior": [
+      {
+        "label": "Current classes",
+        "divisions": [
+          "Open Men's 60kg",
+          "Open Men's 65kg",
+          "Open Men's 70kg",
+          "Open Men's 75kg",
+          "Open Men's 85kg",
+          "Open Men's 95kg",
+          "Open Men's 110kg",
+          "Open Men's 110+kg"
+        ]
+      },
+      {
+        "label": "2025 classes (before Aug 1, 2026)",
+        "divisions": [
+          "Open Men's 71kg",
+          "Open Men's 79kg",
+          "Open Men's 88kg",
+          "Open Men's 94kg"
+        ]
+      }
+    ],
+    "Masters 35": [
+      {
+        "label": "Current classes",
+        "divisions": [
+          "Men's Masters (35-39) 60kg",
+          "Men's Masters (35-39) 65kg",
+          "Men's Masters (35-39) 70kg",
+          "Men's Masters (35-39) 75kg",
+          "Men's Masters (35-39) 85kg",
+          "Men's Masters (35-39) 95kg",
+          "Men's Masters (35-39) 110kg",
+          "Men's Masters (35-39) 110+kg"
+        ]
+      },
+      {
+        "label": "2025 classes (before Aug 1, 2026)",
+        "divisions": [
+          "Men's Masters (35-39) 71kg",
+          "Men's Masters (35-39) 79kg",
+          "Men's Masters (35-39) 88kg",
+          "Men's Masters (35-39) 94kg"
+        ]
+      }
+    ],
+    "Masters 40": [
+      {
+        "label": "Current classes",
+        "divisions": [
+          "Men's Masters (40-44) 60kg",
+          "Men's Masters (40-44) 65kg",
+          "Men's Masters (40-44) 70kg",
+          "Men's Masters (40-44) 75kg",
+          "Men's Masters (40-44) 85kg",
+          "Men's Masters (40-44) 95kg",
+          "Men's Masters (40-44) 110kg",
+          "Men's Masters (40-44) 110+kg"
+        ]
+      },
+      {
+        "label": "2025 classes (before Aug 1, 2026)",
+        "divisions": [
+          "Men's Masters (40-44) 71kg",
+          "Men's Masters (40-44) 79kg",
+          "Men's Masters (40-44) 88kg",
+          "Men's Masters (40-44) 94kg"
+        ]
+      }
+    ],
+    "Masters 45": [
+      {
+        "label": "Current classes",
+        "divisions": [
+          "Men's Masters (45-49) 60kg",
+          "Men's Masters (45-49) 65kg",
+          "Men's Masters (45-49) 70kg",
+          "Men's Masters (45-49) 75kg",
+          "Men's Masters (45-49) 85kg",
+          "Men's Masters (45-49) 95kg",
+          "Men's Masters (45-49) 110kg",
+          "Men's Masters (45-49) 110+kg"
+        ]
+      },
+      {
+        "label": "2025 classes (before Aug 1, 2026)",
+        "divisions": [
+          "Men's Masters (45-49) 71kg",
+          "Men's Masters (45-49) 79kg",
+          "Men's Masters (45-49) 88kg",
+          "Men's Masters (45-49) 94kg"
+        ]
+      }
+    ],
+    "Masters 50": [
+      {
+        "label": "Current classes",
+        "divisions": [
+          "Men's Masters (50-54) 60kg",
+          "Men's Masters (50-54) 65kg",
+          "Men's Masters (50-54) 70kg",
+          "Men's Masters (50-54) 75kg",
+          "Men's Masters (50-54) 85kg",
+          "Men's Masters (50-54) 95kg",
+          "Men's Masters (50-54) 110kg",
+          "Men's Masters (50-54) 110+kg"
+        ]
+      },
+      {
+        "label": "2025 classes (before Aug 1, 2026)",
+        "divisions": [
+          "Men's Masters (50-54) 71kg",
+          "Men's Masters (50-54) 79kg",
+          "Men's Masters (50-54) 88kg",
+          "Men's Masters (50-54) 94kg"
+        ]
+      }
+    ],
+    "Masters 55": [
+      {
+        "label": "Current classes",
+        "divisions": [
+          "Men's Masters (55-59) 60kg",
+          "Men's Masters (55-59) 65kg",
+          "Men's Masters (55-59) 70kg",
+          "Men's Masters (55-59) 75kg",
+          "Men's Masters (55-59) 85kg",
+          "Men's Masters (55-59) 95kg",
+          "Men's Masters (55-59) 110kg",
+          "Men's Masters (55-59) 110+kg"
+        ]
+      },
+      {
+        "label": "2025 classes (before Aug 1, 2026)",
+        "divisions": [
+          "Men's Masters (55-59) 71kg",
+          "Men's Masters (55-59) 79kg",
+          "Men's Masters (55-59) 88kg",
+          "Men's Masters (55-59) 94kg"
+        ]
+      }
+    ],
+    "Masters 60": [
+      {
+        "label": "Current classes",
+        "divisions": [
+          "Men's Masters (60-64) 60kg",
+          "Men's Masters (60-64) 65kg",
+          "Men's Masters (60-64) 70kg",
+          "Men's Masters (60-64) 75kg",
+          "Men's Masters (60-64) 85kg",
+          "Men's Masters (60-64) 95kg",
+          "Men's Masters (60-64) 110kg",
+          "Men's Masters (60-64) 110+kg"
+        ]
+      },
+      {
+        "label": "2025 classes (before Aug 1, 2026)",
+        "divisions": [
+          "Men's Masters (60-64) 71kg",
+          "Men's Masters (60-64) 79kg",
+          "Men's Masters (60-64) 88kg",
+          "Men's Masters (60-64) 94kg"
+        ]
+      }
+    ],
+    "Masters 65": [
+      {
+        "label": "Current classes",
+        "divisions": [
+          "Men's Masters (65-69) 60kg",
+          "Men's Masters (65-69) 65kg",
+          "Men's Masters (65-69) 70kg",
+          "Men's Masters (65-69) 75kg",
+          "Men's Masters (65-69) 85kg",
+          "Men's Masters (65-69) 95kg",
+          "Men's Masters (65-69) 110kg",
+          "Men's Masters (65-69) 110+kg"
+        ]
+      },
+      {
+        "label": "2025 classes (before Aug 1, 2026)",
+        "divisions": [
+          "Men's Masters (65-69) 71kg",
+          "Men's Masters (65-69) 79kg",
+          "Men's Masters (65-69) 88kg",
+          "Men's Masters (65-69) 94kg"
+        ]
+      }
+    ],
+    "Masters 70": [
+      {
+        "label": "Current classes",
+        "divisions": [
+          "Men's Masters (70-74) 60kg",
+          "Men's Masters (70-74) 65kg",
+          "Men's Masters (70-74) 70kg",
+          "Men's Masters (70-74) 75kg",
+          "Men's Masters (70-74) 85kg",
+          "Men's Masters (70-74) 95kg",
+          "Men's Masters (70-74) 110kg",
+          "Men's Masters (70-74) 110+kg"
+        ]
+      },
+      {
+        "label": "2025 classes (before Aug 1, 2026)",
+        "divisions": [
+          "Men's Masters (70-74) 71kg",
+          "Men's Masters (70-74) 79kg",
+          "Men's Masters (70-74) 88kg",
+          "Men's Masters (70-74) 94kg"
+        ]
+      }
+    ],
+    "Masters 75": [
+      {
+        "label": "Current classes",
+        "divisions": [
+          "Men's Masters (75-79) 60kg",
+          "Men's Masters (75-79) 65kg",
+          "Men's Masters (75-79) 70kg",
+          "Men's Masters (75-79) 75kg",
+          "Men's Masters (75-79) 85kg",
+          "Men's Masters (75-79) 95kg",
+          "Men's Masters (75-79) 110kg",
+          "Men's Masters (75-79) 110+kg"
+        ]
+      },
+      {
+        "label": "2025 classes (before Aug 1, 2026)",
+        "divisions": [
+          "Men's Masters (75-79) 71kg",
+          "Men's Masters (75-79) 79kg",
+          "Men's Masters (75-79) 88kg",
+          "Men's Masters (75-79) 94kg"
+        ]
+      }
+    ],
+    "Masters 80": [
+      {
+        "label": "Current classes",
+        "divisions": [
+          "Men's Masters (80-84) 60kg",
+          "Men's Masters (80-84) 65kg",
+          "Men's Masters (80-84) 70kg",
+          "Men's Masters (80-84) 75kg",
+          "Men's Masters (80-84) 85kg",
+          "Men's Masters (80-84) 95kg",
+          "Men's Masters (80-84) 110kg",
+          "Men's Masters (80-84) 110+kg"
+        ]
+      },
+      {
+        "label": "2025 classes (before Aug 1, 2026)",
+        "divisions": [
+          "Men's Masters (80-84) 71kg",
+          "Men's Masters (80-84) 79kg",
+          "Men's Masters (80-84) 88kg",
+          "Men's Masters (80-84) 94kg"
+        ]
+      }
+    ],
+    "Masters 85": [
+      {
+        "label": "Current classes",
+        "divisions": [
+          "Men's Masters (85-89) 60kg",
+          "Men's Masters (85-89) 65kg",
+          "Men's Masters (85-89) 70kg",
+          "Men's Masters (85-89) 75kg",
+          "Men's Masters (85-89) 85kg",
+          "Men's Masters (85-89) 95kg",
+          "Men's Masters (85-89) 110kg",
+          "Men's Masters (85-89) 110+kg"
+        ]
+      },
+      {
+        "label": "2025 classes (before Aug 1, 2026)",
+        "divisions": [
+          "Men's Masters (85-89) 71kg",
+          "Men's Masters (85-89) 79kg",
+          "Men's Masters (85-89) 88kg",
+          "Men's Masters (85-89) 94kg"
+        ]
+      }
+    ],
+    "Masters 90+": [
+      {
+        "label": "Current classes",
+        "divisions": [
+          "Men's Masters (90+) 60kg",
+          "Men's Masters (90+) 65kg",
+          "Men's Masters (90+) 70kg",
+          "Men's Masters (90+) 75kg",
+          "Men's Masters (90+) 85kg",
+          "Men's Masters (90+) 95kg",
+          "Men's Masters (90+) 110kg",
+          "Men's Masters (90+) 110+kg"
+        ]
+      },
+      {
+        "label": "2025 classes (before Aug 1, 2026)",
+        "divisions": [
+          "Men's Masters (90+) 71kg",
+          "Men's Masters (90+) 79kg",
+          "Men's Masters (90+) 88kg",
+          "Men's Masters (90+) 94kg"
+        ]
+      }
+    ]
+  },
+  "Women": {
+    "U11": [
+      {
+        "label": "Current classes",
+        "divisions": [
+          "Women's 11 Under Age Group 30kg",
+          "Women's 11 Under Age Group 33kg",
+          "Women's 11 Under Age Group 37kg",
+          "Women's 11 Under Age Group 41kg",
+          "Women's 11 Under Age Group 45kg",
+          "Women's 11 Under Age Group 49kg",
+          "Women's 11 Under Age Group 53kg",
+          "Women's 11 Under Age Group 57kg",
+          "Women's 11 Under Age Group 61kg",
+          "Women's 11 Under Age Group 61+kg"
+        ]
+      },
+      {
+        "label": "2025 classes (before Aug 1, 2026)",
+        "divisions": [
+          "Women's 11 Under Age Group 36kg",
+          "Women's 11 Under Age Group 40kg",
+          "Women's 11 Under Age Group 44kg",
+          "Women's 11 Under Age Group 48kg",
+          "Women's 11 Under Age Group 58kg",
+          "Women's 11 Under Age Group 63kg",
+          "Women's 11 Under Age Group 63+kg"
+        ]
+      }
+    ],
+    "U13": [
+      {
+        "label": "Current classes",
+        "divisions": [
+          "Women's 13 Under Age Group 30kg",
+          "Women's 13 Under Age Group 33kg",
+          "Women's 13 Under Age Group 37kg",
+          "Women's 13 Under Age Group 41kg",
+          "Women's 13 Under Age Group 45kg",
+          "Women's 13 Under Age Group 49kg",
+          "Women's 13 Under Age Group 53kg",
+          "Women's 13 Under Age Group 57kg",
+          "Women's 13 Under Age Group 61kg",
+          "Women's 13 Under Age Group 61+kg"
+        ]
+      },
+      {
+        "label": "2025 classes (before Aug 1, 2026)",
+        "divisions": [
+          "Women's 13 Under Age Group 36kg",
+          "Women's 13 Under Age Group 40kg",
+          "Women's 13 Under Age Group 44kg",
+          "Women's 13 Under Age Group 48kg",
+          "Women's 13 Under Age Group 58kg",
+          "Women's 13 Under Age Group 63kg",
+          "Women's 13 Under Age Group 63+kg"
+        ]
+      }
+    ],
+    "U15": [
+      {
+        "label": "Current classes",
+        "divisions": [
+          "Women's 14-15 Age Group 45kg",
+          "Women's 14-15 Age Group 49kg",
+          "Women's 14-15 Age Group 53kg",
+          "Women's 14-15 Age Group 57kg",
+          "Women's 14-15 Age Group 61kg",
+          "Women's 14-15 Age Group 69kg",
+          "Women's 14-15 Age Group 77kg",
+          "Women's 14-15 Age Group 77+kg"
+        ]
+      },
+      {
+        "label": "2025 classes (before Aug 1, 2026)",
+        "divisions": [
+          "Women's 14-15 Age Group 40kg",
+          "Women's 14-15 Age Group 44kg",
+          "Women's 14-15 Age Group 48kg",
+          "Women's 14-15 Age Group 58kg",
+          "Women's 14-15 Age Group 63kg",
+          "Women's 14-15 Age Group 69+kg"
+        ]
+      }
+    ],
+    "U17": [
+      {
+        "label": "Current classes",
+        "divisions": [
+          "Women's 16-17 Age Group 45kg",
+          "Women's 16-17 Age Group 49kg",
+          "Women's 16-17 Age Group 53kg",
+          "Women's 16-17 Age Group 57kg",
+          "Women's 16-17 Age Group 61kg",
+          "Women's 16-17 Age Group 69kg",
+          "Women's 16-17 Age Group 77kg",
+          "Women's 16-17 Age Group 77+kg"
+        ]
+      },
+      {
+        "label": "2025 classes (before Aug 1, 2026)",
+        "divisions": [
+          "Women's 16-17 Age Group 44kg",
+          "Women's 16-17 Age Group 48kg",
+          "Women's 16-17 Age Group 58kg",
+          "Women's 16-17 Age Group 63kg"
+        ]
+      }
+    ],
+    "Junior": [
+      {
+        "label": "Current classes",
+        "divisions": [
+          "Junior Women's 49kg",
+          "Junior Women's 53kg",
+          "Junior Women's 57kg",
+          "Junior Women's 61kg",
+          "Junior Women's 69kg",
+          "Junior Women's 77kg",
+          "Junior Women's 86kg",
+          "Junior Women's 86+kg"
+        ]
+      },
+      {
+        "label": "2025 classes (before Aug 1, 2026)",
+        "divisions": [
+          "Junior Women's 48kg",
+          "Junior Women's 58kg",
+          "Junior Women's 63kg"
+        ]
+      }
+    ],
+    "Senior": [
+      {
+        "label": "Current classes",
+        "divisions": [
+          "Open Women's 49kg",
+          "Open Women's 53kg",
+          "Open Women's 57kg",
+          "Open Women's 61kg",
+          "Open Women's 69kg",
+          "Open Women's 77kg",
+          "Open Women's 86kg",
+          "Open Women's 86+kg"
+        ]
+      },
+      {
+        "label": "2025 classes (before Aug 1, 2026)",
+        "divisions": [
+          "Open Women's 48kg",
+          "Open Women's 58kg",
+          "Open Women's 63kg"
+        ]
+      }
+    ],
+    "Masters 35": [
+      {
+        "label": "Current classes",
+        "divisions": [
+          "Women's Masters (35-39) 49kg",
+          "Women's Masters (35-39) 53kg",
+          "Women's Masters (35-39) 57kg",
+          "Women's Masters (35-39) 61kg",
+          "Women's Masters (35-39) 69kg",
+          "Women's Masters (35-39) 77kg",
+          "Women's Masters (35-39) 86kg",
+          "Women's Masters (35-39) 86+kg"
+        ]
+      },
+      {
+        "label": "2025 classes (before Aug 1, 2026)",
+        "divisions": [
+          "Women's Masters (35-39) 48kg",
+          "Women's Masters (35-39) 58kg",
+          "Women's Masters (35-39) 63kg"
+        ]
+      }
+    ],
+    "Masters 40": [
+      {
+        "label": "Current classes",
+        "divisions": [
+          "Women's Masters (40-44) 49kg",
+          "Women's Masters (40-44) 53kg",
+          "Women's Masters (40-44) 57kg",
+          "Women's Masters (40-44) 61kg",
+          "Women's Masters (40-44) 69kg",
+          "Women's Masters (40-44) 77kg",
+          "Women's Masters (40-44) 86kg",
+          "Women's Masters (40-44) 86+kg"
+        ]
+      },
+      {
+        "label": "2025 classes (before Aug 1, 2026)",
+        "divisions": [
+          "Women's Masters (40-44) 48kg",
+          "Women's Masters (40-44) 58kg",
+          "Women's Masters (40-44) 63kg"
+        ]
+      }
+    ],
+    "Masters 45": [
+      {
+        "label": "Current classes",
+        "divisions": [
+          "Women's Masters (45-49) 49kg",
+          "Women's Masters (45-49) 53kg",
+          "Women's Masters (45-49) 57kg",
+          "Women's Masters (45-49) 61kg",
+          "Women's Masters (45-49) 69kg",
+          "Women's Masters (45-49) 77kg",
+          "Women's Masters (45-49) 86kg",
+          "Women's Masters (45-49) 86+kg"
+        ]
+      },
+      {
+        "label": "2025 classes (before Aug 1, 2026)",
+        "divisions": [
+          "Women's Masters (45-49) 48kg",
+          "Women's Masters (45-49) 58kg",
+          "Women's Masters (45-49) 63kg"
+        ]
+      }
+    ],
+    "Masters 50": [
+      {
+        "label": "Current classes",
+        "divisions": [
+          "Women's Masters (50-54) 49kg",
+          "Women's Masters (50-54) 53kg",
+          "Women's Masters (50-54) 57kg",
+          "Women's Masters (50-54) 61kg",
+          "Women's Masters (50-54) 69kg",
+          "Women's Masters (50-54) 77kg",
+          "Women's Masters (50-54) 86kg",
+          "Women's Masters (50-54) 86+kg"
+        ]
+      },
+      {
+        "label": "2025 classes (before Aug 1, 2026)",
+        "divisions": [
+          "Women's Masters (50-54) 48kg",
+          "Women's Masters (50-54) 58kg",
+          "Women's Masters (50-54) 63kg"
+        ]
+      }
+    ],
+    "Masters 55": [
+      {
+        "label": "Current classes",
+        "divisions": [
+          "Women's Masters (55-59) 49kg",
+          "Women's Masters (55-59) 53kg",
+          "Women's Masters (55-59) 57kg",
+          "Women's Masters (55-59) 61kg",
+          "Women's Masters (55-59) 69kg",
+          "Women's Masters (55-59) 77kg",
+          "Women's Masters (55-59) 86kg",
+          "Women's Masters (55-59) 86+kg"
+        ]
+      },
+      {
+        "label": "2025 classes (before Aug 1, 2026)",
+        "divisions": [
+          "Women's Masters (55-59) 48kg",
+          "Women's Masters (55-59) 58kg",
+          "Women's Masters (55-59) 63kg"
+        ]
+      }
+    ],
+    "Masters 60": [
+      {
+        "label": "Current classes",
+        "divisions": [
+          "Women's Masters (60-64) 49kg",
+          "Women's Masters (60-64) 53kg",
+          "Women's Masters (60-64) 57kg",
+          "Women's Masters (60-64) 61kg",
+          "Women's Masters (60-64) 69kg",
+          "Women's Masters (60-64) 77kg",
+          "Women's Masters (60-64) 86kg",
+          "Women's Masters (60-64) 86+kg"
+        ]
+      },
+      {
+        "label": "2025 classes (before Aug 1, 2026)",
+        "divisions": [
+          "Women's Masters (60-64) 48kg",
+          "Women's Masters (60-64) 58kg",
+          "Women's Masters (60-64) 63kg"
+        ]
+      }
+    ],
+    "Masters 65": [
+      {
+        "label": "Current classes",
+        "divisions": [
+          "Women's Masters (65-69) 49kg",
+          "Women's Masters (65-69) 53kg",
+          "Women's Masters (65-69) 57kg",
+          "Women's Masters (65-69) 61kg",
+          "Women's Masters (65-69) 69kg",
+          "Women's Masters (65-69) 77kg",
+          "Women's Masters (65-69) 86kg",
+          "Women's Masters (65-69) 86+kg"
+        ]
+      },
+      {
+        "label": "2025 classes (before Aug 1, 2026)",
+        "divisions": [
+          "Women's Masters (65-69) 48kg",
+          "Women's Masters (65-69) 58kg",
+          "Women's Masters (65-69) 63kg"
+        ]
+      }
+    ],
+    "Masters 70": [
+      {
+        "label": "Current classes",
+        "divisions": [
+          "Women's Masters (70-74) 49kg",
+          "Women's Masters (70-74) 53kg",
+          "Women's Masters (70-74) 57kg",
+          "Women's Masters (70-74) 61kg",
+          "Women's Masters (70-74) 69kg",
+          "Women's Masters (70-74) 77kg",
+          "Women's Masters (70-74) 86kg",
+          "Women's Masters (70-74) 86+kg"
+        ]
+      },
+      {
+        "label": "2025 classes (before Aug 1, 2026)",
+        "divisions": [
+          "Women's Masters (70-74) 48kg",
+          "Women's Masters (70-74) 58kg",
+          "Women's Masters (70-74) 63kg"
+        ]
+      }
+    ],
+    "Masters 75": [
+      {
+        "label": "Current classes",
+        "divisions": [
+          "Women's Masters (75-79) 49kg",
+          "Women's Masters (75-79) 53kg",
+          "Women's Masters (75-79) 57kg",
+          "Women's Masters (75-79) 61kg",
+          "Women's Masters (75-79) 69kg",
+          "Women's Masters (75-79) 77kg",
+          "Women's Masters (75-79) 86kg",
+          "Women's Masters (75-79) 86+kg"
+        ]
+      },
+      {
+        "label": "2025 classes (before Aug 1, 2026)",
+        "divisions": [
+          "Women's Masters (75-79) 48kg",
+          "Women's Masters (75-79) 58kg",
+          "Women's Masters (75-79) 63kg"
+        ]
+      }
+    ],
+    "Masters 80": [
+      {
+        "label": "Current classes",
+        "divisions": [
+          "Women's Masters (80-84) 49kg",
+          "Women's Masters (80-84) 53kg",
+          "Women's Masters (80-84) 57kg",
+          "Women's Masters (80-84) 61kg",
+          "Women's Masters (80-84) 69kg",
+          "Women's Masters (80-84) 77kg",
+          "Women's Masters (80-84) 86kg",
+          "Women's Masters (80-84) 86+kg"
+        ]
+      },
+      {
+        "label": "2025 classes (before Aug 1, 2026)",
+        "divisions": [
+          "Women's Masters (80-84) 48kg",
+          "Women's Masters (80-84) 58kg",
+          "Women's Masters (80-84) 63kg"
+        ]
+      }
+    ],
+    "Masters 85": [
+      {
+        "label": "Current classes",
+        "divisions": [
+          "Women's Masters (85-89) 49kg",
+          "Women's Masters (85-89) 53kg",
+          "Women's Masters (85-89) 57kg",
+          "Women's Masters (85-89) 61kg",
+          "Women's Masters (85-89) 69kg",
+          "Women's Masters (85-89) 77kg",
+          "Women's Masters (85-89) 86kg",
+          "Women's Masters (85-89) 86+kg"
+        ]
+      },
+      {
+        "label": "2025 classes (before Aug 1, 2026)",
+        "divisions": [
+          "Women's Masters (85-89) 48kg",
+          "Women's Masters (85-89) 58kg",
+          "Women's Masters (85-89) 63kg"
+        ]
+      }
+    ],
+    "Masters 90+": [
+      {
+        "label": "Current classes",
+        "divisions": [
+          "Women's Masters (90+) 49kg",
+          "Women's Masters (90+) 53kg",
+          "Women's Masters (90+) 57kg",
+          "Women's Masters (90+) 61kg",
+          "Women's Masters (90+) 69kg",
+          "Women's Masters (90+) 77kg",
+          "Women's Masters (90+) 86kg",
+          "Women's Masters (90+) 86+kg"
+        ]
+      },
+      {
+        "label": "2025 classes (before Aug 1, 2026)",
+        "divisions": [
+          "Women's Masters (90+) 48kg",
+          "Women's Masters (90+) 58kg",
+          "Women's Masters (90+) 63kg"
+        ]
+      }
+    ]
+  }
+}

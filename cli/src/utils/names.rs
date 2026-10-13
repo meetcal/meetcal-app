@@ -3,7 +3,9 @@
 
 use anyhow::{Error, Result, anyhow};
 use chrono::Utc;
+use serde::Deserialize;
 use serde_json::json;
+use tokio::task::JoinSet;
 
 use crate::types::meets::Meet;
 use crate::utils::backend::{NoArgs, queries, query};
@@ -16,28 +18,43 @@ const MIN_WORD_MATCH: f64 = 0.75;
 
 const HOUR_MS: i64 = 60 * 60 * 1000;
 
+/// Pages of meet names read for suggestions per name range (500 names a page).
+const SUGGESTION_PAGES: usize = 6;
+
+/// Most pages of meet names one range is read for; a server that never finishes stops here.
+pub const MAX_NAME_PAGES: usize = 100;
+
 /// What kind of name a command was given.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum NameKind {
+    /// A meet MeetCal tracks: its start list, schedule or details.
     Meet,
+    /// A meet's results: any meet in the results, tracked or not.
+    ResultsMeet,
     Club,
+    /// A WSO as registrations name it (the club and WSO reports).
     Wso,
+    /// A WSO with record sheets (`wso-records`).
+    RecordWso,
 }
 
 impl NameKind {
     fn label(self) -> &'static str {
         match self {
-            NameKind::Meet => "meet",
+            NameKind::Meet | NameKind::ResultsMeet => "meet",
             NameKind::Club => "club",
-            NameKind::Wso => "WSO",
+            NameKind::Wso | NameKind::RecordWso => "WSO",
         }
     }
 
     fn list_command(self) -> &'static str {
         match self {
             NameKind::Meet => "meetcal meets (or meetcal meets --completed)",
+            NameKind::ResultsMeet => {
+                "meetcal meets --completed, or meetcal attendance <words> for older meets"
+            }
             NameKind::Club => "meetcal clubs --search <text>",
-            NameKind::Wso => "meetcal wsos",
+            NameKind::Wso | NameKind::RecordWso => "meetcal wsos",
         }
     }
 }
@@ -64,25 +81,153 @@ pub async fn wsos() -> Result<Vec<String>> {
     query(queries::WSO_LIST, &NoArgs {}).await
 }
 
+/// Every WSO name on registrations, the names the club and WSO reports match.
+pub async fn registration_wsos() -> Result<Vec<String>> {
+    query(queries::REGISTRATION_WSOS, &NoArgs {}).await
+}
+
+#[derive(Deserialize)]
+struct NamesPage {
+    json: String,
+    next: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct MeetName {
+    meet: String,
+}
+
+/// The distinct meet names in `source` (`results` or `registrations`) after `after` and before
+/// `before` (both excluded; `None` for no bound), in name order, at most `max_pages` pages of
+/// `meets:namesPage`. More than that is an error unless `partial`, which keeps what was read.
+pub async fn meet_names_between(
+    source: &'static str,
+    after: Option<String>,
+    before: Option<String>,
+    max_pages: usize,
+    partial: bool,
+) -> Result<Vec<String>> {
+    let mut names = Vec::new();
+    let mut after = after;
+    for _ in 0..max_pages {
+        let mut args = json!({ "source": source, "after": after });
+        if let Some(before) = &before {
+            args["before"] = json!(before);
+        }
+        let page: NamesPage = query(queries::MEET_NAMES_PAGE, &args).await?;
+        let meets: Vec<MeetName> = serde_json::from_str(&page.json).map_err(|error| {
+            anyhow!("Unexpected answer from MeetCal query meets:namesPage: {error}")
+        })?;
+        names.extend(meets.into_iter().map(|m| m.meet));
+        match page.next {
+            Some(next) => after = Some(next),
+            None => return Ok(names),
+        }
+    }
+    if partial {
+        return Ok(names);
+    }
+    Err(anyhow!(
+        "MeetCal query meets:namesPage did not finish within {max_pages} pages"
+    ))
+}
+
+/// The greatest string sorting before `boundary` for our purposes: `boundary` with its last
+/// character stepped back and a high character appended, so a range `after` it includes
+/// `boundary`.
+pub fn just_before(boundary: &str) -> String {
+    let mut chars: Vec<char> = boundary.chars().collect();
+    let Some(last) = chars.pop() else {
+        return String::new();
+    };
+    let previous = char::from_u32(last as u32 - 1).unwrap_or(last);
+    chars.push(previous);
+    let mut out: String = chars.into_iter().collect();
+    out.push('\u{10FFFF}');
+    out
+}
+
+/// The name prefixes a results meet like `input` probably starts with: its first word as typed
+/// and capitalized, and those after "The ". Meet names sort by their bytes, so each prefix is a
+/// short range of `meets:namesPage` to list instead of every name.
+pub fn meet_prefixes(input: &str) -> Vec<String> {
+    let mut words = input.split_whitespace();
+    let mut first = words.next().unwrap_or_default();
+    if first.eq_ignore_ascii_case("the") {
+        first = words.next().unwrap_or_default();
+    }
+    if first.is_empty() {
+        return Vec::new();
+    }
+    let mut capitalized = first.to_lowercase();
+    if let Some(initial) = capitalized.get(..1) {
+        capitalized = initial.to_uppercase() + &capitalized[1..];
+    }
+    let mut prefixes = Vec::new();
+    for word in [first.to_string(), capitalized, first.to_uppercase()] {
+        for prefix in [format!("{word} "), format!("The {word} ")] {
+            if !prefixes.contains(&prefix) {
+                prefixes.push(prefix);
+            }
+        }
+    }
+    prefixes
+}
+
+/// Results meet names starting with any of `prefixes`, read side by side.
+async fn results_meets_with_prefixes(prefixes: Vec<String>) -> Vec<String> {
+    let mut tasks = JoinSet::new();
+    for prefix in prefixes {
+        tasks.spawn(meet_names_between(
+            "results",
+            Some(just_before(&prefix)),
+            Some(format!("{prefix}\u{10FFFF}")),
+            SUGGESTION_PAGES,
+            true,
+        ));
+    }
+    let mut names = Vec::new();
+    while let Some(result) = tasks.join_next().await {
+        if let Ok(Ok(found)) = result {
+            names.extend(found);
+        }
+    }
+    names
+}
+
 /// The age groups `wso` keeps records for.
 pub async fn wso_age_groups(wso: &str) -> Result<Vec<String>> {
     query(queries::WSO_AGE_GROUPS, &json!({ "wso": wso })).await
 }
 
-/// Every name of `kind` MeetCal knows.
-pub async fn known_names(kind: NameKind) -> Result<Vec<String>> {
+/// The names of `kind` to suggest for `input`: every one MeetCal knows, except results meets,
+/// which are too many to list (7,000 and more): those are the tracked meets plus the results
+/// meets whose names start like `input`.
+pub async fn known_names(kind: NameKind, input: &str) -> Result<Vec<String>> {
     match kind {
-        NameKind::Meet => {
+        NameKind::Meet | NameKind::ResultsMeet => {
             let upcoming = upcoming_meets().await?;
             let completed = completed_meets().await?;
-            Ok(upcoming
+            let mut names: Vec<String> = upcoming
                 .into_iter()
                 .chain(completed)
                 .map(|meet| meet.name)
-                .collect())
+                .collect();
+            if kind == NameKind::ResultsMeet {
+                names.extend(results_meets_with_prefixes(meet_prefixes(input)).await);
+            }
+            names.sort();
+            names.dedup();
+            Ok(names)
         }
         NameKind::Club => clubs().await,
-        NameKind::Wso => wsos().await,
+        // A deployment without the registrations list still has the record sheets' names, which
+        // are mostly the same.
+        NameKind::Wso => match registration_wsos().await {
+            Ok(names) => Ok(names),
+            Err(_) => wsos().await,
+        },
+        NameKind::RecordWso => wsos().await,
     }
 }
 
@@ -90,24 +235,31 @@ pub async fn known_names(kind: NameKind) -> Result<Vec<String>> {
 /// `kind` closest to it when `input` is not one of them. The suggestions are a hint; if they
 /// cannot be fetched, the message stands alone.
 pub async fn not_found(kind: NameKind, input: &str, message: String) -> Error {
-    let Ok(candidates) = known_names(kind).await else {
+    let Ok(candidates) = known_names(kind, input).await else {
         return anyhow!(message);
     };
     anyhow!(not_found_message(kind, input, &candidates, message))
 }
 
-/// `message`, with suggestions from `candidates` when `input` is not one of them.
+/// `message`, with suggestions from `candidates` unless `input` is exactly one of them (a known
+/// name with nothing to show). A name that differs from the input only in case, punctuation or
+/// spacing is suggested alone: the queries match names exactly, so it is the one to use.
 pub fn not_found_message(
     kind: NameKind,
     input: &str,
     candidates: &[String],
     message: String,
 ) -> String {
-    if candidates
-        .iter()
-        .any(|name| normalize(name) == normalize(input))
-    {
+    if candidates.iter().any(|name| name == input) {
         return message;
+    }
+    let same: Vec<&String> = candidates
+        .iter()
+        .filter(|name| normalize(name) == normalize(input))
+        .collect();
+    if !same.is_empty() {
+        let list: Vec<String> = same.iter().map(|name| format!("  {name}")).collect();
+        return format!("{message}\nDid you mean:\n{}", list.join("\n"));
     }
     let close = closest(input, candidates, MAX_SUGGESTIONS);
     if close.is_empty() {
@@ -279,8 +431,26 @@ mod tests {
     fn a_known_name_gets_no_suggestions() {
         let candidates = names(&["Florida", "Carolina"]);
         assert_eq!(
-            not_found_message(NameKind::Wso, "florida", &candidates, "No results.".into()),
+            not_found_message(NameKind::Wso, "Florida", &candidates, "No results.".into()),
             "No results."
+        );
+        // The queries match exactly, so a name differing in case only is the one to use.
+        assert_eq!(
+            not_found_message(NameKind::Wso, "florida", &candidates, "No results.".into()),
+            "No results.\nDid you mean:\n  Florida"
+        );
+        let meets = names(&[
+            "2026 Carolina WSO Championship",
+            "2025 Carolina WSO Championship",
+        ]);
+        assert_eq!(
+            not_found_message(
+                NameKind::Meet,
+                "2026 CAROLINA WSO CHAMPIONSHIP",
+                &meets,
+                "No meet.".into()
+            ),
+            "No meet.\nDid you mean:\n  2026 Carolina WSO Championship"
         );
         assert_eq!(
             not_found_message(NameKind::Wso, "Florda", &candidates, "No results.".into()),
@@ -290,6 +460,37 @@ mod tests {
             not_found_message(NameKind::Club, "zzz", &candidates, "No results.".into()),
             "No results.\nNo club is named like \"zzz\"; see meetcal clubs --search <text>."
         );
+    }
+
+    #[test]
+    fn results_meets_are_listed_from_the_input_s_first_word() {
+        assert_eq!(
+            meet_prefixes("2023 Ohio WSO Championship"),
+            ["2023 ", "The 2023 "]
+        );
+        assert_eq!(meet_prefixes("the 2023 ohio"), ["2023 ", "The 2023 "]);
+        assert_eq!(
+            meet_prefixes("ohio open"),
+            [
+                "ohio ",
+                "The ohio ",
+                "Ohio ",
+                "The Ohio ",
+                "OHIO ",
+                "The OHIO "
+            ]
+        );
+        assert!(meet_prefixes("  ").is_empty());
+        // Each prefix's range holds every name starting with it, and nothing before it.
+        let prefix = "2023 ";
+        let after = just_before(prefix);
+        let before = format!("{prefix}\u{10FFFF}");
+        for name in ["2023 Ohio WSO Championships", "2023 A"] {
+            assert!(after.as_str() < name && name < before.as_str(), "{name}");
+        }
+        for name in ["2022 Zeta", "2023", "2024 Ohio"] {
+            assert!(!(after.as_str() < name && name < before.as_str()), "{name}");
+        }
     }
 
     #[test]

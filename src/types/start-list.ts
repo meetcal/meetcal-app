@@ -1,5 +1,4 @@
 import { LiftResult } from "@/data/types/athletes";
-import type { Schedule as ScheduleType } from "@/types/schedule";
 import { useRouter } from "expo-router";
 import { Animated } from "react-native";
 
@@ -18,7 +17,6 @@ export interface ImagePreviewModalProps {
 
 export interface ShareScheduleViewProps {
     filteredAthletes: LiftResult[];
-    schedule: ScheduleType;
     selectedMeet: string;
     selectedGroup: string;
     backgroundPreset?: ShareBackgroundPresetId;
@@ -27,7 +25,7 @@ export interface ShareScheduleViewProps {
         startTime: string;
         weighInTime: string;
         displayDate: string;
-        platforms: { platform: string; platformStartTime?: string }[];
+        platforms: { platform: string; platformStartTime?: string; platformWeighInTime?: string }[];
     } | null;
 }
 
@@ -47,7 +45,7 @@ export interface SessionDetails {
     startTime: string;
     weighInTime: string;
     displayDate: string;
-    platforms: { platform: string; platformStartTime?: string }[];
+    platforms: { platform: string; platformStartTime?: string; platformWeighInTime?: string }[];
   }
   
 export interface AthleteItemProps {

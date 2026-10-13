@@ -148,4 +148,25 @@ export function calculateWeighInTime(startTime: string): string {
   if (weighInHour === 0) weighInHour = 12;
 
   return `${weighInHour}:${minutes.toString().padStart(2, "0")} ${weighInPeriod}`;
-} 
+}
+
+/**
+ * A platform-session's weigh-in: the meet's published weigh-in for that
+ * platform when there is one, otherwise `WEIGH_IN_LEAD_HOURS` before
+ * `platformStartTime`, otherwise "" (unknown).
+ *
+ * The one rule for every screen. Session details, the Saved tab, reminders,
+ * the widget and the save path computed start minus 2 h, while the Start
+ * List's calendar export took the published session-level value, so the same
+ * calendar event's weigh-in flipped with the screen it was exported from, and
+ * a meet that publishes a weigh-in other than 2 h before start was shown a
+ * time it never published.
+ */
+export function resolveWeighInTime(
+  platformStartTime: string | null | undefined,
+  publishedWeighIn: string | null | undefined,
+): string {
+  const published = typeof publishedWeighIn === "string" ? publishedWeighIn.trim() : "";
+  if (published) return published;
+  return calculateWeighInTime(platformStartTime ?? "");
+}

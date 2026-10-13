@@ -6,13 +6,12 @@ use comfy_table::Table;
 use tokio::task::JoinSet;
 
 use crate::{
-    commands::attendance::{just_before, list_range},
     types::lifting_results::LiftingResults,
     utils::{
         backend::{queries, query},
         make_rate::make_rate_tables,
         meet_names::{SPONSOR_WORDS, editions_by_year, series_name},
-        names::{NameKind, not_found},
+        names::{MAX_NAME_PAGES, NameKind, just_before, meet_names_between, not_found},
         output::{self, Report},
         stats::{
             Lift, QPOINTS_LABEL, SINCLAIR_LABEL, attempt_habits, average, bombed_out, number,
@@ -66,7 +65,7 @@ pub async fn run(args: MeetResultsArgs) -> Result<()> {
     let rows = meet_rows(&name).await?;
     if rows.is_empty() {
         let message = format!("No results found for meet \"{name}\"");
-        return Err(not_found(NameKind::Meet, &name, message).await);
+        return Err(not_found(NameKind::ResultsMeet, &name, message).await);
     }
 
     let mut years = editions_by_year(rows);
@@ -158,7 +157,13 @@ async fn edition_names(meet: &str, year: i32) -> Result<Vec<String>> {
     for prefix in name_prefixes(&series, year) {
         let after = Some(just_before(&prefix));
         let before = Some(format!("{prefix}\u{10FFFF}"));
-        tasks.spawn(list_range("results", after, before));
+        tasks.spawn(meet_names_between(
+            "results",
+            after,
+            before,
+            MAX_NAME_PAGES,
+            false,
+        ));
     }
     let mut names = Vec::new();
     while let Some(listed) = tasks.join_next().await {
@@ -290,8 +295,9 @@ fn top_table(
 }
 
 /// The report for one edition's `results`. `editions` starts with this edition, then the earlier
-/// ones found; `other_years` are the years this meet name has other results in; `history` says
-/// whether earlier editions were looked for.
+/// ones found; `other_years` are the years this meet name has other results in. With `history`
+/// (no `--no-history`) JSON and CSV always carry the `editions` table, which table format shows
+/// only when there are earlier editions to compare.
 pub fn report(
     results: &[LiftingResults],
     editions: &[EditionSummary],
@@ -399,7 +405,7 @@ pub fn report(
         .headed("make_rate_by_attempt", "MAKE RATES", by_attempt)
         .table("make_rate", by_lift);
 
-    if editions.len() > 1 {
+    if history {
         let mut history = Table::new();
         history.set_header(vec![
             "Year",
@@ -443,7 +449,11 @@ pub fn report(
                     .unwrap_or_default(),
             ]);
         }
-        report = report.headed("editions", "THIS MEET IN EARLIER YEARS", history);
+        report = if editions.len() > 1 {
+            report.headed("editions", "THIS MEET IN EARLIER YEARS", history)
+        } else {
+            report.exported("editions", history)
+        };
     }
     let mut notes = Vec::new();
     if !other_years.is_empty() {
@@ -541,15 +551,20 @@ mod tests {
             Some("Ada")
         );
 
-        let edition = EditionSummary {
+        let editions = [EditionSummary {
             meet: "M".into(),
             year: "2026".into(),
             summary,
-        };
-        let json = report(&rows, &[edition], &[], false).to_json();
+        }];
+        let json = report(&rows, &editions, &[], false).to_json();
         assert_eq!(json["heaviest_lifts"][2]["athlete"], "Ada");
         assert_eq!(json["top_sinclair"].as_array().unwrap().len(), 1);
-        assert!(json.get("editions").is_none());
+        assert!(json.get("editions").is_none(), "--no-history leaves it out");
+
+        // Asked for, the table is always exported, even with no earlier editions found.
+        let with_history = report(&rows, &editions, &[], true);
+        assert_eq!(with_history.to_json()["editions"][0]["meet"], "M");
+        assert!(!with_history.to_text().contains("EARLIER YEARS"));
     }
 
     #[test]
