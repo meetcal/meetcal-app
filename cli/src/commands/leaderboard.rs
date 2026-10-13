@@ -1,5 +1,4 @@
 use std::collections::HashMap;
-use std::io::Write;
 
 use anyhow::{Result, bail};
 use chrono::{Datelike, Utc};
@@ -15,6 +14,7 @@ use crate::utils::athletes::results_between;
 use crate::utils::format::us_date;
 use crate::utils::names::{NameKind, not_found};
 use crate::utils::output::{self, Report};
+use crate::utils::progress::Progress;
 use crate::utils::stats::{
     Division, Gender, QPOINTS_LABEL, SINCLAIR_LABEL, consistent_total, fold, number, points,
     row_qpoints, row_sinclair,
@@ -227,17 +227,9 @@ pub async fn run(args: LeaderboardArgs) -> Result<()> {
             group_rows(&memberships, &from, &to).await?,
         )
     } else {
-        let show_progress = std::io::IsTerminal::is_terminal(&std::io::stderr());
-        let rows = results_between(&from, &to, |count| {
-            if show_progress {
-                eprint!("\rReading results… {count}");
-                let _ = std::io::stderr().flush();
-            }
-        })
-        .await?;
-        if show_progress {
-            eprint!("\r\x1b[2K");
-        }
+        let mut progress = Progress::new("Reading results");
+        let rows = results_between(&from, &to, |count| progress.update(count)).await?;
+        drop(progress);
         ("all athletes".to_string(), rows)
     };
 

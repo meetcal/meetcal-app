@@ -207,10 +207,10 @@ struct PagedArgs<'a, A: Serialize + ?Sized> {
 /// One page of a paged query: its rows as JSON text, and where the next page starts.
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct Page {
-    json: String,
-    cursor: String,
-    is_done: bool,
+pub struct Page {
+    pub json: String,
+    pub cursor: String,
+    pub is_done: bool,
 }
 
 /// Runs `query` with `args` on the production deployment (or `MEETCAL_CONVEX_URL`).
@@ -280,9 +280,10 @@ where
     .await
 }
 
-/// The paging loop of [`query_all_pages_from`], over any page source: `fetch` gets `None` first,
-/// then each cursor a page returned, at most [`MAX_PAGES`] times.
-async fn collect_pages<T, F, Fut>(function: &str, mut fetch: F) -> Result<Vec<T>>
+/// The paging loop of every paged read, over any page source: `fetch` gets `None` first, then
+/// each cursor a page returned, at most [`MAX_PAGES`] times. `function` names the query in
+/// errors. A query whose page names its fields differently maps it to a [`Page`].
+pub async fn collect_pages<T, F, Fut>(function: &str, mut fetch: F) -> Result<Vec<T>>
 where
     T: DeserializeOwned,
     F: FnMut(Option<String>) -> Fut,
