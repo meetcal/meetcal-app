@@ -93,6 +93,17 @@ describe('national ranking classes', () => {
   });
 
   it.each([
+    "Open Men's 85kg",
+    "Women's 16-17 Age Group 61kg",
+    "Men's 13 Under Age Group 32kg",
+    "Women's 11 Under Age Group 30kg",
+    "Open Men's 88kg",
+    "Women's Masters (40-44) 58kg",
+  ])('know %p, current or retired on Aug 1, 2026', (division) => {
+    expect(isRankingDivision(division)).toBe(true);
+  });
+
+  it.each([
     "open men's 60kg",
     "Open Mens 60kg",
     "Open Men's 60",
