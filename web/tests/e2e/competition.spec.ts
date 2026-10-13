@@ -277,13 +277,14 @@ test("club and WSO dashboards expose meet performance metrics", async ({ page })
   await routeQuery(page, "reference:clubAthletes", (route, args) => {
     if (!("cursor" in args)) return route.fulfill(valueAnswer([{ meet: "Test Meet" }]));
     if (args.cursor === null) return route.fulfill(valueAnswer({ json: JSON.stringify([{ meet: "Test Meet" }]), cursor: "page-2", isDone: false }));
-    return route.fulfill(valueAnswer({ json: JSON.stringify([{ meet: "Older Meet" }, { meet: "Test Meet" }]), cursor: "end", isDone: true }));
+    return route.fulfill(valueAnswer({ json: JSON.stringify([{ meet: "Older Meet" }, { meet: "Test Meet" }, { meet: "Upcoming Meet" }]), cursor: "end", isDone: true }));
   });
+  // The picker lists the club's completed meets, newest first; "Upcoming Meet" has no results yet.
+  await routeQuery(page, "meets:completed", (route) => route.fulfill(textAnswer([{ ...completedMeet, name: "Older Meet", start_date: "2025-03-01", end_date: "2025-03-01" }, completedMeet])));
   await routeQuery(page, "reference:clubMeetStats", (route) => route.fulfill(valueAnswer({ total_athletes: 1, gold_medals: 1, silver_medals: 0, bronze_medals: 0, total_prs: 1, perfect_6_for_6: 0, total_weight_lifted: 225, snatch_make_rate: 67, cj_make_rate: 67, combined_make_rate: 67, athlete_results: [{ name: "Test Athlete", weight_class: "69kg", snatch_best: 100, cj_best: 125, total: 225, body_weight: 70.5, medal: "Gold", snatch_medal: "Gold", cj_medal: "Gold", total_medal: "Gold", is_pr: true, perfect_lifts: false }] })));
   await page.goto("/club-dashboard");
   await page.getByLabel("Club").selectOption("Test Barbell");
-  await expect(page.getByRole("combobox", { name: "Meet" }).locator("option", { hasText: "Older Meet" })).toHaveCount(1);
-  await expect(page.getByRole("combobox", { name: "Meet" }).locator("option", { hasText: "Test Meet" })).toHaveCount(1);
+  await expect(page.getByRole("combobox", { name: "Meet" }).locator("option")).toHaveText(["Choose a completed meet", "Test Meet", "Older Meet"]);
   await page.getByRole("combobox", { name: "Meet" }).selectOption("Test Meet");
   await expect(page.getByText("Gold medals")).toBeVisible();
   await expect(page.locator("tbody")).toContainText("Test Athlete");
@@ -291,15 +292,18 @@ test("club and WSO dashboards expose meet performance metrics", async ({ page })
   await expect(page.locator("tbody")).not.toContainText("gold");
 
   await routeQuery(page, "meets:list", (route) => route.fulfill(textAnswer([])));
-  await routeQuery(page, "meets:completed", (route) => route.fulfill(textAnswer([completedMeet])));
-  await routeQuery(page, "reference:wsoList", (route) => route.fulfill(textAnswer(["California North"])));
-  await routeQuery(page, "meets:athletes", (route) => route.fulfill(textAnswer([{ member_id: "1", meet: "Test Meet", name: "Test Athlete", age: 27, club: "Test Barbell", wso: "California North", gender: "Women", weight_class: "69kg", entry_total: 220, adaptive: false, session_number: 1, session_platform: "Red" }])));
+  // The WSO choices are the roster's own WSOs (no reference:wsoList, which only lists WSOs with record sheets).
+  const entrant = { member_id: "1", meet: "Test Meet", name: "Test Athlete", age: 27, club: "Test Barbell", wso: "California North", gender: "Female", weight_class: "69", entry_total: 220, adaptive: false, session_number: 1, session_platform: "Red" };
+  await routeQuery(page, "meets:athletes", (route) => route.fulfill(textAnswer([entrant, { ...entrant, member_id: "2", name: "Other Athlete", wso: "Tennessee" }])));
   await routeQuery(page, "results:byMeet", (route) => route.fulfill(textAnswer([completeResult])));
   await page.goto("/wso-dashboard");
   await page.getByRole("combobox", { name: "Meet" }).selectOption("Test Meet");
+  await expect(page.getByLabel("WSO").locator("option")).toHaveText(["Choose a WSO", "California North", "Tennessee"]);
   await page.getByLabel("WSO").selectOption("California North");
   await expect(page.getByText("WSO athletes")).toBeVisible();
   await expect(page.locator("tbody")).toContainText("225");
+  await expect(page.locator("tbody")).toContainText("69kg");
+  await expect(page.locator("tbody")).toContainText("Women");
 });
 
 test("wrapped builds a readable single-athlete yearly recap", async ({ page }) => {

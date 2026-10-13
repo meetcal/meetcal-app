@@ -1,12 +1,13 @@
 use super::{
-    filters::filter_options,
     format::yes_no,
     loading::{Load, LoadState, load_error, load_query, select_response},
+    models::{Meet, normalize},
     ui::{DataMetric, DataPage, DataStatus, DataTable, EmptyTableRow, FilterSelect, TableSkeleton},
 };
 use crate::utils::api::{queries, query_all_pages, query_with};
 use leptos::prelude::*;
 use serde::{Deserialize, Serialize};
+use std::collections::HashSet;
 
 #[derive(Clone, Serialize)]
 struct ClubQuery {
@@ -55,6 +56,7 @@ pub fn ClubDashboard() -> impl IntoView {
     let (club, set_club) = signal(String::new());
     let (meet, set_meet) = signal(String::new());
     let clubs = load_query::<Vec<String>>(queries::CLUBS);
+    let completed_meets = load_query::<Vec<Meet>>(queries::COMPLETED_MEETS);
     let athletes = Load::new(
         move || club.get(),
         |club| async move {
@@ -100,14 +102,21 @@ pub fn ClubDashboard() -> impl IntoView {
                         }
                     />
                     {move || if club.with(String::is_empty) { ().into_any() } else {
-                        athletes.with(|state| match state {
-                            LoadState::Loading => view! { <p class="data-status">"Loading the club’s meets…"</p> }.into_any(),
-                            LoadState::Failed(error) => load_error("club meets", error, move || athletes.retry()),
-                            LoadState::Ready(rows) => {
-                                let meets = filter_options(rows.iter().map(|row| row.meet.as_str()));
-                                view! { <FilterSelect label="Meet" placeholder="Choose a completed meet" values=meets selected=meet wide=true on_select=move |value| set_meet.set(value) /> }.into_any()
+                        athletes.with(|entries| completed_meets.with(|completed| match (entries, completed) {
+                            (LoadState::Ready(entries), LoadState::Ready(completed)) => {
+                                let meets = club_meet_choices(entries, completed);
+                                if meets.is_empty() {
+                                    view! { <p class="data-status">"This club has no completed meets yet."</p> }.into_any()
+                                } else {
+                                    view! { <FilterSelect label="Meet" placeholder="Choose a completed meet" values=meets selected=meet wide=true on_select=move |value| set_meet.set(value) /> }.into_any()
+                                }
                             }
-                        })
+                            (LoadState::Failed(error), _) | (_, LoadState::Failed(error)) => load_error("club meets", error, move || {
+                                athletes.retry_failed();
+                                completed_meets.retry_failed();
+                            }),
+                            _ => view! { <p class="data-status">"Loading the club’s meets…"</p> }.into_any(),
+                        }))
                     }}
                 </div>
             }.into_any())}
@@ -123,6 +132,32 @@ pub fn ClubDashboard() -> impl IntoView {
             }}
         </DataPage>
     }
+}
+
+/// The completed meets a club entered, newest first: the Meet picker's
+/// choices. A meet the club has only registered for has no results yet, so
+/// it is left out, as the picker's "Choose a completed meet" says.
+fn club_meet_choices(entries: &[ClubAthlete], completed: &[Meet]) -> Vec<String> {
+    let entered = entries
+        .iter()
+        .map(|entry| normalize(&entry.meet))
+        .collect::<HashSet<_>>();
+    let mut seen = HashSet::new();
+    let mut meets = completed
+        .iter()
+        .filter(|meet| {
+            let key = normalize(&meet.name);
+            entered.contains(&key) && seen.insert(key)
+        })
+        .collect::<Vec<_>>();
+    // Newest first; a tie by name, so the order is stable.
+    meets.sort_by(|left, right| {
+        right
+            .start_date
+            .cmp(&left.start_date)
+            .then_with(|| left.name.cmp(&right.name))
+    });
+    meets.into_iter().map(|meet| meet.name.clone()).collect()
 }
 
 fn medal(value: &Option<String>) -> String {
@@ -187,5 +222,41 @@ mod tests {
         let metrics = dashboard_metrics(&stats);
         assert_eq!(metrics.first(), Some(&("Athletes", "1".to_owned())));
         assert!(metrics.contains(&("Weight lifted", "225kg".to_owned())));
+    }
+
+    fn meet(name: &str, start_date: &str) -> Meet {
+        serde_json::from_value(serde_json::json!({
+            "name": name, "start_date": start_date, "end_date": start_date, "time_zone": "America/New_York",
+            "venue_city": "", "venue_name": "", "venue_state": "", "venue_street": "", "venue_zip": "",
+            "status": "completed", "venue_map_pdf_url": null, "venue_map_apple_url": null
+        }))
+        .unwrap()
+    }
+
+    fn entry(meet: &str) -> ClubAthlete {
+        ClubAthlete {
+            meet: meet.to_owned(),
+        }
+    }
+
+    #[test]
+    fn the_meet_choices_are_the_clubs_completed_meets_newest_first() {
+        let entries = [
+            entry("Arnold Open"),
+            entry("Zephyr Classic"),
+            entry("Arnold Open"),
+            entry("Upcoming Nationals"),
+            entry("  arnold   OPEN "),
+        ];
+        let completed = [
+            meet("Arnold Open", "2026-03-01"),
+            meet("Zephyr Classic", "2026-08-10"),
+            meet("Other Club's Meet", "2026-09-01"),
+        ];
+        assert_eq!(
+            club_meet_choices(&entries, &completed),
+            ["Zephyr Classic", "Arnold Open"]
+        );
+        assert!(club_meet_choices(&[entry("Upcoming Nationals")], &completed).is_empty());
     }
 }

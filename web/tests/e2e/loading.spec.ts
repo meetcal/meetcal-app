@@ -161,7 +161,7 @@ test("adaptive records keep the gender choice usable through a failed load", asy
   });
 
   await page.goto("/adaptive-records");
-  await page.getByRole("combobox", { name: /^Weight class/ }).selectOption("95");
+  await page.getByRole("combobox", { name: /^Weight class/ }).selectOption("95kg");
   await expect(page.locator("tbody tr")).toHaveCount(1);
 
   await page.getByLabel("Gender").selectOption("Women");

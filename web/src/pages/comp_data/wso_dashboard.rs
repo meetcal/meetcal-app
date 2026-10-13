@@ -2,7 +2,6 @@ use std::collections::{HashMap, HashSet};
 
 use super::{
     analytics::percentage,
-    filters::filter_options,
     format::{display_gender, display_weight_class},
     loading::{Load, LoadState, load_error, load_meet_data, load_query},
     models::{Athlete, LiftingResult, Meet, UpcomingMeetsQuery, normalize},
@@ -168,10 +167,7 @@ fn build_dashboard_data(
             })
             .or_insert(result);
     }
-    let weight_lifted = best_results
-        .values()
-        .map(|row| row.total.max(0.0))
-        .sum();
+    let weight_lifted = best_results.values().map(|row| row.total.max(0.0)).sum();
     let rows = members
         .iter()
         .map(|athlete| {
@@ -218,7 +214,11 @@ fn summarize_attempts<'a>(results: impl Iterator<Item = &'a LiftingResult>) -> A
     let mut summary = AttemptSummary::default();
     for row in results {
         for value in [row.snatch1, row.snatch2, row.snatch3] {
-            record(value, &mut summary.snatch_attempts, &mut summary.snatch_makes);
+            record(
+                value,
+                &mut summary.snatch_attempts,
+                &mut summary.snatch_makes,
+            );
         }
         for value in [row.cj1, row.cj2, row.cj3] {
             record(value, &mut summary.cj_attempts, &mut summary.cj_makes);
@@ -320,5 +320,57 @@ mod tests {
         assert_eq!(data.rows.len(), 1);
         assert_eq!(data.rows[0].name, "Alex");
         assert_eq!(data.rows[0].total, 215.0);
+    }
+
+    fn entrant(name: &str, wso: Option<&str>) -> Athlete {
+        Athlete {
+            name: name.to_owned(),
+            age: 25.0,
+            club: "Club".to_owned(),
+            wso: wso.map(str::to_owned),
+            gender: "Female".to_owned(),
+            weight_class: "69".to_owned(),
+            entry_total: 200.0,
+            adaptive: false,
+            session_number: None,
+            session_platform: None,
+        }
+    }
+
+    #[test]
+    fn athletes_count_once_and_weight_lifted_sums_best_totals() {
+        // Alex is entered in two divisions; Casey has no result yet.
+        let athletes = [
+            entrant("Alex", Some("Florida")),
+            entrant("alex", Some("Florida")),
+            entrant("Casey", Some("Florida")),
+            entrant("Blair", Some("Georgia")),
+        ];
+        let results = [
+            result("Alex", 205.0),
+            result("Alex", 215.0),
+            result("Blair", 220.0),
+        ];
+
+        let data = build_dashboard_data(&athletes, &results, "Florida");
+
+        assert_eq!(data.meet_athletes, 3);
+        assert_eq!(data.wso_athletes, 2);
+        assert_eq!(data.rows.len(), 2);
+        // Alex's best total only, as the Club Dashboard sums totals.
+        assert_eq!(data.weight_lifted, 215.0);
+    }
+
+    #[test]
+    fn the_wso_choices_are_the_rosters_own() {
+        let athletes = [
+            entrant("A", Some("Florida")),
+            entrant("B", Some(" florida ")),
+            entrant("C", Some("Carolina")),
+            entrant("D", None),
+            entrant("E", Some("")),
+        ];
+        assert_eq!(roster_wsos(&athletes), ["Carolina", "Florida"]);
+        assert!(roster_wsos(&[entrant("A", None)]).is_empty());
     }
 }
