@@ -170,48 +170,92 @@ export async function computeNationalRankingsForYear(
 
 type RankingGender = 'Men' | 'Women';
 
-/** Senior, junior and masters weight classes (`getWeightClasses` in the app, `division_options` on the website). */
-const SENIOR_WEIGHTS: Record<RankingGender, readonly string[]> = {
-  Men: ['60', '65', '71', '79', '88', '94', '110', '110+'],
-  Women: ['48', '53', '58', '63', '69', '77', '86', '86+'],
-};
-const UNDER_13_WEIGHTS: Record<RankingGender, readonly string[]> = {
-  Men: ['40', '44', '48', '52', '56', '60', '65', '65+'],
-  Women: ['36', '40', '44', '48', '53', '58', '63', '63+'],
-};
-const YOUTH_WEIGHTS: Record<string, Record<RankingGender, readonly string[]>> = {
-  '11 Under Age Group': UNDER_13_WEIGHTS,
-  '13 Under Age Group': UNDER_13_WEIGHTS,
-  '14-15 Age Group': {
-    Men: ['48', '52', '56', '60', '65', '71', '79', '79+'],
-    Women: ['40', '44', '48', '53', '58', '63', '69', '69+'],
+type ClassSet = Record<RankingGender, readonly string[]>;
+type ClassEra = { senior: ClassSet; '16-17': ClassSet; '14-15': ClassSet; under13: ClassSet };
+
+/**
+ * USAW's weight classes, newest first: senior (Open, Junior and every
+ * Masters band), 16-17, 14-15, and 13 & Under / 11 & Under. The same table,
+ * with its dates, is the app's `WEIGHT_CLASS_ERAS` (`src/constants/
+ * weight-classes.ts`), which builds the app's picker (`getWeightClasses`) and
+ * the website's (`division_groups`); a test holds this one to it.
+ */
+const CLASS_ERAS: readonly ClassEra[] = [
+  // Since Aug 1, 2026.
+  {
+    senior: {
+      Men: ['60', '65', '70', '75', '85', '95', '110', '110+'],
+      Women: ['49', '53', '57', '61', '69', '77', '86', '86+'],
+    },
+    '16-17': {
+      Men: ['55', '60', '65', '70', '75', '85', '95', '95+'],
+      Women: ['45', '49', '53', '57', '61', '69', '77', '77+'],
+    },
+    '14-15': {
+      Men: ['50', '55', '60', '65', '70', '75', '85', '95', '95+'],
+      Women: ['45', '49', '53', '57', '61', '69', '77', '77+'],
+    },
+    under13: {
+      Men: ['32', '36', '40', '45', '50', '55', '60', '65', '70', '70+'],
+      Women: ['30', '33', '37', '41', '45', '49', '53', '57', '61', '61+'],
+    },
   },
-  '16-17 Age Group': {
-    Men: ['56', '60', '65', '71', '79', '88', '94', '94+'],
-    Women: ['44', '48', '53', '58', '63', '69', '77', '77+'],
+  // Jun 1, 2025 to Jul 31, 2026.
+  {
+    senior: {
+      Men: ['60', '65', '71', '79', '88', '94', '110', '110+'],
+      Women: ['48', '53', '58', '63', '69', '77', '86', '86+'],
+    },
+    '16-17': {
+      Men: ['56', '60', '65', '71', '79', '88', '94', '94+'],
+      Women: ['44', '48', '53', '58', '63', '69', '77', '77+'],
+    },
+    '14-15': {
+      Men: ['48', '52', '56', '60', '65', '71', '79', '79+'],
+      Women: ['40', '44', '48', '53', '58', '63', '69', '69+'],
+    },
+    under13: {
+      Men: ['32', '36', '40', '44', '48', '52', '56', '60', '65', '65+'],
+      Women: ['30', '33', '36', '40', '44', '48', '53', '58', '63', '63+'],
+    },
   },
-};
+];
 const MASTERS_BANDS = ['35-39', '40-44', '45-49', '50-54', '55-59', '60-64', '65-69', '70-74', '75-79', '80-84', '85-89', '90+'];
 
 /**
- * Every current ranking division, spelled as the app and the website send it
- * (`Open Men's 60kg`, `Women's 14-15 Age Group 48kg`, `Men's Masters (35-39)
- * 79kg`). Such a class is real even before anyone has a result in it.
+ * Every ranking division the app and the website offer, current and retired
+ * classes alike, spelled as they send it (`Open Men's 85kg`, `Women's 14-15
+ * Age Group 49kg`, `Men's Masters (35-39) 79kg`). Such a class is real even
+ * before anyone has a result in it.
  */
 export const RANKING_DIVISIONS: ReadonlySet<string> = (() => {
   const divisions = new Set<string>();
-  for (const gender of ['Men', 'Women'] as const) {
-    for (const weight of SENIOR_WEIGHTS[gender]) {
-      divisions.add(`Open ${gender}'s ${weight}kg`);
-      divisions.add(`Junior ${gender}'s ${weight}kg`);
-      for (const band of MASTERS_BANDS) divisions.add(`${gender}'s Masters (${band}) ${weight}kg`);
-    }
-    for (const [group, weights] of Object.entries(YOUTH_WEIGHTS)) {
-      for (const weight of weights[gender]) divisions.add(`${gender}'s ${group} ${weight}kg`);
+  for (const era of CLASS_ERAS) {
+    for (const gender of ['Men', 'Women'] as const) {
+      for (const weight of era.senior[gender]) {
+        divisions.add(`Open ${gender}'s ${weight}kg`);
+        divisions.add(`Junior ${gender}'s ${weight}kg`);
+        for (const band of MASTERS_BANDS) divisions.add(`${gender}'s Masters (${band}) ${weight}kg`);
+      }
+      for (const weight of era['16-17'][gender]) divisions.add(`${gender}'s 16-17 Age Group ${weight}kg`);
+      for (const weight of era['14-15'][gender]) divisions.add(`${gender}'s 14-15 Age Group ${weight}kg`);
+      for (const weight of era.under13[gender]) {
+        divisions.add(`${gender}'s 13 Under Age Group ${weight}kg`);
+        divisions.add(`${gender}'s 11 Under Age Group ${weight}kg`);
+      }
     }
   }
   return divisions;
 })();
+
+/**
+ * Every weight class of one gender's divisions (senior, junior, masters and
+ * youth) in every era of `CLASS_ERAS`, as bare classes (`86+`): a start list
+ * loaded by hand can be from either side of a class change.
+ */
+export function currentWeightClasses(gender: RankingGender): ReadonlySet<string> {
+  return new Set(CLASS_ERAS.flatMap((era) => [...era.senior[gender], ...era['16-17'][gender], ...era['14-15'][gender], ...era.under13[gender]]));
+}
 
 export function isRankingDivision(ageCategory: string): boolean {
   return RANKING_DIVISIONS.has(ageCategory);
@@ -224,9 +268,10 @@ const RANKING_FEDERATIONS: ReadonlySet<string> = new Set(['USAW', 'USAMW']);
  * Rejects a ranking class nobody could mean, so a typo or the wrong case
  * answers 404 instead of an empty ranking that looks like "nobody lifted".
  * The federation must be one the clients rank or have results; the age
- * category must be a current division (`isRankingDivision`) or have results
- * under that federation (a retired class such as `Open Men's 85 kg`). A
- * current division of USAW or USAMW costs no read; anything else one or two.
+ * category must be a division the clients offer (`isRankingDivision`) or
+ * have results under that federation (an older spelling such as `Open Men's
+ * 85 kg`). An offered division of USAW or USAMW costs no read; anything else
+ * one or two.
  */
 export async function requireKnownRankingClass(ctx: QueryCtx, federation: string, ageCategory: string): Promise<void> {
   if (!RANKING_FEDERATIONS.has(federation)) {

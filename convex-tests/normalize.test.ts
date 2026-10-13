@@ -134,6 +134,21 @@ describe('meet identity helpers (#159)', () => {
   });
 });
 
+describe('one rule for a scheduled athlete (#219)', () => {
+  it('reads a session number without a platform, or a blank one, as unscheduled', () => {
+    const athlete = (name: string, session: Record<string, unknown>) => ({ _id: name, _creationTime: 1, memberId: '1', name, age: 30, club: 'C', gender: 'Women', weightClass: '64', entryTotal: 1, meet: 'M', adaptive: false, ...session });
+    const rows = joinRoster(
+      [athlete('A', { sessionNumber: 1, sessionPlatform: 'Red' }), athlete('B', { sessionNumber: 1 }), athlete('C', { sessionNumber: 1, sessionPlatform: ' ' })] as never,
+      [],
+    );
+    expect(rows.map((row) => [row.name, row.session?.session_platform ?? null])).toEqual([
+      ['A', 'Red'],
+      ['B', null],
+      ['C', null],
+    ]);
+  });
+});
+
 describe('readers before the gender migration (#165)', () => {
   it('answer athletes as Male / Female and reference rows as Men / Women, whatever is stored', async () => {
     const athlete = (gender: string) => ({ _id: gender, _creationTime: 1, memberId: '1', name: gender, age: 30, club: 'C', gender, weightClass: '64', entryTotal: 1, meet: 'M', adaptive: false });

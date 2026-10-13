@@ -9,7 +9,6 @@ import {
   getExplicitlyDownloadedMeetIds,
   getMeetData,
   isMeetExplicitlyDownloaded,
-  PACKAGE_ETAG_STORAGE_KEY,
   pruneOrphanedAthleteHistory,
   saveAthleteBestsBatch,
   saveAthleteHistoryBatch,
@@ -42,24 +41,68 @@ import {
 import { ATTEMPT_HISTORY_YEARS, getHistoryCutoffDate } from '@/utils/dateTime';
 import { devLog } from '../logger';
 import { createWriteChain } from '@/lib/data/write-chain';
+import {
+  clearPackageEtag,
+  getStoredPackageEtag,
+  savePackageEtag,
+} from './package-etags';
+import {
+  captureClearEpoch,
+  isClearRunning,
+  registerInFlightPrefetchSettler,
+  waitForClears,
+  wasClearedSince,
+  type ClearEpoch,
+} from './offline-clears';
 
-// Re-exported: callers have always read the meets list cache from here.
+// Re-exported: callers have always read the meets list cache and the package
+// ETags from here.
 export { getCachedMeetByName, getCachedMeets };
+export { clearPackageEtag, getStoredPackageEtag, savePackageEtag };
 
 const MAX_CACHED_MEETS = 3;
 const MEET_CACHE_KEY = '@meet_cache_info';
-// `/meets/package` ETag per meet, written only after a prefetch fully succeeds
-// so a partial download can never be short-circuited by a `304`. The key is
-// declared in `offline-store`, which clears it alongside the athlete history
-// the validator vouches for.
-const PACKAGE_ETAG_KEY = PACKAGE_ETAG_STORAGE_KEY;
 const TIMEOUT_LOG_THROTTLE_MS = 30000;
 
 let inFlightFetchMeets: Promise<Meet[]> | null = null;
 let warnedEmptyMeetsList = false;
 let lastFetchMeetsTimeoutLogAt = 0;
 const criticalPrefetchRequests = new Map<MeetName, Promise<void>>();
-const fullPrefetchRequests = new Map<MeetName, Promise<void>>();
+/** A running full prefetch, and the clear epoch it started in. */
+type FullPrefetchRequest = { promise: Promise<void>; startedAt: ClearEpoch };
+const fullPrefetchRequests = new Map<MeetName, FullPrefetchRequest>();
+
+/**
+ * A full prefetch stopped because the meet's data (or all athlete history)
+ * was cleared after it started: Remove, Delete All, Clear Cache or expiry.
+ * Nothing it would still have written belongs on disk any more.
+ */
+export class PrefetchCancelledError extends Error {
+  constructor(meet: MeetName) {
+    super(`Offline prefetch cancelled by a clear (${meet})`);
+    this.name = 'PrefetchCancelledError';
+  }
+}
+
+/** Throws `PrefetchCancelledError` once a clear has superseded the prefetch. */
+type CancelCheck = () => void;
+
+function cancelCheckFor(meet: MeetName, startedAt: ClearEpoch): CancelCheck {
+  return () => {
+    if (wasClearedSince(meet, startedAt)) throw new PrefetchCancelledError(meet);
+  };
+}
+
+// A clear waits here for the prefetches it superseded, which stop at their
+// next check (between requests), so nothing they write lands after it.
+registerInFlightPrefetchSettler(async (meet) => {
+  const requests =
+    meet === null
+      ? Array.from(fullPrefetchRequests.values())
+      : [fullPrefetchRequests.get(meet as MeetName)];
+  // Bounded by the downloads running at once (one per Offline Data row).
+  await Promise.all(requests.map((request) => request?.promise.catch(() => undefined)));
+});
 // Downloaded meets cache the FULL competition history for every athlete on the
 // start list. We fetch that history in sequential batches (rather than one
 // roster-wide payload) and persist one batch at a time, keeping peak memory
@@ -502,62 +545,6 @@ export async function fetchMeetByName(name: string): Promise<Meet | null> {
   }
 }
 
-// Calculate meet size
-async function readPackageEtags(): Promise<Record<string, string>> {
-  try {
-    const raw = await AsyncStorage.getItem(PACKAGE_ETAG_KEY);
-    const parsed: unknown = raw ? JSON.parse(raw) : null;
-    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
-      // Keep only usable tags, so a corrupt entry is dropped on the next
-      // write instead of being carried forward indefinitely.
-      const etags: Record<string, string> = {};
-      for (const [meet, etag] of Object.entries(parsed as Record<string, unknown>)) {
-        if (typeof etag === 'string' && etag.length > 0) etags[meet] = etag;
-      }
-      return etags;
-    }
-  } catch (error) {
-    console.error('Error reading package etags:', error);
-  }
-  return {};
-}
-
-async function writePackageEtags(etags: Record<string, string>): Promise<void> {
-  try {
-    await AsyncStorage.setItem(PACKAGE_ETAG_KEY, JSON.stringify(etags));
-  } catch (error) {
-    console.error('Error saving package etags:', error);
-  }
-}
-
-export async function getStoredPackageEtag(meet: MeetName): Promise<string | null> {
-  const etags = await readPackageEtags();
-  const etag = etags[meet];
-  return typeof etag === 'string' && etag.length > 0 ? etag : null;
-}
-
-/**
- * The ETag blob is read-modify-written by concurrent prefetches of different
- * meets and by eviction; serialized like the other per-meet blobs.
- */
-const packageEtagWrites = createWriteChain();
-
-export async function savePackageEtag(meet: MeetName, etag: string | null): Promise<void> {
-  await packageEtagWrites(async () => {
-    const etags = await readPackageEtags();
-    if (etag) {
-      etags[meet] = etag;
-    } else {
-      delete etags[meet];
-    }
-    await writePackageEtags(etags);
-  });
-}
-
-export async function clearPackageEtag(meet: MeetName): Promise<void> {
-  await savePackageEtag(meet, null);
-}
-
 // A `304` is only trustworthy while the copy it refers to is still on disk.
 // Meet data is cleared from several places (eviction, SQLITE_FULL recovery,
 // user deletion), so the validator is checked against local state rather than
@@ -631,7 +618,7 @@ export async function touchMeetAccess(meet: MeetName) {
 // transient browse cache; without this bound it accumulates until the AsyncStorage
 // SQLite store hits SQLITE_FULL.
 /** A meet whose open (critical prefetch) or download is in flight. */
-function isMeetBeingOpened(meet: MeetName): boolean {
+export function isMeetBeingOpened(meet: MeetName): boolean {
   return criticalPrefetchRequests.has(meet) || fullPrefetchRequests.has(meet);
 }
 
@@ -682,10 +669,11 @@ async function cleanupOldMeetData() {
     // only costs one full fetch).
     await clearPackageEtag(meet);
     // Checked again: an open that started during that write would queue its
-    // saves ahead of the clear. From here on there is no await before
-    // `clearMeetData` joins the meet's chain, and a save that starts later
-    // waits for the clear (they share one chain), so a meet reopened
-    // meanwhile keeps what it saves.
+    // saves ahead of the clear. From here `clearMeetData` only waits a
+    // microtask (no download of this meet is running) before it joins the
+    // meet's chain, while an open's first save follows a network round trip;
+    // a save that starts later waits for the clear (they share one chain), so
+    // a meet reopened meanwhile keeps what it saves.
     if (isMeetBeingOpened(meet)) {
       continue;
     }
@@ -718,22 +706,47 @@ export type PrefetchMeetOptions = {
 
 // Prefetch meet data. Writes over the stored copy in place and never clears
 // it first, so a failed prefetch leaves whatever was already on disk.
-export async function prefetchMeetData(meet: MeetName, options: PrefetchMeetOptions = {}) {
-  const inFlight = fullPrefetchRequests.get(meet);
-  if (inFlight) {
-    if (!options.forceHistoryRefresh) return inFlight;
+//
+// Never joins a prefetch that started before the meet was last cleared: that
+// one stops without restoring what the clear removed, and a Download (or
+// Clear Cache's re-sync) that joined it used to mark the meet downloaded with
+// nothing on disk. It is waited out and a new one runs.
+export async function prefetchMeetData(
+  meet: MeetName,
+  options: PrefetchMeetOptions = {},
+): Promise<void> {
+  // Checked again after every wait, with no await between the last check and
+  // the new request's registration below.
+  let waitedForOne = false;
+  for (;;) {
+    // A clear of this meet still running would delete what this download
+    // reads (its ETag, its roster) after it read them; start once it is done.
+    // A clear can also start while this waits for a superseded request.
+    if (isClearRunning(meet)) {
+      await waitForClears(meet);
+      continue;
+    }
+    const inFlight = fullPrefetchRequests.get(meet);
+    if (!inFlight) break;
+    const superseded = wasClearedSince(meet, inFlight.startedAt);
+    if (!superseded && (!options.forceHistoryRefresh || waitedForOne)) return inFlight.promise;
     // A background warm-up may not refresh history; let it finish (its
     // outcome is not this caller's) and then run the forced one.
-    await inFlight.catch(() => undefined);
-    const next = fullPrefetchRequests.get(meet);
-    if (next) return next;
+    await inFlight.promise.catch(() => undefined);
+    waitedForOne = true;
   }
 
-  const request = prefetchMeetDataUncached(meet, options).finally(() => {
-    fullPrefetchRequests.delete(meet);
-  });
-  fullPrefetchRequests.set(meet, request);
-  return request;
+  const startedAt = captureClearEpoch();
+  const entry: FullPrefetchRequest = {
+    startedAt,
+    promise: prefetchMeetDataUncached(meet, options, cancelCheckFor(meet, startedAt)).finally(
+      () => {
+        if (fullPrefetchRequests.get(meet) === entry) fullPrefetchRequests.delete(meet);
+      },
+    ),
+  };
+  fullPrefetchRequests.set(meet, entry);
+  return entry.promise;
 }
 
 /**
@@ -763,19 +776,22 @@ export async function prefetchMeetData(meet: MeetName, options: PrefetchMeetOpti
 async function downloadAthleteHistory(
   meet: MeetName,
   athleteNames: readonly string[],
+  throwIfCancelled: CancelCheck,
 ): Promise<string[]> {
   const failed: string[] = [];
   const deferred: string[][] = [];
   for (let i = 0; i < athleteNames.length; i += HISTORY_DOWNLOAD_BATCH_SIZE) {
     const batch = athleteNames.slice(i, i + HISTORY_DOWNLOAD_BATCH_SIZE);
-    const outcome = await downloadHistoryBatch(meet, batch);
+    const outcome = await downloadHistoryBatch(meet, batch, throwIfCancelled);
     if (outcome === 'network') deferred.push(batch);
     else if (outcome === 'failed') failed.push(...batch);
   }
   if (deferred.length > 0) {
     await wait(HISTORY_DEFERRED_RETRY_DELAY_MS);
     for (const batch of deferred) {
-      if ((await downloadHistoryBatch(meet, batch)) !== 'saved') failed.push(...batch);
+      if ((await downloadHistoryBatch(meet, batch, throwIfCancelled)) !== 'saved') {
+        failed.push(...batch);
+      }
     }
   }
   return failed;
@@ -788,7 +804,11 @@ async function downloadAthleteHistory(
 async function downloadHistoryBatch(
   meet: MeetName,
   batch: readonly string[],
+  throwIfCancelled: CancelCheck,
 ): Promise<'saved' | 'network' | 'failed'> {
+  // Checked before the request and again before the write: a clear landing
+  // in between must not get this batch written after it.
+  throwIfCancelled();
   let batchResults: SupabaseLiftResult[];
   try {
     batchResults = await fetchHistoryBatch(batch);
@@ -797,6 +817,7 @@ async function downloadHistoryBatch(
     return isNetworkFailure(historyError) ? 'network' : 'failed';
   }
 
+  throwIfCancelled();
   const resultsByName = new Map<string, SupabaseLiftResult[]>();
   for (const row of batchResults) {
     const key = normalizeAthleteName(row.name);
@@ -911,8 +932,14 @@ async function planAthleteHistory(
  *
  * @returns true when every athlete the pass set out to fetch was written.
  */
-async function runAthleteHistory(meet: MeetName, pass: HistoryPass): Promise<boolean> {
-  const failed = pass.names.length > 0 ? await downloadAthleteHistory(meet, pass.names) : [];
+async function runAthleteHistory(
+  meet: MeetName,
+  pass: HistoryPass,
+  throwIfCancelled: CancelCheck,
+): Promise<boolean> {
+  const failed =
+    pass.names.length > 0 ? await downloadAthleteHistory(meet, pass.names, throwIfCancelled) : [];
+  throwIfCancelled();
   if (failed.length > 0) {
     if (pass.fullRefresh) await writePendingHistory(meet, { names: failed, since: pass.since });
     return false;
@@ -976,7 +1003,11 @@ async function ingestMeetPackage(
   return athleteNames;
 }
 
-async function prefetchMeetDataUncached(meet: MeetName, options: PrefetchMeetOptions) {
+async function prefetchMeetDataUncached(
+  meet: MeetName,
+  options: PrefetchMeetOptions,
+  throwIfCancelled: CancelCheck,
+) {
   const errors: string[] = [];
   // Stamp the access up front too, so the meet is the most recent one for
   // as long as the download runs, not only once it has finished.
@@ -996,6 +1027,7 @@ async function prefetchMeetDataUncached(meet: MeetName, options: PrefetchMeetOpt
 
   try {
     const fetched = await fetchPackageForPrefetch(meet, historyCutoffDate);
+    throwIfCancelled();
     if (fetched.status === 'not_modified') {
       // The roster on disk proves the *package* was decomposed here, not that
       // every athlete's history survived: "Delete all offline data" and the
@@ -1010,6 +1042,7 @@ async function prefetchMeetDataUncached(meet: MeetName, options: PrefetchMeetOpt
       packageChanged = true;
     }
   } catch (error) {
+    if (error instanceof PrefetchCancelledError) throw error;
     const message = error instanceof Error ? error.message : String(error);
     if (message.includes('SQLITE_FULL')) {
       // Free the browse cache, then redo the *whole* ingest; the history
@@ -1018,7 +1051,10 @@ async function prefetchMeetDataUncached(meet: MeetName, options: PrefetchMeetOpt
       // athlete history.
       etagUpdate = null;
       try {
-        await clearImplicitMeetData(meet);
+        // Downloads still running in other rows are not browse cache yet
+        // (a meet is marked downloaded only once its download finishes).
+        await clearImplicitMeetData(meet, { skip: isMeetBeingOpened });
+        throwIfCancelled();
         const refetched = await fetchApiMeetPackageConditional(meet, historyCutoffDate, null);
         if (refetched.status !== 'fresh') {
           throw new Error(`Unexpected 304 for ${meet} without a validator`);
@@ -1034,6 +1070,7 @@ async function prefetchMeetDataUncached(meet: MeetName, options: PrefetchMeetOpt
         etagUpdate = refetched.etag;
         packageChanged = true;
       } catch (retryError) {
+        if (retryError instanceof PrefetchCancelledError) throw retryError;
         console.error('Prefetch meet package failed after cleanup retry:', { meet, error: retryError });
         errors.push('meet_package');
       }
@@ -1047,6 +1084,8 @@ async function prefetchMeetDataUncached(meet: MeetName, options: PrefetchMeetOpt
   // ETag is saved. Saved the other way round, an app killed in between came
   // back to a `304` with no pending list and planned only the gaps, leaving
   // every changed history stale until the TTL ran out.
+  // A clear during the ingest: nothing more is written, the ETag included.
+  throwIfCancelled();
   let historyPass: HistoryPass | null = null;
   if (rosterNames) {
     try {
@@ -1072,9 +1111,10 @@ async function prefetchMeetDataUncached(meet: MeetName, options: PrefetchMeetOpt
 
   if (historyPass) {
     try {
-      const complete = await runAthleteHistory(meet, historyPass);
+      const complete = await runAthleteHistory(meet, historyPass, throwIfCancelled);
       if (!complete) errors.push('athlete_history');
     } catch (historyError) {
+      if (historyError instanceof PrefetchCancelledError) throw historyError;
       console.error('Prefetch athlete history failed:', { meet, error: historyError });
       errors.push('athlete_history');
     }
@@ -1143,8 +1183,20 @@ export function warmMeetData(meet: MeetName): Promise<void> {
     const isDownloaded = await isMeetExplicitlyDownloaded(meet);
     if (!isDownloaded) return;
 
-    setTimeout(() => {
+    setTimeout(async () => {
+      // Asked again: a Remove, Delete All or Clear Cache in the meantime
+      // turns this into a full download of a meet nobody downloaded. A clear
+      // still running has not un-marked the meet yet, so it is waited out
+      // first, and one that starts while the mark is read wins.
+      await waitForClears(meet);
+      const epoch = captureClearEpoch();
+      if (!(await isMeetExplicitlyDownloaded(meet).catch(() => false))) return;
+      if (wasClearedSince(meet, epoch)) return;
       prefetchMeetData(meet).catch((error) => {
+        if (error instanceof PrefetchCancelledError) {
+          devLog('Deferred full meet prefetch stopped by a clear', { meet });
+          return;
+        }
         console.error('Deferred full meet prefetch failed:', { meet, error });
       });
     }, FULL_PREFETCH_DELAY_MS);
