@@ -1,4 +1,5 @@
-import { computeNationalRankingsForYear, computeRecords, computeWsoList, computeWsoRows } from '../convex/lib/referenceData';
+import { rosterProblems } from '../convex/lib/roster';
+import { computeNationalRankingsForYear, computeRecords, computeWsoList, computeWsoRows, currentWeightClasses } from '../convex/lib/referenceData';
 
 type Row = Record<string, unknown>;
 
@@ -181,5 +182,23 @@ describe('computeNationalRankingsForYear', () => {
       { name: 'Sidney Porter', total: 253, date: '2026-03-01' },
       { name: 'Gunner Guillory', total: 166, date: '2026-05-02' },
     ]);
+  });
+});
+
+describe('weight classes for checking a start list (#388)', () => {
+  it('hold every class of both eras of each gender, from the ranking class data', () => {
+    const men = currentWeightClasses('Men');
+    const women = currentWeightClasses('Women');
+    // Since Aug 1, 2026, and before it.
+    expect(['75', '85', '95', '110+', '89'].filter((c) => men.has(c))).toEqual(['75', '85', '95', '110+']);
+    expect(['79', '88', '94', '65+'].every((c) => men.has(c))).toBe(true);
+    expect(['49', '57', '61', '86+', '48', '58', '63', '30'].every((c) => women.has(c))).toBe(true);
+  });
+
+  it("let a hand-loaded start list's woman stored as a man be caught", () => {
+    const athlete = (gender: string, weightClass: string) => ({ name: 'Lucy Korn', memberId: '1', age: 30, gender, weightClass });
+    expect(rosterProblems([athlete('Male', '63')])).toEqual([expect.stringContaining("only the other gender's")]);
+    expect(rosterProblems([athlete('Female', '63')])).toEqual([]);
+    expect(rosterProblems([athlete('Male', '94')])).toEqual([]);
   });
 });
