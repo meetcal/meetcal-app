@@ -106,6 +106,21 @@ describe('targeted refresh', () => {
     expect(h.hints()).toHaveLength(2001);
   });
 
+  it('handles a backlog of cheap hints a page per refresh, never with a full rebuild (#215)', async () => {
+    // 2,000 athletes' results: an athlete and a name hint each.
+    const backlog = Array.from({ length: 2000 }, (_, i) => [hint('athlete', `lifter ${i}`), hint('name', `Lifter ${i}`)]).flat();
+    const h = harness({ view_hints: backlog }, builders({ syncResultNames: () => null, pendingShardChanges: () => [] }));
+    await seedMeets(h, { 'Roster Meet': { keys: ['lifter 1', 'lifter 3999'] } });
+    const first = await refresh(h);
+    expect(first).toMatchObject({ hints: 3500, more: 1, deferred: 0 });
+    expect(h.hints()).toHaveLength(500);
+    expect(h.scheduled.map((s) => s.name)).toEqual(['views:refresh']);
+    expect(await refresh(h)).toMatchObject({ hints: 500, deferred: 0 });
+    expect(h.hints()).toEqual([]);
+    expect(h.calls.some((c) => c.name === 'rebuildStage')).toBe(false);
+    expect(h.scheduled.filter((s) => s.name === 'views:rebuildStage')).toEqual([]);
+  });
+
   it('waits for a running rebuild, keeping the hints for after it', async () => {
     const h = harness(
       {

@@ -110,9 +110,22 @@ describe('readFreshView, per key', () => {
     expect(await readFreshView(unknown.ctx, meetKey('Spring Open', 'stats'))).toBeNull();
   });
 
-  it('counts roster views stale when more athlete changes are pending than it checks', async () => {
+  it("keeps a roster's views fresh whatever other athletes' results change, reading only its own keys (#216)", async () => {
+    const others = Array.from({ length: 201 }, (_, i) => ({ kind: 'athlete', key: `athlete ${String(i).padStart(3, '0')}`, since: '2020-01-01' }));
+    const { ctx, fake } = await world(others);
+    const before = fake.reads.count;
+    expect(await readFreshView(ctx, meetKey('Spring Open', 'timelines'))).not.toBeNull();
+    // The header, the keys view and one lookup per roster key: no range of others' hints.
+    expect(fake.reads.count - before).toBeLessThan(10);
+    await fake.db.insert('view_hints', { kind: 'athlete', key: 'bo diddley', since: '2024-01-01', seq: 0, updatedAt: 2 });
+    expect(await readFreshView(ctx, meetKey('Spring Open', 'timelines'))).toBeNull();
+  });
+
+  it('counts a roster too large to look up key by key stale when more athlete changes are pending than it checks', async () => {
     const hints = Array.from({ length: 201 }, (_, i) => ({ kind: 'athlete', key: `athlete ${String(i).padStart(3, '0')}`, since: '2099-01-01' }));
     const { ctx } = await world(hints);
+    const roster = Array.from({ length: 1501 }, (_, i) => `lifter ${i}`);
+    await writeView(ctx, meetKey('Spring Open', 'keys'), jsonChunks(roster), STAMP);
     expect(await readFreshView(ctx, meetKey('Spring Open', 'timelines'))).toBeNull();
     expect(await readFreshView(ctx, meetKey('Spring Open', 'schedule'))).not.toBeNull();
   });

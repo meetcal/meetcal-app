@@ -884,7 +884,7 @@ export const updateMeetStatuses = internalMutation({
     for (const status of ['upcoming', 'ongoing'] as const) {
       for (const meet of await ctx.db
         .query('meets')
-        .withIndex('by_status', (q) => q.eq('status', status))
+        .withIndex('by_status_and_start_date', (q) => q.eq('status', status))
         .collect()) {
         meets.set(meet._id, meet);
       }

@@ -231,9 +231,15 @@ function freshView<T>(ctx: QueryCtx, key: string, header: { etag: string; meta?:
 }
 
 /**
- * Pending athlete hints a freshness check compares with a roster; with more
- * pending than this (a national meet's results just landed), every view that
- * reads roster athletes' results counts as stale until the refresh catches up.
+ * Rosters up to this many athletes are checked one key at a time; a larger
+ * one reads the athlete hints as a range (MAX_ATHLETE_HINTS_CHECKED), keeping
+ * the query well under the index reads one function may make.
+ */
+const ROSTER_KEYS_LOOKED_UP = 1500;
+/**
+ * Pending athlete hints a freshness check of a roster too large to look up
+ * key by key reads; with more pending than this, its views count as stale
+ * until the refresh catches up.
  */
 const MAX_ATHLETE_HINTS_CHECKED = 200;
 
@@ -247,24 +253,36 @@ async function hintPending(ctx: QueryCtx, { kind, key }: HintId): Promise<boolea
 
 /**
  * Whether a pending athlete hint can change a meet's timelines or stats view
- * (`meta` from its header): one range read when none is pending, as almost
- * always, and the meet's roster keys only when some are.
+ * (`meta` from its header). Looks up the meet's roster keys one by one, so
+ * the query depends only on its own athletes' hints: a write about anyone
+ * else leaves its cached answer valid (#216). A roster over
+ * ROSTER_KEYS_LOOKED_UP reads the athlete hints as one range instead.
  */
 async function rosterChangePending(
   ctx: QueryCtx,
   { meet, part }: NonNullable<ViewDependencies['roster']>,
   meta: string | undefined,
 ): Promise<boolean> {
+  const roster = JSON.parse((await readViewJsonAnyAge(ctx, meetKey(meet, 'keys'))) ?? '[]') as string[];
+  if (roster.length <= ROSTER_KEYS_LOOKED_UP) {
+    const hints = await Promise.all(
+      roster.map((key) =>
+        ctx.db
+          .query('view_hints')
+          .withIndex('by_kind_key', (q) => q.eq('kind', 'athlete').eq('key', key))
+          .first(),
+      ),
+    );
+    return hints.some((hint) => hint !== null && athleteChangeAffects(part, hint.since, meta));
+  }
   const pending = await ctx.db
     .query('view_hints')
     .withIndex('by_kind_key', (q) => q.eq('kind', 'athlete'))
     .take(MAX_ATHLETE_HINTS_CHECKED + 1);
   // Past the cap, the unread hints could be anyone's.
   if (pending.length > MAX_ATHLETE_HINTS_CHECKED) return true;
-  const relevant = pending.filter((hint) => athleteChangeAffects(part, hint.since, meta));
-  if (relevant.length === 0) return false;
-  const roster = new Set(JSON.parse((await readViewJsonAnyAge(ctx, meetKey(meet, 'keys'))) ?? '[]') as string[]);
-  return relevant.some((hint) => roster.has(hint.key));
+  const keys = new Set(roster);
+  return pending.some((hint) => keys.has(hint.key) && athleteChangeAffects(part, hint.since, meta));
 }
 
 /**

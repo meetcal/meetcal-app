@@ -250,6 +250,11 @@ async function rosterDocs(ctx: QueryCtx, meet: string): Promise<Doc<'athletes'>[
     .collect();
 }
 
+/** Every roster athlete's name as stored (the names a package's year bests are for). */
+export async function rosterNames(ctx: QueryCtx, meet: string): Promise<string[]> {
+  return (await rosterDocs(ctx, meet)).map((athlete) => athlete.name);
+}
+
 function scheduleKey(sessionId: number, platform: string): string {
   return `${sessionId}\u0000${platform}`;
 }

@@ -92,9 +92,10 @@ const REFRESH_DELAY_MS = 5000;
  * More pending hints of the kinds that each cost a view build (a meet, a
  * ranking class, a table) than this and a refresh rebuilds everything
  * instead. Athlete and name hints are cheap (checked in batches), so a
- * national meet's two per new lifter do not count against it; all hints
- * together are capped at MAX_REFRESH_HINTS, which a refresh reads and deletes
- * one by one.
+ * national meet's two per new lifter do not count against it. A refresh
+ * reads at most MAX_REFRESH_HINTS hints; past that it handles those and
+ * queues another refresh at once for the rest (#215), rather than rebuild
+ * everything for a backlog of cheap hints.
  */
 const MAX_TARGETED_HINTS = 2000;
 const MAX_REFRESH_HINTS = 3500;
@@ -841,6 +842,8 @@ type RebuildPosition = {
 type RefreshBegin = {
   hints: Hint[];
   overflow: boolean;
+  /** More hints are pending than this refresh read (MAX_REFRESH_HINTS). */
+  more?: boolean;
   rebuilding: boolean;
   rebuildHeartbeat: number | null;
   rebuildPosition: RebuildPosition | null;
@@ -912,7 +915,8 @@ export const beginRefresh = internalMutation({
     const costly = rows.filter((h) => !CHEAP_HINT_KINDS.has(h.kind) && !h.retry).length;
     return {
       hints: rows.map((h) => ({ id: h._id, kind: h.kind, key: h.key, seq: h.seq ?? 0, since: h.since })),
-      overflow: (all.length > MAX_REFRESH_HINTS && !rows.every((h) => h.retry)) || costly > MAX_TARGETED_HINTS,
+      overflow: costly > MAX_TARGETED_HINTS,
+      more: all.length > MAX_REFRESH_HINTS,
       rebuilding: state?.rebuilding ?? false,
       rebuildHeartbeat: state?.rebuildHeartbeat ?? null,
       rebuildPosition: storedPosition(state?.rebuildPosition),
@@ -1529,7 +1533,15 @@ async function refreshWith(ctx: ActionCtx, begin: RefreshBegin): Promise<Record<
     await startRebuild(ctx, { again: true });
     return { full: 1 };
   }
-  return await refreshTargets(ctx, begin.hints);
+  const result = await refreshTargets(ctx, begin.hints);
+  // More hints than one refresh reads: the rest next, at once, unless this
+  // one already queued itself (deferred), or handled nothing (every hint it
+  // read failed again), which would only reread the same page.
+  if (begin.more && result.deferred === 0 && result.handled > 0) {
+    await ctx.runMutation(internal.views.queueRefresh, { delayMs: 0 });
+    return { ...result, more: 1 };
+  }
+  return result;
 }
 
 const REFERENCE_TABLES: ReadonlySet<string> = new Set(['records', 'standards', 'qualifying_totals', 'intl_rankings']);
