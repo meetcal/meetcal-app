@@ -37,6 +37,7 @@ import {
   resetOfflineClearsForTests,
   wasClearedSince,
 } from "@/lib/database/offline-clears";
+import { normalizeAthleteName } from "@/lib/athletes";
 
 /** One athlete's history, through the batch writer every caller uses. */
 const saveAthleteHistory = (name: string, results: Parameters<typeof saveAthleteHistoryBatch>[0][number]["results"]) =>
@@ -1957,6 +1958,30 @@ describe("athlete history pruning", () => {
       `${HISTORY_PREFIX}josé núñez`.normalize("NFC"),
       `${HISTORY_PREFIX}josé núñez__chunk_0`.normalize("NFC"),
     ]);
+  });
+
+  it("reads history and bests stored under a name's older, non-NFC key (#268)", async () => {
+    // A device that updates while offline cannot download again: blobs
+    // written under the pre-NFC key for a decomposed roster name must still
+    // be found for that roster name.
+    const nfd = "José Núñez".normalize("NFD");
+    const newKey = normalizeAthleteName(nfd);
+    const oldKey = nfd.toLowerCase();
+    expect(oldKey).not.toBe(newKey);
+    await saveAthleteHistoryBatch([{ name: nfd, results: [row(nfd)] }]);
+    await saveAthleteBestsBatch({ [nfd]: { snatch_best: 1, cj_best: 2, total: 3 } });
+    for (const prefix of [HISTORY_PREFIX, BESTS_PREFIX]) {
+      for (const key of Array.from(mockStorage.keys())) {
+        if (!key.startsWith(`${prefix}${newKey}`)) continue;
+        mockStorage.set(`${prefix}${oldKey}${key.slice(`${prefix}${newKey}`.length)}`, mockStorage.get(key)!);
+        mockStorage.delete(key);
+      }
+    }
+
+    await expect(findAthleteNamesWithoutHistory([nfd, "Nobody"])).resolves.toEqual(["Nobody"]);
+    await expect(getAllCachedLiftingResultsForAthlete(nfd)).resolves.toHaveLength(1);
+    const bests = await getStoredAthleteBestsForNames([nfd]);
+    expect(bests[nfd]?.bests).toEqual({ snatch_best: 1, cj_best: 2, total: 3 });
   });
 
   it("clears keys stored under a name's older, non-NFC key with the athlete (#268)", async () => {
