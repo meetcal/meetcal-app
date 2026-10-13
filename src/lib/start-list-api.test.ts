@@ -463,6 +463,52 @@ describe("preloadYearBests", () => {
     expect(mockFetchApiYearBestsByNames).toHaveBeenCalledTimes(1);
   });
 
+  // A row expanded just before the warm-up started its own lookup; the
+  // warm-up then asked for that athlete again.
+  it("joins a row's lookup already running instead of asking for that athlete again", async () => {
+    let answerRow!: (value: unknown) => void;
+    mockFetchApiYearBestsByNames
+      .mockReturnValueOnce(new Promise((resolve) => (answerRow = resolve)))
+      .mockImplementation(async (names: string[]) =>
+        Object.fromEntries(names.map((name) => [name, { bestSnatch: 1, bestCJ: 2, bestTotal: 3 }])),
+      );
+
+    const row = startListApi.getLastYearBests("B");
+    await flush();
+    const batch = startListApi.getLastYearBestsBatch(["A", "B"]);
+    await flush();
+    expect(mockFetchApiYearBestsByNames).toHaveBeenCalledTimes(2);
+    expect(mockFetchApiYearBestsByNames.mock.calls[1][0]).toEqual(["A"]);
+
+    answerRow({ B: { bestSnatch: 90, bestCJ: 110, bestTotal: 200 } });
+    await expect(row).resolves.toEqual({ bestSnatch: 90, bestCJ: 110, bestTotal: 200 });
+    await expect(batch).resolves.toEqual({
+      A: { bestSnatch: 1, bestCJ: 2, bestTotal: 3 },
+      B: { bestSnatch: 90, bestCJ: 110, bestTotal: 200 },
+    });
+  });
+
+  // A best-lift sort looks the whole roster up (16 sequential requests at a
+  // national meet); a row expanded meanwhile waited for all of them.
+  it("lets a row look itself up rather than wait for a roster-sized batch", async () => {
+    const names = Array.from({ length: 101 }, (_, i) => `Athlete ${i}`);
+    let answerBatch!: (value: unknown) => void;
+    mockFetchApiYearBestsByNames
+      .mockReturnValueOnce(new Promise((resolve) => (answerBatch = resolve)))
+      .mockResolvedValueOnce({ "Athlete 3": { bestSnatch: 90, bestCJ: 110, bestTotal: 200 } });
+
+    const batch = startListApi.getLastYearBestsBatch(names);
+    await flush();
+    await expect(startListApi.getLastYearBests("Athlete 3")).resolves.toEqual({
+      bestSnatch: 90,
+      bestCJ: 110,
+      bestTotal: 200,
+    });
+    expect(mockFetchApiYearBestsByNames).toHaveBeenCalledTimes(2);
+    answerBatch({});
+    await batch;
+  });
+
   it("swallows a failed warm-up and leaves the row to look itself up", async () => {
     mockFetchApiYearBestsByNames.mockRejectedValueOnce(new Error("offline"));
 

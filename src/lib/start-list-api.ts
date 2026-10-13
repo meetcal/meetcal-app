@@ -108,6 +108,14 @@ const lookupsInFlight = new Map<
 >();
 
 /**
+ * The largest batch a row joins: one `results:bests` request (the warm-up's
+ * size). A best-lift sort looks the whole roster up, which for a national
+ * meet is 16 sequential requests plus the store write; a row joining that
+ * waited for all of it, so it sends its own lookup instead.
+ */
+const JOINABLE_LOOKUP_MAX_NAMES = 100; // `SMALL_ROWS_NAMES_CHUNK_SIZE` in meetcal-api
+
+/**
  * One name's bests from a lookup (`lookUpAthleteBests` already stored the
  * answer). Neither the stale copy nor the downloaded meets are an answer, so
  * when the lookup failed nothing is memoized: memoizing it used to turn one
@@ -200,23 +208,55 @@ export async function getLastYearBestsBatch(names: string[]): Promise<Record<str
     if (stale) staleByName[name] = stale;
   });
 
-  const missing = uniqueNames.filter((name) => byName[name] == null);
-  if (missing.length === 0) return byName;
+  // Names a row (or another batch) is already looking up join that lookup
+  // instead of asking again. Checked after the storage read, with no await
+  // before this batch registers its own names below.
+  const joined = new Map<string, Promise<YearBests>>();
+  const missing = uniqueNames.filter((name) => {
+    if (byName[name] != null) return false;
+    const single = inFlight.get(name);
+    if (single) {
+      joined.set(name, single);
+      return false;
+    }
+    const batch = lookupsInFlight.get(name);
+    if (batch) {
+      joined.set(name, settleFromLookup(name, batch.stored, batch.lookup));
+      return false;
+    }
+    return true;
+  });
+  const settleJoined = async () => {
+    for (const [name, pending] of joined) {
+      try {
+        byName[name] = await pending;
+      } catch {
+        // That lookup's own caller hears about it; this one leaves it out.
+      }
+    }
+  };
+  if (missing.length === 0) {
+    await settleJoined();
+    return byName;
+  }
 
   const lookup = lookUpAthleteBests(missing);
-  missing.forEach((name) => lookupsInFlight.set(name, { lookup, stored: stored[name] }));
-  const forget = () => {
-    missing.forEach((name) => {
-      if (lookupsInFlight.get(name)?.lookup === lookup) lookupsInFlight.delete(name);
-    });
-  };
-  // Both branches, so a failed lookup is not also an unhandled rejection here.
-  lookup.then(forget, forget);
+  if (missing.length <= JOINABLE_LOOKUP_MAX_NAMES) {
+    missing.forEach((name) => lookupsInFlight.set(name, { lookup, stored: stored[name] }));
+    const forget = () => {
+      missing.forEach((name) => {
+        if (lookupsInFlight.get(name)?.lookup === lookup) lookupsInFlight.delete(name);
+      });
+    };
+    // Both branches, so a failed lookup is not also an unhandled rejection here.
+    lookup.then(forget, forget);
+  }
 
   let result: AthleteBestsLookup;
   try {
     result = await lookup;
   } catch (error) {
+    await settleJoined();
     // Offline or failed. The stale copies are better than nothing; with
     // none at all the caller still gets the failure. A name with no stale
     // copy is left out rather than given zeros: nothing answered that it
@@ -228,6 +268,7 @@ export async function getLastYearBestsBatch(names: string[]): Promise<Record<str
     });
     return byName;
   }
+  await settleJoined();
 
   missing.forEach((name) => {
     const answer = result.answered[name];
