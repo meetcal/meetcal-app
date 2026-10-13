@@ -107,11 +107,10 @@ describe('club and WSO athlete lists', () => {
     const rows = (await query(clubAthletes, fake.db, { club: 'Big Club' })) as { meet: string; member_id: string }[];
     expect(rows).toHaveLength(8192);
     expect(new Set(rows.map((r) => r.meet))).toEqual(new Set(['Old Meet A', 'Old Meet B', ...Array.from({ length: 40 }, (_, i) => `Meet ${i}`)]));
-    // Each meet's first entry (new 0 to 39 for the new meets), then the most
-    // recently written: new 40 to 49 are the oldest left out.
+    // An entry of each meet (the old meets' only ones), then the most recently written.
     const ids = new Set(rows.map((r) => r.member_id));
-    expect(['0', '50', 'new 0', 'new 39', 'new 50', 'new 8199'].every((id) => ids.has(id))).toBe(true);
-    expect(['1', 'new 40', 'new 49'].some((id) => ids.has(id))).toBe(false);
+    expect(['0', '50', 'new 50', 'new 8199'].every((id) => ids.has(id))).toBe(true);
+    expect(['1', 'new 0', 'new 7'].some((id) => ids.has(id))).toBe(false);
   });
 
   it('cap a WSO list for a client that does not page at the most recent registrations', async () => {
@@ -196,6 +195,43 @@ describe('one club under several spellings (#363) and its meets by date (#341)',
       cursor = page.cursor;
     }
     expect(seen.sort()).toEqual(['Al|ONG Weightlifting', 'Al|Ong Weightlifting', 'Bo|ONG weightlifting', 'Cy|ONG Weightlifting']);
+  });
+
+  it('page every spelling once even when the spellings list changes between pages', async () => {
+    const fake = await seeded();
+    type Page = { json: string; cursor: string; isDone: boolean };
+    const page1 = (await query(clubAthletes, fake.db, { club: 'Ong Weightlifting', cursor: null })) as Page;
+    const seen = (JSON.parse(page1.json) as { name: string; club: string }[]).map((r) => `${r.name}|${r.club}`);
+    // A new spelling registers and the list is rebuilt, sorting before the rest.
+    await fake.db.insert('athletes', entry('Ed', 'ONG-Weightlifting', 'Arnold'));
+    await handlerOf<{ clubs: string[]; sources: unknown }>(storeClubs)({ db: fake.db }, { clubs: [...SPELLINGS, 'ONG-Weightlifting'], sources: [{ table: 'athletes', version: 2 }] });
+    let cursor: string | null = page1.cursor;
+    for (let pages = 0; pages < 10 && !page1.isDone; pages += 1) {
+      const page = (await query(clubAthletes, fake.db, { club: 'Ong Weightlifting', cursor })) as Page;
+      seen.push(...(JSON.parse(page.json) as { name: string; club: string }[]).map((r) => `${r.name}|${r.club}`));
+      if (page.isDone) break;
+      cursor = page.cursor;
+    }
+    expect(seen.sort()).toEqual(['Al|ONG Weightlifting', 'Al|Ong Weightlifting', 'Bo|ONG weightlifting', 'Cy|ONG Weightlifting', 'Ed|ONG-Weightlifting']);
+  });
+
+  it("keep a small spelling's meet in an unpaged answer a large spelling fills, within a query's index ranges", async () => {
+    const big = Array.from({ length: 8193 }, (_, i) => entry(`Lifter ${i}`, 'Ong Weightlifting', 'Big Meet'));
+    const fake = fakeDb({ athletes: [entry('Solo', 'ONG weightlifting', 'Small Meet'), ...big], meets: [{ name: 'Small Meet', startDate: '2026-01-10', endDate: '2026-01-10' }] });
+    await handlerOf<{ clubs: string[]; sources: unknown }>(storeClubs)({ db: fake.db }, { clubs: ['Ong Weightlifting', 'ONG weightlifting'], sources: [{ table: 'athletes', version: 1 }] });
+    let queries = 0;
+    const db = { ...fake.db, query: (table: string) => (queries++, fake.db.query(table)) };
+    const rows = (await query(clubAthletes, db, { club: 'Ong Weightlifting' })) as { meet: string; meet_date: string | null }[];
+    expect(rows).toHaveLength(8192);
+    expect(rows.find((r) => r.meet === 'Small Meet')).toMatchObject({ meet_date: '2026-01-10' });
+    expect(queries).toBeLessThan(4096);
+  });
+
+  it("count a club's athletes at a meet under a spelling registered since the spellings were built", async () => {
+    const fake = await seeded();
+    await fake.db.insert('athletes', entry('Ed', 'ONG-Weightlifting', '2026 USA Masters Nationals'));
+    const stats = (await query(clubMeetStats, fake.db, { club: 'Ong Weightlifting', meet: '2026 USA Masters Nationals' })) as { total_athletes: number };
+    expect(stats.total_athletes).toBe(3);
   });
 
   it("count a club's athletes at a meet under every spelling", async () => {

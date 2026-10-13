@@ -222,6 +222,13 @@ const UNPAGED_CLUB_ATHLETE_LIMIT = 8192;
 const UNPAGED_WSO_ATHLETE_LIMIT = 30000;
 /** Meets a too-large unpaged club answer keeps one entry of: one index range each, of the 4,096 a query may use. */
 const UNPAGED_CLUB_MEET_LIMIT = 4000;
+/**
+ * Index ranges an unpaged `clubAthletes` spends at most on registrations,
+ * meet seeks and meet dates together, under the 4,096 one query may use.
+ */
+const UNPAGED_CLUB_RANGE_BUDGET = 3900;
+/** Registrations an unpaged `clubAthletes` reads at most, under the 32,000 documents one query may read. */
+const UNPAGED_CLUB_DOC_BUDGET = 24000;
 
 const athleteCursor = v.optional(v.union(v.string(), v.null()));
 
@@ -237,15 +244,19 @@ function clubAthleteRow(r: Doc<'athletes'>) {
   };
 }
 
-/** The start date of each distinct meet of `rows`, one meet read each. */
-async function meetDatesOf(ctx: QueryCtx, rows: readonly Doc<'athletes'>[]): Promise<Map<string, string | null>> {
-  const meets = [...new Set(rows.map((r) => r.meet))];
+/**
+ * The start date of the distinct meets of `rows`, one meet read each, for
+ * at most `lookups` meets (those of the most recent registrations first);
+ * the rest have none.
+ */
+async function meetDatesOf(ctx: QueryCtx, rows: readonly Doc<'athletes'>[], lookups: number): Promise<Map<string, string | null>> {
+  const meets = [...new Set([...rows].sort((a, b) => b._creationTime - a._creationTime).map((r) => r.meet))].slice(0, Math.max(0, lookups));
   const dates = await Promise.all(meets.map(async (meet) => (await meetByName(ctx, meet))?.startDate ?? null));
   return new Map(meets.map((meet, i) => [meet, dates[i]]));
 }
 
-async function clubAthleteRows(ctx: QueryCtx, rows: Doc<'athletes'>[]) {
-  const meetDates = await meetDatesOf(ctx, rows);
+async function clubAthleteRows(ctx: QueryCtx, rows: Doc<'athletes'>[], dateLookups: number) {
+  const meetDates = await meetDatesOf(ctx, rows, dateLookups);
   // The meet's first day, for listing a club's meets newest first (#341);
   // null for a roster with no meet row.
   return rows.sort(namesDescending).map((r) => ({ ...clubAthleteRow(r), meet_date: meetDates.get(r.meet) ?? null }));
@@ -253,42 +264,33 @@ async function clubAthleteRows(ctx: QueryCtx, rows: Doc<'athletes'>[]) {
 
 const namesDescending = (a: Doc<'athletes'>, b: Doc<'athletes'>) => compareCollated(b.name, a.name);
 
-/**
- * A club's registrations for a client that does not page: all of them when
- * they fit in UNPAGED_CLUB_ATHLETE_LIMIT. Past it, one entry of every meet the
- * club entered (the app lists a club's meets from this answer, so none goes
- * missing), then the most recently written for the rest.
- */
-async function unpagedClubAthletes(ctx: QueryCtx, spellings: readonly string[]): Promise<Doc<'athletes'>[]> {
-  const rows: Doc<'athletes'>[] = [];
-  for (const club of spellings) {
-    if (rows.length >= UNPAGED_CLUB_ATHLETE_LIMIT) break;
-    rows.push(...(await unpagedSpellingAthletes(ctx, club)).slice(0, UNPAGED_CLUB_ATHLETE_LIMIT - rows.length));
-  }
-  return rows;
-}
+/** What an unpaged `clubAthletes` may still read. */
+type ReadBudget = { ranges: number; docs: number };
 
-async function unpagedSpellingAthletes(ctx: QueryCtx, club: string): Promise<Doc<'athletes'>[]> {
-  const recent = await ctx.db
-    .query('athletes')
-    .withIndex('by_club', (q) => q.eq('club', club))
-    .order('desc')
-    .take(UNPAGED_CLUB_ATHLETE_LIMIT + 1);
-  if (recent.length <= UNPAGED_CLUB_ATHLETE_LIMIT) return recent;
-  const kept = new Map<string, Doc<'athletes'>>();
-  let last: string | null = null;
-  for (let i = 0; i < UNPAGED_CLUB_MEET_LIMIT; i += 1) {
-    const after: string | null = last;
-    // One index seek per meet: the club's next meet after the last one seen.
-    const row: Doc<'athletes'> | null = await ctx.db
-      .query('athletes')
-      .withIndex('by_club_and_meet', (q) => (after === null ? q.eq('club', club) : q.eq('club', club).gt('meet', after)))
-      .first();
-    if (!row) break;
-    kept.set(row._id, row);
-    last = row.meet;
+/**
+ * A club's registrations under every spelling for a client that does not
+ * page: all of them when they fit in UNPAGED_CLUB_ATHLETE_LIMIT. Past it, one
+ * entry of every meet the club entered under any spelling (the app lists a
+ * club's meets from this answer, so none goes missing), then the most
+ * recently written for the rest. Reads within `budget`, which is left with
+ * what the meet dates may use.
+ */
+async function unpagedClubAthletes(ctx: QueryCtx, spellings: readonly string[], budget: ReadBudget): Promise<Doc<'athletes'>[]> {
+  const read: Doc<'athletes'>[] = [];
+  for (const club of spellings) {
+    if (budget.ranges <= 0 || budget.docs <= 0) break;
+    read.push(...(await unpagedSpellingAthletes(ctx, club, budget)));
   }
-  for (const row of recent) {
+  const recentFirst = read.sort((a, b) => b._creationTime - a._creationTime);
+  const kept = new Map<string, Doc<'athletes'>>();
+  const meets = new Set<string>();
+  for (const row of recentFirst) {
+    if (kept.size >= UNPAGED_CLUB_ATHLETE_LIMIT) break;
+    if (meets.has(row.meet)) continue;
+    meets.add(row.meet);
+    kept.set(row._id, row);
+  }
+  for (const row of recentFirst) {
     if (kept.size >= UNPAGED_CLUB_ATHLETE_LIMIT) break;
     kept.set(row._id, row);
   }
@@ -296,22 +298,66 @@ async function unpagedSpellingAthletes(ctx: QueryCtx, club: string): Promise<Doc
 }
 
 /**
- * Where a paged `clubAthletes` is: the spelling it is reading (an index into
- * `clubSpellings`) and its cursor there. A cursor from before spellings were
- * read (a bare Convex cursor) is the first spelling's: the one asked for.
+ * One spelling's registrations: all of them when they fit in
+ * UNPAGED_CLUB_ATHLETE_LIMIT; past it, the most recent and one entry of each
+ * meet it entered (one index seek per meet, within `budget`).
  */
-function clubCursor(cursor: string | null): { spelling: number; cursor: string | null } {
-  if (cursor === null) return { spelling: 0, cursor: null };
+async function unpagedSpellingAthletes(ctx: QueryCtx, club: string, budget: ReadBudget): Promise<Doc<'athletes'>[]> {
+  budget.ranges -= 1;
+  const recent = await ctx.db
+    .query('athletes')
+    .withIndex('by_club', (q) => q.eq('club', club))
+    .order('desc')
+    .take(Math.min(UNPAGED_CLUB_ATHLETE_LIMIT + 1, budget.docs));
+  budget.docs -= recent.length;
+  if (recent.length <= UNPAGED_CLUB_ATHLETE_LIMIT) return recent;
+  const perMeet: Doc<'athletes'>[] = [];
+  let last: string | null = null;
+  for (let i = 0; i < UNPAGED_CLUB_MEET_LIMIT && budget.ranges > 0; i += 1) {
+    const after: string | null = last;
+    budget.ranges -= 1;
+    // One index seek per meet: the club's next meet after the last one seen.
+    const row: Doc<'athletes'> | null = await ctx.db
+      .query('athletes')
+      .withIndex('by_club_and_meet', (q) => (after === null ? q.eq('club', club) : q.eq('club', club).gt('meet', after)))
+      .first();
+    if (!row) break;
+    perMeet.push(row);
+    last = row.meet;
+  }
+  return [...recent, ...perMeet];
+}
+
+/**
+ * Where a paged `clubAthletes` is: the spellings it has finished, the one it
+ * is reading, and its cursor there. Spellings are named, not numbered, so a
+ * spellings list rebuilt between pages (one added or gone) neither repeats
+ * nor skips one. A cursor from before spellings were read (a bare Convex
+ * cursor) is the first spelling's: the one asked for.
+ */
+type ClubCursor = { done: string[]; spelling: string | null; cursor: string | null };
+
+function clubCursor(cursor: string | null): ClubCursor {
+  if (cursor === null) return { done: [], spelling: null, cursor: null };
   try {
     const parsed: unknown = JSON.parse(cursor);
-    if (Array.isArray(parsed) && parsed[0] === 'club' && Number.isInteger(parsed[1]) && (typeof parsed[2] === 'string' || parsed[2] === null)) {
-      return { spelling: parsed[1] as number, cursor: parsed[2] as string | null };
+    if (
+      Array.isArray(parsed) &&
+      parsed[0] === 'club' &&
+      Array.isArray(parsed[1]) &&
+      parsed[1].every((done) => typeof done === 'string') &&
+      typeof parsed[2] === 'string' &&
+      (typeof parsed[3] === 'string' || parsed[3] === null)
+    ) {
+      return { done: parsed[1] as string[], spelling: parsed[2], cursor: parsed[3] as string | null };
     }
   } catch {
     // A bare Convex cursor.
   }
-  return { spelling: 0, cursor };
+  return { done: [], spelling: null, cursor };
 }
+
+const encodeClubCursor = (done: readonly string[], spelling: string, cursor: string | null) => JSON.stringify(['club', done, spelling, cursor]);
 
 /**
  * `GET /clubs/athletes`: a club's entries across meets, names descending,
@@ -332,18 +378,26 @@ export const clubAthletes = query({
     const spellings = await clubSpellings(ctx, args.club);
     if (args.cursor !== undefined) {
       const at = clubCursor(args.cursor);
-      const club = spellings[at.spelling];
-      if (club === undefined) return { json: '[]', cursor: JSON.stringify(['club', at.spelling, null]), isDone: true };
+      const done = new Set(at.done);
+      // The spelling the cursor is in, if the list still has it; else the
+      // next one not yet read, from its start.
+      const current = at.spelling !== null && spellings.includes(at.spelling) && !done.has(at.spelling) ? at.spelling : spellings.find((s) => !done.has(s));
+      if (current === undefined) return { json: '[]', cursor: args.cursor ?? 'done', isDone: true };
+      const cursor = current === (at.spelling ?? spellings[0]) ? at.cursor : null;
       const page = await ctx.db
         .query('athletes')
-        .withIndex('by_club', (q) => q.eq('club', club))
-        .paginate({ cursor: at.cursor, numItems: ATHLETE_PAGE_SIZE });
-      const json = JSON.stringify(await clubAthleteRows(ctx, page.page));
-      const last = at.spelling + 1 >= spellings.length;
-      if (page.isDone && !last) return { json, cursor: JSON.stringify(['club', at.spelling + 1, null]), isDone: false };
-      return { json, cursor: JSON.stringify(['club', at.spelling, page.continueCursor]), isDone: page.isDone };
+        .withIndex('by_club', (q) => q.eq('club', current))
+        .paginate({ cursor, numItems: ATHLETE_PAGE_SIZE });
+      const json = JSON.stringify(await clubAthleteRows(ctx, page.page, ATHLETE_PAGE_SIZE));
+      if (!page.isDone) return { json, cursor: encodeClubCursor(at.done, current, page.continueCursor), isDone: false };
+      const finished = [...at.done, current];
+      const next = spellings.find((s) => !finished.includes(s));
+      if (next === undefined) return { json, cursor: encodeClubCursor(finished, current, page.continueCursor), isDone: true };
+      return { json, cursor: encodeClubCursor(finished, next, null), isDone: false };
     }
-    return await clubAthleteRows(ctx, await unpagedClubAthletes(ctx, spellings));
+    const budget: ReadBudget = { ranges: UNPAGED_CLUB_RANGE_BUDGET, docs: UNPAGED_CLUB_DOC_BUDGET };
+    const rows = await unpagedClubAthletes(ctx, spellings, budget);
+    return await clubAthleteRows(ctx, rows, budget.ranges);
   },
 });
 
@@ -385,16 +439,15 @@ export const clubMeetStats = query({
       const count = club_counts.filter(([name]) => clubKey(name) === key).reduce((sum, [, n]) => sum + n, 0);
       return clubStats(rows, club, count);
     }
-    const spellings = await clubSpellings(ctx, club);
-    const [rows, ...rosters] = await Promise.all([
+    // The meet's whole roster: every spelling of the club at this meet, one
+    // first registered since the spellings view was built included.
+    const [rows, roster] = await Promise.all([
       computeStatsRows(ctx, meet, club),
-      ...spellings.map((spelling) =>
-        ctx.db
-          .query('athletes')
-          .withIndex('by_club_and_meet', (q) => q.eq('club', spelling).eq('meet', meet))
-          .collect(),
-      ),
+      ctx.db
+        .query('athletes')
+        .withIndex('by_meet', (q) => q.eq('meet', meet))
+        .collect(),
     ]);
-    return clubStats(rows, club, clubAthleteCount(rosters.flat(), club));
+    return clubStats(rows, club, clubAthleteCount(roster, club));
   },
 });
