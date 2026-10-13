@@ -23,15 +23,20 @@ pub const RESULTS_PAGE_SIZE: u32 = 2000;
 pub async fn history(name: &str) -> Result<Vec<LiftingResults>> {
     let rows: Vec<LiftingResults> =
         query(queries::RESULTS_BY_NAMES, &json!({ "names": [name] })).await?;
-    let wanted = fold(name);
-    let rows: Vec<LiftingResults> = rows
-        .into_iter()
-        .filter(|row| fold(&row.name) == wanted)
-        .collect();
+    let rows = rows_named(rows, name);
     if !rows.is_empty() {
         return Ok(rows);
     }
     Err(unknown_athlete(name).await)
+}
+
+/// The rows of the athlete named `name`, by the folded name (the server's rule, so a row written
+/// with a decomposed accent still belongs to the athlete).
+pub fn rows_named(rows: Vec<LiftingResults>, name: &str) -> Vec<LiftingResults> {
+    let wanted = fold(name);
+    rows.into_iter()
+        .filter(|row| fold(&row.name) == wanted)
+        .collect()
 }
 
 /// The error for an athlete with no results, with the names MeetCal has that are closest to
@@ -137,6 +142,28 @@ pub async fn results_between(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn rows_written_with_a_decomposed_accent_belong_to_the_athlete() {
+        use crate::utils::stats::tests::row;
+        let lift = |name: &str| {
+            row(
+                name,
+                "2026-01-01",
+                "M",
+                "Open Women's 64kg",
+                63.0,
+                [80.0, 0.0, 0.0],
+                [100.0, 0.0, 0.0],
+            )
+        };
+        let rows = vec![
+            lift("Ze\u{301}lie Martin"),
+            lift("Zélie Martin"),
+            lift("Zelie Martin"),
+        ];
+        assert_eq!(rows_named(rows, "zélie  martin").len(), 2);
+    }
 
     #[test]
     fn search_pieces_survive_a_typo_in_any_word() {

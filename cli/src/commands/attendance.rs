@@ -8,9 +8,12 @@ use serde::Deserialize;
 use serde_json::json;
 use tokio::task::JoinSet;
 
+use crate::types::lifting_results::LiftingResults;
 use crate::utils::backend::{queries, query};
 use crate::utils::format::{date_range, us_date};
+use crate::utils::meet_names::{editions_by_year, equivalent_meets};
 use crate::utils::output::{self, Report};
+use crate::utils::stats::fold;
 
 /// Meets `meets:attendance` counts per call (its limit).
 pub const ATTENDANCE_BATCH: usize = 8;
@@ -126,7 +129,8 @@ pub fn matches(meet: &str, words: &[String], exclude: &[String]) -> bool {
     })
 }
 
-async fn list_range(
+/// Every meet name of `source` after `from` and before `before` (both exclusive).
+pub(crate) async fn list_range(
     source: &'static str,
     from: Option<String>,
     before: Option<String>,
@@ -191,7 +195,7 @@ async fn all_meet_names() -> Result<Vec<String>> {
 
 /// The greatest string sorting before `boundary` for our purposes: `boundary` with its last
 /// character stepped back and a high character appended, so `after` it includes `boundary`.
-fn just_before(boundary: &str) -> String {
+pub(crate) fn just_before(boundary: &str) -> String {
     let mut chars: Vec<char> = boundary.chars().collect();
     let last = chars.pop().expect("boundaries are not empty");
     let previous = char::from_u32(last as u32 - 1).unwrap_or(last);
@@ -221,13 +225,103 @@ pub async fn run(args: AttendanceArgs) -> Result<()> {
     let mut editions: Vec<Edition> = Vec::new();
     for batch in matched.chunks(ATTENDANCE_BATCH) {
         let answer: Answer = query(queries::MEET_ATTENDANCE, &json!({ "meets": batch })).await?;
-        editions.extend(serde_json::from_str::<Vec<Edition>>(&answer.json)?);
+        for edition in serde_json::from_str::<Vec<Edition>>(&answer.json)? {
+            if edition.spans_years() {
+                // A name used every year: `meets:attendance` counts every year's results as one
+                // meet, so count each year from the results themselves.
+                let rows: Vec<LiftingResults> =
+                    query(queries::MEET_RESULTS, &json!({ "meet": edition.meet })).await?;
+                editions.extend(split_by_year(&edition, rows));
+            } else {
+                editions.push(edition);
+            }
+        }
     }
     output::emit(report(&search, &editions));
     Ok(())
 }
 
+impl Edition {
+    /// Whether the name's results come from more than one year, so it is several editions.
+    fn spans_years(&self) -> bool {
+        match (&self.first_date, &self.last_date) {
+            (Some(first), Some(last)) => first.get(..4) != last.get(..4),
+            _ => false,
+        }
+    }
+}
+
+/// `edition` (a meet name held in several years) as one edition per year of its results `rows`:
+/// each year's distinct lifters and dates. Its registrations and meet dates, which MeetCal keeps
+/// for one meet per name, go to the year of the meet's start date, else the latest.
+pub fn split_by_year(edition: &Edition, rows: Vec<LiftingResults>) -> Vec<Edition> {
+    let years = editions_by_year(rows);
+    let registered_year = edition
+        .start_date
+        .as_deref()
+        .and_then(|date| date.get(..4))
+        .filter(|year| years.contains_key(*year))
+        .or_else(|| years.keys().last().map(String::as_str))
+        .map(str::to_string);
+    years
+        .iter()
+        .map(|(year, rows)| {
+            let lifters: std::collections::HashSet<String> =
+                rows.iter().map(|row| fold(&row.name)).collect();
+            let first_date = rows.iter().map(|row| row.date.clone()).min();
+            let last_date = rows.iter().map(|row| row.date.clone()).max();
+            let registered = registered_year.as_deref() == Some(year.as_str());
+            Edition {
+                meet: edition.meet.clone(),
+                lifters: lifters.len(),
+                registrations: if registered { edition.registrations } else { 0 },
+                first_date,
+                last_date,
+                start_date: edition.start_date.clone().filter(|_| registered),
+                end_date: edition.end_date.clone().filter(|_| registered),
+                status: edition.status.clone().filter(|_| registered),
+            }
+        })
+        .collect()
+}
+
+/// Editions with each registrations-only name folded into the results edition of the same
+/// event: the same name in another case or punctuation, or a combined national-week
+/// registration whose results are published under the separate championships
+/// ([`equivalent_meets`]). Its registrations show in that edition's "Registered" column, and the
+/// year counts the results. A registrations-only edition with no such twin stays as it is.
+pub fn merge_registrations(editions: &[Edition]) -> Vec<Edition> {
+    let mut merged: Vec<Edition> = editions
+        .iter()
+        .filter(|edition| edition.lifters > 0 || edition.registrations == 0)
+        .cloned()
+        .collect();
+    for registration in editions
+        .iter()
+        .filter(|edition| edition.lifters == 0 && edition.registrations > 0)
+    {
+        let twin = merged.iter_mut().find(|results| {
+            results.lifters > 0
+                && results.year() == registration.year()
+                && equivalent_meets(&registration.meet, &results.meet)
+        });
+        match twin {
+            Some(results) => {
+                results.registrations = results.registrations.max(registration.registrations);
+                if results.start_date.is_none() {
+                    results.start_date = registration.start_date.clone();
+                    results.end_date = registration.end_date.clone();
+                    results.status = registration.status.clone();
+                }
+            }
+            None => merged.push(registration.clone()),
+        }
+    }
+    merged
+}
+
 pub fn report(search: &str, editions: &[Edition]) -> Report {
+    let editions = merge_registrations(editions);
     let mut sorted: Vec<&Edition> = editions.iter().collect();
     sorted.sort_by(|a, b| {
         a.year()
@@ -449,5 +543,109 @@ mod tests {
         let editions = json["editions"].as_array().unwrap();
         assert_eq!(editions[2]["status"], "Registrations only (upcoming)");
         assert_eq!(editions[0]["registered"], "—");
+    }
+
+    #[test]
+    fn a_name_held_every_year_counts_each_year() {
+        use crate::utils::stats::tests::row;
+        let lift = |name: &str, date: &str| {
+            row(
+                name,
+                date,
+                "Testify Leprechaun Lift-off",
+                "Open Men's 89kg",
+                88.0,
+                [100.0, 0.0, 0.0],
+                [120.0, 0.0, 0.0],
+            )
+        };
+        let merged = Edition {
+            meet: "Testify Leprechaun Lift-off".into(),
+            lifters: 3,
+            registrations: 0,
+            first_date: Some("2018-03-10".into()),
+            last_date: Some("2024-03-16".into()),
+            start_date: None,
+            end_date: None,
+            status: None,
+        };
+        assert!(merged.spans_years());
+        let editions = split_by_year(
+            &merged,
+            vec![
+                lift("Ada", "2018-03-10"),
+                lift("Bo", "2018-03-10"),
+                lift("Ada", "2024-03-16"),
+                lift("ADA", "2024-03-17"),
+            ],
+        );
+        assert_eq!(editions.len(), 2);
+        assert_eq!(editions[0].year().as_deref(), Some("2018"));
+        assert_eq!(editions[0].lifters, 2);
+        assert_eq!(editions[1].lifters, 1);
+        assert_eq!(editions[1].last_date.as_deref(), Some("2024-03-17"));
+        let json = report("testify", &editions).to_json();
+        assert_eq!(json["by_year"][1]["change"], "-1 (-50.0%)");
+    }
+
+    #[test]
+    fn registrations_under_another_spelling_join_their_results() {
+        let editions = vec![
+            edition(
+                "2026 VIRUS Weightlifting Series 1",
+                0,
+                1382,
+                None,
+                Some("2026-03-05"),
+            ),
+            edition(
+                "2026 Virus Weightlifting Series 1",
+                1291,
+                0,
+                Some("2026-03-05"),
+                None,
+            ),
+            edition(
+                "2026 Virus Weightlifting Series 2, Powered by Rogue Fitness",
+                573,
+                677,
+                Some("2026-09-13"),
+                Some("2026-09-13"),
+            ),
+            edition(
+                "2026 Masters National Championships & National University Championships",
+                0,
+                1071,
+                None,
+                Some("2026-04-09"),
+            ),
+            edition(
+                "The 2026 USA Weightlifting Masters National Championships Powered by Rogue Fitness",
+                504,
+                0,
+                Some("2026-04-09"),
+                None,
+            ),
+            edition(
+                "2026 Ohio WSO Championships",
+                0,
+                160,
+                None,
+                Some("2026-10-10"),
+            ),
+        ];
+        let json = report("virus", &editions).to_json();
+        let by_year = json["by_year"].as_array().unwrap();
+        assert_eq!(by_year[0]["meets"], 4);
+        // 1291 + 573 + 504 with results, and 160 registered where no results exist yet.
+        assert_eq!(by_year[0]["athletes"], 2528);
+        let rows = json["editions"].as_array().unwrap();
+        assert_eq!(rows.len(), 4);
+        let series_1 = rows
+            .iter()
+            .find(|row| row["meet"] == "2026 Virus Weightlifting Series 1")
+            .unwrap();
+        assert_eq!(series_1["registered"], 1382);
+        assert_eq!(series_1["status"], "Results in");
     }
 }

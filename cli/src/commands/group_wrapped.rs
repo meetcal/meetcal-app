@@ -310,12 +310,9 @@ fn format_number(value: f64) -> String {
     }
 }
 
+/// The shared name rule, `stats::fold` (Unicode NFC, case and spacing ignored).
 pub fn normalize(value: &str) -> String {
-    value
-        .split_whitespace()
-        .collect::<Vec<_>>()
-        .join(" ")
-        .to_lowercase()
+    crate::utils::stats::fold(value)
 }
 
 #[cfg(test)]

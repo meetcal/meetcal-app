@@ -2,6 +2,8 @@
 
 use std::collections::HashMap;
 
+use unicode_normalization::UnicodeNormalization;
+
 use crate::types::lifting_results::LiftingResults;
 
 /// Sinclair coefficients (IWF, 2021–2024 cycle; the latest set the IWF has published that we could
@@ -344,9 +346,13 @@ pub fn chronological(rows: &[LiftingResults]) -> Vec<&LiftingResults> {
     sorted
 }
 
-/// Lowercase, single-spaced: how names and meets are matched.
+/// Unicode NFC, lowercase, single-spaced: how names and meets are matched. The server keys names
+/// the same way (`normalizeName` in `convex/lib/names.ts`), since sources send both a composed
+/// "é" and an "e" with a combining accent.
 pub fn fold(value: &str) -> String {
     value
+        .nfc()
+        .collect::<String>()
         .split_whitespace()
         .collect::<Vec<_>>()
         .join(" ")
@@ -629,6 +635,13 @@ pub(crate) mod tests {
             }
         );
         assert_eq!(flags[2].marks(), "CJ T");
+    }
+
+    #[test]
+    fn fold_composes_accents_like_the_server() {
+        // "José" written with a combining acute accent (NFD) and with "é" (NFC).
+        assert_eq!(fold("Jose\u{301}  Garci\u{301}a"), fold("JOSÉ García"));
+        assert_eq!(fold(" Jane   Doe "), "jane doe");
     }
 
     #[test]

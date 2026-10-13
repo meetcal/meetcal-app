@@ -16,7 +16,7 @@ use crate::types::wso::Movement;
 use crate::utils::athletes::histories;
 use crate::utils::backend::{queries, query};
 use crate::utils::format::us_date;
-use crate::utils::meet_names::equivalent_meets;
+use crate::utils::meet_names::{editions_by_year, equivalent_meets};
 use crate::utils::names::{NameKind, not_found};
 use crate::utils::output::{self, Report};
 use crate::utils::stats::{
@@ -136,14 +136,19 @@ async fn medals_by_year(
     memberships: &[ClubMembership],
     group_rows: &[LiftingResults],
 ) -> Result<BTreeMap<String, [usize; 3]>> {
-    let mut meets: Vec<(String, String)> = Vec::new();
+    // One entry per meet edition: a meet name held every year is a separate meet each year.
+    let mut meets: BTreeMap<String, (String, Vec<String>)> = BTreeMap::new();
     for row in group_rows {
-        if !meets.iter().any(|(meet, _)| fold(meet) == fold(&row.meet)) {
-            meets.push((row.meet.clone(), year(&row.date)));
+        let (_, years) = meets
+            .entry(fold(&row.meet))
+            .or_insert_with(|| (row.meet.clone(), Vec::new()));
+        let row_year = year(&row.date);
+        if !years.contains(&row_year) {
+            years.push(row_year);
         }
     }
     let mut medals: BTreeMap<String, [usize; 3]> = BTreeMap::new();
-    for (meet, meet_year) in meets {
+    for (meet, years) in meets.into_values() {
         let members: Vec<String> = memberships
             .iter()
             .filter(|m| equivalent_meets(&m.meet, &meet))
@@ -152,9 +157,15 @@ async fn medals_by_year(
         // `meet` is a results meet already (the group's rows name it), so no aliases.
         let meet_rows: Vec<LiftingResults> =
             query(queries::MEET_RESULTS, &json!({ "meet": meet })).await?;
-        for detail in calculate_medal_details(&members, &meet_rows) {
-            if detail.movement == Movement::Total && (1..=3).contains(&detail.place) {
-                medals.entry(meet_year.clone()).or_default()[detail.place - 1] += 1;
+        let mut editions = editions_by_year(meet_rows);
+        for meet_year in years {
+            let Some(edition) = editions.remove(&meet_year) else {
+                continue;
+            };
+            for detail in calculate_medal_details(&members, &edition) {
+                if detail.movement == Movement::Total && (1..=3).contains(&detail.place) {
+                    medals.entry(meet_year.clone()).or_default()[detail.place - 1] += 1;
+                }
             }
         }
     }
