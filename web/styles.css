@@ -82,12 +82,18 @@ body::before {
     mask-image: linear-gradient(#000 15%, transparent 78%);
 }
 
-main {
+/* The page frame: header, main and footer are siblings here, so each is its
+   own landmark. */
+.site-shell {
     text-align: center;
     padding: 0 20px 0;
     max-width: 100%;
     overflow-x: hidden;
     counter-reset: feature;
+}
+
+main {
+    display: block;
 }
 
 button {
@@ -370,6 +376,24 @@ a {
     font: inherit;
 }
 
+/* iOS Safari zooms into any focused field under 16px and stays zoomed, so on
+   phones and touch screens the data pages' fields are at least 16px (#391). */
+@media (max-width: 880px), (pointer: coarse) {
+    .data-filter { font-size: max(16px, 1rem); }
+}
+
+.visually-hidden {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    padding: 0;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+    border: 0;
+}
+
 .data-filter:focus { outline: 2px solid color-mix(in srgb, var(--accent) 45%, transparent); border-color: var(--accent); }
 .data-filters { display: flex; flex-wrap: wrap; gap: 12px; }
 .data-filters label { display: grid; gap: 5px; color: var(--text-secondary); font-size: 0.82rem; font-weight: 700; }
@@ -450,21 +474,20 @@ a {
 .meet-search { position: relative; width: min(620px, 100%); }
 .meet-search > label { display: block; margin-bottom: 5px; color: var(--text-secondary); font-size: 0.82rem; font-weight: 700; }
 .meet-search .data-filter { width: 100%; }
-.meet-suggestions { position: absolute; z-index: 5; top: calc(100% + 6px); width: 100%; overflow: hidden; border: 1px solid var(--border); border-radius: 10px; background: var(--card); box-shadow: var(--shadow); }
-.meet-suggestions button { display: block; width: 100%; padding: 11px 13px; border-bottom: 1px solid var(--border); color: var(--text); text-align: left; }
-.meet-suggestions button:last-child { border-bottom: 0; }
-.meet-suggestions button:hover, .meet-suggestions button:focus { background: color-mix(in srgb, var(--accent) 10%, var(--card)); }
-.meet-suggestions p { margin: 0; padding: 11px 13px; color: var(--text-secondary); }
+/* The athlete and meet comboboxes' dropdowns (src/pages/comp_data/combobox.rs). */
+.meet-suggestions, .athlete-suggestions { position: absolute; z-index: 6; top: calc(100% + 6px); left: 0; width: 100%; overflow: hidden; border: 1px solid var(--border); border-radius: 10px; background: var(--card); box-shadow: var(--shadow-lg); text-align: left; }
+.meet-suggestions[hidden], .athlete-suggestions[hidden], .meet-suggestions ul[hidden], .athlete-suggestions ul[hidden] { display: none; }
+.meet-suggestions ul, .athlete-suggestions ul { margin: 0; padding: 0; list-style: none; }
+.meet-suggestions li, .athlete-suggestions li { padding: 11px 13px; border-bottom: 1px solid var(--border); color: var(--text); cursor: pointer; }
+.meet-suggestions li:last-child, .athlete-suggestions li:last-child { border-bottom: 0; }
+.meet-suggestions li:hover, .athlete-suggestions li:hover, .meet-suggestions li[aria-selected="true"], .athlete-suggestions li[aria-selected="true"] { background: color-mix(in srgb, var(--accent) 12%, var(--card)); }
+.meet-suggestions li[aria-selected="true"], .athlete-suggestions li[aria-selected="true"] { box-shadow: inset 3px 0 0 var(--accent); }
+.meet-suggestions p, .athlete-suggestions p { margin: 0; padding: 11px 13px; color: var(--text-secondary); }
 .data-athlete-link { color: var(--accent); font-weight: 700; text-decoration: none; }
 .data-athlete-link:hover { text-decoration: underline; }
 .athlete-autocomplete { position: relative; display: grid; gap: 5px; }
 .athlete-autocomplete > label { color: var(--text-secondary); font-size: 0.82rem; font-weight: 700; }
 .athlete-autocomplete .data-filter { width: 100%; }
-.athlete-suggestions { position: absolute; z-index: 6; top: calc(100% + 6px); width: 100%; overflow: hidden; border: 1px solid var(--border); border-radius: 10px; background: var(--card); box-shadow: var(--shadow); }
-.athlete-suggestions button { display: block; width: 100%; padding: 11px 13px; border-bottom: 1px solid var(--border); color: var(--text); text-align: left; }
-.athlete-suggestions button:last-child { border-bottom: 0; }
-.athlete-suggestions button:hover, .athlete-suggestions button:focus { background: color-mix(in srgb, var(--accent) 10%, var(--card)); }
-.athlete-suggestions p { margin: 0; padding: 11px 13px; color: var(--text-secondary); }
 
 .header-actions {
     display: flex;
@@ -1674,7 +1697,7 @@ main > div:has(> h4) > p {
     line-height: 1.65;
 }
 
-main main:not(.features-page) {
+.legal-page {
     display: block;
     text-align: left;
     max-width: 740px;
@@ -1687,48 +1710,86 @@ main main:not(.features-page) {
     overflow-x: visible;
 }
 
-main main:not(.features-page) h1 {
+.legal-page h1 {
     font-size: clamp(1.8rem, 4vw, 2.4rem);
     font-weight: 800;
     letter-spacing: -0.035em;
     margin: 0 0 4px;
 }
 
-main main:not(.features-page) h1 + div > p:first-of-type,
-main main:not(.features-page) h1 ~ div > p:first-child {
+.legal-page h1 + div > p:first-of-type,
+.legal-page h1 ~ div > p:first-child {
     color: var(--text-secondary);
     font-size: 0.9rem;
 }
 
-main main:not(.features-page) h2 {
+.legal-page h2 {
     font-size: 1.22rem;
     font-weight: 700;
     letter-spacing: -0.015em;
     margin: 38px 0 8px;
 }
 
-main main:not(.features-page) p {
+.legal-page p {
     margin: 0 0 14px;
     color: var(--text);
     font-size: 0.98rem;
 }
 
-main main:not(.features-page) ul,
-main main:not(.features-page) ol {
+.legal-page ul,
+.legal-page ol {
     margin: 0 0 14px;
     padding-left: 22px;
 }
 
-main main:not(.features-page) li {
+.legal-page li {
     margin-bottom: 6px;
 }
 
-main main:not(.features-page) a {
+.legal-page a {
     color: var(--accent);
 }
 
-main main:not(.features-page) a:hover {
+.legal-page a:hover {
     text-decoration: underline;
+}
+
+.not-found {
+    padding: clamp(48px, 10vh, 96px) 0;
+}
+
+.not-found h1 {
+    margin: 0 0 10px;
+    font-size: clamp(1.8rem, 4vw, 2.4rem);
+    letter-spacing: -0.035em;
+}
+
+.not-found p {
+    margin: 0 0 22px;
+    color: var(--text-secondary);
+}
+
+.not-found-links {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 12px;
+}
+
+.not-found-links a {
+    display: inline-flex;
+    align-items: center;
+    min-height: 44px;
+    padding: 10px 20px;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    background: var(--card);
+    color: var(--accent);
+    font-weight: 650;
+}
+
+.not-found-links a:hover {
+    border-color: var(--accent);
 }
 
 /* ---------- Small screens ---------- */
