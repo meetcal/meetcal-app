@@ -138,8 +138,10 @@ async function readNat(ctx: ActionCtx, args: { federation: string; ageCategory: 
     const page: { rows: RankedTotal[]; cursor: string; isDone: boolean; sources: SourceVersion[] } =
       await ctx.runQuery(internal.views.natPage, { ...args, cursor });
     sources ??= page.sources;
+    // One athlete under two spellings across pages is one ranking row (#217).
     for (const row of page.rows) {
-      if ((best.get(row.name)?.total ?? -Infinity) < row.total) best.set(row.name, row);
+      const key = normalizeName(row.name);
+      if ((best.get(key)?.total ?? -Infinity) < row.total) best.set(key, row);
     }
     if (page.isDone) return { rows: bestTotalPerAthlete(best.values()), sources };
     cursor = page.cursor;
