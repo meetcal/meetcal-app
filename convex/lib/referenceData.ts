@@ -248,6 +248,14 @@ export const RANKING_DIVISIONS: ReadonlySet<string> = (() => {
   return divisions;
 })();
 
+/**
+ * Every weight class of the current divisions (senior, junior, masters and
+ * youth) of one gender, as bare classes (`86+`).
+ */
+export function currentWeightClasses(gender: RankingGender): ReadonlySet<string> {
+  return new Set([...SENIOR_WEIGHTS[gender], ...Object.values(YOUTH_WEIGHTS).flatMap((weights) => weights[gender])]);
+}
+
 export function isRankingDivision(ageCategory: string): boolean {
   return RANKING_DIVISIONS.has(ageCategory);
 }

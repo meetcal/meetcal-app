@@ -2,6 +2,7 @@ import type { QueryCtx } from '../_generated/server';
 import type { Doc } from '../_generated/dataModel';
 import { clubKey, sameClub } from './clubs';
 import { normalizeName } from './names';
+import { hasSession } from './roster';
 import { athleteGenderLabel, normalizeGender } from './normalize';
 import {
   accumulateBests,
@@ -271,8 +272,8 @@ export function joinRoster(athletes: Doc<'athletes'>[], schedule: readonly ApiSc
   }
   const items: RosterItem[] = [];
   for (const athlete of [...athletes].sort((a, b) => compareCollated(a.name, b.name))) {
-    const hasSession = athlete.sessionNumber !== undefined && athlete.sessionPlatform !== undefined;
-    const matches = hasSession ? (bySession.get(scheduleKey(athlete.sessionNumber!, athlete.sessionPlatform!)) ?? []) : [];
+    const placed = hasSession(athlete);
+    const matches = placed ? (bySession.get(scheduleKey(athlete.sessionNumber!, athlete.sessionPlatform!)) ?? []) : [];
     const joined = matches.length === 0 ? [undefined] : matches;
     joined.forEach((s, j) => {
       items.push({
@@ -285,7 +286,7 @@ export function joinRoster(athletes: Doc<'athletes'>[], schedule: readonly ApiSc
         weight_class: athlete.weightClass,
         entry_total: athlete.entryTotal,
         adaptive: athlete.adaptive,
-        session: hasSession
+        session: placed
           ? {
               session_number: athlete.sessionNumber!,
               session_platform: athlete.sessionPlatform!,
