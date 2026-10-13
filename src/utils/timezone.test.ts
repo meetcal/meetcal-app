@@ -4,6 +4,7 @@ import {
   isValidTimeZone,
   meetTimeZoneLabel,
   parseClockTime,
+  resolvedMeetTimeZone,
 } from "@/utils/timezone";
 
 describe("timezone utilities", () => {
@@ -376,5 +377,37 @@ describe("meetTimeZoneLabel", () => {
   it("is blank without a meet", () => {
     expect(meetTimeZoneLabel(null, "2026-06-20")).toBe("");
     expect(meetTimeZoneLabel(undefined, "2026-06-20")).toBe("");
+  });
+});
+
+describe("resolvedMeetTimeZone", () => {
+  const time = (timeZone: string, timeZoneIdentifier: string) => ({ timeZone, timeZoneIdentifier });
+
+  it("is the meet's zone when it is known", () => {
+    expect(resolvedMeetTimeZone({ time: time("America/Los_Angeles", "America/Los_Angeles") })).toBe(
+      "America/Los_Angeles",
+    );
+    expect(
+      resolvedMeetTimeZone({ time: time("Asia/Tokyo", "Asia/Tokyo"), timeZoneUnknown: false }),
+    ).toBe("Asia/Tokyo");
+  });
+
+  it("is null for the mapper's fallback, never New York", () => {
+    expect(
+      resolvedMeetTimeZone({ time: time("", "America/New_York"), timeZoneUnknown: true }),
+    ).toBeNull();
+    expect(
+      resolvedMeetTimeZone({ time: time("Mars/Olympus", "America/New_York"), timeZoneUnknown: true }),
+    ).toBeNull();
+    // A meet cached without the flag still has its blank raw zone.
+    expect(resolvedMeetTimeZone({ time: time(" ", "America/New_York") })).toBeNull();
+  });
+
+  it("is null with no config, no time, or an identifier Intl does not know", () => {
+    expect(resolvedMeetTimeZone(null)).toBeNull();
+    expect(resolvedMeetTimeZone(undefined)).toBeNull();
+    expect(resolvedMeetTimeZone({})).toBeNull();
+    expect(resolvedMeetTimeZone({ time: { timeZoneIdentifier: "" } })).toBeNull();
+    expect(resolvedMeetTimeZone({ time: { timeZoneIdentifier: "__proto__" } })).toBeNull();
   });
 });

@@ -296,6 +296,17 @@ test("club and WSO dashboards expose meet performance metrics", async ({ page })
   await page.getByLabel("WSO").selectOption("California North");
   await expect(page.getByText("WSO athletes")).toBeVisible();
   await expect(page.locator("tbody")).toContainText("225");
+
+  // A synced roster carries no WSOs, and the meet has no results yet (#345):
+  // say so, and show no 0% make rates or 0kg lifted.
+  await routeQuery(page, "meets:athletes", (route) => route.fulfill(textAnswer([{ member_id: "2", meet: "Test Meet", name: "Synced Athlete", age: 30, club: "Test Barbell", wso: null, gender: "Men", weight_class: "88kg", entry_total: 250, adaptive: false, session_number: null, session_platform: null }])));
+  await routeQuery(page, "results:byMeet", (route) => route.fulfill(textAnswer([])));
+  await page.goto("/wso-dashboard");
+  await page.getByRole("combobox", { name: "Meet" }).selectOption("Test Meet");
+  await page.getByLabel("WSO").selectOption("California North");
+  await expect(page.locator("tbody")).toContainText("This meet's start list doesn't include WSOs");
+  await expect(page.locator(".data-metric-grid")).not.toContainText("0.0%");
+  await expect(page.locator(".data-metric-grid")).not.toContainText("0kg");
 });
 
 test("wrapped builds a readable single-athlete yearly recap", async ({ page }) => {

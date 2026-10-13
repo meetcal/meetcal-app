@@ -58,20 +58,26 @@ export function savedSessionsLoadKey(userId: string | null | undefined, verified
 }
 
 export interface LoadChain {
-  run(key: string, task: () => Promise<void>): Promise<void>;
+  /**
+   * `fresh`: run the task again even when one for the same key is running,
+   * after it. For a caller whose reason to load arrived after the running
+   * load read its inputs (RevenueCat confirming the subscription after the
+   * load's prune skipped), so joining it would miss that reason.
+   */
+  run(key: string, task: () => Promise<void>, options?: { fresh?: boolean }): Promise<void>;
 }
 
 /**
  * Single-flight per key: a call while a task for the same key is running
- * shares it instead of starting a second one. A call for a new key queues
- * behind the running task.
+ * shares it instead of starting a second one, unless it asks for a `fresh`
+ * run. A call for a new key, or a fresh one, queues behind the running task.
  */
 export function createLoadChain(): LoadChain {
   let current: { key: string; promise: Promise<void> } | null = null;
   return {
-    run(key, task) {
+    run(key, task, options) {
       const running = current;
-      if (running && running.key === key) return running.promise;
+      if (running && running.key === key && !options?.fresh) return running.promise;
       const previous = running?.promise ?? Promise.resolve();
       const promise = previous.catch(() => undefined).then(() => task());
       const entry = { key, promise };

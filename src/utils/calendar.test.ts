@@ -132,6 +132,42 @@ describe("calendar event input", () => {
     expect(input.notes).toContain("Weigh-in Time: 8:00 AM GMT+9");
   });
 
+  it("writes no event for a meet whose zone is unknown, instead of placing it in New York", async () => {
+    // The API mapper's fallback for a blank zone, flagged.
+    mockFetchMeetByName.mockResolvedValue({
+      ...LOS_ANGELES_MEET,
+      time: {
+        timeZone: "",
+        timeZoneIdentifier: "America/New_York",
+        abbreviation: "EDT",
+        utcOffset: 4,
+      },
+      timeZoneUnknown: true,
+    } as never);
+    const errorSpy = jest.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      await expect(
+        createCalendarEventsToCalendar(
+          [
+            {
+              meet: "West Coast Open",
+              date: "2026-06-20",
+              startTime: "10:00 AM",
+              weighInTime: "8:00 AM",
+              sessionNumber: "3",
+              platform: "Red",
+              weightClass: "71kg",
+            },
+          ],
+          "cal-1",
+        ),
+      ).rejects.toThrow("time zone isn't known");
+      expect(mockCreateEventAsync).not.toHaveBeenCalled();
+    } finally {
+      errorSpy.mockRestore();
+    }
+  });
+
   it("converts the meet-local wall clock in the meet's zone, not the device's", async () => {
     const input = await buildEvent();
 

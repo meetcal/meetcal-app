@@ -10,6 +10,7 @@ import {
 } from "@/data/meets/config";
 import { devLog } from "@/lib/logger";
 import { createSessionDetailsDeepLink } from "@/utils/deepLinks";
+import { resolvedMeetTimeZone } from "@/utils/timezone";
 import { makeLookupKey } from "@/utils/session";
 
 export async function requestCalendarPermissions(): Promise<boolean> {
@@ -149,11 +150,11 @@ async function getIosDefaultCalendarId(): Promise<string> {
 
 async function buildCalendarEventInput(session: CalendarSession) {
   const meetConfig = await getMeetConfig(session.meet);
-  const startDate = convertToUTC(
-    session.startTime,
-    session.date,
-    meetConfig.time.timeZoneIdentifier,
-  );
+  // Not the mapper's New York fallback: a Los Angeles meet with no known
+  // zone was written three hours early. The session is not written.
+  const timeZone = resolvedMeetTimeZone(meetConfig);
+  if (timeZone === null) throw new Error("unknown_meet_time_zone");
+  const startDate = convertToUTC(session.startTime, session.date, timeZone);
   const endDate = new Date(startDate.getTime() + 2 * 60 * 60 * 1000);
   // The one builder for this route. A hand-built `meetcal://schedule-details`
   // pointed at a route that does not exist, so tapping the event opened the
@@ -169,7 +170,7 @@ async function buildCalendarEventInput(session: CalendarSession) {
     ...calendarEventDetails(session),
     startDate,
     endDate,
-    timeZone: meetConfig.time.timeZoneIdentifier,
+    timeZone,
     url: deepLinkUrl,
     alarms: [
       {
@@ -200,6 +201,12 @@ export function calendarEventDetails(
 }
 
 function mapCalendarError(error: unknown): Error {
+  if (error instanceof Error && error.message === "unknown_meet_time_zone") {
+    return new Error(
+      "This meet's time zone isn't known yet, so its sessions can't be added to your calendar. Try again later.",
+    );
+  }
+
   if (error instanceof Error && error.message === "no_calendar") {
     return new Error(
       "No suitable calendar found. Please make sure you have at least one calendar set up on your device.",
