@@ -1,4 +1,4 @@
-import { useTheme } from "@/contexts/ThemeContext";
+import { useAppColors } from "@/hooks/useAppColors";
 import { PageIndicatorProps } from "@/types/schedule";
 import { useEffect } from "react";
 import { Platform, Pressable, StyleSheet, View } from "react-native";
@@ -11,6 +11,8 @@ import Animated, {
 } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Palette } from "@/constants/Palette";
+import { isMaestroE2E } from "@/lib/e2e";
+import { pageIndicatorBottom, usesNativeTabs } from "@/lib/tab-bar-layout";
 
 const INACTIVE_COLOR = "#5A9AD4";
 const ACTIVE_COLOR = "#007AFF";
@@ -58,15 +60,12 @@ export function PageIndicator({
   currentPage,
   onPageChange,
 }: PageIndicatorProps) {
-  const { currentTheme } = useTheme();
+  const colors = useAppColors();
   const insets = useSafeAreaInsets();
 
-  const containerBackground =
-    currentTheme === "dark" ? "rgba(58,58,60,0.65)" : "rgba(0,0,0,0.08)";
-  const containerBorder =
-    currentTheme === "dark" ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.06)";
-  const activeDotShadow =
-    currentTheme === "dark" ? "rgba(0,0,0,0.35)" : "rgba(0,0,0,0.2)";
+  const containerBackground = colors.pageIndicatorFill;
+  const containerBorder = colors.pageIndicatorBorder;
+  const activeDotShadow = colors.pageIndicatorDotShadow;
 
   // Screen readers get one adjustable control, like a native page control:
   // "Page 2 of 5", swipe up or down to change day. The dots are too small
@@ -80,8 +79,12 @@ export function PageIndicator({
       style={[
         styles.container,
         {
-          bottom:
-            Platform.OS === "ios" ? insets.bottom + 5 : insets.bottom + 60,
+          // Above the tab bar on both paths: the JS bar (Android, iOS
+          // 18-25) is not part of the inset, UIKit's native one is.
+          bottom: pageIndicatorBottom(
+            insets.bottom,
+            usesNativeTabs(Platform.OS, Platform.Version, isMaestroE2E()),
+          ),
         },
       ]}
     >
