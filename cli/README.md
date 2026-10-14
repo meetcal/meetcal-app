@@ -485,7 +485,7 @@ meetcal adaptive-records Women
 Run these from `cli/`:
 
 ```sh
-just check-all
+mise run check-all
 cargo run -- search "Maddisen Mohnsen"
 cargo build --release
 ```

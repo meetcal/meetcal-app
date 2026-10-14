@@ -17,7 +17,7 @@ workflow fails before building.
 In `cli/`, set `version` in `Cargo.toml`, add the release to `CHANGELOG.md`, and run the checks:
 
 ```sh
-just check-all
+mise run check-all
 cargo build --release
 ```
 

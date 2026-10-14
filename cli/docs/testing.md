@@ -3,7 +3,7 @@
 Run from `cli/`:
 
 ```sh
-just check-all        # cargo fmt --check, clippy -D warnings, cargo test
+mise run check-all    # cargo fmt --check, clippy -D warnings, cargo test
 cargo test            # tests only
 ```
 
