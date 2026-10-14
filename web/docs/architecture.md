@@ -36,7 +36,7 @@ POST https://disciplined-hare-790.convex.cloud/api/query
 - The premium functions (`SUBSCRIPTION_FUNCTIONS` in `api.rs`, Convex's `PREMIUM_FUNCTIONS`) take
   the access pass as their `pass` argument; `api.rs` adds it to their arguments. A search
   (`results:search`) takes it only with `startDate` and `endDate`: name suggestions are public.
-  Every other query goes out without it. No query carries the user's session token except
+  Every other query goes out without it, `results:wrapped` (Athlete Wrapped, below) included. No query carries the user's session token except
   `accessPass:pass` and `deviceLogin:describe` (one user's own CLI sign-in, below): a query that reads its caller is cached per user, while every subscriber sends
   the same pass, so premium answers stay in Convex's shared query cache.
 - The pass comes from `accessPass:pass` (`POST /api/query` with `Authorization: Bearer <Clerk
@@ -75,7 +75,7 @@ compiled in from
 `CLERK_PUBLISHABLE_KEY` and `REVENUECAT_PUBLIC_API_KEY`.
 
 `SubscriptionGate` (`src/components/subscription_gate.rs`) wraps each competition data route in
-`src/main.rs`: signed out, it mounts Clerk's sign-in, which returns to the same page; signed in,
+`src/main.rs` except the free `/wrapped`: signed out, it mounts Clerk's sign-in, which returns to the same page; signed in,
 it asks RevenueCat whether the Clerk user has the `Subscriptions` entitlement (the one the app
 checks, `src/lib/premium-intent.ts`), and shows the page or the subscription handoff. Purchases
 happen in the mobile app only (`/subscription` sends users there).
@@ -89,6 +89,25 @@ The gate is a client-side check, like the app's paywall. Convex is moving to enf
 subscription itself through the access pass (above): for now it only logs a premium read without a
 current pass, answering everyone; later it will refuse it. Until then the data the gate guards is
 still public in Convex.
+
+## Athlete Wrapped: `/wrapped`
+
+Weightlifting Wrapped is free on the app and the site, so a shared Wrapped opens for anyone,
+signed out included. `src/pages/comp_data/wrapped.rs` sends one `results:wrapped` query per search
+(`POST /api/query`, args `{ query, year }`, plus `picked: true` after a pick; no pass, no token) and
+shows its answer, which the server scores from the year's results (`../convex/lib/wrapped.ts`, the
+app's rules). The answer never carries the results themselves, which is what lets it be free.
+
+- `athlete`: the report (meets, make rate, best lifts, average total, weight lifted,
+  first-to-last change, longest make streak, favorite attempt, top meet), headed with the
+  athlete's own spelling.
+- `ambiguous`: the names to pick from ("Several athletes match…", or "Many athletes match…, or
+  type more of the name" when `truncated`). A pick asks again with `picked: true`, which the server
+  answers only for that exact name.
+- `narrow`, `tooManyResults` and `none` (with name `suggestions`): a line saying why there is no
+  Wrapped.
+
+The athlete field's suggestions come from `results:search` without dates, which is public.
 
 ## Approving a CLI sign-in: `/link`
 
@@ -133,7 +152,8 @@ Each route needs a document that search engines and link previews can read befor
   loads the Wasm, then removes `index.html`'s `#app-loading` shell, or turns it into an error with
   a retry when the load fails) and renders one shell per route into `dist/seo/<name>.html`, each with its own
   title, description, canonical URL and robots directive. Competition data pages are
-  `noindex, nofollow`.
+  `noindex, nofollow`, except the free `/wrapped`, which is `index, follow`, has its own
+  description and is in `public/sitemap.xml`.
 - `vercel.json` rewrites each route to its shell (`/records` to `/seo/records.html`).
 - Once the app runs, `RouteMetadata` (`src/components/seo.rs`) keeps the title and meta tags in
   step as the user navigates. Data pages take theirs from `DATA_PAGES` in
@@ -145,13 +165,16 @@ For a new competition data page, all of these change together:
 
 1. `src/pages/comp_data/<page>.rs` (and `mod.rs`).
 2. `src/main.rs`: the route, inside `SubscriptionGate`.
-3. `src/pages/comp_data/catalog.rs`: a `DATA_PAGES` entry. This adds it to the header menu, the
-   data home and the route metadata.
+3. `src/pages/comp_data/catalog.rs`: a `DATA_PAGES` entry with `access: Access::Subscription`.
+   This adds it to the header menu, the data home and the route metadata.
 4. `scripts/generate-bootstrap.sh`: a line in the competition pages list.
 5. `vercel.json`: the rewrite to its shell.
 6. `tests/e2e/support/routes.ts`: `protectedDataRoutes`, so the route, gate and metadata tests
    cover it; and a test for the page itself in `tests/e2e/competition.spec.ts`.
 
+A free data page (`Access::Free { seo_description }`, like `/wrapped`) has no gate, its own
+`render_page` call (`index, follow`, its description) instead of a line in the list, a sitemap
+entry, and a place in `publicRoutes`; the catalog's tests check each of these against its access.
 A public page follows the same steps without the gate, with its own entry in
 `metadata_for_path` and `render_page` instead of the catalog, and in `publicRoutes`. A page that
 needs a signed-in user but no subscription (`/link`) goes in `signedInRoutes` instead.

@@ -83,7 +83,8 @@ served from materialized views; `../docs/backend.md` explains when a view needs 
 
 | Group | Commands | Reads |
 |---|---|---|
-| Athletes | `search`, `wrapped`, `compare`, `progress`, `h2h` | `results:byNames`, `results:search` |
+| Athletes | `search`, `progress`, `h2h` | `results:byNames`, `results:search` |
+| Wrapped | `wrapped`, `compare` | `results:wrapped` (public: the server scores the year, `convex/lib/wrapped.ts`) |
 | Standards | `qualify` | `results:byNames`, `results:bests`, `reference:standards`, `reference:qualifyingTotals` |
 | Meets | `meets`, `meet-info`, `schedule`, `meet`, `meet-results` | `meets:list`, `meets:completed`, `meets:details`, `meets:schedule`, `meets:athletesSessions` with `results:bests`, `results:byMeet` |
 | Attendance | `attendance` | `meets:namesPage`, `meets:attendance` |
@@ -107,7 +108,9 @@ Reference commands fetch the whole table and filter it locally by the flags (`re
    that meet, so an athlete who changed WSOs counts for each at the right meets.
 2. Read those athletes' results since a cutoff (`results:recent`, 50 names per call).
 3. Keep only results from meets where the athlete registered with the group
-   (`filter_membership_results`), then summarize by calendar year.
+   (`filter_membership_results`), then summarize by calendar year (`calculate_wrapped_stats`).
+   This scoring is local because the group's rows are premium data; an athlete's own Wrapped
+   (`wrapped`, `compare`) is the server's `results:wrapped` answer, scored with the app's rules.
 
 Registration events and results meets do not always share a name: USA Weightlifting publishes some
 national events' start lists under one combined name and their results under the individual

@@ -15,6 +15,7 @@ import {
   type YearBests,
 } from './lib/results';
 import { compareBytes } from './lib/sort';
+import { selectWrapped, type WrappedAnswer } from './lib/wrapped';
 import { RESULT_NAMES_VIEW, SEARCH_SHARD_SIZES_VIEW, searchShardKey } from './lib/viewKeys';
 import { readViewJsonAnyAge, readViewTextAnyAge } from './lib/views';
 import { apiError, requireIsoDate, requireNameList, requireNonEmpty, requirePresentIsoDate } from './lib/validation';
@@ -330,15 +331,75 @@ export const search = query({
     }
     // Results are premium; name suggestions alone are not.
     await premiumRead(ctx, 'results:search', args.pass);
-    const start = args.startDate;
-    const end = args.endDate;
-    if (end < start) throw apiError(400, 'end_date must not be before start_date');
+    if (args.endDate < args.startDate) throw apiError(400, 'end_date must not be before start_date');
+    return await datedSearch(ctx, args.query, args.startDate, args.endDate);
+  },
+});
 
-    const exactKey = normalizeName(args.query);
-    const exact = exactSearchAnswer(args.query, (await readHistories(ctx, [exactKey])).get(exactKey) ?? [], start, end);
-    if (exact) return exact;
+/**
+ * The dated search behind `search` and `wrapped`: the exact (folded) name's
+ * results in the range, or, failing that, every matching name's results plus
+ * suggestions. With `exactOnly`, no fallback: just the suggestions.
+ */
+async function datedSearch(
+  ctx: QueryCtx,
+  query: string,
+  start: string,
+  end: string,
+  {
+    exactOnly = false,
+    fallbackNames = MAX_FALLBACK_NAMES,
+    fallbackForKnownName = true,
+  }: { exactOnly?: boolean; fallbackNames?: number; fallbackForKnownName?: boolean } = {},
+): Promise<SearchAnswer> {
+  const exactKey = normalizeName(query);
+  const history = (await readHistories(ctx, [exactKey])).get(exactKey) ?? [];
+  const exact = exactSearchAnswer(query, history, start, end);
+  if (exact) return exact;
+  // `exactOnly`, or (unless `fallbackForKnownName`) the exact name is an
+  // athlete with no results in the range: no fallback, which would show
+  // someone else.
+  if (exactOnly || (!fallbackForKnownName && history.length > 0)) {
+    const suggestions = searchDirectory(await searchText(ctx, query), query, MAX_SEARCH_SUGGESTIONS);
+    return { matched_name: null, suggestions, results: [], truncated: false };
+  }
+  const matched = searchDirectory(await searchText(ctx, query), query, fallbackNames);
+  // As many names as the cap: more may match. Ask for more of the name before reading their histories.
+  if (fallbackNames < MAX_FALLBACK_NAMES && matched.length >= fallbackNames) {
+    return { matched_name: null, suggestions: matched.slice(0, MAX_SEARCH_SUGGESTIONS), results: [], truncated: true };
+  }
+  return fallbackSearchAnswer(query, matched, await readHistories(ctx, distinctNameKeys(matched)), start, end);
+}
 
-    const matched = await matchingNames(MAX_FALLBACK_NAMES);
-    return fallbackSearchAnswer(args.query, matched, await readHistories(ctx, distinctNameKeys(matched)), start, end);
+/** The earliest and latest years `wrapped` answers for. */
+export const WRAPPED_YEARS = { first: 1900, last: 2100 } as const;
+/**
+ * The most names a Wrapped's name-contains fallback reads histories for. It
+ * offers at most `MAX_WRAPPED_NAME_CHOICES`; a query matching more names asks
+ * for more of the name before reading any history, which keeps this public
+ * query cheap.
+ */
+export const WRAPPED_FALLBACK_NAMES = 100;
+
+/**
+ * Weightlifting Wrapped for `query`'s calendar `year` (`lib/wrapped.ts`): the
+ * year's stats, never the results behind them, so it is free and public.
+ * Answers `{ kind }`: `athlete` with `name` and `stats`, `ambiguous` with the
+ * `names` to pick from (ask again with `picked`, which only takes the exact
+ * name), `narrow`, `tooManyResults`, or `none` with name `suggestions`.
+ */
+export const wrapped = query({
+  args: { query: v.string(), year: v.number(), picked: v.optional(v.boolean()) },
+  handler: async (ctx, args): Promise<WrappedAnswer> => {
+    requireNonEmpty('query', args.query);
+    if (!Number.isInteger(args.year) || args.year < WRAPPED_YEARS.first || args.year > WRAPPED_YEARS.last) {
+      throw apiError(400, 'year must be a four-digit year');
+    }
+    const answer = await datedSearch(ctx, args.query, `${args.year}-01-01`, `${args.year}-12-31`, {
+      exactOnly: args.picked === true,
+      fallbackNames: WRAPPED_FALLBACK_NAMES,
+      fallbackForKnownName: false,
+    });
+    return selectWrapped(answer);
   },
 });

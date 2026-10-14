@@ -11,6 +11,14 @@
   send MeetCal's daily access pass when you are logged in with a subscription. Without a login they
   work as before for now; once MeetCal requires the pass, they say to run `meetcal login` (or that
   a subscription is needed). Schedules, start lists and meet lists stay free, with no login.
+- `wrapped` and `compare` read an athlete's Wrapped from MeetCal (`results:wrapped`), the same
+  answer as the app and meetcal.app, so they are free and need no login. The numbers now follow the
+  app's rules where the CLI's differed: a lift listed twice (two divisions, or two days of one
+  meet) counts once; a top-meet tie goes to the later meet; and Meet Regular counts results rather
+  than meets. As before, source-error rows are left out, and each edition of a recurring meet is
+  its own meet. The name must be exact (case and spacing aside), as before, with suggestions when
+  it is not; `--year` now runs from 1900 to 2100. `results:wrapped` must be on the deployment
+  first: release this after MeetCal's production deploy.
 
 ## 2.4.0
 

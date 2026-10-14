@@ -40,6 +40,7 @@ import type * as lib_validation from "../lib/validation.js";
 import type * as lib_viewKeys from "../lib/viewKeys.js";
 import type * as lib_views from "../lib/views.js";
 import type * as lib_webhookSignature from "../lib/webhookSignature.js";
+import type * as lib_wrapped from "../lib/wrapped.js";
 import type * as lib_wsoSources from "../lib/wsoSources.js";
 import type * as meets from "../meets.js";
 import type * as migrations from "../migrations.js";
@@ -141,6 +142,7 @@ declare const fullApi: ApiFromModules<{
   "lib/viewKeys": typeof lib_viewKeys;
   "lib/views": typeof lib_views;
   "lib/webhookSignature": typeof lib_webhookSignature;
+  "lib/wrapped": typeof lib_wrapped;
   "lib/wsoSources": typeof lib_wsoSources;
   meets: typeof meets;
   migrations: typeof migrations;
