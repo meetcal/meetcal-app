@@ -36,7 +36,7 @@ function dailyHistory(name: string, count: number): ApiLiftingResult[] {
 describe('results:search date range', () => {
   const history = [row('Ann Lee', '2027-01-01'), row('Ann Lee', '2026-12-31'), row('Ann Lee', '2026-01-01'), row('Ann Lee', '2025-12-31')];
 
-  it('includes both endpoints, as results:page does', () => {
+  it('includes both endpoints', () => {
     const answer = exactSearchAnswer('Ann Lee', history, '2026-01-01', '2026-12-31');
     expect(answer?.results.map((r) => r.date)).toEqual(['2026-01-01', '2026-12-31']);
     expect(answer).toMatchObject({ matched_name: 'Ann Lee', suggestions: [], truncated: false });

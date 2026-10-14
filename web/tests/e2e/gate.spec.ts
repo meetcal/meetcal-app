@@ -1,5 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
-import { mockAuth, routeQuery, textAnswer, valueAnswer } from "./support/api";
+import { errorAnswer, mockAuth, routeQuery, textAnswer, valueAnswer } from "./support/api";
 
 type AuthMockState = {
   signInMounts: Array<Record<string, unknown>>;
@@ -49,12 +49,14 @@ test("signed out, a data page shows the sign-in that returns to it, and reads no
 });
 
 test("signed in without the subscription, a data page hands off to the app and reads no data", async ({ page }) => {
-  await mockAuth(page, { entitlements: [] });
+  const { passRequests, entitlementRefreshes } = await mockAuth(page, { entitlements: [] });
   const reads = countConvexReads(page);
 
   await page.goto("/records");
   await expect(page.getByRole("heading", { level: 1, name: "Continue in the MeetCal app" })).toBeVisible();
   expect(reads).toEqual([]);
+  expect(passRequests).toEqual([]);
+  expect(entitlementRefreshes).toEqual([]);
 });
 
 test("another entitlement than the app's Subscriptions does not unlock the data pages", async ({ page }) => {
@@ -241,4 +243,107 @@ test("an unpaid user who subscribes in the app gets in on returning to the tab",
   });
   await expect(page.getByRole("heading", { level: 1, name: "Records" })).toBeVisible();
   expect((await authMock(page)).customerInfoCalls).toBe(2);
+});
+
+test("a subscriber's premium reads carry the access pass, fetched once with the session token, and no read carries the token", async ({ page }) => {
+  const { passRequests, entitlementRefreshes } = await mockAuth(page);
+  const sent = new Map<string, { pass: unknown; authorization: string | undefined }>();
+  for (const [fn, rows] of [["reference:clubs", ["Test Barbell"]], ["meets:completed", []], ["reference:standards", []]] as const) {
+    await routeQuery(page, fn, (route, args) => {
+      sent.set(fn, { pass: args.pass, authorization: route.request().headers().authorization });
+      return route.fulfill(textAnswer(rows));
+    });
+  }
+
+  await page.goto("/club-dashboard");
+  await expect(page.getByLabel("Club").locator("option", { hasText: "Test Barbell" })).toHaveCount(1);
+  await expect.poll(() => sent.size).toBe(2);
+  expect(sent.get("reference:clubs")).toEqual({ pass: "pass_test", authorization: undefined });
+  // Public, so it goes without the pass.
+  expect(sent.get("meets:completed")).toEqual({ pass: undefined, authorization: undefined });
+
+  // The pass is held: the next data page's read uses it without fetching it again.
+  await openFromHeader(page, "/standards");
+  await expect(page.getByRole("heading", { level: 1, name: "Standards" })).toBeVisible();
+  await expect.poll(() => sent.get("reference:standards")).toEqual({ pass: "pass_test", authorization: undefined });
+  expect(passRequests).toEqual(["Bearer token_user_ci"]);
+  expect(entitlementRefreshes).toEqual([]);
+});
+
+test("a subscriber Convex has no entitlement for yet gets the pass once Convex refreshes it", async ({ page }) => {
+  const { passRequests, entitlementRefreshes } = await mockAuth(page, { serverEntitled: false });
+  const sent: unknown[] = [];
+  await routeQuery(page, "reference:standards", (route, args) => {
+    sent.push(args.pass);
+    return route.fulfill(textAnswer([]));
+  });
+
+  await page.goto("/standards");
+  await expect(page.getByRole("heading", { level: 1, name: "Standards" })).toBeVisible();
+  await expect.poll(() => sent).toEqual(["pass_test"]);
+  expect(passRequests).toEqual(["Bearer token_user_ci", "Bearer token_user_ci"]);
+  expect(entitlementRefreshes).toEqual(["Bearer token_user_ci"]);
+});
+
+for (const [name, setup, refreshes] of [
+  ["Convex finds no entitlement", (page: Page) => mockAuth(page, { serverEntitled: false, refreshGrants: false }), 1],
+  [
+    "the pass cannot be fetched",
+    async (page: Page) => {
+      const mocks = await mockAuth(page);
+      await routeQuery(page, "accessPass:pass", (route) => route.abort("failed"));
+      return mocks;
+    },
+    0,
+  ],
+] as const) {
+  test(`when ${name}, a premium read goes out without a pass`, async ({ page }) => {
+    const { entitlementRefreshes } = await setup(page);
+    const sent: Array<Record<string, unknown>> = [];
+    await routeQuery(page, "reference:standards", (route, args) => {
+      sent.push(args);
+      return route.fulfill(textAnswer([]));
+    });
+
+    await page.goto("/standards");
+    await expect(page.getByRole("heading", { level: 1, name: "Standards" })).toBeVisible();
+    await expect.poll(() => sent).toEqual([{}]);
+    await expect(page.getByRole("alert")).toHaveCount(0);
+    expect(entitlementRefreshes).toHaveLength(refreshes);
+  });
+}
+
+for (const status of [401, 403]) {
+  test(`a read Convex refuses for its pass (${status}) fetches a fresh pass and goes again once`, async ({ page }) => {
+    const { server, passRequests } = await mockAuth(page);
+    server.pass = "pass_old";
+    const sent: unknown[] = [];
+    await routeQuery(page, "reference:standards", (route, args) => {
+      sent.push(args.pass);
+      if (args.pass !== "pass_old") return route.fulfill(textAnswer([]));
+      // Convex rotated the pass and no longer accepts this one.
+      server.pass = "pass_new";
+      return route.fulfill(errorAnswer("Server Error", { status, error: "access pass expired" }));
+    });
+
+    await page.goto("/standards");
+    await expect(page.getByRole("heading", { level: 1, name: "Standards" })).toBeVisible();
+    await expect.poll(() => sent).toEqual(["pass_old", "pass_new"]);
+    await expect(page.getByRole("alert")).toHaveCount(0);
+    expect(passRequests).toHaveLength(2);
+  });
+}
+
+test("a read Convex refuses again with a fresh pass shows its error instead of retrying more", async ({ page }) => {
+  const { passRequests } = await mockAuth(page);
+  let reads = 0;
+  await routeQuery(page, "reference:standards", (route) => {
+    reads += 1;
+    return route.fulfill(errorAnswer("Server Error", { status: 403, error: "access pass expired" }));
+  });
+
+  await page.goto("/standards");
+  await expect(page.getByRole("alert")).toContainText("access pass expired");
+  expect(reads).toBe(2);
+  expect(passRequests).toHaveLength(2);
 });

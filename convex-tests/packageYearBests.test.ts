@@ -1,7 +1,10 @@
 import { packageForMeet } from '../convex/meets';
 import { meetKey } from '../convex/lib/viewKeys';
 import { textChunks, writeView } from '../convex/lib/views';
-import { fakeDb, handlerOf } from './fakeDb';
+import { ANONYMOUS_AUTH, fakeDb, handlerOf } from './fakeDb';
+
+// Premium queries may log their caller (`convex/lib/access.ts`).
+beforeEach(() => jest.spyOn(console, 'log').mockImplementation(() => {}));
 
 const STAMP = [{ table: 'lifting_results', version: 1 }];
 const STATIC = '{"meet":{"name":"Open"},"schedule":[],"athletes":[{"name":"Ann Lee"}],"meet_results":[]';
@@ -19,7 +22,7 @@ describe('packageForMeet with stale year bests only (#216)', () => {
       lifting_results: [{ name: 'Ann Lee', nameKey: 'ann lee', meet: 'Spring', date: '2026-03-01', snatchBest: 80, cjBest: 100, total: 180, federation: 'USAW', adaptive: false, eventId: '1' }],
       view_hints: [{ kind: 'athlete', key: 'ann lee', since: '2026-03-01', seq: 0, updatedAt: 1 }],
     });
-    const ctx = { db: fake.db } as never;
+    const ctx = { db: fake.db, auth: ANONYMOUS_AUTH } as never;
     await writeView(ctx, meetKey('Open', 'package_static'), textChunks(STATIC), STAMP, { text: true });
     await writeView(ctx, meetKey('Open', 'keys'), [JSON.stringify(['ann lee'])], STAMP);
     const tables: string[] = [];

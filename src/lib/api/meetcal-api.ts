@@ -21,6 +21,7 @@ import {
   ValidatorCache,
   type ValidatorEntry,
 } from '@/lib/api/http-cache';
+import { accessPassFor, wantsAccessPass, type AccessPass } from '@/lib/api/premium-queries';
 import { callApi, TransportRequestError, type ApiCall } from '@/lib/api/transport';
 
 // The app's backend is Convex (`convex/`). Each function below calls the
@@ -326,7 +327,7 @@ function assertHasFields(value: unknown, label: string, fields: string[]): Recor
 }
 
 function methodLabel(call: ApiCall): string {
-  return call.kind === 'mutation' ? 'POST' : 'GET';
+  return call.kind === 'mutation' || call.kind === 'action' ? 'POST' : 'GET';
 }
 
 /**
@@ -339,8 +340,31 @@ function methodLabel(call: ApiCall): string {
  * the first answer of a cold start is what the first schedule paints from.
  * Until the sample lands, `getTrustedNow` is null and the callers that need
  * the server's clock skip their decision or wait (`awaitServerClock`).
+ *
+ * A premium read carries the access pass (`lib/api/premium-queries.ts`). If
+ * the server refuses it (401 without one, 403 for a stale one), the read is
+ * sent once more with a newly fetched pass.
  */
 async function request(call: ApiCall, timeoutMs: number = DEFAULT_TIMEOUT_MS): Promise<unknown> {
+  // Every other call starts at once; the wait for a pass not yet held is
+  // bounded on its own (`ACCESS_PASS_TIMEOUT_MS`), before the timeout starts.
+  if (call.kind !== 'query' || call.token || !wantsAccessPass(call.fn, call.args)) return send(call, timeoutMs);
+  const pass = await accessPassFor(call.fn, call.args);
+  try {
+    return await send(withPass(call, pass), timeoutMs);
+  } catch (error) {
+    if (!(error instanceof MeetCalApiError) || (error.status !== 401 && error.status !== 403)) throw error;
+    const fresh = await accessPassFor(call.fn, call.args, { refused: pass, retry: true });
+    if (fresh === undefined || fresh === pass) throw error;
+    return await send(withPass(call, fresh), timeoutMs);
+  }
+}
+
+function withPass(call: ApiCall, pass: string | undefined): ApiCall {
+  return pass === undefined ? call : { ...call, args: { ...call.args, pass } };
+}
+
+async function send(call: ApiCall, timeoutMs: number): Promise<unknown> {
   const startedAt = typeof performance !== 'undefined' ? performance.now() : Date.now();
   let timeoutId: ReturnType<typeof setTimeout> | undefined;
   // The timeout also aborts the request, so it never lands later (a stale
@@ -1760,4 +1784,153 @@ export async function patchAutoUnsavePreference(
     throw new Error('/users/me/preferences/auto-unsave.auto_unsave_started_sessions expected a boolean');
   }
   return { auto_unsave_started_sessions: row.auto_unsave_started_sessions };
+}
+
+/**
+ * Asks the server to check the signed-in user's subscription with RevenueCat
+ * now (`entitlements:refresh`), so premium reads work right after a purchase
+ * and for subscribers the server has not heard about yet. Answers whether the
+ * server found it active.
+ */
+export async function refreshServerEntitlement(token: string): Promise<{ active: boolean }> {
+  const authToken = requireToken(token, 'refreshServerEntitlement');
+  const row = assertHasFields(
+    await userCall('/users/me/entitlement', 'entitlements:refresh', 'action', authToken),
+    '/users/me/entitlement',
+    ['active'],
+  );
+  if (typeof row.active !== 'boolean') throw new Error('/users/me/entitlement.active expected a boolean');
+  return { active: row.active };
+}
+
+/**
+ * The shared access pass premium reads carry (`accessPass:pass`), for a signed-in
+ * subscriber. A 403 means the server knows of no active subscription.
+ */
+export async function fetchAccessPass(token: string): Promise<AccessPass> {
+  const authToken = requireToken(token, 'fetchAccessPass');
+  const row = assertHasFields(await userCall('/access-pass', 'accessPass:pass', 'query', authToken), '/access-pass', ['pass', 'rotatesAt']);
+  if (typeof row.pass !== 'string' || row.pass.length === 0) throw new Error('/access-pass.pass expected a non-empty string');
+  if (typeof row.rotatesAt !== 'number' || !Number.isFinite(row.rotatesAt)) throw new Error('/access-pass.rotatesAt expected a number');
+  return { pass: row.pass, rotatesAt: row.rotatesAt };
+}
+
+/** A MeetCal-issued sign-in token (`apiTokens:issue`): the JWT, its id, and when it expires (ms). */
+export type IssuedApiToken = { token: string; tokenId: string; expiresAt: number };
+
+/**
+ * A new 90-day MeetCal-issued token for Siri's App Intents
+ * (`apiTokens:issue` with `{ client: "siri" }`), for the user whose Clerk
+ * session token this is (`lib/siri-token.ts`).
+ */
+export async function issueSiriToken(token: string): Promise<IssuedApiToken> {
+  const authToken = requireToken(token, 'issueSiriToken');
+  const row = assertHasFields(
+    await userCall('/api-tokens', 'apiTokens:issue', 'action', authToken, { client: 'siri' }),
+    '/api-tokens',
+    ['token', 'tokenId', 'expiresAt'],
+  );
+  if (typeof row.token !== 'string' || row.token.length === 0) throw new Error('/api-tokens.token expected a non-empty string');
+  if (typeof row.tokenId !== 'string' || row.tokenId.length === 0) throw new Error('/api-tokens.tokenId expected a non-empty string');
+  if (typeof row.expiresAt !== 'number' || !Number.isFinite(row.expiresAt)) throw new Error('/api-tokens.expiresAt expected a number');
+  return { token: row.token, tokenId: row.tokenId, expiresAt: row.expiresAt };
+}
+
+/**
+ * Ends a MeetCal-issued token (`apiTokens:revoke`). Called with that token,
+ * ends it whatever `tokenId` says; called with a Clerk session token, ends
+ * the user's token `tokenId`. Ending a token already gone is not an error.
+ */
+export async function revokeApiToken(token: string, tokenId?: string): Promise<void> {
+  const authToken = requireToken(token, 'revokeApiToken');
+  await userCall('/api-tokens/revoke', 'apiTokens:revoke', 'mutation', authToken, tokenId === undefined ? {} : { tokenId });
+}
+
+/** `results:wrapped`'s answer (`convex/lib/wrapped.ts`), checked. */
+export type ApiWrappedStats = {
+  totalWeightLifted: number;
+  totalMeets: number;
+  makePercentage: number;
+  bestSnatch: number;
+  bestCleanJerk: number;
+  bestTotal: number;
+  averageTotal: number;
+  topMeet: string | null;
+  improvementFromFirst: number | null;
+  longestMakeStreak: number;
+  favoriteAttempt: 1 | 2 | 3 | null;
+  yearRank: string;
+};
+
+export type ApiWrappedAnswer =
+  | { kind: 'athlete'; name: string; stats: ApiWrappedStats }
+  | { kind: 'ambiguous'; names: string[]; truncated: boolean }
+  | { kind: 'narrow' }
+  | { kind: 'tooManyResults'; name: string }
+  | { kind: 'none'; suggestions: string[] };
+
+function finiteNumber(value: unknown, label: string): number {
+  if (typeof value !== 'number' || !Number.isFinite(value)) throw new Error(`${label} expected a number`);
+  return value;
+}
+
+function mapWrappedStats(value: unknown): ApiWrappedStats {
+  const stats = assertHasFields(value, '/wrapped.stats', [
+    'totalWeightLifted',
+    'totalMeets',
+    'makePercentage',
+    'bestSnatch',
+    'bestCleanJerk',
+    'bestTotal',
+    'averageTotal',
+    'topMeet',
+    'improvementFromFirst',
+    'longestMakeStreak',
+    'favoriteAttempt',
+    'yearRank',
+  ]);
+  const num = (key: string) => finiteNumber(stats[key], `/wrapped.stats.${key}`);
+  const favorite = stats.favoriteAttempt;
+  if (favorite !== null && favorite !== 1 && favorite !== 2 && favorite !== 3) throw new Error('/wrapped.stats.favoriteAttempt expected 1, 2, 3 or null');
+  if (stats.topMeet !== null && typeof stats.topMeet !== 'string') throw new Error('/wrapped.stats.topMeet expected a string or null');
+  if (typeof stats.yearRank !== 'string') throw new Error('/wrapped.stats.yearRank expected a string');
+  return {
+    totalWeightLifted: num('totalWeightLifted'),
+    totalMeets: num('totalMeets'),
+    makePercentage: num('makePercentage'),
+    bestSnatch: num('bestSnatch'),
+    bestCleanJerk: num('bestCleanJerk'),
+    bestTotal: num('bestTotal'),
+    averageTotal: num('averageTotal'),
+    topMeet: stats.topMeet,
+    improvementFromFirst: stats.improvementFromFirst === null ? null : num('improvementFromFirst'),
+    longestMakeStreak: num('longestMakeStreak'),
+    favoriteAttempt: favorite,
+    yearRank: stats.yearRank,
+  };
+}
+
+/**
+ * Weightlifting Wrapped for `query`'s calendar `year`, scored on the server
+ * (`results:wrapped`): free and public, so it sends no access pass. `picked`
+ * (a name chosen from an `ambiguous` answer) takes only that exact name.
+ */
+export async function fetchWrapped(query: string, year: number, picked = false): Promise<ApiWrappedAnswer> {
+  const answer = assertHasFields(await readQuery('/wrapped', 'results:wrapped', { query, year, picked: picked || undefined }), '/wrapped', ['kind']);
+  switch (answer.kind) {
+    case 'athlete':
+      if (typeof answer.name !== 'string') throw new Error('/wrapped.name expected a string');
+      return { kind: 'athlete', name: answer.name, stats: mapWrappedStats(answer.stats) };
+    case 'ambiguous':
+      return { kind: 'ambiguous', names: assertStringArray(answer.names, '/wrapped.names'), truncated: answer.truncated === true };
+    case 'narrow':
+      return { kind: 'narrow' };
+    case 'tooManyResults':
+      if (typeof answer.name !== 'string') throw new Error('/wrapped.name expected a string');
+      return { kind: 'tooManyResults', name: answer.name };
+    case 'none':
+      return { kind: 'none', suggestions: answer.suggestions === undefined ? [] : assertStringArray(answer.suggestions, '/wrapped.suggestions') };
+    default:
+      throw new Error(`/wrapped returned an unknown kind ${JSON.stringify(answer.kind)}`);
+  }
 }

@@ -18,7 +18,9 @@ const SHARED_MODEL_FILE = path.join(
 
 // Swift App Intents sources + the React Native bridge (Obj-C + Swift).
 // All compiled into the MAIN app target so AppShortcutsProvider is discovered
-// and intents can share the App Group + make network calls.
+// and intents can share the App Group + make network calls. Running in the
+// app's process also lets them read the app's own keychain item holding Siri's
+// sign-in token (src/lib/siri-token.ts), with no keychain-sharing entitlement.
 const FILES = [
   'MeetCalSharedModels.swift',
   'SharedStore.swift',

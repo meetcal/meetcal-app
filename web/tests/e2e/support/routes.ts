@@ -4,6 +4,8 @@ export const publicRoutes = [
   ["/privacy", "Privacy Policy"],
   ["/terms", "Terms of Use"],
   ["/subscription", "Continue in the MeetCal app"],
+  // The one free data page: open to everyone, signed out included.
+  ["/wrapped", "Athlete Wrapped"],
 ] as const;
 
 export const protectedDataRoutes = [
@@ -19,5 +21,10 @@ export const protectedDataRoutes = [
   "/meet-center",
   "/club-dashboard",
   "/wso-dashboard",
-  "/wrapped",
 ] as const;
+
+/**
+ * Pages that need a signed-in user but no subscription, with the heading a
+ * signed-out visitor sees. `/link` approves a `meetcal login` from the CLI.
+ */
+export const signedInRoutes = [["/link", "Sign in to continue"]] as const;

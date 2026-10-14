@@ -2,14 +2,13 @@ import { IconSymbol } from "@/components/ui/IconSymbol";
 import { useIsOffline } from "@/hooks/useIsOffline";
 import { useNameSuggestions } from "@/hooks/useNameSuggestions";
 import { showToast } from "@/components/ui/Toast";
-import { searchApi } from "@/lib/api/meetcal-api";
+import { fetchWrapped, searchApi } from "@/lib/api/meetcal-api";
 import { captureViewAsPng, shareImageFile } from "@/lib/share-image";
 import {
   buildWrappedShareText,
-  calculateWrappedStats,
   formatImprovement,
+  toWrappedStats,
 } from "@/lib/wrapped-stats";
-import { selectWrappedRows } from "@/lib/wrapped-search";
 import { wrappedTapDirection } from "@/lib/wrapped-tap-zones";
 import { WrappedStats } from "@/types/wrapped";
 import { LinearGradient } from "expo-linear-gradient";
@@ -215,16 +214,20 @@ export default function WeightliftingWrappedScreen() {
   const flatListRef = useRef<FlatList>(null);
   const viewShotRef = useRef<React.ComponentRef<typeof ViewShot>>(null);
   const searchInFlightRef = useRef(false);
+  // A name picked from the dropdown: its Wrapped takes only that exact name.
+  const pickedNameRef = useRef<string | null>(null);
 
   const onSearchTextChange = useCallback((text: string) => {
     setSearchQuery(text);
     setDidYouMean(false);
+    pickedNameRef.current = null;
     onQueryChange(text);
   }, [onQueryChange]);
 
   const selectSuggestion = useCallback((name: string) => {
     setSearchQuery(name);
     setDidYouMean(false);
+    pickedNameRef.current = name;
     dismissSuggestions();
   }, [dismissSuggestions]);
 
@@ -255,12 +258,8 @@ export default function WeightliftingWrappedScreen() {
     const year = selectedYear;
     try {
       const normalizedName = searchQuery.trim();
-      // `results:search` includes both ends of the range.
-      const startDate = `${year}-01-01`;
-      const endDate = `${year}-12-31`;
-
-      const response = await searchApi(normalizedName, startDate, endDate);
-      const selection = selectWrappedRows(response);
+      // Scored on the server: free, and the app never reads the results.
+      const selection = await fetchWrapped(normalizedName, year, pickedNameRef.current === normalizedName);
 
       if (selection.kind === "none") {
         showToast({
@@ -289,7 +288,7 @@ export default function WeightliftingWrappedScreen() {
         showToast({
           type: "info",
           // Truncated: more athletes matched than the answer holds.
-          message: response.truncated
+          message: selection.truncated
             ? `Many athletes match ${normalizedName}. Pick one, or type more of the name.`
             : `Several athletes match ${normalizedName}. Pick one.`,
         });
@@ -297,8 +296,7 @@ export default function WeightliftingWrappedScreen() {
       }
 
       setAthleteName(selection.name);
-      const stats = calculateWrappedStats(selection.rows);
-      setWrappedStats(stats);
+      setWrappedStats(toWrappedStats(selection.stats));
       setWrappedYear(year);
       setCurrentSlide(0);
       setShowStats(true);

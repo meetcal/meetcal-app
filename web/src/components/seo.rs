@@ -1,4 +1,4 @@
-use crate::pages::comp_data::catalog::DATA_PAGES;
+use crate::pages::comp_data::catalog::{Access, DATA_PAGES};
 use leptos::prelude::*;
 use leptos_router::hooks::use_location;
 
@@ -19,7 +19,15 @@ pub struct PageMetadata {
 
 pub fn metadata_for_path(path: &str) -> PageMetadata {
     if let Some(page) = DATA_PAGES.iter().find(|page| page.path == path) {
-        return competition_metadata(page.seo_title);
+        return match page.access {
+            Access::Subscription => competition_metadata(page.seo_title),
+            Access::Free { seo_description } => PageMetadata {
+                title: page.seo_title,
+                description: seo_description,
+                indexable: true,
+                canonical: true,
+            },
+        };
     }
 
     match path {
@@ -50,6 +58,12 @@ pub fn metadata_for_path(path: &str) -> PageMetadata {
         "/subscription" => PageMetadata {
             title: "Manage Your MeetCal Subscription in the App",
             description: "Open MeetCal on iOS or Android to start, change, restore, or cancel your subscription.",
+            indexable: false,
+            canonical: true,
+        },
+        "/link" => PageMetadata {
+            title: "Approve a MeetCal CLI Sign-In",
+            description: "Sign in to approve or deny a MeetCal CLI sign-in request from meetcal login.",
             indexable: false,
             canonical: true,
         },
@@ -158,7 +172,7 @@ mod tests {
 
     #[test]
     fn public_pages_are_indexable_with_distinct_titles() {
-        let public = ["/", "/features", "/privacy", "/terms"];
+        let public = ["/", "/features", "/privacy", "/terms", "/wrapped"];
         let mut titles = public
             .into_iter()
             .map(metadata_for_path)
@@ -176,6 +190,7 @@ mod tests {
             "/comp-data",
             "/qualifying-totals",
             "/subscription",
+            "/link",
             "/missing",
         ] {
             assert!(
@@ -186,13 +201,23 @@ mod tests {
     }
 
     #[test]
+    fn free_data_pages_describe_themselves_without_asking_to_sign_in() {
+        let wrapped = metadata_for_path("/wrapped");
+        assert_eq!(wrapped.title, "Weightlifting Athlete Wrapped");
+        assert!(wrapped.description.starts_with("Free"));
+        assert!(!wrapped.description.contains("Sign in"));
+    }
+
+    #[test]
     fn only_unknown_pages_lack_a_canonical_url() {
         for path in [
             "/",
             "/features",
+            "/wrapped",
             "/comp-data",
             "/qualifying-totals",
             "/subscription",
+            "/link",
         ] {
             assert!(
                 metadata_for_path(path).canonical,

@@ -1,4 +1,5 @@
 import { v } from 'convex/values';
+import { premiumQuery } from './lib/access';
 import { query, type QueryCtx } from './_generated/server';
 import { etagOf, revalidated, revalidatedText, type Revalidated } from './lib/etag';
 import {
@@ -319,7 +320,7 @@ function closePackage(staticText: string, yearBests: unknown | undefined): strin
  * (`livePackageJson`). Either way the tag is the hash of the whole text, so
  * a client's tag survives the views going stale and being rebuilt.
  */
-export const packageForMeet = query({
+export const packageForMeet = premiumQuery('meets:packageForMeet', {
   args: {
     meet: v.string(),
     historyCutoffDate: v.optional(v.string()),

@@ -280,4 +280,20 @@ mod tests {
         );
         assert_eq!(UpcomingMeetsQuery::at(5.0 * hour).now, 5.0 * hour);
     }
+
+    #[test]
+    fn a_suggestion_query_omits_the_dates_and_a_dated_one_includes_both() {
+        let query =
+            serde_json::to_value(AthleteSearchQuery::suggestions("Test".to_owned())).unwrap();
+        assert_eq!(query, serde_json::json!({"query": "Test"}));
+        let dated = AthleteSearchQuery::between(
+            "Test".to_owned(),
+            "2026-01-01".to_owned(),
+            "2026-12-31".to_owned(),
+        );
+        assert_eq!(
+            serde_json::to_value(dated).unwrap(),
+            serde_json::json!({"query": "Test", "startDate": "2026-01-01", "endDate": "2026-12-31"})
+        );
+    }
 }

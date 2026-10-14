@@ -48,6 +48,9 @@ export const JOBS: Record<string, Job> = {
   'results-sport80': { schedule: '5 6 * * *', run: { kind: 'action', fn: internal.scrapers.sport80.run } },
   'wso-records': { schedule: '40 6 * * *', run: { kind: 'action', fn: internal.scrapers.wsoRecords.run } },
   entries: { schedule: '25 7 * * *', run: { kind: 'action', fn: internal.scrapers.entries.run } },
+  // A new access pass for premium reads (`accessPass.ts`), when US traffic
+  // is lowest: it clears every premium query's cache once.
+  'rotate-access-pass': { schedule: '0 9 * * *', run: { kind: 'action', fn: internal.accessPass.rotate } },
 };
 
 /**

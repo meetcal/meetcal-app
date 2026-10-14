@@ -13,6 +13,23 @@ export type AuthMock = {
    * stand-in on the page later.
    */
   loadRevenueCat?: boolean;
+  /**
+   * Convex holds an active entitlement for `user_ci`, so `accessPass:pass`
+   * answers it the pass. Default true; false answers 403 until
+   * `entitlements:refresh` grants it.
+   */
+  serverEntitled?: boolean;
+  /** What `entitlements:refresh` answers as `active`. Default true. */
+  refreshGrants?: boolean;
+};
+
+/**
+ * Convex's side of the access pass in the mocks: the pass it hands out, and
+ * whether it holds `user_ci`'s entitlement. A test may change either.
+ */
+export type PassServer = {
+  pass: string;
+  entitled: boolean;
 };
 
 /**
@@ -24,9 +41,21 @@ export type AuthMock = {
  * `setUser(id | null)` switches or signs out the Clerk user and notifies;
  * setting `customerInfoError` makes later checks fail, and
  * `activeEntitlements` replaces the granted entitlements. Only `user_ci`
- * holds entitlements.
+ * holds entitlements. A signed-in user's session token is `token_<id>`.
+ *
+ * Also answers the Convex calls that carry that token, so no test reaches the
+ * real deployment: `accessPass:pass` answers `server.pass` (default
+ * `pass_test`) to `Bearer token_user_ci` while `server.entitled`, 403 to
+ * another user or while not entitled, and 401 without a token; the
+ * `entitlements:refresh` action answers `{ active: refreshGrants }` and, when
+ * active, makes `server.entitled` true. Returns `server`, and the
+ * Authorization header of each call: `passRequests` and
+ * `entitlementRefreshes`.
  */
-export async function mockAuth(page: Page, { signedIn = true, entitlements = ["Subscriptions"], revenueCatError, loadRevenueCat = false }: AuthMock = {}) {
+export async function mockAuth(
+  page: Page,
+  { signedIn = true, entitlements = ["Subscriptions"], revenueCatError, loadRevenueCat = false, serverEntitled = true, refreshGrants = true }: AuthMock = {},
+) {
   const active = Object.fromEntries(entitlements.map((id) => [id, { identifier: id }]));
   await page.addInitScript(({ signedIn, active, revenueCatError, loadRevenueCat }) => {
     type Listener = () => void;
@@ -61,6 +90,10 @@ export async function mockAuth(page: Page, { signedIn = true, entitlements = ["S
       },
       unmountSignIn: () => {},
       openSignIn: () => {},
+      get session() {
+        const user = clerk.user;
+        return clerk.isSignedIn && user ? { getToken: async () => `token_${user.id}` } : null;
+      },
     };
     let appUserId: string | null = null;
     const purchases = {
@@ -85,6 +118,38 @@ export async function mockAuth(page: Page, { signedIn = true, entitlements = ["S
     Object.assign(window, { __authMock: mock, __internal_ClerkUICtor: function ClerkUI() {}, Clerk: clerk });
     if (!loadRevenueCat) mock.installPurchases();
   }, { signedIn, active, revenueCatError, loadRevenueCat });
+
+  const server: PassServer = { pass: "pass_test", entitled: serverEntitled };
+  const passRequests: Array<string | undefined> = [];
+  await routeQuery(page, "accessPass:pass", (route) => {
+    const authorization = route.request().headers().authorization;
+    passRequests.push(authorization);
+    if (!authorization) return route.fulfill(errorAnswer("Server Error", { status: 401, error: "unauthorized" }));
+    if (authorization !== "Bearer token_user_ci" || !server.entitled) {
+      return route.fulfill(errorAnswer("Server Error", { status: 403, error: "subscription required" }));
+    }
+    return route.fulfill(valueAnswer({ pass: server.pass, rotatesAt: Date.now() + 24 * 60 * 60 * 1000 }));
+  });
+
+  const entitlementRefreshes: Array<string | undefined> = [];
+  await page.route(CONVEX_ACTION_URL, async (route) => {
+    const request = route.request();
+    if (request.method() === "OPTIONS") {
+      await route.fulfill({ status: 204, headers: CORS_HEADERS });
+      return;
+    }
+    const body = request.postDataJSON() as { path?: string } | null;
+    if (body?.path !== "entitlements:refresh") {
+      await route.fallback();
+      return;
+    }
+    const authorization = request.headers().authorization;
+    entitlementRefreshes.push(authorization);
+    const active = refreshGrants && authorization === "Bearer token_user_ci";
+    if (active) server.entitled = true;
+    await route.fulfill(valueAnswer({ active }));
+  });
+  return { server, passRequests, entitlementRefreshes };
 }
 
 /** A signed-in user with the app's subscription entitlement. */
@@ -115,11 +180,16 @@ export function retryableResponse(status: 429 | 503, retryAfter?: string) {
 
 /** Every read is a `POST` of `{ path, args }` here (see src/utils/api.rs). */
 const CONVEX_QUERY_URL = "https://disciplined-hare-790.convex.cloud/api/query";
+/** The mutations the site calls: `deviceLogin:approve` and `deviceLogin:deny` (`/link`). */
+const CONVEX_MUTATION_URL = "https://disciplined-hare-790.convex.cloud/api/mutation";
+/** The one action the site calls, `entitlements:refresh`. */
+const CONVEX_ACTION_URL = "https://disciplined-hare-790.convex.cloud/api/action";
 
+/** `accessPass:pass`, `entitlements:refresh` and the `deviceLogin` calls carry `Authorization`, so the preflight must allow it. */
 const CORS_HEADERS = {
   "access-control-allow-origin": "*",
   "access-control-allow-methods": "POST, OPTIONS",
-  "access-control-allow-headers": "content-type",
+  "access-control-allow-headers": "authorization, content-type",
 };
 
 /**
@@ -133,7 +203,25 @@ export async function routeQuery(
   fn: string,
   handler: (route: Route, args: Record<string, unknown>) => Promise<void> | void,
 ) {
-  await page.route(CONVEX_QUERY_URL, async (route) => {
+  await routeFunction(page, CONVEX_QUERY_URL, fn, handler);
+}
+
+/** Answers the Convex mutation `fn` (such as `deviceLogin:approve`), as `routeQuery` answers a query. */
+export async function routeMutation(
+  page: Page,
+  fn: string,
+  handler: (route: Route, args: Record<string, unknown>) => Promise<void> | void,
+) {
+  await routeFunction(page, CONVEX_MUTATION_URL, fn, handler);
+}
+
+async function routeFunction(
+  page: Page,
+  url: string,
+  fn: string,
+  handler: (route: Route, args: Record<string, unknown>) => Promise<void> | void,
+) {
+  await page.route(url, async (route) => {
     const request = route.request();
     if (request.method() === "OPTIONS") {
       await route.fulfill({ status: 204, headers: CORS_HEADERS });
@@ -158,7 +246,8 @@ export function textAnswer(body: unknown) {
   return valueAnswer({ etag: '"test"', json: JSON.stringify(body) });
 }
 
-/** Convex's answer to a query that ran and failed. */
-export function errorAnswer(message: string) {
-  return { status: 560, ...jsonResponse({ status: "error", errorMessage: message, logLines: [] }) };
+/** Convex's answer to a query that ran and failed; `errorData` is a `ConvexError`'s `{ status, error }`. */
+export function errorAnswer(message: string, errorData?: { status: number; error: string }) {
+  const body = { status: "error", errorMessage: message, ...(errorData ? { errorData } : {}), logLines: [] };
+  return { status: 560, ...jsonResponse(body) };
 }

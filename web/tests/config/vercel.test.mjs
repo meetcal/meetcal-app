@@ -89,13 +89,21 @@ test("production rewrites serve route-specific metadata shells", async () => {
   assert.match(gatedHtml, /<title>Weightlifting Qualifying Totals<\/title>/);
   assert.match(gatedHtml, /content="noindex, nofollow"/);
 
-  for (const route of ["meet-center", "club-dashboard", "wso-dashboard", "wrapped"]) {
+  for (const route of ["meet-center", "club-dashboard", "wso-dashboard", "link"]) {
     const rewrite = config.rewrites.find(({ source }) => source === `/${route}`);
     assert.equal(rewrite.destination, `/seo/${route}.html`);
     const html = await readFile(new URL(`../../dist/seo/${route}.html`, import.meta.url), "utf8");
     assert.match(html, /content="noindex, nofollow"/);
     assert.match(html, new RegExp(`href="https:\\/\\/www\\.meetcal\\.app\\/${route}"`));
   }
+
+  // Athlete Wrapped is free: its shell is indexable and describes the page.
+  assert.equal(config.rewrites.find(({ source }) => source === "/wrapped").destination, "/seo/wrapped.html");
+  const wrappedHtml = await readFile(new URL("../../dist/seo/wrapped.html", import.meta.url), "utf8");
+  assert.match(wrappedHtml, /<title>Weightlifting Athlete Wrapped<\/title>/);
+  assert.match(wrappedHtml, /content="index, follow"/);
+  assert.match(wrappedHtml, /name="description"\s+content="Free Weightlifting Wrapped: /);
+  assert.doesNotMatch(wrappedHtml, /Sign in with your MeetCal account/);
 });
 
 test("every deployment reads Convex directly, with no API proxy", () => {

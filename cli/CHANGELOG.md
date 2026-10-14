@@ -1,5 +1,41 @@
 # Changelog
 
+## 3.0.0
+
+Breaking: `meetcal results` is removed, and `leaderboard` without
+`--club` or `--wso` needs `meetcal login` with a MeetCal subscription and a range of less than five
+years. MeetCal no longer answers the bulk results query (`results:page`) that 2.4.0 and earlier read
+for `leaderboard` and `results`, so those two commands fail on older releases: upgrade.
+
+- `meetcal login` and `meetcal logout`. `login` signs this machine in to MeetCal with a code you
+  approve on any signed-in device (a link and, in a terminal, a QR code), so it works over SSH, on
+  servers and for AI agents; the login lasts 90 days and is saved in
+  `~/.config/meetcal/credentials.json` (or under `$XDG_CONFIG_HOME`), readable by you alone.
+  `logout` ends it and deletes the file.
+- Commands that read subscriber data (results, rankings, records, standards, club and WSO data)
+  send MeetCal's daily access pass when you are logged in with a subscription. Without a login they
+  work as before for now; once MeetCal requires the pass, they say to run `meetcal login` (or that
+  a subscription is needed). Schedules, start lists and meet lists stay free, with no login.
+- `wrapped` and `compare` read an athlete's Wrapped from MeetCal (`results:wrapped`), the same
+  answer as the app and meetcal.app, so they are free and need no login. The numbers now follow the
+  app's rules where the CLI's differed: a lift listed twice (two divisions, or two days of one
+  meet) counts once; a top-meet tie goes to the later meet; and Meet Regular counts results rather
+  than meets. As before, source-error rows are left out, and each edition of a recurring meet is
+  its own meet. The name must be exact (case and spacing aside), as before, with suggestions when
+  it is not; `--year` now runs from 1900 to 2100. `results:wrapped` must be on the deployment
+  first: release this after MeetCal's production deploy.
+- Breaking: `meetcal results` is removed: MeetCal no longer offers every result in a range as a raw
+  export. A meet's results (`meet-results`), an athlete's (`search`, `progress`) and a club's or
+  WSO's results are still there.
+- Breaking: `leaderboard` is ranked by MeetCal (`results:leaderboard`) instead of reading every
+  result in the range (about 28,000 a year) into the CLI, so it answers in a second or two. The
+  rules are the same: the CLI's own, moved to the server, with the same answers. Without `--club`
+  or `--wso` it needs `meetcal login` and a MeetCal subscription, a range of less than five years,
+  and `--limit` at most 500. `--wso` and `--club` leaderboards are ranked by the CLI, as before,
+  with neither limit.
+  `results:leaderboard` must be on the deployment first: release this after MeetCal's
+  production deploy.
+
 ## 2.4.0
 
 - Q-points, which USA Weightlifting has used for best lifters since 2025, alongside Sinclair:

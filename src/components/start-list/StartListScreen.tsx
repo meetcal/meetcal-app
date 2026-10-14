@@ -162,7 +162,7 @@ export default function StartListScreen() {
     selectedMeet && isMeetName(selectedMeet) ? selectedMeet : null;
   const meetZone = useMeetZone(meetDetails?.time);
 
-  usePreloadYearBests(athletes);
+  usePreloadYearBests(athletes, isSubscribed === true);
   const athleteBests = useYearBestsForSort(athletes, isBestLiftSort(filters.sort));
 
   const getSessionDetails = useMemo(() => buildSessionDetailsLookup(schedule), [schedule]);

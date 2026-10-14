@@ -54,10 +54,16 @@ import {
   SMALL_ROWS_NAMES_CHUNK_SIZE,
   patchAutoUnsavePreference,
   putSavedSession,
+  refreshServerEntitlement,
+  fetchAccessPass,
+  issueSiriToken,
+  revokeApiToken,
+  fetchWrapped,
   searchApi,
 } from './meetcal-api';
 import { HTTP_VALIDATOR_CACHE_LIMIT } from './http-cache';
 import { callQuery, isClockCall } from './json-transport-stub';
+import { setAccessPassSource } from './premium-queries';
 import { setApiTransportForTests, TransportRequestError, type ApiCall } from './transport';
 import { UNKNOWN_PLATFORM } from '@/data/types/athletes';
 import { generateSessionId } from '@/utils/session';
@@ -2767,5 +2773,113 @@ describe('mapApiSchedule platform weigh-ins', () => {
       ['Red', '9:00 AM', '7:00 AM'],
       ['Blue', '9:30 AM', ''],
     ]);
+  });
+});
+
+describe('premium reads and the access pass', () => {
+  afterEach(() => setAccessPassSource(null));
+
+  it('carry the pass on premium queries only, as their `pass` argument, and none without a subscriber', async () => {
+    const { dataCalls } = installTransport(() => ({ etag: '"r1"', json: '[]' }));
+    await fetchApiRecords();
+    setAccessPassSource(async () => ({ pass: 'p1', rotatesAt: Date.now() + 60_000 }));
+    clearHttpValidatorCache();
+    await fetchApiRecords();
+    await fetchApiSchedule('Spring Open' as never).catch(() => {});
+    expect(dataCalls().map((call) => [call.fn, call.args.pass, call.token])).toEqual([
+      ['reference:records', undefined, undefined],
+      ['reference:records', 'p1', undefined],
+      ['meets:schedule', undefined, undefined],
+    ]);
+  });
+
+  it('sends a refused read once more with a new pass', async () => {
+    const passes = ['old', 'new'];
+    setAccessPassSource(async () => ({ pass: passes.shift() ?? 'none', rotatesAt: Date.now() + 60_000 }));
+    const { dataCalls } = installTransport((call) => {
+      if (call.args.pass === 'old') throw new TransportRequestError('query failed with 403', 403, '{"status":403,"error":"access pass expired"}');
+      return { etag: '"r1"', json: '[]' };
+    });
+    await expect(fetchApiRecords()).resolves.toEqual([]);
+    expect(dataCalls().map((call) => call.args.pass)).toEqual(['old', 'new']);
+  });
+
+  it('gets the pass with the Clerk token, and checks its shape', async () => {
+    const { lastCall } = installTransport(() => ({ pass: 'p1', rotatesAt: 5 }));
+    await expect(fetchAccessPass('clerk-token')).resolves.toEqual({ pass: 'p1', rotatesAt: 5 });
+    expect(lastCall()).toMatchObject({ fn: 'accessPass:pass', kind: 'query', token: 'clerk-token' });
+    installTransport(() => ({ pass: '', rotatesAt: 5 }));
+    await expect(fetchAccessPass('clerk-token')).rejects.toThrow('non-empty string');
+  });
+
+  it('asks the server to check the subscription with the Clerk token', async () => {
+    const { lastCall } = installTransport(() => ({ active: true }));
+    await expect(refreshServerEntitlement('clerk-token')).resolves.toEqual({ active: true });
+    expect(lastCall()).toMatchObject({ fn: 'entitlements:refresh', kind: 'action', token: 'clerk-token' });
+    installTransport(() => ({ active: 'yes' }));
+    await expect(refreshServerEntitlement('clerk-token')).rejects.toThrow('expected a boolean');
+  });
+
+  it("issues Siri's token with the Clerk token, and checks its shape", async () => {
+    const { lastCall } = installTransport(() => ({ token: 'jwt', tokenId: 't1', expiresAt: 9 }));
+    await expect(issueSiriToken('clerk-token')).resolves.toEqual({ token: 'jwt', tokenId: 't1', expiresAt: 9 });
+    expect(lastCall()).toMatchObject({ fn: 'apiTokens:issue', kind: 'action', token: 'clerk-token', args: { client: 'siri' } });
+    installTransport(() => ({ token: 'jwt', tokenId: '', expiresAt: 9 }));
+    await expect(issueSiriToken('clerk-token')).rejects.toThrow('tokenId expected a non-empty string');
+    await expect(issueSiriToken('')).rejects.toThrow('requires an auth token');
+  });
+
+  it('ends a token with the token itself, or with a Clerk session and its id', async () => {
+    const { lastCall } = installTransport(() => null);
+    await revokeApiToken('jwt');
+    expect(lastCall()).toMatchObject({ fn: 'apiTokens:revoke', kind: 'mutation', token: 'jwt', args: {} });
+    await revokeApiToken('clerk-token', 't1');
+    expect(lastCall()).toMatchObject({ token: 'clerk-token', args: { tokenId: 't1' } });
+  });
+});
+
+describe('fetchWrapped', () => {
+  afterEach(() => setAccessPassSource(null));
+  const stats = {
+    totalWeightLifted: 1200.0,
+    totalMeets: 3.0,
+    makePercentage: 75,
+    bestSnatch: 100,
+    bestCleanJerk: 125,
+    bestTotal: 225,
+    averageTotal: 215,
+    topMeet: null,
+    improvementFromFirst: null,
+    longestMakeStreak: 5,
+    favoriteAttempt: 2,
+    yearRank: 'Meet Regular',
+  };
+
+  it('asks the free query with no pass, even for a subscriber, and checks the answer', async () => {
+    setAccessPassSource(async () => ({ pass: 'p1', rotatesAt: Date.now() + 60_000 }));
+    const { lastCall } = installTransport(() => ({ kind: 'athlete', name: 'Ada', stats }));
+    await expect(fetchWrapped('ada', 2026)).resolves.toEqual({ kind: 'athlete', name: 'Ada', stats });
+    expect(lastCall()).toMatchObject({ fn: 'results:wrapped', kind: 'query', args: { query: 'ada', year: 2026 } });
+    expect(lastCall().args.pass).toBeUndefined();
+    expect(lastCall().token).toBeUndefined();
+    await fetchWrapped('Ada', 2026, true);
+    expect(lastCall().args.picked).toBe(true);
+  });
+
+  it('reads every kind, and refuses a malformed answer', async () => {
+    installTransport(() => ({ kind: 'ambiguous', names: ['A', 'B'], truncated: true }));
+    await expect(fetchWrapped('a', 2026)).resolves.toEqual({ kind: 'ambiguous', names: ['A', 'B'], truncated: true });
+    installTransport(() => ({ kind: 'none', suggestions: ['Ada'] }));
+    await expect(fetchWrapped('a', 2026)).resolves.toEqual({ kind: 'none', suggestions: ['Ada'] });
+    installTransport(() => ({ kind: 'narrow' }));
+    await expect(fetchWrapped('a', 2026)).resolves.toEqual({ kind: 'narrow' });
+    installTransport(() => ({ kind: 'tooManyResults', name: 'Ada' }));
+    await expect(fetchWrapped('a', 2026)).resolves.toEqual({ kind: 'tooManyResults', name: 'Ada' });
+    installTransport(() => ({ kind: 'athlete', name: 'Ada', stats: { ...stats, favoriteAttempt: 4 } }));
+    await expect(fetchWrapped('a', 2026)).rejects.toThrow('favoriteAttempt');
+    installTransport(() => ({ kind: 'athlete', name: 'Ada', stats: { ...stats, bestTotal: 'lots' } }));
+    await expect(fetchWrapped('a', 2026)).rejects.toThrow('bestTotal');
+    installTransport(() => ({ kind: 'rows' }));
+    await expect(fetchWrapped('a', 2026)).rejects.toThrow('unknown kind');
   });
 });

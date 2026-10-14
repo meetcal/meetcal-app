@@ -30,6 +30,7 @@ extern "C" {
 
     fn check_revenuecat_entitlement(api_key: &str, app_user_id: &str) -> js_sys::Promise;
 
+    fn clerk_session_token() -> js_sys::Promise;
 }
 
 pub fn provide_auth() {
@@ -50,6 +51,9 @@ pub fn provide_auth() {
     let callback = Closure::<dyn Fn(JsValue)>::new(move |user_id: JsValue| {
         let next = auth_state_for(user_id.as_string());
         if state.get_untracked() != next {
+            // The access pass came with the previous user's subscription;
+            // the next user (or a signed-out visitor) must earn their own.
+            crate::utils::api::forget_access_pass();
             set_state.set(next);
         }
     });
@@ -95,6 +99,21 @@ pub async fn has_comp_data_access(app_user_id: &str) -> Result<bool, String> {
         .await
         .map(|value| value.as_bool().unwrap_or(false))
         .map_err(js_error_message)
+}
+
+/// The signed-in user's Clerk session token, for the Convex calls that read
+/// the caller: `accessPass:pass`, `entitlements:refresh`, and the
+/// `deviceLogin:*` calls of `/link`. `None` when
+/// signed out, or when Clerk could not hand one over (logged): premium reads
+/// then go out without an access pass.
+pub async fn session_token() -> Option<String> {
+    match JsFuture::from(clerk_session_token()).await {
+        Ok(token) => token.as_string().filter(|token| !token.is_empty()),
+        Err(error) => {
+            leptos::logging::warn!("No Clerk session token: {}", js_error_message(error));
+            None
+        }
+    }
 }
 
 fn js_error_message(error: JsValue) -> String {

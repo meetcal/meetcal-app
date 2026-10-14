@@ -94,9 +94,18 @@ render_page "terms" "/terms" \
   "Terms of Use — MeetCal" \
   "Read the terms that apply when using the MeetCal apps, website, competition data, and related services." \
   "index, follow"
+# Athlete Wrapped is the one free data page: open to everyone, and indexed.
+render_page "wrapped" "/wrapped" \
+  "Weightlifting Athlete Wrapped" \
+  "Free Weightlifting Wrapped: an athlete's competition year in numbers, with meets, best lifts, make rate, and progress." \
+  "index, follow"
 render_page "subscription" "/subscription" \
   "Manage Your MeetCal Subscription in the App" \
   "Open MeetCal on iOS or Android to start, change, restore, or cancel your subscription." \
+  "noindex, nofollow"
+render_page "link" "/link" \
+  "Approve a MeetCal CLI Sign-In" \
+  "Sign in to approve or deny a MeetCal CLI sign-in request from meetcal login." \
   "noindex, nofollow"
 
 while IFS='|' read -r output_name path title; do
@@ -116,7 +125,6 @@ adaptive-records|/adaptive-records|Adaptive Weightlifting Records
 meet-center|/meet-center|Weightlifting Meets, Schedules &amp; Results
 club-dashboard|/club-dashboard|Weightlifting Club Meet Dashboard
 wso-dashboard|/wso-dashboard|USAW WSO Meet Dashboard
-wrapped|/wrapped|Weightlifting Athlete Wrapped
 EOF
 
 # Vercel serves dist/404.html, with status 404, for any path that has no file

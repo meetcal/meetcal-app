@@ -257,6 +257,68 @@ export default defineSchema({
   // their data again.
   deleted_users: defineTable({ userId: v.string(), deletedAt: v.number() }).index('by_userId', ['userId']),
 
+  // A user's `Subscriptions` entitlement as RevenueCat's API last reported it
+  // (`convex/entitlements.ts`), one row per Clerk user id (RevenueCat's app
+  // user id). Premium queries read it (`convex/lib/access.ts`), so it is
+  // written only when the entitlement changes. `expiresAt` is null for a
+  // lifetime purchase.
+  entitlements: defineTable({
+    userId: v.string(),
+    active: v.boolean(),
+    expiresAt: v.union(v.number(), v.null()),
+    productId: v.union(v.string(), v.null()),
+  }).index('by_userId', ['userId']),
+
+  // When RevenueCat was last asked about a user (`syncedAt`, so a late answer
+  // cannot replace a newer one) and when the app last asked for a refresh
+  // (`refreshRequestedAt`, the throttle). Kept apart from `entitlements` so
+  // this bookkeeping never invalidates the premium queries that read it.
+  entitlement_syncs: defineTable({
+    userId: v.string(),
+    syncedAt: v.number(),
+    refreshRequestedAt: v.optional(v.number()),
+  }).index('by_userId', ['userId']),
+
+  // The access pass premium queries are read with (`convex/accessPass.ts`):
+  // one row, the current pass and the one it replaced, both accepted.
+  access_passes: defineTable({
+    current: v.string(),
+    previous: v.union(v.string(), v.null()),
+    rotatedAt: v.number(),
+  }),
+
+  // Device-code logins in progress (`convex/deviceLogin.ts`): `meetcal login`
+  // shows `userCode`, the user approves it at meetcal.app/link, and the CLI,
+  // polling with the device code (only its hash is kept), gets a token. Rows
+  // live minutes: expired ones are deleted as new logins start.
+  device_logins: defineTable({
+    deviceCodeHash: v.string(),
+    userCode: v.string(),
+    deviceName: v.string(),
+    status: v.union(v.literal('pending'), v.literal('approved'), v.literal('collected'), v.literal('denied')),
+    approvedBy: v.optional(v.string()),
+    createdAt: v.number(),
+    expiresAt: v.number(),
+    lastPolledAt: v.optional(v.number()),
+  })
+    .index('by_deviceCodeHash', ['deviceCodeHash'])
+    .index('by_userCode', ['userCode'])
+    .index('by_expiresAt', ['expiresAt'])
+    .index('by_approvedBy', ['approvedBy']),
+
+  // MeetCal-issued sign-in tokens (`convex/apiTokens.ts`) for clients that
+  // cannot hold a Clerk session: the CLI and Siri. The JWT carries `tid`; a
+  // token is honoured only while its row exists, so deleting the row revokes it.
+  api_tokens: defineTable({
+    tokenId: v.string(),
+    userId: v.string(),
+    client: v.union(v.literal('cli'), v.literal('siri')),
+    createdAt: v.number(),
+    expiresAt: v.number(),
+  })
+    .index('by_tokenId', ['tokenId'])
+    .index('by_userId', ['userId']),
+
   user_preferences: defineTable({
     userId: v.string(),
     autoUnsaveStartedSessions: v.boolean(),

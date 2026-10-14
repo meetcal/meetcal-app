@@ -16,16 +16,18 @@ The repository root's `AGENTS.md` applies here too: its hard rules (worktrees, n
 |---|---|
 | `src/main.rs`, `src/parser.rs` | Entry point and the clap command set; `parser.rs` holds every subcommand's arguments and help |
 | `src/commands/` | One module per command (`run(args)`); shared report logic in `group_wrapped.rs` (club and WSO years) and `compare.rs` |
-| `src/utils/backend.rs` | The only data access: every Convex query the CLI reads (`queries::*`), and the HTTP call |
+| `src/utils/backend.rs` | The only data access: every Convex query the CLI reads (`queries::*`), the premium leaderboard action and the login's actions and mutation (`functions::*`), and the HTTP call |
+| `src/utils/access.rs` | The access pass premium reads carry: `PREMIUM_FUNCTIONS` and `PREMIUM_ACTIONS` (equal to `convex/lib/access.ts`'s lists), fetching the pass with the saved login, and what a refused read does |
+| `src/utils/credentials.rs`, `device_login.rs` | The saved login (`~/.config/meetcal/credentials.json`, 0600), and the device-code login's answers, polling policy and QR code; `src/commands/login.rs` runs `login` and `logout` |
 | `src/utils/retry.rs` | The retry policy for throttled and overloaded answers, free of I/O |
 | `src/utils/output.rs` | How results print: tables, or `--format json` / `csv` from the same `Report` |
 | `src/utils/stats.rs` | Divisions, Sinclair (and its coefficients), attempt habits, PRs, source-error guards |
-| `src/utils/athletes.rs` | Athletes' full histories, and every result in a date range (`results:page`) |
+| `src/utils/athletes.rs` | Athletes' full histories |
 | `src/utils/names.rs`, `bests.rs`, `format.rs` | Known names and suggestions, past-year bests, display formats |
 | `src/utils/meet_names.rs` | Matching registration events to results meets (combined national events publish results under separate names) |
 | `src/utils/make_rate.rs`, `sort.rs` | Make-rate tables, weight-class ordering |
 | `src/types/` | Answer types shared across commands |
-| `tests/` | Integration tests: argument parsing and help per command, and the retry policy against a local HTTP server |
+| `tests/` | Integration tests: argument parsing and help per command, and, against a local HTTP server (`tests/support/`), the retry policy, the access pass and `login`/`logout` |
 | `scripts/build-release.sh` | Local release builds, for smoke testing |
 | `docs/` | [architecture.md](docs/architecture.md), [testing.md](docs/testing.md), [releasing.md](docs/releasing.md) |
 
@@ -68,6 +70,8 @@ CI (`.github/workflows/cli.yml` at the root) runs `cargo fmt --check`, `clippy -
 - Keep network code out of report logic: commands fetch, then call pure functions (stats, comparisons, meet matching) that tests can drive with fixture rows.
 - Errors are `anyhow` with context naming the query or the input; a user-facing failure says what to try (`bail!("No athletes found for WSO ...")`).
 - `--version` comes from `Cargo.toml`: bump the version there, never in clap.
+- A new premium Convex function goes in `PREMIUM_FUNCTIONS` (`src/utils/access.rs`) as well as the server's and the website's lists, and a premium action in `PREMIUM_ACTIONS` and the server's; keep each a plain `&[&str]` array literal. The saved login's token goes to `accessPass:pass`, `entitlements:refresh` and `apiTokens:revoke` only, never to a data read.
+- Commands never prompt or open a browser: `login` must work with no terminal (SSH, servers, agents). Its prose goes to stderr.
 
 ## Recurring lessons
 
@@ -79,7 +83,7 @@ CI (`.github/workflows/cli.yml` at the root) runs `cargo fmt --check`, `clippy -
 - British Weightlifting (`BWL`) results share the results table. USA comparisons (rankings, records, previous bests) leave them out unless asked for.
 - Q-points use the published formula (`QPOINTS_*` in `stats.rs`, source: https://osf.io/8x3nb/); they do not apply to youth divisions (`qpoints_apply`), and Q-Masters needs an exact age the results do not carry, so it is not computed.
 - Sinclair uses the IWF's 2021–2024 coefficients (`SINCLAIR_MEN` / `SINCLAIR_WOMEN` in `stats.rs`), the latest set we could confirm; when the IWF publishes a newer set, change them there and the `SINCLAIR_LABEL`.
-- Reading every result or every meet name is paged on the server (`results:page`, `meets:namesPage`); a single query that scans a large table passes on dev and fails on production.
+- The CLI never reads every result: an all-athletes leaderboard is ranked on the server (`results:leaderboard`, an action paging through the range), and the rules it ranks by are ported from `stats.rs` and `leaderboard.rs` (`convex/lib/leaderboard.ts`). A change to those rules here (`plausible`, Sinclair or Q-points, `Filters::keeps`, `rank`) must change the server's too: `tests/fixtures/scores.json` holds what `stats.rs` computes for a few hundred rows, and both `tests/score_fixtures.rs` and the server's Jest test check against it (regenerate it with `MEETCAL_UPDATE_FIXTURES=1 cargo test --test score_fixtures`). Every meet name is paged on the server (`meets:namesPage`); a single query that scans a large table passes on dev and fails on production.
 - USA Weightlifting publishes some national events' start lists under one combined name and their results under separate ones. Go through `meet_names.rs` (`equivalent_meets`, `result_meet_aliases`) rather than comparing meet names directly.
 - Many results meets keep one name every year (`Testify Leprechaun Lift-off`), and `results:byMeet` answers every year's rows for that name. A meet name alone is not one event: split rows into editions by year (`meet_names::editions_by_year`), and find a meet's other editions by `meet_names::series_name`, not by swapping the year in its name.
 - Names are folded with Unicode NFC, like the server's `normalizeName`: use `stats::fold` for every name match.
