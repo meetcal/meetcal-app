@@ -49,7 +49,8 @@ export type SiriTokenState = {
 };
 
 let chain: Promise<void> = Promise.resolve();
-let retryAfter = 0;
+/** After a failed issue, when to try again, for the user it failed for: another user does not wait. */
+let retryAfter: { userId: string; at: number } | null = null;
 
 function isStoredSiriToken(value: unknown): value is StoredSiriToken {
   if (value === null || typeof value !== 'object' || Array.isArray(value)) return false;
@@ -118,14 +119,14 @@ async function sync(state: SiriTokenState, now: number): Promise<void> {
   // not churn tokens.
   if (state.userId === null || !state.subscribed) return;
   if (stored && stored.expiresAt - now > SIRI_TOKEN_RENEW_BEFORE_MS) return;
-  if (now < retryAfter) return;
+  if (retryAfter && retryAfter.userId === state.userId && now < retryAfter.at) return;
   const clerkToken = await state.getClerkToken();
   if (!clerkToken) return;
   let issued: IssuedApiToken;
   try {
     issued = await issueSiriToken(clerkToken);
   } catch (error) {
-    retryAfter = now + SIRI_TOKEN_RETRY_AFTER_MS;
+    retryAfter = { userId: state.userId, at: now + SIRI_TOKEN_RETRY_AFTER_MS };
     throw error;
   }
   const next: StoredSiriToken = { ...issued, userId: state.userId };
@@ -133,11 +134,11 @@ async function sync(state: SiriTokenState, now: number): Promise<void> {
     await SecureStore.setItemAsync(SIRI_TOKEN_KEY, JSON.stringify(next), STORE_OPTIONS);
   } catch (error) {
     // Not stored: nobody would hold it.
-    retryAfter = now + SIRI_TOKEN_RETRY_AFTER_MS;
+    retryAfter = { userId: state.userId, at: now + SIRI_TOKEN_RETRY_AFTER_MS };
     await revokeQuietly(issued, now);
     throw error;
   }
-  retryAfter = 0;
+  retryAfter = null;
   if (stored) await revokeQuietly(stored, now);
 }
 
@@ -159,5 +160,5 @@ export function syncSiriToken(state: SiriTokenState, now: () => number = Date.no
 /** Forgets the retry wait and the queue. Tests only. */
 export function resetSiriTokenForTests(): void {
   chain = Promise.resolve();
-  retryAfter = 0;
+  retryAfter = null;
 }

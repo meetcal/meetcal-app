@@ -145,6 +145,22 @@ describe("syncSiriToken", () => {
     expect(stored()?.tokenId).toBe("t1");
   });
 
+  it("does not make another user wait out the first user's retry", async () => {
+    jest.mocked(issueSiriToken).mockRejectedValueOnce(new Error("offline"));
+    await syncSiriToken(state({ userId: "user_a" }), clock);
+    jest.mocked(issueSiriToken).mockResolvedValue(issued("t_b"));
+    await syncSiriToken(state({ userId: "user_b" }), clock);
+    expect(stored()).toMatchObject({ tokenId: "t_b", userId: "user_b" });
+  });
+
+  it("keeps the renewed token when ending the old one fails", async () => {
+    store({ ...issued("t_old", NOW + 1000), userId: "user_a" });
+    jest.mocked(issueSiriToken).mockResolvedValue(issued("t_new"));
+    jest.mocked(revokeApiToken).mockRejectedValueOnce(new Error("offline"));
+    await expect(syncSiriToken(state(), clock)).resolves.toBeUndefined();
+    expect(stored()?.tokenId).toBe("t_new");
+  });
+
   it("ends a token it could not store, so nobody holds a live one", async () => {
     const SecureStore = jest.requireMock("expo-secure-store") as { setItemAsync: jest.Mock };
     SecureStore.setItemAsync.mockRejectedValueOnce(new Error("keychain locked"));
