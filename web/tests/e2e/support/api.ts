@@ -43,12 +43,14 @@ export type PassServer = {
  * `activeEntitlements` replaces the granted entitlements. Only `user_ci`
  * holds entitlements. A signed-in user's session token is `token_<id>`.
  *
- * Also answers the Convex calls that carry that token, so no test reaches the
- * real deployment: `accessPass:pass` answers `server.pass` (default
+ * Also answers the Convex calls that carry that token: `accessPass:pass` answers `server.pass` (default
  * `pass_test`) to `Bearer token_user_ci` while `server.entitled`, 403 to
  * another user or while not entitled, and 401 without a token; the
  * `entitlements:refresh` action answers `{ active: refreshGrants }` and, when
- * active, makes `server.entitled` true. Returns `server`, and the
+ * active, makes `server.entitled` true. Any other Convex call the test does
+ * not route fails with an `errorAnswer`, so no test reaches the real
+ * deployment (it once sent `pass_test` to production's `reference:records`).
+ * Returns `server`, and the
  * Authorization header of each call: `passRequests` and
  * `entitlementRefreshes`.
  */
@@ -119,6 +121,16 @@ export async function mockAuth(
     if (!loadRevenueCat) mock.installPurchases();
   }, { signedIn, active, revenueCatError, loadRevenueCat });
 
+  // Routed first, so every route a test adds later answers before it.
+  await page.route(CONVEX_API_URL, async (route) => {
+    if (route.request().method() === "OPTIONS") {
+      await route.fulfill({ status: 204, headers: CORS_HEADERS });
+      return;
+    }
+    const body = route.request().postDataJSON() as { path?: string } | null;
+    await route.fulfill(errorAnswer(`${body?.path ?? "a Convex function"} is not mocked in this test`));
+  });
+
   const server: PassServer = { pass: "pass_test", entitled: serverEntitled };
   const passRequests: Array<string | undefined> = [];
   await routeQuery(page, "accessPass:pass", (route) => {
@@ -184,6 +196,8 @@ const CONVEX_QUERY_URL = "https://disciplined-hare-790.convex.cloud/api/query";
 const CONVEX_MUTATION_URL = "https://disciplined-hare-790.convex.cloud/api/mutation";
 /** The one action the site calls, `entitlements:refresh`. */
 const CONVEX_ACTION_URL = "https://disciplined-hare-790.convex.cloud/api/action";
+/** Every Convex call: queries, mutations and actions. */
+const CONVEX_API_URL = "https://disciplined-hare-790.convex.cloud/api/**";
 
 /** `accessPass:pass`, `entitlements:refresh` and the `deviceLogin` calls carry `Authorization`, so the preflight must allow it. */
 const CORS_HEADERS = {
