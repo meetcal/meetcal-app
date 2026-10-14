@@ -166,6 +166,8 @@ jobs:
         with:
           name: SHA256SUMS
           path: dist/SHA256SUMS
+          # A re-run of this job after a later step failed uploads it again.
+          overwrite: true
 
       - uses: softprops/action-gh-release@v2
         with:
@@ -201,9 +203,17 @@ jobs:
           ssh-key: ${{ secrets.HOMEBREW_TAP_DEPLOY_KEY }}
           path: tap
 
+      # A fix tagged on an older line (cli-v2.4.1 after cli-v3.0.0) must not point new installs
+      # back at it.
       - name: Write the formula
         run: |
           version="${GITHUB_REF_NAME#cli-v}"
+          current="$(awk -F'"' '/^  version / { print $2; exit }' tap/Formula/meetcal.rb)"
+          if [ -n "$current" ] && [ "$current" != "$version" ] \
+            && [ "$(printf '%s\n%s\n' "$current" "$version" | sort -V | tail -1)" = "$current" ]; then
+            echo "The tap has meetcal ${current}, newer than ${version}: left as it is."
+            exit 0
+          fi
           cli/scripts/homebrew-formula.sh "$version" dist/SHA256SUMS > tap/Formula/meetcal.rb
           ruby -c tap/Formula/meetcal.rb
           git -C tap diff

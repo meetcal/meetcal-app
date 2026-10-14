@@ -86,8 +86,8 @@ pub fn archive_name(artifact: &str) -> String {
     format!("{artifact}.tar.gz")
 }
 
-/// The command `upgrade` runs for a Homebrew install.
-pub fn homebrew_command(prefix: &Path) -> (PathBuf, Vec<String>) {
+/// The commands `upgrade` runs for a Homebrew install, in order: refresh the taps, then upgrade.
+pub fn homebrew_commands(prefix: &Path) -> (PathBuf, Vec<Vec<String>>) {
     let brew = prefix.join("bin").join("brew");
     let program = if brew.is_file() {
         brew
@@ -96,7 +96,10 @@ pub fn homebrew_command(prefix: &Path) -> (PathBuf, Vec<String>) {
     };
     (
         program,
-        vec!["upgrade".to_string(), HOMEBREW_FORMULA.to_string()],
+        vec![
+            vec!["update".to_string()],
+            vec!["upgrade".to_string(), HOMEBREW_FORMULA.to_string()],
+        ],
     )
 }
 
@@ -245,6 +248,16 @@ fn write_executable(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
     file.sync_all()
 }
 
+/// The version the binary at `path` prints for `--version` (`meetcal X.Y.Z`), if it runs.
+pub fn reported_version(path: &Path) -> Option<Version> {
+    let output = run_version(path).ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    let printed = String::from_utf8_lossy(&output.stdout);
+    Version::parse(printed.trim().strip_prefix(BINARY_NAME)?.trim_start())
+}
+
 /// Fails unless the binary at `path` runs and prints `meetcal <expected>` for `--version`.
 fn check_version(path: &Path, expected: Version) -> Result<()> {
     let output = run_version(path)
@@ -371,10 +384,13 @@ mod tests {
     }
 
     #[test]
-    fn homebrew_upgrades_the_taps_formula() {
-        let (program, args) = homebrew_command(Path::new("/nonexistent-prefix"));
+    fn homebrew_refreshes_its_taps_then_upgrades_the_formula() {
+        let (program, commands) = homebrew_commands(Path::new("/nonexistent-prefix"));
         assert_eq!(program, PathBuf::from("brew"));
-        assert_eq!(args, ["upgrade", "meetcal/tap/meetcal"]);
+        assert_eq!(
+            commands,
+            [vec!["update"], vec!["upgrade", "meetcal/tap/meetcal"]]
+        );
     }
 
     const HASH: &str = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
@@ -484,6 +500,20 @@ mod tests {
                 1,
                 "no staged file left"
             );
+            fs::remove_dir_all(&dir).unwrap();
+        }
+
+        #[test]
+        fn the_reported_version_is_read_from_the_binary() {
+            let dir = scratch("reported");
+            let exe = dir.join("meetcal");
+            write_executable(&exe, &script("3.1.0")).unwrap();
+            assert_eq!(reported_version(&exe), Some(version("3.1.0")));
+
+            let other = dir.join("other");
+            write_executable(&other, b"#!/bin/sh\necho \"something 3.1.0\"\n").unwrap();
+            assert_eq!(reported_version(&other), None);
+            assert_eq!(reported_version(&dir.join("missing")), None);
             fs::remove_dir_all(&dir).unwrap();
         }
 

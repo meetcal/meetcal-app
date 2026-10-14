@@ -172,6 +172,25 @@ fn a_github_failure_is_an_error() {
     );
 }
 
+#[test]
+fn check_exits_2_when_it_cannot_tell() {
+    let base_url =
+        serve_with(|_| HashMap::from([("/releases".to_string(), (403, b"rate limited".to_vec()))]));
+
+    let output = run(
+        Path::new(env!("CARGO_BIN_EXE_meetcal")),
+        &base_url,
+        &["upgrade", "--check"],
+    );
+
+    assert_eq!(output.status.code(), Some(2), "{}", stderr(&output));
+    assert!(
+        stderr(&output).contains("GitHub answered 403"),
+        "{}",
+        stderr(&output)
+    );
+}
+
 #[cfg(unix)]
 #[test]
 fn a_downloaded_binary_replaces_itself_with_the_checked_release() {

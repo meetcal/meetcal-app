@@ -89,15 +89,21 @@ highest `cli-vX.Y.Z` tag that is neither a draft nor a pre-release (`src/utils/r
 releases are not marked the repository's latest, so GitHub's "latest" answer is not used). It
 judges how it was installed by where its binary is, symlinks resolved (`src/utils/upgrade.rs`):
 
-- under a Homebrew prefix's `Cellar/meetcal/`: it runs that prefix's `bin/brew upgrade
-  meetcal/tap/meetcal`, so Homebrew's records stay right;
+- under a Homebrew prefix's `Cellar/meetcal/`: it runs that prefix's `bin/brew update` (Homebrew
+  refreshes taps at most once a day on its own, so `upgrade` alone can find nothing) and `brew
+  upgrade meetcal/tap/meetcal`, so Homebrew's records stay right;
 - in Cargo's `bin` (`$CARGO_HOME/bin`, else `~/.cargo/bin`): `cargo install --git … --tag
   cli-vX.Y.Z --locked --force meetcal`;
+- either way it then runs the installed binary's `--version` and fails unless it is the release
+  (a package manager that found nothing newer still exits 0);
 - anywhere else: it downloads its platform's archive and `SHA256SUMS`, refuses an archive whose
   hash differs, writes the binary beside the old one, runs its `--version`, and renames it over
   the old one, so any failure leaves the installed binary as it was. A directory it cannot write
   ends with the `sudo` command to run; it never escalates itself. A platform with no release
   build (Windows) is told the `cargo install` command.
+
+`upgrade --check` exits 0 when this is the newest, 1 when a newer release is out and 2 when it
+cannot tell (offline, GitHub refused), so a script never reads a failure as an upgrade.
 
 Every other command, when stderr is a terminal and neither `CI` nor `MEETCAL_NO_UPDATE_CHECK` is
 set, starts `src/utils/update_notice.rs` beside its work: at most once a day it asks GitHub (5

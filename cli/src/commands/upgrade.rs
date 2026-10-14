@@ -16,9 +16,13 @@ use crate::utils::upgrade::{self, Install, MAX_DOWNLOAD_BYTES, NotWritable};
 /// Time allowed for each release download, longer than a data read's: an archive is megabytes.
 const DOWNLOAD_TIMEOUT: Duration = Duration::from_secs(300);
 
+/// `--check`'s exit code when it could not find out (offline, GitHub refused): 1 means a newer
+/// release is out, so a failure must not look like one.
+pub const CHECK_FAILED: i32 = 2;
+
 /// Upgrade meetcal to its newest release.
 ///
-/// Installed with Homebrew, it runs `brew upgrade meetcal/tap/meetcal`; with Cargo, `cargo
+/// Installed with Homebrew, it runs `brew update` and `brew upgrade meetcal/tap/meetcal`; with Cargo, `cargo
 /// install` of the release's tag. Otherwise it downloads the release for this machine from GitHub,
 /// checks it against the release's SHA256SUMS, and replaces this binary. It never asks for more
 /// rights: where it cannot write, it says what to run.
@@ -32,7 +36,8 @@ const DOWNLOAD_TIMEOUT: Duration = Duration::from_secs(300);
 #[derive(Parser)]
 #[command(name = "upgrade")]
 pub struct UpgradeArgs {
-    /// Only say whether a newer release is out: exits 0 when this is the newest, 1 when not
+    /// Only say whether a newer release is out: exits 0 when this is the newest, 1 when not, 2
+    /// when it cannot tell
     #[arg(long)]
     pub check: bool,
 }
@@ -40,9 +45,17 @@ pub struct UpgradeArgs {
 pub async fn run(args: UpgradeArgs) -> Result<()> {
     let client = backend::client()?;
     let current = Version::current();
-    let release = releases::fetch_newest(client)
-        .await?
-        .context("GitHub lists no release of the CLI")?;
+    let found = releases::fetch_newest(client)
+        .await
+        .and_then(|release| release.context("GitHub lists no release of the CLI"));
+    let release = match found {
+        Ok(release) => release,
+        Err(error) if args.check => {
+            eprintln!("Error: {error:?}");
+            std::process::exit(CHECK_FAILED);
+        }
+        Err(error) => return Err(error),
+    };
     let mut err = std::io::stderr();
 
     if !releases::is_newer(release.version, current) {
@@ -70,12 +83,19 @@ pub async fn run(args: UpgradeArgs) -> Result<()> {
 
     match upgrade::detect(&exe, cargo_bin.as_deref()) {
         Install::Homebrew { prefix } => {
-            let (program, args) = upgrade::homebrew_command(&prefix);
-            run_installer(&program, &args, "Homebrew", &mut err)
+            // Homebrew refreshes its taps at most once a day on its own: without the update,
+            // `brew upgrade` can answer "already installed" while the tap has the release.
+            let (program, commands) = upgrade::homebrew_commands(&prefix);
+            for args in &commands {
+                run_installer(&program, args, "Homebrew", &mut err)?;
+            }
+            let linked = prefix.join("bin").join(upgrade::BINARY_NAME);
+            confirm_installed(&linked, release.version, "Homebrew", &mut err)
         }
         Install::Cargo => {
             let (program, args) = upgrade::cargo_command(release.version);
-            run_installer(&program, &args, "Cargo", &mut err)
+            run_installer(&program, &args, "Cargo", &mut err)?;
+            confirm_installed(&exe, release.version, "Cargo", &mut err)
         }
         Install::Binary { path } => install_release(client, &release, &path, &mut err).await,
     }
@@ -104,6 +124,29 @@ fn run_installer(
         bail!("`{command}` failed ({status})");
     }
     Ok(())
+}
+
+/// Fails unless the binary a package manager just installed at `path` is `expected`: a manager
+/// that found nothing newer still exits 0.
+fn confirm_installed(
+    path: &Path,
+    expected: Version,
+    manager: &str,
+    err: &mut impl Write,
+) -> Result<()> {
+    match upgrade::reported_version(path) {
+        Some(version) if version == expected => {
+            writeln!(err, "Upgraded to meetcal {expected}.")?;
+            Ok(())
+        }
+        Some(version) => bail!(
+            "{manager} still has meetcal {version}, not {expected}. The release may not have reached {manager} yet: try again in a few minutes"
+        ),
+        None => bail!(
+            "{manager} finished, but {} does not report its version",
+            path.display()
+        ),
+    }
 }
 
 /// Replaces the binary at `exe` with the release's build for this machine.
@@ -165,7 +208,7 @@ async fn install_release(
 
 /// The body at `url`, at most [`MAX_DOWNLOAD_BYTES`].
 async fn download(client: &reqwest::Client, url: &str) -> Result<Vec<u8>> {
-    let response = client
+    let mut response = client
         .get(url)
         .timeout(DOWNLOAD_TIMEOUT)
         .send()
@@ -181,12 +224,17 @@ async fn download(client: &reqwest::Client, url: &str) -> Result<Vec<u8>> {
     {
         bail!("{url} is too large to be a CLI release");
     }
-    let bytes = response
-        .bytes()
+    // Read a chunk at a time, so a body with no length stops at the cap rather than after it.
+    let mut body = Vec::new();
+    while let Some(chunk) = response
+        .chunk()
         .await
-        .with_context(|| format!("Failed to download {url}"))?;
-    if bytes.len() as u64 > MAX_DOWNLOAD_BYTES {
-        bail!("{url} is too large to be a CLI release");
+        .with_context(|| format!("Failed to download {url}"))?
+    {
+        if (body.len() + chunk.len()) as u64 > MAX_DOWNLOAD_BYTES {
+            bail!("{url} is too large to be a CLI release");
+        }
+        body.extend_from_slice(&chunk);
     }
-    Ok(bytes.to_vec())
+    Ok(body)
 }
