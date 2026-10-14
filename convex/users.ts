@@ -2,6 +2,7 @@ import { v } from 'convex/values';
 import { internal } from './_generated/api';
 import { internalMutation, mutation, query, type MutationCtx, type QueryCtx } from './_generated/server';
 import type { Doc } from './_generated/dataModel';
+import { isMeetCalToken } from './lib/access';
 import { compareCollated } from './lib/sort';
 import { apiError, isValidIsoDate, requireNonEmpty } from './lib/validation';
 
@@ -27,7 +28,8 @@ export const SAVED_SESSION_WRITE_ORDER_PRUNE_BATCH = 32;
 
 async function requireUserId(ctx: QueryCtx): Promise<string> {
   const identity = await ctx.auth.getUserIdentity();
-  if (!identity) throw apiError(401, 'unauthorized');
+  // A MeetCal-issued token (the CLI's, Siri's) reads premium data only.
+  if (!identity || isMeetCalToken(identity)) throw apiError(401, 'unauthorized');
   // A deleted account's token stays valid for a minute or so: a request it
   // carries (a save still in flight, another device's sync) must not store
   // the user's data again after `deleteUserData`.
@@ -479,8 +481,8 @@ export const USER_DATA_DELETE_BATCH = 500;
 
 /**
  * Deletes everything stored under a user id: saved sessions (with their
- * notes and athlete names), preferences, and the saved-session revisions and
- * reset markers. Keeps the id alone (`deleted_users`), so a request still
+ * notes and athlete names), preferences, the saved-session revisions and
+ * reset markers, the stored entitlement and MeetCal-issued tokens. Keeps the id alone (`deleted_users`), so a request still
  * carrying a valid token for the account is refused rather than storing its
  * data again. Called by Clerk's `user.deleted` webhook (`convex/http.ts`),
  * so an account deleted in Clerk leaves nothing behind (#250). At most
@@ -504,11 +506,14 @@ export const deleteUserData = internalMutation({
       ctx.db.query('user_preferences').withIndex('by_userId', (q) => q.eq('userId', userId)).take(USER_DATA_DELETE_BATCH),
       ctx.db.query('saved_session_revisions').withIndex('by_userId_and_updatedAt', (q) => q.eq('userId', userId)).take(USER_DATA_DELETE_BATCH),
       ctx.db.query('saved_session_resets').withIndex('by_userId_and_updatedAt', (q) => q.eq('userId', userId)).take(USER_DATA_DELETE_BATCH),
+      ctx.db.query('entitlements').withIndex('by_userId', (q) => q.eq('userId', userId)).take(USER_DATA_DELETE_BATCH),
+      ctx.db.query('entitlement_syncs').withIndex('by_userId', (q) => q.eq('userId', userId)).take(USER_DATA_DELETE_BATCH),
+      ctx.db.query('api_tokens').withIndex('by_userId', (q) => q.eq('userId', userId)).take(USER_DATA_DELETE_BATCH),
     ]);
     for (const rows of batches) for (const row of rows) await ctx.db.delete(row._id);
     const more = batches.some((rows) => rows.length === USER_DATA_DELETE_BATCH);
     if (more) await ctx.scheduler.runAfter(0, internal.users.deleteUserData, { userId });
-    const [sessions, preferences, revisions, resets] = batches.map((rows) => rows.length);
-    return { sessions, preferences, revisions, resets, more };
+    const [sessions, preferences, revisions, resets, entitlements, entitlementSyncs, apiTokens] = batches.map((rows) => rows.length);
+    return { sessions, preferences, revisions, resets, entitlements, entitlementSyncs, apiTokens, more };
   },
 });

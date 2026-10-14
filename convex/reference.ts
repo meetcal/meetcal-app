@@ -1,4 +1,5 @@
 import { v } from 'convex/values';
+import { premiumQuery } from './lib/access';
 import { query, type QueryCtx } from './_generated/server';
 import { revalidated, revalidatedText, type Revalidated } from './lib/etag';
 import type { Doc } from './_generated/dataModel';
@@ -49,26 +50,26 @@ async function viewOrLive(
 }
 
 /** `GET /data/records` */
-export const records = query({
+export const records = premiumQuery('reference:records', {
   args: { ifNoneMatch },
   handler: async (ctx, args) => await viewOrLive(ctx, REF_VIEWS.records, args.ifNoneMatch, () => computeRecords(ctx)),
 });
 
 /** `GET /data/standards` */
-export const standards = query({
+export const standards = premiumQuery('reference:standards', {
   args: { ifNoneMatch },
   handler: async (ctx, args) => await viewOrLive(ctx, REF_VIEWS.standards, args.ifNoneMatch, () => computeStandards(ctx)),
 });
 
 /** `GET /data/qualifying-totals` */
-export const qualifyingTotals = query({
+export const qualifyingTotals = premiumQuery('reference:qualifyingTotals', {
   args: { ifNoneMatch },
   handler: async (ctx, args) =>
     await viewOrLive(ctx, REF_VIEWS.qualifying_totals, args.ifNoneMatch, () => computeQualifyingTotals(ctx)),
 });
 
 /** `GET /data/intl-rankings` */
-export const intlRankings = query({
+export const intlRankings = premiumQuery('reference:intlRankings', {
   args: { ifNoneMatch },
   handler: async (ctx, args) =>
     await viewOrLive(ctx, REF_VIEWS.intl_rankings, args.ifNoneMatch, () => computeIntlRankings(ctx)),
@@ -100,7 +101,7 @@ async function viewAnyAgeOrBounded(
  * first. An unknown federation or age category is a 404
  * (`requireKnownRankingClass`); a known class nobody has a total in is `[]`.
  */
-export const nationalRankings = query({
+export const nationalRankings = premiumQuery('reference:nationalRankings', {
   args: { federation: v.string(), ageCategory: v.string(), ifNoneMatch },
   handler: async (ctx, args) => {
     await requireKnownRankingClass(ctx, args.federation, args.ageCategory);
@@ -113,7 +114,7 @@ export const nationalRankings = query({
 });
 
 /** `GET /data/nat-rankings-year`: `nationalRankings` within one calendar year, with dates. */
-export const nationalRankingsByYear = query({
+export const nationalRankingsByYear = premiumQuery('reference:nationalRankingsByYear', {
   args: { federation: v.string(), ageCategory: v.string(), year: v.string(), ifNoneMatch },
   handler: async (ctx, args) => {
     if (!/^\d{4}$/.test(args.year)) throw apiError(400, 'year must be a four-digit year');
@@ -128,7 +129,7 @@ export const nationalRankingsByYear = query({
  * WSOs were limited to the maintained ones (`MAINTAINED_WSOS`) stays fresh
  * until its rows change, and would offer WSOs whose records answer `[]`.
  */
-export const wsoList = query({
+export const wsoList = premiumQuery('reference:wsoList', {
   args: { ifNoneMatch },
   handler: async (ctx, args) => {
     const view = await readFreshView<string>(ctx, REF_VIEWS.wso_list);
@@ -146,7 +147,7 @@ export const MAX_REGISTRATION_WSOS = 200;
  * North" keeps records, and several WSOs keep none. A skip-scan of the `by_wso` index, one read
  * per WSO; answers the names in the list order (`distinctCollated`).
  */
-export const registrationWsos = query({
+export const registrationWsos = premiumQuery('reference:registrationWsos', {
   args: {},
   handler: async (ctx) => {
     const names: string[] = [];
@@ -176,7 +177,7 @@ async function wsoRows(ctx: QueryCtx, wso: string): Promise<WsoRecordRow[]> {
 }
 
 /** `GET /data/wso/age-groups` */
-export const wsoAgeGroups = query({
+export const wsoAgeGroups = premiumQuery('reference:wsoAgeGroups', {
   args: { wso: v.string(), ifNoneMatch },
   handler: async (ctx, args) => {
     requireNonEmpty('wso', args.wso);
@@ -185,7 +186,7 @@ export const wsoAgeGroups = query({
 });
 
 /** `GET /data/wso/records`, optionally narrowed to one age category and/or gender. */
-export const wsoRecords = query({
+export const wsoRecords = premiumQuery('reference:wsoRecords', {
   args: {
     wso: v.string(),
     ageCategory: v.optional(v.string()),
@@ -200,7 +201,7 @@ export const wsoRecords = query({
 });
 
 /** `GET /data/adaptive`: the season's best lifts per weight class. `gender` is `men` or `women`, any case. */
-export const adaptiveRecords = query({
+export const adaptiveRecords = premiumQuery('reference:adaptiveRecords', {
   args: {
     gender: v.string(),
     excludeFederation: v.string(),
@@ -224,7 +225,7 @@ export const adaptiveRecords = query({
  * `GET /clubs`: one name per club, however many ways its registrants spelled
  * it (`clubLabels`, #363); the club answers below take any spelling.
  */
-export const clubs = query({
+export const clubs = premiumQuery('reference:clubs', {
   args: { ifNoneMatch },
   handler: async (ctx, args) =>
     await viewAnyAgeOrBounded(ctx, REF_VIEWS.clubs, args.ifNoneMatch, async () => {
@@ -409,7 +410,7 @@ const encodeClubCursor = (done: readonly string[], spelling: string, cursor: str
  * Without it (clients that predate paging), the plain array of
  * `unpagedClubAthletes`.
  */
-export const clubAthletes = query({
+export const clubAthletes = premiumQuery('reference:clubAthletes', {
   args: { club: v.string(), cursor: athleteCursor },
   handler: async (ctx, args) => {
     requireNonEmpty('club', args.club);
@@ -445,7 +446,7 @@ export const clubAthletes = query({
  * affiliation can change between meets. Answers `{ json }`: a large WSO has
  * thousands of registrations. Paged with `cursor` as `clubAthletes` is.
  */
-export const wsoAthletes = query({
+export const wsoAthletes = premiumQuery('reference:wsoAthletes', {
   args: { wso: v.string(), cursor: athleteCursor },
   handler: async (ctx, args) => {
     requireNonEmpty('wso', args.wso);
@@ -464,7 +465,7 @@ export const wsoAthletes = query({
  * `GET /clubs/meet-stats`: a club's medals, PRs and make rates at one meet,
  * from the meet's stats and roster views when fresh.
  */
-export const clubMeetStats = query({
+export const clubMeetStats = premiumQuery('reference:clubMeetStats', {
   args: { club: v.string(), meet: v.string() },
   handler: async (ctx, { club, meet }) => {
     requireNonEmpty('club', club);

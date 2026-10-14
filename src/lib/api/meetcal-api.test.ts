@@ -52,10 +52,13 @@ import {
   SMALL_ROWS_NAMES_CHUNK_SIZE,
   patchAutoUnsavePreference,
   putSavedSession,
+  refreshServerEntitlement,
+  fetchAccessPass,
   searchApi,
 } from './meetcal-api';
 import { HTTP_VALIDATOR_CACHE_LIMIT } from './http-cache';
 import { callQuery, isClockCall } from './json-transport-stub';
+import { setAccessPassSource } from './premium-queries';
 import { setApiTransportForTests, TransportRequestError, type ApiCall } from './transport';
 import { UNKNOWN_PLATFORM } from '@/data/types/athletes';
 import { generateSessionId } from '@/utils/session';
@@ -2710,5 +2713,50 @@ describe('mapApiSchedule platform weigh-ins', () => {
       ['Red', '9:00 AM', '7:00 AM'],
       ['Blue', '9:30 AM', ''],
     ]);
+  });
+});
+
+describe('premium reads and the access pass', () => {
+  afterEach(() => setAccessPassSource(null));
+
+  it('carry the pass on premium queries only, as their `pass` argument, and none without a subscriber', async () => {
+    const { dataCalls } = installTransport(() => ({ etag: '"r1"', json: '[]' }));
+    await fetchApiRecords();
+    setAccessPassSource(async () => ({ pass: 'p1', rotatesAt: Date.now() + 60_000 }));
+    clearHttpValidatorCache();
+    await fetchApiRecords();
+    await fetchApiSchedule('Spring Open' as never).catch(() => {});
+    expect(dataCalls().map((call) => [call.fn, call.args.pass, call.token])).toEqual([
+      ['reference:records', undefined, undefined],
+      ['reference:records', 'p1', undefined],
+      ['meets:schedule', undefined, undefined],
+    ]);
+  });
+
+  it('sends a refused read once more with a new pass', async () => {
+    const passes = ['old', 'new'];
+    setAccessPassSource(async () => ({ pass: passes.shift() ?? 'none', rotatesAt: Date.now() + 60_000 }));
+    const { dataCalls } = installTransport((call) => {
+      if (call.args.pass === 'old') throw new TransportRequestError('query failed with 403', 403, '{"status":403,"error":"access pass expired"}');
+      return { etag: '"r1"', json: '[]' };
+    });
+    await expect(fetchApiRecords()).resolves.toEqual([]);
+    expect(dataCalls().map((call) => call.args.pass)).toEqual(['old', 'new']);
+  });
+
+  it('gets the pass with the Clerk token, and checks its shape', async () => {
+    const { lastCall } = installTransport(() => ({ pass: 'p1', rotatesAt: 5 }));
+    await expect(fetchAccessPass('clerk-token')).resolves.toEqual({ pass: 'p1', rotatesAt: 5 });
+    expect(lastCall()).toMatchObject({ fn: 'accessPass:pass', kind: 'query', token: 'clerk-token' });
+    installTransport(() => ({ pass: '', rotatesAt: 5 }));
+    await expect(fetchAccessPass('clerk-token')).rejects.toThrow('non-empty string');
+  });
+
+  it('asks the server to check the subscription with the Clerk token', async () => {
+    const { lastCall } = installTransport(() => ({ active: true }));
+    await expect(refreshServerEntitlement('clerk-token')).resolves.toEqual({ active: true });
+    expect(lastCall()).toMatchObject({ fn: 'entitlements:refresh', kind: 'action', token: 'clerk-token' });
+    installTransport(() => ({ active: 'yes' }));
+    await expect(refreshServerEntitlement('clerk-token')).rejects.toThrow('expected a boolean');
   });
 });

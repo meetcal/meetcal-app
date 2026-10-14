@@ -31,6 +31,29 @@ POST https://disciplined-hare-790.convex.cloud/api/query
   200 or 560. Our functions throw `{ status, error }` as `errorData`; the site shows `error`.
 - 429 and 503 are retried twice, honoring `Retry-After` (1 to 10 seconds). Every call is a read,
   so a retry is safe.
+- The premium functions (`SUBSCRIPTION_FUNCTIONS` in `api.rs`, Convex's `PREMIUM_FUNCTIONS`) take
+  the access pass as their `pass` argument; `api.rs` adds it to their arguments. A search
+  (`results:search`) takes it only with `startDate` and `endDate`: name suggestions are public.
+  Every other query goes out without it. No query carries the user's session token except
+  `accessPass:pass`: a query that reads its caller is cached per user, while every subscriber sends
+  the same pass, so premium answers stay in Convex's shared query cache.
+- The pass comes from `accessPass:pass` (`POST /api/query` with `Authorization: Bearer <Clerk
+  session token>`, Clerk's default token, as the app sends), which answers `{ pass, rotatesAt }`.
+  `api.rs` fetches it before the first premium read, only for a signed-in user, and holds it in
+  memory (never stored) until `rotatesAt`, or at least five minutes so a fast device clock cannot
+  make every read fetch it; concurrent reads share one fetch. Convex accepts a pass until the
+  rotation after the one that replaced it, so a slightly stale pass still works. Signing in, out
+  or as another user forgets it.
+- When `accessPass:pass` answers 403 (Convex has no active entitlement for the user), `api.rs`
+  calls the `entitlements:refresh` action (`POST /api/action`, same token), which asks RevenueCat
+  and records the entitlement, and, if it answers `{ active: true }`, asks for the pass once more.
+  This is how Convex learns of a subscriber its RevenueCat webhook never reported (a lifetime
+  purchase never renews).
+- Without a pass (signed out, not subscribed, offline, Clerk slow to hand over a token) a premium
+  read goes out without one, and a failed fetch is not tried again for a minute. If Convex refuses
+  a premium read for its pass (a function error with status 401, "access pass required", or 403,
+  "access pass expired"), `api.rs` drops the held pass, fetches a fresh one, and sends the read
+  once more with it.
 - `MEETCAL_CONVEX_URL` (compile time) points a build at another deployment. Production's CSP allows
   only the production deployment, so a preview built against dev is blocked on Vercel.
 
@@ -60,8 +83,10 @@ between data pages neither checks again nor rebuilds the page. It is checked aga
 Clerk user changes, when a page opens after a refusal or an error, and in the background when a
 page opens more than ten minutes after the last grant.
 
-The gate is a soft, client-side check, like the app's paywall. The data it guards is public in
-Convex.
+The gate is a client-side check, like the app's paywall. Convex is moving to enforce the
+subscription itself through the access pass (above): for now it only logs a premium read without a
+current pass, answering everyone; later it will refuse it. Until then the data the gate guards is
+still public in Convex.
 
 ## Routes and metadata
 

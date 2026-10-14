@@ -21,10 +21,14 @@ export const YEAR_BESTS_PREFETCH_NAME_CAP = 80;
 /** Let the list paint and settle before spending bandwidth on the warm. */
 export const YEAR_BESTS_PREFETCH_DELAY_MS = 500;
 
-/** Warms the year bests of the roster's first names starting with "A". */
-export function usePreloadYearBests(athletes: readonly LiftResult[]): void {
+/**
+ * Warms the year bests of the roster's first names starting with "A", while
+ * `enabled`: bests are premium, so only a subscriber's start list asks the
+ * server for them.
+ */
+export function usePreloadYearBests(athletes: readonly LiftResult[], enabled: boolean): void {
   useEffect(() => {
-    if (athletes.length === 0) return;
+    if (!enabled || athletes.length === 0) return;
     const firstNameStartsWithA = (athlete: LiftResult) =>
       ((athlete.name || "").trim().split(/\s+/)[0] || "")
         .toUpperCase()
@@ -36,7 +40,7 @@ export function usePreloadYearBests(athletes: readonly LiftResult[]): void {
       YEAR_BESTS_PREFETCH_DELAY_MS,
     );
     return () => clearTimeout(timer);
-  }, [athletes]);
+  }, [athletes, enabled]);
 }
 
 /**

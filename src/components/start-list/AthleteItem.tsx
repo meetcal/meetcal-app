@@ -89,7 +89,9 @@ export const AthleteItem = React.memo(function AthleteItem({
   const colors = Colors[currentTheme];
 
   useEffect(() => {
-    if (!isExpanded) return;
+    // Bests are premium: a row only shows them to a subscriber, so only a
+    // subscriber's row asks the server for them.
+    if (!isExpanded || isSubscribed !== true) return;
     // RN 0.88 removed InteractionManager from core; idle callbacks are the
     // replacement for deferring work until after the expand animation paints.
     // The timeout is the safety net InteractionManager gave us for free: an
@@ -122,7 +124,7 @@ export const AthleteItem = React.memo(function AthleteItem({
       cancelled = true;
       cancelIdleCallback(handle);
     };
-  }, [isExpanded, athlete.name]);
+  }, [isExpanded, isSubscribed, athlete.name]);
 
   const sessionTimes = athlete.session
     ? athleteSessionTimes(athlete, getSessionDetails)

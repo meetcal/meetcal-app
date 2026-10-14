@@ -27,8 +27,8 @@ function BestsHarness({ athletes, enabled }: { athletes: LiftResult[]; enabled: 
   return null;
 }
 
-function PreloadHarness({ athletes }: { athletes: LiftResult[] }) {
-  usePreloadYearBests(athletes);
+function PreloadHarness({ athletes, enabled = true }: { athletes: LiftResult[]; enabled?: boolean }) {
+  usePreloadYearBests(athletes, enabled);
   return null;
 }
 
@@ -90,6 +90,14 @@ describe("usePreloadYearBests", () => {
     const names = jest.mocked(preloadYearBests).mock.calls[0][0];
     expect(names).toHaveLength(YEAR_BESTS_PREFETCH_NAME_CAP);
     expect(names).not.toContain("Bob Smith");
+  });
+
+  it("warms nothing for a non-subscriber: bests are premium on the server", () => {
+    act(() => {
+      tree = create(<PreloadHarness athletes={[lifter("Al")]} enabled={false} />);
+    });
+    act(() => jest.advanceTimersByTime(YEAR_BESTS_PREFETCH_DELAY_MS));
+    expect(preloadYearBests).not.toHaveBeenCalled();
   });
 
   it("caps the warm to one bests request", () => {

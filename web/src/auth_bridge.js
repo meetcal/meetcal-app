@@ -13,6 +13,11 @@ const REVENUECAT_OPERATION_TIMEOUT_MS = 20_000;
 // next data page) fetches the script afresh instead of reusing a hung load.
 // Shorter than the operation timeout, so the check reports this failure.
 const SCRIPT_LOAD_TIMEOUT_MS = 15_000;
+// Longest Clerk may take to hand over a session token (it fetches a fresh one
+// when the cached one has expired). A premium read waits for the access pass,
+// which needs the token, so a stuck fetch gives up and the read goes out
+// without a pass instead.
+const SESSION_TOKEN_TIMEOUT_MS = 5_000;
 
 // Subresource Integrity for the pinned SDK files, so a compromised or
 // mis-served CDN file is refused instead of running with the Clerk session.
@@ -113,6 +118,20 @@ export async function initialize_clerk(publishableKey, onAuthChanged) {
 
   window.Clerk.addListener(() => onAuthChanged(clerkUserId()));
   onAuthChanged(clerkUserId());
+}
+
+// The signed-in user's Clerk session token (Clerk's default token, no
+// template, as the app sends), or null when signed out. Convex reads the
+// caller from it on `accessPass:pass` and `entitlements:refresh` only; the
+// premium reads carry the access pass instead.
+export async function clerk_session_token() {
+  const session = window.Clerk?.isSignedIn ? window.Clerk.session : null;
+  if (!session) return null;
+  return withTimeout(
+    session.getToken(),
+    SESSION_TOKEN_TIMEOUT_MS,
+    "Clerk took too long to hand over a session token.",
+  );
 }
 
 export function mount_clerk_user_button(element) {
