@@ -33,9 +33,9 @@ POST https://disciplined-hare-790.convex.cloud/api/query
   retried twice, honoring `Retry-After` (clamped to 1 to 30 seconds) or backing off 1 then 2
   seconds. Once retries run out, a 429 explains how long to wait. Other actions and mutations are
   sent once (`Endpoint::retries`): one may have done its work before its answer was lost.
-- One shared `reqwest` client with a 10-second connect timeout, a 30-second request timeout (120
-  seconds for an action, `ACTION_TIMEOUT`: `results:leaderboard` reads a whole range before it
-  answers), and a `meetcal-cli/<version>` User-Agent.
+- One shared `reqwest` client with a 10-second connect timeout, a 30-second request timeout, and a
+  `meetcal-cli/<version>` User-Agent. A premium action carries its own timeout (`PremiumAction`):
+  two minutes for `results:leaderboard`, which reads a whole range before it answers.
 - `MEETCAL_CONVEX_URL` (read at run time) points the CLI at another deployment.
 - `call_function` runs any query, mutation or action (`Endpoint`) with an optional bearer token,
   for the few calls that are not data reads (`functions::*`, `queries::ACCESS_PASS`). A function

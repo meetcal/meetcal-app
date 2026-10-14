@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { getFunctionName } from 'convex/server';
 import { ConvexError } from 'convex/values';
 import { passes } from '../convex/accessPass';
@@ -12,6 +14,7 @@ import {
   normalizeCategory,
   parseDivision,
   plausible,
+  pruneBests,
   qpoints,
   rank,
   type RankedFields,
@@ -134,6 +137,20 @@ describe('the ranking (the CLI’s `rank`)', () => {
   });
 });
 
+describe('pruning (`pruneBests`)', () => {
+  const candidate = (name: string, value: number) => ({ value, row: row(name, '2026-01-01', 'M', "Open Men's 89kg", 88, [value, 0, 0], [0, 0, 0]) });
+
+  it('drops only athletes strictly below the limit-th best, keeping ties', () => {
+    const best = new Map(['a', 'b', 'c', 'd', 'e'].map((name, i) => [name, candidate(name, [100, 90, 80, 80, 70][i])]));
+    pruneBests(best, 3);
+    expect([...best.keys()]).toEqual(['a', 'b', 'c', 'd']);
+    pruneBests(best, 10);
+    expect(best.size).toBe(4);
+    pruneBests(best, 1);
+    expect([...best.keys()]).toEqual(['a']);
+  });
+});
+
 describe('the guards and scores (the CLI’s `stats.rs`)', () => {
   const raw = (snatch: number[], cj: number[]) => row('A', '2026-04-04', 'M', "Men's 14-15 Age Group 79+kg", 90.8, snatch, cj);
 
@@ -180,6 +197,44 @@ describe('the guards and scores (the CLI’s `stats.rs`)', () => {
     const mixed = row('A', '2025-06-01', 'M', "Men's/Women's Youth Under 12", 40, [30, 0, 0], [40, 0, 0]);
     expect(rowSinclair(mixed)).toBeNull();
     expect(rowSinclair({ ...mixed, age: "Girl's Development Under 12" })).not.toBeNull();
+  });
+
+  it('gives the CLI’s answers for the shared fixture (`cli/tests/fixtures/scores.json`)', () => {
+    type Entry = {
+      row: RankedFields;
+      expected: { gender: string | null; category: string | null; plausible: boolean; sinclair: string | null; qpoints: string | null };
+    };
+    const fixture = JSON.parse(readFileSync(join(__dirname, '..', 'cli', 'tests', 'fixtures', 'scores.json'), 'utf8')) as { rows: Entry[] };
+    expect(fixture.rows.length).toBeGreaterThan(200);
+    // Scores travel as the shortest text that reads back as the same double.
+    const score = (value: string | null) => (value === null ? null : Number(value));
+    /** How many doubles apart `a` and `b` are (both positive). */
+    const ulps = (a: number, b: number) => {
+      const view = new DataView(new ArrayBuffer(16));
+      view.setFloat64(0, a);
+      view.setFloat64(8, b);
+      return Number(view.getBigInt64(0) - view.getBigInt64(8));
+    };
+    let sinclairOff = 0;
+    for (const { row, expected } of fixture.rows) {
+      const division = parseDivision(row.age);
+      const sinclair = rowSinclair(row);
+      const wanted = score(expected.sinclair);
+      // Q-points are + − × ÷ alone, so they are bit-for-bit. Sinclair goes through log10 and pow,
+      // whose last bit V8 (Convex, Node) and the C library the CLI links can round differently.
+      const close = sinclair !== null && wanted !== null && Math.abs(ulps(sinclair, wanted)) <= 2;
+      if (close && sinclair !== wanted) sinclairOff += 1;
+      expect([row.name, division.gender, division.category, plausible(row), close ? wanted : sinclair, rowQpoints(row)]).toEqual([
+        row.name,
+        expected.gender,
+        expected.category,
+        expected.plausible,
+        wanted,
+        score(expected.qpoints),
+      ]);
+    }
+    // Most agree to the last bit; the rest only in it.
+    expect(sinclairOff).toBeLessThanOrEqual(10);
   });
 
   it('parses divisions as the CLI does', () => {
@@ -411,10 +466,66 @@ describe('results:leaderboard', () => {
     const runQuery = jest.fn(async (ref: unknown) =>
       getFunctionName(ref as never) === 'accessPass:passes'
         ? { current: 'today', previous: null }
-        : { bests: [], federations: [], isDone: false, continueCursor: 'more' },
+        : { json: '[]', isDone: false, continueCursor: 'more' },
     );
     expect(await statusOf(run({ runQuery }, { pass: 'today', from: '2026-03-01', to: '2026-03-31' }))).toBe(500);
     expect(runQuery).toHaveBeenCalledTimes(1 + LEADERBOARD_MAX_PAGES);
+  });
+
+  it('asks for pages by range and cursor alone, so every leaderboard shares them in the query cache', async () => {
+    const { ctx, runQuery } = actionCtx({ access_passes: PASSES, lifting_results: [stored('Bo', '2026-02-01', 140, 175)] });
+    await run(ctx, { pass: 'today', by: 'sinclair', gender: 'Men', federation: 'USAW', from: '2026-02-01', to: '2026-02-28' });
+    expect(runQuery.mock.calls[1][1]).toEqual({ start: '2026-02-01', end: '2026-02-28', cursor: null });
+  });
+
+  it('answers as ranking every row at once would, while holding about `limit` athletes', async () => {
+    // A seeded generator: many athletes over many pages and months, with ties of value and date.
+    let seed = 7;
+    const random = (n: number) => {
+      seed = (seed * 1103515245 + 12345) % 2147483648;
+      return seed % n;
+    };
+    const months = ['01', '03', '05'];
+    // About 2,300 rows a month: two pages each.
+    const docs = Array.from({ length: 7000 }, () => {
+      const month = months[random(months.length)];
+      const date = `2026-${month}-${String(1 + random(3)).padStart(2, '0')}`;
+      return stored(`Lifter ${random(900)}`, date, 60 + random(20) * 5, 80 + random(20) * 5, {
+        meet: `Meet ${random(1000)}`,
+        age: random(2) ? "Open Men's 89kg" : "Junior Women's 64kg",
+        bodyWeight: 50 + random(60),
+      });
+    });
+    const { ctx } = actionCtx({ access_passes: PASSES, lifting_results: docs });
+    const inDateOrder = [...docs].map((doc, index) => ({ doc, index })).sort((a, b) => (a.doc.date < b.doc.date ? -1 : a.doc.date > b.doc.date ? 1 : a.index - b.index));
+    const asRows: RankedFields[] = inDateOrder.map(({ doc }) => ({
+      federation: doc.federation as string,
+      meet: doc.meet as string,
+      date: doc.date,
+      name: doc.name,
+      age: doc.age as string,
+      body_weight: doc.bodyWeight as number,
+      snatch1: doc.snatch1,
+      snatch2: 0,
+      snatch3: 0,
+      snatch_best: doc.snatchBest,
+      cj1: doc.cj1,
+      cj2: 0,
+      cj3: 0,
+      cj_best: doc.cjBest,
+      total: doc.total,
+      adaptive: false,
+    }));
+    for (const [by, gender, limit] of [
+      ['total', undefined, 5],
+      ['snatch', undefined, 40],
+      ['sinclair', 'Women', 25],
+      ['qpoints', 'Men', 1],
+    ] as const) {
+      const answer = await run(ctx, { pass: 'today', from: '2026-01-01', to: '2026-06-30', by, gender, limit });
+      const expected = rank(asRows, by, gender ? { gender } : {}, limit);
+      expect([by, answer.rows.map((r) => [r.name, r.meet, r.date, r.value])]).toEqual([by, expected.map(({ row, value }) => [row.name, row.meet, row.date, value])]);
+    }
   });
 
   it('refuses bad arguments with 400', async () => {

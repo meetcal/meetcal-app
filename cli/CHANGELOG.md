@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+Breaking (suggested version: 3.0.0): `meetcal results` is removed, and `leaderboard` without
+`--club` or `--wso` needs `meetcal login` with a MeetCal subscription and a range of less than five
+years.
+
 - `meetcal login` and `meetcal logout`. `login` signs this machine in to MeetCal with a code you
   approve on any signed-in device (a link and, in a terminal, a QR code), so it works over SSH, on
   servers and for AI agents; the login lasts 90 days and is saved in
@@ -19,14 +23,15 @@
   its own meet. The name must be exact (case and spacing aside), as before, with suggestions when
   it is not; `--year` now runs from 1900 to 2100. `results:wrapped` must be on the deployment
   first: release this after MeetCal's production deploy.
-- `meetcal results` is removed: MeetCal no longer offers every result in a range as a raw
+- Breaking: `meetcal results` is removed: MeetCal no longer offers every result in a range as a raw
   export. A meet's results (`meet-results`), an athlete's (`search`, `progress`) and a club's or
   WSO's results are still there.
-- `leaderboard` is ranked by MeetCal (`results:leaderboard`) instead of reading every result in
-  the range (about 28,000 a year) into the CLI, so it answers in a second or two. The rules are
-  the same: the CLI's own, moved to the server, with the same answers. A range is now under five
-  years, and `--limit` from 1 to 500. `--wso` and `--club` leaderboards are ranked by the CLI, as
-  before. The all-athletes leaderboard needs `meetcal login` and a MeetCal subscription.
+- Breaking: `leaderboard` is ranked by MeetCal (`results:leaderboard`) instead of reading every
+  result in the range (about 28,000 a year) into the CLI, so it answers in a second or two. The
+  rules are the same: the CLI's own, moved to the server, with the same answers. Without `--club`
+  or `--wso` it needs `meetcal login` and a MeetCal subscription, a range of less than five years,
+  and `--limit` at most 500. `--wso` and `--club` leaderboards are ranked by the CLI, as before,
+  with neither limit.
   `results:leaderboard` must be on the deployment first: release this after MeetCal's
   production deploy.
 

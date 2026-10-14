@@ -59,8 +59,9 @@ export function sinclair(total: number, bodyWeight: number, gender: Gender): num
   if (total <= 0 || !Number.isFinite(total) || !plausibleBodyWeight(bodyWeight)) return null;
   const [a, b] = gender === 'Men' ? SINCLAIR_MEN : SINCLAIR_WOMEN;
   if (bodyWeight >= b) return total;
+  // Rust's `log10(bw / b).powi(2)` is `l * l`, then `a * (l * l)`.
   const log = Math.log10(bodyWeight / b);
-  return total * Math.pow(10, a * log * log);
+  return total * Math.pow(10, a * (log * log));
 }
 
 /** A total's Q-points at `bodyWeight`, or null without a total or a plausible bodyweight. */
@@ -69,8 +70,10 @@ export function qpoints(total: number, bodyWeight: number, gender: Gender): numb
   const [tMax, b0, b1, b2] = gender === 'Men' ? QPOINTS_MEN : QPOINTS_WOMEN;
   const floor = gender === 'Men' ? QPOINTS_MIN_BODY_WEIGHT_MEN : QPOINTS_MIN_BODY_WEIGHT_WOMEN;
   const scaled = Math.max(bodyWeight, floor) / 100;
+  // Rust's `scaled.powi(-2)` is `1 / (scaled * scaled)` and `powi(2)` is `scaled * scaled`: the
+  // same operations in the same order, so the scores match the CLI's to the last bit.
   const squared = scaled * scaled;
-  return (total * tMax) / (b0 + b1 / squared + b2 * squared);
+  return (total * tMax) / (b0 + b1 * (1 / squared) + b2 * squared);
 }
 
 // ---------------------------------------------------------------------------
@@ -299,28 +302,94 @@ export type Candidate = { row: RankedFields; value: number };
 const beats = (next: Candidate, current: Candidate) => next.value > current.value || (next.value === current.value && next.row.date < current.row.date);
 
 /**
- * Folds `rows` (in date order) into `best`, each athlete's (folded name's)
- * best row by `metric` among those passing `filters`. On a full tie the row
- * seen first stays, so folding pages in date order, or folding each page's
- * own bests in that order (`mergeBests`), picks the same rows.
+ * Folds `rows` into `best`, each athlete's (folded name's) best row by
+ * `metric` among those passing `filters`. On a full tie (same value, same
+ * date) the row seen first stays, so the rows of one date must be folded in
+ * the order they are stored; rows of different dates may come in any order.
  */
 export function addBests(best: Map<string, Candidate>, rows: Iterable<RankedFields>, metric: LeaderboardMetric, filters: LeaderboardFilters): void {
   for (const row of rows) {
     if (!keeps(filters, row)) continue;
     const value = metricValue(metric, row);
     if (value === null) continue;
-    mergeCandidate(best, normalizeName(row.name), { row, value });
+    const key = normalizeName(row.name);
+    const current = best.get(key);
+    const next = { row, value };
+    if (current === undefined || beats(next, current)) best.set(key, next);
   }
 }
 
-function mergeCandidate(best: Map<string, Candidate>, key: string, next: Candidate): void {
-  const current = best.get(key);
-  if (current === undefined || beats(next, current)) best.set(key, next);
+/**
+ * Drops the athletes whose best is strictly below the `limit`-th best in
+ * `best` (ties kept), so a long read holds about `limit` athletes plus a
+ * page's. The answer cannot change: the `limit`-th best only rises as rows
+ * are folded in, and an athlete's best only goes up, so a dropped athlete
+ * could never have reached the top `limit`.
+ */
+export function pruneBests(best: Map<string, Candidate>, limit: number): void {
+  if (best.size <= limit) return;
+  const values = [...best.values()].map(({ value }) => value).sort((a, b) => b - a);
+  const threshold = values[limit - 1];
+  for (const [key, { value }] of best) if (value < threshold) best.delete(key);
 }
 
-/** Folds bests found later in date order (`addBests` over a later page) into `best`. */
-export function mergeBests(best: Map<string, Candidate>, later: Iterable<Candidate>): void {
-  for (const candidate of later) mergeCandidate(best, normalizeName(candidate.row.name), candidate);
+/**
+ * A result as `results:leaderboardPage` sends it: only what ranking,
+ * filtering and the answer read, as a tuple (`RankedFields` in this order),
+ * so a page of 2,000 is about 300 KB of JSON.
+ */
+export type CompactRow = [
+  federation: string,
+  meet: string,
+  date: string,
+  name: string,
+  age: string,
+  bodyWeight: number,
+  snatch1: number,
+  snatch2: number,
+  snatch3: number,
+  snatchBest: number,
+  cj1: number,
+  cj2: number,
+  cj3: number,
+  cjBest: number,
+  total: number,
+  adaptive: boolean,
+];
+
+export function toCompactRow(row: RankedFields): CompactRow {
+  return [
+    row.federation,
+    row.meet,
+    row.date,
+    row.name,
+    row.age,
+    row.body_weight,
+    row.snatch1,
+    row.snatch2,
+    row.snatch3,
+    row.snatch_best,
+    row.cj1,
+    row.cj2,
+    row.cj3,
+    row.cj_best,
+    row.total,
+    row.adaptive,
+  ];
+}
+
+/** The rows of a `results:leaderboardPage` answer; throws on anything but a list of 16-field rows. */
+export function parseCompactRows(json: string): RankedFields[] {
+  const parsed: unknown = JSON.parse(json);
+  if (!Array.isArray(parsed)) throw new Error('leaderboard page is not a list');
+  return parsed.map((row: unknown) => {
+    if (!Array.isArray(row) || row.length !== 16) throw new Error('leaderboard page row is not a compact row');
+    return fromCompactRow(row as CompactRow);
+  });
+}
+
+export function fromCompactRow([federation, meet, date, name, age, body_weight, snatch1, snatch2, snatch3, snatch_best, cj1, cj2, cj3, cj_best, total, adaptive]: CompactRow): RankedFields {
+  return { federation, meet, date, name, age, body_weight, snatch1, snatch2, snatch3, snatch_best, cj1, cj2, cj3, cj_best, total, adaptive };
 }
 
 /** The athletes' bests, best first (ties: the earlier result, then the name), at most `limit`. */

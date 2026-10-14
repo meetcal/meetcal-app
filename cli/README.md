@@ -281,10 +281,11 @@ Options:
   (`USAW`, `USAMW` or `BWL`; without it, every federation but British Weightlifting, `BWL`). `--by sinclair` and `--by qpoints` need `--gender`: men and women score on separate scales.
 - `--wso`, `-w` or `--club`: only athletes registered with it at the meet
 - `--adaptive`: include adaptive results
-- `--limit`, `-n`: rows to show, 1 to 500 (default 25)
+- `--limit`, `-n`: rows to show (default 25; at most 500 without `--wso` or `--club`)
 
-Without `--wso` or `--club`, MeetCal ranks every athlete on its servers and sends the top rows; the
-range must be under five years. With them, the CLI reads the group's results and ranks them itself.
+Without `--wso` or `--club`, MeetCal ranks every athlete on its servers and sends the top rows: it
+needs `meetcal login` with a MeetCal subscription, and a range of less than five years. With them,
+the CLI reads the group's results and ranks them itself, with no limit on the range or the rows.
 
 ### Club reports
 

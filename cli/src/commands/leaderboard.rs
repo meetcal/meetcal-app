@@ -62,8 +62,37 @@ impl Metric {
     }
 }
 
-/// The most rows a leaderboard shows (`results:leaderboard`'s limit).
-pub const MAX_LIMIT: i64 = 500;
+/// The most rows a leaderboard of every athlete shows (`results:leaderboard`'s limit,
+/// `MAX_LEADERBOARD_LIMIT` in `convex/lib/leaderboard.ts`). `--club` and `--wso` have none.
+pub const MAX_LIMIT: u32 = 500;
+
+/// A leaderboard of every athlete covers less than this many years (`MAX_LEADERBOARD_YEARS` in
+/// `convex/lib/leaderboard.ts`): `--to` before `--from` plus this many years.
+pub const MAX_YEARS: i32 = 5;
+
+/// `date` (`YYYY-MM-DD`) plus `years`, as text to compare dates with, as the server's `plusYears`
+/// does (Feb 29 stays Feb 29, so it compares after Feb 28 and before Mar 1).
+fn plus_years(date: &str, years: i32) -> String {
+    let year: i32 = date.get(..4).and_then(|y| y.parse().ok()).unwrap_or(0);
+    format!("{:04}{}", year + years, date.get(4..).unwrap_or(""))
+}
+
+/// Why `results:leaderboard` would refuse a leaderboard of every athlete from `from` to `to` with
+/// `limit` rows, checked before any request; `None` when it would not.
+pub fn server_scope_problem(from: &str, to: &str, limit: u32) -> Option<String> {
+    if to >= plus_years(from, MAX_YEARS).as_str() {
+        return Some(format!(
+            "A leaderboard of every athlete covers less than {MAX_YEARS} years: narrow --from and \
+             --to (--club and --wso leaderboards have no such limit)"
+        ));
+    }
+    (limit > MAX_LIMIT).then(|| {
+        format!(
+            "A leaderboard of every athlete shows at most {MAX_LIMIT} rows (--club and --wso \
+             leaderboards have no such limit)"
+        )
+    })
+}
 
 /// Rank athletes by their best total, snatch, clean & jerk, Sinclair or Q-points over a year or
 /// date range,
@@ -97,8 +126,8 @@ pub struct LeaderboardArgs {
     #[arg(long, requires = "to", value_parser = parse_date)]
     pub from: Option<String>,
 
-    /// End of the range, YYYY-MM-DD (with --from); under five years after --from without --club
-    /// or --wso
+    /// End of the range, YYYY-MM-DD (with --from); less than five years after --from without
+    /// --club or --wso
     #[arg(long, requires = "from", value_parser = parse_date)]
     pub to: Option<String>,
 
@@ -130,9 +159,9 @@ pub struct LeaderboardArgs {
     #[arg(long)]
     pub adaptive: bool,
 
-    /// Rows to show, 1 to 500
-    #[arg(long, short = 'n', default_value_t = 25, value_parser = clap::value_parser!(u16).range(1..=MAX_LIMIT))]
-    pub limit: u16,
+    /// Rows to show (at most 500 without --club or --wso)
+    #[arg(long, short = 'n', default_value_t = 25, value_parser = clap::value_parser!(u32).range(1..))]
+    pub limit: u32,
 }
 
 /// The range a year or --from/--to covers.
@@ -287,7 +316,7 @@ pub fn leaderboard_arguments(
     to: &str,
     metric: Metric,
     filters: &Filters,
-    limit: u16,
+    limit: u32,
 ) -> Value {
     let mut fields = Map::new();
     fields.insert("from".into(), from.into());
@@ -323,6 +352,13 @@ pub async fn run(args: LeaderboardArgs) -> Result<()> {
         adaptive: args.adaptive,
     };
 
+    if args.club.is_none()
+        && args.wso.is_none()
+        && let Some(problem) = server_scope_problem(&from, &to, args.limit)
+    {
+        bail!(problem);
+    }
+
     let group = if let Some(club) = &args.club {
         let memberships = get_club_memberships(club).await?;
         if memberships.is_empty() {
@@ -343,11 +379,10 @@ pub async fn run(args: LeaderboardArgs) -> Result<()> {
     let (scope, ranked, federations) = match group {
         Some((scope, memberships)) => {
             let rows = group_rows(&memberships, &from, &to).await?;
-            let ranked: Vec<LeaderboardRow> =
-                rank(&rows, args.by, &filters, usize::from(args.limit))
-                    .into_iter()
-                    .map(|(row, value)| LeaderboardRow::ranked(row, value))
-                    .collect();
+            let ranked: Vec<LeaderboardRow> = rank(&rows, args.by, &filters, args.limit as usize)
+                .into_iter()
+                .map(|(row, value)| LeaderboardRow::ranked(row, value))
+                .collect();
             let federations = rows.into_iter().map(|row| row.federation).collect();
             (scope, ranked, federations)
         }
@@ -586,6 +621,23 @@ mod tests {
             range(Some(2025), Some("2024-06-01"), Some("2024-06-30")),
             ("2024-06-01".into(), "2024-06-30".into())
         );
+    }
+
+    #[test]
+    fn the_servers_range_and_limit_are_checked_before_asking() {
+        assert_eq!(server_scope_problem("2021-01-01", "2025-12-31", 500), None);
+        assert_eq!(server_scope_problem("2020-02-29", "2025-02-28", 25), None);
+        let long = server_scope_problem("2021-01-01", "2026-01-01", 25).unwrap();
+        assert!(
+            long.contains("less than 5 years") && long.contains("--club"),
+            "{long}"
+        );
+        let many = server_scope_problem("2025-01-01", "2025-12-31", 501).unwrap();
+        assert!(
+            many.contains("at most 500") && many.contains("--wso"),
+            "{many}"
+        );
+        assert_eq!(plus_years("2020-02-29", 5), "2025-02-29");
     }
 
     #[test]

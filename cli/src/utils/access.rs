@@ -390,7 +390,7 @@ mod tests {
 
     #[test]
     fn the_premium_actions_are_apart_from_the_queries() {
-        assert_eq!(PREMIUM_ACTIONS, [functions::LEADERBOARD]);
+        assert_eq!(PREMIUM_ACTIONS, [functions::LEADERBOARD.function]);
         for action in PREMIUM_ACTIONS {
             assert!(!is_premium(action), "{action}");
         }

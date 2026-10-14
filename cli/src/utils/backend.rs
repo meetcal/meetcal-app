@@ -34,10 +34,6 @@ pub const CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
 /// Time allowed for a whole request, from connecting to reading the body.
 pub const REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
 
-/// Time allowed for an action's whole request. A premium action reads many rows on the server
-/// (`results:leaderboard` pages through every result in its range) before it answers.
-pub const ACTION_TIMEOUT: Duration = Duration::from_secs(120);
-
 /// Convex answers a function that ran but failed with this status (or 200).
 const FUNCTION_FAILED: u16 = 560;
 
@@ -198,16 +194,30 @@ pub mod queries {
     pub const ACCESS_PASS: Query = Query::value("accessPass:pass");
 }
 
+/// A premium Convex action the CLI calls (`utils::access::PREMIUM_ACTIONS`), and how long its
+/// whole request may take: such an action reads many rows on the server before it answers.
+#[derive(Clone, Copy, Debug)]
+pub struct PremiumAction {
+    /// `module:function`.
+    pub function: &'static str,
+    pub timeout: Duration,
+}
+
 /// The actions and mutations the CLI calls: the premium leaderboard, `meetcal login` and `logout`
 /// (`convex/deviceLogin.ts`, `convex/apiTokens.ts`) and the access pass (`convex/entitlements.ts`).
 pub mod functions {
-    /// Premium action (`utils::access::PREMIUM_ACTIONS`): every athlete's best in a date range,
-    /// ranked on the server. Takes `from`, `to` (`YYYY-MM-DD`, under five years apart), `by`
-    /// (`total`, `snatch`, `cj`, `sinclair`, `qpoints`), and optionally `gender` (`Men` or `Women`,
-    /// needed for `sinclair` and `qpoints`), `category`, `division`, `federation`, `adaptive` and
-    /// `limit` (1 to 500). Answers `{ rows, federations }`. Read it with
-    /// [`super::premium_action`].
-    pub const LEADERBOARD: &str = "results:leaderboard";
+    use super::{Duration, PremiumAction};
+
+    /// Premium action: every athlete's best in a date range, ranked on the server. Takes `from`,
+    /// `to` (`YYYY-MM-DD`, under five years apart), `by` (`total`, `snatch`, `cj`, `sinclair`,
+    /// `qpoints`), and optionally `gender` (`Men` or `Women`, needed for `sinclair` and
+    /// `qpoints`), `category`, `division`, `federation`, `adaptive` and `limit` (1 to 500).
+    /// Answers `{ rows, federations }`. It pages through every result in the range, so it gets
+    /// two minutes. Read it with [`super::premium_action`].
+    pub const LEADERBOARD: PremiumAction = PremiumAction {
+        function: "results:leaderboard",
+        timeout: Duration::from_secs(120),
+    };
     /// Action. Starts a device login; takes `deviceName` (at most 64 characters). Answers
     /// `{ deviceCode, userCode, verificationUrl, expiresAt, interval }`.
     pub const START_DEVICE_LOGIN: &str = "deviceLogin:start";
@@ -245,9 +255,10 @@ pub enum Endpoint {
 }
 
 impl Endpoint {
-    /// Whether a throttled (429) or overloaded (503) answer is sent again by itself. Only a query
-    /// is: an action or mutation may have done its work before the answer was lost (a poll that
-    /// handed out its token, a revoke), so it goes once and its caller decides.
+    /// Whether a throttled (429) or overloaded (503) answer is sent again by itself. A query is; an
+    /// action or mutation may have done its work before the answer was lost (a poll that handed
+    /// out its token, a revoke), so it goes once and its caller decides. A premium action only
+    /// reads, so [`premium_action`] sends it again like a query, whatever this says.
     pub fn retries(self) -> bool {
         matches!(self, Endpoint::Query)
     }
@@ -379,38 +390,64 @@ where
         )
     })?;
     let answer = if access::carries_pass(query.function, &args) {
-        premium_answer(base_url, access, Endpoint::Query, query.function, &args).await?
+        premium_answer(
+            base_url,
+            access,
+            Endpoint::Query,
+            query.function,
+            &args,
+            None,
+        )
+        .await?
     } else {
-        call(base_url, Endpoint::Query, query.function, &args, None, true).await?
+        call(
+            base_url,
+            Endpoint::Query,
+            query.function,
+            &args,
+            None,
+            Sending::READ,
+        )
+        .await?
     };
     read_answer(query, answer)
 }
 
-/// Runs the premium action `function` (`utils::access::PREMIUM_ACTIONS`) with `args` on the
-/// production deployment (or `MEETCAL_CONVEX_URL`), with the saved login's access pass.
-pub async fn premium_action<T, A>(function: &str, args: &A) -> Result<T>
+/// Runs the premium `action` with `args` on the production deployment (or
+/// `MEETCAL_CONVEX_URL`), with the saved login's access pass.
+pub async fn premium_action<T, A>(action: PremiumAction, args: &A) -> Result<T>
 where
     T: DeserializeOwned,
     A: Serialize + ?Sized,
 {
-    premium_action_from(&convex_url(), default_access(), function, args).await
+    premium_action_from(&convex_url(), default_access(), action, args).await
 }
 
-/// Runs the premium action `function` with `args` on the deployment at `base_url`, carrying the
-/// pass `access` holds, with a refusal handled as a premium query's (see [`premium_answer`]).
+/// Runs the premium `action` with `args` on the deployment at `base_url`, carrying the pass
+/// `access` holds, within the action's timeout, with a refusal handled as a premium query's (see
+/// [`premium_answer`]).
 pub async fn premium_action_from<T, A>(
     base_url: &str,
     access: &Access,
-    function: &str,
+    action: PremiumAction,
     args: &A,
 ) -> Result<T>
 where
     T: DeserializeOwned,
     A: Serialize + ?Sized,
 {
+    let function = action.function;
     let args = serde_json::to_value(args)
         .with_context(|| format!("Failed to build request for MeetCal {function}"))?;
-    let answer = premium_answer(base_url, access, Endpoint::Action, function, &args).await?;
+    let answer = premium_answer(
+        base_url,
+        access,
+        Endpoint::Action,
+        function,
+        &args,
+        Some(action.timeout),
+    )
+    .await?;
     let value = answer_value(function, answer)?;
     serde_json::from_value(whole_numbers_as_integers(value))
         .with_context(|| format!("Unexpected answer from MeetCal {function}"))
@@ -421,14 +458,19 @@ where
 /// one. If Convex refuses the read for its pass (status 401 or 403), [`access::on_refusal`]
 /// decides: a fresh pass and one more read, or a message telling the user to log in or subscribe.
 /// A premium function only reads, so a throttled or overloaded answer is sent again whatever its
-/// endpoint.
+/// endpoint. `timeout` replaces [`REQUEST_TIMEOUT`] for each request when given.
 async fn premium_answer(
     base_url: &str,
     access: &Access,
     endpoint: Endpoint,
     function: &str,
     args: &Value,
+    timeout: Option<Duration>,
 ) -> Result<QueryResponse> {
+    let sending = Sending {
+        retries: true,
+        timeout,
+    };
     let held = access.current_pass(base_url).await;
     let pass = held.pass.as_deref().ok();
     let answer = call(
@@ -437,7 +479,7 @@ async fn premium_answer(
         function,
         &access::with_pass(args, pass),
         None,
-        true,
+        sending,
     )
     .await?;
     if !access::is_pass_refusal(answer.function_error_status()) {
@@ -457,7 +499,7 @@ async fn premium_answer(
         function,
         &access::with_pass(args, Some(&fresh)),
         None,
-        true,
+        sending,
     )
     .await?;
     if access::is_pass_refusal(answer.function_error_status()) {
@@ -503,30 +545,42 @@ pub async fn call_function<T: DeserializeOwned>(
     args: &Value,
     token: Option<&str>,
 ) -> Result<T> {
-    let answer = call(
-        base_url,
-        endpoint,
-        function,
-        args,
-        token,
-        endpoint.retries(),
-    )
-    .await?;
+    let sending = Sending {
+        retries: endpoint.retries(),
+        timeout: None,
+    };
+    let answer = call(base_url, endpoint, function, args, token, sending).await?;
     let value = answer_value(function, answer)?;
     serde_json::from_value(whole_numbers_as_integers(value))
         .with_context(|| format!("Unexpected answer from MeetCal {function}"))
 }
 
+/// How one call is sent: whether a throttled or overloaded answer is sent again
+/// ([`send_with_retry`]), and the time its whole request may take ([`REQUEST_TIMEOUT`] unless
+/// given).
+#[derive(Clone, Copy, Debug)]
+struct Sending {
+    retries: bool,
+    timeout: Option<Duration>,
+}
+
+impl Sending {
+    /// A read: retried, within [`REQUEST_TIMEOUT`].
+    const READ: Sending = Sending {
+        retries: true,
+        timeout: None,
+    };
+}
+
 /// Posts `function` with `args` to the deployment at `base_url`, with `token` as the bearer when
-/// given, and returns Convex's answer. `retries` sends a throttled or overloaded answer again
-/// ([`send_with_retry`]).
+/// given, and returns Convex's answer.
 async fn call(
     base_url: &str,
     endpoint: Endpoint,
     function: &str,
     args: &Value,
     token: Option<&str>,
-    retries: bool,
+    sending: Sending,
 ) -> Result<QueryResponse> {
     let mut builder = client()?
         .post(format!(
@@ -542,14 +596,14 @@ async fn call(
     if let Some(token) = token {
         builder = builder.bearer_auth(token);
     }
-    if endpoint == Endpoint::Action {
-        builder = builder.timeout(ACTION_TIMEOUT);
+    if let Some(timeout) = sending.timeout {
+        builder = builder.timeout(timeout);
     }
     let request = builder
         .build()
         .with_context(|| format!("Failed to build request for MeetCal query {function}"))?;
 
-    send_with_retry(request, function, retries)
+    send_with_retry(request, function, sending.retries)
         .await?
         .json()
         .await
@@ -682,7 +736,7 @@ fn read_answer<T: DeserializeOwned>(query: Query, answer: QueryResponse) -> Resu
 }
 
 /// Sends `request`, retrying rate limited (429) and overloaded (503) responses as the retry
-/// policy allows when `retries` (a query; see [`Endpoint::retries`]). Returns the response once
+/// policy allows when `retries` (a query or a premium action; see [`Endpoint::retries`]). Returns the response once
 /// Convex answers (a function that failed included), or an error once it cannot.
 pub async fn send_with_retry(request: Request, function: &str, retries: bool) -> Result<Response> {
     let mut retries_done = 0;

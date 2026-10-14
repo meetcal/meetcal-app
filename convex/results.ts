@@ -10,9 +10,11 @@ import {
   checkLeaderboardArgs,
   type LeaderboardRow,
   leaderboardRow,
-  mergeBests,
   monthSlices,
+  parseCompactRows,
+  pruneBests,
   rankBests,
+  toCompactRow,
 } from './lib/leaderboard';
 import { computeMeetResults } from './lib/meetData';
 import { cleanNameList, distinctNameKeys, normalizeName, requestedNamesByKey } from './lib/names';
@@ -89,55 +91,29 @@ export const LEADERBOARD_MAX_PAGES = 50;
 
 const metricArg = v.union(v.literal('total'), v.literal('snatch'), v.literal('cj'), v.literal('sinclair'), v.literal('qpoints'));
 const genderArg = v.union(v.literal('Men'), v.literal('Women'));
-const filtersArg = v.object({
-  gender: v.optional(genderArg),
-  category: v.optional(v.string()),
-  division: v.optional(v.string()),
-  federation: v.optional(v.string()),
-  adaptive: v.optional(v.boolean()),
-});
 
-/** One page of a leaderboard's read: its athletes' bests and every federation it saw. */
-export type LeaderboardPage = { bests: Candidate[]; federations: string[]; isDone: boolean; continueCursor: string };
+/** One page of a leaderboard's read: its rows as JSON text of `CompactRow`s. */
+export type LeaderboardPage = { json: string; isDone: boolean; continueCursor: string };
 
 /**
- * One page of results dated `start` to `end` by date, reduced to each
- * athlete's best for the metric among the rows passing `filters`
- * (`lib/leaderboard.ts`), with the federations of every row read.
+ * One page of the results dated `start` to `end`, by date, as compact rows
+ * (`lib/leaderboard.ts`). It takes nothing about the leaderboard asked for
+ * and reads no pass, so Convex caches each page once for every caller,
+ * metric and filter: a past month's pages are read from the database once
+ * until its results change.
  */
 export const leaderboardPage = internalQuery({
-  args: { start: v.string(), end: v.string(), cursor: v.union(v.string(), v.null()), by: metricArg, filters: filtersArg },
-  handler: async (ctx, { start, end, cursor, by, filters }): Promise<LeaderboardPage> => {
+  args: { start: v.string(), end: v.string(), cursor: v.union(v.string(), v.null()) },
+  handler: async (ctx, { start, end, cursor }): Promise<LeaderboardPage> => {
     const result = await ctx.db
       .query('lifting_results')
       .withIndex('by_date', (q) => q.gte('date', start).lte('date', end))
       .paginate({ cursor, numItems: LEADERBOARD_PAGE_SIZE });
-    const rows = result.page.map(toApiLiftingResult);
-    const best = new Map<string, Candidate>();
-    addBests(best, rows, by, filters);
-    const bests = [...best.values()].map(({ row, value }) => ({
-      value,
-      row: {
-        federation: row.federation,
-        meet: row.meet,
-        date: row.date,
-        name: row.name,
-        age: row.age,
-        body_weight: row.body_weight,
-        snatch1: row.snatch1,
-        snatch2: row.snatch2,
-        snatch3: row.snatch3,
-        snatch_best: row.snatch_best,
-        cj1: row.cj1,
-        cj2: row.cj2,
-        cj3: row.cj3,
-        cj_best: row.cj_best,
-        total: row.total,
-        adaptive: row.adaptive,
-      },
-    }));
-    const federations = [...new Set(rows.map((row) => row.federation))];
-    return { bests, federations, isDone: result.isDone, continueCursor: result.continueCursor };
+    return {
+      json: JSON.stringify(result.page.map((row) => toCompactRow(toApiLiftingResult(row)))),
+      isDone: result.isDone,
+      continueCursor: result.continueCursor,
+    };
   },
 });
 
@@ -171,9 +147,9 @@ export const leaderboard = action({
     checkPass('results:leaderboard', pass, await ctx.runQuery(internal.accessPass.passes, {}));
     const { from, to, by, limit, filters } = checkLeaderboardArgs(args);
     const slices = monthSlices(from, to);
-    // Merged as pages arrive, so memory holds one row per athlete. Slices finish in any order,
-    // but that cannot change the answer: rows from different months differ in date, which
-    // `mergeBests` breaks ties by, and a month's own pages are merged in date order, so a full
+    // Folded in as pages arrive and pruned to about `limit` athletes. Slices finish in any
+    // order, but that cannot change the answer: rows from different months differ in date,
+    // which ties are broken by, and a month's own pages are folded in date order, so a full
     // tie keeps the row read first, as one pass over the rows would.
     const best = new Map<string, Candidate>();
     const federations = new Set<string>();
@@ -181,9 +157,11 @@ export const leaderboard = action({
       const [start, end] = slices[index];
       let cursor: string | null = null;
       for (let pages = 0; pages < LEADERBOARD_MAX_PAGES; pages++) {
-        const page: LeaderboardPage = await ctx.runQuery(internal.results.leaderboardPage, { start, end, cursor, by, filters });
-        mergeBests(best, page.bests);
-        for (const federation of page.federations) federations.add(federation);
+        const page: LeaderboardPage = await ctx.runQuery(internal.results.leaderboardPage, { start, end, cursor });
+        const rows = parseCompactRows(page.json);
+        for (const row of rows) federations.add(row.federation);
+        addBests(best, rows, by, filters);
+        pruneBests(best, limit);
         if (page.isDone) return;
         cursor = page.continueCursor;
       }
