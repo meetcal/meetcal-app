@@ -21,14 +21,14 @@
     <meta name="apple-mobile-web-app-title" content="MeetCal" />
     <meta name="apple-mobile-web-app-status-bar-style" content="default" />
     <meta property="og:type" content="website" />
-    <meta id="meta-og-url" property="og:url" content="https://meetcal.app/" />
+    <meta id="meta-og-url" property="og:url" content="https://www.meetcal.app/" />
     <meta id="meta-og-title" property="og:title" content="MeetCal — Weightlifting Meet Schedules & Competition Data" />
     <meta
       id="meta-og-description"
       property="og:description"
       content="Explore Olympic weightlifting meet schedules, start lists, rankings, records, and competition tools with MeetCal."
     />
-    <meta id="meta-og-image" property="og:image" content="https://meetcal.app/web-app-manifest-512x512.png" />
+    <meta id="meta-og-image" property="og:image" content="https://www.meetcal.app/web-app-manifest-512x512.png" />
     <meta property="og:site_name" content="MeetCal" />
     <meta name="twitter:card" content="summary" />
     <meta id="meta-twitter-title" name="twitter:title" content="MeetCal — Weightlifting Meet Schedules & Competition Data" />
@@ -37,8 +37,8 @@
       name="twitter:description"
       content="Explore Olympic weightlifting meet schedules, start lists, rankings, records, and competition tools with MeetCal."
     />
-    <meta id="meta-twitter-image" name="twitter:image" content="https://meetcal.app/web-app-manifest-512x512.png" />
-    <link id="canonical-url" rel="canonical" href="https://meetcal.app/" />
+    <meta id="meta-twitter-image" name="twitter:image" content="https://www.meetcal.app/web-app-manifest-512x512.png" />
+    <link id="canonical-url" rel="canonical" href="https://www.meetcal.app/" />
     <link rel="icon" href="/favicon.ico" sizes="any" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png" />
@@ -48,8 +48,23 @@
     <script src="/posthog-env.js"></script>
     <script src="/posthog-init.js"></script>
     <script type="module" src="/app-bootstrap.js"></script>
+    <link data-trunk rel="rust" data-wasm-opt="z" data-wasm-opt-params="--enable-bulk-memory --enable-nontrapping-float-to-int" />
     <link data-trunk rel="css" href="styles.css" />
     <link data-trunk rel="copy-dir" href="public" data-target-path="" />
   </head>
-  <body></body>
+  <body>
+    <!-- Shown until the app mounts; app-bootstrap.js removes it, or turns it
+         into an error with a retry if the app can't load. -->
+    <div id="app-loading" class="app-loading" role="status" aria-live="polite">
+      <img class="app-loading-logo" src="/images/logo.png" alt="" width="48" height="48" />
+      <p class="app-loading-name">MeetCal</p>
+      <p class="app-loading-message" data-app-loading-message>Loading MeetCal…</p>
+      <!-- Revealed by CSS alone after a while: if app-bootstrap.js itself
+           can't load or run, no script is left to show its error and retry. -->
+      <p class="app-loading-slow">Taking too long? <a href="">Reload the page</a></p>
+      <noscript>
+        <p class="app-loading-error">MeetCal needs JavaScript. Turn it on and reload the page.</p>
+      </noscript>
+    </div>
+  </body>
 </html>

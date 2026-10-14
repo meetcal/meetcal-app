@@ -1,5 +1,49 @@
 # Changelog
 
+## 3.0.0
+
+Breaking: `meetcal results` is removed, and `leaderboard` without
+`--club` or `--wso` needs `meetcal login` with a MeetCal subscription and a range of less than five
+years. MeetCal no longer answers the bulk results query (`results:page`) that 2.4.0 and earlier read
+for `leaderboard` and `results`, so those two commands fail on older releases: upgrade.
+
+- `meetcal upgrade` installs the newest release the way meetcal was installed: `brew update` and
+  `brew upgrade` for Homebrew, `cargo install` of the release's tag for Cargo, or, for a binary unpacked by hand, the
+  release's archive for this machine, checked against the release's new `SHA256SUMS` file and run
+  once before it replaces the binary. Where it cannot write, it says to run it with `sudo`; it
+  never asks for rights itself. `meetcal upgrade --check` only says whether a newer release is out
+  (exit 1 when one is, 2 when it cannot tell). On a terminal, other commands say once a day when one is out, asking
+  GitHub at most once a day alongside their own work; `MEETCAL_NO_UPDATE_CHECK=1` or `CI` turns it
+  off. 2.4.0 and earlier have no `upgrade`: upgrade them once with `brew upgrade meetcal`.
+- `meetcal login` and `meetcal logout`. `login` signs this machine in to MeetCal with a code you
+  approve on any signed-in device (a link and, in a terminal, a QR code), so it works over SSH, on
+  servers and for AI agents; the login lasts 90 days and is saved in
+  `~/.config/meetcal/credentials.json` (or under `$XDG_CONFIG_HOME`), readable by you alone.
+  `logout` ends it and deletes the file.
+- Commands that read subscriber data (results, rankings, records, standards, club and WSO data)
+  send MeetCal's daily access pass when you are logged in with a subscription. Without a login they
+  work as before for now; once MeetCal requires the pass, they say to run `meetcal login` (or that
+  a subscription is needed). Schedules, start lists and meet lists stay free, with no login.
+- `wrapped` and `compare` read an athlete's Wrapped from MeetCal (`results:wrapped`), the same
+  answer as the app and meetcal.app, so they are free and need no login. The numbers now follow the
+  app's rules where the CLI's differed: a lift listed twice (two divisions, or two days of one
+  meet) counts once; a top-meet tie goes to the later meet; and Meet Regular counts results rather
+  than meets. As before, source-error rows are left out, and each edition of a recurring meet is
+  its own meet. The name must be exact (case and spacing aside), as before, with suggestions when
+  it is not; `--year` now runs from 1900 to 2100. `results:wrapped` must be on the deployment
+  first: release this after MeetCal's production deploy.
+- Breaking: `meetcal results` is removed: MeetCal no longer offers every result in a range as a raw
+  export. A meet's results (`meet-results`), an athlete's (`search`, `progress`) and a club's or
+  WSO's results are still there.
+- Breaking: `leaderboard` is ranked by MeetCal (`results:leaderboard`) instead of reading every
+  result in the range (about 28,000 a year) into the CLI, so it answers in a second or two. The
+  rules are the same: the CLI's own, moved to the server, with the same answers. Without `--club`
+  or `--wso` it needs `meetcal login` and a MeetCal subscription, a range of less than five years,
+  and `--limit` at most 500. `--wso` and `--club` leaderboards are ranked by the CLI, as before,
+  with neither limit.
+  `results:leaderboard` must be on the deployment first: release this after MeetCal's
+  production deploy.
+
 ## 2.4.0
 
 - Q-points, which USA Weightlifting has used for best lifters since 2025, alongside Sinclair:
@@ -10,6 +54,32 @@
 - Q-points follow the published formula (Huebner, Meltzer, Bjarnason and Perperoglou, 2023): for
   juniors, seniors and Masters, not youth divisions; lifters under 50 kg (men) or 41 kg (women)
   are scored at that bodyweight.
+- JSON and CSV exports have a fixed schema: CSV writes the values JSON gets (empty fields for
+  placeholders, `true`/`false`, numbers without their unit), and `meet` always has the three
+  past-year best columns, null with `--no-bests`.
+- Tables fit the terminal, and piping into a command that closes early (`| head`) no longer panics.
+- A bad name or filter says why instead of printing an empty table; `progress --since` past the
+  last result says so, and its trend's Meets column counts meets, not result rows.
+- `records` and `wso-records` show a lift with no record set, and a missing standard, as a dash
+  rather than 0, and keep classes with one unset lift.
+- `leaderboard` and `results` read a date range in parallel slices, and clear the progress line when
+  they fail.
+- Rankings, trends, `wrapped` and `wso` agree with the app and server: source-error rows,
+  mixed-gender scores and British Weightlifting results stay out of USA rankings; medals place one
+  result per athlete per division, as the server does; a bomb-out sets a zero mark, so the next made
+  lift is a PR; make rates and weight lifted count one best result per athlete.
+- `qualify` counts only USAW results at a plausible bodyweight, and maps a retired class to the
+  current one by the bodyweight the total was made at.
+- Each year of a meet that keeps its name is its own edition (`attendance`, trends, `meet-results`);
+  upcoming registrations get their own edition, and names match across composed and decomposed
+  accents.
+- A combined national event's results show under every title it publishes, and are counted once in
+  trends, attendance and WSO results.
+- `wrapped` and `compare` refuse a year the search cut short and point to `progress --since`; club
+  and WSO athlete lists are paged, so a large club no longer fails.
+- Linux binaries are built against glibc 2.17, so they run on older distributions (Ubuntu 22.04,
+  Debian 11 and 12, RHEL 9, Amazon Linux 2023), and the dependencies carry no open RustSec
+  advisories.
 
 ## 2.3.0
 

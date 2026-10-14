@@ -82,12 +82,99 @@ body::before {
     mask-image: linear-gradient(#000 15%, transparent 78%);
 }
 
-main {
+/* ---------- Loading shell (index.html), shown until the app mounts ---------- */
+
+.app-loading {
+    display: grid;
+    justify-items: center;
+    align-content: center;
+    gap: 6px;
+    min-height: 70vh;
+    padding: 40px 20px;
+    text-align: center;
+}
+
+.app-loading-logo {
+    width: 48px;
+    height: 48px;
+    object-fit: contain;
+    animation: access-pulse 1.4s ease-in-out infinite;
+}
+
+.app-loading-name {
+    margin: 4px 0 0;
+    font-size: 1.3rem;
+    font-weight: 800;
+    letter-spacing: -0.03em;
+}
+
+.app-loading-message,
+.app-loading-error {
+    max-width: 30rem;
+    margin: 0;
+    color: var(--text-secondary);
+}
+
+.app-loading-error {
+    color: var(--text);
+}
+
+.app-loading-retry {
+    min-height: 44px;
+    margin-top: 12px;
+    padding: 10px 22px;
+    border-radius: 999px;
+    background: var(--accent);
+    color: #fff;
+    font-weight: 700;
+}
+
+.app-loading-retry:focus-visible {
+    outline: 3px solid var(--accent-ink);
+    outline-offset: 3px;
+}
+
+/* The no-script fallback for a bootstrap that never loads or runs: hidden
+   (and out of the accessibility tree) until 10 s pass, then a plain reload
+   link. The bootstrap's own error, with its retry, replaces it. */
+.app-loading-slow {
+    margin: 12px 0 0;
+    color: var(--text-secondary);
+    visibility: hidden;
+    animation: app-loading-slow-reveal 0s linear 10s forwards;
+}
+
+.app-loading-slow a {
+    display: inline-block;
+    min-height: 44px;
+    padding: 10px 4px;
+    color: var(--text);
+    font-weight: 700;
+    text-decoration: underline;
+}
+
+.app-loading[role="alert"] .app-loading-slow {
+    display: none;
+}
+
+@keyframes app-loading-slow-reveal {
+    to {
+        visibility: visible;
+    }
+}
+
+/* The page frame: header, main and footer are siblings here, so each is its
+   own landmark. */
+.site-shell {
     text-align: center;
     padding: 0 20px 0;
     max-width: 100%;
     overflow-x: hidden;
     counter-reset: feature;
+}
+
+main {
+    display: block;
 }
 
 button {
@@ -370,6 +457,24 @@ a {
     font: inherit;
 }
 
+/* iOS Safari zooms into any focused field under 16px and stays zoomed, so on
+   phones and touch screens the data pages' fields are at least 16px (#391). */
+@media (max-width: 880px), (pointer: coarse) {
+    .data-filter { font-size: max(16px, 1rem); }
+}
+
+.visually-hidden {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    padding: 0;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+    border: 0;
+}
+
 .data-filter:focus { outline: 2px solid color-mix(in srgb, var(--accent) 45%, transparent); border-color: var(--accent); }
 .data-filters { display: flex; flex-wrap: wrap; gap: 12px; }
 .data-filters label { display: grid; gap: 5px; color: var(--text-secondary); font-size: 0.82rem; font-weight: 700; }
@@ -379,6 +484,9 @@ a {
 .data-filters .data-sort .data-filter { width: 220px; }
 .data-status { margin: 22px 0; color: var(--text-secondary); }
 .data-status.error { color: #c43b3b; }
+.data-status.error p { margin: 0; }
+.data-retry-button { margin-top: 10px; min-height: 40px; padding: 8px 15px; border: 1px solid currentColor; border-radius: 9px; background: transparent; color: inherit; font-weight: 700; }
+.data-retry-button:hover { background: rgba(196, 59, 59, 0.08); }
 .data-help { margin: 10px 0 0; color: var(--text-secondary); font-size: 0.82rem; }
 .data-filters-secondary { margin-top: 22px; }
 .data-query-form { display: flex; flex-wrap: wrap; align-items: end; gap: 12px; }
@@ -443,28 +551,27 @@ a {
 .wrapped-top-meet span { display: block; margin-bottom: 7px; color: var(--text-secondary); font-size: 0.76rem; font-weight: 750; letter-spacing: 0.04em; text-transform: uppercase; }
 .wrapped-top-meet strong { display: block; font-size: 1.15rem; line-height: 1.3; }
 .wrapped-choices { width: min(620px, 100%); overflow: hidden; border: 1px solid var(--border); border-radius: 10px; background: var(--card); box-shadow: var(--shadow-sm); }
-.wrapped-choices button { display: block; width: 100%; padding: 11px 13px; border-bottom: 1px solid var(--border); color: var(--text); text-align: left; }
-.wrapped-choices button:last-child { border-bottom: 0; }
-.wrapped-choices button:hover, .wrapped-choices button:focus { background: color-mix(in srgb, var(--accent) 10%, var(--card)); }
-.wrapped-choices button:focus-visible { outline: 2px solid color-mix(in srgb, var(--accent) 55%, transparent); outline-offset: -2px; }
+.wrapped-choices button, .wrapped-choices a { display: block; text-decoration: none; width: 100%; padding: 11px 13px; border-bottom: 1px solid var(--border); color: var(--text); text-align: left; }
+.wrapped-choices button:last-child, .wrapped-choices a:last-child { border-bottom: 0; }
+.wrapped-choices button:hover, .wrapped-choices button:focus, .wrapped-choices a:hover, .wrapped-choices a:focus { background: color-mix(in srgb, var(--accent) 10%, var(--card)); }
+.wrapped-choices button:focus-visible, .wrapped-choices a:focus-visible { outline: 2px solid color-mix(in srgb, var(--accent) 55%, transparent); outline-offset: -2px; }
 .meet-search { position: relative; width: min(620px, 100%); }
 .meet-search > label { display: block; margin-bottom: 5px; color: var(--text-secondary); font-size: 0.82rem; font-weight: 700; }
 .meet-search .data-filter { width: 100%; }
-.meet-suggestions { position: absolute; z-index: 5; top: calc(100% + 6px); width: 100%; overflow: hidden; border: 1px solid var(--border); border-radius: 10px; background: var(--card); box-shadow: var(--shadow); }
-.meet-suggestions button { display: block; width: 100%; padding: 11px 13px; border-bottom: 1px solid var(--border); color: var(--text); text-align: left; }
-.meet-suggestions button:last-child { border-bottom: 0; }
-.meet-suggestions button:hover, .meet-suggestions button:focus { background: color-mix(in srgb, var(--accent) 10%, var(--card)); }
-.meet-suggestions p { margin: 0; padding: 11px 13px; color: var(--text-secondary); }
+/* The athlete and meet comboboxes' dropdowns (src/pages/comp_data/combobox.rs). */
+.meet-suggestions, .athlete-suggestions { position: absolute; z-index: 6; top: calc(100% + 6px); left: 0; width: 100%; overflow: hidden; border: 1px solid var(--border); border-radius: 10px; background: var(--card); box-shadow: var(--shadow-lg); text-align: left; }
+.meet-suggestions[hidden], .athlete-suggestions[hidden], .meet-suggestions ul[hidden], .athlete-suggestions ul[hidden] { display: none; }
+.meet-suggestions ul, .athlete-suggestions ul { margin: 0; padding: 0; list-style: none; }
+.meet-suggestions li, .athlete-suggestions li { padding: 11px 13px; border-bottom: 1px solid var(--border); color: var(--text); cursor: pointer; }
+.meet-suggestions li:last-child, .athlete-suggestions li:last-child { border-bottom: 0; }
+.meet-suggestions li:hover, .athlete-suggestions li:hover, .meet-suggestions li[aria-selected="true"], .athlete-suggestions li[aria-selected="true"] { background: color-mix(in srgb, var(--accent) 12%, var(--card)); }
+.meet-suggestions li[aria-selected="true"], .athlete-suggestions li[aria-selected="true"] { box-shadow: inset 3px 0 0 var(--accent); }
+.meet-suggestions p, .athlete-suggestions p { margin: 0; padding: 11px 13px; color: var(--text-secondary); }
 .data-athlete-link { color: var(--accent); font-weight: 700; text-decoration: none; }
 .data-athlete-link:hover { text-decoration: underline; }
 .athlete-autocomplete { position: relative; display: grid; gap: 5px; }
 .athlete-autocomplete > label { color: var(--text-secondary); font-size: 0.82rem; font-weight: 700; }
 .athlete-autocomplete .data-filter { width: 100%; }
-.athlete-suggestions { position: absolute; z-index: 6; top: calc(100% + 6px); width: 100%; overflow: hidden; border: 1px solid var(--border); border-radius: 10px; background: var(--card); box-shadow: var(--shadow); }
-.athlete-suggestions button { display: block; width: 100%; padding: 11px 13px; border-bottom: 1px solid var(--border); color: var(--text); text-align: left; }
-.athlete-suggestions button:last-child { border-bottom: 0; }
-.athlete-suggestions button:hover, .athlete-suggestions button:focus { background: color-mix(in srgb, var(--accent) 10%, var(--card)); }
-.athlete-suggestions p { margin: 0; padding: 11px 13px; color: var(--text-secondary); }
 
 .header-actions {
     display: flex;
@@ -778,6 +885,198 @@ a {
 
 .access-button-secondary:hover {
     background: color-mix(in srgb, var(--accent) 8%, var(--card));
+}
+
+/* ---------- CLI sign-in approval (/link) ---------- */
+
+.access-card code {
+    padding: 0.1em 0.35em;
+    border-radius: 6px;
+    background: color-mix(in srgb, var(--text-secondary) 12%, transparent);
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.92em;
+    white-space: nowrap;
+}
+
+.link-details {
+    max-width: 440px;
+    margin: 0 auto 18px;
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    text-align: left;
+}
+
+.link-details div {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--border);
+}
+
+.link-details div:last-child {
+    border-bottom: 0;
+}
+
+.link-details dt {
+    flex: none;
+    color: var(--text-secondary);
+    font-size: 0.85rem;
+    font-weight: 700;
+}
+
+.link-details dd {
+    min-width: 0;
+    margin: 0;
+    font-weight: 700;
+    overflow-wrap: anywhere;
+    text-align: right;
+}
+
+.link-warning {
+    max-width: 440px;
+    margin: 0 auto 24px;
+    padding: 14px 16px;
+    border: 1px solid color-mix(in srgb, #d97706 50%, var(--border));
+    border-radius: 16px;
+    background: color-mix(in srgb, #f59e0b 12%, var(--card));
+    font-size: 0.92rem;
+    text-align: left;
+}
+
+.link-actions {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 12px;
+}
+
+.link-actions .access-button {
+    min-width: 160px;
+    margin-top: 0;
+}
+
+.link-code-form {
+    display: grid;
+    gap: 8px;
+    max-width: 340px;
+    margin: 0 auto;
+    text-align: left;
+}
+
+.link-code-form label {
+    color: var(--text-secondary);
+    font-size: 0.85rem;
+    font-weight: 700;
+}
+
+/* 16px or more, so iOS Safari does not zoom into the field (#391). */
+.link-code-input {
+    width: 100%;
+    min-height: 54px;
+    padding: 0 14px;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    background: var(--card);
+    color: var(--text);
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: max(16px, 1.45rem);
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    text-align: center;
+}
+
+.link-code-input:focus {
+    outline: 2px solid color-mix(in srgb, var(--accent) 45%, transparent);
+    border-color: var(--accent);
+}
+
+.link-code-input[aria-invalid="true"] {
+    border-color: #c53b35;
+}
+
+.link-code-help,
+.link-code-form .access-inline-error {
+    margin: 0;
+    font-size: 0.85rem;
+}
+
+.link-code-help {
+    color: var(--text-secondary);
+}
+
+.link-code-form .access-button {
+    width: 100%;
+    margin-top: 10px;
+}
+
+.link-result .access-button {
+    margin-top: 22px;
+}
+
+.link-device-note {
+    display: block;
+    margin-top: 2px;
+    color: var(--text-secondary);
+    font-size: 0.78rem;
+    font-weight: 500;
+}
+
+.link-revoke {
+    width: min(760px, 100%);
+    margin-top: 18px;
+    color: var(--text-secondary);
+    font-size: 0.9rem;
+    text-align: center;
+}
+
+.link-revoke p {
+    margin: 0 0 8px;
+}
+
+.link-revoke-actions {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 8px;
+}
+
+/* Small, but a full touch target. */
+.link-revoke-button {
+    min-height: 44px;
+    padding: 0 16px;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    background: var(--card);
+    color: var(--text);
+    font-weight: 650;
+}
+
+.link-revoke-button:hover:not(:disabled) {
+    background: color-mix(in srgb, var(--accent) 8%, var(--card));
+}
+
+.link-revoke-button:disabled {
+    cursor: wait;
+    opacity: 0.7;
+}
+
+.link-revoke-confirm {
+    border-color: color-mix(in srgb, #c53b35 60%, var(--border));
+    background: color-mix(in srgb, #c53b35 10%, var(--card));
+}
+
+.link-result-icon {
+    display: inline-grid;
+    width: 52px;
+    height: 52px;
+    place-items: center;
+    border-radius: 50%;
+    background: color-mix(in srgb, #1f9d55 16%, var(--card));
+    color: #1f9d55;
+    font-size: 1.6rem;
+    font-weight: 800;
 }
 
 @keyframes access-spin {
@@ -1437,18 +1736,67 @@ main > div:has(> h4) > p {
 .screenshot-set img {
     display: block;
     width: 220px;
+    height: auto;
     border: 5px solid rgba(255, 255, 255, 0.18);
     border-radius: 28px;
     box-shadow: 0 20px 42px rgba(0, 31, 82, 0.35);
 }
 
-.screenshot-marquee:hover .screenshot-track {
+.screenshot-marquee:hover .screenshot-track,
+.screenshot-marquee.is-paused .screenshot-track {
     animation-play-state: paused;
 }
 
 @keyframes scroll-screenshots {
     to {
         transform: translateX(calc(-50% - 10px));
+    }
+}
+
+.marquee-toggle {
+    min-height: 44px;
+    margin-top: 22px;
+    padding: 10px 20px;
+    border: 1px solid rgba(255, 255, 255, 0.4);
+    border-radius: 999px;
+    color: #fff;
+    font-size: 0.9rem;
+    font-weight: 650;
+}
+
+.marquee-toggle:hover {
+    background: rgba(255, 255, 255, 0.12);
+}
+
+.marquee-toggle:focus-visible {
+    outline: 3px solid #fff;
+    outline-offset: 3px;
+}
+
+/* Moving content stays still for visitors who ask for less motion (WCAG 2.2.2,
+   2.3.3): the screenshots become a strip they can scroll themselves. */
+@media (prefers-reduced-motion: reduce) {
+    .screenshot-marquee {
+        overflow-x: auto;
+    }
+
+    .screenshot-track {
+        animation: none;
+    }
+
+    .screenshot-set[aria-hidden="true"],
+    .marquee-toggle {
+        display: none;
+    }
+
+    .data-skeleton,
+    .auth-button-placeholder,
+    .app-loading-logo {
+        animation: none;
+    }
+
+    .access-spinner {
+        animation-duration: 2.4s;
     }
 }
 
@@ -1473,11 +1821,18 @@ main > div:has(> h4) > p {
     line-height: 1.15;
 }
 
+.footer-ctas {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 12px;
+    margin: 22px 0 32px;
+}
+
 .footer-cta {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    margin: 22px 0 32px;
     padding: 15px 32px;
     border-radius: 14px;
     background: linear-gradient(180deg, #1a8cff, var(--accent) 45%, var(--accent-deep));
@@ -1492,6 +1847,23 @@ main > div:has(> h4) > p {
 .footer-cta:hover {
     filter: brightness(1.06);
     transform: translateY(-2px);
+}
+
+.footer-cta-secondary {
+    border: 1px solid rgba(242, 244, 246, 0.35);
+    background: rgba(242, 244, 246, 0.08);
+    box-shadow: none;
+}
+
+.interaction-links {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px 22px;
+    margin-top: auto;
+}
+
+.interaction-links .interaction-link {
+    margin-top: 0;
 }
 
 .site-footer p {
@@ -1674,7 +2046,7 @@ main > div:has(> h4) > p {
     line-height: 1.65;
 }
 
-main main:not(.features-page) {
+.legal-page {
     display: block;
     text-align: left;
     max-width: 740px;
@@ -1687,48 +2059,86 @@ main main:not(.features-page) {
     overflow-x: visible;
 }
 
-main main:not(.features-page) h1 {
+.legal-page h1 {
     font-size: clamp(1.8rem, 4vw, 2.4rem);
     font-weight: 800;
     letter-spacing: -0.035em;
     margin: 0 0 4px;
 }
 
-main main:not(.features-page) h1 + div > p:first-of-type,
-main main:not(.features-page) h1 ~ div > p:first-child {
+.legal-page h1 + div > p:first-of-type,
+.legal-page h1 ~ div > p:first-child {
     color: var(--text-secondary);
     font-size: 0.9rem;
 }
 
-main main:not(.features-page) h2 {
+.legal-page h2 {
     font-size: 1.22rem;
     font-weight: 700;
     letter-spacing: -0.015em;
     margin: 38px 0 8px;
 }
 
-main main:not(.features-page) p {
+.legal-page p {
     margin: 0 0 14px;
     color: var(--text);
     font-size: 0.98rem;
 }
 
-main main:not(.features-page) ul,
-main main:not(.features-page) ol {
+.legal-page ul,
+.legal-page ol {
     margin: 0 0 14px;
     padding-left: 22px;
 }
 
-main main:not(.features-page) li {
+.legal-page li {
     margin-bottom: 6px;
 }
 
-main main:not(.features-page) a {
+.legal-page a {
     color: var(--accent);
 }
 
-main main:not(.features-page) a:hover {
+.legal-page a:hover {
     text-decoration: underline;
+}
+
+.not-found {
+    padding: clamp(48px, 10vh, 96px) 0;
+}
+
+.not-found h1 {
+    margin: 0 0 10px;
+    font-size: clamp(1.8rem, 4vw, 2.4rem);
+    letter-spacing: -0.035em;
+}
+
+.not-found p {
+    margin: 0 0 22px;
+    color: var(--text-secondary);
+}
+
+.not-found-links {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 12px;
+}
+
+.not-found-links a {
+    display: inline-flex;
+    align-items: center;
+    min-height: 44px;
+    padding: 10px 20px;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    background: var(--card);
+    color: var(--accent);
+    font-weight: 650;
+}
+
+.not-found-links a:hover {
+    border-color: var(--accent);
 }
 
 /* ---------- Small screens ---------- */
@@ -1831,6 +2241,11 @@ main main:not(.features-page) a:hover {
 
     .mobile-subscription-links,
     .mobile-subscription-links .access-button {
+        width: 100%;
+    }
+
+    .link-actions,
+    .link-actions .access-button {
         width: 100%;
     }
 

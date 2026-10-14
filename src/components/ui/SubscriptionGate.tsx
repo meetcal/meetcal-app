@@ -1,4 +1,5 @@
 import { EmptyState } from "@/components/ui/EmptyState";
+import { FallbackHeader } from "@/components/ui/FallbackHeader";
 import { IconSymbol } from "@/components/ui/IconSymbol";
 import { ThemedView } from "@/components/ui/ThemedView";
 import { useSubscription } from "@/contexts/SubscriptionContext";
@@ -8,7 +9,7 @@ import { ActivityIndicator, StyleSheet } from "react-native";
 import PaywallScreen from "@/app/shared-screens/paywall";
 import { isMaestroE2E } from "@/lib/e2e";
 import { resolvePremiumAccess } from "@/lib/premium-access";
-import { usePathname } from "expo-router";
+import { useLocalSearchParams, usePathname } from "expo-router";
 
 interface SubscriptionGateProps {
   children: React.ReactNode;
@@ -22,8 +23,28 @@ interface SubscriptionGateProps {
 
 /** The trailing path segment, used as the analytics feature name. */
 export function featureNameFromPathname(pathname: string): string {
-  const segments = pathname.split("/").filter(Boolean);
+  const segments = pathname.split("?")[0].split("/").filter(Boolean);
   return segments[segments.length - 1] || "subscription";
+}
+
+type RouteParams = Record<string, string | string[] | undefined>;
+
+/**
+ * The gated route as an in-app href, query included. `usePathname` drops the
+ * query, so a gated screen opened with params (a deep link to an athlete's
+ * results or a session's estimator) came back from sign-in without them, as
+ * "No athlete selected". Non-string values are not URL params and are left
+ * out.
+ */
+export function gateOrigin(pathname: string, params: RouteParams): string {
+  const query = Object.entries(params)
+    .flatMap(([key, value]) =>
+      (Array.isArray(value) ? value : [value])
+        .filter((item): item is string => typeof item === "string")
+        .map((item) => `${encodeURIComponent(key)}=${encodeURIComponent(item)}`),
+    )
+    .join("&");
+  return query ? `${pathname}?${query}` : pathname;
 }
 
 export function SubscriptionGate({
@@ -43,7 +64,8 @@ export function SubscriptionGate({
   // Records is sent to sign-in with `from: "/(tabs)"` and, once signed in,
   // lands on the schedule tab instead of the screen they asked for.
   const pathname = usePathname();
-  const from = fromProp ?? pathname;
+  const params: RouteParams = useLocalSearchParams();
+  const from = fromProp ?? gateOrigin(pathname, params);
 
   if (isMaestroE2E()) {
     return <>{children}</>;
@@ -60,6 +82,9 @@ export function SubscriptionGate({
     isLoading: Boolean(isSubscriptionLoading),
   });
 
+  // The gated screen turns its header on from inside its content, which the
+  // spinner and the "Can't confirm" state replace: without a header of their
+  // own there was no Back button (the paywall brings its own).
   if (access === "checking") {
     return (
       <ThemedView
@@ -72,6 +97,7 @@ export function SubscriptionGate({
           },
         ]}
       >
+        <FallbackHeader />
         <ActivityIndicator size="large" color={colors.link} />
       </ThemedView>
     );
@@ -82,6 +108,7 @@ export function SubscriptionGate({
       <ThemedView
         style={[styles.container, { backgroundColor: colors.background }]}
       >
+        <FallbackHeader />
         <EmptyState
           icon={<IconSymbol name="wifi.slash" size={40} color={colors.secondaryText} />}
           title="Can't confirm your subscription"

@@ -19,8 +19,8 @@ import { meetStatusAt } from '../lib/meetStatus';
  * name (`ingest.upsertMeets`), so a meet Sport80 retitles stays one meet
  * under its stored name (#252, #413). A meet already completed is skipped, as
  * the WSO search did before, unless its scraped dates have moved into the
- * future: `upsertMeets` then makes it upcoming again (status follows the
- * dates, `lib/meetStatus.ts`).
+ * future: `upsertMeets` then takes the new dates and venue but keeps it
+ * completed (`nextMeetStatus`, `lib/meetStatus.ts`).
  */
 const fetchWidgetPage = (url: string): Promise<unknown> =>
   withRetries(() => fetchJson(url, { timeoutMs: 30_000 }), { attempts: 3, delayMs: (attempt) => 2 ** attempt * 1000 });

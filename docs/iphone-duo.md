@@ -19,7 +19,7 @@ Apple stops accepting uploads built with an SDK older than iOS 27 in April 2027.
 
   ```sh
   export DEVELOPER_DIR="/Applications/Xcode copy.app/Contents/Developer"
-  bunx expo run:ios --device "<iPhone Duo simulator UDID>"
+  bun run ios --device "<iPhone Duo simulator UDID>"
   ```
 
   Verify the slice you got: the clang invocations should show
@@ -30,6 +30,15 @@ Apple stops accepting uploads built with an SDK older than iOS 27 in April 2027.
   build today produces a binary that runs in the *basic* letterboxed mode on Duo.
   Pin `eas.json` to the Xcode 27 image once Expo publishes one; until then, a
   Duo-optimized App Store build has to come from a local archive.
+
+- **Archive with the production Convex URL in the environment.** Set
+  `EXPO_PUBLIC_CONVEX_URL=https://disciplined-hare-790.convex.cloud` in the shell
+  that runs prebuild and the archive, not just Xcode's GUI. The URL goes into the
+  Info.plist and into the runtime fingerprint the build computes. Without it, the
+  config falls back to `.env.local` (the dev deployment), so the binary queries the
+  wrong backend and production OTAs (`bun run update:prod`) never match it. Before
+  uploading, compare the `fingerprint` file in the archive's `EXUpdates.bundle`
+  with `EXPO_PUBLIC_CONVEX_URL=https://disciplined-hare-790.convex.cloud bunx expo-updates fingerprint:generate --platform ios`.
 
 ## Layout rules
 

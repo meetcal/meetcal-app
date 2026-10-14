@@ -4,12 +4,11 @@ import { SubscriptionGate } from "@/components/ui/SubscriptionGate";
 import { ThemedText } from "@/components/ui/ThemedText";
 import { ThemedView } from "@/components/ui/ThemedView";
 import { FilterSection, GenericFilterModal } from "@/components/ui/filters";
-import { useTheme } from "@/contexts/ThemeContext";
 import { useAppColors } from "@/hooks/useAppColors";
 import { useFilterState } from "@/hooks/useFilterState";
 import { useMutableResource } from "@/hooks/useMutableResource";
+import { useWSOAgeGroups } from "@/hooks/useWSOAgeGroups";
 import {
-  fetchWSOAgeGroups,
   wsoListResource,
   wsoRecordsResource,
 } from "@/lib/database/fetch-wso-records";
@@ -24,6 +23,7 @@ import { Stack } from "expo-router";
 import React, { useEffect, useMemo } from "react";
 import { StyleSheet, View } from "react-native";
 import { useScreenHorizontalInsets } from "@/hooks/useScreenInsets";
+import { formatReferenceKg } from "@/lib/reference-values";
 
 const EMPTY_WSO_LIST: string[] = [];
 const EMPTY_RECORDS_DATA: RecordsData = {} as RecordsData;
@@ -39,11 +39,6 @@ export default function WSORecordsScreen() {
 function WSORecordsScreenContent() {
   const screenInsets = useScreenHorizontalInsets();
   const colors = useAppColors();
-  const { currentTheme } = useTheme();
-  const [ageGroupsCache, setAgeGroupsCache] = React.useState<
-    Record<string, string[]>
-  >({});
-  const modalDraftWSORef = React.useRef("");
 
   const {
     filters,
@@ -89,33 +84,18 @@ function WSORecordsScreenContent() {
     setTempFilters((prev) => ({ ...prev, wso: nextWSO }));
   }, [availableWSOs, filters.wso, setFilters, setTempFilters]);
 
-  const availableAgeGroups = useMemo(
-    () => sortAgeGroups(Object.keys(records)),
-    [records],
-  );
+  // The records are fetched for one age group, so the age-group options come
+  // from the WSO's unfiltered list.
+  const { ageGroupsByWSO, requestAgeGroups } = useWSOAgeGroups(filters.wso);
+  const loadedAgeGroups: string[] | undefined = ageGroupsByWSO[filters.wso];
 
   useEffect(() => {
-    if (!filters.wso || availableAgeGroups.length === 0) return;
-
-    setAgeGroupsCache((prev) => {
-      const current = prev[filters.wso] ?? [];
-      if (JSON.stringify(current) === JSON.stringify(availableAgeGroups)) {
-        return prev;
-      }
-      return {
-        ...prev,
-        [filters.wso]: availableAgeGroups,
-      };
-    });
-  }, [availableAgeGroups, filters.wso]);
-
-  useEffect(() => {
-    if (!availableAgeGroups.length) return;
-    if (availableAgeGroups.includes(filters.ageGroup)) return;
-    const nextAgeGroup = availableAgeGroups[0];
+    if (!loadedAgeGroups?.length) return;
+    if (loadedAgeGroups.includes(filters.ageGroup)) return;
+    const nextAgeGroup = loadedAgeGroups[0];
     setFilters((prev) => ({ ...prev, ageGroup: nextAgeGroup }));
     setTempFilters((prev) => ({ ...prev, ageGroup: nextAgeGroup }));
-  }, [availableAgeGroups, filters.ageGroup, setFilters, setTempFilters]);
+  }, [loadedAgeGroups, filters.ageGroup, setFilters, setTempFilters]);
 
   const currentRecords = useMemo<WeightClassRecord[]>(() => {
     return (
@@ -132,41 +112,18 @@ function WSORecordsScreenContent() {
     return `${wso} • ${gen} • ${age}`;
   };
 
-  const fetchAgeGroupsForWSO = React.useCallback(
-    (wso: string) => {
-      if (!wso || ageGroupsCache[wso]) return;
-
-      fetchWSOAgeGroups(wso)
-        .then((nextAgeGroups) => {
-          setAgeGroupsCache((prev) => ({
-            ...prev,
-            [wso]: sortAgeGroups(nextAgeGroups),
-          }));
-        })
-        .catch((error) => {
-          console.error(`Failed to fetch age groups for ${wso}`, error);
-        });
-    },
-    [ageGroupsCache],
-  );
-
   const filterSections = React.useCallback(
     (modalTempFilters: Record<string, string>): FilterSection[] => {
       const selectedWSO = modalTempFilters.wso || filters.wso || "";
+      requestAgeGroups(selectedWSO);
 
-      if (
-        selectedWSO &&
-        selectedWSO !== filters.wso &&
-        selectedWSO !== modalDraftWSORef.current
-      ) {
-        modalDraftWSORef.current = selectedWSO;
-        fetchAgeGroupsForWSO(selectedWSO);
-      }
-
+      // Until (or if offline, unless) the current WSO's list loads, offer the
+      // age group on screen rather than nothing.
       const modalAgeGroups =
-        selectedWSO === filters.wso
-          ? availableAgeGroups
-          : ageGroupsCache[selectedWSO] ?? [];
+        ageGroupsByWSO[selectedWSO] ??
+        (selectedWSO === filters.wso
+          ? sortAgeGroups(Object.keys(records))
+          : []);
 
       return [
         {
@@ -193,13 +150,7 @@ function WSORecordsScreenContent() {
         },
       ];
     },
-    [
-      ageGroupsCache,
-      availableAgeGroups,
-      availableWSOs,
-      fetchAgeGroupsForWSO,
-      filters.wso,
-    ],
+    [ageGroupsByWSO, availableWSOs, filters.wso, records, requestAgeGroups],
   );
 
   return (
@@ -215,10 +166,10 @@ function WSORecordsScreenContent() {
           gestureDirection: "horizontal",
           animation: "slide_from_right",
           headerTitleStyle: {
-            color: currentTheme === "dark" ? "#fff" : "#000",
+            color: colors.headerTitle,
           },
           headerStyle: {
-            backgroundColor: currentTheme === "dark" ? "#000000" : "#F5F5F5",
+            backgroundColor: colors.headerBackground,
           },
           headerShadowVisible: false,
           headerBackButtonDisplayMode: "minimal",
@@ -260,16 +211,13 @@ function WSORecordsScreenContent() {
               kg
             </ThemedText>
             <ThemedText style={dataTableStyles.cell}>
-              {record.snatchRecord}
-              kg
+              {formatReferenceKg(record.snatchRecord)}
             </ThemedText>
             <ThemedText style={dataTableStyles.cell}>
-              {record.cjRecord}
-              kg
+              {formatReferenceKg(record.cjRecord)}
             </ThemedText>
             <ThemedText style={dataTableStyles.cell}>
-              {record.totalRecord}
-              kg
+              {formatReferenceKg(record.totalRecord)}
             </ThemedText>
           </View>
         )}

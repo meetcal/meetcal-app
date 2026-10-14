@@ -4,16 +4,27 @@ import { meetLocalDate, zoneFormatter, type ZoneFormatters } from './meetData';
 export type MeetStatus = Doc<'meets'>['status'];
 
 /**
- * A meet's status, worked out from its dates on its own calendar rather
- * than kept: `completed` once its end date has passed, `ongoing` from its
- * first day through its last, `upcoming` before. So a meet whose dates move
- * into the future (a corrected typo, a postponement) is upcoming again, and
- * a meet in progress says so, without each client re-deriving it.
+ * What a meet's dates say its status is on `localToday`, its own calendar:
+ * `completed` once its end date has passed, `ongoing` from its first day
+ * through its last, `upcoming` before. A meet in progress says so without
+ * each client re-deriving it. Writers go through `nextMeetStatus`, which
+ * never reopens a completed meet.
  */
 export function meetStatusOn(meet: Pick<Doc<'meets'>, 'startDate' | 'endDate'>, localToday: string): MeetStatus {
   if (paddedDate(meet.endDate) < localToday) return 'completed';
   if (paddedDate(meet.startDate) <= localToday) return 'ongoing';
   return 'upcoming';
+}
+
+/**
+ * The status a meet stored as `stored` (undefined for a new one) moves to
+ * when its dates say `dated`. Completed is final: a meet marked completed,
+ * by the hourly job or by hand, never goes back to upcoming or ongoing,
+ * whatever its dates say. A meet whose dates were wrong in the past and
+ * later fixed stays completed until someone sets its status by hand.
+ */
+export function nextMeetStatus(stored: MeetStatus | undefined, dated: MeetStatus): MeetStatus {
+  return stored === 'completed' ? 'completed' : dated;
 }
 
 /**

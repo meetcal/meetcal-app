@@ -1,8 +1,11 @@
 //! Access to MeetCal's data: the Convex queries in `convex/` at the repository root, the same
-//! ones the app and the website read, called over Convex's HTTP API (`POST /api/query`).
+//! ones the app and the website read, called over Convex's HTTP API (`POST /api/query`), the
+//! premium action `leaderboard` ranks with, and the few actions and mutations `meetcal login` and
+//! `logout` call.
 //!
 //! Every request goes through [`send_with_retry`], which uses one shared client and applies the
-//! policy in `utils::retry`.
+//! policy in `utils::retry`. A premium query's or action's read carries the access pass
+//! (`utils::access`).
 
 use std::sync::OnceLock;
 use std::time::Duration;
@@ -12,6 +15,8 @@ use reqwest::{Client, Request, Response, StatusCode, header::RETRY_AFTER};
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use serde_json::Value;
 
+use crate::utils::access::{self, Access, Refusal};
+use crate::utils::credentials;
 use crate::utils::retry::{next_retry_delay, parse_retry_after_secs};
 
 /// The production Convex deployment, which the app and the website read too.
@@ -52,6 +57,17 @@ pub fn client() -> Result<&'static Client> {
         .build()
         .context("Failed to build the HTTP client")?;
     Ok(CLIENT.get_or_init(|| client))
+}
+
+static ACCESS: OnceLock<Access> = OnceLock::new();
+
+/// The saved login (`utils::credentials::default_path`) and the pass fetched with it, shared by
+/// every read of this run.
+pub fn default_access() -> &'static Access {
+    ACCESS.get_or_init(|| match credentials::default_path() {
+        Some(path) => Access::from_file(path),
+        None => Access::anonymous(),
+    })
 }
 
 /// The deployment to read: `MEETCAL_CONVEX_URL` when set, production otherwise.
@@ -131,12 +147,14 @@ pub mod queries {
     /// `GET /lifting-results/bests`: each name's best snatch, clean & jerk and total since
     /// `cutoffDate`; takes `names` (at most 100) and `cutoffDate`.
     pub const BESTS: Query = Query::value("results:bests");
-    /// Every result in a date range, a page at a time; takes `startDate`, `endDate`, `cursor`
-    /// (null to start) and `numItems` (at most 2000). Answers `{ json, isDone, continueCursor }`.
-    pub const RESULTS_PAGE: Query = Query::value("results:page");
     /// `GET /search`; takes `query`, and optionally `startDate` and `endDate` (both included).
     /// Answers at most 600 results, the most recent, with `truncated` set when it cut some.
     pub const SEARCH: Query = Query::value("results:search");
+    /// An athlete's Weightlifting Wrapped for a calendar year, scored on the server: public, no
+    /// pass. Takes `query`, `year` and optionally `picked` (true: the exact name only). Answers
+    /// `{ kind }`: `athlete` with `name` and `stats`, `ambiguous`, `narrow`, `tooManyResults`, or
+    /// `none` with name `suggestions`.
+    pub const WRAPPED: Query = Query::value("results:wrapped");
     /// `GET /data/records`
     pub const RECORDS: Query = Query::text("reference:records");
     /// `GET /data/standards`
@@ -157,6 +175,9 @@ pub mod queries {
     pub const CLUBS: Query = Query::text("reference:clubs");
     /// `GET /data/wso`: every WSO with records.
     pub const WSO_LIST: Query = Query::text("reference:wsoList");
+    /// Every WSO name on registrations: the names `reference:wsoAthletes` matches, which differ
+    /// from the record sheets' (`reference:wsoList`).
+    pub const REGISTRATION_WSOS: Query = Query::value("reference:registrationWsos");
     /// `GET /data/wso/age-groups`: the age groups a WSO keeps records for; takes `wso`.
     pub const WSO_AGE_GROUPS: Query = Query::text("reference:wsoAgeGroups");
     /// `GET /clubs/athletes`; takes `club`, and `cursor` (null to start) to page. Read it with
@@ -167,6 +188,120 @@ pub mod queries {
     /// `GET /wsos/athletes`; takes `wso`, and `cursor` (null to start) to page. Read it with
     /// [`super::query_all_pages`]: a page answers `{ json, cursor, isDone }`.
     pub const WSO_ATHLETES: Query = Query::value("reference:wsoAthletes");
+    /// The access pass for a subscriber, called with the saved login's token as the bearer
+    /// (`utils::access`): `{ pass, rotatesAt }`, or status 401 (token not accepted), 403 (no active
+    /// subscription) or 503 (no pass yet).
+    pub const ACCESS_PASS: Query = Query::value("accessPass:pass");
+}
+
+/// A premium Convex action the CLI calls (`utils::access::PREMIUM_ACTIONS`), and how long its
+/// whole request may take: such an action reads many rows on the server before it answers.
+#[derive(Clone, Copy, Debug)]
+pub struct PremiumAction {
+    /// `module:function`.
+    pub function: &'static str,
+    pub timeout: Duration,
+}
+
+/// The actions and mutations the CLI calls: the premium leaderboard, `meetcal login` and `logout`
+/// (`convex/deviceLogin.ts`, `convex/apiTokens.ts`) and the access pass (`convex/entitlements.ts`).
+pub mod functions {
+    use super::{Duration, PremiumAction};
+
+    /// Premium action: every athlete's best in a date range, ranked on the server. Takes `from`,
+    /// `to` (`YYYY-MM-DD`, under five years apart), `by` (`total`, `snatch`, `cj`, `sinclair`,
+    /// `qpoints`), and optionally `gender` (`Men` or `Women`, needed for `sinclair` and
+    /// `qpoints`), `category`, `division`, `federation`, `adaptive` and `limit` (1 to 500).
+    /// Answers `{ rows, federations }`. It pages through every result in the range, so it gets
+    /// two minutes. Read it with [`super::premium_action`].
+    pub const LEADERBOARD: PremiumAction = PremiumAction {
+        function: "results:leaderboard",
+        timeout: Duration::from_secs(120),
+    };
+    /// Action. Starts a device login; takes `deviceName` (at most 64 characters). Answers
+    /// `{ deviceCode, userCode, verificationUrl, expiresAt, interval }`.
+    pub const START_DEVICE_LOGIN: &str = "deviceLogin:start";
+    /// Action. Where a device login stands; takes `deviceCode`. Answers `{ status }`, with the
+    /// token (`{ token, tokenId, expiresAt }`) once approved.
+    pub const POLL_DEVICE_LOGIN: &str = "deviceLogin:poll";
+    /// Mutation. Ends the MeetCal-issued token it is called with (as the bearer); takes `{}`.
+    pub const REVOKE_TOKEN: &str = "apiTokens:revoke";
+    /// Action. Asks RevenueCat for the caller's (the bearer's) subscription and records it;
+    /// takes `{}`, answers `{ active }`. Called when `accessPass:pass` answers 403, for a
+    /// subscriber Convex does not know yet (a lifetime purchase never sends a renewal).
+    pub const REFRESH_ENTITLEMENT: &str = "entitlements:refresh";
+}
+
+/// Reads a JSON number as a whole `i64`, whether Convex wrote it as an integer (`5`) or a float
+/// (`5.0`, `1791948423574.0`); a fraction is rounded. For every numeric field of an answer the
+/// CLI reads outside the data rows (epoch-ms times, intervals).
+pub fn whole_number<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<i64, D::Error> {
+    let number = f64::deserialize(deserializer)?;
+    let rounded = number.round();
+    if !rounded.is_finite() || rounded < i64::MIN as f64 || rounded > i64::MAX as f64 {
+        return Err(serde::de::Error::custom(format!(
+            "{number} is not a whole number"
+        )));
+    }
+    Ok(rounded as i64)
+}
+
+/// The kind of Convex function a call runs, which names its HTTP endpoint.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Endpoint {
+    Query,
+    Mutation,
+    Action,
+}
+
+impl Endpoint {
+    /// Whether a throttled (429) or overloaded (503) answer is sent again by itself. A query is; an
+    /// action or mutation may have done its work before the answer was lost (a poll that handed
+    /// out its token, a revoke), so it goes once and its caller decides. A premium action only
+    /// reads, so [`premium_action`] sends it again like a query, whatever this says.
+    pub fn retries(self) -> bool {
+        matches!(self, Endpoint::Query)
+    }
+
+    fn path(self) -> &'static str {
+        match self {
+            Endpoint::Query => "api/query",
+            Endpoint::Mutation => "api/mutation",
+            Endpoint::Action => "api/action",
+        }
+    }
+}
+
+/// A Convex function that ran and failed: its `errorData` status (our functions throw
+/// `{ status, error }`), and the reason. Reaches callers inside `anyhow::Error`; read the status
+/// with [`FunctionError::status_of`].
+#[derive(Debug)]
+pub struct FunctionError {
+    pub function: String,
+    pub status: Option<u16>,
+    pub reason: String,
+}
+
+impl std::fmt::Display for FunctionError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "MeetCal could not answer {}: {}",
+            self.function, self.reason
+        )
+    }
+}
+
+impl std::error::Error for FunctionError {}
+
+impl FunctionError {
+    /// The status of the function error `error` carries, if it carries one.
+    pub fn status_of(error: &anyhow::Error) -> Option<u16> {
+        error
+            .chain()
+            .find_map(|cause| cause.downcast_ref::<FunctionError>())
+            .and_then(|failed| failed.status)
+    }
 }
 
 #[derive(Serialize)]
@@ -192,6 +327,24 @@ enum QueryResponse {
     },
 }
 
+impl QueryResponse {
+    /// The status a function error carries in its `errorData`, if the answer is one. A value
+    /// answer writes its numbers as floats (`403.0`).
+    fn function_error_status(&self) -> Option<u16> {
+        let QueryResponse::Error {
+            error_data: Some(data),
+            ..
+        } = self
+        else {
+            return None;
+        };
+        data.get("status")
+            .and_then(Value::as_f64)
+            .filter(|status| status.fract() == 0.0 && (0.0..=f64::from(u16::MAX)).contains(status))
+            .map(|status| status as u16)
+    }
+}
+
 /// The arguments of a query that takes none.
 #[derive(Serialize)]
 pub struct NoArgs {}
@@ -207,48 +360,254 @@ struct PagedArgs<'a, A: Serialize + ?Sized> {
 /// One page of a paged query: its rows as JSON text, and where the next page starts.
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct Page {
-    json: String,
-    cursor: String,
-    is_done: bool,
+pub struct Page {
+    pub json: String,
+    pub cursor: String,
+    pub is_done: bool,
 }
 
-/// Runs `query` with `args` on the production deployment (or `MEETCAL_CONVEX_URL`).
+/// Runs `query` with `args` on the production deployment (or `MEETCAL_CONVEX_URL`), with the
+/// saved login's access pass when it is a premium read.
 pub async fn query<T, A>(query: Query, args: &A) -> Result<T>
 where
     T: DeserializeOwned,
     A: Serialize + ?Sized,
 {
-    query_from(&convex_url(), query, args).await
+    query_from(&convex_url(), default_access(), query, args).await
 }
 
-/// Runs `query` with `args` on the deployment at `base_url`.
-pub async fn query_from<T, A>(base_url: &str, query: Query, args: &A) -> Result<T>
+/// Runs `query` with `args` on the deployment at `base_url`. A premium read carries the pass
+/// `access` holds (see [`premium_answer`]).
+pub async fn query_from<T, A>(base_url: &str, access: &Access, query: Query, args: &A) -> Result<T>
 where
     T: DeserializeOwned,
     A: Serialize + ?Sized,
 {
-    let request = client()?
-        .post(format!("{}/api/query", base_url.trim_end_matches('/')))
+    let args = serde_json::to_value(args).with_context(|| {
+        format!(
+            "Failed to build request for MeetCal query {}",
+            query.function
+        )
+    })?;
+    let answer = if access::carries_pass(query.function, &args) {
+        premium_answer(
+            base_url,
+            access,
+            Endpoint::Query,
+            query.function,
+            &args,
+            None,
+        )
+        .await?
+    } else {
+        call(
+            base_url,
+            Endpoint::Query,
+            query.function,
+            &args,
+            None,
+            Sending::READ,
+        )
+        .await?
+    };
+    read_answer(query, answer)
+}
+
+/// Runs the premium `action` with `args` on the production deployment (or
+/// `MEETCAL_CONVEX_URL`), with the saved login's access pass.
+pub async fn premium_action<T, A>(action: PremiumAction, args: &A) -> Result<T>
+where
+    T: DeserializeOwned,
+    A: Serialize + ?Sized,
+{
+    premium_action_from(&convex_url(), default_access(), action, args).await
+}
+
+/// Runs the premium `action` with `args` on the deployment at `base_url`, carrying the pass
+/// `access` holds, within the action's timeout, with a refusal handled as a premium query's (see
+/// [`premium_answer`]).
+pub async fn premium_action_from<T, A>(
+    base_url: &str,
+    access: &Access,
+    action: PremiumAction,
+    args: &A,
+) -> Result<T>
+where
+    T: DeserializeOwned,
+    A: Serialize + ?Sized,
+{
+    let function = action.function;
+    let args = serde_json::to_value(args)
+        .with_context(|| format!("Failed to build request for MeetCal {function}"))?;
+    let answer = premium_answer(
+        base_url,
+        access,
+        Endpoint::Action,
+        function,
+        &args,
+        Some(action.timeout),
+    )
+    .await?;
+    let value = answer_value(function, answer)?;
+    serde_json::from_value(whole_numbers_as_integers(value))
+        .with_context(|| format!("Unexpected answer from MeetCal {function}"))
+}
+
+/// Convex's answer to a premium read, a query or an action by `endpoint`. The read carries the
+/// pass `access` holds, fetching one first if it has none, and goes without one when it cannot get
+/// one. If Convex refuses the read for its pass (status 401 or 403), [`access::on_refusal`]
+/// decides: a fresh pass and one more read, or a message telling the user to log in or subscribe.
+/// A premium function only reads, so a throttled or overloaded answer is sent again whatever its
+/// endpoint. `timeout` replaces [`REQUEST_TIMEOUT`] for each request when given.
+async fn premium_answer(
+    base_url: &str,
+    access: &Access,
+    endpoint: Endpoint,
+    function: &str,
+    args: &Value,
+    timeout: Option<Duration>,
+) -> Result<QueryResponse> {
+    let sending = Sending {
+        retries: true,
+        timeout,
+    };
+    let held = access.current_pass(base_url).await;
+    let pass = held.pass.as_deref().ok();
+    let answer = call(
+        base_url,
+        endpoint,
+        function,
+        &access::with_pass(args, pass),
+        None,
+        sending,
+    )
+    .await?;
+    if !access::is_pass_refusal(answer.function_error_status()) {
+        return Ok(answer);
+    }
+    if let Refusal::Fail(message) = access::on_refusal(&held.pass) {
+        return Err(PassRefused(message).into());
+    }
+    let renewed = access.renew_pass(base_url, &held).await;
+    let fresh = match renewed.pass {
+        Ok(fresh) => fresh,
+        Err(reason) => return Err(PassRefused(reason.message()).into()),
+    };
+    let answer = call(
+        base_url,
+        endpoint,
+        function,
+        &access::with_pass(args, Some(&fresh)),
+        None,
+        sending,
+    )
+    .await?;
+    if access::is_pass_refusal(answer.function_error_status()) {
+        return Err(PassRefused(format!(
+            "MeetCal did not accept the access pass for {function}; try again in a minute, or run \
+             `meetcal login` again"
+        ))
+        .into());
+    }
+    Ok(answer)
+}
+
+/// A premium read Convex refused for want of a current access pass, with what to tell the user.
+/// A command that can do without the premium part (`meet`'s past-year bests) checks for it with
+/// [`PassRefused::is`].
+#[derive(Debug)]
+pub struct PassRefused(pub String);
+
+impl std::fmt::Display for PassRefused {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.0)
+    }
+}
+
+impl std::error::Error for PassRefused {}
+
+impl PassRefused {
+    /// Whether `error` is a premium read refused for its pass.
+    pub fn is(error: &anyhow::Error) -> bool {
+        error
+            .chain()
+            .any(|cause| cause.downcast_ref::<PassRefused>().is_some())
+    }
+}
+
+/// Runs the Convex `function` (a query, mutation or action, by `endpoint`) with `args` on the
+/// deployment at `base_url`, with `token` as the bearer when given, and parses its value answer.
+/// A function that failed is a [`FunctionError`].
+pub async fn call_function<T: DeserializeOwned>(
+    base_url: &str,
+    endpoint: Endpoint,
+    function: &str,
+    args: &Value,
+    token: Option<&str>,
+) -> Result<T> {
+    let sending = Sending {
+        retries: endpoint.retries(),
+        timeout: None,
+    };
+    let answer = call(base_url, endpoint, function, args, token, sending).await?;
+    let value = answer_value(function, answer)?;
+    serde_json::from_value(whole_numbers_as_integers(value))
+        .with_context(|| format!("Unexpected answer from MeetCal {function}"))
+}
+
+/// How one call is sent: whether a throttled or overloaded answer is sent again
+/// ([`send_with_retry`]), and the time its whole request may take ([`REQUEST_TIMEOUT`] unless
+/// given).
+#[derive(Clone, Copy, Debug)]
+struct Sending {
+    retries: bool,
+    timeout: Option<Duration>,
+}
+
+impl Sending {
+    /// A read: retried, within [`REQUEST_TIMEOUT`].
+    const READ: Sending = Sending {
+        retries: true,
+        timeout: None,
+    };
+}
+
+/// Posts `function` with `args` to the deployment at `base_url`, with `token` as the bearer when
+/// given, and returns Convex's answer.
+async fn call(
+    base_url: &str,
+    endpoint: Endpoint,
+    function: &str,
+    args: &Value,
+    token: Option<&str>,
+    sending: Sending,
+) -> Result<QueryResponse> {
+    let mut builder = client()?
+        .post(format!(
+            "{}/{}",
+            base_url.trim_end_matches('/'),
+            endpoint.path()
+        ))
         .json(&QueryRequest {
-            path: query.function,
+            path: function,
             args,
             format: "json",
-        })
+        });
+    if let Some(token) = token {
+        builder = builder.bearer_auth(token);
+    }
+    if let Some(timeout) = sending.timeout {
+        builder = builder.timeout(timeout);
+    }
+    let request = builder
         .build()
-        .with_context(|| {
-            format!(
-                "Failed to build request for MeetCal query {}",
-                query.function
-            )
-        })?;
+        .with_context(|| format!("Failed to build request for MeetCal query {function}"))?;
 
-    let answer: QueryResponse = send_with_retry(request, query.function)
+    send_with_retry(request, function, sending.retries)
         .await?
         .json()
         .await
-        .with_context(|| format!("Failed to parse MeetCal's answer to {}", query.function))?;
-    read_answer(query, answer)
+        .with_context(|| format!("Failed to parse MeetCal's answer to {function}"))
 }
 
 /// Every row of the paged `query` with `args`, on the production deployment (or
@@ -258,14 +617,19 @@ where
     T: DeserializeOwned,
     A: Serialize + ?Sized,
 {
-    query_all_pages_from(&convex_url(), query, args).await
+    query_all_pages_from(&convex_url(), default_access(), query, args).await
 }
 
 /// Every row of the paged `query` with `args`, on the deployment at `base_url`: the first call
 /// sends `cursor: null`, each later one the cursor the previous page returned, until a page
 /// reports `isDone`. Rows come in page order; the server sorts within a page only, and a list
 /// replaced while paging can repeat a row, so callers must not rely on order or uniqueness.
-pub async fn query_all_pages_from<T, A>(base_url: &str, query: Query, args: &A) -> Result<Vec<T>>
+pub async fn query_all_pages_from<T, A>(
+    base_url: &str,
+    access: &Access,
+    query: Query,
+    args: &A,
+) -> Result<Vec<T>>
 where
     T: DeserializeOwned,
     A: Serialize + ?Sized,
@@ -275,14 +639,15 @@ where
             args,
             cursor: cursor.as_deref(),
         };
-        query_from::<Page, _>(base_url, query, &args).await
+        query_from::<Page, _>(base_url, access, query, &args).await
     })
     .await
 }
 
-/// The paging loop of [`query_all_pages_from`], over any page source: `fetch` gets `None` first,
-/// then each cursor a page returned, at most [`MAX_PAGES`] times.
-async fn collect_pages<T, F, Fut>(function: &str, mut fetch: F) -> Result<Vec<T>>
+/// The paging loop of every paged read, over any page source: `fetch` gets `None` first, then
+/// each cursor a page returned, at most [`MAX_PAGES`] times. `function` names the query in
+/// errors. A query whose page names its fields differently maps it to a [`Page`].
+pub async fn collect_pages<T, F, Fut>(function: &str, mut fetch: F) -> Result<Vec<T>>
 where
     T: DeserializeOwned,
     F: FnMut(Option<String>) -> Fut,
@@ -329,10 +694,11 @@ fn whole_numbers_as_integers(value: Value) -> Value {
     }
 }
 
-/// The body a query answered, or why it has none.
-fn read_answer<T: DeserializeOwned>(query: Query, answer: QueryResponse) -> Result<T> {
-    let value = match answer {
-        QueryResponse::Success { value } => value,
+/// The value a function answered, or a [`FunctionError`] saying why it has none.
+fn answer_value(function: &str, answer: QueryResponse) -> Result<Value> {
+    let status = answer.function_error_status();
+    match answer {
+        QueryResponse::Success { value } => Ok(value),
         QueryResponse::Error {
             error_message,
             error_data,
@@ -341,13 +707,21 @@ fn read_answer<T: DeserializeOwned>(query: Query, answer: QueryResponse) -> Resu
                 .as_ref()
                 .and_then(|data| data.get("error"))
                 .and_then(Value::as_str)
-                .unwrap_or(&error_message);
-            return Err(anyhow!(
-                "MeetCal could not answer {}: {reason}",
-                query.function
-            ));
+                .unwrap_or(&error_message)
+                .to_string();
+            Err(FunctionError {
+                function: function.to_string(),
+                status,
+                reason,
+            }
+            .into())
         }
-    };
+    }
+}
+
+/// The body a query answered, or why it has none.
+fn read_answer<T: DeserializeOwned>(query: Query, answer: QueryResponse) -> Result<T> {
+    let value = answer_value(query.function, answer)?;
     match query.body {
         Body::Value => serde_json::from_value(whole_numbers_as_integers(value))
             .with_context(|| format!("Unexpected answer from MeetCal query {}", query.function)),
@@ -362,9 +736,9 @@ fn read_answer<T: DeserializeOwned>(query: Query, answer: QueryResponse) -> Resu
 }
 
 /// Sends `request`, retrying rate limited (429) and overloaded (503) responses as the retry
-/// policy allows. Returns the response once Convex answers (a function that failed included),
-/// or an error once it cannot.
-pub async fn send_with_retry(request: Request, function: &str) -> Result<Response> {
+/// policy allows when `retries` (a query or a premium action; see [`Endpoint::retries`]). Returns the response once
+/// Convex answers (a function that failed included), or an error once it cannot.
+pub async fn send_with_retry(request: Request, function: &str, retries: bool) -> Result<Response> {
     let mut retries_done = 0;
 
     loop {
@@ -382,7 +756,8 @@ pub async fn send_with_retry(request: Request, function: &str) -> Result<Respons
             .get(RETRY_AFTER)
             .and_then(|value| value.to_str().ok());
 
-        if let Some(delay) = next_retry_delay(status, retry_after, retries_done) {
+        if let Some(delay) = next_retry_delay(status, retry_after, retries_done).filter(|_| retries)
+        {
             tokio::time::sleep(delay).await;
             retries_done += 1;
             continue;
@@ -663,6 +1038,70 @@ mod tests {
             error.to_string(),
             "MeetCal could not answer reference:nationalRankingsByYear: year must be a four-digit year"
         );
+    }
+
+    #[test]
+    fn function_errors_carry_their_status() {
+        let failed = |data: Value| {
+            answer(json!({"status": "error", "errorMessage": "Server Error", "errorData": data}))
+        };
+        for (data, status) in [
+            (
+                json!({"status": 401, "error": "access pass required"}),
+                Some(401),
+            ),
+            (
+                json!({"status": 403.0, "error": "access pass expired"}),
+                Some(403),
+            ),
+            (json!({"status": "403"}), None),
+            (json!({"status": 403.5}), None),
+            (json!({"error": "no status"}), None),
+        ] {
+            let answer = failed(data.clone());
+            assert_eq!(answer.function_error_status(), status, "{data}");
+            let error = answer_value("test:fn", answer).unwrap_err();
+            assert_eq!(FunctionError::status_of(&error), status, "{data}");
+        }
+        let success = answer(json!({"status": "success", "value": {"status": 403}}));
+        assert_eq!(success.function_error_status(), None);
+        assert_eq!(
+            FunctionError::status_of(&anyhow!("not a function error")),
+            None
+        );
+    }
+
+    #[test]
+    fn only_queries_are_resent() {
+        assert!(Endpoint::Query.retries());
+        assert!(!Endpoint::Action.retries());
+        assert!(!Endpoint::Mutation.retries());
+    }
+
+    #[test]
+    fn whole_numbers_read_integers_and_floats() {
+        #[derive(Deserialize)]
+        struct Times {
+            #[serde(deserialize_with = "whole_number")]
+            at: i64,
+        }
+        for (value, expected) in [
+            (json!(5), 5),
+            (json!(5.0), 5),
+            (json!(1_791_948_423_574_i64), 1_791_948_423_574),
+            (json!(1_791_948_423_574.0), 1_791_948_423_574),
+            (json!(1_791_948_423_574.4), 1_791_948_423_574),
+            (json!(-3.0), -3),
+        ] {
+            let times: Times = serde_json::from_value(json!({ "at": value })).unwrap();
+            assert_eq!(times.at, expected, "{value}");
+        }
+        for value in [json!("5"), json!(null), json!(1e300)] {
+            assert!(
+                serde_json::from_value::<Times>(json!({ "at": value })).is_err(),
+                "{value}"
+            );
+        }
     }
 
     #[test]

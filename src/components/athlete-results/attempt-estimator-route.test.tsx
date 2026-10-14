@@ -9,7 +9,7 @@ import {
   fetchRecentAthleteHistoryForNames,
 } from "@/lib/database/queries";
 import {
-  saveAthleteHistory,
+  saveAthleteHistoryBatch,
   saveMeetAthletes,
   saveSessionAthletes,
 } from "@/lib/database/offline-store";
@@ -23,6 +23,10 @@ import { ATTEMPT_HISTORY_YEARS, getHistoryCutoffDate } from "@/utils/dateTime";
 void [Animated, Pressable, ScrollView];
 
 jest.mock("@/contexts/ThemeContext", () => ({ useTheme: () => ({ currentTheme: "light" }) }));
+// Gating is covered by premium-screens-gated.test.tsx; this file tests the content.
+jest.mock("@/components/ui/SubscriptionGate", () => ({
+  SubscriptionGate: ({ children }: { children: React.ReactNode }) => children,
+}));
 jest.mock("expo-router", () => ({
   Stack: { Screen: () => null },
   useLocalSearchParams: () => ({ meet: "test-meet", sessionNumber: "1", platform: "Red" }),
@@ -35,7 +39,7 @@ jest.mock("@/lib/database/offline-store", () => ({
   getAllCachedLiftingResultsForAthletes: jest.fn(async () => ({})),
   saveMeetAthletes: jest.fn(async () => {}),
   saveSessionAthletes: jest.fn(async () => {}),
-  saveAthleteHistory: jest.fn(async () => {}),
+  saveAthleteHistoryBatch: jest.fn(async () => 0),
 }));
 jest.mock("@/lib/database/queries", () => ({
   fetchAthletesWithSession: jest.fn(),
@@ -108,7 +112,7 @@ describe("attempt estimator history fetch", () => {
 
     // The per-athlete history keys belong to explicit downloads (they mark a
     // download complete and are never evicted); a session window is not one.
-    expect(saveAthleteHistory).not.toHaveBeenCalled();
+    expect(saveAthleteHistoryBatch).not.toHaveBeenCalled();
 
     await act(async () => {
       tree.unmount();
@@ -127,7 +131,7 @@ describe("attempt estimator history fetch", () => {
     await flush();
 
     expect(fetchRecentAthleteHistoryForNames).not.toHaveBeenCalled();
-    expect(saveAthleteHistory).not.toHaveBeenCalled();
+    expect(saveAthleteHistoryBatch).not.toHaveBeenCalled();
     // An empty answer never overwrites the cached session.
     expect(saveSessionAthletes).not.toHaveBeenCalled();
 

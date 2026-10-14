@@ -11,6 +11,7 @@ use meetcal_web::pages::{
     },
     features::FeaturesPage,
     home::Home,
+    link::LinkPage,
     not_found::NotFound,
     privacy::PrivacyPage,
     terms::TermsPage,
@@ -18,8 +19,10 @@ use meetcal_web::pages::{
 use meetcal_web::{
     auth::provide_auth,
     components::{
+        footer::Footer,
+        header::Header,
         seo::RouteMetadata,
-        subscription_gate::{MobileSubscriptionPage, SubscriptionGate},
+        subscription_gate::{MobileSubscriptionPage, SubscriptionGate, provide_access},
     },
 };
 
@@ -30,11 +33,16 @@ fn main() {
 #[component]
 fn App() -> impl IntoView {
     provide_auth();
+    provide_access();
 
     view! {
         <Router>
             <RouteMetadata />
-            <main>
+            // One banner, one main, one contentinfo landmark for every page:
+            // pages render only their content, inside <main> (#244).
+            <div class="site-shell">
+            <Header />
+            <main id="main-content">
                 <Routes fallback=|| view! { <NotFound /> }>
                     <Route path=path!("/") view=Home />
                     <Route path=path!("/comp-data") view=|| view! { <SubscriptionGate><CompData /></SubscriptionGate> } />
@@ -49,13 +57,18 @@ fn App() -> impl IntoView {
                     <Route path=path!("/meet-center") view=|| view! { <SubscriptionGate><MeetCenter /></SubscriptionGate> } />
                     <Route path=path!("/club-dashboard") view=|| view! { <SubscriptionGate><ClubDashboard /></SubscriptionGate> } />
                     <Route path=path!("/wso-dashboard") view=|| view! { <SubscriptionGate><WsoDashboard /></SubscriptionGate> } />
-                    <Route path=path!("/wrapped") view=|| view! { <SubscriptionGate><Wrapped /></SubscriptionGate> } />
+                    // Free for everyone, signed out included: a shared Wrapped opens for anyone.
+                    <Route path=path!("/wrapped") view=Wrapped />
                     <Route path=path!("/subscription") view=MobileSubscriptionPage />
+                    // Signed in, but no subscription needed: approves a `meetcal login`.
+                    <Route path=path!("/link") view=LinkPage />
                     <Route path=path!("/features") view=FeaturesPage />
                     <Route path=path!("/privacy") view=PrivacyPage />
                     <Route path=path!("/terms") view=TermsPage />
                 </Routes>
             </main>
+            <Footer />
+            </div>
         </Router>
     }
 }

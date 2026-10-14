@@ -24,7 +24,6 @@ import {
   fetchApiStandards,
   fetchApiYearBestsByNames,
   fetchApiWsoAgeGroups,
-  fetchApiYearBests,
   fetchApiWsoList,
   fetchApiWsoRecords,
   fetchSavedSessions,
@@ -39,10 +38,12 @@ import {
   mapPackageSchedule,
   MEET_PACKAGE_INCLUDE,
   MEET_PACKAGE_TIMEOUT_MS,
+  awaitServerClock,
   getServerClockSample,
   getServerClockSkewMs,
   getTrustedNow,
   MAX_PLAUSIBLE_CLOCK_SKEW_MS,
+  SERVER_CLOCK_DECISION_GRACE_MS,
   MAX_QUERY_PAGES,
   MeetCalApiError,
   resetServerClockForTests,
@@ -53,10 +54,16 @@ import {
   SMALL_ROWS_NAMES_CHUNK_SIZE,
   patchAutoUnsavePreference,
   putSavedSession,
+  refreshServerEntitlement,
+  fetchAccessPass,
+  issueSiriToken,
+  revokeApiToken,
+  fetchWrapped,
   searchApi,
 } from './meetcal-api';
 import { HTTP_VALIDATOR_CACHE_LIMIT } from './http-cache';
 import { callQuery, isClockCall } from './json-transport-stub';
+import { setAccessPassSource } from './premium-queries';
 import { setApiTransportForTests, TransportRequestError, type ApiCall } from './transport';
 import { UNKNOWN_PLATFORM } from '@/data/types/athletes';
 import { generateSessionId } from '@/utils/session';
@@ -68,8 +75,6 @@ import {
 
 /** The client's per-call default (`DEFAULT_TIMEOUT_MS` in meetcal-api.ts). */
 const DEFAULT_TIMEOUT_MS = 10000;
-/** How long the first request waits for its clock sample (`SERVER_CLOCK_FIRST_SAMPLE_GRACE_MS`). */
-const FIRST_SAMPLE_GRACE_MS = 2000;
 const HOUR_MS = 60 * 60 * 1000;
 
 // --- fake transport ---------------------------------------------------------
@@ -78,8 +83,7 @@ type Responder = (call: ApiCall) => unknown;
 
 /**
  * Swaps in a fake transport. Clock calls (`kind: 'clock'`) never reach
- * `respond`: `clock` answers them, by default with the device clock, so the
- * first request's wait for its clock sample never stalls a test.
+ * `respond`: `clock` answers them, by default with the device clock.
  */
 function installTransport(respond: Responder, clock: Responder = () => Date.now()) {
   const transport = jest.fn(
@@ -268,16 +272,6 @@ describe('meetcal API client', () => {
       () => fetchApiAthletes('Test Meet' as never),
       { path: '/meets/athletes', fn: 'meets:athletes', args: { meet: 'Test Meet' } },
       [],
-    ],
-    [
-      'fetchApiYearBests',
-      () => fetchApiYearBests('Athlete A', '2025-06-20'),
-      {
-        path: '/lifting-results/year',
-        fn: 'results:yearBests',
-        args: { name: 'Athlete A', cutoffDate: '2025-06-20' },
-      },
-      { best_snatch: 100, best_cj: 120, best_total: 220 },
     ],
     [
       'searchApi',
@@ -580,6 +574,24 @@ describe('meetcal API client', () => {
     expect(bests['李娜']).toEqual({ bestSnatch: 82, bestCJ: 102, bestTotal: 184 });
   });
 
+  it("keys batch year bests by the caller's spellings, matched through the name fold", async () => {
+    // #320: the server echoes names cleaned, so a roster's ' Jane Doe' missed
+    // its own row unless every caller re-folded the keys.
+    installTransport(
+      answer([
+        { name: 'Jane Doe', best_snatch: 80, best_cj: 100, best_total: 180 },
+        { name: 'Somebody Else', best_snatch: 1, best_cj: 1, best_total: 2 },
+      ]),
+    );
+
+    const bests = await fetchApiYearBestsByNames([' Jane Doe', 'jane  doe', 'Nobody']);
+
+    expect(bests).toEqual({
+      ' Jane Doe': { bestSnatch: 80, bestCJ: 100, bestTotal: 180 },
+      'jane  doe': { bestSnatch: 80, bestCJ: 100, bestTotal: 180 },
+    });
+  });
+
   it('rejects a malformed batch year-bests row, naming its index', async () => {
     const good = { name: 'Athlete A', best_snatch: 100, best_cj: 120, best_total: 220 };
 
@@ -658,6 +670,7 @@ describe('meetcal API mappers', () => {
       platform: 'Blue',
       weightClass: '73kg',
       platformStartTime: '1:30 PM',
+      platformWeighInTime: '11:30 AM',
     });
 
     const athlete = mapApiAthlete({
@@ -1252,13 +1265,6 @@ describe('meetcal API client error and auth boundaries', () => {
     installTransport(answer({ athletes: [athlete] }));
     await expect(fetchApiAthletesWithSession('Test Meet' as never)).rejects.toThrow(
       '/meets/athletes-sessions expected an array response',
-    );
-  });
-
-  it('rejects a single-athlete year-bests payload missing a best', async () => {
-    installTransport(answer({ best_snatch: 100, best_cj: 120 }));
-    await expect(fetchApiYearBests('Athlete A', '2025-06-20')).rejects.toThrow(
-      '/lifting-results/year missing fields: best_total',
     );
   });
 
@@ -2525,10 +2531,12 @@ describe('server clock', () => {
 
     for (let i = 0; i < 3; i += 1) {
       await expect(fetchApiClubNames()).resolves.toEqual(['Club A']);
+      await flushMicrotasks();
       expect(getServerClockSample()).toBeNull();
       expect(getTrustedNow()).toBeNull();
     }
     await fetchApiClubNames();
+    await flushMicrotasks();
 
     expect(clockCalls()).toHaveLength(4);
     expect(getServerClockSkewMs()).toBe(30_000);
@@ -2548,7 +2556,9 @@ describe('server clock', () => {
     expect(getServerClockSkewMs()).toBe(60_000);
   });
 
-  it('holds the first request at most the grace period for a clock call that never answers', async () => {
+  // The first request of a cold start used to wait up to 2s for the clock
+  // sample it started, holding back the first schedule it had already got.
+  it('does not hold the first request for a clock call that never answers', async () => {
     jest.useFakeTimers({ now: T0 });
     installTransport(answer(['Club A']), () => never());
     let settled = false;
@@ -2557,26 +2567,32 @@ describe('server clock', () => {
     });
 
     await flushMicrotasks();
-    jest.advanceTimersByTime(FIRST_SAMPLE_GRACE_MS - 1);
-    await flushMicrotasks();
-    expect(settled).toBe(false);
-
-    jest.advanceTimersByTime(1);
+    expect(settled).toBe(true);
     await expect(pending).resolves.toEqual(['Club A']);
     expect(getServerClockSample()).toBeNull();
-    // The grace timer and the request timeout are cleared; only the stuck
-    // sample's own abandonment timer is left.
+    // The request timeout is cleared; only the stuck sample's own
+    // abandonment timer is left.
     expect(jest.getTimerCount()).toBe(1);
+  });
+
+  it('leaves the first sample behind once its answer lands, after the request has returned', async () => {
+    jest.useFakeTimers({ now: T0 });
+    const clock = deferred<number>();
+    installTransport(answer(['Club A']), () => clock.promise);
+
+    await expect(fetchApiClubNames()).resolves.toEqual(['Club A']);
+    expect(getTrustedNow()).toBeNull();
+
+    clock.resolve(T0 + 30_000);
+    await flushMicrotasks();
+    expect(getServerClockSkewMs()).toBe(30_000);
   });
 
   it('does not hold later requests for a clock call that is still stuck', async () => {
     jest.useFakeTimers({ now: T0 });
     const { clockCalls } = installTransport(answer(['Club A']), () => never());
 
-    const first = fetchApiClubNames();
-    await flushMicrotasks();
-    jest.advanceTimersByTime(FIRST_SAMPLE_GRACE_MS);
-    await first;
+    await fetchApiClubNames();
 
     let settled = false;
     const second = fetchApiClubNames().finally(() => {
@@ -2589,7 +2605,7 @@ describe('server clock', () => {
     expect(clockCalls()).toHaveLength(1);
   });
 
-  it('does not hold a second request at startup for the clock call the first one started', async () => {
+  it('does not hold either of two startup requests for the clock call the first one started', async () => {
     jest.useFakeTimers({ now: T0 });
     const { clockCalls, dataCalls } = installTransport(answer(['Club A']), () => never());
     let firstSettled = false;
@@ -2605,10 +2621,8 @@ describe('server clock', () => {
     expect(dataCalls()).toHaveLength(2);
 
     await flushMicrotasks();
+    expect(firstSettled).toBe(true);
     expect(secondSettled).toBe(true);
-    expect(firstSettled).toBe(false);
-
-    jest.advanceTimersByTime(FIRST_SAMPLE_GRACE_MS);
     await expect(first).resolves.toEqual(['Club A']);
     await expect(second).resolves.toEqual(['Club A']);
   });
@@ -2619,21 +2633,19 @@ describe('server clock', () => {
     let clockAnswer: () => unknown = () => never();
     const { clockCalls } = installTransport(answer(['Club A']), () => clockAnswer());
 
-    const first = fetchApiClubNames();
-    await flushMicrotasks();
-    jest.advanceTimersByTime(FIRST_SAMPLE_GRACE_MS);
-    await first;
+    await fetchApiClubNames();
 
     // Just short of the limit the stuck call is still the one in flight.
-    jest.advanceTimersByTime(SAMPLE_TIMEOUT_MS - FIRST_SAMPLE_GRACE_MS - 1);
+    jest.advanceTimersByTime(SAMPLE_TIMEOUT_MS - 1);
     await fetchApiClubNames();
     expect(clockCalls()).toHaveLength(1);
 
     jest.advanceTimersByTime(1);
     await flushMicrotasks();
     clockAnswer = () => Date.now() + 42_000;
-    // No sample yet, and this request starts the new one, so it waits for it.
+    // No sample yet, so this request starts a new one alongside it.
     await expect(fetchApiClubNames()).resolves.toEqual(['Club A']);
+    await flushMicrotasks();
     expect(clockCalls()).toHaveLength(2);
     expect(getServerClockSample()).toEqual({ skewMs: 42_000, sampledAt: T0 + SAMPLE_TIMEOUT_MS });
   });
@@ -2644,11 +2656,8 @@ describe('server clock', () => {
     let clock = deferred<number>();
     const { clockCalls } = installTransport(answer(['Club A']), () => clock.promise);
 
-    const first = fetchApiClubNames();
-    await flushMicrotasks();
-    jest.advanceTimersByTime(FIRST_SAMPLE_GRACE_MS);
-    await expect(first).resolves.toEqual(['Club A']);
-    jest.advanceTimersByTime(MAX_ROUND_TRIP_MS + 1 - FIRST_SAMPLE_GRACE_MS);
+    await expect(fetchApiClubNames()).resolves.toEqual(['Club A']);
+    jest.advanceTimersByTime(MAX_ROUND_TRIP_MS + 1);
     clock.resolve(Date.now() + 60_000);
     await flushMicrotasks();
     expect(getServerClockSample()).toBeNull();
@@ -2656,11 +2665,8 @@ describe('server clock', () => {
     // The discarded sample is finished, so the next request starts another.
     const sentAt = Date.now();
     clock = deferred<number>();
-    const second = fetchApiClubNames();
-    await flushMicrotasks();
-    jest.advanceTimersByTime(FIRST_SAMPLE_GRACE_MS);
-    await second;
-    jest.advanceTimersByTime(MAX_ROUND_TRIP_MS - FIRST_SAMPLE_GRACE_MS);
+    await fetchApiClubNames();
+    jest.advanceTimersByTime(MAX_ROUND_TRIP_MS);
     clock.resolve(Date.now() + 60_000);
     await flushMicrotasks();
     expect(clockCalls()).toHaveLength(2);
@@ -2668,6 +2674,64 @@ describe('server clock', () => {
     expect(getServerClockSample()).toEqual({
       skewMs: 60_000 + MAX_ROUND_TRIP_MS / 2,
       sampledAt: sentAt + MAX_ROUND_TRIP_MS,
+    });
+  });
+
+  describe('awaitServerClock', () => {
+    it('answers with the sample at hand without asking again', async () => {
+      jest.useFakeTimers({ now: T0 });
+      const { clockCalls } = installTransport(answer([]), () => T0 + 5000);
+      await fetchApiClubNames();
+      await flushMicrotasks();
+      expect(clockCalls()).toHaveLength(1);
+
+      await expect(awaitServerClock()).resolves.toEqual({ skewMs: 5000, sampledAt: T0 });
+      expect(clockCalls()).toHaveLength(1);
+    });
+
+    it('joins the sample a request started, and has it as soon as it lands', async () => {
+      jest.useFakeTimers({ now: T0 });
+      const clock = deferred<number>();
+      const { clockCalls } = installTransport(answer(['Club A']), () => clock.promise);
+      await fetchApiClubNames();
+
+      let sample: unknown = 'pending';
+      void awaitServerClock().then((value) => {
+        sample = value;
+      });
+      await flushMicrotasks();
+      expect(sample).toBe('pending');
+
+      clock.resolve(T0 + 7000);
+      await flushMicrotasks();
+      expect(sample).toEqual({ skewMs: 7000, sampledAt: T0 });
+      expect(clockCalls()).toHaveLength(1);
+    });
+
+    it('starts a sample when none is in flight', async () => {
+      jest.useFakeTimers({ now: T0 });
+      const { clockCalls, dataCalls } = installTransport(answer([]), () => T0 - 2000);
+
+      await expect(awaitServerClock()).resolves.toEqual({ skewMs: -2000, sampledAt: T0 });
+      expect(clockCalls()).toHaveLength(1);
+      expect(dataCalls()).toHaveLength(0);
+    });
+
+    it('gives up after its grace period on a clock call that never answers', async () => {
+      jest.useFakeTimers({ now: T0 });
+      installTransport(answer([]), () => never());
+      let settled = false;
+      const pending = awaitServerClock().finally(() => {
+        settled = true;
+      });
+
+      await flushMicrotasks();
+      jest.advanceTimersByTime(SERVER_CLOCK_DECISION_GRACE_MS - 1);
+      await flushMicrotasks();
+      expect(settled).toBe(false);
+
+      jest.advanceTimersByTime(1);
+      await expect(pending).resolves.toBeNull();
     });
   });
 });
@@ -2692,5 +2756,130 @@ describe('request timeouts', () => {
     await jest.advanceTimersByTimeAsync(DEFAULT_TIMEOUT_MS + 1);
     expect(await pending).toBeInstanceOf(MeetCalApiTimeoutError);
     expect(signal?.aborted).toBe(true);
+  });
+});
+
+// #281: each platform row's published weigh-in is kept; the session's is
+// only the first row's.
+describe('mapApiSchedule platform weigh-ins', () => {
+  it('keeps every platform row its own published weigh-in', () => {
+    const schedule = mapApiSchedule([
+      { date: '2026-06-20', platform: 'Red', session_id: 5, start_time: '09:00:00', weigh_in_time: '07:00:00', weight_class: '89' },
+      { date: '2026-06-20', platform: 'Blue', session_id: 5, start_time: '09:30:00', weigh_in_time: '', weight_class: '96' },
+    ]);
+    const session = schedule[0].sessions[0];
+    expect(session.weighInTime).toBe('7:00 AM');
+    expect(session.platforms.map((p) => [p.platform, p.platformStartTime, p.platformWeighInTime])).toEqual([
+      ['Red', '9:00 AM', '7:00 AM'],
+      ['Blue', '9:30 AM', ''],
+    ]);
+  });
+});
+
+describe('premium reads and the access pass', () => {
+  afterEach(() => setAccessPassSource(null));
+
+  it('carry the pass on premium queries only, as their `pass` argument, and none without a subscriber', async () => {
+    const { dataCalls } = installTransport(() => ({ etag: '"r1"', json: '[]' }));
+    await fetchApiRecords();
+    setAccessPassSource(async () => ({ pass: 'p1', rotatesAt: Date.now() + 60_000 }));
+    clearHttpValidatorCache();
+    await fetchApiRecords();
+    await fetchApiSchedule('Spring Open' as never).catch(() => {});
+    expect(dataCalls().map((call) => [call.fn, call.args.pass, call.token])).toEqual([
+      ['reference:records', undefined, undefined],
+      ['reference:records', 'p1', undefined],
+      ['meets:schedule', undefined, undefined],
+    ]);
+  });
+
+  it('sends a refused read once more with a new pass', async () => {
+    const passes = ['old', 'new'];
+    setAccessPassSource(async () => ({ pass: passes.shift() ?? 'none', rotatesAt: Date.now() + 60_000 }));
+    const { dataCalls } = installTransport((call) => {
+      if (call.args.pass === 'old') throw new TransportRequestError('query failed with 403', 403, '{"status":403,"error":"access pass expired"}');
+      return { etag: '"r1"', json: '[]' };
+    });
+    await expect(fetchApiRecords()).resolves.toEqual([]);
+    expect(dataCalls().map((call) => call.args.pass)).toEqual(['old', 'new']);
+  });
+
+  it('gets the pass with the Clerk token, and checks its shape', async () => {
+    const { lastCall } = installTransport(() => ({ pass: 'p1', rotatesAt: 5 }));
+    await expect(fetchAccessPass('clerk-token')).resolves.toEqual({ pass: 'p1', rotatesAt: 5 });
+    expect(lastCall()).toMatchObject({ fn: 'accessPass:pass', kind: 'query', token: 'clerk-token' });
+    installTransport(() => ({ pass: '', rotatesAt: 5 }));
+    await expect(fetchAccessPass('clerk-token')).rejects.toThrow('non-empty string');
+  });
+
+  it('asks the server to check the subscription with the Clerk token', async () => {
+    const { lastCall } = installTransport(() => ({ active: true }));
+    await expect(refreshServerEntitlement('clerk-token')).resolves.toEqual({ active: true });
+    expect(lastCall()).toMatchObject({ fn: 'entitlements:refresh', kind: 'action', token: 'clerk-token' });
+    installTransport(() => ({ active: 'yes' }));
+    await expect(refreshServerEntitlement('clerk-token')).rejects.toThrow('expected a boolean');
+  });
+
+  it("issues Siri's token with the Clerk token, and checks its shape", async () => {
+    const { lastCall } = installTransport(() => ({ token: 'jwt', tokenId: 't1', expiresAt: 9 }));
+    await expect(issueSiriToken('clerk-token')).resolves.toEqual({ token: 'jwt', tokenId: 't1', expiresAt: 9 });
+    expect(lastCall()).toMatchObject({ fn: 'apiTokens:issue', kind: 'action', token: 'clerk-token', args: { client: 'siri' } });
+    installTransport(() => ({ token: 'jwt', tokenId: '', expiresAt: 9 }));
+    await expect(issueSiriToken('clerk-token')).rejects.toThrow('tokenId expected a non-empty string');
+    await expect(issueSiriToken('')).rejects.toThrow('requires an auth token');
+  });
+
+  it('ends a token with the token itself, or with a Clerk session and its id', async () => {
+    const { lastCall } = installTransport(() => null);
+    await revokeApiToken('jwt');
+    expect(lastCall()).toMatchObject({ fn: 'apiTokens:revoke', kind: 'mutation', token: 'jwt', args: {} });
+    await revokeApiToken('clerk-token', 't1');
+    expect(lastCall()).toMatchObject({ token: 'clerk-token', args: { tokenId: 't1' } });
+  });
+});
+
+describe('fetchWrapped', () => {
+  afterEach(() => setAccessPassSource(null));
+  const stats = {
+    totalWeightLifted: 1200.0,
+    totalMeets: 3.0,
+    makePercentage: 75,
+    bestSnatch: 100,
+    bestCleanJerk: 125,
+    bestTotal: 225,
+    averageTotal: 215,
+    topMeet: null,
+    improvementFromFirst: null,
+    longestMakeStreak: 5,
+    favoriteAttempt: 2,
+    yearRank: 'Meet Regular',
+  };
+
+  it('asks the free query with no pass, even for a subscriber, and checks the answer', async () => {
+    setAccessPassSource(async () => ({ pass: 'p1', rotatesAt: Date.now() + 60_000 }));
+    const { lastCall } = installTransport(() => ({ kind: 'athlete', name: 'Ada', stats }));
+    await expect(fetchWrapped('ada', 2026)).resolves.toEqual({ kind: 'athlete', name: 'Ada', stats });
+    expect(lastCall()).toMatchObject({ fn: 'results:wrapped', kind: 'query', args: { query: 'ada', year: 2026 } });
+    expect(lastCall().args.pass).toBeUndefined();
+    expect(lastCall().token).toBeUndefined();
+    await fetchWrapped('Ada', 2026, true);
+    expect(lastCall().args.picked).toBe(true);
+  });
+
+  it('reads every kind, and refuses a malformed answer', async () => {
+    installTransport(() => ({ kind: 'ambiguous', names: ['A', 'B'], truncated: true }));
+    await expect(fetchWrapped('a', 2026)).resolves.toEqual({ kind: 'ambiguous', names: ['A', 'B'], truncated: true });
+    installTransport(() => ({ kind: 'none', suggestions: ['Ada'] }));
+    await expect(fetchWrapped('a', 2026)).resolves.toEqual({ kind: 'none', suggestions: ['Ada'] });
+    installTransport(() => ({ kind: 'narrow' }));
+    await expect(fetchWrapped('a', 2026)).resolves.toEqual({ kind: 'narrow' });
+    installTransport(() => ({ kind: 'tooManyResults', name: 'Ada' }));
+    await expect(fetchWrapped('a', 2026)).resolves.toEqual({ kind: 'tooManyResults', name: 'Ada' });
+    installTransport(() => ({ kind: 'athlete', name: 'Ada', stats: { ...stats, favoriteAttempt: 4 } }));
+    await expect(fetchWrapped('a', 2026)).rejects.toThrow('favoriteAttempt');
+    installTransport(() => ({ kind: 'athlete', name: 'Ada', stats: { ...stats, bestTotal: 'lots' } }));
+    await expect(fetchWrapped('a', 2026)).rejects.toThrow('bestTotal');
+    installTransport(() => ({ kind: 'rows' }));
+    await expect(fetchWrapped('a', 2026)).rejects.toThrow('unknown kind');
   });
 });

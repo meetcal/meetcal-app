@@ -140,7 +140,7 @@ meetcal search "Maddisen Mohnsen"
 meetcal --help
 ```
 
-Development runs from `cli/` (`just check-all`, `cargo run -- <command>`); every Convex query it
+Development runs from `cli/` (`mise run check-all`, `cargo run -- <command>`); every Convex query it
 reads is in [`cli/src/utils/backend.rs`](cli/src/utils/backend.rs), and `MEETCAL_CONVEX_URL`
 points it at another deployment. The full command reference is in [cli/README.md](cli/README.md),
 and releasing a new version (tag `cli-vX.Y.Z`, then update the

@@ -1,0 +1,25 @@
+[tools]
+rust = "latest"
+"cargo:cargo-audit" = "latest"
+
+[tasks.run]
+description = "Run the CLI (mise run run -- <command> [args])"
+run = "cargo run --"
+[tasks.lint]
+description = "Check formatting and run clippy"
+run = "cargo fmt --all -- --check && cargo clippy --all-targets --locked -- -D warnings"
+[tasks.test]
+description = "Check formatting and run the tests"
+run = "cargo fmt --all -- --check && cargo test"
+[tasks.build]
+description = "Build a debug binary"
+run = "cargo build"
+[tasks.audit]
+description = "Audit third-party dependencies for known vulnerabilities"
+run = "cargo audit"
+[tasks.clean]
+description = "Remove Cargo build output and local release archives"
+run = "cargo clean && rm -rf dist"
+[tasks.check-all]
+description = "Check formatting, run clippy, and run the tests"
+run = "cargo fmt --all -- --check && cargo clippy --all-targets --locked -- -D warnings && cargo test"

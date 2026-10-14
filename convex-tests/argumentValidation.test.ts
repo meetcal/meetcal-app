@@ -1,12 +1,16 @@
 import { ConvexError } from 'convex/values';
 import { AGE_GROUPS } from '../src/constants/nat-rankings';
 import { getWeightClasses } from '../src/utils/nat-rankings';
-import { list as listMeets, packageForMeet, upcomingWindowNow } from '../convex/meets';
+import { completed as completedMeets, isPlaceholderMeet, list as listMeets, packageForMeet, upcomingWindowNow } from '../convex/meets';
+import { ANONYMOUS_AUTH, fakeDb } from './fakeDb';
 import { adaptiveRecords, nationalRankings, nationalRankingsByYear } from '../convex/reference';
 import { RANKING_DIVISIONS, isRankingDivision, requireAdaptiveGender, requireKnownRankingClass } from '../convex/lib/referenceData';
 import { requireSavedSessionWhen } from '../convex/users';
 import { toSavedSessionBody } from '../src/lib/saved-sessions-outbox';
 import type { SavedSession } from '../src/lib/saved-sessions-store';
+
+// Premium queries may log their caller (`convex/lib/access.ts`).
+beforeEach(() => jest.spyOn(console, 'log').mockImplementation(() => {}));
 
 type Row = Record<string, unknown>;
 
@@ -21,6 +25,8 @@ function fakeCtx(tables: Record<string, Row[]> = {}) {
   const ctx = {
     db: {
       query: (table: string) => ({
+        // The premium gate's pass row (`lib/access.ts`): none here.
+        first: async () => null,
         withIndex: (_index: string, build: (q: unknown) => unknown) => {
           const filters: ((row: Row) => boolean)[] = [];
           const q = {
@@ -40,12 +46,22 @@ function fakeCtx(tables: Record<string, Row[]> = {}) {
       }),
     },
   };
-  return { ctx: ctx as never, reads };
+  return { ctx: { ...ctx, auth: ANONYMOUS_AUTH } as never, reads };
 }
 
-/** A ctx whose database must not be touched: validation comes first. */
+/**
+ * A ctx whose database must not be touched beyond the premium gate's pass
+ * row (`lib/access.ts`, here none): validation comes first. The caller is
+ * anonymous.
+ */
 const NO_DB = {
-  db: new Proxy({}, { get: () => () => { throw new Error('read before validating'); } }),
+  db: {
+    query: (table: string) => {
+      if (table === 'access_passes') return { first: async () => null };
+      throw new Error('read before validating');
+    },
+  },
+  auth: ANONYMOUS_AUTH,
 } as never;
 
 async function statusOf(promise: Promise<unknown> | (() => unknown)): Promise<number | 'ok'> {
@@ -89,6 +105,17 @@ describe('national ranking classes', () => {
   it('know no division beyond the ones the app offers', () => {
     const offered = (['Men', 'Women'] as const).flatMap((gender) => AGE_GROUPS.flatMap((ageGroup) => getWeightClasses(gender, ageGroup)));
     expect([...RANKING_DIVISIONS].sort()).toEqual([...new Set(offered)].sort());
+  });
+
+  it.each([
+    "Open Men's 85kg",
+    "Women's 16-17 Age Group 61kg",
+    "Men's 13 Under Age Group 32kg",
+    "Women's 11 Under Age Group 30kg",
+    "Open Men's 88kg",
+    "Women's Masters (40-44) 58kg",
+  ])('know %p, current or retired on Aug 1, 2026', (division) => {
+    expect(isRankingDivision(division)).toBe(true);
   });
 
   it.each([
@@ -215,3 +242,27 @@ describe('meets:list now', () => {
     },
   );
 });
+
+describe('placeholder meets (#405)', () => {
+  it('leaves out test entries with a one-letter venue and no IANA zone, never a real meet', () => {
+    expect(isPlaceholderMeet({ timeZone: 'q', venueName: 'q', venueCity: 'q' })).toBe(true);
+    expect(isPlaceholderMeet({ timeZone: 'America_New_York', venueName: 'q', venueCity: 'q' })).toBe(true);
+    // A real meet whose zone is not known yet, or whose venue is TBD.
+    expect(isPlaceholderMeet({ timeZone: '', venueName: 'TBD', venueCity: 'TBD' })).toBe(false);
+    expect(isPlaceholderMeet({ timeZone: '', venueName: 'Gym', venueCity: 'Reno' })).toBe(false);
+    expect(isPlaceholderMeet({ timeZone: 'America/New_York', venueName: 'q', venueCity: 'q' })).toBe(false);
+  });
+
+  it('keeps them out of the completed list', async () => {
+    const meet = (name: string, extra: Row) => ({ name, status: 'completed', startDate: '2025-02-27', endDate: '2025-02-27', venueStreet: 'q', venueState: 'q', venueZip: '88888', updatedAt: 1, ...extra });
+    const { db } = fakeDb({
+      meets: [
+        meet('Virus Weightlifting Series 1', { timeZone: 'q', venueName: 'q', venueCity: 'q' }),
+        meet('Real Meet', { timeZone: 'America/Denver', venueName: 'Gym', venueCity: 'Denver' }),
+      ],
+    });
+    const answer = (await handlerOf(completedMeets)({ db }, {})) as { json: string };
+    expect((JSON.parse(answer.json) as { name: string }[]).map((m) => m.name)).toEqual(['Real Meet']);
+  });
+});
+

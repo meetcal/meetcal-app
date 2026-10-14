@@ -1,12 +1,25 @@
 //! The site's one way to read MeetCal data: the Convex queries in `convex/`,
 //! called over Convex's HTTP API (`POST /api/query`), the same queries the app
-//! reads. Every call is a read, so repeating one is safe.
+//! reads. Every call is a read, so repeating one is safe, except the
+//! mutations `/link` sends (approving or denying a CLI sign-in, and signing out
+//! every CLI login), which are never repeated by themselves.
+//!
+//! The premium queries (`SUBSCRIPTION_FUNCTIONS`) carry the access pass as
+//! their `pass` argument. Every subscriber holds the same pass, so premium
+//! answers stay in Convex's shared query cache; no query carries the user's
+//! session token, which would make Convex cache each answer per user. Only
+//! `accessPass:pass`, which hands a signed-in subscriber the pass, the
+//! `entitlements:refresh` action, and `/link`'s calls (`deviceLogin:*` and
+//! `apiTokens:revokeAllCli`, one user's own CLI logins) carry the token. For now Convex only logs a
+//! premium read without a current pass and still answers it; later it will
+//! refuse it, so a premium read sends the pass whenever the site can get one.
 
-use anyhow::{Context, Result, anyhow};
+use anyhow::{Result, anyhow};
+use futures::future::{FutureExt, LocalBoxFuture, Shared};
 use reqwest::{StatusCode, header::RETRY_AFTER};
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
-use serde_json::Value;
-use std::time::Duration;
+use serde_json::{Map, Value};
+use std::{cell::RefCell, time::Duration};
 
 /// The production deployment, which the app reads too. A build can read
 /// another deployment (a dev one) by setting `MEETCAL_CONVEX_URL`.
@@ -23,6 +36,78 @@ const MAX_RETRY_DELAY_SECS: u64 = 10;
 /// Convex answers a function that ran but failed with this status (or 200).
 const FUNCTION_FAILED: u16 = 560;
 
+/// The Convex functions that answer premium data and take the access pass in
+/// their `pass` argument: the site sends them the pass it holds. The list is
+/// Convex's (`PREMIUM_FUNCTIONS` in `convex/lib/access.ts`, compared to this
+/// one by a test there), including functions the site does not call yet, so a
+/// page that starts calling one sends the pass without another change.
+/// `results:search` needs it only with dates (`carries_pass`): name
+/// suggestions are public.
+pub(crate) const SUBSCRIPTION_FUNCTIONS: &[&str] = &[
+    "reference:records",
+    "reference:standards",
+    "reference:qualifyingTotals",
+    "reference:intlRankings",
+    "reference:nationalRankings",
+    "reference:nationalRankingsByYear",
+    "reference:wsoList",
+    "reference:registrationWsos",
+    "reference:wsoAgeGroups",
+    "reference:wsoRecords",
+    "reference:adaptiveRecords",
+    "reference:clubs",
+    "reference:clubAthletes",
+    "reference:wsoAthletes",
+    "reference:clubMeetStats",
+    "results:byMeet",
+    "results:byNames",
+    "results:recent",
+    "results:yearBests",
+    "results:bests",
+    "results:search",
+    "meets:packageForMeet",
+];
+
+/// The public query that hands a signed-in subscriber the access pass
+/// (`convex/accessPass.ts`): `{ pass, rotatesAt }`, or a function error with
+/// status 401 when signed out and 403 when Convex has no active entitlement
+/// for the user. It and `REFRESH_ENTITLEMENT` are the only calls that carry
+/// the Clerk session token.
+const ACCESS_PASS: &str = "accessPass:pass";
+
+/// The argument a premium query takes the access pass in.
+const PASS_ARGUMENT: &str = "pass";
+
+/// The query whose pass depends on its arguments, and the arguments that make
+/// it premium: a dated search is, a name suggestion is not.
+const SEARCH_FUNCTION: &str = "results:search";
+const SEARCH_DATE_ARGUMENTS: [&str; 2] = ["startDate", "endDate"];
+
+/// The action that asks RevenueCat for the caller's entitlement and records
+/// it in Convex; it answers `{ active }` and refuses an anonymous caller.
+/// Called when `accessPass:pass` answers 403, so a subscriber Convex does not
+/// know yet (a lifetime purchase never renews, so RevenueCat's webhook alone
+/// would never report it) gets the pass on the same read.
+const REFRESH_ENTITLEMENT: &str = "entitlements:refresh";
+
+/// Shortest time (ms) a fetched pass is held, whatever its `rotatesAt` says,
+/// so a device clock running ahead of Convex's cannot make every premium read
+/// fetch a pass again. Convex accepts a pass until the rotation after the one
+/// that replaced it, so holding one a little past `rotatesAt` is safe.
+const MIN_PASS_HOLD_MS: f64 = 5.0 * 60.0 * 1000.0;
+
+/// Longest time (ms) a premium read waits for a pass fetch, counted from the
+/// fetch's start, before going without one. The fetch itself runs on and its
+/// pass is held for later reads: on a slow network (or a first fetch that
+/// asks RevenueCat), a page never waits on it longer than this.
+const PASS_WAIT_MS: f64 = 3000.0;
+
+/// How long (ms) after a failed pass fetch premium reads go out without a
+/// pass before one tries again, so a user Convex will not give a pass does
+/// not refresh the entitlement on every read (a club's roster is up to 100
+/// reads). A read Convex refuses for its pass tries again at once.
+const PASS_FETCH_BACKOFF_MS: f64 = 60.0 * 1000.0;
+
 /// Most pages `query_all_pages` reads before giving up. A club's entries
 /// arrive 2,000 rows a page, so this allows 200,000 rows; an answer that never
 /// reports `isDone` fails here instead of looping forever.
@@ -32,6 +117,24 @@ pub(crate) const RATE_LIMITED_MESSAGE: &str =
     "Too many requests right now; please try again in a moment";
 pub(crate) const OVERLOADED_MESSAGE: &str =
     "MeetCal is busy right now; please try again in a moment";
+
+/// Longest one request may take, from sending it to reading its whole answer.
+/// Browser `fetch` has no timeout of its own, so a stalled connection would
+/// otherwise leave a page loading for good.
+pub(crate) const REQUEST_TIMEOUT: Duration = Duration::from_secs(20);
+
+pub(crate) const TIMED_OUT_MESSAGE: &str = "MeetCal took too long to answer; please try again";
+pub(crate) const OFFLINE_MESSAGE: &str =
+    "You appear to be offline; reconnect and it will load again";
+pub(crate) const UNREACHABLE_MESSAGE: &str =
+    "MeetCal couldn't be reached; check your connection and try again";
+/// An answer this site could not read: malformed JSON, a missing field, or
+/// a shape the page does not expect.
+pub(crate) const UNREADABLE_MESSAGE: &str =
+    "MeetCal sent an answer this page couldn't read; please try again";
+/// An answer longer than `MAX_PAGES` pages.
+pub(crate) const TOO_MANY_PAGES_MESSAGE: &str =
+    "MeetCal sent more of this list than this page can show";
 
 fn convex_url() -> &'static str {
     option_env!("MEETCAL_CONVEX_URL")
@@ -58,6 +161,11 @@ pub(crate) struct Query {
 }
 
 impl Query {
+    /// Whether this query answers premium data, and so takes the access pass.
+    pub(crate) fn is_premium(self) -> bool {
+        SUBSCRIPTION_FUNCTIONS.contains(&self.function)
+    }
+
     const fn value(function: &'static str) -> Self {
         Self {
             function,
@@ -86,8 +194,6 @@ pub(crate) mod queries {
     pub(crate) const MEET_SCHEDULE: Query = Query::text("meets:schedule");
     /// `GET /meets/athletes`; takes `meet`.
     pub(crate) const MEET_ATHLETES: Query = Query::text("meets:athletes");
-    /// `GET /meets/athletes-sessions`; takes `meet`.
-    pub(crate) const MEET_ATHLETES_SESSIONS: Query = Query::text("meets:athletesSessions");
     /// `GET /lifting-results`; takes `meet`.
     pub(crate) const MEET_RESULTS: Query = Query::text("results:byMeet");
     /// `GET /search`; takes `query`, and optionally `startDate` and `endDate` (both included).
@@ -118,6 +224,9 @@ pub(crate) mod queries {
     pub(crate) const CLUB_ATHLETES: Query = Query::text("reference:clubAthletes");
     /// `GET /clubs/meet-stats`; takes `club` and `meet`.
     pub(crate) const CLUB_MEET_STATS: Query = Query::value("reference:clubMeetStats");
+    /// Weightlifting Wrapped (no Rust route): takes `query`, `year` and optionally `picked`, and
+    /// answers the year's stats, never the results behind them. Free and public: no pass.
+    pub(crate) const WRAPPED: Query = Query::value("results:wrapped");
 }
 
 #[derive(Serialize)]
@@ -187,6 +296,42 @@ pub(crate) fn retry_delay(retry_after: Option<&str>) -> Duration {
         .unwrap_or(DEFAULT_RETRY_DELAY_SECS)
         .clamp(MIN_RETRY_DELAY_SECS, MAX_RETRY_DELAY_SECS);
     Duration::from_secs(seconds)
+}
+
+/// What to tell a user whose request never got an answer. The function and
+/// the underlying error go to the console instead: they mean nothing to a user.
+pub(crate) fn transport_message(timed_out: bool, offline: bool) -> &'static str {
+    if timed_out {
+        TIMED_OUT_MESSAGE
+    } else if offline {
+        OFFLINE_MESSAGE
+    } else {
+        UNREACHABLE_MESSAGE
+    }
+}
+
+/// The error a user sees, `message`, which never names the Convex function:
+/// the function and `detail` go to the console instead.
+fn user_error(function: &str, message: &str, detail: impl std::fmt::Display) -> anyhow::Error {
+    leptos::logging::warn!("MeetCal request for {function} failed: {detail}");
+    anyhow!(message.to_owned())
+}
+
+/// Whether a failed body read was the request timeout. Reading the body
+/// rejects with the abort reason reqwest gave its timer, which reqwest
+/// reports as a decode error rather than a timeout.
+fn body_read_timed_out(detail: &str) -> bool {
+    detail.contains("reqwest::errors::TimedOut")
+}
+
+fn transport_error(function: &str, error: &reqwest::Error) -> anyhow::Error {
+    let timed_out = error.is_timeout() || body_read_timed_out(&format!("{error:?}"));
+    let offline = web_sys::window().is_some_and(|window| !window.navigator().on_line());
+    user_error(
+        function,
+        transport_message(timed_out, offline),
+        format!("{error:?}"),
+    )
 }
 
 fn exhausted_retries_message(status: StatusCode) -> &'static str {
@@ -260,17 +405,20 @@ fn read_response<T: DeserializeOwned>(query: Query, response: QueryResponse) -> 
 }
 
 /// The body inside a query's answer value.
-fn read_body<T: DeserializeOwned>(query: Query, value: Value) -> Result<T> {
+pub(crate) fn read_body<T: DeserializeOwned>(query: Query, value: Value) -> Result<T> {
     match query.body {
         Body::Value => serde_json::from_value(whole_numbers_as_integers(value))
-            .with_context(|| format!("MeetCal sent an unexpected answer to {}", query.function)),
+            .map_err(|error| user_error(query.function, UNREADABLE_MESSAGE, error)),
         Body::JsonText => {
-            let text = value
-                .get("json")
-                .and_then(Value::as_str)
-                .ok_or_else(|| anyhow!("MeetCal sent {} without its body", query.function))?;
+            let text = value.get("json").and_then(Value::as_str).ok_or_else(|| {
+                user_error(
+                    query.function,
+                    UNREADABLE_MESSAGE,
+                    "answer has no json body",
+                )
+            })?;
             serde_json::from_str(text)
-                .with_context(|| format!("MeetCal sent an unexpected answer to {}", query.function))
+                .map_err(|error| user_error(query.function, UNREADABLE_MESSAGE, error))
         }
     }
 }
@@ -281,17 +429,12 @@ fn read_page<T: DeserializeOwned>(query: Query, response: QueryResponse) -> Resu
     let cursor = value
         .get("cursor")
         .and_then(Value::as_str)
-        .ok_or_else(|| {
-            anyhow!(
-                "MeetCal sent a page of {} without its cursor",
-                query.function
-            )
-        })?
+        .ok_or_else(|| user_error(query.function, UNREADABLE_MESSAGE, "page has no cursor"))?
         .to_owned();
     let is_done = value
         .get("isDone")
         .and_then(Value::as_bool)
-        .ok_or_else(|| anyhow!("MeetCal sent a page of {} without isDone", query.function))?;
+        .ok_or_else(|| user_error(query.function, UNREADABLE_MESSAGE, "page has no isDone"))?;
     let rows = read_body(query, value)?;
     Ok(Page {
         rows,
@@ -347,36 +490,147 @@ where
         }
         cursor = Some(page.cursor);
     }
-    Err(anyhow!(
-        "MeetCal sent {function} in more than {MAX_PAGES} pages"
+    Err(user_error(
+        function,
+        TOO_MANY_PAGES_MESSAGE,
+        format!("more than {MAX_PAGES} pages"),
     ))
 }
 
-/// Sends `query` with `args`, retrying throttled (429) and overloaded (503)
-/// responses, and returns Convex's answer.
+/// Sends `query` with `args` and returns Convex's answer. A premium read
+/// (`carries_pass`) carries the access pass the site holds, fetching one
+/// first if it has none, and goes out without one when it cannot get one. If
+/// Convex refuses the read for its pass (a function error with status 401,
+/// "access pass required", or 403, "access pass expired"), the held pass is
+/// dropped and the read goes once more with a fresh one.
 async fn send<A>(query: Query, args: &A) -> Result<QueryResponse>
 where
     A: Serialize + ?Sized,
 {
+    let args = serde_json::to_value(args)
+        .map_err(|error| user_error(query.function, UNREACHABLE_MESSAGE, error))?;
+    if !carries_pass(query, &args) {
+        return post(Endpoint::Query, query.function, &args, None).await;
+    }
+    let pass = current_pass().await;
+    let response = post(
+        Endpoint::Query,
+        query.function,
+        &with_pass(&args, pass.as_deref()),
+        None,
+    )
+    .await?;
+    if !is_pass_refused(&response) {
+        return Ok(response);
+    }
+    let Some(fresh) = renewed_pass(pass.as_deref()).await else {
+        return Ok(response);
+    };
+    leptos::logging::warn!(
+        "Convex refused the access pass for {}; reading again with a fresh one",
+        query.function
+    );
+    post(
+        Endpoint::Query,
+        query.function,
+        &with_pass(&args, Some(&fresh)),
+        None,
+    )
+    .await
+}
+
+/// Whether `query`, sent with `args`, takes the access pass: a premium query,
+/// except a search without both dates (a name suggestion, which is public).
+fn carries_pass(query: Query, args: &Value) -> bool {
+    query.is_premium()
+        && (query.function != SEARCH_FUNCTION
+            || SEARCH_DATE_ARGUMENTS
+                .iter()
+                .all(|name| args.get(name).is_some_and(|value| !value.is_null())))
+}
+
+/// `args` with the access pass added as `pass`; unchanged without a pass.
+fn with_pass(args: &Value, pass: Option<&str>) -> Value {
+    let mut args = args.clone();
+    if let (Some(pass), Some(fields)) = (pass, args.as_object_mut()) {
+        fields.insert(PASS_ARGUMENT.to_owned(), Value::from(pass));
+    }
+    args
+}
+
+/// The status a function error carries in its `errorData` (our functions
+/// throw `{ status, error }`), if the answer is one.
+fn function_error_status(response: &QueryResponse) -> Option<u16> {
+    let QueryResponse::Error {
+        error_data: Some(data),
+        ..
+    } = response
+    else {
+        return None;
+    };
+    // A value answer writes its numbers as floats (`403.0`).
+    data.get("status")
+        .and_then(Value::as_f64)
+        .filter(|status| status.fract() == 0.0 && (0.0..=f64::from(u16::MAX)).contains(status))
+        .map(|status| status as u16)
+}
+
+/// Whether Convex refused a premium read for its pass: 401 without one, 403
+/// with one it no longer accepts.
+fn is_pass_refused(response: &QueryResponse) -> bool {
+    matches!(function_error_status(response), Some(401 | 403))
+}
+
+/// Where a call goes: `/api/query`, `/api/mutation` or `/api/action`.
+#[derive(Clone, Copy)]
+enum Endpoint {
+    Query,
+    Mutation,
+    Action,
+}
+
+impl Endpoint {
+    /// Whether a throttled or overloaded response is sent again by itself.
+    /// A mutation is not: the user taps again, seeing what happened first.
+    fn retries(self) -> bool {
+        !matches!(self, Endpoint::Mutation)
+    }
+}
+
+/// Posts `function` with `args` to Convex, with `token` as the bearer token
+/// when given, retrying throttled (429) and overloaded (503) responses
+/// (except for a mutation), and returns Convex's answer.
+async fn post(
+    endpoint: Endpoint,
+    function: &str,
+    args: &Value,
+    token: Option<&str>,
+) -> Result<QueryResponse> {
     let client = reqwest::Client::new();
-    let url = format!("{}/api/query", convex_url());
+    let url = match endpoint {
+        Endpoint::Query => format!("{}/api/query", convex_url()),
+        Endpoint::Mutation => format!("{}/api/mutation", convex_url()),
+        Endpoint::Action => format!("{}/api/action", convex_url()),
+    };
     let request = QueryRequest {
-        path: query.function,
+        path: function,
         args,
         format: "json",
     };
 
     let mut retries = 0;
     let response = loop {
-        let response = client
-            .post(&url)
-            .json(&request)
+        let mut builder = client.post(&url).timeout(REQUEST_TIMEOUT).json(&request);
+        if let Some(token) = token {
+            builder = builder.bearer_auth(token);
+        }
+        let response = builder
             .send()
             .await
-            .with_context(|| format!("Could not reach MeetCal for {}", query.function))?;
+            .map_err(|error| transport_error(function, &error))?;
         let status = response.status();
 
-        if should_retry(status, retries) {
+        if endpoint.retries() && should_retry(status, retries) {
             let retry_after = response
                 .headers()
                 .get(RETRY_AFTER)
@@ -389,23 +643,441 @@ where
             return Err(anyhow!(exhausted_retries_message(status)));
         }
         if status != StatusCode::OK && status.as_u16() != FUNCTION_FAILED {
-            return Err(anyhow!(
-                "MeetCal could not answer {} (HTTP {status})",
-                query.function
+            return Err(user_error(
+                function,
+                &format!("MeetCal could not answer (HTTP {})", status.as_u16()),
+                status,
             ));
         }
         break response;
     };
 
-    response
-        .json::<QueryResponse>()
+    // The timeout covers reading the answer too. A failed read is the
+    // connection's fault; only a body that arrives and does not parse is
+    // an unreadable answer.
+    let body = response
+        .bytes()
         .await
-        .with_context(|| format!("MeetCal sent an unreadable answer to {}", query.function))
+        .map_err(|error| transport_error(function, &error))?;
+    serde_json::from_slice::<QueryResponse>(&body)
+        .map_err(|error| user_error(function, UNREADABLE_MESSAGE, error))
 }
 
 /// Runs `query`, which takes no arguments.
 pub(crate) async fn query<T: DeserializeOwned>(query: Query) -> Result<T> {
     query_with(query, &NoArgs {}).await
+}
+
+/// The access pass Convex hands a subscriber: the pass, and the time (epoch
+/// ms) after which it may have rotated.
+#[derive(Clone, Debug, PartialEq, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct AccessPass {
+    pass: String,
+    rotates_at: f64,
+}
+
+/// What `accessPass:pass` answered.
+#[derive(Debug, PartialEq)]
+enum PassAnswer {
+    Granted(AccessPass),
+    /// 403: Convex has no active entitlement for the user (yet).
+    SubscriptionRequired,
+}
+
+/// Reads `accessPass:pass`'s answer. Any other failure (401 signed out, 503
+/// before the first rotation, a malformed pass) is an error.
+fn read_pass_answer(response: QueryResponse) -> Result<PassAnswer> {
+    if function_error_status(&response) == Some(403) {
+        return Ok(PassAnswer::SubscriptionRequired);
+    }
+    let pass: AccessPass = serde_json::from_value(answer_value(response)?)?;
+    if pass.pass.is_empty() || !pass.rotates_at.is_finite() {
+        return Err(anyhow!("malformed access pass"));
+    }
+    Ok(PassAnswer::Granted(pass))
+}
+
+/// Asks Convex for the access pass with the user's session token.
+async fn request_access_pass(token: &str) -> Result<PassAnswer> {
+    let response = post(
+        Endpoint::Query,
+        ACCESS_PASS,
+        &Value::Object(Map::new()),
+        Some(token),
+    )
+    .await?;
+    read_pass_answer(response)
+}
+
+/// Asks Convex to fetch the signed-in user's entitlement from RevenueCat and
+/// record it (`entitlements:refresh`). Answers whether it is active.
+async fn refresh_entitlement(token: &str) -> Result<bool> {
+    let response = post(
+        Endpoint::Action,
+        REFRESH_ENTITLEMENT,
+        &Value::Object(Map::new()),
+        Some(token),
+    )
+    .await?;
+    read_entitlement(response)
+}
+
+/// Whether `entitlements:refresh` answered an active entitlement.
+fn read_entitlement(response: QueryResponse) -> Result<bool> {
+    answer_value(response)?
+        .get("active")
+        .and_then(Value::as_bool)
+        .ok_or_else(|| anyhow!("answer has no active flag"))
+}
+
+/// Fetches the access pass for the signed-in user. If Convex has no active
+/// entitlement for them, asks it to refresh the entitlement from RevenueCat
+/// and, if that finds one, asks for the pass once more. `None` when signed
+/// out or when no pass could be had (logged).
+async fn fetch_access_pass() -> Option<AccessPass> {
+    let token = crate::auth::session_token().await?;
+    match request_access_pass(&token).await {
+        Ok(PassAnswer::Granted(pass)) => return Some(pass),
+        Ok(PassAnswer::SubscriptionRequired) => {}
+        Err(error) => {
+            leptos::logging::warn!("No access pass: {error}");
+            return None;
+        }
+    }
+    match refresh_entitlement(&token).await {
+        Ok(true) => {}
+        Ok(false) => {
+            leptos::logging::warn!("No access pass: Convex found no active entitlement");
+            return None;
+        }
+        Err(error) => {
+            leptos::logging::warn!("No access pass: the entitlement refresh failed: {error}");
+            return None;
+        }
+    }
+    // The refresh can take a while; Clerk hands over a fresh token if the
+    // first one expired meanwhile.
+    let token = crate::auth::session_token().await?;
+    match request_access_pass(&token).await {
+        Ok(PassAnswer::Granted(pass)) => Some(pass),
+        Ok(PassAnswer::SubscriptionRequired) => {
+            leptos::logging::warn!("No access pass: refused after the entitlement refresh");
+            None
+        }
+        Err(error) => {
+            leptos::logging::warn!("No access pass: {error}");
+            None
+        }
+    }
+}
+
+/// A pass the site holds, and until when (epoch ms) it is used.
+#[derive(Clone, Debug, PartialEq)]
+struct HeldPass {
+    pass: String,
+    until: f64,
+}
+
+/// One fetch of the access pass, shared by every read waiting on it.
+type PassFetch = Shared<LocalBoxFuture<'static, Option<String>>>;
+
+/// The site's access pass, in memory only: one per page load.
+#[derive(Default)]
+struct PassState {
+    held: Option<HeldPass>,
+    /// When the last fetch failed: until `PASS_FETCH_BACKOFF_MS` later, reads
+    /// go without a pass instead of fetching again.
+    failed_at: Option<f64>,
+    /// The running fetch, and when (epoch ms) it started.
+    fetching: Option<(PassFetch, f64)>,
+    /// Advanced by `forget_access_pass`, so a fetch started before the user
+    /// changed does not store its answer.
+    generation: u64,
+}
+
+thread_local! {
+    static ACCESS_PASS_STATE: RefCell<PassState> = RefCell::new(PassState::default());
+}
+
+/// Until when a pass that rotates at `rotates_at`, fetched at `now`, is used.
+fn held_until(rotates_at: f64, now: f64) -> f64 {
+    rotates_at.max(now + MIN_PASS_HOLD_MS)
+}
+
+/// The held pass, if it is still in use at `now`.
+fn usable_pass(held: Option<&HeldPass>, now: f64) -> Option<&str> {
+    held.filter(|held| now < held.until)
+        .map(|held| held.pass.as_str())
+}
+
+/// Whether a read may start a pass fetch at `now`, given when the last one failed.
+fn may_fetch(failed_at: Option<f64>, now: f64) -> bool {
+    failed_at.is_none_or(|failed_at| now - failed_at >= PASS_FETCH_BACKOFF_MS)
+}
+
+/// What a premium read does to get the pass.
+enum PassStep {
+    Use(String),
+    Join(PassFetch, f64),
+    Fetch,
+    GoWithout,
+}
+
+/// How long (ms) a read may still wait at `now` for a fetch that started at `started_at`.
+fn pass_wait_left(started_at: f64, now: f64) -> f64 {
+    (started_at + PASS_WAIT_MS - now).max(0.0)
+}
+
+/// The fetch's pass, or `None` once the read has waited `PASS_WAIT_MS` from
+/// the fetch's start. The fetch keeps running either way.
+async fn wait_for_pass(fetch: PassFetch, started_at: f64) -> Option<String> {
+    let left = pass_wait_left(started_at, js_sys::Date::now());
+    if left <= 0.0 {
+        return None;
+    }
+    let timer = sleep(Duration::from_millis(left as u64));
+    match futures::future::select(Box::pin(fetch), Box::pin(timer)).await {
+        futures::future::Either::Left((pass, _)) => pass,
+        futures::future::Either::Right(_) => None,
+    }
+}
+
+/// The pass for a premium read: the held one while it is in use, else the
+/// fetch already running, else a new fetch (unless one failed recently).
+async fn current_pass() -> Option<String> {
+    let now = js_sys::Date::now();
+    let step = ACCESS_PASS_STATE.with_borrow(|state| {
+        if let Some(pass) = usable_pass(state.held.as_ref(), now) {
+            PassStep::Use(pass.to_owned())
+        } else if let Some((fetch, started_at)) = &state.fetching {
+            PassStep::Join(fetch.clone(), *started_at)
+        } else if may_fetch(state.failed_at, now) {
+            PassStep::Fetch
+        } else {
+            PassStep::GoWithout
+        }
+    });
+    match step {
+        PassStep::Use(pass) => Some(pass),
+        PassStep::Join(fetch, started_at) => wait_for_pass(fetch, started_at).await,
+        PassStep::Fetch => {
+            let (fetch, started_at) = start_pass_fetch();
+            wait_for_pass(fetch, started_at).await
+        }
+        PassStep::GoWithout => None,
+    }
+}
+
+/// A fresh pass after Convex refused a read sent with `refused` (`None`: sent
+/// without one). Drops the held pass if it is the refused one; a different
+/// held pass (another read already renewed it) is used as it is. Otherwise
+/// joins the running fetch or starts one, even within the backoff.
+async fn renewed_pass(refused: Option<&str>) -> Option<String> {
+    let now = js_sys::Date::now();
+    let step = ACCESS_PASS_STATE.with_borrow_mut(|state| {
+        if state.held.as_ref().map(|held| held.pass.as_str()) == refused {
+            state.held = None;
+        }
+        if let Some(pass) = usable_pass(state.held.as_ref(), now) {
+            PassStep::Use(pass.to_owned())
+        } else if let Some((fetch, started_at)) = &state.fetching {
+            PassStep::Join(fetch.clone(), *started_at)
+        } else {
+            PassStep::Fetch
+        }
+    });
+    match step {
+        PassStep::Use(pass) => Some(pass),
+        PassStep::Join(fetch, started_at) => wait_for_pass(fetch, started_at).await,
+        PassStep::Fetch | PassStep::GoWithout => {
+            let (fetch, started_at) = start_pass_fetch();
+            wait_for_pass(fetch, started_at).await
+        }
+    }
+}
+
+/// Starts a pass fetch that later reads join, and returns it with when it
+/// started. It runs to the end whether or not anyone still waits: its answer
+/// is held until `held_until`; a failure starts the backoff.
+fn start_pass_fetch() -> (PassFetch, f64) {
+    let started_at = js_sys::Date::now();
+    let generation = ACCESS_PASS_STATE.with_borrow(|state| state.generation);
+    let fetch = async move {
+        let fetched = fetch_access_pass().await;
+        let now = js_sys::Date::now();
+        ACCESS_PASS_STATE.with_borrow_mut(|state| {
+            if state.generation != generation {
+                return;
+            }
+            state.fetching = None;
+            match &fetched {
+                Some(pass) => {
+                    state.held = Some(HeldPass {
+                        pass: pass.pass.clone(),
+                        until: held_until(pass.rotates_at, now),
+                    });
+                    state.failed_at = None;
+                }
+                None => state.failed_at = Some(now),
+            }
+        });
+        fetched.map(|pass| pass.pass)
+    }
+    .boxed_local()
+    .shared();
+    ACCESS_PASS_STATE.with_borrow_mut(|state| state.fetching = Some((fetch.clone(), started_at)));
+    let running = fetch.clone();
+    leptos::task::spawn_local(async move {
+        running.await;
+    });
+    (fetch, started_at)
+}
+
+/// Forgets the held pass, a failed fetch and any running one: the signed-in
+/// user changed, so the next premium read fetches for the new one (or, signed
+/// out, finds no session token and goes without).
+pub(crate) fn forget_access_pass() {
+    ACCESS_PASS_STATE.with_borrow_mut(|state| {
+        *state = PassState {
+            generation: state.generation + 1,
+            ..PassState::default()
+        };
+    });
+}
+
+/// The CLI's device-code sign-in (`convex/deviceLogin.ts`): `meetcal login`
+/// shows a code, and the signed-in user approves or denies it on `/link`.
+/// Each call carries the user's Clerk session token; none carries the pass.
+const DEVICE_LOGIN_DESCRIBE: &str = "deviceLogin:describe";
+const DEVICE_LOGIN_APPROVE: &str = "deviceLogin:approve";
+const DEVICE_LOGIN_DENY: &str = "deviceLogin:deny";
+
+/// Clerk had no session token to hand over, or Convex refused the one it did
+/// (401): the user is asked to try again, which fetches a fresh one.
+pub(crate) const SESSION_MESSAGE: &str =
+    "MeetCal couldn't confirm you're signed in; please try again";
+
+/// A login waiting for approval, as `deviceLogin:describe` answers it.
+#[derive(Clone, Debug, PartialEq, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct PendingDeviceLogin {
+    /// What the CLI calls the device (the computer's name, or an agent's).
+    pub device_name: String,
+    /// When the CLI asked (epoch ms).
+    pub created_at: f64,
+    /// When the code stops working (epoch ms).
+    pub expires_at: f64,
+}
+
+/// Ends every token the user's `meetcal login`s hold (`convex/apiTokens.ts`):
+/// the recovery for a login approved by mistake. A mutation, sent once.
+const REVOKE_ALL_CLI: &str = "apiTokens:revokeAllCli";
+
+/// What approving or denying a code did.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum DeviceLoginOutcome {
+    Done,
+    /// No pending login has the code (404): it expired or was already used.
+    Gone,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct DeviceLoginArgs<'a> {
+    user_code: &'a str,
+}
+
+/// Posts a device-login call for `user_code` with the user's session token.
+async fn post_device_login(
+    endpoint: Endpoint,
+    function: &str,
+    user_code: &str,
+) -> Result<QueryResponse> {
+    let token = crate::auth::session_token()
+        .await
+        .ok_or_else(|| anyhow!(SESSION_MESSAGE))?;
+    let args = serde_json::to_value(DeviceLoginArgs { user_code })
+        .map_err(|error| user_error(function, UNREACHABLE_MESSAGE, error))?;
+    post(endpoint, function, &args, Some(&token)).await
+}
+
+/// The pending login `user_code` names, or `None` when there is none (no such
+/// code, expired, already approved or denied).
+pub(crate) async fn describe_device_login(user_code: &str) -> Result<Option<PendingDeviceLogin>> {
+    let response = post_device_login(Endpoint::Query, DEVICE_LOGIN_DESCRIBE, user_code).await?;
+    read_pending_device_login(response)
+}
+
+/// Approves the pending login `user_code` names: the CLI gets its token.
+pub(crate) async fn approve_device_login(user_code: &str) -> Result<DeviceLoginOutcome> {
+    let response = post_device_login(Endpoint::Mutation, DEVICE_LOGIN_APPROVE, user_code).await?;
+    read_device_login_outcome(DEVICE_LOGIN_APPROVE, response)
+}
+
+/// Denies the pending login `user_code` names; the CLI stops waiting.
+pub(crate) async fn deny_device_login(user_code: &str) -> Result<DeviceLoginOutcome> {
+    let response = post_device_login(Endpoint::Mutation, DEVICE_LOGIN_DENY, user_code).await?;
+    read_device_login_outcome(DEVICE_LOGIN_DENY, response)
+}
+
+/// Signs out every CLI login of the signed-in user; answers how many ended.
+pub(crate) async fn revoke_all_cli_logins() -> Result<u64> {
+    let token = crate::auth::session_token()
+        .await
+        .ok_or_else(|| anyhow!(SESSION_MESSAGE))?;
+    let response = post(
+        Endpoint::Mutation,
+        REVOKE_ALL_CLI,
+        &Value::Object(Map::new()),
+        Some(&token),
+    )
+    .await?;
+    read_revoked_count(response)
+}
+
+/// Reads `apiTokens:revokeAllCli`'s answer, `{ ended }` (a float, as every
+/// number of a value answer).
+fn read_revoked_count(response: QueryResponse) -> Result<u64> {
+    let value = device_login_value(response)?;
+    value
+        .get("ended")
+        .and_then(Value::as_f64)
+        .filter(|ended| ended.fract() == 0.0 && (0.0..=f64::from(u32::MAX)).contains(ended))
+        .map(|ended| ended as u64)
+        .ok_or_else(|| user_error(REVOKE_ALL_CLI, UNREADABLE_MESSAGE, value))
+}
+
+/// A device-login function error, or the answer's value.
+fn device_login_value(response: QueryResponse) -> Result<Value> {
+    if function_error_status(&response) == Some(401) {
+        return Err(anyhow!(SESSION_MESSAGE));
+    }
+    answer_value(response)
+}
+
+/// Reads `deviceLogin:describe`'s answer: the pending login, or `null`.
+fn read_pending_device_login(response: QueryResponse) -> Result<Option<PendingDeviceLogin>> {
+    let value = device_login_value(response)?;
+    serde_json::from_value(value)
+        .map_err(|error| user_error(DEVICE_LOGIN_DESCRIBE, UNREADABLE_MESSAGE, error))
+}
+
+/// Reads an approve or deny answer: `{ ok: true }`, or a 404 for a code no
+/// login is waiting on.
+fn read_device_login_outcome(
+    function: &str,
+    response: QueryResponse,
+) -> Result<DeviceLoginOutcome> {
+    if function_error_status(&response) == Some(404) {
+        return Ok(DeviceLoginOutcome::Gone);
+    }
+    let value = device_login_value(response)?;
+    if value.get("ok").and_then(Value::as_bool) == Some(true) {
+        Ok(DeviceLoginOutcome::Done)
+    } else {
+        Err(user_error(function, UNREADABLE_MESSAGE, value))
+    }
 }
 
 #[cfg(test)]
@@ -444,6 +1116,330 @@ mod tests {
             json!({"path": "reference:nationalRankings", "args": {"ageCategory": "Open Men's 60kg"}, "format": "json"})
         );
         assert_eq!(serde_json::to_value(NoArgs {}).unwrap(), json!({}));
+    }
+
+    #[test]
+    fn premium_queries_carry_the_pass_and_the_rest_do_not() {
+        let args = json!({"meet": "Test Meet"});
+        for query in [
+            queries::MEET_RESULTS,
+            queries::RECORDS,
+            queries::STANDARDS,
+            queries::QUALIFYING_TOTALS,
+            queries::INTL_RANKINGS,
+            queries::NATIONAL_RANKINGS,
+            queries::NATIONAL_RANKINGS_BY_YEAR,
+            queries::WSO_LIST,
+            queries::WSO_RECORDS,
+            queries::ADAPTIVE_RECORDS,
+            queries::CLUBS,
+            queries::CLUB_ATHLETES,
+            queries::CLUB_MEET_STATS,
+        ] {
+            assert!(query.is_premium(), "{}", query.function);
+            assert!(carries_pass(query, &args), "{}", query.function);
+        }
+        // Public, so they go without it.
+        for query in [
+            queries::UPCOMING_MEETS,
+            queries::COMPLETED_MEETS,
+            queries::MEET_SCHEDULE,
+            queries::MEET_ATHLETES,
+            queries::WRAPPED,
+        ] {
+            assert!(!query.is_premium(), "{}", query.function);
+            assert!(!carries_pass(query, &args), "{}", query.function);
+        }
+        assert_eq!(SUBSCRIPTION_FUNCTIONS.len(), 22);
+        assert!(!SUBSCRIPTION_FUNCTIONS.contains(&ACCESS_PASS));
+        assert!(!SUBSCRIPTION_FUNCTIONS.contains(&REFRESH_ENTITLEMENT));
+    }
+
+    #[test]
+    fn only_a_dated_search_carries_the_pass() {
+        assert!(queries::SEARCH.is_premium());
+        let dated = json!({"query": "Smith", "startDate": "2026-01-01", "endDate": "2026-12-31"});
+        assert!(carries_pass(queries::SEARCH, &dated));
+        for suggestion in [
+            json!({"query": "Smi"}),
+            json!({"query": "Smi", "startDate": "2026-01-01"}),
+            json!({"query": "Smi", "endDate": "2026-12-31"}),
+            json!({"query": "Smi", "startDate": null, "endDate": null}),
+        ] {
+            assert!(!carries_pass(queries::SEARCH, &suggestion), "{suggestion}");
+        }
+    }
+
+    #[test]
+    fn the_pass_goes_into_the_arguments() {
+        let args = json!({"club": "Test Barbell", "cursor": null});
+        assert_eq!(
+            with_pass(&args, Some("p1")),
+            json!({"club": "Test Barbell", "cursor": null, "pass": "p1"})
+        );
+        assert_eq!(with_pass(&args, None), args);
+        assert_eq!(with_pass(&json!({}), Some("p1")), json!({"pass": "p1"}));
+    }
+
+    #[test]
+    fn only_a_401_or_403_function_error_refuses_the_pass() {
+        let error = |data: Value| {
+            answer(json!({"status": "error", "errorMessage": "Server Error", "errorData": data}))
+        };
+        for status in [json!(401), json!(403), json!(403.0)] {
+            assert!(
+                is_pass_refused(&error(
+                    json!({"status": status, "error": "access pass expired"})
+                )),
+                "{status}"
+            );
+        }
+        for data in [
+            json!({"status": 400, "error": "year must be a four-digit year"}),
+            json!({"status": 503}),
+            json!({"error": "no status"}),
+            json!(null),
+        ] {
+            assert!(!is_pass_refused(&error(data.clone())), "{data}");
+        }
+        assert!(!is_pass_refused(&answer(
+            json!({"status": "error", "errorMessage": "Server Error"})
+        )));
+        assert!(!is_pass_refused(&answer(
+            json!({"status": "success", "value": {"status": 403}})
+        )));
+    }
+
+    #[test]
+    fn pass_answers_grant_the_pass_or_ask_for_a_refresh() {
+        assert_eq!(
+            read_pass_answer(answer(
+                json!({"status": "success", "value": {"pass": "p1", "rotatesAt": 1_800_000_000_000.0}})
+            ))
+            .unwrap(),
+            PassAnswer::Granted(AccessPass {
+                pass: "p1".to_owned(),
+                rotates_at: 1_800_000_000_000.0
+            })
+        );
+        assert_eq!(
+            read_pass_answer(answer(json!({
+                "status": "error",
+                "errorMessage": "Server Error",
+                "errorData": {"status": 403, "error": "subscription required"}
+            })))
+            .unwrap(),
+            PassAnswer::SubscriptionRequired
+        );
+        for response in [
+            json!({"status": "error", "errorMessage": "Server Error", "errorData": {"status": 401, "error": "unauthorized"}}),
+            json!({"status": "error", "errorMessage": "Server Error", "errorData": {"status": 503, "error": "no access pass yet"}}),
+            json!({"status": "success", "value": {"pass": "", "rotatesAt": 1.0}}),
+            json!({"status": "success", "value": {"pass": "p1"}}),
+            json!({"status": "success", "value": {"rotatesAt": 1.0}}),
+        ] {
+            assert!(
+                read_pass_answer(answer(response.clone())).is_err(),
+                "{response}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_pass_is_held_until_it_rotates() {
+        let now = 1_000_000_000.0;
+        let day = 24.0 * 60.0 * 60.0 * 1000.0;
+        assert_eq!(held_until(now + day, now), now + day);
+        // A rotation due (by this device's clock) sooner than the minimum
+        // hold, or already past, still holds the pass a while.
+        assert_eq!(held_until(now - day, now), now + MIN_PASS_HOLD_MS);
+        assert_eq!(pass_wait_left(now, now), PASS_WAIT_MS);
+        assert_eq!(
+            pass_wait_left(now - PASS_WAIT_MS / 2.0, now),
+            PASS_WAIT_MS / 2.0
+        );
+        assert_eq!(pass_wait_left(now - 2.0 * PASS_WAIT_MS, now), 0.0);
+        assert_eq!(held_until(now + 1.0, now), now + MIN_PASS_HOLD_MS);
+
+        let held = HeldPass {
+            pass: "p1".to_owned(),
+            until: now + day,
+        };
+        assert_eq!(usable_pass(Some(&held), now), Some("p1"));
+        assert_eq!(usable_pass(Some(&held), now + day - 1.0), Some("p1"));
+        assert_eq!(usable_pass(Some(&held), now + day), None);
+        assert_eq!(usable_pass(None, now), None);
+    }
+
+    #[test]
+    fn a_failed_pass_fetch_is_not_repeated_for_a_while() {
+        let now = 1_000_000_000.0;
+        assert!(may_fetch(None, now));
+        assert!(!may_fetch(Some(now), now));
+        assert!(!may_fetch(Some(now - PASS_FETCH_BACKOFF_MS + 1.0), now));
+        assert!(may_fetch(Some(now - PASS_FETCH_BACKOFF_MS), now));
+    }
+
+    #[test]
+    fn entitlement_refreshes_answer_whether_the_entitlement_is_active() {
+        for active in [true, false] {
+            let response = answer(json!({"status": "success", "value": {"active": active}}));
+            assert_eq!(read_entitlement(response).unwrap(), active);
+        }
+        assert!(read_entitlement(answer(json!({"status": "success", "value": {}}))).is_err());
+        assert!(
+            read_entitlement(answer(
+                json!({"status": "error", "errorMessage": "Unauthenticated"})
+            ))
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn device_login_calls_send_the_user_code_in_camel_case() {
+        assert_eq!(
+            serde_json::to_value(DeviceLoginArgs {
+                user_code: "WXYZ-BCDF"
+            })
+            .unwrap(),
+            json!({"userCode": "WXYZ-BCDF"})
+        );
+    }
+
+    #[test]
+    fn a_described_login_is_the_pending_one_or_none() {
+        assert_eq!(
+            read_pending_device_login(answer(json!({"status": "success", "value": {
+                "deviceName": "maddisen-laptop",
+                "createdAt": 1_800_000_000_000.0,
+                "expiresAt": 1_800_000_600_000.0
+            }})))
+            .unwrap(),
+            Some(PendingDeviceLogin {
+                device_name: "maddisen-laptop".to_owned(),
+                created_at: 1_800_000_000_000.0,
+                expires_at: 1_800_000_600_000.0,
+            })
+        );
+        assert_eq!(
+            read_pending_device_login(answer(json!({"status": "success", "value": null}))).unwrap(),
+            None
+        );
+    }
+
+    #[test]
+    fn a_malformed_or_refused_description_is_an_error() {
+        for value in [
+            json!({"deviceName": "laptop"}),
+            json!({"deviceName": 3, "createdAt": 1.0, "expiresAt": 2.0}),
+            json!([]),
+            json!("WXYZ-BCDF"),
+        ] {
+            let error =
+                read_pending_device_login(answer(json!({"status": "success", "value": value})))
+                    .unwrap_err();
+            assert_eq!(error.to_string(), UNREADABLE_MESSAGE, "{value}");
+        }
+        let error = read_pending_device_login(answer(json!({
+            "status": "error",
+            "errorMessage": "Server Error",
+            "errorData": {"status": 401.0, "error": "unauthorized"}
+        })))
+        .unwrap_err();
+        assert_eq!(error.to_string(), SESSION_MESSAGE);
+    }
+
+    #[test]
+    fn approving_or_denying_is_done_or_finds_the_code_gone() {
+        let ok = || answer(json!({"status": "success", "value": {"ok": true}}));
+        let missing = || {
+            answer(json!({
+                "status": "error",
+                "errorMessage": "Server Error",
+                "errorData": {"status": 404, "error": "no pending login has that code"}
+            }))
+        };
+        for function in [DEVICE_LOGIN_APPROVE, DEVICE_LOGIN_DENY] {
+            assert_eq!(
+                read_device_login_outcome(function, ok()).unwrap(),
+                DeviceLoginOutcome::Done
+            );
+            assert_eq!(
+                read_device_login_outcome(function, missing()).unwrap(),
+                DeviceLoginOutcome::Gone
+            );
+        }
+
+        let signed_out = answer(json!({
+            "status": "error",
+            "errorMessage": "Server Error",
+            "errorData": {"status": 401, "error": "unauthorized"}
+        }));
+        assert_eq!(
+            read_device_login_outcome(DEVICE_LOGIN_APPROVE, signed_out)
+                .unwrap_err()
+                .to_string(),
+            SESSION_MESSAGE
+        );
+        for value in [json!({"ok": false}), json!({}), json!(null)] {
+            assert_eq!(
+                read_device_login_outcome(
+                    DEVICE_LOGIN_APPROVE,
+                    answer(json!({"status": "success", "value": value}))
+                )
+                .unwrap_err()
+                .to_string(),
+                UNREADABLE_MESSAGE,
+                "{value}"
+            );
+        }
+        assert_eq!(
+            read_device_login_outcome(
+                DEVICE_LOGIN_APPROVE,
+                answer(json!({"status": "error", "errorMessage": "Server Error"}))
+            )
+            .unwrap_err()
+            .to_string(),
+            "MeetCal could not answer: Server Error"
+        );
+    }
+
+    #[test]
+    fn signing_out_cli_logins_answers_how_many_ended() {
+        for (ended, count) in [(json!(0), 0), (json!(2.0), 2), (json!(3), 3)] {
+            let response = answer(json!({"status": "success", "value": {"ended": ended}}));
+            assert_eq!(read_revoked_count(response).unwrap(), count);
+        }
+        for value in [
+            json!({}),
+            json!({"ended": -1}),
+            json!({"ended": 1.5}),
+            json!({"ended": "2"}),
+        ] {
+            assert_eq!(
+                read_revoked_count(answer(json!({"status": "success", "value": value})))
+                    .unwrap_err()
+                    .to_string(),
+                UNREADABLE_MESSAGE,
+                "{value}"
+            );
+        }
+        let signed_out = answer(json!({
+            "status": "error",
+            "errorMessage": "Server Error",
+            "errorData": {"status": 401, "error": "unauthorized"}
+        }));
+        assert_eq!(
+            read_revoked_count(signed_out).unwrap_err().to_string(),
+            SESSION_MESSAGE
+        );
+    }
+
+    #[test]
+    fn only_mutations_are_not_retried_by_themselves() {
+        assert!(Endpoint::Query.retries());
+        assert!(Endpoint::Action.retries());
+        assert!(!Endpoint::Mutation.retries());
     }
 
     #[test]
@@ -498,7 +1494,7 @@ mod tests {
             answer(json!({"status": "success", "value": {"etag": "\"x\""}})),
         )
         .unwrap_err();
-        assert_eq!(error.to_string(), "MeetCal sent test:text without its body");
+        assert_eq!(error.to_string(), UNREADABLE_MESSAGE);
     }
 
     /// Runs a future that never waits, as every page source in these tests is.
@@ -559,34 +1555,19 @@ mod tests {
 
     #[test]
     fn a_malformed_page_is_an_error() {
-        for (value, message) in [
-            (
-                json!([1, 2]),
-                "MeetCal sent a page of reference:clubAthletes without its cursor",
-            ),
-            (
-                json!({"json": "[]", "isDone": true}),
-                "MeetCal sent a page of reference:clubAthletes without its cursor",
-            ),
-            (
-                json!({"json": "[]", "cursor": "c", "isDone": "yes"}),
-                "MeetCal sent a page of reference:clubAthletes without isDone",
-            ),
-            (
-                json!({"cursor": "c", "isDone": true}),
-                "MeetCal sent reference:clubAthletes without its body",
-            ),
-            (
-                json!({"json": "{}", "cursor": "c", "isDone": true}),
-                "MeetCal sent an unexpected answer to reference:clubAthletes",
-            ),
+        for value in [
+            json!([1, 2]),
+            json!({"json": "[]", "isDone": true}),
+            json!({"json": "[]", "cursor": "c", "isDone": "yes"}),
+            json!({"cursor": "c", "isDone": true}),
+            json!({"json": "{}", "cursor": "c", "isDone": true}),
         ] {
             let error = read_page::<u32>(
                 queries::CLUB_ATHLETES,
                 answer(json!({"status": "success", "value": value})),
             )
             .unwrap_err();
-            assert_eq!(error.to_string(), message);
+            assert_eq!(error.to_string(), UNREADABLE_MESSAGE, "{value}");
         }
     }
 
@@ -622,10 +1603,7 @@ mod tests {
         }))
         .unwrap_err();
         assert_eq!(calls as usize, MAX_PAGES);
-        assert_eq!(
-            error.to_string(),
-            format!("MeetCal sent test:paged in more than {MAX_PAGES} pages")
-        );
+        assert_eq!(error.to_string(), TOO_MANY_PAGES_MESSAGE);
 
         let mut calls = 0;
         let rows = ready(collect_pages("test:paged", |_| {
@@ -739,6 +1717,51 @@ mod tests {
         ] {
             assert_eq!(retry_delay(value), Duration::from_secs(1), "{value:?}");
         }
+    }
+
+    #[test]
+    fn unreadable_answers_never_name_the_function() {
+        let error = read_response::<Vec<u32>>(
+            Query::value("reference:standards"),
+            answer(json!({"status": "success", "value": {"not": "a list"}})),
+        )
+        .unwrap_err();
+        assert_eq!(error.to_string(), UNREADABLE_MESSAGE);
+
+        let error = read_response::<Vec<u32>>(
+            Query::text("reference:records"),
+            answer(json!({"status": "success", "value": {"json": "not json"}})),
+        )
+        .unwrap_err();
+        assert_eq!(error.to_string(), UNREADABLE_MESSAGE);
+
+        for message in [UNREADABLE_MESSAGE, TOO_MANY_PAGES_MESSAGE] {
+            assert!(!message.contains(':'), "{message}");
+        }
+    }
+
+    #[test]
+    fn a_body_read_cut_off_by_the_timeout_is_a_timeout() {
+        // What reqwest's wasm `Response::bytes` reports when the request's
+        // timer aborts the body read.
+        assert!(body_read_timed_out(
+            r#"reqwest::Error { kind: Decode, source: "JsValue(\"reqwest::errors::TimedOut\")" }"#
+        ));
+        assert!(!body_read_timed_out(
+            r#"reqwest::Error { kind: Decode, source: "JsValue(TypeError: network error)" }"#
+        ));
+    }
+
+    #[test]
+    fn requests_that_get_no_answer_explain_themselves_without_the_function() {
+        assert_eq!(transport_message(true, false), TIMED_OUT_MESSAGE);
+        assert_eq!(transport_message(true, true), TIMED_OUT_MESSAGE);
+        assert_eq!(transport_message(false, true), OFFLINE_MESSAGE);
+        assert_eq!(transport_message(false, false), UNREACHABLE_MESSAGE);
+        for message in [TIMED_OUT_MESSAGE, OFFLINE_MESSAGE, UNREACHABLE_MESSAGE] {
+            assert!(!message.contains(':'), "{message}");
+        }
+        assert_eq!(REQUEST_TIMEOUT, Duration::from_secs(20));
     }
 
     #[test]

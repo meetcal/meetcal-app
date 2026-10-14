@@ -1,24 +1,21 @@
-use crate::components::{footer::Footer, header::Header};
 use leptos::prelude::*;
 
 #[component]
 pub fn PrivacyPage() -> impl IntoView {
     view! {
-        <Header />
         <PrivacyPolicy />
-        <Footer />
     }
 }
 
 #[component]
 pub fn PrivacyPolicy() -> impl IntoView {
     view! {
-        <main>
+        <article class="legal-page">
             <div>
                 <h1>"Privacy Policy"</h1>
 
                 <div>
-                    <p>"Effective Date: August 23, 2026"</p>
+                    <p>"Effective Date: October 12, 2026"</p>
 
                     <h2>"1. Overview"</h2>
 
@@ -35,6 +32,8 @@ pub fn PrivacyPolicy() -> impl IntoView {
                         <li>"Subscription information, such as product, entitlement status, renewal or expiration status, app-store platform, and transaction identifiers, through RevenueCat and Apple or Google. MeetCal does not receive your full payment-card number."</li>
                         <li>"Saved sessions, selected athletes, notes, and preferences that you choose to sync across devices."</li>
                         <li>"Usage and device information, such as pages viewed, interactions, browser or device type, operating system, approximate location derived from an IP address, and diagnostic events, through PostHog."</li>
+                        <li>"Notification information in the mobile app, such as your account identifier, email address, push token, notification preferences, and membership type (free, quarterly, or lifetime), through OneSignal."</li>
+                        <li>"Crash and error reports from the mobile app, such as the error, the app version, and device and operating-system details, through Sentry."</li>
                         <li>"Messages and other information you provide when contacting us for support or exercising a privacy right."</li>
                     </ul>
 
@@ -48,6 +47,7 @@ pub fn PrivacyPolicy() -> impl IntoView {
                         <li>"Operate, secure, troubleshoot, and improve MeetCal."</li>
                         <li>"Measure feature usage and understand service performance."</li>
                         <li>"Respond to support requests and send service-related communications."</li>
+                        <li>"Send push notifications and in-app messages you have allowed, such as saved-session reminders and MeetCal announcements."</li>
                         <li>"Comply with legal obligations and prevent fraud, abuse, or security incidents."</li>
                     </ul>
 
@@ -63,6 +63,8 @@ pub fn PrivacyPolicy() -> impl IntoView {
                         <li>"Clerk, for authentication and account management."</li>
                         <li>"RevenueCat, Apple, and Google, for subscriptions, entitlements, and purchase restoration."</li>
                         <li>"PostHog, for product analytics and diagnostics."</li>
+                        <li>"OneSignal, for push notifications and in-app messages."</li>
+                        <li>"Sentry, for crash and error diagnostics."</li>
                         <li>"Hosting, database, and infrastructure providers used to deliver and protect the service."</li>
                     </ul>
 
@@ -70,7 +72,11 @@ pub fn PrivacyPolicy() -> impl IntoView {
 
                     <h2>"6. Device Permissions"</h2>
 
-                    <p>"If you choose to add an event to your device calendar, MeetCal requests the permission needed to complete that action. Calendar data is handled on your device unless a feature clearly tells you otherwise. You can change permissions in your device settings."</p>
+                    <p>"If you choose to add an event to your device calendar, MeetCal requests the permission needed to complete that action. Calendar data is handled on your device unless a feature clearly tells you otherwise."</p>
+
+                    <p>"The mobile app asks for permission to send notifications. If you allow them, OneSignal delivers them to your device. You can turn notifications off in the app’s notification settings or in your device settings."</p>
+
+                    <p>"You can change permissions in your device settings at any time."</p>
 
                     <h2>"7. Retention"</h2>
 
@@ -90,6 +96,7 @@ pub fn PrivacyPolicy() -> impl IntoView {
                         <li>"Update available account information through the account profile."</li>
                         <li>"Use available browser or device privacy controls, understanding that they may not prevent every analytics event."</li>
                         <li>"Manage or cancel a subscription through the MeetCal app and the applicable app store."</li>
+                        <li>"Delete your account in the MeetCal app: open My Profile, then Delete Your Account. Deleting an account does not cancel an app-store subscription, so the app first offers to open your subscription settings."</li>
                         <li>"Contact us to request account or synced-data deletion."</li>
                     </ul>
 
@@ -122,6 +129,6 @@ pub fn PrivacyPolicy() -> impl IntoView {
                     </p>
                 </div>
             </div>
-        </main>
+        </article>
     }
 }

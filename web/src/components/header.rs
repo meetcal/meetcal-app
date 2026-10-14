@@ -4,15 +4,27 @@ use crate::auth::{
 use crate::pages::comp_data::catalog::DATA_PAGES;
 use leptos::prelude::*;
 use leptos_router::components::A;
+use leptos_router::hooks::use_location;
 
 #[component]
 pub fn Header() -> impl IntoView {
     let auth = expect_context::<AuthContext>();
+    let mobile_nav = NodeRef::<leptos::html::Details>::new();
+    let location = use_location();
+
+    // The header stays mounted across pages, so close the mobile menu after
+    // each navigation.
+    Effect::new(move |_| {
+        location.pathname.track();
+        if let Some(details) = mobile_nav.get_untracked() {
+            let _ = details.remove_attribute("open");
+        }
+    });
 
     view! {
         <header class="site-header">
             <A href="/" attr:class="brand-link">
-                <img class="brand-logo" src="/images/logo.png" alt="MeetCal" />
+                <img class="brand-logo" src="/images/logo.png" alt="MeetCal" width="34" height="34" />
                 <span>"MeetCal"</span>
             </A>
             <nav class="site-nav" aria-label="Primary navigation">
@@ -37,7 +49,7 @@ pub fn Header() -> impl IntoView {
                 <A href="/terms">"Terms"</A>
                 <A href="mailto:maddisen@meetcal.app">"Contact Us"</A>
             </nav>
-            <details class="mobile-nav">
+            <details class="mobile-nav" node_ref=mobile_nav>
                 <summary aria-label="Open navigation menu">
                     <span class="mobile-nav-icon" aria-hidden="true"></span>
                 </summary>

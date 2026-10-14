@@ -74,6 +74,8 @@ export type Entry = {
   weightClass: string;
   entryTotal: number;
   meet: string;
+  /** Filled by the sync from the member's other registrations (#345). */
+  wso?: string;
 };
 
 /** JavaScript's `parseInt`, with the writer's default of 0 where it gives NaN. */

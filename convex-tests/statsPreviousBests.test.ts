@@ -87,10 +87,10 @@ describe('stats previous bests', () => {
     // Everything was handed in, so the build read no earlier results itself.
     expect(reads.resultsBefore).toBe(0);
     expect(Object.fromEntries(assembled.map((row) => [row.name, row.previous_best]))).toEqual({
-      // BWL excluded; a missing total is skipped, a zero total counts.
+      // BWL excluded; a missing total is skipped, and so is a bomb-out (#248).
       Ann: 190,
       Bea: null,
-      Cat: 0,
+      Cat: null,
     });
   });
 

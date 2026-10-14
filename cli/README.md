@@ -15,12 +15,18 @@ brew tap meetcal/tap
 brew install meetcal
 ```
 
-Upgrade later:
+Upgrade later (3.0.0 and later):
 
 ```sh
-brew update
-brew upgrade meetcal
+meetcal upgrade
 ```
+
+`meetcal upgrade` runs `brew update` and `brew upgrade meetcal/tap/meetcal` for a Homebrew install and `cargo install`
+of the newest release's tag for a Cargo install; a binary unpacked by hand downloads the release for
+its machine, checks it against the release's `SHA256SUMS`, and replaces itself. `meetcal upgrade
+--check` only says whether a newer release is out (exit 1 when one is, 2 when it cannot tell). On a terminal, other
+commands say so once a day; set `MEETCAL_NO_UPDATE_CHECK=1` to turn that off. From 2.4.0 or
+earlier, which have no `upgrade`, run `brew update && brew upgrade meetcal`.
 
 ### Cargo
 
@@ -47,6 +53,36 @@ meetcal --help
 meetcal --version
 ```
 
+## Log in
+
+Schedules, start lists, meet lists and athletes' Wrapped reports (`wrapped`, `compare`) are free.
+Results, rankings, records, standards, club and WSO
+data are MeetCal subscriber data: they need a MeetCal subscription and, once MeetCal enforces it, a
+login on each machine that runs `meetcal`.
+
+```sh
+meetcal login
+```
+
+`login` prints a link and a code (and, in a terminal, a QR code of the link). Open the link on any
+device signed in to MeetCal, such as your phone, check the code, and approve. Nothing opens or asks
+on the machine running `meetcal`, so it works over SSH, on a server, or for an AI agent: the agent
+runs `meetcal login` and relays the link, and you approve it. The command waits until the login is
+approved, denied, or the code expires (10 minutes); denied and expired exit non-zero.
+
+The login lasts 90 days and is saved in `~/.config/meetcal/credentials.json`
+(`$XDG_CONFIG_HOME/meetcal/credentials.json` when `XDG_CONFIG_HOME` is set), readable by you alone.
+Logging in again replaces it. Each machine logs in on its own; there is no token environment
+variable. With a login, commands fetch MeetCal's daily access pass once per run and send it with
+subscriber-data reads; the login itself is sent only to get that pass (and to re-check a subscription MeetCal has not heard of yet).
+
+```sh
+meetcal logout
+```
+
+`logout` ends the login on MeetCal's side and deletes the file (the file goes even when MeetCal
+cannot be reached).
+
 ## Commands
 
 Run `meetcal <command> --help` for the complete arguments accepted by any command.
@@ -62,7 +98,7 @@ other tools: each table's rows keyed by its column headers in snake_case, number
 a JSON object keyed by table, or CSV sections headed `# <table>`.
 
 ```sh
-meetcal leaderboard --by sinclair --format csv > leaderboard.csv
+meetcal leaderboard --by sinclair --gender women --format csv > leaderboard.csv
 meetcal progress "Maddisen Mohnsen" --format json | jq '.attempts'
 ```
 
@@ -118,7 +154,9 @@ meetcal search "Maddisen Mohnsen"
 
 Show an athlete's Weightlifting Wrapped for a calendar year. The report includes meets competed,
 make rate, total weight lifted, best lifts, average total, top meet, first-to-last improvement,
-longest make streak, favorite attempt, and year status.
+longest make streak, favorite attempt, and year status. MeetCal scores the year (the same Wrapped
+as the app and meetcal.app), so it is free and needs no login. The name must be the athlete's
+exact name (case and spacing aside); otherwise the command suggests similar names.
 
 ```sh
 meetcal wrapped "Maddisen Mohnsen"
@@ -132,7 +170,9 @@ Options:
 #### `compare`
 
 Compare an athlete's current calendar year with the previous calendar year. Every metric includes
-the percentage difference when the previous year has a non-zero baseline.
+the percentage difference when the previous year has a non-zero baseline. Like `wrapped`, it
+reads MeetCal's Wrapped for each year, so it is free and needs no login, and it takes the athlete's
+exact name.
 
 ```sh
 meetcal compare "Maddisen Mohnsen"
@@ -226,7 +266,7 @@ Options:
 
 - `--exclude`, `-x`: Leave out meets whose name contains this text (repeatable)
 
-### Leaderboards and data
+### Leaderboards
 
 #### `leaderboard`
 
@@ -244,21 +284,14 @@ Options:
 - `--by`, `-b`: `total` (default), `snatch`, `cj`, `sinclair` or `qpoints`
 - `--year`, `-y`, or `--from` and `--to` (`YYYY-MM-DD`): the range; defaults to the current year
 - `--gender`, `-g`; `--category`, `-c` (`Senior`, `Junior`, `U17`, `U15`, `U13`, `U11`, `Masters 35` …); `--division`, `-d` (text the division contains, e.g. `89kg`); `--federation`, `-f`
+  (`USAW`, `USAMW` or `BWL`; without it, every federation but British Weightlifting, `BWL`). `--by sinclair` and `--by qpoints` need `--gender`: men and women score on separate scales.
 - `--wso`, `-w` or `--club`: only athletes registered with it at the meet
 - `--adaptive`: include adaptive results
-- `--limit`, `-n`: rows to show (default 25)
+- `--limit`, `-n`: rows to show (default 25; at most 500 without `--wso` or `--club`)
 
-Without `--wso` or `--club` it reads every result in the range, about 28,000 for a year.
-
-#### `results`
-
-Every result in a year or date range, with every attempt and its Sinclair, for your own analysis.
-Takes the same filters as `leaderboard`.
-
-```sh
-meetcal results --year 2025 --format csv > results-2025.csv
-meetcal results --from 2026-06-01 --to 2026-06-30 --gender women --format json
-```
+Without `--wso` or `--club`, MeetCal ranks every athlete on its servers and sends the top rows: it
+needs `meetcal login` with a MeetCal subscription, and a range of less than five years. With them,
+the CLI reads the group's results and ranks them itself, with no limit on the range or the rows.
 
 ### Club reports
 
@@ -484,7 +517,7 @@ meetcal adaptive-records Women
 Run these from `cli/`:
 
 ```sh
-just check-all
+mise run check-all
 cargo run -- search "Maddisen Mohnsen"
 cargo build --release
 ```

@@ -1,7 +1,7 @@
 import React from "react";
 import { act, create, type ReactTestRenderer } from "react-test-renderer";
 import { ClerkAccountModal } from "@/components/profile/ClerkAccountModal";
-import { UserProfileView } from "@clerk/expo/native";
+import { UserProfileView } from "@clerk/expo/native-components";
 
 let mockIsSignedIn: boolean | undefined = true;
 jest.mock("@clerk/expo", () => ({
@@ -9,7 +9,7 @@ jest.mock("@clerk/expo", () => ({
 }));
 
 // Clerk's native account screen, stubbed at the native boundary.
-jest.mock("@clerk/expo/native", () => ({
+jest.mock("@clerk/expo/native-components", () => ({
   UserProfileView: jest.fn(() => null),
 }));
 

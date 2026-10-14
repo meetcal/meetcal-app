@@ -169,6 +169,16 @@ describe('convexTransport (signed-in calls over HTTP)', () => {
   });
 });
 
+describe('convexTransport (actions)', () => {
+  it('sends an action as one', async () => {
+    responses.push(respond(200, { status: 'success', value: { active: true } }));
+    await expect(convexTransport({ path: '/users/me/entitlement', fn: 'entitlements:refresh', kind: 'action', args: {}, token: 'token' })).resolves.toEqual({
+      active: true,
+    });
+    expect((global.fetch as jest.Mock).mock.calls[0][0]).toMatch(/\/api\/action$/);
+  });
+});
+
 describe('convexTransport (the server clock)', () => {
   const clockCall: ApiCall = { path: '/clock', fn: 'system:ping', kind: 'clock', args: {} };
 

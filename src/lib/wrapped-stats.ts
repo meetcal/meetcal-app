@@ -1,138 +1,33 @@
-import type { SupabaseLiftResult } from '@/data/types/athletes';
-import { wasAttemptMade, wasAttemptTaken } from '@/lib/athletes';
+import type { ApiWrappedStats } from '@/lib/api/meetcal-api';
 import type { WrappedStats } from '@/types/wrapped';
 
 /**
- * Year-in-review scoring policy for the Weightlifting Wrapped screen.
- *
- * This used to live as an ~80 line closure inside
- * `app/comp-data/weightlifting-wrapped.tsx`, where the numbers it produces —
- * make percentage, the ELITE/SOLID/GROWING tier and the `yearRank` badge —
- * were untestable. Screens orchestrate; policy lives in `lib/`.
- *
- * ## Relationship to `lib/attempt-estimator.ts`'s `calculateMakeRates`
- *
- * The two are deliberately different measurements over the same convention,
- * not two definitions of one number:
- *
- * - Here: **all six attempts** of every result in the selected calendar year,
- *   for one athlete, as a single percentage. It answers "how often did you
- *   make a lift this year".
- * - There: the **opener only** (`snatch1` / `cj1`), split by lift, over the
- *   last two years of history. It answers "how likely is this athlete to make
- *   the opener we are about to estimate", so second and third attempts — which
- *   are chosen *in reaction* to the opener — would bias it.
- *
- * Both share the attempt classification in `lib/athletes.ts`
- * (`wasAttemptTaken` / `wasAttemptMade`), so a miss is a miss in both places.
+ * How the Weightlifting Wrapped screen shows a year. The year is scored on
+ * the server (`results:wrapped`, `convex/lib/wrapped.ts`), so Wrapped stays
+ * free without the app reading the results behind it; this maps its answer
+ * into the screen's terms and words it for sharing.
  */
 
-/** Attempt slots on a result row, in competition order. */
-function attemptsOf(result: SupabaseLiftResult): (number | null)[] {
-  return [
-    result.snatch1,
-    result.snatch2,
-    result.snatch3,
-    result.cj1,
-    result.cj2,
-    result.cj3,
-  ];
-}
+/** `favoriteAttempt` for a year with no made attempt. */
+export const NO_FAVORITE_ATTEMPT = '—';
 
-/** `data` is expected sorted oldest-first; `improvementFromFirst` relies on it. */
-export function calculateWrappedStats(data: SupabaseLiftResult[]): WrappedStats {
-  let totalWeight = 0;
-  let totalAttempts = 0;
-  let successfulAttempts = 0;
-  let bestSnatch = 0;
-  let bestCJ = 0;
-  let bestTotal = 0;
-  let totalSum = 0;
-  let validTotals = 0;
-  let consecutiveMakes = 0;
-  let maxConsecutiveMakes = 0;
-  // Each meet's best total, keyed by meet name like `totalMeets`, in the
-  // order the meets first appear (oldest first). A Map, not an object, so a
-  // numeric-looking meet name cannot jump the order.
-  const meetTotals = new Map<string, number>();
+const ORDINALS = { 1: '1st', 2: '2nd', 3: '3rd' } as const;
 
-  for (const result of data) {
-    for (const attempt of attemptsOf(result)) {
-      // An untaken attempt is neither a make nor a miss: it does not enter the
-      // denominator and it does not break a streak.
-      if (!wasAttemptTaken(attempt)) continue;
-
-      totalAttempts++;
-
-      if (wasAttemptMade(attempt)) {
-        totalWeight += attempt;
-        successfulAttempts++;
-        consecutiveMakes++;
-        maxConsecutiveMakes = Math.max(maxConsecutiveMakes, consecutiveMakes);
-      } else {
-        consecutiveMakes = 0;
-      }
-    }
-
-    if (result.snatch_best) bestSnatch = Math.max(bestSnatch, result.snatch_best);
-    if (result.cj_best) bestCJ = Math.max(bestCJ, result.cj_best);
-    if (result.total) {
-      bestTotal = Math.max(bestTotal, result.total);
-      totalSum += result.total;
-      validTotals++;
-      meetTotals.set(result.meet, Math.max(meetTotals.get(result.meet) ?? 0, result.total));
-    }
-  }
-
-  const makePercentage =
-    totalAttempts > 0 ? (successfulAttempts / totalAttempts) * 100 : 0;
-  const averageTotal = validTotals > 0 ? totalSum / validTotals : 0;
-  const meetNames = [...meetTotals.keys()];
-  const topMeet = meetNames.reduce(
-    (a, b) => ((meetTotals.get(a) ?? 0) > (meetTotals.get(b) ?? 0) ? a : b),
-    meetNames[0] || 'N/A',
-  );
-
-  // First to last meet with a total, one total per meet (its best). A
-  // bomb-out (no total, or 0) is not a data point: counting one as 0 turned a
-  // 200kg lifter's year into "-200kg" (or "+200kg" when the bomb-out came
-  // first). Two rows from one meet (say, the same lift listed in two age
-  // divisions) are not progress either: one meet has nothing to compare.
-  const totals = [...meetTotals.values()].filter((total) => total > 0);
-  const improvement =
-    totals.length >= 2 ? totals[totals.length - 1] - totals[0] : null;
-
-  const attemptCounts = { '1st': 0, '2nd': 0, '3rd': 0 };
-  for (const result of data) {
-    if (wasAttemptMade(result.snatch1)) attemptCounts['1st']++;
-    if (wasAttemptMade(result.snatch2)) attemptCounts['2nd']++;
-    if (wasAttemptMade(result.snatch3)) attemptCounts['3rd']++;
-    if (wasAttemptMade(result.cj1)) attemptCounts['1st']++;
-    if (wasAttemptMade(result.cj2)) attemptCounts['2nd']++;
-    if (wasAttemptMade(result.cj3)) attemptCounts['3rd']++;
-  }
-  const favoriteAttempt = (
-    Object.keys(attemptCounts) as (keyof typeof attemptCounts)[]
-  ).reduce((a, b) => (attemptCounts[a] > attemptCounts[b] ? a : b));
-
-  let yearRank = 'Rising Star';
-  if (makePercentage >= 90) yearRank = 'Consistency King';
-  else if (bestTotal >= 300) yearRank = 'Heavy Hitter';
-  else if (data.length >= 5) yearRank = 'Meet Regular';
-
+/** The server's stats as the screen shows them. */
+export function toWrappedStats(stats: ApiWrappedStats): WrappedStats {
   return {
-    totalWeightLifted: totalWeight,
-    totalMeets: new Set(data.map((r) => r.meet)).size,
-    makePercentage,
-    bestSnatch,
-    bestCleanJerk: bestCJ,
-    bestTotal,
-    averageTotal,
-    topMeet,
-    improvementFromFirst: improvement,
-    consecutiveMakes: maxConsecutiveMakes,
-    favoriteAttempt,
-    yearRank,
+    totalWeightLifted: stats.totalWeightLifted,
+    totalMeets: stats.totalMeets,
+    makePercentage: stats.makePercentage,
+    bestSnatch: stats.bestSnatch,
+    bestCleanJerk: stats.bestCleanJerk,
+    bestTotal: stats.bestTotal,
+    averageTotal: stats.averageTotal,
+    topMeet: stats.topMeet ?? 'N/A',
+    improvementFromFirst: stats.improvementFromFirst,
+    consecutiveMakes: stats.longestMakeStreak,
+    favoriteAttempt: stats.favoriteAttempt === null ? NO_FAVORITE_ATTEMPT : ORDINALS[stats.favoriteAttempt],
+    yearRank: stats.yearRank,
   };
 }
 

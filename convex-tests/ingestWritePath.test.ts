@@ -197,10 +197,12 @@ describe('meet writes', () => {
   const upsert = handlerOf<{ rows: Row[] }, { wasInsert: boolean; wasChanged: boolean; storedAs?: string; retitledFrom?: string }[]>(upsertMeets);
   beforeEach(() => jest.spyOn(Date, 'now').mockReturnValue(NOW));
 
-  it('reopens a completed meet whose dates moved into the future (#158)', async () => {
+  it('keeps a completed meet completed when its dates move into the future', async () => {
     const { ctx, rows } = fakeMutationCtx({ meets: [{ ...meetRow('Fall Open', { startDate: '2026-01-07', endDate: '2026-01-08', status: 'completed' }), updatedAt: 1 }] });
     expect(await upsert(ctx, { rows: [meetRow('Fall Open')] })).toEqual([{ wasInsert: false, wasChanged: true }]);
-    expect(rows('meets')).toEqual([expect.objectContaining({ status: 'upcoming', startDate: '2026-11-07', updatedAt: NOW })]);
+    expect(rows('meets')).toEqual([expect.objectContaining({ status: 'completed', startDate: '2026-11-07', updatedAt: NOW })]);
+    // Marked completed by hand before its dates: the next sync changes nothing.
+    expect(await upsert(ctx, { rows: [meetRow('Fall Open')] })).toEqual([{ wasInsert: false, wasChanged: false }]);
   });
 
   it('stores what the dates say: completed when past, ongoing when under way (#160)', async () => {
@@ -370,12 +372,17 @@ describe('meet writes', () => {
       const outcome = await sync(ctx, { events: [event('2027 USA Masters Nationals')] });
       expect(outcome.inserted).toEqual([]);
       expect(outcome.updated).toHaveLength(1);
-      expect(rows('meets')).toEqual([expect.objectContaining({ name: '2027 USA Masters Nationals', startDate: '2027-04-10', status: 'upcoming', venueCity: 'Reno' })]);
+      // Its new dates are taken, but a completed meet stays completed.
+      expect(rows('meets')).toEqual([expect.objectContaining({ name: '2027 USA Masters Nationals', startDate: '2027-04-10', status: 'completed', venueCity: 'Reno' })]);
     });
 
     it("inserts a new event under a disambiguated name when another federation's meet has its name (#159)", async () => {
       const { ctx, rows } = fakeMutationCtx({ meets: [{ ...meetRow('Spring Classic'), updatedAt: 1 }] });
-      expect(await sync(ctx, { events: [event('Spring Classic')] })).toMatchObject({ inserted: ['Spring Classic (USAMW)'], renamed: ['Spring Classic (USAMW)'] });
+      expect(await sync(ctx, { events: [event('Spring Classic')] })).toMatchObject({
+        inserted: ['Spring Classic (USAMW)'],
+        renamed: ['Spring Classic (USAMW)'],
+        renamedEvents: [{ event: 'Spring Classic', storedAs: 'Spring Classic (USAMW)' }],
+      });
       // Reported once, when stored: the next sync just finds it.
       expect(await sync(ctx, { events: [event('Spring Classic')] })).toMatchObject({ unchanged: ['Spring Classic (USAMW)'], renamed: [] });
       expect(rows('meets').map((m) => [m.name, m.federation, m.sourceName])).toEqual([
@@ -421,14 +428,17 @@ describe('meet writes', () => {
       const one = fakeMutationCtx({ meets: [masters('Nationals')] });
       expect((await sync(one.ctx, { events: [event('National Masters')] })).updated).toHaveLength(1);
       const two = fakeMutationCtx({ meets: [masters('A'), masters('B')] });
-      expect((await sync(two.ctx, { events: [event('National Masters')] })).ambiguous).toEqual(['National Masters: A / B']);
+      expect(await sync(two.ctx, { events: [event('National Masters')] })).toMatchObject({
+        ambiguous: ['National Masters: A / B'],
+        ambiguousEvents: [{ event: 'National Masters', meets: ['A', 'B'] }],
+      });
     });
   });
 
   describe('hourly statuses (#158, #160)', () => {
     const update = handlerOf<Record<string, never>, number>(updateMeetStatuses);
 
-    it("moves meets to ongoing, completed and back to upcoming on each meet's own calendar", async () => {
+    it("moves meets to ongoing and completed on each meet's own calendar, and never reopens a completed one", async () => {
       // 03:00 UTC on Oct 13: still Oct 12 in New York and Los Angeles.
       jest.spyOn(Date, 'now').mockReturnValue(Date.UTC(2026, 9, 13, 3));
       const { ctx, rows } = fakeMutationCtx({
@@ -436,7 +446,9 @@ describe('meet writes', () => {
           { ...meetRow('LA ends today', { timeZone: 'America/Los_Angeles', startDate: '2026-10-11', endDate: '2026-10-12', status: 'ongoing' }), updatedAt: 1 },
           { ...meetRow('London ended', { timeZone: 'Europe/London', startDate: '2026-10-11', endDate: '2026-10-12', status: 'ongoing' }), updatedAt: 1 },
           { ...meetRow('Starts today', { startDate: '2026-10-12', endDate: '2026-10-13' }), updatedAt: 1 },
-          { ...meetRow('Moved by hand', { status: 'completed' }), updatedAt: 1 },
+          // Completed by hand before its dates: stays completed.
+          { ...meetRow('Completed by hand', { status: 'completed' }), updatedAt: 1 },
+          { ...meetRow('Ongoing, moved later', { status: 'ongoing' }), updatedAt: 1 },
           { ...meetRow('Long done', { startDate: '2025-01-01', endDate: '2025-01-02', status: 'completed' }), updatedAt: 1 },
           // Stored unpadded by the old meet scraper: ended Sep 25.
           { ...meetRow('Unpadded', { startDate: '2026-9-24', endDate: '2026-9-25' }), updatedAt: 1 },
@@ -447,11 +459,12 @@ describe('meet writes', () => {
         ['LA ends today', 'ongoing'],
         ['London ended', 'completed'],
         ['Starts today', 'ongoing'],
-        ['Moved by hand', 'upcoming'],
+        ['Completed by hand', 'completed'],
+        ['Ongoing, moved later', 'upcoming'],
         ['Long done', 'completed'],
         ['Unpadded', 'completed'],
       ]);
-      expect(rows('view_hints').map((h) => h.key).sort()).toEqual(['London ended', 'Moved by hand', 'Starts today', 'Unpadded']);
+      expect(rows('view_hints').map((h) => h.key).sort()).toEqual(['London ended', 'Ongoing, moved later', 'Starts today', 'Unpadded']);
       expect(await update(ctx, {})).toBe(0);
     });
 

@@ -4,12 +4,14 @@ import type { Doc, Id, TableNames } from './_generated/dataModel';
 import { writeHistories } from './lib/history';
 import { normalizeAgeCategory, normalizeFederation, normalizeGender, storedGenderSpellings } from './lib/normalize';
 import { disambiguatedMeetName, MAX_DISAMBIGUATED_NAMES, oldestMeet, type ZoneFormatters } from './lib/meetData';
-import { earliestLocalDate, meetStatusAt, type MeetStatus } from './lib/meetStatus';
+import { meetStatusAt, nextMeetStatus, type MeetStatus } from './lib/meetStatus';
 import { normalizeName } from './lib/names';
 import { isMeetTimeZone } from './lib/validation';
 import { earliestSince } from './lib/viewKeys';
 import { bumpVersion, type SourceTable } from './lib/views';
 import { clearedColumns, clearedLifts, exceedsShrink, liftCount } from './lib/shrinkGuard';
+import { halfSession, hasSession, isJunkEntrant, isStoredMemberId, rosterProblems } from './lib/roster';
+import { placeholderMemberId } from './scrapers/parse/entries';
 import { athletesFields, liftingResultsFields, recordHolder, sessionScheduleFields } from './schema';
 import { scheduleRefresh } from './views';
 
@@ -28,12 +30,14 @@ import { scheduleRefresh } from './views';
  */
 
 /** `since`: the earliest date of the results an `athlete` hint's write changed. */
-type WriteHint = { kind: string; key: string; since?: string };
+export type WriteHint = { kind: string; key: string; since?: string };
 
 export async function recordWrite(ctx: MutationCtx, table: SourceTable, hints: WriteHint[]): Promise<void> {
   await bumpVersion(ctx, table);
   const unique = new Map<string, WriteHint>();
-  for (const hint of hints) {
+  // Only a results write can be under a linked results title.
+  const linked = table === 'lifting_results' ? await linkedMeetHints(ctx, hints) : [];
+  for (const hint of [...hints, ...linked]) {
     const id = `${hint.kind}\u0000${hint.key}`;
     const seen = unique.get(id);
     unique.set(id, seen ? { ...hint, since: earliestSince(seen.since, hint.since) } : hint);
@@ -52,10 +56,93 @@ export async function recordWrite(ctx: MutationCtx, table: SourceTable, hints: W
   await scheduleRefresh(ctx);
 }
 
+/**
+ * A change under a results title linked to a meet (`meet_result_titles`)
+ * changes that meet's views too: its hint, for each `meet` hint naming one.
+ */
+/** Linked-title lookups in flight at once, well under a function's 1,000. */
+const LINK_LOOKUP_BATCH = 250;
+
+async function linkedMeetHints(ctx: MutationCtx, hints: readonly WriteHint[]): Promise<WriteHint[]> {
+  const titles = [...new Set(hints.filter((hint) => hint.kind === 'meet').map((hint) => hint.key))];
+  // A title is linked to one meet at most (`setMeetResultTitles`). In
+  // batches: a bulk write can name many meets.
+  const linked: WriteHint[] = [];
+  for (let i = 0; i < titles.length; i += LINK_LOOKUP_BATCH) {
+    const links = await Promise.all(
+      titles.slice(i, i + LINK_LOOKUP_BATCH).map((title) =>
+        ctx.db
+          .query('meet_result_titles')
+          .withIndex('by_title', (q) => q.eq('title', title))
+          .first(),
+      ),
+    );
+    for (const link of links) if (link) linked.push({ kind: 'meet', key: link.meet });
+  }
+  return linked;
+}
+
+/**
+ * Links results titles to a meet (#362), replacing the ones it had: a
+ * combined national event is one Sport80 entries event, listed as the meet,
+ * and several results events with their own titles, which then show with
+ * it (its results, package, stats and club stats). A title belongs to one
+ * meet at most. `titles: []` unlinks them all. Leaves the meet's hint, so
+ * its views are rebuilt.
+ *
+ *   npx convex run ingest:setMeetResultTitles '{"meet":"2026 USA Weightlifting National Championships, Powered by Rogue Fitness","titles":["The 2026 National Junior Championships, Powered by Rogue Fitness","The 2026 National Youth Championships, Powered by Rogue Fitness"]}'
+ */
+export const setMeetResultTitles = internalMutation({
+  args: { meet: v.string(), titles: v.array(v.string()) },
+  handler: async (ctx, { meet, titles }) => {
+    const meetRow = await ctx.db
+      .query('meets')
+      .withIndex('by_name', (q) => q.eq('name', meet))
+      .first();
+    if (!meetRow) throw new Error(`no meet named ${JSON.stringify(meet)}`);
+    const wanted = [...new Set(titles.map((title) => title.trim()))];
+    if (wanted.some((title) => title === '' || title === meet)) throw new Error("a results title must be non-empty and not the meet's own name");
+    for (const title of wanted) {
+      const other = (
+        await ctx.db
+          .query('meet_result_titles')
+          .withIndex('by_title', (q) => q.eq('title', title))
+          .collect()
+      ).find((link) => link.meet !== meet);
+      if (other) throw new Error(`${JSON.stringify(title)} is already linked to ${JSON.stringify(other.meet)}`);
+      if ((await ctx.db.query('meets').withIndex('by_name', (q) => q.eq('name', title)).first()) !== null) {
+        throw new Error(`${JSON.stringify(title)} is a meet of its own, not a results title`);
+      }
+    }
+    const existing = await ctx.db
+      .query('meet_result_titles')
+      .withIndex('by_meet', (q) => q.eq('meet', meet))
+      .collect();
+    for (const link of existing) await ctx.db.delete(link._id);
+    for (const title of wanted) await ctx.db.insert('meet_result_titles', { meet, title });
+    await recordWrite(ctx, 'lifting_results', [{ kind: 'meet', key: meet }]);
+    return { meet, titles: wanted, results: await resultCounts(ctx, wanted) };
+  },
+});
+
+/** Stored results under each title, for checking a link by its numbers. */
+async function resultCounts(ctx: MutationCtx, titles: readonly string[]): Promise<Record<string, number>> {
+  const counts: Record<string, number> = {};
+  for (const title of titles) {
+    counts[title] = (
+      await ctx.db
+        .query('lifting_results')
+        .withIndex('by_meet', (q) => q.eq('meet', title))
+        .collect()
+    ).length;
+  }
+  return counts;
+}
+
 type ResultFields = Pick<Doc<'lifting_results'>, 'federation' | 'age' | 'meet' | 'name' | 'adaptive' | 'date'>;
 
 /** Everything a result row feeds: its ranking class, meet, athlete, name. */
-function resultHints(row: ResultFields): WriteHint[] {
+export function resultHints(row: ResultFields): WriteHint[] {
   const hints: WriteHint[] = [
     { kind: 'meet', key: row.meet },
     { kind: 'athlete', key: normalizeName(row.name), since: row.date },
@@ -69,7 +156,7 @@ function resultHints(row: ResultFields): WriteHint[] {
 }
 
 /** The athletes a batch of result hints touched; their histories are rewritten in the same transaction. */
-function athleteKeys(hints: WriteHint[]): string[] {
+export function athleteKeys(hints: WriteHint[]): string[] {
   return hints.filter((h) => h.kind === 'athlete').map((h) => h.key);
 }
 
@@ -379,19 +466,39 @@ function refuseEmptyReplace(what: string, meet: string, rows: readonly unknown[]
 /**
  * Replaces a meet's start list (by hand, from a published start list). Gender
  * is stored normalized, as the entries sync stores and matches it
- * (`upsertEntryAthletes`). An empty list is refused unless `allowEmpty`.
+ * (`upsertEntryAthletes`), and a blank membership number as the entries
+ * sync's placeholder for the name. An empty list is refused unless
+ * `allowEmpty`. A row with a session number and no platform, or a platform
+ * and no number, is always refused (it would read as unscheduled, #219).
+ * A list with the problems `rosterProblems` finds (ages of 0 or category
+ * buckets, `+` classes dropped, women stored as men, #388) is refused,
+ * listing them, unless `allowUnchecked` after checking it by hand.
  */
 export const replaceMeetAthletes = internalMutation({
-  args: { meet: v.string(), rows: v.array(v.object(athletesFields)), allowEmpty: v.optional(v.boolean()) },
-  handler: async (ctx, { meet, rows, allowEmpty }) => {
+  args: { meet: v.string(), rows: v.array(v.object(athletesFields)), allowEmpty: v.optional(v.boolean()), allowUnchecked: v.optional(v.boolean()) },
+  handler: async (ctx, { meet, rows, allowEmpty, allowUnchecked }) => {
     if (rows.some((row) => row.meet !== meet)) throw new Error('every row must belong to `meet`');
     refuseEmptyReplace('start list', meet, rows, allowEmpty);
+    const half = rows.filter(halfSession);
+    if (half.length) {
+      throw new Error(
+        `refusing ${meet}'s start list: ${half.length} row(s) set only one of sessionNumber and sessionPlatform, or a blank platform ` +
+          `(${half.slice(0, 5).map((row) => JSON.stringify(row.name)).join(', ')}${half.length > 5 ? ', …' : ''})`,
+      );
+    }
+    const problems = rosterProblems(rows);
+    if (problems.length && !allowUnchecked) {
+      throw new Error(`refusing ${meet}'s start list: ${problems.join('; ')}. If it really is so, pass '{"allowUnchecked":true}'`);
+    }
     const existing = await ctx.db
       .query('athletes')
       .withIndex('by_meet', (q) => q.eq('meet', meet))
       .collect();
     for (const row of existing) await ctx.db.delete(row._id);
-    for (const row of rows) await ctx.db.insert('athletes', { ...row, gender: normalizeGender(row.gender) });
+    for (const row of rows) {
+      const memberId = row.memberId.trim() === '' ? placeholderMemberId(row.name) : row.memberId;
+      await ctx.db.insert('athletes', { ...row, memberId, gender: normalizeGender(row.gender) });
+    }
     await recordWrite(ctx, 'athletes', [
       { kind: 'meet', key: meet },
       { kind: 'table', key: 'athletes' },
@@ -451,7 +558,7 @@ type ScrapedMeetRow = Infer<typeof scrapedMeet>;
 /**
  * The scraped values a meet writes over the stored one (`existing`, null for
  * a new meet); `upsertMeets` adds its stored name and its status, which
- * follows the dates (`meetStatusAt`). The time zone is left alone when the
+ * follows the dates (`nextMeetStatus`). The time zone is left alone when the
  * scraper could not tell it (absent or blank), or when someone set it by hand
  * (`timeZoneLocked`, see `setMeetTimeZone`), so the nightly sync never undoes
  * a correction; a new meet with no zone is stored with a blank one. Likewise
@@ -540,11 +647,11 @@ function newMeetName(name: string, federation: string, { taken, freeName }: { ta
  * the new title. A meet matched by name takes the row's id, so its next
  * retitle is followed. Only the scraped columns are written
  * (`scrapedMeetValues`), and the status follows the dates (`meetStatusAt`, on
- * the zone the meet ends up with): a completed meet whose dates move into the
- * future is upcoming again. Fields the scrapers do not own (venue map links,
- * a locked time zone) are kept. A meet whose scraped values are unchanged is
- * not written; `updatedAt` moves only with a real change, so the nightly
- * syncs do not invalidate every meet's views (taking an id is no such
+ * the zone the meet ends up with), except that a completed meet stays
+ * completed (`nextMeetStatus`). Fields the scrapers do not own (venue map
+ * links, a locked time zone) are kept. A meet whose scraped values are
+ * unchanged is not written; `updatedAt` moves only with a real change, so the
+ * nightly syncs do not invalidate every meet's views (taking an id is no such
  * change).
  */
 export const upsertMeets = internalMutation({
@@ -567,7 +674,7 @@ export const upsertMeets = internalMutation({
       // Read on the zone the meet ends up with, so a row without one is read
       // on the stored zone.
       const timeZone = scraped.timeZone ?? existing?.timeZone;
-      const values = { ...scraped, name, status: meetStatusAt({ ...row, timeZone }, now, formatters) };
+      const values = { ...scraped, name, status: nextMeetStatus(existing?.status, meetStatusAt({ ...row, timeZone }, now, formatters)) };
       if (!existing) {
         await ctx.db.insert('meets', {
           venueName: row.name,
@@ -682,7 +789,8 @@ const PLACEHOLDERS = new Set(['', 'TBD', 'Unknown']);
  * ambiguous and reported, not guessed. A new event is inserted, under
  * a free `disambiguatedMeetName` if another meet has its name. A
  * match takes every value the site gives (dates, venue, city, state, time
- * zone), and its status follows the new dates (`meetStatusAt`); fields the
+ * zone), and its status follows the new dates unless it is completed
+ * (`nextMeetStatus`); fields the
  * site leaves blank keep what is stored, and a move to another city clears
  * the old venue's street and zip. An event without a zone keeps the stored
  * one, unless it moved to another state (then the zone is blank: unknown);
@@ -697,7 +805,17 @@ export const syncUsamwEvents = internalMutation({
     const now = Date.now();
     const formatters: ZoneFormatters = new Map();
     const hints: WriteHint[] = [];
-    const result = { inserted: [] as string[], updated: [] as string[], unchanged: [] as string[], ambiguous: [] as string[], renamed: [] as string[] };
+    const result = {
+      inserted: [] as string[],
+      updated: [] as string[],
+      unchanged: [] as string[],
+      ambiguous: [] as string[],
+      renamed: [] as string[],
+      // The same problems by event name, for alerts that must name the event
+      // whatever the meet names hold (`scrapers/usamwEvents.ts`).
+      ambiguousEvents: [] as { event: string; meets: string[] }[],
+      renamedEvents: [] as { event: string; storedAs: string }[],
+    };
     // Every USAMW meet that has not ended before the earliest event: the
     // candidates for a folded-name or date match.
     const earliest = events.reduce((min, e) => (e.startDate < min ? e.startDate : min), '9999-12-31');
@@ -732,6 +850,7 @@ export const syncUsamwEvents = internalMutation({
         const overlapping = usamw.filter((meet) => !claimed.has(meet._id) && meet.startDate <= event.endDate && meet.endDate >= event.startDate);
         if (overlapping.length > 1) {
           result.ambiguous.push(`${event.name}: ${overlapping.map((meet) => meet.name).join(' / ')}`);
+          result.ambiguousEvents.push({ event: event.name, meets: overlapping.map((meet) => meet.name) });
           continue;
         }
         match = overlapping[0];
@@ -752,7 +871,10 @@ export const syncUsamwEvents = internalMutation({
         });
         hints.push({ kind: 'meet', key: name });
         result.inserted.push(name);
-        if (name !== event.name) result.renamed.push(name);
+        if (name !== event.name) {
+          result.renamed.push(name);
+          result.renamedEvents.push({ event: event.name, storedAs: name });
+        }
         continue;
       }
       const site: Partial<Doc<'meets'>> = { startDate: event.startDate, endDate: event.endDate };
@@ -771,7 +893,7 @@ export const syncUsamwEvents = internalMutation({
         site.venueZip = 'TBD';
         site.venueName ??= 'TBD';
       }
-      site.status = meetStatusAt({ ...match, ...site }, now, formatters);
+      site.status = nextMeetStatus(match.status, meetStatusAt({ ...match, ...site }, now, formatters));
       const patch = Object.fromEntries(Object.entries(site).filter(([key, value]) => match[key as keyof typeof site] !== value)) as Partial<Doc<'meets'>>;
       if (Object.keys(patch).length === 0) {
         result.unchanged.push(match.name);
@@ -795,13 +917,22 @@ const entryRow = v.object({
   weightClass: v.string(),
   entryTotal: v.number(),
   meet: v.string(),
+  // The member's WSO from their other registrations (Sport80's entries list
+  // has none, #345); absent when none is known, which never clears one.
+  wso: v.optional(v.string()),
 });
 
 const isPlaceholderMemberId = (id: string) => id === '' || id.startsWith('noid:');
 
-/** Whether a start list has placed the athlete in a session. */
-const hasSession = (athlete: Pick<Doc<'athletes'>, 'sessionNumber' | 'sessionPlatform'>) =>
-  athlete.sessionNumber !== undefined || (athlete.sessionPlatform ?? '').trim() !== '';
+/**
+ * An entries sync may delete at most this share of a meet's stored entrants
+ * (and always this many) in one run without `allowShrink`: withdrawals are a
+ * few lifters, not a quarter of a meet.
+ */
+const ENTRY_PRUNE_LIMIT = { share: 0.25, min: 5 };
+
+/** A membership number the old entries scraper minted per run: nine digits, at no other meet. */
+const ONE_OFF_ID = /^[1-9]\d{8}$/;
 
 /**
  * The one stored athlete whose folded name is a leading run of whole words of
@@ -832,30 +963,49 @@ export function truncatedEntryRow<T extends { memberId: string; name: string; ge
 /**
  * One meet's Sport80 entries (`upsert_athlete(..., preserve_assigned_session=True)`).
  * An athlete with a membership number is the row with that number and name
- * (names compared case- and space-insensitively) at the meet; one without is
- * the row with the same name and gender carrying a blank or placeholder id,
- * or an older row with a one-off nine-digit id and the same age (ids the old
- * scraper minted per run: a real membership number recurs at other meets).
- * Rows already given a session are left alone, and once any athlete of the
- * meet has a session (its start list is published) no entry is added: an
- * entrant the start list left out (scratched, withdrawn) stays out, so
- * entries never undo a published start list. Entries are not deleted when
- * they leave the list.
+ * (names compared case- and space-insensitively) at the meet; failing that,
+ * the unplaced row with that number under another name (a name Sport80
+ * corrected, #251), or the unplaced row of that name and gender carrying a
+ * one-off nine-digit id the old scraper minted per run (#386). One without
+ * is the row with the same name and gender carrying a blank or placeholder
+ * id, or an older row with a one-off id and the same age. Rows already given
+ * a session are left alone, and once any athlete of the meet has a session
+ * (its start list is published) no entry is added: an entrant the start list
+ * left out (scratched, withdrawn) stays out, so entries never undo a
+ * published start list. Placeholder rows (`isJunkEntrant`) and membership
+ * numbers that are neither digits nor a placeholder are not stored (#384).
+ *
+ * `complete`: the rows are the whole list (the sync checked it against the
+ * list's total). Then, while no start list is published, a stored entrant
+ * the list no longer has (withdrawn) is deleted, unless that is more than
+ * ENTRY_PRUNE_LIMIT of the meet's entrants without `allowShrink` (#251).
  */
 export const upsertEntryAthletes = internalMutation({
-  args: { meet: v.string(), rows: v.array(entryRow) },
-  handler: async (ctx, { meet, rows }) => {
+  args: { meet: v.string(), rows: v.array(entryRow), complete: v.optional(v.boolean()), allowShrink: v.optional(v.boolean()) },
+  handler: async (ctx, { meet, rows, complete, allowShrink }) => {
     if (rows.some((row) => row.meet !== meet)) throw new Error('every row must belong to `meet`');
     const existing = await ctx.db
       .query('athletes')
       .withIndex('by_meet', (q) => q.eq('meet', meet))
       .collect();
+    const stored = [...existing];
     const published = existing.some(hasSession);
-    const counts = { inserted: 0, updated: 0, unchanged: 0, sessionSkipped: 0, notOnStartList: 0 };
-    const incomingKeys = new Set(rows.map((row) => normalizeName(row.name)));
+    const counts = { inserted: 0, updated: 0, unchanged: 0, sessionSkipped: 0, notOnStartList: 0, rejected: 0, deleted: 0 };
+    const valid = rows.filter((row) => !isJunkEntrant(row) && isStoredMemberId(row.memberId));
+    counts.rejected = rows.length - valid.length;
+    // One entrant listed twice (two source rows for one member and name) is
+    // one roster row, as it was when the second updated the first: the last
+    // listing wins.
+    const byIdentity = new Map<string, (typeof rows)[number]>();
+    for (const row of valid) byIdentity.set(JSON.stringify([row.memberId, normalizeName(row.name)]), row);
+    const accepted = [...byIdentity.values()];
+    if (counts.rejected) console.warn(`upsertEntryAthletes: ${meet}: ${counts.rejected} placeholder row(s) not stored`);
+    const incomingKeys = new Set(accepted.map((row) => normalizeName(row.name)));
+    // Stored rows an incoming entrant is: kept, and not taken by another.
+    const claimed = new Set<string>();
     const oneOffIds = new Map<string, boolean>();
     const isOneOff = async (memberId: string) => {
-      if (!/^[1-9]\d{8}$/.test(memberId)) return false;
+      if (!ONE_OFF_ID.test(memberId)) return false;
       if (!oneOffIds.has(memberId)) {
         const elsewhere = await ctx.db
           .query('athletes')
@@ -866,25 +1016,46 @@ export const upsertEntryAthletes = internalMutation({
       }
       return oneOffIds.get(memberId)!;
     };
-    for (const row of rows) {
+    const unclaimed = (a: Doc<'athletes'>) => !claimed.has(a._id);
+    for (const row of accepted) {
       const gender = normalizeGender(row.gender);
       const nameKey = normalizeName(row.name);
       const idless = isPlaceholderMemberId(row.memberId);
       let match: Doc<'athletes'> | undefined;
       if (idless) {
-        const sameName = existing.filter((a) => normalizeName(a.name) === nameKey && normalizeGender(a.gender) === gender);
+        const sameName = existing.filter((a) => unclaimed(a) && normalizeName(a.name) === nameKey && normalizeGender(a.gender) === gender);
         match = sameName.find((a) => isPlaceholderMemberId(a.memberId));
         for (const a of sameName) {
           if (match) break;
           if (a.age === row.age && (await isOneOff(a.memberId))) match = a;
         }
       } else {
-        match = existing.find((a) => a.memberId === row.memberId && normalizeName(a.name) === nameKey);
+        match = existing.find((a) => unclaimed(a) && a.memberId === row.memberId && normalizeName(a.name) === nameKey);
       }
       // A row the old scraper stored with the surname cut at its first space
       // ("Maria De" for "Maria De La Cruz", its placeholder id minted from
       // that name) is this entrant: repair it rather than add a second row.
-      match ??= truncatedEntryRow(existing, row, nameKey, gender, incomingKeys);
+      match ??= truncatedEntryRow(existing.filter(unclaimed), row, nameKey, gender, incomingKeys);
+      if (!match && !idless) {
+        // The same member under a name Sport80 has since corrected (#251).
+        const renamed = existing.filter((a) => unclaimed(a) && !hasSession(a) && a.memberId === row.memberId && !incomingKeys.has(normalizeName(a.name)));
+        if (renamed.length === 1) match = renamed[0];
+      }
+      if (!match && !idless) {
+        // The same athlete under an id the old scraper minted per run (#386):
+        // only when exactly one row fits, as for a rename; with two, either
+        // could be another athlete of the name.
+        const minted: Doc<'athletes'>[] = [];
+        for (const a of existing) {
+          if (!unclaimed(a) || hasSession(a) || normalizeName(a.name) !== nameKey || normalizeGender(a.gender) !== gender) continue;
+          // The same age, give or take the year it turns over: another
+          // athlete of the same name keeps their row.
+          if (Math.abs(a.age - row.age) > 1) continue;
+          if (await isOneOff(a.memberId)) minted.push(a);
+        }
+        if (minted.length === 1) match = minted[0];
+      }
+      if (match) claimed.add(match._id);
       const values = {
         // An adopted older row keeps its id rather than take a placeholder.
         memberId: idless && match && !isPlaceholderMemberId(match.memberId) ? match.memberId : row.memberId,
@@ -894,6 +1065,9 @@ export const upsertEntryAthletes = internalMutation({
         gender,
         weightClass: row.weightClass,
         entryTotal: row.entryTotal,
+        // Set when known, never cleared: a start list loaded by hand can
+        // carry a WSO the entries list does not.
+        ...(row.wso?.trim() ? { wso: row.wso.trim() } : {}),
       };
       if (!match && published) {
         counts.notOnStartList += 1;
@@ -901,12 +1075,22 @@ export const upsertEntryAthletes = internalMutation({
       }
       if (!match) {
         const doc = { ...values, meet, adaptive: false };
-        existing.push({ ...doc, _id: await ctx.db.insert('athletes', doc), _creationTime: Date.now() });
+        const inserted = { ...doc, _id: await ctx.db.insert('athletes', doc), _creationTime: Date.now() };
+        existing.push(inserted);
+        claimed.add(inserted._id);
         counts.inserted += 1;
         continue;
       }
       if (hasSession(match)) {
-        counts.sessionSkipped += 1;
+        // A placed entrant keeps its start list, but gains a WSO it lacks:
+        // that undoes nothing the start list said.
+        if (values.wso && (match.wso ?? '').trim() === '') {
+          await ctx.db.patch(match._id, { wso: values.wso });
+          match.wso = values.wso;
+          counts.updated += 1;
+        } else {
+          counts.sessionSkipped += 1;
+        }
         continue;
       }
       const changed = (Object.keys(values) as (keyof typeof values)[]).some((key) => match[key] !== values[key]);
@@ -918,8 +1102,25 @@ export const upsertEntryAthletes = internalMutation({
       Object.assign(match, values);
       counts.updated += 1;
     }
+    // Any session information at all (even half a session, which reads as
+    // unscheduled) means a start list was loaded: its athletes need not be
+    // on Sport80's entries list, so nothing is pruned.
+    const startListLoaded = existing.some((a) => a.sessionNumber !== undefined || (a.sessionPlatform ?? '').trim() !== '');
+    if (complete && !startListLoaded && accepted.length > 0) {
+      // Entrants the whole list no longer has: withdrawn before the meet.
+      const withdrawn = stored.filter((a) => !claimed.has(a._id) && !hasSession(a) && !a.adaptive);
+      if (!allowShrink && exceedsShrink(withdrawn.length, stored.length, ENTRY_PRUNE_LIMIT)) {
+        throw new Error(
+          `refusing to delete ${withdrawn.length} of ${meet}'s ${stored.length} entrants no longer on its entries list ` +
+            `(${withdrawn.slice(0, 10).map((a) => a.name).join(', ')}${withdrawn.length > 10 ? ', …' : ''}). ` +
+            `If they really withdrew: npx convex run scrapers/entries:run '{"only":["<target label>"],"allowShrink":true}' (add --prod for production)`,
+        );
+      }
+      for (const a of withdrawn) await ctx.db.delete(a._id);
+      counts.deleted = withdrawn.length;
+    }
     // The club list is built from every athlete, so it needs the table hint too.
-    if (counts.inserted + counts.updated > 0) {
+    if (counts.inserted + counts.updated + counts.deleted > 0) {
       await recordWrite(ctx, 'athletes', [
         { kind: 'meet', key: meet },
         { kind: 'table', key: 'athletes' },
@@ -930,10 +1131,12 @@ export const upsertEntryAthletes = internalMutation({
 });
 
 /**
- * Moves each meet's status to what its dates say on the meet's own calendar
- * (`meetStatusAt`): `ongoing` from its first day, `completed` once its end
- * date has passed (`complete_ended_meets.sql` in the Rust backend), and back
- * to `upcoming` if its dates were moved into the future by hand. A meet
+ * Moves each meet not yet completed to what its dates say on the meet's own
+ * calendar (`meetStatusAt`): `ongoing` from its first day, `completed` once
+ * its end date has passed (`complete_ended_meets.sql` in the Rust backend),
+ * and back to `upcoming` if an ongoing meet's dates moved into the future.
+ * A completed meet is never reopened (`nextMeetStatus`), so one marked
+ * completed by hand before its dates stays completed. A meet
  * ending tonight in Los Angeles is not completed at 17:00 Pacific just
  * because the UTC date rolled over, and a meet with no zone is read on
  * UTC-12's calendar, so it is never ongoing or completed early. Run hourly by `convex/crons.ts` (the
@@ -946,25 +1149,18 @@ export const updateMeetStatuses = internalMutation({
     const now = Date.now();
     const formatters: ZoneFormatters = new Map();
     const hints: WriteHint[] = [];
-    // Every meet not completed, and every meet that may not have ended yet
-    // anywhere (a completed one whose dates were moved).
-    const meets = new Map<string, Doc<'meets'>>();
+    // Every meet not completed: a completed one stays completed.
+    const meets: Doc<'meets'>[] = [];
     for (const status of ['upcoming', 'ongoing'] as const) {
-      for (const meet of await ctx.db
-        .query('meets')
-        .withIndex('by_status', (q) => q.eq('status', status))
-        .collect()) {
-        meets.set(meet._id, meet);
-      }
-    }
-    for (const meet of await ctx.db
-      .query('meets')
-      .withIndex('by_end_date', (q) => q.gte('endDate', earliestLocalDate(now)))
-      .collect()) {
-      meets.set(meet._id, meet);
+      meets.push(
+        ...(await ctx.db
+          .query('meets')
+          .withIndex('by_status_and_start_date', (q) => q.eq('status', status))
+          .collect()),
+      );
     }
     const counts: Record<MeetStatus, number> = { upcoming: 0, ongoing: 0, completed: 0 };
-    for (const meet of meets.values()) {
+    for (const meet of meets) {
       const status = meetStatusAt(meet, now, formatters);
       if (status === meet.status) continue;
       await ctx.db.patch(meet._id, { status, updatedAt: now });
@@ -1002,8 +1198,8 @@ const storedGender = (gender: string | undefined) => (gender === undefined ? nul
 
 /**
  * Inserts or updates standards matched on (age category, gender, weight
- * class), normalized like `upsert_standard`. Never deletes: a class the PDF
- * stops listing keeps its last standards, as it did in Postgres.
+ * class), normalized like `upsert_standard`. Deletes nothing: the standards
+ * sync then deletes the classes the PDF no longer lists (`pruneStandards`).
  */
 export const upsertStandards = internalMutation({
   args: {
@@ -1077,7 +1273,8 @@ const recordRow = v.object({
 /**
  * Inserts or updates records matched on (type, age, gender, class),
  * normalized like `upsert_record`. A lift missing from the row clears it, as
- * the Python writer's `None` did. Never deletes. Without `allowShrink`, a
+ * the Python writer's `None` did. Deletes nothing (the syncs then prune the
+ * classes their source no longer lists, `pruneRecords`). Without `allowShrink`, a
  * payload that clears more of the matched records' stored lifts than
  * `exceedsShrink` allows is refused (nothing written): a lift row the parser
  * stopped finding reads as no record for every class at once. A key the
@@ -1143,6 +1340,90 @@ export const upsertRecords = internalMutation({
     }
     if (outcomes.some((o) => o.wasChanged)) await recordWrite(ctx, 'records', [{ kind: 'table', key: 'records' }]);
     return outcomes;
+  },
+});
+
+/** A stored class (record or standard) as the prunes compare it: age and gender normalized. */
+const classKey = (r: { ageCategory: string; gender: string; weightClass: string }) =>
+  JSON.stringify([normalizeAgeCategory(r.ageCategory), normalizeGender(r.gender), r.weightClass]);
+const groupKey = (r: { ageCategory: string; gender: string }) => JSON.stringify([normalizeAgeCategory(r.ageCategory), normalizeGender(r.gender)]);
+const classArg = v.object({ ageCategory: v.string(), gender: v.string(), weightClass: v.string() });
+
+/**
+ * The stored rows a source no longer lists, of `stored` (the rows in the
+ * sync's scope). Without `allowShrink` it refuses to delete more than
+ * `exceedsShrink` allows, or every class of an (age, gender) group: a
+ * source that partly broke (an age group relabelled, a table the parser
+ * stopped finding) looks the same as classes that went away, while a class
+ * change keeps every group with classes.
+ */
+function droppedClasses<T extends { ageCategory: string; gender: string; weightClass: string }>(
+  what: string,
+  stored: readonly T[],
+  keep: readonly { ageCategory: string; gender: string; weightClass: string }[],
+  allowShrink: boolean | undefined,
+): T[] {
+  if (!keep.length) throw new Error(`refusing to prune ${what} against an empty payload`);
+  const kept = new Set(keep.map(classKey));
+  const dropped = stored.filter((row) => !kept.has(classKey(row)));
+  if (allowShrink) return dropped;
+  const rerun = `If it really dropped them (a class change), check the source by hand and rerun its sync with '{"allowShrink":true}' (its '{"dryRun":true}' lists them)`;
+  const keptGroups = new Set(keep.map(groupKey));
+  const emptied = [...new Set(dropped.filter((row) => !keptGroups.has(groupKey(row))).map((row) => `${normalizeAgeCategory(row.ageCategory)} ${normalizeGender(row.gender)}`))];
+  if (emptied.length) {
+    throw new Error(`refusing to delete every stored ${what} class of ${emptied.join(', ')}: the source lists none (an age group it relabelled or the parser missed?). ${rerun}`);
+  }
+  if (exceedsShrink(dropped.length, stored.length)) {
+    throw new Error(`refusing to delete ${dropped.length} of ${stored.length} stored ${what} classes the source no longer lists (the source may be partly broken). ${rerun}`);
+  }
+  return dropped;
+}
+
+/**
+ * Deletes the standards classes the PDF no longer lists (`keep` is every
+ * class the sync just wrote), so retired classes are not listed beside the
+ * current ones. The standards sync is one PDF for every class: an exact set.
+ */
+export const pruneStandards = internalMutation({
+  // `dryRun`: check the guard and list what would be deleted, deleting nothing.
+  args: { keep: v.array(classArg), allowShrink: v.optional(v.boolean()), dryRun: v.optional(v.boolean()) },
+  handler: async (ctx, { keep, allowShrink, dryRun }) => {
+    const dropped = droppedClasses('standards', await ctx.db.query('standards').collect(), keep, allowShrink);
+    if (dryRun) return { deleted: dropped.map((r) => `${r.ageCategory} ${r.gender} ${r.weightClass}`) };
+    for (const row of dropped) await ctx.db.delete(row._id);
+    if (dropped.length) await recordWrite(ctx, 'standards', [{ kind: 'table', key: 'standards' }]);
+    return { deleted: dropped.map((r) => `${r.ageCategory} ${r.gender} ${r.weightClass}`) };
+  },
+});
+
+/**
+ * Deletes the classes of `recordType` its source no longer lists (`keep` is
+ * every class the sync just wrote), within `groups` (age and gender) when
+ * given: a source read in parts (UMWF's tabs) prunes only the parts it read,
+ * so a tab that failed keeps its classes.
+ */
+export const pruneRecords = internalMutation({
+  args: {
+    recordType: v.string(),
+    keep: v.array(classArg),
+    groups: v.optional(v.array(v.object({ ageCategory: v.string(), gender: v.string() }))),
+    allowShrink: v.optional(v.boolean()),
+    // Check the guard and list what would be deleted, deleting nothing.
+    dryRun: v.optional(v.boolean()),
+  },
+  handler: async (ctx, { recordType, keep, groups, allowShrink, dryRun }) => {
+    if (keep.some((row) => groups !== undefined && !groups.some((g) => groupKey(g) === groupKey(row)))) {
+      throw new Error(`a ${recordType} class to keep is outside the groups pruned`);
+    }
+    const scope = groups === undefined ? null : new Set(groups.map(groupKey));
+    const stored = (await ctx.db.query('records').withIndex('by_record_type', (q) => q.eq('recordType', recordType)).collect()).filter(
+      (row) => scope === null || scope.has(groupKey(row)),
+    );
+    const dropped = droppedClasses(`${recordType} record`, stored, keep, allowShrink);
+    if (dryRun) return { deleted: dropped.map((r) => `${r.ageCategory} ${r.gender} ${r.weightClass}`) };
+    for (const row of dropped) await ctx.db.delete(row._id);
+    if (dropped.length) await recordWrite(ctx, 'records', [{ kind: 'table', key: 'records' }]);
+    return { deleted: dropped.map((r) => `${r.ageCategory} ${r.gender} ${r.weightClass}`) };
   },
 });
 

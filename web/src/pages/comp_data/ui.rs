@@ -1,5 +1,4 @@
 use super::models::RecordHolder;
-use crate::components::{footer::Footer, header::Header};
 use leptos::prelude::*;
 
 #[component]
@@ -10,14 +9,12 @@ pub(crate) fn DataPage(
     children: Children,
 ) -> impl IntoView {
     view! {
-        <Header />
         <section class=section_class>
             <p class="data-eyebrow">"Competition Data"</p>
             <h1>{heading}</h1>
             <p class="data-intro">{intro}</p>
             {children()}
         </section>
-        <Footer />
     }
 }
 
@@ -42,12 +39,17 @@ pub(crate) fn SelectOptions(values: Vec<String>, selected: Option<String>) -> im
         .collect_view()
 }
 
+/// A filter's `<select>`, showing `selected` ("" is the placeholder).
+///
+/// The choice is set through the `value` property, which follows `selected`
+/// even when the page clears it: once a user has picked an option, a browser
+/// no longer moves the shown choice when only `<option selected>` changes.
 #[component]
 pub(crate) fn FilterSelect(
     label: &'static str,
     placeholder: &'static str,
     values: Vec<String>,
-    selected: String,
+    #[prop(into)] selected: Signal<String>,
     #[prop(into)] on_select: Callback<String>,
     #[prop(optional)] wide: bool,
 ) -> impl IntoView {
@@ -60,26 +62,44 @@ pub(crate) fn FilterSelect(
     view! {
         <label>
             {label}
-            <select class=class on:change=move |event| on_select.run(event_target_value(&event))>
+            <select
+                class=class
+                prop:value=move || selected.get()
+                on:change=move |event| on_select.run(event_target_value(&event))
+            >
                 <option value="">{placeholder}</option>
-                <SelectOptions values selected=Some(selected) />
+                <SelectOptions values selected=Some(selected.get_untracked()) />
             </select>
         </label>
     }
 }
 
+/// A table's sort `<select>`, showing `sort` (controlled like `FilterSelect`,
+/// so a table rebuilt after a reload still shows the order it uses).
 #[component]
 pub(crate) fn SortSelect(
     options: &'static [(&'static str, &'static str)],
+    sort: ReadSignal<String>,
     set_sort: WriteSignal<String>,
 ) -> impl IntoView {
+    let initial = sort.get_untracked();
     view! {
         <label class="data-sort">
             "Sort"
-            <select class="data-filter" on:change=move |event| set_sort.set(event_target_value(&event))>
+            <select
+                class="data-filter"
+                prop:value=move || sort.get()
+                on:change=move |event| set_sort.set(event_target_value(&event))
+            >
                 {options
                     .iter()
-                    .map(|(value, label)| view! { <option value=*value>{*label}</option> })
+                    .map(|(value, label)| {
+                        view! {
+                            <option value=*value selected=*value == initial>
+                                {*label}
+                            </option>
+                        }
+                    })
                     .collect_view()}
             </select>
         </label>

@@ -10,6 +10,7 @@ import {
   hasResultsRoute,
   nested,
   pickNewestEvents,
+  pickRequestedEvents,
   USAW_DOMAIN,
   type ResultRow,
 } from './parse/sport80';
@@ -154,7 +155,8 @@ type MeetOutcome = { meet: string; eventId: string; rows: number; inserted: numb
 type RunResult = { meets: { eventId: string; meet: string; rows: ResultRow[]; notWhole?: string }[]; outcomes: MeetOutcome[]; failed: string[] };
 
 export const run = internalAction({
-  // `only`: event ids to sync (of the recent events). `allowShrink`: let an
+  // `only`: event ids to sync (of this year's and last year's events, not
+  // only the newest; an id the index lacks fails the run). `allowShrink`: let an
   // event's prune delete more than it otherwise may, after checking by hand.
   args: { dryRun: v.optional(v.boolean()), only: v.optional(v.array(v.string())), allowShrink: v.optional(v.boolean()) },
   handler: async (ctx, { dryRun, only, allowShrink }): Promise<RunResult> => {
@@ -177,8 +179,21 @@ export const run = internalAction({
 
     // A date in a format not seen before is not guessed at (month and day
     // could be swapped): the event is left out, and the run fails naming it
-    // when it could be among the newest (`pickNewestEvents`).
-    const { newest, unreadable } = pickNewestEvents(events);
+    // when it could be among the newest (`pickNewestEvents`). Events asked
+    // for by id are taken from the whole index, however old: the override
+    // for a refused prune must reach its event after it leaves the newest.
+    let newest: Dict[];
+    let unreadable: ReturnType<typeof pickNewestEvents>['unreadable'];
+    if (only) {
+      const requested = pickRequestedEvents(events, only);
+      ({ picked: newest, unreadable } = requested);
+      const indexes = [year, year - 1].filter((y) => !failures.some((f) => f.source === `event index ${y}`));
+      for (const id of requested.missing) {
+        failures.push({ source: `event ${id}`, error: `not in the event index read (${indexes.join(', ')}), not synced` });
+      }
+    } else {
+      ({ newest, unreadable } = pickNewestEvents(events));
+    }
     const reported = new Set<string>();
     for (const { event, date, recent } of unreadable) {
       const source = `${String(nested(event, 'meet') ?? '?')} (event ${eventIdOf(event) ?? '?'})`;
@@ -205,6 +220,12 @@ export const run = internalAction({
         continue;
       }
       if (table.rows.length) meets.push({ eventId, meet, rows: formatResults(eventId, meet, eventDate(event), table.rows), notWhole: table.notWhole });
+    }
+    // Every event asked for by id is synced or named: an override that read
+    // nothing must not finish as if it had done its work.
+    for (const id of only ?? []) {
+      if (meets.some((m) => m.eventId === id) || failures.some((f) => f.source === `event ${id}` || f.source.endsWith(`(event ${id})`))) continue;
+      failures.push({ source: `event ${id}`, error: 'no results read (no results page, no meet name, or an empty table), not synced' });
     }
     for (const failure of failed()) console.error(`sport80: ${failure}`);
     if (dryRun) return { meets, outcomes: [], failed: failed() };

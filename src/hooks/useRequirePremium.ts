@@ -4,6 +4,7 @@ import { useCallback } from "react";
 import { showToast } from "@/lib/toast";
 import { useSubscription } from "@/contexts/SubscriptionContext";
 import {
+  CALENDAR_EXPORT_IS_PREMIUM,
   premiumActionFor,
   resolvePremiumAccess,
   type PremiumAccess,
@@ -51,7 +52,25 @@ export function useRequirePremium() {
     [access, requireAuth, router],
   );
 
+  /**
+   * The one gate for "Add to Calendar" on every screen that has it (the Saved
+   * tab, the Start List, session details). Session details used to write the
+   * event with no gate at all while the other two required sign-in and the
+   * subscription. `CALENDAR_EXPORT_IS_PREMIUM` decides it for all three.
+   */
+  const requireCalendarExport = useCallback(
+    (returnPath: string): boolean => {
+      if (!CALENDAR_EXPORT_IS_PREMIUM) return true;
+      return requirePremium({
+        feature: "add-to-calendar",
+        message: "Sign in to add sessions to your calendar.",
+        returnPath,
+      });
+    },
+    [requirePremium],
+  );
+
   // `requireAuth` too, so a screen with free and premium actions mounts one
   // auth guard (a SecureStore read and a network probe) rather than two.
-  return { requirePremium, requireAuth, access };
+  return { requirePremium, requireCalendarExport, requireAuth, access };
 }

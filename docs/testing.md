@@ -65,6 +65,17 @@ Risk cases that belong in unit tests:
 
 Device smoke coverage for routes. See `docs/maestro.md`. Not part of GitHub Actions CI.
 
+## The simulator lock
+
+One simulator and one Metro port (8081) serve every worktree on a machine, so the package scripts that start Metro or drive the simulator (`start`, `dev`, `ios`, `android`, `web`, `maestro:test`, `maestro:test:flow`) run through `scripts/metro-lock.ts`. It takes a machine-wide lock at `$XDG_CACHE_HOME/metro/simulator.lock` (`~/.cache/metro/simulator.lock` when unset), the same lock Atlas's Metro scripts take, so agents in either repository take turns:
+
+- Another worktree holds it: wait, printing who holds it and when its lease ends, then start.
+- This worktree holds it (its Metro is still running): exit at once. Stop that Metro first; Maestro starts its own.
+- Something outside the lock listens on 8081 (a bare `expo start`): exit, naming the process and its directory. It is never killed.
+- The lease ends (30 minutes from the start, `METRO_SIMULATOR_LEASE_MIN=60` for longer): stop the command and everything it started, exit 124, and free the lock, so a forgotten background Metro cannot hold the simulator.
+
+The lock uses the release gate's mechanics (`scripts/check/lock.ts`): a lock whose processes have exited is reclaimed by the next waiter. A test (`scripts/metro/session.test.ts`) fails when a package script starts Metro or Maestro without the lock.
+
 ## What not to do
 
 - Do not pad coverage with screenshot-only tests.

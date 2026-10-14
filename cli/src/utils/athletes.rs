@@ -1,9 +1,8 @@
-//! Athletes' full result histories, and every result in a date range.
+//! Athletes' full result histories.
 
 use std::collections::HashMap;
 
 use anyhow::{Result, anyhow};
-use serde::Deserialize;
 use serde_json::json;
 
 use crate::types::lifting_results::LiftingResults;
@@ -15,23 +14,25 @@ use crate::utils::stats::fold;
 /// Names per `results:byNames` call (the query takes at most 100).
 pub const HISTORY_BATCH_SIZE: usize = 50;
 
-/// Rows per `results:page` call.
-pub const RESULTS_PAGE_SIZE: u32 = 2000;
-
 /// Every result of the athlete named `name` (case and spacing ignored). An unknown name is an
 /// error naming the closest athletes MeetCal has.
 pub async fn history(name: &str) -> Result<Vec<LiftingResults>> {
     let rows: Vec<LiftingResults> =
         query(queries::RESULTS_BY_NAMES, &json!({ "names": [name] })).await?;
-    let wanted = fold(name);
-    let rows: Vec<LiftingResults> = rows
-        .into_iter()
-        .filter(|row| fold(&row.name) == wanted)
-        .collect();
+    let rows = rows_named(rows, name);
     if !rows.is_empty() {
         return Ok(rows);
     }
     Err(unknown_athlete(name).await)
+}
+
+/// The rows of the athlete named `name`, by the folded name (the server's rule, so a row written
+/// with a decomposed accent still belongs to the athlete).
+pub fn rows_named(rows: Vec<LiftingResults>, name: &str) -> Vec<LiftingResults> {
+    let wanted = fold(name);
+    rows.into_iter()
+        .filter(|row| fold(&row.name) == wanted)
+        .collect()
 }
 
 /// The error for an athlete with no results, with the names MeetCal has that are closest to
@@ -96,47 +97,31 @@ pub async fn histories(names: &[String]) -> Result<HashMap<String, Vec<LiftingRe
     Ok(by_name)
 }
 
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct ResultsPage {
-    json: String,
-    is_done: bool,
-    continue_cursor: String,
-}
-
-/// Every result dated `from` to `to` (inclusive, `YYYY-MM-DD`), oldest first, read a page at a
-/// time. `progress` is told the running count after each page.
-pub async fn results_between(
-    from: &str,
-    to: &str,
-    mut progress: impl FnMut(usize),
-) -> Result<Vec<LiftingResults>> {
-    let mut rows = Vec::new();
-    let mut cursor: Option<String> = None;
-    loop {
-        let page: ResultsPage = query(
-            queries::RESULTS_PAGE,
-            &json!({
-                "startDate": from,
-                "endDate": to,
-                "cursor": cursor,
-                "numItems": RESULTS_PAGE_SIZE,
-            }),
-        )
-        .await?;
-        let mut batch: Vec<LiftingResults> = serde_json::from_str(&page.json)?;
-        rows.append(&mut batch);
-        progress(rows.len());
-        if page.is_done {
-            return Ok(rows);
-        }
-        cursor = Some(page.continue_cursor);
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn rows_written_with_a_decomposed_accent_belong_to_the_athlete() {
+        use crate::utils::stats::tests::row;
+        let lift = |name: &str| {
+            row(
+                name,
+                "2026-01-01",
+                "M",
+                "Open Women's 64kg",
+                63.0,
+                [80.0, 0.0, 0.0],
+                [100.0, 0.0, 0.0],
+            )
+        };
+        let rows = vec![
+            lift("Ze\u{301}lie Martin"),
+            lift("Zélie Martin"),
+            lift("Zelie Martin"),
+        ];
+        assert_eq!(rows_named(rows, "zélie  martin").len(), 2);
+    }
 
     #[test]
     fn search_pieces_survive_a_typo_in_any_word() {

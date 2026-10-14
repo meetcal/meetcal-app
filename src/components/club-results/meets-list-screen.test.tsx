@@ -1,11 +1,11 @@
 // Lives outside app/: Expo Router turns every file under app/ into a route.
 import React from "react";
-import { Text, TextInput } from "react-native";
+import { FlatList, Text, TextInput } from "react-native";
 import { act, create, type ReactTestRenderer } from "react-test-renderer";
 
 import ClubMeetsListScreen from "@/app/comp-data/club-results/meets-list";
 
-void [Text, TextInput];
+void [FlatList, Text, TextInput];
 
 const mockClubAthletes = [
   { name: "A", meet: "Spring Open" },
@@ -58,6 +58,23 @@ describe("Club meets list empty state", () => {
     expect(shown).toContain('No meets match "nationals"');
     expect(shown.some((t) => t.startsWith("Athletes:"))).toBe(false);
     expect(shown.some((t) => t.startsWith("No meets found for"))).toBe(false);
+    act(() => tree.unmount());
+  });
+});
+
+describe("Club meets list search", () => {
+  it("lets the first tap on a meet reach the row while the keyboard is up", () => {
+    let tree!: ReactTestRenderer;
+    act(() => {
+      tree = create(<ClubMeetsListScreen />);
+    });
+    act(() => {
+      tree.root.findByType(TextInput).props.onChangeText("spring");
+    });
+
+    const list = tree.root.findByType(FlatList);
+    expect(list.props.keyboardShouldPersistTaps).toBe("handled");
+    expect(list.props.keyboardDismissMode).toBe("on-drag");
     act(() => tree.unmount());
   });
 });

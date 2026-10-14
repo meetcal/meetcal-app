@@ -11,6 +11,7 @@ use crate::utils::backend::{queries, query};
 use crate::utils::meet_names::{equivalent_meets, result_meet_aliases};
 use crate::utils::names::{NameKind, not_found};
 use crate::utils::output::{self, Report};
+use crate::utils::stats::{fold, number, plausible};
 use serde_json::json;
 
 const RESULTS_REQUEST_BATCH_SIZE: usize = 50;
@@ -42,6 +43,7 @@ pub struct PerformanceStats {
     pub snatch_makes: usize,
     pub cj_attempts: usize,
     pub cj_makes: usize,
+    /// The athletes' totals summed, as the server's `total_weight_lifted` (`club-results`).
     pub total_weight_lifted: f64,
 }
 
@@ -54,8 +56,12 @@ impl PerformanceStats {
         percentage(self.cj_makes, self.cj_attempts)
     }
 
+    /// Every attempt of both lifts pooled, as the server's `combined_make_rate` (`club-results`).
     pub fn total_make_rate(&self) -> f64 {
-        (self.snatch_make_rate() + self.cj_make_rate()) / 2.0
+        percentage(
+            self.snatch_makes + self.cj_makes,
+            self.snatch_attempts + self.cj_attempts,
+        )
     }
 }
 
@@ -67,15 +73,22 @@ pub struct PrStats<'a> {
     pub details: Vec<ClubPrDetail>,
     pub target_meet_rows: Vec<&'a LiftingResults>,
     pub missing_names: Vec<String>,
+    /// The year of the meet's edition the report covers: the latest any athlete lifted at, since
+    /// a meet name used every year matches every edition.
+    pub edition_year: Option<String>,
 }
 
 pub async fn run(args: WsoResultsArgs) -> Result<()> {
-    let athletes = get_wso_athletes(&args.wso, &args.meet).await?;
+    let roster = get_meet_roster(&args.meet).await?;
+    let athletes = select_wso_athletes(&roster, &args.wso, &args.meet)?;
     let results = get_lifting_results(&athletes.names).await?;
     let pr_stats = calculate_prs(&athletes.names, &results, &args.meet);
     let performance = calculate_performance(&pr_stats.target_meet_rows);
-    let meet_results = get_meet_results(&args.meet).await?;
-    let medals = calculate_medal_details(&athletes.names, &meet_results);
+    let meet_results = edition_rows(
+        get_meet_results(&args.meet).await?,
+        pr_stats.edition_year.as_deref(),
+    );
+    let medals = calculate_medal_details(&athletes.names, &meet_results, &roster_classes(&roster));
 
     output::emit(report(
         &args.wso,
@@ -90,15 +103,15 @@ pub async fn run(args: WsoResultsArgs) -> Result<()> {
     Ok(())
 }
 
-pub async fn get_wso_athletes(wso: &str, meet: &str) -> Result<WsoAthletes> {
+/// The meet's roster (`meets:athletes`); an error suggesting meet names when it has none.
+pub async fn get_meet_roster(meet: &str) -> Result<Vec<Athletes>> {
     let query_args = json!({ "meet": meet });
     let athletes: Vec<Athletes> = query(queries::MEET_ATHLETES, &query_args).await?;
     if athletes.is_empty() {
         let message = format!("No athletes found for meet \"{meet}\"");
         return Err(not_found(NameKind::Meet, meet, message).await);
     }
-
-    select_wso_athletes(&athletes, wso, meet)
+    Ok(athletes)
 }
 
 pub fn select_wso_athletes(athletes: &[Athletes], wso: &str, meet: &str) -> Result<WsoAthletes> {
@@ -106,17 +119,17 @@ pub fn select_wso_athletes(athletes: &[Athletes], wso: &str, meet: &str) -> Resu
         bail!("No athletes found for meet \"{meet}\"");
     }
 
-    let normalized_wso = normalize(wso);
+    let normalized_wso = fold(wso);
     let mut seen_names = HashSet::new();
     let mut names = Vec::new();
 
     for athlete in athletes {
-        if athlete.wso.as_deref().map(normalize).as_deref() != Some(normalized_wso.as_str()) {
+        if athlete.wso.as_deref().map(fold).as_deref() != Some(normalized_wso.as_str()) {
             continue;
         }
 
         let name = athlete.name.trim();
-        if !name.is_empty() && seen_names.insert(normalize(name)) {
+        if !name.is_empty() && seen_names.insert(fold(name)) {
             names.push(name.to_string());
         }
     }
@@ -129,8 +142,8 @@ pub fn select_wso_athletes(athletes: &[Athletes], wso: &str, meet: &str) -> Resu
             .filter(|value| !value.is_empty())
             .map(str::to_string)
             .collect();
-        available_wsos.sort_by_key(|value| normalize(value));
-        available_wsos.dedup_by(|left, right| normalize(left) == normalize(right));
+        available_wsos.sort_by_key(|value| fold(value));
+        available_wsos.dedup_by(|left, right| fold(left) == fold(right));
 
         let suffix = if available_wsos.is_empty() {
             String::new()
@@ -163,10 +176,7 @@ pub async fn get_lifting_results(
             query(queries::RESULTS_BY_NAMES, &query_args).await?;
 
         for result in lifting_results {
-            results
-                .entry(normalize(&result.name))
-                .or_default()
-                .push(result);
+            results.entry(fold(&result.name)).or_default().push(result);
         }
     }
 
@@ -175,31 +185,62 @@ pub async fn get_lifting_results(
 
 pub async fn get_meet_results(meet: &str) -> Result<Vec<LiftingResults>> {
     let mut results = Vec::new();
+    let mut titles = HashSet::new();
     for alias in result_meet_aliases(meet) {
         let query_args = json!({ "meet": alias });
-        let mut rows = query(queries::MEET_RESULTS, &query_args).await?;
-        results.append(&mut rows);
+        let rows = query(queries::MEET_RESULTS, &query_args).await?;
+        add_new_titles(&mut results, &mut titles, rows);
     }
     Ok(results)
 }
 
+/// Adds the rows of results titles no earlier answer held. A meet whose
+/// results titles are linked to it on the server (a combined national event)
+/// answers them with its own, so asking for each title again would list
+/// every result twice; an unlinked one still gets them from the aliases.
+fn add_new_titles(
+    results: &mut Vec<LiftingResults>,
+    titles: &mut HashSet<String>,
+    rows: Vec<LiftingResults>,
+) {
+    let answered: HashSet<String> = rows.iter().map(|row| row.meet.clone()).collect();
+    results.extend(rows.into_iter().filter(|row| !titles.contains(&row.meet)));
+    titles.extend(answered);
+}
+
+/// Whether `current` beats `previous`. A lift with no earlier result is not a PR: an athlete's
+/// first meet sets their marks (the server's `is_pr` and `stats::pr_flags` agree).
 pub fn is_pr(current: Option<f64>, previous: Option<f64>) -> bool {
     match (current, previous) {
         (Some(current), Some(previous)) => current > previous,
-        (Some(_), None) => true,
-        (None, _) => false,
+        _ => false,
     }
 }
 
+/// The best positive `get` among `meets`' plausible rows ([`plausible`]); `None` without one.
 pub fn calculate_current_best(
     meets: &[&LiftingResults],
     get: impl Fn(&LiftingResults) -> f64,
 ) -> Option<f64> {
     meets
         .iter()
+        .filter(|row| plausible(row))
         .map(|row| get(row))
         .filter(|value| *value > 0.0 && value.is_finite())
         .max_by(f64::total_cmp)
+}
+
+/// The mark to beat from earlier `meets`: their best `get`, or 0 when the athlete competed but
+/// made none (a bomb-out still sets a mark, as in `stats::pr_flags` and the server's
+/// `previousBest`); `None` only without an earlier plausible result, a first meet.
+pub fn previous_best(
+    meets: &[&LiftingResults],
+    get: impl Fn(&LiftingResults) -> f64,
+) -> Option<f64> {
+    meets
+        .iter()
+        .any(|row| plausible(row))
+        .then(|| calculate_current_best(meets, get).unwrap_or(0.0))
 }
 
 pub fn calculate_prs<'a>(
@@ -207,16 +248,27 @@ pub fn calculate_prs<'a>(
     results: &'a HashMap<String, Vec<LiftingResults>>,
     meet: &str,
 ) -> PrStats<'a> {
-    let mut stats = PrStats::default();
+    let mut stats = PrStats {
+        edition_year: wso_athlete_names
+            .iter()
+            .filter_map(|name| results.get(&fold(name)))
+            .flatten()
+            .filter(|row| equivalent_meets(meet, &row.meet))
+            .map(|row| year_of(row).to_string())
+            .max(),
+        ..PrStats::default()
+    };
 
     for name in wso_athlete_names {
         let history = results
-            .get(&normalize(name))
+            .get(&fold(name))
             .map(Vec::as_slice)
             .unwrap_or_default();
-        let (current_rows, prior_rows): (Vec<_>, Vec<_>) = history
-            .iter()
-            .partition(|row| equivalent_meets(meet, &row.meet));
+        let (current_rows, prior_rows) = split_at_meet(
+            history,
+            meet,
+            stats.edition_year.as_deref().unwrap_or_default(),
+        );
 
         if current_rows.is_empty() {
             stats.missing_names.push(name.clone());
@@ -231,7 +283,7 @@ pub fn calculate_prs<'a>(
             name,
             Movement::Snatch,
             calculate_current_best(&current_rows, |row| row.snatch_best),
-            calculate_current_best(&prior_rows, |row| row.snatch_best),
+            previous_best(&prior_rows, |row| row.snatch_best),
         );
         add_pr(
             &mut stats.cj_count,
@@ -239,7 +291,7 @@ pub fn calculate_prs<'a>(
             name,
             Movement::CleanAndJerk,
             calculate_current_best(&current_rows, |row| row.cj_best),
-            calculate_current_best(&prior_rows, |row| row.cj_best),
+            previous_best(&prior_rows, |row| row.cj_best),
         );
         add_pr(
             &mut stats.total_count,
@@ -247,7 +299,7 @@ pub fn calculate_prs<'a>(
             name,
             Movement::Total,
             calculate_current_best(&current_rows, |row| row.total),
-            calculate_current_best(&prior_rows, |row| row.total),
+            previous_best(&prior_rows, |row| row.total),
         );
     }
 
@@ -257,6 +309,55 @@ pub fn calculate_prs<'a>(
             .then_with(|| left.movement.rank().cmp(&right.movement.rank()))
     });
     stats
+}
+
+/// An athlete's rows at `meet`'s edition in `year` and their rows from before it. A meet name used
+/// every year matches every edition, so the report picks one edition for every athlete
+/// ([`PrStats::edition_year`]); an athlete absent from it is missing, not counted from an older
+/// one. "Before" is dated before that edition's first day, so later results never count as the PR
+/// to beat.
+fn split_at_meet<'a>(
+    history: &'a [LiftingResults],
+    meet: &str,
+    year: &str,
+) -> (Vec<&'a LiftingResults>, Vec<&'a LiftingResults>) {
+    let current: Vec<&LiftingResults> = history
+        .iter()
+        .filter(|row| equivalent_meets(meet, &row.meet) && year_of(row) == year)
+        .collect();
+    if current.is_empty() {
+        return (Vec::new(), Vec::new());
+    }
+    let start = current
+        .iter()
+        .map(|row| row.date.as_str())
+        .min()
+        .unwrap_or_default()
+        .to_string();
+    let prior = history
+        .iter()
+        .filter(|row| row.date.as_str() < start.as_str())
+        .collect();
+    (current, prior)
+}
+
+/// The meet's results from the edition in `year`, or its latest edition without one: a meet name
+/// used every year answers every edition's rows.
+pub fn edition_rows(rows: Vec<LiftingResults>, year: Option<&str>) -> Vec<LiftingResults> {
+    let Some(year) = year
+        .map(str::to_string)
+        .or_else(|| rows.iter().map(|row| year_of(row).to_string()).max())
+    else {
+        return rows;
+    };
+    rows.into_iter()
+        .filter(|row| year_of(row) == year)
+        .collect()
+}
+
+/// A result's year, the first four characters of its `YYYY-MM-DD` date.
+fn year_of(row: &LiftingResults) -> &str {
+    row.date.get(..4).unwrap_or(&row.date)
 }
 
 fn add_pr(
@@ -276,36 +377,38 @@ fn add_pr(
         name: name.to_string(),
         movement,
         new_pr: current.expect("a PR always has a current result"),
-        previous_pr: previous.unwrap_or(0.0),
+        previous_pr: previous.expect("a PR always beats an earlier result"),
     });
 }
 
+/// Make rates and weight lifted over one result per athlete (their best total, newest on a tie),
+/// as the server's `statsEntries` and `clubStats`: an athlete in two divisions counts once.
 pub fn calculate_performance(rows: &[&LiftingResults]) -> PerformanceStats {
     let mut stats = PerformanceStats::default();
-
+    let mut best: HashMap<String, &LiftingResults> = HashMap::new();
     for row in rows {
+        let entry = best.entry(fold(&row.name)).or_insert(row);
+        if row.total > entry.total || (row.total == entry.total && row.date > entry.date) {
+            *entry = row;
+        }
+    }
+
+    for row in best.values() {
         for attempt in [row.snatch1, row.snatch2, row.snatch3] {
-            record_attempt(
-                attempt,
-                &mut stats.snatch_attempts,
-                &mut stats.snatch_makes,
-                &mut stats.total_weight_lifted,
-            );
+            record_attempt(attempt, &mut stats.snatch_attempts, &mut stats.snatch_makes);
         }
         for attempt in [row.cj1, row.cj2, row.cj3] {
-            record_attempt(
-                attempt,
-                &mut stats.cj_attempts,
-                &mut stats.cj_makes,
-                &mut stats.total_weight_lifted,
-            );
+            record_attempt(attempt, &mut stats.cj_attempts, &mut stats.cj_makes);
+        }
+        if row.total > 0.0 && row.total.is_finite() {
+            stats.total_weight_lifted += row.total;
         }
     }
 
     stats
 }
 
-fn record_attempt(attempt: f64, attempts: &mut usize, makes: &mut usize, volume: &mut f64) {
+fn record_attempt(attempt: f64, attempts: &mut usize, makes: &mut usize) {
     if attempt == 0.0 || !attempt.is_finite() {
         return;
     }
@@ -313,39 +416,127 @@ fn record_attempt(attempt: f64, attempts: &mut usize, makes: &mut usize, volume:
     *attempts += 1;
     if attempt > 0.0 {
         *makes += 1;
-        *volume += attempt;
     }
 }
 
+/// Each folded name's roster gender and weight class at a meet: what places a result whose
+/// division names no weight class (the server's `rankingGroup`). A name entered twice keeps the
+/// entry first by name, weight class and club, as the server does.
+pub type RosterClasses = HashMap<String, (String, String)>;
+
+pub fn roster_classes(roster: &[Athletes]) -> RosterClasses {
+    let mut sorted: Vec<&Athletes> = roster.iter().collect();
+    sorted.sort_by(|a, b| {
+        a.name
+            .cmp(&b.name)
+            .then_with(|| a.weight_class.cmp(&b.weight_class))
+            .then_with(|| a.club.cmp(&b.club))
+    });
+    let mut classes = RosterClasses::new();
+    for athlete in sorted {
+        classes
+            .entry(fold(&athlete.name))
+            .or_insert_with(|| (gender_key(&athlete.gender), athlete.weight_class.clone()));
+    }
+    classes
+}
+
+/// The server's `normalizeGender`, for grouping only.
+fn gender_key(gender: &str) -> String {
+    match gender.trim().to_lowercase().as_str() {
+        "men" | "male" | "m" => "men".to_string(),
+        "women" | "female" | "f" => "women".to_string(),
+        other => other.to_string(),
+    }
+}
+
+/// Whether a division names its weight class (`Open Men's 95kg`, `Youth Women's 77+ kg`).
+fn has_weight_class(age: &str) -> bool {
+    let trimmed = age.trim_end();
+    let Some(before) = trimmed
+        .len()
+        .checked_sub(2)
+        .filter(|end| trimmed.is_char_boundary(*end))
+        .filter(|end| trimmed[*end..].eq_ignore_ascii_case("kg"))
+        .map(|end| trimmed[..end].trim_end())
+    else {
+        return false;
+    };
+    before
+        .strip_suffix('+')
+        .unwrap_or(before)
+        .ends_with(|c: char| c.is_ascii_digit())
+}
+
+/// Whether placing `meet_rows` needs the meet's roster: some division names no weight class.
+pub fn needs_roster(meet_rows: &[LiftingResults]) -> bool {
+    meet_rows.iter().any(|row| !has_weight_class(&row.age))
+}
+
+/// The group a result places in (the server's `rankingGroup`): its meet and division when the
+/// division names a weight class, else its roster gender and weight class with the division; with
+/// no roster entry either, none.
+fn ranking_group(row: &LiftingResults, roster: &RosterClasses) -> Option<(String, String)> {
+    let meet = fold(&row.meet);
+    if has_weight_class(&row.age) {
+        return Some((meet, fold(&row.age)));
+    }
+    let (gender, class) = roster.get(&fold(&row.name))?;
+    Some((meet, format!("{gender}\u{0}{class}\u{0}{}", fold(&row.age))))
+}
+
+/// The medals `member_names` won at a meet: snatch, clean & jerk and total placings within each
+/// division, by the server's rule (`rankingGroup`, `liftKey` and `rankOf` in
+/// `convex/lib/meetData.ts`). Each athlete places once per division, with their best total
+/// (newest on a tie). Every lift over 0 places, so a lifter who bombed the clean & jerk still
+/// places in the snatch; ties go to the lighter deciding bar, then the earlier attempt (before
+/// 2017, the lighter body weight first); lifters tied on all of those share the placing. A
+/// division without a weight class is placed by the `roster`'s gender and class. Unlike the
+/// server, source-error rows ([`plausible`]) are left out, so a typo'd 633 kg snatch takes no
+/// one's medal.
 pub fn calculate_medal_details(
     member_names: &[String],
     meet_rows: &[LiftingResults],
+    roster: &RosterClasses,
 ) -> Vec<ClubMedalDetail> {
-    let members: HashSet<_> = member_names.iter().map(|name| normalize(name)).collect();
-    let mut divisions: HashMap<(String, String), Vec<&LiftingResults>> = HashMap::new();
+    let members: HashSet<_> = member_names.iter().map(|name| fold(name)).collect();
+    let mut divisions: HashMap<(String, String), HashMap<String, &LiftingResults>> = HashMap::new();
 
-    for row in meet_rows.iter().filter(|row| row.total > 0.0) {
-        divisions
-            .entry((normalize(&row.meet), normalize(&row.age)))
+    for row in meet_rows.iter().filter(|row| plausible(row)) {
+        let Some(group) = ranking_group(row, roster) else {
+            continue;
+        };
+        let best = divisions
+            .entry(group)
             .or_default()
-            .push(row);
+            .entry(fold(&row.name))
+            .or_insert(row);
+        if row.total > best.total || (row.total == best.total && row.date > best.date) {
+            *best = row;
+        }
     }
 
     let mut details = Vec::new();
-    for rows in divisions.values() {
-        add_medals(&mut details, &members, rows, Movement::Snatch, |row| {
-            row.snatch_best
-        });
-        add_medals(
-            &mut details,
-            &members,
-            rows,
-            Movement::CleanAndJerk,
-            |row| row.cj_best,
-        );
-        add_medals(&mut details, &members, rows, Movement::Total, |row| {
-            row.total
-        });
+    for athletes in divisions.values() {
+        let mut rows: Vec<&LiftingResults> = athletes.values().copied().collect();
+        rows.sort_by(|a, b| a.name.cmp(&b.name));
+        for movement in [Movement::Snatch, Movement::CleanAndJerk, Movement::Total] {
+            let keys: Vec<LiftKey> = rows.iter().map(|row| lift_key(row, movement)).collect();
+            for (row, key) in rows.iter().zip(&keys) {
+                if !members.contains(&fold(&row.name)) {
+                    continue;
+                }
+                if let Some(place) = place_of(key, &keys).filter(|place| *place <= 3) {
+                    details.push(ClubMedalDetail {
+                        name: row.name.clone(),
+                        age: row.age.clone(),
+                        movement,
+                        place,
+                        result: key[0],
+                    });
+                }
+            }
+        }
     }
 
     details.sort_by(|left, right| {
@@ -357,38 +548,64 @@ pub fn calculate_medal_details(
     details
 }
 
-fn add_medals(
-    details: &mut Vec<ClubMedalDetail>,
-    members: &HashSet<String>,
-    rows: &[&LiftingResults],
-    movement: Movement,
-    get_result: impl Fn(&LiftingResults) -> f64,
-) {
-    let mut rankings: Vec<_> = rows
-        .iter()
-        .copied()
-        .filter(|row| {
-            let result = get_result(row);
-            result > 0.0 && result.is_finite()
-        })
-        .collect();
-    rankings.sort_by(|left, right| {
-        get_result(right)
-            .total_cmp(&get_result(left))
-            .then_with(|| left.name.cmp(&right.name))
-    });
+/// Results dated before this were tie-broken by body weight first (the IWF rules before 2017).
+const BODY_WEIGHT_TIE_BREAK_BEFORE: &str = "2017-01-01";
 
-    for (index, row) in rankings.into_iter().take(3).enumerate() {
-        if members.contains(&normalize(&row.name)) {
-            details.push(ClubMedalDetail {
-                name: row.name.clone(),
-                age: row.age.clone(),
-                movement,
-                place: index + 1,
-                result: get_result(row),
-            });
-        }
+/// How a lift ranks: the lift, heavier first, then tie-breaks, lower first (the server's
+/// `liftKey`).
+type LiftKey = Vec<f64>;
+
+/// The 1-based attempt that made `best`, or 4 when no recorded attempt did.
+fn attempt_of(best: f64, attempts: [f64; 3]) -> f64 {
+    match attempts
+        .iter()
+        .position(|attempt| best > 0.0 && *attempt == best)
+    {
+        Some(index) => (index + 1) as f64,
+        None => 4.0,
     }
+}
+
+fn lift_key(row: &LiftingResults, movement: Movement) -> LiftKey {
+    let cj_attempt = || attempt_of(row.cj_best, [row.cj1, row.cj2, row.cj3]);
+    let (value, bar, attempt) = match movement {
+        Movement::Snatch => (
+            row.snatch_best,
+            row.snatch_best,
+            attempt_of(row.snatch_best, [row.snatch1, row.snatch2, row.snatch3]),
+        ),
+        Movement::CleanAndJerk => (row.cj_best, row.cj_best, cj_attempt()),
+        Movement::Total => (row.total, row.cj_best, cj_attempt()),
+    };
+    if row.date.as_str() >= BODY_WEIGHT_TIE_BREAK_BEFORE {
+        return vec![value, bar, attempt];
+    }
+    let body_weight = if row.body_weight > 0.0 {
+        row.body_weight
+    } else {
+        f64::INFINITY
+    };
+    vec![value, body_weight, bar, attempt]
+}
+
+fn ranks_ahead(a: &LiftKey, b: &LiftKey) -> bool {
+    if a[0] != b[0] {
+        return a[0] > b[0];
+    }
+    a.iter()
+        .zip(b.iter())
+        .skip(1)
+        .find(|(x, y)| x != y)
+        .is_some_and(|(x, y)| x < y)
+}
+
+/// One more than the results ranking ahead of `key`; `None` for a lift of 0 or less (a bomb-out
+/// places nowhere).
+fn place_of(key: &LiftKey, group: &[LiftKey]) -> Option<usize> {
+    if !(key[0] > 0.0 && key[0].is_finite()) {
+        return None;
+    }
+    Some(group.iter().filter(|other| ranks_ahead(other, key)).count() + 1)
 }
 
 pub fn render_report(
@@ -437,7 +654,7 @@ pub fn report(
     volume_table.set_header(vec!["Total Weight Lifted"]);
     volume_table.add_row(vec![format!(
         "{}kg",
-        format_weight(performance.total_weight_lifted)
+        number(performance.total_weight_lifted)
     )]);
 
     let mut pr_table = Table::new();
@@ -451,21 +668,21 @@ pub fn report(
         .table("volume", volume_table)
         .table("prs", pr_table);
 
-    if !prs.details.is_empty() {
+    {
         let mut table = Table::new();
         table.set_header(vec!["Athlete", "Movement", "New PR", "Previous PR"]);
         for detail in &prs.details {
             table.add_row(vec![
                 detail.name.clone(),
                 detail.movement.to_string(),
-                format_weight(detail.new_pr),
-                format_weight(detail.previous_pr),
+                number(detail.new_pr),
+                number(detail.previous_pr),
             ]);
         }
-        report = report.headed("pr_details", "ATHLETES WITH PRS", table);
+        report = report.headed_if_any("pr_details", "ATHLETES WITH PRS", table);
     }
 
-    if !medals.is_empty() {
+    {
         let mut table = Table::new();
         table.set_header(vec!["Athlete", "Age", "Movement", "Place", "Result"]);
         for detail in medals {
@@ -474,10 +691,10 @@ pub fn report(
                 detail.age.clone(),
                 detail.movement.to_string(),
                 detail.place.to_string(),
-                format_weight(detail.result),
+                number(detail.result),
             ]);
         }
-        report = report.headed("medals", "ATHLETES WITH MEDALS", table);
+        report = report.headed_if_any("medals", "ATHLETES WITH MEDALS", table);
     }
 
     report
@@ -493,25 +710,6 @@ fn percentage(made: usize, attempts: usize) -> f64 {
 
 fn format_percent(value: f64) -> String {
     format!("{value:.2}%")
-}
-
-fn format_weight(value: f64) -> String {
-    if value.fract() == 0.0 {
-        format!("{value:.0}")
-    } else {
-        format!("{value:.2}")
-            .trim_end_matches('0')
-            .trim_end_matches('.')
-            .to_string()
-    }
-}
-
-fn normalize(value: &str) -> String {
-    value
-        .split_whitespace()
-        .collect::<Vec<_>>()
-        .join(" ")
-        .to_lowercase()
 }
 
 #[cfg(test)]
@@ -546,10 +744,22 @@ mod tests {
         cj_best: f64,
         total: f64,
     ) -> LiftingResults {
+        dated(name, meet, "2026-01-01", age, snatch_best, cj_best, total)
+    }
+
+    fn dated(
+        name: &str,
+        meet: &str,
+        date: &str,
+        age: &str,
+        snatch_best: f64,
+        cj_best: f64,
+        total: f64,
+    ) -> LiftingResults {
         LiftingResults {
             federation: "USAW".to_string(),
             meet: meet.to_string(),
-            date: "2026-01-01".to_string(),
+            date: date.to_string(),
             name: name.to_string(),
             age: age.to_string(),
             body_weight: 70.0,
@@ -567,8 +777,8 @@ mod tests {
     }
 
     #[test]
-    fn normalize_ignores_case_and_repeated_whitespace() {
-        assert_eq!(normalize("  Mountain   South "), "mountain south");
+    fn names_fold_ignoring_case_and_repeated_whitespace() {
+        assert_eq!(fold("  Mountain   South "), "mountain south");
     }
 
     #[test]
@@ -611,8 +821,54 @@ mod tests {
     }
 
     #[test]
-    fn current_result_without_history_is_a_pr() {
-        assert!(is_pr(Some(100.0), None));
+    fn exports_every_section_even_with_no_prs_or_medals() {
+        let performance = PerformanceStats {
+            snatch_attempts: 3,
+            snatch_makes: 2,
+            cj_attempts: 3,
+            cj_makes: 3,
+            total_weight_lifted: 500.0,
+        };
+        let prs = PrStats {
+            snatch_count: 0,
+            cj_count: 0,
+            total_count: 0,
+            details: Vec::new(),
+            target_meet_rows: Vec::new(),
+            missing_names: Vec::new(),
+            edition_year: None,
+        };
+        let report = report("Florida", "Meet", 10, 1, &performance, &prs, &[]);
+        let json = report.to_json();
+        let keys: Vec<&str> = json
+            .as_object()
+            .unwrap()
+            .keys()
+            .map(String::as_str)
+            .collect();
+        assert_eq!(
+            keys,
+            [
+                "athletes",
+                "make_rates",
+                "volume",
+                "prs",
+                "pr_details",
+                "medals"
+            ]
+        );
+        assert_eq!(json["medals"], serde_json::json!([]));
+        assert!(
+            report
+                .to_csv()
+                .contains("# medals\nathlete,age,movement,place,result\n")
+        );
+        assert!(!report.to_text().contains("ATHLETES WITH MEDALS"));
+    }
+
+    #[test]
+    fn a_first_meet_is_not_a_pr() {
+        assert!(!is_pr(Some(100.0), None));
     }
 
     #[test]
@@ -649,33 +905,35 @@ mod tests {
         let target = "Target Meet";
         let history = HashMap::from([
             (
-                normalize("Zed"),
+                fold("Zed"),
                 vec![
-                    result("Zed", "Old Meet", "Open", 90.0, 110.0, 200.0),
+                    dated("Zed", "Old Meet", "2025-06-01", "Open", 90.0, 110.0, 200.0),
                     result("Zed", target, "Open", 95.0, 110.0, 205.0),
                 ],
             ),
             (
-                normalize("Amy"),
+                fold("Amy"),
                 vec![result("Amy", target, "Open", 70.0, 90.0, 160.0)],
             ),
         ]);
 
         let stats = calculate_prs(&["Zed".into(), "Amy".into()], &history, target);
 
-        assert_eq!(stats.snatch_count, 2);
-        assert_eq!(stats.cj_count, 1);
-        assert_eq!(stats.total_count, 2);
-        assert_eq!(stats.details[0].name, "Amy");
+        // Amy's first meet sets her marks: no PR.
+        assert_eq!(stats.snatch_count, 1);
+        assert_eq!(stats.cj_count, 0);
+        assert_eq!(stats.total_count, 1);
+        assert_eq!(stats.details.len(), 2);
+        assert_eq!(stats.details[0].name, "Zed");
         assert_eq!(stats.details[0].movement, Movement::Snatch);
-        assert_eq!(stats.details[3].name, "Zed");
-        assert_eq!(stats.details[3].movement, Movement::Snatch);
+        assert_eq!(stats.details[0].previous_pr, 90.0);
+        assert_eq!(stats.details[1].movement, Movement::Total);
     }
 
     #[test]
     fn calculate_prs_matches_names_and_meets_after_normalization() {
         let history = HashMap::from([(
-            normalize("Jane Doe"),
+            fold("Jane Doe"),
             vec![result(
                 "JANE DOE",
                 " Target   Meet ",
@@ -697,11 +955,12 @@ mod tests {
         let registration =
             "2026 Masters National Championships & National University Championships";
         let history = HashMap::from([(
-            normalize("Jane Doe"),
+            fold("Jane Doe"),
             vec![
-                result(
+                dated(
                     "Jane Doe",
                     "2025 State Championships",
+                    "2025-11-01",
                     "Open",
                     75.0,
                     95.0,
@@ -730,7 +989,7 @@ mod tests {
     #[test]
     fn calculate_prs_reports_names_without_target_results() {
         let history = HashMap::from([(
-            normalize("Jane Doe"),
+            fold("Jane Doe"),
             vec![result("Jane Doe", "Old Meet", "Open", 80.0, 100.0, 180.0)],
         )]);
 
@@ -763,8 +1022,9 @@ mod tests {
         assert_eq!(stats.snatch_makes, 1);
         assert_eq!(stats.cj_attempts, 3);
         assert_eq!(stats.cj_makes, 2);
-        assert_eq!(stats.total_weight_lifted, 320.0);
-        assert!((stats.total_make_rate() - 58.333_333).abs() < 0.000_001);
+        // The total, as club-results sums it; every attempt pooled: 3 made of 5.
+        assert_eq!(stats.total_weight_lifted, 220.0);
+        assert!((stats.total_make_rate() - 60.0).abs() < 0.000_001);
     }
 
     #[test]
@@ -779,12 +1039,16 @@ mod tests {
     #[test]
     fn medals_are_ranked_within_age_divisions() {
         let rows = vec![
-            result("Open One", "Meet", "Open", 100.0, 120.0, 220.0),
-            result("Open Two", "Meet", "Open", 95.0, 115.0, 210.0),
-            result("Youth One", "Meet", "Youth", 70.0, 90.0, 160.0),
+            result("Open One", "Meet", "Open Men's 89kg", 100.0, 120.0, 220.0),
+            result("Open Two", "Meet", "Open Men's 89kg", 95.0, 115.0, 210.0),
+            result("Youth One", "Meet", "Youth Men's 61kg", 70.0, 90.0, 160.0),
         ];
 
-        let medals = calculate_medal_details(&["Open Two".into(), "Youth One".into()], &rows);
+        let medals = calculate_medal_details(
+            &["Open Two".into(), "Youth One".into()],
+            &rows,
+            &RosterClasses::new(),
+        );
 
         assert_eq!(medals.len(), 6);
         assert!(medals.iter().all(|medal| medal.place <= 2));
@@ -797,13 +1061,178 @@ mod tests {
     }
 
     #[test]
-    fn medals_exclude_bomb_out_rows_and_non_members() {
+    fn a_bomb_out_still_places_in_the_lift_it_made() {
+        // A snatches 150 and bombs the C&J; B, C and D total.
         let rows = vec![
-            result("Member", "Meet", "Open", 100.0, 0.0, 0.0),
-            result("Other", "Meet", "Open", 90.0, 110.0, 200.0),
+            result("A", "Meet", "Open Men's 89kg", 150.0, 0.0, 0.0),
+            result("B", "Meet", "Open Men's 89kg", 145.0, 180.0, 325.0),
+            result("C", "Meet", "Open Men's 89kg", 140.0, 175.0, 315.0),
+            result("D", "Meet", "Open Men's 89kg", 135.0, 170.0, 305.0),
         ];
 
-        let medals = calculate_medal_details(&["Member".into()], &rows);
+        let medals =
+            calculate_medal_details(&["A".into(), "D".into()], &rows, &RosterClasses::new());
+
+        let snatch: Vec<_> = medals
+            .iter()
+            .filter(|medal| medal.movement == Movement::Snatch)
+            .map(|medal| (medal.name.as_str(), medal.place))
+            .collect();
+        assert_eq!(snatch, [("A", 1)]);
+        assert!(
+            medals
+                .iter()
+                .filter(|medal| medal.name == "A")
+                .all(|medal| medal.movement == Movement::Snatch)
+        );
+        // D is third in the C&J and total, behind B and C; A placed nowhere there.
+        assert!(
+            medals
+                .iter()
+                .filter(|medal| medal.name == "D")
+                .all(|medal| medal.place == 3 && medal.movement != Movement::Snatch)
+        );
+    }
+
+    #[test]
+    fn ties_go_to_the_lighter_bar_then_the_earlier_attempt_then_share() {
+        let lift = |name: &str, snatch: [f64; 3], cj: [f64; 3]| {
+            let mut row = result(name, "Meet", "Open Men's 89kg", 0.0, 0.0, 0.0);
+            row.snatch1 = snatch[0];
+            row.snatch2 = snatch[1];
+            row.snatch3 = snatch[2];
+            row.snatch_best = snatch.iter().copied().fold(0.0, f64::max);
+            row.cj1 = cj[0];
+            row.cj2 = cj[1];
+            row.cj3 = cj[2];
+            row.cj_best = cj.iter().copied().fold(0.0, f64::max);
+            row.total = row.snatch_best + row.cj_best;
+            row
+        };
+        let rows = vec![
+            // Zed totals 300 with the lighter C&J (made first), so wins the total tie.
+            lift("Zed", [130.0, 0.0, 0.0], [170.0, 0.0, 0.0]),
+            lift("Amy", [120.0, 0.0, 0.0], [180.0, 0.0, 0.0]),
+            // Bo and Cy snatch 125 on the second attempt: tied, they share second.
+            lift("Bo", [120.0, 125.0, 0.0], [100.0, 0.0, 0.0]),
+            lift("Cy", [-125.0, 125.0, 0.0], [100.0, 0.0, 0.0]),
+        ];
+        let names: Vec<String> = ["Zed", "Amy", "Bo", "Cy"].map(String::from).to_vec();
+
+        let medals = calculate_medal_details(&names, &rows, &RosterClasses::new());
+        let place = |name: &str, movement: Movement| {
+            medals
+                .iter()
+                .find(|medal| medal.name == name && medal.movement == movement)
+                .map(|medal| medal.place)
+        };
+
+        assert_eq!(place("Zed", Movement::Total), Some(1));
+        assert_eq!(place("Amy", Movement::Total), Some(2));
+        assert_eq!(place("Zed", Movement::Snatch), Some(1));
+        assert_eq!(place("Bo", Movement::Snatch), Some(2));
+        assert_eq!(place("Cy", Movement::Snatch), Some(2));
+        // Amy snatched 120, fourth: no medal.
+        assert_eq!(place("Amy", Movement::Snatch), None);
+    }
+
+    #[test]
+    fn classless_divisions_place_by_roster_class_and_skip_the_unrostered() {
+        // Ada and Bea are both "Open Women" but in the 58 and 71 kg classes: each wins hers.
+        let rows = vec![
+            result("Ada", "Meet", "Open Women", 80.0, 100.0, 180.0),
+            result("Bea", "Meet", "Open Women", 85.0, 105.0, 190.0),
+            result("Cy", "Meet", "Open Women", 90.0, 110.0, 200.0),
+        ];
+        let mut ada = athlete("Ada", None);
+        ada.weight_class = "58".into();
+        let mut bea = athlete("Bea", None);
+        bea.weight_class = "71".into();
+        let roster = roster_classes(&[ada, bea]);
+        assert!(needs_roster(&rows));
+
+        let names: Vec<String> = ["Ada", "Bea", "Cy"].map(String::from).to_vec();
+        let medals = calculate_medal_details(&names, &rows, &roster);
+        let totals: Vec<_> = medals
+            .iter()
+            .filter(|medal| medal.movement == Movement::Total)
+            .map(|medal| (medal.name.as_str(), medal.place))
+            .collect();
+        // Cy has no roster entry, so like the server she is not placed.
+        assert_eq!(totals, [("Ada", 1), ("Bea", 1)]);
+        assert!(!needs_roster(&[result(
+            "Ada",
+            "Meet",
+            "Open Women's 58 kg",
+            1.0,
+            1.0,
+            2.0
+        )]));
+        assert!(!needs_roster(&[result(
+            "Ada",
+            "Meet",
+            "Open Women's +87KG",
+            1.0,
+            1.0,
+            2.0
+        )]));
+    }
+
+    #[test]
+    fn an_athlete_places_once_per_division_with_their_best_total() {
+        let rows = vec![
+            result("Ada", "Meet", "Open Women's 64kg", 100.0, 120.0, 220.0),
+            result("ada", "Meet", "Open Women's 64kg", 95.0, 115.0, 210.0),
+            result("Bea", "Meet", "Open Women's 64kg", 90.0, 115.0, 205.0),
+            result("Cy", "Meet", "Open Women's 64kg", 90.0, 110.0, 200.0),
+        ];
+
+        let medals =
+            calculate_medal_details(&["Ada".into(), "Cy".into()], &rows, &RosterClasses::new());
+        let totals: Vec<_> = medals
+            .iter()
+            .filter(|medal| medal.movement == Movement::Total)
+            .map(|medal| (medal.name.as_str(), medal.place, medal.result))
+            .collect();
+        assert_eq!(totals, [("Ada", 1, 220.0), ("Cy", 3, 200.0)]);
+    }
+
+    #[test]
+    fn source_error_rows_take_no_medals() {
+        // A typo'd 633 snatch (for 63) between -63 and 65, with a bombed C&J.
+        let mut typo = result("Typo", "Meet", "Open Men's 89kg", 633.0, 0.0, 0.0);
+        typo.snatch1 = -63.0;
+        typo.snatch2 = 633.0;
+        typo.snatch3 = 65.0;
+        let rows = vec![
+            typo,
+            result("Ada", "Meet", "Open Men's 89kg", 150.0, 180.0, 330.0),
+            result("Bo", "Meet", "Open Men's 89kg", 140.0, 175.0, 315.0),
+            result("Cy", "Meet", "Open Men's 89kg", 130.0, 170.0, 300.0),
+        ];
+
+        let medals =
+            calculate_medal_details(&["Cy".into(), "Typo".into()], &rows, &RosterClasses::new());
+        assert!(
+            medals
+                .iter()
+                .all(|medal| medal.name == "Cy" && medal.place == 3)
+        );
+        assert!(
+            medals
+                .iter()
+                .any(|medal| medal.movement == Movement::Snatch)
+        );
+    }
+
+    #[test]
+    fn medals_exclude_non_members() {
+        let rows = vec![
+            result("Member", "Meet", "Open Men's 89kg", 0.0, 0.0, 0.0),
+            result("Other", "Meet", "Open Men's 89kg", 90.0, 110.0, 200.0),
+        ];
+
+        let medals = calculate_medal_details(&["Member".into()], &rows, &RosterClasses::new());
 
         assert!(medals.is_empty());
     }
@@ -811,26 +1240,151 @@ mod tests {
     #[test]
     fn medals_only_include_the_top_three_places() {
         let rows = vec![
-            result("One", "Meet", "Open", 100.0, 120.0, 220.0),
-            result("Two", "Meet", "Open", 95.0, 115.0, 210.0),
-            result("Three", "Meet", "Open", 90.0, 110.0, 200.0),
-            result("Member", "Meet", "Open", 85.0, 105.0, 190.0),
+            result("One", "Meet", "Open Men's 89kg", 100.0, 120.0, 220.0),
+            result("Two", "Meet", "Open Men's 89kg", 95.0, 115.0, 210.0),
+            result("Three", "Meet", "Open Men's 89kg", 90.0, 110.0, 200.0),
+            result("Member", "Meet", "Open Men's 89kg", 85.0, 105.0, 190.0),
         ];
 
-        let medals = calculate_medal_details(&["Member".into()], &rows);
+        let medals = calculate_medal_details(&["Member".into()], &rows, &RosterClasses::new());
 
         assert!(medals.is_empty());
     }
 
     #[test]
+    fn results_after_the_meet_are_not_the_pr_to_beat() {
+        let target = "2025 Carolina WSO Championships";
+        let history = HashMap::from([(
+            fold("Ada"),
+            vec![
+                dated(
+                    "Ada",
+                    "Spring Open",
+                    "2025-03-01",
+                    "Open",
+                    85.0,
+                    105.0,
+                    190.0,
+                ),
+                dated("Ada", target, "2025-09-20", "Open", 90.0, 110.0, 200.0),
+                dated("Ada", "2026 Open", "2026-02-01", "Open", 95.0, 115.0, 210.0),
+            ],
+        )]);
+
+        let stats = calculate_prs(&["Ada".into()], &history, target);
+
+        assert_eq!(stats.total_count, 1);
+        assert_eq!(stats.snatch_count, 1);
+        assert_eq!(stats.cj_count, 1);
+        assert_eq!(stats.details[2].previous_pr, 190.0);
+    }
+
+    #[test]
+    fn a_meet_held_every_year_is_its_latest_edition() {
+        let meet = "Testify Leprechaun Lift-off";
+        let history = HashMap::from([(
+            fold("Ada"),
+            vec![
+                dated("Ada", meet, "2023-03-11", "Open", 90.0, 110.0, 200.0),
+                dated("Ada", meet, "2024-03-16", "Open", 88.0, 108.0, 196.0),
+                dated("Ada", "Fall Open", "2023-10-01", "Open", 85.0, 105.0, 190.0),
+            ],
+        )]);
+
+        let stats = calculate_prs(&["Ada".into()], &history, meet);
+
+        assert_eq!(stats.target_meet_rows.len(), 1);
+        assert_eq!(stats.target_meet_rows[0].date, "2024-03-16");
+        assert_eq!(stats.total_count, 0);
+    }
+
+    #[test]
+    fn the_first_lift_after_a_bomb_out_is_a_pr() {
+        let target = "2026 Spring Open";
+        let history = HashMap::from([(
+            fold("Ada"),
+            vec![
+                // Ada's first meet: 80 snatch, bombed C&J, no total.
+                dated("Ada", "Fall Open", "2025-10-01", "Open", 80.0, 0.0, 0.0),
+                dated("Ada", target, "2026-03-01", "Open", 78.0, 90.0, 168.0),
+            ],
+        )]);
+
+        let stats = calculate_prs(&["Ada".into()], &history, target);
+
+        assert_eq!(stats.snatch_count, 0);
+        assert_eq!(stats.cj_count, 1);
+        assert_eq!(stats.total_count, 1);
+        assert!(stats.details.iter().all(|detail| detail.previous_pr == 0.0));
+    }
+
+    #[test]
+    fn every_athlete_is_counted_from_one_edition() {
+        let meet = "Spring Open";
+        let history = HashMap::from([
+            (
+                fold("Ada"),
+                vec![dated("Ada", meet, "2023-04-01", "Open", 80.0, 100.0, 180.0)],
+            ),
+            (
+                fold("Bo"),
+                vec![dated("Bo", meet, "2024-04-01", "Open", 90.0, 110.0, 200.0)],
+            ),
+        ]);
+
+        let stats = calculate_prs(&["Ada".into(), "Bo".into()], &history, meet);
+
+        assert_eq!(stats.edition_year.as_deref(), Some("2024"));
+        assert_eq!(stats.missing_names, ["Ada"]);
+        assert_eq!(stats.target_meet_rows.len(), 1);
+        let rows = edition_rows(
+            vec![
+                dated("Ada", meet, "2023-04-01", "Open", 80.0, 100.0, 180.0),
+                dated("Bo", meet, "2024-04-01", "Open", 90.0, 110.0, 200.0),
+            ],
+            stats.edition_year.as_deref(),
+        );
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].name, "Bo");
+        assert_eq!(edition_rows(rows.clone(), None).len(), 1);
+    }
+
+    #[test]
+    fn an_athlete_in_two_divisions_counts_once_in_performance() {
+        let open = result("Ada", "Meet", "Open", 80.0, 100.0, 180.0);
+        let masters = result("ada", "Meet", "Masters", 80.0, 100.0, 180.0);
+
+        let stats = calculate_performance(&[&open, &masters]);
+
+        assert_eq!(stats.total_weight_lifted, 180.0);
+        assert_eq!(stats.snatch_attempts, 1);
+        assert_eq!(stats.cj_attempts, 1);
+    }
+
+    #[test]
     fn rendered_report_contains_summary_and_detail_sections() {
         let history = HashMap::from([(
-            normalize("Member"),
-            vec![result("Member", "Meet", "Open", 100.0, 120.0, 220.0)],
+            fold("Member"),
+            vec![
+                dated(
+                    "Member",
+                    "Old",
+                    "2025-01-01",
+                    "Open Men's 89kg",
+                    95.0,
+                    115.0,
+                    210.0,
+                ),
+                result("Member", "Meet", "Open Men's 89kg", 100.0, 120.0, 220.0),
+            ],
         )]);
         let prs = calculate_prs(&["Member".into()], &history, "Meet");
         let performance = calculate_performance(&prs.target_meet_rows);
-        let medals = calculate_medal_details(&["Member".into()], history.values().next().unwrap());
+        let medals = calculate_medal_details(
+            &["Member".into()],
+            history.values().next().unwrap(),
+            &RosterClasses::new(),
+        );
 
         let report = render_report("Carolina", "Meet", 10, 1, &performance, &prs, &medals);
 
@@ -838,5 +1392,25 @@ mod tests {
         assert!(report.contains("ATHLETES WITH PRS"));
         assert!(report.contains("ATHLETES WITH MEDALS"));
         assert!(report.contains("220kg"));
+    }
+
+    #[test]
+    fn a_linked_title_answered_with_its_meet_is_not_added_again() {
+        let parent = vec![
+            result("Ann", "Nationals", "Open", 80.0, 100.0, 180.0),
+            result("Ada", "Junior", "Junior", 70.0, 90.0, 160.0),
+        ];
+        let junior = vec![result("Ada", "Junior", "Junior", 70.0, 90.0, 160.0)];
+        let youth = vec![result("Cy", "Youth", "Youth", 50.0, 60.0, 110.0)];
+        let mut results = Vec::new();
+        let mut titles = HashSet::new();
+        add_new_titles(&mut results, &mut titles, parent);
+        add_new_titles(&mut results, &mut titles, junior);
+        add_new_titles(&mut results, &mut titles, youth);
+        let names = results
+            .iter()
+            .map(|row| row.name.as_str())
+            .collect::<Vec<_>>();
+        assert_eq!(names, ["Ann", "Ada", "Cy"]);
     }
 }

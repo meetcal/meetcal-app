@@ -58,7 +58,7 @@ describe("standardsResource", () => {
     const standards = await fetchStandards();
 
     expect(standards.senior.men).toEqual([
-      { weightClass: "67kg", a: 0, b: 0 },
+      { weightClass: "67kg", a: null, b: null },
       { weightClass: "89kg", a: 300, b: 280 },
     ]);
     expect(standards.senior.women).toEqual([]);
@@ -66,9 +66,31 @@ describe("standardsResource", () => {
     expect(mockSetOfflineCache).toHaveBeenCalledWith("@offline_cache/standards", standards);
   });
 
+  // U15 has no B standard; the table answers 0, which the screen, widget and
+  // Siri show as "—" rather than "0kg".
+  it("keeps a U15 row whose B standard is 0", async () => {
+    mockGetJsonArray.mockResolvedValue([
+      row({ age_category: "U15", weight_class: "55kg", standard_a: 184, standard_b: 0 }),
+    ]);
+
+    const standards = await fetchStandards();
+
+    expect(standards.u15.men).toEqual([{ weightClass: "55kg", a: 184, b: 0 }]);
+  });
+
   it("rejects when the API fails, leaving the cached copy to the screen", async () => {
     mockGetJsonArray.mockRejectedValue(new Error("down"));
     await expect(fetchStandards()).rejects.toThrow("down");
+    expect(mockSetOfflineCache).not.toHaveBeenCalled();
+  });
+
+  it("shows an empty fresh answer but leaves the stored download untouched", async () => {
+    // The browse path shares the download's key; rows that all fail the per-row checks used to be
+    // persisted over a real download, which then read as "downloaded" offline.
+    mockGetOfflineCache.mockResolvedValue({ data: { u15: { men: [], women: [] }, youth: { men: [], women: [] }, junior: { men: [], women: [] }, senior: { men: [{ weightClass: "89kg", a: 300, b: 280 }], women: [] } }, lastSynced: 5 });
+    mockGetJsonArray.mockResolvedValue([row({ age_category: "Masters" })]);
+
+    await expect(fetchStandards()).resolves.toEqual({ u15: { men: [], women: [] }, youth: { men: [], women: [] }, junior: { men: [], women: [] }, senior: { men: [], women: [] } });
     expect(mockSetOfflineCache).not.toHaveBeenCalled();
   });
 });

@@ -30,6 +30,7 @@ extern "C" {
 
     fn check_revenuecat_entitlement(api_key: &str, app_user_id: &str) -> js_sys::Promise;
 
+    fn clerk_session_token() -> js_sys::Promise;
 }
 
 pub fn provide_auth() {
@@ -43,11 +44,17 @@ pub fn provide_auth() {
         return;
     };
 
+    // Clerk calls back whenever its client, session or user resources update
+    // (a session touch when the tab regains focus, for one), mostly with the
+    // same user. Only a real change is written: every write notifies, and
+    // the subscription gate would rebuild the page for it.
     let callback = Closure::<dyn Fn(JsValue)>::new(move |user_id: JsValue| {
-        if let Some(user_id) = user_id.as_string() {
-            set_state.set(AuthState::SignedIn(user_id));
-        } else {
-            set_state.set(AuthState::SignedOut);
+        let next = auth_state_for(user_id.as_string());
+        if state.get_untracked() != next {
+            // The access pass came with the previous user's subscription;
+            // the next user (or a signed-out visitor) must earn their own.
+            crate::utils::api::forget_access_pass();
+            set_state.set(next);
         }
     });
 
@@ -59,6 +66,14 @@ pub fn provide_auth() {
             set_state.set(AuthState::ConfigurationError(js_error_message(error)));
         }
     });
+}
+
+/// The auth state for the user id Clerk reports (`None` when signed out).
+fn auth_state_for(user_id: Option<String>) -> AuthState {
+    match user_id {
+        Some(user_id) => AuthState::SignedIn(user_id),
+        None => AuthState::SignedOut,
+    }
 }
 
 pub fn mount_user_button(element: &web_sys::HtmlElement) {
@@ -86,10 +101,39 @@ pub async fn has_comp_data_access(app_user_id: &str) -> Result<bool, String> {
         .map_err(js_error_message)
 }
 
+/// The signed-in user's Clerk session token, for the Convex calls that read
+/// the caller: `accessPass:pass`, `entitlements:refresh`, and the
+/// `deviceLogin:*` calls of `/link`. `None` when
+/// signed out, or when Clerk could not hand one over (logged): premium reads
+/// then go out without an access pass.
+pub async fn session_token() -> Option<String> {
+    match JsFuture::from(clerk_session_token()).await {
+        Ok(token) => token.as_string().filter(|token| !token.is_empty()),
+        Err(error) => {
+            leptos::logging::warn!("No Clerk session token: {}", js_error_message(error));
+            None
+        }
+    }
+}
+
 fn js_error_message(error: JsValue) -> String {
     js_sys::Reflect::get(&error, &JsValue::from_str("message"))
         .ok()
         .and_then(|message| message.as_string())
         .or_else(|| error.as_string())
         .unwrap_or_else(|| "The authentication service could not be reached.".to_owned())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn clerk_user_ids_map_to_auth_states() {
+        assert_eq!(
+            auth_state_for(Some("user_1".to_owned())),
+            AuthState::SignedIn("user_1".to_owned())
+        );
+        assert_eq!(auth_state_for(None), AuthState::SignedOut);
+    }
 }

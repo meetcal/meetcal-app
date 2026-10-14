@@ -34,7 +34,10 @@ export const JOBS: Record<string, Job> = {
   // fall hours behind (`views:refreshJob`).
   'views-refresh': { schedule: '50 * * * *', run: { kind: 'action', fn: internal.views.refreshJob } },
   // The daily scrapers keep the UTC times the VPS crontab (US Eastern) ran them at.
-  standards: { schedule: '15 3 * * *', run: { kind: 'action', fn: internal.scrapers.standards.run } },
+  // Standards switch class sets on USA Weightlifting's date (Colorado
+  // Springs, `scrapers/standards.ts`), so they run just after midnight there
+  // in both daylight and standard time (01:15 MDT, 00:15 MST).
+  standards: { schedule: '15 7 * * *', run: { kind: 'action', fn: internal.scrapers.standards.run } },
   records: { schedule: '35 3 * * *', run: { kind: 'action', fn: internal.scrapers.records.run } },
   'umwf-records': { schedule: '55 3 * * *', run: { kind: 'action', fn: internal.scrapers.umwf.run } },
   'usamw-national-records': { schedule: '5 4 * * *', run: { kind: 'action', fn: internal.scrapers.usamw.run } },
@@ -45,6 +48,9 @@ export const JOBS: Record<string, Job> = {
   'results-sport80': { schedule: '5 6 * * *', run: { kind: 'action', fn: internal.scrapers.sport80.run } },
   'wso-records': { schedule: '40 6 * * *', run: { kind: 'action', fn: internal.scrapers.wsoRecords.run } },
   entries: { schedule: '25 7 * * *', run: { kind: 'action', fn: internal.scrapers.entries.run } },
+  // A new access pass for premium reads (`accessPass.ts`), when US traffic
+  // is lowest: it clears every premium query's cache once.
+  'rotate-access-pass': { schedule: '0 9 * * *', run: { kind: 'action', fn: internal.accessPass.rotate } },
 };
 
 /**

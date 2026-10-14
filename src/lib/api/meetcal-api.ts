@@ -1,4 +1,4 @@
-import { canonicalizePlatform, filterSessionAthletes, isLiftResult } from '@/lib/athletes';
+import { canonicalizePlatform, filterSessionAthletes, isLiftResult, normalizeAthleteName } from '@/lib/athletes';
 import { LiftResult, Platform, SupabaseLiftResult } from '@/data/types/athletes';
 import { Meet, MeetName } from '@/data/types/meet';
 import type { Schedule } from '@/types/schedule';
@@ -21,6 +21,7 @@ import {
   ValidatorCache,
   type ValidatorEntry,
 } from '@/lib/api/http-cache';
+import { accessPassFor, wantsAccessPass, type AccessPass } from '@/lib/api/premium-queries';
 import { callApi, TransportRequestError, type ApiCall } from '@/lib/api/transport';
 
 // The app's backend is Convex (`convex/`). Each function below calls the
@@ -167,12 +168,13 @@ export const MAX_PLAUSIBLE_CLOCK_SKEW_MS = 15 * 60 * 1000;
 /** A sample older than this is refreshed (in the background) on the next request. */
 export const SERVER_CLOCK_RESAMPLE_MS = 10 * 60 * 1000;
 /**
- * How long the first request of the process waits, after its own answer, for
- * the clock sample it triggered. The mutation runs alongside the request, so
- * it is normally already done; the bound keeps a sample stuck on a dropped
- * connection from holding up data that has arrived.
+ * How long `awaitServerClock` waits for a sample in flight. The first
+ * request of the process used to wait this long for its sample before
+ * handing back data that had already arrived, which delayed the first
+ * schedule on every cold start; now only the decisions that want the
+ * server's clock right after a request wait, and only for this long.
  */
-const SERVER_CLOCK_FIRST_SAMPLE_GRACE_MS = 2000;
+export const SERVER_CLOCK_DECISION_GRACE_MS = 2000;
 
 function waitAtMost(promise: Promise<void>, ms: number): Promise<void> {
   let timer: ReturnType<typeof setTimeout> | undefined;
@@ -203,8 +205,8 @@ let serverClockInFlight: Promise<void> | null = null;
  * the round trip. Failures are swallowed: the sample is a hint, and the
  * request it rides alongside reports its own errors.
  */
-function sampleServerClock(): { done: Promise<void>; started: boolean } {
-  if (serverClockInFlight) return { done: serverClockInFlight, started: false };
+function sampleServerClock(): Promise<void> {
+  if (serverClockInFlight) return serverClockInFlight;
   const sentAt = Date.now();
   const sample = callApi(SERVER_CLOCK_CALL)
     .then((serverNow) => {
@@ -220,7 +222,7 @@ function sampleServerClock(): { done: Promise<void>; started: boolean } {
   serverClockInFlight = waitAtMost(sample, SERVER_CLOCK_SAMPLE_TIMEOUT_MS).finally(() => {
     serverClockInFlight = null;
   });
-  return { done: serverClockInFlight, started: true };
+  return serverClockInFlight;
 }
 
 /**
@@ -230,7 +232,22 @@ function sampleServerClock(): { done: Promise<void>; started: boolean } {
  * started sessions). Bounded by `SERVER_CLOCK_SAMPLE_TIMEOUT_MS`.
  */
 export async function refreshServerClock(): Promise<ServerClockSample | null> {
-  await sampleServerClock().done;
+  await sampleServerClock();
+  return serverClockSample;
+}
+
+/**
+ * The server clock sample, waiting up to `maxWaitMs` for one when this
+ * process has none yet (joining the sample in flight, or starting one).
+ * Null when none arrives in time (offline, a dropped connection). For a
+ * decision made right after a request that wants the server's clock (is the
+ * stored meet over?) now that requests no longer wait for their sample.
+ */
+export async function awaitServerClock(
+  maxWaitMs: number = SERVER_CLOCK_DECISION_GRACE_MS,
+): Promise<ServerClockSample | null> {
+  if (serverClockSample) return serverClockSample;
+  await waitAtMost(sampleServerClock(), maxWaitMs);
   return serverClockSample;
 }
 
@@ -310,7 +327,7 @@ function assertHasFields(value: unknown, label: string, fields: string[]): Recor
 }
 
 function methodLabel(call: ApiCall): string {
-  return call.kind === 'mutation' ? 'POST' : 'GET';
+  return call.kind === 'mutation' || call.kind === 'action' ? 'POST' : 'GET';
 }
 
 /**
@@ -319,11 +336,35 @@ function methodLabel(call: ApiCall): string {
  * `MeetCalApiError` carrying the status the Rust API would have answered, a
  * request that outlives `timeoutMs` a `MeetCalApiTimeoutError`.
  *
- * The request that starts the process's first clock sample also waits
- * (briefly) for it, so the first response normally leaves a sample behind;
- * later ones refresh a stale sample in the background.
+ * The clock sample is started alongside the request and never waited for:
+ * the first answer of a cold start is what the first schedule paints from.
+ * Until the sample lands, `getTrustedNow` is null and the callers that need
+ * the server's clock skip their decision or wait (`awaitServerClock`).
+ *
+ * A premium read carries the access pass (`lib/api/premium-queries.ts`). If
+ * the server refuses it (401 without one, 403 for a stale one), the read is
+ * sent once more with a newly fetched pass.
  */
 async function request(call: ApiCall, timeoutMs: number = DEFAULT_TIMEOUT_MS): Promise<unknown> {
+  // Every other call starts at once; the wait for a pass not yet held is
+  // bounded on its own (`ACCESS_PASS_TIMEOUT_MS`), before the timeout starts.
+  if (call.kind !== 'query' || call.token || !wantsAccessPass(call.fn, call.args)) return send(call, timeoutMs);
+  const pass = await accessPassFor(call.fn, call.args);
+  try {
+    return await send(withPass(call, pass), timeoutMs);
+  } catch (error) {
+    if (!(error instanceof MeetCalApiError) || (error.status !== 401 && error.status !== 403)) throw error;
+    const fresh = await accessPassFor(call.fn, call.args, { refused: pass, retry: true });
+    if (fresh === undefined || fresh === pass) throw error;
+    return await send(withPass(call, fresh), timeoutMs);
+  }
+}
+
+function withPass(call: ApiCall, pass: string | undefined): ApiCall {
+  return pass === undefined ? call : { ...call, args: { ...call.args, pass } };
+}
+
+async function send(call: ApiCall, timeoutMs: number): Promise<unknown> {
   const startedAt = typeof performance !== 'undefined' ? performance.now() : Date.now();
   let timeoutId: ReturnType<typeof setTimeout> | undefined;
   // The timeout also aborts the request, so it never lands later (a stale
@@ -335,20 +376,12 @@ async function request(call: ApiCall, timeoutMs: number = DEFAULT_TIMEOUT_MS): P
       abort?.abort();
     }, timeoutMs);
   });
-  const clock =
-    serverClockSample === null || Date.now() - serverClockSample.sampledAt > SERVER_CLOCK_RESAMPLE_MS
-      ? sampleServerClock()
-      : null;
+  if (serverClockSample === null || Date.now() - serverClockSample.sampledAt > SERVER_CLOCK_RESAMPLE_MS) {
+    void sampleServerClock();
+  }
 
   try {
-    const result = await Promise.race([callApi(abort ? { ...call, signal: abort.signal } : call), timeout]);
-    // Only the request that started the process's first sample waits for it;
-    // refreshes of an existing sample, and requests that merely find one in
-    // flight, never do.
-    if (clock?.started && serverClockSample === null) {
-      await waitAtMost(clock.done, SERVER_CLOCK_FIRST_SAMPLE_GRACE_MS);
-    }
-    return result;
+    return await Promise.race([callApi(abort ? { ...call, signal: abort.signal } : call), timeout]);
   } catch (error) {
     if (error instanceof TransportRequestError) {
       throw new MeetCalApiError(error.message, error.status, error.body);
@@ -587,7 +620,17 @@ export type ApiMeetPackage = {
       session_id: number;
       start_time: string;
       weigh_in_time: string;
-      platforms: { platform: string; weight_class: string }[];
+      /**
+       * `start_time` / `weigh_in_time` per platform: platforms of one session
+       * can start at different times. Absent from packages built before they
+       * were added; the session's (its first platform's) times apply then.
+       */
+      platforms: {
+        platform: string;
+        weight_class: string;
+        start_time?: string | null;
+        weigh_in_time?: string | null;
+      }[];
     }[];
   }[];
   athletes: (ApiAthlete & {
@@ -770,6 +813,9 @@ export function mapApiSchedule(rows: ApiScheduleRow[]): Schedule {
       platform: normalizePlatform(row.platform),
       weightClass: nullableString(row.weight_class) ?? '',
       platformStartTime: formatApiTime(row.start_time),
+      // Each platform row carries its own published weigh-in; the session's
+      // `weighInTime` is only the first row's.
+      platformWeighInTime: formatApiTime(row.weigh_in_time),
     });
   });
 
@@ -788,8 +834,11 @@ export function mapPackageSchedule(pkg: ApiMeetPackage): Schedule {
         meet: pkg.meet.name,
         platform: platform.platform,
         session_id: session.session_id,
-        start_time: session.start_time,
-        weigh_in_time: session.weigh_in_time,
+        // The platform's own time, as `/meets/schedule` reports it: copying
+        // the session's (first platform's) time onto every platform put a
+        // 9:30 Blue session at 9:00 offline, reminders included.
+        start_time: platform.start_time ?? session.start_time,
+        weigh_in_time: platform.weigh_in_time ?? session.weigh_in_time,
         weight_class: platform.weight_class,
       })),
     ),
@@ -1075,47 +1124,55 @@ export async function fetchApiRecentResultsByNames(
   return rows;
 }
 
-export async function fetchApiYearBests(
-  name: string,
-  cutoffDate: string = getHistoryCutoffDate(YEAR_BESTS_YEARS),
-) {
-  const row = assertHasFields(
-    await readQuery('/lifting-results/year', 'results:yearBests', { name, cutoffDate }),
-    '/lifting-results/year',
-    ['best_snatch', 'best_cj', 'best_total'],
-  ) as ApiYearBests;
-  return [mapApiYearBests(row)];
+/**
+ * Name-keyed bests arrive as `[{ name, best_snatch, best_cj, best_total }]`
+ * (Convex object keys must be ASCII; athlete names are not). One parser for
+ * `results:bests` and the package's `year_bests`: a malformed row fails the
+ * answer, naming its index, and a missing or mistyped best reads as 0.
+ */
+function parseNamedBests(rows: unknown[], label: string): { name: string; bests: ApiYearBests }[] {
+  return rows.map((row, index) => {
+    const fields = assertHasFields(row, `${label}[${index}]`, ['name', 'best_snatch', 'best_cj', 'best_total']);
+    if (typeof fields.name !== 'string') throw new Error(`${label}[${index}] has invalid name`);
+    return {
+      name: fields.name,
+      bests: {
+        best_snatch: toFiniteNumber(fields.best_snatch),
+        best_cj: toFiniteNumber(fields.best_cj),
+        best_total: toFiniteNumber(fields.best_total),
+      },
+    };
+  });
 }
 
 /**
- * Name-keyed bests arrive as `[{ name, best_snatch, best_cj, best_total }]`
- * (Convex object keys must be ASCII; athlete names are not) and leave here as
- * the name-keyed map the app has always used.
+ * Bests since `cutoffDate`, keyed by the caller's own spellings. The server
+ * echoes each name cleaned (trimmed, whitespace folded), so a roster's
+ * ' Jane Doe' is matched to its row through `normalizeAthleteName` here,
+ * once, rather than by every caller (a caller that forgot stored the athlete
+ * as "no results"). A name the answer does not cover is left out.
  */
-function namedBestsToMap(rows: unknown[], label: string): Record<string, ReturnType<typeof mapApiYearBests>> {
-  const byName: Record<string, ReturnType<typeof mapApiYearBests>> = {};
-  rows.forEach((row, index) => {
-    const fields = assertHasFields(row, `${label}[${index}]`, ['name', 'best_snatch', 'best_cj', 'best_total']);
-    if (typeof fields.name !== 'string') throw new Error(`${label}[${index}] has invalid name`);
-    byName[fields.name] = mapApiYearBests(fields as unknown as ApiYearBests);
-  });
-  return byName;
-}
-
 export async function fetchApiYearBestsByNames(
   names: string[],
   cutoffDate: string = getHistoryCutoffDate(YEAR_BESTS_YEARS),
 ): Promise<Record<string, ReturnType<typeof mapApiYearBests>>> {
   if (names.length === 0) return {};
-  const merged: Record<string, ReturnType<typeof mapApiYearBests>> = {};
+  const byFoldedName = new Map<string, ReturnType<typeof mapApiYearBests>>();
   for (const chunk of chunkValues(names, SMALL_ROWS_NAMES_CHUNK_SIZE)) {
     const rows = assertArray<unknown>(
       await readQuery('/lifting-results/bests', 'results:bests', { names: chunk, cutoffDate }),
       '/lifting-results/bests',
     );
-    Object.assign(merged, namedBestsToMap(rows, '/lifting-results/bests'));
+    for (const { name, bests } of parseNamedBests(rows, '/lifting-results/bests')) {
+      byFoldedName.set(normalizeAthleteName(name), mapApiYearBests(bests));
+    }
   }
-  return merged;
+  const byName: Record<string, ReturnType<typeof mapApiYearBests>> = {};
+  for (const name of names) {
+    const bests = byFoldedName.get(normalizeAthleteName(name));
+    if (bests) byName[name] = bests;
+  }
+  return byName;
 }
 
 /**
@@ -1199,24 +1256,15 @@ export async function fetchApiMeetPackageConditional(
   assertArray(pkg.athletes, '/meets/package.athletes');
   assertArray(pkg.meet_results, '/meets/package.meet_results');
   if ('year_bests' in pkg) {
-    // Sent as a list (see `namedBestsToMap`); the rest of the app reads the
-    // map the Rust API sent, with the API's snake_case fields.
+    // Sent as a list (see `parseNamedBests`); the rest of the app reads the
+    // map the Rust API sent, with the API's snake_case fields. Keyed by the
+    // server's spelling: there is no caller's spelling here, and the store
+    // folds the key (`saveAthleteBestsBatch`).
     const byName: Record<string, ApiYearBests> = {};
-    assertArray<unknown>(pkg.year_bests, '/meets/package.year_bests').forEach((row, index) => {
-      const fields = assertHasFields(row, `/meets/package.year_bests[${index}]`, [
-        'name',
-        'best_snatch',
-        'best_cj',
-        'best_total',
-      ]);
-      if (typeof fields.name !== 'string') throw new Error(`/meets/package.year_bests[${index}] has invalid name`);
-      // Same numeric policy as `mapApiYearBests`: 0 for a missing or mistyped best.
-      byName[fields.name] = {
-        best_snatch: toFiniteNumber(fields.best_snatch),
-        best_cj: toFiniteNumber(fields.best_cj),
-        best_total: toFiniteNumber(fields.best_total),
-      };
-    });
+    const rows = assertArray<unknown>(pkg.year_bests, '/meets/package.year_bests');
+    for (const { name, bests } of parseNamedBests(rows, '/meets/package.year_bests')) {
+      byName[name] = bests;
+    }
     const { year_bests: _wire, ...rest } = pkg;
     return { status: 'fresh', etag: answer.etag, package: { ...rest, year_bests_by_name: byName } as ApiMeetPackage };
   }
@@ -1736,4 +1784,153 @@ export async function patchAutoUnsavePreference(
     throw new Error('/users/me/preferences/auto-unsave.auto_unsave_started_sessions expected a boolean');
   }
   return { auto_unsave_started_sessions: row.auto_unsave_started_sessions };
+}
+
+/**
+ * Asks the server to check the signed-in user's subscription with RevenueCat
+ * now (`entitlements:refresh`), so premium reads work right after a purchase
+ * and for subscribers the server has not heard about yet. Answers whether the
+ * server found it active.
+ */
+export async function refreshServerEntitlement(token: string): Promise<{ active: boolean }> {
+  const authToken = requireToken(token, 'refreshServerEntitlement');
+  const row = assertHasFields(
+    await userCall('/users/me/entitlement', 'entitlements:refresh', 'action', authToken),
+    '/users/me/entitlement',
+    ['active'],
+  );
+  if (typeof row.active !== 'boolean') throw new Error('/users/me/entitlement.active expected a boolean');
+  return { active: row.active };
+}
+
+/**
+ * The shared access pass premium reads carry (`accessPass:pass`), for a signed-in
+ * subscriber. A 403 means the server knows of no active subscription.
+ */
+export async function fetchAccessPass(token: string): Promise<AccessPass> {
+  const authToken = requireToken(token, 'fetchAccessPass');
+  const row = assertHasFields(await userCall('/access-pass', 'accessPass:pass', 'query', authToken), '/access-pass', ['pass', 'rotatesAt']);
+  if (typeof row.pass !== 'string' || row.pass.length === 0) throw new Error('/access-pass.pass expected a non-empty string');
+  if (typeof row.rotatesAt !== 'number' || !Number.isFinite(row.rotatesAt)) throw new Error('/access-pass.rotatesAt expected a number');
+  return { pass: row.pass, rotatesAt: row.rotatesAt };
+}
+
+/** A MeetCal-issued sign-in token (`apiTokens:issue`): the JWT, its id, and when it expires (ms). */
+export type IssuedApiToken = { token: string; tokenId: string; expiresAt: number };
+
+/**
+ * A new 90-day MeetCal-issued token for Siri's App Intents
+ * (`apiTokens:issue` with `{ client: "siri" }`), for the user whose Clerk
+ * session token this is (`lib/siri-token.ts`).
+ */
+export async function issueSiriToken(token: string): Promise<IssuedApiToken> {
+  const authToken = requireToken(token, 'issueSiriToken');
+  const row = assertHasFields(
+    await userCall('/api-tokens', 'apiTokens:issue', 'action', authToken, { client: 'siri' }),
+    '/api-tokens',
+    ['token', 'tokenId', 'expiresAt'],
+  );
+  if (typeof row.token !== 'string' || row.token.length === 0) throw new Error('/api-tokens.token expected a non-empty string');
+  if (typeof row.tokenId !== 'string' || row.tokenId.length === 0) throw new Error('/api-tokens.tokenId expected a non-empty string');
+  if (typeof row.expiresAt !== 'number' || !Number.isFinite(row.expiresAt)) throw new Error('/api-tokens.expiresAt expected a number');
+  return { token: row.token, tokenId: row.tokenId, expiresAt: row.expiresAt };
+}
+
+/**
+ * Ends a MeetCal-issued token (`apiTokens:revoke`). Called with that token,
+ * ends it whatever `tokenId` says; called with a Clerk session token, ends
+ * the user's token `tokenId`. Ending a token already gone is not an error.
+ */
+export async function revokeApiToken(token: string, tokenId?: string): Promise<void> {
+  const authToken = requireToken(token, 'revokeApiToken');
+  await userCall('/api-tokens/revoke', 'apiTokens:revoke', 'mutation', authToken, tokenId === undefined ? {} : { tokenId });
+}
+
+/** `results:wrapped`'s answer (`convex/lib/wrapped.ts`), checked. */
+export type ApiWrappedStats = {
+  totalWeightLifted: number;
+  totalMeets: number;
+  makePercentage: number;
+  bestSnatch: number;
+  bestCleanJerk: number;
+  bestTotal: number;
+  averageTotal: number;
+  topMeet: string | null;
+  improvementFromFirst: number | null;
+  longestMakeStreak: number;
+  favoriteAttempt: 1 | 2 | 3 | null;
+  yearRank: string;
+};
+
+export type ApiWrappedAnswer =
+  | { kind: 'athlete'; name: string; stats: ApiWrappedStats }
+  | { kind: 'ambiguous'; names: string[]; truncated: boolean }
+  | { kind: 'narrow' }
+  | { kind: 'tooManyResults'; name: string }
+  | { kind: 'none'; suggestions: string[] };
+
+function finiteNumber(value: unknown, label: string): number {
+  if (typeof value !== 'number' || !Number.isFinite(value)) throw new Error(`${label} expected a number`);
+  return value;
+}
+
+function mapWrappedStats(value: unknown): ApiWrappedStats {
+  const stats = assertHasFields(value, '/wrapped.stats', [
+    'totalWeightLifted',
+    'totalMeets',
+    'makePercentage',
+    'bestSnatch',
+    'bestCleanJerk',
+    'bestTotal',
+    'averageTotal',
+    'topMeet',
+    'improvementFromFirst',
+    'longestMakeStreak',
+    'favoriteAttempt',
+    'yearRank',
+  ]);
+  const num = (key: string) => finiteNumber(stats[key], `/wrapped.stats.${key}`);
+  const favorite = stats.favoriteAttempt;
+  if (favorite !== null && favorite !== 1 && favorite !== 2 && favorite !== 3) throw new Error('/wrapped.stats.favoriteAttempt expected 1, 2, 3 or null');
+  if (stats.topMeet !== null && typeof stats.topMeet !== 'string') throw new Error('/wrapped.stats.topMeet expected a string or null');
+  if (typeof stats.yearRank !== 'string') throw new Error('/wrapped.stats.yearRank expected a string');
+  return {
+    totalWeightLifted: num('totalWeightLifted'),
+    totalMeets: num('totalMeets'),
+    makePercentage: num('makePercentage'),
+    bestSnatch: num('bestSnatch'),
+    bestCleanJerk: num('bestCleanJerk'),
+    bestTotal: num('bestTotal'),
+    averageTotal: num('averageTotal'),
+    topMeet: stats.topMeet,
+    improvementFromFirst: stats.improvementFromFirst === null ? null : num('improvementFromFirst'),
+    longestMakeStreak: num('longestMakeStreak'),
+    favoriteAttempt: favorite,
+    yearRank: stats.yearRank,
+  };
+}
+
+/**
+ * Weightlifting Wrapped for `query`'s calendar `year`, scored on the server
+ * (`results:wrapped`): free and public, so it sends no access pass. `picked`
+ * (a name chosen from an `ambiguous` answer) takes only that exact name.
+ */
+export async function fetchWrapped(query: string, year: number, picked = false): Promise<ApiWrappedAnswer> {
+  const answer = assertHasFields(await readQuery('/wrapped', 'results:wrapped', { query, year, picked: picked || undefined }), '/wrapped', ['kind']);
+  switch (answer.kind) {
+    case 'athlete':
+      if (typeof answer.name !== 'string') throw new Error('/wrapped.name expected a string');
+      return { kind: 'athlete', name: answer.name, stats: mapWrappedStats(answer.stats) };
+    case 'ambiguous':
+      return { kind: 'ambiguous', names: assertStringArray(answer.names, '/wrapped.names'), truncated: answer.truncated === true };
+    case 'narrow':
+      return { kind: 'narrow' };
+    case 'tooManyResults':
+      if (typeof answer.name !== 'string') throw new Error('/wrapped.name expected a string');
+      return { kind: 'tooManyResults', name: answer.name };
+    case 'none':
+      return { kind: 'none', suggestions: answer.suggestions === undefined ? [] : assertStringArray(answer.suggestions, '/wrapped.suggestions') };
+    default:
+      throw new Error(`/wrapped returned an unknown kind ${JSON.stringify(answer.kind)}`);
+  }
 }

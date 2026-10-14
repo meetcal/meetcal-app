@@ -104,7 +104,7 @@ function calculateAverageIncrease(
  * non-zero number was taken, a positive number was made.
  *
  * This is deliberately a different measurement from
- * `lib/wrapped-stats.ts`'s `makePercentage`, not a disagreeing definition of
+ * Wrapped's `makePercentage` (`convex/lib/wrapped.ts`), not a disagreeing definition of
  * the same one. Wrapped scores all six attempts of a calendar year to tell the
  * athlete how consistent they were. Here we are predicting the opener we are
  * about to print, so second and third attempts — which are *chosen in reaction
@@ -256,13 +256,20 @@ export function calculateEstimates(
     cjMakeRate: number;
   }[] = [];
 
+  // Each in-window row keyed once, in order, rather than every row keyed
+  // again for every athlete (athletes x rows `normalizeAthleteName` calls).
+  const historyByName = new Map<string, SupabaseLiftResult[]>();
+  for (const result of athleteResults) {
+    if (normalizeDate(result.date) < historyCutoffDate) continue;
+    const key = normalizeAthleteName(result.name);
+    const rows = historyByName.get(key);
+    if (rows) rows.push(result);
+    else historyByName.set(key, [result]);
+  }
+
   for (const athlete of athletes) {
-    const normalizedAthleteName = normalizeAthleteName(athlete.name);
-    const athleteHistory = athleteResults.filter(
-      result =>
-        normalizeAthleteName(result.name) === normalizedAthleteName &&
-        normalizeDate(result.date) >= historyCutoffDate
-    );
+    // A copy: two entries with one name must not share (and mutate) one array.
+    const athleteHistory = [...(historyByName.get(normalizeAthleteName(athlete.name)) ?? [])];
 
     const bestSnatchCandidates = athleteHistory
       .map((r) => getSnatchBest(r))

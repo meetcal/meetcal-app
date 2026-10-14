@@ -12,6 +12,7 @@ static NSString *const MeetCalSavedSessionsKey = @"savedSessions";
 static NSString *const MeetCalQualifyingTotalsKey = @"qualifyingTotalsWidgetData";
 static NSString *const MeetCalStandardsKey = @"standardsWidgetData";
 static NSString *const MeetCalIntlRankingsKey = @"intlRankingsWidgetData";
+static NSString *const MeetCalEntitlementHintKey = @"premiumEntitlementHint";
 
 // `MeetCalWidgetReloader` (MeetCalWidgetReloader.swift) wraps WidgetCenter,
 // which is Swift-only. Looked up at runtime so this file does not depend on
@@ -113,6 +114,22 @@ RCT_EXPORT_METHOD(updateDataWidgets:(NSString *)payloadsJson) {
 
   [shared synchronize];
   MeetCalReloadWidgetTimelines();
+}
+
+// The app's last known premium entitlement, read by the App Intents
+// (`MeetCalShared.hasPremiumEntitlementHint`) so Siri gates premium answers
+// the way the app does. JS writes it only once RevenueCat (or its cache) has
+// answered; an absent key reads as not subscribed. No widget reads it: the
+// data widgets get "subscribe" payloads from JS instead.
+RCT_EXPORT_METHOD(updateEntitlementHint:(BOOL)isSubscribed) {
+  NSUserDefaults *shared = [[NSUserDefaults alloc] initWithSuiteName:MeetCalAppGroupIdentifier];
+  if (!shared) {
+    RCTLogWarn(@"[SavedWidget] Could not access app group");
+    return;
+  }
+
+  [shared setBool:isSubscribed forKey:MeetCalEntitlementHintKey];
+  [shared synchronize];
 }
 
 // Clears only the saved-sessions widget (the signed-in user's data). The data

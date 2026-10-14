@@ -148,8 +148,8 @@ describe('scraped meet values', () => {
     expect(await completedAt(Date.UTC(2026, 9, 12, 12), meets)).toEqual(['New York meet', 'No zone', 'Bad zone']);
   });
 
-  // A completed meet no longer stays completed: the status follows the dates
-  // (#180, `lib/meetStatus.ts`); ingestWritePath covers one reopened.
+  // A completed meet stays completed whatever its dates (`nextMeetStatus`);
+  // ingestWritePath covers the syncs and the hourly job.
 
   describe('a meet scraped without an address', () => {
     const { venueName: _n, venueStreet: _s, venueCity: _c, venueState: _st, venueZip: _z, timeZone: _tz, ...noVenue } = scraped;
