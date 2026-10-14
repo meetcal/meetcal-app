@@ -39,6 +39,7 @@ describe('planChecks', () => {
       'package.json',
       'bun.lock',
       'app.config.js',
+      'fingerprint.config.js',
       'jest.setup.js',
       'eslint.config.js',
       'scripts/usamw-results.ts',
