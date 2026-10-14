@@ -19,7 +19,7 @@ import {
   rowSinclair,
   sinclair,
 } from '../convex/lib/leaderboard';
-import { LEADERBOARD_PAGE_SIZE, leaderboard, leaderboardPage, type LeaderboardAnswer } from '../convex/results';
+import { LEADERBOARD_MAX_PAGES, LEADERBOARD_PAGE_SIZE, leaderboard, leaderboardPage, type LeaderboardAnswer } from '../convex/results';
 import { fakeDb, handlerOf } from './fakeDb';
 
 /**
@@ -408,6 +408,16 @@ describe('results:leaderboard', () => {
     expect(runQuery.mock.calls.map(([ref]) => getFunctionName(ref as never))).toEqual(['accessPass:passes', 'accessPass:passes']);
     expect(await statusOf(run(ctx, { pass: 'today' }))).toBe('ok');
     expect(await statusOf(run(actionCtx({}).ctx, { pass: 'today' }))).toBe(403);
+  });
+
+  it('gives up (500) on a month that never finishes paging, after LEADERBOARD_MAX_PAGES pages', async () => {
+    const runQuery = jest.fn(async (ref: unknown) =>
+      getFunctionName(ref as never) === 'accessPass:passes'
+        ? { current: 'today', previous: null }
+        : { bests: [], federations: [], isDone: false, continueCursor: 'more' },
+    );
+    expect(await statusOf(run({ runQuery }, { pass: 'today', from: '2026-03-01', to: '2026-03-31' }))).toBe(500);
+    expect(runQuery).toHaveBeenCalledTimes(1 + LEADERBOARD_MAX_PAGES);
   });
 
   it('refuses bad arguments with 400', async () => {

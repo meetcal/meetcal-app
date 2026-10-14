@@ -171,14 +171,18 @@ export const leaderboard = action({
     checkPass('results:leaderboard', pass, await ctx.runQuery(internal.accessPass.passes, {}));
     const { from, to, by, limit, filters } = checkLeaderboardArgs(args);
     const slices = monthSlices(from, to);
-    const bySlice: Candidate[][][] = slices.map(() => []);
+    // Merged as pages arrive, so memory holds one row per athlete. Slices finish in any order,
+    // but that cannot change the answer: rows from different months differ in date, which
+    // `mergeBests` breaks ties by, and a month's own pages are merged in date order, so a full
+    // tie keeps the row read first, as one pass over the rows would.
+    const best = new Map<string, Candidate>();
     const federations = new Set<string>();
     const readSlice = async (index: number) => {
       const [start, end] = slices[index];
       let cursor: string | null = null;
       for (let pages = 0; pages < LEADERBOARD_MAX_PAGES; pages++) {
         const page: LeaderboardPage = await ctx.runQuery(internal.results.leaderboardPage, { start, end, cursor, by, filters });
-        bySlice[index].push(page.bests);
+        mergeBests(best, page.bests);
         for (const federation of page.federations) federations.add(federation);
         if (page.isDone) return;
         cursor = page.continueCursor;
@@ -190,9 +194,6 @@ export const leaderboard = action({
       while (next < slices.length) await readSlice(next++);
     };
     await Promise.all(Array.from({ length: Math.min(LEADERBOARD_CONCURRENCY, slices.length) }, worker));
-    // In date order, so a full tie keeps the earliest-read row, as one pass over the rows would.
-    const best = new Map<string, Candidate>();
-    for (const pages of bySlice) for (const bests of pages) mergeBests(best, bests);
     return {
       rows: rankBests(best.values(), limit).map(leaderboardRow),
       federations: [...federations].filter((federation) => federation.trim() !== '').sort(compareBytes),
