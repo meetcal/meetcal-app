@@ -6,7 +6,7 @@ The repository root's `AGENTS.md` applies here too: its hard rules (worktrees, n
 
 ## Differences from the root
 
-- The toolchain is Cargo (and `just`, see `Justfile`), not Bun. The root's `mise run check` runs this folder's `cargo fmt --check`, clippy and tests (as CI does) when the branch changes `cli/`, one worktree at a time; [Verify](#verify) lists the rest.
+- The toolchain is Cargo and mise (`mise.toml` in this folder), not Bun. The root's `mise run check` runs this folder's `cargo fmt --check`, clippy and tests (as CI does) when the branch changes `cli/`, one worktree at a time; [Verify](#verify) lists the rest.
 - Publishing a release (a `cli-v*` tag) and updating the Homebrew tap are external actions: do them only when the task asks for a release. [docs/releasing.md](docs/releasing.md) has the steps.
 - A change to a Convex query in `../convex/` can change what a command prints. The CLI CI runs on changes to `convex/` for that reason; when you change a query's answer, check the commands that read it (`src/commands/`).
 
@@ -37,17 +37,17 @@ Run from this folder.
 |---|---|
 | Run a command | `cargo run -- <command> [args]`, e.g. `cargo run -- search "Maddisen Mohnsen"` |
 | Against the dev deployment | `MEETCAL_CONVEX_URL=https://utmost-retriever-826.convex.cloud cargo run -- <command>` |
-| Lint | `just lint` (`cargo fmt --check` + `clippy -D warnings`) |
+| Lint | `mise run lint` (`cargo fmt --check` + `clippy -D warnings`) |
 | Tests | `cargo test` |
-| Full gate | `just check-all` |
+| Full gate | `mise run check-all` |
 | Release build | `cargo build --release` |
-| Dependency audit | `just audit` |
+| Dependency audit | `mise run audit` |
 
 ## Verify
 
 | Gate | Command | Pass when |
 |---|---|---|
-| Format, lint, tests | `just check-all` | Exit 0 |
+| Format, lint, tests | `mise run check-all` | Exit 0 |
 | Local run of every new or changed command | See below | Every one exits 0 with the expected output in all three formats |
 
 **Before opening or updating a PR, run every command that is new or that the change touches, locally, against a real deployment** (production for reads, or the dev deployment with `MEETCAL_CONVEX_URL`). "Touches" includes commands that share code you changed: a change to `utils/output.rs`, `utils/backend.rs`, `utils/stats.rs` or a shared report module (`group_wrapped.rs`, `wso_results.rs`) means every command using it. For each command:

@@ -10,6 +10,32 @@
 - Q-points follow the published formula (Huebner, Meltzer, Bjarnason and Perperoglou, 2023): for
   juniors, seniors and Masters, not youth divisions; lifters under 50 kg (men) or 41 kg (women)
   are scored at that bodyweight.
+- JSON and CSV exports have a fixed schema: CSV writes the values JSON gets (empty fields for
+  placeholders, `true`/`false`, numbers without their unit), and `meet` always has the three
+  past-year best columns, null with `--no-bests`.
+- Tables fit the terminal, and piping into a command that closes early (`| head`) no longer panics.
+- A bad name or filter says why instead of printing an empty table; `progress --since` past the
+  last result says so, and its trend's Meets column counts meets, not result rows.
+- `records` and `wso-records` show a lift with no record set, and a missing standard, as a dash
+  rather than 0, and keep classes with one unset lift.
+- `leaderboard` and `results` read a date range in parallel slices, and clear the progress line when
+  they fail.
+- Rankings, trends, `wrapped` and `wso` agree with the app and server: source-error rows,
+  mixed-gender scores and British Weightlifting results stay out of USA rankings; medals place one
+  result per athlete per division, as the server does; a bomb-out sets a zero mark, so the next made
+  lift is a PR; make rates and weight lifted count one best result per athlete.
+- `qualify` counts only USAW results at a plausible bodyweight, and maps a retired class to the
+  current one by the bodyweight the total was made at.
+- Each year of a meet that keeps its name is its own edition (`attendance`, trends, `meet-results`);
+  upcoming registrations get their own edition, and names match across composed and decomposed
+  accents.
+- A combined national event's results show under every title it publishes, and are counted once in
+  trends, attendance and WSO results.
+- `wrapped` and `compare` refuse a year the search cut short and point to `progress --since`; club
+  and WSO athlete lists are paged, so a large club no longer fails.
+- Linux binaries are built against glibc 2.17, so they run on older distributions (Ubuntu 22.04,
+  Debian 11 and 12, RHEL 9, Amazon Linux 2023), and the dependencies carry no open RustSec
+  advisories.
 
 ## 2.3.0
 
