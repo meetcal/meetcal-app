@@ -1,5 +1,7 @@
 import { useAppColors } from "@/hooks/useAppColors";
 import { useOTAUpdates } from "@/hooks/useOTAUpdates";
+import { splashGate } from "@/lib/startup-splash";
+import { useEffect } from "react";
 import {
   ActivityIndicator,
   Modal,
@@ -28,6 +30,11 @@ export function UpdateNotification() {
   const screenInsets = useScreenHorizontalInsets();
 
   const visible = isUpdateAvailable || !!error;
+
+  // A launch's splash must not sit on top of this dialog.
+  useEffect(() => {
+    if (visible) splashGate.showOverlay();
+  }, [visible]);
 
   if (!visible) {
     return null;

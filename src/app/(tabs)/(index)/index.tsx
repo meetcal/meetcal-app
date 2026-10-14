@@ -41,6 +41,7 @@ import { useAppColors } from "@/hooks/useAppColors";
 import { useIsOffline } from "@/hooks/useIsOffline";
 import { usePaginatedSchedule } from "@/hooks/usePaginatedSchedule";
 import { useScheduleData } from "@/hooks/useScheduleData";
+import { useStartupScreenReport } from "@/hooks/useStartupScreenReport";
 import { useUpcomingMeets } from "@/hooks/useUpcomingMeets";
 import { initStore } from "@/lib/database/offline-store";
 import { isMaestroE2E } from "@/lib/e2e";
@@ -119,9 +120,24 @@ export default function ScheduleScreen() {
     isRefreshing,
     loadError,
     initialScrollIndex,
+    source: scheduleSource,
     refreshSchedule,
   } = useScheduleData(selectedMeet, meetDetails?.time.timeZoneIdentifier);
   const scheduleFailure = loadError ? loadFailureCopy("schedule", isOffline) : null;
+
+  // Tells the startup timing (and the splash) what this launch's first screen was.
+  const onScheduleLayout = useStartupScreenReport(
+    {
+      onboardingShowing: onboardingStatus === "showing",
+      meetsLoading: isMeetLoading,
+      hasMeet: !!selectedMeet && !!meetDetails,
+      scheduleLoading: isLoading,
+      changingMeet: isChangingMeet,
+      scheduleDays: schedule.length,
+      loadFailed: scheduleFailure !== null,
+    },
+    scheduleSource,
+  );
 
   const { upcomingMeets } = useUpcomingMeets({ availableMeets });
   const { savedSessions } = useSavedSessions();
@@ -558,6 +574,7 @@ export default function ScheduleScreen() {
             onViewableItemsChanged={onViewableItemsChanged}
             viewabilityConfig={viewabilityConfig}
             onMomentumScrollEnd={onMomentumScrollEnd}
+            onLayout={onScheduleLayout}
           />
 
           {schedule.length > 0 && (

@@ -3,6 +3,11 @@ import { act, create } from "react-test-renderer";
 
 import type { Schedule } from "@/types/schedule";
 import { useScheduleData } from "@/hooks/useScheduleData";
+import {
+  primeScheduleCache,
+  resetSchedulePrimeForTests,
+  scheduleResource,
+} from "@/lib/database/schedule-resource";
 
 const mockGetMeetSchedule = jest.fn<Promise<Schedule>, [string]>();
 const mockSaveMeetSchedule = jest.fn<Promise<void>, [string, Schedule]>();
@@ -14,6 +19,7 @@ jest.mock("@/lib/database/offline-store", () => ({
   saveMeetSchedule: (meet: string, schedule: unknown) =>
     mockSaveMeetSchedule(meet, schedule as never),
   clearMeetSchedule: (meet: string) => mockClearMeetSchedule(meet),
+  getMeetWriteGeneration: () => 0,
 }));
 
 jest.mock("@/lib/database/queries", () => ({
@@ -58,12 +64,73 @@ function Harness({ meet }: { meet: string }) {
   return null;
 }
 
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((r) => {
+    resolve = r;
+  });
+  return { promise, resolve };
+}
+
 describe("useScheduleData", () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    resetSchedulePrimeForTests();
     captured = null;
     mockSaveMeetSchedule.mockResolvedValue(undefined);
     mockClearMeetSchedule.mockResolvedValue(undefined);
+  });
+
+  it("paints a primed schedule from the cache without reading the store again", async () => {
+    mockGetMeetSchedule.mockResolvedValue([DAY]);
+    const fresh = deferred<Schedule>();
+    mockFetchSchedule.mockReturnValue(fresh.promise);
+    primeScheduleCache("Primed Meet");
+
+    let tree!: ReturnType<typeof create>;
+    act(() => {
+      tree = create(<Harness meet="Primed Meet" />);
+    });
+    await flush();
+
+    expect(captured?.schedule).toEqual([DAY]);
+    expect(captured?.source).toBe("cache");
+    expect(captured?.isLoading).toBe(false);
+    expect(mockGetMeetSchedule).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      fresh.resolve([DAY]);
+    });
+    act(() => {
+      tree.unmount();
+    });
+  });
+
+  it("keeps a network answer published before the primed read lands", async () => {
+    const primed = deferred<Schedule>();
+    mockGetMeetSchedule.mockReturnValueOnce(primed.promise);
+    const NEW_DAY = { ...DAY, date: "June 21, 2099", fullDate: "2099-06-21" } as Schedule[number];
+    mockFetchSchedule.mockResolvedValue([NEW_DAY]);
+    mockGetMeetSchedule.mockResolvedValue([]);
+    primeScheduleCache("Racing Meet");
+
+    let tree!: ReturnType<typeof create>;
+    act(() => {
+      tree = create(<Harness meet="Racing Meet" />);
+    });
+    // Another screen's request answers while the disk read is still running.
+    await act(async () => {
+      await scheduleResource.revalidateWithCached(null, "Racing Meet" as never);
+    });
+    primed.resolve([DAY]);
+    await flush();
+
+    expect(captured?.schedule).toEqual([NEW_DAY]);
+    expect(captured?.source).toBe("network");
+
+    act(() => {
+      tree.unmount();
+    });
   });
 
   it("fetches the selected meet's schedule", async () => {

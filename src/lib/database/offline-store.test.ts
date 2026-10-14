@@ -16,8 +16,10 @@ import {
   listStoredMeets,
   getExplicitlyDownloadedMeetIds,
   getMeetData,
+  getMeetAthletesSyncedAt,
   getMeetLiftingResults,
   getMeetSchedule,
+  getMeetWriteGeneration,
   getSessionAthletesFromMeetCache,
   hasMeetEnded,
   initStore,
@@ -532,6 +534,60 @@ describe("roster freshness stamp", () => {
     const meetData = await getMeetData("Test Meet" as any);
     expect(meetData.lastSyncTime).toBe(9_000);
     expect(meetData.athletesSyncedAt).toBe(1_000);
+    // The index alone answers it, for the deferred launch warm-up.
+    await expect(getMeetAthletesSyncedAt("Test Meet")).resolves.toBe(1_000);
+    await expect(getMeetAthletesSyncedAt("Other Meet")).resolves.toBe(0);
+  });
+});
+
+describe("meet write generation", () => {
+  beforeEach(async () => {
+    mockStorage.clear();
+    await initStore();
+  });
+
+  const schedule = [
+    {
+      date: "2026-06-20",
+      fullDate: "2026-06-20",
+      sessions: [{ id: "s1", number: 1, startTime: "10:00 AM", weighInTime: "8:00 AM", platforms: [] }],
+    },
+  ] as any;
+
+  it("changes when a write to the meet is queued and again when it lands", async () => {
+    const before = getMeetWriteGeneration("Gen Meet");
+    const saving = saveMeetSchedule("Gen Meet", schedule);
+    const queued = getMeetWriteGeneration("Gen Meet");
+    expect(queued).not.toBe(before);
+
+    await saving;
+    await Promise.resolve();
+    expect(getMeetWriteGeneration("Gen Meet")).not.toBe(queued);
+  });
+
+  it("changes for clears and roster writes, and only for that meet", async () => {
+    const other = getMeetWriteGeneration("Other Meet");
+    let last = getMeetWriteGeneration("Gen Meet");
+    for (const write of [
+      () => saveMeetAthletes("Gen Meet", [{ name: "A", meet: "Gen Meet" }] as any),
+      () => clearMeetData("Gen Meet" as any),
+    ]) {
+      await write();
+      await Promise.resolve();
+      const next = getMeetWriteGeneration("Gen Meet");
+      expect(next).not.toBe(last);
+      last = next;
+    }
+    expect(getMeetWriteGeneration("Other Meet")).toBe(other);
+  });
+
+  it("is left alone by reads", async () => {
+    await saveMeetSchedule("Gen Meet", schedule);
+    await Promise.resolve();
+    const settled = getMeetWriteGeneration("Gen Meet");
+    await getMeetSchedule("Gen Meet");
+    await getMeetData("Gen Meet" as any);
+    expect(getMeetWriteGeneration("Gen Meet")).toBe(settled);
   });
 });
 

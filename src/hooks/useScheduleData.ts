@@ -4,6 +4,7 @@ import { Schedule } from "@/types/schedule";
 import { calculateInitialPage } from "@/utils/dateTime";
 import { scheduleResource } from "@/lib/database/schedule-resource";
 import { useMutableResource } from "@/hooks/useMutableResource";
+import type { ResourceSource } from "@/lib/data/mutable-resource";
 
 interface UseScheduleDataReturn {
   schedule: Schedule;
@@ -18,6 +19,8 @@ interface UseScheduleDataReturn {
   /** A revalidate that failed on top of a cached schedule (still shown). */
   refreshError: string | null;
   initialScrollIndex: number;
+  /** Where the schedule shown came from: the offline copy or the network. */
+  source: ResourceSource | null;
   refreshSchedule: () => Promise<void>;
 }
 
@@ -41,6 +44,7 @@ export function useScheduleData(
     refreshError,
     isInitialLoading,
     isRefreshing,
+    source,
     refresh,
   } = useMutableResource({
     resource: scheduleResource,
@@ -69,6 +73,7 @@ export function useScheduleData(
     loadError: schedule.length === 0 ? (error ?? refreshError) : null,
     refreshError,
     initialScrollIndex,
+    source,
     refreshSchedule,
   };
 }

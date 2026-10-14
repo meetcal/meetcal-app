@@ -830,7 +830,26 @@ const storeWrites = createWriteChain();
  * of the clear, leaving the meet on screen with nothing stored. Now the save
  * runs after the clear, and a clear after an in-flight save.
  */
-const meetDataWrites = createKeyedWriteChain();
+const meetDataWriteChain = createKeyedWriteChain();
+
+/**
+ * Counts writes to each meet's keys, bumped when a write is queued and again
+ * when it settles, so a read that overlapped a write in any way can tell
+ * (`getMeetWriteGeneration`).
+ */
+const meetWriteGenerations = new Map<string, number>();
+
+function bumpMeetWriteGeneration(meetId: string): void {
+  meetWriteGenerations.set(meetId, (meetWriteGenerations.get(meetId) ?? 0) + 1);
+}
+
+function meetDataWrites<T>(meetId: string, task: () => Promise<T>): Promise<T> {
+  bumpMeetWriteGeneration(meetId);
+  const run = meetDataWriteChain(meetId, task);
+  const settle = () => bumpMeetWriteGeneration(meetId);
+  run.then(settle, settle);
+  return run;
+}
 
 function emptyMeetEntry(meetId: string): MeetData {
   return {
@@ -1551,6 +1570,27 @@ export async function getMeetSchedule(meetId: string): Promise<Schedule> {
   } catch (error) {
     console.error('Error getting meet schedule:', error);
     return [];
+  }
+}
+
+/**
+ * A counter that changes whenever a write to the meet's keys (schedule,
+ * roster, results, a clear) is queued or settles. A read that started and
+ * ended under the same value overlapped no write.
+ */
+export function getMeetWriteGeneration(meetId: string): number {
+  return meetWriteGenerations.get(meetId) ?? 0;
+}
+
+/**
+ * When the meet's roster was last stored (`saveMeetAthletes`), or 0. Reads
+ * the index only, not the roster.
+ */
+export async function getMeetAthletesSyncedAt(meetId: string): Promise<number> {
+  try {
+    return (await getStore()).meets[meetId]?.athletesSyncedAt ?? 0;
+  } catch {
+    return 0;
   }
 }
 

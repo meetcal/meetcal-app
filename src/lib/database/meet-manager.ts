@@ -1,12 +1,13 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { MeetName, Meet } from '@/data/types/meet';
 import type { SupabaseBests, SupabaseLiftResult } from '@/data/types/athletes';
-import { normalizeAthleteName } from '@/lib/athletes';
+import { isSnapshotFresh, normalizeAthleteName } from '@/lib/athletes';
 import {
   clearImplicitMeetData,
   clearMeetData,
   findAthleteNamesWithoutHistory,
   getExplicitlyDownloadedMeetIds,
+  getMeetAthletesSyncedAt,
   getMeetData,
   getMeetLiftingResults,
   isMeetExplicitlyDownloaded,
@@ -116,6 +117,58 @@ registerInFlightPrefetchSettler(async (meet) => {
 const HISTORY_DOWNLOAD_BATCH_SIZE = NAMES_QUERY_CHUNK_SIZE;
 
 const FULL_PREFETCH_DELAY_MS = 5000;
+
+/**
+ * The launch's roster warm-up (`warmMeetData` with `rosterAfter`) waits for
+ * the first screen, then this long, so the frames right after it (the day
+ * list scrolling to today) are not spent parsing ~0.5 MB of roster.
+ */
+export const ROSTER_PREFETCH_AFTER_FIRST_SCREEN_MS = 300;
+/**
+ * The longest a deferred roster warm-up waits, from the warm-up's start,
+ * whatever the first screen does: a launch stuck on a skeleton, or opened on
+ * another route, still gets its roster.
+ */
+export const ROSTER_PREFETCH_MAX_DEFER_MS = 3000;
+
+/** Releases a deferred roster warm-up early (someone asked for the meet now). */
+const rosterExpediters = new Map<MeetName, () => void>();
+
+/**
+ * Resolves when a deferred roster warm-up may start: `after` settled plus
+ * `ROSTER_PREFETCH_AFTER_FIRST_SCREEN_MS`, `ROSTER_PREFETCH_MAX_DEFER_MS`
+ * from now, or `expedite()`, whichever is first. Every timer is cleared once
+ * it resolves.
+ */
+function rosterTurn(after: Promise<unknown>): { ready: Promise<void>; expedite: () => void } {
+  let released = false;
+  let afterTimer: ReturnType<typeof setTimeout> | null = null;
+  let release!: () => void;
+  const ready = new Promise<void>((resolve) => {
+    release = () => {
+      if (released) return;
+      released = true;
+      clearTimeout(capTimer);
+      if (afterTimer !== null) clearTimeout(afterTimer);
+      resolve();
+    };
+  });
+  const capTimer = setTimeout(release, ROSTER_PREFETCH_MAX_DEFER_MS);
+  const settle = () => {
+    if (released) return;
+    afterTimer = setTimeout(release, ROSTER_PREFETCH_AFTER_FIRST_SCREEN_MS);
+  };
+  after.then(settle, settle);
+  return { ready, expedite: release };
+}
+
+export type WarmMeetOptions = {
+  /**
+   * Hold the roster part until this settles (see `rosterTurn` for the
+   * bounds). The schedule is fetched at once either way.
+   */
+  rosterAfter?: Promise<unknown>;
+};
 
 // When each downloaded meet's athlete history was last fetched in full. The
 // package ETag only covers roster, schedule, results and year bests, so a new
@@ -1380,9 +1433,17 @@ async function prefetchMeetDataUncached(
   }
 }
 
-export async function prefetchCriticalMeetData(meet: MeetName) {
+export async function prefetchCriticalMeetData(meet: MeetName, options: WarmMeetOptions = {}) {
   const inFlight = criticalPrefetchRequests.get(meet);
-  if (inFlight) return inFlight;
+  if (inFlight) {
+    // A caller that wants the meet now (a forced sync) does not wait out a
+    // launch's deferral.
+    if (!options.rosterAfter) rosterExpediters.get(meet)?.();
+    return inFlight;
+  }
+
+  const turn = options.rosterAfter ? rosterTurn(options.rosterAfter) : null;
+  if (turn) rosterExpediters.set(meet, turn.expedite);
 
   const request = (async () => {
     const hasNetwork = await isNetworkAvailable();
@@ -1398,10 +1459,19 @@ export async function prefetchCriticalMeetData(meet: MeetName) {
     // One roster request. `saveMeetAthletes` also writes every per-session
     // cache from it, so the eight extra `/meets/athletes-sessions` calls that
     // used to "warm" the first visible sessions only duplicated this one.
-    const athletesRequest = fetchAthletesWithSession(meet).then(async (athletes) => {
+    const fetchAndSaveRoster = async () => {
+      const athletes = await fetchAthletesWithSession(meet);
       await saveMeetAthletes(meet, athletes);
       return athletes;
-    });
+    };
+    const athletesRequest = turn
+      ? turn.ready.then(async () => {
+          // The Start List fetches the roster itself when opened; one it
+          // stored while this waited is not downloaded again.
+          if (isSnapshotFresh(await getMeetAthletesSyncedAt(meet), Date.now())) return [];
+          return fetchAndSaveRoster();
+        })
+      : fetchAndSaveRoster();
 
     const [scheduleResult, athletesResult] = await Promise.allSettled([
       scheduleRequest,
@@ -1418,14 +1488,24 @@ export async function prefetchCriticalMeetData(meet: MeetName) {
     await cleanupOldMeetData();
   })().finally(() => {
     criticalPrefetchRequests.delete(meet);
+    if (turn) {
+      // Offline, the roster step never ran: its timers go too.
+      turn.expedite();
+      if (rosterExpediters.get(meet) === turn.expedite) rosterExpediters.delete(meet);
+    }
   });
 
   criticalPrefetchRequests.set(meet, request);
   return request;
 }
 
-export function warmMeetData(meet: MeetName): Promise<void> {
-  return prefetchCriticalMeetData(meet).then(async () => {
+/**
+ * Opening a meet: its schedule and roster now (`prefetchCriticalMeetData`),
+ * and for a downloaded meet the full package a little later.
+ * `options.rosterAfter` holds the roster back (the launch's first screen).
+ */
+export function warmMeetData(meet: MeetName, options: WarmMeetOptions = {}): Promise<void> {
+  return prefetchCriticalMeetData(meet, options).then(async () => {
     // The full meet package bundles ~2 years of lifting history for every athlete
     // in the meet. Ingesting it (decode + per-athlete pako compression + storage
     // writes) is memory-heavy, and running it automatically on every meet open is

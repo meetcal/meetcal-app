@@ -15,6 +15,23 @@ import { UNKNOWN_PLATFORM, type LiftResult, type Platform } from '@/data/types/a
 
 const OPTIONAL_SESSION_FIELDS = ['date', 'startTime', 'weighInTime', 'displayDate'];
 
+/**
+ * A cached roster written within this window is taken as current, without
+ * fetching it again. Opening a meet runs `prefetchCriticalMeetData`, which
+ * fetches and saves the roster; the Start List then mounted and fetched it
+ * again, so a single meet open cost two roster downloads (and a deferred
+ * launch warm-up after a Start List fetch would do the same). The check uses
+ * the roster's own write time (`MeetData.athletesSyncedAt`): `lastSyncTime`
+ * is also bumped by every 5-minute schedule sync, which would make a
+ * days-old roster look fresh. Well inside the 5-minute SyncManager cadence,
+ * so nothing goes staler than it already could.
+ */
+export const FRESH_SNAPSHOT_TTL_MS = 60 * 1000;
+
+export function isSnapshotFresh(athletesSyncedAt: number, now: number): boolean {
+  return athletesSyncedAt > 0 && now - athletesSyncedAt < FRESH_SNAPSHOT_TTL_MS;
+}
+
 /** Runtime boundary for persisted/API-mapped athlete rows. */
 export function isLiftResult(value: unknown): value is LiftResult {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
