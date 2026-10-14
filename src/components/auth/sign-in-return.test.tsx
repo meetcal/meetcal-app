@@ -30,7 +30,7 @@ jest.mock("@clerk/expo", () => ({
   useAuth: () => mockAuth,
   useUser: () => ({ user: null, isLoaded: true }),
 }));
-jest.mock("@clerk/expo/native", () => ({ AuthView: () => null }));
+jest.mock("@clerk/expo/native-components", () => ({ AuthView: () => null }));
 
 jest.mock("@/lib/networkUtils", () => ({
   isNetworkAvailable: jest.fn(async () => true),
