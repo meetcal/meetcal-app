@@ -1,7 +1,7 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test } from "@playwright/test";
 import { mockAuth } from "./support/api";
-import { protectedDataRoutes, publicRoutes } from "./support/routes";
+import { protectedDataRoutes, publicRoutes, signedInRoutes } from "./support/routes";
 
 for (const [path, heading] of publicRoutes) {
   test(`${path} renders its primary content`, async ({ page }) => {
@@ -20,6 +20,22 @@ for (const path of protectedDataRoutes) {
     await expect(page.locator("footer.site-footer")).toBeVisible();
     await expect(page.getByRole("heading", { level: 1, name: "Sign in to continue" })).toBeVisible();
     await expect(page.getByRole("button", { name: /choose plan|checkout|purchase/i })).toHaveCount(0);
+  });
+}
+
+for (const [path, heading] of signedInRoutes) {
+  test(`${path} asks a signed-out visitor to sign in, without the subscription gate`, async ({ page }) => {
+    await mockAuth(page, { signedIn: false });
+    await page.goto(path);
+    await expect(page.locator("header.site-header")).toBeVisible();
+    await expect(page.locator("footer.site-footer")).toBeVisible();
+    await expect(page.getByRole("heading", { level: 1, name: heading })).toBeVisible();
+    await expect(page.getByText(/subscription-only/i)).toHaveCount(0);
+  });
+
+  test(`${path} is kept out of the site navigation`, async ({ page }) => {
+    await page.goto("/");
+    await expect(page.locator(`header a[href^="${path}"], footer a[href^="${path}"]`)).toHaveCount(0);
   });
 }
 
@@ -111,6 +127,7 @@ test("routes expose specific titles, descriptions, canonicals, and indexing rule
     ["/privacy", /Privacy Policy/, "index, follow"],
     ["/terms", /Terms of Use/, "index, follow"],
     ["/subscription", /Manage Your MeetCal Subscription/, "noindex, nofollow"],
+    ["/link", /Approve a MeetCal CLI Sign-In/, "noindex, nofollow"],
     ["/qualifying-totals", /Weightlifting Qualifying Totals/, "noindex, nofollow"],
   ] as const;
   for (const [path, title, robots] of expectations) {

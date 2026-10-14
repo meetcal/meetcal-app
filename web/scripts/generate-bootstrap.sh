@@ -98,6 +98,10 @@ render_page "subscription" "/subscription" \
   "Manage Your MeetCal Subscription in the App" \
   "Open MeetCal on iOS or Android to start, change, restore, or cancel your subscription." \
   "noindex, nofollow"
+render_page "link" "/link" \
+  "Approve a MeetCal CLI Sign-In" \
+  "Sign in to approve or deny a MeetCal CLI sign-in request from meetcal login." \
+  "noindex, nofollow"
 
 while IFS='|' read -r output_name path title; do
   render_page "${output_name}" "${path}" "${title}" \

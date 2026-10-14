@@ -1,6 +1,9 @@
+pub mod access;
 pub mod athletes;
 pub mod backend;
 pub mod bests;
+pub mod credentials;
+pub mod device_login;
 pub mod filters;
 pub mod format;
 pub mod make_rate;

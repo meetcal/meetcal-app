@@ -887,6 +887,146 @@ a {
     background: color-mix(in srgb, var(--accent) 8%, var(--card));
 }
 
+/* ---------- CLI sign-in approval (/link) ---------- */
+
+.access-card code {
+    padding: 0.1em 0.35em;
+    border-radius: 6px;
+    background: color-mix(in srgb, var(--text-secondary) 12%, transparent);
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.92em;
+    white-space: nowrap;
+}
+
+.link-details {
+    max-width: 440px;
+    margin: 0 auto 18px;
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    text-align: left;
+}
+
+.link-details div {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--border);
+}
+
+.link-details div:last-child {
+    border-bottom: 0;
+}
+
+.link-details dt {
+    flex: none;
+    color: var(--text-secondary);
+    font-size: 0.85rem;
+    font-weight: 700;
+}
+
+.link-details dd {
+    min-width: 0;
+    margin: 0;
+    font-weight: 700;
+    overflow-wrap: anywhere;
+    text-align: right;
+}
+
+.link-warning {
+    max-width: 440px;
+    margin: 0 auto 24px;
+    padding: 14px 16px;
+    border: 1px solid color-mix(in srgb, #d97706 50%, var(--border));
+    border-radius: 16px;
+    background: color-mix(in srgb, #f59e0b 12%, var(--card));
+    font-size: 0.92rem;
+    text-align: left;
+}
+
+.link-actions {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 12px;
+}
+
+.link-actions .access-button {
+    min-width: 160px;
+    margin-top: 0;
+}
+
+.link-code-form {
+    display: grid;
+    gap: 8px;
+    max-width: 340px;
+    margin: 0 auto;
+    text-align: left;
+}
+
+.link-code-form label {
+    color: var(--text-secondary);
+    font-size: 0.85rem;
+    font-weight: 700;
+}
+
+/* 16px or more, so iOS Safari does not zoom into the field (#391). */
+.link-code-input {
+    width: 100%;
+    min-height: 54px;
+    padding: 0 14px;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    background: var(--card);
+    color: var(--text);
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: max(16px, 1.45rem);
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    text-align: center;
+}
+
+.link-code-input:focus {
+    outline: 2px solid color-mix(in srgb, var(--accent) 45%, transparent);
+    border-color: var(--accent);
+}
+
+.link-code-input[aria-invalid="true"] {
+    border-color: #c53b35;
+}
+
+.link-code-help,
+.link-code-form .access-inline-error {
+    margin: 0;
+    font-size: 0.85rem;
+}
+
+.link-code-help {
+    color: var(--text-secondary);
+}
+
+.link-code-form .access-button {
+    width: 100%;
+    margin-top: 10px;
+}
+
+.link-result .access-button {
+    margin-top: 22px;
+}
+
+.link-result-icon {
+    display: inline-grid;
+    width: 52px;
+    height: 52px;
+    place-items: center;
+    border-radius: 50%;
+    background: color-mix(in srgb, #1f9d55 16%, var(--card));
+    color: #1f9d55;
+    font-size: 1.6rem;
+    font-weight: 800;
+}
+
 @keyframes access-spin {
     to { transform: rotate(360deg); }
 }
@@ -2049,6 +2189,11 @@ main > div:has(> h4) > p {
 
     .mobile-subscription-links,
     .mobile-subscription-links .access-button {
+        width: 100%;
+    }
+
+    .link-actions,
+    .link-actions .access-button {
         width: 100%;
     }
 

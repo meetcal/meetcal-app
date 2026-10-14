@@ -21,3 +21,9 @@ export const protectedDataRoutes = [
   "/wso-dashboard",
   "/wrapped",
 ] as const;
+
+/**
+ * Pages that need a signed-in user but no subscription, with the heading a
+ * signed-out visitor sees. `/link` approves a `meetcal login` from the CLI.
+ */
+export const signedInRoutes = [["/link", "Sign in to continue"]] as const;

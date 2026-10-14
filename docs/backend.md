@@ -88,7 +88,7 @@ The pass is one random value shared by every subscriber (`convex/accessPass.ts`)
 A caller has an active entitlement when their `entitlements` row (`convex/entitlements.ts`) is active and not past `expiresAt`. The row is RevenueCat's answer for the Clerk user id (the app user id RevenueCat knows them by), fetched from RevenueCat's REST API whenever:
 
 - RevenueCat's webhook (`POST /revenuecat/webhook` on the `.convex.site` host) reports any event for the user. Configure it in RevenueCat with every event type and an Authorization header value, and set that value as `REVENUECAT_WEBHOOK_AUTH`. A failure answers 500, so RevenueCat retries.
-- The app or website calls `entitlements:refresh` because `accessPass:pass` answered 403 for a user RevenueCat says subscribes (at most once a minute per user on the server). This covers a purchase before its webhook lands, and lifetime purchases, which never send a renewal.
+- The app, website or CLI calls `entitlements:refresh` because `accessPass:pass` answered 403 for a user RevenueCat says subscribes (at most once a minute per user on the server). This covers a purchase before its webhook lands, and lifetime purchases, which never send a renewal.
 - `npx convex run entitlements:sync '{"userId":"user_…"}'`, for support.
 
 The REST calls need `REVENUECAT_SECRET_API_KEY` (a v1 secret key from RevenueCat's API keys page). A sandbox purchase (TestFlight, a Play license tester, a test card) counts only where `REVENUECAT_COUNT_SANDBOX` is `true`: set it on dev, never on prod. An answer RevenueCat gave before the stored one is dropped, so events handled out of order cannot bring back a stale state. When RevenueCat was last asked, and the refresh throttle, are kept in `entitlement_syncs`, apart from the row `accessPass:pass` reads.
@@ -100,6 +100,14 @@ Clients that cannot hold a Clerk session (the CLI, Siri's App Intents) get the p
 ```sh
 npx convex env set MEETCAL_TOKEN_SIGNING_KEY "$(mise exec -- bun scripts/generate-token-signing-key.ts)"
 ```
+
+The CLI gets its token by device-code login (`convex/deviceLogin.ts`), so it signs in without a browser on its machine (over SSH, on a server, in an agent's sandbox):
+
+1. `meetcal login` calls `deviceLogin:start` and shows a short user code with a link to `https://meetcal.app/link?code=…` (`DEVICE_LOGIN_URL` overrides the page on dev) and a QR code of it.
+2. The user opens the link on any device, signs in with Clerk, sees which device is asking (`deviceLogin:describe`) and approves (`deviceLogin:approve`) or denies it.
+3. The CLI polls `deviceLogin:poll` every 5 seconds with its secret device code and, once approved, gets a 90-day token, once.
+
+A code lasts 10 minutes. Only the device code's hash is stored. Approving needs a Clerk session, not a MeetCal-issued token. At most 500 logins can be in progress at once.
 
 Replacing it ends every MeetCal-issued token. Account deletion also deletes the user's entitlement records and tokens.
 

@@ -13,6 +13,7 @@ import type * as apiTokens from "../apiTokens.js";
 import type * as cronJobs from "../cronJobs.js";
 import type * as cronStatus from "../cronStatus.js";
 import type * as crons from "../crons.js";
+import type * as deviceLogin from "../deviceLogin.js";
 import type * as entitlements from "../entitlements.js";
 import type * as http from "../http.js";
 import type * as ingest from "../ingest.js";
@@ -113,6 +114,7 @@ declare const fullApi: ApiFromModules<{
   cronJobs: typeof cronJobs;
   cronStatus: typeof cronStatus;
   crons: typeof crons;
+  deviceLogin: typeof deviceLogin;
   entitlements: typeof entitlements;
   http: typeof http;
   ingest: typeof ingest;

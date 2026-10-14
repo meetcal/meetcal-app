@@ -1,13 +1,16 @@
 //! The site's one way to read MeetCal data: the Convex queries in `convex/`,
 //! called over Convex's HTTP API (`POST /api/query`), the same queries the app
-//! reads. Every call is a read, so repeating one is safe.
+//! reads. Every call is a read, so repeating one is safe, except the two
+//! mutations `/link` sends to approve or deny a CLI sign-in (`deviceLogin:*`),
+//! which are never repeated by themselves.
 //!
 //! The premium queries (`SUBSCRIPTION_FUNCTIONS`) carry the access pass as
 //! their `pass` argument. Every subscriber holds the same pass, so premium
 //! answers stay in Convex's shared query cache; no query carries the user's
 //! session token, which would make Convex cache each answer per user. Only
-//! `accessPass:pass`, which hands a signed-in subscriber the pass, and the
-//! `entitlements:refresh` action carry the token. For now Convex only logs a
+//! `accessPass:pass`, which hands a signed-in subscriber the pass, the
+//! `entitlements:refresh` action, and the `deviceLogin:*` calls (a user's own
+//! CLI sign-in, never cached for others) carry the token. For now Convex only logs a
 //! premium read without a current pass and still answers it; later it will
 //! refuse it, so a premium read sends the pass whenever the site can get one.
 
@@ -576,16 +579,25 @@ fn is_pass_refused(response: &QueryResponse) -> bool {
     matches!(function_error_status(response), Some(401 | 403))
 }
 
-/// Where a call goes: `/api/query` or `/api/action`.
+/// Where a call goes: `/api/query`, `/api/mutation` or `/api/action`.
 #[derive(Clone, Copy)]
 enum Endpoint {
     Query,
+    Mutation,
     Action,
 }
 
+impl Endpoint {
+    /// Whether a throttled or overloaded response is sent again by itself.
+    /// A mutation is not: the user taps again, seeing what happened first.
+    fn retries(self) -> bool {
+        !matches!(self, Endpoint::Mutation)
+    }
+}
+
 /// Posts `function` with `args` to Convex, with `token` as the bearer token
-/// when given, retrying throttled (429) and overloaded (503) responses, and
-/// returns Convex's answer.
+/// when given, retrying throttled (429) and overloaded (503) responses
+/// (except for a mutation), and returns Convex's answer.
 async fn post(
     endpoint: Endpoint,
     function: &str,
@@ -595,6 +607,7 @@ async fn post(
     let client = reqwest::Client::new();
     let url = match endpoint {
         Endpoint::Query => format!("{}/api/query", convex_url()),
+        Endpoint::Mutation => format!("{}/api/mutation", convex_url()),
         Endpoint::Action => format!("{}/api/action", convex_url()),
     };
     let request = QueryRequest {
@@ -615,7 +628,7 @@ async fn post(
             .map_err(|error| transport_error(function, &error))?;
         let status = response.status();
 
-        if should_retry(status, retries) {
+        if endpoint.retries() && should_retry(status, retries) {
             let retry_after = response
                 .headers()
                 .get(RETRY_AFTER)
@@ -931,6 +944,109 @@ pub(crate) fn forget_access_pass() {
     });
 }
 
+/// The CLI's device-code sign-in (`convex/deviceLogin.ts`): `meetcal login`
+/// shows a code, and the signed-in user approves or denies it on `/link`.
+/// Each call carries the user's Clerk session token; none carries the pass.
+const DEVICE_LOGIN_DESCRIBE: &str = "deviceLogin:describe";
+const DEVICE_LOGIN_APPROVE: &str = "deviceLogin:approve";
+const DEVICE_LOGIN_DENY: &str = "deviceLogin:deny";
+
+/// Clerk had no session token to hand over, or Convex refused the one it did
+/// (401): the user is asked to try again, which fetches a fresh one.
+pub(crate) const SESSION_MESSAGE: &str =
+    "MeetCal couldn't confirm you're signed in; please try again";
+
+/// A login waiting for approval, as `deviceLogin:describe` answers it.
+#[derive(Clone, Debug, PartialEq, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct PendingDeviceLogin {
+    /// What the CLI calls the device (the computer's name, or an agent's).
+    pub device_name: String,
+    /// When the CLI asked (epoch ms).
+    pub created_at: f64,
+    /// When the code stops working (epoch ms).
+    pub expires_at: f64,
+}
+
+/// What approving or denying a code did.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum DeviceLoginOutcome {
+    Done,
+    /// No pending login has the code (404): it expired or was already used.
+    Gone,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct DeviceLoginArgs<'a> {
+    user_code: &'a str,
+}
+
+/// Posts a device-login call for `user_code` with the user's session token.
+async fn post_device_login(
+    endpoint: Endpoint,
+    function: &str,
+    user_code: &str,
+) -> Result<QueryResponse> {
+    let token = crate::auth::session_token()
+        .await
+        .ok_or_else(|| anyhow!(SESSION_MESSAGE))?;
+    let args = serde_json::to_value(DeviceLoginArgs { user_code })
+        .map_err(|error| user_error(function, UNREACHABLE_MESSAGE, error))?;
+    post(endpoint, function, &args, Some(&token)).await
+}
+
+/// The pending login `user_code` names, or `None` when there is none (no such
+/// code, expired, already approved or denied).
+pub(crate) async fn describe_device_login(user_code: &str) -> Result<Option<PendingDeviceLogin>> {
+    let response = post_device_login(Endpoint::Query, DEVICE_LOGIN_DESCRIBE, user_code).await?;
+    read_pending_device_login(response)
+}
+
+/// Approves the pending login `user_code` names: the CLI gets its token.
+pub(crate) async fn approve_device_login(user_code: &str) -> Result<DeviceLoginOutcome> {
+    let response = post_device_login(Endpoint::Mutation, DEVICE_LOGIN_APPROVE, user_code).await?;
+    read_device_login_outcome(DEVICE_LOGIN_APPROVE, response)
+}
+
+/// Denies the pending login `user_code` names; the CLI stops waiting.
+pub(crate) async fn deny_device_login(user_code: &str) -> Result<DeviceLoginOutcome> {
+    let response = post_device_login(Endpoint::Mutation, DEVICE_LOGIN_DENY, user_code).await?;
+    read_device_login_outcome(DEVICE_LOGIN_DENY, response)
+}
+
+/// A device-login function error, or the answer's value.
+fn device_login_value(response: QueryResponse) -> Result<Value> {
+    if function_error_status(&response) == Some(401) {
+        return Err(anyhow!(SESSION_MESSAGE));
+    }
+    answer_value(response)
+}
+
+/// Reads `deviceLogin:describe`'s answer: the pending login, or `null`.
+fn read_pending_device_login(response: QueryResponse) -> Result<Option<PendingDeviceLogin>> {
+    let value = device_login_value(response)?;
+    serde_json::from_value(value)
+        .map_err(|error| user_error(DEVICE_LOGIN_DESCRIBE, UNREADABLE_MESSAGE, error))
+}
+
+/// Reads an approve or deny answer: `{ ok: true }`, or a 404 for a code no
+/// login is waiting on.
+fn read_device_login_outcome(
+    function: &str,
+    response: QueryResponse,
+) -> Result<DeviceLoginOutcome> {
+    if function_error_status(&response) == Some(404) {
+        return Ok(DeviceLoginOutcome::Gone);
+    }
+    let value = device_login_value(response)?;
+    if value.get("ok").and_then(Value::as_bool) == Some(true) {
+        Ok(DeviceLoginOutcome::Done)
+    } else {
+        Err(user_error(function, UNREADABLE_MESSAGE, value))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1143,6 +1259,122 @@ mod tests {
             ))
             .is_err()
         );
+    }
+
+    #[test]
+    fn device_login_calls_send_the_user_code_in_camel_case() {
+        assert_eq!(
+            serde_json::to_value(DeviceLoginArgs {
+                user_code: "WXYZ-BCDF"
+            })
+            .unwrap(),
+            json!({"userCode": "WXYZ-BCDF"})
+        );
+    }
+
+    #[test]
+    fn a_described_login_is_the_pending_one_or_none() {
+        assert_eq!(
+            read_pending_device_login(answer(json!({"status": "success", "value": {
+                "deviceName": "maddisen-laptop",
+                "createdAt": 1_800_000_000_000.0,
+                "expiresAt": 1_800_000_600_000.0
+            }})))
+            .unwrap(),
+            Some(PendingDeviceLogin {
+                device_name: "maddisen-laptop".to_owned(),
+                created_at: 1_800_000_000_000.0,
+                expires_at: 1_800_000_600_000.0,
+            })
+        );
+        assert_eq!(
+            read_pending_device_login(answer(json!({"status": "success", "value": null}))).unwrap(),
+            None
+        );
+    }
+
+    #[test]
+    fn a_malformed_or_refused_description_is_an_error() {
+        for value in [
+            json!({"deviceName": "laptop"}),
+            json!({"deviceName": 3, "createdAt": 1.0, "expiresAt": 2.0}),
+            json!([]),
+            json!("WXYZ-BCDF"),
+        ] {
+            let error =
+                read_pending_device_login(answer(json!({"status": "success", "value": value})))
+                    .unwrap_err();
+            assert_eq!(error.to_string(), UNREADABLE_MESSAGE, "{value}");
+        }
+        let error = read_pending_device_login(answer(json!({
+            "status": "error",
+            "errorMessage": "Server Error",
+            "errorData": {"status": 401.0, "error": "unauthorized"}
+        })))
+        .unwrap_err();
+        assert_eq!(error.to_string(), SESSION_MESSAGE);
+    }
+
+    #[test]
+    fn approving_or_denying_is_done_or_finds_the_code_gone() {
+        let ok = || answer(json!({"status": "success", "value": {"ok": true}}));
+        let missing = || {
+            answer(json!({
+                "status": "error",
+                "errorMessage": "Server Error",
+                "errorData": {"status": 404, "error": "no pending login has that code"}
+            }))
+        };
+        for function in [DEVICE_LOGIN_APPROVE, DEVICE_LOGIN_DENY] {
+            assert_eq!(
+                read_device_login_outcome(function, ok()).unwrap(),
+                DeviceLoginOutcome::Done
+            );
+            assert_eq!(
+                read_device_login_outcome(function, missing()).unwrap(),
+                DeviceLoginOutcome::Gone
+            );
+        }
+
+        let signed_out = answer(json!({
+            "status": "error",
+            "errorMessage": "Server Error",
+            "errorData": {"status": 401, "error": "unauthorized"}
+        }));
+        assert_eq!(
+            read_device_login_outcome(DEVICE_LOGIN_APPROVE, signed_out)
+                .unwrap_err()
+                .to_string(),
+            SESSION_MESSAGE
+        );
+        for value in [json!({"ok": false}), json!({}), json!(null)] {
+            assert_eq!(
+                read_device_login_outcome(
+                    DEVICE_LOGIN_APPROVE,
+                    answer(json!({"status": "success", "value": value}))
+                )
+                .unwrap_err()
+                .to_string(),
+                UNREADABLE_MESSAGE,
+                "{value}"
+            );
+        }
+        assert_eq!(
+            read_device_login_outcome(
+                DEVICE_LOGIN_APPROVE,
+                answer(json!({"status": "error", "errorMessage": "Server Error"}))
+            )
+            .unwrap_err()
+            .to_string(),
+            "MeetCal could not answer: Server Error"
+        );
+    }
+
+    #[test]
+    fn only_mutations_are_not_retried_by_themselves() {
+        assert!(Endpoint::Query.retries());
+        assert!(Endpoint::Action.retries());
+        assert!(!Endpoint::Mutation.retries());
     }
 
     #[test]

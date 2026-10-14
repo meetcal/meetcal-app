@@ -1,5 +1,17 @@
 # Changelog
 
+## Unreleased
+
+- `meetcal login` and `meetcal logout`. `login` signs this machine in to MeetCal with a code you
+  approve on any signed-in device (a link and, in a terminal, a QR code), so it works over SSH, on
+  servers and for AI agents; the login lasts 90 days and is saved in
+  `~/.config/meetcal/credentials.json` (or under `$XDG_CONFIG_HOME`), readable by you alone.
+  `logout` ends it and deletes the file.
+- Commands that read subscriber data (results, rankings, records, standards, club and WSO data)
+  send MeetCal's daily access pass when you are logged in with a subscription. Without a login they
+  work as before for now; once MeetCal requires the pass, they say to run `meetcal login` (or that
+  a subscription is needed). Schedules, start lists and meet lists stay free, with no login.
+
 ## 2.4.0
 
 - Q-points, which USA Weightlifting has used for best lifters since 2025, alongside Sinclair:

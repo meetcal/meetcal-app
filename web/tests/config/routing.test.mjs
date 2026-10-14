@@ -38,6 +38,8 @@ test("canonical URLs, the sitemap and robots.txt name www.meetcal.app", async ()
   const locations = [...sitemap.matchAll(/<loc>([^<]+)<\/loc>/g)].map(([, url]) => url);
   assert.ok(locations.length > 0);
   for (const url of locations) assert.match(url, /^https:\/\/www\.meetcal\.app\//);
+  // `/link` approves a CLI sign-in: noindex, and never listed.
+  assert.ok(!locations.some((url) => url.includes("/link")), "the sitemap lists /link");
 
   const robots = await readFile(new URL("../../public/robots.txt", import.meta.url), "utf8");
   assert.match(robots, /^Sitemap: https:\/\/www\.meetcal\.app\/sitemap\.xml$/m);

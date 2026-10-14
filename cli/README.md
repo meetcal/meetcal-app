@@ -47,6 +47,35 @@ meetcal --help
 meetcal --version
 ```
 
+## Log in
+
+Schedules, start lists and meet lists are free. Results, rankings, records, standards, club and WSO
+data are MeetCal subscriber data: they need a MeetCal subscription and, once MeetCal enforces it, a
+login on each machine that runs `meetcal`.
+
+```sh
+meetcal login
+```
+
+`login` prints a link and a code (and, in a terminal, a QR code of the link). Open the link on any
+device signed in to MeetCal, such as your phone, check the code, and approve. Nothing opens or asks
+on the machine running `meetcal`, so it works over SSH, on a server, or for an AI agent: the agent
+runs `meetcal login` and relays the link, and you approve it. The command waits until the login is
+approved, denied, or the code expires (10 minutes); denied and expired exit non-zero.
+
+The login lasts 90 days and is saved in `~/.config/meetcal/credentials.json`
+(`$XDG_CONFIG_HOME/meetcal/credentials.json` when `XDG_CONFIG_HOME` is set), readable by you alone.
+Logging in again replaces it. Each machine logs in on its own; there is no token environment
+variable. With a login, commands fetch MeetCal's daily access pass once per run and send it with
+subscriber-data reads; the login itself is sent only to get that pass (and to re-check a subscription MeetCal has not heard of yet).
+
+```sh
+meetcal logout
+```
+
+`logout` ends the login on MeetCal's side and deletes the file (the file goes even when MeetCal
+cannot be reached).
+
 ## Commands
 
 Run `meetcal <command> --help` for the complete arguments accepted by any command.

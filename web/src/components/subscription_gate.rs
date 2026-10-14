@@ -261,8 +261,9 @@ pub fn SubscriptionGate(children: ChildrenFn) -> impl IntoView {
     }
 }
 
+/// The centered card the gate and the `/link` page show their states in.
 #[component]
-fn AccessShell(children: Children) -> impl IntoView {
+pub fn AccessShell(children: Children) -> impl IntoView {
     view! {
         <div class="access-page">
             <section class="access-card">{children()}</section>
@@ -270,8 +271,9 @@ fn AccessShell(children: Children) -> impl IntoView {
     }
 }
 
+/// Clerk's sign-in, which returns to this page, query included, when done.
 #[component]
-fn ClerkSignIn() -> impl IntoView {
+pub fn ClerkSignIn() -> impl IntoView {
     let container = NodeRef::<leptos::html::Div>::new();
 
     Effect::new(move |_| {

@@ -1,7 +1,7 @@
 import { v } from 'convex/values';
 import { internal } from './_generated/api';
 import { action, httpAction, internalAction, internalMutation, type ActionCtx, type MutationCtx } from './_generated/server';
-import { entitlementIsActive, isMeetCalToken, SUBSCRIPTION_ENTITLEMENT_ID } from './lib/access';
+import { entitlementIsActive, SUBSCRIPTION_ENTITLEMENT_ID } from './lib/access';
 import { apiError } from './lib/validation';
 import { constantTimeEqual } from './lib/webhookSignature';
 
@@ -203,15 +203,17 @@ export const claimRefresh = internalMutation({
 });
 
 /**
- * The signed-in user's entitlement, asked of RevenueCat and stored, for the
- * app and website to call when they see an active subscription. Answers
- * `{ active }`. Needs a Clerk session.
+ * The signed-in user's entitlement, asked of RevenueCat and stored, for a
+ * client to call when `accessPass:pass` answers 403 for a user who may have
+ * just subscribed. Answers `{ active }`. Needs a Clerk session or a
+ * MeetCal-issued token (the CLI): either way it only re-checks the caller's
+ * own subscription.
  */
 export const refresh = action({
   args: {},
   handler: async (ctx): Promise<{ active: boolean }> => {
     const identity = await ctx.auth.getUserIdentity();
-    if (!identity || isMeetCalToken(identity)) throw apiError(401, 'unauthorized');
+    if (!identity) throw apiError(401, 'unauthorized');
     const claim = await ctx.runMutation(internal.entitlements.claimRefresh, { userId: identity.subject, now: Date.now() });
     if (!claim.claimed) return { active: claim.active };
     const state = await syncEntitlement(ctx, identity.subject);

@@ -22,7 +22,13 @@ shape, including fields that may be absent or `null`.
 answer forms (`Body::Value` and `Body::JsonText`), function errors, retry
 timing, whole-number floats becoming integers, which queries (and which
 searches) carry the access pass, reading `accessPass:pass`'s answer, how long a
-pass is held, and which function errors renew it.
+pass is held, and which function errors renew it, and reading the `deviceLogin`
+answers (a pending login or `null`; `{ ok: true }` or a 404). `src/pages/link.rs`
+tests the code's formatting, the caret while it formats, and the page's states.
+
+`tests/e2e/link.spec.ts` covers `/link` against mocked `deviceLogin` calls:
+sign-in returning to the code, approve, deny, an expired or unknown code, a code
+typed by hand, failures with Try again, a small phone, and accessibility.
 
 ## Browser checks
 
@@ -78,6 +84,8 @@ await routeQuery(page, "results:search", (route, args) =>
 - Answer the way the real query does: `textAnswer(body)` for `Body::JsonText`
   queries, `valueAnswer(body)` for `Body::Value` ones (see `queries` in
   `src/utils/api.rs`). `errorAnswer(message)` is a function that ran and failed.
+- `routeMutation(page, fn, handler)` does the same for a mutation (`POST /api/mutation`):
+  `deviceLogin:approve` and `deviceLogin:deny`.
 - `retryableResponse(429 | 503, retryAfter?)` exercises the retries.
 - `mockSubscribedUser(page)` puts stand-ins for Clerk's and RevenueCat's SDKs
   on the page (through `page.addInitScript`) as a signed-in, subscribed user,

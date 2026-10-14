@@ -89,7 +89,7 @@ test("production rewrites serve route-specific metadata shells", async () => {
   assert.match(gatedHtml, /<title>Weightlifting Qualifying Totals<\/title>/);
   assert.match(gatedHtml, /content="noindex, nofollow"/);
 
-  for (const route of ["meet-center", "club-dashboard", "wso-dashboard", "wrapped"]) {
+  for (const route of ["meet-center", "club-dashboard", "wso-dashboard", "wrapped", "link"]) {
     const rewrite = config.rewrites.find(({ source }) => source === `/${route}`);
     assert.equal(rewrite.destination, `/seo/${route}.html`);
     const html = await readFile(new URL(`../../dist/seo/${route}.html`, import.meta.url), "utf8");

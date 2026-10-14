@@ -26,6 +26,8 @@ pub enum Commands {
     H2h(commands::h2h::H2hArgs),
     IntlRankings(commands::intl_rankings::IntlRankingsArgs),
     Leaderboard(commands::leaderboard::LeaderboardArgs),
+    Login(commands::login::LoginArgs),
+    Logout(commands::login::LogoutArgs),
     Meet(commands::meet::MeetArgs),
     MeetInfo(commands::meet_info::MeetInfoArgs),
     MeetResults(commands::meet_results::MeetResultsArgs),

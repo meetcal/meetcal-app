@@ -3,7 +3,7 @@ use crate::{
     types::athletes::Athletes,
     types::meets::NamedBests,
     utils::{
-        backend::{queries, query},
+        backend::{PassRefused, queries, query},
         bests::{bests_cell, year_bests},
         format::{kg, time_24h, us_date, us_time},
         names::{NameKind, not_found},
@@ -84,7 +84,18 @@ pub async fn run(args: MeetArgs) -> Result<()> {
             .iter()
             .map(|athlete| athlete.name.clone())
             .collect();
-        Some(year_bests(&names).await?)
+        match year_bests(&names).await {
+            Ok(bests) => Some(bests),
+            // The start list is free; the bests are subscriber data.
+            Err(error) if PassRefused::is(&error) => {
+                eprintln!(
+                    "Note: past-year bests are MeetCal subscriber data ({error}). Showing the \
+                     start list without them."
+                );
+                None
+            }
+            Err(error) => return Err(error),
+        }
     };
 
     output::emit(report(&response, bests.as_ref()));

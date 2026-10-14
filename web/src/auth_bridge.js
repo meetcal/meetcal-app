@@ -122,8 +122,9 @@ export async function initialize_clerk(publishableKey, onAuthChanged) {
 
 // The signed-in user's Clerk session token (Clerk's default token, no
 // template, as the app sends), or null when signed out. Convex reads the
-// caller from it on `accessPass:pass` and `entitlements:refresh` only; the
-// premium reads carry the access pass instead.
+// caller from it on `accessPass:pass`, `entitlements:refresh` and the
+// `deviceLogin:*` calls of /link only; the premium reads carry the access
+// pass instead.
 export async function clerk_session_token() {
   const session = window.Clerk?.isSignedIn ? window.Clerk.session : null;
   if (!session) return null;

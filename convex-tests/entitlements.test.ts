@@ -214,12 +214,13 @@ describe('RevenueCat calls', () => {
     expect((await webhook(actionCtx(db), request('Bearer hook-secret', 'nope'))).status).toBe(400);
   });
 
-  it('refresh: needs a Clerk session, not a MeetCal-issued token', async () => {
-    const run = (identity: Record<string, unknown> | null) => handlerOf(refresh)(actionCtx(fakeMutationCtx(), identity), {});
+  it('refresh: needs a signed-in caller, and re-checks only their own subscription, also for the CLI', async () => {
     const status = (error: unknown) => (error instanceof ConvexError ? (error.data as { status: number }).status : error);
-    expect(await run(null).catch(status)).toBe(401);
-    expect(await run({ subject: A, issuer: 'https://example.convex.site', tid: 't1' }).catch(status)).toBe(401);
+    expect(await handlerOf(refresh)(actionCtx(fakeMutationCtx(), null), {}).catch(status)).toBe(401);
     expect(fetchMock).not.toHaveBeenCalled();
+    const db = fakeMutationCtx();
+    expect(await handlerOf(refresh)(actionCtx(db, { subject: A, issuer: 'https://example.convex.site', tid: 't1' }), {})).toEqual({ active: true });
+    expect(fetchMock.mock.calls[0][0]).toBe(`https://api.revenuecat.com/v1/subscribers/${A}`);
   });
 
   it('refresh: stores and answers the state, then answers the stored state while throttled', async () => {
