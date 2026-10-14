@@ -79,6 +79,14 @@ export const PREMIUM_ACTIONS = ['results:leaderboard'] as const;
 
 export type PremiumAction = (typeof PREMIUM_ACTIONS)[number];
 
+/**
+ * Premium functions refused without a current pass even in `log` mode. No
+ * shipped client calls these without one, and each passless call would cost
+ * a full uncached read (the leaderboard reads up to five years of results),
+ * so they need not wait for `enforce`.
+ */
+export const ENFORCED_FROM_THE_START: ReadonlySet<string> = new Set<PremiumAction>(['results:leaderboard']);
+
 export type Caller =
   | { kind: 'anonymous' }
   | { kind: 'free' | 'subscriber'; userId: string; via: 'clerk' | 'meetcal' };
@@ -153,7 +161,7 @@ export async function premiumRead(ctx: QueryCtx, fn: PremiumFunction, pass: stri
  */
 export function checkPass(fn: PremiumFunction | PremiumAction, pass: string | undefined, passes: Passes): void {
   if (pass !== undefined && passes !== null && (pass === passes.current || pass === passes.previous)) return;
-  if (mode === 'log') {
+  if (mode === 'log' && !ENFORCED_FROM_THE_START.has(fn)) {
     console.log(`[premium] ${fn} ${pass === undefined ? 'without a pass' : 'with a stale pass'}`);
     return;
   }

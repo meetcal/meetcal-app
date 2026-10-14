@@ -388,16 +388,13 @@ describe('results:leaderboard', () => {
     expect((await run(ctx, { pass: 'today', limit: 1 })).rows.map((r) => r.meet)).toEqual(['First']);
   });
 
-  it('answers without a current pass in log mode, and logs it', async () => {
+  it('refuses without a current pass even in log mode: no client calls it without one, and each call is a full read', async () => {
     setPremiumModeForTests('log');
     const { ctx } = actionCtx({ access_passes: PASSES, lifting_results: [stored('Bo', '2026-02-01', 140, 175)] });
-    expect((await run(ctx, {})).rows).toHaveLength(1);
-    expect((await run(ctx, { pass: 'last-week' })).rows).toHaveLength(1);
+    expect(await statusOf(run(ctx, {}))).toBe(401);
+    expect(await statusOf(run(ctx, { pass: 'last-week' }))).toBe(403);
     expect((await run(ctx, { pass: 'yesterday' })).rows).toHaveLength(1);
-    expect(log.mock.calls.map(([line]) => line)).toEqual([
-      '[premium] results:leaderboard without a pass',
-      '[premium] results:leaderboard with a stale pass',
-    ]);
+    expect(log).not.toHaveBeenCalled();
   });
 
   it('refuses without a pass (401) or with a stale one (403) in enforce mode, before reading any result', async () => {

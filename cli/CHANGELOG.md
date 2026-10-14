@@ -26,7 +26,8 @@
   the range (about 28,000 a year) into the CLI, so it answers in a second or two. The rules are
   the same: the CLI's own, moved to the server, with the same answers. A range is now under five
   years, and `--limit` from 1 to 500. `--wso` and `--club` leaderboards are ranked by the CLI, as
-  before. `results:leaderboard` must be on the deployment first: release this after MeetCal's
+  before. The all-athletes leaderboard needs `meetcal login` and a MeetCal subscription.
+  `results:leaderboard` must be on the deployment first: release this after MeetCal's
   production deploy.
 
 ## 2.4.0
