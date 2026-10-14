@@ -1,5 +1,5 @@
 import { useAuth } from "@clerk/expo";
-import { AuthView } from "@clerk/expo/native";
+import { AuthView } from "@clerk/expo/native-components";
 import { router, useLocalSearchParams } from "expo-router";
 import { useEffect, useRef } from "react";
 

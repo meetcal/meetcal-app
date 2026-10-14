@@ -21,7 +21,7 @@ const gateFiles = /^(?:scripts\/check(?:-lock)?\.ts|scripts\/check\/.*|mise\.tom
  */
 const appRoots = /^(?:src|convex|convex-tests|widget|plugins|assets|targets|jest|patches|scripts)\//;
 const appFiles =
-  /^(?:package\.json|bun\.lock|bunfig\.toml|tsconfig\.json|babel\.config\.js|metro\.config\.js|app\.config\.js|eas\.json|\.easignore|\.env\.example|jest\.setup\.js|eslint\.config\.js|\.prettierrc\.js|\.codex\/skills\/review-code-performance-tests\/scripts\/.*)$/;
+  /^(?:package\.json|bun\.lock|bunfig\.toml|tsconfig\.json|babel\.config\.js|metro\.config\.js|app\.config\.js|fingerprint\.config\.js|eas\.json|\.easignore|\.env\.example|jest\.setup\.js|eslint\.config\.js|\.prettierrc\.js|\.codex\/skills\/review-code-performance-tests\/scripts\/.*)$/;
 
 /**
  * Inputs no local gate reads: documentation, ignore rules, agent skills, device
