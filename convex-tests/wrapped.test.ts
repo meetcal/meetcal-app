@@ -4,7 +4,7 @@ import type { ApiLiftingResult } from '../convex/lib/results';
 import { RESULT_NAMES_VIEW } from '../convex/lib/viewKeys';
 import { textChunks, writeView } from '../convex/lib/views';
 import { distinctLifts, MAX_WRAPPED_NAME_CHOICES, selectWrapped, type WrappedAnswer, wrappedStats } from '../convex/lib/wrapped';
-import { MAX_SEARCH_RESULT_ROWS, wrapped } from '../convex/results';
+import { MAX_SEARCH_RESULT_ROWS, WRAPPED_FALLBACK_NAMES, wrapped } from '../convex/results';
 import { fakeMutationCtx, handlerOf } from './fakeDb';
 
 /**
@@ -15,8 +15,21 @@ import { fakeMutationCtx, handlerOf } from './fakeDb';
  */
 
 /** A result row; an attempt of 0 was not taken, a negative one was missed. */
+/**
+ * A result row, consistent like real data: a total without its lifts gets a
+ * snatch and clean & jerk that add up to it (`lib/plausible.ts` leaves out a
+ * row whose numbers cannot be real), and lifts without a total get theirs.
+ */
 function row(overrides: Partial<ApiLiftingResult> = {}): ApiLiftingResult {
+  const lifts: Partial<ApiLiftingResult> = {};
+  if (overrides.total && overrides.snatch_best === undefined && overrides.cj_best === undefined) {
+    lifts.snatch_best = Math.round(overrides.total * 0.45);
+    lifts.cj_best = overrides.total - lifts.snatch_best;
+  } else if (overrides.total === undefined && (overrides.snatch_best ?? 0) > 0 && (overrides.cj_best ?? 0) > 0) {
+    lifts.total = (overrides.snatch_best ?? 0) + (overrides.cj_best ?? 0);
+  }
   return {
+    ...lifts,
     id: 1,
     event_id: 'e1',
     federation: 'USAW',
@@ -35,6 +48,7 @@ function row(overrides: Partial<ApiLiftingResult> = {}): ApiLiftingResult {
     cj_best: 0,
     total: 0,
     adaptive: false,
+    ...lifts,
     ...overrides,
   };
 }
@@ -187,10 +201,38 @@ describe('wrappedStats', () => {
     expect(stats.averageTotal).toBe(0);
   });
 
+  it('counts each edition of a recurring meet as its own meet, so the first-to-last change keeps its sign', () => {
+    const stats = wrappedStats([
+      row({ meet: 'Monthly Open', date: '2026-01-10', total: 200 }),
+      row({ meet: 'Summer Classic', date: '2026-06-10', total: 220 }),
+      row({ meet: 'Monthly Open', date: '2026-12-10', total: 250 }),
+    ]);
+    expect(stats.totalMeets).toBe(3);
+    expect(stats.improvementFromFirst).toBe(50);
+    expect(stats.topMeet).toBe('Monthly Open');
+  });
+
+  it('counts one meet once however its name is cased or spaced', () => {
+    const stats = wrappedStats([
+      row({ meet: 'Spring Open', date: '2026-03-01', total: 200, snatch1: 90 }),
+      row({ meet: 'spring open ', date: '2026-03-02', total: 210, snatch1: 95 }),
+    ]);
+    expect(stats.totalMeets).toBe(1);
+    expect(stats.improvementFromFirst).toBeNull();
+    expect(stats.topMeet).toBe('Spring Open');
+  });
+
+  it('leaves out a row whose numbers cannot be real, so a source typo is never a best', () => {
+    const typo = row({ meet: 'Typo Open', date: '2026-04-01', snatch1: -63, snatch2: 633, snatch3: 65, snatch_best: 633, cj1: 80, cj_best: 80, total: 713 });
+    const stats = wrappedStats([row({ meet: 'Real Open', date: '2026-03-01', total: 200 }), typo]);
+    expect(stats).toMatchObject({ bestSnatch: 90, bestTotal: 200, totalMeets: 1, topMeet: 'Real Open' });
+    expect(stats.yearRank).not.toBe('Heavy Hitter');
+  });
+
   it('takes the year bests from the rows', () => {
     const stats = wrappedStats([
       row({ meet: 'A', date: '2026-01-01', snatch_best: 100, cj_best: 125, total: 225 }),
-      row({ meet: 'B', date: '2026-02-01', snatch_best: 105, cj_best: 120, total: 220 }),
+      row({ meet: 'B', date: '2026-02-01', snatch_best: 105, cj_best: 120, total: 225 }),
     ]);
     expect(stats).toMatchObject({ bestSnatch: 105, bestCleanJerk: 125, bestTotal: 225 });
   });
@@ -279,10 +321,10 @@ function searchRow(name: string, date: string, total = 200): ApiLiftingResult {
     name,
     age: "Open Men's 89kg",
     body_weight: 88,
-    snatch1: 90,
-    snatch_best: 90,
-    cj1: 110,
-    cj_best: 110,
+    snatch1: Math.round(total * 0.45),
+    snatch_best: Math.round(total * 0.45),
+    cj1: total - Math.round(total * 0.45),
+    cj_best: total - Math.round(total * 0.45),
     total,
   });
 }
@@ -416,8 +458,20 @@ describe('results:wrapped', () => {
 
   it('falls back to the name-contains search without a pick', async () => {
     expect(await ask({ query: 'smith', year: 2026 })).toEqual({ kind: 'ambiguous', names: ['Ann Smithers', 'Bob Smith'], truncated: false });
-    // Ann Smith did not lift in 2026, so her name falls back to the one athlete who did.
-    expect(await ask({ query: 'Ann Smith', year: 2026 })).toMatchObject({ kind: 'athlete', name: 'Ann Smithers' });
+    // Ann Smith is an athlete who did not lift in 2026: no Wrapped, rather than someone else's.
+    expect(await ask({ query: 'Ann Smith', year: 2026 })).toEqual({ kind: 'none', suggestions: ['Ann Smith', 'Ann Smithers'] });
+  });
+
+  it('asks for more of the name, without reading any history, when the name matches too many athletes', async () => {
+    const names = Array.from({ length: WRAPPED_FALLBACK_NAMES }, (_, i) => `Many Lifter ${String(i).padStart(3, '0')}`);
+    const fake = fakeMutationCtx({ data_versions: [{ table: HISTORY_READY, version: 1 }] });
+    await writeView(fake.ctx as never, RESULT_NAMES_VIEW, textChunks(names.join('\n')), [], { text: true });
+    const before = fake.reads.count;
+    const answer = await handlerOf<Record<string, unknown>, WrappedAnswer>(wrapped)({ ...fake.ctx, auth: { getUserIdentity } }, { query: 'lifter', year: 2026 });
+    expect(answer).toEqual({ kind: 'narrow' });
+    expect(fake.docs('athlete_history')).toEqual([]);
+    // The name directory, not a thousand histories.
+    expect(fake.reads.count - before).toBeLessThan(20);
   });
 
   it('takes only the exact name with picked, never the fallback', async () => {

@@ -1,5 +1,6 @@
 import type { ApiLiftingResult } from './results';
 import { normalizeName } from './names';
+import { isPlausibleResult } from './plausible';
 
 /**
  * Weightlifting Wrapped: one athlete's calendar year, summed up. The app, the
@@ -96,9 +97,50 @@ export function distinctLifts(rows: readonly ApiLiftingResult[]): ApiLiftingResu
   return kept;
 }
 
-/** The year's stats from its rows, oldest first. */
+/** Whether a row's numbers can be real (`lib/plausible.ts`): a source typo must not become a best. */
+function plausible(row: ApiLiftingResult): boolean {
+  return isPlausibleResult({
+    snatch1: row.snatch1,
+    snatch2: row.snatch2,
+    snatch3: row.snatch3,
+    snatchBest: row.snatch_best,
+    cj1: row.cj1,
+    cj2: row.cj2,
+    cj3: row.cj3,
+    cjBest: row.cj_best,
+    total: row.total,
+  });
+}
+
+/**
+ * One key per meet edition: the folded meet name, plus the date of the
+ * edition's first row. Two rows of one name within `MEET_EDITION_SPAN_DAYS`
+ * of that are one edition; further apart (a monthly open), another meet.
+ */
+function meetEditions(rows: readonly ApiLiftingResult[]): string[] {
+  const firstDays = new Map<string, string[]>();
+  return rows.map((row) => {
+    const name = meetKey(row.meet);
+    const editions = firstDays.get(name) ?? [];
+    let edition = editions.find((first) => withinOneEdition(first, row.date));
+    if (edition === undefined) {
+      edition = row.date;
+      editions.push(edition);
+      firstDays.set(name, editions);
+    }
+    return `${name}|${edition}`;
+  });
+}
+
+/**
+ * The year's stats from its rows, oldest first. Rows whose numbers cannot be
+ * real (source typos) are left out, and each meet edition counts once.
+ */
 export function wrappedStats(rows: readonly ApiLiftingResult[]): WrappedStats {
-  const lifts = distinctLifts(rows);
+  const lifts = distinctLifts(rows.filter(plausible));
+  const editions = meetEditions(lifts);
+  // Shown under the name its first row used.
+  const meetNames = new Map<string, string>();
   let totalWeight = 0;
   let taken = 0;
   let made = 0;
@@ -109,11 +151,13 @@ export function wrappedStats(rows: readonly ApiLiftingResult[]): WrappedStats {
   let totals = 0;
   let streak = 0;
   let longestStreak = 0;
-  // Each meet's best total, by meet name, in the order meets first appear.
+  // Each meet edition's best total, in the order editions first appear.
   const meetTotals = new Map<string, number>();
   const madeByAttempt = [0, 0, 0];
 
-  for (const row of lifts) {
+  lifts.forEach((row, index) => {
+    const edition = editions[index];
+    if (!meetNames.has(edition)) meetNames.set(edition, row.meet);
     attemptsOf(row).forEach((attempt, slot) => {
       // An untaken attempt is neither a make nor a miss.
       if (!wasTaken(attempt)) return;
@@ -134,14 +178,15 @@ export function wrappedStats(rows: readonly ApiLiftingResult[]): WrappedStats {
       bestTotal = Math.max(bestTotal, row.total);
       totalSum += row.total;
       totals++;
-      meetTotals.set(row.meet, Math.max(meetTotals.get(row.meet) ?? 0, row.total));
+      meetTotals.set(edition, Math.max(meetTotals.get(edition) ?? 0, row.total));
     }
-  }
+  });
 
   const makePercentage = taken > 0 ? (made / taken) * 100 : 0;
   // A tie goes to the later meet, as the app always had it.
-  let topMeet: string | null = null;
-  for (const [meet, total] of meetTotals) if (topMeet === null || total >= (meetTotals.get(topMeet) ?? 0)) topMeet = meet;
+  let topEdition: string | null = null;
+  for (const [edition, total] of meetTotals) if (topEdition === null || total >= (meetTotals.get(topEdition) ?? 0)) topEdition = edition;
+  const topMeet = topEdition === null ? null : (meetNames.get(topEdition) ?? null);
   // A bomb-out is no data point, and one meet has nothing to compare.
   const meetBests = [...meetTotals.values()].filter((total) => total > 0);
   const improvementFromFirst = meetBests.length >= 2 ? meetBests[meetBests.length - 1] - meetBests[0] : null;
@@ -162,7 +207,7 @@ export function wrappedStats(rows: readonly ApiLiftingResult[]): WrappedStats {
 
   return {
     totalWeightLifted: totalWeight,
-    totalMeets: new Set(lifts.map((row) => row.meet)).size,
+    totalMeets: new Set(editions).size,
     makePercentage,
     bestSnatch,
     bestCleanJerk,

@@ -75,11 +75,27 @@ struct WrappedStats {
     favorite_attempt: Option<u8>,
 }
 
+/// The years `results:wrapped` answers for (`WRAPPED_YEARS` in `convex/results.ts`).
+const WRAPPED_YEARS: std::ops::RangeInclusive<i32> = 1900..=2100;
+
+/// The year typed in the form, or why it is not one the server answers for.
+fn wrapped_year(text: &str) -> Result<i32, String> {
+    match text.trim().parse::<i32>() {
+        Ok(year) if WRAPPED_YEARS.contains(&year) => Ok(year),
+        _ => Err(format!(
+            "Enter a year from {} to {}.",
+            WRAPPED_YEARS.start(),
+            WRAPPED_YEARS.end()
+        )),
+    }
+}
+
 #[component]
 pub fn Wrapped() -> impl IntoView {
     let current_year = Date::new_0().get_full_year() as i32;
     let (athlete_name, set_athlete_name) = signal(String::new());
     let (year, set_year) = signal(current_year.to_string());
+    let (year_error, set_year_error) = signal(None::<String>);
     let (request, set_request) = signal(None::<WrappedRequest>);
     let wrapped = Load::new(
         move || request.get(),
@@ -94,11 +110,12 @@ pub fn Wrapped() -> impl IntoView {
         },
     );
     view! { <DataPage heading="Athlete Wrapped" intro="Summarize an athlete’s competition year, best lifts, make rate, and progress.">
-        <form class="data-query-form" on:submit=move |event| { event.prevent_default(); let athlete = athlete_name.get().trim().to_owned(); if athlete.is_empty() { return; } let selected_year = year.get().parse().unwrap_or(current_year); wrapped.submit(|| set_request.set(Some(WrappedRequest { query: athlete, year: selected_year, picked: false }))); }>
+        <form class="data-query-form" on:submit=move |event| { event.prevent_default(); let athlete = athlete_name.get().trim().to_owned(); if athlete.is_empty() { return; } let selected_year = match wrapped_year(&year.get()) { Ok(year) => year, Err(message) => { set_year_error.set(Some(message)); return; } }; set_year_error.set(None); wrapped.submit(|| set_request.set(Some(WrappedRequest { query: athlete, year: selected_year, picked: false }))); }>
             <AthleteAutocomplete value=athlete_name set_value=set_athlete_name input_id="wrapped-athlete" wrapper_class="data-query-grow" />
-            <label>"Year"<input class="data-filter data-year-input" inputmode="numeric" maxlength="4" prop:value=current_year on:input=move |event| set_year.set(event_target_value(&event)) /></label>
+            <label>"Year"<input class="data-filter data-year-input" inputmode="numeric" maxlength="4" prop:value=current_year on:input=move |event| { set_year.set(event_target_value(&event)); set_year_error.set(None); } /></label>
             <button class="data-search-button" type="submit">"Build wrapped"</button>
         </form>
+        {move || year_error.get().map(|message| view! { <p class="data-status error" role="alert">{message}</p> })}
         // Nothing asked yet is the prompt at once, never a loading skeleton.
         {move || if request.with(Option::is_none) {
             view! { <DataStatus message="Enter an athlete to build their yearly recap." /> }.into_any()
@@ -185,6 +202,15 @@ fn choices(
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn the_year_must_be_one_the_server_answers_for() {
+        assert_eq!(wrapped_year(" 2026 "), Ok(2026));
+        assert_eq!(wrapped_year("1900"), Ok(1900));
+        for bad in ["", "abc", "202", "1899", "2101", "20.5"] {
+            assert!(wrapped_year(bad).is_err(), "{bad}");
+        }
+    }
+
     use super::*;
     use crate::utils::api::read_body;
     use serde_json::json;

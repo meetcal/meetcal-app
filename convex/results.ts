@@ -341,20 +341,45 @@ export const search = query({
  * results in the range, or, failing that, every matching name's results plus
  * suggestions. With `exactOnly`, no fallback: just the suggestions.
  */
-async function datedSearch(ctx: QueryCtx, query: string, start: string, end: string, exactOnly = false): Promise<SearchAnswer> {
+async function datedSearch(
+  ctx: QueryCtx,
+  query: string,
+  start: string,
+  end: string,
+  {
+    exactOnly = false,
+    fallbackNames = MAX_FALLBACK_NAMES,
+    fallbackForKnownName = true,
+  }: { exactOnly?: boolean; fallbackNames?: number; fallbackForKnownName?: boolean } = {},
+): Promise<SearchAnswer> {
   const exactKey = normalizeName(query);
-  const exact = exactSearchAnswer(query, (await readHistories(ctx, [exactKey])).get(exactKey) ?? [], start, end);
+  const history = (await readHistories(ctx, [exactKey])).get(exactKey) ?? [];
+  const exact = exactSearchAnswer(query, history, start, end);
   if (exact) return exact;
-  if (exactOnly) {
+  // `exactOnly`, or (unless `fallbackForKnownName`) the exact name is an
+  // athlete with no results in the range: no fallback, which would show
+  // someone else.
+  if (exactOnly || (!fallbackForKnownName && history.length > 0)) {
     const suggestions = searchDirectory(await searchText(ctx, query), query, MAX_SEARCH_SUGGESTIONS);
     return { matched_name: null, suggestions, results: [], truncated: false };
   }
-  const matched = searchDirectory(await searchText(ctx, query), query, MAX_FALLBACK_NAMES);
+  const matched = searchDirectory(await searchText(ctx, query), query, fallbackNames);
+  // As many names as the cap: more may match. Ask for more of the name before reading their histories.
+  if (fallbackNames < MAX_FALLBACK_NAMES && matched.length >= fallbackNames) {
+    return { matched_name: null, suggestions: matched.slice(0, MAX_SEARCH_SUGGESTIONS), results: [], truncated: true };
+  }
   return fallbackSearchAnswer(query, matched, await readHistories(ctx, distinctNameKeys(matched)), start, end);
 }
 
 /** The earliest and latest years `wrapped` answers for. */
 export const WRAPPED_YEARS = { first: 1900, last: 2100 } as const;
+/**
+ * The most names a Wrapped's name-contains fallback reads histories for. It
+ * offers at most `MAX_WRAPPED_NAME_CHOICES`; a query matching more names asks
+ * for more of the name before reading any history, which keeps this public
+ * query cheap.
+ */
+export const WRAPPED_FALLBACK_NAMES = 100;
 
 /**
  * Weightlifting Wrapped for `query`'s calendar `year` (`lib/wrapped.ts`): the
@@ -370,7 +395,11 @@ export const wrapped = query({
     if (!Number.isInteger(args.year) || args.year < WRAPPED_YEARS.first || args.year > WRAPPED_YEARS.last) {
       throw apiError(400, 'year must be a four-digit year');
     }
-    const answer = await datedSearch(ctx, args.query, `${args.year}-01-01`, `${args.year}-12-31`, args.picked === true);
+    const answer = await datedSearch(ctx, args.query, `${args.year}-01-01`, `${args.year}-12-31`, {
+      exactOnly: args.picked === true,
+      fallbackNames: WRAPPED_FALLBACK_NAMES,
+      fallbackForKnownName: false,
+    });
     return selectWrapped(answer);
   },
 });
