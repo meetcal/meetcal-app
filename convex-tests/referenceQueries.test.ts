@@ -6,7 +6,7 @@ import { storeClubs } from '../convex/views';
 import { clubKey, clubLabels } from '../convex/lib/clubs';
 import { ANONYMOUS_AUTH, fakeDb, handlerOf } from './fakeDb';
 
-// Premium queries log each caller (`convex/lib/access.ts`).
+// Premium queries may log their caller (`convex/lib/access.ts`).
 beforeEach(() => jest.spyOn(console, 'log').mockImplementation(() => {}));
 
 const STAMP = [{ table: 'lifting_results', version: 1 }];

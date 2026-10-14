@@ -4,7 +4,7 @@ import { byMeet } from '../convex/results';
 import { attendance } from '../convex/meets';
 import { fakeMutationCtx, handlerOf } from './fakeDb';
 
-// Premium queries log each caller (`convex/lib/access.ts`).
+// Premium queries may log their caller (`convex/lib/access.ts`).
 beforeEach(() => jest.spyOn(console, 'log').mockImplementation(() => {}));
 
 /**

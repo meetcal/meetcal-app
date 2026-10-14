@@ -1,6 +1,6 @@
 import { v } from 'convex/values';
 import { internal } from './_generated/api';
-import { action, httpAction, internalAction, internalMutation, type ActionCtx } from './_generated/server';
+import { action, httpAction, internalAction, internalMutation, type ActionCtx, type MutationCtx } from './_generated/server';
 import { entitlementIsActive, isMeetCalToken, SUBSCRIPTION_ENTITLEMENT_ID } from './lib/access';
 import { apiError } from './lib/validation';
 import { constantTimeEqual } from './lib/webhookSignature';
@@ -136,6 +136,18 @@ async function syncEntitlement(ctx: Pick<ActionCtx, 'runMutation'>, userId: stri
   return state;
 }
 
+const syncRow = (ctx: MutationCtx, userId: string) =>
+  ctx.db
+    .query('entitlement_syncs')
+    .withIndex('by_userId', (q) => q.eq('userId', userId))
+    .unique();
+
+const entitlementRow = (ctx: MutationCtx, userId: string) =>
+  ctx.db
+    .query('entitlements')
+    .withIndex('by_userId', (q) => q.eq('userId', userId))
+    .unique();
+
 /**
  * Stores a user's entitlement, unless their account was deleted or a newer
  * answer (one RevenueCat was asked for later) is already stored.
@@ -148,19 +160,21 @@ export const store = internalMutation({
     productId: v.union(v.string(), v.null()),
     syncedAt: v.number(),
   },
-  handler: async (ctx, args) => {
+  handler: async (ctx, { userId, syncedAt, ...state }) => {
     const deleted = await ctx.db
       .query('deleted_users')
-      .withIndex('by_userId', (q) => q.eq('userId', args.userId))
+      .withIndex('by_userId', (q) => q.eq('userId', userId))
       .first();
     if (deleted) return;
-    const row = await ctx.db
-      .query('entitlements')
-      .withIndex('by_userId', (q) => q.eq('userId', args.userId))
-      .unique();
-    if (row && row.syncedAt > args.syncedAt) return;
-    if (row) await ctx.db.patch(row._id, args);
-    else await ctx.db.insert('entitlements', args);
+    const sync = await syncRow(ctx, userId);
+    if (sync && sync.syncedAt > syncedAt) return;
+    if (sync) await ctx.db.patch(sync._id, { syncedAt });
+    else await ctx.db.insert('entitlement_syncs', { userId, syncedAt });
+    const row = await entitlementRow(ctx, userId);
+    if (!row) await ctx.db.insert('entitlements', { userId, ...state });
+    else if (row.active !== state.active || row.expiresAt !== state.expiresAt || row.productId !== state.productId) {
+      await ctx.db.patch(row._id, state);
+    }
   },
 });
 
@@ -177,15 +191,13 @@ export const claimRefresh = internalMutation({
       .withIndex('by_userId', (q) => q.eq('userId', userId))
       .first();
     if (deleted) return { claimed: false, active: false };
-    const row = await ctx.db
-      .query('entitlements')
-      .withIndex('by_userId', (q) => q.eq('userId', userId))
-      .unique();
-    if (row && row.refreshRequestedAt !== undefined && now - row.refreshRequestedAt < ENTITLEMENT_REFRESH_INTERVAL_MS) {
-      return { claimed: false, active: entitlementIsActive(row, now) };
+    const sync = await syncRow(ctx, userId);
+    if (sync?.refreshRequestedAt !== undefined && now - sync.refreshRequestedAt < ENTITLEMENT_REFRESH_INTERVAL_MS) {
+      const row = await entitlementRow(ctx, userId);
+      return { claimed: false, active: row !== null && entitlementIsActive(row, now) };
     }
-    if (row) await ctx.db.patch(row._id, { refreshRequestedAt: now });
-    else await ctx.db.insert('entitlements', { userId, active: false, expiresAt: null, productId: null, syncedAt: 0, refreshRequestedAt: now });
+    if (sync) await ctx.db.patch(sync._id, { refreshRequestedAt: now });
+    else await ctx.db.insert('entitlement_syncs', { userId, syncedAt: 0, refreshRequestedAt: now });
     return { claimed: true };
   },
 });

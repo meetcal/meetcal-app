@@ -328,7 +328,8 @@ async function request(call: ApiCall, timeoutMs: number = DEFAULT_TIMEOUT_MS): P
   const startedAt = typeof performance !== 'undefined' ? performance.now() : Date.now();
   // Before the timeout starts: the wait for Clerk is bounded on its own
   // (`DATA_TOKEN_TIMEOUT_MS`). Every other call starts at once.
-  const dataToken = call.kind === 'query' && !call.token && wantsDataToken(call.fn) ? await dataTokenFor(call.fn) : undefined;
+  const dataToken =
+    call.kind === 'query' && !call.token && wantsDataToken(call.fn, call.args) ? await dataTokenFor(call.fn, call.args) : undefined;
   let timeoutId: ReturnType<typeof setTimeout> | undefined;
   // The timeout also aborts the request, so it never lands later (a stale
   // save arriving after a newer unsave would bring the session back).

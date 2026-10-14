@@ -9,7 +9,7 @@ import { requireSavedSessionWhen } from '../convex/users';
 import { toSavedSessionBody } from '../src/lib/saved-sessions-outbox';
 import type { SavedSession } from '../src/lib/saved-sessions-store';
 
-// Premium queries log each caller (`convex/lib/access.ts`).
+// Premium queries may log their caller (`convex/lib/access.ts`).
 beforeEach(() => jest.spyOn(console, 'log').mockImplementation(() => {}));
 
 type Row = Record<string, unknown>;

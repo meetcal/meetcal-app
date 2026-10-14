@@ -259,14 +259,22 @@ export default defineSchema({
 
   // A user's `Subscriptions` entitlement as RevenueCat's API last reported it
   // (`convex/entitlements.ts`), one row per Clerk user id (RevenueCat's app
-  // user id). Premium queries read it (`convex/lib/access.ts`). `expiresAt`
-  // is null for a lifetime purchase; `refreshRequestedAt` throttles the app's
-  // refresh calls.
+  // user id). Premium queries read it (`convex/lib/access.ts`), so it is
+  // written only when the entitlement changes. `expiresAt` is null for a
+  // lifetime purchase.
   entitlements: defineTable({
     userId: v.string(),
     active: v.boolean(),
     expiresAt: v.union(v.number(), v.null()),
     productId: v.union(v.string(), v.null()),
+  }).index('by_userId', ['userId']),
+
+  // When RevenueCat was last asked about a user (`syncedAt`, so a late answer
+  // cannot replace a newer one) and when the app last asked for a refresh
+  // (`refreshRequestedAt`, the throttle). Kept apart from `entitlements` so
+  // this bookkeeping never invalidates the premium queries that read it.
+  entitlement_syncs: defineTable({
+    userId: v.string(),
     syncedAt: v.number(),
     refreshRequestedAt: v.optional(v.number()),
   }).index('by_userId', ['userId']),

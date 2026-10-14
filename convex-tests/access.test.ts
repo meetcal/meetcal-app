@@ -4,7 +4,15 @@ import { ConvexError } from 'convex/values';
 import * as meets from '../convex/meets';
 import * as reference from '../convex/reference';
 import * as results from '../convex/results';
-import { callerOf, entitlementIsActive, PREMIUM_FUNCTIONS, premiumRead, type PremiumMode } from '../convex/lib/access';
+import {
+  callerOf,
+  entitlementIsActive,
+  PREMIUM_FUNCTIONS,
+  PREMIUM_LOG_PROBES,
+  premiumRead,
+  setPremiumModeForTests,
+  type PremiumFunction,
+} from '../convex/lib/access';
 import { fakeDb, handlerOf } from './fakeDb';
 
 /**
@@ -30,7 +38,6 @@ const entitlement = (userId: string, extra: Record<string, unknown> = {}) => ({
   active: true,
   expiresAt: null,
   productId: 'lifetime',
-  syncedAt: 1,
   ...extra,
 });
 const token = (tokenId: string, userId: string) => ({ tokenId, userId, client: 'cli', createdAt: 1, expiresAt: NOW + 1 });
@@ -98,29 +105,53 @@ describe('who a caller is', () => {
 });
 
 describe('the gate', () => {
-  const read = (identity: Identity, mode: PremiumMode, seed = {}) => statusOf(premiumRead(ctxFor(identity, seed), 'results:byNames', mode));
+  afterEach(() => setPremiumModeForTests(null));
+  const read = (fn: PremiumFunction, identity: Identity, seed = {}) => statusOf(premiumRead(ctxFor(identity, seed), fn));
 
-  it('answers everyone in log mode, and logs who asked', async () => {
-    expect(await read(null, 'log')).toBe('ok');
-    expect(await read(clerk(A), 'log')).toBe('ok');
-    expect(log.mock.calls.map(([line]) => line)).toEqual(['[premium] results:byNames anonymous', `[premium] results:byNames free ${A} via clerk`]);
+  it('answers everyone in log mode, and only the probes look at who asked', async () => {
+    setPremiumModeForTests('log');
+    const identity = jest.fn(async () => clerk(A));
+    expect(await statusOf(premiumRead({ db: fakeDb().db, auth: { getUserIdentity: identity } } as never, 'results:byNames'))).toBe('ok');
+    expect(identity).not.toHaveBeenCalled();
+    expect(await read('reference:records', null)).toBe('ok');
+    expect(await read('results:yearBests', clerk(A))).toBe('ok');
+    expect(log.mock.calls.map(([line]) => line)).toEqual(['[premium] reference:records anonymous', `[premium] results:yearBests free ${A} via clerk`]);
+  });
+
+  it('probes only premium queries, the bulk export among them', () => {
+    for (const probe of PREMIUM_LOG_PROBES) expect(PREMIUM_FUNCTIONS).toContain(probe);
+    expect(PREMIUM_LOG_PROBES.has('results:page')).toBe(true);
   });
 
   it('refuses anonymous callers with 401 and free ones with 403 in enforce mode', async () => {
-    expect(await read(null, 'enforce')).toBe(401);
-    expect(await read(clerk(A), 'enforce')).toBe(403);
-    expect(await read(clerk(A), 'enforce', { entitlements: [entitlement(A)] })).toBe('ok');
+    setPremiumModeForTests('enforce');
+    expect(await read('results:byNames', null)).toBe(401);
+    expect(await read('results:byNames', clerk(A))).toBe(403);
+    expect(await read('results:byNames', clerk(A), { entitlements: [entitlement(A)] })).toBe('ok');
   });
 });
 
 describe('the premium queries', () => {
   const modules: Record<string, Record<string, unknown>> = { meets, reference, results };
+  afterEach(() => setPremiumModeForTests(null));
 
-  it('are every one the app and website send a token to, and run the gate first', async () => {
+  it('are every one the app and website send a token to', async () => {
     for (const name of PREMIUM_FUNCTIONS) {
       const [module, fn] = name.split(':');
       const registered = modules[module]?.[fn] as { isQuery?: boolean; isPublic?: boolean } | undefined;
       expect([name, registered?.isQuery, registered?.isPublic]).toEqual([name, true, true]);
+    }
+  });
+
+  it('each refuse an anonymous caller under its own name in enforce mode, before reading anything', async () => {
+    setPremiumModeForTests('enforce');
+    const db = new Proxy({}, { get: () => () => { throw new Error('read'); } });
+    const dated = { query: 'Ada', startDate: '2026-01-01', endDate: '2026-12-31' };
+    for (const name of PREMIUM_FUNCTIONS) {
+      const [module, fn] = name.split(':');
+      log.mockClear();
+      const answer = await statusOf(handlerOf(modules[module][fn])({ db, auth: { getUserIdentity: async () => null } }, name === 'results:search' ? dated : {}));
+      expect([name, answer, log.mock.calls[0]?.[0]]).toEqual([name, 401, `[premium] ${name} anonymous`]);
     }
   });
 
@@ -131,15 +162,8 @@ describe('the premium queries', () => {
     expect(web.sort()).toEqual([...PREMIUM_FUNCTIONS].sort());
   });
 
-  it('gate before reading anything', async () => {
-    const identity = jest.fn(async () => null);
-    const db = new Proxy({}, { get: () => () => { throw new Error('read'); } });
-    await expect(handlerOf(reference.records)({ db, auth: { getUserIdentity: identity } }, {})).rejects.toThrow('read');
-    expect(identity).toHaveBeenCalledTimes(1);
-    expect(log).toHaveBeenCalledWith('[premium] reference:records anonymous');
-  });
-
   it('leave name suggestions public: search gates only when asked for results', async () => {
+    setPremiumModeForTests('enforce');
     const throwing = { getUserIdentity: async () => { throw new Error('gated'); } };
     const { db } = fakeDb();
     // Past the gate to the (empty) name directory, without asking who called.

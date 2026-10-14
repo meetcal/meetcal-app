@@ -155,8 +155,12 @@ describe('deleteUserData (#250)', () => {
       { userId: B, device: 'phone', meet: null, rev: 2, updatedAt: 1 },
     ],
     entitlements: [
-      { userId: A, active: true, expiresAt: null, productId: 'lifetime', syncedAt: 1 },
-      { userId: B, active: true, expiresAt: null, productId: 'lifetime', syncedAt: 1 },
+      { userId: A, active: true, expiresAt: null, productId: 'lifetime' },
+      { userId: B, active: true, expiresAt: null, productId: 'lifetime' },
+    ],
+    entitlement_syncs: [
+      { userId: A, syncedAt: 1 },
+      { userId: B, syncedAt: 1 },
     ],
     api_tokens: [
       { tokenId: 't_a', userId: A, client: 'cli', createdAt: 1, expiresAt: 2 },
@@ -167,12 +171,12 @@ describe('deleteUserData (#250)', () => {
 
   it("deletes every row of the user and nobody else's", async () => {
     const store = fakeMutationCtx(seed());
-    expect(await run(store.ctx, { userId: A })).toEqual({ sessions: 1, preferences: 1, revisions: 1, resets: 1, entitlements: 1, apiTokens: 1, more: false });
-    for (const table of ['saved_sessions', 'user_preferences', 'saved_session_revisions', 'saved_session_resets', 'entitlements', 'api_tokens']) {
+    expect(await run(store.ctx, { userId: A })).toEqual({ sessions: 1, preferences: 1, revisions: 1, resets: 1, entitlements: 1, entitlementSyncs: 1, apiTokens: 1, more: false });
+    for (const table of ['saved_sessions', 'user_preferences', 'saved_session_revisions', 'saved_session_resets', 'entitlements', 'entitlement_syncs', 'api_tokens']) {
       expect(store.rows(table).map((r) => r.userId)).toEqual([B]);
     }
     expect(store.scheduled).toEqual([]);
-    expect(await run(store.ctx, { userId: A })).toEqual({ sessions: 0, preferences: 0, revisions: 0, resets: 0, entitlements: 0, apiTokens: 0, more: false });
+    expect(await run(store.ctx, { userId: A })).toEqual({ sessions: 0, preferences: 0, revisions: 0, resets: 0, entitlements: 0, entitlementSyncs: 0, apiTokens: 0, more: false });
   });
 
   it('continues in another call past a batch, and refuses a blank id', async () => {

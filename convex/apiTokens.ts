@@ -104,8 +104,9 @@ export const revoke = mutation({
 /** `GET /.well-known/jwks.json`: the public key Convex verifies MeetCal-issued tokens with. */
 export const jwks = httpAction(async () => {
   const key = parseSigningJwk(process.env.MEETCAL_TOKEN_SIGNING_KEY);
+  // An empty set is not cached, so tokens verify as soon as the key is set.
   return new Response(JSON.stringify({ keys: key ? [publicJwk(key)] : [] }), {
     status: 200,
-    headers: { 'Content-Type': 'application/json', 'Cache-Control': 'public, max-age=3600' },
+    headers: { 'Content-Type': 'application/json', 'Cache-Control': key ? 'public, max-age=3600' : 'no-store' },
   });
 });

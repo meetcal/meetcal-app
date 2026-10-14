@@ -3,7 +3,7 @@ import { meetKey } from '../convex/lib/viewKeys';
 import { textChunks, writeView } from '../convex/lib/views';
 import { ANONYMOUS_AUTH, fakeDb, handlerOf } from './fakeDb';
 
-// Premium queries log each caller (`convex/lib/access.ts`).
+// Premium queries may log their caller (`convex/lib/access.ts`).
 beforeEach(() => jest.spyOn(console, 'log').mockImplementation(() => {}));
 
 const STAMP = [{ table: 'lifting_results', version: 1 }];

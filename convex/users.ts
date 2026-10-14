@@ -507,12 +507,13 @@ export const deleteUserData = internalMutation({
       ctx.db.query('saved_session_revisions').withIndex('by_userId_and_updatedAt', (q) => q.eq('userId', userId)).take(USER_DATA_DELETE_BATCH),
       ctx.db.query('saved_session_resets').withIndex('by_userId_and_updatedAt', (q) => q.eq('userId', userId)).take(USER_DATA_DELETE_BATCH),
       ctx.db.query('entitlements').withIndex('by_userId', (q) => q.eq('userId', userId)).take(USER_DATA_DELETE_BATCH),
+      ctx.db.query('entitlement_syncs').withIndex('by_userId', (q) => q.eq('userId', userId)).take(USER_DATA_DELETE_BATCH),
       ctx.db.query('api_tokens').withIndex('by_userId', (q) => q.eq('userId', userId)).take(USER_DATA_DELETE_BATCH),
     ]);
     for (const rows of batches) for (const row of rows) await ctx.db.delete(row._id);
     const more = batches.some((rows) => rows.length === USER_DATA_DELETE_BATCH);
     if (more) await ctx.scheduler.runAfter(0, internal.users.deleteUserData, { userId });
-    const [sessions, preferences, revisions, resets, entitlements, apiTokens] = batches.map((rows) => rows.length);
-    return { sessions, preferences, revisions, resets, entitlements, apiTokens, more };
+    const [sessions, preferences, revisions, resets, entitlements, entitlementSyncs, apiTokens] = batches.map((rows) => rows.length);
+    return { sessions, preferences, revisions, resets, entitlements, entitlementSyncs, apiTokens, more };
   },
 });

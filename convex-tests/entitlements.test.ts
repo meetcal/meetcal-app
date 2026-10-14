@@ -95,28 +95,42 @@ describe("a webhook event's users", () => {
 
 describe('the stored entitlement', () => {
   const put = handlerOf<Record<string, unknown>, void>(store);
-  const state = { active: true, expiresAt: null, productId: 'lifetime', syncedAt: NOW };
+  const state = { active: true, expiresAt: null, productId: 'lifetime' };
 
-  it('keeps one row per user, updated in place', async () => {
+  it('keeps one row per user, updated in place, and when RevenueCat was asked apart from it', async () => {
     const db = fakeMutationCtx();
-    await put(db.ctx, { userId: A, ...state });
-    await put(db.ctx, { userId: A, ...state, active: false });
+    await put(db.ctx, { userId: A, ...state, syncedAt: NOW });
+    await put(db.ctx, { userId: A, ...state, active: false, syncedAt: NOW + 1 });
     expect(db.rows('entitlements')).toEqual([{ userId: A, ...state, active: false }]);
+    expect(db.rows('entitlement_syncs')).toEqual([{ userId: A, syncedAt: NOW + 1 }]);
+  });
+
+  it('leaves the row premium queries read untouched when nothing changed, so their caches stay', async () => {
+    const db = fakeMutationCtx();
+    await put(db.ctx, { userId: A, ...state, syncedAt: NOW });
+    const patch = jest.spyOn(db.ctx.db, 'patch');
+    await put(db.ctx, { userId: A, ...state, syncedAt: NOW + 1 });
+    const claim = handlerOf<{ userId: string; now: number }, Record<string, unknown>>(claimRefresh);
+    await claim(db.ctx, { userId: A, now: NOW + 2 });
+    const entitlementId = db.docs('entitlements')[0]._id;
+    expect(patch.mock.calls.map(([id]) => id)).not.toContain(entitlementId);
   });
 
   it("is not stored for a deleted account, nor refreshed for one", async () => {
     const db = fakeMutationCtx({ deleted_users: [{ userId: A, deletedAt: 1 }] });
-    await put(db.ctx, { userId: A, ...state });
+    await put(db.ctx, { userId: A, ...state, syncedAt: NOW });
     const claim = handlerOf<{ userId: string; now: number }, Record<string, unknown>>(claimRefresh);
     expect(await claim(db.ctx, { userId: A, now: NOW })).toEqual({ claimed: false, active: false });
     expect(db.rows('entitlements')).toEqual([]);
+    expect(db.rows('entitlement_syncs')).toEqual([]);
   });
 
   it('keeps a newer answer over one RevenueCat was asked for earlier that arrives late', async () => {
     const db = fakeMutationCtx();
     await put(db.ctx, { userId: A, ...state, active: false, syncedAt: NOW + 10 });
     await put(db.ctx, { userId: A, ...state, active: true, syncedAt: NOW });
-    expect(db.rows('entitlements')).toEqual([expect.objectContaining({ active: false, syncedAt: NOW + 10 })]);
+    expect(db.rows('entitlements')).toEqual([expect.objectContaining({ active: false })]);
+    expect(db.rows('entitlement_syncs')).toEqual([{ userId: A, syncedAt: NOW + 10 }]);
   });
 
   it('lets a refresh reach RevenueCat at most once an interval per user', async () => {
@@ -126,6 +140,7 @@ describe('the stored entitlement', () => {
     expect(await claim(db.ctx, { userId: A, now: NOW + 1 })).toEqual({ claimed: false, active: false });
     expect(await claim(db.ctx, { userId: 'user_b', now: NOW + 1 })).toEqual({ claimed: true });
     expect(await claim(db.ctx, { userId: A, now: NOW + ENTITLEMENT_REFRESH_INTERVAL_MS })).toEqual({ claimed: true });
+    expect(db.rows('entitlements')).toEqual([]);
   });
 });
 

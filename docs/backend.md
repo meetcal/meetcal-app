@@ -74,11 +74,13 @@ When a user deletes their account in Clerk, Clerk's `user.deleted` webhook (`POS
 
 The queries that answer what the app's paywall gates (records, standards, rankings, club and WSO data, athlete results and bests, meet results, the offline meet package, and `results:search` when asked for results) are listed in `PREMIUM_FUNCTIONS` (`convex/lib/access.ts`) and run `premiumRead` before anything else. Schedules, start lists, meet lists and name suggestions stay public. `PREMIUM_MODE` decides what the gate does:
 
-- `log` (now): everyone is answered, and each run that misses Convex's query cache logs `[premium] <function> <caller>`: `anonymous`, or `free`/`subscriber` with the user id and how they signed in. Use the logs to see who still reads premium data anonymously, and how much.
+- `log` (now): everyone is answered. Only the cheap probes in `PREMIUM_LOG_PROBES` (`reference:records`, `results:yearBests`, and the bulk export `results:page`) look at the caller, and each of their runs that misses Convex's query cache logs `[premium] <function> <caller>`: `anonymous`, or `free`/`subscriber` with the user id and how they signed in. Use the logs to see that tokens arrive and how much is read anonymously. The other premium queries do not look, so each stays cached once for everyone until `enforce`: a query that reads its caller is cached per caller.
 - `enforce`: anonymous callers get 401 and signed-in callers without the entitlement 403. Switch to it only once nearly every active subscriber runs an app that sends its token and Siri and the CLI send theirs, and once the app:
   - waits (briefly) for Clerk before a premium read while the SecureStore auth hint says someone is signed in, since reads made while Clerk loads or offline go anonymously today;
   - calls `entitlements:refresh` and retries once when a premium read gets 403 while RevenueCat says the user subscribes, so a missed renewal webhook cannot lock a subscriber out until relaunch;
   - and lifetime subscribers who never opened a token-sending app are backfilled with `entitlements:sync`.
+
+  Also before `enforce`: `parity:run` calls premium queries from an action with no caller, so it needs a way past the gate; and TestFlight testers and App Review buy with sandbox receipts, which prod does not count, so they need a reviewer account or another way in. Expect Convex usage for premium reads to grow then, as every premium query starts reading its caller.
 
 A caller is a subscriber when their `entitlements` row (`convex/entitlements.ts`) is active and not past `expiresAt`. The row is RevenueCat's answer for the Clerk user id (the app user id RevenueCat knows them by), fetched from RevenueCat's REST API whenever:
 

@@ -10,14 +10,33 @@ import { apiError } from './validation';
  * the website) or a MeetCal-issued token (`convex/apiTokens.ts`: the CLI,
  * Siri). Schedules, start lists and meet lists stay public.
  *
- * Rollout is in two steps. In `log`, every caller is answered and each call
- * is logged with who made it, while the clients learn to send their token.
- * `enforce` refuses anonymous callers (401) and callers without the
- * entitlement (403); it is switched on once the app versions that send tokens
- * have replaced the ones that do not.
+ * Rollout is in two steps. In `log`, every caller is answered while the
+ * clients learn to send their token, and only the `PREMIUM_LOG_PROBES` look
+ * at who called and log it. `enforce` checks every premium query and refuses
+ * anonymous callers (401) and callers without the entitlement (403); it is
+ * switched on once the app versions that send tokens have replaced the ones
+ * that do not.
+ *
+ * A query that reads its caller is cached per caller, not once for everyone.
+ * The probes are cheap, so `log` costs little; the rest keep their shared
+ * cache until `enforce`.
  */
 export type PremiumMode = 'log' | 'enforce';
 export const PREMIUM_MODE: PremiumMode = 'log';
+
+/**
+ * The premium queries that identify and log their caller in `log` mode:
+ * enough to see that tokens arrive and how much is read anonymously, the
+ * bulk export (`results:page`) included.
+ */
+export const PREMIUM_LOG_PROBES: ReadonlySet<string> = new Set(['reference:records', 'results:yearBests', 'results:page']);
+
+let mode: PremiumMode = PREMIUM_MODE;
+
+/** Replaces the mode, or restores `PREMIUM_MODE` with `null`. For tests. */
+export function setPremiumModeForTests(next: PremiumMode | null): void {
+  mode = next ?? PREMIUM_MODE;
+}
 
 /** The RevenueCat entitlement that unlocks premium data, as in the app (`src/lib/premium-intent.ts`). */
 export const SUBSCRIPTION_ENTITLEMENT_ID = 'Subscriptions';
@@ -106,18 +125,19 @@ export function describeCaller(caller: Caller): string {
 }
 
 /**
- * The gate every premium query calls first. Logs the call (only a run that
- * misses Convex's query cache logs, so the counts are a floor) and, in
- * `enforce`, refuses a caller without the entitlement.
+ * The gate every premium query calls first. In `enforce`, refuses a caller
+ * without the entitlement. In `log`, a probe logs its caller (only a run that
+ * misses Convex's query cache logs, so the counts are a floor) and the rest
+ * do not look, so they stay cached once for everyone.
  */
-export async function premiumRead(ctx: QueryCtx, fn: PremiumFunction, mode: PremiumMode = PREMIUM_MODE): Promise<Caller> {
+export async function premiumRead(ctx: QueryCtx, fn: PremiumFunction): Promise<void> {
+  if (mode === 'log' && !PREMIUM_LOG_PROBES.has(fn)) return;
   const caller = await callerOf(ctx);
   console.log(`[premium] ${fn} ${describeCaller(caller)}`);
   if (mode === 'enforce') {
     if (caller.kind === 'anonymous') throw apiError(401, 'sign in required');
     if (caller.kind === 'free') throw apiError(403, 'subscription required');
   }
-  return caller;
 }
 
 /** A public query whose handler runs only after `premiumRead` lets the caller through. */
