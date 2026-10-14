@@ -67,3 +67,9 @@ export const rotate = internalAction({
     await ctx.runMutation(internal.accessPass.store, { pass, now: Date.now() });
   },
 });
+
+/** The current pass, or null before the first rotation. For server code that reads premium queries (`parity:run`). */
+export const currentPass = internalQuery({
+  args: {},
+  handler: async (ctx) => (await currentPasses(ctx))?.current ?? null,
+});

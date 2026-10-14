@@ -54,6 +54,8 @@ import {
   putSavedSession,
   refreshServerEntitlement,
   fetchAccessPass,
+  issueSiriToken,
+  revokeApiToken,
   fetchWrapped,
   searchApi,
 } from './meetcal-api';
@@ -2759,6 +2761,23 @@ describe('premium reads and the access pass', () => {
     expect(lastCall()).toMatchObject({ fn: 'entitlements:refresh', kind: 'action', token: 'clerk-token' });
     installTransport(() => ({ active: 'yes' }));
     await expect(refreshServerEntitlement('clerk-token')).rejects.toThrow('expected a boolean');
+  });
+
+  it("issues Siri's token with the Clerk token, and checks its shape", async () => {
+    const { lastCall } = installTransport(() => ({ token: 'jwt', tokenId: 't1', expiresAt: 9 }));
+    await expect(issueSiriToken('clerk-token')).resolves.toEqual({ token: 'jwt', tokenId: 't1', expiresAt: 9 });
+    expect(lastCall()).toMatchObject({ fn: 'apiTokens:issue', kind: 'action', token: 'clerk-token', args: { client: 'siri' } });
+    installTransport(() => ({ token: 'jwt', tokenId: '', expiresAt: 9 }));
+    await expect(issueSiriToken('clerk-token')).rejects.toThrow('tokenId expected a non-empty string');
+    await expect(issueSiriToken('')).rejects.toThrow('requires an auth token');
+  });
+
+  it('ends a token with the token itself, or with a Clerk session and its id', async () => {
+    const { lastCall } = installTransport(() => null);
+    await revokeApiToken('jwt');
+    expect(lastCall()).toMatchObject({ fn: 'apiTokens:revoke', kind: 'mutation', token: 'jwt', args: {} });
+    await revokeApiToken('clerk-token', 't1');
+    expect(lastCall()).toMatchObject({ token: 'clerk-token', args: { tokenId: 't1' } });
   });
 });
 

@@ -188,6 +188,13 @@ describe('the premium queries', () => {
     expect(cli.sort()).toEqual([...PREMIUM_ACTIONS].sort());
   });
 
+  it("are the ones Siri sends the pass to (`premiumFunctions` in `plugins/ios-app-intents/MeetCalAPI.swift`)", () => {
+    const source = readFileSync(join(__dirname, '..', 'plugins', 'ios-app-intents', 'MeetCalAPI.swift'), 'utf8');
+    const list = /premiumFunctions: Set<String> = \[([^\]]*)\]/.exec(source)?.[1] ?? '';
+    const siri = [...list.matchAll(/"([^"]+)"/g)].map((match) => match[1]);
+    expect(siri.sort()).toEqual([...PREMIUM_FUNCTIONS].sort());
+  });
+
   it('leave name suggestions public: search checks the pass only when asked for results', async () => {
     setPremiumModeForTests('enforce');
     const { db } = fakeDb();
