@@ -26,6 +26,7 @@ import type * as lib_etag from "../lib/etag.js";
 import type * as lib_heartbeat from "../lib/heartbeat.js";
 import type * as lib_history from "../lib/history.js";
 import type * as lib_jwt from "../lib/jwt.js";
+import type * as lib_leaderboard from "../lib/leaderboard.js";
 import type * as lib_meetData from "../lib/meetData.js";
 import type * as lib_meetStatus from "../lib/meetStatus.js";
 import type * as lib_names from "../lib/names.js";
@@ -128,6 +129,7 @@ declare const fullApi: ApiFromModules<{
   "lib/heartbeat": typeof lib_heartbeat;
   "lib/history": typeof lib_history;
   "lib/jwt": typeof lib_jwt;
+  "lib/leaderboard": typeof lib_leaderboard;
   "lib/meetData": typeof lib_meetData;
   "lib/meetStatus": typeof lib_meetStatus;
   "lib/names": typeof lib_names;

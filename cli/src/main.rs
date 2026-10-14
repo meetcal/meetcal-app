@@ -32,7 +32,6 @@ async fn main() -> Result<()> {
         Commands::QualifyingTotals(args) => commands::qual_totals::run(args).await?,
         Commands::Qualify(args) => commands::qualify::run(args).await?,
         Commands::Records(args) => commands::records::run(args).await?,
-        Commands::Results(args) => commands::results::run(args).await?,
         Commands::Schedule(args) => commands::schedule::run(args).await?,
         Commands::Search(args) => commands::search::run(args).await?,
         Commands::Standards(args) => commands::standards::run(args).await?,

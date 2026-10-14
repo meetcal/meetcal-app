@@ -1,9 +1,10 @@
 //! Retry policy for MeetCal API requests.
 //!
-//! The policy applies to queries only, which read data, so replaying one is safe. Actions and
-//! mutations (`meetcal login`'s `deviceLogin:start` and `deviceLogin:poll`, `apiTokens:revoke`,
-//! `entitlements:refresh`) are sent once: one may have done its work before its answer was lost,
-//! and the login's poll loop already tolerates a failed poll (`backend::Endpoint::retries`). The
+//! The policy applies to reads only, so replaying one is safe: queries, and the premium actions
+//! (`results:leaderboard`), which only read. Other actions and mutations (`meetcal login`'s
+//! `deviceLogin:start` and `deviceLogin:poll`, `apiTokens:revoke`, `entitlements:refresh`) are sent
+//! once: one may have done its work before its answer was lost, and the login's poll loop already
+//! tolerates a failed poll (`backend::Endpoint::retries`). The
 //! policy is kept free of I/O so it can be unit tested; `utils::backend` applies it to real
 //! requests.
 

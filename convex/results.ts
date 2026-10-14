@@ -1,8 +1,21 @@
 import { v } from 'convex/values';
-import { premiumQuery, premiumRead } from './lib/access';
-import { query, type QueryCtx } from './_generated/server';
+import { checkPass, premiumQuery, premiumRead } from './lib/access';
+import { action, internalQuery, query, type QueryCtx } from './_generated/server';
+import { internal } from './_generated/api';
 import { nameMatcher, queryBigrams, searchDirectory } from './lib/directory';
 import { readHistories, readSummaries, type Mark, type Summary } from './lib/history';
+import {
+  addBests,
+  type Candidate,
+  checkLeaderboardArgs,
+  type LeaderboardRow,
+  leaderboardRow,
+  monthSlices,
+  parseCompactRows,
+  pruneBests,
+  rankBests,
+  toCompactRow,
+} from './lib/leaderboard';
 import { computeMeetResults } from './lib/meetData';
 import { cleanNameList, distinctNameKeys, normalizeName, requestedNamesByKey } from './lib/names';
 import {
@@ -34,8 +47,9 @@ export const MAX_RESULTS_PAGE_SIZE = 2000;
 
 /**
  * Every result dated `startDate` to `endDate` (inclusive), oldest first, a page at a time: pass
- * back `continueCursor` until `isDone`. For clients that compute across all results (the CLI's
- * leaderboards and exports). Answers `{ json, isDone, continueCursor }`, the rows as JSON text.
+ * back `continueCursor` until `isDone`. Kept for the CLI releases that read it for `leaderboard`
+ * and `results` (2.4.0 and earlier); the current CLI ranks with `results:leaderboard` instead, and
+ * this bulk export goes once those releases have been replaced. Answers `{ json, isDone, continueCursor }`, the rows as JSON text.
  */
 export const page = premiumQuery('results:page', {
   args: {
@@ -60,6 +74,107 @@ export const page = premiumQuery('results:page', {
       json: JSON.stringify(result.page.map(toApiLiftingResult)),
       isDone: result.isDone,
       continueCursor: result.continueCursor,
+    };
+  },
+});
+
+// ---------------------------------------------------------------------------
+// Leaderboard
+// ---------------------------------------------------------------------------
+
+/** Results one `leaderboardPage` read covers. */
+export const LEADERBOARD_PAGE_SIZE = 2000;
+/** Month slices of a leaderboard's range read side by side, each its own cursor chain. */
+export const LEADERBOARD_CONCURRENCY = 8;
+/** Most pages one month slice is read in before the leaderboard gives up (2,000 rows each). */
+export const LEADERBOARD_MAX_PAGES = 50;
+
+const metricArg = v.union(v.literal('total'), v.literal('snatch'), v.literal('cj'), v.literal('sinclair'), v.literal('qpoints'));
+const genderArg = v.union(v.literal('Men'), v.literal('Women'));
+
+/** One page of a leaderboard's read: its rows as JSON text of `CompactRow`s. */
+export type LeaderboardPage = { json: string; isDone: boolean; continueCursor: string };
+
+/**
+ * One page of the results dated `start` to `end`, by date, as compact rows
+ * (`lib/leaderboard.ts`). It takes nothing about the leaderboard asked for
+ * and reads no pass, so Convex caches each page once for every caller,
+ * metric and filter: a past month's pages are read from the database once
+ * until its results change.
+ */
+export const leaderboardPage = internalQuery({
+  args: { start: v.string(), end: v.string(), cursor: v.union(v.string(), v.null()) },
+  handler: async (ctx, { start, end, cursor }): Promise<LeaderboardPage> => {
+    const result = await ctx.db
+      .query('lifting_results')
+      .withIndex('by_date', (q) => q.gte('date', start).lte('date', end))
+      .paginate({ cursor, numItems: LEADERBOARD_PAGE_SIZE });
+    return {
+      json: JSON.stringify(result.page.map((row) => toCompactRow(toApiLiftingResult(row)))),
+      isDone: result.isDone,
+      continueCursor: result.continueCursor,
+    };
+  },
+});
+
+/** A leaderboard: `rows` best first, and the federations in the range (`federations`, sorted, non-blank). */
+export type LeaderboardAnswer = { rows: LeaderboardRow[]; federations: string[] };
+
+/**
+ * The leaderboard of every athlete in a date range (`lib/leaderboard.ts`):
+ * each athlete once, by their best `by` (`total`, `snatch`, `cj`, `sinclair`
+ * or `qpoints`), best first, at most `limit` (default 50, at most 500).
+ * Filters: `gender` (needed for `sinclair` and `qpoints`), `category`,
+ * `division` (text it contains), `federation` (BWL is left out unless
+ * asked for) and `adaptive` (left out unless true). The range spans less
+ * than five years. Premium: an action (it reads every result in the range,
+ * a page per internal query), so it takes the pass itself (`PREMIUM_ACTIONS`).
+ */
+export const leaderboard = action({
+  args: {
+    from: v.string(),
+    to: v.string(),
+    by: metricArg,
+    gender: v.optional(genderArg),
+    category: v.optional(v.string()),
+    division: v.optional(v.string()),
+    federation: v.optional(v.string()),
+    adaptive: v.optional(v.boolean()),
+    limit: v.optional(v.number()),
+    pass: v.optional(v.string()),
+  },
+  handler: async (ctx, { pass, ...args }): Promise<LeaderboardAnswer> => {
+    checkPass('results:leaderboard', pass, await ctx.runQuery(internal.accessPass.passes, {}));
+    const { from, to, by, limit, filters } = checkLeaderboardArgs(args);
+    const slices = monthSlices(from, to);
+    // Folded in as pages arrive and pruned to about `limit` athletes. Slices finish in any
+    // order, but that cannot change the answer: rows from different months differ in date,
+    // which ties are broken by, and a month's own pages are folded in date order, so a full
+    // tie keeps the row read first, as one pass over the rows would.
+    const best = new Map<string, Candidate>();
+    const federations = new Set<string>();
+    const readSlice = async (index: number) => {
+      const [start, end] = slices[index];
+      let cursor: string | null = null;
+      for (let pages = 0; pages < LEADERBOARD_MAX_PAGES; pages++) {
+        const page: LeaderboardPage = await ctx.runQuery(internal.results.leaderboardPage, { start, end, cursor });
+        const rows = parseCompactRows(page.json);
+        for (const row of rows) federations.add(row.federation);
+        addBests(best, rows, by, filters);
+        pruneBests(best, limit);
+        if (page.isDone) return;
+        cursor = page.continueCursor;
+      }
+      throw apiError(500, `results from ${start} to ${end} did not finish within ${LEADERBOARD_MAX_PAGES} pages`);
+    };
+    let next = 0;
+    const worker = async () => {
+      while (next < slices.length) await readSlice(next++);
+    };
+    await Promise.all(Array.from({ length: Math.min(LEADERBOARD_CONCURRENCY, slices.length) }, worker));
+    return {
+      rows: rankBests(best.values(), limit).map(leaderboardRow),
+      federations: [...federations].filter((federation) => federation.trim() !== '').sort(compareBytes),
     };
   },
 });

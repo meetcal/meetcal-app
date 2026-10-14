@@ -38,7 +38,6 @@ pub enum Commands {
     QualifyingTotals(commands::qual_totals::QualTotalsArgs),
     Qualify(commands::qualify::QualifyArgs),
     Records(commands::records::RecordsArgs),
-    Results(commands::results::ResultsArgs),
     Schedule(commands::schedule::ScheduleArgs),
     Search(commands::search::SearchArgs),
     Standards(commands::standards::StandardsArgs),
