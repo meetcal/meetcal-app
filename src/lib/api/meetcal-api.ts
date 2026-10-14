@@ -1806,6 +1806,37 @@ export async function fetchAccessPass(token: string): Promise<AccessPass> {
   return { pass: row.pass, rotatesAt: row.rotatesAt };
 }
 
+/** A MeetCal-issued sign-in token (`apiTokens:issue`): the JWT, its id, and when it expires (ms). */
+export type IssuedApiToken = { token: string; tokenId: string; expiresAt: number };
+
+/**
+ * A new 90-day MeetCal-issued token for Siri's App Intents
+ * (`apiTokens:issue` with `{ client: "siri" }`), for the user whose Clerk
+ * session token this is (`lib/siri-token.ts`).
+ */
+export async function issueSiriToken(token: string): Promise<IssuedApiToken> {
+  const authToken = requireToken(token, 'issueSiriToken');
+  const row = assertHasFields(
+    await userCall('/api-tokens', 'apiTokens:issue', 'action', authToken, { client: 'siri' }),
+    '/api-tokens',
+    ['token', 'tokenId', 'expiresAt'],
+  );
+  if (typeof row.token !== 'string' || row.token.length === 0) throw new Error('/api-tokens.token expected a non-empty string');
+  if (typeof row.tokenId !== 'string' || row.tokenId.length === 0) throw new Error('/api-tokens.tokenId expected a non-empty string');
+  if (typeof row.expiresAt !== 'number' || !Number.isFinite(row.expiresAt)) throw new Error('/api-tokens.expiresAt expected a number');
+  return { token: row.token, tokenId: row.tokenId, expiresAt: row.expiresAt };
+}
+
+/**
+ * Ends a MeetCal-issued token (`apiTokens:revoke`). Called with that token,
+ * ends it whatever `tokenId` says; called with a Clerk session token, ends
+ * the user's token `tokenId`. Ending a token already gone is not an error.
+ */
+export async function revokeApiToken(token: string, tokenId?: string): Promise<void> {
+  const authToken = requireToken(token, 'revokeApiToken');
+  await userCall('/api-tokens/revoke', 'apiTokens:revoke', 'mutation', authToken, tokenId === undefined ? {} : { tokenId });
+}
+
 /** `results:wrapped`'s answer (`convex/lib/wrapped.ts`), checked. */
 export type ApiWrappedStats = {
   totalWeightLifted: number;

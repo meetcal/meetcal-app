@@ -8,9 +8,15 @@
 //  did, so the response models are unchanged. Only the fields the intents use
 //  are decoded; unknown fields are ignored so server additions never break it.
 //
+//  Premium queries carry the shared access pass (docs/backend.md, "Premium
+//  data"), fetched with the MeetCal-issued token the app stores for Siri
+//  (`SiriToken`, lib/siri-token.ts). `PremiumGate` in Intents.swift still
+//  decides what the intents show.
+//
 
 import Foundation
 import CryptoKit
+import Security
 
 // MARK: - Response models (decode-what-you-need)
 
@@ -220,6 +226,72 @@ struct APINamedBests: Decodable {
     let best_total: Double?
 }
 
+/// `accessPass:pass`'s answer: the pass, and when to ask for the next (ms).
+struct APIAccessPass: Decodable {
+    let pass: String
+    let rotatesAt: Double
+}
+
+/// `entitlements:refresh`'s answer: whether the server found a subscription.
+struct APIEntitlement: Decodable {
+    let active: Bool
+}
+
+// MARK: - Siri's sign-in token
+
+/// The MeetCal-issued token (`apiTokens:issue`, 90 days) the app keeps in the
+/// keychain for Siri while a subscriber is signed in, and deletes when they
+/// sign out (lib/siri-token.ts). Used only to fetch the access pass: it is
+/// never sent with a data query.
+struct SiriToken: Decodable {
+    let token: String
+    let tokenId: String
+    /// Milliseconds since 1970.
+    let expiresAt: Double
+
+    /// Where expo-secure-store saves the item: an item without biometric
+    /// protection goes under the service `<keychainService>:no-auth`, with
+    /// the key, as UTF-8 data, for its account. `SIRI_TOKEN_KEYCHAIN_SERVICE`
+    /// and `SIRI_TOKEN_KEY` in lib/siri-token.ts; a test keeps them equal.
+    static let service = "meetcal.siri:no-auth"
+    static let account = "siri_api_token"
+
+    /// The stored token; nil when there is none (signed out, not a
+    /// subscriber, the app has not run since updating) or it has expired.
+    /// The intents run in the app's process, so the item is the app's own;
+    /// it is readable once the phone has been unlocked after starting.
+    static func stored(now: Date = Date()) -> SiriToken? {
+        var query = itemQuery
+        query[kSecMatchLimit as String] = kSecMatchLimitOne
+        query[kSecReturnData as String] = true
+        var item: CFTypeRef?
+        guard SecItemCopyMatching(query as CFDictionary, &item) == errSecSuccess,
+              let data = item as? Data,
+              let stored = try? JSONDecoder().decode(SiriToken.self, from: data),
+              !stored.token.isEmpty,
+              stored.expiresAt / 1000 > now.timeIntervalSince1970
+        else { return nil }
+        return stored
+    }
+
+    /// Deletes the stored token if it is still `tokenId`. For a token the
+    /// server no longer accepts (revoked, or signed with a replaced key): the
+    /// app issues a new one the next time it opens, as it does when none is
+    /// stored. A token the app has replaced meanwhile is left alone.
+    static func discard(tokenId: String) {
+        guard stored()?.tokenId == tokenId else { return }
+        _ = SecItemDelete(itemQuery as CFDictionary)
+    }
+
+    private static var itemQuery: [String: Any] {
+        [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: service,
+            kSecAttrAccount as String: Data(account.utf8),
+        ]
+    }
+}
+
 // MARK: - History cutoff
 
 /// History-window cutoff dates. Mirrors `getHistoryCutoffDate(years)` and the
@@ -270,8 +342,11 @@ enum HistoryCutoff {
 enum MeetCalAPIError: Error {
     case badStatus(Int)
     case invalidURL
-    /// Convex answered, but with an error (`status` other than `success`).
+    /// Convex's answer could not be read.
     case queryFailed
+    /// The function ran and failed: the status our functions put in its
+    /// `errorData` (`{ status, error }`), when there is one.
+    case functionFailed(status: Int?)
 }
 
 actor MeetCalAPI {
@@ -295,6 +370,60 @@ actor MeetCalAPI {
 
     // In-memory cache: request key -> (timestamp, raw data)
     private var memoryCache: [String: (Date, Data)] = [:]
+
+    /// The Convex functions that answer premium data: `PREMIUM_FUNCTIONS` in
+    /// convex/lib/access.ts (a test in convex-tests/access.test.ts keeps the
+    /// lists equal). Calls to these carry the shared access pass.
+    static let premiumFunctions: Set<String> = [
+        "reference:records",
+        "reference:standards",
+        "reference:qualifyingTotals",
+        "reference:intlRankings",
+        "reference:nationalRankings",
+        "reference:nationalRankingsByYear",
+        "reference:wsoList",
+        "reference:registrationWsos",
+        "reference:wsoAgeGroups",
+        "reference:wsoRecords",
+        "reference:adaptiveRecords",
+        "reference:clubs",
+        "reference:clubAthletes",
+        "reference:wsoAthletes",
+        "reference:clubMeetStats",
+        "results:page",
+        "results:byMeet",
+        "results:byNames",
+        "results:recent",
+        "results:yearBests",
+        "results:bests",
+        "results:search",
+        "meets:packageForMeet",
+    ]
+
+    /// A pass, the token it was fetched with, and until when to use it before
+    /// asking for the next (seconds since 1970).
+    private struct HeldPass: Codable {
+        let pass: String
+        let until: TimeInterval
+        let tokenId: String
+    }
+
+    /// The least time a pass is held, whatever its `rotatesAt` says: a clock
+    /// running ahead must not turn every read into a pass fetch. The server
+    /// accepts a pass for a day after it rotates. `ACCESS_PASS_MIN_HOLD_MS`
+    /// in lib/api/premium-queries.ts.
+    private static let passMinHold: TimeInterval = 300
+    /// After a pass could not be had, how long premium reads go without
+    /// asking again. `ACCESS_PASS_RETRY_AFTER_MS` in lib/api/premium-queries.ts.
+    private static let passRetryAfter: TimeInterval = 30
+    /// The held pass, kept across the launches between Siri invocations in
+    /// the app's own defaults (the widgets never need it).
+    private static let heldPassKey = "meetcalAccessPass"
+
+    private var heldPass: HeldPass?
+    private var loadedHeldPass = false
+    private var passFetch: Task<HeldPass?, Never>?
+    private var skipPassUntil = Date.distantPast
 
     /// Persisted answers, one file per request (see "TTL cache" below).
     private let cacheDirectory: URL?
@@ -407,36 +536,198 @@ actor MeetCalAPI {
     /// revalidating queries); that text is the payload. Any other value is
     /// re-encoded and decoded directly.
     private func query<T: Decodable>(_ path: String, args: [String: Any] = [:]) async throws -> T {
-        let body: [String: Any] = ["path": path, "args": args, "format": "json"]
-        // Sorted keys: the same request always hits the same cache key.
-        let bodyData = try JSONSerialization.data(withJSONObject: body, options: [.sortedKeys])
+        // Sorted keys: the same request always hits the same cache key. The
+        // pass is not part of it: every pass gets the same answer.
+        let bodyData = try Self.requestBody(path, args: args)
         let cacheKey = "convex \(String(decoding: bodyData, as: UTF8.self))"
         let data: Data
         if let cached = cachedData(for: cacheKey) {
             data = cached
         } else {
-            data = try await post(bodyData)
+            data = try await fetch(path, args: args, bodyData: bodyData)
             storeData(data, for: cacheKey)
         }
         return try JSONDecoder().decode(T.self, from: data)
     }
 
-    /// POSTs to `/api/query` and returns the answer's JSON payload.
-    private func post(_ bodyData: Data) async throws -> Data {
-        var request = URLRequest(url: convexURL.appendingPathComponent("api/query"))
+    private static func requestBody(_ path: String, args: [String: Any]) throws -> Data {
+        let body: [String: Any] = ["path": path, "args": args, "format": "json"]
+        return try JSONSerialization.data(withJSONObject: body, options: [.sortedKeys])
+    }
+
+    /// Whether a call reads premium data. `results:search` does only with
+    /// dates: name suggestions are public.
+    static func isPremiumCall(_ path: String, args: [String: Any]) -> Bool {
+        guard premiumFunctions.contains(path) else { return false }
+        return path != "results:search" || (args["startDate"] != nil && args["endDate"] != nil)
+    }
+
+    /// `args` with the access pass added, when there is one.
+    private static func adding(pass: String?, to args: [String: Any]) -> [String: Any] {
+        guard let pass else { return args }
+        var withPass = args
+        withPass["pass"] = pass
+        return withPass
+    }
+
+    /// Runs a query. A premium one carries the access pass when Siri can get
+    /// one, and goes without it otherwise (answered while the server only
+    /// logs such reads). Refused for its pass (status 401 or 403), it is sent
+    /// once more with a new pass, as the app does.
+    private func fetch(_ path: String, args: [String: Any], bodyData: Data) async throws -> Data {
+        guard Self.isPremiumCall(path, args: args) else { return try await post(bodyData) }
+        guard let token = SiriToken.stored() else {
+            forgetPass()
+            return try await post(bodyData)
+        }
+        let pass = await accessPass(for: token)
+        do {
+            return try await post(Self.requestBody(path, args: Self.adding(pass: pass, to: args)))
+        } catch MeetCalAPIError.functionFailed(let status) where status == 401 || status == 403 {
+            guard let fresh = await accessPass(for: token, refused: pass, retry: true), fresh != pass else {
+                throw MeetCalAPIError.functionFailed(status: status)
+            }
+            return try await post(Self.requestBody(path, args: Self.adding(pass: fresh, to: args)))
+        }
+    }
+
+    // MARK: Access pass
+
+    /// The pass a premium read should carry, for `token`'s user. The held one
+    /// is used until it is due for renewal, and past that (the server still
+    /// accepts it for a day) while a new one cannot be had; otherwise one is
+    /// fetched, once for all the reads waiting on it. `retry` is a read the
+    /// server refused for its pass (`refused`, or none): a refused pass is
+    /// dropped, unless another read already replaced it, and a new one
+    /// fetched. As `accessPassFor` in lib/api/premium-queries.ts.
+    private func accessPass(for token: SiriToken, refused: String? = nil, retry: Bool = false) async -> String? {
+        if !loadedHeldPass {
+            loadedHeldPass = true
+            heldPass = Self.persistedPass()
+        }
+        if let held = heldPass, held.tokenId != token.tokenId || (retry && held.pass == refused) {
+            forgetPass()
+        }
+        if let held = heldPass, retry || Date().timeIntervalSince1970 < held.until {
+            return held.pass
+        }
+        if !retry, Date() < skipPassUntil {
+            return heldPass?.pass
+        }
+        let pending: Task<HeldPass?, Never>
+        if let running = passFetch {
+            pending = running
+        } else {
+            pending = Task { await self.fetchPass(with: token) }
+            passFetch = pending
+        }
+        let fetched = await pending.value
+        return fetched?.pass ?? heldPass?.pass
+    }
+
+    /// Fetches a pass and holds it, or waits `passRetryAfter` before the next try.
+    private func fetchPass(with token: SiriToken) async -> HeldPass? {
+        let fetched = await requestPass(with: token)
+        if let fetched {
+            heldPass = fetched
+            Self.persist(fetched)
+        } else {
+            skipPassUntil = Date().addingTimeInterval(Self.passRetryAfter)
+        }
+        passFetch = nil
+        return fetched
+    }
+
+    /// `accessPass:pass` with Siri's token. The server answers 403 when it
+    /// knows of no active subscription (RevenueCat's webhook lands after a
+    /// purchase, and never came for lifetime purchases made before it
+    /// existed); then it is asked to check RevenueCat now
+    /// (`entitlements:refresh`) and, if it finds the subscription, asked once
+    /// more. A 401 means the server no longer accepts the token (revoked, or
+    /// its signing key replaced): it is deleted, so the app issues a new one.
+    /// Nil when there is no pass to be had.
+    private func requestPass(with token: SiriToken) async -> HeldPass? {
+        do {
+            return try await passAnswer(with: token)
+        } catch MeetCalAPIError.functionFailed(let status) where status == 401 {
+            // Revoked: the token verifies, but its `api_tokens` row is gone.
+            SiriToken.discard(tokenId: token.tokenId)
+            return nil
+        } catch MeetCalAPIError.badStatus(401) {
+            // Convex could not verify the token at all (a replaced signing key).
+            SiriToken.discard(tokenId: token.tokenId)
+            return nil
+        } catch MeetCalAPIError.functionFailed(let status) where status == 403 {
+            guard
+                let refreshed = try? await post(
+                    Self.requestBody("entitlements:refresh", args: [:]),
+                    endpoint: "api/action",
+                    token: token.token
+                ),
+                let entitlement = try? JSONDecoder().decode(APIEntitlement.self, from: refreshed),
+                entitlement.active
+            else { return nil }
+            return try? await passAnswer(with: token)
+        } catch {
+            return nil
+        }
+    }
+
+    private func passAnswer(with token: SiriToken) async throws -> HeldPass {
+        let data = try await post(Self.requestBody("accessPass:pass", args: [:]), token: token.token)
+        let answer = try JSONDecoder().decode(APIAccessPass.self, from: data)
+        guard !answer.pass.isEmpty else { throw MeetCalAPIError.queryFailed }
+        let until = max(answer.rotatesAt / 1000, Date().timeIntervalSince1970 + Self.passMinHold)
+        return HeldPass(pass: answer.pass, until: until, tokenId: token.tokenId)
+    }
+
+    /// Drops the held pass: signed out, another user's, or refused.
+    private func forgetPass() {
+        if heldPass != nil || !loadedHeldPass { Self.persist(nil) }
+        heldPass = nil
+        loadedHeldPass = true
+    }
+
+    private static func persistedPass() -> HeldPass? {
+        guard let data = UserDefaults.standard.data(forKey: heldPassKey) else { return nil }
+        return try? JSONDecoder().decode(HeldPass.self, from: data)
+    }
+
+    private static func persist(_ held: HeldPass?) {
+        if let held, let data = try? JSONEncoder().encode(held) {
+            UserDefaults.standard.set(data, forKey: heldPassKey)
+        } else {
+            UserDefaults.standard.removeObject(forKey: heldPassKey)
+        }
+    }
+
+    // MARK: HTTP
+
+    /// POSTs a function call to Convex (`api/query`, or `api/action`) and
+    /// returns the answer's JSON payload. `token` signs the call: only the
+    /// pass and entitlement calls carry one, never a data query. A function
+    /// that ran and failed (Convex answers 560, or 200) throws
+    /// `functionFailed` with the status in its `errorData`.
+    private func post(_ bodyData: Data, endpoint: String = "api/query", token: String? = nil) async throws -> Data {
+        var request = URLRequest(url: convexURL.appendingPathComponent(endpoint))
         request.httpMethod = "POST"
         request.httpBody = bodyData
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue("application/json", forHTTPHeaderField: "Accept")
+        if let token {
+            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        }
 
         let (data, response) = try await session.data(for: request)
+        let envelope = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
+        if let envelope, envelope["status"] as? String == "error" {
+            let errorData = envelope["errorData"] as? [String: Any]
+            throw MeetCalAPIError.functionFailed(status: (errorData?["status"] as? NSNumber)?.intValue)
+        }
         if let http = response as? HTTPURLResponse, !(200...299).contains(http.statusCode) {
             throw MeetCalAPIError.badStatus(http.statusCode)
         }
-        guard
-            let envelope = try JSONSerialization.jsonObject(with: data) as? [String: Any],
-            envelope["status"] as? String == "success"
-        else {
+        guard let envelope, envelope["status"] as? String == "success" else {
             throw MeetCalAPIError.queryFailed
         }
         let value = envelope["value"] ?? NSNull()

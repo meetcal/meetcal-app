@@ -48,6 +48,7 @@ import { devLog } from "@/lib/logger";
 import { refreshAuthCacheForVerifiedUser } from "@/lib/authCache";
 import { useDataWidgetRefresh } from "@/hooks/useDataWidgetRefresh";
 import { useServerDataAccess } from "@/hooks/useServerDataAccess";
+import { useSiriToken } from "@/hooks/useSiriToken";
 import { isNetworkAvailable } from "@/lib/networkUtils";
 import { checkOnboardingComplete } from "@/lib/onboarding";
 import { isMaestroE2E } from "@/lib/e2e";
@@ -254,6 +255,10 @@ function RootLayoutContent({ fontsLoaded }: { fontsLoaded: boolean }) {
 
   // A subscriber's premium reads carry the shared access pass.
   useServerDataAccess();
+
+  // Siri's App Intents get the pass with their own token, issued while a
+  // subscriber is signed in and ended when they sign out.
+  useSiriToken();
 
   // Keep the offline auth hint's seven-day window sliding for every verified
   // session, not only on screens that happen to mount `useAuthGuard`.
