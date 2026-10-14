@@ -10,7 +10,6 @@ import {
   DEVICE_LOGIN_POLL_INTERVAL_S,
   DEVICE_LOGIN_TTL_MS,
   formatUserCode,
-  MAX_OPEN_DEVICE_LOGINS,
   normalizeUserCode,
   poll,
   start,
@@ -110,9 +109,48 @@ describe('a device login', () => {
     const approved = await pollLogin(db, login.deviceCode);
     expect(approved).toMatchObject({ status: 'approved', token: expect.any(String), tokenId: expect.any(String) });
     expect(db.rows('api_tokens')).toEqual([expect.objectContaining({ userId: A, client: 'cli', tokenId: approved.tokenId })]);
-    // Used up: the token is handed over once.
-    expect(await pollLogin(db, login.deviceCode)).toEqual({ status: 'expired' });
+    // Handed over once; a later poll (its answer was lost) is told so, not "expired".
+    jest.advanceTimersByTime(DEVICE_LOGIN_POLL_INTERVAL_S * 1000);
+    expect(await pollLogin(db, login.deviceCode)).toEqual({ status: 'collected' });
+    expect(db.rows('api_tokens')).toHaveLength(1);
+    // Nothing left to turn down once the CLI has its token.
+    expect(await statusOf(handlerOf(deny)(as(db, clerk(A)), { userCode: login.userCode }))).toBe(404);
+  });
+
+  it('lets the approver change their mind until the CLI collects the token', async () => {
+    const db = fakeMutationCtx();
+    const { userCode, deviceCode } = await startLogin(db);
+    await handlerOf(approve)(as(db, clerk(A)), { userCode });
+    // Another user cannot turn down A's approval.
+    expect(await statusOf(handlerOf(deny)(as(db, clerk('user_b')), { userCode }))).toBe(404);
+    expect(await handlerOf(deny)(as(db, clerk(A)), { userCode })).toEqual({ ok: true });
+    expect(await pollLogin(db, deviceCode)).toEqual({ status: 'denied' });
+    expect(db.rows('api_tokens')).toEqual([]);
+  });
+
+  it('is approved by the first user only', async () => {
+    const db = fakeMutationCtx();
+    const { userCode } = await startLogin(db);
+    await handlerOf(approve)(as(db, clerk(A)), { userCode });
+    expect(await statusOf(handlerOf(approve)(as(db, clerk('user_b')), { userCode }))).toBe(404);
+    expect(db.rows('device_logins')).toEqual([expect.objectContaining({ approvedBy: A })]);
+  });
+
+  it('does not start when this deployment cannot sign tokens, so nobody approves for nothing', async () => {
+    delete process.env.MEETCAL_TOKEN_SIGNING_KEY;
+    const db = fakeMutationCtx();
+    expect(await statusOf(startLogin(db))).toBe(503);
     expect(db.rows('device_logins')).toEqual([]);
+  });
+
+  it('tells the CLI the token went out but was lost when minting fails after collection (a deleted account)', async () => {
+    const db = fakeMutationCtx();
+    const { userCode, deviceCode } = await startLogin(db);
+    await handlerOf(approve)(as(db, clerk(A)), { userCode });
+    await db.ctx.db.insert('deleted_users', { userId: A, deletedAt: 1 });
+    expect(await statusOf(pollLogin(db, deviceCode))).toBe(403);
+    jest.advanceTimersByTime(DEVICE_LOGIN_POLL_INTERVAL_S * 1000);
+    expect(await pollLogin(db, deviceCode)).toEqual({ status: 'collected' });
   });
 
   it('tells a CLI that polls too often to slow down', async () => {
@@ -156,15 +194,25 @@ describe('a device login', () => {
     expect(db.rows('device_logins')[0].deviceName).toHaveLength(64);
   });
 
-  it('prunes expired logins and refuses new ones past the cap', async () => {
+  it('prunes expired logins, with no cap anyone could fill to block everyone', async () => {
     const now = Date.now();
     const expired = Array.from({ length: 3 }, (_, i) => ({ deviceCodeHash: `old${i}`, userCode: `OLDCODE${i}`, deviceName: 'x', status: 'pending', createdAt: 0, expiresAt: now - 1 }));
     const db = fakeMutationCtx({ device_logins: expired });
     await startLogin(db);
     expect(db.rows('device_logins')).toHaveLength(1);
 
-    const open = Array.from({ length: MAX_OPEN_DEVICE_LOGINS }, (_, i) => ({ deviceCodeHash: `h${i}`, userCode: `CODE${i}`, deviceName: 'x', status: 'pending', createdAt: now, expiresAt: now + 1000 }));
-    expect(await statusOf(startLogin(fakeMutationCtx({ device_logins: open })))).toBe(429);
+    const open = Array.from({ length: 2000 }, (_, i) => ({ deviceCodeHash: `h${i}`, userCode: `CODE${i}`, deviceName: 'x', status: 'pending', createdAt: now, expiresAt: now + 1000 }));
+    expect(await statusOf(startLogin(fakeMutationCtx({ device_logins: open })))).toBe('ok');
+  });
+
+  it('draws again when the user code is taken by a login in progress, not by an expired one', async () => {
+    const put = handlerOf<Record<string, unknown>, boolean>(create);
+    const now = Date.now();
+    const db = fakeMutationCtx({
+      device_logins: [{ deviceCodeHash: 'old', userCode: 'BBBBBBBB', deviceName: 'x', status: 'pending', createdAt: 0, expiresAt: now + 1000 }],
+    });
+    expect(await put(db.ctx, { deviceCodeHash: 'new', userCode: 'BBBBBBBB', deviceName: 'y', now })).toBe(false);
+    expect(await put(db.ctx, { deviceCodeHash: 'new', userCode: 'BBBBBBBB', deviceName: 'y', now: now + 1000 })).toBe(true);
   });
 
   it('points the user at DEVICE_LOGIN_URL where it is set (dev)', async () => {

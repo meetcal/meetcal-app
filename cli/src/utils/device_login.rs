@@ -79,6 +79,8 @@ pub enum PollAnswer {
     SlowDown,
     Denied,
     Expired,
+    /// Approved, and the token already handed out to a poll whose answer never arrived.
+    Collected,
     Approved(Issued),
 }
 
@@ -87,6 +89,8 @@ pub enum PollAnswer {
 pub enum LoginFailure {
     Denied,
     Expired,
+    /// Approved, but the answer carrying the token was lost.
+    Lost,
     /// Polling failed `MAX_POLL_FAILURES` times in a row; the last error.
     Unreachable(String),
 }
@@ -99,6 +103,9 @@ impl LoginFailure {
             }
             LoginFailure::Expired => "The code expired before it was approved. Run `meetcal \
                                       login` to get a new one."
+                .to_string(),
+            LoginFailure::Lost => "This login was approved, but its answer was lost on the way. \
+                                   Run `meetcal login` again."
                 .to_string(),
             LoginFailure::Unreachable(reason) => format!(
                 "Lost touch with MeetCal while waiting for approval ({reason}). Run `meetcal \
@@ -147,6 +154,7 @@ impl Poller {
             Ok(PollAnswer::Approved(issued)) => return Step::Approved(issued),
             Ok(PollAnswer::Denied) => return Step::Failed(LoginFailure::Denied),
             Ok(PollAnswer::Expired) => return Step::Failed(LoginFailure::Expired),
+            Ok(PollAnswer::Collected) => return Step::Failed(LoginFailure::Lost),
             Ok(PollAnswer::Pending) => self.failures = 0,
             Ok(PollAnswer::SlowDown) => {
                 self.failures = 0;
@@ -331,6 +339,10 @@ mod tests {
             PollAnswer::Expired
         );
         assert_eq!(
+            parse(json!({"status": "collected"})).unwrap(),
+            PollAnswer::Collected
+        );
+        assert_eq!(
             parse(json!({"status": "approved", "token": "jwt", "tokenId": "tid", "expiresAt": 9_000_i64}))
                 .unwrap(),
             PollAnswer::Approved(Issued {
@@ -410,6 +422,15 @@ mod tests {
             poller.after(Ok(PollAnswer::Expired), 0),
             Step::Failed(LoginFailure::Expired)
         );
+        // A token handed out to a lost answer ends the login; it is not an expired code.
+        assert_eq!(
+            poller.after(Ok(PollAnswer::Collected), 0),
+            Step::Failed(LoginFailure::Lost)
+        );
+        assert_eq!(
+            LoginFailure::Lost.message(),
+            "This login was approved, but its answer was lost on the way. Run `meetcal login` again."
+        );
         // A server that keeps answering pending past the code's expiry is given up on.
         let deadline = started(5).expires_at + EXPIRY_GRACE_MS;
         assert_eq!(
@@ -450,6 +471,7 @@ mod tests {
         for failure in [
             LoginFailure::Denied,
             LoginFailure::Expired,
+            LoginFailure::Lost,
             LoginFailure::Unreachable("x".to_string()),
         ] {
             assert!(failure.message().contains("meetcal login"), "{failure:?}");

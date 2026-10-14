@@ -15,7 +15,7 @@ The repository root's `AGENTS.md` applies here too: its hard rules (worktrees, n
 | Path | Role |
 |---|---|
 | `src/main.rs` | The router: every route, and which ones sit behind `SubscriptionGate` (`/link` needs sign-in but no subscription, so it does not) |
-| `src/utils/api.rs` | The only data access: every Convex query the site reads (`queries::*`), which of them carry the access pass, the HTTP call with its retries, and fetching and holding the pass (`accessPass:pass`, with `entitlements:refresh` when Convex does not know the subscriber yet), and the `/link` page's `deviceLogin` query and mutations |
+| `src/utils/api.rs` | The only data access: every Convex query the site reads (`queries::*`), which of them carry the access pass, the HTTP call with its retries, and fetching and holding the pass (`accessPass:pass`, with `entitlements:refresh` when Convex does not know the subscriber yet), and the `/link` page's `deviceLogin` query and mutations and `apiTokens:revokeAllCli` |
 | `src/auth.rs`, `src/auth_bridge.js` | Clerk sign-in and the RevenueCat entitlement check, through a small JavaScript bridge to the providers' web SDKs |
 | `src/components/` | Header, footer, feature cards, route metadata (`seo.rs`), the subscription gate |
 | `src/pages/` | Public pages (home, features, privacy, terms), and `link.rs`: `/link`, where a signed-in user approves or denies a `meetcal login` from the CLI (no subscription needed, in no menu, noindex). `/atlas` redirects to the Atlas home page at atlas.meetcal.app, which the Atlas repository serves |

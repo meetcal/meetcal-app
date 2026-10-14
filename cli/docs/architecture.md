@@ -29,9 +29,10 @@ POST https://disciplined-hare-790.convex.cloud/api/query
 - A function that ran and failed answers `{ status: "error", errorMessage, errorData }` (HTTP 200
   or 560). Our functions throw `{ status, error }` as `errorData`; the CLI prints
   `MeetCal could not answer <query>: <error>`.
-- `send_with_retry` applies `src/utils/retry.rs`: 429 and 503 are retried twice, honoring
-  `Retry-After` (clamped to 1 to 30 seconds) or backing off 1 then 2 seconds. Once retries run
-  out, a 429 explains how long to wait.
+- `send_with_retry` applies `src/utils/retry.rs` to queries: 429 and 503 are retried twice,
+  honoring `Retry-After` (clamped to 1 to 30 seconds) or backing off 1 then 2 seconds. Once retries
+  run out, a 429 explains how long to wait. Actions and mutations are sent once
+  (`Endpoint::retries`): one may have done its work before its answer was lost.
 - One shared `reqwest` client with a 10-second connect timeout, a 30-second request timeout, and a
   `meetcal-cli/<version>` User-Agent.
 - `MEETCAL_CONVEX_URL` (read at run time) points the CLI at another deployment.
@@ -50,7 +51,9 @@ shared daily access pass as the `pass` argument (`../docs/backend.md`, "Premium 
   and the approval page; the CLI prints `<verificationUrl>?code=<userCode>`, the code, and a QR code
   of the link when stderr is a terminal, then polls `deviceLogin:poll` every `interval` seconds
   (five more after each `slow_down`) until it answers `approved` (with a 90-day MeetCal-issued
-  token), `denied` or `expired`. The polling policy is `Poller` in `src/utils/device_login.rs`,
+  token), `denied`, `expired` or `collected` (approved, but the answer carrying the token was
+  lost: the user runs `login` again). A poll that fails is not resent; the loop polls again at the
+  next interval, giving up after five failures in a row. The polling policy is `Poller` in `src/utils/device_login.rs`,
   free of I/O. Nothing is interactive, so it runs over SSH and for agents.
 - The token is saved by `src/utils/credentials.rs` in
   `$XDG_CONFIG_HOME/meetcal/credentials.json` (else `~/.config/meetcal/`; `%APPDATA%` on Windows),

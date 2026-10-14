@@ -1,6 +1,6 @@
 import { v } from 'convex/values';
 import { internal } from './_generated/api';
-import { action, httpAction, internalMutation, mutation, type ActionCtx } from './_generated/server';
+import { action, httpAction, internalMutation, internalQuery, mutation, type ActionCtx } from './_generated/server';
 import { isMeetCalToken, meetcalTokenIssuer } from './lib/access';
 import { parseSigningJwk, publicJwk, signJwt } from './lib/jwt';
 import { apiError } from './lib/validation';
@@ -48,6 +48,11 @@ export const record = internalMutation({
 });
 
 export type IssuedToken = { token: string; tokenId: string; expiresAt: number };
+
+/** Whether this deployment can sign tokens: its signing key and issuer are set. */
+export function tokensConfigured(): boolean {
+  return parseSigningJwk(process.env.MEETCAL_TOKEN_SIGNING_KEY) !== null && meetcalTokenIssuer() !== undefined;
+}
 
 /**
  * Makes and records a new token for `userId`. For `issue` (a signed-in Clerk
@@ -109,6 +114,48 @@ export const revoke = mutation({
       .unique();
     if (row && row.userId === identity.subject) await ctx.db.delete(row._id);
     return null;
+  },
+});
+
+/**
+ * Ends every CLI token of the signed-in Clerk user, and turns down any login
+ * they approved whose token the CLI has not collected yet: the way back after
+ * approving a login by mistake. Siri's token is left alone. Answers how many
+ * tokens were ended.
+ */
+export const revokeAllCli = mutation({
+  args: {},
+  handler: async (ctx) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity || isMeetCalToken(identity)) throw apiError(401, 'unauthorized');
+    const rows = await ctx.db
+      .query('api_tokens')
+      .withIndex('by_userId', (q) => q.eq('userId', identity.subject))
+      .take(MAX_API_TOKENS_PER_USER);
+    let ended = 0;
+    for (const row of rows) {
+      if (row.client !== 'cli') continue;
+      await ctx.db.delete(row._id);
+      ended++;
+    }
+    const approved = await ctx.db
+      .query('device_logins')
+      .withIndex('by_approvedBy', (q) => q.eq('approvedBy', identity.subject))
+      .take(MAX_API_TOKENS_PER_USER);
+    for (const login of approved) if (login.status === 'approved') await ctx.db.patch(login._id, { status: 'denied' });
+    return { ended };
+  },
+});
+
+/** Whether the token `tokenId` is still `userId`'s: not revoked, not replaced. */
+export const isLive = internalQuery({
+  args: { tokenId: v.string(), userId: v.string() },
+  handler: async (ctx, { tokenId, userId }) => {
+    const row = await ctx.db
+      .query('api_tokens')
+      .withIndex('by_tokenId', (q) => q.eq('tokenId', tokenId))
+      .unique();
+    return row !== null && row.userId === userId;
   },
 });
 

@@ -30,8 +30,9 @@ POST https://disciplined-hare-790.convex.cloud/api/query
 - A function that ran and failed answers `{ status: "error", errorMessage, errorData }`, over HTTP
   200 or 560. Our functions throw `{ status, error }` as `errorData`; the site shows `error`.
 - 429 and 503 are retried twice, honoring `Retry-After` (1 to 10 seconds). Every query is a read,
-  so a retry is safe. The site's only mutations, `deviceLogin:approve` and `deviceLogin:deny`
-  (`POST /api/mutation`, from `/link`), are never retried by themselves: the user taps Try again.
+  so a retry is safe. The site's only mutations, `deviceLogin:approve`, `deviceLogin:deny` and
+  `apiTokens:revokeAllCli` (`POST /api/mutation`, from `/link`), are never retried by themselves:
+  the user taps Try again.
 - The premium functions (`SUBSCRIPTION_FUNCTIONS` in `api.rs`, Convex's `PREMIUM_FUNCTIONS`) take
   the access pass as their `pass` argument; `api.rs` adds it to their arguments. A search
   (`results:search`) takes it only with `startDate` and `endDate`: name suggestions are public.
@@ -104,16 +105,25 @@ is the page the link opens. It needs a signed-in user but no subscription, so it
   `/link?code=ABCD-EFGH`.
 - With a whole code it asks `deviceLogin:describe` (`POST /api/query`), which answers
   `{ deviceName, createdAt, expiresAt }` or `null`, and shows the device, the code and how long ago
-  it asked, with a warning to approve only a `meetcal login` the user just ran. Approve and Deny
-  call `deviceLogin:approve` and `deviceLogin:deny` (`POST /api/mutation`), which answer
-  `{ ok: true }`; approve answers a function error with status 404 for a code no login is waiting
-  on. All three carry `Authorization: Bearer <Clerk session token>`, and a 401 asks the user to try
+  it asked, with a warning to approve only a `meetcal login` the user just ran. The device name is
+  the requester's own claim, so it is shown in quotes as "the name the device gave itself": a
+  requester cannot pass for the MeetCal app. Approve and Deny call `deviceLogin:approve` and
+  `deviceLogin:deny` (`POST /api/mutation`), which answer `{ ok: true }`. Approve answers a
+  function error with status 404 for a code no login is waiting on. Deny also turns down a login
+  this user approved whose token the CLI has not collected yet (second thoughts in another tab),
+  and answers 404 when nothing is left to turn down (expired, or the CLI already has its token):
+  the page then shows the code as expired or used, never "denied", since the CLI may be signed in. All three carry `Authorization: Bearer <Clerk session token>`, and a 401 asks the user to try
   again, which fetches a fresh token. The calls are in `api.rs` (`describe_device_login`,
-  `approve_device_login`, `deny_device_login`).
+  `approve_device_login`, `deny_device_login`, `revoke_all_cli_logins`).
 - States: checking sign-in, sign-in, code entry, looking up, the request (Approve / Deny),
   approved ("Done — you can return to your terminal."), denied, expired or used (a `null`
-  describe, or a 404 approve: run `meetcal login` again), and an error with Try again, which
-  repeats the call that failed.
+  describe or a 404 approve: run `meetcal login` again; a 404 deny: it could not be denied), and
+  an error with Try again, which repeats the call that failed.
+- Recovery: below the card, whenever the user is signed in (done and denied included), "Sign out
+  all CLI logins" asks "Sign out every computer signed in with meetcal login?", then calls the
+  mutation `apiTokens:revokeAllCli` (`POST /api/mutation`, args `{}`, the same bearer token), which
+  answers `{ ended }`, and shows "Signed out N CLI logins." A failure shows the error with Try
+  again; like the other mutations, it is never sent again without a tap.
 
 ## Routes and metadata
 

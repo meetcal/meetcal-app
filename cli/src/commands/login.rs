@@ -7,12 +7,12 @@
 use std::io::{IsTerminal, Write};
 use std::path::{Path, PathBuf};
 
-use anyhow::{Context, Result, bail};
+use anyhow::{Context, Result, anyhow, bail};
 use clap::Parser;
 use serde_json::json;
 
 use crate::utils::access::{self, NoPass};
-use crate::utils::backend::{self, Endpoint, functions};
+use crate::utils::backend::{self, Endpoint, FunctionError, functions};
 use crate::utils::credentials::{self, Credentials};
 use crate::utils::device_login::{self, PollAnswer, Poller, Started, Step};
 
@@ -101,7 +101,7 @@ pub async fn login<W: Write>(
         None,
     )
     .await
-    .context("Could not start a MeetCal login")?;
+    .map_err(start_failure)?;
     started.validate()?;
     let link = device_login::approval_url(&started.verification_url, &started.user_code)?;
 
@@ -169,6 +169,24 @@ pub async fn login<W: Write>(
         Err(_) => {}
     }
     Ok(saved)
+}
+
+/// What to tell the user when `deviceLogin:start` fails: sign-in switched off on the server
+/// (503), or busy (429), are said plainly; anything else keeps its cause.
+fn start_failure(error: anyhow::Error) -> anyhow::Error {
+    let failed = error
+        .chain()
+        .find_map(|cause| cause.downcast_ref::<FunctionError>());
+    match failed.and_then(|failed| failed.status.map(|status| (status, &failed.reason))) {
+        Some((503, reason)) => anyhow!(
+            "MeetCal sign-in is not available right now ({reason}). Try `meetcal login` again \
+             later."
+        ),
+        Some((429, _)) => {
+            anyhow!("MeetCal is busy right now. Try `meetcal login` again in a few minutes.")
+        }
+        _ => error.context("Could not start a MeetCal login"),
+    }
 }
 
 /// Polls the started login until it is approved, denied or expired.

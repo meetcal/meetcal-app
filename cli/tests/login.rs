@@ -10,7 +10,10 @@ use meetcal::commands::login::{login, logout};
 use meetcal::parser::Cli;
 use meetcal::utils::credentials::{self, Credentials};
 use serde_json::json;
-use support::{FUNCTION_FAILED, OK, authorizations, reply, request_bodies, request_paths, serve};
+use support::{
+    FUNCTION_FAILED, OK, RATE_LIMITED, UNAVAILABLE, authorizations, reply, request_bodies,
+    request_paths, serve,
+};
 
 const FAR_FUTURE: i64 = 4_102_444_800_000;
 const DEVICE: &str = "meetcal CLI on test-host (Linux)";
@@ -149,16 +152,48 @@ async fn a_denied_or_expired_login_fails_and_saves_nothing() {
 }
 
 #[tokio::test]
-async fn a_refused_start_explains_itself() {
-    let (base_url, _) = serve(vec![reply(
-        FUNCTION_FAILED,
-        None,
-        r#"{"status":"error","errorMessage":"Server Error","errorData":{"status":429,"error":"too many logins in progress; try again in a few minutes"}}"#,
-    )]);
+async fn a_refused_start_says_why_plainly() {
+    for (status, error, says) in [
+        (
+            503,
+            "sign-in tokens are not configured",
+            "MeetCal sign-in is not available right now (sign-in tokens are not configured)",
+        ),
+        (429, "slow down", "MeetCal is busy right now"),
+    ] {
+        let (base_url, requests) = serve(vec![
+            reply(
+                FUNCTION_FAILED,
+                None,
+                format!(
+                    r#"{{"status":"error","errorMessage":"Server Error","errorData":{{"status":{status},"error":"{error}"}}}}"#
+                ),
+            ),
+            reply(OK, None, started(1)),
+        ]);
+        let path = scratch(&format!("refused-{status}"));
+
+        let error = login(&base_url, &path, DEVICE, false, &mut Vec::new())
+            .await
+            .unwrap_err();
+
+        assert!(error.to_string().contains(says), "{error}");
+        assert!(error.to_string().contains("meetcal login"), "{error}");
+        assert_eq!(requests.lock().unwrap().len(), 1);
+        assert_eq!(credentials::load(&path).unwrap(), None);
+    }
+}
+
+#[tokio::test]
+async fn a_start_that_is_throttled_is_not_sent_again() {
+    let (base_url, requests) = serve(vec![
+        reply(RATE_LIMITED, Some("1"), r#"{"error":"rate limited"}"#),
+        reply(OK, None, started(1)),
+    ]);
 
     let error = login(
         &base_url,
-        &scratch("refused"),
+        &scratch("throttled"),
         DEVICE,
         false,
         &mut Vec::new(),
@@ -167,9 +202,54 @@ async fn a_refused_start_explains_itself() {
     .unwrap_err();
 
     assert!(
-        format!("{error:#}").contains("too many logins in progress"),
+        format!("{error:#}").contains("rate limiting requests right now; try again"),
         "{error:#}"
     );
+    assert_eq!(requests.lock().unwrap().len(), 1);
+}
+
+#[tokio::test]
+async fn an_approval_whose_answer_was_lost_says_so() {
+    let (base_url, requests) = serve(vec![
+        reply(OK, None, started(1)),
+        reply(OK, None, polled("collected")),
+        reply(OK, None, polled("expired")),
+    ]);
+    let path = scratch("collected");
+
+    let error = login(&base_url, &path, DEVICE, false, &mut Vec::new())
+        .await
+        .unwrap_err();
+
+    assert_eq!(
+        error.to_string(),
+        "This login was approved, but its answer was lost on the way. Run `meetcal login` again."
+    );
+    // The login stops at once rather than polling on into "expired".
+    assert_eq!(requests.lock().unwrap().len(), 2);
+    assert_eq!(credentials::load(&path).unwrap(), None);
+}
+
+#[tokio::test]
+async fn a_poll_that_fails_is_not_resent_but_polled_again_later() {
+    let (base_url, requests) = serve(vec![
+        reply(OK, None, started(1)),
+        reply(UNAVAILABLE, None, ""),
+        reply(OK, None, approved("new")),
+        reply(OK, None, SUBSCRIBED),
+    ]);
+    let path = scratch("poll-failed");
+
+    login(&base_url, &path, DEVICE, false, &mut Vec::new())
+        .await
+        .unwrap();
+
+    assert_eq!(
+        credentials::load(&path).unwrap(),
+        Some(saved("new", &base_url))
+    );
+    assert_eq!(requests.lock().unwrap().len(), 4);
+    std::fs::remove_dir_all(path.parent().unwrap().parent().unwrap()).unwrap();
 }
 
 #[tokio::test]

@@ -10,6 +10,7 @@ import {
   store,
   webhookUserIds,
 } from '../convex/entitlements';
+import { isLive } from '../convex/apiTokens';
 import { fakeMutationCtx, handlerOf } from './fakeDb';
 
 /**
@@ -145,7 +146,7 @@ describe('the stored entitlement', () => {
 });
 
 describe('RevenueCat calls', () => {
-  const handlers: Record<string, unknown> = { 'entitlements:store': store, 'entitlements:claimRefresh': claimRefresh };
+  const handlers: Record<string, unknown> = { 'entitlements:store': store, 'entitlements:claimRefresh': claimRefresh, 'apiTokens:isLive': isLive };
   let previous: Record<string, string | undefined>;
   let fetchMock: jest.Mock;
   const originalFetch = global.fetch;
@@ -154,6 +155,7 @@ describe('RevenueCat calls', () => {
     return {
       auth: { getUserIdentity: async () => identity },
       runMutation: async (ref: unknown, args: unknown) => handlerOf(handlers[getFunctionName(ref as never)])(db.ctx, args),
+      runQuery: async (ref: unknown, args: unknown) => handlerOf(handlers[getFunctionName(ref as never)])(db.ctx, args),
     };
   }
 
@@ -214,12 +216,15 @@ describe('RevenueCat calls', () => {
     expect((await webhook(actionCtx(db), request('Bearer hook-secret', 'nope'))).status).toBe(400);
   });
 
-  it('refresh: needs a signed-in caller, and re-checks only their own subscription, also for the CLI', async () => {
+  it('refresh: needs a signed-in caller, and re-checks only their own subscription, also for the CLI while its token lives', async () => {
     const status = (error: unknown) => (error instanceof ConvexError ? (error.data as { status: number }).status : error);
     expect(await handlerOf(refresh)(actionCtx(fakeMutationCtx(), null), {}).catch(status)).toBe(401);
+    const cli = { subject: A, issuer: 'https://example.convex.site', tid: 't1' };
+    // Revoked (no row): refused before RevenueCat is asked.
+    expect(await handlerOf(refresh)(actionCtx(fakeMutationCtx(), cli), {}).catch(status)).toBe(401);
     expect(fetchMock).not.toHaveBeenCalled();
-    const db = fakeMutationCtx();
-    expect(await handlerOf(refresh)(actionCtx(db, { subject: A, issuer: 'https://example.convex.site', tid: 't1' }), {})).toEqual({ active: true });
+    const db = fakeMutationCtx({ api_tokens: [{ tokenId: 't1', userId: A, client: 'cli', createdAt: 1, expiresAt: 1e15 }] });
+    expect(await handlerOf(refresh)(actionCtx(db, cli), {})).toEqual({ active: true });
     expect(fetchMock.mock.calls[0][0]).toBe(`https://api.revenuecat.com/v1/subscribers/${A}`);
   });
 

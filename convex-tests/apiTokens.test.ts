@@ -1,6 +1,6 @@
 import { ConvexError } from 'convex/values';
 import { getFunctionName } from 'convex/server';
-import { API_TOKEN_AUDIENCE, API_TOKEN_TTL_MS, issue, jwks, MAX_API_TOKENS_PER_USER, record, revoke } from '../convex/apiTokens';
+import { API_TOKEN_AUDIENCE, API_TOKEN_TTL_MS, issue, jwks, MAX_API_TOKENS_PER_USER, record, revoke, revokeAllCli } from '../convex/apiTokens';
 import { parseSigningJwk, publicJwk, signJwt, type SigningJwk } from '../convex/lib/jwt';
 import { fakeMutationCtx, handlerOf } from './fakeDb';
 
@@ -147,6 +147,24 @@ describe('issuing and revoking', () => {
     expect(await as(clerk(A), { tokenId: 't2' })).toBe('ok');
     expect(await as(clerk(A), { tokenId: 'gone' })).toBe('ok');
     expect(db.rows('api_tokens').map((r) => r.tokenId)).toEqual(['tb']);
+  });
+
+  it("signs out every CLI login of the Clerk user, leaving Siri's and other users' tokens", async () => {
+    const rows = [
+      { tokenId: 'c1', userId: A, client: 'cli', createdAt: 1, expiresAt: 1e15 },
+      { tokenId: 'c2', userId: A, client: 'cli', createdAt: 2, expiresAt: 1e15 },
+      { tokenId: 's1', userId: A, client: 'siri', createdAt: 1, expiresAt: 1e15 },
+      { tokenId: 'b1', userId: 'user_b', client: 'cli', createdAt: 1, expiresAt: 1e15 },
+    ];
+    const login = (status: string) => ({ deviceCodeHash: status, userCode: 'BBBBBBBB', deviceName: 'x', status, approvedBy: A, createdAt: 1, expiresAt: 1e15 });
+    const db = fakeMutationCtx({ api_tokens: rows, device_logins: [login('approved'), login('collected')] });
+    const as = (identity: Record<string, unknown> | null) => handlerOf(revokeAllCli)({ ...db.ctx, auth: { getUserIdentity: async () => identity } }, {});
+    expect(await statusOf(as(null))).toBe(401);
+    expect(await statusOf(as(meetcal(A, 'c1')))).toBe(401);
+    expect(await as(clerk(A))).toEqual({ ended: 2 });
+    expect(db.rows('api_tokens').map((r) => r.tokenId)).toEqual(['s1', 'b1']);
+    // An approved login the CLI has not collected is turned down too.
+    expect(db.rows('device_logins').map((r) => r.status)).toEqual(['denied', 'collected']);
   });
 
   it('publishes the public key at the JWKS endpoint, and an empty set without one', async () => {

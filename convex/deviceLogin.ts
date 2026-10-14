@@ -3,7 +3,7 @@ import { internal } from './_generated/api';
 import { action, internalMutation, mutation, query, type QueryCtx } from './_generated/server';
 import { isMeetCalToken } from './lib/access';
 import { apiError } from './lib/validation';
-import { mintApiToken, type IssuedToken } from './apiTokens';
+import { mintApiToken, tokensConfigured, type IssuedToken } from './apiTokens';
 
 /**
  * Device-code login for the `meetcal` CLI, so it signs in without a browser
@@ -18,15 +18,15 @@ import { mintApiToken, type IssuedToken } from './apiTokens';
  *
  * Only the device code's hash is stored, so the table alone cannot claim a
  * login. Approving needs a Clerk session; a MeetCal-issued token cannot
- * approve another device. A code lives `DEVICE_LOGIN_TTL_MS`.
+ * approve another device. A code lives `DEVICE_LOGIN_TTL_MS`. A collected
+ * login stays `collected` until it expires, so a CLI whose answer was lost is
+ * told so instead of "expired".
  */
 
 export const DEVICE_LOGIN_TTL_MS = 10 * 60 * 1000;
 /** How often the CLI polls, in seconds. Polling sooner answers `slow_down`. */
 export const DEVICE_LOGIN_POLL_INTERVAL_S = 5;
 export const MAX_DEVICE_NAME_LENGTH = 64;
-/** Logins in progress across everyone; `start` refuses more (429). */
-export const MAX_OPEN_DEVICE_LOGINS = 500;
 /** Expired logins one `start` deletes. */
 export const DEVICE_LOGIN_PRUNE_BATCH = 20;
 /** Where the user approves a login; `DEVICE_LOGIN_URL` points dev elsewhere. */
@@ -76,15 +76,20 @@ async function requireClerkUser(ctx: Pick<QueryCtx, 'auth'>): Promise<string> {
   return identity.subject;
 }
 
-const pendingLogin = async (ctx: QueryCtx, userCode: string, now: number) => {
+/** The unexpired login on `userCode`, in any state. An expired one not yet pruned may hold the same code. */
+const openLogin = async (ctx: QueryCtx, userCode: string, now: number) => {
   const code = normalizeUserCode(userCode);
   if (code.length !== USER_CODE_LENGTH) return null;
-  // An expired login not yet pruned may hold the same code.
   const rows = await ctx.db
     .query('device_logins')
     .withIndex('by_userCode', (q) => q.eq('userCode', code))
     .take(DEVICE_LOGIN_PRUNE_BATCH);
-  return rows.find((row) => row.status === 'pending' && row.expiresAt > now) ?? null;
+  return rows.find((row) => row.expiresAt > now) ?? null;
+};
+
+const pendingLogin = async (ctx: QueryCtx, userCode: string, now: number) => {
+  const row = await openLogin(ctx, userCode, now);
+  return row?.status === 'pending' ? row : null;
 };
 
 /** Records a new login; false when its user code is taken by one in progress (the caller draws again). */
@@ -96,12 +101,11 @@ export const create = internalMutation({
       .withIndex('by_expiresAt', (q) => q.lte('expiresAt', now))
       .take(DEVICE_LOGIN_PRUNE_BATCH);
     for (const row of expired) await ctx.db.delete(row._id);
-    const open = await ctx.db
+    const sameCode = await ctx.db
       .query('device_logins')
-      .withIndex('by_expiresAt', (q) => q.gt('expiresAt', now))
-      .take(MAX_OPEN_DEVICE_LOGINS);
-    if (open.length >= MAX_OPEN_DEVICE_LOGINS) throw apiError(429, 'too many logins in progress; try again in a few minutes');
-    if (open.some((row) => row.userCode === userCode)) return false;
+      .withIndex('by_userCode', (q) => q.eq('userCode', userCode))
+      .take(DEVICE_LOGIN_PRUNE_BATCH);
+    if (sameCode.some((row) => row.expiresAt > now)) return false;
     await ctx.db.insert('device_logins', {
       deviceCodeHash,
       userCode,
@@ -127,6 +131,8 @@ export const start = action({
   ): Promise<{ deviceCode: string; userCode: string; verificationUrl: string; expiresAt: number; interval: number }> => {
     const deviceName = args.deviceName.trim().slice(0, MAX_DEVICE_NAME_LENGTH);
     if (deviceName === '') throw apiError(400, 'deviceName is required');
+    // Fails before the user approves anything, not after.
+    if (!tokensConfigured()) throw apiError(503, 'sign-in tokens are not configured');
     const deviceCode = randomHex(32);
     const deviceCodeHash = await sha256Hex(deviceCode);
     const now = Date.now();
@@ -147,9 +153,14 @@ export const start = action({
   },
 });
 
-type Claim = { status: 'pending' | 'slow_down' | 'denied' | 'expired' } | { status: 'approved'; userId: string };
+type PollStatus = 'pending' | 'slow_down' | 'denied' | 'expired' | 'collected';
+type Claim = { status: PollStatus } | { status: 'approved'; userId: string };
 
-/** Where a login stands, for its device code's hash; an approved or finished login is used up. */
+/**
+ * Where a login stands, for its device code's hash. An approved login is
+ * handed over once and kept as `collected` until it expires, so a poll after
+ * a lost answer is told the token went out, not that the code expired.
+ */
 export const claim = internalMutation({
   args: { deviceCodeHash: v.string(), now: v.number() },
   handler: async (ctx, { deviceCodeHash, now }): Promise<Claim> => {
@@ -166,8 +177,9 @@ export const claim = internalMutation({
       await ctx.db.delete(row._id);
       return { status: 'denied' };
     }
+    if (row.status === 'collected') return { status: 'collected' };
     if (row.status === 'approved' && row.approvedBy !== undefined) {
-      await ctx.db.delete(row._id);
+      await ctx.db.patch(row._id, { status: 'collected' });
       return { status: 'approved', userId: row.approvedBy };
     }
     // A poll is allowed a second early, for timer jitter.
@@ -179,12 +191,13 @@ export const claim = internalMutation({
 
 /**
  * The CLI's poll. Answers `{ status }`: `pending`, `slow_down` (wait
- * `interval` plus five seconds), `denied`, `expired`, or `approved` with the
- * token (`{ token, tokenId, expiresAt }`), answered once.
+ * `interval` plus five seconds), `denied`, `expired`, `approved` with the
+ * token (`{ token, tokenId, expiresAt }`), answered once, or `collected`: it
+ * was answered already, and that answer was lost (start again).
  */
 export const poll = action({
   args: { deviceCode: v.string() },
-  handler: async (ctx, { deviceCode }): Promise<{ status: 'pending' | 'slow_down' | 'denied' | 'expired' } | ({ status: 'approved' } & IssuedToken)> => {
+  handler: async (ctx, { deviceCode }): Promise<{ status: PollStatus } | ({ status: 'approved' } & IssuedToken)> => {
     const answer = await ctx.runMutation(internal.deviceLogin.claim, { deviceCodeHash: await sha256Hex(deviceCode), now: Date.now() });
     if (answer.status !== 'approved') return { status: answer.status };
     return { status: 'approved', ...(await mintApiToken(ctx, answer.userId, 'cli')) };
@@ -218,13 +231,21 @@ export const approve = mutation({
   },
 });
 
-/** Turns down the login waiting on `userCode`; the CLI is told. Not an error when none is waiting. */
+/**
+ * Turns down the login on `userCode`: one still waiting, or one this user
+ * approved whose token the CLI has not collected yet (second thoughts in
+ * another tab). The CLI is told. 404 when there is nothing left to turn down:
+ * the code expired, or the CLI already has its token.
+ */
 export const deny = mutation({
   args: { userCode: v.string() },
   handler: async (ctx, { userCode }) => {
-    await requireClerkUser(ctx);
-    const row = await pendingLogin(ctx, userCode, Date.now());
-    if (row) await ctx.db.patch(row._id, { status: 'denied' });
+    const userId = await requireClerkUser(ctx);
+    const row = await openLogin(ctx, userCode, Date.now());
+    if (!row || (row.status === 'approved' && row.approvedBy !== userId) || row.status === 'collected' || row.status === 'denied') {
+      throw apiError(404, 'this code has expired or was already used');
+    }
+    await ctx.db.patch(row._id, { status: 'denied' });
     return { ok: true };
   },
 });

@@ -230,6 +230,13 @@ pub enum Endpoint {
 }
 
 impl Endpoint {
+    /// Whether a throttled (429) or overloaded (503) answer is sent again by itself. Only a query
+    /// is: an action or mutation may have done its work before the answer was lost (a poll that
+    /// handed out its token, a revoke), so it goes once and its caller decides.
+    pub fn retries(self) -> bool {
+        matches!(self, Endpoint::Query)
+    }
+
     fn path(self) -> &'static str {
         match self {
             Endpoint::Query => "api/query",
@@ -479,7 +486,7 @@ async fn call(
         .build()
         .with_context(|| format!("Failed to build request for MeetCal query {function}"))?;
 
-    send_with_retry(request, function)
+    send_with_retry(request, function, endpoint.retries())
         .await?
         .json()
         .await
@@ -612,9 +619,9 @@ fn read_answer<T: DeserializeOwned>(query: Query, answer: QueryResponse) -> Resu
 }
 
 /// Sends `request`, retrying rate limited (429) and overloaded (503) responses as the retry
-/// policy allows. Returns the response once Convex answers (a function that failed included),
-/// or an error once it cannot.
-pub async fn send_with_retry(request: Request, function: &str) -> Result<Response> {
+/// policy allows when `retries` (a query; see [`Endpoint::retries`]). Returns the response once
+/// Convex answers (a function that failed included), or an error once it cannot.
+pub async fn send_with_retry(request: Request, function: &str, retries: bool) -> Result<Response> {
     let mut retries_done = 0;
 
     loop {
@@ -632,7 +639,8 @@ pub async fn send_with_retry(request: Request, function: &str) -> Result<Respons
             .get(RETRY_AFTER)
             .and_then(|value| value.to_str().ok());
 
-        if let Some(delay) = next_retry_delay(status, retry_after, retries_done) {
+        if let Some(delay) = next_retry_delay(status, retry_after, retries_done).filter(|_| retries)
+        {
             tokio::time::sleep(delay).await;
             retries_done += 1;
             continue;
@@ -944,6 +952,13 @@ mod tests {
             FunctionError::status_of(&anyhow!("not a function error")),
             None
         );
+    }
+
+    #[test]
+    fn only_queries_are_resent() {
+        assert!(Endpoint::Query.retries());
+        assert!(!Endpoint::Action.retries());
+        assert!(!Endpoint::Mutation.retries());
     }
 
     #[test]

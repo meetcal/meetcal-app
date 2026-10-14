@@ -1,7 +1,7 @@
 import { v } from 'convex/values';
 import { internal } from './_generated/api';
 import { action, httpAction, internalAction, internalMutation, type ActionCtx, type MutationCtx } from './_generated/server';
-import { entitlementIsActive, SUBSCRIPTION_ENTITLEMENT_ID } from './lib/access';
+import { entitlementIsActive, isMeetCalToken, SUBSCRIPTION_ENTITLEMENT_ID } from './lib/access';
 import { apiError } from './lib/validation';
 import { constantTimeEqual } from './lib/webhookSignature';
 
@@ -214,6 +214,13 @@ export const refresh = action({
   handler: async (ctx): Promise<{ active: boolean }> => {
     const identity = await ctx.auth.getUserIdentity();
     if (!identity) throw apiError(401, 'unauthorized');
+    // A MeetCal-issued token counts only while it is not revoked, as for the pass.
+    if (isMeetCalToken(identity)) {
+      const tokenId = identity.tid;
+      if (typeof tokenId !== 'string' || !(await ctx.runQuery(internal.apiTokens.isLive, { tokenId, userId: identity.subject }))) {
+        throw apiError(401, 'unauthorized');
+      }
+    }
     const claim = await ctx.runMutation(internal.entitlements.claimRefresh, { userId: identity.subject, now: Date.now() });
     if (!claim.claimed) return { active: claim.active };
     const state = await syncEntitlement(ctx, identity.subject);

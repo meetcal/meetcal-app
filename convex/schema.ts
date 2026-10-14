@@ -290,12 +290,12 @@ export default defineSchema({
   // Device-code logins in progress (`convex/deviceLogin.ts`): `meetcal login`
   // shows `userCode`, the user approves it at meetcal.app/link, and the CLI,
   // polling with the device code (only its hash is kept), gets a token. Rows
-  // live minutes: deleted when claimed, and expired ones as new logins start.
+  // live minutes: expired ones are deleted as new logins start.
   device_logins: defineTable({
     deviceCodeHash: v.string(),
     userCode: v.string(),
     deviceName: v.string(),
-    status: v.union(v.literal('pending'), v.literal('approved'), v.literal('denied')),
+    status: v.union(v.literal('pending'), v.literal('approved'), v.literal('collected'), v.literal('denied')),
     approvedBy: v.optional(v.string()),
     createdAt: v.number(),
     expiresAt: v.number(),
@@ -303,7 +303,8 @@ export default defineSchema({
   })
     .index('by_deviceCodeHash', ['deviceCodeHash'])
     .index('by_userCode', ['userCode'])
-    .index('by_expiresAt', ['expiresAt']),
+    .index('by_expiresAt', ['expiresAt'])
+    .index('by_approvedBy', ['approvedBy']),
 
   // MeetCal-issued sign-in tokens (`convex/apiTokens.ts`) for clients that
   // cannot hold a Clerk session: the CLI and Siri. The JWT carries `tid`; a

@@ -261,9 +261,8 @@ pub fn SubscriptionGate(children: ChildrenFn) -> impl IntoView {
     }
 }
 
-/// The centered card the gate and the `/link` page show their states in.
 #[component]
-pub fn AccessShell(children: Children) -> impl IntoView {
+fn AccessShell(children: Children) -> impl IntoView {
     view! {
         <div class="access-page">
             <section class="access-card">{children()}</section>

@@ -107,7 +107,7 @@ The CLI gets its token by device-code login (`convex/deviceLogin.ts`), so it sig
 2. The user opens the link on any device, signs in with Clerk, sees which device is asking (`deviceLogin:describe`) and approves (`deviceLogin:approve`) or denies it.
 3. The CLI polls `deviceLogin:poll` every 5 seconds with its secret device code and, once approved, gets a 90-day token, once.
 
-A code lasts 10 minutes. Only the device code's hash is stored. Approving needs a Clerk session, not a MeetCal-issued token. At most 500 logins can be in progress at once.
+A code lasts 10 minutes. Only the device code's hash is stored. Approving needs a Clerk session, not a MeetCal-issued token. The approver can still deny the login until the CLI collects its token; a poll after the token went out answers `collected`, so a CLI whose answer was lost is told so. `start` refuses (503) when the deployment cannot sign tokens, before anyone approves. To undo a login approved by mistake, `apiTokens:revokeAllCli` (the Sign out all CLI logins button on meetcal.app/link) ends every CLI token of the signed-in user and turns down logins they approved that the CLI has not collected yet.
 
 Replacing it ends every MeetCal-issued token. Account deletion also deletes the user's entitlement records and tokens.
 

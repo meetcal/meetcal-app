@@ -1015,6 +1015,58 @@ a {
     margin-top: 22px;
 }
 
+.link-device-note {
+    display: block;
+    margin-top: 2px;
+    color: var(--text-secondary);
+    font-size: 0.78rem;
+    font-weight: 500;
+}
+
+.link-revoke {
+    width: min(760px, 100%);
+    margin-top: 18px;
+    color: var(--text-secondary);
+    font-size: 0.9rem;
+    text-align: center;
+}
+
+.link-revoke p {
+    margin: 0 0 8px;
+}
+
+.link-revoke-actions {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 8px;
+}
+
+/* Small, but a full touch target. */
+.link-revoke-button {
+    min-height: 44px;
+    padding: 0 16px;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    background: var(--card);
+    color: var(--text);
+    font-weight: 650;
+}
+
+.link-revoke-button:hover:not(:disabled) {
+    background: color-mix(in srgb, var(--accent) 8%, var(--card));
+}
+
+.link-revoke-button:disabled {
+    cursor: wait;
+    opacity: 0.7;
+}
+
+.link-revoke-confirm {
+    border-color: color-mix(in srgb, #c53b35 60%, var(--border));
+    background: color-mix(in srgb, #c53b35 10%, var(--card));
+}
+
 .link-result-icon {
     display: inline-grid;
     width: 52px;

@@ -1,16 +1,16 @@
 //! The site's one way to read MeetCal data: the Convex queries in `convex/`,
 //! called over Convex's HTTP API (`POST /api/query`), the same queries the app
-//! reads. Every call is a read, so repeating one is safe, except the two
-//! mutations `/link` sends to approve or deny a CLI sign-in (`deviceLogin:*`),
-//! which are never repeated by themselves.
+//! reads. Every call is a read, so repeating one is safe, except the
+//! mutations `/link` sends (approving or denying a CLI sign-in, and signing out
+//! every CLI login), which are never repeated by themselves.
 //!
 //! The premium queries (`SUBSCRIPTION_FUNCTIONS`) carry the access pass as
 //! their `pass` argument. Every subscriber holds the same pass, so premium
 //! answers stay in Convex's shared query cache; no query carries the user's
 //! session token, which would make Convex cache each answer per user. Only
 //! `accessPass:pass`, which hands a signed-in subscriber the pass, the
-//! `entitlements:refresh` action, and the `deviceLogin:*` calls (a user's own
-//! CLI sign-in, never cached for others) carry the token. For now Convex only logs a
+//! `entitlements:refresh` action, and `/link`'s calls (`deviceLogin:*` and
+//! `apiTokens:revokeAllCli`, one user's own CLI logins) carry the token. For now Convex only logs a
 //! premium read without a current pass and still answers it; later it will
 //! refuse it, so a premium read sends the pass whenever the site can get one.
 
@@ -968,6 +968,10 @@ pub(crate) struct PendingDeviceLogin {
     pub expires_at: f64,
 }
 
+/// Ends every token the user's `meetcal login`s hold (`convex/apiTokens.ts`):
+/// the recovery for a login approved by mistake. A mutation, sent once.
+const REVOKE_ALL_CLI: &str = "apiTokens:revokeAllCli";
+
 /// What approving or denying a code did.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum DeviceLoginOutcome {
@@ -1013,6 +1017,33 @@ pub(crate) async fn approve_device_login(user_code: &str) -> Result<DeviceLoginO
 pub(crate) async fn deny_device_login(user_code: &str) -> Result<DeviceLoginOutcome> {
     let response = post_device_login(Endpoint::Mutation, DEVICE_LOGIN_DENY, user_code).await?;
     read_device_login_outcome(DEVICE_LOGIN_DENY, response)
+}
+
+/// Signs out every CLI login of the signed-in user; answers how many ended.
+pub(crate) async fn revoke_all_cli_logins() -> Result<u64> {
+    let token = crate::auth::session_token()
+        .await
+        .ok_or_else(|| anyhow!(SESSION_MESSAGE))?;
+    let response = post(
+        Endpoint::Mutation,
+        REVOKE_ALL_CLI,
+        &Value::Object(Map::new()),
+        Some(&token),
+    )
+    .await?;
+    read_revoked_count(response)
+}
+
+/// Reads `apiTokens:revokeAllCli`'s answer, `{ ended }` (a float, as every
+/// number of a value answer).
+fn read_revoked_count(response: QueryResponse) -> Result<u64> {
+    let value = device_login_value(response)?;
+    value
+        .get("ended")
+        .and_then(Value::as_f64)
+        .filter(|ended| ended.fract() == 0.0 && (0.0..=f64::from(u32::MAX)).contains(ended))
+        .map(|ended| ended as u64)
+        .ok_or_else(|| user_error(REVOKE_ALL_CLI, UNREADABLE_MESSAGE, value))
 }
 
 /// A device-login function error, or the answer's value.
@@ -1367,6 +1398,37 @@ mod tests {
             .unwrap_err()
             .to_string(),
             "MeetCal could not answer: Server Error"
+        );
+    }
+
+    #[test]
+    fn signing_out_cli_logins_answers_how_many_ended() {
+        for (ended, count) in [(json!(0), 0), (json!(2.0), 2), (json!(3), 3)] {
+            let response = answer(json!({"status": "success", "value": {"ended": ended}}));
+            assert_eq!(read_revoked_count(response).unwrap(), count);
+        }
+        for value in [
+            json!({}),
+            json!({"ended": -1}),
+            json!({"ended": 1.5}),
+            json!({"ended": "2"}),
+        ] {
+            assert_eq!(
+                read_revoked_count(answer(json!({"status": "success", "value": value})))
+                    .unwrap_err()
+                    .to_string(),
+                UNREADABLE_MESSAGE,
+                "{value}"
+            );
+        }
+        let signed_out = answer(json!({
+            "status": "error",
+            "errorMessage": "Server Error",
+            "errorData": {"status": 401, "error": "unauthorized"}
+        }));
+        assert_eq!(
+            read_revoked_count(signed_out).unwrap_err().to_string(),
+            SESSION_MESSAGE
         );
     }
 

@@ -4,7 +4,9 @@
 mod support;
 
 use meetcal::utils::access::Access;
-use meetcal::utils::backend::{USER_AGENT, queries, query_all_pages_from, query_from};
+use meetcal::utils::backend::{
+    Endpoint, USER_AGENT, call_function, queries, query_all_pages_from, query_from,
+};
 use serde_json::{Value, json};
 use support::{
     FUNCTION_FAILED, NOT_FOUND, OK, RATE_LIMITED, UNAVAILABLE, reply, request_bodies, serve,
@@ -157,4 +159,29 @@ async fn pages_through_a_paged_query_with_its_cursor() {
             json!({"club": "Test Barbell", "cursor": "c1"}),
         ]
     );
+}
+
+#[tokio::test]
+async fn actions_and_mutations_are_sent_once() {
+    for (endpoint, function) in [
+        (Endpoint::Action, "deviceLogin:poll"),
+        (Endpoint::Mutation, "apiTokens:revoke"),
+    ] {
+        for (status, retry_after) in [(RATE_LIMITED, Some("1")), (UNAVAILABLE, None)] {
+            let (base_url, requests) = serve(vec![
+                reply(status, retry_after, r#"{"error":"busy"}"#),
+                reply(OK, None, r#"{"status":"success","value":null}"#),
+            ]);
+
+            let answer =
+                call_function::<Value>(&base_url, endpoint, function, &json!({}), None).await;
+
+            assert!(answer.is_err(), "{function} {status}");
+            assert_eq!(
+                requests.lock().unwrap().len(),
+                1,
+                "{function} {status} was sent again"
+            );
+        }
+    }
 }

@@ -7,7 +7,7 @@
 //! code, so Clerk's sign-in, a reload and the back button all return to it.
 
 use crate::auth::{AuthContext, AuthState};
-use crate::components::subscription_gate::{AccessShell, ClerkSignIn};
+use crate::components::subscription_gate::ClerkSignIn;
 use crate::utils::api::{self, DeviceLoginOutcome, PendingDeviceLogin};
 use leptos::prelude::*;
 use leptos::task::spawn_local;
@@ -116,7 +116,8 @@ pub fn LinkPage() -> impl IntoView {
     let code = Memo::new(move |_| complete_user_code(&typed.get()));
 
     view! {
-        <AccessShell>
+        <div class="access-page">
+            <section class="access-card">
             {move || match auth.state.get() {
                 AuthState::Loading => view! {
                     <div class="access-status" role="status" aria-live="polite">
@@ -150,7 +151,83 @@ pub fn LinkPage() -> impl IntoView {
                     }}
                 }.into_any(),
             }}
-        </AccessShell>
+            </section>
+            // Recovery, in every signed-in state: a login approved by mistake
+            // (or by a phished tap) is ended here.
+            {move || matches!(auth.state.get(), AuthState::SignedIn(_)).then(|| view! { <RevokeCliLogins /> })}
+        </div>
+    }
+}
+
+/// What "Signed out N CLI logins" says for `ended` logins.
+fn revoked_message(ended: u64) -> String {
+    match ended {
+        0 => "No computers were signed in with meetcal login.".to_owned(),
+        1 => "Signed out 1 CLI login.".to_owned(),
+        _ => format!("Signed out {ended} CLI logins."),
+    }
+}
+
+/// Where "Sign out all CLI logins" stands.
+#[derive(Clone, Debug, PartialEq)]
+enum Revoke {
+    Idle,
+    Confirming,
+    Working,
+    Done(u64),
+    Failed(String),
+}
+
+/// Ends every token `meetcal login` holds for this user
+/// (`apiTokens:revokeAllCli`), after the user confirms. Never sent again
+/// without a tap.
+#[component]
+fn RevokeCliLogins() -> impl IntoView {
+    let state = RwSignal::new(Revoke::Idle);
+    let revoke = move || {
+        state.set(Revoke::Working);
+        spawn_local(async move {
+            let next = match api::revoke_all_cli_logins().await {
+                Ok(ended) => Revoke::Done(ended),
+                Err(error) => Revoke::Failed(error.to_string()),
+            };
+            state.try_set(next);
+        });
+    };
+
+    view! {
+        <section class="link-revoke" aria-label="CLI logins">
+            {move || match state.get() {
+                Revoke::Idle => view! {
+                    <button class="link-revoke-button" type="button" on:click=move |_| state.set(Revoke::Confirming)>
+                        "Sign out all CLI logins"
+                    </button>
+                }.into_any(),
+                Revoke::Confirming | Revoke::Working => {
+                    let working = state.get_untracked() == Revoke::Working;
+                    view! {
+                        <p>"Sign out every computer signed in with " <code>"meetcal login"</code> "?"</p>
+                        <div class="link-revoke-actions">
+                            <button class="link-revoke-button link-revoke-confirm" type="button" disabled=working on:click=move |_| revoke()>
+                                {if working { "Signing out…" } else { "Sign out all" }}
+                            </button>
+                            <button class="link-revoke-button" type="button" disabled=working on:click=move |_| state.set(Revoke::Idle)>
+                                "Cancel"
+                            </button>
+                        </div>
+                    }.into_any()
+                }
+                Revoke::Done(ended) => view! {
+                    <p role="status">{revoked_message(ended)}</p>
+                }.into_any(),
+                Revoke::Failed(message) => view! {
+                    <div role="alert">
+                        <p class="access-inline-error">{message}</p>
+                        <button class="link-revoke-button" type="button" on:click=move |_| revoke()>"Try again"</button>
+                    </div>
+                }.into_any(),
+            }}
+        </section>
     }
 }
 
@@ -244,8 +321,11 @@ enum Step {
     Denying,
     Approved,
     Denied,
-    /// Expired, already used, or never issued.
-    Gone,
+    /// Expired, already used, or never issued. `after_deny`: the user tapped
+    /// Deny too late (the CLI already has its token, or the code expired).
+    Gone {
+        after_deny: bool,
+    },
     Failed {
         message: String,
         retry: Action,
@@ -268,10 +348,13 @@ fn step_after(action: Action, result: Result<DeviceLoginOutcome, String>) -> Ste
             retry: action,
         },
         (Action::Approve, Ok(DeviceLoginOutcome::Done)) => Step::Approved,
-        // Denying a code that is already gone leaves the CLI unsigned all the same.
-        (Action::Deny, Ok(_)) => Step::Denied,
+        (Action::Deny, Ok(DeviceLoginOutcome::Done)) => Step::Denied,
         (Action::Describe, Ok(DeviceLoginOutcome::Done)) => Step::Pending,
-        (_, Ok(DeviceLoginOutcome::Gone)) => Step::Gone,
+        // A deny the server turned down (404) denied nothing: the CLI may
+        // already be signed in, so the page must not say it is not.
+        (_, Ok(DeviceLoginOutcome::Gone)) => Step::Gone {
+            after_deny: action == Action::Deny,
+        },
     }
 }
 
@@ -341,13 +424,19 @@ fn ApproveCode(code: String) -> impl IntoView {
                         <p>"A device is asking to sign in to your MeetCal account."</p>
                     </div>
                     <dl class="link-details">
-                        <div><dt>"Device"</dt><dd class="link-device">{device}</dd></div>
+                        <div>
+                            <dt>"Device"</dt>
+                            <dd>
+                                "“"<span class="link-device">{device}</span>"”"
+                                <small class="link-device-note">"The name the device gave itself"</small>
+                            </dd>
+                        </div>
                         <div><dt>"Code"</dt><dd><code>{code.get_value()}</code></dd></div>
                         <div><dt>"Requested"</dt><dd>{ago}</dd></div>
                     </dl>
                     <div class="link-warning" role="note">
                         <strong>"Only approve if you just ran " <code>"meetcal login"</code> " yourself"</strong>
-                        " and this code matches your terminal. If someone sent you this link, tap Deny."
+                        " and this code matches your terminal. The device chose its own name. If someone sent you this link, tap Deny."
                     </div>
                     <div class="link-actions" aria-busy=move || busy.then_some("true")>
                         <button class="access-button" type="button" disabled=busy on:click=move |_| run(Action::Approve)>
@@ -372,11 +461,18 @@ fn ApproveCode(code: String) -> impl IntoView {
                     <p>"That device was not signed in. You can close this page."</p>
                 </div>
             }.into_any(),
-            Step::Gone => view! {
+            Step::Gone { after_deny: false } => view! {
                 <div class="access-status link-result" role="status" aria-live="polite">
                     <h1>"Code expired"</h1>
                     <p>"This code has expired or was already used. Run " <code>"meetcal login"</code> " again."</p>
                     <A href="/link" attr:class="access-button access-button-secondary">"Enter another code"</A>
+                </div>
+            }.into_any(),
+            Step::Gone { after_deny: true } => view! {
+                <div class="access-status link-result" role="status" aria-live="polite">
+                    <h1>"Code expired"</h1>
+                    <p>"This code has expired or was already used, so it could not be denied."</p>
+                    <p>"If a computer you don’t recognise is signed in, sign out all CLI logins below."</p>
                 </div>
             }.into_any(),
             Step::Failed { message, retry } => view! {
@@ -452,6 +548,16 @@ mod tests {
     }
 
     #[test]
+    fn signing_out_cli_logins_says_how_many_ended() {
+        assert_eq!(
+            revoked_message(0),
+            "No computers were signed in with meetcal login."
+        );
+        assert_eq!(revoked_message(1), "Signed out 1 CLI login.");
+        assert_eq!(revoked_message(3), "Signed out 3 CLI logins.");
+    }
+
+    #[test]
     fn a_code_links_to_its_own_address() {
         assert_eq!(link_url("WXYZ-BCDF"), "/link?code=WXYZ-BCDF");
     }
@@ -494,11 +600,21 @@ mod tests {
     fn each_answer_moves_the_page_on() {
         use DeviceLoginOutcome::{Done, Gone};
         assert_eq!(step_after(Action::Describe, Ok(Done)), Step::Pending);
-        assert_eq!(step_after(Action::Describe, Ok(Gone)), Step::Gone);
+        assert_eq!(
+            step_after(Action::Describe, Ok(Gone)),
+            Step::Gone { after_deny: false }
+        );
         assert_eq!(step_after(Action::Approve, Ok(Done)), Step::Approved);
-        assert_eq!(step_after(Action::Approve, Ok(Gone)), Step::Gone);
+        assert_eq!(
+            step_after(Action::Approve, Ok(Gone)),
+            Step::Gone { after_deny: false }
+        );
         assert_eq!(step_after(Action::Deny, Ok(Done)), Step::Denied);
-        assert_eq!(step_after(Action::Deny, Ok(Gone)), Step::Denied);
+        // Deny after the CLI collected its token (or after expiry): not denied.
+        assert_eq!(
+            step_after(Action::Deny, Ok(Gone)),
+            Step::Gone { after_deny: true }
+        );
         for action in [Action::Describe, Action::Approve, Action::Deny] {
             assert_eq!(
                 step_after(action, Err("offline".to_owned())),
