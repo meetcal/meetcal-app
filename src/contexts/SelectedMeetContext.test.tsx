@@ -39,6 +39,7 @@ jest.mock("@/lib/database/offline-store", () => ({
 
 jest.mock("@/lib/api/meetcal-api", () => ({
   fetchApiMeetByName: (name: string) => mockFetchApiMeetByName(name),
+  getTrustedNow: () => null,
 }));
 
 jest.mock("@/utils/appIntents", () => ({
@@ -90,6 +91,14 @@ function makeMeet(name: string): Meet {
   };
 }
 
+/** Before `makeMeet`'s dates, so its meets are upcoming. */
+const BEFORE_MEETS = new Date("2026-06-01T18:00:00Z");
+
+/** A meet that ended (in Denver) the day before `BEFORE_MEETS`. */
+function makeEndedMeet(name: string): Meet {
+  return { ...makeMeet(name), dates: { start: "2026-05-29", end: "2026-05-31" } };
+}
+
 function deferred<T>() {
   let resolve!: (value: T) => void;
   const promise = new Promise<T>((r) => {
@@ -126,6 +135,7 @@ const passReconnectJitter = () => {
 describe("SelectedMeetProvider", () => {
   beforeEach(() => {
     jest.useFakeTimers();
+    jest.setSystemTime(BEFORE_MEETS);
     jest.clearAllMocks();
     mockSyncManagerBuilds.length = 0;
     mockSyncManagerStarts.length = 0;
@@ -382,6 +392,7 @@ describe("SelectedMeetProvider persisted selection", () => {
 
   beforeEach(async () => {
     jest.useFakeTimers();
+    jest.setSystemTime(BEFORE_MEETS);
     jest.clearAllMocks();
     captured = null;
     jest.spyOn(console, "log").mockImplementation(() => {});
@@ -550,7 +561,8 @@ describe("SelectedMeetProvider persisted selection", () => {
     });
 
     it("keeps the selection and persists its details when the lookup finds it", async () => {
-      const resolved = { ...makeMeet("Old Meet"), status: "completed" } as Meet;
+      // Postponed past the window: still upcoming.
+      const resolved: Meet = { ...makeMeet("Old Meet"), dates: { start: "2026-12-04", end: "2026-12-06" } };
       mockFetchApiMeetByName.mockResolvedValue(resolved);
       const tree = await mount();
 
@@ -564,6 +576,19 @@ describe("SelectedMeetProvider persisted selection", () => {
       act(() => tree.unmount());
     });
 
+    it("opens on the first fresh meet and clears storage when the lookup says the meet is over", async () => {
+      await AsyncStorage.setItem(SELECTED_MEET_DETAILS_KEY, JSON.stringify(makeMeet("Old Meet")));
+      mockFetchApiMeetByName.mockResolvedValue({ ...makeMeet("Old Meet"), status: "completed" });
+      const tree = await mount();
+      await flush();
+
+      expect(captured!.selectedMeet).toBe("Window Meet");
+      expect(captured!.meetDetails?.name).toBe("Window Meet");
+      await expect(AsyncStorage.getItem(SELECTED_MEET_KEY)).resolves.toBeNull();
+      await expect(AsyncStorage.getItem(SELECTED_MEET_DETAILS_KEY)).resolves.toBeNull();
+      act(() => tree.unmount());
+    });
+
     it("falls back to the first fresh meet and clears storage when the meet is gone", async () => {
       await AsyncStorage.setItem(SELECTED_MEET_DETAILS_KEY, JSON.stringify(makeMeet("Old Meet")));
       mockFetchApiMeetByName.mockResolvedValue(null);
@@ -574,6 +599,102 @@ describe("SelectedMeetProvider persisted selection", () => {
       expect(captured!.meetDetails?.name).toBe("Window Meet");
       await expect(AsyncStorage.getItem(SELECTED_MEET_KEY)).resolves.toBeNull();
       await expect(AsyncStorage.getItem(SELECTED_MEET_DETAILS_KEY)).resolves.toBeNull();
+      act(() => tree.unmount());
+    });
+  });
+
+  describe("opening the app on a stored meet that has ended", () => {
+    it("opens on the first meet that is not over, from the cache before the list answers", async () => {
+      await AsyncStorage.setItem(SELECTED_MEET_KEY, "Ended Meet");
+      mockGetCachedMeets.mockResolvedValue([
+        makeEndedMeet("Ended Meet"),
+        makeEndedMeet("Also Ended Meet"),
+        makeMeet("Window Meet"),
+        makeMeet("Later Meet"),
+      ]);
+      const fresh = deferred<Meet[]>();
+      mockFetchMeetsFresh.mockReturnValue(fresh.promise);
+
+      const tree = await mount();
+
+      expect(captured!.selectedMeet).toBe("Window Meet");
+      expect(captured!.isLoading).toBe(false);
+      // Never painted the ended meet first.
+      expect(mockSyncManagerBuilds).not.toContain("Ended Meet");
+      await act(async () => {
+        fresh.resolve([makeMeet("Window Meet"), makeMeet("Later Meet")]);
+      });
+      await flush();
+      expect(captured!.selectedMeet).toBe("Window Meet");
+      act(() => tree.unmount());
+    });
+
+    it("keeps a stored meet that is not over", async () => {
+      await AsyncStorage.setItem(SELECTED_MEET_KEY, "Later Meet");
+      mockGetCachedMeets.mockResolvedValue([makeMeet("Window Meet"), makeMeet("Later Meet")]);
+      mockFetchMeetsFresh.mockResolvedValue([makeMeet("Window Meet"), makeMeet("Later Meet")]);
+
+      const tree = await mount();
+
+      expect(captured!.selectedMeet).toBe("Later Meet");
+      await expect(AsyncStorage.getItem(SELECTED_MEET_KEY)).resolves.toBe("Later Meet");
+      act(() => tree.unmount());
+    });
+
+    it("drops a stored meet the by-name lookup reports completed", async () => {
+      await AsyncStorage.setItem(SELECTED_MEET_KEY, "Archived Meet");
+      await AsyncStorage.setItem(SELECTED_MEET_DETAILS_KEY, JSON.stringify(makeMeet("Archived Meet")));
+      mockFetchApiMeetByName.mockResolvedValue({ ...makeMeet("Archived Meet"), status: "completed" });
+      mockFetchMeetsFresh.mockResolvedValue([makeMeet("Window Meet")]);
+
+      const tree = await mount();
+
+      expect(captured!.selectedMeet).toBe("Window Meet");
+      await expect(AsyncStorage.getItem(SELECTED_MEET_KEY)).resolves.toBeNull();
+      await expect(AsyncStorage.getItem(SELECTED_MEET_DETAILS_KEY)).resolves.toBeNull();
+      act(() => tree.unmount());
+    });
+
+    it("drops an ended meet's persisted details on an offline cold start", async () => {
+      await AsyncStorage.setItem(SELECTED_MEET_KEY, "Archived Meet");
+      await AsyncStorage.setItem(SELECTED_MEET_DETAILS_KEY, JSON.stringify(makeEndedMeet("Archived Meet")));
+      mockFetchApiMeetByName.mockRejectedValue(new Error("Network request failed"));
+      mockFetchMeetsFresh.mockRejectedValue(new Error("Network request failed"));
+
+      const tree = await mount();
+
+      expect(captured!.selectedMeet).toBe("Window Meet");
+      // Read on the device clock: an online start makes the call.
+      await expect(AsyncStorage.getItem(SELECTED_MEET_KEY)).resolves.toBe("Archived Meet");
+      act(() => tree.unmount());
+    });
+
+    it("keeps an ended meet's persisted details offline when every cached meet is over too", async () => {
+      await AsyncStorage.setItem(SELECTED_MEET_KEY, "Archived Meet");
+      await AsyncStorage.setItem(SELECTED_MEET_DETAILS_KEY, JSON.stringify(makeEndedMeet("Archived Meet")));
+      mockGetCachedMeets.mockResolvedValue([makeEndedMeet("Window Meet")]);
+      mockFetchApiMeetByName.mockRejectedValue(new Error("Network request failed"));
+      mockFetchMeetsFresh.mockRejectedValue(new Error("Network request failed"));
+
+      const tree = await mount();
+
+      expect(captured!.selectedMeet).toBe("Archived Meet");
+      act(() => tree.unmount());
+    });
+
+    it("keeps an ended meet selected this session through a list refresh", async () => {
+      mockFetchMeetsFresh.mockResolvedValue([makeMeet("Window Meet")]);
+      const tree = await mount();
+
+      const ended = { ...makeEndedMeet("Deep Link Meet"), status: "completed" as const };
+      mockFetchApiMeetByName.mockResolvedValue(ended);
+      await act(async () => {
+        await captured!.setSelectedMeet("Deep Link Meet" as MeetName);
+      });
+      await flush();
+      await flush();
+
+      expect(captured!.selectedMeet).toBe("Deep Link Meet");
       act(() => tree.unmount());
     });
   });
