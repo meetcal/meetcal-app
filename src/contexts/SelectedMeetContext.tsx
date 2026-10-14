@@ -29,6 +29,12 @@ type SelectedMeetContextType = {
   availableMeets: Meet[];
   setSelectedMeet: (meet: MeetName) => Promise<void>;
   isLoading: boolean;
+  /**
+   * The cached meets list is shown, but the stored meet was not in it and
+   * is still being looked up by name: no meet is chosen yet, and one may
+   * arrive. Not the same as "no meet".
+   */
+  isResolvingStoredMeet: boolean;
   forceSync: () => Promise<void>;
   refreshAvailableMeets: () => Promise<void>;
 };
@@ -122,6 +128,7 @@ export function SelectedMeetProvider({ children }: { children: React.ReactNode }
   const [meetDetails, setMeetDetails] = useState<Meet | null>(null);
   const [availableMeets, setAvailableMeets] = useState<Meet[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [isResolvingStoredMeet, setIsResolvingStoredMeet] = useState(false);
   const [syncManager, setSyncManager] = useState<SyncManager | null>(null);
   const lastNetworkStateRef = useRef<boolean | null>(null);
   // The reconnect-triggered refetch that is scheduled or running, if any.
@@ -373,8 +380,12 @@ export function SelectedMeetProvider({ children }: { children: React.ReactNode }
               initializedFromCache = true;
             }
           }
+          // With the stored meet still to be looked up by name, the list is
+          // shown but no meet is chosen yet: not "no meet", and not a meet
+          // painted from the cache.
+          if (pendingOutOfWindow) setIsResolvingStoredMeet(true);
           setIsLoading(false);
-          if (isLaunchRun) startupTiming.mark('meetsPaintedFromCache');
+          if (isLaunchRun && !pendingOutOfWindow) startupTiming.mark('meetsPaintedFromCache');
         }
 
         // Resolve the stored out-of-window meet by name AFTER the cache paint,
@@ -434,6 +445,7 @@ export function SelectedMeetProvider({ children }: { children: React.ReactNode }
               }
             }
           }
+          setIsResolvingStoredMeet(false);
         }
 
         let freshMeets: Meet[];
@@ -537,6 +549,7 @@ export function SelectedMeetProvider({ children }: { children: React.ReactNode }
         // that replaced it — that one owns `isLoading` now.
         if (!isStale()) {
           setIsLoading(false);
+          setIsResolvingStoredMeet(false);
         }
       }
   }, [chooseMeet, initializeMeetData, selectedMeet]);
@@ -615,9 +628,13 @@ export function SelectedMeetProvider({ children }: { children: React.ReactNode }
       try {
         fresh = await fetchMeetsFresh();
       } finally {
-        await clearExpiredDownloadedMeets().catch((error) => {
-          console.error('Error clearing expired downloaded meets:', error);
-        });
+        // The sweep skips without a server clock sample, which the request
+        // above no longer waits for.
+        await awaitServerClock()
+          .then(() => clearExpiredDownloadedMeets())
+          .catch((error) => {
+            console.error('Error clearing expired downloaded meets:', error);
+          });
       }
       setAvailableMeets((current) =>
         JSON.stringify(current) === JSON.stringify(fresh) ? current : fresh,
@@ -639,6 +656,7 @@ export function SelectedMeetProvider({ children }: { children: React.ReactNode }
       availableMeets,
       setSelectedMeet,
       isLoading,
+      isResolvingStoredMeet,
       forceSync,
       refreshAvailableMeets,
     }),
@@ -648,6 +666,7 @@ export function SelectedMeetProvider({ children }: { children: React.ReactNode }
       availableMeets,
       setSelectedMeet,
       isLoading,
+      isResolvingStoredMeet,
       forceSync,
       refreshAvailableMeets,
     ],

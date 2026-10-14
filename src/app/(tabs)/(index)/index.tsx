@@ -91,6 +91,7 @@ export default function ScheduleScreen() {
     selectedMeet,
     meetDetails,
     isLoading: isMeetLoading,
+    isResolvingStoredMeet,
     setSelectedMeet,
     availableMeets,
     refreshAvailableMeets,
@@ -130,6 +131,7 @@ export default function ScheduleScreen() {
     {
       onboardingShowing: onboardingStatus === "showing",
       meetsLoading: isMeetLoading,
+      resolvingStoredMeet: isResolvingStoredMeet,
       hasMeet: !!selectedMeet && !!meetDetails,
       scheduleLoading: isLoading,
       changingMeet: isChangingMeet,

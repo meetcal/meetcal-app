@@ -152,6 +152,7 @@ describe("useScheduleData", () => {
         onboardingShowing: false,
         // As at launch: the meet arrives with the cached meets list.
         meetsLoading: meet === null,
+        resolvingStoredMeet: false,
         hasMeet: meet !== null,
         scheduleLoading: isLoading,
         changingMeet: false,

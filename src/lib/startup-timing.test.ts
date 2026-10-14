@@ -209,6 +209,7 @@ describe("scheduleScreenOutcome", () => {
   const base: ScheduleScreenState = {
     onboardingShowing: false,
     meetsLoading: false,
+    resolvingStoredMeet: false,
     hasMeet: true,
     scheduleLoading: false,
     changingMeet: false,
@@ -221,6 +222,12 @@ describe("scheduleScreenOutcome", () => {
     ["the tour, over anything", { onboardingShowing: true, meetsLoading: true }, "onboarding"],
     ["the meets skeleton", { meetsLoading: true }, "pending"],
     ["no meet", { hasMeet: false, scheduleDays: 0 }, "no-meet"],
+    [
+      "no meet yet while the stored meet is looked up",
+      { hasMeet: false, scheduleDays: 0, resolvingStoredMeet: true },
+      "pending",
+    ],
+    ["a meet found while the lookup winds down", { resolvingStoredMeet: true }, "schedule"],
     ["the schedule skeleton", { scheduleLoading: true, scheduleDays: 0 }, "pending"],
     ["a cached schedule while it revalidates", { scheduleLoading: true }, "schedule"],
     ["a meet switch", { changingMeet: true }, "pending"],

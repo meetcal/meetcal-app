@@ -8,6 +8,7 @@ import { createStartupTiming, type ScheduleScreenState, type StartupTiming } fro
 const loadingMeets: ScheduleScreenState = {
   onboardingShowing: false,
   meetsLoading: true,
+  resolvingStoredMeet: false,
   hasMeet: false,
   scheduleLoading: false,
   changingMeet: false,

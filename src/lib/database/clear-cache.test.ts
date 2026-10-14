@@ -24,9 +24,12 @@ import {
 // what Clear Cache asks of it matters.
 const mockPrefetchMeetData = jest.fn(async (_meet: string, _options?: unknown) => {});
 let mockTrustedNow: Date | null = null;
+// The server clock sample the clear waits for; none arrives by default.
+const mockAwaitServerClock = jest.fn(async (): Promise<unknown> => null);
 jest.mock("@/lib/api/meetcal-api", () => ({
   ...jest.requireActual("@/lib/api/meetcal-api"),
   getTrustedNow: () => mockTrustedNow,
+  awaitServerClock: () => mockAwaitServerClock(),
 }));
 jest.mock("@/lib/database/meet-manager", () => ({
   ...jest.requireActual("@/lib/database/meet-manager"),
@@ -61,6 +64,7 @@ describe("clearCachedMeetData", () => {
     jest.clearAllMocks();
     mockPrefetchMeetData.mockReset();
     mockTrustedNow = null;
+    mockAwaitServerClock.mockImplementation(async () => null);
     mockPrefetchMeetData.mockImplementation(async () => {});
     jest.spyOn(console, "error").mockImplementation(() => {});
     resetOfflineActivityForTests();
@@ -179,6 +183,22 @@ describe("clearCachedMeetData", () => {
 
     await clearCachedMeetData(deps());
 
+    expect(mockPrefetchMeetData.mock.calls.map(([meet]) => meet)).toEqual(["Upcoming"]);
+  });
+
+  // Early in a process no request has left a clock sample yet (they no
+  // longer wait for one): the clear waits for it before judging what ended.
+  it("waits for the server clock sample before deciding which downloads have ended", async () => {
+    mockAwaitServerClock.mockImplementation(async () => {
+      mockTrustedNow = new Date();
+      return { skewMs: 0, sampledAt: Date.now() };
+    });
+    await markMeetExplicitlyDownloaded("Ended" as never, true, { endDate: "2020-01-01" });
+    await markMeetExplicitlyDownloaded("Upcoming" as never, true, { endDate: "2099-06-20" });
+
+    await clearCachedMeetData(deps());
+
+    expect(mockAwaitServerClock).toHaveBeenCalled();
     expect(mockPrefetchMeetData.mock.calls.map(([meet]) => meet)).toEqual(["Upcoming"]);
   });
 

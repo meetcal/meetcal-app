@@ -9,6 +9,7 @@ import {
   SelectedMeetProvider,
   useSelectedMeet,
 } from "@/contexts/SelectedMeetContext";
+import { scheduleScreenOutcome } from "@/lib/startup-timing";
 
 const mockGetCachedMeets = jest.fn<Promise<Meet[]>, []>();
 const mockFetchMeetsFresh = jest.fn<Promise<Meet[]>, []>();
@@ -814,6 +815,84 @@ describe("SelectedMeetProvider persisted selection", () => {
     } finally {
       mockAwaitServerClock.mockImplementation(async () => null);
     }
+  });
+
+  it("waits for the server clock before the refresh's expiry sweep too", async () => {
+    mockFetchMeetsFresh.mockResolvedValue([makeMeet("Window Meet")]);
+    const tree = await mount();
+    mockClearExpiredDownloadedMeets.mockClear();
+
+    const clock = deferred<null>();
+    mockAwaitServerClock.mockImplementation(() => clock.promise);
+    try {
+      let refreshed = false;
+      let refreshing!: Promise<void>;
+      await act(async () => {
+        refreshing = captured!.refreshAvailableMeets().then(() => {
+          refreshed = true;
+        });
+      });
+      await flush();
+      expect(refreshed).toBe(false);
+      expect(mockClearExpiredDownloadedMeets).not.toHaveBeenCalled();
+
+      await act(async () => {
+        clock.resolve(null);
+        await refreshing;
+      });
+      expect(mockClearExpiredDownloadedMeets).toHaveBeenCalledTimes(1);
+    } finally {
+      mockAwaitServerClock.mockImplementation(async () => null);
+    }
+    act(() => tree.unmount());
+  });
+
+  // The cached list is shown before the stored meet's by-name lookup
+  // answers. That moment used to read as "no meet": the launch splash came
+  // down on it and the startup report recorded `no-meet`.
+  it("reports a launch on an out-of-window meet as pending until its lookup settles", async () => {
+    await AsyncStorage.setItem(SELECTED_MEET_KEY, "Archived Meet");
+    mockGetCachedMeets.mockResolvedValue([makeMeet("Window Meet")]);
+    mockFetchMeetsFresh.mockResolvedValue([makeMeet("Window Meet")]);
+    const lookup = deferred<Meet | null>();
+    mockFetchApiMeetByName.mockReturnValue(lookup.promise);
+    const outcome = () =>
+      scheduleScreenOutcome({
+        onboardingShowing: false,
+        meetsLoading: captured!.isLoading,
+        resolvingStoredMeet: captured!.isResolvingStoredMeet,
+        hasMeet: captured!.selectedMeet !== null && captured!.meetDetails !== null,
+        scheduleLoading: false,
+        changingMeet: false,
+        scheduleDays: 0,
+        loadFailed: false,
+      });
+
+    const tree = await mount();
+    expect(captured!.isLoading).toBe(false);
+    expect(captured!.selectedMeet).toBeNull();
+    expect(captured!.isResolvingStoredMeet).toBe(true);
+    expect(outcome()).toBe("pending");
+
+    await act(async () => {
+      lookup.resolve(makeMeet("Archived Meet"));
+    });
+    await flush();
+    expect(captured!.selectedMeet).toBe("Archived Meet");
+    expect(captured!.isResolvingStoredMeet).toBe(false);
+    expect(outcome()).toBe("empty-schedule");
+    act(() => tree.unmount());
+  });
+
+  it("stops resolving when the lookup fails and nothing can stand in", async () => {
+    await AsyncStorage.setItem(SELECTED_MEET_KEY, "Archived Meet");
+    mockGetCachedMeets.mockResolvedValue([makeMeet("Window Meet")]);
+    mockFetchMeetsFresh.mockRejectedValue(new Error("Network request failed"));
+    mockFetchApiMeetByName.mockRejectedValue(new Error("Network request failed"));
+
+    const tree = await mount();
+    expect(captured!.isResolvingStoredMeet).toBe(false);
+    act(() => tree.unmount());
   });
 
   it("reads the stored meet's schedule alongside the meets list on a launch only", async () => {

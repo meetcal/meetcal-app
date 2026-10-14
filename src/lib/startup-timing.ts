@@ -239,6 +239,8 @@ export type ScheduleScreenState = {
   onboardingShowing: boolean;
   /** The meets list has not been read yet ("Loading meets..."). */
   meetsLoading: boolean;
+  /** The stored meet is being looked up by name; a meet may still arrive. */
+  resolvingStoredMeet: boolean;
   /** A meet and its details are selected. */
   hasMeet: boolean;
   /** The schedule's first load is running. */
@@ -260,7 +262,7 @@ export type ScheduleScreenState = {
 export function scheduleScreenOutcome(state: ScheduleScreenState): StartupOutcome | "pending" {
   if (state.onboardingShowing) return "onboarding";
   if (state.meetsLoading) return "pending";
-  if (!state.hasMeet) return "no-meet";
+  if (!state.hasMeet) return state.resolvingStoredMeet ? "pending" : "no-meet";
   if ((state.scheduleLoading && state.scheduleDays === 0) || state.changingMeet) return "pending";
   if (state.scheduleDays > 0) return "schedule";
   return state.loadFailed ? "error" : "empty-schedule";

@@ -9,7 +9,6 @@ import {
   router,
   Stack,
   ThemeProvider,
-  usePathname,
 } from "expo-router";
 import * as Notifications from "expo-notifications";
 import * as SplashScreen from "expo-splash-screen";
@@ -23,6 +22,7 @@ import Purchases from "react-native-purchases";
 import "react-native-reanimated";
 
 import { PostHogScreenTracker } from "@/components/navigation/PostHogScreenTracker";
+import { SplashRouteReporter } from "@/components/navigation/SplashRouteReporter";
 import {
   RootErrorBoundary,
   ScreenErrorBoundary,
@@ -252,7 +252,6 @@ export default Sentry.wrap(function RootLayout() {
 
 function RootLayoutContent() {
   const { currentTheme } = useTheme();
-  const pathname = usePathname();
   const {
     isLoaded: isUserLoaded,
     user,
@@ -291,12 +290,6 @@ function RootLayoutContent() {
       console.warn("[DeepLinks] Failed to open external link:", error);
     });
   }, []);
-
-  // The splash holds for the Schedule tab's first screen only; a launch on
-  // any other route (a deep link, sign-in) shows it at once.
-  useEffect(() => {
-    splashGate.setRoute(pathname === "/");
-  }, [pathname]);
 
   // Keep Clerk, RevenueCat, and OneSignal on the same user identity. RevenueCat
   // needs the OneSignal user ID to deliver its native OneSignal integration tags.
@@ -452,6 +445,10 @@ function RootLayoutContent() {
         <UpdateNotification />
         <OfflineIndicator />
         <PostHogScreenTracker />
+        {/* The splash holds for the Schedule tab's first screen only; a
+            launch on any other route (a deep link, sign-in, another tab)
+            shows it at once. */}
+        <SplashRouteReporter />
         {/* Every route below gets its own boundary, so one screen's render
             error shows "Something went wrong" there instead of closing the
             app. */}

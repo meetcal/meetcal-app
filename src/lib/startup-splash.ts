@@ -45,6 +45,21 @@ export function splashHideReason(state: SplashHoldState): SplashHideReason | nul
   return null;
 }
 
+/**
+ * Whether expo-router's segments are the Schedule tab's own screen, or null
+ * before the router has a route. Every tab's screen is an `index.tsx` in its
+ * group folder, so the pathname is "/" for all four: only the segments tell
+ * `(tabs)/(index)` from `(tabs)/(saved)` and the rest.
+ */
+export function isScheduleRoute(segments: readonly string[]): boolean | null {
+  if (segments.length === 0) return null;
+  return (
+    segments[0] === "(tabs)" &&
+    segments[1] === "(index)" &&
+    segments.slice(2).every((segment) => segment === "index")
+  );
+}
+
 export type SplashGateDeps = {
   timing: StartupTiming;
   setTimer: (callback: () => void, ms: number) => unknown;
@@ -86,6 +101,14 @@ export function createSplashGate(deps: SplashGateDeps) {
 
   function evaluate() {
     if (!armed || hidden) return;
+    // A launch that opens elsewhere (a deep link, sign-in, another tab) has
+    // that route as its first screen. Only while the splash is still up: a
+    // route change after it (the user leaving a skeleton) is not the
+    // launch's. `firstScreen` notifies, which evaluates again and hides.
+    if (onScheduleRoute === false && deps.timing.outcome() === null) {
+      deps.timing.firstScreen("other-route");
+      return;
+    }
     const reason = splashHideReason({
       elapsedMs: deps.timing.elapsed(),
       firstScreen: deps.timing.outcome(),
@@ -115,12 +138,6 @@ export function createSplashGate(deps: SplashGateDeps) {
     /** The router's current route: whether it is the Schedule tab. */
     setRoute(isScheduleRoute: boolean) {
       onScheduleRoute = isScheduleRoute;
-      // A launch that opens elsewhere (a deep link, sign-in) has that route
-      // as its first screen. Only while the splash is still up: a route
-      // change after it (the user leaving a skeleton) is not the launch's.
-      if (armed && !hidden && !isScheduleRoute && deps.timing.outcome() === null) {
-        deps.timing.firstScreen("other-route");
-      }
       evaluate();
     },
     /** A root dialog is showing and must not sit behind the splash. */
