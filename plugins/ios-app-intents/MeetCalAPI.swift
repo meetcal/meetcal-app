@@ -390,7 +390,6 @@ actor MeetCalAPI {
         "reference:clubAthletes",
         "reference:wsoAthletes",
         "reference:clubMeetStats",
-        "results:page",
         "results:byMeet",
         "results:byNames",
         "results:recent",
