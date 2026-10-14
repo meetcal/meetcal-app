@@ -28,6 +28,13 @@ const config = {
     nativeSource("targets", "iOS widget extension"),
     nativeSource("widget", "Android widget sources"),
   ],
+  // EAS hashes before prebuild locally and after it on the worker, so a file
+  // prebuild writes into targets/ makes the two runtime versions disagree and
+  // the build fail at CONFIGURE_EXPO_UPDATES. @bacons/apple-targets rewrites
+  // generated.entitlements from expo-target.config.js (still hashed) on every
+  // prebuild. It also creates a target's Info.plist when none exists, so each
+  // target's Info.plist is checked in, never ignored: it shapes the binary.
+  ignorePaths: ["targets/*/generated.entitlements"],
 };
 
 module.exports = config;
