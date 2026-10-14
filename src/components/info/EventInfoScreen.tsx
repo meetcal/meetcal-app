@@ -141,7 +141,7 @@ export default function EventInfoScreen() {
           >
             <View>
               <View style={styles.addressContainer}>
-                <View>
+                <View style={styles.addressLines}>
                   {addressLines.map((line, index) => (
                     <ThemedText key={`${index}-${line}`} style={[styles.link, { color: colors.link }]}>
                       {line}
@@ -324,6 +324,12 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     alignItems: "center",
     marginTop: 2,
+  },
+  // Shrinks so long lines wrap short of the chevron instead of pushing it
+  // past the card's padding.
+  addressLines: {
+    flex: 1,
+    marginRight: 12,
   },
   divider: {
     height: StyleSheet.hairlineWidth,
