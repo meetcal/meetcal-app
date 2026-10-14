@@ -5,12 +5,13 @@ use crate::utils::names::{MAX_SUGGESTIONS, clubs};
 use crate::utils::output::{self, Report};
 
 /// List club names, as the other club commands expect them.
-///
-/// Examples:
-///   meetcal clubs --search "texas barbell"
-///   meetcal clubs
 #[derive(Parser)]
-#[command(name = "clubs")]
+#[command(
+    name = "clubs",
+    after_help = r#"Examples:
+  meetcal clubs --search "texas barbell"
+  meetcal clubs"#
+)]
 pub struct ClubsArgs {
     /// Only clubs whose name contains this text (case-insensitive)
     #[arg(long, short = 's')]

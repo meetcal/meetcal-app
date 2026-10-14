@@ -8,12 +8,13 @@ use crate::commands::wrapped::current_year;
 use crate::utils::names::{NameKind, not_found};
 
 /// Show a WSO's calendar year in lifting.
-///
-/// Examples:
-///   meetcal wso-wrapped Carolina
-///   meetcal wso-wrapped Carolina --year 2025
 #[derive(Parser)]
-#[command(name = "wso-wrapped")]
+#[command(
+    name = "wso-wrapped",
+    after_help = r#"Examples:
+  meetcal wso-wrapped Carolina
+  meetcal wso-wrapped Carolina --year 2026"#
+)]
 pub struct WsoWrappedArgs {
     /// Weightlifting State Organization
     pub wso: String,

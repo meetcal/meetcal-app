@@ -6,12 +6,13 @@ use crate::utils::names::{NameKind, not_found, registration_wsos, wso_age_groups
 use crate::utils::output::{self, Report};
 
 /// List WSOs, or the age groups one keeps records for (the values `wso-records --age` takes).
-///
-/// Examples:
-///   meetcal wsos
-///   meetcal wsos Carolina
 #[derive(Parser)]
-#[command(name = "wsos")]
+#[command(
+    name = "wsos",
+    after_help = r#"Examples:
+  meetcal wsos
+  meetcal wsos Carolina"#
+)]
 pub struct WsosArgs {
     /// A WSO whose record age groups to list
     pub wso: Option<String>,

@@ -17,11 +17,12 @@ use serde_json::json;
 const RESULTS_REQUEST_BATCH_SIZE: usize = 50;
 
 /// Get full meet results for a given WSO.
-///
-/// Examples:
-///   meetcal wso "2026 Masters National Championships & National University Championships" --wso Carolina
 #[derive(Parser)]
-#[command(name = "wso")]
+#[command(
+    name = "wso",
+    after_help = r#"Examples:
+  meetcal wso "2026 Masters National Championships & National University Championships" --wso Carolina"#
+)]
 pub struct WsoResultsArgs {
     /// Meet to search for
     pub meet: String,

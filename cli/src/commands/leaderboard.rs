@@ -106,13 +106,14 @@ pub fn server_scope_problem(from: &str, to: &str, limit: u32) -> Option<String> 
 /// Sinclair and Q-points score men and women on separate scales, so --by sinclair and --by
 /// qpoints need --gender. British Weightlifting (BWL) results are left out unless --federation
 /// BWL asks for them.
-///
-/// Examples:
-///   meetcal leaderboard --by sinclair --gender women
-///   meetcal leaderboard --year 2025 --by snatch --category "Masters 45"
-///   meetcal leaderboard --wso Florida --by total --limit 10
 #[derive(Parser)]
-#[command(name = "leaderboard")]
+#[command(
+    name = "leaderboard",
+    after_help = r#"Examples:
+  meetcal leaderboard --by sinclair --gender women
+  meetcal leaderboard --year 2025 --by snatch --category "Masters 45"
+  meetcal leaderboard --wso Florida --by total --limit 10"#
+)]
 pub struct LeaderboardArgs {
     /// What to rank by
     #[arg(long, short = 'b', value_enum, default_value_t = Metric::Total)]

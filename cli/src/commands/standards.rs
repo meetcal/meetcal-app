@@ -18,11 +18,12 @@ pub struct Standards {
 }
 
 /// Search for A/B USAW Standards for a given age and gender group.
-///
-/// Examples:
-///   meetcal standards --age Senior --gender Men
 #[derive(Parser)]
-#[command(name = "standards")]
+#[command(
+    name = "standards",
+    after_help = r#"Examples:
+  meetcal standards --age Senior --gender Men"#
+)]
 pub struct StandardsArgs {
     /// Age group: U15, Youth, Junior, or Senior
     #[arg(long, short = 'a')]

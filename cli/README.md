@@ -30,11 +30,14 @@ earlier, which have no `upgrade`, run `brew update && brew upgrade meetcal`.
 
 ### Cargo
 
-Install the latest release from GitHub:
+Install the latest release (the one Homebrew ships) from GitHub:
 
 ```sh
-cargo install --git https://github.com/meetcal/meetcal-app.git meetcal
+cargo install --locked --git https://github.com/meetcal/meetcal-app.git --tag cli-v3.0.0 meetcal
 ```
+
+`--tag` picks the release and `--locked` builds it with the dependency versions it was tested
+with. Without `--tag`, Cargo builds `master`, which may hold unreleased changes.
 
 Install from a local checkout:
 
@@ -133,6 +136,13 @@ meetcal qualify "Maddisen Mohnsen"
 meetcal qualify "Maddisen Mohnsen" --category Junior --class 88
 ```
 
+Options:
+
+- `--class`, `-c`: Weight class, e.g. `89` or `110+`
+- `--category`, `-a`: Age category, e.g. `Senior`, `Junior`, `U17`, `U15` or `Masters 40`
+
+Unlike `leaderboard` and `results`, where `-c` is `--category`, `qualify`'s `-c` is `--class`.
+
 #### `h2h`
 
 Two athletes head to head: the meets both entered, who totalled more at each and by how much, and
@@ -160,7 +170,7 @@ exact name (case and spacing aside); otherwise the command suggests similar name
 
 ```sh
 meetcal wrapped "Maddisen Mohnsen"
-meetcal wrapped "Maddisen Mohnsen" --year 2025
+meetcal wrapped "Maddisen Mohnsen" --year 2024
 ```
 
 Options:
@@ -293,6 +303,14 @@ Without `--wso` or `--club`, MeetCal ranks every athlete on its servers and send
 needs `meetcal login` with a MeetCal subscription, and a range of less than five years. With them,
 the CLI reads the group's results and ranks them itself, with no limit on the range or the rows.
 
+Options:
+
+- `--year`, `-y`, or `--from` and `--to` (`YYYY-MM-DD`): the range; defaults to the current year
+- `--gender`, `-g`; `--category`, `-c`; `--division`, `-d`; `--federation`, `-f`: as for
+  `leaderboard`
+
+`results` has no `--wso`, `--club` or `--adaptive`: it reads every result in the range.
+
 ### Club reports
 
 #### `clubs`
@@ -310,12 +328,13 @@ Options:
 #### `club-results`
 
 Analyze a club's performance at one meet, including athletes, make rates, volume, PRs, medals, and
-individual result details.
+individual result details. It counts the athletes registered with the club, so it needs the meet's
+start list: for a meet MeetCal has only results for, use `meet-results`.
 
 ```sh
 meetcal club-results \
-  --club "POWER AND GRACE PERFORMANCE." \
-  --meet "2025 UMWF World Championships"
+  --club "Jacksonville Weightlifting" \
+  --meet "2026 Florida State Championships (WSO Championships)"
 ```
 
 Options:
@@ -395,7 +414,7 @@ Show a WSO's calendar-year Wrapped report.
 
 ```sh
 meetcal wso-wrapped Carolina
-meetcal wso-wrapped Carolina --year 2025
+meetcal wso-wrapped Carolina --year 2026
 ```
 
 Options:
@@ -434,7 +453,7 @@ Options:
 
 - `--age`, `-a`: Age group
 - `--gender`, `-g`: Gender
-- `--federation`, `-f`: `IWF`, `USAW`, `USAMW`, or `UMWF`
+- `--federation`, `-f`: `BWL`, `IWF`, `USAW`, `USAMW`, or `UMWF`
 
 #### `standards`
 
@@ -454,7 +473,7 @@ Options:
 Search qualifying totals for an age group, gender, and event.
 
 ```sh
-meetcal qualifying-totals --age Senior --gender Men --event Nationals
+meetcal qualifying-totals --age Junior --gender Men --event Nationals
 ```
 
 Options:
@@ -465,7 +484,8 @@ Options:
 
 #### `nat-rankings`
 
-Search national rankings for a weight class and federation.
+National rankings for a division (an age category, gender and class, as results name it) and
+federation: each lifter's best total.
 
 ```sh
 meetcal nat-rankings "Junior Women's 77kg" --federation USAW
@@ -474,6 +494,19 @@ meetcal nat-rankings "Junior Women's 77kg" --federation USAW
 Options:
 
 - `--federation`, `-f`: `USAW` or `USAMW`
+
+#### `nat-ranking-year`
+
+National rankings for a division within one calendar year, with the date of each lifter's best.
+
+```sh
+meetcal nat-ranking-year "Junior Women's 77kg" --federation USAW --year 2025
+```
+
+Options:
+
+- `--federation`, `-f`: `USAW` or `USAMW`
+- `--year`, `-y`: Calendar year
 
 #### `intl-rankings`
 

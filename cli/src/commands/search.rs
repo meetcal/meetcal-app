@@ -12,11 +12,12 @@ use clap::Parser;
 use comfy_table::Table;
 
 /// Search for an athlete's name to see their Comp PRs and Results.
-///
-/// Examples:
-///   meetcal search "Maddisen Mohnsen"
 #[derive(Parser)]
-#[command(name = "search")]
+#[command(
+    name = "search",
+    after_help = r#"Examples:
+  meetcal search "Maddisen Mohnsen""#
+)]
 pub struct SearchArgs {
     /// Athlete name to search for
     pub name: String,

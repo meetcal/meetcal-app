@@ -14,7 +14,8 @@ workflow fails before building.
 
 ## 1. Bump the version
 
-In `cli/`, set `version` in `Cargo.toml`, add the release to `CHANGELOG.md`, and run the checks:
+In `cli/`, set `version` in `Cargo.toml`, add the release to `CHANGELOG.md`, set the tag in
+`README.md`'s `cargo install … --tag cli-vX.Y.Z` line, and run the checks:
 
 ```sh
 mise run check-all

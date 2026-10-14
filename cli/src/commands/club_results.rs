@@ -1,19 +1,21 @@
-use anyhow::{Result, anyhow, bail};
+use anyhow::{Result, bail};
 use clap::Parser;
 use comfy_table::Table;
 
 use crate::types::club::ClubMeetStats;
 use crate::utils::backend::{queries, query};
+use crate::utils::meet_names::result_meet_aliases;
 use crate::utils::names::{NameKind, clubs, not_found, not_found_message};
 use crate::utils::output::{self, Report};
 use crate::utils::stats::number;
 
 /// Analyze club performance stats for a meet.
-///
-/// Examples:
-///   meetcal club-results --club "POWER AND GRACE PERFORMANCE." --meet "2025 UMWF World Championships"
 #[derive(Parser)]
-#[command(name = "club-results")]
+#[command(
+    name = "club-results",
+    after_help = r#"Examples:
+  meetcal club-results --club "Jacksonville Weightlifting" --meet "2026 Florida State Championships (WSO Championships)""#
+)]
 pub struct ClubResultsArgs {
     /// Club name
     #[arg(long, short = 'c')]
@@ -32,11 +34,13 @@ pub async fn run(args: ClubResultsArgs) -> Result<()> {
     if let Err(error) = validate_stats(&stats, club, meet) {
         let message = error.to_string();
         let clubs = clubs().await.unwrap_or_default();
-        return Err(if !clubs.is_empty() && !club_known(&clubs, club) {
-            anyhow!(not_found_message(NameKind::Club, club, &clubs, message))
-        } else {
-            not_found(NameKind::ResultsMeet, meet, message).await
-        });
+        if !clubs.is_empty() && !club_known(&clubs, club) {
+            bail!(not_found_message(NameKind::Club, club, &clubs, message));
+        }
+        if results_only(meet).await {
+            bail!(results_only_message(meet));
+        }
+        return Err(not_found(NameKind::ResultsMeet, meet, message).await);
     }
     output::emit(report(club, meet, &stats));
     Ok(())
@@ -46,6 +50,34 @@ pub async fn run(args: ClubResultsArgs) -> Result<()> {
 /// the name exactly, so a name differing in case or spacing is a club to suggest.
 pub fn club_known(clubs: &[String], club: &str) -> bool {
     clubs.iter().any(|known| known == club)
+}
+
+/// Whether MeetCal has `meet`'s results but not its start list. The club report counts the
+/// athletes registered with the club, so it cannot be built from results alone, and the meet's
+/// name is right, so suggesting other meets would mislead. Any failed lookup reads as `false`,
+/// leaving the usual not-found error.
+async fn results_only(meet: &str) -> bool {
+    let roster: Result<Vec<serde_json::Value>> =
+        query(queries::MEET_ATHLETES, &serde_json::json!({ "meet": meet })).await;
+    if !matches!(roster, Ok(ref athletes) if athletes.is_empty()) {
+        return false;
+    }
+    for alias in result_meet_aliases(meet) {
+        let rows: Result<Vec<serde_json::Value>> =
+            query(queries::MEET_RESULTS, &serde_json::json!({ "meet": alias })).await;
+        if matches!(rows, Ok(ref rows) if !rows.is_empty()) {
+            return true;
+        }
+    }
+    false
+}
+
+/// The error for a meet MeetCal has results for but no start list.
+pub fn results_only_message(meet: &str) -> String {
+    format!(
+        "club-results needs the start list of meet \"{meet}\", and MeetCal has only its results.\n\
+         See them with: meetcal meet-results \"{meet}\""
+    )
 }
 
 pub async fn get_club_meet_stats(club: &str, meet: &str) -> Result<ClubMeetStats> {
@@ -267,6 +299,15 @@ mod tests {
             error,
             "No athletes found for club \"Unknown Club\" in meet \"Test Meet\""
         );
+    }
+
+    #[test]
+    fn a_results_only_meet_points_to_meet_results_not_other_meets() {
+        let message = results_only_message("2025 UMWF World Championships");
+
+        assert!(message.contains("start list"));
+        assert!(message.contains("meetcal meet-results \"2025 UMWF World Championships\""));
+        assert!(!message.contains("Did you mean"));
     }
 
     #[test]

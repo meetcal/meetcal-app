@@ -8,12 +8,13 @@ use crate::commands::wrapped::current_year;
 use crate::utils::names::{NameKind, not_found};
 
 /// Show a club's calendar year in lifting.
-///
-/// Examples:
-///   meetcal club-wrapped "Columbus Weightlifting"
-///   meetcal club-wrapped "Columbus Weightlifting" --year 2025
 #[derive(Parser)]
-#[command(name = "club-wrapped")]
+#[command(
+    name = "club-wrapped",
+    after_help = r#"Examples:
+  meetcal club-wrapped "Columbus Weightlifting"
+  meetcal club-wrapped "Columbus Weightlifting" --year 2025"#
+)]
 pub struct ClubWrappedArgs {
     pub club: String,
 

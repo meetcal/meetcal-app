@@ -29,12 +29,13 @@ pub const CHECK_FAILED: i32 = 2;
 ///
 /// Other commands say once a day when a newer release is out, on a terminal only. Set
 /// MEETCAL_NO_UPDATE_CHECK=1 to turn that off.
-///
-/// Examples:
-///   meetcal upgrade
-///   meetcal upgrade --check
 #[derive(Parser)]
-#[command(name = "upgrade")]
+#[command(
+    name = "upgrade",
+    after_help = r#"Examples:
+  meetcal upgrade
+  meetcal upgrade --check"#
+)]
 pub struct UpgradeArgs {
     /// Only say whether a newer release is out: exits 0 when this is the newest, 1 when not, 2
     /// when it cannot tell

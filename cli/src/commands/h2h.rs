@@ -16,11 +16,12 @@ use crate::utils::stats::{
 
 /// Compare two athletes head to head: the meets they both entered, who totalled more at each, and
 /// their best lifts all time and over the past year.
-///
-/// Examples:
-///   meetcal h2h "Brandon Victorian" "Edward Ginnan"
 #[derive(Parser)]
-#[command(name = "h2h")]
+#[command(
+    name = "h2h",
+    after_help = r#"Examples:
+  meetcal h2h "Brandon Victorian" "Edward Ginnan""#
+)]
 pub struct H2hArgs {
     /// First athlete (exact name)
     pub first: String,

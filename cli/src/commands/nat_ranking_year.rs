@@ -14,29 +14,28 @@ pub struct NatRankingYear {
     pub total: f64,
 }
 
-/// Search for National Rankings for a given weight.
-///
-/// Examples:
-///   meetcal nat-rankings "Junior Women's 77kg" --federation USAW --year 2026
+/// Show a division's national rankings within one calendar year, with the date of each best.
 #[derive(Parser)]
-#[command(name = "nat-rankings-year")]
+#[command(after_help = r#"Examples:
+  meetcal nat-ranking-year "Junior Women's 77kg" --federation USAW --year 2025"#)]
 pub struct NatRankingsYearArgs {
-    /// Weight class to search for
+    /// Division to rank, e.g. "Junior Women's 77kg" or "Open Men's 89kg"
     pub weight_class: String,
 
     /// Federation: USAW or USAMW
     #[arg(long, short = 'f')]
     pub federation: String,
 
-    #[arg(long, short = 'y')]
-    pub year: String,
+    /// Calendar year to rank, e.g. 2025
+    #[arg(long, short = 'y', value_parser = clap::value_parser!(i32).range(1900..=9999))]
+    pub year: i32,
 }
 
 pub async fn run(args: NatRankingsYearArgs) -> Result<()> {
     // assign args to vars
     let class = args.weight_class;
     let federation = args.federation.to_ascii_uppercase();
-    let year = args.year;
+    let year = args.year.to_string();
 
     let query_args = json!({ "ageCategory": class, "federation": federation, "year": year });
     let row_array: Vec<NatRankingYear> =

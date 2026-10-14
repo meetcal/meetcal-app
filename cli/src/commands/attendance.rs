@@ -35,13 +35,14 @@ const RANGE_BOUNDARIES: &[&str] = &[
 /// the words it always has: every meet whose name contains all of them (ignoring the year, "The"
 /// and punctuation) counts as an edition. Both registrations and results are counted, so a meet
 /// whose results are not in yet still shows its entries.
-///
-/// Examples:
-///   meetcal attendance ohio wso
-///   meetcal attendance virus finals
-///   meetcal attendance national championships --exclude junior --exclude youth --exclude masters
 #[derive(Parser)]
-#[command(name = "attendance")]
+#[command(
+    name = "attendance",
+    after_help = r#"Examples:
+  meetcal attendance ohio wso
+  meetcal attendance virus finals
+  meetcal attendance national championships --exclude junior --exclude youth --exclude masters"#
+)]
 pub struct AttendanceArgs {
     /// Words every edition's name contains
     #[arg(required = true)]

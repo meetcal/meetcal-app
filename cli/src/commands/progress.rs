@@ -15,12 +15,13 @@ use crate::utils::stats::{
 
 /// Show an athlete's progression: every meet with its Sinclair and PRs, their trend, and their
 /// attempt habits (make rate by attempt, jumps between attempts, openers, bomb-outs).
-///
-/// Examples:
-///   meetcal progress "Brandon Victorian"
-///   meetcal progress "Brandon Victorian" --since 2024
 #[derive(Parser)]
-#[command(name = "progress")]
+#[command(
+    name = "progress",
+    after_help = r#"Examples:
+  meetcal progress "Brandon Victorian"
+  meetcal progress "Brandon Victorian" --since 2024"#
+)]
 pub struct ProgressArgs {
     /// Exact athlete name
     pub name: String,

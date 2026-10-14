@@ -23,19 +23,21 @@ use crate::utils::device_login::{self, PollAnswer, Poller, Started, Step};
 /// over SSH, on a server, or for an AI agent. The login lasts 90 days and is saved in
 /// ~/.config/meetcal/credentials.json ($XDG_CONFIG_HOME/meetcal/ when that is set), readable by
 /// you alone. Commands with subscriber data need an active MeetCal subscription.
-///
-/// Examples:
-///   meetcal login
 #[derive(Parser)]
-#[command(name = "login")]
+#[command(
+    name = "login",
+    after_help = r#"Examples:
+  meetcal login"#
+)]
 pub struct LoginArgs {}
 
 /// Log out of MeetCal on this machine: ends the saved login and deletes it.
-///
-/// Examples:
-///   meetcal logout
 #[derive(Parser)]
-#[command(name = "logout")]
+#[command(
+    name = "logout",
+    after_help = r#"Examples:
+  meetcal logout"#
+)]
 pub struct LogoutArgs {}
 
 pub async fn run_login(_args: LoginArgs) -> Result<()> {

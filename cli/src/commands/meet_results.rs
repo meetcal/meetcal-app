@@ -32,13 +32,14 @@ pub const TOP_SINCLAIR: usize = 10;
 ///
 /// A meet held every year under one name (no year in it) has a results edition per year: the
 /// latest is shown, and `--year` picks another.
-///
-/// Examples:
-///   meetcal meet-results "2026 AZ Summer Slam Nationals Qualifier"
-///   meetcal meet-results "2026 Ohio WSO Championships" --no-history
-///   meetcal meet-results "Testify Leprechaun Lift-off" --year 2022
 #[derive(Parser)]
-#[command(name = "meet-results")]
+#[command(
+    name = "meet-results",
+    after_help = r#"Examples:
+  meetcal meet-results "2026 AZ Summer Slam Nationals Qualifier"
+  meetcal meet-results "2026 Ohio WSO Championships" --no-history
+  meetcal meet-results "Testify Leprechaun Lift-off" --year 2022"#
+)]
 pub struct MeetResultsArgs {
     /// Meet to search for
     pub name: String,

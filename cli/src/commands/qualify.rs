@@ -26,12 +26,13 @@ use crate::utils::stats::{
 /// classes on Aug 1, 2026 is checked as the lightest current class holding the result's
 /// bodyweight. Only lifts made at or under the class's bodyweight limit count: a total made in a
 /// heavier class does not qualify for a lighter one.
-///
-/// Examples:
-///   meetcal qualify "Brandon Victorian"
-///   meetcal qualify "Brandon Victorian" --class 94
 #[derive(Parser)]
-#[command(name = "qualify")]
+#[command(
+    name = "qualify",
+    after_help = r#"Examples:
+  meetcal qualify "Brandon Victorian"
+  meetcal qualify "Brandon Victorian" --class 94"#
+)]
 pub struct QualifyArgs {
     /// Exact athlete name
     pub name: String,
@@ -244,7 +245,10 @@ pub fn target(
     let (class, retired) = match class {
         Some(class) => match weight_class(class) {
             Some(class) => (class, None),
-            None => bail!("Weight class must look like 89 or 110+, not \"{class}\""),
+            None => bail!(
+                "Weight class (--class, -c) must look like 89 or 110+, not \"{class}\"; \
+                 the age category is --category (-a)"
+            ),
         },
         None => match &division.weight_class {
             Some(class) => match current_classes(gender, primary.as_deref()) {

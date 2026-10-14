@@ -13,12 +13,13 @@ use crate::utils::stats::{fold, number, signed_kg};
 pub const WRAPPED_YEARS: std::ops::RangeInclusive<i64> = 1900..=2100;
 
 /// Show an athlete's calendar year in lifting.
-///
-/// Examples:
-///   meetcal wrapped "Maddisen Mohnsen"
-///   meetcal wrapped "Maddisen Mohnsen" --year 2025
 #[derive(Parser)]
-#[command(name = "wrapped")]
+#[command(
+    name = "wrapped",
+    after_help = r#"Examples:
+  meetcal wrapped "Maddisen Mohnsen"
+  meetcal wrapped "Maddisen Mohnsen" --year 2024"#
+)]
 pub struct WrappedArgs {
     /// Exact athlete name
     pub name: String,
