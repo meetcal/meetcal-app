@@ -1,6 +1,6 @@
 import { v } from 'convex/values';
 import { internal } from './_generated/api';
-import { internalAction, internalMutation, query } from './_generated/server';
+import { internalAction, internalMutation, internalQuery, query } from './_generated/server';
 import { callerOf, currentPasses } from './lib/access';
 import { apiError } from './lib/validation';
 
@@ -57,4 +57,10 @@ export const rotate = internalAction({
     const pass = Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
     await ctx.runMutation(internal.accessPass.store, { pass, now: Date.now() });
   },
+});
+
+/** The current pass, or null before the first rotation. For server code that reads premium queries (`parity:run`). */
+export const currentPass = internalQuery({
+  args: {},
+  handler: async (ctx) => (await currentPasses(ctx))?.current ?? null,
 });

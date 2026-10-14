@@ -1,6 +1,7 @@
 import { PREMIUM_FUNCTIONS } from '../../../convex/lib/access';
 import {
   ACCESS_PASS_MIN_HOLD_MS,
+  ACCESS_PASS_READY_TIMEOUT_MS,
   ACCESS_PASS_RETRY_AFTER_MS,
   ACCESS_PASS_TIMEOUT_MS,
   accessPassFor,
@@ -60,8 +61,8 @@ describe('accessPassFor', () => {
     const source = jest.fn().mockResolvedValueOnce(pass('p1')).mockResolvedValueOnce(pass('p2'));
     setAccessPassSource(source);
     await accessPassFor('results:byNames');
-    await expect(accessPassFor('results:byNames', {}, { refused: 'p1' })).resolves.toBe('p2');
-    await expect(accessPassFor('results:byNames', {}, { refused: 'p1' })).resolves.toBe('p2');
+    await expect(accessPassFor('results:byNames', {}, { refused: 'p1', retry: true })).resolves.toBe('p2');
+    await expect(accessPassFor('results:byNames', {}, { refused: 'p1', retry: true })).resolves.toBe('p2');
     expect(source).toHaveBeenCalledTimes(2);
   });
 
@@ -114,5 +115,48 @@ describe('accessPassFor', () => {
     setAccessPassSource(source);
     await expect(accessPassFor('meets:schedule')).resolves.toBeUndefined();
     expect(source).not.toHaveBeenCalled();
+  });
+});
+
+describe('a source that is not ready yet (Clerk loading)', () => {
+  const flush = async () => {
+    for (let i = 0; i < 5; i++) await Promise.resolve();
+  };
+
+  it('does not count the wait for readiness against the pass fetch', async () => {
+    let ready!: () => void;
+    const source = jest.fn(() => new Promise<{ pass: string; rotatesAt: number }>((resolve) => setTimeout(() => resolve(pass('p1')), 500)));
+    setAccessPassSource(source, new Promise<void>((resolve) => (ready = resolve)));
+    const read = accessPassFor('results:byNames');
+    jest.advanceTimersByTime(2800);
+    await flush();
+    expect(source).not.toHaveBeenCalled();
+    ready();
+    await flush();
+    expect(source).toHaveBeenCalledTimes(1);
+    jest.advanceTimersByTime(500);
+    await expect(read).resolves.toBe('p1');
+  });
+
+  it('goes without a pass when the source is not ready in time, and fetches nothing', async () => {
+    const source = jest.fn(async () => pass('p1'));
+    setAccessPassSource(source, new Promise<void>(() => {}));
+    const read = accessPassFor('results:byNames');
+    jest.advanceTimersByTime(ACCESS_PASS_READY_TIMEOUT_MS);
+    await expect(read).resolves.toBeUndefined();
+    expect(source).not.toHaveBeenCalled();
+  });
+
+  it('gives a refused read a fresh wait on a fetch still running', async () => {
+    let resolve!: (value: { pass: string; rotatesAt: number }) => void;
+    setAccessPassSource(() => new Promise((r) => (resolve = r)));
+    const first = accessPassFor('results:byNames');
+    jest.advanceTimersByTime(ACCESS_PASS_TIMEOUT_MS);
+    await expect(first).resolves.toBeUndefined();
+    // The server refused the read sent without a pass: its retry waits again.
+    const retry = accessPassFor('results:byNames', {}, { retry: true });
+    await flush();
+    resolve(pass('late'));
+    await expect(retry).resolves.toBe('late');
   });
 });

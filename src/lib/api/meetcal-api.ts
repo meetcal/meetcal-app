@@ -337,7 +337,7 @@ async function request(call: ApiCall, timeoutMs: number = DEFAULT_TIMEOUT_MS): P
     return await send(withPass(call, pass), timeoutMs);
   } catch (error) {
     if (!(error instanceof MeetCalApiError) || (error.status !== 401 && error.status !== 403)) throw error;
-    const fresh = await accessPassFor(call.fn, call.args, { refused: pass });
+    const fresh = await accessPassFor(call.fn, call.args, { refused: pass, retry: true });
     if (fresh === undefined || fresh === pass) throw error;
     return await send(withPass(call, fresh), timeoutMs);
   }
