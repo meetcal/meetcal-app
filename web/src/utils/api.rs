@@ -225,6 +225,9 @@ pub(crate) mod queries {
     pub(crate) const CLUB_ATHLETES: Query = Query::text("reference:clubAthletes");
     /// `GET /clubs/meet-stats`; takes `club` and `meet`.
     pub(crate) const CLUB_MEET_STATS: Query = Query::value("reference:clubMeetStats");
+    /// Weightlifting Wrapped (no Rust route): takes `query`, `year` and optionally `picked`, and
+    /// answers the year's stats, never the results behind them. Free and public: no pass.
+    pub(crate) const WRAPPED: Query = Query::value("results:wrapped");
 }
 
 #[derive(Serialize)]
@@ -403,7 +406,7 @@ fn read_response<T: DeserializeOwned>(query: Query, response: QueryResponse) -> 
 }
 
 /// The body inside a query's answer value.
-fn read_body<T: DeserializeOwned>(query: Query, value: Value) -> Result<T> {
+pub(crate) fn read_body<T: DeserializeOwned>(query: Query, value: Value) -> Result<T> {
     match query.body {
         Body::Value => serde_json::from_value(whole_numbers_as_integers(value))
             .map_err(|error| user_error(query.function, UNREADABLE_MESSAGE, error)),
@@ -1143,6 +1146,7 @@ mod tests {
             queries::COMPLETED_MEETS,
             queries::MEET_SCHEDULE,
             queries::MEET_ATHLETES,
+            queries::WRAPPED,
         ] {
             assert!(!query.is_premium(), "{}", query.function);
             assert!(!carries_pass(query, &args), "{}", query.function);

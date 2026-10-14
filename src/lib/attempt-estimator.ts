@@ -104,7 +104,7 @@ function calculateAverageIncrease(
  * non-zero number was taken, a positive number was made.
  *
  * This is deliberately a different measurement from
- * `lib/wrapped-stats.ts`'s `makePercentage`, not a disagreeing definition of
+ * Wrapped's `makePercentage` (`convex/lib/wrapped.ts`), not a disagreeing definition of
  * the same one. Wrapped scores all six attempts of a calendar year to tell the
  * athlete how consistent they were. Here we are predicting the opener we are
  * about to print, so second and third attempts — which are *chosen in reaction

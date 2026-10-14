@@ -1,56 +1,78 @@
+//! Athlete Wrapped: one athlete's calendar year, summed up by the server
+//! (`results:wrapped`, `convex/lib/wrapped.ts`), the same answer the app and
+//! the CLI show. The query is public, so the page is free: it sits outside the
+//! subscription gate and never reads the results behind the stats.
+
 use super::{
-    analytics::{WrappedStats, wrapped_stats},
     athlete_autocomplete::AthleteAutocomplete,
     loading::{Load, LoadState, load_error},
-    models::{
-        AthleteSearchQuery, AthleteSearchResponse, LiftResult, MAX_ATHLETE_CHOICES,
-        distinct_athletes, normalize,
-    },
     ui::{DataMetric, DataPage, DataStatus, TableSkeleton},
 };
 use crate::utils::api::{queries, query_with};
 use js_sys::Date;
 use leptos::prelude::*;
+use serde::{Deserialize, Serialize};
 
-#[derive(Clone, PartialEq)]
+/// One Wrapped search: `results:wrapped`'s arguments.
+#[derive(Clone, Debug, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
 struct WrappedRequest {
-    athlete: String,
+    query: String,
     year: i32,
-    /// The name was picked from the athletes a search matched, so only an
-    /// exact match for it is scored.
+    /// The name was picked from the athletes a search matched, so the server
+    /// takes only an exact match for it. Sent only when set, as the app does.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
     picked: bool,
 }
 
-enum WrappedResponse {
-    Report {
-        athlete_name: String,
-        year: i32,
-        stats: WrappedStats,
-    },
-    /// Several athletes matched `query`; the user picks one. With
-    /// `more_than_shown`, `names` may not hold the athlete meant: more
-    /// matched than the list shows, or than the answer held.
-    Choices {
-        query: String,
-        year: i32,
+/// `results:wrapped`'s answer.
+#[derive(Clone, Debug, Deserialize, PartialEq)]
+#[serde(tag = "kind", rename_all = "camelCase")]
+enum WrappedAnswer {
+    /// One athlete's year, under the athlete's own spelling.
+    Athlete { name: String, stats: WrappedStats },
+    /// Several athletes matched; the user picks one, which asks again with
+    /// `picked`. With `truncated`, `names` may not hold the athlete meant.
+    Ambiguous {
         names: Vec<String>,
-        more_than_shown: bool,
+        #[serde(default)]
+        truncated: bool,
     },
-    /// The search answered, but there is no Wrapped to build (no results,
-    /// or too many to score); says why.
-    Unavailable(String),
+    /// The name matched too many athletes to look through: type more of it.
+    Narrow,
+    /// One athlete's year has more results than one answer holds, so a
+    /// Wrapped would miss some.
+    TooManyResults { name: String },
+    /// No results in the year; `suggestions` are names like the query.
+    #[serde(rename = "none")]
+    NoResults {
+        #[serde(default)]
+        suggestions: Vec<String>,
+    },
 }
 
-/// What one Wrapped search found.
-#[derive(Debug)]
-enum WrappedSelection {
-    /// One athlete's year: score these rows under `name`.
-    Athlete { name: String, rows: Vec<LiftResult> },
-    /// The names to pick from (see `WrappedResponse::Choices`).
-    Choose {
-        names: Vec<String>,
-        more_than_shown: bool,
-    },
+/// The year's stats, as the server scored them.
+#[derive(Clone, Debug, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+struct WrappedStats {
+    total_weight_lifted: f64,
+    total_meets: u32,
+    /// Made attempts over taken attempts, 0–100.
+    make_percentage: f64,
+    best_snatch: f64,
+    best_clean_jerk: f64,
+    best_total: f64,
+    average_total: f64,
+    /// The meet with the year's best total; `None` without one.
+    #[serde(default)]
+    top_meet: Option<String>,
+    /// Last minus first meet's best total; `None` with fewer than two meets.
+    #[serde(default)]
+    improvement_from_first: Option<f64>,
+    longest_make_streak: u32,
+    /// The attempt (1, 2 or 3) made most often; `None` when none was made.
+    #[serde(default)]
+    favorite_attempt: Option<u8>,
 }
 
 #[component]
@@ -63,13 +85,16 @@ pub fn Wrapped() -> impl IntoView {
         move || request.get(),
         |request| async move {
             match request {
-                Some(request) => load_wrapped(request).await.map(Some),
+                Some(request) => query_with::<WrappedAnswer, _>(queries::WRAPPED, &request)
+                    .await
+                    .map(|answer| Some((request, answer)))
+                    .map_err(|error| error.to_string()),
                 None => Ok(None),
             }
         },
     );
     view! { <DataPage heading="Athlete Wrapped" intro="Summarize an athlete’s competition year, best lifts, make rate, and progress.">
-        <form class="data-query-form" on:submit=move |event| { event.prevent_default(); let athlete = athlete_name.get().trim().to_owned(); if athlete.is_empty() { return; } let selected_year = year.get().parse().unwrap_or(current_year); wrapped.submit(|| set_request.set(Some(WrappedRequest { athlete, year: selected_year, picked: false }))); }>
+        <form class="data-query-form" on:submit=move |event| { event.prevent_default(); let athlete = athlete_name.get().trim().to_owned(); if athlete.is_empty() { return; } let selected_year = year.get().parse().unwrap_or(current_year); wrapped.submit(|| set_request.set(Some(WrappedRequest { query: athlete, year: selected_year, picked: false }))); }>
             <AthleteAutocomplete value=athlete_name set_value=set_athlete_name input_id="wrapped-athlete" wrapper_class="data-query-grow" />
             <label>"Year"<input class="data-filter data-year-input" inputmode="numeric" maxlength="4" prop:value=current_year on:input=move |event| set_year.set(event_target_value(&event)) /></label>
             <button class="data-search-button" type="submit">"Build wrapped"</button>
@@ -81,132 +106,36 @@ pub fn Wrapped() -> impl IntoView {
             LoadState::Loading => view! { <TableSkeleton columns=3 /> }.into_any(),
             LoadState::Failed(error) => load_error("wrapped", error, move || wrapped.retry()),
             LoadState::Ready(None) => view! { <DataStatus message="Enter an athlete to build their yearly recap." /> }.into_any(),
-            LoadState::Ready(Some(WrappedResponse::Report { athlete_name, year, stats })) => report(athlete_name, *year, stats),
-            LoadState::Ready(Some(WrappedResponse::Choices { query, year, names, more_than_shown })) => choices(query, *year, names, *more_than_shown, set_athlete_name, set_request),
-            LoadState::Ready(Some(WrappedResponse::Unavailable(message))) => view! { <p class="data-status error">{format!("Could not build wrapped: {message}")}</p> }.into_any(),
+            LoadState::Ready(Some((request, answer))) => match answer {
+                WrappedAnswer::Athlete { name, stats } => report(name, request.year, stats),
+                WrappedAnswer::Ambiguous { names, truncated } => choices(&request.query, request.year, names, *truncated, set_athlete_name, set_request),
+                _ => view! { <p class="data-status error">{format!("Could not build wrapped: {}", unavailable_message(request, answer))}</p> }.into_any(),
+            },
         }) }}
     </DataPage> }
 }
 
-async fn load_wrapped(request: WrappedRequest) -> Result<WrappedResponse, String> {
-    let year = request.year;
-    let query = wrapped_search_query(&request.athlete, year);
-    let response: AthleteSearchResponse = query_with(queries::SEARCH, &query)
-        .await
-        .map_err(|error| error.to_string())?;
-    Ok(
-        match select_wrapped(&request.athlete, year, request.picked, response) {
-            Ok(WrappedSelection::Athlete { name, rows }) => WrappedResponse::Report {
-                athlete_name: name,
-                year,
-                stats: wrapped_stats(&rows),
-            },
-            Ok(WrappedSelection::Choose {
-                names,
-                more_than_shown,
-            }) => WrappedResponse::Choices {
-                query: request.athlete,
-                year,
-                names,
-                more_than_shown,
-            },
-            Err(message) => WrappedResponse::Unavailable(message),
-        },
-    )
-}
-
-/// The search for `athlete`'s results in `year`: January 1 through
-/// December 31, both included, as `results:search` reads its range.
-fn wrapped_search_query(athlete: &str, year: i32) -> AthleteSearchQuery {
-    AthleteSearchQuery::between(
-        athlete.to_owned(),
-        format!("{year:04}-01-01"),
-        format!("{year:04}-12-31"),
-    )
-}
-
-/// Which rows one Wrapped scores, the athletes to pick from, or why there
-/// are none; the app's `selectWrappedRows` (`src/lib/wrapped-search.ts`).
-///
-/// With an exact name match the answer sets `matched_name` and every row is
-/// that athlete. Without one it falls back to every athlete whose name
-/// contains the query ("Smith"); those rows are one person's year only when
-/// they carry one distinct name, otherwise the user picks an athlete and a
-/// Wrapped is built from an exact search for that name (`picked`).
-///
-/// A truncated answer is never scored or read as "no results": its rows may
-/// miss part of the year, and a fallback that stopped scanning names may
-/// have missed other athletes, or the one meant. A fallback's names are
-/// offered to pick from; an exact match's year cannot be narrowed, so it is
-/// refused.
-fn select_wrapped(
-    name: &str,
-    year: i32,
-    picked: bool,
-    response: AthleteSearchResponse,
-) -> Result<WrappedSelection, String> {
-    let suffix = if response.suggestions.is_empty() {
-        String::new()
-    } else {
-        format!(" Try: {}.", response.suggestions.join(", "))
-    };
-    let narrow = || format!("Too many athletes match {name}. Type more of the name.{suffix}");
-    let none = || format!("No {year} results found for {name}.{suffix}");
-    if response.results.is_empty() {
-        return Err(if response.truncated { narrow() } else { none() });
-    }
-
-    if let Some(matched) = response.matched_name {
-        // The query's own spelling; a row has the athlete's.
-        let athlete = response
-            .results
-            .first()
-            .map(|row| row.name.trim())
-            .filter(|row_name| !row_name.is_empty())
-            .map_or(matched, str::to_owned);
-        if response.truncated {
-            return Err(format!(
-                "{athlete} has more {year} results than one search returns, so a Wrapped would miss some."
-            ));
+/// Why there is no Wrapped to show for `answer`, `request`'s answer: no
+/// results, too many athletes, or too many results.
+fn unavailable_message(request: &WrappedRequest, answer: &WrappedAnswer) -> String {
+    let WrappedRequest { query, year, .. } = request;
+    match answer {
+        WrappedAnswer::Narrow => format!("Too many athletes match {query}. Type more of the name."),
+        WrappedAnswer::TooManyResults { name } => format!(
+            "{name} has more {year} results than one search returns, so a Wrapped would miss some."
+        ),
+        WrappedAnswer::NoResults { suggestions } if suggestions.is_empty() => {
+            format!("No {year} results found for {query}.")
         }
-        return Ok(WrappedSelection::Athlete {
-            name: athlete,
-            rows: response.results.into_iter().map(|row| row.result).collect(),
-        });
+        WrappedAnswer::NoResults { suggestions } => format!(
+            "No {year} results found for {query}. Try: {}.",
+            suggestions.join(", ")
+        ),
+        // Shown as a report or a pick list, never as a message.
+        WrappedAnswer::Athlete { .. } | WrappedAnswer::Ambiguous { .. } => {
+            format!("No {year} results found for {query}.")
+        }
     }
-    if picked {
-        // The picked name lifted this year, so its exact search should match.
-        return Err(none());
-    }
-
-    // Distinct athletes among the fallback rows, keyed by folded name (which
-    // also orders them), keeping the first spelling seen.
-    let mut athletes = distinct_athletes(&response.results);
-    if athletes.is_empty() {
-        return Err(if response.truncated { narrow() } else { none() });
-    }
-    if athletes.len() == 1 && !response.truncated {
-        let Some((key, athlete)) = athletes.pop_first() else {
-            return Err(none());
-        };
-        let rows = response
-            .results
-            .into_iter()
-            .filter(|row| normalize(&row.name) == key)
-            .map(|row| row.result)
-            .collect();
-        return Ok(WrappedSelection::Athlete {
-            name: athlete,
-            rows,
-        });
-    }
-    // The athletes that lifted in the year, so each pick has a Wrapped; the
-    // answer's `suggestions` span every year.
-    let more_than_shown = response.truncated || athletes.len() > MAX_ATHLETE_CHOICES;
-    Ok(WrappedSelection::Choose {
-        names: athletes.into_values().take(MAX_ATHLETE_CHOICES).collect(),
-        more_than_shown,
-    })
 }
 
 /// The first-to-last change as shown, the app's `formatImprovement`:
@@ -220,7 +149,7 @@ fn format_improvement(improvement: Option<f64>) -> String {
 }
 
 fn report(athlete_name: &str, year: i32, stats: &WrappedStats) -> AnyView {
-    view! { <h2 class="data-section-title">{format!("{year} Wrapped — {athlete_name}")}</h2><div class="data-metric-grid"><DataMetric label="Meets" value=stats.total_meets.to_string() /><DataMetric label="Make rate" value=format!("{:.1}%", stats.make_percentage) /><DataMetric label="Best snatch" value=format!("{}kg", stats.best_snatch) /><DataMetric label="Best C&J" value=format!("{}kg", stats.best_cj) /><DataMetric label="Best total" value=format!("{}kg", stats.best_total) /><DataMetric label="Average total" value=format!("{:.1}kg", stats.average_total) /><DataMetric label="Weight lifted" value=format!("{}kg", stats.total_weight_lifted) /><DataMetric label="First-to-last" value=format_improvement(stats.improvement) /><DataMetric label="Longest make streak" value=stats.longest_streak.to_string() /><DataMetric label="Favorite attempt" value=stats.favorite_attempt.map(|value| value.to_string()).unwrap_or_else(|| "—".to_owned()) /></div><div class="wrapped-top-meet"><span>"Top meet"</span><strong>{stats.top_meet.clone().unwrap_or_else(|| "—".to_owned())}</strong></div> }.into_any()
+    view! { <h2 class="data-section-title">{format!("{year} Wrapped — {athlete_name}")}</h2><div class="data-metric-grid"><DataMetric label="Meets" value=stats.total_meets.to_string() /><DataMetric label="Make rate" value=format!("{:.1}%", stats.make_percentage) /><DataMetric label="Best snatch" value=format!("{}kg", stats.best_snatch) /><DataMetric label="Best C&J" value=format!("{}kg", stats.best_clean_jerk) /><DataMetric label="Best total" value=format!("{}kg", stats.best_total) /><DataMetric label="Average total" value=format!("{:.1}kg", stats.average_total) /><DataMetric label="Weight lifted" value=format!("{}kg", stats.total_weight_lifted) /><DataMetric label="First-to-last" value=format_improvement(stats.improvement_from_first) /><DataMetric label="Longest make streak" value=stats.longest_make_streak.to_string() /><DataMetric label="Favorite attempt" value=stats.favorite_attempt.map(|value| value.to_string()).unwrap_or_else(|| "—".to_owned()) /></div><div class="wrapped-top-meet"><span>"Top meet"</span><strong>{stats.top_meet.clone().unwrap_or_else(|| "—".to_owned())}</strong></div> }.into_any()
 }
 
 /// The athletes a search matched, each building that athlete's Wrapped.
@@ -245,7 +174,7 @@ fn choices(
                 view! {
                     <button type="button" on:click=move |_| {
                         set_athlete_name.set(athlete.clone());
-                        set_request.set(Some(WrappedRequest { athlete: athlete.clone(), year, picked: true }));
+                        set_request.set(Some(WrappedRequest { query: athlete.clone(), year, picked: true }));
                     }>{name}</button>
                 }
             }).collect_view()}
@@ -257,209 +186,172 @@ fn choices(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::utils::api::read_body;
+    use serde_json::json;
+
+    /// `value` read as Convex's HTTP API answer would be, floats and all.
+    fn answer(value: serde_json::Value) -> WrappedAnswer {
+        read_body(queries::WRAPPED, value).unwrap()
+    }
+
+    fn request(query: &str) -> WrappedRequest {
+        WrappedRequest {
+            query: query.to_owned(),
+            year: 2026,
+            picked: false,
+        }
+    }
+
+    #[test]
+    fn requests_send_the_query_and_year_and_picked_only_when_set() {
+        assert_eq!(
+            serde_json::to_value(request("Test Athlete")).unwrap(),
+            json!({"query": "Test Athlete", "year": 2026})
+        );
+        let picked = WrappedRequest {
+            picked: true,
+            ..request("Ann Smith")
+        };
+        assert_eq!(
+            serde_json::to_value(picked).unwrap(),
+            json!({"query": "Ann Smith", "year": 2026, "picked": true})
+        );
+    }
+
+    #[test]
+    fn an_athlete_answer_reads_its_stats_even_as_floats() {
+        let parsed = answer(json!({
+            "kind": "athlete",
+            "name": "Test Athlete",
+            "stats": {
+                "totalWeightLifted": 1234.0, "totalMeets": 3.0, "makePercentage": 83.33333333333334,
+                "bestSnatch": 100.0, "bestCleanJerk": 125.5, "bestTotal": 225.0, "averageTotal": 212.5,
+                "topMeet": "Spring Open", "improvementFromFirst": -5.0, "longestMakeStreak": 7.0,
+                "favoriteAttempt": 2.0, "yearRank": "Meet Regular"
+            }
+        }));
+        assert_eq!(
+            parsed,
+            WrappedAnswer::Athlete {
+                name: "Test Athlete".to_owned(),
+                stats: WrappedStats {
+                    total_weight_lifted: 1234.0,
+                    total_meets: 3,
+                    make_percentage: 83.33333333333334,
+                    best_snatch: 100.0,
+                    best_clean_jerk: 125.5,
+                    best_total: 225.0,
+                    average_total: 212.5,
+                    top_meet: Some("Spring Open".to_owned()),
+                    improvement_from_first: Some(-5.0),
+                    longest_make_streak: 7,
+                    favorite_attempt: Some(2),
+                },
+            }
+        );
+    }
+
+    #[test]
+    fn an_athlete_answer_without_a_top_meet_change_or_favorite_reads_them_as_none() {
+        let WrappedAnswer::Athlete { stats, .. } = answer(json!({
+            "kind": "athlete",
+            "name": "Test Athlete",
+            "stats": {
+                "totalWeightLifted": 0.0, "totalMeets": 1.0, "makePercentage": 0.0,
+                "bestSnatch": 0.0, "bestCleanJerk": 0.0, "bestTotal": 0.0, "averageTotal": 0.0,
+                "topMeet": null, "improvementFromFirst": null, "longestMakeStreak": 0.0,
+                "favoriteAttempt": null, "yearRank": "Rising Star"
+            }
+        })) else {
+            panic!("expected an athlete");
+        };
+        assert_eq!(stats.top_meet, None);
+        assert_eq!(stats.improvement_from_first, None);
+        assert_eq!(stats.favorite_attempt, None);
+    }
+
+    #[test]
+    fn the_other_kinds_read_as_themselves() {
+        assert_eq!(
+            answer(
+                json!({"kind": "ambiguous", "names": ["Ann Smith", "John Smith"], "truncated": true})
+            ),
+            WrappedAnswer::Ambiguous {
+                names: vec!["Ann Smith".to_owned(), "John Smith".to_owned()],
+                truncated: true,
+            }
+        );
+        assert_eq!(answer(json!({"kind": "narrow"})), WrappedAnswer::Narrow);
+        assert_eq!(
+            answer(json!({"kind": "tooManyResults", "name": "Test Athlete"})),
+            WrappedAnswer::TooManyResults {
+                name: "Test Athlete".to_owned()
+            }
+        );
+        assert_eq!(
+            answer(json!({"kind": "none", "suggestions": ["Ann Lee"]})),
+            WrappedAnswer::NoResults {
+                suggestions: vec!["Ann Lee".to_owned()]
+            }
+        );
+    }
+
+    #[test]
+    fn an_unknown_kind_or_a_malformed_answer_is_an_error() {
+        for value in [
+            json!({"kind": "something"}),
+            json!({"names": ["Ann Lee"]}),
+            json!({"kind": "athlete", "name": "Test Athlete"}),
+            json!({"kind": "athlete", "name": "Test Athlete", "stats": {"totalMeets": 2.5}}),
+        ] {
+            assert!(
+                read_body::<WrappedAnswer>(queries::WRAPPED, value.clone()).is_err(),
+                "{value}"
+            );
+        }
+    }
+
+    #[test]
+    fn unavailable_answers_say_why() {
+        let smith = request("Smith");
+        assert_eq!(
+            unavailable_message(&smith, &WrappedAnswer::Narrow),
+            "Too many athletes match Smith. Type more of the name."
+        );
+        assert_eq!(
+            unavailable_message(
+                &smith,
+                &WrappedAnswer::TooManyResults {
+                    name: "John Smith".to_owned()
+                }
+            ),
+            "John Smith has more 2026 results than one search returns, so a Wrapped would miss some."
+        );
+        assert_eq!(
+            unavailable_message(
+                &request("Ann"),
+                &WrappedAnswer::NoResults {
+                    suggestions: vec!["Ann Lee".to_owned(), "Ann Smith".to_owned()]
+                }
+            ),
+            "No 2026 results found for Ann. Try: Ann Lee, Ann Smith."
+        );
+        assert_eq!(
+            unavailable_message(
+                &request("Zzqx"),
+                &WrappedAnswer::NoResults {
+                    suggestions: vec![]
+                }
+            ),
+            "No 2026 results found for Zzqx."
+        );
+    }
+
     #[test]
     fn first_to_last_reads_like_the_apps() {
         assert_eq!(format_improvement(None), "—");
         assert_eq!(format_improvement(Some(0.0)), "Steady");
         assert_eq!(format_improvement(Some(12.0)), "+12kg");
         assert_eq!(format_improvement(Some(-5.5)), "-5.5kg");
-    }
-
-    #[test]
-    fn search_query_covers_the_calendar_year_inclusively() {
-        let query = serde_json::to_value(wrapped_search_query("Test Athlete", 2026)).unwrap();
-        assert_eq!(
-            query,
-            serde_json::json!({"query": "Test Athlete", "startDate": "2026-01-01", "endDate": "2026-12-31"})
-        );
-    }
-
-    fn search_response(json: &str) -> AthleteSearchResponse {
-        serde_json::from_str(json).unwrap()
-    }
-
-    fn row(name: &str, date: &str, total: f64) -> String {
-        format!(
-            r#"{{"name":"{name}","meet":"Meet {date}","date":"{date}","age":"Senior","body_weight":70.5,"snatch1":95.0,"snatch2":100.0,"snatch3":-103.0,"snatch_best":100.0,"cj1":120.0,"cj2":125.0,"cj3":0.0,"cj_best":125.0,"total":{total},"adaptive":false}}"#
-        )
-    }
-
-    fn answer(
-        matched_name: Option<&str>,
-        rows: &[String],
-        truncated: bool,
-    ) -> AthleteSearchResponse {
-        let matched_name = matched_name.map_or("null".to_owned(), |name| format!(r#""{name}""#));
-        search_response(&format!(
-            r#"{{"matched_name":{matched_name},"suggestions":["Ann Lee"],"results":[{}],"truncated":{truncated}}}"#,
-            rows.join(",")
-        ))
-    }
-
-    #[test]
-    fn wrapped_scores_a_whole_exact_answer_under_the_athletes_spelling() {
-        let response = answer(
-            Some("test athlete"),
-            &[row("Test Athlete", "2026-03-01", 220.0)],
-            false,
-        );
-        let WrappedSelection::Athlete { name, rows } =
-            select_wrapped("test athlete", 2026, false, response).unwrap()
-        else {
-            panic!("expected one athlete");
-        };
-        assert_eq!(name, "Test Athlete");
-        assert_eq!(rows.len(), 1);
-    }
-
-    #[test]
-    fn wrapped_refuses_an_exact_answer_that_was_cut() {
-        let response = answer(
-            Some("Test Athlete"),
-            &[row("Test Athlete", "2026-03-01", 220.0)],
-            true,
-        );
-        let error = select_wrapped("test athlete", 2026, false, response).unwrap_err();
-        assert!(error.contains("would miss some"), "{error}");
-    }
-
-    #[test]
-    fn wrapped_asks_to_narrow_a_cut_fallback_without_rows_rather_than_say_no_results() {
-        let error = select_wrapped("an", 2026, false, answer(None, &[], true)).unwrap_err();
-        assert!(error.contains("Type more of the name"), "{error}");
-        assert!(!error.contains("No 2026 results"), "{error}");
-    }
-
-    #[test]
-    fn wrapped_reports_no_results_with_the_suggestions() {
-        let error = select_wrapped("Ann", 2026, false, answer(None, &[], false)).unwrap_err();
-        assert_eq!(error, "No 2026 results found for Ann. Try: Ann Lee.");
-    }
-
-    #[test]
-    fn wrapped_offers_a_pick_when_two_athletes_match_one_query() {
-        let response = answer(
-            None,
-            &[
-                row("John Smith", "2026-02-01", 200.0),
-                row("Ann Smith", "2026-03-01", 180.0),
-                row("john  smith", "2026-05-01", 210.0),
-            ],
-            false,
-        );
-        let WrappedSelection::Choose {
-            names,
-            more_than_shown,
-        } = select_wrapped("Smith", 2026, false, response).unwrap()
-        else {
-            panic!("two athletes must not be scored as one");
-        };
-        // One entry per athlete, whatever the spelling, in name order.
-        assert_eq!(names, ["Ann Smith", "John Smith"]);
-        assert!(!more_than_shown);
-    }
-
-    #[test]
-    fn wrapped_builds_a_picked_athlete_from_their_exact_search_only() {
-        let fallback = answer(
-            None,
-            &[
-                row("John Smith", "2026-02-01", 200.0),
-                row("Ann Smith", "2026-03-01", 180.0),
-            ],
-            false,
-        );
-        let WrappedSelection::Choose { names, .. } =
-            select_wrapped("Smith", 2026, false, fallback).unwrap()
-        else {
-            panic!("expected a pick list");
-        };
-        assert_eq!(names[1], "John Smith");
-
-        // The pick searches the exact name, which answers with only that athlete.
-        let exact = answer(
-            Some("John Smith"),
-            &[
-                row("John Smith", "2026-02-01", 200.0),
-                row("John Smith", "2026-05-01", 210.0),
-            ],
-            false,
-        );
-        let WrappedSelection::Athlete { name, rows } =
-            select_wrapped(&names[1], 2026, true, exact).unwrap()
-        else {
-            panic!("expected one athlete");
-        };
-        assert_eq!(name, "John Smith");
-        let stats = wrapped_stats(&rows);
-        assert_eq!(stats.total_meets, 2);
-        assert_eq!(stats.best_total, 210.0);
-    }
-
-    #[test]
-    fn wrapped_never_scores_a_fallback_answer_for_a_picked_name() {
-        let response = answer(None, &[row("John Smith", "2026-02-01", 200.0)], false);
-        let error = select_wrapped("John Smith", 2026, true, response).unwrap_err();
-        assert!(error.contains("No 2026 results"), "{error}");
-    }
-
-    #[test]
-    fn wrapped_scores_a_fallback_with_one_athlete_and_skips_unnamed_rows() {
-        let response = answer(
-            None,
-            &[
-                row("Ann Lee", "2026-02-01", 150.0),
-                row("", "2026-03-01", 300.0),
-                row("ann lee ", "2026-04-01", 160.0),
-            ],
-            false,
-        );
-        let WrappedSelection::Athlete { name, rows } =
-            select_wrapped("lee", 2026, false, response).unwrap()
-        else {
-            panic!("expected one athlete");
-        };
-        assert_eq!(name, "Ann Lee");
-        assert_eq!(rows.len(), 2);
-        assert_eq!(wrapped_stats(&rows).best_total, 160.0);
-    }
-
-    #[test]
-    fn wrapped_offers_a_pick_rather_than_score_a_cut_fallback() {
-        let response = answer(None, &[row("Ann Lee", "2026-02-01", 150.0)], true);
-        let WrappedSelection::Choose {
-            names,
-            more_than_shown,
-        } = select_wrapped("an", 2026, false, response).unwrap()
-        else {
-            panic!("a cut fallback must not be scored");
-        };
-        assert_eq!(names, ["Ann Lee"]);
-        assert!(more_than_shown);
-    }
-
-    #[test]
-    fn wrapped_caps_the_athletes_offered() {
-        let rows = (0..12)
-            .map(|index| row(&format!("Athlete {index:02}"), "2026-02-01", 150.0))
-            .collect::<Vec<_>>();
-        let WrappedSelection::Choose {
-            names,
-            more_than_shown,
-        } = select_wrapped("Athlete", 2026, false, answer(None, &rows, false)).unwrap()
-        else {
-            panic!("expected a pick list");
-        };
-        assert_eq!(names.len(), MAX_ATHLETE_CHOICES);
-        assert_eq!(names[0], "Athlete 00");
-        // The answer was whole, but the list hides some athletes.
-        assert!(more_than_shown);
-    }
-
-    #[test]
-    fn suggestion_query_omits_the_dates() {
-        let query =
-            serde_json::to_value(AthleteSearchQuery::suggestions("Test".to_owned())).unwrap();
-        assert_eq!(query, serde_json::json!({"query": "Test"}));
     }
 }

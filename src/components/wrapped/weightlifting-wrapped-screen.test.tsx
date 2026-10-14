@@ -2,8 +2,10 @@
  * The Wrapped search box wired to `useNameSuggestions`: the hook's guards
  * only help if the screen calls `dismissSuggestions` on pick and on submit.
  * The suggestion request is the real `fetchNameSuggestions` → `searchApi`.
- * Also: a search matching several athletes asks which one (never merges
- * them), and the slide pager re-anchors when the window width changes.
+ * Also: the screen acts on `fetchWrapped`'s server answer (several athletes
+ * → ask which one; the server's selection rules are in
+ * `convex-tests/wrapped.test.ts`), and the slide pager re-anchors when the
+ * window width changes.
  */
 import React from "react";
 import {
@@ -19,10 +21,9 @@ import {
 import { captureViewAsPng } from "@/lib/share-image";
 import { act, create, type ReactTestRenderer } from "react-test-renderer";
 import WeightliftingWrappedScreen from "@/app/comp-data/weightlifting-wrapped";
-import { searchApi } from "@/lib/api/meetcal-api";
+import { fetchWrapped, searchApi, type ApiWrappedStats } from "@/lib/api/meetcal-api";
 import { SUGGESTION_DEBOUNCE_MS } from "@/hooks/useNameSuggestions";
 import { showToast } from "@/components/ui/Toast";
-import type { SupabaseLiftResult } from "@/data/types/athletes";
 
 jest.mock("react-native/Libraries/Utilities/useWindowDimensions", () => ({
   __esModule: true,
@@ -75,7 +76,7 @@ jest.mock("@/lib/share-image", () => ({
   shareImageFile: jest.fn(),
 }));
 jest.mock("@/hooks/useIsOffline", () => ({ useIsOffline: () => [false, jest.fn()] }));
-jest.mock("@/lib/api/meetcal-api", () => ({ searchApi: jest.fn() }));
+jest.mock("@/lib/api/meetcal-api", () => ({ searchApi: jest.fn(), fetchWrapped: jest.fn() }));
 
 type SearchResponse = Awaited<ReturnType<typeof searchApi>>;
 type Pending = { query: string; resolve: (response: SearchResponse) => void };
@@ -125,13 +126,10 @@ beforeEach(() => {
   pending = [];
   jest.mocked(searchApi).mockReset();
   jest.mocked(searchApi).mockImplementation(
-    (query: string, startDate?: string) =>
-      new Promise<SearchResponse>((resolve) => {
-        // Only suggestion lookups (no date range) are held open.
-        if (startDate) resolve(suggestionResponse([]));
-        else pending.push({ query, resolve });
-      }),
+    (query: string) => new Promise<SearchResponse>((resolve) => pending.push({ query, resolve })),
   );
+  jest.mocked(fetchWrapped).mockReset();
+  jest.mocked(fetchWrapped).mockResolvedValue({ kind: "none", suggestions: [] });
   act(() => {
     tree = create(<WeightliftingWrappedScreen />);
   });
@@ -183,38 +181,42 @@ describe("WeightliftingWrappedScreen name suggestions", () => {
   });
 });
 
-let nextId = 1;
-function liftRow(name: string, date: string, total: number): SupabaseLiftResult {
+type WrappedAnswer = Awaited<ReturnType<typeof fetchWrapped>>;
+
+function wrappedStats(overrides: Partial<ApiWrappedStats> = {}): ApiWrappedStats {
   return {
-    id: nextId++,
-    event_id: `event-${nextId}`,
-    meet: `Meet ${date}`,
-    date,
-    name,
-    age: "Open Men's 89kg",
-    body_weight: 88,
-    snatch1: 90,
-    snatch2: 95,
-    snatch3: null,
-    snatch_best: 95,
-    cj1: total - 95,
-    cj2: null,
-    cj3: null,
-    cj_best: total - 95,
-    total,
+    totalWeightLifted: 1185,
+    totalMeets: 1,
+    makePercentage: 66.7,
+    bestSnatch: 95,
+    bestCleanJerk: 205,
+    bestTotal: 300,
+    averageTotal: 300,
+    topMeet: "Meet 2025-03-01",
+    improvementFromFirst: null,
+    longestMakeStreak: 2,
+    favoriteAttempt: 1,
+    yearRank: "Top 10%",
+    ...overrides,
   };
 }
 
-function rangedSearchAnswers(response: SearchResponse) {
-  jest.mocked(searchApi).mockImplementation(async (_query: string, startDate?: string) =>
-    startDate ? response : suggestionResponse([]),
-  );
+function athleteAnswer(name: string, stats: ApiWrappedStats = wrappedStats()): WrappedAnswer {
+  return { kind: "athlete", name, stats };
+}
+
+function wrappedAnswers(answer: WrappedAnswer) {
+  jest.mocked(fetchWrapped).mockResolvedValue(answer);
 }
 
 async function submit(text: string) {
   act(() => {
     input().props.onChangeText(text);
   });
+  await submitBox();
+}
+
+async function submitBox() {
   await act(async () => {
     await input().props.onSubmitEditing();
   });
@@ -227,76 +229,97 @@ function texts(): string[] {
   });
 }
 
+function pickShown(name: string) {
+  const pick = tree.root.findAll(
+    (n) =>
+      typeof n.props.onPress === "function" &&
+      n.findAll((c) => c.props.children === name).length > 0,
+  )[0];
+  expect(pick).toBeDefined();
+  act(() => {
+    pick.props.onPress();
+  });
+}
+
 describe("WeightliftingWrappedScreen athlete selection", () => {
-  it("asks which athlete instead of merging everyone the fallback matched", async () => {
-    rangedSearchAnswers({
-      matchedName: null,
-      suggestions: ["Jane Smith", "John Smith"],
-      truncated: false,
-      results: [
-        liftRow("John Smith", "2025-03-01", 300),
-        liftRow("Jane Smith", "2025-04-01", 150),
-      ],
-    });
+  it("asks the server with the trimmed name and the selected year", async () => {
+    await submit("  John Smith  ");
+    expect(jest.mocked(fetchWrapped).mock.calls).toEqual([
+      ["John Smith", new Date().getFullYear(), false],
+    ]);
+  });
+
+  it("asks which athlete when several match, and the pick fills the box", async () => {
+    wrappedAnswers({ kind: "ambiguous", names: ["Jane Smith", "John Smith"], truncated: false });
     await submit("Smith");
 
     expect(tree.root.findAllByType(FlatList)).toHaveLength(0);
     expect(texts()).toEqual(expect.arrayContaining(["DID YOU MEAN…", "Jane Smith", "John Smith"]));
     expect(jest.mocked(showToast)).toHaveBeenCalledWith(
-      expect.objectContaining({ type: "info", message: expect.stringContaining("Several athletes") }),
+      expect.objectContaining({ type: "info", message: "Several athletes match Smith. Pick one." }),
     );
 
-    const pick = tree.root.findAll(
-      (n) =>
-        typeof n.props.onPress === "function" &&
-        n.findAll((c) => c.props.children === "Jane Smith").length > 0,
-    )[0];
-    act(() => {
-      pick.props.onPress();
-    });
+    pickShown("Jane Smith");
     expect(input().props.value).toBe("Jane Smith");
     expect(texts()).not.toContain("DID YOU MEAN…");
   });
 
-  it("searches the whole calendar year, and asks for more of the name when the answer was cut", async () => {
-    rangedSearchAnswers({
-      matchedName: null,
-      suggestions: ["Jane Smith", "John Smith"],
-      truncated: true,
-      results: [
-        liftRow("John Smith", "2025-03-01", 300),
-        liftRow("Jane Smith", "2025-04-01", 150),
-      ],
-    });
-    await submit("Smith");
-
-    // `results:search` includes both ends, so the year ends on 31 December.
-    const ranged = jest.mocked(searchApi).mock.calls.find(([, startDate]) => startDate);
-    const year = ranged?.[1]?.slice(0, 4);
-    expect(ranged?.slice(1)).toEqual([`${year}-01-01`, `${year}-12-31`]);
-    expect(jest.mocked(showToast)).toHaveBeenCalledWith(
-      expect.objectContaining({ type: "info", message: expect.stringContaining("type more of the name") }),
-    );
-  });
-
-  it("offers a cut search's one athlete to pick instead of building their Wrapped", async () => {
-    rangedSearchAnswers({
-      matchedName: null,
-      suggestions: ["Jane Doe"],
-      truncated: true,
-      results: [liftRow("Jane Doe", "2025-03-01", 200)],
-    });
+  it("asks for more of the name too when the matching athletes were cut", async () => {
+    wrappedAnswers({ kind: "ambiguous", names: ["Jane Doe"], truncated: true });
     await submit("an");
 
     expect(tree.root.findAllByType(FlatList)).toHaveLength(0);
     expect(texts()).toEqual(expect.arrayContaining(["DID YOU MEAN…", "Jane Doe"]));
     expect(jest.mocked(showToast)).toHaveBeenCalledWith(
-      expect.objectContaining({ type: "info", message: expect.stringContaining("type more of the name") }),
+      expect.objectContaining({
+        type: "info",
+        message: expect.stringContaining("Many athletes match an"),
+      }),
+    );
+    expect(jest.mocked(showToast)).toHaveBeenCalledWith(
+      expect.objectContaining({ message: expect.stringContaining("type more of the name") }),
     );
   });
 
-  it("asks for more of the name, not \"no results\", when a cut search found nobody", async () => {
-    rangedSearchAnswers({ matchedName: null, suggestions: ["Ann Lee"], truncated: true, results: [] });
+  it("sends picked: true for a name picked from the dropdown", async () => {
+    const year = new Date().getFullYear();
+    wrappedAnswers({ kind: "ambiguous", names: ["Jane Smith", "John Smith"], truncated: false });
+    await submit("Smith");
+    pickShown("Jane Smith");
+
+    wrappedAnswers(athleteAnswer("Jane Smith"));
+    await submitBox();
+    expect(jest.mocked(fetchWrapped)).toHaveBeenLastCalledWith("Jane Smith", year, true);
+    expect(texts()).toContain("JANE SMITH");
+  });
+
+  it("sends picked: false once the picked name is edited", async () => {
+    const year = new Date().getFullYear();
+    wrappedAnswers({ kind: "ambiguous", names: ["Jane Smith", "John Smith"], truncated: false });
+    await submit("Smith");
+    pickShown("Jane Smith");
+
+    await submit("Jane Smit");
+    expect(jest.mocked(fetchWrapped)).toHaveBeenLastCalledWith("Jane Smit", year, false);
+  });
+
+  it("an edit that lands back on the picked text is no longer a pick", async () => {
+    const year = new Date().getFullYear();
+    wrappedAnswers({ kind: "ambiguous", names: ["Jane Smith", "John Smith"], truncated: false });
+    await submit("Smith");
+    pickShown("Jane Smith");
+    act(() => {
+      input().props.onChangeText("Jane Smit");
+    });
+    act(() => {
+      input().props.onChangeText("Jane Smith");
+    });
+    await submitBox();
+    expect(jest.mocked(fetchWrapped)).toHaveBeenLastCalledWith("Jane Smith", year, false);
+  });
+
+  it("asks for more of the name, not \"no results\", when too many athletes match", async () => {
+    wrappedAnswers({ kind: "narrow" });
     await submit("an");
 
     expect(tree.root.findAllByType(FlatList)).toHaveLength(0);
@@ -308,42 +331,59 @@ describe("WeightliftingWrappedScreen athlete selection", () => {
     );
   });
 
-  it("does not build a Wrapped from an exact match whose year was cut", async () => {
-    rangedSearchAnswers({
-      matchedName: "john smith",
-      suggestions: [],
-      truncated: true,
-      results: [liftRow("John Smith", "2025-03-01", 300)],
-    });
+  it("does not build a Wrapped when the athlete's year has too many results", async () => {
+    wrappedAnswers({ kind: "tooManyResults", name: "John Smith" });
     await submit("john smith");
 
     expect(tree.root.findAllByType(FlatList)).toHaveLength(0);
     expect(jest.mocked(showToast)).toHaveBeenCalledWith(
-      expect.objectContaining({ type: "error", message: expect.stringContaining("more") }),
+      expect.objectContaining({
+        type: "error",
+        message: expect.stringContaining("John Smith has more"),
+      }),
     );
   });
 
-  it("builds the Wrapped of an exact match under the athlete's name", async () => {
-    rangedSearchAnswers({
-      matchedName: "john smith",
-      suggestions: [],
-      truncated: false,
-      results: [liftRow("John Smith", "2025-03-01", 300)],
-    });
+  it("says no results when nobody matches", async () => {
+    wrappedAnswers({ kind: "none", suggestions: [] });
+    await submit("Nobody");
+
+    expect(tree.root.findAllByType(FlatList)).toHaveLength(0);
+    expect(jest.mocked(showToast)).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: "info",
+        message: `No results found for Nobody in ${new Date().getFullYear()}`,
+      }),
+    );
+  });
+
+  it("builds the Wrapped under the answer's name with the server's stats", async () => {
+    wrappedAnswers(athleteAnswer("John Smith", wrappedStats({ topMeet: "Spring Open", yearRank: "Top 5%" })));
     await submit("john smith");
     expect(tree.root.findAllByType(FlatList)).toHaveLength(1);
     // The title slide upper-cases the name.
     expect(texts()).toContain("JOHN SMITH");
+    expect(texts()).toEqual(expect.arrayContaining(["Spring Open", "Top 5%"]));
+  });
+
+  it("shows an error toast when the request fails", async () => {
+    jest.mocked(fetchWrapped).mockRejectedValue(new Error("network"));
+    const error = jest.spyOn(console, "error").mockImplementation(() => {});
+    await submit("John Smith");
+
+    expect(tree.root.findAllByType(FlatList)).toHaveLength(0);
+    expect(jest.mocked(showToast)).toHaveBeenCalledWith(
+      expect.objectContaining({ type: "error", message: "An unexpected error occurred" }),
+    );
+    error.mockRestore();
   });
 });
 
 describe("WeightliftingWrappedScreen search submit", () => {
   it("ignores the return key while a search is already running", async () => {
-    let finish!: (response: SearchResponse) => void;
-    jest.mocked(searchApi).mockImplementation((_query: string, startDate?: string) =>
-      startDate
-        ? new Promise<SearchResponse>((resolve) => (finish = resolve))
-        : Promise.resolve(suggestionResponse([])),
+    let finish!: (answer: WrappedAnswer) => void;
+    jest.mocked(fetchWrapped).mockImplementation(
+      () => new Promise<WrappedAnswer>((resolve) => (finish = resolve)),
     );
     act(() => {
       input().props.onChangeText("John Smith");
@@ -356,30 +396,22 @@ describe("WeightliftingWrappedScreen search submit", () => {
       void input().props.onSubmitEditing();
     });
 
-    const rangedCalls = jest.mocked(searchApi).mock.calls.filter(([, startDate]) => startDate);
-    expect(rangedCalls).toHaveLength(1);
+    expect(jest.mocked(fetchWrapped)).toHaveBeenCalledTimes(1);
 
     await act(async () => {
-      finish({ matchedName: null, suggestions: [], results: [], truncated: false });
+      finish({ kind: "none", suggestions: [] });
     });
     // Once it lands, the next submit goes through again (and stays pending).
     await act(async () => {
       void input().props.onSubmitEditing();
     });
-    expect(
-      jest.mocked(searchApi).mock.calls.filter(([, startDate]) => startDate),
-    ).toHaveLength(2);
+    expect(jest.mocked(fetchWrapped)).toHaveBeenCalledTimes(2);
   });
 });
 
 describe("WeightliftingWrappedScreen share", () => {
   it("shows a toast when both the image share and the text fallback fail", async () => {
-    rangedSearchAnswers({
-      matchedName: "John Smith",
-      suggestions: [],
-      results: [liftRow("John Smith", "2025-03-01", 300)],
-      truncated: false,
-    });
+    wrappedAnswers(athleteAnswer("John Smith"));
     await submit("John Smith");
     // The share button sits on the last slide.
     act(() => {
@@ -417,12 +449,7 @@ describe("WeightliftingWrappedScreen share", () => {
 
 describe("WeightliftingWrappedScreen slide pager", () => {
   it("re-anchors the current slide when the window width changes", async () => {
-    rangedSearchAnswers({
-      matchedName: "John Smith",
-      suggestions: [],
-      truncated: false,
-      results: [liftRow("John Smith", "2025-03-01", 300)],
-    });
+    wrappedAnswers(athleteAnswer("John Smith"));
     await submit("John Smith");
     const pager = () => tree.root.findByType(FlatList);
     const scrollToOffset = jest.spyOn(pager().instance as FlatList, "scrollToOffset");
@@ -471,11 +498,9 @@ describe("WeightliftingWrappedScreen search year", () => {
     // results with the other year.
     const thisYear = new Date().getFullYear();
     const lastYear = thisYear - 1;
-    let finish!: (response: SearchResponse) => void;
-    jest.mocked(searchApi).mockImplementation((_query: string, startDate?: string) =>
-      startDate
-        ? new Promise<SearchResponse>((resolve) => (finish = resolve))
-        : Promise.resolve(suggestionResponse([])),
+    let finish!: (answer: WrappedAnswer) => void;
+    jest.mocked(fetchWrapped).mockImplementation(
+      () => new Promise<WrappedAnswer>((resolve) => (finish = resolve)),
     );
     act(() => {
       input().props.onChangeText("John Smith");
@@ -483,8 +508,7 @@ describe("WeightliftingWrappedScreen search year", () => {
     await act(async () => {
       void input().props.onSubmitEditing();
     });
-    const [, startDate] = jest.mocked(searchApi).mock.calls.find(([, start]) => start)!;
-    expect(startDate).toBe(`${thisYear}-01-01`);
+    expect(jest.mocked(fetchWrapped)).toHaveBeenCalledWith("John Smith", thisYear, false);
 
     // The pills are disabled while the search runs; a press that still gets
     // through must not relabel the result.
@@ -493,12 +517,7 @@ describe("WeightliftingWrappedScreen search year", () => {
       yearPill(lastYear).props.onPress();
     });
     await act(async () => {
-      finish({
-        matchedName: "John Smith",
-        suggestions: [],
-        truncated: false,
-        results: [liftRow("John Smith", `${thisYear}-03-01`, 300)],
-      });
+      finish(athleteAnswer("John Smith"));
     });
 
     expect(tree.root.findAllByType(FlatList)).toHaveLength(1);
@@ -509,12 +528,7 @@ describe("WeightliftingWrappedScreen search year", () => {
 
 describe("WeightliftingWrappedScreen tap to advance", () => {
   async function openWrapped() {
-    rangedSearchAnswers({
-      matchedName: "John Smith",
-      suggestions: [],
-      truncated: false,
-      results: [liftRow("John Smith", "2025-03-01", 300)],
-    });
+    wrappedAnswers(athleteAnswer("John Smith"));
     await submit("John Smith");
   }
 

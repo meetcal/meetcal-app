@@ -328,31 +328,6 @@ test("club and WSO dashboards expose meet performance metrics", async ({ page })
   await expect(page.locator(".data-metric-grid")).not.toContainText("0kg");
 });
 
-test("wrapped builds a readable single-athlete yearly recap", async ({ page }) => {
-  await mockSubscribedUser(page);
-  await routeQuery(page, "results:search", async (route, args) => {
-    const name = String(args.query ?? "");
-    if (!("startDate" in args)) {
-      await route.fulfill(valueAnswer({ matched_name: null, suggestions: ["Test Athlete"], results: [] }));
-      return;
-    }
-    const result = { ...completeResult, name, meet: "Athletic Lab Weightlifting Club 2026 March Madness Weightlifting Meet" };
-    await route.fulfill(valueAnswer({ matched_name: name, suggestions: [], results: [result] }));
-  });
-  await page.goto("/wrapped");
-  const athleteSearch = page.getByLabel("Athlete", { exact: true });
-  await athleteSearch.fill("Te");
-  await expect(page.getByRole("listbox", { name: "Athlete suggestions" })).toHaveCount(0);
-  await athleteSearch.fill("Tes");
-  await page.getByRole("option", { name: "Test Athlete" }).click();
-  await page.getByLabel("Year").fill("2026");
-  await page.getByRole("button", { name: "Build wrapped" }).click();
-
-  await expect(page.getByRole("heading", { name: "2026 Wrapped — Test Athlete" })).toBeVisible();
-  await expect(page.getByLabel("Compare with (optional)")).toHaveCount(0);
-  await expect(page.locator(".wrapped-top-meet")).toContainText("Athletic Lab Weightlifting Club 2026 March Madness Weightlifting Meet");
-});
-
 const qualifyingTotal = {
   qualifying_total: 210,
   event_name: "Nationals",
@@ -525,39 +500,6 @@ test("a failed suggestion search says so instead of showing no matches", async (
   await page.getByRole("combobox", { name: "Athlete" }).fill("Tes");
   await expect(page.locator(".athlete-suggestions")).toContainText("Couldn’t load athlete suggestions");
   await expect(page.getByText("No matching athletes")).toHaveCount(0);
-});
-
-test("a Wrapped choice drops the suggestions for the name it replaced", async ({ page }) => {
-  await mockSubscribedUser(page);
-  await routeQuery(page, "results:search", async (route, args) => {
-    const query = String(args.query ?? "");
-    if (!("startDate" in args)) {
-      await route.fulfill(valueAnswer({ matched_name: null, suggestions: ["Bob Smith", "Cal Smith"], results: [] }));
-      return;
-    }
-    if (query === "Smith") {
-      const rows = ["Ann Smith", "Dee Smith"].map((name) => ({ ...completeResult, name, date: "2026-03-01" }));
-      await route.fulfill(valueAnswer({ matched_name: null, suggestions: [], results: rows }));
-      return;
-    }
-    await route.fulfill(valueAnswer({ matched_name: query, suggestions: [], results: [{ ...completeResult, name: query }] }));
-  });
-  await page.goto("/wrapped");
-  const athlete = page.getByRole("combobox", { name: "Athlete" });
-  await athlete.fill("Smith");
-  const listbox = page.getByRole("listbox", { name: "Athlete suggestions" });
-  await expect(listbox.getByRole("option")).toHaveText(["Bob Smith", "Cal Smith"]);
-  await athlete.press("Escape");
-  await page.getByLabel("Year").fill("2026");
-  await page.getByRole("button", { name: "Build wrapped" }).click();
-  await page.getByRole("group", { name: "Matching athletes" }).getByRole("button", { name: "Ann Smith" }).click();
-  await expect(athlete).toHaveValue("Ann Smith");
-
-  await athlete.focus();
-  await athlete.press("ArrowDown");
-  await expect(listbox).toBeHidden();
-  await expect(page.locator(".athlete-suggestions")).toBeHidden();
-  await expect(athlete).toHaveAttribute("aria-expanded", "false");
 });
 
 test("the meet search is a keyboard-operable combobox", async ({ page }) => {

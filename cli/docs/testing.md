@@ -13,7 +13,7 @@ every change to `cli/` or `convex/`.
 ## What the suites cover
 
 - **Unit tests**, in a `#[cfg(test)] mod tests` at the bottom of each module: answer parsing
-  (including rows missing optional fields), report arithmetic (Wrapped stats, make rates,
+  (including rows missing optional fields), report arithmetic (club and WSO Wrapped stats, make rates,
   comparisons and percentage changes), weight-class sorting, meet-name matching, the retry policy,
   and the Convex transport (`src/utils/backend.rs`: both answer forms, function errors, whole-number
   floats).
@@ -23,7 +23,8 @@ every change to `cli/` or `convex/`.
   retries, the request body, the User-Agent, and error messages. `tests/premium_pass.rs` (the
   access pass on premium reads: fetched once with the saved login, renewed once when refused, the
   messages without a login or a subscription) and `tests/login.rs` (`login` and `logout` against a
-  scripted device login) use the same server, in `tests/support/`. They save logins in temporary
+  scripted device login) and `tests/wrapped.rs` (`results:wrapped` is read with neither a pass
+  nor the login, and its float numbers parse) use the same server, in `tests/support/`. They save logins in temporary
   directories and pass `Access` explicitly, so no test reads your own login.
 
 No test calls a real deployment. Put report logic in pure functions that take rows, so a test can

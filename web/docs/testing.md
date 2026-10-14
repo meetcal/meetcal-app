@@ -26,6 +26,17 @@ pass is held, and which function errors renew it, and reading the `deviceLogin`
 answers (a pending login or `null`; `{ ok: true }` or a 404) and
 `apiTokens:revokeAllCli`'s `{ ended }`. `src/pages/link.rs`
 tests the code's formatting, the caret while it formats, and the page's states.
+`src/pages/comp_data/wrapped.rs` tests reading every `results:wrapped` answer
+kind through `read_body` (so its whole-number floats, such as `totalMeets: 3.0`,
+are covered), the arguments it sends, and the messages for answers with no
+Wrapped. `src/pages/comp_data/catalog.rs` checks each data page's route, shell
+and sitemap entry against its `Access`.
+
+`tests/e2e/wrapped.spec.ts` covers `/wrapped` against a mocked
+`results:wrapped`: a report, a pick from several athletes (the second request
+carries `picked: true`), a cut list, the `narrow`, `tooManyResults` and `none`
+messages, and a signed-out visitor building a Wrapped without the gate or a
+pass.
 
 `tests/e2e/link.spec.ts` covers `/link` against mocked `deviceLogin` calls:
 sign-in returning to the code, approve, deny, a deny the server turns down

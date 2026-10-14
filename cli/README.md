@@ -49,7 +49,8 @@ meetcal --version
 
 ## Log in
 
-Schedules, start lists and meet lists are free. Results, rankings, records, standards, club and WSO
+Schedules, start lists, meet lists and athletes' Wrapped reports (`wrapped`, `compare`) are free.
+Results, rankings, records, standards, club and WSO
 data are MeetCal subscriber data: they need a MeetCal subscription and, once MeetCal enforces it, a
 login on each machine that runs `meetcal`.
 
@@ -147,7 +148,9 @@ meetcal search "Maddisen Mohnsen"
 
 Show an athlete's Weightlifting Wrapped for a calendar year. The report includes meets competed,
 make rate, total weight lifted, best lifts, average total, top meet, first-to-last improvement,
-longest make streak, favorite attempt, and year status.
+longest make streak, favorite attempt, and year status. MeetCal scores the year (the same Wrapped
+as the app and meetcal.app), so it is free and needs no login. The name must be the athlete's
+exact name (case and spacing aside); otherwise the command suggests similar names.
 
 ```sh
 meetcal wrapped "Maddisen Mohnsen"
@@ -161,7 +164,9 @@ Options:
 #### `compare`
 
 Compare an athlete's current calendar year with the previous calendar year. Every metric includes
-the percentage difference when the previous year has a non-zero baseline.
+the percentage difference when the previous year has a non-zero baseline. Like `wrapped`, it
+reads MeetCal's Wrapped for each year, so it is free and needs no login, and it takes the athlete's
+exact name.
 
 ```sh
 meetcal compare "Maddisen Mohnsen"

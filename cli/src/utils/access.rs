@@ -350,6 +350,7 @@ mod tests {
             "meets:attendance",
             "meets:athletes",
             "meets:athletesSessions",
+            queries::WRAPPED.function,
         ] {
             assert!(!is_premium(public), "{public}");
         }

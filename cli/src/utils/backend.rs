@@ -151,6 +151,11 @@ pub mod queries {
     /// `GET /search`; takes `query`, and optionally `startDate` and `endDate` (both included).
     /// Answers at most 600 results, the most recent, with `truncated` set when it cut some.
     pub const SEARCH: Query = Query::value("results:search");
+    /// An athlete's Weightlifting Wrapped for a calendar year, scored on the server: public, no
+    /// pass. Takes `query`, `year` and optionally `picked` (true: the exact name only). Answers
+    /// `{ kind }`: `athlete` with `name` and `stats`, `ambiguous`, `narrow`, `tooManyResults`, or
+    /// `none` with name `suggestions`.
+    pub const WRAPPED: Query = Query::value("results:wrapped");
     /// `GET /data/records`
     pub const RECORDS: Query = Query::text("reference:records");
     /// `GET /data/standards`
