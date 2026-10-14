@@ -530,6 +530,8 @@ export const replaceMeetSchedule = internalMutation({
 
 const scrapedMeet = v.object({
   name: v.string(),
+  // The source's id for the event (the Sport80 event id), when it has one.
+  sourceId: v.optional(v.string()),
   // Absent together when the scraper got no address: a stored meet keeps its
   // venue, a new one gets the meet's name and `NO_VENUE`.
   venueName: v.optional(v.string()),
@@ -564,9 +566,9 @@ type ScrapedMeetRow = Infer<typeof scrapedMeet>;
  * gives a new meet placeholders).
  */
 export function scrapedMeetValues(row: ScrapedMeetRow, existing: Pick<Doc<'meets'>, 'timeZoneLocked'> | null) {
-  const { timeZone, ...rest } = row;
+  const { timeZone, sourceId: _sourceId, ...rest } = row;
   const scrapedZone = timeZone?.trim() ? timeZone : undefined;
-  const values: Omit<ScrapedMeetRow, 'timeZone'> & { federation: string; timeZone?: string } = {
+  const values: Omit<ScrapedMeetRow, 'timeZone' | 'sourceId'> & { federation: string; timeZone?: string } = {
     ...rest,
     federation: normalizeFederation(row.federation ?? 'USAW'),
   };
@@ -614,6 +616,18 @@ async function meetOfFederation(
   return { match: oldestMeet(own), taken, freeName };
 }
 
+/**
+ * The stored meet of a federation the source knows by `sourceId` (the
+ * oldest, if older rows repeat one), or null.
+ */
+async function meetOfSource(ctx: MutationCtx, sourceId: string, federation: string): Promise<Doc<'meets'> | null> {
+  const rows = await ctx.db
+    .query('meets')
+    .withIndex('by_source_id', (q) => q.eq('sourceId', sourceId))
+    .collect();
+  return oldestMeet(rows.filter((meet) => meetFederation(meet) === federation));
+}
+
 /** The name a new meet called `name` is stored under: `freeName` when another meet holds `name`. */
 function newMeetName(name: string, federation: string, { taken, freeName }: { taken: boolean; freeName: string | null }): string {
   if (!taken) return name;
@@ -622,18 +636,23 @@ function newMeetName(name: string, federation: string, { taken, freeName }: { ta
 }
 
 /**
- * Inserts or updates meets (`upsert_meet`), matched on name and federation:
- * a sync never takes over another federation's meet of the same name. A new
- * meet whose name another meet has is stored under a free
- * `disambiguatedMeetName` (and reported in `storedAs`), since the name is
- * the meet's identity everywhere; stored names never change. Only the
- * scraped columns are written (`scrapedMeetValues`), and the status follows
- * the dates (`meetStatusAt`, on the zone the meet ends up with), except that
- * a completed meet stays completed (`nextMeetStatus`). Fields the
- * scrapers do not own (venue map links, a locked time zone) are kept.
- * A meet whose scraped values are unchanged is not written; `updatedAt`
- * moves only with a real change, so the nightly syncs do not invalidate
- * every meet's views.
+ * Inserts or updates meets (`upsert_meet`), matched on the source's id for
+ * the event (`sourceId`, the Sport80 event id), then on name and federation:
+ * a sync never takes over another federation's meet of the same name, or one
+ * the source knows by another id. A new meet whose name another meet has is
+ * stored under a free `disambiguatedMeetName` (and reported in `storedAs`),
+ * since the name is the meet's identity everywhere, and stored names never
+ * change. So a meet the source retitles keeps its stored name, with the new
+ * title in `sourceName`, and is reported in `retitled` on the write that sees
+ * the new title. A meet matched by name takes the row's id, so its next
+ * retitle is followed. Only the scraped columns are written
+ * (`scrapedMeetValues`), and the status follows the dates (`meetStatusAt`, on
+ * the zone the meet ends up with), except that a completed meet stays
+ * completed (`nextMeetStatus`). Fields the scrapers do not own (venue map
+ * links, a locked time zone) are kept. A meet whose scraped values are
+ * unchanged is not written; `updatedAt` moves only with a real change, so the
+ * nightly syncs do not invalidate every meet's views (taking an id is no such
+ * change).
  */
 export const upsertMeets = internalMutation({
   args: { rows: v.array(scrapedMeet) },
@@ -644,9 +663,13 @@ export const upsertMeets = internalMutation({
     const formatters: ZoneFormatters = new Map();
     for (const row of rows) {
       const federation = normalizeFederation(row.federation ?? 'USAW');
+      const bySource = row.sourceId ? await meetOfSource(ctx, row.sourceId, federation) : null;
       const lookup = await meetOfFederation(ctx, row.name, federation);
-      const existing = lookup.match;
-      const name = existing?.name ?? newMeetName(row.name, federation, lookup);
+      // A meet of this name the source knows by another id is another event
+      // (one held again under an old title): never taken over.
+      const otherEvent = lookup.match?.sourceId !== undefined && row.sourceId !== undefined && lookup.match.sourceId !== row.sourceId;
+      const existing = bySource ?? (otherEvent ? null : lookup.match);
+      const name = existing?.name ?? newMeetName(row.name, federation, otherEvent ? { ...lookup, taken: true } : lookup);
       const scraped = scrapedMeetValues(row, existing);
       // Read on the zone the meet ends up with, so a row without one is read
       // on the stored zone.
@@ -659,6 +682,7 @@ export const upsertMeets = internalMutation({
           ...values,
           timeZone: values.timeZone ?? UNKNOWN_TIME_ZONE,
           ...(name !== row.name ? { sourceName: row.name } : {}),
+          ...(row.sourceId ? { sourceId: row.sourceId } : {}),
           updatedAt: now,
         });
         if (name !== row.name) console.warn(`upsertMeets: another meet is named ${JSON.stringify(row.name)}; stored this ${federation} meet as ${JSON.stringify(name)}`);
@@ -666,12 +690,27 @@ export const upsertMeets = internalMutation({
         hints.push({ kind: 'meet', key: name });
         continue;
       }
-      const changed = (Object.keys(values) as (keyof typeof values)[]).some((key) => existing[key] !== values[key]);
+      // What the source called the meet before, and calls it now when that
+      // is not its stored name (a disambiguated name's plain one, or a new
+      // title).
+      const before = existing.sourceName ?? existing.name;
+      const sourceName = row.name === name ? undefined : row.name;
+      const changed = (Object.keys(values) as (keyof typeof values)[]).some((key) => existing[key] !== values[key]) || existing.sourceName !== sourceName;
+      const sourceId = row.sourceId ? { sourceId: row.sourceId } : {};
       if (changed) {
-        await ctx.db.patch(existing._id, { ...values, updatedAt: now });
+        await ctx.db.patch(existing._id, { ...values, sourceName, ...sourceId, updatedAt: now });
         hints.push({ kind: 'meet', key: name });
+      } else if (row.sourceId && existing.sourceId !== row.sourceId) {
+        // Only the id is new: nothing a view shows changed.
+        await ctx.db.patch(existing._id, sourceId);
       }
-      outcomes.push({ wasInsert: false, wasChanged: changed, ...(name !== row.name ? { storedAs: name } : {}) });
+      if (row.name !== before) console.warn(`upsertMeets: the source retitled ${JSON.stringify(before)} to ${JSON.stringify(row.name)}; kept as ${JSON.stringify(name)}`);
+      outcomes.push({
+        wasInsert: false,
+        wasChanged: changed,
+        ...(name !== row.name ? { storedAs: name } : {}),
+        ...(row.name !== before ? { retitledFrom: before } : {}),
+      });
     }
     if (hints.length) await recordWrite(ctx, 'meets', hints);
     return outcomes;
@@ -703,6 +742,35 @@ export const setMeetTimeZone = internalMutation({
     if (meet.timeZone === timeZone && (meet.timeZoneLocked ?? false) === timeZoneLocked) return { changed: false };
     await ctx.db.patch(meet._id, { timeZone, timeZoneLocked, updatedAt: Date.now() });
     await recordWrite(ctx, 'meets', [{ kind: 'meet', key: name }]);
+    return { changed: true };
+  },
+});
+
+/**
+ * Ties a stored meet to the source's id for its event (the Sport80 event
+ * id, from its widget or entries URL), for a meet stored before ids were, or
+ * that its source retitled before then: `npx convex run
+ * ingest:setMeetSourceId '{"name":"…","sourceId":"14836"}'`. The meet sync
+ * then follows its title, and the entries sync writes the event's entries
+ * under the meet's stored name. Refused when another meet of the federation
+ * holds the id.
+ */
+export const setMeetSourceId = internalMutation({
+  args: { name: v.string(), sourceId: v.string() },
+  handler: async (ctx, { name, sourceId }) => {
+    if (!/^\d+$/.test(sourceId)) throw new Error(`not a Sport80 event id: ${JSON.stringify(sourceId)}`);
+    const meet = oldestMeet(
+      await ctx.db
+        .query('meets')
+        .withIndex('by_name', (q) => q.eq('name', name))
+        .collect(),
+    );
+    if (!meet) throw new Error(`no meet named ${JSON.stringify(name)}`);
+    const holder = await meetOfSource(ctx, sourceId, meetFederation(meet));
+    if (holder && holder._id !== meet._id) throw new Error(`event ${sourceId} is already the meet ${JSON.stringify(holder.name)}`);
+    if (meet.sourceId === sourceId) return { changed: false };
+    // No view shows the id: nothing to refresh.
+    await ctx.db.patch(meet._id, { sourceId });
     return { changed: true };
   },
 });
@@ -1108,9 +1176,10 @@ export const updateMeetStatuses = internalMutation({
 /**
  * Per-row outcome of an upsert, as the Python writers reported it.
  * `storedAs`: the name a meet is stored under when it is not the one sent
- * (`upsertMeets`).
+ * (`upsertMeets`). `retitledFrom`: what the source called that stored meet
+ * before it retitled it to the name sent.
  */
-export type UpsertOutcome = { wasInsert: boolean; wasChanged: boolean; storedAs?: string };
+export type UpsertOutcome = { wasInsert: boolean; wasChanged: boolean; storedAs?: string; retitledFrom?: string };
 
 /**
  * An index lookup run for every spelling a stored row of `gender` may still

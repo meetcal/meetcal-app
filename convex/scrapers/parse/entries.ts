@@ -6,11 +6,36 @@
 
 export const SPORT80 = 'https://usaweightlifting.sport80.com';
 
+const ENTRIES_PAGE = /\/public\/events\/(\d+)\/entries\/(\d+)/;
+
+function entriesPage(pageUrl: string): { event: string; stage: string } {
+  const match = ENTRIES_PAGE.exec(pageUrl);
+  if (!match) throw new Error(`not a Sport80 entries page: ${pageUrl}`);
+  return { event: match[1], stage: match[2] };
+}
+
 /** The entries data endpoint behind a public entries page URL. */
 export function entriesEndpoint(pageUrl: string): string {
-  const match = /\/public\/events\/(\d+)\/entries\/(\d+)/.exec(pageUrl);
-  if (!match) throw new Error(`not a Sport80 entries page: ${pageUrl}`);
-  return `${SPORT80}/api/public/events/datatable/${match[1]}/entries/${match[2]}`;
+  const { event, stage } = entriesPage(pageUrl);
+  return `${SPORT80}/api/public/events/datatable/${event}/entries/${stage}`;
+}
+
+/** The Sport80 event id of a public entries page URL: the id the meet sync stores as the meet's `sourceId`. */
+export function entriesEventId(pageUrl: string): string {
+  return entriesPage(pageUrl).event;
+}
+
+/**
+ * Why an entries list was not stored: no stored meet is its event (by id) or
+ * has its title. Usually the meet was stored before Sport80 retitled it, or
+ * the target is for a meet MeetCal does not list.
+ */
+export function unstoredEntriesMessage(title: string, eventId: string, url: string): string {
+  return (
+    `the entries list ${JSON.stringify(title)} (Sport80 event ${eventId}) is no stored meet, so it was not stored. ` +
+    `If Sport80 retitled a meet stored under another name, tie it to the event: npx convex run ingest:setMeetSourceId '{"name":"<stored name>","sourceId":"${eventId}"}'. ` +
+    `If MeetCal does not list the meet, remove the target: npx convex run scrapers/entryTargets:remove '{"url":"${url}"}'`
+  );
 }
 
 /** The table title without its " - Members" suffix, as the page's heading read. */

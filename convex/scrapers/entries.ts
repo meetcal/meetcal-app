@@ -4,14 +4,18 @@ import { v } from 'convex/values';
 import { internalAction, type ActionCtx } from '../_generated/server';
 import { internal } from '../_generated/api';
 import { fetchJson } from './lib/http';
-import { entriesEndpoint, entryFromRow, meetFromTitle, type Entry, type EntryRow } from './parse/entries';
+import { entriesEndpoint, entriesEventId, entryFromRow, meetFromTitle, unstoredEntriesMessage, type Entry, type EntryRow } from './parse/entries';
 import { sourcesFailed } from '../lib/cronAlerts';
 
 /**
  * Meet entries (replaces the `entries` job's `usaw/entry_scraper/csv_scraper.js`):
  * each target's entries list from Sport80's public entries endpoint, upserted
- * into `athletes`. A target's meet is read from the list's title before any
- * page of entries: a completed meet is skipped without downloading its list,
+ * into `athletes`. A target's meet is the stored meet of its Sport80 event
+ * (`meets.sourceId`, from the page URL), else the one named by the list's
+ * title, found before any page of entries; a list with neither fails the
+ * target rather than store a roster no meet page shows (#413). Entries are
+ * stored under the meet's stored name, whatever Sport80 now titles it. A
+ * completed meet is skipped without downloading its list,
  * and its target is removed once the meet ended TARGET_RETENTION_DAYS ago
  * (the list was pruned by hand before), so the job's work stays bounded by
  * the meets still to come.
@@ -20,7 +24,7 @@ async function getJson(url: string): Promise<{ title?: string; total?: number; d
   return (await fetchJson(url, { timeoutMs: 60_000 })) as { title?: string; total?: number; data?: EntryRow[] };
 }
 
-/** A target's meet name, from its entries table's title (one request). */
+/** A target's entries table's title, as the page's heading reads (one request). */
 export async function fetchEntriesMeet(pageUrl: string): Promise<string> {
   const endpoint = entriesEndpoint(pageUrl);
   const table = await getJson(endpoint);
@@ -74,7 +78,10 @@ async function withKnownWsos(ctx: ActionCtx, entries: Entry[]): Promise<Entry[]>
 
 type MeetResult = {
   label: string;
+  /** The stored meet the entries are written under. */
   meet?: string;
+  /** The list's title, when Sport80 calls the meet something else now. */
+  title?: string;
   entries?: number;
   inserted?: number;
   updated?: number;
@@ -100,14 +107,20 @@ export const run = internalAction({
       const result: MeetResult = { label: target.label };
       results.push(result);
       try {
-        const meet = await fetchEntriesMeet(target.url);
+        const title = await fetchEntriesMeet(target.url);
+        const eventId = entriesEventId(target.url);
+        // The meet is the one Sport80 knows by this event id, so a list
+        // Sport80 retitled still lands on the stored meet's name.
+        const stored: { name: string; status: string; endDate: string } | null = await ctx.runQuery(internal.scrapers.queries.entriesMeet, { sourceId: eventId, title });
+        if (!stored) throw new Error(unstoredEntriesMessage(title, eventId, target.url));
+        const meet = stored.name;
         result.meet = meet;
-        const stored: Record<string, { status: string; endDate: string }> = await ctx.runQuery(internal.scrapers.queries.meetEnds, { names: [meet] });
-        if (stored[meet]?.status === 'completed') {
+        if (title !== meet) result.title = title;
+        if (stored.status === 'completed') {
           result.skipped = 'meet completed';
-          if (!dryRun && targetExpired(stored[meet].endDate, Date.now())) {
+          if (!dryRun && targetExpired(stored.endDate, Date.now())) {
             await ctx.runMutation(internal.scrapers.entryTargets.remove, { url: target.url });
-            result.skipped = `meet completed ${stored[meet].endDate}, target removed`;
+            result.skipped = `meet completed ${stored.endDate}, target removed`;
           }
           continue;
         }

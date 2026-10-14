@@ -1,21 +1,71 @@
 import { v } from 'convex/values';
-import { internalQuery } from '../_generated/server';
-import { meetByName } from '../lib/meetData';
+import { internalQuery, type QueryCtx } from '../_generated/server';
+import type { Doc } from '../_generated/dataModel';
+import { meetByName, oldestMeet } from '../lib/meetData';
 import { normalizeName } from '../lib/names';
+import { normalizeFederation } from '../lib/normalize';
 import { canonicalMeetDate, isMeetTimeZone } from '../lib/validation';
 import { oneClockCountryZone, usTerritoryTimeZone } from './lib/countries';
 import { usTimeZone } from './lib/states';
 
-/** Current status of each named meet that exists (scrapers read state through these). */
-export const meetStatuses = internalQuery({
-  args: { names: v.array(v.string()) },
-  handler: async (ctx, { names }) => {
-    const statuses: Record<string, string> = {};
-    for (const name of new Set(names)) {
-      const meet = await meetByName(ctx, name);
-      if (meet) statuses[name] = meet.status;
+const isUsaw = (meet: Doc<'meets'>) => normalizeFederation(meet.federation ?? 'USAW') === 'USAW';
+
+/** The stored USAW meet Sport80 knows by `sourceId` (its event id; the oldest, if rows repeat one), or null. */
+async function sport80Meet(ctx: QueryCtx, sourceId: string): Promise<Doc<'meets'> | null> {
+  const rows = await ctx.db
+    .query('meets')
+    .withIndex('by_source_id', (q) => q.eq('sourceId', sourceId))
+    .collect();
+  return oldestMeet(rows.filter(isUsaw));
+}
+
+/**
+ * What the meet sync reads before it writes (scrapers read state through
+ * these), for the whole listing of Sport80's upcoming events:
+ *
+ * - `stored`: for each row, the stored meet it is, by event id (`bySource`)
+ *   or else by name, with its status; null for a meet not stored.
+ * - `unlisted`: stored upcoming USAW meets starting after `today` whose
+ *   event id the listing no longer has: Sport80 deleted or cancelled the
+ *   event, or it lost the id.
+ */
+export const meetsForSync = internalQuery({
+  args: { rows: v.array(v.object({ name: v.string(), sourceId: v.union(v.string(), v.null()) })), today: v.string() },
+  handler: async (ctx, { rows, today }) => {
+    const stored = [];
+    for (const row of rows) {
+      const bySource = row.sourceId ? await sport80Meet(ctx, row.sourceId) : null;
+      const meet = bySource ?? (await meetByName(ctx, row.name));
+      stored.push(meet ? { name: meet.name, status: meet.status, bySource: bySource !== null } : null);
     }
-    return statuses;
+    const listed = new Set(rows.map((row) => row.sourceId));
+    const unlisted = (
+      await ctx.db
+        .query('meets')
+        .withIndex('by_status_and_start_date', (q) => q.eq('status', 'upcoming').gt('startDate', today))
+        .collect()
+    )
+      .filter((meet) => meet.sourceId !== undefined && !listed.has(meet.sourceId) && isUsaw(meet))
+      .map((meet) => ({ name: meet.name, sourceId: meet.sourceId!, startDate: meet.startDate }));
+    return { stored, unlisted };
+  },
+});
+
+/**
+ * The stored meet a Sport80 entries list is for: the meet Sport80 knows by
+ * the list's event id, else the meet named by the list's title (unless
+ * Sport80 knows that meet by another id), with its status and end date; null
+ * when neither is stored.
+ */
+export const entriesMeet = internalQuery({
+  args: { sourceId: v.string(), title: v.string() },
+  handler: async (ctx, { sourceId, title }) => {
+    const byName = async () => {
+      const meet = await meetByName(ctx, title);
+      return meet && (meet.sourceId === undefined || meet.sourceId === sourceId) ? meet : null;
+    };
+    const meet = (await sport80Meet(ctx, sourceId)) ?? (await byName());
+    return meet ? { name: meet.name, status: meet.status, endDate: meet.endDate } : null;
   },
 });
 
@@ -103,19 +153,6 @@ export const truncatedEntryNames = internalQuery({
       }
     }
     return { pairs, cursor: page.continueCursor, isDone: page.isDone };
-  },
-});
-
-/** Status and end date (the meet's own calendar) of each named meet that exists. */
-export const meetEnds = internalQuery({
-  args: { names: v.array(v.string()) },
-  handler: async (ctx, { names }) => {
-    const ends: Record<string, { status: string; endDate: string }> = {};
-    for (const name of new Set(names)) {
-      const meet = await meetByName(ctx, name);
-      if (meet) ends[name] = { status: meet.status, endDate: meet.endDate };
-    }
-    return ends;
   },
 });
 

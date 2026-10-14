@@ -8,17 +8,33 @@ const WIDGET = 'https://usaweightlifting.sport80.com/api/public/widget/data/new/
 
 /** Meets per widget page: the page size the Node scripts asked for. */
 export const WIDGET_PAGE_SIZE = 20;
-/** Pages read per search at most; a search matching more fails rather than drop the rest. */
-export const MAX_WIDGET_PAGES = 10;
+/**
+ * Pages read at most; a listing longer than this fails rather than drop the
+ * rest. The whole listing of upcoming events held 97 meets in October 2026.
+ */
+export const MAX_WIDGET_PAGES = 25;
 
-/** The three searches the VPS ran; only the WSO one skips completed meets. */
-export const MEET_SEARCHES = [
-  { key: 'wso', search: 'WSO', skipCompleted: true },
-  { key: 'nationals', search: 'Nationals', skipCompleted: false },
-  { key: 'virus', search: 'Virus Weightlifting', skipCompleted: false },
-] as const;
+/**
+ * The meets MeetCal lists, by title: WSO championships, national meets and
+ * the Virus series. These are what the VPS's three widget searches matched,
+ * with "National" for the dead "Nationals" (the 2026 and 2027 National
+ * Championships are titled "National Championships"). Whole words, so an
+ * "International Open" is no national meet; any case, as the widget's
+ * search was.
+ */
+const LISTED_TITLES = [/\bWSO\b/i, /\bNationals?\b/i, /\bVirus Weightlifting\b/i];
 
-/** One page (from 0) of a widget search, upcoming meets soonest first. */
+/** Whether a Sport80 event's title is one of the meets MeetCal lists (`LISTED_TITLES`). */
+export function listedMeetTitle(name: string): boolean {
+  return LISTED_TITLES.some((pattern) => pattern.test(name));
+}
+
+/**
+ * One page (from 0) of a widget search, upcoming meets soonest first. The
+ * sync reads the whole listing (an empty search) and picks its meets by title
+ * and by the event ids it has stored, so a meet Sport80 retitles out of the
+ * keywords is still found.
+ */
 export function widgetPageUrl(search: string, page: number): string {
   return `${WIDGET}?p=${page}&i=${WIDGET_PAGE_SIZE}&l=&d=10&f=&s=${encodeURIComponent(search)}`;
 }
@@ -80,6 +96,8 @@ type ScrapedVenue = { venueName: string; venueStreet: string; venueCity: string;
 
 export type ScrapedMeet = Partial<ScrapedVenue> & {
   name: string;
+  /** The Sport80 event id, when the widget gave one: a retitled meet is matched on it. */
+  sourceId?: string;
   /** Absent when neither the state nor the country tells it: reported, not guessed. */
   timeZone?: string;
   startDate: string;
@@ -90,7 +108,32 @@ export type ScrapedMeet = Partial<ScrapedVenue> & {
 
 type Address = { venueName: string; street: string; city: string; state: string; zip: string };
 
-/** `parseAddress`: "Venue, Street, [Suite], City, State, Zip, United States of America". */
+/**
+ * A US address's venue and street from the parts before its city: a leading
+ * part that starts with a digit begins the street, with no venue name;
+ * otherwise the first part is the venue, and so is any part before the first
+ * one that starts with a digit (a building: "Wayne State University, Mort
+ * Harris Recreation Center, 5210 Gullen Mall"). The street keeps every part
+ * from there to the city, a suite or unit included ("17630 Juniper Path,
+ * Suite F").
+ */
+function venueAndStreet(parts: readonly string[]): { venueName: string; street: string } {
+  if (parts.length === 0) return { venueName: '', street: '' };
+  if (/^\d/.test(parts[0])) return { venueName: '', street: parts.join(', ') };
+  const rest = parts.slice(1);
+  const streetAt = rest.findIndex((part) => /^\d/.test(part));
+  if (streetAt <= 0) return { venueName: parts[0], street: rest.join(', ') };
+  return { venueName: [parts[0], ...rest.slice(0, streetAt)].join(', '), street: rest.slice(streetAt).join(', ') };
+}
+
+/**
+ * `parseAddress`: "Venue, Street, [Suite], City, State, United States of
+ * America, Zip". A US address (one naming the United States, or a US state
+ * before its zip) is read back from the state: the part before it is the
+ * city, whatever comes between the venue and the city ("17630 Juniper Path,
+ * Suite F, Lakeville" is not in "Suite F"). Any other address keeps the
+ * Node scripts' reading by position, which takes the country as the state.
+ */
 export function parseAddress(raw: string): Address {
   try {
     const address = raw.replace(/,\s*,/g, ',');
@@ -99,6 +142,11 @@ export function parseAddress(raw: string): Address {
     const zip = parts[parts.length - 1];
     const stateIndex = parts.findIndex((part) => part === 'United States of America');
     const state = stateIndex > 0 ? parts[stateIndex - 1] : parts[parts.length - 2];
+    const usStateAt = stateIndex > 0 ? stateIndex - 1 : stateCode(state) === null ? -1 : parts.length - 2;
+    if (usStateAt >= 1) {
+      const city = parts[usStateAt - 1];
+      return { ...venueAndStreet(parts.slice(0, usStateAt - 1)), city, state, zip };
+    }
     let venueName = '';
     let street = '';
     let city = '';
@@ -197,10 +245,11 @@ export function addressTimeZone(raw: string, state: string, city: string): { zon
  * `addressTimeZone`). A meet with no address is synced without venue or zone,
  * so the stored ones stay.
  */
-export function transformMeets(rows: Pick<WidgetRow, 'name' | 'address' | 'subtitle'>[]): TransformedMeets {
+export function transformMeets(rows: (Pick<WidgetRow, 'name' | 'address' | 'subtitle'> & { id?: string | null })[]): TransformedMeets {
   const result: TransformedMeets = { meets: [], rejected: [], undated: [], unknownZone: [] };
   for (const row of rows) {
     if (row.name.toUpperCase().includes('ADAPTIVE')) continue;
+    const source = row.id ? { sourceId: row.id } : {};
     if (row.subtitle === null) {
       result.rejected.push(`${row.name}: no dates`);
       continue;
@@ -213,7 +262,7 @@ export function transformMeets(rows: Pick<WidgetRow, 'name' | 'address' | 'subti
     }
     if (row.address === null || !row.address.trim()) {
       result.unknownZone.push(`${row.name}: no address`);
-      result.meets.push({ name: row.name, ...dates, status: 'upcoming', federation: 'USAW' });
+      result.meets.push({ name: row.name, ...source, ...dates, status: 'upcoming', federation: 'USAW' });
       continue;
     }
     const { venueName, street, city, state, zip } = parseAddress(row.address);
@@ -222,6 +271,7 @@ export function transformMeets(rows: Pick<WidgetRow, 'name' | 'address' | 'subti
     if ('problem' in zone) result.unknownZone.push(`${row.name}: ${zone.problem}`);
     result.meets.push({
       name: row.name,
+      ...source,
       venueName: venueName || row.name,
       venueStreet: street,
       venueCity: city,
