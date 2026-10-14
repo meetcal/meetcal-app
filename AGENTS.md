@@ -6,6 +6,7 @@ Expo / React Native app for USA Weightlifting meet schedules, start lists, resul
 
 - Use Bun for JavaScript. Run commands through `mise run <task>` or `mise exec -- <command>` so this repo's Bun and Node versions apply. Never use npm.
 - Do not read `.env*` contents unless the user authorizes it. Do not deploy Convex, publish an OTA, submit a build, or write production data unless the current task authorizes that action.
+- Start Metro and drive the simulator only through the package scripts (`bun run start|dev|ios|android|web|maestro:test`) or their `mise run app:*` tasks, never a bare `bunx expo start` / `expo run:*` / `maestro test`. They take the machine-wide simulator lock (`scripts/metro-lock.ts`, shared with Atlas): another worktree's session makes you wait, your own worktree's running Metro makes you exit (stop it first), and a session is stopped when its 30-minute lease ends (`METRO_SIMULATOR_LEASE_MIN` to change it). Stop your Metro when you are done with the simulator. See `docs/testing.md`.
 - Do not edit generated `ios/` or `android/` trees as a lasting source change. Do not patch dependencies to work around app defects without a documented reason.
 - Work in the session's dedicated worktree. If the session starts in a primary checkout, create a worktree before editing. Preserve unrelated user changes.
 
@@ -71,9 +72,9 @@ Package manager is **bun**, pinned in `mise.toml`. Do not use npm.
 | Watch tests | `bun run test` |
 | Coverage | `bun run test:coverage` |
 | Coverage gaps | `bun .codex/skills/review-code-performance-tests/scripts/report-coverage-gaps.ts` |
-| Maestro | `bun run maestro:test` (needs a booted simulator + Metro; see `docs/testing.md`) |
+| Maestro | `bun run maestro:test` (needs a booted simulator; starts its own E2E Metro; see `docs/maestro.md`) |
 | iOS / Android | `bun run ios` / `bun run android` |
-| iOS for iPhone Duo | `DEVELOPER_DIR="/Applications/Xcode copy.app/Contents/Developer" bunx expo run:ios --device <duo-udid>` (needs the iOS 27.1 SDK; see `docs/iphone-duo.md`) |
+| iOS for iPhone Duo | `DEVELOPER_DIR="/Applications/Xcode copy.app/Contents/Developer" bun run ios --device <duo-udid>` (needs the iOS 27.1 SDK; see `docs/iphone-duo.md`) |
 | Prod OTA | `bun run update:prod` (production only) |
 
 `mise tasks ls` lists the app, Convex, build, submit, update, and compatibility tasks. Build, submit, deploy, and update tasks have external side effects; run them only when authorized. The EAS iOS build task uses the cloud image; use the local Xcode 27.1 path in `docs/iphone-duo.md` for a Duo-optimized store build.

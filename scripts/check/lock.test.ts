@@ -5,7 +5,9 @@ import { join } from 'node:path';
 
 import {
   LOCK_NAME,
+  LockHeldByWorktreeError,
   acquireLock,
+  describeOwner,
   isOwnerAlive,
   isProcessAlive,
   processStartTime,
@@ -17,6 +19,7 @@ import {
   tryAcquireLock,
   type LockOwner,
 } from './lock';
+import { parseProcessTable, treeOf } from './process-tree';
 
 let directory: string;
 let lockPath: string;
@@ -189,6 +192,40 @@ describe('acquireLock', () => {
     expect(readLockOwner(lockPath)?.token).toBe('next');
   });
 
+  it('names what the holder runs in the waiting message', async () => {
+    tryAcquireLock(lockPath, owner(1, 'busy'));
+    const reports: string[] = [];
+    await acquireLock(lockPath, owner(2, 'next'), {
+      label: 'Metro',
+      isAlive: () => true,
+      report: (message) => reports.push(message),
+      sleep: async () => releaseLock(lockPath, owner(1, 'busy')),
+    });
+    expect(reports[0]).toMatch(/^Waiting for Metro in \/work\/busy \(pid 1, running /);
+  });
+
+  it("refuses to wait on a live holder in the caller's own worktree", async () => {
+    tryAcquireLock(lockPath, owner(1, 'busy'));
+    await expect(
+      acquireLock(lockPath, owner(2, 'next'), {
+        refuseWorktree: '/work/busy',
+        isAlive: () => true,
+        sleep: () => Promise.reject(new Error('should not wait')),
+      }),
+    ).rejects.toBeInstanceOf(LockHeldByWorktreeError);
+    expect(readLockOwner(lockPath)?.token).toBe('busy');
+  });
+
+  it('takes over a lock from its own worktree whose holder has exited', async () => {
+    tryAcquireLock(lockPath, owner(1, 'busy'));
+    await acquireLock(lockPath, owner(2, 'next'), {
+      refuseWorktree: '/work/busy',
+      isAlive: () => false,
+      sleep: () => Promise.reject(new Error('should not wait')),
+    });
+    expect(readLockOwner(lockPath)?.token).toBe('next');
+  });
+
   it('serializes concurrent waiters', async () => {
     const pause = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
     const holders: string[] = [];
@@ -206,6 +243,32 @@ describe('acquireLock', () => {
     });
     await Promise.all(waiters);
     expect(holders).toEqual(['done', 'done', 'done']);
+  });
+});
+
+describe('describeOwner', () => {
+  it('says when a leased holder will let go', () => {
+    const leased = { ...owner(1, 'busy'), startedAtMs: 0, leaseEndsAtMs: 30 * 60_000 };
+    expect(describeOwner(leased, 5 * 60_000)).toBe('/work/busy (pid 1, running 5m, lease ends in 25m)');
+    expect(describeOwner(leased, 40 * 60_000)).toBe('/work/busy (pid 1, running 40m, lease ends in 0m)');
+    expect(describeOwner(owner(1, 'busy'), 60_000)).toBe('/work/busy (pid 1, running 1m)');
+  });
+
+  it('keeps a lease in the owner file it reads back', () => {
+    tryAcquireLock(lockPath, { ...owner(1, 'a'), leaseEndsAtMs: 5 });
+    expect(readLockOwner(lockPath)?.leaseEndsAtMs).toBe(5);
+  });
+});
+
+describe('process tree', () => {
+  it('lists a process and all its descendants once, ignoring junk rows', () => {
+    const table = parseProcessTable(['  10     1', '  11    10', '  12    11', '  13    10', '  20     1', 'junk', ''].join('\n'));
+    expect(treeOf(10, table)).toEqual([10, 11, 13, 12]);
+    expect(treeOf(99, table)).toEqual([99]);
+  });
+
+  it('stops at a cycle', () => {
+    expect(treeOf(1, parseProcessTable('1 2\n2 1'))).toEqual([1, 2]);
   });
 });
 

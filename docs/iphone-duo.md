@@ -19,7 +19,7 @@ Apple stops accepting uploads built with an SDK older than iOS 27 in April 2027.
 
   ```sh
   export DEVELOPER_DIR="/Applications/Xcode copy.app/Contents/Developer"
-  bunx expo run:ios --device "<iPhone Duo simulator UDID>"
+  bun run ios --device "<iPhone Duo simulator UDID>"
   ```
 
   Verify the slice you got: the clang invocations should show

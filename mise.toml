@@ -15,15 +15,15 @@ description = "Run the checks this branch's changes need, one worktree at a time
 run = "bun scripts/check-lock.ts bun scripts/check.ts"
 
 [tasks."app:start"]
-description = "Start the Expo development server"
+description = "Start the Expo development server (waits for the simulator lock)"
 run = "bun run start"
 
 [tasks."app:ios"]
-description = "Build and run the iOS development client"
+description = "Build and run the iOS development client (waits for the simulator lock)"
 run = "bun run ios"
 
 [tasks."app:android"]
-description = "Build and run the Android development client"
+description = "Build and run the Android development client (waits for the simulator lock)"
 run = "bun run android"
 
 [tasks."app:web"]
@@ -39,7 +39,7 @@ description = "Run Jest with coverage (waits for any other worktree's gate)"
 run = "bun scripts/check-lock.ts bun run test:coverage"
 
 [tasks."app:maestro"]
-description = "Run device smoke flows after starting Metro with EXPO_PUBLIC_MAESTRO_E2E=1"
+description = "Run device smoke flows in their own E2E Metro session (waits for the simulator lock)"
 run = "bun run maestro:test"
 
 [tasks."convex:dev"]
