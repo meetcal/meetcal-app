@@ -20,7 +20,11 @@ every change to `cli/` or `convex/`.
 - **Integration tests** in `tests/`: one file per command for argument parsing and help text
   (`tests/help_options.rs` also pins `--version` to the crate), and `tests/api_retry.rs`, which
   runs the real HTTP client against a local server that serves scripted Convex answers, to check
-  retries, the request body, the User-Agent, and error messages.
+  retries, the request body, the User-Agent, and error messages. `tests/premium_pass.rs` (the
+  access pass on premium reads: fetched once with the saved login, renewed once when refused, the
+  messages without a login or a subscription) and `tests/login.rs` (`login` and `logout` against a
+  scripted device login) use the same server, in `tests/support/`. They save logins in temporary
+  directories and pass `Access` explicitly, so no test reads your own login.
 
 No test calls a real deployment. Put report logic in pure functions that take rows, so a test can
 feed fixture rows instead of a network.

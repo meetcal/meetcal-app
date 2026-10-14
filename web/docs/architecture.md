@@ -29,13 +29,15 @@ POST https://disciplined-hare-790.convex.cloud/api/query
   after `MAX_PAGES`. Rows are not ordered or unique across pages.
 - A function that ran and failed answers `{ status: "error", errorMessage, errorData }`, over HTTP
   200 or 560. Our functions throw `{ status, error }` as `errorData`; the site shows `error`.
-- 429 and 503 are retried twice, honoring `Retry-After` (1 to 10 seconds). Every call is a read,
-  so a retry is safe.
+- 429 and 503 are retried twice, honoring `Retry-After` (1 to 10 seconds). Every query is a read,
+  so a retry is safe. The site's only mutations, `deviceLogin:approve`, `deviceLogin:deny` and
+  `apiTokens:revokeAllCli` (`POST /api/mutation`, from `/link`), are never retried by themselves:
+  the user taps Try again.
 - The premium functions (`SUBSCRIPTION_FUNCTIONS` in `api.rs`, Convex's `PREMIUM_FUNCTIONS`) take
   the access pass as their `pass` argument; `api.rs` adds it to their arguments. A search
   (`results:search`) takes it only with `startDate` and `endDate`: name suggestions are public.
   Every other query goes out without it. No query carries the user's session token except
-  `accessPass:pass`: a query that reads its caller is cached per user, while every subscriber sends
+  `accessPass:pass` and `deviceLogin:describe` (one user's own CLI sign-in, below): a query that reads its caller is cached per user, while every subscriber sends
   the same pass, so premium answers stay in Convex's shared query cache.
 - The pass comes from `accessPass:pass` (`POST /api/query` with `Authorization: Bearer <Clerk
   session token>`, Clerk's default token, as the app sends), which answers `{ pass, rotatesAt }`.
@@ -88,6 +90,41 @@ subscription itself through the access pass (above): for now it only logs a prem
 current pass, answering everyone; later it will refuse it. Until then the data the gate guards is
 still public in Convex.
 
+## Approving a CLI sign-in: `/link`
+
+`meetcal login` (the CLI in `../cli/`) prints a code such as `WXYZ-BCDF`, a link to
+`https://meetcal.app/link?code=WXYZ-BCDF` and a QR code of it, and waits. `src/pages/link.rs`
+is the page the link opens. It needs a signed-in user but no subscription, so its route in
+`src/main.rs` sits outside `SubscriptionGate`, and it is in no navigation menu or sitemap
+(`noindex, nofollow`).
+
+- The URL holds the code. Signed out, the page mounts the same Clerk sign-in as the gate, which
+  returns to the current URL, `/link?code=…`, query included. Without a code (or with only part
+  of one) it asks for it: the field keeps letters only (codes have no digits, and the server drops
+  them), uppercases them, caps them at eight and adds the dash (`ABCD-EFGH`); Continue moves to
+  `/link?code=ABCD-EFGH`.
+- With a whole code it asks `deviceLogin:describe` (`POST /api/query`), which answers
+  `{ deviceName, createdAt, expiresAt }` or `null`, and shows the device, the code and how long ago
+  it asked, with a warning to approve only a `meetcal login` the user just ran. The device name is
+  the requester's own claim, so it is shown in quotes as "the name the device gave itself": a
+  requester cannot pass for the MeetCal app. Approve and Deny call `deviceLogin:approve` and
+  `deviceLogin:deny` (`POST /api/mutation`), which answer `{ ok: true }`. Approve answers a
+  function error with status 404 for a code no login is waiting on. Deny also turns down a login
+  this user approved whose token the CLI has not collected yet (second thoughts in another tab),
+  and answers 404 when nothing is left to turn down (expired, or the CLI already has its token):
+  the page then shows the code as expired or used, never "denied", since the CLI may be signed in. All three carry `Authorization: Bearer <Clerk session token>`, and a 401 asks the user to try
+  again, which fetches a fresh token. The calls are in `api.rs` (`describe_device_login`,
+  `approve_device_login`, `deny_device_login`, `revoke_all_cli_logins`).
+- States: checking sign-in, sign-in, code entry, looking up, the request (Approve / Deny),
+  approved ("Done — you can return to your terminal."), denied, expired or used (a `null`
+  describe or a 404 approve: run `meetcal login` again; a 404 deny: it could not be denied), and
+  an error with Try again, which repeats the call that failed.
+- Recovery: below the card, whenever the user is signed in (done and denied included), "Sign out
+  all CLI logins" asks "Sign out every computer signed in with meetcal login?", then calls the
+  mutation `apiTokens:revokeAllCli` (`POST /api/mutation`, args `{}`, the same bearer token), which
+  answers `{ ended }`, and shows "Signed out N CLI logins." A failure shows the error with Try
+  again; like the other mutations, it is never sent again without a tap.
+
 ## Routes and metadata
 
 Each route needs a document that search engines and link previews can read before the Wasm loads:
@@ -116,7 +153,8 @@ For a new competition data page, all of these change together:
    cover it; and a test for the page itself in `tests/e2e/competition.spec.ts`.
 
 A public page follows the same steps without the gate, with its own entry in
-`metadata_for_path` and `render_page` instead of the catalog, and in `publicRoutes`.
+`metadata_for_path` and `render_page` instead of the catalog, and in `publicRoutes`. A page that
+needs a signed-in user but no subscription (`/link`) goes in `signedInRoutes` instead.
 
 ## Deploying
 

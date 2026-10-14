@@ -270,8 +270,9 @@ fn AccessShell(children: Children) -> impl IntoView {
     }
 }
 
+/// Clerk's sign-in, which returns to this page, query included, when done.
 #[component]
-fn ClerkSignIn() -> impl IntoView {
+pub fn ClerkSignIn() -> impl IntoView {
     let container = NodeRef::<leptos::html::Div>::new();
 
     Effect::new(move |_| {

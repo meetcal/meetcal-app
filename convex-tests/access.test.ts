@@ -168,6 +168,13 @@ describe('the premium queries', () => {
     expect(web.sort()).toEqual([...PREMIUM_FUNCTIONS].sort());
   });
 
+  it('are the ones the CLI sends the pass to (`PREMIUM_FUNCTIONS` in `cli/src/utils/access.rs`)', () => {
+    const source = readFileSync(join(__dirname, '..', 'cli', 'src', 'utils', 'access.rs'), 'utf8');
+    const list = /PREMIUM_FUNCTIONS: &\[&str\] = &\[([^\]]*)\]/.exec(source)?.[1] ?? '';
+    const cli = [...list.matchAll(/"([^"]+)"/g)].map((match) => match[1]);
+    expect(cli.sort()).toEqual([...PREMIUM_FUNCTIONS].sort());
+  });
+
   it('leave name suggestions public: search checks the pass only when asked for results', async () => {
     setPremiumModeForTests('enforce');
     const { db } = fakeDb();

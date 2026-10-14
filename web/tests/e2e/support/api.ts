@@ -180,10 +180,12 @@ export function retryableResponse(status: 429 | 503, retryAfter?: string) {
 
 /** Every read is a `POST` of `{ path, args }` here (see src/utils/api.rs). */
 const CONVEX_QUERY_URL = "https://disciplined-hare-790.convex.cloud/api/query";
+/** The mutations the site calls: `deviceLogin:approve` and `deviceLogin:deny` (`/link`). */
+const CONVEX_MUTATION_URL = "https://disciplined-hare-790.convex.cloud/api/mutation";
 /** The one action the site calls, `entitlements:refresh`. */
 const CONVEX_ACTION_URL = "https://disciplined-hare-790.convex.cloud/api/action";
 
-/** `accessPass:pass` and `entitlements:refresh` carry `Authorization`, so the preflight must allow it. */
+/** `accessPass:pass`, `entitlements:refresh` and the `deviceLogin` calls carry `Authorization`, so the preflight must allow it. */
 const CORS_HEADERS = {
   "access-control-allow-origin": "*",
   "access-control-allow-methods": "POST, OPTIONS",
@@ -201,7 +203,25 @@ export async function routeQuery(
   fn: string,
   handler: (route: Route, args: Record<string, unknown>) => Promise<void> | void,
 ) {
-  await page.route(CONVEX_QUERY_URL, async (route) => {
+  await routeFunction(page, CONVEX_QUERY_URL, fn, handler);
+}
+
+/** Answers the Convex mutation `fn` (such as `deviceLogin:approve`), as `routeQuery` answers a query. */
+export async function routeMutation(
+  page: Page,
+  fn: string,
+  handler: (route: Route, args: Record<string, unknown>) => Promise<void> | void,
+) {
+  await routeFunction(page, CONVEX_MUTATION_URL, fn, handler);
+}
+
+async function routeFunction(
+  page: Page,
+  url: string,
+  fn: string,
+  handler: (route: Route, args: Record<string, unknown>) => Promise<void> | void,
+) {
+  await page.route(url, async (route) => {
     const request = route.request();
     if (request.method() === "OPTIONS") {
       await route.fulfill({ status: 204, headers: CORS_HEADERS });

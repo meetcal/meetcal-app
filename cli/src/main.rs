@@ -20,6 +20,8 @@ async fn main() -> Result<()> {
         Commands::H2h(args) => commands::h2h::run(args).await?,
         Commands::IntlRankings(args) => commands::intl_rankings::run(args).await?,
         Commands::Leaderboard(args) => commands::leaderboard::run(args).await?,
+        Commands::Login(args) => commands::login::run_login(args).await?,
+        Commands::Logout(args) => commands::login::run_logout(args).await?,
         Commands::Meet(args) => commands::meet::run(args).await?,
         Commands::MeetInfo(args) => commands::meet_info::run(args).await?,
         Commands::MeetResults(args) => commands::meet_results::run(args).await?,

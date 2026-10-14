@@ -10,6 +10,7 @@ pub mod group_wrapped;
 pub mod h2h;
 pub mod intl_rankings;
 pub mod leaderboard;
+pub mod login;
 pub mod meet;
 pub mod meet_info;
 pub mod meet_results;

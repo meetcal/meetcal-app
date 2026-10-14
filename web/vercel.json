@@ -125,6 +125,10 @@
     {
       "source": "/subscription",
       "destination": "/seo/subscription.html"
+    },
+    {
+      "source": "/link",
+      "destination": "/seo/link.html"
     }
   ],
   "trailingSlash": false

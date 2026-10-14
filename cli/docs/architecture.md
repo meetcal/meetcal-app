@@ -29,12 +29,52 @@ POST https://disciplined-hare-790.convex.cloud/api/query
 - A function that ran and failed answers `{ status: "error", errorMessage, errorData }` (HTTP 200
   or 560). Our functions throw `{ status, error }` as `errorData`; the CLI prints
   `MeetCal could not answer <query>: <error>`.
-- `send_with_retry` applies `src/utils/retry.rs`: 429 and 503 are retried twice, honoring
-  `Retry-After` (clamped to 1 to 30 seconds) or backing off 1 then 2 seconds. Once retries run
-  out, a 429 explains how long to wait.
+- `send_with_retry` applies `src/utils/retry.rs` to queries: 429 and 503 are retried twice,
+  honoring `Retry-After` (clamped to 1 to 30 seconds) or backing off 1 then 2 seconds. Once retries
+  run out, a 429 explains how long to wait. Actions and mutations are sent once
+  (`Endpoint::retries`): one may have done its work before its answer was lost.
 - One shared `reqwest` client with a 10-second connect timeout, a 30-second request timeout, and a
   `meetcal-cli/<version>` User-Agent.
 - `MEETCAL_CONVEX_URL` (read at run time) points the CLI at another deployment.
+- `call_function` runs any query, mutation or action (`Endpoint`) with an optional bearer token,
+  for the few calls that are not data reads (`functions::*`, `queries::ACCESS_PASS`). A function
+  error reaches callers as a `FunctionError` carrying its `errorData` status.
+
+## Login and the access pass
+
+Premium data (`PREMIUM_FUNCTIONS` in `src/utils/access.rs`, equal to `convex/lib/access.ts`'s list
+and the website's `SUBSCRIPTION_FUNCTIONS`; `results:search` only with both dates) is read with a
+shared daily access pass as the `pass` argument (`../docs/backend.md`, "Premium data").
+
+- `meetcal login` (`src/commands/login.rs`) runs a device-code login (`convex/deviceLogin.ts`):
+  `deviceLogin:start` (an action, with the device's name) answers a secret device code, a user code
+  and the approval page; the CLI prints `<verificationUrl>?code=<userCode>`, the code, and a QR code
+  of the link when stderr is a terminal, then polls `deviceLogin:poll` every `interval` seconds
+  (five more after each `slow_down`) until it answers `approved` (with a 90-day MeetCal-issued
+  token), `denied`, `expired` or `collected` (approved, but the answer carrying the token was
+  lost: the user runs `login` again). A poll that fails is not resent; the loop polls again at the
+  next interval, giving up after five failures in a row. The polling policy is `Poller` in `src/utils/device_login.rs`,
+  free of I/O. Nothing is interactive, so it runs over SSH and for agents.
+- The token is saved by `src/utils/credentials.rs` in
+  `$XDG_CONFIG_HOME/meetcal/credentials.json` (else `~/.config/meetcal/`; `%APPDATA%` on Windows),
+  0600 in a 0700 directory, as `{ token, tokenId, expiresAt, deployment }`. A login is used only
+  on the deployment that issued it. Logging in again replaces it and revokes the old token
+  (`apiTokens:revoke`, best effort); `meetcal logout` revokes and deletes it.
+- `Access` (`src/utils/access.rs`) holds the run's pass. The first premium read trades the saved
+  token for it (`accessPass:pass`; only it, `entitlements:refresh` and `apiTokens:revoke` send the token);
+  concurrent reads share that fetch. When it answers 403, the CLI asks `entitlements:refresh` (an
+  action, with the token) to re-check the subscription with RevenueCat, and asks for the pass once
+  more if that answers `{ active: true }`; `login` does the same for its subscription check.
+  Numbers outside the data rows (`expiresAt`, `rotatesAt`, `interval`) are read with
+  `backend::whole_number`, which takes `5` and `5.0` alike. The pass goes into each premium read's arguments; no data read
+  carries the token, so premium answers stay in Convex's shared cache. Without a pass (not logged
+  in, not subscribed, an expired login, a failed fetch) a premium read goes without one: Convex
+  answers it while `PREMIUM_MODE` is `log`.
+- A premium read Convex refuses (a function error with status 401 or 403) goes through
+  `access::on_refusal`: with a pass that was refused, or a fetch that failed, the CLI fetches the
+  pass again and reads once more; without a login, with an expired or rejected one, or without a
+  subscription, it fails with a `PassRefused` error saying to run `meetcal login` or to subscribe.
+  `meet` shows its start list without past-year bests in that case, since the start list is free.
 
 The queries themselves are in `../convex/` (`reference.ts`, `meets.ts`, `results.ts`). Many are
 served from materialized views; `../docs/backend.md` explains when a view needs rebuilding.
@@ -52,6 +92,7 @@ served from materialized views; `../docs/backend.md` explains when a view needs 
 | Clubs | `club-results`, `club-wrapped`, `club-compare`, `club-trends` | `reference:clubMeetStats`, `reference:clubAthletes`, `results:recent`, `results:byNames`, `results:byMeet` |
 | WSOs | `wso`, `wso-wrapped`, `wso-compare`, `wso-trends` | `meets:athletes`, `results:byNames`, `results:byMeet`, `reference:wsoAthletes`, `results:recent` |
 | Reference | `records`, `standards`, `qualifying-totals`, `intl-rankings`, `nat-rankings`, `nat-ranking-year`, `wso-records`, `adaptive-records` | the matching `reference:*` query |
+| Login | `login`, `logout` | `deviceLogin:start`, `deviceLogin:poll` (actions), `accessPass:pass`, `apiTokens:revoke` (mutation) |
 
 Reference commands fetch the whole table and filter it locally by the flags (`records --age --gender
 --federation`), except where the query takes the filter itself (`wso-records`, `nat-rankings`,

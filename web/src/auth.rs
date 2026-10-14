@@ -101,8 +101,9 @@ pub async fn has_comp_data_access(app_user_id: &str) -> Result<bool, String> {
         .map_err(js_error_message)
 }
 
-/// The signed-in user's Clerk session token, for the two Convex calls that
-/// read the caller: `accessPass:pass` and `entitlements:refresh`. `None` when
+/// The signed-in user's Clerk session token, for the Convex calls that read
+/// the caller: `accessPass:pass`, `entitlements:refresh`, and the
+/// `deviceLogin:*` calls of `/link`. `None` when
 /// signed out, or when Clerk could not hand one over (logged): premium reads
 /// then go out without an access pass.
 pub async fn session_token() -> Option<String> {

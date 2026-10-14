@@ -53,6 +53,12 @@ pub fn metadata_for_path(path: &str) -> PageMetadata {
             indexable: false,
             canonical: true,
         },
+        "/link" => PageMetadata {
+            title: "Approve a MeetCal CLI Sign-In",
+            description: "Sign in to approve or deny a MeetCal CLI sign-in request from meetcal login.",
+            indexable: false,
+            canonical: true,
+        },
         "/comp-data" => competition_metadata("Competition Data"),
         _ => PageMetadata {
             title: "Page Not Found — MeetCal",
@@ -176,6 +182,7 @@ mod tests {
             "/comp-data",
             "/qualifying-totals",
             "/subscription",
+            "/link",
             "/missing",
         ] {
             assert!(
@@ -193,6 +200,7 @@ mod tests {
             "/comp-data",
             "/qualifying-totals",
             "/subscription",
+            "/link",
         ] {
             assert!(
                 metadata_for_path(path).canonical,

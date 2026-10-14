@@ -16,7 +16,9 @@ The repository root's `AGENTS.md` applies here too: its hard rules (worktrees, n
 |---|---|
 | `src/main.rs`, `src/parser.rs` | Entry point and the clap command set; `parser.rs` holds every subcommand's arguments and help |
 | `src/commands/` | One module per command (`run(args)`); shared report logic in `group_wrapped.rs` (club and WSO years) and `compare.rs` |
-| `src/utils/backend.rs` | The only data access: every Convex query the CLI reads (`queries::*`), and the HTTP call |
+| `src/utils/backend.rs` | The only data access: every Convex query the CLI reads (`queries::*`), the login's actions and mutation (`functions::*`), and the HTTP call |
+| `src/utils/access.rs` | The access pass premium reads carry: `PREMIUM_FUNCTIONS` (equal to `convex/lib/access.ts`'s list), fetching the pass with the saved login, and what a refused read does |
+| `src/utils/credentials.rs`, `device_login.rs` | The saved login (`~/.config/meetcal/credentials.json`, 0600), and the device-code login's answers, polling policy and QR code; `src/commands/login.rs` runs `login` and `logout` |
 | `src/utils/retry.rs` | The retry policy for throttled and overloaded answers, free of I/O |
 | `src/utils/output.rs` | How results print: tables, or `--format json` / `csv` from the same `Report` |
 | `src/utils/stats.rs` | Divisions, Sinclair (and its coefficients), attempt habits, PRs, source-error guards |
@@ -25,7 +27,7 @@ The repository root's `AGENTS.md` applies here too: its hard rules (worktrees, n
 | `src/utils/meet_names.rs` | Matching registration events to results meets (combined national events publish results under separate names) |
 | `src/utils/make_rate.rs`, `sort.rs` | Make-rate tables, weight-class ordering |
 | `src/types/` | Answer types shared across commands |
-| `tests/` | Integration tests: argument parsing and help per command, and the retry policy against a local HTTP server |
+| `tests/` | Integration tests: argument parsing and help per command, and, against a local HTTP server (`tests/support/`), the retry policy, the access pass and `login`/`logout` |
 | `scripts/build-release.sh` | Local release builds, for smoke testing |
 | `docs/` | [architecture.md](docs/architecture.md), [testing.md](docs/testing.md), [releasing.md](docs/releasing.md) |
 
@@ -68,6 +70,8 @@ CI (`.github/workflows/cli.yml` at the root) runs `cargo fmt --check`, `clippy -
 - Keep network code out of report logic: commands fetch, then call pure functions (stats, comparisons, meet matching) that tests can drive with fixture rows.
 - Errors are `anyhow` with context naming the query or the input; a user-facing failure says what to try (`bail!("No athletes found for WSO ...")`).
 - `--version` comes from `Cargo.toml`: bump the version there, never in clap.
+- A new premium Convex function goes in `PREMIUM_FUNCTIONS` (`src/utils/access.rs`) as well as the server's and the website's lists; keep it a plain `&[&str]` array literal. The saved login's token goes to `accessPass:pass`, `entitlements:refresh` and `apiTokens:revoke` only, never to a data read.
+- Commands never prompt or open a browser: `login` must work with no terminal (SSH, servers, agents). Its prose goes to stderr.
 
 ## Recurring lessons
 

@@ -11,6 +11,7 @@ use meetcal_web::pages::{
     },
     features::FeaturesPage,
     home::Home,
+    link::LinkPage,
     not_found::NotFound,
     privacy::PrivacyPage,
     terms::TermsPage,
@@ -58,6 +59,8 @@ fn App() -> impl IntoView {
                     <Route path=path!("/wso-dashboard") view=|| view! { <SubscriptionGate><WsoDashboard /></SubscriptionGate> } />
                     <Route path=path!("/wrapped") view=|| view! { <SubscriptionGate><Wrapped /></SubscriptionGate> } />
                     <Route path=path!("/subscription") view=MobileSubscriptionPage />
+                    // Signed in, but no subscription needed: approves a `meetcal login`.
+                    <Route path=path!("/link") view=LinkPage />
                     <Route path=path!("/features") view=FeaturesPage />
                     <Route path=path!("/privacy") view=PrivacyPage />
                     <Route path=path!("/terms") view=TermsPage />
