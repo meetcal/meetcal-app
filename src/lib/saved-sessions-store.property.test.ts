@@ -136,7 +136,8 @@ describe('parseStoredSessions', () => {
 
   it('reads back a stored list of valid sessions unchanged', () => {
     fc.assert(
-      fc.property(fc.array(sessionArb, { maxLength: 6 }), (sessions) => {
+      // Unique ids: a repeated id is a legacy duplicate the read drops.
+      fc.property(fc.uniqueArray(sessionArb, { selector: (session) => session.id, maxLength: 6 }), (sessions) => {
         expect(parseStoredSessions(JSON.stringify(sessions))).toEqual(sessions);
       }),
     );
@@ -150,8 +151,9 @@ describe('reading the stored list under storage chaos', () => {
   it('a read returns well-formed sessions of the user asked for, or fails for the caller to fall back', async () => {
     await fc.assert(
       fc.asyncProperty(
-        fc.array(sessionArb, { minLength: 1, maxLength: 3 }),
-        fc.array(sessionArb, { minLength: 1, maxLength: 3 }),
+        // Unique ids, as the app stores them: a read drops a repeated id.
+        fc.uniqueArray(sessionArb, { selector: (session) => session.id, minLength: 1, maxLength: 3 }),
+        fc.uniqueArray(sessionArb, { selector: (session) => session.id, minLength: 1, maxLength: 3 }),
         faultPlanArb(storageFaultArb, 4),
         fc.boolean(),
         async (mine, theirs, plan, force) => {

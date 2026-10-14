@@ -56,6 +56,7 @@ describe("pruneStartedSessions with the real server clock", () => {
     const removeSession = jest.fn(async () => true);
     await pruneStartedSessions({
       clerkUserId: "user_1",
+      isSubscribed: () => true,
       isActive: () => true,
       getToken: async () => jwtFor("user_1"),
       readStoredSessions: async () => [expired],

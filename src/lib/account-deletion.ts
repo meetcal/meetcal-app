@@ -1,3 +1,8 @@
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { markAccountDeleted } from "@/lib/deleted-accounts";
+import { getOutboxSeededKey, getSavedSessionsOutboxKey } from "@/lib/saved-sessions-outbox";
+import { getAllSavedSessionsKeys } from "@/utils/session";
+
 /**
  * Account deletion starts in the app (App Store guideline 5.1.1(v)), in
  * Clerk's native account screen (`components/profile/ClerkAccountModal.tsx`),
@@ -8,6 +13,10 @@
  * Before that screen opens, the user is told what deletion costs them and
  * that a store subscription is billed by Apple or Google, not by MeetCal, so
  * deleting the account does not stop it.
+ *
+ * The account's data on the server (saved sessions, notes, preferences) is
+ * deleted by Clerk's `user.deleted` webhook (`convex/http.ts`); what this
+ * device keeps under the user's id goes with `clearLocalUserData`.
  */
 export const ACCOUNT_DELETION_TITLE = "Delete Your Account";
 
@@ -25,4 +34,18 @@ export function subscriptionManagementUrl(os: string): string {
   return os === "ios"
     ? "https://apps.apple.com/account/subscriptions"
     : "https://play.google.com/store/account/subscriptions";
+}
+
+/**
+ * Removes what this device stores under a user's id: their saved sessions
+ * (under the current key and every legacy one older builds used), the outbox
+ * of writes not yet sent, and the outbox's seeded flag. Run when the user
+ * signs out inside Clerk's account sheet (`useAccountSheetCleanup`), which
+ * may be the account's deletion.
+ */
+export async function clearLocalUserData(userId: string): Promise<void> {
+  // Before the removal, so a write still in flight for the account skips
+  // storing it again (`deleted-accounts.ts`).
+  markAccountDeleted(userId);
+  await AsyncStorage.multiRemove([...getAllSavedSessionsKeys(userId), getSavedSessionsOutboxKey(userId), getOutboxSeededKey(userId)]);
 }

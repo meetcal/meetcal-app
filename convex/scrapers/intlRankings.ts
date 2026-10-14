@@ -59,29 +59,41 @@ export const run = internalAction({
         failures.push({ source: pdf.title, error: `${pdf.rankings.length} rows; meet=${meet} gender=${gender} age=${ageCategory}` });
         continue;
       }
-      const counts: Omit<GroupResult, 'meet' | 'gender' | 'ageCategory' | 'pruned'> = await ctx.runMutation(
-        internal.ingest.replaceIntlRankingsGroup,
-        {
-          meet,
-          gender,
-          ageCategory,
-          rankings: pdf.rankings.map((r) => ({
-            ranking: r.ranking,
-            name: r.name,
-            weightClass: r.weight_class,
-            total: r.total ?? undefined,
-            percentA: r.percent_a ?? undefined,
-          })),
-        },
-      );
-      groups.push({ meet, gender, ageCategory, ...counts, pruned: false });
+      // One group's write failing (a row repeated across a page break, a
+      // transient error) leaves the others to be stored; the prune below
+      // then waits, and the run fails naming the PDF.
+      try {
+        const counts: Omit<GroupResult, 'meet' | 'gender' | 'ageCategory' | 'pruned'> = await ctx.runMutation(
+          internal.ingest.replaceIntlRankingsGroup,
+          {
+            meet,
+            gender,
+            ageCategory,
+            rankings: pdf.rankings.map((r) => ({
+              ranking: r.ranking,
+              name: r.name,
+              weightClass: r.weight_class,
+              total: r.total ?? undefined,
+              percentA: r.percent_a ?? undefined,
+            })),
+          },
+        );
+        groups.push({ meet, gender, ageCategory, ...counts, pruned: false });
+      } catch (error) {
+        failures.push({ source: pdf.title, error: `${pdf.url}: not stored: ${(error as Error).message}` });
+      }
     }
     if (failures.length === 0 && groups.length > 0) {
-      const pruned: { deletedGroups: { meet: string; gender: string; ageCategory: string; deleted: number }[] } =
-        await ctx.runMutation(internal.ingest.deleteMissingIntlRankingGroups, {
+      let pruned: { deletedGroups: { meet: string; gender: string; ageCategory: string; deleted: number }[] };
+      try {
+        pruned = await ctx.runMutation(internal.ingest.deleteMissingIntlRankingGroups, {
           groups: groups.map(({ meet, gender, ageCategory }) => ({ meet, gender, ageCategory })),
           allowShrink: allowShrink ?? false,
         });
+      } catch (error) {
+        // A refused prune is a source failure too, so the alert tracks it as one.
+        throw sourcesFailed('intl rankings: stale groups not pruned', [{ source: 'prune', error: (error as Error).message }]);
+      }
       for (const g of pruned.deletedGroups) groups.push({ ...g, inserted: 0, updated: 0, unchanged: 0, pruned: true });
     }
     if (failures.length) {

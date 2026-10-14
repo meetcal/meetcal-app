@@ -1,19 +1,17 @@
 use crate::components::feature::FeatureSection;
-use crate::components::{footer::Footer, header::Header};
+use crate::components::store_links::{APP_STORE_URL, PLAY_STORE_URL};
 use leptos::prelude::*;
 use leptos_router::components::A;
 
 #[component]
 pub fn Home() -> impl IntoView {
     view! {
-        <Header />
         <HeroSection />
         <DownloadSection />
         <InteractionSection />
         <BodySection />
         <ReviewsSection />
         <HighlightSection />
-        <Footer />
     }
 }
 
@@ -38,10 +36,10 @@ pub fn DownloadSection() -> impl IntoView {
                 <p>"Save sessions, follow your club, and be ready for anything"</p>
             </div>
             <div class="store-links" aria-label="Download the MeetCal mobile app">
-                <a class="store-link store-link-primary" href="https://apps.apple.com/us/app/meetcal/id6741133286">
+                <a class="store-link store-link-primary" href=APP_STORE_URL>
                     <span>"Download for iOS"</span>
                 </a>
-                <a class="store-link store-link-secondary" href="https://play.google.com/store/apps/details?id=com.memohnsen.meetcal">
+                <a class="store-link store-link-secondary" href=PLAY_STORE_URL>
                     <span>"Download for Android"</span>
                 </a>
             </div>
@@ -65,7 +63,10 @@ pub fn InteractionSection() -> impl IntoView {
                     <p class="interaction-label">"The app"</p>
                     <h3>"Stay ready on meet day"</h3>
                     <p>"Browse schedules, save sessions, and follow athletes or teams from your phone or tablet."</p>
-                    <a class="interaction-link" href="https://apps.apple.com/us/app/meetcal/id6741133286">"Get the mobile app" <span aria-hidden="true">"→"</span></a>
+                    <div class="interaction-links">
+                        <a class="interaction-link" href=APP_STORE_URL>"Get it for iPhone or iPad" <span aria-hidden="true">"→"</span></a>
+                        <a class="interaction-link" href=PLAY_STORE_URL>"Get it for Android" <span aria-hidden="true">"→"</span></a>
+                    </div>
                 </article>
 
                 <article class="interaction-card interaction-card-cli">
@@ -74,14 +75,8 @@ pub fn InteractionSection() -> impl IntoView {
                     <h3>"Work directly with the data"</h3>
                     <p>"Search and explore the full MeetCal database from USAW and USAMW without leaving your terminal."</p>
                     <div class="cli-install-options">
-                        <CopyCommand
-                            label="Homebrew"
-                            command="brew tap meetcal/tap && brew install meetcal"
-                        />
-                        <CopyCommand
-                            label="Cargo"
-                            command="cargo install --git https://github.com/meetcal/meetcal-cli.git meetcal"
-                        />
+                        <CopyCommand label="Homebrew" command=HOMEBREW_INSTALL />
+                        <CopyCommand label="Cargo" command=CARGO_INSTALL />
                     </div>
                 </article>
 
@@ -96,6 +91,12 @@ pub fn InteractionSection() -> impl IntoView {
         </section>
     }
 }
+
+/// The CLI's install commands, as `cli/README.md` gives them. The CLI lives in
+/// this repository's `cli/`; the old meetcal-cli repository is archived (#240).
+const HOMEBREW_INSTALL: &str = "brew tap meetcal/tap && brew install meetcal";
+const CARGO_INSTALL: &str =
+    "cargo install --git https://github.com/meetcal/meetcal-app.git meetcal";
 
 #[component]
 fn CopyCommand(label: &'static str, command: &'static str) -> impl IntoView {
@@ -211,9 +212,36 @@ pub fn ReviewsSection() -> impl IntoView {
     }
 }
 
+/// The marquee's screenshots: 440 px wide WebP exports, twice the 220 px they
+/// are shown at.
+const SCREENSHOTS: [&str; 10] = ["01", "02", "03", "04", "05", "06", "07", "08", "09", "10"];
+const SCREENSHOT_WIDTH: u32 = 220;
+const SCREENSHOT_HEIGHT: u32 = 478;
+
+fn screenshot_src(screenshot: &str) -> String {
+    format!("/images/{screenshot}.webp")
+}
+
 #[component]
 pub fn HighlightSection() -> impl IntoView {
-    let screenshots = ["01", "02", "03", "04", "05", "06", "07", "08", "09", "10"];
+    let (paused, set_paused) = signal(false);
+    let screenshot_set = move || {
+        SCREENSHOTS
+            .iter()
+            .map(|screenshot| {
+                view! {
+                    <img
+                        src=screenshot_src(screenshot)
+                        alt=""
+                        width=SCREENSHOT_WIDTH
+                        height=SCREENSHOT_HEIGHT
+                        loading="lazy"
+                        decoding="async"
+                    />
+                }
+            })
+            .collect_view()
+    };
 
     view! {
         <section class="highlight-section">
@@ -224,22 +252,70 @@ pub fn HighlightSection() -> impl IntoView {
             </div>
             <div
                 class="screenshot-marquee"
+                class:is-paused=move || paused.get()
                 role="img"
                 aria-label="A scrolling preview of MeetCal app screens"
             >
                 <div class="screenshot-track">
-                    <div class="screenshot-set">
-                        {screenshots.iter().map(|screenshot| view! {
-                            <img src=format!("/images/{screenshot}.png") alt="" />
-                        }).collect_view()}
-                    </div>
-                    <div class="screenshot-set" aria-hidden="true">
-                        {screenshots.iter().map(|screenshot| view! {
-                            <img src=format!("/images/{screenshot}.png") alt="" />
-                        }).collect_view()}
-                    </div>
+                    <div class="screenshot-set">{screenshot_set()}</div>
+                    <div class="screenshot-set" aria-hidden="true">{screenshot_set()}</div>
                 </div>
             </div>
+            <button
+                class="marquee-toggle"
+                type="button"
+                aria-pressed=move || if paused.get() { "true" } else { "false" }
+                on:click=move |_| set_paused.update(|paused| *paused = !*paused)
+            >
+                {move || if paused.get() { "Play preview" } else { "Pause preview" }}
+            </button>
         </section>
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn cli_install_commands_match_the_cli_readme() {
+        let readme = include_str!("../../../cli/README.md");
+        // The README gives the Homebrew command as two lines; the page joins them.
+        for command in HOMEBREW_INSTALL.split(" && ").chain([CARGO_INSTALL]) {
+            assert!(
+                readme.lines().any(|line| line == command),
+                "cli/README.md doesn't give `{command}`"
+            );
+        }
+        assert!(
+            !CARGO_INSTALL.contains("meetcal-cli"),
+            "the meetcal-cli repository is archived"
+        );
+    }
+
+    #[test]
+    fn screenshots_are_the_small_webp_exports() {
+        for screenshot in SCREENSHOTS {
+            let src = screenshot_src(screenshot);
+            assert!(src.ends_with(".webp"), "{src}");
+            let path = format!("{}/public{src}", env!("CARGO_MANIFEST_DIR"));
+            let bytes = std::fs::read(&path).unwrap_or_else(|error| panic!("{path}: {error}"));
+            // A thumbnail export, not a full-size screenshot (#204).
+            assert!(bytes.len() < 60_000, "{path} is {} bytes", bytes.len());
+        }
+    }
+
+    #[test]
+    fn screenshot_size_keeps_the_exports_aspect_ratio() {
+        // The exports are 440 x 957: twice the displayed 220 x 478.
+        assert_eq!(SCREENSHOT_WIDTH * 2, 440);
+        assert!((SCREENSHOT_HEIGHT * 2).abs_diff(957) <= 1);
+    }
+
+    #[test]
+    fn header_logo_is_an_icon_sized_export() {
+        let path = format!("{}/public/images/logo.png", env!("CARGO_MANIFEST_DIR"));
+        let bytes = std::fs::read(&path).unwrap_or_else(|error| panic!("{path}: {error}"));
+        assert!(bytes.len() < 20_000, "{path} is {} bytes", bytes.len());
     }
 }

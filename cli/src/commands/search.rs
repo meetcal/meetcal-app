@@ -1,9 +1,10 @@
 use crate::{
     types::lifting_results::{LiftingResults, PRs},
     utils::{
-        backend::{queries, query},
+        athletes::history,
         make_rate::make_rate_tables,
         output::{self, Report},
+        stats::{Lift, valid_lift, valid_total},
     },
 };
 use anyhow::Result;
@@ -25,8 +26,8 @@ pub struct SearchArgs {
 pub async fn run(args: SearchArgs) -> Result<()> {
     let name = args.name;
 
-    let query_args = serde_json::json!({ "names": [name] });
-    let results: Vec<LiftingResults> = query(queries::RESULTS_BY_NAMES, &query_args).await?;
+    // An unknown name is an error suggesting the closest athletes, not an empty report.
+    let results: Vec<LiftingResults> = history(&name).await?;
 
     let mut meets_table = Table::new();
 
@@ -73,6 +74,8 @@ pub async fn run(args: SearchArgs) -> Result<()> {
     Ok(())
 }
 
+/// The athlete's best snatch, clean & jerk and total, leaving out source errors
+/// (`stats::plausible`).
 pub fn get_prs(results: &[LiftingResults]) -> PRs {
     results.iter().fold(
         PRs {
@@ -81,9 +84,28 @@ pub fn get_prs(results: &[LiftingResults]) -> PRs {
             total_best: 0.0,
         },
         |acc, meet| PRs {
-            snatch_best: acc.snatch_best.max(meet.snatch_best),
-            cj_best: acc.cj_best.max(meet.cj_best),
-            total_best: acc.total_best.max(meet.total),
+            snatch_best: acc
+                .snatch_best
+                .max(valid_lift(meet, Lift::Snatch).unwrap_or(0.0)),
+            cj_best: acc
+                .cj_best
+                .max(valid_lift(meet, Lift::CleanAndJerk).unwrap_or(0.0)),
+            total_best: acc.total_best.max(valid_total(meet).unwrap_or(0.0)),
         },
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::utils::stats::tests::raw_row;
+
+    #[test]
+    fn prs_leave_out_source_errors() {
+        let real = raw_row([60.0, 63.0, 65.0], [85.0, 90.0, 95.0]);
+        let typo = raw_row([-63.0, 633.0, 65.0], [85.0, 90.0, -95.0]);
+        let prs = get_prs(&[real, typo]);
+        assert_eq!(prs.snatch_best, 65.0);
+        assert_eq!(prs.total_best, 160.0);
+    }
 }

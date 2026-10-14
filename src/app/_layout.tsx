@@ -1,7 +1,8 @@
+// First, so its clock starts as close to JS start as this module can get.
+import { startupTiming } from "@/lib/startup-timing";
 import { ClerkProvider, useUser } from "@clerk/expo";
 import { tokenCache } from "@clerk/expo/token-cache";
 import NetInfo from "@react-native-community/netinfo";
-import { useFonts } from "expo-font";
 import {
   DarkTheme,
   DefaultTheme,
@@ -12,13 +13,20 @@ import {
 import * as Notifications from "expo-notifications";
 import * as SplashScreen from "expo-splash-screen";
 import { StatusBar } from "expo-status-bar";
+import * as Updates from "expo-updates";
 import { PostHogProvider } from "posthog-react-native";
-import { useCallback, useEffect, useRef, useState } from "react";
-import { AppState, Linking, LogBox, Platform } from "react-native";
+import { useCallback, useEffect } from "react";
+import { AppState, LogBox, Platform } from "react-native";
 import { OneSignal } from "react-native-onesignal";
 import Purchases from "react-native-purchases";
 import "react-native-reanimated";
 
+import { PostHogScreenTracker } from "@/components/navigation/PostHogScreenTracker";
+import { SplashRouteReporter } from "@/components/navigation/SplashRouteReporter";
+import {
+  RootErrorBoundary,
+  ScreenErrorBoundary,
+} from "@/components/navigation/ScreenErrorBoundary";
 import { OfflineIndicator } from "@/components/offline/OfflineIndicator";
 import { ToastProvider } from "@/components/ui/Toast";
 import { UpdateNotification } from "@/components/schedule/UpdateNotification";
@@ -39,18 +47,25 @@ import {
   openExternalLink,
 } from "@/utils/deepLinks";
 import * as Sentry from '@sentry/react-native';
-import { devLog } from "@/lib/logger";
 import { refreshAuthCacheForVerifiedUser } from "@/lib/authCache";
 import { useDataWidgetRefresh } from "@/hooks/useDataWidgetRefresh";
+import { useServerDataAccess } from "@/hooks/useServerDataAccess";
+import { useSiriToken } from "@/hooks/useSiriToken";
 import { isNetworkAvailable } from "@/lib/networkUtils";
 import { checkOnboardingComplete } from "@/lib/onboarding";
 import { isMaestroE2E } from "@/lib/e2e";
+import { ROOT_STACK_SETTINGS } from "@/lib/root-navigation";
+import { splashGate } from "@/lib/startup-splash";
+import { usesNativeTabs } from "@/lib/tab-bar-layout";
 import {
   confirmRevenueCatIdentity,
   forgetRevenueCatIdentity,
   hasSubscriptionEntitlement,
   paywallRouteFor,
 } from "@/lib/premium-intent";
+
+// A cold-start deep link opens on top of the tabs (see `ROOT_STACK_SETTINGS`).
+export const unstable_settings = ROOT_STACK_SETTINGS;
 
 const SENTRY_ENVIRONMENT =
   process.env.EXPO_PUBLIC_SENTRY_ENVIRONMENT ??
@@ -118,8 +133,35 @@ if (!REVENUECAT_IOS_KEY || !REVENUECAT_ANDROID_KEY) {
   throw new Error("RevenueCat API keys are required");
 }
 
-// Keep splash screen visible while we fetch resources
-SplashScreen.preventAutoHideAsync();
+// The splash stays up until the first screen has settled or
+// `SPLASH_HOLD_MAX_MS` has passed (`lib/startup-splash.ts`). The cap's timer
+// starts here, outside React, so nothing in the tree can hold the splash up.
+SplashScreen.preventAutoHideAsync().catch(() => undefined);
+splashGate.arm(() => SplashScreen.hideAsync());
+
+// One `startup_timing` event per launch (`lib/startup-timing.ts`).
+startupTiming.setFlags({
+  platform: Platform.OS,
+  nativeTabs: usesNativeTabs(Platform.OS, Platform.Version, isMaestroE2E()),
+  updateLaunch: Updates.isEnabled && !Updates.isEmbeddedLaunch,
+  appStateAtStart: AppState.currentState ?? "unknown",
+});
+{
+  const backgroundWatch = AppState.addEventListener("change", (state) => {
+    if (startupTiming.isSent()) {
+      backgroundWatch.remove();
+      return;
+    }
+    if (state === "background") startupTiming.overrideFlags({ backgrounded: true });
+  });
+}
+startupTiming.begin((event, properties) => {
+  if (__DEV__) console.info("[perf] startup timing", properties);
+  posthog
+    .ready()
+    .then(() => posthog.capture(event, properties))
+    .catch(() => undefined);
+});
 
 // Maestro taps the tab bar, which LogBox's dev toasts cover. E2E runs are
 // dev-only (`isMaestroE2E`); console errors still reach Metro's log.
@@ -152,66 +194,55 @@ const ONESIGNAL_APP_ID =
   process.env.EXPO_PUBLIC_ONESIGNAL_APP_ID ??
   "184c93ff-546a-4db8-945c-203091782fc9";
 
-export default Sentry.wrap(function RootLayout() {
-  const [appIsReady, setAppIsReady] = useState(false);
-
-  const [fontsLoaded, fontError] = useFonts({
-    SpaceMono: require("@/assets/fonts/SpaceMono-Regular.ttf"),
-  });
-  // A font that fails to load leaves `fontsLoaded` false forever. Since the
-  // splash is only hidden from inside the subtree gated below, that would
-  // freeze the app on the splash screen with no error and no timeout. Falling
-  // back to the system font is the lesser failure.
-  const fontsResolved = fontsLoaded || fontError != null;
-
-  useEffect(() => {
-    async function prepare() {
-      try {
-        // Initialize RevenueCat first
-        if (Platform.OS === "ios") {
-          await Purchases.configure({
-            apiKey: REVENUECAT_IOS_KEY,
-          });
-        } else if (Platform.OS === "android") {
-          await Purchases.configure({
-            apiKey: REVENUECAT_ANDROID_KEY,
-            appUserID: null,
-          });
-        }
-
-        if (__DEV__) {
-          Purchases.setLogLevel(Purchases.LOG_LEVEL.DEBUG);
-        }
-
-        OneSignal.initialize(ONESIGNAL_APP_ID);
-      } catch (e) {
-        console.warn("Initialization error:", e);
-      } finally {
-        setAppIsReady(true);
-      }
-    }
-
-    prepare();
-  }, []);
-
-  if (!appIsReady || !fontsResolved) {
-    return null;
+// RevenueCat and OneSignal are configured here, before any component runs:
+// providers below (`SubscriptionProvider`) call Purchases from their effects,
+// and child effects run before a parent's, so configuring from the root
+// component's effect would come too late now that the tree renders at once.
+// `Purchases.configure` returns nothing to wait for; the tree used to render
+// only after an `await` on it.
+try {
+  if (Platform.OS === "ios") {
+    Purchases.configure({ apiKey: REVENUECAT_IOS_KEY });
+  } else if (Platform.OS === "android") {
+    Purchases.configure({ apiKey: REVENUECAT_ANDROID_KEY, appUserID: null });
   }
+  if (__DEV__) {
+    Purchases.setLogLevel(Purchases.LOG_LEVEL.DEBUG).catch(() => undefined);
+  }
+} catch (error) {
+  console.warn("RevenueCat initialization error:", error);
+}
+try {
+  OneSignal.initialize(ONESIGNAL_APP_ID);
+} catch (error) {
+  console.warn("OneSignal initialization error:", error);
+}
 
+/**
+ * Catches what the per-screen boundaries cannot: a render error in the root
+ * layout's own providers or navigator. expo-router wraps this route in it.
+ */
+export const ErrorBoundary = RootErrorBoundary;
+
+// The tree renders on the first pass: it used to return null until a font
+// nothing used had loaded and the SDK setup above had been awaited.
+export default Sentry.wrap(function RootLayout() {
   return (
     <CustomThemeProvider>
       <ClerkProvider
         publishableKey={process.env.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY!}
         tokenCache={tokenCache}
       >
+        {/* Screen views come from `PostHogScreenTracker` below: PostHog's
+            own screen capture needs a navigator this provider sits above. */}
         <PostHogProvider
           client={posthog}
-          autocapture={{ captureScreens: true }}
+          autocapture={{ captureScreens: false }}
         >
           <SubscriptionProvider>
             <SelectedMeetProvider>
               <SavedSessionsProvider>
-                <RootLayoutContent fontsLoaded={fontsResolved} />
+                <RootLayoutContent />
               </SavedSessionsProvider>
             </SelectedMeetProvider>
           </SubscriptionProvider>
@@ -221,18 +252,23 @@ export default Sentry.wrap(function RootLayout() {
   );
 });
 
-function RootLayoutContent({ fontsLoaded }: { fontsLoaded: boolean }) {
-  const [isInitialized, setIsInitialized] = useState(false);
-  const hasAttemptedSplashHide = useRef(false);
+function RootLayoutContent() {
   const { currentTheme } = useTheme();
   const {
     isLoaded: isUserLoaded,
     user,
   } = useUser();
 
-  // The data widgets hold public reference data; keep them current without
-  // the Widget Settings screen being open.
+  // Keep the data widgets current without the Widget Settings screen being
+  // open, and mirror the premium entitlement for them and for Siri.
   useDataWidgetRefresh();
+
+  // A subscriber's premium reads carry the shared access pass.
+  useServerDataAccess();
+
+  // Siri's App Intents get the pass with their own token, issued while a
+  // subscriber is signed in and ended when they sign out.
+  useSiriToken();
 
   // Keep the offline auth hint's seven-day window sliding for every verified
   // session, not only on screens that happen to mount `useAuthGuard`.
@@ -262,19 +298,6 @@ function RootLayoutContent({ fontsLoaded }: { fontsLoaded: boolean }) {
     void openExternalLink(value).catch((error) => {
       console.warn("[DeepLinks] Failed to open external link:", error);
     });
-  }, []);
-
-  useEffect(() => {
-    async function initialize() {
-      try {
-        setIsInitialized(true);
-      } catch (error) {
-        console.error("Initialization error:", error);
-        setIsInitialized(true);
-      }
-    }
-
-    initialize();
   }, []);
 
   // Keep Clerk, RevenueCat, and OneSignal on the same user identity. RevenueCat
@@ -422,34 +445,6 @@ function RootLayoutContent({ fontsLoaded }: { fontsLoaded: boolean }) {
     };
   }, [openDeepLink]);
 
-  useEffect(() => {
-    async function hideSplash() {
-      if (
-        !hasAttemptedSplashHide.current &&
-        isInitialized &&
-        fontsLoaded
-      ) {
-        hasAttemptedSplashHide.current = true;
-        await SplashScreen.hideAsync();
-
-        const initialUrl = await Linking.getInitialURL();
-
-        if (initialUrl) {
-          devLog(
-            "[RootLayout] App launched with initial URL, letting router handle:",
-            initialUrl,
-          );
-        }
-      }
-    }
-
-    hideSplash();
-  }, [isInitialized, fontsLoaded]);
-
-  if (!isInitialized) {
-    return null;
-  }
-
   return (
     // Without a navigation theme, iOS 26+ native chrome (the Liquid Glass
     // header buttons) falls back to react-navigation's light default even
@@ -458,7 +453,18 @@ function RootLayoutContent({ fontsLoaded }: { fontsLoaded: boolean }) {
       <ToastProvider>
         <UpdateNotification />
         <OfflineIndicator />
-        <Stack screenOptions={{ headerShown: false }}>
+        <PostHogScreenTracker />
+        {/* The splash holds for the Schedule tab's first screen only; a
+            launch on any other route (a deep link, sign-in, another tab)
+            shows it at once. */}
+        <SplashRouteReporter />
+        {/* Every route below gets its own boundary, so one screen's render
+            error shows "Something went wrong" there instead of closing the
+            app. */}
+        <Stack
+          screenOptions={{ headerShown: false }}
+          unstable_screenErrorBoundary={ScreenErrorBoundary}
+        >
           <Stack.Screen name="(tabs)" options={{ animation: "none" }} />
           <Stack.Screen name="(auth)" />
           <Stack.Screen name="schedule-toolbar/offline-data" />

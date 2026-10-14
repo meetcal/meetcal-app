@@ -1,7 +1,7 @@
 import { directoryNames, directoryText, nameMatcher, searchDirectory } from '../convex/lib/directory';
 import { fakeDb } from './fakeDb';
 import { disambiguatedMeetName, joinRoster, meetByName, oldestMeet } from '../convex/lib/meetData';
-import { earliestLocalDate, meetStatusAt, meetStatusOn } from '../convex/lib/meetStatus';
+import { earliestLocalDate, meetStatusAt, meetStatusOn, nextMeetStatus } from '../convex/lib/meetStatus';
 import { distinctNameKeys, normalizeName } from '../convex/lib/names';
 import { athleteGenderLabel, normalizeGender, storedGenderSpellings } from '../convex/lib/normalize';
 import { computeStandards, filterWsoRows } from '../convex/lib/referenceData';
@@ -110,6 +110,14 @@ describe('meet status from dates (#158, #160)', () => {
     expect(meetStatusOn({ startDate: '2026-11-1', endDate: '2026-11-2' }, '2026-10-12')).toBe('upcoming');
   });
 
+  it('never reopens a completed meet', () => {
+    expect(nextMeetStatus('completed', 'upcoming')).toBe('completed');
+    expect(nextMeetStatus('completed', 'ongoing')).toBe('completed');
+    expect(nextMeetStatus('ongoing', 'upcoming')).toBe('upcoming');
+    expect(nextMeetStatus('upcoming', 'completed')).toBe('completed');
+    expect(nextMeetStatus(undefined, 'ongoing')).toBe('ongoing');
+  });
+
   it('never puts the earliest local date after any zone', () => {
     expect(earliestLocalDate(Date.UTC(2026, 9, 13, 5))).toBe('2026-10-12');
     expect(earliestLocalDate(Date.UTC(2026, 9, 13, 13))).toBe('2026-10-13');
@@ -131,6 +139,21 @@ describe('meet identity helpers (#159)', () => {
     expect(warn).toHaveBeenCalledTimes(1);
     expect(await meetByName({ db } as never, 'Missing')).toBeNull();
     warn.mockRestore();
+  });
+});
+
+describe('one rule for a scheduled athlete (#219)', () => {
+  it('reads a session number without a platform, or a blank one, as unscheduled', () => {
+    const athlete = (name: string, session: Record<string, unknown>) => ({ _id: name, _creationTime: 1, memberId: '1', name, age: 30, club: 'C', gender: 'Women', weightClass: '64', entryTotal: 1, meet: 'M', adaptive: false, ...session });
+    const rows = joinRoster(
+      [athlete('A', { sessionNumber: 1, sessionPlatform: 'Red' }), athlete('B', { sessionNumber: 1 }), athlete('C', { sessionNumber: 1, sessionPlatform: ' ' })] as never,
+      [],
+    );
+    expect(rows.map((row) => [row.name, row.session?.session_platform ?? null])).toEqual([
+      ['A', 'Red'],
+      ['B', null],
+      ['C', null],
+    ]);
   });
 });
 

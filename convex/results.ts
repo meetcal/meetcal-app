@@ -1,7 +1,21 @@
 import { v } from 'convex/values';
-import { query, type QueryCtx } from './_generated/server';
+import { checkPass, premiumQuery, premiumRead } from './lib/access';
+import { action, internalQuery, query, type QueryCtx } from './_generated/server';
+import { internal } from './_generated/api';
 import { nameMatcher, queryBigrams, searchDirectory } from './lib/directory';
 import { readHistories, readSummaries, type Mark, type Summary } from './lib/history';
+import {
+  addBests,
+  type Candidate,
+  checkLeaderboardArgs,
+  type LeaderboardRow,
+  leaderboardRow,
+  monthSlices,
+  parseCompactRows,
+  pruneBests,
+  rankBests,
+  toCompactRow,
+} from './lib/leaderboard';
 import { computeMeetResults } from './lib/meetData';
 import { cleanNameList, distinctNameKeys, normalizeName, requestedNamesByKey } from './lib/names';
 import {
@@ -14,6 +28,7 @@ import {
   type YearBests,
 } from './lib/results';
 import { compareBytes } from './lib/sort';
+import { selectWrapped, type WrappedAnswer } from './lib/wrapped';
 import { RESULT_NAMES_VIEW, SEARCH_SHARD_SIZES_VIEW, searchShardKey } from './lib/viewKeys';
 import { readViewJsonAnyAge, readViewTextAnyAge } from './lib/views';
 import { apiError, requireIsoDate, requireNameList, requireNonEmpty, requirePresentIsoDate } from './lib/validation';
@@ -25,45 +40,109 @@ import { apiError, requireIsoDate, requireNameList, requireNonEmpty, requirePres
 
 export const MAX_LIMIT_PER_NAME = 200;
 
-/** Rows per `results:page` call, unless the caller asks for fewer. */
-export const RESULTS_PAGE_SIZE = 1000;
-/** The most rows one `results:page` call returns. */
-export const MAX_RESULTS_PAGE_SIZE = 2000;
+// ---------------------------------------------------------------------------
+// Leaderboard
+// ---------------------------------------------------------------------------
+
+/** Results one `leaderboardPage` read covers. */
+export const LEADERBOARD_PAGE_SIZE = 2000;
+/** Month slices of a leaderboard's range read side by side, each its own cursor chain. */
+export const LEADERBOARD_CONCURRENCY = 8;
+/** Most pages one month slice is read in before the leaderboard gives up (2,000 rows each). */
+export const LEADERBOARD_MAX_PAGES = 50;
+
+const metricArg = v.union(v.literal('total'), v.literal('snatch'), v.literal('cj'), v.literal('sinclair'), v.literal('qpoints'));
+const genderArg = v.union(v.literal('Men'), v.literal('Women'));
+
+/** One page of a leaderboard's read: its rows as JSON text of `CompactRow`s. */
+export type LeaderboardPage = { json: string; isDone: boolean; continueCursor: string };
 
 /**
- * Every result dated `startDate` to `endDate` (inclusive), oldest first, a page at a time: pass
- * back `continueCursor` until `isDone`. For clients that compute across all results (the CLI's
- * leaderboards and exports). Answers `{ json, isDone, continueCursor }`, the rows as JSON text.
+ * One page of the results dated `start` to `end`, by date, as compact rows
+ * (`lib/leaderboard.ts`). It takes nothing about the leaderboard asked for
+ * and reads no pass, so Convex caches each page once for every caller,
+ * metric and filter: a past month's pages are read from the database once
+ * until its results change.
  */
-export const page = query({
-  args: {
-    startDate: v.string(),
-    endDate: v.string(),
-    cursor: v.union(v.string(), v.null()),
-    numItems: v.optional(v.number()),
-  },
-  handler: async (ctx, args) => {
-    const start = requirePresentIsoDate('start_date', args.startDate);
-    const end = requirePresentIsoDate('end_date', args.endDate);
-    if (end < start) throw apiError(400, 'end_date must not be before start_date');
-    const numItems = args.numItems ?? RESULTS_PAGE_SIZE;
-    if (!Number.isInteger(numItems) || numItems < 1 || numItems > MAX_RESULTS_PAGE_SIZE) {
-      throw apiError(400, `numItems must be a whole number from 1 to ${MAX_RESULTS_PAGE_SIZE}`);
-    }
+export const leaderboardPage = internalQuery({
+  args: { start: v.string(), end: v.string(), cursor: v.union(v.string(), v.null()) },
+  handler: async (ctx, { start, end, cursor }): Promise<LeaderboardPage> => {
     const result = await ctx.db
       .query('lifting_results')
       .withIndex('by_date', (q) => q.gte('date', start).lte('date', end))
-      .paginate({ cursor: args.cursor, numItems });
+      .paginate({ cursor, numItems: LEADERBOARD_PAGE_SIZE });
     return {
-      json: JSON.stringify(result.page.map(toApiLiftingResult)),
+      json: JSON.stringify(result.page.map((row) => toCompactRow(toApiLiftingResult(row)))),
       isDone: result.isDone,
       continueCursor: result.continueCursor,
     };
   },
 });
 
+/** A leaderboard: `rows` best first, and the federations in the range (`federations`, sorted, non-blank). */
+export type LeaderboardAnswer = { rows: LeaderboardRow[]; federations: string[] };
+
+/**
+ * The leaderboard of every athlete in a date range (`lib/leaderboard.ts`):
+ * each athlete once, by their best `by` (`total`, `snatch`, `cj`, `sinclair`
+ * or `qpoints`), best first, at most `limit` (default 50, at most 500).
+ * Filters: `gender` (needed for `sinclair` and `qpoints`), `category`,
+ * `division` (text it contains), `federation` (BWL is left out unless
+ * asked for) and `adaptive` (left out unless true). The range spans less
+ * than five years. Premium: an action (it reads every result in the range,
+ * a page per internal query), so it takes the pass itself (`PREMIUM_ACTIONS`).
+ */
+export const leaderboard = action({
+  args: {
+    from: v.string(),
+    to: v.string(),
+    by: metricArg,
+    gender: v.optional(genderArg),
+    category: v.optional(v.string()),
+    division: v.optional(v.string()),
+    federation: v.optional(v.string()),
+    adaptive: v.optional(v.boolean()),
+    limit: v.optional(v.number()),
+    pass: v.optional(v.string()),
+  },
+  handler: async (ctx, { pass, ...args }): Promise<LeaderboardAnswer> => {
+    checkPass('results:leaderboard', pass, await ctx.runQuery(internal.accessPass.passes, {}));
+    const { from, to, by, limit, filters } = checkLeaderboardArgs(args);
+    const slices = monthSlices(from, to);
+    // Folded in as pages arrive and pruned to about `limit` athletes. Slices finish in any
+    // order, but that cannot change the answer: rows from different months differ in date,
+    // which ties are broken by, and a month's own pages are folded in date order, so a full
+    // tie keeps the row read first, as one pass over the rows would.
+    const best = new Map<string, Candidate>();
+    const federations = new Set<string>();
+    const readSlice = async (index: number) => {
+      const [start, end] = slices[index];
+      let cursor: string | null = null;
+      for (let pages = 0; pages < LEADERBOARD_MAX_PAGES; pages++) {
+        const page: LeaderboardPage = await ctx.runQuery(internal.results.leaderboardPage, { start, end, cursor });
+        const rows = parseCompactRows(page.json);
+        for (const row of rows) federations.add(row.federation);
+        addBests(best, rows, by, filters);
+        pruneBests(best, limit);
+        if (page.isDone) return;
+        cursor = page.continueCursor;
+      }
+      throw apiError(500, `results from ${start} to ${end} did not finish within ${LEADERBOARD_MAX_PAGES} pages`);
+    };
+    let next = 0;
+    const worker = async () => {
+      while (next < slices.length) await readSlice(next++);
+    };
+    await Promise.all(Array.from({ length: Math.min(LEADERBOARD_CONCURRENCY, slices.length) }, worker));
+    return {
+      rows: rankBests(best.values(), limit).map(leaderboardRow),
+      federations: [...federations].filter((federation) => federation.trim() !== '').sort(compareBytes),
+    };
+  },
+});
+
 /** `GET /lifting-results`: a meet's results, by name. Answers `{ json }`. */
-export const byMeet = query({
+export const byMeet = premiumQuery('results:byMeet', {
   args: { meet: v.string() },
   handler: async (ctx, { meet }) => {
     requireNonEmpty('meet', meet);
@@ -136,7 +215,7 @@ function checkLimit(limit: number | undefined): void {
  * `latestOnly` keeps each athlete's most recent meet date; `limitPerName`
  * caps each athlete's rows (newest first). Answers `{ json }`.
  */
-export const byNames = query({
+export const byNames = premiumQuery('results:byNames', {
   args: {
     names: v.array(v.string()),
     latestOnly: v.optional(v.boolean()),
@@ -153,7 +232,7 @@ export const byNames = query({
 });
 
 /** `POST /lifting-results/recent`: results since `cutoffDate`, newest first. Answers `{ json }`. */
-export const recent = query({
+export const recent = premiumQuery('results:recent', {
   args: { names: v.array(v.string()), cutoffDate: v.optional(v.string()) },
   handler: async (ctx, args) => {
     const names = cleanNameList(args.names);
@@ -164,7 +243,7 @@ export const recent = query({
 });
 
 /** `GET /lifting-results/year`: one athlete's bests since `cutoffDate`. */
-export const yearBests = query({
+export const yearBests = premiumQuery('results:yearBests', {
   args: { name: v.string(), cutoffDate: v.optional(v.string()) },
   handler: async (ctx, args): Promise<YearBests> => {
     requireNonEmpty('name', args.name);
@@ -179,7 +258,7 @@ export const yearBests = query({
  * spelling (unknown names get zeros), as a list in byte order of name; see
  * `NamedBests` for why not a name-keyed map.
  */
-export const bests = query({
+export const bests = premiumQuery('results:bests', {
   args: { names: v.array(v.string()), cutoffDate: v.optional(v.string()) },
   handler: async (ctx, args): Promise<NamedBests[]> => {
     const names = cleanNameList(args.names);
@@ -239,7 +318,7 @@ async function searchText(ctx: QueryCtx, query: string): Promise<string> {
   return await directory(ctx);
 }
 
-/** Rows dated `start` to `end`, both inclusive (as `results:page` reads them), oldest first. */
+/** Rows dated `start` to `end`, both inclusive, oldest first. */
 function inRange(history: readonly ApiLiftingResult[], start: string, end: string): ApiLiftingResult[] {
   return history.filter((row) => row.date >= start && row.date <= end).reverse();
 }
@@ -315,6 +394,8 @@ export const search = query({
     query: v.string(),
     startDate: v.optional(v.string()),
     endDate: v.optional(v.string()),
+    // The access pass (`lib/access.ts`), for results.
+    pass: v.optional(v.string()),
   },
   handler: async (ctx, args): Promise<SearchAnswer> => {
     requireNonEmpty('query', args.query);
@@ -325,15 +406,77 @@ export const search = query({
     if (args.startDate === undefined || args.endDate === undefined) {
       return { matched_name: null, suggestions: await matchingNames(MAX_SEARCH_SUGGESTIONS), results: [], truncated: false };
     }
-    const start = args.startDate;
-    const end = args.endDate;
-    if (end < start) throw apiError(400, 'end_date must not be before start_date');
+    // Results are premium; name suggestions alone are not.
+    await premiumRead(ctx, 'results:search', args.pass);
+    if (args.endDate < args.startDate) throw apiError(400, 'end_date must not be before start_date');
+    return await datedSearch(ctx, args.query, args.startDate, args.endDate);
+  },
+});
 
-    const exactKey = normalizeName(args.query);
-    const exact = exactSearchAnswer(args.query, (await readHistories(ctx, [exactKey])).get(exactKey) ?? [], start, end);
-    if (exact) return exact;
+/**
+ * The dated search behind `search` and `wrapped`: the exact (folded) name's
+ * results in the range, or, failing that, every matching name's results plus
+ * suggestions. With `exactOnly`, no fallback: just the suggestions.
+ */
+async function datedSearch(
+  ctx: QueryCtx,
+  query: string,
+  start: string,
+  end: string,
+  {
+    exactOnly = false,
+    fallbackNames = MAX_FALLBACK_NAMES,
+    fallbackForKnownName = true,
+  }: { exactOnly?: boolean; fallbackNames?: number; fallbackForKnownName?: boolean } = {},
+): Promise<SearchAnswer> {
+  const exactKey = normalizeName(query);
+  const history = (await readHistories(ctx, [exactKey])).get(exactKey) ?? [];
+  const exact = exactSearchAnswer(query, history, start, end);
+  if (exact) return exact;
+  // `exactOnly`, or (unless `fallbackForKnownName`) the exact name is an
+  // athlete with no results in the range: no fallback, which would show
+  // someone else.
+  if (exactOnly || (!fallbackForKnownName && history.length > 0)) {
+    const suggestions = searchDirectory(await searchText(ctx, query), query, MAX_SEARCH_SUGGESTIONS);
+    return { matched_name: null, suggestions, results: [], truncated: false };
+  }
+  const matched = searchDirectory(await searchText(ctx, query), query, fallbackNames);
+  // As many names as the cap: more may match. Ask for more of the name before reading their histories.
+  if (fallbackNames < MAX_FALLBACK_NAMES && matched.length >= fallbackNames) {
+    return { matched_name: null, suggestions: matched.slice(0, MAX_SEARCH_SUGGESTIONS), results: [], truncated: true };
+  }
+  return fallbackSearchAnswer(query, matched, await readHistories(ctx, distinctNameKeys(matched)), start, end);
+}
 
-    const matched = await matchingNames(MAX_FALLBACK_NAMES);
-    return fallbackSearchAnswer(args.query, matched, await readHistories(ctx, distinctNameKeys(matched)), start, end);
+/** The earliest and latest years `wrapped` answers for. */
+export const WRAPPED_YEARS = { first: 1900, last: 2100 } as const;
+/**
+ * The most names a Wrapped's name-contains fallback reads histories for. It
+ * offers at most `MAX_WRAPPED_NAME_CHOICES`; a query matching more names asks
+ * for more of the name before reading any history, which keeps this public
+ * query cheap.
+ */
+export const WRAPPED_FALLBACK_NAMES = 100;
+
+/**
+ * Weightlifting Wrapped for `query`'s calendar `year` (`lib/wrapped.ts`): the
+ * year's stats, never the results behind them, so it is free and public.
+ * Answers `{ kind }`: `athlete` with `name` and `stats`, `ambiguous` with the
+ * `names` to pick from (ask again with `picked`, which only takes the exact
+ * name), `narrow`, `tooManyResults`, or `none` with name `suggestions`.
+ */
+export const wrapped = query({
+  args: { query: v.string(), year: v.number(), picked: v.optional(v.boolean()) },
+  handler: async (ctx, args): Promise<WrappedAnswer> => {
+    requireNonEmpty('query', args.query);
+    if (!Number.isInteger(args.year) || args.year < WRAPPED_YEARS.first || args.year > WRAPPED_YEARS.last) {
+      throw apiError(400, 'year must be a four-digit year');
+    }
+    const answer = await datedSearch(ctx, args.query, `${args.year}-01-01`, `${args.year}-12-31`, {
+      exactOnly: args.picked === true,
+      fallbackNames: WRAPPED_FALLBACK_NAMES,
+      fallbackForKnownName: false,
+    });
+    return selectWrapped(answer);
   },
 });

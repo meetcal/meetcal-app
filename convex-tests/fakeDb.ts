@@ -175,7 +175,13 @@ export function fakeDb(seed: Record<string, Record<string, unknown>[]> = {}) {
   return { db, rows, docs, reads };
 }
 
-/** A mutation context over `fakeDb`, whose scheduler records each call by function name. */
+/** `ctx.auth` for a caller who sent no token. */
+export const ANONYMOUS_AUTH = { getUserIdentity: async () => null };
+
+/**
+ * A mutation context over `fakeDb`, whose scheduler records each call by
+ * function name. The caller is anonymous.
+ */
 export function fakeMutationCtx(seed: Record<string, Record<string, unknown>[]> = {}) {
   const store = fakeDb(seed);
   const scheduled: { name: string; delayMs: number; args: unknown }[] = [];
@@ -184,7 +190,7 @@ export function fakeMutationCtx(seed: Record<string, Record<string, unknown>[]> 
       scheduled.push({ name: getFunctionName(fn as never), delayMs, args });
     },
   };
-  return { ...store, ctx: { db: store.db, scheduler }, scheduled };
+  return { ...store, ctx: { db: store.db, scheduler, auth: ANONYMOUS_AUTH }, scheduled };
 }
 
 /** The handler Convex attaches to a registered function (left out of its public types). */

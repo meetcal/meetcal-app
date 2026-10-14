@@ -3,7 +3,7 @@ import { useMemo, useState } from "react";
 import { MeetName } from "@/data/types/meet";
 import { LiftResult } from "@/data/types/athletes";
 import { useMutableResource } from "@/hooks/useMutableResource";
-import { filterSessionAthletes } from "@/lib/athletes";
+import { filterSessionAthletes, freshRosterReplacesShown } from "@/lib/athletes";
 import { createMutableResource, defaultIsEqual } from "@/lib/data/mutable-resource";
 import {
   getSessionAthletesFromMeetCache,
@@ -11,7 +11,7 @@ import {
 } from "@/lib/database/offline-store";
 import { fetchAthletesWithSession } from "@/lib/database/queries";
 
-interface UseMeetAthletesReturn {
+export interface UseMeetAthletesReturn {
   athletes: LiftResult[];
   isLoading: boolean;
   isRefreshing: boolean;
@@ -22,7 +22,8 @@ interface UseMeetAthletesReturn {
   loadError: string | null;
   /** A revalidate that failed on top of cached athletes (still shown). */
   refreshError: string | null;
-  refreshAthletes: () => Promise<void>;
+  /** Never rejects; resolves false when the request failed. */
+  refreshAthletes: () => Promise<boolean>;
 }
 
 const sessionAthletesResource = createMutableResource<
@@ -50,9 +51,16 @@ const sessionAthletesResource = createMutableResource<
       platform,
     ),
   persistFresh: async (data, meet, sessionNumber, platform) => {
+    // An empty answer is not saved over a session key: offline, it would
+    // read back as "nobody in this session".
+    if (data.length === 0) return null;
     await saveSessionAthletes(meet, sessionNumber, platform, data);
     return { data, lastUpdatedAt: Date.now() };
   },
+  // The Start List rule: an empty answer (a re-import, a transient filter
+  // miss) does not replace the cached athletes on screen.
+  keepCached: (cached, fresh) =>
+    !freshRosterReplacesShown(fresh.length, cached.length),
   isEqual: defaultIsEqual,
 });
 
@@ -79,15 +87,19 @@ export function useSessionAthletes(
     initialData: emptyAthletes,
   });
 
-  return {
-    athletes,
-    isLoading: isInitialLoading,
-    isRefreshing,
-    // As in `useScheduleData`: after an empty answer, a failed refresh is
-    // filed under `refreshError`, and with no athletes shown it is the
-    // failure to show.
-    loadError: athletes.length === 0 ? (error ?? refreshError) : null,
-    refreshError,
-    refreshAthletes: refresh,
-  };
+  // Memoized: the session details screen hands this to its athletes card.
+  return useMemo(
+    () => ({
+      athletes,
+      isLoading: isInitialLoading,
+      isRefreshing,
+      // As in `useScheduleData`: after an empty answer, a failed refresh is
+      // filed under `refreshError`, and with no athletes shown it is the
+      // failure to show.
+      loadError: athletes.length === 0 ? (error ?? refreshError) : null,
+      refreshError,
+      refreshAthletes: refresh,
+    }),
+    [athletes, error, isInitialLoading, isRefreshing, refresh, refreshError],
+  );
 }

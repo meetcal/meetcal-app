@@ -1,18 +1,19 @@
 use super::{
-    filters::filter_options,
     format::yes_no,
-    loading::{load_error, select_response},
+    loading::{Load, LoadState, load_error, load_query, select_response},
+    models::{Meet, normalize},
     ui::{DataMetric, DataPage, DataStatus, DataTable, EmptyTableRow, FilterSelect, TableSkeleton},
 };
-use crate::utils::api::{queries, query, query_all_pages, query_with};
+use crate::utils::api::{queries, query_all_pages, query_with};
 use leptos::prelude::*;
 use serde::{Deserialize, Serialize};
+use std::collections::HashSet;
 
 #[derive(Clone, Serialize)]
 struct ClubQuery {
     club: String,
 }
-#[derive(Clone, Serialize)]
+#[derive(Clone, PartialEq, Serialize)]
 struct StatsQuery {
     club: String,
     meet: String,
@@ -54,68 +55,109 @@ struct AthleteResult {
 pub fn ClubDashboard() -> impl IntoView {
     let (club, set_club) = signal(String::new());
     let (meet, set_meet) = signal(String::new());
-    let clubs = LocalResource::new(|| async { query::<Vec<String>>(queries::CLUBS).await });
-    let athletes = LocalResource::new(move || {
-        let club = club.get();
-        async move {
+    let clubs = load_query::<Vec<String>>(queries::CLUBS);
+    let completed_meets = load_query::<Vec<Meet>>(queries::COMPLETED_MEETS);
+    let athletes = Load::new(
+        move || club.get(),
+        |club| async move {
             if club.is_empty() {
-                Ok(Vec::new())
-            } else {
-                query_all_pages::<ClubAthlete, _>(queries::CLUB_ATHLETES, &ClubQuery { club }).await
+                return Ok(Vec::new());
             }
-        }
-    });
-    let stats = LocalResource::new(move || {
-        let query = StatsQuery {
+            query_all_pages::<ClubAthlete, _>(queries::CLUB_ATHLETES, &ClubQuery { club })
+                .await
+                .map_err(|error| error.to_string())
+        },
+    );
+    let stats = Load::new(
+        move || StatsQuery {
             club: club.get(),
             meet: meet.get(),
-        };
-        async move {
+        },
+        |query| async move {
             if query.club.is_empty() || query.meet.is_empty() {
-                Ok(None)
-            } else {
-                query_with::<MeetStats, _>(queries::CLUB_MEET_STATS, &query)
-                    .await
-                    .map(Some)
+                return Ok(None);
             }
-        }
-    });
+            query_with::<MeetStats, _>(queries::CLUB_MEET_STATS, &query)
+                .await
+                .map(Some)
+                .map_err(|error| error.to_string())
+        },
+    );
     view! {
         <DataPage
             heading="Club Meet Dashboard"
             intro="Review a club’s athletes, medals, PRs, make rates, and meet totals."
         >
-            {move || clubs.with(|response| select_response(response, "Loading clubs…", "clubs", |clubs| view! {
+            {move || select_response(clubs, "Loading clubs…", "clubs", |clubs| view! {
                 <div class="data-filters">
                     <FilterSelect
                         label="Club"
                         placeholder="Choose a club"
                         values=clubs.to_vec()
-                        selected=club.get()
+                        selected=club
                         wide=true
                         on_select=move |value: String| {
                             set_club.set(value);
                             set_meet.set(String::new());
                         }
                     />
-                    {move || athletes.with(|response| match response {
-                        Some(Ok(rows)) if !club.get().is_empty() => {
-                            let meets = filter_options(rows.iter().map(|row| row.meet.as_str()));
-                            view! { <FilterSelect label="Meet" placeholder="Choose a completed meet" values=meets selected=meet.get() wide=true on_select=move |value| set_meet.set(value) /> }.into_any()
-                        }
-                        Some(Err(error)) => load_error("club meets", error),
-                        _ => ().into_any(),
-                    })}
+                    {move || if club.with(String::is_empty) { ().into_any() } else {
+                        athletes.with(|entries| completed_meets.with(|completed| match (entries, completed) {
+                            (LoadState::Ready(entries), LoadState::Ready(completed)) => {
+                                let meets = club_meet_choices(entries, completed);
+                                if meets.is_empty() {
+                                    view! { <p class="data-status">"This club has no completed meets yet."</p> }.into_any()
+                                } else {
+                                    view! { <FilterSelect label="Meet" placeholder="Choose a completed meet" values=meets selected=meet wide=true on_select=move |value| set_meet.set(value) /> }.into_any()
+                                }
+                            }
+                            (LoadState::Failed(error), _) | (_, LoadState::Failed(error)) => load_error("club meets", error, move || {
+                                athletes.retry_failed();
+                                completed_meets.retry_failed();
+                            }),
+                            _ => view! { <p class="data-status">"Loading the club’s meets…"</p> }.into_any(),
+                        }))
+                    }}
                 </div>
-            }.into_any()))}
-            {move || stats.with(|response| match response {
-                None if !meet.get().is_empty() => view! { <TableSkeleton columns=10 /> }.into_any(),
-                Some(Err(error)) => load_error("club dashboard", error),
-                Some(Ok(Some(stats))) => dashboard(stats),
-                _ => view! { <DataStatus message="Choose a club and completed meet to view its dashboard." /> }.into_any(),
-            })}
+            }.into_any())}
+            {move || if club.with(String::is_empty) || meet.with(String::is_empty) {
+                view! { <DataStatus message="Choose a club and completed meet to view its dashboard." /> }.into_any()
+            } else {
+                stats.with(|state| match state {
+                    LoadState::Loading => view! { <TableSkeleton columns=10 /> }.into_any(),
+                    LoadState::Failed(error) => load_error("club dashboard", error, move || stats.retry()),
+                    LoadState::Ready(Some(stats)) => dashboard(stats),
+                    LoadState::Ready(None) => view! { <DataStatus message="Choose a club and completed meet to view its dashboard." /> }.into_any(),
+                })
+            }}
         </DataPage>
     }
+}
+
+/// The completed meets a club entered, newest first: the Meet picker's
+/// choices. A meet the club has only registered for has no results yet, so
+/// it is left out, as the picker's "Choose a completed meet" says.
+fn club_meet_choices(entries: &[ClubAthlete], completed: &[Meet]) -> Vec<String> {
+    let entered = entries
+        .iter()
+        .map(|entry| normalize(&entry.meet))
+        .collect::<HashSet<_>>();
+    let mut seen = HashSet::new();
+    let mut meets = completed
+        .iter()
+        .filter(|meet| {
+            let key = normalize(&meet.name);
+            entered.contains(&key) && seen.insert(key)
+        })
+        .collect::<Vec<_>>();
+    // Newest first; a tie by name, so the order is stable.
+    meets.sort_by(|left, right| {
+        right
+            .start_date
+            .cmp(&left.start_date)
+            .then_with(|| left.name.cmp(&right.name))
+    });
+    meets.into_iter().map(|meet| meet.name.clone()).collect()
 }
 
 fn medal(value: &Option<String>) -> String {
@@ -180,5 +222,41 @@ mod tests {
         let metrics = dashboard_metrics(&stats);
         assert_eq!(metrics.first(), Some(&("Athletes", "1".to_owned())));
         assert!(metrics.contains(&("Weight lifted", "225kg".to_owned())));
+    }
+
+    fn meet(name: &str, start_date: &str) -> Meet {
+        serde_json::from_value(serde_json::json!({
+            "name": name, "start_date": start_date, "end_date": start_date, "time_zone": "America/New_York",
+            "venue_city": "", "venue_name": "", "venue_state": "", "venue_street": "", "venue_zip": "",
+            "status": "completed", "venue_map_pdf_url": null, "venue_map_apple_url": null
+        }))
+        .unwrap()
+    }
+
+    fn entry(meet: &str) -> ClubAthlete {
+        ClubAthlete {
+            meet: meet.to_owned(),
+        }
+    }
+
+    #[test]
+    fn the_meet_choices_are_the_clubs_completed_meets_newest_first() {
+        let entries = [
+            entry("Arnold Open"),
+            entry("Zephyr Classic"),
+            entry("Arnold Open"),
+            entry("Upcoming Nationals"),
+            entry("  arnold   OPEN "),
+        ];
+        let completed = [
+            meet("Arnold Open", "2026-03-01"),
+            meet("Zephyr Classic", "2026-08-10"),
+            meet("Other Club's Meet", "2026-09-01"),
+        ];
+        assert_eq!(
+            club_meet_choices(&entries, &completed),
+            ["Zephyr Classic", "Arnold Open"]
+        );
+        assert!(club_meet_choices(&[entry("Upcoming Nationals")], &completed).is_empty());
     }
 }

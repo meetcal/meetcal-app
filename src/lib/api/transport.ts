@@ -33,7 +33,7 @@ export type ApiCall = {
    * `clock` asks for the server's clock: the call is made as a query, and
    * resolves with the time the server answered it (`serverClockMs`), in ms.
    */
-  kind: 'query' | 'mutation' | 'clock';
+  kind: 'query' | 'mutation' | 'action' | 'clock';
   args: Record<string, unknown>;
   /**
    * The function answers `{ etag, body? }` and takes `ifNoneMatch`: the body
@@ -203,7 +203,8 @@ export const convexTransport: Transport = async (call) => {
       await client.query(ref, args);
       return serverClockMs(facts.date) ?? (await client.mutation(functionReference(SERVER_TIME_MUTATION), {}));
     }
-    return call.kind === 'query' ? await client.query(ref, args) : await client.mutation(ref, args);
+    if (call.kind === 'query') return await client.query(ref, args);
+    return call.kind === 'action' ? await client.action(ref, args) : await client.mutation(ref, args);
   } catch (error) {
     throw toTransportError(call, error, facts.status);
   }

@@ -2,11 +2,10 @@ import { DataTable, dataTableStyles } from "@/components/ui/DataTable";
 import { SubscriptionGate } from "@/components/ui/SubscriptionGate";
 import { ThemedText } from "@/components/ui/ThemedText";
 import { ThemedView } from "@/components/ui/ThemedView";
-import { AGE_GROUP_KEY, EMPTY_RECORDS_DATA, MENS_WEIGHT_CLASSES, WOMENS_WEIGHT_CLASSES } from "@/constants/adapative";
-import { useTheme } from "@/contexts/ThemeContext";
+import { EMPTY_RECORDS_DATA } from "@/constants/adapative";
 import { useAppColors } from "@/hooks/useAppColors";
 import { useMutableResource } from "@/hooks/useMutableResource";
-import { adaptiveRecordsResource } from "@/lib/database/fetch-adaptive-records";
+import { adaptiveRecordsFor, adaptiveRecordsResource } from "@/lib/database/fetch-adaptive-records";
 import { RecordsData } from "@/types/records";
 import { Stack } from "expo-router";
 import React, { useMemo, useState } from "react";
@@ -17,6 +16,7 @@ import {
   View,
 } from "react-native";
 import { useScreenHorizontalInsets } from "@/hooks/useScreenInsets";
+import { formatReferenceKg } from "@/lib/reference-values";
 import { Palette } from "@/constants/Palette";
 
 type Gender = "Men" | "Women";
@@ -32,7 +32,6 @@ export default function AdaptiveRecordsScreen() {
 function AdaptiveRecordsScreenContent() {
   const screenInsets = useScreenHorizontalInsets();
   const colors = useAppColors();
-  const { currentTheme } = useTheme();
   const [appliedGender, setAppliedGender] = useState<Gender>("Men");
 
   const {
@@ -45,14 +44,10 @@ function AdaptiveRecordsScreenContent() {
     initialData: EMPTY_RECORDS_DATA as RecordsData,
   });
 
-  const weightClasses =
-    appliedGender === "Men" ? MENS_WEIGHT_CLASSES : WOMENS_WEIGHT_CLASSES;
-
-  const filteredRecords = useMemo(() => {
-    const list = recordsData[AGE_GROUP_KEY]?.[appliedGender] || [];
-    const allowed = new Set(weightClasses);
-    return list.filter((record) => allowed.has(record.weightClass));
-  }, [recordsData, appliedGender, weightClasses]);
+  const filteredRecords = useMemo(
+    () => adaptiveRecordsFor(recordsData, appliedGender),
+    [recordsData, appliedGender],
+  );
 
   return (
     <ThemedView
@@ -67,10 +62,10 @@ function AdaptiveRecordsScreenContent() {
           gestureDirection: "horizontal",
           animation: "slide_from_right",
           headerTitleStyle: {
-            color: currentTheme === "dark" ? "#fff" : "#000",
+            color: colors.headerTitle,
           },
           headerStyle: {
-            backgroundColor: currentTheme === "dark" ? "#000000" : "#F5F5F5",
+            backgroundColor: colors.headerBackground,
           },
           headerShadowVisible: false,
           headerBackButtonDisplayMode: "minimal",
@@ -89,6 +84,7 @@ function AdaptiveRecordsScreenContent() {
             styles.segmentedControl,
             { backgroundColor: colors.card, borderColor: colors.border },
           ]}
+          accessibilityRole="tablist"
         >
           {(["Men", "Women"] as Gender[]).map((gender) => (
             <Pressable
@@ -99,6 +95,8 @@ function AdaptiveRecordsScreenContent() {
                 pressed && { opacity: 0.85 },
               ]}
               onPress={() => setAppliedGender(gender)}
+              accessibilityRole="tab"
+              accessibilityState={{ selected: appliedGender === gender }}
             >
               <ThemedText
                 style={[
@@ -154,16 +152,13 @@ function AdaptiveRecordsScreenContent() {
               {record.weightClass}
             </ThemedText>
             <ThemedText style={dataTableStyles.cell}>
-              {record.snatchRecord}
-              kg
+              {formatReferenceKg(record.snatchRecord)}
             </ThemedText>
             <ThemedText style={dataTableStyles.cell}>
-              {record.cjRecord}
-              kg
+              {formatReferenceKg(record.cjRecord)}
             </ThemedText>
             <ThemedText style={dataTableStyles.cell}>
-              {record.totalRecord}
-              kg
+              {formatReferenceKg(record.totalRecord)}
             </ThemedText>
           </View>
         )}

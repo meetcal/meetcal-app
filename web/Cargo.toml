@@ -5,6 +5,9 @@ edition = "2024"
 
 [dependencies]
 anyhow = "1.0.103"
+futures = "0.3.32"
+# Already built for `url`'s IDNA; composes names to NFC as the server does.
+icu_normalizer = { version = "2.2", default-features = false, features = ["compiled_data"] }
 js-sys = "0.3.103"
 leptos = { version = "0.8.20", features = ["csr"] }
 leptos_router = "0.8.14"
@@ -13,4 +16,13 @@ serde = { version = "1.0.228", features = ["derive"] }
 serde_json = "1.0.149"
 wasm-bindgen = "0.2.103"
 wasm-bindgen-futures = "0.4.53"
-web-sys = { version = "0.3.103", features = ["Clipboard", "Document", "Element", "HtmlElement", "Navigator", "Window"] }
+web-sys = { version = "0.3.103", features = ["Clipboard", "Document", "Element", "HtmlElement", "HtmlInputElement", "Navigator", "Window"] }
+
+# The site ships as one Wasm binary; size is what a visitor waits for (#203).
+# Trunk also runs wasm-opt -Oz on it (`data-wasm-opt` in index.html).
+[profile.release]
+opt-level = "z"
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true

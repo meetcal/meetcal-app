@@ -1,23 +1,26 @@
 use std::collections::HashMap;
-use std::io::Write;
 
 use anyhow::{Result, bail};
-use chrono::{Datelike, Utc};
 use clap::{Parser, ValueEnum};
 use comfy_table::Table;
+use serde::Deserialize;
+use serde_json::{Map, Value};
 
 use crate::commands::group_wrapped::{
-    ClubMembership, filter_membership_results, get_club_memberships, get_recent_results,
-    get_wso_memberships,
+    ClubMembership, distinct_names, filter_membership_results, get_club_memberships,
+    get_recent_results, get_wso_memberships,
 };
+use crate::commands::wrapped::current_year;
 use crate::types::lifting_results::LiftingResults;
-use crate::utils::athletes::results_between;
+use crate::utils::backend::{functions, premium_action};
+use crate::utils::filters::{category, parse_date, unknown_federation};
 use crate::utils::format::us_date;
 use crate::utils::names::{NameKind, not_found};
 use crate::utils::output::{self, Report};
+use crate::utils::progress::Progress;
 use crate::utils::stats::{
-    Division, Gender, QPOINTS_LABEL, SINCLAIR_LABEL, consistent_total, fold, number, points,
-    row_qpoints, row_sinclair,
+    Division, Gender, QPOINTS_LABEL, SINCLAIR_LABEL, fold, number, plausible, points, row_qpoints,
+    row_sinclair,
 };
 
 /// What a leaderboard ranks by.
@@ -34,7 +37,7 @@ pub enum Metric {
 
 impl Metric {
     fn value(self, row: &LiftingResults) -> Option<f64> {
-        if !consistent_total(row) {
+        if !plausible(row) {
             return None;
         }
         let value = match self {
@@ -46,15 +49,63 @@ impl Metric {
         };
         (value > 0.0).then_some(value)
     }
+
+    /// The name `results:leaderboard` takes it by (its `by` argument).
+    pub fn server_name(self) -> &'static str {
+        match self {
+            Metric::Total => "total",
+            Metric::Snatch => "snatch",
+            Metric::Cj => "cj",
+            Metric::Sinclair => "sinclair",
+            Metric::Qpoints => "qpoints",
+        }
+    }
+}
+
+/// The most rows a leaderboard of every athlete shows (`results:leaderboard`'s limit,
+/// `MAX_LEADERBOARD_LIMIT` in `convex/lib/leaderboard.ts`). `--club` and `--wso` have none.
+pub const MAX_LIMIT: u32 = 500;
+
+/// A leaderboard of every athlete covers less than this many years (`MAX_LEADERBOARD_YEARS` in
+/// `convex/lib/leaderboard.ts`): `--to` before `--from` plus this many years.
+pub const MAX_YEARS: i32 = 5;
+
+/// `date` (`YYYY-MM-DD`) plus `years`, as text to compare dates with, as the server's `plusYears`
+/// does (Feb 29 stays Feb 29, so it compares after Feb 28 and before Mar 1).
+fn plus_years(date: &str, years: i32) -> String {
+    let year: i32 = date.get(..4).and_then(|y| y.parse().ok()).unwrap_or(0);
+    format!("{:04}{}", year + years, date.get(4..).unwrap_or(""))
+}
+
+/// Why `results:leaderboard` would refuse a leaderboard of every athlete from `from` to `to` with
+/// `limit` rows, checked before any request; `None` when it would not.
+pub fn server_scope_problem(from: &str, to: &str, limit: u32) -> Option<String> {
+    if to >= plus_years(from, MAX_YEARS).as_str() {
+        return Some(format!(
+            "A leaderboard of every athlete covers less than {MAX_YEARS} years: narrow --from and \
+             --to (--club and --wso leaderboards have no such limit)"
+        ));
+    }
+    (limit > MAX_LIMIT).then(|| {
+        format!(
+            "A leaderboard of every athlete shows at most {MAX_LIMIT} rows (--club and --wso \
+             leaderboards have no such limit)"
+        )
+    })
 }
 
 /// Rank athletes by their best total, snatch, clean & jerk, Sinclair or Q-points over a year or
 /// date range,
 /// across every class, filtered by gender, age category, division, federation, WSO or club.
 ///
-/// Without --club or --wso it reads every result in the range (a year is about 28,000). Results
-/// whose total is not their snatch plus clean & jerk (a source error) are left out, and Sinclair
-/// is not computed for impossible bodyweights.
+/// Without --club or --wso, MeetCal ranks every athlete on its servers (a range of under five
+/// years) and answers the top rows. Source errors are left out: totals that are not the snatch
+/// plus clean & jerk, typo'd attempts (633 for 63) and lifts over the world records. Sinclair is
+/// not computed for impossible bodyweights.
+///
+/// Sinclair and Q-points score men and women on separate scales, so --by sinclair and --by
+/// qpoints need --gender. British Weightlifting (BWL) results are left out unless --federation
+/// BWL asks for them.
 #[derive(Parser)]
 #[command(
     name = "leaderboard",
@@ -73,11 +124,12 @@ pub struct LeaderboardArgs {
     pub year: Option<i32>,
 
     /// Start of the range, YYYY-MM-DD (with --to)
-    #[arg(long, requires = "to")]
+    #[arg(long, requires = "to", value_parser = parse_date)]
     pub from: Option<String>,
 
-    /// End of the range, YYYY-MM-DD (with --from)
-    #[arg(long, requires = "from")]
+    /// End of the range, YYYY-MM-DD (with --from); less than five years after --from without
+    /// --club or --wso
+    #[arg(long, requires = "from", value_parser = parse_date)]
     pub to: Option<String>,
 
     /// Men or Women
@@ -92,7 +144,7 @@ pub struct LeaderboardArgs {
     #[arg(long, short = 'd')]
     pub division: Option<String>,
 
-    /// Only this federation, e.g. USAW or USAMW
+    /// Only this federation, e.g. USAW, USAMW or BWL (default: every federation but BWL)
     #[arg(long, short = 'f')]
     pub federation: Option<String>,
 
@@ -108,9 +160,9 @@ pub struct LeaderboardArgs {
     #[arg(long)]
     pub adaptive: bool,
 
-    /// Rows to show
-    #[arg(long, short = 'n', default_value_t = 25)]
-    pub limit: usize,
+    /// Rows to show (at most 500 without --club or --wso)
+    #[arg(long, short = 'n', default_value_t = 25, value_parser = clap::value_parser!(u32).range(1..))]
+    pub limit: u32,
 }
 
 /// The range a year or --from/--to covers.
@@ -118,13 +170,14 @@ pub fn range(year: Option<i32>, from: Option<&str>, to: Option<&str>) -> (String
     match (from, to) {
         (Some(from), Some(to)) => (from.trim().to_string(), to.trim().to_string()),
         _ => {
-            let year = year.unwrap_or_else(|| Utc::now().year());
+            let year = year.unwrap_or_else(current_year);
             (format!("{year:04}-01-01"), format!("{year:04}-12-31"))
         }
     }
 }
 
-/// The filters rows must pass.
+/// The filters rows must pass. `results:leaderboard` applies the same ones on the server
+/// (`convex/lib/leaderboard.ts`); these rank a club's or WSO's rows.
 #[derive(Debug, Default)]
 pub struct Filters {
     pub gender: Option<Gender>,
@@ -138,7 +191,9 @@ impl Filters {
     pub fn keeps(&self, row: &LiftingResults) -> bool {
         let division = Division::parse(&row.age);
         (self.adaptive || !row.adaptive)
-            && self.gender.is_none_or(|gender| division.gender == gender)
+            && self
+                .gender
+                .is_none_or(|gender| division.gender == Some(gender))
             && self.category.as_deref().is_none_or(|wanted| {
                 division
                     .category
@@ -149,12 +204,35 @@ impl Filters {
                 .division
                 .as_deref()
                 .is_none_or(|text| row.age.to_lowercase().contains(&text.trim().to_lowercase()))
-            && self
-                .federation
-                .as_deref()
-                .is_none_or(|federation| row.federation.eq_ignore_ascii_case(federation.trim()))
+            && match self.federation.as_deref() {
+                Some(federation) => row.federation.eq_ignore_ascii_case(federation.trim()),
+                None => !row.federation.eq_ignore_ascii_case(EXCLUDED_FEDERATION),
+            }
+    }
+
+    /// The filters as `results:leaderboard`'s arguments (absent ones left out).
+    fn arguments(&self, fields: &mut Map<String, Value>) {
+        if let Some(gender) = self.gender {
+            fields.insert("gender".into(), gender.label().into());
+        }
+        for (name, value) in [
+            ("category", &self.category),
+            ("division", &self.division),
+            ("federation", &self.federation),
+        ] {
+            if let Some(value) = value {
+                fields.insert(name.into(), value.trim().into());
+            }
+        }
+        if self.adaptive {
+            fields.insert("adaptive".into(), true.into());
+        }
     }
 }
+
+/// The federation left out unless asked for: British Weightlifting, outside USA comparisons (the
+/// adaptive records and the server's club stats leave it out too).
+pub const EXCLUDED_FEDERATION: &str = "BWL";
 
 /// Each athlete's best row by `metric` among `rows` that pass `filters`, best first (ties: the
 /// earlier result), at most `limit`.
@@ -187,6 +265,69 @@ pub fn rank<'a>(
     ranked
 }
 
+/// A ranked row as the table prints it: one of `results:leaderboard`'s rows, or a club's or WSO's
+/// row ranked here.
+#[derive(Clone, Debug, Deserialize, PartialEq)]
+pub struct LeaderboardRow {
+    pub name: String,
+    pub date: String,
+    pub meet: String,
+    /// The division.
+    pub age: String,
+    pub federation: String,
+    pub body_weight: f64,
+    pub snatch_best: f64,
+    pub cj_best: f64,
+    pub total: f64,
+    pub sinclair: Option<f64>,
+    pub qpoints: Option<f64>,
+    /// What the row was ranked by.
+    pub value: f64,
+}
+
+impl LeaderboardRow {
+    fn ranked(row: &LiftingResults, value: f64) -> Self {
+        Self {
+            name: row.name.clone(),
+            date: row.date.clone(),
+            meet: row.meet.clone(),
+            age: row.age.clone(),
+            federation: row.federation.clone(),
+            body_weight: row.body_weight,
+            snatch_best: row.snatch_best,
+            cj_best: row.cj_best,
+            total: row.total,
+            sinclair: row_sinclair(row),
+            qpoints: row_qpoints(row),
+            value,
+        }
+    }
+}
+
+/// `results:leaderboard`'s answer: the ranked rows, and every federation in the range.
+#[derive(Debug, Deserialize)]
+pub struct LeaderboardAnswer {
+    pub rows: Vec<LeaderboardRow>,
+    pub federations: Vec<String>,
+}
+
+/// `results:leaderboard`'s arguments.
+pub fn leaderboard_arguments(
+    from: &str,
+    to: &str,
+    metric: Metric,
+    filters: &Filters,
+    limit: u32,
+) -> Value {
+    let mut fields = Map::new();
+    fields.insert("from".into(), from.into());
+    fields.insert("to".into(), to.into());
+    fields.insert("by".into(), metric.server_name().into());
+    filters.arguments(&mut fields);
+    fields.insert("limit".into(), limit.into());
+    Value::Object(fields)
+}
+
 pub async fn run(args: LeaderboardArgs) -> Result<()> {
     let (from, to) = range(args.year, args.from.as_deref(), args.to.as_deref());
     if to < from {
@@ -199,50 +340,76 @@ pub async fn run(args: LeaderboardArgs) -> Result<()> {
         },
         None => None,
     };
+    if gender.is_none() && matches!(args.by, Metric::Sinclair | Metric::Qpoints) {
+        bail!(
+            "Sinclair and Q-points score men and women on separate scales: add --gender men or --gender women"
+        );
+    }
     let filters = Filters {
         gender,
-        category: args.category.clone(),
+        category: args.category.as_deref().map(category).transpose()?,
         division: args.division.clone(),
         federation: args.federation.clone(),
         adaptive: args.adaptive,
     };
 
-    let (scope, rows) = if let Some(club) = &args.club {
+    if args.club.is_none()
+        && args.wso.is_none()
+        && let Some(problem) = server_scope_problem(&from, &to, args.limit)
+    {
+        bail!(problem);
+    }
+
+    let group = if let Some(club) = &args.club {
         let memberships = get_club_memberships(club).await?;
         if memberships.is_empty() {
             let message = format!("No meet registrations found for club \"{club}\"");
             return Err(not_found(NameKind::Club, club, message).await);
         }
-        (
-            format!("club {club}"),
-            group_rows(&memberships, &from, &to).await?,
-        )
+        Some((format!("club {club}"), memberships))
     } else if let Some(wso) = &args.wso {
         let memberships = get_wso_memberships(wso).await?;
         if memberships.is_empty() {
             let message = format!("No meet registrations found for WSO \"{wso}\"");
             return Err(not_found(NameKind::Wso, wso, message).await);
         }
-        (
-            format!("WSO {wso}"),
-            group_rows(&memberships, &from, &to).await?,
-        )
+        Some((format!("WSO {wso}"), memberships))
     } else {
-        let show_progress = std::io::IsTerminal::is_terminal(&std::io::stderr());
-        let rows = results_between(&from, &to, |count| {
-            if show_progress {
-                eprint!("\rReading results… {count}");
-                let _ = std::io::stderr().flush();
-            }
-        })
-        .await?;
-        if show_progress {
-            eprint!("\r\x1b[2K");
+        None
+    };
+    let (scope, ranked, federations) = match group {
+        Some((scope, memberships)) => {
+            let rows = group_rows(&memberships, &from, &to).await?;
+            let ranked: Vec<LeaderboardRow> = rank(&rows, args.by, &filters, args.limit as usize)
+                .into_iter()
+                .map(|(row, value)| LeaderboardRow::ranked(row, value))
+                .collect();
+            let federations = rows.into_iter().map(|row| row.federation).collect();
+            (scope, ranked, federations)
         }
-        ("all athletes".to_string(), rows)
+        None => {
+            let mut progress = Progress::new("Ranking results on MeetCal");
+            progress.update("");
+            let answer: LeaderboardAnswer = premium_action(
+                functions::LEADERBOARD,
+                &leaderboard_arguments(&from, &to, args.by, &filters, args.limit),
+            )
+            .await?;
+            drop(progress);
+            ("all athletes".to_string(), answer.rows, answer.federations)
+        }
+    };
+    let scope = match &args.federation {
+        Some(federation) => format!("{scope}, federation {}", federation.trim()),
+        None => format!("{scope}, {EXCLUDED_FEDERATION} results left out"),
     };
 
-    let ranked = rank(&rows, args.by, &filters, args.limit);
+    if let Some(error) = unknown_federation(
+        args.federation.as_deref(),
+        federations.iter().map(String::as_str),
+    ) {
+        return Err(error);
+    }
     let metric = match args.by {
         Metric::Total => "total",
         Metric::Snatch => "snatch",
@@ -256,7 +423,12 @@ pub async fn run(args: LeaderboardArgs) -> Result<()> {
         us_date(&to)
     );
     output::emit(
-        Report::single("leaderboard", table(&ranked))
+        Report::new()
+            .table_with_data(
+                "leaderboard",
+                table(&ranked, us_date),
+                table(&ranked, str::to_string),
+            )
             .titled(title)
             .when_empty("No results match those filters."),
     );
@@ -269,15 +441,7 @@ async fn group_rows(
     from: &str,
     to: &str,
 ) -> Result<Vec<LiftingResults>> {
-    let mut names: Vec<String> = Vec::new();
-    for membership in memberships {
-        if !names
-            .iter()
-            .any(|name| fold(name) == fold(&membership.name))
-        {
-            names.push(membership.name.clone());
-        }
-    }
+    let names = distinct_names(memberships);
     let results = get_recent_results(&names, from).await?;
     Ok(filter_membership_results(memberships, results)
         .into_iter()
@@ -285,7 +449,8 @@ async fn group_rows(
         .collect())
 }
 
-pub fn table(ranked: &[(&LiftingResults, f64)]) -> Table {
+/// The ranked rows, with dates written by `date` (US dates to show, ISO ones to export).
+pub fn table(ranked: &[LeaderboardRow], date: fn(&str) -> String) -> Table {
     let mut table = Table::new();
     table.set_header(vec![
         "Rank",
@@ -300,7 +465,7 @@ pub fn table(ranked: &[(&LiftingResults, f64)]) -> Table {
         "Date",
         "Meet",
     ]);
-    for (rank, (row, _)) in (1..).zip(ranked) {
+    for (rank, row) in (1..).zip(ranked) {
         table.add_row(vec![
             rank.to_string(),
             row.name.clone(),
@@ -309,9 +474,9 @@ pub fn table(ranked: &[(&LiftingResults, f64)]) -> Table {
             number(row.snatch_best),
             number(row.cj_best),
             number(row.total),
-            points(row_sinclair(row)),
-            points(row_qpoints(row)),
-            us_date(&row.date),
+            points(row.sinclair),
+            points(row.qpoints),
+            date(&row.date),
             row.meet.clone(),
         ]);
     }
@@ -420,6 +585,34 @@ mod tests {
     }
 
     #[test]
+    fn british_results_are_ranked_only_when_asked_for() {
+        let mut rows = rows();
+        let mut british = row(
+            "Ramiro",
+            "2025-06-01",
+            "British Senior Championships 2025",
+            "Men's Senior 110Kg",
+            109.0,
+            [170.0, 0.0, 0.0],
+            [202.0, 0.0, 0.0],
+        );
+        british.federation = "BWL".into();
+        rows.push(british);
+        let names = |filters: &Filters| -> Vec<String> {
+            rank(&rows, Metric::Total, filters, 10)
+                .iter()
+                .map(|(row, _)| row.name.clone())
+                .collect()
+        };
+        assert!(!names(&Filters::default()).contains(&"Ramiro".to_string()));
+        let bwl = Filters {
+            federation: Some("bwl".into()),
+            ..Filters::default()
+        };
+        assert_eq!(names(&bwl), ["Ramiro"]);
+    }
+
+    #[test]
     fn range_defaults_to_a_year() {
         assert_eq!(
             range(Some(2025), None, None),
@@ -429,5 +622,83 @@ mod tests {
             range(Some(2025), Some("2024-06-01"), Some("2024-06-30")),
             ("2024-06-01".into(), "2024-06-30".into())
         );
+    }
+
+    #[test]
+    fn the_servers_range_and_limit_are_checked_before_asking() {
+        assert_eq!(server_scope_problem("2021-01-01", "2025-12-31", 500), None);
+        assert_eq!(server_scope_problem("2020-02-29", "2025-02-28", 25), None);
+        let long = server_scope_problem("2021-01-01", "2026-01-01", 25).unwrap();
+        assert!(
+            long.contains("less than 5 years") && long.contains("--club"),
+            "{long}"
+        );
+        let many = server_scope_problem("2025-01-01", "2025-12-31", 501).unwrap();
+        assert!(
+            many.contains("at most 500") && many.contains("--wso"),
+            "{many}"
+        );
+        assert_eq!(plus_years("2020-02-29", 5), "2025-02-29");
+    }
+
+    #[test]
+    fn the_server_gets_the_filters_given_and_no_others() {
+        let filters = Filters {
+            gender: Some(Gender::Women),
+            category: Some("Masters 45".into()),
+            federation: Some(" bwl ".into()),
+            ..Filters::default()
+        };
+        assert_eq!(
+            leaderboard_arguments("2025-01-01", "2025-12-31", Metric::Sinclair, &filters, 25),
+            serde_json::json!({
+                "from": "2025-01-01",
+                "to": "2025-12-31",
+                "by": "sinclair",
+                "gender": "Women",
+                "category": "Masters 45",
+                "federation": "bwl",
+                "limit": 25,
+            })
+        );
+        let adaptive = Filters {
+            adaptive: true,
+            division: Some("89kg".into()),
+            ..Filters::default()
+        };
+        assert_eq!(
+            leaderboard_arguments("2025-01-01", "2025-12-31", Metric::Cj, &adaptive, 500),
+            serde_json::json!({
+                "from": "2025-01-01",
+                "to": "2025-12-31",
+                "by": "cj",
+                "division": "89kg",
+                "adaptive": true,
+                "limit": 500,
+            })
+        );
+    }
+
+    #[test]
+    fn reads_the_servers_rows_and_ranks_a_groups_rows_into_the_same_shape() {
+        // Convex writes numbers as floats; a youth row has no Q-points.
+        let answer: LeaderboardAnswer = serde_json::from_value(serde_json::json!({
+            "rows": [{
+                "name": "Bo", "date": "2026-02-01", "meet": "M1", "age": "Open Men's 89kg",
+                "federation": "USAW", "body_weight": 88.0, "snatch_best": 140.0, "cj_best": 175.0,
+                "total": 315.0, "sinclair": 382.5, "qpoints": null, "value": 315.0
+            }],
+            "federations": ["USAW", "USAMW"]
+        }))
+        .unwrap();
+        assert_eq!(answer.rows[0].qpoints, None);
+        assert_eq!(answer.federations, ["USAW", "USAMW"]);
+        let rows = rows();
+        let (row, value) = rank(&rows, Metric::Total, &Filters::default(), 1)[0];
+        let ranked = LeaderboardRow::ranked(row, value);
+        assert_eq!(ranked.name, "Bo");
+        assert_eq!(ranked.value, 315.0);
+        assert_eq!(ranked.sinclair, row_sinclair(row));
+        assert_eq!(ranked.qpoints, row_qpoints(row));
     }
 }

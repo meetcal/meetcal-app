@@ -15,12 +15,39 @@ fi
 javascript_file="$(basename "${javascript_candidates[0]}")"
 wasm_file="$(basename "${wasm_candidates[0]}")"
 
-printf '%s\n' \
-  "import init, * as bindings from '/${javascript_file}';" \
-  "const wasm = await init({ module_or_path: '/${wasm_file}' });" \
-  "window.wasmBindings = bindings;" \
-  'dispatchEvent(new CustomEvent("TrunkApplicationStarted", { detail: { wasm } }));' \
-  > "${dist_dir}/app-bootstrap.js"
+# The bootstrap loads the app and then removes index.html's loading shell
+# (#app-loading). If the JavaScript loader or the Wasm binary can't load, it
+# turns the shell into an error with a retry instead of leaving a blank page.
+cat > "${dist_dir}/app-bootstrap.js" <<EOF
+const shell = document.getElementById("app-loading");
+
+function showLoadError() {
+  if (!shell) return;
+  shell.setAttribute("role", "alert");
+  const message = shell.querySelector("[data-app-loading-message]");
+  if (message) {
+    message.className = "app-loading-error";
+    message.textContent = "MeetCal couldn\u2019t load. Check your connection and try again.";
+  }
+  const retry = document.createElement("button");
+  retry.type = "button";
+  retry.className = "app-loading-retry";
+  retry.textContent = "Try again";
+  retry.addEventListener("click", () => location.reload());
+  shell.appendChild(retry);
+}
+
+try {
+  const bindings = await import("/${javascript_file}");
+  const wasm = await bindings.default({ module_or_path: "/${wasm_file}" });
+  window.wasmBindings = bindings;
+  shell?.remove();
+  dispatchEvent(new CustomEvent("TrunkApplicationStarted", { detail: { wasm } }));
+} catch (error) {
+  console.error("MeetCal failed to load", error);
+  showLoadError();
+}
+EOF
 
 seo_dir="${dist_dir}/seo"
 mkdir -p "${seo_dir}"
@@ -31,7 +58,7 @@ render_page() {
   local title="$3"
   local description="$4"
   local robots="$5"
-  local canonical="https://meetcal.app${path}"
+  local canonical="https://www.meetcal.app${path}"
 
   PAGE_TITLE="${title}" \
   PAGE_DESCRIPTION="${description}" \
@@ -67,9 +94,18 @@ render_page "terms" "/terms" \
   "Terms of Use — MeetCal" \
   "Read the terms that apply when using the MeetCal apps, website, competition data, and related services." \
   "index, follow"
+# Athlete Wrapped is the one free data page: open to everyone, and indexed.
+render_page "wrapped" "/wrapped" \
+  "Weightlifting Athlete Wrapped" \
+  "Free Weightlifting Wrapped: an athlete's competition year in numbers, with meets, best lifts, make rate, and progress." \
+  "index, follow"
 render_page "subscription" "/subscription" \
   "Manage Your MeetCal Subscription in the App" \
   "Open MeetCal on iOS or Android to start, change, restore, or cancel your subscription." \
+  "noindex, nofollow"
+render_page "link" "/link" \
+  "Approve a MeetCal CLI Sign-In" \
+  "Sign in to approve or deny a MeetCal CLI sign-in request from meetcal login." \
   "noindex, nofollow"
 
 while IFS='|' read -r output_name path title; do
@@ -89,5 +125,15 @@ adaptive-records|/adaptive-records|Adaptive Weightlifting Records
 meet-center|/meet-center|Weightlifting Meets, Schedules &amp; Results
 club-dashboard|/club-dashboard|Weightlifting Club Meet Dashboard
 wso-dashboard|/wso-dashboard|USAW WSO Meet Dashboard
-wrapped|/wrapped|Weightlifting Athlete Wrapped
 EOF
+
+# Vercel serves dist/404.html, with status 404, for any path that has no file
+# or rewrite. It boots the app, whose router shows the Not Found page with
+# links back into the site (#207). A missing page has no canonical URL.
+render_page "404" "/" \
+  "Page Not Found — MeetCal" \
+  "The requested MeetCal page could not be found." \
+  "noindex, nofollow"
+perl -0pe 's{\n[ \t]*<link(?=[^>]*\bid="canonical-url")[^>]*>}{}s' \
+  "${seo_dir}/404.html" > "${dist_dir}/404.html"
+rm "${seo_dir}/404.html"

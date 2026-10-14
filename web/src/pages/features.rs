@@ -1,11 +1,9 @@
-use crate::components::{footer::Footer, header::Header};
 use leptos::prelude::*;
 
 #[component]
 pub fn FeaturesPage() -> impl IntoView {
     view! {
-        <Header />
-        <main class="features-page">
+        <div class="features-page">
             <section class="features-hero">
                 <p class="features-eyebrow">"Meet day, without the PDF hunt"</p>
                 <h1>"Everything you need before the bar is loaded"</h1>
@@ -25,9 +23,9 @@ pub fn FeaturesPage() -> impl IntoView {
 
                 <article class="feature-card">
                     <span class="feature-number">"02"</span>
-                    <h2>"Save Sessions & Warmups"</h2>
+                    <h2>"Save Sessions & Get Reminders"</h2>
                     <p>
-                        "Build a personal meet-day schedule, save warmups, and sync important sessions directly to your device calendar."
+                        "Build a personal meet-day schedule, get notified before your saved sessions, and sync important sessions directly to your device calendar."
                     </p>
                 </article>
 
@@ -68,11 +66,10 @@ pub fn FeaturesPage() -> impl IntoView {
                 <div>
                     <h2>"Built for real meet days"</h2>
                     <p>
-                        "Build a clear plan for every athlete—from weigh-in and warmups to platform and session time—then keep the whole team’s schedule in one place."
+                        "Build a clear plan for every athlete—from weigh-in to platform and session time—then keep the whole team’s schedule in one place."
                     </p>
                 </div>
             </section>
-        </main>
-        <Footer />
+        </div>
     }
 }

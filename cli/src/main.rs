@@ -2,13 +2,27 @@ use anyhow::Result;
 use clap::Parser;
 use meetcal::commands;
 use meetcal::parser::{Cli, Commands};
+use meetcal::utils::update_notice;
 
 #[tokio::main]
 async fn main() -> Result<()> {
     let cli = Cli::parse();
     meetcal::utils::output::set_format(cli.format);
 
-    match cli.command {
+    // `upgrade` checks for itself, and would otherwise announce the release it just installed.
+    let notice = match cli.command {
+        Commands::Upgrade(_) => None,
+        _ => update_notice::start(),
+    };
+    let result = run(cli.command).await;
+    if let Some(notice) = notice {
+        notice.finish().await;
+    }
+    result
+}
+
+async fn run(command: Commands) -> Result<()> {
+    match command {
         Commands::AdaptiveRecords(args) => commands::adaptive_records::run(args).await?,
         Commands::Attendance(args) => commands::attendance::run(args).await?,
         Commands::ClubCompare(args) => commands::club_compare::run(args).await?,
@@ -20,6 +34,8 @@ async fn main() -> Result<()> {
         Commands::H2h(args) => commands::h2h::run(args).await?,
         Commands::IntlRankings(args) => commands::intl_rankings::run(args).await?,
         Commands::Leaderboard(args) => commands::leaderboard::run(args).await?,
+        Commands::Login(args) => commands::login::run_login(args).await?,
+        Commands::Logout(args) => commands::login::run_logout(args).await?,
         Commands::Meet(args) => commands::meet::run(args).await?,
         Commands::MeetInfo(args) => commands::meet_info::run(args).await?,
         Commands::MeetResults(args) => commands::meet_results::run(args).await?,
@@ -30,10 +46,10 @@ async fn main() -> Result<()> {
         Commands::QualifyingTotals(args) => commands::qual_totals::run(args).await?,
         Commands::Qualify(args) => commands::qualify::run(args).await?,
         Commands::Records(args) => commands::records::run(args).await?,
-        Commands::Results(args) => commands::results::run(args).await?,
         Commands::Schedule(args) => commands::schedule::run(args).await?,
         Commands::Search(args) => commands::search::run(args).await?,
         Commands::Standards(args) => commands::standards::run(args).await?,
+        Commands::Upgrade(args) => commands::upgrade::run(args).await?,
         Commands::Wrapped(args) => commands::wrapped::run(args).await?,
         Commands::Wso(args) => commands::wso_results::run(args).await?,
         Commands::WsoCompare(args) => commands::wso_compare::run(args).await?,

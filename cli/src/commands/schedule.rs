@@ -7,7 +7,8 @@ use serde_json::json;
 
 use crate::types::meets::ScheduleRow;
 use crate::utils::backend::{queries, query};
-use crate::utils::format::{us_date, us_time};
+use crate::utils::filters::{Filter, no_match, parse_date};
+use crate::utils::format::{time_24h, us_date, us_time};
 use crate::utils::names::{NameKind, not_found};
 use crate::utils::output::{self, Report};
 
@@ -25,7 +26,7 @@ pub struct ScheduleArgs {
     pub name: String,
 
     /// Only this day's sessions (YYYY-MM-DD)
-    #[arg(long, short = 'd')]
+    #[arg(long, short = 'd', value_parser = parse_date)]
     pub date: Option<String>,
 
     /// Only this platform's sessions (case-insensitive)
@@ -34,7 +35,7 @@ pub struct ScheduleArgs {
 }
 
 /// One session on one platform, with its weight classes.
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Session {
     pub date: String,
     pub session: u32,
@@ -52,20 +53,65 @@ pub async fn run(args: ScheduleArgs) -> Result<()> {
         return Err(not_found(NameKind::Meet, &args.name, message).await);
     }
 
-    let sessions: Vec<Session> = sessions(rows)
-        .into_iter()
+    let all = sessions(rows);
+    let filters = [
+        Filter {
+            option: "--date",
+            value: args.date.as_deref().unwrap_or_default(),
+        },
+        Filter {
+            option: "--platform",
+            value: args.platform.as_deref().unwrap_or_default(),
+        },
+    ];
+    let wanted = |index: usize| (!filters[index].value.is_empty()).then_some(index);
+    let sessions: Vec<Session> = all
+        .iter()
+        .filter(|session| wanted(0).is_none_or(|_| session.date == filters[0].value))
         .filter(|session| {
-            args.date
-                .as_deref()
-                .is_none_or(|date| session.date == date.trim())
+            wanted(1).is_none_or(|_| {
+                session
+                    .platform
+                    .eq_ignore_ascii_case(filters[1].value.trim())
+            })
         })
-        .filter(|session| {
-            args.platform
-                .as_deref()
-                .is_none_or(|platform| session.platform.eq_ignore_ascii_case(platform.trim()))
-        })
+        .cloned()
         .collect();
+    if sessions.is_empty() {
+        // Name the filter that matched nothing, with the days or platforms the meet has.
+        let given: Vec<usize> = (0..filters.len()).filter_map(wanted).collect();
+        let rows: Vec<Vec<&str>> = all
+            .iter()
+            .map(|session| {
+                let values = [session.date.as_str(), session.platform.as_str()];
+                given.iter().map(|&index| values[index]).collect()
+            })
+            .collect();
+        let given_filters: Vec<Filter> = given
+            .iter()
+            .map(|&index| Filter {
+                option: filters[index].option,
+                value: filters[index].value,
+            })
+            .collect();
+        return Err(no_match("sessions", &given_filters, &rows));
+    }
 
+    output::emit(
+        Report::new()
+            .table_with_data(
+                "sessions",
+                table(&sessions, us_date, us_time),
+                table(&sessions, str::to_string, time_24h),
+            )
+            .when_empty("No sessions match those filters."),
+    );
+    Ok(())
+}
+
+/// The sessions, with dates and times written by `date` and `time`: US dates and 12-hour times
+/// to show, `YYYY-MM-DD` and 24-hour `HH:MM` to export.
+pub fn table(sessions: &[Session], date: fn(&str) -> String, time: fn(&str) -> String) -> Table {
     let mut table = Table::new();
     table.set_header(vec![
         "Date",
@@ -77,16 +123,15 @@ pub async fn run(args: ScheduleArgs) -> Result<()> {
     ]);
     for session in sessions {
         table.add_row(vec![
-            us_date(&session.date),
+            date(&session.date),
             session.session.to_string(),
-            session.platform,
-            us_time(&session.weigh_in_time),
-            us_time(&session.start_time),
+            session.platform.clone(),
+            time(&session.weigh_in_time),
+            time(&session.start_time),
             session.weight_classes.join(", "),
         ]);
     }
-    output::emit(Report::single("sessions", table).when_empty("No sessions match those filters."));
-    Ok(())
+    table
 }
 
 /// Schedule rows (one per session, platform and weight class) grouped into sessions, in the

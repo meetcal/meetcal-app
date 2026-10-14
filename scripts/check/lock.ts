@@ -9,6 +9,10 @@
  * is created by renaming a fully written temporary directory into place, so a
  * lock that exists always names its owner. A lock whose owner process has
  * exited is stale and the next waiter reclaims it.
+ *
+ * The simulator lock (`scripts/metro-lock.ts`) uses the same mechanics at a
+ * machine-wide path that the Atlas repository shares, so keep the owner file's
+ * format in step with Atlas's `scripts/check-lock.ts`.
  */
 import { spawnSync } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
@@ -35,6 +39,8 @@ export type LockOwner = {
   /** The gate's own process, so killing only the wrapper does not free the lock early. */
   childPid?: number;
   childStartedAt?: string;
+  /** When the holder will stop its command and free the lock (the simulator lock's lease). */
+  leaseEndsAtMs?: number;
 };
 
 type AcquireAttempt = { acquired: true } | { acquired: false; owner: LockOwner | undefined };
@@ -67,7 +73,8 @@ const isLockOwner = (value: unknown): value is LockOwner => {
     owner.token.length > 0 &&
     (owner.childPid === undefined || (Number.isSafeInteger(owner.childPid) && (owner.childPid as number) > 0)) &&
     (owner.pidStartedAt === undefined || typeof owner.pidStartedAt === 'string') &&
-    (owner.childStartedAt === undefined || typeof owner.childStartedAt === 'string')
+    (owner.childStartedAt === undefined || typeof owner.childStartedAt === 'string') &&
+    (owner.leaseEndsAtMs === undefined || Number.isFinite(owner.leaseEndsAtMs))
   );
 };
 
@@ -210,13 +217,29 @@ export const sweepLeftovers = (lockPath: string, nowMs = Date.now()): void => {
   }
 };
 
-const describeOwner = (owner: LockOwner | undefined, nowMs: number) => {
+export const describeOwner = (owner: LockOwner | undefined, nowMs: number) => {
   if (!owner) return 'another checkout';
   const minutes = Math.floor((nowMs - owner.startedAtMs) / 60_000);
-  return `${owner.worktree} (pid ${owner.pid}, running ${minutes}m)`;
+  const lease =
+    owner.leaseEndsAtMs === undefined
+      ? ''
+      : `, lease ends in ${Math.max(0, Math.ceil((owner.leaseEndsAtMs - nowMs) / 60_000))}m`;
+  return `${owner.worktree} (pid ${owner.pid}, running ${minutes}m${lease})`;
 };
 
+/** A live holder runs in the caller's own worktree, which would otherwise wait on itself. */
+export class LockHeldByWorktreeError extends Error {
+  constructor(readonly owner: LockOwner) {
+    super(`already held by this worktree (pid ${owner.pid})`);
+    this.name = 'LockHeldByWorktreeError';
+  }
+}
+
 type WaitOptions = {
+  /** What the holder is running, for the waiting message. */
+  label?: string;
+  /** Throw `LockHeldByWorktreeError` instead of waiting when a live holder runs in this worktree. */
+  refuseWorktree?: string;
   pollIntervalMs?: number;
   reportIntervalMs?: number;
   report?: (message: string) => void;
@@ -231,6 +254,8 @@ export const acquireLock = async (
   lockPath: string,
   owner: LockOwner,
   {
+    label = 'mise run check',
+    refuseWorktree,
     pollIntervalMs = POLL_INTERVAL_MS,
     reportIntervalMs = REPORT_INTERVAL_MS,
     report = (message) => console.error(message),
@@ -252,9 +277,12 @@ export const acquireLock = async (
       unreadablePolls = 0;
       continue;
     }
+    if (refuseWorktree !== undefined && attempt.owner?.worktree === refuseWorktree) {
+      throw new LockHeldByWorktreeError(attempt.owner);
+    }
     const nowMs = Date.now();
     if (nowMs - lastReportMs >= reportIntervalMs) {
-      report(`Waiting for mise run check in ${describeOwner(attempt.owner, nowMs)}`);
+      report(`Waiting for ${label} in ${describeOwner(attempt.owner, nowMs)}`);
       lastReportMs = nowMs;
     }
     await sleep(pollIntervalMs);

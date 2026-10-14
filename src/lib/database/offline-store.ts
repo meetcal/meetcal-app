@@ -6,6 +6,13 @@ import { meetCalendarDateAnchor } from '@/utils/dateTime';
 import { getTrustedNow } from '@/lib/api/meetcal-api';
 import { devLog } from '@/lib/logger';
 import { createKeyedWriteChain, createWriteChain } from '@/lib/data/write-chain';
+import { getCachedMeets } from './meets-list-cache';
+import {
+  clearAllPackageEtags,
+  clearPackageEtag,
+  PACKAGE_ETAG_STORAGE_KEY,
+} from './package-etags';
+import { runHistoryClear, runMeetClear } from './offline-clears';
 import { Buffer } from 'buffer';
 import { deflate, inflate } from 'pako';
 import {
@@ -24,12 +31,9 @@ const LIFTING_RESULTS_KEY_PREFIX = 'meetcal_lifting_results_';
 const ATHLETE_HISTORY_KEY_PREFIX = 'meetcal_athlete_history_';
 const ATHLETE_BESTS_KEY_PREFIX = 'meetcal_athlete_bests_';
 const EXPLICIT_MEET_DOWNLOADS_KEY = 'meetcal_explicit_meet_downloads';
-/**
- * `/meets/package` ETag per meet, owned by `meet-manager`. Declared here
- * because a `304` against it is only trustworthy while the athlete history it
- * vouches for is still on disk, and this module is what deletes that history.
- */
-export const PACKAGE_ETAG_STORAGE_KEY = '@meet_package_etag_v1';
+// The package ETag is cleared with the data it vouches for (`clearMeetData`,
+// `clearAllAthleteHistory`); re-exported for callers that read its key.
+export { PACKAGE_ETAG_STORAGE_KEY };
 const LIFTING_RESULTS_CHUNK_SIZE = 180_000;
 
 /**
@@ -155,6 +159,29 @@ export async function markMeetExplicitlyDownloaded(
   await write;
 }
 
+/**
+ * Writes each downloaded meet's current end date over the one stored when it
+ * was downloaded, for meets in `endDates` that are still marked downloaded.
+ * No write when nothing changed.
+ */
+async function updateDownloadEndDates(endDates: ReadonlyMap<string, string>): Promise<void> {
+  const write = explicitDownloadsWriteChain
+    .catch(() => undefined)
+    .then(async () => {
+      const downloads = await getExplicitMeetDownloads();
+      let changed = false;
+      for (const [meetId, endDate] of endDates) {
+        const entry = downloads[meetId];
+        if (!entry || entry.endDate === endDate) continue;
+        downloads[meetId] = { ...entry, endDate };
+        changed = true;
+      }
+      if (changed) await saveExplicitMeetDownloads(downloads);
+    });
+  explicitDownloadsWriteChain = write;
+  await write;
+}
+
 export async function isMeetExplicitlyDownloaded(meetId: MeetName): Promise<boolean> {
   const downloads = await getExplicitMeetDownloads();
   return Boolean(downloads[meetId]);
@@ -171,6 +198,17 @@ export async function isMeetExplicitlyDownloaded(meetId: MeetName): Promise<bool
  */
 export async function getExplicitlyDownloadedMeetIds(): Promise<Set<string>> {
   return new Set(Object.keys(await getExplicitMeetDownloads()));
+}
+
+/** Every downloaded meet with the end date its expiry uses, in one read. */
+export async function getExplicitMeetDownloadEntries(): Promise<
+  { meet: MeetName; endDate?: string }[]
+> {
+  const downloads = await getExplicitMeetDownloads();
+  return Object.entries(downloads).map(([meet, entry]) => ({
+    meet: meet as MeetName,
+    ...(entry.endDate ? { endDate: entry.endDate } : {}),
+  }));
 }
 
 // UTC-12 ("Anywhere on Earth") is the last zone a day ends in, and the
@@ -196,7 +234,14 @@ export function hasMeetEnded(endDate: string, now: number): boolean {
 
 /**
  * Clears every downloaded meet whose end date has passed — on the server's
- * clock. This runs from every meets refresh, offline included, so a device
+ * clock.
+ *
+ * The end date is the meets list's (the cached `/meets` answer, refreshed
+ * every few minutes) whenever the meet is on it, and is saved over the one
+ * captured at download time; the stored date only applies to a meet no
+ * longer listed. Only the date from the download used to count, so a meet
+ * postponed by a week lost its offline data the day after its old end date.
+ * This runs from every meets refresh, offline included, so a device
  * clock a day ahead used to wipe the meet the user was standing at. With no
  * server sample yet (a cold start offline) nothing is cleared: expiring a
  * meet late is harmless, expiring it early is data loss. One meet failing
@@ -211,8 +256,22 @@ export async function clearExpiredDownloadedMeets(): Promise<void> {
     }
     const now = trustedNow.getTime();
     const downloads = await getExplicitMeetDownloads();
-    const expiredMeetIds = Object.keys(downloads).filter((meetId) => {
-      const endDate = downloads[meetId]?.endDate;
+    const downloadedIds = Object.keys(downloads);
+    // Nothing downloaded is the common case: no meets list read at all.
+    if (downloadedIds.length === 0) return;
+    const listedEndDates = new Map<string, string>();
+    for (const meet of await getCachedMeets()) {
+      if (downloads[meet.name] && meet.dates.end) listedEndDates.set(meet.name, meet.dates.end);
+    }
+    // Expiry does not depend on saving the dates: with storage full, the
+    // sweep is what frees space.
+    try {
+      await updateDownloadEndDates(listedEndDates);
+    } catch (error) {
+      console.warn('Could not save downloaded meets\' current end dates:', error);
+    }
+    const expiredMeetIds = downloadedIds.filter((meetId) => {
+      const endDate = listedEndDates.get(meetId) ?? downloads[meetId]?.endDate;
       return endDate ? hasMeetEnded(endDate, now) : false;
     });
     // This runs on every meets refresh — app start, every five minutes, and
@@ -771,7 +830,26 @@ const storeWrites = createWriteChain();
  * of the clear, leaving the meet on screen with nothing stored. Now the save
  * runs after the clear, and a clear after an in-flight save.
  */
-const meetDataWrites = createKeyedWriteChain();
+const meetDataWriteChain = createKeyedWriteChain();
+
+/**
+ * Counts writes to each meet's keys, bumped when a write is queued and again
+ * when it settles, so a read that overlapped a write in any way can tell
+ * (`getMeetWriteGeneration`).
+ */
+const meetWriteGenerations = new Map<string, number>();
+
+function bumpMeetWriteGeneration(meetId: string): void {
+  meetWriteGenerations.set(meetId, (meetWriteGenerations.get(meetId) ?? 0) + 1);
+}
+
+function meetDataWrites<T>(meetId: string, task: () => Promise<T>): Promise<T> {
+  bumpMeetWriteGeneration(meetId);
+  const run = meetDataWriteChain(meetId, task);
+  const settle = () => bumpMeetWriteGeneration(meetId);
+  run.then(settle, settle);
+  return run;
+}
 
 function emptyMeetEntry(meetId: string): MeetData {
   return {
@@ -815,59 +893,52 @@ export async function initStore(): Promise<void> {
   }
 }
 
+/**
+ * The schedule stored under `scheduleKey`, or null. A truncated or legacy
+ * payload degrades to "no cached schedule", not an error that takes the
+ * whole meet down.
+ */
+async function readCachedSchedule(scheduleKey: string): Promise<Schedule | null> {
+  const scheduleString = await AsyncStorage.getItem(scheduleKey);
+  if (!scheduleString) return null;
+  try {
+    const parsed: unknown = JSON.parse(scheduleString);
+    return Array.isArray(parsed) ? (parsed as Schedule) : null;
+  } catch (parseError) {
+    console.warn('Ignoring invalid cached schedule payload:', parseError);
+    return null;
+  }
+}
+
 // Get meet data from store
 export async function getMeetData(meetId: MeetName): Promise<MeetData> {
   try {
     const store = await getStore();
+    // A meet with no entry reads as empty, under its fixed key names. Nothing
+    // is written on a read: the index used to gain an entry for every meet
+    // ever asked about (each saved meet's schedule lookup, each meet opened),
+    // and every walk of it (Delete All, the history prune, the offline
+    // results scan) paid for all of them. The saves add the entry.
+    const entry = store.meets[meetId] ?? emptyMeetEntry(meetId);
 
-    if (!store.meets[meetId]) {
-      store.meets[meetId] = emptyMeetEntry(meetId);
-      try {
-        // Re-checked on the chain: another writer may have added the entry
-        // since the read above, and its version wins.
-        await updateStore((current) => {
-          if (!current.meets[meetId]) current.meets[meetId] = emptyMeetEntry(meetId);
-        });
-      } catch (metadataError) {
-        console.warn('Initialized meet metadata in memory but failed to persist store:', metadataError);
-      }
-    }
-    
     // Get the schedule if it exists
-    const scheduleKey = store.meets[meetId].scheduleKey;
-    let schedule: Schedule | null = null;
+    const scheduleKey = entry.scheduleKey;
+    const schedule = scheduleKey ? await readCachedSchedule(scheduleKey) : null;
     
-    if (scheduleKey) {
-      const scheduleString = await AsyncStorage.getItem(scheduleKey);
-      if (scheduleString) {
-        // A truncated or legacy payload must degrade to "no cached schedule",
-        // not take the whole meet down: `MeetData.schedule` is typed
-        // `Schedule | null`, and the sibling reader `getMeetSchedule` already
-        // guards exactly this way.
-        try {
-          const parsed: unknown = JSON.parse(scheduleString);
-          schedule = Array.isArray(parsed) ? (parsed as Schedule) : null;
-        } catch (parseError) {
-          console.warn('Ignoring invalid cached schedule payload:', parseError);
-          schedule = null;
-        }
-      }
-    }
-    
-    const athletesKey = store.meets[meetId].athletesKey || `${ATHLETES_KEY_PREFIX}${meetId}`;
+    const athletesKey = entry.athletesKey || `${ATHLETES_KEY_PREFIX}${meetId}`;
     const athletes = await readStoredAthletes(
       athletesKey,
-      Array.isArray(store.meets[meetId].athletes) ? normalizeLiftResults(store.meets[meetId].athletes) : [],
+      Array.isArray(entry.athletes) ? normalizeLiftResults(entry.athletes) : [],
     );
 
     return {
       schedule,
-      scheduleKey: store.meets[meetId].scheduleKey,
+      scheduleKey: entry.scheduleKey,
       athletesKey,
       athletes,
-      liftingResultsKey: store.meets[meetId].liftingResultsKey,
-      lastSyncTime: store.meets[meetId].lastSyncTime,
-      athletesSyncedAt: store.meets[meetId].athletesSyncedAt ?? 0,
+      liftingResultsKey: entry.liftingResultsKey,
+      lastSyncTime: entry.lastSyncTime,
+      athletesSyncedAt: entry.athletesSyncedAt ?? 0,
     };
   } catch (error) {
     console.error('Error getting meet data:', error);
@@ -883,11 +954,17 @@ function getAthleteBestsKey(normalizedName: string): string {
   return `${ATHLETE_BESTS_KEY_PREFIX}${normalizedName}`;
 }
 
-export async function saveAthleteHistory(
-  athleteName: string,
-  results: SupabaseLiftResult[],
-): Promise<void> {
-  await saveAthleteHistoryBatch([{ name: athleteName, results }]);
+/**
+ * The key name an athlete's history and bests were stored under before the
+ * name key applied Unicode NFC (#268), or null when it is today's. A roster
+ * name with a combining accent was keyed without composing it, and a device
+ * that updates while offline cannot download those blobs again, so readers
+ * fall back to this key when today's is empty. Keep this derivation exactly
+ * as `normalizeAthleteName` was before #268.
+ */
+function legacyAthleteKeyName(name: string): string | null {
+  const legacy = name.trim().toLowerCase().replace(/\s+/g, ' ');
+  return legacy.length > 0 && legacy !== normalizeAthleteName(name) ? legacy : null;
 }
 
 export type AthleteHistoryEntry = {
@@ -942,10 +1019,20 @@ export async function findAthleteNamesWithoutHistory(
     const entries = await AsyncStorage.multiGet(
       batch.map((name) => getAthleteHistoryKey(normalizeAthleteName(name))),
     );
-    batch.forEach((name, index) => {
-      const payload = entries[index]?.[1];
-      if (!payload) missing.push(name);
+    const stillMissing = batch.filter((_name, index) => !entries[index]?.[1]);
+    // Only names with a pre-NFC key (#268) cost a second read.
+    const legacy = stillMissing.flatMap((name) => {
+      const legacyName = legacyAthleteKeyName(name);
+      return legacyName ? [{ name, key: getAthleteHistoryKey(legacyName) }] : [];
     });
+    const legacyEntries =
+      legacy.length > 0 ? await AsyncStorage.multiGet(legacy.map(({ key }) => key)) : [];
+    const foundLegacy = new Set(
+      legacy.filter((_entry, index) => legacyEntries[index]?.[1]).map(({ name }) => name),
+    );
+    for (const name of stillMissing) {
+      if (!foundLegacy.has(name)) missing.push(name);
+    }
   }
   return missing;
 }
@@ -1079,9 +1166,21 @@ export async function getStoredAthleteBestsForNames(
 
   try {
     const payloads = await multiGetBatched(keysByName.map(({ key }) => key));
+    // Names stored only under their pre-NFC key (#268), in one more batched read.
+    const legacyKeys = new Map<string, string>();
+    for (const { name, key } of keysByName) {
+      if (payloads.get(key)) continue;
+      const legacyName = legacyAthleteKeyName(name);
+      if (legacyName) legacyKeys.set(name, getAthleteBestsKey(legacyName));
+    }
+    const legacyPayloads =
+      legacyKeys.size > 0
+        ? await multiGetBatched(Array.from(legacyKeys.values()))
+        : new Map<string, string | null>();
     const byName: Record<string, StoredAthleteBests> = {};
     for (const { name, key } of keysByName) {
-      const payload = payloads.get(key);
+      const legacyKey = legacyKeys.get(name);
+      const payload = payloads.get(key) ?? (legacyKey ? legacyPayloads.get(legacyKey) : undefined);
       if (!payload) continue;
       const stored = parseStoredAthleteBests(payload);
       if (!stored) continue;
@@ -1128,9 +1227,13 @@ export async function getAllCachedLiftingResultsForAthletes(
   for (const athleteName of uniqueNames) {
     byName[athleteName] = [];
     try {
-      const fromHistory = await readStoredLiftingResults(
+      let fromHistory = await readStoredLiftingResults(
         getAthleteHistoryKey(normalizeAthleteName(athleteName)),
       );
+      const legacyName = legacyAthleteKeyName(athleteName);
+      if (fromHistory.length === 0 && legacyName) {
+        fromHistory = await readStoredLiftingResults(getAthleteHistoryKey(legacyName));
+      }
       if (fromHistory.length > 0) {
         byName[athleteName] = fromHistory;
         continue;
@@ -1209,28 +1312,6 @@ export async function getAllCachedLiftingResultsForAthlete(
   return byName[athleteName] ?? [];
 }
 
-export async function getAthleteLiftingResults(meetId: MeetName, athleteName: string): Promise<SupabaseLiftResult[]> {
-  try {
-    const meetData = await getMeetData(meetId);
-    const liftingResultsKey = meetData.liftingResultsKey;
-    
-    if (!liftingResultsKey) {
-      return [];
-    }
-    
-    const allResults = await readStoredLiftingResults(liftingResultsKey);
-    const normalizedTargetName = normalizeAthleteName(athleteName);
-    const filteredResults = allResults.filter(
-      result => normalizeAthleteName(result.name) === normalizedTargetName
-    );
-
-    return filteredResults;
-  } catch (error) {
-    console.error('Error getting athlete lifting results:', error);
-    return [];
-  }
-}
-
 // Get all cached lifting results for a meet
 export async function getMeetLiftingResults(meetId: MeetName): Promise<SupabaseLiftResult[]> {
   try {
@@ -1278,6 +1359,10 @@ export async function saveSessionAthletes(
   platform: string,
   athletes: LiftResult[],
 ): Promise<void> {
+  // An empty answer (a re-import, a transient filter miss) is not stored
+  // over a session's athletes: offline it would read back as "nobody in this
+  // session". `saveMeetAthletes` refuses an empty roster the same way.
+  if (athletes.length === 0) return;
   return meetDataWrites(String(meetId), async () => {
     try {
       const key = getSessionAthletesKey(meetId, sessionNumber, platform);
@@ -1289,12 +1374,19 @@ export async function saveSessionAthletes(
   });
 }
 
+/**
+ * Rewrites a meet's per-session caches from its new roster, and removes the
+ * caches of sessions the roster no longer has. They used to stay: a session
+ * merged into another (12 Blue into 12 Red) or renumbered kept its old
+ * athletes under its key, and `getSessionAthletesFromMeetCache` prefers that
+ * key over the roster, so offline the saved 12 Blue still listed lifters now
+ * on Red. Runs only when the roster changed (the key listing is not free).
+ */
 async function saveSessionAthleteCaches(
   meetId: MeetName | string,
   athletes: LiftResult[],
 ): Promise<void> {
   const grouped = groupAthletesBySession(athletes);
-  if (grouped.size === 0) return;
 
   const entries = Array.from(grouped.entries()).map(([groupKey, group]) => {
     const [sessionNumber, platform] = groupKey.split(':');
@@ -1304,7 +1396,14 @@ async function saveSessionAthleteCaches(
     ] as [string, string];
   });
 
-  await AsyncStorage.multiSet(entries);
+  if (entries.length > 0) await AsyncStorage.multiSet(entries);
+
+  const current = new Set(entries.map(([key]) => key));
+  const prefix = `${SESSION_ATHLETES_KEY_PREFIX}${encodeURIComponent(meetId)}:`;
+  const stale = (await AsyncStorage.getAllKeys()).filter(
+    (key) => key.startsWith(prefix) && !current.has(key),
+  );
+  await multiRemoveBatched(stale);
 }
 
 // Get athletes for a specific session/platform from cached meet data
@@ -1446,19 +1545,89 @@ export async function clearMeetSchedule(meetId: string): Promise<void> {
   });
 }
 
+/**
+ * A meet's stored schedule, `[]` when there is none (or it does not parse).
+ *
+ * Reads the schedule key only. It used to go through `getMeetData`, which
+ * also read, parsed and normalized the meet's whole roster (~0.5 MB for a
+ * national meet) and threw it away. Every schedule reader paid that on the
+ * JS thread: the schedule resource on each screen mount and background
+ * schedule sync, every reconnect, the reminder sync and the auto-unsave
+ * prune, once per saved meet.
+ */
 export async function getMeetSchedule(meetId: string): Promise<Schedule> {
   try {
-    // `getMeetData` has already read `scheduleKey` and parsed it into
-    // `MeetData.schedule`, applying the same "not an array / bad JSON means no
-    // cached schedule" rule this function used to apply itself. Re-reading the
-    // key here was a second AsyncStorage read and a second `JSON.parse` of the
-    // exact same payload.
-    const meetData = await getMeetData(meetId as MeetName);
-    return meetData.schedule ?? [];
+    // `saveMeetSchedule` always writes the fixed key (a meet with no index
+    // entry reads it too, as `getMeetData` does); the index is read only when
+    // that key is empty, for an entry naming another one.
+    const fixedKey = `${SCHEDULE_KEY_PREFIX}${meetId}`;
+    const fromFixedKey = await readCachedSchedule(fixedKey);
+    if (fromFixedKey) return fromFixedKey;
+    const indexed = (await getStore()).meets[meetId]?.scheduleKey;
+    if (!indexed || indexed === fixedKey) return [];
+    // A truncated or legacy payload degrades to "no cached schedule".
+    return (await readCachedSchedule(indexed)) ?? [];
   } catch (error) {
     console.error('Error getting meet schedule:', error);
     return [];
   }
+}
+
+/**
+ * A counter that changes whenever a write to the meet's keys (schedule,
+ * roster, results, a clear) is queued or settles. A read that started and
+ * ended under the same value overlapped no write.
+ */
+export function getMeetWriteGeneration(meetId: string): number {
+  return meetWriteGenerations.get(meetId) ?? 0;
+}
+
+/**
+ * When the meet's roster was last stored (`saveMeetAthletes`), or 0. Reads
+ * the index only, not the roster.
+ */
+export async function getMeetAthletesSyncedAt(meetId: string): Promise<number> {
+  try {
+    return (await getStore()).meets[meetId]?.athletesSyncedAt ?? 0;
+  } catch {
+    return 0;
+  }
+}
+
+/**
+ * How stale a meet's "synced" time may get while its schedule keeps being
+ * checked and found unchanged. Every check stamping it rewrote the whole
+ * index every 5 minutes; never stamping it left the offline banner saying
+ * "synced 2d ago" about a schedule checked minutes ago.
+ */
+export const UNCHANGED_SYNC_STAMP_INTERVAL_MS = 15 * 60 * 1000;
+
+/**
+ * Record that a stored meet's schedule was just checked against the server
+ * and had not changed (`saveMeetSchedule` stamps a changed one). Writes only
+ * when the stamp is at least `minIntervalMs` old. Returns whether it wrote.
+ */
+export async function markMeetScheduleVerified(
+  meetId: string,
+  now: number = Date.now(),
+  minIntervalMs: number = UNCHANGED_SYNC_STAMP_INTERVAL_MS,
+): Promise<boolean> {
+  const entry = (await getStore()).meets[meetId];
+  if (!entry?.scheduleKey) return false;
+  const age = now - (entry.lastSyncTime ?? 0);
+  if (age >= 0 && age < minIntervalMs) return false;
+  let wrote = false;
+  await updateStore((store) => {
+    // Re-checked on the chain: a schedule save (or another check) may have
+    // stamped a newer time while this waited, and must not be rewound.
+    const current = store.meets[meetId];
+    if (!current?.scheduleKey) return;
+    const currentAge = now - (current.lastSyncTime ?? 0);
+    if (currentAge < minIntervalMs) return;
+    current.lastSyncTime = now;
+    wrote = true;
+  });
+  return wrote;
 }
 
 /**
@@ -1604,6 +1773,11 @@ export async function readStorageKeysForMeetClear(
  * The normalized athlete name an athlete-history or athlete-bests key belongs
  * to, or null for any other key. Chunk keys are `<manifest key>__chunk_...`,
  * so one prefix strip covers manifests, chunks and legacy raw payloads.
+ *
+ * The name is normalized again: keys written before the name key applied
+ * Unicode NFC (#268) hold a decomposed spelling that nothing reads any more,
+ * and folding it onto today's key lets the per-meet and orphan prunes clear
+ * those keys with their athlete instead of leaving them behind.
  */
 function athleteNameOfStorageKey(key: string): string | null {
   const prefix = key.startsWith(ATHLETE_HISTORY_KEY_PREFIX)
@@ -1614,7 +1788,7 @@ function athleteNameOfStorageKey(key: string): string | null {
   if (!prefix) return null;
   const rest = key.slice(prefix.length);
   const chunkAt = rest.indexOf('__chunk_');
-  return chunkAt === -1 ? rest : rest.slice(0, chunkAt);
+  return normalizeAthleteName(chunkAt === -1 ? rest : rest.slice(0, chunkAt));
 }
 
 /**
@@ -1655,7 +1829,7 @@ async function removeAthleteKeysFromListing(
 /**
  * Normalized names across every stored roster except `exceptMeet`'s, read one
  * roster at a time (sequential on purpose: a roster is ~0.5 MB of JSON for a
- * national meet). Cleared meets keep an empty entry and cost one null read.
+ * national meet). Cleared meets have no entry, so they cost nothing.
  */
 async function readRemainingRosterNames(
   store: OfflineStore,
@@ -1745,8 +1919,13 @@ export async function pruneOrphanedAthleteHistory(
 }
 
 /**
- * Removes a meet's schedule, roster, results, per-session caches and (by
- * default) the history only its athletes held, then resets its store entry.
+ * Removes a meet's schedule, roster, results, per-session caches, package
+ * ETag and (by default) the history only its athletes held, then deletes its
+ * store entry.
+ *
+ * A download of the meet that started earlier is stopped and waited for first
+ * (`runMeetClear`), so it cannot write history, an ETag or the roster back
+ * after the clear, and a later Download starts over instead of joining it.
  *
  * "Downloaded" is un-marked FIRST. The mark used to be the last write, with
  * every error swallowed, so a kill or storage error mid-way left a meet
@@ -1768,8 +1947,15 @@ export async function clearMeetData(
     pruneHistory?: boolean;
   },
 ): Promise<void> {
-  return meetDataWrites(meet, async () => {
+  // The download being waited for may have a save queued on the meet's
+  // chain, so the wait comes first and the chain after.
+  return runMeetClear(meet, () => meetDataWrites(meet, async () => {
     try {
+      // The validator goes first, as in eviction: a `304` must never vouch
+      // for what this clear is removing. A later Download used to get `304`
+      // once browsing had saved the roster again, and skipped the results and
+      // year bests this clear deletes.
+      await clearPackageEtag(meet);
       // `getStore()` is the one validated reader: a raw
       // `JSON.parse(store) as OfflineStore` here threw on `data.meets[...]` for a
       // truncated payload, leaving the meet's keys orphaned and undeletable.
@@ -1819,23 +2005,37 @@ export async function clearMeetData(
         await pruneAthleteHistoryExclusiveToRoster(meet, rosterNames, await getStore(), keys);
       }
       // On the chain, against the index as it is now: writing back the
-      // snapshot read above dropped every entry saved in between.
+      // snapshot read above dropped every entry saved in between. Deleted, not
+      // reset to an empty entry: every key above is also tried under its fixed
+      // name, so nothing needs the entry, and kept entries made the index
+      // grow by one per meet ever opened.
       await updateStore((store) => {
-        store.meets[meet] = emptyMeetEntry(meet);
+        delete store.meets[meet];
       });
     } catch (error) {
       console.error('Error clearing meet data:', error);
       throw error;
     }
-  });
+  }));
 }
 
 /**
- * The meet id a per-meet schedule, roster or results key (or results chunk)
- * belongs to, or null for any other key. Session-athlete keys are left out:
- * `clearMeetData` finds those by prefix, and their ids are URI-encoded.
+ * The meet id a per-meet schedule, roster, results (or results chunk) or
+ * per-session roster key belongs to, or null for any other key. A meet whose
+ * only data is a session's roster (a start list opened from a saved session,
+ * never the whole meet) has no index entry, so only its keys find it.
  */
 function meetIdOfStorageKey(key: string): string | null {
+  if (key.startsWith(SESSION_ATHLETES_KEY_PREFIX)) {
+    const rest = key.slice(SESSION_ATHLETES_KEY_PREFIX.length);
+    const end = rest.indexOf(':');
+    if (end <= 0) return null;
+    try {
+      return decodeURIComponent(rest.slice(0, end));
+    } catch {
+      return null;
+    }
+  }
   for (const prefix of [SCHEDULE_KEY_PREFIX, ATHLETES_KEY_PREFIX, LIFTING_RESULTS_KEY_PREFIX]) {
     if (!key.startsWith(prefix)) continue;
     const rest = key.slice(prefix.length);
@@ -1867,59 +2067,97 @@ export async function listStoredMeets(
   return { meetIds: Array.from(meetIds) as MeetName[], storageKeys };
 }
 
-export async function clearAllMeetData(): Promise<void> {
+/**
+ * Clears every meet with data on the device (`listStoredMeets`) and every
+ * meet marked downloaded. The one clear-all for Clear Cache
+ * and Delete All Offline Data: both clear all athlete history right after, so
+ * no per-meet history prune runs (`pruneHistory: false`). Delete All used to
+ * repeat this loop without it and re-read every other roster once per meet.
+ *
+ * One meet failing does not stop the rest.
+ *
+ * @returns how many meets could not be cleared (1 when the listing failed).
+ */
+export async function clearAllMeetData(): Promise<{ failed: number }> {
   try {
-    const { meetIds, storageKeys } = await listStoredMeets();
+    // A meet marked downloaded whose data is already gone still loses its mark.
+    const downloaded = await getExplicitlyDownloadedMeetIds();
+    const { meetIds, storageKeys } = await listStoredMeets(Array.from(downloaded));
 
+    let failed = 0;
     for (const meetId of meetIds) {
       try {
         await clearMeetData(meetId, { storageKeys, pruneHistory: false });
       } catch (error) {
+        failed += 1;
         console.error('Error clearing meet data during clear-all:', error);
       }
     }
+    return { failed };
   } catch (error) {
     console.error('Error clearing all meet data:', error);
+    return { failed: 1 };
   }
 }
 
+/**
+ * Removes every athlete's history and stored bests, and every package ETag.
+ * Downloads still running are stopped and waited for first, so none of them
+ * writes history back afterwards.
+ */
 export async function clearAllAthleteHistory(): Promise<void> {
   try {
-    const keys = await AsyncStorage.getAllKeys();
-    // Chunk keys are `<manifest key>__chunk_<n>`, so the prefix already covers
-    // manifests, chunks, and legacy raw payloads alike. Reading each manifest
-    // to rediscover its own chunk keys cost one `getItem` + one `multiRemove`
-    // per athlete — 1500-4500 serial round trips on "Delete all offline data"
-    // (PoT #2 bounded loops). One `getAllKeys` plus batched removes replaces
-    // them, and it also reaps chunks orphaned by an interrupted write.
-    // Stored bests go too. They are keyed by athlete name like the history,
-    // and "Delete All Offline Data" / "Clear Cache" used to leave every one
-    // behind, so a wrong "no results" answer survived until a reinstall.
-    const athleteHistoryKeys = keys.filter(
-      (k) => k.startsWith(ATHLETE_HISTORY_KEY_PREFIX) || k.startsWith(ATHLETE_BESTS_KEY_PREFIX),
-    );
-    for (
-      let offset = 0;
-      offset < athleteHistoryKeys.length;
-      offset += STORAGE_REMOVE_BATCH_SIZE
-    ) {
-      await AsyncStorage.multiRemove(
-        athleteHistoryKeys.slice(offset, offset + STORAGE_REMOVE_BATCH_SIZE),
-      );
-    }
-    // The package validators vouched for history that is now gone. Left in
-    // place, the next prefetch's `304` would short-circuit with the roster
-    // still on disk and never re-download a single athlete.
-    await AsyncStorage.removeItem(PACKAGE_ETAG_STORAGE_KEY);
+    await runHistoryClear(removeAllAthleteHistory);
   } catch (error) {
     console.error('Error clearing athlete history:', error);
   }
 }
 
-export async function clearImplicitMeetData(exceptMeet?: MeetName): Promise<void> {
+async function removeAllAthleteHistory(): Promise<void> {
+  const keys = await AsyncStorage.getAllKeys();
+  // Chunk keys are `<manifest key>__chunk_<n>`, so the prefix already covers
+  // manifests, chunks, and legacy raw payloads alike. Reading each manifest
+  // to rediscover its own chunk keys cost one `getItem` + one `multiRemove`
+  // per athlete — 1500-4500 serial round trips on "Delete all offline data"
+  // (PoT #2 bounded loops). One `getAllKeys` plus batched removes replaces
+  // them, and it also reaps chunks orphaned by an interrupted write.
+  // Stored bests go too. They are keyed by athlete name like the history,
+  // and "Delete All Offline Data" / "Clear Cache" used to leave every one
+  // behind, so a wrong "no results" answer survived until a reinstall.
+  const athleteHistoryKeys = keys.filter(
+    (k) => k.startsWith(ATHLETE_HISTORY_KEY_PREFIX) || k.startsWith(ATHLETE_BESTS_KEY_PREFIX),
+  );
+  for (
+    let offset = 0;
+    offset < athleteHistoryKeys.length;
+    offset += STORAGE_REMOVE_BATCH_SIZE
+  ) {
+    await AsyncStorage.multiRemove(
+      athleteHistoryKeys.slice(offset, offset + STORAGE_REMOVE_BATCH_SIZE),
+    );
+  }
+  // The package validators vouched for history that is now gone. Left in
+  // place, the next prefetch's `304` would short-circuit with the roster
+  // still on disk and never re-download a single athlete.
+  await clearAllPackageEtags();
+}
+
+/**
+ * Clears every meet not marked downloaded (the browse cache), except
+ * `exceptMeet` and any meet `options.skip` names at the moment it would be
+ * cleared. A meet is marked downloaded only once its download finishes, so
+ * the caller passes its in-flight downloads as `skip`: the out-of-space
+ * recovery used to wipe a download still running in another row, which was
+ * then marked downloaded with nothing on disk.
+ */
+export async function clearImplicitMeetData(
+  exceptMeet?: MeetName,
+  options?: { skip?: (meet: MeetName) => boolean },
+): Promise<void> {
   try {
-    const data = await getStore();
-    const meetIds = Object.keys(data.meets);
+    // Every meet with data on disk, not only the index's: a meet with only a
+    // session's roster stored has no entry.
+    const { meetIds, storageKeys: listing } = await listStoredMeets();
     // One read of the downloads blob for the whole sweep instead of one per
     // meet.
     const explicitlyDownloaded = await getExplicitlyDownloadedMeetIds();
@@ -1928,11 +2166,13 @@ export async function clearImplicitMeetData(exceptMeet?: MeetName): Promise<void
       if (exceptMeet && meetName === exceptMeet) return false;
       return !explicitlyDownloaded.has(meetName);
     });
-    const storageKeys = await readStorageKeysForMeetClear(
-      implicitMeetIds.length,
-    );
+    // The listing above serves every clear (meet keys are namespaced).
+    const storageKeys = listing;
 
     for (const meetId of implicitMeetIds) {
+      // Checked per meet, right before its clear (no await in between): a
+      // download can start while earlier meets are being cleared.
+      if (options?.skip?.(meetId as MeetName)) continue;
       try {
         await clearMeetData(meetId as MeetName, { storageKeys });
       } catch (error) {

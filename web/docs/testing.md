@@ -20,7 +20,30 @@ shape, including fields that may be absent or `null`.
 
 `src/utils/api.rs` tests the transport without a network: request bodies, both
 answer forms (`Body::Value` and `Body::JsonText`), function errors, retry
-timing, and whole-number floats becoming integers.
+timing, whole-number floats becoming integers, which queries (and which
+searches) carry the access pass, reading `accessPass:pass`'s answer, how long a
+pass is held, and which function errors renew it, and reading the `deviceLogin`
+answers (a pending login or `null`; `{ ok: true }` or a 404) and
+`apiTokens:revokeAllCli`'s `{ ended }`. `src/pages/link.rs`
+tests the code's formatting, the caret while it formats, and the page's states.
+`src/pages/comp_data/wrapped.rs` tests reading every `results:wrapped` answer
+kind through `read_body` (so its whole-number floats, such as `totalMeets: 3.0`,
+are covered), the arguments it sends, and the messages for answers with no
+Wrapped. `src/pages/comp_data/catalog.rs` checks each data page's route, shell
+and sitemap entry against its `Access`.
+
+`tests/e2e/wrapped.spec.ts` covers `/wrapped` against a mocked
+`results:wrapped`: a report, a pick from several athletes (the second request
+carries `picked: true`), a cut list, the `narrow`, `tooManyResults` and `none`
+messages, and a signed-out visitor building a Wrapped without the gate or a
+pass.
+
+`tests/e2e/link.spec.ts` covers `/link` against mocked `deviceLogin` calls:
+sign-in returning to the code, approve, deny, a deny the server turns down
+(404, including after another tab approved and the CLI took its token), an
+expired or unknown code, a code typed by hand, failures with Try again, signing
+out all CLI logins (confirm, success, failure), a small phone, and
+accessibility.
 
 ## Browser checks
 
@@ -76,9 +99,24 @@ await routeQuery(page, "results:search", (route, args) =>
 - Answer the way the real query does: `textAnswer(body)` for `Body::JsonText`
   queries, `valueAnswer(body)` for `Body::Value` ones (see `queries` in
   `src/utils/api.rs`). `errorAnswer(message)` is a function that ran and failed.
+- `routeMutation(page, fn, handler)` does the same for a mutation (`POST /api/mutation`):
+  `deviceLogin:approve`, `deviceLogin:deny` and `apiTokens:revokeAllCli`.
 - `retryableResponse(429 | 503, retryAfter?)` exercises the retries.
-- `mockSubscribedUser(page)` replaces Clerk's and RevenueCat's scripts with a
-  signed-in, subscribed user, so gated pages render.
+- `mockSubscribedUser(page)` puts stand-ins for Clerk's and RevenueCat's SDKs
+  on the page (through `page.addInitScript`) as a signed-in, subscribed user,
+  so gated pages render. The auth bridge uses an SDK already on the page
+  instead of loading it. Don't mock the CDN files with `page.route`: they load
+  with Subresource Integrity, so the browser refuses any other body. The
+  signed-in stand-in's session token is `token_<user id>`. `mockAuth` also
+  answers Convex's `accessPass:pass` (the pass `pass_test` for
+  `Bearer token_user_ci`, 403 for another user or while its `serverEntitled`
+  option is false) and the `entitlements:refresh` action (`refreshGrants`), so
+  a premium read's `args` include `pass: "pass_test"`. It returns `server` (the
+  pass it hands out, which a test may change to simulate a rotation) and the
+  Authorization header of each call, `passRequests` and `entitlementRefreshes`.
+  Any other Convex call a test does not route fails with an `errorAnswer`
+  naming the function, instead of reaching production (gated pages read only
+  after `mockAuth`, so this covers every read).
 
 Assert on what a user sees, and on the arguments a page sends when they
 matter (`expect(args).toEqual({ federation: "USAMW", ... })`).

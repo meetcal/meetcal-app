@@ -1,6 +1,6 @@
 # MeetCal Web
 
-meetcal.app: the marketing pages and the subscription competition data pages, written in Rust with Leptos (client-side rendering) and compiled to WebAssembly by Trunk. It reads MeetCal's data from the Convex queries in `../convex/`, the same ones the app and the CLI read, over Convex's HTTP API (`src/utils/api.rs`). Vercel builds and serves it from this folder (`vercel.json`).
+meetcal.app: the marketing pages, the subscription competition data pages, and the free Athlete Wrapped page (`/wrapped`), written in Rust with Leptos (client-side rendering) and compiled to WebAssembly by Trunk. It reads MeetCal's data from the Convex queries in `../convex/`, the same ones the app and the CLI read, over Convex's HTTP API (`src/utils/api.rs`). Vercel builds and serves it from this folder (`vercel.json`).
 
 The repository root's `AGENTS.md` applies here too: its hard rules (worktrees, no production deploys or data writes without authorization, never push to `master`) and its PR workflow. This file adds what is specific to the website and names where it differs.
 
@@ -14,12 +14,12 @@ The repository root's `AGENTS.md` applies here too: its hard rules (worktrees, n
 
 | Path | Role |
 |---|---|
-| `src/main.rs` | The router: every route, and which ones sit behind `SubscriptionGate` |
-| `src/utils/api.rs` | The only data access: every Convex query the site reads (`queries::*`), and the HTTP call with its retries |
+| `src/main.rs` | The router: every route, and which ones sit behind `SubscriptionGate` (`/wrapped` is free, even signed out, and `/link` needs sign-in but no subscription, so neither does) |
+| `src/utils/api.rs` | The only data access: every Convex query the site reads (`queries::*`), which of them carry the access pass, the HTTP call with its retries, and fetching and holding the pass (`accessPass:pass`, with `entitlements:refresh` when Convex does not know the subscriber yet), and the `/link` page's `deviceLogin` query and mutations and `apiTokens:revokeAllCli` |
 | `src/auth.rs`, `src/auth_bridge.js` | Clerk sign-in and the RevenueCat entitlement check, through a small JavaScript bridge to the providers' web SDKs |
 | `src/components/` | Header, footer, feature cards, route metadata (`seo.rs`), the subscription gate |
-| `src/pages/` | Public pages (home, features, privacy, terms). `/atlas` redirects to the Atlas home page at atlas.meetcal.app, which the Atlas repository serves |
-| `src/pages/comp_data/` | The competition data pages, one file each, plus their shared pieces: `models.rs` (answer types), `loading.rs`, `filters.rs`, `format.rs`, `ui.rs`, `catalog.rs` (the data page list) |
+| `src/pages/` | Public pages (home, features, privacy, terms), and `link.rs`: `/link`, where a signed-in user approves or denies a `meetcal login` from the CLI (no subscription needed, in no menu, noindex). `/atlas` redirects to the Atlas home page at atlas.meetcal.app, which the Atlas repository serves |
+| `src/pages/comp_data/` | The competition data pages, one file each, plus their shared pieces: `models.rs` (answer types), `loading.rs`, `filters.rs`, `format.rs`, `ui.rs`, `catalog.rs` (the data page list, and each page's `Access`: subscription or free). `wrapped.rs` shows the server's Wrapped answer (`results:wrapped`) and scores nothing itself |
 | `styles.css` | All styling |
 | `index.html`, `scripts/generate-bootstrap.sh` | The page shell, and the post-build hook that writes the Wasm bootstrap and one metadata shell per route under `dist/seo/` |
 | `vercel.json` | Build command, security headers (the CSP), and the rewrites that serve each route's metadata shell |
@@ -61,13 +61,16 @@ CI (`.github/workflows/web.yml` at the root) runs the same gates plus both audit
 
 - Every data call goes through `src/utils/api.rs`: add a query to `queries`, never build a Convex URL in a page. Arguments are the query's own, camelCase; use `#[serde(rename_all = "camelCase")]` on argument structs.
 - Answer types live beside the page that reads them (or in `models.rs` when shared). Fields a newer answer adds and an older one lacks are `#[serde(default)]` optionals, so a deploy and a view rebuild can land in either order.
-- Pages load through `loading.rs` (`table_response`, `select_response`, `load_meet_data`): one skeleton, one error line, one empty state.
-- The subscription gate is a client-side soft gate over RevenueCat's entitlement check, like the app's paywall. All competition data is public in Convex; do not treat the gate as access control, and do not put anything in a page that must stay private.
+- Pages load through `loading.rs`: a `Load` (or `load_query`) per answer, keyed by the request, read with `table_response` / `select_response`: one skeleton, one error line with a Try again button, one empty state. Never read a `LocalResource` directly: it shows the previous answer while the next one loads, and queues each request behind the last.
+- Every request has a timeout (`REQUEST_TIMEOUT` in `api.rs`); errors shown to users never name the Convex function.
+- The subscription gate is a client-side check over RevenueCat's entitlement, like the app's paywall; Convex is moving to enforce the subscription itself. The premium functions (`SUBSCRIPTION_FUNCTIONS` in `api.rs`, matching `PREMIUM_FUNCTIONS` in `../convex/lib/access.ts`; a test there compares them) take a shared daily access pass as their `pass` argument, which `api.rs` adds; a new premium function goes in that list. For now Convex only logs a premium read without a current pass and still answers it; it will refuse it later. No query carries the user's Clerk session token except `accessPass:pass`, which hands out the pass, and `deviceLogin:describe` on `/link` (one user's own CLI sign-in): a query that reads its caller is cached per user, so the pass keeps every subscriber on Convex's shared query cache. Until enforcement lands the data is still public: do not put anything in a page that must stay private.
+- Athlete Wrapped is free on the app and the site, so a shared Wrapped link opens for anyone. It reads the public `results:wrapped` (no pass, no token), which answers the year's stats and never the results behind them; the site must not score Wrapped from `results:search` rows again (a dated search is premium). The page's route has no gate, its metadata is indexable, and it is in the sitemap (`Access::Free` in `catalog.rs`).
 - New third-party origins need a CSP entry in `vercel.json` (and the config test that pins it). Keep the CSP as narrow as the feature needs.
 - Keep the page and its metadata shell in step: a new route touches several files (see [docs/architecture.md](docs/architecture.md#adding-a-page)).
 
 ## Recurring lessons
 
+- A pass problem must never break a page while Convex only logs: a read whose pass could not be fetched (signed out, not subscribed, offline) goes out without one, and a read Convex refuses for its pass (a function error with status 401 or 403) fetches a fresh pass and goes once more. `mockAuth` answers `accessPass:pass` and `entitlements:refresh` so no test reaches the real deployment (the mocks' CORS preflight allows their `authorization` header), and a premium read's mocked `args` include `pass` (`pass_test`).
 - Convex's HTTP API writes the numbers of a value answer as floats (`2.0`). `api.rs` turns whole numbers back into integers so integer fields parse; answers sent as JSON text (`{ json }`) never had the problem. Mocks in tests use integers, so they cannot catch a regression here: keep the unit test in `api.rs`.
 - A Convex view is fresh while its source tables are unchanged, whatever code built it. A page that needs a new field from a view-backed answer will not see it on production until the view is rebuilt (`../docs/backend.md`).
 - Every read is a JSON `POST`, so the browser sends a CORS preflight first. Playwright mocks must answer `OPTIONS` (`routeQuery` in `tests/e2e/support/api.ts` does).

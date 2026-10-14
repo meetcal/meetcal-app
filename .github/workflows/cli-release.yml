@@ -1,7 +1,8 @@
 name: CLI Release
 
 # Tag `cli-vX.Y.Z` on master to publish the CLI's binaries as a release of
-# this repository; then point the Homebrew formula at them (cli/docs/releasing.md).
+# this repository, with a SHA256SUMS file `meetcal upgrade` checks them against,
+# then point the Homebrew tap's formula at them (cli/docs/releasing.md).
 on:
   push:
     tags:
@@ -11,8 +12,44 @@ permissions:
   contents: write
 
 jobs:
+  # Nothing is built until the tagged commit passes the tests and the dependency audit: a release
+  # ships whatever the lockfile holds.
+  verify:
+    name: Test and audit
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: cli
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: cli
+
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-audit
+
+      - name: Check the tag matches the crate version
+        run: |
+          version="$(awk -F'"' '/^version = / { print $2; exit }' Cargo.toml)"
+          test "${GITHUB_REF_NAME}" = "cli-v${version}" || {
+            echo "Tag ${GITHUB_REF_NAME} does not match cli/Cargo.toml version ${version}"
+            exit 1
+          }
+
+      - name: Run tests
+        run: cargo test --locked
+
+      - name: Audit Rust dependencies
+        run: cargo audit --deny unsound --deny yanked
+
   build:
     name: build-${{ matrix.artifact }}
+    needs: verify
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -24,12 +61,18 @@ jobs:
           - os: macos-latest
             target: x86_64-apple-darwin
             artifact: darwin-x64
+          # Linux binaries link the C library of the system they are built against. They are
+          # built with Zig against glibc 2.17, so they start on any distribution from 2014 on
+          # (Ubuntu 22.04, Debian 12, RHEL 9 and Amazon Linux 2023 included), not only on one as
+          # new as the runner.
           - os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
             artifact: linux-x64
+            glibc: "2.17"
           - os: ubuntu-24.04-arm
             target: aarch64-unknown-linux-gnu
             artifact: linux-arm64
+            glibc: "2.17"
 
     steps:
       - uses: actions/checkout@v4
@@ -41,19 +84,26 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: cli
+          key: ${{ matrix.target }}
 
-      - name: Check the tag matches the crate version
-        working-directory: cli
-        run: |
-          version="$(awk -F'"' '/^version = / { print $2; exit }' Cargo.toml)"
-          test "${GITHUB_REF_NAME}" = "cli-v${version}" || {
-            echo "Tag ${GITHUB_REF_NAME} does not match cli/Cargo.toml version ${version}"
-            exit 1
-          }
+      - if: matrix.glibc
+        uses: mlugg/setup-zig@v2
+        with:
+          version: 0.16.0
+
+      - if: matrix.glibc
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-zigbuild
 
       - name: Build
         working-directory: cli
-        run: cargo build --release --locked --target ${{ matrix.target }}
+        run: |
+          if [ -n "${{ matrix.glibc }}" ]; then
+            cargo zigbuild --release --locked --target ${{ matrix.target }}.${{ matrix.glibc }}
+          else
+            cargo build --release --locked --target ${{ matrix.target }}
+          fi
 
       - name: Package
         working-directory: cli
@@ -62,6 +112,33 @@ jobs:
           cp target/${{ matrix.target }}/release/meetcal dist/${{ matrix.artifact }}/meetcal
           tar -czf dist/${{ matrix.artifact }}.tar.gz -C dist/${{ matrix.artifact }} meetcal
           shasum -a 256 dist/${{ matrix.artifact }}.tar.gz
+
+      # A binary that needs a newer glibc than its floor installs through Homebrew and then fails
+      # at its first run with "version `GLIBC_2.xx' not found". Weak references are optional at
+      # load time, so only strong ones count.
+      - name: Check the glibc floor
+        if: matrix.glibc
+        working-directory: cli
+        run: |
+          floor="${{ matrix.glibc }}"
+          newer="$(objdump -T dist/${{ matrix.artifact }}/meetcal \
+            | grep -v ' w ' \
+            | grep -oE 'GLIBC_[0-9]+\.[0-9]+' \
+            | sort -u \
+            | awk -F'[_.]' -v floor="$floor" '{ split(floor, f, "."); if ($2 > f[1] || ($2 == f[1] && $3 > f[2])) print }')"
+          if [ -n "$newer" ]; then
+            echo "The binary needs a glibc newer than ${floor}:"
+            echo "$newer"
+            exit 1
+          fi
+
+      # Run the archived binary on an older distribution than the runner.
+      - name: Smoke test on Debian 11
+        if: matrix.glibc
+        working-directory: cli
+        run: |
+          docker run --rm -v "$PWD/dist/${{ matrix.artifact }}:/opt/meetcal:ro" debian:11 \
+            /opt/meetcal/meetcal --version
 
       - uses: actions/upload-artifact@v4
         with:
@@ -77,14 +154,78 @@ jobs:
           path: dist
           merge-multiple: true
 
-      - name: Print checksums
-        run: shasum -a 256 dist/*.tar.gz
+      # `meetcal upgrade` refuses an archive that does not match this file, and the tap's
+      # formula takes its checksums from it.
+      - name: Write checksums
+        working-directory: dist
+        run: |
+          shasum -a 256 *.tar.gz > SHA256SUMS
+          cat SHA256SUMS
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SHA256SUMS
+          path: dist/SHA256SUMS
+          # A re-run of this job after a later step failed uploads it again.
+          overwrite: true
 
       - uses: softprops/action-gh-release@v2
         with:
           name: meetcal CLI ${{ github.ref_name }}
-          files: dist/*.tar.gz
+          files: |
+            dist/*.tar.gz
+            dist/SHA256SUMS
           # Not marked latest: this repository's latest release is not the
           # CLI's to claim.
           body: "Install or upgrade with `brew install meetcal/tap/meetcal`. Changes: https://github.com/meetcal/meetcal-app/blob/master/cli/CHANGELOG.md"
           make_latest: false
+
+  # Points meetcal/homebrew-tap's formula at the release, so `brew upgrade meetcal` (and
+  # `meetcal upgrade` on a Homebrew install) finds it as soon as it is out. Pushes with a deploy
+  # key that can write to the tap alone (secret HOMEBREW_TAP_DEPLOY_KEY).
+  homebrew:
+    name: Update the Homebrew tap
+    needs: release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: cli/scripts
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: SHA256SUMS
+          path: dist
+
+      - uses: actions/checkout@v4
+        with:
+          repository: meetcal/homebrew-tap
+          ssh-key: ${{ secrets.HOMEBREW_TAP_DEPLOY_KEY }}
+          path: tap
+
+      # A fix tagged on an older line (cli-v2.4.1 after cli-v3.0.0) must not point new installs
+      # back at it.
+      - name: Write the formula
+        run: |
+          version="${GITHUB_REF_NAME#cli-v}"
+          current="$(awk -F'"' '/^  version / { print $2; exit }' tap/Formula/meetcal.rb)"
+          if [ -n "$current" ] && [ "$current" != "$version" ] \
+            && [ "$(printf '%s\n%s\n' "$current" "$version" | sort -V | tail -1)" = "$current" ]; then
+            echo "The tap has meetcal ${current}, newer than ${version}: left as it is."
+            exit 0
+          fi
+          cli/scripts/homebrew-formula.sh "$version" dist/SHA256SUMS > tap/Formula/meetcal.rb
+          ruby -c tap/Formula/meetcal.rb
+          git -C tap diff
+
+      - name: Push the formula
+        working-directory: tap
+        run: |
+          if git diff --quiet; then
+            echo "The tap already points at ${GITHUB_REF_NAME}."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -am "Update meetcal to v${GITHUB_REF_NAME#cli-v}"
+          git push origin HEAD

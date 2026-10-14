@@ -1,6 +1,9 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import {
   createReminderSyncRunner,
+  defaultReminderSyncDeps,
+  REMINDER_CLOCK_SAMPLE_MAX_AGE_MS,
+  reminderClockSkewMs,
   MAX_PENDING_REMINDERS,
   type DesiredReminder,
   NOTIFICATION_LEAD_MS,
@@ -95,8 +98,8 @@ function deps(overrides: Partial<ReminderSyncDeps> = {}): ReminderSyncDeps {
   };
 }
 
-function reminder(id: string, triggerAtMs: number): DesiredReminder {
-  return { session: saved(id), triggerAtMs };
+function reminder(id: string, triggerAtMs: number, fireAtMs = triggerAtMs): DesiredReminder {
+  return { session: saved(id), triggerAtMs, fireAtMs };
 }
 
 beforeEach(async () => {
@@ -123,8 +126,8 @@ describe("toScheduledReminders", () => {
         { identifier: "d", data: {} },
       ]),
     ).toEqual([
-      { id: "a", triggerAtMs: 5 },
-      { id: "b", triggerAtMs: null },
+      { id: "a", triggerAtMs: 5, fireAtMs: null },
+      { id: "b", triggerAtMs: null, fireAtMs: null },
     ]);
   });
 });
@@ -255,8 +258,158 @@ describe("syncSessionReminders", () => {
       new Date("2099-06-20T10:00:00.000Z"),
       "a",
       expect.objectContaining({ id: "a", startTime: "11:00 AM", date: "2099-06-20" }),
-      { kind: SESSION_REMINDER_KIND, triggerAtMs: Date.parse("2099-06-20T10:00:00.000Z") },
+      {
+        kind: SESSION_REMINDER_KIND,
+        triggerAtMs: Date.parse("2099-06-20T10:00:00.000Z"),
+        fireAtMs: Date.parse("2099-06-20T10:00:00.000Z"),
+      },
     );
+  });
+
+  describe("on the server's clock", () => {
+    const HOUR_MS = 60 * 60 * 1000;
+    // The device clock reads two hours ahead of the server's.
+    const fastDevice = (overrides: Partial<ReminderSyncDeps> = {}) =>
+      deps({
+        now: () => new Date(NOW.getTime() + 2 * HOUR_MS),
+        clockSkewMs: () => -2 * HOUR_MS,
+        ...overrides,
+      });
+
+    it("fires at the right moment on a device clock two hours fast", async () => {
+      await syncSessionReminders([saved("a")], true, fastDevice());
+
+      const triggerAtMs = Date.parse("2099-06-20T10:00:00.000Z");
+      // The OS fires by the device clock: 12:00 on it is 10:00 on the server's.
+      expect(mockScheduleNotification.mock.calls[0][2]).toEqual(new Date(triggerAtMs + 2 * HOUR_MS));
+      expect(mockScheduleNotification.mock.calls[0][5]).toEqual({
+        kind: SESSION_REMINDER_KIND,
+        triggerAtMs,
+        fireAtMs: triggerAtMs + 2 * HOUR_MS,
+      });
+    });
+
+    it("still reminds a session within the skew of the device's now", async () => {
+      // Server 9:00, device 11:00. The 10:30 reminder is still ahead on the
+      // server's clock but already past on the device's.
+      const { desired } = await resolveDesiredReminders(
+        [saved("a", { startTime: "11:30 AM" })],
+        deps({ now: () => new Date(Date.parse("2099-06-20T09:00:00.000Z") + 2 * HOUR_MS), clockSkewMs: () => -2 * HOUR_MS }),
+      );
+      expect(desired.get("a")?.triggerAtMs).toBe(Date.parse("2099-06-20T10:30:00.000Z"));
+    });
+
+    it("reschedules a reminder set before the device clock was found wrong", async () => {
+      const triggerAtMs = Date.parse("2099-06-20T10:00:00.000Z");
+      mockListScheduled.mockResolvedValue([
+        { identifier: "a", data: { kind: SESSION_REMINDER_KIND, triggerAtMs } },
+      ]);
+
+      await syncSessionReminders([saved("a")], true, fastDevice());
+
+      expect(mockScheduleNotification).toHaveBeenCalledTimes(1);
+      expect(mockScheduleNotification.mock.calls[0][2]).toEqual(new Date(triggerAtMs + 2 * HOUR_MS));
+    });
+
+    describe("before the first clock sample (a cold start offline)", () => {
+      const triggerAtMs = Date.parse("2099-06-20T10:00:00.000Z");
+      // Scheduled by an earlier run that had a sample: the device is two
+      // hours fast, so it fires at 12:00 on the device's clock.
+      const corrected = {
+        identifier: "a",
+        data: { kind: SESSION_REMINDER_KIND, triggerAtMs, fireAtMs: triggerAtMs + 2 * HOUR_MS },
+      };
+      const noSample = (deviceNowMs: number) =>
+        deps({ now: () => new Date(deviceNowMs), clockSkewMs: () => null });
+
+      it("keeps a corrected reminder rather than moving it to the device's clock", async () => {
+        mockListScheduled.mockResolvedValue([corrected]);
+
+        await syncSessionReminders([saved("a")], true, noSample(NOW.getTime() + 2 * HOUR_MS));
+
+        expect(mockScheduleNotification).not.toHaveBeenCalled();
+        expect(mockCancelNotification).not.toHaveBeenCalled();
+      });
+
+      it("keeps a reminder that looks past only by the device's clock", async () => {
+        mockListScheduled.mockResolvedValue([corrected]);
+
+        // 11:00 on the device, 9:00 on the server: the 10:00 reminder is ahead.
+        await syncSessionReminders([saved("a")], true, noSample(triggerAtMs + HOUR_MS));
+
+        expect(mockCancelNotification).not.toHaveBeenCalled();
+        expect(mockScheduleNotification).not.toHaveBeenCalled();
+      });
+
+      it("schedules a missing reminder on the device's clock and marks it for correction", async () => {
+        await syncSessionReminders([saved("a")], true, noSample(NOW.getTime()));
+
+        expect(mockScheduleNotification.mock.calls[0][2]).toEqual(new Date(triggerAtMs));
+        expect(mockScheduleNotification.mock.calls[0][5]).toEqual({
+          kind: SESSION_REMINDER_KIND,
+          triggerAtMs,
+          fireAtMs: triggerAtMs,
+        });
+      });
+
+      it("keeps a reminder whose meet looks days past only by the device's clock", async () => {
+        mockListScheduled.mockResolvedValue([corrected]);
+
+        // The device reads June 22 08:00; the server June 20 08:00. The
+        // meet's date is before the device's past-date cutoff.
+        await syncSessionReminders([saved("a")], true, noSample(NOW.getTime() + 2 * 24 * HOUR_MS));
+
+        expect(mockCancelNotification).not.toHaveBeenCalled();
+        expect(mockScheduleNotification).not.toHaveBeenCalled();
+      });
+
+      it("still moves a reminder whose session moved", async () => {
+        mockListScheduled.mockResolvedValue([corrected]);
+
+        await syncSessionReminders(
+          [saved("a")],
+          true,
+          deps({ now: () => NOW, clockSkewMs: () => null, readSchedule: jest.fn(async () => MOVED_SCHEDULE) }),
+        );
+
+        expect(mockScheduleNotification).toHaveBeenCalledTimes(1);
+        expect(mockScheduleNotification.mock.calls[0][2]).toEqual(
+          new Date("2099-06-20T13:00:00.000Z"),
+        );
+      });
+    });
+
+    it("leaves a reminder alone when the skew only jitters", async () => {
+      const triggerAtMs = Date.parse("2099-06-20T10:00:00.000Z");
+      mockListScheduled.mockResolvedValue([
+        {
+          identifier: "a",
+          data: { kind: SESSION_REMINDER_KIND, triggerAtMs, fireAtMs: triggerAtMs + 2 * HOUR_MS + 40 },
+        },
+      ]);
+
+      await syncSessionReminders([saved("a")], true, fastDevice());
+
+      expect(mockScheduleNotification).not.toHaveBeenCalled();
+    });
+  });
+
+  it("schedules nothing for a meet with no known zone (the default dependency)", async () => {
+    // `getMeetConfig` hands back the mapper's New York fallback, flagged.
+    const { getMeetConfig } = jest.requireMock("@/data/meets/config") as {
+      getMeetConfig: jest.Mock;
+    };
+    getMeetConfig.mockResolvedValue({
+      time: { timeZone: "", timeZoneIdentifier: "America/New_York" },
+      timeZoneUnknown: true,
+    });
+
+    await syncSessionReminders([saved("a")], true, {
+      ...deps(),
+      timeZoneFor: defaultReminderSyncDeps.timeZoneFor,
+    });
+
+    expect(mockScheduleNotification).not.toHaveBeenCalled();
   });
 
   it("gives a free user no reminders, and cancels any left over, even with the flag on", async () => {
@@ -331,5 +484,21 @@ describe("createReminderSyncRunner", () => {
     await first;
     await last;
     expect(ran).toEqual(["first", "latest"]);
+  });
+});
+
+describe("reminderClockSkewMs", () => {
+  const T = 1_000_000_000;
+  it("is null before any sample and the sample's skew after, however large", () => {
+    expect(reminderClockSkewMs(null, T)).toBeNull();
+    expect(reminderClockSkewMs({ skewMs: 1500, sampledAt: T - 1 }, T)).toBe(1500);
+    expect(reminderClockSkewMs({ skewMs: -2 * 60 * 60 * 1000, sampledAt: T }, T)).toBe(-2 * 60 * 60 * 1000);
+    expect(reminderClockSkewMs({ skewMs: Number.NaN, sampledAt: T }, T)).toBeNull();
+  });
+
+  it("is unknown for a sample too old, or taken in the device's future (clock set back)", () => {
+    expect(reminderClockSkewMs({ skewMs: 1500, sampledAt: T - REMINDER_CLOCK_SAMPLE_MAX_AGE_MS }, T)).toBe(1500);
+    expect(reminderClockSkewMs({ skewMs: 1500, sampledAt: T - REMINDER_CLOCK_SAMPLE_MAX_AGE_MS - 1 }, T)).toBeNull();
+    expect(reminderClockSkewMs({ skewMs: 1500, sampledAt: T + 60_000 }, T)).toBeNull();
   });
 });

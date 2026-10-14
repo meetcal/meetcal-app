@@ -10,27 +10,21 @@ import {
 } from "@/lib/database/offline-store";
 import { fetchAthletesWithSession, fetchSchedule } from "@/lib/database/queries";
 import { useRetryOnReconnect } from "@/hooks/useRetryOnReconnect";
+import {
+  FRESH_SNAPSHOT_TTL_MS,
+  freshRosterReplacesShown,
+  isSnapshotFresh,
+} from "@/lib/athletes";
 import { emptyLoadFailure, type LoadFailure } from "@/lib/load-failure";
 import { devInfo } from "@/lib/logger";
 import { isNetworkAvailable } from "@/lib/networkUtils";
 import type { Schedule } from "@/types/schedule";
 
 /**
- * A cached roster + schedule written within this window is served as-is on
- * the initial (non pull-to-refresh) load. Selecting a meet already runs
- * `prefetchCriticalMeetData`, which fetches and saves exactly these two
- * payloads; this tab then mounted and fetched both again, so a single meet
- * open cost two roster downloads. The check uses the roster's own write
- * time (`MeetData.athletesSyncedAt`): `lastSyncTime` is also bumped by every
- * 5-minute schedule sync, which would make a days-old roster look fresh.
- * Well inside the 5-minute SyncManager cadence, so nothing goes staler than
- * it already could.
+ * A cached roster + schedule written within `FRESH_SNAPSHOT_TTL_MS` is
+ * served as-is on the initial (non pull-to-refresh) load (see `lib/athletes`).
  */
-export const FRESH_SNAPSHOT_TTL_MS = 60 * 1000;
-
-export function isSnapshotFresh(athletesSyncedAt: number, now: number): boolean {
-  return athletesSyncedAt > 0 && now - athletesSyncedAt < FRESH_SNAPSHOT_TTL_MS;
-}
+export { FRESH_SNAPSHOT_TTL_MS, isSnapshotFresh };
 
 const REFRESH_FAILED_MESSAGE = "Failed to refresh start list data. Please try again.";
 
@@ -150,7 +144,10 @@ export function useStartListData(selectedMeet: string | null) {
       // `saveMeetAthletes` already refuses to store it over one.
       if (
         athletesResult.status === "fulfilled" &&
-        (athletesResult.value.length > 0 || snapshot.cachedAthletes.length === 0)
+        freshRosterReplacesShown(
+          athletesResult.value.length,
+          snapshot.cachedAthletes.length,
+        )
       ) {
         nextAthletes = athletesResult.value;
         saveMeetAthletes(validMeet, nextAthletes).catch(() => {});
@@ -163,11 +160,10 @@ export function useStartListData(selectedMeet: string | null) {
         }
       }
 
-      if (
-        athletesResult.status === "rejected" &&
-        scheduleResult.status === "rejected" &&
-        forceRefresh
-      ) {
+      // The roster is what the Start List is: a failed roster request leaves
+      // the saved one on screen, which the user must be told is stale even
+      // when the schedule came back.
+      if (athletesResult.status === "rejected" && forceRefresh) {
         showToast({ type: "error", message: REFRESH_FAILED_MESSAGE });
       }
 

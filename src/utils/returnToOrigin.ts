@@ -19,6 +19,19 @@ export function originHref(from: unknown): Href | null {
 }
 
 /**
+ * `from` as a route param value that reaches the next screen intact.
+ *
+ * expo-router decodes a query param once when it parses the href, and
+ * `useLocalSearchParams` decodes it again. A return path whose own query is
+ * encoded (`gateOrigin`'s `?meet=A%20%26%20B`) came out as `?meet=A & B`, and
+ * returning parsed `meet=A `. Escaping its `%` survives the second decode;
+ * a path with no `%` is unchanged.
+ */
+export function originRouteParam(from: string): string {
+  return from.replace(/%/g, "%25");
+}
+
+/**
  * Leave sign-in or the routed paywall for the screen the user came from.
  *
  * Both are pushed on top of `from`. `router.replace(from)` swapped the top

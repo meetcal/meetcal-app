@@ -4,7 +4,6 @@ import { SubscriptionGate } from "@/components/ui/SubscriptionGate";
 import { ThemedText } from "@/components/ui/ThemedText";
 import { ThemedView } from "@/components/ui/ThemedView";
 import { FilterSection, GenericFilterModal } from "@/components/ui/filters";
-import { useTheme } from "@/contexts/ThemeContext";
 import { useAppColors } from "@/hooks/useAppColors";
 import { useFilterState } from "@/hooks/useFilterState";
 import { useMutableResource } from "@/hooks/useMutableResource";
@@ -18,6 +17,7 @@ import { Stack } from "expo-router";
 import React, { useEffect, useMemo, useState } from "react";
 import { StyleSheet, View } from "react-native";
 import { useScreenHorizontalInsets } from "@/hooks/useScreenInsets";
+import { formatReferenceKg } from "@/lib/reference-values";
 
 const EMPTY_RECORDS_DATA: RecordsData = {} as RecordsData;
 const HARDCODED_FEDERATIONS = ["USAW", "USAMW", "IWF", "UMWF", "BWL"];
@@ -33,7 +33,6 @@ export default function RecordsScreen() {
 function RecordsScreenContent() {
   const screenInsets = useScreenHorizontalInsets();
   const colors = useAppColors();
-  const { currentTheme } = useTheme();
   const [ageGroupsCache, setAgeGroupsCache] = useState<Record<string, string[]>>(
     {},
   );
@@ -226,10 +225,10 @@ function RecordsScreenContent() {
           gestureDirection: "horizontal",
           animation: "slide_from_right",
           headerTitleStyle: {
-            color: currentTheme === "dark" ? "#fff" : "#000",
+            color: colors.headerTitle,
           },
           headerStyle: {
-            backgroundColor: currentTheme === "dark" ? "#000000" : "#F5F5F5",
+            backgroundColor: colors.headerBackground,
           },
           headerShadowVisible: false,
           headerBackButtonDisplayMode: "minimal",
@@ -270,16 +269,13 @@ function RecordsScreenContent() {
               {record.weightClass}
             </ThemedText>
             <ThemedText style={dataTableStyles.cell}>
-              {record.snatchRecord}
-              kg
+              {formatReferenceKg(record.snatchRecord)}
             </ThemedText>
             <ThemedText style={dataTableStyles.cell}>
-              {record.cjRecord}
-              kg
+              {formatReferenceKg(record.cjRecord)}
             </ThemedText>
             <ThemedText style={dataTableStyles.cell}>
-              {record.totalRecord}
-              kg
+              {formatReferenceKg(record.totalRecord)}
             </ThemedText>
           </View>
         )}

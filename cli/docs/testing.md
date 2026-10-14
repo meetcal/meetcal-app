@@ -3,7 +3,7 @@
 Run from `cli/`:
 
 ```sh
-just check-all        # cargo fmt --check, clippy -D warnings, cargo test
+mise run check-all    # cargo fmt --check, clippy -D warnings, cargo test
 cargo test            # tests only
 ```
 
@@ -13,14 +13,19 @@ every change to `cli/` or `convex/`.
 ## What the suites cover
 
 - **Unit tests**, in a `#[cfg(test)] mod tests` at the bottom of each module: answer parsing
-  (including rows missing optional fields), report arithmetic (Wrapped stats, make rates,
+  (including rows missing optional fields), report arithmetic (club and WSO Wrapped stats, make rates,
   comparisons and percentage changes), weight-class sorting, meet-name matching, the retry policy,
   and the Convex transport (`src/utils/backend.rs`: both answer forms, function errors, whole-number
   floats).
 - **Integration tests** in `tests/`: one file per command for argument parsing and help text
   (`tests/help_options.rs` also pins `--version` to the crate), and `tests/api_retry.rs`, which
   runs the real HTTP client against a local server that serves scripted Convex answers, to check
-  retries, the request body, the User-Agent, and error messages.
+  retries, the request body, the User-Agent, and error messages. `tests/premium_pass.rs` (the
+  access pass on premium reads: fetched once with the saved login, renewed once when refused, the
+  messages without a login or a subscription) and `tests/login.rs` (`login` and `logout` against a
+  scripted device login) and `tests/wrapped.rs` (`results:wrapped` is read with neither a pass
+  nor the login, and its float numbers parse) use the same server, in `tests/support/`. They save logins in temporary
+  directories and pass `Access` explicitly, so no test reads your own login.
 
 No test calls a real deployment. Put report logic in pure functions that take rows, so a test can
 feed fixture rows instead of a network.

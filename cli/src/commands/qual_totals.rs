@@ -4,6 +4,7 @@ use comfy_table::Table;
 use serde::Deserialize;
 
 use crate::utils::backend::{NoArgs, queries, query};
+use crate::utils::filters::{Filter, no_match};
 use crate::utils::output::{self, Report};
 
 #[derive(Debug, Deserialize)]
@@ -46,15 +47,45 @@ pub async fn run(args: QualTotalsArgs) -> Result<()> {
 
     let totals: Vec<QualifyingTotal> = query(queries::QUALIFYING_TOTALS, &NoArgs {}).await?;
 
+    let (matching, others): (Vec<QualifyingTotal>, Vec<QualifyingTotal>) =
+        totals.into_iter().partition(|row| {
+            row.age_category.eq_ignore_ascii_case(age.trim())
+                && row.gender.eq_ignore_ascii_case(gender.trim())
+                && row.event_name.eq_ignore_ascii_case(event.trim())
+        });
+    if matching.is_empty() {
+        let filters = [
+            Filter {
+                option: "--age",
+                value: &age,
+            },
+            Filter {
+                option: "--gender",
+                value: &gender,
+            },
+            Filter {
+                option: "--event",
+                value: &event,
+            },
+        ];
+        let rows: Vec<Vec<&str>> = others
+            .iter()
+            .map(|row| {
+                vec![
+                    row.age_category.as_str(),
+                    row.gender.as_str(),
+                    row.event_name.as_str(),
+                ]
+            })
+            .collect();
+        return Err(no_match("qualifying totals", &filters, &rows));
+    }
+
     // push to table
     let mut table = Table::new();
     table.set_header(vec!["Class", "Total"]);
 
-    for total in totals.into_iter().filter(|row| {
-        row.age_category.eq_ignore_ascii_case(&age)
-            && row.gender.eq_ignore_ascii_case(&gender)
-            && row.event_name.eq_ignore_ascii_case(&event)
-    }) {
+    for total in matching {
         table.add_row(vec![total.weight_class, total.qualifying_total.to_string()]);
     }
 
