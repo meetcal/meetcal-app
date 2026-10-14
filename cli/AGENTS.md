@@ -7,7 +7,7 @@ The repository root's `AGENTS.md` applies here too: its hard rules (worktrees, n
 ## Differences from the root
 
 - The toolchain is Cargo and mise (`mise.toml` in this folder), not Bun. The root's `mise run check` runs this folder's `cargo fmt --check`, clippy and tests (as CI does) when the branch changes `cli/`, one worktree at a time; [Verify](#verify) lists the rest.
-- Publishing a release (a `cli-v*` tag) and updating the Homebrew tap are external actions: do them only when the task asks for a release. [docs/releasing.md](docs/releasing.md) has the steps.
+- Publishing a release (a `cli-v*` tag) is an external action, and it also updates the Homebrew tap: do it only when the task asks for a release. [docs/releasing.md](docs/releasing.md) has the steps.
 - A change to a Convex query in `../convex/` can change what a command prints. The CLI CI runs on changes to `convex/` for that reason; when you change a query's answer, check the commands that read it (`src/commands/`).
 
 ## Layout
@@ -20,6 +20,7 @@ The repository root's `AGENTS.md` applies here too: its hard rules (worktrees, n
 | `src/utils/access.rs` | The access pass premium reads carry: `PREMIUM_FUNCTIONS` and `PREMIUM_ACTIONS` (equal to `convex/lib/access.ts`'s lists), fetching the pass with the saved login, and what a refused read does |
 | `src/utils/credentials.rs`, `device_login.rs` | The saved login (`~/.config/meetcal/credentials.json`, 0600), and the device-code login's answers, polling policy and QR code; `src/commands/login.rs` runs `login` and `logout` |
 | `src/utils/retry.rs` | The retry policy for throttled and overloaded answers, free of I/O |
+| `src/utils/releases.rs`, `upgrade.rs`, `update_notice.rs` | `meetcal upgrade` and the daily new-release notice: the newest `cli-v*` release on GitHub, how this copy was installed and how to replace it (checked against the release's `SHA256SUMS`), and the notice's cache; `src/commands/upgrade.rs` runs `upgrade` |
 | `src/utils/output.rs` | How results print: tables, or `--format json` / `csv` from the same `Report` |
 | `src/utils/stats.rs` | Divisions, Sinclair (and its coefficients), attempt habits, PRs, source-error guards |
 | `src/utils/athletes.rs` | Athletes' full histories |
@@ -29,6 +30,7 @@ The repository root's `AGENTS.md` applies here too: its hard rules (worktrees, n
 | `src/types/` | Answer types shared across commands |
 | `tests/` | Integration tests: argument parsing and help per command, and, against a local HTTP server (`tests/support/`), the retry policy, the access pass and `login`/`logout` |
 | `scripts/build-release.sh` | Local release builds, for smoke testing |
+| `scripts/homebrew-formula.sh` | Writes the Homebrew tap's formula from a release's version and `SHA256SUMS`; the release workflow runs it |
 | `docs/` | [architecture.md](docs/architecture.md), [testing.md](docs/testing.md), [releasing.md](docs/releasing.md) |
 
 ## Commands

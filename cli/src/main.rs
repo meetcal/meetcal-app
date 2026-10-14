@@ -2,13 +2,27 @@ use anyhow::Result;
 use clap::Parser;
 use meetcal::commands;
 use meetcal::parser::{Cli, Commands};
+use meetcal::utils::update_notice;
 
 #[tokio::main]
 async fn main() -> Result<()> {
     let cli = Cli::parse();
     meetcal::utils::output::set_format(cli.format);
 
-    match cli.command {
+    // `upgrade` checks for itself, and would otherwise announce the release it just installed.
+    let notice = match cli.command {
+        Commands::Upgrade(_) => None,
+        _ => update_notice::start(),
+    };
+    let result = run(cli.command).await;
+    if let Some(notice) = notice {
+        notice.finish().await;
+    }
+    result
+}
+
+async fn run(command: Commands) -> Result<()> {
+    match command {
         Commands::AdaptiveRecords(args) => commands::adaptive_records::run(args).await?,
         Commands::Attendance(args) => commands::attendance::run(args).await?,
         Commands::ClubCompare(args) => commands::club_compare::run(args).await?,
@@ -35,6 +49,7 @@ async fn main() -> Result<()> {
         Commands::Schedule(args) => commands::schedule::run(args).await?,
         Commands::Search(args) => commands::search::run(args).await?,
         Commands::Standards(args) => commands::standards::run(args).await?,
+        Commands::Upgrade(args) => commands::upgrade::run(args).await?,
         Commands::Wrapped(args) => commands::wrapped::run(args).await?,
         Commands::Wso(args) => commands::wso_results::run(args).await?,
         Commands::WsoCompare(args) => commands::wso_compare::run(args).await?,

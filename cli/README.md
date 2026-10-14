@@ -15,12 +15,18 @@ brew tap meetcal/tap
 brew install meetcal
 ```
 
-Upgrade later:
+Upgrade later (3.0.0 and later):
 
 ```sh
-brew update
-brew upgrade meetcal
+meetcal upgrade
 ```
+
+`meetcal upgrade` runs `brew update` and `brew upgrade meetcal/tap/meetcal` for a Homebrew install and `cargo install`
+of the newest release's tag for a Cargo install; a binary unpacked by hand downloads the release for
+its machine, checks it against the release's `SHA256SUMS`, and replaces itself. `meetcal upgrade
+--check` only says whether a newer release is out (exit 1 when one is, 2 when it cannot tell). On a terminal, other
+commands say so once a day; set `MEETCAL_NO_UPDATE_CHECK=1` to turn that off. From 2.4.0 or
+earlier, which have no `upgrade`, run `brew update && brew upgrade meetcal`.
 
 ### Cargo
 
