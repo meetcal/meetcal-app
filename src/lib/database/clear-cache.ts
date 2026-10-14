@@ -8,7 +8,7 @@ import {
   getExplicitMeetDownloadEntries,
   hasMeetEnded,
 } from '@/lib/database/offline-store';
-import { getTrustedNow } from '@/lib/api/meetcal-api';
+import { awaitServerClock, getTrustedNow } from '@/lib/api/meetcal-api';
 import { isNetworkAvailable } from '@/lib/networkUtils';
 
 export type ClearCacheOutcome =
@@ -64,6 +64,10 @@ export async function clearCachedMeetData(deps: ClearCacheDeps): Promise<ClearCa
   try {
     // Read before the clear un-marks them. A meet that has ended (on the
     // server's clock, as the expiry sweep judges it) is not brought back.
+    // Requests no longer wait for the clock sample, so early in a process
+    // there may be none yet: wait for it (bounded) rather than re-download
+    // every ended meet.
+    await awaitServerClock();
     const now = getTrustedNow()?.getTime();
     const downloads = (await getExplicitMeetDownloadEntries()).filter(
       ({ endDate }) => !(now !== undefined && endDate && hasMeetEnded(endDate, now)),

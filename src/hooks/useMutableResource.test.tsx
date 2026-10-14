@@ -452,4 +452,92 @@ describe("useMutableResource", () => {
     expect(captured!.refreshError).toBeNull();
   });
 
+  // Between a render with new params and the effect that starts their load,
+  // the hook used to report the previous key's `isInitialLoading` (false), so
+  // a consumer read "loaded, nothing there" for a frame: the Schedule tab
+  // drew "No schedule yet" and rankings/clubs lists their empty state.
+  describe("the render where the key changes", () => {
+    function recordingHarness(
+      resource: ReturnType<typeof createMutableResource<Row[], [string]>>,
+    ) {
+      const renders: { param: string | null; isInitialLoading: boolean; ids: string[] }[] = [];
+      function Recorder({ param }: { param: string | null }) {
+        const state = useMutableResource({
+          resource,
+          params: param === null ? null : [param],
+          initialData: [],
+        });
+        renders.push({
+          param,
+          isInitialLoading: state.isInitialLoading,
+          ids: state.data.map((row) => row.id),
+        });
+        return null;
+      }
+      let tree!: ReturnType<typeof create>;
+      act(() => {
+        tree = create(<Recorder param={null} />);
+      });
+      return {
+        renders,
+        tree,
+        show: (param: string | null) =>
+          act(() => {
+            tree.update(<Recorder param={param} />);
+          }),
+      };
+    }
+
+    function rowsResource() {
+      return createMutableResource<Row[], [string]>({
+        getKey: (param) => `rows:${param}`,
+        loadCached: async (param) => ({ data: [{ id: param }], lastUpdatedAt: 1 }),
+        fetchFresh: async (param) => [{ id: param }],
+        persistFresh: async () => undefined,
+      });
+    }
+
+    it("reports loading on the first render with params (null to A)", async () => {
+      const { renders, tree, show } = recordingHarness(rowsResource());
+      expect(renders.at(-1)).toEqual({ param: null, isInitialLoading: false, ids: [] });
+
+      const before = renders.length;
+      show("A");
+      // Every render for A before its rows arrive says it is loading.
+      const forA = renders.slice(before).filter((render) => render.ids.length === 0);
+      expect(forA.length).toBeGreaterThan(0);
+      expect(forA.every((render) => render.isInitialLoading)).toBe(true);
+
+      await flush();
+      expect(renders.at(-1)).toEqual({ param: "A", isInitialLoading: false, ids: ["A"] });
+      act(() => tree.unmount());
+    });
+
+    it("reports loading on the render that switches from a loaded A to B", async () => {
+      const { renders, tree, show } = recordingHarness(rowsResource());
+      show("A");
+      await flush();
+      expect(renders.at(-1)).toMatchObject({ param: "A", isInitialLoading: false });
+
+      const before = renders.length;
+      show("B");
+      const firstForB = renders[before];
+      expect(firstForB.param).toBe("B");
+      expect(firstForB.isInitialLoading).toBe(true);
+
+      await flush();
+      expect(renders.at(-1)).toEqual({ param: "B", isInitialLoading: false, ids: ["B"] });
+      act(() => tree.unmount());
+    });
+
+    it("does not report loading when params go back to null", async () => {
+      const { renders, tree, show } = recordingHarness(rowsResource());
+      show("A");
+      await flush();
+      show(null);
+      await flush();
+      expect(renders.at(-1)).toEqual({ param: null, isInitialLoading: false, ids: [] });
+      act(() => tree.unmount());
+    });
+  });
 });

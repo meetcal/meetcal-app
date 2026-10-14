@@ -13,6 +13,8 @@ import {
   prefetchMeetData,
   pruneHistorySyncedAt,
   prunePendingHistory,
+  ROSTER_PREFETCH_AFTER_FIRST_SCREEN_MS,
+  ROSTER_PREFETCH_MAX_DEFER_MS,
   touchMeetAccess,
   validatePrefetchedLiftingResults,
   warmMeetData,
@@ -95,6 +97,8 @@ const mockGetMeetLiftingResults = jest.fn(async (_meet: string): Promise<any[]> 
 const mockClearMeetData = jest.fn(
   async (_meet: string): Promise<void> => undefined,
 );
+// When the roster was last stored: never, unless a test says otherwise.
+const mockGetMeetAthletesSyncedAt = jest.fn(async (_meet: string): Promise<number> => 0);
 
 jest.mock("@/lib/database/queries", () => ({
   fetchSchedule: (...args: unknown[]) => mockFetchSchedule(...args),
@@ -132,6 +136,7 @@ jest.mock("@/lib/database/offline-store", () => ({
   })),
   isMeetExplicitlyDownloaded: async (meet: string) =>
     mockIsExplicitlyDownloaded(meet),
+  getMeetAthletesSyncedAt: (meet: string) => mockGetMeetAthletesSyncedAt(meet),
   getExplicitlyDownloadedMeetIds: async () => ({
     has: (meet: string) => mockIsExplicitlyDownloaded(meet),
   }),
@@ -311,6 +316,156 @@ describe("prefetchCriticalMeetData", () => {
     } finally {
       jest.useRealTimers();
     }
+  });
+
+  describe("the launch's deferred roster", () => {
+    const schedule: Schedule = [
+      {
+        date: "Future Day 1",
+        fullDate: "2099-01-01",
+        sessions: [
+          {
+            id: "session-1",
+            number: 1,
+            startTime: "8:00 AM",
+            weighInTime: "6:00 AM",
+            platforms: [{ platform: "Red", weightClass: "Red class" }],
+          },
+        ],
+      },
+    ];
+
+    function gate() {
+      let open!: () => void;
+      const promise = new Promise<void>((resolve) => {
+        open = resolve;
+      });
+      return { promise, open };
+    }
+
+    beforeEach(() => {
+      jest.useFakeTimers();
+      setExplicitlyDownloaded(() => false);
+      mockFetchSchedule.mockResolvedValue(schedule);
+      mockGetMeetAthletesSyncedAt.mockResolvedValue(0);
+    });
+
+    afterEach(() => {
+      jest.useRealTimers();
+    });
+
+    it("warms the schedule at once and the roster only after the first screen", async () => {
+      const firstScreen = gate();
+      let done = false;
+      const warming = warmMeetData("Launch Meet" as any, { rosterAfter: firstScreen.promise }).then(() => {
+        done = true;
+      });
+
+      await jest.advanceTimersByTimeAsync(0);
+      expect(mockSaveMeetSchedule).toHaveBeenCalledWith("Launch Meet", schedule);
+      expect(mockFetchAthletesWithSession).not.toHaveBeenCalled();
+
+      await jest.advanceTimersByTimeAsync(1000);
+      firstScreen.open();
+      await jest.advanceTimersByTimeAsync(ROSTER_PREFETCH_AFTER_FIRST_SCREEN_MS - 1);
+      expect(mockFetchAthletesWithSession).not.toHaveBeenCalled();
+      expect(done).toBe(false);
+
+      await jest.advanceTimersByTimeAsync(1);
+      await warming;
+      expect(mockFetchAthletesWithSession).toHaveBeenCalledWith("Launch Meet");
+      expect(mockSaveMeetAthletes).toHaveBeenCalledWith("Launch Meet", roster);
+      // Nothing left behind: the cap timer is cleared with the rest.
+      expect(jest.getTimerCount()).toBe(0);
+    });
+
+    it("fetches the roster at the cap when the first screen never settles", async () => {
+      const never = new Promise<void>(() => {});
+      const warming = warmMeetData("Stuck Meet" as any, { rosterAfter: never });
+
+      await jest.advanceTimersByTimeAsync(ROSTER_PREFETCH_MAX_DEFER_MS - 1);
+      expect(mockFetchAthletesWithSession).not.toHaveBeenCalled();
+      await jest.advanceTimersByTimeAsync(1);
+      await warming;
+      expect(mockFetchAthletesWithSession).toHaveBeenCalledWith("Stuck Meet");
+      expect(jest.getTimerCount()).toBe(0);
+    });
+
+    it("waits only the settle delay once the first screen is already up (a later automatic switch)", async () => {
+      const warming = warmMeetData("Later Meet" as any, { rosterAfter: Promise.resolve() });
+      await jest.advanceTimersByTimeAsync(ROSTER_PREFETCH_AFTER_FIRST_SCREEN_MS);
+      await warming;
+      expect(mockFetchAthletesWithSession).toHaveBeenCalledWith("Later Meet");
+    });
+
+    it("lets a caller that wants the meet now (a forced sync) skip the wait", async () => {
+      const firstScreen = gate();
+      const deferredWarm = warmMeetData("Synced Meet" as any, { rosterAfter: firstScreen.promise });
+      await jest.advanceTimersByTimeAsync(0);
+      expect(mockFetchAthletesWithSession).not.toHaveBeenCalled();
+
+      const forced = prefetchCriticalMeetData("Synced Meet" as any);
+      await jest.advanceTimersByTimeAsync(0);
+      await forced;
+      await deferredWarm;
+      expect(mockFetchAthletesWithSession).toHaveBeenCalledTimes(1);
+      expect(jest.getTimerCount()).toBe(0);
+    });
+
+    it("does not download a roster the Start List stored while it waited", async () => {
+      const firstScreen = gate();
+      const warming = warmMeetData("Start List Meet" as any, { rosterAfter: firstScreen.promise });
+      await jest.advanceTimersByTimeAsync(0);
+      mockGetMeetAthletesSyncedAt.mockResolvedValue(Date.now());
+
+      firstScreen.open();
+      await jest.advanceTimersByTimeAsync(ROSTER_PREFETCH_AFTER_FIRST_SCREEN_MS);
+      await warming;
+      expect(mockFetchAthletesWithSession).not.toHaveBeenCalled();
+      expect(mockSaveMeetSchedule).toHaveBeenCalledTimes(1);
+    });
+
+    it("does not write back a roster cleared while it waited or downloaded", async () => {
+      const firstScreen = gate();
+      const warming = warmMeetData("Cleared Meet" as any, { rosterAfter: firstScreen.promise });
+      await jest.advanceTimersByTimeAsync(0);
+      let answer!: (rows: unknown) => void;
+      mockFetchAthletesWithSession.mockImplementationOnce(
+        () => new Promise((resolve) => {
+          answer = resolve;
+        }),
+      );
+
+      firstScreen.open();
+      await jest.advanceTimersByTimeAsync(ROSTER_PREFETCH_AFTER_FIRST_SCREEN_MS);
+      expect(mockFetchAthletesWithSession).toHaveBeenCalledWith("Cleared Meet");
+      await beginMeetClear("Cleared Meet");
+      answer(roster);
+      await warming;
+      expect(mockSaveMeetAthletes).not.toHaveBeenCalled();
+
+      // Cleared before its turn: not even downloaded.
+      mockFetchAthletesWithSession.mockClear();
+      const nextScreen = gate();
+      const next = warmMeetData("Cleared Early" as any, { rosterAfter: nextScreen.promise });
+      await jest.advanceTimersByTimeAsync(0);
+      await beginMeetClear("Cleared Early");
+      nextScreen.open();
+      await jest.advanceTimersByTimeAsync(ROSTER_PREFETCH_AFTER_FIRST_SCREEN_MS);
+      await next;
+      expect(mockFetchAthletesWithSession).not.toHaveBeenCalled();
+      expect(mockSaveMeetAthletes).not.toHaveBeenCalled();
+    });
+
+    it("clears its timers when offline, where the roster step never runs", async () => {
+      const { isNetworkAvailable } = jest.requireMock("@/lib/networkUtils") as {
+        isNetworkAvailable: jest.Mock;
+      };
+      isNetworkAvailable.mockResolvedValueOnce(false);
+      await warmMeetData("Offline Meet" as any, { rosterAfter: new Promise<void>(() => {}) });
+      expect(mockFetchSchedule).not.toHaveBeenCalled();
+      expect(jest.getTimerCount()).toBe(0);
+    });
   });
 
   it("skips the full meet package prefetch when the meet is not explicitly downloaded", async () => {

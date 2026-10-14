@@ -168,12 +168,13 @@ export const MAX_PLAUSIBLE_CLOCK_SKEW_MS = 15 * 60 * 1000;
 /** A sample older than this is refreshed (in the background) on the next request. */
 export const SERVER_CLOCK_RESAMPLE_MS = 10 * 60 * 1000;
 /**
- * How long the first request of the process waits, after its own answer, for
- * the clock sample it triggered. The mutation runs alongside the request, so
- * it is normally already done; the bound keeps a sample stuck on a dropped
- * connection from holding up data that has arrived.
+ * How long `awaitServerClock` waits for a sample in flight. The first
+ * request of the process used to wait this long for its sample before
+ * handing back data that had already arrived, which delayed the first
+ * schedule on every cold start; now only the decisions that want the
+ * server's clock right after a request wait, and only for this long.
  */
-const SERVER_CLOCK_FIRST_SAMPLE_GRACE_MS = 2000;
+export const SERVER_CLOCK_DECISION_GRACE_MS = 2000;
 
 function waitAtMost(promise: Promise<void>, ms: number): Promise<void> {
   let timer: ReturnType<typeof setTimeout> | undefined;
@@ -204,8 +205,8 @@ let serverClockInFlight: Promise<void> | null = null;
  * the round trip. Failures are swallowed: the sample is a hint, and the
  * request it rides alongside reports its own errors.
  */
-function sampleServerClock(): { done: Promise<void>; started: boolean } {
-  if (serverClockInFlight) return { done: serverClockInFlight, started: false };
+function sampleServerClock(): Promise<void> {
+  if (serverClockInFlight) return serverClockInFlight;
   const sentAt = Date.now();
   const sample = callApi(SERVER_CLOCK_CALL)
     .then((serverNow) => {
@@ -221,7 +222,7 @@ function sampleServerClock(): { done: Promise<void>; started: boolean } {
   serverClockInFlight = waitAtMost(sample, SERVER_CLOCK_SAMPLE_TIMEOUT_MS).finally(() => {
     serverClockInFlight = null;
   });
-  return { done: serverClockInFlight, started: true };
+  return serverClockInFlight;
 }
 
 /**
@@ -231,7 +232,22 @@ function sampleServerClock(): { done: Promise<void>; started: boolean } {
  * started sessions). Bounded by `SERVER_CLOCK_SAMPLE_TIMEOUT_MS`.
  */
 export async function refreshServerClock(): Promise<ServerClockSample | null> {
-  await sampleServerClock().done;
+  await sampleServerClock();
+  return serverClockSample;
+}
+
+/**
+ * The server clock sample, waiting up to `maxWaitMs` for one when this
+ * process has none yet (joining the sample in flight, or starting one).
+ * Null when none arrives in time (offline, a dropped connection). For a
+ * decision made right after a request that wants the server's clock (is the
+ * stored meet over?) now that requests no longer wait for their sample.
+ */
+export async function awaitServerClock(
+  maxWaitMs: number = SERVER_CLOCK_DECISION_GRACE_MS,
+): Promise<ServerClockSample | null> {
+  if (serverClockSample) return serverClockSample;
+  await waitAtMost(sampleServerClock(), maxWaitMs);
   return serverClockSample;
 }
 
@@ -320,9 +336,10 @@ function methodLabel(call: ApiCall): string {
  * `MeetCalApiError` carrying the status the Rust API would have answered, a
  * request that outlives `timeoutMs` a `MeetCalApiTimeoutError`.
  *
- * The request that starts the process's first clock sample also waits
- * (briefly) for it, so the first response normally leaves a sample behind;
- * later ones refresh a stale sample in the background.
+ * The clock sample is started alongside the request and never waited for:
+ * the first answer of a cold start is what the first schedule paints from.
+ * Until the sample lands, `getTrustedNow` is null and the callers that need
+ * the server's clock skip their decision or wait (`awaitServerClock`).
  *
  * A premium read carries the access pass (`lib/api/premium-queries.ts`). If
  * the server refuses it (401 without one, 403 for a stale one), the read is
@@ -359,20 +376,12 @@ async function send(call: ApiCall, timeoutMs: number): Promise<unknown> {
       abort?.abort();
     }, timeoutMs);
   });
-  const clock =
-    serverClockSample === null || Date.now() - serverClockSample.sampledAt > SERVER_CLOCK_RESAMPLE_MS
-      ? sampleServerClock()
-      : null;
+  if (serverClockSample === null || Date.now() - serverClockSample.sampledAt > SERVER_CLOCK_RESAMPLE_MS) {
+    void sampleServerClock();
+  }
 
   try {
-    const result = await Promise.race([callApi(abort ? { ...call, signal: abort.signal } : call), timeout]);
-    // Only the request that started the process's first sample waits for it;
-    // refreshes of an existing sample, and requests that merely find one in
-    // flight, never do.
-    if (clock?.started && serverClockSample === null) {
-      await waitAtMost(clock.done, SERVER_CLOCK_FIRST_SAMPLE_GRACE_MS);
-    }
-    return result;
+    return await Promise.race([callApi(abort ? { ...call, signal: abort.signal } : call), timeout]);
   } catch (error) {
     if (error instanceof TransportRequestError) {
       throw new MeetCalApiError(error.message, error.status, error.body);

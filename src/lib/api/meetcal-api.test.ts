@@ -38,10 +38,12 @@ import {
   mapPackageSchedule,
   MEET_PACKAGE_INCLUDE,
   MEET_PACKAGE_TIMEOUT_MS,
+  awaitServerClock,
   getServerClockSample,
   getServerClockSkewMs,
   getTrustedNow,
   MAX_PLAUSIBLE_CLOCK_SKEW_MS,
+  SERVER_CLOCK_DECISION_GRACE_MS,
   MAX_QUERY_PAGES,
   MeetCalApiError,
   resetServerClockForTests,
@@ -73,8 +75,6 @@ import {
 
 /** The client's per-call default (`DEFAULT_TIMEOUT_MS` in meetcal-api.ts). */
 const DEFAULT_TIMEOUT_MS = 10000;
-/** How long the first request waits for its clock sample (`SERVER_CLOCK_FIRST_SAMPLE_GRACE_MS`). */
-const FIRST_SAMPLE_GRACE_MS = 2000;
 const HOUR_MS = 60 * 60 * 1000;
 
 // --- fake transport ---------------------------------------------------------
@@ -83,8 +83,7 @@ type Responder = (call: ApiCall) => unknown;
 
 /**
  * Swaps in a fake transport. Clock calls (`kind: 'clock'`) never reach
- * `respond`: `clock` answers them, by default with the device clock, so the
- * first request's wait for its clock sample never stalls a test.
+ * `respond`: `clock` answers them, by default with the device clock.
  */
 function installTransport(respond: Responder, clock: Responder = () => Date.now()) {
   const transport = jest.fn(
@@ -2532,10 +2531,12 @@ describe('server clock', () => {
 
     for (let i = 0; i < 3; i += 1) {
       await expect(fetchApiClubNames()).resolves.toEqual(['Club A']);
+      await flushMicrotasks();
       expect(getServerClockSample()).toBeNull();
       expect(getTrustedNow()).toBeNull();
     }
     await fetchApiClubNames();
+    await flushMicrotasks();
 
     expect(clockCalls()).toHaveLength(4);
     expect(getServerClockSkewMs()).toBe(30_000);
@@ -2555,7 +2556,9 @@ describe('server clock', () => {
     expect(getServerClockSkewMs()).toBe(60_000);
   });
 
-  it('holds the first request at most the grace period for a clock call that never answers', async () => {
+  // The first request of a cold start used to wait up to 2s for the clock
+  // sample it started, holding back the first schedule it had already got.
+  it('does not hold the first request for a clock call that never answers', async () => {
     jest.useFakeTimers({ now: T0 });
     installTransport(answer(['Club A']), () => never());
     let settled = false;
@@ -2564,26 +2567,32 @@ describe('server clock', () => {
     });
 
     await flushMicrotasks();
-    jest.advanceTimersByTime(FIRST_SAMPLE_GRACE_MS - 1);
-    await flushMicrotasks();
-    expect(settled).toBe(false);
-
-    jest.advanceTimersByTime(1);
+    expect(settled).toBe(true);
     await expect(pending).resolves.toEqual(['Club A']);
     expect(getServerClockSample()).toBeNull();
-    // The grace timer and the request timeout are cleared; only the stuck
-    // sample's own abandonment timer is left.
+    // The request timeout is cleared; only the stuck sample's own
+    // abandonment timer is left.
     expect(jest.getTimerCount()).toBe(1);
+  });
+
+  it('leaves the first sample behind once its answer lands, after the request has returned', async () => {
+    jest.useFakeTimers({ now: T0 });
+    const clock = deferred<number>();
+    installTransport(answer(['Club A']), () => clock.promise);
+
+    await expect(fetchApiClubNames()).resolves.toEqual(['Club A']);
+    expect(getTrustedNow()).toBeNull();
+
+    clock.resolve(T0 + 30_000);
+    await flushMicrotasks();
+    expect(getServerClockSkewMs()).toBe(30_000);
   });
 
   it('does not hold later requests for a clock call that is still stuck', async () => {
     jest.useFakeTimers({ now: T0 });
     const { clockCalls } = installTransport(answer(['Club A']), () => never());
 
-    const first = fetchApiClubNames();
-    await flushMicrotasks();
-    jest.advanceTimersByTime(FIRST_SAMPLE_GRACE_MS);
-    await first;
+    await fetchApiClubNames();
 
     let settled = false;
     const second = fetchApiClubNames().finally(() => {
@@ -2596,7 +2605,7 @@ describe('server clock', () => {
     expect(clockCalls()).toHaveLength(1);
   });
 
-  it('does not hold a second request at startup for the clock call the first one started', async () => {
+  it('does not hold either of two startup requests for the clock call the first one started', async () => {
     jest.useFakeTimers({ now: T0 });
     const { clockCalls, dataCalls } = installTransport(answer(['Club A']), () => never());
     let firstSettled = false;
@@ -2612,10 +2621,8 @@ describe('server clock', () => {
     expect(dataCalls()).toHaveLength(2);
 
     await flushMicrotasks();
+    expect(firstSettled).toBe(true);
     expect(secondSettled).toBe(true);
-    expect(firstSettled).toBe(false);
-
-    jest.advanceTimersByTime(FIRST_SAMPLE_GRACE_MS);
     await expect(first).resolves.toEqual(['Club A']);
     await expect(second).resolves.toEqual(['Club A']);
   });
@@ -2626,21 +2633,19 @@ describe('server clock', () => {
     let clockAnswer: () => unknown = () => never();
     const { clockCalls } = installTransport(answer(['Club A']), () => clockAnswer());
 
-    const first = fetchApiClubNames();
-    await flushMicrotasks();
-    jest.advanceTimersByTime(FIRST_SAMPLE_GRACE_MS);
-    await first;
+    await fetchApiClubNames();
 
     // Just short of the limit the stuck call is still the one in flight.
-    jest.advanceTimersByTime(SAMPLE_TIMEOUT_MS - FIRST_SAMPLE_GRACE_MS - 1);
+    jest.advanceTimersByTime(SAMPLE_TIMEOUT_MS - 1);
     await fetchApiClubNames();
     expect(clockCalls()).toHaveLength(1);
 
     jest.advanceTimersByTime(1);
     await flushMicrotasks();
     clockAnswer = () => Date.now() + 42_000;
-    // No sample yet, and this request starts the new one, so it waits for it.
+    // No sample yet, so this request starts a new one alongside it.
     await expect(fetchApiClubNames()).resolves.toEqual(['Club A']);
+    await flushMicrotasks();
     expect(clockCalls()).toHaveLength(2);
     expect(getServerClockSample()).toEqual({ skewMs: 42_000, sampledAt: T0 + SAMPLE_TIMEOUT_MS });
   });
@@ -2651,11 +2656,8 @@ describe('server clock', () => {
     let clock = deferred<number>();
     const { clockCalls } = installTransport(answer(['Club A']), () => clock.promise);
 
-    const first = fetchApiClubNames();
-    await flushMicrotasks();
-    jest.advanceTimersByTime(FIRST_SAMPLE_GRACE_MS);
-    await expect(first).resolves.toEqual(['Club A']);
-    jest.advanceTimersByTime(MAX_ROUND_TRIP_MS + 1 - FIRST_SAMPLE_GRACE_MS);
+    await expect(fetchApiClubNames()).resolves.toEqual(['Club A']);
+    jest.advanceTimersByTime(MAX_ROUND_TRIP_MS + 1);
     clock.resolve(Date.now() + 60_000);
     await flushMicrotasks();
     expect(getServerClockSample()).toBeNull();
@@ -2663,11 +2665,8 @@ describe('server clock', () => {
     // The discarded sample is finished, so the next request starts another.
     const sentAt = Date.now();
     clock = deferred<number>();
-    const second = fetchApiClubNames();
-    await flushMicrotasks();
-    jest.advanceTimersByTime(FIRST_SAMPLE_GRACE_MS);
-    await second;
-    jest.advanceTimersByTime(MAX_ROUND_TRIP_MS - FIRST_SAMPLE_GRACE_MS);
+    await fetchApiClubNames();
+    jest.advanceTimersByTime(MAX_ROUND_TRIP_MS);
     clock.resolve(Date.now() + 60_000);
     await flushMicrotasks();
     expect(clockCalls()).toHaveLength(2);
@@ -2675,6 +2674,64 @@ describe('server clock', () => {
     expect(getServerClockSample()).toEqual({
       skewMs: 60_000 + MAX_ROUND_TRIP_MS / 2,
       sampledAt: sentAt + MAX_ROUND_TRIP_MS,
+    });
+  });
+
+  describe('awaitServerClock', () => {
+    it('answers with the sample at hand without asking again', async () => {
+      jest.useFakeTimers({ now: T0 });
+      const { clockCalls } = installTransport(answer([]), () => T0 + 5000);
+      await fetchApiClubNames();
+      await flushMicrotasks();
+      expect(clockCalls()).toHaveLength(1);
+
+      await expect(awaitServerClock()).resolves.toEqual({ skewMs: 5000, sampledAt: T0 });
+      expect(clockCalls()).toHaveLength(1);
+    });
+
+    it('joins the sample a request started, and has it as soon as it lands', async () => {
+      jest.useFakeTimers({ now: T0 });
+      const clock = deferred<number>();
+      const { clockCalls } = installTransport(answer(['Club A']), () => clock.promise);
+      await fetchApiClubNames();
+
+      let sample: unknown = 'pending';
+      void awaitServerClock().then((value) => {
+        sample = value;
+      });
+      await flushMicrotasks();
+      expect(sample).toBe('pending');
+
+      clock.resolve(T0 + 7000);
+      await flushMicrotasks();
+      expect(sample).toEqual({ skewMs: 7000, sampledAt: T0 });
+      expect(clockCalls()).toHaveLength(1);
+    });
+
+    it('starts a sample when none is in flight', async () => {
+      jest.useFakeTimers({ now: T0 });
+      const { clockCalls, dataCalls } = installTransport(answer([]), () => T0 - 2000);
+
+      await expect(awaitServerClock()).resolves.toEqual({ skewMs: -2000, sampledAt: T0 });
+      expect(clockCalls()).toHaveLength(1);
+      expect(dataCalls()).toHaveLength(0);
+    });
+
+    it('gives up after its grace period on a clock call that never answers', async () => {
+      jest.useFakeTimers({ now: T0 });
+      installTransport(answer([]), () => never());
+      let settled = false;
+      const pending = awaitServerClock().finally(() => {
+        settled = true;
+      });
+
+      await flushMicrotasks();
+      jest.advanceTimersByTime(SERVER_CLOCK_DECISION_GRACE_MS - 1);
+      await flushMicrotasks();
+      expect(settled).toBe(false);
+
+      jest.advanceTimersByTime(1);
+      await expect(pending).resolves.toBeNull();
     });
   });
 });

@@ -76,6 +76,12 @@ export function useMutableResource<T, TParams extends readonly unknown[]>(
   const [error, setError] = useState<string | null>(null);
   const [refreshError, setRefreshError] = useState<string | null>(null);
   const [isInitialLoading, setIsInitialLoading] = useState(enabled);
+  // The key the load effect last started for. Between a render with a new
+  // key and that effect, `isInitialLoading` still holds the old key's value
+  // (false after params go from null to real): consumers read "loaded,
+  // nothing there" for one frame. The Schedule tab drew "No schedule yet"
+  // then, and the launch splash came down on it.
+  const [loadStartedForKey, setLoadStartedForKey] = useState<string | null>(key);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [lastUpdatedAt, setLastUpdatedAt] = useState<number | null>(null);
   const [source, setSource] = useState<ResourceSource | null>(null);
@@ -200,6 +206,7 @@ export function useMutableResource<T, TParams extends readonly unknown[]>(
     let cancelled = false;
 
     async function loadResource() {
+      setLoadStartedForKey(key);
       const activeParams = paramsRef.current;
       if (activeParams === null) {
         previousKeyRef.current = null;
@@ -319,7 +326,7 @@ export function useMutableResource<T, TParams extends readonly unknown[]>(
     data,
     error,
     refreshError,
-    isInitialLoading,
+    isInitialLoading: isInitialLoading || (key !== null && key !== loadStartedForKey),
     isRefreshing,
     lastUpdatedAt,
     source,
