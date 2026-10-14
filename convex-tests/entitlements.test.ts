@@ -1,7 +1,12 @@
 import { ConvexError } from 'convex/values';
 import { getFunctionName } from 'convex/server';
 import {
+  backfillKnownUsers,
+  backfillUsers,
+  BACKFILL_BATCH,
+  BACKFILL_PAUSE_MS,
   claimRefresh,
+  knownUserIds,
   ENTITLEMENT_REFRESH_INTERVAL_MS,
   entitlementFromSubscriber,
   MAX_WEBHOOK_USER_IDS,
@@ -235,5 +240,73 @@ describe('RevenueCat calls', () => {
     expect(await run()).toEqual({ active: true });
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(db.rows('entitlements')).toEqual([expect.objectContaining({ userId: A, active: true })]);
+  });
+});
+
+describe('the backfill before enforcement', () => {
+  const originalFetch = global.fetch;
+  let previousKey: string | undefined;
+  const subscriberAnswer = { ok: true, status: 200, json: async () => ({ subscriber: { entitlements: { Subscriptions: { expires_date: null, product_identifier: 'lifetime' } } } }) };
+
+  beforeEach(() => {
+    previousKey = process.env.REVENUECAT_SECRET_API_KEY;
+    process.env.REVENUECAT_SECRET_API_KEY = 'sk_test';
+    jest.spyOn(console, 'log').mockImplementation(() => {});
+    jest.spyOn(console, 'error').mockImplementation(() => {});
+  });
+  afterEach(() => {
+    if (previousKey === undefined) delete process.env.REVENUECAT_SECRET_API_KEY;
+    else process.env.REVENUECAT_SECRET_API_KEY = previousKey;
+    global.fetch = originalFetch;
+    jest.restoreAllMocks();
+  });
+
+  function backfillCtx(db: ReturnType<typeof fakeMutationCtx>) {
+    const scheduled: { delayMs: number; args: unknown }[] = [];
+    return {
+      scheduled,
+      ctx: {
+        runQuery: async (_ref: unknown, args: unknown) => handlerOf(knownUserIds)(db.ctx, args),
+        runMutation: async (_ref: unknown, args: unknown) => handlerOf(store)(db.ctx, args),
+        scheduler: { runAfter: async (delayMs: number, _ref: unknown, args: unknown) => void scheduled.push({ delayMs, args }) },
+      },
+    };
+  }
+
+  it('lists each user once, in id order, however many rows they have', async () => {
+    const sessions = ['user_b', 'user_a', 'user_b', 'user_c'].map((userId, i) => ({ userId, sessionId: `s${i}`, meet: 'M', sessionNumber: 1, platform: 'Red', athleteNames: [], updatedAt: 1 }));
+    const db = fakeMutationCtx({ saved_sessions: sessions });
+    const ids = handlerOf<Record<string, unknown>, string[]>(knownUserIds);
+    expect(await ids(db.ctx, { table: 'saved_sessions', after: '', limit: 10 })).toEqual(['user_a', 'user_b', 'user_c']);
+    expect(await ids(db.ctx, { table: 'saved_sessions', after: 'user_a', limit: 1 })).toEqual(['user_b']);
+  });
+
+  it('stores what RevenueCat says for each known user, then moves to the next table', async () => {
+    global.fetch = jest.fn(async () => subscriberAnswer) as never;
+    const db = fakeMutationCtx({
+      saved_sessions: [{ userId: A, sessionId: 's1', meet: 'M', sessionNumber: 1, platform: 'Red', athleteNames: [], updatedAt: 1 }],
+    });
+    const { ctx, scheduled } = backfillCtx(db);
+    expect(await handlerOf(backfillKnownUsers)(ctx, {})).toEqual({ table: 'saved_sessions', synced: 1, active: 1, failed: 0, users: 1 });
+    expect(db.rows('entitlements')).toEqual([expect.objectContaining({ userId: A, active: true })]);
+    expect(scheduled).toEqual([{ delayMs: BACKFILL_PAUSE_MS, args: { table: 'user_preferences' } }]);
+  });
+
+  it('continues a full batch after its last user, and counts failures without stopping', async () => {
+    global.fetch = jest.fn(async (url: string) => (url.endsWith('user_005') ? { ok: false, status: 500, json: async () => ({}) } : subscriberAnswer)) as never;
+    const prefs = Array.from({ length: BACKFILL_BATCH }, (_, i) => ({ userId: `user_${String(i).padStart(3, '0')}`, autoUnsaveStartedSessions: false, updatedAt: 1 }));
+    const db = fakeMutationCtx({ user_preferences: prefs });
+    const { ctx, scheduled } = backfillCtx(db);
+    const counts = await handlerOf<Record<string, unknown>, Record<string, unknown>>(backfillKnownUsers)(ctx, { table: 'user_preferences' });
+    expect(counts).toMatchObject({ synced: BACKFILL_BATCH - 1, failed: 1, users: BACKFILL_BATCH });
+    expect(scheduled).toEqual([{ delayMs: BACKFILL_PAUSE_MS, args: { table: 'user_preferences', after: `user_${String(BACKFILL_BATCH - 1).padStart(3, '0')}` } }]);
+  });
+
+  it('backfills a given list, at most a batch at a time', async () => {
+    global.fetch = jest.fn(async () => subscriberAnswer) as never;
+    const db = fakeMutationCtx();
+    const { ctx } = backfillCtx(db);
+    expect(await handlerOf(backfillUsers)(ctx, { userIds: [A, 'user_b'] })).toEqual({ synced: 2, active: 2, failed: 0 });
+    await expect(handlerOf(backfillUsers)(ctx, { userIds: Array.from({ length: BACKFILL_BATCH + 1 }, (_, i) => `u${i}`) })).rejects.toThrow('at most');
   });
 });

@@ -184,6 +184,9 @@ export const run = internalAction({
   handler: async (ctx, args): Promise<{ checks: number; mismatches: string[] }> => {
     const mismatches: string[] = [];
     let checks = 0;
+    // The premium queries are read with the current access pass, as a subscriber would.
+    const pass = (await ctx.runQuery(internal.accessPass.currentPass, {})) ?? undefined;
+    const withPass = <T extends object>(queryArgs: T) => ({ ...queryArgs, pass });
     const compare = async (label: string, fast: Promise<unknown>, endpoint: string, liveArgs: Record<string, unknown>) => {
       checks += 1;
       try {
@@ -223,26 +226,26 @@ export const run = internalAction({
       }
       await compare(
         `package ${meet}`,
-        ctx.runQuery(api.meets.packageForMeet, { meet, historyCutoffDate: cutoff, include: ['year_bests'] }),
+        ctx.runQuery(api.meets.packageForMeet, withPass({ meet, historyCutoffDate: cutoff, include: ['year_bests'] })),
         'package',
         { meet, historyCutoffDate: cutoff },
       );
       for (const club of s.clubs) {
-        await compare(`clubMeetStats ${club} @ ${meet}`, ctx.runQuery(api.reference.clubMeetStats, { club, meet }), 'clubMeetStats', { club, meet });
+        await compare(`clubMeetStats ${club} @ ${meet}`, ctx.runQuery(api.reference.clubMeetStats, withPass({ club, meet })), 'clubMeetStats', { club, meet });
       }
       if (s.names.length > 0) {
         const names = s.names.slice(0, 40);
-        await compare(`byNames ${meet}`, ctx.runQuery(api.results.byNames, { names }), 'byNames', { names });
-        await compare(`latest ${meet}`, ctx.runQuery(api.results.byNames, { names: s.names, latestOnly: true }), 'byNames', { names: s.names, latestOnly: true });
-        await compare(`recent ${meet}`, ctx.runQuery(api.results.recent, { names, cutoffDate: cutoff }), 'recent', { names, cutoffDate: cutoff });
-        await compare(`bests ${meet}`, ctx.runQuery(api.results.bests, { names: s.names, cutoffDate: yearAgo }), 'bests', { names: s.names, cutoffDate: yearAgo });
+        await compare(`byNames ${meet}`, ctx.runQuery(api.results.byNames, withPass({ names })), 'byNames', { names });
+        await compare(`latest ${meet}`, ctx.runQuery(api.results.byNames, withPass({ names: s.names, latestOnly: true })), 'byNames', { names: s.names, latestOnly: true });
+        await compare(`recent ${meet}`, ctx.runQuery(api.results.recent, withPass({ names, cutoffDate: cutoff })), 'recent', { names, cutoffDate: cutoff });
+        await compare(`bests ${meet}`, ctx.runQuery(api.results.bests, withPass({ names: s.names, cutoffDate: yearAgo })), 'bests', { names: s.names, cutoffDate: yearAgo });
       }
     }
 
     const classSample = classes.slice(0, args.classes ?? 60);
     if (!classSample.some((c) => c.ageCategory === "Open Men's 85 kg")) classSample.push({ federation: 'USAW', ageCategory: "Open Men's 85 kg" });
     for (const c of classSample) {
-      await compare(`nat ${c.federation}|${c.ageCategory}`, ctx.runQuery(api.reference.nationalRankings, c), 'nat', c);
+      await compare(`nat ${c.federation}|${c.ageCategory}`, ctx.runQuery(api.reference.nationalRankings, withPass(c)), 'nat', c);
     }
 
     for (const [endpoint, fn] of [
@@ -253,18 +256,18 @@ export const run = internalAction({
       ['clubs', api.reference.clubs],
       ['wsoList', api.reference.wsoList],
     ] as const) {
-      await compare(endpoint, ctx.runQuery(fn, {}), endpoint, {});
+      await compare(endpoint, ctx.runQuery(fn, withPass({})), endpoint, {});
     }
     for (const gender of ['men', 'women']) {
-      await compare(`adaptive ${gender}`, ctx.runQuery(api.reference.adaptiveRecords, { gender, excludeFederation: 'BWL' }), 'adaptive', { gender, excludeFederation: 'BWL' });
+      await compare(`adaptive ${gender}`, ctx.runQuery(api.reference.adaptiveRecords, withPass({ gender, excludeFederation: 'BWL' })), 'adaptive', { gender, excludeFederation: 'BWL' });
     }
-    const wsos = decode(await ctx.runQuery(api.reference.wsoList, {})) as string[];
+    const wsos = decode(await ctx.runQuery(api.reference.wsoList, withPass({}))) as string[];
     for (const wso of wsos) {
-      await compare(`wsoAgeGroups ${wso}`, ctx.runQuery(api.reference.wsoAgeGroups, { wso }), 'wsoAgeGroups', { wso });
-      await compare(`wsoRecords ${wso}`, ctx.runQuery(api.reference.wsoRecords, { wso }), 'wsoRecords', { wso });
-      const ages = decode(await ctx.runQuery(api.reference.wsoAgeGroups, { wso })) as string[];
+      await compare(`wsoAgeGroups ${wso}`, ctx.runQuery(api.reference.wsoAgeGroups, withPass({ wso })), 'wsoAgeGroups', { wso });
+      await compare(`wsoRecords ${wso}`, ctx.runQuery(api.reference.wsoRecords, withPass({ wso })), 'wsoRecords', { wso });
+      const ages = decode(await ctx.runQuery(api.reference.wsoAgeGroups, withPass({ wso }))) as string[];
       if (ages[0]) {
-        await compare(`wsoRecords ${wso} ${ages[0]} Men`, ctx.runQuery(api.reference.wsoRecords, { wso, ageCategory: ages[0], gender: 'Men' }), 'wsoRecords', { wso, ageCategory: ages[0], gender: 'Men' });
+        await compare(`wsoRecords ${wso} ${ages[0]} Men`, ctx.runQuery(api.reference.wsoRecords, withPass({ wso, ageCategory: ages[0], gender: 'Men' })), 'wsoRecords', { wso, ageCategory: ages[0], gender: 'Men' });
       }
     }
     // Search suggestions (two-letter shards) against the whole directory:

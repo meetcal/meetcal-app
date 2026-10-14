@@ -1,6 +1,6 @@
 import { v } from 'convex/values';
 import { internal } from './_generated/api';
-import { action, httpAction, internalAction, internalMutation, type ActionCtx, type MutationCtx } from './_generated/server';
+import { action, httpAction, internalAction, internalMutation, internalQuery, type ActionCtx, type MutationCtx } from './_generated/server';
 import { entitlementIsActive, isMeetCalToken, SUBSCRIPTION_ENTITLEMENT_ID } from './lib/access';
 import { apiError } from './lib/validation';
 import { constantTimeEqual } from './lib/webhookSignature';
@@ -267,4 +267,93 @@ export const revenuecatWebhook = httpAction(async (ctx, request) => {
     return new Response('could not update entitlement', { status: 500 });
   }
   return new Response(null, { status: 200 });
+});
+
+/** Users one backfill run asks RevenueCat about, one at a time; the next run is scheduled. */
+export const BACKFILL_BATCH = 50;
+/** Pause between backfill runs, so RevenueCat's rate limit is never near. */
+export const BACKFILL_PAUSE_MS = 2_000;
+/** The tables whose rows name users, scanned for a backfill. */
+const knownUserTables = ['saved_sessions', 'user_preferences'] as const;
+type KnownUserTable = (typeof knownUserTables)[number];
+
+/**
+ * The next `limit` distinct user ids in `table` after `after`, by its
+ * `by_userId` index: one read per user, however many rows each has.
+ */
+export const knownUserIds = internalQuery({
+  args: { table: v.union(v.literal('saved_sessions'), v.literal('user_preferences')), after: v.string(), limit: v.number() },
+  handler: async (ctx, { table, after, limit }): Promise<string[]> => {
+    const ids: string[] = [];
+    let last = after;
+    for (let i = 0; i < limit; i++) {
+      const lower = last;
+      const row = await ctx.db
+        .query(table)
+        .withIndex('by_userId', (q) => q.gt('userId', lower))
+        .first();
+      if (!row) break;
+      ids.push(row.userId);
+      last = row.userId;
+    }
+    return ids;
+  },
+});
+
+/** Asks RevenueCat about each user and stores the answer; a failure is counted, not thrown. */
+async function syncEach(ctx: Pick<ActionCtx, 'runMutation'>, userIds: readonly string[]): Promise<{ synced: number; active: number; failed: number }> {
+  let synced = 0;
+  let active = 0;
+  let failed = 0;
+  for (const userId of userIds) {
+    try {
+      const state = await syncEntitlement(ctx, userId);
+      synced++;
+      if (entitlementIsActive(state, Date.now())) active++;
+    } catch (error) {
+      failed++;
+      console.error(`entitlements backfill: ${userId}`, error);
+    }
+  }
+  return { synced, active, failed };
+}
+
+/**
+ * Before enforcement: asks RevenueCat about every user Convex knows (anyone
+ * with saved sessions or preferences), `BACKFILL_BATCH` at a time, so
+ * subscribers who have not opened a pass-sending app yet (lifetime purchases
+ * send no renewals) already have their entitlement. Schedules itself until
+ * done; each run logs its counts.
+ *
+ *   npx convex run entitlements:backfillKnownUsers
+ */
+export const backfillKnownUsers = internalAction({
+  args: { table: v.optional(v.union(v.literal('saved_sessions'), v.literal('user_preferences'))), after: v.optional(v.string()) },
+  handler: async (ctx, args): Promise<{ table: KnownUserTable; synced: number; active: number; failed: number; users: number }> => {
+    const table: KnownUserTable = args.table ?? 'saved_sessions';
+    const userIds: string[] = await ctx.runQuery(internal.entitlements.knownUserIds, { table, after: args.after ?? '', limit: BACKFILL_BATCH });
+    const counts = await syncEach(ctx, userIds);
+    console.log(`entitlements backfill: ${table} after ${JSON.stringify(args.after ?? '')}: ${JSON.stringify(counts)}`);
+    const next = knownUserTables[knownUserTables.indexOf(table) + 1];
+    if (userIds.length === BACKFILL_BATCH) {
+      await ctx.scheduler.runAfter(BACKFILL_PAUSE_MS, internal.entitlements.backfillKnownUsers, { table, after: userIds[userIds.length - 1] });
+    } else if (next) {
+      await ctx.scheduler.runAfter(BACKFILL_PAUSE_MS, internal.entitlements.backfillKnownUsers, { table: next });
+    }
+    return { table, ...counts, users: userIds.length };
+  },
+});
+
+/**
+ * Asks RevenueCat about the given users (at most `BACKFILL_BATCH`), for
+ * subscribers Convex has no row for, e.g. from RevenueCat's customer export:
+ *
+ *   npx convex run entitlements:backfillUsers '{"userIds":["user_…"]}'
+ */
+export const backfillUsers = internalAction({
+  args: { userIds: v.array(v.string()) },
+  handler: async (ctx, { userIds }) => {
+    if (userIds.length > BACKFILL_BATCH) throw new Error(`at most ${BACKFILL_BATCH} user ids per call`);
+    return await syncEach(ctx, userIds);
+  },
 });

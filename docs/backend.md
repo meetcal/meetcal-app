@@ -79,11 +79,11 @@ The pass is one random value shared by every subscriber (`convex/accessPass.ts`)
 `PREMIUM_MODE` decides what the gate does with a read that has no current pass:
 
 - `log` (now): answers it, and each run that misses Convex's query cache logs `[premium] <function> without a pass` or `with a stale pass`. The share of those shows how many reads still come from app versions that send no pass.
-- `enforce`: refuses it, 401 without a pass and 403 with a stale one. The app and website then fetch a new pass and retry once. Switch to it only once nearly every active subscriber runs an app that sends the pass and Siri and the CLI send theirs, and once:
-  - the app waits (briefly) for Clerk before a premium read while the SecureStore auth hint says someone is signed in, since reads made while Clerk loads or offline go without a pass today;
-  - lifetime subscribers who never opened a pass-sending app are backfilled with `entitlements:sync`;
-  - `parity:run`, which calls premium queries from an action, passes the current pass;
+- `enforce`: refuses it, 401 without a pass and 403 with a stale one. The app, website and CLI then fetch a new pass and retry once. Switch to it only once nearly every active subscriber runs an app that sends the pass and Siri sends its own, and once:
+  - `npx convex run entitlements:backfillKnownUsers` has run on prod (it asks RevenueCat about every user Convex knows, 50 at a time, scheduling itself until done; `entitlements:backfillUsers` takes a list, e.g. from RevenueCat's customer export), so lifetime subscribers who never opened a pass-sending app already have their entitlement;
   - TestFlight testers and App Review, who buy with sandbox receipts prod does not count, have a reviewer account or another way in.
+
+  Already in place: the app waits (briefly) for Clerk on a cold start while the SecureStore auth hint says someone is signed in (`useServerDataAccess`); a client whose pass is refused fetches a new one and retries, and asks `entitlements:refresh` when the server knows of no subscription; and `parity:run` reads premium queries with the current pass (`accessPass:currentPass`).
 
 A caller has an active entitlement when their `entitlements` row (`convex/entitlements.ts`) is active and not past `expiresAt`. The row is RevenueCat's answer for the Clerk user id (the app user id RevenueCat knows them by), fetched from RevenueCat's REST API whenever:
 
