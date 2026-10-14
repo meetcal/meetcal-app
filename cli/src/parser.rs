@@ -41,6 +41,7 @@ pub enum Commands {
     Schedule(commands::schedule::ScheduleArgs),
     Search(commands::search::SearchArgs),
     Standards(commands::standards::StandardsArgs),
+    Upgrade(commands::upgrade::UpgradeArgs),
     Wrapped(commands::wrapped::WrappedArgs),
     Wso(commands::wso_results::WsoResultsArgs),
     WsoCompare(commands::wso_compare::WsoCompareArgs),

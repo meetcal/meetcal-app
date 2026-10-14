@@ -7,6 +7,14 @@ Breaking: `meetcal results` is removed, and `leaderboard` without
 years. MeetCal no longer answers the bulk results query (`results:page`) that 2.4.0 and earlier read
 for `leaderboard` and `results`, so those two commands fail on older releases: upgrade.
 
+- `meetcal upgrade` installs the newest release the way meetcal was installed: `brew upgrade` for
+  Homebrew, `cargo install` of the release's tag for Cargo, or, for a binary unpacked by hand, the
+  release's archive for this machine, checked against the release's new `SHA256SUMS` file and run
+  once before it replaces the binary. Where it cannot write, it says to run it with `sudo`; it
+  never asks for rights itself. `meetcal upgrade --check` only says whether a newer release is out
+  (exit 1 when one is). On a terminal, other commands say once a day when one is out, asking
+  GitHub at most once a day alongside their own work; `MEETCAL_NO_UPDATE_CHECK=1` or `CI` turns it
+  off. 2.4.0 and earlier have no `upgrade`: upgrade them once with `brew upgrade meetcal`.
 - `meetcal login` and `meetcal logout`. `login` signs this machine in to MeetCal with a code you
   approve on any signed-in device (a link and, in a terminal, a QR code), so it works over SSH, on
   servers and for AI agents; the login lasts 90 days and is saved in

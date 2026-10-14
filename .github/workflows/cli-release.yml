@@ -1,7 +1,8 @@
 name: CLI Release
 
 # Tag `cli-vX.Y.Z` on master to publish the CLI's binaries as a release of
-# this repository; then point the Homebrew formula at them (cli/docs/releasing.md).
+# this repository, with a SHA256SUMS file `meetcal upgrade` checks them against,
+# then point the Homebrew tap's formula at them (cli/docs/releasing.md).
 on:
   push:
     tags:
@@ -153,14 +154,68 @@ jobs:
           path: dist
           merge-multiple: true
 
-      - name: Print checksums
-        run: shasum -a 256 dist/*.tar.gz
+      # `meetcal upgrade` refuses an archive that does not match this file, and the tap's
+      # formula takes its checksums from it.
+      - name: Write checksums
+        working-directory: dist
+        run: |
+          shasum -a 256 *.tar.gz > SHA256SUMS
+          cat SHA256SUMS
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SHA256SUMS
+          path: dist/SHA256SUMS
 
       - uses: softprops/action-gh-release@v2
         with:
           name: meetcal CLI ${{ github.ref_name }}
-          files: dist/*.tar.gz
+          files: |
+            dist/*.tar.gz
+            dist/SHA256SUMS
           # Not marked latest: this repository's latest release is not the
           # CLI's to claim.
           body: "Install or upgrade with `brew install meetcal/tap/meetcal`. Changes: https://github.com/meetcal/meetcal-app/blob/master/cli/CHANGELOG.md"
           make_latest: false
+
+  # Points meetcal/homebrew-tap's formula at the release, so `brew upgrade meetcal` (and
+  # `meetcal upgrade` on a Homebrew install) finds it as soon as it is out. Pushes with a deploy
+  # key that can write to the tap alone (secret HOMEBREW_TAP_DEPLOY_KEY).
+  homebrew:
+    name: Update the Homebrew tap
+    needs: release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: cli/scripts
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: SHA256SUMS
+          path: dist
+
+      - uses: actions/checkout@v4
+        with:
+          repository: meetcal/homebrew-tap
+          ssh-key: ${{ secrets.HOMEBREW_TAP_DEPLOY_KEY }}
+          path: tap
+
+      - name: Write the formula
+        run: |
+          version="${GITHUB_REF_NAME#cli-v}"
+          cli/scripts/homebrew-formula.sh "$version" dist/SHA256SUMS > tap/Formula/meetcal.rb
+          ruby -c tap/Formula/meetcal.rb
+          git -C tap diff
+
+      - name: Push the formula
+        working-directory: tap
+        run: |
+          if git diff --quiet; then
+            echo "The tap already points at ${GITHUB_REF_NAME}."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -am "Update meetcal to v${GITHUB_REF_NAME#cli-v}"
+          git push origin HEAD

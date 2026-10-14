@@ -24,6 +24,7 @@ pub mod records;
 pub mod schedule;
 pub mod search;
 pub mod standards;
+pub mod upgrade;
 pub mod wrapped;
 pub mod wso_compare;
 pub mod wso_records;

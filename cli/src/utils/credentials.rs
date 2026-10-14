@@ -50,12 +50,18 @@ pub fn same_deployment(a: &str, b: &str) -> bool {
 /// is set, else `~/.config/meetcal/credentials.json` (on macOS too, like most CLIs), or
 /// `%APPDATA%\meetcal\credentials.json` on Windows. `None` when no home directory is known.
 pub fn default_path() -> Option<PathBuf> {
+    meetcal_dir().map(|dir| dir.join(CREDENTIALS_FILE))
+}
+
+/// The CLI's own directory under the user's config directory (see [`default_path`]), which also
+/// holds the update check's cache (`utils::update_notice`).
+pub fn meetcal_dir() -> Option<PathBuf> {
     config_dir(
         std::env::var_os("XDG_CONFIG_HOME"),
         std::env::var_os("HOME"),
         std::env::var_os("APPDATA"),
     )
-    .map(|dir| dir.join("meetcal").join(CREDENTIALS_FILE))
+    .map(|dir| dir.join("meetcal"))
 }
 
 /// The config directory from the environment's values. Relative or empty values are ignored, as
@@ -125,8 +131,10 @@ pub fn delete(path: &Path) -> Result<bool> {
     }
 }
 
+/// Creates `dir` and its missing parents, readable by the user alone (0700 on Unix). The update
+/// check's cache (`utils::update_notice`) shares the directory, so it creates it the same way.
 #[cfg(unix)]
-fn create_private_dir(dir: &Path) -> std::io::Result<()> {
+pub(crate) fn create_private_dir(dir: &Path) -> std::io::Result<()> {
     use std::os::unix::fs::DirBuilderExt;
     fs::DirBuilder::new()
         .recursive(true)
@@ -135,7 +143,7 @@ fn create_private_dir(dir: &Path) -> std::io::Result<()> {
 }
 
 #[cfg(not(unix))]
-fn create_private_dir(dir: &Path) -> std::io::Result<()> {
+pub(crate) fn create_private_dir(dir: &Path) -> std::io::Result<()> {
     fs::create_dir_all(dir)
 }
 

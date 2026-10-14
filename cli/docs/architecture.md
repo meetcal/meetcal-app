@@ -82,6 +82,30 @@ premium action `results:leaderboard` (`PREMIUM_ACTIONS`, equal to the server's),
 The queries themselves are in `../convex/` (`reference.ts`, `meets.ts`, `results.ts`). Many are
 served from materialized views; `../docs/backend.md` explains when a view needs rebuilding.
 
+## Upgrades
+
+`meetcal upgrade` (`src/commands/upgrade.rs`) asks GitHub for the release list and takes the
+highest `cli-vX.Y.Z` tag that is neither a draft nor a pre-release (`src/utils/releases.rs`;
+releases are not marked the repository's latest, so GitHub's "latest" answer is not used). It
+judges how it was installed by where its binary is, symlinks resolved (`src/utils/upgrade.rs`):
+
+- under a Homebrew prefix's `Cellar/meetcal/`: it runs that prefix's `bin/brew upgrade
+  meetcal/tap/meetcal`, so Homebrew's records stay right;
+- in Cargo's `bin` (`$CARGO_HOME/bin`, else `~/.cargo/bin`): `cargo install --git … --tag
+  cli-vX.Y.Z --locked --force meetcal`;
+- anywhere else: it downloads its platform's archive and `SHA256SUMS`, refuses an archive whose
+  hash differs, writes the binary beside the old one, runs its `--version`, and renames it over
+  the old one, so any failure leaves the installed binary as it was. A directory it cannot write
+  ends with the `sudo` command to run; it never escalates itself. A platform with no release
+  build (Windows) is told the `cargo install` command.
+
+Every other command, when stderr is a terminal and neither `CI` nor `MEETCAL_NO_UPDATE_CHECK` is
+set, starts `src/utils/update_notice.rs` beside its work: at most once a day it asks GitHub (5
+seconds at most, and the command waits at most 300 ms for it after finishing), and at most once
+a day it prints one line to stderr when a newer release is out. Both times and the newest version
+are kept in `update-check.json` beside the saved login. `MEETCAL_RELEASES_URL` points both at
+another release list (the tests' local server).
+
 ## Commands
 
 | Group | Commands | Reads |
@@ -97,6 +121,7 @@ served from materialized views; `../docs/backend.md` explains when a view needs 
 | WSOs | `wso`, `wso-wrapped`, `wso-compare`, `wso-trends` | `meets:athletes`, `results:byNames`, `results:byMeet`, `reference:wsoAthletes`, `results:recent` |
 | Reference | `records`, `standards`, `qualifying-totals`, `intl-rankings`, `nat-rankings`, `nat-ranking-year`, `wso-records`, `adaptive-records` | the matching `reference:*` query |
 | Login | `login`, `logout` | `deviceLogin:start`, `deviceLogin:poll` (actions), `accessPass:pass`, `apiTokens:revoke` (mutation) |
+| Upgrade | `upgrade` | GitHub, not Convex: the release list (`api.github.com/repos/meetcal/meetcal-app/releases`) and the newest `cli-v*` release's archive and `SHA256SUMS` |
 
 Reference commands fetch the whole table and filter it locally by the flags (`records --age --gender
 --federation`), except where the query takes the filter itself (`wso-records`, `nat-rankings`,
