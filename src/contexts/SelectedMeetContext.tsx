@@ -10,7 +10,8 @@ import {
   getCachedMeets,
   warmMeetData,
 } from '@/lib/database/meet-manager';
-import { fetchApiMeetByName } from '@/lib/api/meetcal-api';
+import { fetchApiMeetByName, getTrustedNow } from '@/lib/api/meetcal-api';
+import { chooseLaunchMeet, isMeetCompleted } from '@/lib/launch-meet';
 import { subscribeToNetworkChanges } from '@/lib/networkUtils';
 import {
   RECONNECT_REFETCH_JITTER_MAX_MS,
@@ -46,6 +47,15 @@ const MEET_LIST_REFRESH_INTERVAL_MS = 5 * 60 * 1000;
  */
 export { RECONNECT_REFETCH_JITTER_MAX_MS };
 const SELECTED_MEET_DETAILS_KEY = '@selected_meet_details';
+
+/**
+ * The clock a launch choice reads: the server's once this process has a
+ * sample, else the device's. The cached list is painted before any request
+ * answers, and waiting for one would show the ended meet first.
+ */
+function launchNow(): Date {
+  return getTrustedNow() ?? new Date();
+}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === 'object' && !Array.isArray(value);
@@ -251,17 +261,14 @@ export function SelectedMeetProvider({ children }: { children: React.ReactNode }
     beginMeetWarmup(meet, 'initializing meet data');
   }, [activateMeet, beginMeetWarmup]);
 
-  // Load available meets
+  // Load available meets. A selection made this session stays, even once its
+  // meet is over; opening the app skips an ended meet (`chooseLaunchMeet`).
   const chooseMeet = useCallback(
     (meets: Meet[], stored: string | null) => {
       if (selectedMeet) {
         return meets.find((meet) => meet.name === selectedMeet) ?? null;
       }
-      if (stored) {
-        const storedMeet = meets.find((meet) => meet.name === stored);
-        if (storedMeet) return storedMeet;
-      }
-      return meets[0] ?? null;
+      return chooseLaunchMeet(meets, stored, launchNow());
     },
     [selectedMeet],
   );
@@ -338,8 +345,17 @@ export function SelectedMeetProvider({ children }: { children: React.ReactNode }
             resolved = parseStoredMeetDetails(storedDetailsRaw, stored);
           }
           if (isStale()) return;
+          // A stored meet that has left the list is usually one that ended
+          // since the app last ran; that one does not open the app. Offline,
+          // the persisted copy is read on the device clock, so it is passed
+          // over only for a cached meet that is not over, and kept on disk.
+          const now = launchNow();
+          const completed =
+            resolved !== null &&
+            isMeetCompleted(resolved, now) &&
+            (!lookupFailed || cachedMeets.some((meet) => !isMeetCompleted(meet, now)));
 
-          if (resolved) {
+          if (resolved && !completed) {
             await initializeMeetData(resolved.name, resolved);
             if (isStale()) return;
             activeMeet = resolved.name;
@@ -351,10 +367,11 @@ export function SelectedMeetProvider({ children }: { children: React.ReactNode }
             );
             if (isStale()) return;
           } else {
-            // Neither the window cache nor persisted details have the meet.
+            // Neither the window cache nor persisted details have the meet,
+            // or the meet is over.
             if (!lookupFailed) {
-              // Online lookup confirmed the stored meet no longer exists —
-              // clean up the stale keys before falling back.
+              // Online lookup confirmed the stored meet no longer exists, or
+              // that it has ended — clean up the stale keys before falling back.
               await AsyncStorage.multiRemove([
                 SELECTED_MEET_KEY,
                 SELECTED_MEET_DETAILS_KEY,
@@ -416,6 +433,12 @@ export function SelectedMeetProvider({ children }: { children: React.ReactNode }
             return;
           }
           if (isStale()) return;
+          // Picked this run from the cached list, which still had it: the
+          // meet has ended since, so the app opens on the next one instead.
+          // A meet selected this session (`selectedMeet`) is kept.
+          if (outOfWindowMeet && !selectedMeet && isMeetCompleted(outOfWindowMeet, launchNow())) {
+            outOfWindowMeet = null;
+          }
           if (outOfWindowMeet) {
             await initializeMeetData(outOfWindowMeet.name, outOfWindowMeet);
             if (isStale()) return;
@@ -429,7 +452,8 @@ export function SelectedMeetProvider({ children }: { children: React.ReactNode }
           devLog('Selected meet no longer available, switching to first available meet');
           await AsyncStorage.multiRemove([SELECTED_MEET_KEY, SELECTED_MEET_DETAILS_KEY]);
           if (isStale()) return;
-          await initializeMeetData(freshMeets[0].name, freshMeets[0]);
+          const next = chooseLaunchMeet(freshMeets, null, launchNow()) ?? freshMeets[0];
+          await initializeMeetData(next.name, next);
           return;
         }
 
