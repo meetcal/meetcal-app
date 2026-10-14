@@ -6,7 +6,7 @@ Expo / React Native app for USA Weightlifting meet schedules, start lists, resul
 
 - Use Bun for JavaScript. Run commands through `mise run <task>` or `mise exec -- <command>` so this repo's Bun and Node versions apply. Never use npm.
 - Do not read `.env*` contents unless the user authorizes it. Do not deploy Convex, publish an OTA, submit a build, or write production data unless the current task authorizes that action.
-- Start Metro and drive the simulator only through the package scripts (`bun run start|dev|ios|android|web|maestro:test`) or their `mise run app:*` tasks, never a bare `bunx expo start` / `expo run:*` / `maestro test`. They take the machine-wide simulator lock (`scripts/metro-lock.ts`, shared with Atlas): another worktree's session makes you wait, your own worktree's running Metro makes you exit (stop it first), and a session is stopped when its 30-minute lease ends (`METRO_SIMULATOR_LEASE_MIN` to change it). Stop your Metro when you are done with the simulator. See `docs/testing.md`.
+- Start Metro and drive the simulator only through the package scripts (`bun run start|dev|ios|android|web|maestro:test`) or their `mise run app:*` tasks, never a bare `bunx expo start` / `expo run:*` / `maestro test`: the scripts take the [simulator lock](#simulator-lock).
 - Do not edit generated `ios/` or `android/` trees as a lasting source change. Do not patch dependencies to work around app defects without a documented reason.
 - Work in the session's dedicated worktree. If the session starts in a primary checkout, create a worktree before editing. Preserve unrelated user changes.
 
@@ -14,7 +14,7 @@ Expo / React Native app for USA Weightlifting meet schedules, start lists, resul
 
 1. Grill the plan first. Before making code edits for a new feature, a change to a core item, or any other large-scale operation, run the `grill-me` skill and do not edit until the user confirms you share an understanding of the plan. `grill-me` is user-invoked only, so an agent loads `grilling`, the skill it delegates to. Tiny code fixes skip this. Both skills are vendored from [mattpocock/skills](https://github.com/mattpocock/skills) (MIT); refresh them from upstream instead of editing them here.
 2. Read the relevant source, tests, and docs before changing behavior. Check the current branch and worktree state. Sync with the target branch when safe; do not rebase over uncommitted work.
-3. Use the smallest relevant checks while implementing. For UI work, show a running demo or screenshots when requested before the full gate.
+3. Use the smallest relevant checks while implementing. Run every change that affects app behavior on a device as soon as it runs, before the full gate, following [Device testing](#device-testing); fix what the user flags, then continue. Documentation-, tooling-, website- and CLI-only changes skip it; say so in the PR test plan.
 4. For risky changes to auth, subscription gating, writes, navigation, offline data, or native/platform behavior, ask a subagent to review the diff with the `review-code-performance-tests` skill after implementation; fix confirmed findings. Keep the review scoped to the change.
 5. Before opening or updating a PR, run `mise run check`. A documentation-only change may skip it; say so in the PR test plan. Run Maestro for navigation, auth gates, or screens its flows cover when a suitable device is available.
 6. Open or update a PR against `master` when the task calls for one. Use an imperative, user-visible title and `## Summary` and `## Test plan` body sections. Do not merge or push directly to `master`.
@@ -95,6 +95,27 @@ Run `mise run check` before opening or updating a PR. It runs only the suites th
 Jest includes `convex-tests/`, but its coverage report does not measure `convex/` production functions or native widget binaries. Follow `docs/backend.md` for Convex write verification and `docs/testing.md` for test placement and device-timezone behavior. A green local gate does not prove iOS/Android rendering, push delivery, RevenueCat purchases, or production data migrations.
 
 Maestro is optional in CI. Run it when a change touches navigation, auth gates, or a screen a flow already covers.
+
+## Device testing
+
+A change that affects app behavior is done when it has run on a device and, for a UI change, its screenshots are in your chat reply.
+
+1. **Pick the machine.** The MacBook comes first: check it with `ssh -o ConnectTimeout=5 maddisenmohnsen@macbook true`. When it answers, run iOS there, and Android too when the change is platform-specific. When it does not, boot an Android emulator on this Linux machine (`emulator -list-avds`, then `emulator -avd <name>`). iOS-only code (`targets/`, `widget/`, `plugins/ios-app-intents/`, iPhone Duo layout) needs the MacBook; when it is unreachable, say in your reply and the PR that iOS is untested.
+2. **Get the code to the MacBook.** Its login shell is fish, so run POSIX commands as `ssh maddisenmohnsen@macbook 'bash -lc "…"'`. The checkout is `~/dev/meetcal-llc/meetcal-app`. `git fetch` from GitHub fails in an SSH session there, so push from here: `git push maddisenmohnsen@macbook:dev/meetcal-llc/meetcal-app <commit>:refs/heads/<branch> origin/master:refs/remotes/origin/master`. Work in a separate worktree there (never switch the branch of its main checkout), run `mise run setup`, and copy the main checkout's `.env.local` into it without reading it. Remove the worktree, branch and pushed refs when you are done.
+3. **Run it.** `bun run ios` or `bun run android` on the machine that owns the device, so it takes that machine's [simulator lock](#simulator-lock).
+4. **Show it.** Open the device in T3 Code's device panel (`device_open`, when `device_list` shows it) so the user can drive it. For a UI change, screenshot each changed screen and state, and embed the images in your chat reply as Markdown images with absolute paths: `xcrun simctl io booted screenshot <file>` on the MacBook (copy it back with `scp`), `adb exec-out screencap -p > <file>` on Linux, or T3's `device_screenshot`.
+5. **Stop your Metro** so the next agent gets the simulator.
+
+### Simulator lock
+
+One simulator or emulator and one Metro port (8081) serve every worktree on a machine, so the package scripts take a lock per machine (`scripts/metro-lock.ts`), shared with Atlas:
+
+- Another worktree holds it: the command prints who, and when their lease ends, every 30 seconds, then starts by itself. Run Metro in the background and wait; leave other worktrees' Metro running, and do not ask the user to pick which agent gets the simulator.
+- Your own worktree's Metro is still running: the command exits. Stop that Metro first; `maestro:test` starts its own.
+- Port 8081 is taken by a process outside the lock: the command exits, naming it and its directory.
+- A session is stopped after a 30-minute lease; set `METRO_SIMULATOR_LEASE_MIN=60` before starting for a longer one.
+
+Mechanics and tests are in `docs/testing.md`.
 
 ## Code Quality
 
