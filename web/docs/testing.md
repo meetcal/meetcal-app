@@ -91,6 +91,9 @@ await routeQuery(page, "results:search", (route, args) =>
   a premium read's `args` include `pass: "pass_test"`. It returns `server` (the
   pass it hands out, which a test may change to simulate a rotation) and the
   Authorization header of each call, `passRequests` and `entitlementRefreshes`.
+  Any other Convex call a test does not route fails with an `errorAnswer`
+  naming the function, instead of reaching production (gated pages read only
+  after `mockAuth`, so this covers every read).
 
 Assert on what a user sees, and on the arguments a page sends when they
 matter (`expect(args).toEqual({ federation: "USAMW", ... })`).
