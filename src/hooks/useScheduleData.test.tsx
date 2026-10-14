@@ -3,6 +3,8 @@ import { act, create } from "react-test-renderer";
 
 import type { Schedule } from "@/types/schedule";
 import { useScheduleData } from "@/hooks/useScheduleData";
+import { useStartupScreenReport } from "@/hooks/useStartupScreenReport";
+import { createStartupTiming, scheduleScreenOutcome } from "@/lib/startup-timing";
 import {
   primeScheduleCache,
   resetSchedulePrimeForTests,
@@ -128,6 +130,60 @@ describe("useScheduleData", () => {
     expect(captured?.schedule).toEqual([NEW_DAY]);
     expect(captured?.source).toBe("network");
 
+    act(() => {
+      tree.unmount();
+    });
+  });
+
+  // The Schedule tab mounts before a meet is chosen. The render where the
+  // meet arrives used to report "not loading, no days", which reads as
+  // "No schedule yet": the launch splash came down on that frame.
+  it("reports loading, not an empty schedule, on the render where a meet first arrives", async () => {
+    mockGetMeetSchedule.mockResolvedValue([DAY]);
+    const fresh = deferred<Schedule>();
+    mockFetchSchedule.mockReturnValue(fresh.promise);
+    const timing = createStartupTiming({ now: () => 0, setTimer: () => 0, clearTimer: () => undefined });
+    const seen: string[] = [];
+    let onLayout: (() => void) | null = null;
+
+    function Screen({ meet }: { meet: string | null }) {
+      const { schedule, isLoading, loadError, source } = useScheduleData(meet as never);
+      const state = {
+        onboardingShowing: false,
+        // As at launch: the meet arrives with the cached meets list.
+        meetsLoading: meet === null,
+        hasMeet: meet !== null,
+        scheduleLoading: isLoading,
+        changingMeet: false,
+        scheduleDays: schedule.length,
+        loadFailed: loadError !== null,
+      };
+      seen.push(scheduleScreenOutcome(state));
+      const handler = useStartupScreenReport(state, source, timing);
+      React.useEffect(() => {
+        onLayout = handler;
+      });
+      return null;
+    }
+
+    let tree!: ReturnType<typeof create>;
+    act(() => {
+      tree = create(<Screen meet={null} />);
+    });
+    act(() => {
+      tree.update(<Screen meet="Launch Meet" />);
+    });
+    await flush();
+
+    expect(seen).not.toContain("empty-schedule");
+    expect(seen.at(-1)).toBe("schedule");
+    expect(timing.outcome()).toBeNull();
+    act(() => onLayout?.());
+    expect(timing.properties()).toMatchObject({ outcome: "schedule", schedule_cache_hit: true });
+
+    await act(async () => {
+      fresh.resolve([DAY]);
+    });
     act(() => {
       tree.unmount();
     });

@@ -116,13 +116,29 @@ describe("splash gate", () => {
     deepLink.gate.arm(deepLink.hide);
     deepLink.gate.setRoute(false);
     expect(deepLink.hide).toHaveBeenCalledTimes(1);
-    expect(deepLink.timing.properties().splash_hide_reason).toBe("other-route");
+    // The linked route is the launch's first screen.
+    expect(deepLink.timing.properties()).toMatchObject({
+      outcome: "other-route",
+      first_screen_ms: 0,
+      splash_hide_reason: "other-route",
+    });
 
     const update = setup();
     update.gate.arm(update.hide);
     update.gate.showOverlay();
     expect(update.hide).toHaveBeenCalledTimes(1);
     expect(update.timing.properties().splash_hide_reason).toBe("overlay");
+  });
+
+  it("does not count leaving the Schedule tab after the splash is down as the first screen", () => {
+    const { timing, gate, hide, advance } = setup();
+    gate.arm(hide);
+    gate.setRoute(true);
+    advance(SPLASH_HOLD_MAX_MS);
+    expect(hide).toHaveBeenCalledTimes(1);
+
+    gate.setRoute(false);
+    expect(timing.outcome()).toBeNull();
   });
 
   it("does nothing before it is armed (a screen rendered in a test)", () => {

@@ -37,6 +37,7 @@ export type SplashHoldState = {
 
 /** Why the splash should come down now, or null to keep holding it. */
 export function splashHideReason(state: SplashHoldState): SplashHideReason | null {
+  if (state.firstScreen === "other-route") return "other-route";
   if (state.firstScreen !== null) return "screen";
   if (state.overlayShown) return "overlay";
   if (state.onScheduleRoute === false) return "other-route";
@@ -114,6 +115,12 @@ export function createSplashGate(deps: SplashGateDeps) {
     /** The router's current route: whether it is the Schedule tab. */
     setRoute(isScheduleRoute: boolean) {
       onScheduleRoute = isScheduleRoute;
+      // A launch that opens elsewhere (a deep link, sign-in) has that route
+      // as its first screen. Only while the splash is still up: a route
+      // change after it (the user leaving a skeleton) is not the launch's.
+      if (armed && !hidden && !isScheduleRoute && deps.timing.outcome() === null) {
+        deps.timing.firstScreen("other-route");
+      }
       evaluate();
     },
     /** A root dialog is showing and must not sit behind the splash. */

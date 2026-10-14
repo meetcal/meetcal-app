@@ -425,6 +425,38 @@ describe("prefetchCriticalMeetData", () => {
       expect(mockSaveMeetSchedule).toHaveBeenCalledTimes(1);
     });
 
+    it("does not write back a roster cleared while it waited or downloaded", async () => {
+      const firstScreen = gate();
+      const warming = warmMeetData("Cleared Meet" as any, { rosterAfter: firstScreen.promise });
+      await jest.advanceTimersByTimeAsync(0);
+      let answer!: (rows: unknown) => void;
+      mockFetchAthletesWithSession.mockImplementationOnce(
+        () => new Promise((resolve) => {
+          answer = resolve;
+        }),
+      );
+
+      firstScreen.open();
+      await jest.advanceTimersByTimeAsync(ROSTER_PREFETCH_AFTER_FIRST_SCREEN_MS);
+      expect(mockFetchAthletesWithSession).toHaveBeenCalledWith("Cleared Meet");
+      await beginMeetClear("Cleared Meet");
+      answer(roster);
+      await warming;
+      expect(mockSaveMeetAthletes).not.toHaveBeenCalled();
+
+      // Cleared before its turn: not even downloaded.
+      mockFetchAthletesWithSession.mockClear();
+      const nextScreen = gate();
+      const next = warmMeetData("Cleared Early" as any, { rosterAfter: nextScreen.promise });
+      await jest.advanceTimersByTimeAsync(0);
+      await beginMeetClear("Cleared Early");
+      nextScreen.open();
+      await jest.advanceTimersByTimeAsync(ROSTER_PREFETCH_AFTER_FIRST_SCREEN_MS);
+      await next;
+      expect(mockFetchAthletesWithSession).not.toHaveBeenCalled();
+      expect(mockSaveMeetAthletes).not.toHaveBeenCalled();
+    });
+
     it("clears its timers when offline, where the roster step never runs", async () => {
       const { isNetworkAvailable } = jest.requireMock("@/lib/networkUtils") as {
         isNetworkAvailable: jest.Mock;

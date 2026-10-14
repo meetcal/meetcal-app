@@ -1464,12 +1464,19 @@ export async function prefetchCriticalMeetData(meet: MeetName, options: WarmMeet
       await saveMeetAthletes(meet, athletes);
       return athletes;
     };
+    const startedAt = captureClearEpoch();
     const athletesRequest = turn
       ? turn.ready.then(async () => {
           // The Start List fetches the roster itself when opened; one it
           // stored while this waited is not downloaded again.
           if (isSnapshotFresh(await getMeetAthletesSyncedAt(meet), Date.now())) return [];
-          return fetchAndSaveRoster();
+          // The wait widens the window for a Clear Cache or a delete of this
+          // meet; a roster cleared meanwhile is not written back.
+          if (wasClearedSince(meet, startedAt)) return [];
+          const athletes = await fetchAthletesWithSession(meet);
+          if (wasClearedSince(meet, startedAt)) return athletes;
+          await saveMeetAthletes(meet, athletes);
+          return athletes;
         })
       : fetchAndSaveRoster();
 
