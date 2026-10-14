@@ -1,10 +1,11 @@
 # Changelog
 
-## Unreleased
+## 3.0.0
 
-Breaking (suggested version: 3.0.0): `meetcal results` is removed, and `leaderboard` without
+Breaking: `meetcal results` is removed, and `leaderboard` without
 `--club` or `--wso` needs `meetcal login` with a MeetCal subscription and a range of less than five
-years.
+years. MeetCal no longer answers the bulk results query (`results:page`) that 2.4.0 and earlier read
+for `leaderboard` and `results`, so those two commands fail on older releases: upgrade.
 
 - `meetcal login` and `meetcal logout`. `login` signs this machine in to MeetCal with a code you
   approve on any signed-in device (a link and, in a terminal, a QR code), so it works over SSH, on

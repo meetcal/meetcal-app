@@ -53,7 +53,6 @@ export const PREMIUM_FUNCTIONS = [
   'reference:clubAthletes',
   'reference:wsoAthletes',
   'reference:clubMeetStats',
-  'results:page',
   'results:byMeet',
   'results:byNames',
   'results:recent',

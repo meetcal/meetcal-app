@@ -40,7 +40,6 @@ pub const PREMIUM_FUNCTIONS: &[&str] = &[
     "reference:clubAthletes",
     "reference:wsoAthletes",
     "reference:clubMeetStats",
-    "results:page",
     "results:byMeet",
     "results:byNames",
     "results:recent",
@@ -345,7 +344,7 @@ mod tests {
 
     #[test]
     fn the_premium_functions_match_the_servers_list() {
-        assert_eq!(PREMIUM_FUNCTIONS.len(), 23);
+        assert_eq!(PREMIUM_FUNCTIONS.len(), 22);
         assert!(!is_premium(queries::ACCESS_PASS.function));
         for public in [
             "meets:list",
@@ -360,7 +359,6 @@ mod tests {
         ] {
             assert!(!is_premium(public), "{public}");
         }
-        assert!(is_premium("results:page"));
         for premium in [
             queries::RECORDS,
             queries::CLUB_ATHLETES,
