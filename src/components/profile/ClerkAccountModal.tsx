@@ -1,5 +1,5 @@
 import { useAuth } from "@clerk/expo";
-import { UserProfileView } from "@clerk/expo/native";
+import { UserProfileView } from "@clerk/expo/native-components";
 import React, { useEffect, useRef } from "react";
 import { Modal, StyleSheet, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";

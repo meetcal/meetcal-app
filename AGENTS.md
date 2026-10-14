@@ -78,7 +78,7 @@ Package manager is **bun**, pinned in `mise.toml`. Do not use npm.
 
 `mise tasks ls` lists the app, Convex, build, submit, update, and compatibility tasks. Build, submit, deploy, and update tasks have external side effects; run them only when authorized. The EAS iOS build task uses the cloud image; use the local Xcode 27.1 path in `docs/iphone-duo.md` for a Duo-optimized store build.
 
-`runtimeVersion` in `app.config.js` is pinned to the native app version, so an OTA update must be built from the same Expo / React Native preview the shipped binary uses; a bundle built against a different native runtime will not load.
+`runtimeVersion` in `app.config.js` is the native project's fingerprint (`fingerprint.config.js` adds our own native sources to it), so an OTA update only reaches binaries whose native code matches the commit it was published from. Any native change (a dependency, config plugin, our own native sources, or the Expo / React Native preview) needs a new binary; `package.json` scripts and `.gitignore` are left out of the hash. The fingerprint includes `EXPO_PUBLIC_CONVEX_URL`, which is written into the iOS Info.plist, so publish updates with the URL of the build they target set, as the `app:update:*` mise tasks do; otherwise the update matches no build. `bunx expo-updates fingerprint:generate --platform ios` prints the hash and its sources.
 
 ## Verify
 
