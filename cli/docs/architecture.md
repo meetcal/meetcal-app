@@ -29,12 +29,13 @@ POST https://disciplined-hare-790.convex.cloud/api/query
 - A function that ran and failed answers `{ status: "error", errorMessage, errorData }` (HTTP 200
   or 560). Our functions throw `{ status, error }` as `errorData`; the CLI prints
   `MeetCal could not answer <query>: <error>`.
-- `send_with_retry` applies `src/utils/retry.rs` to queries: 429 and 503 are retried twice,
-  honoring `Retry-After` (clamped to 1 to 30 seconds) or backing off 1 then 2 seconds. Once retries
-  run out, a 429 explains how long to wait. Actions and mutations are sent once
-  (`Endpoint::retries`): one may have done its work before its answer was lost.
-- One shared `reqwest` client with a 10-second connect timeout, a 30-second request timeout, and a
-  `meetcal-cli/<version>` User-Agent.
+- `send_with_retry` applies `src/utils/retry.rs` to queries and premium actions: 429 and 503 are
+  retried twice, honoring `Retry-After` (clamped to 1 to 30 seconds) or backing off 1 then 2
+  seconds. Once retries run out, a 429 explains how long to wait. Other actions and mutations are
+  sent once (`Endpoint::retries`): one may have done its work before its answer was lost.
+- One shared `reqwest` client with a 10-second connect timeout, a 30-second request timeout (120
+  seconds for an action, `ACTION_TIMEOUT`: `results:leaderboard` reads a whole range before it
+  answers), and a `meetcal-cli/<version>` User-Agent.
 - `MEETCAL_CONVEX_URL` (read at run time) points the CLI at another deployment.
 - `call_function` runs any query, mutation or action (`Endpoint`) with an optional bearer token,
   for the few calls that are not data reads (`functions::*`, `queries::ACCESS_PASS`). A function
@@ -44,7 +45,9 @@ POST https://disciplined-hare-790.convex.cloud/api/query
 
 Premium data (`PREMIUM_FUNCTIONS` in `src/utils/access.rs`, equal to `convex/lib/access.ts`'s list
 and the website's `SUBSCRIPTION_FUNCTIONS`; `results:search` only with both dates) is read with a
-shared daily access pass as the `pass` argument (`../docs/backend.md`, "Premium data").
+shared daily access pass as the `pass` argument (`../docs/backend.md`, "Premium data"). So is the
+premium action `results:leaderboard` (`PREMIUM_ACTIONS`, equal to the server's), through
+`backend::premium_action`, which handles a refusal the same way.
 
 - `meetcal login` (`src/commands/login.rs`) runs a device-code login (`convex/deviceLogin.ts`):
   `deviceLogin:start` (an action, with the device's name) answers a secret device code, a user code
@@ -88,7 +91,7 @@ served from materialized views; `../docs/backend.md` explains when a view needs 
 | Standards | `qualify` | `results:byNames`, `results:bests`, `reference:standards`, `reference:qualifyingTotals` |
 | Meets | `meets`, `meet-info`, `schedule`, `meet`, `meet-results` | `meets:list`, `meets:completed`, `meets:details`, `meets:schedule`, `meets:athletesSessions` with `results:bests`, `results:byMeet` |
 | Attendance | `attendance` | `meets:namesPage`, `meets:attendance` |
-| All results | `leaderboard`, `results` | `results:page` (or, with `--wso`/`--club`, the group's registrations and `results:recent`) |
+| Leaderboard | `leaderboard` | `results:leaderboard`, an action that ranks every athlete in the range on the server (`convex/lib/leaderboard.ts`, the rules `Filters`, `rank` and `stats.rs` hold here); with `--wso`/`--club`, the group's registrations and `results:recent`, ranked here |
 | Names | `clubs`, `wsos` | `reference:clubs`, `reference:registrationWsos`, `reference:wsoList`, `reference:wsoAgeGroups` |
 | Clubs | `club-results`, `club-wrapped`, `club-compare`, `club-trends` | `reference:clubMeetStats`, `reference:clubAthletes`, `results:recent`, `results:byNames`, `results:byMeet` |
 | WSOs | `wso`, `wso-wrapped`, `wso-compare`, `wso-trends` | `meets:athletes`, `results:byNames`, `results:byMeet`, `reference:wsoAthletes`, `results:recent` |
@@ -165,10 +168,13 @@ attempt habits; bomb-outs; and PR detection over an athlete's history in date or
 Two guards cover source errors: Sinclair and Q-points need a bodyweight of 15–250 kg, and a result whose total
 is not its snatch plus clean & jerk is left out of Sinclair and leaderboards.
 
-### All results, and every meet name
+### The leaderboard, and every meet name
 
-`results:page` returns every result in a date range a page at a time (2000 rows; a year is about
-14 pages), which `leaderboard` and `results` read in full. `meets:namesPage` lists distinct meet
+The CLI does not read every result in a range: `leaderboard` asks `results:leaderboard`, an action
+that pages through the range on the server (a month at a time, 2,000 rows per internal query) and
+answers only the ranked rows and the range's federations (for the unknown-federation message). Its
+rules are a port of `Filters::keeps`, `rank` and `stats.rs` (`convex/lib/leaderboard.ts`), which
+still rank `--wso` and `--club` leaderboards here; change both together. `meets:namesPage` lists distinct meet
 names in the results or the registrations by skipping along the meet index, one read per meet;
 `attendance` lists 44 name ranges at once (`RANGE_BOUNDARIES`), about four seconds for the whole
 history, then counts each matched edition with `meets:attendance` (eight meets per call). The

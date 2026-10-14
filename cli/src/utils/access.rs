@@ -1,6 +1,7 @@
 //! The access pass premium reads carry (`../docs/backend.md`, "Premium data").
 //!
-//! The premium queries ([`PREMIUM_FUNCTIONS`]) take a shared daily pass as their `pass` argument.
+//! The premium queries ([`PREMIUM_FUNCTIONS`]) and actions ([`PREMIUM_ACTIONS`]) take a shared
+//! daily pass as their `pass` argument.
 //! A user who ran `meetcal login` has a MeetCal-issued token (`utils::credentials`); before the
 //! first premium read the CLI trades it for the pass with `accessPass:pass`, once per process, and
 //! adds the pass to every premium read. The token itself goes to no data read, so premium answers
@@ -48,6 +49,11 @@ pub const PREMIUM_FUNCTIONS: &[&str] = &[
     "results:search",
     "meets:packageForMeet",
 ];
+
+/// The Convex actions that answer premium data, apart from [`PREMIUM_FUNCTIONS`] (queries only):
+/// Convex's `PREMIUM_ACTIONS` (`convex/lib/access.ts`). An action reads them with the pass the same
+/// way (`backend::premium_action`), and a refusal is handled as a premium query's.
+pub const PREMIUM_ACTIONS: &[&str] = &["results:leaderboard"];
 
 /// The argument a premium query takes the access pass in.
 pub const PASS_ARGUMENT: &str = "pass";
@@ -354,10 +360,10 @@ mod tests {
         ] {
             assert!(!is_premium(public), "{public}");
         }
+        assert!(is_premium("results:page"));
         for premium in [
             queries::RECORDS,
             queries::CLUB_ATHLETES,
-            queries::RESULTS_PAGE,
             queries::MEET_RESULTS,
             queries::BESTS,
             queries::SEARCH,
@@ -380,6 +386,14 @@ mod tests {
             .filter(|line| !line.is_empty())
             .collect();
         assert_eq!(names, PREMIUM_FUNCTIONS);
+    }
+
+    #[test]
+    fn the_premium_actions_are_apart_from_the_queries() {
+        assert_eq!(PREMIUM_ACTIONS, [functions::LEADERBOARD]);
+        for action in PREMIUM_ACTIONS {
+            assert!(!is_premium(action), "{action}");
+        }
     }
 
     #[test]

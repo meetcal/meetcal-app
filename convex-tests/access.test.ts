@@ -4,7 +4,7 @@ import { ConvexError } from 'convex/values';
 import * as meets from '../convex/meets';
 import * as reference from '../convex/reference';
 import * as results from '../convex/results';
-import { callerOf, entitlementIsActive, PREMIUM_FUNCTIONS, premiumRead, setPremiumModeForTests } from '../convex/lib/access';
+import { callerOf, entitlementIsActive, PREMIUM_ACTIONS, PREMIUM_FUNCTIONS, premiumRead, setPremiumModeForTests } from '../convex/lib/access';
 import { ANONYMOUS_AUTH, fakeDb, handlerOf } from './fakeDb';
 
 /**
@@ -173,6 +173,19 @@ describe('the premium queries', () => {
     const list = /PREMIUM_FUNCTIONS: &\[&str\] = &\[([^\]]*)\]/.exec(source)?.[1] ?? '';
     const cli = [...list.matchAll(/"([^"]+)"/g)].map((match) => match[1]);
     expect(cli.sort()).toEqual([...PREMIUM_FUNCTIONS].sort());
+  });
+
+  it('leave out the premium actions, which are public actions the CLI sends the pass to (`PREMIUM_ACTIONS`)', () => {
+    for (const name of PREMIUM_ACTIONS) {
+      const [module, fn] = name.split(':');
+      const registered = modules[module]?.[fn] as { isAction?: boolean; isPublic?: boolean } | undefined;
+      expect([name, registered?.isAction, registered?.isPublic]).toEqual([name, true, true]);
+      expect(PREMIUM_FUNCTIONS).not.toContain(name);
+    }
+    const source = readFileSync(join(__dirname, '..', 'cli', 'src', 'utils', 'access.rs'), 'utf8');
+    const list = /PREMIUM_ACTIONS: &\[&str\] = &\[([^\]]*)\]/.exec(source)?.[1] ?? '';
+    const cli = [...list.matchAll(/"([^"]+)"/g)].map((match) => match[1]);
+    expect(cli.sort()).toEqual([...PREMIUM_ACTIONS].sort());
   });
 
   it('leave name suggestions public: search checks the pass only when asked for results', async () => {

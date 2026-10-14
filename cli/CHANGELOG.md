@@ -19,6 +19,15 @@
   its own meet. The name must be exact (case and spacing aside), as before, with suggestions when
   it is not; `--year` now runs from 1900 to 2100. `results:wrapped` must be on the deployment
   first: release this after MeetCal's production deploy.
+- `meetcal results` is removed: MeetCal no longer offers every result in a range as a raw
+  export. A meet's results (`meet-results`), an athlete's (`search`, `progress`) and a club's or
+  WSO's results are still there.
+- `leaderboard` is ranked by MeetCal (`results:leaderboard`) instead of reading every result in
+  the range (about 28,000 a year) into the CLI, so it answers in a second or two. The rules are
+  the same: the CLI's own, moved to the server, with the same answers. A range is now under five
+  years, and `--limit` from 1 to 500. `--wso` and `--club` leaderboards are ranked by the CLI, as
+  before. `results:leaderboard` must be on the deployment first: release this after MeetCal's
+  production deploy.
 
 ## 2.4.0
 

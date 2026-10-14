@@ -260,7 +260,7 @@ Options:
 
 - `--exclude`, `-x`: Leave out meets whose name contains this text (repeatable)
 
-### Leaderboards and data
+### Leaderboards
 
 #### `leaderboard`
 
@@ -281,19 +281,10 @@ Options:
   (`USAW`, `USAMW` or `BWL`; without it, every federation but British Weightlifting, `BWL`). `--by sinclair` and `--by qpoints` need `--gender`: men and women score on separate scales.
 - `--wso`, `-w` or `--club`: only athletes registered with it at the meet
 - `--adaptive`: include adaptive results
-- `--limit`, `-n`: rows to show (default 25)
+- `--limit`, `-n`: rows to show, 1 to 500 (default 25)
 
-Without `--wso` or `--club` it reads every result in the range, about 28,000 for a year.
-
-#### `results`
-
-Every result in a year or date range, with every attempt and its Sinclair, for your own analysis.
-Takes the same filters as `leaderboard`.
-
-```sh
-meetcal results --year 2025 --format csv > results-2025.csv
-meetcal results --from 2026-06-01 --to 2026-06-30 --gender women --format json
-```
+Without `--wso` or `--club`, MeetCal ranks every athlete on its servers and sends the top rows; the
+range must be under five years. With them, the CLI reads the group's results and ranks them itself.
 
 ### Club reports
 

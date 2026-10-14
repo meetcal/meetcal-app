@@ -230,7 +230,7 @@ impl Report {
 
 /// Prints `report` in the run's format.
 ///
-/// A reader that stops early (`meetcal results | head`, quitting `less`) closes the pipe; the
+/// A reader that stops early (`meetcal leaderboard | head`, quitting `less`) closes the pipe; the
 /// run then ends quietly with status 0, as other command line tools do, instead of panicking
 /// in `println!`. Any other failure to write ends it with status 1.
 pub fn emit(report: Report) {

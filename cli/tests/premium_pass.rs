@@ -7,7 +7,7 @@ mod support;
 use std::path::PathBuf;
 
 use meetcal::utils::access::{Access, LOGIN_NEEDED};
-use meetcal::utils::backend::{PassRefused, queries, query_from};
+use meetcal::utils::backend::{PassRefused, functions, premium_action_from, queries, query_from};
 use meetcal::utils::credentials::{self, Credentials};
 use serde_json::{Value, json};
 use support::{FUNCTION_FAILED, OK, authorizations, reply, request_bodies, request_paths, serve};
@@ -305,4 +305,60 @@ async fn only_a_dated_search_fetches_the_pass() {
     assert_eq!(bodies[0]["args"], json!({"query": "Smi"}));
     assert_eq!(bodies[1]["path"], "accessPass:pass");
     assert_eq!(bodies[2]["args"]["pass"], "p1");
+}
+
+#[tokio::test]
+async fn a_premium_action_carries_the_pass_and_renews_it_like_a_query() {
+    let (base_url, requests) = serve(vec![
+        reply(OK, None, pass_answer("old")),
+        reply(FUNCTION_FAILED, None, refused(403, "access pass expired")),
+        reply(OK, None, pass_answer("new")),
+        reply(
+            OK,
+            None,
+            r#"{"status":"success","value":{"rows":[],"federations":["USAW"]}}"#,
+        ),
+    ]);
+    let access = Access::from_file(saved_login("action", &base_url, FAR_FUTURE));
+    let args = json!({"from": "2025-01-01", "to": "2025-12-31", "by": "total", "limit": 25});
+
+    let answer: Value = premium_action_from(&base_url, &access, functions::LEADERBOARD, &args)
+        .await
+        .unwrap();
+
+    assert_eq!(answer["federations"], json!(["USAW"]));
+    let bodies = request_bodies(&requests);
+    assert_eq!(bodies[1]["path"], "results:leaderboard");
+    assert_eq!(bodies[1]["args"]["pass"], "old");
+    assert_eq!(bodies[3]["args"]["pass"], "new");
+    assert_eq!(bodies[3]["args"]["by"], "total");
+    assert_eq!(
+        request_paths(&requests),
+        ["/api/query", "/api/action", "/api/query", "/api/action"]
+    );
+    // The token goes only to the pass fetches, never to the action.
+    assert_eq!(authorizations(&requests)[1], None);
+    assert_eq!(authorizations(&requests)[3], None);
+}
+
+#[tokio::test]
+async fn a_refused_premium_action_without_a_login_says_to_log_in() {
+    let (base_url, requests) = serve(vec![reply(
+        FUNCTION_FAILED,
+        None,
+        refused(401, "access pass required"),
+    )]);
+
+    let error = premium_action_from::<Value, _>(
+        &base_url,
+        &Access::anonymous(),
+        functions::LEADERBOARD,
+        &json!({"from": "2025-01-01", "to": "2025-12-31", "by": "total"}),
+    )
+    .await
+    .unwrap_err();
+
+    assert_eq!(error.to_string(), LOGIN_NEEDED);
+    assert!(PassRefused::is(&error));
+    assert_eq!(request_paths(&requests), ["/api/action"]);
 }

@@ -1,7 +1,7 @@
 import { v } from 'convex/values';
 import { internal } from './_generated/api';
-import { internalAction, internalMutation, query } from './_generated/server';
-import { callerOf, currentPasses } from './lib/access';
+import { internalAction, internalMutation, internalQuery, query } from './_generated/server';
+import { callerOf, currentPasses, type Passes } from './lib/access';
 import { apiError } from './lib/validation';
 
 /**
@@ -35,6 +35,15 @@ export const pass = query({
     const passes = await currentPasses(ctx);
     if (!passes) throw apiError(503, 'no access pass yet');
     return { pass: passes.current, rotatesAt: passes.rotatedAt + ACCESS_PASS_ROTATION_MS };
+  },
+});
+
+/** The passes a premium action's read may carry (`checkPass` in `lib/access.ts`); null before the first rotation. */
+export const passes = internalQuery({
+  args: {},
+  handler: async (ctx): Promise<Passes> => {
+    const row = await currentPasses(ctx);
+    return row === null ? null : { current: row.current, previous: row.previous };
   },
 });
 

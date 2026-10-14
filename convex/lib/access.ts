@@ -66,6 +66,19 @@ export const PREMIUM_FUNCTIONS = [
 
 export type PremiumFunction = (typeof PREMIUM_FUNCTIONS)[number];
 
+/**
+ * Every action that answers premium data, apart from `PREMIUM_FUNCTIONS`
+ * (queries only: the app and website attach the pass to those by name).
+ * Each takes the pass in its `pass` argument and checks it with `checkPass`,
+ * after reading the pass row through `accessPass:passes`. Actions are not
+ * cached, so these are for answers too costly for one query: the
+ * leaderboard pages through a range's results. The CLI attaches the pass to
+ * them (`PREMIUM_ACTIONS` in `cli/src/utils/access.rs`).
+ */
+export const PREMIUM_ACTIONS = ['results:leaderboard'] as const;
+
+export type PremiumAction = (typeof PREMIUM_ACTIONS)[number];
+
 export type Caller =
   | { kind: 'anonymous' }
   | { kind: 'free' | 'subscriber'; userId: string; via: 'clerk' | 'meetcal' };
@@ -120,6 +133,9 @@ export async function currentPasses(ctx: QueryCtx) {
   return await ctx.db.query('access_passes').first();
 }
 
+/** The passes a read may carry: the current one and the one it replaced, or null before the first rotation. */
+export type Passes = { current: string; previous: string | null } | null;
+
 /**
  * The gate every premium query calls first, with the pass it was sent. A
  * current or previous pass goes through. In `log`, anything else is logged
@@ -127,7 +143,15 @@ export async function currentPasses(ctx: QueryCtx) {
  * floor) and answered; in `enforce`, refused.
  */
 export async function premiumRead(ctx: QueryCtx, fn: PremiumFunction, pass: string | undefined): Promise<void> {
-  const passes = await currentPasses(ctx);
+  checkPass(fn, pass, await currentPasses(ctx));
+}
+
+/**
+ * `premiumRead`'s decision, given the stored `passes`: for premium actions,
+ * which read the pass row with `accessPass:passes` (every run logs, since
+ * actions are not cached).
+ */
+export function checkPass(fn: PremiumFunction | PremiumAction, pass: string | undefined, passes: Passes): void {
   if (pass !== undefined && passes !== null && (pass === passes.current || pass === passes.previous)) return;
   if (mode === 'log') {
     console.log(`[premium] ${fn} ${pass === undefined ? 'without a pass' : 'with a stale pass'}`);
