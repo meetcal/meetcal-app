@@ -22,10 +22,12 @@ function clerkLoaded() {
  * wait for it. Mounted once, at the root.
  *
  * On a cold start Clerk is still loading when the first screens read. While
- * the SecureStore auth hint says someone is signed in, the pass source waits
- * for Clerk (each read waits at most `ACCESS_PASS_TIMEOUT_MS` for it) rather
- * than letting those reads go without a pass, which the server will refuse
- * once it enforces the subscription.
+ * the SecureStore auth hint says someone is signed in, the pass source is
+ * set already and is ready once Clerk has loaded: reads wait for that (at
+ * most `ACCESS_PASS_READY_TIMEOUT_MS`), then for the pass, rather than going
+ * without one, which the server will refuse once it enforces the
+ * subscription. A read made before the hint is read still goes without one;
+ * if the server refuses it, its retry waits for the pass.
  */
 export function useServerDataAccess(): void {
   const { isLoaded, isSignedIn, userId, getToken } = useAuth();
@@ -61,10 +63,7 @@ export function useServerDataAccess(): void {
       setAccessPassSource(null);
       return;
     }
-    setAccessPassSource(async () => {
-      await loadedRef.current.promise;
-      return loadAccessPass(() => getTokenRef.current());
-    });
+    setAccessPassSource(() => loadAccessPass(() => getTokenRef.current()), loadedRef.current.promise);
     prefetchAccessPass();
     return () => setAccessPassSource(null);
   }, [holdsPass, passUserId]);

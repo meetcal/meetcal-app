@@ -1,7 +1,7 @@
 import React from "react";
 import { act, create, type ReactTestRenderer } from "react-test-renderer";
 
-import { accessPassFor, setAccessPassSource } from "@/lib/api/premium-queries";
+import { ACCESS_PASS_READY_TIMEOUT_MS, accessPassFor, setAccessPassSource } from "@/lib/api/premium-queries";
 import { loadAccessPass } from "@/lib/access-pass";
 import { useServerDataAccess } from "./useServerDataAccess";
 
@@ -87,6 +87,56 @@ describe("useServerDataAccess", () => {
     render();
     await act(async () => {});
     await expect(accessPassFor("results:byNames")).resolves.toBeUndefined();
+  });
+
+  function coldStart(hintUserId: string) {
+    mockAuth.isLoaded = false;
+    mockAuth.isSignedIn = false;
+    mockAuth.userId = null;
+    mockHint.state = { isSignedIn: true, timestamp: Date.now(), userId: hintUserId };
+  }
+
+  it("goes without a pass, fetching nothing, when Clerk never loads (an offline cold start)", async () => {
+    jest.useFakeTimers();
+    try {
+      coldStart("user_a");
+      render();
+      await act(async () => {});
+      const read = accessPassFor("results:byNames");
+      await act(async () => {
+        jest.advanceTimersByTime(ACCESS_PASS_READY_TIMEOUT_MS);
+      });
+      await expect(read).resolves.toBeUndefined();
+      expect(loadAccessPass).not.toHaveBeenCalled();
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it("drops a read waiting on the hint when Clerk loads signed out", async () => {
+    coldStart("user_a");
+    render();
+    await act(async () => {});
+    const read = accessPassFor("results:byNames");
+    mockAuth.isLoaded = true;
+    render();
+    await expect(read).resolves.toBeUndefined();
+    expect(loadAccessPass).not.toHaveBeenCalled();
+  });
+
+  it("fetches for the user Clerk loads, not the one the hint named", async () => {
+    coldStart("user_a");
+    render();
+    await act(async () => {});
+    const stale = accessPassFor("results:byNames");
+    mockAuth.isLoaded = true;
+    mockAuth.isSignedIn = true;
+    mockAuth.userId = "user_b";
+    render();
+    await expect(stale).resolves.toBeUndefined();
+    await expect(accessPassFor("results:byNames")).resolves.toBe("p1");
+    // One fetch, for user_b's source: user_a's never ran.
+    expect(loadAccessPass).toHaveBeenCalledTimes(1);
   });
 
   it("forgets the pass when the user changes", async () => {

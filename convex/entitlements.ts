@@ -273,16 +273,17 @@ export const revenuecatWebhook = httpAction(async (ctx, request) => {
 export const BACKFILL_BATCH = 50;
 /** Pause between backfill runs, so RevenueCat's rate limit is never near. */
 export const BACKFILL_PAUSE_MS = 2_000;
-/** The tables whose rows name users, scanned for a backfill. */
-const knownUserTables = ['saved_sessions', 'user_preferences'] as const;
+/** The tables whose rows name users, scanned in turn for a backfill. */
+const knownUserTables = ['saved_sessions', 'user_preferences', 'api_tokens'] as const;
 type KnownUserTable = (typeof knownUserTables)[number];
+const knownUserTable = v.union(v.literal('saved_sessions'), v.literal('user_preferences'), v.literal('api_tokens'));
 
 /**
  * The next `limit` distinct user ids in `table` after `after`, by its
  * `by_userId` index: one read per user, however many rows each has.
  */
 export const knownUserIds = internalQuery({
-  args: { table: v.union(v.literal('saved_sessions'), v.literal('user_preferences')), after: v.string(), limit: v.number() },
+  args: { table: knownUserTable, after: v.string(), limit: v.number() },
   handler: async (ctx, { table, after, limit }): Promise<string[]> => {
     const ids: string[] = [];
     let last = after;
@@ -300,60 +301,97 @@ export const knownUserIds = internalQuery({
   },
 });
 
-/** Asks RevenueCat about each user and stores the answer; a failure is counted, not thrown. */
-async function syncEach(ctx: Pick<ActionCtx, 'runMutation'>, userIds: readonly string[]): Promise<{ synced: number; active: number; failed: number }> {
-  let synced = 0;
-  let active = 0;
-  let failed = 0;
+/** The users among `userIds` RevenueCat was asked about at or after `since`: done already. */
+export const syncedSince = internalQuery({
+  args: { userIds: v.array(v.string()), since: v.number() },
+  handler: async (ctx, { userIds, since }): Promise<string[]> => {
+    const done: string[] = [];
+    for (const userId of userIds) {
+      const sync = await ctx.db
+        .query('entitlement_syncs')
+        .withIndex('by_userId', (q) => q.eq('userId', userId))
+        .unique();
+      if (sync && sync.syncedAt >= since) done.push(userId);
+    }
+    return done;
+  },
+});
+
+type BackfillCounts = { synced: number; active: number; failed: number; skipped: number };
+
+/**
+ * Asks RevenueCat about each user not asked since `since` and stores the
+ * answer; a failure is counted (and logged with the user), not thrown.
+ */
+async function syncEach(ctx: Pick<ActionCtx, 'runMutation' | 'runQuery'>, userIds: readonly string[], since: number): Promise<BackfillCounts> {
+  const done = new Set<string>(await ctx.runQuery(internal.entitlements.syncedSince, { userIds: [...userIds], since }));
+  const counts: BackfillCounts = { synced: 0, active: 0, failed: 0, skipped: done.size };
   for (const userId of userIds) {
+    if (done.has(userId)) continue;
     try {
       const state = await syncEntitlement(ctx, userId);
-      synced++;
-      if (entitlementIsActive(state, Date.now())) active++;
+      counts.synced++;
+      if (entitlementIsActive(state, Date.now())) counts.active++;
     } catch (error) {
-      failed++;
+      counts.failed++;
       console.error(`entitlements backfill: ${userId}`, error);
     }
   }
-  return { synced, active, failed };
+  return counts;
 }
+
+/** A batch where every user asked about failed: RevenueCat or the key is down, so the backfill stops. */
+const everyAskFailed = (counts: BackfillCounts) => counts.failed > 0 && counts.synced === 0;
 
 /**
  * Before enforcement: asks RevenueCat about every user Convex knows (anyone
- * with saved sessions or preferences), `BACKFILL_BATCH` at a time, so
- * subscribers who have not opened a pass-sending app yet (lifetime purchases
- * send no renewals) already have their entitlement. Schedules itself until
- * done; each run logs its counts.
+ * with saved sessions, preferences or a MeetCal-issued token),
+ * `BACKFILL_BATCH` at a time, so subscribers who have not opened a
+ * pass-sending app yet (lifetime purchases send no renewals) already have
+ * their entitlement. Schedules itself until done, skipping users already
+ * asked during the run; stops, logged, if a whole batch fails. Each run logs
+ * its counts.
  *
  *   npx convex run entitlements:backfillKnownUsers
  */
 export const backfillKnownUsers = internalAction({
-  args: { table: v.optional(v.union(v.literal('saved_sessions'), v.literal('user_preferences'))), after: v.optional(v.string()) },
-  handler: async (ctx, args): Promise<{ table: KnownUserTable; synced: number; active: number; failed: number; users: number }> => {
+  args: { table: v.optional(knownUserTable), after: v.optional(v.string()), since: v.optional(v.number()) },
+  handler: async (ctx, args): Promise<{ table: KnownUserTable; users: number; stopped: boolean } & BackfillCounts> => {
     const table: KnownUserTable = args.table ?? 'saved_sessions';
+    const since = args.since ?? Date.now();
     const userIds: string[] = await ctx.runQuery(internal.entitlements.knownUserIds, { table, after: args.after ?? '', limit: BACKFILL_BATCH });
-    const counts = await syncEach(ctx, userIds);
-    console.log(`entitlements backfill: ${table} after ${JSON.stringify(args.after ?? '')}: ${JSON.stringify(counts)}`);
-    const next = knownUserTables[knownUserTables.indexOf(table) + 1];
-    if (userIds.length === BACKFILL_BATCH) {
-      await ctx.scheduler.runAfter(BACKFILL_PAUSE_MS, internal.entitlements.backfillKnownUsers, { table, after: userIds[userIds.length - 1] });
-    } else if (next) {
-      await ctx.scheduler.runAfter(BACKFILL_PAUSE_MS, internal.entitlements.backfillKnownUsers, { table: next });
+    const counts = await syncEach(ctx, userIds, since);
+    const stopped = everyAskFailed(counts);
+    console.log(`entitlements backfill: ${table} after ${JSON.stringify(args.after ?? '')}: ${JSON.stringify(counts)}${stopped ? ' (every ask failed: stopped)' : ''}`);
+    if (!stopped) {
+      const next = knownUserTables[knownUserTables.indexOf(table) + 1];
+      if (userIds.length === BACKFILL_BATCH) {
+        await ctx.scheduler.runAfter(BACKFILL_PAUSE_MS, internal.entitlements.backfillKnownUsers, { table, after: userIds[userIds.length - 1], since });
+      } else if (next) {
+        await ctx.scheduler.runAfter(BACKFILL_PAUSE_MS, internal.entitlements.backfillKnownUsers, { table: next, since });
+      }
     }
-    return { table, ...counts, users: userIds.length };
+    return { table, users: userIds.length, stopped, ...counts };
   },
 });
 
 /**
- * Asks RevenueCat about the given users (at most `BACKFILL_BATCH`), for
- * subscribers Convex has no row for, e.g. from RevenueCat's customer export:
+ * Asks RevenueCat about the given users, for subscribers Convex has no row
+ * for, e.g. from RevenueCat's customer export. Any number of ids:
+ * `BACKFILL_BATCH` a run, scheduling the rest; stops if a whole batch fails.
  *
- *   npx convex run entitlements:backfillUsers '{"userIds":["user_…"]}'
+ *   npx convex run entitlements:backfillUsers '{"userIds":["user_…", …]}'
  */
 export const backfillUsers = internalAction({
-  args: { userIds: v.array(v.string()) },
-  handler: async (ctx, { userIds }) => {
-    if (userIds.length > BACKFILL_BATCH) throw new Error(`at most ${BACKFILL_BATCH} user ids per call`);
-    return await syncEach(ctx, userIds);
+  args: { userIds: v.array(v.string()), since: v.optional(v.number()) },
+  handler: async (ctx, args): Promise<{ remaining: number; stopped: boolean } & BackfillCounts> => {
+    const since = args.since ?? Date.now();
+    const batch = args.userIds.slice(0, BACKFILL_BATCH);
+    const rest = args.userIds.slice(BACKFILL_BATCH);
+    const counts = await syncEach(ctx, batch, since);
+    const stopped = everyAskFailed(counts);
+    console.log(`entitlements backfill: ${batch.length} listed users: ${JSON.stringify(counts)}${stopped ? ' (every ask failed: stopped)' : ''}`);
+    if (!stopped && rest.length > 0) await ctx.scheduler.runAfter(BACKFILL_PAUSE_MS, internal.entitlements.backfillUsers, { userIds: rest, since });
+    return { remaining: stopped ? args.userIds.length - counts.synced : rest.length, stopped, ...counts };
   },
 });
