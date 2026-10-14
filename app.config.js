@@ -93,6 +93,7 @@ export default ({ config }) => ({
     'expo-status-bar',
     'expo-web-browser',
     '@clerk/expo',
+    '@clerk/expo-native-components',
     [
       'expo-build-properties',
       {
@@ -141,7 +142,7 @@ export default ({ config }) => ({
   },
   scheme: 'meetcal',
   owner: 'memohnsen',
-  runtimeVersion: "6.2.0",
+  runtimeVersion: { policy: "fingerprint" },
   updates: {
     url: 'https://u.expo.dev/a0017b93-a31e-42b1-b36a-11cb5eedf11f',
     enabled: true,
