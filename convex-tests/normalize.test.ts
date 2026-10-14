@@ -1,7 +1,7 @@
 import { directoryNames, directoryText, nameMatcher, searchDirectory } from '../convex/lib/directory';
 import { fakeDb } from './fakeDb';
 import { disambiguatedMeetName, joinRoster, meetByName, oldestMeet } from '../convex/lib/meetData';
-import { earliestLocalDate, meetStatusAt, meetStatusOn } from '../convex/lib/meetStatus';
+import { earliestLocalDate, meetStatusAt, meetStatusOn, nextMeetStatus } from '../convex/lib/meetStatus';
 import { distinctNameKeys, normalizeName } from '../convex/lib/names';
 import { athleteGenderLabel, normalizeGender, storedGenderSpellings } from '../convex/lib/normalize';
 import { computeStandards, filterWsoRows } from '../convex/lib/referenceData';
@@ -108,6 +108,14 @@ describe('meet status from dates (#158, #160)', () => {
     expect(meetStatusOn({ startDate: '2026-9-24', endDate: '2026-9-25' }, '2026-10-12')).toBe('completed');
     expect(meetStatusOn({ startDate: '2026-10-5', endDate: '2026-10-13' }, '2026-10-12')).toBe('ongoing');
     expect(meetStatusOn({ startDate: '2026-11-1', endDate: '2026-11-2' }, '2026-10-12')).toBe('upcoming');
+  });
+
+  it('never reopens a completed meet', () => {
+    expect(nextMeetStatus('completed', 'upcoming')).toBe('completed');
+    expect(nextMeetStatus('completed', 'ongoing')).toBe('completed');
+    expect(nextMeetStatus('ongoing', 'upcoming')).toBe('upcoming');
+    expect(nextMeetStatus('upcoming', 'completed')).toBe('completed');
+    expect(nextMeetStatus(undefined, 'ongoing')).toBe('ongoing');
   });
 
   it('never puts the earliest local date after any zone', () => {

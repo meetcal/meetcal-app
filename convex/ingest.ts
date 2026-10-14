@@ -4,7 +4,7 @@ import type { Doc, Id, TableNames } from './_generated/dataModel';
 import { writeHistories } from './lib/history';
 import { normalizeAgeCategory, normalizeFederation, normalizeGender, storedGenderSpellings } from './lib/normalize';
 import { disambiguatedMeetName, MAX_DISAMBIGUATED_NAMES, oldestMeet, type ZoneFormatters } from './lib/meetData';
-import { earliestLocalDate, meetStatusAt, type MeetStatus } from './lib/meetStatus';
+import { meetStatusAt, nextMeetStatus, type MeetStatus } from './lib/meetStatus';
 import { normalizeName } from './lib/names';
 import { isMeetTimeZone } from './lib/validation';
 import { earliestSince } from './lib/viewKeys';
@@ -556,7 +556,7 @@ type ScrapedMeetRow = Infer<typeof scrapedMeet>;
 /**
  * The scraped values a meet writes over the stored one (`existing`, null for
  * a new meet); `upsertMeets` adds its stored name and its status, which
- * follows the dates (`meetStatusAt`). The time zone is left alone when the
+ * follows the dates (`nextMeetStatus`). The time zone is left alone when the
  * scraper could not tell it (absent or blank), or when someone set it by hand
  * (`timeZoneLocked`, see `setMeetTimeZone`), so the nightly sync never undoes
  * a correction; a new meet with no zone is stored with a blank one. Likewise
@@ -628,8 +628,8 @@ function newMeetName(name: string, federation: string, { taken, freeName }: { ta
  * `disambiguatedMeetName` (and reported in `storedAs`), since the name is
  * the meet's identity everywhere; stored names never change. Only the
  * scraped columns are written (`scrapedMeetValues`), and the status follows
- * the dates (`meetStatusAt`, on the zone the meet ends up with): a completed
- * meet whose dates move into the future is upcoming again. Fields the
+ * the dates (`meetStatusAt`, on the zone the meet ends up with), except that
+ * a completed meet stays completed (`nextMeetStatus`). Fields the
  * scrapers do not own (venue map links, a locked time zone) are kept.
  * A meet whose scraped values are unchanged is not written; `updatedAt`
  * moves only with a real change, so the nightly syncs do not invalidate
@@ -651,7 +651,7 @@ export const upsertMeets = internalMutation({
       // Read on the zone the meet ends up with, so a row without one is read
       // on the stored zone.
       const timeZone = scraped.timeZone ?? existing?.timeZone;
-      const values = { ...scraped, name, status: meetStatusAt({ ...row, timeZone }, now, formatters) };
+      const values = { ...scraped, name, status: nextMeetStatus(existing?.status, meetStatusAt({ ...row, timeZone }, now, formatters)) };
       if (!existing) {
         await ctx.db.insert('meets', {
           venueName: row.name,
@@ -721,7 +721,8 @@ const PLACEHOLDERS = new Set(['', 'TBD', 'Unknown']);
  * ambiguous and reported, not guessed. A new event is inserted, under
  * a free `disambiguatedMeetName` if another meet has its name. A
  * match takes every value the site gives (dates, venue, city, state, time
- * zone), and its status follows the new dates (`meetStatusAt`); fields the
+ * zone), and its status follows the new dates unless it is completed
+ * (`nextMeetStatus`); fields the
  * site leaves blank keep what is stored, and a move to another city clears
  * the old venue's street and zip. An event without a zone keeps the stored
  * one, unless it moved to another state (then the zone is blank: unknown);
@@ -824,7 +825,7 @@ export const syncUsamwEvents = internalMutation({
         site.venueZip = 'TBD';
         site.venueName ??= 'TBD';
       }
-      site.status = meetStatusAt({ ...match, ...site }, now, formatters);
+      site.status = nextMeetStatus(match.status, meetStatusAt({ ...match, ...site }, now, formatters));
       const patch = Object.fromEntries(Object.entries(site).filter(([key, value]) => match[key as keyof typeof site] !== value)) as Partial<Doc<'meets'>>;
       if (Object.keys(patch).length === 0) {
         result.unchanged.push(match.name);
@@ -1062,10 +1063,12 @@ export const upsertEntryAthletes = internalMutation({
 });
 
 /**
- * Moves each meet's status to what its dates say on the meet's own calendar
- * (`meetStatusAt`): `ongoing` from its first day, `completed` once its end
- * date has passed (`complete_ended_meets.sql` in the Rust backend), and back
- * to `upcoming` if its dates were moved into the future by hand. A meet
+ * Moves each meet not yet completed to what its dates say on the meet's own
+ * calendar (`meetStatusAt`): `ongoing` from its first day, `completed` once
+ * its end date has passed (`complete_ended_meets.sql` in the Rust backend),
+ * and back to `upcoming` if an ongoing meet's dates moved into the future.
+ * A completed meet is never reopened (`nextMeetStatus`), so one marked
+ * completed by hand before its dates stays completed. A meet
  * ending tonight in Los Angeles is not completed at 17:00 Pacific just
  * because the UTC date rolled over, and a meet with no zone is read on
  * UTC-12's calendar, so it is never ongoing or completed early. Run hourly by `convex/crons.ts` (the
@@ -1078,25 +1081,18 @@ export const updateMeetStatuses = internalMutation({
     const now = Date.now();
     const formatters: ZoneFormatters = new Map();
     const hints: WriteHint[] = [];
-    // Every meet not completed, and every meet that may not have ended yet
-    // anywhere (a completed one whose dates were moved).
-    const meets = new Map<string, Doc<'meets'>>();
+    // Every meet not completed: a completed one stays completed.
+    const meets: Doc<'meets'>[] = [];
     for (const status of ['upcoming', 'ongoing'] as const) {
-      for (const meet of await ctx.db
-        .query('meets')
-        .withIndex('by_status_and_start_date', (q) => q.eq('status', status))
-        .collect()) {
-        meets.set(meet._id, meet);
-      }
-    }
-    for (const meet of await ctx.db
-      .query('meets')
-      .withIndex('by_end_date', (q) => q.gte('endDate', earliestLocalDate(now)))
-      .collect()) {
-      meets.set(meet._id, meet);
+      meets.push(
+        ...(await ctx.db
+          .query('meets')
+          .withIndex('by_status_and_start_date', (q) => q.eq('status', status))
+          .collect()),
+      );
     }
     const counts: Record<MeetStatus, number> = { upcoming: 0, ongoing: 0, completed: 0 };
-    for (const meet of meets.values()) {
+    for (const meet of meets) {
       const status = meetStatusAt(meet, now, formatters);
       if (status === meet.status) continue;
       await ctx.db.patch(meet._id, { status, updatedAt: now });

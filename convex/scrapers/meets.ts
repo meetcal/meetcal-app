@@ -13,9 +13,9 @@ import { meetStatusAt } from '../lib/meetStatus';
  * Upcoming USAW meets (port of meet-sync: `sync-meets.js`,
  * `sync-nat-meets.js`, `sync-virus-meets.js`): three searches of Sport80's
  * public events widget, each meet's venue, dates and time zone upserted by
- * name. The WSO search skips meets already completed, as before, unless
- * their scraped dates have moved into the future: `upsertMeets` then makes
- * them upcoming again (status follows the dates, `lib/meetStatus.ts`).
+ * name. The WSO search skips meets already completed, unless their scraped
+ * dates have moved into the future: `upsertMeets` then takes the new dates
+ * and venue but keeps them completed (`nextMeetStatus`, `lib/meetStatus.ts`).
  */
 const fetchWidgetPage = (url: string): Promise<unknown> =>
   withRetries(() => fetchJson(url, { timeoutMs: 30_000 }), { attempts: 3, delayMs: (attempt) => 2 ** attempt * 1000 });
