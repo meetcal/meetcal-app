@@ -4,16 +4,8 @@ import { ConvexError } from 'convex/values';
 import * as meets from '../convex/meets';
 import * as reference from '../convex/reference';
 import * as results from '../convex/results';
-import {
-  callerOf,
-  entitlementIsActive,
-  PREMIUM_FUNCTIONS,
-  PREMIUM_LOG_PROBES,
-  premiumRead,
-  setPremiumModeForTests,
-  type PremiumFunction,
-} from '../convex/lib/access';
-import { fakeDb, handlerOf } from './fakeDb';
+import { callerOf, entitlementIsActive, PREMIUM_FUNCTIONS, premiumRead, setPremiumModeForTests } from '../convex/lib/access';
+import { ANONYMOUS_AUTH, fakeDb, handlerOf } from './fakeDb';
 
 /**
  * The premium gate (`convex/lib/access.ts`): who a caller is, and what each
@@ -106,28 +98,33 @@ describe('who a caller is', () => {
 
 describe('the gate', () => {
   afterEach(() => setPremiumModeForTests(null));
-  const read = (fn: PremiumFunction, identity: Identity, seed = {}) => statusOf(premiumRead(ctxFor(identity, seed), fn));
+  const passes = { access_passes: [{ current: 'today', previous: 'yesterday', rotatedAt: NOW }] };
+  const read = (pass: string | undefined, seed: Record<string, Record<string, unknown>[]> = passes) =>
+    statusOf(premiumRead(ctxFor(null, seed), 'results:byNames', pass));
 
-  it('answers everyone in log mode, and only the probes look at who asked', async () => {
-    setPremiumModeForTests('log');
-    const identity = jest.fn(async () => clerk(A));
-    expect(await statusOf(premiumRead({ db: fakeDb().db, auth: { getUserIdentity: identity } } as never, 'results:byNames'))).toBe('ok');
-    expect(identity).not.toHaveBeenCalled();
-    expect(await read('reference:records', null)).toBe('ok');
-    expect(await read('results:yearBests', clerk(A))).toBe('ok');
-    expect(log.mock.calls.map(([line]) => line)).toEqual(['[premium] reference:records anonymous', `[premium] results:yearBests free ${A} via clerk`]);
-  });
-
-  it('probes only premium queries, the bulk export among them', () => {
-    for (const probe of PREMIUM_LOG_PROBES) expect(PREMIUM_FUNCTIONS).toContain(probe);
-    expect(PREMIUM_LOG_PROBES.has('results:page')).toBe(true);
-  });
-
-  it('refuses anonymous callers with 401 and free ones with 403 in enforce mode', async () => {
+  it('lets the current and the previous pass through, without asking who called', async () => {
     setPremiumModeForTests('enforce');
-    expect(await read('results:byNames', null)).toBe(401);
-    expect(await read('results:byNames', clerk(A))).toBe(403);
-    expect(await read('results:byNames', clerk(A), { entitlements: [entitlement(A)] })).toBe('ok');
+    const identity = jest.fn(async () => null);
+    const { db } = fakeDb(passes);
+    expect(await statusOf(premiumRead({ db, auth: { getUserIdentity: identity } } as never, 'results:byNames', 'today'))).toBe('ok');
+    expect(await read('yesterday')).toBe('ok');
+    expect(identity).not.toHaveBeenCalled();
+    expect(log).not.toHaveBeenCalled();
+  });
+
+  it('answers a read without a current pass in log mode, and logs it', async () => {
+    setPremiumModeForTests('log');
+    expect(await read(undefined)).toBe('ok');
+    expect(await read('last-week')).toBe('ok');
+    expect(log.mock.calls.map(([line]) => line)).toEqual(['[premium] results:byNames without a pass', '[premium] results:byNames with a stale pass']);
+  });
+
+  it('refuses a read without a pass with 401, and with a stale one with 403, in enforce mode', async () => {
+    setPremiumModeForTests('enforce');
+    expect(await read(undefined)).toBe(401);
+    expect(await read('last-week')).toBe(403);
+    // Before the first rotation no pass is current.
+    expect(await read('today', {})).toBe(403);
   });
 });
 
@@ -135,7 +132,7 @@ describe('the premium queries', () => {
   const modules: Record<string, Record<string, unknown>> = { meets, reference, results };
   afterEach(() => setPremiumModeForTests(null));
 
-  it('are every one the app and website send a token to', async () => {
+  it('are every one the app and website send the pass to', async () => {
     for (const name of PREMIUM_FUNCTIONS) {
       const [module, fn] = name.split(':');
       const registered = modules[module]?.[fn] as { isQuery?: boolean; isPublic?: boolean } | undefined;
@@ -143,31 +140,39 @@ describe('the premium queries', () => {
     }
   });
 
-  it('each refuse an anonymous caller under its own name in enforce mode, before reading anything', async () => {
+  it('each refuse a read without a pass in enforce mode, before reading anything else', async () => {
     setPremiumModeForTests('enforce');
-    const db = new Proxy({}, { get: () => () => { throw new Error('read'); } });
     const dated = { query: 'Ada', startDate: '2026-01-01', endDate: '2026-12-31' };
     for (const name of PREMIUM_FUNCTIONS) {
       const [module, fn] = name.split(':');
-      log.mockClear();
-      const answer = await statusOf(handlerOf(modules[module][fn])({ db, auth: { getUserIdentity: async () => null } }, name === 'results:search' ? dated : {}));
-      expect([name, answer, log.mock.calls[0]?.[0]]).toEqual([name, 401, `[premium] ${name} anonymous`]);
+      const tables: string[] = [];
+      const { db: real } = fakeDb();
+      const db = { ...real, query: (table: string) => (tables.push(table), real.query(table)) };
+      const answer = await statusOf(handlerOf(modules[module][fn])({ db, auth: ANONYMOUS_AUTH }, name === 'results:search' ? dated : {}));
+      expect([name, answer, tables]).toEqual([name, 401, ['access_passes']]);
     }
   });
 
-  it("are the ones the website sends its token to (`SUBSCRIPTION_FUNCTIONS` in `web/src/utils/api.rs`)", () => {
+  it('each take their pass in the `pass` argument and pass the rest to the query unchanged', async () => {
+    setPremiumModeForTests('enforce');
+    const { db } = fakeDb({ access_passes: [{ current: 'today', previous: null, rotatedAt: NOW }] });
+    const answer = await handlerOf(reference.nationalRankingsByYear)({ db, auth: ANONYMOUS_AUTH }, { federation: 'USAW', ageCategory: 'nope', year: '2026', pass: 'today' }).catch((error: unknown) => error);
+    // Past the gate: the 404 is the query's own answer for an unknown class.
+    expect(answer instanceof ConvexError ? (answer.data as { status: number }).status : answer).toBe(404);
+  });
+
+  it("are the ones the website sends the pass to (`SUBSCRIPTION_FUNCTIONS` in `web/src/utils/api.rs`)", () => {
     const source = readFileSync(join(__dirname, '..', 'web', 'src', 'utils', 'api.rs'), 'utf8');
     const list = /SUBSCRIPTION_FUNCTIONS: &\[&str\] = &\[([^\]]*)\]/.exec(source)?.[1] ?? '';
     const web = [...list.matchAll(/"([^"]+)"/g)].map((match) => match[1]);
     expect(web.sort()).toEqual([...PREMIUM_FUNCTIONS].sort());
   });
 
-  it('leave name suggestions public: search gates only when asked for results', async () => {
+  it('leave name suggestions public: search checks the pass only when asked for results', async () => {
     setPremiumModeForTests('enforce');
-    const throwing = { getUserIdentity: async () => { throw new Error('gated'); } };
     const { db } = fakeDb();
-    // Past the gate to the (empty) name directory, without asking who called.
-    expect(await statusOf(handlerOf(results.search)({ db, auth: throwing }, { query: 'Ada' }))).toBe(503);
-    await expect(handlerOf(results.search)({ db, auth: throwing }, { query: 'Ada', startDate: '2026-01-01', endDate: '2026-12-31' })).rejects.toThrow('gated');
+    // Past the gate to the (empty) name directory.
+    expect(await statusOf(handlerOf(results.search)({ db, auth: ANONYMOUS_AUTH }, { query: 'Ada' }))).toBe(503);
+    expect(await statusOf(handlerOf(results.search)({ db, auth: ANONYMOUS_AUTH }, { query: 'Ada', startDate: '2026-01-01', endDate: '2026-12-31' }))).toBe(401);
   });
 });

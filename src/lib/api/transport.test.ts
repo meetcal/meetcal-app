@@ -169,37 +169,7 @@ describe('convexTransport (signed-in calls over HTTP)', () => {
   });
 });
 
-describe('convexTransport (premium reads)', () => {
-  const premiumRead: ApiCall = { path: '/data/records', fn: 'reference:records', kind: 'query', args: {}, dataToken: 'data-token' };
-  const authorizationOf = (call: number) =>
-    ((global.fetch as jest.Mock).mock.calls[call][1] as RequestInit).headers as Record<string, string>;
-
-  it("sends the user's token with a premium read", async () => {
-    responses.push(respond(200, { status: 'success', value: { json: '[]' } }));
-    await expect(convexTransport(premiumRead)).resolves.toEqual({ json: '[]' });
-    expect(authorizationOf(0).Authorization).toBe('Bearer data-token');
-  });
-
-  it('sends it again without the token when Convex refuses the token, as reads were before the server checked', async () => {
-    responses.push(respond(401, { code: 'InvalidAuthHeader', message: 'Token expired' }));
-    responses.push(respond(200, { status: 'success', value: { json: '[]' } }));
-    await expect(convexTransport(premiumRead)).resolves.toEqual({ json: '[]' });
-    expect(authorizationOf(0).Authorization).toBe('Bearer data-token');
-    expect(authorizationOf(1).Authorization).toBeUndefined();
-
-    responses.push(respond(403, 'Forbidden'));
-    responses.push(respond(200, { status: 'success', value: { json: '[]' } }));
-    await expect(convexTransport(premiumRead)).resolves.toEqual({ json: '[]' });
-  });
-
-  it("keeps the function's own refusal: a 403 from the gate is not retried anonymously", async () => {
-    responses.push(respond(200, { status: 'error', errorMessage: 'subscription required', errorData: { status: 403, error: 'subscription required' } }));
-    const error = await failure(premiumRead);
-    expect(error).toBeInstanceOf(TransportRequestError);
-    expect((error as TransportRequestError).status).toBe(403);
-    expect(global.fetch).toHaveBeenCalledTimes(1);
-  });
-
+describe('convexTransport (actions)', () => {
   it('sends an action as one', async () => {
     responses.push(respond(200, { status: 'success', value: { active: true } }));
     await expect(convexTransport({ path: '/users/me/entitlement', fn: 'entitlements:refresh', kind: 'action', args: {}, token: 'token' })).resolves.toEqual({

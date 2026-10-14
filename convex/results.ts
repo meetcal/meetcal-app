@@ -316,6 +316,8 @@ export const search = query({
     query: v.string(),
     startDate: v.optional(v.string()),
     endDate: v.optional(v.string()),
+    // The access pass (`lib/access.ts`), for results.
+    pass: v.optional(v.string()),
   },
   handler: async (ctx, args): Promise<SearchAnswer> => {
     requireNonEmpty('query', args.query);
@@ -327,7 +329,7 @@ export const search = query({
       return { matched_name: null, suggestions: await matchingNames(MAX_SEARCH_SUGGESTIONS), results: [], truncated: false };
     }
     // Results are premium; name suggestions alone are not.
-    await premiumRead(ctx, 'results:search');
+    await premiumRead(ctx, 'results:search', args.pass);
     const start = args.startDate;
     const end = args.endDate;
     if (end < start) throw apiError(400, 'end_date must not be before start_date');

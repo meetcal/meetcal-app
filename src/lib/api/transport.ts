@@ -22,8 +22,7 @@ import { TransportRequestError } from '@/lib/api/transport-error';
  * where a socket that died with the network lingers. Convex serves both from
  * the same query cache. Signed-in calls carry the caller's Clerk token on a
  * client of their own, so one user's token is never attached to the shared
- * one. Premium reads carry it too (`dataToken`), so the server can tell a
- * subscriber from everyone else (`convex/lib/access.ts`).
+ * one.
  */
 export type ApiCall = {
   /** The Rust route this call replaces, e.g. `/meets/package`. */
@@ -43,13 +42,6 @@ export type ApiCall = {
   conditional?: boolean;
   /** Clerk session token for `/users/me/*`. */
   token?: string;
-  /**
-   * Clerk session token for a premium read (`lib/api/premium-queries.ts`).
-   * Unlike `token`, it is a hint: when Convex refuses it (expired, or one it
-   * cannot verify) the call is sent again without it, as reads were before
-   * the server checked who asked.
-   */
-  dataToken?: string;
   /**
    * Aborts the request (the caller's timeout). Aborting cannot recall bytes
    * already sent, so a timed-out write may still reach the server, after a
@@ -198,15 +190,12 @@ function definedArgs(args: Record<string, unknown>): Record<string, unknown> {
   return out;
 }
 
-/** Convex refused a premium read's `dataToken` itself, before running the function. */
-class DataTokenRefused extends Error {}
-
-async function send(call: ApiCall, auth: string | undefined): Promise<unknown> {
+export const convexTransport: Transport = async (call) => {
   const ref = functionReference(call.fn);
   const args = definedArgs(call.args);
   const facts: ResponseFacts = { status: null, date: null };
   const client = httpClient(facts, call.signal);
-  if (auth) client.setAuth(auth);
+  if (call.token) client.setAuth(call.token);
   try {
     if (call.kind === 'clock') {
       // A cached query's answer still carries the time it was sent, so the
@@ -217,19 +206,7 @@ async function send(call: ApiCall, auth: string | undefined): Promise<unknown> {
     if (call.kind === 'query') return await client.query(ref, args);
     return call.kind === 'action' ? await client.action(ref, args) : await client.mutation(ref, args);
   } catch (error) {
-    if (auth && !call.token && !(error instanceof ConvexError) && (facts.status === 401 || facts.status === 403)) {
-      throw new DataTokenRefused();
-    }
     throw toTransportError(call, error, facts.status);
-  }
-}
-
-export const convexTransport: Transport = async (call) => {
-  try {
-    return await send(call, call.token ?? call.dataToken);
-  } catch (error) {
-    if (error instanceof DataTokenRefused) return await send(call, undefined);
-    throw error;
   }
 };
 

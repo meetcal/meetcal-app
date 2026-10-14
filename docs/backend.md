@@ -72,33 +72,36 @@ When a user deletes their account in Clerk, Clerk's `user.deleted` webhook (`POS
 
 ## Premium data
 
-The queries that answer what the app's paywall gates (records, standards, rankings, club and WSO data, athlete results and bests, meet results, the offline meet package, and `results:search` when asked for results) are listed in `PREMIUM_FUNCTIONS` (`convex/lib/access.ts`) and run `premiumRead` before anything else. Schedules, start lists, meet lists and name suggestions stay public. `PREMIUM_MODE` decides what the gate does:
+The queries that answer what the app's paywall gates (records, standards, rankings, club and WSO data, athlete results and bests, meet results, the offline meet package, and `results:search` when asked for results) are listed in `PREMIUM_FUNCTIONS` (`convex/lib/access.ts`). Each takes a `pass` argument and checks it before anything else (`premiumRead`). Schedules, start lists, meet lists and name suggestions stay public.
 
-- `log` (now): everyone is answered. Only the cheap probes in `PREMIUM_LOG_PROBES` (`reference:records`, `results:yearBests`, and the bulk export `results:page`) look at the caller, and each of their runs that misses Convex's query cache logs `[premium] <function> <caller>`: `anonymous`, or `free`/`subscriber` with the user id and how they signed in. Use the logs to see that tokens arrive and how much is read anonymously. The other premium queries do not look, so each stays cached once for everyone until `enforce`: a query that reads its caller is cached per caller.
-- `enforce`: anonymous callers get 401 and signed-in callers without the entitlement 403. Switch to it only once nearly every active subscriber runs an app that sends its token and Siri and the CLI send theirs, and once the app:
-  - waits (briefly) for Clerk before a premium read while the SecureStore auth hint says someone is signed in, since reads made while Clerk loads or offline go anonymously today;
-  - calls `entitlements:refresh` and retries once when a premium read gets 403 while RevenueCat says the user subscribes, so a missed renewal webhook cannot lock a subscriber out until relaunch;
-  - and lifetime subscribers who never opened a token-sending app are backfilled with `entitlements:sync`.
+The pass is one random value shared by every subscriber (`convex/accessPass.ts`). Because every subscriber sends the same arguments and no premium query reads who is calling, Convex caches each premium answer once for everyone, as it does for public queries. `accessPass:pass` gives it to a caller with an active entitlement, signed in with Clerk or a MeetCal-issued token: `{ pass, rotatesAt }`, 401 signed out, 403 without the entitlement. The daily `rotate-access-pass` job (09:00 UTC) makes a new pass current and keeps the one it replaced, so a client's pass works for at least a day. A rotation clears every premium query's cache once, since each reads the pass row. A subscription that lapses stops getting new passes once its `entitlements` row says so (normally RevenueCat's expiry webhook); a pass already handed out keeps working until the rotation after next, so access ends at most about two days after. There is no pass until the first rotation: run `npx convex run accessPass:rotate` once after deploying. To shut out a pass that leaked, run it again (twice to shut out the previous one too).
 
-  Also before `enforce`: `parity:run` calls premium queries from an action with no caller, so it needs a way past the gate; and TestFlight testers and App Review buy with sandbox receipts, which prod does not count, so they need a reviewer account or another way in. Expect Convex usage for premium reads to grow then, as every premium query starts reading its caller.
+`PREMIUM_MODE` decides what the gate does with a read that has no current pass:
 
-A caller is a subscriber when their `entitlements` row (`convex/entitlements.ts`) is active and not past `expiresAt`. The row is RevenueCat's answer for the Clerk user id (the app user id RevenueCat knows them by), fetched from RevenueCat's REST API whenever:
+- `log` (now): answers it, and each run that misses Convex's query cache logs `[premium] <function> without a pass` or `with a stale pass`. The share of those shows how many reads still come from app versions that send no pass.
+- `enforce`: refuses it, 401 without a pass and 403 with a stale one. The app and website then fetch a new pass and retry once. Switch to it only once nearly every active subscriber runs an app that sends the pass and Siri and the CLI send theirs, and once:
+  - the app waits (briefly) for Clerk before a premium read while the SecureStore auth hint says someone is signed in, since reads made while Clerk loads or offline go without a pass today;
+  - lifetime subscribers who never opened a pass-sending app are backfilled with `entitlements:sync`;
+  - `parity:run`, which calls premium queries from an action, passes the current pass;
+  - TestFlight testers and App Review, who buy with sandbox receipts prod does not count, have a reviewer account or another way in.
+
+A caller has an active entitlement when their `entitlements` row (`convex/entitlements.ts`) is active and not past `expiresAt`. The row is RevenueCat's answer for the Clerk user id (the app user id RevenueCat knows them by), fetched from RevenueCat's REST API whenever:
 
 - RevenueCat's webhook (`POST /revenuecat/webhook` on the `.convex.site` host) reports any event for the user. Configure it in RevenueCat with every event type and an Authorization header value, and set that value as `REVENUECAT_WEBHOOK_AUTH`. A failure answers 500, so RevenueCat retries.
-- The app or website calls `entitlements:refresh` after RevenueCat confirms an active subscription (once per launch or page load, and at most once a minute per user on the server). This covers a purchase before its webhook lands, and lifetime purchases, which never send a renewal.
+- The app or website calls `entitlements:refresh` because `accessPass:pass` answered 403 for a user RevenueCat says subscribes (at most once a minute per user on the server). This covers a purchase before its webhook lands, and lifetime purchases, which never send a renewal.
 - `npx convex run entitlements:sync '{"userId":"user_…"}'`, for support.
 
-The REST calls need `REVENUECAT_SECRET_API_KEY` (a v1 secret key from RevenueCat's API keys page). A sandbox purchase (TestFlight, a Play license tester, a test card) counts only where `REVENUECAT_COUNT_SANDBOX` is `true`: set it on dev, never on prod. An answer RevenueCat gave before the stored one is dropped, so events handled out of order cannot bring back a stale state.
+The REST calls need `REVENUECAT_SECRET_API_KEY` (a v1 secret key from RevenueCat's API keys page). A sandbox purchase (TestFlight, a Play license tester, a test card) counts only where `REVENUECAT_COUNT_SANDBOX` is `true`: set it on dev, never on prod. An answer RevenueCat gave before the stored one is dropped, so events handled out of order cannot bring back a stale state. When RevenueCat was last asked, and the refresh throttle, are kept in `entitlement_syncs`, apart from the row `accessPass:pass` reads.
 
-The app sends the user's Clerk token with premium queries only, and only while it believes the user subscribes (`src/hooks/useServerDataAccess.ts`, `src/lib/api/premium-queries.ts`); the website sends it with premium queries, which only its subscribers reach (`web/src/utils/api.rs`). Everything else goes anonymously and shares one cache entry across users: a query that reads its caller is cached per caller. When Convex refuses a token the read is sent again without it, so a stale token never breaks a read the gate would answer.
+The app fetches the pass as soon as it believes the user subscribes and attaches it to premium reads (`src/hooks/useServerDataAccess.ts`, `src/lib/api/premium-queries.ts`); the website fetches it before its first premium read (`web/src/utils/api.rs`). Neither sends the user's token on any data read.
 
-Clients that cannot hold a Clerk session (the CLI, Siri's App Intents) use MeetCal-issued tokens (`convex/apiTokens.ts`): `apiTokens:issue` gives a signed-in Clerk user a 90-day ES256 JWT for this deployment, which Convex accepts as a second auth provider (`convex/auth.config.ts`; issuer `CONVEX_SITE_URL`, keys at `/.well-known/jwks.json`). One is honoured only while its `api_tokens` row exists: `apiTokens:revoke` and account deletion delete it. These tokens read premium data only; saved sessions and preferences refuse them. Set the signing key once per deployment:
+Clients that cannot hold a Clerk session (the CLI, Siri's App Intents) get the pass with MeetCal-issued tokens (`convex/apiTokens.ts`): `apiTokens:issue` gives a signed-in Clerk user a 90-day ES256 JWT for this deployment, which Convex accepts as a second auth provider (`convex/auth.config.ts`; issuer `CONVEX_SITE_URL`, keys at `/.well-known/jwks.json`). One is honoured only while its `api_tokens` row exists: `apiTokens:revoke` and account deletion delete it. These tokens can get the pass and nothing else of the user's: saved sessions and preferences refuse them. Set the signing key once per deployment:
 
 ```sh
 npx convex env set MEETCAL_TOKEN_SIGNING_KEY "$(mise exec -- bun scripts/generate-token-signing-key.ts)"
 ```
 
-Replacing it ends every MeetCal-issued token. Account deletion also deletes the user's `entitlements` row and tokens.
+Replacing it ends every MeetCal-issued token. Account deletion also deletes the user's entitlement records and tokens.
 
 ## Meet time zones and dates
 

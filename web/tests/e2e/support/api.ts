@@ -13,6 +13,23 @@ export type AuthMock = {
    * stand-in on the page later.
    */
   loadRevenueCat?: boolean;
+  /**
+   * Convex holds an active entitlement for `user_ci`, so `accessPass:pass`
+   * answers it the pass. Default true; false answers 403 until
+   * `entitlements:refresh` grants it.
+   */
+  serverEntitled?: boolean;
+  /** What `entitlements:refresh` answers as `active`. Default true. */
+  refreshGrants?: boolean;
+};
+
+/**
+ * Convex's side of the access pass in the mocks: the pass it hands out, and
+ * whether it holds `user_ci`'s entitlement. A test may change either.
+ */
+export type PassServer = {
+  pass: string;
+  entitled: boolean;
 };
 
 /**
@@ -26,11 +43,19 @@ export type AuthMock = {
  * `activeEntitlements` replaces the granted entitlements. Only `user_ci`
  * holds entitlements. A signed-in user's session token is `token_<id>`.
  *
- * Also answers Convex's `entitlements:refresh` action (`{ active: true }`),
- * so no test reaches the real deployment; the returned
- * `entitlementRefreshes` holds the Authorization header of each call.
+ * Also answers the Convex calls that carry that token, so no test reaches the
+ * real deployment: `accessPass:pass` answers `server.pass` (default
+ * `pass_test`) to `Bearer token_user_ci` while `server.entitled`, 403 to
+ * another user or while not entitled, and 401 without a token; the
+ * `entitlements:refresh` action answers `{ active: refreshGrants }` and, when
+ * active, makes `server.entitled` true. Returns `server`, and the
+ * Authorization header of each call: `passRequests` and
+ * `entitlementRefreshes`.
  */
-export async function mockAuth(page: Page, { signedIn = true, entitlements = ["Subscriptions"], revenueCatError, loadRevenueCat = false }: AuthMock = {}) {
+export async function mockAuth(
+  page: Page,
+  { signedIn = true, entitlements = ["Subscriptions"], revenueCatError, loadRevenueCat = false, serverEntitled = true, refreshGrants = true }: AuthMock = {},
+) {
   const active = Object.fromEntries(entitlements.map((id) => [id, { identifier: id }]));
   await page.addInitScript(({ signedIn, active, revenueCatError, loadRevenueCat }) => {
     type Listener = () => void;
@@ -94,6 +119,18 @@ export async function mockAuth(page: Page, { signedIn = true, entitlements = ["S
     if (!loadRevenueCat) mock.installPurchases();
   }, { signedIn, active, revenueCatError, loadRevenueCat });
 
+  const server: PassServer = { pass: "pass_test", entitled: serverEntitled };
+  const passRequests: Array<string | undefined> = [];
+  await routeQuery(page, "accessPass:pass", (route) => {
+    const authorization = route.request().headers().authorization;
+    passRequests.push(authorization);
+    if (!authorization) return route.fulfill(errorAnswer("Server Error", { status: 401, error: "unauthorized" }));
+    if (authorization !== "Bearer token_user_ci" || !server.entitled) {
+      return route.fulfill(errorAnswer("Server Error", { status: 403, error: "subscription required" }));
+    }
+    return route.fulfill(valueAnswer({ pass: server.pass, rotatesAt: Date.now() + 24 * 60 * 60 * 1000 }));
+  });
+
   const entitlementRefreshes: Array<string | undefined> = [];
   await page.route(CONVEX_ACTION_URL, async (route) => {
     const request = route.request();
@@ -106,10 +143,13 @@ export async function mockAuth(page: Page, { signedIn = true, entitlements = ["S
       await route.fallback();
       return;
     }
-    entitlementRefreshes.push(request.headers().authorization);
-    await route.fulfill(valueAnswer({ active: true }));
+    const authorization = request.headers().authorization;
+    entitlementRefreshes.push(authorization);
+    const active = refreshGrants && authorization === "Bearer token_user_ci";
+    if (active) server.entitled = true;
+    await route.fulfill(valueAnswer({ active }));
   });
-  return { entitlementRefreshes };
+  return { server, passRequests, entitlementRefreshes };
 }
 
 /** A signed-in user with the app's subscription entitlement. */
@@ -143,7 +183,7 @@ const CONVEX_QUERY_URL = "https://disciplined-hare-790.convex.cloud/api/query";
 /** The one action the site calls, `entitlements:refresh`. */
 const CONVEX_ACTION_URL = "https://disciplined-hare-790.convex.cloud/api/action";
 
-/** Subscription reads carry `Authorization`, so the preflight must allow it. */
+/** `accessPass:pass` and `entitlements:refresh` carry `Authorization`, so the preflight must allow it. */
 const CORS_HEADERS = {
   "access-control-allow-origin": "*",
   "access-control-allow-methods": "POST, OPTIONS",
@@ -186,7 +226,8 @@ export function textAnswer(body: unknown) {
   return valueAnswer({ etag: '"test"', json: JSON.stringify(body) });
 }
 
-/** Convex's answer to a query that ran and failed. */
-export function errorAnswer(message: string) {
-  return { status: 560, ...jsonResponse({ status: "error", errorMessage: message, logLines: [] }) };
+/** Convex's answer to a query that ran and failed; `errorData` is a `ConvexError`'s `{ status, error }`. */
+export function errorAnswer(message: string, errorData?: { status: number; error: string }) {
+  const body = { status: "error", errorMessage: message, ...(errorData ? { errorData } : {}), logLines: [] };
+  return { status: 560, ...jsonResponse(body) };
 }

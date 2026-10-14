@@ -1,35 +1,30 @@
 import type { RegisteredQuery, UserIdentity } from 'convex/server';
-import type { ObjectType, PropertyValidators } from 'convex/values';
+import { v, type ObjectType, type PropertyValidators } from 'convex/values';
 import { query, type QueryCtx } from '../_generated/server';
 import { apiError } from './validation';
 
 /**
  * Who may read premium data. Competition data the app's paywall gates is
- * answered only for a caller with an active `Subscriptions` entitlement
- * (`convex/entitlements.ts`), identified by a Clerk session token (the app,
- * the website) or a MeetCal-issued token (`convex/apiTokens.ts`: the CLI,
- * Siri). Schedules, start lists and meet lists stay public.
+ * answered only to a caller holding the current access pass
+ * (`convex/accessPass.ts`), which `accessPass:pass` gives only to a user with an
+ * active `Subscriptions` entitlement (`convex/entitlements.ts`), signed in
+ * with Clerk (the app, the website) or a MeetCal-issued token
+ * (`convex/apiTokens.ts`: the CLI, Siri). Schedules, start lists and meet
+ * lists stay public.
  *
- * Rollout is in two steps. In `log`, every caller is answered while the
- * clients learn to send their token, and only the `PREMIUM_LOG_PROBES` look
- * at who called and log it. `enforce` checks every premium query and refuses
- * anonymous callers (401) and callers without the entitlement (403); it is
- * switched on once the app versions that send tokens have replaced the ones
- * that do not.
+ * Every subscriber holds the same pass and sends it as an argument, so a
+ * premium query never reads its caller: Convex caches each answer once for
+ * everyone, not once per user. A pass rotates daily, and the previous one
+ * stays good until the next rotation.
  *
- * A query that reads its caller is cached per caller, not once for everyone.
- * The probes are cheap, so `log` costs little; the rest keep their shared
- * cache until `enforce`.
+ * Rollout is in two steps. In `log`, a read without a current pass is still
+ * answered, and logged, while the clients learn to send one. `enforce`
+ * refuses it: 401 without a pass, 403 with a stale one (the client fetches a
+ * new pass and retries). It is switched on once the app versions that send
+ * passes have replaced the ones that do not.
  */
 export type PremiumMode = 'log' | 'enforce';
 export const PREMIUM_MODE: PremiumMode = 'log';
-
-/**
- * The premium queries that identify and log their caller in `log` mode:
- * enough to see that tokens arrive and how much is read anonymously, the
- * bulk export (`results:page`) included.
- */
-export const PREMIUM_LOG_PROBES: ReadonlySet<string> = new Set(['reference:records', 'results:yearBests', 'results:page']);
 
 let mode: PremiumMode = PREMIUM_MODE;
 
@@ -41,7 +36,7 @@ export function setPremiumModeForTests(next: PremiumMode | null): void {
 /** The RevenueCat entitlement that unlocks premium data, as in the app (`src/lib/premium-intent.ts`). */
 export const SUBSCRIPTION_ENTITLEMENT_ID = 'Subscriptions';
 
-/** Every query that answers premium data. The app and website send their token on exactly these. */
+/** Every query that answers premium data. The app and website send the pass to exactly these. */
 export const PREMIUM_FUNCTIONS = [
   'reference:records',
   'reference:standards',
@@ -120,36 +115,44 @@ export async function callerOf(ctx: QueryCtx): Promise<Caller> {
   return { kind, ...user };
 }
 
-export function describeCaller(caller: Caller): string {
-  return caller.kind === 'anonymous' ? 'anonymous' : `${caller.kind} ${caller.userId} via ${caller.via}`;
+/** The pass rotation's one row, or null before the first rotation. */
+export async function currentPasses(ctx: QueryCtx) {
+  return await ctx.db.query('access_passes').first();
 }
 
 /**
- * The gate every premium query calls first. In `enforce`, refuses a caller
- * without the entitlement. In `log`, a probe logs its caller (only a run that
- * misses Convex's query cache logs, so the counts are a floor) and the rest
- * do not look, so they stay cached once for everyone.
+ * The gate every premium query calls first, with the pass it was sent. A
+ * current or previous pass goes through. In `log`, anything else is logged
+ * (only a run that misses Convex's query cache logs, so the counts are a
+ * floor) and answered; in `enforce`, refused.
  */
-export async function premiumRead(ctx: QueryCtx, fn: PremiumFunction): Promise<void> {
-  if (mode === 'log' && !PREMIUM_LOG_PROBES.has(fn)) return;
-  const caller = await callerOf(ctx);
-  console.log(`[premium] ${fn} ${describeCaller(caller)}`);
-  if (mode === 'enforce') {
-    if (caller.kind === 'anonymous') throw apiError(401, 'sign in required');
-    if (caller.kind === 'free') throw apiError(403, 'subscription required');
+export async function premiumRead(ctx: QueryCtx, fn: PremiumFunction, pass: string | undefined): Promise<void> {
+  const passes = await currentPasses(ctx);
+  if (pass !== undefined && passes !== null && (pass === passes.current || pass === passes.previous)) return;
+  if (mode === 'log') {
+    console.log(`[premium] ${fn} ${pass === undefined ? 'without a pass' : 'with a stale pass'}`);
+    return;
   }
+  throw pass === undefined ? apiError(401, 'access pass required') : apiError(403, 'access pass expired');
 }
 
-/** A public query whose handler runs only after `premiumRead` lets the caller through. */
+/** The argument every premium query takes its pass in. */
+const passArg = { pass: v.optional(v.string()) };
+
+/** A public query that takes a `pass` and runs its handler only after `premiumRead` lets it through. */
 export function premiumQuery<Args extends PropertyValidators, Result>(
   fn: PremiumFunction,
   definition: { args: Args; handler: (ctx: QueryCtx, args: ObjectType<Args>) => Promise<Result> },
-): RegisteredQuery<'public', ObjectType<Args>, Promise<Result>> {
-  const handler = async (ctx: QueryCtx, args: ObjectType<Args>) => {
-    await premiumRead(ctx, fn);
-    return await definition.handler(ctx, args);
+): RegisteredQuery<'public', ObjectType<Args> & { pass?: string }, Promise<Result>> {
+  const handler = async (ctx: QueryCtx, { pass, ...args }: ObjectType<Args> & { pass?: string }) => {
+    await premiumRead(ctx, fn, pass);
+    return await definition.handler(ctx, args as ObjectType<Args>);
   };
   // `query`'s overloads cannot follow a generic validator; the signature
   // above is the one each call site gets.
-  return query({ args: definition.args, handler } as never) as unknown as RegisteredQuery<'public', ObjectType<Args>, Promise<Result>>;
+  return query({ args: { ...definition.args, ...passArg }, handler } as never) as unknown as RegisteredQuery<
+    'public',
+    ObjectType<Args> & { pass?: string },
+    Promise<Result>
+  >;
 }

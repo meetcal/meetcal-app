@@ -20,8 +20,9 @@ shape, including fields that may be absent or `null`.
 
 `src/utils/api.rs` tests the transport without a network: request bodies, both
 answer forms (`Body::Value` and `Body::JsonText`), function errors, retry
-timing, whole-number floats becoming integers, which queries carry the session
-token, and which statuses drop a refused token.
+timing, whole-number floats becoming integers, which queries (and which
+searches) carry the access pass, reading `accessPass:pass`'s answer, how long a
+pass is held, and which function errors renew it.
 
 ## Browser checks
 
@@ -83,10 +84,13 @@ await routeQuery(page, "results:search", (route, args) =>
   so gated pages render. The auth bridge uses an SDK already on the page
   instead of loading it. Don't mock the CDN files with `page.route`: they load
   with Subresource Integrity, so the browser refuses any other body. The
-  signed-in stand-in's session token is `token_<user id>`, so a subscription
-  read sends `Authorization: Bearer token_user_ci` (the mocks' CORS preflight
-  allows it). `mockAuth` also answers the `entitlements:refresh` action and
-  returns `entitlementRefreshes`, the Authorization header of each call.
+  signed-in stand-in's session token is `token_<user id>`. `mockAuth` also
+  answers Convex's `accessPass:pass` (the pass `pass_test` for
+  `Bearer token_user_ci`, 403 for another user or while its `serverEntitled`
+  option is false) and the `entitlements:refresh` action (`refreshGrants`), so
+  a premium read's `args` include `pass: "pass_test"`. It returns `server` (the
+  pass it hands out, which a test may change to simulate a rotation) and the
+  Authorization header of each call, `passRequests` and `entitlementRefreshes`.
 
 Assert on what a user sees, and on the arguments a page sends when they
 matter (`expect(args).toEqual({ federation: "USAMW", ... })`).

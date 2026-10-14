@@ -252,8 +252,7 @@ function RootLayoutContent({ fontsLoaded }: { fontsLoaded: boolean }) {
   // open, and mirror the premium entitlement for them and for Siri.
   useDataWidgetRefresh();
 
-  // Premium reads carry the user's token, and the server learns about a
-  // confirmed subscription.
+  // A subscriber's premium reads carry the shared access pass.
   useServerDataAccess();
 
   // Keep the offline auth hint's seven-day window sliding for every verified

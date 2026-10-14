@@ -91,6 +91,7 @@ test("national rankings submit the expected query and rank totals descending", a
     federation: "USAMW",
     ageCategory: "Women's Masters (40-44) 69kg",
     year: "2026",
+    pass: "pass_test",
   });
 });
 
@@ -159,6 +160,8 @@ test("records show who set each lift, when and where", async ({ page }) => {
   await page.goto("/records");
   const row = page.locator("tbody tr").first();
   await expect(row.locator("td")).toHaveCount(7);
+  // The loading skeleton's row has seven cells too; `all()` does not wait.
+  await expect(row.locator("td.record-lift")).toHaveCount(3);
   const [snatch, cleanAndJerk, total] = await row.locator("td.record-lift").all();
   await expect(snatch).toContainText("130");
   await expect(snatch.locator(".record-holder")).toHaveText("Ada Lift");

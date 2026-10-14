@@ -279,6 +279,14 @@ export default defineSchema({
     refreshRequestedAt: v.optional(v.number()),
   }).index('by_userId', ['userId']),
 
+  // The access pass premium queries are read with (`convex/accessPass.ts`):
+  // one row, the current pass and the one it replaced, both accepted.
+  access_passes: defineTable({
+    current: v.string(),
+    previous: v.union(v.string(), v.null()),
+    rotatedAt: v.number(),
+  }),
+
   // MeetCal-issued sign-in tokens (`convex/apiTokens.ts`) for clients that
   // cannot hold a Clerk session: the CLI and Siri. The JWT carries `tid`; a
   // token is honoured only while its row exists, so deleting the row revokes it.

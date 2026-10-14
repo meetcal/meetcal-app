@@ -8,6 +8,7 @@
  * @module
  */
 
+import type * as accessPass from "../accessPass.js";
 import type * as apiTokens from "../apiTokens.js";
 import type * as cronJobs from "../cronJobs.js";
 import type * as cronStatus from "../cronStatus.js";
@@ -107,6 +108,7 @@ import type {
 } from "convex/server";
 
 declare const fullApi: ApiFromModules<{
+  accessPass: typeof accessPass;
   apiTokens: typeof apiTokens;
   cronJobs: typeof cronJobs;
   cronStatus: typeof cronStatus;

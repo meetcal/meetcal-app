@@ -25,6 +25,8 @@ function fakeCtx(tables: Record<string, Row[]> = {}) {
   const ctx = {
     db: {
       query: (table: string) => ({
+        // The premium gate's pass row (`lib/access.ts`): none here.
+        first: async () => null,
         withIndex: (_index: string, build: (q: unknown) => unknown) => {
           const filters: ((row: Row) => boolean)[] = [];
           const q = {
@@ -47,9 +49,18 @@ function fakeCtx(tables: Record<string, Row[]> = {}) {
   return { ctx: { ...ctx, auth: ANONYMOUS_AUTH } as never, reads };
 }
 
-/** A ctx whose database must not be touched: validation comes first. The caller is anonymous. */
+/**
+ * A ctx whose database must not be touched beyond the premium gate's pass
+ * row (`lib/access.ts`, here none): validation comes first. The caller is
+ * anonymous.
+ */
 const NO_DB = {
-  db: new Proxy({}, { get: () => () => { throw new Error('read before validating'); } }),
+  db: {
+    query: (table: string) => {
+      if (table === 'access_passes') return { first: async () => null };
+      throw new Error('read before validating');
+    },
+  },
   auth: ANONYMOUS_AUTH,
 } as never;
 

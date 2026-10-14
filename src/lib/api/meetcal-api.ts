@@ -21,7 +21,7 @@ import {
   ValidatorCache,
   type ValidatorEntry,
 } from '@/lib/api/http-cache';
-import { dataTokenFor, wantsDataToken } from '@/lib/api/premium-queries';
+import { accessPassFor, wantsAccessPass, type AccessPass } from '@/lib/api/premium-queries';
 import { callApi, TransportRequestError, type ApiCall } from '@/lib/api/transport';
 
 // The app's backend is Convex (`convex/`). Each function below calls the
@@ -323,13 +323,32 @@ function methodLabel(call: ApiCall): string {
  * The request that starts the process's first clock sample also waits
  * (briefly) for it, so the first response normally leaves a sample behind;
  * later ones refresh a stale sample in the background.
+ *
+ * A premium read carries the access pass (`lib/api/premium-queries.ts`). If
+ * the server refuses it (401 without one, 403 for a stale one), the read is
+ * sent once more with a newly fetched pass.
  */
 async function request(call: ApiCall, timeoutMs: number = DEFAULT_TIMEOUT_MS): Promise<unknown> {
+  // Every other call starts at once; the wait for a pass not yet held is
+  // bounded on its own (`ACCESS_PASS_TIMEOUT_MS`), before the timeout starts.
+  if (call.kind !== 'query' || call.token || !wantsAccessPass(call.fn, call.args)) return send(call, timeoutMs);
+  const pass = await accessPassFor(call.fn, call.args);
+  try {
+    return await send(withPass(call, pass), timeoutMs);
+  } catch (error) {
+    if (!(error instanceof MeetCalApiError) || (error.status !== 401 && error.status !== 403)) throw error;
+    const fresh = await accessPassFor(call.fn, call.args, { refused: pass });
+    if (fresh === undefined || fresh === pass) throw error;
+    return await send(withPass(call, fresh), timeoutMs);
+  }
+}
+
+function withPass(call: ApiCall, pass: string | undefined): ApiCall {
+  return pass === undefined ? call : { ...call, args: { ...call.args, pass } };
+}
+
+async function send(call: ApiCall, timeoutMs: number): Promise<unknown> {
   const startedAt = typeof performance !== 'undefined' ? performance.now() : Date.now();
-  // Before the timeout starts: the wait for Clerk is bounded on its own
-  // (`DATA_TOKEN_TIMEOUT_MS`). Every other call starts at once.
-  const dataToken =
-    call.kind === 'query' && !call.token && wantsDataToken(call.fn, call.args) ? await dataTokenFor(call.fn, call.args) : undefined;
   let timeoutId: ReturnType<typeof setTimeout> | undefined;
   // The timeout also aborts the request, so it never lands later (a stale
   // save arriving after a newer unsave would bring the session back).
@@ -346,8 +365,7 @@ async function request(call: ApiCall, timeoutMs: number = DEFAULT_TIMEOUT_MS): P
       : null;
 
   try {
-    const sent = { ...call, ...(dataToken ? { dataToken } : {}), ...(abort ? { signal: abort.signal } : {}) };
-    const result = await Promise.race([callApi(sent), timeout]);
+    const result = await Promise.race([callApi(abort ? { ...call, signal: abort.signal } : call), timeout]);
     // Only the request that started the process's first sample waits for it;
     // refreshes of an existing sample, and requests that merely find one in
     // flight, never do.
@@ -1774,4 +1792,16 @@ export async function refreshServerEntitlement(token: string): Promise<{ active:
   );
   if (typeof row.active !== 'boolean') throw new Error('/users/me/entitlement.active expected a boolean');
   return { active: row.active };
+}
+
+/**
+ * The shared access pass premium reads carry (`accessPass:pass`), for a signed-in
+ * subscriber. A 403 means the server knows of no active subscription.
+ */
+export async function fetchAccessPass(token: string): Promise<AccessPass> {
+  const authToken = requireToken(token, 'fetchAccessPass');
+  const row = assertHasFields(await userCall('/access-pass', 'accessPass:pass', 'query', authToken), '/access-pass', ['pass', 'rotatesAt']);
+  if (typeof row.pass !== 'string' || row.pass.length === 0) throw new Error('/access-pass.pass expected a non-empty string');
+  if (typeof row.rotatesAt !== 'number' || !Number.isFinite(row.rotatesAt)) throw new Error('/access-pass.rotatesAt expected a number');
+  return { pass: row.pass, rotatesAt: row.rotatesAt };
 }
