@@ -15,7 +15,8 @@ workflow fails before building.
 ## 1. Bump the version
 
 In `cli/`, set `version` in `Cargo.toml`, add the release to `CHANGELOG.md`, set the tag in
-`README.md`'s `cargo install … --tag cli-vX.Y.Z` line, and run the checks:
+`README.md`'s `cargo install … --tag cli-vX.Y.Z` line (and the website's copy of it, `CARGO_INSTALL` in
+`web/src/pages/home.rs`, which a web test keeps equal to the README), and run the checks:
 
 ```sh
 mise run check-all

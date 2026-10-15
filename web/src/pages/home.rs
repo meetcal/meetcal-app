@@ -94,9 +94,10 @@ pub fn InteractionSection() -> impl IntoView {
 
 /// The CLI's install commands, as `cli/README.md` gives them. The CLI lives in
 /// this repository's `cli/`; the old meetcal-cli repository is archived (#240).
+/// The Cargo command pins the latest release, so each CLI release bumps its
+/// tag here too (`cli/docs/releasing.md`).
 const HOMEBREW_INSTALL: &str = "brew tap meetcal/tap && brew install meetcal";
-const CARGO_INSTALL: &str =
-    "cargo install --git https://github.com/meetcal/meetcal-app.git meetcal";
+const CARGO_INSTALL: &str = "cargo install --locked --git https://github.com/meetcal/meetcal-app.git --tag cli-v3.0.0 meetcal";
 
 #[component]
 fn CopyCommand(label: &'static str, command: &'static str) -> impl IntoView {
