@@ -3,16 +3,17 @@ import { recordHolder } from '../holder';
 import { blankRecord, intOrNull, plusLast, setLift, type LiftName, type SheetTab, type WsoRecord } from './common';
 
 // Tennessee-Kentucky: a tab per age group and gender, titled for it
-// ("6/1/25-8/1/26 Youth Men <13", "Copy of Masters Women 50-55"). Each lists
+// ("Youth Men <11", "Masters Women 50-55", "Masters  Men 80-84"). Each lists
 // its classes in turn: a class row (",40KG"; "77KG*" is footnoted
 // unsubmitted, kept as written), then a row per lift laid out as the header
 // says: Lift, Name, Weight, Date, Meet.
 //
-// The single tab of horizontal sections the Python scraper read
-// (`scraper_tnky.py`, gid 867133960) is hidden and has not been updated
-// since October 2025; the group tabs replaced it.
+// The sheet was replaced in October 2026 by one for the new weight classes
+// and youth age groups (11 and under, 12-13, 14-15, 16-17), with Masters
+// through 85+. The old one (11uUA0t05sEvHRjvDksC0VP1Yr2p_rC0JjHgVPEuYzhU)
+// had youth tabs for 13 and under and 14-17 only.
 
-export const TNKY_SHEET_ID = '11uUA0t05sEvHRjvDksC0VP1Yr2p_rC0JjHgVPEuYzhU';
+export const TNKY_SHEET_ID = '1LojCwOI-D3SrCYQ8GDMV3rZ7OGOwNY7r';
 
 type Group = [age: string, gender: 'Men' | 'Women'];
 
@@ -20,34 +21,35 @@ type Group = [age: string, gender: 'Men' | 'Women'];
  * The groups the sheet has a tab for (October 2026). A tab for one of them
  * going missing fails the source rather than deleting its records.
  */
-export const TNKY_GROUPS: readonly Group[] = [
-  ...(['U13', 'U17', 'Junior', 'Senior', 'Masters 35', 'Masters 40', 'Masters 45', 'Masters 50', 'Masters 55', 'Masters 60'] as const).flatMap(
-    (age): Group[] => [
-      [age, 'Men'],
-      [age, 'Women'],
-    ],
-  ),
-  ['Masters 65', 'Men'],
-];
+export const TNKY_GROUPS: readonly Group[] = ['U11', 'U13', 'U15', 'U17', 'Junior', 'Senior', ...[35, 40, 45, 50, 55, 60, 65, 70, 75, 80, 85].map((age) => `Masters ${age}`)].flatMap(
+  (age): Group[] => [
+    [age, 'Men'],
+    [age, 'Women'],
+  ],
+);
+
+/** The youth tabs' age ranges, "<11" aside. */
+const YOUTH: Record<string, string> = { '12-13': 'U13', '14-15': 'U15', '16-17': 'U17' };
 
 /**
- * A tab's age group and gender from its title: "Youth Women <13" -> U13,
- * "Youth Men 14-17" -> U17, "Juniors Men 15-20", "Seniors Women >15",
- * "Masters Men 35-39" -> Masters 35. Null for any other tab (the archived
- * "TN-KY WSO Records through May 31, 2025").
+ * A tab's age group and gender from its title: "Youth Women <11" -> U11,
+ * "Youth Men 12-13" -> U13, "Youth Men 14-15" -> U15, "Youth Women 16-17"
+ * -> U17, "Juniors Men 15-20", "Seniors Women >15", "Masters Men 35-39" ->
+ * Masters 35, "Masters Men 85+" -> Masters 85. Null for any other tab.
  */
 export function tnkyTabGroup(title: string): Group | null {
   const text = title.replace(/\s+/g, ' ').trim().toLowerCase();
   const gender = /\bwomen\b/.test(text) ? 'Women' : /\bmen\b/.test(text) ? 'Men' : null;
   if (!gender) return null;
   if (/\byouth\b/.test(text)) {
-    if (/<\s*13\b|\b13\s*(?:&|and)?\s*under\b|\bu13\b/.test(text)) return ['U13', gender];
-    if (/\b14\s*-\s*17\b/.test(text)) return ['U17', gender];
-    return null;
+    if (/<\s*11\b|\b11\s*(?:&|and)?\s*under\b|\bu11\b/.test(text)) return ['U11', gender];
+    const youth = /\b(\d{2})\s*-\s*(\d{2})\b/.exec(text);
+    const age = youth && YOUTH[`${youth[1]}-${youth[2]}`];
+    return age ? [age, gender] : null;
   }
   if (/\bjuniors?\b/.test(text)) return ['Junior', gender];
   if (/\bseniors?\b/.test(text)) return ['Senior', gender];
-  const masters = /\bmasters?\s+(?:wo)?men\s+(\d{2})\s*-\s*\d{2}\b/.exec(text);
+  const masters = /\bmasters?\s+(?:wo)?men\s+(\d{2})\s*(?:-\s*\d{2}\b|\+)/.exec(text);
   if (masters) return [`Masters ${masters[1]}`, gender];
   return null;
 }

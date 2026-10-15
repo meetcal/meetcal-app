@@ -9,30 +9,53 @@ describe('Tennessee-Kentucky WSO sheet (a tab per group)', () => {
   afterEach(() => jest.useRealTimers());
 
   it('reads the age group and gender from a tab title', () => {
-    expect(tnkyTabGroup('6/1/25-8/1/26 Youth Men <13')).toEqual(['U13', 'Men']);
-    expect(tnkyTabGroup('Copy of Youth Women <13')).toEqual(['U13', 'Women']);
-    expect(tnkyTabGroup('Copy of Youth Men 14-17')).toEqual(['U17', 'Men']);
-    expect(tnkyTabGroup('Copy of Juniors Women 15-20')).toEqual(['Junior', 'Women']);
-    expect(tnkyTabGroup('Copy of Seniors Men >15')).toEqual(['Senior', 'Men']);
-    expect(tnkyTabGroup('Copy of Masters Women 50-55')).toEqual(['Masters 50', 'Women']);
-    expect(tnkyTabGroup('Masters Men 65-69')).toEqual(['Masters 65', 'Men']);
+    expect(tnkyTabGroup('Youth Men <11')).toEqual(['U11', 'Men']);
+    expect(tnkyTabGroup('Youth Women 12-13')).toEqual(['U13', 'Women']);
+    expect(tnkyTabGroup('Youth Men 14-15')).toEqual(['U15', 'Men']);
+    expect(tnkyTabGroup('Youth Women 16-17')).toEqual(['U17', 'Women']);
+    expect(tnkyTabGroup('Juniors Women 15-20')).toEqual(['Junior', 'Women']);
+    expect(tnkyTabGroup('Seniors Men >15')).toEqual(['Senior', 'Men']);
+    expect(tnkyTabGroup('Masters Women 50-55')).toEqual(['Masters 50', 'Women']);
+    expect(tnkyTabGroup('Masters  Men 80-84')).toEqual(['Masters 80', 'Men']);
+    expect(tnkyTabGroup('Masters Women 85+')).toEqual(['Masters 85', 'Women']);
+    // The old sheet's youth ranges are not this sheet's age groups.
+    expect(tnkyTabGroup('Youth Men 14-17')).toBeNull();
     expect(tnkyTabGroup('TN-KY WSO Records through May 31, 2025')).toBeNull();
     expect(tnkyTabGroup('Youth Men')).toBeNull();
   });
 
-  it("finds a tab for every group in the sheet's tab list, skipping the archived one", () => {
-    const tabs = tnkyTabs(sheetTabList(fixture('sheet-tabs-tennessee-kentucky-20261012.html')));
+  it("finds a tab for every group in the sheet's tab list", () => {
+    const tabs = tnkyTabs(sheetTabList(fixture('sheet-tabs-tennessee-kentucky-20261015.html')));
     expect(tabs).toHaveLength(TNKY_GROUPS.length);
-    expect(tabs.find((tab) => tab.gid === '104344990')).toMatchObject({ age: 'U17', gender: 'Men' });
-    expect(tabs.some((tab) => tab.gid === '526394508')).toBe(false);
+    expect(tabs.find((tab) => tab.gid === '851531892')).toMatchObject({ age: 'U15', gender: 'Men' });
+    expect(tabs.find((tab) => tab.gid === '498006525')).toMatchObject({ age: 'Masters 80', gender: 'Men' });
+    expect(tabs.find((tab) => tab.gid === '101457918')).toMatchObject({ age: 'Masters 85', gender: 'Women' });
   });
 
   it('fails when a group has no tab or two', () => {
-    const list = sheetTabList(fixture('sheet-tabs-tennessee-kentucky-20261012.html'));
-    expect(() => tnkyTabs(list.filter((tab) => tab.gid !== '104344990'))).toThrow('no visible tab for U17 Men (renamed or hidden?)');
-    expect(() => tnkyTabs([...list, { name: '8/1/26- Youth Men 14-17', gid: '1' }])).toThrow('tabs "Copy of Youth Men 14-17" and "8/1/26- Youth Men 14-17" are both U17 Men');
+    const list = sheetTabList(fixture('sheet-tabs-tennessee-kentucky-20261015.html'));
+    expect(() => tnkyTabs(list.filter((tab) => tab.gid !== '851531892'))).toThrow('no visible tab for U15 Men (renamed or hidden?)');
+    expect(() => tnkyTabs([...list, { name: 'Copy of Youth Men 14-15', gid: '1' }])).toThrow('tabs "Youth Men 14-15" and "Copy of Youth Men 14-15" are both U15 Men');
   });
 
+  it("reads the new sheet's classes, holders written LAST, First", () => {
+    const records = parseTnkyTab(fixture('tnky-seniors-men-20261015.csv'), 'Tennessee-Kentucky', 'Senior', 'Men');
+    expect(records.map((r) => r.weight_class)).toEqual(['60', '65', '70', '75', '85', '95', '110', '110+']);
+    expect(records.find((r) => r.weight_class === '110')).toEqual({
+      wso: 'Tennessee-Kentucky',
+      age_category: 'Senior',
+      gender: 'Men',
+      weight_class: '110',
+      snatch_record: 116,
+      cj_record: 140,
+      total_record: 256,
+      snatch_by: { name: 'BROWN, Zachary', date: '2026-09-13', location: '2026 Virus Weightlifting Series 2' },
+      cj_by: { name: 'BROWN, Zachary', date: '2026-09-13', location: '2026 Virus Weightlifting Series 2' },
+      total_by: { name: 'BROWN, Zachary', date: '2026-09-13', location: '2026 Virus Weightlifting Series 2' },
+    });
+  });
+
+  // The old sheet's tabs, laid out the same way.
   it('reads a class row, then a row per lift: name, weight, date and meet', () => {
     jest.useFakeTimers({ now: new Date('2027-01-15T12:00:00Z') });
     const records = parseTnkyTab(fixture('tnky-youth-men-14-17-20261012.csv'), 'Tennessee-Kentucky', 'U17', 'Men');

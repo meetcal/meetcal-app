@@ -1,4 +1,4 @@
-import { fetchJson, withRetries } from '../../convex/scrapers/lib/http';
+import { fetchJson, fetchText, HttpStatusError, mapLimited, throttledOrTransient, withRetries } from '../../convex/scrapers/lib/http';
 import { pyFloat, pyInt } from '../../convex/scrapers/lib/numbers';
 import { setHolder, type RecordHolder } from '../../convex/scrapers/parse/holder';
 import { blankRecord, columnDLift, liftsRecord, NO_LIFT, plusLast, setLift } from '../../convex/scrapers/parse/wso/common';
@@ -74,6 +74,46 @@ describe('shared scraper helpers', () => {
       const permanent = jest.fn().mockRejectedValue(new Error('404'));
       await expect(withRetries(permanent, { attempts: 3, delayMs: () => 10, retryIf: () => false })).rejects.toThrow('404');
       expect(permanent).toHaveBeenCalledTimes(1);
+    });
+
+    it('retries a throttled (429) or server-failed (5xx) request, not a missing page', async () => {
+      global.fetch = jest.fn(async () => new Response('slow down', { status: 429 })) as typeof fetch;
+      const throttled = await fetchText('https://example.test/tab').catch((error: unknown) => error);
+      expect(throttled).toBeInstanceOf(HttpStatusError);
+      expect(throttled).toMatchObject({ status: 429, message: 'GET https://example.test/tab failed with 429' });
+      expect(throttledOrTransient(throttled)).toBe(true);
+      expect(throttledOrTransient(new HttpStatusError('u', 503))).toBe(true);
+      expect(throttledOrTransient(new HttpStatusError('u', 404))).toBe(false);
+      expect(throttledOrTransient(new Error('parse failed'))).toBe(false);
+      expect(throttledOrTransient(Object.assign(new Error('timed out'), { name: 'TimeoutError' }))).toBe(true);
+    });
+
+    it('runs at most `limit` calls at once, answering in order', async () => {
+      let running = 0;
+      let most = 0;
+      const answers = await mapLimited([5, 1, 4, 2, 3, 0], 2, async (ms) => {
+        running += 1;
+        most = Math.max(most, running);
+        await new Promise((resolve) => setTimeout(resolve, ms));
+        running -= 1;
+        return ms * 10;
+      });
+      expect(answers).toEqual([50, 10, 40, 20, 30, 0]);
+      expect(most).toBe(2);
+      expect(await mapLimited([], 4, async () => 1)).toEqual([]);
+      await expect(mapLimited([1], 0, async () => 1)).rejects.toThrow('limit must be at least 1');
+    });
+
+    it('starts no new call after one fails, and rejects with that failure', async () => {
+      const started: number[] = [];
+      const run = mapLimited([1, 2, 3, 4, 5], 2, async (n) => {
+        started.push(n);
+        if (n === 2) throw new Error('tab 2 failed');
+        await new Promise((resolve) => setTimeout(resolve, 5));
+        return n;
+      });
+      await expect(run).rejects.toThrow('tab 2 failed');
+      expect(started).toEqual([1, 2]);
     });
   });
 });
