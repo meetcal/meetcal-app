@@ -96,10 +96,11 @@ test("every app download link offers both the App Store and Google Play", async 
   await expect(appCard.getByRole("link", { name: /Android/ })).toHaveAttribute("href", /play\.google\.com/);
 });
 
-test("the CLI card's Cargo command installs from this repository", async ({ page }) => {
+test("the CLI card's Cargo command installs a release from this repository", async ({ page }) => {
   await page.goto("/");
+  // The tag moves with each CLI release; the Rust test in `pages/home.rs` keeps it equal to `cli/README.md`.
   await expect(page.locator(".cli-command code").filter({ hasText: "cargo install" })).toHaveText(
-    "cargo install --git https://github.com/meetcal/meetcal-app.git meetcal",
+    /^cargo install --locked --git https:\/\/github\.com\/meetcal\/meetcal-app\.git --tag cli-v\d+\.\d+\.\d+ meetcal$/,
   );
 });
 
