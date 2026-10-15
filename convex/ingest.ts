@@ -775,6 +775,31 @@ export const setMeetSourceId = internalMutation({
   },
 });
 
+/**
+ * Sets a meet's status by hand: `npx convex run ingest:setMeetStatus
+ * '{"name":"…","status":"completed"}'`. A meet set to `completed` stays
+ * completed whatever its dates say (`nextMeetStatus`). That covers a meet
+ * finished early, and is the only way to reopen one: a meet auto-completed
+ * from a wrong past date whose source has since fixed it. A meet set to
+ * `upcoming` or `ongoing` goes on following its dates, so the hourly job
+ * completes it after its last day. Goes through `recordWrite`, so the meet's
+ * package, which carries its status, is rebuilt (a dashboard edit is not).
+ */
+export const setMeetStatus = internalMutation({
+  args: { name: v.string(), status: v.union(v.literal('upcoming'), v.literal('ongoing'), v.literal('completed')) },
+  handler: async (ctx, { name, status }) => {
+    const meet = await ctx.db
+      .query('meets')
+      .withIndex('by_name', (q) => q.eq('name', name))
+      .first();
+    if (!meet) throw new Error(`no meet named ${JSON.stringify(name)}`);
+    if (meet.status === status) return { changed: false };
+    await ctx.db.patch(meet._id, { status, updatedAt: Date.now() });
+    await recordWrite(ctx, 'meets', [{ kind: 'meet', key: name }]);
+    return { changed: true };
+  },
+});
+
 const PLACEHOLDERS = new Set(['', 'TBD', 'Unknown']);
 
 /**

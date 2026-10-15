@@ -1,4 +1,4 @@
-import { scrapedMeetValues, setMeetTimeZone, updateMeetStatuses, upsertMeets } from '../convex/ingest';
+import { scrapedMeetValues, setMeetStatus, setMeetTimeZone, updateMeetStatuses, upsertMeets } from '../convex/ingest';
 import { fakeMutationCtx } from './fakeDb';
 import { padMeetDates } from '../convex/migrations';
 import { canonicalMeetDate, isKnownTimeZone, isMeetTimeZone } from '../convex/lib/validation';
@@ -234,6 +234,47 @@ describe('setting a meet time zone by hand', () => {
     };
     expect(await handlerOf(setMeetTimeZone)(ctx, { name: 'Meet', timeZone: 'America/New_York' })).toEqual({ changed: true });
     expect(patch).toHaveBeenCalledWith('meet1', expect.objectContaining({ timeZone: 'America/New_York', timeZoneLocked: true }));
+  });
+});
+
+describe('setting a meet status by hand', () => {
+  it('completes a meet before its dates, refreshes its views, and keeps it completed', async () => {
+    const clock = jest.spyOn(Date, 'now').mockReturnValue(Date.UTC(2026, 9, 15, 16));
+    const log = jest.spyOn(console, 'log').mockImplementation(() => undefined);
+    try {
+      const { ctx, rows } = fakeMutationCtx({ meets: [(({ _id: _i, _creationTime: _c, ...doc }) => doc)(meet({ startDate: '2026-12-03', endDate: '2026-12-06' }))] });
+      expect(await handlerOf(setMeetStatus)(ctx, { name: 'Meet', status: 'completed' })).toEqual({ changed: true });
+      expect(rows('meets')).toEqual([expect.objectContaining({ status: 'completed' })]);
+      expect(rows('view_hints')).toEqual([expect.objectContaining({ kind: 'meet', key: 'Meet' })]);
+      expect(await handlerOf(setMeetStatus)(ctx, { name: 'Meet', status: 'completed' })).toEqual({ changed: false });
+      // The hourly job leaves it alone.
+      await handlerOf(updateMeetStatuses)(ctx, {});
+      expect(rows('meets')).toEqual([expect.objectContaining({ status: 'completed' })]);
+    } finally {
+      clock.mockRestore();
+      log.mockRestore();
+    }
+  });
+
+  it('reopens a completed meet, which then follows its dates', async () => {
+    const clock = jest.spyOn(Date, 'now').mockReturnValue(Date.UTC(2026, 9, 15, 16));
+    const log = jest.spyOn(console, 'log').mockImplementation(() => undefined);
+    try {
+      const { ctx, rows } = fakeMutationCtx({ meets: [(({ _id: _i, _creationTime: _c, ...doc }) => doc)(meet({ status: 'completed' }))] });
+      expect(await handlerOf(setMeetStatus)(ctx, { name: 'Meet', status: 'upcoming' })).toEqual({ changed: true });
+      // Oct 17 in Chicago: the job moves it on as the days pass.
+      clock.mockReturnValue(Date.UTC(2026, 9, 17, 16));
+      await handlerOf(updateMeetStatuses)(ctx, {});
+      expect(rows('meets')).toEqual([expect.objectContaining({ status: 'ongoing' })]);
+    } finally {
+      clock.mockRestore();
+      log.mockRestore();
+    }
+  });
+
+  it('refuses a meet it does not know', async () => {
+    const { ctx } = fakeMutationCtx({ meets: [] });
+    await expect(handlerOf(setMeetStatus)(ctx, { name: 'Nope', status: 'completed' })).rejects.toThrow('no meet named "Nope"');
   });
 });
 
