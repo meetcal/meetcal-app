@@ -7,8 +7,19 @@ async function get(url: string, timeoutMs: number, headers: Record<string, strin
     headers: { 'User-Agent': USER_AGENT, ...headers },
     signal: AbortSignal.timeout(timeoutMs),
   });
-  if (!response.ok) throw new Error(`GET ${url} failed with ${response.status}`);
+  if (!response.ok) throw new HttpStatusError(url, response.status);
   return response;
+}
+
+/** A response with an error status, which keeps the status for `throttledOrTransient`. */
+export class HttpStatusError extends Error {
+  constructor(
+    readonly url: string,
+    readonly status: number,
+  ) {
+    super(`GET ${url} failed with ${status}`);
+    this.name = 'HttpStatusError';
+  }
 }
 
 /** A JSON body, unchecked (`unknown`: the caller reads it); `headers` add to or replace the defaults. */
@@ -47,6 +58,16 @@ export function retryable(error: unknown): boolean {
   return false;
 }
 
+/**
+ * `retryable`, or a server asking us to slow down (429) or failing on its
+ * side (5xx): Google answers a burst of sheet requests with 429. Other
+ * statuses (a 404 for a deleted tab) stay failures.
+ */
+export function throttledOrTransient(error: unknown): boolean {
+  if (error instanceof HttpStatusError) return error.status === 429 || error.status >= 500;
+  return retryable(error);
+}
+
 export type RetryPolicy = {
   /** Tries in all, the first included. */
   attempts: number;
@@ -73,4 +94,32 @@ export async function withRetries<T>(
       await new Promise((resolve) => setTimeout(resolve, delayMs(attempt)));
     }
   }
+}
+
+/**
+ * `run` over `items`, at most `limit` at a time, the answers in `items`'
+ * order. A failure starts no new calls and, once the calls already started
+ * have finished, rejects with it.
+ */
+export async function mapLimited<T, R>(items: readonly T[], limit: number, run: (item: T) => Promise<R>): Promise<R[]> {
+  if (!(limit >= 1)) throw new Error(`mapLimited: limit must be at least 1, got ${limit}`);
+  const results: R[] = new Array(items.length);
+  let next = 0;
+  let failed = false;
+  const worker = async () => {
+    while (!failed && next < items.length) {
+      const i = next++;
+      try {
+        results[i] = await run(items[i]);
+      } catch (error) {
+        failed = true;
+        throw error;
+      }
+    }
+  };
+  const workers = Array.from({ length: Math.min(limit, items.length) }, worker);
+  const settled = await Promise.allSettled(workers);
+  const failure = settled.find((outcome) => outcome.status === 'rejected');
+  if (failure) throw failure.reason;
+  return results;
 }

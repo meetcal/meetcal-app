@@ -3,7 +3,7 @@
 import { v } from 'convex/values';
 import { internalAction, type ActionCtx } from '../_generated/server';
 import { internal } from '../_generated/api';
-import { absoluteUrl, fetchBytes, fetchText } from './lib/http';
+import { absoluteUrl, fetchBytes, fetchText, mapLimited, throttledOrTransient, withRetries, type RetryPolicy } from './lib/http';
 import { unescapeHtml } from './lib/html';
 import { pdfLines, pdfRunLines } from './lib/pdf';
 import {
@@ -50,9 +50,22 @@ type WsoSource = {
   scrape: () => Promise<WsoRecord[]>;
 };
 
+/**
+ * Google answers a burst of sheet requests with 429 (Tennessee-Kentucky's
+ * 21 tabs, fetched at once, failed so in October 2026): a Google request is
+ * tried again after 2, 4 and 8 seconds, and a WSO's tabs are fetched
+ * `SHEET_CONCURRENCY` at a time.
+ */
+export const SHEET_RETRY: RetryPolicy = { attempts: 4, delayMs: (attempt) => 2 ** attempt * 1000, retryIf: throttledOrTransient };
+export const SHEET_CONCURRENCY = 4;
+const SHEET_TIMEOUT_MS = 60_000;
+
+/** A Google Sheets page or CSV, retried when Google throttles it (`SHEET_RETRY`). */
+export const fetchSheetText = (url: string) => withRetries(() => fetchText(url, SHEET_TIMEOUT_MS), SHEET_RETRY);
+
 /** The sheet's visible tabs, from its HTML view. */
 async function fetchTabList(sheetId: string): Promise<SheetTab[]> {
-  return sheetTabList(await fetchText(sheetHtmlViewUrl(sheetId), 60_000));
+  return sheetTabList(await fetchSheetText(sheetHtmlViewUrl(sheetId)));
 }
 
 /**
@@ -64,7 +77,7 @@ async function fetchTabList(sheetId: string): Promise<SheetTab[]> {
  */
 async function fetchTabs(sheetId: string, refs: readonly TabRef[], { headers, list }: { headers?: number; list?: readonly SheetTab[] } = {}): Promise<string[]> {
   const gids = resolveTabs(list ?? (await fetchTabList(sheetId)), refs);
-  return await Promise.all(gids.map((gid) => fetchText(gvizCsvByGid(sheetId, gid, headers), 60_000)));
+  return await mapLimited(gids, SHEET_CONCURRENCY, (gid) => fetchSheetText(gvizCsvByGid(sheetId, gid, headers)));
 }
 
 /**
@@ -94,7 +107,7 @@ const flat = (
 const californiaSouth = (sheetUrl: string): WsoSource => ({
   wso: 'California South',
   scrape: async () =>
-    parseFlatSheet(await fetchText(gvizCsvFirstTab(sheetIdOf(sheetUrl)), 60_000), 'California South', {
+    parseFlatSheet(await fetchSheetText(gvizCsvFirstTab(sheetIdOf(sheetUrl))), 'California South', {
       ...FLAT_COLUMNS,
       record: 'WSO record',
     }),
@@ -208,7 +221,7 @@ export const WSO_SOURCES: WsoSource[] = [
     wso: 'Pennsylvania-West Virginia',
     scrape: async () => {
       const publishedId = '2PACX-1vR8exp9-mwi8dpkZa9-48G-CUVuZ5rAlpOYdMCiNMka25wZ6V2XPLurpgMDtyiarqnQxYrW6dWfQ042';
-      const texts = await Promise.all(PAWV_TABS.map((tab) => fetchText(pawvCsvUrl(publishedId, tab.gid), 60_000)));
+      const texts = await mapLimited(PAWV_TABS, SHEET_CONCURRENCY, (tab) => fetchSheetText(pawvCsvUrl(publishedId, tab.gid)));
       return everyPart('Pennsylvania-West Virginia', PAWV_TABS.map((tab, i) => parsePawvTab(texts[i], 'Pennsylvania-West Virginia', tab)), (i) => `tab gid ${PAWV_TABS[i].gid}`);
     },
   },
@@ -259,7 +272,7 @@ export const WSO_SOURCES: WsoSource[] = [
   {
     wso: 'Minnesota-Dakotas',
     scrape: async () =>
-      usawTemplate(await fetchText('https://docs.google.com/spreadsheets/d/1tVJuneaIrPigqz5V9dLH9kKMbtU3sQC9/export?format=csv', 60_000), 'Minnesota-Dakotas'),
+      usawTemplate(await fetchSheetText('https://docs.google.com/spreadsheets/d/1tVJuneaIrPigqz5V9dLH9kKMbtU3sQC9/export?format=csv'), 'Minnesota-Dakotas'),
   },
   // The "Detailed" tab (gid 1649080864) is the current set; TX and OK are
   // the 2025 per-state tabs. Read by gid: the Python asked for the name.
