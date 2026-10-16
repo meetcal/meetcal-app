@@ -52,7 +52,7 @@ Convex deploys with `npx convex deploy`, the website deploys on Vercel from `mas
 | Category | Technology |
 |---|---|
 | **Framework** | React Native 0.88, React 19 |
-| **Platform** | Expo SDK 58 (preview), Expo Router |
+| **Platform** | Expo SDK 58, Expo Router |
 | **Language** | TypeScript |
 | **Backend** | Convex (queries, materialized views, scheduled scrapers) |
 | **Authentication** | Clerk (JWT, secure token storage) |
