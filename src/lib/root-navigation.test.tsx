@@ -30,7 +30,7 @@ function appContext(rootSettings: Settings) {
 /** The root stack's route names when `url` cold-starts the app. */
 function coldStartRoot(rootSettings: Settings, url: string): string[] {
   const context = appContext(rootSettings);
-  const routes = getRoutes(context, { internal_stripLoadRoute: true, platform: "ios" } as never)!;
+  const routes = getRoutes(context, { platform: "ios" } as never)!;
   const linking = getLinkingConfig(routes, context, {} as never);
   const parsed = linking.getStateFromPath!(url, linking.config);
   const state = createSeededRootState(parsed as never, routes) as unknown as State;

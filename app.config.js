@@ -102,9 +102,9 @@ export default ({ config }) => ({
           useFrameworks: 'static',
         },
         android: {
-          compileSdkVersion: 36,
+          compileSdkVersion: 37,
           targetSdkVersion: 36,
-          buildToolsVersion: '36.1.0',
+          buildToolsVersion: '37.0.0',
           minSdkVersion: 24,
           ndkVersion: '27.1.12297006',  // NDK version matching EAS Build
         },
