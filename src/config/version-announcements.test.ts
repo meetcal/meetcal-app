@@ -1,7 +1,6 @@
 import {
   getAnnouncementForVersion,
   parseSeenVersions,
-  VERSION_ANNOUNCEMENTS,
 } from "@/config/version-announcements";
 
 describe("parseSeenVersions", () => {
@@ -34,17 +33,6 @@ describe("parseSeenVersions", () => {
 });
 
 describe("getAnnouncementForVersion", () => {
-  it("shows the iPhone Duo / iOS 27 announcement on iOS only", () => {
-    expect(VERSION_ANNOUNCEMENTS["6.2.0"].platforms).toEqual(["ios"]);
-    expect(getAnnouncementForVersion("6.2.0", "ios")?.message).toMatch(/iPhone Duo/);
-    expect(getAnnouncementForVersion("6.2.0", "android")).toBeNull();
-  });
-
-  it("shows the 6.2.1 bug-fix announcement on every platform", () => {
-    expect(getAnnouncementForVersion("6.2.1", "ios")?.message).toBe("Bug fixes and improvements.");
-    expect(getAnnouncementForVersion("6.2.1", "android")?.message).toBe("Bug fixes and improvements.");
-  });
-
   it("shows an announcement without platforms everywhere", () => {
     expect(getAnnouncementForVersion("6.1.0", "ios")).not.toBeNull();
     expect(getAnnouncementForVersion("6.1.0", "android")).not.toBeNull();

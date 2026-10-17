@@ -21,15 +21,6 @@ export const VERSION_ANNOUNCEMENTS: Record<string, Omit<VersionAnnouncement, 've
     title: 'What\'s New',
     message: 'Bug fixes and improvements.',
   },
-  '6.2.0': {
-    title: 'What\'s New',
-    message: 'MeetCal now supports iPhone Duo.',
-    features: [
-      'Support for iPhone Duo',
-      'Bug fixes'
-    ],
-    platforms: ['ios'],
-  },
   '6.1.0': {
     title: 'What\'s New',
     message: 'We\'ve made some improvements to enhance your experience!',
