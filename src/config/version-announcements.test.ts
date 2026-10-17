@@ -40,6 +40,11 @@ describe("getAnnouncementForVersion", () => {
     expect(getAnnouncementForVersion("6.2.0", "android")).toBeNull();
   });
 
+  it("shows the 6.2.1 bug-fix announcement on every platform", () => {
+    expect(getAnnouncementForVersion("6.2.1", "ios")?.message).toBe("Bug fixes and improvements.");
+    expect(getAnnouncementForVersion("6.2.1", "android")?.message).toBe("Bug fixes and improvements.");
+  });
+
   it("shows an announcement without platforms everywhere", () => {
     expect(getAnnouncementForVersion("6.1.0", "ios")).not.toBeNull();
     expect(getAnnouncementForVersion("6.1.0", "android")).not.toBeNull();

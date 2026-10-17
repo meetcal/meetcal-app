@@ -17,6 +17,10 @@ export interface VersionAnnouncement {
 }
 
 export const VERSION_ANNOUNCEMENTS: Record<string, Omit<VersionAnnouncement, 'version'>> = {
+  '6.2.1': {
+    title: 'What\'s New',
+    message: 'Bug fixes and improvements.',
+  },
   '6.2.0': {
     title: 'What\'s New',
     message: 'MeetCal now supports iPhone Duo.',

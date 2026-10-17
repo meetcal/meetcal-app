@@ -10,7 +10,7 @@ const CALENDAR_PERMISSION =
 export default ({ config }) => ({
   name: 'MeetCal',
   slug: 'meetcal',
-  version: '6.2.0',
+  version: '6.2.1',
   orientation: 'portrait',
   userInterfaceStyle: 'automatic',
   splash: {
