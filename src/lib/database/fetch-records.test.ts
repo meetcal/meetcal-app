@@ -4,6 +4,7 @@ import {
   downloadRecordsForOffline,
   federationRecordsResource,
   fetchAgeGroups,
+  fetchRecordFederations,
 } from "@/lib/database/fetch-records";
 import { getOfflineCache, OFFLINE_CACHE_KEYS } from "@/lib/database/offline-cache";
 import type { RecordsData } from "@/types/records";
@@ -198,5 +199,39 @@ describe("federationRecordsResource and fetchAgeGroups", () => {
 
     mockMemory.clear();
     await expect(fetchAgeGroups("USAW")).rejects.toThrow("down");
+  });
+});
+
+describe("fetchRecordFederations", () => {
+  beforeEach(() => {
+    mockGetJsonArray.mockReset();
+    mockMemory.clear();
+  });
+
+  it("lists the federations the records table holds, USAW first", async () => {
+    mockGetJsonArray.mockResolvedValue([
+      row({ record_type: "UMWF" }),
+      row({ record_type: "IMWA" }),
+      row({ record_type: "USAW" }),
+      row({ record_type: "IWF" }),
+      row({ record_type: "IMWA", weight_class: "96kg" }),
+      row({ record_type: "Partial", age_category: "" }),
+    ]);
+    await expect(fetchRecordFederations()).resolves.toEqual(["USAW", "IMWA", "IWF", "UMWF"]);
+  });
+
+  it("falls back to the federations stored on the device", async () => {
+    mockGetJsonArray.mockRejectedValue(new Error("down"));
+    await expect(fetchRecordFederations()).rejects.toThrow("down");
+
+    mockMemory.set(
+      OFFLINE_CACHE_KEYS.records,
+      JSON.stringify({ data: { IWF: {}, USAW: {} }, lastSynced: 1 }),
+    );
+    mockMemory.set(
+      OFFLINE_CACHE_KEYS.recordsBrowse,
+      JSON.stringify({ data: [{ key: "IMWA", data: {}, lastSynced: 2 }], lastSynced: 2 }),
+    );
+    await expect(fetchRecordFederations()).resolves.toEqual(["USAW", "IMWA", "IWF"]);
   });
 });

@@ -131,6 +131,11 @@ export async function readBoundedCacheEntry<T>(
   return record ? { data: record.data as T, lastUpdatedAt: record.lastSynced } : null;
 }
 
+/** The entry keys a browse cache written by `writeBoundedCacheEntry` holds. */
+export async function readBoundedCacheKeys(cacheKey: string): Promise<string[]> {
+  return readBoundedRecords(await getOfflineCache<unknown>(cacheKey)).map((r) => r.key);
+}
+
 /**
  * Stores one browsed entry (a weight class, a club, a filter) in a cache that
  * keeps only the `maxEntries` most recently written ones.
