@@ -5,6 +5,7 @@ import {
   getOfflineCache,
   OFFLINE_CACHE_KEYS,
   readBoundedCacheEntry,
+  readBoundedCacheKeys,
   replaceOfflineCache,
   writeBoundedCacheEntry,
 } from './offline-cache';
@@ -18,6 +19,9 @@ type RecordsCache = Record<string, RecordsData>;
  * IWF, Pan Am, ...), so this keeps every one a user opens.
  */
 export const MAX_BROWSED_RECORD_FEDERATIONS = 8;
+
+/** The federation Records opens on, listed first. */
+export const DEFAULT_RECORD_FEDERATION = 'USAW';
 
 type CompleteRecordsRow = Readonly<ApiRecordRow> & {
   age_category: string;
@@ -200,6 +204,41 @@ export async function fetchAgeGroups(federation: string): Promise<string[]> {
       return Object.keys(cached.data).sort(ageGroupSort);
     }
     console.error(`Error fetching age groups for ${federation}:`, error);
+    throw error;
+  }
+}
+
+/** `DEFAULT_RECORD_FEDERATION` first, then the rest alphabetically. */
+function sortRecordFederations(federations: Iterable<string>): string[] {
+  return [...new Set(federations)].sort((a, b) => {
+    if (a === b) return 0;
+    if (a === DEFAULT_RECORD_FEDERATION) return -1;
+    if (b === DEFAULT_RECORD_FEDERATION) return 1;
+    return a.localeCompare(b);
+  });
+}
+
+/**
+ * The federations the records table holds records for. Offline (or on a
+ * failed request) it lists the federations stored on the device, from the
+ * download and from browsing; it rejects when there are none.
+ */
+export async function fetchRecordFederations(): Promise<string[]> {
+  try {
+    if (!(await isNetworkAvailable())) throw new Error('Offline');
+    const federations = new Set<string>();
+    for (const row of await fetchApiRecords()) {
+      if (isCompleteRecordsRow(row)) federations.add(row.record_type);
+    }
+    if (federations.size === 0) throw new Error('Records table returned no federations');
+    return sortRecordFederations(federations);
+  } catch (error) {
+    const [downloaded, browsed] = await Promise.all([
+      readRecordsCache(),
+      readBoundedCacheKeys(OFFLINE_CACHE_KEYS.recordsBrowse),
+    ]);
+    const cached = sortRecordFederations([...Object.keys(downloaded?.data ?? {}), ...browsed]);
+    if (cached.length > 0) return cached;
     throw error;
   }
 }

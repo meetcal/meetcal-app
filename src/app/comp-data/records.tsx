@@ -8,8 +8,10 @@ import { useAppColors } from "@/hooks/useAppColors";
 import { useFilterState } from "@/hooks/useFilterState";
 import { useMutableResource } from "@/hooks/useMutableResource";
 import {
+  DEFAULT_RECORD_FEDERATION,
   federationRecordsResource,
   fetchAgeGroups,
+  fetchRecordFederations,
 } from "@/lib/database/fetch-records";
 import { formatAgeGroupLabel, sortAgeGroups } from "@/lib/sortAgeGroups";
 import { Filters, Gender, RecordsData, WeightClassRecord } from "@/types/records";
@@ -20,7 +22,6 @@ import { useScreenHorizontalInsets } from "@/hooks/useScreenInsets";
 import { formatReferenceKg } from "@/lib/reference-values";
 
 const EMPTY_RECORDS_DATA: RecordsData = {} as RecordsData;
-const HARDCODED_FEDERATIONS = ["USAW", "USAMW", "IWF", "UMWF", "BWL"];
 
 export default function RecordsScreen() {
   return (
@@ -37,6 +38,23 @@ function RecordsScreenContent() {
     {},
   );
   const modalDraftFederationRef = React.useRef("");
+  const [federations, setFederations] = useState<string[]>([
+    DEFAULT_RECORD_FEDERATION,
+  ]);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetchRecordFederations()
+      .then((next) => {
+        if (!cancelled) setFederations(next);
+      })
+      .catch((error) => {
+        console.error("Failed to fetch record federations", error);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const {
     filters,
@@ -49,7 +67,7 @@ function RecordsScreenContent() {
     // Reset lands on a usable table rather than the empty initial state, which
     // only exists until the federation defaults effect below runs.
     onReset: () => ({
-      federation: "USAW",
+      federation: DEFAULT_RECORD_FEDERATION,
       gender: "Men" as Gender,
       ageGroup: "Senior",
     }),
@@ -75,7 +93,7 @@ function RecordsScreenContent() {
     }
 
     const defaults = {
-      federation: "USAW",
+      federation: DEFAULT_RECORD_FEDERATION,
       gender: "Men" as Gender,
       ageGroup: "Senior",
     };
@@ -133,7 +151,7 @@ function RecordsScreenContent() {
   }, [allRecords, displayAgeGroup, filters.gender]);
 
   const getFilterDisplayText = () => {
-    const fed = filters.federation || "USAW";
+    const fed = filters.federation || DEFAULT_RECORD_FEDERATION;
     const gen = filters.gender === "Men" ? "Men" : "Women";
     const age = formatAgeGroupLabel(displayAgeGroup) || "Senior";
     return `${fed} • ${gen} • ${age}`;
@@ -180,7 +198,7 @@ function RecordsScreenContent() {
         {
           id: "federation",
           title: "Federation",
-          options: HARDCODED_FEDERATIONS.map((fed) => ({
+          options: federations.map((fed) => ({
             value: fed,
             label: fed,
           })),
@@ -207,6 +225,7 @@ function RecordsScreenContent() {
     [
       ageGroupsCache,
       ageGroupsForFederation,
+      federations,
       fetchAgeGroupsForFederation,
       filters.federation,
     ],
