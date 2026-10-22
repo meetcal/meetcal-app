@@ -20,11 +20,20 @@ struct StatsQuery {
 #[derive(Clone, Deserialize)]
 struct ClubMeets {
     meets: Vec<ClubMeet>,
+    /// Set when the club has more meets than one answer lists: it lists the most recent.
+    #[serde(default)]
+    truncated: bool,
 }
 #[derive(Clone, Deserialize)]
 struct ClubMeet {
     meet: String,
     has_results: bool,
+}
+/// The Meet picker's choices, and whether the club has older meets left out of them.
+#[derive(Default)]
+struct MeetChoices {
+    meets: Vec<String>,
+    truncated: bool,
 }
 #[derive(Clone, Deserialize)]
 struct MeetStats {
@@ -64,11 +73,11 @@ pub fn ClubDashboard() -> impl IntoView {
         move || club.get(),
         |club| async move {
             if club.is_empty() {
-                return Ok(Vec::new());
+                return Ok(MeetChoices::default());
             }
             query_with::<ClubMeets, _>(queries::CLUB_MEETS, &ClubQuery { club })
                 .await
-                .map(|answer| club_meet_choices(answer.meets))
+                .map(club_meet_choices)
                 .map_err(|error| error.to_string())
         },
     );
@@ -107,11 +116,14 @@ pub fn ClubDashboard() -> impl IntoView {
                     />
                     {move || if club.with(String::is_empty) { ().into_any() } else {
                         club_meets.with(|state| match state {
-                            LoadState::Ready(meets) if meets.is_empty() => {
+                            LoadState::Ready(choices) if choices.meets.is_empty() => {
                                 view! { <p class="data-status">"This club has no completed meets yet."</p> }.into_any()
                             }
-                            LoadState::Ready(meets) => {
-                                view! { <FilterSelect label="Meet" placeholder="Choose a completed meet" values=meets.to_vec() selected=meet wide=true on_select=move |value| set_meet.set(value) /> }.into_any()
+                            LoadState::Ready(choices) => {
+                                view! {
+                                    <FilterSelect label="Meet" placeholder="Choose a completed meet" values=choices.meets.clone() selected=meet wide=true on_select=move |value| set_meet.set(value) />
+                                    {choices.truncated.then(|| view! { <p class="data-status">"Showing this club’s most recent meets."</p> })}
+                                }.into_any()
                             }
                             LoadState::Failed(error) => load_error("club meets", error, move || club_meets.retry()),
                             LoadState::Loading => view! { <p class="data-status">"Loading the club’s meets…"</p> }.into_any(),
@@ -136,12 +148,16 @@ pub fn ClubDashboard() -> impl IntoView {
 /// The Meet picker's choices: the club's meets that have results, in the
 /// server's order (newest first). A meet the club has only registered for has
 /// none yet, so it is left out, as the picker's "Choose a completed meet" says.
-fn club_meet_choices(meets: Vec<ClubMeet>) -> Vec<String> {
-    meets
-        .into_iter()
-        .filter(|meet| meet.has_results)
-        .map(|meet| meet.meet)
-        .collect()
+fn club_meet_choices(answer: ClubMeets) -> MeetChoices {
+    MeetChoices {
+        meets: answer
+            .meets
+            .into_iter()
+            .filter(|meet| meet.has_results)
+            .map(|meet| meet.meet)
+            .collect(),
+        truncated: answer.truncated,
+    }
 }
 
 fn medal(value: &Option<String>) -> String {
@@ -220,10 +236,24 @@ mod tests {
             ],"truncated":false}"#,
         )
         .unwrap();
+        let choices = club_meet_choices(answer);
         assert_eq!(
-            club_meet_choices(answer.meets),
+            choices.meets,
             ["Zephyr Classic", "Arnold Open", "Undated Open"]
         );
-        assert!(club_meet_choices(Vec::new()).is_empty());
+        assert!(!choices.truncated);
+    }
+
+    #[test]
+    fn a_cut_short_answer_says_so_and_an_older_answer_reads_as_whole() {
+        let cut: ClubMeets = serde_json::from_str(
+            r#"{"meets":[{"meet":"Arnold Open","has_results":true}],"truncated":true}"#,
+        )
+        .unwrap();
+        assert!(club_meet_choices(cut).truncated);
+        let whole: ClubMeets =
+            serde_json::from_str(r#"{"meets":[{"meet":"Arnold Open","has_results":true}]}"#)
+                .unwrap();
+        assert!(!club_meet_choices(whole).truncated);
     }
 }

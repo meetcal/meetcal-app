@@ -153,6 +153,8 @@ describe("a club's meets (#209)", () => {
     await expect(clubMeetsResource.loadCached("Club")).resolves.toMatchObject({
       data: [{ meet: "Fresh Meet", date: "2026-10-03" }],
     });
+    // Browsed again, the club leaves the old cache, which goes once it holds no club.
+    await expect(AsyncStorage.getItem(OFFLINE_CACHE_KEYS.clubAthletes)).resolves.toBeNull();
   });
 
   it("are not fetched offline", async () => {

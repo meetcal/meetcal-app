@@ -472,23 +472,25 @@ type ClubMeetRow = {
 };
 
 /**
- * The distinct meets `spellings` registered for, in name order within a
- * spelling: one index seek per meet (the next meet after the last one seen),
- * so a club's history costs one read per meet, not per registration. Stops
- * at MAX_CLUB_MEETS or when `budget` is spent; `complete` says whether it
- * read them all.
+ * The distinct meets `spellings` registered for, in reverse name order
+ * within a spelling: one index seek per meet (the next meet before the last
+ * one seen), so a club's history costs one read per meet, not per
+ * registration. Stops at MAX_CLUB_MEETS or when `budget` is spent; `complete`
+ * says whether it read them all. Most meets are named for their year, so a
+ * club cut short keeps its recent meets.
  */
-async function clubMeetNames(ctx: QueryCtx, spellings: readonly string[], budget: { ranges: number }): Promise<{ names: string[]; complete: boolean }> {
+async function clubMeetNames(ctx: QueryCtx, spellings: readonly string[], budget: ClubMeetsBudget): Promise<{ names: string[]; complete: boolean }> {
   const names = new Set<string>();
   for (const club of spellings) {
     let last: string | null = null;
     for (;;) {
       if (budget.ranges <= 0) return { names: [...names], complete: false };
-      const after: string | null = last;
+      const before: string | null = last;
       budget.ranges -= 1;
       const row: Doc<'athletes'> | null = await ctx.db
         .query('athletes')
-        .withIndex('by_club_and_meet', (q) => (after === null ? q.eq('club', club) : q.eq('club', club).gt('meet', after)))
+        .withIndex('by_club_and_meet', (q) => (before === null ? q.eq('club', club) : q.eq('club', club).lt('meet', before)))
+        .order('desc')
         .first();
       if (!row) break;
       if (!names.has(row.meet) && names.size >= MAX_CLUB_MEETS) return { names: [...names], complete: false };
@@ -499,10 +501,21 @@ async function clubMeetNames(ctx: QueryCtx, spellings: readonly string[], budget
   return { names: [...names], complete: true };
 }
 
-/** Whether any result is stored under `meet` or a results title linked to it, one probe per title. */
-async function meetHasResults(ctx: QueryCtx, meet: string, budget: { ranges: number }): Promise<boolean> {
+/** What `clubMeets` may still read: index ranges, and whether a lookup had to stop short. */
+type ClubMeetsBudget = { ranges: number; short: boolean };
+
+/**
+ * Whether any result is stored under `meet` or a results title linked to it,
+ * one probe per title. A probe the budget cannot afford is not made: the
+ * meet reads as having none, and the budget is marked short.
+ */
+async function meetHasResults(ctx: QueryCtx, meet: string, budget: ClubMeetsBudget): Promise<boolean> {
   budget.ranges -= 1;
   for (const title of await meetResultTitles(ctx, meet)) {
+    if (budget.ranges <= 0) {
+      budget.short = true;
+      return false;
+    }
     budget.ranges -= 1;
     const row = await ctx.db
       .query('lifting_results')
@@ -517,7 +530,7 @@ async function meetHasResults(ctx: QueryCtx, meet: string, budget: { ranges: num
  * `meet` joined to its meet row, or null for a test entry
  * (`isPlaceholderMeet`). An upcoming meet has no results, so it is not probed.
  */
-async function clubMeetRow(ctx: QueryCtx, meet: string, budget: { ranges: number }): Promise<ClubMeetRow | null> {
+async function clubMeetRow(ctx: QueryCtx, meet: string, budget: ClubMeetsBudget): Promise<ClubMeetRow | null> {
   budget.ranges -= 1;
   const row = await meetByName(ctx, meet);
   if (row && isPlaceholderMeet(row)) return null;
@@ -551,16 +564,18 @@ function newestMeetFirst(a: ClubMeetRow, b: ClubMeetRow): number {
  * registration, as `clubAthletes` must. Answers `{ meets, truncated }`.
  * Reads one index seek per meet and spelling and up to three ranges per meet
  * to join it, within CLUB_MEETS_RANGE_BUDGET; a club past MAX_CLUB_MEETS or
- * the budget answers the meets it read, `truncated` set. Test entries
- * (`isPlaceholderMeet`) are left out.
+ * the budget answers the meets it read, the most recent by name, with
+ * `truncated` set. Test entries (`isPlaceholderMeet`) are left out.
  */
 export const clubMeets = premiumQuery('reference:clubMeets', {
   args: { club: v.string() },
   handler: async (ctx, args) => {
     requireNonEmpty('club', args.club);
     const spellings = await clubSpellings(ctx, args.club);
-    const budget = { ranges: CLUB_MEETS_RANGE_BUDGET };
+    const budget: ClubMeetsBudget = { ranges: CLUB_MEETS_RANGE_BUDGET, short: false };
     const { names, complete } = await clubMeetNames(ctx, spellings, budget);
+    // The most recent by name first, so a budget that runs out leaves out the oldest.
+    names.sort((a, b) => nameYear(b) - nameYear(a) || compareCollated(b, a));
     const meets: ClubMeetRow[] = [];
     let described = 0;
     for (; described < names.length; described += CLUB_MEET_LOOKUP_BATCH) {
@@ -570,7 +585,7 @@ export const clubMeets = premiumQuery('reference:clubMeets', {
       const rows = await Promise.all(batch.map((meet) => clubMeetRow(ctx, meet, budget)));
       for (const row of rows) if (row) meets.push(row);
     }
-    return { meets: meets.sort(newestMeetFirst), truncated: !complete || described < names.length };
+    return { meets: meets.sort(newestMeetFirst), truncated: !complete || budget.short || described < names.length };
   },
 });
 

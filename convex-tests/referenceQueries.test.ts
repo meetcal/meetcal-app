@@ -356,6 +356,10 @@ describe("a club's meets (#209)", () => {
     const answer = (await query(clubMeets, db, { club: 'Big Club' })) as Answer;
     expect(answer.truncated).toBe(true);
     expect(answer.meets).toHaveLength(MAX_CLUB_MEETS);
+    // The last names (most meets are named for their year) are the ones kept.
+    const kept = new Set(answer.meets.map((m) => m.meet));
+    expect(kept.has(meetName(count - 1))).toBe(true);
+    expect(kept.has(meetName(0))).toBe(false);
     expect(ranges.count).toBeLessThan(4096);
   });
 
@@ -373,7 +377,8 @@ describe("a club's meets (#209)", () => {
     expect(answer.truncated).toBe(true);
     expect(answer.meets.length).toBeGreaterThan(0);
     expect(answer.meets.length).toBeLessThan(count);
-    expect(answer.meets.every((m) => m.has_results)).toBe(true);
+    expect(answer.meets.some((m) => m.meet === meetName(count - 1))).toBe(true);
+    expect(answer.meets.some((m) => m.meet === meetName(0))).toBe(false);
     expect(ranges.count).toBeLessThan(4096);
   });
 });

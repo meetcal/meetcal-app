@@ -1564,6 +1564,10 @@ export async function fetchApiClubMeets(club: string): Promise<ApiClubMeet[]> {
   if (meets.length !== rows.length) {
     console.warn(`[api] /clubs/meets: dropped ${rows.length - meets.length} of ${rows.length} malformed meets`);
   }
+  // A club with more meets than one answer holds gets its most recent; none comes close today.
+  if (response.truncated === true && typeof __DEV__ !== 'undefined' && __DEV__) {
+    console.info('[api] /clubs/meets: the server listed only the most recent meets', { club, meets: meets.length });
+  }
   return meets;
 }
 

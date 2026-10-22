@@ -178,6 +178,22 @@ export async function writeBoundedCacheEntry<T>(
 }
 
 /**
+ * Removes one entry from a cache written by `writeBoundedCacheEntry`, and the
+ * cache itself once it holds none, on the same write chain.
+ */
+export async function removeBoundedCacheEntry(cacheKey: string, entryKey: string): Promise<void> {
+  await browseCacheWrites(cacheKey, async () => {
+    const entry = await getOfflineCache<unknown>(cacheKey);
+    if (!entry) return;
+    const records = readBoundedRecords(entry);
+    const kept = records.filter((r) => r.key !== entryKey);
+    if (kept.length === records.length) return;
+    if (kept.length === 0) await clearOfflineCache(cacheKey);
+    else await setOfflineCache(cacheKey, kept);
+  });
+}
+
+/**
  * Caches filled by browsing (not by an explicit download), which the offline
  * screen's per-item rows do not list. "Delete All" and "Clear Cache" must
  * still remove them.

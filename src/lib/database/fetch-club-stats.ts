@@ -5,6 +5,7 @@ import {
   getOfflineCache,
   OFFLINE_CACHE_KEYS,
   readBoundedCacheEntry,
+  removeBoundedCacheEntry,
   setOfflineCache,
   writeBoundedCacheEntry,
 } from './offline-cache';
@@ -168,8 +169,11 @@ async function persistClubs(clubs: string[]) {
   return { data: entry.data, lastUpdatedAt: entry.lastSynced };
 }
 
-function persistClubMeets(club: string, meets: ClubMeet[]) {
-  return writeBoundedCacheEntry(OFFLINE_CACHE_KEYS.clubMeets, club, meets, MAX_CACHED_CLUB_MEET_LISTS);
+/** Stores a club's meets, and drops the club from the athlete lists an earlier version cached. */
+async function persistClubMeets(club: string, meets: ClubMeet[]) {
+  const stored = await writeBoundedCacheEntry(OFFLINE_CACHE_KEYS.clubMeets, club, meets, MAX_CACHED_CLUB_MEET_LISTS);
+  await removeBoundedCacheEntry(OFFLINE_CACHE_KEYS.clubAthletes, club);
+  return stored;
 }
 
 function persistClubMeetStats(club: string, meet: string, stats: ClubMeetStats) {
