@@ -2,6 +2,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { NativeModules, Platform } from "react-native";
 
 import type { FilterSection } from "@/components/ui/filters/GenericFilterModal";
+import { defaultQualifyingEvent, sortQualifyingEvents } from "@/lib/comp-data-filters";
 import { QualifyingTotalsData } from "@/lib/database/fetch-qualifying-totals";
 import { IntlRanking } from "@/lib/database/fetchIntlRankings";
 import { sortAgeGroups } from "@/lib/sortAgeGroups";
@@ -468,7 +469,7 @@ export function buildWidgetFilterOptions(
   intlRankings: IntlRanking[],
 ): WidgetFilterOptions {
   return {
-    events: sortedUnique(Object.keys(totalsData)),
+    events: sortQualifyingEvents(sortedUnique(Object.keys(totalsData))),
     rankingMeets: sortedUnique(intlRankings.map((ranking) => ranking.meet)),
     rankingGenders: sortedUnique(intlRankings.map((ranking) => ranking.gender)),
   };
@@ -535,7 +536,13 @@ export function normalizeWidgetSettings(
     intlRankings,
   );
 
-  const event = pickOption(settings.qualifyingTotals.event, events);
+  // A stored event that is gone (a season's set renamed or retired) heals to
+  // the newest season's Nationals, as the screen opens on, not the oldest set.
+  const event = pickOption(
+    settings.qualifyingTotals.event,
+    events,
+    defaultQualifyingEvent(events),
+  );
   const ageGroup = pickOption(
     settings.qualifyingTotals.ageGroup,
     buildTotalsAgeGroupOptions(totalsData, event),

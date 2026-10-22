@@ -21,7 +21,7 @@ pub struct QualifyingTotal {
 #[command(
     name = "qualifying-totals",
     after_help = r#"Examples:
-  meetcal qualifying-totals --age Junior --gender Men --event Nationals"#
+  meetcal qualifying-totals --age Junior --gender Men --event "2027 Nationals""#
 )]
 pub struct QualTotalsArgs {
     /// Age group: U11, U13, U15, U17, U23, U25, Junior, University, Senior,
