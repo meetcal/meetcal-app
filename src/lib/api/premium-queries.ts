@@ -20,6 +20,7 @@ export const PREMIUM_QUERY_FUNCTIONS: ReadonlySet<string> = new Set([
   'reference:adaptiveRecords',
   'reference:clubs',
   'reference:clubAthletes',
+  'reference:clubMeets',
   'reference:wsoAthletes',
   'reference:clubMeetStats',
   'results:byMeet',

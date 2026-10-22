@@ -1536,47 +1536,39 @@ export async function fetchApiClubNames(): Promise<string[]> {
   ];
 }
 
-/**
- * Most pages a paged query may take before the client gives up. A club's
- * entries arrive 2,000 rows a page, so this allows 200,000 rows; an answer
- * that never reports `isDone` fails here instead of looping forever.
- */
-export const MAX_QUERY_PAGES = 100;
-
-type JsonTextPage = { rows: unknown[]; cursor: string; isDone: boolean };
-
-/** One `{ json, cursor, isDone }` page of a paged query, checked before anything reads it. */
-function decodeJsonTextPage(value: unknown, path: string): JsonTextPage {
-  assertObject(value, path);
-  if (typeof value.json !== 'string') throw new Error(`${path} returned a non-text json field`);
-  if (typeof value.cursor !== 'string') throw new Error(`${path} returned a non-string cursor`);
-  if (typeof value.isDone !== 'boolean') throw new Error(`${path} returned a non-boolean isDone`);
-  const rows = assertArray<unknown>(parseJsonText(value.json, path), path);
-  return { rows, cursor: value.cursor, isDone: value.isDone };
-}
+/** One meet a club entered (`reference:clubMeets`). */
+export type ApiClubMeet = {
+  meet: string;
+  /** The meet's first day, `YYYY-MM-DD`; null when the server has no meet row for it. */
+  date: string | null;
+};
 
 /**
- * Every row of a paged query: the first call sends `cursor: null`, each later
- * one the cursor the previous page returned, until a page reports `isDone`.
- * Rows are concatenated in page order; the server sorts within a page only,
- * and a list replaced while paging can repeat a row, so callers must not rely
- * on order or uniqueness.
+ * A club's distinct meets under every spelling of its name, newest first, in
+ * one bounded read (`reference:clubMeets`, #209) instead of every
+ * registration the club ever made. A row without a meet name is dropped and a
+ * date that is not a string reads as null; a body without a `meets` array
+ * throws, so nothing is cached from it.
  */
-async function readAllPages(path: string, fn: string, args: Record<string, unknown>): Promise<unknown[]> {
-  const rows: unknown[] = [];
-  let cursor: string | null = null;
-  for (let page = 0; page < MAX_QUERY_PAGES; page += 1) {
-    const answer = decodeJsonTextPage(await readQuery(path, fn, { ...args, cursor }), path);
-    rows.push(...answer.rows);
-    if (answer.isDone) return rows;
-    cursor = answer.cursor;
+export async function fetchApiClubMeets(club: string): Promise<ApiClubMeet[]> {
+  const response = await readQuery('/clubs/meets', 'reference:clubMeets', { club });
+  assertObject(response, '/clubs/meets');
+  const rows = assertArray<unknown>(response.meets, '/clubs/meets');
+  const meets: ApiClubMeet[] = [];
+  for (const row of rows) {
+    if (!row || typeof row !== 'object' || Array.isArray(row)) continue;
+    const { meet, date } = row as Record<string, unknown>;
+    if (typeof meet !== 'string' || meet.length === 0) continue;
+    meets.push({ meet, date: nullableString(date) });
   }
-  throw new Error(`${path} did not finish within ${MAX_QUERY_PAGES} pages`);
-}
-
-/** A club's entries across meets; `lib/database/fetch-club-stats` validates the rows. */
-export async function fetchApiClubAthletes(club: string): Promise<unknown[]> {
-  return readAllPages('/clubs/athletes', 'reference:clubAthletes', { club });
+  if (meets.length !== rows.length) {
+    console.warn(`[api] /clubs/meets: dropped ${rows.length - meets.length} of ${rows.length} malformed meets`);
+  }
+  // A club with more meets than one answer holds gets its most recent; none comes close today.
+  if (response.truncated === true && typeof __DEV__ !== 'undefined' && __DEV__) {
+    console.info('[api] /clubs/meets: the server listed only the most recent meets', { club, meets: meets.length });
+  }
+  return meets;
 }
 
 /** A club's results at one meet; `lib/database/fetch-club-stats` validates the shape. */

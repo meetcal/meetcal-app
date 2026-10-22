@@ -248,19 +248,24 @@ test("an unpaid user who subscribes in the app gets in on returning to the tab",
 test("a subscriber's premium reads carry the access pass, fetched once with the session token, and no read carries the token", async ({ page }) => {
   const { passRequests, entitlementRefreshes } = await mockAuth(page);
   const sent = new Map<string, { pass: unknown; authorization: string | undefined }>();
-  for (const [fn, rows] of [["reference:clubs", ["Test Barbell"]], ["meets:completed", []], ["reference:standards", []]] as const) {
+  for (const [fn, answer] of [
+    ["reference:clubs", textAnswer(["Test Barbell"])],
+    ["reference:clubMeets", valueAnswer({ meets: [], truncated: false })],
+    ["reference:standards", textAnswer([])],
+    ["meets:list", textAnswer([])],
+    ["meets:completed", textAnswer([])],
+  ] as const) {
     await routeQuery(page, fn, (route, args) => {
       sent.set(fn, { pass: args.pass, authorization: route.request().headers().authorization });
-      return route.fulfill(textAnswer(rows));
+      return route.fulfill(answer);
     });
   }
 
   await page.goto("/club-dashboard");
-  await expect(page.getByLabel("Club").locator("option", { hasText: "Test Barbell" })).toHaveCount(1);
-  await expect.poll(() => sent.size).toBe(2);
+  await page.getByLabel("Club").selectOption("Test Barbell");
+  await expect(page.getByText("This club has no completed meets yet.")).toBeVisible();
   expect(sent.get("reference:clubs")).toEqual({ pass: "pass_test", authorization: undefined });
-  // Public, so it goes without the pass.
-  expect(sent.get("meets:completed")).toEqual({ pass: undefined, authorization: undefined });
+  expect(sent.get("reference:clubMeets")).toEqual({ pass: "pass_test", authorization: undefined });
 
   // The pass is held: the next data page's read uses it without fetching it again.
   await openFromHeader(page, "/standards");
@@ -268,6 +273,10 @@ test("a subscriber's premium reads carry the access pass, fetched once with the 
   await expect.poll(() => sent.get("reference:standards")).toEqual({ pass: "pass_test", authorization: undefined });
   expect(passRequests).toEqual(["Bearer token_user_ci"]);
   expect(entitlementRefreshes).toEqual([]);
+
+  // Public, so it goes without the pass.
+  await openFromHeader(page, "/meet-center");
+  await expect.poll(() => sent.get("meets:completed")).toEqual({ pass: undefined, authorization: undefined });
 });
 
 test("a subscriber Convex has no entitlement for yet gets the pass once Convex refreshes it", async ({ page }) => {

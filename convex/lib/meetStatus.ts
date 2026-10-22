@@ -32,7 +32,7 @@ export function nextMeetStatus(stored: MeetStatus | undefined, dated: MeetStatus
  * order: the meet scraper stored some dates unpadded ("2026-9-25", which
  * sorts after "2026-10-12"). Anything else is returned as is.
  */
-function paddedDate(date: string): string {
+export function paddedDate(date: string): string {
   const match = /^(\d{4})-(\d{1,2})-(\d{1,2})$/.exec(date);
   return match ? `${match[1]}-${match[2].padStart(2, '0')}-${match[3].padStart(2, '0')}` : date;
 }

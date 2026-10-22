@@ -4,7 +4,9 @@ import { query, type QueryCtx } from './_generated/server';
 import { revalidated, revalidatedText, type Revalidated } from './lib/etag';
 import type { Doc } from './_generated/dataModel';
 import { clubKey, clubLabels } from './lib/clubs';
-import { clubAthleteCount, clubStats, computeStatsRows, meetByName, readStatsViewItems } from './lib/meetData';
+import { clubAthleteCount, clubStats, computeStatsRows, meetByName, meetResultTitles, readStatsViewItems } from './lib/meetData';
+import { paddedDate, type MeetStatus } from './lib/meetStatus';
+import { isPlaceholderMeet } from './meets';
 import {
   ADAPTIVE_RECORDS_SEASON_START,
   clubNamesPage,
@@ -437,6 +439,153 @@ export const clubAthletes = premiumQuery('reference:clubAthletes', {
     const budget: ReadBudget = { ranges: UNPAGED_CLUB_RANGE_BUDGET, docs: UNPAGED_CLUB_DOC_BUDGET };
     const rows = await unpagedClubAthletes(ctx, spellings, budget);
     return await clubAthleteRows(ctx, rows, budget.ranges);
+  },
+});
+
+/**
+ * Distinct meets `clubMeets` lists at most across a club's spellings. Each
+ * costs up to four index ranges (its seek, its meet row, its results titles
+ * and one results probe), so 900 fit in `CLUB_MEETS_RANGE_BUDGET` with room
+ * for a spelling's last seek and a few linked results titles.
+ */
+export const MAX_CLUB_MEETS = 900;
+/**
+ * Index ranges `clubMeets` spends at most on seeks, meet rows and results
+ * probes together, under the 4,096 one query may use; the rest is the
+ * access pass and the spellings view.
+ */
+const CLUB_MEETS_RANGE_BUDGET = 3900;
+/** Meets `clubMeets` looks up at once: one function may have only so many reads in flight. */
+const CLUB_MEET_LOOKUP_BATCH = 100;
+/** Index ranges one meet's lookup may need beyond its seek: its meet row, its results titles, a results probe. */
+const CLUB_MEET_LOOKUP_RANGES = 3;
+
+/** One meet of `clubMeets`. */
+type ClubMeetRow = {
+  meet: string;
+  /** The meet's first day, `YYYY-MM-DD`; null without a meet row. */
+  date: string | null;
+  /** The meet row's status; null without one. */
+  status: MeetStatus | null;
+  /** Whether any result is stored for the meet, under its name or a linked results title. */
+  has_results: boolean;
+};
+
+/**
+ * The distinct meets `spellings` registered for, in reverse name order
+ * within a spelling: one index seek per meet (the next meet before the last
+ * one seen), so a club's history costs one read per meet, not per
+ * registration. Stops at MAX_CLUB_MEETS or when `budget` is spent; `complete`
+ * says whether it read them all. Most meets are named for their year, so a
+ * club cut short keeps its recent meets.
+ */
+async function clubMeetNames(ctx: QueryCtx, spellings: readonly string[], budget: ClubMeetsBudget): Promise<{ names: string[]; complete: boolean }> {
+  const names = new Set<string>();
+  for (const club of spellings) {
+    let last: string | null = null;
+    for (;;) {
+      if (budget.ranges <= 0) return { names: [...names], complete: false };
+      const before: string | null = last;
+      budget.ranges -= 1;
+      const row: Doc<'athletes'> | null = await ctx.db
+        .query('athletes')
+        .withIndex('by_club_and_meet', (q) => (before === null ? q.eq('club', club) : q.eq('club', club).lt('meet', before)))
+        .order('desc')
+        .first();
+      if (!row) break;
+      if (!names.has(row.meet) && names.size >= MAX_CLUB_MEETS) return { names: [...names], complete: false };
+      names.add(row.meet);
+      last = row.meet;
+    }
+  }
+  return { names: [...names], complete: true };
+}
+
+/** What `clubMeets` may still read: index ranges, and whether a lookup had to stop short. */
+type ClubMeetsBudget = { ranges: number; short: boolean };
+
+/**
+ * Whether any result is stored under `meet` or a results title linked to it,
+ * one probe per title. A probe the budget cannot afford is not made: the
+ * meet reads as having none, and the budget is marked short.
+ */
+async function meetHasResults(ctx: QueryCtx, meet: string, budget: ClubMeetsBudget): Promise<boolean> {
+  budget.ranges -= 1;
+  for (const title of await meetResultTitles(ctx, meet)) {
+    if (budget.ranges <= 0) {
+      budget.short = true;
+      return false;
+    }
+    budget.ranges -= 1;
+    const row = await ctx.db
+      .query('lifting_results')
+      .withIndex('by_meet', (q) => q.eq('meet', title))
+      .first();
+    if (row) return true;
+  }
+  return false;
+}
+
+/**
+ * `meet` joined to its meet row, or null for a test entry
+ * (`isPlaceholderMeet`). An upcoming meet has no results, so it is not probed.
+ */
+async function clubMeetRow(ctx: QueryCtx, meet: string, budget: ClubMeetsBudget): Promise<ClubMeetRow | null> {
+  budget.ranges -= 1;
+  const row = await meetByName(ctx, meet);
+  if (row && isPlaceholderMeet(row)) return null;
+  const has_results = row?.status === 'upcoming' ? false : await meetHasResults(ctx, meet, budget);
+  return { meet, date: row ? paddedDate(row.startDate) : null, status: row?.status ?? null, has_results };
+}
+
+/** A leading four-digit year in a meet's name ("2026 Arnold"), or -1. */
+function nameYear(meet: string): number {
+  const match = /^\s*(\d{4})\b/.exec(meet);
+  return match ? Number(match[1]) : -1;
+}
+
+/**
+ * Newest first: by date, then a meet with no date by the year its name
+ * starts with, then by name (as the app's `clubMeetsNewestFirst`).
+ */
+function newestMeetFirst(a: ClubMeetRow, b: ClubMeetRow): number {
+  if (a.date !== b.date) {
+    if (a.date === null) return 1;
+    if (b.date === null) return -1;
+    return a.date < b.date ? 1 : -1;
+  }
+  return nameYear(b.meet) - nameYear(a.meet) || compareCollated(a.meet, b.meet);
+}
+
+/**
+ * The distinct meets a club registered for under any of its spellings
+ * (`clubSpellings`), newest first, each with its first day, status and
+ * whether it has results (#209): the club's meets without reading every
+ * registration, as `clubAthletes` must. Answers `{ meets, truncated }`.
+ * Reads one index seek per meet and spelling and up to three ranges per meet
+ * to join it, within CLUB_MEETS_RANGE_BUDGET; a club past MAX_CLUB_MEETS or
+ * the budget answers the meets it read, the most recent by name, with
+ * `truncated` set. Test entries (`isPlaceholderMeet`) are left out.
+ */
+export const clubMeets = premiumQuery('reference:clubMeets', {
+  args: { club: v.string() },
+  handler: async (ctx, args) => {
+    requireNonEmpty('club', args.club);
+    const spellings = await clubSpellings(ctx, args.club);
+    const budget: ClubMeetsBudget = { ranges: CLUB_MEETS_RANGE_BUDGET, short: false };
+    const { names, complete } = await clubMeetNames(ctx, spellings, budget);
+    // The most recent by name first, so a budget that runs out leaves out the oldest.
+    names.sort((a, b) => nameYear(b) - nameYear(a) || compareCollated(b, a));
+    const meets: ClubMeetRow[] = [];
+    let described = 0;
+    for (; described < names.length; described += CLUB_MEET_LOOKUP_BATCH) {
+      const batch = names.slice(described, described + CLUB_MEET_LOOKUP_BATCH);
+      // Only a batch the budget can afford: a linked results title costs one range more.
+      if (budget.ranges < batch.length * CLUB_MEET_LOOKUP_RANGES) break;
+      const rows = await Promise.all(batch.map((meet) => clubMeetRow(ctx, meet, budget)));
+      for (const row of rows) if (row) meets.push(row);
+    }
+    return { meets: meets.sort(newestMeetFirst), truncated: !complete || budget.short || described < names.length };
   },
 });
 

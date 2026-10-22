@@ -1,7 +1,7 @@
 import { computeAdaptiveRecords, RANKING_DIVISIONS } from '../convex/lib/referenceData';
 import { natKey, REF_VIEWS } from '../convex/lib/viewKeys';
 import { jsonChunks, writeView } from '../convex/lib/views';
-import { clubAthletes, clubMeetStats, clubs, nationalRankings, registrationWsos, wsoAthletes, wsoList } from '../convex/reference';
+import { clubAthletes, clubMeets, clubMeetStats, clubs, MAX_CLUB_MEETS, nationalRankings, registrationWsos, wsoAthletes, wsoList } from '../convex/reference';
 import { storeClubs } from '../convex/views';
 import { clubKey, clubLabels } from '../convex/lib/clubs';
 import { ANONYMOUS_AUTH, fakeDb, handlerOf } from './fakeDb';
@@ -249,6 +249,137 @@ describe('one club under several spellings (#363) and its meets by date (#341)',
     const fake = await seeded();
     const stats = (await query(clubMeetStats, fake.db, { club: 'ONG Weightlifting', meet: '2026 USA Masters Nationals' })) as { total_athletes: number };
     expect(stats.total_athletes).toBe(2);
+  });
+});
+
+describe("a club's meets (#209)", () => {
+  type Answer = { meets: { meet: string; date: string | null; status: string | null; has_results: boolean }[]; truncated: boolean };
+  const entry = (name: string, club: string, meet: string) => ({ name, club, meet, gender: 'Men', weightClass: '89', entryTotal: 200, memberId: name, age: 40, adaptive: false });
+  const meetRow = (name: string, startDate: string, status = 'completed') => ({
+    name,
+    startDate,
+    endDate: startDate,
+    status,
+    timeZone: 'America/Chicago',
+    venueName: 'Venue',
+    venueCity: 'City',
+  });
+  const result = (meet: string) => ({ meet, name: 'Al', date: '2026-01-01' });
+  const meetName = (m: number) => `Meet ${String(m).padStart(4, '0')}`;
+  /** `fake.db`, counting the index ranges a query opens. */
+  const counted = (fake: ReturnType<typeof fakeDb>) => {
+    const ranges = { count: 0 };
+    return { ranges, db: { ...fake.db, query: (table: string) => (ranges.count++, fake.db.query(table)) } };
+  };
+
+  it('lists each meet once across every spelling, newest first, with its date, status and whether it has results', async () => {
+    const fake = fakeDb({
+      athletes: [
+        entry('Al', 'Ong Weightlifting', '2026 USA Masters Nationals'),
+        entry('Bo', 'ONG weightlifting', '2026 USA Masters Nationals'),
+        entry('Cy', 'ONG Weightlifting', '2025 Howard Cohen'),
+        entry('Di', 'ONG Weightlifting', 'Fall Open'),
+        entry('Ed', 'ONG weightlifting', 'Winter Nationals'),
+        entry('Fy', 'Ong Weightlifting', '2024 Spring Classic'),
+        entry('Gu', 'Ong Weightlifting', '2026 Arnold'),
+        entry('Hu', 'Boise Barbell', 'Boise Open'),
+      ],
+      meets: [
+        meetRow('2026 USA Masters Nationals', '2026-3-27'),
+        meetRow('2025 Howard Cohen', '2025-12-11'),
+        meetRow('Winter Nationals', '2026-12-04', 'upcoming'),
+        meetRow('2026 Arnold', '2026-03-01', 'ongoing'),
+        meetRow('Boise Open', '2026-05-01'),
+      ],
+      lifting_results: [result('2026 USA Masters Nationals'), result('Howard Cohen Results'), result('Boise Open')],
+      meet_result_titles: [{ meet: '2025 Howard Cohen', title: 'Howard Cohen Results' }],
+    });
+    await handlerOf<{ clubs: string[]; sources: unknown }>(storeClubs)(
+      { db: fake.db },
+      { clubs: ['Ong Weightlifting', 'ONG weightlifting', 'ONG Weightlifting', 'Boise Barbell'], sources: [{ table: 'athletes', version: 1 }] },
+    );
+    const answer = (await query(clubMeets, fake.db, { club: 'ong weightlifting' })) as Answer;
+    expect(answer).toEqual({
+      meets: [
+        { meet: 'Winter Nationals', date: '2026-12-04', status: 'upcoming', has_results: false },
+        // Unpadded in its meet row, padded so it sorts by date.
+        { meet: '2026 USA Masters Nationals', date: '2026-03-27', status: 'completed', has_results: true },
+        { meet: '2026 Arnold', date: '2026-03-01', status: 'ongoing', has_results: false },
+        // Its results are stored under a linked title.
+        { meet: '2025 Howard Cohen', date: '2025-12-11', status: 'completed', has_results: true },
+        // No meet row: by the year in the name, then by name.
+        { meet: '2024 Spring Classic', date: null, status: null, has_results: false },
+        { meet: 'Fall Open', date: null, status: null, has_results: false },
+      ],
+      truncated: false,
+    });
+  });
+
+  it('reads the spelling asked for even when the spellings view lacks it, and leaves out test entries', async () => {
+    const fake = fakeDb({
+      athletes: [entry('Al', 'Rose City', 'Real Meet'), entry('Bo', 'RoseCity', 'Test Meet')],
+      meets: [meetRow('Real Meet', '2026-01-10'), { ...meetRow('Test Meet', '2026-01-11'), timeZone: '', venueName: 'x', venueCity: 'y' }],
+    });
+    expect(((await query(clubMeets, fake.db, { club: 'RoseCity' })) as Answer).meets).toEqual([]);
+    expect(((await query(clubMeets, fake.db, { club: 'Rose City' })) as Answer).meets.map((m) => m.meet)).toEqual(['Real Meet']);
+  });
+
+  it('answers a club with no registrations with no meets, and refuses an empty club', async () => {
+    const fake = fakeDb({});
+    await expect(query(clubMeets, fake.db, { club: 'Nobody' })).resolves.toEqual({ meets: [], truncated: false });
+    await expect(query(clubMeets, fake.db, { club: ' ' })).rejects.toBeDefined();
+  });
+
+  it("reads one row per meet, not every registration, for a club's whole history", async () => {
+    const meets = Array.from({ length: 300 }, (_, m) => meetRow(meetName(m), `${2000 + Math.floor(m / 12)}-${String((m % 12) + 1).padStart(2, '0')}-01`));
+    const fake = fakeDb({
+      athletes: meets.flatMap((meet) => Array.from({ length: 20 }, (_, i) => entry(`Lifter ${i}`, 'Big Club', meet.name))),
+      meets,
+      lifting_results: meets.map((meet) => result(meet.name)),
+    });
+    const answer = (await query(clubMeets, fake.db, { club: 'Big Club' })) as Answer;
+    expect(answer.truncated).toBe(false);
+    expect(answer.meets).toHaveLength(300);
+    expect(answer.meets[0]).toMatchObject({ meet: meetName(299), has_results: true });
+    expect(answer.meets.map((m) => m.date)).toEqual(answer.meets.map((m) => m.date).sort().reverse());
+    // A registration, a meet row and a result per meet; never the 6,000 registrations.
+    expect(fake.reads.count).toBeLessThanOrEqual(300 * 3);
+  });
+
+  it('stops at its meet limit, within the index ranges one query may use, and says so', async () => {
+    const count = MAX_CLUB_MEETS + 50;
+    const fake = fakeDb({
+      athletes: Array.from({ length: count }, (_, m) => entry('Al', 'Big Club', meetName(m))),
+      meets: Array.from({ length: count }, (_, m) => meetRow(meetName(m), '2026-01-01')),
+    });
+    const { ranges, db } = counted(fake);
+    const answer = (await query(clubMeets, db, { club: 'Big Club' })) as Answer;
+    expect(answer.truncated).toBe(true);
+    expect(answer.meets).toHaveLength(MAX_CLUB_MEETS);
+    // The last names (most meets are named for their year) are the ones kept.
+    const kept = new Set(answer.meets.map((m) => m.meet));
+    expect(kept.has(meetName(count - 1))).toBe(true);
+    expect(kept.has(meetName(0))).toBe(false);
+    expect(ranges.count).toBeLessThan(4096);
+  });
+
+  it('answers the meets its range budget could join when linked results titles use it up, and says so', async () => {
+    const count = MAX_CLUB_MEETS;
+    // Every meet's results are under its third linked title: six ranges a meet instead of four.
+    const fake = fakeDb({
+      athletes: Array.from({ length: count }, (_, m) => entry('Al', 'Big Club', meetName(m))),
+      meets: Array.from({ length: count }, (_, m) => meetRow(meetName(m), '2026-01-01')),
+      meet_result_titles: Array.from({ length: count }, (_, m) => [1, 2, 3].map((t) => ({ meet: meetName(m), title: `${meetName(m)} part ${t}` }))).flat(),
+      lifting_results: Array.from({ length: count }, (_, m) => result(`${meetName(m)} part 3`)),
+    });
+    const { ranges, db } = counted(fake);
+    const answer = (await query(clubMeets, db, { club: 'Big Club' })) as Answer;
+    expect(answer.truncated).toBe(true);
+    expect(answer.meets.length).toBeGreaterThan(0);
+    expect(answer.meets.length).toBeLessThan(count);
+    expect(answer.meets.some((m) => m.meet === meetName(count - 1))).toBe(true);
+    expect(answer.meets.some((m) => m.meet === meetName(0))).toBe(false);
+    expect(ranges.count).toBeLessThan(4096);
   });
 });
 

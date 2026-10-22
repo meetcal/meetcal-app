@@ -38,6 +38,7 @@ pub const PREMIUM_FUNCTIONS: &[&str] = &[
     "reference:adaptiveRecords",
     "reference:clubs",
     "reference:clubAthletes",
+    "reference:clubMeets",
     "reference:wsoAthletes",
     "reference:clubMeetStats",
     "results:byMeet",
@@ -344,7 +345,7 @@ mod tests {
 
     #[test]
     fn the_premium_functions_match_the_servers_list() {
-        assert_eq!(PREMIUM_FUNCTIONS.len(), 22);
+        assert_eq!(PREMIUM_FUNCTIONS.len(), 23);
         assert!(!is_premium(queries::ACCESS_PASS.function));
         for public in [
             "meets:list",

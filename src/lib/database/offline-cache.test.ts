@@ -4,6 +4,7 @@ import {
   getOfflineCache,
   OFFLINE_CACHE_KEYS,
   readBoundedCacheEntry,
+  removeBoundedCacheEntry,
   setOfflineCache,
   writeBoundedCacheEntry,
 } from "@/lib/database/offline-cache";
@@ -72,6 +73,17 @@ describe("bounded browse caches", () => {
 
   afterEach(() => {
     jest.restoreAllMocks();
+  });
+
+  it("removes one entry, and the cache once it holds none", async () => {
+    await writeBoundedCacheEntry(KEY, "a", "A", 5);
+    await writeBoundedCacheEntry(KEY, "b", "B", 5);
+    await removeBoundedCacheEntry(KEY, "a");
+    await removeBoundedCacheEntry(KEY, "missing");
+    await expect(readBoundedCacheEntry(KEY, "a")).resolves.toBeNull();
+    await expect(readBoundedCacheEntry(KEY, "b")).resolves.toMatchObject({ data: "B" });
+    await removeBoundedCacheEntry(KEY, "b");
+    expect(mockMemory.has(KEY)).toBe(false);
   });
 
   it("keeps only the newest maxEntries writes; the oldest goes first", async () => {
@@ -150,6 +162,7 @@ describe("bounded browse caches", () => {
         OFFLINE_CACHE_KEYS.recordsBrowse,
         OFFLINE_CACHE_KEYS.nationalRankings,
         OFFLINE_CACHE_KEYS.clubAthletes,
+        OFFLINE_CACHE_KEYS.clubMeets,
         OFFLINE_CACHE_KEYS.clubMeetStats,
         OFFLINE_CACHE_KEYS.wsoRecordsFiltered,
       ]),

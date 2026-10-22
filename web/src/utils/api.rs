@@ -57,6 +57,7 @@ pub(crate) const SUBSCRIPTION_FUNCTIONS: &[&str] = &[
     "reference:adaptiveRecords",
     "reference:clubs",
     "reference:clubAthletes",
+    "reference:clubMeets",
     "reference:wsoAthletes",
     "reference:clubMeetStats",
     "results:byMeet",
@@ -104,14 +105,9 @@ const PASS_WAIT_MS: f64 = 3000.0;
 
 /// How long (ms) after a failed pass fetch premium reads go out without a
 /// pass before one tries again, so a user Convex will not give a pass does
-/// not refresh the entitlement on every read (a club's roster is up to 100
-/// reads). A read Convex refuses for its pass tries again at once.
+/// not refresh the entitlement on every read. A read Convex refuses for its
+/// pass tries again at once.
 const PASS_FETCH_BACKOFF_MS: f64 = 60.0 * 1000.0;
-
-/// Most pages `query_all_pages` reads before giving up. A club's entries
-/// arrive 2,000 rows a page, so this allows 200,000 rows; an answer that never
-/// reports `isDone` fails here instead of looping forever.
-pub(crate) const MAX_PAGES: usize = 100;
 
 pub(crate) const RATE_LIMITED_MESSAGE: &str =
     "Too many requests right now; please try again in a moment";
@@ -132,9 +128,6 @@ pub(crate) const UNREACHABLE_MESSAGE: &str =
 /// a shape the page does not expect.
 pub(crate) const UNREADABLE_MESSAGE: &str =
     "MeetCal sent an answer this page couldn't read; please try again";
-/// An answer longer than `MAX_PAGES` pages.
-pub(crate) const TOO_MANY_PAGES_MESSAGE: &str =
-    "MeetCal sent more of this list than this page can show";
 
 fn convex_url() -> &'static str {
     option_env!("MEETCAL_CONVEX_URL")
@@ -220,8 +213,9 @@ pub(crate) mod queries {
     pub(crate) const ADAPTIVE_RECORDS: Query = Query::text("reference:adaptiveRecords");
     /// `GET /clubs`
     pub(crate) const CLUBS: Query = Query::text("reference:clubs");
-    /// `GET /clubs/athletes`; takes `club`. Paged: read it with `query_all_pages`.
-    pub(crate) const CLUB_ATHLETES: Query = Query::text("reference:clubAthletes");
+    /// A club's distinct meets, newest first: `{ meets, truncated }`, each meet with its
+    /// `date`, `status` and `has_results`; takes `club`.
+    pub(crate) const CLUB_MEETS: Query = Query::value("reference:clubMeets");
     /// `GET /clubs/meet-stats`; takes `club` and `meet`.
     pub(crate) const CLUB_MEET_STATS: Query = Query::value("reference:clubMeetStats");
     /// Weightlifting Wrapped (no Rust route): takes `query`, `year` and optionally `picked`, and
@@ -255,23 +249,6 @@ enum QueryResponse {
 /// The arguments of a query that takes none.
 #[derive(Serialize)]
 struct NoArgs {}
-
-/// A paged query's own arguments plus `cursor`: `None` (sent as `null`) asks
-/// for the first page.
-#[derive(Serialize)]
-struct PagedArgs<'a, A: Serialize + ?Sized> {
-    #[serde(flatten)]
-    args: &'a A,
-    cursor: Option<&'a str>,
-}
-
-/// One page of a paged query: its rows, and where the next page starts.
-#[derive(Debug)]
-struct Page<T> {
-    rows: Vec<T>,
-    cursor: String,
-    is_done: bool,
-}
 
 /// Whether a response status means the request may succeed if repeated later.
 pub(crate) fn is_retryable_status(status: StatusCode) -> bool {
@@ -423,26 +400,6 @@ pub(crate) fn read_body<T: DeserializeOwned>(query: Query, value: Value) -> Resu
     }
 }
 
-/// One page of a paged query's answer, `{ json, cursor, isDone }`.
-fn read_page<T: DeserializeOwned>(query: Query, response: QueryResponse) -> Result<Page<T>> {
-    let value = answer_value(response)?;
-    let cursor = value
-        .get("cursor")
-        .and_then(Value::as_str)
-        .ok_or_else(|| user_error(query.function, UNREADABLE_MESSAGE, "page has no cursor"))?
-        .to_owned();
-    let is_done = value
-        .get("isDone")
-        .and_then(Value::as_bool)
-        .ok_or_else(|| user_error(query.function, UNREADABLE_MESSAGE, "page has no isDone"))?;
-    let rows = read_body(query, value)?;
-    Ok(Page {
-        rows,
-        cursor,
-        is_done,
-    })
-}
-
 /// Runs `query` with `args`, retrying throttled (429) and overloaded (503)
 /// responses.
 pub(crate) async fn query_with<T, A>(query: Query, args: &A) -> Result<T>
@@ -451,50 +408,6 @@ where
     A: Serialize + ?Sized,
 {
     read_response(query, send(query, args).await?)
-}
-
-/// Every row of a paged query: the first call sends `cursor: null`, each later
-/// one the cursor the previous page returned, until a page reports `isDone`.
-/// Rows come in page order; the server sorts within a page only, and a list
-/// replaced while paging can repeat a row, so callers must not rely on order
-/// or uniqueness.
-pub(crate) async fn query_all_pages<T, A>(query: Query, args: &A) -> Result<Vec<T>>
-where
-    T: DeserializeOwned,
-    A: Serialize + ?Sized,
-{
-    collect_pages(query.function, |cursor| async move {
-        let args = PagedArgs {
-            args,
-            cursor: cursor.as_deref(),
-        };
-        read_page(query, send(query, &args).await?)
-    })
-    .await
-}
-
-/// The paging loop of `query_all_pages`, over any page source: `fetch` gets
-/// `None` first, then each cursor a page returned, at most `MAX_PAGES` times.
-async fn collect_pages<T, F, Fut>(function: &str, mut fetch: F) -> Result<Vec<T>>
-where
-    F: FnMut(Option<String>) -> Fut,
-    Fut: Future<Output = Result<Page<T>>>,
-{
-    let mut rows = Vec::new();
-    let mut cursor: Option<String> = None;
-    for _ in 0..MAX_PAGES {
-        let page = fetch(cursor.take()).await?;
-        rows.extend(page.rows);
-        if page.is_done {
-            return Ok(rows);
-        }
-        cursor = Some(page.cursor);
-    }
-    Err(user_error(
-        function,
-        TOO_MANY_PAGES_MESSAGE,
-        format!("more than {MAX_PAGES} pages"),
-    ))
 }
 
 /// Sends `query` with `args` and returns Convex's answer. A premium read
@@ -1133,7 +1046,7 @@ mod tests {
             queries::WSO_RECORDS,
             queries::ADAPTIVE_RECORDS,
             queries::CLUBS,
-            queries::CLUB_ATHLETES,
+            queries::CLUB_MEETS,
             queries::CLUB_MEET_STATS,
         ] {
             assert!(query.is_premium(), "{}", query.function);
@@ -1150,7 +1063,7 @@ mod tests {
             assert!(!query.is_premium(), "{}", query.function);
             assert!(!carries_pass(query, &args), "{}", query.function);
         }
-        assert_eq!(SUBSCRIPTION_FUNCTIONS.len(), 22);
+        assert_eq!(SUBSCRIPTION_FUNCTIONS.len(), 23);
         assert!(!SUBSCRIPTION_FUNCTIONS.contains(&ACCESS_PASS));
         assert!(!SUBSCRIPTION_FUNCTIONS.contains(&REFRESH_ENTITLEMENT));
     }
@@ -1497,141 +1410,6 @@ mod tests {
         assert_eq!(error.to_string(), UNREADABLE_MESSAGE);
     }
 
-    /// Runs a future that never waits, as every page source in these tests is.
-    fn ready<F: Future>(future: F) -> F::Output {
-        let mut context = std::task::Context::from_waker(std::task::Waker::noop());
-        match std::pin::pin!(future).poll(&mut context) {
-            std::task::Poll::Ready(output) => output,
-            std::task::Poll::Pending => panic!("the page source waited"),
-        }
-    }
-
-    fn page(rows: &[u32], cursor: &str, is_done: bool) -> Page<u32> {
-        Page {
-            rows: rows.to_vec(),
-            cursor: cursor.to_owned(),
-            is_done,
-        }
-    }
-
-    #[test]
-    fn paged_requests_add_the_cursor_to_the_arguments() {
-        #[derive(Serialize)]
-        struct Args {
-            club: &'static str,
-        }
-        let args = Args {
-            club: "Test Barbell",
-        };
-        let first = PagedArgs {
-            args: &args,
-            cursor: None,
-        };
-        let later = PagedArgs {
-            args: &args,
-            cursor: Some("c1"),
-        };
-        assert_eq!(
-            serde_json::to_value(first).unwrap(),
-            json!({"club": "Test Barbell", "cursor": null})
-        );
-        assert_eq!(
-            serde_json::to_value(later).unwrap(),
-            json!({"club": "Test Barbell", "cursor": "c1"})
-        );
-    }
-
-    #[test]
-    fn a_page_carries_its_rows_as_json_text_with_its_cursor() {
-        let page: Page<u32> = read_page(
-            queries::CLUB_ATHLETES,
-            answer(json!({"status": "success", "value": {"json": "[1,2]", "cursor": "c1", "isDone": false}})),
-        )
-        .unwrap();
-        assert_eq!(page.rows, [1, 2]);
-        assert_eq!(page.cursor, "c1");
-        assert!(!page.is_done);
-    }
-
-    #[test]
-    fn a_malformed_page_is_an_error() {
-        for value in [
-            json!([1, 2]),
-            json!({"json": "[]", "isDone": true}),
-            json!({"json": "[]", "cursor": "c", "isDone": "yes"}),
-            json!({"cursor": "c", "isDone": true}),
-            json!({"json": "{}", "cursor": "c", "isDone": true}),
-        ] {
-            let error = read_page::<u32>(
-                queries::CLUB_ATHLETES,
-                answer(json!({"status": "success", "value": value})),
-            )
-            .unwrap_err();
-            assert_eq!(error.to_string(), UNREADABLE_MESSAGE, "{value}");
-        }
-    }
-
-    #[test]
-    fn pages_are_read_from_a_null_cursor_until_one_is_done() {
-        let mut pages = vec![
-            page(&[3], "c1", false),
-            page(&[], "c2", false),
-            page(&[2, 1], "c3", true),
-        ]
-        .into_iter();
-        let mut cursors = Vec::new();
-        let rows = ready(collect_pages("test:paged", |cursor| {
-            cursors.push(cursor);
-            let next = pages.next().expect("no more pages");
-            async move { Ok(next) }
-        }))
-        .unwrap();
-        assert_eq!(rows, [3, 2, 1]);
-        assert_eq!(
-            cursors,
-            [None, Some("c1".to_owned()), Some("c2".to_owned())]
-        );
-    }
-
-    #[test]
-    fn paging_stops_at_the_page_limit() {
-        let mut calls = 0;
-        let error = ready(collect_pages("test:paged", |_| {
-            calls += 1;
-            let next = page(&[calls], &format!("c{calls}"), false);
-            async move { Ok(next) }
-        }))
-        .unwrap_err();
-        assert_eq!(calls as usize, MAX_PAGES);
-        assert_eq!(error.to_string(), TOO_MANY_PAGES_MESSAGE);
-
-        let mut calls = 0;
-        let rows = ready(collect_pages("test:paged", |_| {
-            calls += 1;
-            let next = page(&[calls], "c", calls as usize == MAX_PAGES);
-            async move { Ok(next) }
-        }))
-        .unwrap();
-        assert_eq!(rows.len(), MAX_PAGES);
-    }
-
-    #[test]
-    fn a_failed_page_fails_the_whole_read() {
-        let mut calls = 0;
-        let error = ready(collect_pages::<u32, _, _>("test:paged", |_| {
-            calls += 1;
-            let result = if calls == 1 {
-                Ok(page(&[1], "c1", false))
-            } else {
-                Err(anyhow!("MeetCal could not answer: boom"))
-            };
-            async move { result }
-        }))
-        .unwrap_err();
-        assert_eq!(calls, 2);
-        assert_eq!(error.to_string(), "MeetCal could not answer: boom");
-    }
-
     #[test]
     fn function_errors_explain_themselves() {
         let error = read_response::<Value>(
@@ -1735,9 +1513,7 @@ mod tests {
         .unwrap_err();
         assert_eq!(error.to_string(), UNREADABLE_MESSAGE);
 
-        for message in [UNREADABLE_MESSAGE, TOO_MANY_PAGES_MESSAGE] {
-            assert!(!message.contains(':'), "{message}");
-        }
+        assert!(!UNREADABLE_MESSAGE.contains(':'));
     }
 
     #[test]

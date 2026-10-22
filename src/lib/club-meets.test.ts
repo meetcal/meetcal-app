@@ -1,7 +1,6 @@
 import { clubMeetsNewestFirst, formatClubMeetDate } from "@/lib/club-meets";
-import type { AthleteClub } from "@/types/club";
 
-const entry = (meet: string, meet_date?: string | null): AthleteClub => ({ member_id: "1", name: "Al", club: "Club", meet, meet_date });
+const entry = (meet: string, date?: string | null) => ({ meet, date });
 
 describe("clubMeetsNewestFirst (#341)", () => {
   it("puts the newest meet first, undated meets after by the year they are named for", () => {

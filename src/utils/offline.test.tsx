@@ -336,6 +336,7 @@ describe("useOfflineData delete all", () => {
     for (const key of [
       OFFLINE_CACHE_KEYS.nationalRankings,
       OFFLINE_CACHE_KEYS.clubAthletes,
+      OFFLINE_CACHE_KEYS.clubMeets,
       OFFLINE_CACHE_KEYS.clubMeetStats,
       OFFLINE_CACHE_KEYS.wsoRecordsFiltered,
     ]) {

@@ -276,14 +276,24 @@ test("meet center joins details, schedule, start list, and full results", async 
 test("club and WSO dashboards expose meet performance metrics", async ({ page }) => {
   await mockSubscribedUser(page);
   await routeQuery(page, "reference:clubs", (route) => route.fulfill(textAnswer(["Test Barbell"])));
-  // Paged when a cursor is sent: two pages, so the second meet only shows if the site reads past the first.
-  await routeQuery(page, "reference:clubAthletes", (route, args) => {
-    if (!("cursor" in args)) return route.fulfill(valueAnswer([{ meet: "Test Meet" }]));
-    if (args.cursor === null) return route.fulfill(valueAnswer({ json: JSON.stringify([{ meet: "Test Meet" }]), cursor: "page-2", isDone: false }));
-    return route.fulfill(valueAnswer({ json: JSON.stringify([{ meet: "Older Meet" }, { meet: "Test Meet" }, { meet: "Upcoming Meet" }]), cursor: "end", isDone: true }));
+  // The club's meets, newest first, from one bounded read (#209). The picker offers those with
+  // results, in that order: "Upcoming Meet" has none yet.
+  const clubMeetsAsked: unknown[] = [];
+  await routeQuery(page, "reference:clubMeets", (route, args) => {
+    clubMeetsAsked.push(args.club);
+    return route.fulfill(
+      valueAnswer({
+        meets: [
+          { meet: "Upcoming Meet", date: "2026-12-01", status: "upcoming", has_results: false },
+          { meet: "Test Meet", date: "2026-06-12", status: "completed", has_results: true },
+          { meet: "Older Meet", date: "2025-03-01", status: "completed", has_results: true },
+        ],
+        truncated: false,
+      }),
+    );
   });
-  // The picker lists the club's completed meets, newest first; "Upcoming Meet" has no results yet.
-  await routeQuery(page, "meets:completed", (route) => route.fulfill(textAnswer([{ ...completedMeet, name: "Older Meet", start_date: "2025-03-01", end_date: "2025-03-01" }, completedMeet])));
+  // The club's registrations are no longer read to list its meets.
+  await routeQuery(page, "reference:clubAthletes", (route) => route.abort("failed"));
   await routeQuery(page, "reference:clubMeetStats", (route) => route.fulfill(valueAnswer({ total_athletes: 1, gold_medals: 1, silver_medals: 0, bronze_medals: 0, total_prs: 1, perfect_6_for_6: 0, total_weight_lifted: 225, snatch_make_rate: 67, cj_make_rate: 67, combined_make_rate: 67, athlete_results: [{ name: "Test Athlete", weight_class: "69kg", snatch_best: 100, cj_best: 125, total: 225, body_weight: 70.5, medal: "Gold", snatch_medal: "Gold", cj_medal: "Gold", total_medal: "Gold", is_pr: true, perfect_lifts: false }] })));
   await page.goto("/club-dashboard");
   await page.getByLabel("Club").selectOption("Test Barbell");
@@ -293,8 +303,10 @@ test("club and WSO dashboards expose meet performance metrics", async ({ page })
   await expect(page.locator("tbody")).toContainText("Test Athlete");
   await expect(page.locator("tbody")).toContainText("Gold");
   await expect(page.locator("tbody")).not.toContainText("gold");
+  expect(clubMeetsAsked).toEqual(["Test Barbell"]);
 
   await routeQuery(page, "meets:list", (route) => route.fulfill(textAnswer([])));
+  await routeQuery(page, "meets:completed", (route) => route.fulfill(textAnswer([{ ...completedMeet, name: "Older Meet", start_date: "2025-03-01", end_date: "2025-03-01" }, completedMeet])));
   // The WSO choices are the roster's own WSOs (no reference:wsoList, which only lists WSOs with record sheets).
   const entrant = { member_id: "1", meet: "Test Meet", name: "Test Athlete", age: 27, club: "Test Barbell", wso: "California North", gender: "Female", weight_class: "69", entry_total: 220, adaptive: false, session_number: 1, session_platform: "Red" };
   await routeQuery(page, "meets:athletes", (route) => route.fulfill(textAnswer([entrant, { ...entrant, member_id: "2", name: "Other Athlete", wso: "Tennessee" }])));

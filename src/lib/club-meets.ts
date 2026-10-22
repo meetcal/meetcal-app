@@ -1,10 +1,9 @@
-import type { AthleteClub } from "@/types/club";
 import { meetCalendarDateAnchor } from "@/utils/dateTime";
 
 /** One meet a club entered, with its first day when the backend knows it. */
 export interface ClubMeet {
   meet: string;
-  /** `YYYY-MM-DD` in the meet's calendar, or null (an older answer, or a roster with no meet row). */
+  /** `YYYY-MM-DD` in the meet's calendar, or null (no meet row, or an older answer). */
   date: string | null;
 }
 
@@ -17,13 +16,15 @@ function nameYear(meet: string): number {
 /**
  * A club's distinct meets, newest first (#341): by date, then a meet with no
  * date by the year its name starts with, then by name. A coach opens the
- * club's recap for the meet that just finished, so it comes first.
+ * club's recap for the meet that just finished, so it comes first. A date
+ * that is not a calendar date is no date; a meet listed twice keeps a date
+ * either listing has.
  */
-export function clubMeetsNewestFirst(athletes: readonly AthleteClub[]): ClubMeet[] {
+export function clubMeetsNewestFirst(meets: readonly { meet: string; date?: string | null }[]): ClubMeet[] {
   const dates = new Map<string, string | null>();
-  for (const athlete of athletes) {
-    const date = meetCalendarDateAnchor(athlete.meet_date) ? athlete.meet_date! : null;
-    if (!dates.has(athlete.meet) || (dates.get(athlete.meet) === null && date !== null)) dates.set(athlete.meet, date);
+  for (const { meet, date: given } of meets) {
+    const date = meetCalendarDateAnchor(given) ? given! : null;
+    if (!dates.has(meet) || (dates.get(meet) === null && date !== null)) dates.set(meet, date);
   }
   return [...dates]
     .map(([meet, date]) => ({ meet, date }))

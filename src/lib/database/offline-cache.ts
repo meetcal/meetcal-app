@@ -17,7 +17,10 @@ export const OFFLINE_CACHE_KEYS = {
   adaptiveRecords: '@offline_cache/adaptive_records',
   nationalRankings: '@offline_cache/national_rankings',
   clubs: '@offline_cache/clubs',
+  // Club athlete lists cached before #209: read for their meets until a club
+  // is browsed again (`fetch-club-stats`), and cleared with the browse caches.
   clubAthletes: '@offline_cache/club_athletes',
+  clubMeets: '@offline_cache/club_meets',
   clubMeetStats: '@offline_cache/club_meet_stats',
 } as const;
 
@@ -175,6 +178,22 @@ export async function writeBoundedCacheEntry<T>(
 }
 
 /**
+ * Removes one entry from a cache written by `writeBoundedCacheEntry`, and the
+ * cache itself once it holds none, on the same write chain.
+ */
+export async function removeBoundedCacheEntry(cacheKey: string, entryKey: string): Promise<void> {
+  await browseCacheWrites(cacheKey, async () => {
+    const entry = await getOfflineCache<unknown>(cacheKey);
+    if (!entry) return;
+    const records = readBoundedRecords(entry);
+    const kept = records.filter((r) => r.key !== entryKey);
+    if (kept.length === records.length) return;
+    if (kept.length === 0) await clearOfflineCache(cacheKey);
+    else await setOfflineCache(cacheKey, kept);
+  });
+}
+
+/**
  * Caches filled by browsing (not by an explicit download), which the offline
  * screen's per-item rows do not list. "Delete All" and "Clear Cache" must
  * still remove them.
@@ -184,6 +203,7 @@ export const BROWSE_CACHE_KEYS = [
   OFFLINE_CACHE_KEYS.nationalRankings,
   OFFLINE_CACHE_KEYS.clubs,
   OFFLINE_CACHE_KEYS.clubAthletes,
+  OFFLINE_CACHE_KEYS.clubMeets,
   OFFLINE_CACHE_KEYS.clubMeetStats,
   OFFLINE_CACHE_KEYS.wsoRecordsFiltered,
 ] as const;
