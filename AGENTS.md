@@ -77,7 +77,7 @@ Package manager is **bun**, pinned in `mise.toml`. Do not use npm.
 | iOS for iPhone Duo | `DEVELOPER_DIR="/Applications/Xcode copy.app/Contents/Developer" bun run ios --device <duo-udid>` (needs the iOS 27.1 SDK; see `docs/iphone-duo.md`) |
 | Prod OTA | `bun run update:prod` (production only) |
 
-Type checking uses [tsrs](https://github.com/oxc-project/tsrs), the Rust port of the TypeScript 7 compiler, here and in `web/`. The `typescript` 6 package stays installed only for ESLint (typescript-eslint does not support TypeScript 7) and for the Convex CLI's own deploy-time typecheck, which can only run `tsc` or `tsgo`; do not use it for type checking.
+Type checking uses [tsrs](https://github.com/oxc-project/tsrs), the Rust port of the TypeScript 7 compiler, here and in `web/`. The Convex CLI's own typecheck (on `convex dev` and deploy) can only run `tsc` or `tsgo`, so it uses TypeScript 7, installed as `@typescript/native` (an alias of `typescript@7`), which the CLI looks for before `typescript`. The `typescript` package is TypeScript 6 and stays only for ESLint, which does not support TypeScript 7; do not use it for type checking.
 
 `mise tasks ls` lists the app, Convex, build, submit, update, and compatibility tasks. Build, submit, deploy, and update tasks have external side effects; run them only when authorized. The EAS iOS build task uses the cloud image; use the local Xcode 27.1 path in `docs/iphone-duo.md` for a Duo-optimized store build.
 
