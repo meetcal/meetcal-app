@@ -3,7 +3,7 @@
 import { v } from 'convex/values';
 import { internalAction } from '../_generated/server';
 import { internal } from '../_generated/api';
-import { fetchText } from './lib/http';
+import { fetchPageText } from './lib/incompleteChain';
 import { EVENTS_URL, parseUsamwEvents, type UsamwEvent } from './parse/usamwEvents';
 import { sourcesFailed, type SourceFailure } from '../lib/cronAlerts';
 import { renamedMeetMessage } from './meets';
@@ -45,7 +45,7 @@ export function usamwEventFailures(result: Pick<SyncResult, 'ambiguousEvents' | 
 export const run = internalAction({
   args: { dryRun: v.optional(v.boolean()) },
   handler: async (ctx, { dryRun }): Promise<RunResult> => {
-    const events = parseUsamwEvents(await fetchText(EVENTS_URL, 45_000));
+    const events = parseUsamwEvents(await fetchPageText(EVENTS_URL, 45_000));
     if (events.length === 0) throw new Error('usamw events: parsed 0 events');
     // Synced without a zone: a stored meet keeps its own, a new one gets a blank one.
     for (const event of events) if (event.timeZone === undefined) console.warn(`usamw events: no time zone for ${event.name} (${event.venueCity}, ${event.venueState})`);
