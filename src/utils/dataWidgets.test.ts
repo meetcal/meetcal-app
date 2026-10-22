@@ -21,6 +21,7 @@ import {
   WidgetSettings,
 } from "@/utils/dataWidgets";
 import type { IntlRanking } from "@/lib/database/fetchIntlRankings";
+import type { QualifyingTotalsData } from "@/lib/database/fetch-qualifying-totals";
 
 jest.mock("@react-native-async-storage/async-storage", () => ({
   getItem: jest.fn(),
@@ -342,6 +343,23 @@ describe("widget filter policy", () => {
       ).toBe("Pan Ams");
     });
 
+    it("heals a retired event to the newest season's Nationals and lists newest first", () => {
+      const seasons: QualifyingTotalsData = {
+        "2026 Virus Finals": { Senior: { Men: { "60kg": 183 }, Women: {} } },
+        "2027 Nationals": { Senior: { Men: { "60kg": 209 }, Women: {} } },
+        "2027 Nationals (Adaptive)": { Senior: { Men: { "60kg": 105 }, Women: {} } },
+      };
+      expect(buildWidgetFilterOptions(seasons, []).events).toEqual([
+        "2027 Nationals",
+        "2027 Nationals (Adaptive)",
+        "2026 Virus Finals",
+      ]);
+      expect(
+        normalizeWidgetSettings(defaultWidgetSettings, seasons, rankings)
+          .qualifyingTotals.event,
+      ).toBe("2027 Nationals");
+    });
+
     it("heals an event and re-picks the age group the new event offers", () => {
       const settings: WidgetSettings = {
         ...defaultWidgetSettings,
@@ -351,8 +369,12 @@ describe("widget filter policy", () => {
           ageGroup: "Junior",
         },
       };
-      const healed = normalizeWidgetSettings(settings, totalsData, rankings);
-      // "American Open" sorts first and only carries Senior.
+      // With no Nationals to heal to, the first event, which only carries Senior.
+      const healed = normalizeWidgetSettings(
+        settings,
+        { "American Open": totalsData["American Open"] },
+        rankings,
+      );
       expect(healed.qualifyingTotals.event).toBe("American Open");
       expect(healed.qualifyingTotals.ageGroup).toBe("Senior");
     });

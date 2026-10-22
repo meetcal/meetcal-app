@@ -1546,7 +1546,8 @@ const qualifyingTotalRow = v.object({
  * syncs a record type: gender and age normalized, classes missing from the
  * payload deleted, the rest written only where they changed. An empty
  * payload or a duplicate class is refused (a failed load, not an event
- * without totals). The only writer of `qualifying_totals`:
+ * without totals). With `renameQualifyingTotalSet` and
+ * `deleteQualifyingTotalSet`, the only writers of `qualifying_totals`:
  *
  *   npx convex run ingest:replaceQualifyingTotalSet '{"eventName":"…","rows":[…]}'
  */
@@ -1596,6 +1597,55 @@ export const replaceQualifyingTotalSet = internalMutation({
       await recordWrite(ctx, 'qualifying_totals', [{ kind: 'table', key: 'qualifying_totals' }]);
     }
     return counts;
+  },
+});
+
+/**
+ * Renames one event's qualifying totals, as when a season's sets gain their
+ * year ("Virus Series" -> "2026 Virus Series"). Refuses a missing source or
+ * a name already in use, so two sets never merge.
+ *
+ *   npx convex run ingest:renameQualifyingTotalSet '{"from":"…","to":"…"}'
+ */
+export const renameQualifyingTotalSet = internalMutation({
+  args: { from: v.string(), to: v.string() },
+  handler: async (ctx, { from, to }) => {
+    if (!to.trim()) throw new Error('to is required');
+    if (from === to) throw new Error(`${from} already has that name`);
+    const taken = await ctx.db
+      .query('qualifying_totals')
+      .withIndex('by_event', (q) => q.eq('eventName', to))
+      .first();
+    if (taken) throw new Error(`refusing to rename ${from} qualifying totals onto existing event ${to}`);
+    const rows = await ctx.db
+      .query('qualifying_totals')
+      .withIndex('by_event', (q) => q.eq('eventName', from))
+      .collect();
+    if (!rows.length) throw new Error(`no ${from} qualifying totals to rename`);
+    for (const row of rows) await ctx.db.patch(row._id, { eventName: to });
+    await recordWrite(ctx, 'qualifying_totals', [{ kind: 'table', key: 'qualifying_totals' }]);
+    return { renamed: rows.length };
+  },
+});
+
+/**
+ * Deletes one event's qualifying totals, for a set that no longer qualifies
+ * anyone (its classes retired, its events over). Refuses an unknown event, so
+ * a misspelled name is an error rather than a no-op.
+ *
+ *   npx convex run ingest:deleteQualifyingTotalSet '{"eventName":"…"}'
+ */
+export const deleteQualifyingTotalSet = internalMutation({
+  args: { eventName: v.string() },
+  handler: async (ctx, { eventName }) => {
+    const rows = await ctx.db
+      .query('qualifying_totals')
+      .withIndex('by_event', (q) => q.eq('eventName', eventName))
+      .collect();
+    if (!rows.length) throw new Error(`no ${eventName} qualifying totals to delete`);
+    for (const row of rows) await ctx.db.delete(row._id);
+    await recordWrite(ctx, 'qualifying_totals', [{ kind: 'table', key: 'qualifying_totals' }]);
+    return { deleted: rows.length };
   },
 });
 

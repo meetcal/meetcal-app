@@ -5,6 +5,8 @@ import {
   pruneEventResults,
   replaceMeetAthletes,
   replaceMeetSchedule,
+  deleteQualifyingTotalSet,
+  renameQualifyingTotalSet,
   replaceQualifyingTotalSet,
   replaceWsoRecordSet,
   setMeetSourceId,
@@ -582,5 +584,33 @@ describe('qualifying totals writer (#135)', () => {
     const { ctx } = fakeMutationCtx();
     await expect(replace(ctx, { eventName: 'Nationals', rows: [] })).rejects.toThrow('empty payload');
     await expect(replace(ctx, { eventName: 'Nationals', rows: [total('64', 1), total('64', 2, { gender: 'Women' })] })).rejects.toThrow('Duplicate');
+  });
+
+  const rename = handlerOf<{ from: string; to: string }, Record<string, number>>(renameQualifyingTotalSet);
+  const remove = handlerOf<{ eventName: string }, Record<string, number>>(deleteQualifyingTotalSet);
+  const stored = (eventName: string, weightClass: string) => ({ eventName, ageCategory: 'Senior', gender: 'Women', weightClass, qualifyingTotal: 150 });
+
+  it("renames one event's totals and leaves the others", async () => {
+    const { ctx, rows, scheduled } = fakeMutationCtx({
+      qualifying_totals: [stored('Virus Series', '64'), stored('Virus Series', '71'), stored('Nationals', '71')],
+    });
+    expect(await rename(ctx, { from: 'Virus Series', to: '2026 Virus Series' })).toEqual({ renamed: 2 });
+    expect(rows('qualifying_totals').map((r) => r.eventName)).toEqual(['2026 Virus Series', '2026 Virus Series', 'Nationals']);
+    expect(scheduled.map((s) => s.name)).toEqual(['views:refresh']);
+  });
+
+  it('refuses to rename a missing event or onto an existing one', async () => {
+    const { ctx, rows } = fakeMutationCtx({ qualifying_totals: [stored('Virus Series', '64'), stored('2026 Virus Series', '71')] });
+    await expect(rename(ctx, { from: 'Missing', to: 'Anything' })).rejects.toThrow('no Missing');
+    await expect(rename(ctx, { from: 'Virus Series', to: '2026 Virus Series' })).rejects.toThrow('existing event');
+    await expect(rename(ctx, { from: 'Virus Series', to: ' ' })).rejects.toThrow('required');
+    expect(rows('qualifying_totals').map((r) => r.eventName)).toEqual(['Virus Series', '2026 Virus Series']);
+  });
+
+  it("deletes one event's totals and refuses an unknown event", async () => {
+    const { ctx, rows } = fakeMutationCtx({ qualifying_totals: [stored('Nationals', '64'), stored('Nationals', '71'), stored('Other', '71')] });
+    expect(await remove(ctx, { eventName: 'Nationals' })).toEqual({ deleted: 2 });
+    expect(rows('qualifying_totals')).toEqual([stored('Other', '71')]);
+    await expect(remove(ctx, { eventName: 'Nationals' })).rejects.toThrow('no Nationals');
   });
 });
