@@ -13,7 +13,6 @@ export type MutableResourceConfig<T, TParams extends readonly unknown[]> = {
     data: T,
     ...params: TParams
   ) => Promise<ResourceCacheEntry<T> | null | void>;
-  clearCached?: (...params: TParams) => Promise<void>;
   isEqual?: (left: T, right: T) => boolean;
   /**
    * Whether a fresh answer is handed to every subscriber of its key (see
@@ -64,7 +63,6 @@ export type MutableResource<T, TParams extends readonly unknown[]> = {
     /** False when the answer changed and could not be stored. */
     stored?: boolean;
   }>;
-  invalidate: (...params: TParams) => Promise<void>;
   /**
    * Hear every successful revalidate of `key`, whoever started it (a screen,
    * a pull to refresh, the background `SyncManager`), so every mounted copy
@@ -149,26 +147,7 @@ export function createMutableResource<T, TParams extends readonly unknown[]>(
       }>;
     }
 
-    // `inFlightRequests` is keyed by resource key, and `invalidate` drops the
-    // entry while the request is still running. A plain `delete(key)` in the
-    // settle handler therefore deletes whatever is registered *now*, which
-    // after an invalidate + restart is the newer request — leaving the map
-    // empty while a request is live, so the next caller issues a duplicate
-    // fetch instead of joining. Only the owner clears its own entry.
-    let request: Promise<{
-      data: T;
-      changed: boolean;
-      lastUpdatedAt: number | null;
-      source: "network";
-      stored?: boolean;
-    }>;
-    const releaseKey = () => {
-      if (inFlightRequests.get(key) === request) {
-        inFlightRequests.delete(key);
-      }
-    };
-
-    request = (async () => {
+    const request = (async (): Promise<ResourceRevalidation<T>> => {
       const cacheEntry = cached === undefined
         ? await config.loadCached(...params)
         : cached;
@@ -210,7 +189,7 @@ export function createMutableResource<T, TParams extends readonly unknown[]>(
       };
       publish(key, result);
       return result;
-    })().finally(releaseKey);
+    })().finally(() => inFlightRequests.delete(key));
 
     inFlightRequests.set(key, request);
     return request;
@@ -222,13 +201,6 @@ export function createMutableResource<T, TParams extends readonly unknown[]>(
     revalidate: async (...params) => revalidateWithCached(undefined, ...params),
     revalidateWithCached: async (cached, ...params) =>
       revalidateWithCached(cached as ResourceCacheEntry<T> | null, ...params),
-    invalidate: async (...params) => {
-      const key = config.getKey(...params);
-      inFlightRequests.delete(key);
-      if (config.clearCached) {
-        await config.clearCached(...params);
-      }
-    },
     subscribe: (key, listener) => {
       let keyListeners = listeners.get(key);
       if (!keyListeners) {

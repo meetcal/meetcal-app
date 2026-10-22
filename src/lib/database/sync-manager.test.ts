@@ -11,7 +11,6 @@ const mockIsNetworkAvailable = jest.fn(async () => true);
 jest.mock("@/lib/database/offline-store", () => ({
   saveMeetSchedule: (...args: unknown[]) => mockSaveMeetSchedule(...(args as [])),
   getMeetSchedule: () => mockGetMeetSchedule(),
-  clearMeetSchedule: jest.fn(async () => undefined),
   markMeetScheduleVerified: (...args: unknown[]) => mockMarkVerified(...(args as [])),
 }));
 jest.mock("@/lib/database/queries", () => ({
