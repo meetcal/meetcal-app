@@ -16,7 +16,7 @@ const gateFiles = /^(?:scripts\/check(?:-lock)?\.ts|scripts\/check\/.*|mise\.tom
 /**
  * Everything the app's lint, typecheck and Jest read: its sources and tests,
  * native config and plugins, and the Convex backend (`convex-tests/` runs in
- * the same Jest, and `tsc` covers `convex/`). The coverage-gap report the gate
+ * the same Jest, and `tsrs` covers `convex/`). The coverage-gap report the gate
  * runs lives under `.codex/`.
  */
 const appRoots = /^(?:src|convex|convex-tests|widget|plugins|assets|targets|jest|patches|scripts)\//;

@@ -67,7 +67,7 @@ Package manager is **bun**, pinned in `mise.toml`. Do not use npm.
 | Full local PR gate | `mise run check` (`-- --plan` to see what it will run, `-- --all` for every suite) |
 | Dev client | `bun run start` / `bun run dev` |
 | Lint | `bun run lint` |
-| Typecheck | `bun run typecheck` (or `bunx tsc --noEmit`) |
+| Typecheck | `bun run typecheck` (or `bunx tsrs --noEmit`) |
 | Unit tests | `bunx jest --ci --watchman=false` |
 | Watch tests | `bun run test` |
 | Coverage | `bun run test:coverage` |
@@ -76,6 +76,8 @@ Package manager is **bun**, pinned in `mise.toml`. Do not use npm.
 | iOS / Android | `bun run ios` / `bun run android` |
 | iOS for iPhone Duo | `DEVELOPER_DIR="/Applications/Xcode copy.app/Contents/Developer" bun run ios --device <duo-udid>` (needs the iOS 27.1 SDK; see `docs/iphone-duo.md`) |
 | Prod OTA | `bun run update:prod` (production only) |
+
+Type checking uses [tsrs](https://github.com/oxc-project/tsrs), the Rust port of the TypeScript 7 compiler, here and in `web/`. The `typescript` 6 package stays installed only for ESLint (typescript-eslint does not support TypeScript 7) and for the Convex CLI's own deploy-time typecheck, which can only run `tsc` or `tsgo`; do not use it for type checking.
 
 `mise tasks ls` lists the app, Convex, build, submit, update, and compatibility tasks. Build, submit, deploy, and update tasks have external side effects; run them only when authorized. The EAS iOS build task uses the cloud image; use the local Xcode 27.1 path in `docs/iphone-duo.md` for a Duo-optimized store build.
 
@@ -141,7 +143,7 @@ Mechanics and tests are in `docs/testing.md`.
 7. **Check return values of calls.** Timeouts, 404 vs network error, and Clerk `getToken()` failure are distinct.
 8. **Limit preprocessor / magic.** One API base URL, one mapper family.
 9. **Limit pointers / aliases.** Don't keep a second copy of meet time policy in a screen.
-10. **Compile with warnings; test the edges.** Lint + `tsc --noEmit` + Jest, including malformed payloads.
+10. **Compile with warnings; test the edges.** Lint + `tsrs --noEmit` + Jest, including malformed payloads.
 
 ### TigerStyle (adapted)
 

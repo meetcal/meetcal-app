@@ -10,7 +10,7 @@
     "test": "jest --watchAll",
     "test:ci": "jest --ci --watchman=false",
     "test:coverage": "jest --ci --watchman=false --coverage --coverageDirectory=coverage --coverageReporters=text-summary --coverageReporters=lcov",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsrs --noEmit",
     "lint": "expo lint --max-warnings 0",
     "maestro:bootstrap": "xcrun simctl terminate booted ${APP_ID:-com.memohnsen.meetcal} || true; xcrun simctl openurl booted \"${DEV_CLIENT_URL:-exp+meetcal://expo-development-client/?url=http%3A%2F%2F192.168.0.114%3A8081}\"",
     "maestro:test": "bun scripts/metro-lock.ts bun scripts/maestro-session.ts .maestro",
@@ -133,6 +133,7 @@
     "mupdf": "^1.28.1",
     "react-test-renderer": "19.3.0",
     "supports-color": "^8.1.1",
+    "tsrs": "0.18.0-ts7.1.0-dev.20260929",
     "typescript": "~6.0.3",
     "webpack": "^5.105.2"
   },
