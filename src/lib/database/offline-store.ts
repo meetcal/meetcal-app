@@ -1515,36 +1515,6 @@ export async function saveMeetSchedule(meetId: string, schedule: Schedule): Prom
   });
 }
 
-export async function clearMeetSchedule(meetId: string): Promise<void> {
-  return meetDataWrites(meetId, async () => {
-    try {
-      const scheduleKey = `${SCHEDULE_KEY_PREFIX}${meetId}`;
-      await AsyncStorage.removeItem(scheduleKey);
-
-      await updateStore((store) => {
-        const currentAthletesKey =
-          store.meets[meetId]?.athletesKey || `${ATHLETES_KEY_PREFIX}${meetId}`;
-        const currentLiftingResultsKey =
-          store.meets[meetId]?.liftingResultsKey ||
-          `${LIFTING_RESULTS_KEY_PREFIX}${meetId}`;
-
-        store.meets[meetId] = {
-          schedule: null,
-          scheduleKey,
-          athletesKey: currentAthletesKey,
-          athletes: [],
-          liftingResultsKey: currentLiftingResultsKey,
-          lastSyncTime: Date.now(),
-          athletesSyncedAt: store.meets[meetId]?.athletesSyncedAt ?? 0,
-        };
-      });
-    } catch (error) {
-      console.error('Error clearing meet schedule:', error);
-      throw error;
-    }
-  });
-}
-
 /**
  * A meet's stored schedule, `[]` when there is none (or it does not parse).
  *

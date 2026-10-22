@@ -14,7 +14,6 @@ jest.mock("@/lib/database/offline-store", () => ({
   getMeetSchedule: (meet: string) => mockGetMeetSchedule(meet),
   getMeetWriteGeneration: (meet: string) => mockGenerations.get(meet) ?? 0,
   saveMeetSchedule: jest.fn(async () => undefined),
-  clearMeetSchedule: jest.fn(async () => undefined),
 }));
 jest.mock("@/lib/database/queries", () => ({
   fetchSchedule: jest.fn(async () => []),

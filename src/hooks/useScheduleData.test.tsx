@@ -13,14 +13,12 @@ import {
 
 const mockGetMeetSchedule = jest.fn<Promise<Schedule>, [string]>();
 const mockSaveMeetSchedule = jest.fn<Promise<void>, [string, Schedule]>();
-const mockClearMeetSchedule = jest.fn<Promise<void>, [string]>();
 const mockFetchSchedule = jest.fn<Promise<Schedule>, [string]>();
 
 jest.mock("@/lib/database/offline-store", () => ({
   getMeetSchedule: (meet: string) => mockGetMeetSchedule(meet),
   saveMeetSchedule: (meet: string, schedule: unknown) =>
     mockSaveMeetSchedule(meet, schedule as never),
-  clearMeetSchedule: (meet: string) => mockClearMeetSchedule(meet),
   getMeetWriteGeneration: () => 0,
 }));
 
@@ -80,7 +78,6 @@ describe("useScheduleData", () => {
     resetSchedulePrimeForTests();
     captured = null;
     mockSaveMeetSchedule.mockResolvedValue(undefined);
-    mockClearMeetSchedule.mockResolvedValue(undefined);
   });
 
   it("paints a primed schedule from the cache without reading the store again", async () => {
@@ -220,7 +217,6 @@ describe("useScheduleData", () => {
     });
     await flush();
 
-    expect(mockClearMeetSchedule).not.toHaveBeenCalled();
     expect(mockSaveMeetSchedule).not.toHaveBeenCalled();
 
     act(() => {
@@ -241,7 +237,6 @@ describe("useScheduleData", () => {
     expect(mockSaveMeetSchedule).toHaveBeenCalledWith("Fresh Schedule Meet", [
       DAY,
     ]);
-    expect(mockClearMeetSchedule).not.toHaveBeenCalled();
     expect(captured!.schedule).toEqual([DAY]);
 
     act(() => {

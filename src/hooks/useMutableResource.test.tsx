@@ -406,30 +406,6 @@ describe("useMutableResource", () => {
     expect(captured!.isRefreshing).toBe(false);
   });
 
-  it("does not clear a new selection when an old invalidation finishes", async () => {
-    let finishInvalidation!: () => void;
-    const resource = createMutableResource<Row[], [string]>({
-      getKey: (param) => `invalidate-switch:${param}`,
-      loadCached: async () => null,
-      fetchFresh: async (param) => [{ id: param }],
-      persistFresh: async (data) => ({ data, lastUpdatedAt: 1 }),
-      clearCached: () => new Promise<void>((resolve) => {
-        finishInvalidation = resolve;
-      }),
-    });
-    const { update } = harness(resource, "a");
-    await flush();
-    const invalidation = captured!.invalidate();
-    update("b");
-    await flush();
-    await act(async () => {
-      finishInvalidation();
-      await invalidation;
-    });
-    expect(captured!.data).toEqual([{ id: "b" }]);
-    expect(captured!.isInitialLoading).toBe(false);
-  });
-
   it("reports a new key failure as an initial error after a warm previous key", async () => {
     const resource = createMutableResource<Row[], [string]>({
       getKey: (param) => `warm-switch:${param}`,

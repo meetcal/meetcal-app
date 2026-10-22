@@ -1,7 +1,6 @@
 import type { MeetName } from "@/data/types/meet";
 import { createMutableResource, defaultIsEqual } from "@/lib/data/mutable-resource";
 import {
-  clearMeetSchedule,
   getMeetSchedule,
   getMeetWriteGeneration,
   saveMeetSchedule,
@@ -104,17 +103,13 @@ export const scheduleResource = createMutableResource<Schedule, [MeetName]>({
     // nothing to fall back on. Every other writer takes the opposite stance
     // for the same payload: `saveMeetSchedule` rejects an empty schedule
     // outright, and both prefetch paths in `meet-manager` guard on
-    // `schedule.length > 0`. Explicit invalidation still goes through
-    // `clearCached` below.
+    // `schedule.length > 0`.
     if (data.length === 0) {
       return null;
     }
 
     await saveMeetSchedule(meet, data);
     return { data, lastUpdatedAt: Date.now() };
-  },
-  clearCached: async (meet) => {
-    await clearMeetSchedule(meet);
   },
   isEqual: defaultIsEqual,
   // For the same reason, an empty answer is not pushed onto screens that are

@@ -32,7 +32,6 @@ export type MutableResourceState<T> = {
    * so; `true` otherwise, a request the screen moved on from included.
    */
   refresh: () => Promise<boolean>;
-  invalidate: () => Promise<void>;
 };
 
 type UseMutableResourceOptions<T, TParams extends readonly unknown[]> = {
@@ -175,32 +174,10 @@ export function useMutableResource<T, TParams extends readonly unknown[]>(
     };
   }, []);
 
-  const invalidate = useCallback(async () => {
-    const activeParams = paramsRef.current;
-    if (activeParams === null) return;
-    const requestKey = resource.getKey(...activeParams);
-    await resource.invalidate(...activeParams);
-    const currentParams = paramsRef.current;
-    if (
-      !mountedRef.current ||
-      currentParams === null ||
-      resource.getKey(...currentParams) !== requestKey
-    ) return;
-    setData(initialDataRef.current);
-    setError(null);
-    setRefreshError(null);
-    setLastUpdatedAt(null);
-    setSource(null);
-    setIsInitialLoading(true);
-    setIsRefreshing(false);
-  }, [resource]);
-
   const refreshResource = useCallback(
     () => refresh(sourceRef.current !== null),
     [refresh],
   );
-
-  const invalidateResource = useCallback(() => invalidate(), [invalidate]);
 
   useEffect(() => {
     let cancelled = false;
@@ -331,6 +308,5 @@ export function useMutableResource<T, TParams extends readonly unknown[]>(
     lastUpdatedAt,
     source,
     refresh: refreshResource,
-    invalidate: invalidateResource,
   };
 }

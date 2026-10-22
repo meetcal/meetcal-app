@@ -12,7 +12,6 @@ const mockFetchSchedule = jest.fn<Promise<Schedule>, [string]>();
 jest.mock("@/lib/database/offline-store", () => ({
   getMeetSchedule: (meet: string) => mockGetMeetSchedule(meet),
   saveMeetSchedule: jest.fn(async () => undefined),
-  clearMeetSchedule: jest.fn(async () => undefined),
   markMeetScheduleVerified: jest.fn(async () => false),
 }));
 jest.mock("@/lib/database/queries", () => ({
