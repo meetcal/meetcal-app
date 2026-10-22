@@ -1,5 +1,5 @@
 /** Fetch helpers for the scrapers: a browser User-Agent, a timeout, and a status check. */
-const USER_AGENT = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36';
+export const USER_AGENT = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36';
 const DEFAULT_TIMEOUT_MS = 30_000;
 
 async function get(url: string, timeoutMs: number, headers: Record<string, string> = {}): Promise<Response> {

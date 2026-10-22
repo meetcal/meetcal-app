@@ -3,7 +3,8 @@
 import { v } from 'convex/values';
 import { internalAction } from '../_generated/server';
 import { internal } from '../_generated/api';
-import { fetchBytes, fetchText } from './lib/http';
+import { fetchBytes } from './lib/http';
+import { fetchPageText } from './lib/incompleteChain';
 import { pdfLines } from './lib/pdf';
 import { previewPrune, writeThenPrune } from './lib/prune';
 import { discoverRecordPdfs, PAGE_URL, parseRecordPages, type UsamwRecord } from './parse/usamw';
@@ -23,7 +24,7 @@ export const run = internalAction({
   // `ingest.pruneRecords`), after checking the source by hand.
   args: { dryRun: v.optional(v.boolean()), allowShrink: v.optional(v.boolean()) },
   handler: async (ctx, { dryRun, allowShrink }): Promise<RunResult> => {
-    const urls = discoverRecordPdfs(await fetchText(PAGE_URL, 45_000));
+    const urls = discoverRecordPdfs(await fetchPageText(PAGE_URL, 45_000));
     const records: UsamwRecord[] = [];
     for (const gender of ['Men', 'Women'] as const) {
       const pages = await pdfLines(await fetchBytes(urls[gender], 45_000), { xTolerance: 2, yTolerance: 2 });
