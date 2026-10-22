@@ -5,6 +5,7 @@ import {
   MAX_PLAUSIBLE_CLOCK_SKEW_MS,
   type ServerClockSample,
 } from '@/lib/api/meetcal-api';
+import { exactAlarmsFromStatus, readExactAlarmStatus } from '@/lib/exact-alarms';
 import { devLog } from '@/lib/logger';
 import { getMeetSchedule } from '@/lib/database/offline-store';
 import {
@@ -134,6 +135,11 @@ export interface ScheduledReminder {
    * builds that scheduled on the device clock (so it equals `triggerAtMs`).
    */
   fireAtMs?: number | null;
+  /**
+   * Whether Android set it as an exact alarm; `null` where that is not
+   * tracked (iOS, Android before 12, older builds).
+   */
+  exact?: boolean | null;
 }
 
 function finiteOrNull(value: unknown): number | null {
@@ -158,6 +164,7 @@ export function toScheduledReminders(
       id: identifier,
       triggerAtMs: finiteOrNull(data.triggerAtMs),
       fireAtMs: finiteOrNull(data.fireAtMs),
+      exact: typeof data.exact === 'boolean' ? data.exact : null,
     });
   }
   return reminders;
@@ -176,6 +183,14 @@ export interface ReminderPlanInput {
    * unknown, often just offline): their pending reminder is left alone.
    */
   unresolvedIds: ReadonlySet<string>;
+  /**
+   * Whether a reminder scheduled now is an exact alarm (Android 12+), or
+   * `null` where that is not tracked. Android leaves an alarm set without
+   * the permission inexact after it is granted, and cancels exact alarms
+   * when it is revoked, so a pending reminder set under the other answer is
+   * scheduled again.
+   */
+  exactAlarms?: boolean | null;
 }
 
 export interface ReminderPlan {
@@ -194,6 +209,7 @@ export function planReminderSync({
   savedIds,
   desired,
   unresolvedIds,
+  exactAlarms = null,
 }: ReminderPlanInput): ReminderPlan {
   if (policy === 'off') {
     return { cancel: scheduled.map((reminder) => reminder.id), schedule: [] };
@@ -220,6 +236,17 @@ export function planReminderSync({
   for (const [id, reminder] of desired) {
     const current = pending.get(id);
     if (current && current.triggerAtMs === reminder.triggerAtMs) {
+      const exactnessChanged = exactAlarms !== null && (current.exact ?? null) !== exactAlarms;
+      if (exactnessChanged && reminder.skewUnknown) {
+        // Set it again at the time it already has, which may carry a clock
+        // correction this sync cannot check.
+        schedule.push({ ...reminder, fireAtMs: current.fireAtMs ?? current.triggerAtMs });
+        continue;
+      }
+      if (exactnessChanged) {
+        schedule.push(reminder);
+        continue;
+      }
       if (reminder.skewUnknown) continue;
       // The device clock was corrected (or found wrong) since it was
       // scheduled: the OS would fire it by the old reading.
@@ -243,6 +270,11 @@ export interface ReminderSyncDeps {
   timeZoneFor: (meet: MeetName) => Promise<string | null>;
   /** The latest schedule the device has for the meet (may be empty). */
   readSchedule: (meet: MeetName) => Promise<ScheduleType>;
+  /**
+   * Whether reminders scheduled now are exact alarms (`exactAlarmsFromStatus`).
+   * Taken as `null` (not tracked) when omitted.
+   */
+  exactAlarms?: () => Promise<boolean | null>;
 }
 
 export const defaultReminderSyncDeps: ReminderSyncDeps = {
@@ -260,6 +292,7 @@ export const defaultReminderSyncDeps: ReminderSyncDeps = {
   // The offline copy, which the schedule resource rewrites on every fetch:
   // no network request per sync.
   readSchedule: (meet) => getMeetSchedule(meet),
+  exactAlarms: async () => exactAlarmsFromStatus(await readExactAlarmStatus()),
 };
 
 /** `YYYY-MM-DD` dates before this cannot be upcoming anywhere. */
@@ -353,7 +386,10 @@ export async function resolveDesiredReminders(
   return { desired, unresolvedIds };
 }
 
-async function scheduleReminder({ session, triggerAtMs, fireAtMs }: DesiredReminder): Promise<void> {
+async function scheduleReminder(
+  { session, triggerAtMs, fireAtMs }: DesiredReminder,
+  exactAlarms: boolean | null,
+): Promise<void> {
   await scheduleNotification(
     'Session Reminder',
     `Session ${session.sessionNumber} ${session.platform} starts in 1 hour.`,
@@ -369,7 +405,12 @@ async function scheduleReminder({ session, triggerAtMs, fireAtMs }: DesiredRemin
       weighInTime: session.weighInTime,
       date: session.date,
     },
-    { kind: SESSION_REMINDER_KIND, triggerAtMs, fireAtMs },
+    {
+      kind: SESSION_REMINDER_KIND,
+      triggerAtMs,
+      fireAtMs,
+      ...(exactAlarms === null ? {} : { exact: exactAlarms }),
+    },
   );
 }
 
@@ -390,12 +431,14 @@ export async function syncSessionReminders(
       policy === 'on'
         ? await resolveDesiredReminders(sessions, deps)
         : { desired: new Map<string, DesiredReminder>(), unresolvedIds: new Set<string>() };
+    const exactAlarms = policy === 'on' && deps.exactAlarms ? await deps.exactAlarms() : null;
     const plan = planReminderSync({
       policy,
       scheduled,
       savedIds: new Set(sessions.map((session) => session.id)),
       desired,
       unresolvedIds,
+      exactAlarms,
     });
 
     for (const id of plan.cancel) {
@@ -407,7 +450,7 @@ export async function syncSessionReminders(
     }
     for (const reminder of plan.schedule) {
       try {
-        await scheduleReminder(reminder);
+        await scheduleReminder(reminder, exactAlarms);
       } catch (error) {
         console.error(`Session reminders: could not schedule ${reminder.session.id}`, error);
       }

@@ -1,4 +1,4 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as Notifications from 'expo-notifications';
 import { Alert, Linking, Platform } from 'react-native';
 
 /**
@@ -11,20 +11,22 @@ import { Alert, Linking, Platform } from 'react-native';
  * reminders. Without it Android still schedules reminders, inexactly, and
  * may deliver them late (later still in Doze).
  *
- * No installed package reads `AlarmManager.canScheduleExactAlarms()` from JS,
- * so the app cannot tell whether it holds the permission. It offers the
- * settings page once, when the user turns reminders on, and the reminders
- * setting says they may arrive late without it.
+ * expo-notifications reads `AlarmManager.canScheduleExactAlarms()`
+ * (`getExactAlarmPermissionsAsync`) and opens
+ * `ACTION_REQUEST_SCHEDULE_EXACT_ALARM` for this app
+ * (`requestExactAlarmPermissionsAsync`). Both came in expo-notifications
+ * 58.1.1; a binary without them reads as `unknown`, never as denied.
  */
 
 /** Android 12: exact alarms need the permission from here on. */
 export const EXACT_ALARM_PERMISSION_API_LEVEL = 31;
-/** Android 14: the permission is denied by default for new installs. */
-export const EXACT_ALARM_DENIED_BY_DEFAULT_API_LEVEL = 34;
-/** `Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM`. */
-export const ACTION_REQUEST_SCHEDULE_EXACT_ALARM = 'android.settings.REQUEST_SCHEDULE_EXACT_ALARM';
-/** Set once the settings page has been offered, so turning reminders on again does not nag. */
-export const EXACT_ALARM_OFFERED_KEY = '@exact_alarm_settings_offered';
+
+/**
+ * - `not-needed`: iOS, or Android before 12; reminders are always on time.
+ * - `granted` / `denied`: what Android answered.
+ * - `unknown`: Android 12+, but the permission could not be read.
+ */
+export type ExactAlarmStatus = 'not-needed' | 'granted' | 'denied' | 'unknown';
 
 function apiLevel(os: string, version: string | number): number | null {
   if (os !== 'android') return null;
@@ -41,49 +43,60 @@ export function remindersNeedExactAlarms(
   return level !== null && level >= EXACT_ALARM_PERMISSION_API_LEVEL;
 }
 
-/** Whether to offer the settings page: the permission is likely denied here. */
-export function shouldOfferExactAlarmSettings(
-  os: string = Platform.OS,
-  version: string | number = Platform.Version,
-): boolean {
-  const level = apiLevel(os, version);
-  return level !== null && level >= EXACT_ALARM_DENIED_BY_DEFAULT_API_LEVEL;
+/** Whether this device can set exact alarms for reminders. Never throws. */
+export async function readExactAlarmStatus(): Promise<ExactAlarmStatus> {
+  if (!remindersNeedExactAlarms()) return 'not-needed';
+  try {
+    const response: unknown = await Notifications.getExactAlarmPermissionsAsync();
+    if (typeof response !== 'object' || response === null) return 'unknown';
+    const granted = 'granted' in response ? response.granted : undefined;
+    if (typeof granted !== 'boolean') return 'unknown';
+    return granted ? 'granted' : 'denied';
+  } catch (error) {
+    console.warn('Exact alarms: could not read the permission', error);
+    return 'unknown';
+  }
 }
 
 /**
- * Open Android's "Alarms & reminders" page. The intent carries no package
- * (React Native's `sendIntent` cannot set one), so Android shows the list of
- * apps; when it cannot be opened, MeetCal's App info page, which links to
- * the same setting.
+ * Whether reminders scheduled now are exact: `true` / `false` on Android 12+
+ * when the permission could be read, `null` otherwise (nothing to track).
  */
-export async function openExactAlarmSettings(): Promise<void> {
-  try {
-    await Linking.sendIntent(ACTION_REQUEST_SCHEDULE_EXACT_ALARM);
-  } catch (error) {
+export function exactAlarmsFromStatus(status: ExactAlarmStatus): boolean | null {
+  if (status === 'granted') return true;
+  if (status === 'denied') return false;
+  return null;
+}
+
+/**
+ * Open Android's "Alarms & reminders" page for MeetCal; when it cannot be
+ * opened, MeetCal's App info page, which links to the same setting. Does not
+ * wait for the user to come back (the caller re-reads on foreground).
+ */
+export function openExactAlarmSettings(): void {
+  const openAppInfo = (error: unknown) => {
     console.warn('Exact alarms: could not open Alarms & reminders; opening App info', error);
-    await Linking.openSettings().catch(() => undefined);
-  }
+    return Linking.openSettings().catch(() => undefined);
+  };
+  // Resolves when the user returns (or never, if they revoke it: Android
+  // restarts the app), so nothing waits on it. A binary without the native
+  // function rejects with expo's UnavailabilityError.
+  void Notifications.requestExactAlarmPermissionsAsync().catch(openAppInfo);
 }
 
 /**
- * After the user turns reminders on: on Android 14+, offer the exact-alarm
- * settings page, once per install. Never throws.
+ * After the user turns reminders on: if Android has denied exact alarms,
+ * offer the settings page. Nothing when the permission is held, not needed,
+ * or cannot be read. Never throws.
  */
-export async function offerExactAlarmSettingsOnce(): Promise<void> {
-  if (!shouldOfferExactAlarmSettings()) return;
-  try {
-    if (await AsyncStorage.getItem(EXACT_ALARM_OFFERED_KEY)) return;
-    await AsyncStorage.setItem(EXACT_ALARM_OFFERED_KEY, 'true');
-  } catch (error) {
-    console.warn('Exact alarms: could not read or record the offer', error);
-    return;
-  }
+export async function offerExactAlarmSettingsIfDenied(): Promise<void> {
+  if ((await readExactAlarmStatus()) !== 'denied') return;
   Alert.alert(
     'Get reminders on time',
     'Android may deliver session reminders late unless MeetCal is allowed to set alarms and reminders. Turn on MeetCal under Alarms & reminders.',
     [
       { text: 'Not now', style: 'cancel' },
-      { text: 'Open Settings', onPress: () => void openExactAlarmSettings() },
+      { text: 'Open Settings', onPress: () => openExactAlarmSettings() },
     ],
   );
 }

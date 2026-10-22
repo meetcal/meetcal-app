@@ -2,9 +2,10 @@ import { SubscriptionStatus } from "@/app/schedule-toolbar/profile";
 import { showToast } from "@/components/ui/Toast";
 import { premiumPendingToast } from "@/lib/premium-access";
 import { AuthGuardOptions } from "@/utils/authGuard";
+import { useExactAlarmStatus } from "@/hooks/useExactAlarmStatus";
 import {
-  offerExactAlarmSettingsOnce,
-  remindersNeedExactAlarms,
+  type ExactAlarmStatus,
+  offerExactAlarmSettingsIfDenied,
 } from "@/lib/exact-alarms";
 import { setRemindersEnabled } from "@/lib/reminder-preference";
 import {
@@ -19,6 +20,22 @@ import React, { useEffect, useRef, useState } from "react";
 import { Alert, Linking } from "react-native";
 import { ProfileSwitchSetting } from "./ProfileSwitchSetting";
 import { devLog } from "@/lib/logger";
+
+const REMINDERS_DESCRIPTION = "Get notified 1 hour before your sessions";
+
+/**
+ * The switch's description. Says reminders may arrive late only when Android
+ * has denied exact alarms, and hedges when the permission cannot be read.
+ */
+export function remindersDescription(status: ExactAlarmStatus | null): string {
+  if (status === "denied") {
+    return `${REMINDERS_DESCRIPTION}. Alarms & reminders is off for MeetCal in Android settings, so they may arrive late.`;
+  }
+  if (status === "unknown") {
+    return `${REMINDERS_DESCRIPTION}. If Alarms & reminders is off for MeetCal in Android settings, they may arrive late.`;
+  }
+  return REMINDERS_DESCRIPTION;
+}
 
 /** Only a confirmed paid plan counts; "free" and "unknown" do not. */
 export function isSubscribedStatus(status: SubscriptionStatus): boolean {
@@ -52,6 +69,7 @@ export function NotificationSettings({
   // re-render disables the switch.
   const [isToggling, setIsToggling] = useState(false);
   const togglingRef = useRef(false);
+  const exactAlarmStatus = useExactAlarmStatus();
 
   // Fail closed: "unknown" (no cache, no network) is not a subscription, so
   // it must not auto-enable reminders or trigger the OS permission prompt.
@@ -239,7 +257,7 @@ export function NotificationSettings({
       // when this turns on and cancels them when it turns off.
       await setRemindersEnabled(newEnabledState);
       // Only for a tap: the first-run default must not pop anything.
-      if (newEnabledState && !auto) await offerExactAlarmSettingsOnce();
+      if (newEnabledState && !auto) await offerExactAlarmSettingsIfDenied();
     } catch (error) {
       console.error("Error toggling notifications:", error);
       // The first-run default fails quietly: the user did not tap anything.
@@ -262,11 +280,7 @@ export function NotificationSettings({
   return (
     <ProfileSwitchSetting
       label="Session Reminders"
-      description={
-        remindersNeedExactAlarms()
-          ? "Get notified 1 hour before your sessions. If Alarms & reminders is off for MeetCal in Android settings, they may arrive late."
-          : "Get notified 1 hour before your sessions"
-      }
+      description={remindersDescription(exactAlarmStatus)}
       value={effectiveEnabled && isSubscribed}
       onToggle={() => void handleToggle()}
       showPremiumBadge={!isSubscribed}

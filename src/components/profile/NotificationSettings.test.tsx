@@ -4,13 +4,12 @@
  * status must fail closed (no auto-enable, no OS permission prompt).
  */
 import React from "react";
-import { Alert, Platform, Switch } from "react-native";
+import { Alert, AppState, Platform, Switch } from "react-native";
 import { act, create, type ReactTestRenderer } from "react-test-renderer";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Notifications from "expo-notifications";
 import type { SubscriptionStatus } from "@/app/schedule-toolbar/profile";
 import { NOTIFICATION_ENABLED_KEY } from "@/utils/notifications";
-import { EXACT_ALARM_OFFERED_KEY } from "@/lib/exact-alarms";
 import { subscribeToReminderPreference } from "@/lib/reminder-preference";
 import { NotificationSettings } from "@/components/profile/NotificationSettings";
 import { showToast } from "@/components/ui/Toast";
@@ -23,10 +22,14 @@ jest.mock("expo-notifications", () => ({
   getPermissionsAsync: jest.fn(async () => ({ status: "granted" })),
   requestPermissionsAsync: jest.fn(async () => ({ status: "granted" })),
   setNotificationChannelAsync: jest.fn(async () => undefined),
+  getExactAlarmPermissionsAsync: jest.fn(async () => ({ granted: true })),
+  requestExactAlarmPermissionsAsync: jest.fn(async () => ({ granted: true })),
 }));
 
 const mockGetPermissions = Notifications.getPermissionsAsync as jest.Mock;
 const mockRequestPermissions = Notifications.requestPermissionsAsync as jest.Mock;
+const mockGetExactAlarms = Notifications.getExactAlarmPermissionsAsync as jest.Mock;
+const mockRequestExactAlarms = Notifications.requestExactAlarmPermissionsAsync as jest.Mock;
 
 const requireAuth = jest.fn(() => true);
 const router = { push: jest.fn() };
@@ -69,6 +72,7 @@ describe("NotificationSettings", () => {
     jest.spyOn(Alert, "alert").mockImplementation(() => {});
     jest.spyOn(console, "log").mockImplementation(() => {});
     mockGetPermissions.mockResolvedValue({ status: "granted" });
+    mockGetExactAlarms.mockResolvedValue({ granted: true });
   });
 
   afterEach(() => {
@@ -226,41 +230,97 @@ describe("NotificationSettings", () => {
   });
 
   describe("on Android 14", () => {
+    let foreground: ((state: string) => void) | undefined;
+
     beforeEach(() => {
       jest.replaceProperty(Platform, "OS", "android");
       jest.spyOn(Platform, "Version", "get").mockReturnValue(34);
+      foreground = undefined;
+      jest.spyOn(AppState, "addEventListener").mockImplementation((_type, listener) => {
+        foreground = listener as (state: string) => void;
+        return { remove: jest.fn() } as unknown as ReturnType<typeof AppState.addEventListener>;
+      });
     });
 
-    function exactAlarmAlerts(): unknown[] {
+    function exactAlarmAlerts(): unknown[][] {
       return (Alert.alert as jest.Mock).mock.calls.filter(
         ([title]) => title === "Get reminders on time",
       );
     }
 
-    it("offers the exact-alarm settings once when the user turns reminders on", async () => {
+    function text(renderer: ReactTestRenderer): string {
+      return JSON.stringify(renderer.toJSON());
+    }
+
+    async function tap(renderer: ReactTestRenderer): Promise<void> {
+      await act(async () => {
+        theSwitch(renderer).props.onValueChange();
+      });
+      await flush();
+    }
+
+    it("offers the exact-alarm settings each time the user turns reminders on while denied", async () => {
+      mockGetExactAlarms.mockResolvedValue({ granted: false });
       await AsyncStorage.setItem(NOTIFICATION_ENABLED_KEY, "false");
       setItemSpy.mockClear();
       const renderer = await mount("quarterly");
 
-      for (let i = 0; i < 3; i += 1) {
-        await act(async () => {
-          theSwitch(renderer).props.onValueChange();
-        });
-        await flush();
-      }
+      for (let i = 0; i < 3; i += 1) await tap(renderer);
 
       expect(reminderWrites()).toEqual(["true", "false", "true"]);
-      expect(exactAlarmAlerts()).toHaveLength(1);
-      await expect(AsyncStorage.getItem(EXACT_ALARM_OFFERED_KEY)).resolves.toBe("true");
+      expect(exactAlarmAlerts()).toHaveLength(2);
+
+      const buttons = exactAlarmAlerts()[0][2] as { text: string; onPress?: () => void }[];
+      buttons.find((button) => button.text === "Open Settings")?.onPress?.();
+      expect(mockRequestExactAlarms).toHaveBeenCalledTimes(1);
     });
 
-    it("says reminders may arrive late, and pops nothing for the first-run default", async () => {
+    it("offers nothing when exact alarms are allowed", async () => {
+      mockGetExactAlarms.mockResolvedValue({ granted: true });
+      await AsyncStorage.setItem(NOTIFICATION_ENABLED_KEY, "false");
+      setItemSpy.mockClear();
+      const renderer = await mount("quarterly");
+
+      await tap(renderer);
+
+      expect(reminderWrites()).toEqual(["true"]);
+      expect(exactAlarmAlerts()).toHaveLength(0);
+      expect(text(renderer)).not.toContain("Alarms & reminders");
+    });
+
+    it("says reminders may arrive late only while denied, and pops nothing for the first-run default", async () => {
+      mockGetExactAlarms.mockResolvedValue({ granted: false });
       const renderer = await mount("quarterly");
 
       expect(reminderWrites()).toEqual(["true"]);
       expect(exactAlarmAlerts()).toHaveLength(0);
-      const text = JSON.stringify(renderer.toJSON());
-      expect(text).toContain("Alarms & reminders");
+      expect(text(renderer)).toContain("Alarms & reminders is off for MeetCal");
+    });
+
+    it("drops the note when the user comes back from settings with it allowed", async () => {
+      mockGetExactAlarms.mockResolvedValue({ granted: false });
+      const renderer = await mount("quarterly");
+      expect(text(renderer)).toContain("may arrive late");
+
+      mockGetExactAlarms.mockResolvedValue({ granted: true });
+      await act(async () => {
+        foreground?.("active");
+      });
+      await flush();
+
+      expect(text(renderer)).not.toContain("may arrive late");
+    });
+
+    it("hedges, and offers nothing, when the permission cannot be read", async () => {
+      jest.spyOn(console, "warn").mockImplementation(() => {});
+      mockGetExactAlarms.mockRejectedValue(new Error("UnavailabilityError"));
+      await AsyncStorage.setItem(NOTIFICATION_ENABLED_KEY, "false");
+      const renderer = await mount("quarterly");
+
+      await tap(renderer);
+
+      expect(exactAlarmAlerts()).toHaveLength(0);
+      expect(text(renderer)).toContain("If Alarms & reminders is off");
     });
   });
 
