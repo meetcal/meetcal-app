@@ -51,6 +51,7 @@ export const PREMIUM_FUNCTIONS = [
   'reference:adaptiveRecords',
   'reference:clubs',
   'reference:clubAthletes',
+  'reference:clubMeets',
   'reference:wsoAthletes',
   'reference:clubMeetStats',
   'results:byMeet',

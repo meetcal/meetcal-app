@@ -4,7 +4,7 @@ import {
   clearHttpValidatorCache,
   deleteSavedSession,
   fetchApiAthletes,
-  fetchApiClubAthletes,
+  fetchApiClubMeets,
   fetchApiMeetByName,
   fetchApiMeetPackageConditional,
   fetchApiMeets,
@@ -81,8 +81,8 @@ const healthy: Transport = jsonTransportStub((path) => {
       return PACKAGE;
     case '/lifting-results/bests':
       return [{ name: 'Athlete A', best_snatch: 100, best_cj: 120, best_total: 220 }];
-    case '/clubs/athletes':
-      return [{ name: 'Athlete A' }];
+    case '/clubs/meets':
+      return { meets: [{ meet: 'Test Meet', date: '2026-03-27', status: 'completed', has_results: true }], truncated: false };
     case '/users/me/saved-sessions':
       return { sessions: [] };
     case '/users/me/saved-sessions/s1':
@@ -136,7 +136,12 @@ const FETCHERS: Fetcher[] = [
       isObject(v) &&
       Object.values(v).every((bests) => isObject(bests) && Object.values(bests).every(Number.isFinite)),
   },
-  { name: 'fetchApiClubAthletes', run: () => fetchApiClubAthletes('Club'), timeoutMs: DEFAULT_TIMEOUT_MS, valid: Array.isArray },
+  {
+    name: 'fetchApiClubMeets',
+    run: () => fetchApiClubMeets('Club'),
+    timeoutMs: DEFAULT_TIMEOUT_MS,
+    valid: (v) => isArrayOf(v, (row) => isObject(row) && typeof row.meet === 'string' && row.meet.length > 0),
+  },
   {
     name: 'fetchSavedSessions',
     run: () => fetchSavedSessions('token'),

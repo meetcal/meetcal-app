@@ -6,10 +6,9 @@ import { ThemedText } from "@/components/ui/ThemedText";
 import { ThemedView } from "@/components/ui/ThemedView";
 import { useAppColors } from "@/hooks/useAppColors";
 import { useMutableResource } from "@/hooks/useMutableResource";
-import { clubMeetsNewestFirst, formatClubMeetDate, type ClubMeet } from "@/lib/club-meets";
-import { clubAthletesResource } from "@/lib/database/fetch-club-stats";
+import { formatClubMeetDate, type ClubMeet } from "@/lib/club-meets";
+import { clubMeetsResource } from "@/lib/database/fetch-club-stats";
 import { posthog } from "@/lib/posthog";
-import type { AthleteClub } from "@/types/club";
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
@@ -43,15 +42,16 @@ function ClubMeetsListScreenContent() {
   const [searchQuery, setSearchQuery] = useState("");
   const [isOffline] = useIsOffline();
   const params = useMemo<[string] | null>(() => (club ? [club] : null), [club]);
+  // The club's meets, newest first.
   const {
-    data: athletesInClub,
+    data: allMeets,
     isInitialLoading: isLoading,
     error,
     refresh,
   } = useMutableResource({
-    resource: clubAthletesResource,
+    resource: clubMeetsResource,
     params,
-    initialData: [] as AthleteClub[],
+    initialData: [] as ClubMeet[],
   });
 
   // Track screen view on mount
@@ -62,12 +62,9 @@ function ClubMeetsListScreenContent() {
     });
   }, [club]);
 
-  const loadAthletes = useCallback(async () => {
+  const loadMeets = useCallback(async () => {
     await refresh();
   }, [refresh]);
-
-  // The club's meets, newest first.
-  const allMeets = clubMeetsNewestFirst(athletesInClub);
 
   // Filter meets based on search query
   const meetQuery = searchQuery.trim();
@@ -126,7 +123,7 @@ function ClubMeetsListScreenContent() {
           {!isOffline && (
             <Pressable
               style={[styles.retryButton, { backgroundColor: colors.link }]}
-              onPress={loadAthletes}
+              onPress={loadMeets}
               accessibilityRole="button"
             >
               <ThemedText style={styles.retryButtonText}>Retry</ThemedText>
@@ -137,7 +134,7 @@ function ClubMeetsListScreenContent() {
     }
 
     // The search box is what emptied the list: say so, instead of the
-    // "no meets for this club" state with an athlete count that contradicts it.
+    // "no meets for this club" state.
     if (uniqueMeets.length === 0 && allMeets.length > 0) {
       return (
         <View style={styles.centerContainer}>
@@ -158,11 +155,6 @@ function ClubMeetsListScreenContent() {
         <View style={styles.centerContainer}>
           <ThemedText style={[styles.emptyTitle, { color: colors.text }]}>
             {`No meets found for ${club}`}
-          </ThemedText>
-          <ThemedText
-            style={[styles.emptyText, { color: colors.secondaryText }]}
-          >
-            {`Athletes: ${athletesInClub.length}`}
           </ThemedText>
         </View>
       );

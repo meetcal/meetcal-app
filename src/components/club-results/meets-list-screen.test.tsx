@@ -7,9 +7,9 @@ import ClubMeetsListScreen from "@/app/comp-data/club-results/meets-list";
 
 void [FlatList, Text, TextInput];
 
-const mockClubAthletes = [
-  { name: "A", meet: "Spring Open" },
-  { name: "B", meet: "Fall Classic" },
+const mockClubMeets = [
+  { meet: "Fall Classic", date: "2026-10-03" },
+  { meet: "Spring Open", date: null },
 ];
 
 jest.mock("@/components/ui/SubscriptionGate", () => ({
@@ -20,13 +20,13 @@ jest.mock("@/contexts/ThemeContext", () => ({ useTheme: () => ({ currentTheme: "
 jest.mock("@/hooks/useIsOffline", () => ({ useIsOffline: () => [false, jest.fn()] }));
 jest.mock("@/hooks/useMutableResource", () => ({
   useMutableResource: () => ({
-    data: mockClubAthletes,
+    data: mockClubMeets,
     isInitialLoading: false,
     error: null,
     refresh: jest.fn(),
   }),
 }));
-jest.mock("@/lib/database/fetch-club-stats", () => ({ clubAthletesResource: {} }));
+jest.mock("@/lib/database/fetch-club-stats", () => ({ clubMeetsResource: {} }));
 jest.mock("@/lib/posthog", () => ({ posthog: { capture: jest.fn() } }));
 jest.mock("expo-router", () => ({
   Stack: { Screen: () => null },
@@ -43,6 +43,18 @@ function texts(tree: ReactTestRenderer): string[] {
     return typeof c === "string" ? [c] : [];
   });
 }
+
+describe("Club meets list", () => {
+  it("shows the club's meets in the order they came, newest first, each with its date when known", () => {
+    let tree!: ReactTestRenderer;
+    act(() => {
+      tree = create(<ClubMeetsListScreen />);
+    });
+    expect(texts(tree)).toEqual(expect.arrayContaining(["Fall Classic", "Oct 3, 2026", "Spring Open"]));
+    expect(tree.root.findByType(FlatList).props.data.map((row: { meet: string }) => row.meet)).toEqual(["Fall Classic", "Spring Open"]);
+    act(() => tree.unmount());
+  });
+});
 
 describe("Club meets list empty state", () => {
   it("says the search found nothing, without the athlete count", () => {

@@ -17,7 +17,10 @@ export const OFFLINE_CACHE_KEYS = {
   adaptiveRecords: '@offline_cache/adaptive_records',
   nationalRankings: '@offline_cache/national_rankings',
   clubs: '@offline_cache/clubs',
+  // Club athlete lists cached before #209: read for their meets until a club
+  // is browsed again (`fetch-club-stats`), and cleared with the browse caches.
   clubAthletes: '@offline_cache/club_athletes',
+  clubMeets: '@offline_cache/club_meets',
   clubMeetStats: '@offline_cache/club_meet_stats',
 } as const;
 
@@ -184,6 +187,7 @@ export const BROWSE_CACHE_KEYS = [
   OFFLINE_CACHE_KEYS.nationalRankings,
   OFFLINE_CACHE_KEYS.clubs,
   OFFLINE_CACHE_KEYS.clubAthletes,
+  OFFLINE_CACHE_KEYS.clubMeets,
   OFFLINE_CACHE_KEYS.clubMeetStats,
   OFFLINE_CACHE_KEYS.wsoRecordsFiltered,
 ] as const;

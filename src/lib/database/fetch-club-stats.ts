@@ -1,5 +1,6 @@
 import { createMutableResource } from '@/lib/data/mutable-resource';
-import { AthleteClub, ClubMeetStats } from '@/types/club';
+import { clubMeetsNewestFirst, type ClubMeet } from '@/lib/club-meets';
+import type { AthleteClub, ClubMeetStats } from '@/types/club';
 import {
   getOfflineCache,
   OFFLINE_CACHE_KEYS,
@@ -8,31 +9,20 @@ import {
   writeBoundedCacheEntry,
 } from './offline-cache';
 import { isNetworkAvailable } from '@/lib/networkUtils';
-import { fetchApiClubAthletes, fetchApiClubMeetStats, fetchApiClubNames } from '@/lib/api/meetcal-api';
+import { fetchApiClubMeets, fetchApiClubMeetStats, fetchApiClubNames } from '@/lib/api/meetcal-api';
 
 /**
- * Clubs whose athlete lists stay cached for offline browsing. A list is one
- * row per athlete per meet, so a big club is tens of KB; 20 covers a coach's
- * own club and the rivals they look up.
+ * Clubs whose meet lists stay cached for offline browsing. A list is one
+ * short row per meet, a few KB for a big club; 20 covers a coach's own club
+ * and the rivals they look up.
  */
-export const MAX_CACHED_CLUB_ATHLETE_LISTS = 20;
+export const MAX_CACHED_CLUB_MEET_LISTS = 20;
 
 /**
  * Club + meet stat cards kept for offline browsing. A card is ten numbers
  * (~300 bytes), so 50 is a season of a club's meets for a few clubs in ~15KB.
  */
 export const MAX_CACHED_CLUB_MEET_STATS = 50;
-
-type ApiClubAthlete = {
-  member_id: string;
-  name: string;
-  meet: string;
-  club: string;
-  meet_date?: string | null;
-  gender?: string;
-  weight_class?: string;
-  entry_total?: number;
-};
 
 /**
  * `/clubs/meet-stats`. The API also sends a per-athlete `athlete_results`
@@ -63,7 +53,6 @@ function isNonEmptyString(value: unknown): value is string {
   return typeof value === 'string' && value.length > 0;
 }
 
-const CLUB_ATHLETE_STRING_FIELDS = ['member_id', 'name', 'meet', 'club'] as const;
 const CLUB_MEET_STATS_REQUIRED_FIELDS = [
   'total_athletes',
   'gold_medals',
@@ -78,21 +67,6 @@ const CLUB_MEET_STATS_OPTIONAL_FIELDS = [
   'cj_make_rate',
   'combined_make_rate',
 ] as const;
-
-/**
- * One `/clubs/athletes` row with every field a screen dereferences, or null.
- * These two endpoints were the only family with no boundary check: a row
- * without a name reached the club list as `undefined` and was persisted that
- * way.
- */
-function toApiClubAthlete(value: unknown): ApiClubAthlete | null {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
-  const row = value as Record<string, unknown>;
-  for (const field of CLUB_ATHLETE_STRING_FIELDS) {
-    if (!isNonEmptyString(row[field])) return null;
-  }
-  return row as unknown as ApiClubAthlete;
-}
 
 /**
  * The `/clubs/meet-stats` body, or a thrown error naming the first bad field.
@@ -140,8 +114,23 @@ async function readClubsCache() {
   return cached ? { data: cached.data, lastUpdatedAt: cached.lastSynced } : null;
 }
 
-function readClubAthletesCache(club: string) {
-  return readBoundedCacheEntry<AthleteClub[]>(OFFLINE_CACHE_KEYS.clubAthletes, club);
+/**
+ * A club's cached meets; without them, the meets of the club's athlete list
+ * an app version before #209 cached, so an update keeps what was browsed
+ * offline.
+ */
+async function readClubMeetsCache(club: string) {
+  const cached = await readBoundedCacheEntry<ClubMeet[]>(OFFLINE_CACHE_KEYS.clubMeets, club);
+  if (cached) return cached;
+  const legacy = await readBoundedCacheEntry<unknown>(OFFLINE_CACHE_KEYS.clubAthletes, club);
+  if (!legacy || !Array.isArray(legacy.data)) return null;
+  const athletes = legacy.data.filter(
+    (row: unknown): row is AthleteClub => !!row && typeof row === 'object' && isNonEmptyString((row as AthleteClub).meet),
+  );
+  return {
+    data: clubMeetsNewestFirst(athletes.map((athlete) => ({ meet: athlete.meet, date: athlete.meet_date }))),
+    lastUpdatedAt: legacy.lastUpdatedAt,
+  };
 }
 
 async function readClubMeetStatsCache(club: string, meet: string) {
@@ -161,28 +150,10 @@ async function fetchAllClubsFresh(): Promise<string[]> {
   return fetchApiClubNames();
 }
 
-async function fetchAthletesByClubFresh(club: string): Promise<AthleteClub[]> {
+async function fetchClubMeetsFresh(club: string): Promise<ClubMeet[]> {
   const hasNetwork = await isNetworkAvailable();
   if (!hasNetwork) throw new Error('Offline');
-  const rows = await fetchApiClubAthletes(club);
-  const athletes: AthleteClub[] = [];
-  for (const value of rows) {
-    const row = toApiClubAthlete(value);
-    if (!row) continue;
-    athletes.push({
-      member_id: row.member_id,
-      name: row.name,
-      club: row.club,
-      meet: row.meet,
-      meet_date: typeof row.meet_date === 'string' ? row.meet_date : null,
-    });
-  }
-  if (athletes.length !== rows.length) {
-    console.warn(
-      `[api] /clubs/athletes: dropped ${rows.length - athletes.length} of ${rows.length} malformed athlete rows`,
-    );
-  }
-  return athletes;
+  return clubMeetsNewestFirst(await fetchApiClubMeets(club));
 }
 
 async function fetchClubMeetStatsFresh(club: string, meet: string): Promise<ClubMeetStats> {
@@ -197,13 +168,8 @@ async function persistClubs(clubs: string[]) {
   return { data: entry.data, lastUpdatedAt: entry.lastSynced };
 }
 
-function persistClubAthletes(club: string, athletes: AthleteClub[]) {
-  return writeBoundedCacheEntry(
-    OFFLINE_CACHE_KEYS.clubAthletes,
-    club,
-    athletes,
-    MAX_CACHED_CLUB_ATHLETE_LISTS,
-  );
+function persistClubMeets(club: string, meets: ClubMeet[]) {
+  return writeBoundedCacheEntry(OFFLINE_CACHE_KEYS.clubMeets, club, meets, MAX_CACHED_CLUB_MEET_LISTS);
 }
 
 function persistClubMeetStats(club: string, meet: string, stats: ClubMeetStats) {
@@ -222,11 +188,12 @@ export const clubsResource = createMutableResource<string[], []>({
   persistFresh: (data) => persistClubs(data),
 });
 
-export const clubAthletesResource = createMutableResource<AthleteClub[], [string]>({
-  getKey: (club) => `${OFFLINE_CACHE_KEYS.clubAthletes}:${club}`,
-  loadCached: (club) => readClubAthletesCache(club),
-  fetchFresh: (club) => fetchAthletesByClubFresh(club),
-  persistFresh: (data, club) => persistClubAthletes(club, data),
+/** A club's meets, newest first (`reference:clubMeets`). */
+export const clubMeetsResource = createMutableResource<ClubMeet[], [string]>({
+  getKey: (club) => `${OFFLINE_CACHE_KEYS.clubMeets}:${club}`,
+  loadCached: (club) => readClubMeetsCache(club),
+  fetchFresh: (club) => fetchClubMeetsFresh(club),
+  persistFresh: (data, club) => persistClubMeets(club, data),
 });
 
 export const clubMeetStatsResource = createMutableResource<ClubMeetStats, [string, string]>({

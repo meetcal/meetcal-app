@@ -1,17 +1,17 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import {
-  clubAthletesResource,
+  clubMeetsResource,
   clubMeetStatsResource,
-  MAX_CACHED_CLUB_ATHLETE_LISTS,
+  MAX_CACHED_CLUB_MEET_LISTS,
   MAX_CACHED_CLUB_MEET_STATS,
 } from "@/lib/database/fetch-club-stats";
 import { OFFLINE_CACHE_KEYS } from "@/lib/database/offline-cache";
-const mockFetchApiClubAthletes = jest.fn();
+const mockFetchApiClubMeets = jest.fn();
 const mockFetchApiClubMeetStats = jest.fn();
 const mockFetchApiClubNames = jest.fn();
 
 jest.mock("@/lib/api/meetcal-api", () => ({
-  fetchApiClubAthletes: (...args: unknown[]) => mockFetchApiClubAthletes(...args),
+  fetchApiClubMeets: (...args: unknown[]) => mockFetchApiClubMeets(...args),
   fetchApiClubMeetStats: (...args: unknown[]) => mockFetchApiClubMeetStats(...args),
   fetchApiClubNames: (...args: unknown[]) => mockFetchApiClubNames(...args),
 }));
@@ -60,7 +60,7 @@ describe("club stats mappers", () => {
     });
   });
 
-  it("maps athlete rows into the club athlete shape, one entry per row, without the athlete list", async () => {
+  it("keeps the meet stats without the per-athlete list", async () => {
     mockFetchApiClubMeetStats.mockResolvedValue({
       total_athletes: 1,
       gold_medals: 0,
@@ -90,30 +90,87 @@ describe("club stats mappers", () => {
     // No screen reads the per-athlete list, so it is not kept.
     expect(result.data).not.toHaveProperty("athleteResults");
     expect(await AsyncStorage.getItem(OFFLINE_CACHE_KEYS.clubMeetStats)).not.toContain("Athlete A");
+  });
+});
 
-    mockFetchApiClubAthletes.mockResolvedValue([
-      { member_id: "1", name: "Athlete A", meet: "Meet", club: "Club", gender: "Men", meet_date: "2026-03-27" },
-      { member_id: "2", name: "Athlete B", meet: "Meet", club: "Club", meet_date: 7 },
+describe("a club's meets (#209)", () => {
+  it("are the server's meets newest first, kept for offline browsing", async () => {
+    mockFetchApiClubMeets.mockResolvedValue([
+      { meet: "2025 Howard Cohen", date: "2025-12-11" },
+      { meet: "Arnold", date: null },
+      { meet: "2026 USA Masters Nationals", date: "2026-03-27" },
+      { meet: "Typo Open", date: "2026-02-30" },
     ]);
-    const athletes = await clubAthletesResource.revalidate("Club");
-    // The meet's date is kept for sorting the club's meets (#341); anything but text is no date.
-    expect(athletes.data).toEqual([
-      { member_id: "1", name: "Athlete A", meet: "Meet", club: "Club", meet_date: "2026-03-27" },
-      { member_id: "2", name: "Athlete B", meet: "Meet", club: "Club", meet_date: null },
+
+    const meets = await clubMeetsResource.revalidate("Club");
+
+    expect(mockFetchApiClubMeets).toHaveBeenCalledWith("Club");
+    // A date that is no calendar date is no date.
+    expect(meets.data).toEqual([
+      { meet: "2026 USA Masters Nationals", date: "2026-03-27" },
+      { meet: "2025 Howard Cohen", date: "2025-12-11" },
+      { meet: "Arnold", date: null },
+      { meet: "Typo Open", date: null },
     ]);
+    await expect(clubMeetsResource.loadCached("Club")).resolves.toEqual({
+      data: meets.data,
+      lastUpdatedAt: meets.lastUpdatedAt,
+    });
+  });
+
+  it("are read offline from the athlete list an earlier version cached, until the club is browsed again", async () => {
+    await AsyncStorage.setItem(
+      OFFLINE_CACHE_KEYS.clubAthletes,
+      JSON.stringify({
+        data: [
+          {
+            key: "Club",
+            lastSynced: 7,
+            data: [
+              { member_id: "1", name: "A", club: "Club", meet: "Old Meet", meet_date: "2025-01-04" },
+              { member_id: "2", name: "B", club: "Club", meet: "New Meet", meet_date: "2026-01-04" },
+              { member_id: "3", name: "C", club: "Club", meet: "New Meet" },
+              { member_id: "4", name: "D", club: "Club" },
+              null,
+            ],
+          },
+        ],
+        lastSynced: 7,
+      }),
+    );
+
+    await expect(clubMeetsResource.loadCached("Club")).resolves.toEqual({
+      data: [
+        { meet: "New Meet", date: "2026-01-04" },
+        { meet: "Old Meet", date: "2025-01-04" },
+      ],
+      lastUpdatedAt: 7,
+    });
+    await expect(clubMeetsResource.loadCached("Other Club")).resolves.toBeNull();
+
+    mockFetchApiClubMeets.mockResolvedValue([{ meet: "Fresh Meet", date: "2026-10-03" }]);
+    await clubMeetsResource.revalidate("Club");
+    await expect(clubMeetsResource.loadCached("Club")).resolves.toMatchObject({
+      data: [{ meet: "Fresh Meet", date: "2026-10-03" }],
+    });
+  });
+
+  it("are not fetched offline", async () => {
+    const { isNetworkAvailable } = jest.requireMock("@/lib/networkUtils") as { isNetworkAvailable: jest.Mock };
+    isNetworkAvailable.mockResolvedValueOnce(false);
+    await expect(clubMeetsResource.revalidate("Club")).rejects.toThrow("Offline");
+    expect(mockFetchApiClubMeets).not.toHaveBeenCalled();
   });
 });
 
 describe("club browse caches are bounded", () => {
-  it(`keeps the ${MAX_CACHED_CLUB_ATHLETE_LISTS} most recently viewed clubs' athletes`, async () => {
-    mockFetchApiClubAthletes.mockResolvedValue([
-      { member_id: "1", name: "Athlete A", meet: "Meet", club: "Club" },
-    ]);
-    for (let i = 0; i <= MAX_CACHED_CLUB_ATHLETE_LISTS; i += 1) {
-      await clubAthletesResource.revalidate(`Club ${i}`);
+  it(`keeps the ${MAX_CACHED_CLUB_MEET_LISTS} most recently viewed clubs' meets`, async () => {
+    mockFetchApiClubMeets.mockResolvedValue([{ meet: "Meet", date: null }]);
+    for (let i = 0; i <= MAX_CACHED_CLUB_MEET_LISTS; i += 1) {
+      await clubMeetsResource.revalidate(`Club ${i}`);
     }
-    await expect(clubAthletesResource.loadCached("Club 0")).resolves.toBeNull();
-    await expect(clubAthletesResource.loadCached("Club 1")).resolves.not.toBeNull();
+    await expect(clubMeetsResource.loadCached("Club 0")).resolves.toBeNull();
+    await expect(clubMeetsResource.loadCached("Club 1")).resolves.not.toBeNull();
   });
 
   it(`keeps the ${MAX_CACHED_CLUB_MEET_STATS} most recently viewed meet stats`, async () => {
@@ -177,25 +234,5 @@ describe("club endpoint boundary validation", () => {
     mockFetchApiClubMeetStats.mockResolvedValue({ ...STATS_ROW, cj_make_rate: null });
     const result = await clubMeetStatsResource.revalidate("Club", "Meet");
     expect(result.data.cjMakeRate).toBe(0);
-  });
-
-  it("drops a malformed athlete row, keeps the rest, and says how many went", async () => {
-    mockFetchApiClubAthletes.mockResolvedValue([
-      { member_id: "1", name: "Athlete A", meet: "Meet", club: "Club" },
-      { member_id: "2", meet: "Meet", club: "Club" },
-      { member_id: 3, name: "Athlete C", meet: "Meet", club: "Club" },
-      null,
-      { member_id: "4", name: "Athlete D", meet: "Meet", club: "Club", gender: "Women" },
-    ]);
-
-    const athletes = await clubAthletesResource.revalidate("Club");
-
-    expect(athletes.data).toEqual([
-      { member_id: "1", name: "Athlete A", meet: "Meet", club: "Club", meet_date: null },
-      { member_id: "4", name: "Athlete D", meet: "Meet", club: "Club", meet_date: null },
-    ]);
-    expect(console.warn).toHaveBeenCalledWith(
-      "[api] /clubs/athletes: dropped 3 of 5 malformed athlete rows",
-    );
   });
 });
