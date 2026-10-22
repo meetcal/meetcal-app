@@ -124,10 +124,14 @@ describe("toScheduledReminders", () => {
         { identifier: "b", data: { identifier: "b", url: "meetcal://x" } },
         { identifier: "c", data: { kind: "something-else", identifier: "c" } },
         { identifier: "d", data: {} },
+        { identifier: "e", data: { kind: SESSION_REMINDER_KIND, triggerAtMs: 5, exact: false } },
+        { identifier: "f", data: { kind: SESSION_REMINDER_KIND, triggerAtMs: 5, exact: "yes" } },
       ]),
     ).toEqual([
-      { id: "a", triggerAtMs: 5, fireAtMs: null },
-      { id: "b", triggerAtMs: null, fireAtMs: null },
+      { id: "a", triggerAtMs: 5, fireAtMs: null, exact: null },
+      { id: "b", triggerAtMs: null, fireAtMs: null, exact: null },
+      { id: "e", triggerAtMs: 5, fireAtMs: null, exact: false },
+      { id: "f", triggerAtMs: 5, fireAtMs: null, exact: null },
     ]);
   });
 });
@@ -178,6 +182,62 @@ describe("planReminderSync", () => {
       unresolvedIds: new Set(),
     });
     expect(plan.cancel).toEqual(scheduled.map((r) => r.id));
+  });
+
+  describe("exact alarms (Android 12+)", () => {
+    const ids = new Set(["inexact", "exact", "older"]);
+    const pending = [
+      { id: "inexact", triggerAtMs: 100, exact: false },
+      { id: "exact", triggerAtMs: 100, exact: true },
+      { id: "older", triggerAtMs: 100, exact: null },
+    ];
+    const wanted = new Map([...ids].map((id) => [id, reminder(id, 100)]));
+    const plan = (exactAlarms: boolean | null, desiredReminders = wanted) =>
+      planReminderSync({
+        policy: "on",
+        scheduled: pending,
+        savedIds: ids,
+        desired: desiredReminders,
+        unresolvedIds: new Set(),
+        exactAlarms,
+      });
+
+    it("schedules again a reminder set inexact once exact alarms are allowed", () => {
+      expect(plan(true).schedule.map((r) => r.session.id)).toEqual(["inexact", "older"]);
+    });
+
+    it("schedules again a reminder set exact once exact alarms are revoked (Android cancelled it)", () => {
+      expect(plan(false).schedule.map((r) => r.session.id)).toEqual(["exact", "older"]);
+    });
+
+    it("leaves them alone where exactness is not tracked", () => {
+      expect(plan(null).schedule).toEqual([]);
+      expect(
+        planReminderSync({
+          policy: "on",
+          scheduled: pending,
+          savedIds: ids,
+          desired: wanted,
+          unresolvedIds: new Set(),
+        }).schedule,
+      ).toEqual([]);
+    });
+
+    it("keeps a pending reminder's fire time when the clock skew is unknown", () => {
+      const unknownSkew = new Map([
+        ["inexact", { ...reminder("inexact", 100, 90), skewUnknown: true }],
+      ]);
+      const pendingCorrected = [{ id: "inexact", triggerAtMs: 100, fireAtMs: 130, exact: false }];
+      const result = planReminderSync({
+        policy: "on",
+        scheduled: pendingCorrected,
+        savedIds: new Set(["inexact"]),
+        desired: unknownSkew,
+        unresolvedIds: new Set(),
+        exactAlarms: true,
+      });
+      expect(result.schedule.map((r) => [r.session.id, r.fireAtMs])).toEqual([["inexact", 130]]);
+    });
   });
 });
 
@@ -432,6 +492,43 @@ describe("syncSessionReminders", () => {
 
     expect(mockCancelNotification).toHaveBeenCalledWith("a");
     expect(mockScheduleNotification).not.toHaveBeenCalled();
+  });
+
+  describe("exact alarms (Android 12+)", () => {
+    const triggerAtMs = Date.parse("2099-06-20T10:00:00.000Z");
+
+    it("records whether the reminder was set as an exact alarm", async () => {
+      await syncSessionReminders([saved("a")], true, deps({ exactAlarms: async () => false }));
+
+      expect(mockScheduleNotification.mock.calls[0][5]).toEqual({
+        kind: SESSION_REMINDER_KIND,
+        triggerAtMs,
+        fireAtMs: triggerAtMs,
+        exact: false,
+      });
+    });
+
+    it("sets a pending inexact reminder again, as exact, once the permission is granted", async () => {
+      mockListScheduled.mockResolvedValue([
+        { identifier: "a", data: { kind: SESSION_REMINDER_KIND, triggerAtMs, fireAtMs: triggerAtMs, exact: false } },
+      ]);
+
+      await syncSessionReminders([saved("a")], true, deps({ exactAlarms: async () => true }));
+
+      expect(mockScheduleNotification).toHaveBeenCalledTimes(1);
+      expect(mockScheduleNotification.mock.calls[0][5]).toEqual(
+        expect.objectContaining({ exact: true }),
+      );
+    });
+
+    it("does not read the permission when reminders are off", async () => {
+      await AsyncStorage.setItem(NOTIFICATION_ENABLED_KEY, "false");
+      const exactAlarms = jest.fn(async () => true);
+
+      await syncSessionReminders([saved("a")], true, deps({ exactAlarms }));
+
+      expect(exactAlarms).not.toHaveBeenCalled();
+    });
   });
 
   it("does not touch a reminder that is already right", async () => {
