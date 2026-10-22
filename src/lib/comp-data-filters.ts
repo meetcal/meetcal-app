@@ -37,3 +37,30 @@ export function selectQualifyingTotals(
     qt,
   }));
 }
+
+const EVENT_YEAR = /^(\d{4}) /;
+
+/**
+ * Qualifying-total events for the event picker: sets named for a season
+ * ("2027 Series") newest season first, then the rest; by name within each.
+ */
+export function sortQualifyingEvents(events: readonly string[]): string[] {
+  const year = (event: string) => Number(EVENT_YEAR.exec(event)?.[1] ?? 0);
+  return [...events].sort(
+    (a, b) => year(b) - year(a) || a.localeCompare(b, undefined, { sensitivity: 'base' }),
+  );
+}
+
+/**
+ * The event the screen opens on: the newest season's "YYYY Nationals", else
+ * an unnamed-season "Nationals", else the first event. `''` with no events.
+ */
+export function defaultQualifyingEvent(events: readonly string[]): string {
+  const sorted = sortQualifyingEvents(events);
+  return (
+    sorted.find((event) => /^\d{4} Nationals$/.test(event)) ??
+    sorted.find((event) => event === 'Nationals') ??
+    sorted[0] ??
+    ''
+  );
+}

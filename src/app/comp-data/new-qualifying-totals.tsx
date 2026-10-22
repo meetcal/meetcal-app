@@ -13,7 +13,11 @@ import {
   QualifyingTotalsData,
   qualifyingTotalsResource,
 } from "@/lib/database/fetch-qualifying-totals";
-import { selectQualifyingTotals } from "@/lib/comp-data-filters";
+import {
+  defaultQualifyingEvent,
+  selectQualifyingTotals,
+  sortQualifyingEvents,
+} from "@/lib/comp-data-filters";
 import { sortAgeGroups } from "@/lib/sortAgeGroups";
 import { Filters } from "@/types/qual_totals";
 import { Stack, useLocalSearchParams } from "expo-router";
@@ -39,7 +43,8 @@ function QualifyingTotalsScreenContent() {
   }>();
   const defaultFilters = useMemo<Filters>(
     () => ({
-      event: routeParams.event || "Nationals",
+      // Empty until the totals load; then the newest season's Nationals.
+      event: routeParams.event || "",
       gender: routeParams.gender || "Men",
       ageGroup: routeParams.ageGroup || "Senior",
     }),
@@ -67,7 +72,7 @@ function QualifyingTotalsScreenContent() {
 
   const getFilterDisplayText = () => {
     const parts = [];
-    parts.push(filters.event);
+    if (filters.event) parts.push(filters.event);
     parts.push(filters.gender);
     if (filters.ageGroup) {
       parts.push(filters.ageGroup[0].toUpperCase() + filters.ageGroup.slice(1));
@@ -81,9 +86,9 @@ function QualifyingTotalsScreenContent() {
   );
 
   const eventOptions = useMemo(() => {
-    return Object.keys(totalsData ?? {})
-      .filter((e) => typeof e === "string")
-      .sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }));
+    return sortQualifyingEvents(
+      Object.keys(totalsData ?? {}).filter((e) => typeof e === "string"),
+    );
   }, [totalsData]);
 
   useEffect(() => {
@@ -93,7 +98,7 @@ function QualifyingTotalsScreenContent() {
 
     const nextEvent = eventOptions.includes(filters.event)
       ? filters.event
-      : eventOptions[0];
+      : defaultQualifyingEvent(eventOptions);
     const nextAgeGroups =
       nextEvent && totalsData[nextEvent]
         ? sortAgeGroups(

@@ -1,4 +1,9 @@
-import { selectQualifyingTotals, selectStandards } from '@/lib/comp-data-filters';
+import {
+  defaultQualifyingEvent,
+  selectQualifyingTotals,
+  selectStandards,
+  sortQualifyingEvents,
+} from '@/lib/comp-data-filters';
 import type { QualifyingTotalsData } from '@/lib/database/fetch-qualifying-totals';
 import type { StandardsData } from '@/types/standards';
 
@@ -51,5 +56,42 @@ describe('selectQualifyingTotals', () => {
     expect(selectQualifyingTotals(TOTALS, { event: 'Worlds', ageGroup: 'Senior', gender: 'Men' })).toEqual([]);
     expect(selectQualifyingTotals(TOTALS, { event: 'Nationals', ageGroup: 'Junior', gender: 'Men' })).toEqual([]);
     expect(selectQualifyingTotals(TOTALS, { event: 'Nationals', ageGroup: 'Senior', gender: '' })).toEqual([]);
+  });
+});
+
+const EVENTS = [
+  'IMWA Worlds',
+  '2026 Virus Series',
+  '2027 Series',
+  '2027 Nationals (Adaptive)',
+  '2027 Nationals',
+  "Master's Pan Ams",
+  '2026 Virus Finals',
+];
+
+describe('sortQualifyingEvents', () => {
+  it('lists the newest season first, then events without a season, by name within each', () => {
+    expect(sortQualifyingEvents(EVENTS)).toEqual([
+      '2027 Nationals',
+      '2027 Nationals (Adaptive)',
+      '2027 Series',
+      '2026 Virus Finals',
+      '2026 Virus Series',
+      'IMWA Worlds',
+      "Master's Pan Ams",
+    ]);
+  });
+});
+
+describe('defaultQualifyingEvent', () => {
+  it("opens on the newest season's Nationals, not its adaptive set", () => {
+    expect(defaultQualifyingEvent(EVENTS)).toBe('2027 Nationals');
+    expect(defaultQualifyingEvent(['2026 Nationals', '2028 Nationals', '2027 Nationals'])).toBe('2028 Nationals');
+  });
+
+  it('falls back to a season-less Nationals, then the first event, then nothing', () => {
+    expect(defaultQualifyingEvent(['Virus Series', 'Nationals'])).toBe('Nationals');
+    expect(defaultQualifyingEvent(['IMWA Worlds', '2027 Series'])).toBe('2027 Series');
+    expect(defaultQualifyingEvent([])).toBe('');
   });
 });
