@@ -2,7 +2,7 @@
   "name": "meetcal-web-tests",
   "private": true,
   "scripts": {
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsrs --noEmit",
     "test:config": "node --test tests/config/*.test.mjs",
     "test:e2e": "playwright test",
     "test:e2e:desktop": "playwright test --project=desktop-chromium --project=desktop-webkit",
@@ -13,7 +13,7 @@
     "@playwright/test": "1.62.1",
     "@types/node": "26.2.0",
     "serve": "14.2.6",
-    "typescript": "7.0.2"
+    "tsrs": "0.18.0-ts7.1.0-dev.20260929"
   },
   "overrides": {
     "compression": "1.8.2"

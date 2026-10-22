@@ -1,7 +1,7 @@
 /**
  * The release-gate lock: `mise run check` in several worktrees of this
  * repository queues instead of running at once. Concurrent gates (several
- * Jest pools, `tsc` runs and Cargo builds at a time) have exhausted memory on
+ * Jest pools, `tsrs` runs and Cargo builds at a time) have exhausted memory on
  * development machines. Ported from the Atlas repository's `check-lock.ts`.
  *
  * The lock is a directory in the git common directory, which every worktree of
