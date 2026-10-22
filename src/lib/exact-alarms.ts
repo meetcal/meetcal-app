@@ -15,7 +15,7 @@ import { Alert, Linking, Platform } from 'react-native';
  * (`getExactAlarmPermissionsAsync`) and opens
  * `ACTION_REQUEST_SCHEDULE_EXACT_ALARM` for this app
  * (`requestExactAlarmPermissionsAsync`). Both came in expo-notifications
- * 58.1; a binary without them reads as `unknown`, never as denied.
+ * 58.1.1; a binary without them reads as `unknown`, never as denied.
  */
 
 /** Android 12: exact alarms need the permission from here on. */
@@ -78,13 +78,10 @@ export function openExactAlarmSettings(): void {
     console.warn('Exact alarms: could not open Alarms & reminders; opening App info', error);
     return Linking.openSettings().catch(() => undefined);
   };
-  try {
-    // Resolves when the user returns (or never, if they revoke it: Android
-    // restarts the app), so nothing waits on it.
-    void Notifications.requestExactAlarmPermissionsAsync().catch(openAppInfo);
-  } catch (error) {
-    void openAppInfo(error);
-  }
+  // Resolves when the user returns (or never, if they revoke it: Android
+  // restarts the app), so nothing waits on it. A binary without the native
+  // function rejects with expo's UnavailabilityError.
+  void Notifications.requestExactAlarmPermissionsAsync().catch(openAppInfo);
 }
 
 /**

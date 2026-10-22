@@ -125,7 +125,7 @@ describe("openExactAlarmSettings", () => {
   });
 
   it("falls back to App info when the native function is missing", async () => {
-    delete notifications.requestExactAlarmPermissionsAsync;
+    realRequest?.mockRejectedValueOnce(new Error("UnavailabilityError"));
     const openSettings = jest.spyOn(Linking, "openSettings").mockResolvedValue(undefined);
     expect(() => openExactAlarmSettings()).not.toThrow();
     await flush();

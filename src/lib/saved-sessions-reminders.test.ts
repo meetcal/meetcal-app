@@ -31,6 +31,12 @@ jest.mock("@/utils/notifications", () => ({
   listScheduledNotifications: jest.fn(async () => []),
 }));
 
+// Exactness is not tracked here unless a test passes `exactAlarms`.
+jest.mock("@/lib/exact-alarms", () => ({
+  readExactAlarmStatus: jest.fn(async () => "not-needed"),
+  exactAlarmsFromStatus: jest.fn(() => null),
+}));
+
 jest.mock("@/lib/database/offline-store", () => ({
   getMeetSchedule: jest.fn(async () => []),
 }));
