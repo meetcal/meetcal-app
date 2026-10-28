@@ -1,5 +1,5 @@
 import { keepStoredHolders, run } from '../../convex/scrapers/iwfRecords';
-import { UNBLOCK_URL } from '../../convex/scrapers/lib/browserless';
+import { isQuotaRefusal, UNBLOCK_URL } from '../../convex/scrapers/lib/browserless';
 import { handlerOf } from '../fakeDb';
 
 // The parsers have their own tests; here each page's text names the record it stands for.
@@ -158,6 +158,35 @@ describe('iwf-world-records run', () => {
       expect(rows.find((r) => r.ageCategory === 'Senior')?.snatchBy).toEqual(iwfHolder);
     });
 
+    it('falls back to Wikipedia without a warning when Browserless is out of units or busy', async () => {
+      const log = jest.spyOn(console, 'log').mockImplementation(() => undefined);
+      try {
+        const text = (body: string, status: number) => () => new Response(body, { status });
+        // A 429 is tried again (the plan's browsers may only be busy); 402 and a plan 403 are not.
+        for (const [answer, tries] of [
+          [text('Too Many Requests', 429), 2],
+          [text('Payment required', 402), 1],
+          [text('Your monthly units are exhausted. Upgrade your plan to continue.', 403), 1],
+        ] as const) {
+          const fetchMock = serve({ iwf: answer });
+          const result = await runJob();
+          expect(result.source).toBe('wikipedia');
+          expect(calls(fetchMock, 'browserless')).toHaveLength(tries);
+        }
+        expect(warn).not.toHaveBeenCalled();
+        expect(log).toHaveBeenCalledWith(expect.stringContaining('Browserless plan limit, using Wikipedia'));
+        expect(runMutation).toHaveBeenCalledTimes(3);
+      } finally {
+        log.mockRestore();
+      }
+    });
+
+    it('still warns when Browserless refuses the key', async () => {
+      serve({ iwf: () => new Response('Invalid API key. Please check your API key and try again. (requestId: 1)', { status: 401 }) });
+      expect((await runJob()).source).toBe('wikipedia');
+      expect(warn).toHaveBeenCalledWith(expect.stringContaining('iwf.sport failed, using Wikipedia'));
+    });
+
     it('falls back on a Browserless error, and skips when Wikipedia is down too', async () => {
       const fetchMock = serve({ iwf: json({}, 500), wiki: wikipedia([], json({}, 503)) });
       const result = await runJob();
@@ -190,5 +219,16 @@ describe('keepStoredHolders', () => {
   it('leaves a class it has no stored record of, or another class, alone', () => {
     expect(keepStoredHolders([record], [])).toEqual([record]);
     expect(keepStoredHolders([record], [{ ageCategory: 'Junior', gender: 'Women', weightClass: '49kg', snatchRecord: 94, snatchBy: stored }])).toEqual([record]);
+  });
+});
+
+describe('isQuotaRefusal', () => {
+  it('takes 402, 429 and a plan refusal for the plan, and an invalid key or an outage for neither', () => {
+    expect(isQuotaRefusal(402, '')).toBe(true);
+    expect(isQuotaRefusal(429, 'Too Many Requests')).toBe(true);
+    expect(isQuotaRefusal(403, 'Usage limit exceeded for this billing period')).toBe(true);
+    expect(isQuotaRefusal(401, 'Invalid API key. Please check your API key and try again. (requestId: bb59)')).toBe(false);
+    expect(isQuotaRefusal(403, 'Forbidden')).toBe(false);
+    expect(isQuotaRefusal(500, 'quota service down')).toBe(false);
   });
 });

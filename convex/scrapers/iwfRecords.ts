@@ -4,7 +4,7 @@ import { v } from 'convex/values';
 import { internalAction } from '../_generated/server';
 import { internal } from '../_generated/api';
 import { fetchJson, throttledOrTransient, withRetries, type RetryPolicy } from './lib/http';
-import { ChallengeError, fetchUnblockedHtml } from './lib/browserless';
+import { BrowserlessQuotaError, ChallengeError, fetchUnblockedHtml } from './lib/browserless';
 import { normalizeAgeCategory, normalizeGender } from '../lib/normalize';
 import type { RecordHolder } from './parse/holder';
 import { IWF_PAGES, parseIwfWikitext, wikitextUrl, type IwfAge, type IwfRecord } from './parse/iwfRecords';
@@ -122,7 +122,12 @@ export const run = internalAction({
       try {
         found = { source: 'iwf.sport', records: await fromIwfSite(token) };
       } catch (error) {
-        console.warn(`iwf-world-records: iwf.sport failed, using Wikipedia: ${message(error)}`);
+        // Out of Browserless units (or its plan's browsers busy) is expected
+        // on the free tier, not a fault: Wikipedia without a warning. A run
+        // that falls back throws nothing either way, so neither reaches
+        // Convex's exception reporting (Sentry).
+        if (error instanceof BrowserlessQuotaError) console.log(`iwf-world-records: Browserless plan limit, using Wikipedia: ${error.message}`);
+        else console.warn(`iwf-world-records: iwf.sport failed, using Wikipedia: ${message(error)}`);
       }
     }
     if (!found) {
