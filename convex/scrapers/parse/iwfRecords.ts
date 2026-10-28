@@ -1,7 +1,7 @@
-// IWF world records (replaces `iwf/world-records/scraper.py`). iwf.sport now
-// answers every request, from the VPS and from Convex alike, with a
-// Cloudflare bot challenge, and publishes the records nowhere else. The
-// "Current records" tables of Wikipedia's three world-record lists (senior,
+// IWF world records from Wikipedia: the fallback when IWF's own pages
+// (`iwfSite.ts`, loaded through Browserless past iwf.sport's Cloudflare bot
+// challenge) cannot be read, and the only source without a Browserless
+// token. The "Current records" tables of Wikipedia's three world-record lists (senior,
 // junior, youth) carry the same 48 classes, kept current (they already had
 // the 2026 Asian Games records before IWF's own page), and the MediaWiki API
 // serves them without a challenge.
