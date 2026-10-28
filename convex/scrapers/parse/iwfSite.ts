@@ -39,7 +39,7 @@ export function parseIwfSiteHtml(html: string, ageCategory: IwfAge, gender: IwfG
       continue;
     }
     if (element.classList.contains('card__legend')) continue;
-    const current = classes.at(-1);
+    const current = classes[classes.length - 1];
     if (!current) throw new Error(`${where}: a record before any weight class`);
     // "Record: ", "Born: " and the like are labels for narrow screens.
     for (const label of element.querySelectorAll('.only__mobile')) label.remove();
