@@ -81,6 +81,7 @@ describe('checkSteps', () => {
     expect(names({ suites: ['app'], reason: '' })).toEqual([
       'App lint',
       'App typecheck',
+      'Convex typecheck',
       'App tests and coverage',
       'Coverage gaps',
     ]);

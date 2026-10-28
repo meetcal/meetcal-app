@@ -68,6 +68,8 @@ export function checkSteps(plan: CheckPlan): CheckStep[] {
     steps.push(
       { name: 'App lint', command: ['bun', 'run', 'lint'] },
       { name: 'App typecheck', command: ['bun', 'run', 'typecheck'] },
+      // `convex deploy` type checks with convex/tsconfig.json (an older `lib`), which the app's config does not.
+      { name: 'Convex typecheck', command: ['bun', 'run', 'typecheck:convex'] },
       { name: 'App tests and coverage', command: ['bun', 'run', 'test:coverage'] },
       { name: 'Coverage gaps', command: ['bun', COVERAGE_GAPS] },
     );
