@@ -33,6 +33,7 @@ async fn run(command: Commands) -> Result<()> {
         Commands::Compare(args) => commands::compare::run(args).await?,
         Commands::H2h(args) => commands::h2h::run(args).await?,
         Commands::IntlRankings(args) => commands::intl_rankings::run(args).await?,
+        Commands::Elite(args) => commands::elite::run(args).await?,
         Commands::Leaderboard(args) => commands::leaderboard::run(args).await?,
         Commands::Login(args) => commands::login::run_login(args).await?,
         Commands::Logout(args) => commands::login::run_logout(args).await?,

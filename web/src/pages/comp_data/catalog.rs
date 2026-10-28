@@ -17,7 +17,7 @@ pub enum Access {
     Free { seo_description: &'static str },
 }
 
-pub const DATA_PAGES: [DataPageLink; 12] = [
+pub const DATA_PAGES: [DataPageLink; 13] = [
     DataPageLink {
         path: "/qualifying-totals",
         label: "Qualifying Totals",
@@ -58,6 +58,13 @@ pub const DATA_PAGES: [DataPageLink; 12] = [
         label: "WSO Dashboard",
         description: "Participation, make rates, lifted volume, and results for a selected WSO.",
         seo_title: "USAW WSO Meet Dashboard",
+        access: Access::Subscription,
+    },
+    DataPageLink {
+        path: "/wso-elite",
+        label: "WSO Elite",
+        description: "A WSO's top athletes overall and by age group, by % of A, Q-points, or Sinclair.",
+        seo_title: "USAW WSO Elite Athletes",
         access: Access::Subscription,
     },
     DataPageLink {

@@ -2335,3 +2335,8 @@ main > div:has(> h4) > p {
 .record-value { display: block; font-weight: 700; }
 .record-holder { display: block; margin-top: 3px; font-size: 0.82rem; }
 .record-holder-detail { display: block; margin-top: 1px; color: var(--text-secondary); font-size: 0.76rem; line-height: 1.35; }
+
+/* WSO Elite: each list's score picker, and the women's and men's tables under a list. */
+.elite-scores { margin-top: 14px; }
+.elite-gender { margin: 22px 0 -10px; color: var(--text-secondary); font-size: 0.95rem; }
+.elite-download { display: inline-block; text-decoration: none; }

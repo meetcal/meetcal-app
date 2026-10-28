@@ -22,6 +22,7 @@ import type * as lib_clubs from "../lib/clubs.js";
 import type * as lib_cronAlerts from "../lib/cronAlerts.js";
 import type * as lib_cronSchedule from "../lib/cronSchedule.js";
 import type * as lib_directory from "../lib/directory.js";
+import type * as lib_elite from "../lib/elite.js";
 import type * as lib_etag from "../lib/etag.js";
 import type * as lib_heartbeat from "../lib/heartbeat.js";
 import type * as lib_history from "../lib/history.js";
@@ -128,6 +129,7 @@ declare const fullApi: ApiFromModules<{
   "lib/cronAlerts": typeof lib_cronAlerts;
   "lib/cronSchedule": typeof lib_cronSchedule;
   "lib/directory": typeof lib_directory;
+  "lib/elite": typeof lib_elite;
   "lib/etag": typeof lib_etag;
   "lib/heartbeat": typeof lib_heartbeat;
   "lib/history": typeof lib_history;

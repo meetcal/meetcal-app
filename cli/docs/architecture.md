@@ -35,7 +35,8 @@ POST https://disciplined-hare-790.convex.cloud/api/query
   sent once (`Endpoint::retries`): one may have done its work before its answer was lost.
 - One shared `reqwest` client with a 10-second connect timeout, a 30-second request timeout, and a
   `meetcal-cli/<version>` User-Agent. A premium action carries its own timeout (`PremiumAction`):
-  two minutes for `results:leaderboard`, which reads a whole range before it answers.
+  two minutes for `results:leaderboard`, which reads a whole range before it answers, and for
+  `results:wsoElite`, which reads every member's registrations and history.
 - `MEETCAL_CONVEX_URL` (read at run time) points the CLI at another deployment.
 - `call_function` runs any query, mutation or action (`Endpoint`) with an optional bearer token,
   for the few calls that are not data reads (`functions::*`, `queries::ACCESS_PASS`). A function
@@ -46,7 +47,8 @@ POST https://disciplined-hare-790.convex.cloud/api/query
 Premium data (`PREMIUM_FUNCTIONS` in `src/utils/access.rs`, equal to `convex/lib/access.ts`'s list
 and the website's `SUBSCRIPTION_FUNCTIONS`; `results:search` only with both dates) is read with a
 shared daily access pass as the `pass` argument (`../docs/backend.md`, "Premium data"). So is the
-premium action `results:leaderboard` (`PREMIUM_ACTIONS`, equal to the server's), through
+premium actions `results:leaderboard` and `results:wsoElite` (`PREMIUM_ACTIONS`, equal to the
+server's), through
 `backend::premium_action`, which handles a refusal the same way.
 
 - `meetcal login` (`src/commands/login.rs`) runs a device-code login (`convex/deviceLogin.ts`):
@@ -125,6 +127,7 @@ another release list (the tests' local server).
 | Names | `clubs`, `wsos` | `reference:clubs`, `reference:registrationWsos`, `reference:wsoList`, `reference:wsoAgeGroups` |
 | Clubs | `club-results`, `club-wrapped`, `club-compare`, `club-trends` | `reference:clubMeetStats`, `reference:clubAthletes`, `results:recent`, `results:byNames`, `results:byMeet` |
 | WSOs | `wso`, `wso-wrapped`, `wso-compare`, `wso-trends` | `meets:athletes`, `results:byNames`, `results:byMeet`, `reference:wsoAthletes`, `results:recent` |
+| WSO elite | `elite` | `reference:registrationWsos`, then `results:wsoElite`, an action that finds the WSO's members and ranks each list on the server (`convex/lib/elite.ts`) |
 | Reference | `records`, `standards`, `qualifying-totals`, `intl-rankings`, `nat-rankings`, `nat-ranking-year`, `wso-records`, `adaptive-records` | the matching `reference:*` query |
 | Login | `login`, `logout` | `deviceLogin:start`, `deviceLogin:poll` (actions), `accessPass:pass`, `apiTokens:revoke` (mutation) |
 | Upgrade | `upgrade` | GitHub, not Convex: the release list (`api.github.com/repos/meetcal/meetcal-app/releases`) and the newest `cli-v*` release's archive and `SHA256SUMS` |

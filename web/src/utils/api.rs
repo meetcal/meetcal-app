@@ -69,6 +69,12 @@ pub(crate) const SUBSCRIPTION_FUNCTIONS: &[&str] = &[
     "meets:packageForMeet",
 ];
 
+/// The Convex actions that answer premium data, apart from
+/// `SUBSCRIPTION_FUNCTIONS` (queries only): Convex's `PREMIUM_ACTIONS`
+/// (`convex/lib/access.ts`, compared to this one by a test there). Each takes
+/// the pass in its `pass` argument like a premium query (`premium_action`).
+pub(crate) const SUBSCRIPTION_ACTIONS: &[&str] = &["results:leaderboard", "results:wsoElite"];
+
 /// The public query that hands a signed-in subscriber the access pass
 /// (`convex/accessPass.ts`): `{ pass, rotatesAt }`, or a function error with
 /// status 401 when signed out and 403 when Convex has no active entitlement
@@ -207,6 +213,8 @@ pub(crate) mod queries {
         Query::text("reference:nationalRankingsByYear");
     /// `GET /data/wso`
     pub(crate) const WSO_LIST: Query = Query::text("reference:wsoList");
+    /// Every WSO name on registrations (`athletes.wso`), the names `results:wsoElite` matches.
+    pub(crate) const REGISTRATION_WSOS: Query = Query::value("reference:registrationWsos");
     /// `GET /data/wso/records`; takes `wso`.
     pub(crate) const WSO_RECORDS: Query = Query::text("reference:wsoRecords");
     /// `GET /data/adaptive`; takes `gender` and `excludeFederation`.
@@ -221,6 +229,30 @@ pub(crate) mod queries {
     /// Weightlifting Wrapped (no Rust route): takes `query`, `year` and optionally `picked`, and
     /// answers the year's stats, never the results behind them. Free and public: no pass.
     pub(crate) const WRAPPED: Query = Query::value("results:wrapped");
+}
+
+/// A premium Convex action the site calls (`SUBSCRIPTION_ACTIONS`), and how
+/// long its request may take: such an action reads many rows before it
+/// answers, so it gets longer than `REQUEST_TIMEOUT`.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct Action {
+    /// `module:function`.
+    pub function: &'static str,
+    pub timeout: Duration,
+}
+
+/// The premium actions the site calls.
+pub(crate) mod actions {
+    use super::{Action, Duration};
+
+    /// A WSO's elite lists (`convex/lib/elite.ts`): takes `wso` (as
+    /// registrations spell it), `from`, `to` and `methods` (each list's
+    /// score). It reads every member's registrations and history, so it gets
+    /// two minutes.
+    pub(crate) const WSO_ELITE: Action = Action {
+        function: "results:wsoElite",
+        timeout: Duration::from_secs(120),
+    };
 }
 
 #[derive(Serialize)]
@@ -425,12 +457,44 @@ where
     if !carries_pass(query, &args) {
         return post(Endpoint::Query, query.function, &args, None).await;
     }
+    send_with_pass(Endpoint::Query, query.function, &args, REQUEST_TIMEOUT).await
+}
+
+/// Runs the premium `action` with `args`, carrying the access pass as a
+/// premium query does (`send`) when it is on `SUBSCRIPTION_ACTIONS`, within
+/// the action's timeout.
+pub(crate) async fn premium_action<T, A>(action: Action, args: &A) -> Result<T>
+where
+    T: DeserializeOwned,
+    A: Serialize + ?Sized,
+{
+    let function = action.function;
+    let args = serde_json::to_value(args)
+        .map_err(|error| user_error(function, UNREACHABLE_MESSAGE, error))?;
+    let response = if SUBSCRIPTION_ACTIONS.contains(&function) {
+        send_with_pass(Endpoint::Action, function, &args, action.timeout).await?
+    } else {
+        post_within(Endpoint::Action, function, &args, None, action.timeout).await?
+    };
+    serde_json::from_value(whole_numbers_as_integers(answer_value(response)?))
+        .map_err(|error| user_error(function, UNREADABLE_MESSAGE, error))
+}
+
+/// Posts a premium read with the pass the site holds (see `send`), within
+/// `timeout`, and once more with a fresh pass if Convex refuses it.
+async fn send_with_pass(
+    endpoint: Endpoint,
+    function: &str,
+    args: &Value,
+    timeout: Duration,
+) -> Result<QueryResponse> {
     let pass = current_pass().await;
-    let response = post(
-        Endpoint::Query,
-        query.function,
-        &with_pass(&args, pass.as_deref()),
+    let response = post_within(
+        endpoint,
+        function,
+        &with_pass(args, pass.as_deref()),
         None,
+        timeout,
     )
     .await?;
     if !is_pass_refused(&response) {
@@ -440,14 +504,14 @@ where
         return Ok(response);
     };
     leptos::logging::warn!(
-        "Convex refused the access pass for {}; reading again with a fresh one",
-        query.function
+        "Convex refused the access pass for {function}; reading again with a fresh one"
     );
-    post(
-        Endpoint::Query,
-        query.function,
-        &with_pass(&args, Some(&fresh)),
+    post_within(
+        endpoint,
+        function,
+        &with_pass(args, Some(&fresh)),
         None,
+        timeout,
     )
     .await
 }
@@ -519,6 +583,17 @@ async fn post(
     args: &Value,
     token: Option<&str>,
 ) -> Result<QueryResponse> {
+    post_within(endpoint, function, args, token, REQUEST_TIMEOUT).await
+}
+
+/// `post`, with each request allowed `timeout` instead of `REQUEST_TIMEOUT`.
+async fn post_within(
+    endpoint: Endpoint,
+    function: &str,
+    args: &Value,
+    token: Option<&str>,
+    timeout: Duration,
+) -> Result<QueryResponse> {
     let client = reqwest::Client::new();
     let url = match endpoint {
         Endpoint::Query => format!("{}/api/query", convex_url()),
@@ -533,7 +608,7 @@ async fn post(
 
     let mut retries = 0;
     let response = loop {
-        let mut builder = client.post(&url).timeout(REQUEST_TIMEOUT).json(&request);
+        let mut builder = client.post(&url).timeout(timeout).json(&request);
         if let Some(token) = token {
             builder = builder.bearer_auth(token);
         }
@@ -1007,6 +1082,13 @@ mod tests {
         if option_env!("MEETCAL_CONVEX_URL").is_none() {
             assert_eq!(convex_url(), PRODUCTION_CONVEX_URL);
         }
+    }
+
+    #[test]
+    fn the_premium_actions_carry_the_pass_and_wait_longer_than_a_query() {
+        assert!(SUBSCRIPTION_ACTIONS.contains(&actions::WSO_ELITE.function));
+        assert!(!SUBSCRIPTION_FUNCTIONS.contains(&actions::WSO_ELITE.function));
+        assert!(actions::WSO_ELITE.timeout > REQUEST_TIMEOUT);
     }
 
     #[test]

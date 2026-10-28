@@ -19,4 +19,5 @@ pub mod standards;
 pub(crate) mod ui;
 pub mod wrapped;
 pub mod wso_dashboard;
+pub mod wso_elite;
 pub mod wso_records;

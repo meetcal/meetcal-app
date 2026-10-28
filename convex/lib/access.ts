@@ -72,10 +72,11 @@ export type PremiumFunction = (typeof PREMIUM_FUNCTIONS)[number];
  * Each takes the pass in its `pass` argument and checks it with `checkPass`,
  * after reading the pass row through `accessPass:passes`. Actions are not
  * cached, so these are for answers too costly for one query: the
- * leaderboard pages through a range's results. The CLI attaches the pass to
+ * leaderboard pages through a range's results, and a WSO's elite lists
+ * through its members' registrations and histories. The CLI attaches the pass to
  * them (`PREMIUM_ACTIONS` in `cli/src/utils/access.rs`).
  */
-export const PREMIUM_ACTIONS = ['results:leaderboard'] as const;
+export const PREMIUM_ACTIONS = ['results:leaderboard', 'results:wsoElite'] as const;
 
 export type PremiumAction = (typeof PREMIUM_ACTIONS)[number];
 
@@ -85,7 +86,7 @@ export type PremiumAction = (typeof PREMIUM_ACTIONS)[number];
  * a full uncached read (the leaderboard reads up to five years of results),
  * so they need not wait for `enforce`.
  */
-export const ENFORCED_FROM_THE_START: ReadonlySet<string> = new Set<PremiumAction>(['results:leaderboard']);
+export const ENFORCED_FROM_THE_START: ReadonlySet<string> = new Set<PremiumAction>(['results:leaderboard', 'results:wsoElite']);
 
 export type Caller =
   | { kind: 'anonymous' }

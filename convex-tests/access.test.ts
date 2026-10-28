@@ -188,6 +188,13 @@ describe('the premium queries', () => {
     expect(cli.sort()).toEqual([...PREMIUM_ACTIONS].sort());
   });
 
+  it("are the actions the website sends the pass to (`SUBSCRIPTION_ACTIONS` in `web/src/utils/api.rs`)", () => {
+    const source = readFileSync(join(__dirname, '..', 'web', 'src', 'utils', 'api.rs'), 'utf8');
+    const list = /SUBSCRIPTION_ACTIONS: &\[&str\] = &\[([^\]]*)\]/.exec(source)?.[1] ?? '';
+    const web = [...list.matchAll(/"([^"]+)"/g)].map((match) => match[1]);
+    expect(web.sort()).toEqual([...PREMIUM_ACTIONS].sort());
+  });
+
   it("are the ones Siri sends the pass to (`premiumFunctions` in `plugins/ios-app-intents/MeetCalAPI.swift`)", () => {
     const source = readFileSync(join(__dirname, '..', 'plugins', 'ios-app-intents', 'MeetCalAPI.swift'), 'utf8');
     const list = /premiumFunctions: Set<String> = \[([^\]]*)\]/.exec(source)?.[1] ?? '';

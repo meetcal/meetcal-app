@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+- `meetcal elite <WSO>`: a WSO's top 20 women and men Overall, Youth, Junior, Senior and Masters,
+  each list scored by % of A standard, Q-points, Q-masters or Sinclair (`--overall`, `--youth`,
+  `--junior`, `--senior`, `--masters`). Ranked by MeetCal (`results:wsoElite`), so it needs
+  `meetcal login` with a MeetCal subscription, and the action must be on the deployment before
+  this is released.
+
 ## 3.0.0
 
 Breaking: `meetcal results` is removed, and `leaderboard` without
