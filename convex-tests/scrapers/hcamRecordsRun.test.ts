@@ -67,6 +67,26 @@ describe('HCAM records run', () => {
     expect(runMutation).not.toHaveBeenCalled();
   });
 
+  it('previews without writing on a dry run, and passes allowShrink to both guards', async () => {
+    pdfs();
+    const dry = mutations();
+    const preview = await handlerOf<{ dryRun: boolean }, Result>(run)({ runMutation: dry }, { dryRun: true });
+    expect(preview.inserted).toBe(0);
+    expect(calls(dry)).toEqual(['prune (dry run)', 'prune (dry run)']);
+    const override = mutations(true);
+    await handlerOf<{ allowShrink: boolean }, Result>(run)({ runMutation: override }, { allowShrink: true });
+    expect(calls(override)).toEqual(['prune (dry run)', 'upsert', 'prune']);
+    expect(override.mock.calls.every(([, args]) => args.allowShrink === true)).toBe(true);
+  });
+
+  it("writes nothing when the men's PDF yields no records", async () => {
+    pdfs();
+    mockPdfLines.mockImplementation(async (bytes) => (new TextDecoder().decode(bytes).includes('-women') ? PAGES.women : [['HOWARD COHEN AMERICAN MASTERS RECORDS - MEN']]));
+    const runMutation = mutations();
+    await expect(handlerOf<Record<string, never>, Result>(run)({ runMutation }, {})).rejects.toThrow("parsed 0 men's records");
+    expect(runMutation).not.toHaveBeenCalled();
+  });
+
   it('writes nothing when the prune would refuse', async () => {
     pdfs();
     const runMutation = mutations(true);

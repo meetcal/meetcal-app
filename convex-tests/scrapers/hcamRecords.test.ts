@@ -32,6 +32,9 @@ describe('HCAM records PDFs', () => {
     // Order on the page does not matter; the date does.
     const reversed = `<a href="${STORAGE}/b?fileName=AM20270101_WOMEN.pdf">w</a><a href="${STORAGE}/a?fileName=AM20260101-women.pdf">w</a><a href="${STORAGE}/m?fileName=AM20260101 men.pdf">m</a>`;
     expect(discoverHcamPdfs(reversed)).toEqual({ Men: `${STORAGE}/m?fileName=AM20260101 men.pdf`, Women: `${STORAGE}/b?fileName=AM20270101_WOMEN.pdf` });
+    // A percent-escaped name is read the same way.
+    const escaped = `<a href="${STORAGE}/m?fileName=AM20270101%20men.pdf">m</a><a href="${STORAGE}/w?fileName=AM20270101%20women.pdf">w</a>`;
+    expect(discoverHcamPdfs(escaped).Men).toBe(`${STORAGE}/m?fileName=AM20270101%20men.pdf`);
   });
 
   it('fails rather than guess between two files of the same date, or when a gender has none', () => {
@@ -84,14 +87,17 @@ describe('HCAM records PDFs', () => {
 
   it('carries an age group onto the next page, and reads an open-ended one', () => {
     const pages = [
-      ['AGE GROUP: 90+', 'SNATCH', '60 Al OLD 40.0 12/14/25 Louisville, KY'],
+      ['HOWARD COHEN AMERICAN MASTERS RECORDS - MEN', 'AGE GROUP: 90+', 'SNATCH', '60 Al OLD 40.0 12/14/25 Louisville, KY'],
       ['CLEAN & JERK', '60 Al OLD 50.0 12/14/25 Louisville, KY'],
     ];
     expect(parseHcamPages(pages, 'Men')).toMatchObject([{ ageCategory: 'Masters 90', weightClass: '60kg', snatchRecord: 40, cjRecord: 50 }]);
   });
 
-  it('fails on a swapped PDF, a row it cannot read, a class outside a section, or a lift listed twice', () => {
+  it('fails on a swapped or untitled PDF, a row it cannot read, a class outside a section, or a lift listed twice', () => {
     expect(() => parseHcamPages(fixture('hcam-women-20260101.txt'), 'Men')).toThrow('the men PDF holds the other records');
+    // Untitled, it could be either gender's.
+    const untitled = fixture('hcam-women-20260101.txt').map((lines) => lines.filter((line) => !line.startsWith('HOWARD COHEN')));
+    expect(() => parseHcamPages(untitled, 'Men')).toThrow('its gender cannot be checked');
     const page = (...lines: string[]) => [['AGE GROUP: 35 - 39', 'SNATCH', ...lines]];
     expect(() => parseHcamPages(page('85 Jo DOE 90 kg 12/13/25 Louisville, KY'), 'Men')).toThrow('unreadable record row');
     expect(() => parseHcamPages(page('85 Jo DOE 12/13/25 Louisville, KY'), 'Men')).toThrow('unreadable record row');

@@ -23,7 +23,7 @@ export function discoverHcamPdfs(page: string): { Men: string; Women: string } {
   const latest: { Men?: { date: string; url: string }; Women?: { date: string; url: string } } = {};
   for (const match of html.matchAll(/href="([^"]+)"/gi)) {
     const url = unescapeHtml(match[1]);
-    const lower = url.toLowerCase();
+    const lower = decoded(url).toLowerCase();
     if (!lower.includes('storage.googleapis.com') || !lower.includes('.pdf')) continue;
     const file = /filename=am(\d{8})[-_ ]*(women|men)\b/.exec(lower);
     if (!file) continue;
@@ -39,6 +39,15 @@ export function discoverHcamPdfs(page: string): { Men: string; Women: string } {
   return { Men: latest.Men!.url, Women: latest.Women!.url };
 }
 
+/** A link with its percent-escapes ("AM20270101%20men.pdf") read, or as written when they are malformed. */
+function decoded(url: string): string {
+  try {
+    return decodeURIComponent(url);
+  } catch {
+    return url;
+  }
+}
+
 const TITLE = /AMERICAN MASTERS RECORDS\s*-\s*(MEN|WOMEN)\b/i;
 const AGE_GROUP = /^AGE GROUP:\s*(\d+)\s*(?:-\s*\d+|\+)$/i;
 const LIFTS: Record<string, 'snatch' | 'cj' | 'total'> = { SNATCH: 'snatch', 'CLEAN & JERK': 'cj', TOTAL: 'total' };
@@ -50,8 +59,8 @@ const HELD = /^(.+?)\s+(\d+(?:\.\d+)?)\s+(\d{1,2}\/\d{1,2}\/\d{2,4})\s+(.+)$/;
  * Records from one PDF (one gender): each page is an age group ("AGE GROUP:
  * 30 - 34"), then SNATCH, CLEAN & JERK and TOTAL sections listing every
  * class, bare when nobody holds it yet. A class becomes a record once any of
- * its lifts is held, in the USAMW row format (`parse/usamw.ts`). A page
- * titled for the other gender, a class outside an age group or lift section,
+ * its lifts is held, in the USAMW row format (`parse/usamw.ts`). A PDF not
+ * titled for this gender, a class outside an age group or lift section,
  * a lift listed twice, or a held row it cannot read throws: read wrong, it
  * would clear or misfile stored records.
  */
@@ -61,6 +70,8 @@ export function parseHcamPages(pages: string[][], gender: 'Men' | 'Women'): Hcam
   // An age group that runs onto the next page carries over.
   let age: string | null = null;
   let lift: 'snatch' | 'cj' | 'total' | null = null;
+  // A file with no title naming its gender could be either one's.
+  let titled = false;
   for (const [index, lines] of pages.entries()) {
     const where = `HCAM ${gender} page ${index + 1}`;
     for (const raw of lines) {
@@ -69,6 +80,7 @@ export function parseHcamPages(pages: string[][], gender: 'Men' | 'Women'): Hcam
       if (title && title[1].toUpperCase() !== gender.toUpperCase()) {
         throw new Error(`${where} is titled ${JSON.stringify(line)}: the ${gender.toLowerCase()} PDF holds the other records`);
       }
+      if (title) titled = true;
       const group = AGE_GROUP.exec(line);
       if (group) {
         age = `Masters ${group[1]}`;
@@ -114,5 +126,6 @@ export function parseHcamPages(pages: string[][], gender: 'Men' | 'Women'): Hcam
       byKey.set(key, record);
     }
   }
+  if (byKey.size && !titled) throw new Error(`HCAM ${gender} PDF has no "American Masters Records - ${gender.toUpperCase()}" title, so its gender cannot be checked`);
   return sortRecords([...byKey.values()]);
 }
