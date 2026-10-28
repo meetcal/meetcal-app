@@ -1,5 +1,6 @@
 import { type Gender, MAX_LEADERBOARD_YEARS, parseDivision, plausible, qpoints, type RankedFields, sinclair } from './leaderboard';
 import { normalizeName } from './names';
+import { normalizeGender } from './normalize';
 import { compareBytes } from './sort';
 import { apiError, isValidIsoDate, requireNonEmpty } from './validation';
 
@@ -8,8 +9,8 @@ import { apiError, isValidIsoDate, requireNonEmpty } from './validation';
  * Overall and in each age group (Youth, Junior, Senior, Masters), each list
  * scored the way the WSO's elite program asks.
  *
- * - An athlete is the WSO's when their most recent registration names it
- *   (`latestRegistration`); every USAW result of theirs in the range counts,
+ * - An athlete is the WSO's when their most recent registration naming a
+ *   WSO names it (`latestRegistration`); every USAW result of theirs in the range counts,
  *   adaptive included, at any meet.
  * - A result's age group is the athlete's weightlifting age in the result's
  *   year (the year less their birth year, as USAW counts it): Youth up to 17,
@@ -119,7 +120,7 @@ export function standardTables(standards: readonly EliteStandard[]): Map<string,
   for (const standard of standards) {
     const parsed = classLimit(standard.weightClass);
     if (!parsed || !(standard.standardA > 0)) continue;
-    const key = `${standard.ageCategory}|${standard.gender}`;
+    const key = `${standard.ageCategory}|${normalizeGender(standard.gender)}`;
     const table = tables.get(key) ?? [];
     table.push({ ...parsed, weightClass: standard.weightClass, standardA: standard.standardA });
     tables.set(key, table);
@@ -148,7 +149,7 @@ export function standardFor(tables: ReadonlyMap<string, ClassTable>, group: Elit
 /** One registration (`athletes`), with its meet's name and start date ('' when the meet is not stored). */
 export type EliteRegistration = { name: string; wso: string; gender: string; age: number; meet: string; meetDate: string; created: number };
 
-/** A member as the lists read them: their latest registration's name, gender and birth year. */
+/** A member as the lists read them: their WSO, name, gender and birth year from their registrations. */
 export type EliteMember = { name: string; wso: string; gender: Gender | null; birthYear: number | null };
 
 /** A registration's gender, or null for anything but men's and women's. */
@@ -159,30 +160,40 @@ export function registrationGender(value: string): Gender | null {
   return null;
 }
 
+/** Whether `next` is a more recent registration than `current`: a later meet start date, then written later. */
+const newer = (next: EliteRegistration, current: EliteRegistration | null) =>
+  current === null || next.meetDate > current.meetDate || (next.meetDate === current.meetDate && next.created > current.created);
+
+/** A registration's meet year: its start date's, else the year its name gives; NaN for neither. */
+const meetYear = (registration: EliteRegistration) =>
+  registration.meetDate !== '' ? Number(registration.meetDate.slice(0, 4)) : Number(/\b(?:19|20)\d{2}\b/.exec(registration.meet)?.[0] ?? NaN);
+
 /**
- * A member's most recent registration: the latest meet start date, then the
- * latest written (a registration whose meet is not stored counts as oldest).
- * The birth year is the meet's year (its start date's, else the year its
- * name gives) less the weightlifting age it gives.
+ * A member from their registrations, by the most recent of each kind (the
+ * latest meet start date, then the latest written; a registration whose meet
+ * is not stored counts as oldest): the WSO of the latest that names one (an
+ * entries row may name none, as the entries sync fills it from the member's
+ * other rows), the name and gender of the latest, and the birth year of the
+ * latest that gives an age (a missing age is stored as 0): its meet's year
+ * less that weightlifting age.
  */
 export function latestRegistration(registrations: readonly EliteRegistration[]): EliteMember | null {
   let latest: EliteRegistration | null = null;
+  let named: EliteRegistration | null = null;
+  let aged: EliteRegistration | null = null;
   for (const registration of registrations) {
-    if (
-      latest === null ||
-      registration.meetDate > latest.meetDate ||
-      (registration.meetDate === latest.meetDate && registration.created > latest.created)
-    ) {
-      latest = registration;
+    if (newer(registration, latest)) latest = registration;
+    if (registration.wso.trim() !== '' && newer(registration, named)) named = registration;
+    if (Number.isInteger(registration.age) && registration.age > 0 && Number.isInteger(meetYear(registration)) && newer(registration, aged)) {
+      aged = registration;
     }
   }
   if (latest === null) return null;
-  const year = latest.meetDate !== '' ? Number(latest.meetDate.slice(0, 4)) : Number(/\b(?:19|20)\d{2}\b/.exec(latest.meet)?.[0] ?? NaN);
-  const birthYear = Number.isInteger(year) && Number.isInteger(latest.age) && latest.age > 0 ? year - latest.age : null;
-  return { name: latest.name, wso: latest.wso, gender: registrationGender(latest.gender), birthYear };
+  const birthYear = aged === null ? null : meetYear(aged) - aged.age;
+  return { name: latest.name, wso: named?.wso ?? '', gender: registrationGender(latest.gender), birthYear };
 }
 
-/** Whether a member's latest registration is under `wso` (case and spacing ignored). */
+/** Whether a member's latest registration naming a WSO is under `wso` (case and spacing ignored). */
 export const isMemberOf = (member: EliteMember, wso: string) => normalizeName(member.wso) === normalizeName(wso);
 
 // ---------------------------------------------------------------------------
@@ -213,6 +224,9 @@ export type EliteRow = {
 
 export type EliteListAnswer = { method: EliteMethod; men: EliteRow[]; women: EliteRow[] };
 
+/** One list ranked by one method. */
+export type EliteRanking = { men: EliteRow[]; women: EliteRow[] };
+
 export type EliteAnswer = {
   wso: string;
   from: string;
@@ -220,6 +234,11 @@ export type EliteAnswer = {
   /** Athletes whose latest registration is under the WSO. */
   members: number;
   lists: Record<EliteList, EliteListAnswer>;
+  /**
+   * Every list ranked by every method it offers (`ELITE_METHOD_CHOICES`), so
+   * a page can switch a list's method without asking again.
+   */
+  rankings: Record<EliteList, Partial<Record<EliteMethod, EliteRanking>>>;
 };
 
 /** A result of a member's, with what its scores need. */
@@ -298,6 +317,26 @@ export function rankList(
   const ranked = (rows: Map<string, EliteRow>) =>
     [...rows.values()].sort((a, b) => b.score - a.score || compareBytes(a.date, b.date) || compareBytes(a.name, b.name)).slice(0, size);
   return { method, men: ranked(best.Men), women: ranked(best.Women) };
+}
+
+/** Every list by its asked method (`lists`), and by each method it offers (`rankings`). */
+export function rankAll(
+  results: readonly (MemberResult & { memberKey: string })[],
+  methods: EliteMethods,
+  tables: ReadonlyMap<string, ClassTable>,
+): Pick<EliteAnswer, 'lists' | 'rankings'> {
+  const lists = {} as EliteAnswer['lists'];
+  const rankings = {} as EliteAnswer['rankings'];
+  for (const list of ELITE_LISTS) {
+    rankings[list] = {};
+    for (const method of ELITE_METHOD_CHOICES[list]) {
+      const { men, women } = rankList(results, list, method, tables);
+      rankings[list][method] = { men, women };
+    }
+    const asked = rankings[list][methods[list]]!;
+    lists[list] = { method: methods[list], men: asked.men, women: asked.women };
+  }
+  return { lists, rankings };
 }
 
 // ---------------------------------------------------------------------------

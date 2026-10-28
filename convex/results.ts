@@ -24,11 +24,10 @@ import {
   type EliteMember,
   type EliteRegistration,
   type EliteStandard,
-  ELITE_LISTS,
   isMemberOf,
   latestRegistration,
   type MemberResult,
-  rankList,
+  rankAll,
   standardTables,
 } from './lib/elite';
 import { computeMeetResults } from './lib/meetData';
@@ -183,7 +182,7 @@ export const eliteRegistrations = internalQuery({
   },
 });
 
-/** Each member's latest registration (`latestRegistration`), as JSON text of `[memberId, member]` pairs. */
+/** Each member, from their registrations (`latestRegistration`), as JSON text of `[memberId, member]` pairs. */
 export const eliteMembers = internalQuery({
   args: { memberIds: v.array(v.string()) },
   handler: async (ctx, { memberIds }): Promise<string> => {
@@ -271,8 +270,9 @@ const eliteMethodArg = v.union(v.literal('percentA'), v.literal('qpoints'), v.li
  * A WSO's elite lists (`lib/elite.ts`): the top 20 men and women Overall,
  * Youth, Junior, Senior and Masters over `from` to `to` (under five years),
  * each list scored by its `methods` entry (`ELITE_METHOD_CHOICES`, defaulted
- * per list). Members are the athletes whose latest registration names the
- * WSO (spelled as registrations spell it: `reference:registrationWsos`).
+ * per list) as `lists`, and by every method it offers as `rankings`.
+ * Members are the athletes whose latest registration naming a WSO names this
+ * one (spelled as registrations spell it: `reference:registrationWsos`).
  * Premium: an action (it reads every member's registrations and history in
  * batches), so it takes the pass itself (`PREMIUM_ACTIONS`).
  */
@@ -332,9 +332,7 @@ export const wsoElite = action({
       if (owner) for (const row of rows) results.push({ row: fromCompactRow(row), ...owner });
     }
 
-    const tables = standardTables(standards);
-    const lists = Object.fromEntries(ELITE_LISTS.map((list) => [list, rankList(results, list, methods[list], tables)])) as EliteAnswer['lists'];
-    return { wso, from, to, members, lists };
+    return { wso, from, to, members, ...rankAll(results, methods, standardTables(standards)) };
   },
 });
 

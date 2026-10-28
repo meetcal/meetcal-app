@@ -584,30 +584,32 @@ const eliteRow = (name: string, group: string, age: number, score: number, extra
   ...extra,
 });
 
-const eliteAnswer = (methods: Record<string, string>) => {
-  const list = (key: string, women: unknown[]) => ({ method: methods[key], men: [], women });
+const eliteAnswer = () => {
+  const empty = { men: [], women: [] };
+  const harley = eliteRow("Harley Creech", "senior", 22, 90.5);
+  const mahassen = eliteRow("Mahassen Paiva", "masters", 36, 283.79, { weight_class: null, standard_a: null });
   return {
     wso: "Carolina",
     from: "2025-01-01",
     to: "2025-12-31",
     members: 54,
-    lists: {
-      overall: list("overall", [eliteRow("Harley Creech", "senior", 22, 90.5)]),
-      youth: list("youth", []),
-      junior: list("junior", []),
-      senior: list("senior", [eliteRow("Harley Creech", "senior", 22, 90.5)]),
-      masters: list("masters", [eliteRow("Mahassen Paiva", "masters", 36, 283.79, { weight_class: null, standard_a: null })]),
+    rankings: {
+      overall: { percentA: { men: [], women: [harley] }, sinclair: empty, qpoints: empty },
+      youth: { percentA: empty, sinclair: empty },
+      junior: { percentA: empty, qpoints: empty, sinclair: empty },
+      senior: { percentA: { men: [], women: [harley] }, qpoints: empty, sinclair: empty },
+      masters: { qmasters: { men: [], women: [mahassen] }, percentA: empty, sinclair: { men: [], women: [{ ...mahassen, score: 251.2 }] } },
     },
   };
 };
 
-test("the WSO elite page ranks a WSO's athletes, rescoring a list when its score changes", async ({ page }) => {
+test("the WSO elite page ranks a WSO's athletes, and a list's score picker switches without asking again", async ({ page }) => {
   await mockSubscribedUser(page);
   await routeQuery(page, "reference:registrationWsos", (route) => route.fulfill(valueAnswer(["Carolina", "Florida"])));
   const asked: Record<string, unknown>[] = [];
   await routeAction(page, "results:wsoElite", (route, args) => {
     asked.push(args);
-    return route.fulfill(valueAnswer(eliteAnswer(args.methods as Record<string, string>)));
+    return route.fulfill(valueAnswer(eliteAnswer()));
   });
   await page.goto("/wso-elite");
   await expect(page.getByRole("heading", { name: "WSO Elite" })).toBeVisible();
@@ -627,15 +629,15 @@ test("the WSO elite page ranks a WSO's athletes, rescoring a list when its score
     wso: "Carolina",
     from: "2025-01-01",
     to: "2025-12-31",
-    methods: { overall: "percentA", youth: "percentA", junior: "percentA", senior: "percentA", masters: "qmasters" },
     pass: "pass_test",
   });
   const download = page.getByRole("link", { name: "Download CSV" });
   await expect(download).toHaveAttribute("download", "carolina-elite-2025-01-01-to-2025-12-31.csv");
   await expect(download).toHaveAttribute("href", /^data:text\/csv/);
 
-  // A list's score picker asks again with that list's new method.
+  // A list's score picker shows the answer's ranking by that method, without another request.
   await page.getByLabel("Masters score").selectOption("sinclair");
   await expect(page.getByRole("heading", { name: "Masters — Sinclair" })).toBeVisible();
-  expect((asked.at(-1)?.methods as Record<string, string>).masters).toBe("sinclair");
+  await expect(page.getByText("251.20")).toBeVisible();
+  expect(asked).toHaveLength(1);
 });

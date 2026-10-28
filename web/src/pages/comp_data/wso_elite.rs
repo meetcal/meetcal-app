@@ -6,9 +6,10 @@ use super::{
 use crate::utils::api::{actions, premium_action, queries};
 use leptos::prelude::*;
 use serde::{Deserialize, Serialize};
+use std::{borrow::Cow, collections::HashMap};
 
 /// What an elite list ranks by, as `results:wsoElite` names it.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Deserialize)]
 #[serde(rename_all = "camelCase")]
 enum Method {
     PercentA,
@@ -91,7 +92,9 @@ fn choice_label(list: &str, method: Method) -> &'static str {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize)]
+/// The method each list is shown by: a list's picker switches between the
+/// rankings the answer already holds, so it never asks again.
+#[derive(Clone, Debug, PartialEq)]
 struct Methods {
     overall: Method,
     youth: Method,
@@ -134,12 +137,13 @@ impl Methods {
     }
 }
 
+/// The action's arguments: without `methods`, its `lists` take each list's
+/// default, and the page reads `rankings`, which holds every method.
 #[derive(Clone, Debug, PartialEq, Serialize)]
 struct EliteQuery {
     wso: String,
     from: String,
     to: String,
-    methods: Methods,
 }
 
 #[derive(Clone, Debug, PartialEq, Deserialize)]
@@ -161,31 +165,51 @@ struct EliteRow {
     standard_a: Option<f64>,
 }
 
-#[derive(Clone, Debug, PartialEq, Deserialize)]
-struct EliteList {
-    method: Method,
+/// One list ranked by one method.
+#[derive(Clone, Debug, Default, PartialEq, Deserialize)]
+struct EliteRanking {
     men: Vec<EliteRow>,
     women: Vec<EliteRow>,
 }
 
+/// Every list by every method it offers (the action's `rankings`).
 #[derive(Clone, Debug, PartialEq, Deserialize)]
-struct EliteLists {
-    overall: EliteList,
-    youth: EliteList,
-    junior: EliteList,
-    senior: EliteList,
-    masters: EliteList,
+struct EliteRankings {
+    overall: HashMap<Method, EliteRanking>,
+    youth: HashMap<Method, EliteRanking>,
+    junior: HashMap<Method, EliteRanking>,
+    senior: HashMap<Method, EliteRanking>,
+    masters: HashMap<Method, EliteRanking>,
 }
 
-impl EliteLists {
-    fn in_order(&self) -> [(&'static str, &'static str, &EliteList); 5] {
-        [
-            ("overall", "Overall", &self.overall),
-            ("youth", "Youth", &self.youth),
-            ("junior", "Junior", &self.junior),
-            ("senior", "Senior", &self.senior),
-            ("masters", "Masters", &self.masters),
-        ]
+impl EliteRankings {
+    fn of(&self, list: &str) -> &HashMap<Method, EliteRanking> {
+        match list {
+            "youth" => &self.youth,
+            "junior" => &self.junior,
+            "senior" => &self.senior,
+            "masters" => &self.masters,
+            _ => &self.overall,
+        }
+    }
+
+    /// Each list, in `LISTS` order, by the method `methods` picks for it;
+    /// empty when the answer lacks that method.
+    fn shown<'a>(
+        &'a self,
+        methods: &Methods,
+    ) -> Vec<(&'static str, &'static str, Method, Cow<'a, EliteRanking>)> {
+        LISTS
+            .iter()
+            .map(|(key, label, _)| {
+                let method = methods.get(key);
+                let ranking = self
+                    .of(key)
+                    .get(&method)
+                    .map_or_else(|| Cow::Owned(EliteRanking::default()), Cow::Borrowed);
+                (*key, *label, method, ranking)
+            })
+            .collect()
     }
 }
 
@@ -195,7 +219,7 @@ struct EliteAnswer {
     from: String,
     to: String,
     members: i64,
-    lists: EliteLists,
+    rankings: EliteRankings,
 }
 
 /// The default range: last calendar year.
@@ -210,6 +234,7 @@ const GROUP_HELP: &str = "Youth 17 and under, Junior 18–20, Senior 21–34, Ma
 #[component]
 pub fn WsoElite() -> impl IntoView {
     let (request, set_request) = signal(None::<EliteQuery>);
+    let methods = RwSignal::new(Methods::default());
     let wsos = load_query::<Vec<String>>(queries::REGISTRATION_WSOS);
     let answer = Load::new(
         move || request.get(),
@@ -234,14 +259,14 @@ pub fn WsoElite() -> impl IntoView {
                     <EliteForm
                         wsos=wsos.clone()
                         submit=Callback::new(move |query| answer.submit(|| set_request.set(Some(query))))
-                        rescore=Callback::new(move |methods: Methods| set_request.update(|request| if let Some(request) = request { request.methods = methods; }))
+                        methods
                     />
                 }.into_any(),
                 LoadState::Failed(error) => load_error("WSOs", error, move || wsos.retry()),
                 LoadState::Loading => view! { <DataStatus message="Loading WSOs…" /> }.into_any(),
             })}
             <p class="data-help">
-                "An athlete counts for the WSO named on their most recent meet registration; every USAW result of theirs in the range counts. "
+                "An athlete counts for the WSO named on their most recent meet registration that names one; every USAW result of theirs in the range counts. "
                 {GROUP_HELP}
                 " % of A uses the A standard for the class the bodyweight falls in today (Masters against Senior); Q-masters is Q-points times Huebner’s 2025 age factor."
             </p>
@@ -252,7 +277,7 @@ pub fn WsoElite() -> impl IntoView {
                     LoadState::Loading => view! { <DataStatus message="Ranking the WSO’s athletes… this can take up to a minute." /><TableSkeleton columns=10 /> }.into_any(),
                     LoadState::Failed(error) => load_error("the elite lists", error, move || answer.retry()),
                     LoadState::Ready(None) => ().into_any(),
-                    LoadState::Ready(Some(answer)) => elite_lists(answer),
+                    LoadState::Ready(Some(answer)) => methods.with(|methods| elite_lists(answer, methods)),
                 })
             }}
         </DataPage>
@@ -263,13 +288,12 @@ pub fn WsoElite() -> impl IntoView {
 fn EliteForm(
     wsos: Vec<String>,
     submit: Callback<EliteQuery>,
-    rescore: Callback<Methods>,
+    methods: RwSignal<Methods>,
 ) -> impl IntoView {
     let (default_from, default_to) = last_year();
     let (wso, set_wso) = signal(String::new());
     let (from, set_from) = signal(default_from);
     let (to, set_to) = signal(default_to);
-    let (methods, set_methods) = signal(Methods::default());
 
     let pickers = LISTS
         .iter()
@@ -289,8 +313,7 @@ fn EliteForm(
                         prop:value=move || methods.with(|methods| methods.get(key).value())
                         on:change=move |event| {
                             if let Some(method) = Method::parse(&event_target_value(&event)) {
-                                set_methods.update(|methods| methods.set(key, method));
-                                rescore.run(methods.get_untracked());
+                                methods.update(|methods| methods.set(key, method));
                             }
                         }
                     >
@@ -306,7 +329,7 @@ fn EliteForm(
             event.prevent_default();
             let chosen = wso.get();
             if !chosen.is_empty() {
-                submit.run(EliteQuery { wso: chosen, from: from.get(), to: to.get(), methods: methods.get() });
+                submit.run(EliteQuery { wso: chosen, from: from.get(), to: to.get() });
             }
         }>
             <div class="data-filters">
@@ -320,8 +343,9 @@ fn EliteForm(
     }
 }
 
-fn elite_lists(answer: &EliteAnswer) -> AnyView {
-    let csv = elite_csv(answer);
+fn elite_lists(answer: &EliteAnswer, methods: &Methods) -> AnyView {
+    let shown = answer.rankings.shown(methods);
+    let csv = elite_csv(&shown);
     let href = format!(
         "data:text/csv;charset=utf-8,{}",
         String::from(js_sys::encode_uri_component(&csv))
@@ -332,18 +356,16 @@ fn elite_lists(answer: &EliteAnswer) -> AnyView {
         answer.from,
         answer.to
     );
-    let sections = answer
-        .lists
-        .in_order()
-        .into_iter()
-        .map(|(key, label, list)| {
-            let heading = format!("{label} — {}", choice_label(key, list.method));
+    let sections = shown
+        .iter()
+        .map(|(key, label, method, ranking)| {
+            let heading = format!("{label} — {}", choice_label(key, *method));
             view! {
                 <h2 class="data-section-title">{heading}</h2>
                 <h3 class="elite-gender">"Women"</h3>
-                {elite_table(&list.women, list.method)}
+                {elite_table(&ranking.women, *method)}
                 <h3 class="elite-gender">"Men"</h3>
-                {elite_table(&list.men, list.method)}
+                {elite_table(&ranking.men, *method)}
             }
         })
         .collect_view();
@@ -428,17 +450,17 @@ fn csv_cell(value: &str) -> String {
     }
 }
 
-/// Every list as one CSV: a line per ranked athlete, with the list, gender and method.
-fn elite_csv(answer: &EliteAnswer) -> String {
+/// The lists shown, as one CSV: a line per ranked athlete, with the list, gender and method.
+fn elite_csv(shown: &[(&str, &str, Method, Cow<'_, EliteRanking>)]) -> String {
     let mut lines = vec![
         "list,gender,rank,athlete,group,age,body_weight,snatch,cj,total,method,score,weight_class,standard_a,date,meet"
             .to_owned(),
     ];
-    for (key, _, list) in answer.lists.in_order() {
-        for (gender, rows) in [("women", &list.women), ("men", &list.men)] {
+    for (key, _, method, ranking) in shown {
+        for (gender, rows) in [("women", &ranking.women), ("men", &ranking.men)] {
             for (rank, row) in (1..).zip(rows) {
                 let cells = [
-                    key.to_owned(),
+                    (*key).to_owned(),
                     gender.to_owned(),
                     rank.to_string(),
                     row.name.clone(),
@@ -448,7 +470,7 @@ fn elite_csv(answer: &EliteAnswer) -> String {
                     row.snatch_best.to_string(),
                     row.cj_best.to_string(),
                     row.total.to_string(),
-                    list.method.value().to_owned(),
+                    method.value().to_owned(),
                     format!("{:.2}", row.score),
                     row.weight_class.clone().unwrap_or_default(),
                     row.standard_a
@@ -492,75 +514,95 @@ mod tests {
         }
     }
 
-    fn answer() -> EliteAnswer {
-        let list = |method, women| EliteList {
-            method,
-            men: vec![],
-            women,
-        };
-        EliteAnswer {
-            wso: "Carolina".to_owned(),
-            from: "2025-01-01".to_owned(),
-            to: "2025-12-31".to_owned(),
-            members: 3,
-            lists: EliteLists {
-                overall: list(Method::PercentA, vec![row("Ada", 100.0)]),
-                youth: list(Method::PercentA, vec![]),
-                junior: list(Method::PercentA, vec![]),
-                senior: list(Method::Sinclair, vec![row("Ada \"Lift\"", 251.236)]),
-                masters: list(Method::Qmasters, vec![]),
-            },
+    fn ranking(women: Vec<EliteRow>) -> EliteRanking {
+        EliteRanking { men: vec![], women }
+    }
+
+    fn rankings() -> EliteRankings {
+        let only = |method, women| HashMap::from([(method, ranking(women))]);
+        EliteRankings {
+            overall: HashMap::from([
+                (Method::PercentA, ranking(vec![row("Ada", 100.0)])),
+                (Method::Sinclair, ranking(vec![row("Ada", 262.1)])),
+            ]),
+            youth: only(Method::PercentA, vec![]),
+            junior: only(Method::PercentA, vec![]),
+            senior: only(Method::Sinclair, vec![row("Ada \"Lift\"", 251.236)]),
+            masters: only(Method::Qmasters, vec![]),
         }
     }
 
     #[test]
-    fn sends_the_query_as_the_action_takes_it() {
+    fn sends_only_the_wso_and_range() {
         let query = EliteQuery {
             wso: "Carolina".to_owned(),
             from: "2025-01-01".to_owned(),
             to: "2025-12-31".to_owned(),
-            methods: Methods::default(),
         };
         assert_eq!(
             serde_json::to_value(query).unwrap(),
-            serde_json::json!({
-                "wso": "Carolina",
-                "from": "2025-01-01",
-                "to": "2025-12-31",
-                "methods": { "overall": "percentA", "youth": "percentA", "junior": "percentA", "senior": "percentA", "masters": "qmasters" }
-            })
+            serde_json::json!({ "wso": "Carolina", "from": "2025-01-01", "to": "2025-12-31" })
         );
     }
 
     #[test]
-    fn reads_the_actions_answer() {
+    fn reads_the_actions_rankings() {
+        let ada = serde_json::json!({
+            "name": "Ada", "date": "2025-03-01", "meet": "M", "division": "Open Women's 63kg", "gender": "Women",
+            "group": "senior", "age": 26, "body_weight": 62.4, "snatch_best": 90, "cj_best": 110, "total": 200,
+            "score": 100, "weight_class": "63kg", "standard_a": 200
+        });
+        let bea = serde_json::json!({
+            "name": "Bea", "date": "2025-04-01", "meet": "M", "division": "Masters", "gender": "Women",
+            "group": "masters", "age": 46, "body_weight": 62, "snatch_best": 60, "cj_best": 80, "total": 140,
+            "score": 260.5, "weight_class": null, "standard_a": null
+        });
+        let empty = serde_json::json!({ "men": [], "women": [] });
         let value = serde_json::json!({
             "wso": "Carolina", "from": "2025-01-01", "to": "2025-12-31", "members": 1,
-            "lists": {
-                "overall": { "method": "percentA", "men": [], "women": [{
-                    "name": "Ada", "date": "2025-03-01", "meet": "M", "division": "Open Women's 63kg", "gender": "Women",
-                    "group": "senior", "age": 26, "body_weight": 62.4, "snatch_best": 90, "cj_best": 110, "total": 200,
-                    "score": 100, "weight_class": "63kg", "standard_a": 200
-                }] },
-                "youth": { "method": "sinclair", "men": [], "women": [] },
-                "junior": { "method": "qpoints", "men": [], "women": [] },
-                "senior": { "method": "percentA", "men": [], "women": [] },
-                "masters": { "method": "qmasters", "men": [], "women": [{
-                    "name": "Bea", "date": "2025-04-01", "meet": "M", "division": "Masters", "gender": "Women",
-                    "group": "masters", "age": 46, "body_weight": 62, "snatch_best": 60, "cj_best": 80, "total": 140,
-                    "score": 260.5, "weight_class": null, "standard_a": null
-                }] }
+            "lists": { "overall": { "method": "percentA", "men": [], "women": [ada] } },
+            "rankings": {
+                "overall": { "percentA": { "men": [], "women": [ada] }, "sinclair": empty, "qpoints": empty },
+                "youth": { "percentA": empty, "sinclair": empty },
+                "junior": { "percentA": empty, "qpoints": empty, "sinclair": empty },
+                "senior": { "percentA": empty, "qpoints": empty, "sinclair": empty },
+                "masters": { "qmasters": { "men": [], "women": [bea] }, "percentA": empty, "sinclair": empty }
             }
         });
         let answer: EliteAnswer = serde_json::from_value(value).unwrap();
-        assert_eq!(answer.lists.youth.method, Method::Sinclair);
-        assert_eq!(answer.lists.overall.women[0].standard_a, Some(200.0));
-        assert_eq!(answer.lists.masters.women[0].weight_class, None);
+        assert_eq!(answer.rankings.overall.len(), 3);
+        assert_eq!(
+            answer.rankings.overall[&Method::PercentA].women[0].standard_a,
+            Some(200.0)
+        );
+        assert_eq!(
+            answer.rankings.masters[&Method::Qmasters].women[0].weight_class,
+            None
+        );
     }
 
     #[test]
-    fn writes_every_list_to_one_csv_quoting_where_needed() {
-        let csv = elite_csv(&answer());
+    fn shows_each_list_by_its_picked_method() {
+        let rankings = rankings();
+        let mut methods = Methods::default();
+        assert_eq!(rankings.shown(&methods)[0].3.women[0].score, 100.0);
+        methods.set("overall", Method::Sinclair);
+        let shown = rankings.shown(&methods);
+        assert_eq!(
+            (shown[0].2, shown[0].3.women[0].score),
+            (Method::Sinclair, 262.1)
+        );
+        // A method the answer lacks shows an empty list.
+        methods.set("overall", Method::Qpoints);
+        assert!(rankings.shown(&methods)[0].3.women.is_empty());
+    }
+
+    #[test]
+    fn writes_the_shown_lists_to_one_csv_quoting_where_needed() {
+        let rankings = rankings();
+        let mut methods = Methods::default();
+        methods.set("senior", Method::Sinclair);
+        let csv = elite_csv(&rankings.shown(&methods));
         let lines: Vec<&str> = csv.lines().collect();
         assert_eq!(lines.len(), 3);
         assert!(lines[0].starts_with("list,gender,rank,athlete"));

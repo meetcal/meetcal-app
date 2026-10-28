@@ -77,7 +77,7 @@ pub const LISTS: [(&str, &str, &[Method]); 5] = [
 /// A WSO's elite lists: its top 20 women and men Overall, Youth (17 and under), Junior (18-20),
 /// Senior (21-34) and Masters (35 and over), each list ranked by its own score.
 ///
-/// An athlete is the WSO's when their most recent meet registration names it; every USA
+/// An athlete is the WSO's when their most recent meet registration that names a WSO names it; every USA
 /// Weightlifting result of theirs in the range counts (adaptive included), at any meet. Their age
 /// group is their weightlifting age in the result's year. Each athlete appears once per list, by
 /// their best-scoring result.

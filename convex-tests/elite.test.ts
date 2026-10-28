@@ -13,6 +13,7 @@ import {
   latestRegistration,
   type MemberResult,
   qmasters,
+  rankAll,
   rankList,
   registrationGender,
   scoreResult,
@@ -20,7 +21,16 @@ import {
   standardTables,
 } from '../convex/lib/elite';
 import { qpoints, type RankedFields, sinclair } from '../convex/lib/leaderboard';
-import { eliteMembers, eliteRegistrations, eliteResults, eliteStandards, wsoElite } from '../convex/results';
+import {
+  ELITE_HISTORY_BATCH,
+  ELITE_MEMBER_BATCH,
+  ELITE_REGISTRATION_PAGE_SIZE,
+  eliteMembers,
+  eliteRegistrations,
+  eliteResults,
+  eliteStandards,
+  wsoElite,
+} from '../convex/results';
 import type { EliteAnswer } from '../convex/lib/elite';
 import { fakeDb, handlerOf } from './fakeDb';
 
@@ -110,6 +120,13 @@ describe('members', () => {
     // A meet that is not stored still dates the registration by the year in its name.
     expect(latestRegistration([reg('Carolina', '', 1, 40, '2026 USA Weightlifting National Championships')])?.birthYear).toBe(1986);
     expect(latestRegistration([reg('Carolina', '2025-06-01', 1, 0)])?.birthYear).toBeNull();
+  });
+
+  it('take the WSO from the latest registration naming one, and the birth year from the latest giving an age', () => {
+    const reg = (wso: string, meetDate: string, age: number) => ({ name: 'Ada', wso, gender: 'Women', age, meet: 'Open', meetDate, created: 0 });
+    const member = latestRegistration([reg('Carolina', '2025-06-01', 30), reg('', '2026-03-01', 0)]);
+    expect(member).toEqual({ name: 'Ada', wso: 'Carolina', gender: 'Women', birthYear: 1995 });
+    expect(latestRegistration([reg('', '2026-03-01', 31)])).toEqual({ name: 'Ada', wso: '', gender: 'Women', birthYear: 1995 });
     expect(latestRegistration([])).toBeNull();
   });
 
@@ -191,6 +208,24 @@ describe('a list', () => {
     const answer = rankList(many, 'senior', 'sinclair', STANDARDS);
     expect(answer.women).toHaveLength(20);
     expect(answer.women[0].name).toBe('Lifter 24');
+  });
+});
+
+describe('every ranking', () => {
+  it('ranks each list by every method it offers, and by the asked one as its list', () => {
+    const results = [{ memberKey: '1', row: result('2026-01-01', "Open Women's 63kg", 62, 90, 110), member: member(2000) }];
+    const { lists, rankings } = rankAll(results, { overall: 'sinclair', youth: 'percentA', junior: 'percentA', senior: 'qpoints', masters: 'qmasters' }, STANDARDS);
+    expect(Object.keys(rankings.overall)).toEqual(['percentA', 'sinclair', 'qpoints']);
+    expect(Object.keys(rankings.masters)).toEqual(['qmasters', 'percentA', 'sinclair']);
+    expect(rankings.senior.percentA?.women[0].score).toBe(100);
+    expect(lists.senior.method).toBe('qpoints');
+    expect(lists.senior.women).toEqual(rankings.senior.qpoints?.women);
+    expect(lists.overall.women[0].score).toBe(sinclair(200, 62, 'Women'));
+  });
+
+  it('keys standards by their normalized gender', () => {
+    const tables = standardTables([{ ageCategory: 'Senior', gender: 'female', weightClass: '63kg', standardA: 200 }]);
+    expect(standardFor(tables, 'senior', 'Women', 62)).toEqual({ weightClass: '63kg', standardA: 200 });
   });
 });
 
@@ -355,5 +390,69 @@ describe('results:wsoElite', () => {
     expect(await status(run(ctx, { pass: undefined }))).toBe(401);
     expect(ctx.runQuery.mock.calls.map(([ref]) => getFunctionName(ref as never))).toEqual(['accessPass:passes']);
     expect(await status(run(ctx, { wso: 'Nowhere' }))).toBe(404);
+  });
+});
+
+describe('results:wsoElite at scale', () => {
+  const NOW = Date.UTC(2026, 9, 13);
+  let log: jest.SpyInstance;
+  beforeEach(() => {
+    log = jest.spyOn(console, 'log').mockImplementation(() => {});
+  });
+  afterEach(() => log.mockRestore());
+
+  it('reads every page of registrations and every batch of members and histories', async () => {
+    // More registrations than a page, members than a member batch, names than a history batch.
+    const MEMBERS = ELITE_MEMBER_BATCH + 30;
+    const PER_MEMBER = Math.ceil((ELITE_REGISTRATION_PAGE_SIZE + 1) / MEMBERS);
+    const athletes = [];
+    for (let m = 0; m < MEMBERS; m++) {
+      for (let r = 0; r < PER_MEMBER; r++) {
+        athletes.push({ memberId: String(m), name: `Lifter ${m}`, age: 25, club: 'Club', wso: 'Carolina', gender: 'Women', weightClass: '63', entryTotal: 0, meet: 'Open 2025', adaptive: false });
+      }
+    }
+    expect(athletes.length).toBeGreaterThan(ELITE_REGISTRATION_PAGE_SIZE);
+    expect(MEMBERS).toBeGreaterThan(ELITE_HISTORY_BATCH * 2);
+    const lifting_results = Array.from({ length: MEMBERS }, (_, m) => ({
+      eventId: 'e1',
+      meet: 'Open 2025',
+      date: '2025-06-01',
+      name: `Lifter ${m}`,
+      nameKey: `lifter ${m}`,
+      age: "Open Women's 63kg",
+      bodyWeight: 62,
+      snatch1: 50 + m,
+      snatchBest: 50 + m,
+      cj1: 60,
+      cjBest: 60,
+      total: 110 + m,
+      adaptive: false,
+      federation: 'USAW',
+    }));
+    const { db } = fakeDb({
+      access_passes: [{ current: 'today', previous: null, rotatedAt: NOW }],
+      meets: [{ name: 'Open 2025', venueName: '', venueStreet: '', venueCity: '', venueState: '', venueZip: '', timeZone: 'America/New_York', startDate: '2025-06-01', endDate: '2025-06-01', status: 'completed', updatedAt: 0 }],
+      athletes,
+      standards: [{ ageCategory: 'Senior', gender: 'Women', weightClass: '63kg', standardA: 200, standardB: 180 }],
+      lifting_results,
+    });
+    const handlers: Record<string, unknown> = {
+      'accessPass:passes': passes,
+      'results:eliteRegistrations': eliteRegistrations,
+      'results:eliteMembers': eliteMembers,
+      'results:eliteResults': eliteResults,
+      'results:eliteStandards': eliteStandards,
+    };
+    const runQuery = jest.fn(async (ref: unknown, args: unknown) => handlerOf(handlers[getFunctionName(ref as never)])({ db }, args));
+    const answer = await handlerOf<Record<string, unknown>, EliteAnswer>(wsoElite)({ runQuery }, { wso: 'Carolina', from: '2025-01-01', to: '2025-12-31', pass: 'today' });
+
+    const calls = (name: string) => runQuery.mock.calls.filter(([ref]) => getFunctionName(ref as never) === name);
+    expect(calls('results:eliteRegistrations').length).toBe(2);
+    expect(calls('results:eliteMembers').map(([, args]) => (args as { memberIds: string[] }).memberIds.length)).toEqual([ELITE_MEMBER_BATCH, MEMBERS - ELITE_MEMBER_BATCH]);
+    expect(calls('results:eliteResults').length).toBe(Math.ceil(MEMBERS / ELITE_HISTORY_BATCH));
+    expect(answer.members).toBe(MEMBERS);
+    // Every member was read: the strongest is the last one, and the list is full.
+    expect(answer.lists.senior.women).toHaveLength(20);
+    expect(answer.lists.senior.women[0].name).toBe(`Lifter ${MEMBERS - 1}`);
   });
 });

@@ -425,7 +425,7 @@ Options:
 
 A WSO's elite lists: its top 20 women and men Overall, Youth (17 and under), Junior (18-20), Senior
 (21-34) and Masters (35 and over). An athlete is the WSO's when their most recent meet registration
-names it; every USAW result of theirs in the range counts, and each list holds an athlete once, by
+that names a WSO names it; every USAW result of theirs in the range counts, and each list holds an athlete once, by
 their best-scoring result. Needs `meetcal login` with a MeetCal subscription.
 
 ```sh
