@@ -38,6 +38,12 @@ describe('IWF world records from iwf.sport', () => {
     });
   });
 
+  it('reads a standard IWF dates ahead, which is no lift', () => {
+    const ahead = page.replace('Jun 01, 2025 - World Standard', 'Jun 01, 2099 - World Standard');
+    expect(ahead).not.toBe(page);
+    expect(parseIwfSiteHtml(ahead, 'Senior', 'Women')[1].snatchBy).toEqual({ name: 'Standard' });
+  });
+
   it('fails on the bot challenge, a missing class or a missing lift instead of reading too few records', () => {
     expect(() => parseIwfSiteHtml('<html><head><title>Just a moment...</title></head></html>', 'Senior', 'Women')).toThrow('no records list');
     const without = (...selectors: string[]) => {

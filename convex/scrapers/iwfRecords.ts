@@ -5,6 +5,8 @@ import { internalAction } from '../_generated/server';
 import { internal } from '../_generated/api';
 import { fetchJson, throttledOrTransient, withRetries, type RetryPolicy } from './lib/http';
 import { ChallengeError, fetchUnblockedHtml } from './lib/browserless';
+import { normalizeAgeCategory, normalizeGender } from '../lib/normalize';
+import type { RecordHolder } from './parse/holder';
 import { IWF_PAGES, parseIwfWikitext, wikitextUrl, type IwfAge, type IwfRecord } from './parse/iwfRecords';
 import { iwfSiteUrl, parseIwfSiteHtml } from './parse/iwfSite';
 
@@ -15,7 +17,11 @@ import { iwfSiteUrl, parseIwfSiteHtml } from './parse/iwfSite';
  * Browserless because iwf.sport answers plain requests with a Cloudflare bot
  * challenge, when `BROWSERLESS_TOKEN` is set; from Wikipedia's lists
  * (`parse/iwfRecords.ts`) when it is not or when IWF's pages fail. Either
- * source is used whole, never mixed.
+ * source is used whole, never mixed. The two write a holder differently
+ * ("RI Song Gum", "Aichi-Nagoya" against "Ri Song-gum", "Asian Games,
+ * Nagoya, Japan"), so a day that falls back keeps the stored holder of every
+ * lift whose record has not changed (`keepStoredHolders`) rather than
+ * rewriting them, and back again the next day.
  *
  * Wikipedia's API answers 503 now and then: a throttled, server-failed or
  * timed-out request is tried again after 2, 4 and 8 seconds, and if it still
@@ -30,10 +36,11 @@ const WIKIPEDIA_TIMEOUT_MS = 15_000;
 export const WIKIPEDIA_RETRY: RetryPolicy = { attempts: 4, delayMs: (attempt) => 2 ** attempt * 1000, retryIf: throttledOrTransient };
 
 // A page through Browserless took 10 to 50 seconds when checked (October
-// 2026). The budget bounds all six, so the Wikipedia fallback still fits in
-// Convex's 10-minute action limit.
+// 2026; all six in 70). The budget bounds all six, so the Wikipedia fallback
+// (at most 3 pages of 4 tries of 15 s and 14 s of waits, about 3.7 minutes)
+// still fits in Convex's 10-minute action limit.
 const IWF_TIMEOUT_MS = 60_000;
-const IWF_BUDGET_MS = 4 * 60_000;
+const IWF_BUDGET_MS = 5 * 60_000;
 export const IWF_RETRY: RetryPolicy = {
   attempts: 2,
   delayMs: () => 2_000,
@@ -73,6 +80,32 @@ async function fromWikipedia(): Promise<IwfRecord[]> {
   return records;
 }
 
+type StoredRecord = Partial<Record<'snatchRecord' | 'cjRecord' | 'totalRecord', number>> &
+  Partial<Record<'snatchBy' | 'cjBy' | 'totalBy', RecordHolder>> & { ageCategory: string; gender: string; weightClass: string };
+
+const LIFT_HOLDERS = [
+  ['snatchRecord', 'snatchBy'],
+  ['cjRecord', 'cjBy'],
+  ['totalRecord', 'totalBy'],
+] as const;
+
+/** `records` with the stored holder kept for every lift whose record is the stored one. */
+export function keepStoredHolders(records: readonly IwfRecord[], stored: readonly StoredRecord[]): IwfRecord[] {
+  const keyOf = (r: { ageCategory: string; gender: string; weightClass: string }) =>
+    JSON.stringify([normalizeAgeCategory(r.ageCategory), normalizeGender(r.gender), r.weightClass]);
+  const byKey = new Map(stored.map((r) => [keyOf(r), r]));
+  return records.map((record) => {
+    const before = byKey.get(keyOf(record));
+    if (!before) return record;
+    const kept = { ...record };
+    for (const [lift, holder] of LIFT_HOLDERS) {
+      const storedHolder = before[holder];
+      if (before[lift] === record[lift] && storedHolder) kept[holder] = storedHolder;
+    }
+    return kept;
+  });
+}
+
 const message = (error: unknown) => (error instanceof Error ? error.message : String(error));
 
 type Source = 'iwf.sport' | 'wikipedia';
@@ -101,7 +134,12 @@ export const run = internalAction({
         return { source: 'skipped', records: [], ...NOTHING };
       }
     }
-    const { source, records } = found;
+    const { source } = found;
+    let { records } = found;
+    if (token && source === 'wikipedia') {
+      const stored: StoredRecord[] = await ctx.runQuery(internal.scrapers.queries.storedRecords, { recordType: 'IWF' });
+      records = keepStoredHolders(records, stored);
+    }
     if (dryRun) return { source, records, ...NOTHING };
     const result: Omit<RunResult, 'source' | 'records'> = await ctx.runMutation(internal.ingest.replaceRecordSet, {
       recordType: 'IWF',

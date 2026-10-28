@@ -51,10 +51,12 @@ export function parseIwfSiteHtml(html: string, ageCategory: IwfAge, gender: IwfG
     if (!lift || !kg) throw new Error(`${where} ${current.weightClass}: unreadable record "${liftName}: ${value}"`);
     if (current.lifts[lift]) throw new Error(`${where} ${current.weightClass}: ${liftName} listed twice`);
     const [date, ...place] = event.split(' - ');
-    const by = recordHolder(Number(kg[1]), athlete, date, place.join(' - '));
     // A standard's date and place are when IWF set it ("Jun 01, 2025 - World
-    // Standard"), not a lift; Wikipedia's lists give a standard neither.
-    current.lifts[lift] = { value: Number(kg[1]), by: by?.name === 'Standard' ? { name: 'Standard' } : by };
+    // Standard"), not a lift, and are not read (a standard dated ahead must
+    // not fail the page); Wikipedia's lists give a standard neither.
+    const standard = recordHolder(Number(kg[1]), athlete)?.name === 'Standard';
+    const by = standard ? { name: 'Standard' } : recordHolder(Number(kg[1]), athlete, date, place.join(' - '));
+    current.lifts[lift] = { value: Number(kg[1]), by };
   }
   if (classes.length !== 8) throw new Error(`${where}: ${classes.length} weight classes, expected 8`);
   return classes.map(({ weightClass, lifts: { snatch, cj, total } }) => {

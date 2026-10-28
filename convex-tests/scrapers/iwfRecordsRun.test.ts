@@ -1,4 +1,4 @@
-import { run } from '../../convex/scrapers/iwfRecords';
+import { keepStoredHolders, run } from '../../convex/scrapers/iwfRecords';
 import { UNBLOCK_URL } from '../../convex/scrapers/lib/browserless';
 import { handlerOf } from '../fakeDb';
 
@@ -30,11 +30,12 @@ function serve({ wiki = wikipedia([]), iwf = json({ content: 'iwf page' }) }: { 
 const calls = (fetchMock: ReturnType<typeof serve>, host: 'wikipedia' | 'browserless') =>
   fetchMock.mock.calls.filter(([url]) => (host === 'browserless' ? url === UNBLOCK_URL : url.includes('wikipedia.org')));
 
-const runMutation = jest.fn(async () => ({ inserted: 0, updated: 0, deleted: 0, unchanged: 3, changes: [] }));
+const runMutation = jest.fn(async (_ref: unknown, _args: { rows: unknown[] }) => ({ inserted: 0, updated: 0, deleted: 0, unchanged: 3, changes: [] }));
+const runQuery = jest.fn(async (): Promise<unknown[]> => []);
 
 /** The run, its retry waits passed on fake timers. */
 async function runJob(args: Args = {}): Promise<Result> {
-  const outcome = handlerOf<Args, Result>(run)({ runMutation }, args);
+  const outcome = handlerOf<Args, Result>(run)({ runMutation, runQuery }, args);
   outcome.catch(() => undefined);
   await jest.runAllTimersAsync();
   return outcome;
@@ -47,6 +48,7 @@ describe('iwf-world-records run', () => {
     jest.useFakeTimers({ doNotFake: ['nextTick', 'setImmediate', 'queueMicrotask'] });
     warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
     runMutation.mockClear();
+    runQuery.mockReset().mockResolvedValue([]);
     delete process.env.BROWSERLESS_TOKEN;
   });
   afterEach(() => {
@@ -78,6 +80,19 @@ describe('iwf-world-records run', () => {
       expect(calls(fetchMock, 'wikipedia')).toHaveLength(4);
       expect(runMutation).not.toHaveBeenCalled();
       expect(warn).toHaveBeenCalledWith(expect.stringContaining('Wikipedia unavailable, run skipped and stored records kept'));
+    });
+
+    it('skips without writing when a later page stays down after the first was read', async () => {
+      const fetchMock = serve({ wiki: wikipedia([json({ parse: { wikitext: 'wiki' } })], json({}, 502)) });
+      expect((await runJob()).source).toBe('skipped');
+      expect(calls(fetchMock, 'wikipedia')).toHaveLength(5);
+      expect(runMutation).not.toHaveBeenCalled();
+    });
+
+    it('writes Wikipedia\'s holders as they are when it is the only source', async () => {
+      serve();
+      await runJob();
+      expect(runQuery).not.toHaveBeenCalled();
     });
 
     it('still fails on an answer that is not a passing outage, so it alerts', async () => {
@@ -119,6 +134,30 @@ describe('iwf-world-records run', () => {
       expect(warn.mock.calls.flat().join(' ')).not.toContain(TOKEN);
     });
 
+    it('falls back when Browserless answers without the page, or IWF\'s pages take too long', async () => {
+      serve({ iwf: json({ content: null }) });
+      expect((await runJob()).source).toBe('wikipedia');
+      const slow = serve({
+        iwf: () => {
+          jest.setSystemTime(Date.now() + 3 * 60_000);
+          return json({ content: 'iwf page' })();
+        },
+      });
+      expect((await runJob()).source).toBe('wikipedia');
+      // Two pages, then no time left for a third.
+      expect(calls(slow, 'browserless')).toHaveLength(2);
+      expect(warn).toHaveBeenCalledWith(expect.stringContaining('iwf.sport took over 5 minutes'));
+    });
+
+    it('keeps the stored holders on a fallback day, so the records are not rewritten', async () => {
+      const iwfHolder = { name: 'RI Song Gum', date: '2026-09-23', location: 'Aichi-Nagoya' };
+      runQuery.mockResolvedValue([{ ageCategory: 'Senior', gender: 'Men', weightClass: '60kg', snatchRecord: 1, cjRecord: 2, totalRecord: 3, snatchBy: iwfHolder }]);
+      serve({ iwf: json({}, 503) });
+      expect((await runJob()).source).toBe('wikipedia');
+      const rows = runMutation.mock.calls[0][1].rows as { ageCategory: string; snatchBy?: unknown }[];
+      expect(rows.find((r) => r.ageCategory === 'Senior')?.snatchBy).toEqual(iwfHolder);
+    });
+
     it('falls back on a Browserless error, and skips when Wikipedia is down too', async () => {
       const fetchMock = serve({ iwf: json({}, 500), wiki: wikipedia([], json({}, 503)) });
       const result = await runJob();
@@ -133,5 +172,23 @@ describe('iwf-world-records run', () => {
       expect(result.source).toBe('iwf.sport');
       expect(runMutation).not.toHaveBeenCalled();
     });
+  });
+});
+
+describe('keepStoredHolders', () => {
+  const stored = { name: 'RI Song Gum', date: '2026-09-23', location: 'Aichi-Nagoya' };
+  const fresh = { name: 'Ri Song-gum', date: '2026-09-23', location: 'Asian Games, Nagoya, Japan' };
+  const record = { ageCategory: 'Senior' as const, gender: 'Women' as const, weightClass: '49kg', snatchRecord: 94, cjRecord: 121, totalRecord: 216, snatchBy: fresh, cjBy: fresh, totalBy: fresh };
+
+  it('keeps the stored holder of an unchanged lift and takes the new one where the record moved', () => {
+    const [kept] = keepStoredHolders([record], [{ ageCategory: 'Senior', gender: 'Women', weightClass: '49kg', snatchRecord: 94, cjRecord: 121, totalRecord: 215, snatchBy: stored, totalBy: stored }]);
+    expect(kept).toMatchObject({ snatchBy: stored, totalBy: fresh, totalRecord: 216 });
+    // No stored holder to keep.
+    expect(kept.cjBy).toEqual(fresh);
+  });
+
+  it('leaves a class it has no stored record of, or another class, alone', () => {
+    expect(keepStoredHolders([record], [])).toEqual([record]);
+    expect(keepStoredHolders([record], [{ ageCategory: 'Junior', gender: 'Women', weightClass: '49kg', snatchRecord: 94, snatchBy: stored }])).toEqual([record]);
   });
 });
