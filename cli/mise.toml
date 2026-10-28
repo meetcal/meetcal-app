@@ -1,5 +1,9 @@
 [tools]
-rust = "latest"
+# Cargo runs through mr boxington (mbx, https://mr-boxington.jdx.dev), which
+# caches build output across worktrees; needs mise 2026.9.2 or later (the root
+# mise.toml's min_version). `MBX_DISABLE=1` runs plain Cargo for one command.
+rust = { version = "1.99.1", mr_boxington = true }
+"mr-boxington" = "1.28.0"
 "cargo:cargo-audit" = "latest"
 
 [tasks.run]

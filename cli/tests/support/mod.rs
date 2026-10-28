@@ -33,8 +33,12 @@ pub fn reply(
     }
 }
 
-/// A server that answers each connection with the next scripted reply, then with 500s.
-/// Returns its base URL and the requests (head and body) it has received.
+/// A server that answers each Convex call (a `POST /api/…`) with the next scripted reply, then
+/// with 500s. Returns its base URL and the Convex calls (head and body) it has received.
+///
+/// Anything else that connects is answered 404 and neither recorded nor given a scripted reply:
+/// tools on a developer's machine probe new local ports (`GET /`, or a connection that sends
+/// nothing), and counting those made the tests fail at random.
 pub fn serve(replies: Vec<Reply>) -> (String, Arc<Mutex<Vec<String>>>) {
     let listener = TcpListener::bind("127.0.0.1:0").expect("bind local test server");
     let base_url = format!("http://{}", listener.local_addr().unwrap());
@@ -63,13 +67,17 @@ pub fn serve(replies: Vec<Reply>) -> (String, Arc<Mutex<Vec<String>>>) {
             let _ = reader.read_exact(&mut body);
             head.push_str("\r\n");
             head.push_str(&String::from_utf8_lossy(&body));
-            seen.lock().unwrap().push(head);
 
-            let reply = replies.next().unwrap_or(reply(
-                "500 Internal Server Error",
-                None,
-                r#"{"error":"unexpected request"}"#,
-            ));
+            let reply = if is_convex_call(&head) {
+                seen.lock().unwrap().push(head);
+                replies.next().unwrap_or(reply(
+                    "500 Internal Server Error",
+                    None,
+                    r#"{"error":"unexpected request"}"#,
+                ))
+            } else {
+                reply(NOT_FOUND, None, r#"{"error":"not a Convex call"}"#)
+            };
             let retry_after = reply
                 .retry_after
                 .map(|secs| format!("Retry-After: {secs}\r\n"))
@@ -85,6 +93,11 @@ pub fn serve(replies: Vec<Reply>) -> (String, Arc<Mutex<Vec<String>>>) {
     });
 
     (base_url, requests)
+}
+
+/// Whether a request is one the CLI makes: a `POST` to Convex's HTTP API.
+fn is_convex_call(head: &str) -> bool {
+    head.starts_with("POST /api/")
 }
 
 /// The JSON body of each request the test server received.

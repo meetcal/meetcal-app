@@ -7,6 +7,7 @@ The repository root's `AGENTS.md` applies here too: its hard rules (worktrees, n
 ## Differences from the root
 
 - The toolchain is Cargo, Trunk and mise (`mise.toml` in this folder), not Bun. The Playwright tests use **npm** (`package.json`, `package-lock.json`); this folder is the one exception to the root's "never use npm" rule.
+- `mise.toml` pins Rust (CI and Vercel's build use the same release) and runs Cargo through mr boxington (mbx, https://mr-boxington.jdx.dev), which caches build output across worktrees: run Cargo through mise (`mise exec -- cargo …`, `mise run …`), which needs mise 2026.9.2 or later. `target/` is a symlink into mbx's store (`mbx clean` removes it); `MBX_DISABLE=1` runs plain Cargo for one command. Change the Rust version in this file, `../cli/mise.toml`, the workflows and `scripts/vercel-build.sh` together.
 - The root's `mise run check` runs this folder's Cargo format, clippy and tests when the branch changes `web/`, one worktree at a time. It does not run the Trunk build or the browser tests; run those from [Verify](#verify).
 - A change to a Convex query in `../convex/` can change what this site shows. The Web CI runs on changes to `convex/` for that reason; when you change a query's answer, check the pages that read it (`src/pages/comp_data/`).
 
