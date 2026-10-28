@@ -209,3 +209,25 @@ export const memberWsos = internalQuery({
     return found;
   },
 });
+
+/**
+ * The stored records of one type, for a sync that compares before it writes
+ * (`scrapers/iwfRecords.ts` keeps the stored holders on a fallback day).
+ */
+export const storedRecords = internalQuery({
+  args: { recordType: v.string() },
+  handler: async (ctx, { recordType }) =>
+    (await ctx.db.query('records').withIndex('by_record_type', (q) => q.eq('recordType', recordType)).collect()).map(
+      ({ ageCategory, gender, weightClass, snatchRecord, cjRecord, totalRecord, snatchBy, cjBy, totalBy }) => ({
+        ageCategory,
+        gender,
+        weightClass,
+        snatchRecord,
+        cjRecord,
+        totalRecord,
+        snatchBy,
+        cjBy,
+        totalBy,
+      }),
+    ),
+});
