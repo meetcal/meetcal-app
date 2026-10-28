@@ -28,6 +28,22 @@ export class BrowserlessQuotaError extends HttpStatusError {
   }
 }
 
+/**
+ * Browserless refused the token (401 or 403 not about the plan): it is wrong,
+ * revoked or rotated, and needs fixing by hand, so the IWF run reports it
+ * (`scrapers/iwfRecords.ts`).
+ */
+export class BrowserlessKeyError extends HttpStatusError {
+  constructor(
+    status: number,
+    readonly detail: string,
+  ) {
+    super(UNBLOCK_URL, status);
+    this.name = 'BrowserlessKeyError';
+    this.message = `Browserless refused the token (${status}): ${detail}`;
+  }
+}
+
 const QUOTA_TEXT = /quota|units?\b|usage|limit|exceed|payment|billing|plan\b|subscription|credit|upgrade/i;
 
 /** Whether a refusal with `status` and `body` is about the account's plan rather than the request. */
@@ -56,6 +72,7 @@ export async function fetchUnblockedHtml(url: string, token: string, timeoutMs: 
   if (!response.ok) {
     const body = (await response.text().catch(() => '')).replace(/\s+/g, ' ').trim().slice(0, 200);
     if (isQuotaRefusal(response.status, body)) throw new BrowserlessQuotaError(response.status, body);
+    if (response.status === 401 || response.status === 403) throw new BrowserlessKeyError(response.status, body);
     throw new HttpStatusError(UNBLOCK_URL, response.status);
   }
   const body: unknown = await response.json();

@@ -1,5 +1,6 @@
 import { keepStoredHolders, run } from '../../convex/scrapers/iwfRecords';
 import { isQuotaRefusal, UNBLOCK_URL } from '../../convex/scrapers/lib/browserless';
+import { describeFailure } from '../../convex/lib/cronAlerts';
 import { handlerOf } from '../fakeDb';
 
 // The parsers have their own tests; here each page's text names the record it stands for.
@@ -181,10 +182,31 @@ describe('iwf-world-records run', () => {
       }
     });
 
-    it('still warns when Browserless refuses the key', async () => {
-      serve({ iwf: () => new Response('Invalid API key. Please check your API key and try again. (requestId: 1)', { status: 401 }) });
-      expect((await runJob()).source).toBe('wikipedia');
-      expect(warn).toHaveBeenCalledWith(expect.stringContaining('iwf.sport failed, using Wikipedia'));
+    it('stores Wikipedia, then fails so Sentry and the cron alert report it, when Browserless refuses the key', async () => {
+      for (const status of [401, 403]) {
+        runMutation.mockClear();
+        const fetchMock = serve({ iwf: () => new Response('Invalid API key. Please check your API key and try again. (requestId: 1)', { status }) });
+        const failure = await runJob().catch((error: unknown) => error);
+        // Wikipedia's records were stored before the run failed.
+        expect(runMutation).toHaveBeenCalledTimes(1);
+        // A refused key is not tried again.
+        expect(calls(fetchMock, 'browserless')).toHaveLength(1);
+        const described = describeFailure(failure);
+        expect(described.failedSources).toEqual(['browserless']);
+        expect(described.error).toContain(`Browserless refused the token (${status})`);
+        expect(described.error).not.toContain(TOKEN);
+      }
+    });
+
+    it('still reports a refused key when Wikipedia is skipped, and names Wikipedia too when it fails', async () => {
+      const refused = () => new Response('Invalid API key.', { status: 401 });
+      serve({ iwf: refused, wiki: wikipedia([], json({}, 503)) });
+      expect(describeFailure(await runJob().catch((error: unknown) => error)).failedSources).toEqual(['browserless']);
+      serve({ iwf: refused, wiki: wikipedia([], json({}, 404)) });
+      const failure = describeFailure(await runJob().catch((error: unknown) => error));
+      expect(failure.failedSources).toEqual(['browserless', 'wikipedia']);
+      expect(failure.error).toContain('failed with 404');
+      expect(runMutation).not.toHaveBeenCalled();
     });
 
     it('falls back on a Browserless error, and skips when Wikipedia is down too', async () => {

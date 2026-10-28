@@ -1,10 +1,11 @@
 'use node';
 
 import { v } from 'convex/values';
-import { internalAction } from '../_generated/server';
+import { internalAction, type ActionCtx } from '../_generated/server';
 import { internal } from '../_generated/api';
 import { fetchJson, throttledOrTransient, withRetries, type RetryPolicy } from './lib/http';
-import { BrowserlessQuotaError, ChallengeError, fetchUnblockedHtml } from './lib/browserless';
+import { BrowserlessKeyError, BrowserlessQuotaError, ChallengeError, fetchUnblockedHtml } from './lib/browserless';
+import { sourcesFailed } from '../lib/cronAlerts';
 import { normalizeAgeCategory, normalizeGender } from '../lib/normalize';
 import type { RecordHolder } from './parse/holder';
 import { IWF_PAGES, parseIwfWikitext, wikitextUrl, type IwfAge, type IwfRecord } from './parse/iwfRecords';
@@ -113,43 +114,69 @@ type RunResult = { source: Source | 'skipped'; records: IwfRecord[]; inserted: n
 
 const NOTHING = { inserted: 0, updated: 0, deleted: 0, unchanged: 0, changes: [] };
 
+/**
+ * What a run with a refused Browserless token throws once it has used
+ * Wikipedia (or failed there too): the cron alert emails it, and Convex's
+ * exception reporting sends it to Sentry, so a broken token is noticed.
+ */
+function tokenRefused(refused: BrowserlessKeyError, wikipediaFailure?: unknown) {
+  const failures = [{ source: 'browserless', error: refused.message }];
+  if (wikipediaFailure !== undefined) failures.push({ source: 'wikipedia', error: message(wikipediaFailure) });
+  return sourcesFailed('iwf-world-records read Wikipedia instead of iwf.sport', failures);
+}
+
 export const run = internalAction({
   args: { dryRun: v.optional(v.boolean()) },
   handler: async (ctx, { dryRun }): Promise<RunResult> => {
     let found: { source: Source; records: IwfRecord[] } | undefined;
+    let refused: BrowserlessKeyError | undefined;
     const token = process.env.BROWSERLESS_TOKEN;
     if (token) {
       try {
         found = { source: 'iwf.sport', records: await fromIwfSite(token) };
       } catch (error) {
         // Out of Browserless units (or its plan's browsers busy) is expected
-        // on the free tier, not a fault: Wikipedia without a warning. A run
-        // that falls back throws nothing either way, so neither reaches
-        // Convex's exception reporting (Sentry).
+        // on the free tier, not a fault: Wikipedia, logged as information
+        // only. Other failures warn; a refused token also fails the run once
+        // Wikipedia is stored (`tokenRefused`). Nothing else here throws, so
+        // only that reaches Convex's exception reporting (Sentry).
         if (error instanceof BrowserlessQuotaError) console.log(`iwf-world-records: Browserless plan limit, using Wikipedia: ${error.message}`);
         else console.warn(`iwf-world-records: iwf.sport failed, using Wikipedia: ${message(error)}`);
+        if (error instanceof BrowserlessKeyError) refused = error;
       }
     }
-    if (!found) {
-      try {
-        found = { source: 'wikipedia', records: await fromWikipedia() };
-      } catch (error) {
-        if (!throttledOrTransient(error)) throw error;
-        console.warn(`iwf-world-records: Wikipedia unavailable, run skipped and stored records kept: ${message(error)}`);
-        return { source: 'skipped', records: [], ...NOTHING };
-      }
+    let result: RunResult;
+    try {
+      result = await store(ctx, token, found, dryRun);
+    } catch (error) {
+      throw refused ? tokenRefused(refused, error) : error;
     }
-    const { source } = found;
-    let { records } = found;
-    if (token && source === 'wikipedia') {
-      const stored: StoredRecord[] = await ctx.runQuery(internal.scrapers.queries.storedRecords, { recordType: 'IWF' });
-      records = keepStoredHolders(records, stored);
-    }
-    if (dryRun) return { source, records, ...NOTHING };
-    const result: Omit<RunResult, 'source' | 'records'> = await ctx.runMutation(internal.ingest.replaceRecordSet, {
-      recordType: 'IWF',
-      rows: records.map((r) => ({ recordType: 'IWF', ...r })),
-    });
-    return { source, records, ...result };
+    if (refused) throw tokenRefused(refused);
+    return result;
   },
 });
+
+/** `found`, or Wikipedia's records when IWF's could not be read, stored (unless a dry run). */
+async function store(ctx: ActionCtx, token: string | undefined, found: { source: Source; records: IwfRecord[] } | undefined, dryRun: boolean | undefined): Promise<RunResult> {
+  if (!found) {
+    try {
+      found = { source: 'wikipedia', records: await fromWikipedia() };
+    } catch (error) {
+      if (!throttledOrTransient(error)) throw error;
+      console.warn(`iwf-world-records: Wikipedia unavailable, run skipped and stored records kept: ${message(error)}`);
+      return { source: 'skipped', records: [], ...NOTHING };
+    }
+  }
+  const { source } = found;
+  let { records } = found;
+  if (token && source === 'wikipedia') {
+    const stored: StoredRecord[] = await ctx.runQuery(internal.scrapers.queries.storedRecords, { recordType: 'IWF' });
+    records = keepStoredHolders(records, stored);
+  }
+  if (dryRun) return { source, records, ...NOTHING };
+  const result: Omit<RunResult, 'source' | 'records'> = await ctx.runMutation(internal.ingest.replaceRecordSet, {
+    recordType: 'IWF',
+    rows: records.map((r) => ({ recordType: 'IWF', ...r })),
+  });
+  return { source, records, ...result };
+}
