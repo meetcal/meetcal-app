@@ -42,7 +42,6 @@ export const JOBS: Record<string, Job> = {
   'umwf-records': { schedule: '55 3 * * *', run: { kind: 'action', fn: internal.scrapers.umwf.run } },
   'usamw-national-records': { schedule: '5 4 * * *', run: { kind: 'action', fn: internal.scrapers.usamw.run } },
   'iwf-world-records': { schedule: '15 4 * * *', run: { kind: 'action', fn: internal.scrapers.iwfRecords.run } },
-  'hcam-records': { schedule: '25 4 * * *', run: { kind: 'action', fn: internal.scrapers.hcamRecords.run } },
   'intl-rankings': { schedule: '35 4 * * *', run: { kind: 'action', fn: internal.scrapers.intlRankings.run } },
   'meet-sync': { schedule: '5 5 * * *', run: { kind: 'action', fn: internal.scrapers.meets.run } },
   'usamw-events': { schedule: '35 5 * * *', run: { kind: 'action', fn: internal.scrapers.usamwEvents.run } },

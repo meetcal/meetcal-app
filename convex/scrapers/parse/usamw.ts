@@ -125,13 +125,8 @@ export function parseRecordPages(pages: string[][], gender: string): UsamwRecord
       byKey.set(key, record);
     }
   }
-  return sortRecords([...byKey.values()]);
-}
-
-/** Records sorted by gender, age, then class, as the USAMW sync lists them. */
-export function sortRecords<T extends { ageCategory: string; gender: string; weightClass: string }>(records: T[]): T[] {
-  const ageNumber = (r: T) => Number(/\d+/.exec(r.ageCategory)![0]);
-  return records.sort(
+  const ageNumber = (r: UsamwRecord) => Number(/\d+/.exec(r.ageCategory)![0]);
+  return [...byKey.values()].sort(
     (a, b) =>
       (a.gender < b.gender ? -1 : a.gender > b.gender ? 1 : 0) ||
       ageNumber(a) - ageNumber(b) ||

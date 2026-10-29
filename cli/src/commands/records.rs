@@ -26,7 +26,7 @@ pub struct RecordsArgs {
     #[arg(long, short = 'g')]
     pub gender: String,
 
-    /// Federation: BWL, IWF, UMWF, USAMW, USAMW_HCAM (Howard Cohen American Masters), or USAW
+    /// Federation: BWL, IWF, UMWF, USAMW, or USAW
     #[arg(long, short = 'f')]
     pub federation: String,
 }
