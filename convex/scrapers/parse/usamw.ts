@@ -112,28 +112,37 @@ function siteAndCompetition(tail: string, cells: string[] | undefined): [site: s
   if (cells && at >= 0) {
     const words = cells[at].split(' ');
     const after = [words.slice(words.findIndex((word) => DATE_WORD.test(word)) + 1).join(' '), ...cells.slice(at + 1)].filter(Boolean);
-    // Only a first cell that reads as a whole site ("City, Region"), and cells that say what the text says.
-    if (after.length >= 2 && /,\s*\S/.test(after[0]) && letters(after.join('')) === letters(tail)) return [after[0], after.slice(1).join(' ')];
+    // A site and a competition cell, or more cells after a site that reads whole ("City, Region"), never a
+    // site cut after its comma ("Las Vegas," + "NV"); and cells that say what the text says.
+    const whole = !after[0]?.endsWith(',') && (after.length === 2 || /,\s*\S/.test(after[0]));
+    if (after.length >= 2 && whole && letters(after.join('')) === letters(tail)) return [after[0], after.slice(1).join(' ')];
   }
   const site = /^(.+?,\s*[A-Z]{2})\s+(.+)$/.exec(tail);
   return site ? [site[1], site[2]] : [undefined, tail];
 }
 
 /**
+ * Names the PDFs run together, family name into given name, and how they are
+ * spaced. Where one run ends and the next begins cannot be told from the
+ * letters ("SMITHDEAnne"), so each is listed once it is seen.
+ */
+const NAME_CORRECTIONS: Readonly<Record<string, string>> = {
+  // The September 27, 2026 men's PDF, M40-44 75kg.
+  'TAN CASTELLANOSYicay': 'TAN CASTELLANOS Yicay',
+};
+
+/**
  * Who set a line's lift, from what follows its value: `Family Given Date Site
  * Competition` ("MURRAY George 12-Sep-25 Las Vegas, NV World Masters"). The
- * name is kept as the PDF lays it out, except where the PDF draws the whole
- * name as one cell ending in a family name of four or more capitals run into
- * the given name ("TAN CASTELLANOSYicay"): the two are spaced. A given name
- * in its own cell, or like "DEAnne" or "ALEXandra", is left alone.
+ * name is kept as the PDF lays it out, except the ones it runs together
+ * (`NAME_CORRECTIONS`).
  */
 function lineHolder(value: number, rest: string, cells: string[] | undefined): RecordHolder | undefined {
   const words = rest.trim().split(/\s+/).filter(Boolean);
   const at = words.findIndex((word) => DATE_WORD.test(word));
   if (at < 0) return recordHolder(value, words.join(' '));
-  let name = words.slice(0, at).join(' ');
-  const date = cells?.findIndex(hasDate) ?? -1;
-  if (cells && date > 0 && cells[date - 1] === name) name = name.replace(/\b([A-Z][A-Z'-]*[A-Z]{3})([A-Z][a-z]+)$/, '$1 $2');
+  const written = words.slice(0, at).join(' ');
+  const name = NAME_CORRECTIONS[written] ?? written;
   const [site, competition] = siteAndCompetition(words.slice(at + 1).join(' '), cells);
   return recordHolder(value, name, recordsDate(words[at]), competition, site);
 }

@@ -88,6 +88,9 @@ describe('USAMW national records (port of national_records.py)', () => {
     // Text alone cannot place the end of a site with no state code: all of it is kept.
     const [text] = parseRecordPages([[...head, at(abroad).text]], 'Men');
     expect(text.cjBy).toEqual({ name: 'ALBURY Dimitri', date: '2026-09-26', location: 'Athens, Greece World Masters' });
+    // A site and a competition cell split even without a comma.
+    const noComma: [number, string][] = [[70, '60'], [114, 'SNA'], [168, '93'], [199, 'MURRAY'], [295, 'George'], [364, '12-Sep-25'], [423, 'Budapest'], [547, 'World Masters']];
+    expect(parseRecordPages([[...head, at(noComma)]], 'Men')[0].snatchBy?.location).toBe('World Masters, Budapest');
     // A site drawn as two cells is not a whole site: the text reading decides.
     const splitSite: [number, string][] = [[70, '60'], [114, 'SNA'], [168, '93'], [199, 'MURRAY'], [295, 'George'], [364, '12-Sep-25'], [423, 'Las Vegas,'], [480, 'NV'], [547, 'World Masters']];
     expect(parseRecordPages([[...head, at(splitSite)]], 'Men')[0].snatchBy?.location).toBe('World Masters, Las Vegas, NV');
@@ -110,25 +113,12 @@ describe('USAMW national records (port of national_records.py)', () => {
     expect(parseRecordPages([[...head, splitDate]], 'Men')[0].cjBy).toEqual(cells.cjBy);
   });
 
-  it('spaces a family name the PDF runs into the given name only where it draws the name as one cell', () => {
-    const holder = (nameCells: string[]) => {
-      const cells: [number, string][] = [[70, '86'], [114, 'SNA'], [168, '79'], ...nameCells.map((text, i): [number, string] => [199 + i * 96, text]), [381, '24-Sep-26'], [438, 'Savannah, GA'], [524, 'Elite Masters Invitational']];
-      const line: PdfLine = { text: cells.map(([, text]) => text).join(' '), runs: cells.map(([x, text]) => ({ text, x, end: x + text.length * 5 })) };
-      return parseRecordPages([['W 40 - 44', line]], 'Women')[0].snatchBy?.name;
-    };
-    expect(holder(['TAN CASTELLANOSYicay'])).toBe('TAN CASTELLANOS Yicay');
-    expect(holder(["O'NEILLMary"])).toBe("O'NEILL Mary");
-    expect(holder(["D'Angelo"])).toBe("D'Angelo");
-    expect(holder(['SMITH-Jones'])).toBe('SMITH-Jones');
-    // Family and given name in their own cells are kept as written.
-    expect(holder(['SMITH', 'ALEXandra'])).toBe('SMITH ALEXandra');
-    expect(holder(['SMITH', 'DEAnne'])).toBe('SMITH DEAnne');
-    // One cell already spaced, or fewer than four capitals before the given name: kept as written.
-    expect(holder(['SMITH DEAnne'])).toBe('SMITH DEAnne');
-    expect(holder(['ALEXandra'])).toBe('ALEXandra');
-    // Text alone, or no date: the words are kept as they are.
-    expect(parseRecordPages([['W 40 - 44', '86 SNA 79 TAN CASTELLANOSYicay 24-Sep-26 Savannah, GA Elite Masters Invitational']], 'Women')[0].snatchBy?.name).toBe('TAN CASTELLANOSYicay');
-    expect(parseRecordPages([['W 40 - 44', '86 SNA 79 USAMasters Team']], 'Women')[0].snatchBy?.name).toBe('USAMasters Team');
+  it('spaces only the names listed as run together, and keeps every other name as written', () => {
+    const holder = (name: string) => parseRecordPages([['M 40 - 44', `75 SNA 107 ${name} 27-Mar-26 Little Rock, AR National Masters`]], 'Men')[0].snatchBy?.name;
+    expect(holder('TAN CASTELLANOSYicay')).toBe('TAN CASTELLANOS Yicay');
+    for (const name of ["SMITH D'Angelo", "O'Neil Mary", 'SMITH-Jones Ann', 'McDONALD Ann', 'SMITH DEAnne', 'SMITH ALEXandra', 'SMITHDEAnne', 'McDONALDSarah']) {
+      expect(holder(name)).toBe(name);
+    }
   });
 
   it('corrects only the listed lifts, and only while the PDF prints the wrong value', () => {
