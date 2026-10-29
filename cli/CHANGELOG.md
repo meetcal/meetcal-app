@@ -1,12 +1,15 @@
 # Changelog
 
-## Unreleased
+## 3.1.0
 
 - `meetcal elite <WSO>`: a WSO's top 20 women and men Overall, Youth, Junior, Senior and Masters,
   each list scored by % of A standard, Q-points, Q-masters or Sinclair (`--overall`, `--youth`,
-  `--junior`, `--senior`, `--masters`). Ranked by MeetCal (`results:wsoElite`), so it needs
-  `meetcal login` with a MeetCal subscription, and the action must be on the deployment before
-  this is released.
+  `--junior`, `--senior`, `--masters`), over last year, a `--year` or a `--from`/`--to` range.
+  Ranked by MeetCal (`results:wsoElite`), so it needs `meetcal login` with a MeetCal subscription.
+- Every command's help prints its examples one per line, and the examples that failed now run.
+- Security: tokio 1.54.1 (RUSTSEC-2026-0386) and newer rustls-webpki and webpki-root-certs, past
+  their advisories.
+- Built with Rust 1.99.1.
 
 ## 3.0.0
 
