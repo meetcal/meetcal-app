@@ -112,6 +112,10 @@ describe('USAMW national records (port of national_records.py)', () => {
     expect(holder("O'Neil Mary")).toBe("O'Neil Mary");
     expect(holder('SMITH-Jones Ann')).toBe('SMITH-Jones Ann');
     expect(holder('McDONALD Ann')).toBe('McDONALD Ann');
+    expect(holder('SMITH DEAnne')).toBe('SMITH DEAnne');
+    expect(holder('NGMary')).toBe('NGMary');
+    // Without a date the words are kept as they are.
+    expect(parseRecordPages([['W 40 - 44', '86 SNA 79 USAMasters Team']], 'Women')[0].snatchBy?.name).toBe('USAMasters Team');
   });
 
   it('puts right a doubled last digit only where one lifter set all three lifts that day', () => {

@@ -105,16 +105,18 @@ function siteAndCompetition(tail: string, cells: string[] | undefined): [site: s
  * Who set a line's lift, from what follows its value: `Family Given Date Site
  * Competition` ("MURRAY George 12-Sep-25 Las Vegas, NV World Masters"). The
  * name is kept as the PDF lays it out, except a family name the PDF runs
- * into the given name ("TAN CASTELLANOSYicay") is spaced from it.
+ * into the given name ("TAN CASTELLANOSYicay": at least three capitals,
+ * then the last word) is spaced from it.
  */
 function lineHolder(value: number, rest: string, cells: string[] | undefined): RecordHolder | undefined {
   const words = rest.trim().split(/\s+/).filter(Boolean);
   const at = words.findIndex((word) => DATE_WORD.test(word));
+  if (at < 0) return recordHolder(value, words.join(' '));
+  // Only the last word before the date, so a given name like "DEAnne" is left alone.
   const name = words
-    .slice(0, at < 0 ? words.length : at)
+    .slice(0, at)
     .join(' ')
-    .replace(/\b([A-Z][A-Z'-]*[A-Z])([A-Z][a-z])/g, '$1 $2');
-  if (at < 0) return recordHolder(value, name);
+    .replace(/\b([A-Z][A-Z'-]*[A-Z]{2})([A-Z][a-z]+)$/, '$1 $2');
   const [site, competition] = siteAndCompetition(words.slice(at + 1).join(' '), cells);
   return recordHolder(value, name, recordsDate(words[at]), competition, site);
 }
