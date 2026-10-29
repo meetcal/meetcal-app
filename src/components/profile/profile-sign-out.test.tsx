@@ -176,3 +176,16 @@ describe("Profile Submit Feedback", () => {
     expect(alert).toHaveBeenCalledWith(NO_MAIL_APP_ALERT.title, NO_MAIL_APP_ALERT.message);
   });
 });
+
+describe("Profile Submit a Meet", () => {
+  it("opens the form for sending a meet MeetCal does not cover", async () => {
+    const renderer = await mount();
+    mockRouter.push.mockClear();
+
+    await act(async () => {
+      pressableFor(renderer, "Submit a Meet").props.onPress();
+    });
+
+    expect(mockRouter.push).toHaveBeenCalledWith("/schedule-toolbar/submit-meet");
+  });
+});

@@ -56,8 +56,6 @@ export interface MeetSelectionModalProps {
   onSelectMeet: (meetName: string) => Promise<void>;
   onRefresh: () => Promise<void>;
   isRefreshing: boolean;
-  /** Opens the form for sending a meet that is not listed; no row without it. */
-  onSubmitMeet?: () => void;
 }
 
 export interface OnboardingViewProps {

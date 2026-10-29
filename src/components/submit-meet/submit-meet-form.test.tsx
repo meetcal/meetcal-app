@@ -1,11 +1,10 @@
 /**
- * Sending a meet MeetCal does not cover: the meet picker's row opens the
- * form, and the form checks what it can, uploads, and says how it went.
+ * Sending a meet MeetCal does not cover (from Settings): the form checks
+ * what it can, uploads, and says how it went.
  */
 import React from "react";
 import { act, create, type ReactTestInstance, type ReactTestRenderer } from "react-test-renderer";
 import * as DocumentPicker from "expo-document-picker";
-import { MeetSelectionModal } from "@/components/schedule/MeetSelectionModal";
 import { SubmitMeetForm } from "@/components/submit-meet/SubmitMeetForm";
 import { MeetCalApiError } from "@/lib/api/meetcal-api";
 import { sendMeetSubmission } from "@/lib/meet-submission";
@@ -15,7 +14,6 @@ jest.mock("react-native-safe-area-context", () => ({
 }));
 jest.mock("@/contexts/ThemeContext", () => ({ useTheme: () => ({ currentTheme: "light" }) }));
 jest.mock("@/components/ui/IconSymbol", () => ({ IconSymbol: () => null }));
-jest.mock("@/components/ui/MaterialSurface", () => ({ MaterialSurface: () => null }));
 jest.mock("react-native-reanimated", () => ({
   __esModule: true,
   default: { View: jest.requireActual("react-native").View },
@@ -86,31 +84,6 @@ async function press(tree: ReactTestRenderer, testID: string) {
     await pressable(tree, testID).props.onPress();
   });
 }
-
-describe("the meet picker", () => {
-  it("offers the form only when the screen hands it a way there", async () => {
-    const onSubmitMeet = jest.fn();
-    const props = {
-      visible: true,
-      onClose: jest.fn(),
-      meets: [],
-      selectedMeet: null,
-      onSelectMeet: jest.fn(),
-      onRefresh: jest.fn(),
-      isRefreshing: false,
-    };
-    let tree!: ReactTestRenderer;
-    await act(async () => {
-      tree = create(<MeetSelectionModal {...props} />);
-    });
-    expect(tree.root.findAll((node) => node.props.testID === "meet-selection-submit-meet")).toHaveLength(0);
-    await act(async () => {
-      tree.update(<MeetSelectionModal {...props} onSubmitMeet={onSubmitMeet} />);
-    });
-    await press(tree, "meet-selection-submit-meet");
-    expect(onSubmitMeet).toHaveBeenCalledTimes(1);
-  });
-});
 
 describe("SubmitMeetForm", () => {
   it("formats the dates as typed and says what to fix before sending anything", async () => {

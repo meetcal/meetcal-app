@@ -21,9 +21,9 @@ import { apiError } from './lib/validation';
 import { requireUserId } from './users';
 
 // Schedules and start lists users send for meets MeetCal does not cover yet,
-// from the app's meet picker and meetcal.app/submit-meet. A signed-in user
-// uploads each file to an upload URL (`generateUploadUrl`), then submits the
-// meet with the files' storage ids (`submit`). The submission is stored
+// from the app's Settings (Submit a Meet) and meetcal.app/submit-meet. A
+// signed-in user uploads each file to an upload URL (`generateUploadUrl`),
+// then submits the meet with the files' storage ids (`submit`). The submission is stored
 // first and emailed to `MEET_SUBMISSION_EMAIL` in the background (`email`),
 // with a link to each file (OneSignal email has no attachments), so a failed
 // send is retried rather than shown to the user. `cleanup` (daily, in

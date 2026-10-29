@@ -12,7 +12,7 @@ import {
 // submit, apart from the screen. The limits mirror the server's
 // (`convex/lib/meetSubmissions.ts`); a test keeps them equal.
 
-/** The form's screen, opened from the meet picker. */
+/** The form's screen, opened from Settings (the profile screen). */
 export const SUBMIT_MEET_ROUTE = '/schedule-toolbar/submit-meet';
 
 export const MAX_MEET_SUBMISSION_FILES = 10;

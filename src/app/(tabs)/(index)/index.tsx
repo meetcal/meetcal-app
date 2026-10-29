@@ -53,7 +53,6 @@ import {
   formatIsoDateTitle,
 } from "@/utils/dateTime";
 import { useAuthGuard } from "@/utils/authGuard";
-import { SUBMIT_MEET_ROUTE } from "@/lib/meet-submission";
 import { useScreenHorizontalInsets } from "@/hooks/useScreenInsets";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Palette } from "@/constants/Palette";
@@ -409,22 +408,6 @@ export default function ScheduleScreen() {
     return withOnboarding(<ScheduleSkeleton label="Loading meets..." />);
   }
 
-  const openSubmitMeet = () => {
-    if (authState === null) {
-      notifyAuthPending();
-      return;
-    }
-    setShowFilterModal(false);
-    if (authState) {
-      router.push(SUBMIT_MEET_ROUTE);
-    } else {
-      router.push({
-        pathname: "/(auth)/sign-in",
-        params: { from: SUBMIT_MEET_ROUTE, feature: "submit_meet" },
-      });
-    }
-  };
-
   const meetSelectionModal = (
     <MeetSelectionModal
       visible={showFilterModal}
@@ -434,7 +417,6 @@ export default function ScheduleScreen() {
       onSelectMeet={handleSelectMeet}
       onRefresh={handleRefreshMeets}
       isRefreshing={isRefreshingMeets}
-      onSubmitMeet={openSubmitMeet}
     />
   );
 

@@ -12,7 +12,7 @@ import React from "react";
 import { ActivityIndicator, KeyboardAvoidingView, Platform, StyleSheet, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-/** Send a meet MeetCal does not cover yet, from the meet picker. Signed-in users only. */
+/** Send a meet MeetCal does not cover yet, from Settings. Signed-in users only. */
 export default function SubmitMeetScreen() {
   const colors = useAppColors();
   const router = useRouter();
