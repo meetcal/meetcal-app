@@ -6,6 +6,7 @@ use std::io::{BufRead, BufReader, Read, Write};
 use std::net::TcpListener;
 use std::sync::{Arc, Mutex};
 use std::thread;
+use std::time::Duration;
 
 use serde_json::Value;
 
@@ -36,9 +37,10 @@ pub fn reply(
 /// A server that answers each Convex call (a `POST /api/…`) with the next scripted reply, then
 /// with 500s. Returns its base URL and the Convex calls (head and body) it has received.
 ///
-/// Anything else that connects is answered 404 and neither recorded nor given a scripted reply:
+/// A port probe (`is_probe`) is answered 404 and neither recorded nor given a scripted reply:
 /// tools on a developer's machine probe new local ports (`GET /`, or a connection that sends
-/// nothing), and counting those made the tests fail at random.
+/// nothing), and counting those made the tests fail at random. A connection that sends nothing
+/// is dropped after `PROBE_READ_TIMEOUT`, so it cannot hold up the requests behind it.
 pub fn serve(replies: Vec<Reply>) -> (String, Arc<Mutex<Vec<String>>>) {
     let listener = TcpListener::bind("127.0.0.1:0").expect("bind local test server");
     let base_url = format!("http://{}", listener.local_addr().unwrap());
@@ -49,6 +51,7 @@ pub fn serve(replies: Vec<Reply>) -> (String, Arc<Mutex<Vec<String>>>) {
         let mut replies = replies.into_iter();
         for stream in listener.incoming() {
             let Ok(mut stream) = stream else { break };
+            let _ = stream.set_read_timeout(Some(PROBE_READ_TIMEOUT));
 
             let mut head = String::new();
             let mut reader = BufReader::new(&stream);
@@ -68,7 +71,7 @@ pub fn serve(replies: Vec<Reply>) -> (String, Arc<Mutex<Vec<String>>>) {
             head.push_str("\r\n");
             head.push_str(&String::from_utf8_lossy(&body));
 
-            let reply = if is_convex_call(&head) {
+            let reply = if !is_probe(&head) {
                 seen.lock().unwrap().push(head);
                 replies.next().unwrap_or(reply(
                     "500 Internal Server Error",
@@ -76,7 +79,7 @@ pub fn serve(replies: Vec<Reply>) -> (String, Arc<Mutex<Vec<String>>>) {
                     r#"{"error":"unexpected request"}"#,
                 ))
             } else {
-                reply(NOT_FOUND, None, r#"{"error":"not a Convex call"}"#)
+                reply(NOT_FOUND, None, r#"{"error":"not a test request"}"#)
             };
             let retry_after = reply
                 .retry_after
@@ -95,9 +98,15 @@ pub fn serve(replies: Vec<Reply>) -> (String, Arc<Mutex<Vec<String>>>) {
     (base_url, requests)
 }
 
-/// Whether a request is one the CLI makes: a `POST` to Convex's HTTP API.
-fn is_convex_call(head: &str) -> bool {
-    head.starts_with("POST /api/")
+/// How long the server waits for a connection's request before treating it as a probe.
+const PROBE_READ_TIMEOUT: Duration = Duration::from_secs(5);
+
+/// Whether a connection is a port probe rather than a request from the CLI: it sent no request
+/// line, or asked for `GET /`. Anything else, a wrong method or path included, is recorded and
+/// answered from the script, so the tests still catch the CLI calling the wrong endpoint.
+fn is_probe(head: &str) -> bool {
+    let line = head.lines().next().unwrap_or_default();
+    line.trim().is_empty() || line.starts_with("GET / ")
 }
 
 /// The JSON body of each request the test server received.

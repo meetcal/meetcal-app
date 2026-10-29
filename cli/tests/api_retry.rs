@@ -185,3 +185,29 @@ async fn actions_and_mutations_are_sent_once() {
         }
     }
 }
+
+#[tokio::test]
+async fn port_probes_take_no_scripted_reply() {
+    use std::io::Write as _;
+    use std::net::TcpStream;
+
+    let (base_url, requests) = serve(vec![reply(
+        OK,
+        None,
+        r#"{"status":"success","value":[{"meet":"Test Meet"}],"logLines":[]}"#,
+    )]);
+    let address = base_url.trim_start_matches("http://");
+    // A probe that connects and sends nothing, and one that asks for `GET /`.
+    let idle = TcpStream::connect(address).unwrap();
+    let mut get = TcpStream::connect(address).unwrap();
+    get.write_all(b"GET / HTTP/1.1\r\nHost: probe\r\n\r\n")
+        .unwrap();
+
+    let body = fetch(&base_url)
+        .await
+        .expect("the CLI's request gets the scripted reply");
+
+    assert_eq!(body, json!([{ "meet": "Test Meet" }]));
+    assert_eq!(requests.lock().unwrap().len(), 1);
+    drop(idle);
+}

@@ -97,6 +97,7 @@ describe('checkSteps', () => {
       ['CLI clippy', 'cli'],
       ['CLI tests', 'cli'],
     ]);
-    expect(steps[1].command).toEqual(['cargo', 'clippy', '--all-targets', '--locked', '--', '-D', 'warnings']);
+    // Through mise in the folder, so its pinned Rust and mbx apply.
+    expect(steps[1].command).toEqual(['mise', 'exec', '--', 'cargo', 'clippy', '--all-targets', '--locked', '--', '-D', 'warnings']);
   });
 });
