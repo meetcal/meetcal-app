@@ -41,7 +41,8 @@ export type PassServer = {
  * `setUser(id | null)` switches or signs out the Clerk user and notifies;
  * setting `customerInfoError` makes later checks fail, and
  * `activeEntitlements` replaces the granted entitlements. Only `user_ci`
- * holds entitlements. A signed-in user's session token is `token_<id>`.
+ * holds entitlements. A signed-in user's session token is `token_<id>`, and
+ * their primary email `<id>@example.com`.
  *
  * Also answers the Convex calls that carry that token: `accessPass:pass` answers `server.pass` (default
  * `pass_test`) to `Bearer token_user_ci` while `server.entitled`, 403 to
@@ -70,14 +71,17 @@ export async function mockAuth(
       notify: () => mock.listeners.forEach((listener) => listener()),
       setUser: (id: string | null) => {
         clerk.isSignedIn = id !== null;
-        clerk.user = id === null ? null : { id };
+        clerk.user = id === null ? null : clerkUser(id);
         mock.notify();
       },
       installPurchases: () => Object.assign(window, { Purchases: { Purchases: revenueCat } }),
     };
+    // A Clerk user, with the primary email `/submit-meet` sends as its contact.
+    type ClerkUser = { id: string; primaryEmailAddress: { emailAddress: string } };
+    const clerkUser = (id: string): ClerkUser => ({ id, primaryEmailAddress: { emailAddress: `${id}@example.com` } });
     const clerk = {
       isSignedIn: signedIn,
-      user: signedIn ? ({ id: "user_ci" } as { id: string } | null) : null,
+      user: signedIn ? (clerkUser("user_ci") as ClerkUser | null) : null,
       load: async () => {},
       addListener: (listener: Listener) => {
         mock.listeners.push(listener);
@@ -192,7 +196,7 @@ export function retryableResponse(status: 429 | 503, retryAfter?: string) {
 
 /** Every read is a `POST` of `{ path, args }` here (see src/utils/api.rs). */
 const CONVEX_QUERY_URL = "https://disciplined-hare-790.convex.cloud/api/query";
-/** The mutations the site calls: `deviceLogin:approve` and `deviceLogin:deny` (`/link`). */
+/** The mutations the site calls: `deviceLogin:approve` and `deviceLogin:deny` (`/link`), `meetSubmissions:*` (`/submit-meet`). */
 const CONVEX_MUTATION_URL = "https://disciplined-hare-790.convex.cloud/api/mutation";
 /** The one action the site calls, `entitlements:refresh`. */
 const CONVEX_ACTION_URL = "https://disciplined-hare-790.convex.cloud/api/action";

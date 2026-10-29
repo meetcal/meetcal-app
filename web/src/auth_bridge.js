@@ -135,6 +135,16 @@ export async function clerk_session_token() {
   );
 }
 
+// The signed-in user's primary email address, or null when signed out or
+// when the user has none. /submit-meet sends it as the submission's
+// `contactEmail`, so a reply reaches the user; Convex never trusts it for
+// who the user is (that comes from the session token).
+export function clerk_primary_email() {
+  const user = window.Clerk?.isSignedIn ? window.Clerk.user : null;
+  const address = user?.primaryEmailAddress?.emailAddress;
+  return typeof address === "string" && address.trim() !== "" ? address.trim() : null;
+}
+
 export function mount_clerk_user_button(element) {
   if (!window.Clerk?.isSignedIn) return;
   element.replaceChildren();

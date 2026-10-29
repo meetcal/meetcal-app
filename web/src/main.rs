@@ -14,6 +14,7 @@ use meetcal_web::pages::{
     link::LinkPage,
     not_found::NotFound,
     privacy::PrivacyPage,
+    submit_meet::SubmitMeetPage,
     terms::TermsPage,
 };
 use meetcal_web::{
@@ -63,6 +64,8 @@ fn App() -> impl IntoView {
                     <Route path=path!("/subscription") view=MobileSubscriptionPage />
                     // Signed in, but no subscription needed: approves a `meetcal login`.
                     <Route path=path!("/link") view=LinkPage />
+                    // Signed in, but no subscription needed: sends a meet's schedule and start lists.
+                    <Route path=path!("/submit-meet") view=SubmitMeetPage />
                     <Route path=path!("/features") view=FeaturesPage />
                     <Route path=path!("/privacy") view=PrivacyPage />
                     <Route path=path!("/terms") view=TermsPage />

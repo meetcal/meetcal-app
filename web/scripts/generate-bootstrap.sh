@@ -107,6 +107,10 @@ render_page "link" "/link" \
   "Approve a MeetCal CLI Sign-In" \
   "Sign in to approve or deny a MeetCal CLI sign-in request from meetcal login." \
   "noindex, nofollow"
+render_page "submit-meet" "/submit-meet" \
+  "Submit a Meet — MeetCal" \
+  "Send MeetCal the schedule and start lists of a weightlifting meet it doesn't cover yet, and we'll add the meet." \
+  "noindex, nofollow"
 
 while IFS='|' read -r output_name path title; do
   render_page "${output_name}" "${path}" "${title}" \

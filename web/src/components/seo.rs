@@ -67,6 +67,12 @@ pub fn metadata_for_path(path: &str) -> PageMetadata {
             indexable: false,
             canonical: true,
         },
+        "/submit-meet" => PageMetadata {
+            title: "Submit a Meet — MeetCal",
+            description: "Send MeetCal the schedule and start lists of a weightlifting meet it doesn't cover yet, and we'll add the meet.",
+            indexable: false,
+            canonical: true,
+        },
         "/comp-data" => competition_metadata("Competition Data"),
         _ => PageMetadata {
             title: "Page Not Found — MeetCal",
@@ -191,6 +197,7 @@ mod tests {
             "/qualifying-totals",
             "/subscription",
             "/link",
+            "/submit-meet",
             "/missing",
         ] {
             assert!(
@@ -218,6 +225,7 @@ mod tests {
             "/qualifying-totals",
             "/subscription",
             "/link",
+            "/submit-meet",
         ] {
             assert!(
                 metadata_for_path(path).canonical,

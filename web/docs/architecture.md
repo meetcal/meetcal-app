@@ -31,8 +31,9 @@ POST https://disciplined-hare-790.convex.cloud/api/query
   200 or 560. Our functions throw `{ status, error }` as `errorData`; the site shows `error`.
 - 429 and 503 are retried twice, honoring `Retry-After` (1 to 10 seconds). Every query is a read,
   so a retry is safe. The site's only mutations, `deviceLogin:approve`, `deviceLogin:deny` and
-  `apiTokens:revokeAllCli` (`POST /api/mutation`, from `/link`), are never retried by themselves:
-  the user taps Try again.
+  `apiTokens:revokeAllCli` (`POST /api/mutation`, from `/link`), and
+  `meetSubmissions:generateUploadUrl` and `meetSubmissions:submit` (from `/submit-meet`), are never
+  retried by themselves: the user taps again.
 - The premium functions (`SUBSCRIPTION_FUNCTIONS` in `api.rs`, Convex's `PREMIUM_FUNCTIONS`) take
   the access pass as their `pass` argument; `api.rs` adds it to their arguments. A search
   (`results:search`) takes it only with `startDate` and `endDate`: name suggestions are public.
@@ -144,6 +145,35 @@ is the page the link opens. It needs a signed-in user but no subscription, so it
   answers `{ ended }`, and shows "Signed out N CLI logins." A failure shows the error with Try
   again; like the other mutations, it is never sent again without a tap.
 
+## Submitting a meet: `/submit-meet`
+
+Users send the schedule and start lists of a meet MeetCal does not cover yet. `src/pages/submit_meet.rs`
+needs a signed-in user but no subscription, so its route sits outside `SubscriptionGate`; signed out,
+it mounts the same Clerk sign-in as the gate. The header links to it ("Submit a Meet", next to
+Contact Us, in the desktop and the mobile menu); its metadata is `noindex, nofollow`, and it is not
+in the sitemap.
+
+- The form takes the meet's name, its start date, an optional end date (`<input type="date">`,
+  `YYYY-MM-DD`) and 1 to 10 files, each listed with a Remove button. `check_submission` makes the
+  server's checks (`../convex/lib/meetSubmissions.ts`) before anything uploads: a name of 1 to 200
+  characters once trimmed, real dates with the end on or after the start, and files that are PDFs,
+  photos, spreadsheets or Word documents by extension (`FILE_EXTENSIONS`, which a test keeps equal
+  to the server's), at most 20 MB each, with names of 1 to 200 characters. A file that fails is
+  marked in the list.
+- Submitting uploads the files one at a time ("Uploading 2 of 5…"): `meetSubmissions:generateUploadUrl`
+  (`POST /api/mutation`, args `{}`, the user's Clerk session token) answers `{ uploadUrl }`, a
+  one-time URL on the deployment; the file's bytes are posted to it with the file's
+  `Content-Type` (from its extension when the browser gives none) and no token, within
+  `UPLOAD_TIMEOUT`, and it answers `{ storageId }`. Then `meetSubmissions:submit` (same token) takes
+  `{ meetName, startDate, endDate, contactEmail, files: [{ storageId, name }] }` and answers
+  `{ submitted: true }`; the server stores it and emails the owner. `contactEmail` is the Clerk
+  user's primary email (`auth::primary_email`), or `null`.
+- A function error's `{ status, error }` is shown as a sentence: 400 (invalid input) and 413 (a file
+  over 20 MB) show the server's `error`, 429 (5 submissions, or the upload URLs, a day) adds "Please
+  try again tomorrow.", and 401 asks the user to sign in again. On any error the form keeps what the
+  user entered. Done, the page thanks the user and offers to send another meet.
+- Upload URLs are on the Convex deployment's own origin, which the CSP's `connect-src` already allows.
+
 ## Routes and metadata
 
 Each route needs a document that search engines and link previews can read before the Wasm loads:
@@ -177,7 +207,8 @@ A free data page (`Access::Free { seo_description }`, like `/wrapped`) has no ga
 entry, and a place in `publicRoutes`; the catalog's tests check each of these against its access.
 A public page follows the same steps without the gate, with its own entry in
 `metadata_for_path` and `render_page` instead of the catalog, and in `publicRoutes`. A page that
-needs a signed-in user but no subscription (`/link`) goes in `signedInRoutes` instead.
+needs a signed-in user but no subscription and is in no menu (`/link`) goes in `signedInRoutes`
+instead; `/submit-meet`, which the header links to, has its own spec.
 
 ## Deploying
 
