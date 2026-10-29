@@ -46,6 +46,9 @@ export function SubmitMeetForm({ onDone, bottomInset }: { onDone: () => void; bo
   const [status, setStatus] = useState<Status>({ kind: "editing" });
   // Blocks a second tap before the re-render disables the button.
   const sendingRef = useRef(false);
+  // Files already uploaded (URI to storage id), reused when sending again
+  // after a failure (`sendMeetSubmission`).
+  const uploadedRef = useRef(new Map<string, string>());
 
   const isSending = status.kind === "sending";
 
@@ -99,8 +102,10 @@ export function SubmitMeetForm({ onDone, bottomInset }: { onDone: () => void; bo
         token,
         checked.value,
         user?.primaryEmailAddress?.emailAddress ?? null,
+        uploadedRef.current,
         (file, total) => setStatus({ kind: "sending", file, total }),
       );
+      uploadedRef.current.clear();
       setStatus({ kind: "sent" });
     } catch (sendError) {
       console.warn("Failed to send meet submission:", sendError);

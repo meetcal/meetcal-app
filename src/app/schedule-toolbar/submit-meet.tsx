@@ -6,6 +6,7 @@ import { useAppColors } from "@/hooks/useAppColors";
 import { SUBMIT_MEET_ROUTE } from "@/lib/meet-submission";
 import { useScreenHorizontalInsets } from "@/hooks/useScreenInsets";
 import { useAuthGuard } from "@/utils/authGuard";
+import { returnToOrigin } from "@/utils/returnToOrigin";
 import { Stack, useRouter } from "expo-router";
 import React from "react";
 import { ActivityIndicator, KeyboardAvoidingView, Platform, StyleSheet, View } from "react-native";
@@ -51,7 +52,7 @@ export default function SubmitMeetScreen() {
       ) : (
         <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === "ios" ? "padding" : undefined}>
           <SubmitMeetForm
-            onDone={() => (router.canGoBack() ? router.back() : router.replace("/(tabs)"))}
+            onDone={() => returnToOrigin(router, undefined)}
             bottomInset={Math.max(40, insets.bottom + 24)}
           />
         </KeyboardAvoidingView>

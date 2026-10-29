@@ -12,11 +12,30 @@ import {
   MEET_SUBMISSION_FILE_EXTENSIONS,
   meetSubmissionErrorMessage,
   MeetSubmissionUploadError,
+  MEET_SUBMISSION_UPLOAD_TIMEOUT_MS,
   parseUsDate,
+  sendFileFromDisk,
   sendMeetSubmission,
   uploadMeetSubmissionFile,
   type PickedFile,
 } from '@/lib/meet-submission';
+
+const mockUploadAsync = jest.fn();
+const mockCancel = jest.fn();
+const mockCreateUploadTask = jest.fn();
+let mockFileSize: number | undefined = 1000;
+jest.mock('expo-file-system', () => ({
+  File: jest.fn().mockImplementation((uri: string) => ({
+    uri,
+    get size() {
+      return mockFileSize;
+    },
+    createUploadTask: (...args: unknown[]) => {
+      mockCreateUploadTask(...args);
+      return { uploadAsync: mockUploadAsync, cancel: mockCancel };
+    },
+  })),
+}));
 
 const pdf = (name = 'schedule.pdf', size: number | null = 1000): PickedFile => ({ uri: `file:///cache/${name}`, name, mimeType: 'application/pdf', size });
 
@@ -88,78 +107,101 @@ describe('contentTypeFor', () => {
   });
 });
 
-function response(status: number, body: unknown, blob?: Blob): Response {
-  return {
-    ok: status >= 200 && status < 300,
-    status,
-    json: async () => {
-      if (body instanceof Error) throw body;
-      return body;
-    },
-    blob: async () => blob ?? new Blob(['x']),
-  } as unknown as Response;
-}
-
 describe('uploadMeetSubmissionFile', () => {
-  it('posts the bytes with their type and answers the storage id', async () => {
-    const fetchImpl = jest.fn(async (url: string) => (url.startsWith('file:') ? response(200, null) : response(200, { storageId: 'kg2abc' })));
-    expect(await uploadMeetSubmissionFile('https://up.example/1', pdf(), fetchImpl as unknown as typeof fetch)).toBe('kg2abc');
-    expect(fetchImpl).toHaveBeenLastCalledWith('https://up.example/1', expect.objectContaining({ method: 'POST', headers: { 'Content-Type': 'application/pdf' } }));
-  });
+  const answering = (status: number, body: string) => jest.fn(async () => ({ status, body }));
 
-  it('refuses a file over the limit before uploading it', async () => {
-    const big = { size: MAX_MEET_SUBMISSION_FILE_BYTES + 1 } as Blob;
-    const fetchImpl = jest.fn(async () => response(200, null, big));
-    await expect(uploadMeetSubmissionFile('https://up.example/1', pdf('x.pdf', null), fetchImpl as unknown as typeof fetch)).rejects.toThrow('x.pdf is larger than 20 MB.');
-    expect(fetchImpl).toHaveBeenCalledTimes(1);
+  it('sends the file with its type and answers the storage id', async () => {
+    const send = answering(200, JSON.stringify({ storageId: 'kg2abc' }));
+    expect(await uploadMeetSubmissionFile('https://up.example/1', pdf(), send)).toBe('kg2abc');
+    expect(send).toHaveBeenCalledWith(pdf(), 'https://up.example/1', 'application/pdf');
   });
 
   it.each([
-    ['a refusal', response(500, {})],
-    ['a body that is not JSON', response(200, new Error('bad json'))],
-    ['no storage id', response(200, { id: 'x' })],
-  ])('fails loudly on %s', async (_label, answer) => {
-    const fetchImpl = jest.fn(async (url: string) => (url.startsWith('file:') ? response(200, null) : answer));
-    await expect(uploadMeetSubmissionFile('https://up.example/1', pdf(), fetchImpl as unknown as typeof fetch)).rejects.toBeInstanceOf(MeetSubmissionUploadError);
+    ['a refusal', answering(500, '{}'), "Couldn't upload schedule.pdf (500)."],
+    ['a body that is not JSON', answering(200, '<html>'), /not JSON/],
+    ['no storage id', answering(200, JSON.stringify({ id: 'x' })), /no storage id/],
+  ])('fails loudly on %s', async (_label, send, message) => {
+    await expect(uploadMeetSubmissionFile('https://up.example/1', pdf(), send)).rejects.toThrow(message);
   });
 
-  it('says which file it could not read', async () => {
-    const fetchImpl = jest.fn(async () => {
+  it('names the file when the device could not send it, and keeps its own messages', async () => {
+    const offline = jest.fn(async () => {
       throw new Error('ENOENT');
     });
-    await expect(uploadMeetSubmissionFile('https://up.example/1', pdf(), fetchImpl as unknown as typeof fetch)).rejects.toThrow("Couldn't read schedule.pdf.");
+    await expect(uploadMeetSubmissionFile('https://up.example/1', pdf(), offline)).rejects.toThrow("Couldn't upload schedule.pdf. Check your connection");
+    const tooBig = jest.fn(async () => {
+      throw new MeetSubmissionUploadError('schedule.pdf is larger than 20 MB.');
+    });
+    await expect(uploadMeetSubmissionFile('https://up.example/1', pdf(), tooBig)).rejects.toThrow('schedule.pdf is larger than 20 MB.');
+  });
+});
+
+describe('sendFileFromDisk', () => {
+  beforeEach(() => {
+    mockFileSize = 1000;
+    mockUploadAsync.mockReset();
+    mockCancel.mockReset();
+    mockCreateUploadTask.mockReset();
+  });
+  afterEach(() => jest.useRealTimers());
+
+  it('streams the file from disk with its type and answers the response', async () => {
+    mockUploadAsync.mockResolvedValue({ status: 200, body: '{"storageId":"x"}', headers: {} });
+    expect(await sendFileFromDisk(pdf(), 'https://up.example/1', 'application/pdf')).toEqual({ status: 200, body: '{"storageId":"x"}' });
+    expect(mockCreateUploadTask).toHaveBeenCalledWith('https://up.example/1', { httpMethod: 'POST', headers: { 'Content-Type': 'application/pdf' } });
+  });
+
+  it('refuses a file over the limit before sending it', async () => {
+    mockFileSize = MAX_MEET_SUBMISSION_FILE_BYTES + 1;
+    await expect(sendFileFromDisk(pdf('big.pdf', null), 'https://up.example/1', 'application/pdf')).rejects.toThrow('big.pdf is larger than 20 MB.');
+    expect(mockCreateUploadTask).not.toHaveBeenCalled();
+  });
+
+  it('cancels an upload that takes too long', async () => {
+    jest.useFakeTimers();
+    mockUploadAsync.mockReturnValue(new Promise(() => {}));
+    const sent = sendFileFromDisk(pdf(), 'https://up.example/1', 'application/pdf');
+    jest.advanceTimersByTime(MEET_SUBMISSION_UPLOAD_TIMEOUT_MS);
+    await expect(sent).rejects.toThrow('took too long');
+    expect(mockCancel).toHaveBeenCalled();
   });
 });
 
 describe('sendMeetSubmission', () => {
-  it('uploads one file at a time, then submits them with the meet', async () => {
+  const form = (files: PickedFile[]) => ({ meetName: 'Open', startDate: '2027-03-06', endDate: null, files });
+  const fakeDeps = () => {
     const events: string[] = [];
-    let inFlight = 0;
-    const deps = {
-      generateUploadUrl: jest.fn(async () => {
-        events.push('url');
-        return `https://up.example/${events.length}`;
-      }),
-      uploadFile: jest.fn(async (_url: string, file: PickedFile) => {
-        inFlight += 1;
-        expect(inFlight).toBe(1);
-        await Promise.resolve();
-        inFlight -= 1;
-        events.push(`upload ${file.name}`);
-        return `id-${file.name}`;
-      }),
-      submit: jest.fn(async () => {
-        events.push('submit');
-      }),
+    return {
+      events,
+      deps: {
+        generateUploadUrl: jest.fn(async () => {
+          events.push('url');
+          return `https://up.example/${events.length}`;
+        }),
+        uploadFile: jest.fn(async (_url: string, file: PickedFile) => {
+          events.push(`upload ${file.name}`);
+          return `id-${file.name}`;
+        }),
+        submit: jest.fn(async () => {
+          events.push('submit');
+        }),
+      },
     };
+  };
+
+  it('uploads one file at a time, then submits them with the meet', async () => {
+    const { events, deps } = fakeDeps();
+    let inFlight = 0;
+    deps.uploadFile.mockImplementation(async (_url: string, file: PickedFile) => {
+      inFlight += 1;
+      expect(inFlight).toBe(1);
+      await Promise.resolve();
+      inFlight -= 1;
+      events.push(`upload ${file.name}`);
+      return `id-${file.name}`;
+    });
     const progress: [number, number][] = [];
-    await sendMeetSubmission(
-      'token',
-      { meetName: 'Open', startDate: '2027-03-06', endDate: null, files: [pdf('a.pdf'), pdf('b.pdf')] },
-      ' lifter@example.com ',
-      (file, total) => progress.push([file, total]),
-      deps,
-    );
+    await sendMeetSubmission('token', form([pdf('a.pdf'), pdf('b.pdf')]), ' lifter@example.com ', new Map(), (file, total) => progress.push([file, total]), deps);
     expect(events).toEqual(['url', 'upload a.pdf', 'url', 'upload b.pdf', 'submit']);
     expect(progress).toEqual([
       [1, 2],
@@ -177,16 +219,40 @@ describe('sendMeetSubmission', () => {
     });
   });
 
-  it('does not submit when an upload fails', async () => {
-    const deps = {
-      generateUploadUrl: jest.fn(async () => 'https://up.example/1'),
-      uploadFile: jest.fn(async () => {
-        throw new MeetSubmissionUploadError("Couldn't upload a.pdf (500).");
-      }),
-      submit: jest.fn(),
-    };
-    await expect(sendMeetSubmission('token', { meetName: 'Open', startDate: '2027-03-06', endDate: null, files: [pdf('a.pdf')] }, null, undefined, deps)).rejects.toThrow('(500)');
+  it('does not submit when an upload fails, and keeps the uploads that finished for the retry', async () => {
+    const { events, deps } = fakeDeps();
+    deps.uploadFile
+      .mockImplementationOnce(async () => 'id-a.pdf')
+      .mockImplementationOnce(async () => {
+        throw new MeetSubmissionUploadError("Couldn't upload b.pdf (500).");
+      });
+    const uploaded = new Map<string, string>();
+    await expect(sendMeetSubmission('token', form([pdf('a.pdf'), pdf('b.pdf')]), null, uploaded, undefined, deps)).rejects.toThrow('(500)');
     expect(deps.submit).not.toHaveBeenCalled();
+    events.length = 0;
+    await sendMeetSubmission('token', form([pdf('a.pdf'), pdf('b.pdf')]), null, uploaded, undefined, deps);
+    // Only the file that failed is uploaded again.
+    expect(events).toEqual(['url', 'upload b.pdf', 'submit']);
+  });
+
+  it('retries a failed submit without uploading again', async () => {
+    const { events, deps } = fakeDeps();
+    deps.submit.mockRejectedValueOnce(new TypeError('Network request failed'));
+    const uploaded = new Map<string, string>();
+    await expect(sendMeetSubmission('token', form([pdf('a.pdf')]), null, uploaded, undefined, deps)).rejects.toThrow('Network request failed');
+    events.length = 0;
+    await sendMeetSubmission('token', form([pdf('a.pdf')]), null, uploaded, undefined, deps);
+    expect(events).toEqual(['submit']);
+  });
+
+  it('counts a retry as sent when the first submit was stored after all', async () => {
+    const { deps } = fakeDeps();
+    const stored = new MeetCalApiError('failed', 400, JSON.stringify({ status: 400, error: 'file already submitted: a.pdf' }));
+    deps.submit.mockRejectedValue(stored);
+    // Nothing reused: a real refusal.
+    await expect(sendMeetSubmission('token', form([pdf('a.pdf')]), null, new Map(), undefined, deps)).rejects.toBe(stored);
+    // Reused from the attempt whose submit timed out: it was stored.
+    await expect(sendMeetSubmission('token', form([pdf('a.pdf')]), null, new Map([[pdf('a.pdf').uri, 'id-a.pdf']]), undefined, deps)).resolves.toBeUndefined();
   });
 });
 
@@ -194,7 +260,9 @@ describe('meetSubmissionErrorMessage', () => {
   const api = (status: number, data: unknown) => new MeetCalApiError('failed', status, JSON.stringify(data));
 
   it('tells the user what happened', () => {
-    expect(meetSubmissionErrorMessage(api(429, { status: 429, error: 'at most 5' }))).toBe('You can send 5 meets a day. Try again tomorrow.');
+    expect(meetSubmissionErrorMessage(api(429, { status: 429, error: 'at most 5 meet submissions a day' }))).toBe('At most 5 meet submissions a day. Try again tomorrow.');
+    expect(meetSubmissionErrorMessage(api(429, { status: 429, error: 'at most 50 uploads a day' }))).toBe('At most 50 uploads a day. Try again tomorrow.');
+    expect(meetSubmissionErrorMessage(api(429, {}))).toBe('You can send 5 meets a day. Try again tomorrow.');
     expect(meetSubmissionErrorMessage(api(401, {}))).toBe('Sign in again to send this meet.');
     expect(meetSubmissionErrorMessage(api(413, {}))).toBe('A file is larger than 20 MB.');
     expect(meetSubmissionErrorMessage(api(400, { status: 400, error: 'end date is before the start date' }))).toBe('End date is before the start date.');

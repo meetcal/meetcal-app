@@ -1,3 +1,4 @@
+import { File } from 'expo-file-system';
 import {
   generateMeetSubmissionUploadUrl,
   MeetCalApiError,
@@ -165,49 +166,69 @@ export class MeetSubmissionUploadError extends Error {
   }
 }
 
+/** A finished upload's HTTP answer. */
+export interface UploadAnswer {
+  status: number;
+  body: string;
+}
+
+/** Reads a local file and sends its bytes; the native side streams it from disk. */
+export type FileSender = (file: PickedFile, uploadUrl: string, contentType: string) => Promise<UploadAnswer>;
+
 /**
- * Uploads one file to an upload URL and answers its storage id. Reads the
- * file through `fetch(uri)` (React Native serves `file://` that way) and
- * POSTs it with its Content-Type, within MEET_SUBMISSION_UPLOAD_TIMEOUT_MS.
+ * Sends a file with `expo-file-system`'s native uploader, which streams it
+ * from disk (no copy in JS memory, and no `fetch` of a `file://` URI, which
+ * Android's React Native networking does not reliably serve), within
+ * MEET_SUBMISSION_UPLOAD_TIMEOUT_MS.
  */
-export async function uploadMeetSubmissionFile(
-  uploadUrl: string,
-  file: PickedFile,
-  fetchImpl: typeof fetch = fetch,
-): Promise<string> {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), MEET_SUBMISSION_UPLOAD_TIMEOUT_MS);
+export const sendFileFromDisk: FileSender = async (file, uploadUrl, contentType) => {
+  const local = new File(file.uri);
+  if (typeof local.size === 'number' && local.size > MAX_MEET_SUBMISSION_FILE_BYTES) {
+    throw new MeetSubmissionUploadError(`${file.name} is larger than ${formatMegabytes(MAX_MEET_SUBMISSION_FILE_BYTES)}.`);
+  }
+  const task = local.createUploadTask(uploadUrl, { httpMethod: 'POST', headers: { 'Content-Type': contentType } });
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => {
+      task.cancel();
+      reject(new MeetSubmissionUploadError(`Uploading ${file.name} took too long. Check your connection and try again.`));
+    }, MEET_SUBMISSION_UPLOAD_TIMEOUT_MS);
+  });
   try {
-    let blob: Blob;
-    try {
-      blob = await (await fetchImpl(file.uri, { signal: controller.signal })).blob();
-    } catch {
-      throw new MeetSubmissionUploadError(`Couldn't read ${file.name}.`);
-    }
-    if (blob.size > MAX_MEET_SUBMISSION_FILE_BYTES) {
-      throw new MeetSubmissionUploadError(`${file.name} is larger than ${formatMegabytes(MAX_MEET_SUBMISSION_FILE_BYTES)}.`);
-    }
-    const response = await fetchImpl(uploadUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': contentTypeFor(file) },
-      body: blob,
-      signal: controller.signal,
-    });
-    if (!response.ok) throw new MeetSubmissionUploadError(`Couldn't upload ${file.name} (${response.status}).`);
-    let answer: unknown;
-    try {
-      answer = await response.json();
-    } catch {
-      throw new MeetSubmissionUploadError(`Couldn't upload ${file.name}: the answer was not JSON.`);
-    }
-    const storageId = typeof answer === 'object' && answer !== null ? (answer as { storageId?: unknown }).storageId : undefined;
-    if (typeof storageId !== 'string' || storageId === '') {
-      throw new MeetSubmissionUploadError(`Couldn't upload ${file.name}: no storage id in the answer.`);
-    }
-    return storageId;
+    const result = await Promise.race([task.uploadAsync(), timeout]);
+    return { status: result.status, body: result.body };
   } finally {
     clearTimeout(timer);
   }
+};
+
+/** Uploads one file to an upload URL and answers its storage id. */
+export async function uploadMeetSubmissionFile(
+  uploadUrl: string,
+  file: PickedFile,
+  send: FileSender = sendFileFromDisk,
+): Promise<string> {
+  let answer: UploadAnswer;
+  try {
+    answer = await send(file, uploadUrl, contentTypeFor(file));
+  } catch (error) {
+    if (error instanceof MeetSubmissionUploadError) throw error;
+    throw new MeetSubmissionUploadError(`Couldn't upload ${file.name}. Check your connection and try again.`);
+  }
+  if (answer.status < 200 || answer.status >= 300) {
+    throw new MeetSubmissionUploadError(`Couldn't upload ${file.name} (${answer.status}).`);
+  }
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(answer.body);
+  } catch {
+    throw new MeetSubmissionUploadError(`Couldn't upload ${file.name}: the answer was not JSON.`);
+  }
+  const storageId = typeof parsed === 'object' && parsed !== null ? (parsed as { storageId?: unknown }).storageId : undefined;
+  if (typeof storageId !== 'string' || storageId === '') {
+    throw new MeetSubmissionUploadError(`Couldn't upload ${file.name}: no storage id in the answer.`);
+  }
+  return storageId;
 }
 
 export interface MeetSubmissionDeps {
@@ -223,30 +244,50 @@ const DEFAULT_DEPS: MeetSubmissionDeps = {
 };
 
 /**
- * Uploads a checked form's files one at a time (each is read whole into
- * memory, so never all at once), then submits the meet. `onProgress` hears
- * each file as its upload starts (1-based).
+ * Uploads a checked form's files one at a time (never all at once), then
+ * submits the meet. `onProgress` hears each file as its upload starts
+ * (1-based).
+ *
+ * `uploaded` maps a picked file's URI to the storage id it was uploaded as,
+ * and lives as long as the form: a retry after a failure reuses those
+ * instead of uploading again, so retries on a poor connection do not use up
+ * the day's uploads. A retry whose submit is refused because its files are
+ * already in a submission found the earlier attempt's submit stored after
+ * all (only this form had those ids), so it counts as sent.
  */
 export async function sendMeetSubmission(
   token: string,
   form: CheckedMeetSubmissionForm,
   contactEmail: string | null,
+  uploaded: Map<string, string>,
   onProgress: (file: number, total: number) => void = () => {},
   deps: MeetSubmissionDeps = DEFAULT_DEPS,
 ): Promise<void> {
   const files: MeetSubmissionBody['files'] = [];
+  let reused = false;
   for (const [index, file] of form.files.entries()) {
     onProgress(index + 1, form.files.length);
-    const uploadUrl = await deps.generateUploadUrl(token);
-    files.push({ storageId: await deps.uploadFile(uploadUrl, file), name: file.name });
+    let storageId = uploaded.get(file.uri);
+    if (storageId === undefined) {
+      storageId = await deps.uploadFile(await deps.generateUploadUrl(token), file);
+      uploaded.set(file.uri, storageId);
+    } else {
+      reused = true;
+    }
+    files.push({ storageId, name: file.name });
   }
-  await deps.submit(token, {
-    meetName: form.meetName,
-    startDate: form.startDate,
-    endDate: form.endDate,
-    contactEmail: contactEmail?.trim() || null,
-    files,
-  });
+  try {
+    await deps.submit(token, {
+      meetName: form.meetName,
+      startDate: form.startDate,
+      endDate: form.endDate,
+      contactEmail: contactEmail?.trim() || null,
+      files,
+    });
+  } catch (error) {
+    const alreadySent = reused && error instanceof MeetCalApiError && error.status === 400 && serverReason(error.body)?.startsWith('file already submitted');
+    if (!alreadySent) throw error;
+  }
 }
 
 /** What to tell the user when sending failed. */
@@ -254,16 +295,25 @@ export function meetSubmissionErrorMessage(error: unknown): string {
   if (error instanceof MeetSubmissionUploadError) return error.message;
   if (error instanceof MeetCalApiTimeoutError) return "Couldn't reach MeetCal. Check your connection and try again.";
   if (error instanceof MeetCalApiError) {
-    if (error.status === 429) return `You can send ${MAX_MEET_SUBMISSIONS_PER_DAY} meets a day. Try again tomorrow.`;
+    if (error.status === 429) {
+      // Two limits answer 429: the day's submissions and the day's uploads.
+      const reason = serverReason(error.body);
+      return reason ? `${sentence(reason)} Try again tomorrow.` : `You can send ${MAX_MEET_SUBMISSIONS_PER_DAY} meets a day. Try again tomorrow.`;
+    }
     if (error.status === 401) return 'Sign in again to send this meet.';
     if (error.status === 413) return `A file is larger than ${formatMegabytes(MAX_MEET_SUBMISSION_FILE_BYTES)}.`;
     if (error.status === 400) {
       const reason = serverReason(error.body);
-      if (reason) return `${reason.charAt(0).toUpperCase()}${reason.slice(1)}.`;
+      if (reason) return sentence(reason);
     }
     return "MeetCal couldn't take this meet right now. Try again later.";
   }
   return "Couldn't send the meet. Check your connection and try again.";
+}
+
+/** The server's lower-case reason as a sentence. */
+function sentence(reason: string): string {
+  return `${reason.charAt(0).toUpperCase()}${reason.slice(1)}.`;
 }
 
 /** The `error` text of a ConvexError body (`{ status, error }`), if it has one. */

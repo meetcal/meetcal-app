@@ -143,6 +143,7 @@ describe("SubmitMeetForm", () => {
         ],
       },
       "lifter@example.com",
+      expect.any(Map),
       expect.any(Function),
     );
     expect(text(tree)).toContain("Thanks!");
@@ -154,9 +155,9 @@ describe("SubmitMeetForm", () => {
     const tree = await render();
     await fill(tree, { name: "Example Open", start: "03062027" });
     await addFile(tree);
-    sendMock.mockRejectedValue(new MeetCalApiError("failed", 429, JSON.stringify({ status: 429, error: "limit" })));
+    sendMock.mockRejectedValue(new MeetCalApiError("failed", 429, JSON.stringify({ status: 429, error: "at most 5 meet submissions a day" })));
     await press(tree, "submit-meet-send");
-    expect(text(tree)).toContain("You can send 5 meets a day. Try again tomorrow.");
+    expect(text(tree)).toContain("At most 5 meet submissions a day. Try again tomorrow.");
     expect(input(tree, "submit-meet-name").props.value).toBe("Example Open");
     expect(text(tree)).toContain("schedule.pdf");
   });

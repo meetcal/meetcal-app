@@ -13,6 +13,7 @@ use crate::components::subscription_gate::ClerkSignIn;
 use crate::utils::api::{self, MeetSubmission, MeetSubmissionFile};
 use leptos::prelude::*;
 use leptos::task::spawn_local;
+use std::collections::HashMap;
 use wasm_bindgen_futures::JsFuture;
 
 /// Files one submission may carry.
@@ -278,6 +279,9 @@ fn SubmitMeetForm() -> impl IntoView {
     let end_date = RwSignal::new(String::new());
     let files = RwSignal::new_local(Vec::<PickedFile>::new());
     let next_id = StoredValue::new(0_u64);
+    // Files already uploaded (picked file id to storage id), reused when
+    // sending again after a failure (`send_submission`).
+    let uploaded = StoredValue::new(HashMap::<u64, String>::new());
     let phase = RwSignal::new(Phase::Editing);
     let error = RwSignal::new(None::<String>);
     let working = Memo::new(move |_| matches!(phase.get(), Phase::Working(_)));
@@ -330,8 +334,9 @@ fn SubmitMeetForm() -> impl IntoView {
         error.set(None);
         phase.set(Phase::Working(upload_progress(1, picked.len())));
         spawn_local(async move {
-            match send_submission(checked, picked, phase).await {
+            match send_submission(checked, picked, phase, uploaded).await {
                 Ok(()) => {
+                    uploaded.try_update_value(HashMap::clear);
                     phase.try_set(Phase::Sent);
                 }
                 Err(message) => {
@@ -519,15 +524,30 @@ fn SubmitMeetForm() -> impl IntoView {
 
 /// Uploads each file in turn, then submits the meet. The error is the one to
 /// show; the form keeps what the user entered.
+///
+/// `uploaded` holds the storage id of each picked file already uploaded, for
+/// as long as the form lives: a retry after a failure reuses them instead of
+/// uploading again, so retries on a poor connection do not use up the day's
+/// uploads. A retry refused because its files are already in a submission
+/// found the earlier attempt's submit stored after all (only this form had
+/// those ids), so it counts as sent.
 async fn send_submission(
     checked: CheckedSubmission,
     picked: Vec<PickedFile>,
     phase: RwSignal<Phase>,
+    uploaded: StoredValue<HashMap<u64, String>>,
 ) -> Result<(), String> {
     let total = picked.len();
-    let mut uploaded = Vec::with_capacity(total);
+    let mut files = Vec::with_capacity(total);
+    let mut reused = false;
     for (index, (picked, name)) in picked.into_iter().zip(checked.file_names).enumerate() {
         phase.try_set(Phase::Working(upload_progress(index + 1, total)));
+        if let Some(storage_id) = uploaded.with_value(|uploaded| uploaded.get(&picked.id).cloned())
+        {
+            reused = true;
+            files.push(MeetSubmissionFile { storage_id, name });
+            continue;
+        }
         let upload_url = api::meet_submission_upload_url()
             .await
             .map_err(|error| error.to_string())?;
@@ -539,7 +559,10 @@ async fn send_submission(
         let storage_id = api::upload_meet_submission_file(&upload_url, &content_type, bytes)
             .await
             .map_err(|error| format!("{name} couldn’t be uploaded. {error}"))?;
-        uploaded.push(MeetSubmissionFile { storage_id, name });
+        uploaded.update_value(|uploaded| {
+            uploaded.insert(picked.id, storage_id.clone());
+        });
+        files.push(MeetSubmissionFile { storage_id, name });
     }
     phase.try_set(Phase::Working("Sending the meet…".to_owned()));
     let submission = MeetSubmission {
@@ -547,11 +570,20 @@ async fn send_submission(
         start_date: checked.start_date,
         end_date: checked.end_date,
         contact_email: crate::auth::primary_email(),
-        files: uploaded,
+        files,
     };
-    api::submit_meet(&submission)
-        .await
-        .map_err(|error| error.to_string())
+    match api::submit_meet(&submission).await {
+        Ok(()) => Ok(()),
+        Err(error) if stored_on_an_earlier_try(reused, &error.to_string()) => Ok(()),
+        Err(error) => Err(error.to_string()),
+    }
+}
+
+/// Whether a refused submit means an earlier attempt stored the meet after
+/// all: the server refuses files already in a submission, and only this
+/// form had the ids it reused.
+fn stored_on_an_earlier_try(reused: bool, message: &str) -> bool {
+    reused && message.starts_with("File already submitted")
 }
 
 #[cfg(test)]
@@ -572,6 +604,19 @@ mod tests {
         files: &[FileInfo],
     ) -> Result<CheckedSubmission, String> {
         check_submission(name, start, end, files)
+    }
+
+    #[test]
+    fn only_a_retry_counts_already_submitted_as_sent() {
+        assert!(stored_on_an_earlier_try(
+            true,
+            "File already submitted: a.pdf"
+        ));
+        assert!(!stored_on_an_earlier_try(
+            false,
+            "File already submitted: a.pdf"
+        ));
+        assert!(!stored_on_an_earlier_try(true, "Meet name is required"));
     }
 
     #[test]
