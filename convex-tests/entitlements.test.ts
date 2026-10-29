@@ -62,6 +62,46 @@ describe("RevenueCat's subscriber answer", () => {
     expect(entitlementFromSubscriber(realSub, NOW)).toMatchObject({ active: true });
   });
 
+  it('counts a promotional grant that a sandbox purchase hides from the entitlement', () => {
+    // RevenueCat names the never-expiring sandbox lifetime for the entitlement; the grant is only under `subscriptions`.
+    const lifetime = { expires_date: null, product_identifier: 'lifetime_meetcal_pro' };
+    const answer = (subscriptions: Record<string, unknown>) => ({
+      subscriber: { entitlements: { Subscriptions: lifetime }, non_subscriptions: { lifetime_meetcal_pro: [{ is_sandbox: true }] }, subscriptions },
+    });
+    const promo = (expires: number | null, extra: Record<string, unknown> = {}) => ({
+      expires_date: expires === null ? null : iso(expires),
+      is_sandbox: false,
+      store: 'promotional',
+      ...extra,
+    });
+    const forever = NOW + 200 * 365 * 86_400_000;
+    expect(entitlementFromSubscriber(answer({ rc_promo_Subscriptions_lifetime: promo(forever) }), NOW)).toEqual({
+      active: true,
+      expiresAt: forever,
+      productId: 'rc_promo_Subscriptions_lifetime',
+    });
+    // The longest-lasting grant wins.
+    const both = answer({ rc_promo_Subscriptions_monthly: promo(NOW + 1000), rc_promo_Subscriptions_lifetime: promo(forever) });
+    expect(entitlementFromSubscriber(both, NOW).productId).toBe('rc_promo_Subscriptions_lifetime');
+    // Not counted: an expired grant, a sandbox grant, a grant of another entitlement, a paid sandbox subscription.
+    const sandboxOnly = { active: false, expiresAt: null, productId: 'lifetime_meetcal_pro' };
+    expect(entitlementFromSubscriber(answer({ rc_promo_Subscriptions_monthly: promo(NOW - 1000) }), NOW)).toEqual(sandboxOnly);
+    expect(entitlementFromSubscriber(answer({ rc_promo_Subscriptions_lifetime: promo(forever, { is_sandbox: true }) }), NOW)).toEqual(sandboxOnly);
+    expect(entitlementFromSubscriber(answer({ rc_promo_Other_lifetime: promo(forever) }), NOW)).toEqual(sandboxOnly);
+    expect(entitlementFromSubscriber(answer({ quarterly: promo(forever) }), NOW)).toEqual(sandboxOnly);
+    // Not counted either: a grant from another store, or one without an expiry date.
+    expect(entitlementFromSubscriber(answer({ rc_promo_Subscriptions_lifetime: promo(forever, { store: 'app_store' }) }), NOW)).toEqual(sandboxOnly);
+    expect(entitlementFromSubscriber(answer({ rc_promo_Subscriptions_lifetime: promo(null) }), NOW)).toEqual(sandboxOnly);
+    // A sandbox subscription named for the entitlement falls back the same way.
+    const quarterly = { expires_date: iso(NOW + 1000), product_identifier: 'quarterly' };
+    const sandboxSub = {
+      subscriber: { entitlements: { Subscriptions: quarterly }, subscriptions: { quarterly: { is_sandbox: true }, rc_promo_Subscriptions_lifetime: promo(forever) } },
+    };
+    expect(entitlementFromSubscriber(sandboxSub, NOW)).toMatchObject({ active: true, productId: 'rc_promo_Subscriptions_lifetime' });
+    // An unreadable grant date is refused, as an unreadable entitlement date is.
+    expect(() => entitlementFromSubscriber(answer({ rc_promo_Subscriptions_lifetime: promo(forever, { expires_date: 'soon' }) }), NOW)).toThrow('not a date');
+  });
+
   it('reads no entitlement, or only other ones, as inactive', () => {
     expect(entitlementFromSubscriber(subscriber({}), NOW)).toEqual({ active: false, expiresAt: null, productId: null });
     expect(entitlementFromSubscriber({ subscriber: {} }, NOW)).toEqual({ active: false, expiresAt: null, productId: null });
