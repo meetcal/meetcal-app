@@ -70,6 +70,9 @@ const CELL_GAP = 6;
 
 const letters = (text: string) => text.replace(/\s/g, '');
 
+/** A date drawn in two runs far enough apart to get a space ("12-Sep- 25"), made one word again. */
+const joinDate = (text: string) => text.replace(/\b(\d{1,2}-[A-Za-z]{3,}-)\s+(\d{2,4})\b/, '$1$2');
+
 /**
  * A line's table cells: its runs, those drawn next to each other joined, cut
  * from the line's own text (so touching runs read as `pdfRunLines` joined
@@ -91,7 +94,7 @@ function lineCells(line: PdfLine): string[] | undefined {
   for (const size of sizes) {
     const from = at;
     for (let seen = 0; seen < size; at++) if (!/\s/.test(line.text[at])) seen++;
-    cells.push(line.text.slice(from, at).trim());
+    cells.push(joinDate(line.text.slice(from, at).trim()));
   }
   return cells.filter(Boolean);
 }
@@ -112,9 +115,12 @@ function siteAndCompetition(tail: string, cells: string[] | undefined): [site: s
   if (cells && at >= 0) {
     const words = cells[at].split(' ');
     const after = [words.slice(words.findIndex((word) => DATE_WORD.test(word)) + 1).join(' '), ...cells.slice(at + 1)].filter(Boolean);
-    // Only a first cell that reads as a whole site ("City, Region", as every site in the PDFs is), and cells
-    // that say what the text says.
-    if (after.length >= 2 && /,\s*\S/.test(after[0]) && letters(after.join('')) === letters(tail)) return [after[0], after.slice(1).join(' ')];
+    // Only a first cell that reads as a whole site ("City, Region", as every site in the PDFs is), not one
+    // that runs on past a state code ("Las Vegas, NV World"), and cells that say what the text says.
+    const site = after[0] ?? '';
+    if (after.length >= 2 && /,\s*\S/.test(site) && !/,\s*[A-Z]{2}\s+\S/.test(site) && letters(after.join('')) === letters(tail)) {
+      return [site, after.slice(1).join(' ')];
+    }
   }
   const site = /^(.+?,\s*[A-Z]{2})\s+(.+)$/.exec(tail);
   return site ? [site[1], site[2]] : [undefined, tail];
@@ -137,12 +143,7 @@ const NAME_CORRECTIONS: Readonly<Record<string, string>> = {
  * (`NAME_CORRECTIONS`).
  */
 function lineHolder(value: number, rest: string, cells: string[] | undefined): RecordHolder | undefined {
-  // A date drawn in two runs far enough apart to get a space ("12-Sep- 25") is one date.
-  const words = rest
-    .trim()
-    .replace(/\b(\d{1,2}-[A-Za-z]{3,}-)\s+(\d{2,4})\b/, '$1$2')
-    .split(/\s+/)
-    .filter(Boolean);
+  const words = joinDate(rest.trim()).split(/\s+/).filter(Boolean);
   const at = words.findIndex((word) => DATE_WORD.test(word));
   const written = words.slice(0, at < 0 ? words.length : at).join(' ');
   const name = NAME_CORRECTIONS[written] ?? written;

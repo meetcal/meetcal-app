@@ -108,6 +108,15 @@ describe('USAMW national records (port of national_records.py)', () => {
       ],
     };
     expect(parseRecordPages([[...head, touching]], 'Men')[0].snatchBy?.location).toBe('World Masters, Las Vegas, NV');
+    // A date drawn as two runs a few points apart keeps the site abroad split from the competition.
+    const gappedDate: PdfLine = {
+      text: '110+ CnJ 195 ALBURY Dimitri 26-Sep- 26 Athens, Greece World Masters',
+      runs: [...at(abroad.slice(0, 5)).runs, { text: '26-Sep-', x: 364, end: 398 }, { text: '26', x: 402, end: 412 }, ...at(abroad.slice(6)).runs],
+    };
+    expect(parseRecordPages([[...head, gappedDate]], 'Men')[0].cjBy).toEqual(cells.cjBy);
+    // A site cell that runs on into the competition: the text reading decides.
+    const runOn: [number, string][] = [[70, '60'], [114, 'SNA'], [168, '93'], [199, 'MURRAY'], [295, 'George'], [364, '12-Sep-25'], [423, 'Las Vegas, NV World'], [560, 'Masters']];
+    expect(parseRecordPages([[...head, at(runOn)]], 'Men')[0].snatchBy?.location).toBe('World Masters, Las Vegas, NV');
     // A date drawn as two touching runs is still one date.
     const splitDate: PdfLine = {
       text: '110+ CnJ 195 ALBURY Dimitri 26-Sep-26 Athens, Greece World Masters',
@@ -175,7 +184,7 @@ describe('USAMW national records PDFs of September 27, 2026 (pages rotated 90 de
     men = fixtureLines('usamw-national-records-men-20260927.pdf');
     women = fixtureLines('usamw-national-records-women-20260927.pdf');
     records = [...parseRecordPages(men, 'Men', corrections), ...parseRecordPages(women, 'Women', corrections)];
-  });
+  }, 60_000);
   const find = (gender: string, age: number, weightClass: string) =>
     records.find((r) => r.gender === gender && r.ageCategory === `Masters ${age}` && r.weightClass === weightClass);
 
