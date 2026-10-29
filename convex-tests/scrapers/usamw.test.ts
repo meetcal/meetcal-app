@@ -88,9 +88,12 @@ describe('USAMW national records (port of national_records.py)', () => {
     // Text alone cannot place the end of a site with no state code: all of it is kept.
     const [text] = parseRecordPages([[...head, at(abroad).text]], 'Men');
     expect(text.cjBy).toEqual({ name: 'ALBURY Dimitri', date: '2026-09-26', location: 'Athens, Greece World Masters' });
-    // A site and a competition cell split even without a comma.
-    const noComma: [number, string][] = [[70, '60'], [114, 'SNA'], [168, '93'], [199, 'MURRAY'], [295, 'George'], [364, '12-Sep-25'], [423, 'Budapest'], [547, 'World Masters']];
-    expect(parseRecordPages([[...head, at(noComma)]], 'Men')[0].snatchBy?.location).toBe('World Masters, Budapest');
+    // A site without a comma is not told from a competition in two cells: the text reading decides.
+    const noComma: [number, string][] = [[70, '60'], [114, 'SNA'], [168, '93'], [199, 'MURRAY'], [295, 'George'], [364, '12-Sep-25'], [423, 'Championships'], [547, 'World Masters']];
+    expect(parseRecordPages([[...head, at(noComma)]], 'Men')[0].snatchBy?.location).toBe('Championships World Masters');
+    // A date drawn in two runs with a gap is still one date.
+    const spacedDate = at(noComma).text.replace('12-Sep-25', '12-Sep- 25');
+    expect(parseRecordPages([[...head, spacedDate]], 'Men')[0].snatchBy).toEqual({ name: 'MURRAY George', date: '2025-09-12', location: 'Championships World Masters' });
     // A site drawn as two cells is not a whole site: the text reading decides.
     const splitSite: [number, string][] = [[70, '60'], [114, 'SNA'], [168, '93'], [199, 'MURRAY'], [295, 'George'], [364, '12-Sep-25'], [423, 'Las Vegas,'], [480, 'NV'], [547, 'World Masters']];
     expect(parseRecordPages([[...head, at(splitSite)]], 'Men')[0].snatchBy?.location).toBe('World Masters, Las Vegas, NV');
@@ -116,6 +119,8 @@ describe('USAMW national records (port of national_records.py)', () => {
   it('spaces only the names listed as run together, and keeps every other name as written', () => {
     const holder = (name: string) => parseRecordPages([['M 40 - 44', `75 SNA 107 ${name} 27-Mar-26 Little Rock, AR National Masters`]], 'Men')[0].snatchBy?.name;
     expect(holder('TAN CASTELLANOSYicay')).toBe('TAN CASTELLANOS Yicay');
+    // A listed name on a line without a date is spaced too.
+    expect(parseRecordPages([['M 40 - 44', '75 SNA 107 TAN CASTELLANOSYicay']], 'Men')[0].snatchBy?.name).toBe('TAN CASTELLANOS Yicay');
     for (const name of ["SMITH D'Angelo", "O'Neil Mary", 'SMITH-Jones Ann', 'McDONALD Ann', 'SMITH DEAnne', 'SMITH ALEXandra', 'SMITHDEAnne', 'McDONALDSarah']) {
       expect(holder(name)).toBe(name);
     }
@@ -134,6 +139,10 @@ describe('USAMW national records (port of national_records.py)', () => {
     const none: string[] = [];
     expect(lifts(parseRecordPages(ong(174), 'Women', none))).toEqual([[79, 95, 174]]);
     expect(lifts(parseRecordPages(ong(1733), 'Women', none))).toEqual([[79, 95, 1733]]);
+    // The same printed value beside another holder or date is not touched.
+    const other = page('W 40 - 44', '86', 'TOT 1744 DOE Jane 24-Sep-26');
+    expect(lifts(parseRecordPages(other, 'Women', none))).toEqual([[null, null, 1744]]);
+    expect(lifts(parseRecordPages(page('W 40 - 44', '86', 'TOT 1744 ONG Jaquelin 25-Sep-26'), 'Women', none))).toEqual([[null, null, 1744]]);
     // The same printed value in another class or gender is not touched.
     expect(lifts(parseRecordPages(page('W 45 - 49', '86', 'TOT 1744 ONG Jaquelin 24-Sep-26'), 'Women', none))).toEqual([[null, null, 1744]]);
     expect(lifts(parseRecordPages(page('M 40 - 44', '86', 'TOT 1744 ONG Jaquelin 24-Sep-26'), 'Men', none))).toEqual([[null, null, 1744]]);

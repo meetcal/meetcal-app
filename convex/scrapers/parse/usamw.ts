@@ -112,10 +112,9 @@ function siteAndCompetition(tail: string, cells: string[] | undefined): [site: s
   if (cells && at >= 0) {
     const words = cells[at].split(' ');
     const after = [words.slice(words.findIndex((word) => DATE_WORD.test(word)) + 1).join(' '), ...cells.slice(at + 1)].filter(Boolean);
-    // A site and a competition cell, or more cells after a site that reads whole ("City, Region"), never a
-    // site cut after its comma ("Las Vegas," + "NV"); and cells that say what the text says.
-    const whole = !after[0]?.endsWith(',') && (after.length === 2 || /,\s*\S/.test(after[0]));
-    if (after.length >= 2 && whole && letters(after.join('')) === letters(tail)) return [after[0], after.slice(1).join(' ')];
+    // Only a first cell that reads as a whole site ("City, Region", as every site in the PDFs is), and cells
+    // that say what the text says.
+    if (after.length >= 2 && /,\s*\S/.test(after[0]) && letters(after.join('')) === letters(tail)) return [after[0], after.slice(1).join(' ')];
   }
   const site = /^(.+?,\s*[A-Z]{2})\s+(.+)$/.exec(tail);
   return site ? [site[1], site[2]] : [undefined, tail];
@@ -138,11 +137,16 @@ const NAME_CORRECTIONS: Readonly<Record<string, string>> = {
  * (`NAME_CORRECTIONS`).
  */
 function lineHolder(value: number, rest: string, cells: string[] | undefined): RecordHolder | undefined {
-  const words = rest.trim().split(/\s+/).filter(Boolean);
+  // A date drawn in two runs far enough apart to get a space ("12-Sep- 25") is one date.
+  const words = rest
+    .trim()
+    .replace(/\b(\d{1,2}-[A-Za-z]{3,}-)\s+(\d{2,4})\b/, '$1$2')
+    .split(/\s+/)
+    .filter(Boolean);
   const at = words.findIndex((word) => DATE_WORD.test(word));
-  if (at < 0) return recordHolder(value, words.join(' '));
-  const written = words.slice(0, at).join(' ');
+  const written = words.slice(0, at < 0 ? words.length : at).join(' ');
   const name = NAME_CORRECTIONS[written] ?? written;
+  if (at < 0) return recordHolder(value, name);
   const [site, competition] = siteAndCompetition(words.slice(at + 1).join(' '), cells);
   return recordHolder(value, name, recordsDate(words[at]), competition, site);
 }
@@ -151,21 +155,38 @@ type Lift = 'snatchRecord' | 'cjRecord' | 'totalRecord';
 
 /**
  * Lifts the PDFs print wrong, and what they are, applied only while the PDF
- * still prints the wrong value. Each was checked against the class's other
- * lifts, which the same lifter set the same day: snatch + C&J = total only
- * with the correction. Any other value is stored as printed.
+ * still prints the wrong value beside the same holder and date. Each was
+ * checked against the class's other lifts, which the same lifter set the
+ * same day: snatch + C&J = total only with the correction. Any other value
+ * is stored as printed.
  */
-const LIFT_CORRECTIONS: readonly { gender: string; ageCategory: string; weightClass: string; lift: Lift; printed: number; value: number }[] = [
-  // The September 27, 2026 women's PDF: "1744" beside snatch 79 and C&J 95 (ONG Jaquelin, 24-Sep-26).
-  { gender: 'Women', ageCategory: 'Masters 40', weightClass: '86kg', lift: 'totalRecord', printed: 1744, value: 174 },
-  // The same PDF: "488" beside C&J 65 and total 113 (NICHOLS Stacy, 19-Sep-26).
-  { gender: 'Women', ageCategory: 'Masters 55', weightClass: '69kg', lift: 'snatchRecord', printed: 488, value: 48 },
+const LIFT_CORRECTIONS: readonly {
+  gender: string;
+  ageCategory: string;
+  weightClass: string;
+  lift: Lift;
+  holder: RecordHolder;
+  printed: number;
+  value: number;
+}[] = [
+  // The September 27, 2026 women's PDF: "1744" beside snatch 79 and C&J 95.
+  { gender: 'Women', ageCategory: 'Masters 40', weightClass: '86kg', lift: 'totalRecord', holder: { name: 'ONG Jaquelin', date: '2026-09-24' }, printed: 1744, value: 174 },
+  // The same PDF: "488" beside C&J 65 and total 113.
+  { gender: 'Women', ageCategory: 'Masters 55', weightClass: '69kg', lift: 'snatchRecord', holder: { name: 'NICHOLS Stacy', date: '2026-09-19' }, printed: 488, value: 48 },
 ];
+
+const HOLDER_OF: Record<Lift, 'snatchBy' | 'cjBy' | 'totalBy'> = { snatchRecord: 'snatchBy', cjRecord: 'cjBy', totalRecord: 'totalBy' };
 
 /** Puts right a record's lifts listed in `LIFT_CORRECTIONS`; returns what it changed, for the sync to log. */
 function correctLifts(record: UsamwRecord): string[] {
   return LIFT_CORRECTIONS.filter(
-    (c) => c.gender === record.gender && c.ageCategory === record.ageCategory && c.weightClass === record.weightClass && record[c.lift] === c.printed,
+    (c) =>
+      c.gender === record.gender &&
+      c.ageCategory === record.ageCategory &&
+      c.weightClass === record.weightClass &&
+      record[c.lift] === c.printed &&
+      record[HOLDER_OF[c.lift]]?.name === c.holder.name &&
+      record[HOLDER_OF[c.lift]]?.date === c.holder.date,
   ).map((c) => {
     record[c.lift] = c.value;
     return `${record.gender} ${record.ageCategory} ${record.weightClass} ${c.lift}: printed ${c.printed}, stored ${c.value}`;
