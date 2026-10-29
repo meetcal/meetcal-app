@@ -2,9 +2,10 @@
  * Sends an email through OneSignal (`ONESIGNAL_APP_ID`, `ONESIGNAL_REST_API_KEY`,
  * the app's email sender). Returns OneSignal's notification id; throws when
  * OneSignal refuses the message, so a failed alert fails the run and shows
- * in the Convex logs.
+ * in the Convex logs. OneSignal email has no attachments: link to files.
+ * `replyTo` overrides the sender's Reply-To address.
  */
-export async function sendEmail(to: string, subject: string, html: string): Promise<string> {
+export async function sendEmail(to: string, subject: string, html: string, options: { replyTo?: string } = {}): Promise<string> {
   const appId = process.env.ONESIGNAL_APP_ID;
   const key = process.env.ONESIGNAL_REST_API_KEY;
   if (!appId || !key) throw new Error('ONESIGNAL_APP_ID and ONESIGNAL_REST_API_KEY must be set to send email');
@@ -15,7 +16,14 @@ export async function sendEmail(to: string, subject: string, html: string): Prom
       // Current keys use `Key`; keys from before OneSignal's 2024 change use `Basic`.
       Authorization: key.startsWith('os_') ? `Key ${key}` : `Basic ${key}`,
     },
-    body: JSON.stringify({ app_id: appId, target_channel: 'email', include_email_tokens: [to], email_subject: subject, email_body: html }),
+    body: JSON.stringify({
+      app_id: appId,
+      target_channel: 'email',
+      include_email_tokens: [to],
+      email_subject: subject,
+      email_body: html,
+      ...(options.replyTo ? { email_reply_to_address: options.replyTo } : {}),
+    }),
     signal: AbortSignal.timeout(30_000),
   });
   const body = (await response.json().catch(() => ({}))) as { id?: string; errors?: unknown };

@@ -1838,6 +1838,46 @@ export async function revokeApiToken(token: string, tokenId?: string): Promise<v
   await userCall('/api-tokens/revoke', 'apiTokens:revoke', 'mutation', authToken, tokenId === undefined ? {} : { tokenId });
 }
 
+/**
+ * A one-time URL to upload one file of a meet submission to
+ * (`meetSubmissions:generateUploadUrl`). A 429 once the user has sent the
+ * day's submissions.
+ */
+export async function generateMeetSubmissionUploadUrl(token: string): Promise<string> {
+  const authToken = requireToken(token, 'generateMeetSubmissionUploadUrl');
+  const row = assertHasFields(
+    await userCall('/meet-submissions/upload-url', 'meetSubmissions:generateUploadUrl', 'mutation', authToken),
+    '/meet-submissions/upload-url',
+    ['uploadUrl'],
+  );
+  if (typeof row.uploadUrl !== 'string' || !/^https:\/\//.test(row.uploadUrl)) {
+    throw new Error('/meet-submissions/upload-url.uploadUrl expected an https URL');
+  }
+  return row.uploadUrl;
+}
+
+export interface MeetSubmissionBody {
+  meetName: string;
+  /** `YYYY-MM-DD` */
+  startDate: string;
+  /** `YYYY-MM-DD`, or null for a one-day meet. */
+  endDate: string | null;
+  /** The signed-in user's email, for the email's Reply-To. */
+  contactEmail: string | null;
+  files: { storageId: string; name: string }[];
+}
+
+/** Submits a meet for MeetCal to add (`meetSubmissions:submit`). */
+export async function submitMeet(token: string, body: MeetSubmissionBody): Promise<void> {
+  const authToken = requireToken(token, 'submitMeet');
+  const row = assertHasFields(
+    await userCall('/meet-submissions', 'meetSubmissions:submit', 'mutation', authToken, { ...body }),
+    '/meet-submissions',
+    ['submitted'],
+  );
+  if (row.submitted !== true) throw new Error('/meet-submissions.submitted expected true');
+}
+
 /** `results:wrapped`'s answer (`convex/lib/wrapped.ts`), checked. */
 export type ApiWrappedStats = {
   totalWeightLifted: number;

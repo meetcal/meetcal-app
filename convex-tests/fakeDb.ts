@@ -178,19 +178,67 @@ export function fakeDb(seed: Record<string, Record<string, unknown>[]> = {}) {
 /** `ctx.auth` for a caller who sent no token. */
 export const ANONYMOUS_AUTH = { getUserIdentity: async () => null };
 
+/** A file in the fake `_storage` system table. */
+export type StoredFile = { _id: string; _creationTime: number; size: number; contentType?: string };
+
+/**
+ * Convex file storage: the `_storage` system table as `ctx.db.system` reads
+ * it (`get`, `normalizeId`, and `query('_storage').withIndex('by_creation_time',
+ * q => q.gt/lt('_creationTime', …)).take(n)`), and `ctx.storage`. Ids start
+ * with `_storage:`.
+ */
+export function fakeStorage(files: StoredFile[] = []) {
+  const stored = new Map(files.map((file) => [file._id, { ...file }]));
+  let uploads = 0;
+  const system = {
+    get: async (table: string, id: string) => (table === '_storage' && stored.has(id) ? { ...stored.get(id)! } : null),
+    normalizeId: (table: string, id: string) => (table === '_storage' && id.startsWith('_storage:') ? id : null),
+    query: (table: string) => {
+      if (table !== '_storage') throw new Error(`fake system table ${table} is not supported`);
+      const predicates: ((file: StoredFile) => boolean)[] = [];
+      const chain = {
+        withIndex(_index: string, build?: (q: unknown) => unknown) {
+          const q = {
+            gt: (field: '_creationTime', value: number) => (predicates.push((file) => file[field] > value), q),
+            lt: (field: '_creationTime', value: number) => (predicates.push((file) => file[field] < value), q),
+          };
+          build?.(q);
+          return chain;
+        },
+        take: async (n: number) =>
+          [...stored.values()]
+            .filter((file) => predicates.every((p) => p(file)))
+            .sort((a, b) => a._creationTime - b._creationTime)
+            .slice(0, n)
+            .map((file) => ({ ...file })),
+      };
+      return chain;
+    },
+  };
+  const storage = {
+    generateUploadUrl: async () => `https://upload.example/${uploads++}`,
+    getUrl: async (id: string) => (stored.has(id) ? `https://files.example/${id}` : null),
+    delete: async (id: string) => {
+      if (!stored.delete(id)) throw new Error(`no stored file ${id}`);
+    },
+  };
+  return { system, storage, storedIds: () => [...stored.keys()] };
+}
+
 /**
  * A mutation context over `fakeDb`, whose scheduler records each call by
- * function name. The caller is anonymous.
+ * function name, with `files` in a fake file storage. The caller is anonymous.
  */
-export function fakeMutationCtx(seed: Record<string, Record<string, unknown>[]> = {}) {
+export function fakeMutationCtx(seed: Record<string, Record<string, unknown>[]> = {}, files: StoredFile[] = []) {
   const store = fakeDb(seed);
+  const { system, storage, storedIds } = fakeStorage(files);
   const scheduled: { name: string; delayMs: number; args: unknown }[] = [];
   const scheduler = {
     runAfter: async (delayMs: number, fn: unknown, args: unknown) => {
       scheduled.push({ name: getFunctionName(fn as never), delayMs, args });
     },
   };
-  return { ...store, ctx: { db: store.db, scheduler, auth: ANONYMOUS_AUTH }, scheduled };
+  return { ...store, ctx: { db: { ...store.db, system }, storage, scheduler, auth: ANONYMOUS_AUTH }, scheduled, storedIds };
 }
 
 /** The handler Convex attaches to a registered function (left out of its public types). */

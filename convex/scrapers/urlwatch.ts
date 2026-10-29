@@ -4,7 +4,7 @@ import { v } from 'convex/values';
 import { internalAction } from '../_generated/server';
 import { internal } from '../_generated/api';
 import { unifiedDiff } from './lib/diff';
-import { escapeHtml, sendEmail } from './lib/email';
+import { escapeHtml, sendEmail } from '../lib/email';
 import { fetchPageText } from './lib/incompleteChain';
 import { pageText, WATCHED_PAGES } from './parse/watchedPages';
 

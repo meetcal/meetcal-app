@@ -68,7 +68,17 @@ Check the result with `npx convex run parity:run`. It compares every fast path (
 
 Saved sessions (`convex/users.ts`) are user data, not competition data: they feed no view, history, summary or search shard, so a write to them needs nothing rebuilt. The app's outbox sends each write with its install id and revision (`device`, `rev`), and the server ignores a write that arrives after a newer one from the same install, such as a save that lands after the client timed out and then unsaved. It remembers the last revision each install applied to a session (`saved_session_revisions`, kept after a delete as the session's tombstone) and to a reset of a meet or of everything (`saved_session_resets`). A write from another install, or from an app too old to send a revision, applies as it arrives. Each ordered write deletes up to 32 of the user's records older than 7 days from each table; they only have to outlive a delayed request.
 
-When a user deletes their account in Clerk, Clerk's `user.deleted` webhook (`POST /clerk/webhook` on the deployment's `.convex.site` host, Svix-signed with `CLERK_WEBHOOK_SECRET`) runs `users:deleteUserData`, which deletes their saved sessions, preferences, write-order records, stored entitlement and MeetCal-issued tokens, and keeps only their id in `deleted_users`, so a request still carrying a valid token for the account is refused (403) rather than storing its data again.
+When a user deletes their account in Clerk, Clerk's `user.deleted` webhook (`POST /clerk/webhook` on the deployment's `.convex.site` host, Svix-signed with `CLERK_WEBHOOK_SECRET`) runs `users:deleteUserData`, which deletes their saved sessions, preferences, write-order records, stored entitlement, MeetCal-issued tokens and meet submissions (with their files), and keeps only their id in `deleted_users`, so a request still carrying a valid token for the account is refused (403) rather than storing its data again.
+
+## Meet submissions
+
+Signed-in users can send the schedule and start lists of a meet MeetCal does not cover yet: from the app's meet picker ("Don't see your meet?") and from meetcal.app/submit-meet (`convex/meetSubmissions.ts`). The client asks `meetSubmissions:generateUploadUrl` for a one-time upload URL per file, POSTs the file to it, and sends the meet's name, dates and the files' storage ids to `meetSubmissions:submit`. The server checks the files in storage (at most 10, 20 MB each, a PDF, image, spreadsheet or Word document by name) and allows 5 submissions and 50 upload URLs per user a day. It stores the submission (`meet_submissions`, `meet_submission_files`) and then emails it in the background (`meetSubmissions:email`) to `MEET_SUBMISSION_EMAIL`, with Reply-To set to the email address the client reported for the user. OneSignal email has no attachments, so the email links to each file. A failed send is retried after 1, 5 and 30 minutes, then throws, so it reaches the logs and Sentry; resend one by hand with `npx convex run meetSubmissions:email '{"submissionId":"…","attempt":0}'`. Without `MEET_SUBMISSION_EMAIL` the submission is stored and only logged. Set it on dev and prod:
+
+```sh
+npx convex env set MEET_SUBMISSION_EMAIL maddisen@meetcal.app
+```
+
+The daily `meet-submissions-cleanup` job deletes submissions and their files 30 days after they were sent (the email's links stop working then). It also deletes any stored file older than a day that no submission lists: an upload abandoned before submitting. Every file in the deployment's storage is a submission's; a new use of file storage needs that sweep changed first.
 
 ## Premium data
 

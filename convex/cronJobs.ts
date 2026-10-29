@@ -4,7 +4,7 @@ import { internal } from './_generated/api';
 import type { FunctionReference } from 'convex/server';
 import { lastScheduled } from './lib/cronSchedule';
 import { describeFailure, START_MARGIN_MS, type Notice } from './lib/cronAlerts';
-import { escapeHtml, sendEmail } from './scrapers/lib/email';
+import { escapeHtml, sendEmail } from './lib/email';
 import { pingHeartbeat } from './lib/heartbeat';
 
 /**
@@ -51,6 +51,9 @@ export const JOBS: Record<string, Job> = {
   // A new access pass for premium reads (`accessPass.ts`), when US traffic
   // is lowest: it clears every premium query's cache once.
   'rotate-access-pass': { schedule: '0 9 * * *', run: { kind: 'action', fn: internal.accessPass.rotate } },
+  // Meet submissions past 30 days, with their files, and uploads that never
+  // became a submission (`meetSubmissions.ts`).
+  'meet-submissions-cleanup': { schedule: '20 9 * * *', run: { kind: 'mutation', fn: internal.meetSubmissions.cleanup } },
 };
 
 /**

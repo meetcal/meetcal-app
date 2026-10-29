@@ -25,6 +25,7 @@ export function MeetSelectionModal({
   onSelectMeet,
   onRefresh,
   isRefreshing,
+  onSubmitMeet,
 }: MeetSelectionModalProps) {
   const colors = useAppColors();
   const screenInsets = useScreenHorizontalInsets();
@@ -153,6 +154,26 @@ export function MeetSelectionModal({
                 </ThemedText>
               </View>
             )}
+
+            {onSubmitMeet && (
+              <Pressable
+                testID="meet-selection-submit-meet"
+                accessibilityRole="button"
+                accessibilityLabel="Don't see your meet? Send us the schedule"
+                style={({ pressed }) => [styles.submitMeetRow, pressed && { opacity: 0.6 }]}
+                onPress={() => {
+                  lightImpact();
+                  onSubmitMeet();
+                }}
+              >
+                <ThemedText style={[styles.submitMeetTitle, { color: colors.text }]}>
+                  Don&apos;t see your meet?
+                </ThemedText>
+                <ThemedText style={[styles.submitMeetLink, { color: colors.link }]}>
+                  Send us the schedule
+                </ThemedText>
+              </Pressable>
+            )}
           </ScrollView>
         </Pressable>
       </Pressable>
@@ -190,6 +211,19 @@ const styles = StyleSheet.create({
     top: 16,
     padding: 4,
     zIndex: 1,
+  },
+  submitMeetRow: {
+    alignItems: "center",
+    paddingVertical: 20,
+    paddingHorizontal: 16,
+    gap: 2,
+  },
+  submitMeetTitle: {
+    fontSize: 15,
+    fontWeight: "600",
+  },
+  submitMeetLink: {
+    fontSize: 15,
   },
   modalOption: {
     flexDirection: "row",
