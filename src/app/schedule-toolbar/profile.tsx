@@ -21,6 +21,7 @@ import { clearAuthCache } from "@/lib/authCache";
 import { clearCachedMeetData, clearCacheToast } from "@/lib/database/clear-cache";
 import { resolvePremiumAccess } from "@/lib/premium-access";
 import { useAuthGuard } from "@/utils/authGuard";
+import { SUBMIT_MEET_ROUTE } from "@/lib/meet-submission";
 import {
   feedbackMailtoUrl,
   NO_MAIL_APP_ALERT,
@@ -306,6 +307,30 @@ export default function ProfileScreen() {
             <View style={styles.fieldRow}>
               <ThemedText style={[styles.label, { color: colors.text }]}>
                 Customer Support
+              </ThemedText>
+              <IconSymbol
+                name={getChevronIcon("right")}
+                size={20}
+                color={colors.link}
+              />
+            </View>
+          </Pressable>
+
+          <Pressable
+            testID="profile-submit-meet"
+            style={({ pressed }) => [
+              styles.section,
+              {
+                borderBottomWidth: StyleSheet.hairlineWidth,
+                borderBottomColor: colors.border,
+              },
+              pressed && { backgroundColor: colors.pressed },
+            ]}
+            onPress={() => router.push(SUBMIT_MEET_ROUTE)}
+          >
+            <View style={styles.fieldRow}>
+              <ThemedText style={[styles.label, { color: colors.text }]}>
+                Submit a Meet
               </ThemedText>
               <IconSymbol
                 name={getChevronIcon("right")}

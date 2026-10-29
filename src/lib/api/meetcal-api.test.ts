@@ -57,6 +57,8 @@ import {
   fetchAccessPass,
   issueSiriToken,
   revokeApiToken,
+  generateMeetSubmissionUploadUrl,
+  submitMeet,
   fetchWrapped,
   searchApi,
 } from './meetcal-api';
@@ -2811,6 +2813,28 @@ describe('premium reads and the access pass', () => {
     expect(lastCall()).toMatchObject({ fn: 'apiTokens:revoke', kind: 'mutation', token: 'jwt', args: {} });
     await revokeApiToken('clerk-token', 't1');
     expect(lastCall()).toMatchObject({ token: 'clerk-token', args: { tokenId: 't1' } });
+  });
+});
+
+describe('meet submissions', () => {
+  it('asks for an upload URL with the Clerk token, and checks it is https', async () => {
+    const { lastCall } = installTransport(() => ({ uploadUrl: 'https://x.convex.cloud/api/storage/upload?token=1' }));
+    await expect(generateMeetSubmissionUploadUrl('clerk-token')).resolves.toBe('https://x.convex.cloud/api/storage/upload?token=1');
+    expect(lastCall()).toMatchObject({ fn: 'meetSubmissions:generateUploadUrl', kind: 'mutation', token: 'clerk-token', args: {} });
+    installTransport(() => ({ uploadUrl: 'javascript:alert(1)' }));
+    await expect(generateMeetSubmissionUploadUrl('clerk-token')).rejects.toThrow('expected an https URL');
+    await expect(generateMeetSubmissionUploadUrl('')).rejects.toThrow('requires an auth token');
+  });
+
+  it('submits the meet with the Clerk token, and needs the acknowledgement', async () => {
+    const body = { meetName: 'Open', startDate: '2027-03-06', endDate: null, contactEmail: null, files: [{ storageId: 's1', name: 'a.pdf' }] };
+    const { lastCall } = installTransport(() => ({ submitted: true }));
+    await expect(submitMeet('clerk-token', body)).resolves.toBeUndefined();
+    expect(lastCall()).toMatchObject({ fn: 'meetSubmissions:submit', kind: 'mutation', token: 'clerk-token', args: body });
+    installTransport(() => ({ submitted: 'yes' }));
+    await expect(submitMeet('clerk-token', body)).rejects.toThrow('expected true');
+    installTransport(() => null);
+    await expect(submitMeet('clerk-token', body)).rejects.toThrow();
   });
 });
 

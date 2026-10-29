@@ -170,13 +170,45 @@ describe('deleteUserData (#250)', () => {
   const run = handlerOf<{ userId: string }, Record<string, unknown>>(deleteUserData);
 
   it("deletes every row of the user and nobody else's", async () => {
-    const store = fakeMutationCtx(seed());
-    expect(await run(store.ctx, { userId: A })).toEqual({ sessions: 1, preferences: 1, revisions: 1, resets: 1, entitlements: 1, entitlementSyncs: 1, apiTokens: 1, more: false });
-    for (const table of ['saved_sessions', 'user_preferences', 'saved_session_revisions', 'saved_session_resets', 'entitlements', 'entitlement_syncs', 'api_tokens']) {
+    const store = fakeMutationCtx(seed(), [
+      { _id: '_storage:a', _creationTime: 1, size: 10 },
+      { _id: '_storage:b', _creationTime: 1, size: 10 },
+    ]);
+    for (const [userId, storageId] of [[A, '_storage:a'], [B, '_storage:b']]) {
+      const submissionId = await store.db.insert('meet_submissions', { userId, contactEmail: 'x@example.com', meetName: 'Open', startDate: '2027-01-01', createdAt: 1 });
+      await store.db.insert('meet_submission_files', { submissionId, storageId, name: 'schedule.pdf', size: 10 });
+      await store.db.insert('meet_submission_upload_urls', { userId, createdAt: 1 });
+    }
+    expect(await run(store.ctx, { userId: A })).toEqual({
+      sessions: 1,
+      preferences: 1,
+      revisions: 1,
+      resets: 1,
+      entitlements: 1,
+      entitlementSyncs: 1,
+      apiTokens: 1,
+      meetSubmissions: 1,
+      meetSubmissionUploadUrls: 1,
+      more: false,
+    });
+    for (const table of ['saved_sessions', 'user_preferences', 'saved_session_revisions', 'saved_session_resets', 'entitlements', 'entitlement_syncs', 'api_tokens', 'meet_submissions', 'meet_submission_upload_urls']) {
       expect(store.rows(table).map((r) => r.userId)).toEqual([B]);
     }
+    expect(store.rows('meet_submission_files').map((r) => r.storageId)).toEqual(['_storage:b']);
+    expect(store.storedIds()).toEqual(['_storage:b']);
     expect(store.scheduled).toEqual([]);
-    expect(await run(store.ctx, { userId: A })).toEqual({ sessions: 0, preferences: 0, revisions: 0, resets: 0, entitlements: 0, entitlementSyncs: 0, apiTokens: 0, more: false });
+    expect(await run(store.ctx, { userId: A })).toEqual({
+      sessions: 0,
+      preferences: 0,
+      revisions: 0,
+      resets: 0,
+      entitlements: 0,
+      entitlementSyncs: 0,
+      apiTokens: 0,
+      meetSubmissions: 0,
+      meetSubmissionUploadUrls: 0,
+      more: false,
+    });
   });
 
   it('continues in another call past a batch, and refuses a blank id', async () => {

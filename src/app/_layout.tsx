@@ -470,6 +470,7 @@ function RootLayoutContent() {
           <Stack.Screen name="schedule-toolbar/offline-data" />
           <Stack.Screen name="schedule-toolbar/profile" />
           <Stack.Screen name="schedule-toolbar/widget-settings" />
+          <Stack.Screen name="schedule-toolbar/submit-meet" />
         </Stack>
         <StatusBar style={currentTheme === "dark" ? "light" : "dark"} />
       </ToastProvider>

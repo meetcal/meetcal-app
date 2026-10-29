@@ -26,6 +26,12 @@ pass is held, and which function errors renew it, and reading the `deviceLogin`
 answers (a pending login or `null`; `{ ok: true }` or a 404) and
 `apiTokens:revokeAllCli`'s `{ ended }`. `src/pages/link.rs`
 tests the code's formatting, the caret while it formats, and the page's states.
+`api.rs` also tests the meet-submission calls: their camelCase arguments (absent
+fields as `null`), reading `{ uploadUrl }`, `{ storageId }` and
+`{ submitted: true }`, and the sentence each error status shows.
+`src/pages/submit_meet.rs` tests the form's checks (name, dates, file count,
+type, size and name, against the server's extension list), the Content-Type
+of a file the browser gives none, the progress text and file sizes.
 `src/pages/comp_data/wrapped.rs` tests reading every `results:wrapped` answer
 kind through `read_body` (so its whole-number floats, such as `totalMeets: 3.0`,
 are covered), the arguments it sends, and the messages for answers with no
@@ -44,6 +50,13 @@ sign-in returning to the code, approve, deny, a deny the server turns down
 expired or unknown code, a code typed by hand, failures with Try again, signing
 out all CLI logins (confirm, success, failure), a small phone, and
 accessibility.
+
+`tests/e2e/submit-meet.spec.ts` covers `/submit-meet` against mocked
+`meetSubmissions` mutations and upload URL: the sign-in prompt when signed out,
+the header links, uploading each file in turn (with the progress and the
+disabled button while an upload is held) and the submission's arguments and
+token, a blank end date as `null`, the form's checks before anything uploads, a
+refused submission keeping the form filled, accessibility, and a small phone.
 
 ## Browser checks
 
@@ -100,7 +113,7 @@ await routeQuery(page, "results:search", (route, args) =>
   queries, `valueAnswer(body)` for `Body::Value` ones (see `queries` in
   `src/utils/api.rs`). `errorAnswer(message)` is a function that ran and failed.
 - `routeMutation(page, fn, handler)` does the same for a mutation (`POST /api/mutation`):
-  `deviceLogin:approve`, `deviceLogin:deny` and `apiTokens:revokeAllCli`.
+  `deviceLogin:approve`, `deviceLogin:deny`, `apiTokens:revokeAllCli` and `meetSubmissions:*`.
 - `retryableResponse(429 | 503, retryAfter?)` exercises the retries.
 - `mockSubscribedUser(page)` puts stand-ins for Clerk's and RevenueCat's SDKs
   on the page (through `page.addInitScript`) as a signed-in, subscribed user,

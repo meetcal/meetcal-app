@@ -2,7 +2,8 @@
 //! called over Convex's HTTP API (`POST /api/query`), the same queries the app
 //! reads. Every call is a read, so repeating one is safe, except the
 //! mutations `/link` sends (approving or denying a CLI sign-in, and signing out
-//! every CLI login), which are never repeated by themselves.
+//! every CLI login) and `/submit-meet` sends (an upload URL per file, and the
+//! submission), which are never repeated by themselves.
 //!
 //! The premium queries (`SUBSCRIPTION_FUNCTIONS`) carry the access pass as
 //! their `pass` argument. Every subscriber holds the same pass, so premium
@@ -10,7 +11,8 @@
 //! session token, which would make Convex cache each answer per user. Only
 //! `accessPass:pass`, which hands a signed-in subscriber the pass, the
 //! `entitlements:refresh` action, and `/link`'s calls (`deviceLogin:*` and
-//! `apiTokens:revokeAllCli`, one user's own CLI logins) carry the token. For now Convex only logs a
+//! `apiTokens:revokeAllCli`, one user's own CLI logins) and `/submit-meet`'s
+//! (`meetSubmissions:*`) carry the token. For now Convex only logs a
 //! premium read without a current pass and still answers it; later it will
 //! refuse it, so a premium read sends the pass whenever the site can get one.
 
@@ -1068,6 +1070,173 @@ fn read_device_login_outcome(
     }
 }
 
+/// Meet submissions (`convex/meetSubmissions.ts`), from `/submit-meet`: one
+/// upload URL per file, the file's bytes posted to it, then the meet with
+/// the files' storage ids. Both mutations carry the user's Clerk session
+/// token, are sent once, and never carry the pass.
+const MEET_SUBMISSION_UPLOAD_URL: &str = "meetSubmissions:generateUploadUrl";
+const MEET_SUBMISSION_SUBMIT: &str = "meetSubmissions:submit";
+
+/// Longest one file's upload may take. A file may be 20 MB, which a slow
+/// phone connection needs far longer than `REQUEST_TIMEOUT` to send.
+pub(crate) const UPLOAD_TIMEOUT: Duration = Duration::from_secs(180);
+
+/// Clerk had no session token to hand over, or Convex refused the one it did
+/// (401): the user signs in again.
+pub(crate) const SIGN_IN_AGAIN_MESSAGE: &str =
+    "MeetCal couldn't confirm you're signed in; please sign in again";
+
+/// A file of a submission, as `meetSubmissions:submit` takes it.
+#[derive(Clone, Debug, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct MeetSubmissionFile {
+    pub storage_id: String,
+    pub name: String,
+}
+
+/// `meetSubmissions:submit`'s arguments. The optional fields go as `null`
+/// when absent, which the mutation reads as absent.
+#[derive(Clone, Debug, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct MeetSubmission {
+    pub meet_name: String,
+    pub start_date: String,
+    pub end_date: Option<String>,
+    pub contact_email: Option<String>,
+    pub files: Vec<MeetSubmissionFile>,
+}
+
+/// Posts a meet-submission mutation with the user's session token.
+async fn post_meet_submission(function: &str, args: &Value) -> Result<QueryResponse> {
+    let token = crate::auth::session_token()
+        .await
+        .ok_or_else(|| anyhow!(SIGN_IN_AGAIN_MESSAGE))?;
+    post(Endpoint::Mutation, function, args, Some(&token)).await
+}
+
+/// A one-time URL to upload one file of a submission to.
+pub(crate) async fn meet_submission_upload_url() -> Result<String> {
+    let response =
+        post_meet_submission(MEET_SUBMISSION_UPLOAD_URL, &Value::Object(Map::new())).await?;
+    read_upload_url(response)
+}
+
+/// Uploads one file's bytes to `upload_url` (from `meet_submission_upload_url`)
+/// as `content_type`; answers the file's storage id.
+pub(crate) async fn upload_meet_submission_file(
+    upload_url: &str,
+    content_type: &str,
+    bytes: Vec<u8>,
+) -> Result<String> {
+    let response = reqwest::Client::new()
+        .post(upload_url)
+        .timeout(UPLOAD_TIMEOUT)
+        .header(reqwest::header::CONTENT_TYPE, content_type)
+        .body(bytes)
+        .send()
+        .await
+        .map_err(|error| transport_error("file upload", &error))?;
+    let status = response.status();
+    if !status.is_success() {
+        return Err(user_error(
+            "file upload",
+            &format!("MeetCal couldn't store the file (HTTP {})", status.as_u16()),
+            status,
+        ));
+    }
+    let body = response
+        .bytes()
+        .await
+        .map_err(|error| transport_error("file upload", &error))?;
+    read_storage_id(&body)
+}
+
+/// Submits the meet with its uploaded files.
+pub(crate) async fn submit_meet(submission: &MeetSubmission) -> Result<()> {
+    let args = serde_json::to_value(submission)
+        .map_err(|error| user_error(MEET_SUBMISSION_SUBMIT, UNREACHABLE_MESSAGE, error))?;
+    let response = post_meet_submission(MEET_SUBMISSION_SUBMIT, &args).await?;
+    read_submitted(response)
+}
+
+/// A meet-submission mutation's value, or the error to show. Our functions
+/// throw `{ status, error }`: 400 (invalid input) and 413 (a file over
+/// 20 MB) say what is wrong in words a user can read; 429 is the daily
+/// limit; 401 is a session Convex would not take.
+fn meet_submission_value(response: QueryResponse) -> Result<Value> {
+    let status = function_error_status(&response);
+    if status == Some(401) {
+        return Err(anyhow!(SIGN_IN_AGAIN_MESSAGE));
+    }
+    if let (
+        Some(status @ (400 | 413 | 429)),
+        QueryResponse::Error {
+            error_data: Some(data),
+            ..
+        },
+    ) = (status, &response)
+        && let Some(error) = data.get("error").and_then(Value::as_str)
+    {
+        let sentence = sentence_case(error);
+        return Err(anyhow!(if status == 429 {
+            format!("{sentence}. Please try again tomorrow.")
+        } else {
+            sentence
+        }));
+    }
+    answer_value(response)
+}
+
+/// `text` with its first letter capitalized: the server's errors are
+/// lowercase phrases (`meet name is required`).
+fn sentence_case(text: &str) -> String {
+    let mut characters = text.trim().chars();
+    match characters.next() {
+        Some(first) => first.to_uppercase().chain(characters).collect(),
+        None => String::new(),
+    }
+}
+
+/// Reads `meetSubmissions:generateUploadUrl`'s `{ uploadUrl }`.
+fn read_upload_url(response: QueryResponse) -> Result<String> {
+    let value = meet_submission_value(response)?;
+    value
+        .get("uploadUrl")
+        .and_then(Value::as_str)
+        .filter(|url| url.starts_with("https://"))
+        .map(str::to_owned)
+        .ok_or_else(|| user_error(MEET_SUBMISSION_UPLOAD_URL, UNREADABLE_MESSAGE, value))
+}
+
+/// Reads an upload's answer, `{ storageId }`.
+fn read_storage_id(body: &[u8]) -> Result<String> {
+    serde_json::from_slice::<Value>(body)
+        .ok()
+        .and_then(|value| value.get("storageId")?.as_str().map(str::to_owned))
+        .filter(|id| !id.is_empty())
+        .ok_or_else(|| {
+            user_error(
+                "file upload",
+                UNREADABLE_MESSAGE,
+                String::from_utf8_lossy(body),
+            )
+        })
+}
+
+/// Reads `meetSubmissions:submit`'s `{ submitted: true }`.
+fn read_submitted(response: QueryResponse) -> Result<()> {
+    let value = meet_submission_value(response)?;
+    if value.get("submitted").and_then(Value::as_bool) == Some(true) {
+        Ok(())
+    } else {
+        Err(user_error(
+            MEET_SUBMISSION_SUBMIT,
+            UNREADABLE_MESSAGE,
+            value,
+        ))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1620,6 +1789,129 @@ mod tests {
             assert!(!message.contains(':'), "{message}");
         }
         assert_eq!(REQUEST_TIMEOUT, Duration::from_secs(20));
+    }
+
+    fn submission_error(status: f64, error: &str) -> QueryResponse {
+        answer(json!({
+            "status": "error",
+            "errorMessage": "Server Error",
+            "errorData": {"status": status, "error": error, "max": 5.0}
+        }))
+    }
+
+    #[test]
+    fn meet_submissions_send_camel_case_with_absent_fields_as_null() {
+        let submission = MeetSubmission {
+            meet_name: "Ohio Open".to_owned(),
+            start_date: "2026-11-14".to_owned(),
+            end_date: None,
+            contact_email: Some("lifter@example.com".to_owned()),
+            files: vec![MeetSubmissionFile {
+                storage_id: "kg2abc".to_owned(),
+                name: "schedule.pdf".to_owned(),
+            }],
+        };
+        assert_eq!(
+            serde_json::to_value(&submission).unwrap(),
+            json!({
+                "meetName": "Ohio Open",
+                "startDate": "2026-11-14",
+                "endDate": null,
+                "contactEmail": "lifter@example.com",
+                "files": [{"storageId": "kg2abc", "name": "schedule.pdf"}]
+            })
+        );
+    }
+
+    #[test]
+    fn upload_urls_and_storage_ids_are_read_from_their_answers() {
+        let url = "https://disciplined-hare-790.convex.cloud/api/storage/upload?token=abc";
+        assert_eq!(
+            read_upload_url(answer(
+                json!({"status": "success", "value": {"uploadUrl": url}})
+            ))
+            .unwrap(),
+            url
+        );
+        for value in [
+            json!({}),
+            json!({"uploadUrl": ""}),
+            json!({"uploadUrl": "http://x"}),
+        ] {
+            let error = read_upload_url(answer(json!({"status": "success", "value": value})))
+                .unwrap_err()
+                .to_string();
+            assert_eq!(error, UNREADABLE_MESSAGE);
+        }
+
+        assert_eq!(
+            read_storage_id(br#"{"storageId":"kg2abc"}"#).unwrap(),
+            "kg2abc"
+        );
+        for body in [&b""[..], b"not json", br#"{}"#, br#"{"storageId":""}"#] {
+            assert_eq!(
+                read_storage_id(body).unwrap_err().to_string(),
+                UNREADABLE_MESSAGE
+            );
+        }
+    }
+
+    #[test]
+    fn a_submission_is_done_only_when_the_server_says_so() {
+        assert!(
+            read_submitted(answer(
+                json!({"status": "success", "value": {"submitted": true}})
+            ))
+            .is_ok()
+        );
+        let error = read_submitted(answer(json!({"status": "success", "value": {}})))
+            .unwrap_err()
+            .to_string();
+        assert_eq!(error, UNREADABLE_MESSAGE);
+    }
+
+    #[test]
+    fn submission_errors_read_as_sentences_a_user_can_act_on() {
+        let message = |response| read_submitted(response).unwrap_err().to_string();
+        // Invalid input and a file over 20 MB show the server's own words.
+        assert_eq!(
+            message(submission_error(400.0, "end date is before the start date")),
+            "End date is before the start date"
+        );
+        assert_eq!(
+            message(submission_error(
+                413.0,
+                "file is larger than 20 MB: big.pdf"
+            )),
+            "File is larger than 20 MB: big.pdf"
+        );
+        // The daily limits, from either mutation.
+        assert_eq!(
+            message(submission_error(429.0, "at most 5 meet submissions a day")),
+            "At most 5 meet submissions a day. Please try again tomorrow."
+        );
+        assert_eq!(
+            read_upload_url(submission_error(429.0, "at most 50 uploads a day"))
+                .unwrap_err()
+                .to_string(),
+            "At most 50 uploads a day. Please try again tomorrow."
+        );
+        // A session Convex refused: sign in again.
+        assert_eq!(
+            message(submission_error(401.0, "unauthorized")),
+            SIGN_IN_AGAIN_MESSAGE
+        );
+        assert_eq!(
+            read_upload_url(submission_error(401.0, "unauthorized"))
+                .unwrap_err()
+                .to_string(),
+            SIGN_IN_AGAIN_MESSAGE
+        );
+        // Anything else is a failure like any other function's.
+        assert_eq!(
+            message(submission_error(500.0, "boom")),
+            "MeetCal could not answer: boom"
+        );
     }
 
     #[test]

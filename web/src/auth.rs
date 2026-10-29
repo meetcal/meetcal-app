@@ -31,6 +31,7 @@ extern "C" {
     fn check_revenuecat_entitlement(api_key: &str, app_user_id: &str) -> js_sys::Promise;
 
     fn clerk_session_token() -> js_sys::Promise;
+    fn clerk_primary_email() -> Option<String>;
 }
 
 pub fn provide_auth() {
@@ -114,6 +115,13 @@ pub async fn session_token() -> Option<String> {
             None
         }
     }
+}
+
+/// The signed-in user's primary email address in Clerk, for the reply-to of
+/// a meet submission (`/submit-meet`). `None` when signed out or when the
+/// user has none.
+pub fn primary_email() -> Option<String> {
+    clerk_primary_email()
 }
 
 fn js_error_message(error: JsValue) -> String {

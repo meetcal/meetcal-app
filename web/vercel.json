@@ -133,6 +133,10 @@
     {
       "source": "/link",
       "destination": "/seo/link.html"
+    },
+    {
+      "source": "/submit-meet",
+      "destination": "/seo/submit-meet.html"
     }
   ],
   "trailingSlash": false

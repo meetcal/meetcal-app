@@ -47,6 +47,7 @@ pub fn Header() -> impl IntoView {
                 <A href="/features">"Features"</A>
                 <A href="/privacy">"Privacy"</A>
                 <A href="/terms">"Terms"</A>
+                <A href="/submit-meet">"Submit a Meet"</A>
                 <A href="mailto:maddisen@meetcal.app">"Contact Us"</A>
             </nav>
             <details class="mobile-nav" node_ref=mobile_nav>
@@ -61,6 +62,7 @@ pub fn Header() -> impl IntoView {
                     <A href="/features">"Features"</A>
                     <A href="/privacy">"Privacy"</A>
                     <A href="/terms">"Terms"</A>
+                    <A href="/submit-meet">"Submit a Meet"</A>
                     <A href="mailto:maddisen@meetcal.app">"Contact Us"</A>
                     <div class="mobile-nav-socials">
                         <a

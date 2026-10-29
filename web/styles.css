@@ -236,7 +236,35 @@ a {
     color: var(--text-secondary);
     font-size: 15px;
     font-weight: 500;
+    white-space: nowrap;
     transition: color 0.15s ease;
+}
+
+/* Narrow desktop windows: the full navigation fits on one line, closer
+   together, and between 881px and 980px without the header's social icons. */
+@media (max-width: 1080px) {
+    .site-header {
+        gap: 16px;
+    }
+
+    .brand-link {
+        margin-right: 4px;
+    }
+
+    .site-nav {
+        gap: 2px;
+    }
+
+    .site-nav a,
+    .site-nav .nav-menu-trigger {
+        padding: 10px 6px;
+    }
+}
+
+@media (max-width: 980px) {
+    .header-actions .social-links {
+        display: none;
+    }
 }
 
 .site-nav a:hover,
@@ -1077,6 +1105,173 @@ a {
     color: #1f9d55;
     font-size: 1.6rem;
     font-weight: 800;
+}
+
+/* ---------- Meet submissions (/submit-meet) ---------- */
+
+.submit-form {
+    display: grid;
+    gap: 18px;
+    max-width: 520px;
+    margin: 0 auto;
+    text-align: left;
+}
+
+.submit-field {
+    display: grid;
+    gap: 6px;
+    min-width: 0;
+}
+
+.submit-field > span {
+    color: var(--text-secondary);
+    font-size: 0.85rem;
+    font-weight: 700;
+}
+
+.submit-field small {
+    font-weight: 500;
+}
+
+.submit-dates {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 14px;
+}
+
+/* 16px or more, so iOS Safari does not zoom into the field (#391). */
+.submit-input {
+    width: 100%;
+    min-height: 48px;
+    padding: 0 14px;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    background: var(--card);
+    color: var(--text);
+    color-scheme: light dark;
+    font: inherit;
+    font-size: max(16px, 1rem);
+}
+
+.submit-input:focus {
+    outline: 2px solid color-mix(in srgb, var(--accent) 45%, transparent);
+    border-color: var(--accent);
+}
+
+.submit-input:disabled {
+    opacity: 0.7;
+}
+
+.submit-help {
+    margin: 0;
+    color: var(--text-secondary);
+    font-size: 0.85rem;
+}
+
+.submit-file-button {
+    justify-self: start;
+    cursor: pointer;
+}
+
+.submit-file-input:focus-visible + .submit-file-button {
+    outline: 2px solid var(--accent);
+    outline-offset: 3px;
+}
+
+.submit-file-button.submit-disabled {
+    cursor: wait;
+    opacity: 0.7;
+    pointer-events: none;
+}
+
+.submit-files {
+    display: grid;
+    margin: 4px 0 0;
+    padding: 0;
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    list-style: none;
+}
+
+.submit-file {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto auto;
+    align-items: center;
+    gap: 4px 12px;
+    padding: 8px 8px 8px 16px;
+    border-bottom: 1px solid var(--border);
+}
+
+.submit-file:last-child {
+    border-bottom: 0;
+}
+
+.submit-file-name {
+    min-width: 0;
+    font-weight: 650;
+    overflow-wrap: anywhere;
+}
+
+.submit-file-size {
+    color: var(--text-secondary);
+    font-size: 0.85rem;
+    white-space: nowrap;
+}
+
+.submit-file-problem {
+    grid-column: 1 / 3;
+    grid-row: 2;
+    font-size: 0.85rem;
+}
+
+.submit-file-invalid {
+    background: color-mix(in srgb, #c53b35 6%, transparent);
+}
+
+.submit-file-remove {
+    grid-column: 3;
+    grid-row: 1 / span 2;
+    min-height: 44px;
+    padding: 0 14px;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    background: var(--card);
+    color: var(--text);
+    font-weight: 650;
+}
+
+.submit-file-remove:hover:not(:disabled) {
+    background: color-mix(in srgb, #c53b35 10%, var(--card));
+}
+
+.submit-file-remove:disabled {
+    cursor: wait;
+    opacity: 0.7;
+}
+
+.submit-error {
+    margin: 0;
+}
+
+.submit-progress {
+    margin: 0;
+    color: var(--text-secondary);
+    font-weight: 650;
+}
+
+.submit-progress:empty {
+    display: none;
+}
+
+.submit-button {
+    width: 100%;
+    margin-top: 0;
+}
+
+@media (max-width: 560px) {
+    .submit-dates {
+        grid-template-columns: 1fr;
+    }
 }
 
 @keyframes access-spin {

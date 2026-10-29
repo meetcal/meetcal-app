@@ -262,6 +262,41 @@ export default defineSchema({
   // their data again.
   deleted_users: defineTable({ userId: v.string(), deletedAt: v.number() }).index('by_userId', ['userId']),
 
+  // Schedules and start lists users send for meets MeetCal does not cover
+  // yet (`convex/meetSubmissions.ts`), emailed to `MEET_SUBMISSION_EMAIL`
+  // with a link to each file. `contactEmail` is the address the client
+  // reported, for Reply-To, not a verified one. Deleted with their files
+  // after 30 days, or when the account is.
+  meet_submissions: defineTable({
+    userId: v.string(),
+    contactEmail: v.optional(v.string()),
+    meetName: v.string(),
+    startDate: v.string(),
+    endDate: v.optional(v.string()),
+    createdAt: v.number(),
+    emailedAt: v.optional(v.number()),
+  })
+    .index('by_userId_and_createdAt', ['userId', 'createdAt'])
+    .index('by_createdAt', ['createdAt']),
+
+  // A submission's files, in Convex file storage. `by_storageId` is how the
+  // cleanup tells an upload that became part of a submission from one that
+  // never did.
+  meet_submission_files: defineTable({
+    submissionId: v.id('meet_submissions'),
+    storageId: v.id('_storage'),
+    name: v.string(),
+    size: v.number(),
+  })
+    .index('by_submissionId', ['submissionId'])
+    .index('by_storageId', ['storageId']),
+
+  // When each user asked for an upload URL, so one user cannot fill file
+  // storage with uploads that never become a submission. Kept a day.
+  meet_submission_upload_urls: defineTable({ userId: v.string(), createdAt: v.number() })
+    .index('by_userId_and_createdAt', ['userId', 'createdAt'])
+    .index('by_createdAt', ['createdAt']),
+
   // A user's `Subscriptions` entitlement as RevenueCat's API last reported it
   // (`convex/entitlements.ts`), one row per Clerk user id (RevenueCat's app
   // user id). Premium queries read it (`convex/lib/access.ts`), so it is

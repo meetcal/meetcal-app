@@ -3,6 +3,7 @@ import { internal } from './_generated/api';
 import { internalMutation, mutation, query, type MutationCtx, type QueryCtx } from './_generated/server';
 import type { Doc } from './_generated/dataModel';
 import { isMeetCalToken } from './lib/access';
+import { deleteMeetSubmission } from './lib/meetSubmissions';
 import { compareCollated } from './lib/sort';
 import { apiError, isValidIsoDate, requireNonEmpty } from './lib/validation';
 
@@ -26,7 +27,7 @@ export const SAVED_SESSION_WRITE_ORDER_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 /** Expired revisions and markers one write deletes per table. */
 export const SAVED_SESSION_WRITE_ORDER_PRUNE_BATCH = 32;
 
-async function requireUserId(ctx: QueryCtx): Promise<string> {
+export async function requireUserId(ctx: QueryCtx): Promise<string> {
   const identity = await ctx.auth.getUserIdentity();
   // A MeetCal-issued token (the CLI's, Siri's) reads premium data only.
   if (!identity || isMeetCalToken(identity)) throw apiError(401, 'unauthorized');
@@ -478,11 +479,14 @@ export const setAutoUnsave = mutation({
 
 /** A user's rows one `deleteUserData` call deletes per table at most; it reschedules itself for the rest. */
 export const USER_DATA_DELETE_BATCH = 500;
+/** A user's meet submissions one `deleteUserData` call deletes, each with up to 10 files. */
+export const MEET_SUBMISSION_DELETE_BATCH = 50;
 
 /**
  * Deletes everything stored under a user id: saved sessions (with their
  * notes and athlete names), preferences, the saved-session revisions and
- * reset markers, the stored entitlement and MeetCal-issued tokens. Keeps the id alone (`deleted_users`), so a request still
+ * reset markers, the stored entitlement, MeetCal-issued tokens, and meet
+ * submissions with their files. Keeps the id alone (`deleted_users`), so a request still
  * carrying a valid token for the account is refused rather than storing its
  * data again. Called by Clerk's `user.deleted` webhook (`convex/http.ts`),
  * so an account deleted in Clerk leaves nothing behind (#250). At most
@@ -509,11 +513,29 @@ export const deleteUserData = internalMutation({
       ctx.db.query('entitlements').withIndex('by_userId', (q) => q.eq('userId', userId)).take(USER_DATA_DELETE_BATCH),
       ctx.db.query('entitlement_syncs').withIndex('by_userId', (q) => q.eq('userId', userId)).take(USER_DATA_DELETE_BATCH),
       ctx.db.query('api_tokens').withIndex('by_userId', (q) => q.eq('userId', userId)).take(USER_DATA_DELETE_BATCH),
+      ctx.db.query('meet_submission_upload_urls').withIndex('by_userId_and_createdAt', (q) => q.eq('userId', userId)).take(USER_DATA_DELETE_BATCH),
     ]);
     for (const rows of batches) for (const row of rows) await ctx.db.delete(row._id);
-    const more = batches.some((rows) => rows.length === USER_DATA_DELETE_BATCH);
+    // Each with its files, so fewer a call.
+    const submissions = await ctx.db
+      .query('meet_submissions')
+      .withIndex('by_userId_and_createdAt', (q) => q.eq('userId', userId))
+      .take(MEET_SUBMISSION_DELETE_BATCH);
+    for (const submission of submissions) await deleteMeetSubmission(ctx, submission._id);
+    const more = batches.some((rows) => rows.length === USER_DATA_DELETE_BATCH) || submissions.length === MEET_SUBMISSION_DELETE_BATCH;
     if (more) await ctx.scheduler.runAfter(0, internal.users.deleteUserData, { userId });
-    const [sessions, preferences, revisions, resets, entitlements, entitlementSyncs, apiTokens] = batches.map((rows) => rows.length);
-    return { sessions, preferences, revisions, resets, entitlements, entitlementSyncs, apiTokens, more };
+    const [sessions, preferences, revisions, resets, entitlements, entitlementSyncs, apiTokens, meetSubmissionUploadUrls] = batches.map((rows) => rows.length);
+    return {
+      sessions,
+      preferences,
+      revisions,
+      resets,
+      entitlements,
+      entitlementSyncs,
+      apiTokens,
+      meetSubmissions: submissions.length,
+      meetSubmissionUploadUrls,
+      more,
+    };
   },
 });
