@@ -5,7 +5,7 @@ import { internalAction } from '../_generated/server';
 import { internal } from '../_generated/api';
 import { fetchBytes } from './lib/http';
 import { fetchPageText } from './lib/incompleteChain';
-import { pdfLines } from './lib/pdf';
+import { pdfRunLines } from './lib/pdf';
 import { previewPrune, writeThenPrune } from './lib/prune';
 import { discoverRecordPdfs, PAGE_URL, parseRecordPages, type UsamwRecord } from './parse/usamw';
 
@@ -27,7 +27,7 @@ export const run = internalAction({
     const urls = discoverRecordPdfs(await fetchPageText(PAGE_URL, 45_000));
     const records: UsamwRecord[] = [];
     for (const gender of ['Men', 'Women'] as const) {
-      const pages = await pdfLines(await fetchBytes(urls[gender], 45_000), { xTolerance: 2, yTolerance: 2 });
+      const pages = await pdfRunLines(await fetchBytes(urls[gender], 45_000), { xTolerance: 2, yTolerance: 2 });
       records.push(...parseRecordPages(pages, gender));
     }
     if (records.length === 0) throw new Error('usamw: parsed 0 national records');

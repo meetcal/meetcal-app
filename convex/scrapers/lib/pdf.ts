@@ -13,6 +13,22 @@ export type PdfRun = { text: string; x: number; end: number };
 /** One line of a page: its runs left to right, and their text joined as `pdfLines` joins it. */
 export type PdfLine = { text: string; runs: PdfRun[] };
 
+type PdfPage = { rotate: number; getViewport(params: { scale: number }): { transform: number[] } };
+
+/**
+ * Where a run starts on the page as it is displayed (x rightward, y upward).
+ * A page the PDF rotates (`/Rotate`, as the September 2026 USAMW national
+ * records PDFs are) draws its text turned too, so its own coordinates would
+ * read each table column as a line; the display transform turns it back. An
+ * unrotated page keeps its own coordinates, as before.
+ */
+function runPlacer(page: PdfPage): (x: number, y: number) => { x: number; y: number } {
+  if (page.rotate % 360 === 0) return (x, y) => ({ x, y });
+  const [a, b, c, d, e, f] = page.getViewport({ scale: 1 }).transform;
+  // The display transform's y runs downward; negate it so lines still sort top first by descending y.
+  return (x, y) => ({ x: a * x + c * y + e, y: -(b * x + d * y + f) });
+}
+
 /**
  * A PDF's lines, page by page, laid out like pdfplumber's `extract_text`:
  * text runs grouped by baseline (top to bottom), each line left to right,
@@ -28,9 +44,10 @@ export async function pdfRunLines(bytes: Uint8Array, options: PdfLineOptions = {
   for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber++) {
     const page = await pdf.getPage(pageNumber);
     const content = await page.getTextContent();
+    const place = runPlacer(page);
     const runs = content.items
       .filter((item): item is typeof item & { str: string; transform: number[]; width: number } => 'str' in item)
-      .map((item) => ({ text: item.str, x: item.transform[4], y: item.transform[5], width: item.width ?? 0 }))
+      .map((item) => ({ text: item.str, ...place(item.transform[4], item.transform[5]), width: item.width ?? 0 }))
       .filter((run) => run.text.trim().length > 0);
     runs.sort((a, b) => b.y - a.y || a.x - b.x);
     const lines: { y: number; runs: typeof runs }[] = [];
