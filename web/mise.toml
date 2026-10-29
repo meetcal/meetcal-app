@@ -1,5 +1,10 @@
+min_version = "2026.9.2"
+
 [tools]
-rust = "latest"
+# Cargo runs through mr boxington (mbx, https://mr-boxington.jdx.dev), which
+# caches build output across worktrees. Older mise skips the integration. `MBX_DISABLE=1` runs plain Cargo for one command.
+rust = { version = "1.99.1", mr_boxington = true }
+"mr-boxington" = "1.28.0"
 "cargo:cargo-audit" = "latest"
 "cargo:trunk" = "latest"
 "cargo:leptosfmt" = "latest"

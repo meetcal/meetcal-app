@@ -55,11 +55,18 @@ export function planChecks(paths: readonly string[] | null, all = false): CheckP
 
 const COVERAGE_GAPS = '.codex/skills/review-code-performance-tests/scripts/report-coverage-gaps.ts';
 
+/**
+ * Cargo through mise in the folder, so its mise.toml applies: the pinned Rust
+ * and mr boxington's build cache. The root's mise.toml has no Rust, so a bare
+ * `cargo` would be whatever the machine has.
+ */
+const CARGO = ['mise', 'exec', '--', 'cargo'];
+
 /** Cargo's gate for the website or the CLI, as their CI workflows run it. */
 const cargoSteps = (label: string, cwd: string): CheckStep[] => [
-  { name: `${label} format`, command: ['cargo', 'fmt', '--all', '--', '--check'], cwd },
-  { name: `${label} clippy`, command: ['cargo', 'clippy', '--all-targets', '--locked', '--', '-D', 'warnings'], cwd },
-  { name: `${label} tests`, command: ['cargo', 'test', '--locked'], cwd },
+  { name: `${label} format`, command: [...CARGO, 'fmt', '--all', '--', '--check'], cwd },
+  { name: `${label} clippy`, command: [...CARGO, 'clippy', '--all-targets', '--locked', '--', '-D', 'warnings'], cwd },
+  { name: `${label} tests`, command: [...CARGO, 'test', '--locked'], cwd },
 ];
 
 export function checkSteps(plan: CheckPlan): CheckStep[] {

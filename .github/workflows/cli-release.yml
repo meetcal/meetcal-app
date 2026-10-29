@@ -23,7 +23,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          # The Rust in cli/ and web/ mise.toml: CI lints and builds with the same release.
+          toolchain: "1.99.1"
 
       - uses: Swatinem/rust-cache@v2
         with:
@@ -77,8 +80,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@master
         with:
+          # The Rust in cli/ and web/ mise.toml: CI lints and builds with the same release.
+          toolchain: "1.99.1"
           targets: ${{ matrix.target }}
 
       - uses: Swatinem/rust-cache@v2

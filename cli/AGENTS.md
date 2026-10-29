@@ -7,6 +7,7 @@ The repository root's `AGENTS.md` applies here too: its hard rules (worktrees, n
 ## Differences from the root
 
 - The toolchain is Cargo and mise (`mise.toml` in this folder), not Bun. The root's `mise run check` runs this folder's `cargo fmt --check`, clippy and tests (as CI does) when the branch changes `cli/`, one worktree at a time; [Verify](#verify) lists the rest.
+- `mise.toml` pins Rust (CI and the release workflow use the same release) and runs Cargo through mr boxington (mbx, https://mr-boxington.jdx.dev), which caches build output across worktrees: run Cargo through mise (`mise exec -- cargo …`, `mise run …`), which needs mise 2026.9.2 or later. `target/` is a symlink into mbx's store (`mbx clean` removes it); `MBX_DISABLE=1` runs plain Cargo for one command. Change the Rust version in this file, `../web/mise.toml`, the workflows and `../web/scripts/vercel-build.sh` together.
 - Publishing a release (a `cli-v*` tag) is an external action, and it also updates the Homebrew tap: do it only when the task asks for a release. [docs/releasing.md](docs/releasing.md) has the steps.
 - A change to a Convex query in `../convex/` can change what a command prints. The CLI CI runs on changes to `convex/` for that reason; when you change a query's answer, check the commands that read it (`src/commands/`).
 
