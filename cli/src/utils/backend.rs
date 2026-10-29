@@ -203,8 +203,9 @@ pub struct PremiumAction {
     pub timeout: Duration,
 }
 
-/// The actions and mutations the CLI calls: the premium leaderboard, `meetcal login` and `logout`
-/// (`convex/deviceLogin.ts`, `convex/apiTokens.ts`) and the access pass (`convex/entitlements.ts`).
+/// The actions and mutations the CLI calls: the premium leaderboard and WSO elite lists, `meetcal
+/// login` and `logout` (`convex/deviceLogin.ts`, `convex/apiTokens.ts`) and the access pass
+/// (`convex/entitlements.ts`).
 pub mod functions {
     use super::{Duration, PremiumAction};
 
@@ -216,6 +217,14 @@ pub mod functions {
     /// two minutes. Read it with [`super::premium_action`].
     pub const LEADERBOARD: PremiumAction = PremiumAction {
         function: "results:leaderboard",
+        timeout: Duration::from_secs(120),
+    };
+    /// Premium action: a WSO's elite lists (`convex/lib/elite.ts`). Takes `wso` (as registrations
+    /// spell it), `from`, `to` (under five years apart) and `methods` (each list's score, by
+    /// `overall`, `youth`, `junior`, `senior`, `masters`). Answers `{ wso, from, to, members,
+    /// lists }`. It reads every member's registrations and history, so it gets two minutes.
+    pub const WSO_ELITE: PremiumAction = PremiumAction {
+        function: "results:wsoElite",
         timeout: Duration::from_secs(120),
     };
     /// Action. Starts a device login; takes `deviceName` (at most 64 characters). Answers

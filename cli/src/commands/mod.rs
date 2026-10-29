@@ -5,6 +5,7 @@ pub mod club_results;
 pub mod club_wrapped;
 pub mod clubs;
 pub mod compare;
+pub mod elite;
 pub mod group_trends;
 pub mod group_wrapped;
 pub mod h2h;

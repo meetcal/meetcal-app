@@ -8,6 +8,8 @@ import {
   addBests,
   type Candidate,
   checkLeaderboardArgs,
+  type CompactRow,
+  fromCompactRow,
   type LeaderboardRow,
   leaderboardRow,
   monthSlices,
@@ -16,6 +18,18 @@ import {
   rankBests,
   toCompactRow,
 } from './lib/leaderboard';
+import {
+  checkEliteArgs,
+  type EliteAnswer,
+  type EliteMember,
+  type EliteRegistration,
+  type EliteStandard,
+  isMemberOf,
+  latestRegistration,
+  type MemberResult,
+  rankAll,
+  standardTables,
+} from './lib/elite';
 import { computeMeetResults } from './lib/meetData';
 import { cleanNameList, distinctNameKeys, normalizeName, requestedNamesByKey } from './lib/names';
 import {
@@ -138,6 +152,187 @@ export const leaderboard = action({
       rows: rankBests(best.values(), limit).map(leaderboardRow),
       federations: [...federations].filter((federation) => federation.trim() !== '').sort(compareBytes),
     };
+  },
+});
+
+// ---------------------------------------------------------------------------
+// WSO elite lists
+// ---------------------------------------------------------------------------
+
+/** Registrations one `eliteRegistrations` read covers. */
+export const ELITE_REGISTRATION_PAGE_SIZE = 2000;
+/** Most pages of a WSO's registrations read before the action gives up. */
+export const ELITE_MAX_REGISTRATION_PAGES = 50;
+/** Members one `eliteMembers` read looks up (their registrations, and those meets' dates). */
+export const ELITE_MEMBER_BATCH = 100;
+/** Histories one `eliteResults` read covers. */
+export const ELITE_HISTORY_BATCH = 50;
+/** Member and history reads run side by side. */
+export const ELITE_CONCURRENCY = 8;
+
+/** One page of a WSO's registrations: the distinct member ids on it, as JSON text. */
+export const eliteRegistrations = internalQuery({
+  args: { wso: v.string(), cursor: v.union(v.string(), v.null()) },
+  handler: async (ctx, { wso, cursor }): Promise<LeaderboardPage> => {
+    const page = await ctx.db
+      .query('athletes')
+      .withIndex('by_wso', (q) => q.eq('wso', wso))
+      .paginate({ cursor, numItems: ELITE_REGISTRATION_PAGE_SIZE });
+    return { json: JSON.stringify([...new Set(page.page.map((row) => row.memberId))]), isDone: page.isDone, continueCursor: page.continueCursor };
+  },
+});
+
+/** Each member, from their registrations (`latestRegistration`), as JSON text of `[memberId, member]` pairs. */
+export const eliteMembers = internalQuery({
+  args: { memberIds: v.array(v.string()) },
+  handler: async (ctx, { memberIds }): Promise<string> => {
+    const meetDates = new Map<string, Promise<string>>();
+    const meetDate = (meet: string) => {
+      let date = meetDates.get(meet);
+      if (date === undefined) {
+        date = ctx.db
+          .query('meets')
+          .withIndex('by_name', (q) => q.eq('name', meet))
+          .first()
+          .then((row) => row?.startDate ?? '');
+        meetDates.set(meet, date);
+      }
+      return date;
+    };
+    const members = await Promise.all(
+      memberIds.map(async (memberId): Promise<[string, EliteMember | null]> => {
+        const rows = await ctx.db
+          .query('athletes')
+          .withIndex('by_memberId', (q) => q.eq('memberId', memberId))
+          .collect();
+        const registrations = await Promise.all(
+          rows.map(async (row): Promise<EliteRegistration> => ({
+            name: row.name,
+            wso: row.wso ?? '',
+            gender: row.gender,
+            age: row.age,
+            meet: row.meet,
+            meetDate: await meetDate(row.meet),
+            created: row._creationTime,
+          })),
+        );
+        return [memberId, latestRegistration(registrations)];
+      }),
+    );
+    return JSON.stringify(members);
+  },
+});
+
+/**
+ * The USAW results dated `from` to `to` of each folded name, as JSON text of
+ * `[key, CompactRow[]]` pairs, from the athletes' histories. Reads no pass:
+ * the action checks it.
+ */
+export const eliteResults = internalQuery({
+  args: { keys: v.array(v.string()), from: v.string(), to: v.string() },
+  handler: async (ctx, { keys, from, to }): Promise<string> => {
+    const histories = await readHistories(ctx, keys);
+    const pairs = [...histories].map(([key, rows]) => [
+      key,
+      rows.filter((row) => row.federation === 'USAW' && row.date >= from && row.date <= to).map(toCompactRow),
+    ]);
+    return JSON.stringify(pairs);
+  },
+});
+
+/** Every stored A standard. */
+export const eliteStandards = internalQuery({
+  args: {},
+  handler: async (ctx): Promise<EliteStandard[]> =>
+    (await ctx.db.query('standards').collect()).map(({ ageCategory, gender, weightClass, standardA }) => ({ ageCategory, gender, weightClass, standardA })),
+});
+
+/** Runs `work` over `items`, at most `concurrency` at a time; answers in input order. */
+async function inParallel<T, R>(items: readonly T[], concurrency: number, work: (item: T) => Promise<R>): Promise<R[]> {
+  const answers: R[] = new Array(items.length);
+  let next = 0;
+  const worker = async () => {
+    while (next < items.length) {
+      const index = next++;
+      answers[index] = await work(items[index]);
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(concurrency, items.length) }, worker));
+  return answers;
+}
+
+const chunks = <T>(items: readonly T[], size: number): T[][] =>
+  Array.from({ length: Math.ceil(items.length / size) }, (_, index) => items.slice(index * size, (index + 1) * size));
+
+const eliteMethodArg = v.union(v.literal('percentA'), v.literal('qpoints'), v.literal('qmasters'), v.literal('sinclair'));
+
+/**
+ * A WSO's elite lists (`lib/elite.ts`): the top 20 men and women Overall,
+ * Youth, Junior, Senior and Masters over `from` to `to` (under five years),
+ * each list scored by its `methods` entry (`ELITE_METHOD_CHOICES`, defaulted
+ * per list) as `lists`, and by every method it offers as `rankings`.
+ * Members are the athletes whose latest registration naming a WSO names this
+ * one (spelled as registrations spell it: `reference:registrationWsos`).
+ * Premium: an action (it reads every member's registrations and history in
+ * batches), so it takes the pass itself (`PREMIUM_ACTIONS`).
+ */
+export const wsoElite = action({
+  args: {
+    wso: v.string(),
+    from: v.string(),
+    to: v.string(),
+    methods: v.optional(
+      v.object({
+        overall: v.optional(eliteMethodArg),
+        youth: v.optional(eliteMethodArg),
+        junior: v.optional(eliteMethodArg),
+        senior: v.optional(eliteMethodArg),
+        masters: v.optional(eliteMethodArg),
+      }),
+    ),
+    pass: v.optional(v.string()),
+  },
+  handler: async (ctx, { pass, ...args }): Promise<EliteAnswer> => {
+    checkPass('results:wsoElite', pass, await ctx.runQuery(internal.accessPass.passes, {}));
+    const { wso, from, to, methods } = checkEliteArgs(args);
+
+    const memberIds = new Set<string>();
+    let cursor: string | null = null;
+    for (let pages = 0; ; pages++) {
+      if (pages === ELITE_MAX_REGISTRATION_PAGES) throw apiError(500, `${wso}'s registrations did not finish within ${ELITE_MAX_REGISTRATION_PAGES} pages`);
+      const page: LeaderboardPage = await ctx.runQuery(internal.results.eliteRegistrations, { wso, cursor });
+      for (const id of JSON.parse(page.json) as string[]) memberIds.add(id);
+      if (page.isDone) break;
+      cursor = page.continueCursor;
+    }
+    if (memberIds.size === 0) throw apiError(404, `No registrations found for WSO "${wso}"`);
+
+    const looked = await inParallel(chunks([...memberIds], ELITE_MEMBER_BATCH), ELITE_CONCURRENCY, async (ids) =>
+      JSON.parse(await ctx.runQuery(internal.results.eliteMembers, { memberIds: ids })) as [string, EliteMember | null][],
+    );
+    // Results are matched by folded name; two members of one name share their results.
+    const membersByKey = new Map<string, { memberKey: string; member: EliteMember }>();
+    let members = 0;
+    for (const [memberId, member] of looked.flat()) {
+      if (member === null || !isMemberOf(member, wso)) continue;
+      members += 1;
+      const key = normalizeName(member.name);
+      if (!membersByKey.has(key)) membersByKey.set(key, { memberKey: memberId, member });
+    }
+
+    const [standards, read] = await Promise.all([
+      ctx.runQuery(internal.results.eliteStandards, {}),
+      inParallel(chunks([...membersByKey.keys()], ELITE_HISTORY_BATCH), ELITE_CONCURRENCY, async (keys) =>
+        JSON.parse(await ctx.runQuery(internal.results.eliteResults, { keys, from, to })) as [string, CompactRow[]][],
+      ),
+    ]);
+    const results: (MemberResult & { memberKey: string })[] = [];
+    for (const [key, rows] of read.flat()) {
+      const owner = membersByKey.get(key);
+      if (owner) for (const row of rows) results.push({ row: fromCompactRow(row), ...owner });
+    }
+
+    return { wso, from, to, members, ...rankAll(results, methods, standardTables(standards)) };
   },
 });
 

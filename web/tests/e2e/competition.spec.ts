@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { errorAnswer, mockSubscribedUser, retryableResponse, routeQuery, textAnswer, valueAnswer } from "./support/api";
+import { errorAnswer, mockSubscribedUser, retryableResponse, routeAction, routeQuery, textAnswer, valueAnswer } from "./support/api";
 
 test("subscribed users can filter and sort qualifying totals", async ({ page }) => {
   await mockSubscribedUser(page);
@@ -564,4 +564,80 @@ test("data page fields are at least 16px on phones, so iOS doesn't zoom", async 
       expect(size, `${path} ${field}`).toBeGreaterThanOrEqual(16);
     }
   }
+});
+
+const eliteRow = (name: string, group: string, age: number, score: number, extra: Record<string, unknown> = {}) => ({
+  name,
+  date: "2025-10-19",
+  meet: "2025 Carolina WSO Championships",
+  division: "Open Women's 86kg",
+  gender: "Women",
+  group,
+  age,
+  body_weight: 82.25,
+  snatch_best: 94,
+  cj_best: 125,
+  total: 219,
+  score,
+  weight_class: "86kg",
+  standard_a: 242,
+  ...extra,
+});
+
+const eliteAnswer = () => {
+  const empty = { men: [], women: [] };
+  const harley = eliteRow("Harley Creech", "senior", 22, 90.5);
+  const mahassen = eliteRow("Mahassen Paiva", "masters", 36, 283.79, { weight_class: null, standard_a: null });
+  return {
+    wso: "Carolina",
+    from: "2025-01-01",
+    to: "2025-12-31",
+    members: 54,
+    rankings: {
+      overall: { percentA: { men: [], women: [harley] }, sinclair: empty, qpoints: empty },
+      youth: { percentA: empty, sinclair: empty },
+      junior: { percentA: empty, qpoints: empty, sinclair: empty },
+      senior: { percentA: { men: [], women: [harley] }, qpoints: empty, sinclair: empty },
+      masters: { qmasters: { men: [], women: [mahassen] }, percentA: empty, sinclair: { men: [], women: [{ ...mahassen, score: 251.2 }] } },
+    },
+  };
+};
+
+test("the WSO elite page ranks a WSO's athletes, and a list's score picker switches without asking again", async ({ page }) => {
+  await mockSubscribedUser(page);
+  await routeQuery(page, "reference:registrationWsos", (route) => route.fulfill(valueAnswer(["Carolina", "Florida"])));
+  const asked: Record<string, unknown>[] = [];
+  await routeAction(page, "results:wsoElite", (route, args) => {
+    asked.push(args);
+    return route.fulfill(valueAnswer(eliteAnswer()));
+  });
+  await page.goto("/wso-elite");
+  await expect(page.getByRole("heading", { name: "WSO Elite" })).toBeVisible();
+  await page.getByLabel("WSO").selectOption("Carolina");
+  await page.getByLabel("From").fill("2025-01-01");
+  await page.getByLabel("To").fill("2025-12-31");
+  await page.getByRole("button", { name: "View elite lists" }).click();
+
+  await expect(page.getByRole("heading", { name: "Overall — % of A standard" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Masters — Q-masters" })).toBeVisible();
+  await expect(page.locator(".data-metric-grid")).toContainText("54");
+  await expect(page.locator("tbody").first()).toContainText("Harley Creech");
+  await expect(page.locator("tbody").first()).toContainText("90.5%");
+  await expect(page.locator("tbody").first()).toContainText("242 (86kg)");
+  await expect(page.getByText("No results in this range.").first()).toBeVisible();
+  expect(asked[0]).toEqual({
+    wso: "Carolina",
+    from: "2025-01-01",
+    to: "2025-12-31",
+    pass: "pass_test",
+  });
+  const download = page.getByRole("link", { name: "Download CSV" });
+  await expect(download).toHaveAttribute("download", "carolina-elite-2025-01-01-to-2025-12-31.csv");
+  await expect(download).toHaveAttribute("href", /^data:text\/csv/);
+
+  // A list's score picker shows the answer's ranking by that method, without another request.
+  await page.getByLabel("Masters score").selectOption("sinclair");
+  await expect(page.getByRole("heading", { name: "Masters — Sinclair" })).toBeVisible();
+  await expect(page.getByText("251.20")).toBeVisible();
+  expect(asked).toHaveLength(1);
 });

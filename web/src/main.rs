@@ -6,7 +6,7 @@ use meetcal_web::pages::{
         adaptive_records::AdaptiveRecords, club_dashboard::ClubDashboard, data_home::CompData,
         meet_center::MeetCenter, national_rankings::NationalRankings,
         qual_totals::QualifyingTotals, rankings::Rankings, records::Records, results::Results,
-        standards::Standards, wrapped::Wrapped, wso_dashboard::WsoDashboard,
+        standards::Standards, wrapped::Wrapped, wso_dashboard::WsoDashboard, wso_elite::WsoElite,
         wso_records::WsoRecords,
     },
     features::FeaturesPage,
@@ -57,6 +57,7 @@ fn App() -> impl IntoView {
                     <Route path=path!("/meet-center") view=|| view! { <SubscriptionGate><MeetCenter /></SubscriptionGate> } />
                     <Route path=path!("/club-dashboard") view=|| view! { <SubscriptionGate><ClubDashboard /></SubscriptionGate> } />
                     <Route path=path!("/wso-dashboard") view=|| view! { <SubscriptionGate><WsoDashboard /></SubscriptionGate> } />
+                    <Route path=path!("/wso-elite") view=|| view! { <SubscriptionGate><WsoElite /></SubscriptionGate> } />
                     // Free for everyone, signed out included: a shared Wrapped opens for anyone.
                     <Route path=path!("/wrapped") view=Wrapped />
                     <Route path=path!("/subscription") view=MobileSubscriptionPage />

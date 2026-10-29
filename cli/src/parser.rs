@@ -23,6 +23,7 @@ pub enum Commands {
     ClubWrapped(commands::club_wrapped::ClubWrappedArgs),
     Clubs(commands::clubs::ClubsArgs),
     Compare(commands::compare::CompareArgs),
+    Elite(commands::elite::EliteArgs),
     H2h(commands::h2h::H2hArgs),
     IntlRankings(commands::intl_rankings::IntlRankingsArgs),
     Leaderboard(commands::leaderboard::LeaderboardArgs),

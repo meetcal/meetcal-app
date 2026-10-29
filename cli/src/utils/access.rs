@@ -53,7 +53,7 @@ pub const PREMIUM_FUNCTIONS: &[&str] = &[
 /// The Convex actions that answer premium data, apart from [`PREMIUM_FUNCTIONS`] (queries only):
 /// Convex's `PREMIUM_ACTIONS` (`convex/lib/access.ts`). An action reads them with the pass the same
 /// way (`backend::premium_action`), and a refusal is handled as a premium query's.
-pub const PREMIUM_ACTIONS: &[&str] = &["results:leaderboard"];
+pub const PREMIUM_ACTIONS: &[&str] = &["results:leaderboard", "results:wsoElite"];
 
 /// The argument a premium query takes the access pass in.
 pub const PASS_ARGUMENT: &str = "pass";
@@ -389,7 +389,13 @@ mod tests {
 
     #[test]
     fn the_premium_actions_are_apart_from_the_queries() {
-        assert_eq!(PREMIUM_ACTIONS, [functions::LEADERBOARD.function]);
+        assert_eq!(
+            PREMIUM_ACTIONS,
+            [
+                functions::LEADERBOARD.function,
+                functions::WSO_ELITE.function
+            ]
+        );
         for action in PREMIUM_ACTIONS {
             assert!(!is_premium(action), "{action}");
         }

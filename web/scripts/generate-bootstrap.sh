@@ -125,6 +125,7 @@ adaptive-records|/adaptive-records|Adaptive Weightlifting Records
 meet-center|/meet-center|Weightlifting Meets, Schedules &amp; Results
 club-dashboard|/club-dashboard|Weightlifting Club Meet Dashboard
 wso-dashboard|/wso-dashboard|USAW WSO Meet Dashboard
+wso-elite|/wso-elite|USAW WSO Elite Athletes
 EOF
 
 # Vercel serves dist/404.html, with status 404, for any path that has no file

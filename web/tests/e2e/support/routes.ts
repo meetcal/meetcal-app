@@ -21,6 +21,7 @@ export const protectedDataRoutes = [
   "/meet-center",
   "/club-dashboard",
   "/wso-dashboard",
+  "/wso-elite",
 ] as const;
 
 /**

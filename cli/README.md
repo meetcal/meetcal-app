@@ -421,6 +421,32 @@ Options:
 
 - `--year`, `-y`: Calendar year to summarize; defaults to the current calendar year
 
+#### `elite`
+
+A WSO's elite lists: its top 20 women and men Overall, Youth (17 and under), Junior (18-20), Senior
+(21-34) and Masters (35 and over). An athlete is the WSO's when their most recent meet registration
+that names a WSO names it; every USAW result of theirs in the range counts, and each list holds an athlete once, by
+their best-scoring result. Needs `meetcal login` with a MeetCal subscription.
+
+```sh
+meetcal elite Carolina
+meetcal elite Carolina --year 2025 --masters percent-a
+meetcal elite Florida --from 2025-07-01 --to 2026-06-30 --overall sinclair
+```
+
+Options:
+
+- `--year`, `-y`: Calendar year; defaults to last year
+- `--from`, `--to`: A date range (`YYYY-MM-DD`) of less than five years instead of a year
+- `--overall`: `percent-a` (default), `sinclair` or `qpoints` (Masters by Q-masters, Youth left out)
+- `--youth`: `percent-a` (default, against the Youth A standard) or `sinclair`
+- `--junior`, `--senior`: `percent-a` (default), `qpoints` or `sinclair`
+- `--masters`: `qmasters` (default: Q-points times Huebner's 2025 age factor), `percent-a`
+  (against the Senior A standard) or `sinclair`
+
+`percent-a` is the total as a percentage of the A standard for the class the bodyweight falls in
+today.
+
 #### `wso-trends`
 
 A WSO's results year by year and its top lifters of all time, as `club-trends` does for a club.

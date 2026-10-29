@@ -229,6 +229,15 @@ export async function routeMutation(
   await routeFunction(page, CONVEX_MUTATION_URL, fn, handler);
 }
 
+/** Answers the Convex action `fn` (such as `results:wsoElite`), as `routeQuery` answers a query. */
+export async function routeAction(
+  page: Page,
+  fn: string,
+  handler: (route: Route, args: Record<string, unknown>) => Promise<void> | void,
+) {
+  await routeFunction(page, CONVEX_ACTION_URL, fn, handler);
+}
+
 async function routeFunction(
   page: Page,
   url: string,

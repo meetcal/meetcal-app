@@ -119,6 +119,10 @@
       "destination": "/seo/wso-dashboard.html"
     },
     {
+      "source": "/wso-elite",
+      "destination": "/seo/wso-elite.html"
+    },
+    {
       "source": "/wrapped",
       "destination": "/seo/wrapped.html"
     },
