@@ -167,7 +167,14 @@ const isLine = (line: unknown): line is PdfLine =>
 /** The PDF's lines as the sync reads them (`pdfRunLines`, `PDF_OPTIONS`), read by Bun in a child process: Jest cannot load unpdf. */
 function fixtureLines(name: string, options: PdfLineOptions = PDF_OPTIONS): PdfLine[][] {
   const script = join(__dirname, 'pdfRunLines.mjs');
-  const out = execFileSync('bun', [script, join(__dirname, 'fixtures', name), JSON.stringify(options)], { encoding: 'utf8', maxBuffer: 16 * 1024 * 1024 });
+  // Bun from PATH: the pinned one under `mise run`/`mise exec`, and CI's `setup-bun`, which has no mise.
+  let out: string;
+  try {
+    out = execFileSync('bun', [script, join(__dirname, 'fixtures', name), JSON.stringify(options)], { encoding: 'utf8', maxBuffer: 16 * 1024 * 1024 });
+  } catch (error) {
+    if (error instanceof Error && 'code' in error && error.code === 'ENOENT') throw new Error('bun is not on PATH: run the tests through `mise run` or `mise exec --`');
+    throw error;
+  }
   const pages: unknown = JSON.parse(out);
   if (!Array.isArray(pages) || !pages.every((page): page is PdfLine[] => Array.isArray(page) && page.every(isLine))) {
     throw new Error(`pdfRunLines.mjs printed no pages of lines for ${name}`);
