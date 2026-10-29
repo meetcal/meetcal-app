@@ -33,7 +33,7 @@ earlier, which have no `upgrade`, run `brew update && brew upgrade meetcal`.
 Install the latest release (the one Homebrew ships) from GitHub:
 
 ```sh
-cargo install --locked --git https://github.com/meetcal/meetcal-app.git --tag cli-v3.0.0 meetcal
+cargo install --locked --git https://github.com/meetcal/meetcal-app.git --tag cli-v3.1.0 meetcal
 ```
 
 `--tag` picks the release and `--locked` builds it with the dependency versions it was tested
