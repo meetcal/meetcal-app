@@ -62,11 +62,35 @@ function isSandboxPurchase(subscriber: Record<string, unknown>, productId: strin
   return Array.isArray(purchases) && purchases.length > 0 && purchases.every((p) => isObject(p) && p.is_sandbox === true);
 }
 
+/** The prefix of RevenueCat's ids for promotional grants of the `Subscriptions` entitlement (`rc_promo_Subscriptions_lifetime`). */
+export const PROMOTIONAL_PREFIX = `rc_promo_${SUBSCRIPTION_ENTITLEMENT_ID}_`;
+
+/**
+ * The longest-lasting promotional grant of the entitlement that is not a
+ * sandbox one, or null without one. RevenueCat names only one product per
+ * entitlement, the one that lasts longest, so a sandbox lifetime purchase
+ * (made from TestFlight, never expiring) hides a promotional grant from the
+ * entitlement itself; the grant is still listed under `subscriptions`.
+ */
+function promotionalGrant(subscriber: Record<string, unknown>, now: number): EntitlementState | null {
+  if (!isObject(subscriber.subscriptions)) return null;
+  let best: EntitlementState | null = null;
+  for (const [productId, grant] of Object.entries(subscriber.subscriptions)) {
+    if (!productId.startsWith(PROMOTIONAL_PREFIX) || !isObject(grant) || grant.is_sandbox === true) continue;
+    const expiresAt = dateMs(grant.expires_date, 'expires_date');
+    const state = { active: expiresAt === null || expiresAt > now, expiresAt, productId };
+    const lasts = (s: EntitlementState) => s.expiresAt ?? Infinity;
+    if (best === null || lasts(state) > lasts(best)) best = state;
+  }
+  return best;
+}
+
 /**
  * The `Subscriptions` entitlement from RevenueCat's `GET /v1/subscribers`
  * answer. No entitlement is inactive, and so is a sandbox purchase unless
- * `countSandbox`. A null `expires_date` is a lifetime purchase. A billing
- * grace period counts until it ends.
+ * `countSandbox`, or a promotional grant that is not a sandbox one is still
+ * in force (`promotionalGrant`). A null `expires_date` is a lifetime
+ * purchase. A billing grace period counts until it ends.
  */
 export function entitlementFromSubscriber(body: unknown, now: number, countSandbox = false): EntitlementState {
   if (!isObject(body) || !isObject(body.subscriber)) throw new Error('RevenueCat answer has no subscriber');
@@ -79,7 +103,10 @@ export function entitlementFromSubscriber(body: unknown, now: number, countSandb
   const expires = dateMs(entitlement.expires_date, 'expires_date');
   const grace = dateMs(entitlement.grace_period_expires_date, 'grace_period_expires_date');
   const expiresAt = expires === null ? null : grace === null ? expires : Math.max(expires, grace);
-  if (!countSandbox && isSandboxPurchase(body.subscriber, productId)) return { active: false, expiresAt, productId };
+  if (!countSandbox && isSandboxPurchase(body.subscriber, productId)) {
+    const promotional = promotionalGrant(body.subscriber, now);
+    return promotional?.active ? promotional : { active: false, expiresAt, productId };
+  }
   return { active: expiresAt === null || expiresAt > now, expiresAt, productId };
 }
 
