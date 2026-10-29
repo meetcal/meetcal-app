@@ -104,35 +104,41 @@ describe('USAMW national records (port of national_records.py)', () => {
     expect(parseRecordPages([[...head, touching]], 'Men')[0].snatchBy?.location).toBe('World Masters, Las Vegas, NV');
   });
 
-  it('spaces a family name run into the given name, and leaves names with apostrophes and hyphens alone', () => {
-    const holder = (name: string) => parseRecordPages([['W 40 - 44', `86 SNA 79 ${name} 24-Sep-26 Savannah, GA Elite Masters Invitational`]], 'Women')[0].snatchBy?.name;
-    expect(holder('TAN CASTELLANOSYicay')).toBe('TAN CASTELLANOS Yicay');
-    expect(holder("O'NEILLMary")).toBe("O'NEILL Mary");
-    expect(holder("SMITH D'Angelo")).toBe("SMITH D'Angelo");
-    expect(holder("O'Neil Mary")).toBe("O'Neil Mary");
-    expect(holder('SMITH-Jones Ann')).toBe('SMITH-Jones Ann');
-    expect(holder('McDONALD Ann')).toBe('McDONALD Ann');
-    expect(holder('SMITH DEAnne')).toBe('SMITH DEAnne');
-    expect(holder('NGMary')).toBe('NGMary');
-    // Without a date the words are kept as they are.
+  it('spaces a family name the PDF runs into the given name only where it draws the name as one cell', () => {
+    const holder = (nameCells: string[]) => {
+      const cells: [number, string][] = [[70, '86'], [114, 'SNA'], [168, '79'], ...nameCells.map((text, i): [number, string] => [199 + i * 96, text]), [381, '24-Sep-26'], [438, 'Savannah, GA'], [524, 'Elite Masters Invitational']];
+      const line: PdfLine = { text: cells.map(([, text]) => text).join(' '), runs: cells.map(([x, text]) => ({ text, x, end: x + text.length * 5 })) };
+      return parseRecordPages([['W 40 - 44', line]], 'Women')[0].snatchBy?.name;
+    };
+    expect(holder(['TAN CASTELLANOSYicay'])).toBe('TAN CASTELLANOS Yicay');
+    expect(holder(["O'NEILLMary"])).toBe("O'NEILL Mary");
+    expect(holder(["D'Angelo"])).toBe("D'Angelo");
+    expect(holder(['SMITH-Jones'])).toBe('SMITH-Jones');
+    // Family and given name in their own cells are kept as written.
+    expect(holder(['SMITH', 'ALEXandra'])).toBe('SMITH ALEXandra');
+    expect(holder(['SMITH', 'DEAnne'])).toBe('SMITH DEAnne');
+    // Text alone, or no date: the words are kept as they are.
+    expect(parseRecordPages([['W 40 - 44', '86 SNA 79 TAN CASTELLANOSYicay 24-Sep-26 Savannah, GA Elite Masters Invitational']], 'Women')[0].snatchBy?.name).toBe('TAN CASTELLANOSYicay');
     expect(parseRecordPages([['W 40 - 44', '86 SNA 79 USAMasters Team']], 'Women')[0].snatchBy?.name).toBe('USAMasters Team');
   });
 
-  it('puts right a doubled last digit only where one lifter set all three lifts that day', () => {
-    const page = (...lines: string[]) => [['USA National Masters Records - Women', 'W 40 - 44', ...lines]];
-    const day = (lift: string, value: number, date = '24-Sep-26', name = 'ONG Jaquelin') => `86 ${lift} ${value} ${name} ${date} Athens, Greece World Masters`;
+  it('corrects only the listed lifts, and only while the PDF prints the wrong value', () => {
+    const page = (age: string, weightClass: string, ...lines: string[]) => [['USA National Masters Records - Women', age, ...lines.map((l) => `${weightClass} ${l} Athens, Greece World Masters`)]];
     const lifts = (records: UsamwRecord[]) => records.map((r) => [r.snatchRecord, r.cjRecord, r.totalRecord]);
-    const repairs: string[] = [];
-    expect(lifts(parseRecordPages(page(day('SNA', 79), day('CnJ', 95), day('TOT', 1744)), 'Women', repairs))).toEqual([[79, 95, 174]]);
-    expect(repairs).toEqual(['Women Masters 40 86kg totalRecord: printed 1744, stored 174']);
-    expect(lifts(parseRecordPages(page(day('SNA', 488), day('CnJ', 65), day('TOT', 113)), 'Women'))).toEqual([[48, 65, 113]]);
-    expect(lifts(parseRecordPages(page(day('SNA', 79), day('CnJ', 955), day('TOT', 174)), 'Women'))).toEqual([[79, 95, 174]]);
-    // Another day or another lifter: the lifts need not add up.
-    expect(lifts(parseRecordPages(page(day('SNA', 79), day('CnJ', 95), day('TOT', 1744, '25-Sep-26')), 'Women'))).toEqual([[79, 95, 1744]]);
-    expect(lifts(parseRecordPages(page(day('SNA', 79), day('CnJ', 95, '24-Sep-26', 'DOE Jane'), day('TOT', 1744)), 'Women'))).toEqual([[79, 95, 1744]]);
-    // No doubled digit, or dropping it does not add up: left as printed.
-    expect(lifts(parseRecordPages(page(day('SNA', 79), day('CnJ', 95), day('TOT', 175)), 'Women'))).toEqual([[79, 95, 175]]);
-    expect(lifts(parseRecordPages(page(day('SNA', 79), day('CnJ', 95), day('TOT', 1733)), 'Women'))).toEqual([[79, 95, 1733]]);
+    const corrections: string[] = [];
+    const ong = (total: number) => page('W 40 - 44', '86', 'SNA 79 ONG Jaquelin 24-Sep-26', 'CnJ 95 ONG Jaquelin 24-Sep-26', `TOT ${total} ONG Jaquelin 24-Sep-26`);
+    expect(lifts(parseRecordPages(ong(1744), 'Women', corrections))).toEqual([[79, 95, 174]]);
+    expect(corrections).toEqual(['Women Masters 40 86kg totalRecord: printed 1744, stored 174']);
+    const nichols = page('W 55 - 59', '69', 'SNA 488 NICHOLS Stacy 19-Sep-26', 'CnJ 65 NICHOLS Stacy 19-Sep-26', 'TOT 113 NICHOLS Stacy 19-Sep-26');
+    expect(lifts(parseRecordPages(nichols, 'Women'))).toEqual([[48, 65, 113]]);
+    // Fixed at the source, or another value: stored as printed.
+    const none: string[] = [];
+    expect(lifts(parseRecordPages(ong(174), 'Women', none))).toEqual([[79, 95, 174]]);
+    expect(lifts(parseRecordPages(ong(1733), 'Women', none))).toEqual([[79, 95, 1733]]);
+    // The same printed value in another class or gender is not touched.
+    expect(lifts(parseRecordPages(page('W 45 - 49', '86', 'TOT 1744 ONG Jaquelin 24-Sep-26'), 'Women', none))).toEqual([[null, null, 1744]]);
+    expect(lifts(parseRecordPages(page('M 40 - 44', '86', 'TOT 1744 ONG Jaquelin 24-Sep-26'), 'Men', none))).toEqual([[null, null, 1744]]);
+    expect(none).toEqual([]);
   });
 });
 
@@ -156,11 +162,11 @@ describe('USAMW national records PDFs of September 27, 2026 (pages rotated 90 de
   let men: PdfLine[][] = [];
   let women: PdfLine[][] = [];
   let records: UsamwRecord[] = [];
-  const repairs: string[] = [];
+  const corrections: string[] = [];
   beforeAll(() => {
     men = fixtureLines('usamw-national-records-men-20260927.pdf');
     women = fixtureLines('usamw-national-records-women-20260927.pdf');
-    records = [...parseRecordPages(men, 'Men', repairs), ...parseRecordPages(women, 'Women', repairs)];
+    records = [...parseRecordPages(men, 'Men', corrections), ...parseRecordPages(women, 'Women', corrections)];
   });
   const find = (gender: string, age: number, weightClass: string) =>
     records.find((r) => r.gender === gender && r.ageCategory === `Masters ${age}` && r.weightClass === weightClass);
@@ -195,13 +201,13 @@ describe('USAMW national records PDFs of September 27, 2026 (pages rotated 90 de
     expect(printed.filter((p) => p.gender === 'Women')).toHaveLength(192);
     const field = { SNA: 'snatchRecord', CnJ: 'cjRecord', TOT: 'totalRecord' } as const;
     const stored = printed.map((p) => records.find((r) => r.gender === p.gender && r.ageCategory === p.age && r.weightClass === p.weightClass)?.[field[p.lift as keyof typeof field]]);
-    // Every printed value is stored as printed, but the two doubled digits.
+    // Every printed value is stored as printed, but the two corrected.
     const differ = printed.map((p, i) => ({ ...p, stored: stored[i] })).filter((p) => p.stored !== p.value);
     expect(differ).toEqual([
       { gender: 'Women', age: 'Masters 40', weightClass: '86kg', lift: 'TOT', value: 1744, stored: 174 },
       { gender: 'Women', age: 'Masters 55', weightClass: '69kg', lift: 'SNA', value: 488, stored: 48 },
     ]);
-    expect(repairs).toEqual(['Women Masters 40 86kg totalRecord: printed 1744, stored 174', 'Women Masters 55 69kg snatchRecord: printed 488, stored 48']);
+    expect(corrections).toEqual(['Women Masters 40 86kg totalRecord: printed 1744, stored 174', 'Women Masters 55 69kg snatchRecord: printed 488, stored 48']);
     const liftCount = records.reduce((n, r) => n + [r.snatchRecord, r.cjRecord, r.totalRecord].filter((v) => v !== null).length, 0);
     expect(liftCount).toBe(232 + 192);
     expect(records).toHaveLength(142);

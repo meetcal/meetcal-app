@@ -68,25 +68,27 @@ const DATE_WORD = /^(?:\d{1,2}-[A-Za-z]{3,}-\d{2,4}|\d{1,2}\/\d{1,2}\/\d{2,4})$/
 /** Runs closer than this (points) are one table cell; a cell's own words are drawn closer. */
 const CELL_GAP = 6;
 
-/** A line's table cells: its runs, those drawn next to each other joined (with a space as `pdfRunLines` puts one). */
+/** A line's table cells: its runs, those drawn next to each other joined. */
 function lineCells(line: PdfLine): string[] {
   const cells: string[] = [];
   let end = -Infinity;
   for (const run of line.runs) {
-    const gap = run.x - end;
-    if (cells.length && gap <= CELL_GAP) cells[cells.length - 1] += `${gap > PDF_OPTIONS.xTolerance ? ' ' : ''}${run.text}`;
+    if (cells.length && run.x - end <= CELL_GAP) cells[cells.length - 1] += ` ${run.text}`;
     else cells.push(run.text);
     end = Math.max(end, run.end);
   }
   return cells.map((cell) => cell.replace(/\s+/g, ' ').trim()).filter(Boolean);
 }
 
+const letters = (text: string) => text.replace(/\s/g, '');
+
 /**
- * Site and competition from what follows the date. In the line's cells the
- * site is the first one after the date (or the rest of the date's cell, which
- * the September 2026 PDFs draw as one run: "29-May-26 San Salvador, ES") and
- * the competition the rest, so a site abroad ("Athens, Greece") splits
- * right. From the text alone the site ends at its two-letter state or
+ * Site and competition from what follows the date. The line's cells say
+ * where the site ends: it is the first cell after the date (or the rest of
+ * the date's cell, which the September 2026 PDFs draw as one run: "29-May-26
+ * San Salvador, ES"), and the competition the cells after it, so a site
+ * abroad ("Athens, Greece") splits right. The text is cut there, keeping its
+ * own spacing. From the text alone the site ends at its two-letter state or
  * country code; without one it is all kept as the location.
  */
 function siteAndCompetition(tail: string, cells: string[] | undefined): [site: string | undefined, competition: string] {
@@ -95,7 +97,11 @@ function siteAndCompetition(tail: string, cells: string[] | undefined): [site: s
     const words = cells[at].split(' ');
     const after = [words.slice(words.findIndex((word) => DATE_WORD.test(word)) + 1).join(' '), ...cells.slice(at + 1)].filter(Boolean);
     // Only a first cell that reads as a whole site ("City, Region"), and cells that say what the text says.
-    if (after.length >= 2 && /,\s*\S/.test(after[0]) && after.join(' ') === tail) return [after[0], after.slice(1).join(' ')];
+    if (after.length >= 2 && /,\s*\S/.test(after[0]) && letters(after.join('')) === letters(tail)) {
+      let cut = 0;
+      for (let seen = 0; seen < letters(after[0]).length; cut++) if (!/\s/.test(tail[cut])) seen++;
+      return [tail.slice(0, cut).trim(), tail.slice(cut).trim()];
+    }
   }
   const site = /^(.+?,\s*[A-Z]{2})\s+(.+)$/.exec(tail);
   return site ? [site[1], site[2]] : [undefined, tail];
@@ -104,49 +110,46 @@ function siteAndCompetition(tail: string, cells: string[] | undefined): [site: s
 /**
  * Who set a line's lift, from what follows its value: `Family Given Date Site
  * Competition` ("MURRAY George 12-Sep-25 Las Vegas, NV World Masters"). The
- * name is kept as the PDF lays it out, except a family name the PDF runs
- * into the given name ("TAN CASTELLANOSYicay": at least three capitals,
- * then the last word) is spaced from it.
+ * name is kept as the PDF lays it out, except where the PDF draws family and
+ * given name as one cell, the family name run into the given name ("TAN
+ * CASTELLANOSYicay"): the two are spaced. Drawn as two cells, a given name
+ * like "ALEXandra" is left alone.
  */
 function lineHolder(value: number, rest: string, cells: string[] | undefined): RecordHolder | undefined {
   const words = rest.trim().split(/\s+/).filter(Boolean);
   const at = words.findIndex((word) => DATE_WORD.test(word));
   if (at < 0) return recordHolder(value, words.join(' '));
-  // Only the last word before the date, so a given name like "DEAnne" is left alone.
-  const name = words
-    .slice(0, at)
-    .join(' ')
-    .replace(/\b([A-Z][A-Z'-]*[A-Z]{2})([A-Z][a-z]+)$/, '$1 $2');
+  let name = words.slice(0, at).join(' ');
+  const date = cells?.findIndex((cell) => cell.split(' ').some((word) => DATE_WORD.test(word))) ?? -1;
+  // Cells: class, lift, record, then the name, then the date.
+  if (cells && date === 4) name = name.replace(/\b([A-Z][A-Z'-]*[A-Z])([A-Z][a-z]+)$/, '$1 $2');
   const [site, competition] = siteAndCompetition(words.slice(at + 1).join(' '), cells);
   return recordHolder(value, name, recordsDate(words[at]), competition, site);
 }
 
+type Lift = 'snatchRecord' | 'cjRecord' | 'totalRecord';
+
 /**
- * A lift the PDF printed with its last digit doubled, put right. The
- * September 27, 2026 women's PDF prints W40-44 86kg's total as "1744" (snatch
- * 79, C&J 95) and W55-59 69kg's snatch as "488" (C&J 65, total 113). Only a
- * class whose three lifts one lifter set on one day is checked, where
- * snatch + C&J must equal the total, and a value is changed only when it is
- * the one lift whose doubled last digit, dropped, makes them add up.
- * Returns what it changed, for the sync to log.
+ * Lifts the PDFs print wrong, and what they are, applied only while the PDF
+ * still prints the wrong value. Each was checked against the class's other
+ * lifts, which the same lifter set the same day: snatch + C&J = total only
+ * with the correction. Any other value is stored as printed.
  */
-function repairDoubledDigit(record: UsamwRecord): string | undefined {
-  const { snatchRecord: snatch, cjRecord: cj, totalRecord: total, snatchBy, cjBy, totalBy } = record;
-  if (snatch === null || cj === null || total === null || !snatchBy || !cjBy || !totalBy) return undefined;
-  const sameDay = (a: RecordHolder, b: RecordHolder) => a.name === b.name && a.date !== undefined && a.date === b.date;
-  if (!sameDay(snatchBy, cjBy) || !sameDay(snatchBy, totalBy) || snatch + cj === total) return undefined;
-  const undoubled = (value: number) => (/^\d*(\d)\1$/.test(String(value)) ? Math.trunc(value / 10) : null);
-  const fixes = [
-    ['snatchRecord', undoubled(snatch), (v: number) => v + cj === total],
-    ['cjRecord', undoubled(cj), (v: number) => snatch + v === total],
-    ['totalRecord', undoubled(total), (v: number) => snatch + cj === v],
-  ] as const;
-  const fixed = fixes.filter(([, value, adds]) => value !== null && adds(value));
-  if (fixed.length !== 1) return undefined;
-  const [field, value] = fixed[0];
-  const printed = record[field];
-  record[field] = value!;
-  return `${record.gender} ${record.ageCategory} ${record.weightClass} ${field}: printed ${printed}, stored ${value}`;
+const LIFT_CORRECTIONS: readonly { gender: string; ageCategory: string; weightClass: string; lift: Lift; printed: number; value: number }[] = [
+  // The September 27, 2026 women's PDF: "1744" beside snatch 79 and C&J 95 (ONG Jaquelin, 24-Sep-26).
+  { gender: 'Women', ageCategory: 'Masters 40', weightClass: '86kg', lift: 'totalRecord', printed: 1744, value: 174 },
+  // The same PDF: "488" beside C&J 65 and total 113 (NICHOLS Stacy, 19-Sep-26).
+  { gender: 'Women', ageCategory: 'Masters 55', weightClass: '69kg', lift: 'snatchRecord', printed: 488, value: 48 },
+];
+
+/** Puts right a record's lifts listed in `LIFT_CORRECTIONS`; returns what it changed, for the sync to log. */
+function correctLifts(record: UsamwRecord): string[] {
+  return LIFT_CORRECTIONS.filter(
+    (c) => c.gender === record.gender && c.ageCategory === record.ageCategory && c.weightClass === record.weightClass && record[c.lift] === c.printed,
+  ).map((c) => {
+    record[c.lift] = c.value;
+    return `${record.gender} ${record.ageCategory} ${record.weightClass} ${c.lift}: printed ${c.printed}, stored ${c.value}`;
+  });
 }
 
 function weightOrder(weightClass: string): number {
@@ -160,7 +163,7 @@ function weightOrder(weightClass: string): number {
  * (`pdfRunLines`), which tell a site abroad from the competition after it.
  * Sorted by gender, age, then class, as before.
  */
-export function parseRecordPages(pages: (string | PdfLine)[][], gender: string, repairs: string[] = []): UsamwRecord[] {
+export function parseRecordPages(pages: (string | PdfLine)[][], gender: string, corrections: string[] = []): UsamwRecord[] {
   const byKey = new Map<string, UsamwRecord>();
   for (const page of pages) {
     const nonEmpty = page
@@ -202,10 +205,7 @@ export function parseRecordPages(pages: (string | PdfLine)[][], gender: string, 
       byKey.set(key, record);
     }
   }
-  for (const record of byKey.values()) {
-    const repair = repairDoubledDigit(record);
-    if (repair) repairs.push(repair);
-  }
+  for (const record of byKey.values()) corrections.push(...correctLifts(record));
   const ageNumber = (r: UsamwRecord) => Number(/\d+/.exec(r.ageCategory)![0]);
   return [...byKey.values()].sort(
     (a, b) =>
