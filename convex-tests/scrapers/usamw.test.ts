@@ -1,7 +1,7 @@
 import { execFileSync } from 'node:child_process';
 import { join } from 'node:path';
-import type { PdfLine } from '../../convex/scrapers/lib/pdf';
-import { ageCategory, discoverRecordPdfs, parseRecordPages, type UsamwRecord } from '../../convex/scrapers/parse/usamw';
+import type { PdfLine, PdfLineOptions } from '../../convex/scrapers/lib/pdf';
+import { ageCategory, discoverRecordPdfs, parseRecordPages, PDF_OPTIONS, type UsamwRecord } from '../../convex/scrapers/parse/usamw';
 
 const STORAGE = 'https://storage.googleapis.com/production-ipower-v1-0-4/354/1018354/vixoE8Rk';
 
@@ -88,13 +88,39 @@ describe('USAMW national records (port of national_records.py)', () => {
     // Text alone cannot place the end of a site with no state code: all of it is kept.
     const [text] = parseRecordPages([[...head, at(abroad).text]], 'Men');
     expect(text.cjBy).toEqual({ name: 'ALBURY Dimitri', date: '2026-09-26', location: 'Athens, Greece World Masters' });
+    // A site drawn as two cells is not a whole site: the text reading decides.
+    const splitSite: [number, string][] = [[70, '60'], [114, 'SNA'], [168, '93'], [199, 'MURRAY'], [295, 'George'], [364, '12-Sep-25'], [423, 'Las Vegas,'], [480, 'NV'], [547, 'World Masters']];
+    expect(parseRecordPages([[...head, at(splitSite)]], 'Men')[0].snatchBy?.location).toBe('World Masters, Las Vegas, NV');
+    // Runs drawn touching are one word in a cell, as in the line's text.
+    const touching: PdfLine = {
+      text: '60 SNA 93 MURRAY George 12-Sep-25 Las Vegas, NV World Masters',
+      runs: [
+        ...at(splitSite.slice(0, 6)).runs,
+        { text: 'Las Ve', x: 423, end: 453 },
+        { text: 'gas, NV', x: 453, end: 490 },
+        { text: 'World Masters', x: 547, end: 612 },
+      ],
+    };
+    expect(parseRecordPages([[...head, touching]], 'Men')[0].snatchBy?.location).toBe('World Masters, Las Vegas, NV');
+  });
+
+  it('spaces a family name run into the given name, and leaves names with apostrophes and hyphens alone', () => {
+    const holder = (name: string) => parseRecordPages([['W 40 - 44', `86 SNA 79 ${name} 24-Sep-26 Savannah, GA Elite Masters Invitational`]], 'Women')[0].snatchBy?.name;
+    expect(holder('TAN CASTELLANOSYicay')).toBe('TAN CASTELLANOS Yicay');
+    expect(holder("O'NEILLMary")).toBe("O'NEILL Mary");
+    expect(holder("SMITH D'Angelo")).toBe("SMITH D'Angelo");
+    expect(holder("O'Neil Mary")).toBe("O'Neil Mary");
+    expect(holder('SMITH-Jones Ann')).toBe('SMITH-Jones Ann');
+    expect(holder('McDONALD Ann')).toBe('McDONALD Ann');
   });
 
   it('puts right a doubled last digit only where one lifter set all three lifts that day', () => {
     const page = (...lines: string[]) => [['USA National Masters Records - Women', 'W 40 - 44', ...lines]];
     const day = (lift: string, value: number, date = '24-Sep-26', name = 'ONG Jaquelin') => `86 ${lift} ${value} ${name} ${date} Athens, Greece World Masters`;
     const lifts = (records: UsamwRecord[]) => records.map((r) => [r.snatchRecord, r.cjRecord, r.totalRecord]);
-    expect(lifts(parseRecordPages(page(day('SNA', 79), day('CnJ', 95), day('TOT', 1744)), 'Women'))).toEqual([[79, 95, 174]]);
+    const repairs: string[] = [];
+    expect(lifts(parseRecordPages(page(day('SNA', 79), day('CnJ', 95), day('TOT', 1744)), 'Women', repairs))).toEqual([[79, 95, 174]]);
+    expect(repairs).toEqual(['Women Masters 40 86kg totalRecord: printed 1744, stored 174']);
     expect(lifts(parseRecordPages(page(day('SNA', 488), day('CnJ', 65), day('TOT', 113)), 'Women'))).toEqual([[48, 65, 113]]);
     expect(lifts(parseRecordPages(page(day('SNA', 79), day('CnJ', 955), day('TOT', 174)), 'Women'))).toEqual([[79, 95, 174]]);
     // Another day or another lifter: the lifts need not add up.
@@ -106,20 +132,32 @@ describe('USAMW national records (port of national_records.py)', () => {
   });
 });
 
-/** The PDF's lines as the sync reads them (`pdfRunLines`), in a Node child process: Jest cannot load unpdf. */
-function fixtureLines(name: string): PdfLine[][] {
+const isRun = (run: unknown): boolean =>
+  typeof run === 'object' && run !== null && 'text' in run && typeof run.text === 'string' && 'x' in run && typeof run.x === 'number' && 'end' in run && typeof run.end === 'number';
+const isLine = (line: unknown): line is PdfLine =>
+  typeof line === 'object' && line !== null && 'text' in line && typeof line.text === 'string' && 'runs' in line && Array.isArray(line.runs) && line.runs.every(isRun);
+
+/** The PDF's lines as the sync reads them (`pdfRunLines`, `PDF_OPTIONS`), read by Bun in a child process: Jest cannot load unpdf. */
+function fixtureLines(name: string, options: PdfLineOptions = PDF_OPTIONS): PdfLine[][] {
   const script = join(__dirname, 'pdfRunLines.mjs');
-  const out = execFileSync(process.execPath, ['--no-warnings', script, join(__dirname, 'fixtures', name), JSON.stringify({ xTolerance: 2, yTolerance: 2 })], {
-    encoding: 'utf8',
-    maxBuffer: 16 * 1024 * 1024,
-  });
-  return JSON.parse(out) as PdfLine[][];
+  const out = execFileSync('bun', [script, join(__dirname, 'fixtures', name), JSON.stringify(options)], { encoding: 'utf8', maxBuffer: 16 * 1024 * 1024 });
+  const pages: unknown = JSON.parse(out);
+  if (!Array.isArray(pages) || !pages.every((page): page is PdfLine[] => Array.isArray(page) && page.every(isLine))) {
+    throw new Error(`pdfRunLines.mjs printed no pages of lines for ${name}`);
+  }
+  return pages;
 }
 
 describe('USAMW national records PDFs of September 27, 2026 (pages rotated 90 degrees)', () => {
-  const men = fixtureLines('usamw-national-records-men-20260927.pdf');
-  const women = fixtureLines('usamw-national-records-women-20260927.pdf');
-  const records = [...parseRecordPages(men, 'Men'), ...parseRecordPages(women, 'Women')];
+  let men: PdfLine[][] = [];
+  let women: PdfLine[][] = [];
+  let records: UsamwRecord[] = [];
+  const repairs: string[] = [];
+  beforeAll(() => {
+    men = fixtureLines('usamw-national-records-men-20260927.pdf');
+    women = fixtureLines('usamw-national-records-women-20260927.pdf');
+    records = [...parseRecordPages(men, 'Men', repairs), ...parseRecordPages(women, 'Women', repairs)];
+  });
   const find = (gender: string, age: number, weightClass: string) =>
     records.find((r) => r.gender === gender && r.ageCategory === `Masters ${age}` && r.weightClass === weightClass);
 
@@ -133,6 +171,10 @@ describe('USAMW national records PDFs of September 27, 2026 (pages rotated 90 de
       'Cat Lift Record Family Name Given Name Date Site Competition Name',
       '60 SNA 93 MURRAY George 12-Sep-25 Las Vegas, NV World Masters',
     ]);
+    // Without `asDisplayed` (every other source) a page is read in its own coordinates, one table column per line.
+    const own = fixtureLines('usamw-national-records-men-20260927.pdf', { xTolerance: 2, yTolerance: 2 });
+    expect(own[0].map((l) => l.text)).toContain('Cat 110110110');
+    expect(parseRecordPages(own, 'Men')).toEqual([]);
   });
 
   it('stores every lift the PDFs hold: 232 men\'s and 192 women\'s', () => {
@@ -155,6 +197,7 @@ describe('USAMW national records PDFs of September 27, 2026 (pages rotated 90 de
       { gender: 'Women', age: 'Masters 40', weightClass: '86kg', lift: 'TOT', value: 1744, stored: 174 },
       { gender: 'Women', age: 'Masters 55', weightClass: '69kg', lift: 'SNA', value: 488, stored: 48 },
     ]);
+    expect(repairs).toEqual(['Women Masters 40 86kg totalRecord: printed 1744, stored 174', 'Women Masters 55 69kg snatchRecord: printed 488, stored 48']);
     const liftCount = records.reduce((n, r) => n + [r.snatchRecord, r.cjRecord, r.totalRecord].filter((v) => v !== null).length, 0);
     expect(liftCount).toBe(232 + 192);
     expect(records).toHaveLength(142);

@@ -5,6 +5,14 @@ export type PdfLineOptions = {
   yTolerance?: number;
   /** Runs further apart than this (points) get a space between them; pdfplumber's `x_tolerance`, default 3. */
   xTolerance?: number;
+  /**
+   * Place text where a rotated page (`/Rotate`) displays it, rather than in
+   * the page's own coordinates. The September 2026 USAMW national records
+   * PDFs rotate their pages and draw the text turned, so read in the page's
+   * coordinates each table column comes out as a line. Off by default: the
+   * other sources were checked against the page's own coordinates.
+   */
+  asDisplayed?: boolean;
 };
 
 /** A piece of text the PDF drew, with where it starts and ends across the page (points). */
@@ -13,17 +21,15 @@ export type PdfRun = { text: string; x: number; end: number };
 /** One line of a page: its runs left to right, and their text joined as `pdfLines` joins it. */
 export type PdfLine = { text: string; runs: PdfRun[] };
 
-type PdfPage = { rotate: number; getViewport(params: { scale: number }): { transform: number[] } };
+type PdfPage = Awaited<ReturnType<Awaited<ReturnType<typeof getDocumentProxy>>['getPage']>>;
 
 /**
- * Where a run starts on the page as it is displayed (x rightward, y upward).
- * A page the PDF rotates (`/Rotate`, as the September 2026 USAMW national
- * records PDFs are) draws its text turned too, so its own coordinates would
- * read each table column as a line; the display transform turns it back. An
- * unrotated page keeps its own coordinates, as before.
+ * Where a run starts on the page (x rightward, y upward): as the page is
+ * displayed when `asDisplayed` and the page is rotated, through its display
+ * transform; in the page's own coordinates otherwise.
  */
-function runPlacer(page: PdfPage): (x: number, y: number) => { x: number; y: number } {
-  if (page.rotate % 360 === 0) return (x, y) => ({ x, y });
+function runPlacer(page: PdfPage, asDisplayed: boolean): (x: number, y: number) => { x: number; y: number } {
+  if (!asDisplayed || page.rotate % 360 === 0) return (x, y) => ({ x, y });
   const [a, b, c, d, e, f] = page.getViewport({ scale: 1 }).transform;
   // The display transform's y runs downward; negate it so lines still sort top first by descending y.
   return (x, y) => ({ x: a * x + c * y + e, y: -(b * x + d * y + f) });
@@ -44,7 +50,7 @@ export async function pdfRunLines(bytes: Uint8Array, options: PdfLineOptions = {
   for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber++) {
     const page = await pdf.getPage(pageNumber);
     const content = await page.getTextContent();
-    const place = runPlacer(page);
+    const place = runPlacer(page, options.asDisplayed ?? false);
     const runs = content.items
       .filter((item): item is typeof item & { str: string; transform: number[]; width: number } => 'str' in item)
       .map((item) => ({ text: item.str, ...place(item.transform[4], item.transform[5]), width: item.width ?? 0 }))

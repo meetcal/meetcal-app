@@ -1,10 +1,13 @@
 import { recordHolder, setHolder, type RecordHolder } from './holder';
 import { unescapeHtml } from '../lib/html';
-import type { PdfLine } from '../lib/pdf';
+import type { PdfLine, PdfLineOptions } from '../lib/pdf';
 
 // Pure parsing for `scrapers/usamw.ts` (port of `usamw/records/national_records.py`).
 
 export const PAGE_URL = 'https://usamasters.net/masters-records-grand-slam';
+
+/** How the sync reads the PDFs (`pdfRunLines`): pages as displayed, since the September 2026 PDFs rotate them. */
+export const PDF_OPTIONS = { xTolerance: 2, yTolerance: 2, asDisplayed: true } as const satisfies PdfLineOptions;
 
 export type UsamwRecord = {
   recordType: 'USAMW';
@@ -65,12 +68,13 @@ const DATE_WORD = /^(?:\d{1,2}-[A-Za-z]{3,}-\d{2,4}|\d{1,2}\/\d{1,2}\/\d{2,4})$/
 /** Runs closer than this (points) are one table cell; a cell's own words are drawn closer. */
 const CELL_GAP = 6;
 
-/** A line's table cells: its runs, those drawn next to each other joined. */
+/** A line's table cells: its runs, those drawn next to each other joined (with a space as `pdfRunLines` puts one). */
 function lineCells(line: PdfLine): string[] {
   const cells: string[] = [];
   let end = -Infinity;
   for (const run of line.runs) {
-    if (cells.length && run.x - end <= CELL_GAP) cells[cells.length - 1] += ` ${run.text}`;
+    const gap = run.x - end;
+    if (cells.length && gap <= CELL_GAP) cells[cells.length - 1] += `${gap > PDF_OPTIONS.xTolerance ? ' ' : ''}${run.text}`;
     else cells.push(run.text);
     end = Math.max(end, run.end);
   }
@@ -90,7 +94,8 @@ function siteAndCompetition(tail: string, cells: string[] | undefined): [site: s
   if (cells && at >= 0) {
     const words = cells[at].split(' ');
     const after = [words.slice(words.findIndex((word) => DATE_WORD.test(word)) + 1).join(' '), ...cells.slice(at + 1)].filter(Boolean);
-    if (after.length >= 2 && after.join('').replace(/\s/g, '') === tail.replace(/\s/g, '')) return [after[0], after.slice(1).join(' ')];
+    // Only a first cell that reads as a whole site ("City, Region"), and cells that say what the text says.
+    if (after.length >= 2 && /,\s*\S/.test(after[0]) && after.join(' ') === tail) return [after[0], after.slice(1).join(' ')];
   }
   const site = /^(.+?,\s*[A-Z]{2})\s+(.+)$/.exec(tail);
   return site ? [site[1], site[2]] : [undefined, tail];
@@ -108,7 +113,7 @@ function lineHolder(value: number, rest: string, cells: string[] | undefined): R
   const name = words
     .slice(0, at < 0 ? words.length : at)
     .join(' ')
-    .replace(/\b([A-Z][A-Z'-]+)([A-Z][a-z])/g, '$1 $2');
+    .replace(/\b([A-Z][A-Z'-]*[A-Z])([A-Z][a-z])/g, '$1 $2');
   if (at < 0) return recordHolder(value, name);
   const [site, competition] = siteAndCompetition(words.slice(at + 1).join(' '), cells);
   return recordHolder(value, name, recordsDate(words[at]), competition, site);
@@ -121,12 +126,13 @@ function lineHolder(value: number, rest: string, cells: string[] | undefined): R
  * class whose three lifts one lifter set on one day is checked, where
  * snatch + C&J must equal the total, and a value is changed only when it is
  * the one lift whose doubled last digit, dropped, makes them add up.
+ * Returns what it changed, for the sync to log.
  */
-function repairDoubledDigit(record: UsamwRecord): void {
+function repairDoubledDigit(record: UsamwRecord): string | undefined {
   const { snatchRecord: snatch, cjRecord: cj, totalRecord: total, snatchBy, cjBy, totalBy } = record;
-  if (snatch === null || cj === null || total === null || !snatchBy || !cjBy || !totalBy) return;
+  if (snatch === null || cj === null || total === null || !snatchBy || !cjBy || !totalBy) return undefined;
   const sameDay = (a: RecordHolder, b: RecordHolder) => a.name === b.name && a.date !== undefined && a.date === b.date;
-  if (!sameDay(snatchBy, cjBy) || !sameDay(snatchBy, totalBy) || snatch + cj === total) return;
+  if (!sameDay(snatchBy, cjBy) || !sameDay(snatchBy, totalBy) || snatch + cj === total) return undefined;
   const undoubled = (value: number) => (/^\d*(\d)\1$/.test(String(value)) ? Math.trunc(value / 10) : null);
   const fixes = [
     ['snatchRecord', undoubled(snatch), (v: number) => v + cj === total],
@@ -134,7 +140,11 @@ function repairDoubledDigit(record: UsamwRecord): void {
     ['totalRecord', undoubled(total), (v: number) => snatch + cj === v],
   ] as const;
   const fixed = fixes.filter(([, value, adds]) => value !== null && adds(value));
-  if (fixed.length === 1) record[fixed[0][0]] = fixed[0][1]!;
+  if (fixed.length !== 1) return undefined;
+  const [field, value] = fixed[0];
+  const printed = record[field];
+  record[field] = value!;
+  return `${record.gender} ${record.ageCategory} ${record.weightClass} ${field}: printed ${printed}, stored ${value}`;
 }
 
 function weightOrder(weightClass: string): number {
@@ -148,7 +158,7 @@ function weightOrder(weightClass: string): number {
  * (`pdfRunLines`), which tell a site abroad from the competition after it.
  * Sorted by gender, age, then class, as before.
  */
-export function parseRecordPages(pages: (string | PdfLine)[][], gender: string): UsamwRecord[] {
+export function parseRecordPages(pages: (string | PdfLine)[][], gender: string, repairs: string[] = []): UsamwRecord[] {
   const byKey = new Map<string, UsamwRecord>();
   for (const page of pages) {
     const nonEmpty = page
@@ -190,7 +200,10 @@ export function parseRecordPages(pages: (string | PdfLine)[][], gender: string):
       byKey.set(key, record);
     }
   }
-  for (const record of byKey.values()) repairDoubledDigit(record);
+  for (const record of byKey.values()) {
+    const repair = repairDoubledDigit(record);
+    if (repair) repairs.push(repair);
+  }
   const ageNumber = (r: UsamwRecord) => Number(/\d+/.exec(r.ageCategory)![0]);
   return [...byKey.values()].sort(
     (a, b) =>

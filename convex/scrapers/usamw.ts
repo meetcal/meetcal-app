@@ -7,7 +7,7 @@ import { fetchBytes } from './lib/http';
 import { fetchPageText } from './lib/incompleteChain';
 import { pdfRunLines } from './lib/pdf';
 import { previewPrune, writeThenPrune } from './lib/prune';
-import { discoverRecordPdfs, PAGE_URL, parseRecordPages, type UsamwRecord } from './parse/usamw';
+import { discoverRecordPdfs, PAGE_URL, parseRecordPages, PDF_OPTIONS, type UsamwRecord } from './parse/usamw';
 
 /**
  * USA Masters Weightlifting national records (port of
@@ -26,10 +26,12 @@ export const run = internalAction({
   handler: async (ctx, { dryRun, allowShrink }): Promise<RunResult> => {
     const urls = discoverRecordPdfs(await fetchPageText(PAGE_URL, 45_000));
     const records: UsamwRecord[] = [];
+    const repairs: string[] = [];
     for (const gender of ['Men', 'Women'] as const) {
-      const pages = await pdfRunLines(await fetchBytes(urls[gender], 45_000), { xTolerance: 2, yTolerance: 2 });
-      records.push(...parseRecordPages(pages, gender));
+      const pages = await pdfRunLines(await fetchBytes(urls[gender], 45_000), PDF_OPTIONS);
+      records.push(...parseRecordPages(pages, gender, repairs));
     }
+    for (const repair of repairs) console.warn(`usamw: repaired a doubled last digit: ${repair}`);
     if (records.length === 0) throw new Error('usamw: parsed 0 national records');
     const prune = (options: { allowShrink: boolean; dryRun: boolean }): Promise<{ deleted: string[] }> =>
       ctx.runMutation(internal.ingest.pruneRecords, {
