@@ -102,6 +102,12 @@ describe('USAMW national records (port of national_records.py)', () => {
       ],
     };
     expect(parseRecordPages([[...head, touching]], 'Men')[0].snatchBy?.location).toBe('World Masters, Las Vegas, NV');
+    // A date drawn as two touching runs is still one date.
+    const splitDate: PdfLine = {
+      text: '110+ CnJ 195 ALBURY Dimitri 26-Sep-26 Athens, Greece World Masters',
+      runs: [...at(abroad.slice(0, 5)).runs, { text: '26-Sep-', x: 364, end: 398 }, { text: '26', x: 398, end: 408 }, ...at(abroad.slice(6)).runs],
+    };
+    expect(parseRecordPages([[...head, splitDate]], 'Men')[0].cjBy).toEqual(cells.cjBy);
   });
 
   it('spaces a family name the PDF runs into the given name only where it draws the name as one cell', () => {
@@ -117,6 +123,9 @@ describe('USAMW national records (port of national_records.py)', () => {
     // Family and given name in their own cells are kept as written.
     expect(holder(['SMITH', 'ALEXandra'])).toBe('SMITH ALEXandra');
     expect(holder(['SMITH', 'DEAnne'])).toBe('SMITH DEAnne');
+    // One cell already spaced, or fewer than four capitals before the given name: kept as written.
+    expect(holder(['SMITH DEAnne'])).toBe('SMITH DEAnne');
+    expect(holder(['ALEXandra'])).toBe('ALEXandra');
     // Text alone, or no date: the words are kept as they are.
     expect(parseRecordPages([['W 40 - 44', '86 SNA 79 TAN CASTELLANOSYicay 24-Sep-26 Savannah, GA Elite Masters Invitational']], 'Women')[0].snatchBy?.name).toBe('TAN CASTELLANOSYicay');
     expect(parseRecordPages([['W 40 - 44', '86 SNA 79 USAMasters Team']], 'Women')[0].snatchBy?.name).toBe('USAMasters Team');

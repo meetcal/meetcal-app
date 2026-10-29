@@ -68,40 +68,52 @@ const DATE_WORD = /^(?:\d{1,2}-[A-Za-z]{3,}-\d{2,4}|\d{1,2}\/\d{1,2}\/\d{2,4})$/
 /** Runs closer than this (points) are one table cell; a cell's own words are drawn closer. */
 const CELL_GAP = 6;
 
-/** A line's table cells: its runs, those drawn next to each other joined. */
-function lineCells(line: PdfLine): string[] {
-  const cells: string[] = [];
+const letters = (text: string) => text.replace(/\s/g, '');
+
+/**
+ * A line's table cells: its runs, those drawn next to each other joined, cut
+ * from the line's own text (so touching runs read as `pdfRunLines` joined
+ * them: "12-Sep-" and "25" are one date). Undefined when the runs do not
+ * spell the text.
+ */
+function lineCells(line: PdfLine): string[] | undefined {
+  const sizes: number[] = [];
   let end = -Infinity;
   for (const run of line.runs) {
-    if (cells.length && run.x - end <= CELL_GAP) cells[cells.length - 1] += ` ${run.text}`;
-    else cells.push(run.text);
+    const size = letters(run.text).length;
+    if (sizes.length && run.x - end <= CELL_GAP) sizes[sizes.length - 1] += size;
+    else sizes.push(size);
     end = Math.max(end, run.end);
   }
-  return cells.map((cell) => cell.replace(/\s+/g, ' ').trim()).filter(Boolean);
+  if (sizes.reduce((a, b) => a + b, 0) !== letters(line.text).length) return undefined;
+  const cells: string[] = [];
+  let at = 0;
+  for (const size of sizes) {
+    const from = at;
+    for (let seen = 0; seen < size; at++) if (!/\s/.test(line.text[at])) seen++;
+    cells.push(line.text.slice(from, at).trim());
+  }
+  return cells.filter(Boolean);
 }
 
-const letters = (text: string) => text.replace(/\s/g, '');
+const hasDate = (cell: string) => cell.split(' ').some((word) => DATE_WORD.test(word));
 
 /**
  * Site and competition from what follows the date. The line's cells say
  * where the site ends: it is the first cell after the date (or the rest of
  * the date's cell, which the September 2026 PDFs draw as one run: "29-May-26
  * San Salvador, ES"), and the competition the cells after it, so a site
- * abroad ("Athens, Greece") splits right. The text is cut there, keeping its
- * own spacing. From the text alone the site ends at its two-letter state or
- * country code; without one it is all kept as the location.
+ * abroad ("Athens, Greece") splits right. From the text alone the site ends
+ * at its two-letter state or country code; without one it is all kept as the
+ * location.
  */
 function siteAndCompetition(tail: string, cells: string[] | undefined): [site: string | undefined, competition: string] {
-  const at = cells?.findIndex((cell) => cell.split(' ').some((word) => DATE_WORD.test(word))) ?? -1;
+  const at = cells?.findIndex(hasDate) ?? -1;
   if (cells && at >= 0) {
     const words = cells[at].split(' ');
     const after = [words.slice(words.findIndex((word) => DATE_WORD.test(word)) + 1).join(' '), ...cells.slice(at + 1)].filter(Boolean);
     // Only a first cell that reads as a whole site ("City, Region"), and cells that say what the text says.
-    if (after.length >= 2 && /,\s*\S/.test(after[0]) && letters(after.join('')) === letters(tail)) {
-      let cut = 0;
-      for (let seen = 0; seen < letters(after[0]).length; cut++) if (!/\s/.test(tail[cut])) seen++;
-      return [tail.slice(0, cut).trim(), tail.slice(cut).trim()];
-    }
+    if (after.length >= 2 && /,\s*\S/.test(after[0]) && letters(after.join('')) === letters(tail)) return [after[0], after.slice(1).join(' ')];
   }
   const site = /^(.+?,\s*[A-Z]{2})\s+(.+)$/.exec(tail);
   return site ? [site[1], site[2]] : [undefined, tail];
@@ -110,19 +122,18 @@ function siteAndCompetition(tail: string, cells: string[] | undefined): [site: s
 /**
  * Who set a line's lift, from what follows its value: `Family Given Date Site
  * Competition` ("MURRAY George 12-Sep-25 Las Vegas, NV World Masters"). The
- * name is kept as the PDF lays it out, except where the PDF draws family and
- * given name as one cell, the family name run into the given name ("TAN
- * CASTELLANOSYicay"): the two are spaced. Drawn as two cells, a given name
- * like "ALEXandra" is left alone.
+ * name is kept as the PDF lays it out, except where the PDF draws the whole
+ * name as one cell ending in a family name of four or more capitals run into
+ * the given name ("TAN CASTELLANOSYicay"): the two are spaced. A given name
+ * in its own cell, or like "DEAnne" or "ALEXandra", is left alone.
  */
 function lineHolder(value: number, rest: string, cells: string[] | undefined): RecordHolder | undefined {
   const words = rest.trim().split(/\s+/).filter(Boolean);
   const at = words.findIndex((word) => DATE_WORD.test(word));
   if (at < 0) return recordHolder(value, words.join(' '));
   let name = words.slice(0, at).join(' ');
-  const date = cells?.findIndex((cell) => cell.split(' ').some((word) => DATE_WORD.test(word))) ?? -1;
-  // Cells: class, lift, record, then the name, then the date.
-  if (cells && date === 4) name = name.replace(/\b([A-Z][A-Z'-]*[A-Z])([A-Z][a-z]+)$/, '$1 $2');
+  const date = cells?.findIndex(hasDate) ?? -1;
+  if (cells && date > 0 && cells[date - 1] === name) name = name.replace(/\b([A-Z][A-Z'-]*[A-Z]{3})([A-Z][a-z]+)$/, '$1 $2');
   const [site, competition] = siteAndCompetition(words.slice(at + 1).join(' '), cells);
   return recordHolder(value, name, recordsDate(words[at]), competition, site);
 }
