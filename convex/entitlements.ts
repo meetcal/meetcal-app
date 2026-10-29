@@ -63,11 +63,14 @@ function isSandboxPurchase(subscriber: Record<string, unknown>, productId: strin
 }
 
 /** The prefix of RevenueCat's ids for promotional grants of the `Subscriptions` entitlement (`rc_promo_Subscriptions_lifetime`). */
-export const PROMOTIONAL_PREFIX = `rc_promo_${SUBSCRIPTION_ENTITLEMENT_ID}_`;
+const PROMOTIONAL_PREFIX = `rc_promo_${SUBSCRIPTION_ENTITLEMENT_ID}_`;
 
 /**
  * The longest-lasting promotional grant of the entitlement that is not a
- * sandbox one, or null without one. RevenueCat names only one product per
+ * sandbox one, or null without one: an entry under `subscriptions` with the
+ * grant's id prefix, `store: "promotional"` and an expiry date (RevenueCat
+ * dates every grant, a lifetime one far ahead; one without a date is not
+ * read as forever). RevenueCat names only one product per
  * entitlement, the one that lasts longest, so a sandbox lifetime purchase
  * (made from TestFlight, never expiring) hides a promotional grant from the
  * entitlement itself; the grant is still listed under `subscriptions`.
@@ -76,20 +79,20 @@ function promotionalGrant(subscriber: Record<string, unknown>, now: number): Ent
   if (!isObject(subscriber.subscriptions)) return null;
   let best: EntitlementState | null = null;
   for (const [productId, grant] of Object.entries(subscriber.subscriptions)) {
-    if (!productId.startsWith(PROMOTIONAL_PREFIX) || !isObject(grant) || grant.is_sandbox === true) continue;
+    if (!productId.startsWith(PROMOTIONAL_PREFIX) || !isObject(grant) || grant.store !== 'promotional' || grant.is_sandbox === true) continue;
     const expiresAt = dateMs(grant.expires_date, 'expires_date');
-    const state = { active: expiresAt === null || expiresAt > now, expiresAt, productId };
-    const lasts = (s: EntitlementState) => s.expiresAt ?? Infinity;
-    if (best === null || lasts(state) > lasts(best)) best = state;
+    if (expiresAt === null) continue;
+    const state = { active: expiresAt > now, expiresAt, productId };
+    if (best === null || expiresAt > best.expiresAt!) best = state;
   }
   return best;
 }
 
 /**
  * The `Subscriptions` entitlement from RevenueCat's `GET /v1/subscribers`
- * answer. No entitlement is inactive, and so is a sandbox purchase unless
- * `countSandbox`, or a promotional grant that is not a sandbox one is still
- * in force (`promotionalGrant`). A null `expires_date` is a lifetime
+ * answer. No entitlement is inactive. A sandbox purchase is inactive too,
+ * unless `countSandbox` (dev) or an unexpired promotional grant stands
+ * behind it (`promotionalGrant`). A null `expires_date` is a lifetime
  * purchase. A billing grace period counts until it ends.
  */
 export function entitlementFromSubscriber(body: unknown, now: number, countSandbox = false): EntitlementState {
