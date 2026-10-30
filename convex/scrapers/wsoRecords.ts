@@ -3,7 +3,7 @@
 import { v } from 'convex/values';
 import { internalAction, type ActionCtx } from '../_generated/server';
 import { internal } from '../_generated/api';
-import { absoluteUrl, fetchBytes, fetchText, mapLimited, throttledOrTransient, withRetries, type RetryPolicy } from './lib/http';
+import { absoluteUrl, fetchPdf, fetchText, mapLimited, throttledOrTransient, withRetries, type RetryPolicy } from './lib/http';
 import { unescapeHtml } from './lib/html';
 import { pdfLines, pdfRunLines } from './lib/pdf';
 import {
@@ -230,7 +230,7 @@ export const WSO_SOURCES: WsoSource[] = [
     scrape: async () => {
       const page = 'https://www.illinoisweightlifting.com/';
       const pdfUrl = absoluteUrl(illinoisPdfHref(unescapeHtml(await fetchText(page))), page);
-      const lines = (await pdfLines(await fetchBytes(pdfUrl))).flat();
+      const lines = (await pdfLines(await fetchPdf(pdfUrl))).flat();
       const { records, warnings } = parseIllinois(lines, 'Illinois');
       for (const warning of warnings) console.log(`wso records (Illinois): ${warning}`);
       return records;
@@ -241,7 +241,7 @@ export const WSO_SOURCES: WsoSource[] = [
     scrape: async () => {
       const urls = mountainSouthPdfUrls(await fetchText('https://mountainsouth.org/records/'));
       if (!urls.length) throw new Error('No records PDFs found on the Mountain South records page');
-      const pdfs = await Promise.all(urls.map(async (url) => pdfRunLines(await fetchBytes(url, 60_000))));
+      const pdfs = await Promise.all(urls.map(async (url) => pdfRunLines(await fetchPdf(url, 60_000))));
       return everyPart('Mountain South', pdfs.map((pages) => parseMountainSouth(pages, 'Mountain South')), (i) => urls[i]);
     },
   },
@@ -250,7 +250,7 @@ export const WSO_SOURCES: WsoSource[] = [
     scrape: async () => {
       const urls = newYorkPdfUrls(await fetchText('https://www.nywso.com/state-records'));
       if (!urls.length) throw new Error('No records PDFs found on the New York records page');
-      const pdfs = await Promise.all(urls.map(async (url) => pdfLines(await fetchBytes(url, 60_000))));
+      const pdfs = await Promise.all(urls.map(async (url) => pdfLines(await fetchPdf(url, 60_000))));
       return everyPart('New York', pdfs.map((pages) => parseNewYork(pages, 'New York')), (i) => urls[i]);
     },
   },
@@ -259,7 +259,7 @@ export const WSO_SOURCES: WsoSource[] = [
     scrape: async () => {
       const urls = newEnglandPdfUrls(await fetchText('https://www.newenglandweightlifting.com/records'));
       if (!urls.length) throw new Error('No records PDFs found on the New England records page');
-      const pdfs = await Promise.all(urls.map(async (url) => pdfRunLines(await fetchBytes(url, 60_000))));
+      const pdfs = await Promise.all(urls.map(async (url) => pdfRunLines(await fetchPdf(url, 60_000))));
       return everyPart('New England', pdfs.map((pages) => parseNewEngland(pages, 'New England')), (i) => urls[i]);
     },
   },
