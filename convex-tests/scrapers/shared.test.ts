@@ -63,6 +63,10 @@ describe('shared scraper helpers', () => {
       const fetchMock = jest.fn(async () => new Response(pdf, { status: 200 }));
       global.fetch = fetchMock as typeof fetch;
       expect(await fetchPdf('https://example.test/records.pdf')).toEqual(pdf);
+      // Readers accept bytes before the header.
+      const padded = new TextEncoder().encode('\n%PDF-1.4 rest');
+      global.fetch = jest.fn(async () => new Response(padded, { status: 200 })) as typeof fetch;
+      expect(await fetchPdf('https://example.test/records.pdf')).toEqual(padded);
       expect(fetchMock).toHaveBeenCalledWith('https://example.test/records.pdf', expect.objectContaining({ headers: { 'User-Agent': USER_AGENT, accept: 'application/pdf' } }));
       // mountainsouth.org answers a request without a browser User-Agent with a 406 page.
       global.fetch = jest.fn(async () => new Response('<html>Not Acceptable</html>', { status: 406 })) as typeof fetch;

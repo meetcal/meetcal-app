@@ -65,6 +65,23 @@ describe('Mountain South WSO PDFs (port of scraper_pdf_mountainsouth.py)', () =>
     expect(parseMountainSouth([['60 Snatch 88 DOE, Jane 3/3/22']], 'Mountain South')).toEqual([]);
   });
 
+  it('reads "Clean&Jerk" without its spaces, and skips page numbers, dates and notes', () => {
+    const pages = [
+      [
+        'OPEN WOMEN',
+        '60 Clean&Jerk 100 DOE, Jane 4/11/26 Mesa, AZ',
+        '2',
+        '10/17/2026',
+        'Records for MEN and WOMEN must be set at OPEN sanctioned meets',
+        '60 Total 180 DOE, Jane 4/11/26 Mesa, AZ',
+      ],
+    ];
+    const [record, ...rest] = parseMountainSouth(pages, 'Mountain South');
+    expect(rest).toEqual([]);
+    expect(record).toMatchObject({ age_category: 'Senior', gender: 'Women', cj_record: 100, total_record: 180, cj_by: { name: 'DOE, Jane', date: '2026-04-11', location: 'Mesa, AZ' } });
+    expect(record).not.toHaveProperty('undefined');
+  });
+
   it('reads holders from positioned runs, the place and the event split by their columns', () => {
     const pages = [
       [
@@ -76,12 +93,24 @@ describe('Mountain South WSO PDFs (port of scraper_pdf_mountainsouth.py)', () =>
         line('65', 'Total', '217', 'MCALLISTER, Ashton', '10/17/26', 'Salt Lake City, UT'),
         line('70', 'Snatch', '0', 'STANDARD', '8/1/26'),
       ],
+      // The next page prints no headings: the section and its columns carry on.
+      [
+        // "Clean & Jerk" drawn in runs so tight the text reads "Clean&Jerk".
+        { ...runs([47, '75'], [72, 'Clean'], [96, '&'], [102, 'Jerk'], [139, '152'], [177, 'PAK, Elijah'], [290, '9/12/26'], [339, 'Fort Worth, TX'], [446, '2026 VW Series 2']), text: '75 Clean&Jerk 152 PAK, Elijah 9/12/26 Fort Worth, TX 2026 VW Series 2' },
+        // A blank event cell.
+        line('75', 'Total', '272', 'PAK, Elijah', '9/12/26', 'Fort Worth, TX', '#N/A'),
+      ],
     ];
     const records = parseMountainSouth(pages, 'Mountain South');
-    expect(records.map((r) => [r.weight_class, r.snatch_record, r.cj_record, r.total_record])).toEqual([
-      ['65', 97, 120, 217],
-      ['70', null, null, null],
+    expect(records.map((r) => [r.age_category, r.weight_class, r.snatch_record, r.cj_record, r.total_record])).toEqual([
+      ['Senior', '65', 97, 120, 217],
+      ['Senior', '70', null, null, null],
+      ['Senior', '75', null, 152, 272],
     ]);
+    expect(records[2]).toMatchObject({
+      cj_by: { name: 'PAK, Elijah', date: '2026-09-12', location: '2026 VW Series 2, Fort Worth, TX' },
+      total_by: { name: 'PAK, Elijah', date: '2026-09-12', location: 'Fort Worth, TX' },
+    });
     expect(records[0]).toMatchObject({
       snatch_by: { name: 'MCALLISTER, Ashton', date: '2026-10-17', location: '2026 AZ Championship, Mesa, AZ' },
       cj_by: { name: 'HO, Brandon', date: '2025-10-18', location: '2025 WSO Championship, Albuquerque, NM' },

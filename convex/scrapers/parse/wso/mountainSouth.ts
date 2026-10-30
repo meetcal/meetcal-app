@@ -70,7 +70,14 @@ export function mountainSouthSection(line: string): [age: string, gender: 'Men' 
 /** A class line: its class, lift and record, then the holder's cells. */
 const CLASS_LINE = /^(\d+\+?)\s+(Snatch|Clean\s*&\s*Jerk|Total)\s+(\S+)/i;
 
-const FIELDS = { snatch: 'snatch_record', clean: 'cj_record', total: 'total_record' } as const;
+/** A line in the class rows' shape (a class, then a word): one CLASS_LINE cannot read is a layout change. */
+const CLASS_SHAPE = /^\d+\+?\s+[A-Za-z]/;
+
+/** An age group's heading: "OPEN MEN", "MASTER WOMEN W35 (35-39)". */
+const SECTION = /^(?:OPEN|JUNIOR|YOUTH|MASTERS?)\s+(?:WO)?MEN\b/i;
+
+/** Lifts by their first letter: "Clean & Jerk" may print without its spaces. */
+const FIELDS = { s: 'snatch_record', c: 'cj_record', t: 'total_record' } as const;
 const HOLDER_FIELDS = { snatch_record: 'snatch_by', cj_record: 'cj_by', total_record: 'total_by' } as const;
 
 /**
@@ -86,19 +93,21 @@ type Word = { text: string; x?: number };
 const words = (text: string, x?: number): Word[] =>
   text
     .split(/\s+/)
-    .filter(Boolean)
+    // Blank cells print as "#N/A" or a dash.
+    .filter((word) => word && word !== '#N/A' && !/^[-–—]+$/.test(word))
     .map((word) => ({ text: word, x }));
 
 const DATE = /^\d{1,2}\/\d{1,2}\/\d{2}(?:\d{2})?$/;
 
 /**
- * Who set `value`, from the words after the first `skip` (the class, the
- * lift and the record): the athlete, the date, then the place and the event.
+ * Who set `value`, from the words after the record (the first after the
+ * class to start with a digit: the lift's words never do, however the runs
+ * split them): the athlete, the date, then the place and the event.
  */
-function lineHolder(value: number | null, line: string | PdfLine, skip: number, columns: Columns): RecordHolder | undefined {
+function lineHolder(value: number | null, line: string | PdfLine, columns: Columns): RecordHolder | undefined {
   if (value === null) return undefined;
   const all = typeof line === 'string' ? words(line) : line.runs.flatMap((run) => words(run.text, run.x));
-  const rest = all.slice(skip);
+  const rest = all.slice(all.findIndex((word, i) => i > 0 && /^\d/.test(word.text)) + 1);
   const at = rest.findIndex((word) => DATE.test(word.text));
   const name = at === -1 ? rest : rest.slice(0, at);
   const after = at === -1 ? [] : rest.slice(at + 1);
@@ -112,10 +121,10 @@ function lineHolder(value: number | null, line: string | PdfLine, skip: number, 
 /** One PDF's records, from its lines (text, or runs with positions) page by page. */
 export function parseMountainSouth(pages: readonly (readonly (string | PdfLine)[])[], wso: string): WsoRecord[] {
   const records = new Map<string, WsoRecord>();
-  // An age group may run on to the next page without its heading again.
+  // An age group, and the column headings, may run on to the next page without being printed again.
   let section: [string, 'Men' | 'Women'] | null = null;
+  let columns: Columns = {};
   for (const page of pages) {
-    let columns: Columns = {};
     for (const source of page) {
       const line = (typeof source === 'string' ? source : source.text).trim();
       if (line.includes('CAT') && line.includes('LIFT') && line.includes('RECORD')) {
@@ -126,23 +135,23 @@ export function parseMountainSouth(pages: readonly (readonly (string | PdfLine)[
         }
         continue;
       }
-      if (!/^\d/.test(line)) {
+      if (SECTION.test(line)) {
         section = mountainSouthSection(line) ?? section;
         continue;
       }
-      if (!section) continue;
+      // Page numbers, dates and notes are not classes.
+      if (!section || !CLASS_SHAPE.test(line)) continue;
       const match = CLASS_LINE.exec(line);
       if (!match) throw new Error(`${wso}: unreadable class line ${JSON.stringify(line)} (layout changed?)`);
       const weightClass = plusLast(match[1]);
-      const field = FIELDS[match[2].split(/\s/)[0].toLowerCase() as keyof typeof FIELDS];
+      const field = FIELDS[match[2][0].toLowerCase() as keyof typeof FIELDS];
       const key = JSON.stringify([section[0], section[1], weightClass]);
       const record = records.get(key) ?? blankRecord(wso, section[0], section[1], weightClass);
       records.set(key, record);
       // 0 is how the PDFs list a vacant class.
       const value = intOrNull(match[3]) || null;
       record[field] = value;
-      const skip = match[0].split(/\s+/).length;
-      setHolder(record, HOLDER_FIELDS[field], lineHolder(value, source, skip, columns));
+      setHolder(record, HOLDER_FIELDS[field], lineHolder(value, source, columns));
     }
   }
   return [...records.values()];
