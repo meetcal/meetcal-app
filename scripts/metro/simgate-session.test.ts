@@ -22,6 +22,12 @@ describe('package.json', () => {
     expect(unwrapped).toEqual([]);
   });
 
+  it('points a reused development client at the session Metro, not the server it last loaded', () => {
+    for (const name of ['start', 'dev']) {
+      expect(scripts[name]).toContain("--open-url 'exp+meetcal://expo-development-client/?url=http%3A%2F%2Flocalhost%3A{port}'");
+    }
+  });
+
   it('bootstraps the development client on the session simulator and port', () => {
     expect(scripts['maestro:bootstrap']).toContain('openurl ${SIMGATE_UDID:-booted}');
     expect(scripts['maestro:bootstrap']).toContain('%3A${SIMGATE_PORT:-8081}');

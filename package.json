@@ -3,7 +3,7 @@
   "main": "expo-router/entry",
   "version": "1.0.0",
   "scripts": {
-    "start": "simgate run --platform ios --bundle-id com.memohnsen.meetcal -- expo start",
+    "start": "simgate run --platform ios --bundle-id com.memohnsen.meetcal --open-url 'exp+meetcal://expo-development-client/?url=http%3A%2F%2Flocalhost%3A{port}' -- expo start",
     "android": "simgate run --platform android -- expo run:android",
     "ios": "simgate run --platform ios --bundle-id com.memohnsen.meetcal --record-build -- expo run:ios --device {udid}",
     "web": "simgate run --platform web -- expo start --web",
@@ -16,7 +16,7 @@
     "maestro:bootstrap": "xcrun simctl terminate ${SIMGATE_UDID:-booted} ${APP_ID:-com.memohnsen.meetcal} || true; xcrun simctl openurl ${SIMGATE_UDID:-booted} \"${DEV_CLIENT_URL:-exp+meetcal://expo-development-client/?url=http%3A%2F%2F192.168.0.114%3A${SIMGATE_PORT:-8081}}\"",
     "maestro:test": "simgate run --platform ios --bundle-id com.memohnsen.meetcal -- bun scripts/maestro-session.ts .maestro",
     "maestro:test:flow": "simgate run --platform ios --bundle-id com.memohnsen.meetcal -- bun scripts/maestro-session.ts",
-    "dev": "simgate run --platform ios --bundle-id com.memohnsen.meetcal -- expo start",
+    "dev": "simgate run --platform ios --bundle-id com.memohnsen.meetcal --open-url 'exp+meetcal://expo-development-client/?url=http%3A%2F%2Flocalhost%3A{port}' -- expo start",
     "update:prod": "EXPO_PUBLIC_CONVEX_URL=https://disciplined-hare-790.convex.cloud eas update --branch production --non-interactive"
   },
   "jest": {

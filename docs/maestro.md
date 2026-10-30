@@ -16,12 +16,12 @@ The E2E switch is dev-only. It skips onboarding/version modals and bypasses auth
 ```sh
 bun run maestro:test
 APP_ID=com.memohnsen.meetcal.dev bun run maestro:test
-DEV_CLIENT_URL="exp+meetcal://expo-development-client/?url=http%3A%2F%2F192.168.0.114%3A8081" bun run maestro:test
+DEV_CLIENT_URL="exp+meetcal://expo-development-client/?url=http%3A%2F%2F<host>%3A<session port>" bun run maestro:test
 bun run maestro:bootstrap
 bun run maestro:test:flow .maestro/00-main-tabs.yaml
 ```
 
-The default `APP_ID` is `com.memohnsen.meetcal`. `bun run maestro:test` waits until its Metro serves, then bootstraps the Expo development client with `xcrun simctl openurl` on the session's simulator (`SIMGATE_UDID`) and port (`SIMGATE_PORT`). The default `DEV_CLIENT_URL` matches the LAN URL printed by Expo on this machine; override it if Expo prints a different host.
+The default `APP_ID` is `com.memohnsen.meetcal`. `bun run maestro:test` waits until its Metro serves, then bootstraps the Expo development client with `xcrun simctl openurl` on the session's simulator (`SIMGATE_UDID`) and port (`SIMGATE_PORT`). The default `DEV_CLIENT_URL` matches the LAN URL printed by Expo on this machine, with the session's port; override it if Expo prints a different host, and keep the session's port (8081 in slot 1, 8082 in slot 2).
 
 ## Coverage Map
 
