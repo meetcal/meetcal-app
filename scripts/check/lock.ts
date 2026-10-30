@@ -10,9 +10,8 @@
  * lock that exists always names its owner. A lock whose owner process has
  * exited is stale and the next waiter reclaims it.
  *
- * The simulator lock (`scripts/metro-lock.ts`) uses the same mechanics at a
- * machine-wide path that the Atlas repository shares, so keep the owner file's
- * format in step with Atlas's `scripts/check-lock.ts`.
+ * The simulator lock is simgate's, a standalone tool shared by every repository
+ * on the machine (see AGENTS.md, Simulator lock); it uses these mechanics too.
  */
 import { spawnSync } from 'node:child_process';
 import { randomUUID } from 'node:crypto';

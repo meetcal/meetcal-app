@@ -1,16 +1,16 @@
 /**
  * One Maestro run as its own device session: starts Metro with the E2E switch
  * (`docs/maestro.md`), waits until it serves, opens the development client,
- * runs the flows, then stops Metro. `bun run maestro:test` runs it under the
- * simulator lock (`scripts/metro-lock.ts`), so the run owns the simulator and
- * port 8081 from start to finish:
+ * runs the flows, then stops Metro. `bun run maestro:test` runs it as a simgate
+ * session (see AGENTS.md, Simulator lock), so the run owns its simulator
+ * (`SIMGATE_UDID`) and Metro port (`SIMGATE_PORT`) from start to finish:
  *
  *   bun scripts/maestro-session.ts <maestro test args...>
  */
 import { spawn, type ChildProcess } from 'node:child_process';
 
 import { processTree, signalProcesses } from './check/process-tree';
-import { metroPort } from './metro/session';
+import { maestroArgsFor, sessionPort } from './metro/simgate-session';
 
 const METRO_READY_TIMEOUT_MS = 180_000;
 const METRO_POLL_MS = 1_000;
@@ -35,7 +35,7 @@ const exited = (child: ChildProcess) =>
 
 async function main(maestroArgs: string[]): Promise<never> {
   const appId = process.env.APP_ID || DEFAULT_APP_ID;
-  const port = metroPort(process.env);
+  const port = sessionPort(process.env);
   // CI turns off Expo's interactive prompts; nothing reads this Metro's stdin.
   const metro = spawn('expo', ['start', '--port', String(port)], {
     stdio: ['ignore', 'inherit', 'inherit'],
@@ -68,7 +68,8 @@ async function main(maestroArgs: string[]): Promise<never> {
   const env = { ...process.env, APP_ID: appId };
   const bootstrap = await exited(spawn('bun', ['run', 'maestro:bootstrap'], { stdio: 'inherit', env }));
   if (bootstrap !== 0) process.exit(bootstrap);
-  process.exit(await exited(spawn('maestro', ['test', '-e', `APP_ID=${appId}`, ...maestroArgs], { stdio: 'inherit', env })));
+  const maestro = maestroArgsFor(appId, maestroArgs, process.env.SIMGATE_UDID);
+  process.exit(await exited(spawn('maestro', maestro, { stdio: 'inherit', env })));
 }
 
 const maestroArgs = process.argv.slice(2);
