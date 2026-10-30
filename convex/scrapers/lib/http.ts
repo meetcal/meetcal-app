@@ -35,6 +35,20 @@ export async function fetchBytes(url: string, timeoutMs = DEFAULT_TIMEOUT_MS): P
   return new Uint8Array(await (await get(url, timeoutMs)).arrayBuffer());
 }
 
+/**
+ * A PDF's bytes. A body that is not a PDF throws (one that starts "%PDF-"):
+ * a site that refuses a scraper with an HTML page at status 200 must fail
+ * the source, not parse as an empty file.
+ */
+export async function fetchPdf(url: string, timeoutMs = DEFAULT_TIMEOUT_MS): Promise<Uint8Array> {
+  const response = await get(url, timeoutMs, { accept: 'application/pdf' });
+  const bytes = new Uint8Array(await response.arrayBuffer());
+  if (new TextDecoder().decode(bytes.subarray(0, 5)) !== '%PDF-') {
+    throw new Error(`GET ${url} returned ${response.headers.get('content-type') ?? 'no content type'}, not a PDF (${bytes.length} bytes)`);
+  }
+  return bytes;
+}
+
 /** Resolves a link found on a page against that page's URL. */
 export function absoluteUrl(href: string, base: string): string {
   return new URL(href, base).toString();

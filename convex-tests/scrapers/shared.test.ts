@@ -1,4 +1,4 @@
-import { fetchJson, fetchText, HttpStatusError, mapLimited, throttledOrTransient, withRetries } from '../../convex/scrapers/lib/http';
+import { fetchJson, fetchPdf, fetchText, HttpStatusError, mapLimited, throttledOrTransient, USER_AGENT, withRetries } from '../../convex/scrapers/lib/http';
 import { pyFloat, pyInt } from '../../convex/scrapers/lib/numbers';
 import { setHolder, type RecordHolder } from '../../convex/scrapers/parse/holder';
 import { blankRecord, columnDLift, liftsRecord, NO_LIFT, plusLast, setLift } from '../../convex/scrapers/parse/wso/common';
@@ -56,6 +56,19 @@ describe('shared scraper helpers', () => {
       expect(fetchMock).toHaveBeenCalledWith('https://example.test/a', expect.objectContaining({ headers: { 'User-Agent': 'MeetCal', accept: 'application/json' } }));
       global.fetch = jest.fn(async () => new Response('down', { status: 503 })) as typeof fetch;
       await expect(fetchJson('https://example.test/b')).rejects.toThrow('GET https://example.test/b failed with 503');
+    });
+
+    it('asks for a PDF with a browser User-Agent, refusing a refusal page and a body that is not a PDF', async () => {
+      const pdf = new TextEncoder().encode('%PDF-1.7 rest');
+      const fetchMock = jest.fn(async () => new Response(pdf, { status: 200 }));
+      global.fetch = fetchMock as typeof fetch;
+      expect(await fetchPdf('https://example.test/records.pdf')).toEqual(pdf);
+      expect(fetchMock).toHaveBeenCalledWith('https://example.test/records.pdf', expect.objectContaining({ headers: { 'User-Agent': USER_AGENT, accept: 'application/pdf' } }));
+      // mountainsouth.org answers a request without a browser User-Agent with a 406 page.
+      global.fetch = jest.fn(async () => new Response('<html>Not Acceptable</html>', { status: 406 })) as typeof fetch;
+      await expect(fetchPdf('https://example.test/records.pdf')).rejects.toThrow('GET https://example.test/records.pdf failed with 406');
+      global.fetch = jest.fn(async () => new Response('<html>blocked</html>', { status: 200, headers: { 'content-type': 'text/html' } })) as typeof fetch;
+      await expect(fetchPdf('https://example.test/records.pdf')).rejects.toThrow('GET https://example.test/records.pdf returned text/html, not a PDF (20 bytes)');
     });
 
     it('retries as the policy says, then gives up with the last failure', async () => {
