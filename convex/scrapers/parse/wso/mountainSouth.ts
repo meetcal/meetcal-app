@@ -68,13 +68,13 @@ export function mountainSouthSection(line: string): [age: string, gender: 'Men' 
 }
 
 /** A class line: its class, lift and record, then the holder's cells. */
-const CLASS_LINE = /^(\d+\+?)\s+(Snatch|Clean\s*&\s*Jerk|Total)\s+(\S+)/i;
+const CLASS_LINE = /^(\+?\d+\+?)\s+(Snatch|Clean\s*&\s*Jerk|Total)\s+(\S+)/i;
 
 /** A line in the class rows' shape (a class, then a word): one CLASS_LINE cannot read is a layout change. */
-const CLASS_SHAPE = /^\d+\+?\s+[A-Za-z]/;
+const CLASS_SHAPE = /^\+?\d+\+?\s+[A-Za-z]/;
 
 /** An age group's heading: "OPEN MEN", "MASTER WOMEN W35 (35-39)". */
-const SECTION = /^(?:OPEN|JUNIOR|YOUTH|MASTERS?)\s+(?:WO)?MEN\b/i;
+const SECTION = /^(?:OPEN|JUNIOR|YOUTH|MASTERS?)\s+(?:WO)?MEN\b/;
 
 /** Lifts by their first letter: "Clean & Jerk" may print without its spaces. */
 const FIELDS = { s: 'snatch_record', c: 'cj_record', t: 'total_record' } as const;
@@ -99,15 +99,20 @@ const words = (text: string, x?: number): Word[] =>
 
 const DATE = /^\d{1,2}\/\d{1,2}\/\d{2}(?:\d{2})?$/;
 
+/** Where the record is among a line's words: the first after the class to start with a digit (the lift's words never do). */
+const recordAt = (list: readonly Word[]) => list.findIndex((word, i) => i > 0 && /^\d/.test(word.text));
+
 /**
- * Who set `value`, from the words after the record (the first after the
- * class to start with a digit: the lift's words never do, however the runs
- * split them): the athlete, the date, then the place and the event.
+ * Who set `value`, from the words after the record: the athlete, the date,
+ * then the place and the event. The runs are read when they agree with the
+ * text on the record, the text's words otherwise.
  */
 function lineHolder(value: number | null, line: string | PdfLine, columns: Columns): RecordHolder | undefined {
   if (value === null) return undefined;
-  const all = typeof line === 'string' ? words(line) : line.runs.flatMap((run) => words(run.text, run.x));
-  const rest = all.slice(all.findIndex((word, i) => i > 0 && /^\d/.test(word.text)) + 1);
+  const text = words(typeof line === 'string' ? line : line.text);
+  const runs = typeof line === 'string' ? [] : line.runs.flatMap((run) => words(run.text, run.x));
+  const all = recordAt(runs) !== -1 && Math.trunc(Number(runs[recordAt(runs)].text)) === value ? runs : text;
+  const rest = all.slice(recordAt(all) + 1);
   const at = rest.findIndex((word) => DATE.test(word.text));
   const name = at === -1 ? rest : rest.slice(0, at);
   const after = at === -1 ? [] : rest.slice(at + 1);
@@ -131,12 +136,14 @@ export function parseMountainSouth(pages: readonly (readonly (string | PdfLine)[
         if (typeof source !== 'string') {
           const at = (name: string) => source.runs.find((run) => run.text.trim() === name)?.x;
           const [location, event] = [at('LOCATION'), at('EVENT')];
-          columns = location !== undefined && event !== undefined ? { event: (location + event) / 2 } : {};
+          if (location !== undefined && event !== undefined) columns = { event: (location + event) / 2 };
         }
         continue;
       }
       if (SECTION.test(line)) {
-        section = mountainSouthSection(line) ?? section;
+        section = mountainSouthSection(line);
+        // Keeping the previous group would file this one's lines over it.
+        if (!section) throw new Error(`${wso}: unreadable age group heading ${JSON.stringify(line)} (layout changed?)`);
         continue;
       }
       // Page numbers, dates and notes are not classes.

@@ -46,7 +46,7 @@ const PDF_HEADER_WINDOW = 1024;
 export async function fetchPdf(url: string, timeoutMs = DEFAULT_TIMEOUT_MS): Promise<Uint8Array> {
   const response = await get(url, timeoutMs, { accept: 'application/pdf' });
   const bytes = new Uint8Array(await response.arrayBuffer());
-  if (!new TextDecoder('latin1').decode(bytes.subarray(0, PDF_HEADER_WINDOW)).includes('%PDF-')) {
+  if (!Buffer.from(bytes.buffer, bytes.byteOffset, Math.min(bytes.length, PDF_HEADER_WINDOW)).includes('%PDF-')) {
     throw new Error(`GET ${url} returned ${response.headers.get('content-type') ?? 'no content type'}, not a PDF (${bytes.length} bytes)`);
   }
   return bytes;

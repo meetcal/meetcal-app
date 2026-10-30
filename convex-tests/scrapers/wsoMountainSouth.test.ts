@@ -82,6 +82,27 @@ describe('Mountain South WSO PDFs (port of scraper_pdf_mountainsouth.py)', () =>
     expect(record).not.toHaveProperty('undefined');
   });
 
+  it('reads a class written plus first, and fails on an age group heading it cannot read', () => {
+    expect(parseMountainSouth([['OPEN MEN', '+110 Snatch 180 WITTE, Keiser 6/28/26 Colorado Springs, CO']], 'Mountain South')).toMatchObject([{ weight_class: '110+', snatch_record: 180 }]);
+    // A heading without its range would otherwise file its lines over the group before it.
+    expect(() => parseMountainSouth([['JUNIOR WOMEN U20', '58 Snatch 80 A, B 1/1/26', 'MASTER WOMEN W35', '58 Snatch 60 C, D 1/1/26']], 'Mountain South')).toThrow(
+      'Mountain South: unreadable age group heading "MASTER WOMEN W35" (layout changed?)',
+    );
+    // Headings are upper case; prose that starts the same way is not one.
+    expect(parseMountainSouth([['OPEN WOMEN', "Open men's records must be set at sanctioned meets", '58 Snatch 80 A, B 1/1/26']], 'Mountain South')).toMatchObject([{ gender: 'Women' }]);
+  });
+
+  it('reads the holder from the text when the runs disagree with it on the record', () => {
+    // The lift and the record drawn as one run.
+    const glued = { ...runs([47, '60'], [83, 'Snatch77'], [177, 'MCALLISTER, Ashton'], [290, '6/22/25'], [339, 'Mesa, AZ']), text: '60 Snatch 77 MCALLISTER, Ashton 6/22/25 Mesa, AZ' };
+    expect(parseMountainSouth([[header, runs([275, 'OPEN MEN']), glued]], 'Mountain South')[0].snatch_by).toEqual({ name: 'MCALLISTER, Ashton', date: '2025-06-22', location: 'Mesa, AZ' });
+  });
+
+  it('keeps the columns when a heading line lacks LOCATION and EVENT', () => {
+    const pages = [[header, runs([275, 'OPEN MEN']), runs([44, 'CAT'], [88, 'LIFT'], [129, 'RECORD']), line('65', 'Snatch', '97', 'MCALLISTER, Ashton', '10/17/26', 'Mesa, AZ', '2026 AZ Championship')]];
+    expect(parseMountainSouth(pages, 'Mountain South')[0].snatch_by).toMatchObject({ location: '2026 AZ Championship, Mesa, AZ' });
+  });
+
   it('reads holders from positioned runs, the place and the event split by their columns', () => {
     const pages = [
       [
