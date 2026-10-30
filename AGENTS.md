@@ -6,7 +6,7 @@ Expo / React Native app for USA Weightlifting meet schedules, start lists, resul
 
 - Use Bun for JavaScript. Run commands through `mise run <task>` or `mise exec -- <command>` so this repo's Bun and Node versions apply. Never use npm.
 - Do not read `.env*` contents unless the user authorizes it. Do not deploy Convex, publish an OTA, submit a build, or write production data unless the current task authorizes that action.
-- Start Metro and drive the simulator only through the package scripts (`bun run start|dev|ios|android|web|maestro:test`) or their `mise run app:*` tasks, never a bare `bunx expo start` / `expo run:*` / `maestro test`: the scripts take the [simulator lock](#simulator-lock).
+- Start Metro and drive the simulator only through the package scripts (`bun run start|dev|ios|android|web|maestro:test`) or their `mise run app:*` tasks, never a bare `bunx expo start` / `expo run:*` / `maestro test`: the scripts run through [simgate](#simulator-lock).
 - Do not edit generated `ios/` or `android/` trees as a lasting source change. Do not patch dependencies to work around app defects without a documented reason.
 - Work in the session's dedicated worktree. If the session starts in a primary checkout, create a worktree before editing. Preserve unrelated user changes.
 
@@ -110,14 +110,16 @@ A change that affects app behavior is done when it has run on a device and, for 
 
 ### Simulator lock
 
-One simulator or emulator and one Metro port (8081) serve every worktree on a machine, so the package scripts take a lock per machine (`scripts/metro-lock.ts`), shared with Atlas:
+[simgate](https://github.com/memohnsen/simgate), a standalone tool installed on each machine (`~/.local/bin/simgate`, built from `~/dev/simgate`), gates every simulator, emulator and Metro port on that machine; its README is the reference. The package scripts run through it, and Atlas and t3code use the same gate, so agents in every repository take turns:
 
-- Another worktree holds it: the command prints who, and when their lease ends, every 30 seconds, then starts by itself. Run Metro in the background and wait; leave other worktrees' Metro running, and do not ask the user to pick which agent gets the simulator.
-- Your own worktree's Metro is still running: the command exits. Stop that Metro first; `maestro:test` starts its own.
-- Port 8081 is taken by a process outside the lock: the command exits, naming it and its directory.
-- A session is stopped after a 30-minute lease; set `METRO_SIMULATOR_LEASE_MIN=60` before starting for a longer one.
+- Two sessions per machine, each on its own device: slot 1 runs Metro on 8081, slot 2 on 8082 (passed to Expo as `RCT_METRO_PORT`). Android and web take slot 1 only, so Android runs one at a time; a second iOS session runs on a different simulator.
+- An iOS session claims one simulator and boots it, preferring one that already has a current build: a booted simulator with one, then a shut-down one with one, then another booted one, then a fresh boot and build. A build is current when the installed app is the one a `bun run ios` recorded and its native fingerprint (the `runtimeVersion` hash) matches your checkout's, so JavaScript-only changes run with `bun run start` instead of a rebuild. Name a device with `bun run ios --device <name or UDID>` or `SIMGATE_DEVICE`.
+- Both slots busy: the command prints who holds them, on which simulator, and when their leases end, every 30 seconds, then starts by itself. Run Metro in the background and wait; leave other worktrees' Metro running, and do not ask the user to pick which agent gets the simulator.
+- Your own worktree's session is still running: the command exits. Stop that Metro first; `maestro:test` starts its own.
+- The slot's port is taken by a process outside the gate: the command exits, naming it and its directory.
+- A session is stopped after a 30-minute lease; set `SIMGATE_LEASE_MIN=60` before starting for a longer one. However a session ends, its whole process tree stops (freeing the port) and the simulators it booted are shut down.
+- `simgate status` shows the slots, claimed simulators and recorded builds. If `simgate` is missing, install it (`git clone https://github.com/memohnsen/simgate ~/dev/simgate && ~/dev/simgate/install.sh`) rather than running Expo without it.
 
-Mechanics and tests are in `docs/testing.md`.
 
 ## Code Quality
 

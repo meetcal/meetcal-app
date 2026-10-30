@@ -7,7 +7,7 @@ MeetCal uses Maestro for route-level mobile smoke coverage.
 - Maestro CLI: `maestro --version`
 - Java 17+
 - An installed iOS or Android native build
-- Port 8081 free: `bun run maestro:test` starts its own Metro with the E2E switch (`EXPO_PUBLIC_MAESTRO_E2E=1`), runs the flows, and stops it (`scripts/maestro-session.ts`). It holds the simulator lock for the whole run, so stop your own Metro first.
+- `bun run maestro:test` starts its own Metro with the E2E switch (`EXPO_PUBLIC_MAESTRO_E2E=1`) on its simgate slot's port, runs the flows on the simulator the session claimed, and stops it (`scripts/maestro-session.ts`). It is a simgate session for the whole run, so stop your own Metro first.
 
 The E2E switch is dev-only. It skips onboarding/version modals and bypasses auth/subscription gates so route coverage does not require Clerk or RevenueCat credentials.
 
@@ -21,7 +21,7 @@ bun run maestro:bootstrap
 bun run maestro:test:flow .maestro/00-main-tabs.yaml
 ```
 
-The default `APP_ID` is `com.memohnsen.meetcal`. `bun run maestro:test` waits until its Metro serves, then bootstraps the Expo development client with `xcrun simctl openurl booted`. The default `DEV_CLIENT_URL` matches the LAN URL printed by Expo on this machine; override it if Expo prints a different host.
+The default `APP_ID` is `com.memohnsen.meetcal`. `bun run maestro:test` waits until its Metro serves, then bootstraps the Expo development client with `xcrun simctl openurl` on the session's simulator (`SIMGATE_UDID`) and port (`SIMGATE_PORT`). The default `DEV_CLIENT_URL` matches the LAN URL printed by Expo on this machine; override it if Expo prints a different host.
 
 ## Coverage Map
 

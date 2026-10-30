@@ -1,6 +1,6 @@
 /**
  * Runs a command while holding a lock from `lock.ts`: the release gate
- * (`scripts/check-lock.ts`) and the simulator (`scripts/metro-lock.ts`).
+ * (`scripts/check-lock.ts`).
  */
 import { spawn, type ChildProcess } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
