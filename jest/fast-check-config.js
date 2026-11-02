@@ -8,6 +8,8 @@
  *   FC_SEED=<seed> FC_PATH=<path> bunx jest --ci --watchman=false <file>
  *
  * `FC_NUM_RUNS` raises the case count (the nightly workflow uses thousands).
+ * A shrunk counterexample of a model-based test also needs `FC_REPLAY_PATH`
+ * (see `docs/testing.md`); its test passes that to `fc.commands`.
  *
  * `jest.setup.js` applies these. fast-check keeps them in module state, so a
  * file that calls `jest.resetModules()` and requires fast-check again gets

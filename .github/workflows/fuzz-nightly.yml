@@ -52,4 +52,4 @@ jobs:
         run: |
           gh issue create \
             --title "Nightly fuzz failure $(date -u +%Y-%m-%d)" \
-            --body "A property or chaos test failed in $RUN_URL. The log shows the counterexample and the seed and path to replay it: \`FC_SEED=<seed> FC_PATH=<path> bunx jest --ci --watchman=false <file>\`."
+            --body "A property or chaos test failed in $RUN_URL. The log shows the counterexample and the seed and path to replay it: \`FC_SEED=<seed> FC_PATH=<path> bunx jest --ci --watchman=false <file>\`, plus \`FC_REPLAY_PATH=<replayPath>\` from the end of a shrunk model-based counterexample (docs/testing.md)."

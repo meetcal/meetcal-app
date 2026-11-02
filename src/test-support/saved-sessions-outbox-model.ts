@@ -5,6 +5,7 @@ import * as fc from 'fast-check';
 import { isClockCall } from '@/lib/api/json-transport-stub';
 import * as api from '@/lib/api/meetcal-api';
 import { TransportRequestError, type ApiCall, type Transport } from '@/lib/api/transport';
+import { MAX_RECONCILE_FETCHES } from '@/lib/saved-sessions-load';
 import * as store from '@/lib/saved-sessions-store';
 import type { SavedSession } from '@/lib/saved-sessions-store';
 import {
@@ -873,7 +874,8 @@ function gateStorage(s: fc.Scheduler): { restore: () => void } {
  * each storage read or write completes when the scheduler says. Marks and the reconcile's merge share one queue,
  * as `useSavedSessions`' mutation queue makes them; flushes run beside it.
  * A reconcile fetches at one point and merges later, replaying the writes
- * delivered meanwhile, and must still show the user's intent.
+ * delivered meanwhile, and must still show the user's intent. One that a
+ * refused write overlapped fetches again, as the app's does.
  */
 export class BurstCommand implements Command {
   constructor(
@@ -919,16 +921,24 @@ export class BurstCommand implements Command {
         return;
       }
       if (op.kind === 'reconcile') {
-        const marker = h.outbox.currentDeliverySeq();
-        await s.schedule(Promise.resolve(), 'server users:savedSessions');
-        if (!h.online) return;
-        const fetched = h.server.sessions(OWNER);
-        await onQueue(async () => {
-          const outbox = await h.outbox.readOutbox(OWNER);
-          processRefusals(m, h, chaos.calls, cursor);
-          const merged = h.outbox.mergeServerSessions(fetched, outbox, h.outbox.deliveriesSince(OWNER, marker));
-          expectMatchesIntent('reconcile racing a flush', wiresOf(h, merged, 'reconcile racing a flush'), m);
-        });
+        // As `reconcileWithServer`: a fetch the server refused a write
+        // during is not merged but made again; after the last, the device
+        // keeps its list and the reconcile shows nothing.
+        for (let fetches = 0; fetches < MAX_RECONCILE_FETCHES; fetches += 1) {
+          const marker = h.outbox.currentDeliverySeq();
+          await s.schedule(Promise.resolve(), 'server users:savedSessions');
+          if (!h.online) return;
+          const fetched = h.server.sessions(OWNER);
+          const merged = await onQueue(async () => {
+            const outbox = await h.outbox.readOutbox(OWNER);
+            processRefusals(m, h, chaos.calls, cursor);
+            if (h.outbox.refusedSince(OWNER, marker)) return false;
+            const sessions = h.outbox.mergeServerSessions(fetched, outbox, h.outbox.deliveriesSince(OWNER, marker));
+            expectMatchesIntent('reconcile racing a flush', wiresOf(h, sessions, 'reconcile racing a flush'), m);
+            return true;
+          });
+          if (merged) return;
+        }
         return;
       }
       await onQueue(async () => {

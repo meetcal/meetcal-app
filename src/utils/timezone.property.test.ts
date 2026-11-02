@@ -32,11 +32,19 @@ function sameWallClock(a: WallClock, b: WallClock): boolean {
 }
 
 /**
- * Every offset change since 1990 is a multiple of 15 minutes and at most three
- * hours (Antarctica/Troll's is two); these are the steps back from a result
- * at which an earlier reading of the same wall clock would sit.
+ * Every offset change since 1990 is a multiple of 15 minutes. A change back
+ * is at most three hours, except Antarctica/Vostok's seven in January 1994;
+ * these are the steps back from a result at which an earlier reading of the
+ * same wall clock would sit.
  */
-const OVERLAP_STEPS_MINUTES = [15, 30, 45, 60, 90, 120, 180];
+const OVERLAP_STEPS_MINUTES = [15, 30, 45, 60, 90, 120, 180, 420];
+
+/**
+ * The largest gap a change forward leaves: a zone that moved across the date
+ * line skipped a whole day (Kwajalein 1993-08-21, Kiritimati and Kanton
+ * 1994-12-31, Apia and Fakaofo 2011-12-30). Otherwise at most seven hours.
+ */
+const MAX_GAP_MINUTES = 24 * 60;
 
 describe('convertZonedLocalToUTC', () => {
   it('reads back as the same meet-local wall clock, with the earlier instant in a fall-back overlap', () => {
@@ -69,7 +77,7 @@ describe('convertZonedLocalToUTC', () => {
         // the instant the old offset would have named. Never earlier, so a
         // session in the gap is not treated as already started.
         expect(shiftMinutes).toBeGreaterThan(0);
-        expect(shiftMinutes).toBeLessThanOrEqual(180);
+        expect(shiftMinutes).toBeLessThanOrEqual(MAX_GAP_MINUTES);
         const gapMinutes =
           oracleOffsetMinutes(timeZone, instant) -
           oracleOffsetMinutes(timeZone, instant.getTime() - (shiftMinutes + 1) * MS_PER_MINUTE);
@@ -93,6 +101,15 @@ describe('convertZonedLocalToUTC', () => {
     // 2:30 does not exist; it used to resolve to 1:30, an hour before.
     const instant = convertZonedLocalToUTC('2026-09-27', '02:30', 'Pacific/Auckland');
     expect(readWallClock('Pacific/Auckland', instant)).toMatchObject({ date: '2026-09-27', hour: 3, minute: 30 });
+  });
+
+  it('moves a time on the day Kiritimati skipped to the same time the next day', () => {
+    // Kiritimati went from UTC-10 to UTC+14, so 1994-12-31 never happened
+    // there. Midnight that day is the instant UTC-10 named: 1995-01-01 00:00.
+    // The property's bound used to assume no gap over three hours.
+    const instant = convertZonedLocalToUTC('1994-12-31', '00:00', 'Pacific/Kiritimati');
+    expect(instant.toISOString()).toBe('1994-12-31T10:00:00.000Z');
+    expect(readWallClock('Pacific/Kiritimati', instant)).toMatchObject({ date: '1995-01-01', hour: 0, minute: 0 });
   });
 
   it('takes the earlier Auckland fall-back reading, as in US zones', () => {
