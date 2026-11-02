@@ -217,7 +217,8 @@ async function reconcileWithServer(
   // body, so reaching here means the server answered authoritatively.
   // Only an authoritative answer is allowed to shrink local state.
   let adopted = 0;
-  for (let fetches = 1; ; fetches += 1) {
+  let merged = false;
+  for (let fetches = 0; fetches < MAX_RECONCILE_FETCHES && !merged; fetches += 1) {
     const fetchStartedAt = currentDeliverySeq();
     let apiSessions: Awaited<ReturnType<typeof fetchSavedSessions>>;
     try {
@@ -235,15 +236,13 @@ async function reconcileWithServer(
     const merge = await mergeFetchedList(deps, userId, sessionsFromApi(apiSessions), fetchStartedAt);
     adopted += merge.adopted;
     if (!isCurrent()) return false;
-    if (merge.merged) break;
-    if (fetches >= MAX_RECONCILE_FETCHES) {
-      devWarn('Saved sessions: the server kept refusing writes while the list was read; keeping local sessions');
-      // The list on screen is the device's copy, as when the server is unreachable.
-      deps.setSyncFailed(true);
-      break;
-    }
+    merged = merge.merged;
   }
-  if (!isCurrent()) return false;
+  if (!merged) {
+    devWarn('Saved sessions: the server kept refusing writes while the list was read; keeping local sessions');
+    // The list on screen is the device's copy, as when the server is unreachable.
+    deps.setSyncFailed(true);
+  }
   // Rows adopted from a pre-outbox build are queued now; send them.
   if (adopted > 0) await deps.syncOutbox();
   await deps.refreshPendingCount();

@@ -394,10 +394,12 @@ export function toSavedSessionBody(session: SavedSession): Parameters<typeof put
  * such a save is not dropped (or a delete undone) by a stale read.
  *
  * A write the server refused is cleared too, but there is nothing to replay:
- * an earlier send of it whose answer was lost may have landed after the
- * fetch read the list, so the server may hold it although the fetched list
- * does not, and the client cannot tell. A fetch that a refusal overlapped
- * (`refusedSince`) is not merged; the reconcile asks the server again.
+ * an earlier write to the same session or meet whose answer was lost (a
+ * version the refused one replaced, or a save a refused reset superseded)
+ * may have landed after the fetch read the list, so the server may hold it
+ * although the fetched list does not, and the client cannot tell. A fetch
+ * that a refusal overlapped (`refusedSince`) is not merged; the reconcile
+ * asks the server again.
  */
 export type Delivery =
   | { seq: number; kind: 'put'; id: string; session: SavedSession }

@@ -220,6 +220,46 @@ describe('outbox defects the model found', () => {
       }),
   );
 
+  // The shape this takes against the real server, which refuses a body the
+  // same way every time: an earlier write to the session lands unanswered,
+  // and the write that replaced it in the outbox is refused.
+  const refusedReplacements: { change: string; replace: (h: Harness, id: string) => Promise<unknown> }[] = [
+    { change: 'an edit', replace: (h, id) => h.outbox.markSessionPut(OWNER, sessionBody(id, 2)) },
+    { change: 'a meet reset', replace: (h) => h.outbox.markResetPending(OWNER, 'Fall Classic') },
+  ];
+  it.each(refusedReplacements)(
+    'fetches the list again when $change that replaced a save that landed unanswered is refused',
+    ({ replace }) =>
+      withDevice(async (h) => {
+        const id = 'Fall Classic-1-Red';
+        const landed = wireOf(h.outbox, sessionBody(id, 1));
+        await h.outbox.markSessionPut(OWNER, sessionBody(id, 1));
+        const marker = h.outbox.currentDeliverySeq();
+        const stale = h.server.sessions(OWNER);
+        const lost = installChaosTransport(serverTransport(h, [{ kind: 'lost', how: 'network' }]), []);
+        try {
+          await flush(h);
+        } finally {
+          lost.restore();
+        }
+        await replace(h, id);
+        const refused = installChaosTransport(serverTransport(h, []), [{ kind: 'status', status: 400 }]);
+        try {
+          await flush(h);
+        } finally {
+          refused.restore();
+        }
+        const outbox = await h.outbox.readOutbox(OWNER);
+        expect(h.outbox.countPendingWrites(outbox)).toBe(0);
+        expect(h.server.wires(OWNER).get(id)).toBe(landed);
+        expect(h.outbox.mergeServerSessions(stale, outbox, h.outbox.deliveriesSince(OWNER, marker))).toEqual([]);
+        expect(h.outbox.refusedSince(OWNER, marker)).toBe(true);
+        const refetch = h.outbox.currentDeliverySeq();
+        const merged = h.outbox.mergeServerSessions(h.server.sessions(OWNER), outbox, h.outbox.deliveriesSince(OWNER, refetch));
+        expect(merged.map((session) => wireOf(h.outbox, session))).toEqual([landed]);
+      }),
+  );
+
   // The same for a meet reset: a save from before it lands after it.
   it('keeps a meet reset when a save from before it lands after it', () =>
     withDevice(async (h) => {
