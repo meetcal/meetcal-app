@@ -238,6 +238,8 @@ async function reconcileWithServer(
     if (merge.merged) break;
     if (fetches >= MAX_RECONCILE_FETCHES) {
       devWarn('Saved sessions: the server kept refusing writes while the list was read; keeping local sessions');
+      // The list on screen is the device's copy, as when the server is unreachable.
+      deps.setSyncFailed(true);
       break;
     }
   }

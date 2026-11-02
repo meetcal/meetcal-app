@@ -708,6 +708,8 @@ describe("server reconcile with the pending-writes outbox", () => {
       loading = hook.current.loadSavedSessions();
       await new Promise((r) => setTimeout(r, 0));
     });
+    // The refusal must come while the first list is being read.
+    expect(mockFetchSavedSessions.mock.calls.length - fetchesBefore).toBe(1);
     mockPutSavedSession.mockRejectedValueOnce(new MeetCalApiError("refused", 400, ""));
     await act(async () => {
       await hook.current.saveSession(makeSession("Test-Meet-1-Red"));
@@ -741,8 +743,10 @@ describe("server reconcile with the pending-writes outbox", () => {
     });
 
     expect(fetches).toBe(MAX_RECONCILE_FETCHES);
-    // Not emptied by lists that may predate what the server holds.
+    // Not emptied by lists that may predate what the server holds, and
+    // flagged as the device's copy.
     expect(hook.current.savedSessions.map((s) => s.id)).toEqual(["Test-Meet-1-Red"]);
+    expect(hook.current.syncFailed).toBe(true);
   });
 
   it("leaves the outbox entry in place when the PUT fails and still reports the local save", async () => {
