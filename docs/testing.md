@@ -52,6 +52,8 @@ FC_SEED=<seed> FC_PATH=<path> bunx jest --ci --watchman=false src/utils/timezone
 FC_NUM_RUNS=5000 bunx jest --ci --watchman=false --testPathPattern '\.(property|chaos)\.test'
 ```
 
+A model-based test (`fc.commands`, as in `src/lib/saved-sessions-outbox.chaos.test.ts`) shrinks by which of its commands ran, so a shrunk counterexample (a path with a `:`) also needs the `replayPath="..."` printed at its end: `FC_SEED=<seed> FC_PATH=<path> FC_REPLAY_PATH=<replayPath> bunx jest ...`. Without it the replay builds a different case and passes.
+
 `FC_NUM_RUNS` above 100 also raises Jest's per-test timeout in proportion (`jest.setup.js`), so a deep local run is not cut off at 5s. `.github/workflows/fuzz-nightly.yml` runs the property and chaos suites at 2,000 cases each every night and opens an issue when one fails.
 
 Risk cases that belong in unit tests:

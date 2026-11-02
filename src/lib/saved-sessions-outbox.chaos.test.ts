@@ -18,7 +18,7 @@ import { MeetCalApiError, MeetCalApiTimeoutError } from '@/lib/api/meetcal-api';
 import { TransportRequestError } from '@/lib/api/transport';
 import { classifySyncError } from '@/lib/saved-sessions-outbox';
 import { hostileValueArb } from '@/test-support/arbitraries';
-import { HTTP_FAULT_STATUSES, installChaosTransport, installStorageChaos } from '@/test-support/chaos';
+import { HTTP_FAULT_STATUSES, installChaosTransport, installStorageChaos, type TransportFault } from '@/test-support/chaos';
 import {
   converge,
   LATE_LANDING_MS,
@@ -30,6 +30,7 @@ import {
   settle,
   startRun,
   wireOf,
+  type AnswerFault,
   type Harness,
 } from '@/test-support/saved-sessions-outbox-model';
 
@@ -38,6 +39,12 @@ const MAX_COMMANDS = 30;
 const NUM_RUNS = Number(process.env.FC_NUM_RUNS) || 100;
 /** Generous: a run is ~20-60ms; the nightly run raises FC_NUM_RUNS. */
 const MODEL_TIMEOUT_MS = Math.max(60_000, NUM_RUNS * 500);
+/**
+ * Which generated commands ran: the `replayPath="..."` comment at the end of
+ * a counterexample. A shrunk case (an `FC_PATH` with a `:`) is rebuilt from
+ * it, so FC_SEED and FC_PATH alone replay a different case.
+ */
+const REPLAY_PATH = process.env.FC_REPLAY_PATH || undefined;
 
 beforeEach(() => {
   jest.spyOn(console, 'error').mockImplementation(() => {});
@@ -54,7 +61,7 @@ describe('saved-sessions outbox under chaos (model-based)', () => {
     'never loses or resurrects a write, and converges on the user\'s last intent',
     async () => {
       await fc.assert(
-        fc.asyncProperty(fc.commands(outboxCommandArbs, { maxCommands: MAX_COMMANDS, size: 'max' }), async (commands) => {
+        fc.asyncProperty(fc.commands(outboxCommandArbs, { maxCommands: MAX_COMMANDS, size: 'max', replayPath: REPLAY_PATH }), async (commands) => {
           const { m, h, dispose } = await startRun();
           try {
             await fc.asyncModelRun(() => ({ model: m, real: h }), commands);
@@ -165,6 +172,92 @@ describe('outbox defects the model found', () => {
         healthy.restore();
       }
     }),
+  );
+
+  // Regression (refusal during a reconcile's fetch, #503 and #517). Shrunk:
+  //   burst(flush, reconcile, flush, flush, save(Fall Classic-1-Red, v4),
+  //   reconcile; faults [truncate, 408, ...])
+  // The reconcile read the list before the save's PUT landed. The PUT's
+  // answer was lost (#503: a 502; #517: a truncated body), so it stayed
+  // queued, and the resend was refused (404; 408), which drops it. The merge
+  // then had neither the entry nor a delivery to replay, and showed the
+  // session gone while the server held it. A fetch that a refusal overlapped
+  // is now not merged; the reconcile fetches again.
+  const refusedAfterLostAnswer: { issue: string; faults: TransportFault[]; answers: AnswerFault[] }[] = [
+    // The server applies the PUT and a proxy answers 502; the resend is a 404.
+    { issue: '#503', faults: [{ kind: 'pass' }, { kind: 'status', status: 404 }], answers: [{ kind: 'lost', how: 'bad-gateway' }] },
+    // The server applies the PUT and its answer arrives cut short; the resend is a 408.
+    { issue: '#517', faults: [{ kind: 'truncate' }, { kind: 'status', status: 408 }], answers: [] },
+  ];
+  it.each(refusedAfterLostAnswer)(
+    'fetches the list again when a write that landed unanswered is refused on resend ($issue)',
+    ({ faults, answers }) =>
+      withDevice(async (h) => {
+        const id = 'Fall Classic-1-Red';
+        const saved = wireOf(h.outbox, sessionBody(id, 4));
+        await h.outbox.markSessionPut(OWNER, sessionBody(id, 4));
+        const marker = h.outbox.currentDeliverySeq();
+        const stale = h.server.sessions(OWNER);
+        const chaos = installChaosTransport(serverTransport(h, answers), faults);
+        try {
+          await flush(h);
+          expect(h.outbox.countPendingWrites(await h.outbox.readOutbox(OWNER))).toBe(1);
+          await flush(h);
+        } finally {
+          chaos.restore();
+        }
+        const outbox = await h.outbox.readOutbox(OWNER);
+        expect(h.outbox.countPendingWrites(outbox)).toBe(0);
+        expect(h.server.wires(OWNER).get(id)).toBe(saved);
+        // Merged, the list read before the PUT landed would drop the session.
+        expect(h.outbox.mergeServerSessions(stale, outbox, h.outbox.deliveriesSince(OWNER, marker))).toEqual([]);
+        expect(h.outbox.refusedSince(OWNER, marker)).toBe(true);
+        // A list fetched after the refusal is merged, and shows the server's row.
+        const refetch = h.outbox.currentDeliverySeq();
+        expect(h.outbox.refusedSince(OWNER, refetch)).toBe(false);
+        const merged = h.outbox.mergeServerSessions(h.server.sessions(OWNER), outbox, h.outbox.deliveriesSince(OWNER, refetch));
+        expect(merged.map((session) => wireOf(h.outbox, session))).toEqual([saved]);
+      }),
+  );
+
+  // The shape this takes against the real server, which refuses a body the
+  // same way every time: an earlier write to the session lands unanswered,
+  // and the write that replaced it in the outbox is refused.
+  const refusedReplacements: { change: string; replace: (h: Harness, id: string) => Promise<unknown> }[] = [
+    { change: 'an edit', replace: (h, id) => h.outbox.markSessionPut(OWNER, sessionBody(id, 2)) },
+    { change: 'a meet reset', replace: (h) => h.outbox.markResetPending(OWNER, 'Fall Classic') },
+  ];
+  it.each(refusedReplacements)(
+    'fetches the list again when $change that replaced a save that landed unanswered is refused',
+    ({ replace }) =>
+      withDevice(async (h) => {
+        const id = 'Fall Classic-1-Red';
+        const landed = wireOf(h.outbox, sessionBody(id, 1));
+        await h.outbox.markSessionPut(OWNER, sessionBody(id, 1));
+        const marker = h.outbox.currentDeliverySeq();
+        const stale = h.server.sessions(OWNER);
+        const lost = installChaosTransport(serverTransport(h, [{ kind: 'lost', how: 'network' }]), []);
+        try {
+          await flush(h);
+        } finally {
+          lost.restore();
+        }
+        await replace(h, id);
+        const refused = installChaosTransport(serverTransport(h, []), [{ kind: 'status', status: 400 }]);
+        try {
+          await flush(h);
+        } finally {
+          refused.restore();
+        }
+        const outbox = await h.outbox.readOutbox(OWNER);
+        expect(h.outbox.countPendingWrites(outbox)).toBe(0);
+        expect(h.server.wires(OWNER).get(id)).toBe(landed);
+        expect(h.outbox.mergeServerSessions(stale, outbox, h.outbox.deliveriesSince(OWNER, marker))).toEqual([]);
+        expect(h.outbox.refusedSince(OWNER, marker)).toBe(true);
+        const refetch = h.outbox.currentDeliverySeq();
+        const merged = h.outbox.mergeServerSessions(h.server.sessions(OWNER), outbox, h.outbox.deliveriesSince(OWNER, refetch));
+        expect(merged.map((session) => wireOf(h.outbox, session))).toEqual([landed]);
+      }),
   );
 
   // The same for a meet reset: a save from before it lands after it.

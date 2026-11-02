@@ -26,9 +26,12 @@ import { convertToUTC, getMeetConfig } from "@/data/meets/config";
 import { clearSavedWidget, syncSavedWidget } from "@/utils/savedWidget";
 import {
   countPendingWrites,
+  flushOutbox,
+  markSessionPut,
   MAX_SAVED_SESSION_ATHLETE_NAMES,
   readOutbox,
 } from "@/lib/saved-sessions-outbox";
+import { MAX_RECONCILE_FETCHES } from "@/lib/saved-sessions-load";
 import type { LiftResult } from "@/data/types/athletes";
 import type { Schedule } from "@/types/schedule";
 
@@ -685,6 +688,65 @@ describe("server reconcile with the pending-writes outbox", () => {
       "Test-Meet-1-Red",
       "Test-Meet-2-Red",
     ]);
+  });
+
+  it("fetches the list again when the server refuses a write while it is read", async () => {
+    const hook = await mountHook();
+    let resolveFetch: (rows: ReturnType<typeof apiRow>[]) => void = () => {};
+    mockFetchSavedSessions.mockImplementationOnce(
+      () => new Promise((resolve) => {
+        resolveFetch = resolve;
+      }),
+    );
+    // A send of the refused write may have landed after the first list was
+    // read; the second list is the server's word.
+    mockFetchSavedSessions.mockResolvedValue([apiRow("Test-Meet-1-Red")]);
+    const fetchesBefore = mockFetchSavedSessions.mock.calls.length;
+
+    let loading: Promise<void> = Promise.resolve();
+    await act(async () => {
+      loading = hook.current.loadSavedSessions();
+      await new Promise((r) => setTimeout(r, 0));
+    });
+    // The refusal must come while the first list is being read.
+    expect(mockFetchSavedSessions.mock.calls.length - fetchesBefore).toBe(1);
+    mockPutSavedSession.mockRejectedValueOnce(new MeetCalApiError("refused", 400, ""));
+    await act(async () => {
+      await hook.current.saveSession(makeSession("Test-Meet-1-Red"));
+    });
+    await act(async () => {
+      resolveFetch([]);
+      await loading;
+    });
+
+    expect(mockFetchSavedSessions.mock.calls.length - fetchesBefore).toBe(2);
+    expect(hook.current.savedSessions.map((s) => s.id)).toEqual(["Test-Meet-1-Red"]);
+  });
+
+  it("keeps the device's list when the server refuses a write during every fetch", async () => {
+    const hook = await mountHook();
+    await act(async () => {
+      await hook.current.saveSession(makeSession("Test-Meet-1-Red"));
+    });
+    let fetches = 0;
+    mockFetchSavedSessions.mockImplementation(async () => {
+      fetches += 1;
+      const session = makeSession(`Test-Meet-${fetches + 1}-Red`, { sessionNumber: fetches + 1 });
+      mockPutSavedSession.mockRejectedValueOnce(new MeetCalApiError("refused", 400, ""));
+      await markSessionPut("user_1", session);
+      await flushOutbox("user_1", async () => TOKEN);
+      return [];
+    });
+
+    await act(async () => {
+      await hook.current.loadSavedSessions();
+    });
+
+    expect(fetches).toBe(MAX_RECONCILE_FETCHES);
+    // Not emptied by lists that may predate what the server holds, and
+    // flagged as the device's copy.
+    expect(hook.current.savedSessions.map((s) => s.id)).toEqual(["Test-Meet-1-Red"]);
+    expect(hook.current.syncFailed).toBe(true);
   });
 
   it("leaves the outbox entry in place when the PUT fails and still reports the local save", async () => {

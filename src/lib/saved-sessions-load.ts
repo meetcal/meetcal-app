@@ -14,6 +14,7 @@ import {
   type FlushResult,
   mergeServerSessions,
   readOutbox,
+  refusedSince,
   tokenBelongsTo,
 } from '@/lib/saved-sessions-outbox';
 import type { SerialQueue } from '@/lib/saved-sessions-queue';
@@ -140,6 +141,12 @@ export function createRefreshThrottle(
   };
 }
 
+/**
+ * Lists one reconcile fetches when the server refuses a write while it reads
+ * (`refusedSince`); after that it keeps the device's list until the next load.
+ */
+export const MAX_RECONCILE_FETCHES = 3;
+
 export interface LoadSavedSessionsDeps {
   /** The active user (Clerk's, or the cached one while Clerk loads). */
   userId: string | null;
@@ -209,53 +216,81 @@ async function reconcileWithServer(
   // `fetchSavedSessions` throws on timeout, HTTP error, and malformed
   // body, so reaching here means the server answered authoritatively.
   // Only an authoritative answer is allowed to shrink local state.
-  const fetchStartedAt = currentDeliverySeq();
-  let apiSessions: Awaited<ReturnType<typeof fetchSavedSessions>>;
-  try {
-    apiSessions = await fetchSavedSessions(token);
-  } catch (error) {
-    if (error instanceof MeetCalApiError && error.status === 401) {
-      devWarn('Saved sessions: API rejected the sign-in token (401)', describeTokenClaims(token));
+  let adopted = 0;
+  let merged = false;
+  for (let fetches = 0; fetches < MAX_RECONCILE_FETCHES && !merged; fetches += 1) {
+    const fetchStartedAt = currentDeliverySeq();
+    let apiSessions: Awaited<ReturnType<typeof fetchSavedSessions>>;
+    try {
+      apiSessions = await fetchSavedSessions(token);
+    } catch (error) {
+      if (error instanceof MeetCalApiError && error.status === 401) {
+        devWarn('Saved sessions: API rejected the sign-in token (401)', describeTokenClaims(token));
+      }
+      throw error;
     }
-    throw error;
+    if (!isCurrent()) return false;
+    deps.setAuthExpired(false);
+    deps.setSyncFailed(false);
+
+    const merge = await mergeFetchedList(deps, userId, sessionsFromApi(apiSessions), fetchStartedAt);
+    adopted += merge.adopted;
+    if (!isCurrent()) return false;
+    merged = merge.merged;
   }
-  if (!isCurrent()) return false;
-  deps.setAuthExpired(false);
-  deps.setSyncFailed(false);
+  if (!merged) {
+    devWarn('Saved sessions: the server kept refusing writes while the list was read; keeping local sessions');
+    // The list on screen is the device's copy, as when the server is unreachable.
+    deps.setSyncFailed(true);
+  }
+  // Rows adopted from a pre-outbox build are queued now; send them.
+  if (adopted > 0) await deps.syncOutbox();
+  await deps.refreshPendingCount();
+  return true;
+}
 
-  const serverSessions = sessionsFromApi(apiSessions);
-
+/**
+ * Merge a fetched list into the stored one, on the mutation queue. `merged`
+ * is false when the list is not merged: the user changed, or the server
+ * refused a write since the fetch started, so the list may predate a send of
+ * it that landed (`refusedSince`).
+ */
+async function mergeFetchedList(
+  deps: LoadSavedSessionsDeps,
+  userId: string,
+  serverSessions: SavedSession[],
+  fetchStartedAt: number,
+): Promise<{ adopted: number; merged: boolean }> {
+  const isCurrent = () => deps.store.isActive(userId);
   // The merge runs on the mutation queue and reads the outbox there: a
   // save that landed while the fetch was in flight is still pending,
   // so it survives the reconcile. Every local write records its outbox
   // entry first, so a row that is neither on the server nor pending was
   // removed elsewhere and goes here too, whether or not the list is empty.
-  const adopted = await deps.queue.run(async () => {
-    if (!isCurrent()) return 0;
+  return deps.queue.run(async () => {
+    if (!isCurrent()) return { adopted: 0, merged: false };
     const currentLocal = await deps.readStoredSessions(true);
-    const adoptedCount = await adoptPreOutboxSessions(
+    const adopted = await adoptPreOutboxSessions(
       userId,
       serverSessions.length === 0,
       currentLocal,
     );
+    const outbox = await readOutbox(userId);
+    // After the read: a refusal logged later left its entry in `outbox`.
+    if (refusedSince(userId, fetchStartedAt)) return { adopted, merged: false };
     const merged = mergeServerSessions(
       serverSessions,
-      await readOutbox(userId),
+      outbox,
       deliveriesSince(userId, fetchStartedAt),
     );
-    if (!isCurrent()) return adoptedCount;
+    if (!isCurrent()) return { adopted, merged: false };
     if (merged.length === 0) {
       await removeStoredSessions(deps.store, userId);
     } else {
       await deps.commitSessions(merged);
     }
-    return adoptedCount;
+    return { adopted, merged: true };
   });
-  if (!isCurrent()) return false;
-  // Rows adopted from a pre-outbox build are queued now; send them.
-  if (adopted > 0) await deps.syncOutbox();
-  await deps.refreshPendingCount();
-  return true;
 }
 
 /**

@@ -385,23 +385,33 @@ export function toSavedSessionBody(session: SavedSession): Parameters<typeof put
 }
 
 /**
- * Writes the server accepted, newest last, kept briefly in memory.
+ * Writes the server answered, newest last, kept briefly in memory.
  *
  * A reconcile fetches the server's list and then merges it with the outbox.
  * A write delivered *while* that fetch was in flight is already cleared from
  * the outbox, yet the fetched list may predate it. The merge replays the
  * deliveries made since the fetch started on top of the server's list, so
  * such a save is not dropped (or a delete undone) by a stale read.
+ *
+ * A write the server refused is cleared too, but there is nothing to replay:
+ * an earlier write to the same session or meet whose answer was lost (a
+ * version the refused one replaced, or a save a refused reset superseded)
+ * may have landed after the fetch read the list, so the server may hold it
+ * although the fetched list does not, and the client cannot tell. A fetch
+ * that a refusal overlapped (`refusedSince`) is not merged; the reconcile
+ * asks the server again.
  */
 export type Delivery =
   | { seq: number; kind: 'put'; id: string; session: SavedSession }
   | { seq: number; kind: 'delete'; id: string }
-  | { seq: number; kind: 'reset'; meet: string | null };
+  | { seq: number; kind: 'reset'; meet: string | null }
+  | { seq: number; kind: 'refused'; target: string };
 
 type DeliveryInput =
   | { kind: 'put'; id: string; session: SavedSession }
   | { kind: 'delete'; id: string }
-  | { kind: 'reset'; meet: string | null };
+  | { kind: 'reset'; meet: string | null }
+  | { kind: 'refused'; target: string };
 
 /** Cap on remembered deliveries per user; a reconcile only needs the last few. */
 const MAX_DELIVERY_LOG = 200;
@@ -425,9 +435,18 @@ export function deliveriesSince(userId: string, seq: number): Delivery[] {
   return (deliveryLogs.get(userId) ?? []).filter((delivery) => delivery.seq > seq);
 }
 
+/**
+ * Whether the server refused one of `userId`'s writes since `seq`, so a list
+ * fetched from then on may not show what the server now holds.
+ */
+export function refusedSince(userId: string, seq: number): boolean {
+  return deliveriesSince(userId, seq).some((delivery) => delivery.kind === 'refused');
+}
+
 function applyDeliveries(serverSessions: SavedSession[], deliveries: Delivery[]): SavedSession[] {
   let rows = serverSessions;
   for (const delivery of deliveries) {
+    if (delivery.kind === 'refused') continue;
     if (delivery.kind === 'reset') {
       rows = delivery.meet === null ? [] : rows.filter((row) => row.meet !== delivery.meet);
     } else if (delivery.kind === 'delete') {
@@ -719,6 +738,9 @@ async function runPass(
       if (kind === 'rejected') {
         console.error(`Saved sessions outbox: server rejected ${next.kind} ${next.key}; dropping`, error);
         if (next.kind === 'session') result.rejected.set(next.key, next.rev);
+        // Logged before the clear, so a reconcile that reads the outbox
+        // without the entry also sees the refusal.
+        recordDelivery(userId, { kind: 'refused', target: next.key });
         await clear();
         continue;
       }
