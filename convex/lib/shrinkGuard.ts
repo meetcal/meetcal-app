@@ -1,7 +1,7 @@
 /**
  * How much stored data a sync may remove without being told to. A source
  * that partly broke (a renamed column, a card whose wording changed, a cell
- * typed as "102 kg") looks to a sync like data that went away; past these
+ * typed as "125*") looks to a sync like data that went away; past these
  * limits the sync refuses, so the run fails and alerts instead of deleting.
  * Each sync takes an `allowShrink` flag for the time a source really did
  * drop that much, after someone has checked it by hand.
