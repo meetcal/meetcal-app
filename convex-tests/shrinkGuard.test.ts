@@ -61,8 +61,9 @@ describe('record lift cells (#91)', () => {
   it('reads numbers, reads empty markers as none, and throws on anything else', () => {
     expect(recordLift(' 102 ')).toBe(102);
     expect(recordLift('128.5')).toBe(128);
+    for (const kg of ['82kg', '82 kg', ' 82  kg ', '82KG']) expect(recordLift(kg)).toBe(82);
     for (const empty of ['', ' - ', '—', 'n/a', '#N/A', 'TBD', 'Vacant', 'open', 'Standard', 'WSO Standard']) expect(recordLift(empty)).toBeNull();
-    for (const bad of ['102 kg', '125*', 'x', 'Jane']) expect(() => recordLift(bad)).toThrow(`unreadable lift value ${JSON.stringify(bad)}`);
+    for (const bad of ['125*', '125* kg', '82.5kg', 'kg', '82 k g', 'Jane', 'Jane kg', 'x']) expect(() => recordLift(bad)).toThrow(`unreadable lift value ${JSON.stringify(bad)}`);
   });
 });
 

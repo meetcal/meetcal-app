@@ -128,17 +128,21 @@ export function setHolder<K extends string>(record: { [key in K]?: RecordHolder 
 }
 
 const NUMBER = /^[-+]?(\d+\.?\d*|\.\d+)([eE][-+]?\d+)?$/;
+const WHOLE_KG = /^(\d+) ?kg$/i;
 
 /**
  * A lift's value as a records source writes it: a number as Python's
- * `int(float(s))` read it, null for a cell that says there is none (blank, a
- * dash, n/a, TBD, vacant, open, a standard). Anything else throws: "102 kg"
- * or "125*" is a typo or a layout change, and read as empty it would erase
- * the stored record and its holder on the next sync.
+ * `int(float(s))` read it, or a whole number followed by kg ("82kg", "82 kg"),
+ * null for a cell that says there is none (blank, a dash, n/a, TBD, vacant,
+ * open, a standard). Anything else throws: "125*" is a typo or a layout
+ * change, and read as empty it would erase the stored record and its holder
+ * on the next sync.
  */
 export function recordLift(raw: string): number | null {
   const text = raw.replace(/\s+/g, ' ').trim();
   if (EMPTY.test(text) || STANDARD.test(text)) return null;
+  const kg = WHOLE_KG.exec(text);
+  if (kg) return Number(kg[1]);
   if (!NUMBER.test(text)) throw new Error(`unreadable lift value ${JSON.stringify(raw)}`);
   return Math.trunc(Number(text));
 }
