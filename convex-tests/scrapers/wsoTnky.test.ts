@@ -84,8 +84,13 @@ describe('Tennessee-Kentucky WSO sheet (a tab per group)', () => {
     expect(records.find((r) => r.weight_class === '77')).toMatchObject({ snatch_record: 124, cj_record: 153, total_record: 277, total_by: { name: 'Olivia Reeves' } });
   });
 
+  it('reads a lift weight written with kg', () => {
+    const [record] = parseTnkyTab('Lift,Name,Weight,Date,Meet\n,40KG,,,\nSnatch,A,82kg,1/1/2025,M\nC&J,A,102 kg,1/1/2025,M', 'Tennessee-Kentucky', 'U13', 'Men');
+    expect(record).toMatchObject({ weight_class: '40', snatch_record: 82, cj_record: 102 });
+  });
+
   it('fails on a lift cell it cannot read, or a lift row before any class', () => {
-    expect(() => parseTnkyTab('Lift,Name,Weight,Date,Meet\n,40KG,,,\nSnatch,A,102 kg,1/1/2025,M', 'Tennessee-Kentucky', 'U13', 'Men')).toThrow('unreadable lift value "102 kg"');
+    expect(() => parseTnkyTab('Lift,Name,Weight,Date,Meet\n,40KG,,,\nSnatch,A,125*,1/1/2025,M', 'Tennessee-Kentucky', 'U13', 'Men')).toThrow('unreadable lift value "125*"');
     expect(() => parseTnkyTab('Lift,Name,Weight,Date,Meet\nSnatch,A,40,1/1/2025,M', 'Tennessee-Kentucky', 'U13', 'Men')).toThrow('a Snatch row before any class');
   });
 });
