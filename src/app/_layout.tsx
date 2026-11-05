@@ -46,6 +46,7 @@ import {
   normalizeDeepLinkHref,
   openExternalLink,
 } from "@/utils/deepLinks";
+import { tagOneSignalUserAsMeetCal } from "@/utils/oneSignalAppTag";
 import * as Sentry from '@sentry/react-native';
 import { refreshAuthCacheForVerifiedUser } from "@/lib/authCache";
 import { useDataWidgetRefresh } from "@/hooks/useDataWidgetRefresh";
@@ -214,6 +215,7 @@ try {
 }
 try {
   OneSignal.initialize(ONESIGNAL_APP_ID);
+  tagOneSignalUserAsMeetCal();
 } catch (error) {
   console.warn("OneSignal initialization error:", error);
 }
@@ -363,6 +365,7 @@ function RootLayoutContent() {
           OneSignal.User.addEventListener("change", handleOneSignalUserChange);
           listenerAdded = true;
           OneSignal.login(user.id);
+          tagOneSignalUserAsMeetCal();
           if (email) {
             OneSignal.User.addEmail(email);
           }
@@ -370,6 +373,7 @@ function RootLayoutContent() {
           await syncOneSignalIdToRevenueCat();
         } else {
           OneSignal.logout();
+          tagOneSignalUserAsMeetCal();
           // RevenueCat throws when asked to log out an anonymous user, which
           // is every signed-out launch.
           if (!(await Purchases.isAnonymous())) await Purchases.logOut();
