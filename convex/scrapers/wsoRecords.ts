@@ -3,7 +3,7 @@
 import { v } from 'convex/values';
 import { internalAction, type ActionCtx } from '../_generated/server';
 import { internal } from '../_generated/api';
-import { absoluteUrl, fetchPdf, fetchText, mapLimited, throttledOrTransient, withRetries, type RetryPolicy } from './lib/http';
+import { absoluteUrl, fetchText, mapLimited, throttledOrTransient, withRetries, type RetryPolicy } from './lib/http';
 import { unescapeHtml } from './lib/html';
 import { pdfLines, pdfRunLines } from './lib/pdf';
 import {
@@ -27,8 +27,8 @@ import { illinoisPdfHref, parseIllinois } from './parse/wso/illinois';
 import { mountainSouthPdfUrls, parseMountainSouth } from './parse/wso/mountainSouth';
 import { newYorkPdfUrls, parseNewYork } from './parse/wso/newYork';
 import { newEnglandPdfUrls, parseNewEngland } from './parse/wso/newEngland';
-import { missouriValleyLines, parseMissouriValley } from './parse/wso/missouriValley';
-import { fetchMissouriValleyPage } from './lib/missouriValley';
+import { MISSOURI_VALLEY_URL, missouriValleyLines, parseMissouriValley } from './parse/wso/missouriValley';
+import { fetchPdfRetrying, fetchTextRetrying } from './lib/transientFetch';
 import { parseUsawTemplate } from './parse/wso/usawTemplate';
 import { FLAT_COLUMNS, parseFlatSheet, type FlatColumns } from './parse/wso/flat';
 import { normalizeAgeCategory, normalizeGender } from '../lib/normalize';
@@ -59,6 +59,15 @@ type WsoSource = {
 export const SHEET_RETRY: RetryPolicy = { attempts: 4, delayMs: (attempt) => 2 ** attempt * 1000, retryIf: throttledOrTransient };
 export const SHEET_CONCURRENCY = 4;
 const SHEET_TIMEOUT_MS = 60_000;
+
+/**
+ * The WSO sites' pages and PDFs are fetched with `fetchTextRetrying` and
+ * `fetchPdfRetrying` (`TRANSIENT_RETRY`): their small hosts now and then
+ * reset a connection. A records PDF is a few megabytes, and Missouri
+ * Valley's origin is slow to serve its page.
+ */
+const PDF_TIMEOUT_MS = 60_000;
+const MISSOURI_VALLEY_TIMEOUT_MS = 45_000;
 
 /** A Google Sheets page or CSV, retried when Google throttles it (`SHEET_RETRY`). */
 export const fetchSheetText = (url: string) => withRetries(() => fetchText(url, SHEET_TIMEOUT_MS), SHEET_RETRY);
@@ -229,8 +238,8 @@ export const WSO_SOURCES: WsoSource[] = [
     wso: 'Illinois',
     scrape: async () => {
       const page = 'https://www.illinoisweightlifting.com/';
-      const pdfUrl = absoluteUrl(illinoisPdfHref(unescapeHtml(await fetchText(page))), page);
-      const lines = (await pdfLines(await fetchPdf(pdfUrl))).flat();
+      const pdfUrl = absoluteUrl(illinoisPdfHref(unescapeHtml(await fetchTextRetrying(page))), page);
+      const lines = (await pdfLines(await fetchPdfRetrying(pdfUrl))).flat();
       const { records, warnings } = parseIllinois(lines, 'Illinois');
       for (const warning of warnings) console.log(`wso records (Illinois): ${warning}`);
       return records;
@@ -239,33 +248,33 @@ export const WSO_SOURCES: WsoSource[] = [
   {
     wso: 'Mountain South',
     scrape: async () => {
-      const urls = mountainSouthPdfUrls(await fetchText('https://mountainsouth.org/records/'));
+      const urls = mountainSouthPdfUrls(await fetchTextRetrying('https://mountainsouth.org/records/'));
       if (!urls.length) throw new Error('No records PDFs found on the Mountain South records page');
-      const pdfs = await Promise.all(urls.map(async (url) => pdfRunLines(await fetchPdf(url, 60_000))));
+      const pdfs = await Promise.all(urls.map(async (url) => pdfRunLines(await fetchPdfRetrying(url, PDF_TIMEOUT_MS))));
       return everyPart('Mountain South', pdfs.map((pages) => parseMountainSouth(pages, 'Mountain South')), (i) => urls[i]);
     },
   },
   {
     wso: 'New York',
     scrape: async () => {
-      const urls = newYorkPdfUrls(await fetchText('https://www.nywso.com/state-records'));
+      const urls = newYorkPdfUrls(await fetchTextRetrying('https://www.nywso.com/state-records'));
       if (!urls.length) throw new Error('No records PDFs found on the New York records page');
-      const pdfs = await Promise.all(urls.map(async (url) => pdfLines(await fetchPdf(url, 60_000))));
+      const pdfs = await Promise.all(urls.map(async (url) => pdfLines(await fetchPdfRetrying(url, PDF_TIMEOUT_MS))));
       return everyPart('New York', pdfs.map((pages) => parseNewYork(pages, 'New York')), (i) => urls[i]);
     },
   },
   {
     wso: 'New England',
     scrape: async () => {
-      const urls = newEnglandPdfUrls(await fetchText('https://www.newenglandweightlifting.com/records'));
+      const urls = newEnglandPdfUrls(await fetchTextRetrying('https://www.newenglandweightlifting.com/records'));
       if (!urls.length) throw new Error('No records PDFs found on the New England records page');
-      const pdfs = await Promise.all(urls.map(async (url) => pdfRunLines(await fetchPdf(url, 60_000))));
+      const pdfs = await Promise.all(urls.map(async (url) => pdfRunLines(await fetchPdfRetrying(url, PDF_TIMEOUT_MS))));
       return everyPart('New England', pdfs.map((pages) => parseNewEngland(pages, 'New England')), (i) => urls[i]);
     },
   },
   {
     wso: 'Missouri Valley',
-    scrape: async () => parseMissouriValley(missouriValleyLines(await fetchMissouriValleyPage())),
+    scrape: async () => parseMissouriValley(missouriValleyLines(await fetchTextRetrying(MISSOURI_VALLEY_URL, MISSOURI_VALLEY_TIMEOUT_MS))),
   },
   californiaSouth('https://docs.google.com/spreadsheets/d/1PHYJ-lhkXYMrQIIo6YaipePFxruSfbRw1TEUtIoknR0/edit?usp=sharing'),
   // An uploaded Excel file with one dated tab ("20260627 MN-DAK"): its first sheet.
