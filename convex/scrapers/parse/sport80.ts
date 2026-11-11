@@ -231,9 +231,17 @@ export const RECENT_DAYS = 21;
 export const ROLLING_NIGHTS = 28;
 export const MAX_ROLLING_EVENTS_A_NIGHT = 120;
 
+export const RESULTS_JOB = 'results-sport80';
+
+export function failingEventIds(failedSources: readonly string[]): string[] {
+  const ids = failedSources.map((source) => /(?:^|\()event (\d+)\)?$/.exec(source)?.[1]).filter((id): id is string => id !== undefined);
+  return [...new Set(ids)];
+}
+
 export type NightlyEvents = {
   newest: Dict[];
   recentCount: number;
+  retriedCount: number;
   rollingCount: number;
   rollingLeftOut: number;
   unreadable: { event: Dict; date: string; recent: boolean }[];
@@ -242,7 +250,13 @@ export type NightlyEvents = {
 export function pickNightlyEvents(
   events: Dict[],
   now: number,
-  { count = RECENT_EVENTS, recentDays = RECENT_DAYS, rollingNights = ROLLING_NIGHTS, maxRolling = MAX_ROLLING_EVENTS_A_NIGHT } = {},
+  {
+    count = RECENT_EVENTS,
+    recentDays = RECENT_DAYS,
+    rollingNights = ROLLING_NIGHTS,
+    maxRolling = MAX_ROLLING_EVENTS_A_NIGHT,
+    stillFailing = [] as readonly string[],
+  } = {},
 ): NightlyEvents {
   const { newest, unreadable } = pickNewestEvents(events, count);
   const recentIds = new Set(newest.map(eventIdOf));
@@ -263,7 +277,16 @@ export function pickNightlyEvents(
   const tonight = Math.floor(now / DAY_MS) % rollingNights;
   const dueTonight = [...older.values()].filter((event) => idNumber(event) % rollingNights === tonight).sort((a, b) => idNumber(b) - idNumber(a));
   const rolling = dueTonight.slice(0, maxRolling);
-  return { newest: [...recent, ...rolling], recentCount: recent.length, rollingCount: rolling.length, rollingLeftOut: dueTonight.length - rolling.length, unreadable };
+  const picked = new Set([...recent, ...rolling].map(eventIdOf));
+  const retried = stillFailing.flatMap((id) => (picked.has(id) || !older.has(id) ? [] : [older.get(id)!]));
+  return {
+    newest: [...recent, ...retried, ...rolling],
+    recentCount: recent.length,
+    retriedCount: retried.length,
+    rollingCount: rolling.length,
+    rollingLeftOut: dueTonight.length - rolling.length,
+    unreadable,
+  };
 }
 
 /**

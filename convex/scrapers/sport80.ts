@@ -10,12 +10,14 @@ import {
   hasResultsRoute,
   nested,
   pageRows,
+  failingEventIds,
   MAX_ROLLING_EVENTS_A_NIGHT,
   pickNewestEvents,
   pickNightlyEvents,
   pickRequestedEvents,
   readSport80Env,
   readTablePage,
+  RESULTS_JOB,
   USAW_DOMAIN,
   type ResultRow,
   type Sport80Env,
@@ -186,9 +188,10 @@ export const run = internalAction({
         failures.push({ source: `event ${id}`, error: `not in the event index read (${indexes.join(', ')}), not synced` });
       }
     } else {
-      const nightly = pickNightlyEvents(events, Date.now());
+      const stillFailing = failingEventIds(await ctx.runQuery(internal.cronStatus.failedSources, { job: RESULTS_JOB }));
+      const nightly = pickNightlyEvents(events, Date.now(), { stillFailing });
       ({ newest, unreadable } = nightly);
-      console.log(`sport80: reading ${nightly.recentCount} recent events and ${nightly.rollingCount} older ones due tonight`);
+      console.log(`sport80: reading ${nightly.recentCount} recent events, ${nightly.retriedCount} that failed last run and ${nightly.rollingCount} older ones due tonight`);
       if (nightly.rollingLeftOut > 0) {
         failures.push({ source: 'rolling pass', error: `${nightly.rollingLeftOut} older events due tonight were not read (more than ${MAX_ROLLING_EVENTS_A_NIGHT}); raise ROLLING_NIGHTS in parse/sport80.ts` });
       }

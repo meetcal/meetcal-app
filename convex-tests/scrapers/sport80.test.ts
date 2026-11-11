@@ -1,6 +1,7 @@
+import { JOBS } from '../../convex/cronJobs';
 import { readFileSync } from 'fs';
 import { join } from 'path';
-import { eventDate, eventIdOf, formatResults, nested, newestEvents, pickNewestEvents, pickNightlyEvents, pickRequestedEvents, ROLLING_NIGHTS, unreadableEventDate } from '../../convex/scrapers/parse/sport80';
+import { eventDate, eventIdOf, formatResults, nested, failingEventIds, newestEvents, pickNewestEvents, pickNightlyEvents, pickRequestedEvents, RESULTS_JOB, ROLLING_NIGHTS, unreadableEventDate } from '../../convex/scrapers/parse/sport80';
 
 // The first events of the 2026 index as Sport80 sent them on 2026-10-11 (every
 // event of 2025 and 2026 had an ISO date).
@@ -96,6 +97,20 @@ describe('Sport80 results sync (port of update_supabase_from_sport80.py)', () =>
       const nightly = pickNightlyEvents(index, tonight, { count: 30, rollingNights: 1, maxRolling: 10 });
       expect(nightly.rollingCount).toBe(10);
       expect(nightly.rollingLeftOut).toBe(lastSpring.length - 10);
+    });
+
+    it('reads again, every night, an older event the last run named as failing, until it stops failing', () => {
+      const notDueTonight = lastSpring.map(eventIdOf).find((id) => !idsRead(tonight).includes(id))!;
+      const stillFailing = failingEventIds([`Meet ${notDueTonight} (event ${notDueTonight})`, 'event index 2025', 'rolling pass', 'event 424242']);
+      expect(stillFailing).toEqual([notDueTonight, '424242']);
+      const nightly = pickNightlyEvents(index, tonight, { count: 30, stillFailing });
+      expect(nightly.newest.map(eventIdOf)).toContain(notDueTonight);
+      expect(nightly.retriedCount).toBe(1);
+      expect(pickNightlyEvents(index, tonight, { count: 30 }).newest.map(eventIdOf)).not.toContain(notDueTonight);
+    });
+
+    it('names the job whose failing events it reads again as the cron table does', () => {
+      expect(Object.keys(JOBS)).toContain(RESULTS_JOB);
     });
 
     it('still reads the newest events when none was held in the last three weeks', () => {
