@@ -5,6 +5,8 @@
 use anyhow::{Error, Result, anyhow, bail};
 use chrono::NaiveDate;
 
+use crate::utils::stats::Gender;
+
 /// The age categories `--category` takes, as divisions are labelled (`stats::Division`).
 pub const CATEGORIES: &str =
     "Senior, Junior, U17 (or Youth), U15, U13, U11, or Masters 30 … Masters 95";
@@ -17,6 +19,32 @@ pub fn parse_date(value: &str) -> Result<String, String> {
         .or_else(|_| NaiveDate::parse_from_str(value, "%b %d, %Y"))
         .map(|date| date.format("%Y-%m-%d").to_string())
         .map_err(|_| "expected a date as YYYY-MM-DD, like 2026-06-20".to_string())
+}
+
+/// A meet, club, WSO or athlete name as typed, without surrounding space; for clap's
+/// `value_parser`, so every command reads a name the same way and a blank one fails before any
+/// request.
+pub fn parse_name(value: &str) -> Result<String, String> {
+    let name = value.trim();
+    if name.is_empty() {
+        return Err("must not be blank".to_string());
+    }
+    Ok(name.to_string())
+}
+
+/// A `--gender` value as the data spells it: `Men` for `men`, `m`, `male`…, `Women` for `women`,
+/// `w`, `f`, `female`… (`Gender::parse`); anything else as typed, trimmed, so the "no match"
+/// error can quote it.
+pub fn gender_label(value: &str) -> String {
+    match Gender::parse(value) {
+        Some(gender) => gender.label().to_string(),
+        None => value.trim().to_string(),
+    }
+}
+
+/// Whether a row's gender is the one asked for, however either spells it ([`gender_label`]).
+pub fn same_gender(row: &str, wanted: &str) -> bool {
+    gender_label(row).eq_ignore_ascii_case(&gender_label(wanted))
 }
 
 /// The error for a `--federation` no row in the range has, naming the ones that do; `None`
@@ -132,6 +160,26 @@ pub fn no_match(what: &str, filters: &[Filter], rows: &[Vec<&str>]) -> Error {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn names_are_trimmed_and_must_not_be_blank() {
+        assert_eq!(parse_name("  Carolina "), Ok("Carolina".to_string()));
+        assert!(parse_name("   ").is_err());
+    }
+
+    #[test]
+    fn a_gender_matches_however_it_is_spelled() {
+        for wanted in ["Men", "men", " m ", "male"] {
+            assert!(same_gender("Men", wanted), "{wanted}");
+            assert!(!same_gender("Women", wanted), "{wanted}");
+        }
+        for wanted in ["Women", "w", "F", "female"] {
+            assert!(same_gender("Women", wanted), "{wanted}");
+        }
+        assert!(!same_gender("Men", "mne"));
+        assert_eq!(gender_label("f"), "Women");
+        assert_eq!(gender_label(" mne "), "mne");
+    }
 
     #[test]
     fn dates_take_iso_or_the_shown_format() {

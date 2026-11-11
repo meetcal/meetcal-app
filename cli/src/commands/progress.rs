@@ -24,6 +24,7 @@ use crate::utils::stats::{
 )]
 pub struct ProgressArgs {
     /// Exact athlete name
+    #[arg(value_parser = crate::utils::filters::parse_name)]
     pub name: String,
 
     /// Only results from this year on

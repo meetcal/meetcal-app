@@ -17,6 +17,7 @@ use crate::utils::names::{NameKind, not_found};
 )]
 pub struct WsoWrappedArgs {
     /// Weightlifting State Organization
+    #[arg(value_parser = crate::utils::filters::parse_name)]
     pub wso: String,
 
     /// Calendar year to summarize (defaults to the current year)

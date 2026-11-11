@@ -18,18 +18,19 @@ use crate::utils::stats::number;
 )]
 pub struct ClubResultsArgs {
     /// Club name
-    #[arg(long, short = 'c')]
+    #[arg(long, short = 'c', value_parser = crate::utils::filters::parse_name)]
     pub club: String,
 
     /// Meet name
-    #[arg(long, short = 'm')]
+    #[arg(long, short = 'm', value_parser = crate::utils::filters::parse_name)]
     pub meet: String,
 }
 
 pub async fn run(args: ClubResultsArgs) -> Result<()> {
-    // Trimmed once, so the query and the known-club check below see the same name.
-    let club = args.club.trim();
-    let meet = args.meet.trim();
+    // Both arrive trimmed (`filters::parse_name`), so the query and the known-club check below
+    // see the same name.
+    let club = args.club.as_str();
+    let meet = args.meet.as_str();
     let stats = get_club_meet_stats(club, meet).await?;
     if let Err(error) = validate_stats(&stats, club, meet) {
         let message = error.to_string();

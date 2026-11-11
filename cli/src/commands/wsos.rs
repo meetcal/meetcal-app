@@ -15,6 +15,7 @@ use crate::utils::output::{self, Report};
 )]
 pub struct WsosArgs {
     /// A WSO whose record age groups to list
+    #[arg(value_parser = crate::utils::filters::parse_name)]
     pub wso: Option<String>,
 }
 

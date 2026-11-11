@@ -24,9 +24,11 @@ use crate::utils::stats::{
 )]
 pub struct H2hArgs {
     /// First athlete (exact name)
+    #[arg(value_parser = crate::utils::filters::parse_name)]
     pub first: String,
 
     /// Second athlete (exact name)
+    #[arg(value_parser = crate::utils::filters::parse_name)]
     pub second: String,
 }
 

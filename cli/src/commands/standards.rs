@@ -4,7 +4,7 @@ use comfy_table::Table;
 use serde::Deserialize;
 
 use crate::utils::backend::{NoArgs, queries, query};
-use crate::utils::filters::{Filter, no_match};
+use crate::utils::filters::{Filter, gender_label, no_match, same_gender};
 use crate::utils::output::{self, Report};
 use crate::utils::stats::{number, weight_class};
 
@@ -39,16 +39,27 @@ pub async fn run(args: StandardsArgs) -> Result<()> {
     let age = args.age;
     let gender = args.gender;
     let standards: Vec<Standards> = query(queries::STANDARDS, &NoArgs {}).await?;
+    let (table, data) = tables(&selected(standards, &age, &gender)?);
+    output::emit(Report::new().table_with_data("standards", table, data));
+
+    Ok(())
+}
+
+/// The standards for one age group and gender, lightest class first; values compare ignoring
+/// case and surrounding space, and the gender however it is spelled (`filters::same_gender`).
+/// When none match, an error naming the filter that matched nothing and the values there are.
+pub fn selected(standards: Vec<Standards>, age: &str, gender: &str) -> Result<Vec<Standards>> {
     let (filtered, others): (Vec<Standards>, Vec<Standards>) =
         standards.into_iter().partition(|row| {
-            row.age_category.eq_ignore_ascii_case(age.trim())
-                && row.gender.eq_ignore_ascii_case(gender.trim())
+            row.age_category.trim().eq_ignore_ascii_case(age.trim())
+                && same_gender(&row.gender, gender)
         });
     if filtered.is_empty() {
+        let gender = gender_label(gender);
         let filters = [
             Filter {
                 option: "--age",
-                value: &age,
+                value: age,
             },
             Filter {
                 option: "--gender",
@@ -61,23 +72,7 @@ pub async fn run(args: StandardsArgs) -> Result<()> {
             .collect();
         return Err(no_match("standards", &filters, &rows));
     }
-    let (table, data) = tables(&lightest_first(filtered));
-    output::emit(Report::new().table_with_data("standards", table, data));
-
-    Ok(())
-}
-
-/// The standards for one age group and gender, lightest class first.
-pub fn selected(standards: Vec<Standards>, age: &str, gender: &str) -> Vec<Standards> {
-    lightest_first(
-        standards
-            .into_iter()
-            .filter(|row| {
-                row.age_category.eq_ignore_ascii_case(age)
-                    && row.gender.eq_ignore_ascii_case(gender)
-            })
-            .collect(),
-    )
+    Ok(lightest_first(filtered))
 }
 
 /// Standards lightest class first (then by A total, so the 2025 and Aug-2026 class sets
@@ -187,7 +182,8 @@ mod tests {
             standard("55kg", 184.0, 0.0),
             standard("Open", 1.0, 0.0),
         ];
-        let classes: Vec<String> = selected(standards, "u15", "men")
+        let classes: Vec<String> = selected(standards, " u15", "m")
+            .unwrap()
             .into_iter()
             .map(|row| row.weight_class)
             .collect();

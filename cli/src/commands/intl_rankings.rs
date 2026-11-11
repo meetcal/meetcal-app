@@ -4,7 +4,7 @@ use comfy_table::Table;
 use serde::Deserialize;
 
 use crate::utils::backend::{NoArgs, queries, query};
-use crate::utils::filters::{Filter, no_match};
+use crate::utils::filters::{Filter, gender_label, no_match, same_gender};
 use crate::utils::output::{self, Report};
 
 #[derive(Debug, Deserialize)]
@@ -51,10 +51,11 @@ pub async fn run(args: IntlRankingsArgs) -> Result<()> {
     let (matching, others): (Vec<Rankings>, Vec<Rankings>) =
         rankings.into_iter().partition(|row| {
             row.age_category.eq_ignore_ascii_case(age.trim())
-                && row.gender.eq_ignore_ascii_case(gender.trim())
+                && same_gender(&row.gender, &gender)
                 && row.meet.eq_ignore_ascii_case(meet.trim())
         });
     if matching.is_empty() {
+        let gender = gender_label(&gender);
         let filters = [
             Filter {
                 option: "--age",
