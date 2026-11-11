@@ -7,7 +7,7 @@ import { GenericFilterModal } from "@/components/ui/filters";
 import { useAppColors } from "@/hooks/useAppColors";
 import { useMutableResource } from "@/hooks/useMutableResource";
 import {
-  QualifyingTotalsData,
+  EMPTY_QUALIFYING_TOTALS,
   qualifyingTotalsResource,
 } from "@/lib/database/fetch-qualifying-totals";
 import { standardsResource } from "@/lib/database/fetch-standards";
@@ -15,7 +15,7 @@ import {
   IntlRanking,
   intlRankingsResource,
 } from "@/lib/database/fetchIntlRankings";
-import { StandardsData } from "@/types/standards";
+import { EMPTY_STANDARDS } from "@/types/standards";
 import {
   buildDataWidgetPayloads,
   buildIntlRankingsFilterSections,
@@ -101,7 +101,7 @@ function WidgetSettingsContent() {
   } = useMutableResource({
     resource: qualifyingTotalsResource,
     params: [] as const,
-    initialData: {} as QualifyingTotalsData,
+    initialData: EMPTY_QUALIFYING_TOTALS,
   });
   const {
     data: standardsData,
@@ -110,7 +110,7 @@ function WidgetSettingsContent() {
   } = useMutableResource({
     resource: standardsResource,
     params: [] as const,
-    initialData: {} as StandardsData,
+    initialData: EMPTY_STANDARDS,
   });
   const {
     data: intlRankings,

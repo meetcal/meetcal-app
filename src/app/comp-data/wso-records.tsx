@@ -1,3 +1,4 @@
+import { genderOr } from "@/lib/gender";
 import { SLIDE_IN_FROM_RIGHT, stackHeaderOptions } from "@/lib/stack-header-options";
 import { RecordsTable } from "@/components/comp-data/RecordsTable";
 import { FilterBar } from "@/components/ui/FilterBar";
@@ -27,7 +28,7 @@ import { StyleSheet } from "react-native";
 import { useScreenHorizontalInsets } from "@/hooks/useScreenInsets";
 
 const EMPTY_WSO_LIST: string[] = [];
-const EMPTY_RECORDS_DATA: RecordsData = {} as RecordsData;
+const EMPTY_RECORDS_DATA: RecordsData = {};
 
 export default function WSORecordsScreen() {
   return (
@@ -64,7 +65,7 @@ function WSORecordsScreenContent() {
   const wsoParams = useMemo<[string, string, Gender] | null>(
     () =>
       filters.wso
-        ? [filters.wso, filters.ageGroup, filters.gender as Gender]
+        ? [filters.wso, filters.ageGroup, genderOr(filters.gender, "Men")]
         : null,
     [filters.ageGroup, filters.gender, filters.wso],
   );
@@ -100,9 +101,7 @@ function WSORecordsScreenContent() {
 
   const currentRecords = useMemo<WeightClassRecord[]>(() => {
     return (
-      records[filters.ageGroup as keyof RecordsData]?.[
-        filters.gender as keyof AgeGroupRecords
-      ] ?? []
+      records[filters.ageGroup]?.[genderOr(filters.gender, "Men")] ?? []
     );
   }, [records, filters.ageGroup, filters.gender]);
 

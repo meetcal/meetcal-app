@@ -11,7 +11,7 @@ import { useRouteFilterKey } from "@/hooks/useRouteFilterKey";
 import { DEEP_LINKS } from "@/utils/deepLinks";
 import { useMutableResource } from "@/hooks/useMutableResource";
 import {
-  QualifyingTotalsData,
+  EMPTY_QUALIFYING_TOTALS,
   qualifyingTotalsResource,
 } from "@/lib/database/fetch-qualifying-totals";
 import {
@@ -69,7 +69,7 @@ function QualifyingTotalsScreenContent() {
   } = useMutableResource({
     resource: qualifyingTotalsResource,
     params: [] as const,
-    initialData: {} as QualifyingTotalsData,
+    initialData: EMPTY_QUALIFYING_TOTALS,
   });
 
   const getFilterDisplayText = () => {

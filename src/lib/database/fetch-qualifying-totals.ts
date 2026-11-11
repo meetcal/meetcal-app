@@ -61,6 +61,8 @@ async function fetchQualifyingTotalsFresh(): Promise<QualifyingTotalsData> {
  * replace a real download with nothing. The screen still shows the empty
  * answer; the stored copy stays.
  */
+export const EMPTY_QUALIFYING_TOTALS: QualifyingTotalsData = {};
+
 export function isQualifyingTotalsDataEmpty(data: QualifyingTotalsData): boolean {
   return Object.keys(data).length === 0;
 }

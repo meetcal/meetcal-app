@@ -61,7 +61,7 @@ export default function AuthRoutesLayout() {
       } catch (e) {
         console.error('Error checking cached auth state:', e)
         if (cancelled) return
-        setError(e as Error)
+        setError(e instanceof Error ? e : new Error(String(e)))
         setCachedIsSignedIn(false)
       } finally {
         if (!cancelled) setIsCacheLoading(false)

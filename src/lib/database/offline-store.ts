@@ -463,7 +463,7 @@ async function readStoredLiftingResults(
   }
 
   try {
-    const parsed = JSON.parse(payload) as unknown;
+    const parsed: unknown = JSON.parse(payload);
 
     if (Array.isArray(parsed)) {
       return toCachedLiftResults(parsed);
@@ -2149,7 +2149,7 @@ function toStoredMeetData(meetId: string, value: unknown): MeetData | null {
     schedule: null,
     scheduleKey: stringOr(entry.scheduleKey, `${SCHEDULE_KEY_PREFIX}${meetId}`),
     athletesKey: stringOr(entry.athletesKey, `${ATHLETES_KEY_PREFIX}${meetId}`),
-    athletes: Array.isArray(entry.athletes) ? (entry.athletes as LiftResult[]) : [],
+    athletes: Array.isArray(entry.athletes) ? normalizeLiftResults(entry.athletes) : [],
     liftingResultsKey: stringOr(
       entry.liftingResultsKey,
       `${LIFTING_RESULTS_KEY_PREFIX}${meetId}`,

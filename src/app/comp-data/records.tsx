@@ -1,3 +1,4 @@
+import { genderOr } from "@/lib/gender";
 import { SLIDE_IN_FROM_RIGHT, stackHeaderOptions } from "@/lib/stack-header-options";
 import { RecordsTable } from "@/components/comp-data/RecordsTable";
 import { FilterBar } from "@/components/ui/FilterBar";
@@ -22,7 +23,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { StyleSheet } from "react-native";
 import { useScreenHorizontalInsets } from "@/hooks/useScreenInsets";
 
-const EMPTY_RECORDS_DATA: RecordsData = {} as RecordsData;
+const EMPTY_RECORDS_DATA: RecordsData = {};
 
 export default function RecordsScreen() {
   return (
@@ -129,7 +130,7 @@ function RecordsScreenContent() {
   }, [ageGroupsForFederation, filters.ageGroup]);
 
   const currentRecords = useMemo<WeightClassRecord[]>(() => {
-    return allRecords[displayAgeGroup]?.[filters.gender as "Men" | "Women"] ?? [];
+    return allRecords[displayAgeGroup]?.[genderOr(filters.gender, "Men")] ?? [];
   }, [allRecords, displayAgeGroup, filters.gender]);
 
   const getFilterDisplayText = () => {
