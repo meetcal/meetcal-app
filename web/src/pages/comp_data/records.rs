@@ -16,8 +16,11 @@ struct Record {
     gender: String,
     weight_class: String,
     record_type: String,
+    #[serde(deserialize_with = "lift_that_must_be_sent")]
     snatch_record: Option<f64>,
+    #[serde(deserialize_with = "lift_that_must_be_sent")]
     cj_record: Option<f64>,
+    #[serde(deserialize_with = "lift_that_must_be_sent")]
     total_record: Option<f64>,
     #[serde(default)]
     snatch_by: Option<RecordHolder>,
@@ -25,6 +28,13 @@ struct Record {
     cj_by: Option<RecordHolder>,
     #[serde(default)]
     total_by: Option<RecordHolder>,
+}
+
+fn lift_that_must_be_sent<'de, D>(deserializer: D) -> Result<Option<f64>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    Option::<f64>::deserialize(deserializer)
 }
 
 impl Record {

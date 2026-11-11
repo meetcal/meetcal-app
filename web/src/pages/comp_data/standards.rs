@@ -152,4 +152,13 @@ mod tests {
     fn every_sort_order_in_the_menu_is_one_the_table_sorts_by() {
         crate::pages::comp_data::filters::assert_each_sort_order_parses_to_itself::<StandardSort>();
     }
+
+    #[test]
+    fn an_open_class_reads_as_the_other_tables_write_it() {
+        let standard: Standard = serde_json::from_str(
+            r#"{"age_category":"Senior","gender":"Women","standard_a":250.0,"standard_b":230.0,"weight_class":"+86kg"}"#,
+        )
+        .unwrap();
+        assert_eq!(standard.shown().weight_class, "86+kg");
+    }
 }

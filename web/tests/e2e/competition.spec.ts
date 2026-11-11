@@ -134,7 +134,7 @@ test("WSO records omit the organization column after an organization is selected
           gender: "Men",
           snatch_record: 158,
           total_record: 347,
-          weight_class: "110+kg",
+          weight_class: "110+",
           wso: "California North",
           snatch_by: { name: "Ada Lift", date: "2024-03-02", location: "Oakland, CA" },
           cj_by: { name: "Standard", date: null, location: null },
@@ -151,6 +151,8 @@ test("WSO records omit the organization column after an organization is selected
   await expect(page.getByRole("columnheader", { name: "WSO" })).toHaveCount(0);
   await expect(page.locator("tbody tr").first().locator("td")).toHaveCount(6);
   await expect(page.locator("tbody")).not.toContainText("California North");
+  await expect(page.locator("tbody tr").first().locator("td").nth(2)).toHaveText("110+kg");
+  await expect(page.getByLabel("Weight class").locator("option")).toHaveText(["All classes", "110+kg"]);
 
   const [snatch, cleanAndJerk, total] = await page.locator("tbody tr").first().locator("td.record-lift").all();
   await expect(snatch.locator(".record-value")).toHaveText("158");

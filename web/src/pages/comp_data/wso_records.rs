@@ -231,4 +231,18 @@ mod tests {
         crate::pages::comp_data::filters::assert_each_sort_order_parses_to_itself::<WsoRecordSort>(
         );
     }
+
+    #[test]
+    fn a_class_without_its_unit_reads_as_the_other_tables_write_it() {
+        let record = |class: &str| -> WsoRecord {
+            serde_json::from_value(serde_json::json!({
+                "age_category": "Senior", "cj_record": 100.0, "gender": "Men", "snatch_record": 80.0,
+                "total_record": 180.0, "weight_class": class
+            }))
+            .unwrap()
+        };
+        assert_eq!(record("110").shown().weight_class, "110kg");
+        assert_eq!(record("110+").shown().weight_class, "110+kg");
+        assert_eq!(record("69kg").shown().weight_class, "69kg");
+    }
 }

@@ -152,4 +152,13 @@ mod tests {
             QualifyingTotalSort,
         >();
     }
+
+    #[test]
+    fn a_class_without_its_unit_reads_as_the_other_tables_write_it() {
+        let total: QualifyingTotal = serde_json::from_str(
+            r#"{"qualifying_total":215.5,"event_name":"Nationals","gender":"Women","age_category":"Senior","weight_class":"+86"}"#,
+        )
+        .unwrap();
+        assert_eq!(total.shown().weight_class, "86+kg");
+    }
 }
