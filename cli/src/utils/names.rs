@@ -221,12 +221,8 @@ pub async fn known_names(kind: NameKind, input: &str) -> Result<Vec<String>> {
             Ok(names)
         }
         NameKind::Club => clubs().await,
-        // A deployment without the registrations list still has the record sheets' names, which
-        // are mostly the same.
-        NameKind::Wso => match registration_wsos().await {
-            Ok(names) => Ok(names),
-            Err(_) => wsos().await,
-        },
+        // Never the record sheets' names instead: the club and WSO reports do not take them.
+        NameKind::Wso => registration_wsos().await,
         NameKind::RecordWso => wsos().await,
     }
 }

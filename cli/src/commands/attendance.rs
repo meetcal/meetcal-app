@@ -1,6 +1,6 @@
 use std::collections::{BTreeMap, HashSet};
 
-use anyhow::{Result, bail};
+use anyhow::{Context, Result, bail};
 use clap::Parser;
 use comfy_table::Table;
 use serde::Deserialize;
@@ -189,7 +189,7 @@ pub async fn run(args: AttendanceArgs) -> Result<()> {
     let mut editions: Vec<Edition> = Vec::new();
     for batch in matched.chunks(ATTENDANCE_BATCH) {
         let answer: Answer = query(queries::MEET_ATTENDANCE, &json!({ "meets": batch })).await?;
-        for edition in serde_json::from_str::<Vec<Edition>>(&answer.json)? {
+        for edition in editions_of(&answer.json)? {
             if edition.spans_years() {
                 // A name used every year: `meets:attendance` counts every year's results as one
                 // meet, so count each year from the results themselves.
@@ -203,6 +203,12 @@ pub async fn run(args: AttendanceArgs) -> Result<()> {
     }
     output::emit(report(&search, &editions));
     Ok(())
+}
+
+/// The editions in a `meets:attendance` answer's JSON text; an answer of another shape is an error
+/// naming the query.
+pub fn editions_of(json: &str) -> Result<Vec<Edition>> {
+    serde_json::from_str(json).context("Unexpected answer from MeetCal query meets:attendance")
 }
 
 impl Edition {
@@ -458,6 +464,16 @@ fn count(value: usize) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn an_answer_of_another_shape_names_the_query() {
+        let error = editions_of(r#"[{"meet": "M"}]"#).unwrap_err();
+        assert_eq!(
+            error.to_string(),
+            "Unexpected answer from MeetCal query meets:attendance"
+        );
+        assert!(editions_of("[]").unwrap().is_empty());
+    }
 
     fn words(values: &[&str]) -> Vec<String> {
         values.iter().map(|value| value.to_string()).collect()
