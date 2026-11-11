@@ -1,7 +1,7 @@
-import { DataTable, dataTableStyles } from "@/components/ui/DataTable";
+import { SLIDE_IN_FROM_RIGHT, stackHeaderOptions } from "@/lib/stack-header-options";
+import { RecordsTable } from "@/components/comp-data/RecordsTable";
 import { FilterBar } from "@/components/ui/FilterBar";
 import { SubscriptionGate } from "@/components/ui/SubscriptionGate";
-import { ThemedText } from "@/components/ui/ThemedText";
 import { ThemedView } from "@/components/ui/ThemedView";
 import { FilterSection, GenericFilterModal } from "@/components/ui/filters";
 import { useAgeGroupsByKey } from "@/hooks/useAgeGroupsByKey";
@@ -16,12 +16,11 @@ import {
 } from "@/lib/database/fetch-records";
 import { filterSummary } from "@/lib/filter-summary";
 import { formatAgeGroupLabel, sortAgeGroups } from "@/lib/sortAgeGroups";
-import { Filters, Gender, RecordsData, WeightClassRecord } from "@/types/records";
+import { RecordsFilters, Gender, RecordsData, WeightClassRecord } from "@/types/records";
 import { Stack } from "expo-router";
 import React, { useEffect, useMemo, useState } from "react";
-import { StyleSheet, View } from "react-native";
+import { StyleSheet } from "react-native";
 import { useScreenHorizontalInsets } from "@/hooks/useScreenInsets";
-import { formatReferenceKg } from "@/lib/reference-values";
 
 const EMPTY_RECORDS_DATA: RecordsData = {} as RecordsData;
 
@@ -62,7 +61,7 @@ function RecordsScreenContent() {
     setTempFilters,
     openFilters,
     filterModalProps,
-  } = useFilterState<Filters>({
+  } = useFilterState<RecordsFilters>({
     defaultFilters: { federation: "", gender: "Men", ageGroup: "" },
     // Reset lands on a usable table rather than the empty initial state, which
     // only exists until the federation defaults effect below runs.
@@ -197,21 +196,9 @@ function RecordsScreenContent() {
     >
       <Stack.Screen
         options={{
+          ...stackHeaderOptions(colors),
+          ...SLIDE_IN_FROM_RIGHT,
           title: `Records`,
-          headerBackTitle: "Back",
-          headerShown: true,
-          gestureEnabled: true,
-          gestureDirection: "horizontal",
-          animation: "slide_from_right",
-          headerTitleStyle: {
-            color: colors.headerTitle,
-          },
-          headerStyle: {
-            backgroundColor: colors.headerBackground,
-          },
-          headerShadowVisible: false,
-          headerBackButtonDisplayMode: "minimal",
-          headerTintColor: colors.text,
         }}
       />
 
@@ -220,44 +207,12 @@ function RecordsScreenContent() {
         onPress={openFilters}
       />
 
-      <DataTable
-        columns={[
-          { label: "Weight Class", flex: 2 },
-          { label: "Snatch" },
-          { label: "C&J" },
-          { label: "Total" },
-        ]}
-        data={currentRecords}
-        keyExtractor={(record, index) =>
-          `${filters.federation}-${displayAgeGroup}-${filters.gender}-${record.weightClass}-${index}`
-        }
+      <RecordsTable
+        records={currentRecords}
+        rowKeyPrefix={`${filters.federation}-${displayAgeGroup}-${filters.gender}`}
         loading={loading}
         error={fetchError}
         emptyMessage={`No ${filters.federation} records available for ${filters.gender === "Men" ? "men" : "women"} in the ${formatAgeGroupLabel(displayAgeGroup) || "selected"} age group.`}
-        renderRow={(record, index) => (
-          <View
-            style={[
-              dataTableStyles.row,
-              index < currentRecords.length - 1 && {
-                borderBottomWidth: StyleSheet.hairlineWidth,
-                borderBottomColor: colors.border,
-              },
-            ]}
-          >
-            <ThemedText style={[dataTableStyles.cell, { flex: 2 }]}>
-              {record.weightClass}
-            </ThemedText>
-            <ThemedText style={dataTableStyles.cell}>
-              {formatReferenceKg(record.snatchRecord)}
-            </ThemedText>
-            <ThemedText style={dataTableStyles.cell}>
-              {formatReferenceKg(record.cjRecord)}
-            </ThemedText>
-            <ThemedText style={dataTableStyles.cell}>
-              {formatReferenceKg(record.totalRecord)}
-            </ThemedText>
-          </View>
-        )}
       />
 
       <GenericFilterModal

@@ -1,6 +1,6 @@
 import { AGE_GROUPS } from "@/constants/nat-rankings";
 import { ClassFamily, WEIGHT_CLASS_ERAS } from "@/constants/weight-classes";
-import { Gender } from "@/types/nat-rankings";
+import { Gender } from "@/types/records";
 
 /** One era's divisions in the picker, under its heading. */
 export interface WeightClassGroup {

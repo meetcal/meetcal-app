@@ -1,3 +1,4 @@
+import { stackHeaderOptions } from "@/lib/stack-header-options";
 import { openWebLink } from "@/utils/openWebLink";
 import { IconSymbol } from "@/components/ui/IconSymbol";
 import { ThemedText } from "@/components/ui/ThemedText";
@@ -65,14 +66,8 @@ export default function SponsorsScreen() {
     >
       <Stack.Screen
         options={{
+          ...stackHeaderOptions(colors),
           headerTitle: "Partners",
-          headerTitleStyle: {
-            color: colors.headerTitle,
-          },
-          headerStyle: {
-            backgroundColor: colors.headerBackground,
-          },
-          headerShadowVisible: false,
         }}
       />
 
