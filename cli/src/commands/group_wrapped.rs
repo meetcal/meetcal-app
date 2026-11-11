@@ -152,9 +152,6 @@ pub fn split_comparison_years(
     (previous, current)
 }
 
-/// A club or a WSO, by name: what the year reports (`club-wrapped`, `wso-wrapped`,
-/// `club-compare`, `wso-compare`) are about. The two differ only in how their athletes are found
-/// and in the words around them.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Group<'a> {
     Club(&'a str),
@@ -168,7 +165,6 @@ impl Group<'_> {
         }
     }
 
-    /// `Club` or `WSO`, as report titles say it.
     pub fn label(&self) -> &'static str {
         match self {
             Group::Club(_) => "Club",
@@ -176,7 +172,6 @@ impl Group<'_> {
         }
     }
 
-    /// The error's first line when the group has no registrations at all.
     pub fn no_members_message(&self) -> String {
         match self {
             Group::Club(name) => format!("No completed-meet athletes found for club \"{name}\""),
@@ -184,7 +179,6 @@ impl Group<'_> {
         }
     }
 
-    /// `club "<name>"` or `WSO "<name>"`, for messages.
     pub fn described(&self) -> String {
         match self {
             Group::Club(name) => format!("club \"{name}\""),
@@ -192,8 +186,6 @@ impl Group<'_> {
         }
     }
 
-    /// The group's results since `cutoff_date`, at meets its athletes registered for with it. A
-    /// group with no registrations is an error suggesting the names MeetCal knows.
     async fn results_since(&self, cutoff_date: &str) -> Result<Vec<LiftingResults>> {
         use crate::utils::names::{NameKind, not_found};
         let ((memberships, results), kind) = match self {
@@ -213,7 +205,6 @@ impl Group<'_> {
     }
 }
 
-/// `club-wrapped` and `wso-wrapped`: the group's calendar `year`.
 pub async fn run_wrapped(group: Group<'_>, year: i32) -> Result<()> {
     let results = group.results_since(&format!("{year:04}-01-01")).await?;
     let results = results_for_year(results, year);
@@ -230,7 +221,6 @@ pub async fn run_wrapped(group: Group<'_>, year: i32) -> Result<()> {
     Ok(())
 }
 
-/// `club-compare` and `wso-compare`: `current_year` against the year before it.
 pub async fn run_compare(group: Group<'_>, current_year: i32) -> Result<()> {
     let previous_year = current_year - 1;
     let results = group

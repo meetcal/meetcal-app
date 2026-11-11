@@ -92,12 +92,10 @@ pub fn series_name(meet: &str) -> String {
     kept.join(" ")
 }
 
-/// The year of a `YYYY-MM-DD` date: its first four characters.
 pub fn year_of(date: &str) -> &str {
     date.get(..4).unwrap_or(date)
 }
 
-/// A result's year ([`year_of`] its date).
 pub fn result_year(row: &LiftingResults) -> String {
     year_of(&row.date).to_string()
 }
