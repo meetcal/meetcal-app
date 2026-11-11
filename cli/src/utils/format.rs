@@ -114,6 +114,14 @@ pub fn record_cell(value: Option<f64>, holder: Option<&RecordHolder>) -> String 
 
 /// A record table's columns for JSON and CSV: the class, then for each lift its weight, holder,
 /// date and place, one column each.
+pub fn capitalized(word: &str) -> String {
+    let mut letters = word.chars();
+    letters
+        .next()
+        .map(|first| first.to_uppercase().chain(letters).collect())
+        .unwrap_or_default()
+}
+
 pub struct RecordRow<'a> {
     pub weight_class: &'a str,
     pub snatch: (Option<f64>, Option<&'a RecordHolder>),

@@ -11,8 +11,17 @@ use crate::types::lifting_results::LiftingResults;
 /// at or above it.
 pub const SINCLAIR_MEN: (f64, f64) = (0.722_762_521, 193.609);
 pub const SINCLAIR_WOMEN: (f64, f64) = (0.787_004_341, 153.757);
-/// How the Sinclair column is labelled, so output says which coefficients it used.
-pub const SINCLAIR_LABEL: &str = "Sinclair (2021-24)";
+macro_rules! sinclair_coefficient_years {
+    () => {
+        "2021-24"
+    };
+}
+pub const SINCLAIR_LABEL: &str = concat!("Sinclair (", sinclair_coefficient_years!(), ")");
+pub const SINCLAIR_WITH_COEFFICIENTS: &str = concat!(
+    "Sinclair (",
+    sinclair_coefficient_years!(),
+    " coefficients)"
+);
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum Gender {
@@ -441,6 +450,22 @@ pub fn fold(value: &str) -> String {
         .collect::<Vec<_>>()
         .join(" ")
         .to_lowercase()
+}
+
+pub fn folded_words(value: &str) -> String {
+    fold(value)
+        .chars()
+        .map(|character| {
+            if character.is_alphanumeric() {
+                character
+            } else {
+                ' '
+            }
+        })
+        .collect::<String>()
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
 }
 
 /// Rows grouped by athlete (folded name), each group oldest first.

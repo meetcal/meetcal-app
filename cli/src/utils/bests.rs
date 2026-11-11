@@ -7,11 +7,9 @@ use chrono::{Datelike, NaiveDate, Utc};
 use serde_json::json;
 
 use crate::types::meets::NamedBests;
+use crate::utils::athletes::NAMES_PER_READ;
 use crate::utils::backend::{queries, query_each};
 use crate::utils::format::kg;
-
-/// Names per `results:bests` call (the query takes at most 100).
-pub const BESTS_BATCH_SIZE: usize = 100;
 
 /// How far back "year bests" look, as in the app.
 pub const YEAR_BESTS_YEARS: i32 = 1;
@@ -33,7 +31,7 @@ pub fn cutoff_date(today: NaiveDate, years: i32) -> String {
 pub async fn year_bests(names: &[String]) -> Result<HashMap<String, NamedBests>> {
     let cutoff = cutoff_date(Utc::now().date_naive(), YEAR_BESTS_YEARS);
     let batches = names
-        .chunks(BESTS_BATCH_SIZE)
+        .chunks(NAMES_PER_READ)
         .map(|batch| json!({ "names": batch, "cutoffDate": cutoff }))
         .collect();
     let mut bests = HashMap::new();

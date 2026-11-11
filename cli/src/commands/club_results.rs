@@ -4,6 +4,7 @@ use comfy_table::Table;
 
 use crate::types::club::ClubMeetStats;
 use crate::utils::backend::{queries, query};
+use crate::utils::format::capitalized;
 use crate::utils::meet_names::result_meet_aliases;
 use crate::utils::names::{NameKind, clubs, not_found, not_found_message};
 use crate::utils::output::{self, Report};
@@ -181,15 +182,7 @@ fn yes_no(value: bool) -> String {
 }
 
 fn medal_name(medal: Option<&str>) -> String {
-    medal
-        .map(|value| {
-            let mut characters = value.chars();
-            match characters.next() {
-                Some(first) => first.to_uppercase().collect::<String>() + characters.as_str(),
-                None => String::new(),
-            }
-        })
-        .unwrap_or_else(|| "-".to_string())
+    medal.map(capitalized).unwrap_or_else(|| "-".to_string())
 }
 
 #[cfg(test)]

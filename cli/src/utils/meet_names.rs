@@ -1,7 +1,7 @@
 use std::collections::BTreeMap;
 
 use crate::types::lifting_results::LiftingResults;
-use crate::utils::stats::fold;
+use crate::utils::stats::folded_words;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum NationalEvent {
@@ -15,8 +15,8 @@ enum NationalEvent {
 /// publishing results under the individual championships. Keep that intentionally narrow so a
 /// registration at one national event is never attributed to a different national event.
 pub fn equivalent_meets(registration_meet: &str, result_meet: &str) -> bool {
-    let registration = normalize(registration_meet);
-    let result = normalize(result_meet);
+    let registration = folded_words(registration_meet);
+    let result = folded_words(result_meet);
 
     if registration == result {
         return true;
@@ -39,7 +39,7 @@ pub fn equivalent_meets(registration_meet: &str, result_meet: &str) -> bool {
 /// Exact result-meet names to request for a registration/start-list event.
 pub fn result_meet_aliases(meet: &str) -> Vec<String> {
     let mut aliases = vec![meet.to_string()];
-    let normalized = normalize(meet);
+    let normalized = folded_words(meet);
     let Some(year) = meet_year(&normalized) else {
         return aliases;
     };
@@ -75,7 +75,7 @@ pub const SPONSOR_WORDS: &[&str] = &["nike"];
 /// one; so do `2025 USA Weightlifting National Championships, Powered by Rogue Fitness` and
 /// `The 2024 Nike USA Weightlifting National Championships, powered by Rogue`.
 pub fn series_name(meet: &str) -> String {
-    let normalized = normalize(meet);
+    let normalized = folded_words(meet);
     let words: Vec<&str> = normalized.split_whitespace().collect();
     let mut kept = Vec::new();
     for (index, word) in words.iter().enumerate() {
@@ -140,24 +140,6 @@ fn is_masters_or_university_result(normalized: &str) -> bool {
 
 fn meet_year(normalized: &str) -> Option<&str> {
     normalized.split_whitespace().find(|token| is_year(token))
-}
-
-/// [`fold`] (Unicode NFC and lowercase, so a composed "é" and an "e" with a combining accent are
-/// one letter), then punctuation and spacing reduced to single spaces.
-fn normalize(value: &str) -> String {
-    fold(value)
-        .chars()
-        .map(|character| {
-            if character.is_alphanumeric() {
-                character
-            } else {
-                ' '
-            }
-        })
-        .collect::<String>()
-        .split_whitespace()
-        .collect::<Vec<_>>()
-        .join(" ")
 }
 
 #[cfg(test)]

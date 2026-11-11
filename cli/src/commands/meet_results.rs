@@ -9,6 +9,7 @@ use crate::{
     types::lifting_results::LiftingResults,
     utils::{
         backend::{queries, query},
+        format::capitalized,
         make_rate::make_rate_tables,
         meet_names::{SPONSOR_WORDS, editions_by_year, series_name},
         names::{MAX_NAME_PAGES, NameKind, just_before, meet_names_between, not_found},
@@ -196,11 +197,7 @@ fn name_prefixes(series: &str, year: i32) -> Vec<String> {
         prefixes.push(first.to_string());
     }
     for sponsor in SPONSOR_WORDS {
-        let mut letters = sponsor.chars();
-        let capitalized: String = letters
-            .next()
-            .map(|first| first.to_uppercase().chain(letters).collect())
-            .unwrap_or_default();
+        let capitalized = capitalized(sponsor);
         prefixes.push(format!("The {capitalized}"));
         prefixes.push(capitalized);
         prefixes.push(sponsor.to_uppercase());
