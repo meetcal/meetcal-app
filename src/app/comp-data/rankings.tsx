@@ -17,6 +17,7 @@ import {
   computeDefaultRankingFilters,
   filterIntlRankings,
 } from "@/lib/rankings-filters";
+import { filterSummary } from "@/lib/filter-summary";
 import { sortAgeGroups } from "@/lib/sortAgeGroups";
 import { Filters } from "@/types/rankings";
 import { Stack, useLocalSearchParams } from "expo-router";
@@ -139,12 +140,11 @@ function IntlRankingsScreenContent() {
     [intlRankings, filters],
   );
 
-  const getFilterDisplayText = () => {
-    const meet = filters.meet;
-    const age_category = filters.age_category;
-    const gender = filters.gender;
-    return `${meet} • ${age_category} • ${gender}`;
-  };
+  const getFilterDisplayText = () =>
+    filterSummary(
+      [filters.meet, filters.age_category, filters.gender],
+      "All rankings",
+    );
 
   // Unlike the sibling screens, reset cannot go through `useFilterState`'s
   // `onReset`: the defaults here are derived from the fetched rankings, not

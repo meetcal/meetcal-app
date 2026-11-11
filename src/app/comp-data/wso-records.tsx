@@ -12,6 +12,7 @@ import {
   wsoListResource,
   wsoRecordsResource,
 } from "@/lib/database/fetch-wso-records";
+import { filterSummary } from "@/lib/filter-summary";
 import { formatAgeGroupLabel, sortAgeGroups } from "@/lib/sortAgeGroups";
 import {
   AgeGroupRecords,
@@ -105,12 +106,11 @@ function WSORecordsScreenContent() {
     );
   }, [records, filters.ageGroup, filters.gender]);
 
-  const getFilterDisplayText = () => {
-    const wso = filters.wso;
-    const gen = filters.gender;
-    const age = formatAgeGroupLabel(filters.ageGroup);
-    return `${wso} • ${gen} • ${age}`;
-  };
+  const getFilterDisplayText = () =>
+    filterSummary(
+      [filters.wso, filters.gender, formatAgeGroupLabel(filters.ageGroup)],
+      "All WSO records",
+    );
 
   const filterSections = React.useCallback(
     (modalTempFilters: Record<string, string>): FilterSection[] => {
