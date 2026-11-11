@@ -2,6 +2,7 @@ import { v } from 'convex/values';
 import { internalQuery, type QueryCtx } from '../_generated/server';
 import type { Doc } from '../_generated/dataModel';
 import { meetByName, oldestMeet } from '../lib/meetData';
+import { hasNoMemberId } from '../lib/memberIds';
 import { normalizeName } from '../lib/names';
 import { normalizeFederation } from '../lib/normalize';
 import { canonicalMeetDate, isMeetTimeZone } from '../lib/validation';
@@ -135,7 +136,6 @@ export const truncatedEntryNames = internalQuery({
         .query('athletes')
         .withIndex('by_meet', (q) => q.eq('meet', meet.name))
         .collect();
-      const idless = (id: string) => id === '' || id.startsWith('noid:');
       const byKey = new Map<string, typeof athletes>();
       for (const athlete of athletes) {
         const key = normalizeName(athlete.name);
@@ -146,7 +146,7 @@ export const truncatedEntryNames = internalQuery({
         // Every shorter leading run of the name's words, two words at least.
         for (let n = 2; n < words.length; n++) {
           for (const short of byKey.get(words.slice(0, n).join(' ')) ?? []) {
-            if (short.memberId !== full.memberId && !(idless(short.memberId) && idless(full.memberId))) continue;
+            if (short.memberId !== full.memberId && !(hasNoMemberId(short.memberId) && hasNoMemberId(full.memberId))) continue;
             pairs.push({ meet: meet.name, truncated: { id: short._id, name: short.name, memberId: short.memberId }, full: { id: full._id, name: full.name, memberId: full.memberId } });
           }
         }

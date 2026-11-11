@@ -17,8 +17,8 @@ import {
   renderMeetSubmissionEmail,
   type MeetSubmissionEmailContent,
 } from './lib/meetSubmissions';
+import { requireUserId } from './lib/access';
 import { apiError } from './lib/validation';
-import { requireUserId } from './users';
 
 // Schedules and start lists users send for meets MeetCal does not cover yet,
 // from the app's Settings (Submit a Meet) and meetcal.app/submit-meet. A

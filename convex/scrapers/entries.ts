@@ -6,6 +6,7 @@ import { internal } from '../_generated/api';
 import { fetchJson } from './lib/http';
 import { entriesEndpoint, entriesEventId, entryFromRow, meetFromTitle, unstoredEntriesMessage, type Entry, type EntryRow } from './parse/entries';
 import { sourcesFailed } from '../lib/cronAlerts';
+import { DAY_MS } from '../lib/dates';
 
 /**
  * Meet entries (replaces the `entries` job's `usaw/entry_scraper/csv_scraper.js`):
@@ -59,7 +60,7 @@ export const TARGET_RETENTION_DAYS = 14;
  */
 export function targetExpired(endDate: string, now: number, days = TARGET_RETENTION_DAYS): boolean {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(endDate)) return false;
-  return endDate < new Date(now - days * 86_400_000).toISOString().slice(0, 10);
+  return endDate < new Date(now - days * DAY_MS).toISOString().slice(0, 10);
 }
 
 /**

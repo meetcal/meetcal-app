@@ -4,9 +4,8 @@ import { query, type QueryCtx } from './_generated/server';
 import { revalidated, revalidatedText, type Revalidated } from './lib/etag';
 import type { Doc } from './_generated/dataModel';
 import { clubKey, clubLabels } from './lib/clubs';
-import { clubAthleteCount, clubStats, computeStatsRows, meetByName, meetResultTitles, readStatsViewItems } from './lib/meetData';
+import { clubAthleteCount, clubStats, computeStatsRows, isPlaceholderMeet, meetByName, meetResultTitles, readStatsViewItems } from './lib/meetData';
 import { paddedDate, type MeetStatus } from './lib/meetStatus';
-import { isPlaceholderMeet } from './meets';
 import {
   ADAPTIVE_RECORDS_SEASON_START,
   clubNamesPage,
