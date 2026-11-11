@@ -264,10 +264,6 @@ pub enum Endpoint {
 }
 
 impl Endpoint {
-    /// Whether a throttled (429) or overloaded (503) answer is sent again by itself. A query is; an
-    /// action or mutation may have done its work before the answer was lost (a poll that handed
-    /// out its token, a revoke), so it goes once and its caller decides. A premium action only
-    /// reads, so [`premium_action`] sends it again like a query, whatever this says.
     pub fn retries(self) -> bool {
         matches!(self, Endpoint::Query)
     }
@@ -564,9 +560,6 @@ pub async fn call_function<T: DeserializeOwned>(
         .with_context(|| format!("Unexpected answer from MeetCal {function}"))
 }
 
-/// How one call is sent: whether a throttled or overloaded answer is sent again
-/// ([`send_with_retry`]), and the time its whole request may take ([`REQUEST_TIMEOUT`] unless
-/// given).
 #[derive(Clone, Copy, Debug)]
 struct Sending {
     retries: bool,
@@ -653,13 +646,8 @@ where
     .await
 }
 
-/// Most reads [`in_order`] runs at once for [`query_each`]: enough that a report of a hundred
-/// name batches no longer waits for each in turn, few enough not to crowd the deployment.
 pub const CONCURRENT_READS: usize = 8;
 
-/// Runs `query` once for each of `args` on the production deployment (or `MEETCAL_CONVEX_URL`),
-/// at most [`CONCURRENT_READS`] at a time, and returns the answers in `args`' order. The first
-/// failure fails them all.
 pub async fn query_each<T>(query: Query, args: Vec<Value>) -> Result<Vec<T>>
 where
     T: DeserializeOwned + Send + 'static,
@@ -670,8 +658,6 @@ where
     in_order(CONCURRENT_READS, jobs).await
 }
 
-/// Runs `jobs` at most `limit` at a time and returns their answers in the jobs' order, whatever
-/// order they finish in. The first failure is returned and the jobs still running are dropped.
 pub async fn in_order<T, Fut>(limit: usize, jobs: impl IntoIterator<Item = Fut>) -> Result<Vec<T>>
 where
     T: Send + 'static,
@@ -787,10 +773,10 @@ fn read_answer<T: DeserializeOwned>(query: Query, answer: QueryResponse) -> Resu
     }
 }
 
-/// Sends `request`, retrying rate limited (429) and overloaded (503) responses, and requests that
-/// failed before any answer (a dropped connection), as the retry policy allows when `retries` (a
-/// query or a premium action; see [`Endpoint::retries`]). Returns the response once
-/// Convex answers (a function that failed included), or an error once it cannot.
+fn used_its_whole_request_allowance(error: &reqwest::Error) -> bool {
+    error.is_timeout() && !error.is_connect()
+}
+
 pub async fn send_with_retry(request: Request, function: &str, retries: bool) -> Result<Response> {
     let mut retries_done = 0;
 
@@ -801,10 +787,8 @@ pub async fn send_with_retry(request: Request, function: &str, retries: bool) ->
         let response = match client()?.execute(attempt).await {
             Ok(response) => response,
             Err(error) => {
-                // No answer arrived: a read is safe to send again. A timeout has already taken
-                // the request's whole allowance, so it is not.
                 if retries
-                    && !error.is_timeout()
+                    && !used_its_whole_request_allowance(&error)
                     && let Some(delay) = next_transport_retry_delay(retries_done)
                 {
                     tokio::time::sleep(delay).await;
@@ -1100,7 +1084,6 @@ mod tests {
             async move {
                 let now = running.fetch_add(1, Ordering::SeqCst) + 1;
                 most.fetch_max(now, Ordering::SeqCst);
-                // Later jobs finish first, so order is not the order of finishing.
                 tokio::time::sleep(Duration::from_millis(20 - n)).await;
                 running.fetch_sub(1, Ordering::SeqCst);
                 Ok(n)

@@ -136,8 +136,6 @@ async fn medals_by_year(
     memberships: &[ClubMembership],
     group_rows: &[LiftingResults],
 ) -> Result<BTreeMap<String, [usize; 3]>> {
-    // Each registration meet's members, built once: matching every registration against every
-    // meet would be meets × registrations name comparisons (a large WSO has tens of thousands).
     let registered = members_by_meet(memberships);
     let jobs: Vec<_> = meet_editions(group_rows)
         .into_iter()
@@ -146,7 +144,6 @@ async fn medals_by_year(
             meet_medals(spellings, years, members)
         })
         .collect();
-    // The meets are read side by side, a few at a time.
     let mut medals: BTreeMap<String, [usize; 3]> = BTreeMap::new();
     for placings in in_order(CONCURRENT_READS, jobs).await? {
         for (year, place) in placings {
@@ -156,7 +153,6 @@ async fn medals_by_year(
     Ok(medals)
 }
 
-/// The members registered at each registration meet, by the meet's name as registrations spell it.
 pub fn members_by_meet(memberships: &[ClubMembership]) -> HashMap<&str, Vec<&str>> {
     let mut registered: HashMap<&str, Vec<&str>> = HashMap::new();
     for membership in memberships {
@@ -168,8 +164,6 @@ pub fn members_by_meet(memberships: &[ClubMembership]) -> HashMap<&str, Vec<&str
     registered
 }
 
-/// The members registered at the results meet spelled any of `spellings`: those of every
-/// registration meet that is the same event ([`equivalent_meets`]).
 pub fn members_at(registered: &HashMap<&str, Vec<&str>>, spellings: &[String]) -> Vec<String> {
     let mut meets: Vec<&&str> = registered
         .keys()
@@ -186,8 +180,6 @@ pub fn members_at(registered: &HashMap<&str, Vec<&str>>, spellings: &[String]) -
         .collect()
 }
 
-/// The total placings (year, 1 to 3) `members` won at the meet spelled `spellings`, in the
-/// `years` the group lifted there.
 async fn meet_medals(
     spellings: Vec<String>,
     years: Vec<String>,
@@ -510,7 +502,6 @@ mod tests {
         let at = |meet: &str| members_at(&registered, &[meet.to_string()]);
         assert_eq!(at("Ohio Open 2026"), ["Ada", "Bea"]);
         assert_eq!(at("Another Meet"), ["Cy"]);
-        // A combined national event's registrations belong to its separate results meets.
         assert_eq!(
             at("The 2026 National Junior Championships, Powered by Rogue Fitness"),
             ["Di"]
