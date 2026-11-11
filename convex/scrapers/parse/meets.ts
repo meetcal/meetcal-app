@@ -1,5 +1,6 @@
 // Pure parts of `scrapers/meets.ts` (port of `usaw/meet_to_supabase/scripts/sync-*.js`).
 
+import { isRecord, rowCount } from '../../lib/json';
 import { isValidIsoDate } from '../../lib/validation';
 import { countryTimeZone, isUnitedStates, usTerritoryTimeZone } from '../lib/countries';
 import { stateCode, usTimeZone } from '../lib/states';
@@ -44,18 +45,14 @@ export type WidgetRow = { id: string | null; name: string; address: string | nul
 
 const text = (value: unknown): string | null => (typeof value === 'string' ? value : null);
 
-/**
- * A widget page's rows and the search's total match count (the widget sends
- * the count as a string). Anything else is an error, never an empty page.
- */
 export function readWidgetPage(body: unknown): { total: number; rows: WidgetRow[] } {
-  if (typeof body !== 'object' || body === null) throw new Error('widget: response is not an object');
-  const { total, data } = body as { total?: unknown; data?: unknown };
-  const count = typeof total === 'number' ? total : typeof total === 'string' && /^\d+$/.test(total.trim()) ? Number(total) : NaN;
-  if (!Number.isInteger(count)) throw new Error(`widget: no match count (total ${JSON.stringify(total)})`);
+  if (!isRecord(body)) throw new Error('widget: response is not an object');
+  const { total, data } = body;
+  const count = rowCount(total);
+  if (count === null) throw new Error(`widget: no match count (total ${JSON.stringify(total)})`);
   if (!Array.isArray(data)) throw new Error('widget: no data array');
   const rows = data.map((item: unknown, i): WidgetRow => {
-    const row = (typeof item === 'object' && item !== null ? item : {}) as Record<string, unknown>;
+    const row = isRecord(item) ? item : {};
     const name = (text(row.name) ?? '').trim();
     if (!name) throw new Error(`widget: row ${i} has no name`);
     const id = row.id === undefined || row.id === null ? null : String(row.id);

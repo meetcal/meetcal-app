@@ -17,6 +17,11 @@ describe('the entries table', () => {
     expect(entryFromRow(table.data![0], 'Open').memberId).toBe('1012345');
   });
 
+  it('keeps a row id as sent, so ids that are not numbers still tell rows apart', () => {
+    const table = readEntriesTable({ total: 2, data: [{ ...row, id: 'a1' }, { ...row, id: 'b2' }] });
+    expect(table.data!.map((entry) => entry.id)).toEqual(['a1', 'b2']);
+  });
+
   it('names the field that is not what the sync reads', () => {
     expect(() => readEntriesTable([row])).toThrow('entries: the response is not an object');
     expect(() => readEntriesTable({ data: { 0: row } })).toThrow('entries: data is not a list');
