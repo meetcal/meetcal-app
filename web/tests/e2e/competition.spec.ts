@@ -238,8 +238,8 @@ test("athlete results show every competition field except federation", async ({ 
   await routeQuery(page, "results:search", async (route, args) => {
     const isSuggestion = !("startDate" in args);
     await route.fulfill(valueAnswer(isSuggestion
-      ? { matched_name: null, suggestions: ["Test Athlete"], results: [] }
-      : { matched_name: "Test Athlete", suggestions: [], results: [completeResult] }));
+      ? { matched_name: null, suggestions: ["Test Athlete"], results: [], truncated: false }
+      : { matched_name: "Test Athlete", suggestions: [], results: [completeResult], truncated: false }));
   });
   await page.goto("/results");
   const athleteSearch = page.getByLabel("Athlete", { exact: true });
@@ -268,7 +268,7 @@ test("meet center joins details, schedule, start list, and full results", async 
   await routeQuery(page, "meets:schedule", (route) => route.fulfill(textAnswer([{ date: "2026-06-20", meet: "Test Meet", platform: "Red", session_id: 1, start_time: "10:00", weigh_in_time: "08:00", weight_class: "69kg" }])));
   await routeQuery(page, "meets:athletes", (route) => route.fulfill(textAnswer([{ member_id: "1", meet: "Test Meet", name: "Test Athlete", age: 27, club: "Test Barbell", wso: "California North", gender: "Female", weight_class: "+69", entry_total: 220, adaptive: false, session_number: 1, session_platform: "Red" }])));
   await routeQuery(page, "results:byMeet", (route) => route.fulfill(textAnswer([completeResult])));
-  await routeQuery(page, "results:search", (route) => route.fulfill(valueAnswer({ matched_name: "Test Athlete", suggestions: [], results: [completeResult] })));
+  await routeQuery(page, "results:search", (route) => route.fulfill(valueAnswer({ matched_name: "Test Athlete", suggestions: [], results: [completeResult], truncated: false })));
   await page.goto("/meet-center");
   const meetSearch = page.locator("#meet-search-input");
   await meetSearch.fill("me");
@@ -417,7 +417,7 @@ test("athlete autocomplete waits for typing to pause before searching", async ({
   await routeQuery(page, "results:search", async (route, args) => {
     const query = String(args.query ?? "");
     queries.push(query);
-    await route.fulfill(valueAnswer({ matched_name: null, suggestions: [query], results: [] }));
+    await route.fulfill(valueAnswer({ matched_name: null, suggestions: [query], results: [], truncated: false }));
   });
 
   await page.goto("/results");
@@ -443,11 +443,11 @@ test("a slow earlier athlete search cannot replace newer suggestions", async ({ 
     const query = args.query;
     if (query === "Ann") {
       slowSearchFulfilled = slowSearchReleased.then(() =>
-        route.fulfill(valueAnswer({ matched_name: null, suggestions: ["Ann Stale"], results: [] })),
+        route.fulfill(valueAnswer({ matched_name: null, suggestions: ["Ann Stale"], results: [], truncated: false })),
       );
       return;
     }
-    await route.fulfill(valueAnswer({ matched_name: null, suggestions: ["Bob Current"], results: [] }));
+    await route.fulfill(valueAnswer({ matched_name: null, suggestions: ["Bob Current"], results: [], truncated: false }));
   });
 
   await page.goto("/results");
@@ -474,8 +474,8 @@ test("the athlete search is a keyboard-operable combobox", async ({ page }) => {
   await routeQuery(page, "results:search", async (route, args) => {
     searches.push(args);
     await route.fulfill(valueAnswer("startDate" in args
-      ? { matched_name: String(args.query), suggestions: [], results: [completeResult] }
-      : { matched_name: null, suggestions: ["Test Athlete", "Tess Lifter"], results: [] }));
+      ? { matched_name: String(args.query), suggestions: [], results: [completeResult], truncated: false }
+      : { matched_name: null, suggestions: ["Test Athlete", "Tess Lifter"], results: [], truncated: false }));
   });
   await page.goto("/results");
   const athlete = page.getByRole("combobox", { name: "Athlete" });
@@ -517,8 +517,8 @@ test("submitting the athlete search closes its suggestions for good", async ({ p
   await mockSubscribedUser(page);
   await routeQuery(page, "results:search", async (route, args) => {
     await route.fulfill(valueAnswer("startDate" in args
-      ? { matched_name: String(args.query), suggestions: [], results: [completeResult] }
-      : { matched_name: null, suggestions: ["Test Athlete"], results: [] }));
+      ? { matched_name: String(args.query), suggestions: [], results: [completeResult], truncated: false }
+      : { matched_name: null, suggestions: ["Test Athlete"], results: [], truncated: false }));
   });
   await page.goto("/results");
   const athlete = page.getByRole("combobox", { name: "Athlete" });
