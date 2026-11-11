@@ -175,7 +175,6 @@ pub fn percent_change(current: f64, previous: f64) -> Option<f64> {
     }
 }
 
-/// The report as table format prints it, for the tests.
 #[cfg(test)]
 fn render_comparison(
     name: &str,

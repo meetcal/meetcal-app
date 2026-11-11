@@ -609,7 +609,6 @@ fn place_of(key: &LiftKey, group: &[LiftKey]) -> Option<usize> {
     Some(group.iter().filter(|other| ranks_ahead(other, key)).count() + 1)
 }
 
-/// The report as table format prints it, for the tests.
 #[cfg(test)]
 fn render_report(
     wso: &str,

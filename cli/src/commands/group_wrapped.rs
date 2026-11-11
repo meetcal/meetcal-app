@@ -336,7 +336,6 @@ fn percentage(successes: usize, attempts: usize) -> f64 {
     }
 }
 
-/// The report as table format prints it, for the tests.
 #[cfg(test)]
 fn render_group_wrapped(
     group_kind: &str,
