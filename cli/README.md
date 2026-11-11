@@ -393,8 +393,11 @@ meetcal wsos Carolina
 
 #### `wso`
 
-Analyze one WSO's athletes at a meet. The report includes meet participation, make rates, total
-weight lifted, PRs, medals, and athlete detail.
+Analyze one WSO's athletes at a meet: the same report as `club-results`, for the athletes
+registered with the WSO. MeetCal computes it (`reference:wsoMeetStats`), so the medals, PRs and
+make rates are the ones `club-results` shows for the same athletes. It counts the athletes
+registered with the WSO, so it needs the meet's start list: for a meet MeetCal has only results
+for, use `meet-results`.
 
 ```sh
 meetcal wso \
@@ -402,12 +405,9 @@ meetcal wso \
   --wso Carolina
 ```
 
-MeetCal resolves combined USA Weightlifting registration events to their individual results meets,
-such as Masters Nationals and National University Championships.
-
 Options:
 
-- `--wso`, `-w`: Exact WSO name
+- `--wso`, `-w`: WSO name, as registrations spell it (case and spacing ignored; see `meetcal wsos`)
 
 #### `wso-wrapped`
 
