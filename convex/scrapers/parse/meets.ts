@@ -289,4 +289,3 @@ export function transformMeets(rows: (Pick<WidgetRow, 'name' | 'address' | 'subt
 export function renamedMeetMessage(name: string, storedAs: string): string {
   return `another meet is named ${JSON.stringify(name)}, so this one was stored as ${JSON.stringify(storedAs)}; results and entries sent under the plain name still attach to the other meet (rename one by hand)`;
 }
-
