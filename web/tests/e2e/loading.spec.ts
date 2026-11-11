@@ -83,7 +83,7 @@ test("each loading skeleton has as many columns as the table that replaces it", 
     release = resolve;
   });
   const held: Promise<void>[] = [];
-  const hold = (body: () => unknown) => async (route: Route) => {
+  const hold = (body: () => ReturnType<typeof textAnswer>) => async (route: Route) => {
     held.push(released.then(() => route.fulfill(body())).catch(() => {}));
   };
   await routeQuery(page, "meets:schedule", hold(() => textAnswer([])));
