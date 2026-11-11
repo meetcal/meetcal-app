@@ -1,3 +1,4 @@
+import { createWriteChain } from '@/lib/data/write-chain';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Crypto from 'expo-crypto';
 import { isAccountDeleted } from '@/lib/deleted-accounts';
@@ -145,17 +146,7 @@ export function getOutboxSeededKey(userId: string): string {
   return `@saved_sessions_outbox_seeded_${userId}`;
 }
 
-/**
- * Tail of the serialized read-modify-write chain, so two overlapping marks
- * cannot each read the same snapshot and have one overwrite the other.
- */
-let writeChain: Promise<unknown> = Promise.resolve();
-
-function enqueue<T>(task: () => Promise<T>): Promise<T> {
-  const run = writeChain.then(task, task);
-  writeChain = run.catch(() => undefined);
-  return run;
-}
+const enqueue = createWriteChain();
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === 'object' && !Array.isArray(value);

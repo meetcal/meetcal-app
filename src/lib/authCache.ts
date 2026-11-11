@@ -1,3 +1,4 @@
+import { createWriteChain } from '@/lib/data/write-chain';
 import * as SecureStore from 'expo-secure-store';
 import { devLog } from './logger';
 
@@ -30,7 +31,7 @@ let mutationRevision = 0;
  * "nothing in flight", deleted the key, and the loser's write landed after the
  * delete — leaving `isSignedIn: true` on disk after a sign-out.
  */
-let writeChain: Promise<void> = Promise.resolve();
+const authCacheWrites = createWriteChain();
 /**
  * Set when a sign-out's Keychain delete failed, until the next successful
  * `cacheAuthState`. The entry may still say signed in, and `useStorageUser`
@@ -91,7 +92,7 @@ export async function cacheAuthState(
   userId?: string
 ) {
   const signature = getAuthSignature(isSignedIn, userId);
-  const write = writeChain.then(async () => {
+  await authCacheWrites(async () => {
     // Compare after earlier writes/clears settle, otherwise a later sign-in
     // can be discarded because it matches the state before a queued sign-out.
     const age = Date.now() - lastPersistedAt;
@@ -114,9 +115,6 @@ export async function cacheAuthState(
       console.error('Error caching auth state:', error);
     }
   });
-
-  writeChain = write;
-  await write;
 }
 
 /**
@@ -146,7 +144,7 @@ export async function getCachedAuthState(): Promise<AuthCacheData | null> {
 
   inFlightRead = (async () => {
   try {
-    await writeChain;
+    await authCacheWrites(async () => undefined);
     if (clearFailed) return null;
     const readRevision = mutationRevision;
     const cachedData = await SecureStore.getItemAsync(AUTH_CACHE_KEY);
@@ -207,7 +205,7 @@ export async function getCachedAuthState(): Promise<AuthCacheData | null> {
  * Clerk user overwrites it.
  */
 export async function clearAuthCache() {
-  const clear = writeChain.then(async () => {
+  await authCacheWrites(async () => {
     mutationRevision += 1;
     // Whatever happens below, the next `cacheAuthState` must write, not
     // deduplicate against an entry that may be gone.
@@ -228,8 +226,5 @@ export async function clearAuthCache() {
       }
     }
   });
-
-  writeChain = clear;
-  await clear;
 }
 

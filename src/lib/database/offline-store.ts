@@ -125,38 +125,25 @@ async function saveExplicitMeetDownloads(downloads: ExplicitMeetDownloads): Prom
   );
 }
 
-/**
- * Tail of the serialized read-modify-write chain over the downloads blob.
- * `clearExpiredDownloadedMeets` is fired unawaited from every meets refresh
- * while a download may be marking its meet: two overlapping calls each read
- * the same blob and the second write dropped the first's change (a meet
- * marked downloaded and then silently not, or an expired meet resurrected).
- * Same pattern as `lib/authCache.ts`'s `writeChain`.
- */
-let explicitDownloadsWriteChain: Promise<void> = Promise.resolve();
+const explicitDownloadsWrites = createWriteChain();
 
 export async function markMeetExplicitlyDownloaded(
   meetId: MeetName,
   downloaded: boolean,
   options?: { endDate?: string }
 ): Promise<void> {
-  const write = explicitDownloadsWriteChain
-    // A failed predecessor must not block the chain for good.
-    .catch(() => undefined)
-    .then(async () => {
-      const downloads = await getExplicitMeetDownloads();
-      if (downloaded) {
-        downloads[meetId] = {
-          markedAt: Date.now(),
-          ...(options?.endDate ? { endDate: options.endDate } : {}),
-        };
-      } else {
-        delete downloads[meetId];
-      }
-      await saveExplicitMeetDownloads(downloads);
-    });
-  explicitDownloadsWriteChain = write;
-  await write;
+  await explicitDownloadsWrites(async () => {
+    const downloads = await getExplicitMeetDownloads();
+    if (downloaded) {
+      downloads[meetId] = {
+        markedAt: Date.now(),
+        ...(options?.endDate ? { endDate: options.endDate } : {}),
+      };
+    } else {
+      delete downloads[meetId];
+    }
+    await saveExplicitMeetDownloads(downloads);
+  });
 }
 
 /**
@@ -165,21 +152,17 @@ export async function markMeetExplicitlyDownloaded(
  * No write when nothing changed.
  */
 async function updateDownloadEndDates(endDates: ReadonlyMap<string, string>): Promise<void> {
-  const write = explicitDownloadsWriteChain
-    .catch(() => undefined)
-    .then(async () => {
-      const downloads = await getExplicitMeetDownloads();
-      let changed = false;
-      for (const [meetId, endDate] of endDates) {
-        const entry = downloads[meetId];
-        if (!entry || entry.endDate === endDate) continue;
-        downloads[meetId] = { ...entry, endDate };
-        changed = true;
-      }
-      if (changed) await saveExplicitMeetDownloads(downloads);
-    });
-  explicitDownloadsWriteChain = write;
-  await write;
+  await explicitDownloadsWrites(async () => {
+    const downloads = await getExplicitMeetDownloads();
+    let changed = false;
+    for (const [meetId, endDate] of endDates) {
+      const entry = downloads[meetId];
+      if (!entry || entry.endDate === endDate) continue;
+      downloads[meetId] = { ...entry, endDate };
+      changed = true;
+    }
+    if (changed) await saveExplicitMeetDownloads(downloads);
+  });
 }
 
 export async function isMeetExplicitlyDownloaded(meetId: MeetName): Promise<boolean> {

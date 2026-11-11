@@ -1,3 +1,4 @@
+import { createWriteChain } from '@/lib/data/write-chain';
 import * as SecureStore from 'expo-secure-store';
 
 import { issueSiriToken, revokeApiToken, type IssuedApiToken } from '@/lib/api/meetcal-api';
@@ -48,7 +49,7 @@ export type SiriTokenState = {
   getClerkToken: () => Promise<string | null>;
 };
 
-let chain: Promise<void> = Promise.resolve();
+let siriTokenSyncs = createWriteChain();
 /** After a failed issue, when to try again, for the user it failed for: another user does not wait. */
 let retryAfter: { userId: string; at: number } | null = null;
 
@@ -150,15 +151,13 @@ async function sync(state: SiriTokenState, now: number): Promise<void> {
  * a failure is logged and tried again later.
  */
 export function syncSiriToken(state: SiriTokenState, now: () => number = Date.now): Promise<void> {
-  const run = chain.then(() => sync(state, now())).catch((error: unknown) => {
+  return siriTokenSyncs(() => sync(state, now())).catch((error: unknown) => {
     console.warn('[siri-token] could not update the Siri token', error);
   });
-  chain = run;
-  return run;
 }
 
 /** Forgets the retry wait and the queue. Tests only. */
 export function resetSiriTokenForTests(): void {
-  chain = Promise.resolve();
+  siriTokenSyncs = createWriteChain();
   retryAfter = null;
 }
