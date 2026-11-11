@@ -31,7 +31,7 @@ import { MISSOURI_VALLEY_URL, missouriValleyLines, parseMissouriValley } from '.
 import { fetchPdfRetrying, fetchTextRetrying } from './lib/transientFetch';
 import { parseUsawTemplate } from './parse/wso/usawTemplate';
 import { FLAT_COLUMNS, parseFlatSheet, type FlatColumns } from './parse/wso/flat';
-import { normalizeAgeCategory, normalizeGender } from '../lib/normalize';
+import { classKey } from '../lib/normalize';
 import { sourcesFailed } from '../lib/cronAlerts';
 import { storedLifts } from './lib/recordRows';
 import { NOT_REACHED, runBudget } from './lib/budget';
@@ -299,15 +299,10 @@ export const WSO_SOURCES: WsoSource[] = [
 const wsoRows = (records: WsoRecord[]) =>
   records.map((r) => ({ wso: r.wso, ageCategory: r.ageCategory, gender: r.gender, weightClass: r.weightClass, ...storedLifts(r) }));
 
-/**
- * One record per class, the last listed winning, as it did when the Python
- * upserted row by row (New York's PDF lists Masters Men 80-84 twice).
- * Classes are compared as stored, after age and gender are normalized.
- */
 function lastPerClass(records: WsoRecord[]): WsoRecord[] {
   const byClass = new Map<string, WsoRecord>();
   for (const record of records) {
-    const key = JSON.stringify([normalizeAgeCategory(record.ageCategory), normalizeGender(record.gender), record.weightClass]);
+    const key = classKey(record);
     byClass.delete(key);
     byClass.set(key, record);
   }

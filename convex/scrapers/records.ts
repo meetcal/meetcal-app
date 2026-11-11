@@ -36,7 +36,6 @@ type RunResult = {
   pruneRefused?: string;
 };
 
-
 const unknownAgeFailures = (codes: readonly string[]) =>
   codes.map((code) => ({ source: `age group ${code}`, error: `${JSON.stringify(code)} is not an age group the parser knows (parse/records.ts ageCategory); its rows were not stored` }));
 

@@ -6,7 +6,7 @@ import { internal } from '../_generated/api';
 import { fetchJson, throttledOrTransient, withRetries, type RetryPolicy } from './lib/http';
 import { BrowserlessKeyError, BrowserlessQuotaError, ChallengeError, fetchUnblockedHtml } from './lib/browserless';
 import { sourcesFailed } from '../lib/cronAlerts';
-import { normalizeAgeCategory, normalizeGender } from '../lib/normalize';
+import { classKey } from '../lib/normalize';
 import type { RecordHolder } from './parse/holder';
 import { IWF_PAGES, parseIwfWikitext, wikitextOf, wikitextUrl, type IwfAge, type IwfRecord } from './parse/iwfRecords';
 import { iwfSiteUrl, parseIwfSiteHtml } from './parse/iwfSite';
@@ -88,13 +88,10 @@ const LIFT_HOLDERS = [
   ['totalRecord', 'totalBy'],
 ] as const;
 
-/** `records` with the stored holder kept for every lift whose record is the stored one. */
 export function keepStoredHolders(records: readonly IwfRecord[], stored: readonly StoredRecord[]): IwfRecord[] {
-  const keyOf = (r: { ageCategory: string; gender: string; weightClass: string }) =>
-    JSON.stringify([normalizeAgeCategory(r.ageCategory), normalizeGender(r.gender), r.weightClass]);
-  const byKey = new Map(stored.map((r) => [keyOf(r), r]));
+  const byKey = new Map(stored.map((r) => [classKey(r), r]));
   return records.map((record) => {
-    const before = byKey.get(keyOf(record));
+    const before = byKey.get(classKey(record));
     if (!before) return record;
     const kept = { ...record };
     for (const [lift, holder] of LIFT_HOLDERS) {

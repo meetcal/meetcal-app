@@ -2,7 +2,6 @@
 
 import { recordHolder, recordLift, setHolder, type RecordHolder } from '../holder';
 
-/** One WSO record row as the Python scrapers built it (lifts may be missing). */
 export type WsoRecord = {
   wso: string;
   ageCategory: string;
@@ -11,7 +10,6 @@ export type WsoRecord = {
   snatchRecord: number | null;
   cjRecord: number | null;
   totalRecord: number | null;
-  /** Who set each lift (see `parse/holder.ts`); absent where the lift has no value. */
   snatchBy?: RecordHolder;
   cjBy?: RecordHolder;
   totalBy?: RecordHolder;
@@ -105,14 +103,12 @@ export function intOrNull(value: string): number | null {
   return recordLift(value);
 }
 
-/** A class's record before its lifts are read: every lift missing. */
 export function blankRecord(wso: string, age: string, gender: string, weightClass = ''): WsoRecord {
   return { wso, ageCategory: age, gender, weightClass: weightClass, snatchRecord: null, cjRecord: null, totalRecord: null };
 }
 
 export type LiftName = 'snatch' | 'cj' | 'total';
 
-/** Sets a lift's value and its holder (cleared when there is none). */
 export function setLift(record: WsoRecord, lift: LiftName, value: number | null, holder: RecordHolder | undefined): void {
   record[`${lift}Record`] = value;
   setHolder(record, `${lift}By`, holder);

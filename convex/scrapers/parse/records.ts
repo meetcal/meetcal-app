@@ -183,7 +183,6 @@ export function parseRecordsReport(pages: string[][]): ParsedRecords {
         totalRecord: 0,
       };
       const liftUpper = lift.toUpperCase();
-      // A 0 kg standard ("W80 F 49 SNATCH 0 Standard") is no lift to hold.
       const holder = weight === 0 ? undefined : rowHolder(weight, rest ? rest.split(' ') : []);
       if (liftUpper.includes('SNATCH')) {
         record.snatchRecord = weight;
