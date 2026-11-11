@@ -39,7 +39,6 @@ describe('urlwatch', () => {
 
   it('records a page first read after failed runs, rather than reporting all of it as changed (#576)', () => {
     expect(pageChange(null, 'a')).toBe('new');
-    // What a run that failed on a page never read stores.
     expect(pageChange({ text: '' }, 'a\nb')).toBe('new');
     expect(pageChange({ text: 'a' }, 'a')).toBe('unchanged');
     expect(pageChange({ text: 'a' }, 'b')).toBe('changed');

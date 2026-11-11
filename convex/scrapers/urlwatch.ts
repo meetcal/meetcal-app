@@ -12,8 +12,6 @@ import { pageChange, pageText, reportDelivery, WATCHED_PAGES } from './parse/wat
  * urlwatch, hourly (replaces the VPS's `urlwatch` job): each watched page's
  * text is compared with the last run's, and the run's changes are emailed
  * (OneSignal, to `URLWATCH_EMAIL`) as diffs in one message. A page seen for
- * the first time is only recorded, also when its first runs failed. Where no
- * alert address is set (dev), changes are logged instead. A page that stops loading, or whose
  * selector stops matching (a redesign), is reported once, when it starts
  * failing, and its last text is kept. Snapshots are saved only after the
  * email went out, so a failed send is retried the next hour.
