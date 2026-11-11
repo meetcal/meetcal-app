@@ -46,7 +46,10 @@ function restartedStore(): OfflineStoreModule {
   return store;
 }
 
-jest.setTimeout(Math.max(10_000, (fc.readConfigureGlobal().numRuns ?? 100) * 150));
+const MS_PER_CASE_WHEN_EACH_CASE_RELOADS_THE_STORE = 600;
+jest.setTimeout(
+  Math.max(60_000, (fc.readConfigureGlobal().numRuns ?? 100) * MS_PER_CASE_WHEN_EACH_CASE_RELOADS_THE_STORE),
+);
 
 const MEET = 'Chaos Test Meet';
 
