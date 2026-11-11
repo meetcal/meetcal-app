@@ -1165,7 +1165,6 @@ pub(crate) async fn upload_meet_submission_file(
     read_storage_id(&body)
 }
 
-/// Submits the meet with its uploaded files.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) enum MeetSubmissionOutcome {
     Submitted,
