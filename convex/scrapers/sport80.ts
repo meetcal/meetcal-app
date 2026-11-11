@@ -10,7 +10,9 @@ import {
   hasResultsRoute,
   nested,
   pageRows,
+  eventSource,
   failingEventIds,
+  isSourceOfEvent,
   MAX_ROLLING_EVENTS_A_NIGHT,
   pickNewestEvents,
   pickNightlyEvents,
@@ -176,7 +178,10 @@ export const run = internalAction({
         failures.push({ source: `event index ${y}`, error: (error as Error).message });
       }
     }
-    if (!events.length) throw sourcesFailed('sport80: no events fetched', failures);
+    const stillFailing = only ? [] : failingEventIds(await ctx.runQuery(internal.cronStatus.failedSources, { job: RESULTS_JOB }));
+    const notRetried = (ids: readonly string[]) =>
+      ids.map((id) => ({ source: eventSource(null, id), error: 'failed in the last run and the event index it is in could not be read, not synced' }));
+    if (!events.length) throw sourcesFailed('sport80: no events fetched', [...failures, ...notRetried(stillFailing)]);
 
     let newest: Dict[];
     let unreadable: ReturnType<typeof pickNewestEvents>['unreadable'];
@@ -185,20 +190,20 @@ export const run = internalAction({
       ({ picked: newest, unreadable } = requested);
       const indexes = [year, year - 1].filter((y) => !failures.some((f) => f.source === `event index ${y}`));
       for (const id of requested.missing) {
-        failures.push({ source: `event ${id}`, error: `not in the event index read (${indexes.join(', ')}), not synced` });
+        failures.push({ source: eventSource(null, id), error: `not in the event index read (${indexes.join(', ')}), not synced` });
       }
     } else {
-      const stillFailing = failingEventIds(await ctx.runQuery(internal.cronStatus.failedSources, { job: RESULTS_JOB }));
       const nightly = pickNightlyEvents(events, Date.now(), { stillFailing });
       ({ newest, unreadable } = nightly);
       console.log(`sport80: reading ${nightly.recentCount} recent events, ${nightly.retriedCount} that failed last run and ${nightly.rollingCount} older ones due tonight`);
+      if (failures.length > 0) failures.push(...notRetried(nightly.notInTheIndex));
       if (nightly.rollingLeftOut > 0) {
         failures.push({ source: 'rolling pass', error: `${nightly.rollingLeftOut} older events due tonight were not read (more than ${MAX_ROLLING_EVENTS_A_NIGHT}); raise ROLLING_NIGHTS in parse/sport80.ts` });
       }
     }
     const reported = new Set<string>();
     for (const { event, date, recent } of unreadable) {
-      const source = `${String(nested(event, 'meet') ?? '?')} (event ${eventIdOf(event) ?? '?'})`;
+      const source = eventSource(String(nested(event, 'meet') ?? '?'), eventIdOf(event));
       const error = `unreadable date ${JSON.stringify(date)}, not synced`;
       if (reported.has(source)) continue;
       reported.add(source);
@@ -216,14 +221,14 @@ export const run = internalAction({
       if (!hasResultsRoute(event) || (only && !only.includes(eventId))) continue;
       // Reading may take half the budget; storing what was read needs the rest.
       if (budget.spent(READ_SHARE)) {
-        failures.push({ source: `${meet} (event ${eventId})`, error: NOT_REACHED });
+        failures.push({ source: eventSource(meet, eventId), error: NOT_REACHED });
         continue;
       }
       let table: { rows: Dict[]; notWhole?: string };
       try {
         table = await api.eventResults(eventId);
       } catch (error) {
-        failures.push({ source: `${meet} (event ${eventId})`, error: `${eventDate(event)}: ${(error as Error).message}` });
+        failures.push({ source: eventSource(meet, eventId), error: `${eventDate(event)}: ${(error as Error).message}` });
         continue;
       }
       if (table.rows.length) meets.push({ eventId, meet, rows: formatResults(eventId, meet, eventDate(event), table.rows), notWhole: table.notWhole });
@@ -231,15 +236,15 @@ export const run = internalAction({
     // Every event asked for by id is synced or named: an override that read
     // nothing must not finish as if it had done its work.
     for (const id of only ?? []) {
-      if (meets.some((m) => m.eventId === id) || failures.some((f) => f.source === `event ${id}` || f.source.endsWith(`(event ${id})`))) continue;
-      failures.push({ source: `event ${id}`, error: 'no results read (no results page, no meet name, or an empty table), not synced' });
+      if (meets.some((m) => m.eventId === id) || failures.some((f) => isSourceOfEvent(f.source, id))) continue;
+      failures.push({ source: eventSource(null, id), error: 'no results read (no results page, no meet name, or an empty table), not synced' });
     }
     for (const failure of failed()) console.error(`sport80: ${failure}`);
     if (dryRun) return { meets, outcomes: [], failed: failed() };
 
     const outcomes: MeetOutcome[] = [];
     for (const { eventId, meet, rows, notWhole } of meets) {
-      const source = `${meet} (event ${eventId})`;
+      const source = eventSource(meet, eventId);
       if (budget.spent()) {
         failures.push({ source, error: `read but not stored: ${NOT_REACHED}` });
         continue;

@@ -233,6 +233,10 @@ export const MAX_ROLLING_EVENTS_A_NIGHT = 120;
 
 export const RESULTS_JOB = 'results-sport80';
 
+export const eventSource = (meet: string | null, eventId: string | null) => (meet === null ? `event ${eventId ?? '?'}` : `${meet} (event ${eventId ?? '?'})`);
+
+export const isSourceOfEvent = (source: string, eventId: string) => source === eventSource(null, eventId) || source.endsWith(`(event ${eventId})`);
+
 export function failingEventIds(failedSources: readonly string[]): string[] {
   const ids = failedSources.map((source) => /(?:^|\()event (\d+)\)?$/.exec(source)?.[1]).filter((id): id is string => id !== undefined);
   return [...new Set(ids)];
@@ -244,6 +248,7 @@ export type NightlyEvents = {
   retriedCount: number;
   rollingCount: number;
   rollingLeftOut: number;
+  notInTheIndex: string[];
   unreadable: { event: Dict; date: string; recent: boolean }[];
 };
 
@@ -262,7 +267,7 @@ export function pickNightlyEvents(
   const recentIds = new Set(newest.map(eventIdOf));
   const recent = [...newest];
   const older = new Map<string, Dict>();
-  const earliestRecentDay = now - recentDays * DAY_MS;
+  const earliestRecentDay = (Math.floor(now / DAY_MS) - recentDays) * DAY_MS;
   for (const event of events) {
     const id = eventIdOf(event);
     const date = eventDate(event);
@@ -278,14 +283,19 @@ export function pickNightlyEvents(
   const dueTonight = [...older.values()].filter((event) => idNumber(event) % rollingNights === tonight).sort((a, b) => idNumber(b) - idNumber(a));
   const rolling = dueTonight.slice(0, maxRolling);
   const picked = new Set([...recent, ...rolling].map(eventIdOf));
-  const retried = stillFailing.flatMap((id) => (picked.has(id) || !older.has(id) ? [] : [older.get(id)!]));
+  const retried = stillFailing.flatMap((id) => {
+    const event = picked.has(id) ? undefined : older.get(id);
+    return event === undefined ? [] : [event];
+  });
+  const oldestRecentId = recent.length < count ? -Infinity : Math.min(...recent.map(idNumber));
   return {
     newest: [...recent, ...retried, ...rolling],
     recentCount: recent.length,
     retriedCount: retried.length,
     rollingCount: rolling.length,
     rollingLeftOut: dueTonight.length - rolling.length,
-    unreadable,
+    notInTheIndex: stillFailing.filter((id) => !picked.has(id) && !older.has(id)),
+    unreadable: unreadable.map((entry) => ({ ...entry, recent: entry.recent || idNumber(entry.event) > oldestRecentId })),
   };
 }
 

@@ -1,7 +1,7 @@
 import { JOBS } from '../../convex/cronJobs';
 import { readFileSync } from 'fs';
 import { join } from 'path';
-import { eventDate, eventIdOf, formatResults, nested, failingEventIds, newestEvents, pickNewestEvents, pickNightlyEvents, pickRequestedEvents, RESULTS_JOB, ROLLING_NIGHTS, unreadableEventDate } from '../../convex/scrapers/parse/sport80';
+import { eventDate, eventIdOf, eventSource, formatResults, isSourceOfEvent, nested, failingEventIds, newestEvents, pickNewestEvents, pickNightlyEvents, pickRequestedEvents, RESULTS_JOB, ROLLING_NIGHTS, unreadableEventDate } from '../../convex/scrapers/parse/sport80';
 
 // The first events of the 2026 index as Sport80 sent them on 2026-10-11 (every
 // event of 2025 and 2026 had an ISO date).
@@ -101,12 +101,35 @@ describe('Sport80 results sync (port of update_supabase_from_sport80.py)', () =>
 
     it('reads again, every night, an older event the last run named as failing, until it stops failing', () => {
       const notDueTonight = lastSpring.map(eventIdOf).find((id) => !idsRead(tonight).includes(id))!;
-      const stillFailing = failingEventIds([`Meet ${notDueTonight} (event ${notDueTonight})`, 'event index 2025', 'rolling pass', 'event 424242']);
+      const stillFailing = failingEventIds([eventSource(`Meet ${notDueTonight}`, notDueTonight), 'event index 2025', 'rolling pass', eventSource(null, '424242')]);
       expect(stillFailing).toEqual([notDueTonight, '424242']);
       const nightly = pickNightlyEvents(index, tonight, { count: 30, stillFailing });
       expect(nightly.newest.map(eventIdOf)).toContain(notDueTonight);
       expect(nightly.retriedCount).toBe(1);
       expect(pickNightlyEvents(index, tonight, { count: 30 }).newest.map(eventIdOf)).not.toContain(notDueTonight);
+    });
+
+    it('says which failing events the index read does not hold, so a night without their index does not forget them', () => {
+      const nightly = pickNightlyEvents(index, tonight, { count: 30, stillFailing: ['7000', '424242'] });
+      expect(nightly.notInTheIndex).toEqual(['424242']);
+      expect(isSourceOfEvent(eventSource(null, '424242'), '424242')).toBe(true);
+      expect(isSourceOfEvent(eventSource('Some Open', '424242'), '424242')).toBe(true);
+      expect(isSourceOfEvent(eventSource('Some Open', '1424242'), '424242')).toBe(false);
+    });
+
+    it('counts an event dated exactly three weeks ago as recent, and one a day older as not', () => {
+      const edge = [event('6021', daysAgo(21)), event('6022', daysAgo(22)), ...lastWeekend];
+      const read = pickNightlyEvents(edge, tonight, { count: 30, rollingNights: 1000 });
+      expect(read.newest.map(eventIdOf)).toContain('6021');
+      expect(read.newest.map(eventIdOf)).not.toContain('6022');
+    });
+
+    it('fails on an event with an unreadable date among the events of the last three weeks', () => {
+      const withTypo = [...index, event('7990', '10/27/2026')];
+      const unreadable = pickNightlyEvents(withTypo, tonight, { count: 30 }).unreadable;
+      expect(unreadable.map(({ event: e, recent }) => [eventIdOf(e), recent])).toEqual([['7990', true]]);
+      const longAgo = pickNightlyEvents([...index, event('6000', '05/09/2025')], tonight, { count: 30 }).unreadable;
+      expect(longAgo.map(({ event: e, recent }) => [eventIdOf(e), recent])).toEqual([['6000', false]]);
     });
 
     it('names the job whose failing events it reads again as the cron table does', () => {
