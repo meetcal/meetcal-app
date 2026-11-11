@@ -181,6 +181,19 @@ describe('the stored entitlement', () => {
     expect(db.rows('entitlement_syncs')).toEqual([{ userId: A, syncedAt: NOW + 10 }]);
   });
 
+  it('gives back only the latest claim: a failure that lands late leaves a newer claim throttled (#568)', async () => {
+    const claim = handlerOf<{ userId: string; now: number }, Record<string, unknown>>(claimRefresh);
+    const release = handlerOf<{ userId: string; claimedAt: number }, unknown>(releaseRefresh);
+    const db = fakeMutationCtx();
+    await claim(db.ctx, { userId: A, now: NOW });
+    const later = NOW + ENTITLEMENT_REFRESH_INTERVAL_MS;
+    await claim(db.ctx, { userId: A, now: later });
+    await release(db.ctx, { userId: A, claimedAt: NOW });
+    expect(await claim(db.ctx, { userId: A, now: later + 1 })).toEqual({ claimed: false, active: false });
+    await release(db.ctx, { userId: A, claimedAt: later });
+    expect(await claim(db.ctx, { userId: A, now: later + 1 })).toEqual({ claimed: true, claimedAt: later + 1 });
+  });
+
   it('lets a refresh reach RevenueCat at most once an interval per user', async () => {
     const claim = handlerOf<{ userId: string; now: number }, Record<string, unknown>>(claimRefresh);
     const db = fakeMutationCtx();

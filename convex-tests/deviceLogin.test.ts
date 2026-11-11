@@ -1,11 +1,11 @@
 import { ConvexError } from 'convex/values';
 import { getFunctionName } from 'convex/server';
-import { record } from '../convex/apiTokens';
+import { discard, record } from '../convex/apiTokens';
 import {
   approve,
   claim,
   create,
-  unclaim,
+  collectIfStillApproved,
   deny,
   describe as describeLogin,
   DEVICE_LOGIN_POLL_INTERVAL_S,
@@ -43,11 +43,22 @@ async function statusOf(promise: Promise<unknown>): Promise<number | 'ok'> {
 
 const as = (db: Db, identity: Record<string, unknown> | null) => ({ ...db.ctx, auth: { getUserIdentity: async () => identity } });
 
-function actionCtx(db: Db) {
-  const handlers: Record<string, unknown> = { 'deviceLogin:create': create, 'deviceLogin:claim': claim, 'deviceLogin:unclaim': unclaim, 'apiTokens:record': record };
+function actionCtx(db: Db, afterMutation: (name: string) => Promise<void> = async () => {}) {
+  const handlers: Record<string, unknown> = {
+    'deviceLogin:create': create,
+    'deviceLogin:claim': claim,
+    'deviceLogin:collectIfStillApproved': collectIfStillApproved,
+    'apiTokens:record': record,
+    'apiTokens:discard': discard,
+  };
   return {
     auth: { getUserIdentity: async () => null },
-    runMutation: async (ref: unknown, args: unknown) => handlerOf(handlers[getFunctionName(ref as never)])(db.ctx, args),
+    runMutation: async (ref: unknown, args: unknown) => {
+      const name = getFunctionName(ref as never);
+      const answer = await handlerOf(handlers[name])(db.ctx, args);
+      await afterMutation(name);
+      return answer;
+    },
   };
 }
 
@@ -169,6 +180,31 @@ describe('a device login', () => {
     jest.advanceTimersByTime(DEVICE_LOGIN_POLL_INTERVAL_S * 1000);
     expect(await pollLogin(db, deviceCode)).toMatchObject({ status: 'approved', token: expect.any(String) });
     expect(await pollLogin(db, deviceCode)).toEqual({ status: 'collected' });
+  });
+
+  it('gives no token when the approver denies the login while its token is being made (#567)', async () => {
+    const db = fakeMutationCtx();
+    const { userCode, deviceCode } = await startLogin(db);
+    await handlerOf(approve)(as(db, clerk(A)), { userCode });
+    const denyOnceTheTokenIsRecorded = async (name: string) => {
+      if (name === 'apiTokens:record') await handlerOf(deny)(as(db, clerk(A)), { userCode });
+    };
+    const answer = await handlerOf<{ deviceCode: string }, Record<string, unknown>>(poll)(actionCtx(db, denyOnceTheTokenIsRecorded), { deviceCode });
+    expect(answer).toEqual({ status: 'denied' });
+    expect(db.rows('api_tokens')).toEqual([]);
+    expect(db.rows('device_logins')).toEqual([]);
+  });
+
+  it('records no token row when signing fails, however often the CLI polls (#567)', async () => {
+    const db = fakeMutationCtx();
+    const { userCode, deviceCode } = await startLogin(db);
+    await handlerOf(approve)(as(db, clerk(A)), { userCode });
+    const key = JSON.parse(process.env.MEETCAL_TOKEN_SIGNING_KEY!) as Record<string, string>;
+    process.env.MEETCAL_TOKEN_SIGNING_KEY = JSON.stringify({ ...key, d: 'not-a-private-scalar' });
+    await expect(pollLogin(db, deviceCode)).rejects.toThrow();
+    await expect(pollLogin(db, deviceCode)).rejects.toThrow();
+    expect(db.rows('api_tokens')).toEqual([]);
+    expect(db.rows('device_logins')).toEqual([expect.objectContaining({ status: 'approved' })]);
   });
 
   it('tells a CLI that polls too often to slow down', async () => {

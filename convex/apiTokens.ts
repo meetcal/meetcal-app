@@ -69,7 +69,6 @@ export async function mintApiToken(ctx: Pick<ActionCtx, 'runMutation'>, userId: 
   const tokenId = crypto.randomUUID();
   const createdAt = Date.now();
   const expiresAt = createdAt + API_TOKEN_TTL_MS;
-  await ctx.runMutation(internal.apiTokens.record, { tokenId, userId, client, createdAt, expiresAt });
   const token = await signJwt(key, {
     iss: issuer,
     sub: userId,
@@ -78,6 +77,7 @@ export async function mintApiToken(ctx: Pick<ActionCtx, 'runMutation'>, userId: 
     exp: Math.floor(expiresAt / 1000),
     tid: tokenId,
   });
+  await ctx.runMutation(internal.apiTokens.record, { tokenId, userId, client, createdAt, expiresAt });
   return { token, tokenId, expiresAt };
 }
 
@@ -144,6 +144,17 @@ export const revokeAllCli = mutation({
       .take(MAX_API_TOKENS_PER_USER);
     for (const login of approved) if (login.status === 'approved') await ctx.db.patch(login._id, { status: 'denied' });
     return { ended };
+  },
+});
+
+export const discard = internalMutation({
+  args: { tokenId: v.string() },
+  handler: async (ctx, { tokenId }) => {
+    const row = await ctx.db
+      .query('api_tokens')
+      .withIndex('by_tokenId', (q) => q.eq('tokenId', tokenId))
+      .unique();
+    if (row) await ctx.db.delete(row._id);
   },
 });
 

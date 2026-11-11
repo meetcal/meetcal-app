@@ -208,11 +208,6 @@ export const store = internalMutation({
   },
 });
 
-/**
- * Whether a `refresh` may ask RevenueCat now, and records that it did; at
- * most once per `ENTITLEMENT_REFRESH_INTERVAL_MS` per user. A throttled call
- * answers the stored state.
- */
 export const claimRefresh = internalMutation({
   args: { userId: v.string(), now: v.number() },
   handler: async (ctx, { userId, now }): Promise<{ claimed: true; claimedAt: number } | { claimed: false; active: boolean }> => {
