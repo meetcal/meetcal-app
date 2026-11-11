@@ -2,7 +2,7 @@ import { IconSymbol } from "@/components/ui/IconSymbol";
 import { ThemedText } from "@/components/ui/ThemedText";
 import { sortByPlatform } from "@/constants/platform-sort";
 import { useAppColors } from "@/hooks/useAppColors";
-import { Platform as PlatformType, SessionViewProps } from "@/types/schedule";
+import { PlatformSlot as PlatformType, SessionViewProps } from "@/types/schedule";
 import { useRouter } from "expo-router";
 import { useMemo } from "react";
 import { Pressable, StyleSheet, View } from "react-native";

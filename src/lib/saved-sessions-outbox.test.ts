@@ -1,6 +1,6 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Crypto from "expo-crypto";
-import type { SavedSession } from "@/hooks/useSavedSessions";
+import type { SavedSession } from "@/lib/saved-sessions-store";
 import {
   deleteSavedSession,
   deleteSavedSessions,

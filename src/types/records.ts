@@ -19,7 +19,7 @@ export type Federation = string;
 export type Gender = "Men" | "Women";
 export type AgeGroup = string; // Changed from specific union
 
-export interface Filters {
+export interface RecordsFilters {
   [key: string]: string;
   federation: Federation;
   gender: string;
