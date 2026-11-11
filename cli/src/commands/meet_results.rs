@@ -298,7 +298,6 @@ fn top_table(
     top
 }
 
-/// The report for one edition's `results`. `editions` starts with this edition, then the earlier
 pub fn report(
     results: &[LiftingResults],
     editions: &[EditionSummary],

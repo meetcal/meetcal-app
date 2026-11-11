@@ -343,7 +343,6 @@ fn csv_table(table: &Table) -> String {
     lines.join("\n") + "\n"
 }
 
-/// A cell as CSV writes it: the same value JSON gets, so the two formats agree. Placeholders
 fn csv_value(name: &str, cell: &str) -> String {
     match export_value(name, cell) {
         Value::Null => String::new(),
