@@ -13,6 +13,25 @@ test("desktop navigation remains visible and complete", async ({ page, isMobile 
   await expect(page.getByRole("navigation", { name: "Primary navigation" }).getByRole("link", { name: "Atlas" })).toHaveAttribute("href", "https://atlas.meetcal.app/");
 });
 
+test("the competition data menu closes after one of its pages is opened", async ({ page, isMobile }) => {
+  test.skip(isMobile, "Desktop-only navigation assertion");
+  await page.goto("/");
+  const navigation = page.getByRole("navigation", { name: "Primary navigation" });
+  const wrapped = navigation.locator('.nav-menu-panel a[href="/wrapped"]');
+  await navigation.getByRole("link", { name: "Competition Data" }).hover();
+  await expect(wrapped).toBeVisible();
+  await wrapped.click();
+  await expect(page).toHaveURL(/\/wrapped$/);
+  await expect(wrapped).toBeHidden();
+  await expect(navigation.getByRole("link", { name: "Privacy" })).toHaveCount(0);
+  await expect(navigation.getByRole("link", { name: "Terms" })).toHaveCount(0);
+  await page.mouse.move(0, 400);
+  await navigation.getByRole("link", { name: "Competition Data" }).hover();
+  await expect(wrapped).toBeVisible();
+  await wrapped.click();
+  await expect(wrapped).toBeHidden();
+});
+
 test("mobile navigation opens and supports internal navigation", async ({ page, isMobile }) => {
   test.skip(!isMobile, "Mobile-only navigation assertion");
   await page.goto("/");
@@ -22,6 +41,8 @@ test("mobile navigation opens and supports internal navigation", async ({ page, 
   await expect(page.getByRole("navigation", { name: "Mobile navigation" })).toBeVisible();
   await expect(page.getByRole("navigation", { name: "Mobile navigation" }).getByRole("link", { name: "War Games" })).toHaveAttribute("href", "https://wargames.meetcal.app");
   await expect(page.getByRole("navigation", { name: "Mobile navigation" }).getByRole("link", { name: "Atlas" })).toHaveAttribute("href", "https://atlas.meetcal.app/");
+  await expect(page.getByRole("navigation", { name: "Mobile navigation" }).getByRole("link", { name: "Privacy" })).toHaveCount(0);
+  await expect(page.getByRole("navigation", { name: "Mobile navigation" }).getByRole("link", { name: "Terms" })).toHaveCount(0);
   await page.getByRole("navigation", { name: "Mobile navigation" }).getByRole("link", { name: "Features" }).click();
   await expect(page).toHaveURL(/\/features$/);
   await expect(page.getByRole("heading", { level: 1, name: "Everything you need before the bar is loaded" })).toBeVisible();
