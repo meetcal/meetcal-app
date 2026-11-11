@@ -19,7 +19,7 @@ export function readSport80Env(json: string): Sport80Env {
   }
   if (!isRecord(env)) throw new Error('sport80: window.env on the rankings page is not an object');
   const value = (key: keyof Sport80Env): string => {
-    const found = env[key];
+    const found = typeof env[key] === 'number' ? String(env[key]) : env[key];
     if (typeof found !== 'string' || found.trim() === '') throw new Error(`sport80: window.env has no ${key} (the rankings page changed?)`);
     return found;
   };

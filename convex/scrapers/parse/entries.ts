@@ -55,7 +55,7 @@ export function placeholderMemberId(name: string): string {
 }
 
 export type EntryRow = {
-  id?: number | string;
+  id?: unknown;
   member_id?: string | null;
   first_name?: string | null;
   last_name?: string | null;
@@ -84,7 +84,6 @@ export type EntriesTable = { title?: string; total?: number; data?: EntryRow[] }
 export function readEntriesTable(body: unknown): EntriesTable {
   if (!isRecord(body)) throw new Error('entries: the response is not an object');
   const { title, total, data } = body;
-  if (title !== undefined && title !== null && typeof title !== 'string') throw new Error(`entries: title is a ${typeof title}`);
   const count = rowCount(total);
   if (total !== undefined && total !== null && count === null) throw new Error(`entries: total is not a row count (${JSON.stringify(total)})`);
   if (data !== undefined && data !== null && !Array.isArray(data)) throw new Error('entries: data is not a list');
@@ -102,18 +101,18 @@ export function readEntriesTable(body: unknown): EntriesTable {
   };
   const rows = (data ?? []).map((item: unknown, i: number): EntryRow => {
     if (!isRecord(item)) throw new Error(`entries: row ${i} is not an object`);
-    const id = scalar(item, i, 'id');
     const memberId = scalar(item, i, 'member_id');
+    const numberOrText = (field: string) => (typeof item[field] === 'number' || typeof item[field] === 'string' ? (item[field] as number | string) : null);
     return {
-      ...(id === null ? {} : { id }),
+      ...('id' in item ? { id: item.id } : {}),
       member_id: memberId === null ? null : String(memberId),
       first_name: text(item, i, 'first_name'),
       last_name: text(item, i, 'last_name'),
-      weightlifting_age: scalar(item, i, 'weightlifting_age'),
+      weightlifting_age: numberOrText('weightlifting_age'),
       club: text(item, i, 'club'),
       gender: text(item, i, 'gender'),
       weight_class: text(item, i, 'weight_class'),
-      entry_total: scalar(item, i, 'entry_total'),
+      entry_total: numberOrText('entry_total'),
     };
   });
   return { ...(typeof title === 'string' ? { title } : {}), ...(count === null ? {} : { total: count }), ...(data ? { data: rows } : {}) };

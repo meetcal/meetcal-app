@@ -19,6 +19,7 @@ import {
   type Sport80Env,
 } from './parse/sport80';
 import { sourcesFailed, type SourceFailure } from '../lib/cronAlerts';
+import { rowCount } from '../lib/json';
 
 /**
  * USAW meet results from Sport80 (port of
@@ -37,22 +38,15 @@ type Dict = Record<string, unknown>;
 /** Pages one table may take: tables are requested as one page, so more is a misbehaving API. */
 const MAX_PAGES = 50;
 
-/** Whether a table provably read in full: it reports a row count (`total`), and that many rows were read. */
 export function tableComplete(rows: number, total: unknown): boolean {
-  return typeof total === 'number' && Number.isInteger(total) && total >= 0 && rows === total;
+  return rowCount(total) === rows;
 }
 
-/**
- * A table's pages joined. A table short of the `total` it reports throws.
- * `notWhole` says why the rows, though returned, are no proof the table was
- * read in full, so no basis for deleting what it lacks: it reports no
- * `total`, or a row came back on two pages (the pages' order shifted between
- * requests, so the repeat may stand in for a row no page returned).
- */
 export function joinPages(pages: readonly Dict[][], total: unknown): { rows: Dict[]; notWhole?: string } {
   const rows = pages.flat();
-  if (typeof total === 'number' && rows.length !== total) throw new Error(`read ${rows.length} rows of the ${total} the table reports`);
-  if (!tableComplete(rows.length, total)) return { rows, notWhole: 'the table reports no row count' };
+  const reported = rowCount(total);
+  if (reported !== null && rows.length !== reported) throw new Error(`read ${rows.length} rows of the ${reported} the table reports`);
+  if (reported === null) return { rows, notWhole: 'the table reports no row count' };
   const earlier = new Set<string>();
   for (const page of pages) {
     const keys = page.map((row) => JSON.stringify(row));
