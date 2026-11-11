@@ -3,6 +3,7 @@ use crate::auth::{
 };
 use crate::pages::comp_data::catalog::DATA_PAGES;
 use leptos::prelude::*;
+use leptos::wasm_bindgen::JsCast;
 use leptos_router::components::A;
 use leptos_router::hooks::use_location;
 
@@ -10,15 +11,26 @@ use leptos_router::hooks::use_location;
 pub fn Header() -> impl IntoView {
     let auth = expect_context::<AuthContext>();
     let mobile_nav = NodeRef::<leptos::html::Details>::new();
+    let desktop_nav = NodeRef::<leptos::html::Nav>::new();
     let location = use_location();
+    let (menus_dismissed, set_menus_dismissed) = signal(false);
+    let allow_menus = move || set_menus_dismissed.set(false);
+    let dismiss_menus = move || {
+        if let Some(nav) = desktop_nav.get_untracked() {
+            blur_focus_inside(&nav);
+        }
+        set_menus_dismissed.set(true);
+    };
 
-    // The header stays mounted across pages, so close the mobile menu after
-    // each navigation.
-    Effect::new(move |_| {
+    Effect::new(move |earlier_page: Option<()>| {
         location.pathname.track();
+        if earlier_page.is_none() {
+            return;
+        }
         if let Some(details) = mobile_nav.get_untracked() {
             let _ = details.remove_attribute("open");
         }
+        dismiss_menus();
     });
 
     view! {
@@ -27,15 +39,30 @@ pub fn Header() -> impl IntoView {
                 <img class="brand-logo" src="/images/logo.png" alt="MeetCal" width="34" height="34" />
                 <span>"MeetCal"</span>
             </A>
-            <nav class="site-nav" aria-label="Primary navigation">
-                <div class="nav-menu">
+            <nav
+                class="site-nav"
+                class:menus-dismissed=menus_dismissed
+                aria-label="Primary navigation"
+                node_ref=desktop_nav
+                on:focusin=move |_| allow_menus()
+            >
+                <div
+                    class="nav-menu"
+                    on:pointerenter=move |_| allow_menus()
+                    on:pointerleave=move |_| allow_menus()
+                >
                     <button class="nav-menu-trigger" type="button" aria-haspopup="true">"Products"</button>
                     <div class="nav-menu-panel">
                         <a href="https://wargames.meetcal.app">"War Games"</a>
                         <a href="https://atlas.meetcal.app/">"Atlas"</a>
                     </div>
                 </div>
-                <div class="nav-menu">
+                <div
+                    class="nav-menu"
+                    on:pointerenter=move |_| allow_menus()
+                    on:pointerleave=move |_| allow_menus()
+                    on:click=move |_| dismiss_menus()
+                >
                     <A href="/comp-data" attr:class="nav-menu-trigger">"Competition Data"</A>
                     <div class="nav-menu-panel">
                         {DATA_PAGES
@@ -45,8 +72,6 @@ pub fn Header() -> impl IntoView {
                     </div>
                 </div>
                 <A href="/features">"Features"</A>
-                <A href="/privacy">"Privacy"</A>
-                <A href="/terms">"Terms"</A>
                 <A href="/submit-meet">"Submit a Meet"</A>
                 <A href="mailto:maddisen@meetcal.app">"Contact Us"</A>
             </nav>
@@ -60,8 +85,6 @@ pub fn Header() -> impl IntoView {
                     <a href="https://atlas.meetcal.app/">"Atlas"</a>
                     <A href="/comp-data">"Competition Data"</A>
                     <A href="/features">"Features"</A>
-                    <A href="/privacy">"Privacy"</A>
-                    <A href="/terms">"Terms"</A>
                     <A href="/submit-meet">"Submit a Meet"</A>
                     <A href="mailto:maddisen@meetcal.app">"Contact Us"</A>
                     <div class="mobile-nav-socials">
@@ -125,6 +148,18 @@ pub fn Header() -> impl IntoView {
                 }}
             </div>
         </header>
+    }
+}
+
+fn blur_focus_inside(container: &web_sys::Element) {
+    let focused = web_sys::window()
+        .and_then(|window| window.document())
+        .and_then(|document| document.active_element());
+    if let Some(focused) = focused
+        && container.contains(Some(&focused))
+        && let Ok(focused) = focused.dyn_into::<web_sys::HtmlElement>()
+    {
+        let _ = focused.blur();
     }
 }
 
