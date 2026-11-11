@@ -1,10 +1,11 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import type { Schedule } from '@/types/schedule';
-import type { LiftResult, SupabaseBests, SupabaseLiftResult } from '@/data/types/athletes';
+import type { LiftResult, AthleteBests, AthleteMeetResult } from '@/data/types/athletes';
 import { MeetName } from '@/data/types/meet';
 import { meetCalendarDateAnchor } from '@/utils/dateTime';
 import { getTrustedNow } from '@/lib/api/meetcal-api';
 import { devLog } from '@/lib/logger';
+import { isSchedule, scheduleShapeProblem } from '@/lib/schedule-shape';
 import { createKeyedWriteChain, createWriteChain } from '@/lib/data/write-chain';
 import { getCachedMeets } from './meets-list-cache';
 import {
@@ -125,38 +126,25 @@ async function saveExplicitMeetDownloads(downloads: ExplicitMeetDownloads): Prom
   );
 }
 
-/**
- * Tail of the serialized read-modify-write chain over the downloads blob.
- * `clearExpiredDownloadedMeets` is fired unawaited from every meets refresh
- * while a download may be marking its meet: two overlapping calls each read
- * the same blob and the second write dropped the first's change (a meet
- * marked downloaded and then silently not, or an expired meet resurrected).
- * Same pattern as `lib/authCache.ts`'s `writeChain`.
- */
-let explicitDownloadsWriteChain: Promise<void> = Promise.resolve();
+const explicitDownloadsWrites = createWriteChain();
 
 export async function markMeetExplicitlyDownloaded(
   meetId: MeetName,
   downloaded: boolean,
   options?: { endDate?: string }
 ): Promise<void> {
-  const write = explicitDownloadsWriteChain
-    // A failed predecessor must not block the chain for good.
-    .catch(() => undefined)
-    .then(async () => {
-      const downloads = await getExplicitMeetDownloads();
-      if (downloaded) {
-        downloads[meetId] = {
-          markedAt: Date.now(),
-          ...(options?.endDate ? { endDate: options.endDate } : {}),
-        };
-      } else {
-        delete downloads[meetId];
-      }
-      await saveExplicitMeetDownloads(downloads);
-    });
-  explicitDownloadsWriteChain = write;
-  await write;
+  await explicitDownloadsWrites(async () => {
+    const downloads = await getExplicitMeetDownloads();
+    if (downloaded) {
+      downloads[meetId] = {
+        markedAt: Date.now(),
+        ...(options?.endDate ? { endDate: options.endDate } : {}),
+      };
+    } else {
+      delete downloads[meetId];
+    }
+    await saveExplicitMeetDownloads(downloads);
+  });
 }
 
 /**
@@ -165,21 +153,17 @@ export async function markMeetExplicitlyDownloaded(
  * No write when nothing changed.
  */
 async function updateDownloadEndDates(endDates: ReadonlyMap<string, string>): Promise<void> {
-  const write = explicitDownloadsWriteChain
-    .catch(() => undefined)
-    .then(async () => {
-      const downloads = await getExplicitMeetDownloads();
-      let changed = false;
-      for (const [meetId, endDate] of endDates) {
-        const entry = downloads[meetId];
-        if (!entry || entry.endDate === endDate) continue;
-        downloads[meetId] = { ...entry, endDate };
-        changed = true;
-      }
-      if (changed) await saveExplicitMeetDownloads(downloads);
-    });
-  explicitDownloadsWriteChain = write;
-  await write;
+  await explicitDownloadsWrites(async () => {
+    const downloads = await getExplicitMeetDownloads();
+    let changed = false;
+    for (const [meetId, endDate] of endDates) {
+      const entry = downloads[meetId];
+      if (!entry || entry.endDate === endDate) continue;
+      downloads[meetId] = { ...entry, endDate };
+      changed = true;
+    }
+    if (changed) await saveExplicitMeetDownloads(downloads);
+  });
 }
 
 export async function isMeetExplicitlyDownloaded(meetId: MeetName): Promise<boolean> {
@@ -396,7 +380,7 @@ function isBoundedChunkCount(value: unknown): value is number {
  * read defensively. Anything else — a number, `null`, a bare string — is a
  * corrupt entry and is dropped rather than left to throw in a `.filter`.
  */
-function isCachedLiftResult(value: unknown): value is SupabaseLiftResult {
+function isCachedLiftResult(value: unknown): value is AthleteMeetResult {
   return (
     typeof value === 'object' &&
     value !== null &&
@@ -405,14 +389,20 @@ function isCachedLiftResult(value: unknown): value is SupabaseLiftResult {
   );
 }
 
-function toCachedLiftResults(rows: readonly unknown[]): SupabaseLiftResult[] {
+function toCachedLiftResults(rows: readonly unknown[]): AthleteMeetResult[] {
   const valid = rows.filter(isCachedLiftResult);
   if (valid.length !== rows.length) {
     console.warn(
       `Dropped ${rows.length - valid.length} malformed cached lifting result rows`,
     );
   }
-  return valid;
+  return valid.map(withoutTheIdOlderBuildsStored);
+}
+
+function withoutTheIdOlderBuildsStored(row: AthleteMeetResult): AthleteMeetResult {
+  if (!('id' in row)) return row;
+  const { id: _storedByOlderBuilds, ...current } = row as AthleteMeetResult & { id?: unknown };
+  return current;
 }
 
 function splitIntoChunks(value: string, chunkSize: number): string[] {
@@ -423,19 +413,19 @@ function splitIntoChunks(value: string, chunkSize: number): string[] {
   return chunks;
 }
 
-function encodeLiftingResults(results: SupabaseLiftResult[]): string {
+function encodeLiftingResults(results: AthleteMeetResult[]): string {
   const json = JSON.stringify(results);
   const compressed = deflate(json);
   return Buffer.from(compressed).toString('base64');
 }
 
-function decodeLiftingResults(encoded: string): SupabaseLiftResult[] {
+function decodeLiftingResults(encoded: string): AthleteMeetResult[] {
   const bytes = Buffer.from(encoded, 'base64');
   const inflated = inflate(bytes);
   const json = Buffer.from(inflated).toString();
   const parsed: unknown = JSON.parse(json);
   // A truncated chunk set can still inflate to valid JSON that is not a row
-  // array. `as SupabaseLiftResult[]` let that reach every caller's `.filter`
+  // array. `as AthleteMeetResult[]` let that reach every caller's `.filter`
   // and `.map`; the readers below turn a throw here into "no cached results",
   // which is the correct degradation.
   if (!Array.isArray(parsed)) {
@@ -465,7 +455,7 @@ async function clearStoredLiftingResultsValue(liftingResultsKey: string): Promis
 
 async function readStoredLiftingResults(
   liftingResultsKey: string,
-): Promise<SupabaseLiftResult[]> {
+): Promise<AthleteMeetResult[]> {
   const payload = await AsyncStorage.getItem(liftingResultsKey);
   if (!payload) {
     return [];
@@ -500,7 +490,7 @@ async function readStoredLiftingResults(
 
 type LiftingResultsWrite = {
   key: string;
-  results: SupabaseLiftResult[];
+  results: AthleteMeetResult[];
 };
 
 /**
@@ -792,7 +782,7 @@ async function unverifiedRewritesToUndo(
 
 async function writeStoredLiftingResults(
   liftingResultsKey: string,
-  liftingResults: SupabaseLiftResult[],
+  liftingResults: AthleteMeetResult[],
 ): Promise<void> {
   await writeStoredLiftingResultsBatch([{ key: liftingResultsKey, results: liftingResults }]);
 }
@@ -893,17 +883,14 @@ export async function initStore(): Promise<void> {
   }
 }
 
-/**
- * The schedule stored under `scheduleKey`, or null. A truncated or legacy
- * payload degrades to "no cached schedule", not an error that takes the
- * whole meet down.
- */
 async function readCachedSchedule(scheduleKey: string): Promise<Schedule | null> {
   const scheduleString = await AsyncStorage.getItem(scheduleKey);
   if (!scheduleString) return null;
   try {
     const parsed: unknown = JSON.parse(scheduleString);
-    return Array.isArray(parsed) ? (parsed as Schedule) : null;
+    if (isSchedule(parsed)) return parsed;
+    console.warn('Ignoring cached schedule:', scheduleShapeProblem(parsed));
+    return null;
   } catch (parseError) {
     console.warn('Ignoring invalid cached schedule payload:', parseError);
     return null;
@@ -969,7 +956,7 @@ function legacyAthleteKeyName(name: string): string | null {
 
 export type AthleteHistoryEntry = {
   name: string;
-  results: SupabaseLiftResult[];
+  results: AthleteMeetResult[];
 };
 
 /**
@@ -1055,14 +1042,14 @@ const ATHLETE_BESTS_FORMAT_VERSION = 2;
 
 /** One athlete's stored bests and when the answer was fetched. */
 export type StoredAthleteBests = {
-  bests: SupabaseBests;
+  bests: AthleteBests;
   /** 0 for entries written before bests carried a time (always stale). */
   fetchedAt: number;
   /** Whether the answer is young enough to be used without a new lookup. */
   isFresh: boolean;
 };
 
-export function hasAnyAthleteBest(bests: SupabaseBests): boolean {
+export function hasAnyAthleteBest(bests: AthleteBests): boolean {
   return bests.snatch_best != null || bests.cj_best != null || bests.total != null;
 }
 
@@ -1075,7 +1062,7 @@ export function hasAnyAthleteBest(bests: SupabaseBests): boolean {
  * is stale rather than fresh until the clock catches up.
  */
 export function isAthleteBestsFresh(
-  bests: SupabaseBests,
+  bests: AthleteBests,
   fetchedAt: number,
   now: number,
 ): boolean {
@@ -1084,9 +1071,9 @@ export function isAthleteBestsFresh(
   return fetchedAt > 0 && age >= 0 && age < ttl;
 }
 
-function toStoredBestsValue(value: unknown): SupabaseBests | null {
+function toStoredBestsValue(value: unknown): AthleteBests | null {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
-  const row = value as Partial<Record<keyof SupabaseBests, unknown>>;
+  const row = value as Partial<Record<keyof AthleteBests, unknown>>;
   const positiveOrNull = (candidate: unknown) =>
     typeof candidate === 'number' && Number.isFinite(candidate) && candidate > 0
       ? candidate
@@ -1103,7 +1090,7 @@ function toStoredBestsValue(value: unknown): SupabaseBests | null {
  * object written before entries carried a time, which reads with
  * `fetchedAt: 0` so it is used as a fallback but always looked up again.
  */
-function parseStoredAthleteBests(payload: string): { bests: SupabaseBests; fetchedAt: number } | null {
+function parseStoredAthleteBests(payload: string): { bests: AthleteBests; fetchedAt: number } | null {
   let parsed: unknown;
   try {
     parsed = JSON.parse(payload);
@@ -1131,7 +1118,7 @@ function parseStoredAthleteBests(payload: string): { bests: SupabaseBests; fetch
  * forever after.
  */
 export async function saveAthleteBestsBatch(
-  bestsByName: Record<string, SupabaseBests>,
+  bestsByName: Record<string, AthleteBests>,
   fetchedAt: number = Date.now(),
 ): Promise<void> {
   try {
@@ -1218,9 +1205,9 @@ export async function getStoredAthleteBestsForNames(
  */
 export async function getAllCachedLiftingResultsForAthletes(
   athleteNames: string[],
-): Promise<Record<string, SupabaseLiftResult[]>> {
+): Promise<Record<string, AthleteMeetResult[]>> {
   const uniqueNames = Array.from(new Set(athleteNames));
-  const byName: Record<string, SupabaseLiftResult[]> = {};
+  const byName: Record<string, AthleteMeetResult[]> = {};
   if (uniqueNames.length === 0) return byName;
 
   const needsMeetScan: string[] = [];
@@ -1307,13 +1294,13 @@ export async function getAllCachedLiftingResultsForAthletes(
 
 export async function getAllCachedLiftingResultsForAthlete(
   athleteName: string,
-): Promise<SupabaseLiftResult[]> {
+): Promise<AthleteMeetResult[]> {
   const byName = await getAllCachedLiftingResultsForAthletes([athleteName]);
   return byName[athleteName] ?? [];
 }
 
 // Get all cached lifting results for a meet
-export async function getMeetLiftingResults(meetId: MeetName): Promise<SupabaseLiftResult[]> {
+export async function getMeetLiftingResults(meetId: MeetName): Promise<AthleteMeetResult[]> {
   try {
     const meetData = await getMeetData(meetId);
     const liftingResultsKey = meetData.liftingResultsKey;
@@ -1445,36 +1432,15 @@ export async function saveMeetSchedule(meetId: string, schedule: Schedule): Prom
   return meetDataWrites(meetId, async () => {
     try {
     
-      // Validate schedule structure
-      if (!Array.isArray(schedule)) {
-        console.error('Invalid schedule format: not an array');
-        throw new Error('Invalid schedule format');
+      const problem = scheduleShapeProblem(schedule);
+      if (problem) {
+        console.error(problem);
+        throw new Error(problem);
       }
-
       if (schedule.length === 0) {
         console.error('Invalid schedule: empty array');
         throw new Error('Empty schedule');
       }
-
-      // Validate each day's structure
-      schedule.forEach((day, index) => {
-        if (!day.date || !day.fullDate || !Array.isArray(day.sessions)) {
-          console.error(`Invalid day structure at index ${index}:`, day);
-          throw new Error(`Invalid day structure at index ${index}`);
-        }
-
-        // Only the fields that make a session addressable. `startTime` and
-        // `weighInTime` are legitimately "" when the API row has no time or an
-        // unparseable one (`formatApiTime` documents that), and requiring them
-        // made one blank row throw the whole schedule away — "No schedule yet"
-        // for every session in the meet.
-        day.sessions.forEach((session, sessionIndex) => {
-          if (!session.id || !session.number || !Array.isArray(session.platforms)) {
-            console.error(`Invalid session structure at day ${index}, session ${sessionIndex}:`, session);
-            throw new Error(`Invalid session structure at day ${index}, session ${sessionIndex}`);
-          }
-        });
-      });
 
       // Save schedule separately. `SyncManager` re-saves the same schedule every
       // 5 minutes for as long as a meet is selected, and a meet's schedule
@@ -1682,7 +1648,7 @@ export async function saveMeetAthletes(meetId: string, athletes: LiftResult[]): 
 }
 
 // Save lifting results for all athletes in a meet
-export async function saveMeetLiftingResults(meetId: string, liftingResults: SupabaseLiftResult[]): Promise<void> {
+export async function saveMeetLiftingResults(meetId: string, liftingResults: AthleteMeetResult[]): Promise<void> {
   return meetDataWrites(meetId, async () => {
     try {
       const liftingResultsKey = `${LIFTING_RESULTS_KEY_PREFIX}${meetId}`;

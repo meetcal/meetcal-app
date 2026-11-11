@@ -22,6 +22,7 @@ import {
 } from '@/lib/data/mutable-resource';
 import { reindexAppEntities } from '@/utils/appIntents';
 import { devLog } from '@/lib/logger';
+import { parseStoredMeetNamed } from '@/lib/stored-meet';
 
 type SelectedMeetContextType = {
   selectedMeet: MeetName | null;
@@ -75,34 +76,6 @@ function launchNow(): Date {
 async function lookUpMeetForLaunch(name: string): Promise<Meet | null> {
   const [meet] = await Promise.all([fetchApiMeetByName(name), awaitServerClock()]);
   return meet;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return !!value && typeof value === 'object' && !Array.isArray(value);
-}
-
-// Parse a persisted out-of-window Meet, ignoring stale JSON that belongs to a
-// different meet than the one we're resolving.
-//
-// The `Meet` type declares `venue`, `venue.address` and `time` as non-null,
-// and screens read them that way — `components/info/EventInfoScreen` renders
-// `meetDetails.venue.address.street` with no guard. Everything the API builds
-// has those, but this blob was written by whatever version of the app the user
-// last ran, and a truncated or older-schema entry would be handed straight to
-// the Info tab as a `Meet` and crash it. Validate the shape the type promises
-// instead of `as Meet`-ing past the parse.
-function parseStoredMeetDetails(raw: string | null, expectedName: string): Meet | null {
-  if (!raw) return null;
-  try {
-    const parsed: unknown = JSON.parse(raw);
-    if (!isRecord(parsed)) return null;
-    if (parsed.name !== expectedName) return null;
-    if (!isRecord(parsed.venue) || !isRecord(parsed.venue.address)) return null;
-    if (!isRecord(parsed.time) || !isRecord(parsed.dates)) return null;
-    return parsed as unknown as Meet;
-  } catch {
-    return null;
-  }
 }
 
 /**
@@ -399,7 +372,7 @@ export function SelectedMeetProvider({ children }: { children: React.ReactNode }
             // Offline or lookup failure: rehydrate from the persisted details
             // so the user's out-of-window selection isn't silently dropped.
             lookupFailed = true;
-            resolved = parseStoredMeetDetails(storedDetailsRaw, stored);
+            resolved = parseStoredMeetNamed(storedDetailsRaw, stored);
           }
           if (isStale()) return;
           // A stored meet that has left the list is usually one that ended
@@ -526,7 +499,7 @@ export function SelectedMeetProvider({ children }: { children: React.ReactNode }
           setMeetDetails((current) => refreshedMeetDetails(current, freshMeets) ?? current);
           // Persisted details exist only for a meet that was selected from
           // outside the window; keep that copy current too.
-          const persisted = fresh ? parseStoredMeetDetails(storedDetailsRaw, fresh.name) : null;
+          const persisted = fresh ? parseStoredMeetNamed(storedDetailsRaw, fresh.name) : null;
           if (fresh && persisted && refreshedMeetDetails(persisted, [fresh])) {
             await AsyncStorage.setItem(SELECTED_MEET_DETAILS_KEY, JSON.stringify(fresh));
             if (isStale()) return;

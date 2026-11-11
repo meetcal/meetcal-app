@@ -10,7 +10,7 @@ import type {
 import { Button } from "@/components/ui/Button";
 import { IconSymbol } from "@/components/ui/IconSymbol";
 import { ThemedText } from "@/components/ui/ThemedText";
-import { LiftResult, SupabaseBests } from "@/data/types/athletes";
+import { LiftResult, AthleteBests } from "@/data/types/athletes";
 import { MeetName } from "@/data/types/meet";
 import { useAppColors } from "@/hooks/useAppColors";
 import { useIsOffline } from "@/hooks/useIsOffline";
@@ -80,7 +80,7 @@ export default function SessionAthletes({
   } = athletesState;
   const [isOffline] = useIsOffline();
   const [athleteBests, setAthleteBests] = useState<
-    Record<string, SupabaseBests>
+    Record<string, AthleteBests>
   >({});
   const [sortKey, setSortKey] = useState<SortKey>("entryTotal");
   const [sortDirection, setSortDirection] = useState<SortDirection>("desc");

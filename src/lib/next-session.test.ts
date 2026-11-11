@@ -1,4 +1,4 @@
-import { SavedSession } from "@/hooks/useSavedSessions";
+import type { SavedSession } from "@/lib/saved-sessions-store";
 import { selectNextSession, STARTED_GRACE_MS } from "@/lib/next-session";
 import { Meet } from "@/data/types/meet";
 

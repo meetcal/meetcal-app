@@ -1,3 +1,4 @@
+import { SLIDE_IN_FROM_RIGHT, stackHeaderOptions } from "@/lib/stack-header-options";
 import { IconSymbol } from "@/components/ui/IconSymbol";
 import { getChevronIcon } from "@/lib/start-list-utils";
 import { ThemedText } from "@/components/ui/ThemedText";
@@ -279,21 +280,9 @@ function WidgetSettingsContent() {
     <ThemedView style={[styles.container, { backgroundColor: colors.background }, screenInsets]}>
       <Stack.Screen
         options={{
+          ...stackHeaderOptions(colors),
+          ...SLIDE_IN_FROM_RIGHT,
           title: "Widget Settings",
-          headerBackTitle: "Back",
-          headerShown: true,
-          gestureEnabled: true,
-          gestureDirection: "horizontal",
-          animation: "slide_from_right",
-          headerTitleStyle: {
-            color: colors.headerTitle,
-          },
-          headerStyle: {
-            backgroundColor: colors.headerBackground,
-          },
-          headerShadowVisible: false,
-          headerBackButtonDisplayMode: "minimal",
-          headerTintColor: colors.text,
         }}
       />
 

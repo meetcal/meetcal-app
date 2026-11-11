@@ -1,4 +1,4 @@
-import type { SupabaseBests, SupabaseLiftResult } from "@/data/types/athletes";
+import type { AthleteBests, AthleteMeetResult } from "@/data/types/athletes";
 
 const mockFetchApiYearBestsByNames = jest.fn();
 const mockFetchApiResultsByNames = jest.fn();
@@ -16,7 +16,7 @@ jest.mock("@/lib/networkUtils", () => ({
  * The per-name bests store both screens share, in memory, with the real
  * freshness rule and the real key fold.
  */
-const mockStore = new Map<string, { bests: SupabaseBests; fetchedAt: number }>();
+const mockStore = new Map<string, { bests: AthleteBests; fetchedAt: number }>();
 
 jest.mock("@/lib/database/offline-store", () => {
   const actual = jest.requireActual("@/lib/database/offline-store");
@@ -26,7 +26,7 @@ jest.mock("@/lib/database/offline-store", () => {
     isAthleteBestsFresh: actual.isAthleteBestsFresh,
     getAllCachedLiftingResultsForAthlete: jest.fn(async () => []),
     getAllCachedLiftingResultsForAthletes: jest.fn(async () => ({})),
-    saveAthleteBestsBatch: jest.fn(async (byName: Record<string, SupabaseBests>) => {
+    saveAthleteBestsBatch: jest.fn(async (byName: Record<string, AthleteBests>) => {
       for (const [name, bests] of Object.entries(byName)) {
         mockStore.set(normalizeAthleteName(name), { bests, fetchedAt: Date.now() });
       }
@@ -46,9 +46,8 @@ jest.mock("@/lib/database/offline-store", () => {
   };
 });
 
-function liftRow(overrides: Partial<SupabaseLiftResult>): SupabaseLiftResult {
+function liftRow(overrides: Partial<AthleteMeetResult>): AthleteMeetResult {
   return {
-    id: 0,
     event_id: "e",
     meet: "Meet",
     date: "2023-01-01",
