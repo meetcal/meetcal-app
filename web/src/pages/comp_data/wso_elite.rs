@@ -686,11 +686,31 @@ mod tests {
     }
 
     #[test]
-    fn defaults_match_the_servers() {
-        let defaults = Methods::default();
+    fn each_lists_methods_and_default_are_the_servers() {
+        let server = include_str!("../../../../convex/lib/elite.ts");
+        let choices = server
+            .split_once("export const ELITE_METHOD_CHOICES")
+            .and_then(|(_, rest)| rest.split_once("};"))
+            .map(|(choices, _)| choices)
+            .expect("convex/lib/elite.ts declares ELITE_METHOD_CHOICES");
         for list in EliteList::IN_PAGE_ORDER {
-            assert_eq!(defaults.get(list), list.methods_default_first()[0]);
+            let line = choices
+                .lines()
+                .find(|line| line.trim_start().starts_with(&format!("{}:", list.key())))
+                .unwrap_or_else(|| panic!("the server has no {} list", list.key()));
+            let server_methods = line.split('\'').skip(1).step_by(2).collect::<Vec<_>>();
+            let page_methods = list
+                .methods_default_first()
+                .iter()
+                .map(|method| method.value())
+                .collect::<Vec<_>>();
+            assert_eq!(page_methods, server_methods, "{}", list.key());
+            assert_eq!(
+                Methods::default().get(list).value(),
+                server_methods[0],
+                "{}",
+                list.key()
+            );
         }
-        assert_eq!(defaults.masters, Method::Qmasters);
     }
 }

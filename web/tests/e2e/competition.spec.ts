@@ -641,3 +641,28 @@ test("the WSO elite page ranks a WSO's athletes, and a list's score picker switc
   await expect(page.getByText("251.20")).toBeVisible();
   expect(asked).toHaveLength(1);
 });
+
+test("a WSO elite score the answer lacks says so, and a score the page does not know is ignored", async ({ page }) => {
+  await mockSubscribedUser(page);
+  await routeQuery(page, "reference:registrationWsos", (route) => route.fulfill(valueAnswer(["Carolina"])));
+  await routeAction(page, "results:wsoElite", (route) => {
+    const answer = eliteAnswer();
+    const { sinclair: _dropped, ...youthWithoutSinclair } = answer.rankings.youth;
+    return route.fulfill(
+      valueAnswer({
+        ...answer,
+        rankings: { ...answer.rankings, youth: { ...youthWithoutSinclair, robi: { men: [], women: [] } } },
+      }),
+    );
+  });
+  await page.goto("/wso-elite");
+  await page.getByLabel("WSO").selectOption("Carolina");
+  await page.getByRole("button", { name: "View elite lists" }).click();
+
+  await expect(page.getByRole("heading", { name: "Youth — % of A standard" })).toBeVisible();
+  await expect(page.getByRole("alert")).toHaveCount(0);
+  await page.getByLabel("Youth score").selectOption("sinclair");
+  await expect(page.getByRole("heading", { name: "Youth — Sinclair" })).toBeVisible();
+  await expect(page.getByText("This score isn’t available for this list right now.")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Overall — % of A standard" })).toBeVisible();
+});
