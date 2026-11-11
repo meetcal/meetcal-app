@@ -1,6 +1,9 @@
 import { isPlaceholderMemberId } from './memberIds';
 import { normalizeGender } from './normalize';
 import { currentWeightClasses } from './referenceData';
+import { bareWeightClass } from './weightClass';
+
+export { bareWeightClass };
 
 /**
  * Rules for a meet's roster (`athletes`): when an athlete has a session, and
@@ -48,11 +51,6 @@ export function isJunkMeetName(meet: string): boolean {
   return /your choice regarding cookies/i.test(meet) || /^\d+,[^,]*,\d+,/.test(meet);
 }
 
-/** A weight class without `kg` or spaces, a leading plus moved to the end (`+109kg` -> `109+`). */
-export function bareWeightClass(text: string): string {
-  const bare = text.replace(/kg/gi, '').replace(/\s+/g, '');
-  return bare.startsWith('+') ? `${bare.slice(1)}+` : bare;
-}
 
 const AGE_RANGE = { min: 5, max: 100 } as const;
 /** A roster this size or more with this share of one age has ages that are buckets or a default. */

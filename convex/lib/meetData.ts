@@ -1,8 +1,10 @@
 import type { QueryCtx } from '../_generated/server';
 import type { Doc } from '../_generated/dataModel';
 import { clubKey, sameClub } from './clubs';
+import { mapInBatches } from './concurrency';
 import { normalizeName } from './names';
-import { bareWeightClass, hasSession } from './roster';
+import { hasSession } from './roster';
+import { bareWeightClass, classNamedIn } from './weightClass';
 import { athleteGenderLabel, normalizeGender } from './normalize';
 import {
   accumulateBests,
@@ -465,21 +467,13 @@ const TIMELINE_READ_BATCH = 250;
 /** Each distinct folded name's results since `horizon`, as points. */
 export async function computeTimelines(ctx: QueryCtx, names: readonly string[], horizon: string): Promise<Timeline[]> {
   const keys = Array.from(new Set(names.map(normalizeName))).sort(compareBytes);
-  const timelines: Timeline[] = [];
-  for (let i = 0; i < keys.length; i += TIMELINE_READ_BATCH) {
-    timelines.push(
-      ...(await Promise.all(
-        keys.slice(i, i + TIMELINE_READ_BATCH).map(async (key): Promise<Timeline> => {
-          const rows = await ctx.db
-            .query('lifting_results')
-            .withIndex('by_nameKey_and_date', (q) => q.eq('nameKey', key).gte('date', horizon))
-            .collect();
-          return [key, rows.map(timelinePoint)];
-        }),
-      )),
-    );
-  }
-  return timelines;
+  return mapInBatches(keys, TIMELINE_READ_BATCH, async (key): Promise<Timeline> => {
+    const rows = await ctx.db
+      .query('lifting_results')
+      .withIndex('by_nameKey_and_date', (q) => q.eq('nameKey', key).gte('date', horizon))
+      .collect();
+    return [key, rows.map(timelinePoint)];
+  });
 }
 
 /**
@@ -685,11 +679,6 @@ async function statsEntries(ctx: QueryCtx, meet: string): Promise<{ joined: Stat
   return { joined, groups };
 }
 
-/** The weight class a division names ("Open Men's 89kg" -> "89", "... 86+kg" -> "86+"), or null. */
-function divisionWeightClass(age: string | undefined): string | null {
-  const match = age === undefined ? null : /(\d+\+?)\s*kg\s*$/i.exec(age);
-  return match ? match[1] : null;
-}
 
 /**
  * The roster entry a result is a lifter's: the only one under its folded
@@ -699,7 +688,7 @@ function divisionWeightClass(age: string | undefined): string | null {
  */
 function rosterEntryFor(entries: readonly Doc<'athletes'>[] | undefined, age: string | undefined): Doc<'athletes'> | undefined {
   if (!entries || entries.length <= 1) return entries?.[0];
-  const weightClass = divisionWeightClass(age);
+  const weightClass = age === undefined ? null : classNamedIn(age, 'atTheEnd');
   const inClass = weightClass === null ? [] : entries.filter((entry) => bareWeightClass(entry.weightClass) === weightClass);
   return new Set(inClass.map((entry) => clubKey(entry.club))).size === 1 ? inClass[0] : entries[0];
 }

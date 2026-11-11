@@ -6,6 +6,7 @@ import { writeHistories } from './lib/history';
 import { normalizeAgeCategory, normalizeFederation, normalizeGender, storedGenderSpellings } from './lib/normalize';
 import { disambiguatedMeetName, MAX_DISAMBIGUATED_NAMES, oldestMeet, type ZoneFormatters } from './lib/meetData';
 import { meetStatusAt, nextMeetStatus, type MeetStatus } from './lib/meetStatus';
+import { mapInBatches } from './lib/concurrency';
 import { DAY_MS } from './lib/dates';
 import { hasNoMemberId, ONE_OFF_MEMBER_ID, placeholderMemberId } from './lib/memberIds';
 import { normalizeName } from './lib/names';
@@ -58,30 +59,17 @@ export async function recordWrite(ctx: MutationCtx, table: SourceTable, hints: W
   await scheduleRefresh(ctx);
 }
 
-/**
- * A change under a results title linked to a meet (`meet_result_titles`)
- * changes that meet's views too: its hint, for each `meet` hint naming one.
- */
-/** Linked-title lookups in flight at once, well under a function's 1,000. */
 const LINK_LOOKUP_BATCH = 250;
 
 async function linkedMeetHints(ctx: MutationCtx, hints: readonly WriteHint[]): Promise<WriteHint[]> {
   const titles = [...new Set(hints.filter((hint) => hint.kind === 'meet').map((hint) => hint.key))];
-  // A title is linked to one meet at most (`setMeetResultTitles`). In
-  // batches: a bulk write can name many meets.
-  const linked: WriteHint[] = [];
-  for (let i = 0; i < titles.length; i += LINK_LOOKUP_BATCH) {
-    const links = await Promise.all(
-      titles.slice(i, i + LINK_LOOKUP_BATCH).map((title) =>
-        ctx.db
-          .query('meet_result_titles')
-          .withIndex('by_title', (q) => q.eq('title', title))
-          .first(),
-      ),
-    );
-    for (const link of links) if (link) linked.push({ kind: 'meet', key: link.meet });
-  }
-  return linked;
+  const links = await mapInBatches(titles, LINK_LOOKUP_BATCH, (title) =>
+    ctx.db
+      .query('meet_result_titles')
+      .withIndex('by_title', (q) => q.eq('title', title))
+      .first(),
+  );
+  return links.flatMap((link): WriteHint[] => (link ? [{ kind: 'meet', key: link.meet }] : []));
 }
 
 /**

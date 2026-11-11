@@ -1,3 +1,4 @@
+import { mapInBatches } from '../lib/concurrency';
 import { v } from 'convex/values';
 import { internalQuery, type QueryCtx } from '../_generated/server';
 import type { Doc } from '../_generated/dataModel';
@@ -161,6 +162,7 @@ export const truncatedEntryNames = internalQuery({
  * carry WSOs, a few per member; past this many, the rest go unread.
  */
 const MEMBER_WSO_READS = 50;
+const MEMBER_LOOKUP_BATCH = 250;
 
 /**
  * Each member's WSO as their most recent registration that names one gives
@@ -182,30 +184,25 @@ export const memberWsos = internalQuery({
       if (!meetDates.has(meet)) meetDates.set(meet, meetByName(ctx, meet).then((row) => (row ? (canonicalMeetDate(row.startDate) ?? '') : '')));
       return meetDates.get(meet)!;
     };
+    const wsos = await mapInBatches(ids, MEMBER_LOOKUP_BATCH, async (memberId) => {
+      const rows = await ctx.db
+        .query('athletes')
+        .withIndex('by_memberId_and_wso', (q) => q.eq('memberId', memberId).gt('wso', ''))
+        .take(MEMBER_WSO_READS);
+      let best: { wso: string; date: string; created: number } | null = null;
+      for (const row of rows) {
+        const wso = (row.wso ?? '').trim();
+        if (wso === '') continue;
+        const date = await meetDate(row.meet);
+        if (best === null || date > best.date || (date === best.date && row._creationTime > best.created)) best = { wso, date, created: row._creationTime };
+      }
+      return best?.wso ?? null;
+    });
     const found: Record<string, string> = {};
-    for (let i = 0; i < ids.length; i += 250) {
-      const batch = ids.slice(i, i + 250);
-      const wsos = await Promise.all(
-        batch.map(async (memberId) => {
-          const rows = await ctx.db
-            .query('athletes')
-            .withIndex('by_memberId_and_wso', (q) => q.eq('memberId', memberId).gt('wso', ''))
-            .take(MEMBER_WSO_READS);
-          let best: { wso: string; date: string; created: number } | null = null;
-          for (const row of rows) {
-            const wso = (row.wso ?? '').trim();
-            if (wso === '') continue;
-            const date = await meetDate(row.meet);
-            if (best === null || date > best.date || (date === best.date && row._creationTime > best.created)) best = { wso, date, created: row._creationTime };
-          }
-          return best?.wso ?? null;
-        }),
-      );
-      batch.forEach((memberId, index) => {
-        const wso = wsos[index];
-        if (wso) found[memberId] = wso;
-      });
-    }
+    ids.forEach((memberId, index) => {
+      const wso = wsos[index];
+      if (wso) found[memberId] = wso;
+    });
     return found;
   },
 });

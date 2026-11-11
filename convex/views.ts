@@ -1,3 +1,4 @@
+import { chunks } from './lib/concurrency';
 import { v } from 'convex/values';
 import { internalAction, internalMutation, internalQuery, type ActionCtx, type MutationCtx, type QueryCtx } from './_generated/server';
 import { internal } from './_generated/api';
@@ -302,8 +303,8 @@ const STATS_PREVIOUS_BEST_BATCH = 200;
 async function buildStats(ctx: ActionCtx, meet: string): Promise<void> {
   const { sources, wanted } = await ctx.runQuery(internal.views.statsBuildPlan, { meet });
   const known: PreviousBest[] = [];
-  for (let i = 0; i < wanted.length; i += STATS_PREVIOUS_BEST_BATCH) {
-    known.push(...(await ctx.runQuery(internal.views.statsPreviousBests, { wanted: wanted.slice(i, i + STATS_PREVIOUS_BEST_BATCH) })));
+  for (const batch of chunks(wanted, STATS_PREVIOUS_BEST_BATCH)) {
+    known.push(...(await ctx.runQuery(internal.views.statsPreviousBests, { wanted: batch })));
   }
   await ctx.runMutation(internal.views.buildMeetStats, { meet, sources, known });
 }

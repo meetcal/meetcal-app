@@ -1,5 +1,6 @@
 import { v } from 'convex/values';
 import { checkPass, premiumQuery, premiumRead } from './lib/access';
+import { chunks, mapLimited } from './lib/concurrency';
 import { action, internalQuery, query, type QueryCtx } from './_generated/server';
 import { internal } from './_generated/api';
 import { nameMatcher, queryBigrams, searchDirectory } from './lib/directory';
@@ -129,8 +130,7 @@ export const leaderboard = action({
     // tie keeps the row read first, as one pass over the rows would.
     const best = new Map<string, Candidate>();
     const federations = new Set<string>();
-    const readSlice = async (index: number) => {
-      const [start, end] = slices[index];
+    const readSlice = async ([start, end]: (typeof slices)[number]) => {
       let cursor: string | null = null;
       for (let pages = 0; pages < LEADERBOARD_MAX_PAGES; pages++) {
         const page: LeaderboardPage = await ctx.runQuery(internal.results.leaderboardPage, { start, end, cursor });
@@ -143,11 +143,7 @@ export const leaderboard = action({
       }
       throw apiError(500, `results from ${start} to ${end} did not finish within ${LEADERBOARD_MAX_PAGES} pages`);
     };
-    let next = 0;
-    const worker = async () => {
-      while (next < slices.length) await readSlice(next++);
-    };
-    await Promise.all(Array.from({ length: Math.min(LEADERBOARD_CONCURRENCY, slices.length) }, worker));
+    await mapLimited(slices, LEADERBOARD_CONCURRENCY, readSlice);
     return {
       rows: rankBests(best.values(), limit).map(leaderboardRow),
       federations: [...federations].filter((federation) => federation.trim() !== '').sort(compareBytes),
@@ -247,23 +243,6 @@ export const eliteStandards = internalQuery({
     (await ctx.db.query('standards').collect()).map(({ ageCategory, gender, weightClass, standardA }) => ({ ageCategory, gender, weightClass, standardA })),
 });
 
-/** Runs `work` over `items`, at most `concurrency` at a time; answers in input order. */
-async function inParallel<T, R>(items: readonly T[], concurrency: number, work: (item: T) => Promise<R>): Promise<R[]> {
-  const answers: R[] = new Array(items.length);
-  let next = 0;
-  const worker = async () => {
-    while (next < items.length) {
-      const index = next++;
-      answers[index] = await work(items[index]);
-    }
-  };
-  await Promise.all(Array.from({ length: Math.min(concurrency, items.length) }, worker));
-  return answers;
-}
-
-const chunks = <T>(items: readonly T[], size: number): T[][] =>
-  Array.from({ length: Math.ceil(items.length / size) }, (_, index) => items.slice(index * size, (index + 1) * size));
-
 const eliteMethodArg = v.union(v.literal('percentA'), v.literal('qpoints'), v.literal('qmasters'), v.literal('sinclair'));
 
 /**
@@ -307,7 +286,7 @@ export const wsoElite = action({
     }
     if (memberIds.size === 0) throw apiError(404, `No registrations found for WSO "${wso}"`);
 
-    const looked = await inParallel(chunks([...memberIds], ELITE_MEMBER_BATCH), ELITE_CONCURRENCY, async (ids) =>
+    const looked = await mapLimited(chunks([...memberIds], ELITE_MEMBER_BATCH), ELITE_CONCURRENCY, async (ids) =>
       JSON.parse(await ctx.runQuery(internal.results.eliteMembers, { memberIds: ids })) as [string, EliteMember | null][],
     );
     // Results are matched by folded name; two members of one name share their results.
@@ -322,7 +301,7 @@ export const wsoElite = action({
 
     const [standards, read] = await Promise.all([
       ctx.runQuery(internal.results.eliteStandards, {}),
-      inParallel(chunks([...membersByKey.keys()], ELITE_HISTORY_BATCH), ELITE_CONCURRENCY, async (keys) =>
+      mapLimited(chunks([...membersByKey.keys()], ELITE_HISTORY_BATCH), ELITE_CONCURRENCY, async (keys) =>
         JSON.parse(await ctx.runQuery(internal.results.eliteResults, { keys, from, to })) as [string, CompactRow[]][],
       ),
     ]);
