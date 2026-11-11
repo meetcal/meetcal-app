@@ -92,9 +92,14 @@ pub fn series_name(meet: &str) -> String {
     kept.join(" ")
 }
 
-/// A result's year, the first four characters of its `YYYY-MM-DD` date.
+/// The year of a `YYYY-MM-DD` date: its first four characters.
+pub fn year_of(date: &str) -> &str {
+    date.get(..4).unwrap_or(date)
+}
+
+/// A result's year ([`year_of`] its date).
 pub fn result_year(row: &LiftingResults) -> String {
-    row.date.get(..4).unwrap_or(&row.date).to_string()
+    year_of(&row.date).to_string()
 }
 
 /// A meet's results split into editions by year, oldest first. Many meets keep one name every
