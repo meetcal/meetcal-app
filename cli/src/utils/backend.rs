@@ -14,10 +14,11 @@ use anyhow::{Context, Result, anyhow};
 use reqwest::{Client, Request, Response, StatusCode, header::RETRY_AFTER};
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use serde_json::Value;
+use tokio::task::JoinSet;
 
 use crate::utils::access::{self, Access, Refusal};
 use crate::utils::credentials;
-use crate::utils::retry::{next_retry_delay, parse_retry_after_secs};
+use crate::utils::retry::{next_retry_delay, next_transport_retry_delay, parse_retry_after_secs};
 
 /// The production Convex deployment, which the app and the website read too.
 pub const CONVEX_URL: &str = "https://disciplined-hare-790.convex.cloud";
@@ -653,6 +654,49 @@ where
     .await
 }
 
+/// Most reads [`in_order`] runs at once for [`query_each`]: enough that a report of a hundred
+/// name batches no longer waits for each in turn, few enough not to crowd the deployment.
+pub const CONCURRENT_READS: usize = 8;
+
+/// Runs `query` once for each of `args` on the production deployment (or `MEETCAL_CONVEX_URL`),
+/// at most [`CONCURRENT_READS`] at a time, and returns the answers in `args`' order. The first
+/// failure fails them all.
+pub async fn query_each<T>(query: Query, args: Vec<Value>) -> Result<Vec<T>>
+where
+    T: DeserializeOwned + Send + 'static,
+{
+    let jobs = args.into_iter().map(move |args| async move {
+        query_from::<T, _>(&convex_url(), default_access(), query, &args).await
+    });
+    in_order(CONCURRENT_READS, jobs).await
+}
+
+/// Runs `jobs` at most `limit` at a time and returns their answers in the jobs' order, whatever
+/// order they finish in. The first failure is returned and the jobs still running are dropped.
+pub async fn in_order<T, Fut>(limit: usize, jobs: impl IntoIterator<Item = Fut>) -> Result<Vec<T>>
+where
+    T: Send + 'static,
+    Fut: Future<Output = Result<T>> + Send + 'static,
+{
+    let mut pending = jobs.into_iter().enumerate();
+    let mut running = JoinSet::new();
+    let mut answers: Vec<Option<T>> = Vec::new();
+    loop {
+        while running.len() < limit.max(1)
+            && let Some((index, job)) = pending.next()
+        {
+            answers.push(None);
+            running.spawn(async move { (index, job.await) });
+        }
+        let Some(finished) = running.join_next().await else {
+            break;
+        };
+        let (index, answer) = finished.context("A MeetCal read stopped before it finished")?;
+        answers[index] = Some(answer?);
+    }
+    Ok(answers.into_iter().flatten().collect())
+}
+
 /// The paging loop of every paged read, over any page source: `fetch` gets `None` first, then
 /// each cursor a page returned, at most [`MAX_PAGES`] times. `function` names the query in
 /// errors. A query whose page names its fields differently maps it to a [`Page`].
@@ -744,8 +788,9 @@ fn read_answer<T: DeserializeOwned>(query: Query, answer: QueryResponse) -> Resu
     }
 }
 
-/// Sends `request`, retrying rate limited (429) and overloaded (503) responses as the retry
-/// policy allows when `retries` (a query or a premium action; see [`Endpoint::retries`]). Returns the response once
+/// Sends `request`, retrying rate limited (429) and overloaded (503) responses, and requests that
+/// failed before any answer (a dropped connection), as the retry policy allows when `retries` (a
+/// query or a premium action; see [`Endpoint::retries`]). Returns the response once
 /// Convex answers (a function that failed included), or an error once it cannot.
 pub async fn send_with_retry(request: Request, function: &str, retries: bool) -> Result<Response> {
     let mut retries_done = 0;
@@ -754,10 +799,23 @@ pub async fn send_with_retry(request: Request, function: &str, retries: bool) ->
         let attempt = request
             .try_clone()
             .with_context(|| format!("Failed to prepare request for MeetCal query {function}"))?;
-        let response = client()?
-            .execute(attempt)
-            .await
-            .with_context(|| format!("Failed to call MeetCal query {function}"))?;
+        let response = match client()?.execute(attempt).await {
+            Ok(response) => response,
+            Err(error) => {
+                // No answer arrived: a read is safe to send again. A timeout has already taken
+                // the request's whole allowance, so it is not.
+                if retries
+                    && !error.is_timeout()
+                    && let Some(delay) = next_transport_retry_delay(retries_done)
+                {
+                    tokio::time::sleep(delay).await;
+                    retries_done += 1;
+                    continue;
+                }
+                return Err(error)
+                    .with_context(|| format!("Failed to call MeetCal query {function}"));
+            }
+        };
 
         let status = response.status();
         let retry_after = response
@@ -1029,6 +1087,51 @@ mod tests {
         assert_eq!(
             error.to_string(),
             "MeetCal could not answer test:paged: boom"
+        );
+    }
+
+    #[tokio::test]
+    async fn bounded_reads_answer_in_order_and_never_exceed_the_limit() {
+        use std::sync::Arc;
+        use std::sync::atomic::{AtomicUsize, Ordering};
+
+        let (running, most) = (Arc::new(AtomicUsize::new(0)), Arc::new(AtomicUsize::new(0)));
+        let jobs = (0..20u64).map(|n| {
+            let (running, most) = (Arc::clone(&running), Arc::clone(&most));
+            async move {
+                let now = running.fetch_add(1, Ordering::SeqCst) + 1;
+                most.fetch_max(now, Ordering::SeqCst);
+                // Later jobs finish first, so order is not the order of finishing.
+                tokio::time::sleep(Duration::from_millis(20 - n)).await;
+                running.fetch_sub(1, Ordering::SeqCst);
+                Ok(n)
+            }
+        });
+        let answers = in_order(3, jobs).await.unwrap();
+        assert_eq!(answers, (0..20).collect::<Vec<u64>>());
+        assert_eq!(most.load(Ordering::SeqCst), 3);
+
+        assert!(
+            in_order::<u32, std::future::Ready<Result<u32>>>(3, [])
+                .await
+                .unwrap()
+                .is_empty()
+        );
+    }
+
+    #[tokio::test]
+    async fn one_failed_read_fails_them_all() {
+        let jobs = (0..5u32).map(|n| async move {
+            if n == 2 {
+                Err(anyhow!("MeetCal could not answer test:batch: boom"))
+            } else {
+                Ok(n)
+            }
+        });
+        let error = in_order(2, jobs).await.unwrap_err();
+        assert_eq!(
+            error.to_string(),
+            "MeetCal could not answer test:batch: boom"
         );
     }
 

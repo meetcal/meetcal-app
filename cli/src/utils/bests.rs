@@ -7,7 +7,7 @@ use chrono::{Datelike, NaiveDate, Utc};
 use serde_json::json;
 
 use crate::types::meets::NamedBests;
-use crate::utils::backend::{queries, query};
+use crate::utils::backend::{queries, query_each};
 use crate::utils::format::kg;
 
 /// Names per `results:bests` call (the query takes at most 100).
@@ -31,16 +31,15 @@ pub fn cutoff_date(today: NaiveDate, years: i32) -> String {
 }
 
 /// Each name's best snatch, clean & jerk and total over the past year, keyed by the name as
-/// given. Names are read in batches; an empty list reads nothing.
+/// given. Names are read in batches, side by side; an empty list reads nothing.
 pub async fn year_bests(names: &[String]) -> Result<HashMap<String, NamedBests>> {
     let cutoff = cutoff_date(Utc::now().date_naive(), YEAR_BESTS_YEARS);
+    let batches = names
+        .chunks(BESTS_BATCH_SIZE)
+        .map(|batch| json!({ "names": batch, "cutoffDate": cutoff }))
+        .collect();
     let mut bests = HashMap::new();
-    for batch in names.chunks(BESTS_BATCH_SIZE) {
-        let rows: Vec<NamedBests> = query(
-            queries::BESTS,
-            &json!({ "names": batch, "cutoffDate": cutoff }),
-        )
-        .await?;
+    for rows in query_each::<Vec<NamedBests>>(queries::BESTS, batches).await? {
         for row in rows {
             bests.insert(row.name.clone(), row);
         }
