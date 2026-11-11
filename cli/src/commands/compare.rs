@@ -21,16 +21,16 @@ pub struct CompareArgs {
 }
 
 #[derive(Debug, PartialEq)]
-pub struct MetricComparison {
-    pub label: &'static str,
-    pub previous: f64,
-    pub current: f64,
-    pub percent_change: Option<f64>,
-    pub unit: MetricUnit,
+pub(crate) struct MetricComparison {
+    pub(crate) label: &'static str,
+    pub(crate) previous: f64,
+    pub(crate) current: f64,
+    pub(crate) percent_change: Option<f64>,
+    pub(crate) unit: MetricUnit,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum MetricUnit {
+pub(crate) enum MetricUnit {
     Count,
     Kilograms,
     Percent,
@@ -39,10 +39,10 @@ pub enum MetricUnit {
 /// Both years of an athlete's comparison: the name to show and each year's stats (zeros for a
 /// year without results).
 #[derive(Debug, PartialEq)]
-pub struct ComparedYears {
-    pub name: String,
-    pub previous: WrappedStats,
-    pub current: WrappedStats,
+pub(crate) struct ComparedYears {
+    pub(crate) name: String,
+    pub(crate) previous: WrappedStats,
+    pub(crate) current: WrappedStats,
 }
 
 pub async fn run(args: CompareArgs) -> Result<()> {
@@ -71,7 +71,7 @@ pub async fn run(args: CompareArgs) -> Result<()> {
 /// The previous and current years' Wrapped answers (`results:wrapped`), as the stats to compare.
 /// Refuses a year with more results than the server scores, since its stats would miss part of
 /// that year, and a name with no results in either year (with the server's suggestions).
-pub fn compared_years(
+pub(crate) fn compared_years(
     name: &str,
     (previous, previous_answer): (i32, WrappedAnswer),
     (current, current_answer): (i32, WrappedAnswer),
@@ -114,7 +114,10 @@ pub fn compared_years(
     })
 }
 
-pub fn comparisons(previous: &WrappedStats, current: &WrappedStats) -> Vec<MetricComparison> {
+pub(crate) fn comparisons(
+    previous: &WrappedStats,
+    current: &WrappedStats,
+) -> Vec<MetricComparison> {
     [
         (
             "Total Weight Lifted",
@@ -170,7 +173,7 @@ pub fn comparisons(previous: &WrappedStats, current: &WrappedStats) -> Vec<Metri
     .collect()
 }
 
-pub fn percent_change(current: f64, previous: f64) -> Option<f64> {
+pub(crate) fn percent_change(current: f64, previous: f64) -> Option<f64> {
     if !current.is_finite() || !previous.is_finite() || previous == 0.0 {
         None
     } else {
@@ -189,7 +192,7 @@ fn render_comparison(
     comparison_report(name, previous_year, current_year, previous, current).to_text()
 }
 
-pub fn comparison_report(
+pub(crate) fn comparison_report(
     name: &str,
     previous_year: i32,
     current_year: i32,
@@ -223,12 +226,12 @@ pub fn comparison_report(
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct YearsWithResults {
-    pub previous: bool,
-    pub current: bool,
+pub(crate) struct YearsWithResults {
+    pub(crate) previous: bool,
+    pub(crate) current: bool,
 }
 
-pub fn comparison_tables(
+pub(crate) fn comparison_tables(
     previous_year: i32,
     current_year: i32,
     rows: Vec<[String; 4]>,
@@ -273,7 +276,7 @@ pub fn comparison_tables(
 }
 
 /// A metric's value as the comparison tables show it.
-pub fn format_metric(value: f64, unit: MetricUnit) -> String {
+pub(crate) fn format_metric(value: f64, unit: MetricUnit) -> String {
     match unit {
         MetricUnit::Count => format!("{value:.0}"),
         MetricUnit::Kilograms => format!("{}kg", number(value)),

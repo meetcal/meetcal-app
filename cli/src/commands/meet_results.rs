@@ -23,9 +23,9 @@ use crate::{
 };
 
 /// Earlier editions of a meet compared, at most.
-pub const EDITIONS: i32 = 3;
+pub(crate) const EDITIONS: i32 = 3;
 /// Lifters in the top-Sinclair table.
-pub const TOP_SINCLAIR: usize = 10;
+pub(crate) const TOP_SINCLAIR: usize = 10;
 
 /// Show a meet's results and statistics: every result with its Sinclair, the heaviest lifts, the
 /// top Q-points and Sinclair lifters (men and women apart), bomb-outs, make rates by attempt, and
@@ -58,10 +58,10 @@ pub struct MeetResultsArgs {
 
 /// One edition of a meet and its headline numbers.
 #[derive(Clone, Debug, PartialEq)]
-pub struct EditionSummary {
-    pub meet: String,
-    pub year: String,
-    pub summary: MeetSummary,
+pub(crate) struct EditionSummary {
+    pub(crate) meet: String,
+    pub(crate) year: String,
+    pub(crate) summary: MeetSummary,
 }
 
 pub async fn run(args: MeetResultsArgs) -> Result<()> {
@@ -218,7 +218,7 @@ fn name_prefixes(series: &str, year: i32) -> Vec<String> {
 /// The first four-digit year in `meet` and its byte offset. Works on bytes, so a name with curly
 /// quotes, accents or emoji never slices inside a character; the year itself is ASCII, so the
 /// offset is a character boundary.
-pub fn year_in(meet: &str) -> Option<(usize, i32)> {
+pub(crate) fn year_in(meet: &str) -> Option<(usize, i32)> {
     let bytes = meet.as_bytes();
     let is_digit_at = |at: Option<usize>| {
         at.and_then(|at| bytes.get(at))
@@ -238,21 +238,21 @@ pub fn year_in(meet: &str) -> Option<(usize, i32)> {
 
 /// A meet's headline numbers.
 #[derive(Clone, Debug, PartialEq)]
-pub struct MeetSummary {
-    pub athletes: usize,
-    pub bomb_outs: usize,
-    pub average_total: Option<f64>,
-    pub make_rate: Option<f64>,
+pub(crate) struct MeetSummary {
+    pub(crate) athletes: usize,
+    pub(crate) bomb_outs: usize,
+    pub(crate) average_total: Option<f64>,
+    pub(crate) make_rate: Option<f64>,
     /// The best Sinclair and Q-points score and who scored it, men's and women's apart: each
     /// gender has its own scale.
-    pub best_sinclair: [Option<(f64, String)>; 2],
-    pub best_qpoints: [Option<(f64, String)>; 2],
+    pub(crate) best_sinclair: [Option<(f64, String)>; 2],
+    pub(crate) best_qpoints: [Option<(f64, String)>; 2],
 }
 
 /// The genders scores are ranked within, in report order.
 const GENDERS: [Gender; 2] = [Gender::Men, Gender::Women];
 
-pub fn performances(rows: &[LiftingResults]) -> Vec<Vec<&LiftingResults>> {
+pub(crate) fn performances(rows: &[LiftingResults]) -> Vec<Vec<&LiftingResults>> {
     type Performance = (String, String, [u64; 7]);
     let mut in_first_seen_order: Vec<Performance> = Vec::new();
     let mut rows_of: HashMap<Performance, Vec<&LiftingResults>> = HashMap::new();
@@ -286,7 +286,7 @@ fn one_row_per_performance(rows: &[LiftingResults]) -> Vec<&LiftingResults> {
         .collect()
 }
 
-pub fn summarize(rows: &[LiftingResults]) -> MeetSummary {
+pub(crate) fn summarize(rows: &[LiftingResults]) -> MeetSummary {
     let all = one_row_per_performance(rows);
     // Source errors (`stats::plausible`) count as athletes, but not toward the average total.
     let totals: Vec<f64> = all.iter().filter_map(|row| valid_total(row)).collect();
@@ -344,7 +344,7 @@ fn top_table(
     top
 }
 
-pub fn report(
+pub(crate) fn report(
     results: &[LiftingResults],
     this_edition: &EditionSummary,
     earlier: &[EditionSummary],

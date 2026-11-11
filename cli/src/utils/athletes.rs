@@ -11,11 +11,11 @@ use crate::utils::backend::{queries, query, query_each};
 use crate::utils::names::{MAX_SUGGESTIONS, closest};
 use crate::utils::stats::fold;
 
-pub const NAMES_PER_READ: usize = 50;
+pub(crate) const NAMES_PER_READ: usize = 50;
 
 /// Every result of the athlete named `name` (case and spacing ignored). An unknown name is an
 /// error naming the closest athletes MeetCal has.
-pub async fn history(name: &str) -> Result<Vec<LiftingResults>> {
+pub(crate) async fn history(name: &str) -> Result<Vec<LiftingResults>> {
     let rows: Vec<LiftingResults> =
         query(queries::RESULTS_BY_NAMES, &json!({ "names": [name] })).await?;
     let rows = rows_named(rows, name);
@@ -27,7 +27,7 @@ pub async fn history(name: &str) -> Result<Vec<LiftingResults>> {
 
 /// The rows of the athlete named `name`, by the folded name (the server's rule, so a row written
 /// with a decomposed accent still belongs to the athlete).
-pub fn rows_named(rows: Vec<LiftingResults>, name: &str) -> Vec<LiftingResults> {
+pub(crate) fn rows_named(rows: Vec<LiftingResults>, name: &str) -> Vec<LiftingResults> {
     let wanted = fold(name);
     rows.into_iter()
         .filter(|row| fold(&row.name) == wanted)
@@ -36,7 +36,7 @@ pub fn rows_named(rows: Vec<LiftingResults>, name: &str) -> Vec<LiftingResults> 
 
 /// The error for an athlete with no results, with the names MeetCal has that are closest to
 /// `name`.
-pub async fn unknown_athlete(name: &str) -> anyhow::Error {
+pub(crate) async fn unknown_athlete(name: &str) -> anyhow::Error {
     let message = format!("No results found for athlete \"{name}\"");
     let candidates = athlete_candidates(name).await;
     let close = closest(name, &candidates, MAX_SUGGESTIONS);
@@ -51,7 +51,7 @@ pub async fn unknown_athlete(name: &str) -> anyhow::Error {
 /// Searches a misspelled name is still likely to match: the whole name, the name up to the last
 /// word's first three letters, and its first and last words alone. MeetCal's name search matches
 /// substrings, so a typo anywhere defeats the whole name but rarely all of these.
-pub fn search_pieces(name: &str) -> Vec<String> {
+pub(crate) fn search_pieces(name: &str) -> Vec<String> {
     let words: Vec<&str> = name.split_whitespace().collect();
     let mut pieces = vec![words.join(" ")];
     if let Some((last, rest)) = words.split_last()
@@ -83,7 +83,7 @@ async fn athlete_candidates(name: &str) -> Vec<String> {
     candidates
 }
 
-pub async fn histories(names: &[String]) -> Result<HashMap<String, Vec<LiftingResults>>> {
+pub(crate) async fn histories(names: &[String]) -> Result<HashMap<String, Vec<LiftingResults>>> {
     let batches = names
         .chunks(NAMES_PER_READ)
         .map(|batch| json!({ "names": batch }))

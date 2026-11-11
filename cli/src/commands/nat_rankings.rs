@@ -8,9 +8,9 @@ use crate::utils::output::{self, Report};
 use serde_json::json;
 
 #[derive(Debug, Deserialize)]
-pub struct NatRanking {
-    pub name: String,
-    pub total: f64,
+pub(crate) struct NatRanking {
+    pub(crate) name: String,
+    pub(crate) total: f64,
 }
 
 /// Show a division's national rankings: each lifter's best total (see nat-ranking-year for one
@@ -41,7 +41,7 @@ pub async fn run(args: NatRankingsArgs) -> Result<()> {
     Ok(())
 }
 
-pub fn report(rankings: Vec<NatRanking>) -> Report {
+pub(crate) fn report(rankings: Vec<NatRanking>) -> Report {
     let mut table = Table::new();
     table.set_header(vec!["Rank", "Name", "Total"]);
     for (rank, row) in (1..).zip(rankings) {

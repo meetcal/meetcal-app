@@ -16,21 +16,21 @@ use sha2::{Digest, Sha256};
 use crate::utils::releases::Version;
 
 /// The Homebrew formula, in the tap it is published from (`cli/docs/releasing.md`).
-pub const HOMEBREW_FORMULA: &str = "meetcal/tap/meetcal";
+pub(crate) const HOMEBREW_FORMULA: &str = "meetcal/tap/meetcal";
 
 /// The repository `cargo install --git` builds from.
-pub const GIT_URL: &str = "https://github.com/meetcal/meetcal-app.git";
+pub(crate) const GIT_URL: &str = "https://github.com/meetcal/meetcal-app.git";
 
 /// The binary's name, in the release archives and on disk.
-pub const BINARY_NAME: &str = "meetcal";
+pub(crate) const BINARY_NAME: &str = "meetcal";
 
 /// Largest archive or binary `upgrade` accepts. A release binary is a few megabytes; anything
 /// near this is not one.
-pub const MAX_DOWNLOAD_BYTES: u64 = 100 * 1024 * 1024;
+pub(crate) const MAX_DOWNLOAD_BYTES: u64 = 100 * 1024 * 1024;
 
 /// How this copy of the CLI was installed, judged by where its binary is.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub enum Install {
+pub(crate) enum Install {
     /// Under a Homebrew prefix's `Cellar/meetcal/`. `prefix` holds `bin/brew`.
     Homebrew { prefix: PathBuf },
     /// In Cargo's `bin` directory (`cargo install`).
@@ -41,7 +41,7 @@ pub enum Install {
 
 /// How the binary at `exe` (with symlinks resolved) was installed. `cargo_bin` is Cargo's `bin`
 /// directory (`$CARGO_HOME/bin`, or `~/.cargo/bin`), symlinks resolved, when known.
-pub fn detect(exe: &Path, cargo_bin: Option<&Path>) -> Install {
+pub(crate) fn detect(exe: &Path, cargo_bin: Option<&Path>) -> Install {
     let components: Vec<Component> = exe.components().collect();
     let cellar = components.windows(2).position(|pair| {
         matches!(pair, [cellar, formula]
@@ -60,7 +60,7 @@ pub fn detect(exe: &Path, cargo_bin: Option<&Path>) -> Install {
 }
 
 /// Cargo's `bin` directory from the environment's `CARGO_HOME` and `HOME`.
-pub fn cargo_bin(cargo_home: Option<&Path>, home: Option<&Path>) -> Option<PathBuf> {
+pub(crate) fn cargo_bin(cargo_home: Option<&Path>, home: Option<&Path>) -> Option<PathBuf> {
     cargo_home
         .filter(|dir| dir.is_absolute())
         .map(Path::to_path_buf)
@@ -88,7 +88,7 @@ pub fn archive_name(artifact: &str) -> String {
 }
 
 /// The commands `upgrade` runs for a Homebrew install, in order: refresh the taps, then upgrade.
-pub fn homebrew_commands(prefix: &Path) -> (PathBuf, Vec<Vec<String>>) {
+pub(crate) fn homebrew_commands(prefix: &Path) -> (PathBuf, Vec<Vec<String>>) {
     let brew = prefix.join("bin").join("brew");
     let program = if brew.is_file() {
         brew
@@ -105,7 +105,7 @@ pub fn homebrew_commands(prefix: &Path) -> (PathBuf, Vec<Vec<String>>) {
 }
 
 /// The command `upgrade` runs for a Cargo install: the release's tag, with its lockfile.
-pub fn cargo_command(version: Version) -> (PathBuf, Vec<String>) {
+pub(crate) fn cargo_command(version: Version) -> (PathBuf, Vec<String>) {
     let args = [
         "install",
         "--git",
@@ -124,7 +124,7 @@ pub fn cargo_command(version: Version) -> (PathBuf, Vec<String>) {
 
 /// The SHA-256 `sums` (a `SHA256SUMS` file: `<hex>  <name>` lines, `*<name>` for binary mode)
 /// gives for `file`, lowercase.
-pub fn expected_sha256(sums: &str, file: &str) -> Option<String> {
+pub(crate) fn expected_sha256(sums: &str, file: &str) -> Option<String> {
     sums.lines().find_map(|line| {
         let (hash, name) = line.trim().split_once(char::is_whitespace)?;
         let name = name.trim_start();
@@ -143,7 +143,7 @@ pub fn sha256_hex(bytes: &[u8]) -> String {
 }
 
 /// Fails unless `archive` hashes to what `sums` lists for `name`.
-pub fn verify_archive(archive: &[u8], sums: &str, name: &str) -> Result<()> {
+pub(crate) fn verify_archive(archive: &[u8], sums: &str, name: &str) -> Result<()> {
     let Some(expected) = expected_sha256(sums, name) else {
         bail!(
             "The release's {} lists no checksum for {name}",
@@ -160,7 +160,7 @@ pub fn verify_archive(archive: &[u8], sums: &str, name: &str) -> Result<()> {
 }
 
 /// The `meetcal` binary inside a release archive (a gzipped tar holding it at its root).
-pub fn extract_binary(archive: &[u8]) -> Result<Vec<u8>> {
+pub(crate) fn extract_binary(archive: &[u8]) -> Result<Vec<u8>> {
     let mut tar = tar::Archive::new(GzDecoder::new(archive));
     for entry in tar
         .entries()
@@ -190,8 +190,8 @@ pub fn extract_binary(archive: &[u8]) -> Result<Vec<u8>> {
 
 /// `upgrade` cannot write the directory the binary is in (a root-owned `/usr/local/bin`, say).
 #[derive(Debug)]
-pub struct NotWritable {
-    pub dir: PathBuf,
+pub(crate) struct NotWritable {
+    pub(crate) dir: PathBuf,
 }
 
 impl fmt::Display for NotWritable {
@@ -206,7 +206,7 @@ impl std::error::Error for NotWritable {}
 /// writes it next to `exe`, runs its `--version`, then renames it over `exe`, so a failure at any
 /// step leaves the installed binary as it was. A directory it cannot write fails with
 /// [`NotWritable`].
-pub fn replace_binary(exe: &Path, binary: &[u8], expected: Version) -> Result<()> {
+pub(crate) fn replace_binary(exe: &Path, binary: &[u8], expected: Version) -> Result<()> {
     let dir = exe
         .parent()
         .with_context(|| format!("{} has no parent directory", exe.display()))?;
@@ -250,7 +250,7 @@ fn write_executable(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
 }
 
 /// The version the binary at `path` prints for `--version` (`meetcal X.Y.Z`), if it runs.
-pub fn reported_version(path: &Path) -> Option<Version> {
+pub(crate) fn reported_version(path: &Path) -> Option<Version> {
     let output = run_version(path).ok()?;
     if !output.status.success() {
         return None;

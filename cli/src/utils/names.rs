@@ -15,7 +15,7 @@ use crate::utils::format::capitalized;
 use crate::utils::stats::folded_words;
 
 /// Suggestions shown for a name MeetCal does not know.
-pub const MAX_SUGGESTIONS: usize = 5;
+pub(crate) const MAX_SUGGESTIONS: usize = 5;
 
 /// The share of the typed words a name must match to be suggested.
 const MIN_WORD_MATCH: f64 = 0.75;
@@ -26,11 +26,11 @@ const HOUR_MS: i64 = 60 * 60 * 1000;
 const SUGGESTION_PAGES: usize = 6;
 
 /// Most pages of meet names one range is read for; a server that never finishes stops here.
-pub const MAX_NAME_PAGES: usize = crate::utils::backend::MAX_PAGES;
+pub(crate) const MAX_NAME_PAGES: usize = crate::utils::backend::MAX_PAGES;
 
 /// What kind of name a command was given.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum NameKind {
+pub(crate) enum NameKind {
     /// A meet MeetCal tracks: its start list, schedule or details.
     Meet,
     /// A meet's results: any meet in the results, tracked or not.
@@ -64,29 +64,29 @@ impl NameKind {
 }
 
 /// Meets starting within the next three months, and those under way, soonest first.
-pub async fn upcoming_meets() -> Result<Vec<Meet>> {
+pub(crate) async fn upcoming_meets() -> Result<Vec<Meet>> {
     // The hour is enough, and every caller within it shares Convex's cached answer.
     let now = Utc::now().timestamp_millis() / HOUR_MS * HOUR_MS;
     query(queries::UPCOMING_MEETS, &json!({ "now": now })).await
 }
 
 /// Completed meets, newest first.
-pub async fn completed_meets() -> Result<Vec<Meet>> {
+pub(crate) async fn completed_meets() -> Result<Vec<Meet>> {
     query(queries::COMPLETED_MEETS, &NoArgs {}).await
 }
 
 /// Every club name.
-pub async fn clubs() -> Result<Vec<String>> {
+pub(crate) async fn clubs() -> Result<Vec<String>> {
     query(queries::CLUBS, &NoArgs {}).await
 }
 
 /// Every WSO with records.
-pub async fn wsos() -> Result<Vec<String>> {
+pub(crate) async fn wsos() -> Result<Vec<String>> {
     query(queries::WSO_LIST, &NoArgs {}).await
 }
 
 /// Every WSO name on registrations, the names the club and WSO reports match.
-pub async fn registration_wsos() -> Result<Vec<String>> {
+pub(crate) async fn registration_wsos() -> Result<Vec<String>> {
     query(queries::REGISTRATION_WSOS, &NoArgs {}).await
 }
 
@@ -101,7 +101,7 @@ struct MeetName {
     meet: String,
 }
 
-pub async fn meet_names_between(
+pub(crate) async fn meet_names_between(
     source: &'static str,
     after: Option<String>,
     before: Option<String>,
@@ -137,7 +137,7 @@ pub async fn meet_names_between(
 /// The greatest string sorting before `boundary` for our purposes: `boundary` with its last
 /// character stepped back and a high character appended, so a range `after` it includes
 /// `boundary`.
-pub fn just_before(boundary: &str) -> String {
+pub(crate) fn just_before(boundary: &str) -> String {
     let mut chars: Vec<char> = boundary.chars().collect();
     let Some(last) = chars.pop() else {
         return String::new();
@@ -152,7 +152,7 @@ pub fn just_before(boundary: &str) -> String {
 /// The name prefixes a results meet like `input` probably starts with: its first word as typed
 /// and capitalized, and those after "The ". Meet names sort by their bytes, so each prefix is a
 /// short range of `meets:namesPage` to list instead of every name.
-pub fn meet_prefixes(input: &str) -> Vec<String> {
+pub(crate) fn meet_prefixes(input: &str) -> Vec<String> {
     let mut words = input.split_whitespace();
     let mut first = words.next().unwrap_or_default();
     if first.eq_ignore_ascii_case("the") {
@@ -195,14 +195,14 @@ async fn results_meets_with_prefixes(prefixes: Vec<String>) -> Vec<String> {
 }
 
 /// The age groups `wso` keeps records for.
-pub async fn wso_age_groups(wso: &str) -> Result<Vec<String>> {
+pub(crate) async fn wso_age_groups(wso: &str) -> Result<Vec<String>> {
     query(queries::WSO_AGE_GROUPS, &json!({ "wso": wso })).await
 }
 
 /// The names of `kind` to suggest for `input`: every one MeetCal knows, except results meets,
 /// which are too many to list (7,000 and more): those are the tracked meets plus the results
 /// meets whose names start like `input`.
-pub async fn known_names(kind: NameKind, input: &str) -> Result<Vec<String>> {
+pub(crate) async fn known_names(kind: NameKind, input: &str) -> Result<Vec<String>> {
     match kind {
         NameKind::Meet | NameKind::ResultsMeet => {
             let upcoming = upcoming_meets().await?;
@@ -228,7 +228,7 @@ pub async fn known_names(kind: NameKind, input: &str) -> Result<Vec<String>> {
 /// The error for a command that found nothing for `input`: `message`, plus the known names of
 /// `kind` closest to it when `input` is not one of them. The suggestions are a hint; if they
 /// cannot be fetched, the message stands alone.
-pub async fn not_found(kind: NameKind, input: &str, message: String) -> Error {
+pub(crate) async fn not_found(kind: NameKind, input: &str, message: String) -> Error {
     let Ok(candidates) = known_names(kind, input).await else {
         return anyhow!(message);
     };
@@ -238,7 +238,7 @@ pub async fn not_found(kind: NameKind, input: &str, message: String) -> Error {
 /// `message`, with suggestions from `candidates` unless `input` is exactly one of them (a known
 /// name with nothing to show). A name that differs from the input only in case, punctuation or
 /// spacing is suggested alone: the queries match names exactly, so it is the one to use.
-pub fn not_found_message(
+pub(crate) fn not_found_message(
     kind: NameKind,
     input: &str,
     candidates: &[String],
@@ -270,7 +270,7 @@ pub fn not_found_message(
 /// The `candidates` closest to `input`, best first. Names containing the input (or contained in
 /// it) come first; then names matching most of its words, a word matching when it is the same,
 /// a prefix, or a typo or two away. Case, punctuation and spacing are ignored.
-pub fn closest<'a>(input: &str, candidates: &'a [String], limit: usize) -> Vec<&'a str> {
+pub(crate) fn closest<'a>(input: &str, candidates: &'a [String], limit: usize) -> Vec<&'a str> {
     let wanted = folded_words(input);
     if wanted.is_empty() {
         return Vec::new();

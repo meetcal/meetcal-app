@@ -11,15 +11,15 @@ use crate::utils::output::{self, Report};
 use crate::utils::stats::Gender;
 
 #[derive(Debug, Deserialize)]
-pub struct Rankings {
-    pub ranking: f64,
-    pub name: String,
-    pub weight_class: String,
-    pub percent_a: f64,
-    pub total: f64,
-    pub meet: String,
-    pub gender: String,
-    pub age_category: String,
+pub(crate) struct Rankings {
+    pub(crate) ranking: f64,
+    pub(crate) name: String,
+    pub(crate) weight_class: String,
+    pub(crate) percent_a: f64,
+    pub(crate) total: f64,
+    pub(crate) meet: String,
+    pub(crate) gender: String,
+    pub(crate) age_category: String,
 }
 
 /// Search for International Rankings for a given age, meet, and gender.
@@ -52,7 +52,7 @@ pub async fn run(args: IntlRankingsArgs) -> Result<()> {
     Ok(())
 }
 
-pub fn report(rankings: Vec<Rankings>) -> Report {
+pub(crate) fn report(rankings: Vec<Rankings>) -> Report {
     let mut table = Table::new();
     table.set_header(vec!["Rank", "Name", "Class", "Percent A", "Total"]);
     for total in best_first(rankings) {
@@ -67,7 +67,7 @@ pub fn report(rankings: Vec<Rankings>) -> Report {
     Report::single("intl_rankings", table)
 }
 
-pub fn selected(
+pub(crate) fn selected(
     rankings: Vec<Rankings>,
     age: &str,
     gender: Gender,
@@ -108,7 +108,7 @@ pub fn selected(
     Ok(matching)
 }
 
-pub fn best_first(mut rows: Vec<Rankings>) -> Vec<Rankings> {
+pub(crate) fn best_first(mut rows: Vec<Rankings>) -> Vec<Rankings> {
     rows.sort_by(|a, b| a.ranking.total_cmp(&b.ranking));
     rows
 }

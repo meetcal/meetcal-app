@@ -5,9 +5,9 @@ use crate::types::lifting_results::LiftingResults;
 use crate::types::wso::{ClubMedalDetail, Movement};
 use crate::utils::stats::{Gender, fold, plausible};
 
-pub type RosterClasses = HashMap<String, (String, String)>;
+pub(crate) type RosterClasses = HashMap<String, (String, String)>;
 
-pub fn roster_classes(roster: &[Athletes]) -> RosterClasses {
+pub(crate) fn roster_classes(roster: &[Athletes]) -> RosterClasses {
     let mut sorted: Vec<&Athletes> = roster.iter().collect();
     sorted.sort_by(|a, b| {
         a.name
@@ -48,7 +48,7 @@ fn has_weight_class(age: &str) -> bool {
         .ends_with(|c: char| c.is_ascii_digit())
 }
 
-pub fn needs_roster(meet_rows: &[LiftingResults]) -> bool {
+pub(crate) fn needs_roster(meet_rows: &[LiftingResults]) -> bool {
     meet_rows.iter().any(|row| !has_weight_class(&row.age))
 }
 
@@ -61,7 +61,7 @@ fn ranking_group(row: &LiftingResults, roster: &RosterClasses) -> Option<(String
     Some((meet, format!("{gender}\u{0}{class}\u{0}{}", fold(&row.age))))
 }
 
-pub fn calculate_medal_details(
+pub(crate) fn calculate_medal_details(
     member_names: &[String],
     meet_rows: &[LiftingResults],
     roster: &RosterClasses,
@@ -189,8 +189,6 @@ mod tests {
             club: "Club".to_string(),
             entry_total: 200.0,
             gender: "Female".to_string(),
-            meet: "Meet".to_string(),
-            member_id: "1".to_string(),
             name: name.to_string(),
             session_number: None,
             session_platform: None,

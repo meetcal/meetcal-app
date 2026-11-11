@@ -48,11 +48,11 @@ impl Method {
     }
 }
 
-pub struct EliteListChoices {
-    pub key: &'static str,
-    pub label: &'static str,
-    pub default: Method,
-    pub alternatives: &'static [Method],
+pub(crate) struct EliteListChoices {
+    pub(crate) key: &'static str,
+    pub(crate) label: &'static str,
+    pub(crate) default: Method,
+    pub(crate) alternatives: &'static [Method],
 }
 
 impl EliteListChoices {
@@ -61,7 +61,7 @@ impl EliteListChoices {
     }
 }
 
-pub const LISTS: [EliteListChoices; 5] = [
+pub(crate) const LISTS: [EliteListChoices; 5] = [
     EliteListChoices {
         key: "overall",
         label: "Overall",
@@ -166,7 +166,7 @@ impl EliteArgs {
     }
 }
 
-pub fn methods(asked: [Option<Method>; 5]) -> Result<Vec<Method>> {
+pub(crate) fn methods(asked: [Option<Method>; 5]) -> Result<Vec<Method>> {
     LISTS
         .iter()
         .zip(asked)
@@ -193,7 +193,7 @@ fn value_name(method: Method) -> String {
         .unwrap_or_default()
 }
 
-pub fn range(args: &EliteArgs) -> (String, String) {
+pub(crate) fn range(args: &EliteArgs) -> (String, String) {
     match (&args.from, &args.to) {
         (Some(from), Some(to)) => (from.clone(), to.clone()),
         _ => year_range(args.year.unwrap_or_else(current_year)),
@@ -202,38 +202,38 @@ pub fn range(args: &EliteArgs) -> (String, String) {
 
 /// One ranked result, as `results:wsoElite` answers it.
 #[derive(Debug, Deserialize, PartialEq)]
-pub struct EliteRow {
-    pub name: String,
-    pub date: String,
-    pub meet: String,
-    pub division: String,
-    pub group: String,
-    pub age: i64,
-    pub body_weight: f64,
-    pub snatch_best: f64,
-    pub cj_best: f64,
-    pub total: f64,
-    pub score: f64,
+pub(crate) struct EliteRow {
+    pub(crate) name: String,
+    pub(crate) date: String,
+    pub(crate) meet: String,
+    pub(crate) division: String,
+    pub(crate) group: String,
+    pub(crate) age: i64,
+    pub(crate) body_weight: f64,
+    pub(crate) snatch_best: f64,
+    pub(crate) cj_best: f64,
+    pub(crate) total: f64,
+    pub(crate) score: f64,
     #[serde(default)]
-    pub weight_class: Option<String>,
+    pub(crate) weight_class: Option<String>,
     #[serde(default)]
-    pub standard_a: Option<f64>,
+    pub(crate) standard_a: Option<f64>,
 }
 
 #[derive(Debug, Deserialize)]
-pub struct EliteList {
-    pub method: Method,
-    pub men: Vec<EliteRow>,
-    pub women: Vec<EliteRow>,
+pub(crate) struct EliteList {
+    pub(crate) method: Method,
+    pub(crate) men: Vec<EliteRow>,
+    pub(crate) women: Vec<EliteRow>,
 }
 
 #[derive(Debug, Deserialize)]
-pub struct EliteLists {
-    pub overall: EliteList,
-    pub youth: EliteList,
-    pub junior: EliteList,
-    pub senior: EliteList,
-    pub masters: EliteList,
+pub(crate) struct EliteLists {
+    pub(crate) overall: EliteList,
+    pub(crate) youth: EliteList,
+    pub(crate) junior: EliteList,
+    pub(crate) senior: EliteList,
+    pub(crate) masters: EliteList,
 }
 
 impl EliteLists {
@@ -249,9 +249,9 @@ impl EliteLists {
 }
 
 #[derive(Debug, Deserialize)]
-pub struct EliteAnswer {
-    pub members: i64,
-    pub lists: EliteLists,
+pub(crate) struct EliteAnswer {
+    pub(crate) members: i64,
+    pub(crate) lists: EliteLists,
 }
 
 pub async fn run(args: EliteArgs) -> Result<()> {
@@ -304,7 +304,7 @@ pub async fn run(args: EliteArgs) -> Result<()> {
 }
 
 /// Ten tables: each list's women, then its men.
-pub fn report(lists: &EliteLists) -> Report {
+pub(crate) fn report(lists: &EliteLists) -> Report {
     let mut report = Report::new();
     for (EliteListChoices { key, label, .. }, list) in LISTS.iter().zip(lists.in_order()) {
         for (gender, rows) in [("women", &list.women), ("men", &list.men)] {
@@ -326,7 +326,7 @@ pub fn report(lists: &EliteLists) -> Report {
 }
 
 /// A list's rows, with dates written by `date` (US dates to show, ISO ones to export).
-pub fn table(rows: &[EliteRow], method: Method, date: fn(&str) -> String) -> Table {
+pub(crate) fn table(rows: &[EliteRow], method: Method, date: fn(&str) -> String) -> Table {
     let mut table = Table::new();
     table.set_header(vec![
         "Rank",

@@ -47,16 +47,19 @@ pub async fn run(args: H2hArgs) -> Result<()> {
 
 /// One meet both athletes entered.
 #[derive(Debug)]
-pub struct Meeting<'a> {
-    pub first: &'a LiftingResults,
-    pub second: &'a LiftingResults,
+pub(crate) struct Meeting<'a> {
+    pub(crate) first: &'a LiftingResults,
+    pub(crate) second: &'a LiftingResults,
 }
 
 /// The meets both athletes entered, oldest first: the same meet name in the same year. A results
 /// row's date is the day that athlete lifted, so at a multi-day meet the two dates can differ;
 /// the year keeps apart the editions of a meet held under one name every year. An athlete with
 /// two rows at one meet (two divisions) is represented by the higher total.
-pub fn meetings<'a>(first: &'a [LiftingResults], second: &'a [LiftingResults]) -> Vec<Meeting<'a>> {
+pub(crate) fn meetings<'a>(
+    first: &'a [LiftingResults],
+    second: &'a [LiftingResults],
+) -> Vec<Meeting<'a>> {
     let second = best_per_meet(second);
     best_per_meet(first)
         .into_iter()
@@ -89,7 +92,7 @@ fn best_per_meet(rows: &[LiftingResults]) -> Vec<&LiftingResults> {
     best
 }
 
-pub fn report(first: &[LiftingResults], second: &[LiftingResults], cutoff: &str) -> Report {
+pub(crate) fn report(first: &[LiftingResults], second: &[LiftingResults], cutoff: &str) -> Report {
     let name_of =
         |rows: &[LiftingResults]| rows.first().map(|row| row.name.clone()).unwrap_or_default();
     let first_name = name_of(first);

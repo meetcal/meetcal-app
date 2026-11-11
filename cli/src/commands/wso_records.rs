@@ -61,7 +61,7 @@ pub async fn run(args: WsoRecordsArgs) -> Result<()> {
     Ok(())
 }
 
-pub fn report(records: &[WSORecord]) -> Report {
+pub(crate) fn report(records: &[WSORecord]) -> Report {
     let (table, data) = record_tables(records.iter().map(|record| RecordRow {
         weight_class: &record.weight_class,
         snatch: (record.snatch_record, record.snatch_by.as_ref()),

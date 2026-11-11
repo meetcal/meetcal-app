@@ -8,12 +8,12 @@ use chrono::NaiveDate;
 use crate::utils::stats::Gender;
 
 /// The age categories `--category` takes, as divisions are labelled (`stats::Division`).
-pub const CATEGORIES: &str =
+pub(crate) const CATEGORIES: &str =
     "Senior, Junior, U17 (or Youth), U15, U13, U11, or Masters 30 … Masters 95";
 
 /// A date option's value as `YYYY-MM-DD`. Takes `2026-09-25` or the way tables show dates,
 /// `Sep 25, 2026`; for clap's `value_parser`, so a bad value fails before any request.
-pub fn parse_date(value: &str) -> Result<String, String> {
+pub(crate) fn parse_date(value: &str) -> Result<String, String> {
     let value = value.trim();
     NaiveDate::parse_from_str(value, "%Y-%m-%d")
         .or_else(|_| NaiveDate::parse_from_str(value, "%b %d, %Y"))
@@ -21,7 +21,7 @@ pub fn parse_date(value: &str) -> Result<String, String> {
         .map_err(|_| "expected a date as YYYY-MM-DD, like 2026-06-20".to_string())
 }
 
-pub fn parse_name(value: &str) -> Result<String, String> {
+pub(crate) fn parse_name(value: &str) -> Result<String, String> {
     let name = value.trim();
     if name.is_empty() {
         return Err("must not be blank".to_string());
@@ -29,17 +29,17 @@ pub fn parse_name(value: &str) -> Result<String, String> {
     Ok(name.to_string())
 }
 
-pub fn parse_gender(value: &str) -> Result<Gender, String> {
+pub(crate) fn parse_gender(value: &str) -> Result<Gender, String> {
     Gender::parse(value).ok_or_else(|| "expected Men or Women (or m, f, male, female)".to_string())
 }
 
-pub fn is_gender(row_gender: &str, wanted: Gender) -> bool {
+pub(crate) fn is_gender(row_gender: &str, wanted: Gender) -> bool {
     Gender::parse(row_gender) == Some(wanted)
 }
 
-pub const YEARS: std::ops::RangeInclusive<i32> = 1900..=9999;
+pub(crate) const YEARS: std::ops::RangeInclusive<i32> = 1900..=9999;
 
-pub fn parse_year(value: &str) -> Result<i32, String> {
+pub(crate) fn parse_year(value: &str) -> Result<i32, String> {
     value
         .trim()
         .parse::<i32>()
@@ -48,18 +48,18 @@ pub fn parse_year(value: &str) -> Result<i32, String> {
         .ok_or_else(|| format!("expected a year from {} to {}", YEARS.start(), YEARS.end()))
 }
 
-pub fn plus_years(date: &str, years: i32) -> String {
+pub(crate) fn plus_years(date: &str, years: i32) -> String {
     let year: i32 = date.get(..4).and_then(|y| y.parse().ok()).unwrap_or(0);
     format!("{:04}{}", year + years, date.get(4..).unwrap_or(""))
 }
 
-pub fn year_range(year: i32) -> (String, String) {
+pub(crate) fn year_range(year: i32) -> (String, String) {
     (format!("{year:04}-01-01"), format!("{year:04}-12-31"))
 }
 
 /// The error for a `--federation` no row in the range has, naming the ones that do; `None`
 /// when some row has it (or no federation was asked for).
-pub fn unknown_federation<'a>(
+pub(crate) fn unknown_federation<'a>(
     federation: Option<&str>,
     federations: impl IntoIterator<Item = &'a str>,
 ) -> Option<Error> {
@@ -84,7 +84,7 @@ pub fn unknown_federation<'a>(
 /// An age category as division labels name it: `Senior`, `Junior`, `U17` … `U11`, or
 /// `Masters 45`. Case and spacing are ignored, `Open` is `Senior` and `Youth` (the standards'
 /// name) is `U17`; anything else is an error listing what is accepted.
-pub fn category(value: &str) -> Result<String> {
+pub(crate) fn category(value: &str) -> Result<String> {
     let compact: String = value
         .chars()
         .filter(|c| !c.is_whitespace())
@@ -113,16 +113,16 @@ pub fn category(value: &str) -> Result<String> {
 }
 
 /// One filter a command applied: its option (`--age`) and the value given.
-pub struct Filter<'a> {
-    pub option: &'a str,
-    pub value: &'a str,
+pub(crate) struct Filter<'a> {
+    pub(crate) option: &'a str,
+    pub(crate) value: &'a str,
 }
 
-pub fn same_ignoring_case_and_surrounding_space(a: &str, b: &str) -> bool {
+pub(crate) fn same_ignoring_case_and_surrounding_space(a: &str, b: &str) -> bool {
     a.trim().eq_ignore_ascii_case(b.trim())
 }
 
-pub fn no_match(what: &str, filters: &[Filter], rows: &[Vec<&str>]) -> Error {
+pub(crate) fn no_match(what: &str, filters: &[Filter], rows: &[Vec<&str>]) -> Error {
     let same = same_ignoring_case_and_surrounding_space;
     let mut remaining: Vec<&Vec<&str>> = rows.iter().collect();
     for (index, filter) in filters.iter().enumerate() {

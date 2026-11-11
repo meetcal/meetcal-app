@@ -37,13 +37,13 @@ pub struct ScheduleArgs {
 
 /// One session on one platform, with its weight classes.
 #[derive(Clone, Debug, PartialEq)]
-pub struct Session {
-    pub date: String,
-    pub session: u32,
-    pub platform: String,
-    pub weigh_in_time: String,
-    pub start_time: String,
-    pub weight_classes: Vec<String>,
+pub(crate) struct Session {
+    pub(crate) date: String,
+    pub(crate) session: u32,
+    pub(crate) platform: String,
+    pub(crate) weigh_in_time: String,
+    pub(crate) start_time: String,
+    pub(crate) weight_classes: Vec<String>,
 }
 
 pub async fn run(args: ScheduleArgs) -> Result<()> {
@@ -111,7 +111,7 @@ pub async fn run(args: ScheduleArgs) -> Result<()> {
     Ok(())
 }
 
-pub fn report(sessions: &[Session]) -> Report {
+pub(crate) fn report(sessions: &[Session]) -> Report {
     Report::new().table_with_data(
         "sessions",
         table(sessions, us_date, us_time),
@@ -121,7 +121,11 @@ pub fn report(sessions: &[Session]) -> Report {
 
 /// The sessions, with dates and times written by `date` and `time`: US dates and 12-hour times
 /// to show, `YYYY-MM-DD` and 24-hour `HH:MM` to export.
-pub fn table(sessions: &[Session], date: fn(&str) -> String, time: fn(&str) -> String) -> Table {
+pub(crate) fn table(
+    sessions: &[Session],
+    date: fn(&str) -> String,
+    time: fn(&str) -> String,
+) -> Table {
     let mut table = Table::new();
     table.set_header(vec![
         "Date",
@@ -146,7 +150,7 @@ pub fn table(sessions: &[Session], date: fn(&str) -> String, time: fn(&str) -> S
 
 /// Schedule rows (one per session, platform and weight class) grouped into sessions, in the
 /// schedule's order.
-pub fn sessions(rows: Vec<ScheduleRow>) -> Vec<Session> {
+pub(crate) fn sessions(rows: Vec<ScheduleRow>) -> Vec<Session> {
     let mut order = Vec::new();
     let mut grouped: BTreeMap<(String, u32, String), Session> = BTreeMap::new();
     for row in rows {

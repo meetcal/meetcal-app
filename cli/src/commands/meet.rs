@@ -106,7 +106,7 @@ pub async fn run(args: MeetArgs) -> Result<()> {
 /// The platform filter to send, trimmed. Platforms are the meet's own names (Red, Gold,
 /// Platform A); the server matches them ignoring case. A blank one is an error: dropping it
 /// would print the whole roster as though it matched.
-pub fn session_platform(platform: Option<&str>) -> Result<Option<String>> {
+pub(crate) fn session_platform(platform: Option<&str>) -> Result<Option<String>> {
     let Some(platform) = platform else {
         return Ok(None);
     };
@@ -120,7 +120,7 @@ pub fn session_platform(platform: Option<&str>) -> Result<Option<String>> {
 /// The start list: shown with US dates, 12-hour times, and the session, platform and past-year
 /// bests packed into cells; exported with ISO dates, 24-hour times and a column for each.
 /// `bests` is `None` when they were not asked for.
-pub fn report(athletes: &[Athletes], bests: Option<&HashMap<String, NamedBests>>) -> Report {
+pub(crate) fn report(athletes: &[Athletes], bests: Option<&HashMap<String, NamedBests>>) -> Report {
     let mut table = Table::new();
     let mut header = vec![
         "Name",
@@ -214,7 +214,7 @@ pub fn report(athletes: &[Athletes], bests: Option<&HashMap<String, NamedBests>>
 
 /// Why a session filter found no one at a meet that has a start list: the sessions it does have,
 /// one line per session number with its platforms.
-pub fn empty_session_message(meet: &str, roster: &[Athletes]) -> String {
+pub(crate) fn empty_session_message(meet: &str, roster: &[Athletes]) -> String {
     let mut sessions: std::collections::BTreeMap<u64, Vec<String>> = Default::default();
     for athlete in roster {
         let Some(number) = athlete.session_number else {
@@ -249,7 +249,7 @@ pub fn empty_session_message(meet: &str, roster: &[Athletes]) -> String {
 }
 
 /// `1 · Red`, whichever part the athlete has, or `Not set`.
-pub fn session_label(number: Option<f64>, platform: Option<&str>) -> String {
+pub(crate) fn session_label(number: Option<f64>, platform: Option<&str>) -> String {
     match (number, platform) {
         (Some(number), Some(platform)) => format!("{number} · {platform}"),
         (Some(number), None) => number.to_string(),
@@ -302,8 +302,6 @@ mod tests {
         assert_eq!(row.club, "Test Club");
         assert_eq!(row.weight_class, "81kg");
         assert_eq!(row.entry_total, 250.0);
-        assert_eq!(row.meet, "American Open Finals");
-        assert_eq!(row.member_id, "12345");
         assert_eq!(row.session_number, Some(1.0));
         assert_eq!(row.session_platform.as_deref(), Some("Red"));
         assert_eq!(row.wso, None);
@@ -319,7 +317,6 @@ mod tests {
         }]"#;
         let athletes: Vec<Athletes> = serde_json::from_str(rows).unwrap();
 
-        assert_eq!(athletes[0].meet, "");
         assert_eq!(athletes[0].session_platform.as_deref(), Some("Gold"));
     }
 

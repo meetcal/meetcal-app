@@ -8,10 +8,10 @@ use crate::utils::output::{self, Report};
 use serde_json::json;
 
 #[derive(Debug, Deserialize)]
-pub struct NatRankingYear {
-    pub name: String,
-    pub date: String,
-    pub total: f64,
+pub(crate) struct NatRankingYear {
+    pub(crate) name: String,
+    pub(crate) date: String,
+    pub(crate) total: f64,
 }
 
 /// Show a division's national rankings within one calendar year, with the date of each best.
@@ -44,7 +44,7 @@ pub async fn run(args: NatRankingsYearArgs) -> Result<()> {
     Ok(())
 }
 
-pub fn report(rankings: Vec<NatRankingYear>) -> Report {
+pub(crate) fn report(rankings: Vec<NatRankingYear>) -> Report {
     let mut table = Table::new();
     table.set_header(vec!["Rank", "Name", "Total", "Meet Date"]);
     for (rank, row) in (1..).zip(rankings) {

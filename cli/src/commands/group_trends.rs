@@ -29,7 +29,7 @@ use crate::utils::stats::{
 };
 
 /// Lifters in the all-time table.
-pub const TOP_LIFTERS: usize = 15;
+pub(crate) const TOP_LIFTERS: usize = 15;
 
 /// Show a club's results year by year: athletes, meets, make rate, weight lifted, best total, PRs
 /// and medals; then its top lifters of all time. Counts results at meets where the athlete was
@@ -159,7 +159,7 @@ async fn medals_by_year(
     Ok(medals)
 }
 
-pub fn members_by_meet(memberships: &[ClubMembership]) -> HashMap<&str, Vec<&str>> {
+pub(crate) fn members_by_meet(memberships: &[ClubMembership]) -> HashMap<&str, Vec<&str>> {
     let mut registered: HashMap<&str, Vec<&str>> = HashMap::new();
     for membership in memberships {
         registered
@@ -170,7 +170,10 @@ pub fn members_by_meet(memberships: &[ClubMembership]) -> HashMap<&str, Vec<&str
     registered
 }
 
-pub fn members_at(registered: &HashMap<&str, Vec<&str>>, spellings: &[String]) -> Vec<String> {
+pub(crate) fn members_at(
+    registered: &HashMap<&str, Vec<&str>>,
+    spellings: &[String],
+) -> Vec<String> {
     let mut meets: Vec<&&str> = registered
         .keys()
         .filter(|registration| {
@@ -243,7 +246,7 @@ async fn meet_medals(
 /// The meets the group's rows come from, one entry per meet whatever its case or spacing: every
 /// raw spelling of its name, and the years the group lifted there. A meet name held every year is
 /// a separate meet each year, and one meet's name can be spelled differently between years.
-pub fn meet_editions(group_rows: &[LiftingResults]) -> Vec<(Vec<String>, Vec<String>)> {
+pub(crate) fn meet_editions(group_rows: &[LiftingResults]) -> Vec<(Vec<String>, Vec<String>)> {
     let mut meets: BTreeMap<String, (Vec<String>, Vec<String>)> = BTreeMap::new();
     for row in group_rows {
         let (spellings, years) = meets.entry(fold(&row.meet)).or_default();
@@ -276,7 +279,7 @@ type LifterEntry<'a> = (
     String,
 );
 
-pub fn report(
+pub(crate) fn report(
     title: &str,
     group_rows: &[LiftingResults],
     pr_totals: &HashSet<(String, String, String)>,
@@ -491,11 +494,6 @@ mod tests {
         let member = |name: &str, meet: &str| ClubMembership {
             name: name.into(),
             meet: meet.into(),
-            club: "Test Barbell".into(),
-            gender: "Women".into(),
-            weight_class: "64".into(),
-            member_id: "1".into(),
-            entry_total: 150.0,
         };
         let combined = "2026 USA Weightlifting National Championships";
         let memberships = vec![

@@ -17,11 +17,11 @@ use crate::utils::progress::Progress;
 use crate::utils::stats::{fold, folded_words};
 
 /// Meets `meets:attendance` counts per call (its limit).
-pub const ATTENDANCE_BATCH: usize = 8;
+pub(crate) const ATTENDANCE_BATCH: usize = 8;
 /// The most meets one run counts; more means the words are too broad.
-pub const MAX_MATCHES: usize = 80;
+pub(crate) const MAX_MATCHES: usize = 80;
 /// Name ranges listed at once.
-pub const CONCURRENCY: usize = 16;
+pub(crate) const CONCURRENCY: usize = 16;
 
 /// Where the results meets' names are split to be listed side by side. They only balance the
 /// work: the ranges between them cover every name.
@@ -55,24 +55,24 @@ pub struct AttendanceArgs {
 
 /// One edition's numbers (`meets:attendance`).
 #[derive(Clone, Debug, Deserialize, PartialEq)]
-pub struct Edition {
-    pub meet: String,
-    pub lifters: usize,
-    pub registrations: usize,
-    pub first_date: Option<String>,
-    pub last_date: Option<String>,
-    pub start_date: Option<String>,
-    pub end_date: Option<String>,
-    pub status: Option<String>,
+pub(crate) struct Edition {
+    pub(crate) meet: String,
+    pub(crate) lifters: usize,
+    pub(crate) registrations: usize,
+    pub(crate) first_date: Option<String>,
+    pub(crate) last_date: Option<String>,
+    pub(crate) start_date: Option<String>,
+    pub(crate) end_date: Option<String>,
+    pub(crate) status: Option<String>,
     /// Results titles linked to this meet, whose lifters `lifters` counts
     /// (a combined national event); older servers send none.
     #[serde(default)]
-    pub results_titles: Vec<String>,
+    pub(crate) results_titles: Vec<String>,
 }
 
 impl Edition {
     /// The edition's year: from its results, else its meet dates, else its name.
-    pub fn year(&self) -> Option<String> {
+    pub(crate) fn year(&self) -> Option<String> {
         self.first_date
             .as_deref()
             .or(self.start_date.as_deref())
@@ -88,7 +88,7 @@ fn year_in_name(meet: &str) -> Option<String> {
         .map(str::to_string)
 }
 
-pub fn normalized(meet: &str) -> String {
+pub(crate) fn normalized(meet: &str) -> String {
     folded_words(meet)
         .split_whitespace()
         .filter(|word| {
@@ -99,7 +99,7 @@ pub fn normalized(meet: &str) -> String {
 }
 
 /// Whether `meet` contains every one of `words` and none of `exclude`.
-pub fn matches(meet: &str, words: &[String], exclude: &[String]) -> bool {
+pub(crate) fn matches(meet: &str, words: &[String], exclude: &[String]) -> bool {
     let name = normalized(meet);
     words.iter().all(|word| {
         let word = normalized(word);
@@ -230,7 +230,7 @@ impl Edition {
 /// each year's distinct lifters and dates. Its registrations and meet dates, which MeetCal keeps
 /// for one meet per name, go to the year of the meet's start date, else the latest. A start date
 /// in a year with no results yet (the next edition) is a registrations-only edition of its own.
-pub fn split_by_year(edition: &Edition, rows: Vec<LiftingResults>) -> Vec<Edition> {
+pub(crate) fn split_by_year(edition: &Edition, rows: Vec<LiftingResults>) -> Vec<Edition> {
     let years = editions_by_year(rows);
     let registered_year = edition
         .start_date
@@ -283,7 +283,7 @@ pub fn split_by_year(edition: &Edition, rows: Vec<LiftingResults>) -> Vec<Editio
 /// registration whose results are published under the separate championships
 /// ([`equivalent_meets`]). Its registrations show in that edition's "Registered" column, and the
 /// year counts the results. A registrations-only edition with no such twin stays as it is.
-pub fn merge_registrations(editions: &[Edition]) -> Vec<Edition> {
+pub(crate) fn merge_registrations(editions: &[Edition]) -> Vec<Edition> {
     let mut merged: Vec<Edition> = editions
         .iter()
         .filter(|edition| edition.lifters > 0 || edition.registrations == 0)
@@ -313,7 +313,7 @@ pub fn merge_registrations(editions: &[Edition]) -> Vec<Edition> {
     merged
 }
 
-pub fn report(search: &str, editions: &[Edition]) -> Report {
+pub(crate) fn report(search: &str, editions: &[Edition]) -> Report {
     let editions = merge_registrations(editions);
     let mut sorted: Vec<&Edition> = editions.iter().collect();
     sorted.sort_by(|a, b| {
