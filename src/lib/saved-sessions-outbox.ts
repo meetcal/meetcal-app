@@ -1,4 +1,5 @@
 import { isRecord } from '@/lib/is-record';
+import { createWriteChain } from '@/lib/data/write-chain';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Crypto from 'expo-crypto';
 import { isAccountDeleted } from '@/lib/deleted-accounts';
@@ -146,13 +147,7 @@ export function getOutboxSeededKey(userId: string): string {
   return `@saved_sessions_outbox_seeded_${userId}`;
 }
 
-let writeChain: Promise<unknown> = Promise.resolve();
-
-function enqueue<T>(task: () => Promise<T>): Promise<T> {
-  const run = writeChain.then(task, task);
-  writeChain = run.catch(() => undefined);
-  return run;
-}
+const enqueue = createWriteChain();
 
 /**
  * A persisted PUT body goes through the same reader as the saved-sessions
