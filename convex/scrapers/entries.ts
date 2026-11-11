@@ -108,7 +108,6 @@ export const run = internalAction({
     for (const target of targets) {
       const result: MeetResult = { label: target.label };
       results.push(result);
-      // Out of time: the targets left fail by name instead of the action being stopped.
       if (budget.spent()) {
         result.error = NOT_REACHED;
         continue;

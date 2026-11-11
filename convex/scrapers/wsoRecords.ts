@@ -346,7 +346,6 @@ export const run = internalAction({
     for (const source of WSO_SOURCES.filter((s) => !only || only.includes(s.wso))) {
       const result: WsoResult = { wso: source.wso, records: [], inserted: 0, updated: 0, unchanged: 0 };
       results.push(result);
-      // Out of time: the WSOs left fail by name instead of the action being stopped.
       if (budget.spent()) {
         result.error = NOT_REACHED;
         continue;

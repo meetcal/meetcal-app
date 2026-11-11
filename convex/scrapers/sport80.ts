@@ -132,7 +132,6 @@ class Sport80 {
   }
 }
 
-/** The share of the run's time budget (`lib/budget.ts`) reading events' tables may take. */
 const READ_SHARE = 0.5;
 
 /** Rows per ingest call: each writes its rows and rewrites their athletes' history documents. */
@@ -217,7 +216,6 @@ export const run = internalAction({
       if (!eventId || !meet || seen.has(eventId)) continue;
       seen.add(eventId);
       if (!hasResultsRoute(event) || (only && !only.includes(eventId))) continue;
-      // Reading may take half the budget; storing what was read needs the rest.
       if (budget.spent(READ_SHARE)) {
         failures.push({ source: `${meet} (event ${eventId})`, error: NOT_REACHED });
         continue;
