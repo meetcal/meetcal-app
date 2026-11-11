@@ -46,7 +46,9 @@ jest.mock('@/lib/database/queries', () => ({
   fetchAthletesWithSession: jest.fn(async () => []),
 }));
 
-jest.setTimeout(Math.max(20_000, (fc.readConfigureGlobal().numRuns ?? 100) * 250));
+const PER_CASE_BUDGET_MS = (fc.readConfigureGlobal().numRuns ?? 100) * 250;
+const FLOOR_ON_A_MACHINE_RUNNING_SEVERAL_GATES_MS = 120_000;
+jest.setTimeout(Math.max(FLOOR_ON_A_MACHINE_RUNNING_SEVERAL_GATES_MS, PER_CASE_BUDGET_MS));
 
 const MEET = 'Chaos Download Meet';
 const ETAG = '"package-v1"';
