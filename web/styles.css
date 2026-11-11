@@ -405,6 +405,12 @@ a {
     transform: translateY(0);
 }
 
+.site-nav.menus-dismissed .nav-menu-panel {
+    opacity: 0;
+    visibility: hidden;
+    transform: translateY(-4px);
+}
+
 .nav-menu-trigger {
     white-space: nowrap;
 }
@@ -483,6 +489,16 @@ a {
     background: var(--card);
     color: var(--text);
     font: inherit;
+}
+
+select.data-filter {
+    padding-right: 38px;
+    appearance: none;
+    -webkit-appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 8' fill='none' stroke='%238b8f98' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M1.5 1.5 6 6l4.5-4.5'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 14px center;
+    background-size: 12px 8px;
 }
 
 /* iOS Safari zooms into any focused field under 16px and stays zoomed, so on
