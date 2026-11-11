@@ -1,3 +1,4 @@
+import { SLIDE_IN_FROM_RIGHT, stackHeaderOptions } from "@/lib/stack-header-options";
 import HeaderSection from "@/components/schedule-details/HeaderSection";
 import SessionAthletes from "@/components/schedule-details/SessionAthletes";
 import { showToast } from "@/components/ui/Toast";
@@ -114,20 +115,9 @@ export default function SessionDetailsScreen() {
     >
       <Stack.Screen
         options={{
-          headerShown: true,
+          ...stackHeaderOptions(colors),
+          ...SLIDE_IN_FROM_RIGHT,
           headerTitle: sessionDate,
-          gestureEnabled: true,
-          gestureDirection: "horizontal",
-          animation: "slide_from_right",
-          headerBackButtonDisplayMode: "minimal",
-          headerStyle: {
-            backgroundColor: colors.background,
-          },
-          headerShadowVisible: false,
-          headerTitleStyle: {
-            color: colors.text,
-          },
-          headerTintColor: colors.text
         }}
       />
 

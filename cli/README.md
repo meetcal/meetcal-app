@@ -97,8 +97,9 @@ closest ones it does; `meets`, `clubs` and `wsos` list them.
 
 Every command prints tables by default. `--format json` or `--format csv` prints the same data for
 other tools: each table's rows keyed by its column headers in snake_case, numbers as numbers (a
-`kg` or `%` unit dropped), and empty or `N/A` cells as null. A command with several tables prints
-a JSON object keyed by table, or CSV sections headed `# <table>`.
+`kg` or `%` unit dropped; weight classes stay text, `60kg` and `110+kg`), and empty or `N/A` cells
+as null. A table's keys are the same whatever flags the command was given. A command with several
+tables prints a JSON object keyed by table, or CSV sections headed `# <table>`.
 
 ```sh
 meetcal leaderboard --by sinclair --gender women --format csv > leaderboard.csv

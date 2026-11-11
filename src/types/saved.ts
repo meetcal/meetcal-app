@@ -1,5 +1,5 @@
 import { MeetName } from "@/data/types/meet";
-import { SavedSession } from "@/hooks/useSavedSessions";
+import type { SavedSession } from "@/lib/saved-sessions-store";
 import type { MeetZone } from "@/utils/timezone";
 
 // Add a type that extends SavedSession to include the legacy athleteName property
