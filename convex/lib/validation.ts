@@ -5,9 +5,9 @@ import { ConvexError } from 'convex/values';
  * client can keep raising `MeetCalApiError` with the same `status` and every
  * caller's 400 / 404 branch keeps working.
  */
-export type ApiErrorData = { status: number; error: string; max?: number };
+export type ApiErrorData = { status: number; error: string; max?: number; code?: string };
 
-export function apiError(status: number, error: string, extra?: { max?: number }): ConvexError<ApiErrorData> {
+export function apiError(status: number, error: string, extra?: { max?: number; code?: string }): ConvexError<ApiErrorData> {
   return new ConvexError({ status, error, ...extra });
 }
 

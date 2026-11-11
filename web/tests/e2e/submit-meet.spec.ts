@@ -231,6 +231,43 @@ test("a refused submission shows why and keeps the form filled", async ({ page }
   expect(calls.submits).toHaveLength(1);
 });
 
+test("a retry the server answers with its already-submitted code counts as sent, whatever the words", async ({ page }) => {
+  await mockAuth(page);
+  const { calls } = await mockSubmissions(page);
+  let submits = 0;
+  await routeMutation(page, "meetSubmissions:submit", (route) => {
+    submits += 1;
+    if (submits === 1) return route.abort("failed");
+    return route.fulfill(errorAnswer("Server Error", { status: 400, error: "that file is in another submission", code: "already_submitted" }));
+  });
+
+  await page.goto("/submit-meet");
+  await fillMeet(page);
+  await files(page).setInputFiles([pdf]);
+  await page.getByRole("button", { name: "Submit meet" }).click();
+  await expect(page.getByRole("alert")).toContainText("MeetCal couldn't be reached");
+  await page.getByRole("button", { name: "Submit meet" }).click();
+
+  await expect(page.getByRole("heading", { level: 1, name: "Thanks! We’ll add it soon." })).toBeVisible();
+  expect(submits).toBe(2);
+  expect(calls.uploadUrls).toHaveLength(1);
+});
+
+test("a first try the server answers with its already-submitted code shows why", async ({ page }) => {
+  await mockAuth(page);
+  await mockSubmissions(page);
+  await routeMutation(page, "meetSubmissions:submit", (route) =>
+    route.fulfill(errorAnswer("Server Error", { status: 400, error: "file already submitted: schedule.pdf", code: "already_submitted" })),
+  );
+
+  await page.goto("/submit-meet");
+  await fillMeet(page);
+  await files(page).setInputFiles([pdf]);
+  await page.getByRole("button", { name: "Submit meet" }).click();
+  await expect(page.getByRole("alert")).toHaveText("File already submitted: schedule.pdf");
+  await expect(page.getByLabel("Meet name")).toHaveValue("  Ohio Open  ");
+});
+
 test("the form has no serious accessibility violations", async ({ page }) => {
   await mockAuth(page);
   await mockSubmissions(page);
