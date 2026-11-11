@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useEffectEvent, useRef, useState } from 'react';
+import { createContext, useCallback, useContext, useEffect, useEffectEvent, useMemo, useRef, useState } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as SecureStore from 'expo-secure-store';
 import Purchases, { CustomerInfo } from 'react-native-purchases';
@@ -164,6 +164,30 @@ const INITIAL_REFRESH_DELAY_MS = 8000;
  * identity.
  */
 const MAX_IDENTITY_ATTEMPTS = 3;
+
+async function checkEntitlementStatus(customerInfo: CustomerInfo): Promise<[boolean, 'free' | 'quarterly' | 'lifetime']> {
+  const simulatedStatus = getSimulatedSubscriptionStatus();
+  if (simulatedStatus !== null) {
+    devLog('Using simulated subscription status:', simulatedStatus);
+    return [simulatedStatus, simulatedStatus ? 'quarterly' : 'free'];
+  }
+
+  const hasActiveEntitlement = customerInfo.entitlements.active[SUBSCRIPTION_ENTITLEMENT_ID] != null;
+  let subscriptionType: 'free' | 'quarterly' | 'lifetime' = 'free';
+
+  if (hasActiveEntitlement) {
+    const entitlement = customerInfo.entitlements.active[SUBSCRIPTION_ENTITLEMENT_ID];
+    if (entitlement?.productIdentifier.includes('lifetime')) {
+      subscriptionType = 'lifetime';
+    } else {
+      subscriptionType = 'quarterly';
+    }
+  }
+
+  devLog('Checking entitlement status:', { hasActiveEntitlement, subscriptionType });
+
+  return [hasActiveEntitlement, subscriptionType];
+}
 
 const SubscriptionContext = createContext<SubscriptionContextType | undefined>(undefined);
 
@@ -354,33 +378,6 @@ export function SubscriptionProvider({ children }: { children: React.ReactNode }
       console.error('Error getting subscription cache:', error);
       return null;
     }
-  };
-
-  // Helper function to check subscription status consistently
-  const checkEntitlementStatus = async (customerInfo: CustomerInfo): Promise<[boolean, 'free' | 'quarterly' | 'lifetime']> => {
-    // Check for simulated subscription first
-    const simulatedStatus = getSimulatedSubscriptionStatus();
-    if (simulatedStatus !== null) {
-      devLog('Using simulated subscription status:', simulatedStatus);
-      return [simulatedStatus, simulatedStatus ? 'quarterly' : 'free'];
-    }
-
-    const hasActiveEntitlement = customerInfo.entitlements.active[SUBSCRIPTION_ENTITLEMENT_ID] != null;
-    let subscriptionType: 'free' | 'quarterly' | 'lifetime' = 'free';
-
-    if (hasActiveEntitlement) {
-      // Check the specific product identifier or entitlement to determine type
-      const entitlement = customerInfo.entitlements.active[SUBSCRIPTION_ENTITLEMENT_ID];
-      if (entitlement?.productIdentifier.includes('lifetime')) {
-        subscriptionType = 'lifetime';
-      } else {
-        subscriptionType = 'quarterly';
-      }
-    }
-
-    devLog('Checking entitlement status:', { hasActiveEntitlement, subscriptionType });
-    
-    return [hasActiveEntitlement, subscriptionType];
   };
 
   // An Effect Event: only the effects below call it (the delayed refresh and
@@ -631,7 +628,7 @@ export function SubscriptionProvider({ children }: { children: React.ReactNode }
     setRecheckRequest((count) => count + 1);
   }, []);
 
-  const setSubscribed = async (
+  const setSubscribed = useCallback(async (
     generation: number,
     value: boolean,
     type: 'free' | 'quarterly' | 'lifetime',
@@ -641,45 +638,54 @@ export function SubscriptionProvider({ children }: { children: React.ReactNode }
       recordConfirmedMembership(value, type, null);
       setIsSubscribed(value);
       setSubscriptionType(type);
-      // A check this answer superseded will not clear its own loading flag.
       setIsLoading(false);
       await saveSubscriptionCache(generation, value, type);
     } catch (e) {
       console.error('Failed to save subscription status:', e);
     }
-  };
+  }, [isCurrentAnswer, recordConfirmedMembership, saveSubscriptionCache]);
 
-  const restorePurchases = async (): Promise<boolean> => {
+  const restorePurchases = useCallback(async (): Promise<boolean> => {
     try {
       devLog('Attempting to restore purchases...');
       const customerInfo = await Purchases.restorePurchases();
-      // Taken once there is an answer: a failed restore leaves state alone,
-      // and must not orphan a check still in flight.
-      const generation = beginAnswer();
+      const generationAfterTheStoreAnswered = beginAnswer();
       const [hasActiveSubscription, type] = await checkEntitlementStatus(customerInfo);
       devLog('Restore purchases result:', { hasActiveSubscription, type });
 
-      await setSubscribed(generation, hasActiveSubscription, type);
+      await setSubscribed(generationAfterTheStoreAnswered, hasActiveSubscription, type);
       return hasActiveSubscription;
     } catch (error) {
       console.error('Failed to restore purchases:', error);
       return false;
     }
-  };
+  }, [beginAnswer, setSubscribed]);
+
+  const value = useMemo<SubscriptionContextType>(
+    () => ({
+      isSubscribed,
+      subscriptionType,
+      isLoading,
+      restorePurchases,
+      recheckSubscription,
+      isUsingStaleCache,
+      lastSyncTimestamp,
+      confirmedEntitlement,
+    }),
+    [
+      isSubscribed,
+      subscriptionType,
+      isLoading,
+      restorePurchases,
+      recheckSubscription,
+      isUsingStaleCache,
+      lastSyncTimestamp,
+      confirmedEntitlement,
+    ],
+  );
 
   return (
-    <SubscriptionContext.Provider
-      value={{
-        isSubscribed,
-        subscriptionType,
-        isLoading,
-        restorePurchases,
-        recheckSubscription,
-        isUsingStaleCache,
-        lastSyncTimestamp,
-        confirmedEntitlement,
-      }}
-    >
+    <SubscriptionContext.Provider value={value}>
       {children}
     </SubscriptionContext.Provider>
   );

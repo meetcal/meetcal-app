@@ -18,6 +18,7 @@ import {
   selectQualifyingTotals,
   sortQualifyingEvents,
 } from "@/lib/comp-data-filters";
+import { filterSummary } from "@/lib/filter-summary";
 import { sortAgeGroups } from "@/lib/sortAgeGroups";
 import { Filters } from "@/types/qual_totals";
 import { Stack, useLocalSearchParams } from "expo-router";
@@ -71,13 +72,13 @@ function QualifyingTotalsScreenContent() {
   });
 
   const getFilterDisplayText = () => {
-    const parts = [];
-    if (filters.event) parts.push(filters.event);
-    parts.push(filters.gender);
-    if (filters.ageGroup) {
-      parts.push(filters.ageGroup[0].toUpperCase() + filters.ageGroup.slice(1));
-    }
-    return parts.join(" • ");
+    const ageGroup = filters.ageGroup
+      ? filters.ageGroup[0].toUpperCase() + filters.ageGroup.slice(1)
+      : "";
+    return filterSummary(
+      [filters.event, filters.gender, ageGroup],
+      "All qualifying totals",
+    );
   };
 
   const totals = useMemo(
