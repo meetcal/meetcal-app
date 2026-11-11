@@ -209,7 +209,11 @@ pub fn comparison_report(
             ]
         })
         .collect();
-    let (table, data) = comparison_tables(previous_year, current_year, rows);
+    let with_results = YearsWithResults {
+        previous: previous.total_meets > 0,
+        current: current.total_meets > 0,
+    };
+    let (table, data) = comparison_tables(previous_year, current_year, rows, with_results);
     Report::new()
         .table_with_data("comparison", table, data)
         .titled(format!(
@@ -217,14 +221,21 @@ pub fn comparison_report(
         ))
 }
 
-/// A year-over-year comparison of `rows` (metric, previous, current, % difference): shown with
-/// the years as column headers, exported with fixed keys and the years as values, so a script
-/// reads `.previous` whatever the years.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct YearsWithResults {
+    pub previous: bool,
+    pub current: bool,
+}
+
 pub fn comparison_tables(
     previous_year: i32,
     current_year: i32,
     rows: Vec<[String; 4]>,
+    with_results: YearsWithResults,
 ) -> (Table, Table) {
+    let exported = |value: String, has_results: bool| {
+        if has_results { value } else { String::new() }
+    };
     let mut table = Table::new();
     table.set_header(vec![
         "Metric".to_string(),
@@ -251,9 +262,9 @@ pub fn comparison_tables(
         data.add_row(vec![
             label,
             previous_year.to_string(),
-            previous,
+            exported(previous, with_results.previous),
             current_year.to_string(),
-            current,
+            exported(current, with_results.current),
             difference,
         ]);
     }
@@ -354,6 +365,13 @@ mod tests {
         assert_eq!(years.current, WrappedStats::default());
         let report = render_comparison("Jane Doe", 2025, 2026, &years.previous, &years.current);
         assert!(report.contains("-100.0%"));
+
+        let exported =
+            comparison_report("Jane Doe", 2025, 2026, &years.previous, &years.current).to_json();
+        for metric in exported.as_array().unwrap() {
+            assert_eq!(metric["current"], serde_json::Value::Null, "{metric}");
+            assert_ne!(metric["previous"], serde_json::Value::Null, "{metric}");
+        }
     }
 
     #[test]

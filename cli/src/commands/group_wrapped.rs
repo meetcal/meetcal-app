@@ -6,7 +6,8 @@ use comfy_table::Table;
 use serde::Deserialize;
 
 use crate::commands::compare::{
-    MetricComparison, MetricUnit, comparison_tables, format_metric, percent_change,
+    MetricComparison, MetricUnit, YearsWithResults, comparison_tables, format_metric,
+    percent_change,
 };
 use crate::types::lifting_results::LiftingResults;
 use crate::types::wrapped::WrappedStats;
@@ -533,7 +534,11 @@ pub fn group_comparison_report(
             ]
         })
         .collect();
-    let (table, data) = comparison_tables(previous_year, current_year, rows);
+    let with_results = YearsWithResults {
+        previous: previous.athlete_count > 0,
+        current: current.athlete_count > 0,
+    };
+    let (table, data) = comparison_tables(previous_year, current_year, rows, with_results);
     Report::new()
         .table_with_data("comparison", table, data)
         .titled(format!(

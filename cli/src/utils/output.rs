@@ -364,10 +364,30 @@ fn csv_field(value: &str) -> String {
     }
 }
 
-/// A header as a JSON key: `Best C&J` becomes `best_c_j`, `% Difference` `difference`.
+fn without_parenthesised_notes(header: &str) -> String {
+    let mut depth = 0usize;
+    header
+        .chars()
+        .filter(|c| match c {
+            '(' => {
+                depth += 1;
+                false
+            }
+            ')' => {
+                depth = depth.saturating_sub(1);
+                false
+            }
+            _ => depth == 0,
+        })
+        .collect()
+}
+
 pub fn key(header: &str) -> String {
     let mut key = String::new();
-    for c in header.chars() {
+    for c in without_parenthesised_notes(header).chars() {
+        if c == '&' {
+            continue;
+        }
         if c.is_alphanumeric() {
             key.extend(c.to_lowercase());
         } else if !key.is_empty() && !key.ends_with('_') {
@@ -392,7 +412,10 @@ fn text_value(cell: &str) -> Value {
 /// otherwise.
 pub fn value(cell: &str) -> Value {
     let text = cell.trim();
-    if text.is_empty() || text.eq_ignore_ascii_case("n/a") || matches!(text, "—" | "–" | "-") {
+    if text.is_empty()
+        || text.eq_ignore_ascii_case("n/a")
+        || matches!(text, "—" | "–" | "-" | "?")
+    {
         return Value::Null;
     }
     match text {
@@ -435,12 +458,26 @@ mod tests {
 
     #[test]
     fn keys_are_snake_case() {
-        assert_eq!(key("Best C&J"), "best_c_j");
         assert_eq!(key("% Difference"), "difference");
-        assert_eq!(
-            key("Past-year bests\n(Sn / CJ / Total)"),
-            "past_year_bests_sn_cj_total"
-        );
+        assert_eq!(key("Lifters With Results"), "lifters_with_results");
+        assert_eq!(key("Q-points"), "q_points");
+    }
+
+    #[test]
+    fn clean_and_jerk_has_one_key_however_the_header_spells_it() {
+        assert_eq!(key("C&J"), "cj");
+        assert_eq!(key("CJ"), "cj");
+        assert_eq!(key("Best C&J"), "best_cj");
+        assert_eq!(key("C&J Make Rate"), key("CJ Make Rate"));
+    }
+
+    #[test]
+    fn a_parenthesised_note_in_a_header_is_not_part_of_its_key() {
+        assert_eq!(key("Sinclair (2021-24)"), "sinclair");
+        assert_eq!(key("Best Sinclair (2021-24)"), "best_sinclair");
+        assert_eq!(key("Sinclair (2025-28)"), key("Sinclair (2021-24)"));
+        assert_eq!(key("Top Meet (Best Total)"), "top_meet");
+        assert_eq!(key("Past-year bests\n(Sn / CJ / Total)"), "past_year_bests");
     }
 
     #[test]
@@ -529,6 +566,7 @@ mod tests {
     #[test]
     fn placeholders_become_null_and_yes_no_booleans() {
         assert_eq!(value("—"), Value::Null);
+        assert_eq!(value("?"), Value::Null);
         assert_eq!(value("-"), Value::Null);
         assert_eq!(value("true"), json!(true));
         assert_eq!(value("Yes"), json!(true));

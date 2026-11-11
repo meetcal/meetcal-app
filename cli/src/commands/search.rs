@@ -3,6 +3,7 @@ use crate::{
     utils::{
         athletes::history,
         make_rate::make_rate_tables,
+        format::kg,
         output::{self, Report},
         stats::{Lift, valid_lift, valid_total},
     },
@@ -25,18 +26,17 @@ pub struct SearchArgs {
 }
 
 pub async fn run(args: SearchArgs) -> Result<()> {
-    let name = args.name;
+    let results: Vec<LiftingResults> = history(&args.name).await?;
+    output::emit(report(&results));
+    Ok(())
+}
 
-    // An unknown name is an error suggesting the closest athletes, not an empty report.
-    let results: Vec<LiftingResults> = history(&name).await?;
-
+pub fn report(results: &[LiftingResults]) -> Report {
     let mut meets_table = Table::new();
-
     meets_table.set_header(vec![
         "Meet", "Date", "Age", "Sn1", "Sn2", "Sn3", "CJ1", "CJ2", "CJ3", "Total",
     ]);
-
-    for meet in &results {
+    for meet in results {
         meets_table.add_row(vec![
             meet.meet.to_string(),
             meet.date.to_string(),
@@ -51,32 +51,31 @@ pub async fn run(args: SearchArgs) -> Result<()> {
         ]);
     }
 
+    let prs = get_prs(results);
+    let pr_header = vec!["Snatch PR", "CJ PR", "Total PR"];
     let mut pr_table = Table::new();
-
-    pr_table.set_header(vec!["Snatch PR", "CJ PR", "Total PR"]);
-
-    let prs = get_prs(&results);
-
+    pr_table.set_header(pr_header.clone());
     pr_table.add_row(vec![
         prs.snatch_best.to_string(),
         prs.cj_best.to_string(),
         prs.total_best.to_string(),
     ]);
+    let mut prs_without_a_lift_as_null = Table::new();
+    prs_without_a_lift_as_null.set_header(pr_header);
+    prs_without_a_lift_as_null.add_row(vec![
+        kg(prs.snatch_best),
+        kg(prs.cj_best),
+        kg(prs.total_best),
+    ]);
 
-    let (by_attempt, by_lift) = make_rate_tables(&results);
-    output::emit(
-        Report::new()
-            .table("results", meets_table)
-            .table("prs", pr_table)
-            .table("make_rate_by_attempt", by_attempt)
-            .table("make_rate", by_lift),
-    );
-
-    Ok(())
+    let (by_attempt, by_lift) = make_rate_tables(results);
+    Report::new()
+        .table("results", meets_table)
+        .table_with_data("prs", pr_table, prs_without_a_lift_as_null)
+        .table("make_rate_by_attempt", by_attempt)
+        .table("make_rate", by_lift)
 }
 
-/// The athlete's best snatch, clean & jerk and total, leaving out source errors
-/// (`stats::plausible`).
 pub fn get_prs(results: &[LiftingResults]) -> PRs {
     results.iter().fold(
         PRs {

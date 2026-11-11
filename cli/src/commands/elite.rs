@@ -100,7 +100,7 @@ pub struct EliteArgs {
     #[arg(value_parser = crate::utils::filters::parse_name)]
     pub wso: String,
 
-    /// Calendar year (defaults to last year; ignored with --from)
+    /// Calendar year (defaults to the current year, as leaderboard's; ignored with --from)
     #[arg(long, short = 'y', value_parser = clap::value_parser!(i32).range(1900..=9999))]
     pub year: Option<i32>,
 
@@ -174,11 +174,10 @@ fn value_name(method: Method) -> String {
         .unwrap_or_default()
 }
 
-/// The range: `--from`/`--to`, else `--year`, else last calendar year.
 pub fn range(args: &EliteArgs) -> (String, String) {
     match (&args.from, &args.to) {
         (Some(from), Some(to)) => (from.clone(), to.clone()),
-        _ => year_range(args.year.unwrap_or_else(|| current_year() - 1)),
+        _ => year_range(args.year.unwrap_or_else(current_year)),
     }
 }
 
@@ -436,12 +435,16 @@ mod tests {
     }
 
     #[test]
-    fn defaults_to_last_calendar_year() {
+    fn defaults_to_the_current_calendar_year_as_leaderboard_does() {
         let args = EliteArgs::parse_from(["elite", "Carolina"]);
-        let last = current_year() - 1;
+        let this_year = current_year();
         assert_eq!(
             range(&args),
-            (format!("{last}-01-01"), format!("{last}-12-31"))
+            (format!("{this_year}-01-01"), format!("{this_year}-12-31"))
+        );
+        assert_eq!(
+            range(&args),
+            crate::commands::leaderboard::range(None, None, None)
         );
         let args = EliteArgs::parse_from(["elite", "Carolina", "--year", "2024"]);
         assert_eq!(range(&args), ("2024-01-01".into(), "2024-12-31".into()));

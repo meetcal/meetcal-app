@@ -130,7 +130,7 @@ pub struct LeaderboardArgs {
     pub gender: Option<String>,
 
     /// Age category: Senior, Junior, U17, U15, U13, U11, or Masters 35 … Masters 90
-    #[arg(long, short = 'c')]
+    #[arg(long, short = 'a', short_alias = 'c')]
     pub category: Option<String>,
 
     /// Only divisions containing this text, e.g. "89kg" or "Masters (45-49)"
