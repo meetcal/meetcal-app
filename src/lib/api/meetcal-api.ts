@@ -403,17 +403,17 @@ async function getRevalidated<T>(
 }
 
 export type ApiMeet = {
-  id?: string;
-  federation?: string;
+  id?: string | null;
+  federation?: string | null;
   end_date: string;
   name: string;
   start_date: string;
   time_zone: string;
-  venue_city: string;
-  venue_name: string;
-  venue_state: string;
-  venue_street: string;
-  venue_zip: string;
+  venue_city?: string | null;
+  venue_name?: string | null;
+  venue_state?: string | null;
+  venue_street?: string | null;
+  venue_zip?: string | null;
   venue_map_pdf_url?: string | null;
   venue_map_apple_url?: string | null;
   status: string;
@@ -422,25 +422,25 @@ export type ApiMeet = {
 export type ApiScheduleRow = {
   date: string;
   meet?: string;
-  platform: string;
+  platform?: string | null;
   session_id: number;
-  start_time: string;
-  weigh_in_time: string;
-  weight_class: string;
+  start_time?: string | null;
+  weigh_in_time?: string | null;
+  weight_class?: string | null;
 };
 
 export type ApiAthlete = {
-  member_id: string;
-  adaptive: boolean;
-  age: number;
-  club: string;
-  entry_total: number;
-  gender: string;
+  member_id?: string | null;
+  adaptive?: boolean | null;
+  age?: number | string | null;
+  club?: string | null;
+  entry_total?: number | string | null;
+  gender?: string | null;
   meet?: string;
   name: string;
   session_number?: number | null;
   session_platform?: string | null;
-  weight_class: string;
+  weight_class?: string | null;
   wso?: string | null;
 };
 
@@ -459,24 +459,24 @@ export type ApiAthleteWithSession = ApiAthlete & {
 };
 
 export type ApiLiftingResult = {
-  id?: number;
-  event_id?: string;
-  federation?: string;
+  id?: number | null;
+  event_id?: string | null;
+  federation?: string | null;
   meet: string;
   date: string;
   name: string;
-  age: string;
-  body_weight: number;
-  snatch1: number;
-  snatch2: number;
-  snatch3: number;
-  snatch_best: number;
-  cj1: number;
-  cj2: number;
-  cj3: number;
-  cj_best: number;
-  total: number;
-  adaptive?: boolean;
+  age?: string | number | null;
+  body_weight?: number | null;
+  snatch1?: number | null;
+  snatch2?: number | null;
+  snatch3?: number | null;
+  snatch_best?: number | null;
+  cj1?: number | null;
+  cj2?: number | null;
+  cj3?: number | null;
+  cj_best?: number | null;
+  total?: number | null;
+  adaptive?: boolean | null;
 };
 
 export type ApiYearBests = {
@@ -731,9 +731,6 @@ export function mapApiAthlete(row: ApiAthleteWithSession): LiftResult {
     memberId: row.member_id || '',
     name: row.name,
     age: toFiniteNumber(row.age, 0),
-    // Nullable in practice even though the row type says otherwise; the
-    // screens already render '' and 0 for these, so default rather than
-    // failing the row.
     club: row.club ?? '',
     wso: row.wso || undefined,
     gender: row.gender || '',
@@ -1093,6 +1090,20 @@ export type MeetPackageFetch =
  * already decomposed into local storage is identical to what the server would
  * send.
  */
+function assertPackageSchedule(schedule: unknown): void {
+  assertArray<unknown>(schedule, '/meets/package.schedule').forEach((day, dayIndex) => {
+    const dayLabel = `/meets/package.schedule[${dayIndex}]`;
+    assertObject(day, dayLabel);
+    assertArray<unknown>(day.sessions, `${dayLabel}.sessions`).forEach((session, sessionIndex) => {
+      const sessionLabel = `${dayLabel}.sessions[${sessionIndex}]`;
+      assertObject(session, sessionLabel);
+      assertArray<unknown>(session.platforms, `${sessionLabel}.platforms`).forEach((platform, platformIndex) =>
+        assertObject(platform, `${sessionLabel}.platforms[${platformIndex}]`),
+      );
+    });
+  });
+}
+
 export async function fetchApiMeetPackageConditional(
   meet: MeetName,
   historyCutoffDate?: string,
@@ -1124,7 +1135,7 @@ export async function fetchApiMeetPackageConditional(
   }
   const pkg = assertHasFields(answer.body, '/meets/package', MEET_PACKAGE_FIELDS);
   assertObject(pkg.meet, '/meets/package.meet');
-  assertArray(pkg.schedule, '/meets/package.schedule');
+  assertPackageSchedule(pkg.schedule);
   assertArray(pkg.athletes, '/meets/package.athletes');
   assertArray(pkg.meet_results, '/meets/package.meet_results');
   if ('year_bests' in pkg) {

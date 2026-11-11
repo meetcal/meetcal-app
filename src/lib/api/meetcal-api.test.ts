@@ -1555,6 +1555,22 @@ describe('meetcal API client error and auth boundaries', () => {
     );
   });
 
+  it.each([
+    [[{ date: '2026-06-20' }], '/meets/package.schedule[0].sessions expected an array response'],
+    [['TBD'], '/meets/package.schedule[0] expected an object response'],
+    [
+      [{ date: '2026-06-20', sessions: [{ session_id: 1, platforms: 'Red' }] }],
+      '/meets/package.schedule[0].sessions[0].platforms expected an array response',
+    ],
+    [
+      [{ date: '2026-06-20', sessions: [{ session_id: 1, platforms: [null] }] }],
+      '/meets/package.schedule[0].sessions[0].platforms[0] expected an object response',
+    ],
+  ])('rejects a meet package whose schedule is malformed, naming the field', async (schedule, message) => {
+    installTransport(answer({ meet: { name: 'Meet' }, schedule, athletes: [], meet_results: [] }));
+    await expect(fetchApiMeetPackageConditional('Test Meet')).rejects.toThrow(message);
+  });
+
   it('rejects an object where a row array query is expected', async () => {
     // Callers go straight to `.filter`/`.map`, so an envelope answer used to
     // surface as "rows.filter is not a function" inside a fetcher rather than
