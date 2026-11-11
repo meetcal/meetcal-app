@@ -1,3 +1,4 @@
+import { SLIDE_IN_FROM_RIGHT, stackHeaderOptions } from "@/lib/stack-header-options";
 import { DataTable, dataTableStyles } from "@/components/ui/DataTable";
 import { SubscriptionGate } from "@/components/ui/SubscriptionGate";
 import { ThemedText } from "@/components/ui/ThemedText";
@@ -55,21 +56,9 @@ function AdaptiveRecordsScreenContent() {
     >
       <Stack.Screen
         options={{
+          ...stackHeaderOptions(colors),
+          ...SLIDE_IN_FROM_RIGHT,
           title: "Adaptive American Records",
-          headerBackTitle: "Back",
-          headerShown: true,
-          gestureEnabled: true,
-          gestureDirection: "horizontal",
-          animation: "slide_from_right",
-          headerTitleStyle: {
-            color: colors.headerTitle,
-          },
-          headerStyle: {
-            backgroundColor: colors.headerBackground,
-          },
-          headerShadowVisible: false,
-          headerBackButtonDisplayMode: "minimal",
-          headerTintColor: colors.text,
         }}
       />
 

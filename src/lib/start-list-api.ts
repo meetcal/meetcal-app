@@ -1,4 +1,4 @@
-import type { SupabaseBests } from '@/data/types/athletes';
+import type { AthleteBests } from '@/data/types/athletes';
 import {
   getAllCachedLiftingResultsForAthlete,
   getStoredAthleteBestsForNames,
@@ -69,7 +69,7 @@ function toStoredBests(bests: YearBests) {
   };
 }
 
-function fromStoredBests(bests: SupabaseBests): YearBests {
+function fromStoredBests(bests: AthleteBests): YearBests {
   return {
     bestSnatch: bests.snatch_best ?? 0,
     bestCJ: bests.cj_best ?? 0,
