@@ -1,7 +1,7 @@
-import { DataTable, dataTableStyles } from "@/components/ui/DataTable";
+import { SLIDE_IN_FROM_RIGHT, stackHeaderOptions } from "@/lib/stack-header-options";
+import { RecordsTable } from "@/components/comp-data/RecordsTable";
 import { FilterBar } from "@/components/ui/FilterBar";
 import { SubscriptionGate } from "@/components/ui/SubscriptionGate";
-import { ThemedText } from "@/components/ui/ThemedText";
 import { ThemedView } from "@/components/ui/ThemedView";
 import { FilterSection, GenericFilterModal } from "@/components/ui/filters";
 import { useAppColors } from "@/hooks/useAppColors";
@@ -12,18 +12,19 @@ import {
   wsoListResource,
   wsoRecordsResource,
 } from "@/lib/database/fetch-wso-records";
+import { filterSummary } from "@/lib/filter-summary";
 import { formatAgeGroupLabel, sortAgeGroups } from "@/lib/sortAgeGroups";
 import {
   AgeGroupRecords,
+  Gender,
   RecordsData,
   WeightClassRecord,
 } from "@/types/records";
-import { Filters, Gender } from "@/types/wso-records";
+import { WsoRecordsFilters } from "@/types/wso-records";
 import { Stack } from "expo-router";
 import React, { useEffect, useMemo } from "react";
-import { StyleSheet, View } from "react-native";
+import { StyleSheet } from "react-native";
 import { useScreenHorizontalInsets } from "@/hooks/useScreenInsets";
-import { formatReferenceKg } from "@/lib/reference-values";
 
 const EMPTY_WSO_LIST: string[] = [];
 const EMPTY_RECORDS_DATA: RecordsData = {} as RecordsData;
@@ -46,7 +47,7 @@ function WSORecordsScreenContent() {
     setTempFilters,
     openFilters,
     filterModalProps,
-  } = useFilterState<Filters>({
+  } = useFilterState<WsoRecordsFilters>({
     defaultFilters: { wso: "", gender: "Men", ageGroup: "Senior" },
   });
 
@@ -105,12 +106,11 @@ function WSORecordsScreenContent() {
     );
   }, [records, filters.ageGroup, filters.gender]);
 
-  const getFilterDisplayText = () => {
-    const wso = filters.wso;
-    const gen = filters.gender;
-    const age = formatAgeGroupLabel(filters.ageGroup);
-    return `${wso} • ${gen} • ${age}`;
-  };
+  const getFilterDisplayText = () =>
+    filterSummary(
+      [filters.wso, filters.gender, formatAgeGroupLabel(filters.ageGroup)],
+      "All WSO records",
+    );
 
   const filterSections = React.useCallback(
     (modalTempFilters: Record<string, string>): FilterSection[] => {
@@ -159,21 +159,9 @@ function WSORecordsScreenContent() {
     >
       <Stack.Screen
         options={{
+          ...stackHeaderOptions(colors),
+          ...SLIDE_IN_FROM_RIGHT,
           title: `WSO Records`,
-          headerBackTitle: "Back",
-          headerShown: true,
-          gestureEnabled: true,
-          gestureDirection: "horizontal",
-          animation: "slide_from_right",
-          headerTitleStyle: {
-            color: colors.headerTitle,
-          },
-          headerStyle: {
-            backgroundColor: colors.headerBackground,
-          },
-          headerShadowVisible: false,
-          headerBackButtonDisplayMode: "minimal",
-          headerTintColor: colors.text,
         }}
       />
 
@@ -182,45 +170,13 @@ function WSORecordsScreenContent() {
         onPress={openFilters}
       />
 
-      <DataTable
-        columns={[
-          { label: "Weight Class", flex: 2 },
-          { label: "Snatch" },
-          { label: "C&J" },
-          { label: "Total" },
-        ]}
-        data={currentRecords}
-        keyExtractor={(record) =>
-          `${filters.wso}-${filters.ageGroup}-${filters.gender}-${record.weightClass}`
-        }
+      <RecordsTable
+        records={currentRecords}
+        rowKeyPrefix={`${filters.wso}-${filters.ageGroup}-${filters.gender}`}
+        weightClassUnit="kg"
         loading={isWSOLoading || (Boolean(filters.wso) && isRecordsLoading)}
         error={wsoListError || recordsError}
         emptyMessage={`No ${filters.wso} records available for ${filters.gender} in the ${formatAgeGroupLabel(filters.ageGroup)} age group.`}
-        renderRow={(record, index) => (
-          <View
-            style={[
-              dataTableStyles.row,
-              index < currentRecords.length - 1 && {
-                borderBottomWidth: StyleSheet.hairlineWidth,
-                borderBottomColor: colors.border,
-              },
-            ]}
-          >
-            <ThemedText style={[dataTableStyles.cell, { flex: 2 }]}>
-              {record.weightClass}
-              kg
-            </ThemedText>
-            <ThemedText style={dataTableStyles.cell}>
-              {formatReferenceKg(record.snatchRecord)}
-            </ThemedText>
-            <ThemedText style={dataTableStyles.cell}>
-              {formatReferenceKg(record.cjRecord)}
-            </ThemedText>
-            <ThemedText style={dataTableStyles.cell}>
-              {formatReferenceKg(record.totalRecord)}
-            </ThemedText>
-          </View>
-        )}
       />
 
       <GenericFilterModal
