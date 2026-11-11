@@ -6,6 +6,7 @@ import { internal } from '../_generated/api';
 import { fetchJson } from './lib/http';
 import { entriesEndpoint, entriesEventId, entryFromRow, meetFromTitle, unstoredEntriesMessage, type Entry, type EntryRow } from './parse/entries';
 import { sourcesFailed } from '../lib/cronAlerts';
+import { NOT_REACHED, runBudget } from './lib/budget';
 
 /**
  * Meet entries (replaces the `entries` job's `usaw/entry_scraper/csv_scraper.js`):
@@ -103,9 +104,15 @@ export const run = internalAction({
   handler: async (ctx, { dryRun, only, allowShrink }): Promise<MeetResult[]> => {
     const targets = (await ctx.runQuery(internal.scrapers.entryTargets.list, {})).filter((t) => !only || only.includes(t.label) || only.includes(t.url));
     const results: MeetResult[] = [];
+    const budget = runBudget();
     for (const target of targets) {
       const result: MeetResult = { label: target.label };
       results.push(result);
+      // Out of time: the targets left fail by name instead of the action being stopped.
+      if (budget.spent()) {
+        result.error = NOT_REACHED;
+        continue;
+      }
       try {
         const title = await fetchEntriesMeet(target.url);
         const eventId = entriesEventId(target.url);
