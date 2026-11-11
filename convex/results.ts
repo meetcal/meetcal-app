@@ -537,7 +537,6 @@ function mostRecent(rows: ApiLiftingResult[]): { results: ApiLiftingResult[]; tr
 }
 
 export function exactSearchAnswer(
-  query: string,
   history: readonly ApiLiftingResult[],
   start: string,
   end: string,
@@ -625,7 +624,7 @@ async function datedSearch(
 ): Promise<SearchAnswer> {
   const exactKey = normalizeName(query);
   const history = (await readHistories(ctx, [exactKey])).get(exactKey) ?? [];
-  const exact = exactSearchAnswer(query, history, start, end);
+  const exact = exactSearchAnswer(history, start, end);
   if (exact) return exact;
   // `exactOnly`, or (unless `fallbackForKnownName`) the exact name is an
   // athlete with no results in the range: no fallback, which would show
