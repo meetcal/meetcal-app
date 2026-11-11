@@ -1,3 +1,4 @@
+import { isRecord } from '@/lib/is-record';
 import { LiftResult } from '@/data/types/athletes';
 import { MeetName } from '@/data/types/meet';
 import { isSamePlatform } from '@/lib/athletes';
@@ -71,11 +72,11 @@ export function upsertSession(
 function sameSession(a: SavedSession, b: SavedSession): boolean {
   const canonical = (value: unknown): unknown => {
     if (Array.isArray(value)) return value.map(canonical);
-    if (value && typeof value === 'object') {
-      return Object.keys(value as Record<string, unknown>)
-        .filter((key) => (value as Record<string, unknown>)[key] !== undefined)
+    if (isRecord(value)) {
+      return Object.keys(value)
+        .filter((key) => value[key] !== undefined)
         .sort()
-        .map((key) => [key, canonical((value as Record<string, unknown>)[key])]);
+        .map((key) => [key, canonical(value[key])]);
     }
     return value;
   };

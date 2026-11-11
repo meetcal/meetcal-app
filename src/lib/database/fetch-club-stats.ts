@@ -1,3 +1,4 @@
+import { isRecord } from '@/lib/is-record';
 import { createMutableResource } from '@/lib/data/mutable-resource';
 import { clubMeetsNewestFirst, type ClubMeet } from '@/lib/club-meets';
 import type { AthleteClub, ClubMeetStats } from '@/types/club';
@@ -77,10 +78,10 @@ const CLUB_MEET_STATS_OPTIONAL_FIELDS = [
  * (older backends omit them) but must be numbers when present.
  */
 function toApiClubMeetStats(value: unknown): ApiClubMeetStats {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+  if (!isRecord(value)) {
     throw new Error('[api] /clubs/meet-stats: expected an object');
   }
-  const row = value as Record<string, unknown>;
+  const row = value;
   for (const field of CLUB_MEET_STATS_REQUIRED_FIELDS) {
     if (!isFiniteNumber(row[field])) {
       throw new Error(`[api] /clubs/meet-stats: ${field} is not a finite number`);

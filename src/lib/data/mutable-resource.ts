@@ -1,3 +1,4 @@
+import { isRecord } from '@/lib/is-record';
 export type ResourceSource = "cache" | "network";
 
 export type ResourceCacheEntry<T> = {
@@ -98,8 +99,8 @@ function sortObjectKeys(value: unknown): unknown {
     return value.map(sortObjectKeys);
   }
 
-  if (value && typeof value === "object") {
-    const sortedEntries = Object.entries(value as Record<string, unknown>)
+  if (isRecord(value)) {
+    const sortedEntries = Object.entries(value)
       .sort(([left], [right]) => left.localeCompare(right))
       .map(([key, nestedValue]) => [key, sortObjectKeys(nestedValue)]);
     return Object.fromEntries(sortedEntries);

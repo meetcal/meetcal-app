@@ -1,3 +1,4 @@
+import { isRecord } from '@/lib/is-record';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { MeetName, Meet } from '@/data/types/meet';
 import type { AthleteBests, AthleteMeetResult } from '@/data/types/athletes';
@@ -279,9 +280,9 @@ async function readHistorySyncedAt(): Promise<Record<string, number>> {
   try {
     const raw = await AsyncStorage.getItem(HISTORY_SYNCED_AT_KEY);
     const parsed: unknown = raw ? JSON.parse(raw) : null;
-    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {};
+    if (!isRecord(parsed)) return {};
     const out: Record<string, number> = {};
-    for (const [meet, value] of Object.entries(parsed as Record<string, unknown>)) {
+    for (const [meet, value] of Object.entries(parsed)) {
       if (typeof value === 'number' && Number.isFinite(value)) out[meet] = value;
     }
     return out;
@@ -324,10 +325,10 @@ async function readPendingHistory(): Promise<Record<string, PendingHistory>> {
   try {
     const raw = await AsyncStorage.getItem(HISTORY_PENDING_KEY);
     const parsed: unknown = raw ? JSON.parse(raw) : null;
-    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {};
+    if (!isRecord(parsed)) return {};
     const out: Record<string, PendingHistory> = {};
-    for (const [meet, value] of Object.entries(parsed as Record<string, unknown>)) {
-      if (!value || typeof value !== 'object' || Array.isArray(value)) continue;
+    for (const [meet, value] of Object.entries(parsed)) {
+      if (!isRecord(value)) continue;
       const entry = value as { names?: unknown; since?: unknown };
       if (!Array.isArray(entry.names)) continue;
       if (typeof entry.since !== 'number' || !Number.isFinite(entry.since)) continue;
@@ -591,14 +592,14 @@ async function getCacheInfo(): Promise<CacheInfo> {
       // entry that parses but has no `meets` object would throw there, inside
       // `cleanupOldMeetData`, failing every meet open from then on.
       const parsed: unknown = JSON.parse(info);
-      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
-        const candidate = parsed as Record<string, unknown>;
-        if (candidate.meets && typeof candidate.meets === 'object' && !Array.isArray(candidate.meets)) {
+      if (isRecord(parsed)) {
+        const candidate = parsed;
+        if (isRecord(candidate.meets)) {
           const meets: Record<string, MeetInfo> = {};
           let totalSize = 0;
           for (const [name, value] of Object.entries(candidate.meets)) {
-            if (!value || typeof value !== 'object' || Array.isArray(value)) continue;
-            const entry = value as Record<string, unknown>;
+            if (!isRecord(value)) continue;
+            const entry = value;
             if (
               typeof entry.lastAccessed !== 'number' || !Number.isFinite(entry.lastAccessed) || entry.lastAccessed < 0 ||
               typeof entry.size !== 'number' || !Number.isFinite(entry.size) || entry.size < 0
@@ -1161,7 +1162,7 @@ type BestsSnapshot = Record<string, [number, number, number]>;
 const packageBestsWrites = createWriteChain();
 
 function isBestsSnapshot(value: unknown): value is BestsSnapshot {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  if (!isRecord(value)) return false;
   return Object.values(value).every(
     (row) =>
       Array.isArray(row) &&
@@ -1174,9 +1175,9 @@ async function readPackageBestsSnapshots(): Promise<Record<string, BestsSnapshot
   try {
     const raw = await AsyncStorage.getItem(PACKAGE_BESTS_KEY);
     const parsed: unknown = raw ? JSON.parse(raw) : null;
-    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {};
+    if (!isRecord(parsed)) return {};
     const out: Record<string, BestsSnapshot> = {};
-    for (const [meet, snapshot] of Object.entries(parsed as Record<string, unknown>)) {
+    for (const [meet, snapshot] of Object.entries(parsed)) {
       if (isBestsSnapshot(snapshot)) out[meet] = snapshot;
     }
     return out;

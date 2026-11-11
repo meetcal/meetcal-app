@@ -1,3 +1,4 @@
+import { isRecord } from '@/lib/is-record';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import type { Schedule } from '@/types/schedule';
 import type { LiftResult, AthleteBests, AthleteMeetResult } from '@/data/types/athletes';
@@ -98,8 +99,8 @@ async function getExplicitMeetDownloads(): Promise<ExplicitMeetDownloads> {
       }, {});
     }
 
-    if (parsed && typeof parsed === 'object') {
-      const entries = Object.entries(parsed as Record<string, unknown>);
+    if (isRecord(parsed)) {
+      const entries = Object.entries(parsed);
       return entries.reduce<ExplicitMeetDownloads>((acc, [meetId, value]) => {
         if (!value || typeof value !== 'object') return acc;
         const entry = value as { markedAt?: unknown; endDate?: unknown };
@@ -1072,7 +1073,7 @@ export function isAthleteBestsFresh(
 }
 
 function toStoredBestsValue(value: unknown): AthleteBests | null {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  if (!isRecord(value)) return null;
   const row = value as Partial<Record<keyof AthleteBests, unknown>>;
   const positiveOrNull = (candidate: unknown) =>
     typeof candidate === 'number' && Number.isFinite(candidate) && candidate > 0
@@ -1097,7 +1098,7 @@ function parseStoredAthleteBests(payload: string): { bests: AthleteBests; fetche
   } catch {
     return null;
   }
-  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return null;
+  if (!isRecord(parsed)) return null;
   const candidate = parsed as { v?: unknown; fetchedAt?: unknown; bests?: unknown };
   if (candidate.v === ATHLETE_BESTS_FORMAT_VERSION) {
     const bests = toStoredBestsValue(candidate.bests);
@@ -2140,8 +2141,8 @@ export async function getLastSyncTime(meet: MeetName): Promise<number | null> {
  * is kept only when it is actually an array.
  */
 function toStoredMeetData(meetId: string, value: unknown): MeetData | null {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
-  const entry = value as Record<string, unknown>;
+  if (!isRecord(value)) return null;
+  const entry = value;
   const stringOr = (candidate: unknown, fallback: string) =>
     typeof candidate === 'string' && candidate.length > 0 ? candidate : fallback;
   return {
@@ -2165,14 +2166,14 @@ function toStoredMeetData(meetId: string, value: unknown): MeetData | null {
 }
 
 function toOfflineStore(value: unknown): OfflineStore | null {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  if (!isRecord(value)) return null;
   const meetsValue = (value as { meets?: unknown }).meets;
-  if (!meetsValue || typeof meetsValue !== 'object' || Array.isArray(meetsValue)) {
+  if (!isRecord(meetsValue)) {
     return null;
   }
   const meets: OfflineStore['meets'] = {};
   let dropped = 0;
-  for (const [meetId, entry] of Object.entries(meetsValue as Record<string, unknown>)) {
+  for (const [meetId, entry] of Object.entries(meetsValue)) {
     const meetData = toStoredMeetData(meetId, entry);
     if (meetData) {
       meets[meetId] = meetData;

@@ -1,3 +1,4 @@
+import { isRecord } from '@/lib/is-record';
 import { createContext, useCallback, useContext, useEffect, useEffectEvent, useMemo, useRef, useState } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as SecureStore from 'expo-secure-store';
@@ -85,8 +86,8 @@ function parseSubscriptionCache(raw: string | null): SubscriptionCacheData | nul
   } catch {
     return null;
   }
-  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return null;
-  const record = parsed as Record<string, unknown>;
+  if (!isRecord(parsed)) return null;
+  const record = parsed;
   if (typeof record.isSubscribed !== 'boolean') return null;
   if (typeof record.timestamp !== 'number' || !Number.isFinite(record.timestamp)) return null;
   const type = record.subscriptionType;

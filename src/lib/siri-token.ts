@@ -1,3 +1,4 @@
+import { isRecord } from '@/lib/is-record';
 import { createWriteChain } from '@/lib/data/write-chain';
 import * as SecureStore from 'expo-secure-store';
 
@@ -54,8 +55,8 @@ let siriTokenSyncs = createWriteChain();
 let retryAfter: { userId: string; at: number } | null = null;
 
 function isStoredSiriToken(value: unknown): value is StoredSiriToken {
-  if (value === null || typeof value !== 'object' || Array.isArray(value)) return false;
-  const row = value as Record<string, unknown>;
+  if (!isRecord(value)) return false;
+  const row = value;
   return (
     typeof row.token === 'string' &&
     row.token.length > 0 &&

@@ -1,3 +1,4 @@
+import { isRecord } from "@/lib/is-record";
 import { filterSummary } from "@/lib/filter-summary";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { NativeModules, Platform } from "react-native";
@@ -111,12 +112,12 @@ export async function saveWidgetSettings(settings: WidgetSettings) {
 }
 
 function readSection(value: unknown, key: string): Record<string, unknown> {
-  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
-  const section = (value as Record<string, unknown>)[key];
-  if (!section || typeof section !== "object" || Array.isArray(section)) {
+  if (!isRecord(value)) return {};
+  const section = value[key];
+  if (!isRecord(section)) {
     return {};
   }
-  return section as Record<string, unknown>;
+  return section;
 }
 
 function readString(section: Record<string, unknown>, key: string, fallback: string): string {

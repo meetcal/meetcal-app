@@ -1,3 +1,4 @@
+import { isRecord } from '@/lib/is-record';
 import { canonicalizePlatform, filterSessionAthletes, isLiftResult, normalizeAthleteName } from '@/lib/athletes';
 import { LiftResult, Platform, AthleteMeetResult } from '@/data/types/athletes';
 import { Meet, MeetName } from '@/data/types/meet';
@@ -172,7 +173,7 @@ export class MeetCalApiTimeoutError extends Error {
 }
 
 function assertObject(value: unknown, label: string): asserts value is Record<string, unknown> {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+  if (!isRecord(value)) {
     throw new Error(`${label} expected an object response`);
   }
 }
@@ -293,7 +294,7 @@ function parseJsonText(text: string, path: string): unknown {
  * the value itself.
  */
 function decodeJsonText(value: unknown, path: string): unknown {
-  if (value && typeof value === 'object' && !Array.isArray(value) && 'json' in value) {
+  if (isRecord(value) && 'json' in value) {
     const { json } = value as { json: unknown };
     if (typeof json !== 'string') throw new Error(`${path} returned a non-text json field`);
     return parseJsonText(json, path);
@@ -1181,8 +1182,8 @@ function validateRows<T extends object>(
 ): readonly Readonly<T>[] {
   const rows: Readonly<T>[] = [];
   for (const row of assertArray<unknown>(json, label)) {
-    if (!row || typeof row !== 'object' || Array.isArray(row)) continue;
-    rows.push(Object.freeze(readRow(row as Record<string, unknown>)));
+    if (!isRecord(row)) continue;
+    rows.push(Object.freeze(readRow(row)));
   }
   return Object.freeze(rows);
 }
@@ -1433,8 +1434,8 @@ export async function fetchApiClubMeets(club: string): Promise<ApiClubMeet[]> {
   const rows = assertArray<unknown>(response.meets, '/clubs/meets');
   const meets: ApiClubMeet[] = [];
   for (const row of rows) {
-    if (!row || typeof row !== 'object' || Array.isArray(row)) continue;
-    const { meet, date } = row as Record<string, unknown>;
+    if (!isRecord(row)) continue;
+    const { meet, date } = row;
     if (typeof meet !== 'string' || meet.length === 0) continue;
     meets.push({ meet, date: nullableString(date) });
   }
