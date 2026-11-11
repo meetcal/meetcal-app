@@ -214,7 +214,7 @@ test("athlete results show every competition field except federation", async ({ 
     const isSuggestion = !("startDate" in args);
     await route.fulfill(valueAnswer(isSuggestion
       ? { matched_name: null, suggestions: ["Test Athlete"], results: [] }
-      : { matched_name: "Test Athlete", suggestions: [], results: [completeResult] }));
+      : { matched_name: "Test Athlete", suggestions: [], results: [completeResult, { ...completeResult, meet: "Unweighed Meet", date: "2025-01-01", body_weight: 0 }] }));
   });
   await page.goto("/results");
   const athleteSearch = page.getByLabel("Athlete", { exact: true });
@@ -227,8 +227,11 @@ test("athlete results show every competition field except federation", async ({ 
   const headers = await page.getByRole("columnheader").allTextContents();
   expect(headers).toEqual(["Date", "Meet", "Division", "Bodyweight", "S1", "S2", "S3", "Best snatch", "C&J 1", "C&J 2", "C&J 3", "Best C&J", "Total", "Adaptive"]);
   expect(headers).not.toContain("Federation");
-  await expect(page.locator("tbody tr")).toContainText("103×");
-  await expect(page.locator("tbody tr")).toContainText("Yes");
+  const weighed = page.locator("tbody tr").filter({ hasText: "Test Meet" });
+  await expect(weighed).toContainText("103×");
+  await expect(weighed).toContainText("Yes");
+  await expect(weighed.locator("td").nth(3)).toHaveText("70.5");
+  await expect(page.locator("tbody tr").filter({ hasText: "Unweighed Meet" }).locator("td").nth(3)).toHaveText("—");
 });
 
 test("meet center joins details, schedule, start list, and full results", async ({ page }) => {
@@ -242,7 +245,7 @@ test("meet center joins details, schedule, start list, and full results", async 
   ])));
   await routeQuery(page, "meets:schedule", (route) => route.fulfill(textAnswer([{ date: "2026-06-20", meet: "Test Meet", platform: "Red", session_id: 1, start_time: "10:00", weigh_in_time: "08:00", weight_class: "69kg" }])));
   await routeQuery(page, "meets:athletes", (route) => route.fulfill(textAnswer([{ member_id: "1", meet: "Test Meet", name: "Test Athlete", age: 27, club: "Test Barbell", wso: "California North", gender: "Female", weight_class: "+69", entry_total: 220, adaptive: false, session_number: 1, session_platform: "Red" }])));
-  await routeQuery(page, "results:byMeet", (route) => route.fulfill(textAnswer([completeResult])));
+  await routeQuery(page, "results:byMeet", (route) => route.fulfill(textAnswer([completeResult, { ...completeResult, name: "Unweighed Athlete", total: 200, body_weight: 0 }])));
   await routeQuery(page, "results:search", (route) => route.fulfill(valueAnswer({ matched_name: "Test Athlete", suggestions: [], results: [completeResult] })));
   await page.goto("/meet-center");
   const meetSearch = page.locator("#meet-search-input");
@@ -267,6 +270,9 @@ test("meet center joins details, schedule, start list, and full results", async 
   await expect(page.locator("tbody").nth(1)).toContainText("Women");
   await expect(page.locator("tbody").nth(1)).not.toContainText("Female");
   await expect(page.locator("tbody").nth(2)).toContainText("Test Athlete");
+  const fullResults = page.locator("tbody").nth(2).locator("tr");
+  await expect(fullResults.filter({ hasText: "Test Athlete" }).locator("td").nth(3)).toHaveText("70.5");
+  await expect(fullResults.filter({ hasText: "Unweighed Athlete" }).locator("td").nth(3)).toHaveText("—");
   await expect(page.getByRole("columnheader").filter({ hasText: /^Total$/ })).toBeVisible();
   await page.getByRole("link", { name: "Test Athlete" }).click();
   await expect(page).toHaveURL(/\/results\?athlete=Test%20Athlete$/);
