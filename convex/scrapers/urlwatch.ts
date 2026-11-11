@@ -8,14 +8,6 @@ import { escapeHtml, sendEmail } from '../lib/email';
 import { fetchPageText } from './lib/incompleteChain';
 import { pageChange, pageText, reportDelivery, WATCHED_PAGES } from './parse/watchedPages';
 
-/**
- * urlwatch, hourly (replaces the VPS's `urlwatch` job): each watched page's
- * text is compared with the last run's, and the run's changes are emailed
- * (OneSignal, to `URLWATCH_EMAIL`) as diffs in one message. A page seen for
- * selector stops matching (a redesign), is reported once, when it starts
- * failing, and its last text is kept. Snapshots are saved only after the
- * email went out, so a failed send is retried the next hour.
- */
 type PageResult = { name: string; url: string; status: 'new' | 'unchanged' | 'changed' | 'error'; error?: string; diff?: string };
 
 const MAX_DIFF = 60_000;
