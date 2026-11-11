@@ -715,7 +715,6 @@ describe('meetcal API mappers', () => {
       total: 240,
       adaptive: false,
     })).toMatchObject({
-      id: 10,
       event_id: 'event-1',
       body_weight: 72.5,
       snatch_best: 105,
@@ -2224,8 +2223,8 @@ describe('JSON text answers', () => {
       [athleteRow, { ...athleteRow, member_id: '2', name: 'Athlete B', session_platform: 'Gold' }],
       [{ name: 'Athlete A', session: { number: 2, platform: 'Blue' } }],
     ],
-    ['fetchApiResultsByNames', () => fetchApiResultsByNames(['Athlete A']), [resultRow], [{ id: 1, total: 220 }]],
-    ['fetchApiRecentResultsByNames', () => fetchApiRecentResultsByNames(['Athlete A'], '2024-01-01'), [resultRow], [{ id: 1, snatch2: 0 }]],
+    ['fetchApiResultsByNames', () => fetchApiResultsByNames(['Athlete A']), [resultRow], [{ event_id: 'e1', total: 220 }]],
+    ['fetchApiRecentResultsByNames', () => fetchApiRecentResultsByNames(['Athlete A'], '2024-01-01'), [resultRow], [{ event_id: 'e1', snatch2: 0 }]],
   ])('%s decodes a { json } answer and still accepts a plain array', async (_name, invoke, rows, expected) => {
     installTransport(() => ({ json: JSON.stringify(rows) }));
     const fromText = await invoke();

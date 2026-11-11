@@ -405,7 +405,7 @@ describe('meetcal API mappers (properties)', () => {
       fc.property(apiLiftingResultArb, (row) => {
         const result = mapApiLiftingResult(row);
         expectLiftingResult(result);
-        const { federation: _federation, adaptive: _adaptive, ...kept } = row;
+        const { id: _serverId, federation: _federation, adaptive: _adaptive, ...kept } = row;
         expect(result).toEqual(kept);
       }),
     );
