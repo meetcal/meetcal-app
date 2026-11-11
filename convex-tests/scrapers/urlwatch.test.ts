@@ -1,5 +1,5 @@
 import { unifiedDiff } from '../../convex/scrapers/lib/diff';
-import { pageText, WATCHED_PAGES } from '../../convex/scrapers/parse/watchedPages';
+import { pageChange, pageText, reportDelivery, WATCHED_PAGES } from '../../convex/scrapers/parse/watchedPages';
 
 describe('urlwatch', () => {
   it("reduces a page to its selected elements' text, a block per line", () => {
@@ -35,5 +35,19 @@ describe('urlwatch', () => {
     const far = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'l', 'm'].join('\n');
     expect(unifiedDiff(far, far.replace('a', 'A').replace('m', 'M'))).toBe(['@@ -1,4 +1,4 @@', '-a', '+A', ' b', ' c', ' d', '@@ -9,4 +9,4 @@', ' i', ' j', ' l', '-m', '+M'].join('\n'));
     expect(unifiedDiff(before, before)).toBe('');
+  });
+
+  it('records a page first read after failed runs, rather than reporting all of it as changed (#576)', () => {
+    expect(pageChange(null, 'a')).toBe('new');
+    // What a run that failed on a page never read stores.
+    expect(pageChange({ text: '' }, 'a\nb')).toBe('new');
+    expect(pageChange({ text: 'a' }, 'a')).toBe('unchanged');
+    expect(pageChange({ text: 'a' }, 'b')).toBe('changed');
+  });
+
+  it('logs changes where no alert address is set (dev), and fails only where the urlwatch one was forgotten (#576)', () => {
+    expect(reportDelivery({ URLWATCH_EMAIL: 'a@b.c' })).toBe('send');
+    expect(reportDelivery({})).toBe('log');
+    expect(reportDelivery({ ALERT_EMAIL: 'a@b.c' })).toBe('fail');
   });
 });

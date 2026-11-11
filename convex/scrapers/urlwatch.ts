@@ -6,13 +6,14 @@ import { internal } from '../_generated/api';
 import { unifiedDiff } from './lib/diff';
 import { escapeHtml, sendEmail } from '../lib/email';
 import { fetchPageText } from './lib/incompleteChain';
-import { pageText, WATCHED_PAGES } from './parse/watchedPages';
+import { pageChange, pageText, reportDelivery, WATCHED_PAGES } from './parse/watchedPages';
 
 /**
  * urlwatch, hourly (replaces the VPS's `urlwatch` job): each watched page's
  * text is compared with the last run's, and the run's changes are emailed
  * (OneSignal, to `URLWATCH_EMAIL`) as diffs in one message. A page seen for
- * the first time is only recorded. A page that stops loading, or whose
+ * the first time is only recorded, also when its first runs failed. Where no
+ * alert address is set (dev), changes are logged instead. A page that stops loading, or whose
  * selector stops matching (a redesign), is reported once, when it starts
  * failing, and its last text is kept. Snapshots are saved only after the
  * email went out, so a failed send is retried the next hour.
@@ -57,11 +58,10 @@ export const run = internalAction({
         saves.push({ url: page.url, error: result.error });
         continue;
       }
-      let result: PageResult;
-      if (!previous) result = { name: page.name, url: page.url, status: 'new' };
-      else if (previous.text === text) result = { name: page.name, url: page.url, status: 'unchanged' };
-      else {
-        result = { name: page.name, url: page.url, status: 'changed', diff: unifiedDiff(previous.text, text) };
+      const status = pageChange(previous, text);
+      const result: PageResult = { name: page.name, url: page.url, status };
+      if (status === 'changed') {
+        result.diff = unifiedDiff(previous!.text, text);
         report.push(result);
       }
       results.push(result);
@@ -69,11 +69,12 @@ export const run = internalAction({
     }
     if (dryRun) return results;
     if (report.length) {
-      const to = process.env.URLWATCH_EMAIL;
-      if (!to) throw new Error('urlwatch: URLWATCH_EMAIL is not set; not saving, so the changes are reported once it is');
+      const delivery = reportDelivery({ URLWATCH_EMAIL: process.env.URLWATCH_EMAIL, ALERT_EMAIL: process.env.ALERT_EMAIL });
+      if (delivery === 'fail') throw new Error('urlwatch: URLWATCH_EMAIL is not set; not saving, so the changes are reported once it is');
       const changed = report.filter((r) => r.status === 'changed').length;
       const subject = changed ? `urlwatch: ${report.map((r) => r.name.replace('USA Masters Weightlifting ', '')).join(', ')} changed` : `urlwatch: ${report[0].name} failed`;
-      await sendEmail(to, subject, emailBody(report));
+      if (delivery === 'send') await sendEmail(process.env.URLWATCH_EMAIL!, subject, emailBody(report));
+      else for (const r of report) console.warn(`${subject}: ${r.name} (${r.url}) ${r.status}${r.error ? `: ${r.error}` : ''}`);
     }
     for (const save of saves) await ctx.runMutation(internal.scrapers.watchedPageState.save, save);
     return results;
