@@ -30,4 +30,4 @@ window.__MEETCAL_POSTHOG_CONFIG__ = {
 };
 EOF
 
-trunk build --release
+trunk build --release --locked
