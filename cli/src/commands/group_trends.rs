@@ -241,7 +241,10 @@ pub fn report(
         years.entry(year(&row.date)).or_default().push(row);
     }
 
+    // Shown without the medal columns under `--no-medals`; exported with them always (null
+    // then), so the keys do not depend on the flag.
     let mut by_year = Table::new();
+    let mut by_year_data = Table::new();
     let mut header = vec![
         "Year",
         "Athletes",
@@ -252,10 +255,14 @@ pub fn report(
         "Best Total",
         "Total PRs",
     ];
-    if medals.is_some() {
-        header.extend(["Gold", "Silver", "Bronze"]);
+    if medals.is_none() {
+        by_year.set_header(header.clone());
     }
-    by_year.set_header(header);
+    header.extend(["Gold", "Silver", "Bronze"]);
+    if medals.is_some() {
+        by_year.set_header(header.clone());
+    }
+    by_year_data.set_header(header);
     for (year, rows) in &years {
         let athletes: HashSet<String> = rows.iter().map(|row| fold(&row.name)).collect();
         let meets: HashSet<String> = rows.iter().map(|row| fold(&row.meet)).collect();
@@ -293,11 +300,19 @@ pub fn report(
             number(best),
             prs.to_string(),
         ];
-        if let Some(medals) = medals {
-            let [gold, silver, bronze] = medals.get(year).copied().unwrap_or_default();
-            cells.extend([gold.to_string(), silver.to_string(), bronze.to_string()]);
+        match medals {
+            Some(medals) => {
+                let [gold, silver, bronze] = medals.get(year).copied().unwrap_or_default();
+                cells.extend([gold.to_string(), silver.to_string(), bronze.to_string()]);
+                by_year.add_row(cells.clone());
+                by_year_data.add_row(cells);
+            }
+            None => {
+                by_year.add_row(cells.clone());
+                cells.extend([String::new(), String::new(), String::new()]);
+                by_year_data.add_row(cells);
+            }
         }
-        by_year.add_row(cells);
     }
 
     // Each athlete's best total with the group (source errors left out), and best Sinclair.
@@ -389,7 +404,7 @@ pub fn report(
 
     Report::new()
         .titled(format!("TRENDS — {title}"))
-        .headed("by_year", "BY YEAR", by_year)
+        .headed_with_data("by_year", "BY YEAR", by_year, by_year_data)
         .headed_with_data("top_lifters", "TOP LIFTERS (ALL TIME)", top, top_data)
         .when_empty("No results found at meets where these athletes were registered.")
 }
@@ -470,6 +485,17 @@ mod tests {
         assert_eq!(by_year[1]["total_lifted"], 194);
         let top = json["top_lifters"].as_array().unwrap();
         assert_eq!(top[0]["athlete"], "Bo");
+
+        // Without medals the export keeps the medal keys, as null; the table drops the columns.
+        let without = report("CLUB — Test", &rows, &prs, None);
+        let exported = without.to_json();
+        let keys = |row: &serde_json::Value| -> Vec<String> {
+            row.as_object().unwrap().keys().cloned().collect()
+        };
+        assert_eq!(keys(&exported["by_year"][0]), keys(&by_year[0]));
+        assert_eq!(exported["by_year"][0]["gold"], serde_json::Value::Null);
+        assert_eq!(exported["by_year"][0]["athletes"], 2);
+        assert!(!without.to_text().contains("Gold"));
         assert_eq!(top[1]["best_total"], 194);
         assert_eq!(top[1]["results"], 2);
     }
