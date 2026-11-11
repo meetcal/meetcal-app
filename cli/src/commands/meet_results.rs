@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 
 use anyhow::{Result, bail};
 use clap::Parser;
@@ -15,7 +15,7 @@ use crate::{
         output::{self, Report},
         stats::{
             Division, Gender, Lift, QPOINTS_LABEL, SINCLAIR_LABEL, attempt_habits, average,
-            bombed_out, number, percent, points, row_qpoints, row_sinclair, valid_lift,
+            bombed_out, fold, number, percent, points, row_qpoints, row_sinclair, valid_lift,
             valid_total,
         },
     },
@@ -244,10 +244,41 @@ pub struct MeetSummary {
 /// The genders scores are ranked within, in report order.
 const GENDERS: [Gender; 2] = [Gender::Men, Gender::Women];
 
+/// A meet's result rows grouped into performances, in the rows' order: a lifter entered in two
+/// divisions (Open and Masters, say) has a row in each with the same lifts, and is one athlete.
+/// Rows are one performance when the name, the bodyweight and all six attempts are the same; two
+/// rows under one name with different lifts stay apart, since they may be two lifters.
+pub fn performances(rows: &[LiftingResults]) -> Vec<Vec<&LiftingResults>> {
+    let mut index: HashMap<(String, [u64; 7]), usize> = HashMap::new();
+    let mut groups: Vec<Vec<&LiftingResults>> = Vec::new();
+    for row in rows {
+        let lifts = [
+            row.body_weight,
+            row.snatch1,
+            row.snatch2,
+            row.snatch3,
+            row.cj1,
+            row.cj2,
+            row.cj3,
+        ]
+        .map(f64::to_bits);
+        let at = *index.entry((fold(&row.name), lifts)).or_insert_with(|| {
+            groups.push(Vec::new());
+            groups.len() - 1
+        });
+        groups[at].push(row);
+    }
+    groups
+}
+
 pub fn summarize(rows: &[LiftingResults]) -> MeetSummary {
-    let all: Vec<&LiftingResults> = rows.iter().collect();
+    // One row per performance: a lifter listed in two divisions counts once.
+    let all: Vec<&LiftingResults> = performances(rows)
+        .into_iter()
+        .filter_map(|group| group.first().copied())
+        .collect();
     // Source errors (`stats::plausible`) count as athletes, but not toward the average total.
-    let totals: Vec<f64> = rows.iter().filter_map(valid_total).collect();
+    let totals: Vec<f64> = all.iter().filter_map(|row| valid_total(row)).collect();
     let (mut taken, mut made) = (0, 0);
     for lift in [Lift::Snatch, Lift::CleanAndJerk] {
         let habits = attempt_habits(&all, lift);
@@ -261,8 +292,8 @@ pub fn summarize(rows: &[LiftingResults]) -> MeetSummary {
             .max_by(|a, b| a.0.total_cmp(&b.0))
     };
     MeetSummary {
-        athletes: rows.len(),
-        bomb_outs: rows.iter().filter(|row| bombed_out(row)).count(),
+        athletes: all.len(),
+        bomb_outs: all.iter().filter(|row| bombed_out(row)).count(),
         average_total: average(&totals),
         make_rate: (taken > 0).then(|| made as f64 * 100.0 / taken as f64),
         best_sinclair: GENDERS.map(|gender| best(row_sinclair, gender)),
@@ -270,17 +301,23 @@ pub fn summarize(rows: &[LiftingResults]) -> MeetSummary {
     }
 }
 
-/// The meet's best lifters of `gender` by `score`, best first.
+/// The meet's best lifters of `gender` by `score`, best first. A lifter listed in two divisions
+/// appears once, under the division that scores (Q-points skip youth divisions) or scores best.
 fn top_table(
     results: &[LiftingResults],
     score: fn(&LiftingResults) -> Option<f64>,
     label: &str,
     gender: Gender,
 ) -> Table {
-    let mut ranked: Vec<(&LiftingResults, f64)> = results
-        .iter()
-        .filter(|row| Division::parse(&row.age).gender == Some(gender))
-        .filter_map(|row| score(row).map(|value| (row, value)))
+    let mut ranked: Vec<(&LiftingResults, f64)> = performances(results)
+        .into_iter()
+        .filter_map(|group| {
+            group
+                .into_iter()
+                .filter(|row| Division::parse(&row.age).gender == Some(gender))
+                .filter_map(|row| score(row).map(|value| (row, value)))
+                .reduce(|best, next| if next.1 > best.1 { next } else { best })
+        })
         .collect();
     ranked.sort_by(|a, b| b.1.total_cmp(&a.1));
     let mut top = Table::new();
@@ -645,6 +682,55 @@ mod tests {
         assert_eq!(json["top_sinclair_men"].as_array().unwrap().len(), 1);
         assert_eq!(json["heaviest_lifts"][0]["athlete"], "Hampton");
         assert_eq!(json["heaviest_lifts"][2]["weight"], 315);
+    }
+
+    #[test]
+    fn a_lifter_listed_in_two_divisions_counts_once() {
+        let lift = |name: &str, division: &str, snatch: [f64; 3]| {
+            row(
+                name,
+                "2026-03-01",
+                "M",
+                division,
+                70.0,
+                snatch,
+                [100.0, -105.0, 0.0],
+            )
+        };
+        let rows = vec![
+            lift("Ada Lift", "Open Women's 71kg", [80.0, 0.0, 0.0]),
+            // The same lifts under her Masters division, with the name spaced differently.
+            lift(
+                "Ada  Lift",
+                "Women's Masters (40-44) 71kg",
+                [80.0, 0.0, 0.0],
+            ),
+            lift("Bea", "Open Women's 71kg", [-70.0, -70.0, -70.0]),
+            lift("Bea", "Women's 16-17 Age Group 71kg", [-70.0, -70.0, -70.0]),
+            // Another lifter of the same name, with her own lifts, is another athlete.
+            lift("Ada Lift", "Open Women's 71kg", [60.0, 0.0, 0.0]),
+        ];
+        let summary = summarize(&rows);
+        assert_eq!(summary.athletes, 3);
+        assert_eq!(summary.bomb_outs, 1);
+        assert_eq!(summary.average_total, Some(170.0));
+        // Ada 2 of 3, Bea 1 of 5, the other Ada 2 of 3.
+        assert_eq!(summary.make_rate, Some(500.0 / 11.0));
+
+        let editions = [EditionSummary {
+            meet: "M".into(),
+            year: "2026".into(),
+            summary,
+        }];
+        let json = report(&rows, &editions, &[], false).to_json();
+        // Every row is still listed; each lifter is ranked once.
+        assert_eq!(json["results"].as_array().unwrap().len(), 5);
+        let top = json["top_sinclair_women"].as_array().unwrap();
+        let names: Vec<&str> = top.iter().filter_map(|r| r["athlete"].as_str()).collect();
+        assert_eq!(names, ["Ada Lift", "Ada Lift"]);
+        assert_eq!(top[0]["total"], 180);
+        assert_eq!(top[1]["total"], 160);
+        assert_eq!(json["top_qpoints_women"].as_array().unwrap().len(), 2);
     }
 
     #[test]
