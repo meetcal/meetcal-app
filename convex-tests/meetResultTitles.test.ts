@@ -1,7 +1,7 @@
 import { recordWrite, setMeetResultTitles } from '../convex/ingest';
 import { computeStatsRows } from '../convex/lib/meetData';
 import { byMeet } from '../convex/results';
-import { attendance, attendanceRows } from '../convex/meets';
+import { attendance, attendanceRows, ATTENDANCE_ROW_BUDGET } from '../convex/meets';
 import { fakeMutationCtx, handlerOf } from './fakeDb';
 
 // Premium queries may log their caller (`convex/lib/access.ts`).
@@ -101,6 +101,18 @@ describe('results titles of a meet (#362)', () => {
     expect(await refused([NATIONALS], used - 1)).toBe(true);
     expect(await refused([NATIONALS, NATIONALS], used * 2 - 1)).toBe(true);
     expect(await attendanceRows(store.ctx as never, [NATIONALS, NATIONALS], used * 2)).toEqual([...whole, ...whole]);
+  });
+
+  it('says which meet is too large when one meet alone does not fit, where asking for fewer cannot help', async () => {
+    const store = world();
+    const message = (meets: string[]) => attendanceRows(store.ctx as never, meets, 0).then(() => '', (error: { data?: { error?: string } }) => error.data?.error ?? '');
+    expect(await message([NATIONALS])).toContain(JSON.stringify(NATIONALS));
+    expect(await message([NATIONALS])).not.toContain('fewer meets');
+    expect(await message([NATIONALS, JUNIOR])).toContain('ask for fewer meets at once');
+  });
+
+  it('gives every batch size the same budget, close to what one query may read', () => {
+    expect(ATTENDANCE_ROW_BUDGET).toBe(30000);
   });
 
   it('looks up linked titles only for results writes', async () => {

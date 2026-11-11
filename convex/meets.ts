@@ -27,6 +27,7 @@ import {
   type ZoneFormatters,
 } from './lib/meetData';
 import { normalizeName } from './lib/names';
+import { DOCUMENTS_ONE_QUERY_MAY_READ, takeWithinBudget, type DocumentBudget } from './lib/readBudget';
 import { compareBytes } from './lib/sort';
 import { meetKey, meetSessionKey } from './lib/viewKeys';
 import { readFreshView } from './lib/views';
@@ -165,29 +166,22 @@ export const namesPage = query({
   },
 });
 
-export const ATTENDANCE_ROW_BUDGET = 24000;
-export const ATTENDANCE_SINGLE_MEET_ROW_BUDGET = 30000;
-
-async function withinBudget<T>(budget: { left: number }, read: (limit: number) => Promise<T[]>): Promise<T[] | null> {
-  const rows = await read(budget.left + 1);
-  if (rows.length > budget.left) return null;
-  budget.left -= rows.length;
-  return rows;
-}
+const DOCUMENTS_LEFT_FOR_MEET_ROWS_AND_TITLES = 2000;
+export const ATTENDANCE_ROW_BUDGET = DOCUMENTS_ONE_QUERY_MAY_READ - DOCUMENTS_LEFT_FOR_MEET_ROWS_AND_TITLES;
 
 export async function attendanceRows(
   ctx: QueryCtx,
   meets: readonly string[],
-  rowBudget = meets.length === 1 ? ATTENDANCE_SINGLE_MEET_ROW_BUDGET : ATTENDANCE_ROW_BUDGET,
+  rowBudget = ATTENDANCE_ROW_BUDGET,
 ) {
-  const budget = { left: rowBudget };
+  const budget: DocumentBudget = { left: rowBudget };
   const rows = [];
   for (const meet of meets) {
     const [titles, meetRow] = await Promise.all([meetResultTitles(ctx, meet), meetByName(ctx, meet)]);
     const results = [];
     let fits = true;
     for (const title of titles) {
-      const page = await withinBudget(budget, (limit) =>
+      const page = await takeWithinBudget(budget, (limit) =>
         ctx.db
           .query('lifting_results')
           .withIndex('by_meet', (q) => q.eq('meet', title))
@@ -200,7 +194,7 @@ export async function attendanceRows(
       results.push(...page);
     }
     const registrations = fits
-      ? await withinBudget(budget, (limit) =>
+      ? await takeWithinBudget(budget, (limit) =>
           ctx.db
             .query('athletes')
             .withIndex('by_meet', (q) => q.eq('meet', meet))
@@ -208,7 +202,8 @@ export async function attendanceRows(
         )
       : null;
     if (registrations === null) {
-      throw apiError(413, `these meets have more results and registrations than one call reads (${rowBudget}): ask for fewer meets at once`, { max: rowBudget });
+      const tooMany = `more results and registrations than one call reads (${rowBudget})`;
+      throw apiError(413, meets.length === 1 ? `${JSON.stringify(meet)} has ${tooMany}` : `these meets have ${tooMany}: ask for fewer meets at once`, { max: rowBudget });
     }
     const dates = results.map((r) => r.date).sort(compareBytes);
     rows.push({
@@ -226,10 +221,6 @@ export async function attendanceRows(
   return rows;
 }
 
-/**
- * How many took part in each of `meets` (at most eight): lifters with results, and entries
- * registered (a meet can have its roster before its results), with the results' dates and the
- */
 export const attendance = query({
   args: { meets: v.array(v.string()) },
   handler: async (ctx, { meets }) => {
