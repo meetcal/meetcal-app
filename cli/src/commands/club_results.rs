@@ -54,9 +54,10 @@ pub fn club_known(clubs: &[String], club: &str) -> bool {
 pub async fn meet_has_only_results(meet: &str) -> bool {
     let roster: Result<Vec<serde_json::Value>> =
         query(queries::MEET_ATHLETES, &serde_json::json!({ "meet": meet })).await;
-    if !matches!(roster, Ok(ref athletes) if athletes.is_empty()) {
-        return false;
-    }
+    matches!(roster, Ok(ref athletes) if athletes.is_empty()) && meet_has_results(meet).await
+}
+
+pub async fn meet_has_results(meet: &str) -> bool {
     for alias in result_meet_aliases(meet) {
         let rows: Result<Vec<serde_json::Value>> =
             query(queries::MEET_RESULTS, &serde_json::json!({ "meet": alias })).await;

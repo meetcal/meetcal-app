@@ -1,10 +1,8 @@
-use std::collections::HashSet;
-
-use anyhow::{Result, anyhow, bail};
+use anyhow::{Result, anyhow};
 use clap::Parser;
 use serde_json::json;
 
-use crate::commands::club_results::{meet_has_only_results, report, results_only_message};
+use crate::commands::club_results::{meet_has_results, report, results_only_message};
 use crate::types::athletes::Athletes;
 use crate::types::club::ClubMeetStats;
 use crate::utils::backend::{queries, query};
@@ -29,14 +27,12 @@ pub struct WsoResultsArgs {
     pub wso: String,
 }
 
-#[derive(Debug, PartialEq)]
-pub struct WsoAthletes {
-    pub total_athletes: usize,
-    pub names: Vec<String>,
-}
-
 pub async fn run(args: WsoResultsArgs) -> Result<()> {
-    let stats = get_wso_meet_stats(&args.wso, &args.meet).await?;
+    let stats: ClubMeetStats = query(
+        queries::WSO_MEET_STATS,
+        &json!({ "wso": args.wso, "meet": args.meet }),
+    )
+    .await?;
     if stats.total_athletes == 0 {
         return Err(nobody_registered(&args.wso, &args.meet).await);
     }
@@ -44,84 +40,37 @@ pub async fn run(args: WsoResultsArgs) -> Result<()> {
     Ok(())
 }
 
-pub async fn get_wso_meet_stats(wso: &str, meet: &str) -> Result<ClubMeetStats> {
-    query(
-        queries::WSO_MEET_STATS,
-        &json!({ "wso": wso, "meet": meet }),
-    )
-    .await
-}
-
 async fn nobody_registered(wso: &str, meet: &str) -> anyhow::Error {
-    if meet_has_only_results(meet).await {
-        return anyhow!(results_only_message("wso", meet));
-    }
-    let roster = match get_meet_roster(meet).await {
+    let roster: Vec<Athletes> = match query(queries::MEET_ATHLETES, &json!({ "meet": meet })).await
+    {
         Ok(roster) => roster,
         Err(error) => return error,
     };
-    match select_wso_athletes(&roster, wso, meet) {
-        Err(error) => error,
-        Ok(_) => anyhow!("No athletes found for WSO \"{wso}\" in meet \"{meet}\"."),
+    if !roster.is_empty() {
+        return anyhow!(no_athletes_message(&roster, wso, meet));
     }
+    if meet_has_results(meet).await {
+        return anyhow!(results_only_message("wso", meet));
+    }
+    let message = format!("No athletes found for meet \"{meet}\"");
+    not_found(NameKind::Meet, meet, message).await
 }
 
-pub async fn get_meet_roster(meet: &str) -> Result<Vec<Athletes>> {
-    let query_args = json!({ "meet": meet });
-    let athletes: Vec<Athletes> = query(queries::MEET_ATHLETES, &query_args).await?;
-    if athletes.is_empty() {
-        let message = format!("No athletes found for meet \"{meet}\"");
-        return Err(not_found(NameKind::Meet, meet, message).await);
-    }
-    Ok(athletes)
-}
-
-pub fn select_wso_athletes(athletes: &[Athletes], wso: &str, meet: &str) -> Result<WsoAthletes> {
-    if athletes.is_empty() {
-        bail!("No athletes found for meet \"{meet}\"");
-    }
-
-    let normalized_wso = fold(wso);
-    let mut seen_names = HashSet::new();
-    let mut names = Vec::new();
-
-    for athlete in athletes {
-        if athlete.wso.as_deref().map(fold).as_deref() != Some(normalized_wso.as_str()) {
-            continue;
-        }
-
-        let name = athlete.name.trim();
-        if !name.is_empty() && seen_names.insert(fold(name)) {
-            names.push(name.to_string());
-        }
-    }
-
-    if names.is_empty() {
-        let mut available_wsos: Vec<_> = athletes
-            .iter()
-            .filter_map(|athlete| athlete.wso.as_deref())
-            .map(str::trim)
-            .filter(|value| !value.is_empty())
-            .map(str::to_string)
-            .collect();
-        available_wsos.sort_by_key(|value| fold(value));
-        available_wsos.dedup_by(|left, right| fold(left) == fold(right));
-
-        let suffix = if available_wsos.is_empty() {
-            String::new()
-        } else {
-            format!(" Available WSOs: {}.", available_wsos.join(", "))
-        };
-
-        return Err(anyhow!(
-            "No athletes found for WSO \"{wso}\" in meet \"{meet}\".{suffix}"
-        ));
-    }
-
-    Ok(WsoAthletes {
-        total_athletes: athletes.len(),
-        names,
-    })
+pub fn no_athletes_message(roster: &[Athletes], wso: &str, meet: &str) -> String {
+    let mut wsos_at_the_meet: Vec<&str> = roster
+        .iter()
+        .filter_map(|athlete| athlete.wso.as_deref())
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .collect();
+    wsos_at_the_meet.sort_by_key(|value| fold(value));
+    wsos_at_the_meet.dedup_by(|left, right| fold(left) == fold(right));
+    let suffix = if wsos_at_the_meet.is_empty() {
+        String::new()
+    } else {
+        format!(" Available WSOs: {}.", wsos_at_the_meet.join(", "))
+    };
+    format!("No athletes found for WSO \"{wso}\" in meet \"{meet}\".{suffix}")
 }
 
 #[cfg(test)]
@@ -149,46 +98,25 @@ mod tests {
     }
 
     #[test]
-    fn names_fold_ignoring_case_and_repeated_whitespace() {
-        assert_eq!(fold("  Mountain   South "), "mountain south");
-    }
-
-    #[test]
-    fn selects_wso_case_insensitively_and_deduplicates_names() {
-        let athletes = vec![
-            athlete(" Jane Doe ", Some("Mountain South")),
-            athlete("jane   doe", Some(" mountain   south ")),
-            athlete("John Doe", Some("Florida")),
-        ];
-
-        let selected = select_wso_athletes(&athletes, "MOUNTAIN SOUTH", "Meet").unwrap();
-
-        assert_eq!(selected.total_athletes, 3);
-        assert_eq!(selected.names, vec!["Jane Doe"]);
-    }
-
-    #[test]
-    fn selection_error_lists_available_wsos() {
-        let athletes = vec![
+    fn nobody_from_a_wso_lists_the_wsos_at_the_meet_once_each() {
+        let roster = vec![
             athlete("Jane", Some("Florida")),
             athlete("John", Some("Carolina")),
             athlete("Jess", Some(" florida ")),
+            athlete("Jo", None),
         ];
-
-        let error = select_wso_athletes(&athletes, "Ohio", "Meet")
-            .unwrap_err()
-            .to_string();
-
-        assert!(error.contains("No athletes found for WSO \"Ohio\""));
-        assert!(error.contains("Available WSOs: Carolina, Florida"));
+        assert_eq!(
+            no_athletes_message(&roster, "Ohio", "Meet"),
+            "No athletes found for WSO \"Ohio\" in meet \"Meet\". Available WSOs: Carolina, Florida."
+        );
     }
 
     #[test]
-    fn selection_distinguishes_empty_meet_from_missing_wso() {
-        let error = select_wso_athletes(&[], "Carolina", "Missing Meet")
-            .unwrap_err()
-            .to_string();
-
-        assert_eq!(error, "No athletes found for meet \"Missing Meet\"");
+    fn a_roster_that_names_no_wso_lists_none() {
+        let roster = vec![athlete("Jane", None)];
+        assert_eq!(
+            no_athletes_message(&roster, "Ohio", "Meet"),
+            "No athletes found for WSO \"Ohio\" in meet \"Meet\"."
+        );
     }
 }
