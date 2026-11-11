@@ -351,7 +351,7 @@ export const run = internalAction({
         continue;
       }
       try {
-        result.records = await source.scrape();
+        result.records = await budget.orStop(source.scrape());
         // Every source has records; none means its sheet, tab or layout
         // changed, which must fail loudly rather than leave the old ones stale.
         if (result.records.length === 0) throw new Error('parsed 0 records (source layout changed?)');

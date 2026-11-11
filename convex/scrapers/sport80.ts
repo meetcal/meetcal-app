@@ -222,7 +222,7 @@ export const run = internalAction({
       }
       let table: { rows: Dict[]; notWhole?: string };
       try {
-        table = await api.eventResults(eventId);
+        table = await budget.orStop(api.eventResults(eventId));
       } catch (error) {
         failures.push({ source: `${meet} (event ${eventId})`, error: `${eventDate(event)}: ${(error as Error).message}` });
         continue;
@@ -259,7 +259,7 @@ export const run = internalAction({
       }
       try {
       for (let i = 0; i < valid.length; i += INGEST_BATCH) {
-        const counts: { inserted: number; updated: number; unchanged: number } = await ctx.runMutation(
+        const counts: { inserted: number; updated: number; unchanged: number } = await budget.orStop(ctx.runMutation(
           internal.ingest.upsertLiftingResults,
           {
             allowShrink: allowShrink ?? false,
@@ -283,7 +283,7 @@ export const run = internalAction({
               federation: row.federation,
             })),
           },
-        );
+        ));
         outcome.inserted += counts.inserted;
         outcome.updated += counts.updated;
         outcome.unchanged += counts.unchanged;
@@ -303,11 +303,9 @@ export const run = internalAction({
         const keep = valid.map((row) => ({ meet: row.meet, name: row.name!, age: row.age, date: row.date }));
         // A batch a call; the rest of a huge prune waits for the next run.
         for (let call = 0; call < MAX_PRUNE_CALLS; call++) {
-          const pruned: { deleted: number; remaining: number } = await ctx.runMutation(internal.ingest.pruneEventResults, {
-            eventId,
-            keep,
-            allowShrink: allowShrink ?? false,
-          });
+          const pruned: { deleted: number; remaining: number } = await budget.orStop(
+            ctx.runMutation(internal.ingest.pruneEventResults, { eventId, keep, allowShrink: allowShrink ?? false }),
+          );
           outcome.deleted += pruned.deleted;
           if (pruned.remaining === 0 || pruned.deleted === 0) break;
         }

@@ -113,33 +113,34 @@ export const run = internalAction({
         continue;
       }
       try {
-        const title = await fetchEntriesMeet(target.url);
-        const eventId = entriesEventId(target.url);
-        // The meet is the one Sport80 knows by this event id, so a list
-        // Sport80 retitled still lands on the stored meet's name.
-        const stored: { name: string; status: string; endDate: string } | null = await ctx.runQuery(internal.scrapers.queries.entriesMeet, { sourceId: eventId, title });
-        if (!stored) throw new Error(unstoredEntriesMessage(title, eventId, target.url));
-        const meet = stored.name;
-        result.meet = meet;
-        if (title !== meet) result.title = title;
-        if (stored.status === 'completed') {
-          result.skipped = 'meet completed';
-          if (!dryRun && targetExpired(stored.endDate, Date.now())) {
-            await ctx.runMutation(internal.scrapers.entryTargets.remove, { url: target.url });
-            result.skipped = `meet completed ${stored.endDate}, target removed`;
-          }
-          continue;
-        }
-        const entries = await withKnownWsos(ctx, await fetchEntries(target.url, meet));
-        result.entries = entries.length;
-        result.withWso = entries.filter((entry) => entry.wso).length;
-        if (dryRun || entries.length === 0) continue;
-        const counts: { inserted: number; updated: number; unchanged: number; sessionSkipped: number; notOnStartList: number; rejected: number; deleted: number } = await ctx.runMutation(
-          internal.ingest.upsertEntryAthletes,
-          // `fetchEntries` checked the list against its total: it is the whole list.
-          { meet, rows: entries, complete: true, ...(allowShrink ? { allowShrink } : {}) },
+        await budget.orStop(
+          (async () => {
+            const title = await fetchEntriesMeet(target.url);
+            const eventId = entriesEventId(target.url);
+            const stored: { name: string; status: string; endDate: string } | null = await ctx.runQuery(internal.scrapers.queries.entriesMeet, { sourceId: eventId, title });
+            if (!stored) throw new Error(unstoredEntriesMessage(title, eventId, target.url));
+            const meet = stored.name;
+            result.meet = meet;
+            if (title !== meet) result.title = title;
+            if (stored.status === 'completed') {
+              result.skipped = 'meet completed';
+              if (!dryRun && targetExpired(stored.endDate, Date.now())) {
+                await ctx.runMutation(internal.scrapers.entryTargets.remove, { url: target.url });
+                result.skipped = `meet completed ${stored.endDate}, target removed`;
+              }
+              return;
+            }
+            const entries = await withKnownWsos(ctx, await fetchEntries(target.url, meet));
+            result.entries = entries.length;
+            result.withWso = entries.filter((entry) => entry.wso).length;
+            if (dryRun || entries.length === 0) return;
+            const counts: { inserted: number; updated: number; unchanged: number; sessionSkipped: number; notOnStartList: number; rejected: number; deleted: number } = await ctx.runMutation(
+              internal.ingest.upsertEntryAthletes,
+              { meet, rows: entries, complete: true, ...(allowShrink ? { allowShrink } : {}) },
+            );
+            Object.assign(result, counts);
+          })(),
         );
-        Object.assign(result, counts);
       } catch (error) {
         result.error = (error as Error).message;
         console.error(`entries (${target.label}): ${result.error}`);
