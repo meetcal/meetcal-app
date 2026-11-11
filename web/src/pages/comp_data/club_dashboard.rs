@@ -1,9 +1,10 @@
 use super::{
-    format::yes_no,
+    format::{NO_VALUE, yes_no},
     loading::{Load, LoadState, load_error, load_query, select_response},
     ui::{DataMetric, DataPage, DataStatus, DataTable, EmptyTableRow, FilterSelect, TableSkeleton},
 };
 use crate::utils::api::{queries, query_with};
+use crate::utils::text::capitalize_first;
 use leptos::prelude::*;
 use serde::{Deserialize, Serialize};
 
@@ -163,14 +164,7 @@ fn club_meet_choices(answer: ClubMeets) -> MeetChoices {
 fn medal(value: &Option<String>) -> String {
     value
         .as_deref()
-        .map(|value| {
-            let mut characters = value.chars();
-            characters
-                .next()
-                .map(|first| first.to_uppercase().collect::<String>() + characters.as_str())
-                .unwrap_or_default()
-        })
-        .unwrap_or_else(|| "—".to_owned())
+        .map_or_else(|| NO_VALUE.to_owned(), capitalize_first)
 }
 
 fn dashboard_metrics(stats: &MeetStats) -> Vec<(&'static str, String)> {

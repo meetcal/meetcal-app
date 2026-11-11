@@ -1,9 +1,10 @@
 use super::{
-    format::format_us_date,
+    format::{NO_VALUE, format_us_date},
     loading::{Load, LoadState, load_error, load_query},
     ui::{DataMetric, DataPage, DataStatus, DataTable, EmptyTableRow, FilterSelect, TableSkeleton},
 };
 use crate::utils::api::{actions, premium_action, queries};
+use crate::utils::text::capitalize_first;
 use leptos::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::{borrow::Cow, collections::HashMap};
@@ -389,13 +390,13 @@ fn elite_table(rows: &[EliteRow], method: Method) -> AnyView {
         .map(|(row, rank)| {
             let standard = match (&row.weight_class, row.standard_a) {
                 (Some(class), Some(standard)) => format!("{standard} ({class})"),
-                _ => "—".to_owned(),
+                _ => NO_VALUE.to_owned(),
             };
             view! {
                 <tr>
                     <td>{rank}</td>
                     <td>{row.name.clone()}</td>
-                    <td>{format!("{} ({})", capitalized(&row.group), row.age)}</td>
+                    <td>{format!("{} ({})", capitalize_first(&row.group), row.age)}</td>
                     <td>{row.body_weight}</td>
                     <td>{row.snatch_best}</td>
                     <td>{row.cj_best}</td>
@@ -417,14 +418,6 @@ fn elite_table(rows: &[EliteRow], method: Method) -> AnyView {
         </DataTable>
     }
     .into_any()
-}
-
-fn capitalized(value: &str) -> String {
-    let mut chars = value.chars();
-    chars
-        .next()
-        .map(|first| first.to_uppercase().chain(chars).collect())
-        .unwrap_or_default()
 }
 
 /// A WSO name as a file name: letters and digits, runs of anything else as one dash.

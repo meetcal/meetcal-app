@@ -16,6 +16,7 @@
 //! premium read without a current pass and still answers it; later it will
 //! refuse it, so a premium read sends the pass whenever the site can get one.
 
+use crate::utils::text::capitalize_first;
 use anyhow::{Result, anyhow};
 use futures::future::{FutureExt, LocalBoxFuture, Shared};
 use reqwest::{StatusCode, header::RETRY_AFTER};
@@ -1177,7 +1178,7 @@ fn meet_submission_value(response: QueryResponse) -> Result<Value> {
     ) = (status, &response)
         && let Some(error) = data.get("error").and_then(Value::as_str)
     {
-        let sentence = sentence_case(error);
+        let sentence = capitalize_first(error);
         return Err(anyhow!(if status == 429 {
             format!("{sentence}. Please try again tomorrow.")
         } else {
@@ -1185,16 +1186,6 @@ fn meet_submission_value(response: QueryResponse) -> Result<Value> {
         }));
     }
     answer_value(response)
-}
-
-/// `text` with its first letter capitalized: the server's errors are
-/// lowercase phrases (`meet name is required`).
-fn sentence_case(text: &str) -> String {
-    let mut characters = text.trim().chars();
-    match characters.next() {
-        Some(first) => first.to_uppercase().chain(characters).collect(),
-        None => String::new(),
-    }
 }
 
 /// Reads `meetSubmissions:generateUploadUrl`'s `{ uploadUrl }`.

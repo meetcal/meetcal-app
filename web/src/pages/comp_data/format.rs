@@ -1,3 +1,5 @@
+pub(crate) const NO_VALUE: &str = "—";
+
 pub(crate) fn yes_no(value: bool) -> &'static str {
     if value { "Yes" } else { "No" }
 }
@@ -46,14 +48,10 @@ pub(crate) fn display_gender(value: &str) -> String {
     }
 }
 
-/// A record, lift or standard, or "—" when there is none. The reference tables answer `0` for
-/// "no record set / no standard" (every U15 B standard, unset masters records) and WSO records
-/// answer `null` for a lift the source left out; neither is a weight anyone has to beat. The app
-/// (`formatReferenceKg`) and the CLI's `kg` read `<= 0` the same way.
 pub(crate) fn reference_value(value: Option<f64>) -> String {
     match value {
         Some(value) if value.is_finite() && value > 0.0 => value.to_string(),
-        _ => "—".to_owned(),
+        _ => NO_VALUE.to_owned(),
     }
 }
 
