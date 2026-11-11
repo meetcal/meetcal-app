@@ -139,6 +139,15 @@ pub(crate) fn DataTable(children: Children) -> impl IntoView {
 }
 
 #[component]
+pub(crate) fn TableHead(headers: &'static [&'static str]) -> impl IntoView {
+    view! {
+        <thead>
+            <tr>{headers.iter().map(|header| view! { <th>{*header}</th> }).collect_view()}</tr>
+        </thead>
+    }
+}
+
+#[component]
 pub(crate) fn TableSkeleton(columns: usize) -> impl IntoView {
     let header_cells = (0..columns)
         .map(|_| view! { <th><span class="data-skeleton"></span></th> })

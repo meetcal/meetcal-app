@@ -294,7 +294,7 @@ test("club and WSO dashboards expose meet performance metrics", async ({ page })
   });
   // The club's registrations are no longer read to list its meets.
   await routeQuery(page, "reference:clubAthletes", (route) => route.abort("failed"));
-  await routeQuery(page, "reference:clubMeetStats", (route) => route.fulfill(valueAnswer({ total_athletes: 1, gold_medals: 1, silver_medals: 0, bronze_medals: 0, total_prs: 1, perfect_6_for_6: 0, total_weight_lifted: 225, snatch_make_rate: 67, cj_make_rate: 67, combined_make_rate: 67, athlete_results: [{ name: "Test Athlete", weight_class: "69kg", snatch_best: 100, cj_best: 125, total: 225, body_weight: 70.5, medal: "Gold", snatch_medal: "Gold", cj_medal: "Gold", total_medal: "Gold", is_pr: true, perfect_lifts: false }] })));
+  await routeQuery(page, "reference:clubMeetStats", (route) => route.fulfill(valueAnswer({ total_athletes: 1, gold_medals: 1, silver_medals: 0, bronze_medals: 0, total_prs: 1, perfect_6_for_6: 0, total_weight_lifted: 225, snatch_make_rate: 67, cj_make_rate: 67, combined_make_rate: 67, athlete_results: [{ name: "Test Athlete", weight_class: "69", snatch_best: 100, cj_best: 125, total: 225, body_weight: 0, medal: "Gold", snatch_medal: "Gold", cj_medal: "Gold", total_medal: "Gold", is_pr: true, perfect_lifts: false }] })));
   await page.goto("/club-dashboard");
   await page.getByLabel("Club").selectOption("Test Barbell");
   await expect(page.locator("select").and(page.getByRole("combobox", { name: "Meet" })).locator("option")).toHaveText(["Choose a completed meet", "Test Meet", "Older Meet"]);
@@ -303,6 +303,7 @@ test("club and WSO dashboards expose meet performance metrics", async ({ page })
   await expect(page.locator("tbody")).toContainText("Test Athlete");
   await expect(page.locator("tbody")).toContainText("Gold");
   await expect(page.locator("tbody")).not.toContainText("gold");
+  await expect(page.locator("tbody tr").first().locator("td")).toHaveText(["Test Athlete", "69kg", "—", "100", "Gold", "125", "Gold", "225", "Gold", "Yes", "No"]);
   expect(clubMeetsAsked).toEqual(["Test Barbell"]);
 
   await routeQuery(page, "meets:list", (route) => route.fulfill(textAnswer([])));
