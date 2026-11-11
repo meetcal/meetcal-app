@@ -45,8 +45,9 @@ export function tableComplete(rows: number, total: unknown): boolean {
 export function joinPages(pages: readonly Dict[][], total: unknown): { rows: Dict[]; notWhole?: string } {
   const rows = pages.flat();
   const reported = rowCount(total);
-  if (reported !== null && rows.length !== reported) throw new Error(`read ${rows.length} rows of the ${reported} the table reports`);
+  if (typeof total === 'number' && reported === null) throw new Error(`read ${rows.length} rows of the ${total} the table reports`);
   if (reported === null) return { rows, notWhole: 'the table reports no row count' };
+  if (!tableComplete(rows.length, reported)) throw new Error(`read ${rows.length} rows of the ${reported} the table reports`);
   const earlier = new Set<string>();
   for (const page of pages) {
     const keys = page.map((row) => JSON.stringify(row));

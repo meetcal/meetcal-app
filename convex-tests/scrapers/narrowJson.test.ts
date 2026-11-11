@@ -82,6 +82,9 @@ describe('row counts across the Sport80 readers', () => {
     expect(joinPages([[{ a: 1 }], [{ a: 2 }]], '2')).toEqual({ rows: [{ a: 1 }, { a: 2 }] });
     expect(() => joinPages([[{ a: 1 }]], '2')).toThrow('read 1 rows of the 2 the table reports');
     expect(joinPages([[{ a: 1 }]], undefined).notWhole).toBe('the table reports no row count');
+    expect(joinPages([[{ a: 1 }]], 'many').notWhole).toBe('the table reports no row count');
+    expect(() => joinPages([[{ a: 1 }]], -1)).toThrow('read 1 rows of the -1 the table reports');
+    expect(() => joinPages([[{ a: 1 }]], 1.5)).toThrow('read 1 rows of the 1.5 the table reports');
   });
 
   it('refuses a widget listing with a negative count', () => {
