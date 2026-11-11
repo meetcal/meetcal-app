@@ -23,6 +23,10 @@ android/
 !.claude/skills/review-code-performance-tests
 !.claude/skills/grill-me
 !.claude/skills/grilling
+!.claude/skills/finish-work
+!.claude/skills/review-diff
+!.claude/skills/device-testing
+!.claude/skills/merge-and-deploy
 .cursor/
 .expo/
 .idea/
