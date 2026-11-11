@@ -1,3 +1,4 @@
+import { SLIDE_IN_FROM_RIGHT, stackHeaderOptions } from "@/lib/stack-header-options";
 import { DataTable } from "@/components/ui/DataTable";
 import { useIsOffline } from "@/hooks/useIsOffline";
 import { FilterBar } from "@/components/ui/FilterBar";
@@ -15,7 +16,8 @@ import {
 } from "@/lib/database/fetch-national-rankings";
 import { competitionRanks } from "@/lib/competition-rank";
 import { isNetworkAvailable } from "@/lib/networkUtils";
-import { FilterState, Gender } from "@/types/nat-rankings";
+import { FilterState } from "@/types/nat-rankings";
+import { Gender } from "@/types/records";
 import { getWeightClasses, getWeightClassOptions } from "@/utils/nat-rankings";
 import { Stack } from "expo-router";
 import React, { useEffect, useMemo, useState } from "react";
@@ -146,21 +148,9 @@ function NationalRankingsScreenContent() {
     >
       <Stack.Screen
         options={{
+          ...stackHeaderOptions(colors),
+          ...SLIDE_IN_FROM_RIGHT,
           title: "National Rankings",
-          headerBackTitle: "Back",
-          headerShown: true,
-          gestureEnabled: true,
-          gestureDirection: "horizontal",
-          animation: "slide_from_right",
-          headerTitleStyle: {
-            color: colors.headerTitle,
-          },
-          headerStyle: {
-            backgroundColor: colors.headerBackground,
-          },
-          headerShadowVisible: false,
-          headerBackButtonDisplayMode: "minimal",
-          headerTintColor: colors.text,
         }}
       />
 

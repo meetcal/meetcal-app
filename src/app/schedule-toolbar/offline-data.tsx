@@ -1,3 +1,4 @@
+import { SLIDE_IN_FROM_RIGHT, stackHeaderOptions } from "@/lib/stack-header-options";
 import DownloadRow from "@/components/offline/DownloadRow";
 import { IconSymbol } from "@/components/ui/IconSymbol";
 import { ThemedText } from "@/components/ui/ThemedText";
@@ -89,21 +90,9 @@ function OfflineDataContent() {
     >
       <Stack.Screen
         options={{
+          ...stackHeaderOptions(colors),
+          ...SLIDE_IN_FROM_RIGHT,
           title: "Offline Data",
-          headerBackTitle: "Back",
-          headerShown: true,
-          gestureEnabled: true,
-          gestureDirection: "horizontal",
-          animation: "slide_from_right",
-          headerStyle: {
-            backgroundColor: colors.background,
-          },
-          headerShadowVisible: false,
-          headerBackButtonDisplayMode: "minimal",
-          headerTitleStyle: {
-            color: colors.text,
-          },
-          headerTintColor: colors.text,
           // Native UIBarButtonItems on iOS so they move into iPhone Duo's
           // vertical bar. Native items can't host a spinner, so in-flight state
           // is the standard dimmed/disabled treatment instead.

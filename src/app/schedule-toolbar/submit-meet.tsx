@@ -1,3 +1,4 @@
+import { stackHeaderOptions } from "@/lib/stack-header-options";
 import { SubmitMeetForm } from "@/components/submit-meet/SubmitMeetForm";
 import { Button } from "@/components/ui/Button";
 import { ThemedText } from "@/components/ui/ThemedText";
@@ -24,13 +25,8 @@ export default function SubmitMeetScreen() {
     <ThemedView style={[styles.container, { backgroundColor: colors.background }, screenInsets]}>
       <Stack.Screen
         options={{
-          headerShown: true,
+          ...stackHeaderOptions(colors),
           headerTitle: "Submit a Meet",
-          headerTintColor: colors.text,
-          headerBackTitle: "Back",
-          headerStyle: { backgroundColor: colors.background },
-          headerShadowVisible: false,
-          headerBackButtonDisplayMode: "minimal",
         }}
       />
       {authState === null ? (
