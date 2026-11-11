@@ -21,6 +21,7 @@ import { clearAuthCache } from "@/lib/authCache";
 import { clearCachedMeetData, clearCacheToast } from "@/lib/database/clear-cache";
 import { resolvePremiumAccess } from "@/lib/premium-access";
 import { useAuthGuard } from "@/utils/authGuard";
+import { openWebLink } from "@/utils/openWebLink";
 import { SUBMIT_MEET_ROUTE } from "@/lib/meet-submission";
 import {
   feedbackMailtoUrl,
@@ -407,7 +408,7 @@ export default function ProfileScreen() {
 
         <View style={styles.legalLinks}>
           <Pressable
-            onPress={() => Linking.openURL("https://meetcal.app/privacy")}
+            onPress={() => void openWebLink("https://meetcal.app/privacy")}
           >
             <ThemedText style={[styles.legalText, { color: colors.link }]}>
               Privacy Policy
@@ -421,7 +422,7 @@ export default function ProfileScreen() {
 {" "}
           </ThemedText>
           <Pressable
-            onPress={() => Linking.openURL("https://meetcal.app/terms")}
+            onPress={() => void openWebLink("https://meetcal.app/terms")}
           >
             <ThemedText style={[styles.legalText, { color: colors.link }]}>
               Terms of Use
@@ -436,7 +437,7 @@ export default function ProfileScreen() {
           </ThemedText>
           <Pressable
             onPress={() =>
-              Linking.openURL(
+              void openWebLink(
                 Platform.OS === "ios"
                   ? "https://www.apple.com/legal/internet-services/itunes/dev/stdeula/"
                   : "https://meetcal.app/eula",
