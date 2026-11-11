@@ -1332,13 +1332,13 @@ export const upsertRecords = internalMutation({
     const outcomes: UpsertOutcome[] = [];
     // What each key holds so far: an earlier row of this payload may have
     // inserted or rewritten it, after `existing` was read.
-    const written = new Map<string, Lifts & { gender: string; _id: Id<'records'> }>();
+    const written = new Map<string, Lifts & { gender: string; ageCategory: string; _id: Id<'records'> }>();
     for (const { key, doc, existing } of pairs) {
       const current = written.get(key) ?? existing;
       if (!current) {
         written.set(key, { ...doc, _id: await ctx.db.insert('records', doc) });
         outcomes.push({ wasInsert: true, wasChanged: true });
-      } else if (liftsChanged(current, doc) || current.gender !== doc.gender) {
+      } else if (recordChanged(current, doc)) {
         await ctx.db.replace(current._id, doc);
         written.set(key, { ...doc, _id: current._id });
         outcomes.push({ wasInsert: false, wasChanged: true });

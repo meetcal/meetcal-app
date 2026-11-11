@@ -7,7 +7,7 @@ import { fetchBytes } from './lib/http';
 import { fetchPageText } from './lib/incompleteChain';
 import { pdfRunLines } from './lib/pdf';
 import { previewPrune, writeThenPrune } from './lib/prune';
-import { storedLifts, tally } from './lib/recordRows';
+import { storedLifts, tally, type RowOutcome } from './lib/recordRows';
 import { discoverRecordPdfs, PAGE_URL, parseRecordPages, PDF_OPTIONS, type UsamwRecord } from './parse/usamw';
 
 /**
@@ -45,7 +45,7 @@ export const run = internalAction({
     const { written: outcomes, deleted } = await writeThenPrune(
       prune,
       allowShrink ?? false,
-      (): Promise<{ wasInsert: boolean; wasChanged: boolean }[]> =>
+      (): Promise<RowOutcome[]> =>
         ctx.runMutation(internal.ingest.upsertRecords, {
           allowShrink: allowShrink ?? false,
           rows: records.map((r) => ({ recordType: r.recordType, ageCategory: r.ageCategory, gender: r.gender, weightClass: r.weightClass, ...storedLifts(r) })),

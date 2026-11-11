@@ -15,7 +15,7 @@ import {
 } from './parse/umwf';
 import { sourcesFailed, type SourceFailure } from '../lib/cronAlerts';
 import { previewPrune, writeThenPrune } from './lib/prune';
-import { storedLifts, tally } from './lib/recordRows';
+import { storedLifts, tally, type RowOutcome } from './lib/recordRows';
 
 /**
  * UMWF masters world records (port of `umwf_records.py`): one published
@@ -71,7 +71,7 @@ export const run = internalAction({
       });
     if (dryRun) return { records, failedTabs, inserted: 0, updated: 0, ...(await previewPrune(prune, allowShrink ?? false)) };
 
-    let result: { written: { wasInsert: boolean; wasChanged: boolean }[]; deleted: string[] };
+    let result: { written: RowOutcome[]; deleted: string[] };
     try {
       result = await writeThenPrune(prune, allowShrink ?? false, () =>
         ctx.runMutation(internal.ingest.upsertRecords, {

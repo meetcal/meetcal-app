@@ -7,7 +7,7 @@ import { fetchBytes, fetchText } from './lib/http';
 import { currentStandards, findStandardsPdfUrl, parseStandards, type Standard } from './parse/standards';
 import { pdfLines } from './lib/pdf';
 import { previewPrune, writeThenPrune } from './lib/prune';
-import { tally } from './lib/recordRows';
+import { tally, type RowOutcome } from './lib/recordRows';
 
 /**
  * USA Weightlifting A/B standards (port of `usaw/standards_scraper`): finds
@@ -53,7 +53,7 @@ export const run = internalAction({
     const { written: outcomes, deleted } = await writeThenPrune(
       prune,
       allowShrink ?? false,
-      (): Promise<{ wasInsert: boolean; wasChanged: boolean }[]> =>
+      (): Promise<RowOutcome[]> =>
         ctx.runMutation(internal.ingest.upsertStandards, {
           rows: standards.map((s) => ({
             ageCategory: s.age_category,

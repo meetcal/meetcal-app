@@ -1,3 +1,4 @@
+import type { UpsertOutcome } from '../../ingest';
 import type { RecordHolder } from '../parse/holder';
 
 type Lift = number | null | undefined;
@@ -25,9 +26,9 @@ export function storedLifts(record: ScrapedLifts, { zeroMeansNoRecord = false } 
   };
 }
 
-export type UpsertOutcome = { wasInsert: boolean; wasChanged: boolean };
+export type RowOutcome = Pick<UpsertOutcome, 'wasInsert' | 'wasChanged'>;
 
-export function tally(outcomes: readonly UpsertOutcome[]): { inserted: number; updated: number; unchanged: number } {
+export function tally(outcomes: readonly RowOutcome[]): { inserted: number; updated: number; unchanged: number } {
   const inserted = outcomes.filter((outcome) => outcome.wasInsert).length;
   const updated = outcomes.filter((outcome) => !outcome.wasInsert && outcome.wasChanged).length;
   return { inserted, updated, unchanged: outcomes.length - inserted - updated };

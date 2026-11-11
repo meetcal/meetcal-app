@@ -8,7 +8,7 @@ import { pdfLines } from './lib/pdf';
 import { findRecordsPdfUrl, parseRecordsReport, type UsawRecord } from './parse/records';
 import { sourcesFailed } from '../lib/cronAlerts';
 import { previewPrune, writeThenPrune } from './lib/prune';
-import { storedLifts, tally } from './lib/recordRows';
+import { storedLifts, tally, type RowOutcome as Outcome } from './lib/recordRows';
 
 /**
  * USA Weightlifting American records (port of `usaw/records_scraper`): the
@@ -36,7 +36,6 @@ type RunResult = {
   pruneRefused?: string;
 };
 
-type Outcome = { wasInsert: boolean; wasChanged: boolean };
 
 const unknownAgeFailures = (codes: readonly string[]) =>
   codes.map((code) => ({ source: `age group ${code}`, error: `${JSON.stringify(code)} is not an age group the parser knows (parse/records.ts ageCategory); its rows were not stored` }));
