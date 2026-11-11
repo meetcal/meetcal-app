@@ -45,9 +45,6 @@ pub async fn run(args: StandardsArgs) -> Result<()> {
     Ok(())
 }
 
-/// The standards for one age group and gender, lightest class first; values compare ignoring
-/// case and surrounding space, and the gender however it is spelled (`filters::same_gender`).
-/// When none match, an error naming the filter that matched nothing and the values there are.
 pub fn selected(standards: Vec<Standards>, age: &str, gender: &str) -> Result<Vec<Standards>> {
     let (filtered, others): (Vec<Standards>, Vec<Standards>) =
         standards.into_iter().partition(|row| {

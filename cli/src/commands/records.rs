@@ -151,7 +151,6 @@ mod tests {
         };
         assert_eq!(classes("Senior", "Men", "USAW"), ["60", "110+"]);
         assert_eq!(classes(" senior ", "men ", " usaw"), ["60", "110+"]);
-        // As `leaderboard --gender` takes it.
         assert_eq!(classes("Senior", "m", "USAW"), ["60", "110+"]);
         assert_eq!(classes("Senior", "f", "USAW"), ["48"]);
     }
@@ -168,7 +167,6 @@ mod tests {
             "No records for --age \"Seniors\" with --federation USAW --gender Men. Try one of: \
              Masters 35, Senior"
         );
-        // A gender given in short is not the filter at fault.
         assert_eq!(
             error("Seniors", "m", "USAW"),
             "No records for --age \"Seniors\" with --federation USAW --gender Men. Try one of: \

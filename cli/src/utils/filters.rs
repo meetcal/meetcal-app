@@ -21,9 +21,6 @@ pub fn parse_date(value: &str) -> Result<String, String> {
         .map_err(|_| "expected a date as YYYY-MM-DD, like 2026-06-20".to_string())
 }
 
-/// A meet, club, WSO or athlete name as typed, without surrounding space; for clap's
-/// `value_parser`, so every command reads a name the same way and a blank one fails before any
-/// request.
 pub fn parse_name(value: &str) -> Result<String, String> {
     let name = value.trim();
     if name.is_empty() {
@@ -32,9 +29,6 @@ pub fn parse_name(value: &str) -> Result<String, String> {
     Ok(name.to_string())
 }
 
-/// A `--gender` value as the data spells it: `Men` for `men`, `m`, `male`…, `Women` for `women`,
-/// `w`, `f`, `female`… (`Gender::parse`); anything else as typed, trimmed, so the "no match"
-/// error can quote it.
 pub fn gender_label(value: &str) -> String {
     match Gender::parse(value) {
         Some(gender) => gender.label().to_string(),
@@ -42,7 +36,6 @@ pub fn gender_label(value: &str) -> String {
     }
 }
 
-/// Whether a row's gender is the one asked for, however either spells it ([`gender_label`]).
 pub fn same_gender(row: &str, wanted: &str) -> bool {
     gender_label(row).eq_ignore_ascii_case(&gender_label(wanted))
 }
