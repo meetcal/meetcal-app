@@ -22,8 +22,6 @@ pub struct WsosArgs {
 pub async fn run(args: WsosArgs) -> Result<()> {
     let Some(wso) = args.wso else {
         let records = wsos().await?;
-        // A failed read is an error: without it the list would lack the WSOs that only
-        // register athletes and still exit 0.
         let registrations = registration_wsos().await?;
         output::emit(Report::single("wsos", table(&registrations, &records)));
         return Ok(());

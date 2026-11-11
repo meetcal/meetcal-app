@@ -44,7 +44,6 @@ pub async fn run(args: WsoRecordsArgs) -> Result<()> {
     let query_args = serde_json::json!({ "ageCategory": age, "gender": gender, "wso": wso });
     let records: Vec<WSORecord> = query(queries::WSO_RECORDS, &query_args).await?;
     if records.is_empty() {
-        // A failed read is an error, not "no such WSO".
         let groups = wso_age_groups(&wso).await?;
         if groups.is_empty() {
             let message = format!("No records found for WSO \"{wso}\"");
