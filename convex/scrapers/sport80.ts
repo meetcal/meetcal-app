@@ -15,6 +15,7 @@ import {
   type ResultRow,
 } from './parse/sport80';
 import { sourcesFailed, type SourceFailure } from '../lib/cronAlerts';
+import { NOT_REACHED, runBudget } from './lib/budget';
 
 /**
  * USAW meet results from Sport80 (port of
@@ -131,6 +132,9 @@ class Sport80 {
   }
 }
 
+/** The share of the run's time budget (`lib/budget.ts`) reading events' tables may take. */
+const READ_SHARE = 0.5;
+
 /** Rows per ingest call: each writes its rows and rewrites their athletes' history documents. */
 const INGEST_BATCH = 200;
 
@@ -160,6 +164,7 @@ export const run = internalAction({
   // event's prune delete more than it otherwise may, after checking by hand.
   args: { dryRun: v.optional(v.boolean()), only: v.optional(v.array(v.string())), allowShrink: v.optional(v.boolean()) },
   handler: async (ctx, { dryRun, only, allowShrink }): Promise<RunResult> => {
+    const budget = runBudget();
     const api = await Sport80.connect();
     const year = new Date().getUTCFullYear();
     // Everything that could not be read or stored, by a source name that
@@ -212,6 +217,11 @@ export const run = internalAction({
       if (!eventId || !meet || seen.has(eventId)) continue;
       seen.add(eventId);
       if (!hasResultsRoute(event) || (only && !only.includes(eventId))) continue;
+      // Reading may take half the budget; storing what was read needs the rest.
+      if (budget.spent(READ_SHARE)) {
+        failures.push({ source: `${meet} (event ${eventId})`, error: NOT_REACHED });
+        continue;
+      }
       let table: { rows: Dict[]; notWhole?: string };
       try {
         table = await api.eventResults(eventId);
@@ -233,6 +243,10 @@ export const run = internalAction({
     const outcomes: MeetOutcome[] = [];
     for (const { eventId, meet, rows, notWhole } of meets) {
       const source = `${meet} (event ${eventId})`;
+      if (budget.spent()) {
+        failures.push({ source, error: `read but not stored: ${NOT_REACHED}` });
+        continue;
+      }
       const outcome: MeetOutcome = { meet, eventId, rows: rows.length, inserted: 0, updated: 0, unchanged: 0, failed: 0, deleted: 0 };
       outcomes.push(outcome);
       // Rows with no name or an unreadable value are not stored, and are

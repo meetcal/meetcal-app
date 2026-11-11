@@ -33,6 +33,7 @@ import { parseUsawTemplate } from './parse/wso/usawTemplate';
 import { FLAT_COLUMNS, parseFlatSheet, type FlatColumns } from './parse/wso/flat';
 import { normalizeAgeCategory, normalizeGender } from '../lib/normalize';
 import { sourcesFailed } from '../lib/cronAlerts';
+import { NOT_REACHED, runBudget } from './lib/budget';
 
 /**
  * WSO records (port of the `wso-records` job: one scraper per WSO in
@@ -341,9 +342,15 @@ export const run = internalAction({
   args: { dryRun: v.optional(v.boolean()), only: v.optional(v.array(v.string())), allowShrink: v.optional(v.boolean()) },
   handler: async (ctx, { dryRun, only, allowShrink }): Promise<WsoResult[]> => {
     const results: WsoResult[] = [];
+    const budget = runBudget();
     for (const source of WSO_SOURCES.filter((s) => !only || only.includes(s.wso))) {
       const result: WsoResult = { wso: source.wso, records: [], inserted: 0, updated: 0, unchanged: 0 };
       results.push(result);
+      // Out of time: the WSOs left fail by name instead of the action being stopped.
+      if (budget.spent()) {
+        result.error = NOT_REACHED;
+        continue;
+      }
       try {
         result.records = await source.scrape();
         // Every source has records; none means its sheet, tab or layout
