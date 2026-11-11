@@ -1,4 +1,4 @@
-import { SupabaseLiftResult } from "@/types/athlete-results";
+import { AthleteMeetResult } from "@/types/athlete-results";
 
 export type PRIndexes = {
   snatch: number;
@@ -19,9 +19,9 @@ export type PRIndexes = {
  * - Values that are non-numeric or <= 0 never win.
  * - Returns -1 for a lift with no positive values.
  */
-export function findPRIndexes(results: SupabaseLiftResult[]): PRIndexes {
+export function findPRIndexes(results: AthleteMeetResult[]): PRIndexes {
   const findPRIndex = (
-    getValue: (result: SupabaseLiftResult) => number | null,
+    getValue: (result: AthleteMeetResult) => number | null,
   ): number => {
     let best = 0;
     let prIndex = -1;

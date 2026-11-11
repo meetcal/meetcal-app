@@ -1,4 +1,4 @@
-export interface Filters {
+export interface RankingsFilters {
   [key: string]: string;
   meet: string;
   age_category: string;

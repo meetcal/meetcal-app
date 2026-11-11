@@ -1,6 +1,6 @@
 import type { IntlRanking } from '@/lib/database/fetchIntlRankings';
 import { sortAgeGroups } from '@/lib/sortAgeGroups';
-import type { Filters } from '@/types/rankings';
+import type { RankingsFilters } from '@/types/rankings';
 
 const PREFERRED_AGE_CATEGORY = 'Senior';
 const PREFERRED_GENDER = 'Men';
@@ -28,7 +28,7 @@ function distinct(values: readonly string[]): string[] {
  */
 export function computeDefaultRankingFilters(
   rankings: readonly IntlRanking[],
-): Filters {
+): RankingsFilters {
   const meet = rankings[0]?.meet ?? '';
   const meetRows = rankings.filter((ranking) => ranking.meet === meet);
 

@@ -1,8 +1,6 @@
 import type { Platform as PlatformName } from '@/data/types/athletes';
 
-// Source of truth for the schedule domain types. `data/types/schedule.ts`
-// re-exports these under its older names so its importers keep working.
-export type Platform = {
+export type PlatformSlot = {
   platform: PlatformName;
   weightClass: string;
   platformStartTime?: string; // Optional field for platform-specific start time
@@ -20,7 +18,7 @@ export type Session = {
   startTime: string;
   /** The first platform row's published weigh-in; prefer the platform's own. */
   weighInTime: string;
-  platforms: Platform[];
+  platforms: PlatformSlot[];
 };
 
 export type DaySchedule = {
@@ -39,7 +37,7 @@ export interface DayViewProps {
   refreshing: boolean;
 }
 
-export interface Meet {
+export interface SelectableMeet {
   id: string;
   name: string;
   dates?: {
@@ -51,7 +49,7 @@ export interface Meet {
 export interface MeetSelectionModalProps {
   visible: boolean;
   onClose: () => void;
-  meets: Meet[];
+  meets: SelectableMeet[];
   selectedMeet: string | null;
   onSelectMeet: (meetName: string) => Promise<void>;
   onRefresh: () => Promise<void>;
