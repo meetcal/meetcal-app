@@ -21,9 +21,6 @@ pub fn parse_date(value: &str) -> Result<String, String> {
         .map_err(|_| "expected a date as YYYY-MM-DD, like 2026-06-20".to_string())
 }
 
-/// A meet, club, WSO or athlete name as typed, without surrounding space; for clap's
-/// `value_parser`, so every command reads a name the same way and a blank one fails before any
-/// request.
 pub fn parse_name(value: &str) -> Result<String, String> {
     let name = value.trim();
     if name.is_empty() {
@@ -32,19 +29,23 @@ pub fn parse_name(value: &str) -> Result<String, String> {
     Ok(name.to_string())
 }
 
-/// A `--gender` value as the data spells it: `Men` for `men`, `m`, `male`…, `Women` for `women`,
-/// `w`, `f`, `female`… (`Gender::parse`); anything else as typed, trimmed, so the "no match"
-/// error can quote it.
-pub fn gender_label(value: &str) -> String {
-    match Gender::parse(value) {
-        Some(gender) => gender.label().to_string(),
-        None => value.trim().to_string(),
-    }
+pub fn parse_gender(value: &str) -> Result<Gender, String> {
+    Gender::parse(value).ok_or_else(|| "expected Men or Women (or m, f, male, female)".to_string())
 }
 
-/// Whether a row's gender is the one asked for, however either spells it ([`gender_label`]).
-pub fn same_gender(row: &str, wanted: &str) -> bool {
-    gender_label(row).eq_ignore_ascii_case(&gender_label(wanted))
+pub fn is_gender(row_gender: &str, wanted: Gender) -> bool {
+    Gender::parse(row_gender) == Some(wanted)
+}
+
+pub const YEARS: std::ops::RangeInclusive<i32> = 1900..=9999;
+
+pub fn parse_year(value: &str) -> Result<i32, String> {
+    value
+        .trim()
+        .parse::<i32>()
+        .ok()
+        .filter(|year| YEARS.contains(year))
+        .ok_or_else(|| format!("expected a year from {} to {}", YEARS.start(), YEARS.end()))
 }
 
 /// `date` (`YYYY-MM-DD`) plus `years`, as text to compare dates with, as the server's `plusYears`
@@ -180,17 +181,28 @@ mod tests {
     }
 
     #[test]
-    fn a_gender_matches_however_it_is_spelled() {
+    fn a_gender_is_read_however_it_is_spelled_and_anything_else_is_refused() {
         for wanted in ["Men", "men", " m ", "male"] {
-            assert!(same_gender("Men", wanted), "{wanted}");
-            assert!(!same_gender("Women", wanted), "{wanted}");
+            assert_eq!(parse_gender(wanted), Ok(Gender::Men), "{wanted}");
         }
         for wanted in ["Women", "w", "F", "female"] {
-            assert!(same_gender("Women", wanted), "{wanted}");
+            assert_eq!(parse_gender(wanted), Ok(Gender::Women), "{wanted}");
         }
-        assert!(!same_gender("Men", "mne"));
-        assert_eq!(gender_label("f"), "Women");
-        assert_eq!(gender_label(" mne "), "mne");
+        assert!(parse_gender("mne").is_err());
+        assert!(is_gender("Men", Gender::Men));
+        assert!(is_gender("male", Gender::Men));
+        assert!(!is_gender("Women", Gender::Men));
+        assert!(!is_gender("", Gender::Women));
+    }
+
+    #[test]
+    fn a_year_is_four_digits_from_1900() {
+        assert_eq!(parse_year("2026"), Ok(2026));
+        assert_eq!(parse_year(" 1900 "), Ok(1900));
+        assert_eq!(parse_year("9999"), Ok(9999));
+        for refused in ["1899", "10000", "-5", "26", "twenty"] {
+            assert!(parse_year(refused).is_err(), "{refused}");
+        }
     }
 
     #[test]

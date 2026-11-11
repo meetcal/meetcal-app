@@ -10,6 +10,7 @@ use crate::{
         names::{NameKind, not_found, wso_age_groups},
         output::{self, Report},
         sort::sort_by_class,
+        stats::Gender,
     },
 };
 
@@ -27,9 +28,9 @@ pub struct WsoRecordsArgs {
     #[arg(long, short = 'a')]
     pub age: String,
 
-    /// Gender: Men or Women
-    #[arg(long, short = 'g')]
-    pub gender: String,
+    /// Gender: Men or Women (m, f, male and female work too)
+    #[arg(long, short = 'g', value_parser = crate::utils::filters::parse_gender)]
+    pub gender: Gender,
 
     /// WSO, e.g. Carolina, California South or Florida (see `meetcal wsos`)
     #[arg(long, short = 'w', value_parser = crate::utils::filters::parse_name)]
@@ -38,7 +39,7 @@ pub struct WsoRecordsArgs {
 
 pub async fn run(args: WsoRecordsArgs) -> Result<()> {
     let age = args.age;
-    let gender = args.gender;
+    let gender = args.gender.label();
     let wso = args.wso;
 
     let query_args = serde_json::json!({ "ageCategory": age, "gender": gender, "wso": wso });

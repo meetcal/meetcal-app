@@ -47,7 +47,7 @@ pub struct MeetResultsArgs {
 
     /// The edition to show, by year, for a meet held under one name every year (default: the
     /// latest)
-    #[arg(long, short = 'y', value_parser = clap::value_parser!(i32).range(1900..=9999))]
+    #[arg(long, short = 'y', value_parser = crate::utils::filters::parse_year)]
     pub year: Option<i32>,
 
     /// Skip the comparison with the meet's previous editions (a few lookups)
