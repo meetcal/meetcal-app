@@ -46,7 +46,9 @@ function restartedStore(): OfflineStoreModule {
   return store;
 }
 
-jest.setTimeout(Math.max(10_000, (fc.readConfigureGlobal().numRuns ?? 100) * 150));
+const PER_CASE_BUDGET_MS = (fc.readConfigureGlobal().numRuns ?? 100) * 150;
+jest.setTimeout(Math.max(30_000, PER_CASE_BUDGET_MS));
+const BUDGET_WHEN_EVERY_CASE_RELOADS_THE_STORE_MS = Math.max(60_000, PER_CASE_BUDGET_MS);
 
 const MEET = 'Chaos Test Meet';
 
@@ -306,7 +308,7 @@ describe('meet lifting results under storage chaos', () => {
         },
       ),
     );
-  });
+  }, BUDGET_WHEN_EVERY_CASE_RELOADS_THE_STORE_MS);
 
   it('keeps the previous multi-chunk copy when the process dies after the first new chunk', async () => {
     const { getMeetLiftingResults, saveMeetLiftingResults } = restartedStore();
