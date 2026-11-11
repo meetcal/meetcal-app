@@ -1,6 +1,6 @@
 use crate::types::records::Record;
 use crate::utils::backend::{NoArgs, queries, query};
-use crate::utils::filters::{Filter, no_match};
+use crate::utils::filters::{Filter, no_match, same_ignoring_case_and_surrounding_space};
 use crate::utils::format::{record_cell, record_data_cells, record_data_header};
 use crate::utils::output::{self, Report};
 use crate::utils::sort::sort_by_class;
@@ -66,17 +66,13 @@ pub async fn run(args: RecordsArgs) -> Result<()> {
     Ok(())
 }
 
-/// The records for one age group, gender and federation, lightest class first; values compare
-/// ignoring case and surrounding space. When none match, an error naming the first filter that
-/// matched nothing and the values the records do have, as the other reference commands give,
-/// rather than an empty table and exit status 0.
 pub fn selected(
     records: Vec<Record>,
     age: &str,
     gender: &str,
     federation: &str,
 ) -> Result<Vec<Record>> {
-    let same = |value: &str, wanted: &str| value.trim().eq_ignore_ascii_case(wanted.trim());
+    let same = same_ignoring_case_and_surrounding_space;
     let (matching, others): (Vec<Record>, Vec<Record>) = records.into_iter().partition(|row| {
         same(&row.age_category, age)
             && same(&row.gender, gender)
