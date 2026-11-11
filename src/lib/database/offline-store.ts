@@ -5,6 +5,7 @@ import { MeetName } from '@/data/types/meet';
 import { meetCalendarDateAnchor } from '@/utils/dateTime';
 import { getTrustedNow } from '@/lib/api/meetcal-api';
 import { devLog } from '@/lib/logger';
+import { isSchedule, scheduleShapeProblem } from '@/lib/schedule-shape';
 import { createKeyedWriteChain, createWriteChain } from '@/lib/data/write-chain';
 import { getCachedMeets } from './meets-list-cache';
 import {
@@ -876,17 +877,14 @@ export async function initStore(): Promise<void> {
   }
 }
 
-/**
- * The schedule stored under `scheduleKey`, or null. A truncated or legacy
- * payload degrades to "no cached schedule", not an error that takes the
- * whole meet down.
- */
 async function readCachedSchedule(scheduleKey: string): Promise<Schedule | null> {
   const scheduleString = await AsyncStorage.getItem(scheduleKey);
   if (!scheduleString) return null;
   try {
     const parsed: unknown = JSON.parse(scheduleString);
-    return Array.isArray(parsed) ? (parsed as Schedule) : null;
+    const problem = scheduleShapeProblem(parsed);
+    if (problem) console.warn('Ignoring cached schedule:', problem);
+    return isSchedule(parsed) ? parsed : null;
   } catch (parseError) {
     console.warn('Ignoring invalid cached schedule payload:', parseError);
     return null;
@@ -1428,36 +1426,15 @@ export async function saveMeetSchedule(meetId: string, schedule: Schedule): Prom
   return meetDataWrites(meetId, async () => {
     try {
     
-      // Validate schedule structure
-      if (!Array.isArray(schedule)) {
-        console.error('Invalid schedule format: not an array');
-        throw new Error('Invalid schedule format');
+      const problem = scheduleShapeProblem(schedule);
+      if (problem) {
+        console.error(problem);
+        throw new Error(problem);
       }
-
       if (schedule.length === 0) {
         console.error('Invalid schedule: empty array');
         throw new Error('Empty schedule');
       }
-
-      // Validate each day's structure
-      schedule.forEach((day, index) => {
-        if (!day.date || !day.fullDate || !Array.isArray(day.sessions)) {
-          console.error(`Invalid day structure at index ${index}:`, day);
-          throw new Error(`Invalid day structure at index ${index}`);
-        }
-
-        // Only the fields that make a session addressable. `startTime` and
-        // `weighInTime` are legitimately "" when the API row has no time or an
-        // unparseable one (`formatApiTime` documents that), and requiring them
-        // made one blank row throw the whole schedule away — "No schedule yet"
-        // for every session in the meet.
-        day.sessions.forEach((session, sessionIndex) => {
-          if (!session.id || !session.number || !Array.isArray(session.platforms)) {
-            console.error(`Invalid session structure at day ${index}, session ${sessionIndex}:`, session);
-            throw new Error(`Invalid session structure at day ${index}, session ${sessionIndex}`);
-          }
-        });
-      });
 
       // Save schedule separately. `SyncManager` re-saves the same schedule every
       // 5 minutes for as long as a meet is selected, and a meet's schedule
