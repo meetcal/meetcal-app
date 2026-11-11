@@ -302,12 +302,7 @@ fn rows(table: &Table) -> Vec<Value> {
                     .get(index)
                     .cloned()
                     .unwrap_or_else(|| format!("column_{}", index + 1));
-                // Weight classes stay text: `60kg` and `110+kg` are the same kind of value.
-                let cell = if name.contains("class") {
-                    text_value(&cell)
-                } else {
-                    value(&cell)
-                };
+                let cell = export_value(&name, &cell);
                 object.insert(name, cell);
             }
             Value::Object(object)
@@ -315,9 +310,20 @@ fn rows(table: &Table) -> Vec<Value> {
         .collect()
 }
 
+/// A cell of the column keyed `name` as JSON and CSV carry it. Weight classes stay text: `60kg`
+/// and `110+kg` are the same kind of value, in both formats.
+fn export_value(name: &str, cell: &str) -> Value {
+    if name.contains("class") {
+        text_value(cell)
+    } else {
+        value(cell)
+    }
+}
+
 fn csv_table(table: &Table) -> String {
+    let headers = headers(table);
     let mut lines = vec![
-        headers(table)
+        headers
             .iter()
             .map(|h| csv_field(h))
             .collect::<Vec<_>>()
@@ -326,7 +332,11 @@ fn csv_table(table: &Table) -> String {
     for row in cells(table) {
         lines.push(
             row.iter()
-                .map(|cell| csv_field(&csv_value(cell)))
+                .enumerate()
+                .map(|(index, cell)| {
+                    let name = headers.get(index).map(String::as_str).unwrap_or_default();
+                    csv_field(&csv_value(name, cell))
+                })
                 .collect::<Vec<_>>()
                 .join(","),
         );
@@ -335,9 +345,10 @@ fn csv_table(table: &Table) -> String {
 }
 
 /// A cell as CSV writes it: the same value JSON gets, so the two formats agree. Placeholders
-/// are empty, booleans `true`/`false`, numbers without their unit, text as it is.
-fn csv_value(cell: &str) -> String {
-    match value(cell) {
+/// are empty, booleans `true`/`false`, numbers without their unit, text (weight classes
+/// included) as it is.
+fn csv_value(name: &str, cell: &str) -> String {
+    match export_value(name, cell) {
         Value::Null => String::new(),
         Value::String(text) => text,
         other => other.to_string(),
@@ -494,6 +505,25 @@ mod tests {
             report.to_csv(),
             "registered,lifters,adaptive,lifted,change,meet\n,174,true,620,,Ohio Open\n"
         );
+    }
+
+    #[test]
+    fn weight_classes_are_text_in_csv_as_in_json() {
+        let report = Report::single(
+            "records",
+            table(
+                &["Class", "Snatch"],
+                &[&["60kg", "126kg"], &["110+kg", "190"]],
+            ),
+        );
+        assert_eq!(
+            report.to_json(),
+            json!([
+                { "class": "60kg", "snatch": 126 },
+                { "class": "110+kg", "snatch": 190 },
+            ])
+        );
+        assert_eq!(report.to_csv(), "class,snatch\n60kg,126\n110+kg,190\n");
     }
 
     #[test]
