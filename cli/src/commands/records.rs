@@ -1,6 +1,6 @@
 use crate::types::records::Record;
 use crate::utils::backend::{NoArgs, queries, query};
-use crate::utils::filters::{Filter, no_match};
+use crate::utils::filters::{Filter, gender_label, no_match, same_gender};
 use crate::utils::format::{record_cell, record_data_cells, record_data_header};
 use crate::utils::output::{self, Report};
 use crate::utils::sort::sort_by_class;
@@ -79,10 +79,11 @@ pub fn selected(
     let same = |value: &str, wanted: &str| value.trim().eq_ignore_ascii_case(wanted.trim());
     let (matching, others): (Vec<Record>, Vec<Record>) = records.into_iter().partition(|row| {
         same(&row.age_category, age)
-            && same(&row.gender, gender)
+            && same_gender(&row.gender, gender)
             && same(&row.record_type, federation)
     });
     if matching.is_empty() {
+        let gender = gender_label(gender);
         let filters = [
             Filter {
                 option: "--federation",
@@ -90,7 +91,7 @@ pub fn selected(
             },
             Filter {
                 option: "--gender",
-                value: gender,
+                value: &gender,
             },
             Filter {
                 option: "--age",
@@ -150,6 +151,9 @@ mod tests {
         };
         assert_eq!(classes("Senior", "Men", "USAW"), ["60", "110+"]);
         assert_eq!(classes(" senior ", "men ", " usaw"), ["60", "110+"]);
+        // As `leaderboard --gender` takes it.
+        assert_eq!(classes("Senior", "m", "USAW"), ["60", "110+"]);
+        assert_eq!(classes("Senior", "f", "USAW"), ["48"]);
     }
 
     #[test]
@@ -161,6 +165,12 @@ mod tests {
         };
         assert_eq!(
             error("Seniors", "Men", "USAW"),
+            "No records for --age \"Seniors\" with --federation USAW --gender Men. Try one of: \
+             Masters 35, Senior"
+        );
+        // A gender given in short is not the filter at fault.
+        assert_eq!(
+            error("Seniors", "m", "USAW"),
             "No records for --age \"Seniors\" with --federation USAW --gender Men. Try one of: \
              Masters 35, Senior"
         );

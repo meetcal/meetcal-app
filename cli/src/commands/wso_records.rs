@@ -32,7 +32,7 @@ pub struct WsoRecordsArgs {
     pub gender: String,
 
     /// WSO, e.g. Carolina, California South or Florida (see `meetcal wsos`)
-    #[arg(long, short = 'w')]
+    #[arg(long, short = 'w', value_parser = crate::utils::filters::parse_name)]
     pub wso: String,
 }
 

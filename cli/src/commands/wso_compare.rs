@@ -16,6 +16,7 @@ use crate::utils::names::{NameKind, not_found};
 )]
 pub struct WsoCompareArgs {
     /// Weightlifting State Organization
+    #[arg(value_parser = crate::utils::filters::parse_name)]
     pub wso: String,
 }
 

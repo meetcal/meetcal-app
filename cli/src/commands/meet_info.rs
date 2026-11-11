@@ -18,6 +18,7 @@ use crate::utils::output::{self, Report};
 )]
 pub struct MeetInfoArgs {
     /// Exact meet name (see `meetcal meets`)
+    #[arg(value_parser = crate::utils::filters::parse_name)]
     pub name: String,
 }
 

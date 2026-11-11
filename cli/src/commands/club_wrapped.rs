@@ -16,6 +16,7 @@ use crate::utils::names::{NameKind, not_found};
   meetcal club-wrapped "Columbus Weightlifting" --year 2025"#
 )]
 pub struct ClubWrappedArgs {
+    #[arg(value_parser = crate::utils::filters::parse_name)]
     pub club: String,
 
     /// Calendar year to summarize (defaults to the current year)

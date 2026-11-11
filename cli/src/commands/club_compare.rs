@@ -15,6 +15,7 @@ use crate::utils::names::{NameKind, not_found};
   meetcal club-compare "POWER AND GRACE PERFORMANCE.""#
 )]
 pub struct ClubCompareArgs {
+    #[arg(value_parser = crate::utils::filters::parse_name)]
     pub club: String,
 }
 

@@ -25,10 +25,11 @@ const RESULTS_REQUEST_BATCH_SIZE: usize = 50;
 )]
 pub struct WsoResultsArgs {
     /// Meet to search for
+    #[arg(value_parser = crate::utils::filters::parse_name)]
     pub meet: String,
 
     /// WSO to search for
-    #[arg(long, short = 'w')]
+    #[arg(long, short = 'w', value_parser = crate::utils::filters::parse_name)]
     pub wso: String,
 }
 

@@ -149,11 +149,11 @@ pub struct LeaderboardArgs {
     pub federation: Option<String>,
 
     /// Only athletes registered with this WSO at the meet
-    #[arg(long, short = 'w', conflicts_with = "club")]
+    #[arg(long, short = 'w', conflicts_with = "club", value_parser = crate::utils::filters::parse_name)]
     pub wso: Option<String>,
 
     /// Only athletes registered with this club at the meet
-    #[arg(long)]
+    #[arg(long, value_parser = crate::utils::filters::parse_name)]
     pub club: Option<String>,
 
     /// Include adaptive results
