@@ -70,6 +70,14 @@ describe('urlwatch run (#576)', () => {
     expect(saves).toHaveLength(1);
   });
 
+  it('saves nothing when the email cannot be sent, so the change is reported again next hour', async () => {
+    process.env.URLWATCH_EMAIL = 'watch@example.test';
+    jest.mocked(sendEmail).mockRejectedValueOnce(new Error('OneSignal email failed (500)'));
+    const { saves, runOnce } = deployment({ text: 'Nationals, April 20' });
+    await expect(runOnce()).rejects.toThrow('OneSignal email failed (500)');
+    expect(saves).toEqual([]);
+  });
+
   it('fails and saves nothing where alerts are set up but the urlwatch address is missing, so the change is reported once it is set', async () => {
     process.env.ALERT_EMAIL = 'alerts@example.test';
     const { saves, runOnce } = deployment({ text: 'Nationals, April 20' });
