@@ -286,12 +286,6 @@ export function transformMeets(rows: (Pick<WidgetRow, 'name' | 'address' | 'subt
   return result;
 }
 
-/**
- * Why a new meet was stored under `storedAs`: its name is another meet's
- * (usually another federation's), and rosters and results still refer to meets by
- * name, so those written under the plain name attach to the other meet
- * until a person renames one of the two.
- */
 export function renamedMeetMessage(name: string, storedAs: string): string {
   return `another meet is named ${JSON.stringify(name)}, so this one was stored as ${JSON.stringify(storedAs)}; results and entries sent under the plain name still attach to the other meet (rename one by hand)`;
 }
