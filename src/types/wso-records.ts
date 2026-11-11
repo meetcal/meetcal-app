@@ -1,6 +1,4 @@
-export type Gender = "Men" | "Women";
-
-export interface Filters {
+export interface WsoRecordsFilters {
   [key: string]: string;
   wso: string;
   gender: string;
