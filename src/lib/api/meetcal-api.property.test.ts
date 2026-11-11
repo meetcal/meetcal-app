@@ -262,7 +262,6 @@ function expectSchedule(schedule: unknown): void {
 
 function expectLiftingResult(row: unknown): void {
   const r = row as ReturnType<typeof mapApiLiftingResult>;
-  expect(isFiniteNumber(r.id)).toBe(true);
   expect(isString(r.event_id) && r.event_id.length > 0).toBe(true);
   expect(isString(r.meet) && isString(r.date) && isString(r.name)).toBe(true);
   expect(isString(r.age) || isFiniteNumber(r.age)).toBe(true);
@@ -403,8 +402,8 @@ describe('meetcal API mappers (properties)', () => {
 
   it('maps a valid lifting result field for field', () => {
     fc.assert(
-      fc.property(apiLiftingResultArb, fc.nat(), (row, index) => {
-        const result = mapApiLiftingResult(row, index);
+      fc.property(apiLiftingResultArb, (row) => {
+        const result = mapApiLiftingResult(row);
         expectLiftingResult(result);
         const { federation: _federation, adaptive: _adaptive, ...kept } = row;
         expect(result).toEqual(kept);
@@ -469,7 +468,7 @@ describe('meetcal API mappers are pure (properties)', () => {
             meet: settle(() => mapApiMeet(inputs.meetRow as ApiMeet)),
             schedule: settle(() => mapApiSchedule(inputs.scheduleRows)),
             athlete: settle(() => mapApiAthlete(inputs.athleteRow as ApiAthleteWithSession)),
-            result: settle(() => mapApiLiftingResult(inputs.resultRow as ApiLiftingResult, 3)),
+            result: settle(() => mapApiLiftingResult(inputs.resultRow as ApiLiftingResult)),
             bests: settle(() => mapApiYearBests(inputs.bestsRow as ApiYearBests)),
           });
           expect(run()).toEqual(run());
@@ -762,9 +761,9 @@ describe('meetcal API boundary counterexamples', () => {
     );
   });
 
-  it('gives a lifting result whose id is not a number its index, and reads a text lift as null', () => {
-    const result = mapApiLiftingResult({ id: {}, meet: 'M', date: '1990-01-01', name: 'A', snatch1: '100' } as unknown as ApiLiftingResult, 7);
-    expect(result.id).toBe(7);
+  it('leaves the server id out of a lifting result, and reads a text lift as null', () => {
+    const result = mapApiLiftingResult({ id: 7, meet: 'M', date: '1990-01-01', name: 'A', snatch1: '100' } as unknown as ApiLiftingResult);
+    expect(result).not.toHaveProperty('id');
     expect(result.snatch1).toBeNull();
   });
 

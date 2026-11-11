@@ -1,6 +1,6 @@
 import * as fc from 'fast-check';
 
-import type { SupabaseLiftResult } from '@/data/types/athletes';
+import type { AthleteMeetResult } from '@/data/types/athletes';
 import { hostileStringArb } from '@/test-support/arbitraries';
 
 /**
@@ -25,7 +25,7 @@ export const athleteNameArb: fc.Arbitrary<string> = fc.oneof(
   { weight: 1, arbitrary: hostileStringArb },
 );
 
-export const liftResultArb: fc.Arbitrary<SupabaseLiftResult> = fc.record({
+export const liftResultArb: fc.Arbitrary<AthleteMeetResult> = fc.record({
   id: fc.integer(),
   event_id: fc.string({ maxLength: 12 }),
   meet: fc.string({ maxLength: 16 }),
@@ -61,7 +61,7 @@ function noise(seed: number): () => string {
  * two chunks. Built from a seed rather than generated field by field, which
  * would cost seconds per case.
  */
-export function bulkyLiftResults(seed: number, count: number): SupabaseLiftResult[] {
+export function bulkyLiftResults(seed: number, count: number): AthleteMeetResult[] {
   const next = noise(seed);
   return Array.from({ length: count }, (_, index) => {
     let name = '';
@@ -88,8 +88,8 @@ export function bulkyLiftResults(seed: number, count: number): SupabaseLiftResul
 }
 
 /** A meet's results: usually a handful of rows, sometimes none, sometimes several chunks' worth. */
-export const liftResultsArb: fc.Arbitrary<SupabaseLiftResult[]> = fc.oneof(
-  { weight: 1, arbitrary: fc.constant<SupabaseLiftResult[]>([]) },
+export const liftResultsArb: fc.Arbitrary<AthleteMeetResult[]> = fc.oneof(
+  { weight: 1, arbitrary: fc.constant<AthleteMeetResult[]>([]) },
   { weight: 8, arbitrary: fc.array(liftResultArb, { minLength: 1, maxLength: 12 }) },
   {
     weight: 1,

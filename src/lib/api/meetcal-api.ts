@@ -1,5 +1,5 @@
 import { canonicalizePlatform, filterSessionAthletes, isLiftResult, normalizeAthleteName } from '@/lib/athletes';
-import { LiftResult, Platform, SupabaseLiftResult } from '@/data/types/athletes';
+import { LiftResult, Platform, AthleteMeetResult } from '@/data/types/athletes';
 import { Meet, MeetName } from '@/data/types/meet';
 import type { Schedule } from '@/types/schedule';
 import {
@@ -916,13 +916,12 @@ function fallbackEventId(meet: string, date: string, name: string): string {
  * (text) or `null` (a lift), so one bad cell never reaches a screen or the
  * offline cache as a string where a number belongs.
  */
-export function mapApiLiftingResult(row: ApiLiftingResult, index = 0): SupabaseLiftResult {
+export function mapApiLiftingResult(row: ApiLiftingResult): AthleteMeetResult {
   assertObject(row, 'lifting result');
   const meet = nullableString(row.meet) ?? '';
   const date = nullableString(row.date) ?? '';
   const name = nullableString(row.name) ?? '';
   return {
-    id: nullableNumber(row.id) ?? index,
     event_id: nullableString(row.event_id) || fallbackEventId(meet, date, name),
     meet,
     date,
@@ -1085,9 +1084,9 @@ export type ResultsByNamesOptions = {
 export async function fetchApiResultsByNames(
   names: string[],
   options: ResultsByNamesOptions = {},
-): Promise<SupabaseLiftResult[]> {
+): Promise<AthleteMeetResult[]> {
   if (names.length === 0) return [];
-  const rows: SupabaseLiftResult[] = [];
+  const rows: AthleteMeetResult[] = [];
   const chunkSize = options.latestOnly ? SMALL_ROWS_NAMES_CHUNK_SIZE : NAMES_QUERY_CHUNK_SIZE;
   for (const chunk of chunkValues(names, chunkSize)) {
     const part = assertArray<ApiLiftingResult>(
@@ -1108,9 +1107,9 @@ export async function fetchApiResultsByNames(
 export async function fetchApiRecentResultsByNames(
   names: string[],
   cutoffDate: string = getHistoryCutoffDate(ATTEMPT_HISTORY_YEARS),
-): Promise<SupabaseLiftResult[]> {
+): Promise<AthleteMeetResult[]> {
   if (names.length === 0) return [];
-  const rows: SupabaseLiftResult[] = [];
+  const rows: AthleteMeetResult[] = [];
   for (const chunk of chunkValues(names, NAMES_QUERY_CHUNK_SIZE)) {
     const part = assertArray<ApiLiftingResult>(
       decodeJsonText(

@@ -1,7 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as fc from 'fast-check';
 
-import type { SupabaseLiftResult } from '@/data/types/athletes';
+import type { AthleteMeetResult } from '@/data/types/athletes';
 import {
   getAllCachedLiftingResultsForAthlete,
   getMeetLiftingResults,
@@ -356,7 +356,7 @@ describe('athlete history batches under storage chaos', () => {
           let sawPrevious = false;
           let sawNext = false;
           for (const [i, name] of names.entries()) {
-            const read: SupabaseLiftResult[] = await getAllCachedLiftingResultsForAthlete(name);
+            const read: AthleteMeetResult[] = await getAllCachedLiftingResultsForAthlete(name);
             // An empty history blob reads as "nothing cached" (the reader then
             // scans meets, of which there are none here).
             const isPrevious = JSON.stringify(read) === JSON.stringify(previousRows[i]);
