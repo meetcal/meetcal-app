@@ -45,7 +45,6 @@ describe('results:search date range', () => {
   it("answers the athlete's stored name, not the query's typing (#569)", () => {
     const answer = exactSearchAnswer('  ann   LEE ', history, '2026-01-01', '2026-12-31');
     expect(answer?.matched_name).toBe('Ann Lee');
-    // The newest result's spelling when the athlete's rows differ.
     const respelled = [row('Ann Lee', '2026-06-01'), row('ANN LEE', '2026-01-01')];
     expect(exactSearchAnswer('ann lee', respelled, '2026-01-01', '2026-12-31')?.matched_name).toBe('Ann Lee');
   });
