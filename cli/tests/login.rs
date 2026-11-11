@@ -1,3 +1,4 @@
+#![cfg(test)]
 //! `meetcal login` and `logout` against a local HTTP server that plays Convex's device login
 //! (`convex/deviceLogin.ts`). Nothing here calls the live API.
 

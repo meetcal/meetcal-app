@@ -99,7 +99,7 @@ pub fn calculate_medal_details(
                         age: row.age.clone(),
                         movement,
                         place,
-                        result: key[0],
+                        result: key.lift,
                     });
                 }
             }
@@ -117,7 +117,10 @@ pub fn calculate_medal_details(
 
 const BODY_WEIGHT_TIE_BREAK_BEFORE: &str = "2017-01-01";
 
-type LiftKey = Vec<f64>;
+struct LiftKey {
+    lift: f64,
+    tie_breaks_lower_first: Vec<f64>,
+}
 
 fn attempt_of(best: f64, attempts: [f64; 3]) -> f64 {
     match attempts
@@ -141,29 +144,35 @@ fn lift_key(row: &LiftingResults, movement: Movement) -> LiftKey {
         Movement::Total => (row.total, row.cj_best, cj_attempt()),
     };
     if row.date.as_str() >= BODY_WEIGHT_TIE_BREAK_BEFORE {
-        return vec![value, bar, attempt];
+        return LiftKey {
+            lift: value,
+            tie_breaks_lower_first: vec![bar, attempt],
+        };
     }
     let body_weight = if row.body_weight > 0.0 {
         row.body_weight
     } else {
         f64::INFINITY
     };
-    vec![value, body_weight, bar, attempt]
+    LiftKey {
+        lift: value,
+        tie_breaks_lower_first: vec![body_weight, bar, attempt],
+    }
 }
 
 fn ranks_ahead(a: &LiftKey, b: &LiftKey) -> bool {
-    if a[0] != b[0] {
-        return a[0] > b[0];
+    if a.lift != b.lift {
+        return a.lift > b.lift;
     }
-    a.iter()
-        .zip(b.iter())
-        .skip(1)
+    a.tie_breaks_lower_first
+        .iter()
+        .zip(b.tie_breaks_lower_first.iter())
         .find(|(x, y)| x != y)
         .is_some_and(|(x, y)| x < y)
 }
 
 fn place_of(key: &LiftKey, group: &[LiftKey]) -> Option<usize> {
-    if !(key[0] > 0.0 && key[0].is_finite()) {
+    if !(key.lift > 0.0 && key.lift.is_finite()) {
         return None;
     }
     Some(group.iter().filter(|other| ranks_ahead(other, key)).count() + 1)

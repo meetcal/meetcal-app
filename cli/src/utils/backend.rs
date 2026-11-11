@@ -665,21 +665,21 @@ where
 {
     let mut pending = jobs.into_iter().enumerate();
     let mut running = JoinSet::new();
-    let mut answers: Vec<Option<T>> = Vec::new();
+    let mut answers: Vec<(usize, T)> = Vec::new();
     loop {
         while running.len() < limit.max(1)
             && let Some((index, job)) = pending.next()
         {
-            answers.push(None);
             running.spawn(async move { (index, job.await) });
         }
         let Some(finished) = running.join_next().await else {
             break;
         };
         let (index, answer) = finished.context("A MeetCal read stopped before it finished")?;
-        answers[index] = Some(answer?);
+        answers.push((index, answer?));
     }
-    Ok(answers.into_iter().flatten().collect())
+    answers.sort_by_key(|(index, _)| *index);
+    Ok(answers.into_iter().map(|(_, answer)| answer).collect())
 }
 
 pub async fn collect_pages<T, F, Fut>(function: &str, fetch: F) -> Result<Vec<T>>
@@ -748,7 +748,7 @@ fn whole_numbers_as_integers(value: Value) -> Value {
             .into_iter()
             .map(|(key, field)| (key, whole_numbers_as_integers(field)))
             .collect(),
-        other => other,
+        other @ (Value::Null | Value::Bool(_) | Value::String(_)) => other,
     }
 }
 

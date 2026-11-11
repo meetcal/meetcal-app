@@ -84,7 +84,9 @@ pub fn compared_years(
                 suggestions.extend(other_names(name, names));
                 Ok(None)
             }
-            other => Err(unscored(name, year, other)),
+            other @ (WrappedAnswer::Ambiguous { .. }
+            | WrappedAnswer::Narrow
+            | WrappedAnswer::TooManyResults { .. }) => Err(unscored(name, year, other)),
         }
     };
     let previous_year = read(previous, previous_answer)?;

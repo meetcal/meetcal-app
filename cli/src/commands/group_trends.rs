@@ -147,7 +147,13 @@ async fn medals_by_year(
     let mut medals: BTreeMap<String, [usize; 3]> = BTreeMap::new();
     for placings in in_order(CONCURRENT_READS, jobs).await? {
         for (year, place) in placings {
-            medals.entry(year).or_default()[place - 1] += 1;
+            let [gold, silver, bronze] = medals.entry(year).or_default();
+            match place {
+                1 => *gold += 1,
+                2 => *silver += 1,
+                3 => *bronze += 1,
+                _ => {}
+            }
         }
     }
     Ok(medals)

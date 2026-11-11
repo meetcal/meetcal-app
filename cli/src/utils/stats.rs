@@ -340,8 +340,9 @@ pub struct AttemptHabits {
 
 impl AttemptHabits {
     pub fn make_rate(&self, attempt: usize) -> Option<f64> {
-        let taken = self.taken[attempt];
-        (taken > 0).then(|| self.made[attempt] as f64 * 100.0 / taken as f64)
+        let taken = *self.taken.get(attempt)?;
+        let made = *self.made.get(attempt)?;
+        (taken > 0).then(|| made as f64 * 100.0 / taken as f64)
     }
 }
 
@@ -352,11 +353,15 @@ pub fn attempt_habits(rows: &[&LiftingResults], lift: Lift) -> AttemptHabits {
     let (mut jumps_1_2, mut jumps_2_3, mut shares) = (Vec::new(), Vec::new(), Vec::new());
     for row in rows {
         let attempts = lift.attempts(row);
-        for (index, attempt) in attempts.iter().enumerate() {
+        for ((attempt, taken), made) in attempts
+            .iter()
+            .zip(habits.taken.iter_mut())
+            .zip(habits.made.iter_mut())
+        {
             if *attempt != 0.0 && attempt.is_finite() {
-                habits.taken[index] += 1;
+                *taken += 1;
                 if *attempt > 0.0 {
-                    habits.made[index] += 1;
+                    *made += 1;
                 }
             }
         }
@@ -523,7 +528,7 @@ pub fn signed_kg(value: Option<f64>) -> String {
 pub(crate) mod tests {
     use super::*;
 
-    pub fn row(
+    pub(crate) fn row(
         name: &str,
         date: &str,
         meet: &str,
@@ -799,7 +804,7 @@ pub(crate) mod tests {
 
     /// A row with its attempts as given and its bests and total computed from them, typos and
     /// all, the way the source does.
-    pub fn raw_row(snatch: [f64; 3], cj: [f64; 3]) -> LiftingResults {
+    pub(crate) fn raw_row(snatch: [f64; 3], cj: [f64; 3]) -> LiftingResults {
         row(
             "A",
             "2026-04-04",

@@ -1,3 +1,4 @@
+#![cfg(test)]
 //! Exercises the retry policy, and paging, against a local HTTP server; nothing here calls the
 //! live API.
 

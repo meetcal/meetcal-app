@@ -82,7 +82,9 @@ pub fn athlete_year(
                 suggestions.join(", ")
             )
         }
-        other => Err(unscored(name, year, other)),
+        other @ (WrappedAnswer::Ambiguous { .. }
+        | WrappedAnswer::Narrow
+        | WrappedAnswer::TooManyResults { .. }) => Err(unscored(name, year, other)),
     }
 }
 

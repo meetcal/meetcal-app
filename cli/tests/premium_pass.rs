@@ -1,3 +1,4 @@
+#![cfg(test)]
 //! Premium reads and the access pass, against a local HTTP server: a saved login is traded for
 //! the pass once, the pass rides in premium reads' arguments, and a refused read renews it once
 //! or tells the user to log in or subscribe. Nothing here calls the live API.

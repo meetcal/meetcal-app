@@ -110,9 +110,11 @@ pub async fn meet_names_between(
 ) -> Result<Vec<String>> {
     let function = queries::MEET_NAMES_PAGE.function;
     let read = collect_pages_within(function, max_pages, |cursor| {
-        let mut args = json!({ "source": source, "after": cursor.or_else(|| after.clone()) });
+        let mut args = serde_json::Map::new();
+        args.insert("source".to_string(), json!(source));
+        args.insert("after".to_string(), json!(cursor.or_else(|| after.clone())));
         if let Some(before) = &before {
-            args["before"] = json!(before);
+            args.insert("before".to_string(), json!(before));
         }
         async move {
             let page: NamesPage = query(queries::MEET_NAMES_PAGE, &args).await?;
@@ -334,14 +336,17 @@ fn edit_distance(a: &str, b: &str) -> usize {
     let b: Vec<char> = b.chars().collect();
     let mut previous: Vec<usize> = (0..=b.len()).collect();
     for (i, ca) in a.iter().enumerate() {
-        let mut current = vec![i + 1; b.len() + 1];
-        for (j, cb) in b.iter().enumerate() {
-            let substitution = previous[j] + usize::from(ca != cb);
-            current[j + 1] = substitution.min(previous[j + 1] + 1).min(current[j] + 1);
+        let mut current = Vec::with_capacity(b.len() + 1);
+        let mut left = i + 1;
+        current.push(left);
+        for (cb, (diagonal, above)) in b.iter().zip(previous.iter().zip(previous.iter().skip(1))) {
+            let substitution = diagonal + usize::from(ca != cb);
+            left = substitution.min(above + 1).min(left + 1);
+            current.push(left);
         }
         previous = current;
     }
-    previous[b.len()]
+    previous.last().copied().unwrap_or(a.len())
 }
 
 #[cfg(test)]

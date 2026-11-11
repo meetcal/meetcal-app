@@ -1,3 +1,4 @@
+#![cfg(test)]
 mod support;
 
 use std::process::{Command, Output};

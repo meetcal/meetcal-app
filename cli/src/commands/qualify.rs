@@ -132,10 +132,9 @@ pub struct Target {
 
 pub async fn run(args: QualifyArgs) -> Result<()> {
     let rows = history(&args.name).await?;
-    let latest = chronological(&rows)
-        .last()
-        .copied()
-        .expect("history is never empty");
+    let Some(latest) = chronological(&rows).last().copied() else {
+        bail!("No results found for athlete \"{}\"", args.name);
+    };
     let division = Division::parse(&latest.age);
     let target = target(
         &division,

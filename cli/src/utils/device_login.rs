@@ -218,7 +218,8 @@ pub fn qr_code(text: &str) -> Result<String> {
         let inside = |at: usize| (QR_QUIET_ZONE..QR_QUIET_ZONE + width).contains(&at);
         inside(row)
             && inside(column)
-            && colors[(row - QR_QUIET_ZONE) * width + column - QR_QUIET_ZONE] == Color::Dark
+            && colors.get((row - QR_QUIET_ZONE) * width + column - QR_QUIET_ZONE)
+                == Some(&Color::Dark)
     };
     let mut drawn = String::new();
     for row in (0..size).step_by(2) {

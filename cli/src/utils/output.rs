@@ -204,8 +204,8 @@ impl Report {
 
     /// The report as JSON: one table's rows, or an object of each table's rows.
     pub fn to_json(&self) -> Value {
-        if self.sections.len() == 1 {
-            return Value::Array(rows(export_table(&self.sections[0])));
+        if let [only_table] = self.sections.as_slice() {
+            return Value::Array(rows(export_table(only_table)));
         }
         let mut object = Map::new();
         for section in &self.sections {
@@ -319,10 +319,11 @@ fn rows(table: &Table) -> Vec<Value> {
 
 fn export_value(name: &str, cell: &str) -> Value {
     let holds_weight_classes = name.contains("class");
-    match value(cell) {
-        Value::Null => Value::Null,
-        _ if holds_weight_classes => text_value(cell),
-        exported => exported,
+    let exported = value(cell);
+    if holds_weight_classes && !exported.is_null() {
+        text_value(cell)
+    } else {
+        exported
     }
 }
 
@@ -354,7 +355,9 @@ fn csv_value(name: &str, cell: &str) -> String {
     match export_value(name, cell) {
         Value::Null => String::new(),
         Value::String(text) => text,
-        other => other.to_string(),
+        other @ (Value::Bool(_) | Value::Number(_) | Value::Array(_) | Value::Object(_)) => {
+            other.to_string()
+        }
     }
 }
 

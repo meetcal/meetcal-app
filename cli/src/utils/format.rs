@@ -18,8 +18,9 @@ pub fn us_date(value: &str) -> String {
             month.parse::<usize>(),
             day.parse::<u32>(),
         )
+        && let Some(month_name) = MONTHS.get(month - 1)
     {
-        return format!("{} {day}, {year}", MONTHS[month - 1]);
+        return format!("{month_name} {day}, {year}");
     }
     value.to_string()
 }

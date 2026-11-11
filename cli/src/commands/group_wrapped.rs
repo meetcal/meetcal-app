@@ -285,30 +285,28 @@ pub fn calculate_wrapped_stats(results: &[LiftingResults]) -> WrappedStats {
     let mut best_total: f64 = 0.0;
 
     for result in &ordered {
-        for (index, attempt) in [
-            result.snatch1,
-            result.snatch2,
-            result.snatch3,
-            result.cj1,
-            result.cj2,
-            result.cj3,
-        ]
-        .into_iter()
-        .enumerate()
-        {
-            if attempt == 0.0 || !attempt.is_finite() {
-                continue;
-            }
+        let attempts_by_lift = [
+            [result.snatch1, result.snatch2, result.snatch3],
+            [result.cj1, result.cj2, result.cj3],
+        ];
+        for lift in attempts_by_lift {
+            for (attempt, makes_of_this_attempt_number) in
+                lift.into_iter().zip(attempt_makes.iter_mut())
+            {
+                if attempt == 0.0 || !attempt.is_finite() {
+                    continue;
+                }
 
-            recorded_attempts += 1;
-            if attempt > 0.0 {
-                successful_attempts += 1;
-                total_weight_lifted += attempt;
-                consecutive_makes += 1;
-                max_consecutive_makes = max_consecutive_makes.max(consecutive_makes);
-                attempt_makes[index % 3] += 1;
-            } else {
-                consecutive_makes = 0;
+                recorded_attempts += 1;
+                if attempt > 0.0 {
+                    successful_attempts += 1;
+                    total_weight_lifted += attempt;
+                    consecutive_makes += 1;
+                    max_consecutive_makes = max_consecutive_makes.max(consecutive_makes);
+                    *makes_of_this_attempt_number += 1;
+                } else {
+                    consecutive_makes = 0;
+                }
             }
         }
 

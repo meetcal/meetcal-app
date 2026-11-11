@@ -55,47 +55,56 @@ pub async fn run(args: ScheduleArgs) -> Result<()> {
     }
 
     let all = sessions(rows);
-    let filters = [
-        Filter {
-            option: "--date",
-            value: args.date.as_deref().unwrap_or_default(),
-        },
-        Filter {
-            option: "--platform",
-            value: args.platform.as_deref().unwrap_or_default(),
-        },
-    ];
-    let wanted = |index: usize| (!filters[index].value.is_empty()).then_some(index);
+    fn given(value: &Option<String>) -> Option<&str> {
+        value.as_deref().filter(|value| !value.is_empty())
+    }
+    let (date, platform) = (given(&args.date), given(&args.platform));
     let sessions: Vec<Session> = all
         .iter()
-        .filter(|session| wanted(0).is_none_or(|_| session.date == filters[0].value))
+        .filter(|session| date.is_none_or(|date| session.date == date))
         .filter(|session| {
-            wanted(1).is_none_or(|_| {
-                session
-                    .platform
-                    .eq_ignore_ascii_case(filters[1].value.trim())
-            })
+            platform.is_none_or(|platform| session.platform.eq_ignore_ascii_case(platform.trim()))
         })
         .cloned()
         .collect();
     if sessions.is_empty() {
-        // Name the filter that matched nothing, with the days or platforms the meet has.
-        let given: Vec<usize> = (0..filters.len()).filter_map(wanted).collect();
+        type ValueOfSession = fn(&Session) -> &str;
+        let given_filters: Vec<(Filter, ValueOfSession)> = [
+            date.map(|value| {
+                let filter = Filter {
+                    option: "--date",
+                    value,
+                };
+                (filter, (|session| session.date.as_str()) as ValueOfSession)
+            }),
+            platform.map(|value| {
+                let filter = Filter {
+                    option: "--platform",
+                    value,
+                };
+                (
+                    filter,
+                    (|session| session.platform.as_str()) as ValueOfSession,
+                )
+            }),
+        ]
+        .into_iter()
+        .flatten()
+        .collect();
         let rows: Vec<Vec<&str>> = all
             .iter()
             .map(|session| {
-                let values = [session.date.as_str(), session.platform.as_str()];
-                given.iter().map(|&index| values[index]).collect()
+                given_filters
+                    .iter()
+                    .map(|(_, value)| value(session))
+                    .collect()
             })
             .collect();
-        let given_filters: Vec<Filter> = given
-            .iter()
-            .map(|&index| Filter {
-                option: filters[index].option,
-                value: filters[index].value,
-            })
+        let filters: Vec<Filter> = given_filters
+            .into_iter()
+            .map(|(filter, _)| filter)
             .collect();
-        return Err(no_match("sessions", &given_filters, &rows));
+        return Err(no_match("sessions", &filters, &rows));
     }
 
     output::emit(report(&sessions).when_empty("No sessions match those filters."));

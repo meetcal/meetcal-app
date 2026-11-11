@@ -43,11 +43,12 @@ pub enum Install {
 /// directory (`$CARGO_HOME/bin`, or `~/.cargo/bin`), symlinks resolved, when known.
 pub fn detect(exe: &Path, cargo_bin: Option<&Path>) -> Install {
     let components: Vec<Component> = exe.components().collect();
-    let cellar = components
-        .windows(2)
-        .position(|pair| pair[0].as_os_str() == "Cellar" && pair[1].as_os_str() == BINARY_NAME);
+    let cellar = components.windows(2).position(|pair| {
+        matches!(pair, [cellar, formula]
+                if cellar.as_os_str() == "Cellar" && formula.as_os_str() == BINARY_NAME)
+    });
     if let Some(index) = cellar {
-        let prefix: PathBuf = components[..index].iter().collect();
+        let prefix: PathBuf = components.iter().take(index).collect();
         return Install::Homebrew { prefix };
     }
     if cargo_bin.is_some_and(|bin| exe.parent() == Some(bin)) {

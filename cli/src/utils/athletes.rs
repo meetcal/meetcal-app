@@ -55,12 +55,12 @@ pub fn search_pieces(name: &str) -> Vec<String> {
     let words: Vec<&str> = name.split_whitespace().collect();
     let mut pieces = vec![words.join(" ")];
     if let Some((last, rest)) = words.split_last()
-        && !rest.is_empty()
+        && let Some(first) = rest.first()
     {
         let prefix: String = last.chars().take(3).collect();
         pieces.push(format!("{} {prefix}", rest.join(" ")));
         pieces.push(last.to_string());
-        pieces.push(rest[0].to_string());
+        pieces.push(first.to_string());
     }
     pieces.retain(|piece| piece.chars().count() >= 3);
     pieces.dedup();

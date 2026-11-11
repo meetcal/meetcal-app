@@ -44,14 +44,27 @@ impl Version {
         parts.next().is_none().then_some(version)
     }
 
-    /// This build's version (`Cargo.toml`).
-    pub fn current() -> Self {
-        Self::parse(env!("CARGO_PKG_VERSION")).expect("Cargo.toml's version is MAJOR.MINOR.PATCH")
+    pub const fn current() -> Self {
+        Version {
+            major: decimal(env!("CARGO_PKG_VERSION_MAJOR")),
+            minor: decimal(env!("CARGO_PKG_VERSION_MINOR")),
+            patch: decimal(env!("CARGO_PKG_VERSION_PATCH")),
+        }
     }
 
     pub fn tag(&self) -> String {
         format!("{TAG_PREFIX}{self}")
     }
+}
+
+const fn decimal(digits: &str) -> u64 {
+    let mut remaining = digits.as_bytes();
+    let mut value = 0;
+    while let [digit, rest @ ..] = remaining {
+        value = value * 10 + digit.wrapping_sub(b'0') as u64;
+        remaining = rest;
+    }
+    value
 }
 
 impl fmt::Display for Version {

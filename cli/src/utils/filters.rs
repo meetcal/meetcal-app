@@ -145,8 +145,9 @@ pub fn no_match(what: &str, filters: &[Filter], rows: &[Vec<&str>]) -> Error {
             .collect();
         available.sort_by_key(|value| value.to_lowercase());
         available.dedup_by(|a, b| same(a, b));
-        let given: Vec<String> = filters[..index]
+        let given: Vec<String> = filters
             .iter()
+            .take(index)
             .map(|earlier| format!("{} {}", earlier.option, earlier.value))
             .collect();
         let scope = if given.is_empty() {

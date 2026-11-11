@@ -48,12 +48,13 @@ pub async fn run(args: MeetArgs) -> Result<()> {
     let narrowed = session_number.is_some() || args.session_platform.is_some();
     let session_platform = session_platform(args.session_platform.as_deref())?;
 
-    let mut query_args = serde_json::json!({ "meet": meet_name });
+    let mut query_args = serde_json::Map::new();
+    query_args.insert("meet".to_string(), meet_name.clone().into());
     if let Some(session_number) = session_number {
-        query_args["sessionNumber"] = session_number.into();
+        query_args.insert("sessionNumber".to_string(), session_number.into());
     }
     if let Some(platform) = session_platform {
-        query_args["platform"] = platform.into();
+        query_args.insert("platform".to_string(), platform.into());
     }
 
     let response: Vec<Athletes> = query(queries::MEET_ATHLETES_SESSIONS, &query_args).await?;

@@ -86,16 +86,24 @@ pub async fn run(args: MeetResultsArgs) -> Result<()> {
     };
     let other_years: Vec<String> = years.keys().cloned().collect();
 
-    let mut editions = vec![EditionSummary {
+    let this_edition = EditionSummary {
         meet: name.clone(),
         year: year.clone(),
         summary: summarize(&results),
-    }];
-    if !args.no_history {
-        editions.extend(earlier_editions(&name, &year, years).await?);
-    }
+    };
+    let earlier = if args.no_history {
+        Vec::new()
+    } else {
+        earlier_editions(&name, &year, years).await?
+    };
 
-    output::emit(report(&results, &editions, &other_years, !args.no_history));
+    output::emit(report(
+        &results,
+        &this_edition,
+        &earlier,
+        &other_years,
+        !args.no_history,
+    ));
     Ok(())
 }
 
@@ -212,10 +220,12 @@ fn name_prefixes(series: &str, year: i32) -> Vec<String> {
 /// offset is a character boundary.
 pub fn year_in(meet: &str) -> Option<(usize, i32)> {
     let bytes = meet.as_bytes();
-    (0..bytes.len().saturating_sub(3)).find_map(|i| {
-        let candidate = &bytes[i..i + 4];
-        let bounded = (i == 0 || !bytes[i - 1].is_ascii_digit())
-            && bytes.get(i + 4).is_none_or(|b| !b.is_ascii_digit());
+    let is_digit_at = |at: Option<usize>| {
+        at.and_then(|at| bytes.get(at))
+            .is_some_and(u8::is_ascii_digit)
+    };
+    bytes.windows(4).enumerate().find_map(|(i, candidate)| {
+        let bounded = !is_digit_at(i.checked_sub(1)) && !is_digit_at(i.checked_add(4));
         if !bounded || !candidate.iter().all(u8::is_ascii_digit) {
             return None;
         }
@@ -243,8 +253,9 @@ pub struct MeetSummary {
 const GENDERS: [Gender; 2] = [Gender::Men, Gender::Women];
 
 pub fn performances(rows: &[LiftingResults]) -> Vec<Vec<&LiftingResults>> {
-    let mut index: HashMap<(String, String, [u64; 7]), usize> = HashMap::new();
-    let mut groups: Vec<Vec<&LiftingResults>> = Vec::new();
+    type Performance = (String, String, [u64; 7]);
+    let mut in_first_seen_order: Vec<Performance> = Vec::new();
+    let mut rows_of: HashMap<Performance, Vec<&LiftingResults>> = HashMap::new();
     for row in rows {
         let lifts = [
             row.body_weight,
@@ -257,13 +268,15 @@ pub fn performances(rows: &[LiftingResults]) -> Vec<Vec<&LiftingResults>> {
         ]
         .map(f64::to_bits);
         let key = (fold(&row.name), row.date.clone(), lifts);
-        let at = *index.entry(key).or_insert_with(|| {
-            groups.push(Vec::new());
-            groups.len() - 1
-        });
-        groups[at].push(row);
+        if !rows_of.contains_key(&key) {
+            in_first_seen_order.push(key.clone());
+        }
+        rows_of.entry(key).or_default().push(row);
     }
-    groups
+    in_first_seen_order
+        .iter()
+        .filter_map(|performance| rows_of.remove(performance))
+        .collect()
 }
 
 fn one_row_per_performance(rows: &[LiftingResults]) -> Vec<&LiftingResults> {
@@ -333,7 +346,8 @@ fn top_table(
 
 pub fn report(
     results: &[LiftingResults],
-    editions: &[EditionSummary],
+    this_edition: &EditionSummary,
+    earlier: &[EditionSummary],
     other_years: &[String],
     history: bool,
 ) -> Report {
@@ -374,7 +388,7 @@ pub fn report(
         ]);
     }
 
-    let summary = &editions[0].summary;
+    let summary = &this_edition.summary;
     let mut summary_table = Table::new();
     summary_table.set_header(vec![
         "Athletes",
@@ -481,7 +495,7 @@ pub fn report(
             meet,
             year,
             summary,
-        } in editions
+        } in std::iter::once(this_edition).chain(earlier)
         {
             let mut cells = vec![
                 year.clone(),
@@ -504,7 +518,7 @@ pub fn report(
             }
             table.add_row(cells);
         }
-        report = if history && editions.len() > 1 {
+        report = if history && !earlier.is_empty() {
             report.headed("editions", "THIS MEET IN EARLIER YEARS", table)
         } else {
             report.exported("editions", table)
@@ -514,14 +528,14 @@ pub fn report(
     if !other_years.is_empty() {
         notes.push(format!(
             "Showing the {} edition. This meet name also has results in {}: pass --year to see one.",
-            editions[0].year,
+            this_edition.year,
             other_years.join(", ")
         ));
     }
-    if history && editions.len() == 1 {
+    if history && earlier.is_empty() {
         notes.push(format!(
             "No earlier editions of this meet found in the {EDITIONS} years before {}.",
-            editions[0].year
+            this_edition.year
         ));
     }
     if notes.is_empty() {
@@ -613,20 +627,20 @@ mod tests {
             year: "2026".into(),
             summary,
         }];
-        let json = report(&rows, &editions, &[], false).to_json();
+        let json = report(&rows, &editions[0], &editions[1..], &[], false).to_json();
         assert_eq!(json["heaviest_lifts"][2]["athlete"], "Ada");
         assert_eq!(json["top_sinclair_women"].as_array().unwrap().len(), 1);
         assert_eq!(json["top_sinclair_men"].as_array().unwrap().len(), 0);
         assert_eq!(json["editions"].as_array().unwrap().len(), 1);
         assert_eq!(json["editions"][0]["year"], 2026);
         assert!(
-            !report(&rows, &editions, &[], false)
+            !report(&rows, &editions[0], &editions[1..], &[], false)
                 .to_text()
                 .contains("EARLIER YEARS")
         );
 
         // Asked for, the table is always exported, even with no earlier editions found.
-        let with_history = report(&rows, &editions, &[], true);
+        let with_history = report(&rows, &editions[0], &editions[1..], &[], true);
         assert_eq!(with_history.to_json()["editions"][0]["meet"], "M");
         assert!(!with_history.to_text().contains("EARLIER YEARS"));
     }
@@ -666,11 +680,12 @@ mod tests {
         assert_eq!(summary.average_total, Some(287.5));
         let json = report(
             &rows,
-            &[EditionSummary {
+            &EditionSummary {
                 meet: "M".into(),
                 year: "2026".into(),
                 summary,
-            }],
+            },
+            &[],
             &[],
             false,
         )
@@ -721,7 +736,7 @@ mod tests {
             year: "2026".into(),
             summary,
         }];
-        let json = report(&rows, &editions, &[], false).to_json();
+        let json = report(&rows, &editions[0], &editions[1..], &[], false).to_json();
         assert_eq!(json["results"].as_array().unwrap().len(), 6);
         assert_eq!(json["summary"][0]["make_rate"], 50);
         assert_eq!(json["make_rate"][0]["total_make_rate"], 50);
@@ -756,7 +771,7 @@ mod tests {
             year: "2026".into(),
             summary: summarize(&rows),
         }];
-        let json = report(&rows, &editions, &[], false).to_json();
+        let json = report(&rows, &editions[0], &editions[1..], &[], false).to_json();
         let top = json["top_qpoints_women"].as_array().unwrap();
         assert_eq!(top.len(), 1);
         assert_eq!(top[0]["division"], "Open Women's 71kg");
@@ -782,7 +797,7 @@ mod tests {
             lift("Ada", "2024-03-16", 90.0),
         ]);
         let latest = years.remove("2024").unwrap();
-        let editions = vec![
+        let editions = [
             EditionSummary {
                 meet: "Testify Leprechaun Lift-off".into(),
                 year: "2024".into(),
@@ -794,7 +809,13 @@ mod tests {
                 summary: summarize(&years["2023"]),
             },
         ];
-        let report = report(&latest, &editions, &["2023".into()], true);
+        let report = report(
+            &latest,
+            &editions[0],
+            &editions[1..],
+            &["2023".into()],
+            true,
+        );
         let json = report.to_json();
         assert_eq!(json["summary"][0]["athletes"], 2);
         assert_eq!(json["results"].as_array().unwrap().len(), 2);

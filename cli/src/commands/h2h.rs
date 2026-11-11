@@ -90,8 +90,10 @@ fn best_per_meet(rows: &[LiftingResults]) -> Vec<&LiftingResults> {
 }
 
 pub fn report(first: &[LiftingResults], second: &[LiftingResults], cutoff: &str) -> Report {
-    let first_name = first[0].name.clone();
-    let second_name = second[0].name.clone();
+    let name_of =
+        |rows: &[LiftingResults]| rows.first().map(|row| row.name.clone()).unwrap_or_default();
+    let first_name = name_of(first);
+    let second_name = name_of(second);
     let meetings = meetings(first, second);
 
     let mut table = Table::new();

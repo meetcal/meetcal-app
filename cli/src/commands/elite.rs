@@ -43,35 +43,55 @@ impl Method {
     fn score(self, value: f64) -> String {
         match self {
             Method::PercentA => percent(Some(value)),
-            _ => points(Some(value)),
+            Method::Qpoints | Method::Qmasters | Method::Sinclair => points(Some(value)),
         }
     }
 }
 
-/// The lists, in the order they print, with what each may be scored by (its default first), as
-/// the server's `ELITE_METHOD_CHOICES` (`convex/lib/elite.ts`).
-pub const LISTS: [(&str, &str, &[Method]); 5] = [
-    (
-        "overall",
-        "Overall",
-        &[Method::PercentA, Method::Sinclair, Method::Qpoints],
-    ),
-    ("youth", "Youth", &[Method::PercentA, Method::Sinclair]),
-    (
-        "junior",
-        "Junior",
-        &[Method::PercentA, Method::Qpoints, Method::Sinclair],
-    ),
-    (
-        "senior",
-        "Senior",
-        &[Method::PercentA, Method::Qpoints, Method::Sinclair],
-    ),
-    (
-        "masters",
-        "Masters",
-        &[Method::Qmasters, Method::PercentA, Method::Sinclair],
-    ),
+pub struct EliteListChoices {
+    pub key: &'static str,
+    pub label: &'static str,
+    pub default: Method,
+    pub alternatives: &'static [Method],
+}
+
+impl EliteListChoices {
+    fn offered(&self) -> impl Iterator<Item = Method> {
+        std::iter::once(self.default).chain(self.alternatives.iter().copied())
+    }
+}
+
+pub const LISTS: [EliteListChoices; 5] = [
+    EliteListChoices {
+        key: "overall",
+        label: "Overall",
+        default: Method::PercentA,
+        alternatives: &[Method::Sinclair, Method::Qpoints],
+    },
+    EliteListChoices {
+        key: "youth",
+        label: "Youth",
+        default: Method::PercentA,
+        alternatives: &[Method::Sinclair],
+    },
+    EliteListChoices {
+        key: "junior",
+        label: "Junior",
+        default: Method::PercentA,
+        alternatives: &[Method::Qpoints, Method::Sinclair],
+    },
+    EliteListChoices {
+        key: "senior",
+        label: "Senior",
+        default: Method::PercentA,
+        alternatives: &[Method::Qpoints, Method::Sinclair],
+    },
+    EliteListChoices {
+        key: "masters",
+        label: "Masters",
+        default: Method::Qmasters,
+        alternatives: &[Method::PercentA, Method::Sinclair],
+    },
 ];
 
 /// A WSO's elite lists: its top 20 women and men Overall, Youth (17 and under), Junior (18-20),
@@ -146,25 +166,24 @@ impl EliteArgs {
     }
 }
 
-/// Each list's method: the one asked for, or the list's default; an error naming the choices for
-/// a method a list does not offer.
-pub fn methods(asked: [Option<Method>; 5]) -> Result<[Method; 5]> {
-    let mut chosen = [Method::PercentA; 5];
-    for (index, ((key, _, choices), asked)) in LISTS.iter().zip(asked).enumerate() {
-        chosen[index] = match asked {
-            Some(method) if choices.contains(&method) => method,
+pub fn methods(asked: [Option<Method>; 5]) -> Result<Vec<Method>> {
+    LISTS
+        .iter()
+        .zip(asked)
+        .map(|(list, asked)| match asked {
+            Some(method) if list.offered().any(|offered| offered == method) => Ok(method),
             Some(method) => {
-                let names: Vec<String> = choices.iter().map(|m| value_name(*m)).collect();
+                let names: Vec<String> = list.offered().map(value_name).collect();
                 bail!(
-                    "--{key} can be {}, not {}",
+                    "--{} can be {}, not {}",
+                    list.key,
                     names.join(", "),
                     value_name(method)
                 );
             }
-            None => choices[0],
-        };
-    }
-    Ok(chosen)
+            None => Ok(list.default),
+        })
+        .collect()
 }
 
 fn value_name(method: Method) -> String {
@@ -258,8 +277,8 @@ pub async fn run(args: EliteArgs) -> Result<()> {
     };
 
     let mut method_args = serde_json::Map::new();
-    for ((key, _, _), method) in LISTS.iter().zip(methods) {
-        method_args.insert((*key).to_string(), json!(method));
+    for (list, method) in LISTS.iter().zip(methods) {
+        method_args.insert(list.key.to_string(), json!(method));
     }
     let mut progress = Progress::new("Ranking the WSO's athletes on MeetCal");
     progress.update("");
@@ -287,7 +306,7 @@ pub async fn run(args: EliteArgs) -> Result<()> {
 /// Ten tables: each list's women, then its men.
 pub fn report(lists: &EliteLists) -> Report {
     let mut report = Report::new();
-    for ((key, label, _), list) in LISTS.iter().zip(lists.in_order()) {
+    for (EliteListChoices { key, label, .. }, list) in LISTS.iter().zip(lists.in_order()) {
         for (gender, rows) in [("women", &list.women), ("men", &list.men)] {
             let heading = format!(
                 "{} — {} ({})",

@@ -10,20 +10,20 @@ use std::time::Duration;
 
 use serde_json::Value;
 
-pub const RATE_LIMITED: &str = "429 Too Many Requests";
-pub const UNAVAILABLE: &str = "503 Service Unavailable";
-pub const OK: &str = "200 OK";
-pub const NOT_FOUND: &str = "404 Not Found";
-pub const FUNCTION_FAILED: &str = "560 Function Failed";
-pub const DROPPED: &str = "dropped";
+pub(crate) const RATE_LIMITED: &str = "429 Too Many Requests";
+pub(crate) const UNAVAILABLE: &str = "503 Service Unavailable";
+pub(crate) const OK: &str = "200 OK";
+pub(crate) const NOT_FOUND: &str = "404 Not Found";
+pub(crate) const FUNCTION_FAILED: &str = "560 Function Failed";
+pub(crate) const DROPPED: &str = "dropped";
 
-pub struct Reply {
-    pub status: &'static str,
-    pub retry_after: Option<&'static str>,
-    pub body: String,
+pub(crate) struct Reply {
+    pub(crate) status: &'static str,
+    pub(crate) retry_after: Option<&'static str>,
+    pub(crate) body: String,
 }
 
-pub fn reply(
+pub(crate) fn reply(
     status: &'static str,
     retry_after: Option<&'static str>,
     body: impl Into<String>,
@@ -42,7 +42,7 @@ pub fn reply(
 /// tools on a developer's machine probe new local ports (`GET /`, or a connection that sends
 /// nothing), and counting those made the tests fail at random. A connection that sends nothing
 /// is dropped after `PROBE_READ_TIMEOUT`, so it cannot hold up the requests behind it.
-pub fn serve(replies: Vec<Reply>) -> (String, Arc<Mutex<Vec<String>>>) {
+pub(crate) fn serve(replies: Vec<Reply>) -> (String, Arc<Mutex<Vec<String>>>) {
     let listener = TcpListener::bind("127.0.0.1:0").expect("bind local test server");
     let base_url = format!("http://{}", listener.local_addr().unwrap());
     let requests = Arc::new(Mutex::new(Vec::new()));
@@ -114,7 +114,7 @@ fn is_probe(head: &str) -> bool {
 }
 
 /// The JSON body of each request the test server received.
-pub fn request_bodies(requests: &Mutex<Vec<String>>) -> Vec<Value> {
+pub(crate) fn request_bodies(requests: &Mutex<Vec<String>>) -> Vec<Value> {
     requests
         .lock()
         .unwrap()
@@ -126,7 +126,7 @@ pub fn request_bodies(requests: &Mutex<Vec<String>>) -> Vec<Value> {
 }
 
 /// The request line's path (`/api/query`) of each request the test server received.
-pub fn request_paths(requests: &Mutex<Vec<String>>) -> Vec<String> {
+pub(crate) fn request_paths(requests: &Mutex<Vec<String>>) -> Vec<String> {
     requests
         .lock()
         .unwrap()
@@ -136,7 +136,7 @@ pub fn request_paths(requests: &Mutex<Vec<String>>) -> Vec<String> {
 }
 
 /// The `Authorization` header of each request the test server received, if it had one.
-pub fn authorizations(requests: &Mutex<Vec<String>>) -> Vec<Option<String>> {
+pub(crate) fn authorizations(requests: &Mutex<Vec<String>>) -> Vec<Option<String>> {
     requests
         .lock()
         .unwrap()
