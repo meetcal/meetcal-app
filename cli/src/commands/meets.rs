@@ -52,9 +52,13 @@ pub async fn run(args: MeetsArgs) -> Result<()> {
     } else {
         "upcoming"
     };
+    let window = match &args.since {
+        Some(since) if args.completed => format!(" starting on or after {since}"),
+        _ => String::new(),
+    };
     let empty = match &args.search {
-        Some(search) => format!("No {which} meets match \"{search}\"."),
-        None => format!("No {which} meets."),
+        Some(search) => format!("No {which} meets{window} match \"{search}\"."),
+        None => format!("No {which} meets{window}."),
     };
 
     output::emit(
