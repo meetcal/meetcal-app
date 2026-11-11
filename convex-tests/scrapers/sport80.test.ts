@@ -1,6 +1,6 @@
 import { readFileSync } from 'fs';
 import { join } from 'path';
-import { eventDate, eventIdOf, formatResults, nested, newestEvents, pickNewestEvents, pickRequestedEvents, unreadableEventDate } from '../../convex/scrapers/parse/sport80';
+import { eventDate, eventIdOf, formatResults, nested, newestEvents, pickNewestEvents, pickNightlyEvents, pickRequestedEvents, ROLLING_NIGHTS, unreadableEventDate } from '../../convex/scrapers/parse/sport80';
 
 // The first events of the 2026 index as Sport80 sent them on 2026-10-11 (every
 // event of 2025 and 2026 had an ISO date).
@@ -59,6 +59,49 @@ describe('Sport80 results sync (port of update_supabase_from_sport80.py)', () =>
     ]);
     // Fewer readable events than wanted: any unreadable one could be among them.
     expect(pickNewestEvents([event('7300', '05/09/2025')], 2).unreadable[0].recent).toBe(true);
+  });
+
+  describe('the events a nightly run reads (#566)', () => {
+    const DAY = 24 * 60 * 60 * 1000;
+    const tonight = Date.UTC(2026, 10, 11, 6, 5);
+    const daysAgo = (days: number) => new Date(tonight - days * DAY).toISOString().slice(0, 10);
+    const lastWeekend = Array.from({ length: 40 }, (_, i) => event(String(8000 + i), daysAgo(3)));
+    const twoWeeksAgo = Array.from({ length: 40 }, (_, i) => event(String(7900 + i), daysAgo(15)));
+    const lastSpring = Array.from({ length: 2 * ROLLING_NIGHTS }, (_, i) => event(String(7000 + i), daysAgo(200)));
+    const index = [...lastSpring, ...twoWeeksAgo, ...lastWeekend];
+    const idsRead = (now: number) => pickNightlyEvents(index, now, { count: 30 }).newest.map(eventIdOf);
+
+    it('reads every event of the last three weeks, however many were held since', () => {
+      const read = new Set(idsRead(tonight));
+      for (const recent of [...lastWeekend, ...twoWeeksAgo]) expect(read.has(eventIdOf(recent))).toBe(true);
+      expect(pickNightlyEvents(index, tonight, { count: 30 }).recentCount).toBe(80);
+    });
+
+    it('reads each older event once every ROLLING_NIGHTS nights, so results posted or corrected late are synced', () => {
+      const timesRead = new Map<string, number>();
+      for (let night = 0; night < ROLLING_NIGHTS; night += 1) {
+        for (const id of idsRead(tonight + night * DAY)) {
+          if (id !== null && Number(id) < 7900) timesRead.set(id, (timesRead.get(id) ?? 0) + 1);
+        }
+      }
+      expect(timesRead.size).toBe(lastSpring.length);
+      expect([...new Set(timesRead.values())]).toEqual([1]);
+    });
+
+    it('reads the same events however often it runs on one night', () => {
+      expect(idsRead(tonight)).toEqual(idsRead(tonight + 60 * 60 * 1000));
+    });
+
+    it('says how many older events it left out when more are due than one night reads', () => {
+      const nightly = pickNightlyEvents(index, tonight, { count: 30, rollingNights: 1, maxRolling: 10 });
+      expect(nightly.rollingCount).toBe(10);
+      expect(nightly.rollingLeftOut).toBe(lastSpring.length - 10);
+    });
+
+    it('still reads the newest events when none was held in the last three weeks', () => {
+      const quiet = pickNightlyEvents(lastSpring, tonight, { count: 30 });
+      expect(quiet.recentCount).toBe(30);
+    });
   });
 
   it('finds events asked for by id however many newer events there are, and names the ids the index lacks (#265)', () => {

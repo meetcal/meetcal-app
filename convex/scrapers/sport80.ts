@@ -10,7 +10,9 @@ import {
   hasResultsRoute,
   nested,
   pageRows,
+  MAX_ROLLING_EVENTS_A_NIGHT,
   pickNewestEvents,
+  pickNightlyEvents,
   pickRequestedEvents,
   readSport80Env,
   readTablePage,
@@ -21,18 +23,6 @@ import {
 import { sourcesFailed, type SourceFailure } from '../lib/cronAlerts';
 import { NOT_REACHED, runBudget } from './lib/budget';
 
-/**
- * USAW meet results from Sport80 (port of
- * `usaw/sport80_api/update_supabase_from_sport80.py`): the 30 most recent
- * events of this year and last, each meet's results upserted into
- * `lifting_results` (matched on event id, meet, folded name and age
- * category, `ingest.resultKey`; unchanged rows are not written, so a
- * re-sync of an unchanged meet costs no writes). Rows the
- * event's table no longer has (a corrected name, a withdrawn result, the
- * meet's old title) are then deleted (`ingest.pruneEventResults`, which
- * refuses to delete much without `allowShrink`), but only for a meet whose
- * every row was read: a row that could not be read is not one Sport80 dropped.
- */
 type Dict = Record<string, unknown>;
 
 /** Pages one table may take: tables are requested as one page, so more is a misbehaving API. */
@@ -186,11 +176,6 @@ export const run = internalAction({
     }
     if (!events.length) throw sourcesFailed('sport80: no events fetched', failures);
 
-    // A date in a format not seen before is not guessed at (month and day
-    // could be swapped): the event is left out, and the run fails naming it
-    // when it could be among the newest (`pickNewestEvents`). Events asked
-    // for by id are taken from the whole index, however old: the override
-    // for a refused prune must reach its event after it leaves the newest.
     let newest: Dict[];
     let unreadable: ReturnType<typeof pickNewestEvents>['unreadable'];
     if (only) {
@@ -201,7 +186,12 @@ export const run = internalAction({
         failures.push({ source: `event ${id}`, error: `not in the event index read (${indexes.join(', ')}), not synced` });
       }
     } else {
-      ({ newest, unreadable } = pickNewestEvents(events));
+      const nightly = pickNightlyEvents(events, Date.now());
+      ({ newest, unreadable } = nightly);
+      console.log(`sport80: reading ${nightly.recentCount} recent events and ${nightly.rollingCount} older ones due tonight`);
+      if (nightly.rollingLeftOut > 0) {
+        failures.push({ source: 'rolling pass', error: `${nightly.rollingLeftOut} older events due tonight were not read (more than ${MAX_ROLLING_EVENTS_A_NIGHT}); raise ROLLING_NIGHTS in parse/sport80.ts` });
+      }
     }
     const reported = new Set<string>();
     for (const { event, date, recent } of unreadable) {
