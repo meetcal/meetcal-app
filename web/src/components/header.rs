@@ -15,6 +15,12 @@ pub fn Header() -> impl IntoView {
     let location = use_location();
     let (menus_dismissed, set_menus_dismissed) = signal(false);
     let allow_menus = move || set_menus_dismissed.set(false);
+    let dismiss_menus = move || {
+        if let Some(nav) = desktop_nav.get_untracked() {
+            blur_focus_inside(&nav);
+        }
+        set_menus_dismissed.set(true);
+    };
 
     Effect::new(move |earlier_page: Option<()>| {
         location.pathname.track();
@@ -24,10 +30,7 @@ pub fn Header() -> impl IntoView {
         if let Some(details) = mobile_nav.get_untracked() {
             let _ = details.remove_attribute("open");
         }
-        if let Some(nav) = desktop_nav.get_untracked() {
-            blur_focus_inside(&nav);
-        }
-        set_menus_dismissed.set(true);
+        dismiss_menus();
     });
 
     view! {
@@ -58,6 +61,7 @@ pub fn Header() -> impl IntoView {
                     class="nav-menu"
                     on:pointerenter=move |_| allow_menus()
                     on:pointerleave=move |_| allow_menus()
+                    on:click=move |_| dismiss_menus()
                 >
                     <A href="/comp-data" attr:class="nav-menu-trigger">"Competition Data"</A>
                     <div class="nav-menu-panel">

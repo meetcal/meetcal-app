@@ -28,6 +28,8 @@ test("the competition data menu closes after one of its pages is opened", async 
   await page.mouse.move(0, 400);
   await navigation.getByRole("link", { name: "Competition Data" }).hover();
   await expect(wrapped).toBeVisible();
+  await wrapped.click();
+  await expect(wrapped).toBeHidden();
 });
 
 test("mobile navigation opens and supports internal navigation", async ({ page, isMobile }) => {
@@ -39,6 +41,8 @@ test("mobile navigation opens and supports internal navigation", async ({ page, 
   await expect(page.getByRole("navigation", { name: "Mobile navigation" })).toBeVisible();
   await expect(page.getByRole("navigation", { name: "Mobile navigation" }).getByRole("link", { name: "War Games" })).toHaveAttribute("href", "https://wargames.meetcal.app");
   await expect(page.getByRole("navigation", { name: "Mobile navigation" }).getByRole("link", { name: "Atlas" })).toHaveAttribute("href", "https://atlas.meetcal.app/");
+  await expect(page.getByRole("navigation", { name: "Mobile navigation" }).getByRole("link", { name: "Privacy" })).toHaveCount(0);
+  await expect(page.getByRole("navigation", { name: "Mobile navigation" }).getByRole("link", { name: "Terms" })).toHaveCount(0);
   await page.getByRole("navigation", { name: "Mobile navigation" }).getByRole("link", { name: "Features" }).click();
   await expect(page).toHaveURL(/\/features$/);
   await expect(page.getByRole("heading", { level: 1, name: "Everything you need before the bar is loaded" })).toBeVisible();
