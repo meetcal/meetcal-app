@@ -464,7 +464,6 @@ function timelinePoint(row: Doc<'lifting_results'>): TimelinePoint {
  */
 const TIMELINE_READ_BATCH = 250;
 
-/** Each distinct folded name's results since `horizon`, as points. */
 export async function computeTimelines(ctx: QueryCtx, names: readonly string[], horizon: string): Promise<Timeline[]> {
   const keys = Array.from(new Set(names.map(normalizeName))).sort(compareBytes);
   return mapInBatches(keys, TIMELINE_READ_BATCH, async (key): Promise<Timeline> => {
@@ -521,9 +520,6 @@ export type StatsRow = {
 
 export type Placing = number | null;
 
-/** A division that names its weight class: "Open Men's 95kg", "Women's Masters (35-39) 86+kg". */
-const DIVISION_WITH_CLASS = /\d\+?\s*kg\s*$/i;
-
 /**
  * The group a result is placed in at its meet. Sport80 and USAMW results
  * carry their division in `age` ("Open Men's 95kg"): gender, age group and
@@ -536,7 +532,7 @@ export function rankingGroup(
   age: string | undefined,
   athlete: Pick<Doc<'athletes'>, 'gender' | 'weightClass'> | undefined,
 ): string | null {
-  if (age !== undefined && DIVISION_WITH_CLASS.test(age)) return age;
+  if (age !== undefined && classNamedIn(age, 'atTheEnd') !== null) return age;
   return athlete ? `${normalizeGender(athlete.gender)}\u0000${athlete.weightClass}\u0000${age ?? ''}` : null;
 }
 
@@ -679,13 +675,6 @@ async function statsEntries(ctx: QueryCtx, meet: string): Promise<{ joined: Stat
   return { joined, groups };
 }
 
-
-/**
- * The roster entry a result is a lifter's: the only one under its folded
- * name, or, when two lifters at the meet share the name (#247), the one
- * entered in the weight class the result's division names. Failing that
- * (no class, or none or both match), the first, as before.
- */
 function rosterEntryFor(entries: readonly Doc<'athletes'>[] | undefined, age: string | undefined): Doc<'athletes'> | undefined {
   if (!entries || entries.length <= 1) return entries?.[0];
   const weightClass = age === undefined ? null : classNamedIn(age, 'atTheEnd');

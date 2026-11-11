@@ -1,5 +1,5 @@
 import { chunks, mapInBatches, mapLimited } from '../convex/lib/concurrency';
-import { genderNamedByWords, genderOfWord, genderWords } from '../convex/lib/gender';
+import { genderNamedByWords, genderOfWord, genderWordPattern, genderWords } from '../convex/lib/gender';
 import { registrationGender } from '../convex/lib/elite';
 import { parseDivision, plausible } from '../convex/lib/leaderboard';
 import { normalizeGender } from '../convex/lib/normalize';
@@ -62,6 +62,11 @@ describe('one home for each reader (#572)', () => {
         null,
       ]);
       expect(genderNamedByWords('junior mens 89kg', 'label')).toBeNull();
+      expect(['Youth Women 16-17', 'masters  men 80-84', 'Womens Open'].map((title) => [genderWordPattern('Women', 'label').test(title), genderWordPattern('Men', 'label').test(title)])).toEqual([
+        [true, false],
+        [false, true],
+        [false, false],
+      ]);
     });
   });
 
@@ -112,6 +117,14 @@ describe('one home for each reader (#572)', () => {
       const missedAttemptOverTheCeiling = { ...row([100, 0, 0], [120, 0, 0], 220), snatch2: -300 };
       expect(isPlausibleResult(missedAttemptOverTheCeiling, RANKINGS_GUARD)).toBe(false);
       expect(isPlausibleResult(missedAttemptOverTheCeiling, LEADERBOARD_GUARD)).toBe(true);
+    });
+
+    it('does not rank a row whose total or best lift is not a number', () => {
+      const ranked = { federation: 'USAW', meet: 'M', date: '2026-01-01', name: 'A', age: "Open Men's 89kg", body_weight: 88, adaptive: false, snatch1: 100, snatch2: 0, snatch3: 0, snatch_best: 100, cj1: 120, cj2: 0, cj3: 0, cj_best: 120, total: 220 };
+      expect(plausible(ranked)).toBe(true);
+      expect(plausible({ ...ranked, total: Number.NaN })).toBe(false);
+      expect(plausible({ ...ranked, snatch_best: null as unknown as number, total: 300 })).toBe(false);
+      expect(plausible({ ...ranked, cj_best: Number.POSITIVE_INFINITY })).toBe(false);
     });
 
     it('uses the rankings guard unless told, and the leaderboard its own', () => {

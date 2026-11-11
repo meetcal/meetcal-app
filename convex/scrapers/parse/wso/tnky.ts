@@ -1,3 +1,4 @@
+import { genderWordPattern } from '../../../lib/gender';
 import { parseCsv } from '../../lib/csv';
 import { recordHolder } from '../holder';
 import { blankRecord, intOrNull, plusLast, setLift, type LiftName, type SheetTab, type WsoRecord } from './common';
@@ -31,15 +32,12 @@ export const TNKY_GROUPS: readonly Group[] = ['U11', 'U13', 'U15', 'U17', 'Junio
 /** The youth tabs' age ranges, "<11" aside. */
 const YOUTH: Record<string, string> = { '12-13': 'U13', '14-15': 'U15', '16-17': 'U17' };
 
-/**
- * A tab's age group and gender from its title: "Youth Women <11" -> U11,
- * "Youth Men 12-13" -> U13, "Youth Men 14-15" -> U15, "Youth Women 16-17"
- * -> U17, "Juniors Men 15-20", "Seniors Women >15", "Masters Men 35-39" ->
- * Masters 35, "Masters Men 85+" -> Masters 85. Null for any other tab.
- */
+const MEN = genderWordPattern('Men', 'label');
+const WOMEN = genderWordPattern('Women', 'label');
+
 export function tnkyTabGroup(title: string): Group | null {
   const text = title.replace(/\s+/g, ' ').trim().toLowerCase();
-  const gender = /\bwomen\b/.test(text) ? 'Women' : /\bmen\b/.test(text) ? 'Men' : null;
+  const gender = WOMEN.test(text) ? 'Women' : MEN.test(text) ? 'Men' : null;
   if (!gender) return null;
   if (/\byouth\b/.test(text)) {
     if (/<\s*11\b|\b11\s*(?:&|and)?\s*under\b|\bu11\b/.test(text)) return ['U11', gender];

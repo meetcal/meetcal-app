@@ -109,7 +109,6 @@ export type EliteStandard = { ageCategory: string; gender: string; weightClass: 
 /** The standards category a group is held to: Masters to Senior's. */
 const STANDARD_CATEGORY: Record<EliteGroup, string> = { youth: 'Youth', junior: 'Junior', senior: 'Senior', masters: 'Senior' };
 
-
 /** One category and gender's classes, lightest first, the open class last. */
 type ClassTable = { limit: number; open: boolean; weightClass: string; standardA: number }[];
 

@@ -98,7 +98,6 @@ function divisionCategory(lower: string): string | null {
 
 export type Division = { gender: Gender | null; category: string | null };
 
-/** A result's division (`Open Men's 89kg`, `Women's Masters (40-44) 69kg`), parsed. */
 export function parseDivision(division: string): Division {
   const lower = asciiLower(division);
   return { gender: genderNamedByWords(lower, 'division'), category: divisionCategory(lower) };
@@ -138,10 +137,6 @@ export function normalizeCategory(value: string): string | null {
 
 export const CATEGORIES = 'Senior, Junior, U17 (or Youth), U15, U13, U11, or Masters 30 … Masters 95';
 
-// ---------------------------------------------------------------------------
-// Source errors (`plausible`)
-// ---------------------------------------------------------------------------
-
 export const MAX_SNATCH = LEADERBOARD_GUARD.ceiling.snatch;
 export const MAX_CJ = LEADERBOARD_GUARD.ceiling.cj;
 export const MAX_TOTAL = LEADERBOARD_GUARD.ceiling.total;
@@ -171,6 +166,7 @@ export type RankedFields = Pick<
 export const consistentTotal = (row: RankedFields): boolean => totalAddsUp(row.total, row.snatch_best, row.cj_best, LEADERBOARD_GUARD.total);
 
 export const plausible = (row: RankedFields): boolean =>
+  [row.total, row.snatch_best, row.cj_best].every(Number.isFinite) &&
   isPlausibleResult(
     {
       snatch1: row.snatch1,

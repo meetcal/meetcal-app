@@ -40,3 +40,5 @@ export function genderNamedByWords(lowercased: string, words: GenderWords): Gend
   if (named.size !== 1) return null;
   return named.has('Men') ? 'Men' : 'Women';
 }
+
+export const genderWordPattern = (gender: Gender, words: GenderWords) => new RegExp(`\\b(?:${genderWords(gender, words).join('|')})\\b`, 'i');

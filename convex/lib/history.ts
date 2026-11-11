@@ -63,11 +63,6 @@ export function summaryOf(rows: readonly ApiLiftingResult[]): { latest: string; 
   };
 }
 
-/**
- * Rewrites the history and summary documents of `keys` from
- * `lifting_results`; returns how many histories changed. A summary missing
- * beside an unchanged history (written before summaries existed) is filled in.
- */
 export async function writeHistories(ctx: MutationCtx, keys: Iterable<string>): Promise<number> {
   const changed = await mapInBatches(
     [...new Set(keys)],
@@ -105,11 +100,6 @@ export async function writeHistories(ctx: MutationCtx, keys: Iterable<string>): 
 
 const READ_BATCH = 250;
 
-/**
- * Each athlete's summary: the summary document when there is one, otherwise
- * derived from the history (live before the first build, or from the history
- * document where the summary has not been written yet).
- */
 export async function readSummaries(ctx: QueryCtx, keys: readonly string[]): Promise<Map<string, Summary>> {
   const ready = await historiesReady(ctx);
   const parse = (latest: string, marks: string): Summary => ({ latest: JSON.parse(latest) as ApiLiftingResult[], marks: JSON.parse(marks) as Mark[] });
@@ -132,10 +122,6 @@ export async function readSummaries(ctx: QueryCtx, keys: readonly string[]): Pro
   return new Map(entries);
 }
 
-/**
- * Each key's history, newest first. From the history documents once they are
- * built, from `lifting_results` before.
- */
 export async function readHistories(ctx: QueryCtx, keys: readonly string[]): Promise<Map<string, ApiLiftingResult[]>> {
   const ready = await historiesReady(ctx);
   const entries = await mapInBatches(

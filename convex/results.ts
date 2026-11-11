@@ -124,10 +124,6 @@ export const leaderboard = action({
     checkPass('results:leaderboard', pass, await ctx.runQuery(internal.accessPass.passes, {}));
     const { from, to, by, limit, filters } = checkLeaderboardArgs(args);
     const slices = monthSlices(from, to);
-    // Folded in as pages arrive and pruned to about `limit` athletes. Slices finish in any
-    // order, but that cannot change the answer: rows from different months differ in date,
-    // which ties are broken by, and a month's own pages are folded in date order, so a full
-    // tie keeps the row read first, as one pass over the rows would.
     const best = new Map<string, Candidate>();
     const federations = new Set<string>();
     const readSlice = async ([start, end]: (typeof slices)[number]) => {

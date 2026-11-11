@@ -164,16 +164,6 @@ export const truncatedEntryNames = internalQuery({
 const MEMBER_WSO_READS = 50;
 const MEMBER_LOOKUP_BATCH = 250;
 
-/**
- * Each member's WSO as their most recent registration that names one gives
- * it, for the entries sync to store with entrants (#345): Sport80's entries
- * list carries no WSO, start lists loaded by hand do. Most recent is by the
- * meet's start date, not when the row was stored (a start list reloaded
- * later is not newer); a registration whose meet has no stored date ranks
- * below dated ones, and equal dates go to the row stored last. Membership
- * numbers only (digits); a member with no registration naming a WSO is left
- * out. At most 500 ids a call.
- */
 export const memberWsos = internalQuery({
   args: { memberIds: v.array(v.string()) },
   handler: async (ctx, { memberIds }): Promise<Record<string, string>> => {

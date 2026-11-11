@@ -1,7 +1,7 @@
 import type { Infer } from 'convex/values';
 import type { QueryCtx } from '../_generated/server';
 import type { recordHolder } from '../schema';
-import { genderWords } from './gender';
+import { genderWordPattern } from './gender';
 import { normalizeName } from './names';
 import { normalizeGender } from './normalize';
 import { isPlausibleResult } from './plausible';
@@ -388,9 +388,8 @@ export function wsoAgeGroups(rows: WsoRecordRow[]): string[] {
 
 export const ADAPTIVE_RECORDS_SEASON_START = '2026';
 
-const wordsOf = (gender: 'Men' | 'Women') => new RegExp(`\\b(?:${genderWords(gender, 'label').join('|')})\\b`, 'i');
-const MEN = wordsOf('Men');
-const WOMEN = wordsOf('Women');
+const MEN = genderWordPattern('Men', 'label');
+const WOMEN = genderWordPattern('Women', 'label');
 
 export type AdaptiveGender = 'men' | 'women';
 

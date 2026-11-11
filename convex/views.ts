@@ -299,6 +299,9 @@ export const statsPreviousBests = internalQuery({
  * per-transaction document read limit.
  */
 const STATS_PREVIOUS_BEST_BATCH = 200;
+const STALE_SHARD_DELETE_BATCH = 200;
+const SHARD_PATCH_BATCH = 20;
+const RESULT_NAMES_SYNC_BATCH = 500;
 
 async function buildStats(ctx: ActionCtx, meet: string): Promise<void> {
   const { sources, wanted } = await ctx.runQuery(internal.views.statsBuildPlan, { meet });
@@ -578,7 +581,7 @@ async function rebuildSearchShards(ctx: ActionCtx, sortedNames: readonly string[
   });
   const current = new Set([...shards.keys()].map(searchShardKey));
   const stale = (await ctx.runQuery(internal.views.viewKeysWithPrefix, { prefix: SEARCH_SHARD_PREFIX })).filter((key: string) => !current.has(key));
-  for (let i = 0; i < stale.length; i += 200) await ctx.runMutation(internal.views.deleteSearchShards, { keys: stale.slice(i, i + 200) });
+  for (const keys of chunks(stale, STALE_SHARD_DELETE_BATCH)) await ctx.runMutation(internal.views.deleteSearchShards, { keys });
 }
 
 /**
@@ -640,8 +643,8 @@ async function applyPendingShardChanges(ctx: ActionCtx): Promise<void> {
     const bigrams = new Set<string>();
     for (const { name } of pending) for (const bigram of nameBigrams(name)) bigrams.add(bigram);
     const list = [...bigrams];
-    for (let i = 0; i < list.length; i += 20) {
-      await ctx.runMutation(internal.views.patchSearchShards, { bigrams: list.slice(i, i + 20), added, removed });
+    for (const batch of chunks(list, SHARD_PATCH_BATCH)) {
+      await ctx.runMutation(internal.views.patchSearchShards, { bigrams: batch, added, removed });
     }
     await ctx.runMutation(internal.views.clearPendingShardChanges, { applied: pending.map(({ id, present }) => ({ id, present })) });
     if (pending.length < 500) return;
@@ -1041,9 +1044,8 @@ export const clearRebuildFailures = internalMutation({
 
 async function deleteHandled(ctx: ActionCtx, hints: readonly Hint[]): Promise<number> {
   let deleted = 0;
-  for (let i = 0; i < hints.length; i += HINT_DELETE_BATCH) {
-    const batch = hints.slice(i, i + HINT_DELETE_BATCH).map(({ id, seq }) => ({ id, seq }));
-    deleted += await ctx.runMutation(internal.views.deleteHints, { hints: batch });
+  for (const batch of chunks(hints, HINT_DELETE_BATCH)) {
+    deleted += await ctx.runMutation(internal.views.deleteHints, { hints: batch.map(({ id, seq }) => ({ id, seq })) });
   }
   return deleted;
 }
@@ -1307,8 +1309,8 @@ export const rebuildStage = internalAction({
         for (;;) {
           const keys: string[] = await ctx.runQuery(internal.views.summaryKeysAfter, { after, limit: PRUNE_PAGE });
           const orphans = keys.filter((key) => !current.has(key));
-          for (let i = 0; i < orphans.length; i += HISTORY_BATCH) {
-            await ctx.runMutation(internal.views.buildHistories, { keys: orphans.slice(i, i + HISTORY_BATCH) });
+          for (const batch of chunks(orphans, HISTORY_BATCH)) {
+            await ctx.runMutation(internal.views.buildHistories, { keys: batch });
           }
           if (keys.length < PRUNE_PAGE) return await next('nat', 0);
           after = keys[keys.length - 1];
@@ -1371,9 +1373,8 @@ export const rebuildStage = internalAction({
             // next batch
           }
         } else if (args.hints) {
-          // A rebuild started before the sweep existed: the hints it read.
-          for (let i = 0; i < args.hints.length; i += HINT_DELETE_BATCH) {
-            await ctx.runMutation(internal.views.deleteHints, { hints: args.hints.slice(i, i + HINT_DELETE_BATCH) });
+          for (const batch of chunks(args.hints, HINT_DELETE_BATCH)) {
+            await ctx.runMutation(internal.views.deleteHints, { hints: batch });
           }
         }
         await ctx.runMutation(internal.views.setRebuilding, { rebuilding: false });
@@ -1714,10 +1715,8 @@ async function refreshTargets(ctx: ActionCtx, hints: readonly Hint[]): Promise<R
   if (nameHints.length > 0 && inBudget()) {
     const names = [...new Set(nameHints.map((h) => h.key))];
     const ok = await build('search directory', async () => {
-      // Each name costs a lookup or two; 500 a batch stays well inside a
-      // mutation's read limit.
-      for (let i = 0; i < names.length; i += 500) {
-        await ctx.runMutation(internal.views.syncResultNames, { names: names.slice(i, i + 500) });
+      for (const batch of chunks(names, RESULT_NAMES_SYNC_BATCH)) {
+        await ctx.runMutation(internal.views.syncResultNames, { names: batch });
       }
       await applyPendingShardChanges(ctx);
     });

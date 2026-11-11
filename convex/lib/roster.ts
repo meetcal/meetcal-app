@@ -51,7 +51,6 @@ export function isJunkMeetName(meet: string): boolean {
   return /your choice regarding cookies/i.test(meet) || /^\d+,[^,]*,\d+,/.test(meet);
 }
 
-
 const AGE_RANGE = { min: 5, max: 100 } as const;
 /** A roster this size or more with this share of one age has ages that are buckets or a default. */
 const ONE_AGE = { roster: 20, share: 0.4 } as const;
