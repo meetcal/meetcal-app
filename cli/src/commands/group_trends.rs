@@ -239,8 +239,6 @@ pub fn report(
         years.entry(year(&row.date)).or_default().push(row);
     }
 
-    // Shown without the medal columns under `--no-medals`; exported with them always (null
-    // then), so the keys do not depend on the flag.
     let mut by_year = Table::new();
     let mut by_year_data = Table::new();
     let mut header = vec![
@@ -483,8 +481,9 @@ mod tests {
         assert_eq!(by_year[1]["total_lifted"], 194);
         let top = json["top_lifters"].as_array().unwrap();
         assert_eq!(top[0]["athlete"], "Bo");
+        assert_eq!(top[1]["best_total"], 194);
+        assert_eq!(top[1]["results"], 2);
 
-        // Without medals the export keeps the medal keys, as null; the table drops the columns.
         let without = report("CLUB — Test", &rows, &prs, None);
         let exported = without.to_json();
         let keys = |row: &serde_json::Value| -> Vec<String> {
@@ -494,8 +493,6 @@ mod tests {
         assert_eq!(exported["by_year"][0]["gold"], serde_json::Value::Null);
         assert_eq!(exported["by_year"][0]["athletes"], 2);
         assert!(!without.to_text().contains("Gold"));
-        assert_eq!(top[1]["best_total"], 194);
-        assert_eq!(top[1]["results"], 2);
     }
 
     #[test]

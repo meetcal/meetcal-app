@@ -310,13 +310,12 @@ fn rows(table: &Table) -> Vec<Value> {
         .collect()
 }
 
-/// A cell of the column keyed `name` as JSON and CSV carry it. Weight classes stay text: `60kg`
-/// and `110+kg` are the same kind of value, in both formats.
 fn export_value(name: &str, cell: &str) -> Value {
-    if name.contains("class") {
-        text_value(cell)
-    } else {
-        value(cell)
+    let holds_weight_classes = name.contains("class");
+    match value(cell) {
+        Value::Null => Value::Null,
+        _ if holds_weight_classes => text_value(cell),
+        exported => exported,
     }
 }
 
@@ -345,8 +344,6 @@ fn csv_table(table: &Table) -> String {
 }
 
 /// A cell as CSV writes it: the same value JSON gets, so the two formats agree. Placeholders
-/// are empty, booleans `true`/`false`, numbers without their unit, text (weight classes
-/// included) as it is.
 fn csv_value(name: &str, cell: &str) -> String {
     match export_value(name, cell) {
         Value::Null => String::new(),
@@ -524,6 +521,19 @@ mod tests {
             ])
         );
         assert_eq!(report.to_csv(), "class,snatch\n60kg,126\n110+kg,190\n");
+    }
+
+    #[test]
+    fn a_placeholder_in_a_weight_class_column_is_null_in_both_formats() {
+        let report = Report::single(
+            "records",
+            table(&["Class", "Snatch"], &[&["N/A", "126"], &["—", "190"]]),
+        );
+        assert_eq!(
+            report.to_json(),
+            json!([{ "class": null, "snatch": 126 }, { "class": null, "snatch": 190 }])
+        );
+        assert_eq!(report.to_csv(), "class,snatch\n,126\n,190\n");
     }
 
     #[test]
