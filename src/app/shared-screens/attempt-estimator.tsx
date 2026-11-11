@@ -242,7 +242,7 @@ function AttemptEstimatorContent() {
   }, [hasValidParams, sessionNumber, params.platform, params.meet]);
 
   useEffect(() => {
-    loadData();
+    void loadData();
     return () => {
       // Invalidate whatever is in flight: an unmount or a parameter change
       // must not repaint this screen with the old session's estimates.

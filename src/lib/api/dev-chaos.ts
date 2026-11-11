@@ -108,7 +108,10 @@ export function pickChaosFault(config: ChaosConfig, call: ApiCall, random: () =>
       return { kind, status: pickOne(CHAOS_STATUSES, random) };
     case 'garbage':
       return { kind, value: CHAOS_GARBAGE };
-    default:
+    case 'network':
+    case 'hang':
+    case 'transient':
+    case 'truncate':
       return { kind };
   }
 }

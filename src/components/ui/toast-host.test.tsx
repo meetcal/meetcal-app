@@ -217,7 +217,9 @@ describe("ToastHost", () => {
     const banner = renderer.root.findAll((node) => node.props.accessibilityRole === "alert")[0];
 
     // Tapped away; the modal closes before the slide-out finishes.
-    act(() => banner.props.onPress());
+    act(() => {
+      banner.props.onPress();
+    });
     act(() => renderer.update(<ModalScreen modalOpen={false} />));
 
     expect(texts(renderer)).toEqual([]);

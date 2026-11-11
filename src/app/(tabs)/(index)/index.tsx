@@ -263,7 +263,7 @@ export default function ScheduleScreen() {
   ]);
 
   useEffect(() => {
-    initStore();
+    void initStore();
   }, []);
 
   // Check onboarding status on mount
@@ -287,7 +287,7 @@ export default function ScheduleScreen() {
       }
     };
 
-    checkOnboarding();
+    void checkOnboarding();
 
     return () => {
       aborted = true;

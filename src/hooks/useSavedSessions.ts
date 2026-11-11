@@ -181,6 +181,9 @@ export function useSavedSessions() {
         if (cancelled) return;
         syncSavedWidget(selectedMeet, savedSessions, timeZone);
         void reindexAppEntities();
+      })
+      .catch((error: unknown) => {
+        console.error('Error syncing the saved-sessions widget:', error);
       });
     return () => {
       cancelled = true;

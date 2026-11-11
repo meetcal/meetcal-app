@@ -220,7 +220,7 @@ export default function StartListScreen() {
 
   const handleItemExpand = useCallback((index: number) => {
     setTimeout(() => {
-      listRef.current?.scrollToIndex({ index, animated: true, viewPosition: 0.1 });
+      void listRef.current?.scrollToIndex({ index, animated: true, viewPosition: 0.1 });
     }, 100);
   }, []);
 

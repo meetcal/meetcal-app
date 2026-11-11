@@ -529,10 +529,10 @@ export function SelectedMeetProvider({ children }: { children: React.ReactNode }
 
     // Initial load
   useEffect(() => {
-    loadMeets();
+    void loadMeets();
 
     const refreshInterval = setInterval(
-      loadMeets,
+      () => void loadMeets(),
       MEET_LIST_REFRESH_INTERVAL_MS,
     );
 
@@ -555,7 +555,7 @@ export function SelectedMeetProvider({ children }: { children: React.ReactNode }
       pending.timer = setTimeout(() => {
         pending.timer = null;
         pending.inFlight = true;
-        loadMeets().finally(() => {
+        void loadMeets().finally(() => {
           pending.inFlight = false;
         });
       }, reconnectRefetchDelayMs());

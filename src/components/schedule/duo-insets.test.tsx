@@ -65,7 +65,9 @@ function pressTestID(tree: ReactTestRenderer, testID: string): void {
   const node = tree.root.findAll(
     (n) => n.props?.testID === testID && typeof n.props.onPress === "function",
   )[0];
-  act(() => node.props.onPress());
+  act(() => {
+    node.props.onPress();
+  });
 }
 
 function render(element: React.ReactElement): ReactTestRenderer {
@@ -157,7 +159,9 @@ describe("iPhone Duo side band", () => {
     const button = tree.root.findAll(
       (n) => n.props?.accessibilityLabel === "Sort athletes" && typeof n.props.onPress === "function",
     )[0];
-    act(() => button.props.onPress());
+    act(() => {
+      button.props.onPress();
+    });
     expect(horizontalPadding(tree, "session-sort-backdrop")).toEqual({ left: 20 + 84, right: 20 });
     act(() => tree.unmount());
   });

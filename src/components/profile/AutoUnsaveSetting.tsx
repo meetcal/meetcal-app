@@ -69,7 +69,7 @@ export function AutoUnsaveSetting({
       }
     };
 
-    loadPreference();
+    void loadPreference();
     return () => {
       cancelled = true;
     };

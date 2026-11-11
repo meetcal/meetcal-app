@@ -535,7 +535,7 @@ export function SubscriptionProvider({ children }: { children: React.ReactNode }
       }
     };
 
-    initializeStatus();
+    void initializeStatus();
 
     return () => {
       cancelled = true;
@@ -551,7 +551,7 @@ export function SubscriptionProvider({ children }: { children: React.ReactNode }
 
     const setupListener = async () => {
       try {
-        const listener = async (info: CustomerInfo) => {
+        const publishCustomerInfo = async (info: CustomerInfo) => {
           // RevenueCat pushes this for the current user (after `logIn`, a
           // purchase, a renewal), so it supersedes any check still in flight.
           const generation = beginAnswer();
@@ -570,15 +570,20 @@ export function SubscriptionProvider({ children }: { children: React.ReactNode }
           await saveSubscriptionCache(generation, hasActiveSubscription, type);
         };
 
+        const listener = (info: CustomerInfo) => {
+          void publishCustomerInfo(info);
+        };
         Purchases.addCustomerInfoUpdateListener(listener);
-        customerInfoUpdateListener = () => Purchases.removeCustomerInfoUpdateListener(listener);
+        customerInfoUpdateListener = () => {
+          Purchases.removeCustomerInfoUpdateListener(listener);
+        };
       } catch (error) {
         console.error('Failed to setup customer info listener:', error);
         setIsLoading(false);
       }
     };
 
-    setupListener();
+    void setupListener();
 
     return () => {
       if (customerInfoUpdateListener) {

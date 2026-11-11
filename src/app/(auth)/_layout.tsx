@@ -29,7 +29,7 @@ export default function AuthRoutesLayout() {
     }
 
     // Check immediately on mount
-    recheckNetwork()
+    void recheckNetwork()
 
     // Go through the shared subscription rather than NetInfo directly. A raw
     // `state.isConnected === false` disagrees with `isNetworkAvailable()` (and
@@ -68,7 +68,7 @@ export default function AuthRoutesLayout() {
       }
     }
 
-    checkAuthState()
+    void checkAuthState()
 
     return () => {
       cancelled = true

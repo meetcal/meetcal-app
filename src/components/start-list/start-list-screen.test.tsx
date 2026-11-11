@@ -256,8 +256,11 @@ describe("Start List filters across meets", () => {
 });
 
 describe("Start List search", () => {
-  const search = (text: string) =>
-    act(() => tree.root.findByProps({ testID: "start-list-search" }).props.onChangeText(text));
+  const search = (text: string) => {
+    act(() => {
+      tree.root.findByProps({ testID: "start-list-search" }).props.onChangeText(text);
+    });
+  };
 
   it("matches names word by word, ignoring order and stray spaces", async () => {
     await mount();

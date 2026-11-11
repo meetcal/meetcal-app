@@ -210,7 +210,8 @@ function expectClassified(fetcher: Fetcher, fault: TransportFault, outcome: Outc
     case 'truncate':
       expectPlainError(outcome);
       return;
-    default:
+    case 'delay':
+    case 'hang':
       throw new Error(`unexpected fault ${fault.kind}`);
   }
 }

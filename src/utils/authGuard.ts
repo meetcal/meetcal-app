@@ -166,7 +166,7 @@ export function useAuthGuard() {
       setIsCacheResolved(true);
     }
 
-    loadCachedAuthAndNetwork();
+    void loadCachedAuthAndNetwork();
 
     return () => {
       cancelled = true;
@@ -203,7 +203,7 @@ export function useAuthGuard() {
       }
     }
 
-    persistResolvedAuthState();
+    void persistResolvedAuthState();
 
     return () => {
       cancelled = true;

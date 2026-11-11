@@ -407,7 +407,7 @@ function AthleteResultsContent() {
       }
     };
 
-    fetchAthleteResults();
+    void fetchAthleteResults();
     return () => {
       // Supersede the in-flight request: leaving the screen (or opening a
       // different athlete) must not repaint it with the previous results.

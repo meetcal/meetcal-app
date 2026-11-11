@@ -234,7 +234,9 @@ describe("AthleteItem session link", () => {
     await toggleRow(tree);
 
     const [, sessionLink] = findPressables(tree);
-    act(() => sessionLink.props.onPress());
+    act(() => {
+      sessionLink.props.onPress();
+    });
 
     expect(props.router.push).toHaveBeenCalledWith({
       pathname: "/shared-screens/schedule-details",
@@ -274,7 +276,9 @@ describe("AthleteItem session link", () => {
     const tree = mountRow(props);
     await toggleRow(tree);
     const [, sessionLink] = findPressables(tree);
-    act(() => sessionLink.props.onPress());
+    act(() => {
+      sessionLink.props.onPress();
+    });
 
     expect(props.router.push).toHaveBeenCalledTimes(1);
     expect(jest.mocked(props.router.push).mock.calls[0][0]).toMatchObject({
@@ -293,7 +297,9 @@ describe("AthleteItem session link", () => {
     const tree = mountRow(props);
     await toggleRow(tree);
     const [, sessionLink] = findPressables(tree);
-    act(() => sessionLink.props.onPress());
+    act(() => {
+      sessionLink.props.onPress();
+    });
 
     expect(props.router.push).toHaveBeenCalledWith({
       pathname: "/shared-screens/schedule-details",
@@ -327,7 +333,9 @@ describe("AthleteItem session link", () => {
     const tree = mountRow(props);
     await toggleRow(tree);
     const [, sessionLink] = findPressables(tree);
-    act(() => sessionLink.props.onPress());
+    act(() => {
+      sessionLink.props.onPress();
+    });
 
     expect(jest.mocked(props.router.push).mock.calls[0][0]).toMatchObject({
       params: { startTime: "1:00 PM", weighInTime: "10:30 AM", date: "2026-06-21" },

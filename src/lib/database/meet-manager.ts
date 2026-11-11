@@ -1522,7 +1522,7 @@ export function warmMeetData(meet: MeetName, options: WarmMeetOptions = {}): Pro
     const isDownloaded = await isMeetExplicitlyDownloaded(meet);
     if (!isDownloaded) return;
 
-    setTimeout(async () => {
+    const prefetchUnlessClearedMeanwhile = async () => {
       // Asked again: a Remove, Delete All or Clear Cache in the meantime
       // turns this into a full download of a meet nobody downloaded. A clear
       // still running has not un-marked the meet yet, so it is waited out
@@ -1538,6 +1538,7 @@ export function warmMeetData(meet: MeetName, options: WarmMeetOptions = {}): Pro
         }
         console.error('Deferred full meet prefetch failed:', { meet, error });
       });
-    }, FULL_PREFETCH_DELAY_MS);
+    };
+    setTimeout(() => void prefetchUnlessClearedMeanwhile(), FULL_PREFETCH_DELAY_MS);
   });
 }
