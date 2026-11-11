@@ -121,17 +121,9 @@ export async function signedInUser(ctx: QueryCtx): Promise<{ userId: string; via
   return { userId: identity.subject, via: 'meetcal' };
 }
 
-/**
- * The signed-in Clerk user's id, for the functions that read or write one
- * user's own data (saved sessions, preferences, meet submissions).
- */
 export async function requireUserId(ctx: QueryCtx): Promise<string> {
   const identity = await ctx.auth.getUserIdentity();
-  // A MeetCal-issued token (the CLI's, Siri's) reads premium data only.
   if (!identity || isMeetCalToken(identity)) throw apiError(401, 'unauthorized');
-  // A deleted account's token stays valid for a minute or so: a request it
-  // carries (a save still in flight, another device's sync) must not store
-  // the user's data again after `deleteUserData`.
   const deleted = await ctx.db
     .query('deleted_users')
     .withIndex('by_userId', (q) => q.eq('userId', identity.subject))

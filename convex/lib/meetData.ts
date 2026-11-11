@@ -78,12 +78,6 @@ export function oldestMeet<T extends { _creationTime: number }>(rows: readonly T
   return rows.reduce<T | null>((oldest, row) => (oldest === null || row._creationTime < oldest._creationTime ? row : oldest), null);
 }
 
-/**
- * A row that is no event: a test entry typed into a source, with its venue
- * written as one character ("q") and a time zone that is no IANA zone ("q",
- * "America_New_York"). The meet lists leave it out; a real meet whose zone
- * is unknown (blank) still has a venue, or a "TBD" one.
- */
 export function isPlaceholderMeet(meet: { timeZone: string; venueName: string; venueCity: string }): boolean {
   return !isMeetTimeZone(meet.timeZone) && [meet.venueName, meet.venueCity].every((field) => field.trim().length === 1);
 }
