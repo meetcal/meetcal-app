@@ -170,8 +170,11 @@ in the sitemap.
   user's primary email (`auth::primary_email`), or `null`.
 - A function error's `{ status, error }` is shown as a sentence: 400 (invalid input) and 413 (a file
   over 20 MB) show the server's `error`, 429 (5 submissions, or the upload URLs, a day) adds "Please
-  try again tomorrow.", and 401 asks the user to sign in again. On any error the form keeps what the
-  user entered. Done, the page thanks the user and offers to send another meet.
+  try again tomorrow.", and 401 says MeetCal couldn't confirm the sign-in and asks to try again, as
+  `/link` does. A submit refused with `code: "already_submitted"` (the files are already in a
+  submission) counts as sent when it is a retry that reused files an earlier try uploaded: that try
+  was stored after all. On a first try it shows the server's `error`. On any error the form keeps
+  what the user entered. Done, the page thanks the user and offers to send another meet.
 - Upload URLs are on the Convex deployment's own origin, which the CSP's `connect-src` already allows.
 
 ## Routes and metadata
