@@ -4,7 +4,7 @@ use comfy_table::Table;
 use serde_json::json;
 
 use crate::types::meets::Meet;
-use crate::utils::backend::{queries, query};
+use crate::utils::backend::{FunctionError, queries, query};
 use crate::utils::format::date_range;
 use crate::utils::names::{NameKind, not_found};
 use crate::utils::output::{self, Report};
@@ -25,7 +25,7 @@ pub struct MeetInfoArgs {
 pub async fn run(args: MeetInfoArgs) -> Result<()> {
     let meet: Meet = match query(queries::MEET_DETAILS, &json!({ "meet": args.name })).await {
         Ok(meet) => meet,
-        Err(error) if error.to_string().contains("meet not found") => {
+        Err(error) if is_unknown_meet(&error) => {
             let message = format!("No meet named \"{}\"", args.name);
             return Err(not_found(NameKind::Meet, &args.name, message).await);
         }
@@ -33,6 +33,10 @@ pub async fn run(args: MeetInfoArgs) -> Result<()> {
     };
     output::emit(Report::new().table_with_data("meet", render(&meet), data(&meet)));
     Ok(())
+}
+
+pub fn is_unknown_meet(error: &anyhow::Error) -> bool {
+    FunctionError::status_of(error) == Some(404)
 }
 
 pub fn render(meet: &Meet) -> Table {
@@ -111,6 +115,23 @@ pub fn address(meet: &Meet) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn an_unknown_meet_is_the_querys_404_whatever_it_says() {
+        let failed = |status: Option<u16>, reason: &str| {
+            anyhow::Error::from(FunctionError {
+                function: "meets:details".to_string(),
+                status,
+                reason: reason.to_string(),
+            })
+            .context("reading the meet")
+        };
+        assert!(is_unknown_meet(&failed(Some(404), "meet not found")));
+        assert!(is_unknown_meet(&failed(Some(404), "no meet by that name")));
+        assert!(!is_unknown_meet(&failed(Some(400), "meet not found")));
+        assert!(!is_unknown_meet(&failed(None, "meet not found")));
+        assert!(!is_unknown_meet(&anyhow::anyhow!("meet not found")));
+    }
 
     #[test]
     fn address_joins_the_parts_it_has() {

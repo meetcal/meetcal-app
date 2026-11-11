@@ -1,4 +1,4 @@
-import type { SupabaseBests } from "@/data/types/athletes";
+import type { AthleteBests } from "@/data/types/athletes";
 import { sortSessionAthletes } from "@/lib/session-athlete-sort";
 
 const athletes = [
@@ -8,7 +8,7 @@ const athletes = [
   { name: "Bombed", entryTotal: 160 },
 ];
 
-const bests: Record<string, SupabaseBests> = {
+const bests: Record<string, AthleteBests> = {
   "Strong Snatcher": { snatch_best: 120, cj_best: 140, total: 260 },
   Steady: { snatch_best: 100, cj_best: null, total: 230 },
   Bombed: { snatch_best: 0, cj_best: 0, total: 0 },
