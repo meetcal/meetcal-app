@@ -34,7 +34,6 @@ pub async fn run(args: MeetInfoArgs) -> Result<()> {
     Ok(())
 }
 
-/// Whether `meets:details` failed because it has no such meet: its 404, whatever its wording.
 pub fn is_unknown_meet(error: &anyhow::Error) -> bool {
     FunctionError::status_of(error) == Some(404)
 }
