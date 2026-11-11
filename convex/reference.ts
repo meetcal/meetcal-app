@@ -4,7 +4,16 @@ import { query, type QueryCtx } from './_generated/server';
 import { revalidated, revalidatedText, type Revalidated } from './lib/etag';
 import type { Doc } from './_generated/dataModel';
 import { clubKey, clubLabels } from './lib/clubs';
-import { clubAthleteCount, clubStats, computeStatsRows, meetByName, meetResultTitles, readStatsViewItems } from './lib/meetData';
+import {
+  clubAthleteCount,
+  clubStats,
+  computeStatsRows,
+  computeStatsRowsOfWso,
+  meetByName,
+  meetResultTitles,
+  readStatsViewItems,
+  wsoStats,
+} from './lib/meetData';
 import { paddedDate, type MeetStatus } from './lib/meetStatus';
 import { isPlaceholderMeet } from './meets';
 import {
@@ -637,5 +646,20 @@ export const clubMeetStats = premiumQuery('reference:clubMeetStats', {
         .collect(),
     ]);
     return clubStats(rows, club, clubAthleteCount(roster, club));
+  },
+});
+
+export const wsoMeetStats = premiumQuery('reference:wsoMeetStats', {
+  args: { wso: v.string(), meet: v.string() },
+  handler: async (ctx, { wso, meet }) => {
+    requireNonEmpty('wso', wso);
+    requireNonEmpty('meet', meet);
+    const roster = await ctx.db
+      .query('athletes')
+      .withIndex('by_meet', (q) => q.eq('meet', meet))
+      .collect();
+    const statsView = await readFreshView(ctx, meetKey(meet, 'stats'));
+    const rows = statsView ? readStatsViewItems(await statsView.items()).rows : await computeStatsRowsOfWso(ctx, meet, wso);
+    return wsoStats(rows, roster, wso);
   },
 });

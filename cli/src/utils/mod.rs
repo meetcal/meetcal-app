@@ -10,6 +10,7 @@ pub mod make_rate;
 pub mod meet_names;
 pub mod names;
 pub mod output;
+pub mod placings;
 pub mod progress;
 pub mod releases;
 pub mod retry;

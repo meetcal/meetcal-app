@@ -11,9 +11,6 @@ use crate::commands::group_wrapped::{
     ClubMembership, distinct_names, filter_membership_results, get_club_memberships,
     get_wso_memberships,
 };
-use crate::commands::wso_results::{
-    RosterClasses, calculate_medal_details, needs_roster, roster_classes,
-};
 use crate::types::athletes::Athletes;
 use crate::types::lifting_results::LiftingResults;
 use crate::types::wso::Movement;
@@ -23,6 +20,9 @@ use crate::utils::format::us_date;
 use crate::utils::meet_names::{editions_by_year, equivalent_meets, year_of};
 use crate::utils::names::{NameKind, not_found};
 use crate::utils::output::{self, Report};
+use crate::utils::placings::{
+    RosterClasses, calculate_medal_details, needs_roster, roster_classes,
+};
 use crate::utils::stats::{
     Lift, SINCLAIR_LABEL, attempt_habits, fold, number, percent, points, pr_flags, row_qpoints,
     row_sinclair, valid_total,
