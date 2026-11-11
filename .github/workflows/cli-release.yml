@@ -22,6 +22,28 @@ jobs:
         working-directory: cli
     steps:
       - uses: actions/checkout@v4
+        with:
+          # The whole history, to check the tag against master below.
+          fetch-depth: 0
+
+      # A release is of merged code: a tag on a branch's commit would publish, and point the
+      # Homebrew tap at, code that never reached master.
+      - name: Check the tagged commit is on master
+        working-directory: .
+        run: |
+          git fetch --no-tags origin master
+          git merge-base --is-ancestor "${GITHUB_SHA}" origin/master || {
+            echo "Tag ${GITHUB_REF_NAME} (${GITHUB_SHA}) is not on master: tag a commit of master"
+            exit 1
+          }
+
+      - name: Check the tag matches the crate version
+        run: |
+          version="$(awk -F'"' '/^version = / { print $2; exit }' Cargo.toml)"
+          test "${GITHUB_REF_NAME}" = "cli-v${version}" || {
+            echo "Tag ${GITHUB_REF_NAME} does not match cli/Cargo.toml version ${version}"
+            exit 1
+          }
 
       - uses: dtolnay/rust-toolchain@master
         with:
@@ -35,14 +57,6 @@ jobs:
       - uses: taiki-e/install-action@v2
         with:
           tool: cargo-audit
-
-      - name: Check the tag matches the crate version
-        run: |
-          version="$(awk -F'"' '/^version = / { print $2; exit }' Cargo.toml)"
-          test "${GITHUB_REF_NAME}" = "cli-v${version}" || {
-            echo "Tag ${GITHUB_REF_NAME} does not match cli/Cargo.toml version ${version}"
-            exit 1
-          }
 
       - name: Run tests
         run: cargo test --locked
@@ -61,9 +75,11 @@ jobs:
           - os: macos-latest
             target: aarch64-apple-darwin
             artifact: darwin-arm64
+          # Built on an Apple silicon runner, and run there under Rosetta before it ships.
           - os: macos-latest
             target: x86_64-apple-darwin
             artifact: darwin-x64
+            rosetta: true
           # Linux binaries link the C library of the system they are built against. They are
           # built with Zig against glibc 2.17, so they start on any distribution from 2014 on
           # (Ubuntu 22.04, Debian 12, RHEL 9 and Amazon Linux 2023 included), not only on one as
@@ -144,6 +160,27 @@ jobs:
         run: |
           docker run --rm -v "$PWD/dist/${{ matrix.artifact }}:/opt/meetcal:ro" debian:11 \
             /opt/meetcal/meetcal --version
+
+      # The macOS binaries have no container to try them in: run the archived binary on the
+      # runner (the Intel one under Rosetta) and check it is the tagged version. Homebrew
+      # installs whatever is published, with no check of its own.
+      - name: Smoke test on macOS
+        if: runner.os == 'macOS'
+        working-directory: cli
+        run: |
+          binary="dist/${{ matrix.artifact }}/meetcal"
+          if [ -n "${{ matrix.rosetta }}" ]; then
+            arch -x86_64 /usr/bin/true 2>/dev/null \
+              || softwareupdate --install-rosetta --agree-to-license
+            printed="$(arch -x86_64 "$binary" --version)"
+          else
+            printed="$("$binary" --version)"
+          fi
+          echo "$printed"
+          test "$printed" = "meetcal ${GITHUB_REF_NAME#cli-v}" || {
+            echo "Expected meetcal ${GITHUB_REF_NAME#cli-v}"
+            exit 1
+          }
 
       - uses: actions/upload-artifact@v4
         with:
