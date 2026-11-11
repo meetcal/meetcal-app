@@ -26,9 +26,9 @@ describe('flat WSO sheets (port of scraper_ga_pnw.py)', () => {
       'W65,F,,63,Total,',
     ].join('\n');
     expect(parseFlatSheet(csv, 'Georgia')).toEqual([
-      { wso: 'Georgia', age_category: 'U11', gender: 'Women', weight_class: '36', snatch_record: 16, cj_record: 20, total_record: 35 },
-      { wso: 'Georgia', age_category: 'Senior', gender: 'Men', weight_class: '110+', snatch_record: 140, cj_record: null, total_record: 300 },
-      { wso: 'Georgia', age_category: 'Masters 65', gender: 'Women', weight_class: '63', snatch_record: null, cj_record: null, total_record: null },
+      { wso: 'Georgia', ageCategory: 'U11', gender: 'Women', weightClass: '36', snatchRecord: 16, cjRecord: 20, totalRecord: 35 },
+      { wso: 'Georgia', ageCategory: 'Senior', gender: 'Men', weightClass: '110+', snatchRecord: 140, cjRecord: null, totalRecord: 300 },
+      { wso: 'Georgia', ageCategory: 'Masters 65', gender: 'Women', weightClass: '63', snatchRecord: null, cjRecord: null, totalRecord: null },
     ]);
   });
 
@@ -41,7 +41,7 @@ describe('flat WSO sheets (port of scraper_ga_pnw.py)', () => {
       '2026-08-01,2026-10-12,Open,M,,75,Snatch,130',
     ].join('\n');
     const today = new Date('2026-10-12T12:00:00Z');
-    expect(parseFlatSheet(csv, 'California North', FLAT_COLUMNS, today).map((r) => [r.weight_class, r.snatch_record])).toEqual([
+    expect(parseFlatSheet(csv, 'California North', FLAT_COLUMNS, today).map((r) => [r.weightClass, r.snatchRecord])).toEqual([
       ['70', 125],
       ['75', 130],
     ]);
@@ -66,9 +66,9 @@ describe('flat WSO sheets (port of scraper_ga_pnw.py)', () => {
       'U11,F,61,,Total,99,81',
     ].join('\n');
     expect(parseFlatSheet(csv, 'California South', { ...FLAT_COLUMNS, record: 'WSO record' })).toEqual([
-      { wso: 'California South', age_category: 'U11', gender: 'Women', weight_class: '30', snatch_record: 15, cj_record: null, total_record: 37 },
-      { wso: 'California South', age_category: 'U11', gender: 'Women', weight_class: '33', snatch_record: 28, cj_record: null, total_record: 63 },
-      { wso: 'California South', age_category: 'U11', gender: 'Women', weight_class: '61+', snatch_record: null, cj_record: null, total_record: 81 },
+      { wso: 'California South', ageCategory: 'U11', gender: 'Women', weightClass: '30', snatchRecord: 15, cjRecord: null, totalRecord: 37 },
+      { wso: 'California South', ageCategory: 'U11', gender: 'Women', weightClass: '33', snatchRecord: 28, cjRecord: null, totalRecord: 63 },
+      { wso: 'California South', ageCategory: 'U11', gender: 'Women', weightClass: '61+', snatchRecord: null, cjRecord: null, totalRecord: 81 },
     ]);
   });
 
@@ -85,31 +85,31 @@ describe('flat WSO sheets (port of scraper_ga_pnw.py)', () => {
     const [u11, u13] = parseFlatSheet(csv, 'Georgia');
     expect(u11).toEqual({
       wso: 'Georgia',
-      age_category: 'U11',
+      ageCategory: 'U11',
       gender: 'Women',
-      weight_class: '36',
-      snatch_record: 16,
-      cj_record: 20,
-      total_record: 35,
-      snatch_by: { name: 'Hadley Tillman', date: '2025-06-20', location: 'Youth Nationals 2025' },
-      cj_by: { name: 'Standard', date: '2025-06-01' },
-      total_by: { name: 'Standard' },
+      weightClass: '36',
+      snatchRecord: 16,
+      cjRecord: 20,
+      totalRecord: 35,
+      snatchBy: { name: 'Hadley Tillman', date: '2025-06-20', location: 'Youth Nationals 2025' },
+      cjBy: { name: 'Standard', date: '2025-06-01' },
+      totalBy: { name: 'Standard' },
     });
     expect(u13).toEqual({
       wso: 'Georgia',
-      age_category: 'U13',
+      ageCategory: 'U13',
       gender: 'Men',
-      weight_class: '40',
-      snatch_record: null,
-      cj_record: null,
-      total_record: 55,
-      total_by: { name: 'DOE, Jane', date: '2025-08-31', location: 'Meet B' },
+      weightClass: '40',
+      snatchRecord: null,
+      cjRecord: null,
+      totalRecord: 55,
+      totalBy: { name: 'DOE, Jane', date: '2025-08-31', location: 'Meet B' },
     });
   });
 
   it('leaves holders out for a sheet without a name column', () => {
     const csv = ['ageGroup,gender,bodyWeightMin,bodyWeightMax,lift,record,date', 'U11,F,,36,Snatch,16,2025-06-20'].join('\n');
-    expect(parseFlatSheet(csv, 'Georgia')[0]).not.toHaveProperty('snatch_by');
+    expect(parseFlatSheet(csv, 'Georgia')[0]).not.toHaveProperty('snatchBy');
   });
 
   it('reads DMV holders from Name, Date and Event, ignoring Club', () => {
@@ -122,14 +122,14 @@ describe('flat WSO sheets (port of scraper_ga_pnw.py)', () => {
     expect(parseFlatSheet(csv, 'DMV', columns)).toEqual([
       {
         wso: 'DMV',
-        age_category: 'U15',
+        ageCategory: 'U15',
         gender: 'Men',
-        weight_class: '79',
-        snatch_record: 82,
-        cj_record: null,
-        total_record: 141,
-        snatch_by: { name: 'BANU, Jonathan', date: '2025-12-05', location: '2025 Virus Weightlifting Finals' },
-        total_by: { name: 'Standard', date: '2025-06-01' },
+        weightClass: '79',
+        snatchRecord: 82,
+        cjRecord: null,
+        totalRecord: 141,
+        snatchBy: { name: 'BANU, Jonathan', date: '2025-12-05', location: '2025 Virus Weightlifting Finals' },
+        totalBy: { name: 'Standard', date: '2025-06-01' },
       },
     ]);
   });
@@ -138,8 +138,8 @@ describe('flat WSO sheets (port of scraper_ga_pnw.py)', () => {
     const csv = ['Age Group,Gender,bodyWeightMin,Weight Class,Lift,Record', 'JR,M,,>110,Snatch,150', 'JR,M,,>110,Total,340', 'W35,F,,58,Clean & Jerk,90'].join('\n');
     const columns = { age: 'Age Group', gender: 'Gender', min: 'bodyWeightMin', max: 'Weight Class', lift: 'Lift', record: 'Record' };
     expect(parseFlatSheet(csv, 'DMV', columns)).toEqual([
-      { wso: 'DMV', age_category: 'Junior', gender: 'Men', weight_class: '110+', snatch_record: 150, cj_record: null, total_record: 340 },
-      { wso: 'DMV', age_category: 'Masters 35', gender: 'Women', weight_class: '58', snatch_record: null, cj_record: 90, total_record: null },
+      { wso: 'DMV', ageCategory: 'Junior', gender: 'Men', weightClass: '110+', snatchRecord: 150, cjRecord: null, totalRecord: 340 },
+      { wso: 'DMV', ageCategory: 'Masters 35', gender: 'Women', weightClass: '58', snatchRecord: null, cjRecord: 90, totalRecord: null },
     ]);
   });
 });

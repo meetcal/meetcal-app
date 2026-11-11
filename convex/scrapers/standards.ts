@@ -7,6 +7,7 @@ import { fetchBytes, fetchText } from './lib/http';
 import { currentStandards, findStandardsPdfUrl, parseStandards, type Standard } from './parse/standards';
 import { pdfLines } from './lib/pdf';
 import { previewPrune, writeThenPrune } from './lib/prune';
+import { tally } from './lib/recordRows';
 
 /**
  * USA Weightlifting A/B standards (port of `usaw/standards_scraper`): finds
@@ -63,8 +64,7 @@ export const run = internalAction({
           })),
         }),
     );
-    const inserted = outcomes.filter((o) => o.wasInsert).length;
-    const updated = outcomes.filter((o) => !o.wasInsert && o.wasChanged).length;
+    const { inserted, updated } = tally(outcomes);
     console.log(`standards: ${standards.length} in force, ${inserted} inserted, ${updated} updated, ${deleted.length} deleted${deleted.length ? ` (${deleted.join(', ')})` : ''}`);
     return { pdfUrl, standards, inserted, updated, deleted };
   },

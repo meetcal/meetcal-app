@@ -79,7 +79,7 @@ export function parseNewEngland(pages: readonly (readonly PdfLine[])[], wso: str
         block = blankRecord(wso, section?.[0] ?? '', section?.[1] ?? 'Men');
         blocks.push(block);
       }
-      if (classCell) block.weight_class = plusLast(classCell);
+      if (classCell) block.weightClass = plusLast(classCell);
       const name = cells.Name ?? '';
       const weight = cells.Weight ?? '';
       // "Open" is a class with no record yet; 0 or a non-number is none either.
@@ -88,7 +88,7 @@ export function parseNewEngland(pages: readonly (readonly PdfLine[])[], wso: str
       const field = lift.includes('Snatch') ? 'snatch' : lift.includes('C&J') || lift.includes('Clean') ? 'cj' : lift.includes('Total') ? 'total' : null;
       if (field) setLift(block, field, value, recordHolder(value, athlete(name), cells.Date, cells['Location/Meet']));
     }
-    records.push(...blocks.filter((b) => b.weight_class && b.age_category));
+    records.push(...blocks.filter((b) => b.weightClass && b.ageCategory));
   }
   return records;
 }

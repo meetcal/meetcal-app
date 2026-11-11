@@ -38,16 +38,16 @@ export const WOMEN_SHEETS: [string, number][] = [
 export const sheetCsvUrl = (baseUrl: string, gid: number) => `${baseUrl}?gid=${gid}&single=true&output=csv`;
 
 export type UmwfRecord = {
-  record_type: 'UMWF';
-  age_category: string;
+  recordType: 'UMWF';
+  ageCategory: string;
   gender: string;
-  weight_class: string;
-  snatch_record: number;
-  cj_record: number;
-  total_record: number;
-  snatch_by?: RecordHolder;
-  cj_by?: RecordHolder;
-  total_by?: RecordHolder;
+  weightClass: string;
+  snatchRecord: number;
+  cjRecord: number;
+  totalRecord: number;
+  snatchBy?: RecordHolder;
+  cjBy?: RecordHolder;
+  totalBy?: RecordHolder;
 };
 
 /** "110+ kg Category" -> "110+kg". */
@@ -98,7 +98,7 @@ export function parseUmwfSheet(csv: string, ageCategory: string, gender: string)
       // sync prunes it rather than serve it beside the current classes.
       const weightClass = /\(\s*retired\b/i.test(row[1]) ? null : formatWeightClass(row[1]);
       current = weightClass
-        ? { record_type: 'UMWF', age_category: ageCategory, gender, weight_class: weightClass, snatch_record: 0, cj_record: 0, total_record: 0 }
+        ? { recordType: 'UMWF', ageCategory: ageCategory, gender, weightClass: weightClass, snatchRecord: 0, cjRecord: 0, totalRecord: 0 }
         : null;
       continue;
     }
@@ -112,14 +112,14 @@ export function parseUmwfSheet(csv: string, ageCategory: string, gender: string)
     const cell = (index: number) => row[index] ?? '';
     const holder = weight === 0 ? undefined : recordHolder(weight, cell(columns.name), sheetDate(cell(columns.date)), cell(columns.where));
     if (lift === 'Snatch') {
-      current.snatch_record = weight;
-      setHolder(current, 'snatch_by', holder);
+      current.snatchRecord = weight;
+      setHolder(current, 'snatchBy', holder);
     } else if (lift === 'Clean & Jerk') {
-      current.cj_record = weight;
-      setHolder(current, 'cj_by', holder);
+      current.cjRecord = weight;
+      setHolder(current, 'cjBy', holder);
     } else if (lift === 'Total') {
-      current.total_record = weight;
-      setHolder(current, 'total_by', holder);
+      current.totalRecord = weight;
+      setHolder(current, 'totalBy', holder);
     }
   }
   if (current) records.push(current);

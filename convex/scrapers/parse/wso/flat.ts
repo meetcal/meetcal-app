@@ -82,15 +82,15 @@ export function parseFlatSheet(csv: string, wso: string, columns: FlatColumns = 
     // is only touched in the three branches).
     if (!field) continue;
     const key = JSON.stringify([age, gender, weightClass]);
-    const entry = grouped.get(key) ?? { wso, age_category: age, gender, weight_class: weightClass, snatch_record: null, cj_record: null, total_record: null };
+    const entry = grouped.get(key) ?? { wso, ageCategory: age, gender, weightClass: weightClass, snatchRecord: null, cjRecord: null, totalRecord: null };
     const record = value ? intOrNull(value) : null;
-    entry[`${field}_record`] = record;
+    entry[`${field}Record`] = record;
     // The holder goes with the value: a later row for the same lift replaces
     // both. A sheet without a name column says nothing about who holds it.
     const at = (column: string | undefined) => (column ? row[column] : undefined);
     const holder = columns.name && columns.name in row ? recordHolder(record, at(columns.name), at(columns.date), at(columns.location)) : undefined;
-    if (holder) entry[`${field}_by`] = holder;
-    else delete entry[`${field}_by`];
+    if (holder) entry[`${field}By`] = holder;
+    else delete entry[`${field}By`];
     grouped.set(key, entry);
   }
   return [...grouped.values()];

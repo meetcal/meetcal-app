@@ -6,16 +6,16 @@ import { absoluteUrl } from '../lib/http';
 // Pure parsing for `scrapers/records.ts` (port of `usaw/records_scraper`).
 
 export type UsawRecord = {
-  record_type: 'USAW';
-  age_category: string;
+  recordType: 'USAW';
+  ageCategory: string;
   gender: string;
-  weight_class: string;
-  snatch_record: number;
-  cj_record: number;
-  total_record: number;
-  snatch_by?: RecordHolder;
-  cj_by?: RecordHolder;
-  total_by?: RecordHolder;
+  weightClass: string;
+  snatchRecord: number;
+  cjRecord: number;
+  totalRecord: number;
+  snatchBy?: RecordHolder;
+  cjBy?: RecordHolder;
+  totalBy?: RecordHolder;
 };
 
 function isCurrentRecordsText(text: string): boolean {
@@ -174,26 +174,26 @@ export function parseRecordsReport(pages: string[][]): ParsedRecords {
       if (weight === null) continue;
       const key = `${age}|${gender}|${weightClass}`;
       const record = byKey.get(key) ?? {
-        record_type: 'USAW' as const,
-        age_category: age,
+        recordType: 'USAW' as const,
+        ageCategory: age,
         gender,
-        weight_class: weightClass,
-        snatch_record: 0,
-        cj_record: 0,
-        total_record: 0,
+        weightClass: weightClass,
+        snatchRecord: 0,
+        cjRecord: 0,
+        totalRecord: 0,
       };
       const liftUpper = lift.toUpperCase();
       // A 0 kg standard ("W80 F 49 SNATCH 0 Standard") is no lift to hold.
       const holder = weight === 0 ? undefined : rowHolder(weight, rest ? rest.split(' ') : []);
       if (liftUpper.includes('SNATCH')) {
-        record.snatch_record = weight;
-        setHolder(record, 'snatch_by', holder);
+        record.snatchRecord = weight;
+        setHolder(record, 'snatchBy', holder);
       } else if (liftUpper.includes('CLEAN') && liftUpper.includes('JERK')) {
-        record.cj_record = weight;
-        setHolder(record, 'cj_by', holder);
+        record.cjRecord = weight;
+        setHolder(record, 'cjBy', holder);
       } else if (liftUpper.includes('TOTAL')) {
-        record.total_record = weight;
-        setHolder(record, 'total_by', holder);
+        record.totalRecord = weight;
+        setHolder(record, 'totalBy', holder);
       }
       byKey.set(key, record);
     }

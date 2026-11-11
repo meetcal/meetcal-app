@@ -45,15 +45,15 @@ describe('Mountain South WSO PDFs (port of scraper_pdf_mountainsouth.py)', () =>
       ['110+ Clean & Jerk 0 STANDARD 8/1/26', '110+ Total 0 STANDARD 8/1/26', 'OPEN MEN', '60 Total 178 MCALLISTER, Ashton 6/22/25 Colorado Springs, CO 2025 Youth Nationals'],
     ];
     const records = parseMountainSouth(pages, 'Mountain South');
-    expect(records.map((r) => [r.age_category, r.gender, r.weight_class, r.snatch_record, r.cj_record, r.total_record])).toEqual([
+    expect(records.map((r) => [r.ageCategory, r.gender, r.weightClass, r.snatchRecord, r.cjRecord, r.totalRecord])).toEqual([
       ['Masters 35', 'Men', '60', 75, 100, 175],
       ['Masters 35', 'Men', '110+', null, null, null],
       ['Senior', 'Men', '60', null, null, 178],
     ]);
-    expect(records[0].snatch_by).toEqual({ name: 'FUNG, Kisente', date: '2026-04-11', location: 'Salt Lake City, UT' });
-    expect(records[1]).not.toHaveProperty('snatch_by');
+    expect(records[0].snatchBy).toEqual({ name: 'FUNG, Kisente', date: '2026-04-11', location: 'Salt Lake City, UT' });
+    expect(records[1]).not.toHaveProperty('snatchBy');
     // Text alone cannot tell the place from the event, so they stay together.
-    expect(records[2].total_by).toEqual({ name: 'MCALLISTER, Ashton', date: '2025-06-22', location: 'Colorado Springs, CO 2025 Youth Nationals' });
+    expect(records[2].totalBy).toEqual({ name: 'MCALLISTER, Ashton', date: '2025-06-22', location: 'Colorado Springs, CO 2025 Youth Nationals' });
   });
 
   it('fails on a value it cannot read, and on a line in the layout before October 2026', () => {
@@ -78,12 +78,12 @@ describe('Mountain South WSO PDFs (port of scraper_pdf_mountainsouth.py)', () =>
     ];
     const [record, ...rest] = parseMountainSouth(pages, 'Mountain South');
     expect(rest).toEqual([]);
-    expect(record).toMatchObject({ age_category: 'Senior', gender: 'Women', cj_record: 100, total_record: 180, cj_by: { name: 'DOE, Jane', date: '2026-04-11', location: 'Mesa, AZ' } });
+    expect(record).toMatchObject({ ageCategory: 'Senior', gender: 'Women', cjRecord: 100, totalRecord: 180, cjBy: { name: 'DOE, Jane', date: '2026-04-11', location: 'Mesa, AZ' } });
     expect(record).not.toHaveProperty('undefined');
   });
 
   it('reads a class written plus first, and fails on an age group heading it cannot read', () => {
-    expect(parseMountainSouth([['OPEN MEN', '+110 Snatch 180 WITTE, Keiser 6/28/26 Colorado Springs, CO']], 'Mountain South')).toMatchObject([{ weight_class: '110+', snatch_record: 180 }]);
+    expect(parseMountainSouth([['OPEN MEN', '+110 Snatch 180 WITTE, Keiser 6/28/26 Colorado Springs, CO']], 'Mountain South')).toMatchObject([{ weightClass: '110+', snatchRecord: 180 }]);
     // A heading without its range would otherwise file its lines over the group before it.
     expect(() => parseMountainSouth([['JUNIOR WOMEN U20', '58 Snatch 80 A, B 1/1/26', 'MASTER WOMEN W35', '58 Snatch 60 C, D 1/1/26']], 'Mountain South')).toThrow(
       'Mountain South: unreadable age group heading "MASTER WOMEN W35" (layout changed?)',
@@ -95,12 +95,12 @@ describe('Mountain South WSO PDFs (port of scraper_pdf_mountainsouth.py)', () =>
   it('reads the holder from the text when the runs disagree with it on the record', () => {
     // The lift and the record drawn as one run.
     const glued = { ...runs([47, '60'], [83, 'Snatch77'], [177, 'MCALLISTER, Ashton'], [290, '6/22/25'], [339, 'Mesa, AZ']), text: '60 Snatch 77 MCALLISTER, Ashton 6/22/25 Mesa, AZ' };
-    expect(parseMountainSouth([[header, runs([275, 'OPEN MEN']), glued]], 'Mountain South')[0].snatch_by).toEqual({ name: 'MCALLISTER, Ashton', date: '2025-06-22', location: 'Mesa, AZ' });
+    expect(parseMountainSouth([[header, runs([275, 'OPEN MEN']), glued]], 'Mountain South')[0].snatchBy).toEqual({ name: 'MCALLISTER, Ashton', date: '2025-06-22', location: 'Mesa, AZ' });
   });
 
   it('keeps the columns when a heading line lacks LOCATION and EVENT', () => {
     const pages = [[header, runs([275, 'OPEN MEN']), runs([44, 'CAT'], [88, 'LIFT'], [129, 'RECORD']), line('65', 'Snatch', '97', 'MCALLISTER, Ashton', '10/17/26', 'Mesa, AZ', '2026 AZ Championship')]];
-    expect(parseMountainSouth(pages, 'Mountain South')[0].snatch_by).toMatchObject({ location: '2026 AZ Championship, Mesa, AZ' });
+    expect(parseMountainSouth(pages, 'Mountain South')[0].snatchBy).toMatchObject({ location: '2026 AZ Championship, Mesa, AZ' });
   });
 
   it('reads holders from positioned runs, the place and the event split by their columns', () => {
@@ -123,21 +123,21 @@ describe('Mountain South WSO PDFs (port of scraper_pdf_mountainsouth.py)', () =>
       ],
     ];
     const records = parseMountainSouth(pages, 'Mountain South');
-    expect(records.map((r) => [r.age_category, r.weight_class, r.snatch_record, r.cj_record, r.total_record])).toEqual([
+    expect(records.map((r) => [r.ageCategory, r.weightClass, r.snatchRecord, r.cjRecord, r.totalRecord])).toEqual([
       ['Senior', '65', 97, 120, 217],
       ['Senior', '70', null, null, null],
       ['Senior', '75', null, 152, 272],
     ]);
     expect(records[2]).toMatchObject({
-      cj_by: { name: 'PAK, Elijah', date: '2026-09-12', location: '2026 VW Series 2, Fort Worth, TX' },
-      total_by: { name: 'PAK, Elijah', date: '2026-09-12', location: 'Fort Worth, TX' },
+      cjBy: { name: 'PAK, Elijah', date: '2026-09-12', location: '2026 VW Series 2, Fort Worth, TX' },
+      totalBy: { name: 'PAK, Elijah', date: '2026-09-12', location: 'Fort Worth, TX' },
     });
     expect(records[0]).toMatchObject({
-      snatch_by: { name: 'MCALLISTER, Ashton', date: '2026-10-17', location: '2026 AZ Championship, Mesa, AZ' },
-      cj_by: { name: 'HO, Brandon', date: '2025-10-18', location: '2025 WSO Championship, Albuquerque, NM' },
-      total_by: { name: 'MCALLISTER, Ashton', date: '2026-10-17', location: 'Salt Lake City, UT' },
+      snatchBy: { name: 'MCALLISTER, Ashton', date: '2026-10-17', location: '2026 AZ Championship, Mesa, AZ' },
+      cjBy: { name: 'HO, Brandon', date: '2025-10-18', location: '2025 WSO Championship, Albuquerque, NM' },
+      totalBy: { name: 'MCALLISTER, Ashton', date: '2026-10-17', location: 'Salt Lake City, UT' },
     });
-    expect(records[1]).not.toHaveProperty('snatch_by');
+    expect(records[1]).not.toHaveProperty('snatchBy');
   });
 
   it('finds the current PDFs, not the archived ones or certificates', () => {

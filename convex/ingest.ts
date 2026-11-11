@@ -1,5 +1,6 @@
 import { v, type Infer } from 'convex/values';
 import { internalMutation, type MutationCtx } from './_generated/server';
+import type { WithoutSystemFields } from 'convex/server';
 import type { Doc, Id, TableNames } from './_generated/dataModel';
 import { writeHistories } from './lib/history';
 import { normalizeAgeCategory, normalizeFederation, normalizeGender, storedGenderSpellings } from './lib/normalize';
@@ -1304,18 +1305,7 @@ export const upsertRecords = internalMutation({
   handler: async (ctx, { rows, allowShrink }): Promise<UpsertOutcome[]> => {
     const pairs = [];
     for (const row of rows) {
-      const doc = {
-        recordType: row.recordType,
-        ageCategory: normalizeAgeCategory(row.ageCategory),
-        gender: normalizeGender(row.gender),
-        weightClass: row.weightClass,
-        snatchRecord: row.snatchRecord,
-        cjRecord: row.cjRecord,
-        totalRecord: row.totalRecord,
-        snatchBy: row.snatchBy,
-        cjBy: row.cjBy,
-        totalBy: row.totalBy,
-      };
+      const doc = { recordType: row.recordType, ...recordClassDoc(row) };
       const existing = (
         await bySpellingOf(doc.gender, (gender) =>
           ctx.db
@@ -1445,12 +1435,6 @@ export const pruneRecords = internalMutation({
   },
 });
 
-/**
- * The exact-set syncs match stored rows to the payload by key. Rows stored
- * twice under one key (older loads allowed it) would leave all but one copy
- * out of the match, never updated or deleted, so the extra copies are deleted
- * here; `deleted` counts them.
- */
 async function onePerKey<T extends { _id: Id<TableNames> }>(
   ctx: MutationCtx,
   rows: readonly T[],
@@ -1470,58 +1454,89 @@ async function onePerKey<T extends { _id: Id<TableNames> }>(
   return { byKey, deleted };
 }
 
-/**
- * Exact-set sync of one record type (`replace_records`, e.g. IWF world
- * records): classes missing from the payload are deleted, the rest written
- * only where they changed. An empty payload or a duplicate class is refused.
- */
+type ExactSetTable = 'records' | 'wso_records' | 'qualifying_totals';
+type ExactSetCounts = { inserted: number; updated: number; deleted: number; unchanged: number };
+type StoredClass = { ageCategory: string; gender: string; weightClass: string };
+
+async function replaceExactSet<Table extends ExactSetTable>(
+  ctx: MutationCtx,
+  {
+    table,
+    stored,
+    docs,
+    changed,
+    duplicate,
+    onUpdate = () => {},
+  }: {
+    table: Table;
+    stored: readonly Doc<Table>[];
+    docs: readonly (WithoutSystemFields<Doc<Table>> & StoredClass)[];
+    changed: (stored: Doc<Table>, doc: WithoutSystemFields<Doc<Table>>) => boolean;
+    duplicate: (key: string) => string;
+    onUpdate?: (stored: Doc<Table>, doc: WithoutSystemFields<Doc<Table>>) => void;
+  },
+): Promise<ExactSetCounts> {
+  const { byKey: existing, deleted: duplicates } = await onePerKey(ctx, stored as readonly (Doc<Table> & StoredClass)[], classKey);
+  const counts = { inserted: 0, updated: 0, deleted: duplicates, unchanged: 0 };
+  const seen = new Set<string>();
+  for (const doc of docs) {
+    const key = classKey(doc);
+    if (seen.has(key)) throw new Error(duplicate(key));
+    seen.add(key);
+    const current = existing.get(key);
+    if (!current) {
+      await ctx.db.insert(table, doc as never);
+      counts.inserted += 1;
+    } else if (changed(current, doc)) {
+      await ctx.db.replace(current._id, doc as never);
+      counts.updated += 1;
+      onUpdate(current, doc);
+    } else counts.unchanged += 1;
+  }
+  for (const [key, row] of existing) {
+    if (seen.has(key)) continue;
+    await ctx.db.delete(row._id);
+    counts.deleted += 1;
+  }
+  return counts;
+}
+
+type RecordRow = Infer<typeof recordRow>;
+
+function recordClassDoc(row: Omit<RecordRow, 'recordType'>) {
+  return {
+    ageCategory: normalizeAgeCategory(row.ageCategory),
+    gender: normalizeGender(row.gender),
+    weightClass: row.weightClass,
+    snatchRecord: row.snatchRecord,
+    cjRecord: row.cjRecord,
+    totalRecord: row.totalRecord,
+    snatchBy: row.snatchBy,
+    cjBy: row.cjBy,
+    totalBy: row.totalBy,
+  };
+}
+
+const recordChanged = (stored: Lifts & { gender: string; ageCategory: string }, doc: Lifts & { gender: string; ageCategory: string }) =>
+  liftsChanged(stored, doc) || stored.gender !== doc.gender || stored.ageCategory !== doc.ageCategory;
+
 export const replaceRecordSet = internalMutation({
   args: { recordType: v.string(), rows: v.array(recordRow) },
   handler: async (ctx, { recordType, rows }) => {
     if (!recordType) throw new Error('recordType is required');
     if (!rows.length) throw new Error(`refusing to replace ${recordType} records with an empty payload`);
-    const keyOf = (r: { ageCategory: string; gender: string; weightClass: string }) => JSON.stringify([r.ageCategory, normalizeGender(r.gender), r.weightClass]);
-    const { byKey: existing, deleted: duplicates } = await onePerKey(
-      ctx,
-      await ctx.db.query('records').withIndex('by_record_type', (q) => q.eq('recordType', recordType)).collect(),
-      keyOf,
-    );
-    const counts = { inserted: 0, updated: 0, deleted: duplicates, unchanged: 0 };
+    const mistyped = rows.find((row) => row.recordType !== recordType);
+    if (mistyped) throw new Error(`row of type ${mistyped.recordType} in a ${recordType} replace`);
     const changes: string[] = [];
-    const seen = new Set<string>();
-    for (const row of rows) {
-      if (row.recordType !== recordType) throw new Error(`row of type ${row.recordType} in a ${recordType} replace`);
-      const doc = {
-        recordType,
-        ageCategory: normalizeAgeCategory(row.ageCategory),
-        gender: normalizeGender(row.gender),
-        weightClass: row.weightClass,
-        snatchRecord: row.snatchRecord,
-        cjRecord: row.cjRecord,
-        totalRecord: row.totalRecord,
-        snatchBy: row.snatchBy,
-        cjBy: row.cjBy,
-        totalBy: row.totalBy,
-      };
-      const key = keyOf(doc);
-      if (seen.has(key)) throw new Error(`Duplicate ${recordType} record in payload: ${key}`);
-      seen.add(key);
-      const current = existing.get(key);
-      const label = `${doc.ageCategory} ${doc.gender} ${doc.weightClass}`;
-      if (!current) {
-        await ctx.db.insert('records', doc);
-        counts.inserted += 1;
-      } else if (liftsChanged(current, doc) || current.gender !== doc.gender) {
-        await ctx.db.replace(current._id, doc);
-        counts.updated += 1;
-        changes.push(`${label}: ${current.snatchRecord}/${current.cjRecord}/${current.totalRecord} -> ${doc.snatchRecord}/${doc.cjRecord}/${doc.totalRecord}`);
-      } else counts.unchanged += 1;
-    }
-    for (const [key, row] of existing) {
-      if (seen.has(key)) continue;
-      await ctx.db.delete(row._id);
-      counts.deleted += 1;
-    }
+    const counts = await replaceExactSet(ctx, {
+      table: 'records',
+      stored: await ctx.db.query('records').withIndex('by_record_type', (q) => q.eq('recordType', recordType)).collect(),
+      docs: rows.map((row) => ({ recordType, ...recordClassDoc(row) })),
+      changed: recordChanged,
+      duplicate: (key) => `Duplicate ${recordType} record in payload: ${key}`,
+      onUpdate: (current, doc) =>
+        changes.push(`${doc.ageCategory} ${doc.gender} ${doc.weightClass}: ${current.snatchRecord}/${current.cjRecord}/${current.totalRecord} -> ${doc.snatchRecord}/${doc.cjRecord}/${doc.totalRecord}`),
+    });
     if (counts.inserted + counts.updated + counts.deleted > 0) await recordWrite(ctx, 'records', [{ kind: 'table', key: 'records' }]);
     return { ...counts, changes };
   },
@@ -1534,58 +1549,27 @@ const qualifyingTotalRow = v.object({
   qualifyingTotal: v.number(),
 });
 
-/**
- * Exact-set sync of one event's qualifying totals, the way `replaceRecordSet`
- * syncs a record type: gender and age normalized, classes missing from the
- * payload deleted, the rest written only where they changed. An empty
- * payload or a duplicate class is refused (a failed load, not an event
- * without totals). With `renameQualifyingTotalSet` and
- * `deleteQualifyingTotalSet`, the only writers of `qualifying_totals`:
- *
- *   npx convex run ingest:replaceQualifyingTotalSet '{"eventName":"…","rows":[…]}'
- */
 export const replaceQualifyingTotalSet = internalMutation({
   args: { eventName: v.string(), rows: v.array(qualifyingTotalRow) },
   handler: async (ctx, { eventName, rows }) => {
     if (!eventName.trim()) throw new Error('eventName is required');
     if (!rows.length) throw new Error(`refusing to replace ${eventName} qualifying totals with an empty payload`);
-    const keyOf = (r: { ageCategory: string; gender: string; weightClass: string }) =>
-      JSON.stringify([normalizeAgeCategory(r.ageCategory), normalizeGender(r.gender), r.weightClass]);
-    const { byKey: existing, deleted: duplicates } = await onePerKey(
-      ctx,
-      await ctx.db
+    const counts = await replaceExactSet(ctx, {
+      table: 'qualifying_totals',
+      stored: await ctx.db
         .query('qualifying_totals')
         .withIndex('by_event', (q) => q.eq('eventName', eventName))
         .collect(),
-      keyOf,
-    );
-    const counts = { inserted: 0, updated: 0, deleted: duplicates, unchanged: 0 };
-    const seen = new Set<string>();
-    for (const row of rows) {
-      const doc = {
+      docs: rows.map((row) => ({
         eventName,
         ageCategory: normalizeAgeCategory(row.ageCategory),
         gender: normalizeGender(row.gender),
         weightClass: row.weightClass,
         qualifyingTotal: row.qualifyingTotal,
-      };
-      const key = keyOf(doc);
-      if (seen.has(key)) throw new Error(`Duplicate ${eventName} qualifying total in payload: ${key}`);
-      seen.add(key);
-      const current = existing.get(key);
-      if (!current) {
-        await ctx.db.insert('qualifying_totals', doc);
-        counts.inserted += 1;
-      } else if (current.qualifyingTotal !== doc.qualifyingTotal || current.gender !== doc.gender || current.ageCategory !== doc.ageCategory) {
-        await ctx.db.replace(current._id, doc);
-        counts.updated += 1;
-      } else counts.unchanged += 1;
-    }
-    for (const [key, row] of existing) {
-      if (seen.has(key)) continue;
-      await ctx.db.delete(row._id);
-      counts.deleted += 1;
-    }
+      })),
+      changed: (current, doc) => current.qualifyingTotal !== doc.qualifyingTotal || current.gender !== doc.gender || current.ageCategory !== doc.ageCategory,
+      duplicate: (key) => `Duplicate ${eventName} qualifying total in payload: ${key}`,
+    });
     if (counts.inserted + counts.updated + counts.deleted > 0) {
       await recordWrite(ctx, 'qualifying_totals', [{ kind: 'table', key: 'qualifying_totals' }]);
     }
@@ -1789,29 +1773,16 @@ const wsoRecordRow = v.object({
   ...holderArgs,
 });
 
-/**
- * Exact-set sync of one WSO's records (`replace_wso_records`): rows missing
- * from the payload are deleted, the rest written only where they changed.
- * An empty payload or a duplicate class is refused, since either would mean
- * a bad parse rather than a WSO without records.
- *
- * Without `allowShrink`, a sync may delete only so many classes, and clear
- * only so many stored lifts, (`exceedsShrink`). More looks like a source
- * that partly broke, not one that changed its classes: refused, so the run
- * fails and alerts instead of deleting records.
- */
 export const replaceWsoRecordSet = internalMutation({
   args: { wso: v.string(), rows: v.array(wsoRecordRow), allowShrink: v.optional(v.boolean()) },
   handler: async (ctx, { wso, rows, allowShrink }) => {
     if (!wso) throw new Error('wso is required');
     if (!rows.length) throw new Error(`refusing to replace ${wso} WSO records with an empty payload`);
-    const keyOf = (r: { ageCategory: string; gender: string; weightClass: string }) => JSON.stringify([r.ageCategory, normalizeGender(r.gender), r.weightClass]);
+    const storedRows = await ctx.db.query('wso_records').withIndex('by_wso', (q) => q.eq('wso', wso)).collect();
     if (!allowShrink) {
-      const incoming = new Map(rows.map((row) => [keyOf({ ageCategory: normalizeAgeCategory(row.ageCategory), gender: normalizeGender(row.gender), weightClass: row.weightClass }), row]));
-      const stored = new Map((await ctx.db.query('wso_records').withIndex('by_wso', (q) => q.eq('wso', wso)).collect()).map((row) => [keyOf(row), row]));
+      const incoming = new Map(rows.map((row) => [classKey(row), row]));
+      const stored = new Map(storedRows.map((row) => [classKey(row), row]));
       const dropped = [...stored.keys()].filter((key) => !incoming.has(key)).length;
-      // A lift going from a value to none is a deletion too: a cell the
-      // parser misread must not empty a WSO's records one lift at a time.
       const storedLifts = [...stored.values()].reduce((sum, row) => sum + liftCount(row), 0);
       const cleared = [...stored].reduce((sum, [key, row]) => sum + (incoming.has(key) ? clearedLifts(row, incoming.get(key)!) : 0), 0);
       const rerun = `npx convex run scrapers/wsoRecords:run '{"only":["${wso}"],"allowShrink":true}' (add --prod for production)`;
@@ -1822,45 +1793,14 @@ export const replaceWsoRecordSet = internalMutation({
         throw new Error(`refusing to clear ${cleared} of ${wso}'s ${storedLifts} stored WSO record lifts (the source may be partly broken). If it really cleared them: ${rerun}`);
       }
     }
-    const { byKey: existing, deleted: duplicates } = await onePerKey(
-      ctx,
-      await ctx.db.query('wso_records').withIndex('by_wso', (q) => q.eq('wso', wso)).collect(),
-      keyOf,
-    );
-    const counts = { inserted: 0, updated: 0, deleted: duplicates, unchanged: 0 };
-    const seen = new Set<string>();
-    for (const row of rows) {
-      const doc = {
-        wso,
-        ageCategory: normalizeAgeCategory(row.ageCategory),
-        gender: normalizeGender(row.gender),
-        weightClass: row.weightClass,
-        snatchRecord: row.snatchRecord,
-        cjRecord: row.cjRecord,
-        totalRecord: row.totalRecord,
-        snatchBy: row.snatchBy,
-        cjBy: row.cjBy,
-        totalBy: row.totalBy,
-      };
-      const key = keyOf(doc);
-      if (seen.has(key)) throw new Error(`Duplicate WSO record in payload: ${key}`);
-      seen.add(key);
-      const current = existing.get(key);
-      if (!current) {
-        await ctx.db.insert('wso_records', doc);
-        counts.inserted += 1;
-      } else if (liftsChanged(current, doc) || current.gender !== doc.gender) {
-        await ctx.db.replace(current._id, doc);
-        counts.updated += 1;
-      } else counts.unchanged += 1;
-    }
-    for (const [key, row] of existing) {
-      if (seen.has(key)) continue;
-      await ctx.db.delete(row._id);
-      counts.deleted += 1;
-    }
+    const counts = await replaceExactSet(ctx, {
+      table: 'wso_records',
+      stored: storedRows,
+      docs: rows.map((row) => ({ wso, ...recordClassDoc(row) })),
+      changed: recordChanged,
+      duplicate: (key) => `Duplicate WSO record in payload: ${key}`,
+    });
     if (counts.inserted + counts.updated + counts.deleted > 0) await recordWrite(ctx, 'wso_records', [{ kind: 'table', key: 'wso_records' }]);
     return counts;
   },
 });
-

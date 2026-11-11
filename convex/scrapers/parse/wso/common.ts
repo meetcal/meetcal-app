@@ -5,16 +5,16 @@ import { recordHolder, recordLift, setHolder, type RecordHolder } from '../holde
 /** One WSO record row as the Python scrapers built it (lifts may be missing). */
 export type WsoRecord = {
   wso: string;
-  age_category: string;
+  ageCategory: string;
   gender: string;
-  weight_class: string;
-  snatch_record: number | null;
-  cj_record: number | null;
-  total_record: number | null;
+  weightClass: string;
+  snatchRecord: number | null;
+  cjRecord: number | null;
+  totalRecord: number | null;
   /** Who set each lift (see `parse/holder.ts`); absent where the lift has no value. */
-  snatch_by?: RecordHolder;
-  cj_by?: RecordHolder;
-  total_by?: RecordHolder;
+  snatchBy?: RecordHolder;
+  cjBy?: RecordHolder;
+  totalBy?: RecordHolder;
 };
 
 /** The spreadsheet id in a Google Sheets URL (`/d/<id>/`). */
@@ -107,15 +107,15 @@ export function intOrNull(value: string): number | null {
 
 /** A class's record before its lifts are read: every lift missing. */
 export function blankRecord(wso: string, age: string, gender: string, weightClass = ''): WsoRecord {
-  return { wso, age_category: age, gender, weight_class: weightClass, snatch_record: null, cj_record: null, total_record: null };
+  return { wso, ageCategory: age, gender, weightClass: weightClass, snatchRecord: null, cjRecord: null, totalRecord: null };
 }
 
 export type LiftName = 'snatch' | 'cj' | 'total';
 
 /** Sets a lift's value and its holder (cleared when there is none). */
 export function setLift(record: WsoRecord, lift: LiftName, value: number | null, holder: RecordHolder | undefined): void {
-  record[`${lift}_record`] = value;
-  setHolder(record, `${lift}_by`, holder);
+  record[`${lift}Record`] = value;
+  setHolder(record, `${lift}By`, holder);
 }
 
 /** "+87" -> "87+": the heaviest class with its plus last, as stored. */
@@ -141,15 +141,15 @@ export function liftsRecord(wso: string, age: string, gender: string, weightClas
   const { snatch, cj, total } = lifts;
   return {
     wso,
-    age_category: age,
+    ageCategory: age,
     gender,
-    weight_class: weightClass,
-    snatch_record: snatch.value,
-    cj_record: cj.value,
-    total_record: total.value,
-    ...(snatch.by && { snatch_by: snatch.by }),
-    ...(cj.by && { cj_by: cj.by }),
-    ...(total.by && { total_by: total.by }),
+    weightClass: weightClass,
+    snatchRecord: snatch.value,
+    cjRecord: cj.value,
+    totalRecord: total.value,
+    ...(snatch.by && { snatchBy: snatch.by }),
+    ...(cj.by && { cjBy: cj.by }),
+    ...(total.by && { totalBy: total.by }),
   };
 }
 

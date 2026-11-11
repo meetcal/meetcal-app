@@ -35,9 +35,9 @@ const ADULT_AGE_GROUPS = ['Junior', 'Senior', ...Array.from({ length: 12 }, (_, 
 // Each page's footer: "1 of 15 IL WSO Records 20261004.xlsx" since October
 // 2026, "Page 1 of 27" before. The notes pages at the end have none.
 const PAGE_FOOTER = /^(?:Page\s+)?(\d{1,3})\s+of\s+\d{1,3}(?:\s|$)/i;
-const LIFT_FIELDS = { snatch: 'snatch_record', 'clean&jerk': 'cj_record', total: 'total_record' } as const;
+const LIFT_FIELDS = { snatch: 'snatchRecord', 'clean&jerk': 'cjRecord', total: 'totalRecord' } as const;
 type LiftField = (typeof LIFT_FIELDS)[keyof typeof LIFT_FIELDS];
-const HOLDER_FIELDS = { snatch_record: 'snatch_by', cj_record: 'cj_by', total_record: 'total_by' } as const;
+const HOLDER_FIELDS = { snatchRecord: 'snatchBy', cjRecord: 'cjBy', totalRecord: 'totalBy' } as const;
 type Parsed = Omit<WsoRecord, LiftField> & Partial<Record<LiftField, number>>;
 
 const VIEW_RECORDS_LINK = /<a[^>]+href="([^"]+\.pdf)"[^>]*>\s*View(?:\s+the)?\s+Records\s*<\/a>/gi;
@@ -102,8 +102,8 @@ export function parseIllinois(lines: readonly string[], wso: string): { records:
     }
     const [, age, rawGender, weight, lift, value, holder, date, place] = match;
     const gender = rawGender.toUpperCase() === 'F' ? 'Women' : 'Men';
-    const record: Parsed = { wso, age_category: ageCategory(age, rawGender.toUpperCase()), gender, weight_class: weightClass(weight) };
-    const key = JSON.stringify([record.age_category, gender, record.weight_class]);
+    const record: Parsed = { wso, ageCategory: ageCategory(age, rawGender.toUpperCase()), gender, weightClass: weightClass(weight) };
+    const key = JSON.stringify([record.ageCategory, gender, record.weightClass]);
     const entry = grouped.get(key) ?? record;
     grouped.set(key, entry);
     const field = LIFT_FIELDS[lift.toLowerCase().replace(/\s+/g, '') as keyof typeof LIFT_FIELDS];
@@ -123,7 +123,7 @@ export function parseIllinois(lines: readonly string[], wso: string): { records:
 
   const parsedRecords = [...grouped.values()];
   validate(parsedRecords, pages, warnings);
-  const records = parsedRecords.map((r) => ({ ...r, snatch_record: r.snatch_record ?? null, cj_record: r.cj_record ?? null, total_record: r.total_record ?? null }));
+  const records = parsedRecords.map((r) => ({ ...r, snatchRecord: r.snatchRecord ?? null, cjRecord: r.cjRecord ?? null, totalRecord: r.totalRecord ?? null }));
   return { records, warnings };
 }
 
@@ -137,7 +137,7 @@ function validate(records: Parsed[], pages: readonly number[], warnings: string[
   const liftValues = records.reduce((count, r) => count + fields.filter((f) => r[f] !== undefined).length, 0);
   if (liftValues < MIN_LIFT_VALUES) throw new Error(`Illinois PDF yielded only ${liftValues} lift values; expected at least ${MIN_LIFT_VALUES}`);
   for (const gender of ['Men', 'Women']) {
-    const actual = new Set(records.filter((r) => r.gender === gender).map((r) => r.age_category));
+    const actual = new Set(records.filter((r) => r.gender === gender).map((r) => r.ageCategory));
     const missing = ADULT_AGE_GROUPS.filter((age) => !actual.has(age));
     if (missing.length) throw new Error(`Illinois PDF is missing ${gender} age groups: ${missing.join(', ')}`);
   }
@@ -145,25 +145,25 @@ function validate(records: Parsed[], pages: readonly number[], warnings: string[
   // (both PDFs so far), so a group short for one gender lost rows.
   const classes = new Map<string, { Women: number; Men: number }>();
   for (const r of records) {
-    const counts = classes.get(r.age_category) ?? { Women: 0, Men: 0 };
+    const counts = classes.get(r.ageCategory) ?? { Women: 0, Men: 0 };
     counts[r.gender as 'Women' | 'Men'] += 1;
-    classes.set(r.age_category, counts);
+    classes.set(r.ageCategory, counts);
   }
   for (const [age, { Women, Men }] of classes) {
     if (Women !== Men) throw new Error(`Illinois PDF has ${Women} Women and ${Men} Men ${age} classes (part of the PDF not read?)`);
   }
   const labels: [LiftField, string][] = [
-    ['snatch_record', 'snatch'],
-    ['cj_record', 'clean & jerk'],
-    ['total_record', 'total'],
+    ['snatchRecord', 'snatch'],
+    ['cjRecord', 'clean & jerk'],
+    ['totalRecord', 'total'],
   ];
   for (const r of records) {
-    const identity = `${r.age_category} ${r.gender} ${r.weight_class}`;
+    const identity = `${r.ageCategory} ${r.gender} ${r.weightClass}`;
     const missing = labels.filter(([field]) => r[field] === undefined).map(([, label]) => label);
     if (missing.length) warnings.push(`Source row is missing ${missing.join(', ')}: ${identity}`);
-    const lifts = [r.snatch_record, r.cj_record].filter((x): x is number => x !== undefined);
-    if (r.total_record && lifts.length && r.total_record < Math.max(...lifts)) {
-      warnings.push(`Source total (${r.total_record}) is below an individual lift (${Math.max(...lifts)}): ${identity}`);
+    const lifts = [r.snatchRecord, r.cjRecord].filter((x): x is number => x !== undefined);
+    if (r.totalRecord && lifts.length && r.totalRecord < Math.max(...lifts)) {
+      warnings.push(`Source total (${r.totalRecord}) is below an individual lift (${Math.max(...lifts)}): ${identity}`);
     }
     checkTotal(r, identity, warnings);
   }
@@ -174,9 +174,9 @@ function validate(records: Parsed[], pages: readonly number[], warnings: string[
  * One applies only while the PDF still says what it was checked against, so
  * a corrected (or changed) PDF wins.
  */
-const TOTAL_CORRECTIONS: readonly { age_category: string; gender: string; weight_class: string; written: number; total: number }[] = [
+const TOTAL_CORRECTIONS: readonly { ageCategory: string; gender: string; weightClass: string; written: number; total: number }[] = [
   // Stephanie Rosario, 2026 Mid American Championships: 66 + 84 = 150.
-  { age_category: 'Masters 40', gender: 'Women', weight_class: '69', written: 1580, total: 150 },
+  { ageCategory: 'Masters 40', gender: 'Women', weightClass: '69', written: 1580, total: 150 },
 ];
 
 /**
@@ -191,14 +191,14 @@ const TOTAL_CORRECTIONS: readonly { age_category: string; gender: string; weight
  */
 function checkTotal(r: Parsed, identity: string, warnings: string[]) {
   const correction = TOTAL_CORRECTIONS.find(
-    (c) => c.age_category === r.age_category && c.gender === r.gender && c.weight_class === r.weight_class && c.written === r.total_record,
+    (c) => c.ageCategory === r.ageCategory && c.gender === r.gender && c.weightClass === r.weightClass && c.written === r.totalRecord,
   );
   if (correction) {
     warnings.push(`Corrected source total ${correction.written} to ${correction.total} (checked against results): ${identity}`);
-    r.total_record = correction.total;
+    r.totalRecord = correction.total;
     return;
   }
-  const { snatch_record: snatch, cj_record: cj, total_record: total } = r;
-  if (!snatch || !cj || !total || total <= snatch + cj || r.total_by?.name === 'Standard') return;
+  const { snatchRecord: snatch, cjRecord: cj, totalRecord: total } = r;
+  if (!snatch || !cj || !total || total <= snatch + cj || r.totalBy?.name === 'Standard') return;
   warnings.push(`Source total (${total}) is above snatch + clean & jerk (${snatch + cj}); kept as written: ${identity}`);
 }

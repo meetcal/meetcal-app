@@ -7,6 +7,7 @@ import { fetchBytes } from './lib/http';
 import { fetchPageText } from './lib/incompleteChain';
 import { pdfRunLines } from './lib/pdf';
 import { previewPrune, writeThenPrune } from './lib/prune';
+import { storedLifts, tally } from './lib/recordRows';
 import { discoverRecordPdfs, PAGE_URL, parseRecordPages, PDF_OPTIONS, type UsamwRecord } from './parse/usamw';
 
 /**
@@ -47,23 +48,10 @@ export const run = internalAction({
       (): Promise<{ wasInsert: boolean; wasChanged: boolean }[]> =>
         ctx.runMutation(internal.ingest.upsertRecords, {
           allowShrink: allowShrink ?? false,
-          rows: records.map((r) => ({
-            recordType: r.recordType,
-            ageCategory: r.ageCategory,
-            gender: r.gender,
-            weightClass: r.weightClass,
-            snatchRecord: r.snatchRecord ?? undefined,
-            cjRecord: r.cjRecord ?? undefined,
-            totalRecord: r.totalRecord ?? undefined,
-            snatchBy: r.snatchBy,
-            cjBy: r.cjBy,
-            totalBy: r.totalBy,
-          })),
+          rows: records.map((r) => ({ recordType: r.recordType, ageCategory: r.ageCategory, gender: r.gender, weightClass: r.weightClass, ...storedLifts(r) })),
         }),
     );
-    const inserted = outcomes.filter((o) => o.wasInsert).length;
-    const updated = outcomes.filter((o) => !o.wasInsert && o.wasChanged).length;
-    const unchanged = outcomes.length - inserted - updated;
+    const { inserted, updated, unchanged } = tally(outcomes);
     console.log(`usamw: ${records.length} parsed, ${inserted} inserted, ${updated} updated, ${deleted.length} deleted${deleted.length ? ` (${deleted.join(', ')})` : ''}`);
     return { urls, records, inserted, updated, unchanged, deleted, corrections };
   },

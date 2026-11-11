@@ -33,6 +33,7 @@ import { parseUsawTemplate } from './parse/wso/usawTemplate';
 import { FLAT_COLUMNS, parseFlatSheet, type FlatColumns } from './parse/wso/flat';
 import { normalizeAgeCategory, normalizeGender } from '../lib/normalize';
 import { sourcesFailed } from '../lib/cronAlerts';
+import { storedLifts } from './lib/recordRows';
 import { NOT_REACHED, runBudget } from './lib/budget';
 
 /**
@@ -296,18 +297,7 @@ export const WSO_SOURCES: WsoSource[] = [
 ];
 
 const wsoRows = (records: WsoRecord[]) =>
-  records.map((r) => ({
-    wso: r.wso,
-    ageCategory: r.age_category,
-    gender: r.gender,
-    weightClass: r.weight_class,
-    snatchRecord: r.snatch_record ?? undefined,
-    cjRecord: r.cj_record ?? undefined,
-    totalRecord: r.total_record ?? undefined,
-    snatchBy: r.snatch_by,
-    cjBy: r.cj_by,
-    totalBy: r.total_by,
-  }));
+  records.map((r) => ({ wso: r.wso, ageCategory: r.ageCategory, gender: r.gender, weightClass: r.weightClass, ...storedLifts(r) }));
 
 /**
  * One record per class, the last listed winning, as it did when the Python
@@ -317,7 +307,7 @@ const wsoRows = (records: WsoRecord[]) =>
 function lastPerClass(records: WsoRecord[]): WsoRecord[] {
   const byClass = new Map<string, WsoRecord>();
   for (const record of records) {
-    const key = JSON.stringify([normalizeAgeCategory(record.age_category), normalizeGender(record.gender), record.weight_class]);
+    const key = JSON.stringify([normalizeAgeCategory(record.ageCategory), normalizeGender(record.gender), record.weightClass]);
     byClass.delete(key);
     byClass.set(key, record);
   }
