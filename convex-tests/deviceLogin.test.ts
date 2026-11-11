@@ -5,6 +5,7 @@ import {
   approve,
   claim,
   create,
+  unclaim,
   deny,
   describe as describeLogin,
   DEVICE_LOGIN_POLL_INTERVAL_S,
@@ -43,7 +44,7 @@ async function statusOf(promise: Promise<unknown>): Promise<number | 'ok'> {
 const as = (db: Db, identity: Record<string, unknown> | null) => ({ ...db.ctx, auth: { getUserIdentity: async () => identity } });
 
 function actionCtx(db: Db) {
-  const handlers: Record<string, unknown> = { 'deviceLogin:create': create, 'deviceLogin:claim': claim, 'apiTokens:record': record };
+  const handlers: Record<string, unknown> = { 'deviceLogin:create': create, 'deviceLogin:claim': claim, 'deviceLogin:unclaim': unclaim, 'apiTokens:record': record };
   return {
     auth: { getUserIdentity: async () => null },
     runMutation: async (ref: unknown, args: unknown) => handlerOf(handlers[getFunctionName(ref as never)])(db.ctx, args),
@@ -143,13 +144,31 @@ describe('a device login', () => {
     expect(db.rows('device_logins')).toEqual([]);
   });
 
-  it('tells the CLI the token went out but was lost when minting fails after collection (a deleted account)', async () => {
+  it('keeps refusing a poll whose token cannot be minted (a deleted account), never calling it collected', async () => {
     const db = fakeMutationCtx();
     const { userCode, deviceCode } = await startLogin(db);
     await handlerOf(approve)(as(db, clerk(A)), { userCode });
     await db.ctx.db.insert('deleted_users', { userId: A, deletedAt: 1 });
     expect(await statusOf(pollLogin(db, deviceCode))).toBe(403);
     jest.advanceTimersByTime(DEVICE_LOGIN_POLL_INTERVAL_S * 1000);
+    expect(await statusOf(pollLogin(db, deviceCode))).toBe(403);
+    expect(db.rows('api_tokens')).toEqual([]);
+  });
+
+  it('hands the token over on the next poll when minting failed once (#567)', async () => {
+    const db = fakeMutationCtx();
+    const { userCode, deviceCode } = await startLogin(db);
+    await handlerOf(approve)(as(db, clerk(A)), { userCode });
+    // The signing key is gone for one poll (replaced, or unset by mistake).
+    const key = process.env.MEETCAL_TOKEN_SIGNING_KEY;
+    delete process.env.MEETCAL_TOKEN_SIGNING_KEY;
+    const logged = jest.spyOn(console, 'error').mockImplementation(() => {});
+    expect(await statusOf(pollLogin(db, deviceCode))).toBe(503);
+    logged.mockRestore();
+    expect(db.rows('device_logins')).toEqual([expect.objectContaining({ status: 'approved' })]);
+    process.env.MEETCAL_TOKEN_SIGNING_KEY = key;
+    jest.advanceTimersByTime(DEVICE_LOGIN_POLL_INTERVAL_S * 1000);
+    expect(await pollLogin(db, deviceCode)).toMatchObject({ status: 'approved', token: expect.any(String) });
     expect(await pollLogin(db, deviceCode)).toEqual({ status: 'collected' });
   });
 
