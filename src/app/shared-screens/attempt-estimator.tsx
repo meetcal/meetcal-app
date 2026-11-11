@@ -1,3 +1,4 @@
+import { stackHeaderOptions } from "@/lib/stack-header-options";
 import { IconSymbol } from "@/components/ui/IconSymbol";
 import { ThemedText } from "@/components/ui/ThemedText";
 import { ThemedView } from "@/components/ui/ThemedView";
@@ -268,18 +269,10 @@ function AttemptEstimatorContent() {
       >
         <Stack.Screen
           options={{
-            headerShown: true,
+            ...stackHeaderOptions(colors),
             headerTitle: "Attempt Estimator",
-            headerBackTitle: "Back",
-            headerBackButtonDisplayMode: "minimal",
             headerTransparent: true,
             headerLargeTitle: false,
-            headerStyle: { backgroundColor: colors.background },
-            headerShadowVisible: false,
-            headerTitleStyle: {
-              color: colors.text,
-            },
-            headerTintColor: colors.text
           }}
         />
         <View style={styles.emptyContainer}>
@@ -300,16 +293,8 @@ function AttemptEstimatorContent() {
       >
         <Stack.Screen
           options={{
-            headerShown: true,
+            ...stackHeaderOptions(colors),
             headerTitle: "Attempt Estimator",
-            headerBackTitle: "Back",
-            headerBackButtonDisplayMode: "minimal",
-            headerStyle: { backgroundColor: colors.background },
-            headerShadowVisible: false,
-            headerTitleStyle: {
-              color: colors.text,
-            },
-            headerTintColor: colors.text
           }}
         />
         <ScrollView contentContainerStyle={styles.scrollContent}>
@@ -327,14 +312,8 @@ function AttemptEstimatorContent() {
     >
       <Stack.Screen
         options={{
-          headerShown: true,
+          ...stackHeaderOptions(colors),
           headerTitle: "Attempt Estimator",
-          headerBackTitle: "Back",
-          headerBackButtonDisplayMode: "minimal",
-          headerTitleStyle: {
-            color: colors.text,
-          },
-          headerTintColor: colors.text
         }}
       />
 

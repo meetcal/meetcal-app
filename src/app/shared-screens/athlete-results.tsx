@@ -1,3 +1,4 @@
+import { SLIDE_IN_FROM_RIGHT, stackHeaderOptions } from "@/lib/stack-header-options";
 import { RateBar } from "@/components/athlete-results/RateBar";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { ThemedText } from "@/components/ui/ThemedText";
@@ -469,19 +470,9 @@ function AthleteResultsContent() {
     >
       <Stack.Screen
         options={{
-          headerShown: true,
+          ...stackHeaderOptions(colors),
+          ...SLIDE_IN_FROM_RIGHT,
           headerTitle: name?.toString() || "Meet Results",
-          headerBackTitle: "Back",
-          headerTitleStyle: { color: colors.text },
-          headerTintColor: colors.text,
-          gestureEnabled: true,
-          gestureDirection: "horizontal",
-          animation: "slide_from_right",
-          headerStyle: {
-            backgroundColor: colors.background,
-          },
-          headerShadowVisible: false,
-          headerBackButtonDisplayMode: "minimal",
         }}
       />
 
