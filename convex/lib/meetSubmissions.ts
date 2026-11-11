@@ -1,5 +1,6 @@
 import type { Id } from '../_generated/dataModel';
 import type { MutationCtx } from '../_generated/server';
+import { DAY_MS } from './dates';
 import { escapeHtml } from './email';
 import { apiError, isValidIsoDate } from './validation';
 
@@ -18,7 +19,7 @@ export const MAX_MEET_SUBMISSION_EMAIL_LEN = 254;
 /** Schedules and start lists come as PDFs, photos, spreadsheets and Word documents. */
 export const MEET_SUBMISSION_FILE_EXTENSIONS = ['pdf', 'jpg', 'jpeg', 'png', 'heic', 'heif', 'webp', 'xlsx', 'xls', 'csv', 'doc', 'docx'] as const;
 
-export const DAY_MS = 24 * 60 * 60 * 1000;
+export { DAY_MS };
 /** How long a submission and its files are kept; the email's links work until then. */
 export const MEET_SUBMISSION_RETENTION_DAYS = 30;
 export const MEET_SUBMISSION_RETENTION_MS = MEET_SUBMISSION_RETENTION_DAYS * DAY_MS;

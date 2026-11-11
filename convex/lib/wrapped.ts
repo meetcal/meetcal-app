@@ -1,4 +1,5 @@
 import type { ApiLiftingResult } from './results';
+import { DAY_MS } from './dates';
 import { normalizeName } from './names';
 import { isPlausibleResult } from './plausible';
 
@@ -52,8 +53,6 @@ export const MAX_WRAPPED_NAME_CHOICES = 8;
  */
 export const MEET_EDITION_SPAN_DAYS = 10;
 
-const MS_PER_DAY = 24 * 60 * 60 * 1000;
-
 /** An attempt was taken: a recorded, non-zero number (a miss is negative). */
 const wasTaken = (attempt: number | null | undefined): attempt is number => typeof attempt === 'number' && attempt !== 0;
 /** A taken attempt that was made. */
@@ -65,7 +64,7 @@ const meetKey = (meet: string) => meet.trim().toLowerCase();
 function calendarDay(date: string): number | null {
   const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(date);
   if (!match) return null;
-  return Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3])) / MS_PER_DAY;
+  return Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3])) / DAY_MS;
 }
 
 function withinOneEdition(a: string, b: string): boolean {
