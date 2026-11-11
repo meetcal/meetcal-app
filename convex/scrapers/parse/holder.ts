@@ -20,7 +20,6 @@ export type RecordHolder = { name: string; date?: string; location?: string };
 const STANDARD = /^(?:(?:world|record|wso|state|american|national)\s+)?standard$/i;
 const EMPTY = /^(?:-+|–|—|#?n\/?a|none|tbd|vacant|open)?$/i;
 
-
 function iso(year: number, month: number, day: number): string | null {
   if (month < 1 || month > 12 || day < 1 || day > 31) return null;
   return `${year}-${pad(month)}-${pad(day)}`;

@@ -1,4 +1,3 @@
-
 export const PLACEHOLDER_MEMBER_ID_PREFIX = 'noid:';
 
 export function placeholderMemberId(name: string): string {

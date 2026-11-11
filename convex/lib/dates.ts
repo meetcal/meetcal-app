@@ -1,4 +1,3 @@
-
 export const DAY_MS = 24 * 60 * 60 * 1000;
 
 export const pad2 = (n: number) => String(n).padStart(2, '0');
