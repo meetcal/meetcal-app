@@ -1,5 +1,6 @@
 use crate::types::records::Record;
 use crate::utils::backend::{NoArgs, queries, query};
+use crate::utils::filters::{Filter, no_match};
 use crate::utils::format::{record_cell, record_data_cells, record_data_header};
 use crate::utils::output::{self, Report};
 use crate::utils::sort::sort_by_class;
@@ -32,17 +33,8 @@ pub struct RecordsArgs {
 }
 
 pub async fn run(args: RecordsArgs) -> Result<()> {
-    let age = args.age;
-    let gender = args.gender;
-    let federation = args.federation.to_ascii_uppercase();
-
     let records: Vec<Record> = query(queries::RECORDS, &NoArgs {}).await?;
-    let filtered = records.into_iter().filter(|row| {
-        row.age_category.eq_ignore_ascii_case(&age)
-            && row.gender.eq_ignore_ascii_case(&gender)
-            && row.record_type.eq_ignore_ascii_case(&federation)
-    });
-    let sorted = sort_by_class(filtered.collect(), |r| r.weight_class.as_str());
+    let sorted = selected(records, &args.age, &args.gender, &args.federation)?;
 
     let mut table = Table::new();
     table.set_header(vec!["Class", "Snatch", "CJ", "Total"]);
@@ -69,11 +61,117 @@ pub async fn run(args: RecordsArgs) -> Result<()> {
         data.add_row(data_row);
     }
 
-    output::emit(
-        Report::new()
-            .table_with_data("records", table, data)
-            .when_empty("No records match those filters."),
-    );
+    output::emit(Report::new().table_with_data("records", table, data));
 
     Ok(())
+}
+
+/// The records for one age group, gender and federation, lightest class first; values compare
+/// ignoring case and surrounding space. When none match, an error naming the first filter that
+/// matched nothing and the values the records do have, as the other reference commands give,
+/// rather than an empty table and exit status 0.
+pub fn selected(
+    records: Vec<Record>,
+    age: &str,
+    gender: &str,
+    federation: &str,
+) -> Result<Vec<Record>> {
+    let same = |value: &str, wanted: &str| value.trim().eq_ignore_ascii_case(wanted.trim());
+    let (matching, others): (Vec<Record>, Vec<Record>) = records.into_iter().partition(|row| {
+        same(&row.age_category, age)
+            && same(&row.gender, gender)
+            && same(&row.record_type, federation)
+    });
+    if matching.is_empty() {
+        let filters = [
+            Filter {
+                option: "--federation",
+                value: federation,
+            },
+            Filter {
+                option: "--gender",
+                value: gender,
+            },
+            Filter {
+                option: "--age",
+                value: age,
+            },
+        ];
+        let rows: Vec<Vec<&str>> = others
+            .iter()
+            .map(|row| {
+                vec![
+                    row.record_type.as_str(),
+                    row.gender.as_str(),
+                    row.age_category.as_str(),
+                ]
+            })
+            .collect();
+        return Err(no_match("records", &filters, &rows));
+    }
+    Ok(sort_by_class(matching, |r| r.weight_class.as_str()))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn record(federation: &str, gender: &str, age: &str, class: &str) -> Record {
+        serde_json::from_value(serde_json::json!({
+            "weight_class": class,
+            "snatch_record": 100.0,
+            "cj_record": 120.0,
+            "total_record": 220.0,
+            "gender": gender,
+            "age_category": age,
+            "record_type": federation,
+        }))
+        .unwrap()
+    }
+
+    fn records() -> Vec<Record> {
+        vec![
+            record("USAW", "Men", "Senior", "110+"),
+            record("USAW", "Men", "Senior", "60"),
+            record("USAW", "Women", "Senior", "48"),
+            record("USAW", "Men", "Masters 35", "60"),
+            record("IWF", "Men", "Senior", "60"),
+        ]
+    }
+
+    #[test]
+    fn filters_ignore_case_and_surrounding_space() {
+        let classes = |age: &str, gender: &str, federation: &str| -> Vec<String> {
+            selected(records(), age, gender, federation)
+                .unwrap()
+                .into_iter()
+                .map(|row| row.weight_class)
+                .collect()
+        };
+        assert_eq!(classes("Senior", "Men", "USAW"), ["60", "110+"]);
+        assert_eq!(classes(" senior ", "men ", " usaw"), ["60", "110+"]);
+    }
+
+    #[test]
+    fn a_filter_that_matches_nothing_is_an_error_naming_the_values() {
+        let error = |age: &str, gender: &str, federation: &str| {
+            selected(records(), age, gender, federation)
+                .expect_err("matched nothing")
+                .to_string()
+        };
+        assert_eq!(
+            error("Seniors", "Men", "USAW"),
+            "No records for --age \"Seniors\" with --federation USAW --gender Men. Try one of: \
+             Masters 35, Senior"
+        );
+        assert_eq!(
+            error("Senior", "Men", "USAWW"),
+            "No records for --federation \"USAWW\". Try one of: IWF, USAW"
+        );
+        assert_eq!(
+            error("Masters 35", "Women", "USAW"),
+            "No records for --age \"Masters 35\" with --federation USAW --gender Women. Try one \
+             of: Senior"
+        );
+    }
 }
