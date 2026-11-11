@@ -1,16 +1,15 @@
 use super::{
-    filters::{
-        ClassificationFilters, ClassifiedRow, SortDirection, classified_rows, filter_options,
-        sort_numeric, sort_orders, sort_text, weight_class_options,
-    },
-    loading::{load_query, table_response},
-    ui::{DataPage, DataTable, EmptyTableRow, FilterSelect, SortSelect},
+    filters::{SortDirection, sort_numeric, sort_orders, sort_text},
+    format::display_weight_class,
+    loading::{load_rows, table_response},
+    reference_table::{Filter, OptionOrder, ReferenceTable, TableSort},
+    ui::DataPage,
 };
 use crate::utils::api::queries;
 use leptos::prelude::*;
 use serde::Deserialize;
 
-#[derive(Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize)]
 pub struct QualifyingTotal {
     pub qualifying_total: f64,
     pub event_name: String,
@@ -19,17 +18,59 @@ pub struct QualifyingTotal {
     pub weight_class: String,
 }
 
-impl ClassifiedRow for QualifyingTotal {
-    fn gender(&self) -> &str {
-        &self.gender
-    }
-    fn age_category(&self) -> &str {
-        &self.age_category
-    }
-    fn weight_class(&self) -> &str {
-        &self.weight_class
+impl QualifyingTotal {
+    fn shown(self) -> Self {
+        Self {
+            weight_class: display_weight_class(&self.weight_class),
+            ..self
+        }
     }
 }
+
+fn event(total: &QualifyingTotal) -> &str {
+    &total.event_name
+}
+
+fn gender(total: &QualifyingTotal) -> &str {
+    &total.gender
+}
+
+fn age(total: &QualifyingTotal) -> &str {
+    &total.age_category
+}
+
+fn weight_class(total: &QualifyingTotal) -> &str {
+    &total.weight_class
+}
+
+const FILTERS: &[Filter<QualifyingTotal>] = &[
+    Filter {
+        label: "Event",
+        placeholder: "All events",
+        value: event,
+        order: OptionOrder::Alphabetical,
+    },
+    Filter {
+        label: "Gender",
+        placeholder: "All genders",
+        value: gender,
+        order: OptionOrder::Alphabetical,
+    },
+    Filter {
+        label: "Age",
+        placeholder: "All ages",
+        value: age,
+        order: OptionOrder::Alphabetical,
+    },
+    Filter {
+        label: "Weight class",
+        placeholder: "All classes",
+        value: weight_class,
+        order: OptionOrder::ByWeight,
+    },
+];
+
+const HEADERS: &[&str] = &["Event", "Gender", "Age", "Weight class", "Total"];
 
 sort_orders!(QualifyingTotalSort {
     TotalAsc => ("total_asc", "Total: low to high"),
@@ -38,86 +79,54 @@ sort_orders!(QualifyingTotalSort {
     EventDesc => ("event_desc", "Event: Z to A"),
 });
 
+impl TableSort<QualifyingTotal> for QualifyingTotalSort {
+    fn sort(self, rows: &mut [&QualifyingTotal]) {
+        match self {
+            QualifyingTotalSort::TotalDesc => {
+                sort_numeric(rows, |row| row.qualifying_total, SortDirection::Descending)
+            }
+            QualifyingTotalSort::EventAsc => {
+                sort_text(rows, |row| &row.event_name, SortDirection::Ascending)
+            }
+            QualifyingTotalSort::EventDesc => {
+                sort_text(rows, |row| &row.event_name, SortDirection::Descending)
+            }
+            QualifyingTotalSort::TotalAsc => {
+                sort_numeric(rows, |row| row.qualifying_total, SortDirection::Ascending)
+            }
+        }
+    }
+}
+
+fn total_row(total: &QualifyingTotal) -> AnyView {
+    view! {
+        <tr>
+            <td>{total.event_name.clone()}</td>
+            <td>{total.gender.clone()}</td>
+            <td>{total.age_category.clone()}</td>
+            <td>{total.weight_class.clone()}</td>
+            <td>{total.qualifying_total}</td>
+        </tr>
+    }
+    .into_any()
+}
+
 #[component]
 pub fn QualifyingTotals() -> impl IntoView {
-    let (gender, set_gender) = signal(String::new());
-    let (meet, set_meet) = signal(String::new());
-    let (age, set_age) = signal(String::new());
-    let (weight_class, set_weight_class) = signal(String::new());
-    let (sort, set_sort) = signal(QualifyingTotalSort::TotalAsc);
-
-    let totals = load_query::<Vec<QualifyingTotal>>(queries::QUALIFYING_TOTALS);
+    let sort = RwSignal::new(QualifyingTotalSort::TotalAsc);
+    let totals = load_rows(queries::QUALIFYING_TOTALS, QualifyingTotal::shown);
 
     view! {
         <DataPage
             heading="Qualifying Totals"
             intro="Filter qualification totals by event, gender, age category, or weight class."
         >
-            {move || {
-                table_response(totals, 5, "qualifying totals", |rows| {
-                    let meets = filter_options(rows.iter().map(|row| row.event_name.as_str()));
-                    let genders = filter_options(rows.iter().map(|row| row.gender.as_str()));
-                    let ages = filter_options(rows.iter().map(|row| row.age_category.as_str()));
-                    let weights = weight_class_options(rows.iter().map(|row| row.weight_class.as_str()));
-
-                    let selected_meet = meet.get();
-                    let selected_gender = gender.get();
-                    let selected_age = age.get();
-                    let selected_weight = weight_class.get();
-                    let filters = ClassificationFilters { gender: &selected_gender, age_category: &selected_age, weight_class: &selected_weight };
-                    let mut filtered_totals = classified_rows(rows, &filters, |row| {
-                        selected_meet.is_empty() || row.event_name == selected_meet
-                    });
-
-                    match sort.get() {
-                        QualifyingTotalSort::TotalDesc => sort_numeric(&mut filtered_totals, |row| row.qualifying_total, SortDirection::Descending),
-                        QualifyingTotalSort::EventAsc => sort_text(&mut filtered_totals, |row| &row.event_name, SortDirection::Ascending),
-                        QualifyingTotalSort::EventDesc => sort_text(&mut filtered_totals, |row| &row.event_name, SortDirection::Descending),
-                        QualifyingTotalSort::TotalAsc => sort_numeric(&mut filtered_totals, |row| row.qualifying_total, SortDirection::Ascending),
-                    }
-                    let is_empty = filtered_totals.is_empty();
-                    let rows = filtered_totals
-                        .into_iter()
-                        .map(|row| {
-                            view! {
-                                <tr>
-                                    <td>{row.event_name.clone()}</td>
-                                    <td>{row.gender.clone()}</td>
-                                    <td>{row.age_category.clone()}</td>
-                                    <td>{row.weight_class.clone()}</td>
-                                    <td>{row.qualifying_total}</td>
-                                </tr>
-                            }
-                        })
-                        .collect_view();
-
-                    view! {
-                        <div class="data-filters">
-                            <FilterSelect label="Event" placeholder="All events" values=meets selected=meet on_select=move |value| set_meet.set(value) />
-                            <FilterSelect label="Gender" placeholder="All genders" values=genders selected=gender on_select=move |value| set_gender.set(value) />
-                            <FilterSelect label="Age" placeholder="All ages" values=ages selected=age on_select=move |value| set_age.set(value) />
-                            <FilterSelect label="Weight class" placeholder="All classes" values=weights selected=weight_class on_select=move |value| set_weight_class.set(value) />
-                            <SortSelect sort set_sort />
-                        </div>
-                        <DataTable>
-                            <thead>
-                                <tr>
-                                    <th>"Event"</th>
-                                    <th>"Gender"</th>
-                                    <th>"Age"</th>
-                                    <th>"Weight class"</th>
-                                    <th>"Total"</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {is_empty.then(|| view! { <EmptyTableRow columns=5 message="No qualifying totals match these filters." /> })}
-                                {rows}
-                            </tbody>
-                        </DataTable>
-                    }
-                    .into_any()
-                })
-            }}
+            {move || table_response(totals, HEADERS.len(), "qualifying totals", |totals| {
+                view! {
+                    <ReferenceTable rows=totals.to_vec() filters=FILTERS headers=HEADERS row=total_row sort empty_message="No qualifying totals match these filters." />
+                }
+                .into_any()
+            })}
         </DataPage>
     }
 }
