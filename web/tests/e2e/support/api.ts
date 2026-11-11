@@ -274,7 +274,7 @@ export function textAnswer(body: unknown) {
 }
 
 /** Convex's answer to a query that ran and failed; `errorData` is a `ConvexError`'s `{ status, error }`. */
-export function errorAnswer(message: string, errorData?: { status: number; error: string }) {
+export function errorAnswer(message: string, errorData?: { status: number; error: string; code?: string }) {
   const body = { status: "error", errorMessage: message, ...(errorData ? { errorData } : {}), logLines: [] };
   return { status: 560, ...jsonResponse(body) };
 }
