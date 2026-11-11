@@ -97,6 +97,19 @@ describe("the Sport80 results run's time budget (#574)", () => {
     expect(error).toContain(`Meet 2 (event 2): stale results not deleted: ${OUT_OF_TIME}`);
   });
 
+  it('stops storing an event part way when the hard stop passes between its batches', async () => {
+    const twoBatches = Array.from({ length: 201 }, (_, i) => ({ ...lifter, lifter: `Lifter ${i}` }));
+    global.fetch = jest.fn(async (url: string) => {
+      if (url.endsWith('/public/rankings/')) return { ok: true, status: 200, text: async (): Promise<string> => `<script>window.env = {"RANKINGS_DOMAIN_URL":"${API}","SERVICES_API_PUBLIC_KEY":"key"};</script>` };
+      return new URL(url).pathname === '/api/events/table/data' ? json({ data: [events[1]], total: 1 }) : json({ data: twoBatches, total: twoBatches.length });
+    }) as never;
+    const { storedMeets, prunedEvents, failure } = deployment(() => jest.advanceTimersByTime(HARD_STOP_MS));
+    const { error } = await failure();
+    expect(storedMeets).toEqual(['Meet 2']);
+    expect(prunedEvents).toEqual([]);
+    expect(error).toContain(`Meet 2 (event 2): not stored: ${OUT_OF_TIME}`);
+  });
+
   it('fails as the event index, not as a stopped action, when the index is still loading at the hard stop', async () => {
     global.fetch = jest.fn(async (url: string) =>
       url.endsWith('/public/rankings/')

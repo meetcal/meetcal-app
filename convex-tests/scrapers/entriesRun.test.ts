@@ -65,6 +65,18 @@ describe("the entries run's time budget (#574)", () => {
     expect(await deployment(slowFirstTarget).failureText()).toContain(`Meet B: ${NOT_REACHED}`);
   });
 
+  it('stores nothing for a target whose list arrives after the run gave up on it', async () => {
+    let listArrives: (page: unknown) => void = () => {};
+    jest.mocked(fetchJson).mockImplementation(async (url: string) => (url.includes('?') ? new Promise((resolve) => (listArrives = resolve)) : { title: `${meetOf(url)} - Members` }));
+    const { stored, failureText } = deployment();
+    const failure = failureText();
+    await jest.advanceTimersByTimeAsync(HARD_STOP_MS);
+    expect(await failure).toContain(`Meet A: ${OUT_OF_TIME}`);
+    listArrives({ total: 1, data: [entrant] });
+    await jest.advanceTimersByTimeAsync(0);
+    expect(stored).toEqual([]);
+  });
+
   it('stops waiting for a target still reading at the hard stop, so the run ends and names it', async () => {
     jest.mocked(fetchJson).mockImplementation(() => new Promise(() => {}));
     const { stored, failureText } = deployment();
