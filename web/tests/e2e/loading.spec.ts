@@ -1,4 +1,4 @@
-import { expect, test, type Route } from "@playwright/test";
+import { expect, test, type Locator, type Route } from "@playwright/test";
 import { errorAnswer, mockSubscribedUser, routeQuery, textAnswer, valueAnswer } from "./support/api";
 
 const meet = (name: string) => ({
@@ -72,6 +72,58 @@ test("a new meet loads at once and never shows the previous meet's answer or a f
   await page.waitForTimeout(200);
   await expect(page.locator("tbody").first()).toContainText("Bravo Platform");
   await expect(page.getByText("Alpha Platform")).toHaveCount(0);
+});
+
+test("each loading skeleton has as many columns as the table that replaces it", async ({ page }) => {
+  await mockSubscribedUser(page);
+  await routeQuery(page, "meets:list", (route) => route.fulfill(textAnswer([])));
+  await routeQuery(page, "meets:completed", (route) => route.fulfill(textAnswer([meet("Meet Alpha")])));
+  let release = () => {};
+  const released = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const held: Promise<void>[] = [];
+  const hold = (body: () => unknown) => async (route: Route) => {
+    held.push(released.then(() => route.fulfill(body())).catch(() => {}));
+  };
+  await routeQuery(page, "meets:schedule", hold(() => textAnswer([])));
+  await routeQuery(page, "meets:athletes", hold(() => textAnswer([])));
+  await routeQuery(page, "results:byMeet", hold(() => textAnswer([])));
+  await routeQuery(page, "reference:clubs", (route) => route.fulfill(textAnswer(["Test Barbell"])));
+  await routeQuery(page, "reference:clubMeets", (route) =>
+    route.fulfill(valueAnswer({ meets: [{ meet: "Meet Alpha", date: "2026-06-20", status: "completed", has_results: true }], truncated: false })),
+  );
+  await routeQuery(
+    page,
+    "reference:clubMeetStats",
+    hold(() => valueAnswer({ total_athletes: 0, gold_medals: 0, silver_medals: 0, bronze_medals: 0, total_prs: 0, perfect_6_for_6: 0, total_weight_lifted: 0, snatch_make_rate: 0, cj_make_rate: 0, combined_make_rate: 0, athlete_results: [] })),
+  );
+  const columnsOfEach = (tables: Locator) => tables.evaluateAll((all) => all.map((table) => table.querySelectorAll("thead th").length));
+  const skeletons = page.locator("table.data-table-skeleton");
+  const tables = page.locator("table.data-table:not(.data-table-skeleton)");
+
+  await page.goto("/meet-center");
+  await page.locator("#meet-search-input").fill("Meet Alpha");
+  await page.getByRole("option", { name: "Meet Alpha" }).click();
+  await expect(skeletons).toHaveCount(3);
+  const meetSkeletonColumns = await columnsOfEach(skeletons);
+
+  await page.goto("/club-dashboard");
+  await page.getByLabel("Club").selectOption("Test Barbell");
+  await page.locator("select").and(page.getByRole("combobox", { name: "Meet" })).selectOption("Meet Alpha");
+  await expect(skeletons).toHaveCount(1);
+  const clubSkeletonColumns = await columnsOfEach(skeletons);
+
+  release();
+  await Promise.all(held);
+  await expect(tables).toHaveCount(1);
+  expect(clubSkeletonColumns).toEqual(await columnsOfEach(tables));
+
+  await page.goto("/meet-center");
+  await page.locator("#meet-search-input").fill("Meet Alpha");
+  await page.getByRole("option", { name: "Meet Alpha" }).click();
+  await expect(tables).toHaveCount(3);
+  expect(meetSkeletonColumns).toEqual(await columnsOfEach(tables));
 });
 
 test("a failed load offers Try again and loads after it", async ({ page }) => {
