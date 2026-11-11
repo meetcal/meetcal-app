@@ -9,15 +9,8 @@ type Dict = Record<string, unknown>;
 
 const isDict = (value: unknown): value is Dict => typeof value === 'object' && value !== null && !Array.isArray(value);
 
-/** What the sync reads of the site's `window.env`: where the API is, and its public key. */
 export type Sport80Env = { RANKINGS_DOMAIN_URL: string; SERVICES_API_PUBLIC_KEY: string };
 
-/**
- * The site's `window.env` (the JSON text of the object), checked for the two
- * values the sync uses. Without them every request would fail one by one
- * (`Invalid URL`, or a 401 for each event with the key "undefined"); this
- * fails once, naming what the page no longer gives.
- */
 export function readSport80Env(json: string): Sport80Env {
   let env: unknown;
   try {
@@ -36,13 +29,11 @@ export function readSport80Env(json: string): Sport80Env {
   return { RANKINGS_DOMAIN_URL, SERVICES_API_PUBLIC_KEY: value('SERVICES_API_PUBLIC_KEY') };
 }
 
-/** A table response's body: an object, or the request fails saying what came instead. */
 export function readTablePage(body: unknown): Dict {
   if (!isDict(body)) throw new Error(`the table response is ${Array.isArray(body) ? 'a list' : body === null ? 'null' : `a ${typeof body}`}, not an object`);
   return body;
 }
 
-/** A table page's rows (`data`): none when absent, each an object; anything else is a changed payload. */
 export function pageRows(page: Dict): Dict[] {
   const { data } = page;
   if (data === undefined || data === null) return [];

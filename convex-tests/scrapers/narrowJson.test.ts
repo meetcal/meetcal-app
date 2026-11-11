@@ -2,9 +2,6 @@ import { entryFromRow, readEntriesTable } from '../../convex/scrapers/parse/entr
 import { wikitextOf } from '../../convex/scrapers/parse/iwfRecords';
 import { pageRows, readSport80Env, readTablePage } from '../../convex/scrapers/parse/sport80';
 
-// Fetched JSON is narrowed where it is read (#571): a field of another type
-// fails naming the field, not as a TypeError somewhere later.
-
 describe('the entries table', () => {
   const row = { id: 7, member_id: '1012345', first_name: 'Ann', last_name: 'Lee', weightlifting_age: 31, club: 'Club', gender: 'Female', weight_class: '63', entry_total: '150' };
 

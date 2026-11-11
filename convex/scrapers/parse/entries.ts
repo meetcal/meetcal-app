@@ -80,16 +80,8 @@ export type Entry = {
 
 const isObject = (value: unknown): value is Record<string, unknown> => typeof value === 'object' && value !== null && !Array.isArray(value);
 
-/** A page of the entries table: its title, the list's row count and the page's rows. */
 export type EntriesTable = { title?: string; total?: number; data?: EntryRow[] };
 
-/**
- * A page of Sport80's entries table, checked: the body is what the endpoint
- * sent, so every field the sync reads is narrowed here and a field of
- * another type fails naming it ("row 3: first_name is a number"), not as a
- * `trim is not a function` somewhere later. A membership number or row id
- * sent as a number is taken as its digits; absent and null fields stay so.
- */
 export function readEntriesTable(body: unknown): EntriesTable {
   if (!isObject(body)) throw new Error('entries: the response is not an object');
   const { title, total, data } = body;
