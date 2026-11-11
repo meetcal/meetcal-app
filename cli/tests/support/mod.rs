@@ -15,6 +15,8 @@ pub const UNAVAILABLE: &str = "503 Service Unavailable";
 pub const OK: &str = "200 OK";
 pub const NOT_FOUND: &str = "404 Not Found";
 pub const FUNCTION_FAILED: &str = "560 Function Failed";
+/// Not a status: the server reads the request, then closes the connection without answering.
+pub const DROPPED: &str = "dropped";
 
 pub struct Reply {
     pub status: &'static str,
@@ -81,6 +83,9 @@ pub fn serve(replies: Vec<Reply>) -> (String, Arc<Mutex<Vec<String>>>) {
             } else {
                 reply(NOT_FOUND, None, r#"{"error":"not a test request"}"#)
             };
+            if reply.status == DROPPED {
+                continue;
+            }
             let retry_after = reply
                 .retry_after
                 .map(|secs| format!("Retry-After: {secs}\r\n"))
