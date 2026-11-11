@@ -37,8 +37,7 @@ import {
 /** Long enough for faults to meet queued writes; short enough to shrink well. */
 const MAX_COMMANDS = 30;
 const NUM_RUNS = Number(process.env.FC_NUM_RUNS) || 100;
-/** Generous: a run is ~20-60ms; the nightly run raises FC_NUM_RUNS. */
-const MODEL_TIMEOUT_MS = Math.max(180_000, NUM_RUNS * 1500);
+const MODEL_TIMEOUT_MS = Math.max(180_000, NUM_RUNS * 500);
 /**
  * Which generated commands ran: the `replayPath="..."` comment at the end of
  * a counterexample. A shrunk case (an `FC_PATH` with a `:`) is rebuilt from
