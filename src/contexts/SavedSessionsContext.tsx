@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useEffect } from 'react';
-import { useSavedSessions as useHook, SavedSession } from '@/hooks/useSavedSessions';
+import { useSavedSessions as useHook } from '@/hooks/useSavedSessions';
+import type { SavedSession } from '@/lib/saved-sessions-store';
 import { LiftResult } from '@/data/types/athletes';
 import { MeetName } from '@/data/types/meet';
 import type { SaveSessionsResult } from '@/lib/saved-sessions-actions';

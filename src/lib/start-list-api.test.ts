@@ -1,4 +1,4 @@
-import type { SupabaseLiftResult } from "@/data/types/athletes";
+import type { AthleteMeetResult } from "@/data/types/athletes";
 
 const mockFetchApiYearBestsByNames = jest.fn();
 const mockFetchApiResultsByNames = jest.fn();
@@ -41,9 +41,8 @@ function storedBests(
   return { bests, fetchedAt: isFresh ? Date.now() : 0, isFresh };
 }
 
-function liftRow(overrides: Partial<SupabaseLiftResult>): SupabaseLiftResult {
+function liftRow(overrides: Partial<AthleteMeetResult>): AthleteMeetResult {
   return {
-    id: 0,
     event_id: "e",
     meet: "Meet",
     date: "2023-01-01",

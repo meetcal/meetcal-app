@@ -1,5 +1,5 @@
 import { devLog } from '@/lib/logger';
-import type { SupabaseLiftResult } from '@/types/athlete-results';
+import type { AthleteMeetResult } from '@/types/athlete-results';
 
 /**
  * One load of an athlete's results screen: the on-device copy as a fast first
@@ -20,23 +20,23 @@ import type { SupabaseLiftResult } from '@/types/athlete-results';
  */
 export type AthleteResultsLoad = {
   /** Rows this screen already holds for the athlete (its in-memory copy). */
-  shown: readonly SupabaseLiftResult[] | undefined;
+  shown: readonly AthleteMeetResult[] | undefined;
   /**
    * Where `shown` came from (default `api`). On-device rows kept on screen
    * through a retry are still a partial history: an empty answer must not
    * clear them, and a failed request leaves them `offline-partial`.
    */
   shownSource?: ShownResultsSource;
-  readOffline: () => Promise<SupabaseLiftResult[]>;
-  fetchFull: () => Promise<SupabaseLiftResult[]>;
+  readOffline: () => Promise<AthleteMeetResult[]>;
+  fetchFull: () => Promise<AthleteMeetResult[]>;
   /** False once the screen moved on (another athlete, or unmounted). */
   isCurrent: () => boolean;
   /** Paint rows. `api` rows are the complete history and may be memoized. */
-  show: (rows: SupabaseLiftResult[], source: 'offline' | 'api') => void;
+  show: (rows: AthleteMeetResult[], source: 'offline' | 'api') => void;
 };
 
 type FullOutcome =
-  | { ok: true; rows: SupabaseLiftResult[] }
+  | { ok: true; rows: AthleteMeetResult[] }
   | { ok: false; error: unknown };
 
 /**

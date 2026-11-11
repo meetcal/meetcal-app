@@ -89,12 +89,12 @@ pub struct Filter<'a> {
     pub value: &'a str,
 }
 
-/// The error for filters that matched no row of `what` (`"standards"`). `rows` holds each row's
-/// values for the filters, in the filters' order; values compare ignoring case and surrounding
-/// space, as the commands filter. Names the first filter no row matches given the ones before
-/// it, with the values those rows do have.
+pub fn same_ignoring_case_and_surrounding_space(a: &str, b: &str) -> bool {
+    a.trim().eq_ignore_ascii_case(b.trim())
+}
+
 pub fn no_match(what: &str, filters: &[Filter], rows: &[Vec<&str>]) -> Error {
-    let same = |a: &str, b: &str| a.trim().eq_ignore_ascii_case(b.trim());
+    let same = same_ignoring_case_and_surrounding_space;
     let mut remaining: Vec<&Vec<&str>> = rows.iter().collect();
     for (index, filter) in filters.iter().enumerate() {
         let matching: Vec<&Vec<&str>> = remaining

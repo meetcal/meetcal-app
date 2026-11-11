@@ -1,4 +1,4 @@
-import { LiftResult, SupabaseLiftResult } from '@/data/types/athletes';
+import { LiftResult, AthleteMeetResult } from '@/data/types/athletes';
 import {
   maxSuccessfulAttempt,
   normalizeAthleteName,
@@ -43,14 +43,14 @@ enum LiftType {
   CleanJerk = 'cj'
 }
 
-function getSnatchBest(result: SupabaseLiftResult): number | null {
+function getSnatchBest(result: AthleteMeetResult): number | null {
   if (typeof result.snatch_best === "number" && result.snatch_best > 0) {
     return result.snatch_best;
   }
   return maxSuccessfulAttempt([result.snatch1, result.snatch2, result.snatch3]);
 }
 
-function getCJBest(result: SupabaseLiftResult): number | null {
+function getCJBest(result: AthleteMeetResult): number | null {
   if (typeof result.cj_best === "number" && result.cj_best > 0) {
     return result.cj_best;
   }
@@ -58,7 +58,7 @@ function getCJBest(result: SupabaseLiftResult): number | null {
 }
 
 function calculateAverageIncrease(
-  results: SupabaseLiftResult[],
+  results: AthleteMeetResult[],
   liftType: LiftType
 ): { first: number; second: number } {
   const firstToSecondIncreases: number[] = [];
@@ -111,7 +111,7 @@ function calculateAverageIncrease(
  * to* the opener, and are taken at all only when the opener went a certain way
  * — would bias the estimate. Openers only, split by lift.
  */
-function calculateMakeRates(results: SupabaseLiftResult[]): { snatch: number; cj: number } {
+function calculateMakeRates(results: AthleteMeetResult[]): { snatch: number; cj: number } {
   let snatchFirstAttempts = 0;
   let snatchFirstMakes = 0;
   let cjFirstAttempts = 0;
@@ -239,7 +239,7 @@ function normalizeDate(raw: string | null | undefined): string {
 
 export function calculateEstimates(
   athletes: LiftResult[],
-  athleteResults: SupabaseLiftResult[]
+  athleteResults: AthleteMeetResult[]
 ): AthleteAttemptEstimate[] {
   // Same window the screen fetched with, from the same helper — a second
   // hand-rolled copy here would silently filter out rows the fetch paid for.
@@ -247,7 +247,7 @@ export function calculateEstimates(
 
   const tempEstimates: {
     athlete: LiftResult;
-    history: SupabaseLiftResult[];
+    history: AthleteMeetResult[];
     bestSnatch: number | null;
     bestCJ: number | null;
     avgSnatchIncrease: { first: number; second: number };
@@ -258,7 +258,7 @@ export function calculateEstimates(
 
   // Each in-window row keyed once, in order, rather than every row keyed
   // again for every athlete (athletes x rows `normalizeAthleteName` calls).
-  const historyByName = new Map<string, SupabaseLiftResult[]>();
+  const historyByName = new Map<string, AthleteMeetResult[]>();
   for (const result of athleteResults) {
     if (normalizeDate(result.date) < historyCutoffDate) continue;
     const key = normalizeAthleteName(result.name);

@@ -53,11 +53,6 @@ pub struct AttendanceArgs {
     pub exclude: Vec<String>,
 }
 
-#[derive(Debug, Deserialize)]
-struct Answer {
-    json: String,
-}
-
 /// One edition's numbers (`meets:attendance`).
 #[derive(Clone, Debug, Deserialize, PartialEq)]
 pub struct Edition {
@@ -188,8 +183,9 @@ pub async fn run(args: AttendanceArgs) -> Result<()> {
 
     let mut editions: Vec<Edition> = Vec::new();
     for batch in matched.chunks(ATTENDANCE_BATCH) {
-        let answer: Answer = query(queries::MEET_ATTENDANCE, &json!({ "meets": batch })).await?;
-        for edition in serde_json::from_str::<Vec<Edition>>(&answer.json)? {
+        let answered: Vec<Edition> =
+            query(queries::MEET_ATTENDANCE, &json!({ "meets": batch })).await?;
+        for edition in answered {
             if edition.spans_years() {
                 // A name used every year: `meets:attendance` counts every year's results as one
                 // meet, so count each year from the results themselves.
