@@ -1,3 +1,4 @@
+import { SLIDE_IN_FROM_RIGHT, stackHeaderOptions } from "@/lib/stack-header-options";
 import { DataTable, dataTableStyles } from "@/components/ui/DataTable";
 import { FilterBar } from "@/components/ui/FilterBar";
 import { SubscriptionGate } from "@/components/ui/SubscriptionGate";
@@ -20,7 +21,7 @@ import {
 } from "@/lib/comp-data-filters";
 import { filterSummary } from "@/lib/filter-summary";
 import { sortAgeGroups } from "@/lib/sortAgeGroups";
-import { Filters } from "@/types/qual_totals";
+import { QualifyingTotalsFilters } from "@/types/qual_totals";
 import { Stack, useLocalSearchParams } from "expo-router";
 import { useEffect, useMemo } from "react";
 import { StyleSheet, View } from "react-native";
@@ -42,7 +43,7 @@ function QualifyingTotalsScreenContent() {
     gender?: string;
     ageGroup?: string;
   }>();
-  const defaultFilters = useMemo<Filters>(
+  const defaultFilters = useMemo<QualifyingTotalsFilters>(
     () => ({
       // Empty until the totals load; then the newest season's Nationals.
       event: routeParams.event || "",
@@ -57,7 +58,7 @@ function QualifyingTotalsScreenContent() {
     routeParams.ageGroup,
   ]);
   const { filters, setFilters, setTempFilters, openFilters, filterModalProps } =
-    useFilterState<Filters>({
+    useFilterState<QualifyingTotalsFilters>({
     defaultFilters,
     resetKey: filterResetKey,
   });
@@ -182,21 +183,9 @@ function QualifyingTotalsScreenContent() {
     >
       <Stack.Screen
         options={{
+          ...stackHeaderOptions(colors),
+          ...SLIDE_IN_FROM_RIGHT,
           title: "Qualifying Totals",
-          headerBackTitle: "Back",
-          headerShown: true,
-          gestureEnabled: true,
-          gestureDirection: "horizontal",
-          animation: "slide_from_right",
-          headerTitleStyle: {
-            color: colors.headerTitle,
-          },
-          headerStyle: {
-            backgroundColor: colors.headerBackground,
-          },
-          headerShadowVisible: false,
-          headerBackButtonDisplayMode: "minimal",
-          headerTintColor: colors.text,
         }}
       />
 

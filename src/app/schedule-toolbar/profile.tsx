@@ -1,3 +1,4 @@
+import { stackHeaderOptions } from "@/lib/stack-header-options";
 import { AndroidCalendarSetting } from "@/components/profile/AndroidCalendarSetting";
 import { getChevronIcon } from "@/lib/start-list-utils";
 import { AutoUnsaveSetting } from "@/components/profile/AutoUnsaveSetting";
@@ -216,15 +217,8 @@ export default function ProfileScreen() {
     >
       <Stack.Screen
         options={{
-          headerShown: true,
+          ...stackHeaderOptions(colors),
           headerTitle: "My Profile",
-          headerTintColor: colors.text,
-          headerBackTitle: "Back",
-          headerStyle: {
-            backgroundColor: colors.background,
-          },
-          headerShadowVisible: false,
-          headerBackButtonDisplayMode: "minimal",
         }}
       />
 

@@ -1,4 +1,4 @@
-import type { SupabaseLiftResult } from '@/data/types/athletes';
+import type { AthleteMeetResult } from '@/data/types/athletes';
 import { wasAttemptMade, wasAttemptTaken } from '@/lib/athletes';
 
 /** Makes out of attempts taken, and the share as a percentage (0 when none). */
@@ -65,7 +65,7 @@ function rateLift(attemptsPerResult: (number | null | undefined)[][]): {
  * (`undefined`) attempt as a miss.
  */
 export function calculateAthleteMakeRates(
-  results: readonly SupabaseLiftResult[],
+  results: readonly AthleteMeetResult[],
 ): AthleteMakeRates {
   const snatch = rateLift(results.map((r) => [r.snatch1, r.snatch2, r.snatch3]));
   const cj = rateLift(results.map((r) => [r.cj1, r.cj2, r.cj3]));
