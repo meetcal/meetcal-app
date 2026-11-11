@@ -194,8 +194,6 @@ pub async fn run(args: AttendanceArgs) -> Result<()> {
     for answer in answers {
         for edition in serde_json::from_str::<Vec<Edition>>(&answer.json)? {
             if edition.spans_years() {
-                // A name used every year: `meets:attendance` counts every year's results as one
-                // meet, so count each year from the results themselves.
                 let rows: Vec<LiftingResults> =
                     query(queries::MEET_RESULTS, &json!({ "meet": edition.meet })).await?;
                 editions.extend(split_by_year(&edition, rows));

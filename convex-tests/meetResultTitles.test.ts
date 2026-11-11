@@ -111,8 +111,8 @@ describe('results titles of a meet (#362)', () => {
     expect(await message([NATIONALS, JUNIOR])).toContain('ask for fewer meets at once');
   });
 
-  it('gives every batch size the same budget, close to what one query may read', () => {
-    expect(ATTENDANCE_ROW_BUDGET).toBe(30000);
+  it('gives every batch size the same budget, all but a few hundred of what one query may read', () => {
+    expect(ATTENDANCE_ROW_BUDGET).toBe(31500);
   });
 
   it('looks up linked titles only for results writes', async () => {

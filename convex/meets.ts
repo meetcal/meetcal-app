@@ -166,7 +166,7 @@ export const namesPage = query({
   },
 });
 
-const DOCUMENTS_LEFT_FOR_MEET_ROWS_AND_TITLES = 2000;
+const DOCUMENTS_LEFT_FOR_MEET_ROWS_AND_TITLES = 500;
 export const ATTENDANCE_ROW_BUDGET = DOCUMENTS_ONE_QUERY_MAY_READ - DOCUMENTS_LEFT_FOR_MEET_ROWS_AND_TITLES;
 
 export async function attendanceRows(
