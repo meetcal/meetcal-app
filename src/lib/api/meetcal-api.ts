@@ -1084,12 +1084,6 @@ export type MeetPackageFetch =
   | { status: 'fresh'; etag: string | null; package: ApiMeetPackage }
   | { status: 'not_modified' };
 
-/**
- * Fetches the meet package, revalidating with `ifNoneMatch` when the caller
- * still holds the previous tag. `not_modified` means the package the caller
- * already decomposed into local storage is identical to what the server would
- * send.
- */
 function assertPackageSchedule(schedule: unknown): void {
   assertArray<unknown>(schedule, '/meets/package.schedule').forEach((day, dayIndex) => {
     const dayLabel = `/meets/package.schedule[${dayIndex}]`;

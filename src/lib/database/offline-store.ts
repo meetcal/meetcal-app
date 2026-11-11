@@ -396,7 +396,13 @@ function toCachedLiftResults(rows: readonly unknown[]): AthleteMeetResult[] {
       `Dropped ${rows.length - valid.length} malformed cached lifting result rows`,
     );
   }
-  return valid;
+  return valid.map(withoutTheIdOlderBuildsStored);
+}
+
+function withoutTheIdOlderBuildsStored(row: AthleteMeetResult): AthleteMeetResult {
+  if (!('id' in row)) return row;
+  const { id: _storedByOlderBuilds, ...current } = row as AthleteMeetResult & { id?: unknown };
+  return current;
 }
 
 function splitIntoChunks(value: string, chunkSize: number): string[] {

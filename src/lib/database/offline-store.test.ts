@@ -956,9 +956,16 @@ describe("cached lifting result row validation", () => {
     await initStore();
   });
 
+  it("reads rows an older build stored with an id as today's rows, so they compare equal to a fresh answer", async () => {
+    const fresh = { event_id: "evt", meet: "Meet A", date: "2025-01-01", name: "Jane Doe" };
+    await saveMeetLiftingResults("Meet A", [{ id: 41001, ...fresh }] as any);
+
+    await expect(getMeetLiftingResults("Meet A")).resolves.toEqual([fresh]);
+  });
+
   it("drops corrupt rows from a cached results payload instead of throwing", async () => {
     const warn = jest.spyOn(console, "warn").mockImplementation(() => {});
-    const good = { id: 1, event_id: "evt", meet: "Meet A", date: "2025-01-01", name: "Jane Doe" };
+    const good = { event_id: "evt", meet: "Meet A", date: "2025-01-01", name: "Jane Doe" };
     await saveMeetLiftingResults("Meet A", [good, null, 42, "nope", { date: "2025-01-01" }] as any);
 
     await expect(getMeetLiftingResults("Meet A")).resolves.toEqual([good]);

@@ -91,7 +91,7 @@ function NewStandardsScreenContent() {
   const filterSections: FilterSection[] = [
     {
       id: "gender",
-      title: "StandardsGender",
+      title: "Gender",
       options: genderOptions.map((g) => ({ value: g.id, label: g.label })),
     },
     {
