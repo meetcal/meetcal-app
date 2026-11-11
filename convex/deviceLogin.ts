@@ -189,10 +189,6 @@ export const claim = internalMutation({
   },
 });
 
-/**
- * Puts a login `claim` handed over back to `approved`, for a poll whose token
- * could not be minted: `collected` must mean a token was issued.
- */
 export const unclaim = internalMutation({
   args: { deviceCodeHash: v.string() },
   handler: async (ctx, { deviceCodeHash }) => {
@@ -208,9 +204,6 @@ export const unclaim = internalMutation({
  * The CLI's poll. Answers `{ status }`: `pending`, `slow_down` (wait
  * `interval` plus five seconds), `denied`, `expired`, `approved` with the
  * token (`{ token, tokenId, expiresAt }`), answered once, or `collected`: it
- * was answered already, and that answer was lost (start again). A poll whose
- * token cannot be minted fails and leaves the login approved, so the next
- * poll tries again.
  */
 export const poll = action({
   args: { deviceCode: v.string() },
@@ -221,8 +214,6 @@ export const poll = action({
     try {
       return { status: 'approved', ...(await mintApiToken(ctx, answer.userId, 'cli')) };
     } catch (error) {
-      // No token went out: the login is approved again, so the next poll
-      // tries again rather than being told it was collected.
       await ctx.runMutation(internal.deviceLogin.unclaim, { deviceCodeHash });
       throw error;
     }

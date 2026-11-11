@@ -232,10 +232,6 @@ export const claimRefresh = internalMutation({
   },
 });
 
-/**
- * Gives back a `claimRefresh` whose RevenueCat call failed, if it is still
- * the latest claim, so the user's next `refresh` reaches RevenueCat.
- */
 export const releaseRefresh = internalMutation({
   args: { userId: v.string(), claimedAt: v.number() },
   handler: async (ctx, { userId, claimedAt }) => {
@@ -269,8 +265,6 @@ export const refresh = action({
     try {
       state = await syncEntitlement(ctx, identity.subject);
     } catch (error) {
-      // RevenueCat did not answer: the next call asks again, rather than
-      // answering a stored "no subscription" for the rest of the minute.
       await ctx.runMutation(internal.entitlements.releaseRefresh, { userId: identity.subject, claimedAt: claim.claimedAt });
       throw error;
     }

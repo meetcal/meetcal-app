@@ -280,7 +280,6 @@ describe('RevenueCat calls', () => {
     const run = () => handlerOf(refresh)(actionCtx(db, { subject: A, issuer: 'https://clerk.example.com' }), {});
     fetchMock.mockImplementationOnce(async () => answer(503, {}));
     await expect(run()).rejects.toThrow('RevenueCat answered 503');
-    // Within the same minute: asked again, not answered "no subscription" from the missing row.
     expect(await run()).toEqual({ active: true });
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });

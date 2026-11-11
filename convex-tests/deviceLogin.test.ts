@@ -159,7 +159,6 @@ describe('a device login', () => {
     const db = fakeMutationCtx();
     const { userCode, deviceCode } = await startLogin(db);
     await handlerOf(approve)(as(db, clerk(A)), { userCode });
-    // The signing key is gone for one poll (replaced, or unset by mistake).
     const key = process.env.MEETCAL_TOKEN_SIGNING_KEY;
     delete process.env.MEETCAL_TOKEN_SIGNING_KEY;
     const logged = jest.spyOn(console, 'error').mockImplementation(() => {});
