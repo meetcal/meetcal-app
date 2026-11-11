@@ -27,6 +27,7 @@ android/
 !.claude/skills/review-diff
 !.claude/skills/device-testing
 !.claude/skills/merge-and-deploy
+!.claude/skills/avoid-recurring-defects
 .cursor/
 .expo/
 .idea/
