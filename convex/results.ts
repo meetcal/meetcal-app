@@ -536,7 +536,12 @@ function mostRecent(rows: ApiLiftingResult[]): { results: ApiLiftingResult[]; tr
   return { results: rows.slice(rows.length - MAX_SEARCH_RESULT_ROWS), truncated: true };
 }
 
-/** The exact name's answer from its newest-first history, or null when it has no result in the range. */
+/**
+ * The exact name's answer from its newest-first history, or null when it has
+ * no result in the range. `matched_name` is the athlete's name as their
+ * newest result in the range spells it, not the query's typing (the match is
+ * on the folded name, so the two can differ in case and spacing).
+ */
 export function exactSearchAnswer(
   query: string,
   history: readonly ApiLiftingResult[],
@@ -545,7 +550,7 @@ export function exactSearchAnswer(
 ): SearchAnswer | null {
   const rows = inRange(history, start, end);
   if (rows.length === 0) return null;
-  return { matched_name: query, suggestions: [], ...mostRecent(rows) };
+  return { matched_name: rows[rows.length - 1].name || query, suggestions: [], ...mostRecent(rows) };
 }
 
 /**
