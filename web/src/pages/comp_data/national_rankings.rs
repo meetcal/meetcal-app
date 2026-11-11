@@ -1,4 +1,5 @@
 use super::{
+    address::{HistoryEntry, query_param, use_page_address},
     filters::{SortDirection, sort_numeric},
     format::{NO_VALUE, format_us_date},
     loading::{Load, LoadState, load_error},
@@ -8,7 +9,7 @@ use crate::utils::api::{queries, query_with};
 use leptos::prelude::*;
 use serde::{Deserialize, Serialize};
 
-#[derive(Clone, PartialEq, Serialize)]
+#[derive(Clone, Debug, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct NationalRankingQuery {
     federation: String,
@@ -195,7 +196,17 @@ fn DivisionOptions(groups: Vec<DivisionGroup>, selected: String) -> impl IntoVie
 
 #[component]
 pub fn NationalRankings() -> impl IntoView {
-    let (request, set_request) = signal(None::<NationalRankingQuery>);
+    let page = use_page_address("/national-rankings");
+    let federation_in_address = query_param("federation");
+    let division_in_address = query_param("division");
+    let year_in_address = query_param("year");
+    let request = Memo::new(move |_| {
+        ranking_request(
+            &federation_in_address.get(),
+            &division_in_address.get(),
+            &year_in_address.get(),
+        )
+    });
 
     let rankings = Load::new(
         move || request.get(),
@@ -219,7 +230,23 @@ pub fn NationalRankings() -> impl IntoView {
             heading="National Rankings"
             intro="Find each athlete’s best total for a USAW or USAMW division. Add a year to limit the rankings to that season."
         >
-            <NationalRankingsForm submit=Callback::new(move |query| rankings.submit(|| set_request.set(Some(query)))) />
+            <NationalRankingsForm
+                shown=request
+                submit=Callback::new(move |query: NationalRankingQuery| {
+                    if request.get_untracked().as_ref() == Some(&query) {
+                        rankings.retry();
+                    } else {
+                        page.show(
+                            &[
+                                ("federation", &query.federation),
+                                ("division", &query.age_category),
+                                ("year", query.year.as_deref().unwrap_or_default()),
+                            ],
+                            HistoryEntry::Push,
+                        );
+                    }
+                })
+            />
             <p class="data-help">"Division choices match the gender, age group, and weight classes used in the MeetCal app."</p>
 
             {move || if request.with(Option::is_none) {
@@ -249,14 +276,92 @@ fn ranking_year(typed: &str) -> Result<Option<String>, &'static str> {
     }
 }
 
+const DEFAULT_FEDERATION: &str = "USAW";
+const DEFAULT_GENDER: &str = "Men";
+const DEFAULT_AGE_GROUP: &str = "Senior";
+const DEFAULT_DIVISION: &str = "Open Men's 60kg";
+const GENDERS: [&str; 2] = ["Men", "Women"];
+
+fn ranking_request(federation: &str, division: &str, year: &str) -> Option<NationalRankingQuery> {
+    if division.is_empty() {
+        return None;
+    }
+    Some(NationalRankingQuery {
+        federation: if federation.is_empty() {
+            DEFAULT_FEDERATION.to_owned()
+        } else {
+            federation.to_owned()
+        },
+        age_category: division.to_owned(),
+        year: ranking_year(year).ok()?,
+    })
+}
+
+fn gender_and_age_group_of(division: &str) -> Option<(&'static str, &'static str)> {
+    GENDERS.into_iter().find_map(|gender| {
+        AGE_GROUPS
+            .iter()
+            .find(|age_group| {
+                division_options(gender, age_group)
+                    .iter()
+                    .any(|option| option == division)
+            })
+            .map(|age_group| (gender, *age_group))
+    })
+}
+
+struct FormChoices {
+    federation: String,
+    gender: String,
+    age_group: String,
+    division: String,
+    year: String,
+}
+
+fn form_choices(shown: Option<&NationalRankingQuery>) -> FormChoices {
+    let Some(shown) = shown else {
+        return FormChoices {
+            federation: DEFAULT_FEDERATION.to_owned(),
+            gender: DEFAULT_GENDER.to_owned(),
+            age_group: DEFAULT_AGE_GROUP.to_owned(),
+            division: DEFAULT_DIVISION.to_owned(),
+            year: String::new(),
+        };
+    };
+    let (gender, age_group) =
+        gender_and_age_group_of(&shown.age_category).unwrap_or((DEFAULT_GENDER, DEFAULT_AGE_GROUP));
+    FormChoices {
+        federation: shown.federation.clone(),
+        gender: gender.to_owned(),
+        age_group: age_group.to_owned(),
+        division: shown.age_category.clone(),
+        year: shown.year.clone().unwrap_or_default(),
+    }
+}
+
 #[component]
-fn NationalRankingsForm(submit: Callback<NationalRankingQuery>) -> impl IntoView {
-    let (federation, set_federation) = signal("USAW".to_owned());
-    let (gender, set_gender) = signal("Men".to_owned());
-    let (age_group, set_age_group) = signal("Senior".to_owned());
-    let (division, set_division) = signal("Open Men's 60kg".to_owned());
-    let (year, set_year) = signal(String::new());
+fn NationalRankingsForm(
+    shown: Memo<Option<NationalRankingQuery>>,
+    submit: Callback<NationalRankingQuery>,
+) -> impl IntoView {
+    let first = shown.with_untracked(|shown| form_choices(shown.as_ref()));
+    let (federation, set_federation) = signal(first.federation);
+    let (gender, set_gender) = signal(first.gender);
+    let (age_group, set_age_group) = signal(first.age_group);
+    let (division, set_division) = signal(first.division);
+    let (year, set_year) = signal(first.year);
     let (year_problem, set_year_problem) = signal(None::<&'static str>);
+    Effect::new(move |earlier: Option<()>| {
+        let choices = shown.with(|shown| form_choices(shown.as_ref()));
+        if earlier.is_some() {
+            set_federation.set(choices.federation);
+            set_gender.set(choices.gender);
+            set_age_group.set(choices.age_group);
+            set_division.set(choices.division);
+            set_year.set(choices.year);
+            set_year_problem.set(None);
+        }
+    });
 
     view! {
         <form class="data-query-form" on:submit=move |event| {
@@ -272,11 +377,11 @@ fn NationalRankingsForm(submit: Callback<NationalRankingQuery>) -> impl IntoView
                 }
             }
         }>
-            <label>"Federation"<select class="data-filter" on:change=move |event| set_federation.set(event_target_value(&event))><option value="USAW">"USAW"</option><option value="USAMW">"USAMW"</option></select></label>
-            <label>"Gender"<select class="data-filter" on:change=move |event| { let selected = event_target_value(&event); let next = division_options(&selected, &age_group.get()).into_iter().next().unwrap_or_default(); set_gender.set(selected); set_division.set(next); }><option value="Men">"Men"</option><option value="Women">"Women"</option></select></label>
-            <label>"Age group"<select class="data-filter" on:change=move |event| { let selected = event_target_value(&event); let next = division_options(&gender.get(), &selected).into_iter().next().unwrap_or_default(); set_age_group.set(selected); set_division.set(next); }>{AGE_GROUPS.iter().map(|age| view! { <option value=*age selected=*age == "Senior">{*age}</option> }).collect_view()}</select></label>
+            <label>"Federation"<select class="data-filter" prop:value=move || federation.get() on:change=move |event| set_federation.set(event_target_value(&event))><option value="USAW">"USAW"</option><option value="USAMW">"USAMW"</option></select></label>
+            <label>"Gender"<select class="data-filter" prop:value=move || gender.get() on:change=move |event| { let selected = event_target_value(&event); let next = division_options(&selected, &age_group.get()).into_iter().next().unwrap_or_default(); set_gender.set(selected); set_division.set(next); }><option value="Men">"Men"</option><option value="Women">"Women"</option></select></label>
+            <label>"Age group"<select class="data-filter" prop:value=move || age_group.get() on:change=move |event| { let selected = event_target_value(&event); let next = division_options(&gender.get(), &selected).into_iter().next().unwrap_or_default(); set_age_group.set(selected); set_division.set(next); }>{AGE_GROUPS.iter().map(|age| view! { <option value=*age selected=*age == "Senior">{*age}</option> }).collect_view()}</select></label>
             <label class="data-query-grow">"Division"<select class="data-filter" required=true prop:value=move || division.get() on:change=move |event| set_division.set(event_target_value(&event))>{move || view! { <DivisionOptions groups=division_groups(&gender.get(), &age_group.get()) selected=division.get() /> }}</select></label>
-            <label>"Year (optional)"<input class="data-filter data-year-input" inputmode="numeric" maxlength="4" placeholder="All time" aria-invalid=move || year_problem.get().map(|_| "true") aria-describedby="national-rankings-year-problem" on:input=move |event| { set_year.set(event_target_value(&event)); set_year_problem.set(None); } /></label>
+            <label>"Year (optional)"<input class="data-filter data-year-input" inputmode="numeric" maxlength="4" placeholder="All time" prop:value=move || year.get() aria-invalid=move || year_problem.get().map(|_| "true") aria-describedby="national-rankings-year-problem" on:input=move |event| { set_year.set(event_target_value(&event)); set_year_problem.set(None); } /></label>
             <button class="data-search-button" type="submit">"View rankings"</button>
         </form>
         <p id="national-rankings-year-problem" class="data-status error" role="alert" hidden=move || year_problem.get().is_none()>
@@ -322,6 +427,58 @@ mod tests {
         for typed in ["26", "202", "abcd", "20 6", "20.6", "２０２６", "-202"] {
             assert_eq!(ranking_year(typed), Err(YEAR_PROBLEM), "{typed}");
         }
+    }
+
+    #[test]
+    fn an_address_names_the_ranking_it_opens() {
+        assert_eq!(ranking_request("USAW", "", "2026"), None);
+        assert_eq!(
+            ranking_request("", "Open Men's 60kg", ""),
+            Some(NationalRankingQuery {
+                federation: "USAW".to_owned(),
+                age_category: "Open Men's 60kg".to_owned(),
+                year: None
+            })
+        );
+        assert_eq!(
+            ranking_request("USAMW", "Women's Masters (40-44) 69kg", "2026"),
+            Some(NationalRankingQuery {
+                federation: "USAMW".to_owned(),
+                age_category: "Women's Masters (40-44) 69kg".to_owned(),
+                year: Some("2026".to_owned())
+            })
+        );
+        assert_eq!(ranking_request("USAW", "Open Men's 60kg", "26"), None);
+    }
+
+    #[test]
+    fn the_form_shows_the_gender_and_age_group_of_the_addresss_division() {
+        assert_eq!(
+            gender_and_age_group_of("Women's Masters (40-44) 69kg"),
+            Some(("Women", "Masters 40"))
+        );
+        assert_eq!(
+            gender_and_age_group_of("Open Men's 60kg"),
+            Some(("Men", "Senior"))
+        );
+        assert_eq!(gender_and_age_group_of("Open Men's 85 kg"), None);
+        let choices = form_choices(
+            ranking_request("USAMW", "Women's 13 Under Age Group 30kg", "2025").as_ref(),
+        );
+        assert_eq!(
+            (
+                choices.federation.as_str(),
+                choices.gender.as_str(),
+                choices.age_group.as_str(),
+                choices.year.as_str()
+            ),
+            ("USAMW", "Women", "U13", "2025")
+        );
+        let untouched = form_choices(None);
+        assert_eq!(
+            (untouched.federation.as_str(), untouched.division.as_str()),
+            ("USAW", "Open Men's 60kg")
+        );
     }
 
     #[test]

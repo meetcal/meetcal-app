@@ -1,4 +1,5 @@
 use super::{
+    address::{HistoryEntry, query_param, use_page_address},
     combobox::{Combobox, SuggestionCopy, Suggestions},
     format::{
         NO_VALUE, display_body_weight, display_gender, display_weight_class, format_us_date,
@@ -65,8 +66,23 @@ fn meet_suggestions(meets: &[Meet], query: &str, limit: usize) -> Vec<String> {
 
 #[component]
 pub fn MeetCenter() -> impl IntoView {
-    let (meet, set_meet) = signal(String::new());
-    let (meet_search, set_meet_search) = signal(String::new());
+    let page = use_page_address("/meet-center");
+    let meet = query_param("meet");
+    let (meet_search, set_meet_search) = signal(meet.get_untracked());
+    Effect::new(move |shown_before: Option<String>| {
+        let shown = meet.get();
+        if let Some(shown_before) = shown_before {
+            if !shown.is_empty() {
+                set_meet_search.set(shown.clone());
+            } else if meet_search.get_untracked() == shown_before {
+                set_meet_search.set(String::new());
+            }
+        }
+        shown
+    });
+    let show_meet = Callback::new(move |(name, entry): (String, HistoryEntry)| {
+        page.show(&[("meet", &name)], entry);
+    });
     let meets = load_meet_catalog();
     let schedule = Load::new(
         move || meet.get(),
@@ -90,7 +106,7 @@ pub fn MeetCenter() -> impl IntoView {
             intro="Search all meets to see venue details, session schedules, start lists, and published results."
         >
             {move || select_response(meets, "Loading meets…", "meets", |meets| {
-                view! { <MeetPicker meets=meets.to_vec() meet set_meet meet_search set_meet_search /> }.into_any()
+                view! { <MeetPicker meets=meets.to_vec() meet show_meet meet_search set_meet_search /> }.into_any()
             })}
 
             {move || if meet.get().is_empty() { view! { <DataStatus message="Search for and select a meet to load its competition data." /> }.into_any() } else { view! {
@@ -108,8 +124,8 @@ pub fn MeetCenter() -> impl IntoView {
 #[component]
 fn MeetPicker(
     meets: Vec<Meet>,
-    meet: ReadSignal<String>,
-    set_meet: WriteSignal<String>,
+    meet: Memo<String>,
+    show_meet: Callback<(String, HistoryEntry)>,
     meet_search: ReadSignal<String>,
     set_meet_search: WriteSignal<String>,
 ) -> impl IntoView {
@@ -137,13 +153,13 @@ fn MeetPicker(
                 }
                 on_input=move |value: String| {
                     set_meet_search.set(value.clone());
-                    if meet.get_untracked() != value {
-                        set_meet.set(String::new());
+                    if !meet.get_untracked().is_empty() && meet.get_untracked() != value {
+                        show_meet.run((String::new(), HistoryEntry::Replace));
                     }
                 }
                 on_select=move |name: String| {
                     set_meet_search.set(name.clone());
-                    set_meet.set(name);
+                    show_meet.run((name, HistoryEntry::Push));
                 }
                 on_dismiss=|()| {}
             />
