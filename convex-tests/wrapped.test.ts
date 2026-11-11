@@ -333,9 +333,15 @@ const search = (overrides: { matched_name?: string | null; suggestions?: string[
   selectWrapped({ matched_name: null, suggestions: [], results: [], truncated: false, ...overrides });
 
 describe('selectWrapped', () => {
+  it("names an exact match as the search's matched name does, whatever its rows spell (#569)", () => {
+    const rows = [searchRow('JOHN SMITH', '2025-02-01', 200), searchRow('John Smith', '2025-06-01', 220)];
+    expect(search({ matched_name: 'John Smith', results: rows })).toMatchObject({ kind: 'athlete', name: 'John Smith' });
+    expect(search({ matched_name: 'John Smith', results: rows, truncated: true })).toEqual({ kind: 'tooManyResults', name: 'John Smith' });
+  });
+
   it('scores every row of an exact match, in date order', () => {
     const rows = [searchRow('John Smith', '2025-06-01', 220), searchRow('John Smith', '2025-02-01', 200)];
-    const answer = search({ matched_name: 'john smith', results: rows });
+    const answer = search({ matched_name: 'John Smith', results: rows });
     expect(answer).toEqual({ kind: 'athlete', name: 'John Smith', stats: wrappedStats([rows[1], rows[0]]) });
     // Oldest first: +20kg, not -20kg.
     expect(answer.kind === 'athlete' && answer.stats.improvementFromFirst).toBe(20);
@@ -371,7 +377,7 @@ describe('selectWrapped', () => {
 
   it('refuses to score an exact match whose year was cut', () => {
     const rows = [searchRow('John Smith', '2025-02-01'), searchRow('John Smith', '2025-06-01')];
-    expect(search({ matched_name: 'john smith', results: rows, truncated: true })).toEqual({ kind: 'tooManyResults', name: 'John Smith' });
+    expect(search({ matched_name: 'John Smith', results: rows, truncated: true })).toEqual({ kind: 'tooManyResults', name: 'John Smith' });
   });
 
   it('offers the one athlete of a cut fallback to pick, not as the match', () => {
