@@ -63,3 +63,27 @@ export function pageText(html: string, selector: string, options: { pdfLinks?: b
     ...pdfs,
   ].join('\n');
 }
+
+/**
+ * What a page's text, just read, is against its stored snapshot. A snapshot
+ * with no text was never read: the page failed on every run so far (a read
+ * that matches nothing is an error, so no page is stored as empty). Its first
+ * text is `new`, recorded and not reported, like a page with no snapshot.
+ */
+export function pageChange(previous: { text: string } | null, text: string): 'new' | 'unchanged' | 'changed' {
+  if (!previous || previous.text === '') return 'new';
+  return previous.text === text ? 'unchanged' : 'changed';
+}
+
+/**
+ * What a run with something to report does, from the deployment's addresses:
+ * `send` it to `URLWATCH_EMAIL`; `log` it where no alert address is set at
+ * all (the dev deployment, as the cron alerts do without `ALERT_EMAIL`), so
+ * the job does not fail every hour there; `fail` where alerts are set up but
+ * this address was forgotten, saving nothing, so the changes are reported
+ * once it is set.
+ */
+export function reportDelivery(env: { URLWATCH_EMAIL?: string; ALERT_EMAIL?: string }): 'send' | 'log' | 'fail' {
+  if (env.URLWATCH_EMAIL) return 'send';
+  return env.ALERT_EMAIL ? 'fail' : 'log';
+}
