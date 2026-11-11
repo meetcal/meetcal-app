@@ -1,3 +1,4 @@
+import { createWriteChain } from '@/lib/data/write-chain';
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Calendar from "expo-calendar/legacy";
 import { Platform } from "react-native";
@@ -386,8 +387,7 @@ async function calendarEventExists(eventId: string): Promise<boolean> {
   }
 }
 
-/** Writes run one at a time, so two exports cannot both create the same event. */
-let calendarWriteChain: Promise<unknown> = Promise.resolve();
+const calendarWritesOneAtATime = createWriteChain();
 
 /**
  * Write one event per session into `calendarId`. A session MeetCal already
@@ -406,11 +406,7 @@ export function createCalendarEventsToCalendar(
   sessions: CalendarSession[],
   calendarId: string,
 ): Promise<CalendarWriteResult> {
-  const run = calendarWriteChain
-    .catch(() => undefined)
-    .then(() => writeCalendarEvents(sessions, calendarId));
-  calendarWriteChain = run;
-  return run;
+  return calendarWritesOneAtATime(() => writeCalendarEvents(sessions, calendarId));
 }
 
 async function writeCalendarEvents(

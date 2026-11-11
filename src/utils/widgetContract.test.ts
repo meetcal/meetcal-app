@@ -8,7 +8,7 @@
 import fs from "fs";
 import path from "path";
 
-import type { SavedSession } from "@/hooks/useSavedSessions";
+import type { SavedSession } from "@/lib/saved-sessions-store";
 import { buildDataWidgetPayloads, defaultWidgetSettings } from "@/utils/dataWidgets";
 import { buildSavedWidgetRows } from "@/utils/savedWidget";
 import {

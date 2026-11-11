@@ -5,7 +5,7 @@ import {
   generateAthleteNotes,
   sortEstimatesByAttemptsOut,
 } from "@/lib/attempt-estimator";
-import type { LiftResult, SupabaseLiftResult } from "@/data/types/athletes";
+import type { LiftResult, AthleteMeetResult } from "@/data/types/athletes";
 import {
   ATTEMPT_HISTORY_YEARS,
   getHistoryCutoffDate,
@@ -29,8 +29,7 @@ const recentDate = () => {
   return d.toISOString().split("T")[0];
 };
 
-const result = (overrides: Partial<SupabaseLiftResult>): SupabaseLiftResult => ({
-  id: 1,
+const result = (overrides: Partial<AthleteMeetResult>): AthleteMeetResult => ({
   event_id: "e1",
   meet: "Meet",
   date: recentDate(),
@@ -335,7 +334,7 @@ describe("generateAthleteNotes", () => {
 });
 
 describe("history window", () => {
-  const lifted = (date: string): SupabaseLiftResult =>
+  const lifted = (date: string): AthleteMeetResult =>
     result({
       date,
       snatch1: 100,
@@ -344,7 +343,7 @@ describe("history window", () => {
       cj_best: 120,
     });
 
-  const bestsFor = (history: SupabaseLiftResult[]) => {
+  const bestsFor = (history: AthleteMeetResult[]) => {
     const [estimate] = calculateEstimates(
       [athlete({ name: "Test Athlete" })],
       history,

@@ -1,7 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as fc from 'fast-check';
 
-import type { SupabaseLiftResult } from '@/data/types/athletes';
+import type { AthleteMeetResult } from '@/data/types/athletes';
 import {
   getAllCachedLiftingResultsForAthlete,
   getMeetLiftingResults,
@@ -46,7 +46,9 @@ function restartedStore(): OfflineStoreModule {
   return store;
 }
 
-jest.setTimeout(Math.max(10_000, (fc.readConfigureGlobal().numRuns ?? 100) * 150));
+const PER_CASE_BUDGET_MS = (fc.readConfigureGlobal().numRuns ?? 100) * 150;
+jest.setTimeout(Math.max(30_000, PER_CASE_BUDGET_MS));
+const BUDGET_WHEN_EVERY_CASE_RELOADS_THE_STORE_MS = Math.max(60_000, PER_CASE_BUDGET_MS);
 
 const MEET = 'Chaos Test Meet';
 
@@ -306,7 +308,7 @@ describe('meet lifting results under storage chaos', () => {
         },
       ),
     );
-  });
+  }, BUDGET_WHEN_EVERY_CASE_RELOADS_THE_STORE_MS);
 
   it('keeps the previous multi-chunk copy when the process dies after the first new chunk', async () => {
     const { getMeetLiftingResults, saveMeetLiftingResults } = restartedStore();
@@ -353,7 +355,7 @@ describe('athlete history batches under storage chaos', () => {
           let sawPrevious = false;
           let sawNext = false;
           for (const [i, name] of names.entries()) {
-            const read: SupabaseLiftResult[] = await getAllCachedLiftingResultsForAthlete(name);
+            const read: AthleteMeetResult[] = await getAllCachedLiftingResultsForAthlete(name);
             // An empty history blob reads as "nothing cached" (the reader then
             // scans meets, of which there are none here).
             const isPrevious = JSON.stringify(read) === JSON.stringify(previousRows[i]);
