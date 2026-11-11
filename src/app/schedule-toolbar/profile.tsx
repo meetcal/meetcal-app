@@ -1,3 +1,4 @@
+import { stackHeaderOptions } from "@/lib/stack-header-options";
 import { AndroidCalendarSetting } from "@/components/profile/AndroidCalendarSetting";
 import { getChevronIcon } from "@/lib/start-list-utils";
 import { AutoUnsaveSetting } from "@/components/profile/AutoUnsaveSetting";
@@ -21,6 +22,7 @@ import { clearAuthCache } from "@/lib/authCache";
 import { clearCachedMeetData, clearCacheToast } from "@/lib/database/clear-cache";
 import { resolvePremiumAccess } from "@/lib/premium-access";
 import { useAuthGuard } from "@/utils/authGuard";
+import { openWebLink } from "@/utils/openWebLink";
 import { SUBMIT_MEET_ROUTE } from "@/lib/meet-submission";
 import {
   feedbackMailtoUrl,
@@ -148,9 +150,7 @@ export default function ProfileScreen() {
       {
         text: "Manage Subscription",
         onPress: () => {
-          Linking.openURL(subscriptionManagementUrl(Platform.OS)).catch((error) => {
-            console.error("Error opening subscription settings:", error);
-          });
+          void openWebLink(subscriptionManagementUrl(Platform.OS));
         },
       },
       {
@@ -217,15 +217,8 @@ export default function ProfileScreen() {
     >
       <Stack.Screen
         options={{
-          headerShown: true,
+          ...stackHeaderOptions(colors),
           headerTitle: "My Profile",
-          headerTintColor: colors.text,
-          headerBackTitle: "Back",
-          headerStyle: {
-            backgroundColor: colors.background,
-          },
-          headerShadowVisible: false,
-          headerBackButtonDisplayMode: "minimal",
         }}
       />
 
@@ -407,7 +400,7 @@ export default function ProfileScreen() {
 
         <View style={styles.legalLinks}>
           <Pressable
-            onPress={() => Linking.openURL("https://meetcal.app/privacy")}
+            onPress={() => void openWebLink("https://meetcal.app/privacy")}
           >
             <ThemedText style={[styles.legalText, { color: colors.link }]}>
               Privacy Policy
@@ -421,7 +414,7 @@ export default function ProfileScreen() {
 {" "}
           </ThemedText>
           <Pressable
-            onPress={() => Linking.openURL("https://meetcal.app/terms")}
+            onPress={() => void openWebLink("https://meetcal.app/terms")}
           >
             <ThemedText style={[styles.legalText, { color: colors.link }]}>
               Terms of Use
@@ -436,7 +429,7 @@ export default function ProfileScreen() {
           </ThemedText>
           <Pressable
             onPress={() =>
-              Linking.openURL(
+              void openWebLink(
                 Platform.OS === "ios"
                   ? "https://www.apple.com/legal/internet-services/itunes/dev/stdeula/"
                   : "https://meetcal.app/eula",

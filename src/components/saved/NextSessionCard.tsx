@@ -2,7 +2,7 @@ import { Card } from "@/components/ui/Card";
 import { Radius, Spacing, Type } from "@/constants/Layout";
 import { Meet, MeetName } from "@/data/types/meet";
 import { useAppColors } from "@/hooks/useAppColors";
-import { SavedSession } from "@/hooks/useSavedSessions";
+import type { SavedSession } from "@/lib/saved-sessions-store";
 import { selectNextSession } from "@/lib/next-session";
 import { LinearGradient } from "expo-linear-gradient";
 import { useFocusEffect, useRouter } from "expo-router";

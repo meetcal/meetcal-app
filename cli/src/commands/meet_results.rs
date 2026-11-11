@@ -333,10 +333,6 @@ fn top_table(
     top
 }
 
-/// The report for one edition's `results`. `editions` starts with this edition, then the earlier
-/// ones found; `other_years` are the years this meet name has other results in. With `history`
-/// (no `--no-history`) JSON and CSV always carry the `editions` table, which table format shows
-/// only when there are earlier editions to compare.
 pub fn report(
     results: &[LiftingResults],
     editions: &[EditionSummary],
@@ -465,9 +461,9 @@ pub fn report(
         .headed("make_rate_by_attempt", "MAKE RATES", by_attempt)
         .table("make_rate", by_lift);
 
-    if history {
-        let mut history = Table::new();
-        history.set_header(vec![
+    {
+        let mut table = Table::new();
+        table.set_header(vec![
             "Year",
             "Meet",
             "Athletes",
@@ -508,12 +504,12 @@ pub fn report(
                         .unwrap_or_default(),
                 );
             }
-            history.add_row(cells);
+            table.add_row(cells);
         }
-        report = if editions.len() > 1 {
-            report.headed("editions", "THIS MEET IN EARLIER YEARS", history)
+        report = if history && editions.len() > 1 {
+            report.headed("editions", "THIS MEET IN EARLIER YEARS", table)
         } else {
-            report.exported("editions", history)
+            report.exported("editions", table)
         };
     }
     let mut notes = Vec::new();
@@ -623,7 +619,13 @@ mod tests {
         assert_eq!(json["heaviest_lifts"][2]["athlete"], "Ada");
         assert_eq!(json["top_sinclair_women"].as_array().unwrap().len(), 1);
         assert_eq!(json["top_sinclair_men"].as_array().unwrap().len(), 0);
-        assert!(json.get("editions").is_none(), "--no-history leaves it out");
+        assert_eq!(json["editions"].as_array().unwrap().len(), 1);
+        assert_eq!(json["editions"][0]["year"], 2026);
+        assert!(
+            !report(&rows, &editions, &[], false)
+                .to_text()
+                .contains("EARLIER YEARS")
+        );
 
         // Asked for, the table is always exported, even with no earlier editions found.
         let with_history = report(&rows, &editions, &[], true);

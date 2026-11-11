@@ -490,7 +490,7 @@ describe('meetcal API contract (serde output through the real client)', () => {
     );
   });
 
-  it('fetchApiResultsByNames: i64 id, string age and 0.0 misses map without turning zeros into nulls', async () => {
+  it('fetchApiResultsByNames: string age and 0.0 misses map without turning zeros into nulls', async () => {
     stubTransport({
       'results:byNames':
         `[${liftingResultJson(41001, 'b1', 'Bounded Meet A', '2024-01-10')},` +
@@ -501,7 +501,6 @@ describe('meetcal API contract (serde output through the real client)', () => {
 
     expect(rows).toHaveLength(2);
     expect(rows[0]).toEqual({
-      id: 41001,
       event_id: 'b1',
       meet: 'Bounded Meet A',
       date: '2024-01-10',
@@ -518,7 +517,7 @@ describe('meetcal API contract (serde output through the real client)', () => {
       cj_best: 110,
       total: 200,
     });
-    expect(rows[1]).toMatchObject({ id: 41002, event_id: 'b2', meet: 'Bounded Meet B' });
+    expect(rows[1]).toMatchObject({ event_id: 'b2', meet: 'Bounded Meet B' });
   });
 
   it('searchApi: a partial query answers matched_name null with suggestions', async () => {
@@ -561,7 +560,6 @@ describe('meetcal API contract (serde output through the real client)', () => {
     expect(search.suggestions).toEqual([]);
     expect(search.results).toHaveLength(1);
     expect(search.results[0]).toMatchObject({
-      id: 7,
       event_id: 'e7',
       meet: 'Search Meet',
       age: "Open Men's 89kg",

@@ -1,3 +1,4 @@
+import { SLIDE_IN_FROM_RIGHT, stackHeaderOptions } from "@/lib/stack-header-options";
 import { RateBar } from "@/components/athlete-results/RateBar";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { ThemedText } from "@/components/ui/ThemedText";
@@ -17,7 +18,7 @@ import {
   type ShownResultsSource,
 } from "@/lib/athlete-results-load";
 import { loadFailureCopy } from "@/lib/load-failure";
-import { SupabaseLiftResult } from "@/types/athlete-results";
+import { AthleteMeetResult } from "@/types/athlete-results";
 import { FlashList } from "@shopify/flash-list";
 import { Stack, useLocalSearchParams } from "expo-router";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -83,7 +84,7 @@ function AthleteStats({
   results,
   colors,
 }: {
-  results: SupabaseLiftResult[];
+  results: AthleteMeetResult[];
   colors: AppColors;
 }) {
   const stats = useMemo(() => calculateAthleteMakeRates(results), [results]);
@@ -207,7 +208,7 @@ const MeetResultCard = React.memo(function MeetResultCard({
   isTotalPR,
   isFirst,
 }: {
-  result: SupabaseLiftResult;
+  result: AthleteMeetResult;
   colors: AppColors;
   isSnatchPR: boolean;
   isCJPR: boolean;
@@ -297,7 +298,7 @@ const MeetResultCard = React.memo(function MeetResultCard({
 /** No meet is a PR: what the on-device copy shows (see `showsCareerStats`). */
 const NO_PR_INDEXES: PRIndexes = { snatch: -1, cj: -1, total: -1 };
 
-function meetResultKey(result: SupabaseLiftResult, index: number): string {
+function meetResultKey(result: AthleteMeetResult, index: number): string {
   return `${result.event_id}-${result.meet}-${result.date}-${result.name}-${index}`;
 }
 
@@ -320,7 +321,7 @@ function AthleteResultsContent() {
   const { name } = useLocalSearchParams<{ name?: string }>();
   const insets = useSafeAreaInsets();
   const [loading, setLoading] = useState(true);
-  const [athleteResults, setAthleteResults] = useState<SupabaseLiftResult[]>(
+  const [athleteResults, setAthleteResults] = useState<AthleteMeetResult[]>(
     [],
   );
   // The request failed with nothing to show. Kept apart from an empty
@@ -333,12 +334,12 @@ function AthleteResultsContent() {
   const [loadOutcome, setLoadOutcome] = useState<AthleteResultsOutcome | null>(null);
   const [retryCount, setRetryCount] = useState(0);
   const [isOffline] = useIsOffline();
-  const resultsCacheRef = useRef<Map<string, SupabaseLiftResult[]>>(new Map());
+  const resultsCacheRef = useRef<Map<string, AthleteMeetResult[]>>(new Map());
   const requestIdRef = useRef(0);
   // The athlete whose on-device rows are on screen, and the rows, so a retry
   // for that athlete keeps them up (instead of blanking the list behind a
   // spinner) and the load knows they are there and partial.
-  const offlineRowsRef = useRef<{ name: string; rows: SupabaseLiftResult[] } | null>(null);
+  const offlineRowsRef = useRef<{ name: string; rows: AthleteMeetResult[] } | null>(null);
 
   // Each cached entry can hold an athlete's entire competition history. Without
   // this cleanup the map grows for every athlete opened during a session and is
@@ -442,7 +443,7 @@ function AthleteResultsContent() {
     [prIndexes, colors],
   );
   const renderResultCard = useCallback(
-    ({ item, index }: { item: SupabaseLiftResult; index: number }) => (
+    ({ item, index }: { item: AthleteMeetResult; index: number }) => (
       <MeetResultCard
         result={item}
         colors={colors}
@@ -469,19 +470,9 @@ function AthleteResultsContent() {
     >
       <Stack.Screen
         options={{
-          headerShown: true,
+          ...stackHeaderOptions(colors),
+          ...SLIDE_IN_FROM_RIGHT,
           headerTitle: name?.toString() || "Meet Results",
-          headerBackTitle: "Back",
-          headerTitleStyle: { color: colors.text },
-          headerTintColor: colors.text,
-          gestureEnabled: true,
-          gestureDirection: "horizontal",
-          animation: "slide_from_right",
-          headerStyle: {
-            backgroundColor: colors.background,
-          },
-          headerShadowVisible: false,
-          headerBackButtonDisplayMode: "minimal",
         }}
       />
 
