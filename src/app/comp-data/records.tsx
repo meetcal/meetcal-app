@@ -4,6 +4,7 @@ import { SubscriptionGate } from "@/components/ui/SubscriptionGate";
 import { ThemedText } from "@/components/ui/ThemedText";
 import { ThemedView } from "@/components/ui/ThemedView";
 import { FilterSection, GenericFilterModal } from "@/components/ui/filters";
+import { useAgeGroupsByKey } from "@/hooks/useAgeGroupsByKey";
 import { useAppColors } from "@/hooks/useAppColors";
 import { useFilterState } from "@/hooks/useFilterState";
 import { useMutableResource } from "@/hooks/useMutableResource";
@@ -13,6 +14,7 @@ import {
   fetchAgeGroups,
   fetchRecordFederations,
 } from "@/lib/database/fetch-records";
+import { filterSummary } from "@/lib/filter-summary";
 import { formatAgeGroupLabel, sortAgeGroups } from "@/lib/sortAgeGroups";
 import { Filters, Gender, RecordsData, WeightClassRecord } from "@/types/records";
 import { Stack } from "expo-router";
@@ -34,10 +36,8 @@ export default function RecordsScreen() {
 function RecordsScreenContent() {
   const screenInsets = useScreenHorizontalInsets();
   const colors = useAppColors();
-  const [ageGroupsCache, setAgeGroupsCache] = useState<Record<string, string[]>>(
-    {},
-  );
-  const modalDraftFederationRef = React.useRef("");
+  const { ageGroupsByKey: ageGroupsByFederation, requestAgeGroups } =
+    useAgeGroupsByKey(fetchAgeGroups, "");
   const [federations, setFederations] = useState<string[]>([
     DEFAULT_RECORD_FEDERATION,
   ]);
@@ -107,23 +107,6 @@ function RecordsScreenContent() {
   );
 
   useEffect(() => {
-    if (!filters.federation || ageGroupsForFederation.length === 0) {
-      return;
-    }
-
-    setAgeGroupsCache((prev) => {
-      const current = prev[filters.federation] ?? [];
-      if (JSON.stringify(current) === JSON.stringify(ageGroupsForFederation)) {
-        return prev;
-      }
-      return {
-        ...prev,
-        [filters.federation]: ageGroupsForFederation,
-      };
-    });
-  }, [ageGroupsForFederation, filters.federation]);
-
-  useEffect(() => {
     if (!filters.federation || !ageGroupsForFederation.length) {
       return;
     }
@@ -154,45 +137,22 @@ function RecordsScreenContent() {
     const fed = filters.federation || DEFAULT_RECORD_FEDERATION;
     const gen = filters.gender === "Men" ? "Men" : "Women";
     const age = formatAgeGroupLabel(displayAgeGroup) || "Senior";
-    return `${fed} • ${gen} • ${age}`;
+    return filterSummary([fed, gen, age], "All records");
   };
-
-  const fetchAgeGroupsForFederation = React.useCallback(
-    (federation: string) => {
-      if (!federation || ageGroupsCache[federation]) return;
-
-      fetchAgeGroups(federation)
-        .then((nextAgeGroups) => {
-          setAgeGroupsCache((prev) => ({
-            ...prev,
-            [federation]: sortAgeGroups(nextAgeGroups),
-          }));
-        })
-        .catch((error) => {
-          console.error(`Failed to fetch age groups for ${federation}`, error);
-        });
-    },
-    [ageGroupsCache],
-  );
 
   const buildFilterSections = React.useCallback(
     (modalTempFilters: Record<string, string>): FilterSection[] => {
       const selectedFederation =
         modalTempFilters.federation || filters.federation || "";
 
-      if (
-        selectedFederation &&
-        selectedFederation !== filters.federation &&
-        selectedFederation !== modalDraftFederationRef.current
-      ) {
-        modalDraftFederationRef.current = selectedFederation;
-        fetchAgeGroupsForFederation(selectedFederation);
+      if (selectedFederation !== filters.federation) {
+        requestAgeGroups(selectedFederation);
       }
 
       const modalAgeGroups =
         selectedFederation === filters.federation
           ? ageGroupsForFederation
-          : ageGroupsCache[selectedFederation] ?? [];
+          : ageGroupsByFederation[selectedFederation] ?? [];
 
       return [
         {
@@ -223,11 +183,11 @@ function RecordsScreenContent() {
       ];
     },
     [
-      ageGroupsCache,
+      ageGroupsByFederation,
       ageGroupsForFederation,
       federations,
-      fetchAgeGroupsForFederation,
       filters.federation,
+      requestAgeGroups,
     ],
   );
 

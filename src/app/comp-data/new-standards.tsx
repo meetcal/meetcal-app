@@ -11,6 +11,7 @@ import { DEEP_LINKS } from "@/utils/deepLinks";
 import { useMutableResource } from "@/hooks/useMutableResource";
 import { selectStandards } from "@/lib/comp-data-filters";
 import { standardsResource } from "@/lib/database/fetch-standards";
+import { filterSummary } from "@/lib/filter-summary";
 import { formatAgeGroupLabel } from "@/lib/sortAgeGroups";
 import { AgeGroup, Filters, Gender, StandardsData } from "@/types/standards";
 import { Stack, useLocalSearchParams } from "expo-router";
@@ -68,7 +69,10 @@ function NewStandardsScreenContent() {
 
   const getFilterDisplayText = () => {
     const genderText = filters.gender === "men" ? "Men" : "Women";
-    return `${genderText} • ${formatAgeGroupLabel(filters.ageGroup)}`;
+    return filterSummary(
+      [genderText, formatAgeGroupLabel(filters.ageGroup)],
+      "All standards",
+    );
   };
 
   const genderOptions: { id: Gender; label: string }[] = [

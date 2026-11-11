@@ -636,6 +636,8 @@ describe("offline-store corrupt payload handling", () => {
   it.each([
     ["invalid JSON", "{\"not\": "],
     ["valid JSON that is not an array", "{\"sessions\":[]}"],
+    ["a day with no sessions list", "[{\"date\":\"2026-06-20\",\"fullDate\":\"2026-06-20\"}]"],
+    ["a session with no platforms list", "[{\"date\":\"2026-06-20\",\"fullDate\":\"2026-06-20\",\"sessions\":[{\"id\":\"1\",\"number\":1}]}]"],
     ["an empty payload", ""],
   ])("reads no cached schedule when the payload is %s", async (_label, payload) => {
     await saveMeetSchedule("Test Meet", [
