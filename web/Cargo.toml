@@ -28,7 +28,6 @@ panic = "abort"
 strip = true
 
 [lints.rust]
-unreachable_pub = "deny"
 dead_code = "deny"
 
 [lints.clippy]
