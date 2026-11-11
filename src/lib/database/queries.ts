@@ -1,5 +1,5 @@
 import type { Schedule } from '@/types/schedule';
-import type { SupabaseLiftResult, LiftResult } from '@/data/types/athletes';
+import type { AthleteMeetResult, LiftResult } from '@/data/types/athletes';
 import { MeetName } from '@/data/types/meet';
 import {
   getMockAthletesWithSession,
@@ -86,13 +86,13 @@ export async function searchAthletesByName(query: string): Promise<string[]> {
   }
 }
 
-export async function fetchAllResultsForName(name: string): Promise<SupabaseLiftResult[]> {
+export async function fetchAllResultsForName(name: string): Promise<AthleteMeetResult[]> {
   return fetchApiResultsByNames([name]);
 }
 
 export async function fetchRecentAthleteHistoryForNames(
   names: string[],
   cutoffDate?: string,
-): Promise<SupabaseLiftResult[]> {
+): Promise<AthleteMeetResult[]> {
   return fetchApiRecentResultsByNames(names, cutoffDate);
 }

@@ -8,7 +8,7 @@
  * `lib/athlete-prs` rather than under `components/` because it imports
  * `lib/database/*` and holds policy, not UI.
  */
-import { SupabaseBests, SupabaseLiftResult } from "@/data/types/athletes";
+import { AthleteBests, AthleteMeetResult } from "@/data/types/athletes";
 import { MeetName } from "@/data/types/meet";
 import { normalizeAthleteName } from "@/lib/athletes";
 import {
@@ -24,12 +24,12 @@ import {
   lookUpAthleteBests,
 } from "@/lib/year-bests";
 
-const bestsBatchInFlight = new Map<string, Promise<Record<string, SupabaseBests>>>();
+const bestsBatchInFlight = new Map<string, Promise<Record<string, AthleteBests>>>();
 
 async function loadCachedBestsForNames(
   names: string[],
-): Promise<Record<string, SupabaseBests>> {
-  const bestsByName: Record<string, SupabaseBests> = {};
+): Promise<Record<string, AthleteBests>> {
+  const bestsByName: Record<string, AthleteBests> = {};
 
   // One pass over the cached meets for the whole batch. Resolving athletes one
   // at a time re-inflated every cached meet's results blob per athlete, so a
@@ -37,7 +37,7 @@ async function loadCachedBestsForNames(
   // instead of three. The scan inside is still sequential — it holds one
   // inflated meet at a time — so peak memory is unchanged and there is still
   // no Promise.all fan-out for the iOS watchdog to punish.
-  let cachedResultsByName: Record<string, SupabaseLiftResult[]> = {};
+  let cachedResultsByName: Record<string, AthleteMeetResult[]> = {};
   try {
     cachedResultsByName = await getAllCachedLiftingResultsForAthletes(names);
   } catch {}
@@ -64,12 +64,12 @@ async function loadCachedBestsForNames(
  * fallback.
  */
 async function loadStoredBests(names: string[]): Promise<{
-  bestsByName: Record<string, SupabaseBests>;
+  bestsByName: Record<string, AthleteBests>;
   namesNeedingLookup: string[];
   storedByName: Record<string, StoredAthleteBests>;
 }> {
   const uniqueNames = Array.from(new Set(names.filter(Boolean)));
-  const bestsByName: Record<string, SupabaseBests> = {};
+  const bestsByName: Record<string, AthleteBests> = {};
 
   uniqueNames.forEach((name) => {
     bestsByName[name] = emptyBests();
@@ -103,9 +103,9 @@ async function loadStoredBests(names: string[]): Promise<{
 async function loadFallbackBests(
   names: string[],
   storedByName: Record<string, StoredAthleteBests>,
-): Promise<Record<string, SupabaseBests>> {
+): Promise<Record<string, AthleteBests>> {
   const derived = await loadCachedBestsForNames(names);
-  const bestsByName: Record<string, SupabaseBests> = {};
+  const bestsByName: Record<string, AthleteBests> = {};
   for (const name of names) {
     const stored = storedByName[name]?.bests;
     bestsByName[name] =
@@ -122,7 +122,7 @@ function createBatchKey(names: string[], meetId: MeetName): string {
 export async function getAthleteBestsBatch(
   names: string[],
   meetId: MeetName,
-): Promise<Record<string, SupabaseBests>> {
+): Promise<Record<string, AthleteBests>> {
   const key = createBatchKey(names, meetId);
   const inFlight = bestsBatchInFlight.get(key);
   if (inFlight) return inFlight;
@@ -137,14 +137,14 @@ export async function getAthleteBestsBatch(
 /** Stored bests only — never touches the network. */
 export async function getCachedAthleteBestsBatch(
   names: string[],
-): Promise<Record<string, SupabaseBests>> {
+): Promise<Record<string, AthleteBests>> {
   const { bestsByName } = await loadStoredBests(names);
   return bestsByName;
 }
 
 async function getAthleteBestsBatchUncached(
   names: string[],
-): Promise<Record<string, SupabaseBests>> {
+): Promise<Record<string, AthleteBests>> {
   const { bestsByName, namesNeedingLookup, storedByName } = await loadStoredBests(names);
   if (namesNeedingLookup.length === 0) {
     return bestsByName;

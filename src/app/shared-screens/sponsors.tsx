@@ -1,3 +1,5 @@
+import { stackHeaderOptions } from "@/lib/stack-header-options";
+import { openWebLink } from "@/utils/openWebLink";
 import { IconSymbol } from "@/components/ui/IconSymbol";
 import { ThemedText } from "@/components/ui/ThemedText";
 import { ThemedView } from "@/components/ui/ThemedView";
@@ -7,7 +9,6 @@ import { Sponsor } from "@/types/sponsors";
 import { Stack } from "expo-router";
 import {
   Image,
-  Linking,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -51,14 +52,12 @@ export default function SponsorsScreen() {
   const insets = useSafeAreaInsets();
 
   const handleOpenWebsite = (url: string, sponsorName: string) => {
-    // Track the sponsor click event
     posthog.capture("sponsor_clicked", {
       sponsor_name: sponsorName,
       sponsor_url: url,
     });
 
-    // Open the website
-    Linking.openURL(url);
+    void openWebLink(url);
   };
 
   return (
@@ -67,14 +66,8 @@ export default function SponsorsScreen() {
     >
       <Stack.Screen
         options={{
+          ...stackHeaderOptions(colors),
           headerTitle: "Partners",
-          headerTitleStyle: {
-            color: colors.headerTitle,
-          },
-          headerStyle: {
-            backgroundColor: colors.headerBackground,
-          },
-          headerShadowVisible: false,
         }}
       />
 

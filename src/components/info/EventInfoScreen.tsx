@@ -1,3 +1,4 @@
+import { openWebLink } from "@/utils/openWebLink";
 import { IconSymbol } from "@/components/ui/IconSymbol";
 import { ThemedText } from "@/components/ui/ThemedText";
 import { ThemedView } from "@/components/ui/ThemedView";
@@ -41,11 +42,7 @@ export default function EventInfoScreen() {
 
   const openVenueMapApple = async () => {
     if (!venueMapAppleUrl) return;
-    try {
-      await Linking.openURL(venueMapAppleUrl);
-    } catch (error) {
-      console.error("Failed to open venue map in Apple Maps:", error);
-    }
+    await openWebLink(venueMapAppleUrl);
   };
 
   const handleVenueMapPress = () => {
@@ -85,16 +82,8 @@ export default function EventInfoScreen() {
       default: googleMapsUrl,
     });
 
-    try {
-      const supported = await Linking.canOpenURL(mapsUrl);
-      if (supported) {
-        await Linking.openURL(mapsUrl);
-      } else {
-        await Linking.openURL(googleMapsUrl);
-      }
-    } catch (error) {
-      console.error("Failed to open maps:", error);
-    }
+    const opensInTheDeviceMapsApp = await Linking.canOpenURL(mapsUrl).catch(() => false);
+    await openWebLink(opensInTheDeviceMapsApp ? mapsUrl : googleMapsUrl);
   };
 
   if (isLoading || !meetDetails) {
