@@ -336,7 +336,9 @@ fn percentage(successes: usize, attempts: usize) -> f64 {
     }
 }
 
-pub fn render_group_wrapped(
+/// The report as table format prints it, for the tests.
+#[cfg(test)]
+fn render_group_wrapped(
     group_kind: &str,
     group_name: &str,
     year: i32,
@@ -410,25 +412,6 @@ pub fn group_comparisons(
         &current.wrapped,
     ));
     metrics
-}
-
-pub fn render_group_comparison(
-    group_kind: &str,
-    group_name: &str,
-    previous_year: i32,
-    current_year: i32,
-    previous: &GroupWrappedStats,
-    current: &GroupWrappedStats,
-) -> String {
-    group_comparison_report(
-        group_kind,
-        group_name,
-        previous_year,
-        current_year,
-        previous,
-        current,
-    )
-    .to_text()
 }
 
 pub fn group_comparison_report(
