@@ -136,7 +136,6 @@ pub async fn run(args: QualifyArgs) -> Result<()> {
         .last()
         .copied()
         .expect("history is never empty");
-    let name = latest.name.clone();
     let division = Division::parse(&latest.age);
     let target = target(
         &division,
@@ -152,6 +151,25 @@ pub async fn run(args: QualifyArgs) -> Result<()> {
     let standards: Vec<Standards> = query(queries::STANDARDS, &NoArgs {}).await?;
     let totals: Vec<QualifyingTotal> = query(queries::QUALIFYING_TOTALS, &NoArgs {}).await?;
 
+    output::emit(report(
+        latest,
+        &target,
+        (snatch, cj, total),
+        &standards,
+        &totals,
+    ));
+    Ok(())
+}
+
+pub fn report(
+    latest: &LiftingResults,
+    target: &Target,
+    (snatch, cj, total): (f64, f64, f64),
+    standards: &[Standards],
+    totals: &[QualifyingTotal],
+) -> Report {
+    let name = latest.name.clone();
+    let limit = class_limit(&target.class);
     let mut athlete = Table::new();
     athlete.set_header(vec![
         "Athlete",
@@ -193,22 +211,19 @@ pub async fn run(args: QualifyArgs) -> Result<()> {
             .unwrap_or_default(),
     ]);
 
-    output::emit(
-        Report::new()
-            .titled(format!("QUALIFYING — {name}"))
-            .table("athlete", athlete)
-            .headed(
-                "standards",
-                "USAW A/B STANDARDS",
-                standards_table(&standards, &target, total),
-            )
-            .headed(
-                "qualifying_totals",
-                "QUALIFYING TOTALS",
-                totals_table(&totals, &target, total),
-            ),
-    );
-    Ok(())
+    Report::new()
+        .titled(format!("QUALIFYING — {name}"))
+        .table("athlete", athlete)
+        .headed(
+            "standards",
+            "USAW A/B STANDARDS",
+            standards_table(standards, target, total),
+        )
+        .headed(
+            "qualifying_totals",
+            "QUALIFYING TOTALS",
+            totals_table(totals, target, total),
+        )
 }
 
 /// The categories and class to check: the overrides, or what `division` says. A class no longer

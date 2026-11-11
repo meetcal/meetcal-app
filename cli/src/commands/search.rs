@@ -2,8 +2,8 @@ use crate::{
     types::lifting_results::{LiftingResults, PRs},
     utils::{
         athletes::history,
-        make_rate::make_rate_tables,
         format::kg,
+        make_rate::make_rate_tables,
         output::{self, Report},
         stats::{Lift, valid_lift, valid_total},
     },

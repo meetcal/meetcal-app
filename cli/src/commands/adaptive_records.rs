@@ -58,14 +58,12 @@ mod tests {
 
     #[test]
     fn a_class_with_no_record_exports_null_and_still_shows_zero() {
-        let records = vec![
-            AdaptiveRecord {
-                weight_class: "60kg".into(),
-                snatch: 80.0,
-                cj: 0.0,
-                total: 0.0,
-            },
-        ];
+        let records = vec![AdaptiveRecord {
+            weight_class: "60kg".into(),
+            snatch: 80.0,
+            cj: 0.0,
+            total: 0.0,
+        }];
         let report = report(&records);
         assert_eq!(
             report.to_json(),

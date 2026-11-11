@@ -3,13 +3,12 @@ use crate::utils::backend::{NoArgs, queries, query};
 use crate::utils::filters::{
     Filter, is_gender, no_match, same_ignoring_case_and_surrounding_space,
 };
-use crate::utils::format::{record_cell, record_data_cells, record_data_header};
+use crate::utils::format::{RecordRow, record_tables};
 use crate::utils::output::{self, Report};
 use crate::utils::sort::sort_by_class;
 use crate::utils::stats::Gender;
 use anyhow::Result;
 use clap::Parser;
-use comfy_table::Table;
 
 /// Search for Records for a given age, federation, and gender.
 #[derive(Parser)]
@@ -39,34 +38,19 @@ pub async fn run(args: RecordsArgs) -> Result<()> {
     let records: Vec<Record> = query(queries::RECORDS, &NoArgs {}).await?;
     let sorted = selected(records, &args.age, args.gender, &args.federation)?;
 
-    let mut table = Table::new();
-    table.set_header(vec!["Class", "Snatch", "CJ", "Total"]);
-    let mut data = Table::new();
-    data.set_header(record_data_header());
-
-    for record in sorted {
-        let lifts = [
-            (record.snatch_record, record.snatch_by.as_ref()),
-            (record.cj_record, record.cj_by.as_ref()),
-            (record.total_record, record.total_by.as_ref()),
-        ];
-        let mut row = vec![record.weight_class.clone()];
-        row.extend(
-            lifts
-                .iter()
-                .map(|(value, holder)| record_cell(Some(*value), *holder)),
-        );
-        table.add_row(row);
-        let mut data_row = vec![record.weight_class.clone()];
-        for (value, holder) in lifts {
-            data_row.extend(record_data_cells(Some(value), holder));
-        }
-        data.add_row(data_row);
-    }
-
-    output::emit(Report::new().table_with_data("records", table, data));
+    output::emit(report(&sorted));
 
     Ok(())
+}
+
+pub fn report(records: &[Record]) -> Report {
+    let (table, data) = record_tables(records.iter().map(|record| RecordRow {
+        weight_class: &record.weight_class,
+        snatch: (Some(record.snatch_record), record.snatch_by.as_ref()),
+        cj: (Some(record.cj_record), record.cj_by.as_ref()),
+        total: (Some(record.total_record), record.total_by.as_ref()),
+    }));
+    Report::new().table_with_data("records", table, data)
 }
 
 pub fn selected(

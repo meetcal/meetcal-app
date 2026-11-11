@@ -1,6 +1,8 @@
 //! Display formats shared by the commands: dates and times in the meet's own time zone, as the
 //! data stores them, and record holders.
 
+use comfy_table::Table;
+
 use crate::types::records::RecordHolder;
 
 const MONTHS: [&str; 12] = [
@@ -112,6 +114,36 @@ pub fn record_cell(value: Option<f64>, holder: Option<&RecordHolder>) -> String 
 
 /// A record table's columns for JSON and CSV: the class, then for each lift its weight, holder,
 /// date and place, one column each.
+pub struct RecordRow<'a> {
+    pub weight_class: &'a str,
+    pub snatch: (Option<f64>, Option<&'a RecordHolder>),
+    pub cj: (Option<f64>, Option<&'a RecordHolder>),
+    pub total: (Option<f64>, Option<&'a RecordHolder>),
+}
+
+pub fn record_tables<'a>(rows: impl IntoIterator<Item = RecordRow<'a>>) -> (Table, Table) {
+    let mut table = Table::new();
+    table.set_header(vec!["Class", "Snatch", "CJ", "Total"]);
+    let mut data = Table::new();
+    data.set_header(record_data_header());
+    for record in rows {
+        let lifts = [record.snatch, record.cj, record.total];
+        let mut row = vec![record.weight_class.to_string()];
+        row.extend(
+            lifts
+                .iter()
+                .map(|(value, holder)| record_cell(*value, *holder)),
+        );
+        table.add_row(row);
+        let mut data_row = vec![record.weight_class.to_string()];
+        for (value, holder) in lifts {
+            data_row.extend(record_data_cells(value, holder));
+        }
+        data.add_row(data_row);
+    }
+    (table, data)
+}
+
 pub fn record_data_header() -> Vec<&'static str> {
     let mut header = vec!["Class"];
     for lift in ["Snatch", "CJ", "Total"] {

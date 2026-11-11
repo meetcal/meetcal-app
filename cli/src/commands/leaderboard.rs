@@ -407,16 +407,19 @@ pub async fn run(args: LeaderboardArgs) -> Result<()> {
         us_date(&to)
     );
     output::emit(
-        Report::new()
-            .table_with_data(
-                "leaderboard",
-                table(&ranked, us_date),
-                table(&ranked, str::to_string),
-            )
+        report(&ranked)
             .titled(title)
             .when_empty("No results match those filters."),
     );
     Ok(())
+}
+
+pub fn report(ranked: &[LeaderboardRow]) -> Report {
+    Report::new().table_with_data(
+        "leaderboard",
+        table(ranked, us_date),
+        table(ranked, str::to_string),
+    )
 }
 
 /// A group's members' results in the range, at meets where they registered with the group.

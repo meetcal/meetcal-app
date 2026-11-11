@@ -195,6 +195,13 @@ impl Report {
         parts.join("\n")
     }
 
+    pub fn export_keys(&self) -> std::collections::BTreeMap<String, Vec<String>> {
+        self.sections
+            .iter()
+            .map(|section| (section.key.clone(), headers(export_table(section))))
+            .collect()
+    }
+
     /// The report as JSON: one table's rows, or an object of each table's rows.
     pub fn to_json(&self) -> Value {
         if self.sections.len() == 1 {
@@ -408,9 +415,7 @@ fn text_value(cell: &str) -> Value {
 /// otherwise.
 pub fn value(cell: &str) -> Value {
     let text = cell.trim();
-    if text.is_empty()
-        || text.eq_ignore_ascii_case("n/a")
-        || matches!(text, "—" | "–" | "-" | "?")
+    if text.is_empty() || text.eq_ignore_ascii_case("n/a") || matches!(text, "—" | "–" | "-" | "?")
     {
         return Value::Null;
     }
