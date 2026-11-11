@@ -1,6 +1,6 @@
 import { v } from 'convex/values';
 import { internal } from './_generated/api';
-import { action, httpAction, internalMutation, internalQuery, mutation, type ActionCtx } from './_generated/server';
+import { action, httpAction, internalMutation, internalQuery, mutation, type ActionCtx, type MutationCtx } from './_generated/server';
 import { isMeetCalToken, meetcalTokenIssuer } from './lib/access';
 import { parseSigningJwk, publicJwk, signJwt } from './lib/jwt';
 import { apiError } from './lib/validation';
@@ -28,23 +28,27 @@ export const MAX_API_TOKENS_PER_USER = 20;
 
 const client = v.union(v.literal('cli'), v.literal('siri'));
 
-/** Records a new token's row, refusing a deleted account; makes room under `MAX_API_TOKENS_PER_USER`. */
+export const tokenRow = { tokenId: v.string(), userId: v.string(), client, createdAt: v.number(), expiresAt: v.number() };
+type TokenRow = { tokenId: string; userId: string; client: 'cli' | 'siri'; createdAt: number; expiresAt: number };
+
+export async function recordTokenEvictingTheOldest(ctx: MutationCtx, row: TokenRow): Promise<void> {
+  const deleted = await ctx.db
+    .query('deleted_users')
+    .withIndex('by_userId', (q) => q.eq('userId', row.userId))
+    .first();
+  if (deleted) throw apiError(403, 'account deleted');
+  const held = await ctx.db
+    .query('api_tokens')
+    .withIndex('by_userId', (q) => q.eq('userId', row.userId))
+    .take(MAX_API_TOKENS_PER_USER);
+  const oldestFirst = held.sort((a, b) => a.createdAt - b.createdAt);
+  for (const evicted of oldestFirst.slice(0, Math.max(0, held.length - MAX_API_TOKENS_PER_USER + 1))) await ctx.db.delete(evicted._id);
+  await ctx.db.insert('api_tokens', row);
+}
+
 export const record = internalMutation({
-  args: { tokenId: v.string(), userId: v.string(), client, createdAt: v.number(), expiresAt: v.number() },
-  handler: async (ctx, args) => {
-    const deleted = await ctx.db
-      .query('deleted_users')
-      .withIndex('by_userId', (q) => q.eq('userId', args.userId))
-      .first();
-    if (deleted) throw apiError(403, 'account deleted');
-    const held = await ctx.db
-      .query('api_tokens')
-      .withIndex('by_userId', (q) => q.eq('userId', args.userId))
-      .take(MAX_API_TOKENS_PER_USER);
-    const oldestFirst = held.sort((a, b) => a.createdAt - b.createdAt);
-    for (const row of oldestFirst.slice(0, Math.max(0, held.length - MAX_API_TOKENS_PER_USER + 1))) await ctx.db.delete(row._id);
-    await ctx.db.insert('api_tokens', args);
-  },
+  args: tokenRow,
+  handler: async (ctx, row) => await recordTokenEvictingTheOldest(ctx, row),
 });
 
 export type IssuedToken = { token: string; tokenId: string; expiresAt: number };
@@ -54,12 +58,9 @@ export function tokensConfigured(): boolean {
   return parseSigningJwk(process.env.MEETCAL_TOKEN_SIGNING_KEY) !== null && meetcalTokenIssuer() !== undefined;
 }
 
-/**
- * Makes and records a new token for `userId`. For `issue` (a signed-in Clerk
- * user) and an approved device login (`deviceLogin.ts`). In an action: the
- * token id and the signature need real randomness.
- */
-export async function mintApiToken(ctx: Pick<ActionCtx, 'runMutation'>, userId: string, client: 'cli' | 'siri'): Promise<IssuedToken> {
+export type SignedToken = IssuedToken & { row: TokenRow };
+
+export async function signApiToken(userId: string, client: 'cli' | 'siri'): Promise<SignedToken> {
   const key = parseSigningJwk(process.env.MEETCAL_TOKEN_SIGNING_KEY);
   const issuer = meetcalTokenIssuer();
   if (!key || !issuer) {
@@ -77,8 +78,13 @@ export async function mintApiToken(ctx: Pick<ActionCtx, 'runMutation'>, userId: 
     exp: Math.floor(expiresAt / 1000),
     tid: tokenId,
   });
-  await ctx.runMutation(internal.apiTokens.record, { tokenId, userId, client, createdAt, expiresAt });
-  return { token, tokenId, expiresAt };
+  return { token, tokenId, expiresAt, row: { tokenId, userId, client, createdAt, expiresAt } };
+}
+
+export async function mintApiToken(ctx: Pick<ActionCtx, 'runMutation'>, userId: string, client: 'cli' | 'siri'): Promise<IssuedToken> {
+  const { row, ...issued } = await signApiToken(userId, client);
+  await ctx.runMutation(internal.apiTokens.record, row);
+  return issued;
 }
 
 /**
@@ -144,17 +150,6 @@ export const revokeAllCli = mutation({
       .take(MAX_API_TOKENS_PER_USER);
     for (const login of approved) if (login.status === 'approved') await ctx.db.patch(login._id, { status: 'denied' });
     return { ended };
-  },
-});
-
-export const discard = internalMutation({
-  args: { tokenId: v.string() },
-  handler: async (ctx, { tokenId }) => {
-    const row = await ctx.db
-      .query('api_tokens')
-      .withIndex('by_tokenId', (q) => q.eq('tokenId', tokenId))
-      .unique();
-    if (row) await ctx.db.delete(row._id);
   },
 });
 

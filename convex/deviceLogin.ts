@@ -3,7 +3,7 @@ import { internal } from './_generated/api';
 import { action, internalMutation, mutation, query, type QueryCtx } from './_generated/server';
 import { isMeetCalToken } from './lib/access';
 import { apiError } from './lib/validation';
-import { mintApiToken, tokensConfigured, type IssuedToken } from './apiTokens';
+import { recordTokenEvictingTheOldest, signApiToken, tokenRow, tokensConfigured, type IssuedToken } from './apiTokens';
 
 /**
  * Device-code login for the `meetcal` CLI, so it signs in without a browser
@@ -186,12 +186,13 @@ export const claim = internalMutation({
   },
 });
 
-export const collectIfStillApproved = internalMutation({
-  args: { deviceCodeHash: v.string(), now: v.number() },
-  handler: async (ctx, { deviceCodeHash, now }): Promise<'approved' | 'denied' | 'expired' | 'collected'> => {
+export const collectWithToken = internalMutation({
+  args: { deviceCodeHash: v.string(), now: v.number(), token: v.object(tokenRow) },
+  handler: async (ctx, { deviceCodeHash, now, token }): Promise<'approved' | 'denied' | 'expired' | 'collected'> => {
     const row = await loginByDeviceCodeHash(ctx, deviceCodeHash);
     if (!row || row.expiresAt <= now) return 'expired';
-    if (row.status === 'approved') {
+    if (row.status === 'approved' && row.approvedBy === token.userId) {
+      await recordTokenEvictingTheOldest(ctx, token);
       await ctx.db.patch(row._id, { status: 'collected' });
       return 'approved';
     }
@@ -209,11 +210,9 @@ export const poll = action({
     const deviceCodeHash = await sha256Hex(deviceCode);
     const standing = await ctx.runMutation(internal.deviceLogin.claim, { deviceCodeHash, now: Date.now() });
     if (standing.status !== 'approved') return { status: standing.status };
-    const minted = await mintApiToken(ctx, standing.userId, 'cli');
-    const collected = await ctx.runMutation(internal.deviceLogin.collectIfStillApproved, { deviceCodeHash, now: Date.now() });
-    if (collected === 'approved') return { status: 'approved', ...minted };
-    await ctx.runMutation(internal.apiTokens.discard, { tokenId: minted.tokenId });
-    return { status: collected };
+    const { row, ...issued } = await signApiToken(standing.userId, 'cli');
+    const collected = await ctx.runMutation(internal.deviceLogin.collectWithToken, { deviceCodeHash, now: Date.now(), token: row });
+    return collected === 'approved' ? { status: 'approved', ...issued } : { status: collected };
   },
 });
 

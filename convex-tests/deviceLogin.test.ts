@@ -1,11 +1,11 @@
 import { ConvexError } from 'convex/values';
 import { getFunctionName } from 'convex/server';
-import { discard, record } from '../convex/apiTokens';
+import { MAX_API_TOKENS_PER_USER, record } from '../convex/apiTokens';
 import {
   approve,
   claim,
   create,
-  collectIfStillApproved,
+  collectWithToken,
   deny,
   describe as describeLogin,
   DEVICE_LOGIN_POLL_INTERVAL_S,
@@ -47,9 +47,8 @@ function actionCtx(db: Db, afterMutation: (name: string) => Promise<void> = asyn
   const handlers: Record<string, unknown> = {
     'deviceLogin:create': create,
     'deviceLogin:claim': claim,
-    'deviceLogin:collectIfStillApproved': collectIfStillApproved,
+    'deviceLogin:collectWithToken': collectWithToken,
     'apiTokens:record': record,
-    'apiTokens:discard': discard,
   };
   return {
     auth: { getUserIdentity: async () => null },
@@ -182,16 +181,19 @@ describe('a device login', () => {
     expect(await pollLogin(db, deviceCode)).toEqual({ status: 'collected' });
   });
 
-  it('gives no token when the approver denies the login while its token is being made (#567)', async () => {
+  it('gives no token when the approver denies the login while its token is being made, and costs them no token they hold (#567)', async () => {
     const db = fakeMutationCtx();
+    for (let held = 0; held < MAX_API_TOKENS_PER_USER; held += 1) {
+      await db.ctx.db.insert('api_tokens', { tokenId: `held-${held}`, userId: A, client: 'cli', createdAt: held, expiresAt: Date.now() + 1000 });
+    }
     const { userCode, deviceCode } = await startLogin(db);
     await handlerOf(approve)(as(db, clerk(A)), { userCode });
-    const denyOnceTheTokenIsRecorded = async (name: string) => {
-      if (name === 'apiTokens:record') await handlerOf(deny)(as(db, clerk(A)), { userCode });
+    const denyOnceThePollSawTheApproval = async (name: string) => {
+      if (name === 'deviceLogin:claim') await handlerOf(deny)(as(db, clerk(A)), { userCode });
     };
-    const answer = await handlerOf<{ deviceCode: string }, Record<string, unknown>>(poll)(actionCtx(db, denyOnceTheTokenIsRecorded), { deviceCode });
+    const answer = await handlerOf<{ deviceCode: string }, Record<string, unknown>>(poll)(actionCtx(db, denyOnceThePollSawTheApproval), { deviceCode });
     expect(answer).toEqual({ status: 'denied' });
-    expect(db.rows('api_tokens')).toEqual([]);
+    expect(db.rows('api_tokens').map((row) => row.tokenId)).toEqual(Array.from({ length: MAX_API_TOKENS_PER_USER }, (_, held) => `held-${held}`));
     expect(db.rows('device_logins')).toEqual([]);
   });
 
