@@ -111,6 +111,8 @@ const MIN_PASS_HOLD_MS: f64 = 5.0 * 60.0 * 1000.0;
 /// asks RevenueCat), a page never waits on it longer than this.
 const PASS_WAIT_MS: f64 = 3000.0;
 
+const REFUSED_READ_PASS_WAIT_MS: f64 = 15.0 * 1000.0;
+
 /// How long (ms) after a failed pass fetch premium reads go out without a
 /// pass before one tries again, so a user Convex will not give a pass does
 /// not refresh the entitlement on every read. A read Convex refuses for its
@@ -328,15 +330,18 @@ fn user_error(function: &str, message: &str, detail: impl std::fmt::Display) -> 
     anyhow!(message.to_owned())
 }
 
-/// Whether a failed body read was the request timeout. Reading the body
-/// rejects with the abort reason reqwest gave its timer, which reqwest
-/// reports as a decode error rather than a timeout.
-fn body_read_timed_out(detail: &str) -> bool {
-    detail.contains("reqwest::errors::TimedOut")
+const TIMER_ROUNDING_MS: f64 = 50.0;
+
+fn request_used_its_whole_timeout(elapsed_ms: f64, timeout: Duration) -> bool {
+    elapsed_ms + TIMER_ROUNDING_MS >= timeout.as_secs_f64() * 1000.0
 }
 
-fn transport_error(function: &str, error: &reqwest::Error) -> anyhow::Error {
-    let timed_out = error.is_timeout() || body_read_timed_out(&format!("{error:?}"));
+fn failed_at_the_timeout(error: &reqwest::Error, started_at_ms: f64, timeout: Duration) -> bool {
+    error.is_timeout()
+        || request_used_its_whole_timeout(js_sys::Date::now() - started_at_ms, timeout)
+}
+
+fn transport_error(function: &str, error: &reqwest::Error, timed_out: bool) -> anyhow::Error {
     let offline = web_sys::window().is_some_and(|window| !window.navigator().on_line());
     user_error(
         function,
@@ -609,15 +614,19 @@ async fn post_within(
     };
 
     let mut retries = 0;
-    let response = loop {
+    let (response, started_at_ms) = loop {
+        let started_at_ms = js_sys::Date::now();
         let mut builder = client.post(&url).timeout(timeout).json(&request);
         if let Some(token) = token {
             builder = builder.bearer_auth(token);
         }
-        let response = builder
-            .send()
-            .await
-            .map_err(|error| transport_error(function, &error))?;
+        let response = builder.send().await.map_err(|error| {
+            transport_error(
+                function,
+                &error,
+                failed_at_the_timeout(&error, started_at_ms, timeout),
+            )
+        })?;
         let status = response.status();
 
         if endpoint.retries() && should_retry(status, retries) {
@@ -639,16 +648,16 @@ async fn post_within(
                 status,
             ));
         }
-        break response;
+        break (response, started_at_ms);
     };
 
-    // The timeout covers reading the answer too. A failed read is the
-    // connection's fault; only a body that arrives and does not parse is
-    // an unreadable answer.
-    let body = response
-        .bytes()
-        .await
-        .map_err(|error| transport_error(function, &error))?;
+    let body = response.bytes().await.map_err(|error| {
+        transport_error(
+            function,
+            &error,
+            failed_at_the_timeout(&error, started_at_ms, timeout),
+        )
+    })?;
     serde_json::from_slice::<QueryResponse>(&body)
         .map_err(|error| user_error(function, UNREADABLE_MESSAGE, error))
 }
@@ -814,15 +823,25 @@ enum PassStep {
     GoWithout,
 }
 
-/// How long (ms) a read may still wait at `now` for a fetch that started at `started_at`.
-fn pass_wait_left(started_at: f64, now: f64) -> f64 {
-    (started_at + PASS_WAIT_MS - now).max(0.0)
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum PassWaiter {
+    FirstRead,
+    ReadConvexRefused,
 }
 
-/// The fetch's pass, or `None` once the read has waited `PASS_WAIT_MS` from
-/// the fetch's start. The fetch keeps running either way.
-async fn wait_for_pass(fetch: PassFetch, started_at: f64) -> Option<String> {
-    let left = pass_wait_left(started_at, js_sys::Date::now());
+fn pass_wait_left(waiter: PassWaiter, fetch_started_at: f64, now: f64) -> f64 {
+    match waiter {
+        PassWaiter::FirstRead => (fetch_started_at + PASS_WAIT_MS - now).max(0.0),
+        PassWaiter::ReadConvexRefused => REFUSED_READ_PASS_WAIT_MS,
+    }
+}
+
+async fn wait_for_pass(
+    waiter: PassWaiter,
+    fetch: PassFetch,
+    fetch_started_at: f64,
+) -> Option<String> {
+    let left = pass_wait_left(waiter, fetch_started_at, js_sys::Date::now());
     if left <= 0.0 {
         return None;
     }
@@ -833,8 +852,6 @@ async fn wait_for_pass(fetch: PassFetch, started_at: f64) -> Option<String> {
     }
 }
 
-/// The pass for a premium read: the held one while it is in use, else the
-/// fetch already running, else a new fetch (unless one failed recently).
 async fn current_pass() -> Option<String> {
     let now = js_sys::Date::now();
     let step = ACCESS_PASS_STATE.with_borrow(|state| {
@@ -850,19 +867,17 @@ async fn current_pass() -> Option<String> {
     });
     match step {
         PassStep::Use(pass) => Some(pass),
-        PassStep::Join(fetch, started_at) => wait_for_pass(fetch, started_at).await,
+        PassStep::Join(fetch, started_at) => {
+            wait_for_pass(PassWaiter::FirstRead, fetch, started_at).await
+        }
         PassStep::Fetch => {
             let (fetch, started_at) = start_pass_fetch();
-            wait_for_pass(fetch, started_at).await
+            wait_for_pass(PassWaiter::FirstRead, fetch, started_at).await
         }
         PassStep::GoWithout => None,
     }
 }
 
-/// A fresh pass after Convex refused a read sent with `refused` (`None`: sent
-/// without one). Drops the held pass if it is the refused one; a different
-/// held pass (another read already renewed it) is used as it is. Otherwise
-/// joins the running fetch or starts one, even within the backoff.
 async fn renewed_pass(refused: Option<&str>) -> Option<String> {
     let now = js_sys::Date::now();
     let step = ACCESS_PASS_STATE.with_borrow_mut(|state| {
@@ -879,10 +894,12 @@ async fn renewed_pass(refused: Option<&str>) -> Option<String> {
     });
     match step {
         PassStep::Use(pass) => Some(pass),
-        PassStep::Join(fetch, started_at) => wait_for_pass(fetch, started_at).await,
+        PassStep::Join(fetch, started_at) => {
+            wait_for_pass(PassWaiter::ReadConvexRefused, fetch, started_at).await
+        }
         PassStep::Fetch | PassStep::GoWithout => {
             let (fetch, started_at) = start_pass_fetch();
-            wait_for_pass(fetch, started_at).await
+            wait_for_pass(PassWaiter::ReadConvexRefused, fetch, started_at).await
         }
     }
 }
@@ -1128,6 +1145,14 @@ pub(crate) async fn upload_meet_submission_file(
     content_type: &str,
     bytes: Vec<u8>,
 ) -> Result<String> {
+    let started_at_ms = js_sys::Date::now();
+    let upload_failure = |error: reqwest::Error| {
+        transport_error(
+            "file upload",
+            &error,
+            failed_at_the_timeout(&error, started_at_ms, UPLOAD_TIMEOUT),
+        )
+    };
     let response = reqwest::Client::new()
         .post(upload_url)
         .timeout(UPLOAD_TIMEOUT)
@@ -1135,7 +1160,7 @@ pub(crate) async fn upload_meet_submission_file(
         .body(bytes)
         .send()
         .await
-        .map_err(|error| transport_error("file upload", &error))?;
+        .map_err(upload_failure)?;
     let status = response.status();
     if !status.is_success() {
         return Err(user_error(
@@ -1144,10 +1169,7 @@ pub(crate) async fn upload_meet_submission_file(
             status,
         ));
     }
-    let body = response
-        .bytes()
-        .await
-        .map_err(|error| transport_error("file upload", &error))?;
+    let body = response.bytes().await.map_err(upload_failure)?;
     read_storage_id(&body)
 }
 
@@ -1410,6 +1432,24 @@ mod tests {
     }
 
     #[test]
+    fn a_read_convex_refused_waits_for_a_pass_fetch_older_than_the_first_reads_wait() {
+        let now = 1_000_000_000.0;
+        let slow_fetch_started_at = now - 2.0 * PASS_WAIT_MS;
+        assert_eq!(
+            pass_wait_left(PassWaiter::FirstRead, slow_fetch_started_at, now),
+            0.0
+        );
+        assert_eq!(
+            pass_wait_left(PassWaiter::ReadConvexRefused, slow_fetch_started_at, now),
+            REFUSED_READ_PASS_WAIT_MS
+        );
+        assert_eq!(
+            pass_wait_left(PassWaiter::ReadConvexRefused, now, now),
+            REFUSED_READ_PASS_WAIT_MS
+        );
+    }
+
+    #[test]
     fn a_pass_is_held_until_it_rotates() {
         let now = 1_000_000_000.0;
         let day = 24.0 * 60.0 * 60.0 * 1000.0;
@@ -1417,12 +1457,18 @@ mod tests {
         // A rotation due (by this device's clock) sooner than the minimum
         // hold, or already past, still holds the pass a while.
         assert_eq!(held_until(now - day, now), now + MIN_PASS_HOLD_MS);
-        assert_eq!(pass_wait_left(now, now), PASS_WAIT_MS);
         assert_eq!(
-            pass_wait_left(now - PASS_WAIT_MS / 2.0, now),
+            pass_wait_left(PassWaiter::FirstRead, now, now),
+            PASS_WAIT_MS
+        );
+        assert_eq!(
+            pass_wait_left(PassWaiter::FirstRead, now - PASS_WAIT_MS / 2.0, now),
             PASS_WAIT_MS / 2.0
         );
-        assert_eq!(pass_wait_left(now - 2.0 * PASS_WAIT_MS, now), 0.0);
+        assert_eq!(
+            pass_wait_left(PassWaiter::FirstRead, now - 2.0 * PASS_WAIT_MS, now),
+            0.0
+        );
         assert_eq!(held_until(now + 1.0, now), now + MIN_PASS_HOLD_MS);
 
         let held = HeldPass {
@@ -1768,15 +1814,27 @@ mod tests {
     }
 
     #[test]
-    fn a_body_read_cut_off_by_the_timeout_is_a_timeout() {
-        // What reqwest's wasm `Response::bytes` reports when the request's
-        // timer aborts the body read.
-        assert!(body_read_timed_out(
-            r#"reqwest::Error { kind: Decode, source: "JsValue(\"reqwest::errors::TimedOut\")" }"#
+    fn a_read_that_fails_once_the_whole_timeout_has_passed_is_a_timeout() {
+        let timeout_ms = REQUEST_TIMEOUT.as_secs_f64() * 1000.0;
+        assert!(request_used_its_whole_timeout(timeout_ms, REQUEST_TIMEOUT));
+        assert!(request_used_its_whole_timeout(
+            timeout_ms + 400.0,
+            REQUEST_TIMEOUT
         ));
-        assert!(!body_read_timed_out(
-            r#"reqwest::Error { kind: Decode, source: "JsValue(TypeError: network error)" }"#
+        assert!(request_used_its_whole_timeout(
+            timeout_ms - 1.0,
+            REQUEST_TIMEOUT
         ));
+        assert!(!request_used_its_whole_timeout(
+            timeout_ms / 2.0,
+            REQUEST_TIMEOUT
+        ));
+        assert!(!request_used_its_whole_timeout(0.0, REQUEST_TIMEOUT));
+        assert!(request_used_its_whole_timeout(
+            UPLOAD_TIMEOUT.as_secs_f64() * 1000.0,
+            UPLOAD_TIMEOUT
+        ));
+        assert!(!request_used_its_whole_timeout(timeout_ms, UPLOAD_TIMEOUT));
     }
 
     #[test]
