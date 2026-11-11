@@ -14,6 +14,7 @@ import {
   fetchAgeGroups,
   fetchRecordFederations,
 } from "@/lib/database/fetch-records";
+import { filterSummary } from "@/lib/filter-summary";
 import { formatAgeGroupLabel, sortAgeGroups } from "@/lib/sortAgeGroups";
 import { Filters, Gender, RecordsData, WeightClassRecord } from "@/types/records";
 import { Stack } from "expo-router";
@@ -136,7 +137,7 @@ function RecordsScreenContent() {
     const fed = filters.federation || DEFAULT_RECORD_FEDERATION;
     const gen = filters.gender === "Men" ? "Men" : "Women";
     const age = formatAgeGroupLabel(displayAgeGroup) || "Senior";
-    return `${fed} • ${gen} • ${age}`;
+    return filterSummary([fed, gen, age], "All records");
   };
 
   const buildFilterSections = React.useCallback(
