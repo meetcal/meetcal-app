@@ -68,7 +68,7 @@ pub fn report(results: &[LiftingResults]) -> Report {
         kg(prs.total_best),
     ]);
 
-    let (by_attempt, by_lift) = make_rate_tables(results);
+    let (by_attempt, by_lift) = make_rate_tables(&results.iter().collect::<Vec<_>>());
     Report::new()
         .table("results", meets_table)
         .table_with_data("prs", pr_table, prs_without_a_lift_as_null)

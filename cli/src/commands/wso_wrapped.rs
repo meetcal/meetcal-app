@@ -18,7 +18,7 @@ pub struct WsoWrappedArgs {
     pub wso: String,
 
     /// Calendar year to summarize (defaults to the current year)
-    #[arg(long, short = 'y', value_parser = clap::value_parser!(i32).range(1900..=9999))]
+    #[arg(long, short = 'y', value_parser = crate::utils::filters::parse_year)]
     pub year: Option<i32>,
 }
 

@@ -101,7 +101,7 @@ pub struct EliteArgs {
     pub wso: String,
 
     /// Calendar year (defaults to the current year, as leaderboard's; ignored with --from)
-    #[arg(long, short = 'y', value_parser = clap::value_parser!(i32).range(1900..=9999))]
+    #[arg(long, short = 'y', value_parser = crate::utils::filters::parse_year)]
     pub year: Option<i32>,
 
     /// Start of the range, YYYY-MM-DD (with --to)

@@ -6,6 +6,7 @@ use crate::types::lifting_results::AdaptiveRecord;
 use crate::utils::backend::{queries, query};
 use crate::utils::format::kg;
 use crate::utils::output::{self, Report};
+use crate::utils::stats::Gender;
 use serde_json::json;
 
 /// Search for Adaptive American Records for a gender.
@@ -16,12 +17,13 @@ use serde_json::json;
   meetcal adaptive-records Women"#
 )]
 pub struct AdaptiveArgs {
-    /// Gender: Men or Women
-    pub gender: String,
+    /// Gender: Men or Women (m, f, male and female work too)
+    #[arg(value_parser = crate::utils::filters::parse_gender)]
+    pub gender: Gender,
 }
 
 pub async fn run(args: AdaptiveArgs) -> Result<()> {
-    let query_args = json!({ "excludeFederation": "BWL", "gender": args.gender });
+    let query_args = json!({ "excludeFederation": "BWL", "gender": args.gender.label() });
     let records: Vec<AdaptiveRecord> = query(queries::ADAPTIVE_RECORDS, &query_args).await?;
     output::emit(report(&records));
     Ok(())
