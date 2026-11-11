@@ -1,3 +1,4 @@
+import { filterSummary } from "@/lib/filter-summary";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { NativeModules, Platform } from "react-native";
 
@@ -207,11 +208,10 @@ export function buildQualifyingTotalsWidgetPayload(
 
   return {
     title: "Qualifying Totals",
-    subtitle: [
-      settings.event,
-      settings.gender,
-      formatAgeGroup(settings.ageGroup),
-    ].filter(Boolean).join(" • "),
+    subtitle: filterSummary(
+      [settings.event, settings.gender, formatAgeGroup(settings.ageGroup)],
+      "",
+    ),
     emptyMessage: "No qualifying totals",
     linkURL: createQualifyingTotalsDeepLink(settings),
     maxRows: QUALIFYING_TOTALS_WIDGET_MAX_ROWS,
@@ -233,7 +233,10 @@ export function buildStandardsWidgetPayload(
 
   return {
     title: "A/B Standards",
-    subtitle: `${formatGender(settings.gender)} • ${formatAgeGroup(settings.ageGroup)}`,
+    subtitle: filterSummary(
+      [formatGender(settings.gender), formatAgeGroup(settings.ageGroup)],
+      "",
+    ),
     emptyMessage: "No standards",
     linkURL: createStandardsDeepLink(settings),
     maxRows: STANDARDS_WIDGET_MAX_ROWS,
@@ -267,11 +270,10 @@ export function buildIntlRankingsWidgetPayload(
 
   return {
     title: "International Rankings",
-    subtitle: [
-      settings.meet,
-      settings.ageCategory,
-      settings.gender,
-    ].filter(Boolean).join(" • "),
+    subtitle: filterSummary(
+      [settings.meet, settings.ageCategory, settings.gender],
+      "",
+    ),
     emptyMessage: "No rankings",
     linkURL: createIntlRankingsDeepLink(settings),
     maxRows: INTL_RANKINGS_WIDGET_MAX_ROWS,

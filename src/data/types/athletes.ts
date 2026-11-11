@@ -43,8 +43,7 @@ export interface LiftResult {
   };
 }
 
-export interface SupabaseLiftResult {
-  id: number;
+export interface AthleteMeetResult {
   event_id: string;
   meet: string;
   date: string;
@@ -62,7 +61,7 @@ export interface SupabaseLiftResult {
   total: number | null;
 }
 
-export interface SupabaseBests {
+export interface AthleteBests {
   snatch_best: number | null;
   cj_best: number | null;
   total: number | null;

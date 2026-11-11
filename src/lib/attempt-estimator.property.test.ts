@@ -1,6 +1,6 @@
 import * as fc from 'fast-check';
 
-import type { LiftResult, SupabaseLiftResult } from '@/data/types/athletes';
+import type { LiftResult, AthleteMeetResult } from '@/data/types/athletes';
 import { calculateEstimates, generateAthleteNotes, type AthleteAttemptEstimate } from '@/lib/attempt-estimator';
 import { addCalendarDays } from '@/test-support/time-arbitraries';
 
@@ -19,7 +19,7 @@ const attemptArb = fc.oneof(
 const bestArb = fc.oneof(fc.constant(null), fc.constant(0), fc.integer({ min: 20, max: 250 }));
 
 /** A result row: name spelled with stray case and spaces, dated within three years. */
-const resultArb: fc.Arbitrary<SupabaseLiftResult> = fc
+const resultArb: fc.Arbitrary<AthleteMeetResult> = fc
   .record({
     name: fc.tuple(fc.constantFrom(...NAMES, 'Not Entered'), fc.boolean(), fc.boolean()).map(
       ([name, upper, padded]) => {

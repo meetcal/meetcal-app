@@ -1,7 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as fc from 'fast-check';
 
-import type { SupabaseLiftResult } from '@/data/types/athletes';
+import type { AthleteMeetResult } from '@/data/types/athletes';
 import { jsonTransportStub } from '@/lib/api/json-transport-stub';
 import { mapApiAthletes, mapApiLiftingResult, NAMES_QUERY_CHUNK_SIZE } from '@/lib/api/meetcal-api';
 import type { ApiCall, Transport } from '@/lib/api/transport';
@@ -86,7 +86,7 @@ function serverRows(name: string): Record<string, unknown>[] {
   }));
 }
 
-function expectedHistory(name: string): SupabaseLiftResult[] {
+function expectedHistory(name: string): AthleteMeetResult[] {
   return serverRows(name).map((row) => mapApiLiftingResult(row as never));
 }
 

@@ -1,5 +1,5 @@
 import { isSamePlatform } from '@/lib/athletes';
-import type { DaySchedule, Platform, Schedule, Session } from '@/types/schedule';
+import type { DaySchedule, PlatformSlot, Schedule, Session } from '@/types/schedule';
 import { resolveWeighInTime } from '@/utils/time';
 
 export interface SessionPlatformMatch {
@@ -7,7 +7,7 @@ export interface SessionPlatformMatch {
   day: DaySchedule;
   session: Session;
   /** The session's row for the platform, or `null` when it has none. */
-  platform: Platform | null;
+  platform: PlatformSlot | null;
 }
 
 /**
@@ -43,7 +43,7 @@ export function findSessionPlatform(
  */
 export function platformSessionTimes(
   session: Pick<Session, 'startTime' | 'weighInTime'>,
-  platform: Pick<Platform, 'platformStartTime' | 'platformWeighInTime'> | null | undefined,
+  platform: Pick<PlatformSlot, 'platformStartTime' | 'platformWeighInTime'> | null | undefined,
 ): { startTime: string; weighInTime: string } {
   // A platform row's start is its own, even blank (that platform is not
   // timed yet): the session's start is only its first row's, another

@@ -715,7 +715,6 @@ describe('meetcal API mappers', () => {
       total: 240,
       adaptive: false,
     })).toMatchObject({
-      id: 10,
       event_id: 'event-1',
       body_weight: 72.5,
       snatch_best: 105,
@@ -1556,6 +1555,22 @@ describe('meetcal API client error and auth boundaries', () => {
     );
   });
 
+  it.each([
+    [[{ date: '2026-06-20' }], '/meets/package.schedule[0].sessions expected an array response'],
+    [['TBD'], '/meets/package.schedule[0] expected an object response'],
+    [
+      [{ date: '2026-06-20', sessions: [{ session_id: 1, platforms: 'Red' }] }],
+      '/meets/package.schedule[0].sessions[0].platforms expected an array response',
+    ],
+    [
+      [{ date: '2026-06-20', sessions: [{ session_id: 1, platforms: [null] }] }],
+      '/meets/package.schedule[0].sessions[0].platforms[0] expected an object response',
+    ],
+  ])('rejects a meet package whose schedule is malformed, naming the field', async (schedule, message) => {
+    installTransport(answer({ meet: { name: 'Meet' }, schedule, athletes: [], meet_results: [] }));
+    await expect(fetchApiMeetPackageConditional('Test Meet')).rejects.toThrow(message);
+  });
+
   it('rejects an object where a row array query is expected', async () => {
     // Callers go straight to `.filter`/`.map`, so an envelope answer used to
     // surface as "rows.filter is not a function" inside a fetcher rather than
@@ -2224,8 +2239,8 @@ describe('JSON text answers', () => {
       [athleteRow, { ...athleteRow, member_id: '2', name: 'Athlete B', session_platform: 'Gold' }],
       [{ name: 'Athlete A', session: { number: 2, platform: 'Blue' } }],
     ],
-    ['fetchApiResultsByNames', () => fetchApiResultsByNames(['Athlete A']), [resultRow], [{ id: 1, total: 220 }]],
-    ['fetchApiRecentResultsByNames', () => fetchApiRecentResultsByNames(['Athlete A'], '2024-01-01'), [resultRow], [{ id: 1, snatch2: 0 }]],
+    ['fetchApiResultsByNames', () => fetchApiResultsByNames(['Athlete A']), [resultRow], [{ event_id: 'e1', total: 220 }]],
+    ['fetchApiRecentResultsByNames', () => fetchApiRecentResultsByNames(['Athlete A'], '2024-01-01'), [resultRow], [{ event_id: 'e1', snatch2: 0 }]],
   ])('%s decodes a { json } answer and still accepts a plain array', async (_name, invoke, rows, expected) => {
     installTransport(() => ({ json: JSON.stringify(rows) }));
     const fromText = await invoke();
