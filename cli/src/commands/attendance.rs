@@ -8,7 +8,7 @@ use serde_json::json;
 use tokio::task::JoinSet;
 
 use crate::types::lifting_results::LiftingResults;
-use crate::utils::backend::{queries, query};
+use crate::utils::backend::{FunctionError, queries, query};
 use crate::utils::format::{date_range, us_date};
 use crate::utils::meet_names::{editions_by_year, equivalent_meets};
 use crate::utils::names::{MAX_NAME_PAGES, just_before, meet_names_between};
@@ -187,8 +187,21 @@ pub async fn run(args: AttendanceArgs) -> Result<()> {
     }
 
     let mut editions: Vec<Edition> = Vec::new();
-    for batch in matched.chunks(ATTENDANCE_BATCH) {
-        let answer: Answer = query(queries::MEET_ATTENDANCE, &json!({ "meets": batch })).await?;
+    // Batches still to ask for, the next one last. A batch MeetCal refuses as too many rows for
+    // one call (413: several national meets) is asked for again as two halves.
+    let mut batches: Vec<&[String]> = matched.chunks(ATTENDANCE_BATCH).rev().collect();
+    while let Some(batch) = batches.pop() {
+        let answer: Answer =
+            match query(queries::MEET_ATTENDANCE, &json!({ "meets": batch })).await {
+                Ok(answer) => answer,
+                Err(error) if too_many_rows(&error) && batch.len() > 1 => {
+                    let (first, second) = halves(batch);
+                    batches.push(second);
+                    batches.push(first);
+                    continue;
+                }
+                Err(error) => return Err(error),
+            };
         for edition in serde_json::from_str::<Vec<Edition>>(&answer.json)? {
             if edition.spans_years() {
                 // A name used every year: `meets:attendance` counts every year's results as one
@@ -203,6 +216,18 @@ pub async fn run(args: AttendanceArgs) -> Result<()> {
     }
     output::emit(report(&search, &editions));
     Ok(())
+}
+
+/// The status `meets:attendance` answers when a batch's meets have more rows than one call reads.
+const TOO_MANY_ROWS_STATUS: u16 = 413;
+
+fn too_many_rows(error: &anyhow::Error) -> bool {
+    FunctionError::status_of(error) == Some(TOO_MANY_ROWS_STATUS)
+}
+
+/// A batch of two or more meets as two halves, in order, the first no smaller than the second.
+fn halves(batch: &[String]) -> (&[String], &[String]) {
+    batch.split_at(batch.len().div_ceil(2))
 }
 
 impl Edition {
@@ -458,6 +483,29 @@ fn count(value: usize) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_refused_batch_is_asked_for_again_in_halves() {
+        let names: Vec<String> = (1..=5).map(|n| format!("meet {n}")).collect();
+        let (first, second) = halves(&names);
+        assert_eq!(first, &names[..3]);
+        assert_eq!(second, &names[3..]);
+        let (first, second) = halves(&names[..2]);
+        assert_eq!((first.len(), second.len()), (1, 1));
+
+        let refused = anyhow::Error::new(FunctionError {
+            function: "meets:attendance".to_owned(),
+            status: Some(413),
+            reason: "too many rows".to_owned(),
+        });
+        assert!(too_many_rows(&refused));
+        let other = anyhow::Error::new(FunctionError {
+            function: "meets:attendance".to_owned(),
+            status: Some(400),
+            reason: "meets exceeds the 8-meet limit".to_owned(),
+        });
+        assert!(!too_many_rows(&other));
+    }
 
     fn words(values: &[&str]) -> Vec<String> {
         values.iter().map(|value| value.to_string()).collect()

@@ -1,7 +1,7 @@
 import { recordWrite, setMeetResultTitles } from '../convex/ingest';
 import { computeStatsRows } from '../convex/lib/meetData';
 import { byMeet } from '../convex/results';
-import { attendance } from '../convex/meets';
+import { attendance, attendanceRows } from '../convex/meets';
 import { fakeMutationCtx, handlerOf } from './fakeDb';
 
 // Premium queries may log their caller (`convex/lib/access.ts`).
@@ -83,6 +83,27 @@ describe('results titles of a meet (#362)', () => {
     await link(store.ctx, { meet: NATIONALS, titles: [JUNIOR, YOUTH] });
     const answer = await handlerOf<{ meets: string[] }, { json: string }>(attendance)(store.ctx, { meets: [NATIONALS] });
     expect(JSON.parse(answer.json)).toEqual([expect.objectContaining({ meet: NATIONALS, lifters: 3, registrations: 3, first_date: '2026-06-20', results_titles: [JUNIOR, YOUTH] })]);
+  });
+
+  it('refuses meets whose rows do not fit one call, and answers the same meets asked for in smaller batches (#564)', async () => {
+    const store = world();
+    await link(store.ctx, { meet: NATIONALS, titles: [JUNIOR, YOUTH] });
+    const whole = await attendanceRows(store.ctx as never, [NATIONALS], 1000);
+    const refused = (meets: string[], budget: number) =>
+      attendanceRows(store.ctx as never, meets, budget).then(
+        () => false,
+        (error: { data?: { status?: number } }) => error.data?.status === 413,
+      );
+    // The meet's rows: its results under every title, and its registrations.
+    let used = 0;
+    while (await refused([NATIONALS], used)) used += 1;
+    expect(used).toBeGreaterThanOrEqual(6);
+    // Exactly its rows fit; one fewer is a 413, never a short count.
+    expect(await attendanceRows(store.ctx as never, [NATIONALS], used)).toEqual(whole);
+    expect(await refused([NATIONALS], used - 1)).toBe(true);
+    // Two meets share one budget.
+    expect(await refused([NATIONALS, NATIONALS], used * 2 - 1)).toBe(true);
+    expect(await attendanceRows(store.ctx as never, [NATIONALS, NATIONALS], used * 2)).toEqual([...whole, ...whole]);
   });
 
   it('looks up linked titles only for results writes', async () => {
