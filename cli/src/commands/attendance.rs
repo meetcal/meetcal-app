@@ -186,21 +186,17 @@ pub async fn run(args: AttendanceArgs) -> Result<()> {
     // one call (413: several national meets) is asked for again as two halves.
     let mut batches: Vec<&[String]> = matched.chunks(ATTENDANCE_BATCH).rev().collect();
     while let Some(batch) = batches.pop() {
-        let answered: Vec<Edition> = match query(
-            queries::MEET_ATTENDANCE,
-            &json!({ "meets": batch }),
-        )
-        .await
-        {
-            Ok(answered) => answered,
-            Err(error) if too_many_rows(&error) && batch.len() > 1 => {
-                let (first, second) = halves(batch);
-                batches.push(second);
-                batches.push(first);
-                continue;
-            }
-            Err(error) => return Err(error),
-        };
+        let answered: Vec<Edition> =
+            match query(queries::MEET_ATTENDANCE, &json!({ "meets": batch })).await {
+                Ok(answered) => answered,
+                Err(error) if too_many_rows(&error) && batch.len() > 1 => {
+                    let (first, second) = halves(batch);
+                    batches.push(second);
+                    batches.push(first);
+                    continue;
+                }
+                Err(error) => return Err(error),
+            };
         for edition in answered {
             if edition.spans_years() {
                 // A name used every year: `meets:attendance` counts every year's results as one
