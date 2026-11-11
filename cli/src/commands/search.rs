@@ -101,6 +101,17 @@ mod tests {
     use crate::utils::stats::tests::raw_row;
 
     #[test]
+    fn a_lift_never_made_exports_null_and_still_shows_zero() {
+        let bombed_every_snatch = raw_row([-60.0, -60.0, -60.0], [85.0, 0.0, 0.0]);
+        let report = report(&[bombed_every_snatch]);
+        let prs = &report.to_json()["prs"][0];
+        assert_eq!(prs["snatch_pr"], serde_json::Value::Null);
+        assert_eq!(prs["total_pr"], serde_json::Value::Null);
+        assert_eq!(prs["cj_pr"], 85);
+        assert!(report.to_text().contains("| 0 "));
+    }
+
+    #[test]
     fn prs_leave_out_source_errors() {
         let real = raw_row([60.0, 63.0, 65.0], [85.0, 90.0, 95.0]);
         let typo = raw_row([-63.0, 633.0, 65.0], [85.0, 90.0, -95.0]);

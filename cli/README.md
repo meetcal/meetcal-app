@@ -101,6 +101,13 @@ other tools: each table's rows keyed by its column headers in snake_case, number
 as null. A table's keys are the same whatever flags the command was given. A command with several
 tables prints a JSON object keyed by table, or CSV sections headed `# <table>`.
 
+A key is its column header in snake_case, without a parenthesised note (`Sinclair (2021-24)` is
+`sinclair`, so the key does not change when the coefficients do) and with clean & jerk always
+`cj` (`C&J Make Rate` is `cj_make_rate`). A value that does not exist is null, not 0: a year with
+no results in `compare`, a lift never made in `search`'s PRs, a class with no adaptive record.
+`cli/tests/fixtures/export_keys.json` lists every command's keys, and a test fails when one
+changes.
+
 ```sh
 meetcal leaderboard --by sinclair --gender women --format csv > leaderboard.csv
 meetcal progress "Maddisen Mohnsen" --format json | jq '.attempts'

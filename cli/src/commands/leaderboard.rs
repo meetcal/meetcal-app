@@ -600,6 +600,18 @@ mod tests {
     }
 
     #[test]
+    fn the_age_category_is_dash_a_and_the_old_dash_c_still_works_unlisted() {
+        use clap::CommandFactory;
+        for flag in ["-a", "-c", "--category"] {
+            let args = LeaderboardArgs::parse_from(["leaderboard", flag, "Junior"]);
+            assert_eq!(args.category.as_deref(), Some("Junior"), "{flag}");
+        }
+        let help = LeaderboardArgs::command().render_help().to_string();
+        assert!(help.contains("-a, --category"), "{help}");
+        assert!(!help.contains("-c,"), "{help}");
+    }
+
+    #[test]
     fn range_defaults_to_a_year() {
         assert_eq!(
             range(Some(2025), None, None),
