@@ -21,7 +21,7 @@ import {
 } from "@/lib/comp-data-filters";
 import { filterSummary } from "@/lib/filter-summary";
 import { sortAgeGroups } from "@/lib/sortAgeGroups";
-import { Filters } from "@/types/qual_totals";
+import { QualifyingTotalsFilters } from "@/types/qual_totals";
 import { Stack, useLocalSearchParams } from "expo-router";
 import { useEffect, useMemo } from "react";
 import { StyleSheet, View } from "react-native";
@@ -43,7 +43,7 @@ function QualifyingTotalsScreenContent() {
     gender?: string;
     ageGroup?: string;
   }>();
-  const defaultFilters = useMemo<Filters>(
+  const defaultFilters = useMemo<QualifyingTotalsFilters>(
     () => ({
       // Empty until the totals load; then the newest season's Nationals.
       event: routeParams.event || "",
@@ -58,7 +58,7 @@ function QualifyingTotalsScreenContent() {
     routeParams.ageGroup,
   ]);
   const { filters, setFilters, setTempFilters, openFilters, filterModalProps } =
-    useFilterState<Filters>({
+    useFilterState<QualifyingTotalsFilters>({
     defaultFilters,
     resetKey: filterResetKey,
   });

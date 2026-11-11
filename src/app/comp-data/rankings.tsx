@@ -20,7 +20,7 @@ import {
 } from "@/lib/rankings-filters";
 import { filterSummary } from "@/lib/filter-summary";
 import { sortAgeGroups } from "@/lib/sortAgeGroups";
-import { Filters } from "@/types/rankings";
+import { RankingsFilters } from "@/types/rankings";
 import { Stack, useLocalSearchParams } from "expo-router";
 import React, { useEffect, useMemo, useState } from "react";
 import { StyleSheet, View } from "react-native";
@@ -44,7 +44,7 @@ function IntlRankingsScreenContent() {
     age_category?: string;
     gender?: string;
   }>();
-  const defaultFilters = useMemo<Filters>(
+  const defaultFilters = useMemo<RankingsFilters>(
     () => ({
       meet: routeParams.meet || "",
       age_category: routeParams.age_category || "",
@@ -66,7 +66,7 @@ function IntlRankingsScreenContent() {
     setTempFilters,
     openFilters,
     filterModalProps,
-  } = useFilterState<Filters>({
+  } = useFilterState<RankingsFilters>({
     defaultFilters,
     resetKey: filterResetKey,
   });

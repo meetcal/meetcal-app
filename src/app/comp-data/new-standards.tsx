@@ -14,7 +14,7 @@ import { selectStandards } from "@/lib/comp-data-filters";
 import { standardsResource } from "@/lib/database/fetch-standards";
 import { filterSummary } from "@/lib/filter-summary";
 import { formatAgeGroupLabel } from "@/lib/sortAgeGroups";
-import { AgeGroup, Filters, Gender, StandardsData } from "@/types/standards";
+import { StandardsAgeGroup, StandardsFilters, StandardsGender, StandardsData } from "@/types/standards";
 import { Stack, useLocalSearchParams } from "expo-router";
 import React, { useMemo } from "react";
 import { StyleSheet, View } from "react-native";
@@ -37,7 +37,7 @@ function NewStandardsScreenContent() {
     gender?: string;
     ageGroup?: string;
   }>();
-  const defaultFilters = useMemo<Filters>(
+  const defaultFilters = useMemo<StandardsFilters>(
     () => ({
       gender: routeParams.gender || "men",
       ageGroup: routeParams.ageGroup || "senior",
@@ -48,7 +48,7 @@ function NewStandardsScreenContent() {
     routeParams.gender,
     routeParams.ageGroup,
   ]);
-  const { filters, openFilters, filterModalProps } = useFilterState<Filters>({
+  const { filters, openFilters, filterModalProps } = useFilterState<StandardsFilters>({
     defaultFilters,
     resetKey: filterResetKey,
   });
@@ -76,12 +76,12 @@ function NewStandardsScreenContent() {
     );
   };
 
-  const genderOptions: { id: Gender; label: string }[] = [
+  const genderOptions: { id: StandardsGender; label: string }[] = [
     { id: "men", label: "Men" },
     { id: "women", label: "Women" },
   ];
 
-  const ageGroupOptions: { id: AgeGroup; label: string }[] = [
+  const ageGroupOptions: { id: StandardsAgeGroup; label: string }[] = [
     { id: "u15", label: "U15" },
     { id: "youth", label: "Youth" },
     { id: "junior", label: "Junior" },
@@ -91,7 +91,7 @@ function NewStandardsScreenContent() {
   const filterSections: FilterSection[] = [
     {
       id: "gender",
-      title: "Gender",
+      title: "StandardsGender",
       options: genderOptions.map((g) => ({ value: g.id, label: g.label })),
     },
     {

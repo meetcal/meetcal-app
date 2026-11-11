@@ -16,10 +16,11 @@ import { filterSummary } from "@/lib/filter-summary";
 import { formatAgeGroupLabel, sortAgeGroups } from "@/lib/sortAgeGroups";
 import {
   AgeGroupRecords,
+  Gender,
   RecordsData,
   WeightClassRecord,
 } from "@/types/records";
-import { Filters, Gender } from "@/types/wso-records";
+import { WsoRecordsFilters } from "@/types/wso-records";
 import { Stack } from "expo-router";
 import React, { useEffect, useMemo } from "react";
 import { StyleSheet } from "react-native";
@@ -46,7 +47,7 @@ function WSORecordsScreenContent() {
     setTempFilters,
     openFilters,
     filterModalProps,
-  } = useFilterState<Filters>({
+  } = useFilterState<WsoRecordsFilters>({
     defaultFilters: { wso: "", gender: "Men", ageGroup: "Senior" },
   });
 

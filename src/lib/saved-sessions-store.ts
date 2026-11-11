@@ -7,8 +7,6 @@ import { getSavedSessionsKey } from '@/utils/session';
  * The device's saved-sessions list: its row type, how a persisted row is
  * read back, and the per-user AsyncStorage read/commit with the in-memory
  * copy that avoids re-reading and re-parsing an unchanged list.
- *
- * Re-exported from `hooks/useSavedSessions`, which is where callers import it.
  */
 export interface SavedSession {
   id: string;

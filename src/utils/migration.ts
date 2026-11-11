@@ -1,5 +1,5 @@
 import { MeetName } from "@/data/types/meet";
-import type { SavedSession } from "@/hooks/useSavedSessions";
+import type { SavedSession } from "@/lib/saved-sessions-store";
 import { generateSessionId } from "./session";
 
 /**

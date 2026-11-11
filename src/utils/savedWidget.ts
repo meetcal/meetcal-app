@@ -1,5 +1,5 @@
 import { NativeModules } from 'react-native';
-import { SavedSession } from '@/hooks/useSavedSessions';
+import type { SavedSession } from '@/lib/saved-sessions-store';
 import { MeetName } from '@/data/types/meet';
 import { createSessionDetailsDeepLink } from '@/utils/deepLinks';
 import { convertZonedLocalToUTC, parseClockTime } from '@/utils/timezone';

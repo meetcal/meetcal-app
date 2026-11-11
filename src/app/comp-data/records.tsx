@@ -16,7 +16,7 @@ import {
 } from "@/lib/database/fetch-records";
 import { filterSummary } from "@/lib/filter-summary";
 import { formatAgeGroupLabel, sortAgeGroups } from "@/lib/sortAgeGroups";
-import { Filters, Gender, RecordsData, WeightClassRecord } from "@/types/records";
+import { RecordsFilters, Gender, RecordsData, WeightClassRecord } from "@/types/records";
 import { Stack } from "expo-router";
 import React, { useEffect, useMemo, useState } from "react";
 import { StyleSheet } from "react-native";
@@ -61,7 +61,7 @@ function RecordsScreenContent() {
     setTempFilters,
     openFilters,
     filterModalProps,
-  } = useFilterState<Filters>({
+  } = useFilterState<RecordsFilters>({
     defaultFilters: { federation: "", gender: "Men", ageGroup: "" },
     // Reset lands on a usable table rather than the empty initial state, which
     // only exists until the federation defaults effect below runs.

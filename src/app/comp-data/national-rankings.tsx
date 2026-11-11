@@ -16,7 +16,8 @@ import {
 } from "@/lib/database/fetch-national-rankings";
 import { competitionRanks } from "@/lib/competition-rank";
 import { isNetworkAvailable } from "@/lib/networkUtils";
-import { FilterState, Gender } from "@/types/nat-rankings";
+import { FilterState } from "@/types/nat-rankings";
+import { Gender } from "@/types/records";
 import { getWeightClasses, getWeightClassOptions } from "@/utils/nat-rankings";
 import { Stack } from "expo-router";
 import React, { useEffect, useMemo, useState } from "react";
