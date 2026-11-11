@@ -31,7 +31,6 @@ pub fn cutoff_date(today: NaiveDate, years: i32) -> String {
 }
 
 /// Each name's best snatch, clean & jerk and total over the past year, keyed by the name as
-/// given. Names are read in batches, side by side; an empty list reads nothing.
 pub async fn year_bests(names: &[String]) -> Result<HashMap<String, NamedBests>> {
     let cutoff = cutoff_date(Utc::now().date_naive(), YEAR_BESTS_YEARS);
     let batches = names

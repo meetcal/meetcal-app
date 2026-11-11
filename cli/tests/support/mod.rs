@@ -15,7 +15,6 @@ pub const UNAVAILABLE: &str = "503 Service Unavailable";
 pub const OK: &str = "200 OK";
 pub const NOT_FOUND: &str = "404 Not Found";
 pub const FUNCTION_FAILED: &str = "560 Function Failed";
-/// Not a status: the server reads the request, then closes the connection without answering.
 pub const DROPPED: &str = "dropped";
 
 pub struct Reply {

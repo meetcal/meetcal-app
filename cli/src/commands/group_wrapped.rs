@@ -50,7 +50,6 @@ pub async fn get_recent_results(
     names: &[String],
     cutoff_date: &str,
 ) -> Result<Vec<LiftingResults>> {
-    // The name batches are read side by side; rows stay in the names' order.
     let batches = names
         .chunks(RESULTS_REQUEST_BATCH_SIZE)
         .map(|batch| json!({ "names": batch, "cutoffDate": cutoff_date }))

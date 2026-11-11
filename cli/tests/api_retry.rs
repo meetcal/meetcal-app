@@ -99,7 +99,6 @@ async fn gives_up_on_a_connection_that_keeps_dropping() {
         error.to_string(),
         "Failed to call MeetCal query reference:clubAthletes"
     );
-    // The first attempt and two retries; the fourth reply is never asked for.
     assert_eq!(requests.lock().unwrap().len(), 3);
 }
 
