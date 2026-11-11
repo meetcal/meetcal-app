@@ -913,11 +913,26 @@ function rosterEntryId(nameKey: string, club: string, weightClass: string): stri
 
 const EVERY_ROW_IN_ONE_CLUB = 'wso';
 
+function entryEachStatsRowWasJoinedTo(roster: readonly WsoRosterEntry[]): Map<string, WsoRosterEntry> {
+  const inStatsEntriesOrder = [...roster].sort(
+    (a, b) => compareCollated(a.name, b.name) || compareCollated(a.weightClass, b.weightClass) || compareCollated(a.club, b.club),
+  );
+  const joined = new Map<string, WsoRosterEntry>();
+  for (const entry of inStatsEntriesOrder) {
+    const id = rosterEntryId(normalizeName(entry.name), entry.club, entry.weightClass);
+    if (!joined.has(id)) joined.set(id, entry);
+  }
+  return joined;
+}
+
 export function wsoStats(rows: readonly StatsRow[], roster: readonly WsoRosterEntry[], wso: string) {
   const members = roster.filter((entry) => registeredWithWso(entry, wso));
-  const memberEntries = new Set(members.map((entry) => rosterEntryId(normalizeName(entry.name), entry.club, entry.weightClass)));
+  const joined = entryEachStatsRowWasJoinedTo(roster);
   const memberRows = rows
-    .filter((row) => memberEntries.has(rosterEntryId(row.key, row.club, row.weight_class)))
+    .filter((row) => {
+      const entry = joined.get(rosterEntryId(row.key, row.club, row.weight_class));
+      return entry !== undefined && registeredWithWso(entry, wso);
+    })
     .map((row) => ({ ...row, club: EVERY_ROW_IN_ONE_CLUB }));
   const distinctMembers = new Set(members.map((entry) => normalizeName(entry.name))).size;
   return clubStats(memberRows, EVERY_ROW_IN_ONE_CLUB, distinctMembers);

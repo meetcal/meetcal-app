@@ -1,4 +1,6 @@
-import { computeStatsRowsOfWso, registeredWithWso, wsoStats, type StatsRow } from '../convex/lib/meetData';
+import { computeStatsRowsOfWso, registeredWithWso, statsViewItems, wsoStats, type StatsRow } from '../convex/lib/meetData';
+import { meetKey } from '../convex/lib/viewKeys';
+import { jsonChunks, writeView } from '../convex/lib/views';
 import { wsoMeetStats } from '../convex/reference';
 import { ANONYMOUS_AUTH, fakeDb, handlerOf } from './fakeDb';
 
@@ -118,6 +120,59 @@ describe("a WSO's meet stats", () => {
     expect(stats.total_athletes).toBe(1);
     expect(stats.athlete_results).toHaveLength(1);
     expect(stats.gold_medals).toBe(3);
+  });
+
+  it('credit a result joined to one of two identical entries to the first entry, as the live path does', () => {
+    const row: StatsRow = {
+      key: 'ann',
+      name: 'Ann',
+      club: 'Unattached',
+      weight_class: '71',
+      body_weight: 70,
+      attempts: [80, 0, 0, 100, 0, 0],
+      snatch_best: 80,
+      cj_best: 100,
+      total: 180,
+      placings: [1, 1, 1],
+      previous_best: null,
+    };
+    const roster = [athlete('Ann', 'Unattached', 'Carolina'), athlete('Ann', 'Unattached', 'Florida')];
+    expect(wsoStats([row], roster as never, 'Carolina').athlete_results).toHaveLength(1);
+    const florida = wsoStats([row], roster as never, 'Florida');
+    expect(florida.athlete_results).toHaveLength(0);
+    expect(florida.total_athletes).toBe(1);
+  });
+
+  it("answer from the meet's stats view when it is fresh", async () => {
+    const entry = (name: string, wso: string) => ({ name, club: 'North', wso, meet: 'Open', gender: 'Men', weightClass: '89', entryTotal: 200, memberId: name, age: 40, adaptive: false });
+    const viewRow = (name: string): StatsRow => ({
+      key: name.toLowerCase(),
+      name,
+      club: 'North',
+      weight_class: '89',
+      body_weight: 88,
+      attempts: [100, 0, 0, 120, 0, 0],
+      snatch_best: 100,
+      cj_best: 120,
+      total: 220,
+      placings: [1, 1, 1],
+      previous_best: 200,
+    });
+    const fake = fakeDb({ athletes: [entry('Al', 'Carolina'), entry('Bo', 'Florida')] });
+    await writeView(
+      { db: fake.db } as never,
+      meetKey('Open', 'stats'),
+      jsonChunks(statsViewItems([viewRow('Al'), viewRow('Bo')], [])),
+      [{ table: 'lifting_results', version: 1 }],
+      { meta: '2026-06-20' },
+    );
+    const stats = (await handlerOf<{ wso: string; meet: string }, { total_athletes: number; total_prs: number; athlete_results: { name: string }[] }>(wsoMeetStats)(
+      { db: fake.db, auth: ANONYMOUS_AUTH },
+      { wso: 'Carolina', meet: 'Open' },
+    ));
+    expect(stats.total_athletes).toBe(1);
+    expect(stats.athlete_results.map((r) => r.name)).toEqual(['Al']);
+    expect(stats.total_prs).toBe(1);
   });
 
   it('answer zero athletes for a WSO with nobody at the meet, and refuse an empty WSO or meet', async () => {
