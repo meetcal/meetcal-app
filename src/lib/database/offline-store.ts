@@ -882,9 +882,9 @@ async function readCachedSchedule(scheduleKey: string): Promise<Schedule | null>
   if (!scheduleString) return null;
   try {
     const parsed: unknown = JSON.parse(scheduleString);
-    const problem = scheduleShapeProblem(parsed);
-    if (problem) console.warn('Ignoring cached schedule:', problem);
-    return isSchedule(parsed) ? parsed : null;
+    if (isSchedule(parsed)) return parsed;
+    console.warn('Ignoring cached schedule:', scheduleShapeProblem(parsed));
+    return null;
   } catch (parseError) {
     console.warn('Ignoring invalid cached schedule payload:', parseError);
     return null;

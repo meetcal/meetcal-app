@@ -23,15 +23,7 @@ let inFlightRead: Promise<AuthCacheData | null> | null = null;
 let lastPersistedSignature: string | null = null;
 let lastPersistedAt = 0;
 let mutationRevision = 0;
-/**
- * Tail of the serialized write chain. Writes and the clear share it so they
- * can never interleave: two overlapping writes with *different* signatures
- * used to run concurrently and share one `.finally`, so whichever settled
- * first released the in-flight tracking for both. `clearAuthCache` then saw
- * "nothing in flight", deleted the key, and the loser's write landed after the
- * delete — leaving `isSignedIn: true` on disk after a sign-out.
- */
-const authCacheWrites = createWriteChain();
+const writesAndClearsInOrder = createWriteChain();
 /**
  * Set when a sign-out's Keychain delete failed, until the next successful
  * `cacheAuthState`. The entry may still say signed in, and `useStorageUser`
@@ -92,13 +84,11 @@ export async function cacheAuthState(
   userId?: string
 ) {
   const signature = getAuthSignature(isSignedIn, userId);
-  await authCacheWrites(async () => {
-    // Compare after earlier writes/clears settle, otherwise a later sign-in
-    // can be discarded because it matches the state before a queued sign-out.
+  await writesAndClearsInOrder(async () => {
     const age = Date.now() - lastPersistedAt;
-    if (signature === lastPersistedSignature && age >= 0 && age < CACHE_REFRESH_INTERVAL_MS) {
-      return;
-    }
+    const alreadyPersistedAfterEarlierWritesSettled =
+      signature === lastPersistedSignature && age >= 0 && age < CACHE_REFRESH_INTERVAL_MS;
+    if (alreadyPersistedAfterEarlierWritesSettled) return;
     mutationRevision += 1;
     try {
       const cacheData: AuthCacheData = {
@@ -144,7 +134,7 @@ export async function getCachedAuthState(): Promise<AuthCacheData | null> {
 
   inFlightRead = (async () => {
   try {
-    await authCacheWrites(async () => undefined);
+    await writesAndClearsInOrder(async () => undefined);
     if (clearFailed) return null;
     const readRevision = mutationRevision;
     const cachedData = await SecureStore.getItemAsync(AUTH_CACHE_KEY);
@@ -205,10 +195,8 @@ export async function getCachedAuthState(): Promise<AuthCacheData | null> {
  * Clerk user overwrites it.
  */
 export async function clearAuthCache() {
-  await authCacheWrites(async () => {
+  await writesAndClearsInOrder(async () => {
     mutationRevision += 1;
-    // Whatever happens below, the next `cacheAuthState` must write, not
-    // deduplicate against an entry that may be gone.
     lastPersistedSignature = null;
     lastPersistedAt = 0;
     try {

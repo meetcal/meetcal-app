@@ -156,7 +156,6 @@ export function syncSiriToken(state: SiriTokenState, now: () => number = Date.no
   });
 }
 
-/** Forgets the retry wait and the queue. Tests only. */
 export function resetSiriTokenForTests(): void {
   siriTokenSyncs = createWriteChain();
   retryAfter = null;

@@ -149,9 +149,7 @@ export default function ProfileScreen() {
       {
         text: "Manage Subscription",
         onPress: () => {
-          Linking.openURL(subscriptionManagementUrl(Platform.OS)).catch((error) => {
-            console.error("Error opening subscription settings:", error);
-          });
+          void openWebLink(subscriptionManagementUrl(Platform.OS));
         },
       },
       {
