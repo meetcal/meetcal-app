@@ -1,4 +1,4 @@
-import type { SupabaseBests } from "@/data/types/athletes";
+import type { AthleteBests } from "@/data/types/athletes";
 
 export type SessionAthleteSortKey = "entryTotal" | "snatch" | "cj" | "total";
 export type SessionAthleteSortDirection = "asc" | "desc";
@@ -9,7 +9,7 @@ export type SessionAthleteSortDirection = "asc" | "desc";
  */
 function sortValue(
   athlete: { name: string; entryTotal: number },
-  bests: SupabaseBests | undefined,
+  bests: AthleteBests | undefined,
   key: SessionAthleteSortKey,
 ): number | null {
   if (key === "entryTotal") return athlete.entryTotal || 0;
@@ -30,7 +30,7 @@ function sortValue(
  */
 export function sortSessionAthletes<T extends { name: string; entryTotal: number }>(
   athletes: readonly T[],
-  bestsByName: Readonly<Record<string, SupabaseBests | undefined>>,
+  bestsByName: Readonly<Record<string, AthleteBests | undefined>>,
   key: SessionAthleteSortKey,
   direction: SessionAthleteSortDirection,
 ): T[] {

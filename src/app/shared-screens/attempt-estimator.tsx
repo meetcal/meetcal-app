@@ -1,7 +1,8 @@
+import { stackHeaderOptions } from "@/lib/stack-header-options";
 import { IconSymbol } from "@/components/ui/IconSymbol";
 import { ThemedText } from "@/components/ui/ThemedText";
 import { ThemedView } from "@/components/ui/ThemedView";
-import { SupabaseLiftResult } from "@/data/types/athletes";
+import { AthleteMeetResult } from "@/data/types/athletes";
 import { MeetName } from "@/data/types/meet";
 import { useAppColors } from "@/hooks/useAppColors";
 import { filterSessionAthletes, freshRosterReplacesShown } from "@/lib/athletes";
@@ -150,7 +151,7 @@ function AttemptEstimatorContent() {
         const resultsByName = await getAllCachedLiftingResultsForAthletes(
           namedAthletes.map((athlete) => athlete.name),
         );
-        const cachedSessionResults: SupabaseLiftResult[] = [];
+        const cachedSessionResults: AthleteMeetResult[] = [];
         for (const athlete of namedAthletes) {
           const athleteResults = resultsByName[athlete.name] ?? [];
           cachedSessionResults.push(
@@ -268,18 +269,10 @@ function AttemptEstimatorContent() {
       >
         <Stack.Screen
           options={{
-            headerShown: true,
+            ...stackHeaderOptions(colors),
             headerTitle: "Attempt Estimator",
-            headerBackTitle: "Back",
-            headerBackButtonDisplayMode: "minimal",
             headerTransparent: true,
             headerLargeTitle: false,
-            headerStyle: { backgroundColor: colors.background },
-            headerShadowVisible: false,
-            headerTitleStyle: {
-              color: colors.text,
-            },
-            headerTintColor: colors.text
           }}
         />
         <View style={styles.emptyContainer}>
@@ -300,16 +293,8 @@ function AttemptEstimatorContent() {
       >
         <Stack.Screen
           options={{
-            headerShown: true,
+            ...stackHeaderOptions(colors),
             headerTitle: "Attempt Estimator",
-            headerBackTitle: "Back",
-            headerBackButtonDisplayMode: "minimal",
-            headerStyle: { backgroundColor: colors.background },
-            headerShadowVisible: false,
-            headerTitleStyle: {
-              color: colors.text,
-            },
-            headerTintColor: colors.text
           }}
         />
         <ScrollView contentContainerStyle={styles.scrollContent}>
@@ -327,14 +312,8 @@ function AttemptEstimatorContent() {
     >
       <Stack.Screen
         options={{
-          headerShown: true,
+          ...stackHeaderOptions(colors),
           headerTitle: "Attempt Estimator",
-          headerBackTitle: "Back",
-          headerBackButtonDisplayMode: "minimal",
-          headerTitleStyle: {
-            color: colors.text,
-          },
-          headerTintColor: colors.text
         }}
       />
 

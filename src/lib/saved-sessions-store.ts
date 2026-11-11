@@ -7,8 +7,6 @@ import { getSavedSessionsKey } from '@/utils/session';
  * The device's saved-sessions list: its row type, how a persisted row is
  * read back, and the per-user AsyncStorage read/commit with the in-memory
  * copy that avoids re-reading and re-parsing an unchanged list.
- *
- * Re-exported from `hooks/useSavedSessions`, which is where callers import it.
  */
 export interface SavedSession {
   id: string;
@@ -58,7 +56,6 @@ export function normalizeStoredSession(value: unknown): SavedSession | null {
   }
 
   const session: SavedSession = {
-    ...(row as unknown as SavedSession),
     id: row.id,
     meet: row.meet,
     sessionNumber,
@@ -69,15 +66,11 @@ export function normalizeStoredSession(value: unknown): SavedSession | null {
     date: text(row.date),
   };
   if (typeof row.notes === 'string') session.notes = row.notes;
-  else delete session.notes;
   if (typeof row.athleteName === 'string') session.athleteName = row.athleteName;
-  else delete session.athleteName;
   if (Array.isArray(row.athleteNames)) {
     session.athleteNames = row.athleteNames.filter(
       (name: unknown): name is string => typeof name === 'string',
     );
-  } else {
-    delete session.athleteNames;
   }
   return session;
 }
