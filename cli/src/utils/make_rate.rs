@@ -40,7 +40,7 @@ mod tests {
 
     #[test]
     fn untaken_attempts_are_not_makes() {
-        let rows = vec![row(
+        let rows = [row(
             "A",
             "2026-01-01",
             "M",
