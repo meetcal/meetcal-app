@@ -13,7 +13,7 @@ use crate::commands::group_wrapped::{
 use crate::commands::wrapped::current_year;
 use crate::types::lifting_results::LiftingResults;
 use crate::utils::backend::{functions, premium_action};
-use crate::utils::filters::{category, parse_date, unknown_federation};
+use crate::utils::filters::{category, parse_date, plus_years, unknown_federation, year_range};
 use crate::utils::format::us_date;
 use crate::utils::names::{NameKind, not_found};
 use crate::utils::output::{self, Report};
@@ -69,13 +69,6 @@ pub const MAX_LIMIT: u32 = 500;
 /// A leaderboard of every athlete covers less than this many years (`MAX_LEADERBOARD_YEARS` in
 /// `convex/lib/leaderboard.ts`): `--to` before `--from` plus this many years.
 pub const MAX_YEARS: i32 = 5;
-
-/// `date` (`YYYY-MM-DD`) plus `years`, as text to compare dates with, as the server's `plusYears`
-/// does (Feb 29 stays Feb 29, so it compares after Feb 28 and before Mar 1).
-fn plus_years(date: &str, years: i32) -> String {
-    let year: i32 = date.get(..4).and_then(|y| y.parse().ok()).unwrap_or(0);
-    format!("{:04}{}", year + years, date.get(4..).unwrap_or(""))
-}
 
 /// Why `results:leaderboard` would refuse a leaderboard of every athlete from `from` to `to` with
 /// `limit` rows, checked before any request; `None` when it would not.
@@ -169,10 +162,7 @@ pub struct LeaderboardArgs {
 pub fn range(year: Option<i32>, from: Option<&str>, to: Option<&str>) -> (String, String) {
     match (from, to) {
         (Some(from), Some(to)) => (from.trim().to_string(), to.trim().to_string()),
-        _ => {
-            let year = year.unwrap_or_else(current_year);
-            (format!("{year:04}-01-01"), format!("{year:04}-12-31"))
-        }
+        _ => year_range(year.unwrap_or_else(current_year)),
     }
 }
 

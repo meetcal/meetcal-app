@@ -47,6 +47,18 @@ pub fn same_gender(row: &str, wanted: &str) -> bool {
     gender_label(row).eq_ignore_ascii_case(&gender_label(wanted))
 }
 
+/// `date` (`YYYY-MM-DD`) plus `years`, as text to compare dates with, as the server's `plusYears`
+/// does (Feb 29 stays Feb 29, so it compares after Feb 28 and before Mar 1).
+pub fn plus_years(date: &str, years: i32) -> String {
+    let year: i32 = date.get(..4).and_then(|y| y.parse().ok()).unwrap_or(0);
+    format!("{:04}{}", year + years, date.get(4..).unwrap_or(""))
+}
+
+/// The first and last day of calendar `year`, `YYYY-MM-DD`.
+pub fn year_range(year: i32) -> (String, String) {
+    (format!("{year:04}-01-01"), format!("{year:04}-12-31"))
+}
+
 /// The error for a `--federation` no row in the range has, naming the ones that do; `None`
 /// when some row has it (or no federation was asked for).
 pub fn unknown_federation<'a>(

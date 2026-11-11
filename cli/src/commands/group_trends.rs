@@ -20,7 +20,7 @@ use crate::types::wso::Movement;
 use crate::utils::athletes::histories;
 use crate::utils::backend::{CONCURRENT_READS, in_order, queries, query};
 use crate::utils::format::us_date;
-use crate::utils::meet_names::{editions_by_year, equivalent_meets};
+use crate::utils::meet_names::{editions_by_year, equivalent_meets, year_of};
 use crate::utils::names::{NameKind, not_found};
 use crate::utils::output::{self, Report};
 use crate::utils::stats::{
@@ -252,7 +252,7 @@ pub fn meet_editions(group_rows: &[LiftingResults]) -> Vec<(Vec<String>, Vec<Str
         if !spellings.contains(&row.meet) {
             spellings.push(row.meet.clone());
         }
-        let row_year = year(&row.date);
+        let row_year = year_of(&row.date).to_string();
         if !years.contains(&row_year) {
             years.push(row_year);
         }
@@ -266,10 +266,6 @@ fn own_title_rows(meet: &str, rows: Vec<LiftingResults>) -> Vec<LiftingResults> 
     rows.into_iter()
         .filter(|row| fold(&row.meet) == fold(meet))
         .collect()
-}
-
-fn year(date: &str) -> String {
-    date.get(..4).unwrap_or(date).to_string()
 }
 
 /// An athlete's best-total row (none while every row is a source error), best Sinclair, results,
@@ -290,7 +286,10 @@ pub fn report(
 ) -> Report {
     let mut years: BTreeMap<String, Vec<&LiftingResults>> = BTreeMap::new();
     for row in group_rows {
-        years.entry(year(&row.date)).or_default().push(row);
+        years
+            .entry(year_of(&row.date).to_string())
+            .or_default()
+            .push(row);
     }
 
     // Shown without the medal columns under `--no-medals`; exported with them always (null
