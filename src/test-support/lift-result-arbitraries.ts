@@ -26,7 +26,6 @@ export const athleteNameArb: fc.Arbitrary<string> = fc.oneof(
 );
 
 export const liftResultArb: fc.Arbitrary<AthleteMeetResult> = fc.record({
-  id: fc.integer(),
   event_id: fc.string({ maxLength: 12 }),
   meet: fc.string({ maxLength: 16 }),
   date: fc.string({ maxLength: 10 }),
@@ -67,7 +66,6 @@ export function bulkyLiftResults(seed: number, count: number): AthleteMeetResult
     let name = '';
     for (let i = 0; i < 50; i++) name += next();
     return {
-      id: index,
       event_id: next(),
       meet: 'Bulk Meet',
       date: '2026-06-20',
