@@ -3,6 +3,7 @@ use clap::Parser;
 use comfy_table::Table;
 
 use crate::types::meets::Meet;
+use crate::utils::filters::parse_date;
 use crate::utils::format::date_range;
 use crate::utils::names::{completed_meets, completed_meets_since, upcoming_meets};
 use crate::utils::output::{self, Report};
@@ -21,18 +22,18 @@ pub struct MeetsArgs {
     #[arg(long, short = 'c')]
     pub completed: bool,
 
-    #[arg(long, requires = "completed", value_parser = iso_date)]
+    #[arg(
+        long,
+        requires = "completed",
+        value_name = "YYYY-MM-DD",
+        value_parser = parse_date,
+        help = "With --completed: only meets starting on or after this date"
+    )]
     pub since: Option<String>,
 
     /// Only meets whose name contains this text (case-insensitive)
     #[arg(long, short = 's')]
     pub search: Option<String>,
-}
-
-fn iso_date(text: &str) -> Result<String, String> {
-    chrono::NaiveDate::parse_from_str(text, "%Y-%m-%d")
-        .map(|date| date.format("%Y-%m-%d").to_string())
-        .map_err(|_| format!("\"{text}\" is not a date like 2026-01-31"))
 }
 
 pub async fn run(args: MeetsArgs) -> Result<()> {
@@ -121,19 +122,25 @@ mod tests {
     use super::*;
 
     #[test]
-    fn since_takes_a_real_date_and_pads_it() {
-        assert_eq!(iso_date("2026-01-31"), Ok("2026-01-31".to_owned()));
-        assert_eq!(iso_date("2026-1-5"), Ok("2026-01-05".to_owned()));
-        assert!(iso_date("2026-02-30").is_err());
-        assert!(iso_date("last year").is_err());
-    }
-
-    #[test]
     fn since_is_only_for_completed_meets() {
         assert!(
             MeetsArgs::try_parse_from(["meets", "--completed", "--since", "2026-01-01"]).is_ok()
         );
         assert!(MeetsArgs::try_parse_from(["meets", "--since", "2026-01-01"]).is_err());
+        assert!(
+            MeetsArgs::try_parse_from(["meets", "--completed", "--since", "2026-02-30"]).is_err()
+        );
+        let padded =
+            MeetsArgs::try_parse_from(["meets", "--completed", "--since", "Sep 5, 2026"]).unwrap();
+        assert_eq!(padded.since.as_deref(), Some("2026-09-05"));
+    }
+
+    #[test]
+    fn since_says_what_it_takes_in_the_help() {
+        use clap::CommandFactory;
+        let help = MeetsArgs::command().render_long_help().to_string();
+        assert!(help.contains("--since <YYYY-MM-DD>"));
+        assert!(help.contains("only meets starting on or after this date"));
     }
 
     fn meet(name: &str, city: &str, state: &str) -> Meet {
