@@ -1,5 +1,6 @@
 use clap::Parser;
 use meetcal::parser::{Cli, Commands};
+use meetcal::utils::stats::Gender;
 
 #[test]
 fn parses_intl_rankings_with_flags() {
@@ -9,7 +10,7 @@ fn parses_intl_rankings_with_flags() {
         panic!("expected adaptive-records command");
     };
 
-    assert_eq!(args.gender, "Men");
+    assert_eq!(args.gender, Gender::Men);
 }
 
 #[test]

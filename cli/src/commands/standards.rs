@@ -4,9 +4,9 @@ use comfy_table::Table;
 use serde::Deserialize;
 
 use crate::utils::backend::{NoArgs, queries, query};
-use crate::utils::filters::{Filter, gender_label, no_match, same_gender};
+use crate::utils::filters::{Filter, is_gender, no_match};
 use crate::utils::output::{self, Report};
-use crate::utils::stats::{number, weight_class};
+use crate::utils::stats::{Gender, number, weight_class};
 
 #[derive(Debug, Deserialize)]
 pub struct Standards {
@@ -29,9 +29,9 @@ pub struct StandardsArgs {
     #[arg(long, short = 'a')]
     pub age: String,
 
-    /// Gender: Men or Women
-    #[arg(long, short = 'g')]
-    pub gender: String,
+    /// Gender: Men or Women (m, f, male and female work too)
+    #[arg(long, short = 'g', value_parser = crate::utils::filters::parse_gender)]
+    pub gender: Gender,
 }
 
 pub async fn run(args: StandardsArgs) -> Result<()> {
@@ -39,20 +39,19 @@ pub async fn run(args: StandardsArgs) -> Result<()> {
     let age = args.age;
     let gender = args.gender;
     let standards: Vec<Standards> = query(queries::STANDARDS, &NoArgs {}).await?;
-    let (table, data) = tables(&selected(standards, &age, &gender)?);
+    let (table, data) = tables(&selected(standards, &age, gender)?);
     output::emit(Report::new().table_with_data("standards", table, data));
 
     Ok(())
 }
 
-pub fn selected(standards: Vec<Standards>, age: &str, gender: &str) -> Result<Vec<Standards>> {
+pub fn selected(standards: Vec<Standards>, age: &str, gender: Gender) -> Result<Vec<Standards>> {
     let (filtered, others): (Vec<Standards>, Vec<Standards>) =
         standards.into_iter().partition(|row| {
             row.age_category.trim().eq_ignore_ascii_case(age.trim())
-                && same_gender(&row.gender, gender)
+                && is_gender(&row.gender, gender)
         });
     if filtered.is_empty() {
-        let gender = gender_label(gender);
         let filters = [
             Filter {
                 option: "--age",
@@ -60,7 +59,7 @@ pub fn selected(standards: Vec<Standards>, age: &str, gender: &str) -> Result<Ve
             },
             Filter {
                 option: "--gender",
-                value: &gender,
+                value: gender.label(),
             },
         ];
         let rows: Vec<Vec<&str>> = others
@@ -179,7 +178,7 @@ mod tests {
             standard("55kg", 184.0, 0.0),
             standard("Open", 1.0, 0.0),
         ];
-        let classes: Vec<String> = selected(standards, " u15", "m")
+        let classes: Vec<String> = selected(standards, " u15", Gender::Men)
             .unwrap()
             .into_iter()
             .map(|row| row.weight_class)

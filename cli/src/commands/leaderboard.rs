@@ -120,7 +120,7 @@ pub struct LeaderboardArgs {
     pub by: Metric,
 
     /// Calendar year (defaults to the current year; ignored with --from)
-    #[arg(long, short = 'y', value_parser = clap::value_parser!(i32).range(1900..=9999))]
+    #[arg(long, short = 'y', value_parser = crate::utils::filters::parse_year)]
     pub year: Option<i32>,
 
     /// Start of the range, YYYY-MM-DD (with --to)
@@ -133,8 +133,8 @@ pub struct LeaderboardArgs {
     pub to: Option<String>,
 
     /// Men or Women
-    #[arg(long, short = 'g')]
-    pub gender: Option<String>,
+    #[arg(long, short = 'g', value_parser = crate::utils::filters::parse_gender)]
+    pub gender: Option<Gender>,
 
     /// Age category: Senior, Junior, U17, U15, U13, U11, or Masters 35 … Masters 90
     #[arg(long, short = 'c')]
@@ -333,13 +333,7 @@ pub async fn run(args: LeaderboardArgs) -> Result<()> {
     if to < from {
         bail!("--to must not be before --from");
     }
-    let gender = match args.gender.as_deref() {
-        Some(value) => match Gender::parse(value) {
-            Some(gender) => Some(gender),
-            None => bail!("Gender must be Men or Women, not \"{value}\""),
-        },
-        None => None,
-    };
+    let gender = args.gender;
     if gender.is_none() && matches!(args.by, Metric::Sinclair | Metric::Qpoints) {
         bail!(
             "Sinclair and Q-points score men and women on separate scales: add --gender men or --gender women"

@@ -96,6 +96,59 @@ fn names_are_read_without_surrounding_space_and_must_not_be_blank() {
 }
 
 #[test]
+fn every_gender_argument_reads_short_spellings_and_refuses_anything_else() {
+    use meetcal::utils::stats::Gender;
+    let cli = Cli::parse_from(["meetcal", "adaptive-records", "f"]);
+    let Commands::AdaptiveRecords(args) = cli.command else {
+        panic!("expected adaptive-records command");
+    };
+    assert_eq!(args.gender, Gender::Women);
+
+    let cli = Cli::parse_from([
+        "meetcal",
+        "wso-records",
+        "--age",
+        "Senior",
+        "--gender",
+        "w",
+        "--wso",
+        "Carolina",
+    ]);
+    let Commands::WsoRecords(args) = cli.command else {
+        panic!("expected wso-records command");
+    };
+    assert_eq!(args.gender, Gender::Women);
+
+    let cli = Cli::parse_from(["meetcal", "leaderboard", "--gender", "male"]);
+    let Commands::Leaderboard(args) = cli.command else {
+        panic!("expected leaderboard command");
+    };
+    assert_eq!(args.gender, Some(Gender::Men));
+
+    for refused in [
+        vec!["meetcal", "adaptive-records", "mne"],
+        vec!["meetcal", "leaderboard", "--gender", "mne"],
+        vec!["meetcal", "standards", "--age", "Senior", "--gender", "mne"],
+        vec![
+            "meetcal",
+            "records",
+            "--age",
+            "Senior",
+            "--gender",
+            "x",
+            "--federation",
+            "USAW",
+        ],
+    ] {
+        let error = Cli::try_parse_from(&refused)
+            .err()
+            .unwrap_or_else(|| panic!("{refused:?} was accepted"))
+            .to_string();
+        assert!(error.contains("expected Men or Women"), "{error}");
+    }
+}
+
+#[test]
 fn meet_results_checks_its_year_like_the_other_commands() {
     let cli = Cli::parse_from(["meetcal", "meet-results", "Meet", "--year", "2022"]);
     let Commands::MeetResults(args) = cli.command else {

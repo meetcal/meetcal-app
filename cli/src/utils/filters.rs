@@ -29,15 +29,23 @@ pub fn parse_name(value: &str) -> Result<String, String> {
     Ok(name.to_string())
 }
 
-pub fn gender_label(value: &str) -> String {
-    match Gender::parse(value) {
-        Some(gender) => gender.label().to_string(),
-        None => value.trim().to_string(),
-    }
+pub fn parse_gender(value: &str) -> Result<Gender, String> {
+    Gender::parse(value).ok_or_else(|| "expected Men or Women (or m, f, male, female)".to_string())
 }
 
-pub fn same_gender(row: &str, wanted: &str) -> bool {
-    gender_label(row).eq_ignore_ascii_case(&gender_label(wanted))
+pub fn is_gender(row_gender: &str, wanted: Gender) -> bool {
+    Gender::parse(row_gender) == Some(wanted)
+}
+
+pub const YEARS: std::ops::RangeInclusive<i32> = 1900..=9999;
+
+pub fn parse_year(value: &str) -> Result<i32, String> {
+    value
+        .trim()
+        .parse::<i32>()
+        .ok()
+        .filter(|year| YEARS.contains(year))
+        .ok_or_else(|| format!("expected a year from {} to {}", YEARS.start(), YEARS.end()))
 }
 
 /// The error for a `--federation` no row in the range has, naming the ones that do; `None`
@@ -101,12 +109,12 @@ pub struct Filter<'a> {
     pub value: &'a str,
 }
 
-/// The error for filters that matched no row of `what` (`"standards"`). `rows` holds each row's
-/// values for the filters, in the filters' order; values compare ignoring case and surrounding
-/// space, as the commands filter. Names the first filter no row matches given the ones before
-/// it, with the values those rows do have.
+pub fn same_ignoring_case_and_surrounding_space(a: &str, b: &str) -> bool {
+    a.trim().eq_ignore_ascii_case(b.trim())
+}
+
 pub fn no_match(what: &str, filters: &[Filter], rows: &[Vec<&str>]) -> Error {
-    let same = |a: &str, b: &str| a.trim().eq_ignore_ascii_case(b.trim());
+    let same = same_ignoring_case_and_surrounding_space;
     let mut remaining: Vec<&Vec<&str>> = rows.iter().collect();
     for (index, filter) in filters.iter().enumerate() {
         let matching: Vec<&Vec<&str>> = remaining
@@ -161,17 +169,28 @@ mod tests {
     }
 
     #[test]
-    fn a_gender_matches_however_it_is_spelled() {
+    fn a_gender_is_read_however_it_is_spelled_and_anything_else_is_refused() {
         for wanted in ["Men", "men", " m ", "male"] {
-            assert!(same_gender("Men", wanted), "{wanted}");
-            assert!(!same_gender("Women", wanted), "{wanted}");
+            assert_eq!(parse_gender(wanted), Ok(Gender::Men), "{wanted}");
         }
         for wanted in ["Women", "w", "F", "female"] {
-            assert!(same_gender("Women", wanted), "{wanted}");
+            assert_eq!(parse_gender(wanted), Ok(Gender::Women), "{wanted}");
         }
-        assert!(!same_gender("Men", "mne"));
-        assert_eq!(gender_label("f"), "Women");
-        assert_eq!(gender_label(" mne "), "mne");
+        assert!(parse_gender("mne").is_err());
+        assert!(is_gender("Men", Gender::Men));
+        assert!(is_gender("male", Gender::Men));
+        assert!(!is_gender("Women", Gender::Men));
+        assert!(!is_gender("", Gender::Women));
+    }
+
+    #[test]
+    fn a_year_is_four_digits_from_1900() {
+        assert_eq!(parse_year("2026"), Ok(2026));
+        assert_eq!(parse_year(" 1900 "), Ok(1900));
+        assert_eq!(parse_year("9999"), Ok(9999));
+        for refused in ["1899", "10000", "-5", "26", "twenty"] {
+            assert!(parse_year(refused).is_err(), "{refused}");
+        }
     }
 
     #[test]

@@ -11,7 +11,7 @@ use crate::utils::backend::{queries, query};
 use crate::utils::meet_names::{equivalent_meets, result_meet_aliases};
 use crate::utils::names::{NameKind, not_found};
 use crate::utils::output::{self, Report};
-use crate::utils::stats::{fold, number, plausible};
+use crate::utils::stats::{Gender, fold, number, plausible};
 use serde_json::json;
 
 const RESULTS_REQUEST_BATCH_SIZE: usize = 50;
@@ -443,12 +443,10 @@ pub fn roster_classes(roster: &[Athletes]) -> RosterClasses {
     classes
 }
 
-/// The server's `normalizeGender`, for grouping only.
 fn gender_key(gender: &str) -> String {
-    match gender.trim().to_lowercase().as_str() {
-        "men" | "male" | "m" => "men".to_string(),
-        "women" | "female" | "f" => "women".to_string(),
-        other => other.to_string(),
+    match Gender::parse(gender) {
+        Some(gender) => gender.label().to_lowercase(),
+        None => gender.trim().to_lowercase(),
     }
 }
 
