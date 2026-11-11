@@ -4,7 +4,7 @@ import { v } from 'convex/values';
 import { internalAction, type ActionCtx } from '../_generated/server';
 import { internal } from '../_generated/api';
 import { fetchJson } from './lib/http';
-import { entriesEndpoint, entriesEventId, entryFromRow, meetFromTitle, unstoredEntriesMessage, type Entry, type EntryRow } from './parse/entries';
+import { entriesEndpoint, entriesEventId, entryFromRow, meetFromTitle, readEntriesTable, unstoredEntriesMessage, type EntriesTable, type Entry, type EntryRow } from './parse/entries';
 import { sourcesFailed } from '../lib/cronAlerts';
 import { NOT_REACHED, runBudget } from './lib/budget';
 
@@ -21,8 +21,8 @@ import { NOT_REACHED, runBudget } from './lib/budget';
  * (the list was pruned by hand before), so the job's work stays bounded by
  * the meets still to come.
  */
-async function getJson(url: string): Promise<{ title?: string; total?: number; data?: EntryRow[] }> {
-  return (await fetchJson(url, { timeoutMs: 60_000 })) as { title?: string; total?: number; data?: EntryRow[] };
+async function getJson(url: string): Promise<EntriesTable> {
+  return readEntriesTable(await fetchJson(url, { timeoutMs: 60_000 }));
 }
 
 /** A target's entries table's title, as the page's heading reads (one request). */

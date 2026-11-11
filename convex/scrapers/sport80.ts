@@ -9,10 +9,14 @@ import {
   formatResults,
   hasResultsRoute,
   nested,
+  pageRows,
   pickNewestEvents,
   pickRequestedEvents,
+  readSport80Env,
+  readTablePage,
   USAW_DOMAIN,
   type ResultRow,
+  type Sport80Env,
 } from './parse/sport80';
 import { sourcesFailed, type SourceFailure } from '../lib/cronAlerts';
 import { NOT_REACHED, runBudget } from './lib/budget';
@@ -61,7 +65,7 @@ export function joinPages(pages: readonly Dict[][], total: unknown): { rows: Dic
 
 /** The Sport80 public API: key and base URL come from the site's `window.env`. */
 class Sport80 {
-  private constructor(private readonly env: Record<string, string>) {}
+  private constructor(private readonly env: Sport80Env) {}
 
   static async connect(): Promise<Sport80> {
     const response = await fetch(`${USAW_DOMAIN}/public/rankings/`, { signal: AbortSignal.timeout(60_000) });
@@ -70,7 +74,7 @@ class Sport80 {
     const page = await response.text();
     const match = /window\.env = ({.*?});/s.exec(page);
     if (!match) throw new Error('sport80: window.env not found on the rankings page');
-    return new Sport80(JSON.parse(match[1]));
+    return new Sport80(readSport80Env(match[1]));
   }
 
   private headers() {
@@ -91,7 +95,7 @@ class Sport80 {
       signal: AbortSignal.timeout(60_000),
     });
     if (!response.ok) throw new Error(`POST ${new URL(url).pathname} failed with ${response.status}`);
-    return (await response.json()) as Dict;
+    return readTablePage(await response.json());
   }
 
   /**
@@ -101,12 +105,12 @@ class Sport80 {
    * `joinPages` finds whole.
    */
   private async collate(first: Dict, payload?: Dict): Promise<{ rows: Dict[]; notWhole?: string }> {
-    const pages: Dict[][] = [(first.data as Dict[]) ?? []];
+    const pages: Dict[][] = [pageRows(first)];
     let current = first;
     for (let page = 1; typeof current.next_page_url === 'string' && current.next_page_url; page++) {
       if (page > MAX_PAGES) throw new Error(`table has over ${MAX_PAGES} pages`);
       current = await this.post(current.next_page_url, payload);
-      pages.push((current.data as Dict[]) ?? []);
+      pages.push(pageRows(current));
     }
     return joinPages(pages, first.total);
   }

@@ -27,6 +27,21 @@ export const IWF_PAGES = {
 export type IwfAge = keyof typeof IWF_PAGES;
 
 /** The "Current records" section's wikitext, through the MediaWiki API. */
+/**
+ * The wikitext in Wikipedia's `action=parse` answer for `page`, checked: the
+ * API's own error (`error.info`) when it sent one, and anything else that is
+ * not text named as what it is.
+ */
+export function wikitextOf(body: unknown, page: string): string {
+  const object = (value: unknown): Record<string, unknown> | null => (typeof value === 'object' && value !== null && !Array.isArray(value) ? (value as Record<string, unknown>) : null);
+  const answer = object(body);
+  if (!answer) throw new Error(`Wikipedia ${page}: the response is not an object`);
+  const wikitext = object(answer.parse)?.wikitext;
+  if (typeof wikitext === 'string' && wikitext !== '') return wikitext;
+  const info = object(answer.error)?.info;
+  throw new Error(`Wikipedia ${page}: ${typeof info === 'string' ? info : wikitext === undefined ? 'no wikitext' : `wikitext is ${wikitext === '' ? 'empty' : `a ${typeof wikitext}`}`}`);
+}
+
 export const wikitextUrl = (page: string) =>
   `https://en.wikipedia.org/w/api.php?action=parse&page=${page}&prop=wikitext&section=1&format=json&formatversion=2`;
 
