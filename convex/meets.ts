@@ -165,17 +165,9 @@ export const namesPage = query({
   },
 });
 
-/**
- * Rows (results and registrations) one `meets:attendance` call reads at
- * most, under the 32,000 documents one query may read: a national meet has
- * some 1,500 registrations and more results once its Junior and Youth titles
- * are linked, so eight of them at once do not fit.
- */
 export const ATTENDANCE_ROW_BUDGET = 24000;
-/** The budget of a call for one meet, which cannot be asked for in a smaller batch. */
 export const ATTENDANCE_SINGLE_MEET_ROW_BUDGET = 30000;
 
-/** `rows`, counted against `budget`; null when they do not fit (one more than what is left was read). */
 async function withinBudget<T>(budget: { left: number }, read: (limit: number) => Promise<T[]>): Promise<T[] | null> {
   const rows = await read(budget.left + 1);
   if (rows.length > budget.left) return null;
@@ -183,12 +175,6 @@ async function withinBudget<T>(budget: { left: number }, read: (limit: number) =
   return rows;
 }
 
-/**
- * `meets:attendance`'s rows, reading at most `rowBudget` results and
- * registrations. Meets that do not fit are a 413, so the caller asks for
- * fewer at once (the CLI halves its batch); a call for one meet gets the
- * larger `ATTENDANCE_SINGLE_MEET_ROW_BUDGET`.
- */
 export async function attendanceRows(
   ctx: QueryCtx,
   meets: readonly string[],
@@ -197,7 +183,6 @@ export async function attendanceRows(
   const budget = { left: rowBudget };
   const rows = [];
   for (const meet of meets) {
-    // Its linked results titles too (a combined national event, #362).
     const [titles, meetRow] = await Promise.all([meetResultTitles(ctx, meet), meetByName(ctx, meet)]);
     const results = [];
     let fits = true;
@@ -235,8 +220,6 @@ export async function attendanceRows(
       start_date: meetRow?.startDate ?? null,
       end_date: meetRow?.endDate ?? null,
       status: meetRow?.status ?? null,
-      // The linked results titles counted here, so a caller that also
-      // asks for them by name does not count their lifters twice.
       results_titles: titles.slice(1),
     });
   }
@@ -246,8 +229,6 @@ export async function attendanceRows(
 /**
  * How many took part in each of `meets` (at most eight): lifters with results, and entries
  * registered (a meet can have its roster before its results), with the results' dates and the
- * meet's own dates and status when MeetCal tracks it. Reads at most `ATTENDANCE_ROW_BUDGET` rows:
- * meets too large to count together are a 413 (`attendanceRows`).
  */
 export const attendance = query({
   args: { meets: v.array(v.string()) },
@@ -352,7 +333,6 @@ export async function liveSessionsJson(
 // ---------------------------------------------------------------------------
 // `GET /meets/package`
 // ---------------------------------------------------------------------------
-
 
 /** Closes a `packageStaticText` with the year bests section when asked for. */
 function closePackage(staticText: string, yearBests: unknown | undefined): string {

@@ -187,8 +187,6 @@ pub async fn run(args: AttendanceArgs) -> Result<()> {
     }
 
     let mut editions: Vec<Edition> = Vec::new();
-    // Batches still to ask for, the next one last. A batch MeetCal refuses as too many rows for
-    // one call (413: several national meets) is asked for again as two halves.
     let mut batches: Vec<&[String]> = matched.chunks(ATTENDANCE_BATCH).rev().collect();
     while let Some(batch) = batches.pop() {
         let answer: Answer = match query(queries::MEET_ATTENDANCE, &json!({ "meets": batch })).await
@@ -218,14 +216,12 @@ pub async fn run(args: AttendanceArgs) -> Result<()> {
     Ok(())
 }
 
-/// The status `meets:attendance` answers when a batch's meets have more rows than one call reads.
 const TOO_MANY_ROWS_STATUS: u16 = 413;
 
 fn too_many_rows(error: &anyhow::Error) -> bool {
     FunctionError::status_of(error) == Some(TOO_MANY_ROWS_STATUS)
 }
 
-/// A batch of two or more meets as two halves, in order, the first no smaller than the second.
 fn halves(batch: &[String]) -> (&[String], &[String]) {
     batch.split_at(batch.len().div_ceil(2))
 }
