@@ -432,7 +432,6 @@ fn same_meet_dates(start: &str, date: &str) -> bool {
     }
 }
 
-/// The report as table format prints it, for the tests.
 #[cfg(test)]
 fn render_group_wrapped(
     group_kind: &str,
