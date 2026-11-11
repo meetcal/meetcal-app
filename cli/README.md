@@ -202,11 +202,13 @@ ones, newest first.
 ```sh
 meetcal meets
 meetcal meets --completed --search virus
+meetcal meets --completed --since 2026-01-01
 ```
 
 Options:
 
 - `--completed`, `-c`: List completed meets instead
+- `--since <YYYY-MM-DD>`: With `--completed`, only meets starting on or after this date
 - `--search`, `-s`: Only meets whose name contains this text
 
 #### `meet-info`

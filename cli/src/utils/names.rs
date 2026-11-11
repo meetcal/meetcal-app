@@ -71,6 +71,10 @@ pub async fn completed_meets() -> Result<Vec<Meet>> {
     query(queries::COMPLETED_MEETS, &NoArgs {}).await
 }
 
+pub async fn completed_meets_since(since: &str) -> Result<Vec<Meet>> {
+    query(queries::COMPLETED_MEETS, &json!({ "since": since })).await
+}
+
 /// Every club name.
 pub async fn clubs() -> Result<Vec<String>> {
     query(queries::CLUBS, &NoArgs {}).await
