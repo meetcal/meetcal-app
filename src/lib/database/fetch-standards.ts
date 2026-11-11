@@ -36,7 +36,8 @@ function mapRows(rows: readonly CompleteStandardsRow[]): StandardsData {
 
   rows.forEach((row) => {
     const ageKey = row.age_category.toLowerCase() as keyof StandardsData;
-    const genderKey = row.gender.toLowerCase() as 'men' | 'women';
+    const genderKey = row.gender.toLowerCase();
+    if (genderKey !== 'men' && genderKey !== 'women') return;
     if (!result[ageKey] || !result[ageKey][genderKey]) return;
     result[ageKey][genderKey].push({
       weightClass: row.weight_class,

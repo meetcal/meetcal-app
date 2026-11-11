@@ -1,3 +1,4 @@
+import { isRecord } from '@/lib/is-record';
 import { ConvexHttpClient } from 'convex/browser';
 import { anyApi } from 'convex/server';
 import { ConvexError } from 'convex/values';
@@ -138,8 +139,8 @@ function functionReference(fn: string): any {
  */
 function toTransportError(call: ApiCall, error: unknown, httpStatus: number | null): unknown {
   if (error instanceof ConvexError) {
-    const data = error.data as { status?: unknown; error?: unknown } | undefined;
-    const status = typeof data?.status === 'number' ? data.status : 400;
+    const data: unknown = error.data;
+    const status = isRecord(data) && typeof data.status === 'number' ? data.status : 400;
     const body = JSON.stringify(data ?? null);
     return new TransportRequestError(`${call.kind} ${call.path} failed with ${status}`, status, body);
   }

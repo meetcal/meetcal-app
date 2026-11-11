@@ -55,45 +55,34 @@ function isNonEmptyString(value: unknown): value is string {
   return typeof value === 'string' && value.length > 0;
 }
 
-const CLUB_MEET_STATS_REQUIRED_FIELDS = [
-  'total_athletes',
-  'gold_medals',
-  'silver_medals',
-  'bronze_medals',
-  'total_prs',
-  'perfect_6_for_6',
-  'total_weight_lifted',
-] as const;
-const CLUB_MEET_STATS_OPTIONAL_FIELDS = [
-  'snatch_make_rate',
-  'cj_make_rate',
-  'combined_make_rate',
-] as const;
-
-/**
- * The `/clubs/meet-stats` body, or a thrown error naming the first bad field.
- * Every count is rendered with `toFixed`/arithmetic in the stats card, and a
- * string or `null` that got past here was persisted and then threw on every
- * later render of that card, offline included. The make rates are optional
- * (older backends omit them) but must be numbers when present.
- */
 function toApiClubMeetStats(value: unknown): ApiClubMeetStats {
   if (!isRecord(value)) {
     throw new Error('[api] /clubs/meet-stats: expected an object');
   }
-  const row = value;
-  for (const field of CLUB_MEET_STATS_REQUIRED_FIELDS) {
-    if (!isFiniteNumber(row[field])) {
+  const count = (field: string): number => {
+    const read = value[field];
+    if (!isFiniteNumber(read)) {
       throw new Error(`[api] /clubs/meet-stats: ${field} is not a finite number`);
     }
-  }
-  for (const field of CLUB_MEET_STATS_OPTIONAL_FIELDS) {
-    const rate = row[field];
-    if (rate !== undefined && rate !== null && !isFiniteNumber(rate)) {
-      throw new Error(`[api] /clubs/meet-stats: ${field} is not a finite number`);
-    }
-  }
-  return row as unknown as ApiClubMeetStats;
+    return read;
+  };
+  const optionalRate = (field: string): number | null | undefined => {
+    const read = value[field];
+    if (read === undefined || read === null) return read;
+    return count(field);
+  };
+  return {
+    total_athletes: count('total_athletes'),
+    gold_medals: count('gold_medals'),
+    silver_medals: count('silver_medals'),
+    bronze_medals: count('bronze_medals'),
+    total_prs: count('total_prs'),
+    perfect_6_for_6: count('perfect_6_for_6'),
+    total_weight_lifted: count('total_weight_lifted'),
+    snatch_make_rate: optionalRate('snatch_make_rate'),
+    cj_make_rate: optionalRate('cj_make_rate'),
+    combined_make_rate: optionalRate('combined_make_rate'),
+  };
 }
 
 function mapClubMeetStats(row: ApiClubMeetStats): ClubMeetStats {
@@ -127,7 +116,7 @@ async function readClubMeetsCache(club: string) {
   const legacy = await readBoundedCacheEntry<unknown>(OFFLINE_CACHE_KEYS.clubAthletes, club);
   if (!legacy || !Array.isArray(legacy.data)) return null;
   const athletes = legacy.data.filter(
-    (row: unknown): row is AthleteClub => !!row && typeof row === 'object' && isNonEmptyString((row as AthleteClub).meet),
+    (row: unknown): row is AthleteClub => isRecord(row) && isNonEmptyString(row.meet),
   );
   return {
     data: clubMeetsNewestFirst(athletes.map((athlete) => ({ meet: athlete.meet, date: athlete.meet_date }))),

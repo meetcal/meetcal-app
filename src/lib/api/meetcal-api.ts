@@ -295,7 +295,7 @@ function parseJsonText(text: string, path: string): unknown {
  */
 function decodeJsonText(value: unknown, path: string): unknown {
   if (isRecord(value) && 'json' in value) {
-    const { json } = value as { json: unknown };
+    const { json } = value;
     if (typeof json !== 'string') throw new Error(`${path} returned a non-text json field`);
     return parseJsonText(json, path);
   }

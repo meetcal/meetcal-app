@@ -16,7 +16,6 @@ import {
 import { filterSummary } from "@/lib/filter-summary";
 import { formatAgeGroupLabel, sortAgeGroups } from "@/lib/sortAgeGroups";
 import {
-  AgeGroupRecords,
   Gender,
   RecordsData,
   WeightClassRecord,

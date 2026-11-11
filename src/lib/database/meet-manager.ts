@@ -329,13 +329,13 @@ async function readPendingHistory(): Promise<Record<string, PendingHistory>> {
     const out: Record<string, PendingHistory> = {};
     for (const [meet, value] of Object.entries(parsed)) {
       if (!isRecord(value)) continue;
-      const entry = value as { names?: unknown; since?: unknown };
+      const entry = value;
       if (!Array.isArray(entry.names)) continue;
       if (typeof entry.since !== 'number' || !Number.isFinite(entry.since)) continue;
       const names = entry.names.filter(
         (name): name is string => typeof name === 'string' && name.length > 0,
       );
-      out[meet] = { names, since: entry.since, full: (entry as { full?: unknown }).full !== false };
+      out[meet] = { names, since: entry.since, full: entry.full !== false };
     }
     return out;
   } catch {
