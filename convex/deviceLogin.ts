@@ -190,17 +190,42 @@ export const claim = internalMutation({
 });
 
 /**
+ * Puts a login `claim` handed over back to `approved`, for a poll whose token
+ * could not be minted: `collected` must mean a token was issued.
+ */
+export const unclaim = internalMutation({
+  args: { deviceCodeHash: v.string() },
+  handler: async (ctx, { deviceCodeHash }) => {
+    const row = await ctx.db
+      .query('device_logins')
+      .withIndex('by_deviceCodeHash', (q) => q.eq('deviceCodeHash', deviceCodeHash))
+      .first();
+    if (row?.status === 'collected') await ctx.db.patch(row._id, { status: 'approved' });
+  },
+});
+
+/**
  * The CLI's poll. Answers `{ status }`: `pending`, `slow_down` (wait
  * `interval` plus five seconds), `denied`, `expired`, `approved` with the
  * token (`{ token, tokenId, expiresAt }`), answered once, or `collected`: it
- * was answered already, and that answer was lost (start again).
+ * was answered already, and that answer was lost (start again). A poll whose
+ * token cannot be minted fails and leaves the login approved, so the next
+ * poll tries again.
  */
 export const poll = action({
   args: { deviceCode: v.string() },
   handler: async (ctx, { deviceCode }): Promise<{ status: PollStatus } | ({ status: 'approved' } & IssuedToken)> => {
-    const answer = await ctx.runMutation(internal.deviceLogin.claim, { deviceCodeHash: await sha256Hex(deviceCode), now: Date.now() });
+    const deviceCodeHash = await sha256Hex(deviceCode);
+    const answer = await ctx.runMutation(internal.deviceLogin.claim, { deviceCodeHash, now: Date.now() });
     if (answer.status !== 'approved') return { status: answer.status };
-    return { status: 'approved', ...(await mintApiToken(ctx, answer.userId, 'cli')) };
+    try {
+      return { status: 'approved', ...(await mintApiToken(ctx, answer.userId, 'cli')) };
+    } catch (error) {
+      // No token went out: the login is approved again, so the next poll
+      // tries again rather than being told it was collected.
+      await ctx.runMutation(internal.deviceLogin.unclaim, { deviceCodeHash });
+      throw error;
+    }
   },
 });
 

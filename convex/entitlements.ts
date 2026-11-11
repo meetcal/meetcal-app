@@ -215,7 +215,7 @@ export const store = internalMutation({
  */
 export const claimRefresh = internalMutation({
   args: { userId: v.string(), now: v.number() },
-  handler: async (ctx, { userId, now }): Promise<{ claimed: true } | { claimed: false; active: boolean }> => {
+  handler: async (ctx, { userId, now }): Promise<{ claimed: true; claimedAt: number } | { claimed: false; active: boolean }> => {
     const deleted = await ctx.db
       .query('deleted_users')
       .withIndex('by_userId', (q) => q.eq('userId', userId))
@@ -228,7 +228,19 @@ export const claimRefresh = internalMutation({
     }
     if (sync) await ctx.db.patch(sync._id, { refreshRequestedAt: now });
     else await ctx.db.insert('entitlement_syncs', { userId, syncedAt: 0, refreshRequestedAt: now });
-    return { claimed: true };
+    return { claimed: true, claimedAt: now };
+  },
+});
+
+/**
+ * Gives back a `claimRefresh` whose RevenueCat call failed, if it is still
+ * the latest claim, so the user's next `refresh` reaches RevenueCat.
+ */
+export const releaseRefresh = internalMutation({
+  args: { userId: v.string(), claimedAt: v.number() },
+  handler: async (ctx, { userId, claimedAt }) => {
+    const sync = await syncRow(ctx, userId);
+    if (sync?.refreshRequestedAt === claimedAt) await ctx.db.patch(sync._id, { refreshRequestedAt: undefined });
   },
 });
 
@@ -253,7 +265,15 @@ export const refresh = action({
     }
     const claim = await ctx.runMutation(internal.entitlements.claimRefresh, { userId: identity.subject, now: Date.now() });
     if (!claim.claimed) return { active: claim.active };
-    const state = await syncEntitlement(ctx, identity.subject);
+    let state: EntitlementState;
+    try {
+      state = await syncEntitlement(ctx, identity.subject);
+    } catch (error) {
+      // RevenueCat did not answer: the next call asks again, rather than
+      // answering a stored "no subscription" for the rest of the minute.
+      await ctx.runMutation(internal.entitlements.releaseRefresh, { userId: identity.subject, claimedAt: claim.claimedAt });
+      throw error;
+    }
     return { active: entitlementIsActive(state, Date.now()) };
   },
 });
