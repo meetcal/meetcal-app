@@ -145,19 +145,12 @@ pub fn Wrapped() -> impl IntoView {
     Effect::new(move |earlier: Option<()>| {
         let athlete = athlete_in_address.get();
         let year = year_shown();
+        let year_problem = wrapped_year(&year).err();
         if earlier.is_some() {
             set_athlete_name.set(athlete);
             set_year.set(year);
-            set_year_error.set(None);
         }
-    });
-    Effect::new(move |_| {
-        let year = year_in_address.get();
-        if !year.is_empty()
-            && let Err(message) = wrapped_year(&year)
-        {
-            set_year_error.set(Some(message));
-        }
+        set_year_error.set(year_problem);
     });
     let wrapped = Load::new(
         move || request.get(),

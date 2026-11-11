@@ -21,11 +21,12 @@ const meet = (name: string, start: string) => ({
   name, start_date: start, end_date: start, time_zone: "America/Los_Angeles", venue_city: "Oakland", venue_name: `${name} Arena`,
   venue_state: "CA", venue_street: "100 Main St", venue_zip: "94612", status: "completed", venue_map_pdf_url: null, venue_map_apple_url: null,
 });
+const ODD_NAME = "A&B + José #1 100% Master's";
 const entrant = { member_id: "1", meet: "Meet Alpha", name: "Test Athlete", age: 27, club: "Test Barbell", wso: "Carolina", gender: "Female", weight_class: "69", entry_total: 220, adaptive: false, session_number: 1, session_platform: "Red" };
 
 async function routeMeets(page: Page) {
   await routeQuery(page, "meets:list", (route) => route.fulfill(textAnswer([])));
-  await routeQuery(page, "meets:completed", (route) => route.fulfill(textAnswer([meet("Meet Alpha", "2026-06-20"), meet("Meet Bravo", "2026-05-20")])));
+  await routeQuery(page, "meets:completed", (route) => route.fulfill(textAnswer([meet("Meet Alpha", "2026-06-20"), meet("Meet Bravo", "2026-05-20"), meet(ODD_NAME, "2026-04-20")])));
   await routeQuery(page, "meets:schedule", (route, args) => route.fulfill(textAnswer([{ date: "2026-06-20", meet: args.meet, platform: `${String(args.meet)} Platform`, session_id: 1, start_time: "10:00", weigh_in_time: "08:00", weight_class: "69kg" }])));
   await routeQuery(page, "meets:athletes", (route, args) => route.fulfill(textAnswer(args.meet === "Meet Alpha" ? [entrant] : [])));
   await routeQuery(page, "results:byMeet", (route) => route.fulfill(textAnswer([])));
@@ -67,6 +68,36 @@ test("building a Wrapped and picking an athlete each add a history entry Back re
   await expect(page.getByLabel("Athlete", { exact: true })).toHaveValue("");
 });
 
+test("building a Wrapped again after Back and Forward still writes its address, and building the shown one asks again", async ({ page }) => {
+  await mockAuth(page, { signedIn: false });
+  const asked = await routeWrapped(page);
+  const build = async (athlete: string) => {
+    await page.getByLabel("Athlete", { exact: true }).fill(athlete);
+    await page.getByRole("button", { name: "Build wrapped" }).click();
+  };
+  await page.goto("/wrapped?athlete=Start&year=2025");
+  await expect(page.getByRole("heading", { name: "2025 Wrapped — Start" })).toBeVisible();
+  await build("Ann Lee");
+  await expect(page).toHaveURL(/athlete=Ann%20Lee&year=2025$/);
+  await build("Bo Kim");
+  await expect(page).toHaveURL(/athlete=Bo%20Kim&year=2025$/);
+  await page.goBack();
+  await expect(page.getByRole("heading", { name: "2025 Wrapped — Ann Lee" })).toBeVisible();
+  await page.goForward();
+  await expect(page.getByRole("heading", { name: "2025 Wrapped — Bo Kim" })).toBeVisible();
+
+  await build("Ann Lee");
+  await expect(page.getByRole("heading", { name: "2025 Wrapped — Ann Lee" })).toBeVisible();
+  await expect(page).toHaveURL(/athlete=Ann%20Lee&year=2025$/);
+  await page.reload();
+  await expect(page.getByRole("heading", { name: "2025 Wrapped — Ann Lee" })).toBeVisible();
+
+  const before = asked.length;
+  await page.getByRole("button", { name: "Build wrapped" }).click();
+  await expect.poll(() => asked.length).toBe(before + 1);
+  await expect(page).toHaveURL(/athlete=Ann%20Lee&year=2025$/);
+});
+
 test("a Wrapped address with a year the page cannot build says so and asks for nothing", async ({ page }) => {
   await mockAuth(page, { signedIn: false });
   const asked = await routeWrapped(page);
@@ -92,6 +123,19 @@ test("a Meets address opens that meet, picking another adds an entry, and typing
   await page.goBack();
   await expect(page).toHaveURL(/\/meet-center$/);
   await expect(page.getByText("Search for and select a meet to load its competition data.")).toBeVisible();
+});
+
+test("a meet whose name has marks and separators survives its address and a reload", async ({ page }) => {
+  await mockSubscribedUser(page);
+  await routeMeets(page);
+  await page.goto("/meet-center");
+  await page.locator("#meet-search-input").fill("A&B");
+  await page.getByRole("option", { name: ODD_NAME }).click();
+  await expect(page).toHaveURL(/\/meet-center\?meet=A%26B%20%2B%20Jos%C3%A9%20%231%20100%25%20Master%27s$/);
+  await expect(page.locator("tbody").first()).toContainText(`${ODD_NAME} Platform`);
+  await page.reload();
+  await expect(page.locator("#meet-search-input")).toHaveValue(ODD_NAME);
+  await expect(page.locator("tbody").first()).toContainText(`${ODD_NAME} Platform`);
 });
 
 test("an athlete link from a meet's results comes back to the same meet", async ({ page }) => {
@@ -137,6 +181,10 @@ test("the dashboards open from their addresses and write their picks to them", a
   await expect(page.getByLabel("WSO")).toHaveValue("Carolina");
   await meetSelect.selectOption("Meet Bravo");
   await expect(page).toHaveURL(/\/wso-dashboard\?meet=Meet%20Bravo$/);
+
+  await page.goto("/wso-dashboard?wso=Carolina");
+  await expect(page.getByText("Choose a meet and WSO to view its dashboard.")).toBeVisible();
+  await expect(page.getByText("WSO athletes")).toHaveCount(0);
 });
 
 test("a National Rankings address opens that ranking with the form showing it", async ({ page }) => {
@@ -161,6 +209,8 @@ test("a National Rankings address opens that ranking with the form showing it", 
   await page.getByRole("button", { name: "View rankings" }).click();
   await expect(page).toHaveURL(/\/national-rankings\?federation=USAMW&division=Women%27s%20Masters%20%2840-44%29%2069kg$/);
   await expect.poll(() => asked.length).toBe(2);
+  await page.getByRole("button", { name: "View rankings" }).click();
+  await expect.poll(() => asked.length).toBe(3);
   await page.goBack();
   await expect(page.getByLabel("Year (optional)")).toHaveValue("2026");
 });
@@ -187,6 +237,8 @@ test("a WSO Elite address asks for that WSO and range", async ({ page }) => {
   await page.getByRole("button", { name: "View elite lists" }).click();
   await expect(page).toHaveURL(/\/wso-elite\?wso=Florida&from=2024-02-01&to=2024-11-30$/);
   await expect.poll(() => asked.length).toBe(2);
+  await page.getByRole("button", { name: "View elite lists" }).click();
+  await expect.poll(() => asked.length).toBe(3);
 });
 
 test("the header's link to a data page opens it empty again", async ({ page, isMobile }) => {

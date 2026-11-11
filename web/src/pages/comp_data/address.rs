@@ -1,6 +1,6 @@
 use leptos::prelude::*;
 use leptos_router::NavigateOptions;
-use leptos_router::hooks::{use_navigate, use_query_map};
+use leptos_router::hooks::{use_location, use_navigate, use_query_map};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum HistoryEntry {
@@ -58,11 +58,47 @@ impl PageAddress {
     }
 }
 
+fn browser_address() -> Option<String> {
+    let location = web_sys::window()?.location();
+    Some(format!(
+        "{}{}",
+        location.pathname().ok()?,
+        location.search().ok()?
+    ))
+}
+
+const ROUTER_SETTLE_MS: u64 = 300;
+
+fn router_stopped_short_of(
+    to: &str,
+    browser_before: Option<&str>,
+    browser_now: Option<&str>,
+    router_now: &str,
+) -> bool {
+    browser_before.is_some()
+        && browser_now == browser_before
+        && browser_before != Some(to)
+        && router_now == to
+}
+
+fn write_to_history(to: &str, entry: HistoryEntry) {
+    let Some(history) = web_sys::window().and_then(|window| window.history().ok()) else {
+        return;
+    };
+    let no_state = wasm_bindgen::JsValue::NULL;
+    let _ = match entry {
+        HistoryEntry::Push => history.push_state_with_url(&no_state, "", Some(to)),
+        HistoryEntry::Replace => history.replace_state_with_url(&no_state, "", Some(to)),
+    };
+}
+
 pub(crate) fn use_page_address(path: &'static str) -> PageAddress {
     let navigate = use_navigate();
+    let location = use_location();
     PageAddress {
         path,
         go: Callback::new(move |(to, entry): (String, HistoryEntry)| {
+            let browser_before = browser_address();
             navigate(
                 &to,
                 NavigateOptions {
@@ -70,6 +106,29 @@ pub(crate) fn use_page_address(path: &'static str) -> PageAddress {
                     scroll: false,
                     ..NavigateOptions::default()
                 },
+            );
+            set_timeout(
+                move || {
+                    let search = location.search.get_untracked();
+                    let router_now = if search.is_empty() {
+                        location.pathname.get_untracked()
+                    } else {
+                        format!(
+                            "{}?{}",
+                            location.pathname.get_untracked(),
+                            search.trim_start_matches('?')
+                        )
+                    };
+                    if router_stopped_short_of(
+                        &to,
+                        browser_before.as_deref(),
+                        browser_address().as_deref(),
+                        &router_now,
+                    ) {
+                        write_to_history(&to, entry);
+                    }
+                },
+                std::time::Duration::from_millis(ROUTER_SETTLE_MS),
             );
         }),
     }
@@ -94,6 +153,34 @@ mod tests {
             address("/club-dashboard", &[("club", "Test Barbell"), ("meet", "")]),
             "/club-dashboard?club=Test%20Barbell"
         );
+    }
+
+    #[test]
+    fn history_is_written_only_when_the_router_moved_and_the_browser_did_not() {
+        let smith = "/wrapped?athlete=Smith";
+        let lee = "/wrapped?athlete=Lee";
+        assert!(router_stopped_short_of(smith, Some(lee), Some(lee), smith));
+        let browser_followed = Some(smith);
+        assert!(!router_stopped_short_of(
+            smith,
+            Some(lee),
+            browser_followed,
+            smith
+        ));
+        let visitor_went_back_meanwhile = lee;
+        assert!(!router_stopped_short_of(
+            smith,
+            Some(lee),
+            Some(lee),
+            visitor_went_back_meanwhile
+        ));
+        assert!(!router_stopped_short_of(
+            smith,
+            Some(smith),
+            Some(smith),
+            smith
+        ));
+        assert!(!router_stopped_short_of(smith, None, None, smith));
     }
 
     #[test]
