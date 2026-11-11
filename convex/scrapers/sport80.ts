@@ -164,7 +164,7 @@ export const run = internalAction({
   args: { dryRun: v.optional(v.boolean()), only: v.optional(v.array(v.string())), allowShrink: v.optional(v.boolean()) },
   handler: async (ctx, { dryRun, only, allowShrink }): Promise<RunResult> => {
     const budget = runBudget();
-    const api = await Sport80.connect();
+    const api = await budget.orStop(Sport80.connect());
     const year = new Date().getUTCFullYear();
     // Everything that could not be read or stored, by a source name that
     // stays the same from run to run. The rest is still stored, then the run
@@ -174,7 +174,7 @@ export const run = internalAction({
     const events: Dict[] = [];
     for (const y of [year, year - 1]) {
       try {
-        events.push(...(await api.eventIndex(y)));
+        events.push(...(await budget.orStop(api.eventIndex(y))));
       } catch (error) {
         failures.push({ source: `event index ${y}`, error: (error as Error).message });
       }
@@ -259,7 +259,8 @@ export const run = internalAction({
       }
       try {
       for (let i = 0; i < valid.length; i += INGEST_BATCH) {
-        const counts: { inserted: number; updated: number; unchanged: number } = await budget.orStop(ctx.runMutation(
+        budget.writeOnlyBeforeTheHardStop();
+        const counts: { inserted: number; updated: number; unchanged: number } = await ctx.runMutation(
           internal.ingest.upsertLiftingResults,
           {
             allowShrink: allowShrink ?? false,
@@ -283,13 +284,12 @@ export const run = internalAction({
               federation: row.federation,
             })),
           },
-        ));
+        );
         outcome.inserted += counts.inserted;
         outcome.updated += counts.updated;
         outcome.unchanged += counts.unchanged;
       }
       } catch (error) {
-        // One meet's write failing leaves the other meets to be stored.
         failures.push({ source, error: `not stored: ${(error as Error).message}` });
         continue;
       }
@@ -301,11 +301,9 @@ export const run = internalAction({
       }
       try {
         const keep = valid.map((row) => ({ meet: row.meet, name: row.name!, age: row.age, date: row.date }));
-        // A batch a call; the rest of a huge prune waits for the next run.
         for (let call = 0; call < MAX_PRUNE_CALLS; call++) {
-          const pruned: { deleted: number; remaining: number } = await budget.orStop(
-            ctx.runMutation(internal.ingest.pruneEventResults, { eventId, keep, allowShrink: allowShrink ?? false }),
-          );
+          budget.writeOnlyBeforeTheHardStop();
+          const pruned: { deleted: number; remaining: number } = await ctx.runMutation(internal.ingest.pruneEventResults, { eventId, keep, allowShrink: allowShrink ?? false });
           outcome.deleted += pruned.deleted;
           if (pruned.remaining === 0 || pruned.deleted === 0) break;
         }

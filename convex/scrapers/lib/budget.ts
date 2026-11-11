@@ -7,6 +7,7 @@ export const OUT_OF_TIME = 'stopped: still running when the run had to end (run 
 export type RunBudget = {
   spent: (share?: number) => boolean;
   orStop: <T>(work: Promise<T>) => Promise<T>;
+  writeOnlyBeforeTheHardStop: () => void;
 };
 
 export function runBudget(
@@ -15,10 +16,18 @@ export function runBudget(
   const started = now();
   return {
     spent: (share = 1) => now() - started >= budgetMs * share,
+    writeOnlyBeforeTheHardStop: () => {
+      if (now() - started >= hardStopMs) throw new Error(OUT_OF_TIME);
+    },
     orStop: async <T>(work: Promise<T>): Promise<T> => {
+      const timeLeftMs = hardStopMs - (now() - started);
+      if (timeLeftMs <= 0) {
+        work.catch(() => {});
+        throw new Error(OUT_OF_TIME);
+      }
       let timer: ReturnType<typeof setTimeout> | undefined;
       const stop = new Promise<never>((_, reject) => {
-        timer = setTimeout(() => reject(new Error(OUT_OF_TIME)), Math.max(0, hardStopMs - (now() - started)));
+        timer = setTimeout(() => reject(new Error(OUT_OF_TIME)), timeLeftMs);
       });
       try {
         return await Promise.race([work, stop]);

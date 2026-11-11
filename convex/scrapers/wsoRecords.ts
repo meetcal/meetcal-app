@@ -33,7 +33,7 @@ import { parseUsawTemplate } from './parse/wso/usawTemplate';
 import { FLAT_COLUMNS, parseFlatSheet, type FlatColumns } from './parse/wso/flat';
 import { normalizeAgeCategory, normalizeGender } from '../lib/normalize';
 import { sourcesFailed } from '../lib/cronAlerts';
-import { NOT_REACHED, runBudget } from './lib/budget';
+import { NOT_REACHED, runBudget, type RunBudget } from './lib/budget';
 
 /**
  * WSO records (port of the `wso-records` job: one scraper per WSO in
@@ -46,7 +46,7 @@ import { NOT_REACHED, runBudget } from './lib/budget';
  * renamed) is deleted, not left beside the new ones. A source that parses to
  * nothing fails instead, so a broken sheet never empties a WSO.
  */
-type WsoSource = {
+export type WsoSource = {
   wso: string;
   scrape: () => Promise<WsoRecord[]>;
 };
@@ -336,35 +336,37 @@ async function replaceWso(
 
 type WsoResult = { wso: string; records: WsoRecord[]; inserted: number; updated: number; unchanged: number; deleted?: number; error?: string };
 
-export const run = internalAction({
-  // `allowShrink`: let a sync delete more than a quarter of a WSO's classes
-  // (a source that really restructured), after checking the source by hand.
-  args: { dryRun: v.optional(v.boolean()), only: v.optional(v.array(v.string())), allowShrink: v.optional(v.boolean()) },
-  handler: async (ctx, { dryRun, only, allowShrink }): Promise<WsoResult[]> => {
-    const results: WsoResult[] = [];
-    const budget = runBudget();
-    for (const source of WSO_SOURCES.filter((s) => !only || only.includes(s.wso))) {
-      const result: WsoResult = { wso: source.wso, records: [], inserted: 0, updated: 0, unchanged: 0 };
-      results.push(result);
-      if (budget.spent()) {
-        result.error = NOT_REACHED;
-        continue;
-      }
-      try {
-        result.records = await budget.orStop(source.scrape());
-        // Every source has records; none means its sheet, tab or layout
-        // changed, which must fail loudly rather than leave the old ones stale.
-        if (result.records.length === 0) throw new Error('parsed 0 records (source layout changed?)');
-        if (!dryRun) {
-          Object.assign(result, await replaceWso(ctx, source.wso, result.records, allowShrink ?? false));
-        }
-      } catch (error) {
-        result.error = (error as Error).message;
-        console.error(`wso records (${source.wso}): ${result.error}`);
-      }
+export async function syncWsoSources(
+  sources: readonly WsoSource[],
+  { budget, dryRun, store }: { budget: RunBudget; dryRun: boolean; store: (wso: string, records: WsoRecord[]) => Promise<Partial<WsoResult>> },
+): Promise<WsoResult[]> {
+  const results: WsoResult[] = [];
+  for (const source of sources) {
+    const result: WsoResult = { wso: source.wso, records: [], inserted: 0, updated: 0, unchanged: 0 };
+    results.push(result);
+    if (budget.spent()) {
+      result.error = NOT_REACHED;
+      continue;
     }
-    const failed = results.filter((r) => r.error);
-    if (failed.length && !dryRun) throw sourcesFailed('wso records', failed.map((r) => ({ source: r.wso, error: r.error! })));
-    return results;
-  },
+    try {
+      result.records = await budget.orStop(source.scrape());
+      if (result.records.length === 0) throw new Error('parsed 0 records (source layout changed?)');
+      if (!dryRun) Object.assign(result, await store(source.wso, result.records));
+    } catch (error) {
+      result.error = (error as Error).message;
+      console.error(`wso records (${source.wso}): ${result.error}`);
+    }
+  }
+  const failed = results.filter((r) => r.error);
+  if (failed.length && !dryRun) throw sourcesFailed('wso records', failed.map((r) => ({ source: r.wso, error: r.error! })));
+  return results;
+}
+
+export const run = internalAction({
+  args: { dryRun: v.optional(v.boolean()), only: v.optional(v.array(v.string())), allowShrink: v.optional(v.boolean()) },
+  handler: async (ctx, { dryRun, only, allowShrink }): Promise<WsoResult[]> =>
+    await syncWsoSources(
+      WSO_SOURCES.filter((s) => !only || only.includes(s.wso)),
+      { budget: runBudget(), dryRun: dryRun ?? false, store: (wso, records) => replaceWso(ctx, wso, records, allowShrink ?? false) },
+    ),
 });

@@ -125,7 +125,8 @@ export const run = internalAction({
             if (stored.status === 'completed') {
               result.skipped = 'meet completed';
               if (!dryRun && targetExpired(stored.endDate, Date.now())) {
-                await ctx.runMutation(internal.scrapers.entryTargets.remove, { url: target.url });
+                budget.writeOnlyBeforeTheHardStop();
+              await ctx.runMutation(internal.scrapers.entryTargets.remove, { url: target.url });
                 result.skipped = `meet completed ${stored.endDate}, target removed`;
               }
               return;
@@ -134,6 +135,7 @@ export const run = internalAction({
             result.entries = entries.length;
             result.withWso = entries.filter((entry) => entry.wso).length;
             if (dryRun || entries.length === 0) return;
+            budget.writeOnlyBeforeTheHardStop();
             const counts: { inserted: number; updated: number; unchanged: number; sessionSkipped: number; notOnStartList: number; rejected: number; deleted: number } = await ctx.runMutation(
               internal.ingest.upsertEntryAthletes,
               { meet, rows: entries, complete: true, ...(allowShrink ? { allowShrink } : {}) },
