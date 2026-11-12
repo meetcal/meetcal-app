@@ -1,7 +1,9 @@
+import { deflateRaw } from 'pako';
+
 export type Cell = string | number;
 export type Sheet = { name: string; rows: readonly (readonly Cell[])[] };
 
-const CRC_TABLE = Array.from({ length: 256 }, (_, n) => {
+const CRC_TABLE = Uint32Array.from({ length: 256 }, (_, n) => {
   let c = n;
   for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
   return c >>> 0;
@@ -21,7 +23,7 @@ function u32(value: number): number[] {
   return [value & 0xff, (value >>> 8) & 0xff, (value >>> 16) & 0xff, (value >>> 24) & 0xff];
 }
 
-export function storedZip(files: readonly { path: string; text: string }[]): Uint8Array {
+export function zip(files: readonly { path: string; text: string }[]): Uint8Array {
   const encoder = new TextEncoder();
   const chunks: Uint8Array[] = [];
   const central: Uint8Array[] = [];
@@ -29,12 +31,13 @@ export function storedZip(files: readonly { path: string; text: string }[]): Uin
   for (const file of files) {
     const name = encoder.encode(file.path);
     const data = encoder.encode(file.text);
+    const packed = deflateRaw(data, { level: 1 });
     const crc = crc32(data);
-    const common = [...u16(20), ...u16(0x0800), ...u16(0), ...u16(0), ...u16(0x21), ...u32(crc), ...u32(data.length), ...u32(data.length), ...u16(name.length), ...u16(0)];
+    const common = [...u16(20), ...u16(0x0800), ...u16(8), ...u16(0), ...u16(0x21), ...u32(crc), ...u32(packed.length), ...u32(data.length), ...u16(name.length), ...u16(0)];
     const local = new Uint8Array([...u32(0x04034b50), ...common, ...name]);
-    chunks.push(local, data);
+    chunks.push(local, packed);
     central.push(new Uint8Array([...u32(0x02014b50), ...u16(20), ...common, ...u16(0), ...u16(0), ...u16(0), ...u32(0), ...u32(offset), ...name]));
-    offset += local.length + data.length;
+    offset += local.length + packed.length;
   }
   const directorySize = central.reduce((sum, c) => sum + c.length, 0);
   const end = new Uint8Array([...u32(0x06054b50), ...u16(0), ...u16(0), ...u16(files.length), ...u16(files.length), ...u32(directorySize), ...u32(offset), ...u16(0)]);
@@ -117,5 +120,5 @@ export function workbook(sheets: readonly Sheet[]): Uint8Array {
     },
     ...sheets.map((sheet, i) => ({ path: `xl/worksheets/sheet${i + 1}.xml`, text: sheetXml(sheet) })),
   ];
-  return storedZip(files);
+  return zip(files);
 }

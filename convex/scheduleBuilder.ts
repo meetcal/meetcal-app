@@ -6,7 +6,8 @@ import { requireUserId } from './lib/access';
 import { meetByName } from './lib/meetData';
 import { apiError, requireNonEmpty } from './lib/validation';
 import { buildSchedule, type BuilderEntrant } from './lib/scheduleBuilder';
-import { base64Of, EXPORT_CONTENT_TYPES, exportFileName, scheduleCsv, scheduleWorkbook } from './lib/scheduleExport';
+import { bytesToBase64 } from './lib/base64';
+import { EXPORT_CONTENT_TYPES, exportFileName, scheduleCsv, scheduleWorkbook } from './lib/scheduleExport';
 import {
   builderEditValidator,
   builderOptionsValidator,
@@ -77,7 +78,7 @@ export const exportFile = query({
     const schedule = buildSchedule(await entrantsOf(ctx, row.name), options, edits);
     const fileName = exportFileName(row.name, format);
     if (format === 'csv') return { fileName, contentType: EXPORT_CONTENT_TYPES.csv, encoding: 'utf8' as const, content: scheduleCsv(schedule) };
-    return { fileName, contentType: EXPORT_CONTENT_TYPES.xlsx, encoding: 'base64' as const, content: base64Of(scheduleWorkbook(schedule)) };
+    return { fileName, contentType: EXPORT_CONTENT_TYPES.xlsx, encoding: 'base64' as const, content: bytesToBase64(scheduleWorkbook(schedule)) };
   },
 });
 

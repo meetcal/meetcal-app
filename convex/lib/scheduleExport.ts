@@ -2,6 +2,7 @@ import { platformLabel } from './schedulePublishing';
 import type { BuiltSchedule } from './scheduleBuilder';
 import { clockLabel } from './scheduleBuilderOptions';
 import { workbook, type Cell } from './xlsx';
+import { hasNoMemberId } from './memberIds';
 
 export type ExportFormat = 'csv' | 'xlsx';
 
@@ -24,7 +25,7 @@ export function startListRows(schedule: BuiltSchedule): Cell[][] {
         athlete.weightClass,
         athlete.entryTotal,
         athlete.club,
-        athlete.memberId,
+        hasNoMemberId(athlete.memberId) ? '' : athlete.memberId,
       ]),
     ),
   );
@@ -36,14 +37,16 @@ export function sessionRows(schedule: BuiltSchedule): Cell[][] {
   );
 }
 
+const FORMULA_START = /^[=+\-@\t\r]/;
+
 export function csvCell(value: Cell): string {
-  const text = String(value);
+  const text = typeof value === 'string' && FORMULA_START.test(value) ? `'${value}` : String(value);
   const escaped = text.replace(/"/g, '""');
-  return /[",\n\r]/.test(escaped) ? `"${escaped}"` : escaped;
+  return /[",\n\r]/.test(escaped) || text !== String(value) ? `"${escaped}"` : escaped;
 }
 
 export function scheduleCsv(schedule: BuiltSchedule): string {
-  return [START_LIST_HEADER, ...startListRows(schedule)].map((row) => row.map(csvCell).join(',')).join('\r\n');
+  return `\uFEFF${[START_LIST_HEADER, ...startListRows(schedule)].map((row) => row.map(csvCell).join(',')).join('\r\n')}`;
 }
 
 export function scheduleWorkbook(schedule: BuiltSchedule): Uint8Array {
@@ -61,12 +64,6 @@ export function exportFileName(meet: string, format: ExportFormat): string {
     .replace(/\s+/g, '-')
     .toLowerCase();
   return `${safe || 'meet'}-schedule.${format}`;
-}
-
-export function base64Of(bytes: Uint8Array): string {
-  let binary = '';
-  for (let i = 0; i < bytes.length; i += 0x8000) binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
-  return btoa(binary);
 }
 
 export const EXPORT_CONTENT_TYPES: Record<ExportFormat, string> = {

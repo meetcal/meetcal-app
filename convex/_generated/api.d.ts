@@ -26,6 +26,7 @@ import type * as ingest_rosters from "../ingest/rosters.js";
 import type * as ingest_shared from "../ingest/shared.js";
 import type * as lib_access from "../lib/access.js";
 import type * as lib_attempts from "../lib/attempts.js";
+import type * as lib_base64 from "../lib/base64.js";
 import type * as lib_boundedRead from "../lib/boundedRead.js";
 import type * as lib_clubStats from "../lib/clubStats.js";
 import type * as lib_clubs from "../lib/clubs.js";
@@ -182,6 +183,7 @@ declare const fullApi: ApiFromModules<{
   "ingest/shared": typeof ingest_shared;
   "lib/access": typeof lib_access;
   "lib/attempts": typeof lib_attempts;
+  "lib/base64": typeof lib_base64;
   "lib/boundedRead": typeof lib_boundedRead;
   "lib/clubStats": typeof lib_clubStats;
   "lib/clubs": typeof lib_clubs;
