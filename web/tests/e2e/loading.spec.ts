@@ -1,6 +1,8 @@
 import { expect, test, type Locator, type Page, type Route } from "@playwright/test";
 import { errorAnswer, mockSubscribedUser, routeQuery, textAnswer, valueAnswer } from "./support/api";
 
+const ABORTED_REQUEST = /ERR_ABORTED|cancel|NS_BINDING_ABORTED/i;
+
 const meet = (name: string) => ({
   name,
   start_date: "2026-06-20",
@@ -92,7 +94,7 @@ test("a request a newer choice replaces is aborted in the browser, not left to f
   const aborted: string[] = [];
   page.on("requestfailed", (request) => {
     const body = request.postDataJSON() as { path?: string; args?: { meet?: string } } | null;
-    if (body?.args?.meet === "Meet Alpha" && request.failure()?.errorText.includes("ERR_ABORTED")) {
+    if (body?.args?.meet === "Meet Alpha" && ABORTED_REQUEST.test(request.failure()?.errorText ?? "")) {
       aborted.push(String(body.path));
     }
   });
