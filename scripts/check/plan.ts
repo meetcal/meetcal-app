@@ -71,6 +71,33 @@ const cargoSteps = (label: string, cwd: string): CheckStep[] => [
   { name: `${label} tests`, command: [...CARGO, 'test', '--locked'], cwd },
 ];
 
+const DUPLICATE_CODE_SURFACES = ['src', 'convex', 'web/src', 'cli/src'];
+const DUPLICATE_CODE_IGNORED = [
+  '**/*.test.ts',
+  '**/*.test.tsx',
+  '**/test-support/**',
+  '**/tests/**',
+  'convex/_generated/**',
+];
+const DUPLICATE_CODE_MAX_PERCENT = 1;
+
+const DUPLICATE_CODE_STEP: CheckStep = {
+  name: 'Duplicate code',
+  command: [
+    'bunx',
+    'jscpd@5.4.2',
+    '--min-tokens',
+    '70',
+    '--reporters',
+    'console',
+    '--threshold',
+    String(DUPLICATE_CODE_MAX_PERCENT),
+    '--ignore',
+    DUPLICATE_CODE_IGNORED.join(','),
+    ...DUPLICATE_CODE_SURFACES,
+  ],
+};
+
 export function checkSteps(plan: CheckPlan): CheckStep[] {
   const steps: CheckStep[] = [];
   if (plan.suites.includes('app')) {
@@ -88,5 +115,6 @@ export function checkSteps(plan: CheckPlan): CheckStep[] {
   }
   if (plan.suites.includes('web')) steps.push(...cargoSteps('Website', 'web'));
   if (plan.suites.includes('cli')) steps.push(...cargoSteps('CLI', 'cli'));
+  if (steps.length > 0) steps.push(DUPLICATE_CODE_STEP);
   return steps;
 }

@@ -85,6 +85,7 @@ describe('checkSteps', () => {
       'Convex typecheck',
       'App tests and coverage',
       'Coverage gaps',
+      'Duplicate code',
     ]);
   });
 
@@ -110,8 +111,15 @@ describe('checkSteps', () => {
       ['CLI format', 'cli'],
       ['CLI clippy', 'cli'],
       ['CLI tests', 'cli'],
+      ['Duplicate code', undefined],
     ]);
     // Through mise in the folder, so its pinned Rust and mbx apply.
     expect(steps[1].command).toEqual(['mise', 'exec', '--', 'cargo', 'clippy', '--all-targets', '--locked', '--', '-D', 'warnings']);
+  });
+
+  it('reports duplicated code across all four surfaces whenever any suite runs, failing above the ceiling', () => {
+    const step = checkSteps({ suites: ['cli'], reason: '' }).at(-1);
+    expect(step?.name).toBe('Duplicate code');
+    expect(step?.command).toEqual(expect.arrayContaining(['--threshold', '1', 'src', 'convex', 'web/src', 'cli/src']));
   });
 });
