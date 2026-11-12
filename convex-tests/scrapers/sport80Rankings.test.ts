@@ -51,10 +51,12 @@ describe('reading a class whose full range Sport80 cannot answer', () => {
   it('halves again until each part answers, reaching every day of an all-time range', async () => {
     fakeSport80(failsOverAYear);
     const rows = await (await Sport80.connect()).rankings(938, '1900-01-01', '2026-11-12');
-    const ranges = rows.map((row) => String(row.lifter).split('..'));
-    expect(ranges[0][0]).toBe('1900-01-01');
-    expect(ranges.at(-1)?.[1]).toBe('2026-11-12');
-    for (let i = 1; i < ranges.length; i++) expect(daysBetween(ranges[i - 1][1], ranges[i][0])).toBe(1);
+    const bounds = rows.flatMap((row) => String(row.lifter).split('..'));
+    expect(bounds.at(0)).toBe('1900-01-01');
+    expect(bounds.at(-1)).toBe('2026-11-12');
+    const gaps = bounds.slice(1, -1).flatMap((date, i, inner) => (i % 2 === 0 ? [daysBetween(date, inner[i + 1] ?? date)] : []));
+    expect(gaps.length).toBe(rows.length - 1);
+    expect(new Set(gaps)).toEqual(new Set([1]));
   });
 
   it('tries smaller pages on a range of a year or less, then fails naming the status', async () => {
