@@ -3,6 +3,7 @@ import type { AthleteMeetResult } from '@/data/types/athletes';
 import { Buffer } from 'buffer';
 import { deflate, inflate } from 'pako';
 import { multiGetBatched, multiRemoveBatched, multiSetBatched } from './storage-batches';
+import { LIFTING_RESULTS_CHUNK_MARKER } from './offline-storage-keys';
 
 const LIFTING_RESULTS_CHUNK_SIZE = 180_000;
 
@@ -22,8 +23,8 @@ function getLiftingResultsChunkKey(
   generation = 0,
 ): string {
   return generation === 0
-    ? `${baseKey}__chunk_${index}`
-    : `${baseKey}__chunk_${index}_g${generation}`;
+    ? `${baseKey}${LIFTING_RESULTS_CHUNK_MARKER}${index}`
+    : `${baseKey}${LIFTING_RESULTS_CHUNK_MARKER}${index}_g${generation}`;
 }
 
 function getManifestChunkKeys(baseKey: string, manifest: LiftingResultsManifest): string[] {
@@ -198,10 +199,10 @@ function listLiftingResultsChunks(
     baseKeys.map((baseKey) => [baseKey, { chunkKeys: [], generations: new Set() }]),
   );
   for (const key of storageKeys) {
-    const chunkAt = key.lastIndexOf('__chunk_');
+    const chunkAt = key.lastIndexOf(LIFTING_RESULTS_CHUNK_MARKER);
     if (chunkAt === -1) continue;
     const entry = listed.get(key.slice(0, chunkAt));
-    const match = /^\d+(?:_g(\d+))?$/.exec(key.slice(chunkAt + '__chunk_'.length));
+    const match = /^\d+(?:_g(\d+))?$/.exec(key.slice(chunkAt + LIFTING_RESULTS_CHUNK_MARKER.length));
     if (!entry || !match) continue;
     const generation = match[1] === undefined ? 0 : Number(match[1]);
     if (!isChunkGeneration(generation)) continue;

@@ -6,7 +6,7 @@ import { emptyMeetEntry, getStore, meetDataWrites, updateStore } from './offline
 import { readStoredAthletes } from './meet-data-reads';
 import { getExplicitlyDownloadedMeetIds, markMeetExplicitlyDownloaded } from './meet-downloads-registry';
 import { clearStoredLiftingResultsValue } from './lifting-results-blob';
-import { ATHLETES_KEY_PREFIX, LIFTING_RESULTS_KEY_PREFIX, SCHEDULE_KEY_PREFIX, SESSION_ATHLETES_KEY_PREFIX } from './offline-storage-keys';
+import { ATHLETES_KEY_PREFIX, LIFTING_RESULTS_CHUNK_MARKER, LIFTING_RESULTS_KEY_PREFIX, SCHEDULE_KEY_PREFIX, SESSION_ATHLETES_KEY_PREFIX } from './offline-storage-keys';
 import { multiRemoveBatched } from './storage-batches';
 import { pruneAthleteHistoryExclusiveToRoster } from './athlete-history-clears';
 
@@ -48,7 +48,7 @@ export async function clearMeetData(
       }
       const keys = options?.storageKeys ?? (await AsyncStorage.getAllKeys());
       const sessionAthletesPrefix = `${SESSION_ATHLETES_KEY_PREFIX}${encodeURIComponent(meet)}:`;
-      const chunkPrefixes = liftingResultsKeys.map((key) => `${key}__chunk_`);
+      const chunkPrefixes = liftingResultsKeys.map((key) => `${key}${LIFTING_RESULTS_CHUNK_MARKER}`);
       const leftoverKeys = keys.filter(
         (key) =>
           key.startsWith(sessionAthletesPrefix) ||
@@ -82,7 +82,7 @@ function meetIdOfStorageKey(key: string): string | null {
   for (const prefix of [SCHEDULE_KEY_PREFIX, ATHLETES_KEY_PREFIX, LIFTING_RESULTS_KEY_PREFIX]) {
     if (!key.startsWith(prefix)) continue;
     const rest = key.slice(prefix.length);
-    const chunkAt = rest.indexOf('__chunk_');
+    const chunkAt = rest.indexOf(LIFTING_RESULTS_CHUNK_MARKER);
     const meetId = chunkAt === -1 ? rest : rest.slice(0, chunkAt);
     return meetId.length > 0 ? meetId : null;
   }

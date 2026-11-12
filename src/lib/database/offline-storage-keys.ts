@@ -33,3 +33,4 @@ export function getSessionAthletesKey(
 ): string {
   return `${SESSION_ATHLETES_KEY_PREFIX}${encodeURIComponent(meetId)}:${sessionNumber}:${encodeURIComponent(normalizePlatformKey(platform))}`;
 }
+export const LIFTING_RESULTS_CHUNK_MARKER = '__chunk_';

@@ -92,10 +92,6 @@ function pickOne<T>(items: readonly T[], random: () => number): T {
  * tests pass a seeded one. `config` must already be valid.
  */
 export function pickChaosFault(config: ChaosConfig, call: ApiCall, random: () => number): TransportFault {
-  // The client's clock sample (`SERVER_CLOCK_CALL` in `lib/api/meetcal-api.ts`,
-  // the only `clock` call). Never faulted: its failures are swallowed by
-  // design, so faulting it shows the developer nothing and only skews the
-  // clock the session prune trusts.
   if (call.kind === 'clock') return { kind: 'pass' };
   if (random() >= config.rate) return { kind: 'pass' };
   const kind = pickOne(config.kinds ?? DEFAULT_CHAOS_KINDS, random);
