@@ -82,7 +82,7 @@ pub(super) fn read_pass_answer(response: QueryResponse) -> Result<PassAnswer> {
     if function_error_status(&response) == Some(403) {
         return Ok(PassAnswer::SubscriptionRequired);
     }
-    let pass: AccessPass = serde_json::from_value(answer_value(response)?)?;
+    let pass: AccessPass = serde_json::from_str(answer_value(response)?.get())?;
     if pass.pass.is_empty() || !pass.rotates_at.is_finite() {
         return Err(anyhow!("malformed access pass"));
     }
@@ -112,7 +112,7 @@ pub(super) async fn refresh_entitlement(token: &str) -> Result<bool> {
 }
 
 pub(super) fn read_entitlement(response: QueryResponse) -> Result<bool> {
-    answer_value(response)?
+    answer_json(response)?
         .get("active")
         .and_then(Value::as_bool)
         .ok_or_else(|| anyhow!("answer has no active flag"))
@@ -167,6 +167,7 @@ pub(super) struct PassState {
     pub(super) failed_at: Option<f64>,
     pub(super) fetching: Option<(PassFetch, f64)>,
     pub(super) generation: u64,
+    pub(super) stored_pass_read: bool,
 }
 
 thread_local! {
@@ -241,11 +242,44 @@ pub(super) async fn current_pass() -> Option<String> {
             wait_for_pass(PassWaiter::FirstRead, fetch, started_at).await
         }
         PassStep::Fetch => {
+            if let Some(pass) = recalled_pass().await {
+                return Some(pass);
+            }
             let (fetch, started_at) = start_pass_fetch();
             wait_for_pass(PassWaiter::FirstRead, fetch, started_at).await
         }
         PassStep::GoWithout => None,
     }
+}
+
+pub(super) fn held_pass_until() -> Option<f64> {
+    ACCESS_PASS_STATE.with_borrow(|state| state.held.as_ref().map(|held| held.until))
+}
+
+async fn recalled_pass() -> Option<String> {
+    let generation = ACCESS_PASS_STATE.with_borrow_mut(|state| {
+        let first = !state.stored_pass_read;
+        state.stored_pass_read = true;
+        first.then_some(state.generation)
+    })?;
+    let user = crate::auth::signed_in_user()?;
+    let stored = wasm_bindgen_futures::JsFuture::from(stored_pass(&user, js_sys::Date::now()))
+        .await
+        .ok()?;
+    let pass = js_text(&stored, "pass")?;
+    let until = js_sys::Reflect::get(&stored, &wasm_bindgen::JsValue::from_str("until"))
+        .ok()?
+        .as_f64()?;
+    ACCESS_PASS_STATE.with_borrow_mut(|state| {
+        if state.generation != generation || state.held.is_some() {
+            return;
+        }
+        state.held = Some(HeldPass {
+            pass: pass.clone(),
+            until,
+        });
+    });
+    Some(pass)
 }
 
 pub(super) async fn renewed_pass(refused: Option<&str>) -> Option<String> {
@@ -287,11 +321,15 @@ pub(super) fn start_pass_fetch() -> (PassFetch, f64) {
             state.fetching = None;
             match &fetched {
                 Some(pass) => {
+                    let until = held_until(pass.rotates_at, now);
                     state.held = Some(HeldPass {
                         pass: pass.pass.clone(),
-                        until: held_until(pass.rotates_at, now),
+                        until,
                     });
                     state.failed_at = None;
+                    if let Some(user) = crate::auth::signed_in_user() {
+                        let _ = store_pass(&user, &pass.pass, until);
+                    }
                 }
                 None => state.failed_at = Some(now),
             }

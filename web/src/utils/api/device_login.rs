@@ -85,7 +85,7 @@ pub(super) fn device_login_value(response: QueryResponse) -> Result<Value> {
     if function_error_status(&response) == Some(401) {
         return Err(anyhow!(SESSION_MESSAGE));
     }
-    answer_value(response)
+    answer_json(response)
 }
 
 pub(super) fn read_pending_device_login(

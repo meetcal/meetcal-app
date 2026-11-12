@@ -1,12 +1,11 @@
 use super::*;
-use reqwest::StatusCode;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use serde_json::json;
 use std::time::Duration;
 
 fn answer(value: Value) -> QueryResponse {
-    serde_json::from_value(value).unwrap()
+    serde_json::from_str(&value.to_string()).unwrap()
 }
 
 #[test]
@@ -474,7 +473,7 @@ fn text_answers_carry_the_body_as_json_text() {
         json!({"etag": "\"x\"", "json": "[1,2]"}),
     ] {
         let rows: Vec<u32> = read_response(
-            Query::text("test:text"),
+            Query::tagged("test:text"),
             answer(json!({"status": "success", "value": value})),
         )
         .unwrap();
@@ -485,7 +484,7 @@ fn text_answers_carry_the_body_as_json_text() {
 #[test]
 fn a_text_answer_without_its_body_is_an_error() {
     let error = read_response::<Vec<u32>>(
-        Query::text("test:text"),
+        Query::tagged("test:text"),
         answer(json!({"status": "success", "value": {"etag": "\"x\""}})),
     )
     .unwrap_err();
@@ -518,14 +517,14 @@ fn function_errors_explain_themselves() {
 
 #[test]
 fn only_throttled_and_overloaded_responses_are_retryable() {
-    assert!(is_retryable_status(StatusCode::TOO_MANY_REQUESTS));
-    assert!(is_retryable_status(StatusCode::SERVICE_UNAVAILABLE));
+    assert!(is_retryable_status(TOO_MANY_REQUESTS));
+    assert!(is_retryable_status(SERVICE_UNAVAILABLE));
     for status in [
-        StatusCode::OK,
-        StatusCode::NOT_FOUND,
-        StatusCode::INTERNAL_SERVER_ERROR,
-        StatusCode::BAD_GATEWAY,
-        StatusCode::GATEWAY_TIMEOUT,
+        OK,
+        404,
+        500,
+        502,
+        504,
     ] {
         assert!(!is_retryable_status(status), "{status} must not retry");
     }
@@ -534,15 +533,15 @@ fn only_throttled_and_overloaded_responses_are_retryable() {
 #[test]
 fn retries_stop_after_the_limit() {
     for status in [
-        StatusCode::TOO_MANY_REQUESTS,
-        StatusCode::SERVICE_UNAVAILABLE,
+        TOO_MANY_REQUESTS,
+        SERVICE_UNAVAILABLE,
     ] {
         assert!(should_retry(status, 0));
         assert!(should_retry(status, 1));
         assert!(!should_retry(status, MAX_RETRIES));
         assert!(!should_retry(status, MAX_RETRIES + 1));
     }
-    assert!(!should_retry(StatusCode::INTERNAL_SERVER_ERROR, 0));
+    assert!(!should_retry(500, 0));
     assert_eq!(MAX_RETRIES, 2);
 }
 
@@ -589,7 +588,7 @@ fn unreadable_answers_never_name_the_function() {
     assert_eq!(error.to_string(), UNREADABLE_MESSAGE);
 
     let error = read_response::<Vec<u32>>(
-        Query::text("reference:records"),
+        Query::tagged("reference:records"),
         answer(json!({"status": "success", "value": {"json": "not json"}})),
     )
     .unwrap_err();
@@ -599,27 +598,111 @@ fn unreadable_answers_never_name_the_function() {
 }
 
 #[test]
-fn a_read_that_fails_once_the_whole_timeout_has_passed_is_a_timeout() {
-    let timeout_ms = REQUEST_TIMEOUT.as_secs_f64() * 1000.0;
-    assert!(request_used_its_whole_timeout(timeout_ms, REQUEST_TIMEOUT));
-    assert!(request_used_its_whole_timeout(
-        timeout_ms + 400.0,
-        REQUEST_TIMEOUT
-    ));
-    assert!(request_used_its_whole_timeout(
-        timeout_ms - 1.0,
-        REQUEST_TIMEOUT
-    ));
-    assert!(!request_used_its_whole_timeout(
-        timeout_ms / 2.0,
-        REQUEST_TIMEOUT
-    ));
-    assert!(!request_used_its_whole_timeout(0.0, REQUEST_TIMEOUT));
-    assert!(request_used_its_whole_timeout(
-        UPLOAD_TIMEOUT.as_secs_f64() * 1000.0,
-        UPLOAD_TIMEOUT
-    ));
-    assert!(!request_used_its_whole_timeout(timeout_ms, UPLOAD_TIMEOUT));
+fn a_revalidated_answer_is_kept_under_its_arguments_without_the_pass_or_the_tag() {
+    let args = json!({"wso": "Carolina", "pass": "pass_1", "ifNoneMatch": "\"a\"", "gender": null, "ageCategory": "Open"});
+    let same = json!({"ageCategory": "Open", "wso": "Carolina", "pass": "pass_2"});
+    assert_eq!(
+        answer_key("reference:wsoRecords", &args),
+        answer_key("reference:wsoRecords", &same)
+    );
+    assert_ne!(
+        answer_key("reference:wsoRecords", &args),
+        answer_key(
+            "reference:wsoRecords",
+            &json!({"wso": "Texas", "ageCategory": "Open"})
+        )
+    );
+    assert_ne!(
+        answer_key("reference:records", &json!({})),
+        answer_key("reference:standards", &json!({}))
+    );
+}
+
+#[test]
+fn an_unchanged_answer_reads_the_text_kept_under_its_tag() {
+    let query = queries::RECORDS;
+    let kept = KeptAnswer {
+        etag: "\"v1\"".to_owned(),
+        json: std::rc::Rc::from("[1,2]"),
+    };
+    let unchanged = TextAnswer {
+        etag: Some("\"v1\"".to_owned()),
+        json: None,
+    };
+    let (text, fresh) = text_of(query, unchanged, Some(kept.clone())).unwrap();
+    assert_eq!(&*text, "[1,2]");
+    assert!(fresh.is_none());
+
+    let changed = TextAnswer {
+        etag: Some("\"v2\"".to_owned()),
+        json: Some("[3]".to_owned()),
+    };
+    let (text, fresh) = text_of(query, changed, Some(kept.clone())).unwrap();
+    assert_eq!(&*text, "[3]");
+    assert_eq!(fresh.map(|fresh| fresh.etag).as_deref(), Some("\"v2\""));
+
+    let untagged = TextAnswer {
+        etag: None,
+        json: Some("[4]".to_owned()),
+    };
+    let (_, fresh) = text_of(query, untagged, None).unwrap();
+    assert!(fresh.is_none(), "an answer without a tag is never kept");
+
+    let other_tag = TextAnswer {
+        etag: Some("\"v3\"".to_owned()),
+        json: None,
+    };
+    assert!(text_of(query, other_tag, Some(kept)).is_err());
+    let nothing_kept = TextAnswer {
+        etag: Some("\"v1\"".to_owned()),
+        json: None,
+    };
+    assert!(text_of(query, nothing_kept, None).is_err());
+}
+
+#[test]
+fn only_queries_whose_convex_function_takes_a_tag_are_sent_one() {
+    let convex = [
+        include_str!("../../../../convex/reference.ts"),
+        include_str!("../../../../convex/meets.ts"),
+        include_str!("../../../../convex/results.ts"),
+    ]
+    .concat();
+    for query in [
+        queries::UPCOMING_MEETS,
+        queries::COMPLETED_MEETS,
+        queries::MEET_SCHEDULE,
+        queries::MEET_ATHLETES,
+        queries::MEET_RESULTS,
+        queries::SEARCH,
+        queries::RECORDS,
+        queries::STANDARDS,
+        queries::QUALIFYING_TOTALS,
+        queries::INTL_RANKINGS,
+        queries::NATIONAL_RANKINGS,
+        queries::NATIONAL_RANKINGS_BY_YEAR,
+        queries::WSO_LIST,
+        queries::REGISTRATION_WSOS,
+        queries::WSO_RECORDS,
+        queries::ADAPTIVE_RECORDS,
+        queries::CLUBS,
+        queries::CLUB_MEETS,
+        queries::CLUB_MEET_STATS,
+        queries::WRAPPED,
+    ] {
+        let name = query.function.split(':').nth(1).unwrap();
+        let start = convex
+            .find(&format!("export const {name} = "))
+            .unwrap_or_else(|| panic!("{} is not in convex/", query.function));
+        let args = &convex[start..];
+        let args = &args[..args.find("handler").unwrap()];
+        assert_eq!(
+            query.revalidates,
+            args.contains("ifNoneMatch"),
+            "{} revalidates unlike its Convex arguments",
+            query.function
+        );
+    }
 }
 
 #[test]
@@ -795,11 +878,11 @@ fn submission_errors_read_as_sentences_a_user_can_act_on() {
 #[test]
 fn exhausted_retries_explain_the_failure() {
     assert_eq!(
-        exhausted_retries_message(StatusCode::TOO_MANY_REQUESTS),
+        exhausted_retries_message(TOO_MANY_REQUESTS),
         RATE_LIMITED_MESSAGE
     );
     assert_eq!(
-        exhausted_retries_message(StatusCode::SERVICE_UNAVAILABLE),
+        exhausted_retries_message(SERVICE_UNAVAILABLE),
         OVERLOADED_MESSAGE
     );
 }
