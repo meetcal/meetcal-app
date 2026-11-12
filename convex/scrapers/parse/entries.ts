@@ -1,4 +1,4 @@
-import { isRecord, rowCount } from '../../lib/json';
+import { isRecord, kindOf, rowCount } from '../../lib/json';
 // Meet entries from Sport80 (replaces `usaw/entry_scraper/csv_scraper.js`).
 // The Node scraper drove a headless browser through the public entries page;
 // the table on that page is filled from a public JSON endpoint, which this
@@ -90,13 +90,13 @@ export function readEntriesTable(body: unknown): EntriesTable {
   const text = (row: Record<string, unknown>, i: number, field: string): string | null => {
     const value = row[field];
     if (value === undefined || value === null) return null;
-    if (typeof value !== 'string') throw new Error(`entries: row ${i}: ${field} is a ${typeof value}`);
+    if (typeof value !== 'string') throw new Error(`entries: row ${i}: ${field} is ${kindOf(value)}`);
     return value;
   };
   const scalar = (row: Record<string, unknown>, i: number, field: string): number | string | null => {
     const value = row[field];
     if (value === undefined || value === null) return null;
-    if (typeof value !== 'string' && typeof value !== 'number') throw new Error(`entries: row ${i}: ${field} is a ${typeof value}`);
+    if (typeof value !== 'string' && typeof value !== 'number') throw new Error(`entries: row ${i}: ${field} is ${kindOf(value)}`);
     return value;
   };
   const rows = (data ?? []).map((item: unknown, i: number): EntryRow => {

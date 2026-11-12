@@ -1,3 +1,4 @@
+import { isRecord } from '../../lib/json';
 import { HttpStatusError } from './http';
 
 /**
@@ -76,7 +77,7 @@ export async function fetchUnblockedHtml(url: string, token: string, timeoutMs: 
     throw new HttpStatusError(UNBLOCK_URL, response.status);
   }
   const body: unknown = await response.json();
-  const content = typeof body === 'object' && body !== null && 'content' in body ? body.content : undefined;
+  const content = isRecord(body) ? body.content : undefined;
   if (typeof content !== 'string' || content.length === 0) throw new Error(`Browserless ${url}: no content`);
   if (/<title>\s*Just a moment/i.test(content)) throw new ChallengeError(url);
   return content;

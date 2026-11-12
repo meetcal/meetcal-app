@@ -41,7 +41,6 @@ export const MAX_USER_ID_LENGTH = 256;
 
 export type EntitlementState = { active: boolean; expiresAt: number | null; productId: string | null };
 
-
 function dateMs(value: unknown, field: string): number | null {
   if (value === null || value === undefined) return null;
   const ms = typeof value === 'string' ? Date.parse(value) : NaN;

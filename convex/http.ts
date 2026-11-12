@@ -3,6 +3,7 @@ import { internal } from './_generated/api';
 import { httpAction } from './_generated/server';
 import { jwks } from './apiTokens';
 import { revenuecatWebhook } from './entitlements';
+import { isRecord } from './lib/json';
 import { UNREADABLE_SECRET, verifyWebhook } from './lib/webhookSignature';
 
 const http = httpRouter();
@@ -46,10 +47,8 @@ export const clerkWebhook = httpAction(async (ctx, request) => {
   } catch {
     return new Response('body is not JSON', { status: 400 });
   }
-  const type = typeof event === 'object' && event !== null ? (event as { type?: unknown }).type : undefined;
-  if (type !== 'user.deleted') return new Response(null, { status: 204 });
-  const data = (event as { data?: unknown }).data;
-  const userId = typeof data === 'object' && data !== null ? (data as { id?: unknown }).id : undefined;
+  if (!isRecord(event) || event.type !== 'user.deleted') return new Response(null, { status: 204 });
+  const userId = isRecord(event.data) ? event.data.id : undefined;
   if (typeof userId !== 'string' || userId.trim() === '') return new Response('user.deleted without a user id', { status: 400 });
   await ctx.runMutation(internal.users.deleteUserData, { userId });
   return new Response(null, { status: 204 });

@@ -1,8 +1,15 @@
+import { kindOf } from '../../convex/lib/json';
 import { entryFromRow, readEntriesTable } from '../../convex/scrapers/parse/entries';
 import { wikitextOf } from '../../convex/scrapers/parse/iwfRecords';
 import { readWidgetPage } from '../../convex/scrapers/parse/meets';
 import { pageRows, readSport80Env, readTablePage } from '../../convex/scrapers/parse/sport80';
 import { joinPages, tableComplete } from '../../convex/scrapers/sport80';
+
+describe('naming what a value is', () => {
+  it('names each kind the way an error reads it', () => {
+    expect([null, undefined, [], {}, 'x', 1, true].map(kindOf)).toEqual(['null', 'missing', 'a list', 'an object', 'a string', 'a number', 'a boolean']);
+  });
+});
 
 describe('the entries table', () => {
   const row = { id: 7, member_id: '1012345', first_name: 'Ann', last_name: 'Lee', weightlifting_age: 31, club: 'Club', gender: 'Female', weight_class: '63', entry_total: '150' };
@@ -36,7 +43,7 @@ describe('the entries table', () => {
     expect(() => readEntriesTable({ data: { 0: row } })).toThrow('entries: data is not a list');
     expect(() => readEntriesTable({ total: 'many', data: [] })).toThrow('entries: total is not a row count ("many")');
     expect(() => readEntriesTable({ data: [row, { ...row, first_name: 5 }] })).toThrow('entries: row 1: first_name is a number');
-    expect(() => readEntriesTable({ data: [{ ...row, member_id: { n: 1 } }] })).toThrow('entries: row 0: member_id is a object');
+    expect(() => readEntriesTable({ data: [{ ...row, member_id: { n: 1 } }] })).toThrow('entries: row 0: member_id is an object');
     expect(() => readEntriesTable({ data: ['x'] })).toThrow('entries: row 0 is not an object');
   });
 
@@ -70,7 +77,7 @@ describe("Wikipedia's parse answer", () => {
   it('gives the wikitext, or says what came instead', () => {
     expect(wikitextOf({ parse: { wikitext: '== Current records ==' } }, 'Page')).toBe('== Current records ==');
     expect(() => wikitextOf({ error: { info: 'The page you specified does not exist.' } }, 'Page')).toThrow('Wikipedia Page: The page you specified does not exist.');
-    expect(() => wikitextOf({ parse: { wikitext: { '*': 'old format' } } }, 'Page')).toThrow('Wikipedia Page: wikitext is a object');
+    expect(() => wikitextOf({ parse: { wikitext: { '*': 'old format' } } }, 'Page')).toThrow('Wikipedia Page: wikitext is an object');
     expect(() => wikitextOf({}, 'Page')).toThrow('Wikipedia Page: no wikitext');
     expect(() => wikitextOf('<html>', 'Page')).toThrow('Wikipedia Page: the response is not an object');
   });
