@@ -7,7 +7,7 @@ use serde_json::json;
 use crate::commands::leaderboard::MAX_YEARS;
 use crate::utils::backend::{functions, premium_action};
 use crate::utils::filters::{parse_date, plus_years};
-use crate::utils::format::{capitalized, display_body_weight, us_date};
+use crate::utils::format::{capitalized, display_body_weight, display_weight_class, us_date};
 use crate::utils::names::{NameKind, not_found, registration_wsos};
 use crate::utils::output::{self, Report};
 use crate::utils::progress::Progress;
@@ -370,7 +370,10 @@ pub(crate) fn table(rows: &[EliteRow], method: Method, date: fn(&str) -> String)
             number(row.cj_best),
             number(row.total),
             method.score(row.score),
-            row.weight_class.clone().unwrap_or_default(),
+            row.weight_class
+                .as_deref()
+                .map(display_weight_class)
+                .unwrap_or_default(),
             row.standard_a.map(number).unwrap_or_default(),
             date(&row.date),
             row.meet.clone(),

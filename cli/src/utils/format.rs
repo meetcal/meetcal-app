@@ -89,11 +89,13 @@ pub(crate) fn kg(value: f64) -> String {
     value.to_string()
 }
 
+pub(crate) const NO_VALUE: &str = "—";
+
 pub(crate) fn display_body_weight(kilograms: f64) -> String {
     if kilograms.is_finite() && kilograms > 0.0 {
         number(kilograms)
     } else {
-        "—".to_string()
+        NO_VALUE.to_string()
     }
 }
 
@@ -148,14 +150,15 @@ pub(crate) fn record_tables<'a>(rows: impl IntoIterator<Item = RecordRow<'a>>) -
     data.set_header(record_data_header());
     for record in rows {
         let lifts = [record.snatch, record.cj, record.total];
-        let mut row = vec![record.weight_class.to_string()];
+        let weight_class = display_weight_class(record.weight_class);
+        let mut row = vec![weight_class.clone()];
         row.extend(
             lifts
                 .iter()
                 .map(|(value, holder)| record_cell(*value, *holder)),
         );
         table.add_row(row);
-        let mut data_row = vec![record.weight_class.to_string()];
+        let mut data_row = vec![weight_class];
         for (value, holder) in lifts {
             data_row.extend(record_data_cells(value, holder));
         }
@@ -219,6 +222,8 @@ mod tests {
         assert_eq!(display_weight_class("+110"), "110+kg");
         assert_eq!(display_weight_class("110+"), "110+kg");
         assert_eq!(display_weight_class("+110kg"), "110+kg");
+        assert_eq!(display_weight_class("+110KG"), "110+kg");
+        assert_eq!(display_weight_class("86+kg"), "86+kg");
         assert_eq!(display_weight_class(" 48 "), "48kg");
         assert_eq!(display_weight_class("Open"), "Open");
         assert_eq!(display_weight_class(""), "");

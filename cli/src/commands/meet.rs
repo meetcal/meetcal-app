@@ -5,7 +5,7 @@ use crate::{
     utils::{
         backend::{PassRefused, queries, query},
         bests::{bests_cell, year_bests},
-        format::{kg, time_24h, us_date, us_time},
+        format::{display_weight_class, kg, time_24h, us_date, us_time},
         names::{NameKind, not_found},
     },
 };
@@ -171,7 +171,7 @@ pub(crate) fn report(athletes: &[Athletes], bests: Option<&HashMap<String, Named
             athlete.gender.clone(),
             athlete.adaptive.to_string(),
             athlete.club.clone(),
-            athlete.weight_class.clone(),
+            display_weight_class(&athlete.weight_class),
             athlete.entry_total.to_string(),
         ];
 
@@ -376,7 +376,7 @@ mod tests {
         }, {
             "adaptive": true, "age": 40, "club": "Test Club", "entry_total": 150,
             "gender": "Men", "member_id": "10", "name": "Bo Lift", "session_number": null,
-            "session_platform": null, "weight_class": "81kg", "wso": null
+            "session_platform": null, "weight_class": "+87", "wso": null
         }]"#;
         let athletes: Vec<Athletes> = serde_json::from_str(rows).unwrap();
         let mut bests = HashMap::new();
@@ -397,6 +397,8 @@ mod tests {
         assert_eq!(json[0]["weigh_in"], "08:00");
         assert_eq!(json[0]["start"], "10:00");
         assert_eq!(json[0]["adaptive"], false);
+        assert_eq!(json[0]["class"], "63kg");
+        assert_eq!(json[1]["class"], "87+kg");
         assert_eq!(json[0]["past_year_best_total"], 180);
         assert_eq!(json[1]["session"], serde_json::Value::Null);
         assert_eq!(json[1]["platform"], serde_json::Value::Null);
