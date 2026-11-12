@@ -54,7 +54,6 @@ test("a new meet loads at once and never shows the previous meet's answer or a f
   await meetSearch.fill("Meet Alpha");
   await page.getByRole("option", { name: "Meet Alpha" }).click();
 
-  // Still loading: a skeleton, not the "nothing chosen" placeholder read as an answer.
   await expect(page.getByLabel("Loading data")).toHaveCount(1);
   await expect(page.getByText("No schedule has been published for this meet.")).toHaveCount(0);
   await page.getByRole("tab", { name: "Start List" }).click();

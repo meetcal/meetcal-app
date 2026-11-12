@@ -220,11 +220,6 @@ const NARROWED: Record<NarrowedTable, { categories: string; kind: string; argume
   qualifyingTotals: { categories: "reference:qualifyingTotalCategories", kind: "event_name", argument: "event" },
 };
 
-/**
- * Answers Records' or Qualifying Totals' categories from `rows` and their rows
- * narrowed by the `federation`/`event`, `gender` and `ageCategory` arguments,
- * as Convex does. Returns the arguments of each rows request.
- */
 export async function routeNarrowedTable(page: Page, table: NarrowedTable, rows: Array<Record<string, unknown>>) {
   const { categories, kind, argument } = NARROWED[table];
   const distinct = new Map<string, Record<string, unknown>>();
