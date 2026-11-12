@@ -15,7 +15,7 @@ export type DateRange = readonly [start: string, end: string];
 
 export function halvesOf([start, end]: DateRange): [DateRange, DateRange] | null {
   const days = daysBetween(start, end);
-  if (days <= RANKINGS_UNSPLIT_DAYS) return null;
+  if (end < start || days <= RANKINGS_UNSPLIT_DAYS) return null;
   const firstEnd = isoDaysAfter(start, Math.floor(days / 2));
   return [
     [start, firstEnd],

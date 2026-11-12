@@ -34,6 +34,10 @@ describe('halving a rankings date range', () => {
     expect(halvesOf(['2025-01-01', '2026-01-02'])).toBeNull();
     expect(halvesOf(['2026-03-01', '2026-04-15'])).toBeNull();
   });
+
+  it('leaves a range that ends before it starts whole, so a failing one is never widened', () => {
+    expect(halvesOf(['2028-06-01', '2026-11-12'])).toBeNull();
+  });
 });
 
 describe('reading a class whose full range Sport80 cannot answer', () => {
