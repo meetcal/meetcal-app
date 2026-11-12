@@ -109,7 +109,7 @@ Type checking uses [tsrs](https://github.com/oxc-project/tsrs), the Rust port of
 
 ## Verify
 
-Run `mise run check` before opening or updating a PR. It runs only the suites the branch changes need (`scripts/check/plan.ts`): for the app and `convex/`, lint, typecheck, Jest coverage and the coverage-gap inventory; for `web/` and `cli/`, their Cargo format, clippy and tests. It holds a lock shared by every worktree, so a second gate (or a full Jest run through `mise run app:test`) waits instead of running alongside it; concurrent gates have run this machine out of memory. Run full Jest suites through `mise run check` or `mise run app:test`, not a bare `bunx jest` with no path. Use the individual commands below, scoped to the files you touched, while iterating.
+Run `mise run check` before opening or updating a PR. It runs only the suites the branch changes need (`scripts/check/plan.ts`): for the app and `convex/`, lint, typecheck, Jest coverage and the coverage-gap inventory; for `web/` and `cli/`, their Cargo format, clippy and tests; and, whenever any suite runs, a duplicate-code report across `src/`, `convex/`, `web/src/` and `cli/src/` (jscpd, tests excluded) that fails when duplicated lines pass 1% of the source. It holds a lock shared by every worktree, so a second gate (or a full Jest run through `mise run app:test`) waits instead of running alongside it; concurrent gates have run this machine out of memory. Run full Jest suites through `mise run check` or `mise run app:test`, not a bare `bunx jest` with no path. Use the individual commands below, scoped to the files you touched, while iterating.
 
 | Gate | Command | Pass when |
 |---|---|---|
