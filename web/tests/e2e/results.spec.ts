@@ -190,12 +190,12 @@ test("a name two lifters share offers each, and a pick shows that lifter's resul
   });
 
   await page.goto("/results?athlete=Taylor%20Johnson");
-  await expect(page.getByRole("status")).toHaveText("More than one lifter is named Taylor Johnson. Pick one.");
+  await expect(page.getByRole("status")).toHaveText("Pick which Taylor Johnson you mean.");
   const choices = page.getByRole("group", { name: "Lifters with this name" });
   await expect(choices.getByRole("link")).toHaveText([
-    /Age 37 · Tennessee-Kentucky · 1 result/,
-    /Age 18 · Barbell Club · 2 results/,
-    "Other results for this name · 3 results",
+    /Age 37 · Tennessee-Kentucky · 1 Result/,
+    /Age 18 · Barbell Club · 2 Results/,
+    "Other Results For This Name · 3 Results",
   ]);
 
   await choices.getByRole("link", { name: /Age 37/ }).click();

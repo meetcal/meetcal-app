@@ -179,6 +179,17 @@ describe('linking a name’s results to its lifters', () => {
     expect(JSON.parse(String(itemAt(rows('athlete_summary'), 0).latest))).toEqual([expect.objectContaining({ meet: 'Masters Worlds', lifter_id: '24655' })]);
   });
 
+  it('rewrites a history built before its rows were linked, though no link changes', async () => {
+    const { ctx, rows } = fakeMutationCtx({
+      lifters: [lifter('20730')],
+      lifting_results: [result({ lifterId: '20730', lifterMatch: 'history' })],
+      athlete_history: [{ nameKey: 'taylor johnson', json: JSON.stringify([{ meet: 'Kentucky Open', name: 'Taylor Johnson', date: '2016-03-19' }]) }],
+    });
+    const answer = await link(ctx, { names: [{ nameKey: 'taylor johnson', histories: [history('20730', [sourceRow()])] }] });
+    expect(answer).toMatchObject({ history: 1, changed: 0 });
+    expect(JSON.parse(String(itemAt(rows('athlete_history'), 0).json))).toEqual([expect.objectContaining({ meet: 'Kentucky Open', lifter_id: '20730' })]);
+  });
+
   it('clears a name from the relink queue once it is linked, and keeps it after a dry run', async () => {
     const store = await twoLifters();
     await store.ctx.db.insert('lifter_relinks', { nameKey: 'taylor johnson' });

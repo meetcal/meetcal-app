@@ -435,17 +435,15 @@ export const linkLifterResults = internalMutation({
         }
         sources = given;
       }
-      let relinked = false;
       for (const row of rows) {
         const link = linkFor(row, lifters, sources);
         counts[link?.lifterMatch ?? 'unlinked'] += 1;
         if (sameLink(row, link)) continue;
         counts.changed += 1;
-        relinked = true;
         if (!dryRun) await ctx.db.patch(row._id, { lifterId: link?.lifterId, lifterMatch: link?.lifterMatch });
       }
       if (dryRun) continue;
-      if (relinked) await writeHistories(ctx, [nameKey]);
+      await writeHistories(ctx, [nameKey]);
       await clearRelink(ctx, nameKey);
     }
     return { ...counts, stale };

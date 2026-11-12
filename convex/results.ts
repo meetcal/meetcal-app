@@ -515,14 +515,6 @@ export const bests = premiumQuery('results:bests', {
   },
 });
 
-/**
- * One lifter's results, or the lifters to choose from under a name. With
- * `lifter`, that lifter's results under every name they lifted under; with
- * `other`, the name's results no lifter holds; with a `membership` Sport80
- * knows, that member's results. Otherwise the name's one lifter, or its rows
- * when no lifter holds any, and when several could be meant, the choice.
- * `prs` index the answer's rows; `year_bests` are since `cutoffDate`.
- */
 export const athlete = premiumQuery('results:athlete', {
   args: {
     name: v.string(),

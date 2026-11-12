@@ -399,18 +399,27 @@ struct GetAthleteResultsIntent: AppIntent {
 
     private static let otherResultsChoice = "Other Results For This Name"
 
-    private static func choiceTitle(_ choice: APILifterChoice) -> String {
-        let count = choice.results == 1 ? "1 result" : "\(Int(choice.results)) results"
-        return [choice.name, choice.label, count].filter { !$0.isEmpty }.joined(separator: " · ")
+    private static func choiceTitles(_ lifters: [APILifterChoice]) -> [String] {
+        var seen: [String: Int] = [:]
+        return lifters.map { choice in
+            let count = choice.results == 1 ? "1 result" : "\(Int(choice.results)) results"
+            let latest = choice.latest_date.isEmpty ? "" : "latest \(APIDateFormat.pretty(choice.latest_date))"
+            let title = [choice.name, choice.label, count, latest].filter { !$0.isEmpty }.joined(separator: " · ")
+            let repeats = seen[title, default: 0]
+            seen[title] = repeats + 1
+            return repeats == 0 ? title : "\(title) (\(repeats + 1))"
+        }
     }
 
     private func pickedLifter(from answer: APIAthleteAnswer) async throws -> (lifter: String?, other: Bool)? {
         guard answer.isChoice, let lifters = answer.lifters, !lifters.isEmpty else { return nil }
-        var options = lifters.map(Self.choiceTitle)
+        let titles = Self.choiceTitles(lifters)
+        var options = titles
         if (answer.other_results ?? 0) > 0 { options.append(Self.otherResultsChoice) }
-        let picked = try await $name.requestDisambiguation(among: options, dialog: "More than one lifter is named \(name). Which one?")
+        let picked = try await $name.requestDisambiguation(among: options, dialog: "Which \(name) do you mean?")
         if picked == Self.otherResultsChoice { return (nil, true) }
-        return (lifters.first { Self.choiceTitle($0) == picked }?.id, false)
+        guard let index = titles.firstIndex(of: picked) else { return nil }
+        return (lifters[index].id, false)
     }
 
     func perform() async throws -> some IntentResult & ProvidesDialog & ShowsSnippetView {

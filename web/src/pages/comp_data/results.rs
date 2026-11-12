@@ -62,9 +62,9 @@ fn other_results_url(athlete: &str) -> String {
 
 fn results_count(count: f64) -> String {
     if count == 1.0 {
-        "1 result".to_owned()
+        "1 Result".to_owned()
     } else {
-        format!("{count} results")
+        format!("{count} Results")
     }
 }
 
@@ -75,7 +75,7 @@ fn lifter_choice_text(choice: &LifterChoice) -> String {
     }
     parts.push(results_count(choice.results));
     if !choice.latest_date.is_empty() {
-        parts.push(format!("latest {}", format_us_date(&choice.latest_date)));
+        parts.push(format!("Latest {}", format_us_date(&choice.latest_date)));
     }
     parts.join(" · ")
 }
@@ -312,10 +312,10 @@ pub fn Results() -> impl IntoView {
                     .into_any()
                 }
                 LoadState::Ready(Some(ResultsAnswer::Lifters { name, searched, lifters, other_results })) => {
-                    let message = format!("More than one lifter is named {name}. Pick one.");
+                    let message = format!("Pick which {name} you mean.");
                     let other_url = other_results_url(searched);
                     let other = (*other_results > 0.0).then(|| {
-                        let text = format!("Other results for this name · {}", results_count(*other_results));
+                        let text = format!("Other Results For This Name · {}", results_count(*other_results));
                         view! { <A href=other_url>{text}</A> }
                     });
                     let choices = lifters
@@ -488,7 +488,7 @@ mod tests {
         assert_eq!(searched, "taylor  johnson");
         assert_eq!(
             lifter_choice_text(&lifters[0]),
-            "Taylor Johnson · Age 18 · Barbell Club · 2 results · latest June 1, 2025"
+            "Taylor Johnson · Age 18 · Barbell Club · 2 Results · Latest June 1, 2025"
         );
         assert_eq!(other_results, 1.0);
     }

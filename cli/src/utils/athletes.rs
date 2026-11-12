@@ -94,7 +94,7 @@ fn results_count(count: f64) -> String {
 
 pub(crate) fn shared_name(name: &str, lifters: &[LifterChoice], other_results: f64) -> String {
     let mut lines = vec![format!(
-        "More than one lifter is named \"{name}\". Run again with one of:"
+        "\"{name}\" could be more than one lifter. Run again with one of:"
     )];
     for choice in lifters {
         let mut about = vec![results_count(choice.results)];
@@ -216,7 +216,7 @@ mod tests {
         let error = athlete_history(choose(), &LifterPick::default()).unwrap_err();
         assert_eq!(
             error.to_string(),
-            "More than one lifter is named \"Taylor Johnson\". Run again with one of:\n  --lifter 24655  Age 18 · Barbell Club, 2 results, latest Jun 1, 2025\n  --lifter 20730  1 result\n  --other  3 results no one lifter holds"
+            "\"Taylor Johnson\" could be more than one lifter. Run again with one of:\n  --lifter 24655  Age 18 · Barbell Club, 2 results, latest Jun 1, 2025\n  --lifter 20730  1 result\n  --other  3 results no one lifter holds"
         );
     }
 

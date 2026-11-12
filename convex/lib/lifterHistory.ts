@@ -59,7 +59,9 @@ export function rowsByLifter(history: readonly ApiLiftingResult[]): Map<string, 
   const byLifter = new Map<string, ApiLiftingResult[]>();
   for (const row of history) {
     if (row.lifter_id === undefined) continue;
-    byLifter.set(row.lifter_id, [...(byLifter.get(row.lifter_id) ?? []), row]);
+    const rows = byLifter.get(row.lifter_id);
+    if (rows) rows.push(row);
+    else byLifter.set(row.lifter_id, [row]);
   }
   return byLifter;
 }
