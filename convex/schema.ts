@@ -341,6 +341,27 @@ export default defineSchema({
     .index('by_userId_and_meet', ['userId', 'meet'])
     .index('by_userId_and_updatedAt', ['userId', 'updatedAt']),
 
+  schedule_publications: defineTable({
+    meet: v.string(),
+    userId: v.string(),
+    contactEmail: v.optional(v.string()),
+    options: builderOptionsValidator,
+    edits: v.array(builderEditValidator),
+    status: v.union(v.literal('pending'), v.literal('live'), v.literal('approved'), v.literal('rejected'), v.literal('superseded')),
+    createdAt: v.number(),
+    decidedAt: v.optional(v.number()),
+    emailedAt: v.optional(v.number()),
+    reviewTokenHash: v.optional(v.string()),
+    reviewTokenExpiresAt: v.optional(v.number()),
+  })
+    .index('by_meet_and_createdAt', ['meet', 'createdAt'])
+    .index('by_userId_and_createdAt', ['userId', 'createdAt'])
+    .index('by_status_and_createdAt', ['status', 'createdAt']),
+
+  meet_organizers: defineTable({ meet: v.string(), userId: v.string(), approvedAt: v.number() })
+    .index('by_meet_and_userId', ['meet', 'userId'])
+    .index('by_userId', ['userId']),
+
   schedule_builder_loads: defineTable({ eventId: v.string(), meet: v.string(), loadedAt: v.number() })
     .index('by_eventId_and_loadedAt', ['eventId', 'loadedAt'])
     .index('by_loadedAt', ['loadedAt']),

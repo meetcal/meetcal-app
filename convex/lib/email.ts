@@ -1,5 +1,7 @@
 import { isRecord } from './json';
 
+export const EMAIL_RETRY_DELAYS_MS = [60_000, 5 * 60_000, 30 * 60_000] as const;
+
 export async function sendEmail(to: string, subject: string, html: string, options: { replyTo?: string } = {}): Promise<string> {
   const appId = process.env.ONESIGNAL_APP_ID;
   const key = process.env.ONESIGNAL_REST_API_KEY;

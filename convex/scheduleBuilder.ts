@@ -23,14 +23,14 @@ export const LOAD_LOG_RETENTION_MS = 24 * 60 * 60 * 1000;
 const HOUR_MS = 60 * 60 * 1000;
 const LOAD_LOG_PRUNE_BATCH = 20;
 
-async function requireMeet(ctx: QueryCtx, meet: string) {
+export async function requireMeet(ctx: QueryCtx, meet: string) {
   requireNonEmpty('meet', meet);
   const row = await meetByName(ctx, meet);
   if (!row) throw apiError(404, 'meet not found');
   return row;
 }
 
-async function entrantsOf(ctx: QueryCtx, meet: string): Promise<BuilderEntrant[]> {
+export async function entrantsOf(ctx: QueryCtx, meet: string): Promise<BuilderEntrant[]> {
   const rows = await readAll(
     ctx.db.query('athletes').withIndex('by_meet', (q) => q.eq('meet', meet)),
     MEET_ROSTER_MAX,
@@ -39,7 +39,7 @@ async function entrantsOf(ctx: QueryCtx, meet: string): Promise<BuilderEntrant[]
   return rows.map(({ memberId, name, age, club, gender, weightClass, entryTotal }) => ({ memberId, name, age, club, gender, weightClass, entryTotal }));
 }
 
-function checked(options: BuilderOptions, edits: readonly BuilderEdit[]): void {
+export function checked(options: BuilderOptions, edits: readonly BuilderEdit[]): void {
   checkBuilderOptions(options);
   checkBuilderEdits(edits);
 }
