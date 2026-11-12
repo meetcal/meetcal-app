@@ -2,7 +2,7 @@ import type { QueryCtx } from '../_generated/server';
 import type { Doc } from '../_generated/dataModel';
 import { clubKey, sameClub } from './clubs';
 import { normalizeName } from './names';
-import { hasSession } from './roster';
+import { bareWeightClass, hasSession } from './roster';
 import { athleteGenderLabel, normalizeGender } from './normalize';
 import {
   accumulateBests,
@@ -15,6 +15,7 @@ import {
   type YearBests,
 } from './results';
 import { compareBytes, compareCollated } from './sort';
+import { isMeetTimeZone } from './validation';
 
 // Per-meet answers. Queries serve them from the meet's views when fresh and
 // compute them here otherwise; the view builders compute them here too.
@@ -55,26 +56,31 @@ export function toApiMeet(meet: Doc<'meets'>): ApiMeet {
   };
 }
 
-/**
- * The meet a name identifies. Names are meant to be unique (the ingest
- * mutations store a second federation's meet of the same name under
- * `disambiguatedMeetName`), but older rows can repeat one: then the oldest
- * row is the meet, the one its roster and results were written for, and the
- * duplicate is logged (`migrations:duplicateMeetNames` lists them all)
- * rather than chosen by chance.
- */
-export async function meetByName(ctx: QueryCtx, name: string): Promise<Doc<'meets'> | null> {
-  const rows = await ctx.db
+export const MEET_ROWS_READ_PER_NAME = 2;
+
+export async function meetsNamed(ctx: QueryCtx, name: string, limit = MEET_ROWS_READ_PER_NAME): Promise<Doc<'meets'>[]> {
+  return ctx.db
     .query('meets')
     .withIndex('by_name', (q) => q.eq('name', name))
-    .take(2);
+    .take(limit);
+}
+
+export function oldestMeetNamed(name: string, rows: readonly Doc<'meets'>[]): Doc<'meets'> | null {
   if (rows.length > 1) console.warn(`meets: more than one meet named ${JSON.stringify(name)}; using the oldest`);
   return oldestMeet(rows);
+}
+
+export async function meetByName(ctx: QueryCtx, name: string): Promise<Doc<'meets'> | null> {
+  return oldestMeetNamed(name, await meetsNamed(ctx, name));
 }
 
 /** The first-created of `rows`, or null. Index order already ties by creation time; this does not rely on it. */
 export function oldestMeet<T extends { _creationTime: number }>(rows: readonly T[]): T | null {
   return rows.reduce<T | null>((oldest, row) => (oldest === null || row._creationTime < oldest._creationTime ? row : oldest), null);
+}
+
+export function isPlaceholderMeet(meet: { timeZone: string; venueName: string; venueCity: string }): boolean {
+  return !isMeetTimeZone(meet.timeZone) && [meet.venueName, meet.venueCity].every((field) => field.trim().length === 1);
 }
 
 /** Disambiguated names tried for one meet before a write gives up. */
@@ -400,16 +406,16 @@ export function narrowSessions(rows: readonly SessionRow[], sessionNumber?: numb
 // Results, bests
 // ---------------------------------------------------------------------------
 
-/**
- * The titles a meet's results are stored under: its own name, then the
- * results titles linked to it (`meet_result_titles`, #362).
- */
-export async function meetResultTitles(ctx: QueryCtx, meet: string): Promise<string[]> {
-  const linked = await ctx.db
-    .query('meet_result_titles')
-    .withIndex('by_meet', (q) => q.eq('meet', meet))
-    .collect();
+export function linkedResultTitles(ctx: QueryCtx, meet: string) {
+  return ctx.db.query('meet_result_titles').withIndex('by_meet', (q) => q.eq('meet', meet));
+}
+
+export function resultTitlesOf(meet: string, linked: readonly { title: string }[]): string[] {
   return [meet, ...linked.map((row) => row.title).filter((title) => title !== meet)];
+}
+
+export async function meetResultTitles(ctx: QueryCtx, meet: string): Promise<string[]> {
+  return resultTitlesOf(meet, await linkedResultTitles(ctx, meet).collect());
 }
 
 /** A meet's results under its own name and every results title linked to it. */
@@ -678,12 +684,6 @@ async function statsEntries(ctx: QueryCtx, meet: string): Promise<{ joined: Stat
     });
   }
   return { joined, groups };
-}
-
-/** A weight class as `86+`: `kg` and spaces dropped, a leading plus moved to the end. */
-function bareWeightClass(text: string): string {
-  const bare = text.replace(/kg/gi, '').replace(/\s+/g, '');
-  return bare.startsWith('+') ? `${bare.slice(1)}+` : bare;
 }
 
 /** The weight class a division names ("Open Men's 89kg" -> "89", "... 86+kg" -> "86+"), or null. */

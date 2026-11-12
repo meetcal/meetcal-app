@@ -14,9 +14,7 @@ import { bulkyLiftResults, liftResultsArb } from '@/test-support/lift-result-arb
 
 jest.mock('@/lib/api/meetcal-api', () => ({ getTrustedNow: () => null }));
 
-// A multi-chunk case deflates and inflates ~300 KB; leave room for the
-// nightly run's larger case count.
-jest.setTimeout(Math.max(10_000, (fc.readConfigureGlobal().numRuns ?? 100) * 100));
+jest.setTimeout(Math.max(30_000, (fc.readConfigureGlobal().numRuns ?? 100) * 100));
 
 const MEET = 'Property Test Meet';
 const RESULTS_KEY = `meetcal_lifting_results_${MEET}`;

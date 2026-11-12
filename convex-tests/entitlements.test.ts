@@ -6,6 +6,7 @@ import {
   BACKFILL_BATCH,
   BACKFILL_PAUSE_MS,
   claimRefresh,
+  releaseRefresh,
   knownUserIds,
   syncedSince,
   ENTITLEMENT_REFRESH_INTERVAL_MS,
@@ -180,19 +181,32 @@ describe('the stored entitlement', () => {
     expect(db.rows('entitlement_syncs')).toEqual([{ userId: A, syncedAt: NOW + 10 }]);
   });
 
+  it('gives back only the latest claim: a failure that lands late leaves a newer claim throttled (#568)', async () => {
+    const claim = handlerOf<{ userId: string; now: number }, Record<string, unknown>>(claimRefresh);
+    const release = handlerOf<{ userId: string; claimedAt: number }, unknown>(releaseRefresh);
+    const db = fakeMutationCtx();
+    await claim(db.ctx, { userId: A, now: NOW });
+    const later = NOW + ENTITLEMENT_REFRESH_INTERVAL_MS;
+    await claim(db.ctx, { userId: A, now: later });
+    await release(db.ctx, { userId: A, claimedAt: NOW });
+    expect(await claim(db.ctx, { userId: A, now: later + 1 })).toEqual({ claimed: false, active: false });
+    await release(db.ctx, { userId: A, claimedAt: later });
+    expect(await claim(db.ctx, { userId: A, now: later + 1 })).toEqual({ claimed: true, claimedAt: later + 1 });
+  });
+
   it('lets a refresh reach RevenueCat at most once an interval per user', async () => {
     const claim = handlerOf<{ userId: string; now: number }, Record<string, unknown>>(claimRefresh);
     const db = fakeMutationCtx();
-    expect(await claim(db.ctx, { userId: A, now: NOW })).toEqual({ claimed: true });
+    expect(await claim(db.ctx, { userId: A, now: NOW })).toEqual({ claimed: true, claimedAt: NOW });
     expect(await claim(db.ctx, { userId: A, now: NOW + 1 })).toEqual({ claimed: false, active: false });
-    expect(await claim(db.ctx, { userId: 'user_b', now: NOW + 1 })).toEqual({ claimed: true });
-    expect(await claim(db.ctx, { userId: A, now: NOW + ENTITLEMENT_REFRESH_INTERVAL_MS })).toEqual({ claimed: true });
+    expect(await claim(db.ctx, { userId: 'user_b', now: NOW + 1 })).toEqual({ claimed: true, claimedAt: NOW + 1 });
+    expect(await claim(db.ctx, { userId: A, now: NOW + ENTITLEMENT_REFRESH_INTERVAL_MS })).toEqual({ claimed: true, claimedAt: NOW + ENTITLEMENT_REFRESH_INTERVAL_MS });
     expect(db.rows('entitlements')).toEqual([]);
   });
 });
 
 describe('RevenueCat calls', () => {
-  const handlers: Record<string, unknown> = { 'entitlements:store': store, 'entitlements:claimRefresh': claimRefresh, 'apiTokens:isLive': isLive };
+  const handlers: Record<string, unknown> = { 'entitlements:store': store, 'entitlements:claimRefresh': claimRefresh, 'entitlements:releaseRefresh': releaseRefresh, 'apiTokens:isLive': isLive };
   let previous: Record<string, string | undefined>;
   let fetchMock: jest.Mock;
   const originalFetch = global.fetch;
@@ -272,6 +286,15 @@ describe('RevenueCat calls', () => {
     const db = fakeMutationCtx({ api_tokens: [{ tokenId: 't1', userId: A, client: 'cli', createdAt: 1, expiresAt: 1e15 }] });
     expect(await handlerOf(refresh)(actionCtx(db, cli), {})).toEqual({ active: true });
     expect(fetchMock.mock.calls[0][0]).toBe(`https://api.revenuecat.com/v1/subscribers/${A}`);
+  });
+
+  it('refresh: a failed RevenueCat call does not throttle the next one (#568)', async () => {
+    const db = fakeMutationCtx();
+    const run = () => handlerOf(refresh)(actionCtx(db, { subject: A, issuer: 'https://clerk.example.com' }), {});
+    fetchMock.mockImplementationOnce(async () => answer(503, {}));
+    await expect(run()).rejects.toThrow('RevenueCat answered 503');
+    expect(await run()).toEqual({ active: true });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
   it('refresh: stores and answers the state, then answers the stored state while throttled', async () => {

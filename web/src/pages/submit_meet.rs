@@ -8,9 +8,8 @@
 //! the server's (`convex/lib/meetSubmissions.ts`), made before anything is
 //! uploaded. The page needs a signed-in user but no subscription.
 
-use crate::auth::{AuthContext, AuthState};
-use crate::components::subscription_gate::ClerkSignIn;
-use crate::utils::api::{self, MeetSubmission, MeetSubmissionFile};
+use crate::components::signed_in::SignedInOnly;
+use crate::utils::api::{self, MeetSubmission, MeetSubmissionFile, MeetSubmissionOutcome};
 use futures::future::{AbortHandle, abortable};
 use leptos::prelude::*;
 use leptos::task::spawn_local;
@@ -203,56 +202,17 @@ pub fn format_size(bytes: f64) -> String {
 
 #[component]
 pub fn SubmitMeetPage() -> impl IntoView {
-    let auth = expect_context::<AuthContext>();
-
     view! {
         <div class="access-page">
             <section class="access-card submit-card">
-                {move || match auth.state.get() {
-                    AuthState::Loading => {
-                        view! {
-                            <div class="access-status" role="status" aria-live="polite">
-                                <span class="access-spinner" aria-hidden="true"></span>
-                                <h1>"Checking your sign-in"</h1>
-                            </div>
-                        }
-                            .into_any()
-                    }
-                    AuthState::SignedOut => {
-                        view! {
-                            <div class="access-heading">
-                                <p class="data-eyebrow">"Submit a meet"</p>
-                                <h1>"Sign in to continue"</h1>
-                                <p>
-                                    "Sign in to your MeetCal account to send us the schedule or start lists of a meet MeetCal doesn’t cover yet."
-                                </p>
-                            </div>
-                            <ClerkSignIn />
-                        }
-                            .into_any()
-                    }
-                    AuthState::ConfigurationError(message) => {
-                        view! {
-                            <div class="access-status access-error" role="alert">
-                                <h1>"Sign-in isn’t available"</h1>
-                                <p>{message}</p>
-                                <button class="access-button" type="button" on:click=move |_| reload()>
-                                    "Try again"
-                                </button>
-                            </div>
-                        }
-                            .into_any()
-                    }
-                    AuthState::SignedIn(_) => view! { <SubmitMeetForm /> }.into_any(),
-                }}
+                <SignedInOnly
+                    eyebrow="Submit a meet"
+                    sign_in_prompt=|| "Sign in to your MeetCal account to send us the schedule or start lists of a meet MeetCal doesn’t cover yet."
+                >
+                    <SubmitMeetForm />
+                </SignedInOnly>
             </section>
         </div>
-    }
-}
-
-fn reload() {
-    if let Some(window) = web_sys::window() {
-        let _ = window.location().reload();
     }
 }
 
@@ -580,18 +540,25 @@ async fn send_submission(
         contact_email: crate::auth::primary_email(),
         files,
     };
-    match api::submit_meet(&submission).await {
-        Ok(()) => Ok(()),
-        Err(error) if stored_on_an_earlier_try(reused, &error.to_string()) => Ok(()),
-        Err(error) => Err(error.to_string()),
-    }
+    let outcome = api::submit_meet(&submission)
+        .await
+        .map_err(|error| error.to_string())?;
+    sent_or_why_not(outcome, reused)
 }
 
-/// Whether a refused submit means an earlier attempt stored the meet after
-/// all: the server refuses files already in a submission, and only this
-/// form had the ids it reused.
-fn stored_on_an_earlier_try(reused: bool, message: &str) -> bool {
-    reused && message.starts_with("File already submitted")
+fn sent_or_why_not(
+    outcome: MeetSubmissionOutcome,
+    reused_files_an_earlier_try_uploaded: bool,
+) -> Result<(), String> {
+    match outcome {
+        MeetSubmissionOutcome::Submitted => Ok(()),
+        MeetSubmissionOutcome::FilesAlreadySubmitted { .. }
+            if reused_files_an_earlier_try_uploaded =>
+        {
+            Ok(())
+        }
+        MeetSubmissionOutcome::FilesAlreadySubmitted { server_said } => Err(server_said),
+    }
 }
 
 #[cfg(test)]
@@ -615,16 +582,19 @@ mod tests {
     }
 
     #[test]
-    fn only_a_retry_counts_already_submitted_as_sent() {
-        assert!(stored_on_an_earlier_try(
-            true,
-            "File already submitted: a.pdf"
-        ));
-        assert!(!stored_on_an_earlier_try(
-            false,
-            "File already submitted: a.pdf"
-        ));
-        assert!(!stored_on_an_earlier_try(true, "Meet name is required"));
+    fn only_a_retry_counts_already_submitted_files_as_sent() {
+        let already = || MeetSubmissionOutcome::FilesAlreadySubmitted {
+            server_said: "File already submitted: a.pdf".to_owned(),
+        };
+        assert_eq!(
+            sent_or_why_not(MeetSubmissionOutcome::Submitted, false),
+            Ok(())
+        );
+        assert_eq!(sent_or_why_not(already(), true), Ok(()));
+        assert_eq!(
+            sent_or_why_not(already(), false),
+            Err("File already submitted: a.pdf".to_owned())
+        );
     }
 
     #[test]

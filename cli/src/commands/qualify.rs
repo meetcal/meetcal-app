@@ -1,11 +1,12 @@
 use anyhow::{Result, bail};
 use clap::Parser;
 use comfy_table::Table;
-use serde::Deserialize;
 
 use chrono::Utc;
 
 use crate::commands::leaderboard::EXCLUDED_FEDERATION;
+use crate::commands::qual_totals::QualifyingTotal;
+use crate::commands::standards::Standards;
 use crate::types::lifting_results::LiftingResults;
 use crate::utils::athletes::history;
 use crate::utils::backend::{NoArgs, queries, query};
@@ -35,6 +36,7 @@ use crate::utils::stats::{
 )]
 pub struct QualifyArgs {
     /// Exact athlete name
+    #[arg(value_parser = crate::utils::filters::parse_name)]
     pub name: String,
 
     /// Weight class to check, e.g. 89 or 110+ (defaults to the latest result's)
@@ -118,24 +120,6 @@ pub fn bests_within(rows: &[LiftingResults], cutoff: &str, limit: f64) -> (f64, 
         })
 }
 
-#[derive(Debug, Deserialize)]
-pub struct Standard {
-    pub age_category: String,
-    pub gender: String,
-    pub weight_class: String,
-    pub standard_a: f64,
-    pub standard_b: f64,
-}
-
-#[derive(Debug, Deserialize)]
-pub struct QualifyingTotal {
-    pub event_name: String,
-    pub gender: String,
-    pub age_category: String,
-    pub weight_class: String,
-    pub qualifying_total: f64,
-}
-
 /// Who is being checked: gender, the age categories, and the class.
 #[derive(Debug, PartialEq)]
 pub struct Target {
@@ -165,7 +149,7 @@ pub async fn run(args: QualifyArgs) -> Result<()> {
     let limit = class_limit(&target.class);
     let (snatch, cj, total) = bests_within(&rows, &cutoff, limit);
 
-    let standards: Vec<Standard> = query(queries::STANDARDS, &NoArgs {}).await?;
+    let standards: Vec<Standards> = query(queries::STANDARDS, &NoArgs {}).await?;
     let totals: Vec<QualifyingTotal> = query(queries::QUALIFYING_TOTALS, &NoArgs {}).await?;
 
     let mut athlete = Table::new();
@@ -298,14 +282,14 @@ fn gap_cells(needed: f64, best: f64) -> (String, String) {
     }
 }
 
-pub fn standards_table(standards: &[Standard], target: &Target, total: f64) -> Table {
+pub fn standards_table(standards: &[Standards], target: &Target, total: f64) -> Table {
     let mut table = Table::new();
     table.set_header(vec!["Category", "Level", "Needed Total", "Status"]);
     for category in &target.categories {
         let wanted = standards_category(category);
         let Some(standard) = standards.iter().find(|s| {
             s.age_category.eq_ignore_ascii_case(wanted)
-                && Gender::parse(&s.gender) == Some(target.gender)
+                && filters::is_gender(&s.gender, target.gender)
                 && weight_class(&s.weight_class).as_deref() == Some(target.class.as_str())
         }) else {
             continue;
@@ -326,7 +310,7 @@ pub fn totals_table(totals: &[QualifyingTotal], target: &Target, total: f64) -> 
                 .categories
                 .iter()
                 .any(|c| t.age_category.eq_ignore_ascii_case(c))
-                && Gender::parse(&t.gender) == Some(target.gender)
+                && filters::is_gender(&t.gender, target.gender)
                 && weight_class(&t.weight_class).as_deref() == Some(target.class.as_str())
         })
         .collect();
@@ -476,7 +460,7 @@ mod tests {
 
     #[test]
     fn tables_show_what_is_met_and_what_is_left() {
-        let standards = vec![Standard {
+        let standards = vec![Standards {
             age_category: "Youth".into(),
             gender: "Men".into(),
             weight_class: "+94kg".into(),

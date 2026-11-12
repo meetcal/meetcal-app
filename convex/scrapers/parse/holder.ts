@@ -1,3 +1,6 @@
+import { DAY_MS, MONTH_NUMBERS as MONTHS, pad2 as pad } from '../../lib/dates';
+import { pyInt } from '../lib/numbers';
+
 // Who holds a record, stored beside each lift (`snatchBy`, `cjBy`, `totalBy`
 // in the tables). Every records scraper builds these the same way:
 //
@@ -16,10 +19,6 @@ export type RecordHolder = { name: string; date?: string; location?: string };
 
 const STANDARD = /^(?:(?:world|record|wso|state|american|national)\s+)?standard$/i;
 const EMPTY = /^(?:-+|–|—|#?n\/?a|none|tbd|vacant|open)?$/i;
-
-const MONTHS: Record<string, number> = { jan: 1, feb: 2, mar: 3, apr: 4, may: 5, jun: 6, jul: 7, aug: 8, sep: 9, oct: 10, nov: 11, dec: 12 };
-
-const pad = (n: number) => String(n).padStart(2, '0');
 
 function iso(year: number, month: number, day: number): string | null {
   if (month < 1 || month > 12 || day < 1 || day > 31) return null;
@@ -69,8 +68,6 @@ const DATE_CORRECTIONS: readonly { name: string; written: string; date: string }
  * a record set today in a time zone ahead of UTC is not one.
  */
 const FUTURE_SLACK_DAYS = 2;
-
-const DAY_MS = 24 * 60 * 60 * 1000;
 
 /**
  * `date` (as `recordDate` read it) with the sources' known mistakes
@@ -127,7 +124,6 @@ export function setHolder<K extends string>(record: { [key in K]?: RecordHolder 
   else delete record[key];
 }
 
-const NUMBER = /^[-+]?(\d+\.?\d*|\.\d+)([eE][-+]?\d+)?$/;
 const WHOLE_KG = /^(\d+) ?kg$/i;
 
 /**
@@ -143,6 +139,7 @@ export function recordLift(raw: string): number | null {
   if (EMPTY.test(text) || STANDARD.test(text)) return null;
   const kg = WHOLE_KG.exec(text);
   if (kg) return Number(kg[1]);
-  if (!NUMBER.test(text)) throw new Error(`unreadable lift value ${JSON.stringify(raw)}`);
-  return Math.trunc(Number(text));
+  const value = pyInt(text);
+  if (value === null) throw new Error(`unreadable lift value ${JSON.stringify(raw)}`);
+  return value;
 }

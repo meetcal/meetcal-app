@@ -1,12 +1,11 @@
 import { v } from 'convex/values';
 import { premiumQuery } from './lib/access';
-import { query, type QueryCtx } from './_generated/server';
+import type { QueryCtx } from './_generated/server';
 import { revalidated, revalidatedText, type Revalidated } from './lib/etag';
 import type { Doc } from './_generated/dataModel';
 import { clubKey, clubLabels } from './lib/clubs';
-import { clubAthleteCount, clubStats, computeStatsRows, meetByName, meetResultTitles, readStatsViewItems } from './lib/meetData';
+import { clubAthleteCount, clubStats, computeStatsRows, isPlaceholderMeet, meetByName, meetResultTitles, readStatsViewItems } from './lib/meetData';
 import { paddedDate, type MeetStatus } from './lib/meetStatus';
-import { isPlaceholderMeet } from './meets';
 import {
   ADAPTIVE_RECORDS_SEASON_START,
   clubNamesPage,
@@ -27,6 +26,7 @@ import {
   type WsoRecordRow,
 } from './lib/referenceData';
 import { athleteGenderLabel } from './lib/normalize';
+import { DOCUMENTS_ONE_QUERY_MAY_READ } from './lib/readBudget';
 import { compareCollated } from './lib/sort';
 import { adaptiveKey, ADAPTIVE_VIEW_ARGS, meetKey, natKey, REF_VIEWS, wsoKey } from './lib/viewKeys';
 import { readFreshView, readViewAnyAge, readViewJsonAnyAge } from './lib/views';
@@ -268,8 +268,8 @@ const UNPAGED_CLUB_MEET_LIMIT = 4000;
  * meet seeks and meet dates together, under the 4,096 one query may use.
  */
 const UNPAGED_CLUB_RANGE_BUDGET = 3900;
-/** Registrations an unpaged `clubAthletes` reads at most, under the 32,000 documents one query may read. */
-const UNPAGED_CLUB_DOC_BUDGET = 24000;
+const DOCUMENTS_LEFT_FOR_CLUB_MEET_SEEKS_AND_DATES = 8000;
+const UNPAGED_CLUB_DOC_BUDGET = DOCUMENTS_ONE_QUERY_MAY_READ - DOCUMENTS_LEFT_FOR_CLUB_MEET_SEEKS_AND_DATES;
 
 const athleteCursor = v.optional(v.union(v.string(), v.null()));
 

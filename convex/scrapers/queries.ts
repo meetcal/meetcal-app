@@ -1,7 +1,8 @@
 import { v } from 'convex/values';
 import { internalQuery, type QueryCtx } from '../_generated/server';
 import type { Doc } from '../_generated/dataModel';
-import { meetByName, oldestMeet } from '../lib/meetData';
+import { meetByName, meetResultTitles, oldestMeet } from '../lib/meetData';
+import { hasNoMemberId } from '../lib/memberIds';
 import { normalizeName } from '../lib/names';
 import { normalizeFederation } from '../lib/normalize';
 import { canonicalMeetDate, isMeetTimeZone } from '../lib/validation';
@@ -69,22 +70,27 @@ export const entriesMeet = internalQuery({
   },
 });
 
-/**
- * Stored meets the meet scrapers once got wrong, for a person to review
- * (read-only; `npx convex run scrapers/queries:meetDataProblems`):
- *
- * - `badDates`: a start or end date that is not a padded `YYYY-MM-DD`
- *   ("undefined-TBD-undefined", "2026-9-5"). `migrations:padMeetDates`
- *   pads the unpadded ones; fix (or delete) the others by hand, or let the
- *   next sync with real dates overwrite them.
- * - `unknownZone`: a blank time zone, or one that is not an IANA zone name
- *   (`isMeetTimeZone`). A meet abroad in a country with several zones is
- *   stored blank and listed here until someone sets its zone.
- * - `zoneDiffers`: an unlocked zone that differs from what the state and city,
- *   or the one-zone country, now give (a split state guessed per state
- *   before); the next sync of a meet still listed fixes it,
- *   `ingest:setMeetTimeZone` fixes any other.
- */
+async function hasResultsUnder(ctx: QueryCtx, title: string): Promise<boolean> {
+  return (
+    (await ctx.db
+      .query('lifting_results')
+      .withIndex('by_meet', (q) => q.eq('meet', title))
+      .first()) !== null
+  );
+}
+
+async function missingResultsLink(ctx: QueryCtx, meet: Doc<'meets'>) {
+  if (meet.status !== 'completed' || (await hasResultsUnder(ctx, meet.name))) return null;
+  const roster = await ctx.db
+    .query('athletes')
+    .withIndex('by_meet', (q) => q.eq('meet', meet.name))
+    .first();
+  if (roster === null) return null;
+  const linkedTitles = (await meetResultTitles(ctx, meet.name)).slice(1);
+  for (const title of linkedTitles) if (await hasResultsUnder(ctx, title)) return null;
+  return { name: meet.name, startDate: meet.startDate, endDate: meet.endDate, linkedTitles };
+}
+
 export const meetDataProblems = internalQuery({
   args: {},
   handler: async (ctx) => {
@@ -92,7 +98,10 @@ export const meetDataProblems = internalQuery({
     const badDates = [];
     const unknownZone = [];
     const zoneDiffers = [];
+    const needsResultsLink = [];
     for (const meet of meets) {
+      const unlinked = await missingResultsLink(ctx, meet);
+      if (unlinked) needsResultsLink.push(unlinked);
       const { name, status, startDate, endDate, timeZone, venueCity, venueState } = meet;
       if (canonicalMeetDate(startDate) !== startDate || canonicalMeetDate(endDate) !== endDate) {
         badDates.push({ name, status, startDate, endDate });
@@ -101,14 +110,12 @@ export const meetDataProblems = internalQuery({
         unknownZone.push({ name, status, timeZone, venueCity, venueState });
         continue;
       }
-      // A country with outlying islands (Spain) is not judged: its zone
-      // depends on the region, which a stored meet does not keep.
       const derived = usTimeZone(venueState, venueCity) ?? usTerritoryTimeZone(venueState) ?? oneClockCountryZone(venueState);
       if (!meet.timeZoneLocked && derived !== null && derived !== timeZone) {
         zoneDiffers.push({ name, status, timeZone, derived, venueCity, venueState });
       }
     }
-    return { badDates, unknownZone, zoneDiffers };
+    return { badDates, unknownZone, zoneDiffers, needsResultsLink };
   },
 });
 
@@ -135,7 +142,6 @@ export const truncatedEntryNames = internalQuery({
         .query('athletes')
         .withIndex('by_meet', (q) => q.eq('meet', meet.name))
         .collect();
-      const idless = (id: string) => id === '' || id.startsWith('noid:');
       const byKey = new Map<string, typeof athletes>();
       for (const athlete of athletes) {
         const key = normalizeName(athlete.name);
@@ -146,7 +152,7 @@ export const truncatedEntryNames = internalQuery({
         // Every shorter leading run of the name's words, two words at least.
         for (let n = 2; n < words.length; n++) {
           for (const short of byKey.get(words.slice(0, n).join(' ')) ?? []) {
-            if (short.memberId !== full.memberId && !(idless(short.memberId) && idless(full.memberId))) continue;
+            if (short.memberId !== full.memberId && !(hasNoMemberId(short.memberId) && hasNoMemberId(full.memberId))) continue;
             pairs.push({ meet: meet.name, truncated: { id: short._id, name: short.name, memberId: short.memberId }, full: { id: full._id, name: full.name, memberId: full.memberId } });
           }
         }

@@ -2,6 +2,7 @@ import { v } from 'convex/values';
 import { internalAction, internalMutation, internalQuery } from './_generated/server';
 import { internal } from './_generated/api';
 import type { Doc } from './_generated/dataModel';
+import { isPlaceholderMemberId, ONE_OFF_MEMBER_ID } from './lib/memberIds';
 import { normalizeName } from './lib/names';
 import { normalizeAgeCategory, normalizeGender } from './lib/normalize';
 import { canonicalMeetDate, isValidIsoDate } from './lib/validation';
@@ -360,9 +361,6 @@ export const padMeetDates = internalMutation({
   },
 });
 
-/** A membership number the old entries scraper minted per run (`ingest.upsertEntryAthletes`). */
-const ONE_OFF_MEMBER_ID = /^[1-9]\d{8}$/;
-
 /**
  * Why a roster row is a leftover of an old entries scraper, or null for a
  * row to keep (#384, #386), given every row of its meet and whether the meet
@@ -390,7 +388,7 @@ export function rosterLeftover(row: Doc<'athletes'>, meetRows: readonly Doc<'ath
   if (same.some((other) => hasSession(other) && bareWeightClass(other.weightClass) === bareWeightClass(row.weightClass))) return 'start list copy';
   if (
     ONE_OFF_MEMBER_ID.test(row.memberId) &&
-    same.some((other) => Math.abs(other.age - row.age) <= 1 && !ONE_OFF_MEMBER_ID.test(other.memberId) && !other.memberId.startsWith('noid:'))
+    same.some((other) => Math.abs(other.age - row.age) <= 1 && !ONE_OFF_MEMBER_ID.test(other.memberId) && !isPlaceholderMemberId(other.memberId))
   ) {
     return 'stale one-off id';
   }

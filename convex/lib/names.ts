@@ -17,6 +17,23 @@ export function normalizeName(name: string): string {
   return name.normalize('NFC').split(/\s+/).filter(Boolean).join(' ').toLowerCase();
 }
 
+type DatedName = { name: string; date: string };
+
+export function newestSpellingByAthlete(rows: readonly DatedName[]): Map<string, string> {
+  const newest = new Map<string, DatedName>();
+  for (const row of rows) {
+    const key = normalizeName(row.name);
+    const kept = newest.get(key);
+    if (key && (kept === undefined || row.date >= kept.date)) newest.set(key, row);
+  }
+  return new Map([...newest].map(([key, row]) => [key, row.name.trim()]));
+}
+
+export function newestSpelling(rows: readonly DatedName[]): string | null {
+  const [only] = newestSpellingByAthlete(rows).values();
+  return only ?? null;
+}
+
 /** Trims every name and drops the empty ones (`clean_name_list`). */
 export function cleanNameList(names: readonly string[]): string[] {
   return names.map((name) => name.trim()).filter((name) => name.length > 0);
