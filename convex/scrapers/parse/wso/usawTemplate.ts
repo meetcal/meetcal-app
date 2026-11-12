@@ -111,12 +111,12 @@ export function parseUsawTemplate(csv: string, wso: string): { records: WsoRecor
     const long = isDate(cell(13));
     const [date, place, event] = long ? [cell(13), cell(14), cell(16)] : [cell(11), cell(12), cell(13)];
     const key = JSON.stringify([age, gender, weightClass]);
-    const entry = grouped.get(key) ?? { wso, age_category: age, gender, weight_class: weightClass, snatch_record: null, cj_record: null, total_record: null };
+    const entry = grouped.get(key) ?? { wso, ageCategory: age, gender, weightClass: weightClass, snatchRecord: null, cjRecord: null, totalRecord: null };
     grouped.set(key, entry);
-    entry[`${lift}_record`] = value;
+    entry[`${lift}Record`] = value;
     const by = recordHolder(value, cell(COLUMN.name), date, event, place);
-    if (by) entry[`${lift}_by`] = by;
-    else delete entry[`${lift}_by`];
+    if (by) entry[`${lift}By`] = by;
+    else delete entry[`${lift}By`];
   }
   return { records: [...grouped.values()], warnings };
 }

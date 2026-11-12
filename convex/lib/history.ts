@@ -1,5 +1,6 @@
 import type { MutationCtx, QueryCtx } from '../_generated/server';
 import type { Doc } from '../_generated/dataModel';
+import { mapInBatches } from './concurrency';
 import { compareNewestFirst, toApiLiftingResult, type ApiLiftingResult } from './results';
 
 /**
@@ -62,14 +63,10 @@ export function summaryOf(rows: readonly ApiLiftingResult[]): { latest: string; 
   };
 }
 
-/**
- * Rewrites the history and summary documents of `keys` from
- * `lifting_results`; returns how many histories changed. A summary missing
- * beside an unchanged history (written before summaries existed) is filled in.
- */
 export async function writeHistories(ctx: MutationCtx, keys: Iterable<string>): Promise<number> {
-  const changed = await inBatches(
+  const changed = await mapInBatches(
     [...new Set(keys)],
+    READ_BATCH,
     async (key) => {
       const [rows, existing, summary] = await Promise.all([
         computeHistory(ctx, key),
@@ -101,29 +98,14 @@ export async function writeHistories(ctx: MutationCtx, keys: Iterable<string>): 
   return changed.filter(Boolean).length;
 }
 
-/**
- * Reads in flight at once when a caller asks about many athletes (the search
- * fallback asks about up to 1,000): at the per-function limit on concurrent
- * reads, not over it.
- */
 const READ_BATCH = 250;
 
-async function inBatches<T>(keys: readonly string[], read: (key: string) => Promise<T>): Promise<T[]> {
-  const out: T[] = [];
-  for (let i = 0; i < keys.length; i += READ_BATCH) out.push(...(await Promise.all(keys.slice(i, i + READ_BATCH).map(read))));
-  return out;
-}
-
-/**
- * Each athlete's summary: the summary document when there is one, otherwise
- * derived from the history (live before the first build, or from the history
- * document where the summary has not been written yet).
- */
 export async function readSummaries(ctx: QueryCtx, keys: readonly string[]): Promise<Map<string, Summary>> {
   const ready = await historiesReady(ctx);
   const parse = (latest: string, marks: string): Summary => ({ latest: JSON.parse(latest) as ApiLiftingResult[], marks: JSON.parse(marks) as Mark[] });
-  const entries = await inBatches(
+  const entries = await mapInBatches(
     keys,
+    READ_BATCH,
     async (key): Promise<[string, Summary]> => {
       if (ready) {
         const doc = await ctx.db
@@ -140,14 +122,11 @@ export async function readSummaries(ctx: QueryCtx, keys: readonly string[]): Pro
   return new Map(entries);
 }
 
-/**
- * Each key's history, newest first. From the history documents once they are
- * built, from `lifting_results` before.
- */
 export async function readHistories(ctx: QueryCtx, keys: readonly string[]): Promise<Map<string, ApiLiftingResult[]>> {
   const ready = await historiesReady(ctx);
-  const entries = await inBatches(
+  const entries = await mapInBatches(
     keys,
+    READ_BATCH,
     async (key): Promise<[string, ApiLiftingResult[]]> => {
       if (!ready) return [key, await computeHistory(ctx, key)];
       const doc = await ctx.db

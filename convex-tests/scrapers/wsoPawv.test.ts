@@ -25,7 +25,7 @@ describe('Pennsylvania-West Virginia WSO sheet (port of scraper_pawv.py)', () =>
       row('44kg'),
       row('Clean & Jerk', 'C', 'x', '70.5'),
     ].join('\n');
-    expect(parsePawvTab(csv, 'PA-WV', { gid: '1', gender: 'Men', base: 'Youth' }).map((r) => [r.age_category, r.weight_class, r.snatch_record, r.cj_record, r.total_record])).toEqual([
+    expect(parsePawvTab(csv, 'PA-WV', { gid: '1', gender: 'Men', base: 'Youth' }).map((r) => [r.ageCategory, r.weightClass, r.snatchRecord, r.cjRecord, r.totalRecord])).toEqual([
       ['U13', '40', 30, null, null],
       ['U13', '40+', null, null, 90],
       ['U15', '44', null, 70, null],
@@ -44,14 +44,14 @@ describe('Pennsylvania-West Virginia WSO sheet (port of scraper_pawv.py)', () =>
     const [record] = parsePawvTab(csv, 'PA-WV', { gid: '1', gender: 'Men', base: 'Senior' });
     expect(record).toEqual({
       wso: 'PA-WV',
-      age_category: 'Senior',
+      ageCategory: 'Senior',
       gender: 'Men',
-      weight_class: '65',
-      snatch_record: 106,
-      cj_record: 125,
-      total_record: null,
-      snatch_by: { name: 'Luke Sterns', date: '2026-06-23', location: '2026 Junior National Championships, Colorado Springs, CO' },
-      cj_by: { name: 'Standard', date: '2025-06-01' },
+      weightClass: '65',
+      snatchRecord: 106,
+      cjRecord: 125,
+      totalRecord: null,
+      snatchBy: { name: 'Luke Sterns', date: '2026-06-23', location: '2026 Junior National Championships, Colorado Springs, CO' },
+      cjBy: { name: 'Standard', date: '2025-06-01' },
     });
   });
 });

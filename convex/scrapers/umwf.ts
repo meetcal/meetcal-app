@@ -15,6 +15,7 @@ import {
 } from './parse/umwf';
 import { sourcesFailed, type SourceFailure } from '../lib/cronAlerts';
 import { previewPrune, writeThenPrune } from './lib/prune';
+import { recordRow, type RowOutcome, tally } from './lib/recordRows';
 
 /**
  * UMWF masters world records (port of `umwf_records.py`): one published
@@ -64,29 +65,18 @@ export const run = internalAction({
     const prune = (options: { allowShrink: boolean; dryRun: boolean }): Promise<{ deleted: string[] }> =>
       ctx.runMutation(internal.ingest.pruneRecords, {
         recordType: 'UMWF',
-        keep: records.map((r) => ({ ageCategory: r.age_category, gender: r.gender, weightClass: r.weight_class })),
+        keep: records.map((r) => ({ ageCategory: r.ageCategory, gender: r.gender, weightClass: r.weightClass })),
         groups,
         ...options,
       });
     if (dryRun) return { records, failedTabs, inserted: 0, updated: 0, ...(await previewPrune(prune, allowShrink ?? false)) };
 
-    let result: { written: { wasInsert: boolean; wasChanged: boolean }[]; deleted: string[] };
+    let result: { written: RowOutcome[]; deleted: string[] };
     try {
       result = await writeThenPrune(prune, allowShrink ?? false, () =>
         ctx.runMutation(internal.ingest.upsertRecords, {
           allowShrink: allowShrink ?? false,
-          rows: records.map((r) => ({
-            recordType: r.record_type,
-            ageCategory: r.age_category,
-            gender: r.gender,
-            weightClass: r.weight_class,
-            snatchRecord: r.snatch_record || undefined,
-            cjRecord: r.cj_record || undefined,
-            totalRecord: r.total_record || undefined,
-            snatchBy: r.snatch_by,
-            cjBy: r.cj_by,
-            totalBy: r.total_by,
-          })),
+          rows: records.map((r) => recordRow({ recordType: r.recordType }, r, { zeroMeansNoRecord: true })),
         }),
       );
     } catch (error) {
@@ -94,8 +84,7 @@ export const run = internalAction({
       // a tab failing alongside it still alerts.
       throw sourcesFailed('umwf: nothing stored', [...failures, { source: 'sync', error: (error as Error).message }]);
     }
-    const inserted = result.written.filter((o) => o.wasInsert).length;
-    const updated = result.written.filter((o) => !o.wasInsert && o.wasChanged).length;
+    const { inserted, updated } = tally(result.written);
     const { deleted } = result;
     console.log(`umwf: ${records.length} parsed, ${inserted} inserted, ${updated} updated, ${deleted.length} deleted${deleted.length ? ` (${deleted.join(', ')})` : ''}`);
     if (failures.length) throw sourcesFailed(`umwf: ${failures.length} tab(s) not stored, the rest was`, failures);

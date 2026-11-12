@@ -8,6 +8,7 @@ import { pdfLines } from './lib/pdf';
 import { findRecordsPdfUrl, parseRecordsReport, type UsawRecord } from './parse/records';
 import { sourcesFailed } from '../lib/cronAlerts';
 import { previewPrune, writeThenPrune } from './lib/prune';
+import { recordRow, type RowOutcome as Outcome, tally } from './lib/recordRows';
 
 /**
  * USA Weightlifting American records (port of `usaw/records_scraper`): the
@@ -35,8 +36,6 @@ type RunResult = {
   pruneRefused?: string;
 };
 
-type Outcome = { wasInsert: boolean; wasChanged: boolean };
-
 const unknownAgeFailures = (codes: readonly string[]) =>
   codes.map((code) => ({ source: `age group ${code}`, error: `${JSON.stringify(code)} is not an age group the parser knows (parse/records.ts ageCategory); its rows were not stored` }));
 
@@ -57,7 +56,7 @@ export const run = internalAction({
     const prune = (options: { allowShrink: boolean; dryRun: boolean }): Promise<{ deleted: string[] }> =>
       ctx.runMutation(internal.ingest.pruneRecords, {
         recordType: 'USAW',
-        keep: records.map((r) => ({ ageCategory: r.age_category, gender: r.gender, weightClass: r.weight_class })),
+        keep: records.map((r) => ({ ageCategory: r.ageCategory, gender: r.gender, weightClass: r.weightClass })),
         ...options,
       });
     if (dryRun) {
@@ -68,22 +67,10 @@ export const run = internalAction({
     const upsert = (): Promise<Outcome[]> =>
       ctx.runMutation(internal.ingest.upsertRecords, {
         allowShrink: allowShrink ?? false,
-        rows: records.map((r) => ({
-          recordType: r.record_type,
-          ageCategory: r.age_category,
-          gender: r.gender,
-          weightClass: r.weight_class,
-          snatchRecord: r.snatch_record,
-          cjRecord: r.cj_record,
-          totalRecord: r.total_record,
-          snatchBy: r.snatch_by,
-          cjBy: r.cj_by,
-          totalBy: r.total_by,
-        })),
+        rows: records.map((r) => recordRow({ recordType: r.recordType }, r)),
       });
     const log = (outcomes: Outcome[], deleted: string[]) => {
-      const inserted = outcomes.filter((o) => o.wasInsert).length;
-      const updated = outcomes.filter((o) => !o.wasInsert && o.wasChanged).length;
+      const { inserted, updated } = tally(outcomes);
       console.log(`records: ${records.length} parsed, ${inserted} inserted, ${updated} updated, ${deleted.length} deleted${deleted.length ? ` (${deleted.join(', ')})` : ''}`);
       return { inserted, updated };
     };

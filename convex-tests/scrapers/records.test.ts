@@ -15,9 +15,9 @@ describe('records parser (port of usaw/records_scraper)', () => {
       'Open Championships',
     ];
     expect(parseRecords([lines])).toMatchObject([
-      { record_type: 'USAW', age_category: 'senior', gender: 'women', weight_class: '49kg', snatch_record: 91, cj_record: 115, total_record: 206 },
-      { record_type: 'USAW', age_category: 'junior', gender: 'men', weight_class: '109+kg', snatch_record: 180, cj_record: 0, total_record: 0 },
-      { record_type: 'USAW', age_category: 'Masters 40', gender: 'women', weight_class: '59kg', snatch_record: 70, cj_record: 0, total_record: 0 },
+      { recordType: 'USAW', ageCategory: 'senior', gender: 'women', weightClass: '49kg', snatchRecord: 91, cjRecord: 115, totalRecord: 206 },
+      { recordType: 'USAW', ageCategory: 'junior', gender: 'men', weightClass: '109+kg', snatchRecord: 180, cjRecord: 0, totalRecord: 0 },
+      { recordType: 'USAW', ageCategory: 'Masters 40', gender: 'women', weightClass: '59kg', snatchRecord: 70, cjRecord: 0, totalRecord: 0 },
     ]);
   });
 
@@ -32,19 +32,19 @@ describe('records parser (port of usaw/records_scraper)', () => {
       'W80 F 49 SNATCH 0 Standard 2026-08-01',
     ];
     const [women49, men60, women80] = parseRecords([lines]);
-    expect(women49.snatch_by).toEqual({ name: 'DOE, Jane', date: '2026-06-20', location: '2026 National Championships, Colorado Springs, CO' });
-    expect(women49.cj_by).toEqual({ name: 'DOE, Jane', date: '2026-06-20' });
-    expect(women49.total_by).toEqual({ name: 'Standard', date: '2026-08-01' });
-    expect(men60.snatch_by).toEqual({
+    expect(women49.snatchBy).toEqual({ name: 'DOE, Jane', date: '2026-06-20', location: '2026 National Championships, Colorado Springs, CO' });
+    expect(women49.cjBy).toEqual({ name: 'DOE, Jane', date: '2026-06-20' });
+    expect(women49.totalBy).toEqual({ name: 'Standard', date: '2026-08-01' });
+    expect(men60.snatchBy).toEqual({
       name: 'VAN DER BERG, Jan',
       date: '2025-12-06',
       location: '2025 Virus Weightlifting Finals & UMWF World Championships, Daytona Beach, FL',
     });
     // No year to split at: place and event stay together, as written.
-    expect(men60.cj_by).toEqual({ name: 'ROE, Rick', date: '2026-05-01', location: 'Local Open' });
+    expect(men60.cjBy).toEqual({ name: 'ROE, Rick', date: '2026-05-01', location: 'Local Open' });
     // A "Standard" value is no lift, and a 0 kg standard holds nothing.
-    expect(men60).not.toHaveProperty('total_by');
-    expect(women80).toEqual({ record_type: 'USAW', age_category: 'Masters 80', gender: 'women', weight_class: '49kg', snatch_record: 0, cj_record: 0, total_record: 0 });
+    expect(men60).not.toHaveProperty('totalBy');
+    expect(women80).toEqual({ recordType: 'USAW', ageCategory: 'Masters 80', gender: 'women', weightClass: '49kg', snatchRecord: 0, cjRecord: 0, totalRecord: 0 });
   });
 
   it('maps age codes and weight classes like the Python scraper', () => {
@@ -79,14 +79,14 @@ describe('records parser (port of usaw/records_scraper)', () => {
       'ADAP - Visual Impairment - OPEN M 60 TOTAL 100 Standard 2026-08-01',
     ];
     const { records, unknownAgeGroups } = parseRecordsReport([lines]);
-    expect(records.map((r) => [r.age_category, r.gender, r.weight_class, r.snatch_record, r.cj_record, r.total_record])).toEqual([
+    expect(records.map((r) => [r.ageCategory, r.gender, r.weightClass, r.snatchRecord, r.cjRecord, r.totalRecord])).toEqual([
       ['u11', 'women', '37kg', 34, 40, 74],
       ['u13', 'men', '55kg', 0, 0, 144],
       ['u15', 'men', '70kg', 0, 0, 225],
       ['u17', 'men', '85kg', 130, 0, 0],
       ['university', 'men', '110kg', 0, 0, 369],
     ]);
-    expect(records[0].snatch_by).toEqual({ name: 'AOKI BLANCHARD, Charlotte', date: '2026-09-12', location: '2026 Virus Weightlifting Series 2, Fort Worth, TX' });
+    expect(records[0].snatchBy).toEqual({ name: 'AOKI BLANCHARD, Charlotte', date: '2026-09-12', location: '2026 Virus Weightlifting Series 2, Fort Worth, TX' });
     expect(unknownAgeGroups).toEqual([]);
   });
 
@@ -101,7 +101,7 @@ describe('records parser (port of usaw/records_scraper)', () => {
         'Total records: 5',
       ],
     ]);
-    expect(records.map((r) => r.age_category)).toEqual(['junior']);
+    expect(records.map((r) => r.ageCategory)).toEqual(['junior']);
     expect(unknownAgeGroups).toEqual(['12-13 yo', '18-20yo', 'Under 9']);
   });
 
