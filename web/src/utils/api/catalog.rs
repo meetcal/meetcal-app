@@ -79,6 +79,7 @@ pub(crate) mod queries {
     pub(crate) const MEET_ATHLETES: Query = Query::text("meets:athletes");
     pub(crate) const MEET_RESULTS: Query = Query::text("results:byMeet");
     pub(crate) const SEARCH: Query = Query::value("results:search");
+    pub(crate) const ATHLETE: Query = Query::value("results:athlete");
     pub(crate) const RECORDS: Query = Query::text("reference:records");
     pub(crate) const STANDARDS: Query = Query::text("reference:standards");
     pub(crate) const QUALIFYING_TOTALS: Query = Query::text("reference:qualifyingTotals");

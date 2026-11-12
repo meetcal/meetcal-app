@@ -163,3 +163,43 @@ for (const [path, prompt] of [
     expect(await page.evaluate(() => (window as unknown as { __seen: { skeleton: boolean } }).__seen.skeleton)).toBe(false);
   });
 }
+
+test("a name two lifters share offers each, and a pick shows that lifter's results", async ({ page }) => {
+  await mockSubscribedUser(page);
+  await routeSearch(page);
+  const card = { id: "20730", name: "Taylor Johnson", label: "Age 37 · Tennessee-Kentucky" };
+  await routeQuery(page, "results:athlete", (route, args) => {
+    if (args.lifter === card.id) {
+      return route.fulfill(valueAnswer({
+        kind: "results",
+        lifter: card,
+        json: JSON.stringify([{ ...result("Taylor Johnson", "Kentucky Open"), lifter_id: card.id }]),
+        prs: { set: { snatch: [], cj: [], total: [] }, current: { snatch: 0, cj: 0, total: 0 } },
+        year_bests: null,
+      }));
+    }
+    return route.fulfill(valueAnswer({
+      kind: "choose",
+      name: "Taylor Johnson",
+      lifters: [
+        { ...card, results: 1, latest_date: "2016-03-19" },
+        { id: "24655", name: "Taylor Johnson", label: "Age 18 · Barbell Club", results: 2, latest_date: "2025-06-01" },
+      ],
+      other_results: 3,
+    }));
+  });
+
+  await page.goto("/results?athlete=Taylor%20Johnson");
+  await expect(page.getByRole("status")).toHaveText("More than one lifter is named Taylor Johnson. Pick one.");
+  const choices = page.getByRole("group", { name: "Lifters with this name" });
+  await expect(choices.getByRole("link")).toHaveText([
+    /Age 37 · Tennessee-Kentucky · 1 result/,
+    /Age 18 · Barbell Club · 2 results/,
+    "Other results for this name · 3 results",
+  ]);
+
+  await choices.getByRole("link", { name: /Age 37/ }).click();
+  await expect(page).toHaveURL(/athlete=Taylor%20Johnson&lifter=20730/);
+  await expect(page.getByText("Results for Taylor Johnson · Age 37 · Tennessee-Kentucky")).toBeVisible();
+  await expect(page.getByRole("cell", { name: "Kentucky Open" })).toBeVisible();
+});
