@@ -65,9 +65,20 @@ pub fn next_retry_delay(
     Some(retry_after.and_then(retry_after_delay).unwrap_or(backoff))
 }
 
+pub fn next_transport_retry_delay(retries_done: usize) -> Option<Duration> {
+    RETRY_BACKOFF.get(retries_done).copied()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_dropped_request_backs_off_then_stops() {
+        assert_eq!(next_transport_retry_delay(0), Some(Duration::from_secs(1)));
+        assert_eq!(next_transport_retry_delay(1), Some(Duration::from_secs(2)));
+        assert_eq!(next_transport_retry_delay(MAX_RETRIES), None);
+    }
 
     const TOO_MANY: StatusCode = StatusCode::TOO_MANY_REQUESTS;
     const UNAVAILABLE: StatusCode = StatusCode::SERVICE_UNAVAILABLE;
