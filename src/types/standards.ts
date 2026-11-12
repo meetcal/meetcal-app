@@ -1,7 +1,7 @@
-export type Gender = "men" | "women";
-export type AgeGroup = "senior" | "junior" | "youth" | "u15";
+export type StandardsGender = "men" | "women";
+export type StandardsAgeGroup = "senior" | "junior" | "youth" | "u15";
 
-export interface Filters {
+export interface StandardsFilters {
   [key: string]: string;
   gender: string;
   ageGroup: string;

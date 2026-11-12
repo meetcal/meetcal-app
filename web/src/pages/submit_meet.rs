@@ -10,6 +10,7 @@
 
 use crate::components::signed_in::SignedInOnly;
 use crate::utils::api::{self, MeetSubmission, MeetSubmissionFile};
+use futures::future::{AbortHandle, abortable};
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 use std::collections::HashMap;
@@ -239,9 +240,13 @@ fn SubmitMeetForm() -> impl IntoView {
     let end_date = RwSignal::new(String::new());
     let files = RwSignal::new_local(Vec::<PickedFile>::new());
     let next_id = StoredValue::new(0_u64);
-    // Files already uploaded (picked file id to storage id), reused when
-    // sending again after a failure (`send_submission`).
-    let uploaded = StoredValue::new(HashMap::<u64, String>::new());
+    let storage_ids_of_uploaded_files = StoredValue::new(HashMap::<u64, String>::new());
+    let send_in_flight = StoredValue::new_local(None::<AbortHandle>);
+    on_cleanup(move || {
+        if let Some(send) = send_in_flight.try_update_value(Option::take).flatten() {
+            send.abort();
+        }
+    });
     let phase = RwSignal::new(Phase::Editing);
     let error = RwSignal::new(None::<String>);
     let working = Memo::new(move |_| matches!(phase.get(), Phase::Working(_)));
@@ -293,10 +298,20 @@ fn SubmitMeetForm() -> impl IntoView {
         };
         error.set(None);
         phase.set(Phase::Working(upload_progress(1, picked.len())));
+        let (send, abort_send) = abortable(send_submission(
+            checked,
+            picked,
+            phase,
+            storage_ids_of_uploaded_files,
+        ));
+        send_in_flight.set_value(Some(abort_send));
         spawn_local(async move {
-            match send_submission(checked, picked, phase, uploaded).await {
+            let Ok(sent) = send.await else {
+                return;
+            };
+            match sent {
                 Ok(()) => {
-                    uploaded.try_update_value(HashMap::clear);
+                    storage_ids_of_uploaded_files.try_update_value(HashMap::clear);
                     phase.try_set(Phase::Sent);
                 }
                 Err(message) => {
@@ -482,27 +497,20 @@ fn SubmitMeetForm() -> impl IntoView {
     }
 }
 
-/// Uploads each file in turn, then submits the meet. The error is the one to
-/// show; the form keeps what the user entered.
-///
-/// `uploaded` holds the storage id of each picked file already uploaded, for
-/// as long as the form lives: a retry after a failure reuses them instead of
-/// uploading again, so retries on a poor connection do not use up the day's
-/// uploads. A retry refused because its files are already in a submission
-/// found the earlier attempt's submit stored after all (only this form had
-/// those ids), so it counts as sent.
 async fn send_submission(
     checked: CheckedSubmission,
     picked: Vec<PickedFile>,
     phase: RwSignal<Phase>,
-    uploaded: StoredValue<HashMap<u64, String>>,
+    storage_ids_of_uploaded_files: StoredValue<HashMap<u64, String>>,
 ) -> Result<(), String> {
     let total = picked.len();
     let mut files = Vec::with_capacity(total);
     let mut reused = false;
     for (index, (picked, name)) in picked.into_iter().zip(checked.file_names).enumerate() {
         phase.try_set(Phase::Working(upload_progress(index + 1, total)));
-        if let Some(storage_id) = uploaded.with_value(|uploaded| uploaded.get(&picked.id).cloned())
+        if let Some(storage_id) = storage_ids_of_uploaded_files
+            .try_with_value(|uploaded| uploaded.get(&picked.id).cloned())
+            .flatten()
         {
             reused = true;
             files.push(MeetSubmissionFile { storage_id, name });
@@ -519,7 +527,7 @@ async fn send_submission(
         let storage_id = api::upload_meet_submission_file(&upload_url, &content_type, bytes)
             .await
             .map_err(|error| format!("{name} couldn’t be uploaded. {error}"))?;
-        uploaded.update_value(|uploaded| {
+        storage_ids_of_uploaded_files.try_update_value(|uploaded| {
             uploaded.insert(picked.id, storage_id.clone());
         });
         files.push(MeetSubmissionFile { storage_id, name });

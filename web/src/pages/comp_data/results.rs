@@ -1,7 +1,7 @@
 use super::{
     athlete_autocomplete::AthleteAutocomplete,
     filters::{SortDirection, sort_numeric, sort_text},
-    format::{format_us_date, yes_no},
+    format::{display_body_weight, format_us_date, yes_no},
     loading::{Load, LoadState, load_error},
     models::{
         AthleteSearchQuery, AthleteSearchResponse, LiftingResult, MAX_ATHLETE_CHOICES, attempt,
@@ -320,7 +320,7 @@ fn ResultsTable(
                     "total_asc" => sort_numeric(&mut rows, |row| row.total, SortDirection::Ascending),
                     _ => sort_text(&mut rows, |row| &row.date, SortDirection::Descending),
                 }
-                rows.into_iter().map(|row| view! { <tr><td>{format_us_date(&row.date)}</td><td>{row.meet.clone()}</td><td>{row.age.clone()}</td><td>{row.body_weight}</td><td>{attempt(row.snatch1)}</td><td>{attempt(row.snatch2)}</td><td>{attempt(row.snatch3)}</td><td>{row.snatch_best}</td><td>{attempt(row.cj1)}</td><td>{attempt(row.cj2)}</td><td>{attempt(row.cj3)}</td><td>{row.cj_best}</td><td>{row.total}</td><td>{yes_no(row.adaptive)}</td></tr> }).collect_view()
+                rows.into_iter().map(|row| view! { <tr><td>{format_us_date(&row.date)}</td><td>{row.meet.clone()}</td><td>{row.age.clone()}</td><td>{display_body_weight(row.body_weight)}</td><td>{attempt(row.snatch1)}</td><td>{attempt(row.snatch2)}</td><td>{attempt(row.snatch3)}</td><td>{row.snatch_best}</td><td>{attempt(row.cj1)}</td><td>{attempt(row.cj2)}</td><td>{attempt(row.cj3)}</td><td>{row.cj_best}</td><td>{row.total}</td><td>{yes_no(row.adaptive)}</td></tr> }).collect_view()
             })}</tbody>
         </DataTable>
     }

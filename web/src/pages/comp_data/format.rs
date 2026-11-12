@@ -55,6 +55,14 @@ pub(crate) fn reference_value(value: Option<f64>) -> String {
     }
 }
 
+pub(crate) fn display_body_weight(kilograms: f64) -> String {
+    if kilograms.is_finite() && kilograms > 0.0 {
+        kilograms.to_string()
+    } else {
+        NO_VALUE.to_owned()
+    }
+}
+
 pub(crate) fn format_us_date(value: &str) -> String {
     const MONTHS: [&str; 12] = [
         "January",
@@ -122,6 +130,15 @@ mod tests {
         assert_eq!(reference_value(Some(-1.0)), "—");
         assert_eq!(reference_value(Some(f64::NAN)), "—");
         assert_eq!(reference_value(None), "—");
+    }
+
+    #[test]
+    fn a_body_weight_the_source_did_not_record_shows_a_dash_not_zero() {
+        assert_eq!(display_body_weight(70.5), "70.5");
+        assert_eq!(display_body_weight(88.0), "88");
+        assert_eq!(display_body_weight(0.0), "—");
+        assert_eq!(display_body_weight(-1.0), "—");
+        assert_eq!(display_body_weight(f64::NAN), "—");
     }
 
     #[test]

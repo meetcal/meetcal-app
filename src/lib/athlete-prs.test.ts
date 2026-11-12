@@ -1,9 +1,8 @@
 import { findPRIndexes } from "@/lib/athlete-prs";
-import { SupabaseLiftResult } from "@/types/athlete-results";
+import { AthleteMeetResult } from "@/types/athlete-results";
 
-function row(overrides: Partial<SupabaseLiftResult>): SupabaseLiftResult {
+function row(overrides: Partial<AthleteMeetResult>): AthleteMeetResult {
   return {
-    id: 0,
     event_id: "e",
     meet: "Meet",
     date: "2024-01-01",
