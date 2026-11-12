@@ -277,6 +277,29 @@ describe('edits', () => {
     expect(schedule.sessions.map((s) => s.groups[0]?.split)).toEqual(['', 'A', 'B']);
   });
 
+  it('warns when a retime puts two sessions on one platform at the same time, even in part', () => {
+    nextId = 1;
+    const entrants = many(3, (i) => lifter('Women', String(48 + i * 5), 70));
+    const exact = buildSchedule(entrants, options({ maxAthletesPerPlatform: 1 }), [{ kind: 'setSessionTime', session: 2, date: '2027-03-06', startTime: '09:00' }]);
+    expect(exact.warnings).toEqual([{ code: 'overlap', message: 'Sessions 1 and 2 use the Red platform at the same time.' }]);
+    const partial = buildSchedule(entrants, options({ maxAthletesPerPlatform: 1 }), [{ kind: 'setSessionTime', session: 3, date: '2027-03-06', startTime: '12:00' }]);
+    expect(partial.warnings.map((w) => w.message)).toEqual(['Sessions 2 and 3 use the Red platform at the same time.']);
+  });
+
+  it('does not warn about back-to-back sessions or ones on other platforms', () => {
+    nextId = 1;
+    const entrants = many(4, (i) => lifter('Women', String(48 + i * 5), 70));
+    expect(buildSchedule(entrants, options({ maxAthletesPerPlatform: 1, platforms: ['Red', 'Blue'] })).warnings).toEqual([]);
+  });
+
+  it('changes nothing when an athlete is moved to the group they are in', () => {
+    nextId = 1;
+    const entrants = many(4, (i) => lifter('Women', '71', 60 + i));
+    const schedule = buildSchedule(entrants, options({ maxAthletesPerPlatform: 2 }), [{ kind: 'moveAthlete', athlete: athleteKey(entrants[0] as BuilderEntrant), toSession: 1, toPlatform: 'Red' }]);
+    expect(schedule.sessions.map((s) => s.groups[0]?.split)).toEqual(['B', 'A']);
+    expect(schedule.warnings).toEqual([]);
+  });
+
   it('skips a retime that would end after midnight', () => {
     const schedule = buildSchedule([lifter('Men', '89', 150)], options(), [{ kind: 'setSessionTime', session: 1, date: '2027-03-06', startTime: '23:30' }]);
     expect(schedule.sessions[0]?.startTime).toBe('09:00:00');

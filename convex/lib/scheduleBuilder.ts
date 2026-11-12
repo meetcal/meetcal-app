@@ -37,7 +37,7 @@ export type BuiltSession = {
   groups: BuiltGroup[];
 };
 
-export type BuilderWarningCode = 'noEntrants' | 'unscheduled' | 'overCapacity' | 'mixedGroup' | 'skippedEdit';
+export type BuilderWarningCode = 'noEntrants' | 'unscheduled' | 'overCapacity' | 'mixedGroup' | 'overlap' | 'skippedEdit';
 
 export type BuilderWarning = { code: BuilderWarningCode; message: string };
 
@@ -262,6 +262,7 @@ function applyEdit(slots: Slot[], edit: BuilderEdit, options: BuilderOptions): E
       if (!found) return 'skipped';
       const target = targetGroup(slots, options, edit.toSession, edit.toPlatform, found.group);
       if (!target) return 'skipped';
+      if (target === found.group) return 'applied';
       const [athlete] = found.group.athletes.splice(found.index, 1);
       if (athlete) target.athletes.push(athlete);
       found.group.edited = true;
@@ -310,6 +311,24 @@ function groupLabels(group: Group, athletes: readonly BuiltAthlete[], options: B
   return { gender, ageGroup: pools.length === 1 && pool !== undefined ? pool : '', split: '', mixed: genders.length > 1 };
 }
 
+export function overlapWarnings(sessions: readonly BuiltSession[], sessionMinutes: number): BuilderWarning[] {
+  const scheduled = sessions.flatMap((session) => {
+    const start = minutesOfClock(session.startTime.slice(0, 5));
+    return start === null || session.date === '' ? [] : [{ session, start }];
+  });
+  const warnings: BuilderWarning[] = [];
+  scheduled.forEach(({ session, start }, i) => {
+    for (const later of scheduled.slice(i + 1)) {
+      if (later.session.date !== session.date || later.start >= start + sessionMinutes || start >= later.start + sessionMinutes) continue;
+      const shared = session.groups.map((g) => g.platform).filter((platform) => later.session.groups.some((g) => g.platform === platform));
+      for (const platform of shared) {
+        warnings.push({ code: 'overlap', message: `Sessions ${session.number} and ${later.session.number} use the ${platform} platform at the same time.` });
+      }
+    }
+  });
+  return warnings;
+}
+
 function finish(slots: readonly Slot[], options: BuilderOptions, athletes: number, skipped: number): BuiltSchedule {
   const warnings: BuilderWarning[] = [];
   const editedSplits = new Set(slots.flatMap((slot) => [...slot.groups.values()].filter((g) => g.edited && g.splitOf !== '').map((g) => g.splitOf)));
@@ -355,6 +374,7 @@ function finish(slots: readonly Slot[], options: BuilderOptions, athletes: numbe
       groups: builtGroups,
     };
   });
+  warnings.push(...overlapWarnings(sessions, options.sessionMinutes));
   const unscheduled = sessions.filter((s) => s.startTime === '').length;
   if (athletes === 0) warnings.unshift({ code: 'noEntrants', message: 'The meet has no entrants yet.' });
   if (unscheduled > 0) {
