@@ -6,60 +6,54 @@ use comfy_table::Table;
 use serde::Deserialize;
 
 use crate::commands::compare::{
-    MetricComparison, MetricUnit, comparison_tables, format_metric, percent_change,
+    MetricComparison, MetricUnit, YearsWithResults, comparison_tables, format_metric,
+    percent_change,
 };
 use crate::types::lifting_results::LiftingResults;
 use crate::types::wrapped::WrappedStats;
-use crate::utils::backend::{queries, query, query_all_pages};
+use crate::utils::athletes::NAMES_PER_READ;
+use crate::utils::backend::{queries, query_all_pages, query_each};
 use crate::utils::meet_names::equivalent_meets;
 use crate::utils::output::Report;
-use crate::utils::stats::{Lift, fold, number, valid_lift, valid_total};
+use crate::utils::stats::{Lift, fold, number, percentage, valid_lift, valid_total};
 use serde_json::json;
 
-const RESULTS_REQUEST_BATCH_SIZE: usize = 50;
-
 #[derive(Debug, Deserialize)]
-pub struct ClubMembership {
-    pub name: String,
-    pub meet: String,
-    pub club: String,
-    pub gender: String,
-    pub weight_class: String,
-    pub member_id: String,
-    pub entry_total: f64,
+pub(crate) struct ClubMembership {
+    pub(crate) name: String,
+    pub(crate) meet: String,
 }
 
 #[derive(Debug, PartialEq)]
-pub struct GroupWrappedStats {
-    pub athlete_count: usize,
-    pub wrapped: WrappedStats,
+pub(crate) struct GroupWrappedStats {
+    pub(crate) athlete_count: usize,
+    pub(crate) wrapped: WrappedStats,
 }
 
 /// Every registration of the club's athletes. Read in pages, so rows are in no particular order
 /// and may repeat; the reports dedupe names and match meets, so neither matters.
-pub async fn get_club_memberships(club: &str) -> Result<Vec<ClubMembership>> {
+pub(crate) async fn get_club_memberships(club: &str) -> Result<Vec<ClubMembership>> {
     query_all_pages(queries::CLUB_ATHLETES, &json!({ "club": club })).await
 }
 
 /// Every registration of the WSO's athletes; read in pages like [`get_club_memberships`].
-pub async fn get_wso_memberships(wso: &str) -> Result<Vec<ClubMembership>> {
+pub(crate) async fn get_wso_memberships(wso: &str) -> Result<Vec<ClubMembership>> {
     query_all_pages(queries::WSO_ATHLETES, &json!({ "wso": wso })).await
 }
 
-pub async fn get_recent_results(
+pub(crate) async fn get_recent_results(
     names: &[String],
     cutoff_date: &str,
 ) -> Result<Vec<LiftingResults>> {
-    let mut results = Vec::new();
-    for batch in names.chunks(RESULTS_REQUEST_BATCH_SIZE) {
-        let args = json!({ "names": batch, "cutoffDate": cutoff_date });
-        let mut rows: Vec<LiftingResults> = query(queries::RECENT_RESULTS, &args).await?;
-        results.append(&mut rows);
-    }
-    Ok(results)
+    let batches = names
+        .chunks(NAMES_PER_READ)
+        .map(|batch| json!({ "names": batch, "cutoffDate": cutoff_date }))
+        .collect();
+    let answers: Vec<Vec<LiftingResults>> = query_each(queries::RECENT_RESULTS, batches).await?;
+    Ok(answers.into_iter().flatten().collect())
 }
 
-pub async fn get_club_results_since(
+pub(crate) async fn get_club_results_since(
     club: &str,
     cutoff_date: &str,
 ) -> Result<(Vec<ClubMembership>, Vec<LiftingResults>)> {
@@ -67,7 +61,7 @@ pub async fn get_club_results_since(
     get_membership_results_since(memberships, cutoff_date).await
 }
 
-pub async fn get_wso_results_since(
+pub(crate) async fn get_wso_results_since(
     wso: &str,
     cutoff_date: &str,
 ) -> Result<(Vec<ClubMembership>, Vec<LiftingResults>)> {
@@ -87,7 +81,7 @@ async fn get_membership_results_since(
 
 /// Each member's name once (the first spelling), in registration order; names that differ only
 /// in case or spacing are one athlete.
-pub fn distinct_names(memberships: &[ClubMembership]) -> Vec<String> {
+pub(crate) fn distinct_names(memberships: &[ClubMembership]) -> Vec<String> {
     let mut seen = HashSet::new();
     memberships
         .iter()
@@ -96,7 +90,7 @@ pub fn distinct_names(memberships: &[ClubMembership]) -> Vec<String> {
         .collect()
 }
 
-pub fn filter_membership_results(
+pub(crate) fn filter_membership_results(
     memberships: &[ClubMembership],
     results: Vec<LiftingResults>,
 ) -> Vec<LiftingResults> {
@@ -124,7 +118,7 @@ pub fn filter_membership_results(
         .collect()
 }
 
-pub fn results_for_year(results: Vec<LiftingResults>, year: i32) -> Vec<LiftingResults> {
+pub(crate) fn results_for_year(results: Vec<LiftingResults>, year: i32) -> Vec<LiftingResults> {
     let prefix = format!("{year:04}-");
     results
         .into_iter()
@@ -132,7 +126,7 @@ pub fn results_for_year(results: Vec<LiftingResults>, year: i32) -> Vec<LiftingR
         .collect()
 }
 
-pub fn split_comparison_years(
+pub(crate) fn split_comparison_years(
     results: Vec<LiftingResults>,
     previous_year: i32,
     current_year: i32,
@@ -153,7 +147,102 @@ pub fn split_comparison_years(
     (previous, current)
 }
 
-pub fn calculate_group_stats(results: &[LiftingResults]) -> GroupWrappedStats {
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Group<'a> {
+    Club(&'a str),
+    Wso(&'a str),
+}
+
+impl Group<'_> {
+    pub(crate) fn name(&self) -> &str {
+        match self {
+            Group::Club(name) | Group::Wso(name) => name,
+        }
+    }
+
+    pub(crate) fn label(&self) -> &'static str {
+        match self {
+            Group::Club(_) => "Club",
+            Group::Wso(_) => "WSO",
+        }
+    }
+
+    pub(crate) fn no_members_message(&self) -> String {
+        match self {
+            Group::Club(name) => format!("No completed-meet athletes found for club \"{name}\""),
+            Group::Wso(name) => format!("No meet registrations found for WSO \"{name}\""),
+        }
+    }
+
+    pub(crate) fn described(&self) -> String {
+        match self {
+            Group::Club(name) => format!("club \"{name}\""),
+            Group::Wso(name) => format!("WSO \"{name}\""),
+        }
+    }
+
+    async fn results_since(&self, cutoff_date: &str) -> Result<Vec<LiftingResults>> {
+        use crate::utils::names::{NameKind, not_found};
+        let ((memberships, results), kind) = match self {
+            Group::Club(name) => (
+                get_club_results_since(name, cutoff_date).await?,
+                NameKind::Club,
+            ),
+            Group::Wso(name) => (
+                get_wso_results_since(name, cutoff_date).await?,
+                NameKind::Wso,
+            ),
+        };
+        if memberships.is_empty() {
+            return Err(not_found(kind, self.name(), self.no_members_message()).await);
+        }
+        Ok(results)
+    }
+}
+
+pub(crate) async fn run_wrapped(group: Group<'_>, year: i32) -> Result<()> {
+    let results = group.results_since(&format!("{year:04}-01-01")).await?;
+    let results = results_for_year(results, year);
+    if results.is_empty() {
+        anyhow::bail!("No results found for {} in {year}", group.described());
+    }
+    let stats = calculate_group_stats(&results);
+    crate::utils::output::emit(group_wrapped_report(
+        group.label(),
+        group.name(),
+        year,
+        &stats,
+    ));
+    Ok(())
+}
+
+pub(crate) async fn run_compare(group: Group<'_>, current_year: i32) -> Result<()> {
+    let previous_year = current_year - 1;
+    let results = group
+        .results_since(&format!("{previous_year:04}-01-01"))
+        .await?;
+    let (previous_results, current_results) =
+        split_comparison_years(results, previous_year, current_year);
+    if previous_results.is_empty() && current_results.is_empty() {
+        anyhow::bail!(
+            "No results found for {} in {previous_year} or {current_year}",
+            group.described()
+        );
+    }
+    let previous = calculate_group_stats(&previous_results);
+    let current = calculate_group_stats(&current_results);
+    crate::utils::output::emit(group_comparison_report(
+        group.label(),
+        group.name(),
+        previous_year,
+        current_year,
+        &previous,
+        &current,
+    ));
+    Ok(())
+}
+
+pub(crate) fn calculate_group_stats(results: &[LiftingResults]) -> GroupWrappedStats {
     let athlete_count = results
         .iter()
         .map(|result| fold(&result.name))
@@ -169,7 +258,7 @@ pub fn calculate_group_stats(results: &[LiftingResults]) -> GroupWrappedStats {
 /// A year's Wrapped numbers scored from `results` (any athletes', in any order): club and WSO
 /// reports read the group's rows and score them here. An athlete's own Wrapped is the server's
 /// (`results:wrapped`).
-pub fn calculate_wrapped_stats(results: &[LiftingResults]) -> WrappedStats {
+pub(crate) fn calculate_wrapped_stats(results: &[LiftingResults]) -> WrappedStats {
     let mut ordered: Vec<_> = results.iter().collect();
     ordered.sort_by(|left, right| {
         left.date
@@ -191,30 +280,28 @@ pub fn calculate_wrapped_stats(results: &[LiftingResults]) -> WrappedStats {
     let mut best_total: f64 = 0.0;
 
     for result in &ordered {
-        for (index, attempt) in [
-            result.snatch1,
-            result.snatch2,
-            result.snatch3,
-            result.cj1,
-            result.cj2,
-            result.cj3,
-        ]
-        .into_iter()
-        .enumerate()
-        {
-            if attempt == 0.0 || !attempt.is_finite() {
-                continue;
-            }
+        let attempts_by_lift = [
+            [result.snatch1, result.snatch2, result.snatch3],
+            [result.cj1, result.cj2, result.cj3],
+        ];
+        for lift in attempts_by_lift {
+            for (attempt, makes_of_this_attempt_number) in
+                lift.into_iter().zip(attempt_makes.iter_mut())
+            {
+                if attempt == 0.0 || !attempt.is_finite() {
+                    continue;
+                }
 
-            recorded_attempts += 1;
-            if attempt > 0.0 {
-                successful_attempts += 1;
-                total_weight_lifted += attempt;
-                consecutive_makes += 1;
-                max_consecutive_makes = max_consecutive_makes.max(consecutive_makes);
-                attempt_makes[index % 3] += 1;
-            } else {
-                consecutive_makes = 0;
+                recorded_attempts += 1;
+                if attempt > 0.0 {
+                    successful_attempts += 1;
+                    total_weight_lifted += attempt;
+                    consecutive_makes += 1;
+                    max_consecutive_makes = max_consecutive_makes.max(consecutive_makes);
+                    *makes_of_this_attempt_number += 1;
+                } else {
+                    consecutive_makes = 0;
+                }
             }
         }
 
@@ -328,15 +415,8 @@ fn same_meet_dates(start: &str, date: &str) -> bool {
     }
 }
 
-fn percentage(successes: usize, attempts: usize) -> f64 {
-    if attempts == 0 {
-        0.0
-    } else {
-        successes as f64 / attempts as f64 * 100.0
-    }
-}
-
-pub fn render_group_wrapped(
+#[cfg(test)]
+fn render_group_wrapped(
     group_kind: &str,
     group_name: &str,
     year: i32,
@@ -345,7 +425,7 @@ pub fn render_group_wrapped(
     group_wrapped_report(group_kind, group_name, year, stats).to_text()
 }
 
-pub fn group_wrapped_report(
+pub(crate) fn group_wrapped_report(
     group_kind: &str,
     group_name: &str,
     year: i32,
@@ -394,7 +474,7 @@ pub fn group_wrapped_report(
         .table("top_meet", top)
 }
 
-pub fn group_comparisons(
+pub(crate) fn group_comparisons(
     previous: &GroupWrappedStats,
     current: &GroupWrappedStats,
 ) -> Vec<MetricComparison> {
@@ -412,26 +492,7 @@ pub fn group_comparisons(
     metrics
 }
 
-pub fn render_group_comparison(
-    group_kind: &str,
-    group_name: &str,
-    previous_year: i32,
-    current_year: i32,
-    previous: &GroupWrappedStats,
-    current: &GroupWrappedStats,
-) -> String {
-    group_comparison_report(
-        group_kind,
-        group_name,
-        previous_year,
-        current_year,
-        previous,
-        current,
-    )
-    .to_text()
-}
-
-pub fn group_comparison_report(
+pub(crate) fn group_comparison_report(
     group_kind: &str,
     group_name: &str,
     previous_year: i32,
@@ -453,7 +514,11 @@ pub fn group_comparison_report(
             ]
         })
         .collect();
-    let (table, data) = comparison_tables(previous_year, current_year, rows);
+    let with_results = YearsWithResults {
+        previous: previous.athlete_count > 0,
+        current: current.athlete_count > 0,
+    };
+    let (table, data) = comparison_tables(previous_year, current_year, rows, with_results);
     Report::new()
         .table_with_data("comparison", table, data)
         .titled(format!(
@@ -466,15 +531,27 @@ pub fn group_comparison_report(
 mod tests {
     use super::*;
 
+    #[test]
+    fn clubs_and_wsos_differ_only_in_their_words() {
+        let (club, wso) = (Group::Club("Test Barbell"), Group::Wso("Carolina"));
+        assert_eq!((club.label(), wso.label()), ("Club", "WSO"));
+        assert_eq!((club.name(), wso.name()), ("Test Barbell", "Carolina"));
+        assert_eq!(
+            club.no_members_message(),
+            "No completed-meet athletes found for club \"Test Barbell\""
+        );
+        assert_eq!(
+            wso.no_members_message(),
+            "No meet registrations found for WSO \"Carolina\""
+        );
+        assert_eq!(club.described(), "club \"Test Barbell\"");
+        assert_eq!(wso.described(), "WSO \"Carolina\"");
+    }
+
     fn membership(name: &str, meet: &str) -> ClubMembership {
         ClubMembership {
             name: name.to_string(),
             meet: meet.to_string(),
-            club: "Test Club".to_string(),
-            gender: "Women".to_string(),
-            weight_class: "69".to_string(),
-            member_id: "1".to_string(),
-            entry_total: 180.0,
         }
     }
 
@@ -593,6 +670,25 @@ mod tests {
             result("Jane", "Meet", "2026-01-01", 170.0),
             result("Jane", "Meet", "2027-01-01", 180.0),
         ]
+    }
+
+    #[test]
+    fn a_year_with_no_results_exports_null_for_its_values_and_the_difference() {
+        let with_results =
+            calculate_group_stats(&[result("Jane Doe", "Meet One", "2025-01-01", 170.0)]);
+        let without = calculate_group_stats(&[]);
+
+        let exported =
+            group_comparison_report("Club", "Test Club", 2025, 2026, &with_results, &without)
+                .to_json();
+
+        let metrics = exported.as_array().unwrap();
+        assert!(!metrics.is_empty());
+        for metric in metrics {
+            assert_ne!(metric["previous"], serde_json::Value::Null, "{metric}");
+            assert_eq!(metric["current"], serde_json::Value::Null, "{metric}");
+            assert_eq!(metric["difference"], serde_json::Value::Null, "{metric}");
+        }
     }
 
     #[test]

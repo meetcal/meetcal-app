@@ -32,13 +32,13 @@ jest.mock("@react-native-async-storage/async-storage", () => ({
     removeItem: jest.fn(async (key: string) => {
       mockStorage.delete(key);
     }),
-    multiSet: jest.fn(async (entries: [string, string][]) => {
-      entries.forEach(([key, value]) => mockStorage.set(key, value));
+    setMany: jest.fn(async (entries: Record<string, string>) => {
+      Object.entries(entries).forEach(([key, value]) => mockStorage.set(key, value));
     }),
-    multiGet: jest.fn(async (keys: string[]) =>
-      keys.map((key) => [key, mockStorage.get(key) ?? null]),
+    getMany: jest.fn(async (keys: string[]) =>
+      Object.fromEntries(keys.map((key) => [key, mockStorage.get(key) ?? null])),
     ),
-    multiRemove: jest.fn(async (keys: string[]) => {
+    removeMany: jest.fn(async (keys: string[]) => {
       keys.forEach((key) => mockStorage.delete(key));
     }),
     getAllKeys: jest.fn(async () => Array.from(mockStorage.keys())),
@@ -83,7 +83,7 @@ describe("clearAllAthleteHistory", () => {
 
     expect(AsyncStorage.getAllKeys).toHaveBeenCalledTimes(1);
     expect(AsyncStorage.getItem).not.toHaveBeenCalled();
-    expect(AsyncStorage.multiRemove).toHaveBeenCalledTimes(1);
+    expect(AsyncStorage.removeMany).toHaveBeenCalledTimes(1);
 
     const leftovers = (await AsyncStorage.getAllKeys()).filter((k) =>
       k.startsWith("meetcal_athlete_history_"),
@@ -134,7 +134,7 @@ describe("clearAllAthleteHistory", () => {
     await expect(
       findAthleteNamesWithoutHistory(["Jane Doe", "  jane   DOE ", "John Smith", ""]),
     ).resolves.toEqual(["John Smith"]);
-    expect(AsyncStorage.multiGet).toHaveBeenCalledTimes(1);
+    expect(AsyncStorage.getMany).toHaveBeenCalledTimes(1);
     expect(AsyncStorage.getItem).not.toHaveBeenCalled();
     await expect(findAthleteNamesWithoutHistory([])).resolves.toEqual([]);
   });
@@ -193,7 +193,7 @@ describe("athlete history pruning", () => {
     });
   });
 
-  it("removes exclusive history in bounded multiRemove batches", async () => {
+  it("removes exclusive history in bounded removeMany batches", async () => {
     const names = Array.from({ length: 600 }, (_, i) => `Athlete ${i + 1}`);
     await saveMeetAthletes("Big", names.map((name) => athlete("Big", name)) as never);
     await saveAthleteHistoryBatch(names.map((name) => ({ name, results: [row(name)] })));
@@ -201,7 +201,7 @@ describe("athlete history pruning", () => {
 
     await clearMeetData("Big" as never);
 
-    const removes = (AsyncStorage.multiRemove as jest.Mock).mock.calls.map(([keys]) => keys.length);
+    const removes = (AsyncStorage.removeMany as jest.Mock).mock.calls.map(([keys]) => keys.length);
     expect(Math.max(...removes)).toBeLessThanOrEqual(500);
     expect(Array.from(mockStorage.keys()).filter((k) => k.startsWith(HISTORY_PREFIX))).toEqual([]);
   });

@@ -24,10 +24,11 @@ use crate::utils::stats::{
 )]
 pub struct ProgressArgs {
     /// Exact athlete name
+    #[arg(value_parser = crate::utils::filters::parse_name)]
     pub name: String,
 
     /// Only results from this year on
-    #[arg(long, short = 's', value_parser = clap::value_parser!(i32).range(1900..=9999))]
+    #[arg(long, short = 's', value_parser = crate::utils::filters::parse_year)]
     pub since: Option<i32>,
 }
 
@@ -41,7 +42,7 @@ pub async fn run(args: ProgressArgs) -> Result<()> {
     Ok(())
 }
 
-pub fn report(name: &str, rows: &[LiftingResults], since: Option<i32>) -> Report {
+pub(crate) fn report(name: &str, rows: &[LiftingResults], since: Option<i32>) -> Report {
     // PRs are judged against the whole history, then the table is cut to `since`.
     let all = chronological(rows);
     let flags = pr_flags(&all);
@@ -191,7 +192,7 @@ fn trend(rows: &[&LiftingResults]) -> (Table, Table) {
 }
 
 /// Attempt habits for each lift: make rate by attempt, jumps, and openers.
-pub fn attempts(rows: &[&LiftingResults]) -> Table {
+pub(crate) fn attempts(rows: &[&LiftingResults]) -> Table {
     let mut table = Table::new();
     table.set_header(vec![
         "Lift",

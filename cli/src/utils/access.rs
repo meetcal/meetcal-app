@@ -19,12 +19,7 @@ use tokio::sync::Mutex;
 use crate::utils::backend::{self, Endpoint, FunctionError, functions, queries};
 use crate::utils::credentials::{self, Credentials};
 
-/// The Convex functions that answer premium data and take the access pass in their `pass`
-/// argument. The list is Convex's (`PREMIUM_FUNCTIONS` in `convex/lib/access.ts`) and the
-/// website's (`SUBSCRIPTION_FUNCTIONS` in `web/src/utils/api.rs`), including functions the CLI
-/// does not call, so a command that starts calling one sends the pass without another change.
-/// `results:search` needs it only with both dates ([`carries_pass`]): name suggestions are public.
-pub const PREMIUM_FUNCTIONS: &[&str] = &[
+pub(crate) const PREMIUM_FUNCTIONS: &[&str] = &[
     "reference:records",
     "reference:standards",
     "reference:qualifyingTotals",
@@ -41,6 +36,7 @@ pub const PREMIUM_FUNCTIONS: &[&str] = &[
     "reference:clubMeets",
     "reference:wsoAthletes",
     "reference:clubMeetStats",
+    "reference:wsoMeetStats",
     "results:byMeet",
     "results:byNames",
     "results:recent",
@@ -53,10 +49,10 @@ pub const PREMIUM_FUNCTIONS: &[&str] = &[
 /// The Convex actions that answer premium data, apart from [`PREMIUM_FUNCTIONS`] (queries only):
 /// Convex's `PREMIUM_ACTIONS` (`convex/lib/access.ts`). An action reads them with the pass the same
 /// way (`backend::premium_action`), and a refusal is handled as a premium query's.
-pub const PREMIUM_ACTIONS: &[&str] = &["results:leaderboard", "results:wsoElite"];
+pub(crate) const PREMIUM_ACTIONS: &[&str] = &["results:leaderboard", "results:wsoElite"];
 
 /// The argument a premium query takes the access pass in.
-pub const PASS_ARGUMENT: &str = "pass";
+pub(crate) const PASS_ARGUMENT: &str = "pass";
 
 /// The query whose pass depends on its arguments, and the arguments that make it premium.
 const SEARCH_FUNCTION: &str = "results:search";
@@ -67,13 +63,13 @@ pub const LOGIN_NEEDED: &str = "This command reads MeetCal subscriber data. Run 
      (a MeetCal subscription is needed), then try again.";
 
 /// Whether `function` answers premium data.
-pub fn is_premium(function: &str) -> bool {
+pub(crate) fn is_premium(function: &str) -> bool {
     PREMIUM_FUNCTIONS.contains(&function)
 }
 
 /// Whether `function`, sent with `args`, takes the access pass: a premium function, except a
 /// search without both dates (a name suggestion, which is public).
-pub fn carries_pass(function: &str, args: &Value) -> bool {
+pub(crate) fn carries_pass(function: &str, args: &Value) -> bool {
     is_premium(function)
         && (function != SEARCH_FUNCTION
             || SEARCH_DATE_ARGUMENTS
@@ -82,7 +78,7 @@ pub fn carries_pass(function: &str, args: &Value) -> bool {
 }
 
 /// `args` with the access pass added as `pass`; unchanged without a pass.
-pub fn with_pass(args: &Value, pass: Option<&str>) -> Value {
+pub(crate) fn with_pass(args: &Value, pass: Option<&str>) -> Value {
     let mut args = args.clone();
     if let (Some(pass), Some(fields)) = (pass, args.as_object_mut()) {
         fields.insert(PASS_ARGUMENT.to_owned(), Value::from(pass));
@@ -92,13 +88,13 @@ pub fn with_pass(args: &Value, pass: Option<&str>) -> Value {
 
 /// Whether a function error status means Convex refused a premium read for its pass: 401 without
 /// one, 403 with one it no longer accepts.
-pub fn is_pass_refusal(status: Option<u16>) -> bool {
+pub(crate) fn is_pass_refusal(status: Option<u16>) -> bool {
     matches!(status, Some(401 | 403))
 }
 
 /// Why a premium read has no pass.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub enum NoPass {
+pub(crate) enum NoPass {
     /// No saved login (for this deployment).
     LoggedOut,
     /// The saved login's token has expired.
@@ -115,7 +111,7 @@ pub enum NoPass {
 
 impl NoPass {
     /// What to tell the user when a premium read fails for want of a pass.
-    pub fn message(&self) -> String {
+    pub(crate) fn message(&self) -> String {
         match self {
             NoPass::LoggedOut => LOGIN_NEEDED.to_string(),
             NoPass::LoginExpired => {
@@ -139,7 +135,7 @@ impl NoPass {
 
 /// What a premium read does after Convex refused it for its pass.
 #[derive(Debug, PartialEq, Eq)]
-pub enum Refusal {
+pub(crate) enum Refusal {
     /// Fetch a fresh pass and read once more.
     Renew,
     /// Give up with this message.
@@ -150,7 +146,7 @@ pub enum Refusal {
 /// was none). A refused pass may have rotated, and a failed fetch may have been a network blip,
 /// so both renew once; a missing, expired or rejected login, or no subscription, will not change
 /// within this run.
-pub fn on_refusal(pass: &Result<String, NoPass>) -> Refusal {
+pub(crate) fn on_refusal(pass: &Result<String, NoPass>) -> Refusal {
     match pass {
         Ok(_) | Err(NoPass::Unavailable(_)) => Refusal::Renew,
         Err(reason) => Refusal::Fail(reason.message()),
@@ -160,26 +156,21 @@ pub fn on_refusal(pass: &Result<String, NoPass>) -> Refusal {
 /// `accessPass:pass`'s answer.
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct AccessPass {
-    pub pass: String,
-    /// When to ask again (epoch ms). A process lives far shorter than a pass, so the CLI fetches
-    /// once per run and does not read this.
-    #[allow(dead_code)]
-    #[serde(deserialize_with = "backend::whole_number")]
-    pub rotates_at: i64,
+pub(crate) struct AccessPass {
+    pub(crate) pass: String,
 }
 
 /// `entitlements:refresh`'s answer.
 #[derive(Debug, Deserialize)]
-pub struct Refreshed {
-    pub active: bool,
+pub(crate) struct Refreshed {
+    pub(crate) active: bool,
 }
 
 /// The pass for `token` from the deployment at `base_url`, or why there is none. When
 /// `accessPass:pass` answers 403, asks `entitlements:refresh` to re-check the subscription with
 /// RevenueCat (a purchase Convex has not heard of yet, or a lifetime one) and, if it is active,
 /// asks for the pass once more. A refresh that fails or says inactive leaves it at 403.
-pub async fn fetch_pass(base_url: &str, token: &str) -> Result<String, NoPass> {
+pub(crate) async fn fetch_pass(base_url: &str, token: &str) -> Result<String, NoPass> {
     match ask_pass(base_url, token).await {
         Err(NoPass::NotSubscribed) if refreshed_active(base_url, token).await => {
             ask_pass(base_url, token).await
@@ -238,8 +229,8 @@ struct PassState {
 
 /// A pass as a read saw it: the pass (or why there is none) and the fetch it came from.
 #[derive(Clone, Debug)]
-pub struct HeldPass {
-    pub pass: Result<String, NoPass>,
+pub(crate) struct HeldPass {
+    pub(crate) pass: Result<String, NoPass>,
     generation: u64,
 }
 
@@ -269,7 +260,7 @@ impl Access {
     }
 
     /// The pass for reads from the deployment at `base_url`, fetched by the first read.
-    pub async fn current_pass(&self, base_url: &str) -> HeldPass {
+    pub(crate) async fn current_pass(&self, base_url: &str) -> HeldPass {
         let mut state = self.state.lock().await;
         if state.outcome.is_none() {
             let outcome = self.fetch(base_url).await;
@@ -282,7 +273,7 @@ impl Access {
 
     /// A fresh pass after Convex refused a read sent with `refused`. A pass fetched since that
     /// read (another read renewed it) is used as it is.
-    pub async fn renew_pass(&self, base_url: &str, refused: &HeldPass) -> HeldPass {
+    pub(crate) async fn renew_pass(&self, base_url: &str, refused: &HeldPass) -> HeldPass {
         let mut state = self.state.lock().await;
         if state.generation == refused.generation {
             state.outcome = Some(self.fetch(base_url).await);
@@ -308,7 +299,7 @@ fn held(state: &PassState) -> HeldPass {
 }
 
 /// The saved login usable on `base_url` at `now_ms`, or why there is none.
-pub fn login_for(
+pub(crate) fn login_for(
     saved: anyhow::Result<Option<Credentials>>,
     base_url: &str,
     now_ms: i64,
@@ -334,7 +325,7 @@ fn note_login_problem(outcome: &Result<String, NoPass>) {
 }
 
 /// The time now, in epoch milliseconds.
-pub fn now_ms() -> i64 {
+pub(crate) fn now_ms() -> i64 {
     chrono::Utc::now().timestamp_millis()
 }
 
@@ -345,7 +336,7 @@ mod tests {
 
     #[test]
     fn the_premium_functions_match_the_servers_list() {
-        assert_eq!(PREMIUM_FUNCTIONS.len(), 23);
+        assert_eq!(PREMIUM_FUNCTIONS.len(), 24);
         assert!(!is_premium(queries::ACCESS_PASS.function));
         for public in [
             "meets:list",
@@ -375,7 +366,7 @@ mod tests {
     fn the_list_is_a_plain_array_literal_the_servers_test_can_read() {
         let source = include_str!("access.rs");
         let start = source
-            .find("pub const PREMIUM_FUNCTIONS: &[&str] = &[")
+            .find("const PREMIUM_FUNCTIONS: &[&str] = &[")
             .expect("the list's declaration");
         let body = &source[start..];
         let body = &body[body.find("&[\n").unwrap() + 3..body.find("];").unwrap()];

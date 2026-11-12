@@ -1,8 +1,9 @@
 import type { QueryCtx } from '../_generated/server';
+import { isoDateOf } from './dates';
 import type { Doc } from '../_generated/dataModel';
 import { clubKey, sameClub } from './clubs';
 import { normalizeName } from './names';
-import { hasSession } from './roster';
+import { bareWeightClass, hasSession } from './roster';
 import { athleteGenderLabel, normalizeGender } from './normalize';
 import {
   accumulateBests,
@@ -15,6 +16,7 @@ import {
   type YearBests,
 } from './results';
 import { compareBytes, compareCollated } from './sort';
+import { isMeetTimeZone } from './validation';
 
 // Per-meet answers. Queries serve them from the meet's views when fresh and
 // compute them here otherwise; the view builders compute them here too.
@@ -55,26 +57,31 @@ export function toApiMeet(meet: Doc<'meets'>): ApiMeet {
   };
 }
 
-/**
- * The meet a name identifies. Names are meant to be unique (the ingest
- * mutations store a second federation's meet of the same name under
- * `disambiguatedMeetName`), but older rows can repeat one: then the oldest
- * row is the meet, the one its roster and results were written for, and the
- * duplicate is logged (`migrations:duplicateMeetNames` lists them all)
- * rather than chosen by chance.
- */
-export async function meetByName(ctx: QueryCtx, name: string): Promise<Doc<'meets'> | null> {
-  const rows = await ctx.db
+export const MEET_ROWS_READ_PER_NAME = 2;
+
+export async function meetsNamed(ctx: QueryCtx, name: string, limit = MEET_ROWS_READ_PER_NAME): Promise<Doc<'meets'>[]> {
+  return ctx.db
     .query('meets')
     .withIndex('by_name', (q) => q.eq('name', name))
-    .take(2);
+    .take(limit);
+}
+
+export function oldestMeetNamed(name: string, rows: readonly Doc<'meets'>[]): Doc<'meets'> | null {
   if (rows.length > 1) console.warn(`meets: more than one meet named ${JSON.stringify(name)}; using the oldest`);
   return oldestMeet(rows);
+}
+
+export async function meetByName(ctx: QueryCtx, name: string): Promise<Doc<'meets'> | null> {
+  return oldestMeetNamed(name, await meetsNamed(ctx, name));
 }
 
 /** The first-created of `rows`, or null. Index order already ties by creation time; this does not rely on it. */
 export function oldestMeet<T extends { _creationTime: number }>(rows: readonly T[]): T | null {
   return rows.reduce<T | null>((oldest, row) => (oldest === null || row._creationTime < oldest._creationTime ? row : oldest), null);
+}
+
+export function isPlaceholderMeet(meet: { timeZone: string; venueName: string; venueCity: string }): boolean {
+  return !isMeetTimeZone(meet.timeZone) && [meet.venueName, meet.venueCity].every((field) => field.trim().length === 1);
 }
 
 /** Disambiguated names tried for one meet before a write gives up. */
@@ -99,15 +106,9 @@ export function disambiguatedMeetName(name: string, federation: string, attempt 
  */
 export type ZoneFormatters = Map<string, Intl.DateTimeFormat | null>;
 
-/**
- * `YYYY-MM-DD` for `instant` on the wall calendar of `timeZone`: the Rust
- * backend's `meet_local_date(time_zone)`, including its fallback to the UTC
- * date for a blank or unknown zone (meet status does not use that fallback:
- * see `meetStatusAt`).
- */
 export function meetLocalDate(instant: number, timeZone: string, formatters: ZoneFormatters = new Map()): string {
   const formatter = zoneFormatter(timeZone, formatters);
-  if (!formatter) return new Date(instant).toISOString().slice(0, 10);
+  if (!formatter) return isoDateOf(instant);
   const parts = formatter.formatToParts(instant);
   const part = (type: string) => parts.find((p) => p.type === type)?.value ?? '';
   return `${part('year')}-${part('month')}-${part('day')}`;
@@ -138,7 +139,7 @@ export function addMonths(date: string, months: number): string {
   const target = new Date(Date.UTC(year, month - 1 + months, 1));
   const lastDay = new Date(Date.UTC(target.getUTCFullYear(), target.getUTCMonth() + 1, 0)).getUTCDate();
   target.setUTCDate(Math.min(day, lastDay));
-  return target.toISOString().slice(0, 10);
+  return isoDateOf(target.getTime());
 }
 
 // ---------------------------------------------------------------------------
@@ -400,16 +401,16 @@ export function narrowSessions(rows: readonly SessionRow[], sessionNumber?: numb
 // Results, bests
 // ---------------------------------------------------------------------------
 
-/**
- * The titles a meet's results are stored under: its own name, then the
- * results titles linked to it (`meet_result_titles`, #362).
- */
-export async function meetResultTitles(ctx: QueryCtx, meet: string): Promise<string[]> {
-  const linked = await ctx.db
-    .query('meet_result_titles')
-    .withIndex('by_meet', (q) => q.eq('meet', meet))
-    .collect();
+export function linkedResultTitles(ctx: QueryCtx, meet: string) {
+  return ctx.db.query('meet_result_titles').withIndex('by_meet', (q) => q.eq('meet', meet));
+}
+
+export function resultTitlesOf(meet: string, linked: readonly { title: string }[]): string[] {
   return [meet, ...linked.map((row) => row.title).filter((title) => title !== meet)];
+}
+
+export async function meetResultTitles(ctx: QueryCtx, meet: string): Promise<string[]> {
+  return resultTitlesOf(meet, await linkedResultTitles(ctx, meet).collect());
 }
 
 /** A meet's results under its own name and every results title linked to it. */
@@ -680,12 +681,6 @@ async function statsEntries(ctx: QueryCtx, meet: string): Promise<{ joined: Stat
   return { joined, groups };
 }
 
-/** A weight class as `86+`: `kg` and spaces dropped, a leading plus moved to the end. */
-function bareWeightClass(text: string): string {
-  const bare = text.replace(/kg/gi, '').replace(/\s+/g, '');
-  return bare.startsWith('+') ? `${bare.slice(1)}+` : bare;
-}
-
 /** The weight class a division names ("Open Men's 89kg" -> "89", "... 86+kg" -> "86+"), or null. */
 function divisionWeightClass(age: string | undefined): string | null {
   const match = age === undefined ? null : /(\d+\+?)\s*kg\s*$/i.exec(age);
@@ -899,6 +894,54 @@ export function clubStats(rows: readonly StatsRow[], club: string, totalAthletes
     combined_make_rate: makeRatePercent([...snatchAttempts, ...cjAttempts]),
     athlete_results: athleteResults,
   };
+}
+
+type WsoRosterEntry = { name: string; club: string; weightClass: string; wso?: string };
+
+export function registeredWithWso(entry: { wso?: string }, wso: string): boolean {
+  return entry.wso !== undefined && normalizeName(entry.wso) === normalizeName(wso);
+}
+
+function rosterEntryId(nameKey: string, club: string, weightClass: string): string {
+  return `${nameKey}\u0000${club}\u0000${weightClass}`;
+}
+
+const EVERY_ROW_IN_ONE_CLUB = 'wso';
+
+function entryEachStatsRowWasJoinedTo(roster: readonly WsoRosterEntry[]): Map<string, WsoRosterEntry> {
+  const inStatsEntriesOrder = [...roster].sort(
+    (a, b) => compareCollated(a.name, b.name) || compareCollated(a.weightClass, b.weightClass) || compareCollated(a.club, b.club),
+  );
+  const joined = new Map<string, WsoRosterEntry>();
+  for (const entry of inStatsEntriesOrder) {
+    const id = rosterEntryId(normalizeName(entry.name), entry.club, entry.weightClass);
+    if (!joined.has(id)) joined.set(id, entry);
+  }
+  return joined;
+}
+
+export function wsoStats(rows: readonly StatsRow[], roster: readonly WsoRosterEntry[], wso: string) {
+  const members = roster.filter((entry) => registeredWithWso(entry, wso));
+  const joined = entryEachStatsRowWasJoinedTo(roster);
+  const memberRows = rows
+    .filter((row) => {
+      const entry = joined.get(rosterEntryId(row.key, row.club, row.weight_class));
+      return entry !== undefined && registeredWithWso(entry, wso);
+    })
+    .map((row) => ({ ...row, club: EVERY_ROW_IN_ONE_CLUB }));
+  const distinctMembers = new Set(members.map((entry) => normalizeName(entry.name))).size;
+  return clubStats(memberRows, EVERY_ROW_IN_ONE_CLUB, distinctMembers);
+}
+
+export async function computeStatsRowsOfWso(ctx: QueryCtx, meet: string, wso: string): Promise<StatsRow[]> {
+  const { joined, groups } = await statsEntries(ctx, meet);
+  const wanted = joined.filter(({ athlete }) => registeredWithWso(athlete, wso));
+  const bests = await previousBests(
+    ctx,
+    wanted.map(({ key, row }) => ({ key, before: row.date })),
+  );
+  const found = new Map(bests.map((best) => [previousBestId(best.key, best.before), best.best]));
+  return wanted.map((entry) => statsRow(entry, groups, found.get(previousBestId(entry.key, entry.row.date)) ?? null));
 }
 
 /** `COUNT(DISTINCT folded name)` of the club's entries at the meet, under any spelling of it (`clubKey`). */

@@ -1,5 +1,7 @@
+#![cfg(test)]
 use clap::Parser;
 use meetcal::parser::{Cli, Commands};
+use meetcal::utils::stats::Gender;
 
 #[test]
 fn parses_standards_with_flags() {
@@ -19,7 +21,7 @@ fn parses_standards_with_flags() {
     };
 
     assert_eq!(args.age, "Senior");
-    assert_eq!(args.gender, "Men");
+    assert_eq!(args.gender, Gender::Men);
     assert_eq!(args.wso, "Carolina")
 }
 

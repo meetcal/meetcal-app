@@ -9,11 +9,11 @@
     "test:e2e:mobile": "playwright test --project=mobile-chromium --project=small-mobile-chromium --project=mobile-webkit"
   },
   "devDependencies": {
-    "@axe-core/playwright": "4.13.0",
-    "@playwright/test": "1.62.1",
-    "@types/node": "26.2.0",
-    "serve": "14.2.6",
-    "tsrs": "0.18.0-ts7.1.0-dev.20260929"
+    "@axe-core/playwright": "4.14.0",
+    "@playwright/test": "1.65.0",
+    "@types/node": "26.6.6",
+    "serve": "14.2.7",
+    "tsrs": "0.25.0-ts7.1.0-beta"
   },
   "overrides": {
     "compression": "1.8.2"

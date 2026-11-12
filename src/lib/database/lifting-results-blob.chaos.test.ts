@@ -155,7 +155,7 @@ describe('meet lifting results under storage chaos', () => {
     );
   });
 
-  it('keeps the previous copy when the manifest reads corrupt and the multiSet is rejected', async () => {
+  it('keeps the previous copy when the manifest reads corrupt and the setMany is rejected', async () => {
     const previous = [{ ...itemAt(bulkyLiftResults(1, 1), 0), name: 'Previous Lifter' }];
     const next = [{ ...itemAt(bulkyLiftResults(2, 1), 0), name: 'Next Lifter' }];
     await saveMeetLiftingResults(MEET, previous);
@@ -169,13 +169,20 @@ describe('meet lifting results under storage chaos', () => {
     const previous = [{ ...itemAt(bulkyLiftResults(1, 1), 0), name: 'Previous Lifter' }];
     const next = [{ ...itemAt(bulkyLiftResults(2, 1), 0), name: 'Next Lifter' }];
     await saveMeetLiftingResults(MEET, previous);
-    const multiGet = AsyncStorage.multiGet as jest.Mock;
-    const realMultiGet = multiGet.getMockImplementation() as (keys: string[]) => Promise<[string, string | null][]>;
-    multiGet
+    const getMany = AsyncStorage.getMany as jest.Mock;
+    const realGetMany = getMany.getMockImplementation() as (
+      keys: string[],
+    ) => Promise<Record<string, string | null>>;
+    getMany
       .mockImplementationOnce(async (keys: string[]) =>
-        (await realMultiGet(keys)).map(([key, value]) => [key, value === null ? null : '[]']),
+        Object.fromEntries(
+          Object.entries(await realGetMany(keys)).map(([key, value]) => [
+            key,
+            value === null ? null : '[]',
+          ]),
+        ),
       )
-      .mockImplementationOnce(realMultiGet)
+      .mockImplementationOnce(realGetMany)
       .mockImplementationOnce(async () => {
         throw new Error('chaos: storage unavailable');
       });
@@ -193,10 +200,14 @@ describe('meet lifting results under storage chaos', () => {
     storage[`meetcal_lifting_results_${MEET}__chunk_0_g4`] = 'orphan';
     const liveChunk = storage[`meetcal_lifting_results_${MEET}__chunk_0`];
 
-    const multiSet = AsyncStorage.multiSet as jest.Mock;
-    const realMultiSet = multiSet.getMockImplementation() as (pairs: [string, string][]) => Promise<null>;
-    multiSet.mockImplementationOnce(async (pairs: [string, string][]) => {
-      await realMultiSet(pairs.filter(([key]) => key.includes('__chunk_')));
+    const setMany = AsyncStorage.setMany as jest.Mock;
+    const realSetMany = setMany.getMockImplementation() as (
+      entries: Record<string, string>,
+    ) => Promise<void>;
+    setMany.mockImplementationOnce(async (entries: Record<string, string>) => {
+      await realSetMany(
+        Object.fromEntries(Object.entries(entries).filter(([key]) => key.includes('__chunk_'))),
+      );
       return new Promise(() => {});
     });
     void underChaos([{ kind: 'corrupt-read', value: 'not json' }], () => saveMeetLiftingResults(MEET, next));
@@ -214,8 +225,10 @@ describe('meet lifting results under storage chaos', () => {
   });
 
   it('a crash part-way through the chunk writes leaves the previous copy readable', async () => {
-    const multiSet = AsyncStorage.multiSet as jest.Mock;
-    const realMultiSet = multiSet.getMockImplementation() as (pairs: [string, string][]) => Promise<null>;
+    const setMany = AsyncStorage.setMany as jest.Mock;
+    const realSetMany = setMany.getMockImplementation() as (
+      entries: Record<string, string>,
+    ) => Promise<void>;
 
     await fc.assert(
       fc.asyncProperty(
@@ -229,10 +242,11 @@ describe('meet lifting results under storage chaos', () => {
 
           let total = 0;
           let persisted = 0;
-          multiSet.mockImplementationOnce(async (pairs: [string, string][]) => {
+          setMany.mockImplementationOnce(async (entries: Record<string, string>) => {
+            const pairs = Object.entries(entries);
             total = pairs.length;
             persisted = Math.min(crashAfter % (pairs.length + 1), pairs.length);
-            await realMultiSet(pairs.slice(0, persisted));
+            await realSetMany(Object.fromEntries(pairs.slice(0, persisted)));
             return new Promise(() => {});
           });
           let settled = false;
@@ -243,8 +257,8 @@ describe('meet lifting results under storage chaos', () => {
             await new Promise((resolve) => setImmediate(resolve));
           }
           if (total === 0) {
-            multiSet.mockReset();
-            multiSet.mockImplementation(realMultiSet);
+            setMany.mockReset();
+            setMany.mockImplementation(realSetMany);
             expect(settled).toBe(true);
             expect(await getMeetLiftingResults(MEET)).toEqual(next);
             return;
@@ -262,10 +276,12 @@ describe('meet lifting results under storage chaos', () => {
     const previous = bulkyLiftResults(3, 900);
     const next = bulkyLiftResults(5, 900);
     await saveMeetLiftingResults(MEET, previous);
-    const multiSet = AsyncStorage.multiSet as jest.Mock;
-    const realMultiSet = multiSet.getMockImplementation() as (pairs: [string, string][]) => Promise<null>;
-    multiSet.mockImplementationOnce(async (pairs: [string, string][]) => {
-      await realMultiSet(pairs.slice(0, 1));
+    const setMany = AsyncStorage.setMany as jest.Mock;
+    const realSetMany = setMany.getMockImplementation() as (
+      entries: Record<string, string>,
+    ) => Promise<void>;
+    setMany.mockImplementationOnce(async (entries: Record<string, string>) => {
+      await realSetMany(Object.fromEntries(Object.entries(entries).slice(0, 1)));
       return new Promise(() => {});
     });
     void saveMeetLiftingResults(MEET, next);

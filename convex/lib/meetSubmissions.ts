@@ -1,5 +1,6 @@
 import type { Id } from '../_generated/dataModel';
 import type { MutationCtx } from '../_generated/server';
+import { DAY_MS, isoDateOf } from './dates';
 import { escapeHtml } from './email';
 import { apiError, isValidIsoDate } from './validation';
 
@@ -9,6 +10,7 @@ import { apiError, isValidIsoDate } from './validation';
 
 export const MAX_MEET_SUBMISSION_FILES = 10;
 export const MAX_MEET_SUBMISSION_FILE_BYTES = 20 * 1024 * 1024;
+export const FILE_ALREADY_SUBMITTED_CODE = 'already_submitted';
 export const MAX_MEET_SUBMISSIONS_PER_DAY = 5;
 /** Upload URLs one user may ask for a day: every file of a full day's submissions. */
 export const MAX_MEET_SUBMISSION_UPLOAD_URLS_PER_DAY = MAX_MEET_SUBMISSION_FILES * MAX_MEET_SUBMISSIONS_PER_DAY;
@@ -18,7 +20,7 @@ export const MAX_MEET_SUBMISSION_EMAIL_LEN = 254;
 /** Schedules and start lists come as PDFs, photos, spreadsheets and Word documents. */
 export const MEET_SUBMISSION_FILE_EXTENSIONS = ['pdf', 'jpg', 'jpeg', 'png', 'heic', 'heif', 'webp', 'xlsx', 'xls', 'csv', 'doc', 'docx'] as const;
 
-export const DAY_MS = 24 * 60 * 60 * 1000;
+export { DAY_MS };
 /** How long a submission and its files are kept; the email's links work until then. */
 export const MEET_SUBMISSION_RETENTION_DAYS = 30;
 export const MEET_SUBMISSION_RETENTION_MS = MEET_SUBMISSION_RETENTION_DAYS * DAY_MS;
@@ -118,10 +120,9 @@ function formatBytes(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-/** The email for a submission: what was sent, by whom, and a link to each file. */
 export function renderMeetSubmissionEmail(content: MeetSubmissionEmailContent): { subject: string; html: string } {
   const dates = content.endDate && content.endDate !== content.startDate ? `${content.startDate} to ${content.endDate}` : content.startDate;
-  const expires = new Date(content.createdAt + MEET_SUBMISSION_RETENTION_MS).toISOString().slice(0, 10);
+  const expires = isoDateOf(content.createdAt + MEET_SUBMISSION_RETENTION_MS);
   const files = content.files
     .map((file) =>
       file.url === null

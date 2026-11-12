@@ -39,18 +39,20 @@ export async function findAthleteNamesWithoutHistory(
   const missing: string[] = [];
   for (let offset = 0; offset < uniqueNames.length; offset += STORAGE_READ_BATCH_SIZE) {
     const batch = uniqueNames.slice(offset, offset + STORAGE_READ_BATCH_SIZE);
-    const entries = await AsyncStorage.multiGet(
+    const entries = await AsyncStorage.getMany(
       batch.map((name) => getAthleteHistoryKey(normalizeAthleteName(name))),
     );
-    const stillMissing = batch.filter((_name, index) => !entries[index]?.[1]);
+    const stillMissing = batch.filter(
+      (name) => !entries[getAthleteHistoryKey(normalizeAthleteName(name))],
+    );
     const legacy = stillMissing.flatMap((name) => {
       const legacyName = legacyAthleteKeyName(name);
       return legacyName ? [{ name, key: getAthleteHistoryKey(legacyName) }] : [];
     });
     const legacyEntries =
-      legacy.length > 0 ? await AsyncStorage.multiGet(legacy.map(({ key }) => key)) : [];
+      legacy.length > 0 ? await AsyncStorage.getMany(legacy.map(({ key }) => key)) : {};
     const foundLegacy = new Set(
-      legacy.filter((_entry, index) => legacyEntries[index]?.[1]).map(({ name }) => name),
+      legacy.filter(({ key }) => legacyEntries[key]).map(({ name }) => name),
     );
     for (const name of stillMissing) {
       if (!foundLegacy.has(name)) missing.push(name);

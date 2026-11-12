@@ -1,7 +1,8 @@
 import { describeFailure } from '../convex/lib/cronAlerts';
 import { clearedColumns, clearedLifts, exceedsShrink, liftCount, MAX_SHRINK_SHARE, MIN_SHRINK_ALLOWED } from '../convex/lib/shrinkGuard';
 import { targetExpired, TARGET_RETENTION_DAYS } from '../convex/scrapers/entries';
-import { joinPages, MAX_UNREADABLE_SHARE, run as sport80Run, tableComplete, tooManyUnreadable } from '../convex/scrapers/sport80';
+import { MAX_UNREADABLE_SHARE, run as sport80Run, tooManyUnreadable } from '../convex/scrapers/sport80';
+import { joinPages, tableComplete } from '../convex/scrapers/lib/sport80Api';
 import { recordLift } from '../convex/scrapers/parse/holder';
 import { handlerOf } from './fakeDb';
 
@@ -37,9 +38,9 @@ describe('result columns emptied (#96)', () => {
     expect(tableComplete(29, 29)).toBe(true);
     expect(tableComplete(28, 29)).toBe(false);
     expect(tableComplete(0, 0)).toBe(true);
-    // No reported count proves nothing.
     expect(tableComplete(29, undefined)).toBe(false);
-    expect(tableComplete(29, '29')).toBe(false);
+    expect(tableComplete(29, '29')).toBe(true);
+    expect(tableComplete(29, 'many')).toBe(false);
     expect(tableComplete(29, 29.5)).toBe(false);
   });
 
@@ -63,7 +64,7 @@ describe('record lift cells (#91)', () => {
     expect(recordLift('128.5')).toBe(128);
     for (const kg of ['82kg', '82 kg', ' 82  kg ', '82KG']) expect(recordLift(kg)).toBe(82);
     for (const empty of ['', ' - ', '—', 'n/a', '#N/A', 'TBD', 'Vacant', 'open', 'Standard', 'WSO Standard']) expect(recordLift(empty)).toBeNull();
-    for (const bad of ['125*', '125* kg', '82.5kg', 'kg', '82 k g', 'Jane', 'Jane kg', 'x']) expect(() => recordLift(bad)).toThrow(`unreadable lift value ${JSON.stringify(bad)}`);
+    for (const bad of ['125*', '125* kg', '82.5kg', 'kg', '82 k g', 'Jane', 'Jane kg', 'x', '1e999']) expect(() => recordLift(bad)).toThrow(`unreadable lift value ${JSON.stringify(bad)}`);
   });
 });
 

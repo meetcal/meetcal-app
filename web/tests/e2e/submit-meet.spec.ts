@@ -139,6 +139,36 @@ test("a meet uploads each file in turn, then submits", async ({ page }) => {
   await expect(page.getByRole("list", { name: "Chosen files" })).toHaveCount(0);
 });
 
+test("leaving the page during an upload stops the submission and the site keeps working", async ({ page }) => {
+  await mockAuth(page);
+  const { calls, release } = await mockSubmissions(page, { holdUpload: "t1" });
+  const pageErrors: Error[] = [];
+  page.on("pageerror", (error) => pageErrors.push(error));
+
+  await page.goto("/submit-meet");
+  await expect(heading(page)).toBeVisible();
+  await fillMeet(page);
+  await files(page).setInputFiles([pdf, sheet]);
+  await page.getByRole("button", { name: "Submit meet" }).click();
+  await expect(page.getByRole("status")).toHaveText("Uploading 1 of 2…");
+  await expect.poll(() => calls.uploads.length).toBe(1);
+  await page.evaluate(() => Object.assign(window, { __sameDocument: true }));
+
+  const footer = page.getByRole("contentinfo");
+  await footer.getByRole("link", { name: "Terms of Use" }).click();
+  await expect(page).toHaveURL(/\/terms$/);
+  release();
+  const longEnoughForTheHeldUploadToFinishMs = 500;
+  await page.waitForTimeout(longEnoughForTheHeldUploadToFinishMs);
+
+  await footer.getByRole("link", { name: "Privacy Policy" }).click();
+  await expect(page.getByRole("heading", { level: 1, name: "Privacy Policy" })).toBeVisible();
+  expect(await page.evaluate(() => (window as unknown as { __sameDocument?: boolean }).__sameDocument)).toBe(true);
+  expect(pageErrors).toEqual([]);
+  expect(calls.uploadUrls).toHaveLength(1);
+  expect(calls.submits).toEqual([]);
+});
+
 test("the end date is optional and goes as null", async ({ page }) => {
   await mockAuth(page);
   const { calls } = await mockSubmissions(page);
@@ -199,6 +229,54 @@ test("a refused submission shows why and keeps the form filled", async ({ page }
   await expect(page.getByRole("listitem")).toHaveCount(1);
   await expect(page.getByRole("button", { name: "Submit meet" })).toBeEnabled();
   expect(calls.submits).toHaveLength(1);
+});
+
+test("a retry the server answers with its already-submitted code counts as sent, whatever the words", async ({ page }) => {
+  await mockAuth(page);
+  const { calls } = await mockSubmissions(page);
+  let submits = 0;
+  await routeMutation(page, "meetSubmissions:submit", (route) => {
+    submits += 1;
+    if (submits === 1) return route.abort("failed");
+    return route.fulfill(errorAnswer("Server Error", { status: 400, error: "that file is in another submission", code: "already_submitted" }));
+  });
+
+  await page.goto("/submit-meet");
+  await fillMeet(page);
+  await files(page).setInputFiles([pdf]);
+  await page.getByRole("button", { name: "Submit meet" }).click();
+  await expect(page.getByRole("alert")).toContainText("MeetCal couldn't be reached");
+  await page.getByRole("button", { name: "Submit meet" }).click();
+
+  await expect(page.getByRole("heading", { level: 1, name: "Thanks! We’ll add it soon." })).toBeVisible();
+  expect(submits).toBe(2);
+  expect(calls.uploadUrls).toHaveLength(1);
+});
+
+test("a first try the server answers with its already-submitted code shows why", async ({ page }) => {
+  await mockAuth(page);
+  await mockSubmissions(page);
+  await routeMutation(page, "meetSubmissions:submit", (route) =>
+    route.fulfill(errorAnswer("Server Error", { status: 400, error: "file already submitted: schedule.pdf", code: "already_submitted" })),
+  );
+
+  await page.goto("/submit-meet");
+  await fillMeet(page);
+  await files(page).setInputFiles([pdf]);
+  await page.getByRole("button", { name: "Submit meet" }).click();
+  await expect(page.getByRole("alert")).toHaveText("File already submitted: schedule.pdf");
+  await expect(page.getByLabel("Meet name")).toHaveValue("  Ohio Open  ");
+});
+
+test("a session the server refuses says to sign in again, as /link does", async ({ page }) => {
+  await mockAuth(page);
+  await mockSubmissions(page);
+  await routeMutation(page, "meetSubmissions:generateUploadUrl", (route) => route.fulfill(errorAnswer("Server Error", { status: 401, error: "unauthorized" })));
+  await page.goto("/submit-meet");
+  await fillMeet(page);
+  await files(page).setInputFiles([pdf]);
+  await page.getByRole("button", { name: "Submit meet" }).click();
+  await expect(page.getByRole("alert")).toHaveText("MeetCal couldn't confirm you're signed in; please sign in again");
 });
 
 test("the form has no serious accessibility violations", async ({ page }) => {

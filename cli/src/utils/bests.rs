@@ -7,20 +7,19 @@ use chrono::{Datelike, NaiveDate, Utc};
 use serde_json::json;
 
 use crate::types::meets::NamedBests;
-use crate::utils::backend::{queries, query};
+use crate::utils::backend::{queries, query_each};
 use crate::utils::format::kg;
 
-/// Names per `results:bests` call (the query takes at most 100).
-pub const BESTS_BATCH_SIZE: usize = 100;
-
 /// How far back "year bests" look, as in the app.
-pub const YEAR_BESTS_YEARS: i32 = 1;
+pub(crate) const YEAR_BESTS_YEARS: i32 = 1;
+
+pub(crate) const NAMES_PER_BESTS_READ: usize = 100;
 
 /// The date `years` before `today`, as the app computes it (29 February falls to 1 March).
 ///
 /// Callers pass today's UTC date, not the user's: the app's start list computes its cutoff in
 /// UTC (`getHistoryCutoffDate`), and the CLI's past-year bests must be the same numbers.
-pub fn cutoff_date(today: NaiveDate, years: i32) -> String {
+pub(crate) fn cutoff_date(today: NaiveDate, years: i32) -> String {
     let year = today.year() - years;
     today
         .with_year(year)
@@ -30,17 +29,14 @@ pub fn cutoff_date(today: NaiveDate, years: i32) -> String {
         .to_string()
 }
 
-/// Each name's best snatch, clean & jerk and total over the past year, keyed by the name as
-/// given. Names are read in batches; an empty list reads nothing.
-pub async fn year_bests(names: &[String]) -> Result<HashMap<String, NamedBests>> {
+pub(crate) async fn year_bests(names: &[String]) -> Result<HashMap<String, NamedBests>> {
     let cutoff = cutoff_date(Utc::now().date_naive(), YEAR_BESTS_YEARS);
+    let batches = names
+        .chunks(NAMES_PER_BESTS_READ)
+        .map(|batch| json!({ "names": batch, "cutoffDate": cutoff }))
+        .collect();
     let mut bests = HashMap::new();
-    for batch in names.chunks(BESTS_BATCH_SIZE) {
-        let rows: Vec<NamedBests> = query(
-            queries::BESTS,
-            &json!({ "names": batch, "cutoffDate": cutoff }),
-        )
-        .await?;
+    for rows in query_each::<Vec<NamedBests>>(queries::BESTS, batches).await? {
         for row in rows {
             bests.insert(row.name.clone(), row);
         }
@@ -49,7 +45,7 @@ pub async fn year_bests(names: &[String]) -> Result<HashMap<String, NamedBests>>
 }
 
 /// `95 / 120 / 215`, blank lifts left blank; empty when there is nothing.
-pub fn bests_cell(bests: Option<&NamedBests>) -> String {
+pub(crate) fn bests_cell(bests: Option<&NamedBests>) -> String {
     match bests {
         Some(bests) if bests.best_total > 0.0 || bests.best_snatch > 0.0 || bests.best_cj > 0.0 => {
             format!(

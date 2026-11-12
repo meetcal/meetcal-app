@@ -20,13 +20,13 @@ jest.mock("@react-native-async-storage/async-storage", () => ({
     removeItem: jest.fn(async (key: string) => {
       mockStorage.delete(key);
     }),
-    multiSet: jest.fn(async (entries: [string, string][]) => {
-      entries.forEach(([key, value]) => mockStorage.set(key, value));
+    setMany: jest.fn(async (entries: Record<string, string>) => {
+      Object.entries(entries).forEach(([key, value]) => mockStorage.set(key, value));
     }),
-    multiGet: jest.fn(async (keys: string[]) =>
-      keys.map((key) => [key, mockStorage.get(key) ?? null]),
+    getMany: jest.fn(async (keys: string[]) =>
+      Object.fromEntries(keys.map((key) => [key, mockStorage.get(key) ?? null])),
     ),
-    multiRemove: jest.fn(async (keys: string[]) => {
+    removeMany: jest.fn(async (keys: string[]) => {
       keys.forEach((key) => mockStorage.delete(key));
     }),
     getAllKeys: jest.fn(async () => Array.from(mockStorage.keys())),
@@ -49,9 +49,8 @@ describe("cached athlete bests", () => {
       NOW,
     );
 
-    expect(AsyncStorage.multiSet).toHaveBeenLastCalledWith([
-      [expect.stringContaining("jane doe"), expect.any(String)],
-    ]);
+    const [written] = (AsyncStorage.setMany as jest.Mock).mock.lastCall;
+    expect(Object.keys(written)).toEqual([expect.stringContaining("jane doe")]);
     await expect(getStoredAthleteBestsForNames(["jane doe", "Nobody"], NOW)).resolves.toEqual({
       "jane doe": {
         bests: { snatch_best: 90, cj_best: 110, total: 200 },
@@ -144,9 +143,9 @@ describe("cached athlete bests", () => {
     await expect(getStoredAthleteBestsForNames(["Jane Doe"], NOW)).resolves.toEqual({});
   });
 
-  it("writes a roster-sized bests map in bounded multiSet batches", async () => {
-    const multiSet = AsyncStorage.multiSet as jest.Mock;
-    multiSet.mockClear();
+  it("writes a roster-sized bests map in bounded setMany batches", async () => {
+    const setMany = AsyncStorage.setMany as jest.Mock;
+    setMany.mockClear();
     const bests = Object.fromEntries(
       Array.from({ length: 1201 }, (_, i) => [
         `Athlete ${i}`,
@@ -156,7 +155,9 @@ describe("cached athlete bests", () => {
 
     await saveAthleteBestsBatch(bests, NOW);
 
-    expect(multiSet.mock.calls.map(([entries]) => entries.length)).toEqual([500, 500, 201]);
+    expect(setMany.mock.calls.map(([entries]) => Object.keys(entries).length)).toEqual([
+      500, 500, 201,
+    ]);
     await expect(getStoredAthleteBestsForNames(["Athlete 1200"], NOW)).resolves.toEqual({
       "Athlete 1200": {
         bests: { snatch_best: 90, cj_best: 110, total: 200 },
@@ -166,26 +167,26 @@ describe("cached athlete bests", () => {
     });
   });
 
-  it("reads a roster-sized name list in bounded multiGet batches", async () => {
-    const multiGet = AsyncStorage.multiGet as jest.Mock;
-    multiGet.mockClear();
+  it("reads a roster-sized name list in bounded getMany batches", async () => {
+    const getMany = AsyncStorage.getMany as jest.Mock;
+    getMany.mockClear();
     const names = Array.from({ length: 1201 }, (_, i) => `Athlete ${i}`);
 
     await getStoredAthleteBestsForNames(names, NOW);
 
-    expect(multiGet.mock.calls.map(([keys]) => keys.length)).toEqual([500, 500, 201]);
+    expect(getMany.mock.calls.map(([keys]) => keys.length)).toEqual([500, 500, 201]);
   });
 
   it("does not write at all for an empty map", async () => {
-    const multiSet = AsyncStorage.multiSet as jest.Mock;
-    multiSet.mockClear();
+    const setMany = AsyncStorage.setMany as jest.Mock;
+    setMany.mockClear();
     await saveAthleteBestsBatch({});
-    expect(multiSet).not.toHaveBeenCalled();
+    expect(setMany).not.toHaveBeenCalled();
   });
 
   it("returns an empty record when storage is unavailable", async () => {
     jest.spyOn(console, "error").mockImplementation(() => {});
-    (AsyncStorage.multiGet as jest.Mock).mockRejectedValueOnce(new Error("storage unavailable"));
+    (AsyncStorage.getMany as jest.Mock).mockRejectedValueOnce(new Error("storage unavailable"));
     await expect(getStoredAthleteBestsForNames(["Jane Doe"])).resolves.toEqual({});
   });
 

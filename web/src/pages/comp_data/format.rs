@@ -1,3 +1,6 @@
+pub(crate) const NO_VALUE: &str = "—";
+pub(crate) const GENDERS: [&str; 2] = ["Men", "Women"];
+
 pub(crate) fn yes_no(value: bool) -> &'static str {
     if value { "Yes" } else { "No" }
 }
@@ -46,14 +49,18 @@ pub(crate) fn display_gender(value: &str) -> String {
     }
 }
 
-/// A record, lift or standard, or "—" when there is none. The reference tables answer `0` for
-/// "no record set / no standard" (every U15 B standard, unset masters records) and WSO records
-/// answer `null` for a lift the source left out; neither is a weight anyone has to beat. The app
-/// (`formatReferenceKg`) and the CLI's `kg` read `<= 0` the same way.
 pub(crate) fn reference_value(value: Option<f64>) -> String {
     match value {
         Some(value) if value.is_finite() && value > 0.0 => value.to_string(),
-        _ => "—".to_owned(),
+        _ => NO_VALUE.to_owned(),
+    }
+}
+
+pub(crate) fn display_body_weight(kilograms: f64) -> String {
+    if kilograms.is_finite() && kilograms > 0.0 {
+        kilograms.to_string()
+    } else {
+        NO_VALUE.to_owned()
     }
 }
 
@@ -84,12 +91,14 @@ pub(crate) fn format_us_date(value: &str) -> String {
                 day.parse::<u32>().ok()?,
             ))
         });
-    match parsed {
-        Some((year, month @ 1..=12, day @ 1..=31)) => {
-            format!("{} {day}, {year}", MONTHS[month - 1])
-        }
-        _ => value.to_owned(),
-    }
+    parsed
+        .and_then(|(year, month, day)| {
+            let month_name = MONTHS.get(month.checked_sub(1)?)?;
+            (1..=31)
+                .contains(&day)
+                .then(|| format!("{month_name} {day}, {year}"))
+        })
+        .unwrap_or_else(|| value.to_owned())
 }
 
 pub(crate) fn format_us_time(value: &str) -> String {
@@ -127,8 +136,28 @@ mod tests {
     }
 
     #[test]
+    fn a_body_weight_the_source_did_not_record_shows_a_dash_not_zero() {
+        assert_eq!(display_body_weight(70.5), "70.5");
+        assert_eq!(display_body_weight(88.0), "88");
+        assert_eq!(display_body_weight(0.0), "—");
+        assert_eq!(display_body_weight(-1.0), "—");
+        assert_eq!(display_body_weight(f64::NAN), "—");
+    }
+
+    #[test]
     fn dates_and_times_use_us_display_formats() {
         assert_eq!(format_us_date("2026-06-20"), "June 20, 2026");
+        assert_eq!(format_us_date("2026-12-01"), "December 1, 2026");
+        for not_a_date in [
+            "2026-00-10",
+            "2026-13-10",
+            "2026-06-00",
+            "2026-06-32",
+            "2026-06",
+            "soon",
+        ] {
+            assert_eq!(format_us_date(not_a_date), not_a_date);
+        }
         assert_eq!(format_us_time("08:00:00"), "8:00 AM");
         assert_eq!(format_us_time("12:30"), "12:30 PM");
     }

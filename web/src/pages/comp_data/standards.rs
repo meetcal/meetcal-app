@@ -1,110 +1,121 @@
 use super::{
-    filters::{
-        ClassificationFilters, ClassifiedRow, SortDirection, classified_rows, filter_options,
-        sort_numeric, weight_class_options,
-    },
-    format::reference_value,
-    loading::{load_query, table_response},
-    ui::{DataPage, DataTable, EmptyTableRow, FilterSelect, SortSelect},
+    filters::{SortDirection, sort_numeric, sort_orders},
+    format::{display_weight_class, reference_value},
+    loading::{load_rows, table_response},
+    reference_table::{Filter, OptionOrder, ReferenceTable, TableSort},
+    ui::DataPage,
 };
 use crate::utils::api::queries;
 use leptos::prelude::*;
 use serde::Deserialize;
 
-#[derive(Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize)]
 struct Standard {
     age_category: String,
     gender: String,
     standard_a: f64,
-    /// `0` for no standard (every U15 class has no B standard).
     standard_b: f64,
     weight_class: String,
 }
 
-impl ClassifiedRow for Standard {
-    fn gender(&self) -> &str {
-        &self.gender
-    }
-    fn age_category(&self) -> &str {
-        &self.age_category
-    }
-    fn weight_class(&self) -> &str {
-        &self.weight_class
+impl Standard {
+    fn shown(self) -> Self {
+        Self {
+            weight_class: display_weight_class(&self.weight_class),
+            ..self
+        }
     }
 }
 
-const SORT_OPTIONS: &[(&str, &str)] = &[
-    ("standard_a_desc", "A: high to low"),
-    ("standard_a_asc", "A: low to high"),
-    ("standard_b_desc", "B: high to low"),
-    ("standard_b_asc", "B: low to high"),
+fn gender(standard: &Standard) -> &str {
+    &standard.gender
+}
+
+fn age(standard: &Standard) -> &str {
+    &standard.age_category
+}
+
+fn weight_class(standard: &Standard) -> &str {
+    &standard.weight_class
+}
+
+const FILTERS: &[Filter<Standard>] = &[
+    Filter {
+        label: "Gender",
+        param: "gender",
+        placeholder: "All genders",
+        value: gender,
+        order: OptionOrder::Alphabetical,
+    },
+    Filter {
+        label: "Age",
+        param: "age",
+        placeholder: "All ages",
+        value: age,
+        order: OptionOrder::Alphabetical,
+    },
+    Filter {
+        label: "Weight class",
+        param: "class",
+        placeholder: "All classes",
+        value: weight_class,
+        order: OptionOrder::ByWeight,
+    },
 ];
+
+const HEADERS: &[&str] = &["Gender", "Age", "Weight class", "A", "B"];
+
+sort_orders!(StandardSort {
+    ADesc => ("standard_a_desc", "A: high to low"),
+    AAsc => ("standard_a_asc", "A: low to high"),
+    BDesc => ("standard_b_desc", "B: high to low"),
+    BAsc => ("standard_b_asc", "B: low to high"),
+});
+
+impl TableSort<Standard> for StandardSort {
+    fn sort(self, rows: &mut [&Standard]) {
+        match self {
+            StandardSort::AAsc => {
+                sort_numeric(rows, |row| row.standard_a, SortDirection::Ascending)
+            }
+            StandardSort::BDesc => {
+                sort_numeric(rows, |row| row.standard_b, SortDirection::Descending)
+            }
+            StandardSort::BAsc => {
+                sort_numeric(rows, |row| row.standard_b, SortDirection::Ascending)
+            }
+            StandardSort::ADesc => {
+                sort_numeric(rows, |row| row.standard_a, SortDirection::Descending)
+            }
+        }
+    }
+}
+
+fn standard_row(standard: &Standard) -> AnyView {
+    view! {
+        <tr>
+            <td>{standard.gender.clone()}</td>
+            <td>{standard.age_category.clone()}</td>
+            <td>{standard.weight_class.clone()}</td>
+            <td>{reference_value(Some(standard.standard_a))}</td>
+            <td>{reference_value(Some(standard.standard_b))}</td>
+        </tr>
+    }
+    .into_any()
+}
 
 #[component]
 pub fn Standards() -> impl IntoView {
-    let (gender, set_gender) = signal(String::new());
-    let (age, set_age) = signal(String::new());
-    let (weight_class, set_weight_class) = signal(String::new());
-    let (sort, set_sort) = signal("standard_a_desc".to_string());
-    let standards = load_query::<Vec<Standard>>(queries::STANDARDS);
+    let standards = load_rows(queries::STANDARDS, Standard::shown);
 
     view! {
         <DataPage
             heading="Standards"
             intro="A and B standards by gender, age category, and weight class."
         >
-            {move || table_response(standards, 5, "standards", |rows| {
-                let genders = filter_options(rows.iter().map(|row| row.gender.as_str()));
-                let ages = filter_options(rows.iter().map(|row| row.age_category.as_str()));
-                let weights = weight_class_options(rows.iter().map(|row| row.weight_class.as_str()));
-                let selected_gender = gender.get();
-                let selected_age = age.get();
-                let selected_weight = weight_class.get();
-                let filters = ClassificationFilters { gender: &selected_gender, age_category: &selected_age, weight_class: &selected_weight };
-                let mut filtered_standards = classified_rows(rows, &filters, |_| true);
-
-                match sort.get().as_str() {
-                    "standard_a_asc" => sort_numeric(&mut filtered_standards, |row| row.standard_a, SortDirection::Ascending),
-                    "standard_b_desc" => sort_numeric(&mut filtered_standards, |row| row.standard_b, SortDirection::Descending),
-                    "standard_b_asc" => sort_numeric(&mut filtered_standards, |row| row.standard_b, SortDirection::Ascending),
-                    _ => sort_numeric(&mut filtered_standards, |row| row.standard_a, SortDirection::Descending),
-                }
-                let is_empty = filtered_standards.is_empty();
-                let rows = filtered_standards
-                    .into_iter()
-                    .map(|row| view! {
-                        <tr>
-                            <td>{row.gender.clone()}</td>
-                            <td>{row.age_category.clone()}</td>
-                            <td>{row.weight_class.clone()}</td>
-                            <td>{reference_value(Some(row.standard_a))}</td>
-                            <td>{reference_value(Some(row.standard_b))}</td>
-                        </tr>
-                    })
-                    .collect_view();
-
+            {move || table_response(standards, HEADERS.len(), "standards", |standards| {
                 view! {
-                    <div class="data-filters">
-                        <FilterSelect label="Gender" placeholder="All genders" values=genders selected=gender on_select=move |value| set_gender.set(value) />
-                        <FilterSelect label="Age" placeholder="All ages" values=ages selected=age on_select=move |value| set_age.set(value) />
-                        <FilterSelect label="Weight class" placeholder="All classes" values=weights selected=weight_class on_select=move |value| set_weight_class.set(value) />
-                        <SortSelect options=SORT_OPTIONS sort set_sort />
-                    </div>
-                    <DataTable>
-                        <thead>
-                            <tr>
-                                <th>"Gender"</th>
-                                <th>"Age"</th>
-                                <th>"Weight class"</th>
-                                <th>"A"</th>
-                                <th>"B"</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {is_empty.then(|| view! { <EmptyTableRow columns=5 message="No standards match these filters." /> })}
-                            {rows}
-                        </tbody>
-                    </DataTable>
+                    <ReferenceTable rows=standards.to_vec() filters=FILTERS headers=HEADERS row=standard_row path="/standards" default_sort=StandardSort::ADesc empty_message="No standards match these filters." />
                 }
                 .into_any()
             })}
@@ -137,5 +148,19 @@ mod tests {
 
         assert_eq!(reference_value(Some(standard.standard_a)), "184");
         assert_eq!(reference_value(Some(standard.standard_b)), "—");
+    }
+
+    #[test]
+    fn every_sort_order_in_the_menu_is_one_the_table_sorts_by() {
+        crate::pages::comp_data::filters::assert_each_sort_order_parses_to_itself::<StandardSort>();
+    }
+
+    #[test]
+    fn an_open_class_reads_as_the_other_tables_write_it() {
+        let standard: Standard = serde_json::from_str(
+            r#"{"age_category":"Senior","gender":"Women","standard_a":250.0,"standard_b":230.0,"weight_class":"+86kg"}"#,
+        )
+        .unwrap();
+        assert_eq!(standard.shown().weight_class, "86+kg");
     }
 }

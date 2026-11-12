@@ -2,7 +2,7 @@ import { isRecord } from '@/lib/is-record';
 import type { AthleteBests } from '@/data/types/athletes';
 import { normalizeAthleteName } from '@/lib/athletes';
 import { getAthleteBestsKey, legacyAthleteKeyName } from './offline-storage-keys';
-import { multiGetBatched, multiSetBatched } from './storage-batches';
+import { getManyBatched, setManyBatched } from './storage-batches';
 
 export const ATHLETE_BESTS_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
@@ -77,7 +77,7 @@ export async function saveAthleteBestsBatch(
         JSON.stringify({ v: ATHLETE_BESTS_FORMAT_VERSION, fetchedAt, bests }),
       ] as [string, string]);
 
-    await multiSetBatched(entries);
+    await setManyBatched(entries);
   } catch (error) {
     console.error('Error saving athlete bests:', error);
     throw error;
@@ -95,7 +95,7 @@ export async function getStoredAthleteBestsForNames(
     .map(({ name, normalized }) => ({ name, key: getAthleteBestsKey(normalized) }));
 
   try {
-    const payloads = await multiGetBatched(keysByName.map(({ key }) => key));
+    const payloads = await getManyBatched(keysByName.map(({ key }) => key));
     const legacyKeys = new Map<string, string>();
     for (const { name, key } of keysByName) {
       if (payloads.get(key)) continue;
@@ -104,7 +104,7 @@ export async function getStoredAthleteBestsForNames(
     }
     const legacyPayloads =
       legacyKeys.size > 0
-        ? await multiGetBatched(Array.from(legacyKeys.values()))
+        ? await getManyBatched(Array.from(legacyKeys.values()))
         : new Map<string, string | null>();
     const byName: Record<string, StoredAthleteBests> = {};
     for (const { name, key } of keysByName) {

@@ -137,7 +137,7 @@ test("moving between data pages and Clerk updates for the same user keep the pag
   await mockAuth(page);
   await routeQuery(page, "reference:records", (route) => route.fulfill(textAnswer([])));
   await routeQuery(page, "reference:standards", (route) => route.fulfill(textAnswer([])));
-  await routeQuery(page, "results:search", (route) => route.fulfill(valueAnswer({ matched_name: null, suggestions: [], results: [] })));
+  await routeQuery(page, "results:search", (route) => route.fulfill(valueAnswer({ matched_name: null, suggestions: [], results: [], truncated: false })));
 
   await page.goto("/results");
   const athleteSearch = page.getByLabel("Athlete", { exact: true });
@@ -342,6 +342,29 @@ for (const status of [401, 403]) {
     expect(passRequests).toHaveLength(2);
   });
 }
+
+test("a read Convex refuses while a slow pass fetch still runs waits for that pass and goes again", async ({ page }) => {
+  test.setTimeout(45_000);
+  await mockAuth(page);
+  const slowerThanTheFirstReadsWaitMs = 4_500;
+  await routeQuery(page, "accessPass:pass", async (route) => {
+    await new Promise((resolve) => setTimeout(resolve, slowerThanTheFirstReadsWaitMs));
+    await route.fulfill(valueAnswer({ pass: "pass_slow", rotatesAt: Date.now() + 24 * 60 * 60 * 1000 }));
+  });
+  const sent: unknown[] = [];
+  await routeQuery(page, "reference:standards", (route, args) => {
+    sent.push(args.pass ?? null);
+    if (args.pass === undefined) {
+      return route.fulfill(errorAnswer("Server Error", { status: 401, error: "access pass required" }));
+    }
+    return route.fulfill(textAnswer([]));
+  });
+
+  await page.goto("/standards");
+  await expect.poll(() => sent, { timeout: 20_000 }).toEqual([null, "pass_slow"]);
+  await expect(page.getByRole("heading", { level: 1, name: "Standards" })).toBeVisible();
+  await expect(page.getByRole("alert")).toHaveCount(0);
+});
 
 test("a read Convex refuses again with a fresh pass shows its error instead of retrying more", async ({ page }) => {
   const { passRequests } = await mockAuth(page);

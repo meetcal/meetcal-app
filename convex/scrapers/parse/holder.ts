@@ -1,3 +1,6 @@
+import { DAY_MS, isoDateOf, MONTH_NUMBERS as MONTHS, pad2 as pad } from '../../lib/dates';
+import { pyInt } from '../lib/numbers';
+
 // Who holds a record, stored beside each lift (`snatchBy`, `cjBy`, `totalBy`
 // in the tables). Every records scraper builds these the same way:
 //
@@ -16,10 +19,6 @@ export type RecordHolder = { name: string; date?: string; location?: string };
 
 const STANDARD = /^(?:(?:world|record|wso|state|american|national)\s+)?standard$/i;
 const EMPTY = /^(?:-+|–|—|#?n\/?a|none|tbd|vacant|open)?$/i;
-
-const MONTHS: Record<string, number> = { jan: 1, feb: 2, mar: 3, apr: 4, may: 5, jun: 6, jul: 7, aug: 8, sep: 9, oct: 10, nov: 11, dec: 12 };
-
-const pad = (n: number) => String(n).padStart(2, '0');
 
 function iso(year: number, month: number, day: number): string | null {
   if (month < 1 || month > 12 || day < 1 || day > 31) return null;
@@ -70,23 +69,12 @@ const DATE_CORRECTIONS: readonly { name: string; written: string; date: string }
  */
 const FUTURE_SLACK_DAYS = 2;
 
-const DAY_MS = 24 * 60 * 60 * 1000;
-
-/**
- * `date` (as `recordDate` read it) with the sources' known mistakes
- * corrected (`DATE_CORRECTIONS`). A date that has not happened yet throws:
- * no record can have one, and the usual cause (a sheet writing the year
- * after, as two WSOs did for the December 2025 Virus Finals) cannot be told
- * from a real record once that day comes, so it fails the source until the
- * cell is listed above or the source fixes it. `today` only decides what is
- * in the future; it never changes the date returned.
- */
 export function correctRecordDate(name: string, date: string | undefined, today: Date): string | undefined {
   if (date === undefined) return undefined;
   const known = DATE_CORRECTIONS.find((c) => c.name === name && c.written === date);
   if (known) return known.date;
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return date;
-  const latest = new Date(today.getTime() + FUTURE_SLACK_DAYS * DAY_MS).toISOString().slice(0, 10);
+  const latest = isoDateOf(today.getTime() + FUTURE_SLACK_DAYS * DAY_MS);
   if (date > latest) {
     throw new Error(`record date ${date} for ${JSON.stringify(name)} is in the future (a year written wrong? add it to DATE_CORRECTIONS in parse/holder.ts)`);
   }
@@ -127,7 +115,6 @@ export function setHolder<K extends string>(record: { [key in K]?: RecordHolder 
   else delete record[key];
 }
 
-const NUMBER = /^[-+]?(\d+\.?\d*|\.\d+)([eE][-+]?\d+)?$/;
 const WHOLE_KG = /^(\d+) ?kg$/i;
 
 /**
@@ -143,6 +130,7 @@ export function recordLift(raw: string): number | null {
   if (EMPTY.test(text) || STANDARD.test(text)) return null;
   const kg = WHOLE_KG.exec(text);
   if (kg) return Number(kg[1]);
-  if (!NUMBER.test(text)) throw new Error(`unreadable lift value ${JSON.stringify(raw)}`);
-  return Math.trunc(Number(text));
+  const value = pyInt(text);
+  if (value === null) throw new Error(`unreadable lift value ${JSON.stringify(raw)}`);
+  return value;
 }

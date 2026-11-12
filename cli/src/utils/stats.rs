@@ -1,7 +1,5 @@
 //! Statistics over lifting results: divisions, Sinclair, attempt habits and PRs.
 
-use std::collections::HashMap;
-
 use unicode_normalization::UnicodeNormalization;
 
 use crate::types::lifting_results::LiftingResults;
@@ -9,10 +7,19 @@ use crate::types::lifting_results::LiftingResults;
 /// Sinclair coefficients (IWF, 2021–2024 cycle; the latest set the IWF has published that we could
 /// confirm). A total `t` at bodyweight `bw` scores `t × 10^(A·log10(bw/b)²)` below `b` kg and `t`
 /// at or above it.
-pub const SINCLAIR_MEN: (f64, f64) = (0.722_762_521, 193.609);
-pub const SINCLAIR_WOMEN: (f64, f64) = (0.787_004_341, 153.757);
-/// How the Sinclair column is labelled, so output says which coefficients it used.
-pub const SINCLAIR_LABEL: &str = "Sinclair (2021-24)";
+pub(crate) const SINCLAIR_MEN: (f64, f64) = (0.722_762_521, 193.609);
+pub(crate) const SINCLAIR_WOMEN: (f64, f64) = (0.787_004_341, 153.757);
+macro_rules! sinclair_coefficient_years {
+    () => {
+        "2021-24"
+    };
+}
+pub(crate) const SINCLAIR_LABEL: &str = concat!("Sinclair (", sinclair_coefficient_years!(), ")");
+pub(crate) const SINCLAIR_WITH_COEFFICIENTS: &str = concat!(
+    "Sinclair (",
+    sinclair_coefficient_years!(),
+    " coefficients)"
+);
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum Gender {
@@ -48,7 +55,7 @@ pub struct Division {
     /// `U15`, `U13`, `U11` or `Masters 40`; `None` when the division names none we know.
     pub category: Option<String>,
     /// The weight class, `89` or `110+`, without `kg`.
-    pub weight_class: Option<String>,
+    pub(crate) weight_class: Option<String>,
 }
 
 impl Division {
@@ -116,7 +123,7 @@ fn category(lower: &str) -> Option<String> {
 }
 
 /// `89kg`, `+110kg`, `110+kg`, `110+` or `89` as `89` / `110+`; `None` for anything else.
-pub fn weight_class(value: &str) -> Option<String> {
+pub(crate) fn weight_class(value: &str) -> Option<String> {
     let trimmed = value
         .trim()
         .trim_end_matches("kg")
@@ -136,11 +143,11 @@ pub fn weight_class(value: &str) -> Option<String> {
 
 /// Bodyweights outside this range are source errors (a handful of rows say 0.9 or 12 kg), not
 /// lifters: Sinclair is not computed for them.
-pub const PLAUSIBLE_BODY_WEIGHT: std::ops::RangeInclusive<f64> = 15.0..=250.0;
+pub(crate) const PLAUSIBLE_BODY_WEIGHT: std::ops::RangeInclusive<f64> = 15.0..=250.0;
 
 /// A total's Sinclair score at `body_weight`, or `None` without a total or a plausible
 /// bodyweight.
-pub fn sinclair(total: f64, body_weight: f64, gender: Gender) -> Option<f64> {
+pub(crate) fn sinclair(total: f64, body_weight: f64, gender: Gender) -> Option<f64> {
     if total <= 0.0 || !total.is_finite() || !PLAUSIBLE_BODY_WEIGHT.contains(&body_weight) {
         return None;
     }
@@ -160,16 +167,16 @@ pub fn sinclair(total: f64, body_weight: f64, gender: Gender) -> Option<f64> {
 /// authors' formula file at https://osf.io/8x3nb/): a total `t` at bodyweight `bw` scores
 /// `t × Tmax / (β0 + β1·(bw/100)^-2 + β2·(bw/100)^2)`, as `(Tmax, β0, β1, β2)`. USA
 /// Weightlifting has used it for best lifters since 2025.
-pub const QPOINTS_MEN: (f64, f64, f64, f64) = (463.26, 416.7, -47.87, 18.93);
-pub const QPOINTS_WOMEN: (f64, f64, f64, f64) = (306.54, 266.5, -19.44, 18.61);
+pub(crate) const QPOINTS_MEN: (f64, f64, f64, f64) = (463.26, 416.7, -47.87, 18.93);
+pub(crate) const QPOINTS_WOMEN: (f64, f64, f64, f64) = (306.54, 266.5, -19.44, 18.61);
 /// Lighter lifters are scored at these bodyweights: the formula's `(bw/100)^-2` term inflates
 /// scores below them (the rule since November 2025, per the Nordic Weightlifting Federation).
-pub const QPOINTS_MIN_BODY_WEIGHT_MEN: f64 = 50.0;
-pub const QPOINTS_MIN_BODY_WEIGHT_WOMEN: f64 = 41.0;
-pub const QPOINTS_LABEL: &str = "Q-points";
+pub(crate) const QPOINTS_MIN_BODY_WEIGHT_MEN: f64 = 50.0;
+pub(crate) const QPOINTS_MIN_BODY_WEIGHT_WOMEN: f64 = 41.0;
+pub(crate) const QPOINTS_LABEL: &str = "Q-points";
 
 /// A total's Q-points at `body_weight`, or `None` without a total or a plausible bodyweight.
-pub fn qpoints(total: f64, body_weight: f64, gender: Gender) -> Option<f64> {
+pub(crate) fn qpoints(total: f64, body_weight: f64, gender: Gender) -> Option<f64> {
     if total <= 0.0 || !total.is_finite() || !PLAUSIBLE_BODY_WEIGHT.contains(&body_weight) {
         return None;
     }
@@ -183,7 +190,7 @@ pub fn qpoints(total: f64, body_weight: f64, gender: Gender) -> Option<f64> {
 
 /// Whether Q-points apply to a division: juniors, seniors and Masters, not youth (the authors'
 /// scope; youth have their own Q-Youth scale).
-pub fn qpoints_apply(division: &Division) -> bool {
+pub(crate) fn qpoints_apply(division: &Division) -> bool {
     !matches!(
         division.category.as_deref(),
         Some("U17" | "U15" | "U13" | "U11")
@@ -214,19 +221,19 @@ pub fn row_sinclair(row: &LiftingResults) -> Option<f64> {
 
 /// Whether a row's total is its best snatch plus best clean & jerk (or it has no total). A few
 /// source rows have their columns shifted; leaderboards leave them out.
-pub fn consistent_total(row: &LiftingResults) -> bool {
+pub(crate) fn consistent_total(row: &LiftingResults) -> bool {
     row.total <= 0.0 || (row.total - (row.snatch_best + row.cj_best)).abs() <= 0.5
 }
 
 /// The heaviest best snatch, best clean & jerk and total a result can plausibly hold: a little
 /// over the senior world records (225, 267 and 492 kg). Heavier ones are source errors, such as a
 /// placeholder row of `[100, 200, 300]`.
-pub const MAX_SNATCH: f64 = 230.0;
-pub const MAX_CJ: f64 = 275.0;
-pub const MAX_TOTAL: f64 = 500.0;
+pub(crate) const MAX_SNATCH: f64 = 230.0;
+pub(crate) const MAX_CJ: f64 = 275.0;
+pub(crate) const MAX_TOTAL: f64 = 500.0;
 /// A made attempt more than this many times the heaviest other attempt taken in the same lift is
 /// a typo (`633` for `63` between `-63` and `65`), not a jump a lifter makes.
-pub const MAX_ATTEMPT_JUMP: f64 = 1.5;
+pub(crate) const MAX_ATTEMPT_JUMP: f64 = 1.5;
 
 /// Whether a row can be trusted for a best, a ranking or a score: its total is its snatch plus
 /// clean & jerk ([`consistent_total`]), no lift is over the [`MAX_SNATCH`] / [`MAX_CJ`] /
@@ -266,43 +273,43 @@ fn plausible_lift(row: &LiftingResults, lift: Lift) -> bool {
 }
 
 /// A row's total when it has one and the row is [`plausible`]: what to maximize, average or rank.
-pub fn valid_total(row: &LiftingResults) -> Option<f64> {
+pub(crate) fn valid_total(row: &LiftingResults) -> Option<f64> {
     (row.total > 0.0 && plausible(row)).then_some(row.total)
 }
 
 /// A row's best `lift` when it made one and the row is [`plausible`].
-pub fn valid_lift(row: &LiftingResults, lift: Lift) -> Option<f64> {
+pub(crate) fn valid_lift(row: &LiftingResults, lift: Lift) -> Option<f64> {
     let best = lift.best(row);
     (best > 0.0 && plausible(row)).then_some(best)
 }
 
 /// A score to two decimals.
-pub fn points(value: Option<f64>) -> String {
+pub(crate) fn points(value: Option<f64>) -> String {
     value.map(|value| format!("{value:.2}")).unwrap_or_default()
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Lift {
+pub(crate) enum Lift {
     Snatch,
     CleanAndJerk,
 }
 
 impl Lift {
-    pub fn label(self) -> &'static str {
+    pub(crate) fn label(self) -> &'static str {
         match self {
             Lift::Snatch => "Snatch",
             Lift::CleanAndJerk => "C&J",
         }
     }
 
-    pub fn attempts(self, row: &LiftingResults) -> [f64; 3] {
+    pub(crate) fn attempts(self, row: &LiftingResults) -> [f64; 3] {
         match self {
             Lift::Snatch => [row.snatch1, row.snatch2, row.snatch3],
             Lift::CleanAndJerk => [row.cj1, row.cj2, row.cj3],
         }
     }
 
-    pub fn best(self, row: &LiftingResults) -> f64 {
+    pub(crate) fn best(self, row: &LiftingResults) -> f64 {
         match self {
             Lift::Snatch => row.snatch_best,
             Lift::CleanAndJerk => row.cj_best,
@@ -311,43 +318,48 @@ impl Lift {
 }
 
 /// Whether a result has no total: every attempt in a lift missed (or never taken).
-pub fn bombed_out(row: &LiftingResults) -> bool {
+pub(crate) fn bombed_out(row: &LiftingResults) -> bool {
     row.snatch_best <= 0.0 || row.cj_best <= 0.0 || row.total <= 0.0
 }
 
 /// How a set of results went, attempt by attempt, for one lift.
 #[derive(Clone, Debug, Default, PartialEq)]
-pub struct AttemptHabits {
+pub(crate) struct AttemptHabits {
     /// Attempts taken and made, by attempt number.
-    pub taken: [usize; 3],
-    pub made: [usize; 3],
+    pub(crate) taken: [usize; 3],
+    pub(crate) made: [usize; 3],
     /// Average kilograms added from the first to the second attempt, and the second to the third,
     /// over results where both were taken.
-    pub jump_1_2: Option<f64>,
-    pub jump_2_3: Option<f64>,
+    pub(crate) jump_1_2: Option<f64>,
+    pub(crate) jump_2_3: Option<f64>,
     /// The average opener as a share of the best made lift, over results with a made lift.
-    pub opener_share: Option<f64>,
+    pub(crate) opener_share: Option<f64>,
 }
 
 impl AttemptHabits {
-    pub fn make_rate(&self, attempt: usize) -> Option<f64> {
-        let taken = self.taken[attempt];
-        (taken > 0).then(|| self.made[attempt] as f64 * 100.0 / taken as f64)
+    pub(crate) fn make_rate(&self, attempt: usize) -> Option<f64> {
+        let taken = *self.taken.get(attempt)?;
+        let made = *self.made.get(attempt)?;
+        (taken > 0).then(|| made as f64 * 100.0 / taken as f64)
     }
 }
 
 /// Attempt habits for `lift` over `rows`. A missed attempt is recorded as its negative weight
 /// and one not taken as 0.
-pub fn attempt_habits(rows: &[&LiftingResults], lift: Lift) -> AttemptHabits {
+pub(crate) fn attempt_habits(rows: &[&LiftingResults], lift: Lift) -> AttemptHabits {
     let mut habits = AttemptHabits::default();
     let (mut jumps_1_2, mut jumps_2_3, mut shares) = (Vec::new(), Vec::new(), Vec::new());
     for row in rows {
         let attempts = lift.attempts(row);
-        for (index, attempt) in attempts.iter().enumerate() {
+        for ((attempt, taken), made) in attempts
+            .iter()
+            .zip(habits.taken.iter_mut())
+            .zip(habits.made.iter_mut())
+        {
             if *attempt != 0.0 && attempt.is_finite() {
-                habits.taken[index] += 1;
+                *taken += 1;
                 if *attempt > 0.0 {
-                    habits.made[index] += 1;
+                    *made += 1;
                 }
             }
         }
@@ -369,25 +381,21 @@ pub fn attempt_habits(rows: &[&LiftingResults], lift: Lift) -> AttemptHabits {
     habits
 }
 
-pub fn average(values: &[f64]) -> Option<f64> {
+pub(crate) fn average(values: &[f64]) -> Option<f64> {
     (!values.is_empty()).then(|| values.iter().sum::<f64>() / values.len() as f64)
 }
 
 /// Which lifts of a result were personal records when it was set.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub struct PrFlags {
-    pub snatch: bool,
-    pub cj: bool,
-    pub total: bool,
+pub(crate) struct PrFlags {
+    pub(crate) snatch: bool,
+    pub(crate) cj: bool,
+    pub(crate) total: bool,
 }
 
 impl PrFlags {
-    pub fn any(self) -> bool {
-        self.snatch || self.cj || self.total
-    }
-
     /// `S C T` style marks for the lifts that were PRs.
-    pub fn marks(self) -> String {
+    pub(crate) fn marks(self) -> String {
         [(self.snatch, "S"), (self.cj, "CJ"), (self.total, "T")]
             .into_iter()
             .filter_map(|(pr, mark)| pr.then_some(mark))
@@ -399,7 +407,7 @@ impl PrFlags {
 /// For each result, oldest first, which lifts beat everything before it. An athlete's first
 /// result sets their marks but is not a PR. A source error ([`plausible`]) is never a PR and sets
 /// no marks, so a typo'd lift does not hide every later real PR.
-pub fn pr_flags(rows: &[&LiftingResults]) -> Vec<PrFlags> {
+pub(crate) fn pr_flags(rows: &[&LiftingResults]) -> Vec<PrFlags> {
     let mut best = (0.0f64, 0.0f64, 0.0f64);
     let mut seen = false;
     rows.iter()
@@ -424,7 +432,7 @@ pub fn pr_flags(rows: &[&LiftingResults]) -> Vec<PrFlags> {
 }
 
 /// Results oldest first (by date, then meet name).
-pub fn chronological(rows: &[LiftingResults]) -> Vec<&LiftingResults> {
+pub(crate) fn chronological(rows: &[LiftingResults]) -> Vec<&LiftingResults> {
     let mut sorted: Vec<&LiftingResults> = rows.iter().collect();
     sorted.sort_by(|a, b| a.date.cmp(&b.date).then_with(|| a.meet.cmp(&b.meet)));
     sorted
@@ -433,7 +441,7 @@ pub fn chronological(rows: &[LiftingResults]) -> Vec<&LiftingResults> {
 /// Unicode NFC, lowercase, single-spaced: how names and meets are matched. The server keys names
 /// the same way (`normalizeName` in `convex/lib/names.ts`), since sources send both a composed
 /// "é" and an "e" with a combining accent.
-pub fn fold(value: &str) -> String {
+pub(crate) fn fold(value: &str) -> String {
     value
         .nfc()
         .collect::<String>()
@@ -443,17 +451,24 @@ pub fn fold(value: &str) -> String {
         .to_lowercase()
 }
 
-/// Rows grouped by athlete (folded name), each group oldest first.
-pub fn by_athlete(rows: &[LiftingResults]) -> HashMap<String, Vec<&LiftingResults>> {
-    let mut groups: HashMap<String, Vec<&LiftingResults>> = HashMap::new();
-    for row in chronological(rows) {
-        groups.entry(fold(&row.name)).or_default().push(row);
-    }
-    groups
+pub(crate) fn folded_words(value: &str) -> String {
+    fold(value)
+        .chars()
+        .map(|character| {
+            if character.is_alphanumeric() {
+                character
+            } else {
+                ' '
+            }
+        })
+        .collect::<String>()
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
 }
 
 /// A number without a trailing `.0`.
-pub fn number(value: f64) -> String {
+pub(crate) fn number(value: f64) -> String {
     if value == 0.0 {
         // Not `-0`.
         return "0".to_string();
@@ -468,15 +483,23 @@ pub fn number(value: f64) -> String {
     }
 }
 
+pub(crate) fn percentage(part: usize, whole: usize) -> f64 {
+    if whole == 0 {
+        0.0
+    } else {
+        part as f64 / whole as f64 * 100.0
+    }
+}
+
 /// A percentage to one decimal, or `N/A`.
-pub fn percent(value: Option<f64>) -> String {
+pub(crate) fn percent(value: Option<f64>) -> String {
     value
         .map(|value| format!("{value:.1}%"))
         .unwrap_or_else(|| "N/A".into())
 }
 
 /// Kilograms with a sign, or `N/A`.
-pub fn signed_kg(value: Option<f64>) -> String {
+pub(crate) fn signed_kg(value: Option<f64>) -> String {
     value
         .map(|value| {
             let rounded = (value * 100.0).round() / 100.0;
@@ -490,7 +513,7 @@ pub fn signed_kg(value: Option<f64>) -> String {
 pub(crate) mod tests {
     use super::*;
 
-    pub fn row(
+    pub(crate) fn row(
         name: &str,
         date: &str,
         meet: &str,
@@ -766,7 +789,7 @@ pub(crate) mod tests {
 
     /// A row with its attempts as given and its bests and total computed from them, typos and
     /// all, the way the source does.
-    pub fn raw_row(snatch: [f64; 3], cj: [f64; 3]) -> LiftingResults {
+    pub(crate) fn raw_row(snatch: [f64; 3], cj: [f64; 3]) -> LiftingResults {
         row(
             "A",
             "2026-04-04",

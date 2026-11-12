@@ -201,7 +201,7 @@ export function SelectedMeetProvider({ children }: { children: React.ReactNode }
       supersedeInFlightLoad(null);
       setSelectedMeetState(null);
       setMeetDetails(null);
-      await AsyncStorage.multiRemove([SELECTED_MEET_KEY, SELECTED_MEET_DETAILS_KEY]);
+      await AsyncStorage.removeMany([SELECTED_MEET_KEY, SELECTED_MEET_DETAILS_KEY]);
       throw new Error('Selected meet not found in available meets');
     }
 
@@ -242,7 +242,7 @@ export function SelectedMeetProvider({ children }: { children: React.ReactNode }
   const applyLaunchDecision = useCallback(
     async (decision: LaunchDecision, isStale: () => boolean): Promise<boolean> => {
       if (decision.clearStored) {
-        await AsyncStorage.multiRemove([SELECTED_MEET_KEY, SELECTED_MEET_DETAILS_KEY]);
+        await AsyncStorage.removeMany([SELECTED_MEET_KEY, SELECTED_MEET_DETAILS_KEY]);
         if (isStale()) return false;
       }
       if (decision.select) {

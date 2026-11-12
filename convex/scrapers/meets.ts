@@ -1,10 +1,11 @@
 'use node';
 
 import { v } from 'convex/values';
+import { isoDateOf } from '../lib/dates';
 import { internalAction } from '../_generated/server';
 import { internal } from '../_generated/api';
 import { fetchJson, withRetries } from './lib/http';
-import { listedMeetTitle, readAllWidgetPages, transformMeets, widgetPageUrl, type ScrapedMeet, type TransformedMeets } from './parse/meets';
+import { listedMeetTitle, readAllWidgetPages, renamedMeetMessage, transformMeets, widgetPageUrl, type ScrapedMeet, type TransformedMeets } from './parse/meets';
 import { sourcesFailed, type SourceFailure } from '../lib/cronAlerts';
 import type { ZoneFormatters } from '../lib/meetData';
 import { meetStatusAt } from '../lib/meetStatus';
@@ -28,15 +29,7 @@ const fetchWidgetPage = (url: string): Promise<unknown> =>
 /** The failing source for the listing itself: stable from run to run, as the problem text is not. */
 const LISTING = 'widget';
 
-/**
- * Why a new meet was stored under `storedAs`: its name is another meet's
- * (usually another federation's), and rosters and results still refer to meets by
- * name, so those written under the plain name attach to the other meet
- * until a person renames one of the two.
- */
-export function renamedMeetMessage(name: string, storedAs: string): string {
-  return `another meet is named ${JSON.stringify(name)}, so this one was stored as ${JSON.stringify(storedAs)}; results and entries sent under the plain name still attach to the other meet (rename one by hand)`;
-}
+export { renamedMeetMessage };
 
 /**
  * Why a run reports a retitled meet: the meet, its schedule, roster and saved
@@ -77,7 +70,7 @@ export const run = internalAction({
       throw sourcesFailed('meets', [{ source: LISTING, error: result.error }]);
     }
     result.fetched = rows.length;
-    const today = new Date().toISOString().slice(0, 10);
+    const today = isoDateOf(Date.now());
     const { stored, unlisted }: {
       stored: ({ name: string; status: string; bySource: boolean } | null)[];
       unlisted: { name: string; sourceId: string; startDate: string }[];

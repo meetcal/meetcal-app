@@ -126,8 +126,8 @@ function storageError(fault: StorageFault): Error | null {
   return null;
 }
 
-const READS = ['getItem', 'multiGet', 'getAllKeys'] as const;
-const WRITES = ['setItem', 'multiSet', 'removeItem', 'multiRemove', 'mergeItem', 'multiMerge', 'clear'] as const;
+const READS = ['getItem', 'getMany', 'getAllKeys'] as const;
+const WRITES = ['setItem', 'setMany', 'removeItem', 'removeMany', 'clear'] as const;
 
 type AsyncStorageMock = Record<(typeof READS)[number] | (typeof WRITES)[number], jest.Mock>;
 
@@ -137,45 +137,32 @@ export type StorageChaos = {
   restore: () => void;
 };
 
-/**
- * Puts the global AsyncStorage mock (`jest.setup.js`) behind `plan`. Faults
- * that make no sense for a call degrade to `pass` (a lost read, a corrupted
- * write); `corrupt-read` on `getItem` returns its value, on `multiGet` every
- * stored value it returns. `restore()` puts the mock's own behaviour back.
- */
 export function installStorageChaos(plan: readonly StorageFault[]): StorageChaos {
   const storage = AsyncStorage as unknown as AsyncStorageMock;
   const nextFault = planCursor<StorageFault>(plan, { kind: 'pass' });
   const calls: StorageChaos['calls'] = [];
   const originals = new Map<string, (...args: unknown[]) => unknown>();
-  // The mock builds `setItem` on `multiSet` and `getItem` on `multiGet`; the
-  // inner call starts synchronously, and it is the same operation, so it takes
-  // no fault of its own.
-  let inside = false;
 
   for (const method of [...READS, ...WRITES]) {
     const original = storage[method].getMockImplementation() as (...args: unknown[]) => unknown;
     originals.set(method, original);
     const isWrite = (WRITES as readonly string[]).includes(method);
     storage[method].mockImplementation(async (...args: unknown[]) => {
-      if (inside) return original(...args);
       const fault = nextFault();
       calls.push({ method, fault });
       const error = storageError(fault);
       if (error) throw error;
       if (isWrite && fault.kind === 'lose-write') return null;
-      inside = true;
-      let pending: unknown;
-      try {
-        pending = original(...args);
-      } finally {
-        inside = false;
-      }
-      const result = await pending;
+      const result = await original(...args);
       if (!isWrite && fault.kind === 'corrupt-read') {
         if (method === 'getItem') return result === null ? null : fault.value;
-        if (method === 'multiGet') {
-          return (result as [string, string | null][]).map(([key, value]) => [key, value === null ? null : fault.value]);
+        if (method === 'getMany') {
+          return Object.fromEntries(
+            Object.entries(result as Record<string, string | null>).map(([key, value]) => [
+              key,
+              value === null ? null : fault.value,
+            ]),
+          );
         }
       }
       return result;

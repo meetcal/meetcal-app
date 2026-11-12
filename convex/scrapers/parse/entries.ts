@@ -1,8 +1,10 @@
+import { placeholderMemberId } from '../../lib/memberIds';
 // Meet entries from Sport80 (replaces `usaw/entry_scraper/csv_scraper.js`).
 // The Node scraper drove a headless browser through the public entries page;
 // the table on that page is filled from a public JSON endpoint, which this
 // reads directly: `/api/public/events/datatable/{event}/entries/{stage}`,
 // 100 rows a page, the meet's name in the table's title.
+import { isRecord, kindOf, rowCount } from '../../lib/json';
 
 export const SPORT80 = 'https://usaweightlifting.sport80.com';
 
@@ -44,17 +46,10 @@ export function meetFromTitle(title: string): string {
   return trimmed.endsWith(' - Members') ? trimmed.slice(0, -' - Members'.length) : trimmed;
 }
 
-/**
- * The shared stand-in for a missing membership number (`placeholder_member_id`
- * in the Python writer): athletes without one are keyed on meet and name.
- */
-export function placeholderMemberId(name: string): string {
-  const normalized = name.split(/\s+/).filter(Boolean).join(' ').toLowerCase();
-  return `noid:${normalized.replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '')}`;
-}
+export { placeholderMemberId } from '../../lib/memberIds';
 
 export type EntryRow = {
-  id?: number;
+  id?: unknown;
   member_id?: string | null;
   first_name?: string | null;
   last_name?: string | null;
@@ -77,6 +72,48 @@ export type Entry = {
   /** Filled by the sync from the member's other registrations (#345). */
   wso?: string;
 };
+
+export type EntriesTable = { title?: string; total?: number; data?: EntryRow[] };
+
+export function readEntriesTable(body: unknown): EntriesTable {
+  if (!isRecord(body)) throw new Error('entries: the response is not an object');
+  const { title, total, data } = body;
+  const count = rowCount(total);
+  if (total !== undefined && total !== null && count === null) throw new Error(`entries: total is not a row count (${JSON.stringify(total)})`);
+  if (data !== undefined && data !== null && !Array.isArray(data)) throw new Error('entries: data is not a list');
+  const text = (row: Record<string, unknown>, i: number, field: string): string | null => {
+    const value = row[field];
+    if (value === undefined || value === null) return null;
+    if (typeof value !== 'string') throw new Error(`entries: row ${i}: ${field} is ${kindOf(value)}`);
+    return value;
+  };
+  const scalar = (row: Record<string, unknown>, i: number, field: string): number | string | null => {
+    const value = row[field];
+    if (value === undefined || value === null) return null;
+    if (typeof value !== 'string' && typeof value !== 'number') throw new Error(`entries: row ${i}: ${field} is ${kindOf(value)}`);
+    return value;
+  };
+  const rows = (data ?? []).map((item: unknown, i: number): EntryRow => {
+    if (!isRecord(item)) throw new Error(`entries: row ${i} is not an object`);
+    const memberId = scalar(item, i, 'member_id');
+    const numberOrText = (field: string) => {
+      const value = item[field];
+      return typeof value === 'number' || typeof value === 'string' ? value : null;
+    };
+    return {
+      ...('id' in item ? { id: item.id } : {}),
+      member_id: memberId === null ? null : String(memberId),
+      first_name: text(item, i, 'first_name'),
+      last_name: text(item, i, 'last_name'),
+      weightlifting_age: numberOrText('weightlifting_age'),
+      club: text(item, i, 'club'),
+      gender: text(item, i, 'gender'),
+      weight_class: text(item, i, 'weight_class'),
+      entry_total: numberOrText('entry_total'),
+    };
+  });
+  return { ...(typeof title === 'string' ? { title } : {}), ...(count === null ? {} : { total: count }), ...(data ? { data: rows } : {}) };
+}
 
 /** JavaScript's `parseInt`, with the writer's default of 0 where it gives NaN. */
 function whole(value: number | string | null | undefined): number {

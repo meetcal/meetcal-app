@@ -26,13 +26,13 @@ jest.mock("@react-native-async-storage/async-storage", () => ({
     removeItem: jest.fn(async (key: string) => {
       mockStorage.delete(key);
     }),
-    multiSet: jest.fn(async (entries: [string, string][]) => {
-      entries.forEach(([key, value]) => mockStorage.set(key, value));
+    setMany: jest.fn(async (entries: Record<string, string>) => {
+      Object.entries(entries).forEach(([key, value]) => mockStorage.set(key, value));
     }),
-    multiGet: jest.fn(async (keys: string[]) =>
-      keys.map((key) => [key, mockStorage.get(key) ?? null]),
+    getMany: jest.fn(async (keys: string[]) =>
+      Object.fromEntries(keys.map((key) => [key, mockStorage.get(key) ?? null])),
     ),
-    multiRemove: jest.fn(async (keys: string[]) => {
+    removeMany: jest.fn(async (keys: string[]) => {
       keys.forEach((key) => mockStorage.delete(key));
     }),
     getAllKeys: jest.fn(async () => Array.from(mockStorage.keys())),
@@ -93,30 +93,30 @@ describe("lifting results manifest bounds", () => {
     ["a fractional chunk count", 1.5],
     ["a negative chunk count", -3],
   ])("reads %s as no cached history without allocating per chunk", async (_label, chunks) => {
-    const multiGet = AsyncStorage.multiGet as jest.Mock;
-    multiGet.mockClear();
+    const getMany = AsyncStorage.getMany as jest.Mock;
+    getMany.mockClear();
     mockStorage.set(
       HISTORY_KEY,
       `{"format":"deflate-base64-chunks-v1","chunks":${chunks === "Infinity" ? "1e400" : chunks}}`,
     );
 
     await expect(getAllCachedLiftingResultsForAthlete("Jane Doe")).resolves.toEqual([]);
-    const chunkReads = multiGet.mock.calls.filter(([keys]) =>
+    const chunkReads = getMany.mock.calls.filter(([keys]) =>
       (keys as string[]).some((key) => key.includes("__chunk_")),
     );
     expect(chunkReads).toHaveLength(0);
   });
 
   it("replaces a corrupt manifest without iterating its chunk count", async () => {
-    const multiRemove = AsyncStorage.multiRemove as jest.Mock;
-    multiRemove.mockClear();
+    const removeMany = AsyncStorage.removeMany as jest.Mock;
+    removeMany.mockClear();
     mockStorage.set(HISTORY_KEY, '{"format":"deflate-base64-chunks-v1","chunks":1000000000}');
 
     await saveAthleteHistory("Jane Doe", [
       { name: "Jane Doe", meet: "M", date: "2026-01-01", total: 200 } as never,
     ]);
 
-    expect(multiRemove).not.toHaveBeenCalled();
+    expect(removeMany).not.toHaveBeenCalled();
     await expect(getAllCachedLiftingResultsForAthlete("Jane Doe")).resolves.toEqual([
       expect.objectContaining({ name: "Jane Doe", total: 200 }),
     ]);
@@ -133,8 +133,8 @@ describe("batched athlete history writes", () => {
       results: [row(`Athlete ${i + 1}`, date)],
     }));
   const writeCalls = () => ({
-    multiSet: (AsyncStorage.multiSet as jest.Mock).mock.calls.length,
-    multiRemove: (AsyncStorage.multiRemove as jest.Mock).mock.calls.length,
+    setMany: (AsyncStorage.setMany as jest.Mock).mock.calls.length,
+    removeMany: (AsyncStorage.removeMany as jest.Mock).mock.calls.length,
     setItem: (AsyncStorage.setItem as jest.Mock).mock.calls.length,
     removeItem: (AsyncStorage.removeItem as jest.Mock).mock.calls.length,
   });
@@ -152,10 +152,10 @@ describe("batched athlete history writes", () => {
     jest.restoreAllMocks();
   });
 
-  it("writes a 40-athlete batch with one multiSet, no setItem and no per-athlete remove", async () => {
+  it("writes a 40-athlete batch with one setMany, no setItem and no per-athlete remove", async () => {
     await expect(saveAthleteHistoryBatch(entries(40))).resolves.toBe(40);
 
-    expect(writeCalls()).toEqual({ multiSet: 1, multiRemove: 0, setItem: 0, removeItem: 0 });
+    expect(writeCalls()).toEqual({ setMany: 1, removeMany: 0, setItem: 0, removeItem: 0 });
     expect(historyKeys()).toHaveLength(80);
     await expect(getAllCachedLiftingResultsForAthlete("Athlete 40")).resolves.toEqual([
       expect.objectContaining({ name: "Athlete 40", date: "2025-01-01" }),
@@ -168,11 +168,11 @@ describe("batched athlete history writes", () => {
 
     await expect(saveAthleteHistoryBatch(entries(40))).resolves.toBe(0);
 
-    expect(writeCalls()).toEqual({ multiSet: 0, multiRemove: 0, setItem: 0, removeItem: 0 });
+    expect(writeCalls()).toEqual({ setMany: 0, removeMany: 0, setItem: 0, removeItem: 0 });
     expect(AsyncStorage.getItem).not.toHaveBeenCalled();
   });
 
-  it("rewrites only the athletes whose history changed, in one multiSet and one multiRemove", async () => {
+  it("rewrites only the athletes whose history changed, in one setMany and one removeMany", async () => {
     await saveAthleteHistoryBatch(entries(40));
     jest.clearAllMocks();
 
@@ -181,15 +181,15 @@ describe("batched athlete history writes", () => {
     changed[9] = { name: "Athlete 10", results: [row("Athlete 10", "2026-02-01")] };
     await expect(saveAthleteHistoryBatch(changed)).resolves.toBe(2);
 
-    expect(writeCalls()).toEqual({ multiSet: 1, multiRemove: 1, setItem: 0, removeItem: 0 });
-    const [pairs] = (AsyncStorage.multiSet as jest.Mock).mock.calls[0];
-    expect(pairs.map(([key]: [string, string]) => key)).toEqual([
+    expect(writeCalls()).toEqual({ setMany: 1, removeMany: 1, setItem: 0, removeItem: 0 });
+    const [pairs] = (AsyncStorage.setMany as jest.Mock).mock.calls[0];
+    expect(Object.keys(pairs)).toEqual([
       `${HISTORY_PREFIX}athlete 5__chunk_0_g1`,
       `${HISTORY_PREFIX}athlete 10__chunk_0_g1`,
       `${HISTORY_PREFIX}athlete 5`,
       `${HISTORY_PREFIX}athlete 10`,
     ]);
-    expect((AsyncStorage.multiRemove as jest.Mock).mock.calls[0][0]).toEqual([
+    expect((AsyncStorage.removeMany as jest.Mock).mock.calls[0][0]).toEqual([
       `${HISTORY_PREFIX}athlete 5__chunk_0`,
       `${HISTORY_PREFIX}athlete 10__chunk_0`,
     ]);
@@ -208,9 +208,9 @@ describe("batched athlete history writes", () => {
 
     await saveAthleteHistory("Jane Doe", [row("Jane Doe", "2026-01-01")]);
 
-    const multiSetOrder = itemAt((AsyncStorage.multiSet as jest.Mock).mock.invocationCallOrder, 0);
-    const multiRemoveOrder = itemAt((AsyncStorage.multiRemove as jest.Mock).mock.invocationCallOrder, 0);
-    expect(multiSetOrder).toBeLessThan(multiRemoveOrder);
+    const setManyOrder = itemAt((AsyncStorage.setMany as jest.Mock).mock.invocationCallOrder, 0);
+    const removeManyOrder = itemAt((AsyncStorage.removeMany as jest.Mock).mock.invocationCallOrder, 0);
+    expect(setManyOrder).toBeLessThan(removeManyOrder);
     const manifest = JSON.parse(mockStorage.get(`${HISTORY_PREFIX}jane doe`) ?? "null");
     expect(manifest).toEqual({ format: "deflate-base64-chunks-v1", chunks: 1, generation: 1 });
     expect(historyKeys()).toEqual([
@@ -223,14 +223,14 @@ describe("batched athlete history writes", () => {
     await saveAthleteHistoryBatch(entries(3));
     const before = new Map(mockStorage);
     jest.clearAllMocks();
-    (AsyncStorage.multiSet as jest.Mock).mockRejectedValueOnce(new Error("SQLITE_FULL"));
+    (AsyncStorage.setMany as jest.Mock).mockRejectedValueOnce(new Error("SQLITE_FULL"));
 
     await expect(saveAthleteHistoryBatch(entries(3, "2026-06-01"))).rejects.toThrow("SQLITE_FULL");
 
     for (const [key, value] of before) {
       expect(mockStorage.get(key)).toBe(value);
     }
-    expect(AsyncStorage.multiRemove).not.toHaveBeenCalled();
+    expect(AsyncStorage.removeMany).not.toHaveBeenCalled();
     for (const name of ["Athlete 1", "Athlete 2", "Athlete 3"]) {
       await expect(getAllCachedLiftingResultsForAthlete(name)).resolves.toEqual([
         expect.objectContaining({ name, date: "2025-01-01" }),
@@ -241,9 +241,9 @@ describe("batched athlete history writes", () => {
   it("restores the previous manifest when a chunk did not persist", async () => {
     await saveAthleteHistory("Jane Doe", [row("Jane Doe", "2025-01-01")]);
     const previousManifest = mockStorage.get(`${HISTORY_PREFIX}jane doe`);
-    (AsyncStorage.multiSet as jest.Mock).mockImplementationOnce(
-      async (pairs: [string, string][]) => {
-        pairs
+    (AsyncStorage.setMany as jest.Mock).mockImplementationOnce(
+      async (entries: Record<string, string>) => {
+        Object.entries(entries)
           .filter(([key]) => !key.includes("__chunk_"))
           .forEach(([key, value]) => mockStorage.set(key, value));
       },
@@ -260,7 +260,7 @@ describe("batched athlete history writes", () => {
   });
 
   it("does not leave a manifest behind when a first write is rejected", async () => {
-    (AsyncStorage.multiSet as jest.Mock).mockRejectedValueOnce(new Error("SQLITE_FULL"));
+    (AsyncStorage.setMany as jest.Mock).mockRejectedValueOnce(new Error("SQLITE_FULL"));
 
     await expect(saveAthleteHistory("New Athlete", [row("New Athlete", "2026-01-01")])).rejects.toThrow();
 
@@ -270,9 +270,9 @@ describe("batched athlete history writes", () => {
   it("puts legacy rows back when a chunk fails but the new manifest lands", async () => {
     const legacy = JSON.stringify([row("Jane Doe", "2024-01-01")]);
     mockStorage.set(`${HISTORY_PREFIX}jane doe`, legacy);
-    (AsyncStorage.multiSet as jest.Mock).mockImplementationOnce(
-      async (pairs: [string, string][]) => {
-        pairs
+    (AsyncStorage.setMany as jest.Mock).mockImplementationOnce(
+      async (entries: Record<string, string>) => {
+        Object.entries(entries)
           .filter(([key]) => !key.includes("__chunk_"))
           .forEach(([key, value]) => mockStorage.set(key, value));
         throw new Error("SQLITE_FULL");
@@ -377,10 +377,10 @@ describe("batched athlete history writes", () => {
     jest.clearAllMocks();
 
     await saveMeetLiftingResults("Meet A", [row("Jane Doe", "2025-01-01")]);
-    expect(AsyncStorage.multiSet).not.toHaveBeenCalled();
+    expect(AsyncStorage.setMany).not.toHaveBeenCalled();
 
     await saveMeetLiftingResults("Meet A", [row("Jane Doe", "2026-01-01")]);
-    expect(AsyncStorage.multiSet).toHaveBeenCalledTimes(1);
+    expect(AsyncStorage.setMany).toHaveBeenCalledTimes(1);
     await expect(getMeetLiftingResults("Meet A" as never)).resolves.toEqual([
       expect.objectContaining({ date: "2026-01-01" }),
     ]);

@@ -11,29 +11,29 @@ use serde::Deserialize;
 
 /// The release list, newest first. 100 releases reach back far past any CLI release worth
 /// upgrading to, even if the app's releases share the list.
-pub const RELEASES_URL: &str =
+pub(crate) const RELEASES_URL: &str =
     "https://api.github.com/repos/meetcal/meetcal-app/releases?per_page=100";
 
 /// Points the release lookup at another list (tests).
-pub const RELEASES_URL_ENV: &str = "MEETCAL_RELEASES_URL";
+pub(crate) const RELEASES_URL_ENV: &str = "MEETCAL_RELEASES_URL";
 
 /// A CLI release's tag is this prefix and its version.
-pub const TAG_PREFIX: &str = "cli-v";
+pub(crate) const TAG_PREFIX: &str = "cli-v";
 
 /// The checksum file each release carries since 3.0.0: `sha256sum` lines for its archives.
-pub const CHECKSUMS_ASSET: &str = "SHA256SUMS";
+pub(crate) const CHECKSUMS_ASSET: &str = "SHA256SUMS";
 
 /// A `MAJOR.MINOR.PATCH` version. Pre-release and build suffixes are not versions the CLI
 /// offers, so they do not parse.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
-pub struct Version {
-    pub major: u64,
-    pub minor: u64,
-    pub patch: u64,
+pub(crate) struct Version {
+    pub(crate) major: u64,
+    pub(crate) minor: u64,
+    pub(crate) patch: u64,
 }
 
 impl Version {
-    pub fn parse(text: &str) -> Option<Self> {
+    pub(crate) fn parse(text: &str) -> Option<Self> {
         let mut parts = text.trim().split('.');
         let mut part = || parts.next()?.parse::<u64>().ok();
         let version = Version {
@@ -44,14 +44,27 @@ impl Version {
         parts.next().is_none().then_some(version)
     }
 
-    /// This build's version (`Cargo.toml`).
-    pub fn current() -> Self {
-        Self::parse(env!("CARGO_PKG_VERSION")).expect("Cargo.toml's version is MAJOR.MINOR.PATCH")
+    pub(crate) const fn current() -> Self {
+        Version {
+            major: decimal(env!("CARGO_PKG_VERSION_MAJOR")),
+            minor: decimal(env!("CARGO_PKG_VERSION_MINOR")),
+            patch: decimal(env!("CARGO_PKG_VERSION_PATCH")),
+        }
     }
 
-    pub fn tag(&self) -> String {
+    pub(crate) fn tag(&self) -> String {
         format!("{TAG_PREFIX}{self}")
     }
+}
+
+const fn decimal(digits: &str) -> u64 {
+    let mut remaining = digits.as_bytes();
+    let mut value = 0;
+    while let [digit, rest @ ..] = remaining {
+        value = value * 10 + digit.wrapping_sub(b'0') as u64;
+        remaining = rest;
+    }
+    value
 }
 
 impl fmt::Display for Version {
@@ -62,32 +75,32 @@ impl fmt::Display for Version {
 
 /// One release as GitHub lists it, with only the fields the CLI reads.
 #[derive(Clone, Debug, Deserialize)]
-pub struct GithubRelease {
-    pub tag_name: String,
+pub(crate) struct GithubRelease {
+    pub(crate) tag_name: String,
     #[serde(default)]
-    pub draft: bool,
+    pub(crate) draft: bool,
     #[serde(default)]
-    pub prerelease: bool,
+    pub(crate) prerelease: bool,
     #[serde(default)]
-    pub assets: Vec<Asset>,
+    pub(crate) assets: Vec<Asset>,
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
-pub struct Asset {
-    pub name: String,
-    pub browser_download_url: String,
+pub(crate) struct Asset {
+    pub(crate) name: String,
+    pub(crate) browser_download_url: String,
 }
 
 /// A published CLI release.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct Release {
-    pub version: Version,
-    pub assets: Vec<Asset>,
+pub(crate) struct Release {
+    pub(crate) version: Version,
+    pub(crate) assets: Vec<Asset>,
 }
 
 impl Release {
     /// The download URL of the asset named `name`, if the release has one.
-    pub fn asset_url(&self, name: &str) -> Option<&str> {
+    pub(crate) fn asset_url(&self, name: &str) -> Option<&str> {
         self.assets
             .iter()
             .find(|asset| asset.name == name)
@@ -97,7 +110,7 @@ impl Release {
 
 /// The newest published CLI release in `releases`: tagged `cli-vX.Y.Z`, neither a draft nor a
 /// pre-release. Other releases of the repository are ignored.
-pub fn newest(releases: Vec<GithubRelease>) -> Option<Release> {
+pub(crate) fn newest(releases: Vec<GithubRelease>) -> Option<Release> {
     releases
         .into_iter()
         .filter(|release| !release.draft && !release.prerelease)
@@ -112,12 +125,12 @@ pub fn newest(releases: Vec<GithubRelease>) -> Option<Release> {
 }
 
 /// Whether `newest` is a newer version than `current`.
-pub fn is_newer(newest: Version, current: Version) -> bool {
+pub(crate) fn is_newer(newest: Version, current: Version) -> bool {
     newest.cmp(&current) == Ordering::Greater
 }
 
 /// The release list's URL: `MEETCAL_RELEASES_URL` when set, GitHub otherwise.
-pub fn releases_url() -> String {
+pub(crate) fn releases_url() -> String {
     std::env::var(RELEASES_URL_ENV)
         .ok()
         .filter(|url| !url.trim().is_empty())
@@ -125,7 +138,7 @@ pub fn releases_url() -> String {
 }
 
 /// Asks GitHub for the newest published CLI release. `None` when there is none.
-pub async fn fetch_newest(client: &reqwest::Client) -> Result<Option<Release>> {
+pub(crate) async fn fetch_newest(client: &reqwest::Client) -> Result<Option<Release>> {
     let url = releases_url();
     let response = client
         .get(&url)

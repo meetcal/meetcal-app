@@ -9,10 +9,14 @@ import {
   computeRoster,
   computeScheduleRows,
   computeTimelines,
+  isPlaceholderMeet,
   joinRoster,
+  linkedResultTitles,
   meetByName,
-  meetResultDocs,
-  meetResultTitles,
+  meetsNamed,
+  MEET_ROWS_READ_PER_NAME,
+  oldestMeetNamed,
+  resultTitlesOf,
   meetLocalDate,
   narrowSessions,
   packageAthlete,
@@ -28,10 +32,11 @@ import {
   type ZoneFormatters,
 } from './lib/meetData';
 import { normalizeName } from './lib/names';
+import { DOCUMENTS_BEFORE_THE_OVERFLOW_PROBE, takeWithinBudget, type DocumentBudget } from './lib/readBudget';
 import { compareBytes } from './lib/sort';
 import { meetKey, meetSessionKey } from './lib/viewKeys';
 import { readFreshView } from './lib/views';
-import { apiError, isMeetTimeZone, requireIsoDate, requireNonEmpty } from './lib/validation';
+import { apiError, requireIsoDate, requireNonEmpty } from './lib/validation';
 
 // `GET /meets*`: each query answers the JSON of the Rust route of the same
 // name in `meetcal-backend/app/src/routes/meets`, from the meet's views when
@@ -74,15 +79,7 @@ export function upcomingWindowNow(clientNow: number, serverNow: number): number 
   return Math.floor(serverNow / HOUR_MS) * HOUR_MS;
 }
 
-/**
- * A row that is no event: a test entry typed into a source, with its venue
- * written as one character ("q") and a time zone that is no IANA zone ("q",
- * "America_New_York"). The meet lists leave it out; a real meet whose zone
- * is unknown (blank) still has a venue, or a "TBD" one.
- */
-export function isPlaceholderMeet(meet: { timeZone: string; venueName: string; venueCity: string }): boolean {
-  return !isMeetTimeZone(meet.timeZone) && [meet.venueName, meet.venueCity].every((field) => field.trim().length === 1);
-}
+export { isPlaceholderMeet };
 
 export const list = query({
   args: { now: v.number(), ifNoneMatch: v.optional(v.string()) },
@@ -166,45 +163,67 @@ export const namesPage = query({
   },
 });
 
-/**
- * How many took part in each of `meets` (at most eight): lifters with results, and entries
- * registered (a meet can have its roster before its results), with the results' dates and the
- * meet's own dates and status when MeetCal tracks it.
- */
+const tooLargeToRead = (meet: string) => `${JSON.stringify(meet)} is too large to read in one request; try again later or report it.`;
+
+async function meetAttendance(ctx: QueryCtx, meet: string, budget: DocumentBudget) {
+  const meetRows = await takeWithinBudget(budget, (limit) => meetsNamed(ctx, meet, Math.min(limit, MEET_ROWS_READ_PER_NAME)));
+  if (meetRows === null) return null;
+  const linked = await takeWithinBudget(budget, (limit) => linkedResultTitles(ctx, meet).take(limit));
+  if (linked === null) return null;
+  const titles = resultTitlesOf(meet, linked);
+  const results = [];
+  for (const title of titles) {
+    const page = await takeWithinBudget(budget, (limit) =>
+      ctx.db
+        .query('lifting_results')
+        .withIndex('by_meet', (q) => q.eq('meet', title))
+        .take(limit),
+    );
+    if (page === null) return null;
+    results.push(...page);
+  }
+  const registrations = await takeWithinBudget(budget, (limit) =>
+    ctx.db
+      .query('athletes')
+      .withIndex('by_meet', (q) => q.eq('meet', meet))
+      .take(limit),
+  );
+  if (registrations === null) return null;
+  const meetRow = oldestMeetNamed(meet, meetRows);
+  const dates = results.map((r) => r.date).sort(compareBytes);
+  return {
+    meet,
+    lifters: new Set(results.map((r) => normalizeName(r.name))).size,
+    registrations: new Set(registrations.map((r) => r.memberId || normalizeName(r.name))).size,
+    first_date: dates[0] ?? null,
+    last_date: dates[dates.length - 1] ?? null,
+    start_date: meetRow?.startDate ?? null,
+    end_date: meetRow?.endDate ?? null,
+    status: meetRow?.status ?? null,
+    results_titles: titles.slice(1),
+  };
+}
+
+export async function attendanceRows(ctx: QueryCtx, meets: readonly string[], documentBudget = DOCUMENTS_BEFORE_THE_OVERFLOW_PROBE) {
+  const budget: DocumentBudget = { left: documentBudget };
+  const rows = [];
+  for (const meet of meets) {
+    const row = await meetAttendance(ctx, meet, budget);
+    if (row === null) {
+      throw apiError(413, meets.length === 1 ? tooLargeToRead(meet) : 'these meets are too large to read in one request; try again later or report it.', { max: documentBudget });
+    }
+    rows.push(row);
+  }
+  return rows;
+}
+
 export const attendance = query({
   args: { meets: v.array(v.string()) },
   handler: async (ctx, { meets }) => {
     if (meets.length > MAX_ATTENDANCE_MEETS) {
       throw apiError(400, `meets exceeds the ${MAX_ATTENDANCE_MEETS}-meet limit`);
     }
-    const rows = [];
-    for (const meet of meets) {
-      const [results, titles, registrations, meetRow] = await Promise.all([
-        // Its linked results titles too (a combined national event, #362).
-        meetResultDocs(ctx, meet),
-        meetResultTitles(ctx, meet),
-        ctx.db
-          .query('athletes')
-          .withIndex('by_meet', (q) => q.eq('meet', meet))
-          .collect(),
-        meetByName(ctx, meet),
-      ]);
-      const dates = results.map((r) => r.date).sort(compareBytes);
-      rows.push({
-        meet,
-        lifters: new Set(results.map((r) => normalizeName(r.name))).size,
-        registrations: new Set(registrations.map((r) => r.memberId || normalizeName(r.name))).size,
-        first_date: dates[0] ?? null,
-        last_date: dates[dates.length - 1] ?? null,
-        start_date: meetRow?.startDate ?? null,
-        end_date: meetRow?.endDate ?? null,
-        status: meetRow?.status ?? null,
-        // The linked results titles counted here, so a caller that also
-        // asks for them by name does not count their lifters twice.
-        results_titles: titles.slice(1),
-      });
-    }
-    return { json: JSON.stringify(rows) };
+    return { json: JSON.stringify(await attendanceRows(ctx, meets)) };
   },
 });
 
@@ -301,7 +320,6 @@ export async function liveSessionsJson(
 // ---------------------------------------------------------------------------
 // `GET /meets/package`
 // ---------------------------------------------------------------------------
-
 
 /** Closes a `packageStaticText` with the year bests section when asked for. */
 function closePackage(staticText: string, yearBests: unknown | undefined): string {

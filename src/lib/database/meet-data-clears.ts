@@ -7,7 +7,7 @@ import { readStoredAthletes } from './meet-data-reads';
 import { getExplicitlyDownloadedMeetIds, markMeetExplicitlyDownloaded } from './meet-downloads-registry';
 import { clearStoredLiftingResultsValue } from './lifting-results-blob';
 import { ATHLETES_KEY_PREFIX, LIFTING_RESULTS_CHUNK_MARKER, LIFTING_RESULTS_KEY_PREFIX, SCHEDULE_KEY_PREFIX, SESSION_ATHLETES_KEY_PREFIX } from './offline-storage-keys';
-import { multiRemoveBatched } from './storage-batches';
+import { removeManyBatched } from './storage-batches';
 import { pruneAthleteHistoryExclusiveToRoster } from './athlete-history-clears';
 
 export async function readStorageKeysForMeetClear(
@@ -55,7 +55,7 @@ export async function clearMeetData(
           key.startsWith(sessionAthletesPrefix) ||
           chunkPrefixes.some((prefix) => key.startsWith(prefix)),
       );
-      await multiRemoveBatched(leftoverKeys);
+      await removeManyBatched(leftoverKeys);
       if (rosterNames.length > 0) {
         await pruneAthleteHistoryExclusiveToRoster(meet, rosterNames, await getStore(), keys);
       }

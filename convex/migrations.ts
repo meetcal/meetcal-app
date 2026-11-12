@@ -1,7 +1,9 @@
 import { v } from 'convex/values';
+import { logInLines } from './lib/logLines';
 import { internalAction, internalMutation, internalQuery } from './_generated/server';
 import { internal } from './_generated/api';
 import type { Doc } from './_generated/dataModel';
+import { isPlaceholderMemberId, ONE_OFF_MEMBER_ID } from './lib/memberIds';
 import { normalizeName } from './lib/names';
 import { normalizeAgeCategory, normalizeGender } from './lib/normalize';
 import { canonicalMeetDate, isValidIsoDate } from './lib/validation';
@@ -190,9 +192,6 @@ function isCopy(a: Doc<'lifting_results'>, b: Doc<'lifting_results'>): boolean {
   return sameEditionDates(a.date, b.date) && sameResultValues(a, b) && a.federation === b.federation && a.adaptive === b.adaptive;
 }
 
-/** Identities one log line lists: Convex keeps a bounded number of log lines per function run. */
-const LEFT_PER_LOG_LINE = 50;
-
 /**
  * Splits one identity's stored rows (oldest first) into sets of copies of
  * one result (`isCopy`), each in the order the rows were stored.
@@ -284,10 +283,7 @@ export const dedupeLiftingResults = internalMutation({
         return;
       }
     }
-    // Logged once, on the pass that finishes the page.
-    for (let i = 0; i < unresolved.length; i += LEFT_PER_LOG_LINE) {
-      console.log(`dedupeLiftingResults: left\n${unresolved.slice(i, i + LEFT_PER_LOG_LINE).join('\n')}`);
-    }
+    logInLines('dedupeLiftingResults: left', unresolved);
     const counts = { deleted: deleted + removed, left: left + unresolved.length };
     if (page.isDone) {
       console.log(
@@ -360,9 +356,6 @@ export const padMeetDates = internalMutation({
   },
 });
 
-/** A membership number the old entries scraper minted per run (`ingest.upsertEntryAthletes`). */
-const ONE_OFF_MEMBER_ID = /^[1-9]\d{8}$/;
-
 /**
  * Why a roster row is a leftover of an old entries scraper, or null for a
  * row to keep (#384, #386), given every row of its meet and whether the meet
@@ -390,7 +383,7 @@ export function rosterLeftover(row: Doc<'athletes'>, meetRows: readonly Doc<'ath
   if (same.some((other) => hasSession(other) && bareWeightClass(other.weightClass) === bareWeightClass(row.weightClass))) return 'start list copy';
   if (
     ONE_OFF_MEMBER_ID.test(row.memberId) &&
-    same.some((other) => Math.abs(other.age - row.age) <= 1 && !ONE_OFF_MEMBER_ID.test(other.memberId) && !other.memberId.startsWith('noid:'))
+    same.some((other) => Math.abs(other.age - row.age) <= 1 && !ONE_OFF_MEMBER_ID.test(other.memberId) && !isPlaceholderMemberId(other.memberId))
   ) {
     return 'stale one-off id';
   }
@@ -467,9 +460,7 @@ export const cleanupRosterRows = internalMutation({
         { kind: 'table', key: 'athletes' },
       ]);
     }
-    for (let i = 0; i < found.length; i += LEFT_PER_LOG_LINE) {
-      console.log(`cleanupRosterRows${dryRun ? ' (dry run)' : ''}:\n${found.slice(i, i + LEFT_PER_LOG_LINE).join('\n')}`);
-    }
+    logInLines(`cleanupRosterRows${dryRun ? ' (dry run)' : ''}:`, found);
     if (page.isDone) {
       console.log(`cleanupRosterRows: done${dryRun ? ' (dry run)' : ''}, ${count} roster rows ${dryRun ? 'to delete' : 'deleted'}`);
       return;

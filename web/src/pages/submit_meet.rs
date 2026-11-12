@@ -8,9 +8,9 @@
 //! the server's (`convex/lib/meetSubmissions.ts`), made before anything is
 //! uploaded. The page needs a signed-in user but no subscription.
 
-use crate::auth::{AuthContext, AuthState};
-use crate::components::subscription_gate::ClerkSignIn;
-use crate::utils::api::{self, MeetSubmission, MeetSubmissionFile};
+use crate::components::signed_in::SignedInOnly;
+use crate::utils::api::{self, MeetSubmission, MeetSubmissionFile, MeetSubmissionOutcome};
+use futures::future::{AbortHandle, abortable};
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 use std::collections::HashMap;
@@ -76,7 +76,7 @@ pub fn file_problem(file: &FileInfo) -> Option<&'static str> {
 /// Whether `value` is a real calendar date written `YYYY-MM-DD`.
 pub fn is_iso_date(value: &str) -> bool {
     let bytes = value.as_bytes();
-    if bytes.len() != 10 || bytes[4] != b'-' || bytes[7] != b'-' {
+    if bytes.len() != 10 || bytes.get(4) != Some(&b'-') || bytes.get(7) != Some(&b'-') {
         return false;
     }
     let number = |range: std::ops::Range<usize>| -> Option<u32> {
@@ -202,56 +202,17 @@ pub fn format_size(bytes: f64) -> String {
 
 #[component]
 pub fn SubmitMeetPage() -> impl IntoView {
-    let auth = expect_context::<AuthContext>();
-
     view! {
         <div class="access-page">
             <section class="access-card submit-card">
-                {move || match auth.state.get() {
-                    AuthState::Loading => {
-                        view! {
-                            <div class="access-status" role="status" aria-live="polite">
-                                <span class="access-spinner" aria-hidden="true"></span>
-                                <h1>"Checking your sign-in"</h1>
-                            </div>
-                        }
-                            .into_any()
-                    }
-                    AuthState::SignedOut => {
-                        view! {
-                            <div class="access-heading">
-                                <p class="data-eyebrow">"Submit a meet"</p>
-                                <h1>"Sign in to continue"</h1>
-                                <p>
-                                    "Sign in to your MeetCal account to send us the schedule or start lists of a meet MeetCal doesn’t cover yet."
-                                </p>
-                            </div>
-                            <ClerkSignIn />
-                        }
-                            .into_any()
-                    }
-                    AuthState::ConfigurationError(message) => {
-                        view! {
-                            <div class="access-status access-error" role="alert">
-                                <h1>"Sign-in isn’t available"</h1>
-                                <p>{message}</p>
-                                <button class="access-button" type="button" on:click=move |_| reload()>
-                                    "Try again"
-                                </button>
-                            </div>
-                        }
-                            .into_any()
-                    }
-                    AuthState::SignedIn(_) => view! { <SubmitMeetForm /> }.into_any(),
-                }}
+                <SignedInOnly
+                    eyebrow="Submit a meet"
+                    sign_in_prompt=|| "Sign in to your MeetCal account to send us the schedule or start lists of a meet MeetCal doesn’t cover yet."
+                >
+                    <SubmitMeetForm />
+                </SignedInOnly>
             </section>
         </div>
-    }
-}
-
-fn reload() {
-    if let Some(window) = web_sys::window() {
-        let _ = window.location().reload();
     }
 }
 
@@ -279,9 +240,13 @@ fn SubmitMeetForm() -> impl IntoView {
     let end_date = RwSignal::new(String::new());
     let files = RwSignal::new_local(Vec::<PickedFile>::new());
     let next_id = StoredValue::new(0_u64);
-    // Files already uploaded (picked file id to storage id), reused when
-    // sending again after a failure (`send_submission`).
-    let uploaded = StoredValue::new(HashMap::<u64, String>::new());
+    let storage_ids_of_uploaded_files = StoredValue::new(HashMap::<u64, String>::new());
+    let send_in_flight = StoredValue::new_local(None::<AbortHandle>);
+    on_cleanup(move || {
+        if let Some(send) = send_in_flight.try_update_value(Option::take).flatten() {
+            send.abort();
+        }
+    });
     let phase = RwSignal::new(Phase::Editing);
     let error = RwSignal::new(None::<String>);
     let working = Memo::new(move |_| matches!(phase.get(), Phase::Working(_)));
@@ -333,10 +298,20 @@ fn SubmitMeetForm() -> impl IntoView {
         };
         error.set(None);
         phase.set(Phase::Working(upload_progress(1, picked.len())));
+        let (send, abort_send) = abortable(send_submission(
+            checked,
+            picked,
+            phase,
+            storage_ids_of_uploaded_files,
+        ));
+        send_in_flight.set_value(Some(abort_send));
         spawn_local(async move {
-            match send_submission(checked, picked, phase, uploaded).await {
+            let Ok(sent) = send.await else {
+                return;
+            };
+            match sent {
                 Ok(()) => {
-                    uploaded.try_update_value(HashMap::clear);
+                    storage_ids_of_uploaded_files.try_update_value(HashMap::clear);
                     phase.try_set(Phase::Sent);
                 }
                 Err(message) => {
@@ -498,7 +473,7 @@ fn SubmitMeetForm() -> impl IntoView {
                         <p class="submit-progress" role="status" aria-live="polite">
                             {move || match phase.get() {
                                 Phase::Working(progress) => progress,
-                                _ => String::new(),
+                                Phase::Editing | Phase::Sent => String::new(),
                             }}
                         </p>
                         <button class="access-button submit-button" type="submit" disabled=move || working.get()>
@@ -522,27 +497,20 @@ fn SubmitMeetForm() -> impl IntoView {
     }
 }
 
-/// Uploads each file in turn, then submits the meet. The error is the one to
-/// show; the form keeps what the user entered.
-///
-/// `uploaded` holds the storage id of each picked file already uploaded, for
-/// as long as the form lives: a retry after a failure reuses them instead of
-/// uploading again, so retries on a poor connection do not use up the day's
-/// uploads. A retry refused because its files are already in a submission
-/// found the earlier attempt's submit stored after all (only this form had
-/// those ids), so it counts as sent.
 async fn send_submission(
     checked: CheckedSubmission,
     picked: Vec<PickedFile>,
     phase: RwSignal<Phase>,
-    uploaded: StoredValue<HashMap<u64, String>>,
+    storage_ids_of_uploaded_files: StoredValue<HashMap<u64, String>>,
 ) -> Result<(), String> {
     let total = picked.len();
     let mut files = Vec::with_capacity(total);
     let mut reused = false;
     for (index, (picked, name)) in picked.into_iter().zip(checked.file_names).enumerate() {
         phase.try_set(Phase::Working(upload_progress(index + 1, total)));
-        if let Some(storage_id) = uploaded.with_value(|uploaded| uploaded.get(&picked.id).cloned())
+        if let Some(storage_id) = storage_ids_of_uploaded_files
+            .try_with_value(|uploaded| uploaded.get(&picked.id).cloned())
+            .flatten()
         {
             reused = true;
             files.push(MeetSubmissionFile { storage_id, name });
@@ -559,7 +527,7 @@ async fn send_submission(
         let storage_id = api::upload_meet_submission_file(&upload_url, &content_type, bytes)
             .await
             .map_err(|error| format!("{name} couldn’t be uploaded. {error}"))?;
-        uploaded.update_value(|uploaded| {
+        storage_ids_of_uploaded_files.try_update_value(|uploaded| {
             uploaded.insert(picked.id, storage_id.clone());
         });
         files.push(MeetSubmissionFile { storage_id, name });
@@ -572,18 +540,25 @@ async fn send_submission(
         contact_email: crate::auth::primary_email(),
         files,
     };
-    match api::submit_meet(&submission).await {
-        Ok(()) => Ok(()),
-        Err(error) if stored_on_an_earlier_try(reused, &error.to_string()) => Ok(()),
-        Err(error) => Err(error.to_string()),
-    }
+    let outcome = api::submit_meet(&submission)
+        .await
+        .map_err(|error| error.to_string())?;
+    sent_or_why_not(outcome, reused)
 }
 
-/// Whether a refused submit means an earlier attempt stored the meet after
-/// all: the server refuses files already in a submission, and only this
-/// form had the ids it reused.
-fn stored_on_an_earlier_try(reused: bool, message: &str) -> bool {
-    reused && message.starts_with("File already submitted")
+fn sent_or_why_not(
+    outcome: MeetSubmissionOutcome,
+    reused_files_an_earlier_try_uploaded: bool,
+) -> Result<(), String> {
+    match outcome {
+        MeetSubmissionOutcome::Submitted => Ok(()),
+        MeetSubmissionOutcome::FilesAlreadySubmitted { .. }
+            if reused_files_an_earlier_try_uploaded =>
+        {
+            Ok(())
+        }
+        MeetSubmissionOutcome::FilesAlreadySubmitted { server_said } => Err(server_said),
+    }
 }
 
 #[cfg(test)]
@@ -607,16 +582,19 @@ mod tests {
     }
 
     #[test]
-    fn only_a_retry_counts_already_submitted_as_sent() {
-        assert!(stored_on_an_earlier_try(
-            true,
-            "File already submitted: a.pdf"
-        ));
-        assert!(!stored_on_an_earlier_try(
-            false,
-            "File already submitted: a.pdf"
-        ));
-        assert!(!stored_on_an_earlier_try(true, "Meet name is required"));
+    fn only_a_retry_counts_already_submitted_files_as_sent() {
+        let already = || MeetSubmissionOutcome::FilesAlreadySubmitted {
+            server_said: "File already submitted: a.pdf".to_owned(),
+        };
+        assert_eq!(
+            sent_or_why_not(MeetSubmissionOutcome::Submitted, false),
+            Ok(())
+        );
+        assert_eq!(sent_or_why_not(already(), true), Ok(()));
+        assert_eq!(
+            sent_or_why_not(already(), false),
+            Err("File already submitted: a.pdf".to_owned())
+        );
     }
 
     #[test]

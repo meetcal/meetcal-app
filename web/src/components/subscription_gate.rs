@@ -1,6 +1,7 @@
 use crate::{
     auth::{AuthContext, AuthState, has_comp_data_access, mount_sign_in, unmount_sign_in},
     components::store_links::{APP_STORE_URL, PLAY_STORE_URL},
+    utils::page,
 };
 use leptos::prelude::*;
 
@@ -170,10 +171,8 @@ impl AccessContext {
     fn retry(self) {
         match self.auth.state.get_untracked() {
             AuthState::SignedIn(user_id) => self.check(user_id, true),
-            _ => {
-                if let Some(window) = web_sys::window() {
-                    let _ = window.location().reload();
-                }
+            AuthState::Loading | AuthState::SignedOut | AuthState::ConfigurationError(_) => {
+                page::reload()
             }
         }
     }

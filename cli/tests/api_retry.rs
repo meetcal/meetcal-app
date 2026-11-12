@@ -1,16 +1,23 @@
+#![cfg(test)]
 //! Exercises the retry policy, and paging, against a local HTTP server; nothing here calls the
 //! live API.
 
-mod support;
+mod support {
+    pub(crate) mod bodies;
+    pub(crate) mod failures;
+    pub(crate) mod retries;
+    pub(crate) mod server;
+}
 
 use meetcal::utils::access::Access;
 use meetcal::utils::backend::{
     Endpoint, USER_AGENT, call_function, queries, query_all_pages_from, query_from,
 };
 use serde_json::{Value, json};
-use support::{
-    FUNCTION_FAILED, NOT_FOUND, OK, RATE_LIMITED, UNAVAILABLE, reply, request_bodies, serve,
-};
+use support::bodies::request_bodies;
+use support::failures::FUNCTION_FAILED;
+use support::retries::{RATE_LIMITED, UNAVAILABLE};
+use support::server::{DROPPED, NOT_FOUND, OK, reply, serve};
 
 async fn fetch(base_url: &str) -> anyhow::Result<Value> {
     query_from(
@@ -64,6 +71,55 @@ async fn backs_off_on_503_without_retry_after() {
 
     assert_eq!(body, json!([]));
     assert_eq!(requests.lock().unwrap().len(), 2);
+}
+
+#[tokio::test]
+async fn resends_a_read_whose_connection_was_dropped() {
+    let (base_url, requests) = serve(vec![
+        reply(DROPPED, None, ""),
+        reply(
+            OK,
+            None,
+            r#"{"status":"success","value":[{"meet":"Test Meet"}]}"#,
+        ),
+    ]);
+
+    let body = fetch(&base_url).await.expect("request should succeed");
+
+    assert_eq!(body, json!([{ "meet": "Test Meet" }]));
+    assert_eq!(requests.lock().unwrap().len(), 2);
+}
+
+#[tokio::test]
+async fn gives_up_on_a_connection_that_keeps_dropping() {
+    let (base_url, requests) = serve(vec![
+        reply(DROPPED, None, ""),
+        reply(DROPPED, None, ""),
+        reply(DROPPED, None, ""),
+        reply(OK, None, r#"{"status":"success","value":[]}"#),
+    ]);
+
+    let error = fetch(&base_url).await.expect_err("request should fail");
+
+    assert_eq!(
+        error.to_string(),
+        "Failed to call MeetCal query reference:clubAthletes"
+    );
+    assert_eq!(requests.lock().unwrap().len(), 3);
+}
+
+#[tokio::test]
+async fn a_dropped_action_or_mutation_is_not_sent_again() {
+    for endpoint in [Endpoint::Action, Endpoint::Mutation] {
+        let (base_url, requests) = serve(vec![
+            reply(DROPPED, None, ""),
+            reply(OK, None, r#"{"status":"success","value":{}}"#),
+        ]);
+        let answer =
+            call_function::<Value>(&base_url, endpoint, "apiTokens:revoke", &json!({}), None).await;
+        assert!(answer.is_err());
+        assert_eq!(requests.lock().unwrap().len(), 1);
+    }
 }
 
 #[tokio::test]

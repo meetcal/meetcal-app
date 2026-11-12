@@ -24,11 +24,11 @@ describe("useAccountSheetCleanup (#250)", () => {
   });
 
   it("clears the user's device data after a sign-out in the sheet, however it was opened", async () => {
-    await AsyncStorage.multiSet([
+    await AsyncStorage.setMany(Object.fromEntries([
       ["@saved_sessions_user_1", "[]"],
       ["@saved_sessions_outbox_user_1", "{}"],
       ["@saved_sessions_user_2", "[]"],
-    ]);
+    ]));
     const sheet = await mount();
     // Opened from Edit Profile, whose screen also offers "Delete account".
     sheet.opened("user_1");

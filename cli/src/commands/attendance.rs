@@ -8,20 +8,20 @@ use serde_json::json;
 use tokio::task::JoinSet;
 
 use crate::types::lifting_results::LiftingResults;
-use crate::utils::backend::{queries, query};
+use crate::utils::backend::{FunctionError, queries, query};
 use crate::utils::format::{date_range, us_date};
 use crate::utils::meet_names::{editions_by_year, equivalent_meets};
 use crate::utils::names::{MAX_NAME_PAGES, just_before, meet_names_between};
 use crate::utils::output::{self, Report};
 use crate::utils::progress::Progress;
-use crate::utils::stats::fold;
+use crate::utils::stats::{fold, folded_words};
 
 /// Meets `meets:attendance` counts per call (its limit).
-pub const ATTENDANCE_BATCH: usize = 8;
+pub(crate) const ATTENDANCE_BATCH: usize = 8;
 /// The most meets one run counts; more means the words are too broad.
-pub const MAX_MATCHES: usize = 80;
+pub(crate) const MAX_MATCHES: usize = 80;
 /// Name ranges listed at once.
-pub const CONCURRENCY: usize = 16;
+pub(crate) const CONCURRENCY: usize = 16;
 
 /// Where the results meets' names are split to be listed side by side. They only balance the
 /// work: the ranges between them cover every name.
@@ -55,24 +55,24 @@ pub struct AttendanceArgs {
 
 /// One edition's numbers (`meets:attendance`).
 #[derive(Clone, Debug, Deserialize, PartialEq)]
-pub struct Edition {
-    pub meet: String,
-    pub lifters: usize,
-    pub registrations: usize,
-    pub first_date: Option<String>,
-    pub last_date: Option<String>,
-    pub start_date: Option<String>,
-    pub end_date: Option<String>,
-    pub status: Option<String>,
+pub(crate) struct Edition {
+    pub(crate) meet: String,
+    pub(crate) lifters: usize,
+    pub(crate) registrations: usize,
+    pub(crate) first_date: Option<String>,
+    pub(crate) last_date: Option<String>,
+    pub(crate) start_date: Option<String>,
+    pub(crate) end_date: Option<String>,
+    pub(crate) status: Option<String>,
     /// Results titles linked to this meet, whose lifters `lifters` counts
     /// (a combined national event); older servers send none.
     #[serde(default)]
-    pub results_titles: Vec<String>,
+    pub(crate) results_titles: Vec<String>,
 }
 
 impl Edition {
     /// The edition's year: from its results, else its meet dates, else its name.
-    pub fn year(&self) -> Option<String> {
+    pub(crate) fn year(&self) -> Option<String> {
         self.first_date
             .as_deref()
             .or(self.start_date.as_deref())
@@ -88,17 +88,8 @@ fn year_in_name(meet: &str) -> Option<String> {
         .map(str::to_string)
 }
 
-/// A meet name reduced for matching: lowercase words, without years, "the" or punctuation.
-pub fn normalized(meet: &str) -> String {
-    meet.chars()
-        .map(|c| {
-            if c.is_alphanumeric() {
-                c.to_ascii_lowercase()
-            } else {
-                ' '
-            }
-        })
-        .collect::<String>()
+pub(crate) fn normalized(meet: &str) -> String {
+    folded_words(meet)
         .split_whitespace()
         .filter(|word| {
             *word != "the" && !(word.len() == 4 && word.chars().all(|c| c.is_ascii_digit()))
@@ -108,7 +99,7 @@ pub fn normalized(meet: &str) -> String {
 }
 
 /// Whether `meet` contains every one of `words` and none of `exclude`.
-pub fn matches(meet: &str, words: &[String], exclude: &[String]) -> bool {
+pub(crate) fn matches(meet: &str, words: &[String], exclude: &[String]) -> bool {
     let name = normalized(meet);
     words.iter().all(|word| {
         let word = normalized(word);
@@ -182,13 +173,13 @@ pub async fn run(args: AttendanceArgs) -> Result<()> {
     }
 
     let mut editions: Vec<Edition> = Vec::new();
-    for batch in matched.chunks(ATTENDANCE_BATCH) {
-        let answered: Vec<Edition> =
-            query(queries::MEET_ATTENDANCE, &json!({ "meets": batch })).await?;
+    let answers = answers_for(&matched, |batch| async move {
+        query::<Vec<Edition>, _>(queries::MEET_ATTENDANCE, &json!({ "meets": batch })).await
+    })
+    .await?;
+    for answered in answers {
         for edition in answered {
             if edition.spans_years() {
-                // A name used every year: `meets:attendance` counts every year's results as one
-                // meet, so count each year from the results themselves.
                 let rows: Vec<LiftingResults> =
                     query(queries::MEET_RESULTS, &json!({ "meet": edition.meet })).await?;
                 editions.extend(split_by_year(&edition, rows));
@@ -199,6 +190,44 @@ pub async fn run(args: AttendanceArgs) -> Result<()> {
     }
     output::emit(report(&search, &editions));
     Ok(())
+}
+
+const TOO_MANY_ROWS_STATUS: u16 = 413;
+
+async fn answers_for<T, F, Fut>(meets: &[String], ask: F) -> Result<Vec<T>>
+where
+    F: Fn(Vec<String>) -> Fut,
+    Fut: std::future::Future<Output = Result<T>>,
+{
+    let mut answers = Vec::new();
+    let mut batches: Vec<&[String]> = meets.chunks(ATTENDANCE_BATCH).rev().collect();
+    while let Some(batch) = batches.pop() {
+        match ask(batch.to_vec()).await {
+            Ok(answer) => answers.push(answer),
+            Err(error) if too_many_rows(&error) => match batch {
+                [meet] => bail!(too_large_to_read(meet)),
+                _ => {
+                    let (first, second) = halves(batch);
+                    batches.push(second);
+                    batches.push(first);
+                }
+            },
+            Err(error) => return Err(error),
+        }
+    }
+    Ok(answers)
+}
+
+fn too_large_to_read(meet: &str) -> String {
+    format!("\"{meet}\" is too large to read in one request; try again later or report it.")
+}
+
+fn too_many_rows(error: &anyhow::Error) -> bool {
+    FunctionError::status_of(error) == Some(TOO_MANY_ROWS_STATUS)
+}
+
+fn halves(batch: &[String]) -> (&[String], &[String]) {
+    batch.split_at(batch.len().div_ceil(2))
 }
 
 impl Edition {
@@ -215,7 +244,7 @@ impl Edition {
 /// each year's distinct lifters and dates. Its registrations and meet dates, which MeetCal keeps
 /// for one meet per name, go to the year of the meet's start date, else the latest. A start date
 /// in a year with no results yet (the next edition) is a registrations-only edition of its own.
-pub fn split_by_year(edition: &Edition, rows: Vec<LiftingResults>) -> Vec<Edition> {
+pub(crate) fn split_by_year(edition: &Edition, rows: Vec<LiftingResults>) -> Vec<Edition> {
     let years = editions_by_year(rows);
     let registered_year = edition
         .start_date
@@ -268,7 +297,7 @@ pub fn split_by_year(edition: &Edition, rows: Vec<LiftingResults>) -> Vec<Editio
 /// registration whose results are published under the separate championships
 /// ([`equivalent_meets`]). Its registrations show in that edition's "Registered" column, and the
 /// year counts the results. A registrations-only edition with no such twin stays as it is.
-pub fn merge_registrations(editions: &[Edition]) -> Vec<Edition> {
+pub(crate) fn merge_registrations(editions: &[Edition]) -> Vec<Edition> {
     let mut merged: Vec<Edition> = editions
         .iter()
         .filter(|edition| edition.lifters > 0 || edition.registrations == 0)
@@ -298,7 +327,7 @@ pub fn merge_registrations(editions: &[Edition]) -> Vec<Edition> {
     merged
 }
 
-pub fn report(search: &str, editions: &[Edition]) -> Report {
+pub(crate) fn report(search: &str, editions: &[Edition]) -> Report {
     let editions = merge_registrations(editions);
     let mut sorted: Vec<&Edition> = editions.iter().collect();
     sorted.sort_by(|a, b| {
@@ -454,6 +483,93 @@ fn count(value: usize) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn words_match_a_meet_name_written_with_another_accent_form_or_case() {
+        let words = |text: &str| vec![text.to_string()];
+        assert!(matches(
+            "Copa Atlético 2026",
+            &words("atle\u{301}tico"),
+            &[]
+        ));
+        assert!(matches("COPA ATLÉTICO 2026", &words("atlético"), &[]));
+        assert!(!matches("Copa Atlético 2026", &words("atletico"), &[]));
+        assert!(matches(
+            "The 2026 Ohio WSO Championships",
+            &words("ohio wso"),
+            &[]
+        ));
+    }
+
+    fn refused(status: u16) -> anyhow::Error {
+        anyhow::Error::new(FunctionError {
+            function: "meets:attendance".to_owned(),
+            status: Some(status),
+            reason: "refused".to_owned(),
+        })
+    }
+
+    fn meets(count: usize) -> Vec<String> {
+        (1..=count).map(|n| format!("meet {n}")).collect()
+    }
+
+    #[tokio::test]
+    async fn a_batch_refused_as_too_many_rows_is_asked_for_in_halves_keeping_the_meets_in_order() {
+        let asked = std::cell::RefCell::new(Vec::new());
+        let answers = answers_for(&meets(10), |batch| {
+            asked.borrow_mut().push(batch.len());
+            async move {
+                if batch.len() > 2 {
+                    Err(refused(413))
+                } else {
+                    Ok(batch)
+                }
+            }
+        })
+        .await
+        .unwrap();
+        assert_eq!(*asked.borrow(), [8, 4, 2, 2, 4, 2, 2, 2]);
+        assert_eq!(answers.concat(), meets(10));
+    }
+
+    #[tokio::test]
+    async fn one_meet_too_large_to_count_is_an_error_not_an_endless_retry() {
+        let asked = std::cell::Cell::new(0);
+        let failure = answers_for(&meets(1), |_batch| {
+            asked.set(asked.get() + 1);
+            async { Err::<Vec<String>, _>(refused(413)) }
+        })
+        .await
+        .unwrap_err();
+        assert_eq!(asked.get(), 1);
+        assert_eq!(
+            failure.to_string(),
+            "\"meet 1\" is too large to read in one request; try again later or report it."
+        );
+    }
+
+    #[tokio::test]
+    async fn any_other_refusal_ends_the_run_without_a_retry() {
+        let asked = std::cell::Cell::new(0);
+        let failure = answers_for(&meets(8), |_batch| {
+            asked.set(asked.get() + 1);
+            async { Err::<Vec<String>, _>(refused(400)) }
+        })
+        .await
+        .unwrap_err();
+        assert_eq!(asked.get(), 1);
+        assert!(!too_many_rows(&failure));
+    }
+
+    #[test]
+    fn halves_put_the_odd_meet_in_the_first_half() {
+        let names: Vec<String> = (1..=5).map(|n| format!("meet {n}")).collect();
+        let (first, second) = halves(&names);
+        assert_eq!(first, &names[..3]);
+        assert_eq!(second, &names[3..]);
+        let (first, second) = halves(&names[..2]);
+        assert_eq!((first.len(), second.len()), (1, 1));
+    }
 
     fn words(values: &[&str]) -> Vec<String> {
         values.iter().map(|value| value.to_string()).collect()

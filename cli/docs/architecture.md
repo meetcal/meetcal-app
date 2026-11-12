@@ -31,8 +31,13 @@ POST https://disciplined-hare-790.convex.cloud/api/query
   `MeetCal could not answer <query>: <error>`.
 - `send_with_retry` applies `src/utils/retry.rs` to queries and premium actions: 429 and 503 are
   retried twice, honoring `Retry-After` (clamped to 1 to 30 seconds) or backing off 1 then 2
-  seconds. Once retries run out, a 429 explains how long to wait. Other actions and mutations are
-  sent once (`Endpoint::retries`): one may have done its work before its answer was lost.
+  seconds. Once retries run out, a 429 explains how long to wait. A request that failed before any
+  answer arrived (a refused, dropped or timed-out connection) counts toward the same two retries;
+  one that used its whole request timeout is not sent again. Other actions and mutations are sent
+  once (`Endpoint::retries`): one may have done its work before its answer was lost.
+- `query_each` runs one query per argument set, at most `CONCURRENT_READS` (8) at a time, and
+  returns the answers in the arguments' order (`in_order` is the bounded runner). The name batches
+  of the club and WSO reports and the per-meet medal reads of the trends reports go through it.
 - One shared `reqwest` client with a 10-second connect timeout, a 30-second request timeout, and a
   `meetcal-cli/<version>` User-Agent. A premium action carries its own timeout (`PremiumAction`):
   two minutes for `results:leaderboard`, which reads a whole range before it answers, and for
@@ -126,7 +131,7 @@ another release list (the tests' local server).
 | Leaderboard | `leaderboard` | `results:leaderboard`, an action that ranks every athlete in the range on the server (`convex/lib/leaderboard.ts`, the rules `Filters`, `rank` and `stats.rs` hold here); with `--wso`/`--club`, the group's registrations and `results:recent`, ranked here |
 | Names | `clubs`, `wsos` | `reference:clubs`, `reference:registrationWsos`, `reference:wsoList`, `reference:wsoAgeGroups` |
 | Clubs | `club-results`, `club-wrapped`, `club-compare`, `club-trends` | `reference:clubMeetStats`, `reference:clubAthletes`, `results:recent`, `results:byNames`, `results:byMeet` |
-| WSOs | `wso`, `wso-wrapped`, `wso-compare`, `wso-trends` | `meets:athletes`, `results:byNames`, `results:byMeet`, `reference:wsoAthletes`, `results:recent` |
+| WSOs | `wso`, `wso-wrapped`, `wso-compare`, `wso-trends` | `reference:wsoMeetStats`, `meets:athletes`, `results:byNames`, `results:byMeet`, `reference:wsoAthletes`, `results:recent` |
 | WSO elite | `elite` | `reference:registrationWsos`, then `results:wsoElite`, an action that finds the WSO's members and ranks each list on the server (`convex/lib/elite.ts`) |
 | Reference | `records`, `standards`, `qualifying-totals`, `intl-rankings`, `nat-rankings`, `nat-ranking-year`, `wso-records`, `adaptive-records` | the matching `reference:*` query |
 | Login | `login`, `logout` | `deviceLogin:start`, `deviceLogin:poll` (actions), `accessPass:pass`, `apiTokens:revoke` (mutation) |
@@ -155,8 +160,11 @@ championships. `src/utils/meet_names.rs` matches them (`equivalent_meets`) and l
 meets to read for a registration event (`result_meet_aliases`), deliberately narrowly so one
 national event is never credited to another.
 
-`wso` (one WSO at one meet) reads the meet's roster, the WSO athletes' previous results for PRs,
-and the meet's results under each alias.
+`wso` (one WSO at one meet) prints the server's `reference:wsoMeetStats` answer through the same
+report as `club-results` (`club_results::report`); it computes nothing itself. `club-trends` and
+`wso-trends` still place medals on the client for every meet of every year, with the rules in
+`src/utils/placings.rs`, a port of `rankingGroup`, `liftKey` and `rankOf` in
+`convex/lib/meetData.ts`.
 
 ### Names and suggestions
 
@@ -211,7 +219,9 @@ rules are a port of `Filters::keeps`, `rank` and `stats.rs` (`convex/lib/leaderb
 still rank `--wso` and `--club` leaderboards here; change both together. `meets:namesPage` lists distinct meet
 names in the results or the registrations by skipping along the meet index, one read per meet;
 `attendance` lists 44 name ranges at once (`RANGE_BOUNDARIES`), about four seconds for the whole
-history, then counts each matched edition with `meets:attendance` (eight meets per call). The
+history, then counts each matched edition with `meets:attendance` (eight meets per call; a batch the
+server refuses as too many rows for one call, status 413, is asked for again as two halves, and one
+meet refused alone is an error). The
 ranges only balance the work: they cover every name whatever the data holds.
 
 ## Adding a command

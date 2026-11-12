@@ -2,7 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import type { AthleteMeetResult } from '@/data/types/athletes';
 import { Buffer } from 'buffer';
 import { deflate, inflate } from 'pako';
-import { multiGetBatched, multiRemoveBatched, multiSetBatched } from './storage-batches';
+import { getManyBatched, removeManyBatched, setManyBatched } from './storage-batches';
 import { LIFTING_RESULTS_CHUNK_MARKER } from './offline-storage-keys';
 
 const LIFTING_RESULTS_CHUNK_SIZE = 180_000;
@@ -125,7 +125,7 @@ export async function clearStoredLiftingResultsValue(liftingResultsKey: string):
 
   const manifest = parseLiftingResultsManifest(current);
   if (manifest) {
-    await multiRemoveBatched([
+    await removeManyBatched([
       liftingResultsKey,
       ...getManifestChunkKeys(liftingResultsKey, manifest),
     ]);
@@ -155,8 +155,8 @@ export async function readStoredLiftingResults(
     }
 
     const chunkKeys = getManifestChunkKeys(liftingResultsKey, parsed);
-    const chunkEntries = await AsyncStorage.multiGet(chunkKeys);
-    const chunkValues = chunkEntries.map(([, value]) => value ?? '');
+    const chunkEntries = await AsyncStorage.getMany(chunkKeys);
+    const chunkValues = chunkKeys.map((key) => chunkEntries[key] ?? '');
 
     const emptyChunks = chunkValues.filter((v) => v.length === 0).length;
     if (emptyChunks > 0) {
@@ -230,7 +230,7 @@ export async function writeStoredLiftingResultsBatch(
 ): Promise<number> {
   if (writes.length === 0) return 0;
   const keys = writes.map((write) => write.key);
-  const previousPayloads = await multiGetBatched(keys);
+  const previousPayloads = await getManyBatched(keys);
 
   const encodedByKey = new Map<string, string>();
   const previousManifests = new Map<string, LiftingResultsManifest>();
@@ -253,7 +253,7 @@ export async function writeStoredLiftingResultsBatch(
       : new Map<string, ListedLiftingResultsChunks>();
   for (const listed of listedChunks.values()) previousChunkKeys.push(...listed.chunkKeys);
 
-  const previousChunks = await multiGetBatched(previousChunkKeys);
+  const previousChunks = await getManyBatched(previousChunkKeys);
   const planned: PlannedLiftingResultsWrite[] = [];
   for (const write of writes) {
     const encoded = encodedByKey.get(write.key) ?? '';
@@ -311,8 +311,8 @@ export async function writeStoredLiftingResultsBatch(
   }
 
   try {
-    await multiSetBatched(pairs);
-    const written = await multiGetBatched(
+    await setManyBatched(pairs);
+    const written = await getManyBatched(
       planned.flatMap((plan) => [...plan.chunkKeys, plan.key]),
     );
     for (const plan of planned) {
@@ -330,7 +330,7 @@ export async function writeStoredLiftingResultsBatch(
   }
 
   const currentChunkKeys = new Set(planned.flatMap((plan) => plan.chunkKeys));
-  await multiRemoveBatched(
+  await removeManyBatched(
     planned.flatMap((plan) =>
       plan.previousChunkKeys.filter((chunkKey) => !currentChunkKeys.has(chunkKey)),
     ),
@@ -346,13 +346,13 @@ async function restorePreviousManifests(planned: readonly PlannedLiftingResultsW
     else if (plan.previous.kind === 'absent') remove.push(plan.key);
   }
   try {
-    await multiSetBatched(restore);
-    await multiRemoveBatched(remove);
+    await setManyBatched(restore);
+    await removeManyBatched(remove);
   } catch (restoreError) {
     console.error('Could not restore previous lifting results manifests:', restoreError);
   }
   try {
-    await multiSetBatched(await unverifiedRewritesToUndo(planned));
+    await setManyBatched(await unverifiedRewritesToUndo(planned));
   } catch (restoreError) {
     console.error('Could not restore previous lifting results payloads:', restoreError);
   }
@@ -366,7 +366,7 @@ async function unverifiedRewritesToUndo(
     if (plan.previous.kind === 'unverified') unverified.push({ plan, payload: plan.previous.payload });
   }
   if (unverified.length === 0) return [];
-  const current = await multiGetBatched(
+  const current = await getManyBatched(
     unverified.flatMap(({ plan }) => [...plan.chunkKeys, plan.key]),
   );
   return unverified

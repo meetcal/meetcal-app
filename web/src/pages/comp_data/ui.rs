@@ -1,3 +1,4 @@
+use super::filters::SortOrder;
 use super::models::RecordHolder;
 use leptos::prelude::*;
 
@@ -74,13 +75,10 @@ pub(crate) fn FilterSelect(
     }
 }
 
-/// A table's sort `<select>`, showing `sort` (controlled like `FilterSelect`,
-/// so a table rebuilt after a reload still shows the order it uses).
 #[component]
-pub(crate) fn SortSelect(
-    options: &'static [(&'static str, &'static str)],
-    sort: ReadSignal<String>,
-    set_sort: WriteSignal<String>,
+pub(crate) fn SortSelect<S: SortOrder>(
+    #[prop(into)] sort: Signal<S>,
+    #[prop(into)] on_sort: Callback<S>,
 ) -> impl IntoView {
     let initial = sort.get_untracked();
     view! {
@@ -88,15 +86,19 @@ pub(crate) fn SortSelect(
             "Sort"
             <select
                 class="data-filter"
-                prop:value=move || sort.get()
-                on:change=move |event| set_sort.set(event_target_value(&event))
+                prop:value=move || sort.get().value()
+                on:change=move |event| {
+                    if let Some(order) = S::parse(&event_target_value(&event)) {
+                        on_sort.run(order);
+                    }
+                }
             >
-                {options
+                {S::ALL
                     .iter()
-                    .map(|(value, label)| {
+                    .map(|order| {
                         view! {
-                            <option value=*value selected=*value == initial>
-                                {*label}
+                            <option value=order.value() selected=*order == initial>
+                                {order.label()}
                             </option>
                         }
                     })
@@ -135,6 +137,15 @@ pub(crate) fn DataTable(children: Children) -> impl IntoView {
         <div class="data-table-wrap">
             <table class="data-table">{children()}</table>
         </div>
+    }
+}
+
+#[component]
+pub(crate) fn TableHead(headers: &'static [&'static str]) -> impl IntoView {
+    view! {
+        <thead>
+            <tr>{headers.iter().map(|header| view! { <th>{*header}</th> }).collect_view()}</tr>
+        </thead>
     }
 }
 

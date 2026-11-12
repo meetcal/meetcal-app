@@ -27,13 +27,13 @@ jest.mock("@react-native-async-storage/async-storage", () => ({
     removeItem: jest.fn(async (key: string) => {
       mockStorage.delete(key);
     }),
-    multiSet: jest.fn(async (entries: [string, string][]) => {
-      entries.forEach(([key, value]) => mockStorage.set(key, value));
+    setMany: jest.fn(async (entries: Record<string, string>) => {
+      Object.entries(entries).forEach(([key, value]) => mockStorage.set(key, value));
     }),
-    multiGet: jest.fn(async (keys: string[]) =>
-      keys.map((key) => [key, mockStorage.get(key) ?? null]),
+    getMany: jest.fn(async (keys: string[]) =>
+      Object.fromEntries(keys.map((key) => [key, mockStorage.get(key) ?? null])),
     ),
-    multiRemove: jest.fn(async (keys: string[]) => {
+    removeMany: jest.fn(async (keys: string[]) => {
       keys.forEach((key) => mockStorage.delete(key));
     }),
     getAllKeys: jest.fn(async () => Array.from(mockStorage.keys())),
@@ -309,7 +309,7 @@ describe("clearMeetData failure order", () => {
 
   it("rejects when the session caches cannot be removed", async () => {
     await saveMeetAthletes("Meet A", [athlete("Meet A")] as never);
-    (AsyncStorage.multiRemove as jest.Mock).mockRejectedValueOnce(new Error("SQLITE_BUSY"));
+    (AsyncStorage.removeMany as jest.Mock).mockRejectedValueOnce(new Error("SQLITE_BUSY"));
 
     await expect(clearMeetData("Meet A" as never)).rejects.toThrow("SQLITE_BUSY");
   });

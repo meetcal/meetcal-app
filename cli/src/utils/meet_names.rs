@@ -1,7 +1,7 @@
 use std::collections::BTreeMap;
 
 use crate::types::lifting_results::LiftingResults;
-use crate::utils::stats::fold;
+use crate::utils::stats::folded_words;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum NationalEvent {
@@ -14,9 +14,9 @@ enum NationalEvent {
 /// USA Weightlifting publishes some national-week start lists under a combined event name while
 /// publishing results under the individual championships. Keep that intentionally narrow so a
 /// registration at one national event is never attributed to a different national event.
-pub fn equivalent_meets(registration_meet: &str, result_meet: &str) -> bool {
-    let registration = normalize(registration_meet);
-    let result = normalize(result_meet);
+pub(crate) fn equivalent_meets(registration_meet: &str, result_meet: &str) -> bool {
+    let registration = folded_words(registration_meet);
+    let result = folded_words(result_meet);
 
     if registration == result {
         return true;
@@ -37,9 +37,9 @@ pub fn equivalent_meets(registration_meet: &str, result_meet: &str) -> bool {
 }
 
 /// Exact result-meet names to request for a registration/start-list event.
-pub fn result_meet_aliases(meet: &str) -> Vec<String> {
+pub(crate) fn result_meet_aliases(meet: &str) -> Vec<String> {
     let mut aliases = vec![meet.to_string()];
-    let normalized = normalize(meet);
+    let normalized = folded_words(meet);
     let Some(year) = meet_year(&normalized) else {
         return aliases;
     };
@@ -67,15 +67,15 @@ pub fn result_meet_aliases(meet: &str) -> Vec<String> {
 
 /// Words sponsors add to a meet's name one year and drop the next ("The 2024 Nike USA
 /// Weightlifting National Championships").
-pub const SPONSOR_WORDS: &[&str] = &["nike"];
+pub(crate) const SPONSOR_WORDS: &[&str] = &["nike"];
 
 /// What stays the same across a meet's editions: its name's words, lowercase, without the year,
 /// "The", punctuation, sponsor words, or a trailing "powered by …", "presented by …" or
 /// "sponsored by …". `The 2025 DMV WSO Championships` and `2024 DMV WSO Championships` share
 /// one; so do `2025 USA Weightlifting National Championships, Powered by Rogue Fitness` and
 /// `The 2024 Nike USA Weightlifting National Championships, powered by Rogue`.
-pub fn series_name(meet: &str) -> String {
-    let normalized = normalize(meet);
+pub(crate) fn series_name(meet: &str) -> String {
+    let normalized = folded_words(meet);
     let words: Vec<&str> = normalized.split_whitespace().collect();
     let mut kept = Vec::new();
     for (index, word) in words.iter().enumerate() {
@@ -92,15 +92,18 @@ pub fn series_name(meet: &str) -> String {
     kept.join(" ")
 }
 
-/// A result's year, the first four characters of its `YYYY-MM-DD` date.
-pub fn result_year(row: &LiftingResults) -> String {
-    row.date.get(..4).unwrap_or(&row.date).to_string()
+pub(crate) fn year_of(date: &str) -> &str {
+    date.get(..4).unwrap_or(date)
+}
+
+pub(crate) fn result_year(row: &LiftingResults) -> String {
+    year_of(&row.date).to_string()
 }
 
 /// A meet's results split into editions by year, oldest first. Many meets keep one name every
 /// year (`Testify Leprechaun Lift-off`), and `results:byMeet` answers every edition's rows for
 /// it, so a meet name alone is not one event.
-pub fn editions_by_year(rows: Vec<LiftingResults>) -> BTreeMap<String, Vec<LiftingResults>> {
+pub(crate) fn editions_by_year(rows: Vec<LiftingResults>) -> BTreeMap<String, Vec<LiftingResults>> {
     let mut years: BTreeMap<String, Vec<LiftingResults>> = BTreeMap::new();
     for row in rows {
         years.entry(result_year(&row)).or_default().push(row);
@@ -137,24 +140,6 @@ fn is_masters_or_university_result(normalized: &str) -> bool {
 
 fn meet_year(normalized: &str) -> Option<&str> {
     normalized.split_whitespace().find(|token| is_year(token))
-}
-
-/// [`fold`] (Unicode NFC and lowercase, so a composed "é" and an "e" with a combining accent are
-/// one letter), then punctuation and spacing reduced to single spaces.
-fn normalize(value: &str) -> String {
-    fold(value)
-        .chars()
-        .map(|character| {
-            if character.is_alphanumeric() {
-                character
-            } else {
-                ' '
-            }
-        })
-        .collect::<String>()
-        .split_whitespace()
-        .collect::<Vec<_>>()
-        .join(" ")
 }
 
 #[cfg(test)]

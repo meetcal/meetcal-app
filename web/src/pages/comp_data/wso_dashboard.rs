@@ -1,28 +1,23 @@
 use std::collections::{HashMap, HashSet};
 
 use super::{
+    address::{HistoryEntry, query_param, use_page_address},
     analytics::percentage,
-    format::{display_gender, display_weight_class},
-    loading::{Load, LoadState, load_error, load_meet_data, load_query},
-    models::{Athlete, LiftingResult, Meet, UpcomingMeetsQuery, normalize},
+    format::{NO_VALUE, display_gender, display_weight_class},
+    loading::{Load, LoadState, load_error, load_meet_data, select_response},
+    meets::load_meet_catalog,
+    models::{Athlete, LiftingResult, normalize},
     ui::{DataMetric, DataPage, DataStatus, DataTable, EmptyTableRow, FilterSelect, TableSkeleton},
 };
-use crate::utils::api::{queries, query_with};
+use crate::utils::api::queries;
 use leptos::prelude::*;
 
 #[component]
 pub fn WsoDashboard() -> impl IntoView {
-    let (meet, set_meet) = signal(String::new());
-    let (wso, set_wso) = signal(String::new());
-    let upcoming_meets = Load::new(
-        || (),
-        |()| async {
-            query_with::<Vec<Meet>, _>(queries::UPCOMING_MEETS, &UpcomingMeetsQuery::current())
-                .await
-                .map_err(|error| error.to_string())
-        },
-    );
-    let completed_meets = load_query::<Vec<Meet>>(queries::COMPLETED_MEETS);
+    let page = use_page_address("/wso-dashboard");
+    let meet = query_param("meet");
+    let wso = query_param("wso");
+    let meets = load_meet_catalog();
     let athletes = Load::new(
         move || meet.get(),
         |meet| load_meet_data::<Athlete>(meet, queries::MEET_ATHLETES),
@@ -32,11 +27,8 @@ pub fn WsoDashboard() -> impl IntoView {
         |meet| load_meet_data::<LiftingResult>(meet, queries::MEET_RESULTS),
     );
     view! { <DataPage heading="WSO Meet Dashboard" intro="See participation, make rates, lifted volume, and athlete totals for one WSO at a meet.">
-        {move || upcoming_meets.with(|upcoming| completed_meets.with(|completed| match (upcoming, completed) {
-            (LoadState::Ready(upcoming), LoadState::Ready(completed)) => {
-                let mut meets = upcoming.iter().chain(completed.iter()).map(|row| row.name.clone()).collect::<Vec<_>>();
-                meets.sort();
-                meets.dedup();
+        {move || select_response(meets, "Loading meets…", "meets", |meets| {
+                let meets = meets.iter().map(|row| row.name.clone()).collect::<Vec<_>>();
                 view! { <div class="data-filters">
                     <FilterSelect
                         label="Meet"
@@ -44,10 +36,7 @@ pub fn WsoDashboard() -> impl IntoView {
                         values=meets
                         selected=meet
                         wide=true
-                        on_select=move |value: String| {
-                            set_meet.set(value);
-                            set_wso.set(String::new());
-                        }
+                        on_select=move |meet: String| page.show(&[("meet", &meet)], HistoryEntry::Push)
                     />
                     // The WSOs the meet's athletes registered under, spelled as
                     // the roster spells them: every one can be chosen, and each
@@ -59,7 +48,7 @@ pub fn WsoDashboard() -> impl IntoView {
                                 if options.is_empty() {
                                     view! { <DataStatus message="This meet’s start list doesn’t list athletes’ WSOs." /> }.into_any()
                                 } else {
-                                    view! { <FilterSelect label="WSO" placeholder="Choose a WSO" values=options selected=wso wide=true on_select=move |value| set_wso.set(value) /> }.into_any()
+                                    view! { <FilterSelect label="WSO" placeholder="Choose a WSO" values=options selected=wso wide=true on_select=move |wso: String| page.show(&[("meet", &meet.get_untracked()), ("wso", &wso)], HistoryEntry::Push) /> }.into_any()
                                 }
                             }
                             LoadState::Failed(error) => load_error("the meet’s WSOs", error, move || athletes.retry()),
@@ -67,14 +56,8 @@ pub fn WsoDashboard() -> impl IntoView {
                         })
                     }}
                 </div> }.into_any()
-            }
-            (LoadState::Failed(error), _) | (_, LoadState::Failed(error)) => load_error("meets", error, move || {
-                upcoming_meets.retry_failed();
-                completed_meets.retry_failed();
-            }),
-            _ => view! { <DataStatus message="Loading meets…" /> }.into_any(),
-        }))}
-        {move || if wso.get().is_empty() { view! { <DataStatus message="Choose a meet and WSO to view its dashboard." /> }.into_any() } else { athletes.with(|athlete_state| results.with(|result_state| match (athlete_state, result_state) { (LoadState::Ready(athletes), LoadState::Ready(results)) => dashboard(athletes, results, &wso.get()), (LoadState::Failed(error), _) | (_, LoadState::Failed(error)) => load_error("WSO dashboard", error, move || { athletes.retry_failed(); results.retry_failed(); }), _ => view! { <TableSkeleton columns=8 /> }.into_any() })) }}
+        })}
+        {move || if meet.with(String::is_empty) || wso.with(String::is_empty) { view! { <DataStatus message="Choose a meet and WSO to view its dashboard." /> }.into_any() } else { athletes.with(|athlete_state| results.with(|result_state| match (athlete_state, result_state) { (LoadState::Ready(athletes), LoadState::Ready(results)) => dashboard(athletes, results, &wso.get()), (LoadState::Failed(error), _) | (_, LoadState::Failed(error)) => load_error("WSO dashboard", error, move || { athletes.retry_failed(); results.retry_failed(); }), _ => view! { <TableSkeleton columns=8 /> }.into_any() })) }}
     </DataPage> }
 }
 
@@ -91,9 +74,6 @@ fn roster_wsos(athletes: &[Athlete]) -> Vec<String> {
     wsos.sort_by_key(|wso| normalize(wso));
     wsos
 }
-
-/// Shown for a value with nothing to compute it from.
-const NO_VALUE: &str = "\u{2014}";
 
 /// A make rate, or a dash when there were no attempts: a meet with no
 /// results yet has no 0% make rate.
@@ -126,7 +106,7 @@ fn wso_count(count: usize, coverage: WsoCoverage) -> String {
     match coverage {
         WsoCoverage::Full => count.to_string(),
         WsoCoverage::Partial if count > 0 => format!("{count}+"),
-        _ => NO_VALUE.to_owned(),
+        WsoCoverage::Partial | WsoCoverage::None => NO_VALUE.to_owned(),
     }
 }
 

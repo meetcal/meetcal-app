@@ -24,7 +24,7 @@ interface CacheInfo {
 
 export async function clearCachedMeetsList(): Promise<void> {
   try {
-    await cacheInfoWrites(() => AsyncStorage.multiRemove([MEETS_LIST_CACHE_KEY, MEET_CACHE_KEY]));
+    await cacheInfoWrites(() => AsyncStorage.removeMany([MEETS_LIST_CACHE_KEY, MEET_CACHE_KEY]));
   } catch (error) {
     console.error('Error clearing cached meets list:', error);
   }

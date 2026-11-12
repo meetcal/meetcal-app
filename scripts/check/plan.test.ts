@@ -1,7 +1,8 @@
 import { execFileSync } from 'node:child_process';
+import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-import { checkSteps, planChecks, type CheckPlan } from './plan';
+import { checkSteps, LOCAL_GATE_TEST_TIMEOUT_MS, planChecks, type CheckPlan } from './plan';
 import { itemAt } from '@/test-support/checked-access';
 
 const suites = (paths: string[]) => planChecks(paths).suites;
@@ -51,7 +52,7 @@ describe('planChecks', () => {
   });
 
   it('runs only the website or CLI suite for their folders', () => {
-    expect(suites(['web/src/utils/api.rs'])).toEqual(['web']);
+    expect(suites(['web/src/utils/api/mod.rs'])).toEqual(['web']);
     expect(suites(['cli/src/commands/meets.rs'])).toEqual(['cli']);
     expect(suites(['web/src/main.rs', 'cli/Cargo.toml', 'src/utils/time.ts'])).toEqual(['app', 'web', 'cli']);
   });
@@ -86,6 +87,19 @@ describe('checkSteps', () => {
       'App tests and coverage',
       'Coverage gaps',
     ]);
+  });
+
+  it('gives app tests a longer default timeout on the shared machine than CI gives them', () => {
+    const tests = checkSteps({ suites: ['app'], reason: '' }).find((step) => step.name === 'App tests and coverage');
+    expect(tests?.command).toEqual(['bun', 'run', 'test:coverage', '--testTimeout=20000']);
+    expect(LOCAL_GATE_TEST_TIMEOUT_MS).toBeGreaterThan(5_000);
+  });
+
+  it("gives mise's local Jest tasks the same timeout as the gate", () => {
+    const miseTasks = readFileSync(join(__dirname, '..', '..', 'mise.toml'), 'utf8');
+    const jestRuns = miseTasks.split('\n').filter((line) => /^run = .*bun run test:(ci|coverage)/.test(line));
+    expect(jestRuns).toHaveLength(2);
+    for (const run of jestRuns) expect(run).toContain(`--testTimeout=${LOCAL_GATE_TEST_TIMEOUT_MS}`);
   });
 
   it("runs the website's and CLI's Cargo gates in their own folders, as CI does", () => {

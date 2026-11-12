@@ -1,4 +1,5 @@
 import { v } from 'convex/values';
+import { isoDateOf } from './lib/dates';
 import { internalAction, internalQuery } from './_generated/server';
 import { api, internal } from './_generated/api';
 import { computeHistory, summaryOf } from './lib/history';
@@ -12,6 +13,7 @@ import {
   toApiMeet,
 } from './lib/meetData';
 import { directoryNames, searchDirectory } from './lib/directory';
+import { isRecord } from './lib/json';
 import { distinctNameKeys } from './lib/names';
 import { parseViewKey, RESULT_NAMES_VIEW, viewDependencies } from './lib/viewKeys';
 import { joinJsonChunks, readViewTextAnyAge } from './lib/views';
@@ -139,25 +141,12 @@ export const meetSample = internalQuery({
   },
 });
 
-/** Unwraps `{ json }` / `{ etag, json }` answers into parsed values. */
 function decode(answer: unknown): unknown {
-  if (answer && typeof answer === 'object' && 'json' in answer) {
-    return JSON.parse((answer as { json: string }).json);
-  }
-  return answer;
+  return isRecord(answer) && typeof answer.json === 'string' ? JSON.parse(answer.json) : answer;
 }
 
-/**
- * JSON with object keys sorted: Convex returns structured objects with their
- * keys in its own order, and key order is not part of any answer's meaning.
- * Array order is compared as is.
- */
 function canonical(value: unknown): string {
-  return JSON.stringify(value, (_key, v) =>
-    v && typeof v === 'object' && !Array.isArray(v)
-      ? Object.fromEntries(Object.keys(v).sort().map((k) => [k, (v as Record<string, unknown>)[k]]))
-      : v,
-  );
+  return JSON.stringify(value, (_key, v: unknown) => (isRecord(v) ? Object.fromEntries(Object.keys(v).sort().map((k) => [k, v[k]])) : v));
 }
 
 function firstDifference(a: unknown, b: unknown, path = '$'): string | null {
@@ -169,10 +158,10 @@ function firstDifference(a: unknown, b: unknown, path = '$'): string | null {
       if (d) return d;
     }
   }
-  if (a && b && typeof a === 'object' && typeof b === 'object' && !Array.isArray(a) && !Array.isArray(b)) {
+  if (isRecord(a) && isRecord(b)) {
     const keys = [...new Set([...Object.keys(a), ...Object.keys(b)])];
     for (const key of keys) {
-      const d = firstDifference((a as any)[key], (b as any)[key], `${path}.${key}`);
+      const d = firstDifference(a[key], b[key], `${path}.${key}`);
       if (d) return d;
     }
   }
@@ -207,7 +196,7 @@ export const run = internalAction({
     const cutoff = (() => {
       const d = new Date();
       d.setUTCFullYear(d.getUTCFullYear() - 2);
-      return d.toISOString().slice(0, 10);
+      return isoDateOf(d.getTime());
     })();
     const yearAgo = addMonths(cutoff, 12);
     const { meets, classes }: { meets: string[]; classes: { federation: string; ageCategory: string }[] } =

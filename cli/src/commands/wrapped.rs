@@ -10,7 +10,7 @@ use crate::utils::output::{self, Report};
 use crate::utils::stats::{fold, number, signed_kg};
 
 /// The earliest and latest years `results:wrapped` answers for.
-pub const WRAPPED_YEARS: std::ops::RangeInclusive<i64> = 1900..=2100;
+pub(crate) const WRAPPED_YEARS: std::ops::RangeInclusive<i64> = 1900..=2100;
 
 /// Show an athlete's calendar year in lifting.
 #[derive(Parser)]
@@ -22,6 +22,7 @@ pub const WRAPPED_YEARS: std::ops::RangeInclusive<i64> = 1900..=2100;
 )]
 pub struct WrappedArgs {
     /// Exact athlete name
+    #[arg(value_parser = crate::utils::filters::parse_name)]
     pub name: String,
 
     /// Calendar year to summarize (defaults to the current year)
@@ -39,13 +40,13 @@ pub async fn run(args: WrappedArgs) -> Result<()> {
 
 /// The year on the user's clock, the default for every "this year" report. Not UTC's: from
 /// 7 pm Eastern on December 31 UTC is already in the next year.
-pub fn current_year() -> i32 {
+pub(crate) fn current_year() -> i32 {
     Local::now().year()
 }
 
 /// `name`'s Wrapped for `year` from the server (`results:wrapped`). Free and public: it carries
 /// no pass and no login.
-pub async fn get_wrapped(name: &str, year: i32) -> Result<WrappedAnswer> {
+pub(crate) async fn get_wrapped(name: &str, year: i32) -> Result<WrappedAnswer> {
     get_wrapped_from(&convex_url(), default_access(), name, year).await
 }
 
@@ -81,12 +82,14 @@ pub fn athlete_year(
                 suggestions.join(", ")
             )
         }
-        other => Err(unscored(name, year, other)),
+        other @ (WrappedAnswer::Ambiguous { .. }
+        | WrappedAnswer::Narrow
+        | WrappedAnswer::TooManyResults { .. }) => Err(unscored(name, year, other)),
     }
 }
 
 /// Why an answer that is neither an athlete's year nor "no results" has no stats.
-pub fn unscored(name: &str, year: i32, answer: WrappedAnswer) -> anyhow::Error {
+pub(crate) fn unscored(name: &str, year: i32, answer: WrappedAnswer) -> anyhow::Error {
     match answer {
         WrappedAnswer::TooManyResults { name: athlete } => anyhow::anyhow!(
             "\"{athlete}\" has more results in {year} than one Wrapped scores, so the {year} \
@@ -111,7 +114,7 @@ pub fn unscored(name: &str, year: i32, answer: WrappedAnswer) -> anyhow::Error {
 
 /// Suggestions other than the typed name itself: the server suggests the athlete's own name when
 /// they have no results in the year, which is no suggestion.
-pub fn other_names(name: &str, suggestions: Vec<String>) -> Vec<String> {
+pub(crate) fn other_names(name: &str, suggestions: Vec<String>) -> Vec<String> {
     let typed = fold(name);
     suggestions
         .into_iter()
@@ -119,11 +122,12 @@ pub fn other_names(name: &str, suggestions: Vec<String>) -> Vec<String> {
         .collect()
 }
 
-pub fn render_wrapped_report(name: &str, year: i32, stats: &WrappedStats) -> String {
+#[cfg(test)]
+fn render_wrapped_report(name: &str, year: i32, stats: &WrappedStats) -> String {
     wrapped_report(name, year, stats).to_text()
 }
 
-pub fn wrapped_report(name: &str, year: i32, stats: &WrappedStats) -> Report {
+pub(crate) fn wrapped_report(name: &str, year: i32, stats: &WrappedStats) -> Report {
     let mut headline = Table::new();
     headline.set_header(vec!["Meets", "Make Rate", "Best Total", "Status"]);
     headline.add_row(vec![

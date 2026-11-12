@@ -9,9 +9,9 @@ jest.mock("@react-native-async-storage/async-storage", () => ({
     getItem: jest.fn(async () => null),
     setItem: jest.fn(async () => undefined),
     removeItem: jest.fn(async () => undefined),
-    multiSet: jest.fn(async () => undefined),
-    multiGet: jest.fn(async () => []),
-    multiRemove: jest.fn(async () => undefined),
+    setMany: jest.fn(async () => undefined),
+    getMany: jest.fn(async () => ({})),
+    removeMany: jest.fn(async () => undefined),
   },
 }));
 
@@ -176,7 +176,7 @@ function useBackedStorage(seed: Record<string, string> = {}) {
   (AsyncStorage.removeItem as jest.Mock).mockImplementation(async (key: string) => {
     store.delete(key);
   });
-  (AsyncStorage.multiRemove as jest.Mock).mockImplementation(async (keys: string[]) => {
+  (AsyncStorage.removeMany as jest.Mock).mockImplementation(async (keys: string[]) => {
     keys.forEach((key) => store.delete(key));
   });
   return store;
@@ -186,7 +186,7 @@ function resetStorageMocks() {
   mockGetItem.mockImplementation(async () => null);
   (AsyncStorage.setItem as jest.Mock).mockImplementation(async () => undefined);
   (AsyncStorage.removeItem as jest.Mock).mockImplementation(async () => undefined);
-  (AsyncStorage.multiRemove as jest.Mock).mockImplementation(async () => undefined);
+  (AsyncStorage.removeMany as jest.Mock).mockImplementation(async () => undefined);
 }
 
 describe("cache eviction during prefetch", () => {

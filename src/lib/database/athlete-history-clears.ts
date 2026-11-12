@@ -3,7 +3,7 @@ import { clearAllPackageEtags } from './package-etags';
 import { runHistoryClear } from './offline-clears';
 import { normalizeAthleteName } from '@/lib/athletes';
 import { ATHLETE_BESTS_KEY_PREFIX, ATHLETE_HISTORY_KEY_PREFIX, LIFTING_RESULTS_CHUNK_MARKER } from './offline-storage-keys';
-import { multiRemoveBatched } from './storage-batches';
+import { removeManyBatched } from './storage-batches';
 import { getStore, type OfflineStore } from './offline-store-index';
 import { readStoredAthletes } from './meet-data-reads';
 
@@ -37,7 +37,7 @@ async function removeAthleteKeysFromListing(
     const name = athleteNameOfStorageKey(key);
     return name !== null && normalizedNames.has(name);
   });
-  await multiRemoveBatched(keys);
+  await removeManyBatched(keys);
   return keys.length;
 }
 
@@ -117,6 +117,6 @@ async function removeAllAthleteHistory(): Promise<void> {
   const athleteHistoryKeys = keys.filter(
     (k) => k.startsWith(ATHLETE_HISTORY_KEY_PREFIX) || k.startsWith(ATHLETE_BESTS_KEY_PREFIX),
   );
-  await multiRemoveBatched(athleteHistoryKeys);
+  await removeManyBatched(athleteHistoryKeys);
   await clearAllPackageEtags();
 }

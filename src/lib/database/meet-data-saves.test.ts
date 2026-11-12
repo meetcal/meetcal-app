@@ -25,13 +25,13 @@ jest.mock("@react-native-async-storage/async-storage", () => ({
     removeItem: jest.fn(async (key: string) => {
       mockStorage.delete(key);
     }),
-    multiSet: jest.fn(async (entries: [string, string][]) => {
-      entries.forEach(([key, value]) => mockStorage.set(key, value));
+    setMany: jest.fn(async (entries: Record<string, string>) => {
+      Object.entries(entries).forEach(([key, value]) => mockStorage.set(key, value));
     }),
-    multiGet: jest.fn(async (keys: string[]) =>
-      keys.map((key) => [key, mockStorage.get(key) ?? null]),
+    getMany: jest.fn(async (keys: string[]) =>
+      Object.fromEntries(keys.map((key) => [key, mockStorage.get(key) ?? null])),
     ),
-    multiRemove: jest.fn(async (keys: string[]) => {
+    removeMany: jest.fn(async (keys: string[]) => {
       keys.forEach((key) => mockStorage.delete(key));
     }),
     getAllKeys: jest.fn(async () => Array.from(mockStorage.keys())),
@@ -140,9 +140,9 @@ describe("offline-store athlete lifting results", () => {
     await saveMeetAthletes("Test Meet", roster as any);
 
     const setItem = AsyncStorage.setItem as jest.Mock;
-    const multiSet = AsyncStorage.multiSet as jest.Mock;
+    const setMany = AsyncStorage.setMany as jest.Mock;
     setItem.mockClear();
-    multiSet.mockClear();
+    setMany.mockClear();
 
     await saveMeetAthletes("Test Meet", roster as any);
 
@@ -151,7 +151,7 @@ describe("offline-store athlete lifting results", () => {
         String(key).startsWith("meetcal_athletes_"),
       ),
     ).toHaveLength(0);
-    expect(multiSet).not.toHaveBeenCalled();
+    expect(setMany).not.toHaveBeenCalled();
     expect(
       setItem.mock.calls.some(([key]) => String(key) === "meetcal_offline_store"),
     ).toBe(true);
@@ -245,14 +245,14 @@ describe("offline-store athlete lifting results", () => {
 
     await saveMeetAthletes("Test Meet", [base] as any);
 
-    const multiSet = AsyncStorage.multiSet as jest.Mock;
-    multiSet.mockClear();
+    const setMany = AsyncStorage.setMany as jest.Mock;
+    setMany.mockClear();
 
     await saveMeetAthletes("Test Meet", [
       { ...base, entryTotal: 205 },
     ] as any);
 
-    expect(multiSet).toHaveBeenCalled();
+    expect(setMany).toHaveBeenCalled();
     const meetData = await getMeetData("Test Meet" as any);
     expect(itemAt(meetData.athletes, 0).entryTotal).toBe(205);
   });

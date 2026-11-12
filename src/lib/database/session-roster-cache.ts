@@ -4,7 +4,7 @@ import { MeetName } from '@/data/types/meet';
 import { filterSessionAthletes, normalizeLiftResults, normalizePlatformKey } from '@/lib/athletes';
 import { meetDataWrites } from './offline-store-index';
 import { SESSION_ATHLETES_KEY_PREFIX, getSessionAthletesKey } from './offline-storage-keys';
-import { multiRemoveBatched, multiSetBatched } from './storage-batches';
+import { removeManyBatched, setManyBatched } from './storage-batches';
 import { getMeetData } from './meet-data-reads';
 
 function groupAthletesBySession(athletes: LiftResult[]) {
@@ -55,14 +55,14 @@ export async function saveSessionAthleteCaches(
     ] as [string, string];
   });
 
-  await multiSetBatched(entries);
+  await setManyBatched(entries);
 
   const current = new Set(entries.map(([key]) => key));
   const prefix = `${SESSION_ATHLETES_KEY_PREFIX}${encodeURIComponent(meetId)}:`;
   const stale = (await AsyncStorage.getAllKeys()).filter(
     (key) => key.startsWith(prefix) && !current.has(key),
   );
-  await multiRemoveBatched(stale);
+  await removeManyBatched(stale);
 }
 
 export async function getSessionAthletesFromMeetCache(
