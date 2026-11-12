@@ -26,8 +26,12 @@ POST https://disciplined-hare-790.convex.cloud/api/query
     parsing.
 - A query whose Convex function takes `ifNoneMatch` (`Query::tagged`; a test reads `../convex/` to
   keep the list right) is revalidated. `api/kept_answers.rs` keeps its last `{ etag, json }` under the function
-  and its arguments (the pass and the tag left out): in memory for the session, and in IndexedDB
-  (`src/answer_store.js`, at most 200 answers) for the next visit. The next read sends the tag as
+  and its arguments (the pass and the tag left out): in memory for the session (the
+  `MAX_ANSWERS_KEPT_IN_MEMORY` most recently used), and in IndexedDB (`src/answer_store.js`, at
+  most 200 answers) for the next visit. The database opens as the page loads, and a read from it
+  (an answer, or the stored pass) is given up after `STORE_READ_WAIT` (300 ms): the request then
+  goes without the tag, and the store is skipped for a minute, so a store that never opens (as on
+  WebKit 14) delays no page. The next read sends the tag as
   `ifNoneMatch`; Convex answers `{ etag }` alone when nothing changed, and the kept text is read
   instead of downloading it again. A premium answer is kept only while a pass is held and only
   until that pass's `rotatesAt`; signing out, or another user signing in, drops every premium
@@ -35,7 +39,8 @@ POST https://disciplined-hare-790.convex.cloud/api/query
 - Each answer is read once: the HTTP body is text, its `value` stays raw JSON
   (`serde_json::value::RawValue`), and only the inner `json` text is parsed into the page's rows.
 - Requests go through the browser's `fetch` (`src/utils/http.rs`), with an `AbortController` that
-  ends a request at its timeout, body included.
+  ends a request at its timeout, body included, and when the request is dropped (a newer choice
+  replaced it).
 - The Club Dashboard's Meet picker reads `reference:clubMeets`, the club's distinct meets in one
   bounded answer, not the club's registrations (`reference:clubAthletes`, which the site no longer
   reads).

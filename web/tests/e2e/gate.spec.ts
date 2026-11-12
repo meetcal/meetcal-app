@@ -289,6 +289,24 @@ for (const status of [401, 403]) {
   });
 }
 
+test("an answer store that never opens, as on WebKit 14, delays neither the gate nor the page's reads", async ({ page }) => {
+  await page.addInitScript(() => {
+    Object.defineProperty(window, "indexedDB", { configurable: true, value: { open: () => ({}) } });
+  });
+  const { passRequests } = await mockAuth(page);
+  const sent: unknown[] = [];
+  await routeQuery(page, "reference:standards", (route, args) => {
+    sent.push(args.pass);
+    return route.fulfill(textAnswer([]));
+  });
+
+  await page.goto("/standards");
+  await expect.poll(() => sent, { timeout: 5_000 }).toEqual(["pass_test"]);
+  await expect(page.getByText("No standards match these filters.")).toBeVisible();
+  await expect(page.getByRole("alert")).toHaveCount(0);
+  expect(passRequests).toHaveLength(1);
+});
+
 test("a slow pass keeps the data page checking, and its first read carries the pass once it arrives", async ({ page }) => {
   test.setTimeout(45_000);
   await mockAuth(page);
