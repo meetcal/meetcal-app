@@ -1,0 +1,27 @@
+{
+  "function": "meets:completed",
+  "encoding": "jsonText",
+  "answers": [
+    {
+      "args": {},
+      "body": [
+        {
+          "id": "meets:6",
+          "name": "2026 Wire Fixture Classic",
+          "federation": "USAW",
+          "status": "completed",
+          "start_date": "2026-03-07",
+          "end_date": "2026-03-08",
+          "time_zone": "America/New_York",
+          "venue_name": "Fixture Hall",
+          "venue_street": "1 Fixture Way",
+          "venue_city": "Raleigh",
+          "venue_state": "NC",
+          "venue_zip": "27601",
+          "venue_map_pdf_url": null,
+          "venue_map_apple_url": null
+        }
+      ]
+    }
+  ]
+}

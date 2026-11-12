@@ -65,6 +65,71 @@ module.exports = defineConfig([
     },
   },
   {
+    files: ["src/**/*.{ts,tsx}", "convex/**/*.ts", "convex-tests/**/*.ts", "scripts/**/*.ts"],
+    languageOptions: {
+      parserOptions: {
+        projectService: true,
+        tsconfigRootDir: __dirname,
+      },
+    },
+    rules: {
+      "@typescript-eslint/no-floating-promises": "error",
+      "@typescript-eslint/no-misused-promises": ["error", { checksVoidReturn: { attributes: false } }],
+      "@typescript-eslint/switch-exhaustiveness-check": "error",
+    },
+  },
+  {
+    files: ["src/**/*.{ts,tsx}", "convex/**/*.ts"],
+    ignores: ["**/*.test.{ts,tsx}", "src/test-support/**"],
+    rules: {
+      "@typescript-eslint/consistent-type-assertions": [
+        "error",
+        { assertionStyle: "as", objectLiteralTypeAssertions: "never" },
+      ],
+      "@typescript-eslint/no-unsafe-type-assertion": "error",
+      "no-restricted-syntax": [
+        "error",
+        {
+          selector: "TSAsExpression > TSAsExpression > TSUnknownKeyword",
+          message: "Narrow the value field by field instead of casting through unknown.",
+        },
+        {
+          selector: "TSAsExpression > CallExpression[callee.object.name='JSON'][callee.property.name='parse']",
+          message: "JSON.parse answers unknown: check the shape instead of casting it.",
+        },
+      ],
+      "max-lines": ["error", { max: 600, skipBlankLines: true, skipComments: true }],
+      "react-native/no-color-literals": "error",
+    },
+  },
+  {
+    files: ["src/lib/**/*.{ts,tsx}", "src/utils/**/*.{ts,tsx}"],
+    ignores: ["**/*.test.{ts,tsx}"],
+    rules: {
+      "no-restricted-imports": [
+        "error",
+        {
+          patterns: [
+            {
+              group: ["@/components/*", "@/app/*", "@/hooks/*", "@/contexts/*"],
+              message: "src/lib and src/utils sit below components, screens, hooks and contexts.",
+            },
+          ],
+        },
+      ],
+    },
+  },
+  {
+    files: ["convex/**/*.ts"],
+    ignores: ["convex/_generated/**"],
+    rules: {
+      "no-restricted-properties": [
+        "error",
+        { property: "collect", message: "Bound the read: use take(n) or paginate, and say when the answer was cut." },
+      ],
+    },
+  },
+  {
     // CommonJS files that run under Node (Expo config plugins, build/tool
     // configs, the custom Jest environment): `require`, `module`, and
     // `__dirname` are real here.
@@ -84,7 +149,7 @@ module.exports = defineConfig([
   },
   {
     // Jest setup and test files run with Jest's globals.
-    files: ["jest.setup.js", "**/*.test.{js,jsx,ts,tsx}"],
+    files: ["jest.setup.js", "jest/**/*.js", "**/*.test.{js,jsx,ts,tsx}"],
     languageOptions: {
       globals: {
         ...globals.jest,

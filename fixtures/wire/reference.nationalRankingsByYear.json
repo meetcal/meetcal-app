@@ -1,0 +1,25 @@
+{
+  "function": "reference:nationalRankingsByYear",
+  "encoding": "jsonText",
+  "answers": [
+    {
+      "args": {
+        "federation": "USAW",
+        "ageCategory": "Open Women's 63kg",
+        "year": "2026"
+      },
+      "body": [
+        {
+          "name": "Avery Fixture",
+          "total": 184,
+          "date": "2026-03-07"
+        },
+        {
+          "name": "Tess Toomany",
+          "total": 184,
+          "date": "2026-01-01"
+        }
+      ]
+    }
+  ]
+}

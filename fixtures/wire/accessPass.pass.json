@@ -1,0 +1,13 @@
+{
+  "function": "accessPass:pass",
+  "encoding": "value",
+  "answers": [
+    {
+      "args": {},
+      "body": {
+        "pass": "fixture-pass",
+        "rotatesAt": 1790942340000
+      }
+    }
+  ]
+}

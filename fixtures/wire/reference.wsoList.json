@@ -1,0 +1,12 @@
+{
+  "function": "reference:wsoList",
+  "encoding": "jsonText",
+  "answers": [
+    {
+      "args": {},
+      "body": [
+        "Carolina"
+      ]
+    }
+  ]
+}

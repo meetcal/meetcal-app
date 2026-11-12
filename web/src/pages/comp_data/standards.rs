@@ -126,6 +126,15 @@ pub fn Standards() -> impl IntoView {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::utils::api::{queries, wire, wire_fixture};
+
+    #[test]
+    fn standards_read_the_servers_answer() {
+        let answers: Vec<Vec<Standard>> =
+            wire::read(queries::STANDARDS, wire_fixture!("reference.standards"));
+        let a: Vec<_> = answers.iter().flatten().map(|row| row.standard_a).collect();
+        assert_eq!(a, [210.0, 300.0]);
+    }
 
     #[test]
     fn standard_deserializes_from_the_api_shape() {

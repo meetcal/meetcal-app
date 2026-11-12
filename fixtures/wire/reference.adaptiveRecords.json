@@ -1,0 +1,20 @@
+{
+  "function": "reference:adaptiveRecords",
+  "encoding": "jsonText",
+  "answers": [
+    {
+      "args": {
+        "gender": "Women",
+        "excludeFederation": "BWL"
+      },
+      "body": [
+        {
+          "weight_class": "69",
+          "snatch": 88,
+          "cj": 112,
+          "total": 200
+        }
+      ]
+    }
+  ]
+}

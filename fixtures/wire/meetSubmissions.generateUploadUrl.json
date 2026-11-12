@@ -1,0 +1,12 @@
+{
+  "function": "meetSubmissions:generateUploadUrl",
+  "encoding": "value",
+  "answers": [
+    {
+      "args": {},
+      "body": {
+        "uploadUrl": "https://upload.example/0"
+      }
+    }
+  ]
+}

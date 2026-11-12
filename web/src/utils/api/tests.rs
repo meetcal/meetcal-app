@@ -10,6 +10,54 @@ fn answer(value: Value) -> QueryResponse {
 }
 
 #[test]
+fn the_name_lists_read_the_servers_answers() {
+    for (query, fixture) in [
+        (queries::WSO_LIST, wire_fixture!("reference.wsoList")),
+        (
+            queries::REGISTRATION_WSOS,
+            wire_fixture!("reference.registrationWsos"),
+        ),
+        (queries::CLUBS, wire_fixture!("reference.clubs")),
+    ] {
+        for names in wire::read::<Vec<String>>(query, fixture) {
+            assert!(!names.is_empty(), "{}", query.function);
+        }
+    }
+}
+
+#[test]
+fn the_pass_and_the_entitlement_read_the_servers_answers() {
+    for response in wire::responses(ACCESS_PASS, wire_fixture!("accessPass.pass")) {
+        assert!(matches!(
+            read_pass_answer(response).unwrap(),
+            PassAnswer::Granted(pass) if pass.pass == "fixture-pass"
+        ));
+    }
+    for response in wire::responses(REFRESH_ENTITLEMENT, wire_fixture!("entitlements.refresh")) {
+        assert!(read_entitlement(response).unwrap());
+    }
+}
+
+#[test]
+fn a_meet_submission_reads_the_servers_answers() {
+    for response in wire::responses(
+        MEET_SUBMISSION_UPLOAD_URL,
+        wire_fixture!("meetSubmissions.generateUploadUrl"),
+    ) {
+        assert!(read_upload_url(response).unwrap().starts_with("https://"));
+    }
+    for response in wire::responses(
+        MEET_SUBMISSION_SUBMIT,
+        wire_fixture!("meetSubmissions.submit"),
+    ) {
+        assert_eq!(
+            read_submitted(response).unwrap(),
+            MeetSubmissionOutcome::Submitted
+        );
+    }
+}
+
+#[test]
 fn production_builds_read_the_production_deployment() {
     if option_env!("MEETCAL_CONVEX_URL").is_none() {
         assert_eq!(convex_url(), PRODUCTION_CONVEX_URL);

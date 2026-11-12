@@ -1,0 +1,23 @@
+{
+  "function": "meetSubmissions:submit",
+  "encoding": "value",
+  "answers": [
+    {
+      "args": {
+        "meetName": "2026 Submitted Fixture Meet",
+        "startDate": "2026-12-05",
+        "endDate": "2026-12-06",
+        "contactEmail": "fixture@example.com",
+        "files": [
+          {
+            "storageId": "_storage:fixture",
+            "name": "start-list.pdf"
+          }
+        ]
+      },
+      "body": {
+        "submitted": true
+      }
+    }
+  ]
+}

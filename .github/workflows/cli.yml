@@ -5,9 +5,9 @@ name: CLI CI
 on:
   push:
     branches: [main, master]
-    paths: ["cli/**", "convex/**", ".github/workflows/cli.yml"]
+    paths: ["cli/**", "convex/**", "fixtures/wire/**", ".github/workflows/cli.yml"]
   pull_request:
-    paths: ["cli/**", "convex/**", ".github/workflows/cli.yml"]
+    paths: ["cli/**", "convex/**", "fixtures/wire/**", ".github/workflows/cli.yml"]
   # Advisories are published without any change here, so audit the lockfile weekly too.
   schedule:
     - cron: "17 6 * * 1"
