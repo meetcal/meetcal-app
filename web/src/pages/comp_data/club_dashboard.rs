@@ -1,4 +1,5 @@
 use super::{
+    address::{HistoryEntry, query_param, use_page_address},
     format::{NO_VALUE, display_body_weight, display_weight_class, yes_no},
     loading::{Load, LoadState, load_error, load_query, select_response},
     ui::{
@@ -68,8 +69,9 @@ struct AthleteResult {
 
 #[component]
 pub fn ClubDashboard() -> impl IntoView {
-    let (club, set_club) = signal(String::new());
-    let (meet, set_meet) = signal(String::new());
+    let page = use_page_address("/club-dashboard");
+    let club = query_param("club");
+    let meet = query_param("meet");
     let clubs = load_query::<Vec<String>>(queries::CLUBS);
     let club_meets = Load::new(
         move || club.get(),
@@ -111,10 +113,7 @@ pub fn ClubDashboard() -> impl IntoView {
                         values=clubs.to_vec()
                         selected=club
                         wide=true
-                        on_select=move |value: String| {
-                            set_club.set(value);
-                            set_meet.set(String::new());
-                        }
+                        on_select=move |club: String| page.show(&[("club", &club)], HistoryEntry::Push)
                     />
                     {move || if club.with(String::is_empty) { ().into_any() } else {
                         club_meets.with(|state| match state {
@@ -123,7 +122,7 @@ pub fn ClubDashboard() -> impl IntoView {
                             }
                             LoadState::Ready(choices) => {
                                 view! {
-                                    <FilterSelect label="Meet" placeholder="Choose a completed meet" values=choices.meets.clone() selected=meet wide=true on_select=move |value| set_meet.set(value) />
+                                    <FilterSelect label="Meet" placeholder="Choose a completed meet" values=choices.meets.clone() selected=meet wide=true on_select=move |meet: String| page.show(&[("club", &club.get_untracked()), ("meet", &meet)], HistoryEntry::Push) />
                                     {choices.truncated.then(|| view! { <p class="data-status">"Showing this club’s most recent meets."</p> })}
                                 }.into_any()
                             }

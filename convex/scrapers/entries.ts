@@ -6,22 +6,9 @@ import { internal } from '../_generated/api';
 import { fetchJson } from './lib/http';
 import { entriesEndpoint, entriesEventId, entryFromRow, meetFromTitle, readEntriesTable, unstoredEntriesMessage, type EntriesTable, type Entry, type EntryRow } from './parse/entries';
 import { sourcesFailed } from '../lib/cronAlerts';
-import { NOT_REACHED, runBudget } from './lib/budget';
 import { DAY_MS } from '../lib/dates';
+import { NOT_REACHED, runBudget } from './lib/budget';
 
-/**
- * Meet entries (replaces the `entries` job's `usaw/entry_scraper/csv_scraper.js`):
- * each target's entries list from Sport80's public entries endpoint, upserted
- * into `athletes`. A target's meet is the stored meet of its Sport80 event
- * (`meets.sourceId`, from the page URL), else the one named by the list's
- * title, found before any page of entries; a list with neither fails the
- * target rather than store a roster no meet page shows (#413). Entries are
- * stored under the meet's stored name, whatever Sport80 now titles it. A
- * completed meet is skipped without downloading its list,
- * and its target is removed once the meet ended TARGET_RETENTION_DAYS ago
- * (the list was pruned by hand before), so the job's work stays bounded by
- * the meets still to come.
- */
 async function getJson(url: string): Promise<EntriesTable> {
   return readEntriesTable(await fetchJson(url, { timeoutMs: 60_000 }));
 }
@@ -78,6 +65,20 @@ async function withKnownWsos(ctx: ActionCtx, entries: Entry[]): Promise<Entry[]>
   return entries.map((entry) => (wsos[entry.memberId] ? { ...entry, wso: wsos[entry.memberId] } : entry));
 }
 
+type StoredTarget = { meet: string; title: string; completedOn?: string };
+
+async function storedTarget(ctx: ActionCtx, url: string): Promise<StoredTarget> {
+  const title = await fetchEntriesMeet(url);
+  const eventId = entriesEventId(url);
+  const stored: { name: string; status: string; endDate: string } | null = await ctx.runQuery(internal.scrapers.queries.entriesMeet, { sourceId: eventId, title });
+  if (!stored) throw new Error(unstoredEntriesMessage(title, eventId, url));
+  return { meet: stored.name, title, ...(stored.status === 'completed' ? { completedOn: stored.endDate } : {}) };
+}
+
+async function readEntries(ctx: ActionCtx, url: string, meet: string): Promise<Entry[]> {
+  return withKnownWsos(ctx, await fetchEntries(url, meet));
+}
+
 type MeetResult = {
   label: string;
   /** The stored meet the entries are written under. */
@@ -109,37 +110,29 @@ export const run = internalAction({
     for (const target of targets) {
       const result: MeetResult = { label: target.label };
       results.push(result);
-      // Out of time: the targets left fail by name instead of the action being stopped.
       if (budget.spent()) {
         result.error = NOT_REACHED;
         continue;
       }
       try {
-        const title = await fetchEntriesMeet(target.url);
-        const eventId = entriesEventId(target.url);
-        // The meet is the one Sport80 knows by this event id, so a list
-        // Sport80 retitled still lands on the stored meet's name.
-        const stored: { name: string; status: string; endDate: string } | null = await ctx.runQuery(internal.scrapers.queries.entriesMeet, { sourceId: eventId, title });
-        if (!stored) throw new Error(unstoredEntriesMessage(title, eventId, target.url));
-        const meet = stored.name;
-        result.meet = meet;
-        if (title !== meet) result.title = title;
-        if (stored.status === 'completed') {
+        const stored = await budget.orStop(storedTarget(ctx, target.url));
+        result.meet = stored.meet;
+        if (stored.title !== stored.meet) result.title = stored.title;
+        if (stored.completedOn !== undefined) {
           result.skipped = 'meet completed';
-          if (!dryRun && targetExpired(stored.endDate, Date.now())) {
+          if (!dryRun && targetExpired(stored.completedOn, Date.now())) {
             await ctx.runMutation(internal.scrapers.entryTargets.remove, { url: target.url });
-            result.skipped = `meet completed ${stored.endDate}, target removed`;
+            result.skipped = `meet completed ${stored.completedOn}, target removed`;
           }
           continue;
         }
-        const entries = await withKnownWsos(ctx, await fetchEntries(target.url, meet));
+        const entries = await budget.orStop(readEntries(ctx, target.url, stored.meet));
         result.entries = entries.length;
         result.withWso = entries.filter((entry) => entry.wso).length;
         if (dryRun || entries.length === 0) continue;
         const counts: { inserted: number; updated: number; unchanged: number; sessionSkipped: number; notOnStartList: number; rejected: number; deleted: number } = await ctx.runMutation(
           internal.ingest.upsertEntryAthletes,
-          // `fetchEntries` checked the list against its total: it is the whole list.
-          { meet, rows: entries, complete: true, ...(allowShrink ? { allowShrink } : {}) },
+          { meet: stored.meet, rows: entries, complete: true, ...(allowShrink ? { allowShrink } : {}) },
         );
         Object.assign(result, counts);
       } catch (error) {

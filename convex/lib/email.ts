@@ -1,10 +1,5 @@
-/**
- * Sends an email through OneSignal (`ONESIGNAL_APP_ID`, `ONESIGNAL_REST_API_KEY`,
- * the app's email sender). Returns OneSignal's notification id; throws when
- * OneSignal refuses the message, so a failed alert fails the run and shows
- * in the Convex logs. OneSignal email has no attachments: link to files.
- * `replyTo` overrides the sender's Reply-To address.
- */
+import { isRecord } from './json';
+
 export async function sendEmail(to: string, subject: string, html: string, options: { replyTo?: string } = {}): Promise<string> {
   const appId = process.env.ONESIGNAL_APP_ID;
   const key = process.env.ONESIGNAL_REST_API_KEY;
@@ -26,9 +21,10 @@ export async function sendEmail(to: string, subject: string, html: string, optio
     }),
     signal: AbortSignal.timeout(30_000),
   });
-  const body = (await response.json().catch(() => ({}))) as { id?: string; errors?: unknown };
-  if (!response.ok || !body.id) throw new Error(`OneSignal email failed (${response.status}): ${JSON.stringify(body.errors ?? body)}`);
-  return body.id;
+  const body: unknown = await response.json().catch(() => ({}));
+  const id = isRecord(body) && typeof body.id === 'string' ? body.id : '';
+  if (!response.ok || id === '') throw new Error(`OneSignal email failed (${response.status}): ${JSON.stringify(isRecord(body) ? (body.errors ?? body) : body)}`);
+  return id;
 }
 
 /** Text for an HTML email body. */

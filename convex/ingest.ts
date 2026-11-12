@@ -83,16 +83,55 @@ async function linkedMeetHints(ctx: MutationCtx, hints: readonly WriteHint[]): P
   return linked;
 }
 
-/**
- * Links results titles to a meet (#362), replacing the ones it had: a
- * combined national event is one Sport80 entries event, listed as the meet,
- * and several results events with their own titles, which then show with
- * it (its results, package, stats and club stats). A title belongs to one
- * meet at most. `titles: []` unlinks them all. Leaves the meet's hint, so
- * its views are rebuilt.
- *
- *   npx convex run ingest:setMeetResultTitles '{"meet":"2026 USA Weightlifting National Championships, Powered by Rogue Fitness","titles":["The 2026 National Junior Championships, Powered by Rogue Fitness","The 2026 National Youth Championships, Powered by Rogue Fitness"]}'
- */
+async function linkedMeetOfTitle(ctx: MutationCtx, title: string): Promise<string | null> {
+  const link = await ctx.db
+    .query('meet_result_titles')
+    .withIndex('by_title', (q) => q.eq('title', title))
+    .first();
+  return link?.meet ?? null;
+}
+
+async function ownEventData(ctx: MutationCtx, meet: string): Promise<string[]> {
+  const [roster, schedule, savedSessions] = await Promise.all([
+    ctx.db
+      .query('athletes')
+      .withIndex('by_meet', (q) => q.eq('meet', meet))
+      .first(),
+    ctx.db
+      .query('session_schedule')
+      .withIndex('by_meet', (q) => q.eq('meet', meet))
+      .first(),
+    ctx.db
+      .query('saved_sessions')
+      .withIndex('by_meet', (q) => q.eq('meet', meet))
+      .first(),
+  ]);
+  const found: [unknown, string][] = [
+    [roster, 'a roster'],
+    [schedule, 'a schedule'],
+    [savedSessions, 'saved sessions'],
+  ];
+  return found.filter(([row]) => row !== null).map(([, label]) => label);
+}
+
+async function refuseUnlinkableTitle(ctx: MutationCtx, meet: string, title: string): Promise<void> {
+  const other = (
+    await ctx.db
+      .query('meet_result_titles')
+      .withIndex('by_title', (q) => q.eq('title', title))
+      .collect()
+  ).find((link) => link.meet !== meet);
+  if (other) throw new Error(`${JSON.stringify(title)} is already linked to ${JSON.stringify(other.meet)}`);
+  const titleHasTitles = await ctx.db
+    .query('meet_result_titles')
+    .withIndex('by_meet', (q) => q.eq('meet', title))
+    .first();
+  if (titleHasTitles) throw new Error(`${JSON.stringify(title)} has results titles of its own; unlink them first`);
+  if ((await ctx.db.query('meets').withIndex('by_name', (q) => q.eq('name', title)).first()) === null) return;
+  const eventData = await ownEventData(ctx, title);
+  if (eventData.length > 0) throw new Error(`${JSON.stringify(title)} is a meet of its own (${eventData.join(', ')}), not a results title`);
+}
+
 export const setMeetResultTitles = internalMutation({
   args: { meet: v.string(), titles: v.array(v.string()) },
   handler: async (ctx, { meet, titles }) => {
@@ -103,18 +142,9 @@ export const setMeetResultTitles = internalMutation({
     if (!meetRow) throw new Error(`no meet named ${JSON.stringify(meet)}`);
     const wanted = [...new Set(titles.map((title) => title.trim()))];
     if (wanted.some((title) => title === '' || title === meet)) throw new Error("a results title must be non-empty and not the meet's own name");
-    for (const title of wanted) {
-      const other = (
-        await ctx.db
-          .query('meet_result_titles')
-          .withIndex('by_title', (q) => q.eq('title', title))
-          .collect()
-      ).find((link) => link.meet !== meet);
-      if (other) throw new Error(`${JSON.stringify(title)} is already linked to ${JSON.stringify(other.meet)}`);
-      if ((await ctx.db.query('meets').withIndex('by_name', (q) => q.eq('name', title)).first()) !== null) {
-        throw new Error(`${JSON.stringify(title)} is a meet of its own, not a results title`);
-      }
-    }
+    const parent = wanted.length > 0 ? await linkedMeetOfTitle(ctx, meet) : null;
+    if (parent !== null) throw new Error(`${JSON.stringify(meet)} is a results title of ${JSON.stringify(parent)}, so it cannot have results titles of its own`);
+    for (const title of wanted) await refuseUnlinkableTitle(ctx, meet, title);
     const existing = await ctx.db
       .query('meet_result_titles')
       .withIndex('by_meet', (q) => q.eq('meet', meet))

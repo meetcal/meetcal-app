@@ -106,10 +106,6 @@ const REFRESH_ENTITLEMENT: &str = "entitlements:refresh";
 /// that replaced it, so holding one a little past `rotatesAt` is safe.
 const MIN_PASS_HOLD_MS: f64 = 5.0 * 60.0 * 1000.0;
 
-/// Longest time (ms) a premium read waits for a pass fetch, counted from the
-/// fetch's start, before going without one. The fetch itself runs on and its
-/// pass is held for later reads: on a slow network (or a first fetch that
-/// asks RevenueCat), a page never waits on it longer than this.
 const PASS_WAIT_MS: f64 = 3000.0;
 
 const REFUSED_READ_PASS_WAIT_MS: f64 = 15.0 * 1000.0;
@@ -337,7 +333,11 @@ fn request_used_its_whole_timeout(elapsed_ms: f64, timeout: Duration) -> bool {
     elapsed_ms + TIMER_ROUNDING_MS >= timeout.as_secs_f64() * 1000.0
 }
 
-fn failed_at_the_timeout(error: &reqwest::Error, started_at_ms: f64, timeout: Duration) -> bool {
+fn body_read_failed_at_the_timeout(
+    error: &reqwest::Error,
+    started_at_ms: f64,
+    timeout: Duration,
+) -> bool {
     error.is_timeout()
         || request_used_its_whole_timeout(js_sys::Date::now() - started_at_ms, timeout)
 }
@@ -621,13 +621,10 @@ async fn post_within(
         if let Some(token) = token {
             builder = builder.bearer_auth(token);
         }
-        let response = builder.send().await.map_err(|error| {
-            transport_error(
-                function,
-                &error,
-                failed_at_the_timeout(&error, started_at_ms, timeout),
-            )
-        })?;
+        let response = builder
+            .send()
+            .await
+            .map_err(|error| transport_error(function, &error, error.is_timeout()))?;
         let status = response.status();
 
         if endpoint.retries() && should_retry(status, retries) {
@@ -656,7 +653,7 @@ async fn post_within(
         transport_error(
             function,
             &error,
-            failed_at_the_timeout(&error, started_at_ms, timeout),
+            body_read_failed_at_the_timeout(&error, started_at_ms, timeout),
         )
     })?;
     serde_json::from_slice::<QueryResponse>(&body)
@@ -961,10 +958,8 @@ const DEVICE_LOGIN_DESCRIBE: &str = "deviceLogin:describe";
 const DEVICE_LOGIN_APPROVE: &str = "deviceLogin:approve";
 const DEVICE_LOGIN_DENY: &str = "deviceLogin:deny";
 
-/// Clerk had no session token to hand over, or Convex refused the one it did
-/// (401): the user is asked to try again, which fetches a fresh one.
 pub(crate) const SESSION_MESSAGE: &str =
-    "MeetCal couldn't confirm you're signed in; please try again";
+    "MeetCal couldn't confirm you're signed in; please sign in again";
 
 /// A login waiting for approval, as `deviceLogin:describe` answers it.
 #[derive(Clone, Debug, PartialEq, Deserialize)]
@@ -1099,11 +1094,6 @@ const MEET_SUBMISSION_SUBMIT: &str = "meetSubmissions:submit";
 /// phone connection needs far longer than `REQUEST_TIMEOUT` to send.
 pub(crate) const UPLOAD_TIMEOUT: Duration = Duration::from_secs(180);
 
-/// Clerk had no session token to hand over, or Convex refused the one it did
-/// (401): the user signs in again.
-pub(crate) const SIGN_IN_AGAIN_MESSAGE: &str =
-    "MeetCal couldn't confirm you're signed in; please sign in again";
-
 /// A file of a submission, as `meetSubmissions:submit` takes it.
 #[derive(Clone, Debug, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -1128,7 +1118,7 @@ pub(crate) struct MeetSubmission {
 async fn post_meet_submission(function: &str, args: &Value) -> Result<QueryResponse> {
     let token = crate::auth::session_token()
         .await
-        .ok_or_else(|| anyhow!(SIGN_IN_AGAIN_MESSAGE))?;
+        .ok_or_else(|| anyhow!(SESSION_MESSAGE))?;
     post(Endpoint::Mutation, function, args, Some(&token)).await
 }
 
@@ -1147,13 +1137,6 @@ pub(crate) async fn upload_meet_submission_file(
     bytes: Vec<u8>,
 ) -> Result<String> {
     let started_at_ms = js_sys::Date::now();
-    let upload_failure = |error: reqwest::Error| {
-        transport_error(
-            "file upload",
-            &error,
-            failed_at_the_timeout(&error, started_at_ms, UPLOAD_TIMEOUT),
-        )
-    };
     let response = reqwest::Client::new()
         .post(upload_url)
         .timeout(UPLOAD_TIMEOUT)
@@ -1161,7 +1144,7 @@ pub(crate) async fn upload_meet_submission_file(
         .body(bytes)
         .send()
         .await
-        .map_err(upload_failure)?;
+        .map_err(|error| transport_error("file upload", &error, error.is_timeout()))?;
     let status = response.status();
     if !status.is_success() {
         return Err(user_error(
@@ -1170,26 +1153,35 @@ pub(crate) async fn upload_meet_submission_file(
             status,
         ));
     }
-    let body = response.bytes().await.map_err(upload_failure)?;
+    let body = response.bytes().await.map_err(|error| {
+        transport_error(
+            "file upload",
+            &error,
+            body_read_failed_at_the_timeout(&error, started_at_ms, UPLOAD_TIMEOUT),
+        )
+    })?;
     read_storage_id(&body)
 }
 
-/// Submits the meet with its uploaded files.
-pub(crate) async fn submit_meet(submission: &MeetSubmission) -> Result<()> {
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) enum MeetSubmissionOutcome {
+    Submitted,
+    FilesAlreadySubmitted { server_said: String },
+}
+
+const FILE_ALREADY_SUBMITTED_CODE: &str = "already_submitted";
+
+pub(crate) async fn submit_meet(submission: &MeetSubmission) -> Result<MeetSubmissionOutcome> {
     let args = serde_json::to_value(submission)
         .map_err(|error| user_error(MEET_SUBMISSION_SUBMIT, UNREACHABLE_MESSAGE, error))?;
     let response = post_meet_submission(MEET_SUBMISSION_SUBMIT, &args).await?;
     read_submitted(response)
 }
 
-/// A meet-submission mutation's value, or the error to show. Our functions
-/// throw `{ status, error }`: 400 (invalid input) and 413 (a file over
-/// 20 MB) say what is wrong in words a user can read; 429 is the daily
-/// limit; 401 is a session Convex would not take.
 fn meet_submission_value(response: QueryResponse) -> Result<Value> {
     let status = function_error_status(&response);
     if status == Some(401) {
-        return Err(anyhow!(SIGN_IN_AGAIN_MESSAGE));
+        return Err(anyhow!(SESSION_MESSAGE));
     }
     if let (
         Some(status @ (400 | 413 | 429)),
@@ -1236,11 +1228,30 @@ fn read_storage_id(body: &[u8]) -> Result<String> {
         })
 }
 
-/// Reads `meetSubmissions:submit`'s `{ submitted: true }`.
-fn read_submitted(response: QueryResponse) -> Result<()> {
+fn files_already_submitted(response: &QueryResponse) -> Option<String> {
+    let QueryResponse::Error {
+        error_data: Some(data),
+        ..
+    } = response
+    else {
+        return None;
+    };
+    (data.get("code").and_then(Value::as_str) == Some(FILE_ALREADY_SUBMITTED_CODE)).then(|| {
+        capitalize_first(
+            data.get("error")
+                .and_then(Value::as_str)
+                .unwrap_or_default(),
+        )
+    })
+}
+
+fn read_submitted(response: QueryResponse) -> Result<MeetSubmissionOutcome> {
+    if let Some(server_said) = files_already_submitted(&response) {
+        return Ok(MeetSubmissionOutcome::FilesAlreadySubmitted { server_said });
+    }
     let value = meet_submission_value(response)?;
     if value.get("submitted").and_then(Value::as_bool) == Some(true) {
-        Ok(())
+        Ok(MeetSubmissionOutcome::Submitted)
     } else {
         Err(user_error(
             MEET_SUBMISSION_SUBMIT,
@@ -1911,12 +1922,51 @@ mod tests {
             read_submitted(answer(
                 json!({"status": "success", "value": {"submitted": true}})
             ))
-            .is_ok()
+            .is_ok_and(|outcome| outcome == MeetSubmissionOutcome::Submitted)
         );
         let error = read_submitted(answer(json!({"status": "success", "value": {}})))
             .unwrap_err()
             .to_string();
         assert_eq!(error, UNREADABLE_MESSAGE);
+    }
+
+    #[test]
+    fn files_already_in_a_submission_are_known_by_the_servers_code_not_its_words() {
+        let coded = answer(json!({
+            "status": "error",
+            "errorMessage": "Server Error",
+            "errorData": {"status": 400.0, "error": "file already submitted: a.pdf", "code": "already_submitted"}
+        }));
+        assert_eq!(
+            read_submitted(coded).unwrap(),
+            MeetSubmissionOutcome::FilesAlreadySubmitted {
+                server_said: "File already submitted: a.pdf".to_owned()
+            }
+        );
+        let reworded = answer(json!({
+            "status": "error",
+            "errorMessage": "Server Error",
+            "errorData": {"status": 400.0, "error": "that file is in another submission", "code": "already_submitted"}
+        }));
+        assert!(matches!(
+            read_submitted(reworded),
+            Ok(MeetSubmissionOutcome::FilesAlreadySubmitted { .. })
+        ));
+        let same_words_without_the_code = submission_error(400.0, "file already submitted: a.pdf");
+        assert_eq!(
+            read_submitted(same_words_without_the_code)
+                .unwrap_err()
+                .to_string(),
+            "File already submitted: a.pdf"
+        );
+    }
+
+    #[test]
+    fn the_already_submitted_code_is_the_servers() {
+        let server = include_str!("../../../convex/lib/meetSubmissions.ts");
+        assert!(server.contains(&format!(
+            "FILE_ALREADY_SUBMITTED_CODE = '{FILE_ALREADY_SUBMITTED_CODE}'"
+        )));
     }
 
     #[test]
@@ -1945,16 +1995,15 @@ mod tests {
                 .to_string(),
             "At most 50 uploads a day. Please try again tomorrow."
         );
-        // A session Convex refused: sign in again.
         assert_eq!(
             message(submission_error(401.0, "unauthorized")),
-            SIGN_IN_AGAIN_MESSAGE
+            SESSION_MESSAGE
         );
         assert_eq!(
             read_upload_url(submission_error(401.0, "unauthorized"))
                 .unwrap_err()
                 .to_string(),
-            SIGN_IN_AGAIN_MESSAGE
+            SESSION_MESSAGE
         );
         // Anything else is a failure like any other function's.
         assert_eq!(

@@ -213,7 +213,8 @@ export default defineSchema({
     updatedAt: v.number(),
   })
     .index('by_userId', ['userId'])
-    .index('by_sessionId_and_userId', ['sessionId', 'userId']),
+    .index('by_sessionId_and_userId', ['sessionId', 'userId'])
+    .index('by_meet', ['meet']),
 
   // Write ordering for saved sessions (`convex/users.ts`). The app's outbox
   // numbers its writes per install (`device`, `rev`); a write that arrives

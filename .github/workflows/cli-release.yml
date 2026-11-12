@@ -23,12 +23,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          # The whole history, to check the tag against master below.
           fetch-depth: 0
 
-      # A release is of merged code: a tag on a branch's commit would publish, and point the
-      # Homebrew tap at, code that never reached master.
-      - name: Check the tagged commit is on master
+      - name: Refuse a tag whose commit is not on master
         working-directory: .
         run: |
           git fetch --no-tags origin master
@@ -75,7 +72,6 @@ jobs:
           - os: macos-latest
             target: aarch64-apple-darwin
             artifact: darwin-arm64
-          # Built on an Apple silicon runner, and run there under Rosetta before it ships.
           - os: macos-latest
             target: x86_64-apple-darwin
             artifact: darwin-x64
@@ -153,25 +149,26 @@ jobs:
             exit 1
           fi
 
-      # Run the archived binary on an older distribution than the runner.
-      - name: Smoke test on Debian 11
+      - name: Run the archived binary on Debian 11, older than the runner, and check its version
         if: matrix.glibc
         working-directory: cli
         run: |
-          docker run --rm -v "$PWD/dist/${{ matrix.artifact }}:/opt/meetcal:ro" debian:11 \
-            /opt/meetcal/meetcal --version
+          printed="$(docker run --rm -v "$PWD/dist/${{ matrix.artifact }}:/opt/meetcal:ro" debian:11 \
+            /opt/meetcal/meetcal --version)"
+          echo "$printed"
+          test "$printed" = "meetcal ${GITHUB_REF_NAME#cli-v}" || {
+            echo "Expected meetcal ${GITHUB_REF_NAME#cli-v}"
+            exit 1
+          }
 
-      # The macOS binaries have no container to try them in: run the archived binary on the
-      # runner (the Intel one under Rosetta) and check it is the tagged version. Homebrew
-      # installs whatever is published, with no check of its own.
-      - name: Smoke test on macOS
+      - name: Run the archived binary on macOS (the Intel one under Rosetta) and check its version
         if: runner.os == 'macOS'
         working-directory: cli
         run: |
           binary="dist/${{ matrix.artifact }}/meetcal"
           if [ -n "${{ matrix.rosetta }}" ]; then
             arch -x86_64 /usr/bin/true 2>/dev/null \
-              || softwareupdate --install-rosetta --agree-to-license
+              || sudo softwareupdate --install-rosetta --agree-to-license
             printed="$(arch -x86_64 "$binary" --version)"
           else
             printed="$("$binary" --version)"
@@ -245,9 +242,7 @@ jobs:
           ssh-key: ${{ secrets.HOMEBREW_TAP_DEPLOY_KEY }}
           path: tap
 
-      # A fix tagged on an older line (cli-v2.4.1 after cli-v3.0.0) must not point new installs
-      # back at it.
-      - name: Write the formula
+      - name: Write the formula, unless the tap already has a newer version
         run: |
           version="${GITHUB_REF_NAME#cli-v}"
           current="$(awk -F'"' '/^  version / { print $2; exit }' tap/Formula/meetcal.rb)"
