@@ -101,12 +101,13 @@ server's), through
 `src/utils/cache.rs` keeps answers between runs in `$XDG_CACHE_HOME/meetcal/` (else
 `~/.cache/meetcal/`; `%LOCALAPPDATA%` on Windows), 0600 files in 0700 directories:
 
-- The queries that take `ifNoneMatch` (`Body::Revalidated` in `queries`: the meet lists, details
-  and schedules, and the reference tables) keep their `{ etag, json }` under `answers/`, one file
+- The queries that take `ifNoneMatch` (`Body::Revalidated` in `queries`: the meet lists, details,
+  schedules, rosters and start lists, a meet's results, and the reference tables) keep their `{ etag, json }` under `answers/`, one file
   per deployment, function and arguments (a SHA-256 of them, the pass and tag left out). The next
   read sends the kept tag; Convex answers `{ etag }` alone when the body is unchanged (72 bytes
   instead of 377 KB for `reference:records`), and the kept body is used. Nothing is served
-  without asking.
+  without asking. A test reads each function's `args` in `../convex/` and fails when a query
+  marked revalidated takes no `ifNoneMatch`, or one that takes it is not marked.
 - Premium answers go under `answers/premium/`, and only when the read carried a pass. A new pass
   (`pass.json`, with the login's token id, the deployment and `rotatesAt`) drops them, as do
   `logout`, a rejected login and a lapsed subscription.

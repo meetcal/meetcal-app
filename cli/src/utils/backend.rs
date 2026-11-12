@@ -112,12 +112,12 @@ pub mod queries {
     pub(crate) const MEET_ATTENDANCE: Query = Query::text("meets:attendance");
     pub(crate) const MEET_NAMES_MATCHING: Query = Query::value("meets:namesMatching");
     /// `GET /meets/athletes`; takes `meet`.
-    pub(crate) const MEET_ATHLETES: Query = Query::text("meets:athletes");
+    pub(crate) const MEET_ATHLETES: Query = Query::revalidated("meets:athletes");
     /// `GET /meets/athletes-sessions`; takes `meet`, and optionally `sessionNumber` and
     /// `platform`.
-    pub(crate) const MEET_ATHLETES_SESSIONS: Query = Query::text("meets:athletesSessions");
+    pub(crate) const MEET_ATHLETES_SESSIONS: Query = Query::revalidated("meets:athletesSessions");
     /// `GET /lifting-results`; takes `meet`.
-    pub(crate) const MEET_RESULTS: Query = Query::text("results:byMeet");
+    pub(crate) const MEET_RESULTS: Query = Query::revalidated("results:byMeet");
     /// `GET /lifting-results/by-names`; takes `names` (at most 100).
     pub(crate) const RESULTS_BY_NAMES: Query = Query::text("results:byNames");
     /// `GET /lifting-results/recent`; takes `names` (at most 100) and `cutoffDate`.
@@ -855,6 +855,65 @@ mod tests {
             USER_AGENT,
             format!("meetcal-cli/{}", env!("CARGO_PKG_VERSION"))
         );
+    }
+
+    fn declared_queries(body: &str) -> Vec<&'static str> {
+        let source = include_str!("backend.rs");
+        let tests = source.find("#[cfg(test)]").unwrap_or(source.len());
+        let marker = format!("Query::{body}(\"");
+        source[..tests]
+            .match_indices(&marker)
+            .map(|(at, _)| {
+                let name = &source[at + marker.len()..];
+                &name[..name.find('"').unwrap()]
+            })
+            .collect()
+    }
+
+    fn convex_args(function: &str) -> String {
+        let (module, name) = function.split_once(':').unwrap();
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../convex")
+            .join(format!("{module}.ts"));
+        let source = std::fs::read_to_string(&path)
+            .unwrap_or_else(|error| panic!("{function}: {}: {error}", path.display()));
+        let start = source
+            .find(&format!("export const {name} = "))
+            .unwrap_or_else(|| panic!("{function} is not exported by {}", path.display()));
+        let definition = &source[start..];
+        let args = definition
+            .find("args:")
+            .unwrap_or_else(|| panic!("{function} declares no args"));
+        let handler = definition
+            .find("handler:")
+            .unwrap_or_else(|| panic!("{function} declares no handler"));
+        definition[args..handler].to_string()
+    }
+
+    #[test]
+    fn every_revalidated_query_takes_a_tag_on_the_server() {
+        let revalidated = declared_queries("revalidated");
+        assert!(revalidated.contains(&"results:byMeet"), "{revalidated:?}");
+        for function in revalidated {
+            assert!(
+                convex_args(function).contains(cache::TAG_ARGUMENT),
+                "{function} is Query::revalidated, but its Convex args take no {}",
+                cache::TAG_ARGUMENT
+            );
+        }
+    }
+
+    #[test]
+    fn every_query_that_takes_a_tag_is_revalidated() {
+        for body in ["text", "value"] {
+            for function in declared_queries(body) {
+                assert!(
+                    !convex_args(function).contains(cache::TAG_ARGUMENT),
+                    "{function} takes {} on the server: declare it Query::revalidated",
+                    cache::TAG_ARGUMENT
+                );
+            }
+        }
     }
 
     #[test]

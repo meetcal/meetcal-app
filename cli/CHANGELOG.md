@@ -63,10 +63,10 @@
   `--year` has the short form `-y`.
 - Club and WSO reports read their athletes' results up to twelve requests at a time.
 - Answers arrive gzipped, 8 to 22 times smaller.
-- Reference tables, meet lists, schedules and the daily access pass are kept in
-  `~/.cache/meetcal/` (`$XDG_CACHE_HOME/meetcal/`), at most 64 MB; a later run asks whether its copy
-  is current instead of downloading it again. Subscriber data kept there goes when the pass
-  changes and on `logout`.
+- Reference tables, meet lists, schedules, start lists, meet results and the daily access pass
+  are kept in `~/.cache/meetcal/` (`$XDG_CACHE_HOME/meetcal/`), at most 64 MB; a later run asks
+  whether its copy is current instead of downloading it again. Subscriber data kept there goes when
+  the pass changes and on `logout`.
 - `records` and `qualifying-totals` read only the table asked for; `club-trends` and `wso-trends`
   read each meet's medals, `meet-results` each edition's summary and `attendance` the matching meet
   names from MeetCal, instead of downloading whole meets and every meet name. Their output is

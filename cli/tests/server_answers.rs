@@ -184,3 +184,44 @@ fn attendance_asks_the_server_for_the_matching_names() {
         json!({"words": ["ohio", "wso"], "exclude": ["open"]})
     );
 }
+
+#[test]
+fn a_start_list_read_again_is_revalidated_with_its_tag() {
+    let rows = json!([{
+        "adaptive": false, "age": 30, "club": "Test Barbell", "entry_total": 200,
+        "gender": "Women", "name": "Ada", "session_number": 1, "session_platform": "Red",
+        "weight_class": "64", "wso": "Florida"
+    }]);
+    let (base_url, requests) = serve(vec![
+        value(json!({ "etag": "\"e1\"", "json": rows.to_string() })),
+        value(json!({ "etag": "\"e1\"" })),
+    ]);
+    let cache = std::env::temp_dir().join(format!("meetcal-start-list-tag-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&cache);
+    let run_cached = || {
+        Command::new(env!("CARGO_BIN_EXE_meetcal"))
+            .args(["meet", "Test Meet", "--no-bests", "--format", "csv"])
+            .env("MEETCAL_CONVEX_URL", &base_url)
+            .env("XDG_CONFIG_HOME", &cache)
+            .env("XDG_CACHE_HOME", &cache)
+            .env("MEETCAL_NO_UPDATE_CHECK", "1")
+            .output()
+            .expect("run meetcal")
+    };
+
+    let first = run_cached();
+    let second = run_cached();
+
+    assert_eq!(first.status.code(), Some(0), "{first:?}");
+    assert_eq!(second.status.code(), Some(0), "{second:?}");
+    assert_eq!(first.stdout, second.stdout);
+    assert!(String::from_utf8_lossy(&first.stdout).contains("Ada"));
+    let bodies = request_bodies(&requests);
+    assert_eq!(bodies[0]["path"], "meets:athletesSessions");
+    assert_eq!(bodies[0]["args"], json!({"meet": "Test Meet"}));
+    assert_eq!(
+        bodies[1]["args"],
+        json!({"meet": "Test Meet", "ifNoneMatch": "\"e1\""})
+    );
+    std::fs::remove_dir_all(cache).unwrap();
+}

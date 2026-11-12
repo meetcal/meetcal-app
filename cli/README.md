@@ -80,7 +80,7 @@ variable. With a login, commands fetch MeetCal's daily access pass, keep it unti
 send it with subscriber-data reads; the login itself is sent only to get that pass (and to re-check
 a subscription MeetCal has not heard of yet).
 
-Commands keep the reference tables and meet lists they read in `~/.cache/meetcal/`
+Commands keep the reference tables, meet lists, start lists and meet results they read in `~/.cache/meetcal/`
 (`$XDG_CACHE_HOME/meetcal/` when `XDG_CACHE_HOME` is set), readable by you alone, at most 64 MB.
 The next read asks MeetCal whether its copy is still current and downloads it again only when it
 changed. Subscriber data is kept only with the access pass, and goes when the pass changes or you
