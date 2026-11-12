@@ -27,6 +27,7 @@ function deployment(afterStoring: (meet: string) => void = () => {}) {
   const storedMeets: string[] = [];
   const prunedEvents: string[] = [];
   const ctx = {
+    runQuery: async (): Promise<string[]> => [],
     runMutation: async (ref: unknown, args: { rows?: { meet: string }[]; eventId?: string }) => {
       if (getFunctionName(ref as never) === 'ingest:pruneEventResults') {
         prunedEvents.push(args.eventId!);
