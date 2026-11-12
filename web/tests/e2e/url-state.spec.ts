@@ -149,7 +149,7 @@ test("an athlete link from a meet's results comes back to the same meet", async 
   await expect(page).toHaveURL(/\/results\?athlete=Test%20Athlete$/);
   await page.goBack();
   await expect(page).toHaveURL(/\/meet-center\?meet=Meet%20Alpha&section=results$/);
-  await expect(page.getByRole("tab", { name: "Full Results" })).toHaveAttribute("aria-selected", "true");
+  await expect(page.getByRole("button", { name: "Full Results", exact: true })).toHaveAttribute("aria-pressed", "true");
   await expect(page.locator("tbody").first()).toContainText("Test Athlete");
 });
 

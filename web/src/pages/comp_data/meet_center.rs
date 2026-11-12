@@ -162,20 +162,19 @@ pub fn MeetCenter() -> impl IntoView {
             })}
 
             {move || if meet.get().is_empty() { view! { <DataStatus message="Search for and select a meet to load its competition data." /> }.into_any() } else { view! {
-                <div class="data-tabs" role="tablist" aria-label="Meet data">
+                <div class="data-tabs" role="group" aria-label="Meet data">
                     {MeetSection::ALL.into_iter().map(|choice| view! {
                         <button
                             type="button"
-                            role="tab"
                             class="data-tab"
-                            aria-selected=move || if section.get() == choice { "true" } else { "false" }
+                            aria-pressed=move || if section.get() == choice { "true" } else { "false" }
                             on:click=move |_| page.change(&[(SECTION_PARAM, choice.value())], HistoryEntry::Replace)
                         >
                             {choice.label()}
                         </button>
                     }).collect_view()}
                 </div>
-                <div role="tabpanel" aria-label=move || section.get().label()>
+                <div role="region" aria-label=move || section.get().label()>
                     {move || match section.get() {
                         MeetSection::Schedule => table_response(schedule, SCHEDULE_HEADERS.len(), "schedule", table_schedule),
                         MeetSection::StartList => table_response(athletes, START_LIST_HEADERS.len(), "start list", table_athletes),

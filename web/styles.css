@@ -635,7 +635,7 @@ select.data-filter {
     .data-tab { flex: 1 1 0; min-width: 0; padding: 8px 4px; font-size: 0.9rem; }
 }
 .data-tab:hover { color: var(--text); }
-.data-tab[aria-selected="true"] { background: var(--accent); color: #fff; }
+.data-tab[aria-pressed="true"] { background: var(--accent); color: #fff; }
 .data-tab:focus-visible { outline: 3px solid var(--accent-ink); outline-offset: 2px; }
 .data-more { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; margin: 16px 0 0; }
 .data-more .data-status { margin: 0; }

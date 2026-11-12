@@ -56,18 +56,18 @@ test("a new meet loads at once and never shows the previous meet's answer or a f
 
   await expect(page.getByLabel("Loading data")).toHaveCount(1);
   await expect(page.getByText("No schedule has been published for this meet.")).toHaveCount(0);
-  await page.getByRole("tab", { name: "Start List" }).click();
+  await page.getByRole("button", { name: "Start List", exact: true }).click();
   await expect(page.getByLabel("Loading data")).toHaveCount(1);
   await expect(page.getByText("No start list has been published for this meet.")).toHaveCount(0);
-  await page.getByRole("tab", { name: "Schedule" }).click();
+  await page.getByRole("button", { name: "Schedule", exact: true }).click();
 
   // Meet Bravo's answer arrives while Meet Alpha's requests are still pending.
   await meetSearch.fill("Meet Bravo");
   await page.getByRole("option", { name: "Meet Bravo" }).click();
   await expect(page.locator("tbody").first()).toContainText("Bravo Platform");
-  await page.getByRole("tab", { name: "Start List" }).click();
+  await page.getByRole("button", { name: "Start List", exact: true }).click();
   await expect(page.getByText("No start list has been published for this meet.")).toBeVisible();
-  await page.getByRole("tab", { name: "Schedule" }).click();
+  await page.getByRole("button", { name: "Schedule", exact: true }).click();
 
   // Meet Alpha's late answer is never shown under Meet Bravo.
   releaseAlpha();
