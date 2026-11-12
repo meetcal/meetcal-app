@@ -149,7 +149,7 @@ module.exports = defineConfig([
   },
   {
     // Jest setup and test files run with Jest's globals.
-    files: ["jest.setup.js", "**/*.test.{js,jsx,ts,tsx}"],
+    files: ["jest.setup.js", "jest/**/*.js", "**/*.test.{js,jsx,ts,tsx}"],
     languageOptions: {
       globals: {
         ...globals.jest,
