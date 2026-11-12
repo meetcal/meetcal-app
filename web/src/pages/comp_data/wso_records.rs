@@ -197,6 +197,22 @@ pub fn WsoRecords() -> impl IntoView {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::utils::api::{queries, wire, wire_fixture};
+
+    #[test]
+    fn wso_records_read_the_servers_answer() {
+        let answers: Vec<Vec<WsoRecord>> =
+            wire::read(queries::WSO_RECORDS, wire_fixture!("reference.wsoRecords"));
+        let lifts: Vec<_> = answers
+            .iter()
+            .flatten()
+            .map(|row| (row.snatch_record, row.cj_record, row.total_by.is_some()))
+            .collect();
+        assert_eq!(
+            lifts,
+            [(Some(95.0), Some(118.0), true), (Some(100.0), None, false)]
+        );
+    }
 
     #[test]
     fn missing_and_unset_lifts_use_an_em_dash() {

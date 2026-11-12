@@ -137,6 +137,21 @@ pub fn QualifyingTotals() -> impl IntoView {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::utils::api::{queries, wire, wire_fixture};
+
+    #[test]
+    fn qualifying_totals_read_the_servers_answer() {
+        let answers: Vec<Vec<QualifyingTotal>> = wire::read(
+            queries::QUALIFYING_TOTALS,
+            wire_fixture!("reference.qualifyingTotals"),
+        );
+        let totals: Vec<_> = answers
+            .iter()
+            .flatten()
+            .map(|row| row.qualifying_total)
+            .collect();
+        assert_eq!(totals, [170.0, 260.0]);
+    }
 
     #[test]
     fn qualifying_total_deserializes_from_the_api_shape() {

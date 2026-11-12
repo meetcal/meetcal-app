@@ -156,6 +156,17 @@ pub fn Rankings() -> impl IntoView {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::utils::api::{queries, wire, wire_fixture};
+
+    #[test]
+    fn rankings_read_the_servers_answer() {
+        let answers: Vec<Vec<Ranking>> = wire::read(
+            queries::INTL_RANKINGS,
+            wire_fixture!("reference.intlRankings"),
+        );
+        let percent: Vec<_> = answers.iter().flatten().map(|row| row.percent_a).collect();
+        assert_eq!(percent, [104.5]);
+    }
 
     #[test]
     fn international_ranking_deserializes_from_the_api_shape() {

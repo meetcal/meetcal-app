@@ -598,6 +598,26 @@ fn elite_csv(shown: &[ShownList<'_>]) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::utils::api::{Body, read_action_body, wire, wire_fixture};
+
+    #[test]
+    fn elite_lists_read_the_servers_answer() {
+        for value in wire::answers(
+            actions::WSO_ELITE.function,
+            Body::Value,
+            wire_fixture!("results.wsoElite"),
+        ) {
+            let answer: EliteAnswer = read_action_body(actions::WSO_ELITE.function, value).unwrap();
+            assert_eq!(answer.members, 2);
+            let women = answer
+                .rankings
+                .overall
+                .values()
+                .map(|ranking| ranking.women.len())
+                .sum::<usize>();
+            assert!(women > 0);
+        }
+    }
 
     #[test]
     fn a_calendar_year_runs_from_new_years_day_to_new_years_eve() {
