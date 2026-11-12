@@ -28,6 +28,8 @@ export type AthleteResultsLoad = {
    */
   shownSource?: ShownResultsSource;
   readOffline: () => Promise<AthleteMeetResult[]>;
+  readBrowsed?: () => Promise<AthleteMeetResult[] | null>;
+  rememberFull?: (rows: AthleteMeetResult[]) => Promise<void>;
   fetchFull: () => Promise<AthleteMeetResult[]>;
   /** False once the screen moved on (another athlete, or unmounted). */
   isCurrent: () => boolean;
@@ -91,6 +93,14 @@ export async function loadAthleteResults(
 
   let displayedCount = load.shown?.length ?? 0;
   let displayedOffline = displayedCount > 0 && load.shownSource === 'offline';
+  if (displayedCount === 0 && load.readBrowsed) {
+    const browsed = await load.readBrowsed().catch(() => null);
+    if (!load.isCurrent()) return 'superseded';
+    if (browsed && browsed.length > 0) {
+      displayedCount = browsed.length;
+      load.show(browsed, 'api');
+    }
+  }
   if (displayedCount === 0) {
     try {
       const offline = await load.readOffline();
@@ -112,6 +122,11 @@ export async function loadAthleteResults(
     // clobber rows already on screen.
     if (outcome.rows.length > 0 || displayedCount === 0) {
       load.show(outcome.rows, 'api');
+      if (outcome.rows.length > 0) {
+        load.rememberFull?.(outcome.rows).catch((error: unknown) => {
+          console.warn('Could not keep the athlete results for offline', error);
+        });
+      }
       return 'shown';
     }
     return displayedOffline ? 'offline-partial' : 'shown';

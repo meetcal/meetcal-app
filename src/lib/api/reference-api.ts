@@ -1,5 +1,5 @@
 import { nullableNumber, nullableString, validateRows, validateStringList } from '@/lib/api/api-validators';
-import { getRevalidated } from '@/lib/api/revalidated-reads';
+import { copiedList, freshValue, getRevalidated, revalidateTagged, type TaggedAnswer } from '@/lib/api/revalidated-reads';
 
 export type ApiRecordRow = {
   age_category: string | null;
@@ -139,70 +139,123 @@ function validateApiAdaptiveRecords(
   }));
 }
 
-export function fetchApiRecords(): Promise<readonly Readonly<ApiRecordRow>[]> {
-  return getRevalidated('/data/records', 'reference:records', {}, validateApiRecords);
+type Rows<T> = readonly Readonly<T>[];
+
+export function fetchApiRecordsTagged(knownTag: string | null): Promise<TaggedAnswer<Rows<ApiRecordRow>>> {
+  return revalidateTagged('/data/records', 'reference:records', {}, validateApiRecords, { knownTag });
 }
 
-export function fetchApiStandards(): Promise<readonly Readonly<ApiStandardRow>[]> {
-  return getRevalidated('/data/standards', 'reference:standards', {}, validateApiStandards);
+export async function fetchApiRecords(): Promise<Rows<ApiRecordRow>> {
+  return freshValue(await fetchApiRecordsTagged(null), '/data/records');
 }
 
-export function fetchApiQualifyingTotals(): Promise<readonly Readonly<ApiQualifyingTotalRow>[]> {
-  return getRevalidated(
+export function fetchApiStandardsTagged(knownTag: string | null): Promise<TaggedAnswer<Rows<ApiStandardRow>>> {
+  return revalidateTagged('/data/standards', 'reference:standards', {}, validateApiStandards, { knownTag });
+}
+
+export async function fetchApiStandards(): Promise<Rows<ApiStandardRow>> {
+  return freshValue(await fetchApiStandardsTagged(null), '/data/standards');
+}
+
+export function fetchApiQualifyingTotalsTagged(
+  knownTag: string | null,
+): Promise<TaggedAnswer<Rows<ApiQualifyingTotalRow>>> {
+  return revalidateTagged(
     '/data/qualifying-totals',
     'reference:qualifyingTotals',
     {},
     validateApiQualifyingTotals,
+    { knownTag },
   );
 }
 
-export function fetchApiIntlRankings(): Promise<readonly Readonly<ApiIntlRankingRow>[]> {
-  return getRevalidated('/data/intl-rankings', 'reference:intlRankings', {}, validateApiIntlRankings);
+export async function fetchApiQualifyingTotals(): Promise<Rows<ApiQualifyingTotalRow>> {
+  return freshValue(await fetchApiQualifyingTotalsTagged(null), '/data/qualifying-totals');
 }
 
-export function fetchApiNationalRankings(
+export function fetchApiIntlRankingsTagged(knownTag: string | null): Promise<TaggedAnswer<Rows<ApiIntlRankingRow>>> {
+  return revalidateTagged('/data/intl-rankings', 'reference:intlRankings', {}, validateApiIntlRankings, { knownTag });
+}
+
+export async function fetchApiIntlRankings(): Promise<Rows<ApiIntlRankingRow>> {
+  return freshValue(await fetchApiIntlRankingsTagged(null), '/data/intl-rankings');
+}
+
+export function fetchApiNationalRankingsTagged(
+  knownTag: string | null,
   federation: string,
   ageCategory: string,
-): Promise<readonly Readonly<ApiNationalRankingRow>[]> {
-  return getRevalidated(
+): Promise<TaggedAnswer<Rows<ApiNationalRankingRow>>> {
+  return revalidateTagged(
     '/data/nat-rankings',
     'reference:nationalRankings',
     { federation, ageCategory },
     validateApiNationalRankings,
+    { knownTag },
   );
 }
 
-export function fetchApiWsoRecords(
+export async function fetchApiNationalRankings(
+  federation: string,
+  ageCategory: string,
+): Promise<Rows<ApiNationalRankingRow>> {
+  return freshValue(await fetchApiNationalRankingsTagged(null, federation, ageCategory), '/data/nat-rankings');
+}
+
+export function fetchApiWsoRecordsTagged(
+  knownTag: string | null,
   wso: string,
   ageCategory?: string,
   gender?: string,
-): Promise<readonly Readonly<ApiWsoRecordRow>[]> {
-  return getRevalidated(
+): Promise<TaggedAnswer<Rows<ApiWsoRecordRow>>> {
+  return revalidateTagged(
     '/data/wso/records',
     'reference:wsoRecords',
     { wso, ageCategory, gender },
     validateApiWsoRecords,
+    { knownTag },
   );
 }
 
-export function fetchApiAdaptiveRecords(
+export async function fetchApiWsoRecords(
+  wso: string,
+  ageCategory?: string,
+  gender?: string,
+): Promise<Rows<ApiWsoRecordRow>> {
+  return freshValue(await fetchApiWsoRecordsTagged(null, wso, ageCategory, gender), '/data/wso/records');
+}
+
+export function fetchApiAdaptiveRecordsTagged(
+  knownTag: string | null,
   gender: string,
   excludeFederation: string,
-): Promise<readonly Readonly<ApiAdaptiveRecordRow>[]> {
-  return getRevalidated(
+): Promise<TaggedAnswer<Rows<ApiAdaptiveRecordRow>>> {
+  return revalidateTagged(
     '/data/adaptive',
     'reference:adaptiveRecords',
     { excludeFederation, gender },
     validateApiAdaptiveRecords,
+    { knownTag },
+  );
+}
+
+export async function fetchApiAdaptiveRecords(
+  gender: string,
+  excludeFederation: string,
+): Promise<Rows<ApiAdaptiveRecordRow>> {
+  return freshValue(await fetchApiAdaptiveRecordsTagged(null, gender, excludeFederation), '/data/adaptive');
+}
+
+export async function fetchApiWsoListTagged(knownTag: string | null): Promise<TaggedAnswer<string[]>> {
+  return copiedList(
+    await revalidateTagged('/data/wso/', 'reference:wsoList', {}, (json) => validateStringList(json, '/data/wso/'), {
+      knownTag,
+    }),
   );
 }
 
 export async function fetchApiWsoList(): Promise<string[]> {
-  return [
-    ...(await getRevalidated('/data/wso/', 'reference:wsoList', {}, (json) =>
-      validateStringList(json, '/data/wso/'),
-    )),
-  ];
+  return freshValue(await fetchApiWsoListTagged(null), '/data/wso/');
 }
 
 export async function fetchApiWsoAgeGroups(wso: string): Promise<string[]> {

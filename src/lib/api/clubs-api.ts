@@ -1,14 +1,16 @@
 import { isRecord } from '@/lib/is-record';
-import { getRevalidated } from '@/lib/api/revalidated-reads';
+import { copiedList, freshValue, revalidateTagged, type TaggedAnswer } from '@/lib/api/revalidated-reads';
 import { assertArray, assertObject, nullableString, validateStringList } from '@/lib/api/api-validators';
 import { readQuery } from '@/lib/api/meetcal-api';
 
+export async function fetchApiClubNamesTagged(knownTag: string | null): Promise<TaggedAnswer<string[]>> {
+  return copiedList(
+    await revalidateTagged('/clubs', 'reference:clubs', {}, (json) => validateStringList(json, '/clubs'), { knownTag }),
+  );
+}
+
 export async function fetchApiClubNames(): Promise<string[]> {
-  return [
-    ...(await getRevalidated('/clubs', 'reference:clubs', {}, (json) =>
-      validateStringList(json, '/clubs'),
-    )),
-  ];
+  return freshValue(await fetchApiClubNamesTagged(null), '/clubs');
 }
 
 export type ApiClubMeet = {

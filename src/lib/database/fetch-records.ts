@@ -10,7 +10,8 @@ import {
   replaceOfflineCache,
   writeBoundedCacheEntry,
 } from './offline-cache';
-import { fetchApiRecords, type ApiRecordRow } from '@/lib/api/reference-api';
+import { fetchApiRecords, fetchApiRecordsTagged, type ApiRecordRow } from '@/lib/api/reference-api';
+import { mapTagged, requireNetwork, untagged } from './tagged-read';
 import { weightClassSort } from './weight-class-sort';
 
 type RecordsCache = Record<string, RecordsData>;
@@ -114,18 +115,15 @@ async function readFederationRecordsCache(federation: string) {
   return browsed.lastUpdatedAt > fromDownload.lastUpdatedAt ? browsed : fromDownload;
 }
 
-async function fetchRecordsFresh(federation: string): Promise<RecordsData> {
-  const hasNetwork = await isNetworkAvailable();
-  if (!hasNetwork) {
-    throw new Error('Offline');
-  }
+async function fetchRecordsTagged(knownTag: string | null, federation: string) {
+  await requireNetwork();
+  return mapTagged(await fetchApiRecordsTagged(knownTag), (allRows) =>
+    mapRowsToRecordsData(allRows.filter(isCompleteRecordsRow).filter((row) => row.record_type === federation)),
+  );
+}
 
-  const allRows = await fetchApiRecords();
-  const rows = allRows
-    .filter(isCompleteRecordsRow)
-    .filter((row) => row.record_type === federation);
-
-  return mapRowsToRecordsData(rows);
+function fetchRecordsFresh(federation: string): Promise<RecordsData> {
+  return untagged(fetchRecordsTagged(null, federation), '/data/records');
 }
 
 /**
@@ -136,12 +134,13 @@ async function fetchRecordsFresh(federation: string): Promise<RecordsData> {
  * downloaded and "Last synced just now", with no IWF records on the device,
  * and made a month-old download of the other federations read as fresh.
  */
-function persistFederationRecords(federation: string, result: RecordsData) {
+function persistFederationRecords(federation: string, result: RecordsData, tag: string | null) {
   return writeBoundedCacheEntry(
     OFFLINE_CACHE_KEYS.recordsBrowse,
     federation,
     result,
     MAX_BROWSED_RECORD_FEDERATIONS,
+    tag,
   );
 }
 
@@ -190,7 +189,11 @@ export const federationRecordsResource = createMutableResource<
   getKey: (federation) => `${OFFLINE_CACHE_KEYS.records}:${federation}`,
   loadCached: (federation) => readFederationRecordsCache(federation),
   fetchFresh: (federation) => fetchRecordsFresh(federation),
-  persistFresh: (data, federation) => persistFederationRecords(federation, data),
+  persistFresh: (data, federation) => persistFederationRecords(federation, data, null),
+  tagged: {
+    fetch: (knownTag, federation) => fetchRecordsTagged(knownTag, federation),
+    persist: (data, tag, federation) => persistFederationRecords(federation, data, tag),
+  },
 });
 
 export async function fetchAgeGroups(federation: string): Promise<string[]> {

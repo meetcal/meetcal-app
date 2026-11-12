@@ -253,3 +253,66 @@ describe('partialResultsStatus', () => {
       .toMatch(/^Full history unavailable\. Showing downloaded data/);
   });
 });
+
+describe('loadAthleteResults with a browsed copy', () => {
+  beforeEach(() => {
+    jest.spyOn(console, 'error').mockImplementation(() => {});
+  });
+  afterEach(() => {
+    jest.restoreAllMocks();
+  });
+
+  it('paints the history kept from the last visit, and keeps it when the request fails', async () => {
+    const readOffline = jest.fn(async () => [row('Downloaded')]);
+    const { load, painted } = makeLoad({
+      readBrowsed: async () => [row('Kept A'), row('Kept B')],
+      readOffline,
+      fetchFull: async () => {
+        throw new Error('Network request failed');
+      },
+    });
+    await expect(loadAthleteResults(load)).resolves.toBe('shown');
+    expect(painted).toEqual([{ source: 'api', meets: ['Kept A', 'Kept B'] }]);
+    expect(readOffline).not.toHaveBeenCalled();
+  });
+
+  it('replaces the kept history with the answer and keeps the answer for next time', async () => {
+    const rememberFull = jest.fn(async () => {});
+    const { load, painted } = makeLoad({
+      readBrowsed: async () => [row('Kept')],
+      rememberFull,
+      fetchFull: async () => [row('Fresh')],
+    });
+    await expect(loadAthleteResults(load)).resolves.toBe('shown');
+    expect(painted.map((paint) => paint.meets)).toEqual([['Kept'], ['Fresh']]);
+    expect(rememberFull).toHaveBeenCalledWith([row('Fresh')]);
+  });
+
+  it('falls back to the downloaded rows when nothing was kept, and never keeps an empty answer', async () => {
+    const rememberFull = jest.fn(async () => {});
+    const { load, painted } = makeLoad({
+      readBrowsed: async () => {
+        throw new Error('storage');
+      },
+      rememberFull,
+      readOffline: async () => [row('Downloaded')],
+      fetchFull: async () => [],
+    });
+    await expect(loadAthleteResults(load)).resolves.toBe('offline-partial');
+    expect(painted).toEqual([{ source: 'offline', meets: ['Downloaded'] }]);
+    expect(rememberFull).not.toHaveBeenCalled();
+  });
+
+  it('shows the answer even when keeping it fails', async () => {
+    jest.spyOn(console, 'warn').mockImplementation(() => {});
+    const { load, painted } = makeLoad({
+      readBrowsed: async () => null,
+      rememberFull: async () => {
+        throw new Error('disk full');
+      },
+      fetchFull: async () => [row('Fresh')],
+    });
+    await expect(loadAthleteResults(load)).resolves.toBe('shown');
+    expect(painted).toEqual([{ source: 'api', meets: ['Fresh'] }]);
+  });
+});

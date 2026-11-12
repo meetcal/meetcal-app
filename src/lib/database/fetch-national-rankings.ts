@@ -5,7 +5,8 @@ import {
   readBoundedCacheEntry,
   writeBoundedCacheEntry,
 } from './offline-cache';
-import { fetchApiNationalRankings, type ApiNationalRankingRow } from '@/lib/api/reference-api';
+import { fetchApiNationalRankingsTagged, type ApiNationalRankingRow } from '@/lib/api/reference-api';
+import { mapTagged, untagged } from './tagged-read';
 
 export type NationalRanking = {
   id: number;
@@ -43,18 +44,21 @@ function readNationalRankingsCache(weightClassAge: string) {
   return readBoundedCacheEntry(OFFLINE_CACHE_KEYS.nationalRankings, weightClassAge, readNationalRankings);
 }
 
-async function fetchNationalRankingsFresh(weightClassAge: string): Promise<NationalRanking[]> {
-  const rows = await fetchApiNationalRankings('USAW', weightClassAge);
-
-  return mapRankings(rows);
+async function fetchNationalRankingsTagged(knownTag: string | null, weightClassAge: string) {
+  return mapTagged(await fetchApiNationalRankingsTagged(knownTag, 'USAW', weightClassAge), mapRankings);
 }
 
-function persistNationalRankings(weightClassAge: string, rankings: NationalRanking[]) {
+function fetchNationalRankingsFresh(weightClassAge: string): Promise<NationalRanking[]> {
+  return untagged(fetchNationalRankingsTagged(null, weightClassAge), '/data/nat-rankings');
+}
+
+function persistNationalRankings(weightClassAge: string, rankings: NationalRanking[], tag: string | null) {
   return writeBoundedCacheEntry(
     OFFLINE_CACHE_KEYS.nationalRankings,
     weightClassAge,
     rankings,
     MAX_CACHED_RANKING_CLASSES,
+    tag,
   );
 }
 
@@ -67,5 +71,9 @@ export const nationalRankingsResource = createMutableResource<
   loadCached: (weightClassAge) => readNationalRankingsCache(weightClassAge),
   fetchFresh: (weightClassAge) => fetchNationalRankingsFresh(weightClassAge),
   persistFresh: (data, weightClassAge) =>
-    persistNationalRankings(weightClassAge, data),
+    persistNationalRankings(weightClassAge, data, null),
+  tagged: {
+    fetch: (knownTag, weightClassAge) => fetchNationalRankingsTagged(knownTag, weightClassAge),
+    persist: (data, tag, weightClassAge) => persistNationalRankings(weightClassAge, data, tag),
+  },
 });

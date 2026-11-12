@@ -76,7 +76,7 @@ function isCachedLiftResult(value: unknown): value is AthleteMeetResult {
   );
 }
 
-function toCachedLiftResults(rows: readonly unknown[]): AthleteMeetResult[] {
+export function toCachedLiftResults(rows: readonly unknown[]): AthleteMeetResult[] {
   const valid = rows.filter(isCachedLiftResult);
   if (valid.length !== rows.length) {
     console.warn(

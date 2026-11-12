@@ -1,13 +1,13 @@
 import { readQualifyingTotalsData } from './cached-shapes';
 import { createMutableResource } from '@/lib/data/mutable-resource';
-import { isNetworkAvailable } from '@/lib/networkUtils';
 import {
   getOfflineCache,
   OFFLINE_CACHE_KEYS,
   replaceOfflineCache,
   setOfflineCache,
 } from './offline-cache';
-import { fetchApiQualifyingTotals } from '@/lib/api/reference-api';
+import { fetchApiQualifyingTotalsTagged, type ApiQualifyingTotalRow } from '@/lib/api/reference-api';
+import { mapTagged, requireNetwork, resourceEntry, untagged } from './tagged-read';
 
 
 export type QualifyingTotalsData = {
@@ -21,20 +21,19 @@ export type QualifyingTotalsData = {
 
 async function readQualifyingTotalsCache() {
   const cacheKey = OFFLINE_CACHE_KEYS.qualifyingTotals;
-  const cached = await getOfflineCache(cacheKey, readQualifyingTotalsData);
-  return cached
-    ? { data: cached.data, lastUpdatedAt: cached.lastSynced }
-    : null;
+  return resourceEntry(await getOfflineCache(cacheKey, readQualifyingTotalsData));
 }
 
-async function fetchQualifyingTotalsFresh(): Promise<QualifyingTotalsData> {
-  const hasNetwork = await isNetworkAvailable();
-  if (!hasNetwork) {
-    throw new Error('Offline');
-  }
+async function fetchQualifyingTotalsTagged(knownTag: string | null) {
+  await requireNetwork();
+  return mapTagged(await fetchApiQualifyingTotalsTagged(knownTag), mapQualifyingTotals);
+}
 
-  const rows = await fetchApiQualifyingTotals();
+function fetchQualifyingTotalsFresh(): Promise<QualifyingTotalsData> {
+  return untagged(fetchQualifyingTotalsTagged(null), '/data/qualifying-totals');
+}
 
+function mapQualifyingTotals(rows: readonly Readonly<ApiQualifyingTotalRow>[]): QualifyingTotalsData {
   const result: QualifyingTotalsData = {};
   rows.forEach((row) => {
     const e = row.event_name;
@@ -68,12 +67,9 @@ export function isQualifyingTotalsDataEmpty(data: QualifyingTotalsData): boolean
   return Object.keys(data).length === 0;
 }
 
-async function persistQualifyingTotals(
-  data: QualifyingTotalsData,
-) {
+async function persistQualifyingTotals(data: QualifyingTotalsData, tag: string | null) {
   if (isQualifyingTotalsDataEmpty(data)) return null;
-  const entry = await setOfflineCache(OFFLINE_CACHE_KEYS.qualifyingTotals, data);
-  return { data: entry.data, lastUpdatedAt: entry.lastSynced };
+  return resourceEntry(await setOfflineCache(OFFLINE_CACHE_KEYS.qualifyingTotals, data, tag));
 }
 
 /**
@@ -95,5 +91,9 @@ export const qualifyingTotalsResource = createMutableResource<
   getKey: () => OFFLINE_CACHE_KEYS.qualifyingTotals,
   loadCached: () => readQualifyingTotalsCache(),
   fetchFresh: () => fetchQualifyingTotalsFresh(),
-  persistFresh: (data) => persistQualifyingTotals(data),
+  persistFresh: (data) => persistQualifyingTotals(data, null),
+  tagged: {
+    fetch: (knownTag) => fetchQualifyingTotalsTagged(knownTag),
+    persist: (data, tag) => persistQualifyingTotals(data, tag),
+  },
 });

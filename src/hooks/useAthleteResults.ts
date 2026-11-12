@@ -6,6 +6,7 @@ import {
 } from "@/lib/athlete-results-load";
 import { getAllCachedLiftingResultsForAthlete } from "@/lib/database/athlete-history-store";
 import { fetchAllResultsForName } from "@/lib/database/queries";
+import { readBrowsedAthleteResults, saveBrowsedAthleteResults } from "@/lib/database/browsed-athlete-results";
 import type { AthleteMeetResult } from "@/types/athlete-results";
 import { useCallback, useEffect, useRef, useState } from "react";
 
@@ -70,6 +71,8 @@ export function useAthleteResults(name: string | undefined): AthleteResultsState
           shown: cachedResults ?? keptOffline,
           shownSource: cachedResults ? "api" : "offline",
           readOffline: () => getAllCachedLiftingResultsForAthlete(nameStr),
+          readBrowsed: () => readBrowsedAthleteResults(nameStr),
+          rememberFull: (rows) => saveBrowsedAthleteResults(nameStr, rows),
           fetchFull: () => fetchAllResultsForName(nameStr),
           isCurrent: () => requestId === requestIdRef.current,
           show: (rows, source) => {
@@ -101,7 +104,7 @@ export function useAthleteResults(name: string | undefined): AthleteResultsState
   }, [name, retryCount, resultsCacheRef]);
 
   const retryLoad = useCallback(() => setRetryCount((count) => count + 1), []);
-  useRetryOnReconnect(loadOutcome === "offline-partial", retryLoad);
+  useRetryOnReconnect(loadOutcome === "offline-partial" || loadOutcome === "failed", retryLoad);
 
   return { loading, athleteResults, loadFailed, rowsSource, loadOutcome, retryLoad };
 }

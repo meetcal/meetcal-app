@@ -122,9 +122,13 @@ async function revalidateOnce<T>(
   return answered(answer.body, value, etag, knownTag);
 }
 
-function freshValue<T>(answer: TaggedAnswer<T>, path: string): T {
+export function freshValue<T>(answer: TaggedAnswer<T>, path: string): T {
   if (answer.status === 'unchanged') throw new Error(`${path} answered unchanged to a read that held no tag`);
   return answer.value;
+}
+
+export function copiedList(answer: TaggedAnswer<readonly string[]>): TaggedAnswer<string[]> {
+  return answer.status === 'fresh' ? { ...answer, value: [...answer.value] } : answer;
 }
 
 export async function getRevalidated<T>(
