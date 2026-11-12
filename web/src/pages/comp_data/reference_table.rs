@@ -1,3 +1,4 @@
+use super::address::{HistoryEntry, query_param, use_page_address};
 use super::filters::{SortOrder, filter_options, matches_filter, weight_class_options};
 use super::ui::{DataTable, EmptyTableRow, FilterSelect, SortSelect, TableHead};
 use leptos::prelude::*;
@@ -10,6 +11,7 @@ pub(crate) enum OptionOrder {
 
 pub(crate) struct Filter<R: 'static> {
     pub label: &'static str,
+    pub param: &'static str,
     pub placeholder: &'static str,
     pub value: fn(&R) -> &str,
     pub order: OptionOrder,
@@ -48,13 +50,46 @@ pub(crate) fn rows_shown<'a, R, S: TableSort<R>>(
     shown
 }
 
+pub(crate) const SORT_PARAM: &str = "sort";
+
+fn known_choices(options: &[Vec<String>], in_address: &[String]) -> Vec<String> {
+    options
+        .iter()
+        .zip(in_address)
+        .map(|(values, choice)| {
+            if values.contains(choice) {
+                choice.clone()
+            } else {
+                String::new()
+            }
+        })
+        .collect()
+}
+
+fn sort_or<S: SortOrder>(value: &str, default_sort: S) -> S {
+    S::parse(value).unwrap_or(default_sort)
+}
+
+fn sort_value<S: SortOrder>(order: S, default_sort: S) -> &'static str {
+    if order == default_sort {
+        ""
+    } else {
+        order.value()
+    }
+}
+
+pub(crate) fn filters_cleared<'a, R>(filters: &[Filter<R>]) -> Vec<(&'a str, &'a str)> {
+    filters.iter().map(|filter| (filter.param, "")).collect()
+}
+
 #[component]
 pub(crate) fn ReferenceTable<R, S>(
     rows: Vec<R>,
     filters: &'static [Filter<R>],
     headers: &'static [&'static str],
     row: fn(&R) -> AnyView,
-    sort: RwSignal<S>,
+    path: &'static str,
+    default_sort: S,
     empty_message: &'static str,
     #[prop(optional)] below_another_filter_row: bool,
 ) -> impl IntoView
@@ -62,12 +97,26 @@ where
     R: Send + Sync + 'static,
     S: TableSort<R>,
 {
+    let page = use_page_address(path);
     let options = filters
         .iter()
         .map(|filter| filter.options(&rows))
         .collect::<Vec<_>>();
+    let known_options = StoredValue::new(options.clone());
+    let in_address = filters
+        .iter()
+        .map(|filter| query_param(filter.param))
+        .collect::<Vec<_>>();
+    let chosen = Memo::new(move |_| {
+        let in_address = in_address
+            .iter()
+            .map(|choice| choice.get())
+            .collect::<Vec<_>>();
+        known_options.with_value(|options| known_choices(options, &in_address))
+    });
+    let sort_in_address = query_param(SORT_PARAM);
+    let sort = Memo::new(move |_| sort_in_address.with(|value| sort_or(value, default_sort)));
     let rows = StoredValue::new(rows);
-    let chosen = RwSignal::new(vec![String::new(); filters.len()]);
     let filter_row_class = if below_another_filter_row {
         "data-filters data-filters-secondary"
     } else {
@@ -78,13 +127,14 @@ where
         .zip(options)
         .enumerate()
         .map(|(index, (filter, values))| {
+            let param = filter.param;
             view! {
                 <FilterSelect
                     label=filter.label
                     placeholder=filter.placeholder
                     values
-                    selected=Signal::derive(move || chosen.with(|chosen| chosen[index].clone()))
-                    on_select=move |value: String| chosen.update(|chosen| chosen[index] = value)
+                    selected=Signal::derive(move || chosen.with(|chosen| chosen.get(index).cloned().unwrap_or_default()))
+                    on_select=move |value: String| page.change(&[(param, value.as_str())], HistoryEntry::Push)
                 />
             }
         })
@@ -93,22 +143,24 @@ where
     view! {
         <div class=filter_row_class>
             {selects}
-            <SortSelect sort=sort.read_only() set_sort=sort.write_only() />
+            <SortSelect<S>
+                sort=sort
+                on_sort=move |order: S| page.change(&[(SORT_PARAM, sort_value(order, default_sort))], HistoryEntry::Push)
+            />
         </div>
         <DataTable>
             <TableHead headers />
             <tbody>
                 {move || {
-                    let chosen = chosen.get();
                     let order = sort.get();
-                    rows.with_value(|rows| {
-                        let shown = rows_shown(rows, filters, &chosen, order);
+                    chosen.with(|chosen| rows.with_value(|rows| {
+                        let shown = rows_shown(rows, filters, chosen, order);
                         if shown.is_empty() {
                             view! { <EmptyTableRow columns=headers.len() message=empty_message /> }.into_any()
                         } else {
                             shown.into_iter().map(row).collect_view().into_any()
                         }
-                    })
+                    }))
                 }}
             </tbody>
         </DataTable>
@@ -137,12 +189,14 @@ mod tests {
     const FILTERS: &[Filter<Lift>] = &[
         Filter {
             label: "Gender",
+            param: "gender",
             placeholder: "All genders",
             value: gender,
             order: OptionOrder::Alphabetical,
         },
         Filter {
             label: "Weight class",
+            param: "class",
             placeholder: "All classes",
             value: class,
             order: OptionOrder::ByWeight,
@@ -165,6 +219,49 @@ mod tests {
                 }
             }
         }
+    }
+
+    #[test]
+    fn a_choice_in_the_address_counts_only_when_the_table_offers_it() {
+        let options = FILTERS
+            .iter()
+            .map(|filter| filter.options(&lifts()))
+            .collect::<Vec<_>>();
+        let in_address = vec!["Women".to_owned(), "70kg".to_owned()];
+        assert_eq!(
+            known_choices(&options, &in_address),
+            vec!["Women".to_owned(), String::new()]
+        );
+        assert_eq!(
+            known_choices(&options, &["".to_owned(), "110+kg".to_owned()]),
+            vec![String::new(), "110+kg".to_owned()]
+        );
+    }
+
+    #[test]
+    fn the_default_sort_stays_out_of_the_address_and_an_unknown_one_reads_as_the_default() {
+        assert_eq!(sort_value(LiftSort::TotalDesc, LiftSort::TotalDesc), "");
+        assert_eq!(
+            sort_value(LiftSort::TotalAsc, LiftSort::TotalDesc),
+            "total_asc"
+        );
+        assert_eq!(
+            sort_or("total_asc", LiftSort::TotalDesc),
+            LiftSort::TotalAsc
+        );
+        assert_eq!(sort_or("", LiftSort::TotalDesc), LiftSort::TotalDesc);
+        assert_eq!(
+            sort_or("rank_asc", LiftSort::TotalDesc),
+            LiftSort::TotalDesc
+        );
+    }
+
+    #[test]
+    fn a_new_page_level_choice_clears_every_filter_of_the_table() {
+        assert_eq!(
+            filters_cleared(FILTERS),
+            vec![("gender", ""), ("class", "")]
+        );
     }
 
     fn lifts() -> Vec<Lift> {

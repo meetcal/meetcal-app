@@ -42,18 +42,21 @@ fn weight_class(standard: &Standard) -> &str {
 const FILTERS: &[Filter<Standard>] = &[
     Filter {
         label: "Gender",
+        param: "gender",
         placeholder: "All genders",
         value: gender,
         order: OptionOrder::Alphabetical,
     },
     Filter {
         label: "Age",
+        param: "age",
         placeholder: "All ages",
         value: age,
         order: OptionOrder::Alphabetical,
     },
     Filter {
         label: "Weight class",
+        param: "class",
         placeholder: "All classes",
         value: weight_class,
         order: OptionOrder::ByWeight,
@@ -103,7 +106,6 @@ fn standard_row(standard: &Standard) -> AnyView {
 
 #[component]
 pub fn Standards() -> impl IntoView {
-    let sort = RwSignal::new(StandardSort::ADesc);
     let standards = load_rows(queries::STANDARDS, Standard::shown);
 
     view! {
@@ -113,7 +115,7 @@ pub fn Standards() -> impl IntoView {
         >
             {move || table_response(standards, HEADERS.len(), "standards", |standards| {
                 view! {
-                    <ReferenceTable rows=standards.to_vec() filters=FILTERS headers=HEADERS row=standard_row sort empty_message="No standards match these filters." />
+                    <ReferenceTable rows=standards.to_vec() filters=FILTERS headers=HEADERS row=standard_row path="/standards" default_sort=StandardSort::ADesc empty_message="No standards match these filters." />
                 }
                 .into_any()
             })}
