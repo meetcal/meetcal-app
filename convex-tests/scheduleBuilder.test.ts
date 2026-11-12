@@ -1,5 +1,5 @@
 import { ConvexError } from 'convex/values';
-import { athleteKey, balancedChunks, buildSchedule, interleave, slotsThatFit, splitLabel, type BuilderEntrant, type BuiltSchedule } from '../convex/lib/scheduleBuilder';
+import { athleteKey, balancedChunks, buildSchedule, interleave, layoutSlots, slotsThatFit, splitLabel, type BuilderEntrant, type BuiltSchedule } from '../convex/lib/scheduleBuilder';
 import { checkBuilderEdits, checkBuilderOptions, defaultBuilderOptions, meetDays, minutesOfClock, storedClockOf, type BuilderOptions } from '../convex/lib/scheduleBuilderOptions';
 
 let nextId = 1;
@@ -183,13 +183,14 @@ describe('fitting sessions into days', () => {
     expect(slotsThatFit(minutesOfClock('23:00') ?? 0, { sessionMinutes: 120, breakMinutes: 0 })).toBe(0);
   });
 
-  it('lays out the largest roster quickly when sessions do not fit', () => {
-    const entrants = many(10_000, (i) => lifter(i % 2 ? 'Men' : 'Women', String(40 + (i % 60)), i % 300));
-    const started = performance.now();
+  it('finds the smallest day cap that fits without trying every cap', () => {
     const days = Array.from({ length: 7 }, (_, i) => ({ date: `2027-03-0${i + 1}`, firstStart: '09:00' }));
-    const schedule = buildSchedule(entrants, options({ days, maxAthletesPerPlatform: 1, sessionMinutes: 15 }));
-    expect(performance.now() - started).toBeLessThan(500);
-    expect(schedule.warnings.map((w) => w.code)).toEqual(['unscheduled']);
+    const started = performance.now();
+    const overfull = layoutSlots([50_000], options({ days, sessionMinutes: 15 }));
+    expect(performance.now() - started).toBeLessThan(2_000);
+    expect(overfull.filter((p) => p !== null)).toHaveLength(7 * 60);
+    const even = layoutSlots([10, 4], options({ days: days.slice(0, 3), order: 'womenDayMenDay' }));
+    expect(even.map((p) => p && `${p.day}:${p.index}`)).toEqual(['0:0', '0:1', '0:2', '0:3', '0:4', '1:0', '1:1', '1:2', '1:3', '1:4', '2:0', '2:1', '2:2', '2:3']);
   });
 
   it('warns when the meet has no entrants', () => {

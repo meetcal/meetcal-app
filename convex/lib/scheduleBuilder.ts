@@ -1,7 +1,7 @@
 import { groupOfAge } from './elite';
 import { athleteGenderLabel, normalizeGender } from './normalize';
 import { normalizeName } from './names';
-import { sortByWeightClass } from './sort';
+import { compareBytes, compareCollated, sortByWeightClass } from './sort';
 import { bareWeightClass } from './weightClass';
 import { MINUTES_PER_DAY, minutesOfClock, storedClockOf, type BuilderEdit, type BuilderOptions, type BuilderOrder } from './scheduleBuilderOptions';
 
@@ -61,7 +61,7 @@ function ageGroupOf(age: number, separate: boolean): AgePool {
   return 'open';
 }
 
-const byTotal = (a: BuiltAthlete, b: BuiltAthlete) => a.entryTotal - b.entryTotal || a.name.localeCompare(b.name) || a.key.localeCompare(b.key);
+const byTotal = (a: BuiltAthlete, b: BuiltAthlete) => a.entryTotal - b.entryTotal || compareCollated(a.name, b.name) || compareBytes(a.key, b.key);
 
 function genderRank(gender: string): number {
   const at = GENDER_ORDER.indexOf(gender);
@@ -125,7 +125,7 @@ function genderSequences(entrants: readonly BuilderEntrant[], options: BuilderOp
     pools.set(id, pool);
   }
   const ordered = [...pools.values()].sort(
-    (a, b) => genderRank(a.gender) - genderRank(b.gender) || a.gender.localeCompare(b.gender) || POOL_ORDER.indexOf(a.ageGroup) - POOL_ORDER.indexOf(b.ageGroup),
+    (a, b) => genderRank(a.gender) - genderRank(b.gender) || compareBytes(a.gender, b.gender) || POOL_ORDER.indexOf(a.ageGroup) - POOL_ORDER.indexOf(b.ageGroup),
   );
   const sequences = new Map<string, Group[]>();
   for (const pool of ordered) {
@@ -162,7 +162,7 @@ export function slotsThatFit(firstStart: number, options: Pick<BuilderOptions, '
   return Math.floor((last - firstStart) / (options.sessionMinutes + options.breakMinutes)) + 1;
 }
 
-type Placement = { day: number; index: number } | null;
+export type Placement = { day: number; index: number } | null;
 
 function placeSlots(segmentSlots: readonly number[], capacityOfDay: (day: number) => number, dayCount: number): Placement[] {
   const placements: Placement[] = [];
@@ -189,7 +189,7 @@ function placeSlots(segmentSlots: readonly number[], capacityOfDay: (day: number
   return placements;
 }
 
-function layout(segmentSlots: readonly number[], options: BuilderOptions): Placement[] {
+export function layoutSlots(segmentSlots: readonly number[], options: BuilderOptions): Placement[] {
   const fits = options.days.map((day) => slotsThatFit(minutesOfClock(day.firstStart) ?? 0, options));
   const total = segmentSlots.reduce((sum, n) => sum + n, 0);
   if (options.maxSessionsPerDay !== null) {
@@ -214,7 +214,7 @@ function initialSlots(entrants: readonly BuilderEntrant[], options: BuilderOptio
   const platforms = options.platforms;
   const segments = segmentsFor(options.order, genderSequences(entrants, options));
   const slotGroups = segments.map((groups) => balancedChunks(groups, platforms.length));
-  const placements = layout(
+  const placements = layoutSlots(
     slotGroups.map((slots) => slots.length),
     options,
   );
@@ -326,7 +326,7 @@ function finish(slots: readonly Slot[], options: BuilderOptions, athletes: numbe
       const aStart = a.slot.start;
       const bStart = b.slot.start;
       if ((aStart === null) !== (bStart === null)) return aStart === null ? 1 : -1;
-      return a.slot.date.localeCompare(b.slot.date) || (aStart ?? 0) - (bStart ?? 0) || a.slot.id - b.slot.id;
+      return compareBytes(a.slot.date, b.slot.date) || (aStart ?? 0) - (bStart ?? 0) || a.slot.id - b.slot.id;
     });
   const sessions = kept.map(({ slot, groups }, i): BuiltSession => {
     const scheduled = slot.start !== null && slot.date !== '';
