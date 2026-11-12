@@ -17,7 +17,7 @@ export type DateRange = readonly [start: string, end: string];
 
 export type RankingsReading = { deadline?: number; wholeTables?: boolean };
 
-type TableRead = { rows: Dict[]; notWhole?: string };
+type TableRead = { rows: Dict[]; notWhole?: string; shifted?: boolean };
 
 export function halvesOf([start, end]: DateRange, unsplitDays = RANKINGS_UNSPLIT_DAYS): [DateRange, DateRange] | null {
   const days = daysBetween(start, end);
@@ -47,7 +47,7 @@ export function tableComplete(rows: number, total: unknown): boolean {
   return rowCount(total) === rows;
 }
 
-export function joinPages(pages: readonly Dict[][], total: unknown): { rows: Dict[]; notWhole?: string } {
+export function joinPages(pages: readonly Dict[][], total: unknown): TableRead {
   const rows = pages.flat();
   const reported = rowCount(total);
   if (typeof total === 'number' && reported === null) throw new Error(`read ${rows.length} rows of the ${total} the table reports`);
@@ -56,7 +56,7 @@ export function joinPages(pages: readonly Dict[][], total: unknown): { rows: Dic
   const earlier = new Set<string>();
   for (const page of pages) {
     const keys = page.map((row) => JSON.stringify(row));
-    if (keys.some((key) => earlier.has(key))) return { rows, notWhole: 'a row came back on two pages (their order shifted)' };
+    if (keys.some((key) => earlier.has(key))) return { rows, notWhole: 'a row came back on two pages (their order shifted)', shifted: true };
     for (const key of keys) earlier.add(key);
   }
   return { rows };
@@ -98,7 +98,7 @@ export class Sport80 {
     return readTablePage(await response.json());
   }
 
-  private async collate(first: Dict, payload?: Dict): Promise<{ rows: Dict[]; notWhole?: string }> {
+  private async collate(first: Dict, payload?: Dict): Promise<TableRead> {
     const pages: Dict[][] = [pageRows(first)];
     let current = first;
     for (let page = 1; typeof current.next_page_url === 'string' && current.next_page_url; page++) {
@@ -161,7 +161,7 @@ export class Sport80 {
         parts.push(table.rows);
         continue;
       }
-      const smaller = halvesOf(range, 0);
+      const smaller = table.shifted ? halvesOf(range, 0) : null;
       if (!smaller) throw rangeFailure(range, table.notWhole);
       pending.unshift(...smaller);
     }

@@ -121,6 +121,14 @@ describe('a range whose rows shift between pages', () => {
     expect(rows.every((row) => String(row.lifter).includes('..'))).toBe(true);
   });
 
+  it('fails the backfill’s read at once, without splitting, when the table reports no row count', async () => {
+    const requests = fakeSport80(() => Response.json({ data: [{ lifter: 'only' }] }));
+    await expect((await Sport80.connect()).rankings(938, '2026-09-01', '2026-11-12', { wholeTables: true })).rejects.toThrow(
+      '2026-09-01 to 2026-11-12: the table reports no row count',
+    );
+    expect(requests).toHaveLength(1);
+  });
+
   it('fails the backfill’s read when a single day still shifts', async () => {
     fakeSport80((request) =>
       request.page === '2'

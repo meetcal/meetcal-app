@@ -53,7 +53,7 @@ describe('result columns emptied (#96)', () => {
     // A partial table that reports no total still stores, but is not whole.
     expect(joinPages([[alice]], undefined)).toEqual({ rows: [alice], notWhole: 'the table reports no row count' });
     // Alice on both pages and Bob on none: the count matches, the table is not whole.
-    expect(joinPages([[alice], [{ ...alice }]], 2).notWhole).toBe('a row came back on two pages (their order shifted)');
+    expect(joinPages([[alice], [{ ...alice }]], 2)).toMatchObject({ notWhole: 'a row came back on two pages (their order shifted)', shifted: true });
     // Rows of one athlete that differ (two divisions) are not a repeat.
     expect(joinPages([[alice], [{ ...alice, total: 190 }]], 2).notWhole).toBeUndefined();
   });
