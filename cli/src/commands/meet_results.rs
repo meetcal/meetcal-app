@@ -1,23 +1,23 @@
-use std::collections::{BTreeMap, HashMap};
+use std::collections::HashMap;
 
-use anyhow::{Result, bail};
+use anyhow::{Result, anyhow, bail};
 use clap::Parser;
 use comfy_table::Table;
+use serde::Deserialize;
 use tokio::task::JoinSet;
 
 use crate::{
     types::lifting_results::LiftingResults,
     utils::{
-        backend::{CONCURRENT_READS, in_order, queries, query},
+        backend::{queries, query, query_each},
         format::{capitalized, display_body_weight},
         make_rate::make_rate_tables,
         meet_names::{SPONSOR_WORDS, editions_by_year, series_name},
         names::{MAX_NAME_PAGES, NameKind, just_before, meet_names_between, not_found},
         output::{self, Report},
         stats::{
-            Division, Gender, Lift, QPOINTS_LABEL, SINCLAIR_LABEL, attempt_habits, average,
-            bombed_out, fold, number, percent, points, row_qpoints, row_sinclair, valid_lift,
-            valid_total,
+            Division, Gender, Lift, QPOINTS_LABEL, SINCLAIR_LABEL, fold, number, percent, points,
+            row_qpoints, row_sinclair, valid_lift, valid_total,
         },
     },
 };
@@ -64,9 +64,74 @@ pub(crate) struct EditionSummary {
     pub(crate) summary: MeetSummary,
 }
 
+#[derive(Debug, Deserialize)]
+struct ScoredAthlete {
+    score: f64,
+    name: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct BestByGender {
+    men: Option<ScoredAthlete>,
+    women: Option<ScoredAthlete>,
+}
+
+impl BestByGender {
+    fn pair(self) -> [Option<(f64, String)>; 2] {
+        [self.men, self.women].map(|best| best.map(|best| (best.score, best.name)))
+    }
+}
+
+#[derive(Debug, Deserialize)]
+struct EditionAnswer {
+    meet: String,
+    year: String,
+    athletes: usize,
+    bomb_outs: usize,
+    average_total: Option<f64>,
+    make_rate: Option<f64>,
+    best_sinclair: BestByGender,
+    best_qpoints: BestByGender,
+}
+
+impl From<EditionAnswer> for EditionSummary {
+    fn from(answer: EditionAnswer) -> Self {
+        EditionSummary {
+            meet: answer.meet,
+            year: answer.year,
+            summary: MeetSummary {
+                athletes: answer.athletes,
+                bomb_outs: answer.bomb_outs,
+                average_total: answer.average_total,
+                make_rate: answer.make_rate,
+                best_sinclair: answer.best_sinclair.pair(),
+                best_qpoints: answer.best_qpoints.pair(),
+            },
+        }
+    }
+}
+
+pub(crate) const SUMMARY_MEETS_PER_READ: usize = 4;
+
+async fn edition_summaries(meets: &[String]) -> Result<Vec<EditionSummary>> {
+    let reads = meets
+        .chunks(SUMMARY_MEETS_PER_READ)
+        .map(|batch| serde_json::json!({ "meets": batch }))
+        .collect();
+    Ok(
+        query_each::<Vec<EditionAnswer>>(queries::MEET_SUMMARIES, reads)
+            .await?
+            .into_iter()
+            .flatten()
+            .map(EditionSummary::from)
+            .collect(),
+    )
+}
+
 pub async fn run(args: MeetResultsArgs) -> Result<()> {
     let name = args.name;
-    let rows = meet_rows(&name).await?;
+    let asked = [name.clone()];
+    let (rows, own_editions) = tokio::try_join!(meet_rows(&name), edition_summaries(&asked))?;
     if rows.is_empty() {
         let message = format!("No results found for meet \"{name}\"");
         return Err(not_found(NameKind::ResultsMeet, &name, message).await);
@@ -86,15 +151,27 @@ pub async fn run(args: MeetResultsArgs) -> Result<()> {
     };
     let other_years: Vec<String> = years.keys().cloned().collect();
 
-    let this_edition = EditionSummary {
-        meet: name.clone(),
-        year: year.clone(),
-        summary: summarize(&results),
-    };
+    let own_editions: Vec<EditionSummary> = own_editions
+        .into_iter()
+        .map(|edition| EditionSummary {
+            meet: name.clone(),
+            ..edition
+        })
+        .collect();
+    let this_edition = own_editions
+        .iter()
+        .find(|edition| edition.year == year)
+        .cloned()
+        .ok_or_else(|| {
+            anyhow!(
+                "MeetCal has no summary of the {year} edition of \"{name}\" yet; try again in a \
+                 minute"
+            )
+        })?;
     let earlier = if args.no_history {
         Vec::new()
     } else {
-        earlier_editions(&name, &year, years).await?
+        earlier_editions(&name, &year, own_editions).await?
     };
 
     output::emit(report(
@@ -111,14 +188,10 @@ async fn meet_rows(meet: &str) -> Result<Vec<LiftingResults>> {
     query(queries::MEET_RESULTS, &serde_json::json!({ "meet": meet })).await
 }
 
-/// The meet's editions in the [`EDITIONS`] years before `year`, newest first: the same name's
-/// rows from earlier years (`same_name`), and meets whose names differ only in the year, "The",
-/// punctuation or sponsor words ([`series_name`]), such as `2024 DMV WSO Championships` for
-/// `The 2025 DMV WSO Championships`.
 async fn earlier_editions(
     meet: &str,
     year: &str,
-    same_name: BTreeMap<String, Vec<LiftingResults>>,
+    own_editions: Vec<EditionSummary>,
 ) -> Result<Vec<EditionSummary>> {
     let Ok(current) = year.parse::<i32>() else {
         return Ok(Vec::new());
@@ -128,16 +201,6 @@ async fn earlier_editions(
             .parse::<i32>()
             .is_ok_and(|y| (current - EDITIONS..current).contains(&y))
     };
-    let mut editions: Vec<EditionSummary> = same_name
-        .into_iter()
-        .filter(|(edition_year, _)| wanted(edition_year))
-        .map(|(edition_year, rows)| EditionSummary {
-            meet: meet.to_string(),
-            year: edition_year,
-            summary: summarize(&rows),
-        })
-        .collect();
-
     let candidates: Vec<String> = edition_names(meet, current)
         .await?
         .into_iter()
@@ -145,22 +208,11 @@ async fn earlier_editions(
             year_in(candidate).is_none_or(|(_, y)| (current - EDITIONS..current).contains(&y))
         })
         .collect();
-    let reads = candidates
-        .iter()
-        .cloned()
-        .map(|candidate| async move { meet_rows(&candidate).await });
-    let answers = in_order(CONCURRENT_READS, reads).await?;
-    for (candidate, rows) in candidates.into_iter().zip(answers) {
-        for (edition_year, rows) in editions_by_year(rows) {
-            if wanted(&edition_year) {
-                editions.push(EditionSummary {
-                    meet: candidate.clone(),
-                    year: edition_year,
-                    summary: summarize(&rows),
-                });
-            }
-        }
-    }
+    let mut editions: Vec<EditionSummary> = own_editions
+        .into_iter()
+        .chain(edition_summaries(&candidates).await?)
+        .filter(|edition| wanted(&edition.year))
+        .collect();
     editions.sort_by(|a, b| b.year.cmp(&a.year).then_with(|| a.meet.cmp(&b.meet)));
     Ok(editions)
 }
@@ -292,32 +344,6 @@ fn one_row_per_performance(rows: &[LiftingResults]) -> Vec<&LiftingResults> {
         .into_iter()
         .filter_map(|group| group.first().copied())
         .collect()
-}
-
-pub(crate) fn summarize(rows: &[LiftingResults]) -> MeetSummary {
-    let all = one_row_per_performance(rows);
-    // Source errors (`stats::plausible`) count as athletes, but not toward the average total.
-    let totals: Vec<f64> = all.iter().filter_map(|row| valid_total(row)).collect();
-    let (mut taken, mut made) = (0, 0);
-    for lift in [Lift::Snatch, Lift::CleanAndJerk] {
-        let habits = attempt_habits(&all, lift);
-        taken += habits.taken.iter().sum::<usize>();
-        made += habits.made.iter().sum::<usize>();
-    }
-    let best = |score: fn(&LiftingResults) -> Option<f64>, gender: Gender| {
-        rows.iter()
-            .filter(|row| Division::parse(&row.age).gender == Some(gender))
-            .filter_map(|row| score(row).map(|value| (value, row.name.clone())))
-            .max_by(|a, b| a.0.total_cmp(&b.0))
-    };
-    MeetSummary {
-        athletes: all.len(),
-        bomb_outs: all.iter().filter(|row| bombed_out(row)).count(),
-        average_total: average(&totals),
-        make_rate: (taken > 0).then(|| made as f64 * 100.0 / taken as f64),
-        best_sinclair: GENDERS.map(|gender| best(row_sinclair, gender)),
-        best_qpoints: GENDERS.map(|gender| best(row_qpoints, gender)),
-    }
 }
 
 fn top_table(
@@ -558,6 +584,42 @@ mod tests {
     use super::*;
     use crate::utils::stats::tests::row;
 
+    fn summary_of(athletes: usize) -> MeetSummary {
+        MeetSummary {
+            athletes,
+            bomb_outs: 1,
+            average_total: Some(190.0),
+            make_rate: Some(50.0),
+            best_sinclair: [None, Some((300.5, "Ada".to_string()))],
+            best_qpoints: [None, None],
+        }
+    }
+
+    #[test]
+    fn an_edition_summary_reads_the_servers_answer() {
+        let answer: Vec<EditionAnswer> = serde_json::from_value(serde_json::json!([{
+            "meet": "2024 DMV WSO Championships", "year": "2024", "athletes": 118,
+            "bomb_outs": 3, "average_total": 151.4, "make_rate": null,
+            "best_sinclair": {"men": {"score": 401.23, "name": "A Lifter"}, "women": null},
+            "best_qpoints": {"men": null, "women": {"score": 98.4, "name": "B Lifter"}}
+        }]))
+        .unwrap();
+        let edition = EditionSummary::from(answer.into_iter().next().unwrap());
+        assert_eq!(edition.meet, "2024 DMV WSO Championships");
+        assert_eq!(edition.year, "2024");
+        assert_eq!(
+            edition.summary,
+            MeetSummary {
+                athletes: 118,
+                bomb_outs: 3,
+                average_total: Some(151.4),
+                make_rate: None,
+                best_sinclair: [Some((401.23, "A Lifter".to_string())), None],
+                best_qpoints: [None, Some((98.4, "B Lifter".to_string()))],
+            }
+        );
+    }
+
     #[test]
     fn years_in_names_with_curly_quotes_accents_or_emoji_do_not_panic() {
         assert_eq!(year_in("KC Weightlifting’s Fall Open"), None);
@@ -617,19 +679,7 @@ mod tests {
                 [150.0, 0.0, 0.0],
             ),
         ];
-        let summary = summarize(&rows);
-        assert_eq!(summary.athletes, 2);
-        assert_eq!(summary.bomb_outs, 1);
-        assert_eq!(summary.average_total, Some(190.0));
-        // 5 made of 10 taken.
-        assert_eq!(summary.make_rate, Some(50.0));
-        assert_eq!(
-            summary.best_sinclair[1].as_ref().map(|(_, n)| n.as_str()),
-            Some("Ada")
-        );
-        // Bo bombed out: no men's score.
-        assert_eq!(summary.best_sinclair[0], None);
-
+        let summary = summary_of(2);
         let editions = [EditionSummary {
             meet: "M".into(),
             year: "2026".into(),
@@ -678,7 +728,7 @@ mod tests {
         let edition = EditionSummary {
             meet: "M".into(),
             year: "2026".into(),
-            summary: summarize(&rows),
+            summary: summary_of(2),
         };
         let report = report(&rows, &edition, &[], &[], false);
         let json = report.to_json();
@@ -719,8 +769,7 @@ mod tests {
                 [85.0, 90.0, -95.0],
             ),
         ];
-        let summary = summarize(&rows);
-        assert_eq!(summary.average_total, Some(287.5));
+        let summary = summary_of(3);
         let json = report(
             &rows,
             &EditionSummary {
@@ -768,11 +817,7 @@ mod tests {
         let mut same_lifts_on_another_day = lift("Ada Lift", "Open Women's 71kg", [60.0, 0.0, 0.0]);
         same_lifts_on_another_day.date = "2026-04-05".into();
         rows.push(same_lifts_on_another_day);
-        let summary = summarize(&rows);
-        assert_eq!(summary.athletes, 4);
-        assert_eq!(summary.bomb_outs, 1);
-        assert_eq!(summary.average_total, Some(500.0 / 3.0));
-        assert_eq!(summary.make_rate, Some(700.0 / 14.0));
+        let summary = summary_of(4);
 
         let editions = [EditionSummary {
             meet: "M".into(),
@@ -812,7 +857,7 @@ mod tests {
         let editions = [EditionSummary {
             meet: "M".into(),
             year: "2026".into(),
-            summary: summarize(&rows),
+            summary: summary_of(1),
         }];
         let json = report(&rows, &editions[0], &editions[1..], &[], false).to_json();
         let top = json["top_qpoints_women"].as_array().unwrap();
@@ -844,12 +889,12 @@ mod tests {
             EditionSummary {
                 meet: "Testify Leprechaun Lift-off".into(),
                 year: "2024".into(),
-                summary: summarize(&latest),
+                summary: summary_of(2),
             },
             EditionSummary {
                 meet: "Testify Leprechaun Lift-off".into(),
                 year: "2023".into(),
-                summary: summarize(&years["2023"]),
+                summary: summary_of(1),
             },
         ];
         let report = report(

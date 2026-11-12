@@ -126,6 +126,15 @@ pub(crate) fn same_ignoring_case_and_surrounding_space(a: &str, b: &str) -> bool
     a.trim().eq_ignore_ascii_case(b.trim())
 }
 
+pub(crate) fn server_filters<const N: usize>(filters: [(&str, &str); N]) -> serde_json::Value {
+    filters
+        .into_iter()
+        .filter(|(_, value)| !value.trim().is_empty())
+        .map(|(name, value)| (name.to_string(), serde_json::Value::from(value)))
+        .collect::<serde_json::Map<_, _>>()
+        .into()
+}
+
 pub(crate) fn no_match(what: &str, filters: &[Filter], rows: &[Vec<&str>]) -> Error {
     let same = same_ignoring_case_and_surrounding_space;
     let mut remaining: Vec<&Vec<&str>> = rows.iter().collect();

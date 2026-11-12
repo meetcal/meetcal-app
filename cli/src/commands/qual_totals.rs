@@ -6,6 +6,7 @@ use serde::Deserialize;
 use crate::utils::backend::{NoArgs, queries, query};
 use crate::utils::filters::{
     Filter, gender_as_matched, is_gender, no_match, same_ignoring_case_and_surrounding_space,
+    server_filters,
 };
 use crate::utils::format::display_weight_class;
 use crate::utils::output::{self, Report};
@@ -43,9 +44,38 @@ pub struct QualTotalsArgs {
     pub event: String,
 }
 
+#[derive(Debug, Deserialize)]
+pub(crate) struct QualifyingTotalCategory {
+    pub(crate) event_name: String,
+    pub(crate) gender: String,
+    pub(crate) age_category: String,
+}
+
 pub async fn run(args: QualTotalsArgs) -> Result<()> {
-    let totals: Vec<QualifyingTotal> = query(queries::QUALIFYING_TOTALS, &NoArgs {}).await?;
-    let matching = selected(totals, &args.age, args.gender, &args.event)?;
+    let filters = server_filters([
+        ("event", args.event.as_str()),
+        ("ageCategory", args.age.as_str()),
+        ("gender", args.gender.label()),
+    ]);
+    let totals: Vec<QualifyingTotal> = query(queries::QUALIFYING_TOTALS, &filters).await?;
+    let matching = match selected(totals, &args.age, args.gender, &args.event) {
+        Ok(matching) => matching,
+        Err(_) => {
+            let categories: Vec<QualifyingTotalCategory> =
+                query(queries::QUALIFYING_TOTAL_CATEGORIES, &NoArgs {}).await?;
+            let rows: Vec<Vec<&str>> = categories
+                .iter()
+                .map(|row| {
+                    vec![
+                        row.age_category.as_str(),
+                        gender_as_matched(&row.gender),
+                        row.event_name.as_str(),
+                    ]
+                })
+                .collect();
+            return Err(unmatched(&args.age, args.gender, &args.event, &rows));
+        }
+    };
 
     output::emit(report(matching));
 
@@ -78,20 +108,6 @@ pub(crate) fn selected(
                 && same(&row.event_name, event)
         });
     if matching.is_empty() {
-        let filters = [
-            Filter {
-                option: "--age",
-                value: age,
-            },
-            Filter {
-                option: "--gender",
-                value: gender.label(),
-            },
-            Filter {
-                option: "--event",
-                value: event,
-            },
-        ];
         let rows: Vec<Vec<&str>> = others
             .iter()
             .map(|row| {
@@ -102,9 +118,27 @@ pub(crate) fn selected(
                 ]
             })
             .collect();
-        return Err(no_match("qualifying totals", &filters, &rows));
+        return Err(unmatched(age, gender, event, &rows));
     }
     Ok(matching)
+}
+
+fn unmatched(age: &str, gender: Gender, event: &str, rows: &[Vec<&str>]) -> anyhow::Error {
+    let filters = [
+        Filter {
+            option: "--age",
+            value: age,
+        },
+        Filter {
+            option: "--gender",
+            value: gender.label(),
+        },
+        Filter {
+            option: "--event",
+            value: event,
+        },
+    ];
+    no_match("qualifying totals", &filters, rows)
 }
 
 #[cfg(test)]

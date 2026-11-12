@@ -5,24 +5,20 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 use anyhow::Result;
 use clap::Parser;
 use comfy_table::Table;
-use serde_json::json;
+use serde::Deserialize;
+use serde_json::{Value, json};
 
 use crate::commands::group_wrapped::{
     ClubMembership, distinct_names, filter_membership_results, get_club_memberships,
     get_wso_memberships,
 };
-use crate::types::athletes::Athletes;
 use crate::types::lifting_results::LiftingResults;
-use crate::types::wso::Movement;
 use crate::utils::athletes::histories;
-use crate::utils::backend::{CONCURRENT_READS, in_order, queries, query};
+use crate::utils::backend::{queries, query_each};
 use crate::utils::format::us_date;
-use crate::utils::meet_names::{editions_by_year, equivalent_meets, year_of};
+use crate::utils::meet_names::{equivalent_meets, year_of};
 use crate::utils::names::{NameKind, not_found};
 use crate::utils::output::{self, Report};
-use crate::utils::placings::{
-    RosterClasses, calculate_medal_details, needs_roster, roster_classes,
-};
 use crate::utils::stats::{
     Lift, SINCLAIR_LABEL, attempt_habits, fold, number, percent, points, pr_flags, row_qpoints,
     row_sinclair, valid_total,
@@ -130,30 +126,40 @@ fn pr_key(row: &LiftingResults) -> (String, String, String) {
     (fold(&row.name), fold(&row.meet), row.date.clone())
 }
 
-/// Gold, silver and bronze totals the group's athletes won, by year: placings by total within
-/// each division at the meet.
+#[derive(Debug, Deserialize)]
+struct YearMedals {
+    year: String,
+    gold: usize,
+    silver: usize,
+    bronze: usize,
+}
+
+pub(crate) const MEDAL_MEMBERS_PER_READ: usize = 2_000;
+
 async fn medals_by_year(
     memberships: &[ClubMembership],
     group_rows: &[LiftingResults],
 ) -> Result<BTreeMap<String, [usize; 3]>> {
     let registered = members_by_meet(memberships);
-    let jobs: Vec<_> = meet_editions(group_rows)
-        .into_iter()
-        .map(|(spellings, years)| {
-            let members = members_at(&registered, &spellings);
-            meet_medals(spellings, years, members)
-        })
-        .collect();
+    let mut counted_years: Vec<Vec<String>> = Vec::new();
+    let mut reads: Vec<Value> = Vec::new();
+    for (spellings, years) in meet_editions(group_rows) {
+        let mut members = members_at(&registered, &spellings);
+        members.sort();
+        members.dedup();
+        for batch in members.chunks(MEDAL_MEMBERS_PER_READ) {
+            counted_years.push(years.clone());
+            reads.push(json!({ "meets": spellings, "members": batch }));
+        }
+    }
+    let answers = query_each::<Vec<YearMedals>>(queries::GROUP_MEDALS, reads).await?;
     let mut medals: BTreeMap<String, [usize; 3]> = BTreeMap::new();
-    for placings in in_order(CONCURRENT_READS, jobs).await? {
-        for (year, place) in placings {
-            let [gold, silver, bronze] = medals.entry(year).or_default();
-            match place {
-                1 => *gold += 1,
-                2 => *silver += 1,
-                3 => *bronze += 1,
-                _ => {}
-            }
+    for (years, answer) in counted_years.iter().zip(answers) {
+        for won in answer.into_iter().filter(|won| years.contains(&won.year)) {
+            let [gold, silver, bronze] = medals.entry(won.year).or_default();
+            *gold += won.gold;
+            *silver += won.silver;
+            *bronze += won.bronze;
         }
     }
     Ok(medals)
@@ -189,60 +195,6 @@ pub(crate) fn members_at(
         .collect()
 }
 
-async fn meet_medals(
-    spellings: Vec<String>,
-    years: Vec<String>,
-    members: Vec<String>,
-) -> Result<Vec<(String, usize)>> {
-    let mut placings = Vec::new();
-    {
-        // Each spelling is a results meet already (the group's rows name it), so no aliases.
-        // `results:byMeet` matches a name exactly, so each spelling is asked for. A meet also
-        // answers the results titles linked to it: those spelled like it are the same meet and
-        // kept, others are ranked when the group's rows name them. A title already read (as
-        // another spelling's linked title) is not counted twice.
-        let mut meet_rows: Vec<LiftingResults> = Vec::new();
-        let mut titles: HashSet<String> = HashSet::new();
-        for meet in &spellings {
-            if titles.contains(meet) {
-                continue;
-            }
-            let rows: Vec<LiftingResults> =
-                query(queries::MEET_RESULTS, &json!({ "meet": meet })).await?;
-            let fresh: Vec<LiftingResults> = own_title_rows(meet, rows)
-                .into_iter()
-                .filter(|row| !titles.contains(&row.meet))
-                .collect();
-            titles.extend(fresh.iter().map(|row| row.meet.clone()));
-            meet_rows.extend(fresh);
-        }
-        // Divisions without a weight class place by the roster's class, as on the server.
-        let roster = if needs_roster(&meet_rows) {
-            let mut athletes: Vec<Athletes> = Vec::new();
-            for meet in &spellings {
-                let rows: Vec<Athletes> =
-                    query(queries::MEET_ATHLETES, &json!({ "meet": meet })).await?;
-                athletes.extend(rows);
-            }
-            roster_classes(&athletes)
-        } else {
-            RosterClasses::new()
-        };
-        let mut editions = editions_by_year(meet_rows);
-        for meet_year in years {
-            let Some(edition) = editions.remove(&meet_year) else {
-                continue;
-            };
-            for detail in calculate_medal_details(&members, &edition, &roster) {
-                if detail.movement == Movement::Total && (1..=3).contains(&detail.place) {
-                    placings.push((meet_year.clone(), detail.place));
-                }
-            }
-        }
-    }
-    Ok(placings)
-}
-
 /// The meets the group's rows come from, one entry per meet whatever its case or spacing: every
 /// raw spelling of its name, and the years the group lifted there. A meet name held every year is
 /// a separate meet each year, and one meet's name can be spelled differently between years.
@@ -259,13 +211,6 @@ pub(crate) fn meet_editions(group_rows: &[LiftingResults]) -> Vec<(Vec<String>, 
         }
     }
     meets.into_values().collect()
-}
-
-fn own_title_rows(meet: &str, rows: Vec<LiftingResults>) -> Vec<LiftingResults> {
-    let folded_meet = fold(meet);
-    rows.into_iter()
-        .filter(|row| row.meet == meet || fold(&row.meet) == folded_meet)
-        .collect()
 }
 
 /// An athlete's best-total row (none while every row is a source error), best Sinclair, results,
@@ -462,31 +407,6 @@ pub(crate) fn report(
 mod tests {
     use super::*;
     use crate::utils::stats::tests::row;
-
-    #[test]
-    fn a_meet_is_ranked_on_its_own_title_not_its_linked_ones() {
-        let lift = |name: &str, meet: &str| {
-            row(
-                name,
-                "2026-06-20",
-                meet,
-                "Open Women's 64kg",
-                63.0,
-                [80.0, 0.0, 0.0],
-                [100.0, 0.0, 0.0],
-            )
-        };
-        let rows = vec![
-            lift("Ann", "Nationals"),
-            lift("Ada", "Junior"),
-            lift("Bea", "nationals "),
-        ];
-        let names = own_title_rows("Nationals", rows)
-            .into_iter()
-            .map(|row| row.name)
-            .collect::<Vec<_>>();
-        assert_eq!(names, ["Ann", "Bea"]);
-    }
 
     #[test]
     fn a_meets_members_are_those_registered_at_the_same_event() {

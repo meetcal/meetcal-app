@@ -110,6 +110,7 @@ pub mod queries {
     /// `{ json, next }`.
     pub(crate) const MEET_NAMES_PAGE: Query = Query::value("meets:namesPage");
     pub(crate) const MEET_ATTENDANCE: Query = Query::text("meets:attendance");
+    pub(crate) const MEET_NAMES_MATCHING: Query = Query::value("meets:namesMatching");
     /// `GET /meets/athletes`; takes `meet`.
     pub(crate) const MEET_ATHLETES: Query = Query::text("meets:athletes");
     /// `GET /meets/athletes-sessions`; takes `meet`, and optionally `sessionNumber` and
@@ -124,6 +125,8 @@ pub mod queries {
     /// `GET /lifting-results/bests`: each name's best snatch, clean & jerk and total since
     /// `cutoffDate`; takes `names` (at most 100) and `cutoffDate`.
     pub(crate) const BESTS: Query = Query::value("results:bests");
+    pub(crate) const GROUP_MEDALS: Query = Query::value("results:groupMedals");
+    pub(crate) const MEET_SUMMARIES: Query = Query::value("results:meetSummaries");
     /// `GET /search`; takes `query`, and optionally `startDate` and `endDate` (both included).
     /// Answers at most 600 results, the most recent, with `truncated` set when it cut some.
     pub const SEARCH: Query = Query::value("results:search");
@@ -134,10 +137,13 @@ pub mod queries {
     pub(crate) const WRAPPED: Query = Query::value("results:wrapped");
     /// `GET /data/records`
     pub const RECORDS: Query = Query::revalidated("reference:records");
+    pub(crate) const RECORD_CATEGORIES: Query = Query::revalidated("reference:recordCategories");
     /// `GET /data/standards`
     pub(crate) const STANDARDS: Query = Query::revalidated("reference:standards");
     /// `GET /data/qualifying-totals`
     pub(crate) const QUALIFYING_TOTALS: Query = Query::revalidated("reference:qualifyingTotals");
+    pub(crate) const QUALIFYING_TOTAL_CATEGORIES: Query =
+        Query::revalidated("reference:qualifyingTotalCategories");
     /// `GET /data/intl-rankings`
     pub(crate) const INTL_RANKINGS: Query = Query::revalidated("reference:intlRankings");
     /// `GET /data/nat-rankings`; takes `federation` and `ageCategory`.

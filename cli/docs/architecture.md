@@ -153,20 +153,23 @@ another release list (the tests' local server).
 | Athletes | `search`, `progress`, `h2h` | `results:byNames`, `results:search` |
 | Wrapped | `wrapped`, `compare` | `results:wrapped` (public: the server scores the year, `convex/lib/wrapped.ts`) |
 | Standards | `qualify` | `results:byNames`, `results:bests`, `reference:standards`, `reference:qualifyingTotals` |
-| Meets | `meets`, `meet-info`, `schedule`, `meet`, `meet-results` | `meets:list`, `meets:completed`, `meets:details`, `meets:schedule`, `meets:athletesSessions` with `results:bests`, `results:byMeet` |
-| Attendance | `attendance` | `meets:namesPage`, `meets:attendance` |
+| Meets | `meets`, `meet-info`, `schedule`, `meet`, `meet-results` | `meets:list`, `meets:completed`, `meets:details`, `meets:schedule`, `meets:athletesSessions` with `results:bests`, `results:byMeet` with `results:meetSummaries` (each edition's headline numbers, summarized on the server, `convex/lib/meetSummary.ts`) |
+| Attendance | `attendance` | `meets:namesMatching`, `meets:attendance` |
 | Leaderboard | `leaderboard` | `results:leaderboard`, an action that ranks every athlete in the range on the server (`convex/lib/leaderboard.ts`, the rules `Filters`, `rank` and `stats.rs` hold here); with `--wso`/`--club`, the group's registrations and `results:recent`, ranked here |
 | Names | `clubs`, `wsos` | `reference:clubs`, `reference:registrationWsos`, `reference:wsoList`, `reference:wsoAgeGroups` |
-| Clubs | `club-results`, `club-wrapped`, `club-compare`, `club-trends` | `reference:clubMeetStats`, `reference:clubAthletes`, `results:recent`, `results:byNames`, `results:byMeet` |
-| WSOs | `wso`, `wso-wrapped`, `wso-compare`, `wso-trends` | `reference:wsoMeetStats`, `meets:athletes`, `results:byNames`, `results:byMeet`, `reference:wsoAthletes`, `results:recent` |
+| Clubs | `club-results`, `club-wrapped`, `club-compare`, `club-trends` | `reference:clubMeetStats`, `reference:clubAthletes`, `results:recent`, `results:byNames`, `results:groupMedals` |
+| WSOs | `wso`, `wso-wrapped`, `wso-compare`, `wso-trends` | `reference:wsoMeetStats`, `results:byNames`, `results:groupMedals`, `reference:wsoAthletes`, `results:recent` |
 | WSO elite | `elite` | `reference:registrationWsos`, then `results:wsoElite`, an action that finds the WSO's members and ranks each list on the server (`convex/lib/elite.ts`) |
 | Reference | `records`, `standards`, `qualifying-totals`, `intl-rankings`, `nat-rankings`, `nat-ranking-year`, `wso-records`, `adaptive-records` | the matching `reference:*` query |
 | Login | `login`, `logout` | `deviceLogin:start`, `deviceLogin:poll` (actions), `accessPass:pass`, `apiTokens:revoke` (mutation) |
 | Upgrade | `upgrade` | GitHub, not Convex: the release list (`api.github.com/repos/meetcal/meetcal-app/releases`) and the newest `cli-v*` release's archive and `SHA256SUMS` |
 
-Reference commands fetch the whole table and filter it locally by the flags (`records --age --gender
---federation`), except where the query takes the filter itself (`wso-records`, `nat-rankings`,
-`adaptive-records`).
+`records` and `qualifying-totals` send their flags to the query (`federation`, `ageCategory`,
+`gender`; `event`), which answers the one table. When it answers none, `reference:recordCategories`
+or `reference:qualifyingTotalCategories` (every federation, gender and age group; every event,
+gender and age group) names the values to try. `wso-records`, `nat-rankings` and
+`adaptive-records` take their filters the same way; `standards` and `intl-rankings` read the whole
+table and filter it here.
 
 ### Club and WSO reports
 
@@ -189,9 +192,9 @@ national event is never credited to another.
 
 `wso` (one WSO at one meet) prints the server's `reference:wsoMeetStats` answer through the same
 report as `club-results` (`club_results::report`); it computes nothing itself. `club-trends` and
-`wso-trends` still place medals on the client for every meet of every year, with the rules in
-`src/utils/placings.rs`, a port of `rankingGroup`, `liftKey` and `rankOf` in
-`convex/lib/meetData.ts`.
+`wso-trends` ask `results:groupMedals` for each meet the group lifted at (every spelling of its
+name, and the members registered there, 2,000 a call): the server places the meet's results
+(`convex/lib/placings.ts`) and answers the members' medals by year.
 
 ### Names and suggestions
 
@@ -244,12 +247,11 @@ that pages through the range on the server (a month at a time, 2,000 rows per in
 answers only the ranked rows and the range's federations (for the unknown-federation message). Its
 rules are a port of `Filters::keeps`, `rank` and `stats.rs` (`convex/lib/leaderboard.ts`), which
 still rank `--wso` and `--club` leaderboards here; change both together. `meets:namesPage` lists distinct meet
-names in the results or the registrations by skipping along the meet index, one read per meet;
-`attendance` lists 44 name ranges at once (`RANGE_BOUNDARIES`), about four seconds for the whole
-history, then counts each matched edition with `meets:attendance` (eight meets per call; a batch the
-server refuses as too many rows for one call, status 413, is asked for again as two halves, and one
-meet refused alone is an error). The
-ranges only balance the work: they cover every name whatever the data holds.
+names in the results or the registrations by skipping along the meet index, one read per meet.
+`attendance` asks `meets:namesMatching` for the names holding every word (the server folds names
+and words, `convex/lib/meetNameMatch.ts`), then counts each matched edition with
+`meets:attendance` (eight meets per call; a batch the server refuses as too many rows for one
+call, status 413, is asked for again as two halves, and one meet refused alone is an error).
 
 ## Adding a command
 

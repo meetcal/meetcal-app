@@ -2,6 +2,7 @@ use crate::types::records::Record;
 use crate::utils::backend::{NoArgs, queries, query};
 use crate::utils::filters::{
     Filter, gender_as_matched, is_gender, no_match, same_ignoring_case_and_surrounding_space,
+    server_filters,
 };
 use crate::utils::format::{RecordRow, record_tables};
 use crate::utils::output::{self, Report};
@@ -9,6 +10,7 @@ use crate::utils::sort::sort_by_class;
 use crate::utils::stats::Gender;
 use anyhow::Result;
 use clap::Parser;
+use serde::Deserialize;
 
 /// Search for Records for a given age, federation, and gender.
 #[derive(Parser)]
@@ -34,9 +36,38 @@ pub struct RecordsArgs {
     pub federation: String,
 }
 
+#[derive(Debug, Deserialize)]
+pub(crate) struct RecordCategory {
+    pub(crate) record_type: String,
+    pub(crate) gender: String,
+    pub(crate) age_category: String,
+}
+
 pub async fn run(args: RecordsArgs) -> Result<()> {
-    let records: Vec<Record> = query(queries::RECORDS, &NoArgs {}).await?;
-    let sorted = selected(records, &args.age, args.gender, &args.federation)?;
+    let filters = server_filters([
+        ("federation", args.federation.as_str()),
+        ("ageCategory", args.age.as_str()),
+        ("gender", args.gender.label()),
+    ]);
+    let records: Vec<Record> = query(queries::RECORDS, &filters).await?;
+    let sorted = match selected(records, &args.age, args.gender, &args.federation) {
+        Ok(sorted) => sorted,
+        Err(_) => {
+            let categories: Vec<RecordCategory> =
+                query(queries::RECORD_CATEGORIES, &NoArgs {}).await?;
+            let rows: Vec<Vec<&str>> = categories
+                .iter()
+                .map(|row| {
+                    vec![
+                        row.record_type.as_str(),
+                        gender_as_matched(&row.gender),
+                        row.age_category.as_str(),
+                    ]
+                })
+                .collect();
+            return Err(unmatched(&args.age, args.gender, &args.federation, &rows));
+        }
+    };
 
     output::emit(report(&sorted));
 
@@ -66,20 +97,6 @@ pub(crate) fn selected(
             && same(&row.record_type, federation)
     });
     if matching.is_empty() {
-        let filters = [
-            Filter {
-                option: "--federation",
-                value: federation,
-            },
-            Filter {
-                option: "--gender",
-                value: gender.label(),
-            },
-            Filter {
-                option: "--age",
-                value: age,
-            },
-        ];
         let rows: Vec<Vec<&str>> = others
             .iter()
             .map(|row| {
@@ -90,9 +107,27 @@ pub(crate) fn selected(
                 ]
             })
             .collect();
-        return Err(no_match("records", &filters, &rows));
+        return Err(unmatched(age, gender, federation, &rows));
     }
     Ok(sort_by_class(matching, |r| r.weight_class.as_str()))
+}
+
+fn unmatched(age: &str, gender: Gender, federation: &str, rows: &[Vec<&str>]) -> anyhow::Error {
+    let filters = [
+        Filter {
+            option: "--federation",
+            value: federation,
+        },
+        Filter {
+            option: "--gender",
+            value: gender.label(),
+        },
+        Filter {
+            option: "--age",
+            value: age,
+        },
+    ];
+    no_match("records", &filters, rows)
 }
 
 #[cfg(test)]
