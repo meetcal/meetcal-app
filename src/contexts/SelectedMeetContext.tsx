@@ -228,7 +228,7 @@ export function SelectedMeetProvider({ children }: { children: React.ReactNode }
       supersedeInFlightLoad(null);
       setSelectedMeetState(null);
       setMeetDetails(null);
-      await AsyncStorage.multiRemove([SELECTED_MEET_KEY, SELECTED_MEET_DETAILS_KEY]);
+      await AsyncStorage.removeMany([SELECTED_MEET_KEY, SELECTED_MEET_DETAILS_KEY]);
       throw new Error('Selected meet not found in available meets');
     }
 
@@ -402,7 +402,7 @@ export function SelectedMeetProvider({ children }: { children: React.ReactNode }
             if (!lookupFailed) {
               // Online lookup confirmed the stored meet no longer exists, or
               // that it has ended — clean up the stale keys before falling back.
-              await AsyncStorage.multiRemove([
+              await AsyncStorage.removeMany([
                 SELECTED_MEET_KEY,
                 SELECTED_MEET_DETAILS_KEY,
               ]);
@@ -481,7 +481,7 @@ export function SelectedMeetProvider({ children }: { children: React.ReactNode }
             return;
           }
           devLog('Selected meet no longer available, switching to first available meet');
-          await AsyncStorage.multiRemove([SELECTED_MEET_KEY, SELECTED_MEET_DETAILS_KEY]);
+          await AsyncStorage.removeMany([SELECTED_MEET_KEY, SELECTED_MEET_DETAILS_KEY]);
           if (isStale()) return;
           const next = chooseLaunchMeet(freshMeets, null, launchNow()) ?? freshMeets[0];
           await initializeMeetData(next.name, next);
