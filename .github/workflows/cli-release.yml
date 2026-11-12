@@ -168,7 +168,7 @@ jobs:
           binary="dist/${{ matrix.artifact }}/meetcal"
           if [ -n "${{ matrix.rosetta }}" ]; then
             arch -x86_64 /usr/bin/true 2>/dev/null \
-              || softwareupdate --install-rosetta --agree-to-license
+              || sudo softwareupdate --install-rosetta --agree-to-license
             printed="$(arch -x86_64 "$binary" --version)"
           else
             printed="$("$binary" --version)"
