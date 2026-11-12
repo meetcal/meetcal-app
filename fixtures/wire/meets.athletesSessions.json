@@ -1,0 +1,85 @@
+{
+  "function": "meets:athletesSessions",
+  "encoding": "jsonText",
+  "answers": [
+    {
+      "args": {
+        "meet": "2026 Wire Fixture Open"
+      },
+      "body": [
+        {
+          "member_id": "100001",
+          "name": "Avery Fixture",
+          "age": 27,
+          "club": "Wire Fixture Barbell",
+          "wso": "Carolina",
+          "gender": "Female",
+          "weight_class": "63",
+          "entry_total": 180,
+          "adaptive": false,
+          "session_number": 1,
+          "session_platform": "Red",
+          "date": "2026-11-14",
+          "start_time": "09:00:00",
+          "weigh_in_time": "07:00:00"
+        },
+        {
+          "member_id": "100002",
+          "name": "Blake Fixture",
+          "age": 27,
+          "club": "Wire Fixture Barbell",
+          "wso": null,
+          "gender": "Female",
+          "weight_class": "69",
+          "entry_total": 200,
+          "adaptive": true,
+          "session_number": 2,
+          "session_platform": "Blue",
+          "date": "2026-11-14",
+          "start_time": "13:00:00",
+          "weigh_in_time": "11:00:00"
+        },
+        {
+          "member_id": "100003",
+          "name": "Casey Fixture",
+          "age": 31,
+          "club": "Wire Fixture Barbell",
+          "wso": null,
+          "gender": "Male",
+          "weight_class": "88",
+          "entry_total": 260,
+          "adaptive": false,
+          "session_number": null,
+          "session_platform": null,
+          "date": null,
+          "start_time": null,
+          "weigh_in_time": null
+        }
+      ]
+    },
+    {
+      "args": {
+        "meet": "2026 Wire Fixture Open",
+        "sessionNumber": 1
+      },
+      "body": [
+        {
+          "member_id": "100001",
+          "name": "Avery Fixture",
+          "age": 27,
+          "club": "Wire Fixture Barbell",
+          "wso": "Carolina",
+          "gender": "Female",
+          "weight_class": "63",
+          "entry_total": 180,
+          "adaptive": false,
+          "session_number": 1,
+          "session_platform": "Red",
+          "date": "2026-11-14",
+          "start_time": "09:00:00",
+          "weigh_in_time": "07:00:00"
+        }
+      ]
+    }
+  ]
+}

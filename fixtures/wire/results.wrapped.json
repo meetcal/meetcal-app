@@ -1,0 +1,98 @@
+{
+  "function": "results:wrapped",
+  "encoding": "value",
+  "answers": [
+    {
+      "args": {
+        "query": "Avery Fixture",
+        "year": 2026
+      },
+      "body": {
+        "kind": "athlete",
+        "name": "Avery Fixture",
+        "stats": {
+          "totalWeightLifted": 360,
+          "totalMeets": 1,
+          "makePercentage": 66.66666666666666,
+          "bestSnatch": 82,
+          "bestCleanJerk": 102,
+          "bestTotal": 184,
+          "averageTotal": 184,
+          "topMeet": "2026 Wire Fixture Classic",
+          "improvementFromFirst": null,
+          "longestMakeStreak": 3,
+          "favoriteAttempt": 1,
+          "yearRank": "Rising Star"
+        }
+      }
+    },
+    {
+      "args": {
+        "query": "Fixture",
+        "year": 2026
+      },
+      "body": {
+        "kind": "ambiguous",
+        "names": [
+          "Avery Fixture",
+          "Blake Fixture"
+        ],
+        "truncated": false
+      }
+    },
+    {
+      "args": {
+        "query": "Blake Fixture",
+        "year": 2026,
+        "picked": true
+      },
+      "body": {
+        "kind": "athlete",
+        "name": "Blake Fixture",
+        "stats": {
+          "totalWeightLifted": 393,
+          "totalMeets": 1,
+          "makePercentage": 100,
+          "bestSnatch": 88,
+          "bestCleanJerk": 112,
+          "bestTotal": 200,
+          "averageTotal": 200,
+          "topMeet": "2026 Wire Fixture Classic",
+          "improvementFromFirst": null,
+          "longestMakeStreak": 4,
+          "favoriteAttempt": 1,
+          "yearRank": "Consistency King"
+        }
+      }
+    },
+    {
+      "args": {
+        "query": "Nobody Here",
+        "year": 2026
+      },
+      "body": {
+        "kind": "none",
+        "suggestions": []
+      }
+    },
+    {
+      "args": {
+        "query": "Tess Toomany",
+        "year": 2026
+      },
+      "body": {
+        "kind": "tooManyResults",
+        "name": "Tess Toomany"
+      }
+    },
+    {
+      "args": {
+        "query": "Narrow",
+        "year": 2026
+      },
+      "body": {
+        "kind": "narrow"
+      }
+    }
+  ]
+}

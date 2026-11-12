@@ -1,0 +1,21 @@
+{
+  "function": "reference:intlRankings",
+  "encoding": "jsonText",
+  "answers": [
+    {
+      "args": {},
+      "body": [
+        {
+          "meet": "Fixture Worlds",
+          "ranking": 1,
+          "name": "Intl Fixture",
+          "weight_class": "64kg",
+          "total": 240,
+          "percent_a": 104.5,
+          "gender": "Women",
+          "age_category": "Senior"
+        }
+      ]
+    }
+  ]
+}

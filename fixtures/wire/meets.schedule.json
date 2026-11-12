@@ -1,0 +1,31 @@
+{
+  "function": "meets:schedule",
+  "encoding": "jsonText",
+  "answers": [
+    {
+      "args": {
+        "meet": "2026 Wire Fixture Open"
+      },
+      "body": [
+        {
+          "date": "2026-11-14",
+          "meet": "2026 Wire Fixture Open",
+          "platform": "Red",
+          "session_id": 1,
+          "start_time": "09:00:00",
+          "weigh_in_time": "07:00:00",
+          "weight_class": "63"
+        },
+        {
+          "date": "2026-11-14",
+          "meet": "2026 Wire Fixture Open",
+          "platform": "Blue",
+          "session_id": 2,
+          "start_time": "13:00:00",
+          "weigh_in_time": "11:00:00",
+          "weight_class": "69"
+        }
+      ]
+    }
+  ]
+}

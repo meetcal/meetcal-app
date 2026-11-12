@@ -1,0 +1,22 @@
+{
+  "function": "reference:nationalRankings",
+  "encoding": "jsonText",
+  "answers": [
+    {
+      "args": {
+        "federation": "USAW",
+        "ageCategory": "Open Women's 63kg"
+      },
+      "body": [
+        {
+          "name": "Avery Fixture",
+          "total": 184
+        },
+        {
+          "name": "Tess Toomany",
+          "total": 184
+        }
+      ]
+    }
+  ]
+}

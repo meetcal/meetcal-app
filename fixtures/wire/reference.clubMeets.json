@@ -1,0 +1,28 @@
+{
+  "function": "reference:clubMeets",
+  "encoding": "value",
+  "answers": [
+    {
+      "args": {
+        "club": "Wire Fixture Barbell"
+      },
+      "body": {
+        "meets": [
+          {
+            "meet": "2026 Wire Fixture Open",
+            "date": "2026-11-14",
+            "status": "upcoming",
+            "has_results": false
+          },
+          {
+            "meet": "2026 Wire Fixture Classic",
+            "date": "2026-03-07",
+            "status": "completed",
+            "has_results": true
+          }
+        ],
+        "truncated": false
+      }
+    }
+  ]
+}

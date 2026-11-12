@@ -1,0 +1,12 @@
+{
+  "function": "apiTokens:revoke",
+  "encoding": "value",
+  "answers": [
+    {
+      "args": {
+        "tokenId": "tok_fixture"
+      },
+      "body": null
+    }
+  ]
+}

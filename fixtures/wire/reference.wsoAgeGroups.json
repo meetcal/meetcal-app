@@ -1,0 +1,15 @@
+{
+  "function": "reference:wsoAgeGroups",
+  "encoding": "jsonText",
+  "answers": [
+    {
+      "args": {
+        "wso": "Carolina"
+      },
+      "body": [
+        "Senior",
+        "Youth 16-17"
+      ]
+    }
+  ]
+}

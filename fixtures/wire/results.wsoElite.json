@@ -1,0 +1,250 @@
+{
+  "function": "results:wsoElite",
+  "encoding": "value",
+  "answers": [
+    {
+      "args": {
+        "wso": "Carolina",
+        "from": "2026-01-01",
+        "to": "2026-12-31"
+      },
+      "body": {
+        "wso": "Carolina",
+        "from": "2026-01-01",
+        "to": "2026-12-31",
+        "members": 2,
+        "lists": {
+          "overall": {
+            "method": "percentA",
+            "men": [],
+            "women": [
+              {
+                "name": "Avery Fixture",
+                "date": "2026-03-07",
+                "meet": "2026 Wire Fixture Classic",
+                "division": "Open Women's 63kg",
+                "gender": "Women",
+                "group": "senior",
+                "age": 27,
+                "body_weight": 63.4,
+                "snatch_best": 82,
+                "cj_best": 102,
+                "total": 184,
+                "score": 87.61904761904762,
+                "weight_class": "64kg",
+                "standard_a": 210
+              }
+            ]
+          },
+          "youth": {
+            "method": "percentA",
+            "men": [],
+            "women": []
+          },
+          "junior": {
+            "method": "percentA",
+            "men": [],
+            "women": []
+          },
+          "senior": {
+            "method": "percentA",
+            "men": [],
+            "women": [
+              {
+                "name": "Avery Fixture",
+                "date": "2026-03-07",
+                "meet": "2026 Wire Fixture Classic",
+                "division": "Open Women's 63kg",
+                "gender": "Women",
+                "group": "senior",
+                "age": 27,
+                "body_weight": 63.4,
+                "snatch_best": 82,
+                "cj_best": 102,
+                "total": 184,
+                "score": 87.61904761904762,
+                "weight_class": "64kg",
+                "standard_a": 210
+              }
+            ]
+          },
+          "masters": {
+            "method": "qmasters",
+            "men": [],
+            "women": []
+          }
+        },
+        "rankings": {
+          "overall": {
+            "percentA": {
+              "men": [],
+              "women": [
+                {
+                  "name": "Avery Fixture",
+                  "date": "2026-03-07",
+                  "meet": "2026 Wire Fixture Classic",
+                  "division": "Open Women's 63kg",
+                  "gender": "Women",
+                  "group": "senior",
+                  "age": 27,
+                  "body_weight": 63.4,
+                  "snatch_best": 82,
+                  "cj_best": 102,
+                  "total": 184,
+                  "score": 87.61904761904762,
+                  "weight_class": "64kg",
+                  "standard_a": 210
+                }
+              ]
+            },
+            "sinclair": {
+              "men": [],
+              "women": [
+                {
+                  "name": "Avery Fixture",
+                  "date": "2026-03-07",
+                  "meet": "2026 Wire Fixture Classic",
+                  "division": "Open Women's 63kg",
+                  "gender": "Women",
+                  "group": "senior",
+                  "age": 27,
+                  "body_weight": 63.4,
+                  "snatch_best": 82,
+                  "cj_best": 102,
+                  "total": 184,
+                  "score": 240.61209318054605,
+                  "weight_class": null,
+                  "standard_a": null
+                }
+              ]
+            },
+            "qpoints": {
+              "men": [],
+              "women": [
+                {
+                  "name": "Avery Fixture",
+                  "date": "2026-03-07",
+                  "meet": "2026 Wire Fixture Classic",
+                  "division": "Open Women's 63kg",
+                  "gender": "Women",
+                  "group": "senior",
+                  "age": 27,
+                  "body_weight": 63.4,
+                  "snatch_best": 82,
+                  "cj_best": 102,
+                  "total": 184,
+                  "score": 249.99616752212197,
+                  "weight_class": null,
+                  "standard_a": null
+                }
+              ]
+            }
+          },
+          "youth": {
+            "percentA": {
+              "men": [],
+              "women": []
+            },
+            "sinclair": {
+              "men": [],
+              "women": []
+            }
+          },
+          "junior": {
+            "percentA": {
+              "men": [],
+              "women": []
+            },
+            "qpoints": {
+              "men": [],
+              "women": []
+            },
+            "sinclair": {
+              "men": [],
+              "women": []
+            }
+          },
+          "senior": {
+            "percentA": {
+              "men": [],
+              "women": [
+                {
+                  "name": "Avery Fixture",
+                  "date": "2026-03-07",
+                  "meet": "2026 Wire Fixture Classic",
+                  "division": "Open Women's 63kg",
+                  "gender": "Women",
+                  "group": "senior",
+                  "age": 27,
+                  "body_weight": 63.4,
+                  "snatch_best": 82,
+                  "cj_best": 102,
+                  "total": 184,
+                  "score": 87.61904761904762,
+                  "weight_class": "64kg",
+                  "standard_a": 210
+                }
+              ]
+            },
+            "qpoints": {
+              "men": [],
+              "women": [
+                {
+                  "name": "Avery Fixture",
+                  "date": "2026-03-07",
+                  "meet": "2026 Wire Fixture Classic",
+                  "division": "Open Women's 63kg",
+                  "gender": "Women",
+                  "group": "senior",
+                  "age": 27,
+                  "body_weight": 63.4,
+                  "snatch_best": 82,
+                  "cj_best": 102,
+                  "total": 184,
+                  "score": 249.99616752212197,
+                  "weight_class": null,
+                  "standard_a": null
+                }
+              ]
+            },
+            "sinclair": {
+              "men": [],
+              "women": [
+                {
+                  "name": "Avery Fixture",
+                  "date": "2026-03-07",
+                  "meet": "2026 Wire Fixture Classic",
+                  "division": "Open Women's 63kg",
+                  "gender": "Women",
+                  "group": "senior",
+                  "age": 27,
+                  "body_weight": 63.4,
+                  "snatch_best": 82,
+                  "cj_best": 102,
+                  "total": 184,
+                  "score": 240.61209318054605,
+                  "weight_class": null,
+                  "standard_a": null
+                }
+              ]
+            }
+          },
+          "masters": {
+            "qmasters": {
+              "men": [],
+              "women": []
+            },
+            "percentA": {
+              "men": [],
+              "women": []
+            },
+            "sinclair": {
+              "men": [],
+              "women": []
+            }
+          }
+        }
+      }
+    }
+  ]
+}
