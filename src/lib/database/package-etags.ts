@@ -1,3 +1,4 @@
+import { isRecord } from '@/lib/is-record';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import type { MeetName } from '@/data/types/meet';
 import { createWriteChain } from '@/lib/data/write-chain';
@@ -19,11 +20,11 @@ export async function readPackageEtags(): Promise<Record<string, string>> {
   try {
     const raw = await AsyncStorage.getItem(PACKAGE_ETAG_STORAGE_KEY);
     const parsed: unknown = raw ? JSON.parse(raw) : null;
-    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+    if (isRecord(parsed)) {
       // Keep only usable tags, so a corrupt entry is dropped on the next
       // write instead of being carried forward indefinitely.
       const etags: Record<string, string> = {};
-      for (const [meet, etag] of Object.entries(parsed as Record<string, unknown>)) {
+      for (const [meet, etag] of Object.entries(parsed)) {
         if (typeof etag === 'string' && etag.length > 0) etags[meet] = etag;
       }
       return etags;

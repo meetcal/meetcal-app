@@ -3,11 +3,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { showToast } from "@/components/ui/Toast";
 import type { LiftResult } from "@/data/types/athletes";
 import { isMeetName, type MeetName } from "@/data/types/meet";
-import {
-  getMeetData,
-  saveMeetAthletes,
-  saveMeetSchedule,
-} from "@/lib/database/offline-store";
+import { getMeetData } from "@/lib/database/meet-data-reads";
+import { saveMeetAthletes, saveMeetSchedule } from "@/lib/database/meet-data-saves";
 import { fetchAthletesWithSession, fetchSchedule } from "@/lib/database/queries";
 import { useRetryOnReconnect } from "@/hooks/useRetryOnReconnect";
 import {

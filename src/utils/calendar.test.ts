@@ -2,7 +2,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Calendar from "expo-calendar/legacy";
 import { Platform } from "react-native";
 import { clearMeetConfigCache } from "@/data/meets/config";
-import { fetchMeetByName } from "@/lib/database/meet-manager";
+import { fetchMeetByName } from "@/lib/database/meets-fetch";
 import { createSessionDetailsDeepLink } from "@/utils/deepLinks";
 import {
   calendarEventKey,
@@ -15,6 +15,7 @@ import {
   resolvePreferredAndroidCalendar,
   setPreferredAndroidCalendarId,
 } from "@/utils/calendar";
+import { itemAt } from "@/test-support/checked-access";
 
 jest.mock("expo-calendar/legacy", () => ({
   EntityTypes: { EVENT: "event" },
@@ -30,9 +31,7 @@ jest.mock("expo-calendar/legacy", () => ({
   updateEventAsync: jest.fn(async () => undefined),
 }));
 
-jest.mock("@/lib/database/meet-manager", () => ({
-  fetchMeetByName: jest.fn(),
-}));
+jest.mock("@/lib/database/meets-fetch", () => ({ fetchMeetByName: jest.fn() }));
 
 const mockFetchMeetByName = fetchMeetByName as jest.MockedFunction<typeof fetchMeetByName>;
 const mockCreateEventAsync = Calendar.createEventAsync as jest.MockedFunction<
@@ -84,7 +83,7 @@ describe("calendar event input", () => {
       "cal-1",
     );
     expect(mockCreateEventAsync).toHaveBeenCalledTimes(1);
-    const [calendarId, input] = mockCreateEventAsync.mock.calls[0];
+    const [calendarId, input] = itemAt(mockCreateEventAsync.mock.calls, 0);
     expect(calendarId).toBe("cal-1");
     return input as {
       url: string;
@@ -362,7 +361,7 @@ describe("calendar destinations and failures", () => {
         updated: 0,
         failed: 0,
       });
-      expect(mockCreateEventAsync.mock.calls[0][0]).toBe("7");
+      expect(itemAt(mockCreateEventAsync.mock.calls, 0)[0]).toBe("7");
     });
 
     it("shows the platform copy, not the SDK's text, when the SDK rejects", async () => {
@@ -523,7 +522,7 @@ describe("calendar destinations and failures", () => {
         sdkCalendar({ id: "home" }),
       ]);
       await createCalendarEvents([SESSION]);
-      expect(mockCreateEventAsync.mock.calls[0][0]).toBe("home");
+      expect(itemAt(mockCreateEventAsync.mock.calls, 0)[0]).toBe("home");
     });
 
     it("says no calendar is set up when every calendar is read-only", async () => {

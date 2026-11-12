@@ -5,7 +5,8 @@
  * 9:30 Blue session at Red's 9:00 (offline schedule, reminders, widget).
  */
 import { packageSchedule } from '../convex/lib/meetData';
-import { mapApiSchedule, mapPackageSchedule, type ApiMeetPackage } from '../src/lib/api/meetcal-api';
+import { mapApiSchedule, mapPackageSchedule } from '../src/lib/api/api-meet-mappers';
+import type { ApiMeetPackage } from '../src/lib/api/meet-package-api';
 
 // In the order both queries return them: date, session, platform.
 const rows = [

@@ -2,7 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import NetInfo, { type NetInfoState } from '@react-native-community/netinfo';
 import * as fc from 'fast-check';
 
-import { SERVER_CLOCK_CALL } from '@/lib/api/meetcal-api';
+import { SERVER_CLOCK_CALL } from '@/lib/api/server-clock';
 import { callApi } from '@/lib/api/transport';
 import {
   chaosGetToken,
@@ -14,6 +14,7 @@ import {
   storageFaultArb,
   tokenFaultArb,
 } from '@/test-support/chaos';
+import { itemAt } from '@/test-support/checked-access';
 
 describe('installChaosTransport', () => {
   it('applies the plan in order, then passes every call through', async () => {
@@ -33,7 +34,7 @@ describe('installChaosTransport', () => {
     const chaos = installChaosTransport(async () => 'ok', [{ kind: 'network' }]);
     try {
       await expect(callApi(SERVER_CLOCK_CALL)).resolves.toBe('ok');
-      expect(chaos.calls[0].fault.kind).toBe('pass');
+      expect(itemAt(chaos.calls, 0).fault.kind).toBe('pass');
     } finally {
       chaos.restore();
     }

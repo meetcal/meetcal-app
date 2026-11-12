@@ -5,10 +5,10 @@ import { act, create } from "react-test-renderer";
 import type { Meet, MeetName } from "@/data/types/meet";
 import {
   RECONNECT_REFETCH_JITTER_MAX_MS,
-  refreshedMeetDetails,
   SelectedMeetProvider,
   useSelectedMeet,
 } from "@/contexts/SelectedMeetContext";
+import { refreshedMeetDetails } from "@/lib/launch-meet";
 import { scheduleScreenOutcome } from "@/lib/startup-timing";
 
 const mockGetCachedMeets = jest.fn<Promise<Meet[]>, []>();
@@ -25,22 +25,30 @@ const mockSyncManagerBuilds: MeetName[] = [];
 const mockSyncManagerStarts: MeetName[] = [];
 const mockSyncManagerStops: MeetName[] = [];
 
-jest.mock("@/lib/database/meet-manager", () => ({
+jest.mock("@/lib/database/meets-list-cache", () => ({
   getCachedMeets: (...args: []) => mockGetCachedMeets(...args),
+}));
+jest.mock("@/lib/database/meets-fetch", () => ({
   fetchMeetsFresh: (...args: []) => mockFetchMeetsFresh(...args),
+}));
+jest.mock("@/lib/database/meet-manager", () => ({
   warmMeetData: (...args: [string]) => mockWarmMeetData(...args),
   prefetchMeetData: (...args: [string]) => mockPrefetchMeetData(...args),
   prefetchCriticalMeetData: (...args: [string]) => mockPrefetchCriticalMeetData(...args),
 }));
 
-jest.mock("@/lib/database/offline-store", () => ({
+jest.mock("@/lib/database/downloaded-meet-expiry", () => ({
   clearExpiredDownloadedMeets: () => mockClearExpiredDownloadedMeets(),
+}));
+jest.mock("@/lib/database/meet-downloads-registry", () => ({
   isMeetExplicitlyDownloaded: (meet: string) => mockIsMeetExplicitlyDownloaded(meet),
 }));
 
 const mockAwaitServerClock = jest.fn(async () => null);
-jest.mock("@/lib/api/meetcal-api", () => ({
+jest.mock("@/lib/api/meets-api", () => ({
   fetchApiMeetByName: (name: string) => mockFetchApiMeetByName(name),
+}));
+jest.mock("@/lib/api/server-clock", () => ({
   getTrustedNow: () => null,
   awaitServerClock: () => mockAwaitServerClock(),
 }));

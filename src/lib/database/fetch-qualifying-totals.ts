@@ -1,3 +1,4 @@
+import { readQualifyingTotalsData } from './cached-shapes';
 import { createMutableResource } from '@/lib/data/mutable-resource';
 import { isNetworkAvailable } from '@/lib/networkUtils';
 import {
@@ -6,7 +7,7 @@ import {
   replaceOfflineCache,
   setOfflineCache,
 } from './offline-cache';
-import { fetchApiQualifyingTotals } from '@/lib/api/meetcal-api';
+import { fetchApiQualifyingTotals } from '@/lib/api/reference-api';
 
 
 export type QualifyingTotalsData = {
@@ -20,7 +21,7 @@ export type QualifyingTotalsData = {
 
 async function readQualifyingTotalsCache() {
   const cacheKey = OFFLINE_CACHE_KEYS.qualifyingTotals;
-  const cached = await getOfflineCache<QualifyingTotalsData>(cacheKey);
+  const cached = await getOfflineCache(cacheKey, readQualifyingTotalsData);
   return cached
     ? { data: cached.data, lastUpdatedAt: cached.lastSynced }
     : null;
@@ -61,6 +62,8 @@ async function fetchQualifyingTotalsFresh(): Promise<QualifyingTotalsData> {
  * replace a real download with nothing. The screen still shows the empty
  * answer; the stored copy stays.
  */
+export const EMPTY_QUALIFYING_TOTALS: QualifyingTotalsData = {};
+
 export function isQualifyingTotalsDataEmpty(data: QualifyingTotalsData): boolean {
   return Object.keys(data).length === 0;
 }

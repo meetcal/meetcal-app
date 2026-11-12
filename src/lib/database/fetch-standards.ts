@@ -1,3 +1,4 @@
+import { readStandardsData } from './cached-shapes';
 import { createMutableResource } from '@/lib/data/mutable-resource';
 import { StandardsData } from '@/types/standards';
 import { isNetworkAvailable } from '@/lib/networkUtils';
@@ -7,7 +8,7 @@ import {
   replaceOfflineCache,
   setOfflineCache,
 } from './offline-cache';
-import { fetchApiStandards, type ApiStandardRow } from '@/lib/api/meetcal-api';
+import { fetchApiStandards, type ApiStandardRow } from '@/lib/api/reference-api';
 import { weightClassSort } from './weight-class-sort';
 
 type CompleteStandardsRow = Readonly<ApiStandardRow> & {
@@ -36,7 +37,8 @@ function mapRows(rows: readonly CompleteStandardsRow[]): StandardsData {
 
   rows.forEach((row) => {
     const ageKey = row.age_category.toLowerCase() as keyof StandardsData;
-    const genderKey = row.gender.toLowerCase() as 'men' | 'women';
+    const genderKey = row.gender.toLowerCase();
+    if (genderKey !== 'men' && genderKey !== 'women') return;
     if (!result[ageKey] || !result[ageKey][genderKey]) return;
     result[ageKey][genderKey].push({
       weightClass: row.weight_class,
@@ -46,8 +48,8 @@ function mapRows(rows: readonly CompleteStandardsRow[]): StandardsData {
   });
 
   Object.values(result).forEach((group) => {
-    group.men.sort((a, b) => weightClassSort(a.weightClass, b.weightClass));
-    group.women.sort((a, b) => weightClassSort(a.weightClass, b.weightClass));
+    group.men?.sort((a, b) => weightClassSort(a.weightClass, b.weightClass));
+    group.women?.sort((a, b) => weightClassSort(a.weightClass, b.weightClass));
   });
 
   return result;
@@ -55,7 +57,7 @@ function mapRows(rows: readonly CompleteStandardsRow[]): StandardsData {
 
 async function readStandardsCache() {
   const cacheKey = OFFLINE_CACHE_KEYS.standards;
-  const cached = await getOfflineCache<StandardsData>(cacheKey);
+  const cached = await getOfflineCache(cacheKey, readStandardsData);
   return cached ? { data: cached.data, lastUpdatedAt: cached.lastSynced } : null;
 }
 
@@ -76,7 +78,7 @@ async function fetchStandardsFresh(): Promise<StandardsData> {
  * shows the empty answer; the stored copy stays.
  */
 export function isStandardsDataEmpty(data: StandardsData): boolean {
-  return Object.values(data).every((group) => group.men.length + group.women.length === 0);
+  return Object.values(data).every((group) => (group.men?.length ?? 0) + (group.women?.length ?? 0) === 0);
 }
 
 async function persistStandards(data: StandardsData) {

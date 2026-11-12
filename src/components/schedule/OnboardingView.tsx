@@ -208,7 +208,11 @@ export function OnboardingView({ visible, onComplete }: OnboardingViewProps) {
   };
 
   const requestPermissions = async () => {
-    await Promise.all([requestCalendarAccess(), requestNotificationAccess()]);
+    try {
+      await Promise.all([requestCalendarAccess(), requestNotificationAccess()]);
+    } catch (error) {
+      console.warn("Onboarding: a permission request failed", error);
+    }
     await finish();
   };
 
@@ -246,7 +250,7 @@ export function OnboardingView({ visible, onComplete }: OnboardingViewProps) {
             ]}
             onPress={() => {
               if (isLastPage) {
-                requestPermissions();
+                void requestPermissions();
               } else {
                 setPageCounter(prev => prev + 1);
               }

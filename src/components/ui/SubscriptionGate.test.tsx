@@ -16,6 +16,7 @@ import {
   SubscriptionGate,
 } from "@/components/ui/SubscriptionGate";
 import { originRouteParam } from "@/utils/returnToOrigin";
+import { valueAt } from "@/test-support/checked-access";
 
 const mockSecureStore = new Map<string, string>();
 jest.mock("expo-secure-store", () => ({
@@ -388,7 +389,7 @@ describe("gateOrigin through sign-in", () => {
       // encodes the value into the href, parses it back (one decode), and
       // `useLocalSearchParams` decodes it again.
       const href = `/(auth)/sign-in?from=${encodeURIComponent(originRouteParam(from))}`;
-      const received = decodeURIComponent(parseQuery(href).from);
+      const received = decodeURIComponent(valueAt(parseQuery(href), "from"));
 
       expect(received).toBe(from);
       expect(parseQuery(received)).toEqual({ meet, sessionNumber: "1" });

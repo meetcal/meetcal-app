@@ -49,11 +49,11 @@ describe("adaptiveRecordsResource", () => {
 
     const records = await fetchAdaptiveRecords();
 
-    expect(records.Adaptive.Men).toEqual([
+    expect(records.Adaptive?.Men).toEqual([
       { weightClass: "67kg", snatchRecord: null, cjRecord: null, totalRecord: null },
       { weightClass: "102kg", snatchRecord: 100, cjRecord: 120, totalRecord: 220 },
     ]);
-    expect(records.Adaptive.Women).toEqual([]);
+    expect(records.Adaptive?.Women).toEqual([]);
     expect(mockSetOfflineCache).toHaveBeenCalledWith("@offline_cache/adaptive_records", records);
   });
 

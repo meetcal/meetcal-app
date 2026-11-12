@@ -12,6 +12,7 @@ import {
   type SavedSessionsStore,
 } from "@/lib/saved-sessions-store";
 import { getSavedSessionsKey } from "@/utils/session";
+import { itemAt } from "@/test-support/checked-access";
 
 const USER = "user_1";
 const OTHER = "user_2";
@@ -111,7 +112,7 @@ describe("parseStoredSessions", () => {
     const raw = JSON.stringify([session({ notes: "first" }), session({ notes: "second" })]);
     const parsed = parseStoredSessions(raw);
     expect(parsed).toHaveLength(1);
-    expect(parsed[0].notes).toBe("first");
+    expect(itemAt(parsed, 0).notes).toBe("first");
   });
 });
 

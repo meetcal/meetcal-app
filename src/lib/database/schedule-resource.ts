@@ -1,10 +1,8 @@
 import type { MeetName } from "@/data/types/meet";
 import { createMutableResource, defaultIsEqual } from "@/lib/data/mutable-resource";
-import {
-  getMeetSchedule,
-  getMeetWriteGeneration,
-  saveMeetSchedule,
-} from "@/lib/database/offline-store";
+import { getMeetSchedule } from "@/lib/database/meet-data-reads";
+import { getMeetWriteGeneration } from "@/lib/database/offline-store-index";
+import { saveMeetSchedule } from "@/lib/database/meet-data-saves";
 import { fetchSchedule } from "@/lib/database/queries";
 import type { Schedule } from "@/types/schedule";
 

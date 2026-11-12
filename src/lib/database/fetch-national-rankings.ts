@@ -1,10 +1,11 @@
+import { readNationalRankings } from './cached-shapes';
 import { createMutableResource } from '@/lib/data/mutable-resource';
 import {
   OFFLINE_CACHE_KEYS,
   readBoundedCacheEntry,
   writeBoundedCacheEntry,
 } from './offline-cache';
-import { fetchApiNationalRankings, type ApiNationalRankingRow } from '@/lib/api/meetcal-api';
+import { fetchApiNationalRankings, type ApiNationalRankingRow } from '@/lib/api/reference-api';
 
 export type NationalRanking = {
   id: number;
@@ -39,10 +40,7 @@ function mapRankings(rows: readonly Readonly<ApiNationalRankingRow>[]): National
 }
 
 function readNationalRankingsCache(weightClassAge: string) {
-  return readBoundedCacheEntry<NationalRanking[]>(
-    OFFLINE_CACHE_KEYS.nationalRankings,
-    weightClassAge,
-  );
+  return readBoundedCacheEntry(OFFLINE_CACHE_KEYS.nationalRankings, weightClassAge, readNationalRankings);
 }
 
 async function fetchNationalRankingsFresh(weightClassAge: string): Promise<NationalRanking[]> {

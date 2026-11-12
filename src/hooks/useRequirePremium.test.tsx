@@ -12,7 +12,7 @@ jest.mock("expo-router", () => ({ useRouter: () => ({ push: mockPush }) }));
 
 let mockAuthResult: boolean | null = true;
 const mockRequireAuth = jest.fn(() => mockAuthResult);
-jest.mock("@/utils/authGuard", () => ({
+jest.mock("@/hooks/useAuthGuard", () => ({
   useAuthGuard: () => ({ requireAuth: mockRequireAuth }),
 }));
 

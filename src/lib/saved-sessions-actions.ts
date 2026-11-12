@@ -1,7 +1,7 @@
 import { LiftResult } from '@/data/types/athletes';
 import { MeetName } from '@/data/types/meet';
 import { fetchSchedule } from '@/lib/database/queries';
-import { getMeetData } from '@/lib/database/offline-store';
+import { getMeetData } from '@/lib/database/meet-data-reads';
 import { devLog } from '@/lib/logger';
 import { posthog } from '@/lib/posthog';
 import {

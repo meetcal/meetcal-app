@@ -56,7 +56,9 @@ describe("PageIndicator", () => {
     const onPageChange = jest.fn();
     const tree = render(<PageIndicator count={3} currentPage={0} onPageChange={onPageChange} />);
 
-    act(() => dot(tree, 2).props.onPress());
+    act(() => {
+      dot(tree, 2).props.onPress();
+    });
 
     expect(onPageChange).toHaveBeenCalledWith(2);
     act(() => tree.unmount());

@@ -12,6 +12,7 @@ import {
 import { corruptedArb, hostileStringArb, hostileValueArb } from '@/test-support/arbitraries';
 import { faultPlanArb, installStorageChaos, storageFaultArb } from '@/test-support/chaos';
 import { getSavedSessionsKey } from '@/utils/session';
+import { itemAt } from '@/test-support/checked-access';
 
 /**
  * The read path of the saved-sessions list (`saved-sessions-store.ts`). The
@@ -204,7 +205,7 @@ describe('reading the stored list under storage chaos', () => {
           chaos.restore();
         }
         expect(published).toHaveLength(1);
-        published[0].forEach(assertWellFormed);
+        itemAt(published, 0).forEach(assertWellFormed);
       }),
     );
   });

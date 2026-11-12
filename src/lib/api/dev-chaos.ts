@@ -82,8 +82,7 @@ export function validateChaosConfig(config: ChaosConfig): ChaosConfig {
   return config;
 }
 
-/** An element of `items` from one draw of `random` in [0, 1). */
-function pickOne<T>(items: readonly T[], random: () => number): T {
+function pickOne<T>(items: readonly T[], random: () => number): T | undefined {
   return items[Math.min(items.length - 1, Math.floor(random() * items.length))];
 }
 
@@ -92,23 +91,25 @@ function pickOne<T>(items: readonly T[], random: () => number): T {
  * tests pass a seeded one. `config` must already be valid.
  */
 export function pickChaosFault(config: ChaosConfig, call: ApiCall, random: () => number): TransportFault {
-  // The client's clock sample (`SERVER_CLOCK_CALL` in `lib/api/meetcal-api.ts`,
-  // the only `clock` call). Never faulted: its failures are swallowed by
-  // design, so faulting it shows the developer nothing and only skews the
-  // clock the session prune trusts.
   if (call.kind === 'clock') return { kind: 'pass' };
   if (random() >= config.rate) return { kind: 'pass' };
   const kind = pickOne(config.kinds ?? DEFAULT_CHAOS_KINDS, random);
+  if (kind === undefined) return { kind: 'pass' };
   switch (kind) {
     case 'delay': {
       const { min, max } = config.latencyMs;
       return { kind, ms: Math.min(max, min + Math.floor(random() * (max - min + 1))) };
     }
-    case 'status':
-      return { kind, status: pickOne(CHAOS_STATUSES, random) };
+    case 'status': {
+      const status = pickOne(CHAOS_STATUSES, random);
+      return status === undefined ? { kind: 'pass' } : { kind, status };
+    }
     case 'garbage':
       return { kind, value: CHAOS_GARBAGE };
-    default:
+    case 'network':
+    case 'hang':
+    case 'transient':
+    case 'truncate':
       return { kind };
   }
 }

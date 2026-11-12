@@ -3,6 +3,7 @@ import { act, create } from "react-test-renderer";
 import WidgetSettingsScreen from "@/app/schedule-toolbar/widget-settings";
 import { GenericFilterModal } from "@/components/ui/filters";
 import { defaultWidgetSettings, saveWidgetSettings, syncDataWidgets } from "@/utils/dataWidgets";
+import { itemAt } from "@/test-support/checked-access";
 
 let mockSyncable = false;
 
@@ -46,7 +47,7 @@ describe("widget settings commits", () => {
     let tree!: ReturnType<typeof create>;
     await act(async () => { tree = create(<WidgetSettingsScreen />); });
     mockSyncable = true;
-    const apply = () => tree.root.findAllByType(GenericFilterModal)[1].props.onApplyFilters;
+    const apply = () => itemAt(tree.root.findAllByType(GenericFilterModal), 1).props.onApplyFilters;
     await act(async () => { apply()({ gender: "women", ageGroup: "senior" }); });
     // The rejected save wrote no widget; the background commit (the data is
     // loaded) then saves the same filters again and writes them.
@@ -70,7 +71,7 @@ describe("widget settings commits", () => {
     let tree!: ReturnType<typeof create>;
     await act(async () => { tree = create(<WidgetSettingsScreen />); });
     mockSyncable = true;
-    const standardsModal = () => tree.root.findAllByType(GenericFilterModal)[1];
+    const standardsModal = () => itemAt(tree.root.findAllByType(GenericFilterModal), 1);
     await act(async () => {
       standardsModal().props.onApplyFilters({ gender: "women", ageGroup: "senior" });
     });

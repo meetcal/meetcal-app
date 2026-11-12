@@ -77,9 +77,10 @@ export function useCalendarSessionsExport() {
           return;
         }
 
-        if (systemEditor && sessions.length === 1) {
+        const [onlySession] = sessions;
+        if (systemEditor && onlySession && sessions.length === 1) {
           try {
-            await createCalendarEventWithSystemUI(sessions[0]);
+            await createCalendarEventWithSystemUI(onlySession);
             showToast({
               type: "info",
               message: "Review the event in your calendar app and save it there.",

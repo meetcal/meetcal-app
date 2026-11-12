@@ -3,14 +3,12 @@ import * as fc from 'fast-check';
 
 import type { AthleteMeetResult } from '@/data/types/athletes';
 import { jsonTransportStub } from '@/lib/api/json-transport-stub';
-import { mapApiAthletes, mapApiLiftingResult, NAMES_QUERY_CHUNK_SIZE } from '@/lib/api/meetcal-api';
+import { mapApiAthletes, mapApiLiftingResult } from '@/lib/api/api-athlete-mappers';
+import { NAMES_QUERY_CHUNK_SIZE } from '@/lib/api/results-api';
 import type { ApiCall, Transport } from '@/lib/api/transport';
 import { prefetchMeetData, warmMeetData } from '@/lib/database/meet-manager';
-import {
-  findAthleteNamesWithoutHistory,
-  getAllCachedLiftingResultsForAthlete,
-  markMeetExplicitlyDownloaded,
-} from '@/lib/database/offline-store';
+import { findAthleteNamesWithoutHistory, getAllCachedLiftingResultsForAthlete } from '@/lib/database/athlete-history-store';
+import { markMeetExplicitlyDownloaded } from '@/lib/database/meet-downloads-registry';
 import { corruptedArb, hostileStringArb } from '@/test-support/arbitraries';
 import {
   faultPlanArb,
@@ -22,6 +20,7 @@ import {
   type StorageFault,
   type TransportFault,
 } from '@/test-support/chaos';
+import { itemAt, valueAt } from '@/test-support/checked-access';
 
 /**
  * The offline meet download (`meet-manager.ts`) under a generated plan of
@@ -159,7 +158,7 @@ type ServerState = {
 function backend(names: readonly string[], state: ServerState): Transport {
   const rows = jsonTransportStub((path, query) => {
     if (path !== '/lifting-results/by-names') throw new Error(`unrouted ${path}`);
-    return query.names.split(',').flatMap(serverRows);
+    return valueAt(query, 'names').split(',').flatMap(serverRows);
   });
   const pkg = JSON.stringify(packageFor(names));
   const byNamesStarted = () => state.chaos?.calls.filter(({ call }) => call.fn === BY_NAMES).length ?? 0;
@@ -245,20 +244,21 @@ function assertRetryPolicy(chaos: ChaosTransport): void {
     const phases: (typeof requests)[] = [];
     let i = 0;
     while (i < attempts.length) {
-      const phase = [attempts[i]];
-      if (isRetryable(attempts[i].fault)) {
-        expect(attempts[i + 1]?.index).toBe(attempts[i].index + 1);
-        phase.push(attempts[i + 1]);
+      const attempt = itemAt(attempts, i);
+      const phase = [attempt];
+      if (isRetryable(attempt.fault)) {
+        expect(attempts[i + 1]?.index).toBe(attempt.index + 1);
+        phase.push(itemAt(attempts, i + 1));
       }
       phases.push(phase);
       i += phase.length;
     }
     expect(phases.length).toBeLessThanOrEqual(2);
-    const firstEnd = phases[0][phases[0].length - 1];
+    const firstEnd = itemAt(itemAt(phases, 0), -1);
     lastFirstPhaseIndex = Math.max(lastFirstPhaseIndex, firstEnd.index);
     if (phases.length === 2) {
       expect(mayDefer(firstEnd.fault)).toBe(true);
-      deferredStarts.push(phases[1][0].index);
+      deferredStarts.push(itemAt(itemAt(phases, 1), 0).index);
     } else {
       expect(getsNoAnswer(firstEnd.fault)).toBe(false);
     }
