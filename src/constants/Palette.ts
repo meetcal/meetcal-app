@@ -20,6 +20,11 @@ export const Palette = {
   systemGreen: "#34C759",
   systemRed: "#FF3B30",
   systemGray: "#8E8E93",
+  systemOrange: "#FF9500",
+  systemPurple: "#AF52DE",
+  systemPinkDark: "#FF375F",
+  systemGreenDark: "#32D74B",
+  systemYellowDark: "#FFD60A",
 
   /** Secondary text on the fixed-white saved-session card. */
   mediumGray: "#666666",
@@ -31,6 +36,8 @@ export const Palette = {
   tableHeaderTint: "rgba(60, 60, 67, 0.03)",
 
   gold: "#FFD700",
+  silver: "#C0C0C0",
+  bronze: "#CD7F32",
 } as const;
 
 /**
@@ -89,6 +96,7 @@ export const WhiteAlpha = {
   70: "rgba(255,255,255,0.7)",
   80: "rgba(255,255,255,0.8)",
   85: "rgba(255,255,255,0.85)",
+  90: "rgba(255,255,255,0.9)",
   95: "rgba(255,255,255,0.95)",
 } as const;
 
@@ -105,6 +113,9 @@ export const BlackAlpha = {
 export const WrappedPalette = {
   /** Wrapped's green (the same value as the theme's `wrappedPrimary`). */
   green: "#1DB954",
+  greenLight: "#1ed760",
+  midnight: "#1B1B2F",
+  navy: "#162447",
   offlineBannerBackground: "rgba(255,165,0,0.2)",
   offlineBannerBorder: "rgba(255,165,0,0.4)",
 } as const;
@@ -112,6 +123,23 @@ export const WrappedPalette = {
 /** The club meet recap share card, always rendered dark. */
 export const RecapCardPalette = {
   background: "#0A0A0F",
+  goldMedalBorder: "rgba(255,215,0,0.35)",
+  silverMedalBorder: "rgba(192,192,192,0.2)",
+  bronzeMedalBorder: "rgba(205,127,50,0.2)",
+} as const;
+
+export const WrappedGradients = {
+  slides: [
+    ["#4A0E8F", "#9C27B0", "#C2185B"],
+    ["#004D40", "#0D7377", "#14FFEC"],
+    ["#B71C1C", "#D91A60", "#FF6F00"],
+    ["#0D47A1", "#1565C0", "#00BCD4"],
+    ["#BF360C", "#E65100", "#FF8F00"],
+    ["#311B92", "#4527A0", "#7C4DFF"],
+    [WrappedPalette.midnight, WrappedPalette.navy, WrappedPalette.green],
+  ],
+  searchBackground: [WrappedPalette.midnight, WrappedPalette.navy, "#0F3460"],
+  greenButton: [WrappedPalette.green, WrappedPalette.greenLight],
 } as const;
 
 /** Share image preview: checkerboard behind transparent exports. */

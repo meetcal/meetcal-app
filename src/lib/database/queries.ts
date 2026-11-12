@@ -6,14 +6,8 @@ import {
   getMockSchedule,
   isMockedMeet,
 } from '@/config/dev-mock-meet';
-import {
-  fetchApiAthletes,
-  fetchApiAthletesWithSession,
-  fetchApiRecentResultsByNames,
-  fetchApiResultsByNames,
-  fetchApiSchedule,
-  searchApi,
-} from '@/lib/api/meetcal-api';
+import { fetchApiAthletes, fetchApiAthletesWithSession, fetchApiSchedule } from '@/lib/api/meets-api';
+import { fetchApiRecentResultsByNames, fetchApiResultsByNames, searchApi } from '@/lib/api/results-api';
 
 const scheduleInFlight = new Map<MeetName, Promise<Schedule>>();
 const athletesWithSessionInFlight = new Map<string, Promise<LiftResult[]>>();

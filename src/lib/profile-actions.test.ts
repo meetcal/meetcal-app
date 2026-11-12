@@ -4,6 +4,7 @@ import {
   signOutThenForgetHint,
   type FeedbackContext,
 } from "@/lib/profile-actions";
+import { itemAt } from '@/test-support/checked-access';
 
 describe("signOutThenForgetHint", () => {
   it("forgets the offline hint only after Clerk's sign-out succeeds", async () => {
@@ -54,7 +55,7 @@ describe("feedbackMailtoUrl", () => {
   };
 
   function body(url: string): string {
-    return decodeURIComponent(url.split("&body=")[1]);
+    return decodeURIComponent(itemAt(url.split("&body="), 1));
   }
 
   it("addresses the feedback inbox with the device, app and update", () => {

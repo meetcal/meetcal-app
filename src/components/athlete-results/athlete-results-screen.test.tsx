@@ -2,7 +2,7 @@ import React from "react";
 import { act, create } from "react-test-renderer";
 import AthleteResultsScreen from "@/app/shared-screens/athlete-results";
 import { fetchAllResultsForName } from "@/lib/database/queries";
-import { getAllCachedLiftingResultsForAthlete } from "@/lib/database/offline-store";
+import { getAllCachedLiftingResultsForAthlete } from "@/lib/database/athlete-history-store";
 
 jest.mock("@/contexts/ThemeContext", () => ({ useTheme: () => ({ currentTheme: "light" }) }));
 
@@ -42,7 +42,7 @@ jest.mock("@shopify/flash-list", () => {
 jest.mock("react-native-safe-area-context", () => ({
   useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }),
 }));
-jest.mock("@/lib/database/offline-store", () => ({
+jest.mock("@/lib/database/athlete-history-store", () => ({
   getAllCachedLiftingResultsForAthlete: jest.fn(async () => []),
 }));
 jest.mock("@/lib/database/queries", () => ({ fetchAllResultsForName: jest.fn() }));

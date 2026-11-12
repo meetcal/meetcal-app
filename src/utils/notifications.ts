@@ -1,3 +1,4 @@
+import { isRecord } from '@/lib/is-record';
 import * as Notifications from 'expo-notifications';
 // Named import: eslint-plugin-import cannot see enums re-exported through
 // expo-notifications' nested `export *` chain on the namespace object.
@@ -176,8 +177,8 @@ export async function listScheduledNotifications(): Promise<ScheduledNotificatio
     return {
       identifier: request.identifier,
       data:
-        data && typeof data === 'object' && !Array.isArray(data)
-          ? (data as Record<string, unknown>)
+        isRecord(data)
+          ? data
           : {},
     };
   });

@@ -15,7 +15,7 @@ jest.mock("@/lib/database/meet-manager", () => ({
 }));
 
 const mockMark = jest.fn(async (..._args: unknown[]) => {});
-jest.mock("@/lib/database/offline-store", () => ({
+jest.mock("@/lib/database/meet-downloads-registry", () => ({
   markMeetExplicitlyDownloaded: (...args: unknown[]) => mockMark(...args),
 }));
 

@@ -37,7 +37,7 @@ export function parseStartTimeToMinutes(startTime: string): number | null {
   if (match12) {
     const hours = Number(match12[1]);
     const minutes = Number(match12[2]);
-    const period = match12[3].toUpperCase();
+    const period = (match12[3] ?? "").toUpperCase();
     if (
       Number.isNaN(hours) ||
       Number.isNaN(minutes) ||

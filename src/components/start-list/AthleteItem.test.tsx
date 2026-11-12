@@ -7,6 +7,7 @@ import { ExpandedIdProvider } from "@/contexts/ExpandedIdContext";
 import { getLastYearBests } from "@/lib/start-list-api";
 import { ActivityIndicator } from "react-native";
 import { AthleteItem, type AthleteRowProps } from "./AthleteItem";
+import { itemAt } from "@/test-support/checked-access";
 
 jest.mock("react-native-reanimated", () => ({
   __esModule: true,
@@ -30,7 +31,7 @@ jest.mock("@/lib/start-list-utils", () => {
 // Regression guard for H3: the row must not read these itself. A row that
 // imports any of them would call the throwing hook on mount. (Each factory
 // builds its own thrower: `jest.mock` is hoisted above module scope.)
-jest.mock("@/utils/authGuard", () => ({
+jest.mock("@/hooks/useAuthGuard", () => ({
   useAuthGuard: () => {
     throw new Error("AthleteItem must not read app contexts");
   },
@@ -163,7 +164,7 @@ describe("AthleteItem", () => {
     act(() => {
       tree = create(<Parent props={props} />);
     });
-    const [nameRow] = findPressables(tree);
+    const nameRow = itemAt(findPressables(tree), 0);
     await act(async () => {
       nameRow.props.onPress();
     });
@@ -181,13 +182,13 @@ describe("AthleteItem", () => {
     act(() => {
       tree = create(<Parent props={props} />);
     });
-    const [nameRow] = findPressables(tree);
+    const nameRow = itemAt(findPressables(tree), 0);
     await act(async () => {
       nameRow.props.onPress();
     });
 
     const pressables = findPressables(tree);
-    const resultsButton = pressables[pressables.length - 1];
+    const resultsButton = itemAt(pressables, -1);
     act(() => {
       resultsButton.props.onPress();
     });
@@ -211,7 +212,7 @@ function mountRow(props: AthleteRowProps) {
 }
 
 async function toggleRow(tree: ReturnType<typeof create>) {
-  const [nameRow] = findPressables(tree);
+  const nameRow = itemAt(findPressables(tree), 0);
   await act(async () => {
     nameRow.props.onPress();
   });
@@ -233,8 +234,10 @@ describe("AthleteItem session link", () => {
     const tree = mountRow(props);
     await toggleRow(tree);
 
-    const [, sessionLink] = findPressables(tree);
-    act(() => sessionLink.props.onPress());
+    const sessionLink = itemAt(findPressables(tree), 1);
+    act(() => {
+      sessionLink.props.onPress();
+    });
 
     expect(props.router.push).toHaveBeenCalledWith({
       pathname: "/shared-screens/schedule-details",
@@ -273,11 +276,13 @@ describe("AthleteItem session link", () => {
     });
     const tree = mountRow(props);
     await toggleRow(tree);
-    const [, sessionLink] = findPressables(tree);
-    act(() => sessionLink.props.onPress());
+    const sessionLink = itemAt(findPressables(tree), 1);
+    act(() => {
+      sessionLink.props.onPress();
+    });
 
     expect(props.router.push).toHaveBeenCalledTimes(1);
-    expect(jest.mocked(props.router.push).mock.calls[0][0]).toMatchObject({
+    expect(itemAt(jest.mocked(props.router.push).mock.calls, 0)[0]).toMatchObject({
       params: { startTime: "1:00 PM", weighInTime: "11:00 AM", date: "2026-06-21" },
     });
     act(() => tree.unmount());
@@ -292,8 +297,10 @@ describe("AthleteItem session link", () => {
     });
     const tree = mountRow(props);
     await toggleRow(tree);
-    const [, sessionLink] = findPressables(tree);
-    act(() => sessionLink.props.onPress());
+    const sessionLink = itemAt(findPressables(tree), 1);
+    act(() => {
+      sessionLink.props.onPress();
+    });
 
     expect(props.router.push).toHaveBeenCalledWith({
       pathname: "/shared-screens/schedule-details",
@@ -326,10 +333,12 @@ describe("AthleteItem session link", () => {
     });
     const tree = mountRow(props);
     await toggleRow(tree);
-    const [, sessionLink] = findPressables(tree);
-    act(() => sessionLink.props.onPress());
+    const sessionLink = itemAt(findPressables(tree), 1);
+    act(() => {
+      sessionLink.props.onPress();
+    });
 
-    expect(jest.mocked(props.router.push).mock.calls[0][0]).toMatchObject({
+    expect(itemAt(jest.mocked(props.router.push).mock.calls, 0)[0]).toMatchObject({
       params: { startTime: "1:00 PM", weighInTime: "10:30 AM", date: "2026-06-21" },
     });
     act(() => tree.unmount());

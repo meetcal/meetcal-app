@@ -17,33 +17,9 @@ import FilterModalOptions from "./FilterModalOptions";
 import FilterModalTitle from "./FilterModalTitle";
 import FilterSheet from "./FilterSheet";
 import { Palette } from "@/constants/Palette";
+import type { FilterSection } from "@/types/filters";
 
-export interface FilterOption {
-  value: string;
-  label: string;
-  icon?: string;
-  iconColor?: string;
-  /** Heading listed above this option and the ones after it that share it. */
-  group?: string;
-}
-
-export interface FilterSection {
-  id: string;
-  title: string;
-  options: FilterOption[];
-  allOptionLabel?: string;
-  customContent?:
-    | React.ReactNode
-    | ((context: {
-        tempFilters: Record<string, string>;
-        setTempFilters: React.Dispatch<
-          React.SetStateAction<Record<string, string>>
-        >;
-        collapseSection: () => void;
-      }) => React.ReactNode);
-  displayMode?: "chips" | "accordion";
-  dependsOn?: string[];
-}
+export type { FilterOption, FilterSection } from "@/types/filters";
 
 interface GenericFilterModalProps {
   visible: boolean;

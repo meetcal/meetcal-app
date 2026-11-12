@@ -1,24 +1,7 @@
-/**
- * What an athlete's stored "bests" mean, and the one lookup that writes them.
- *
- * Session details (`lib/athlete-bests`) and the start list
- * (`lib/start-list-api`) read and write the same per-name entry in
- * `offline-store`. They used to resolve it differently: session details stored
- * all-null (or bests from any downloaded meet) when the year window was empty,
- * the start list stored the athlete's most recent meet. Which one the user saw
- * depended on which screen ran first. Both now go through
- * `lookUpAthleteBests`: bests inside the year-bests window, else the athlete's
- * most recent meet, stored.
- *
- * The derivation helpers are the client copy of the server's rule
- * (`convex/lib/results.ts` `accumulateBests`), used for the most-recent-meet
- * fallback and for the offline fallback both screens build from downloaded
- * meets.
- */
 import type { AthleteBests, AthleteMeetResult } from "@/data/types/athletes";
-import { fetchApiResultsByNames, fetchApiYearBestsByNames } from "@/lib/api/meetcal-api";
+import { fetchApiResultsByNames, fetchApiYearBestsByNames } from "@/lib/api/results-api";
 import { maxSuccessfulAttempt, normalizeAthleteName } from "@/lib/athletes";
-import { hasAnyAthleteBest, saveAthleteBestsBatch } from "@/lib/database/offline-store";
+import { hasAnyAthleteBest, saveAthleteBestsBatch } from "@/lib/database/athlete-bests-store";
 import {
   getHistoryCutoffDate,
   toMeetCalendarDate,
@@ -136,11 +119,6 @@ async function fetchMostRecentMeetBests(
 }
 
 export type AthleteBestsLookup = {
-  /**
-   * What the API answered, keyed by the caller's spellings and stored:
-   * bests inside the window, else the most recent meet's, else all-null
-   * ("no results", which `offline-store` expires sooner).
-   */
   answered: Record<string, AthleteBests>;
   /**
    * Names with nothing inside the window whose most-recent-meet lookup

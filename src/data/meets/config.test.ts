@@ -1,10 +1,8 @@
 import { clearMeetConfigCache, getMeetConfig } from '@/data/meets/config';
-import { fetchMeetByName } from '@/lib/database/meet-manager';
+import { fetchMeetByName } from '@/lib/database/meets-fetch';
 import { resolvedMeetTimeZone } from '@/utils/timezone';
 
-jest.mock('@/lib/database/meet-manager', () => ({
-  fetchMeetByName: jest.fn(),
-}));
+jest.mock('@/lib/database/meets-fetch', () => ({ fetchMeetByName: jest.fn() }));
 
 const mockFetchMeetByName = fetchMeetByName as jest.MockedFunction<
   typeof fetchMeetByName

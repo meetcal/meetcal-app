@@ -13,6 +13,7 @@ import { NOTIFICATION_ENABLED_KEY } from "@/utils/notifications";
 import { subscribeToReminderPreference } from "@/lib/reminder-preference";
 import { NotificationSettings } from "@/components/profile/NotificationSettings";
 import { showToast } from "@/components/ui/Toast";
+import { itemAt } from "@/test-support/checked-access";
 
 jest.mock("@/components/ui/IconSymbol", () => ({ IconSymbol: () => null }));
 jest.mock("@/components/ui/Toast", () => ({ showToast: jest.fn() }));
@@ -139,9 +140,9 @@ describe("NotificationSettings", () => {
   });
   it("tells a tap on an unknown subscription it can't confirm it, without the upgrade prompt", async () => {
     const renderer = await mount("unknown");
-    const row = renderer.root.findAll(
+    const row = itemAt(renderer.root.findAll(
       (node) => typeof node.props.onPress === "function" && node.props.disabled === false,
-    )[0];
+    ), 0);
 
     await act(async () => {
       row.props.onPress();
@@ -270,7 +271,7 @@ describe("NotificationSettings", () => {
       expect(reminderWrites()).toEqual(["true", "false", "true"]);
       expect(exactAlarmAlerts()).toHaveLength(2);
 
-      const buttons = exactAlarmAlerts()[0][2] as { text: string; onPress?: () => void }[];
+      const buttons = itemAt(exactAlarmAlerts(), 0)[2] as { text: string; onPress?: () => void }[];
       buttons.find((button) => button.text === "Open Settings")?.onPress?.();
       expect(mockRequestExactAlarms).toHaveBeenCalledTimes(1);
     });

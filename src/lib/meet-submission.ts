@@ -1,11 +1,7 @@
 import { File } from 'expo-file-system';
-import {
-  generateMeetSubmissionUploadUrl,
-  MeetCalApiError,
-  MeetCalApiTimeoutError,
-  submitMeet,
-  type MeetSubmissionBody,
-} from '@/lib/api/meetcal-api';
+import { generateMeetSubmissionUploadUrl, submitMeet, type MeetSubmissionBody } from '@/lib/api/meet-submissions-api';
+import { MeetCalApiError, MeetCalApiTimeoutError } from '@/lib/api/meetcal-api';
+import { isRecord } from '@/lib/is-record';
 
 // Sending a schedule or start list for a meet MeetCal does not cover yet
 // (`convex/meetSubmissions.ts`): the form's checks, the uploads and the
@@ -18,6 +14,7 @@ export const SUBMIT_MEET_ROUTE = '/schedule-toolbar/submit-meet';
 export const MAX_MEET_SUBMISSION_FILES = 10;
 export const MAX_MEET_SUBMISSION_FILE_BYTES = 20 * 1024 * 1024;
 export const MAX_MEET_SUBMISSIONS_PER_DAY = 5;
+export const FILE_ALREADY_SUBMITTED_CODE = 'already_submitted';
 export const MAX_MEET_SUBMISSION_NAME_LEN = 200;
 export const MAX_MEET_SUBMISSION_FILE_NAME_LEN = 200;
 export const MEET_SUBMISSION_FILE_EXTENSIONS = ['pdf', 'jpg', 'jpeg', 'png', 'heic', 'heif', 'webp', 'xlsx', 'xls', 'csv', 'doc', 'docx'] as const;
@@ -285,7 +282,7 @@ export async function sendMeetSubmission(
       files,
     });
   } catch (error) {
-    const alreadySent = reused && error instanceof MeetCalApiError && error.status === 400 && serverReason(error.body)?.startsWith('file already submitted');
+    const alreadySent = reused && error instanceof MeetCalApiError && error.status === 400 && isAlreadySubmittedRefusal(error.body);
     if (!alreadySent) throw error;
   }
 }
@@ -316,14 +313,22 @@ function sentence(reason: string): string {
   return `${reason.charAt(0).toUpperCase()}${reason.slice(1)}.`;
 }
 
-/** The `error` text of a ConvexError body (`{ status, error }`), if it has one. */
-function serverReason(body: string): string | null {
+function serverErrorData(body: string): Record<string, unknown> | null {
   let parsed: unknown;
   try {
     parsed = JSON.parse(body);
   } catch {
     return null;
   }
-  const reason = typeof parsed === 'object' && parsed !== null ? (parsed as { error?: unknown }).error : undefined;
+  return isRecord(parsed) ? parsed : null;
+}
+
+function serverReason(body: string): string | null {
+  const reason = serverErrorData(body)?.error;
   return typeof reason === 'string' && reason.trim() !== '' ? reason.trim() : null;
+}
+
+function isAlreadySubmittedRefusal(body: string): boolean {
+  if (serverErrorData(body)?.code === FILE_ALREADY_SUBMITTED_CODE) return true;
+  return serverReason(body)?.startsWith('file already submitted') ?? false;
 }

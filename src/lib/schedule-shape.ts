@@ -1,4 +1,4 @@
-import type { Schedule } from '@/types/schedule';
+import type { DaySchedule, Schedule } from '@/types/schedule';
 import { isRecord } from '@/lib/is-record';
 
 function isNonEmptyText(value: unknown): boolean {
@@ -33,4 +33,8 @@ export function scheduleShapeProblem(value: unknown): string | null {
 
 export function isSchedule(value: unknown): value is Schedule {
   return scheduleShapeProblem(value) === null;
+}
+
+export function isDaySchedule(value: unknown): value is DaySchedule {
+  return isSchedule([value]);
 }

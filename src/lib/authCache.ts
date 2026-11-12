@@ -1,3 +1,4 @@
+import { isRecord } from '@/lib/is-record';
 import { createWriteChain } from '@/lib/data/write-chain';
 import * as SecureStore from 'expo-secure-store';
 import { devLog } from './logger';
@@ -56,10 +57,10 @@ const MAX_CLOCK_SKEW_MS = CACHE_EXPIRY_MS;
 
 // Runtime validator for cached auth data: shape only, never the clock.
 function isAuthCacheData(obj: unknown): obj is AuthCacheData {
-  if (obj === null || typeof obj !== 'object' || Array.isArray(obj)) {
+  if (!isRecord(obj)) {
     return false;
   }
-  const record = obj as Record<string, unknown>;
+  const record = obj;
   return (
     typeof record.isSignedIn === 'boolean' &&
     typeof record.timestamp === 'number' &&

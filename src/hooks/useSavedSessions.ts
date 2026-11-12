@@ -7,7 +7,7 @@ import { resolvedMeetTimeZone } from '@/utils/timezone';
 import { useSelectedMeet } from '@/contexts/SelectedMeetContext';
 import { useSubscription } from '@/contexts/SubscriptionContext';
 import { confirmedSubscriptionFor } from '@/lib/confirmed-entitlement';
-import { getMeetSchedule } from '@/lib/database/offline-store';
+import { getMeetSchedule } from '@/lib/database/meet-data-reads';
 import { syncSavedWidget, clearSavedWidget } from '@/utils/savedWidget';
 import { reindexAppEntities } from '@/utils/appIntents';
 import type { Schedule as ScheduleType } from '@/types/schedule';
@@ -181,6 +181,9 @@ export function useSavedSessions() {
         if (cancelled) return;
         syncSavedWidget(selectedMeet, savedSessions, timeZone);
         void reindexAppEntities();
+      })
+      .catch((error: unknown) => {
+        console.error('Error syncing the saved-sessions widget:', error);
       });
     return () => {
       cancelled = true;

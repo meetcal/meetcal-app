@@ -11,6 +11,7 @@ import {
   shouldPromptForUpdate,
   useOTAUpdates,
 } from "@/hooks/useOTAUpdates";
+import { itemAt } from "@/test-support/checked-access";
 
 const mockCheckForUpdate = jest.fn();
 const mockFetchUpdate = jest.fn(async () => ({ isNew: true }));
@@ -140,7 +141,7 @@ describe("useOTAUpdates", () => {
     await act(async () => {
       await ota.current.downloadAndRestart();
     });
-    const buttons = alertSpy.mock.calls[0][2] as { text: string; onPress: () => void }[];
+    const buttons = itemAt(alertSpy.mock.calls, 0)[2] as { text: string; onPress: () => void }[];
     act(() => buttons.find((button) => button.text === "Later")!.onPress());
 
     expect(ota.current.isUpdateAvailable).toBe(false);
@@ -194,7 +195,7 @@ describe("useOTAUpdates", () => {
     expect(ota.current.isDownloading).toBe(true);
     expect(ota.current.isUpdateAvailable).toBe(true);
 
-    const buttons = alertSpy.mock.calls[0][2] as { text: string; onPress: () => void }[];
+    const buttons = itemAt(alertSpy.mock.calls, 0)[2] as { text: string; onPress: () => void }[];
     act(() => buttons.find((button) => button.text === "Later")!.onPress());
     expect(ota.current.isUpdateAvailable).toBe(false);
   });

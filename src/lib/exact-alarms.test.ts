@@ -7,6 +7,7 @@ import {
   readExactAlarmStatus,
   remindersNeedExactAlarms,
 } from "@/lib/exact-alarms";
+import { itemAt } from "@/test-support/checked-access";
 
 jest.mock("expo-notifications", () => ({
   __esModule: true,
@@ -154,7 +155,7 @@ describe("offerExactAlarmSettingsIfDenied", () => {
     realGet?.mockResolvedValue({ granted: false });
     realRequest?.mockResolvedValue({ granted: true });
     await offerExactAlarmSettingsIfDenied();
-    const buttons = offers()[0][2] as { text: string; onPress?: () => void }[];
+    const buttons = itemAt(offers(), 0)[2] as { text: string; onPress?: () => void }[];
     buttons.find((button) => button.text === "Open Settings")?.onPress?.();
     expect(realRequest).toHaveBeenCalledTimes(1);
   });

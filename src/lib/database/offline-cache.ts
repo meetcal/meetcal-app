@@ -1,5 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { createKeyedWriteChain } from '@/lib/data/write-chain';
+import { isRecord } from '@/lib/is-record';
+import type { ReadCached } from './cached-shapes';
 
 export type OfflineCacheEntry<T> = {
   data: T;
@@ -25,23 +27,34 @@ export const OFFLINE_CACHE_KEYS = {
 } as const;
 
 function isOfflineCacheEntry(value: unknown): value is OfflineCacheEntry<unknown> {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
-  if (!('data' in value)) return false;
-  const lastSynced = (value as { lastSynced?: unknown }).lastSynced;
-  return typeof lastSynced === 'number' && Number.isFinite(lastSynced);
+  if (!isRecord(value) || !('data' in value)) return false;
+  return typeof value.lastSynced === 'number' && Number.isFinite(value.lastSynced);
 }
 
-export async function getOfflineCache<T>(key: string): Promise<OfflineCacheEntry<T> | null> {
+async function readStoredEntry(key: string): Promise<OfflineCacheEntry<unknown> | null> {
   try {
     const stored = await AsyncStorage.getItem(key);
     if (!stored) return null;
     const parsed: unknown = JSON.parse(stored);
-    if (!isOfflineCacheEntry(parsed)) return null;
-    return parsed as OfflineCacheEntry<T>;
+    return isOfflineCacheEntry(parsed) ? parsed : null;
   } catch (error) {
     console.error('Error reading offline cache:', error);
     return null;
   }
+}
+
+export async function getOfflineCache<T>(
+  key: string,
+  read: ReadCached<T>,
+): Promise<OfflineCacheEntry<T> | null> {
+  const entry = await readStoredEntry(key);
+  if (!entry) return null;
+  const data = read(entry.data);
+  return data === undefined ? null : { data, lastSynced: entry.lastSynced };
+}
+
+export async function getOfflineCacheSyncedAt(key: string): Promise<number | null> {
+  return (await readStoredEntry(key))?.lastSynced ?? null;
 }
 
 export async function setOfflineCache<T>(key: string, data: T): Promise<OfflineCacheEntry<T>> {
@@ -94,13 +107,12 @@ const browseCacheWrites = createKeyedWriteChain();
 type BoundedCacheRecord = { key: string; data: unknown; lastSynced: number };
 
 function isBoundedCacheRecord(value: unknown): value is BoundedCacheRecord {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
-  const record = value as { key?: unknown; lastSynced?: unknown };
   return (
-    typeof record.key === 'string' &&
+    isRecord(value) &&
+    typeof value.key === 'string' &&
     'data' in value &&
-    typeof record.lastSynced === 'number' &&
-    Number.isFinite(record.lastSynced)
+    typeof value.lastSynced === 'number' &&
+    Number.isFinite(value.lastSynced)
   );
 }
 
@@ -115,7 +127,7 @@ function readBoundedRecords(entry: OfflineCacheEntry<unknown> | null): BoundedCa
   if (!entry) return [];
   const { data, lastSynced } = entry;
   if (Array.isArray(data)) return data.filter(isBoundedCacheRecord);
-  if (data && typeof data === 'object') {
+  if (isRecord(data)) {
     return Object.entries(data).map(([key, value]) => ({ key, data: value, lastSynced }));
   }
   return [];
@@ -128,15 +140,18 @@ function readBoundedRecords(entry: OfflineCacheEntry<unknown> | null): BoundedCa
 export async function readBoundedCacheEntry<T>(
   cacheKey: string,
   entryKey: string,
+  read: ReadCached<T>,
 ): Promise<{ data: T; lastUpdatedAt: number } | null> {
-  const records = readBoundedRecords(await getOfflineCache<unknown>(cacheKey));
+  const records = readBoundedRecords(await readStoredEntry(cacheKey));
   const record = records.find((r) => r.key === entryKey);
-  return record ? { data: record.data as T, lastUpdatedAt: record.lastSynced } : null;
+  if (!record) return null;
+  const data = read(record.data);
+  return data === undefined ? null : { data, lastUpdatedAt: record.lastSynced };
 }
 
 /** The entry keys a browse cache written by `writeBoundedCacheEntry` holds. */
 export async function readBoundedCacheKeys(cacheKey: string): Promise<string[]> {
-  return readBoundedRecords(await getOfflineCache<unknown>(cacheKey)).map((r) => r.key);
+  return readBoundedRecords(await readStoredEntry(cacheKey)).map((r) => r.key);
 }
 
 /**
@@ -165,7 +180,7 @@ export async function writeBoundedCacheEntry<T>(
   }
   return browseCacheWrites(cacheKey, async () => {
     const lastSynced = Date.now();
-    const kept = readBoundedRecords(await getOfflineCache<unknown>(cacheKey)).filter(
+    const kept = readBoundedRecords(await readStoredEntry(cacheKey)).filter(
       (r) => r.key !== entryKey,
     );
     const next: BoundedCacheRecord[] = [
@@ -183,7 +198,7 @@ export async function writeBoundedCacheEntry<T>(
  */
 export async function removeBoundedCacheEntry(cacheKey: string, entryKey: string): Promise<void> {
   await browseCacheWrites(cacheKey, async () => {
-    const entry = await getOfflineCache<unknown>(cacheKey);
+    const entry = await readStoredEntry(cacheKey);
     if (!entry) return;
     const records = readBoundedRecords(entry);
     const kept = records.filter((r) => r.key !== entryKey);

@@ -70,12 +70,13 @@ function decode(result: unknown): unknown {
 }
 
 async function rosterNames(client: ConvexClient, count: number): Promise<string[]> {
-  const rows = decode(await client.query(anyApi.meets.athletes, { meet: BIG_MEET })) as { name: string }[];
+  const rows = decode(await client.query(fnRef('meets:athletes'), { meet: BIG_MEET })) as { name: string }[];
   return rows.slice(0, count).map((r) => r.name);
 }
 
 function buildCases(names40: string[], names100: string[]): Case[] {
   const meetQ = { meet: BIG_MEET };
+  const [firstName = '', secondName = ''] = names40;
   return [
     { name: 'meets list', rust: { method: 'GET', path: '/meets' }, convex: { fn: 'meets:list', args: { now: Math.floor(Date.now() / 3.6e6) * 3.6e6 } }, bust: bustEtag },
     { name: 'meet details', rust: { method: 'GET', path: '/meets/details', query: meetQ }, convex: { fn: 'meets:details', args: meetQ }, bust: bustEtag },
@@ -92,9 +93,9 @@ function buildCases(names40: string[], names100: string[]): Case[] {
     { name: 'latest meet 100 names', rust: { method: 'POST', path: '/lifting-results/by-names', body: { names: names100, latest_only: true } }, convex: { fn: 'results:byNames', args: { names: names100, latestOnly: true } }, bust: rotateNames },
     { name: 'bests 100 names', rust: { method: 'POST', path: '/lifting-results/bests', body: { names: names100, cutoff_date: ONE_YEAR_AGO } }, convex: { fn: 'results:bests', args: { names: names100, cutoffDate: ONE_YEAR_AGO } }, bust: rotateNames },
     { name: 'recent 40 names', rust: { method: 'POST', path: '/lifting-results/recent', body: { names: names40, cutoff_date: TWO_YEARS_AGO } }, convex: { fn: 'results:recent', args: { names: names40, cutoffDate: TWO_YEARS_AGO } }, bust: rotateNames },
-    { name: 'year bests 1 name', rust: { method: 'GET', path: '/lifting-results/year', query: { name: names40[0], cutoff_date: ONE_YEAR_AGO } }, convex: { fn: 'results:yearBests', args: { name: names40[0], cutoffDate: ONE_YEAR_AGO } } },
+    { name: 'year bests 1 name', rust: { method: 'GET', path: '/lifting-results/year', query: { name: firstName, cutoff_date: ONE_YEAR_AGO } }, convex: { fn: 'results:yearBests', args: { name: firstName, cutoffDate: ONE_YEAR_AGO } } },
     { name: 'search suggestions', rust: { method: 'GET', path: '/search', query: { query: 'john' } }, convex: { fn: 'results:search', args: { query: 'john' } } },
-    { name: 'search exact name', rust: { method: 'GET', path: '/search', query: { query: names40[1], start_date: '2025-01-01', end_date: '2026-01-01' } }, convex: { fn: 'results:search', args: { query: names40[1], startDate: '2025-01-01', endDate: '2026-01-01' } } },
+    { name: 'search exact name', rust: { method: 'GET', path: '/search', query: { query: secondName, start_date: '2025-01-01', end_date: '2026-01-01' } }, convex: { fn: 'results:search', args: { query: secondName, startDate: '2025-01-01', endDate: '2026-01-01' } } },
     { name: 'national rankings (M85)', rust: { method: 'GET', path: '/data/nat-rankings', query: { federation: 'USAW', age_category: "Open Men's 85 kg" } }, convex: { fn: 'reference:nationalRankings', args: { federation: 'USAW', ageCategory: "Open Men's 85 kg" } }, bust: bustEtag },
     { name: 'records', rust: { method: 'GET', path: '/data/records' }, convex: { fn: 'reference:records', args: {} }, bust: bustEtag },
     { name: 'standards', rust: { method: 'GET', path: '/data/standards' }, convex: { fn: 'reference:standards', args: {} }, bust: bustEtag },
@@ -109,7 +110,7 @@ function buildCases(names40: string[], names100: string[]): Case[] {
 }
 
 function fnRef(name: string) {
-  const [module, fn] = name.split(':');
+  const [module = '', fn = ''] = name.split(':');
   return (anyApi as any)[module][fn];
 }
 
@@ -142,7 +143,7 @@ async function timeConvex(client: ConvexHttpClient, fn: string, args: Record<str
 
 const pct = (values: number[], p: number) => {
   const sorted = [...values].sort((a, b) => a - b);
-  return sorted[Math.min(sorted.length - 1, Math.floor((p / 100) * sorted.length))];
+  return sorted[Math.min(sorted.length - 1, Math.floor((p / 100) * sorted.length))] ?? NaN;
 };
 const fmt = (n: number) => n.toFixed(1).padStart(7);
 const kb = (n: number) => `${(n / 1024).toFixed(0)}KB`.padStart(7);
