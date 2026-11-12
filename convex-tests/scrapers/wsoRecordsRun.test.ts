@@ -1,8 +1,15 @@
+import { blankRecord, setLift } from '../../convex/scrapers/parse/wso/common';
 import { describeFailure } from '../../convex/lib/cronAlerts';
 import { NOT_REACHED, OUT_OF_TIME, runBudget } from '../../convex/scrapers/lib/budget';
 import { syncWsoSources, type WsoSource } from '../../convex/scrapers/wsoRecords';
 
-const record = (wso: string) => ({ wso, age_category: 'Senior', gender: 'Men', weight_class: '94kg', snatch_record: 100, cj_record: 120, total_record: 220 });
+const record = (wso: string) => {
+  const senior = blankRecord(wso, 'Senior', 'Men', '94kg');
+  setLift(senior, 'snatch', 100, undefined);
+  setLift(senior, 'cj', 120, undefined);
+  setLift(senior, 'total', 220, undefined);
+  return senior;
+};
 const stored = () => {
   const wsos: string[] = [];
   return { wsos, store: async (wso: string) => (wsos.push(wso), { inserted: 1 }) };
