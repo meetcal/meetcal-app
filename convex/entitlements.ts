@@ -2,6 +2,7 @@ import { v } from 'convex/values';
 import { internal } from './_generated/api';
 import { action, httpAction, internalAction, internalMutation, internalQuery, type ActionCtx, type MutationCtx } from './_generated/server';
 import { entitlementIsActive, isMeetCalToken, SUBSCRIPTION_ENTITLEMENT_ID } from './lib/access';
+import { isRecord } from './lib/json';
 import { apiError } from './lib/validation';
 import { constantTimeEqual } from './lib/webhookSignature';
 
@@ -40,9 +41,6 @@ export const MAX_USER_ID_LENGTH = 256;
 
 export type EntitlementState = { active: boolean; expiresAt: number | null; productId: string | null };
 
-const isObject = (value: unknown): value is Record<string, unknown> =>
-  typeof value === 'object' && value !== null && !Array.isArray(value);
-
 function dateMs(value: unknown, field: string): number | null {
   if (value === null || value === undefined) return null;
   const ms = typeof value === 'string' ? Date.parse(value) : NaN;
@@ -50,36 +48,22 @@ function dateMs(value: unknown, field: string): number | null {
   return ms;
 }
 
-/**
- * Whether the purchase behind an entitlement was a sandbox one: its
- * subscription says so, or every one-time purchase of the product does.
- */
 function isSandboxPurchase(subscriber: Record<string, unknown>, productId: string | null): boolean {
   if (productId === null) return false;
-  const subscription = isObject(subscriber.subscriptions) ? subscriber.subscriptions[productId] : undefined;
-  if (isObject(subscription)) return subscription.is_sandbox === true;
-  const purchases = isObject(subscriber.non_subscriptions) ? subscriber.non_subscriptions[productId] : undefined;
-  return Array.isArray(purchases) && purchases.length > 0 && purchases.every((p) => isObject(p) && p.is_sandbox === true);
+  const subscription = isRecord(subscriber.subscriptions) ? subscriber.subscriptions[productId] : undefined;
+  if (isRecord(subscription)) return subscription.is_sandbox === true;
+  const purchases = isRecord(subscriber.non_subscriptions) ? subscriber.non_subscriptions[productId] : undefined;
+  return Array.isArray(purchases) && purchases.length > 0 && purchases.every((p) => isRecord(p) && p.is_sandbox === true);
 }
 
 /** The prefix of RevenueCat's ids for promotional grants of the `Subscriptions` entitlement (`rc_promo_Subscriptions_lifetime`). */
 const PROMOTIONAL_PREFIX = `rc_promo_${SUBSCRIPTION_ENTITLEMENT_ID}_`;
 
-/**
- * The longest-lasting promotional grant of the entitlement that is not a
- * sandbox one, or null without one: an entry under `subscriptions` with the
- * grant's id prefix, `store: "promotional"` and an expiry date (RevenueCat
- * dates every grant, a lifetime one far ahead; one without a date is not
- * read as forever). RevenueCat names only one product per
- * entitlement, the one that lasts longest, so a sandbox lifetime purchase
- * (made from TestFlight, never expiring) hides a promotional grant from the
- * entitlement itself; the grant is still listed under `subscriptions`.
- */
 function promotionalGrant(subscriber: Record<string, unknown>, now: number): EntitlementState | null {
-  if (!isObject(subscriber.subscriptions)) return null;
+  if (!isRecord(subscriber.subscriptions)) return null;
   let best: EntitlementState | null = null;
   for (const [productId, grant] of Object.entries(subscriber.subscriptions)) {
-    if (!productId.startsWith(PROMOTIONAL_PREFIX) || !isObject(grant) || grant.store !== 'promotional' || grant.is_sandbox === true) continue;
+    if (!productId.startsWith(PROMOTIONAL_PREFIX) || !isRecord(grant) || grant.store !== 'promotional' || grant.is_sandbox === true) continue;
     const expiresAt = dateMs(grant.expires_date, 'expires_date');
     if (expiresAt === null) continue;
     const state = { active: expiresAt > now, expiresAt, productId };
@@ -88,20 +72,13 @@ function promotionalGrant(subscriber: Record<string, unknown>, now: number): Ent
   return best;
 }
 
-/**
- * The `Subscriptions` entitlement from RevenueCat's `GET /v1/subscribers`
- * answer. No entitlement is inactive. A sandbox purchase is inactive too,
- * unless `countSandbox` (dev) or an unexpired promotional grant stands
- * behind it (`promotionalGrant`). A null `expires_date` is a lifetime
- * purchase. A billing grace period counts until it ends.
- */
 export function entitlementFromSubscriber(body: unknown, now: number, countSandbox = false): EntitlementState {
-  if (!isObject(body) || !isObject(body.subscriber)) throw new Error('RevenueCat answer has no subscriber');
+  if (!isRecord(body) || !isRecord(body.subscriber)) throw new Error('RevenueCat answer has no subscriber');
   const entitlements = body.subscriber.entitlements;
-  if (entitlements !== undefined && !isObject(entitlements)) throw new Error('RevenueCat entitlements is not an object');
+  if (entitlements !== undefined && !isRecord(entitlements)) throw new Error('RevenueCat entitlements is not an object');
   const entitlement = entitlements?.[SUBSCRIPTION_ENTITLEMENT_ID];
   if (entitlement === undefined) return { active: false, expiresAt: null, productId: null };
-  if (!isObject(entitlement)) throw new Error(`RevenueCat ${SUBSCRIPTION_ENTITLEMENT_ID} is not an object`);
+  if (!isRecord(entitlement)) throw new Error(`RevenueCat ${SUBSCRIPTION_ENTITLEMENT_ID} is not an object`);
   const productId = typeof entitlement.product_identifier === 'string' ? entitlement.product_identifier : null;
   const expires = dateMs(entitlement.expires_date, 'expires_date');
   const grace = dateMs(entitlement.grace_period_expires_date, 'grace_period_expires_date');
@@ -113,12 +90,8 @@ export function entitlementFromSubscriber(body: unknown, now: number, countSandb
   return { active: expiresAt === null || expiresAt > now, expiresAt, productId };
 }
 
-/**
- * The RevenueCat user ids a webhook event is about, without RevenueCat's
- * anonymous ids (nobody signed in) and anything not a plausible id.
- */
 export function webhookUserIds(body: unknown): string[] {
-  const event = isObject(body) && isObject(body.event) ? body.event : null;
+  const event = isRecord(body) && isRecord(body.event) ? body.event : null;
   if (!event) return [];
   const listed = (value: unknown): unknown[] => (Array.isArray(value) ? value : [value]);
   const candidates = [
@@ -208,11 +181,6 @@ export const store = internalMutation({
   },
 });
 
-/**
- * Whether a `refresh` may ask RevenueCat now, and records that it did; at
- * most once per `ENTITLEMENT_REFRESH_INTERVAL_MS` per user. A throttled call
- * answers the stored state.
- */
 export const claimRefresh = internalMutation({
   args: { userId: v.string(), now: v.number() },
   handler: async (ctx, { userId, now }): Promise<{ claimed: true; claimedAt: number } | { claimed: false; active: boolean }> => {
@@ -232,10 +200,6 @@ export const claimRefresh = internalMutation({
   },
 });
 
-/**
- * Gives back a `claimRefresh` whose RevenueCat call failed, if it is still
- * the latest claim, so the user's next `refresh` reaches RevenueCat.
- */
 export const releaseRefresh = internalMutation({
   args: { userId: v.string(), claimedAt: v.number() },
   handler: async (ctx, { userId, claimedAt }) => {
@@ -269,8 +233,6 @@ export const refresh = action({
     try {
       state = await syncEntitlement(ctx, identity.subject);
     } catch (error) {
-      // RevenueCat did not answer: the next call asks again, rather than
-      // answering a stored "no subscription" for the rest of the minute.
       await ctx.runMutation(internal.entitlements.releaseRefresh, { userId: identity.subject, claimedAt: claim.claimedAt });
       throw error;
     }

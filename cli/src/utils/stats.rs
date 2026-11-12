@@ -468,7 +468,6 @@ pub fn number(value: f64) -> String {
     }
 }
 
-/// `part` of `whole` as a percentage, 0–100; 0 of nothing is 0.
 pub fn percentage(part: usize, whole: usize) -> f64 {
     if whole == 0 {
         0.0

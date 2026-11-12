@@ -409,15 +409,17 @@ pub fn roster_classes(roster: &[Athletes]) -> RosterClasses {
     });
     let mut classes = RosterClasses::new();
     for athlete in sorted {
-        classes
-            .entry(fold(&athlete.name))
-            .or_insert_with(|| (gender_key(&athlete.gender), athlete.weight_class.clone()));
+        classes.entry(fold(&athlete.name)).or_insert_with(|| {
+            (
+                gender_as_the_server_groups_it(&athlete.gender),
+                athlete.weight_class.clone(),
+            )
+        });
     }
     classes
 }
 
-/// The server's `normalizeGender`, for grouping only.
-fn gender_key(gender: &str) -> String {
+fn gender_as_the_server_groups_it(gender: &str) -> String {
     match gender.trim().to_lowercase().as_str() {
         "men" | "male" | "m" => "men".to_string(),
         "women" | "female" | "f" => "women".to_string(),
@@ -583,7 +585,6 @@ fn place_of(key: &LiftKey, group: &[LiftKey]) -> Option<usize> {
     Some(group.iter().filter(|other| ranks_ahead(other, key)).count() + 1)
 }
 
-/// The report as table format prints it, for the tests.
 #[cfg(test)]
 fn render_report(
     wso: &str,

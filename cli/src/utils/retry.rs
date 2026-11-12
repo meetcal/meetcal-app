@@ -7,10 +7,6 @@
 //! tolerates a failed poll (`backend::Endpoint::retries`). The
 //! policy is kept free of I/O so it can be unit tested; `utils::backend` applies it to real
 //! requests.
-//!
-//! A read whose request failed before any answer arrived (a refused or dropped connection) is
-//! sent again the same number of times ([`next_transport_retry_delay`]); one that timed out is
-//! not, since it has already taken the whole time a request is allowed.
 
 use std::time::Duration;
 
@@ -69,9 +65,6 @@ pub fn next_retry_delay(
     Some(retry_after.and_then(retry_after_delay).unwrap_or(backoff))
 }
 
-/// The wait before sending a read again after its request failed with no answer (the connection
-/// was refused or dropped), or `None` when it has been retried enough. `retries_done` counts
-/// every retry of the request, whatever caused it.
 pub fn next_transport_retry_delay(retries_done: usize) -> Option<Duration> {
     RETRY_BACKOFF.get(retries_done).copied()
 }

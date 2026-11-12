@@ -1,4 +1,5 @@
 use super::{
+    address::{HistoryEntry, query_param, use_page_address},
     format::{NO_VALUE, format_us_date},
     loading::{Load, LoadState, load_error, load_query},
     ui::{DataMetric, DataPage, DataStatus, DataTable, EmptyTableRow, FilterSelect, TableSkeleton},
@@ -238,10 +239,12 @@ struct EliteAnswer {
     rankings: EliteRankings,
 }
 
-/// The default range: last calendar year.
-fn last_year() -> (String, String) {
-    let year = js_sys::Date::new_0().get_full_year() - 1;
+fn calendar_year(year: u32) -> (String, String) {
     (format!("{year:04}-01-01"), format!("{year:04}-12-31"))
+}
+
+fn this_year() -> (String, String) {
+    calendar_year(js_sys::Date::new_0().get_full_year())
 }
 
 /// Ages each group covers, as the server's `groupOfAge` splits them.
@@ -249,7 +252,18 @@ const GROUP_HELP: &str = "Youth 17 and under, Junior 18–20, Senior 21–34, Ma
 
 #[component]
 pub fn WsoElite() -> impl IntoView {
-    let (request, set_request) = signal(None::<EliteQuery>);
+    let page = use_page_address("/wso-elite");
+    let wso_in_address = query_param("wso");
+    let from_in_address = query_param("from");
+    let to_in_address = query_param("to");
+    let request = Memo::new(move |_| {
+        elite_request(
+            &wso_in_address.get(),
+            &from_in_address.get(),
+            &to_in_address.get(),
+            this_year(),
+        )
+    });
     let methods = RwSignal::new(Methods::default());
     let wsos = load_query::<Vec<String>>(queries::REGISTRATION_WSOS);
     let answer = Load::new(
@@ -274,7 +288,17 @@ pub fn WsoElite() -> impl IntoView {
                 LoadState::Ready(wsos) => view! {
                     <EliteForm
                         wsos=wsos.clone()
-                        submit=Callback::new(move |query| answer.submit(|| set_request.set(Some(query))))
+                        shown=request
+                        submit=Callback::new(move |query: EliteQuery| {
+                            if request.get_untracked().as_ref() == Some(&query) {
+                                answer.retry();
+                            } else {
+                                page.show(
+                                    &[("wso", &query.wso), ("from", &query.from), ("to", &query.to)],
+                                    HistoryEntry::Push,
+                                );
+                            }
+                        })
                         methods
                     />
                 }.into_any(),
@@ -300,16 +324,72 @@ pub fn WsoElite() -> impl IntoView {
     }
 }
 
+fn is_calendar_date_text(value: &str) -> bool {
+    value.len() == 10
+        && value.bytes().enumerate().all(|(index, byte)| {
+            if index == 4 || index == 7 {
+                byte == b'-'
+            } else {
+                byte.is_ascii_digit()
+            }
+        })
+}
+
+fn elite_request(
+    wso: &str,
+    from: &str,
+    to: &str,
+    default_range: (String, String),
+) -> Option<EliteQuery> {
+    if wso.is_empty() {
+        return None;
+    }
+    let (default_from, default_to) = default_range;
+    Some(EliteQuery {
+        wso: wso.to_owned(),
+        from: if is_calendar_date_text(from) {
+            from.to_owned()
+        } else {
+            default_from
+        },
+        to: if is_calendar_date_text(to) {
+            to.to_owned()
+        } else {
+            default_to
+        },
+    })
+}
+
+fn form_range(shown: Option<&EliteQuery>) -> (String, String, String) {
+    match shown {
+        Some(shown) => (shown.wso.clone(), shown.from.clone(), shown.to.clone()),
+        None => {
+            let (from, to) = this_year();
+            (String::new(), from, to)
+        }
+    }
+}
+
 #[component]
 fn EliteForm(
     wsos: Vec<String>,
+    shown: Memo<Option<EliteQuery>>,
     submit: Callback<EliteQuery>,
     methods: RwSignal<Methods>,
 ) -> impl IntoView {
-    let (default_from, default_to) = last_year();
-    let (wso, set_wso) = signal(String::new());
-    let (from, set_from) = signal(default_from);
-    let (to, set_to) = signal(default_to);
+    let (first_wso, first_from, first_to) =
+        shown.with_untracked(|shown| form_range(shown.as_ref()));
+    let (wso, set_wso) = signal(first_wso);
+    let (from, set_from) = signal(first_from);
+    let (to, set_to) = signal(first_to);
+    Effect::new(move |earlier: Option<()>| {
+        let (shown_wso, shown_from, shown_to) = shown.with(|shown| form_range(shown.as_ref()));
+        if earlier.is_some() {
+            set_wso.set(shown_wso);
+            set_from.set(shown_from);
+            set_to.set(shown_to);
+        }
+    });
 
     let pickers = EliteList::IN_PAGE_ORDER
         .into_iter()
@@ -515,6 +595,14 @@ fn elite_csv(shown: &[ShownList<'_>]) -> String {
 mod tests {
     use super::*;
 
+    #[test]
+    fn a_calendar_year_runs_from_new_years_day_to_new_years_eve() {
+        assert_eq!(
+            calendar_year(2026),
+            ("2026-01-01".to_owned(), "2026-12-31".to_owned())
+        );
+    }
+
     fn row(name: &str, score: f64) -> EliteRow {
         EliteRow {
             name: name.to_owned(),
@@ -550,6 +638,28 @@ mod tests {
             senior: only(Method::Sinclair, vec![row("Ada \"Lift\"", 251.236)]),
             masters: only(Method::Qmasters, vec![]),
         }
+    }
+
+    #[test]
+    fn an_address_names_the_elite_lists_it_opens() {
+        let last = || ("2025-01-01".to_owned(), "2025-12-31".to_owned());
+        assert_eq!(elite_request("", "2024-01-01", "2024-12-31", last()), None);
+        assert_eq!(
+            elite_request("Carolina", "2024-02-01", "2024-11-30", last()),
+            Some(EliteQuery {
+                wso: "Carolina".to_owned(),
+                from: "2024-02-01".to_owned(),
+                to: "2024-11-30".to_owned()
+            })
+        );
+        assert_eq!(
+            elite_request("Carolina", "", "yesterday", last()),
+            Some(EliteQuery {
+                wso: "Carolina".to_owned(),
+                from: "2025-01-01".to_owned(),
+                to: "2025-12-31".to_owned()
+            })
+        );
     }
 
     #[test]
@@ -679,11 +789,31 @@ mod tests {
     }
 
     #[test]
-    fn defaults_match_the_servers() {
-        let defaults = Methods::default();
+    fn each_lists_methods_and_default_are_the_servers() {
+        let server = include_str!("../../../../convex/lib/elite.ts");
+        let choices = server
+            .split_once("export const ELITE_METHOD_CHOICES")
+            .and_then(|(_, rest)| rest.split_once("};"))
+            .map(|(choices, _)| choices)
+            .expect("convex/lib/elite.ts declares ELITE_METHOD_CHOICES");
         for list in EliteList::IN_PAGE_ORDER {
-            assert_eq!(defaults.get(list), list.methods_default_first()[0]);
+            let line = choices
+                .lines()
+                .find(|line| line.trim_start().starts_with(&format!("{}:", list.key())))
+                .unwrap_or_else(|| panic!("the server has no {} list", list.key()));
+            let server_methods = line.split('\'').skip(1).step_by(2).collect::<Vec<_>>();
+            let page_methods = list
+                .methods_default_first()
+                .iter()
+                .map(|method| method.value())
+                .collect::<Vec<_>>();
+            assert_eq!(page_methods, server_methods, "{}", list.key());
+            assert_eq!(
+                Methods::default().get(list).value(),
+                server_methods[0],
+                "{}",
+                list.key()
+            );
         }
-        assert_eq!(defaults.masters, Method::Qmasters);
     }
 }

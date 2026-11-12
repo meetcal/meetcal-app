@@ -28,7 +28,7 @@ pub struct ProgressArgs {
     pub name: String,
 
     /// Only results from this year on
-    #[arg(long, short = 's', value_parser = clap::value_parser!(i32).range(1900..=9999))]
+    #[arg(long, short = 's', value_parser = crate::utils::filters::parse_year)]
     pub since: Option<i32>,
 }
 

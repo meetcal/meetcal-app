@@ -23,12 +23,6 @@ export type UsamwRecord = {
   totalBy?: RecordHolder;
 };
 
-/**
- * The current national records PDFs ("NM<date>-MEN.pdf" / "-WOMEN.pdf" on
- * Google Storage), keyed Men/Women; the last match on the page wins, as
- * before. A trailing copy number ("NM20260713-MEN 1.pdf", the July 2026
- * upload) is accepted; the Python pattern rejected it and the job failed.
- */
 export function discoverRecordPdfs(page: string): { Men: string; Women: string } {
   const html = unescapeHtml(page);
   const urls: { Men?: string; Women?: string } = {};
@@ -39,9 +33,12 @@ export function discoverRecordPdfs(page: string): { Men: string; Women: string }
     if (/[-_ ]women(?:[ _-]*\d+)?\.pdf\b/.test(lower)) urls.Women = url;
     else if (/[-_ ]men(?:[ _-]*\d+)?\.pdf\b/.test(lower)) urls.Men = url;
   }
-  const missing = (['Men', 'Women'] as const).filter((g) => !urls[g]);
-  if (missing.length) throw new Error(`Could not find national records PDFs for: ${missing.join(', ')}`);
-  return urls as { Men: string; Women: string };
+  const { Men, Women } = urls;
+  if (!Men || !Women) {
+    const missing = (['Men', 'Women'] as const).filter((gender) => !urls[gender]);
+    throw new Error(`Could not find national records PDFs for: ${missing.join(', ')}`);
+  }
+  return { Men, Women };
 }
 
 export function ageCategory(text: string): string | null {
