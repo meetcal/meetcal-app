@@ -68,7 +68,7 @@ fn records_asks_the_server_for_one_table() {
     assert_eq!(output.status.code(), Some(0), "{:?}", output);
     let printed = String::from_utf8(output.stdout).unwrap();
     assert!(
-        printed.lines().nth(1).unwrap().starts_with("48,"),
+        printed.lines().nth(1).unwrap().starts_with("48kg,"),
         "{printed}"
     );
     let bodies = request_bodies(&requests);
