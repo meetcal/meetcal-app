@@ -1,4 +1,5 @@
 pub mod adaptive_records;
+pub(crate) mod address;
 pub(crate) mod analytics;
 pub(crate) mod athlete_autocomplete;
 pub mod catalog;
