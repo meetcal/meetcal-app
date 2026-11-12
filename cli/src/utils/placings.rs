@@ -3,7 +3,8 @@ use std::collections::{HashMap, HashSet};
 use crate::types::athletes::Athletes;
 use crate::types::lifting_results::LiftingResults;
 use crate::types::wso::{ClubMedalDetail, Movement};
-use crate::utils::stats::{Gender, fold, plausible};
+use crate::utils::filters::gender_as_matched;
+use crate::utils::stats::{fold, plausible};
 
 pub(crate) type RosterClasses = HashMap<String, (String, String)>;
 
@@ -25,10 +26,7 @@ pub(crate) fn roster_classes(roster: &[Athletes]) -> RosterClasses {
 }
 
 fn gender_key(gender: &str) -> String {
-    match Gender::parse(gender) {
-        Some(gender) => gender.label().to_lowercase(),
-        None => gender.trim().to_lowercase(),
-    }
+    gender_as_matched(gender).to_lowercase()
 }
 
 fn has_weight_class(age: &str) -> bool {
