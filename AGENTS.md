@@ -31,7 +31,7 @@ MeetCal answers the same questions on four surfaces: the app (TypeScript), the w
 | What you are writing | Single source | How the surfaces read it |
 | --- | --- | --- |
 | Computed answers (rankings, Wrapped scores, elite lists, qualifying status) | A Convex query, with its logic in `convex/lib/` | Every surface shows the query's answer and computes nothing itself (as `web/src/pages/comp_data/wrapped.rs` shows `results:wrapped`). |
-| Request and response shapes | The Convex function's `args` and `returns` validators | The app maps them once in `src/lib/api/meetcal-api.ts`; the website in `web/src/utils/api/` and `web/src/pages/comp_data/models.rs`; the CLI in `cli/src/utils/backend.rs`; Siri in `plugins/ios-app-intents/MeetCalAPI.swift`. |
+| Request and response shapes | The Convex function's `args` and `returns` validators | The app maps them once in `src/lib/api/meetcal-api.ts`; the website in `web/src/utils/api/` and `web/src/pages/comp_data/models.rs`; the CLI in `cli/src/utils/backend.rs`; Siri in `plugins/ios-app-intents/MeetCalAPI.swift`. The answers in `fixtures/wire/`, checked against the handlers, are what the app's, the website's and the CLI's tests parse ([docs/testing.md](docs/testing.md#wire-fixtures)). |
 | Which reads are premium | `PREMIUM_FUNCTIONS` in `convex/lib/access.ts` | Each client keeps its own list (the languages differ), held equal to the server's by tests. A new premium read changes every list and passes those tests. |
 | App-only policy (meet time, session selection, offline cache) | TypeScript in `src/lib/` or `src/utils/` | Screens, hooks, widgets data and notifications import it; never a second copy in a screen. |
 

@@ -30,6 +30,8 @@ const appFiles =
  */
 const unchecked = /^(?:\.gitignore|\.prettierignore|\.maestro\/.*|\.github\/.*|\.codex\/.*|\.claude\/.*|docs\/.*)$/;
 
+const wireFixtures = /^fixtures\/wire\//;
+
 export function planChecks(paths: readonly string[] | null, all = false): CheckPlan {
   if (all) return allChecks('Explicit full run');
   if (paths === null || paths.length === 0) return allChecks('No reliable change scope; run everything');
@@ -37,6 +39,10 @@ export function planChecks(paths: readonly string[] | null, all = false): CheckP
   for (const path of paths) {
     if (/\.md$/i.test(path)) continue;
     if (gateFiles.test(path)) return allChecks(`The gate or its toolchain changed: ${path}`);
+    if (wireFixtures.test(path)) {
+      for (const suite of CHECK_SUITES) suites.add(suite);
+      continue;
+    }
     // The website and the CLI read Convex over HTTP and test against answer
     // shapes written by hand, so a `convex/` change does not run their suites
     // (their CI still runs on it).
