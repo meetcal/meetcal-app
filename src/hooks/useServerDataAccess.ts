@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from 'react';
 
 import { useSubscription } from '@/contexts/SubscriptionContext';
 import { prefetchAccessPass, setAccessPassSource } from '@/lib/api/premium-queries';
-import { loadAccessPass } from '@/lib/access-pass';
+import { forgetStoredAccessPass, loadAccessPass, storedAccessPassFor } from '@/lib/access-pass';
 import { getCachedAuthState } from '@/lib/authCache';
 
 /** A promise and its resolver: Clerk having loaded. */
@@ -31,7 +31,7 @@ function clerkLoaded() {
  */
 export function useServerDataAccess(): void {
   const { isLoaded, isSignedIn, userId, getToken } = useAuth();
-  const { isSubscribed } = useSubscription();
+  const { isSubscribed, isLoading: isSubscriptionLoading } = useSubscription();
   // Clerk's `getToken` changes identity across renders; the source reads the
   // current one.
   const getTokenRef = useRef(getToken);
@@ -58,12 +58,25 @@ export function useServerDataAccess(): void {
   // The user the pass is for: Clerk's once loaded, the hint's until then.
   const passUserId = isLoaded ? (isSignedIn === true ? userId ?? null : null) : hintUserId;
   const holdsPass = isSubscribed === true && passUserId !== null;
+  const signedOut = isLoaded && isSignedIn !== true;
+  const notSubscribed = isSubscribed === false && !isSubscriptionLoading;
   useEffect(() => {
-    if (!holdsPass) {
+    if (!signedOut && !notSubscribed) return;
+    forgetStoredAccessPass().catch((error: unknown) => {
+      console.warn('[access-pass] Could not forget the stored pass', error);
+    });
+  }, [signedOut, notSubscribed]);
+
+  useEffect(() => {
+    if (!holdsPass || passUserId === null) {
       setAccessPassSource(null);
       return;
     }
-    setAccessPassSource(() => loadAccessPass(() => getTokenRef.current()), loadedRef.current.promise);
+    setAccessPassSource(
+      () => loadAccessPass(() => getTokenRef.current()),
+      loadedRef.current.promise,
+      storedAccessPassFor(passUserId),
+    );
     prefetchAccessPass();
     return () => setAccessPassSource(null);
   }, [holdsPass, passUserId]);

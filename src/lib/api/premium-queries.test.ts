@@ -2,6 +2,7 @@ import { PREMIUM_FUNCTIONS } from '../../../convex/lib/access';
 import {
   ACCESS_PASS_MIN_HOLD_MS,
   ACCESS_PASS_READY_TIMEOUT_MS,
+  ACCESS_PASS_RESTORE_TIMEOUT_MS,
   ACCESS_PASS_RETRY_AFTER_MS,
   ACCESS_PASS_TIMEOUT_MS,
   accessPassFor,
@@ -158,5 +159,60 @@ describe('a source that is not ready yet (Clerk loading)', () => {
     await flush();
     resolve(pass('late'));
     await expect(retry).resolves.toBe('late');
+  });
+});
+
+describe('a stored pass', () => {
+  function memoryStore(initial: { pass: string; rotatesAt: number } | null) {
+    let value = initial;
+    return {
+      read: jest.fn(async () => value),
+      write: jest.fn(async (next: { pass: string; rotatesAt: number }) => {
+        value = next;
+      }),
+      forget: jest.fn(async () => {
+        value = null;
+      }),
+      current: () => value,
+    };
+  }
+
+  it('is used until it rotates and stores the pass fetched after it', async () => {
+    const store = memoryStore(pass('kept', NOW + 60_000));
+    const source = jest.fn(async () => pass('fresh', NOW + 10 * 60_000));
+    setAccessPassSource(source, undefined, store);
+    await expect(accessPassFor('reference:records')).resolves.toBe('kept');
+    expect(source).not.toHaveBeenCalled();
+    jest.setSystemTime(NOW + 60_000);
+    await expect(accessPassFor('reference:records')).resolves.toBe('fresh');
+    await Promise.resolve();
+    expect(store.current()).toEqual(pass('fresh', NOW + 10 * 60_000));
+  });
+
+  it('is forgotten when the server refuses it', async () => {
+    const store = memoryStore(pass('kept', NOW + 60_000));
+    setAccessPassSource(async () => pass('fresh'), undefined, store);
+    await expect(accessPassFor('reference:records')).resolves.toBe('kept');
+    await expect(accessPassFor('reference:records', {}, { refused: 'kept', retry: true })).resolves.toBe('fresh');
+    expect(store.forget).toHaveBeenCalled();
+  });
+
+  it('is not waited on longer than the restore timeout', async () => {
+    const store = {
+      read: () => new Promise<null>(() => {}),
+      write: jest.fn(async () => {}),
+      forget: jest.fn(async () => {}),
+    };
+    setAccessPassSource(async () => pass('fresh'), undefined, store);
+    const pending = accessPassFor('reference:records');
+    await jest.advanceTimersByTimeAsync(ACCESS_PASS_RESTORE_TIMEOUT_MS);
+    await expect(pending).resolves.toBe('fresh');
+  });
+
+  it('is ignored once a different source is set', async () => {
+    const store = memoryStore(pass('kept', NOW + 60_000));
+    setAccessPassSource(async () => pass('fresh'), undefined, store);
+    setAccessPassSource(async () => pass('other'));
+    await expect(accessPassFor('reference:records')).resolves.toBe('other');
   });
 });
