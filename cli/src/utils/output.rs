@@ -14,7 +14,7 @@
 //!   input or the data (athlete names, years): a command whose table shows them exports a data
 //!   table with fixed headers instead ([`Report::table_with_data`]).
 //! - Cells that are numbers (optionally with a `kg` or `%` unit, or a sign) are numbers; `true`
-//!   and `false` (and `Yes` and `No`) are booleans; `N/A`, a dash and empty cells are null.
+//!   and `false` (and `Yes` and `No`) are booleans; `N/A`, `?`, a dash and empty cells are null.
 //!   Weight classes stay text.
 //! - Dates are `YYYY-MM-DD`, times `HH:MM` on a 24-hour clock, both as the data stores them in
 //!   the meet's own time zone; a range is two columns (`start_date`, `end_date`). One cell holds
@@ -415,7 +415,7 @@ fn text_value(cell: &str) -> Value {
 }
 
 /// A cell as a JSON value: a number when it is one (units `kg` and `%` and a sign allowed), a
-/// boolean for `true`/`false` and `Yes`/`No`, null when empty, `N/A` or a dash, the text
+/// boolean for `true`/`false` and `Yes`/`No`, null when empty, `N/A`, `?` or a dash, the text
 /// otherwise.
 pub(crate) fn value(cell: &str) -> Value {
     let text = cell.trim();

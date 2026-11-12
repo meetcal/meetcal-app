@@ -375,6 +375,25 @@ mod tests {
         }
     }
 
+    const SPELLINGS_THAT_STOPPED_BEING_ONE_NAME_SINCE_NFC_FOLDING: [(&str, &str); 2] = [
+        ("Cafe Barbell", "Cafe\u{301} Barbell"),
+        ("Sao Paulo Classic", "Sa\u{303}o Paulo Classic"),
+    ];
+
+    #[test]
+    fn a_name_typed_without_its_accent_is_a_close_name_not_the_same_name() {
+        for (typed, known) in SPELLINGS_THAT_STOPPED_BEING_ONE_NAME_SINCE_NFC_FOLDING {
+            assert_ne!(folded_words(typed), folded_words(known), "{typed}");
+            let candidates = vec![known.to_string(), "Another Club".to_string()];
+            let message =
+                not_found_message(NameKind::Club, typed, &candidates, "Not found".to_string());
+            assert!(
+                message.starts_with(&format!("Not found\nDid you mean:\n  {known}")),
+                "{message}"
+            );
+        }
+    }
+
     #[test]
     fn plain_ascii_names_match_as_they_always_did() {
         assert_eq!(

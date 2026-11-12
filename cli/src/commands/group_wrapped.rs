@@ -673,6 +673,25 @@ mod tests {
     }
 
     #[test]
+    fn a_year_with_no_results_exports_null_for_its_values_and_the_difference() {
+        let with_results =
+            calculate_group_stats(&[result("Jane Doe", "Meet One", "2025-01-01", 170.0)]);
+        let without = calculate_group_stats(&[]);
+
+        let exported =
+            group_comparison_report("Club", "Test Club", 2025, 2026, &with_results, &without)
+                .to_json();
+
+        let metrics = exported.as_array().unwrap();
+        assert!(!metrics.is_empty());
+        for metric in metrics {
+            assert_ne!(metric["previous"], serde_json::Value::Null, "{metric}");
+            assert_eq!(metric["current"], serde_json::Value::Null, "{metric}");
+            assert_eq!(metric["difference"], serde_json::Value::Null, "{metric}");
+        }
+    }
+
+    #[test]
     fn group_stats_deduplicate_athletes_and_preserve_wrapped_metrics() {
         let results = vec![
             result("Jane Doe", "Meet One", "2026-01-01", 170.0),
