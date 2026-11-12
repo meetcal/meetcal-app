@@ -25,9 +25,13 @@ const mockSyncManagerBuilds: MeetName[] = [];
 const mockSyncManagerStarts: MeetName[] = [];
 const mockSyncManagerStops: MeetName[] = [];
 
-jest.mock("@/lib/database/meet-manager", () => ({
+jest.mock("@/lib/database/meets-list-cache", () => ({
   getCachedMeets: (...args: []) => mockGetCachedMeets(...args),
+}));
+jest.mock("@/lib/database/meets-fetch", () => ({
   fetchMeetsFresh: (...args: []) => mockFetchMeetsFresh(...args),
+}));
+jest.mock("@/lib/database/meet-manager", () => ({
   warmMeetData: (...args: [string]) => mockWarmMeetData(...args),
   prefetchMeetData: (...args: [string]) => mockPrefetchMeetData(...args),
   prefetchCriticalMeetData: (...args: [string]) => mockPrefetchCriticalMeetData(...args),

@@ -2,7 +2,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Calendar from "expo-calendar/legacy";
 import { Platform } from "react-native";
 import { clearMeetConfigCache } from "@/data/meets/config";
-import { fetchMeetByName } from "@/lib/database/meet-manager";
+import { fetchMeetByName } from "@/lib/database/meets-fetch";
 import { createSessionDetailsDeepLink } from "@/utils/deepLinks";
 import {
   calendarEventKey,
@@ -30,9 +30,7 @@ jest.mock("expo-calendar/legacy", () => ({
   updateEventAsync: jest.fn(async () => undefined),
 }));
 
-jest.mock("@/lib/database/meet-manager", () => ({
-  fetchMeetByName: jest.fn(),
-}));
+jest.mock("@/lib/database/meets-fetch", () => ({ fetchMeetByName: jest.fn() }));
 
 const mockFetchMeetByName = fetchMeetByName as jest.MockedFunction<typeof fetchMeetByName>;
 const mockCreateEventAsync = Calendar.createEventAsync as jest.MockedFunction<

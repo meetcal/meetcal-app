@@ -5,13 +5,9 @@ import { SyncManager } from '@/lib/database/sync-manager';
 import { clearExpiredDownloadedMeets } from '@/lib/database/downloaded-meet-expiry';
 import { isMeetExplicitlyDownloaded } from '@/lib/database/meet-downloads-registry';
 import { primeScheduleCache } from '@/lib/database/schedule-resource';
-import {
-  prefetchCriticalMeetData,
-  prefetchMeetData,
-  fetchMeetsFresh,
-  getCachedMeets,
-  warmMeetData,
-} from '@/lib/database/meet-manager';
+import { prefetchCriticalMeetData, prefetchMeetData, warmMeetData } from '@/lib/database/meet-manager';
+import { fetchMeetsFresh } from '@/lib/database/meets-fetch';
+import { getCachedMeets } from '@/lib/database/meets-list-cache';
 import { awaitServerClock, getTrustedNow } from '@/lib/api/server-clock';
 import { fetchApiMeetByName } from '@/lib/api/meets-api';
 import { startupTiming } from '@/lib/startup-timing';

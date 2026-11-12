@@ -1,4 +1,4 @@
-import { clearCachedMeetsList } from '@/lib/database/meet-manager';
+import { clearCachedMeetsList } from '@/lib/database/meet-cache-eviction';
 import { claimOfflineBulk, releaseOfflineBulk } from '@/lib/database/offline-activity';
 import { clearBrowseCaches } from '@/lib/database/offline-cache';
 import { refreshOfflineDownloads } from '@/lib/database/offline-refresh';

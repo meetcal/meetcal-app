@@ -1,5 +1,5 @@
 import { isNetworkAvailable } from '@/lib/networkUtils';
-import { prefetchMeetData } from './meet-manager';
+import { prefetchMeetData } from '@/lib/database/meet-manager';
 import { markMeetExplicitlyDownloaded } from '@/lib/database/meet-downloads-registry';
 
 /**
