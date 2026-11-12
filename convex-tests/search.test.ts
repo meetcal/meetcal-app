@@ -1,5 +1,5 @@
 import type { ApiLiftingResult } from '../convex/lib/results';
-import { newestSpelling } from '../convex/lib/names';
+import { newestSpelling, newestSpellingByAthlete } from '../convex/lib/names';
 import { exactSearchAnswer, fallbackSearchAnswer, MAX_SEARCH_RESULT_ROWS } from '../convex/results';
 
 function row(name: string, date: string, total = 100): ApiLiftingResult {
@@ -104,5 +104,10 @@ describe("an athlete's newest spelling", () => {
     expect(newestSpelling([row('ANN LEE', '2026-01-01'), row('Ann Lee ', '2026-06-01'), row('ann lee', '2026-03-01')])).toBe('Ann Lee');
     expect(newestSpelling([row('ANN LEE', '2026-06-01'), row('Ann Lee', '2026-06-01')])).toBe('Ann Lee');
     expect(newestSpelling([])).toBeNull();
+  });
+
+  it('is kept per athlete, skipping rows without a name', () => {
+    const rows = [row('JOHN SMITH', '2026-01-01'), row('Jane Smith', '2026-02-01'), row(' John Smith', '2026-03-01'), row(' ', '2026-04-01')];
+    expect(newestSpellingByAthlete(rows)).toEqual(new Map([['john smith', 'John Smith'], ['jane smith', 'Jane Smith']]));
   });
 });

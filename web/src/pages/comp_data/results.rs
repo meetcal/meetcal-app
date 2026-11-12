@@ -5,7 +5,7 @@ use super::{
     loading::{Load, LoadState, load_error},
     models::{
         AthleteSearchQuery, AthleteSearchResponse, LiftingResult, MAX_ATHLETE_CHOICES, attempt,
-        distinct_athletes, newest_spelling, normalize,
+        distinct_athletes, normalize,
     },
     ui::{DataPage, DataStatus, DataTable, SortSelect, TableSkeleton},
 };
@@ -114,14 +114,14 @@ fn results_answer(query: &str, response: AthleteSearchResponse) -> ResultsAnswer
     let mut athletes = distinct_athletes(&results);
     if athletes.len() == 1
         && !truncated
-        && let Some((key, first_spelling)) = athletes.pop_first()
+        && let Some((key, name)) = athletes.pop_first()
     {
-        let rows: Vec<LiftingResult> = results
+        let rows = results
             .into_iter()
             .filter(|row| normalize(&row.name) == key)
             .collect();
         return ResultsAnswer::Athlete {
-            name: newest_spelling(&rows).unwrap_or(first_spelling),
+            name,
             rows,
             truncated,
             suggestions,
@@ -399,13 +399,13 @@ mod tests {
     }
 
     #[test]
-    fn several_athletes_in_a_fallback_are_offered_not_merged() {
+    fn several_athletes_in_a_fallback_are_offered_by_their_newest_spelling_not_merged() {
         let response = answer(
             None,
             &[
-                row("John Smith", "2026-02-01"),
+                row("john  smith", "2026-02-01"),
                 row("Ann Smith", "2026-03-01"),
-                row("john  smith", "2026-05-01"),
+                row("John Smith", "2026-05-01"),
             ],
             false,
         );

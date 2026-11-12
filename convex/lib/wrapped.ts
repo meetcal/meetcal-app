@@ -1,5 +1,5 @@
 import type { ApiLiftingResult } from './results';
-import { newestSpelling, normalizeName } from './names';
+import { newestSpellingByAthlete, normalizeName } from './names';
 import { isPlausibleResult } from './plausible';
 
 /**
@@ -237,18 +237,12 @@ export function selectWrapped(search: WrappedSearch): WrappedAnswer {
     return { kind: 'athlete', name, stats: wrappedStats(inDateOrder(rows)) };
   }
 
-  const byKey = new Map<string, string>();
-  for (const row of rows) {
-    const key = normalizeName(row.name ?? '');
-    if (key && !byKey.has(key)) byKey.set(key, row.name);
+  const athletes = newestSpellingByAthlete(rows);
+  if (athletes.size === 0) return none();
+  if (athletes.size === 1 && !search.truncated) {
+    const [[key, name]] = [...athletes];
+    return { kind: 'athlete', name, stats: wrappedStats(inDateOrder(rows.filter((row) => normalizeName(row.name) === key))) };
   }
-  if (byKey.size === 0) return none();
-  if (byKey.size === 1 && !search.truncated) {
-    const [[key, firstSpelling]] = [...byKey];
-    const athleteRows = inDateOrder(rows.filter((row) => normalizeName(row.name ?? '') === key));
-    return { kind: 'athlete', name: newestSpelling(athleteRows) ?? firstSpelling, stats: wrappedStats(athleteRows) };
-  }
-  // The athletes who lifted in the year, so each pick has a Wrapped.
-  const names = [...byKey.values()].sort((a, b) => a.localeCompare(b)).slice(0, MAX_WRAPPED_NAME_CHOICES);
-  return { kind: 'ambiguous', names, truncated: search.truncated || byKey.size > MAX_WRAPPED_NAME_CHOICES };
+  const names = [...athletes.values()].sort((a, b) => a.localeCompare(b)).slice(0, MAX_WRAPPED_NAME_CHOICES);
+  return { kind: 'ambiguous', names, truncated: search.truncated || athletes.size > MAX_WRAPPED_NAME_CHOICES };
 }

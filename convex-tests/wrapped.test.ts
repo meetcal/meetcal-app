@@ -346,11 +346,11 @@ describe('selectWrapped', () => {
     expect(answer.kind === 'athlete' && answer.stats.improvementFromFirst).toBe(20);
   });
 
-  it('does not merge several athletes from the name-contains fallback', () => {
+  it('does not merge several athletes from the name-contains fallback, and offers each by their newest spelling', () => {
     const rows = [
-      searchRow('John Smith', '2025-03-01', 300),
+      searchRow('JOHN  SMITH', '2025-03-01', 300),
       searchRow('Jane Smith', '2025-01-01', 150),
-      searchRow('JOHN  SMITH', '2025-05-01', 310),
+      searchRow(' John Smith ', '2025-05-01', 310),
       searchRow('Adam Smithers', '2025-04-01', 250),
     ];
     expect(search({ results: rows })).toEqual({ kind: 'ambiguous', names: ['Adam Smithers', 'Jane Smith', 'John Smith'], truncated: false });
