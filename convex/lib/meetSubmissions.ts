@@ -9,6 +9,7 @@ import { apiError, isValidIsoDate } from './validation';
 
 export const MAX_MEET_SUBMISSION_FILES = 10;
 export const MAX_MEET_SUBMISSION_FILE_BYTES = 20 * 1024 * 1024;
+export const FILE_ALREADY_SUBMITTED_CODE = 'already_submitted';
 export const MAX_MEET_SUBMISSIONS_PER_DAY = 5;
 /** Upload URLs one user may ask for a day: every file of a full day's submissions. */
 export const MAX_MEET_SUBMISSION_UPLOAD_URLS_PER_DAY = MAX_MEET_SUBMISSION_FILES * MAX_MEET_SUBMISSIONS_PER_DAY;
