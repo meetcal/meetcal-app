@@ -171,7 +171,9 @@ impl AccessContext {
     fn retry(self) {
         match self.auth.state.get_untracked() {
             AuthState::SignedIn(user_id) => self.check(user_id, true),
-            _ => page::reload(),
+            AuthState::Loading | AuthState::SignedOut | AuthState::ConfigurationError(_) => {
+                page::reload()
+            }
         }
     }
 }

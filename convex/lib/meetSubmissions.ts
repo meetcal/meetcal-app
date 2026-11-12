@@ -1,6 +1,6 @@
 import type { Id } from '../_generated/dataModel';
 import type { MutationCtx } from '../_generated/server';
-import { DAY_MS } from './dates';
+import { DAY_MS, isoDateOf } from './dates';
 import { escapeHtml } from './email';
 import { apiError, isValidIsoDate } from './validation';
 
@@ -120,10 +120,9 @@ function formatBytes(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-/** The email for a submission: what was sent, by whom, and a link to each file. */
 export function renderMeetSubmissionEmail(content: MeetSubmissionEmailContent): { subject: string; html: string } {
   const dates = content.endDate && content.endDate !== content.startDate ? `${content.startDate} to ${content.endDate}` : content.startDate;
-  const expires = new Date(content.createdAt + MEET_SUBMISSION_RETENTION_MS).toISOString().slice(0, 10);
+  const expires = isoDateOf(content.createdAt + MEET_SUBMISSION_RETENTION_MS);
   const files = content.files
     .map((file) =>
       file.url === null

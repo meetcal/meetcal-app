@@ -576,7 +576,7 @@ export async function clearCachedMeetsList(): Promise<void> {
   try {
     // On the cache-info chain, so an access stamp already queued does not
     // land after the removal and bring the old blob back.
-    await cacheInfoWrites(() => AsyncStorage.multiRemove([MEETS_LIST_CACHE_KEY, MEET_CACHE_KEY]));
+    await cacheInfoWrites(() => AsyncStorage.removeMany([MEETS_LIST_CACHE_KEY, MEET_CACHE_KEY]));
   } catch (error) {
     console.error('Error clearing cached meets list:', error);
   }
@@ -1009,9 +1009,6 @@ async function downloadHistoryBatch(
   }
 
   try {
-    // One storage batch per network batch: one `multiSet`, one read-back,
-    // one `multiRemove`, and no write at all for athletes whose history
-    // has not changed since the last download.
     await saveAthleteHistoryBatch(
       batch.map((name) => ({
         name,

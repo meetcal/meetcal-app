@@ -1,4 +1,5 @@
 import { v } from 'convex/values';
+import { isoDateOf } from './lib/dates';
 import { internalAction, internalMutation, internalQuery, type ActionCtx, type MutationCtx, type QueryCtx } from './_generated/server';
 import { internal } from './_generated/api';
 import type { Id } from './_generated/dataModel';
@@ -221,7 +222,7 @@ export const buildMeet = internalMutation({
 function yearsAgo(years: number): string {
   const now = new Date();
   now.setUTCFullYear(now.getUTCFullYear() - years);
-  return now.toISOString().slice(0, 10);
+  return isoDateOf(now.getTime());
 }
 
 /**
