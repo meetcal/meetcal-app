@@ -7,7 +7,7 @@ use serde_json::json;
 use crate::commands::leaderboard::MAX_YEARS;
 use crate::commands::wrapped::current_year;
 use crate::utils::backend::{functions, premium_action};
-use crate::utils::filters::parse_date;
+use crate::utils::filters::{parse_date, plus_years, year_range};
 use crate::utils::format::us_date;
 use crate::utils::names::{NameKind, not_found, registration_wsos};
 use crate::utils::output::{self, Report};
@@ -178,17 +178,8 @@ fn value_name(method: Method) -> String {
 pub fn range(args: &EliteArgs) -> (String, String) {
     match (&args.from, &args.to) {
         (Some(from), Some(to)) => (from.clone(), to.clone()),
-        _ => {
-            let year = args.year.unwrap_or_else(|| current_year() - 1);
-            (format!("{year:04}-01-01"), format!("{year:04}-12-31"))
-        }
+        _ => year_range(args.year.unwrap_or_else(|| current_year() - 1)),
     }
-}
-
-/// `date` (`YYYY-MM-DD`) plus `years`, compared as text (the server's `plusYears`).
-fn plus_years(date: &str, years: i32) -> String {
-    let year: i32 = date.get(..4).and_then(|y| y.parse().ok()).unwrap_or(0);
-    format!("{:04}{}", year + years, date.get(4..).unwrap_or(""))
 }
 
 /// One ranked result, as `results:wsoElite` answers it.
