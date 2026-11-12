@@ -682,10 +682,32 @@ where
     Ok(answers.into_iter().flatten().collect())
 }
 
-/// The paging loop of every paged read, over any page source: `fetch` gets `None` first, then
-/// each cursor a page returned, at most [`MAX_PAGES`] times. `function` names the query in
-/// errors. A query whose page names its fields differently maps it to a [`Page`].
-pub async fn collect_pages<T, F, Fut>(function: &str, mut fetch: F) -> Result<Vec<T>>
+pub async fn collect_pages<T, F, Fut>(function: &str, fetch: F) -> Result<Vec<T>>
+where
+    T: DeserializeOwned,
+    F: FnMut(Option<String>) -> Fut,
+    Fut: Future<Output = Result<Page>>,
+{
+    match collect_pages_within(function, MAX_PAGES, fetch).await? {
+        PagesRead::All(rows) => Ok(rows),
+        PagesRead::CutShort(_) => Err(unfinished(function, MAX_PAGES)),
+    }
+}
+
+pub enum PagesRead<T> {
+    All(Vec<T>),
+    CutShort(Vec<T>),
+}
+
+pub fn unfinished(function: &str, max_pages: usize) -> anyhow::Error {
+    anyhow!("MeetCal query {function} did not finish within {max_pages} pages")
+}
+
+pub async fn collect_pages_within<T, F, Fut>(
+    function: &str,
+    max_pages: usize,
+    mut fetch: F,
+) -> Result<PagesRead<T>>
 where
     T: DeserializeOwned,
     F: FnMut(Option<String>) -> Fut,
@@ -693,19 +715,17 @@ where
 {
     let mut rows = Vec::new();
     let mut cursor: Option<String> = None;
-    for _ in 0..MAX_PAGES {
+    for _ in 0..max_pages {
         let page = fetch(cursor.take()).await?;
         let mut batch: Vec<T> = serde_json::from_str(&page.json)
             .with_context(|| format!("Unexpected answer from MeetCal query {function}"))?;
         rows.append(&mut batch);
         if page.is_done {
-            return Ok(rows);
+            return Ok(PagesRead::All(rows));
         }
         cursor = Some(page.cursor);
     }
-    Err(anyhow!(
-        "MeetCal query {function} did not finish within {MAX_PAGES} pages"
-    ))
+    Ok(PagesRead::CutShort(rows))
 }
 
 /// Convex's HTTP API writes every number of a value answer as a float (`2.0`), which an integer
@@ -1030,6 +1050,32 @@ mod tests {
         .await
         .unwrap();
         assert_eq!(rows.len(), MAX_PAGES);
+    }
+
+    #[tokio::test]
+    async fn a_read_stopped_at_its_page_limit_keeps_the_rows_it_read() {
+        let mut pages = vec![
+            page(&[1, 2], "c1", false),
+            page(&[3], "c2", false),
+            page(&[4], "c3", true),
+        ]
+        .into_iter();
+        let read = collect_pages_within::<u32, _, _>("test:paged", 2, |_| {
+            let next = pages.next().expect("no more pages");
+            async move { Ok(next) }
+        })
+        .await
+        .unwrap();
+        assert!(matches!(read, PagesRead::CutShort(rows) if rows == vec![1, 2, 3]));
+
+        let mut pages = vec![page(&[1], "c1", false), page(&[2], "c2", true)].into_iter();
+        let read = collect_pages_within::<u32, _, _>("test:paged", 2, |_| {
+            let next = pages.next().expect("no more pages");
+            async move { Ok(next) }
+        })
+        .await
+        .unwrap();
+        assert!(matches!(read, PagesRead::All(rows) if rows == vec![1, 2]));
     }
 
     #[tokio::test]

@@ -112,6 +112,14 @@ pub fn record_cell(value: Option<f64>, holder: Option<&RecordHolder>) -> String 
     lines.join("\n")
 }
 
+pub fn capitalized(word: &str) -> String {
+    let mut letters = word.chars();
+    letters
+        .next()
+        .map(|first| first.to_uppercase().chain(letters).collect())
+        .unwrap_or_default()
+}
+
 pub struct RecordRow<'a> {
     pub weight_class: &'a str,
     pub snatch: (Option<f64>, Option<&'a RecordHolder>),
@@ -171,6 +179,15 @@ pub fn record_data_cells(value: Option<f64>, holder: Option<&RecordHolder>) -> [
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn capitalizing_raises_the_first_letter_whatever_its_alphabet() {
+        assert_eq!(capitalized("open"), "Open");
+        assert_eq!(capitalized("élan"), "Élan");
+        assert_eq!(capitalized("Open"), "Open");
+        assert_eq!(capitalized("2026"), "2026");
+        assert_eq!(capitalized(""), "");
+    }
 
     #[test]
     fn dates_read_as_us_dates() {

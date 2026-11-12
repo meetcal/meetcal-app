@@ -14,7 +14,7 @@ use crate::utils::meet_names::{editions_by_year, equivalent_meets};
 use crate::utils::names::{MAX_NAME_PAGES, just_before, meet_names_between};
 use crate::utils::output::{self, Report};
 use crate::utils::progress::Progress;
-use crate::utils::stats::fold;
+use crate::utils::stats::{fold, folded_words};
 
 /// Meets `meets:attendance` counts per call (its limit).
 pub const ATTENDANCE_BATCH: usize = 8;
@@ -88,17 +88,8 @@ fn year_in_name(meet: &str) -> Option<String> {
         .map(str::to_string)
 }
 
-/// A meet name reduced for matching: lowercase words, without years, "the" or punctuation.
 pub fn normalized(meet: &str) -> String {
-    meet.chars()
-        .map(|c| {
-            if c.is_alphanumeric() {
-                c.to_ascii_lowercase()
-            } else {
-                ' '
-            }
-        })
-        .collect::<String>()
+    folded_words(meet)
         .split_whitespace()
         .filter(|word| {
             *word != "the" && !(word.len() == 4 && word.chars().all(|c| c.is_ascii_digit()))
@@ -492,6 +483,23 @@ fn count(value: usize) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn words_match_a_meet_name_written_with_another_accent_form_or_case() {
+        let words = |text: &str| vec![text.to_string()];
+        assert!(matches(
+            "Copa Atlético 2026",
+            &words("atle\u{301}tico"),
+            &[]
+        ));
+        assert!(matches("COPA ATLÉTICO 2026", &words("atlético"), &[]));
+        assert!(!matches("Copa Atlético 2026", &words("atletico"), &[]));
+        assert!(matches(
+            "The 2026 Ohio WSO Championships",
+            &words("ohio wso"),
+            &[]
+        ));
+    }
 
     fn refused(status: u16) -> anyhow::Error {
         anyhow::Error::new(FunctionError {
