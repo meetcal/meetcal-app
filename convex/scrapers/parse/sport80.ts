@@ -112,17 +112,22 @@ export function newestEvents(events: Dict[], count = RECENT_EVENTS): Dict[] {
 }
 
 /** The event id: the last segment of `action[0].route`, else `id`. */
+function firstAction(event: Dict): unknown {
+  const actions: unknown = event.action;
+  if (!Array.isArray(actions)) return undefined;
+  const [first]: unknown[] = actions;
+  return first;
+}
+
 export function eventIdOf(event: Dict): string | null {
-  const action = event.action;
-  if (Array.isArray(action) && action[0] && typeof action[0] === 'object' && typeof (action[0] as Dict).route === 'string') {
-    return ((action[0] as Dict).route as string).split('/').pop()!.trim();
-  }
+  const action = firstAction(event);
+  if (isRecord(action) && typeof action.route === 'string') return (action.route.split('/').pop() ?? '').trim();
   return event.id ? String(event.id).trim() : null;
 }
 
 export function hasResultsRoute(event: Dict): boolean {
-  const action = event.action;
-  return Array.isArray(action) && !!action[0] && typeof action[0] === 'object' && 'route' in (action[0] as Dict);
+  const action = firstAction(event);
+  return isRecord(action) && 'route' in action;
 }
 
 /** Python `float(x) if x is not None else None`; a value float() rejects makes the row invalid. */

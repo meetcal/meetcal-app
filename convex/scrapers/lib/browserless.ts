@@ -66,7 +66,6 @@ export async function fetchUnblockedHtml(url: string, token: string, timeoutMs: 
   const response = await fetch(UNBLOCK_URL, {
     method: 'POST',
     headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-    // Only the HTML: cookies, a screenshot and a live browser cost time.
     body: JSON.stringify({ url, content: true, cookies: false, screenshot: false, browserWSEndpoint: false }),
     signal: AbortSignal.timeout(timeoutMs),
   });

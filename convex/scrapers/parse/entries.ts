@@ -1,9 +1,9 @@
-import { isRecord, kindOf, rowCount } from '../../lib/json';
 // Meet entries from Sport80 (replaces `usaw/entry_scraper/csv_scraper.js`).
 // The Node scraper drove a headless browser through the public entries page;
 // the table on that page is filled from a public JSON endpoint, which this
 // reads directly: `/api/public/events/datatable/{event}/entries/{stage}`,
 // 100 rows a page, the meet's name in the table's title.
+import { isRecord, kindOf, rowCount } from '../../lib/json';
 
 export const SPORT80 = 'https://usaweightlifting.sport80.com';
 

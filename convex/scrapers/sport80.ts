@@ -57,13 +57,11 @@ export function joinPages(pages: readonly Dict[][], total: unknown): { rows: Dic
   return { rows };
 }
 
-/** The Sport80 public API: key and base URL come from the site's `window.env`. */
 class Sport80 {
   private constructor(private readonly env: Sport80Env) {}
 
   static async connect(): Promise<Sport80> {
     const response = await fetch(`${USAW_DOMAIN}/public/rankings/`, { signal: AbortSignal.timeout(60_000) });
-    // A 5xx page has no `window.env` either: say what really failed.
     if (!response.ok) throw new Error(`sport80: rankings page failed with ${response.status}`);
     const page = await response.text();
     const match = /window\.env = ({.*?});/s.exec(page);
@@ -80,7 +78,6 @@ class Sport80 {
     };
   }
 
-  /** A page of a table; a failed request throws, so a partial table is never taken for a whole one. */
   private async post(url: string, payload?: Dict): Promise<Dict> {
     const response = await fetch(url, {
       method: 'POST',
@@ -92,12 +89,6 @@ class Sport80 {
     return readTablePage(await response.json());
   }
 
-  /**
-   * Every page's `data`, following `next_page_url`; any failed page fails
-   * the whole table, and so does a table short of the `total` it reports.
-   * The results sync deletes what a table lacks, so it prunes only a table
-   * `joinPages` finds whole.
-   */
   private async collate(first: Dict, payload?: Dict): Promise<{ rows: Dict[]; notWhole?: string }> {
     const pages: Dict[][] = [pageRows(first)];
     let current = first;

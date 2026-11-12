@@ -22,12 +22,6 @@ export type UsamwRecord = {
   totalBy?: RecordHolder;
 };
 
-/**
- * The current national records PDFs ("NM<date>-MEN.pdf" / "-WOMEN.pdf" on
- * Google Storage), keyed Men/Women; the last match on the page wins, as
- * before. A trailing copy number ("NM20260713-MEN 1.pdf", the July 2026
- * upload) is accepted; the Python pattern rejected it and the job failed.
- */
 export function discoverRecordPdfs(page: string): { Men: string; Women: string } {
   const html = unescapeHtml(page);
   const urls: { Men?: string; Women?: string } = {};

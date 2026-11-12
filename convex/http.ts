@@ -8,16 +8,6 @@ import { UNREADABLE_SECRET, verifyWebhook } from './lib/webhookSignature';
 
 const http = httpRouter();
 
-/**
- * Clerk's webhooks (Svix-signed with `CLERK_WEBHOOK_SECRET`). On
- * `user.deleted`, deletes everything stored under the user's id: their saved
- * sessions (with notes and athlete names), preferences and saved-session
- * write-order records (`users.deleteUserData`). Account deletion happens in
- * Clerk, which the app cannot follow up on once the account is gone (#250).
- * Other event types are acknowledged and ignored. Configure in the Clerk
- * dashboard: endpoint `https://<deployment>.convex.site/clerk/webhook`,
- * event `user.deleted`; then `npx convex env set CLERK_WEBHOOK_SECRET whsec_…`.
- */
 export const clerkWebhook = httpAction(async (ctx, request) => {
   const secret = process.env.CLERK_WEBHOOK_SECRET;
   if (!secret) {
