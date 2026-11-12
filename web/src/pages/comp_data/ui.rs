@@ -204,7 +204,9 @@ where
     let shown = Memo::new(move |_| {
         order.with(|order| raised.with(|raised| rows_shown_for(order, raised.as_ref())))
     });
-    let visible = Memo::new(move |_| order.with(|order| order[..shown.get()].to_vec()));
+    let visible = Memo::new(move |_| {
+        order.with(|order| order.iter().take(shown.get()).copied().collect::<Vec<_>>())
+    });
     let total = Memo::new(move |_| order.with(Vec::len));
     let show_more = move |_| {
         raised.set(Some((
@@ -220,7 +222,7 @@ where
                 <For
                     each=move || visible.get()
                     key=|index| *index
-                    children=move |index| rows.with_value(|rows| row(&rows[index]))
+                    children=move |index| rows.with_value(|rows| rows.get(index).map(row))
                 />
                 {move || (total.get() == 0).then(|| view! { <EmptyTableRow columns=headers.len() message=empty_message /> })}
             </tbody>

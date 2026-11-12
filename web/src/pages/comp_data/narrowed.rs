@@ -132,7 +132,7 @@ pub(crate) fn NarrowingSelects(
                     label
                     placeholder
                     values
-                    selected=Signal::derive(move || chosen.with(|chosen| chosen[index].clone()))
+                    selected=Signal::derive(move || chosen.with(|chosen| chosen.get(index).cloned().unwrap_or_default()))
                     on_select=move |value: String| page.change(&[(param, value.as_str())], HistoryEntry::Push)
                 />
             }

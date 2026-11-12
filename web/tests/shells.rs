@@ -32,20 +32,25 @@ fn first_frame(path: &str) -> String {
 }
 
 fn without_lazy_downloads(html: &str) -> String {
-    let mut out = String::with_capacity(html.len());
-    let mut rest = html;
-    while let Some(start) = rest.find("<img ") {
-        let end = start + rest[start..].find('>').expect("an <img> tag ends");
-        let tag = &rest[start..=end];
-        out.push_str(&rest[..start]);
-        if tag.contains(r#"loading="lazy""#) {
-            out.push_str(&tag.replace(" src=\"", " data-app-src=\""));
-        } else {
-            out.push_str(tag);
+    let mut pieces = html.split("<img ");
+    let mut out = pieces.next().unwrap_or_default().to_owned();
+    for piece in pieces {
+        match piece.split_once('>') {
+            Some((attributes, after)) => {
+                let tag = format!("<img {attributes}>");
+                if tag.contains(r#"loading="lazy""#) {
+                    out.push_str(&tag.replace(" src=\"", " data-app-src=\""));
+                } else {
+                    out.push_str(&tag);
+                }
+                out.push_str(after);
+            }
+            None => {
+                out.push_str("<img ");
+                out.push_str(piece);
+            }
         }
-        rest = &rest[end + 1..];
     }
-    out.push_str(rest);
     out
 }
 

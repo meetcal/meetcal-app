@@ -20,7 +20,7 @@ pub(crate) use wire::wire_fixture;
 
 use anyhow::Result;
 use serde::{Serialize, de::DeserializeOwned};
-use serde_json::value::RawValue;
+use serde_json::{Value, value::RawValue};
 
 fn read_response<T: DeserializeOwned>(query: Query, response: QueryResponse) -> Result<T> {
     read_body(query, &answer_value(response)?)
