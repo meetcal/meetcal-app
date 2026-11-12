@@ -23,7 +23,7 @@ type PageRetry = { attempts: number; delayMs: (attempt: number) => number; retry
 
 const ONE_TRY: PageRetry = { attempts: 1, delayMs: () => 0, retryIf: () => false };
 
-const droppedConnection = (error: unknown) => retryable(error) || (error instanceof Error && retryable(error.cause));
+const droppedConnection = (error: unknown) => retryable(error) || (error instanceof Error && 'cause' in error && retryable(error.cause));
 
 type TableRead = { rows: Dict[]; notWhole?: string; shifted?: boolean };
 
