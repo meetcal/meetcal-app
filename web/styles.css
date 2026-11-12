@@ -630,6 +630,10 @@ select.data-filter {
 .data-section-title { margin: 34px 0 -10px; font-size: 1.35rem; letter-spacing: -0.025em; }
 .data-tabs { display: flex; width: fit-content; max-width: 100%; gap: 4px; margin: 26px 0 0; padding: 4px; border: 1px solid var(--border); border-radius: 12px; background: var(--card); }
 .data-tab { flex: 1 1 auto; min-height: 40px; padding: 8px 14px; border-radius: 9px; color: var(--text-secondary); font-weight: 700; white-space: nowrap; }
+@media (max-width: 600px) {
+    .data-tabs { width: 100%; }
+    .data-tab { flex: 1 1 0; min-width: 0; padding: 8px 4px; font-size: 0.9rem; }
+}
 .data-tab:hover { color: var(--text); }
 .data-tab[aria-selected="true"] { background: var(--accent); color: #fff; }
 .data-tab:focus-visible { outline: 3px solid var(--accent-ink); outline-offset: 2px; }

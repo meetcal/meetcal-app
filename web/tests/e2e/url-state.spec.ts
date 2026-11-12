@@ -294,6 +294,28 @@ test("a reference table opens filtered and sorted from its address, and each pic
   await expect(page.locator("tbody tr").first()).toContainText("69kg");
 });
 
+test("arrowing through a closed select asks for the choice it settles on, once", async ({ page, browserName }) => {
+  test.skip(browserName !== "chromium", "Only Chromium steps a closed select's choice with the arrow keys.");
+  await mockSubscribedUser(page);
+  const asked = await routeNarrowedTable(page, "records", [
+    { ...recordRow("Women", "77kg", 280), record_type: "IWF" },
+    { ...recordRow("Women", "69kg", 260), record_type: "USAMW" },
+    recordRow("Men", "89kg", 380),
+  ]);
+  await page.goto("/records");
+  await expect(page.locator("tbody tr")).toHaveCount(3);
+  const organization = page.getByRole("combobox", { name: "Organization", exact: true });
+  await expect(organization.locator("option")).toHaveText(["All organizations", "IWF", "USAMW", "USAW"]);
+  const before = asked.length;
+  await organization.focus();
+  await page.keyboard.press("ArrowDown");
+  await page.keyboard.press("ArrowDown");
+  await page.keyboard.press("ArrowDown");
+  await expect(page).toHaveURL(/\/records\?organization=USAW$/);
+  await expect(page.locator("tbody tr")).toHaveCount(1);
+  expect(asked.slice(before).map((args) => args.federation)).toEqual(["USAW"]);
+});
+
 test("a reference table address naming a choice the table does not offer shows every row", async ({ page }) => {
   await mockSubscribedUser(page);
   const asked = await routeRecords(page);
