@@ -164,7 +164,7 @@ pub(super) fn whole_numbers_as_integers(value: Value) -> Value {
             .into_iter()
             .map(|(key, field)| (key, whole_numbers_as_integers(field)))
             .collect(),
-        other => other,
+        unchanged @ (Value::Null | Value::Bool(_) | Value::String(_)) => unchanged,
     }
 }
 
