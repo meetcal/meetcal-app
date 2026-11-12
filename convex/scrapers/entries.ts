@@ -1,12 +1,12 @@
 'use node';
 
 import { v } from 'convex/values';
+import { DAY_MS, isoDateOf } from '../lib/dates';
 import { internalAction, type ActionCtx } from '../_generated/server';
 import { internal } from '../_generated/api';
 import { fetchJson } from './lib/http';
 import { entriesEndpoint, entriesEventId, entryFromRow, meetFromTitle, readEntriesTable, unstoredEntriesMessage, type EntriesTable, type Entry, type EntryRow } from './parse/entries';
 import { sourcesFailed } from '../lib/cronAlerts';
-import { DAY_MS } from '../lib/dates';
 import { NOT_REACHED, runBudget } from './lib/budget';
 
 async function getJson(url: string): Promise<EntriesTable> {
@@ -40,15 +40,9 @@ export async function fetchEntries(pageUrl: string, meet: string): Promise<Entry
 /** Days a completed meet's target is kept (and skipped) after the meet ends, before it is removed. */
 export const TARGET_RETENTION_DAYS = 14;
 
-/**
- * Whether a completed meet that ended on `endDate` (its own calendar) ended
- * over `days` days before `now`. Compared with the UTC date: a day either
- * way is nothing against the retention. An end date that is not a
- * `YYYY-MM-DD` date never expires: the target stays, skipped.
- */
 export function targetExpired(endDate: string, now: number, days = TARGET_RETENTION_DAYS): boolean {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(endDate)) return false;
-  return endDate < new Date(now - days * DAY_MS).toISOString().slice(0, 10);
+  return endDate < isoDateOf(now - days * DAY_MS);
 }
 
 /**

@@ -18,7 +18,7 @@ const DOWNLOAD_TIMEOUT: Duration = Duration::from_secs(300);
 
 /// `--check`'s exit code when it could not find out (offline, GitHub refused): 1 means a newer
 /// release is out, so a failure must not look like one.
-pub const CHECK_FAILED: i32 = 2;
+pub(crate) const CHECK_FAILED: i32 = 2;
 
 /// Upgrade meetcal to its newest release.
 ///

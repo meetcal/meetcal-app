@@ -12,45 +12,45 @@ use serde::Deserialize;
 use crate::utils::backend::whole_number;
 
 /// Longest device name the server keeps.
-pub const MAX_DEVICE_NAME_CHARS: usize = 64;
+pub(crate) const MAX_DEVICE_NAME_CHARS: usize = 64;
 
 /// Shortest wait between polls, whatever `interval` the server sends.
-pub const MIN_POLL_INTERVAL: Duration = Duration::from_secs(1);
+pub(crate) const MIN_POLL_INTERVAL: Duration = Duration::from_secs(1);
 
 /// Longest wait between polls, so a bad `interval` cannot stall the login.
-pub const MAX_POLL_INTERVAL: Duration = Duration::from_secs(60);
+pub(crate) const MAX_POLL_INTERVAL: Duration = Duration::from_secs(60);
 
 /// What `slow_down` adds to the interval (RFC 8628's five seconds).
-pub const SLOW_DOWN_STEP: Duration = Duration::from_secs(5);
+pub(crate) const SLOW_DOWN_STEP: Duration = Duration::from_secs(5);
 
 /// How long past the code's expiry the CLI keeps polling, for clocks that disagree, before it
 /// gives up on its own.
-pub const EXPIRY_GRACE_MS: i64 = 30_000;
+pub(crate) const EXPIRY_GRACE_MS: i64 = 30_000;
 
 /// Polls in a row that may fail (a dropped connection, a timeout) before the login gives up.
-pub const MAX_POLL_FAILURES: u32 = 5;
+pub(crate) const MAX_POLL_FAILURES: u32 = 5;
 
 /// `deviceLogin:start`'s answer.
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct Started {
+pub(crate) struct Started {
     /// The CLI's secret: polls send it, nothing shows it.
-    pub device_code: String,
+    pub(crate) device_code: String,
     /// What the user approves: `ABCD-EFGH`.
-    pub user_code: String,
+    pub(crate) user_code: String,
     /// Where the user approves it (`https://meetcal.app/link` on production).
-    pub verification_url: String,
+    pub(crate) verification_url: String,
     /// When the code expires (epoch ms).
     #[serde(deserialize_with = "whole_number")]
-    pub expires_at: i64,
+    pub(crate) expires_at: i64,
     /// Seconds between polls.
     #[serde(deserialize_with = "whole_number")]
-    pub interval: i64,
+    pub(crate) interval: i64,
 }
 
 impl Started {
     /// Checks the answer is usable: a code to show and to poll with, and a link that parses.
-    pub fn validate(&self) -> Result<()> {
+    pub(crate) fn validate(&self) -> Result<()> {
         ensure!(
             !self.device_code.trim().is_empty() && !self.user_code.trim().is_empty(),
             "MeetCal started a login without a code"
@@ -63,18 +63,18 @@ impl Started {
 /// The token an approved login issues.
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct Issued {
-    pub token: String,
-    pub token_id: String,
+pub(crate) struct Issued {
+    pub(crate) token: String,
+    pub(crate) token_id: String,
     /// When the token expires (epoch ms).
     #[serde(deserialize_with = "whole_number")]
-    pub expires_at: i64,
+    pub(crate) expires_at: i64,
 }
 
 /// `deviceLogin:poll`'s answer.
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize)]
 #[serde(tag = "status", rename_all = "snake_case")]
-pub enum PollAnswer {
+pub(crate) enum PollAnswer {
     Pending,
     SlowDown,
     Denied,
@@ -86,7 +86,7 @@ pub enum PollAnswer {
 
 /// Why a login ended without a token.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub enum LoginFailure {
+pub(crate) enum LoginFailure {
     Denied,
     Expired,
     /// Approved, but the answer carrying the token was lost.
@@ -96,7 +96,7 @@ pub enum LoginFailure {
 }
 
 impl LoginFailure {
-    pub fn message(&self) -> String {
+    pub(crate) fn message(&self) -> String {
         match self {
             LoginFailure::Denied => {
                 "The login was denied. Run `meetcal login` to try again.".to_string()
@@ -117,7 +117,7 @@ impl LoginFailure {
 
 /// What the login does after a poll.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub enum Step {
+pub(crate) enum Step {
     /// Wait this long, then poll again.
     Wait(Duration),
     Approved(Issued),
@@ -127,14 +127,14 @@ pub enum Step {
 /// The polling policy for one login: the interval (grown by `slow_down`), the deadline, and the
 /// failures in a row.
 #[derive(Clone, Debug)]
-pub struct Poller {
+pub(crate) struct Poller {
     interval: Duration,
     deadline_ms: i64,
     failures: u32,
 }
 
 impl Poller {
-    pub fn new(started: &Started) -> Self {
+    pub(crate) fn new(started: &Started) -> Self {
         Self {
             interval: Duration::from_secs(started.interval.max(0).unsigned_abs())
                 .clamp(MIN_POLL_INTERVAL, MAX_POLL_INTERVAL),
@@ -144,12 +144,12 @@ impl Poller {
     }
 
     /// The wait before the first poll.
-    pub fn interval(&self) -> Duration {
+    pub(crate) fn interval(&self) -> Duration {
         self.interval
     }
 
     /// The step after a poll that answered `answer` (or failed with its error) at `now_ms`.
-    pub fn after(&mut self, answer: Result<PollAnswer, String>, now_ms: i64) -> Step {
+    pub(crate) fn after(&mut self, answer: Result<PollAnswer, String>, now_ms: i64) -> Step {
         match answer {
             Ok(PollAnswer::Approved(issued)) => return Step::Approved(issued),
             Ok(PollAnswer::Denied) => return Step::Failed(LoginFailure::Denied),
@@ -176,7 +176,7 @@ impl Poller {
 
 /// The name the approval page shows for this device: `meetcal CLI on <host> (<os>)`, at most
 /// `MAX_DEVICE_NAME_CHARS` characters.
-pub fn device_name(host: Option<&str>, os: &str) -> String {
+pub(crate) fn device_name(host: Option<&str>, os: &str) -> String {
     let os = match os {
         "macos" => "macOS",
         "linux" => "Linux",
@@ -192,7 +192,7 @@ pub fn device_name(host: Option<&str>, os: &str) -> String {
 }
 
 /// The link the user opens: `verification_url` with `code=<user_code>` added to its query.
-pub fn approval_url(verification_url: &str, user_code: &str) -> Result<Url> {
+pub(crate) fn approval_url(verification_url: &str, user_code: &str) -> Result<Url> {
     let mut url = Url::parse(verification_url)
         .with_context(|| format!("MeetCal sent an unusable login link: {verification_url}"))?;
     ensure!(
@@ -209,7 +209,7 @@ const QR_QUIET_ZONE: usize = 2;
 
 /// `text` as a QR code drawn with half blocks, two module rows per line, in black on white
 /// (ANSI colours), so it scans on light and dark terminals alike.
-pub fn qr_code(text: &str) -> Result<String> {
+pub(crate) fn qr_code(text: &str) -> Result<String> {
     let code = QrCode::new(text.as_bytes()).context("Failed to draw the QR code")?;
     let width = code.width();
     let colors = code.to_colors();
@@ -218,7 +218,8 @@ pub fn qr_code(text: &str) -> Result<String> {
         let inside = |at: usize| (QR_QUIET_ZONE..QR_QUIET_ZONE + width).contains(&at);
         inside(row)
             && inside(column)
-            && colors[(row - QR_QUIET_ZONE) * width + column - QR_QUIET_ZONE] == Color::Dark
+            && colors.get((row - QR_QUIET_ZONE) * width + column - QR_QUIET_ZONE)
+                == Some(&Color::Dark)
     };
     let mut drawn = String::new();
     for row in (0..size).step_by(2) {
@@ -238,7 +239,7 @@ pub fn qr_code(text: &str) -> Result<String> {
 
 /// This machine's name, for [`device_name`]: the kernel's on Linux, else `hostname`'s, else the
 /// environment's. `None` when none is known.
-pub fn host_name() -> Option<String> {
+pub(crate) fn host_name() -> Option<String> {
     let non_empty = |name: String| {
         let name = name.trim().to_string();
         (!name.is_empty()).then_some(name)

@@ -8,9 +8,9 @@ use crate::utils::output::{self, Report};
 use serde_json::json;
 
 #[derive(Debug, Deserialize)]
-pub struct NatRanking {
-    pub name: String,
-    pub total: f64,
+pub(crate) struct NatRanking {
+    pub(crate) name: String,
+    pub(crate) total: f64,
 }
 
 /// Show a division's national rankings: each lifter's best total (see nat-ranking-year for one
@@ -31,24 +31,23 @@ pub struct NatRankingsArgs {
 }
 
 pub async fn run(args: NatRankingsArgs) -> Result<()> {
-    // assign args to vars
     let class = args.weight_class;
     let federation = args.federation.to_ascii_uppercase();
 
     let query_args = json!({ "ageCategory": class, "federation": federation });
-    let row_array: Vec<NatRanking> = query(queries::NATIONAL_RANKINGS, &query_args).await?;
-
-    // push to table
-    let mut table = Table::new();
-    table.set_header(vec!["Rank", "Name", "Total"]);
-
-    for (rank, row) in (1..).zip(row_array) {
-        table.add_row(vec![rank.to_string(), row.name, row.total.to_string()]);
-    }
-
-    output::emit(Report::single("national_rankings", table));
+    let rankings: Vec<NatRanking> = query(queries::NATIONAL_RANKINGS, &query_args).await?;
+    output::emit(report(rankings));
 
     Ok(())
+}
+
+pub(crate) fn report(rankings: Vec<NatRanking>) -> Report {
+    let mut table = Table::new();
+    table.set_header(vec!["Rank", "Name", "Total"]);
+    for (rank, row) in (1..).zip(rankings) {
+        table.add_row(vec![rank.to_string(), row.name, row.total.to_string()]);
+    }
+    Report::single("national_rankings", table)
 }
 
 #[cfg(test)]

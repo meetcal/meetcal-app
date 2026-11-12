@@ -13,20 +13,21 @@ use std::time::Duration;
 use reqwest::StatusCode;
 
 /// Number of times a request is retried after the first attempt before giving up.
-pub const MAX_RETRIES: usize = 2;
+pub(crate) const MAX_RETRIES: usize = 2;
 
 /// Delays used when a retryable response carries no usable `Retry-After` header.
 /// Entry `n` is the wait before retry `n + 1`.
-pub const RETRY_BACKOFF: [Duration; MAX_RETRIES] = [Duration::from_secs(1), Duration::from_secs(2)];
+pub(crate) const RETRY_BACKOFF: [Duration; MAX_RETRIES] =
+    [Duration::from_secs(1), Duration::from_secs(2)];
 
 /// Shortest wait honored from a `Retry-After` header, in seconds.
-pub const MIN_RETRY_AFTER_SECS: u64 = 1;
+pub(crate) const MIN_RETRY_AFTER_SECS: u64 = 1;
 
 /// Longest wait honored from a `Retry-After` header, in seconds.
-pub const MAX_RETRY_AFTER_SECS: u64 = 30;
+pub(crate) const MAX_RETRY_AFTER_SECS: u64 = 30;
 
 /// Whether a response status is worth retrying: rate limited (429) or overloaded (503).
-pub fn is_retryable(status: StatusCode) -> bool {
+pub(crate) fn is_retryable(status: StatusCode) -> bool {
     matches!(
         status,
         StatusCode::TOO_MANY_REQUESTS | StatusCode::SERVICE_UNAVAILABLE
@@ -37,13 +38,13 @@ pub fn is_retryable(status: StatusCode) -> bool {
 ///
 /// Returns `None` for anything that is not a non-negative integer, including the HTTP-date form,
 /// which the MeetCal API does not send.
-pub fn parse_retry_after_secs(value: &str) -> Option<u64> {
+pub(crate) fn parse_retry_after_secs(value: &str) -> Option<u64> {
     value.trim().parse().ok()
 }
 
 /// The wait requested by a `Retry-After` header, clamped to
 /// `MIN_RETRY_AFTER_SECS..=MAX_RETRY_AFTER_SECS`.
-pub fn retry_after_delay(value: &str) -> Option<Duration> {
+pub(crate) fn retry_after_delay(value: &str) -> Option<Duration> {
     parse_retry_after_secs(value)
         .map(|secs| Duration::from_secs(secs.clamp(MIN_RETRY_AFTER_SECS, MAX_RETRY_AFTER_SECS)))
 }
@@ -52,7 +53,7 @@ pub fn retry_after_delay(value: &str) -> Option<Duration> {
 ///
 /// `retries_done` is how many retries have already been made for this request. Returns the time
 /// to wait before retrying, or `None` when the request should not be retried.
-pub fn next_retry_delay(
+pub(crate) fn next_retry_delay(
     status: StatusCode,
     retry_after: Option<&str>,
     retries_done: usize,
@@ -65,7 +66,7 @@ pub fn next_retry_delay(
     Some(retry_after.and_then(retry_after_delay).unwrap_or(backoff))
 }
 
-pub fn next_transport_retry_delay(retries_done: usize) -> Option<Duration> {
+pub(crate) fn next_transport_retry_delay(retries_done: usize) -> Option<Duration> {
     RETRY_BACKOFF.get(retries_done).copied()
 }
 

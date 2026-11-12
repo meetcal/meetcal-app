@@ -75,24 +75,28 @@ fn weight_class(record: &Record) -> &str {
 const FILTERS: &[Filter<Record>] = &[
     Filter {
         label: "Organization",
+        param: "organization",
         placeholder: "All organizations",
         value: organization,
         order: OptionOrder::Alphabetical,
     },
     Filter {
         label: "Gender",
+        param: "gender",
         placeholder: "All genders",
         value: gender,
         order: OptionOrder::Alphabetical,
     },
     Filter {
         label: "Age",
+        param: "age",
         placeholder: "All ages",
         value: age,
         order: OptionOrder::Alphabetical,
     },
     Filter {
         label: "Weight class",
+        param: "class",
         placeholder: "All classes",
         value: weight_class,
         order: OptionOrder::ByWeight,
@@ -172,7 +176,6 @@ fn record_row(record: &Record) -> AnyView {
 
 #[component]
 pub fn Records() -> impl IntoView {
-    let sort = RwSignal::new(RecordSort::TotalDesc);
     let records = load_rows(queries::RECORDS, Record::shown);
 
     view! {
@@ -182,7 +185,7 @@ pub fn Records() -> impl IntoView {
         >
             {move || table_response(records, HEADERS.len(), "records", |records| {
                 view! {
-                    <ReferenceTable rows=listed(records) filters=FILTERS headers=HEADERS row=record_row sort empty_message="No records match these filters." />
+                    <ReferenceTable rows=listed(records) filters=FILTERS headers=HEADERS row=record_row path="/records" default_sort=RecordSort::TotalDesc empty_message="No records match these filters." />
                 }
                 .into_any()
             })}
