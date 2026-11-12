@@ -1,0 +1,68 @@
+{
+  "function": "reference:clubMeetStats",
+  "encoding": "value",
+  "answers": [
+    {
+      "args": {
+        "club": "Wire Fixture Barbell",
+        "meet": "2026 Wire Fixture Classic"
+      },
+      "body": {
+        "total_athletes": 3,
+        "gold_medals": 6,
+        "silver_medals": 1,
+        "bronze_medals": 0,
+        "total_prs": 1,
+        "perfect_6_for_6": 0,
+        "total_weight_lifted": 384,
+        "snatch_make_rate": 63,
+        "cj_make_rate": 50,
+        "combined_make_rate": 56,
+        "athlete_results": [
+          {
+            "name": "Avery Fixture",
+            "weight_class": "63",
+            "snatch_best": 82,
+            "cj_best": 102,
+            "total": 184,
+            "body_weight": 63.4,
+            "medal": "gold",
+            "snatch_medal": "gold",
+            "cj_medal": "gold",
+            "total_medal": "gold",
+            "is_pr": true,
+            "perfect_lifts": false
+          },
+          {
+            "name": "Blake Fixture",
+            "weight_class": "69",
+            "snatch_best": 88,
+            "cj_best": 112,
+            "total": 200,
+            "body_weight": 0,
+            "medal": "gold",
+            "snatch_medal": "gold",
+            "cj_medal": "gold",
+            "total_medal": "gold",
+            "is_pr": false,
+            "perfect_lifts": false
+          },
+          {
+            "name": "Drew Fixture",
+            "weight_class": "63",
+            "snatch_best": 70,
+            "cj_best": 0,
+            "total": 0,
+            "body_weight": 62.1,
+            "medal": null,
+            "snatch_medal": "silver",
+            "cj_medal": null,
+            "total_medal": null,
+            "is_pr": false,
+            "perfect_lifts": false
+          }
+        ]
+      }
+    }
+  ]
+}

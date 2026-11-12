@@ -1,0 +1,48 @@
+{
+  "function": "meets:details",
+  "encoding": "jsonText",
+  "answers": [
+    {
+      "args": {
+        "meet": "2026 Wire Fixture Open"
+      },
+      "body": {
+        "id": "meets:4",
+        "name": "2026 Wire Fixture Open",
+        "federation": "USAW",
+        "status": "upcoming",
+        "start_date": "2026-11-14",
+        "end_date": "2026-11-15",
+        "time_zone": "America/New_York",
+        "venue_name": "Fixture Hall",
+        "venue_street": "1 Fixture Way",
+        "venue_city": "Raleigh",
+        "venue_state": "NC",
+        "venue_zip": "27601",
+        "venue_map_pdf_url": "https://example.com/fixture-map.pdf",
+        "venue_map_apple_url": "https://maps.apple.com/?q=Fixture+Hall"
+      }
+    },
+    {
+      "args": {
+        "meet": "2026 Wire Fixture Games"
+      },
+      "body": {
+        "id": "meets:5",
+        "name": "2026 Wire Fixture Games",
+        "federation": "",
+        "status": "ongoing",
+        "start_date": "2026-09-30",
+        "end_date": "2026-10-02",
+        "time_zone": "America/New_York",
+        "venue_name": "Fixture Hall",
+        "venue_street": "1 Fixture Way",
+        "venue_city": "Raleigh",
+        "venue_state": "NC",
+        "venue_zip": "27601",
+        "venue_map_pdf_url": null,
+        "venue_map_apple_url": null
+      }
+    }
+  ]
+}

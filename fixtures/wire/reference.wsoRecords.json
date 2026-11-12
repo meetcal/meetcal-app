@@ -1,0 +1,41 @@
+{
+  "function": "reference:wsoRecords",
+  "encoding": "jsonText",
+  "answers": [
+    {
+      "args": {
+        "wso": "Carolina"
+      },
+      "body": [
+        {
+          "age_category": "Senior",
+          "cj_record": 118,
+          "gender": "Women",
+          "snatch_record": 95,
+          "total_record": 210,
+          "weight_class": "64kg",
+          "wso": "Carolina",
+          "snatch_by": null,
+          "cj_by": null,
+          "total_by": {
+            "name": "Wso Holder",
+            "date": "2025-05-05",
+            "location": "Raleigh"
+          }
+        },
+        {
+          "age_category": "Youth 16-17",
+          "cj_record": null,
+          "gender": "Men",
+          "snatch_record": 100,
+          "total_record": null,
+          "weight_class": "73kg",
+          "wso": "Carolina",
+          "snatch_by": null,
+          "cj_by": null,
+          "total_by": null
+        }
+      ]
+    }
+  ]
+}

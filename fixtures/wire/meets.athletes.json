@@ -1,0 +1,55 @@
+{
+  "function": "meets:athletes",
+  "encoding": "jsonText",
+  "answers": [
+    {
+      "args": {
+        "meet": "2026 Wire Fixture Open"
+      },
+      "body": [
+        {
+          "member_id": "100001",
+          "adaptive": false,
+          "age": 27,
+          "club": "Wire Fixture Barbell",
+          "entry_total": 180,
+          "gender": "Female",
+          "meet": "2026 Wire Fixture Open",
+          "name": "Avery Fixture",
+          "session_number": 1,
+          "session_platform": "Red",
+          "weight_class": "63",
+          "wso": "Carolina"
+        },
+        {
+          "member_id": "100002",
+          "adaptive": true,
+          "age": 27,
+          "club": "Wire Fixture Barbell",
+          "entry_total": 200,
+          "gender": "Female",
+          "meet": "2026 Wire Fixture Open",
+          "name": "Blake Fixture",
+          "session_number": 2,
+          "session_platform": "Blue",
+          "weight_class": "69",
+          "wso": null
+        },
+        {
+          "member_id": "100003",
+          "adaptive": false,
+          "age": 31,
+          "club": "Wire Fixture Barbell",
+          "entry_total": 260,
+          "gender": "Male",
+          "meet": "2026 Wire Fixture Open",
+          "name": "Casey Fixture",
+          "session_number": null,
+          "session_platform": null,
+          "weight_class": "88",
+          "wso": null
+        }
+      ]
+    }
+  ]
+}

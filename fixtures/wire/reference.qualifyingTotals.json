@@ -1,0 +1,25 @@
+{
+  "function": "reference:qualifyingTotals",
+  "encoding": "jsonText",
+  "answers": [
+    {
+      "args": {},
+      "body": [
+        {
+          "event_name": "National Championships",
+          "gender": "Women",
+          "age_category": "Senior",
+          "weight_class": "64kg",
+          "qualifying_total": 170
+        },
+        {
+          "event_name": "National Championships",
+          "gender": "Men",
+          "age_category": "Senior",
+          "weight_class": "88kg",
+          "qualifying_total": 260
+        }
+      ]
+    }
+  ]
+}

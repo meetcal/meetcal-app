@@ -1,0 +1,29 @@
+{
+  "function": "results:bests",
+  "encoding": "value",
+  "answers": [
+    {
+      "args": {
+        "names": [
+          "Avery Fixture",
+          "Unknown Fixture"
+        ],
+        "cutoffDate": "2026-01-01"
+      },
+      "body": [
+        {
+          "name": "Avery Fixture",
+          "best_snatch": 82,
+          "best_cj": 102,
+          "best_total": 184
+        },
+        {
+          "name": "Unknown Fixture",
+          "best_snatch": 0,
+          "best_cj": 0,
+          "best_total": 0
+        }
+      ]
+    }
+  ]
+}
