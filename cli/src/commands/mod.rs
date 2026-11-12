@@ -32,3 +32,6 @@ pub mod wso_records;
 pub mod wso_results;
 pub mod wso_wrapped;
 pub mod wsos;
+
+#[cfg(test)]
+mod export_keys;

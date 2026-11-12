@@ -4,6 +4,7 @@ use comfy_table::Table;
 
 use crate::types::club::ClubMeetStats;
 use crate::utils::backend::{queries, query};
+use crate::utils::format::capitalized;
 use crate::utils::meet_names::result_meet_aliases;
 use crate::utils::names::{NameKind, clubs, not_found, not_found_message};
 use crate::utils::output::{self, Report};
@@ -46,7 +47,7 @@ pub async fn run(args: ClubResultsArgs) -> Result<()> {
     Ok(())
 }
 
-pub async fn refuse_uncounted_results(
+pub(crate) async fn refuse_uncounted_results(
     group: &str,
     name: &str,
     meet: &str,
@@ -77,7 +78,7 @@ async fn results_under_other_names(meet: &str) -> Vec<String> {
     titles
 }
 
-pub fn uncounted_results_message(
+pub(crate) fn uncounted_results_message(
     group: &str,
     name: &str,
     meet: &str,
@@ -104,17 +105,17 @@ pub fn uncounted_results_message(
 
 /// Whether `club` is a known club exactly as the stats query was given it: the query matches
 /// the name exactly, so a name differing in case or spacing is a club to suggest.
-pub fn club_known(clubs: &[String], club: &str) -> bool {
+pub(crate) fn club_known(clubs: &[String], club: &str) -> bool {
     clubs.iter().any(|known| known == club)
 }
 
-pub async fn meet_has_only_results(meet: &str) -> bool {
+pub(crate) async fn meet_has_only_results(meet: &str) -> bool {
     let roster: Result<Vec<serde_json::Value>> =
         query(queries::MEET_ATHLETES, &serde_json::json!({ "meet": meet })).await;
     matches!(roster, Ok(ref athletes) if athletes.is_empty()) && meet_has_results(meet).await
 }
 
-pub async fn meet_has_results(meet: &str) -> bool {
+pub(crate) async fn meet_has_results(meet: &str) -> bool {
     for alias in result_meet_aliases(meet) {
         let rows: Result<Vec<serde_json::Value>> =
             query(queries::MEET_RESULTS, &serde_json::json!({ "meet": alias })).await;
@@ -125,14 +126,14 @@ pub async fn meet_has_results(meet: &str) -> bool {
     false
 }
 
-pub fn results_only_message(command: &str, meet: &str) -> String {
+pub(crate) fn results_only_message(command: &str, meet: &str) -> String {
     format!(
         "{command} needs the start list of meet \"{meet}\", and MeetCal has only its results.\n\
          See them with: meetcal meet-results \"{meet}\""
     )
 }
 
-pub async fn get_club_meet_stats(club: &str, meet: &str) -> Result<ClubMeetStats> {
+pub(crate) async fn get_club_meet_stats(club: &str, meet: &str) -> Result<ClubMeetStats> {
     query(
         queries::CLUB_MEET_STATS,
         &serde_json::json!({ "club": club, "meet": meet }),
@@ -140,7 +141,7 @@ pub async fn get_club_meet_stats(club: &str, meet: &str) -> Result<ClubMeetStats
     .await
 }
 
-pub fn validate_stats(stats: &ClubMeetStats, club: &str, meet: &str) -> Result<()> {
+pub(crate) fn validate_stats(stats: &ClubMeetStats, club: &str, meet: &str) -> Result<()> {
     if stats.total_athletes == 0 {
         bail!("No athletes found for club \"{club}\" in meet \"{meet}\"");
     }
@@ -153,7 +154,7 @@ fn render_report(club: &str, meet: &str, stats: &ClubMeetStats) -> String {
     report("Club", club, meet, stats).to_text()
 }
 
-pub fn report(group: &str, name: &str, meet: &str, stats: &ClubMeetStats) -> Report {
+pub(crate) fn report(group: &str, name: &str, meet: &str, stats: &ClubMeetStats) -> Report {
     let mut summary = Table::new();
     summary.set_header(vec![group, "Meet", "Athletes", "Results"]);
     summary.add_row(vec![
@@ -238,15 +239,7 @@ fn yes_no(value: bool) -> String {
 }
 
 fn medal_name(medal: Option<&str>) -> String {
-    medal
-        .map(|value| {
-            let mut characters = value.chars();
-            match characters.next() {
-                Some(first) => first.to_uppercase().collect::<String>() + characters.as_str(),
-                None => String::new(),
-            }
-        })
-        .unwrap_or_else(|| "-".to_string())
+    medal.map(capitalized).unwrap_or_else(|| "-".to_string())
 }
 
 #[cfg(test)]
@@ -262,7 +255,6 @@ mod tests {
             cj_best: 105.0,
             total: 187.5,
             body_weight: 68.4,
-            medal: Some("gold".to_string()),
             snatch_medal: Some("silver".to_string()),
             cj_medal: None,
             total_medal: Some("gold".to_string()),

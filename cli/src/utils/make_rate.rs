@@ -3,7 +3,7 @@ use comfy_table::Table;
 use crate::types::lifting_results::LiftingResults;
 use crate::utils::stats::{Lift, attempt_habits, percent};
 
-pub fn make_rate_tables(rows: &[&LiftingResults]) -> (Table, Table) {
+pub(crate) fn make_rate_tables(rows: &[&LiftingResults]) -> (Table, Table) {
     let snatch = attempt_habits(rows, Lift::Snatch);
     let cj = attempt_habits(rows, Lift::CleanAndJerk);
 

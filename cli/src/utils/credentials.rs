@@ -11,7 +11,7 @@ use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 
 /// The file's name inside `<config dir>/meetcal/`.
-pub const CREDENTIALS_FILE: &str = "credentials.json";
+pub(crate) const CREDENTIALS_FILE: &str = "credentials.json";
 
 /// A saved login.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -31,31 +31,31 @@ pub struct Credentials {
 
 impl Credentials {
     /// Whether the token has expired at `now_ms`.
-    pub fn is_expired(&self, now_ms: i64) -> bool {
+    pub(crate) fn is_expired(&self, now_ms: i64) -> bool {
         now_ms >= self.expires_at
     }
 
     /// Whether the token was issued by the deployment at `base_url`.
-    pub fn is_for(&self, base_url: &str) -> bool {
+    pub(crate) fn is_for(&self, base_url: &str) -> bool {
         same_deployment(&self.deployment, base_url)
     }
 }
 
 /// Whether two deployment URLs name the same deployment (a trailing `/` aside).
-pub fn same_deployment(a: &str, b: &str) -> bool {
+pub(crate) fn same_deployment(a: &str, b: &str) -> bool {
     a.trim().trim_end_matches('/') == b.trim().trim_end_matches('/')
 }
 
 /// Where the login is saved: `$XDG_CONFIG_HOME/meetcal/credentials.json` when `XDG_CONFIG_HOME`
 /// is set, else `~/.config/meetcal/credentials.json` (on macOS too, like most CLIs), or
 /// `%APPDATA%\meetcal\credentials.json` on Windows. `None` when no home directory is known.
-pub fn default_path() -> Option<PathBuf> {
+pub(crate) fn default_path() -> Option<PathBuf> {
     meetcal_dir().map(|dir| dir.join(CREDENTIALS_FILE))
 }
 
 /// The CLI's own directory under the user's config directory (see [`default_path`]), which also
 /// holds the update check's cache (`utils::update_notice`).
-pub fn meetcal_dir() -> Option<PathBuf> {
+pub(crate) fn meetcal_dir() -> Option<PathBuf> {
     config_dir(
         std::env::var_os("XDG_CONFIG_HOME"),
         std::env::var_os("HOME"),
@@ -122,7 +122,7 @@ pub fn save(path: &Path, credentials: &Credentials) -> Result<()> {
 }
 
 /// Deletes the login at `path`; `false` when there was none.
-pub fn delete(path: &Path) -> Result<bool> {
+pub(crate) fn delete(path: &Path) -> Result<bool> {
     match fs::remove_file(path) {
         Ok(()) => Ok(true),
         Err(error) if error.kind() == ErrorKind::NotFound => Ok(false),

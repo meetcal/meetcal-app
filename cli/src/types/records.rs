@@ -1,27 +1,27 @@
 use serde::Deserialize;
 
 #[derive(Debug, Deserialize)]
-pub struct Record {
-    pub weight_class: String,
-    pub snatch_record: f64,
-    pub cj_record: f64,
-    pub total_record: f64,
-    pub gender: String,
-    pub age_category: String,
-    pub record_type: String,
+pub(crate) struct Record {
+    pub(crate) weight_class: String,
+    pub(crate) snatch_record: f64,
+    pub(crate) cj_record: f64,
+    pub(crate) total_record: f64,
+    pub(crate) gender: String,
+    pub(crate) age_category: String,
+    pub(crate) record_type: String,
     #[serde(default)]
-    pub snatch_by: Option<RecordHolder>,
+    pub(crate) snatch_by: Option<RecordHolder>,
     #[serde(default)]
-    pub cj_by: Option<RecordHolder>,
+    pub(crate) cj_by: Option<RecordHolder>,
     #[serde(default)]
-    pub total_by: Option<RecordHolder>,
+    pub(crate) total_by: Option<RecordHolder>,
 }
 
 /// Who set a record lift ("Standard" while nobody has claimed it), and when and where when the
 /// source says.
 #[derive(Clone, Debug, Deserialize, PartialEq)]
-pub struct RecordHolder {
-    pub name: String,
-    pub date: Option<String>,
-    pub location: Option<String>,
+pub(crate) struct RecordHolder {
+    pub(crate) name: String,
+    pub(crate) date: Option<String>,
+    pub(crate) location: Option<String>,
 }
