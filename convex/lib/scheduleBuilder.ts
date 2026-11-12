@@ -1,3 +1,4 @@
+import { chunks } from './concurrency';
 import { groupOfAge } from './elite';
 import { athleteGenderLabel, normalizeGender } from './normalize';
 import { normalizeName } from './names';
@@ -213,7 +214,7 @@ export function layoutSlots(segmentSlots: readonly number[], options: BuilderOpt
 function initialSlots(entrants: readonly BuilderEntrant[], options: BuilderOptions): Slot[] {
   const platforms = options.platforms;
   const segments = segmentsFor(options.order, genderSequences(entrants, options));
-  const slotGroups = segments.map((groups) => balancedChunks(groups, platforms.length));
+  const slotGroups = segments.map((groups) => chunks(groups, platforms.length));
   const placements = layoutSlots(
     slotGroups.map((slots) => slots.length),
     options,

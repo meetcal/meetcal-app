@@ -137,6 +137,11 @@ describe('order presets and platforms', () => {
     ]);
   });
 
+  it('fills every platform before leaving one empty in the last session', () => {
+    const schedule = buildSchedule(entrants().slice(0, 5), options({ maxAthletesPerPlatform: 1, platforms: ['Red', 'Blue'] }));
+    expect(schedule.sessions.map((s) => s.groups.map((g) => g.platform))).toEqual([['Red', 'Blue'], ['Red', 'Blue'], ['Red']]);
+  });
+
   it('runs one group per platform at the same time', () => {
     const schedule = buildSchedule(entrants(), options({ maxAthletesPerPlatform: 1, platforms: ['Red', 'Blue'] }));
     expect(summary(schedule)).toEqual([
