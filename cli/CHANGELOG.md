@@ -1,5 +1,62 @@
 # Changelog
 
+## Unreleased
+
+### Breaking changes
+
+- `meetcal wso` shows what `club-results` shows, from MeetCal's own answer
+  (`reference:wsoMeetStats`) instead of ranking the meet itself. Its export is now the tables
+  `summary` (`wso`, `meet`, `athletes`, `results`), `results` (`total_weight_lifted`,
+  `snatch_make_rate`, `cj_make_rate`, `overall_make_rate`, `total_prs`, `6_for_6`), `medals`
+  (`gold`, `silver`, `bronze`, `total`) and `athletes` (one row per lifter). The old tables
+  `make_rates`, `volume`, `prs` and `pr_details` are gone, with the snatch and clean & jerk PR
+  counts, the previous PR beside each new one, each medal's place and division, and the meet's
+  total athlete count.
+- Export keys have one spelling. Clean & jerk is `cj` wherever it appears, and a header's
+  parenthesised note is not part of its key:
+  - `c_j_make_rate` is `cj_make_rate` and `c_j_medal` is `cj_medal` (`club-results`, `wso`)
+  - `best_c_j` is `best_cj` (`wrapped`, `club-wrapped`, `wso-wrapped`, `h2h`)
+  - `c_j` is `cj` (`progress`, `leaderboard`, `elite`, `club-results`, `wso`);
+    `past_year_c_j` is `past_year_cj` (`qualify`)
+  - `sinclair_2021_24` is `sinclair` (`progress`, `meet-results`, `leaderboard`);
+    `best_sinclair_2021_24` is `best_sinclair` (`h2h`, `club-trends`, `wso-trends`)
+  - `top_meet_best_total` is `top_meet` (`club-wrapped`, `wso-wrapped`)
+- A value that does not exist exports as null, not 0: a year with no results (and the difference
+  against it) in `compare`, `club-compare` and `wso-compare`; a lift with no record in
+  `adaptive-records`; a lift never made in `search`'s PRs.
+- CSV writes a weight class as JSON does (`60kg`, not `60`) in every column whose header contains
+  "class".
+- `records` with a filter that matches nothing is an error naming the values the records have
+  (exit 1), not an empty answer (exit 0).
+- A bad `--gender`, a blank name, a `--year` outside 1900 to 9999 and a `meet --session-number`
+  that is not a number are usage errors (exit 2) before any request.
+- `elite` without `--year` covers the current calendar year, as `leaderboard` does (it covered
+  last year).
+- `leaderboard`'s age category is `-a`. `-c` still works there but is no longer listed.
+
+### Fixed
+
+- `meet-results` counts a lifter entered in two divisions once in its summary, bomb-outs, make
+  rates and top-score tables; the results table still lists every row.
+- `wsos` and `wso-records` report a failed lookup instead of answering with part of the data, and
+  `wsos`' `registrations` column is always `true` or `false`.
+- `club-trends` and `wso-trends` always export `gold`, `silver` and `bronze` (null under
+  `--no-medals`), and `meet-results` always exports `editions`, so the keys do not depend on the
+  flags.
+- A club, WSO or meet name typed with a combining accent, or in capitals with an accented letter,
+  finds the stored name.
+- A read whose connection is refused or dropped before any answer is sent again, within the same
+  two retries as a rate limit.
+
+### Changed
+
+- Every `--gender` takes `Men` or `Women`, and `m`, `f`, `male` and `female`. `meet-results`
+  `--year` has the short form `-y`.
+- Club and WSO reports read their athletes' results up to eight requests at a time.
+- Security: rustix past its unsoundness advisory.
+- Release checks: a release's tag must be on `master`, and the macOS binaries are run before they
+  are published.
+
 ## 3.1.0
 
 - `meetcal elite <WSO>`: a WSO's top 20 women and men Overall, Youth, Junior, Senior and Masters,
