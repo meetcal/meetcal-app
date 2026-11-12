@@ -13,7 +13,7 @@ use crate::types::wrapped::WrappedStats;
 use crate::utils::backend::{queries, query_all_pages, query_each};
 use crate::utils::meet_names::equivalent_meets;
 use crate::utils::output::Report;
-use crate::utils::stats::{Lift, fold, number, valid_lift, valid_total};
+use crate::utils::stats::{Lift, fold, number, percentage, valid_lift, valid_total};
 use serde_json::json;
 
 const RESULTS_REQUEST_BATCH_SIZE: usize = 50;
@@ -150,6 +150,101 @@ pub fn split_comparison_years(
     }
 
     (previous, current)
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Group<'a> {
+    Club(&'a str),
+    Wso(&'a str),
+}
+
+impl Group<'_> {
+    pub fn name(&self) -> &str {
+        match self {
+            Group::Club(name) | Group::Wso(name) => name,
+        }
+    }
+
+    pub fn label(&self) -> &'static str {
+        match self {
+            Group::Club(_) => "Club",
+            Group::Wso(_) => "WSO",
+        }
+    }
+
+    pub fn no_members_message(&self) -> String {
+        match self {
+            Group::Club(name) => format!("No completed-meet athletes found for club \"{name}\""),
+            Group::Wso(name) => format!("No meet registrations found for WSO \"{name}\""),
+        }
+    }
+
+    pub fn described(&self) -> String {
+        match self {
+            Group::Club(name) => format!("club \"{name}\""),
+            Group::Wso(name) => format!("WSO \"{name}\""),
+        }
+    }
+
+    async fn results_since(&self, cutoff_date: &str) -> Result<Vec<LiftingResults>> {
+        use crate::utils::names::{NameKind, not_found};
+        let ((memberships, results), kind) = match self {
+            Group::Club(name) => (
+                get_club_results_since(name, cutoff_date).await?,
+                NameKind::Club,
+            ),
+            Group::Wso(name) => (
+                get_wso_results_since(name, cutoff_date).await?,
+                NameKind::Wso,
+            ),
+        };
+        if memberships.is_empty() {
+            return Err(not_found(kind, self.name(), self.no_members_message()).await);
+        }
+        Ok(results)
+    }
+}
+
+pub async fn run_wrapped(group: Group<'_>, year: i32) -> Result<()> {
+    let results = group.results_since(&format!("{year:04}-01-01")).await?;
+    let results = results_for_year(results, year);
+    if results.is_empty() {
+        anyhow::bail!("No results found for {} in {year}", group.described());
+    }
+    let stats = calculate_group_stats(&results);
+    crate::utils::output::emit(group_wrapped_report(
+        group.label(),
+        group.name(),
+        year,
+        &stats,
+    ));
+    Ok(())
+}
+
+pub async fn run_compare(group: Group<'_>, current_year: i32) -> Result<()> {
+    let previous_year = current_year - 1;
+    let results = group
+        .results_since(&format!("{previous_year:04}-01-01"))
+        .await?;
+    let (previous_results, current_results) =
+        split_comparison_years(results, previous_year, current_year);
+    if previous_results.is_empty() && current_results.is_empty() {
+        anyhow::bail!(
+            "No results found for {} in {previous_year} or {current_year}",
+            group.described()
+        );
+    }
+    let previous = calculate_group_stats(&previous_results);
+    let current = calculate_group_stats(&current_results);
+    crate::utils::output::emit(group_comparison_report(
+        group.label(),
+        group.name(),
+        previous_year,
+        current_year,
+        &previous,
+        &current,
+    ));
+    Ok(())
 }
 
 pub fn calculate_group_stats(results: &[LiftingResults]) -> GroupWrappedStats {
@@ -327,14 +422,6 @@ fn same_meet_dates(start: &str, date: &str) -> bool {
     }
 }
 
-fn percentage(successes: usize, attempts: usize) -> f64 {
-    if attempts == 0 {
-        0.0
-    } else {
-        successes as f64 / attempts as f64 * 100.0
-    }
-}
-
 #[cfg(test)]
 fn render_group_wrapped(
     group_kind: &str,
@@ -446,6 +533,23 @@ pub fn group_comparison_report(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn clubs_and_wsos_differ_only_in_their_words() {
+        let (club, wso) = (Group::Club("Test Barbell"), Group::Wso("Carolina"));
+        assert_eq!((club.label(), wso.label()), ("Club", "WSO"));
+        assert_eq!((club.name(), wso.name()), ("Test Barbell", "Carolina"));
+        assert_eq!(
+            club.no_members_message(),
+            "No completed-meet athletes found for club \"Test Barbell\""
+        );
+        assert_eq!(
+            wso.no_members_message(),
+            "No meet registrations found for WSO \"Carolina\""
+        );
+        assert_eq!(club.described(), "club \"Test Barbell\"");
+        assert_eq!(wso.described(), "WSO \"Carolina\"");
+    }
 
     fn membership(name: &str, meet: &str) -> ClubMembership {
         ClubMembership {

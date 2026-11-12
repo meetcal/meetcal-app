@@ -52,6 +52,15 @@ pub fn parse_year(value: &str) -> Result<i32, String> {
         .ok_or_else(|| format!("expected a year from {} to {}", YEARS.start(), YEARS.end()))
 }
 
+pub fn plus_years(date: &str, years: i32) -> String {
+    let year: i32 = date.get(..4).and_then(|y| y.parse().ok()).unwrap_or(0);
+    format!("{:04}{}", year + years, date.get(4..).unwrap_or(""))
+}
+
+pub fn year_range(year: i32) -> (String, String) {
+    (format!("{year:04}-01-01"), format!("{year:04}-12-31"))
+}
+
 /// The error for a `--federation` no row in the range has, naming the ones that do; `None`
 /// when some row has it (or no federation was asked for).
 pub fn unknown_federation<'a>(
