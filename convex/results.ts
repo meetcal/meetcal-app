@@ -7,7 +7,7 @@ import { revalidated, revalidatedText } from './lib/etag';
 import { action, internalQuery, query, type QueryCtx } from './_generated/server';
 import { internal } from './_generated/api';
 import { nameMatcher, queryBigrams, searchDirectory } from './lib/directory';
-import { readHistories, readSummaries, type Mark, type Summary } from './lib/history';
+import { latestMeetBests, readHistories, readSummaries, type Mark, type Summary } from './lib/history';
 import { addBests, type Candidate, checkLeaderboardArgs, fromCompactRow, type LeaderboardRow, leaderboardRow, monthSlices, parseCompactRows, pruneBests, rankBests, toCompactRow, readCompactRow } from './lib/leaderboard';
 import { checkEliteArgs, type EliteAnswer, type EliteMember, type EliteRegistration, type EliteStandard, isMemberOf, latestRegistration, type MemberResult, rankAll, standardTables, isEliteMember } from './lib/elite';
 import { byNameThenNewest, computeMeetResults, meetResultTitles } from './lib/meetData';
@@ -18,7 +18,6 @@ import { cleanNameList, distinctNameKeys, newestSpelling, normalizeName, request
 import {
   bestsSince,
   hasAnyBest,
-  latestMeetBests,
   namedBests,
   toApiLiftingResult,
   ZERO_BESTS,
@@ -432,8 +431,8 @@ export type NamedBestsOrLatest = NamedBests & { latest?: true };
 export function answerBestsOrLatest(summaries: Map<string, Summary>, names: readonly string[], cutoff: string): NamedBestsOrLatest[] {
   return answerBests(summaries, names, cutoff).map((row) => {
     if (hasAnyBest(row)) return row;
-    const marks = summaries.get(normalizeName(row.name))?.marks ?? [];
-    return { ...row, ...(latestMeetBests(marks) ?? ZERO_BESTS), latest: true };
+    const latest = summaries.get(normalizeName(row.name))?.latest ?? [];
+    return { ...row, ...(latestMeetBests(latest) ?? ZERO_BESTS), latest: true };
   });
 }
 

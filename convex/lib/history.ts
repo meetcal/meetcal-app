@@ -3,7 +3,7 @@ import { ATHLETE_RESULTS_MAX, readAll } from './boundedRead';
 import type { MutationCtx, QueryCtx } from '../_generated/server';
 import type { Doc } from '../_generated/dataModel';
 import { mapInBatches } from './concurrency';
-import { compareNewestFirst, toApiLiftingResult, type ApiLiftingResult, isApiLiftingResults } from './results';
+import { bestsSince, compareNewestFirst, toApiLiftingResult, type ApiLiftingResult, isApiLiftingResults, type YearBests } from './results';
 
 /**
  * One document per athlete (folded name) holding their whole result history
@@ -60,15 +60,19 @@ export function summaryOf(rows: readonly ApiLiftingResult[]): { latest: string; 
   const latestDate = rows[0]?.date;
   return {
     latest: JSON.stringify(rows.filter((row) => row.date === latestDate)),
-    marks: JSON.stringify(
-      rows.map((row): Mark => [
-        row.date,
-        Math.max(row.snatch_best, row.snatch1, row.snatch2, row.snatch3),
-        Math.max(row.cj_best, row.cj1, row.cj2, row.cj3),
-        row.total,
-      ]),
-    ),
+    marks: JSON.stringify(rows.map(markOf)),
   };
+}
+
+export function markOf(row: ApiLiftingResult): Mark {
+  return [row.date, Math.max(row.snatch_best, row.snatch1, row.snatch2, row.snatch3), Math.max(row.cj_best, row.cj1, row.cj2, row.cj3), row.total];
+}
+
+export function latestMeetBests(latest: readonly ApiLiftingResult[]): YearBests | null {
+  const [newest] = latest;
+  if (newest === undefined) return null;
+  const meetRows = latest.filter((row) => row.date === newest.date && row.meet === newest.meet);
+  return bestsSince(meetRows.map(markOf), newest.date);
 }
 
 export async function writeHistories(ctx: MutationCtx, keys: Iterable<string>): Promise<number> {

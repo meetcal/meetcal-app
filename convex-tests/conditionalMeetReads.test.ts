@@ -190,6 +190,22 @@ describe('results:bests with latestWhenEmpty', () => {
     expect(await askBests({ names, cutoffDate: '2025-06-01', latestWhenEmpty: false })).toEqual(await askBests({ names, cutoffDate: '2025-06-01' }));
   });
 
+  it('takes the latest meet as one meet: the newest result\'s meet on its date, not every meet that day', async () => {
+    const TWO_MEETS_ONE_DAY = {
+      lifting_results: [
+        { ...result('Dee', '2022-04-02', 210), meet: 'Morning Open' },
+        { ...result('Dee', '2022-04-02', 150), meet: 'Evening Open' },
+        { ...result('Dee', '2022-04-02', 160), meet: 'Evening Open' },
+        { ...result('Dee', '2021-01-01', 230), meet: 'Older Open' },
+      ],
+    };
+    const answer = await handlerOf<Record<string, unknown>, unknown>(bests)(
+      { db: fakeDb(TWO_MEETS_ONE_DAY).db, auth: ANONYMOUS_AUTH },
+      { names: ['Dee'], cutoffDate: '2025-06-01', latestWhenEmpty: true },
+    );
+    expect(answer).toEqual([{ name: 'Dee', best_snatch: 70, best_cj: 90, best_total: 160, latest: true }]);
+  });
+
   it("answers each windowless name's latest meet, marked latest, and zeros for a name with no results", async () => {
     expect(await askBests({ names, cutoffDate: '2025-06-01', latestWhenEmpty: true })).toEqual([
       { name: 'Ada', best_snatch: 90, best_cj: 110, best_total: 200 },
