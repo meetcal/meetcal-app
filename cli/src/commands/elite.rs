@@ -97,10 +97,11 @@ pub const LISTS: [(&str, &str, &[Method]); 5] = [
 )]
 pub struct EliteArgs {
     /// WSO, as registrations name it (see `meetcal wsos`)
+    #[arg(value_parser = crate::utils::filters::parse_name)]
     pub wso: String,
 
     /// Calendar year (defaults to last year; ignored with --from)
-    #[arg(long, short = 'y', value_parser = clap::value_parser!(i32).range(1900..=9999))]
+    #[arg(long, short = 'y', value_parser = crate::utils::filters::parse_year)]
     pub year: Option<i32>,
 
     /// Start of the range, YYYY-MM-DD (with --to)
@@ -258,7 +259,7 @@ pub async fn run(args: EliteArgs) -> Result<()> {
     let wsos = registration_wsos().await?;
     let wso = wsos
         .iter()
-        .find(|name| name.as_str() == args.wso.trim())
+        .find(|name| name.as_str() == args.wso)
         .or_else(|| wsos.iter().find(|name| fold(name) == fold(&args.wso)))
         .cloned();
     let Some(wso) = wso else {

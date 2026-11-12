@@ -216,7 +216,9 @@ rules are a port of `Filters::keeps`, `rank` and `stats.rs` (`convex/lib/leaderb
 still rank `--wso` and `--club` leaderboards here; change both together. `meets:namesPage` lists distinct meet
 names in the results or the registrations by skipping along the meet index, one read per meet;
 `attendance` lists 44 name ranges at once (`RANGE_BOUNDARIES`), about four seconds for the whole
-history, then counts each matched edition with `meets:attendance` (eight meets per call). The
+history, then counts each matched edition with `meets:attendance` (eight meets per call; a batch the
+server refuses as too many rows for one call, status 413, is asked for again as two halves, and one
+meet refused alone is an error). The
 ranges only balance the work: they cover every name whatever the data holds.
 
 ## Adding a command
