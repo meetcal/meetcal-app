@@ -31,8 +31,13 @@ POST https://disciplined-hare-790.convex.cloud/api/query
   `MeetCal could not answer <query>: <error>`.
 - `send_with_retry` applies `src/utils/retry.rs` to queries and premium actions: 429 and 503 are
   retried twice, honoring `Retry-After` (clamped to 1 to 30 seconds) or backing off 1 then 2
-  seconds. Once retries run out, a 429 explains how long to wait. Other actions and mutations are
-  sent once (`Endpoint::retries`): one may have done its work before its answer was lost.
+  seconds. Once retries run out, a 429 explains how long to wait. A request that failed before any
+  answer arrived (a refused, dropped or timed-out connection) counts toward the same two retries;
+  one that used its whole request timeout is not sent again. Other actions and mutations are sent
+  once (`Endpoint::retries`): one may have done its work before its answer was lost.
+- `query_each` runs one query per argument set, at most `CONCURRENT_READS` (8) at a time, and
+  returns the answers in the arguments' order (`in_order` is the bounded runner). The name batches
+  of the club and WSO reports and the per-meet medal reads of the trends reports go through it.
 - One shared `reqwest` client with a 10-second connect timeout, a 30-second request timeout, and a
   `meetcal-cli/<version>` User-Agent. A premium action carries its own timeout (`PremiumAction`):
   two minutes for `results:leaderboard`, which reads a whole range before it answers, and for
