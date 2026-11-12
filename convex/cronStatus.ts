@@ -95,6 +95,11 @@ export const queuedWhileAlerting = internalQuery({
   },
 });
 
+export const failedSources = internalQuery({
+  args: { job: v.string() },
+  handler: async (ctx, { job }): Promise<string[]> => (await statusOf(ctx, job))?.failedSources ?? [],
+});
+
 export const all = internalQuery({
   args: {},
   handler: async (ctx) => await ctx.db.query('cron_status').collect(),
