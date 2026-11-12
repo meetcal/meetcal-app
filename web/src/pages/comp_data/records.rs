@@ -1,29 +1,26 @@
 use super::{
-    filters::{
-        ClassificationFilters, ClassifiedRow, SortDirection, classified_rows, filter_options,
-        sort_numeric, sort_orders, weight_class_options,
-    },
+    filters::{SortDirection, sort_numeric, sort_orders},
     format::{display_weight_class, reference_value},
     loading::{load_rows, table_response},
     models::RecordHolder,
-    ui::{DataPage, DataTable, EmptyTableRow, FilterSelect, RecordLift, SortSelect},
+    reference_table::{Filter, OptionOrder, ReferenceTable, TableSort},
+    ui::{DataPage, RecordLift},
 };
 use crate::utils::api::queries;
 use leptos::prelude::*;
 use serde::Deserialize;
 
-#[derive(Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize)]
 struct Record {
     age_category: String,
     gender: String,
     weight_class: String,
     record_type: String,
-    /// `0` for a lift with no record set; tolerate `null` too, as WSO records answer it.
-    #[serde(default)]
+    #[serde(deserialize_with = "lift_that_must_be_sent")]
     snatch_record: Option<f64>,
-    #[serde(default)]
+    #[serde(deserialize_with = "lift_that_must_be_sent")]
     cj_record: Option<f64>,
-    #[serde(default)]
+    #[serde(deserialize_with = "lift_that_must_be_sent")]
     total_record: Option<f64>,
     #[serde(default)]
     snatch_by: Option<RecordHolder>,
@@ -33,10 +30,14 @@ struct Record {
     total_by: Option<RecordHolder>,
 }
 
+fn lift_that_must_be_sent<'de, D>(deserializer: D) -> Result<Option<f64>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    Option::<f64>::deserialize(deserializer)
+}
+
 impl Record {
-    /// The record with its class in one form: IWF writes `+86kg` where USAW,
-    /// USAMW and UMWF write `86+kg`, which would otherwise be two filter
-    /// options that each hide the other's records.
     fn shown(self) -> Self {
         Self {
             weight_class: display_weight_class(&self.weight_class),
@@ -45,25 +46,68 @@ impl Record {
     }
 }
 
-/// The records the page lists: every type but BWL.
-fn listed(records: &[Record]) -> Vec<&Record> {
+const FEDERATION_NOT_LISTED: &str = "BWL";
+
+fn listed(records: &[Record]) -> Vec<Record> {
     records
         .iter()
-        .filter(|record| record.record_type != "BWL")
+        .filter(|record| record.record_type != FEDERATION_NOT_LISTED)
+        .cloned()
         .collect()
 }
 
-impl ClassifiedRow for Record {
-    fn gender(&self) -> &str {
-        &self.gender
-    }
-    fn age_category(&self) -> &str {
-        &self.age_category
-    }
-    fn weight_class(&self) -> &str {
-        &self.weight_class
-    }
+fn organization(record: &Record) -> &str {
+    &record.record_type
 }
+
+fn gender(record: &Record) -> &str {
+    &record.gender
+}
+
+fn age(record: &Record) -> &str {
+    &record.age_category
+}
+
+fn weight_class(record: &Record) -> &str {
+    &record.weight_class
+}
+
+const FILTERS: &[Filter<Record>] = &[
+    Filter {
+        label: "Organization",
+        placeholder: "All organizations",
+        value: organization,
+        order: OptionOrder::Alphabetical,
+    },
+    Filter {
+        label: "Gender",
+        placeholder: "All genders",
+        value: gender,
+        order: OptionOrder::Alphabetical,
+    },
+    Filter {
+        label: "Age",
+        placeholder: "All ages",
+        value: age,
+        order: OptionOrder::Alphabetical,
+    },
+    Filter {
+        label: "Weight class",
+        placeholder: "All classes",
+        value: weight_class,
+        order: OptionOrder::ByWeight,
+    },
+];
+
+const HEADERS: &[&str] = &[
+    "Type",
+    "Gender",
+    "Age",
+    "Weight class",
+    "Snatch",
+    "Clean & jerk",
+    "Total",
+];
 
 sort_orders!(RecordSort {
     TotalDesc => ("total_desc", "Total: high to low"),
@@ -74,13 +118,61 @@ sort_orders!(RecordSort {
     CjAsc => ("cj_asc", "Clean & jerk: low to high"),
 });
 
+impl TableSort<Record> for RecordSort {
+    fn sort(self, rows: &mut [&Record]) {
+        match self {
+            RecordSort::SnatchDesc => sort_numeric(
+                rows,
+                |row| row.snatch_record.unwrap_or_default(),
+                SortDirection::Descending,
+            ),
+            RecordSort::SnatchAsc => sort_numeric(
+                rows,
+                |row| row.snatch_record.unwrap_or_default(),
+                SortDirection::Ascending,
+            ),
+            RecordSort::CjDesc => sort_numeric(
+                rows,
+                |row| row.cj_record.unwrap_or_default(),
+                SortDirection::Descending,
+            ),
+            RecordSort::CjAsc => sort_numeric(
+                rows,
+                |row| row.cj_record.unwrap_or_default(),
+                SortDirection::Ascending,
+            ),
+            RecordSort::TotalAsc => sort_numeric(
+                rows,
+                |row| row.total_record.unwrap_or_default(),
+                SortDirection::Ascending,
+            ),
+            RecordSort::TotalDesc => sort_numeric(
+                rows,
+                |row| row.total_record.unwrap_or_default(),
+                SortDirection::Descending,
+            ),
+        }
+    }
+}
+
+fn record_row(record: &Record) -> AnyView {
+    view! {
+        <tr>
+            <td>{record.record_type.clone()}</td>
+            <td>{record.gender.clone()}</td>
+            <td>{record.age_category.clone()}</td>
+            <td>{record.weight_class.clone()}</td>
+            <RecordLift value=reference_value(record.snatch_record) holder=record.snatch_by.clone() />
+            <RecordLift value=reference_value(record.cj_record) holder=record.cj_by.clone() />
+            <RecordLift value=reference_value(record.total_record) holder=record.total_by.clone() />
+        </tr>
+    }
+    .into_any()
+}
+
 #[component]
 pub fn Records() -> impl IntoView {
-    let (record_type, set_record_type) = signal(String::new());
-    let (gender, set_gender) = signal(String::new());
-    let (age, set_age) = signal(String::new());
-    let (weight_class, set_weight_class) = signal(String::new());
-    let (sort, set_sort) = signal(RecordSort::TotalDesc);
+    let sort = RwSignal::new(RecordSort::TotalDesc);
     let records = load_rows(queries::RECORDS, Record::shown);
 
     view! {
@@ -88,72 +180,9 @@ pub fn Records() -> impl IntoView {
             heading="Records"
             intro="Filter record performances by organization, division, and weight class."
         >
-            {move || table_response(records, 7, "records", |records| {
-                // Options come from the listed records only, so none matches nothing.
-                let listed = listed(records);
-                let types = filter_options(listed.iter().map(|record| record.record_type.as_str()));
-                let genders = filter_options(listed.iter().map(|record| record.gender.as_str()));
-                let ages = filter_options(listed.iter().map(|record| record.age_category.as_str()));
-                let weights = weight_class_options(listed.iter().map(|record| record.weight_class.as_str()));
-                let selected_type = record_type.get();
-                let selected_gender = gender.get();
-                let selected_age = age.get();
-                let selected_weight = weight_class.get();
-                let filters = ClassificationFilters { gender: &selected_gender, age_category: &selected_age, weight_class: &selected_weight };
-                let mut filtered_records = classified_rows(records, &filters, |record| {
-                    (selected_type.is_empty() || record.record_type == selected_type)
-                        && record.record_type != "BWL"
-                });
-
-                match sort.get() {
-                    RecordSort::SnatchDesc => sort_numeric(&mut filtered_records, |row| row.snatch_record.unwrap_or_default(), SortDirection::Descending),
-                    RecordSort::SnatchAsc => sort_numeric(&mut filtered_records, |row| row.snatch_record.unwrap_or_default(), SortDirection::Ascending),
-                    RecordSort::CjDesc => sort_numeric(&mut filtered_records, |row| row.cj_record.unwrap_or_default(), SortDirection::Descending),
-                    RecordSort::CjAsc => sort_numeric(&mut filtered_records, |row| row.cj_record.unwrap_or_default(), SortDirection::Ascending),
-                    RecordSort::TotalAsc => sort_numeric(&mut filtered_records, |row| row.total_record.unwrap_or_default(), SortDirection::Ascending),
-                    RecordSort::TotalDesc => sort_numeric(&mut filtered_records, |row| row.total_record.unwrap_or_default(), SortDirection::Descending),
-                }
-                let is_empty = filtered_records.is_empty();
-                let rows = filtered_records
-                    .into_iter()
-                    .map(|record| view! {
-                        <tr>
-                            <td>{record.record_type.clone()}</td>
-                            <td>{record.gender.clone()}</td>
-                            <td>{record.age_category.clone()}</td>
-                            <td>{record.weight_class.clone()}</td>
-                            <RecordLift value=reference_value(record.snatch_record) holder=record.snatch_by.clone() />
-                            <RecordLift value=reference_value(record.cj_record) holder=record.cj_by.clone() />
-                            <RecordLift value=reference_value(record.total_record) holder=record.total_by.clone() />
-                        </tr>
-                    })
-                    .collect_view();
-
+            {move || table_response(records, HEADERS.len(), "records", |records| {
                 view! {
-                    <div class="data-filters">
-                        <FilterSelect label="Organization" placeholder="All organizations" values=types selected=record_type on_select=move |value| set_record_type.set(value) />
-                        <FilterSelect label="Gender" placeholder="All genders" values=genders selected=gender on_select=move |value| set_gender.set(value) />
-                        <FilterSelect label="Age" placeholder="All ages" values=ages selected=age on_select=move |value| set_age.set(value) />
-                        <FilterSelect label="Weight class" placeholder="All classes" values=weights selected=weight_class on_select=move |value| set_weight_class.set(value) />
-                        <SortSelect sort set_sort />
-                    </div>
-                    <DataTable>
-                        <thead>
-                            <tr>
-                                <th>"Type"</th>
-                                <th>"Gender"</th>
-                                <th>"Age"</th>
-                                <th>"Weight class"</th>
-                                <th>"Snatch"</th>
-                                <th>"Clean & jerk"</th>
-                                <th>"Total"</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {is_empty.then(|| view! { <EmptyTableRow columns=7 message="No records match these filters." /> })}
-                            {rows}
-                        </tbody>
-                    </DataTable>
+                    <ReferenceTable rows=listed(records) filters=FILTERS headers=HEADERS row=record_row sort empty_message="No records match these filters." />
                 }
                 .into_any()
             })}
@@ -183,6 +212,12 @@ mod tests {
     }
 
     #[test]
+    fn a_record_without_one_of_its_lifts_is_unreadable() {
+        let missing_total = r#"{"age_category":"Senior","gender":"Women","weight_class":"77kg","record_type":"USAW","snatch_record":130.0,"cj_record":160.0}"#;
+        assert!(serde_json::from_str::<Record>(missing_total).is_err());
+    }
+
+    #[test]
     fn record_without_holders_still_deserializes() {
         let record: Record = serde_json::from_str(
             r#"{"age_category":"Senior","gender":"Women","weight_class":"77kg","record_type":"USAW","snatch_record":130.0,"cj_record":160.0,"total_record":287.0}"#,
@@ -209,18 +244,16 @@ mod tests {
         ]
         .map(Record::shown);
         let listed = listed(&records);
-        assert_eq!(
-            filter_options(listed.iter().map(|record| record.age_category.as_str())),
-            ["Senior"]
-        );
-        assert_eq!(
-            weight_class_options(listed.iter().map(|record| record.weight_class.as_str())),
-            ["86+kg"]
-        );
-        assert_eq!(
-            filter_options(listed.iter().map(|record| record.record_type.as_str())),
-            ["IWF", "USAW"]
-        );
+        let options = |label: &str| {
+            FILTERS
+                .iter()
+                .find(|filter| filter.label == label)
+                .map(|filter| filter.options(&listed))
+                .unwrap()
+        };
+        assert_eq!(options("Age"), ["Senior"]);
+        assert_eq!(options("Weight class"), ["86+kg"]);
+        assert_eq!(options("Organization"), ["IWF", "USAW"]);
     }
 
     // A class with one unset lift used to be missing from the answer; it now answers that lift
