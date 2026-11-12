@@ -9,7 +9,7 @@ use crate::{
     types::lifting_results::LiftingResults,
     utils::{
         backend::{queries, query},
-        format::capitalized,
+        format::{capitalized, display_body_weight},
         make_rate::make_rate_tables,
         meet_names::{SPONSOR_WORDS, editions_by_year, series_name},
         names::{MAX_NAME_PAGES, NameKind, just_before, meet_names_between, not_found},
@@ -336,7 +336,7 @@ fn top_table(
             rank.to_string(),
             row.name.clone(),
             row.age.clone(),
-            number(row.body_weight),
+            display_body_weight(row.body_weight),
             number(row.total),
             format!("{value:.2}"),
         ]);
@@ -374,7 +374,7 @@ pub(crate) fn report(
         meet_table.add_row(vec![
             result.name.to_string(),
             result.age.to_string(),
-            result.body_weight.to_string(),
+            display_body_weight(result.body_weight),
             result.adaptive.to_string(),
             result.snatch1.to_string(),
             result.snatch2.to_string(),
@@ -643,6 +643,41 @@ mod tests {
         let with_history = report(&rows, &editions[0], &editions[1..], &[], true);
         assert_eq!(with_history.to_json()["editions"][0]["meet"], "M");
         assert!(!with_history.to_text().contains("EARLIER YEARS"));
+    }
+
+    #[test]
+    fn a_result_without_a_recorded_body_weight_shows_a_dash() {
+        let rows = vec![
+            row(
+                "Ada",
+                "2026-01-01",
+                "M",
+                "Open Women's 64kg",
+                0.0,
+                [80.0, -85.0, 85.0],
+                [100.0, 105.0, -110.0],
+            ),
+            row(
+                "Bea",
+                "2026-01-01",
+                "M",
+                "Open Women's 64kg",
+                63.25,
+                [70.0, 75.0, -80.0],
+                [90.0, 95.0, -100.0],
+            ),
+        ];
+        let edition = EditionSummary {
+            meet: "M".into(),
+            year: "2026".into(),
+            summary: summarize(&rows),
+        };
+        let report = report(&rows, &edition, &[], &[], false);
+        let json = report.to_json();
+        assert_eq!(json["results"][0]["name"], "Ada");
+        assert_eq!(json["results"][0]["bw"], serde_json::Value::Null);
+        assert_eq!(json["results"][1]["bw"], 63.25);
+        assert!(report.to_text().contains("| —  "));
     }
 
     #[test]

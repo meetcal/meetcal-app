@@ -4,6 +4,7 @@
 use comfy_table::Table;
 
 use crate::types::records::RecordHolder;
+use crate::utils::stats::{number, weight_class};
 
 const MONTHS: [&str; 12] = [
     "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
@@ -86,6 +87,18 @@ pub(crate) fn kg(value: f64) -> String {
         return String::new();
     }
     value.to_string()
+}
+
+pub(crate) fn display_body_weight(kilograms: f64) -> String {
+    if kilograms.is_finite() && kilograms > 0.0 {
+        number(kilograms)
+    } else {
+        "—".to_string()
+    }
+}
+
+pub(crate) fn display_weight_class(value: &str) -> String {
+    weight_class(value).map_or_else(|| value.trim().to_string(), |class| format!("{class}kg"))
 }
 
 /// A record weight; blank for none. The records answer `0` for a lift with no record set.
@@ -188,6 +201,27 @@ mod tests {
         assert_eq!(capitalized("Open"), "Open");
         assert_eq!(capitalized("2026"), "2026");
         assert_eq!(capitalized(""), "");
+    }
+
+    #[test]
+    fn a_body_weight_the_source_did_not_record_shows_a_dash_not_zero() {
+        assert_eq!(display_body_weight(70.5), "70.5");
+        assert_eq!(display_body_weight(88.0), "88");
+        assert_eq!(display_body_weight(0.0), "—");
+        assert_eq!(display_body_weight(-1.0), "—");
+        assert_eq!(display_body_weight(f64::NAN), "—");
+    }
+
+    #[test]
+    fn a_weight_class_shows_in_the_form_every_surface_writes_it() {
+        assert_eq!(display_weight_class("69"), "69kg");
+        assert_eq!(display_weight_class("69kg"), "69kg");
+        assert_eq!(display_weight_class("+110"), "110+kg");
+        assert_eq!(display_weight_class("110+"), "110+kg");
+        assert_eq!(display_weight_class("+110kg"), "110+kg");
+        assert_eq!(display_weight_class(" 48 "), "48kg");
+        assert_eq!(display_weight_class("Open"), "Open");
+        assert_eq!(display_weight_class(""), "");
     }
 
     #[test]

@@ -1,21 +1,19 @@
 use anyhow::{Result, bail};
 use clap::{Parser, ValueEnum};
 use comfy_table::Table;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use serde_json::json;
 
 use crate::commands::leaderboard::MAX_YEARS;
 use crate::utils::backend::{functions, premium_action};
 use crate::utils::filters::{parse_date, plus_years};
-use crate::utils::format::{capitalized, us_date};
+use crate::utils::format::{capitalized, display_body_weight, us_date};
 use crate::utils::names::{NameKind, not_found, registration_wsos};
 use crate::utils::output::{self, Report};
 use crate::utils::progress::Progress;
 use crate::utils::stats::{SINCLAIR_WITH_COEFFICIENTS, fold, number, percent, points};
 
-/// What an elite list ranks by.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, ValueEnum, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, ValueEnum)]
 pub enum Method {
     /// Total as a percentage of the A standard (Masters: the Senior A standard)
     #[value(name = "percent-a")]
@@ -38,7 +36,15 @@ impl Method {
         }
     }
 
-    /// The score as the table shows it: a percentage to one decimal, points to two.
+    fn server_name(self) -> &'static str {
+        match self {
+            Method::PercentA => "percentA",
+            Method::Qpoints => "qpoints",
+            Method::Qmasters => "qmasters",
+            Method::Sinclair => "sinclair",
+        }
+    }
+
     fn score(self, value: f64) -> String {
         match self {
             Method::PercentA => percent(Some(value)),
@@ -47,51 +53,64 @@ impl Method {
     }
 }
 
-pub(crate) struct EliteListChoices {
-    pub(crate) key: &'static str,
-    pub(crate) label: &'static str,
-    pub(crate) default: Method,
-    pub(crate) alternatives: &'static [Method],
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum EliteList {
+    Overall,
+    Youth,
+    Junior,
+    Senior,
+    Masters,
 }
 
-impl EliteListChoices {
-    fn offered(&self) -> impl Iterator<Item = Method> {
-        std::iter::once(self.default).chain(self.alternatives.iter().copied())
+impl EliteList {
+    const IN_REPORT_ORDER: [Self; 5] = [
+        Self::Overall,
+        Self::Youth,
+        Self::Junior,
+        Self::Senior,
+        Self::Masters,
+    ];
+
+    fn key(self) -> &'static str {
+        match self {
+            Self::Overall => "overall",
+            Self::Youth => "youth",
+            Self::Junior => "junior",
+            Self::Senior => "senior",
+            Self::Masters => "masters",
+        }
+    }
+
+    fn label(self) -> &'static str {
+        match self {
+            Self::Overall => "Overall",
+            Self::Youth => "Youth",
+            Self::Junior => "Junior",
+            Self::Senior => "Senior",
+            Self::Masters => "Masters",
+        }
+    }
+
+    fn default_method(self) -> Method {
+        match self {
+            Self::Overall | Self::Youth | Self::Junior | Self::Senior => Method::PercentA,
+            Self::Masters => Method::Qmasters,
+        }
+    }
+
+    fn alternatives(self) -> &'static [Method] {
+        match self {
+            Self::Overall => &[Method::Sinclair, Method::Qpoints],
+            Self::Youth => &[Method::Sinclair],
+            Self::Junior | Self::Senior => &[Method::Qpoints, Method::Sinclair],
+            Self::Masters => &[Method::PercentA, Method::Sinclair],
+        }
+    }
+
+    fn offered(self) -> impl Iterator<Item = Method> {
+        std::iter::once(self.default_method()).chain(self.alternatives().iter().copied())
     }
 }
-
-pub(crate) const LISTS: [EliteListChoices; 5] = [
-    EliteListChoices {
-        key: "overall",
-        label: "Overall",
-        default: Method::PercentA,
-        alternatives: &[Method::Sinclair, Method::Qpoints],
-    },
-    EliteListChoices {
-        key: "youth",
-        label: "Youth",
-        default: Method::PercentA,
-        alternatives: &[Method::Sinclair],
-    },
-    EliteListChoices {
-        key: "junior",
-        label: "Junior",
-        default: Method::PercentA,
-        alternatives: &[Method::Qpoints, Method::Sinclair],
-    },
-    EliteListChoices {
-        key: "senior",
-        label: "Senior",
-        default: Method::PercentA,
-        alternatives: &[Method::Qpoints, Method::Sinclair],
-    },
-    EliteListChoices {
-        key: "masters",
-        label: "Masters",
-        default: Method::Qmasters,
-        alternatives: &[Method::PercentA, Method::Sinclair],
-    },
-];
 
 /// A WSO's elite lists: its top 20 women and men Overall, Youth (17 and under), Junior (18-20),
 /// Senior (21-34) and Masters (35 and over), each list ranked by its own score.
@@ -153,34 +172,34 @@ pub struct EliteArgs {
 }
 
 impl EliteArgs {
-    /// The method asked for each list, in `LISTS` order.
-    fn asked(&self) -> [Option<Method>; 5] {
-        [
-            self.overall,
-            self.youth,
-            self.junior,
-            self.senior,
-            self.masters,
-        ]
+    fn asked(&self, list: EliteList) -> Option<Method> {
+        match list {
+            EliteList::Overall => self.overall,
+            EliteList::Youth => self.youth,
+            EliteList::Junior => self.junior,
+            EliteList::Senior => self.senior,
+            EliteList::Masters => self.masters,
+        }
     }
 }
 
-pub(crate) fn methods(asked: [Option<Method>; 5]) -> Result<Vec<Method>> {
-    LISTS
-        .iter()
-        .zip(asked)
-        .map(|(list, asked)| match asked {
-            Some(method) if list.offered().any(|offered| offered == method) => Ok(method),
+pub(crate) type ChosenMethods = Vec<(EliteList, Method)>;
+
+pub(crate) fn methods(asked: impl Fn(EliteList) -> Option<Method>) -> Result<ChosenMethods> {
+    EliteList::IN_REPORT_ORDER
+        .into_iter()
+        .map(|list| match asked(list) {
+            Some(method) if list.offered().any(|offered| offered == method) => Ok((list, method)),
             Some(method) => {
                 let names: Vec<String> = list.offered().map(value_name).collect();
                 bail!(
                     "--{} can be {}, not {}",
-                    list.key,
+                    list.key(),
                     names.join(", "),
                     value_name(method)
                 );
             }
-            None => Ok(list.default),
+            None => Ok((list, list.default_method())),
         })
         .collect()
 }
@@ -216,31 +235,30 @@ pub(crate) struct EliteRow {
     pub(crate) standard_a: Option<f64>,
 }
 
-#[derive(Debug, Deserialize)]
-pub(crate) struct EliteList {
-    pub(crate) method: Method,
+#[derive(Debug, Default, Deserialize)]
+pub(crate) struct EliteRanking {
     pub(crate) men: Vec<EliteRow>,
     pub(crate) women: Vec<EliteRow>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Default, Deserialize)]
 pub(crate) struct EliteLists {
-    pub(crate) overall: EliteList,
-    pub(crate) youth: EliteList,
-    pub(crate) junior: EliteList,
-    pub(crate) senior: EliteList,
-    pub(crate) masters: EliteList,
+    pub(crate) overall: EliteRanking,
+    pub(crate) youth: EliteRanking,
+    pub(crate) junior: EliteRanking,
+    pub(crate) senior: EliteRanking,
+    pub(crate) masters: EliteRanking,
 }
 
 impl EliteLists {
-    fn in_order(&self) -> [&EliteList; 5] {
-        [
-            &self.overall,
-            &self.youth,
-            &self.junior,
-            &self.senior,
-            &self.masters,
-        ]
+    fn of(&self, list: EliteList) -> &EliteRanking {
+        match list {
+            EliteList::Overall => &self.overall,
+            EliteList::Youth => &self.youth,
+            EliteList::Junior => &self.junior,
+            EliteList::Senior => &self.senior,
+            EliteList::Masters => &self.masters,
+        }
     }
 }
 
@@ -251,7 +269,7 @@ pub(crate) struct EliteAnswer {
 }
 
 pub async fn run(args: EliteArgs) -> Result<()> {
-    let methods = methods(args.asked())?;
+    let methods = methods(|list| args.asked(list))?;
     let (from, to) = range(&args);
     if to < from {
         bail!("--to must not be before --from");
@@ -273,8 +291,8 @@ pub async fn run(args: EliteArgs) -> Result<()> {
     };
 
     let mut method_args = serde_json::Map::new();
-    for (list, method) in LISTS.iter().zip(methods) {
-        method_args.insert(list.key.to_string(), json!(method));
+    for (list, method) in &methods {
+        method_args.insert(list.key().to_string(), json!(method.server_name()));
     }
     let mut progress = Progress::new("Ranking the WSO's athletes on MeetCal");
     progress.update("");
@@ -292,29 +310,29 @@ pub async fn run(args: EliteArgs) -> Result<()> {
         answer.members
     );
     output::emit(
-        report(&answer.lists)
+        report(&answer.lists, &methods)
             .titled(title)
             .when_empty("No results for the WSO's athletes in that range."),
     );
     Ok(())
 }
 
-/// Ten tables: each list's women, then its men.
-pub(crate) fn report(lists: &EliteLists) -> Report {
+pub(crate) fn report(lists: &EliteLists, methods: &[(EliteList, Method)]) -> Report {
     let mut report = Report::new();
-    for (EliteListChoices { key, label, .. }, list) in LISTS.iter().zip(lists.in_order()) {
-        for (gender, rows) in [("women", &list.women), ("men", &list.men)] {
+    for &(list, method) in methods {
+        let ranking = lists.of(list);
+        for (gender, rows) in [("women", &ranking.women), ("men", &ranking.men)] {
             let heading = format!(
                 "{} — {} ({})",
-                label.to_uppercase(),
+                list.label().to_uppercase(),
                 gender.to_uppercase(),
-                list.method.label()
+                method.label()
             );
             report = report.headed_with_data(
-                &format!("{key}_{gender}"),
+                &format!("{}_{gender}", list.key()),
                 heading,
-                table(rows, list.method, us_date),
-                table(rows, list.method, str::to_string),
+                table(rows, method, us_date),
+                table(rows, method, str::to_string),
             );
         }
     }
@@ -347,7 +365,7 @@ pub(crate) fn table(rows: &[EliteRow], method: Method, date: fn(&str) -> String)
             row.age.to_string(),
             capitalized(&row.group),
             row.division.clone(),
-            number(row.body_weight),
+            display_body_weight(row.body_weight),
             number(row.snatch_best),
             number(row.cj_best),
             number(row.total),
@@ -362,36 +380,36 @@ pub(crate) fn table(rows: &[EliteRow], method: Method, date: fn(&str) -> String)
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
     use crate::commands::wrapped::current_year;
 
     #[test]
     fn defaults_each_list_and_refuses_a_method_it_does_not_offer() {
+        let asked = |args: &[&str]| {
+            let args = EliteArgs::parse_from([&["elite", "Carolina"], args].concat());
+            methods(|list| args.asked(list))
+        };
         assert_eq!(
-            methods([None; 5]).unwrap(),
+            asked(&[]).unwrap(),
             [
-                Method::PercentA,
-                Method::PercentA,
-                Method::PercentA,
-                Method::PercentA,
-                Method::Qmasters
+                (EliteList::Overall, Method::PercentA),
+                (EliteList::Youth, Method::PercentA),
+                (EliteList::Junior, Method::PercentA),
+                (EliteList::Senior, Method::PercentA),
+                (EliteList::Masters, Method::Qmasters),
             ]
         );
-        let chosen = methods([
-            Some(Method::Qpoints),
-            None,
-            None,
-            None,
-            Some(Method::Sinclair),
-        ]);
-        assert_eq!(chosen.unwrap()[4], Method::Sinclair);
-        let error = methods([None, Some(Method::Qpoints), None, None, None]).unwrap_err();
+        assert_eq!(asked(&[]).unwrap(), default_methods());
+        let chosen = asked(&["--overall", "qpoints", "--masters", "sinclair"]).unwrap();
+        assert_eq!(chosen[0], (EliteList::Overall, Method::Qpoints));
+        assert_eq!(chosen[4], (EliteList::Masters, Method::Sinclair));
+        let error = asked(&["--youth", "qpoints"]).unwrap_err();
         assert_eq!(
             error.to_string(),
             "--youth can be percent-a, sinclair, not qpoints"
         );
-        assert!(methods([None, None, None, Some(Method::Qmasters), None]).is_err());
+        assert!(asked(&["--senior", "qmasters"]).is_err());
     }
 
     #[test]
@@ -406,23 +424,44 @@ mod tests {
             .lines()
             .filter(|line| line.contains(": ['"))
             .collect();
-        assert_eq!(server_lists.len(), LISTS.len());
-        for list in &LISTS {
+        assert_eq!(server_lists.len(), EliteList::IN_REPORT_ORDER.len());
+        for list in EliteList::IN_REPORT_ORDER {
             let line = server_lists
                 .iter()
-                .find(|line| line.trim_start().starts_with(&format!("{}:", list.key)))
-                .unwrap_or_else(|| panic!("the server has no {} list", list.key));
+                .find(|line| line.trim_start().starts_with(&format!("{}:", list.key())))
+                .unwrap_or_else(|| panic!("the server has no {} list", list.key()));
             let server_methods: Vec<&str> = line.split('\'').skip(1).step_by(2).collect();
-            let cli_methods: Vec<serde_json::Value> =
-                list.offered().map(|method| json!(method)).collect();
-            assert_eq!(cli_methods, server_methods, "{}", list.key);
+            let cli_methods: Vec<&str> = list.offered().map(Method::server_name).collect();
+            assert_eq!(cli_methods, server_methods, "{}", list.key());
         }
     }
 
     #[test]
     fn sends_methods_as_the_server_names_them() {
-        assert_eq!(json!(Method::PercentA), json!("percentA"));
-        assert_eq!(json!(Method::Qmasters), json!("qmasters"));
+        assert_eq!(Method::PercentA.server_name(), "percentA");
+        assert_eq!(Method::Qpoints.server_name(), "qpoints");
+        assert_eq!(Method::Qmasters.server_name(), "qmasters");
+        assert_eq!(Method::Sinclair.server_name(), "sinclair");
+    }
+
+    #[test]
+    fn reads_an_answer_that_names_a_method_the_cli_does_not_know() {
+        let ranking = json!({ "method": "futureScore", "men": [], "women": [] });
+        let answer: EliteAnswer = serde_json::from_value(json!({
+            "members": 2,
+            "lists": {
+                "overall": ranking, "youth": ranking, "junior": ranking,
+                "senior": ranking, "masters": ranking,
+            },
+            "rankings": { "overall": { "futureScore": { "men": [], "women": [] } } },
+        }))
+        .unwrap();
+        assert_eq!(answer.members, 2);
+        assert!(answer.lists.overall.women.is_empty());
+    }
+
+    pub(crate) fn default_methods() -> ChosenMethods {
+        methods(|_| None).unwrap()
     }
 
     fn row(name: &str, score: f64) -> EliteRow {
@@ -445,19 +484,18 @@ mod tests {
 
     #[test]
     fn exports_every_list_and_gender_with_fixed_columns() {
-        let list = |method| EliteList {
-            method,
+        let ranking = || EliteRanking {
             men: vec![],
             women: vec![row("Ada", 100.0)],
         };
         let lists = EliteLists {
-            overall: list(Method::PercentA),
-            youth: list(Method::PercentA),
-            junior: list(Method::PercentA),
-            senior: list(Method::PercentA),
-            masters: list(Method::Qmasters),
+            overall: ranking(),
+            youth: ranking(),
+            junior: ranking(),
+            senior: ranking(),
+            masters: ranking(),
         };
-        let exported = report(&lists).to_json();
+        let exported = report(&lists, &default_methods()).to_json();
         let keys: Vec<&String> = exported.as_object().unwrap().keys().collect();
         assert_eq!(keys.len(), 10);
         assert_eq!(exported["overall_women"][0]["athlete"], "Ada");
@@ -465,6 +503,9 @@ mod tests {
         assert_eq!(exported["overall_women"][0]["date"], "2025-03-01");
         assert_eq!(exported["masters_men"], json!([]));
         assert_eq!(exported["senior_women"][0]["class"], "63kg");
+        let shown = report(&lists, &default_methods()).to_text();
+        assert!(shown.contains("MASTERS — WOMEN (Q-masters)"));
+        assert!(shown.contains("OVERALL — WOMEN (% of A)"));
     }
 
     #[test]

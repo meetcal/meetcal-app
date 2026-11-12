@@ -267,6 +267,17 @@ mod tests {
     }
 
     #[test]
+    fn refuses_an_answer_missing_a_field_the_server_always_sends() {
+        let refused = |answer| serde_json::from_value::<WrappedAnswer>(answer).is_err();
+        assert!(refused(json!({"kind": "ambiguous", "names": ["A", "B"]})));
+        assert!(refused(json!({"kind": "none"})));
+        assert!(!refused(
+            json!({"kind": "ambiguous", "names": ["A"], "truncated": false})
+        ));
+        assert!(!refused(json!({"kind": "none", "suggestions": []})));
+    }
+
+    #[test]
     fn the_typed_name_is_no_suggestion() {
         let answer = WrappedAnswer::NoResults {
             suggestions: vec!["Maddisen Mohnsen".into()],

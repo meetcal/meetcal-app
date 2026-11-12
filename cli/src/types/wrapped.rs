@@ -36,22 +36,22 @@ pub struct WrappedStats {
 #[serde(tag = "kind", rename_all = "camelCase")]
 pub enum WrappedAnswer {
     /// One athlete's year, under the athlete's own spelling.
-    Athlete { name: String, stats: WrappedStats },
-    /// Several athletes matched (or may have: `truncated`). With `picked`, the server takes only
-    /// the exact name, so this answers an unpicked query only.
+    Athlete {
+        name: String,
+        stats: WrappedStats,
+    },
     Ambiguous {
         names: Vec<String>,
-        #[serde(default)]
         truncated: bool,
     },
     /// The name matched too many names to look at: type more of it.
     Narrow,
     /// The athlete's year has more results than one answer holds, so the stats would miss some.
-    TooManyResults { name: String },
-    /// No results in the year; `suggestions` are names like the query (any year).
+    TooManyResults {
+        name: String,
+    },
     #[serde(rename = "none")]
     NoResults {
-        #[serde(default)]
         suggestions: Vec<String>,
     },
 }
