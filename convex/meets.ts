@@ -9,6 +9,7 @@ import {
   computeRoster,
   computeScheduleRows,
   computeTimelines,
+  isPlaceholderMeet,
   joinRoster,
   linkedResultTitles,
   meetByName,
@@ -35,7 +36,7 @@ import { DOCUMENTS_BEFORE_THE_OVERFLOW_PROBE, takeWithinBudget, type DocumentBud
 import { compareBytes } from './lib/sort';
 import { meetKey, meetSessionKey } from './lib/viewKeys';
 import { readFreshView } from './lib/views';
-import { apiError, isMeetTimeZone, requireIsoDate, requireNonEmpty } from './lib/validation';
+import { apiError, requireIsoDate, requireNonEmpty } from './lib/validation';
 
 // `GET /meets*`: each query answers the JSON of the Rust route of the same
 // name in `meetcal-backend/app/src/routes/meets`, from the meet's views when
@@ -78,15 +79,7 @@ export function upcomingWindowNow(clientNow: number, serverNow: number): number 
   return Math.floor(serverNow / HOUR_MS) * HOUR_MS;
 }
 
-/**
- * A row that is no event: a test entry typed into a source, with its venue
- * written as one character ("q") and a time zone that is no IANA zone ("q",
- * "America_New_York"). The meet lists leave it out; a real meet whose zone
- * is unknown (blank) still has a venue, or a "TBD" one.
- */
-export function isPlaceholderMeet(meet: { timeZone: string; venueName: string; venueCity: string }): boolean {
-  return !isMeetTimeZone(meet.timeZone) && [meet.venueName, meet.venueCity].every((field) => field.trim().length === 1);
-}
+export { isPlaceholderMeet };
 
 export const list = query({
   args: { now: v.number(), ifNoneMatch: v.optional(v.string()) },

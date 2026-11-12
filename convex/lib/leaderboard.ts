@@ -1,3 +1,4 @@
+import { plusYears } from './dates';
 import { normalizeName } from './names';
 import type { ApiLiftingResult } from './results';
 import { compareBytes } from './sort';
@@ -458,9 +459,6 @@ export type LeaderboardArgs = {
 };
 
 export type CheckedLeaderboardArgs = { from: string; to: string; by: LeaderboardMetric; limit: number; filters: LeaderboardFilters };
-
-/** `from` plus `years`, as a `YYYY-MM-DD` string to compare against (Feb 29 compares as itself). */
-const plusYears = (date: string, years: number) => `${String(Number(date.slice(0, 4)) + years).padStart(4, '0')}${date.slice(4)}`;
 
 /** The arguments checked, with their defaults: 400 for a bad date, range, limit, category or a score without a gender. */
 export function checkLeaderboardArgs(args: LeaderboardArgs): CheckedLeaderboardArgs {

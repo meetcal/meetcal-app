@@ -17,6 +17,7 @@
 
 import { recordHolder, type RecordHolder } from './holder';
 import { unescapeHtml } from '../lib/html';
+import { isRecord, kindOf } from '../../lib/json';
 
 export const IWF_PAGES = {
   Senior: 'List_of_world_records_in_Olympic_weightlifting',
@@ -26,9 +27,18 @@ export const IWF_PAGES = {
 
 export type IwfAge = keyof typeof IWF_PAGES;
 
-/** The "Current records" section's wikitext, through the MediaWiki API. */
 export const wikitextUrl = (page: string) =>
   `https://en.wikipedia.org/w/api.php?action=parse&page=${page}&prop=wikitext&section=1&format=json&formatversion=2`;
+
+export function wikitextOf(body: unknown, page: string): string {
+  const object = (value: unknown) => (isRecord(value) ? value : null);
+  const answer = object(body);
+  if (!answer) throw new Error(`Wikipedia ${page}: the response is not an object`);
+  const wikitext = object(answer.parse)?.wikitext;
+  if (typeof wikitext === 'string' && wikitext !== '') return wikitext;
+  const info = object(answer.error)?.info;
+  throw new Error(`Wikipedia ${page}: ${typeof info === 'string' ? info : wikitext === undefined ? 'no wikitext' : `wikitext is ${wikitext === '' ? 'empty' : kindOf(wikitext)}`}`);
+}
 
 export type IwfRecord = {
   ageCategory: IwfAge;

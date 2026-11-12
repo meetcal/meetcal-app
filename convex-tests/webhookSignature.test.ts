@@ -65,6 +65,12 @@ describe('Clerk webhook endpoint (#250)', () => {
     const other = await call(await post(JSON.stringify({ type: 'user.updated', data: { id: 'user_a' } })));
     expect(other.response.status).toBe(204);
     expect(other.runMutation).not.toHaveBeenCalled();
+    const listed = await call(await post(JSON.stringify([{ type: 'user.deleted', data: { id: 'user_a' } }])));
+    expect(listed.response.status).toBe(204);
+    expect(listed.runMutation).not.toHaveBeenCalled();
+    const idInAList = await call(await post(JSON.stringify({ type: 'user.deleted', data: [{ id: 'user_a' }] })));
+    expect(idInAList.response.status).toBe(400);
+    expect(idInAList.runMutation).not.toHaveBeenCalled();
     const forged = await call(await post(body, `whsec_${Buffer.from('forged').toString('base64')}`));
     expect(forged.response.status).toBe(400);
     expect(forged.runMutation).not.toHaveBeenCalled();

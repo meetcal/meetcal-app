@@ -1,3 +1,4 @@
+import { isPlaceholderMemberId } from './memberIds';
 import { normalizeGender } from './normalize';
 import { currentWeightClasses } from './referenceData';
 
@@ -36,7 +37,7 @@ export function isJunkEntrant(row: { name: string; memberId: string }): boolean 
 
 /** A membership number the syncs store: digits, or a `noid:` placeholder for an entrant without one. */
 export function isStoredMemberId(memberId: string): boolean {
-  return /^\d+$/.test(memberId) || memberId.startsWith('noid:');
+  return /^\d+$/.test(memberId) || isPlaceholderMemberId(memberId);
 }
 
 /**
