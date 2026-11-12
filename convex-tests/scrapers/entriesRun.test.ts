@@ -32,8 +32,13 @@ function deployment(afterStoring: (meet: string) => void = () => {}) {
       (error: unknown) => describeFailure(error).failedSources ?? [],
     );
   const failureText = () => handlerOf<Record<string, never>>(run)(ctx, {}).then(() => '', (error: unknown) => describeFailure(error).error);
+  const unreached = () =>
+    handlerOf<Record<string, never>>(run)(ctx, {}).then(
+      () => [] as string[],
+      (error: unknown) => (describeFailure(error).failures ?? []).filter((f) => f.notReached).map((f) => f.source),
+    );
   const dryRun = () => handlerOf<{ dryRun: boolean }, { label: string; meet?: string; error?: string }[]>(run)(ctx, { dryRun: true });
-  return { stored, failedSources, failureText, dryRun };
+  return { stored, failedSources, failureText, unreached, dryRun };
 }
 
 beforeEach(() => {
@@ -72,6 +77,7 @@ describe("the entries run's time budget (#574)", () => {
     const second = deployment(slowFirstTarget);
     expect(await second.failedSources()).toEqual(['Meet B', 'Meet C']);
     expect(await deployment(slowFirstTarget).failureText()).toContain(`Meet B: ${NOT_REACHED}`);
+    expect(await deployment(slowFirstTarget).unreached()).toEqual(['Meet B', 'Meet C']);
   });
 
   it('stores nothing for a target whose list arrives after the run gave up on it', async () => {

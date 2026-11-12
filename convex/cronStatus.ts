@@ -1,6 +1,7 @@
+import { CRON_JOBS_MAX, readAll } from './lib/boundedRead';
 import { v } from 'convex/values';
 import { internalMutation, internalQuery, type QueryCtx } from './_generated/server';
-import { afterRun, watch, type Alerting, type Notice } from './lib/cronAlerts';
+import { afterRun, queuedNotices, watch, type Alerting, type Notice } from './lib/cronAlerts';
 
 async function statusOf(ctx: Pick<QueryCtx, 'db'>, job: string) {
   return await ctx.db
@@ -41,7 +42,7 @@ export const finish = internalMutation({
     const fields = { finishedAt: Date.now(), status: error === undefined ? ('ok' as const) : ('error' as const), error, alerting, failedSources, unsent };
     if (existing) await ctx.db.patch(existing._id, fields);
     else await ctx.db.insert('cron_status', { job, startedAt: Date.now(), ...fields });
-    return unsent.map((u) => ({ job, kind: u.kind as Notice['kind'], detail: u.detail }));
+    return queuedNotices(job, unsent);
   },
 });
 
@@ -59,7 +60,7 @@ export const raiseAlert = internalMutation({
     const notice = watch(job, existing ?? null, due, Date.now());
     if (!existing || !notice) return null;
     await ctx.db.patch(existing._id, {
-      alerting: notice.kind as 'missed' | 'stuck',
+      alerting: notice.kind,
       unsent: [...(existing.unsent ?? []), { kind: notice.kind, detail: notice.detail }],
     });
     return notice;
@@ -91,11 +92,16 @@ export const queuedWhileAlerting = internalQuery({
   handler: async (ctx, { job }): Promise<Notice[]> => {
     const status = await statusOf(ctx, job);
     if (!status?.alerting) return [];
-    return (status.unsent ?? []).map((u) => ({ job, kind: u.kind as Notice['kind'], detail: u.detail }));
+    return queuedNotices(job, status.unsent);
   },
+});
+
+export const failedSources = internalQuery({
+  args: { job: v.string() },
+  handler: async (ctx, { job }): Promise<string[]> => (await statusOf(ctx, job))?.failedSources ?? [],
 });
 
 export const all = internalQuery({
   args: {},
-  handler: async (ctx) => await ctx.db.query('cron_status').collect(),
+  handler: async (ctx) => await readAll(ctx.db.query('cron_status'), CRON_JOBS_MAX, 'cron jobs'),
 });

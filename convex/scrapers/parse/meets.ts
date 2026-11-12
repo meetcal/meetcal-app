@@ -1,6 +1,6 @@
 // Pure parts of `scrapers/meets.ts` (port of `usaw/meet_to_supabase/scripts/sync-*.js`).
 
-import { isRecord, rowCount } from '../../lib/json';
+import { isRecord, rowCount, itemAt } from '../../lib/json';
 import { isValidIsoDate } from '../../lib/validation';
 import { countryTimeZone, isUnitedStates, usTerritoryTimeZone } from '../lib/countries';
 import { stateCode, usTimeZone } from '../lib/states';
@@ -116,10 +116,10 @@ type Address = { venueName: string; street: string; city: string; state: string;
  */
 function venueAndStreet(parts: readonly string[]): { venueName: string; street: string } {
   if (parts.length === 0) return { venueName: '', street: '' };
-  if (/^\d/.test(parts[0])) return { venueName: '', street: parts.join(', ') };
+  if (/^\d/.test(parts[0] ?? '')) return { venueName: '', street: parts.join(', ') };
   const rest = parts.slice(1);
   const streetAt = rest.findIndex((part) => /^\d/.test(part));
-  if (streetAt <= 0) return { venueName: parts[0], street: rest.join(', ') };
+  if (streetAt <= 0) return { venueName: parts[0] ?? '', street: rest.join(', ') };
   return { venueName: [parts[0], ...rest.slice(0, streetAt)].join(', '), street: rest.slice(streetAt).join(', ') };
 }
 
@@ -136,34 +136,34 @@ export function parseAddress(raw: string): Address {
     const address = raw.replace(/,\s*,/g, ',');
     const parts = address.split(', ');
     if (parts.length < 4) return { venueName: '', street: address, city: 'Unknown', state: 'Unknown', zip: 'Unknown' };
-    const zip = parts[parts.length - 1];
+    const zip = parts[parts.length - 1] ?? '';
     const stateIndex = parts.findIndex((part) => part === 'United States of America');
-    const state = stateIndex > 0 ? parts[stateIndex - 1] : parts[parts.length - 2];
+    const state = (stateIndex > 0 ? parts[stateIndex - 1] : parts[parts.length - 2]) ?? '';
     const usStateAt = stateIndex > 0 ? stateIndex - 1 : stateCode(state) === null ? -1 : parts.length - 2;
     if (usStateAt >= 1) {
-      const city = parts[usStateAt - 1];
+      const city = parts[usStateAt - 1] ?? '';
       return { ...venueAndStreet(parts.slice(0, usStateAt - 1)), city, state, zip };
     }
     let venueName = '';
     let street = '';
     let city = '';
-    if (!/^\d/.test(parts[0])) {
-      venueName = parts[0];
+    if (!/^\d/.test(parts[0] ?? '')) {
+      venueName = parts[0] ?? '';
       if (parts.length >= 6) {
-        street = parts[1];
-        if (/Suite|Unit|Apt|#/i.test(parts[2])) {
+        street = parts[1] ?? '';
+        if (/Suite|Unit|Apt|#/i.test(parts[2] ?? '')) {
           street += `, ${parts[2]}`;
-          city = parts[3];
+          city = parts[3] ?? '';
         } else {
-          city = parts[2];
+          city = parts[2] ?? '';
         }
       } else {
-        street = parts[1];
-        city = parts[2];
+        street = parts[1] ?? '';
+        city = parts[2] ?? '';
       }
     } else {
-      street = parts[0];
-      city = parts[1];
+      street = parts[0] ?? '';
+      city = parts[1] ?? '';
     }
     return { venueName, street, city, state, zip };
   } catch {
@@ -177,7 +177,7 @@ const SLASH_DATE = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/;
 function isoFromSlash(text: string): string | null {
   const match = SLASH_DATE.exec(text.trim());
   if (!match) return null;
-  const iso = `${match[3]}-${match[1].padStart(2, '0')}-${match[2].padStart(2, '0')}`;
+  const iso = `${match[3]}-${itemAt(match, 1).padStart(2, '0')}-${itemAt(match, 2).padStart(2, '0')}`;
   return isValidIsoDate(iso) ? iso : null;
 }
 
@@ -191,8 +191,8 @@ function isoFromSlash(text: string): string | null {
 export function parseDateRange(range: string): { startDate: string; endDate: string } | null {
   const sides = range.replace(/\\\//g, '/').split(/\s+-\s+/);
   if (sides.length > 2) return null;
-  const startDate = isoFromSlash(sides[0]);
-  const endDate = sides.length === 2 ? isoFromSlash(sides[1]) : startDate;
+  const startDate = isoFromSlash(sides[0] ?? '');
+  const endDate = sides.length === 2 ? isoFromSlash(sides[1] ?? '') : startDate;
   if (!startDate || !endDate || endDate < startDate) return null;
   return { startDate, endDate };
 }
@@ -222,9 +222,9 @@ export function addressTimeZone(raw: string, state: string, city: string): { zon
   const parts = raw.split(',').map((part) => part.trim()).filter(Boolean);
   if (!parts.some(isUnitedStates)) {
     let at = parts.length - 1;
-    if (at > 0 && /\d/.test(parts[at])) at -= 1;
+    if (at > 0 && /\d/.test(parts[at] ?? '')) at -= 1;
     // The city and region before the country, read for outlying islands.
-    const country = at >= 0 ? countryTimeZone([parts[at]], parts.slice(Math.max(0, at - 2), at).join(', ')) : null;
+    const country = at >= 0 ? countryTimeZone([parts[at] ?? ''], parts.slice(Math.max(0, at - 2), at).join(', ')) : null;
     if (country !== null) return country.zone === null ? { problem: `${country.country} spans several time zones` } : { zone: country.zone };
   }
   const zone = usTimeZone(state, city) ?? usTerritoryTimeZone(state);

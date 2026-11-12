@@ -1,36 +1,14 @@
+import { isAnything, isListOf, isNumber, isPairOf, isString, isStringList, parsedAs, itemAt } from './lib/json';
+import { MEMBER_REGISTRATIONS_MAX, STANDARDS_MAX, readAll } from './lib/boundedRead';
 import { v } from 'convex/values';
-import { chunks } from './lib/chunks';
 import { checkPass, premiumQuery, premiumRead } from './lib/access';
+import { chunks, mapLimited } from './lib/concurrency';
 import { action, internalQuery, query, type QueryCtx } from './_generated/server';
 import { internal } from './_generated/api';
 import { nameMatcher, queryBigrams, searchDirectory } from './lib/directory';
 import { readHistories, readSummaries, type Mark, type Summary } from './lib/history';
-import {
-  addBests,
-  type Candidate,
-  checkLeaderboardArgs,
-  type CompactRow,
-  fromCompactRow,
-  type LeaderboardRow,
-  leaderboardRow,
-  monthSlices,
-  parseCompactRows,
-  pruneBests,
-  rankBests,
-  toCompactRow,
-} from './lib/leaderboard';
-import {
-  checkEliteArgs,
-  type EliteAnswer,
-  type EliteMember,
-  type EliteRegistration,
-  type EliteStandard,
-  isMemberOf,
-  latestRegistration,
-  type MemberResult,
-  rankAll,
-  standardTables,
-} from './lib/elite';
+import { addBests, type Candidate, checkLeaderboardArgs, fromCompactRow, type LeaderboardRow, leaderboardRow, monthSlices, parseCompactRows, pruneBests, rankBests, toCompactRow, readCompactRow } from './lib/leaderboard';
+import { checkEliteArgs, type EliteAnswer, type EliteMember, type EliteRegistration, type EliteStandard, isMemberOf, latestRegistration, type MemberResult, rankAll, standardTables, isEliteMember } from './lib/elite';
 import { computeMeetResults } from './lib/meetData';
 import { cleanNameList, distinctNameKeys, newestSpelling, normalizeName, requestedNamesByKey } from './lib/names';
 import {
@@ -124,14 +102,9 @@ export const leaderboard = action({
     checkPass('results:leaderboard', pass, await ctx.runQuery(internal.accessPass.passes, {}));
     const { from, to, by, limit, filters } = checkLeaderboardArgs(args);
     const slices = monthSlices(from, to);
-    // Folded in as pages arrive and pruned to about `limit` athletes. Slices finish in any
-    // order, but that cannot change the answer: rows from different months differ in date,
-    // which ties are broken by, and a month's own pages are folded in date order, so a full
-    // tie keeps the row read first, as one pass over the rows would.
     const best = new Map<string, Candidate>();
     const federations = new Set<string>();
-    const readSlice = async (index: number) => {
-      const [start, end] = slices[index];
+    const readSlice = async ([start, end]: (typeof slices)[number]) => {
       let cursor: string | null = null;
       for (let pages = 0; pages < LEADERBOARD_MAX_PAGES; pages++) {
         const page: LeaderboardPage = await ctx.runQuery(internal.results.leaderboardPage, { start, end, cursor });
@@ -144,11 +117,7 @@ export const leaderboard = action({
       }
       throw apiError(500, `results from ${start} to ${end} did not finish within ${LEADERBOARD_MAX_PAGES} pages`);
     };
-    let next = 0;
-    const worker = async () => {
-      while (next < slices.length) await readSlice(next++);
-    };
-    await Promise.all(Array.from({ length: Math.min(LEADERBOARD_CONCURRENCY, slices.length) }, worker));
+    await mapLimited(slices, LEADERBOARD_CONCURRENCY, readSlice);
     return {
       rows: rankBests(best.values(), limit).map(leaderboardRow),
       federations: [...federations].filter((federation) => federation.trim() !== '').sort(compareBytes),
@@ -202,10 +171,13 @@ export const eliteMembers = internalQuery({
     };
     const members = await Promise.all(
       memberIds.map(async (memberId): Promise<[string, EliteMember | null]> => {
-        const rows = await ctx.db
-          .query('athletes')
-          .withIndex('by_memberId', (q) => q.eq('memberId', memberId))
-          .collect();
+        const rows = await readAll(
+          ctx.db
+            .query('athletes')
+            .withIndex('by_memberId', (q) => q.eq('memberId', memberId)),
+          MEMBER_REGISTRATIONS_MAX,
+          'registrations of one member',
+        );
         const registrations = await Promise.all(
           rows.map(async (row): Promise<EliteRegistration> => ({
             name: row.name,
@@ -245,22 +217,10 @@ export const eliteResults = internalQuery({
 export const eliteStandards = internalQuery({
   args: {},
   handler: async (ctx): Promise<EliteStandard[]> =>
-    (await ctx.db.query('standards').collect()).map(({ ageCategory, gender, weightClass, standardA }) => ({ ageCategory, gender, weightClass, standardA })),
+    (await readAll(ctx.db.query('standards'), STANDARDS_MAX, 'standards')).map(({ ageCategory, gender, weightClass, standardA }) => ({ ageCategory, gender, weightClass, standardA })),
 });
 
-/** Runs `work` over `items`, at most `concurrency` at a time; answers in input order. */
-async function inParallel<T, R>(items: readonly T[], concurrency: number, work: (item: T) => Promise<R>): Promise<R[]> {
-  const answers: R[] = new Array(items.length);
-  let next = 0;
-  const worker = async () => {
-    while (next < items.length) {
-      const index = next++;
-      answers[index] = await work(items[index]);
-    }
-  };
-  await Promise.all(Array.from({ length: Math.min(concurrency, items.length) }, worker));
-  return answers;
-}
+const isEliteMemberOrNull = (value: unknown): value is EliteMember | null => value === null || isEliteMember(value);
 
 const eliteMethodArg = v.union(v.literal('percentA'), v.literal('qpoints'), v.literal('qmasters'), v.literal('sinclair'));
 
@@ -299,14 +259,14 @@ export const wsoElite = action({
     for (let pages = 0; ; pages++) {
       if (pages === ELITE_MAX_REGISTRATION_PAGES) throw apiError(500, `${wso}'s registrations did not finish within ${ELITE_MAX_REGISTRATION_PAGES} pages`);
       const page: LeaderboardPage = await ctx.runQuery(internal.results.eliteRegistrations, { wso, cursor });
-      for (const id of JSON.parse(page.json) as string[]) memberIds.add(id);
+      for (const id of parsedAs(page.json, isStringList, 'a page of registrations')) memberIds.add(id);
       if (page.isDone) break;
       cursor = page.continueCursor;
     }
     if (memberIds.size === 0) throw apiError(404, `No registrations found for WSO "${wso}"`);
 
-    const looked = await inParallel(chunks([...memberIds], ELITE_MEMBER_BATCH), ELITE_CONCURRENCY, async (ids) =>
-      JSON.parse(await ctx.runQuery(internal.results.eliteMembers, { memberIds: ids })) as [string, EliteMember | null][],
+    const looked = await mapLimited(chunks([...memberIds], ELITE_MEMBER_BATCH), ELITE_CONCURRENCY, async (ids) =>
+      parsedAs(await ctx.runQuery(internal.results.eliteMembers, { memberIds: ids }), isListOf(isPairOf(isString, isEliteMemberOrNull)), 'a batch of members'),
     );
     // Results are matched by folded name; two members of one name share their results.
     const membersByKey = new Map<string, { memberKey: string; member: EliteMember }>();
@@ -320,14 +280,14 @@ export const wsoElite = action({
 
     const [standards, read] = await Promise.all([
       ctx.runQuery(internal.results.eliteStandards, {}),
-      inParallel(chunks([...membersByKey.keys()], ELITE_HISTORY_BATCH), ELITE_CONCURRENCY, async (keys) =>
-        JSON.parse(await ctx.runQuery(internal.results.eliteResults, { keys, from, to })) as [string, CompactRow[]][],
+      mapLimited(chunks([...membersByKey.keys()], ELITE_HISTORY_BATCH), ELITE_CONCURRENCY, async (keys) =>
+        parsedAs(await ctx.runQuery(internal.results.eliteResults, { keys, from, to }), isListOf(isPairOf(isString, isListOf(isAnything))), 'a batch of results'),
       ),
     ]);
     const results: (MemberResult & { memberKey: string })[] = [];
     for (const [key, rows] of read.flat()) {
       const owner = membersByKey.get(key);
-      if (owner) for (const row of rows) results.push({ row: fromCompactRow(row), ...owner });
+      if (owner) for (const row of rows) results.push({ row: fromCompactRow(readCompactRow(row)), ...owner });
     }
 
     return { wso, from, to, members, ...rankAll(results, methods, standardTables(standards)) };
@@ -364,7 +324,7 @@ export function answerByNames(histories: Histories, latestOnly: boolean, limit: 
   const rows: ApiLiftingResult[] = [];
   for (const history of histories.values()) {
     let kept = history;
-    if (latestOnly && kept.length > 0) kept = kept.filter((row) => row.date === history[0].date);
+    if (latestOnly && kept.length > 0) kept = kept.filter((row) => row.date === itemAt(history, 0).date);
     if (limit !== undefined) kept = kept.slice(0, limit);
     rows.push(...kept);
   }
@@ -495,7 +455,7 @@ async function searchText(ctx: QueryCtx, query: string): Promise<string> {
   if (bigrams) {
     const sizesText = await readViewJsonAnyAge(ctx, SEARCH_SHARD_SIZES_VIEW);
     if (sizesText !== null) {
-      const sizes = new Map(JSON.parse(sizesText) as [string, number][]);
+      const sizes = new Map(parsedAs(sizesText, isListOf(isPairOf(isString, isNumber)), 'the search shard sizes'));
       let rarest: string | null = null;
       for (const bigram of bigrams) {
         const size = sizes.get(bigram) ?? 0;

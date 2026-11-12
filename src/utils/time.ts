@@ -9,9 +9,10 @@ function parseTo24Hour(startTime: string): { hour24: number; minutes: number } |
   const trimmed = startTime.trim();
   const match12h = trimmed.match(TIME_12H_REGEX);
   if (match12h) {
-    const hours = parseInt(match12h[1], 10);
-    const minutes = parseInt(match12h[2], 10);
-    const period = match12h[3].toUpperCase();
+    const [, hourText = "", minuteText = "", periodText = ""] = match12h;
+    const hours = parseInt(hourText, 10);
+    const minutes = parseInt(minuteText, 10);
+    const period = periodText.toUpperCase();
 
     if (hours < 1 || hours > 12) {
       console.warn("calculateWeighInTime: hours out of range 1-12", {
@@ -44,9 +45,10 @@ function parseTo24Hour(startTime: string): { hour24: number; minutes: number } |
 
   const match24h = trimmed.match(TIME_24H_REGEX);
   if (match24h) {
+    const [, hourText = "", minuteText = ""] = match24h;
     return {
-      hour24: parseInt(match24h[1], 10),
-      minutes: parseInt(match24h[2], 10),
+      hour24: parseInt(hourText, 10),
+      minutes: parseInt(minuteText, 10),
     };
   }
 
@@ -95,7 +97,8 @@ export function formatTo12Hour(timeStr: string | null | undefined): string {
 
   const match12h = trimmed.match(TIME_12H_REGEX);
   if (match12h) {
-    return `${Number(match12h[1])}:${match12h[2]} ${match12h[3].toUpperCase()}`;
+    const [, hourText, minuteText, periodText = ""] = match12h;
+    return `${Number(hourText)}:${minuteText} ${periodText.toUpperCase()}`;
   }
 
   const match24h = trimmed.match(TIME_24H_REGEX);

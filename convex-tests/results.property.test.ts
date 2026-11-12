@@ -12,6 +12,7 @@ import {
   type ApiLiftingResult,
   type YearBests,
 } from '../convex/lib/results';
+import { itemAt } from '../convex/lib/json';
 
 /** A lift in kilograms: made (positive), missed (negative), not taken (0) or not recorded. */
 const liftArb = fc.option(
@@ -92,7 +93,7 @@ describe('accumulateBests (property)', () => {
 
   it('example: missed attempts never win, and no rows is zero', () => {
     expect(fold([])).toEqual(ZERO_BESTS);
-    const [row] = fc.sample(rowArb, 1);
+    const row = itemAt(fc.sample(rowArb, 1), 0);
     const missed = { ...row, snatch1: -100, snatch2: -100, snatch3: -105, snatchBest: undefined, cj1: -130, cj2: 0, cj3: undefined, cjBest: 0, total: 0 };
     expect(fold([missed])).toEqual(ZERO_BESTS);
   });
@@ -104,7 +105,7 @@ describe('compareNewestFirst (property)', () => {
       fc.property(rowsArb, (rows) => {
         const sorted = [...rows].sort(compareNewestFirst);
         for (let i = 1; i < sorted.length; i++) {
-          const [a, b] = [sorted[i - 1], sorted[i]];
+          const [a, b] = [itemAt(sorted, i - 1), itemAt(sorted, i)];
           expect(a.date >= b.date).toBe(true);
           if (a.date === b.date) expect(a._creationTime).toBeGreaterThanOrEqual(b._creationTime);
         }
@@ -133,7 +134,7 @@ describe('summaryOf (property)', () => {
         expect(summary.latest).toBe(JSON.stringify(history.filter((row) => row.date === newest)));
         expect(marks.map((mark) => mark[0])).toEqual(history.map((row) => row.date));
         marks.forEach(([, snatch, cj, total], i) => {
-          const row = history[i];
+          const row = itemAt(history, i);
           expect(snatch).toBe(Math.max(row.snatch_best, row.snatch1, row.snatch2, row.snatch3) + 0);
           expect(cj).toBe(Math.max(row.cj_best, row.cj1, row.cj2, row.cj3) + 0);
           expect(total).toBe(row.total + 0);

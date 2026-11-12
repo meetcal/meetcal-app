@@ -1,3 +1,4 @@
+import { itemAt } from '../../../lib/json';
 import { parseCsv } from '../../lib/csv';
 import { recordHolder } from '../holder';
 import { intOrNull, type WsoRecord } from './common';
@@ -35,7 +36,7 @@ export const NEW_JERSEY_TABS: readonly [name: string, age: string][] = [
   ['90+ Master Records', 'Masters 90'],
 ];
 
-const cell = (row: readonly string[], column: number) => (row.length > column ? row[column].trim() : '');
+const cell = (row: readonly string[], column: number) => (row.length > column ? itemAt(row, column).trim() : '');
 
 /** A lift, with 0 meaning no record. */
 function lift(row: readonly string[], column: number): number | null {
@@ -79,21 +80,21 @@ export function parseNewJerseyTab(csv: string, wso: string, age: string): WsoRec
       }
       const record: WsoRecord = {
         wso,
-        age_category: age,
+        ageCategory: age,
         gender,
-        weight_class: weightClass,
-        snatch_record: lift(row, column + 3),
-        cj_record: lift(row, column + 4),
-        total_record: lift(row, column + 5),
+        weightClass: weightClass,
+        snatchRecord: lift(row, column + 3),
+        cjRecord: lift(row, column + 4),
+        totalRecord: lift(row, column + 5),
       };
       const athlete = cell(row, column + 1);
       const { date, location } = splitDateLocation(cell(row, column + 2));
-      const snatchBy = recordHolder(record.snatch_record, athlete, date, location);
-      const cjBy = recordHolder(record.cj_record, athlete, date, location);
-      const totalBy = recordHolder(record.total_record, athlete, date, location);
-      if (snatchBy) record.snatch_by = snatchBy;
-      if (cjBy) record.cj_by = cjBy;
-      if (totalBy) record.total_by = totalBy;
+      const snatchBy = recordHolder(record.snatchRecord, athlete, date, location);
+      const cjBy = recordHolder(record.cjRecord, athlete, date, location);
+      const totalBy = recordHolder(record.totalRecord, athlete, date, location);
+      if (snatchBy) record.snatchBy = snatchBy;
+      if (cjBy) record.cjBy = cjBy;
+      if (totalBy) record.totalBy = totalBy;
       records.push(record);
       if (!weightClass.endsWith('+')) lastClass[gender] = weightClass;
     }
@@ -102,9 +103,9 @@ export function parseNewJerseyTab(csv: string, wso: string, age: string): WsoRec
 }
 
 const LIFTS = [
-  ['snatch_record', 'snatch_by'],
-  ['cj_record', 'cj_by'],
-  ['total_record', 'total_by'],
+  ['snatchRecord', 'snatchBy'],
+  ['cjRecord', 'cjBy'],
+  ['totalRecord', 'totalBy'],
 ] as const;
 
 /**
@@ -115,7 +116,7 @@ const LIFTS = [
 export function consolidateRecords(records: readonly WsoRecord[]): WsoRecord[] {
   const grouped = new Map<string, WsoRecord>();
   for (const record of records) {
-    const key = JSON.stringify([record.wso, record.age_category, record.gender, record.weight_class]);
+    const key = JSON.stringify([record.wso, record.ageCategory, record.gender, record.weightClass]);
     const seen = grouped.get(key);
     if (!seen) {
       grouped.set(key, { ...record });

@@ -4,6 +4,7 @@ import { act, create } from "react-test-renderer";
 import ClubFilterModal from "@/components/ui/filters/ClubFilterModal";
 import { STARRED_CLUBS_FILTER } from "@/lib/start-list-utils";
 import type { LiftResult } from "@/data/types/athletes";
+import { itemAt } from "@/test-support/checked-access";
 
 // react-native's exports are lazy getters. On a cold transform cache (every CI
 // run) the first access transforms the component tree behind each one, inside
@@ -80,14 +81,14 @@ describe("ClubFilterModal", () => {
     // A national meet's roster produces hundreds of distinct clubs. They must
     // reach the list as data, not as mounted `Pressable` + native icon views.
     expect(flashListCalls).toHaveLength(1);
-    expect(flashListCalls[0].data).toHaveLength(500);
+    expect(itemAt(flashListCalls, 0).data).toHaveLength(500);
   });
 
   it("keys rows by club name and renders the club it was handed", () => {
     renderModal();
 
-    const { data, keyExtractor, renderItem } = flashListCalls[0];
-    expect(keyExtractor(data[0], 0)).toBe("Club 000");
+    const { data, keyExtractor, renderItem } = itemAt(flashListCalls, 0);
+    expect(keyExtractor(itemAt(data, 0), 0)).toBe("Club 000");
 
     expect(renderToJson(renderItem({ item: "Club 000", index: 0 }))).toContain(
       "Club 000",
@@ -97,7 +98,7 @@ describe("ClubFilterModal", () => {
   it("keeps the fixed rows in the list header rather than in the data", () => {
     renderModal({ starredClubs: ["Club 001"] });
 
-    const { data, ListHeaderComponent } = flashListCalls[0];
+    const { data, ListHeaderComponent } = itemAt(flashListCalls, 0);
     // "All Clubs" and "Favorites" are chrome; they must not become rows the
     // club search can filter away.
     expect(data).not.toContain(STARRED_CLUBS_FILTER);
@@ -110,7 +111,7 @@ describe("ClubFilterModal", () => {
     const onToggleStarredClub = jest.fn();
     renderModal({ starredClubs: ["Club 001"], onToggleStarredClub });
 
-    const { renderItem } = flashListCalls[0];
+    const { renderItem } = itemAt(flashListCalls, 0);
     let row!: ReturnType<typeof create>;
     act(() => {
       row = create(<>{renderItem({ item: "Club 001", index: 1 })}</>);
@@ -131,7 +132,7 @@ describe("ClubFilterModal", () => {
   it("omits the favorites row when nothing is starred", () => {
     renderModal({ starredClubs: [] });
 
-    const headerJson = renderToJson(flashListCalls[0].ListHeaderComponent);
+    const headerJson = renderToJson(itemAt(flashListCalls, 0).ListHeaderComponent);
     expect(headerJson).toContain("All Clubs");
     expect(headerJson).not.toContain("Favorites");
   });
@@ -151,11 +152,15 @@ describe("screen reader selection state of the fixed rows", () => {
   }
 
   it("marks All Clubs or Favorites as the selected option", () => {
-    const [allClubs, favorites] = headerRows("");
+    const rows = headerRows("");
+    const allClubs = itemAt(rows, 0);
+    const favorites = itemAt(rows, 1);
     expect(allClubs.props.accessibilityState).toEqual({ selected: true });
     expect(favorites.props.accessibilityState).toEqual({ selected: false });
 
-    const [allAgain, favoritesAgain] = headerRows(STARRED_CLUBS_FILTER);
+    const rowsAgain = headerRows(STARRED_CLUBS_FILTER);
+    const allAgain = itemAt(rowsAgain, 0);
+    const favoritesAgain = itemAt(rowsAgain, 1);
     expect(allAgain.props.accessibilityState).toEqual({ selected: false });
     expect(favoritesAgain.props.accessibilityState).toEqual({ selected: true });
   });

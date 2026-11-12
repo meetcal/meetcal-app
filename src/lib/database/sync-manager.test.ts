@@ -8,10 +8,12 @@ const mockFetchSchedule = jest.fn();
 const mockMarkVerified = jest.fn(async () => true);
 const mockIsNetworkAvailable = jest.fn(async () => true);
 
-jest.mock("@/lib/database/offline-store", () => ({
+jest.mock("@/lib/database/meet-data-saves", () => ({
   saveMeetSchedule: (...args: unknown[]) => mockSaveMeetSchedule(...(args as [])),
-  getMeetSchedule: () => mockGetMeetSchedule(),
   markMeetScheduleVerified: (...args: unknown[]) => mockMarkVerified(...(args as [])),
+}));
+jest.mock("@/lib/database/meet-data-reads", () => ({
+  getMeetSchedule: () => mockGetMeetSchedule(),
 }));
 jest.mock("@/lib/database/queries", () => ({
   fetchSchedule: (...args: unknown[]) => mockFetchSchedule(...args),

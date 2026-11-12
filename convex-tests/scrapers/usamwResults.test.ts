@@ -8,10 +8,11 @@ import {
   usamwRowProblems,
   type PdfWord,
 } from '../../convex/scrapers/parse/usamwResults';
+import { itemAt } from '../../convex/lib/json';
 
 /** A line of words at `y`, spaced out left to right; `*` marks a red (missed) attempt. */
 function line(y: number, texts: string[], xs?: number[]): PdfWord[] {
-  return texts.map((text, i) => ({ text: text.replace(/\*$/, ''), x: xs ? xs[i] : 20 + i * 40, y, isRed: text.endsWith('*') }));
+  return texts.map((text, i) => ({ text: text.replace(/\*$/, ''), x: xs ? itemAt(xs, i) : 20 + i * 40, y, isRed: text.endsWith('*') }));
 }
 
 describe('USAMW result PDFs (port of usamw_results.py)', () => {
@@ -99,11 +100,14 @@ describe('USAMW result PDFs (port of usamw_results.py)', () => {
   });
 
   it('finds body weights out of range and attempts that go down', () => {
-    const row = parseUsamwResults(
-      [[...line(10, ['Age', 'Group', 'W70', 'Weight', 'Category', '69']), ...line(20, ['1', '2', 'DOWNS', 'Jane', 'USA', '970', '71', '40', '38', '42', '50', '52', '55', '97'])]],
-      'Meet',
-      '2026-03-29',
-    )[0];
+    const row = itemAt(
+      parseUsamwResults(
+        [[...line(10, ['Age', 'Group', 'W70', 'Weight', 'Category', '69']), ...line(20, ['1', '2', 'DOWNS', 'Jane', 'USA', '970', '71', '40', '38', '42', '50', '52', '55', '97'])]],
+        'Meet',
+        '2026-03-29',
+      ),
+      0,
+    );
     expect(usamwRowProblems(row)).toEqual(['body weight 970', 'snatch attempts 40, 38, 42 go down']);
   });
 

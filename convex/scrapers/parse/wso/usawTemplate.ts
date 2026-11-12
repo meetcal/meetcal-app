@@ -61,19 +61,20 @@ type Row = { age: string; gender: string; min: string; written: string; cell: (i
  * or "<min>+" at the top), with a warning.
  */
 function classNames(rows: readonly Row[], wso: string, warnings: string[]): Map<string, string> {
-  const written = new Map<string, Set<string>>();
+  const written = new Map<string, { age: string; gender: string; min: string; classes: Set<string> }>();
   const ladders = new Map<string, number[]>();
   for (const row of rows) {
     const key = JSON.stringify([row.age, row.gender, row.min]);
-    written.set(key, (written.get(key) ?? new Set()).add(row.written));
+    const group = written.get(key) ?? { age: row.age, gender: row.gender, min: row.min, classes: new Set<string>() };
+    group.classes.add(row.written);
+    written.set(key, group);
     const ladder = JSON.stringify([row.age, row.gender]);
     if (/^\d+(?:\.\d+)?$/.test(row.min)) ladders.set(ladder, [...(ladders.get(ladder) ?? []), Number(row.min)]);
   }
   const names = new Map<string, string>();
-  for (const [key, classes] of written) {
-    const [age, gender, min] = JSON.parse(key) as [string, string, string];
+  for (const [key, { age, gender, min, classes }] of written) {
     const [only] = classes;
-    if (classes.size === 1 && fits(only, min)) {
+    if (only !== undefined && classes.size === 1 && fits(only, min)) {
       names.set(key, only);
       continue;
     }
@@ -111,12 +112,12 @@ export function parseUsawTemplate(csv: string, wso: string): { records: WsoRecor
     const long = isDate(cell(13));
     const [date, place, event] = long ? [cell(13), cell(14), cell(16)] : [cell(11), cell(12), cell(13)];
     const key = JSON.stringify([age, gender, weightClass]);
-    const entry = grouped.get(key) ?? { wso, age_category: age, gender, weight_class: weightClass, snatch_record: null, cj_record: null, total_record: null };
+    const entry = grouped.get(key) ?? { wso, ageCategory: age, gender, weightClass: weightClass, snatchRecord: null, cjRecord: null, totalRecord: null };
     grouped.set(key, entry);
-    entry[`${lift}_record`] = value;
+    entry[`${lift}Record`] = value;
     const by = recordHolder(value, cell(COLUMN.name), date, event, place);
-    if (by) entry[`${lift}_by`] = by;
-    else delete entry[`${lift}_by`];
+    if (by) entry[`${lift}By`] = by;
+    else delete entry[`${lift}By`];
   }
   return { records: [...grouped.values()], warnings };
 }

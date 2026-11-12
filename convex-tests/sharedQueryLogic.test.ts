@@ -2,6 +2,7 @@ import { athletesWithSessions, narrowSessions, yearBestsFromTimelines, type Rost
 import { bestsSince, namedBests, ZERO_BESTS, type BestsPoint } from '../convex/lib/results';
 import { answerBests, answerYearBests } from '../convex/results';
 import type { Mark, Summary } from '../convex/lib/history';
+import { itemAt } from '../convex/lib/json';
 
 describe('bestsSince', () => {
   const points: BestsPoint[] = [
@@ -14,7 +15,7 @@ describe('bestsSince', () => {
     const expected = { best_snatch: 95, best_cj: 110, best_total: 200 };
     expect(bestsSince(points, '2025-11-01')).toEqual(expected);
     expect(bestsSince([...points].reverse(), '2025-11-01')).toEqual(expected);
-    expect(bestsSince([points[2], points[0], points[1]], '2025-11-01')).toEqual(expected);
+    expect(bestsSince([itemAt(points, 2), itemAt(points, 0), itemAt(points, 1)], '2025-11-01')).toEqual(expected);
   });
 
   it('is null when no point is in range, and zero rather than negative for a point that is', () => {

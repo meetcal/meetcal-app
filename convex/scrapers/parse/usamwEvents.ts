@@ -51,7 +51,7 @@ const DATE = /^([A-Za-z]{3,9})\.?\s+(\d{1,2})(?:\s*-\s*(?:([A-Za-z]{3,9})\.?\s+)
 export function parseDates(text: string, fallbackYear: number | null): { startDate: string; endDate: string } | null {
   const match = DATE.exec(text.trim());
   if (!match) return null;
-  const [, startMonthName, startDay, endMonthName, endDay, yearText] = match;
+  const [, startMonthName = '', startDay, endMonthName, endDay, yearText] = match;
   const startMonth = MONTHS[startMonthName.slice(0, 3).toLowerCase()];
   const endMonth = endMonthName ? MONTHS[endMonthName.slice(0, 3).toLowerCase()] : startMonth;
   const year = yearText ? Number(yearText) : fallbackYear;
@@ -68,8 +68,8 @@ export function parseDates(text: string, fallbackYear: number | null): { startDa
 export function parseLocation(text: string): { venueCity: string; venueState: string } {
   const parts = text.split(',').map((part) => part.trim()).filter(Boolean);
   if (parts.length < 2) return { venueCity: text.trim(), venueState: text.trim() };
-  const region = parts[1];
-  return { venueCity: parts[0], venueState: stateCode(region) ?? region };
+  const region = parts[1] ?? '';
+  return { venueCity: parts[0] ?? '', venueState: stateCode(region) ?? region };
 }
 
 /** A paragraph's lines, split at its line breaks, blank ones dropped. */
@@ -96,7 +96,7 @@ export function parseUsamwEvents(html: string): UsamwEvent[] {
     const placeAt = head.findIndex((line, i) => i > 0 && LOCATION.test(line));
     const name = (placeAt === -1 ? head : head.slice(0, placeAt)).join(' ');
     if (/training camp|cruise/i.test(name)) continue;
-    const dates = parseDates(venue[dateAt], Number(/^(\d{4})\b/.exec(name)?.[1]) || null);
+    const dates = parseDates(venue[dateAt] ?? '', Number(/^(\d{4})\b/.exec(name)?.[1]) || null);
     if (!dates) continue;
     const place = placeAt === -1 ? location[0] : head[placeAt];
     let rest = placeAt === -1 ? location.slice(1) : location;

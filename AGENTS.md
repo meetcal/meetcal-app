@@ -31,7 +31,7 @@ MeetCal answers the same questions on four surfaces: the app (TypeScript), the w
 | What you are writing | Single source | How the surfaces read it |
 | --- | --- | --- |
 | Computed answers (rankings, Wrapped scores, elite lists, qualifying status) | A Convex query, with its logic in `convex/lib/` | Every surface shows the query's answer and computes nothing itself (as `web/src/pages/comp_data/wrapped.rs` shows `results:wrapped`). |
-| Request and response shapes | The Convex function's `args` and `returns` validators | The app maps them once in `src/lib/api/meetcal-api.ts`; the website in `web/src/utils/api/` and `web/src/pages/comp_data/models.rs`; the CLI in `cli/src/utils/backend.rs`; Siri in `plugins/ios-app-intents/MeetCalAPI.swift`. The answers in `fixtures/wire/`, checked against the handlers, are what the app's, the website's and the CLI's tests parse ([docs/testing.md](docs/testing.md#wire-fixtures)). |
+| Request and response shapes | The Convex function's `args` and `returns` validators | The app maps them once in `src/lib/api/`, in each domain's fetcher module (`meets-api.ts`, `results-api.ts`, `saved-sessions-api.ts`, …) and the mappers they share (`api-meet-mappers.ts`, `api-athlete-mappers.ts`); the website in `web/src/utils/api/` and `web/src/pages/comp_data/models.rs`; the CLI in `cli/src/utils/backend.rs`; Siri in `plugins/ios-app-intents/MeetCalAPI.swift`. The answers in `fixtures/wire/`, checked against the handlers, are what the app's, the website's and the CLI's tests parse ([docs/testing.md](docs/testing.md#wire-fixtures)). |
 | Which reads are premium | `PREMIUM_FUNCTIONS` in `convex/lib/access.ts` | Each client keeps its own list (the languages differ), held equal to the server's by tests. A new premium read changes every list and passes those tests. |
 | App-only policy (meet time, session selection, offline cache) | TypeScript in `src/lib/` or `src/utils/` | Screens, hooks, widgets data and notifications import it; never a second copy in a screen. |
 
@@ -153,7 +153,7 @@ A change that affects app behavior is done when it has run on a device and, for 
 ## Code Quality
 
 - Screens orchestrate. Policy, mapping, and fetching live in `src/lib/` / `src/utils/` / `src/hooks/`.
-- Validate at the API boundary (`src/lib/api/meetcal-api.ts`) before data reaches UI or AsyncStorage.
+- Validate at the API boundary (the fetchers and mappers in `src/lib/api/`) before data reaches UI or AsyncStorage.
 - Prefer indexes and batch endpoints over per-row HTTP. Name-list calls must chunk.
 - No unbounded `Promise.all` over meet-sized collections that inflate/deflate offline blobs.
 - `unknown` at parse sites, then narrow. Do not `as T` past a `JSON.parse`.

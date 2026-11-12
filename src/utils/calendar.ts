@@ -1,3 +1,4 @@
+import { isRecord } from "@/lib/is-record";
 import { createWriteChain } from '@/lib/data/write-chain';
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Calendar from "expo-calendar/legacy";
@@ -351,11 +352,11 @@ async function readCalendarEventIds(): Promise<Record<string, string>> {
     const raw = await AsyncStorage.getItem(CALENDAR_EVENT_IDS_KEY);
     if (!raw) return { ...unpersistedEventIds };
     const parsed: unknown = JSON.parse(raw);
-    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    if (!isRecord(parsed)) {
       return { ...unpersistedEventIds };
     }
     const ids: Record<string, string> = {};
-    for (const [key, value] of Object.entries(parsed as Record<string, unknown>)) {
+    for (const [key, value] of Object.entries(parsed)) {
       if (typeof value === "string" && value) ids[key] = value;
     }
     return { ...ids, ...unpersistedEventIds };

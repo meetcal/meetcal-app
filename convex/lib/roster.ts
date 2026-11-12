@@ -1,6 +1,8 @@
 import { isPlaceholderMemberId } from './memberIds';
 import { normalizeGender } from './normalize';
 import { currentWeightClasses } from './referenceData';
+import { bareWeightClass } from './weightClass';
+
 
 /**
  * Rules for a meet's roster (`athletes`): when an athlete has a session, and
@@ -48,12 +50,6 @@ export function isJunkMeetName(meet: string): boolean {
   return /your choice regarding cookies/i.test(meet) || /^\d+,[^,]*,\d+,/.test(meet);
 }
 
-/** A weight class without `kg` or spaces, a leading plus moved to the end (`+109kg` -> `109+`). */
-export function bareWeightClass(text: string): string {
-  const bare = text.replace(/kg/gi, '').replace(/\s+/g, '');
-  return bare.startsWith('+') ? `${bare.slice(1)}+` : bare;
-}
-
 const AGE_RANGE = { min: 5, max: 100 } as const;
 /** A roster this size or more with this share of one age has ages that are buckets or a default. */
 const ONE_AGE = { roster: 20, share: 0.4 } as const;
@@ -80,7 +76,7 @@ export function rosterProblems(rows: readonly RosterRow[]): string[] {
   if (rows.length >= ONE_AGE.roster) {
     const counts = new Map<number, number>();
     for (const row of rows) counts.set(row.age, (counts.get(row.age) ?? 0) + 1);
-    const [age, count] = [...counts].sort((a, b) => b[1] - a[1])[0];
+    const [age, count] = [...counts].sort((a, b) => b[1] - a[1])[0] ?? [0, 0];
     if (count > rows.length * ONE_AGE.share) problems.push(`${count} of ${rows.length} rows have age ${age} (category buckets or a default?)`);
   }
   report('gender neither men nor women', rows.filter((row) => !['Men', 'Women'].includes(normalizeGender(row.gender))));

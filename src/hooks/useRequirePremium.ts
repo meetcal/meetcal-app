@@ -9,7 +9,8 @@ import {
   resolvePremiumAccess,
   type PremiumAccess,
 } from "@/lib/premium-access";
-import { type AuthGuardOptions, useAuthGuard } from "@/utils/authGuard";
+import { useAuthGuard } from "@/hooks/useAuthGuard";
+import type { AuthGuardOptions } from "@/utils/authGuard";
 
 export interface RequirePremiumOptions extends AuthGuardOptions {
   /** Where sign-in and the paywall send the user back to. */

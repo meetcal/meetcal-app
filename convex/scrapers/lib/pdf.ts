@@ -31,14 +31,21 @@ type PdfPage = Awaited<ReturnType<Awaited<ReturnType<typeof getDocumentProxy>>['
  * text may now run right to left.
  */
 function runPlacer(page: PdfPage, asDisplayed: boolean): (transform: number[], width: number) => { x: number; y: number; end: number } {
-  if (!asDisplayed || page.rotate % 360 === 0) return (t, width) => ({ x: t[4], y: t[5], end: t[4] + width });
-  const [a, b, c, d, e, f] = page.getViewport({ scale: 1 }).transform;
+  const placed = ([scaleX = 1, skewY = 0, , , x = 0, y = 0]: number[]) => ({ scaleX, skewY, x, y });
+  if (!asDisplayed || page.rotate % 360 === 0) {
+    return (t, width) => {
+      const { x, y } = placed(t);
+      return { x, y, end: x + width };
+    };
+  }
+  const [a = 1, b = 0, c = 0, d = 1, e = 0, f = 0] = page.getViewport({ scale: 1 }).transform;
   // The display transform's y runs downward; negate it so lines still sort top first by descending y.
   const display = (x: number, y: number) => ({ x: a * x + c * y + e, y: -(b * x + d * y + f) });
   return (t, width) => {
-    const scale = Math.hypot(t[0], t[1]) || 1;
-    const start = display(t[4], t[5]);
-    const finish = display(t[4] + (width * t[0]) / scale, t[5] + (width * t[1]) / scale);
+    const run = placed(t);
+    const scale = Math.hypot(run.scaleX, run.skewY) || 1;
+    const start = display(run.x, run.y);
+    const finish = display(run.x + (width * run.scaleX) / scale, run.y + (width * run.skewY) / scale);
     return { x: Math.min(start.x, finish.x), y: start.y, end: Math.max(start.x, finish.x) };
   };
 }

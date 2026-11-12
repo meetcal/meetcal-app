@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { checkSteps, LOCAL_GATE_TEST_TIMEOUT_MS, planChecks, type CheckPlan } from './plan';
+import { itemAt } from '@/test-support/checked-access';
 
 const suites = (paths: string[]) => planChecks(paths).suites;
 const names = (plan: CheckPlan) => checkSteps(plan).map((step) => step.name);
@@ -121,7 +122,7 @@ describe('checkSteps', () => {
       ['Duplicate code', undefined],
     ]);
     // Through mise in the folder, so its pinned Rust and mbx apply.
-    expect(steps[1].command).toEqual(['mise', 'exec', '--', 'cargo', 'clippy', '--all-targets', '--locked', '--', '-D', 'warnings']);
+    expect(itemAt(steps, 1).command).toEqual(['mise', 'exec', '--', 'cargo', 'clippy', '--all-targets', '--locked', '--', '-D', 'warnings']);
   });
 
   it('reports duplicated code across all four surfaces whenever any suite runs, failing above the ceiling', () => {

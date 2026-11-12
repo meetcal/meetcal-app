@@ -1,4 +1,5 @@
 import { newYorkPdfUrls, newYorkSection, parseNewYork } from '../../convex/scrapers/parse/wso/newYork';
+import { itemAt } from '../../convex/lib/json';
 
 describe('New York WSO PDFs (port of scraper_pdf_newyork.py)', () => {
   it('reads section headings', () => {
@@ -20,7 +21,7 @@ describe('New York WSO PDFs (port of scraper_pdf_newyork.py)', () => {
       '110+ Clean and Jerk - - -',
       'Total 120.5 kg A Lifter 9/28/2025 Some Open',
     ];
-    expect(parseNewYork([page, ['Youth Women', 'Snatch 33 kg x', '45 Clean and Jerk 39 kg x', 'Total 72 kg x']], 'New York').map((r) => [r.age_category, r.gender, r.weight_class, r.snatch_record, r.cj_record, r.total_record])).toEqual([
+    expect(parseNewYork([page, ['Youth Women', 'Snatch 33 kg x', '45 Clean and Jerk 39 kg x', 'Total 72 kg x']], 'New York').map((r) => [r.ageCategory, r.gender, r.weightClass, r.snatchRecord, r.cjRecord, r.totalRecord])).toEqual([
       ['Masters 80', 'Men', '55', 46, 57, 103],
       ['Masters 80', 'Men', '110+', null, null, 120],
       ['Youth', 'Women', '45', 33, 39, 72],
@@ -37,17 +38,18 @@ describe('New York WSO PDFs (port of scraper_pdf_newyork.py)', () => {
       '70 Clean and Jerk - - -',
       'Total 300 kg Jean Laguerre Jr. 8/31/2025 Virus Weightlifting Series II',
     ];
-    const [first, second] = parseNewYork([page], 'New York');
+    const records = parseNewYork([page], 'New York');
+    const [first, second] = [itemAt(records, 0), itemAt(records, 1)];
     expect(first).toMatchObject({
-      weight_class: '65',
-      snatch_record: 77,
-      snatch_by: { name: 'Caden Vanderhoof', date: '2025-09-28', location: 'NYS Championships' },
-      cj_by: { name: 'Aaron Li', date: '2026-05-02', location: 'Hudson Valley Regional Open' },
+      weightClass: '65',
+      snatchRecord: 77,
+      snatchBy: { name: 'Caden Vanderhoof', date: '2025-09-28', location: 'NYS Championships' },
+      cjBy: { name: 'Aaron Li', date: '2026-05-02', location: 'Hudson Valley Regional Open' },
     });
-    expect(first.total_by).toEqual({ name: 'Standard' });
-    expect(second).toMatchObject({ weight_class: '70', snatch_record: null, cj_record: null, total_by: { name: 'Jean Laguerre Jr.', date: '2025-08-31', location: 'Virus Weightlifting Series II' } });
-    expect(second).not.toHaveProperty('snatch_by');
-    expect(second).not.toHaveProperty('cj_by');
+    expect(first.totalBy).toEqual({ name: 'Standard' });
+    expect(second).toMatchObject({ weightClass: '70', snatchRecord: null, cjRecord: null, totalBy: { name: 'Jean Laguerre Jr.', date: '2025-08-31', location: 'Virus Weightlifting Series II' } });
+    expect(second).not.toHaveProperty('snatchBy');
+    expect(second).not.toHaveProperty('cjBy');
   });
 
   it('takes the Current Records PDFs, not the State Meet Records ones', () => {

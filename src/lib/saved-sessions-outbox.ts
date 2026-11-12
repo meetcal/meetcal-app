@@ -4,14 +4,8 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Crypto from 'expo-crypto';
 import { isAccountDeleted } from '@/lib/deleted-accounts';
 import { normalizeStoredSession, type SavedSession } from '@/lib/saved-sessions-store';
-import {
-  deleteSavedSession,
-  deleteSavedSessions,
-  MeetCalApiError,
-  MeetCalApiTimeoutError,
-  putSavedSession,
-  type SavedSessionWriteRevision,
-} from '@/lib/api/meetcal-api';
+import { deleteSavedSession, deleteSavedSessions, putSavedSession, type SavedSessionWriteRevision } from '@/lib/api/saved-sessions-api';
+import { MeetCalApiError, MeetCalApiTimeoutError } from '@/lib/api/meetcal-api';
 import { devWarn } from '@/lib/logger';
 
 /**
@@ -193,8 +187,10 @@ function parseOutbox(raw: string | null): SavedSessionsOutbox {
       ...Object.values(sessions).map((entry) => entry.rev),
       ...Object.values(resets),
     );
-    const hasCounter = typeof parsed.nextRev === 'number' && Number.isInteger(parsed.nextRev);
-    const nextRev = hasCounter ? Math.max(parsed.nextRev as number, maxRev + 1) : maxRev + 1;
+    const storedNextRev =
+      typeof parsed.nextRev === 'number' && Number.isInteger(parsed.nextRev) ? parsed.nextRev : null;
+    const hasCounter = storedNextRev !== null;
+    const nextRev = storedNextRev !== null ? Math.max(storedNextRev, maxRev + 1) : maxRev + 1;
     // The id is kept only with the counter it numbered: one without it
     // starts over, so the next write takes a new id.
     const device = hasCounter && isDeviceId(parsed.device) ? parsed.device : undefined;
@@ -409,7 +405,8 @@ const deliveryLogs = new Map<string, Delivery[]>();
 function recordDelivery(userId: string, delivery: DeliveryInput): void {
   const log = deliveryLogs.get(userId) ?? [];
   deliverySeq += 1;
-  log.push({ ...delivery, seq: deliverySeq } as Delivery);
+  const recorded: Delivery = { ...delivery, seq: deliverySeq };
+  log.push(recorded);
   if (log.length > MAX_DELIVERY_LOG) log.splice(0, log.length - MAX_DELIVERY_LOG);
   deliveryLogs.set(userId, log);
 }
@@ -501,8 +498,8 @@ export function mergeServerSessions(
     .filter(([id, entry]) => entry.op === 'put' && entry.session && !seen.has(id))
     .sort(([, a], [, b]) => a.rev - b.rev);
   for (const [, entry] of pendingPuts) {
-    if (isCoveredByReset(entry.meet, entry.rev, outbox)) continue;
-    merged.push(entry.session as SavedSession);
+    if (!entry.session || isCoveredByReset(entry.meet, entry.rev, outbox)) continue;
+    merged.push(entry.session);
   }
   return merged;
 }
@@ -705,7 +702,8 @@ async function runPass(
         await deletePendingSession(token, next.key, revision);
         recordDelivery(userId, { kind: 'delete', id: next.key });
       } else {
-        const body = next.entry.session as SavedSession;
+        const body = next.entry.session;
+        if (!body) throw new Error('Saved sessions outbox: a queued save has no session body');
         await putSavedSession(token, next.key, toSavedSessionBody(body), revision);
         recordDelivery(userId, { kind: 'put', id: next.key, session: body });
       }
@@ -739,9 +737,13 @@ async function runPass(
   }
 }
 
-interface FlushState {
-  promise: Promise<FlushResult>;
-  rerun: boolean;
+class FlushState {
+  rerun = false;
+  readonly promise: Promise<FlushResult>;
+
+  constructor(run: (state: FlushState) => Promise<FlushResult>) {
+    this.promise = run(this);
+  }
 }
 
 const inFlight = new Map<string, FlushState>();
@@ -764,8 +766,7 @@ export function flushOutbox(
     return running.promise;
   }
 
-  const state = { rerun: false } as FlushState;
-  state.promise = (async () => {
+  const state = new FlushState(async (flush) => {
     const result: FlushResult = {
       authExpired: false,
       delivered: 0,
@@ -776,14 +777,14 @@ export function flushOutbox(
       let passes = 0;
       let outcome: 'done' | 'stopped';
       do {
-        state.rerun = false;
+        flush.rerun = false;
         passes += 1;
         outcome = await runPass(userId, getToken, result);
         result.remaining = countPendingWrites(await readOutbox(userId));
         // No await between this check and releasing the slot in `finally`,
         // so a caller that sets `rerun` after it starts a new flush instead
         // of joining one that will not send its entry.
-      } while (outcome === 'done' && state.rerun && passes < MAX_FLUSH_PASSES);
+      } while (outcome === 'done' && flush.rerun && passes < MAX_FLUSH_PASSES);
       return result;
     } catch (error) {
       // Storage unavailable: nothing was cleared that was not sent, and the
@@ -794,7 +795,7 @@ export function flushOutbox(
     } finally {
       inFlight.delete(userId);
     }
-  })();
+  });
   inFlight.set(userId, state);
   return state.promise;
 }

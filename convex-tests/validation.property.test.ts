@@ -3,6 +3,7 @@ import * as fc from 'fast-check';
 import { hostileStringArb, isoCalendarDateArb } from '@/test-support/arbitraries';
 
 import { isValidIsoDate, MAX_NAME_LEN, MAX_NAME_LIST_LEN, requireNameList } from '../convex/lib/validation';
+import { itemAt } from '../convex/lib/json';
 
 /**
  * The reference: four, two and two ASCII digits, and the proleptic Gregorian
@@ -88,7 +89,7 @@ const nameListArb = fc.oneof(
 function shouldRefuse(names: readonly string[]): boolean {
   return (
     names.length === 0 ||
-    names[0].trim() === '' ||
+    itemAt(names, 0).trim() === '' ||
     names.length > MAX_NAME_LIST_LEN ||
     names.some((name) => encoder.encode(name).length > MAX_NAME_LEN)
   );

@@ -1,4 +1,5 @@
 import { migrateSessionsToMeetSpecific } from "@/utils/migration";
+import { itemAt } from "@/test-support/checked-access";
 
 describe("migrateSessionsToMeetSpecific", () => {
   const legacy = {
@@ -12,16 +13,16 @@ describe("migrateSessionsToMeetSpecific", () => {
   };
 
   it("assigns the current meet and regenerates the id", () => {
-    const [migrated] = migrateSessionsToMeetSpecific([legacy], "Test Meet");
+    const migrated = itemAt(migrateSessionsToMeetSpecific([legacy], "Test Meet"), 0);
     expect(migrated.meet).toBe("Test Meet");
     expect(migrated.id).not.toBe("old-id");
     expect(migrated.sessionNumber).toBe(3);
   });
 
   it("keeps an existing meet", () => {
-    const [migrated] = migrateSessionsToMeetSpecific(
-      [{ ...legacy, meet: "Other Meet" }],
-      "Test Meet",
+    const migrated = itemAt(
+      migrateSessionsToMeetSpecific([{ ...legacy, meet: "Other Meet" }], "Test Meet"),
+      0,
     );
     expect(migrated.meet).toBe("Other Meet");
   });

@@ -1,9 +1,14 @@
-import { type Gender, MAX_LEADERBOARD_YEARS, parseDivision, plausible, qpoints, type RankedFields, sinclair } from './leaderboard';
+import { completeRecord, isRecord, itemAt } from './json';
+import { MAX_LEADERBOARD_YEARS, parseDivision, plausible, qpoints, type RankedFields, sinclair } from './leaderboard';
+import type { Gender } from './gender';
 import { plusYears } from './dates';
+import { genderOfWord } from './gender';
 import { normalizeName } from './names';
 import { normalizeGender } from './normalize';
 import { compareBytes } from './sort';
+import { classLimit } from './weightClass';
 import { apiError, isValidIsoDate, requireNonEmpty } from './validation';
+
 
 /**
  * A WSO's elite lists (`results:wsoElite`): the WSO's top men and women
@@ -86,7 +91,7 @@ export const AGE_FACTORS_MEN = [
 export function ageFactor(age: number, gender: Gender): number {
   const factors = gender === 'Men' ? AGE_FACTORS_MEN : AGE_FACTORS_WOMEN;
   if (age < AGE_FACTORS_FIRST_AGE) return 1;
-  return factors[Math.min(age - AGE_FACTORS_FIRST_AGE, factors.length - 1)];
+  return itemAt(factors, Math.min(age - AGE_FACTORS_FIRST_AGE, factors.length - 1));
 }
 
 /** A total's Q-masters: its Q-points times the age factor; null where Q-points are. */
@@ -104,13 +109,6 @@ export type EliteStandard = { ageCategory: string; gender: string; weightClass: 
 
 /** The standards category a group is held to: Masters to Senior's. */
 const STANDARD_CATEGORY: Record<EliteGroup, string> = { youth: 'Youth', junior: 'Junior', senior: 'Senior', masters: 'Senior' };
-
-/** A class's upper limit (kg) and whether it is the open-ended top class (`+86kg`, `86+kg`); null for neither. */
-export function classLimit(weightClass: string): { limit: number; open: boolean } | null {
-  const match = /^\s*(\+)?\s*(\d+(?:\.\d+)?)\s*(\+)?\s*(?:kg)?\s*$/i.exec(weightClass);
-  if (!match) return null;
-  return { limit: Number(match[2]), open: match[1] !== undefined || match[3] !== undefined };
-}
 
 /** One category and gender's classes, lightest first, the open class last. */
 type ClassTable = { limit: number; open: boolean; weightClass: string; standardA: number }[];
@@ -153,13 +151,9 @@ export type EliteRegistration = { name: string; wso: string; gender: string; age
 /** A member as the lists read them: their WSO, name, gender and birth year from their registrations. */
 export type EliteMember = { name: string; wso: string; gender: Gender | null; birthYear: number | null };
 
-/** A registration's gender, or null for anything but men's and women's. */
-export function registrationGender(value: string): Gender | null {
-  const lower = value.trim().toLowerCase();
-  if (['women', 'woman', 'female', 'f', 'w'].includes(lower)) return 'Women';
-  if (['men', 'man', 'male', 'm'].includes(lower)) return 'Men';
-  return null;
-}
+export const isEliteMember = (value: unknown): value is EliteMember => isRecord(value) && typeof value.name === 'string' && typeof value.wso === 'string';
+
+export const registrationGender = (value: string): Gender | null => genderOfWord(value.trim().toLowerCase(), 'registration');
 
 /** Whether `next` is a more recent registration than `current`: a later meet start date, then written later. */
 const newer = (next: EliteRegistration, current: EliteRegistration | null) =>
@@ -326,17 +320,19 @@ export function rankAll(
   methods: EliteMethods,
   tables: ReadonlyMap<string, ClassTable>,
 ): Pick<EliteAnswer, 'lists' | 'rankings'> {
-  const lists = {} as EliteAnswer['lists'];
-  const rankings = {} as EliteAnswer['rankings'];
-  for (const list of ELITE_LISTS) {
-    rankings[list] = {};
+  const rankings = completeRecord(ELITE_LISTS, (list) => {
+    const byMethod: Partial<Record<EliteMethod, EliteRanking>> = {};
     for (const method of ELITE_METHOD_CHOICES[list]) {
       const { men, women } = rankList(results, list, method, tables);
-      rankings[list][method] = { men, women };
+      byMethod[method] = { men, women };
     }
-    const asked = rankings[list][methods[list]]!;
-    lists[list] = { method: methods[list], men: asked.men, women: asked.women };
-  }
+    return byMethod;
+  });
+  const lists = completeRecord(ELITE_LISTS, (list) => {
+    const asked = rankings[list][methods[list]];
+    if (asked === undefined) throw new Error(`the ${list} list was not ranked by ${methods[list]}`);
+    return { method: methods[list], men: asked.men, women: asked.women };
+  });
   return { lists, rankings };
 }
 
@@ -356,14 +352,12 @@ export function checkEliteArgs(args: EliteArgs): CheckedEliteArgs {
   if (args.to >= plusYears(args.from, MAX_LEADERBOARD_YEARS)) {
     throw apiError(400, `elite lists cover at most ${MAX_LEADERBOARD_YEARS} years: narrow the range`);
   }
-  const methods = {} as EliteMethods;
-  for (const list of ELITE_LISTS) {
+  const methods = completeRecord(ELITE_LISTS, (list) => {
     const choices = ELITE_METHOD_CHOICES[list];
     const asked = args.methods?.[list];
-    if (asked !== undefined && !(choices as readonly string[]).includes(asked)) {
-      throw apiError(400, `${list} can be scored by ${choices.join(', ')}, not "${asked}"`);
-    }
-    methods[list] = (asked as EliteMethod | undefined) ?? choices[0];
-  }
+    const chosen = asked === undefined ? choices[0] : choices.find((choice) => choice === asked);
+    if (chosen === undefined) throw apiError(400, `${list} can be scored by ${choices.join(', ')}, not "${asked}"`);
+    return chosen;
+  });
   return { wso, from: args.from, to: args.to, methods };
 }

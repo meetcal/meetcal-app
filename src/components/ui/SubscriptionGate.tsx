@@ -23,7 +23,8 @@ interface SubscriptionGateProps {
 
 /** The trailing path segment, used as the analytics feature name. */
 export function featureNameFromPathname(pathname: string): string {
-  const segments = pathname.split("?")[0].split("/").filter(Boolean);
+  const [path = ""] = pathname.split("?");
+  const segments = path.split("/").filter(Boolean);
   return segments[segments.length - 1] || "subscription";
 }
 

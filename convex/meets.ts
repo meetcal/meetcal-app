@@ -1,3 +1,5 @@
+import { isAnything } from './lib/json';
+import { MEETS_MAX, MEET_ROSTER_MAX, readAll } from './lib/boundedRead';
 import { v } from 'convex/values';
 import { premiumQuery } from './lib/access';
 import { query, type QueryCtx } from './_generated/server';
@@ -25,10 +27,8 @@ import {
   rosterNames,
   toApiMeet,
   yearBestsFromTimelines,
-  type ApiScheduleRow,
-  type SessionRow,
-  type Timeline,
-  type TimelinesView,
+  isSessionRow,
+  readTimelinesView,
   type ZoneFormatters,
 } from './lib/meetData';
 import { normalizeName } from './lib/names';
@@ -85,12 +85,15 @@ export const list = query({
   args: { now: v.number(), ifNoneMatch: v.optional(v.string()) },
   handler: async (ctx, { now: clientNow, ifNoneMatch }) => {
     const now = upcomingWindowNow(clientNow, Date.now());
-    const [upcoming, ongoing] = await Promise.all(
+    const [upcoming = [], ongoing = []] = await Promise.all(
       (['upcoming', 'ongoing'] as const).map((status) =>
-        ctx.db
-          .query('meets')
-          .withIndex('by_status_and_start_date', (q) => q.eq('status', status))
-          .collect(),
+        readAll(
+          ctx.db
+            .query('meets')
+            .withIndex('by_status_and_start_date', (q) => q.eq('status', status)),
+          MEETS_MAX,
+          'meets',
+        ),
       ),
     );
     const formatters: ZoneFormatters = new Map();
@@ -101,18 +104,33 @@ export const list = query({
   },
 });
 
-/** `GET /meets/completed`: completed meets, newest first (test entries left out, `isPlaceholderMeet`). */
 export const completed = query({
-  args: { ifNoneMatch: v.optional(v.string()) },
-  handler: async (ctx, { ifNoneMatch }) => {
-    const meets = await ctx.db
-      .query('meets')
-      .withIndex('by_status_and_start_date', (q) => q.eq('status', 'completed'))
-      .order('desc')
-      .collect();
+  args: { since: v.optional(v.string()), before: v.optional(v.string()), ifNoneMatch: v.optional(v.string()) },
+  handler: async (ctx, { since, before, ifNoneMatch }) => {
+    requireIsoDate('since', since);
+    requireIsoDate('before', before);
+    if (since !== undefined && before !== undefined && before <= since) throw apiError(400, 'before must be after since');
+    const meets = await completedMeetsStartingIn(ctx, since, before);
     return revalidated(meets.filter((meet) => !isPlaceholderMeet(meet)).map(toApiMeet), ifNoneMatch);
   },
 });
+
+async function completedMeetsStartingIn(ctx: QueryCtx, sinceInclusive: string | undefined, beforeExclusive: string | undefined) {
+  return await readAll(
+    ctx.db
+      .query('meets')
+      .withIndex('by_status_and_start_date', (q) => {
+        const completedMeets = q.eq('status', 'completed');
+        if (sinceInclusive !== undefined && beforeExclusive !== undefined) return completedMeets.gte('startDate', sinceInclusive).lt('startDate', beforeExclusive);
+        if (sinceInclusive !== undefined) return completedMeets.gte('startDate', sinceInclusive);
+        if (beforeExclusive !== undefined) return completedMeets.lt('startDate', beforeExclusive);
+        return completedMeets;
+      })
+      .order('desc'),
+    MEETS_MAX,
+    'meets',
+  );
+}
 
 /** Meet names per `meets:namesPage` call, unless the caller asks for fewer. */
 export const MEET_NAMES_PAGE_SIZE = 500;
@@ -243,7 +261,7 @@ export const schedule = query({
   args: { meet: v.string(), ifNoneMatch: v.optional(v.string()) },
   handler: async (ctx, { meet, ifNoneMatch }) => {
     requireNonEmpty('meet', meet);
-    const view = await readFreshView<ApiScheduleRow>(ctx, meetKey(meet, 'schedule'));
+    const view = await readFreshView(ctx, meetKey(meet, 'schedule'));
     if (view) return await revalidatedText(view.etag, view.json, ifNoneMatch);
     return revalidated(await computeScheduleRows(ctx, meet), ifNoneMatch);
   },
@@ -282,16 +300,16 @@ export const athletesSessions = query({
     if (sessionNumber !== undefined) {
       // One session: its own view is a few dozen rows. A session without
       // athletes has no view, and falls through to narrowing the whole list.
-      const sessionView = await readFreshView<SessionRow>(ctx, meetSessionKey(meet, sessionNumber));
+      const sessionView = await readFreshView(ctx, meetSessionKey(meet, sessionNumber));
       if (sessionView) {
         if (platform === undefined) return { json: await sessionView.json() };
-        return { json: JSON.stringify(narrowSessions(await sessionView.items(), sessionNumber, platform)) };
+        return { json: JSON.stringify(narrowSessions(await sessionView.items(isSessionRow), sessionNumber, platform)) };
       }
     }
-    const view = await readFreshView<SessionRow>(ctx, meetKey(meet, 'sessions'));
+    const view = await readFreshView(ctx, meetKey(meet, 'sessions'));
     if (view) {
       if (!narrowed) return { json: await view.json() };
-      return { json: JSON.stringify(narrowSessions(await view.items(), sessionNumber, platform)) };
+      return { json: JSON.stringify(narrowSessions(await view.items(isSessionRow), sessionNumber, platform)) };
     }
     return { json: await liveSessionsJson(ctx, meet, sessionNumber, platform) };
   },
@@ -308,10 +326,13 @@ export async function liveSessionsJson(
   }
   // Narrowed to one session: read that session's athletes only.
   const [sessionAthletes, scheduleRows] = await Promise.all([
-    ctx.db
-      .query('athletes')
-      .withIndex('by_meet_and_session', (q) => q.eq('meet', meet).eq('sessionNumber', sessionNumber))
-      .collect(),
+    readAll(
+      ctx.db
+        .query('athletes')
+        .withIndex('by_meet_and_session', (q) => q.eq('meet', meet).eq('sessionNumber', sessionNumber)),
+      MEET_ROSTER_MAX,
+      'athletes of one meet',
+    ),
     computeScheduleRows(ctx, meet),
   ]);
   return JSON.stringify(athletesWithSessions(joinRoster(sessionAthletes, scheduleRows), sessionNumber, platform));
@@ -366,7 +387,7 @@ export const packageForMeet = premiumQuery('meets:packageForMeet', {
 
     const [staticView, timelinesView] = await Promise.all([
       readFreshView(ctx, meetKey(meet, 'package_static')),
-      bestsSince === undefined ? Promise.resolve(null) : readFreshView<TimelinesView[number]>(ctx, meetKey(meet, 'timelines')),
+      bestsSince === undefined ? Promise.resolve(null) : readFreshView(ctx, meetKey(meet, 'timelines')),
     ]);
     const timelinesUsable =
       timelinesView !== null && timelinesView.meta !== undefined && bestsSince !== undefined && timelinesView.meta <= bestsSince;
@@ -378,15 +399,15 @@ export const packageForMeet = premiumQuery('meets:packageForMeet', {
     if (staticView && (bestsSince === undefined || timelinesUsable)) {
       const [staticText, timelineItems] = await Promise.all([
         staticView.text(),
-        bestsSince === undefined ? Promise.resolve(null) : timelinesView!.items(),
+        bestsSince === undefined || timelinesView === null ? Promise.resolve(null) : timelinesView.items(isAnything),
       ]);
       let yearBests: unknown;
       if (wantBests) {
         if (timelineItems === null || bestsSince === undefined) {
           yearBests = [];
         } else {
-          const [[, names], ...timelines] = timelineItems as TimelinesView;
-          yearBests = names.length > 0 ? yearBestsFromTimelines(names, timelines as Timeline[], bestsSince) : [];
+          const { names, timelines } = readTimelinesView(timelineItems);
+          yearBests = names.length > 0 ? yearBestsFromTimelines(names, timelines, bestsSince) : [];
         }
       }
       return textAnswer(closePackage(staticText, yearBests), ifNoneMatch);

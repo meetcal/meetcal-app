@@ -1,3 +1,4 @@
+import { classLimit } from '../convex/lib/weightClass';
 import { getFunctionName } from 'convex/server';
 import { ConvexError } from 'convex/values';
 import { passes } from '../convex/accessPass';
@@ -7,7 +8,6 @@ import {
   AGE_FACTORS_WOMEN,
   ageFactor,
   checkEliteArgs,
-  classLimit,
   type EliteMember,
   groupOfAge,
   latestRegistration,
@@ -19,6 +19,7 @@ import {
   scoreResult,
   standardFor,
   standardTables,
+  type EliteAnswer,
 } from '../convex/lib/elite';
 import { qpoints, type RankedFields, sinclair } from '../convex/lib/leaderboard';
 import {
@@ -31,8 +32,8 @@ import {
   eliteStandards,
   wsoElite,
 } from '../convex/results';
-import type { EliteAnswer } from '../convex/lib/elite';
 import { fakeDb, handlerOf } from './fakeDb';
+import { itemAt } from '../convex/lib/json';
 
 /** A USAW result with a made snatch and clean & jerk, its total their sum. */
 function result(date: string, division: string, bw: number, snatch: number, cj: number, extra: Partial<RankedFields> = {}): RankedFields {
@@ -207,7 +208,7 @@ describe('a list', () => {
     const many = Array.from({ length: 25 }, (_, i) => entry(String(i), `Lifter ${i}`, result('2026-01-01', "Open Women's 63kg", 62, 60 + i, 80)));
     const answer = rankList(many, 'senior', 'sinclair', STANDARDS);
     expect(answer.women).toHaveLength(20);
-    expect(answer.women[0].name).toBe('Lifter 24');
+    expect(itemAt(answer.women, 0).name).toBe('Lifter 24');
   });
 });
 
@@ -217,10 +218,10 @@ describe('every ranking', () => {
     const { lists, rankings } = rankAll(results, { overall: 'sinclair', youth: 'percentA', junior: 'percentA', senior: 'qpoints', masters: 'qmasters' }, STANDARDS);
     expect(Object.keys(rankings.overall)).toEqual(['percentA', 'sinclair', 'qpoints']);
     expect(Object.keys(rankings.masters)).toEqual(['qmasters', 'percentA', 'sinclair']);
-    expect(rankings.senior.percentA?.women[0].score).toBe(100);
+    expect(itemAt(rankings.senior.percentA?.women ?? [], 0).score).toBe(100);
     expect(lists.senior.method).toBe('qpoints');
     expect(lists.senior.women).toEqual(rankings.senior.qpoints?.women);
-    expect(lists.overall.women[0].score).toBe(sinclair(200, 62, 'Women'));
+    expect(itemAt(lists.overall.women, 0).score).toBe(sinclair(200, 62, 'Women'));
   });
 
   it('keys standards by their normalized gender', () => {
@@ -372,8 +373,8 @@ describe('results:wsoElite', () => {
 
   it('scores each list by the method asked for', async () => {
     const answer = await run(actionCtx(), { methods: { masters: 'percentA', overall: 'sinclair' } });
-    expect(answer.lists.masters.women[0].score).toBe(70);
-    expect(answer.lists.overall.women[0].score).toBe(sinclair(200, 62, 'Women'));
+    expect(itemAt(answer.lists.masters.women, 0).score).toBe(70);
+    expect(itemAt(answer.lists.overall.women, 0).score).toBe(sinclair(200, 62, 'Women'));
   });
 
   it('refuses a read without a current pass before reading anything else, and an unknown WSO', async () => {
@@ -453,6 +454,6 @@ describe('results:wsoElite at scale', () => {
     expect(answer.members).toBe(MEMBERS);
     // Every member was read: the strongest is the last one, and the list is full.
     expect(answer.lists.senior.women).toHaveLength(20);
-    expect(answer.lists.senior.women[0].name).toBe(`Lifter ${MEMBERS - 1}`);
+    expect(itemAt(answer.lists.senior.women, 0).name).toBe(`Lifter ${MEMBERS - 1}`);
   });
 });

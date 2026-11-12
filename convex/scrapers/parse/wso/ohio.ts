@@ -1,3 +1,4 @@
+import { itemAt } from '../../../lib/json';
 import { parseCsv } from '../../lib/csv';
 import { columnDLift, liftsRecord, NO_LIFT, type Lift, type WsoRecord } from './common';
 
@@ -40,14 +41,15 @@ function ageSubdivision(raw: string, category: string): string {
   for (const separator of ['-', ' - ']) {
     if (!text.includes(separator)) continue;
     const parts = text.split(separator);
-    if (parts.length === 2) return category === 'Masters' ? `Masters ${parts[0].trim()}` : `U${parts[1].trim()}`;
+    if (parts.length === 2) return category === 'Masters' ? `Masters ${itemAt(parts, 0).trim()}` : `U${itemAt(parts, 1).trim()}`;
   }
   if (text.toLowerCase() === 'total') return 'Total';
   return text;
 }
 
 export function parseOhioTab(csv: string, wso: string, tab: OhioTab): WsoRecord[] {
-  const [category, gender] = tab.split(' ') as [string, 'Men' | 'Women'];
+  const category = tab.slice(0, tab.indexOf(' '));
+  const gender = tab.endsWith(' Women') ? 'Women' : 'Men';
   const records: WsoRecord[] = [];
   const seen = new Set<string>();
   let age: string | null = category === 'Junior' || category === 'Senior' ? category : null;
@@ -70,13 +72,13 @@ export function parseOhioTab(csv: string, wso: string, tab: OhioTab): WsoRecord[
 
     if (i === 0 && lower.includes('lift')) {
       if (lower.includes('and under')) {
-        const digits = lower.split('and under')[0].trim().split(/\s+/).reverse().find((word) => /^\d+$/.test(word));
+        const digits = (lower.split('and under')[0] ?? '').trim().split(/\s+/).reverse().find((word) => /^\d+$/.test(word));
         if (digits) age = `U${digits}`;
       }
       const range = /(\d+)\s*-\s*(\d+)/.exec(first);
       if (range) age = Number(range[1]) >= 35 ? `Masters ${range[1]}` : `U${range[2]}`;
       const kg = /(\d+)\s*kg/.exec(lower);
-      if (kg) weightClass = kg[1];
+      if (kg) weightClass = kg[1] ?? null;
       return;
     }
     if (HEADER_WORDS.has(lower)) return;

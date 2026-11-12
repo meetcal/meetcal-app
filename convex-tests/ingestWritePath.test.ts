@@ -8,6 +8,7 @@ import {
   deleteQualifyingTotalSet,
   renameQualifyingTotalSet,
   replaceQualifyingTotalSet,
+  replaceRecordSet,
   replaceWsoRecordSet,
   setMeetSourceId,
   syncUsamwEvents,
@@ -17,6 +18,7 @@ import {
   upsertMeets,
   upsertStandards,
 } from '../convex/ingest';
+import { itemAt } from '../convex/lib/json';
 
 // The whole write path runs here, history documents, versions, hints and the
 // scheduled refresh included: only the database is fake.
@@ -50,8 +52,8 @@ describe('result identity: event, meet, folded name, age category (#132)', () =>
     expect(rows('lifting_results')).toEqual([expect.objectContaining({ name: 'JOHN  smith', nameKey: 'john smith', total: 210 })]);
     const history = rows('athlete_history');
     expect(history).toHaveLength(1);
-    expect(history[0].nameKey).toBe('john smith');
-    expect(JSON.parse(history[0].json as string)).toHaveLength(1);
+    expect(itemAt(history, 0).nameKey).toBe('john smith');
+    expect(JSON.parse(itemAt(history, 0).json as string)).toHaveLength(1);
     expect(rows('athlete_summary')).toHaveLength(1);
     // Each write bumps the version, leaves its hints and schedules one refresh.
     expect(rows('data_versions')).toEqual([{ table: 'lifting_results', version: 2 }]);
@@ -397,8 +399,8 @@ describe('meet writes', () => {
       type Field = { fieldType: { type: string; value?: unknown }; optional: boolean };
       const args = JSON.parse((syncUsamwEvents as unknown as { exportArgs(): string }).exportArgs()) as { value: { events: Field } };
       const eventFields = (args.value.events.fieldType.value as { value: Record<string, Field> }).value;
-      expect(eventFields.timeZone.optional).toBe(true);
-      expect(eventFields.name.optional).toBe(false);
+      expect(eventFields.timeZone?.optional).toBe(true);
+      expect(eventFields.name?.optional).toBe(false);
     });
 
     it('stores a new event without a zone blank, and keeps or clears a stored zone by where the event is', async () => {
@@ -550,6 +552,44 @@ describe('reference writers tolerate the old gender spelling until the migration
     const counts = await replace(ctx, { wso: 'Florida', rows: classes.map((weightClass) => ({ wso: 'Florida', ageCategory: 'Senior', gender: 'Women', weightClass, snatchRecord: 80 })) });
     expect(counts).toEqual({ inserted: 0, updated: 30, deleted: 0, unchanged: 0 });
     expect(new Set(rows('wso_records').map((r) => r.gender))).toEqual(new Set(['Women']));
+  });
+
+  describe('a stored class spelled in an older way is the same class (#573)', () => {
+    const oldSpelling = (weightClass: string) => ({ wso: 'Florida', ageCategory: 'senior', gender: 'Male', weightClass, snatchRecord: 80 });
+    const sent = (weightClass: string) => ({ wso: 'Florida', ageCategory: 'Senior', gender: 'Men', weightClass, snatchRecord: 80 });
+    const replaceWso = handlerOf<{ wso: string; rows: Row[]; allowShrink?: boolean }, Record<string, number>>(replaceWsoRecordSet);
+    const classes = Array.from({ length: 30 }, (_, i) => String(50 + i));
+
+    it('rewrites a WSO record stored as "senior" in place instead of deleting it and inserting a copy', async () => {
+      const { ctx, rows, docs } = fakeMutationCtx({ wso_records: [oldSpelling('89')] });
+      const storedId = itemAt(docs('wso_records'), 0)._id;
+      expect(rows('wso_records')).toEqual([oldSpelling('89')]);
+      expect(await replaceWso(ctx, { wso: 'Florida', rows: [sent('89')] })).toEqual({ inserted: 0, updated: 1, deleted: 0, unchanged: 0 });
+      expect(rows('wso_records')).toEqual([sent('89')]);
+      expect(docs('wso_records').map((doc) => doc._id)).toEqual([storedId]);
+    });
+
+    it('does not count WSO classes stored as "senior" as dropped, so a full sync of them is not refused', async () => {
+      const { ctx, rows } = fakeMutationCtx({ wso_records: classes.map(oldSpelling) });
+      expect(await replaceWso(ctx, { wso: 'Florida', rows: classes.map(sent) })).toEqual({ inserted: 0, updated: 30, deleted: 0, unchanged: 0 });
+      expect(new Set(rows('wso_records').map((row) => row.ageCategory))).toEqual(new Set(['Senior']));
+    });
+
+    it('rewrites a record of a record type stored as "senior" in place', async () => {
+      const replaceRecords = handlerOf<{ recordType: string; rows: Row[] }, Record<string, unknown>>(replaceRecordSet);
+      const stored = { recordType: 'IWF', ageCategory: 'senior', gender: 'Male', weightClass: '89kg', snatchRecord: 180, cjRecord: 220, totalRecord: 400 };
+      const { ctx, rows, docs } = fakeMutationCtx({ records: [stored] });
+      const storedId = itemAt(docs('records'), 0)._id;
+      expect(await replaceRecords(ctx, { recordType: 'IWF', rows: [{ ...stored, ageCategory: 'Senior', gender: 'Men' }] })).toEqual({ inserted: 0, updated: 1, deleted: 0, unchanged: 0, changes: [] });
+      expect(rows('records')).toEqual([{ ...stored, ageCategory: 'Senior', gender: 'Men' }]);
+      expect(docs('records').map((doc) => doc._id)).toEqual([storedId]);
+    });
+
+    it('keeps one of two stored rows that are one class under two spellings', async () => {
+      const { ctx, rows } = fakeMutationCtx({ wso_records: [oldSpelling('89'), sent('89')] });
+      expect(await replaceWso(ctx, { wso: 'Florida', rows: [sent('89')] })).toEqual({ inserted: 0, updated: 1, deleted: 1, unchanged: 0 });
+      expect(rows('wso_records')).toEqual([sent('89')]);
+    });
   });
 
   it('does not prune an intl rankings group stored as Male', async () => {

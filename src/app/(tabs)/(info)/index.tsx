@@ -17,7 +17,7 @@ import {
 } from "@/config/dev-mock-meet";
 import { useSelectedMeet } from "@/contexts/SelectedMeetContext";
 import { useAppColors } from "@/hooks/useAppColors";
-import { useAuthGuard } from "@/utils/authGuard";
+import { useAuthGuard } from "@/hooks/useAuthGuard";
 import * as Sentry from '@sentry/react-native';
 import { type Href, Stack, useRouter } from "expo-router";
 import { useCallback, useState } from "react";

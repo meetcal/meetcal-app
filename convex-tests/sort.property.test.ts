@@ -3,6 +3,7 @@ import * as fc from 'fast-check';
 import { hostileStringArb } from '@/test-support/arbitraries';
 
 import { compareBytes, compareCollated, sortByWeightClass } from '../convex/lib/sort';
+import { itemAt } from '../convex/lib/json';
 
 /** Weight classes as published, the forms the sort key reads, and junk. */
 const weightClassArb = fc.oneof(
@@ -32,8 +33,8 @@ const sortClasses = (classes: string[]) => sortByWeightClass(classes, (c) => c);
 function order(a: string, b: string): number {
   const ab = sortByWeightClass([{ c: a, i: 0 }, { c: b, i: 1 }], (x) => x.c);
   const ba = sortByWeightClass([{ c: b, i: 0 }, { c: a, i: 1 }], (x) => x.c);
-  const aFirst = ab[0].i === 0;
-  const aFirstReversed = ba[0].i === 1;
+  const aFirst = itemAt(ab, 0).i === 0;
+  const aFirstReversed = itemAt(ba, 0).i === 1;
   if (aFirst && aFirstReversed) return -1;
   if (!aFirst && !aFirstReversed) return 1;
   return 0;
@@ -67,15 +68,15 @@ describe('sortByWeightClass (property)', () => {
         ([items, shuffled]) => {
           const sorted = sortByWeightClass(items, (item) => item.weightClass);
           for (let i = 1; i < sorted.length; i++) {
-            const o = order(sorted[i - 1].weightClass, sorted[i].weightClass);
+            const o = order(itemAt(sorted, i - 1).weightClass, itemAt(sorted, i).weightClass);
             expect(o).toBeLessThanOrEqual(0);
-            if (o === 0) expect(sorted[i - 1].id).toBeLessThan(sorted[i].id);
+            if (o === 0) expect(itemAt(sorted, i - 1).id).toBeLessThan(itemAt(sorted, i).id);
           }
           // Tied classes may be different strings ('87', '87kg'), so compare
           // the sequence of tie classes, not the strings.
           const resorted = sortByWeightClass(shuffled, (item) => item.weightClass);
           for (let i = 0; i < sorted.length; i++) {
-            expect(order(sorted[i].weightClass, resorted[i].weightClass)).toBe(0);
+            expect(order(itemAt(sorted, i).weightClass, itemAt(resorted, i).weightClass)).toBe(0);
           }
         },
       ),
@@ -143,7 +144,7 @@ describe('compareCollated / compareBytes (property)', () => {
             const sorted = [...texts].sort(compare);
             expect([...shuffled].sort(compare)).toEqual(sorted);
             for (let i = 0; i < sorted.length; i++) {
-              for (let j = i + 1; j < sorted.length; j++) expect(compare(sorted[i], sorted[j])).toBeLessThanOrEqual(0);
+              for (let j = i + 1; j < sorted.length; j++) expect(compare(itemAt(sorted, i), itemAt(sorted, j))).toBeLessThanOrEqual(0);
             }
           },
         ),

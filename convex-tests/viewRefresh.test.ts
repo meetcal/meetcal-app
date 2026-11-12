@@ -4,6 +4,7 @@ import { LEGACY_SEARCH_SHARD_SIZES_VIEWS, MEET_INDEX_VIEW, meetKey, natKey, RESU
 import { search } from '../convex/results';
 import { jsonChunks, readViewJsonAnyAge, readViewTextAnyAge, textChunks, writeView } from '../convex/lib/views';
 import { fakeDb, handlerOf } from './fakeDb';
+import { itemAt } from '../convex/lib/json';
 
 const STAMP = [{ table: 'lifting_results', version: 1 }];
 type Stub = (args: Record<string, unknown>) => unknown;
@@ -116,7 +117,7 @@ describe('targeted refresh', () => {
     expect(first).toMatchObject({ hints: 3500, more: 1, deferred: 0 });
     expect(h.hints()).toHaveLength(500);
     expect(h.scheduled.map((s) => s.name)).toEqual(['views:refresh']);
-    expect(await handlerOf(views.refresh)(h.ctx, h.scheduled[0].args)).toMatchObject({ hints: 500, deferred: 0 });
+    expect(await handlerOf(views.refresh)(h.ctx, itemAt(h.scheduled, 0).args)).toMatchObject({ hints: 500, deferred: 0 });
     expect(h.hints()).toEqual([]);
     expect(h.calls.some((c) => c.name === 'rebuildStage')).toBe(false);
     expect(h.scheduled.filter((s) => s.name === 'views:rebuildStage')).toEqual([]);
@@ -170,7 +171,7 @@ describe('targeted refresh', () => {
     // The failed class only; the unread `table|meets` hint is dropped too.
     expect(h.hints()).toEqual([`nat:${nat('Youth')}`]);
     expect(h.called('buildReferenceTables')).toHaveLength(1);
-    expect(h.fake.rows('view_state')[0].refreshLease).toBeUndefined();
+    expect(itemAt(h.fake.rows('view_state'), 0).refreshLease).toBeUndefined();
   });
 
   it('rebuilds hinted meets, drops the views of meets with no row or roster, and keeps the meet index', async () => {
@@ -273,7 +274,7 @@ describe('targeted refresh', () => {
     const ok = harness({ view_hints: h.fake.rows('view_hints'), view_state: h.fake.rows('view_state') }, builders());
     await handlerOf(views.refreshJob)(ok.ctx, {});
     error.mockRestore();
-    expect(ok.fake.rows('view_state')[0].rebuildFailures).toBeUndefined();
+    expect(itemAt(ok.fake.rows('view_state'), 0).rebuildFailures).toBeUndefined();
   });
 
   it('only fails the hourly job when a build failed', async () => {
@@ -317,7 +318,7 @@ describe('full rebuild', () => {
     expect(h.hints()).toEqual([`nat:${nat('Open')}`]);
     expect(h.scheduled).toEqual([{ name: 'views:rebuildStage', args: expect.objectContaining({ stage: 'meets', offset: 0, startedAt: 5 }) }]);
     // Where this stage began, for a restart.
-    expect(h.fake.rows('view_state')[0].rebuildPosition).toEqual({ stage: 'nat', offset: 0, startedAt: 5, again: false });
+    expect(itemAt(h.fake.rows('view_state'), 0).rebuildPosition).toEqual({ stage: 'nat', offset: 0, startedAt: 5, again: false });
   });
 
   it('resumes a stopped rebuild where its last stage began, not from the scan', async () => {
@@ -335,7 +336,7 @@ describe('full rebuild', () => {
     expect(await refresh(h)).toEqual({ restarted: 1 });
     error.mockRestore();
     expect(h.scheduled.find((s) => s.name === 'views:rebuildStage')?.args).toEqual({ stage: 'meets', offset: 40, startedAt: 5, again: true });
-    expect(h.fake.rows('view_state')[0].rebuildRestarts).toBe(1);
+    expect(itemAt(h.fake.rows('view_state'), 0).rebuildRestarts).toBe(1);
   });
 
   it('counts the builds a rebuild left pending', async () => {
@@ -344,7 +345,7 @@ describe('full rebuild', () => {
     const error = jest.spyOn(console, 'error').mockImplementation(() => {});
     await handlerOf(views.rebuildStage)(h.ctx, { stage: 'nat', offset: 0, again: false, startedAt: 5 });
     error.mockRestore();
-    expect(h.fake.rows('view_state')[0].rebuildFailures).toBe(2);
+    expect(itemAt(h.fake.rows('view_state'), 0).rebuildFailures).toBe(2);
     expect(h.fake.rows('view_hints').every((row) => row.retry === true)).toBe(true);
   });
 
@@ -359,7 +360,7 @@ describe('full rebuild', () => {
 
   it('finishes a rebuild scheduled before the sweep existed by consuming the hints it read', async () => {
     const h = harness({ view_hints: [hint('meet', 'Read Then'), hint('meet', 'Written Later')] });
-    const [readThen] = h.fake.docs('view_hints');
+    const readThen = itemAt(h.fake.docs('view_hints'), 0);
     await handlerOf(views.rebuildStage)(h.ctx, { stage: 'sweep', offset: 0, again: false, hints: [{ id: readThen._id, seq: 0 }], versions: [] });
     expect(h.hints()).toEqual(['meet:Written Later']);
     expect(h.scheduled.map((s) => s.name)).toEqual(['views:refresh']);
@@ -393,7 +394,7 @@ describe('full rebuild', () => {
     expect(h.fake.rows('view_chunks')).toEqual([]);
     // Hints from before the rebuild are consumed; later ones stay.
     expect(h.hints()).toEqual([`meet:Written Meanwhile`, `nat:${JSON.stringify(['USAW', 'Failed'])}`]);
-    expect(h.fake.rows('view_state')[0].rebuilding).toBe(false);
+    expect(itemAt(h.fake.rows('view_state'), 0).rebuilding).toBe(false);
   });
 });
 

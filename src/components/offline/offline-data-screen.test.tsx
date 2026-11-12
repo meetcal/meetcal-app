@@ -13,6 +13,7 @@ import OfflineDataScreen from "@/app/schedule-toolbar/offline-data";
 import DownloadRow from "@/components/offline/DownloadRow";
 import { OFFLINE_CACHE_KEYS } from "@/lib/database/offline-cache";
 import { resetOfflineActivityForTests } from "@/lib/database/offline-activity";
+import { itemAt } from "@/test-support/checked-access";
 
 jest.mock("@/contexts/ThemeContext", () => ({ useTheme: () => ({ currentTheme: "light" }) }));
 jest.mock("react-native-safe-area-context", () => ({
@@ -118,14 +119,20 @@ const mockMarkMeetExplicitlyDownloaded = jest.fn(
     if (downloaded) mockDownloadedMeets.add(meet);
   },
 );
-jest.mock("@/lib/database/offline-store", () => ({
+jest.mock("@/lib/database/athlete-history-clears", () => ({
   clearAllAthleteHistory: jest.fn(async () => {}),
+}));
+jest.mock("@/lib/database/meet-data-clears", () => ({
   clearMeetData: (meet: string, options?: unknown) => mockClearMeetData(meet, options),
+  readStorageKeysForMeetClear: jest.fn(async () => []),
+}));
+jest.mock("@/lib/database/meet-downloads-registry", () => ({
   getExplicitlyDownloadedMeetIds: () => mockGetExplicitlyDownloadedMeetIds(),
-  getLastSyncTime: async () => Date.UTC(2099, 5, 1),
   markMeetExplicitlyDownloaded: (meet: string, downloaded: boolean, options?: unknown) =>
     mockMarkMeetExplicitlyDownloaded(meet, downloaded, options),
-  readStorageKeysForMeetClear: jest.fn(async () => []),
+}));
+jest.mock("@/lib/database/offline-store-index", () => ({
+  getLastSyncTime: async () => Date.UTC(2099, 5, 1),
 }));
 
 type AlertButton = { text: string; onPress?: () => unknown };
@@ -159,9 +166,10 @@ function rows(tree: ReactTestRenderer) {
 }
 
 function row(tree: ReactTestRenderer, title: string) {
-  return tree.root.findAll(
-    (node) => node.type === DownloadRow && node.props.title === title,
-  )[0];
+  return itemAt(
+    tree.root.findAll((node) => node.type === DownloadRow && node.props.title === title),
+    0,
+  );
 }
 
 /** What the user can tap: the row's own Pressable, not the prop passed in. */
@@ -170,7 +178,7 @@ function rowPressable(tree: ReactTestRenderer, title: string) {
 }
 
 function pressableIn(node: ReturnType<typeof row>) {
-  const pressable = node.findAll((n) => n !== node && typeof n.props.onPress === "function")[0];
+  const [pressable] = node.findAll((n) => n !== node && typeof n.props.onPress === "function");
   if (!pressable) throw new Error("row has no pressable");
   return pressable;
 }
@@ -228,7 +236,7 @@ describe("OfflineDataScreen", () => {
       return new Set(mockDownloadedMeets);
     });
     mockDownloadedMeets.add("Meet C");
-    mockMeets = [...MEETS.slice(0, 2), { name: "Meet C", dates: { start: "2099-06-25", end: "2099-06-26" } }, MEETS[2]];
+    mockMeets = [...MEETS.slice(0, 2), { name: "Meet C", dates: { start: "2099-06-25", end: "2099-06-26" } }, itemAt(MEETS, 2)];
     await act(async () => {
       tree.update(<OfflineDataScreen />);
     });

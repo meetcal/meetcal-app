@@ -1,3 +1,4 @@
+import { groupOf } from './json';
 import type { Doc } from '../_generated/dataModel';
 import { isoDateOf } from './dates';
 import { meetLocalDate, zoneFormatter, type ZoneFormatters } from './meetData';
@@ -35,7 +36,7 @@ export function nextMeetStatus(stored: MeetStatus | undefined, dated: MeetStatus
  */
 export function paddedDate(date: string): string {
   const match = /^(\d{4})-(\d{1,2})-(\d{1,2})$/.exec(date);
-  return match ? `${match[1]}-${match[2].padStart(2, '0')}-${match[3].padStart(2, '0')}` : date;
+  return match ? `${groupOf(match, 1)}-${groupOf(match, 2).padStart(2, '0')}-${groupOf(match, 3).padStart(2, '0')}` : date;
 }
 
 /**
