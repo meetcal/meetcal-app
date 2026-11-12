@@ -1,5 +1,6 @@
 use super::{
-    format::{display_body_weight, display_weight_class, yes_no},
+    address::{HistoryEntry, query_param, use_page_address},
+    format::{NO_VALUE, display_body_weight, display_weight_class, yes_no},
     loading::{Load, LoadState, load_error, load_query, select_response},
     ui::{
         DataMetric, DataPage, DataStatus, DataTable, EmptyTableRow, FilterSelect, TableHead,
@@ -7,6 +8,7 @@ use super::{
     },
 };
 use crate::utils::api::{queries, query_with};
+use crate::utils::text::capitalize_first;
 use leptos::prelude::*;
 use serde::{Deserialize, Serialize};
 
@@ -23,8 +25,6 @@ struct StatsQuery {
 #[derive(Clone, Deserialize)]
 struct ClubMeets {
     meets: Vec<ClubMeet>,
-    /// Set when the club has more meets than one answer lists: it lists the most recent.
-    #[serde(default)]
     truncated: bool,
 }
 #[derive(Clone, Deserialize)]
@@ -69,8 +69,9 @@ struct AthleteResult {
 
 #[component]
 pub fn ClubDashboard() -> impl IntoView {
-    let (club, set_club) = signal(String::new());
-    let (meet, set_meet) = signal(String::new());
+    let page = use_page_address("/club-dashboard");
+    let club = query_param("club");
+    let meet = query_param("meet");
     let clubs = load_query::<Vec<String>>(queries::CLUBS);
     let club_meets = Load::new(
         move || club.get(),
@@ -112,10 +113,7 @@ pub fn ClubDashboard() -> impl IntoView {
                         values=clubs.to_vec()
                         selected=club
                         wide=true
-                        on_select=move |value: String| {
-                            set_club.set(value);
-                            set_meet.set(String::new());
-                        }
+                        on_select=move |club: String| page.show(&[("club", &club)], HistoryEntry::Push)
                     />
                     {move || if club.with(String::is_empty) { ().into_any() } else {
                         club_meets.with(|state| match state {
@@ -124,7 +122,7 @@ pub fn ClubDashboard() -> impl IntoView {
                             }
                             LoadState::Ready(choices) => {
                                 view! {
-                                    <FilterSelect label="Meet" placeholder="Choose a completed meet" values=choices.meets.clone() selected=meet wide=true on_select=move |value| set_meet.set(value) />
+                                    <FilterSelect label="Meet" placeholder="Choose a completed meet" values=choices.meets.clone() selected=meet wide=true on_select=move |meet: String| page.show(&[("club", &club.get_untracked()), ("meet", &meet)], HistoryEntry::Push) />
                                     {choices.truncated.then(|| view! { <p class="data-status">"Showing this club’s most recent meets."</p> })}
                                 }.into_any()
                             }
@@ -166,14 +164,7 @@ fn club_meet_choices(answer: ClubMeets) -> MeetChoices {
 fn medal(value: &Option<String>) -> String {
     value
         .as_deref()
-        .map(|value| {
-            let mut characters = value.chars();
-            characters
-                .next()
-                .map(|first| first.to_uppercase().collect::<String>() + characters.as_str())
-                .unwrap_or_default()
-        })
-        .unwrap_or_else(|| "—".to_owned())
+        .map_or_else(|| NO_VALUE.to_owned(), capitalize_first)
 }
 
 fn dashboard_metrics(stats: &MeetStats) -> Vec<(&'static str, String)> {
@@ -334,15 +325,13 @@ mod tests {
     }
 
     #[test]
-    fn a_cut_short_answer_says_so_and_an_older_answer_reads_as_whole() {
+    fn a_cut_short_answer_says_so_and_one_that_does_not_say_is_unreadable() {
         let cut: ClubMeets = serde_json::from_str(
             r#"{"meets":[{"meet":"Arnold Open","has_results":true}],"truncated":true}"#,
         )
         .unwrap();
         assert!(club_meet_choices(cut).truncated);
-        let whole: ClubMeets =
-            serde_json::from_str(r#"{"meets":[{"meet":"Arnold Open","has_results":true}]}"#)
-                .unwrap();
-        assert!(!club_meet_choices(whole).truncated);
+        let answer_without_truncated = r#"{"meets":[{"meet":"Arnold Open","has_results":true}]}"#;
+        assert!(serde_json::from_str::<ClubMeets>(answer_without_truncated).is_err());
     }
 }
