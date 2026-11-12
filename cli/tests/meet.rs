@@ -90,6 +90,26 @@ fn names_are_read_without_surrounding_space_and_must_not_be_blank() {
             "--wso",
             " ",
         ],
+        vec![
+            "meetcal",
+            "intl-rankings",
+            "--age",
+            "Senior",
+            "--gender",
+            "m",
+            "--meet",
+            "  ",
+        ],
+        vec![
+            "meetcal",
+            "qualifying-totals",
+            "--age",
+            "Senior",
+            "--gender",
+            "m",
+            "--event",
+            " ",
+        ],
     ] {
         assert!(Cli::try_parse_from(&blank).is_err(), "{blank:?}");
     }

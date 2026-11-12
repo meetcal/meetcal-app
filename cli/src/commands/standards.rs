@@ -4,7 +4,7 @@ use comfy_table::Table;
 use serde::Deserialize;
 
 use crate::utils::backend::{NoArgs, queries, query};
-use crate::utils::filters::{Filter, is_gender, no_match};
+use crate::utils::filters::{Filter, gender_as_matched, is_gender, no_match};
 use crate::utils::output::{self, Report};
 use crate::utils::stats::{Gender, number, weight_class};
 
@@ -65,7 +65,7 @@ pub fn selected(standards: Vec<Standards>, age: &str, gender: Gender) -> Result<
         ];
         let rows: Vec<Vec<&str>> = others
             .iter()
-            .map(|row| vec![row.age_category.as_str(), row.gender.as_str()])
+            .map(|row| vec![row.age_category.as_str(), gender_as_matched(&row.gender)])
             .collect();
         return Err(no_match("standards", &filters, &rows));
     }
