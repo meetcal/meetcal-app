@@ -1,7 +1,10 @@
 use super::{
-    format::yes_no,
+    format::{display_body_weight, display_weight_class, yes_no},
     loading::{Load, LoadState, load_error, load_query, select_response},
-    ui::{DataMetric, DataPage, DataStatus, DataTable, EmptyTableRow, FilterSelect, TableSkeleton},
+    ui::{
+        DataMetric, DataPage, DataStatus, DataTable, EmptyTableRow, FilterSelect, TableHead,
+        TableSkeleton,
+    },
 };
 use crate::utils::api::{queries, query_with};
 use leptos::prelude::*;
@@ -133,7 +136,7 @@ pub fn ClubDashboard() -> impl IntoView {
                 view! { <DataStatus message="Choose a club and completed meet to view its dashboard." /> }.into_any()
             } else {
                 stats.with(|state| match state {
-                    LoadState::Loading => view! { <TableSkeleton columns=10 /> }.into_any(),
+                    LoadState::Loading => view! { <TableSkeleton columns=ATHLETE_HEADERS.len() /> }.into_any(),
                     LoadState::Failed(error) => load_error("club dashboard", error, move || stats.retry()),
                     LoadState::Ready(Some(stats)) => dashboard(stats),
                     LoadState::Ready(None) => view! { <DataStatus message="Choose a club and completed meet to view its dashboard." /> }.into_any(),
@@ -192,9 +195,51 @@ fn dashboard(stats: &MeetStats) -> AnyView {
         .map(|(label, value)| view! { <DataMetric label value /> })
         .collect_view();
     let is_empty = stats.athlete_results.is_empty();
-    let rows = stats.athlete_results.iter().map(|row| view! { <tr><td>{row.name.clone()}</td><td>{row.weight_class.clone()}</td><td>{row.body_weight}</td><td>{row.snatch_best}</td><td>{medal(&row.snatch_medal)}</td><td>{row.cj_best}</td><td>{medal(&row.cj_medal)}</td><td>{row.total}</td><td>{medal(&row.total_medal)}</td><td>{yes_no(row.is_pr)}</td><td>{yes_no(row.perfect_lifts)}</td></tr> }).collect_view();
+    let rows = stats
+        .athlete_results
+        .iter()
+        .map(|row| {
+            let cells = athlete_cells(row)
+                .into_iter()
+                .map(|cell| view! { <td>{cell}</td> })
+                .collect_view();
+            view! { <tr>{cells}</tr> }
+        })
+        .collect_view();
     view! { <div class="data-metric-grid">{metrics}</div>
-    <DataTable><thead><tr><th>"Athlete"</th><th>"Class"</th><th>"Bodyweight"</th><th>"Snatch"</th><th>"Snatch medal"</th><th>"C&J"</th><th>"C&J medal"</th><th>"Total"</th><th>"Total medal"</th><th>"PR"</th><th>"6 for 6"</th></tr></thead><tbody>{is_empty.then(|| view! { <EmptyTableRow columns=11 message="No club results were found for this meet." /> })}{rows}</tbody></DataTable> }.into_any()
+    <DataTable><TableHead headers=&ATHLETE_HEADERS /><tbody>{is_empty.then(|| view! { <EmptyTableRow columns=ATHLETE_HEADERS.len() message="No club results were found for this meet." /> })}{rows}</tbody></DataTable> }.into_any()
+}
+
+const ATHLETE_COLUMNS: usize = 11;
+
+const ATHLETE_HEADERS: [&str; ATHLETE_COLUMNS] = [
+    "Athlete",
+    "Class",
+    "Bodyweight",
+    "Snatch",
+    "Snatch medal",
+    "C&J",
+    "C&J medal",
+    "Total",
+    "Total medal",
+    "PR",
+    "6 for 6",
+];
+
+fn athlete_cells(row: &AthleteResult) -> [String; ATHLETE_COLUMNS] {
+    [
+        row.name.clone(),
+        display_weight_class(&row.weight_class),
+        display_body_weight(row.body_weight),
+        row.snatch_best.to_string(),
+        medal(&row.snatch_medal),
+        row.cj_best.to_string(),
+        medal(&row.cj_medal),
+        row.total.to_string(),
+        medal(&row.total_medal),
+        yes_no(row.is_pr).to_owned(),
+        yes_no(row.perfect_lifts).to_owned(),
+    ]
 }
 
 #[cfg(test)]
@@ -204,6 +249,50 @@ mod tests {
     fn stats_payload_deserializes() {
         let stats: MeetStats = serde_json::from_str(r#"{"total_athletes":1,"gold_medals":1,"silver_medals":0,"bronze_medals":0,"total_prs":1,"perfect_6_for_6":1,"total_weight_lifted":225.0,"snatch_make_rate":100,"cj_make_rate":100,"combined_make_rate":100,"athlete_results":[]}"#).unwrap();
         assert_eq!(stats.total_athletes, 1);
+    }
+
+    fn athlete(weight_class: &str, body_weight: f64) -> AthleteResult {
+        AthleteResult {
+            name: "Test Athlete".to_owned(),
+            weight_class: weight_class.to_owned(),
+            snatch_best: 100.0,
+            cj_best: 125.0,
+            total: 225.0,
+            body_weight,
+            snatch_medal: Some("gold".to_owned()),
+            cj_medal: None,
+            total_medal: Some("silver".to_owned()),
+            is_pr: true,
+            perfect_lifts: false,
+        }
+    }
+
+    #[test]
+    fn a_row_shows_the_rosters_class_with_its_unit_as_the_other_tables_do() {
+        assert_eq!(athlete_cells(&athlete("69", 68.4))[1], "69kg");
+        assert_eq!(athlete_cells(&athlete("+110", 121.0))[1], "110+kg");
+        assert_eq!(athlete_cells(&athlete("69kg", 68.4))[1], "69kg");
+    }
+
+    #[test]
+    fn a_row_shows_a_dash_for_a_body_weight_that_was_not_recorded() {
+        assert_eq!(athlete_cells(&athlete("69", 0.0))[2], "—");
+        assert_eq!(
+            athlete_cells(&athlete("69", 68.4)),
+            [
+                "Test Athlete",
+                "69kg",
+                "68.4",
+                "100",
+                "Gold",
+                "125",
+                "—",
+                "225",
+                "Silver",
+                "Yes",
+                "No"
+            ]
+        );
     }
 
     #[test]
