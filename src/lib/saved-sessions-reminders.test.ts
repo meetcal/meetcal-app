@@ -37,9 +37,7 @@ jest.mock("@/lib/exact-alarms", () => ({
   exactAlarmsFromStatus: jest.fn(() => null),
 }));
 
-jest.mock("@/lib/database/offline-store", () => ({
-  getMeetSchedule: jest.fn(async () => []),
-}));
+jest.mock("@/lib/database/meet-data-reads", () => ({ getMeetSchedule: jest.fn(async () => []) }));
 
 // Wall clock read as UTC: "11:00 AM" on 2099-06-20 is 2099-06-20T11:00Z.
 jest.mock("@/data/meets/config", () => ({

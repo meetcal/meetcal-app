@@ -10,9 +10,13 @@ import {
 const mockGetMeetSchedule = jest.fn<Promise<Schedule>, [string]>();
 const mockGenerations = new Map<string, number>();
 
-jest.mock("@/lib/database/offline-store", () => ({
+jest.mock("@/lib/database/meet-data-reads", () => ({
   getMeetSchedule: (meet: string) => mockGetMeetSchedule(meet),
+}));
+jest.mock("@/lib/database/offline-store-index", () => ({
   getMeetWriteGeneration: (meet: string) => mockGenerations.get(meet) ?? 0,
+}));
+jest.mock("@/lib/database/meet-data-saves", () => ({
   saveMeetSchedule: jest.fn(async () => undefined),
 }));
 jest.mock("@/lib/database/queries", () => ({

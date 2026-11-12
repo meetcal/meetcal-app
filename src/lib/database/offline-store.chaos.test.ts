@@ -2,12 +2,9 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as fc from 'fast-check';
 
 import type { AthleteMeetResult } from '@/data/types/athletes';
-import {
-  getAllCachedLiftingResultsForAthlete,
-  getMeetLiftingResults,
-  saveAthleteHistoryBatch,
-  saveMeetLiftingResults,
-} from '@/lib/database/offline-store';
+import { getAllCachedLiftingResultsForAthlete, saveAthleteHistoryBatch } from '@/lib/database/athlete-history-store';
+import { getMeetLiftingResults } from '@/lib/database/meet-data-reads';
+import { saveMeetLiftingResults } from '@/lib/database/meet-data-saves';
 import { faultPlanArb, installStorageChaos, storageFaultArb, type StorageFault } from '@/test-support/chaos';
 import { bulkyLiftResults, liftResultArb, liftResultsArb } from '@/test-support/lift-result-arbitraries';
 
@@ -20,9 +17,10 @@ import { bulkyLiftResults, liftResultArb, liftResultsArb } from '@/test-support/
  * reports a failure as no cached results).
  */
 
-jest.mock('@/lib/api/meetcal-api', () => ({ getTrustedNow: () => null }));
+jest.mock('@/lib/api/server-clock', () => ({ getTrustedNow: () => null }));
 
-type OfflineStoreModule = typeof import('@/lib/database/offline-store');
+type RestartedStore = Pick<typeof import('@/lib/database/meet-data-reads'), 'getMeetLiftingResults'> &
+  Pick<typeof import('@/lib/database/meet-data-saves'), 'saveMeetLiftingResults'>;
 
 /** The AsyncStorage mock this file's disk lives in, shared with every restarted store. */
 const asyncStorageModule: unknown = jest.requireMock('@react-native-async-storage/async-storage');
@@ -36,13 +34,18 @@ const asyncStorageModule: unknown = jest.requireMock('@react-native-async-storag
  * forever; a real crash takes that chain with it. What happens after a
  * crash (a read, a later rewrite) therefore runs on a restarted store.
  */
-function restartedStore(): OfflineStoreModule {
-  let store: OfflineStoreModule | undefined;
+function restartedStore(): RestartedStore {
+  let store: RestartedStore | undefined;
   jest.isolateModules(() => {
     jest.doMock('@react-native-async-storage/async-storage', () => asyncStorageModule);
-    store = jest.requireActual<OfflineStoreModule>('@/lib/database/offline-store');
+    const reads = jest.requireActual<typeof import('@/lib/database/meet-data-reads')>('@/lib/database/meet-data-reads');
+    const saves = jest.requireActual<typeof import('@/lib/database/meet-data-saves')>('@/lib/database/meet-data-saves');
+    store = {
+      getMeetLiftingResults: reads.getMeetLiftingResults,
+      saveMeetLiftingResults: saves.saveMeetLiftingResults,
+    };
   });
-  if (!store) throw new Error('offline-store did not load');
+  if (!store) throw new Error('the offline store did not load');
   return store;
 }
 

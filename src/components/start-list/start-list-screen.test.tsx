@@ -7,7 +7,7 @@ import { act, create, type ReactTestRenderer } from "react-test-renderer";
 import StartListScreen from "@/components/start-list/StartListScreen";
 import type { PillFilterConfig } from "@/components/ui/filters";
 import type { LiftResult } from "@/data/types/athletes";
-import { getMeetData } from "@/lib/database/offline-store";
+import { getMeetData } from "@/lib/database/meet-data-reads";
 import { getLastYearBestsBatch } from "@/lib/start-list-api";
 import { showToast } from "@/components/ui/Toast";
 
@@ -113,8 +113,8 @@ jest.mock("expo-router", () => ({
 jest.mock("react-native-safe-area-context", () => ({
   useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }),
 }));
-jest.mock("@/lib/database/offline-store", () => ({
-  getMeetData: jest.fn(),
+jest.mock("@/lib/database/meet-data-reads", () => ({ getMeetData: jest.fn() }));
+jest.mock("@/lib/database/meet-data-saves", () => ({
   saveMeetAthletes: jest.fn(async () => {}),
   saveMeetSchedule: jest.fn(async () => {}),
 }));

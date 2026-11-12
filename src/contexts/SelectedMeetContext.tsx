@@ -2,7 +2,8 @@ import React, { createContext, useContext, useState, useEffect, useCallback, use
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { MeetName, Meet } from '@/data/types/meet';
 import { SyncManager } from '@/lib/database/sync-manager';
-import { clearExpiredDownloadedMeets, isMeetExplicitlyDownloaded } from '@/lib/database/offline-store';
+import { clearExpiredDownloadedMeets } from '@/lib/database/downloaded-meet-expiry';
+import { isMeetExplicitlyDownloaded } from '@/lib/database/meet-downloads-registry';
 import { primeScheduleCache } from '@/lib/database/schedule-resource';
 import {
   prefetchCriticalMeetData,

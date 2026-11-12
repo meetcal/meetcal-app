@@ -1,10 +1,6 @@
 import type { AthleteBests } from '@/data/types/athletes';
-import {
-  getAllCachedLiftingResultsForAthlete,
-  getStoredAthleteBestsForNames,
-  isAthleteBestsFresh,
-  type StoredAthleteBests,
-} from '@/lib/database/offline-store';
+import { getAllCachedLiftingResultsForAthlete } from '@/lib/database/athlete-history-store';
+import { getStoredAthleteBestsForNames, isAthleteBestsFresh, type StoredAthleteBests } from '@/lib/database/athlete-bests-store';
 import {
   deriveDownloadedBests,
   lookUpAthleteBests,

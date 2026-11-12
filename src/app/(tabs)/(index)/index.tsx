@@ -43,7 +43,7 @@ import { usePaginatedSchedule } from "@/hooks/usePaginatedSchedule";
 import { useScheduleData } from "@/hooks/useScheduleData";
 import { useStartupScreenReport } from "@/hooks/useStartupScreenReport";
 import { useUpcomingMeets } from "@/hooks/useUpcomingMeets";
-import { initStore } from "@/lib/database/offline-store";
+import { initStore } from "@/lib/database/offline-store-index";
 import { isMaestroE2E } from "@/lib/e2e";
 import { loadFailureCopy } from "@/lib/load-failure";
 import { noMeetState } from "@/lib/schedule-empty-state";

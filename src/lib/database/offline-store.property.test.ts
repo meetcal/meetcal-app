@@ -1,7 +1,8 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as fc from 'fast-check';
 
-import { getMeetLiftingResults, saveMeetLiftingResults } from '@/lib/database/offline-store';
+import { getMeetLiftingResults } from '@/lib/database/meet-data-reads';
+import { saveMeetLiftingResults } from '@/lib/database/meet-data-saves';
 import { corruptedArb, hostileStringArb } from '@/test-support/arbitraries';
 import { bulkyLiftResults, liftResultsArb } from '@/test-support/lift-result-arbitraries';
 
@@ -12,7 +13,7 @@ import { bulkyLiftResults, liftResultsArb } from '@/test-support/lift-result-arb
  * subset, never someone else's rows, never a pako or JSON error.
  */
 
-jest.mock('@/lib/api/meetcal-api', () => ({ getTrustedNow: () => null }));
+jest.mock('@/lib/api/server-clock', () => ({ getTrustedNow: () => null }));
 
 // A multi-chunk case deflates and inflates ~300 KB; leave room for the
 // nightly run's larger case count.

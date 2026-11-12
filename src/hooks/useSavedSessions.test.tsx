@@ -21,7 +21,7 @@ import {
   MeetCalApiError,
   putSavedSession,
 } from "@/lib/api/meetcal-api";
-import { getMeetData } from "@/lib/database/offline-store";
+import { getMeetData } from "@/lib/database/meet-data-reads";
 import { convertToUTC, getMeetConfig } from "@/data/meets/config";
 import { clearSavedWidget, syncSavedWidget } from "@/utils/savedWidget";
 import {
@@ -112,7 +112,7 @@ jest.mock("@/lib/database/queries", () => ({
   fetchSchedule: jest.fn(),
 }));
 
-jest.mock("@/lib/database/offline-store", () => ({
+jest.mock("@/lib/database/meet-data-reads", () => ({
   getMeetData: jest.fn(async () => ({ schedule: null })),
   getMeetSchedule: jest.fn(async () => []),
 }));

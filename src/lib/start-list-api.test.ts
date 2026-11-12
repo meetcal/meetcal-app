@@ -13,17 +13,18 @@ const mockGetAllCachedLiftingResultsForAthlete = jest.fn();
 const mockGetStoredAthleteBestsForNames = jest.fn();
 const mockSaveAthleteBestsBatch = jest.fn();
 
-jest.mock("@/lib/database/offline-store", () => ({
+jest.mock("@/lib/database/athlete-history-store", () => ({
   getAllCachedLiftingResultsForAthlete: (...args: any[]) =>
     mockGetAllCachedLiftingResultsForAthlete(...args),
+}));
+jest.mock("@/lib/database/athlete-bests-store", () => ({
   getStoredAthleteBestsForNames: (...args: any[]) =>
     mockGetStoredAthleteBestsForNames(...args),
   saveAthleteBestsBatch: (...args: any[]) => mockSaveAthleteBestsBatch(...args),
   hasAnyAthleteBest: (...args: any[]) =>
-    jest.requireActual("@/lib/database/offline-store").hasAnyAthleteBest(...args),
-  // The real freshness rule, so the in-memory cache expires on it too.
+    jest.requireActual("@/lib/database/athlete-bests-store").hasAnyAthleteBest(...args),
   isAthleteBestsFresh: (...args: any[]) =>
-    jest.requireActual("@/lib/database/offline-store").isAthleteBestsFresh(...args),
+    jest.requireActual("@/lib/database/athlete-bests-store").isAthleteBestsFresh(...args),
 }));
 
 /** The window lookup answers every requested name with `bests`. */

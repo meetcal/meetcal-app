@@ -1,6 +1,6 @@
 import { isNetworkAvailable } from '@/lib/networkUtils';
 import { prefetchMeetData } from './meet-manager';
-import { markMeetExplicitlyDownloaded } from './offline-store';
+import { markMeetExplicitlyDownloaded } from '@/lib/database/meet-downloads-registry';
 
 /**
  * "Refresh All" for offline downloads, as download-then-swap.

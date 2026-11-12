@@ -33,8 +33,10 @@ jest.mock("@/lib/database/meet-manager", () => ({
   prefetchCriticalMeetData: (...args: [string]) => mockPrefetchCriticalMeetData(...args),
 }));
 
-jest.mock("@/lib/database/offline-store", () => ({
+jest.mock("@/lib/database/downloaded-meet-expiry", () => ({
   clearExpiredDownloadedMeets: () => mockClearExpiredDownloadedMeets(),
+}));
+jest.mock("@/lib/database/meet-downloads-registry", () => ({
   isMeetExplicitlyDownloaded: (meet: string) => mockIsMeetExplicitlyDownloaded(meet),
 }));
 

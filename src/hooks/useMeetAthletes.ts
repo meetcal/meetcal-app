@@ -5,10 +5,7 @@ import { LiftResult } from "@/data/types/athletes";
 import { useMutableResource } from "@/hooks/useMutableResource";
 import { filterSessionAthletes, freshRosterReplacesShown } from "@/lib/athletes";
 import { createMutableResource, defaultIsEqual } from "@/lib/data/mutable-resource";
-import {
-  getSessionAthletesFromMeetCache,
-  saveSessionAthletes,
-} from "@/lib/database/offline-store";
+import { getSessionAthletesFromMeetCache, saveSessionAthletes } from "@/lib/database/session-roster-cache";
 import { fetchAthletesWithSession } from "@/lib/database/queries";
 
 export interface UseMeetAthletesReturn {

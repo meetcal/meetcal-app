@@ -18,7 +18,7 @@
 import type { AthleteBests, AthleteMeetResult } from "@/data/types/athletes";
 import { fetchApiResultsByNames, fetchApiYearBestsByNames } from "@/lib/api/meetcal-api";
 import { maxSuccessfulAttempt, normalizeAthleteName } from "@/lib/athletes";
-import { hasAnyAthleteBest, saveAthleteBestsBatch } from "@/lib/database/offline-store";
+import { hasAnyAthleteBest, saveAthleteBestsBatch } from "@/lib/database/athlete-bests-store";
 import {
   getHistoryCutoffDate,
   toMeetCalendarDate,

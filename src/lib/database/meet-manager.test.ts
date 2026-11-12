@@ -120,12 +120,16 @@ jest.mock("@/lib/api/meetcal-api", () => {
   };
 });
 
-jest.mock("@/lib/database/offline-store", () => ({
+jest.mock("@/lib/database/meet-data-clears", () => ({
   clearImplicitMeetData: (...args: unknown[]) =>
     mockClearImplicitMeetData(...(args as [string | undefined])),
+  clearMeetData: (...args: unknown[]) => mockClearMeetData.apply(null, args),
+}));
+jest.mock("@/lib/database/athlete-history-clears", () => ({
   pruneOrphanedAthleteHistory: (...args: unknown[]) =>
     mockPruneOrphanedAthleteHistory(...(args as [{ keepNames?: readonly string[] } | undefined])),
-  clearMeetData: (...args: unknown[]) => mockClearMeetData.apply(null, args),
+}));
+jest.mock("@/lib/database/meet-data-reads", () => ({
   getMeetData: jest.fn(async () => ({
     schedule: null,
     scheduleKey: "",
@@ -134,24 +138,33 @@ jest.mock("@/lib/database/offline-store", () => ({
     liftingResultsKey: "",
     lastSyncTime: 0,
   })),
+  getMeetLiftingResults: (meet: string) => mockGetMeetLiftingResults(meet),
+}));
+jest.mock("@/lib/database/meet-downloads-registry", () => ({
   isMeetExplicitlyDownloaded: async (meet: string) =>
     mockIsExplicitlyDownloaded(meet),
-  getMeetAthletesSyncedAt: (meet: string) => mockGetMeetAthletesSyncedAt(meet),
   getExplicitlyDownloadedMeetIds: async () => ({
     has: (meet: string) => mockIsExplicitlyDownloaded(meet),
   }),
+}));
+jest.mock("@/lib/database/offline-store-index", () => ({
+  getMeetAthletesSyncedAt: (meet: string) => mockGetMeetAthletesSyncedAt(meet),
+}));
+jest.mock("@/lib/database/athlete-history-store", () => ({
   saveAthleteHistoryBatch: (entries: readonly { name: string; results: unknown[] }[]) =>
     mockSaveAthleteHistoryBatch(entries),
+  findAthleteNamesWithoutHistory: (names: readonly string[]) =>
+    mockFindAthleteNamesWithoutHistory(names),
+}));
+jest.mock("@/lib/database/athlete-bests-store", () => ({
   saveAthleteBestsBatch: jest.fn(async () => undefined),
+}));
+jest.mock("@/lib/database/meet-data-saves", () => ({
   saveMeetAthletes: (...args: unknown[]) =>
     mockSaveMeetAthletes.apply(null, args),
   saveMeetLiftingResults: jest.fn(async () => undefined),
   saveMeetSchedule: (...args: unknown[]) =>
     mockSaveMeetSchedule.apply(null, args),
-  findAthleteNamesWithoutHistory: (names: readonly string[]) =>
-    mockFindAthleteNamesWithoutHistory(names),
-  getMeetLiftingResults: (meet: string) => mockGetMeetLiftingResults(meet),
-  PACKAGE_ETAG_STORAGE_KEY: "@meet_package_etag_v1",
 }));
 
 const mockGetItem = AsyncStorage.getItem as jest.Mock;
@@ -1100,8 +1113,8 @@ describe("cache eviction during prefetch", () => {
 
 describe("package revalidation with ETag", () => {
   const PACKAGE_ETAG_KEY = "@meet_package_etag_v1";
-  const offlineStore = jest.requireMock("@/lib/database/offline-store");
-  const mockGetMeetData = offlineStore.getMeetData as jest.Mock;
+  const meetDataReads = jest.requireMock("@/lib/database/meet-data-reads");
+  const mockGetMeetData = meetDataReads.getMeetData as jest.Mock;
   const mockSetItem = AsyncStorage.setItem as jest.Mock;
   const emptyMeetData = {
     schedule: null,
@@ -1538,7 +1551,7 @@ describe("package revalidation with ETag", () => {
     expect(stampWrites).toHaveLength(0);
     // Owed before the new results are saved: once they are, comparing again
     // finds nothing, so an app killed in between would never fetch them.
-    const { saveMeetLiftingResults } = jest.requireMock("@/lib/database/offline-store");
+    const { saveMeetLiftingResults } = jest.requireMock("@/lib/database/meet-data-saves");
     const firstPending = mockSetItem.mock.calls.findIndex(([key]) => key === "@meet_history_pending_v1");
     expect(firstPending).toBeGreaterThanOrEqual(0);
     expect(JSON.parse(mockSetItem.mock.calls[firstPending][1] as string)["Etag Meet Live"]).toMatchObject({
@@ -1605,7 +1618,7 @@ describe("package revalidation with ETag", () => {
   });
 
   it("stores only the package's real year bests, not its zero rows", async () => {
-    const saveBests = offlineStore.saveAthleteBestsBatch as jest.Mock;
+    const saveBests = jest.requireMock("@/lib/database/athlete-bests-store").saveAthleteBestsBatch as jest.Mock;
     saveBests.mockClear();
     mockFetchApiMeetPackageConditional.mockResolvedValueOnce({
       status: "fresh",

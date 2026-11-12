@@ -56,14 +56,18 @@ const mockClearMeetData = jest.fn(async (_meet: string, _options?: unknown) => {
 const mockClearAllAthleteHistory = jest.fn(async () => {});
 const mockMarkMeetExplicitlyDownloaded = jest.fn(async (..._args: unknown[]) => {});
 const mockClearAllMeetData = jest.fn(async () => ({ failed: 0 }));
-jest.mock("@/lib/database/offline-store", () => ({
+jest.mock("@/lib/database/athlete-history-clears", () => ({
   clearAllAthleteHistory: () => mockClearAllAthleteHistory(),
+}));
+jest.mock("@/lib/database/meet-data-clears", () => ({
   clearMeetData: (meet: string, options?: unknown) => mockClearMeetData(meet, options),
-  getExplicitlyDownloadedMeetIds: () => mockGetExplicitlyDownloadedMeetIds(),
-  getLastSyncTime: async () => 1,
-  markMeetExplicitlyDownloaded: (...args: unknown[]) => mockMarkMeetExplicitlyDownloaded(...args),
   clearAllMeetData: () => mockClearAllMeetData(),
 }));
+jest.mock("@/lib/database/meet-downloads-registry", () => ({
+  getExplicitlyDownloadedMeetIds: () => mockGetExplicitlyDownloadedMeetIds(),
+  markMeetExplicitlyDownloaded: (...args: unknown[]) => mockMarkMeetExplicitlyDownloaded(...args),
+}));
+jest.mock("@/lib/database/offline-store-index", () => ({ getLastSyncTime: async () => 1 }));
 
 type Hook = ReturnType<typeof useOfflineData>;
 let captured: Hook | null = null;
@@ -726,7 +730,7 @@ describe("useOfflineData failure paths release their claim", () => {
 
   it("a meet Remove whose clearMeetData rejects shows Remove Failed", async () => {
     const tree = await mount();
-    const { clearMeetData } = jest.requireMock("@/lib/database/offline-store");
+    const { clearMeetData } = jest.requireMock("@/lib/database/meet-data-clears");
     mockClearMeetData.mockRejectedValueOnce(new Error("SQLITE_BUSY"));
 
     // Wired the way the offline-data screen does it.

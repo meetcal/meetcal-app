@@ -7,7 +7,7 @@ import {
 } from '@/lib/api/meetcal-api';
 import { exactAlarmsFromStatus, readExactAlarmStatus } from '@/lib/exact-alarms';
 import { devLog } from '@/lib/logger';
-import { getMeetSchedule } from '@/lib/database/offline-store';
+import { getMeetSchedule } from '@/lib/database/meet-data-reads';
 import {
   readReminderPreference,
   type RemindersPolicy,

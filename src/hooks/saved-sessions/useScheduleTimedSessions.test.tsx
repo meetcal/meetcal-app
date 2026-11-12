@@ -9,8 +9,10 @@ import type { Schedule } from "@/types/schedule";
 const mockGetMeetSchedule = jest.fn<Promise<Schedule>, [string]>();
 const mockFetchSchedule = jest.fn<Promise<Schedule>, [string]>();
 
-jest.mock("@/lib/database/offline-store", () => ({
+jest.mock("@/lib/database/meet-data-reads", () => ({
   getMeetSchedule: (meet: string) => mockGetMeetSchedule(meet),
+}));
+jest.mock("@/lib/database/meet-data-saves", () => ({
   saveMeetSchedule: jest.fn(async () => undefined),
   markMeetScheduleVerified: jest.fn(async () => false),
 }));

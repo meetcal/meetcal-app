@@ -14,11 +14,8 @@ import {
 import { clearCachedMeetData, clearCacheToast } from "@/lib/database/clear-cache";
 import { MEETS_LIST_CACHE_KEY } from "@/lib/database/meets-list-cache";
 import { BROWSE_CACHE_KEYS } from "@/lib/database/offline-cache";
-import * as offlineStore from "@/lib/database/offline-store";
-import {
-  getExplicitMeetDownloadEntries,
-  markMeetExplicitlyDownloaded,
-} from "@/lib/database/offline-store";
+import * as meetDataClears from "@/lib/database/meet-data-clears";
+import { getExplicitMeetDownloadEntries, markMeetExplicitlyDownloaded } from "@/lib/database/meet-downloads-registry";
 
 // The meet download itself (network + ingest) is meet-manager's; here only
 // what Clear Cache asks of it matters.
@@ -242,7 +239,7 @@ describe("clearCachedMeetData", () => {
   });
 
   it("reports meets it could not clear instead of success", async () => {
-    jest.spyOn(offlineStore, "clearAllMeetData").mockResolvedValueOnce({ failed: 2 });
+    jest.spyOn(meetDataClears, "clearAllMeetData").mockResolvedValueOnce({ failed: 2 });
 
     const outcome = await clearCachedMeetData(deps());
 

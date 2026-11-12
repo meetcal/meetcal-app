@@ -8,7 +8,7 @@ import { useIsOffline } from "@/hooks/useIsOffline";
 import { useRetryOnReconnect } from "@/hooks/useRetryOnReconnect";
 import { calculateAthleteMakeRates } from "@/lib/athlete-make-rates";
 import { findPRIndexes, type PRIndexes } from "@/lib/athlete-prs";
-import { getAllCachedLiftingResultsForAthlete } from "@/lib/database/offline-store";
+import { getAllCachedLiftingResultsForAthlete } from "@/lib/database/athlete-history-store";
 import { fetchAllResultsForName } from "@/lib/database/queries";
 import {
   loadAthleteResults,

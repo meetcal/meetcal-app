@@ -2,12 +2,10 @@ import { clearCachedMeetsList } from '@/lib/database/meet-manager';
 import { claimOfflineBulk, releaseOfflineBulk } from '@/lib/database/offline-activity';
 import { clearBrowseCaches } from '@/lib/database/offline-cache';
 import { refreshOfflineDownloads } from '@/lib/database/offline-refresh';
-import {
-  clearAllAthleteHistory,
-  clearAllMeetData,
-  getExplicitMeetDownloadEntries,
-  hasMeetEnded,
-} from '@/lib/database/offline-store';
+import { clearAllAthleteHistory } from '@/lib/database/athlete-history-clears';
+import { clearAllMeetData } from '@/lib/database/meet-data-clears';
+import { getExplicitMeetDownloadEntries } from '@/lib/database/meet-downloads-registry';
+import { hasMeetEnded } from '@/lib/database/downloaded-meet-expiry';
 import { awaitServerClock, getTrustedNow } from '@/lib/api/meetcal-api';
 import { isNetworkAvailable } from '@/lib/networkUtils';
 

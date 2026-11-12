@@ -6,11 +6,8 @@ import { jsonTransportStub } from '@/lib/api/json-transport-stub';
 import { mapApiAthletes, mapApiLiftingResult, NAMES_QUERY_CHUNK_SIZE } from '@/lib/api/meetcal-api';
 import type { ApiCall, Transport } from '@/lib/api/transport';
 import { prefetchMeetData, warmMeetData } from '@/lib/database/meet-manager';
-import {
-  findAthleteNamesWithoutHistory,
-  getAllCachedLiftingResultsForAthlete,
-  markMeetExplicitlyDownloaded,
-} from '@/lib/database/offline-store';
+import { findAthleteNamesWithoutHistory, getAllCachedLiftingResultsForAthlete } from '@/lib/database/athlete-history-store';
+import { markMeetExplicitlyDownloaded } from '@/lib/database/meet-downloads-registry';
 import { corruptedArb, hostileStringArb } from '@/test-support/arbitraries';
 import {
   faultPlanArb,

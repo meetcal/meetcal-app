@@ -8,11 +8,9 @@ import {
   fetchAthletesWithSession,
   fetchRecentAthleteHistoryForNames,
 } from "@/lib/database/queries";
-import {
-  saveAthleteHistoryBatch,
-  saveMeetAthletes,
-  saveSessionAthletes,
-} from "@/lib/database/offline-store";
+import { saveAthleteHistoryBatch } from "@/lib/database/athlete-history-store";
+import { saveMeetAthletes } from "@/lib/database/meet-data-saves";
+import { saveSessionAthletes } from "@/lib/database/session-roster-cache";
 import { ATTEMPT_HISTORY_YEARS, getHistoryCutoffDate } from "@/utils/dateTime";
 
 // react-native's exports are lazy getters. On a cold transform cache (every CI
@@ -34,13 +32,15 @@ jest.mock("expo-router", () => ({
 jest.mock("react-native-safe-area-context", () => ({
   useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }),
 }));
-jest.mock("@/lib/database/offline-store", () => ({
+jest.mock("@/lib/database/session-roster-cache", () => ({
   getSessionAthletesFromMeetCache: jest.fn(async () => []),
-  getAllCachedLiftingResultsForAthletes: jest.fn(async () => ({})),
-  saveMeetAthletes: jest.fn(async () => {}),
   saveSessionAthletes: jest.fn(async () => {}),
+}));
+jest.mock("@/lib/database/athlete-history-store", () => ({
+  getAllCachedLiftingResultsForAthletes: jest.fn(async () => ({})),
   saveAthleteHistoryBatch: jest.fn(async () => 0),
 }));
+jest.mock("@/lib/database/meet-data-saves", () => ({ saveMeetAthletes: jest.fn(async () => {}) }));
 jest.mock("@/lib/database/queries", () => ({
   fetchAthletesWithSession: jest.fn(),
   fetchRecentAthleteHistoryForNames: jest.fn(async () => []),

@@ -18,14 +18,16 @@ jest.mock("@/lib/networkUtils", () => ({
  */
 const mockStore = new Map<string, { bests: AthleteBests; fetchedAt: number }>();
 
-jest.mock("@/lib/database/offline-store", () => {
-  const actual = jest.requireActual("@/lib/database/offline-store");
+jest.mock("@/lib/database/athlete-history-store", () => ({
+  getAllCachedLiftingResultsForAthlete: jest.fn(async () => []),
+  getAllCachedLiftingResultsForAthletes: jest.fn(async () => ({})),
+}));
+jest.mock("@/lib/database/athlete-bests-store", () => {
+  const actual = jest.requireActual("@/lib/database/athlete-bests-store");
   const { normalizeAthleteName } = jest.requireActual("@/lib/athletes");
   return {
     hasAnyAthleteBest: actual.hasAnyAthleteBest,
     isAthleteBestsFresh: actual.isAthleteBestsFresh,
-    getAllCachedLiftingResultsForAthlete: jest.fn(async () => []),
-    getAllCachedLiftingResultsForAthletes: jest.fn(async () => ({})),
     saveAthleteBestsBatch: jest.fn(async (byName: Record<string, AthleteBests>) => {
       for (const [name, bests] of Object.entries(byName)) {
         mockStore.set(normalizeAthleteName(name), { bests, fetchedAt: Date.now() });

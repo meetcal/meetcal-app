@@ -13,11 +13,8 @@ import {
   generateAthleteNotes,
   sortEstimatesByAttemptsOut,
 } from "@/lib/attempt-estimator";
-import {
-  getAllCachedLiftingResultsForAthletes,
-  getSessionAthletesFromMeetCache,
-  saveSessionAthletes,
-} from "@/lib/database/offline-store";
+import { getAllCachedLiftingResultsForAthletes } from "@/lib/database/athlete-history-store";
+import { getSessionAthletesFromMeetCache, saveSessionAthletes } from "@/lib/database/session-roster-cache";
 import {
   fetchAthletesWithSession,
   fetchRecentAthleteHistoryForNames,

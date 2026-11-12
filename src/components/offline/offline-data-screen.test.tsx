@@ -118,14 +118,20 @@ const mockMarkMeetExplicitlyDownloaded = jest.fn(
     if (downloaded) mockDownloadedMeets.add(meet);
   },
 );
-jest.mock("@/lib/database/offline-store", () => ({
+jest.mock("@/lib/database/athlete-history-clears", () => ({
   clearAllAthleteHistory: jest.fn(async () => {}),
+}));
+jest.mock("@/lib/database/meet-data-clears", () => ({
   clearMeetData: (meet: string, options?: unknown) => mockClearMeetData(meet, options),
+  readStorageKeysForMeetClear: jest.fn(async () => []),
+}));
+jest.mock("@/lib/database/meet-downloads-registry", () => ({
   getExplicitlyDownloadedMeetIds: () => mockGetExplicitlyDownloadedMeetIds(),
-  getLastSyncTime: async () => Date.UTC(2099, 5, 1),
   markMeetExplicitlyDownloaded: (meet: string, downloaded: boolean, options?: unknown) =>
     mockMarkMeetExplicitlyDownloaded(meet, downloaded, options),
-  readStorageKeysForMeetClear: jest.fn(async () => []),
+}));
+jest.mock("@/lib/database/offline-store-index", () => ({
+  getLastSyncTime: async () => Date.UTC(2099, 5, 1),
 }));
 
 type AlertButton = { text: string; onPress?: () => unknown };

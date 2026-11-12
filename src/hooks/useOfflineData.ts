@@ -29,13 +29,10 @@ import {
   getOfflineCacheSyncedAt,
   OFFLINE_CACHE_KEYS,
 } from "@/lib/database/offline-cache";
-import {
-  clearAllAthleteHistory,
-  clearAllMeetData,
-  getExplicitlyDownloadedMeetIds,
-  getLastSyncTime,
-  markMeetExplicitlyDownloaded,
-} from "@/lib/database/offline-store";
+import { clearAllAthleteHistory } from "@/lib/database/athlete-history-clears";
+import { clearAllMeetData } from "@/lib/database/meet-data-clears";
+import { getExplicitlyDownloadedMeetIds, markMeetExplicitlyDownloaded } from "@/lib/database/meet-downloads-registry";
+import { getLastSyncTime } from "@/lib/database/offline-store-index";
 import {
   getAnywhereOnEarthDate,
 } from "@/utils/dateTime";

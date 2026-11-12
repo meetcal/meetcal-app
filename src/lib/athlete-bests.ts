@@ -11,12 +11,8 @@
 import { AthleteBests, AthleteMeetResult } from "@/data/types/athletes";
 import { MeetName } from "@/data/types/meet";
 import { normalizeAthleteName } from "@/lib/athletes";
-import {
-  getAllCachedLiftingResultsForAthletes,
-  getStoredAthleteBestsForNames,
-  hasAnyAthleteBest,
-  type StoredAthleteBests,
-} from "@/lib/database/offline-store";
+import { getAllCachedLiftingResultsForAthletes } from "@/lib/database/athlete-history-store";
+import { getStoredAthleteBestsForNames, hasAnyAthleteBest, type StoredAthleteBests } from "@/lib/database/athlete-bests-store";
 import { isNetworkAvailable } from "@/lib/networkUtils";
 import {
   deriveDownloadedBests,

@@ -17,8 +17,10 @@ import { MEETS_LIST_CACHE_KEY } from "@/lib/database/meets-list-cache";
 
 const mockGetMeetSchedule = jest.fn<Promise<Schedule>, [string]>(async () => []);
 
-jest.mock("@/lib/database/offline-store", () => ({
+jest.mock("@/lib/database/meet-data-reads", () => ({
   getMeetSchedule: (meet: string) => mockGetMeetSchedule(meet),
+}));
+jest.mock("@/lib/database/meet-data-saves", () => ({
   saveMeetSchedule: jest.fn(async () => undefined),
 }));
 
