@@ -732,3 +732,31 @@ test("a WSO elite score the answer lacks says so, and a score the page does not 
   await expect(page.getByText("This score isn’t available for this list right now.")).toBeVisible();
   await expect(page.getByRole("heading", { name: "Overall — % of A standard" })).toBeVisible();
 });
+
+test("Show More announces the row count, and its last click moves focus to the first row it added", async ({ page }) => {
+  await mockSubscribedUser(page);
+  const rankings = Array.from({ length: 150 }, (_, index) => ({
+    meet: "World Championships",
+    ranking: index + 1,
+    name: `Athlete ${String(index + 1).padStart(3, "0")}`,
+    weight_class: "88kg",
+    total: 400 - index,
+    percent_a: 100,
+    gender: "Men",
+    age_category: "Senior",
+  }));
+  await routeQuery(page, "reference:intlRankings", (route) => route.fulfill(textAnswer(rankings)));
+
+  await page.goto("/rankings");
+  const rows = page.locator("table.data-table tbody tr");
+  await expect(rows).toHaveCount(100);
+  await expect(page.getByRole("status").filter({ hasText: "100 of 150 rows" })).toBeVisible();
+
+  const showMore = page.getByRole("button", { name: "Show More" });
+  await showMore.focus();
+  await page.keyboard.press("Enter");
+  await expect(rows).toHaveCount(150);
+  await expect(showMore).toHaveCount(0);
+  await expect(rows.nth(100)).toBeFocused();
+  await expect(rows.nth(100)).toContainText("Athlete 101");
+});

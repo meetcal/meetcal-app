@@ -2,6 +2,7 @@ use super::catalog::DataPageLink;
 use super::filters::SortOrder;
 use super::models::RecordHolder;
 use leptos::prelude::*;
+use wasm_bindgen::JsCast;
 
 #[component]
 pub(crate) fn DataPage(
@@ -189,6 +190,22 @@ pub(crate) fn rows_shown_for(order: &[usize], raised: Option<&(Vec<usize>, usize
     limit.min(order.len())
 }
 
+fn focus_row(body: NodeRef<leptos::html::Tbody>, index: usize) {
+    let Some(row) = body
+        .get_untracked()
+        .and_then(|body| {
+            body.query_selector(&format!("tr:nth-child({})", index + 1))
+                .ok()
+                .flatten()
+        })
+        .and_then(|row| row.dyn_into::<web_sys::HtmlElement>().ok())
+    else {
+        return;
+    };
+    let _ = row.set_attribute("tabindex", "-1");
+    let _ = row.focus();
+}
+
 #[component]
 pub(crate) fn RowsTable<R>(
     headers: &'static [&'static str],
@@ -208,17 +225,22 @@ where
         order.with(|order| order.iter().take(shown.get()).copied().collect::<Vec<_>>())
     });
     let total = Memo::new(move |_| order.with(Vec::len));
+    let body = NodeRef::<leptos::html::Tbody>::new();
     let show_more = move |_| {
+        let first_new_row = shown.get_untracked();
         raised.set(Some((
             order.get_untracked(),
-            shown.get_untracked() + ROWS_ADDED_BY_SHOW_MORE,
+            first_new_row + ROWS_ADDED_BY_SHOW_MORE,
         )));
+        if shown.get_untracked() >= total.get_untracked() {
+            request_animation_frame(move || focus_row(body, first_new_row));
+        }
     };
 
     view! {
         <DataTable>
             <TableHead headers />
-            <tbody>
+            <tbody node_ref=body>
                 <For
                     each=move || visible.get()
                     key=|index| *index
@@ -229,7 +251,7 @@ where
         </DataTable>
         {move || (shown.get() < total.get()).then(|| view! {
             <div class="data-more">
-                <p class="data-status">{format!("{} of {} rows", shown.get(), total.get())}</p>
+                <p class="data-status" role="status">{format!("{} of {} rows", shown.get(), total.get())}</p>
                 <button class="data-more-button" type="button" on:click=show_more>"Show More"</button>
             </div>
         })}
