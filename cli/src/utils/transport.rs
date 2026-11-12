@@ -1,12 +1,12 @@
-use std::collections::{HashMap, HashSet};
-use std::sync::{Arc, Mutex, OnceLock};
+use std::collections::HashSet;
+use std::sync::{Mutex, OnceLock};
 use std::time::Duration;
 
 use anyhow::{Context, Result, anyhow};
 use reqwest::{Client, Request, Response, StatusCode, header::RETRY_AFTER};
-use tokio::sync::{Mutex as AsyncMutex, OwnedMutexGuard};
 
 use crate::utils::backend::USER_AGENT;
+use crate::utils::connections::{CountConnections, wait_for_connection};
 use crate::utils::retry::{
     Failure, next_failure_retry_delay, next_retry_delay, parse_retry_after_secs,
 };
@@ -34,6 +34,7 @@ pub(crate) fn client() -> Result<&'static Client> {
     let client = Client::builder()
         .user_agent(USER_AGENT)
         .connect_timeout(CONNECT_TIMEOUT)
+        .connector_layer(CountConnections)
         .timeout(REQUEST_CAP)
         .build()
         .context("Failed to build the HTTP client")?;
@@ -77,28 +78,6 @@ fn mark_unreachable(origin: &str) {
     }
 }
 
-type ConnectionGate = Arc<AsyncMutex<bool>>;
-
-fn connection_gate(origin: &str) -> ConnectionGate {
-    static GATES: OnceLock<Mutex<HashMap<String, ConnectionGate>>> = OnceLock::new();
-    let mut gates = GATES
-        .get_or_init(Mutex::default)
-        .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner());
-    Arc::clone(gates.entry(origin.to_string()).or_default())
-}
-
-async fn first_on_connection(origin: &str) -> Option<OwnedMutexGuard<bool>> {
-    let guard = connection_gate(origin).lock_owned().await;
-    (!*guard).then_some(guard)
-}
-
-fn connected(first: Option<OwnedMutexGuard<bool>>) {
-    if let Some(mut guard) = first {
-        *guard = true;
-    }
-}
-
 enum Attempt {
     Answered(Vec<u8>),
     Throttled(Duration),
@@ -116,14 +95,16 @@ pub(crate) async fn send(request: Request, function: &str, sending: Sending) -> 
         let attempt = request
             .try_clone()
             .with_context(|| format!("Failed to prepare request for MeetCal query {function}"))?;
-        let mut first = first_on_connection(&origin).await;
+        let mut first = wait_for_connection(&origin).await;
         let answered =
             tokio::time::timeout(sending.answer_within, client()?.execute(attempt)).await;
         let outcome = match answered {
             Err(_) => Attempt::Failed(Failure::NoAnswer, None),
             Ok(Err(error)) => Attempt::Failed(failure_of(&error), Some(error)),
             Ok(Ok(response)) => {
-                connected(first.take());
+                if let Some(first) = first.take() {
+                    first.connected();
+                }
                 answer(response, function, sending, retries_done).await?
             }
         };
@@ -248,7 +229,8 @@ pub(crate) fn rate_limited_message(retry_after_secs: Option<u64>) -> String {
 mod tests {
     use super::*;
     use std::io::{BufRead, BufReader, Write};
-    use std::net::TcpListener;
+    use std::net::{TcpListener, TcpStream};
+    use std::sync::Arc;
     use std::time::Instant;
 
     #[test]
@@ -405,25 +387,62 @@ mod tests {
         assert!(started.elapsed() < Duration::from_millis(500));
     }
 
-    #[tokio::test]
-    async fn concurrent_first_reads_wait_for_the_first_answer() {
-        let (base_url, served) = serve(vec![Script::Whole, Script::Whole, Script::Whole]);
-        let origin = reqwest::Url::parse(&base_url)
-            .unwrap()
-            .origin()
-            .ascii_serialization();
-        let first = first_on_connection(&origin).await;
-        assert!(first.is_some());
-        let waiting = tokio::spawn({
-            let base_url = base_url.clone();
-            async move { send(request(&base_url), "test:second", QUICK).await }
+    fn read_request(stream: &TcpStream) {
+        let mut reader = BufReader::new(stream.try_clone().unwrap());
+        let mut length = 0;
+        loop {
+            let mut line = String::new();
+            if reader.read_line(&mut line).unwrap_or(0) == 0 || line == "\r\n" {
+                break;
+            }
+            if let Some(value) = line.to_ascii_lowercase().strip_prefix("content-length:") {
+                length = value.trim().parse().unwrap_or(0);
+            }
+        }
+        let mut body = vec![0; length];
+        let _ = std::io::Read::read_exact(&mut reader, &mut body);
+    }
+
+    fn serve_side_by_side(first_answer_after: Duration) -> String {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let base_url = format!("http://{}", listener.local_addr().unwrap());
+        std::thread::spawn(move || {
+            for (index, stream) in listener.incoming().enumerate() {
+                let Ok(mut stream) = stream else { break };
+                std::thread::spawn(move || {
+                    read_request(&stream);
+                    if index == 0 {
+                        std::thread::sleep(first_answer_after);
+                    }
+                    let _ = stream.write_all(
+                        format!(
+                            "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{BODY}",
+                            BODY.len()
+                        )
+                        .as_bytes(),
+                    );
+                });
+            }
         });
-        tokio::time::sleep(Duration::from_millis(100)).await;
-        assert_eq!(*served.lock().unwrap(), 0);
-        connected(first);
-        assert_eq!(waiting.await.unwrap().unwrap(), BODY.as_bytes());
-        assert!(first_on_connection(&origin).await.is_none());
-        send(request(&base_url), "test:third", QUICK).await.unwrap();
-        assert_eq!(*served.lock().unwrap(), 2);
+        base_url
+    }
+
+    #[tokio::test]
+    async fn a_read_beside_the_first_waits_for_its_connection_not_its_answer() {
+        let slow = Duration::from_millis(1500);
+        let base_url = serve_side_by_side(slow);
+        let started = Instant::now();
+        let first = tokio::spawn({
+            let base_url = base_url.clone();
+            async move { send(request(&base_url), "test:first", Sending::READ).await }
+        });
+        tokio::time::sleep(Duration::from_millis(50)).await;
+        send(request(&base_url), "test:beside", Sending::READ)
+            .await
+            .unwrap();
+        let beside_took = started.elapsed();
+        assert!(beside_took < slow, "{beside_took:?}");
+        assert!(!first.is_finished());
+        assert_eq!(first.await.unwrap().unwrap(), BODY.as_bytes());
     }
 }

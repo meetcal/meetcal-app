@@ -3,6 +3,7 @@ pub mod athletes;
 pub mod backend;
 pub mod bests;
 pub mod cache;
+pub mod connections;
 pub mod credentials;
 pub mod device_login;
 pub mod dirs;
