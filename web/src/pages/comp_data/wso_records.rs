@@ -1,7 +1,5 @@
 use super::{
-    filters::{
-        compare_weight_classes, filter_options, matches_filter, sort_orders, weight_class_options,
-    },
+    filters::{compare_weight_classes, filter_options, matches_filter, weight_class_options},
     format::reference_value,
     loading::{Load, load_query, select_response, table_response},
     models::RecordHolder,
@@ -32,12 +30,12 @@ struct WsoRecord {
     total_by: Option<RecordHolder>,
 }
 
-sort_orders!(WsoRecordSort {
-    TotalDesc => ("total_desc", "Total: high to low"),
-    SnatchDesc => ("snatch_desc", "Snatch: high to low"),
-    CjDesc => ("cj_desc", "Clean & jerk: high to low"),
-    WeightAsc => ("weight_asc", "Weight class"),
-});
+const SORT_OPTIONS: &[(&str, &str)] = &[
+    ("total_desc", "Total: high to low"),
+    ("snatch_desc", "Snatch: high to low"),
+    ("cj_desc", "Clean & jerk: high to low"),
+    ("weight_asc", "Weight class"),
+];
 
 #[component]
 pub fn WsoRecords() -> impl IntoView {
@@ -45,7 +43,7 @@ pub fn WsoRecords() -> impl IntoView {
     let (gender, set_gender) = signal(String::new());
     let (age, set_age) = signal(String::new());
     let (weight_class, set_weight_class) = signal(String::new());
-    let (sort, set_sort) = signal(WsoRecordSort::TotalDesc);
+    let (sort, set_sort) = signal("total_desc".to_owned());
 
     let organizations = load_query::<Vec<String>>(queries::WSO_LIST);
     let records = Load::new(
@@ -100,11 +98,11 @@ pub fn WsoRecords() -> impl IntoView {
                             && matches_filter(&row.age_category, &selected_age)
                             && matches_filter(&row.weight_class, &selected_weight)
                     }).collect::<Vec<_>>();
-                    match sort.get() {
-                        WsoRecordSort::SnatchDesc => filtered.sort_by(|left, right| right.snatch_record.unwrap_or_default().total_cmp(&left.snatch_record.unwrap_or_default())),
-                        WsoRecordSort::CjDesc => filtered.sort_by(|left, right| right.cj_record.unwrap_or_default().total_cmp(&left.cj_record.unwrap_or_default())),
-                        WsoRecordSort::WeightAsc => filtered.sort_by(|left, right| compare_weight_classes(&left.weight_class, &right.weight_class)),
-                        WsoRecordSort::TotalDesc => filtered.sort_by(|left, right| right.total_record.unwrap_or_default().total_cmp(&left.total_record.unwrap_or_default())),
+                    match sort.get().as_str() {
+                        "snatch_desc" => filtered.sort_by(|left, right| right.snatch_record.unwrap_or_default().total_cmp(&left.snatch_record.unwrap_or_default())),
+                        "cj_desc" => filtered.sort_by(|left, right| right.cj_record.unwrap_or_default().total_cmp(&left.cj_record.unwrap_or_default())),
+                        "weight_asc" => filtered.sort_by(|left, right| compare_weight_classes(&left.weight_class, &right.weight_class)),
+                        _ => filtered.sort_by(|left, right| right.total_record.unwrap_or_default().total_cmp(&left.total_record.unwrap_or_default())),
                     }
                     let is_empty = filtered.is_empty();
                     let rows = filtered.into_iter().map(|row| view! {
@@ -122,7 +120,7 @@ pub fn WsoRecords() -> impl IntoView {
                             <FilterSelect label="Gender" placeholder="All genders" values=genders selected=gender on_select=move |value| set_gender.set(value) />
                             <FilterSelect label="Age" placeholder="All ages" values=ages selected=age on_select=move |value| set_age.set(value) />
                             <FilterSelect label="Weight class" placeholder="All classes" values=weights selected=weight_class on_select=move |value| set_weight_class.set(value) />
-                            <SortSelect sort set_sort />
+                            <SortSelect options=SORT_OPTIONS sort set_sort />
                         </div>
                         <DataTable>
                             <thead><tr><th>"Gender"</th><th>"Age"</th><th>"Weight class"</th><th>"Snatch"</th><th>"Clean & jerk"</th><th>"Total"</th></tr></thead>
@@ -175,11 +173,5 @@ mod tests {
             Some("March 2, 2024 · Raleigh, NC")
         );
         assert_eq!(record.cj_by, None);
-    }
-
-    #[test]
-    fn every_sort_order_in_the_menu_is_one_the_table_sorts_by() {
-        crate::pages::comp_data::filters::assert_each_sort_order_parses_to_itself::<WsoRecordSort>(
-        );
     }
 }

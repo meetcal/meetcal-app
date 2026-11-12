@@ -2,7 +2,13 @@
 //! `meetcal login` and `logout` against a local HTTP server that plays Convex's device login
 //! (`convex/deviceLogin.ts`). Nothing here calls the live API.
 
-mod support;
+mod support {
+    pub(crate) mod bodies;
+    pub(crate) mod failures;
+    pub(crate) mod headers;
+    pub(crate) mod retries;
+    pub(crate) mod server;
+}
 
 use std::path::PathBuf;
 
@@ -11,10 +17,11 @@ use meetcal::commands::login::{login, logout};
 use meetcal::parser::Cli;
 use meetcal::utils::credentials::{self, Credentials};
 use serde_json::json;
-use support::{
-    FUNCTION_FAILED, OK, RATE_LIMITED, UNAVAILABLE, authorizations, reply, request_bodies,
-    request_paths, serve,
-};
+use support::bodies::request_bodies;
+use support::failures::FUNCTION_FAILED;
+use support::headers::{authorizations, request_paths};
+use support::retries::{RATE_LIMITED, UNAVAILABLE};
+use support::server::{OK, reply, serve};
 
 const FAR_FUTURE: i64 = 4_102_444_800_000;
 const DEVICE: &str = "meetcal CLI on test-host (Linux)";

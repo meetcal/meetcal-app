@@ -7,7 +7,7 @@
 //! code, so Clerk's sign-in, a reload and the back button all return to it.
 
 use crate::auth::{AuthContext, AuthState};
-use crate::components::signed_in::SignedInOnly;
+use crate::components::subscription_gate::ClerkSignIn;
 use crate::utils::api::{self, DeviceLoginOutcome, PendingDeviceLogin};
 use leptos::prelude::*;
 use leptos::task::spawn_local;
@@ -118,17 +118,39 @@ pub fn LinkPage() -> impl IntoView {
     view! {
         <div class="access-page">
             <section class="access-card">
-                <SignedInOnly
-                    eyebrow="MeetCal CLI"
-                    sign_in_prompt=|| view! { "Sign in to your MeetCal account to approve " <code>"meetcal login"</code> "." }
-                >
+            {move || match auth.state.get() {
+                AuthState::Loading => view! {
+                    <div class="access-status" role="status" aria-live="polite">
+                        <span class="access-spinner" aria-hidden="true"></span>
+                        <h1>"Checking your sign-in"</h1>
+                    </div>
+                }.into_any(),
+                AuthState::SignedOut => view! {
+                    <div class="access-heading">
+                        <p class="data-eyebrow">"MeetCal CLI"</p>
+                        <h1>"Sign in to continue"</h1>
+                        <p>"Sign in to your MeetCal account to approve " <code>"meetcal login"</code> "."</p>
+                    </div>
+                    <ClerkSignIn />
+                }.into_any(),
+                AuthState::ConfigurationError(message) => view! {
+                    <div class="access-status access-error" role="alert">
+                        <h1>"Sign-in isn’t available"</h1>
+                        <p>{message}</p>
+                        <button class="access-button" type="button" on:click=move |_| reload()>
+                            "Try again"
+                        </button>
+                    </div>
+                }.into_any(),
+                AuthState::SignedIn(_) => view! {
                     {move || match code.get() {
                         Some(code) => view! { <ApproveCode code /> }.into_any(),
                         None => view! {
                             <CodeEntry initial=format_user_code(&typed.get_untracked()) />
                         }.into_any(),
                     }}
-                </SignedInOnly>
+                }.into_any(),
+            }}
             </section>
             // Recovery, in every signed-in state: a login approved by mistake
             // (or by a phished tap) is ended here.
@@ -206,6 +228,12 @@ fn RevokeCliLogins() -> impl IntoView {
                 }.into_any(),
             }}
         </section>
+    }
+}
+
+fn reload() {
+    if let Some(window) = web_sys::window() {
+        let _ = window.location().reload();
     }
 }
 

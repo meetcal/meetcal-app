@@ -18,7 +18,7 @@ rustup toolchain install "${rust_toolchain}" --profile minimal
 rustup default "${rust_toolchain}"
 
 rustup target add wasm32-unknown-unknown
-cargo install trunk --version 0.21.14 --locked
+cargo install trunk --version 0.22.0 --locked
 
 posthog_api_key="${POSTHOG_API_KEY:-${EXPO_PUBLIC_POSTHOG_API_KEY:-}}"
 posthog_host="${POSTHOG_HOST:-${EXPO_PUBLIC_POSTHOG_HOST:-https://us.i.posthog.com}}"

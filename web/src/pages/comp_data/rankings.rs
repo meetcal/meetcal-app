@@ -1,7 +1,7 @@
 use super::{
     filters::{
         ClassificationFilters, ClassifiedRow, SortDirection, classified_rows, filter_options,
-        sort_numeric, sort_orders, weight_class_options,
+        sort_numeric, weight_class_options,
     },
     format::display_weight_class,
     loading::{load_rows, table_response},
@@ -45,14 +45,14 @@ impl ClassifiedRow for Ranking {
     }
 }
 
-sort_orders!(RankingSort {
-    RankAsc => ("rank_asc", "Rank: low to high"),
-    RankDesc => ("rank_desc", "Rank: high to low"),
-    PercentADesc => ("percent_a_desc", "Percent A: high to low"),
-    PercentAAsc => ("percent_a_asc", "Percent A: low to high"),
-    TotalDesc => ("total_desc", "Total: high to low"),
-    TotalAsc => ("total_asc", "Total: low to high"),
-});
+const SORT_OPTIONS: &[(&str, &str)] = &[
+    ("rank_asc", "Rank: low to high"),
+    ("rank_desc", "Rank: high to low"),
+    ("percent_a_desc", "Percent A: high to low"),
+    ("percent_a_asc", "Percent A: low to high"),
+    ("total_desc", "Total: high to low"),
+    ("total_asc", "Total: low to high"),
+];
 
 #[component]
 pub fn Rankings() -> impl IntoView {
@@ -60,7 +60,7 @@ pub fn Rankings() -> impl IntoView {
     let (gender, set_gender) = signal(String::new());
     let (age, set_age) = signal(String::new());
     let (weight_class, set_weight_class) = signal(String::new());
-    let (sort, set_sort) = signal(RankingSort::RankAsc);
+    let (sort, set_sort) = signal("rank_asc".to_string());
     let rankings = load_rows(queries::INTL_RANKINGS, Ranking::shown);
 
     view! {
@@ -82,13 +82,13 @@ pub fn Rankings() -> impl IntoView {
                     selected_meet.is_empty() || ranking.meet == selected_meet
                 });
 
-                match sort.get() {
-                    RankingSort::RankDesc => sort_numeric(&mut filtered_rankings, |row| row.ranking, SortDirection::Descending),
-                    RankingSort::PercentADesc => sort_numeric(&mut filtered_rankings, |row| row.percent_a, SortDirection::Descending),
-                    RankingSort::PercentAAsc => sort_numeric(&mut filtered_rankings, |row| row.percent_a, SortDirection::Ascending),
-                    RankingSort::TotalDesc => sort_numeric(&mut filtered_rankings, |row| row.total, SortDirection::Descending),
-                    RankingSort::TotalAsc => sort_numeric(&mut filtered_rankings, |row| row.total, SortDirection::Ascending),
-                    RankingSort::RankAsc => sort_numeric(&mut filtered_rankings, |row| row.ranking, SortDirection::Ascending),
+                match sort.get().as_str() {
+                    "rank_desc" => sort_numeric(&mut filtered_rankings, |row| row.ranking, SortDirection::Descending),
+                    "percent_a_desc" => sort_numeric(&mut filtered_rankings, |row| row.percent_a, SortDirection::Descending),
+                    "percent_a_asc" => sort_numeric(&mut filtered_rankings, |row| row.percent_a, SortDirection::Ascending),
+                    "total_desc" => sort_numeric(&mut filtered_rankings, |row| row.total, SortDirection::Descending),
+                    "total_asc" => sort_numeric(&mut filtered_rankings, |row| row.total, SortDirection::Ascending),
+                    _ => sort_numeric(&mut filtered_rankings, |row| row.ranking, SortDirection::Ascending),
                 }
                 let is_empty = filtered_rankings.is_empty();
                 let rows = filtered_rankings
@@ -113,7 +113,7 @@ pub fn Rankings() -> impl IntoView {
                         <FilterSelect label="Gender" placeholder="All genders" values=genders selected=gender on_select=move |value| set_gender.set(value) />
                         <FilterSelect label="Age" placeholder="All ages" values=ages selected=age on_select=move |value| set_age.set(value) />
                         <FilterSelect label="Weight class" placeholder="All classes" values=weights selected=weight_class on_select=move |value| set_weight_class.set(value) />
-                        <SortSelect sort set_sort />
+                        <SortSelect options=SORT_OPTIONS sort set_sort />
                     </div>
                     <DataTable>
                         <thead>
@@ -153,10 +153,5 @@ mod tests {
 
         assert_eq!(ranking.ranking, 2.0);
         assert_eq!(ranking.percent_a, 97.4);
-    }
-
-    #[test]
-    fn every_sort_order_in_the_menu_is_one_the_table_sorts_by() {
-        crate::pages::comp_data::filters::assert_each_sort_order_parses_to_itself::<RankingSort>();
     }
 }

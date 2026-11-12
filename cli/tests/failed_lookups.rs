@@ -1,10 +1,14 @@
 #![cfg(test)]
-mod support;
+mod support {
+    pub(crate) mod failures;
+    pub(crate) mod server;
+}
 
 use std::process::{Command, Output};
 
 use serde_json::json;
-use support::{FUNCTION_FAILED, OK, Reply, reply, serve};
+use support::failures::FUNCTION_FAILED;
+use support::server::{OK, Reply, reply, serve};
 
 fn text(rows: serde_json::Value) -> Reply {
     let body = json!({ "status": "success", "value": { "json": rows.to_string() } });
