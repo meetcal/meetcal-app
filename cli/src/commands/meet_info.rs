@@ -35,15 +35,15 @@ pub async fn run(args: MeetInfoArgs) -> Result<()> {
     Ok(())
 }
 
-pub fn report(meet: &Meet) -> Report {
+pub(crate) fn report(meet: &Meet) -> Report {
     Report::new().table_with_data("meet", render(meet), data(meet))
 }
 
-pub fn is_unknown_meet(error: &anyhow::Error) -> bool {
+pub(crate) fn is_unknown_meet(error: &anyhow::Error) -> bool {
     FunctionError::status_of(error) == Some(404)
 }
 
-pub fn render(meet: &Meet) -> Table {
+pub(crate) fn render(meet: &Meet) -> Table {
     let mut table = Table::new();
     table.set_header(vec!["Meet", meet.name.as_str()]);
     let mut rows = vec![
@@ -69,7 +69,7 @@ pub fn render(meet: &Meet) -> Table {
 }
 
 /// The details as one row, a column each, for JSON and CSV.
-pub fn data(meet: &Meet) -> Table {
+pub(crate) fn data(meet: &Meet) -> Table {
     let mut table = Table::new();
     table.set_header(vec![
         "Meet",
@@ -99,7 +99,7 @@ pub fn data(meet: &Meet) -> Table {
 }
 
 /// `street, city, ST zip`, leaving out whatever the meet does not have.
-pub fn address(meet: &Meet) -> String {
+pub(crate) fn address(meet: &Meet) -> String {
     let state_zip = [meet.venue_state.trim(), meet.venue_zip.trim()]
         .into_iter()
         .filter(|part| !part.is_empty())

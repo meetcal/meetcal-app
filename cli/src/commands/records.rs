@@ -43,7 +43,7 @@ pub async fn run(args: RecordsArgs) -> Result<()> {
     Ok(())
 }
 
-pub fn report(records: &[Record]) -> Report {
+pub(crate) fn report(records: &[Record]) -> Report {
     let (table, data) = record_tables(records.iter().map(|record| RecordRow {
         weight_class: &record.weight_class,
         snatch: (Some(record.snatch_record), record.snatch_by.as_ref()),
@@ -53,7 +53,7 @@ pub fn report(records: &[Record]) -> Report {
     Report::new().table_with_data("records", table, data)
 }
 
-pub fn selected(
+pub(crate) fn selected(
     records: Vec<Record>,
     age: &str,
     gender: Gender,

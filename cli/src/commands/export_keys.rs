@@ -133,11 +133,11 @@ fn every_commands_report_under_every_flag_that_shapes_it() -> Vec<(&'static str,
         ("meet-info", meet_info::report(&a_meet())),
         (
             "meet-results",
-            meet_results::report(&rows, &[edition(&rows)], &[], true),
+            meet_results::report(&rows, &edition(&rows), &[], &[], true),
         ),
         (
             "meet-results --no-history",
-            meet_results::report(&rows, &[edition(&rows)], &[], false),
+            meet_results::report(&rows, &edition(&rows), &[], &[], false),
         ),
         ("meets", meets::report(&[])),
         ("nat-ranking-year", nat_ranking_year::report(Vec::new())),

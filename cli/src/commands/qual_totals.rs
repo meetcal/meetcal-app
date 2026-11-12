@@ -11,12 +11,12 @@ use crate::utils::output::{self, Report};
 use crate::utils::stats::Gender;
 
 #[derive(Debug, Deserialize)]
-pub struct QualifyingTotal {
-    pub qualifying_total: f64,
-    pub event_name: String,
-    pub gender: String,
-    pub age_category: String,
-    pub weight_class: String,
+pub(crate) struct QualifyingTotal {
+    pub(crate) qualifying_total: f64,
+    pub(crate) event_name: String,
+    pub(crate) gender: String,
+    pub(crate) age_category: String,
+    pub(crate) weight_class: String,
 }
 
 /// Search for Qualifying Totals for a given age, gender, and event.
@@ -51,7 +51,7 @@ pub async fn run(args: QualTotalsArgs) -> Result<()> {
     Ok(())
 }
 
-pub fn report(totals: Vec<QualifyingTotal>) -> Report {
+pub(crate) fn report(totals: Vec<QualifyingTotal>) -> Report {
     let mut table = Table::new();
     table.set_header(vec!["Class", "Total"]);
     for total in totals {
@@ -60,7 +60,7 @@ pub fn report(totals: Vec<QualifyingTotal>) -> Report {
     Report::single("qualifying_totals", table)
 }
 
-pub fn selected(
+pub(crate) fn selected(
     totals: Vec<QualifyingTotal>,
     age: &str,
     gender: Gender,
