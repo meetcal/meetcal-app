@@ -1,3 +1,4 @@
+import { placeholderMemberId } from '../../lib/memberIds';
 // Meet entries from Sport80 (replaces `usaw/entry_scraper/csv_scraper.js`).
 // The Node scraper drove a headless browser through the public entries page;
 // the table on that page is filled from a public JSON endpoint, which this
@@ -44,14 +45,7 @@ export function meetFromTitle(title: string): string {
   return trimmed.endsWith(' - Members') ? trimmed.slice(0, -' - Members'.length) : trimmed;
 }
 
-/**
- * The shared stand-in for a missing membership number (`placeholder_member_id`
- * in the Python writer): athletes without one are keyed on meet and name.
- */
-export function placeholderMemberId(name: string): string {
-  const normalized = name.split(/\s+/).filter(Boolean).join(' ').toLowerCase();
-  return `noid:${normalized.replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '')}`;
-}
+export { placeholderMemberId } from '../../lib/memberIds';
 
 export type EntryRow = {
   id?: number;
