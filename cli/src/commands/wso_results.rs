@@ -2,7 +2,9 @@ use anyhow::{Result, anyhow};
 use clap::Parser;
 use serde_json::json;
 
-use crate::commands::club_results::{meet_has_results, report, results_only_message};
+use crate::commands::club_results::{
+    meet_has_results, refuse_uncounted_results, report, results_only_message,
+};
 use crate::types::athletes::Athletes;
 use crate::types::club::ClubMeetStats;
 use crate::utils::backend::{queries, query};
@@ -36,6 +38,7 @@ pub async fn run(args: WsoResultsArgs) -> Result<()> {
     if stats.total_athletes == 0 {
         return Err(nobody_registered(&args.wso, &args.meet).await);
     }
+    refuse_uncounted_results("WSO", &args.wso, &args.meet, &stats).await?;
     output::emit(report("WSO", &args.wso, &args.meet, &stats));
     Ok(())
 }
