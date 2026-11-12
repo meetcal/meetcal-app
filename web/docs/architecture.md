@@ -2,8 +2,8 @@
 
 meetcal.app is a client-side rendered Leptos app. Trunk compiles it to WebAssembly; Vercel serves
 the static output and a small HTML shell per route. There is no server of its own: data comes from
-Convex, sign-in from Clerk, and the subscription check from RevenueCat, all called from the
-browser.
+Convex and sign-in from Clerk, both called from the browser. Convex alone decides who sees the
+subscription data, through its access pass.
 
 ## Data: Convex over HTTP
 
@@ -64,8 +64,9 @@ POST https://disciplined-hare-790.convex.cloud/api/query
   and records the entitlement, and, if it answers `{ active: true }`, asks for the pass once more.
   This is how Convex learns of a subscriber its RevenueCat webhook never reported (a lifetime
   purchase never renews).
-- Without a pass (signed out, not subscribed, offline, Clerk slow to hand over a token) a premium
-  read goes out without one, and a failed fetch is not tried again for a minute. If Convex refuses
+- A data page opens only once its gate holds a pass (below), so its reads carry one. Should the
+  pass be lost while the page is open (offline, Clerk slow to hand over a token), a premium read
+  goes out without one, and a failed fetch is not tried again for a minute. If Convex refuses
   a premium read for its pass (a function error with status 401, "access pass required", or 403,
   "access pass expired"), `utils/api` drops the held pass, fetches a fresh one, and sends the read
   once more with it.
@@ -97,24 +98,35 @@ names for search once per catalog, not per keystroke.
 
 ## Sign-in and the subscription gate
 
-`src/auth.rs` loads Clerk and RevenueCat's web SDKs through `src/auth_bridge.js`, from pinned
-versions on jsDelivr and unpkg. Clerk loads only when it is needed: on a route that needs an
+`src/auth.rs` loads Clerk's web SDK through `src/auth_bridge.js`, from pinned versions on
+jsDelivr. Clerk loads only when it is needed: on a route that needs an
 account (the data routes behind the gate, `/link`, `/submit-meet`), when Clerk's `__client_uat`
 cookie says this browser has a session, or when the visitor taps Sign in; its two files download
 in parallel. Every other visitor sees a plain Sign in button and downloads no Clerk at all. The
 sign-in card's container keeps its height before Clerk draws into it, so the page does not shift. Each file loads with a Subresource Integrity hash, and the CSP
 allows only those versions' directories. The chunks Clerk loads later from those directories
 carry no integrity hash (Clerk's chunk loader doesn't set one), so only the CSP pin covers them.
-Upgrading an SDK means changing its version and hash in `auth_bridge.js` and its path in
-`vercel.json` (`tests/config/vercel.test.mjs` checks they agree). The publishable keys are
-compiled in from
-`CLERK_PUBLISHABLE_KEY` and `REVENUECAT_PUBLIC_API_KEY`.
+Upgrading Clerk means changing its version and hash in `auth_bridge.js` and its path in
+`vercel.json` (`tests/config/vercel.test.mjs` checks they agree). The publishable key is compiled
+in from `CLERK_PUBLISHABLE_KEY`. The site loads no RevenueCat SDK.
 
 `SubscriptionGate` (`src/components/subscription_gate.rs`) wraps each competition data route in
-`src/app.rs` except the free `/wrapped`: signed out, it mounts Clerk's sign-in, which returns to the same page; signed in,
-it asks RevenueCat whether the Clerk user has the `Subscriptions` entitlement (the one the app
-checks, `src/lib/premium-intent.ts`), and shows the page or the subscription handoff. Purchases
-happen in the mobile app only (`/subscription` sends users there).
+`src/app.rs` except the free `/wrapped`: signed out, it mounts Clerk's sign-in, which returns to
+the same page; signed in, it asks Convex for the access pass (`check_access` in
+`utils/api/pass.rs`), using a pass already held in memory or IndexedDB while it is current. Convex's
+answer decides what the gate shows:
+
+| Pass answer | The gate shows |
+|---|---|
+| A pass | The page |
+| 403 after `entitlements:refresh` finds no subscription | The subscription handoff (Continue in the MeetCal app) |
+| 401 | Clerk's sign-in |
+| 503, a network error, or a malformed answer | The error card, with Try again |
+
+The site makes no entitlement decision of its own. Purchases happen in the mobile app only
+(`/subscription` sends users there); when the tab is shown again over the handoff, the gate asks
+again (pass, then `entitlements:refresh`, then the pass), so a user who just subscribed in the app
+gets in without a reload.
 
 While it checks, the gate shows the page's own heading and intro from `catalog.rs` over a table
 skeleton, the same first frame the route's static shell paints, so nothing moves when the app
@@ -123,12 +135,12 @@ mounts or when the check passes.
 Every route's gate reads one shared answer (`provide_access`, next to `provide_auth`), so moving
 between data pages neither checks again nor rebuilds the page. It is checked again when the
 Clerk user changes, when a page opens after a refusal or an error, and in the background when a
-page opens more than ten minutes after the last grant.
+page opens more than ten minutes after the last grant; that background check asks Convex only once
+the held pass has run out, and an error there keeps the open page.
 
-The gate is a client-side check, like the app's paywall. Convex is moving to enforce the
-subscription itself through the access pass (above): for now it only logs a premium read without a
-current pass, answering everyone; later it will refuse it. Until then the data the gate guards is
-still public in Convex.
+The gate decides what the page shows; Convex enforces the subscription through the pass. For now
+Convex only logs a premium read without a current pass, answering everyone; later it will refuse
+it. Until then the data the gate guards is still public in Convex.
 
 ## Athlete Wrapped: `/wrapped`
 
