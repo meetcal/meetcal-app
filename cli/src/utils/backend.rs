@@ -1,24 +1,15 @@
-//! Access to MeetCal's data: the Convex queries in `convex/` at the repository root, the same
-//! ones the app and the website read, called over Convex's HTTP API (`POST /api/query`), the
-//! premium action `leaderboard` ranks with, and the few actions and mutations `meetcal login` and
-//! `logout` call.
-//!
-//! Every request goes through [`send_with_retry`], which uses one shared client and applies the
-//! policy in `utils::retry`. A premium query's or action's read carries the access pass
-//! (`utils::access`).
-
 use std::sync::OnceLock;
 use std::time::Duration;
 
 use anyhow::{Context, Result, anyhow};
-use reqwest::{Client, Request, Response, StatusCode, header::RETRY_AFTER};
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use serde_json::Value;
 use tokio::task::JoinSet;
 
-use crate::utils::access::{self, Access, Refusal};
+use crate::utils::access::{self, Access, HeldPass, Refusal};
+use crate::utils::cache::{self, Cache, Shelf, TaggedAnswer};
 use crate::utils::credentials;
-use crate::utils::retry::{next_retry_delay, next_transport_retry_delay, parse_retry_after_secs};
+use crate::utils::transport::{self, Sending};
 
 /// The production Convex deployment, which the app and the website read too.
 pub(crate) const CONVEX_URL: &str = "https://disciplined-hare-790.convex.cloud";
@@ -29,45 +20,23 @@ pub(crate) const CONVEX_URL_ENV: &str = "MEETCAL_CONVEX_URL";
 /// User-Agent sent with every request.
 pub const USER_AGENT: &str = concat!("meetcal-cli/", env!("CARGO_PKG_VERSION"));
 
-/// Time allowed to establish a connection.
-pub(crate) const CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
-
-/// Time allowed for a whole request, from connecting to reading the body.
-pub(crate) const REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
-
-/// Convex answers a function that ran but failed with this status (or 200).
-const FUNCTION_FAILED: u16 = 560;
-
 /// Most pages [`query_all_pages`] reads before giving up. A club's or WSO's entries arrive 2,000
 /// rows a page, so this allows 200,000 rows; an answer that never reports `isDone` fails here
 /// instead of looping forever.
 pub(crate) const MAX_PAGES: usize = 100;
 
-static CLIENT: OnceLock<Client> = OnceLock::new();
-
-/// The HTTP client shared by every request.
-pub(crate) fn client() -> Result<&'static Client> {
-    if let Some(client) = CLIENT.get() {
-        return Ok(client);
-    }
-
-    let client = Client::builder()
-        .user_agent(USER_AGENT)
-        .connect_timeout(CONNECT_TIMEOUT)
-        .timeout(REQUEST_TIMEOUT)
-        .build()
-        .context("Failed to build the HTTP client")?;
-    Ok(CLIENT.get_or_init(|| client))
-}
-
 static ACCESS: OnceLock<Access> = OnceLock::new();
 
-/// The saved login (`utils::credentials::default_path`) and the pass fetched with it, shared by
-/// every read of this run.
 pub(crate) fn default_access() -> &'static Access {
-    ACCESS.get_or_init(|| match credentials::default_path() {
-        Some(path) => Access::from_file(path),
-        None => Access::anonymous(),
+    ACCESS.get_or_init(|| {
+        let access = match credentials::default_path() {
+            Some(path) => Access::from_file(path),
+            None => Access::anonymous(),
+        };
+        match cache::default_dir() {
+            Some(dir) => access.with_cache(Cache::at(dir)),
+            None => access,
+        }
     })
 }
 
@@ -79,14 +48,11 @@ pub(crate) fn convex_url() -> String {
         .unwrap_or_else(|| CONVEX_URL.to_string())
 }
 
-/// How a query's answer carries its body.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum Body {
-    /// The answer is the body.
     Value,
-    /// The answer is `{ json }` or `{ etag, json }`: the body as JSON text, which Convex serves
-    /// faster than the same rows as values.
     JsonText,
+    Revalidated,
 }
 
 /// A Convex query the CLI reads.
@@ -111,6 +77,13 @@ impl Query {
             body: Body::JsonText,
         }
     }
+
+    const fn revalidated(function: &'static str) -> Self {
+        Self {
+            function,
+            body: Body::Revalidated,
+        }
+    }
 }
 
 /// Every Convex query the CLI reads, each named for the Rust API route it replaced. Arguments
@@ -118,27 +91,19 @@ impl Query {
 pub mod queries {
     use super::Query;
 
-    /// `GET /meets`: meets starting within three months; takes `now` (milliseconds, rounded
-    /// down to the hour so callers share Convex's cached answer).
-    pub(crate) const UPCOMING_MEETS: Query = Query::text("meets:list");
-    /// `GET /meets/completed`: completed meets, newest first.
-    pub(crate) const COMPLETED_MEETS: Query = Query::text("meets:completed");
-    /// `GET /meets/details`; takes `meet`. An unknown meet is a 404 error.
-    pub(crate) const MEET_DETAILS: Query = Query::text("meets:details");
-    /// `GET /meets/schedule`; takes `meet`.
-    pub const MEET_SCHEDULE: Query = Query::text("meets:schedule");
+    pub(crate) const UPCOMING_MEETS: Query = Query::revalidated("meets:list");
+    pub(crate) const COMPLETED_MEETS: Query = Query::revalidated("meets:completed");
+    pub(crate) const MEET_DETAILS: Query = Query::revalidated("meets:details");
+    pub const MEET_SCHEDULE: Query = Query::revalidated("meets:schedule");
     /// Distinct meet names in the results or the registrations, a page at a time; takes `source`
     /// (`results` or `registrations`), `after` (null to start) and optionally `before`. Answers
     /// `{ json, next }`.
     pub(crate) const MEET_NAMES_PAGE: Query = Query::value("meets:namesPage");
     pub(crate) const MEET_ATTENDANCE: Query = Query::text("meets:attendance");
-    /// `GET /meets/athletes`; takes `meet`.
-    pub(crate) const MEET_ATHLETES: Query = Query::text("meets:athletes");
-    /// `GET /meets/athletes-sessions`; takes `meet`, and optionally `sessionNumber` and
-    /// `platform`.
-    pub(crate) const MEET_ATHLETES_SESSIONS: Query = Query::text("meets:athletesSessions");
-    /// `GET /lifting-results`; takes `meet`.
-    pub(crate) const MEET_RESULTS: Query = Query::text("results:byMeet");
+    pub(crate) const MEET_NAMES_MATCHING: Query = Query::value("meets:namesMatching");
+    pub(crate) const MEET_ATHLETES: Query = Query::revalidated("meets:athletes");
+    pub(crate) const MEET_ATHLETES_SESSIONS: Query = Query::revalidated("meets:athletesSessions");
+    pub(crate) const MEET_RESULTS: Query = Query::revalidated("results:byMeet");
     /// `GET /lifting-results/by-names`; takes `names` (at most 100).
     pub(crate) const RESULTS_BY_NAMES: Query = Query::text("results:byNames");
     /// `GET /lifting-results/recent`; takes `names` (at most 100) and `cutoffDate`.
@@ -146,6 +111,8 @@ pub mod queries {
     /// `GET /lifting-results/bests`: each name's best snatch, clean & jerk and total since
     /// `cutoffDate`; takes `names` (at most 100) and `cutoffDate`.
     pub(crate) const BESTS: Query = Query::value("results:bests");
+    pub(crate) const GROUP_MEDALS: Query = Query::value("results:groupMedals");
+    pub(crate) const MEET_SUMMARIES: Query = Query::value("results:meetSummaries");
     /// `GET /search`; takes `query`, and optionally `startDate` and `endDate` (both included).
     /// Answers at most 600 results, the most recent, with `truncated` set when it cut some.
     pub const SEARCH: Query = Query::value("results:search");
@@ -155,32 +122,24 @@ pub mod queries {
     /// `{ kind }`: `athlete` with `name` and `stats`, `ambiguous`, `narrow`, `tooManyResults`, or
     /// `none` with name `suggestions`.
     pub(crate) const WRAPPED: Query = Query::value("results:wrapped");
-    /// `GET /data/records`
-    pub(crate) const RECORDS: Query = Query::text("reference:records");
-    /// `GET /data/standards`
-    pub(crate) const STANDARDS: Query = Query::text("reference:standards");
-    /// `GET /data/qualifying-totals`
-    pub(crate) const QUALIFYING_TOTALS: Query = Query::text("reference:qualifyingTotals");
-    /// `GET /data/intl-rankings`
-    pub(crate) const INTL_RANKINGS: Query = Query::text("reference:intlRankings");
-    /// `GET /data/nat-rankings`; takes `federation` and `ageCategory`.
-    pub(crate) const NATIONAL_RANKINGS: Query = Query::text("reference:nationalRankings");
-    /// `GET /data/nat-rankings-year`; also takes `year`.
+    pub const RECORDS: Query = Query::revalidated("reference:records");
+    pub(crate) const RECORD_CATEGORIES: Query = Query::revalidated("reference:recordCategories");
+    pub(crate) const STANDARDS: Query = Query::revalidated("reference:standards");
+    pub(crate) const QUALIFYING_TOTALS: Query = Query::revalidated("reference:qualifyingTotals");
+    pub(crate) const QUALIFYING_TOTAL_CATEGORIES: Query =
+        Query::revalidated("reference:qualifyingTotalCategories");
+    pub(crate) const INTL_RANKINGS: Query = Query::revalidated("reference:intlRankings");
+    pub(crate) const NATIONAL_RANKINGS: Query = Query::revalidated("reference:nationalRankings");
     pub(crate) const NATIONAL_RANKINGS_BY_YEAR: Query =
-        Query::text("reference:nationalRankingsByYear");
-    /// `GET /data/wso/records`; takes `wso`, and optionally `ageCategory` and `gender`.
-    pub(crate) const WSO_RECORDS: Query = Query::text("reference:wsoRecords");
-    /// `GET /data/adaptive`; takes `gender` and `excludeFederation`.
-    pub(crate) const ADAPTIVE_RECORDS: Query = Query::text("reference:adaptiveRecords");
-    /// `GET /clubs`: every club name.
-    pub(crate) const CLUBS: Query = Query::text("reference:clubs");
-    /// `GET /data/wso`: every WSO with records.
-    pub(crate) const WSO_LIST: Query = Query::text("reference:wsoList");
+        Query::revalidated("reference:nationalRankingsByYear");
+    pub(crate) const WSO_RECORDS: Query = Query::revalidated("reference:wsoRecords");
+    pub(crate) const ADAPTIVE_RECORDS: Query = Query::revalidated("reference:adaptiveRecords");
+    pub(crate) const CLUBS: Query = Query::revalidated("reference:clubs");
+    pub(crate) const WSO_LIST: Query = Query::revalidated("reference:wsoList");
     /// Every WSO name on registrations: the names `reference:wsoAthletes` matches, which differ
     /// from the record sheets' (`reference:wsoList`).
     pub(crate) const REGISTRATION_WSOS: Query = Query::value("reference:registrationWsos");
-    /// `GET /data/wso/age-groups`: the age groups a WSO keeps records for; takes `wso`.
-    pub(crate) const WSO_AGE_GROUPS: Query = Query::text("reference:wsoAgeGroups");
+    pub(crate) const WSO_AGE_GROUPS: Query = Query::revalidated("reference:wsoAgeGroups");
     /// `GET /clubs/athletes`; takes `club`, and `cursor` (null to start) to page. Read it with
     /// [`super::query_all_pages`]: a page answers `{ json, cursor, isDone }`.
     pub const CLUB_ATHLETES: Query = Query::value("reference:clubAthletes");
@@ -196,13 +155,10 @@ pub mod queries {
     pub(crate) const ACCESS_PASS: Query = Query::value("accessPass:pass");
 }
 
-/// A premium Convex action the CLI calls (`utils::access::PREMIUM_ACTIONS`), and how long its
-/// whole request may take: such an action reads many rows on the server before it answers.
 #[derive(Clone, Copy, Debug)]
 pub struct PremiumAction {
-    /// `module:function`.
     pub(crate) function: &'static str,
-    pub(crate) timeout: Duration,
+    pub(crate) answer_within: Duration,
 }
 
 /// The actions and mutations the CLI calls: the premium leaderboard and WSO elite lists, `meetcal
@@ -211,23 +167,13 @@ pub struct PremiumAction {
 pub mod functions {
     use super::{Duration, PremiumAction};
 
-    /// Premium action: every athlete's best in a date range, ranked on the server. Takes `from`,
-    /// `to` (`YYYY-MM-DD`, under five years apart), `by` (`total`, `snatch`, `cj`, `sinclair`,
-    /// `qpoints`), and optionally `gender` (`Men` or `Women`, needed for `sinclair` and
-    /// `qpoints`), `category`, `division`, `federation`, `adaptive` and `limit` (1 to 500).
-    /// Answers `{ rows, federations }`. It pages through every result in the range, so it gets
-    /// two minutes. Read it with [`super::premium_action`].
     pub const LEADERBOARD: PremiumAction = PremiumAction {
         function: "results:leaderboard",
-        timeout: Duration::from_secs(120),
+        answer_within: Duration::from_secs(120),
     };
-    /// Premium action: a WSO's elite lists (`convex/lib/elite.ts`). Takes `wso` (as registrations
-    /// spell it), `from`, `to` (under five years apart) and `methods` (each list's score, by
-    /// `overall`, `youth`, `junior`, `senior`, `masters`). Answers `{ wso, from, to, members,
-    /// lists }`. It reads every member's registrations and history, so it gets two minutes.
     pub(crate) const WSO_ELITE: PremiumAction = PremiumAction {
         function: "results:wsoElite",
-        timeout: Duration::from_secs(120),
+        answer_within: Duration::from_secs(120),
     };
     /// Action. Starts a device login; takes `deviceName` (at most 64 characters). Answers
     /// `{ deviceCode, userCode, verificationUrl, expiresAt, interval }`.
@@ -385,8 +331,6 @@ where
     query_from(&convex_url(), default_access(), query, args).await
 }
 
-/// Runs `query` with `args` on the deployment at `base_url`. A premium read carries the pass
-/// `access` holds (see [`premium_answer`]).
 pub async fn query_from<T, A>(base_url: &str, access: &Access, query: Query, args: &A) -> Result<T>
 where
     T: DeserializeOwned,
@@ -398,28 +342,117 @@ where
             query.function
         )
     })?;
-    let answer = if access::carries_pass(query.function, &args) {
-        premium_answer(
-            base_url,
-            access,
-            Endpoint::Query,
-            query.function,
-            &args,
-            None,
-        )
-        .await?
+    let function = query.function;
+    let held = if access::carries_pass(function, &args) {
+        Some(access.current_pass(base_url).await)
     } else {
-        call(
-            base_url,
-            Endpoint::Query,
-            query.function,
-            &args,
-            None,
-            Sending::READ,
-        )
-        .await?
+        None
     };
-    read_answer(query, answer)
+    let shelf = match &held {
+        None => Some(Shelf::Public),
+        Some(held) => held.pass.is_ok().then_some(Shelf::Premium),
+    };
+    let shelved = access
+        .cache()
+        .zip(shelf)
+        .filter(|_| query.body == Body::Revalidated)
+        .map(|(cache, shelf)| Shelved {
+            cache,
+            shelf,
+            key: cache::answer_key(base_url, function, &args),
+        });
+    let kept = shelved.as_ref().and_then(Shelved::answer);
+    let sent = with_tag(&args, kept.as_ref().map(|kept| kept.etag.as_str()));
+    let answer = match held {
+        Some(held) => {
+            premium_answer(
+                base_url,
+                access,
+                Endpoint::Query,
+                function,
+                &sent,
+                Sending::READ,
+                held,
+            )
+            .await?
+        }
+        None => {
+            call(
+                base_url,
+                Endpoint::Query,
+                function,
+                &sent,
+                None,
+                Sending::READ,
+            )
+            .await?
+        }
+    };
+    match query.body {
+        Body::Revalidated => {
+            let text = revalidated_text(function, answer, kept, shelved.as_ref())?;
+            serde_json::from_str(&text)
+                .with_context(|| format!("Unexpected answer from MeetCal query {function}"))
+        }
+        Body::Value | Body::JsonText => read_answer(query, answer),
+    }
+}
+
+struct Shelved<'a> {
+    cache: &'a Cache,
+    shelf: Shelf,
+    key: String,
+}
+
+impl Shelved<'_> {
+    fn answer(&self) -> Option<TaggedAnswer> {
+        self.cache.answer(self.shelf, &self.key)
+    }
+
+    fn keep(&self, answer: &TaggedAnswer) {
+        self.cache.keep(self.shelf, &self.key, answer);
+    }
+}
+
+fn with_tag(args: &Value, etag: Option<&str>) -> Value {
+    let mut args = args.clone();
+    if let (Some(etag), Some(fields)) = (etag, args.as_object_mut()) {
+        fields.insert(cache::TAG_ARGUMENT.to_owned(), Value::from(etag));
+    }
+    args
+}
+
+#[derive(Deserialize)]
+struct RevalidatedAnswer {
+    #[serde(default)]
+    etag: Option<String>,
+    #[serde(default)]
+    json: Option<String>,
+}
+
+fn revalidated_text(
+    function: &str,
+    answer: QueryResponse,
+    kept: Option<TaggedAnswer>,
+    shelved: Option<&Shelved>,
+) -> Result<String> {
+    let value = answer_value(function, answer)?;
+    let answer: RevalidatedAnswer = serde_json::from_value(value)
+        .with_context(|| format!("Unexpected answer from MeetCal query {function}"))?;
+    match (answer.json, answer.etag, kept) {
+        (Some(json), Some(etag), _) => {
+            let fresh = TaggedAnswer { etag, json };
+            if let Some(shelved) = shelved {
+                shelved.keep(&fresh);
+            }
+            Ok(fresh.json)
+        }
+        (Some(json), None, _) => Ok(json),
+        (None, Some(etag), Some(kept)) if kept.etag == etag => Ok(kept.json),
+        (None, _, _) => Err(anyhow!(
+            "MeetCal query {function} answered without its body"
+        )),
+    }
 }
 
 /// Runs the premium `action` with `args` on the production deployment (or
@@ -432,9 +465,6 @@ where
     premium_action_from(&convex_url(), default_access(), action, args).await
 }
 
-/// Runs the premium `action` with `args` on the deployment at `base_url`, carrying the pass
-/// `access` holds, within the action's timeout, with a refusal handled as a premium query's (see
-/// [`premium_answer`]).
 pub async fn premium_action_from<T, A>(
     base_url: &str,
     access: &Access,
@@ -453,37 +483,32 @@ where
     }
     let args = serde_json::to_value(args)
         .with_context(|| format!("Failed to build request for MeetCal {function}"))?;
+    let held = access.current_pass(base_url).await;
     let answer = premium_answer(
         base_url,
         access,
         Endpoint::Action,
         function,
         &args,
-        Some(action.timeout),
+        Sending {
+            answer_within: action.answer_within,
+            ..Sending::READ
+        },
+        held,
     )
     .await?;
     read_function_value(function, answer_value(function, answer)?)
 }
 
-/// Convex's answer to a premium read, a query or an action by `endpoint`. The read carries the
-/// pass `access` holds, fetching one first if it has none, and goes without one when it cannot get
-/// one. If Convex refuses the read for its pass (status 401 or 403), [`access::on_refusal`]
-/// decides: a fresh pass and one more read, or a message telling the user to log in or subscribe.
-/// A premium function only reads, so a throttled or overloaded answer is sent again whatever its
-/// endpoint. `timeout` replaces [`REQUEST_TIMEOUT`] for each request when given.
 async fn premium_answer(
     base_url: &str,
     access: &Access,
     endpoint: Endpoint,
     function: &str,
     args: &Value,
-    timeout: Option<Duration>,
+    sending: Sending,
+    held: HeldPass,
 ) -> Result<QueryResponse> {
-    let sending = Sending {
-        retries: true,
-        timeout,
-    };
-    let held = access.current_pass(base_url).await;
     let pass = held.pass.as_deref().ok();
     let answer = call(
         base_url,
@@ -557,9 +582,10 @@ pub async fn call_function<T: DeserializeOwned>(
     args: &Value,
     token: Option<&str>,
 ) -> Result<T> {
-    let sending = Sending {
-        retries: endpoint.retries(),
-        timeout: None,
+    let sending = if endpoint.retries() {
+        Sending::READ
+    } else {
+        Sending::ONCE
     };
     let answer = call(base_url, endpoint, function, args, token, sending).await?;
     read_function_value(function, answer_value(function, answer)?)
@@ -570,22 +596,6 @@ fn read_function_value<T: DeserializeOwned>(function: &str, value: Value) -> Res
         .with_context(|| format!("Unexpected answer from MeetCal {function}"))
 }
 
-#[derive(Clone, Copy, Debug)]
-struct Sending {
-    retries: bool,
-    timeout: Option<Duration>,
-}
-
-impl Sending {
-    /// A read: retried, within [`REQUEST_TIMEOUT`].
-    const READ: Sending = Sending {
-        retries: true,
-        timeout: None,
-    };
-}
-
-/// Posts `function` with `args` to the deployment at `base_url`, with `token` as the bearer when
-/// given, and returns Convex's answer.
 async fn call(
     base_url: &str,
     endpoint: Endpoint,
@@ -594,7 +604,7 @@ async fn call(
     token: Option<&str>,
     sending: Sending,
 ) -> Result<QueryResponse> {
-    let mut builder = client()?
+    let mut builder = transport::client()?
         .post(format!(
             "{}/{}",
             base_url.trim_end_matches('/'),
@@ -608,17 +618,12 @@ async fn call(
     if let Some(token) = token {
         builder = builder.bearer_auth(token);
     }
-    if let Some(timeout) = sending.timeout {
-        builder = builder.timeout(timeout);
-    }
     let request = builder
         .build()
         .with_context(|| format!("Failed to build request for MeetCal query {function}"))?;
 
-    send_with_retry(request, function, sending.retries)
-        .await?
-        .json()
-        .await
+    let body = transport::send(request, function, sending).await?;
+    serde_json::from_slice(&body)
         .with_context(|| format!("Failed to parse MeetCal's answer to {function}"))
 }
 
@@ -656,7 +661,7 @@ where
     .await
 }
 
-pub(crate) const CONCURRENT_READS: usize = 8;
+pub(crate) const CONCURRENT_READS: usize = 12;
 
 pub(crate) async fn query_each<T>(query: Query, args: Vec<Value>) -> Result<Vec<T>>
 where
@@ -796,7 +801,7 @@ fn read_answer<T: DeserializeOwned>(query: Query, answer: QueryResponse) -> Resu
     match query.body {
         Body::Value => serde_json::from_value(whole_numbers_as_integers(value))
             .with_context(|| format!("Unexpected answer from MeetCal query {}", query.function)),
-        Body::JsonText => {
+        Body::JsonText | Body::Revalidated => {
             let text = value.get("json").and_then(Value::as_str).ok_or_else(|| {
                 anyhow!("MeetCal query {} answered without its body", query.function)
             })?;
@@ -804,77 +809,6 @@ fn read_answer<T: DeserializeOwned>(query: Query, answer: QueryResponse) -> Resu
                 .with_context(|| format!("Unexpected answer from MeetCal query {}", query.function))
         }
     }
-}
-
-fn used_its_whole_request_allowance(error: &reqwest::Error) -> bool {
-    error.is_timeout() && !error.is_connect()
-}
-
-pub(crate) async fn send_with_retry(
-    request: Request,
-    function: &str,
-    retries: bool,
-) -> Result<Response> {
-    let mut retries_done = 0;
-
-    loop {
-        let attempt = request
-            .try_clone()
-            .with_context(|| format!("Failed to prepare request for MeetCal query {function}"))?;
-        let response = match client()?.execute(attempt).await {
-            Ok(response) => response,
-            Err(error) => {
-                if retries
-                    && !used_its_whole_request_allowance(&error)
-                    && let Some(delay) = next_transport_retry_delay(retries_done)
-                {
-                    tokio::time::sleep(delay).await;
-                    retries_done += 1;
-                    continue;
-                }
-                return Err(error)
-                    .with_context(|| format!("Failed to call MeetCal query {function}"));
-            }
-        };
-
-        let status = response.status();
-        let retry_after = response
-            .headers()
-            .get(RETRY_AFTER)
-            .and_then(|value| value.to_str().ok());
-
-        if let Some(delay) = next_retry_delay(status, retry_after, retries_done).filter(|_| retries)
-        {
-            tokio::time::sleep(delay).await;
-            retries_done += 1;
-            continue;
-        }
-
-        if status == StatusCode::TOO_MANY_REQUESTS {
-            let retry_after_secs = retry_after.and_then(parse_retry_after_secs);
-            return Err(anyhow!(
-                "MeetCal query {function} returned {status} after {retries_done} retries"
-            )
-            .context(rate_limited_message(retry_after_secs)));
-        }
-
-        if status.as_u16() == FUNCTION_FAILED {
-            return Ok(response);
-        }
-        return response
-            .error_for_status()
-            .with_context(|| format!("MeetCal query {function} returned an error"));
-    }
-}
-
-/// The message shown when the API is still rate limiting after every retry.
-pub(crate) fn rate_limited_message(retry_after_secs: Option<u64>) -> String {
-    let wait = match retry_after_secs {
-        Some(0 | 1) => "1 second".to_string(),
-        Some(secs) => format!("{secs} seconds"),
-        None => "a few seconds".to_string(),
-    };
-    format!("The MeetCal API is rate limiting requests right now; try again in {wait}")
 }
 
 #[cfg(test)]
@@ -897,11 +831,63 @@ mod tests {
         );
     }
 
+    fn declared_queries(body: &str) -> Vec<&'static str> {
+        let source = include_str!("backend.rs");
+        let tests = source.find("#[cfg(test)]").unwrap_or(source.len());
+        let marker = format!("Query::{body}(\"");
+        source[..tests]
+            .match_indices(&marker)
+            .map(|(at, _)| {
+                let name = &source[at + marker.len()..];
+                &name[..name.find('"').unwrap()]
+            })
+            .collect()
+    }
+
+    fn convex_args(function: &str) -> String {
+        let (module, name) = function.split_once(':').unwrap();
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../convex")
+            .join(format!("{module}.ts"));
+        let source = std::fs::read_to_string(&path)
+            .unwrap_or_else(|error| panic!("{function}: {}: {error}", path.display()));
+        let start = source
+            .find(&format!("export const {name} = "))
+            .unwrap_or_else(|| panic!("{function} is not exported by {}", path.display()));
+        let definition = &source[start..];
+        let args = definition
+            .find("args:")
+            .unwrap_or_else(|| panic!("{function} declares no args"));
+        let handler = definition
+            .find("handler:")
+            .unwrap_or_else(|| panic!("{function} declares no handler"));
+        definition[args..handler].to_string()
+    }
+
     #[test]
-    fn client_is_built_once() {
-        let first = client().unwrap();
-        let second = client().unwrap();
-        assert!(std::ptr::eq(first, second));
+    fn every_revalidated_query_takes_a_tag_on_the_server() {
+        let revalidated = declared_queries("revalidated");
+        assert!(revalidated.contains(&"results:byMeet"), "{revalidated:?}");
+        for function in revalidated {
+            assert!(
+                convex_args(function).contains(cache::TAG_ARGUMENT),
+                "{function} is Query::revalidated, but its Convex args take no {}",
+                cache::TAG_ARGUMENT
+            );
+        }
+    }
+
+    #[test]
+    fn every_query_that_takes_a_tag_is_revalidated() {
+        for body in ["text", "value"] {
+            for function in declared_queries(body) {
+                assert!(
+                    !convex_args(function).contains(cache::TAG_ARGUMENT),
+                    "{function} takes {} on the server: declare it Query::revalidated",
+                    cache::TAG_ARGUMENT
+                );
+            }
+        }
     }
 
     #[test]
@@ -1076,7 +1062,7 @@ mod tests {
     async fn an_action_that_is_not_on_the_premium_list_is_refused_before_any_request() {
         let unlisted = PremiumAction {
             function: "results:other",
-            timeout: Duration::from_secs(1),
+            answer_within: Duration::from_secs(1),
         };
         let error = premium_action_from::<serde_json::Value, _>(
             "http://127.0.0.1:1",
@@ -1282,21 +1268,5 @@ mod tests {
                 "{value}"
             );
         }
-    }
-
-    #[test]
-    fn rate_limited_message_names_the_wait() {
-        assert_eq!(
-            rate_limited_message(Some(12)),
-            "The MeetCal API is rate limiting requests right now; try again in 12 seconds"
-        );
-        assert_eq!(
-            rate_limited_message(Some(1)),
-            "The MeetCal API is rate limiting requests right now; try again in 1 second"
-        );
-        assert_eq!(
-            rate_limited_message(None),
-            "The MeetCal API is rate limiting requests right now; try again in a few seconds"
-        );
     }
 }

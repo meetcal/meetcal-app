@@ -10,7 +10,7 @@ use crate::types::lifting_results::{
     AthleteAnswer, LifterCard, LifterChoice, LiftingResults, PrMarks,
 };
 use crate::types::wrapped::SearchResponse;
-use crate::utils::backend::{queries, query, query_each};
+use crate::utils::backend::{CONCURRENT_READS, in_order, queries, query, query_each};
 use crate::utils::format::us_date;
 use crate::utils::names::{MAX_SUGGESTIONS, closest};
 use crate::utils::stats::fold;
@@ -155,15 +155,22 @@ pub(crate) fn search_pieces(name: &str) -> Vec<String> {
 }
 
 async fn athlete_candidates(name: &str) -> Vec<String> {
+    let searches = search_pieces(name).into_iter().map(|piece| async move {
+        Ok(
+            query::<SearchResponse, _>(queries::SEARCH, &json!({ "query": piece }))
+                .await
+                .ok(),
+        )
+    });
+    let Ok(found) = in_order(CONCURRENT_READS, searches).await else {
+        return Vec::new();
+    };
+    let folded_name = fold(name);
     let mut candidates: Vec<String> = Vec::new();
-    for piece in search_pieces(name) {
-        if let Ok(search) =
-            query::<SearchResponse, _>(queries::SEARCH, &json!({ "query": piece })).await
-        {
-            for suggestion in search.suggestions {
-                if fold(&suggestion) != fold(name) && !candidates.contains(&suggestion) {
-                    candidates.push(suggestion);
-                }
+    for search in found.into_iter().flatten() {
+        for suggestion in search.suggestions {
+            if fold(&suggestion) != folded_name && !candidates.contains(&suggestion) {
+                candidates.push(suggestion);
             }
         }
     }

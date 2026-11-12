@@ -38,7 +38,8 @@ The workflow first checks that the tagged commit is on `master` and that the tag
 version, then runs the tests and `cargo audit` on it; a failure stops the release before anything
 is built. A release is therefore always of a commit of `master`: a fix for an older line cannot be
 released from a maintenance branch, and ships in the next release from `master` instead. It then builds `darwin-arm64`, `darwin-x64`, `linux-arm64` and
-`linux-x64`, each a `.tar.gz` holding one `meetcal` binary, and attaches them to the release with a
+`linux-x64`, each a `.tar.gz` holding one `meetcal` binary (built stripped, with LTO and one
+codegen unit, by `[profile.release]` in `Cargo.toml`: about 3.2 MB instead of 4.5), and attaches them to the release with a
 `SHA256SUMS` file of their checksums. `meetcal upgrade` refuses an archive that does not match it,
 so a release without it cannot be installed that way. It does not mark the release as the
 repository's latest; `meetcal upgrade` finds the newest `cli-v*` release itself.

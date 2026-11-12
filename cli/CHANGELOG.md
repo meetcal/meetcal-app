@@ -51,12 +51,32 @@
   finds the stored name.
 - A read whose connection is refused or dropped before any answer is sent again, within the same
   two retries as a rate limit.
+- A slow answer no longer fails after 30 seconds: a read fails only when nothing arrives for 20
+  seconds (or no answer starts within 60), so `club-trends` and `wso-trends` finish on a slow link.
+  An answer that stalls or whose connection drops part way is read again (twice at most).
+- Offline, a command fails in about 17 seconds instead of 33 (66 for a logged-in subscriber
+  command), and every network failure says to check the connection.
 
 ### Changed
 
 - Every `--gender` takes `Men` or `Women`, and `m`, `f`, `male` and `female`. `meet-results`
   `--year` has the short form `-y`.
-- Club and WSO reports read their athletes' results up to eight requests at a time.
+- Club and WSO reports read their athletes' results up to twelve requests at a time.
+- Answers arrive gzipped, 8 to 22 times smaller.
+- Reference tables, meet lists, schedules, start lists, meet results and the daily access pass
+  are kept in `~/.cache/meetcal/` (`$XDG_CACHE_HOME/meetcal/`), at most 64 MB; a later run asks
+  whether its copy is current instead of downloading it again. Subscriber data kept there goes when
+  the pass changes and on `logout`.
+- `records` and `qualifying-totals` read only the table asked for; `club-trends` and `wso-trends`
+  read each meet's medals, `meet-results` each edition's summary and `attendance` the matching meet
+  names from MeetCal, instead of downloading whole meets and every meet name. Their output is
+  unchanged.
+- `qualify`, `meet-results`' earlier editions, `attendance`'s multi-year meets and the suggestions
+  for a misspelled athlete or meet are read side by side.
+- On a terminal, a command that has printed nothing after a second shows "Fetching from MeetCal…"
+  on stderr until its output starts; piped and redirected output is unchanged.
+- TLS uses ring instead of aws-lc, which took most of every run's CPU, and release binaries are
+  stripped and built with LTO: the download is about 3.2 MB instead of 4.5.
 - Security: rustix past its unsoundness advisory.
 - Release checks: a release's tag must be on `master`, and the macOS binaries are run before they
   are published.

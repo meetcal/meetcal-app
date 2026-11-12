@@ -1,0 +1,26 @@
+{
+  "function": "results:groupMedals",
+  "encoding": "value",
+  "answers": [
+    {
+      "args": {
+        "meets": [
+          "2026 Wire Fixture Classic"
+        ],
+        "members": [
+          "Avery Fixture",
+          "Blake Fixture",
+          "Drew Fixture"
+        ]
+      },
+      "body": [
+        {
+          "year": "2026",
+          "gold": 2,
+          "silver": 0,
+          "bronze": 0
+        }
+      ]
+    }
+  ]
+}

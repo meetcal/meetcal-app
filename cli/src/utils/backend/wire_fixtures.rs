@@ -2,11 +2,15 @@ use serde::{Deserialize, de::DeserializeOwned};
 use serde_json::{Value, json};
 
 use super::{Body, Query, QueryResponse, functions, queries, read_answer, read_function_value};
+use crate::commands::attendance::MatchingNames;
 use crate::commands::elite::EliteAnswer;
+use crate::commands::group_trends::YearMedals;
 use crate::commands::intl_rankings::Rankings;
+use crate::commands::meet_results::{EditionAnswer, EditionSummary};
 use crate::commands::nat_ranking_year::NatRankingYear;
 use crate::commands::nat_rankings::NatRanking;
-use crate::commands::qual_totals::QualifyingTotal;
+use crate::commands::qual_totals::{QualifyingTotal, QualifyingTotalCategory};
+use crate::commands::records::RecordCategory;
 use crate::commands::standards::Standards;
 use crate::types::athletes::Athletes;
 use crate::types::club::ClubMeetStats;
@@ -60,7 +64,7 @@ fn answers(function: &str, body: Body, fixture: &str) -> Vec<Value> {
     assert_eq!(fixture.function, function);
     let encoding = match body {
         Body::Value => "value",
-        Body::JsonText => "jsonText",
+        Body::JsonText | Body::Revalidated => "jsonText",
     };
     assert_eq!(fixture.encoding, encoding, "{function}");
     fixture
@@ -68,7 +72,7 @@ fn answers(function: &str, body: Body, fixture: &str) -> Vec<Value> {
         .into_iter()
         .map(|answer| match body {
             Body::Value => as_convex_sends(answer.body),
-            Body::JsonText => {
+            Body::JsonText | Body::Revalidated => {
                 json!({ "etag": "\"wire-fixture\"", "json": answer.body.to_string() })
             }
         })
@@ -326,4 +330,92 @@ fn the_login_calls_read_the_servers_answers() {
     let revoked: Vec<Value> =
         read_function(functions::REVOKE_TOKEN, wire_fixture!("apiTokens.revoke"));
     assert_eq!(revoked, [Value::Null]);
+}
+
+#[test]
+fn the_categories_read_the_servers_answers() {
+    let records: Vec<Vec<RecordCategory>> = read(
+        queries::RECORD_CATEGORIES,
+        wire_fixture!("reference.recordCategories"),
+    );
+    let federations: Vec<_> = records
+        .iter()
+        .flatten()
+        .map(|row| {
+            (
+                row.record_type.as_str(),
+                row.gender.as_str(),
+                row.age_category.as_str(),
+            )
+        })
+        .collect();
+    assert_eq!(federations, [("USAW", "Women", "Senior")]);
+    let totals: Vec<Vec<QualifyingTotalCategory>> = read(
+        queries::QUALIFYING_TOTAL_CATEGORIES,
+        wire_fixture!("reference.qualifyingTotalCategories"),
+    );
+    assert!(
+        totals
+            .iter()
+            .flatten()
+            .all(|row| !row.event_name.is_empty())
+    );
+    assert_ne!(totals.iter().flatten().count(), 0);
+}
+
+#[test]
+fn group_medals_read_the_servers_answer() {
+    let medals: Vec<Vec<YearMedals>> =
+        read(queries::GROUP_MEDALS, wire_fixture!("results.groupMedals"));
+    let counted: Vec<_> = medals
+        .iter()
+        .flatten()
+        .map(|year| (year.year.as_str(), year.gold, year.silver, year.bronze))
+        .collect();
+    assert_eq!(counted, [("2026", 2, 0, 0)]);
+}
+
+#[test]
+fn edition_summaries_read_the_servers_answer() {
+    let answers: Vec<Vec<EditionAnswer>> = read(
+        queries::MEET_SUMMARIES,
+        wire_fixture!("results.meetSummaries"),
+    );
+    let editions: Vec<EditionSummary> = answers
+        .into_iter()
+        .flatten()
+        .map(EditionSummary::from)
+        .collect();
+    let shapes: Vec<_> = editions
+        .iter()
+        .map(|edition| {
+            (
+                edition.year.as_str(),
+                edition.summary.athletes,
+                edition.summary.make_rate,
+                edition.summary.best_sinclair[0].is_none(),
+                edition.summary.best_sinclair[1].is_some(),
+            )
+        })
+        .collect();
+    assert_eq!(
+        shapes,
+        [
+            ("2026", 3, Some(56.25), true, true),
+            ("2025", 1, Some(50.0), true, true)
+        ]
+    );
+}
+
+#[test]
+fn matching_meet_names_read_the_servers_answer() {
+    let answers: Vec<MatchingNames> = read(
+        queries::MEET_NAMES_MATCHING,
+        wire_fixture!("meets.namesMatching"),
+    );
+    let counts: Vec<_> = answers
+        .iter()
+        .map(|answer| (answer.meets.len(), answer.count))
+        .collect();
+    assert_eq!(counts, [(4, 4), (2, 2), (0, 0)]);
 }

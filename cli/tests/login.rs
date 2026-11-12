@@ -364,7 +364,7 @@ async fn logout_ends_the_token_and_deletes_the_login() {
     credentials::save(&path, &saved("jwt", &base_url)).unwrap();
     let mut out = Vec::new();
 
-    logout(&path, &mut out).await.unwrap();
+    logout(&path, None, &mut out).await.unwrap();
 
     assert_eq!(credentials::load(&path).unwrap(), None);
     assert_eq!(String::from_utf8(out).unwrap(), "Logged out.\n");
@@ -372,7 +372,7 @@ async fn logout_ends_the_token_and_deletes_the_login() {
     assert_eq!(authorizations(&requests), [Some("Bearer jwt".to_string())]);
 
     let mut out = Vec::new();
-    logout(&path, &mut out).await.unwrap();
+    logout(&path, None, &mut out).await.unwrap();
     assert_eq!(String::from_utf8(out).unwrap(), "You are not logged in.\n");
 }
 
@@ -382,7 +382,7 @@ async fn logout_deletes_the_login_when_meetcal_cannot_be_reached() {
     credentials::save(&path, &saved("jwt", "http://127.0.0.1:1")).unwrap();
     let mut out = Vec::new();
 
-    logout(&path, &mut out).await.unwrap();
+    logout(&path, None, &mut out).await.unwrap();
 
     assert_eq!(credentials::load(&path).unwrap(), None);
     let printed = String::from_utf8(out).unwrap();

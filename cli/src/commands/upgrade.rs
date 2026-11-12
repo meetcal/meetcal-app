@@ -9,8 +9,8 @@ use std::time::Duration;
 use anyhow::{Context, Result, bail};
 use clap::Parser;
 
-use crate::utils::backend;
 use crate::utils::releases::{self, CHECKSUMS_ASSET, Release, Version};
+use crate::utils::transport;
 use crate::utils::upgrade::{self, Install, MAX_DOWNLOAD_BYTES, NotWritable};
 
 /// Time allowed for each release download, longer than a data read's: an archive is megabytes.
@@ -44,7 +44,7 @@ pub struct UpgradeArgs {
 }
 
 pub async fn run(args: UpgradeArgs) -> Result<()> {
-    let client = backend::client()?;
+    let client = transport::client()?;
     let current = Version::current();
     let found = releases::fetch_newest(client)
         .await
