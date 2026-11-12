@@ -163,7 +163,7 @@ pub fn MeetCenter() -> impl IntoView {
                 LoadState::Ready(meets) => view! { <MeetPicker meets=meets.to_vec() meet show_meet meet_search set_meet_search /> }.into_any(),
             })}
 
-            {move || if meet.get().is_empty() { view! { <DataStatus message=MEET_SEARCH_PROMPT /> }.into_any() } else if !meets.with(|state| matches!(state, LoadState::Ready(_))) { ().into_any() } else { view! {
+            {move || if meet.get().is_empty() { view! { <DataStatus message=MEET_SEARCH_PROMPT /> }.into_any() } else if meets.with(|state| matches!(state, LoadState::Loading)) { ().into_any() } else { view! {
                 <div class="data-tabs" role="group" aria-label="Meet data">
                     {MeetSection::ALL.into_iter().map(|choice| view! {
                         <button
