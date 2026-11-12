@@ -112,11 +112,14 @@ describe('what a publish writes', () => {
   });
 
   it('refuses a schedule with no entrants or with sessions left without a time', () => {
-    expect(publishProblem(buildSchedule([], options()))).toBe('the meet has no entrants to publish yet');
-    expect(publishProblem(buildSchedule(roster(), options({ maxAthletesPerPlatform: 1, maxSessionsPerDay: 1 })))).toBe(
+    expect(publishProblem(buildSchedule([], options()), meetRow)).toBe('the meet has no entrants to publish yet');
+    expect(publishProblem(buildSchedule(roster(), options({ maxAthletesPerPlatform: 1, maxSessionsPerDay: 1 })), meetRow)).toBe(
       "2 sessions have no time; fit every session into the meet's days before publishing",
     );
-    expect(publishProblem(buildSchedule(roster(), options()))).toBeNull();
+    expect(publishProblem(buildSchedule(roster(), options()), meetRow)).toBeNull();
+    expect(publishProblem(buildSchedule(roster(), options({ days: [{ date: '2026-03-06', firstStart: '09:00' }] })), meetRow)).toBe(
+      "session 1 is on 2026-03-06, which is not one of the meet's days",
+    );
   });
 });
 
@@ -151,6 +154,16 @@ describe('publish', () => {
       [2, 'Red', 'M 89', MEET],
     ]);
     expect(store.rows('view_hints').length).toBeGreaterThan(0);
+  });
+
+  it('places each of two entrants who share a membership number and name', async () => {
+    const twins = [athlete('Sam Lee', 'Women', '58', 70, { memberId: 'placeholder-sam' }), athlete('Sam Lee', 'Women', '63', 90, { memberId: 'placeholder-sam' })];
+    const store = server({ athletes: twins, meet_organizers: [{ meet: MEET, userId: 'user_a', approvedAt: 1 }] });
+    await store.as('user_a')(publish, { meet: MEET, options: options({ maxAthletesPerPlatform: 1 }), edits: [] });
+    expect(sessionsOf(store)).toEqual([
+      ['Sam Lee', 1, 'Red'],
+      ['Sam Lee', 2, 'Red'],
+    ]);
   });
 
   it('needs sign-in, a schedule that fits, a meet not over, and a daily allowance', async () => {
@@ -292,6 +305,15 @@ describe('email', () => {
     expect(html).not.toContain('no organizer yet');
   });
 
+  it('says when a pending publish would replace a schedule loaded some other way', async () => {
+    const loaded = [{ meet: MEET, date: '2027-03-06', sessionId: 1, startTime: '10:00:00', weighInTime: '08:00:00', platform: 'Red', weightClass: '' }];
+    const store = server({ session_schedule: loaded });
+    await store.as('user_a')(publish, { meet: MEET, options: options(), edits: [] });
+    const [row] = store.docs('schedule_publications');
+    await store.action(email, { publicationId: row?._id, attempt: 0 });
+    expect(String(sendEmailMock.mock.calls[0]?.[2])).toContain("Approving replaces the meet's current schedule");
+  });
+
   it("tells you about an organizer's live publish, without a link", async () => {
     const store = server({ meet_organizers: [{ meet: MEET, userId: 'user_a', approvedAt: 1 }] });
     await store.as('user_a')(publish, { meet: MEET, options: options(), edits: [] });
@@ -318,6 +340,6 @@ describe('email', () => {
   it('builds review links on the deployment site', () => {
     expect(reviewUrl('https://x.convex.site/', 'id1', 'abc')).toBe('https://x.convex.site/schedule-builder/review?id=id1&token=abc');
     const schedule = buildSchedule(roster(), options());
-    expect(renderPublicationEmail({ meet: '<b>Cup</b>', status: 'pending', userId: 'u', schedule, lastLiveAt: null }).html).toContain('&lt;b&gt;Cup&lt;/b&gt;');
+    expect(renderPublicationEmail({ meet: '<b>Cup</b>', status: 'pending', userId: 'u', schedule, lastLiveAt: null, hasSchedule: false }).html).toContain('&lt;b&gt;Cup&lt;/b&gt;');
   });
 });

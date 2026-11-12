@@ -1,5 +1,6 @@
 import { isoDateOf } from './dates';
 import { escapeHtml } from './email';
+import { meetDays } from './scheduleBuilderOptions';
 import type { BuiltGroup, BuiltSchedule } from './scheduleBuilder';
 
 export const MAX_PUBLISHES_PER_DAY = 10;
@@ -22,8 +23,11 @@ export function platformLabel(group: Pick<BuiltGroup, 'gender' | 'weightClasses'
   return `${gender} ${group.weightClasses.join(', ')}${split}${AGE_GROUP_LABELS[group.ageGroup]}`;
 }
 
-export function publishProblem(schedule: BuiltSchedule): string | null {
+export function publishProblem(schedule: BuiltSchedule, meet: { startDate: string; endDate: string }): string | null {
   if (schedule.athletes === 0 || schedule.sessions.length === 0) return 'the meet has no entrants to publish yet';
+  const days = meetDays(meet.startDate, meet.endDate);
+  const outside = schedule.sessions.find((s) => s.date !== '' && days.length > 0 && !days.includes(s.date));
+  if (outside) return `session ${outside.number} is on ${outside.date}, which is not one of the meet's days`;
   const unscheduled = schedule.sessions.filter((s) => s.startTime === '').length;
   if (unscheduled > 0) return `${unscheduled} session${unscheduled === 1 ? ' has' : 's have'} no time; fit every session into the meet's days before publishing`;
   return null;
@@ -48,6 +52,7 @@ export type PublicationEmailContent = {
   userId: string;
   schedule: BuiltSchedule;
   lastLiveAt: number | null;
+  hasSchedule: boolean;
   reviewUrl?: string;
 };
 
@@ -69,9 +74,11 @@ export function renderPublicationEmail(content: PublicationEmailContent): { subj
   }
   const link = content.reviewUrl ? `<p><a href="${escapeHtml(content.reviewUrl)}">Review it to approve or reject</a></p>` : '';
   const context =
-    content.lastLiveAt === null
-      ? '<p>A schedule was published for a meet with no organizer yet. It goes live once approved.</p>'
-      : `<p>Someone who is not this meet's organizer published a new schedule. The organizer's schedule went live on ${isoDateOf(content.lastLiveAt)}; approving replaces it and makes this publisher an organizer too.</p>`;
+    content.lastLiveAt !== null
+      ? `<p>Someone who is not this meet's organizer published a new schedule. The organizer's schedule went live on ${isoDateOf(content.lastLiveAt)}; approving replaces it and makes this publisher an organizer too.</p>`
+      : content.hasSchedule
+        ? "<p>A schedule was published for a meet that already has a schedule on MeetCal. Approving replaces the meet's current schedule and start list sessions, and makes this publisher its organizer.</p>"
+        : '<p>A schedule was published for a meet with no organizer yet. It goes live once approved.</p>';
   return { subject: `Schedule to review: ${content.meet}`, html: `${context}${link}${summary}` };
 }
 
@@ -85,7 +92,17 @@ function page(title: string, body: string): string {
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="robots" content="noindex"><title>${escapeHtml(title)}</title><style>${PAGE_STYLE}</style></head><body>${body}</body></html>`;
 }
 
-export type ReviewPageContent = { meet: string; status: PublicationStatus; contactEmail?: string; userId: string; schedule: BuiltSchedule; lastLiveAt: number | null; publicationId: string; token: string };
+export type ReviewPageContent = {
+  meet: string;
+  status: PublicationStatus;
+  contactEmail?: string;
+  userId: string;
+  schedule: BuiltSchedule;
+  lastLiveAt: number | null;
+  hasSchedule: boolean;
+  publicationId: string;
+  token: string;
+};
 
 export function renderReviewPage(content: ReviewPageContent): string {
   const { html } = renderPublicationEmail({
@@ -95,6 +112,7 @@ export function renderReviewPage(content: ReviewPageContent): string {
     userId: content.userId,
     schedule: content.schedule,
     lastLiveAt: content.lastLiveAt,
+    hasSchedule: content.hasSchedule,
   });
   const hidden = `<input type="hidden" name="id" value="${escapeHtml(content.publicationId)}"><input type="hidden" name="token" value="${escapeHtml(content.token)}">`;
   const actions =

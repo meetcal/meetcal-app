@@ -12,6 +12,7 @@ import { athletesFields, sessionScheduleFields } from '../schema';
 import { recordWrite } from './hints';
 import { apiError } from '../lib/validation';
 import type { PublishedSchedule } from '../lib/schedulePublishing';
+import { athleteKey } from '../lib/scheduleBuilder';
 
 /**
  * An empty start list or schedule is a failed load, not a meet without
@@ -320,10 +321,11 @@ export async function writeBuiltSchedule(ctx: MutationCtx, meet: string, publish
     MEET_ROSTER_MAX,
     'athletes of one meet',
   );
-  const byIdentity = new Map(roster.map((row) => [`${row.memberId}|${normalizeName(row.name)}`, row]));
+  const rowsByKey = new Map<string, Doc<'athletes'>[]>();
+  for (const row of roster) rowsByKey.set(athleteKey(row), [...(rowsByKey.get(athleteKey(row)) ?? []), row]);
   const placed = new Map<string, { sessionNumber: number; platform: string }>();
   for (const placement of published.placements) {
-    const row = byIdentity.get(`${placement.memberId}|${normalizeName(placement.name)}`);
+    const row = rowsByKey.get(athleteKey(placement))?.shift();
     if (!row) throw apiError(409, `the entries changed since this schedule was built (${placement.name} is no longer entered); build it again`);
     placed.set(row._id, { sessionNumber: placement.sessionNumber, platform: placement.platform });
   }

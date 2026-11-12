@@ -53,6 +53,15 @@ async function lastLiveAt(ctx: QueryCtx, meet: string): Promise<number | null> {
   return live ? (live.decidedAt ?? live.createdAt) : null;
 }
 
+async function hasSchedule(ctx: QueryCtx, meet: string): Promise<boolean> {
+  return (
+    (await ctx.db
+      .query('session_schedule')
+      .withIndex('by_meet', (q) => q.eq('meet', meet))
+      .first()) !== null
+  );
+}
+
 async function requireOpenMeet(ctx: QueryCtx, meet: string) {
   const row = await requireMeet(ctx, meet);
   if (row.status === 'completed') throw apiError(409, 'this meet is over, so its schedule can no longer be published');
@@ -84,7 +93,7 @@ export const publish = mutation({
       throw apiError(429, `at most ${MAX_PUBLISHES_PER_DAY} schedule publishes a day`, { max: MAX_PUBLISHES_PER_DAY });
     }
     const schedule = await scheduleOf(ctx, { meet: row.name, options, edits });
-    const problem = publishProblem(schedule);
+    const problem = publishProblem(schedule, row);
     if (problem) throw apiError(400, problem);
     const live = await isOrganizer(ctx, row.name, userId);
     if (live) await writeBuiltSchedule(ctx, row.name, publishedSchedule(schedule));
@@ -125,7 +134,7 @@ export const emailContent = internalQuery({
     const publication = await ctx.db.get(publicationId);
     if (!publication) return null;
     const { meet, status, contactEmail, userId, emailedAt } = publication;
-    return { meet, status, contactEmail, userId, emailedAt, schedule: await scheduleOf(ctx, publication), lastLiveAt: await lastLiveAt(ctx, meet) };
+    return { meet, status, contactEmail, userId, emailedAt, schedule: await scheduleOf(ctx, publication), lastLiveAt: await lastLiveAt(ctx, meet), hasSchedule: await hasSchedule(ctx, meet) };
   },
 });
 
@@ -190,9 +199,9 @@ async function decide(ctx: MutationCtx, publication: Doc<'schedule_publications'
     await ctx.db.patch(publication._id, { status: 'rejected', decidedAt: now, reviewTokenHash: undefined });
     return { status: 'rejected', message: 'The schedule was rejected. Nothing on MeetCal changed.' };
   }
-  await requireOpenMeet(ctx, publication.meet);
+  const meet = await requireOpenMeet(ctx, publication.meet);
   const schedule = await scheduleOf(ctx, publication);
-  const problem = publishProblem(schedule);
+  const problem = publishProblem(schedule, meet);
   if (problem) throw apiError(409, `it can't go live now: ${problem}`);
   await writeBuiltSchedule(ctx, publication.meet, publishedSchedule(schedule));
   if (!(await isOrganizer(ctx, publication.meet, publication.userId))) {
@@ -222,6 +231,7 @@ export const reviewByToken = internalQuery({
       userId: publication.userId,
       schedule: await scheduleOf(ctx, publication),
       lastLiveAt: await lastLiveAt(ctx, publication.meet),
+      hasSchedule: await hasSchedule(ctx, publication.meet),
     };
   },
 });
