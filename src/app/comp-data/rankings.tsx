@@ -77,6 +77,7 @@ function IntlRankingsScreenContent() {
     error: fetchError,
   } = useMutableResource({
     resource: intlRankingsResource,
+    screen: "rankings",
     params: [] as const,
     initialData: EMPTY_INTL_RANKINGS,
   });

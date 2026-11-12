@@ -23,4 +23,20 @@ final class MeetCalWidgetReloader: NSObject {
         WidgetCenter.shared.reloadAllTimelines()
         #endif
     }
+
+    @objc(currentWidgetKinds:)
+    static func currentWidgetKinds(_ completion: @escaping ([String]?) -> Void) {
+        #if canImport(WidgetKit)
+        WidgetCenter.shared.getCurrentConfigurations { result in
+            switch result {
+            case .success(let widgets):
+                completion(widgets.map { $0.kind })
+            case .failure:
+                completion(nil)
+            }
+        }
+        #else
+        completion(nil)
+        #endif
+    }
 }

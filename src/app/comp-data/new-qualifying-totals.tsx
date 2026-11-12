@@ -12,7 +12,9 @@ import { DEEP_LINKS } from "@/utils/deepLinks";
 import { useMutableResource } from "@/hooks/useMutableResource";
 import {
   EMPTY_QUALIFYING_TOTALS,
-  qualifyingTotalsResource,
+  QualifyingTotalCategories,
+  qualifyingTotalCategoriesResource,
+  qualifyingTotalsForEventResource,
 } from "@/lib/database/fetch-qualifying-totals";
 import {
   defaultQualifyingEvent,
@@ -26,6 +28,8 @@ import { Stack, useLocalSearchParams } from "expo-router";
 import { useEffect, useMemo } from "react";
 import { StyleSheet, View } from "react-native";
 import { useScreenHorizontalInsets } from "@/hooks/useScreenInsets";
+
+const EMPTY_CATEGORIES: QualifyingTotalCategories = { events: [], ageGroupsByEvent: {} };
 
 export default function QualifyingTotalsScreen() {
   return (
@@ -63,14 +67,32 @@ function QualifyingTotalsScreenContent() {
     resetKey: filterResetKey,
   });
   const {
-    data: totalsData,
-    isInitialLoading,
-    error: fetchError,
+    data: categories,
+    isInitialLoading: areCategoriesLoading,
+    error: categoriesError,
   } = useMutableResource({
-    resource: qualifyingTotalsResource,
+    resource: qualifyingTotalCategoriesResource,
     params: [] as const,
+    initialData: EMPTY_CATEGORIES,
+  });
+  const eventParams = useMemo<[string] | null>(
+    () => (filters.event ? [filters.event] : null),
+    [filters.event],
+  );
+  const {
+    data: totalsData,
+    isInitialLoading: areTotalsLoading,
+    error: totalsError,
+  } = useMutableResource({
+    resource: qualifyingTotalsForEventResource,
+    screen: "new-qualifying-totals",
+    params: eventParams,
     initialData: EMPTY_QUALIFYING_TOTALS,
   });
+  const isInitialLoading = filters.event ? areTotalsLoading : areCategoriesLoading;
+  const fetchError = filters.event ? totalsError : categoriesError;
+  const ageGroupsOf = (event: string) =>
+    sortAgeGroups(categories.ageGroupsByEvent[event] ?? [], { includeExtended: true });
 
   const getFilterDisplayText = () => {
     const ageGroup = filters.ageGroup
@@ -87,11 +109,7 @@ function QualifyingTotalsScreenContent() {
     [totalsData, filters],
   );
 
-  const eventOptions = useMemo(() => {
-    return sortQualifyingEvents(
-      Object.keys(totalsData ?? {}).filter((e) => typeof e === "string"),
-    );
-  }, [totalsData]);
+  const eventOptions = useMemo(() => sortQualifyingEvents(categories.events), [categories]);
 
   useEffect(() => {
     if (eventOptions.length === 0) {
@@ -101,15 +119,9 @@ function QualifyingTotalsScreenContent() {
     const nextEvent = eventOptions.includes(filters.event)
       ? filters.event
       : defaultQualifyingEvent(eventOptions);
-    const nextAgeGroups =
-      nextEvent && totalsData[nextEvent]
-        ? sortAgeGroups(
-            Object.keys(totalsData[nextEvent]).filter(
-              (ageGroup) => typeof ageGroup === "string",
-            ),
-            { includeExtended: true },
-          )
-        : [];
+    const nextAgeGroups = nextEvent
+      ? sortAgeGroups(categories.ageGroupsByEvent[nextEvent] ?? [], { includeExtended: true })
+      : [];
     const nextAgeGroup = nextAgeGroups.includes(filters.ageGroup)
       ? filters.ageGroup
       : (nextAgeGroups[0] ?? "");
@@ -134,22 +146,14 @@ function QualifyingTotalsScreenContent() {
     filters.event,
     setFilters,
     setTempFilters,
-    totalsData,
+    categories,
   ]);
 
   const buildFilterSections = (
     modalTempFilters: Record<string, string>,
   ): FilterSection[] => {
     const selectedEvent = modalTempFilters.event || filters.event;
-    const modalAgeGroupOptions =
-      selectedEvent && totalsData[selectedEvent]
-        ? sortAgeGroups(
-            Object.keys(totalsData[selectedEvent]).filter(
-              (ageGroup) => typeof ageGroup === "string",
-            ),
-            { includeExtended: true },
-          )
-        : [];
+    const modalAgeGroupOptions = selectedEvent ? ageGroupsOf(selectedEvent) : [];
 
     return [
       {
@@ -228,7 +232,9 @@ function QualifyingTotalsScreenContent() {
         {...filterModalProps}
         sections={buildFilterSections}
         resultCount={(modalTempFilters) =>
-          selectQualifyingTotals(totalsData, modalTempFilters).length
+          modalTempFilters.event === filters.event
+            ? selectQualifyingTotals(totalsData, modalTempFilters).length
+            : undefined
         }
         resultLabel="weight classes"
       />

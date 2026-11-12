@@ -1,5 +1,7 @@
 // First, so its clock starts as close to JS start as this module can get.
 import { startupTiming } from "@/lib/startup-timing";
+import { currentNetworkType, deviceFacts } from "@/lib/device-facts";
+import { setScreenTimingSender } from "@/lib/screen-timing";
 import { ClerkProvider, useUser } from "@clerk/expo";
 import { tokenCache } from "@clerk/expo/token-cache";
 import NetInfo from "@react-native-community/netinfo";
@@ -146,7 +148,9 @@ startupTiming.setFlags({
   nativeTabs: usesNativeTabs(Platform.OS, Platform.Version, isMaestroE2E()),
   updateLaunch: Updates.isEnabled && !Updates.isEmbeddedLaunch,
   appStateAtStart: AppState.currentState ?? "unknown",
+  ...deviceFacts(),
 });
+void currentNetworkType().then((networkType) => startupTiming.setFlags({ networkType }));
 {
   const backgroundWatch = AppState.addEventListener("change", (state) => {
     if (startupTiming.isSent()) {
@@ -161,6 +165,24 @@ startupTiming.begin((event, properties) => {
   posthog
     .ready()
     .then(() => posthog.capture(event, properties))
+    .catch(() => undefined);
+});
+
+setScreenTimingSender((event, properties) => {
+  if (__DEV__) console.info("[perf] screen timing", properties);
+  const { deviceModel, deviceMemoryMb } = deviceFacts();
+  posthog
+    .ready()
+    .then(() => currentNetworkType())
+    .then((networkType) =>
+      posthog.capture(event, {
+        ...properties,
+        platform: Platform.OS,
+        device_model: deviceModel,
+        device_memory_mb: deviceMemoryMb,
+        network_type: networkType,
+      }),
+    )
     .catch(() => undefined);
 });
 

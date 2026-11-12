@@ -1,3 +1,4 @@
+import { LoadingLabel } from "@/components/ui/LoadingLabel";
 import { ThemedText } from "@/components/ui/ThemedText";
 import { useAppColors } from "@/hooks/useAppColors";
 import { FlashList } from "@shopify/flash-list";
@@ -87,7 +88,7 @@ export function DataTable<T>({
     <>
       {loading &&
         (loadingContent || (
-          <ThemedText style={styles.loadingText}>Loading...</ThemedText>
+          <LoadingLabel style={styles.loadingText} />
         ))}
 
       {error && !loading && (

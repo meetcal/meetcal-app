@@ -104,6 +104,10 @@ export const athleteResultsStyles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
+  loadingLabel: {
+    marginTop: 8,
+    fontSize: 14,
+  },
   statsGrid: {
     flexDirection: "row",
     padding: 12,

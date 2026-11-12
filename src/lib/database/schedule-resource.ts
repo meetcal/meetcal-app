@@ -4,6 +4,7 @@ import { getMeetSchedule } from "@/lib/database/meet-data-reads";
 import { getMeetWriteGeneration } from "@/lib/database/offline-store-index";
 import { saveMeetSchedule } from "@/lib/database/meet-data-saves";
 import { fetchSchedule } from "@/lib/database/queries";
+import { devLog } from "@/lib/logger";
 import type { Schedule } from "@/types/schedule";
 
 /**
@@ -114,3 +115,9 @@ export const scheduleResource = createMutableResource<Schedule, [MeetName]>({
   // showing a schedule; only the caller that asked for it sees it.
   isPublishable: (data) => data.length > 0,
 });
+
+export function primeScheduleFetch(meet: string): void {
+  scheduleResource.revalidate(meet).catch((error: unknown) => {
+    devLog("Launch schedule read failed; the Schedule tab asks again", { meet, error });
+  });
+}

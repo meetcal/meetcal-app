@@ -63,7 +63,7 @@ describe("standardsResource", () => {
     ]);
     expect(standards.senior?.women).toEqual([]);
     expect(Object.keys(standards).sort()).toEqual(["junior", "senior", "u15", "youth"]);
-    expect(mockSetOfflineCache).toHaveBeenCalledWith("@offline_cache/standards", standards);
+    expect(mockSetOfflineCache).toHaveBeenCalledWith("@offline_cache/standards", standards, null);
   });
 
   // U15 has no B standard; the table answers 0, which the screen, widget and

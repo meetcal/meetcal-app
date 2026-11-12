@@ -3,6 +3,8 @@ package __PACKAGE_NAME__.widget
 import android.appwidget.AppWidgetManager
 import android.content.ComponentName
 import android.content.Context
+import com.facebook.react.bridge.Arguments
+import com.facebook.react.bridge.Promise
 import com.facebook.react.bridge.ReactApplicationContext
 import com.facebook.react.bridge.ReactContextBaseJavaModule
 import com.facebook.react.bridge.ReactMethod
@@ -74,6 +76,24 @@ class SavedWidgetModule(private val reactContext: ReactApplicationContext) : Rea
       .edit()
       .putBoolean(DataWidgetProvider.KEY_ENTITLEMENT_HINT, isSubscribed)
       .apply()
+  }
+
+  @ReactMethod
+  fun installedWidgetKinds(promise: Promise) {
+    val appWidgetManager = AppWidgetManager.getInstance(reactContext)
+    val providers = listOf(
+      "SavedWidget" to SavedWidgetProvider::class.java,
+      "QualifyingTotalsWidget" to QualifyingTotalsWidgetProvider::class.java,
+      "StandardsWidget" to StandardsWidgetProvider::class.java,
+      "InternationalRankingsWidget" to IntlRankingsWidgetProvider::class.java
+    )
+    val kinds = Arguments.createArray()
+    for ((kind, provider) in providers) {
+      if (appWidgetManager.getAppWidgetIds(ComponentName(reactContext, provider)).isNotEmpty()) {
+        kinds.pushString(kind)
+      }
+    }
+    promise.resolve(kinds)
   }
 
   // Clears only the saved-sessions widget (the signed-in user's data). The data

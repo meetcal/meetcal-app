@@ -1,14 +1,14 @@
 import { isRecord } from '@/lib/is-record';
 import { arrayOf, finiteNumber } from './cached-shapes';
 import { createMutableResource } from '@/lib/data/mutable-resource';
-import { isNetworkAvailable } from '@/lib/networkUtils';
 import {
   getOfflineCache,
   OFFLINE_CACHE_KEYS,
   replaceOfflineCache,
   setOfflineCache,
 } from './offline-cache';
-import { fetchApiIntlRankings, type ApiIntlRankingRow } from '@/lib/api/reference-api';
+import { fetchApiIntlRankingsTagged, type ApiIntlRankingRow } from '@/lib/api/reference-api';
+import { mapTagged, requireNetwork, resourceEntry, untagged } from './tagged-read';
 
 export type IntlRanking = {
   meet: string;
@@ -75,17 +75,19 @@ const readIntlRankings = arrayOf((value): IntlRanking | undefined => {
 });
 
 async function readIntlRankingsCache() {
-  const cached = await getOfflineCache(OFFLINE_CACHE_KEYS.intlRankings, readIntlRankings);
-  return cached ? { data: cached.data, lastUpdatedAt: cached.lastSynced } : null;
+  return resourceEntry(await getOfflineCache(OFFLINE_CACHE_KEYS.intlRankings, readIntlRankings));
 }
 
-async function fetchIntlRankingsFresh(): Promise<IntlRanking[]> {
-  const hasNetwork = await isNetworkAvailable();
-  if (!hasNetwork) {
-    throw new Error('Offline');
-  }
+async function fetchIntlRankingsTagged(knownTag: string | null) {
+  await requireNetwork();
+  return mapTagged(await fetchApiIntlRankingsTagged(knownTag), toIntlRankings);
+}
 
-  const rows = await fetchApiIntlRankings();
+function fetchIntlRankingsFresh(): Promise<IntlRanking[]> {
+  return untagged(fetchIntlRankingsTagged(null), '/data/intl-rankings');
+}
+
+function toIntlRankings(rows: readonly Readonly<ApiIntlRankingRow>[]): IntlRanking[] {
   const rankings: IntlRanking[] = [];
   for (const row of rows) {
     const ranking = toIntlRanking(row);
@@ -104,10 +106,9 @@ export function isIntlRankingsEmpty(rankings: readonly IntlRanking[]): boolean {
   return rankings.length === 0;
 }
 
-async function persistIntlRankings(rankings: IntlRanking[]) {
+async function persistIntlRankings(rankings: IntlRanking[], tag: string | null) {
   if (isIntlRankingsEmpty(rankings)) return null;
-  const entry = await setOfflineCache(OFFLINE_CACHE_KEYS.intlRankings, rankings);
-  return { data: entry.data, lastUpdatedAt: entry.lastSynced };
+  return resourceEntry(await setOfflineCache(OFFLINE_CACHE_KEYS.intlRankings, rankings, tag));
 }
 
 /**
@@ -127,5 +128,9 @@ export const intlRankingsResource = createMutableResource<IntlRanking[], []>({
   getKey: () => OFFLINE_CACHE_KEYS.intlRankings,
   loadCached: () => readIntlRankingsCache(),
   fetchFresh: () => fetchIntlRankingsFresh(),
-  persistFresh: (data) => persistIntlRankings(data),
+  persistFresh: (data) => persistIntlRankings(data, null),
+  tagged: {
+    fetch: (knownTag) => fetchIntlRankingsTagged(knownTag),
+    persist: (data, tag) => persistIntlRankings(data, tag),
+  },
 });

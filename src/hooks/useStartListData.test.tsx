@@ -4,8 +4,9 @@ import { act, create, type ReactTestRenderer } from "react-test-renderer";
 import { showToast } from "@/components/ui/Toast";
 import type { LiftResult } from "@/data/types/athletes";
 import { getMeetData } from "@/lib/database/meet-data-reads";
-import { saveMeetAthletes, saveMeetSchedule } from "@/lib/database/meet-data-saves";
-import { fetchAthletesWithSession, fetchSchedule } from "@/lib/database/queries";
+import { markMeetAthletesCurrent, saveMeetAthletes, saveMeetSchedule } from "@/lib/database/meet-data-saves";
+import { getMeetAthletesTag } from "@/lib/database/offline-store-index";
+import { fetchAthletesWithSession, fetchRosterTagged, fetchSchedule } from "@/lib/database/queries";
 import { isNetworkAvailable, subscribeToNetworkChanges } from "@/lib/networkUtils";
 import type { Schedule } from "@/types/schedule";
 import { FRESH_SNAPSHOT_TTL_MS, isSnapshotFresh, useStartListData } from "./useStartListData";
@@ -15,11 +16,23 @@ jest.mock("@/lib/database/meet-data-reads", () => ({ getMeetData: jest.fn() }));
 jest.mock("@/lib/database/meet-data-saves", () => ({
   saveMeetAthletes: jest.fn(async () => {}),
   saveMeetSchedule: jest.fn(async () => {}),
+  markMeetAthletesCurrent: jest.fn(async () => {}),
 }));
-jest.mock("@/lib/database/queries", () => ({
-  fetchAthletesWithSession: jest.fn(),
-  fetchSchedule: jest.fn(),
+jest.mock("@/lib/database/offline-store-index", () => ({
+  getMeetAthletesTag: jest.fn(async () => null),
 }));
+jest.mock("@/lib/database/queries", () => {
+  const fetchAthletesWithSession = jest.fn();
+  return {
+    fetchAthletesWithSession,
+    fetchRosterTagged: jest.fn(async (meet: string) => ({
+      status: "fresh",
+      value: await fetchAthletesWithSession(meet),
+      tag: null,
+    })),
+    fetchSchedule: jest.fn(),
+  };
+});
 jest.mock("@/lib/networkUtils", () => ({
   isNetworkAvailable: jest.fn(),
   subscribeToNetworkChanges: jest.fn(() => () => {}),
@@ -120,6 +133,28 @@ describe("useStartListData", () => {
     expect(saveMeetAthletes).not.toHaveBeenCalled();
   });
 
+  it("revalidates the saved roster with its tag and keeps it on an unchanged answer", async () => {
+    cache(0);
+    jest.mocked(getMeetAthletesTag).mockResolvedValueOnce('"r1"');
+    jest.mocked(fetchRosterTagged).mockResolvedValueOnce({ status: "unchanged", tag: '"r1"' });
+    await mount();
+    expect(fetchRosterTagged).toHaveBeenCalledWith("Meet A", '"r1"');
+    expect(hook.athletes).toEqual(CACHED.athletes);
+    expect(markMeetAthletesCurrent).toHaveBeenCalledWith("Meet A");
+    expect(saveMeetAthletes).not.toHaveBeenCalled();
+  });
+
+  it("asks without a tag when no roster is saved", async () => {
+    jest.mocked(getMeetData).mockResolvedValue({
+      athletes: [],
+      schedule: null,
+      athletesSyncedAt: 0,
+    } as unknown as Awaited<ReturnType<typeof getMeetData>>);
+    await mount();
+    expect(getMeetAthletesTag).not.toHaveBeenCalled();
+    expect(fetchRosterTagged).toHaveBeenCalledWith("Meet A", null);
+  });
+
   it("serves a just-written snapshot without going to the network", async () => {
     cache(Date.now());
     await mount();
@@ -133,7 +168,7 @@ describe("useStartListData", () => {
     await mount();
     expect(hook.athletes).toEqual(FRESH.athletes);
     expect(hook.schedule).toEqual(FRESH.schedule);
-    expect(saveMeetAthletes).toHaveBeenCalledWith("Meet A", FRESH.athletes);
+    expect(saveMeetAthletes).toHaveBeenCalledWith("Meet A", FRESH.athletes, null);
     expect(saveMeetSchedule).toHaveBeenCalledWith("Meet A", FRESH.schedule);
   });
 

@@ -10,8 +10,11 @@ import { useFilterState } from "@/hooks/useFilterState";
 import { useMutableResource } from "@/hooks/useMutableResource";
 import { useWSOAgeGroups } from "@/hooks/useWSOAgeGroups";
 import {
+  readRememberedWso,
+  rememberWso,
   wsoListResource,
   wsoRecordsResource,
+  wsoToShow,
 } from "@/lib/database/fetch-wso-records";
 import { filterSummary } from "@/lib/filter-summary";
 import { formatAgeGroupLabel, sortAgeGroups } from "@/lib/sortAgeGroups";
@@ -22,7 +25,7 @@ import {
 } from "@/types/records";
 import { WsoRecordsFilters } from "@/types/wso-records";
 import { Stack } from "expo-router";
-import React, { useEffect, useMemo } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { StyleSheet } from "react-native";
 import { useScreenHorizontalInsets } from "@/hooks/useScreenInsets";
 
@@ -74,16 +77,33 @@ function WSORecordsScreenContent() {
     error: recordsError,
   } = useMutableResource({
     resource: wsoRecordsResource,
+    screen: "wso-records",
     params: wsoParams,
     initialData: EMPTY_RECORDS_DATA,
   });
 
+  const [remembered, setRemembered] = useState<{ wso: string | null } | null>(null);
   useEffect(() => {
-    const nextWSO = availableWSOs[0];
-    if (filters.wso || nextWSO === undefined) return;
+    let cancelled = false;
+    void readRememberedWso().then((wso) => {
+      if (!cancelled) setRemembered({ wso });
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (remembered === null) return;
+    const nextWSO = wsoToShow(filters.wso, remembered.wso, availableWSOs);
+    if (!nextWSO || nextWSO === filters.wso) return;
     setFilters((prev) => ({ ...prev, wso: nextWSO }));
     setTempFilters((prev) => ({ ...prev, wso: nextWSO }));
-  }, [availableWSOs, filters.wso, setFilters, setTempFilters]);
+  }, [availableWSOs, filters.wso, remembered, setFilters, setTempFilters]);
+
+  useEffect(() => {
+    if (filters.wso) void rememberWso(filters.wso);
+  }, [filters.wso]);
 
   // The records are fetched for one age group, so the age-group options come
   // from the WSO's unfiltered list.
@@ -172,8 +192,8 @@ function WSORecordsScreenContent() {
         records={currentRecords}
         rowKeyPrefix={`${filters.wso}-${filters.ageGroup}-${filters.gender}`}
         weightClassUnit="kg"
-        loading={isWSOLoading || (Boolean(filters.wso) && isRecordsLoading)}
-        error={wsoListError || recordsError}
+        loading={filters.wso ? isRecordsLoading : isWSOLoading || remembered === null}
+        error={filters.wso ? recordsError : wsoListError}
         emptyMessage={`No ${filters.wso} records available for ${filters.gender} in the ${formatAgeGroupLabel(filters.ageGroup)} age group.`}
       />
 

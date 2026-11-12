@@ -7,6 +7,7 @@ import {
   reconnectRefetchDelayMs,
 } from "@/lib/data/mutable-resource";
 import { subscribeToNetworkChanges } from "@/lib/networkUtils";
+import { useScreenTiming } from "@/hooks/useScreenTiming";
 
 export type MutableResourceState<T> = {
   data: T;
@@ -48,12 +49,13 @@ type UseMutableResourceOptions<T, TParams extends readonly unknown[]> = {
    */
   params: TParams | null;
   initialData: T;
+  screen?: string;
 };
 
 export function useMutableResource<T, TParams extends readonly unknown[]>(
   options: UseMutableResourceOptions<T, TParams>,
 ): MutableResourceState<T> {
-  const { resource, params, initialData } = options;
+  const { resource, params, initialData, screen } = options;
   const enabled = params !== null;
 
   const key = useMemo(
@@ -89,8 +91,9 @@ export function useMutableResource<T, TParams extends readonly unknown[]>(
   // whether it is also what storage holds. After a failed write it is not:
   // comparing with the screen would then skip every later write of the same
   // answer and leave the stored copy stale for good.
+  const shownTagRef = useRef<string | null | undefined>(undefined);
   const shownRef = useRef<ResourceCacheEntry<T>>({ data, lastUpdatedAt });
-  shownRef.current = { data, lastUpdatedAt };
+  shownRef.current = { data, lastUpdatedAt, tag: shownTagRef.current };
   const shownIsStoredRef = useRef(true);
 
   const refresh = useCallback(
@@ -137,6 +140,7 @@ export function useMutableResource<T, TParams extends readonly unknown[]>(
           : await resource.revalidateWithCached(compareWith, ...activeParams);
         if (isStale()) return true;
         shownIsStoredRef.current = result.stored !== false;
+        shownTagRef.current = result.tag;
         setData(result.data);
         setLastUpdatedAt(result.lastUpdatedAt);
         setSource(result.source);
@@ -206,6 +210,7 @@ export function useMutableResource<T, TParams extends readonly unknown[]>(
       setIsRefreshing(false);
       if (keyChanged) {
         sourceRef.current = null;
+        shownTagRef.current = undefined;
         setData(initialDataRef.current);
         setLastUpdatedAt(null);
         setSource(null);
@@ -227,6 +232,7 @@ export function useMutableResource<T, TParams extends readonly unknown[]>(
 
       if (cached) {
         shownIsStoredRef.current = true;
+        shownTagRef.current = cached.tag;
         setData(cached.data);
         setLastUpdatedAt(cached.lastUpdatedAt);
         setSource("cache");
@@ -263,6 +269,7 @@ export function useMutableResource<T, TParams extends readonly unknown[]>(
       publishedCountRef.current += 1;
       // What is shown is now this answer, stored or not (see `shownIsStoredRef`).
       shownIsStoredRef.current = result.stored !== false;
+      shownTagRef.current = result.tag;
       setData((current) => (resource.isEqual(current, result.data) ? current : result.data));
       setLastUpdatedAt(result.lastUpdatedAt);
       setSource(result.source);
@@ -299,11 +306,14 @@ export function useMutableResource<T, TParams extends readonly unknown[]>(
     };
   }, [enabled, key, refresh]);
 
+  const reportedInitialLoading = isInitialLoading || (key !== null && key !== loadStartedForKey);
+  useScreenTiming(screen ?? null, { source, failed: error !== null });
+
   return {
     data,
     error,
     refreshError,
-    isInitialLoading: isInitialLoading || (key !== null && key !== loadStartedForKey),
+    isInitialLoading: reportedInitialLoading,
     isRefreshing,
     lastUpdatedAt,
     source,

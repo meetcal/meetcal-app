@@ -135,6 +135,7 @@ module.exports = defineConfig([
     // `__dirname` are real here.
     files: [
       "plugins/**/*.js",
+      "metro/**/*.js",
       "jest/**/*.js",
       "targets/**/*.js",
       "*.config.js",

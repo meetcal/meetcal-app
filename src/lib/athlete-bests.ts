@@ -154,7 +154,6 @@ async function getAthleteBestsBatchUncached(
 
   Object.assign(bestsByName, lookup.answered);
   if (lookup.unanswered.length > 0) {
-    // The most-recent-meet lookup failed for these: shown, never stored.
     Object.assign(bestsByName, await loadFallbackBests(lookup.unanswered, storedByName));
   }
   return bestsByName;

@@ -3,6 +3,7 @@ import { standardsResource } from '@/lib/database/fetch-standards';
 import { intlRankingsResource } from '@/lib/database/fetchIntlRankings';
 import type { MutableResource } from '@/lib/data/mutable-resource';
 import { devLog } from '@/lib/logger';
+import { startupTiming } from '@/lib/startup-timing';
 import {
   buildDataWidgetPayloads,
   buildLockedDataWidgetPayloads,
@@ -17,6 +18,7 @@ import {
   type DataWidgetSourceData,
   type WidgetSettings,
 } from '@/utils/dataWidgets';
+import { installedDataWidgets, type InstalledDataWidgets } from '@/utils/installedDataWidgets';
 
 /**
  * Keeps the qualifying totals, standards and international rankings widgets
@@ -40,6 +42,9 @@ export const DATA_WIDGET_REFRESH_MIN_INTERVAL_MS = 30 * 60 * 1000;
  */
 export const DATA_WIDGET_SOURCE_MAX_AGE_MS = 6 * 60 * 60 * 1000;
 
+export const DATA_WIDGET_REFRESH_AFTER_FIRST_SCREEN_MS = 3000;
+export const DATA_WIDGET_REFRESH_MAX_LAUNCH_DEFER_MS = 10_000;
+
 export type DataWidgetRefreshOutcome =
   /** No native data-widget module (web, Expo Go, tests). Nothing fetched. */
   | 'unavailable'
@@ -54,6 +59,7 @@ export type DataWidgetRefreshOutcome =
   | 'throttled'
   /** A source could not be read from cache or network. Widgets untouched. */
   | 'no-data'
+  | 'no-widgets'
   /** The stored filters do not resolve against the data. Widgets untouched. */
   | 'unresolved'
   /** Widget Settings wrote while this refresh ran; its write wins. */
@@ -65,6 +71,8 @@ export type DataWidgetRefreshOutcome =
 export interface DataWidgetRefreshDeps {
   now: () => number;
   isAvailable: () => boolean;
+  installedWidgets: () => Promise<InstalledDataWidgets>;
+  launchSettled: () => Promise<void>;
   loadSource: (now: number) => Promise<DataWidgetSourceData | null>;
   loadSettings: () => Promise<WidgetSettings>;
   saveSettings: (settings: WidgetSettings) => Promise<void>;
@@ -111,18 +119,35 @@ export async function readWidgetSource<T>(
 
 const sourceCheckLog: SourceCheckLog = new Map();
 
-/**
- * Sequential on purpose: three small reference tables, read one at a time so
- * a launch never stacks three requests on top of the screen's own.
- */
 async function loadDefaultSource(now: number): Promise<DataWidgetSourceData | null> {
-  const totalsData = await readWidgetSource(qualifyingTotalsResource, now, sourceCheckLog);
-  if (!totalsData) return null;
-  const standardsData = await readWidgetSource(standardsResource, now, sourceCheckLog);
-  if (!standardsData) return null;
-  const intlRankings = await readWidgetSource(intlRankingsResource, now, sourceCheckLog);
-  if (!intlRankings) return null;
+  const [totalsData, standardsData, intlRankings] = await Promise.all([
+    readWidgetSource(qualifyingTotalsResource, now, sourceCheckLog),
+    readWidgetSource(standardsResource, now, sourceCheckLog),
+    readWidgetSource(intlRankingsResource, now, sourceCheckLog),
+  ]);
+  if (!totalsData || !standardsData || !intlRankings) return null;
   return { totalsData, standardsData, intlRankings };
+}
+
+let launchWait: Promise<void> | null = null;
+
+export function afterLaunchSettles(
+  whenFirstScreen: () => Promise<void> = () => startupTiming.whenFirstScreen(),
+): Promise<void> {
+  launchWait ??= new Promise<void>((resolve) => {
+    const cap = setTimeout(resolve, DATA_WIDGET_REFRESH_MAX_LAUNCH_DEFER_MS);
+    void whenFirstScreen().then(() => {
+      setTimeout(() => {
+        clearTimeout(cap);
+        resolve();
+      }, DATA_WIDGET_REFRESH_AFTER_FIRST_SCREEN_MS);
+    });
+  });
+  return launchWait;
+}
+
+export function resetLaunchWaitForTests(): void {
+  launchWait = null;
 }
 
 export function createDataWidgetRefresher(deps: DataWidgetRefreshDeps) {
@@ -155,6 +180,8 @@ export function createDataWidgetRefresher(deps: DataWidgetRefreshDeps) {
 
   const run = async (): Promise<DataWidgetRefreshOutcome> => {
     const writeCountAtStart = deps.getWriteCount();
+    await deps.launchSettled();
+    if ((await deps.installedWidgets()) === 'none') return 'no-widgets';
     const source = await deps.loadSource(deps.now());
     if (!source) return 'no-data';
 
@@ -231,7 +258,7 @@ export function createDataWidgetRefresher(deps: DataWidgetRefreshDeps) {
         // Neither wrote: a run with no data, or one the settings screen
         // superseded (which may unmount before its own data loads). Neither
         // holds back the next foreground's run.
-        if (outcome === 'no-data' || outcome === 'superseded') lastStartedAt = null;
+        if (outcome === 'no-data' || outcome === 'superseded' || outcome === 'no-widgets') lastStartedAt = null;
         devLog(`[Widget] Data widget refresh: ${outcome}`);
         return outcome;
       })
@@ -247,6 +274,8 @@ export function createDataWidgetRefresher(deps: DataWidgetRefreshDeps) {
 const defaultRefresher = createDataWidgetRefresher({
   now: () => Date.now(),
   isAvailable: isDataWidgetModuleAvailable,
+  installedWidgets: installedDataWidgets,
+  launchSettled: () => afterLaunchSettles(),
   loadSource: loadDefaultSource,
   loadSettings: loadWidgetSettings,
   saveSettings: saveWidgetSettings,

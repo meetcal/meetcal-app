@@ -1,6 +1,8 @@
 import { SkeletonBlock, useSkeletonPulse } from "@/components/ui/Skeleton";
+import { ThemedText } from "@/components/ui/ThemedText";
 import { ThemedView } from "@/components/ui/ThemedView";
 import { useAppColors } from "@/hooks/useAppColors";
+import { useWaitingForConnection, WAITING_FOR_CONNECTION_LABEL } from "@/hooks/useWaitingForConnection";
 import { useScreenHorizontalInsets } from "@/hooks/useScreenInsets";
 import React from "react";
 import { ScrollView, StyleSheet, View } from "react-native";
@@ -9,6 +11,7 @@ export function StartListSkeleton() {
   const skeletonPulse = useSkeletonPulse();
   const colors = useAppColors();
   const screenInsets = useScreenHorizontalInsets();
+  const isWaitingForConnection = useWaitingForConnection(true);
 
   return (
     <ThemedView
@@ -57,6 +60,11 @@ export function StartListSkeleton() {
         </View>
       </View>
       <ScrollView contentContainerStyle={skeletonStyles.content}>
+        {isWaitingForConnection && (
+          <ThemedText style={[skeletonStyles.waitingText, { color: colors.secondaryText }]}>
+            {WAITING_FOR_CONNECTION_LABEL}
+          </ThemedText>
+        )}
         {[0, 1, 2, 3].map((index) => (
           <View
             key={`skeleton-${index}`}
@@ -100,6 +108,7 @@ const styles = StyleSheet.create({
 });
 
 const skeletonStyles = StyleSheet.create({
+  waitingText: { textAlign: "center", fontSize: 14, marginBottom: 12 },
   icon: { width: 16, height: 16, borderRadius: 8 },
   searchLine: { height: 12, width: "70%", borderRadius: 6 },
   buttonIcon: { width: 14, height: 14, borderRadius: 7 },

@@ -54,8 +54,10 @@ jest.mock("@/lib/api/server-clock", () => ({
 }));
 
 const mockPrimeScheduleCache = jest.fn((_meet: string) => undefined);
+const mockPrimeScheduleFetch = jest.fn((_meet: string) => undefined);
 jest.mock("@/lib/database/schedule-resource", () => ({
   primeScheduleCache: (meet: string) => mockPrimeScheduleCache(meet),
+  primeScheduleFetch: (meet: string) => mockPrimeScheduleFetch(meet),
 }));
 
 jest.mock("@/utils/appIntents", () => ({
@@ -911,6 +913,8 @@ describe("SelectedMeetProvider persisted selection", () => {
 
     expect(mockPrimeScheduleCache).toHaveBeenCalledTimes(1);
     expect(mockPrimeScheduleCache).toHaveBeenCalledWith("Window Meet");
+    expect(mockPrimeScheduleFetch).toHaveBeenCalledTimes(1);
+    expect(mockPrimeScheduleFetch).toHaveBeenCalledWith("Window Meet");
 
     // The 5-minute refresh reads the list again, but not the schedule.
     await act(async () => {
@@ -919,6 +923,39 @@ describe("SelectedMeetProvider persisted selection", () => {
     await flush();
     expect(mockGetCachedMeets.mock.calls.length).toBeGreaterThan(1);
     expect(mockPrimeScheduleCache).toHaveBeenCalledTimes(1);
+    expect(mockPrimeScheduleFetch).toHaveBeenCalledTimes(1);
+    act(() => tree.unmount());
+  });
+
+  it("opens a stored meet the lookup found without waiting for the server clock", async () => {
+    await AsyncStorage.setItem(SELECTED_MEET_KEY, "Archived Meet");
+    mockGetCachedMeets.mockResolvedValue([makeMeet("Window Meet")]);
+    mockFetchMeetsFresh.mockResolvedValue([makeMeet("Window Meet")]);
+    mockFetchApiMeetByName.mockResolvedValue(makeMeet("Archived Meet"));
+    mockAwaitServerClock.mockImplementation(() => new Promise<null>(() => {}));
+
+    const tree = await mount();
+    expect(captured!.selectedMeet).toBe("Archived Meet");
+    expect(mockPrimeScheduleFetch).toHaveBeenCalledWith("Archived Meet");
+    act(() => tree.unmount());
+    mockAwaitServerClock.mockImplementation(async () => null);
+  });
+
+  it("asks the server clock before forgetting a stored meet the device clock says is over", async () => {
+    await AsyncStorage.setItem(SELECTED_MEET_KEY, "Ended Meet");
+    mockGetCachedMeets.mockResolvedValue([makeMeet("Window Meet")]);
+    mockFetchMeetsFresh.mockResolvedValue([makeMeet("Window Meet")]);
+    mockFetchApiMeetByName.mockResolvedValue(makeEndedMeet("Ended Meet"));
+    let lookupsBeforeClock = 0;
+    mockAwaitServerClock.mockImplementation(async () => {
+      lookupsBeforeClock = mockFetchApiMeetByName.mock.calls.length;
+      return null;
+    });
+
+    const tree = await mount();
+    expect(lookupsBeforeClock).toBe(1);
+    expect(captured!.selectedMeet).toBe("Window Meet");
+    await expect(AsyncStorage.getItem(SELECTED_MEET_KEY)).resolves.toBeNull();
     act(() => tree.unmount());
   });
 

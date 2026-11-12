@@ -10,6 +10,7 @@ import {
   fetchRecentAthleteHistoryForNames,
 } from "@/lib/database/queries";
 import { isNetworkAvailable } from "@/lib/networkUtils";
+import { historyForNames, startEarlyHistory } from "@/lib/session-history";
 import { ATTEMPT_HISTORY_YEARS, getHistoryCutoffDate } from "@/utils/dateTime";
 import { useCallback, useEffect, useRef, useState } from "react";
 
@@ -84,6 +85,13 @@ export function useAttemptEstimates({
       if (isStale()) return;
 
       const cutoffDate = getHistoryCutoffDate(ATTEMPT_HISTORY_YEARS);
+      const fetchHistory = (names: string[]) => fetchRecentAthleteHistoryForNames(names, cutoffDate);
+      const earlyHistory = hasNetwork
+        ? startEarlyHistory(
+            cachedSessionAthletes.map((athlete) => athlete.name ?? ""),
+            fetchHistory,
+          )
+        : null;
       if (cachedSessionAthletes.length > 0) {
         const cachedSessionResults = await readCachedSessionResults(
           cachedSessionAthletes,
@@ -120,9 +128,10 @@ export function useAttemptEstimates({
         },
       );
 
-      const freshSessionResults = await fetchRecentAthleteHistoryForNames(
+      const freshSessionResults = await historyForNames(
         uniqueNamedAthletes(freshSessionAthletes),
-        cutoffDate,
+        earlyHistory,
+        fetchHistory,
       );
       if (isStale()) return;
       setEstimates(calculateEstimates(freshSessionAthletes, freshSessionResults));

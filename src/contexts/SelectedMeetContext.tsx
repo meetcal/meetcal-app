@@ -4,7 +4,7 @@ import { MeetName, Meet } from '@/data/types/meet';
 import { SyncManager } from '@/lib/database/sync-manager';
 import { clearExpiredDownloadedMeets } from '@/lib/database/downloaded-meet-expiry';
 import { isMeetExplicitlyDownloaded } from '@/lib/database/meet-downloads-registry';
-import { primeScheduleCache } from '@/lib/database/schedule-resource';
+import { primeScheduleCache, primeScheduleFetch } from '@/lib/database/schedule-resource';
 import { prefetchCriticalMeetData, prefetchMeetData, warmMeetData } from '@/lib/database/meet-manager';
 import { fetchMeetsFresh } from '@/lib/database/meets-fetch';
 import { getCachedMeets } from '@/lib/database/meets-list-cache';
@@ -16,6 +16,7 @@ import {
   decideAfterFreshList,
   decideAfterStoredMeetLookup,
   decideFromCachedList,
+  isMeetCompleted,
   refreshedMeetDetails,
   type LaunchDecision,
 } from '@/lib/launch-meet';
@@ -70,15 +71,9 @@ function launchNow(): Date {
   return getTrustedNow() ?? new Date();
 }
 
-/**
- * A by-name meet lookup whose answer is judged on `launchNow` (is the stored
- * meet over, and so forgotten?). Requests no longer wait for the clock
- * sample they start, so this waits for both: the lookup, and a sample
- * (`awaitServerClock`, bounded). One await, as the lookup alone was, so the
- * caller's commit points do not move. A failed lookup rejects at once.
- */
-async function lookUpMeetForLaunch(name: string): Promise<Meet | null> {
-  const [meet] = await Promise.all([fetchApiMeetByName(name), awaitServerClock()]);
+export async function lookUpMeetForLaunch(name: string): Promise<Meet | null> {
+  const meet = await fetchApiMeetByName(name);
+  if (meet && getTrustedNow() === null && isMeetCompleted(meet, launchNow())) await awaitServerClock();
   return meet;
 }
 
@@ -277,7 +272,10 @@ export function SelectedMeetProvider({ children }: { children: React.ReactNode }
       const [cachedMeets, stored, storedDetailsRaw] = await Promise.all([
         getCachedMeets(),
         AsyncStorage.getItem(SELECTED_MEET_KEY).then((name) => {
-          if (isLaunchRun && name) primeScheduleCache(name);
+          if (isLaunchRun && name) {
+            primeScheduleCache(name);
+            primeScheduleFetch(name);
+          }
           return name;
         }),
         AsyncStorage.getItem(SELECTED_MEET_DETAILS_KEY),

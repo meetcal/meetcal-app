@@ -60,6 +60,7 @@ function MeetResultsByClubScreenContent() {
     refresh,
   } = useMutableResource({
     resource: clubMeetStatsResource,
+    screen: "club-results/results",
     params,
     initialData: null as ClubMeetStats | null,
   });

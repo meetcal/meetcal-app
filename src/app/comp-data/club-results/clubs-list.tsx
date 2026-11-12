@@ -47,6 +47,7 @@ function ShareResultsByClubScreenContent() {
     refresh,
   } = useMutableResource({
     resource: clubsResource,
+    screen: "club-results/clubs-list",
     params: [] as const,
     initialData: [] as string[],
   });

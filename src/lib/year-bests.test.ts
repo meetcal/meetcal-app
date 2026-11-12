@@ -2,9 +2,15 @@ import type { AthleteBests, AthleteMeetResult } from "@/data/types/athletes";
 
 const mockFetchApiYearBestsByNames = jest.fn();
 const mockFetchApiResultsByNames = jest.fn();
+const mockRequestedOptions: unknown[] = [];
 
 jest.mock("@/lib/api/results-api", () => ({
-  fetchApiYearBestsByNames: (...args: unknown[]) => mockFetchApiYearBestsByNames(...args),
+  fetchApiYearBestsByNames: (names: string[], cutoffDate?: string, options?: { latestWhenEmpty?: boolean }) => {
+    mockRequestedOptions.push(options);
+    return jest
+      .requireActual("@/test-support/latest-bests")
+      .answerBestsOrLatest(names, cutoffDate, options, mockFetchApiYearBestsByNames, mockFetchApiResultsByNames);
+  },
   fetchApiResultsByNames: (...args: unknown[]) => mockFetchApiResultsByNames(...args),
 }));
 
@@ -133,6 +139,7 @@ describe("one stored meaning for both screens (#320)", () => {
     expect(mockStore.get("athlete x")?.bests).toEqual(LAST_MEET);
     // The second screen read the first one's fresh entry.
     expect(mockFetchApiYearBestsByNames).toHaveBeenCalledTimes(1);
+    expect(mockRequestedOptions.at(-1)).toEqual({ latestWhenEmpty: true });
   });
 });
 
@@ -145,7 +152,7 @@ describe("lookUpAthleteBests", () => {
     expect(mockStore.size).toBe(0);
   });
 
-  it("reports names whose most-recent-meet lookup failed, and stores only the answered ones", async () => {
+  it("asks once, with the latest meet for names with nothing in the window, and stores nothing when that fails", async () => {
     const { lookUpAthleteBests } = require("@/lib/year-bests");
     mockFetchApiYearBestsByNames.mockResolvedValue({
       A: { bestSnatch: 100, bestCJ: 120, bestTotal: 220 },
@@ -153,10 +160,30 @@ describe("lookUpAthleteBests", () => {
     });
     mockFetchApiResultsByNames.mockRejectedValue(new Error("timed out"));
 
-    await expect(lookUpAthleteBests(["A", "B"])).resolves.toEqual({
-      answered: { A: { snatch_best: 100, cj_best: 120, total: 220 } },
-      unanswered: ["B"],
+    await expect(lookUpAthleteBests(["A", "B"])).rejects.toThrow("timed out");
+    expect([...mockStore.keys()]).toEqual([]);
+  });
+});
+
+describe("lookUpAthleteBests with the latest meet in one answer", () => {
+  it("asks for window bests or the latest meet in one request, and never sends the latest_only read", async () => {
+    const { lookUpAthleteBests } = require("@/lib/year-bests");
+    mockFetchApiYearBestsByNames.mockResolvedValue({
+      A: { bestSnatch: 100, bestCJ: 120, bestTotal: 220 },
+      B: { bestSnatch: 0, bestCJ: 0, bestTotal: 0 },
     });
-    expect([...mockStore.keys()]).toEqual(["a"]);
+    mockFetchApiResultsByNames.mockResolvedValue([
+      { name: "B", meet: "Old", date: "2019-05-01", snatch_best: 70, cj_best: 90, total: 160 },
+    ]);
+
+    await expect(lookUpAthleteBests(["A", "B"])).resolves.toEqual({
+      answered: {
+        A: { snatch_best: 100, cj_best: 120, total: 220 },
+        B: { snatch_best: 70, cj_best: 90, total: 160 },
+      },
+      unanswered: [],
+    });
+    expect(mockFetchApiYearBestsByNames).toHaveBeenCalledTimes(1);
+    expect(mockRequestedOptions.at(-1)).toEqual({ latestWhenEmpty: true });
   });
 });

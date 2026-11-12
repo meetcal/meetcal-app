@@ -19,7 +19,7 @@ const gateFiles = /^(?:scripts\/check(?:-lock)?\.ts|scripts\/check\/.*|mise\.tom
  * the same Jest, and `tsrs` covers `convex/`). The coverage-gap report the gate
  * runs lives under `.codex/`.
  */
-const appRoots = /^(?:src|convex|convex-tests|widget|plugins|assets|targets|jest|patches|scripts)\//;
+const appRoots = /^(?:src|convex|convex-tests|widget|plugins|assets|targets|jest|patches|scripts|metro)\//;
 const appFiles =
   /^(?:package\.json|bun\.lock|bunfig\.toml|tsconfig\.json|babel\.config\.js|metro\.config\.js|app\.config\.js|fingerprint\.config\.js|eas\.json|\.easignore|\.env\.example|jest\.setup\.js|eslint\.config\.js|\.prettierrc\.js|\.codex\/skills\/review-code-performance-tests\/scripts\/.*)$/;
 

@@ -50,6 +50,7 @@ function ClubMeetsListScreenContent() {
     refresh,
   } = useMutableResource({
     resource: clubMeetsResource,
+    screen: "club-results/meets-list",
     params,
     initialData: [] as ClubMeet[],
   });

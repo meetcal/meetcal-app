@@ -5,6 +5,7 @@ import { ConvexError } from 'convex/values';
 
 import { getChaosConfig } from '@/config/development';
 import { withDevChaos } from '@/lib/api/dev-chaos';
+import { createProgressFetch } from '@/lib/api/progress-fetch';
 import { TransportRequestError } from '@/lib/api/transport-error';
 
 /**
@@ -50,6 +51,7 @@ export type ApiCall = {
    * revision so the server ignores such a late one (`convex/users.ts`).
    */
   signal?: AbortSignal;
+  onProgress?: () => void;
 };
 
 export type Transport = (call: ApiCall) => Promise<unknown>;
@@ -64,20 +66,20 @@ export const PRODUCTION_CONVEX_URL = 'https://disciplined-hare-790.convex.cloud'
 
 export const CONVEX_URL = process.env.EXPO_PUBLIC_CONVEX_URL || PRODUCTION_CONVEX_URL;
 
-/** What a client's last response said beyond its body. */
 type ResponseFacts = { status: number | null; date: string | null };
 
-/**
- * A client whose requests record the HTTP status (and `Date` header) they
- * were answered with: the client reports a refused request as a bare `Error`
- * with the response text.
- */
-function httpClient(facts: ResponseFacts, signal: AbortSignal | undefined): ConvexHttpClient {
+function baseFetch(onProgress: (() => void) | undefined): typeof fetch {
+  if (!onProgress || typeof XMLHttpRequest === 'undefined') return fetch;
+  return createProgressFetch({ onProgress });
+}
+
+function httpClient(facts: ResponseFacts, call: ApiCall): ConvexHttpClient {
+  const send = baseFetch(call.onProgress);
+  const { signal } = call;
   return new ConvexHttpClient(CONVEX_URL, {
-    // Functions' log lines are for the Convex dashboard, not the app console.
     logger: false,
     fetch: async (input, init) => {
-      const response = await fetch(input, signal ? { ...init, signal } : init);
+      const response = await send(input, signal ? { ...init, signal } : init);
       facts.status = response.status;
       facts.date = response.headers?.get?.('date') ?? null;
       return response;
@@ -196,7 +198,7 @@ export const convexTransport: Transport = async (call) => {
   const name = checkedFunctionName(call.fn);
   const args = definedArgs(call.args);
   const facts: ResponseFacts = { status: null, date: null };
-  const client = httpClient(facts, call.signal);
+  const client = httpClient(facts, call);
   if (call.token) client.setAuth(call.token);
   try {
     if (call.kind === 'clock') {
@@ -217,6 +219,7 @@ export const convexTransport: Transport = async (call) => {
 };
 
 let testTransport: Transport | null = null;
+let testTransportRetriesReads = false;
 
 /**
  * Convex behind `DEV_CONFIG.CHAOS`'s faults. The config is read on every
@@ -236,10 +239,13 @@ export function callApi(call: ApiCall): Promise<unknown> {
   return convexTransport(call);
 }
 
-/**
- * Replaces the transport (a stub), or restores Convex with `null`. For tests.
- * A stub takes precedence over `DEV_CONFIG.CHAOS`.
- */
-export function setApiTransportForTests(transport: Transport | null): void {
+export type TestTransportOptions = { retryReads?: boolean };
+
+export function setApiTransportForTests(transport: Transport | null, options: TestTransportOptions = {}): void {
   testTransport = transport;
+  testTransportRetriesReads = options.retryReads === true;
+}
+
+export function retriesReads(): boolean {
+  return testTransport === null || testTransportRetriesReads;
 }

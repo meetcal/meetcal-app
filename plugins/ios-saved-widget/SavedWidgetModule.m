@@ -19,6 +19,7 @@ static NSString *const MeetCalEntitlementHintKey = @"premiumEntitlementHint";
 // the generated `<Product>-Swift.h` header name.
 @protocol MeetCalWidgetReloading
 + (void)reloadAllTimelines;
++ (void)currentWidgetKinds:(void (^)(NSArray<NSString *> *_Nullable kinds))completion;
 @end
 
 static void MeetCalReloadWidgetTimelines(void) {
@@ -130,6 +131,22 @@ RCT_EXPORT_METHOD(updateEntitlementHint:(BOOL)isSubscribed) {
 
   [shared setBool:isSubscribed forKey:MeetCalEntitlementHintKey];
   [shared synchronize];
+}
+
+RCT_EXPORT_METHOD(installedWidgetKinds:(RCTPromiseResolveBlock)resolve
+                  rejecter:(RCTPromiseRejectBlock)reject) {
+  Class reloader = NSClassFromString(@"MeetCalWidgetReloader");
+  if (!reloader || ![reloader respondsToSelector:@selector(currentWidgetKinds:)]) {
+    reject(@"widget_kinds_unavailable", @"MeetCalWidgetReloader cannot list widgets", nil);
+    return;
+  }
+  [(Class<MeetCalWidgetReloading>)reloader currentWidgetKinds:^(NSArray<NSString *> *_Nullable kinds) {
+    if (kinds) {
+      resolve(kinds);
+    } else {
+      reject(@"widget_kinds_failed", @"WidgetCenter did not list the installed widgets", nil);
+    }
+  }];
 }
 
 // Clears only the saved-sessions widget (the signed-in user's data). The data

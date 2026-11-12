@@ -83,6 +83,7 @@ function RecordsScreenContent() {
     error: fetchError,
   } = useMutableResource({
     resource: federationRecordsResource,
+    screen: "records",
     params: recordsParams,
     initialData: EMPTY_RECORDS_DATA,
   });

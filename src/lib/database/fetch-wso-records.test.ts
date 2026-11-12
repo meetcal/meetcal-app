@@ -5,9 +5,13 @@ import { setApiTransportForTests } from "@/lib/api/transport";
 import {
   downloadWSORecordsForOffline,
   fetchWSOAgeGroups,
+  LAST_WSO_STORAGE_KEY,
   MAX_CACHED_WSO_RECORD_VIEWS,
+  readRememberedWso,
+  rememberWso,
   wsoListResource,
   wsoRecordsResource,
+  wsoToShow,
 } from "@/lib/database/fetch-wso-records";
 import { getOfflineCache, OFFLINE_CACHE_KEYS } from "@/lib/database/offline-cache";
 import type { RecordsData } from "@/types/records";
@@ -99,19 +103,36 @@ describe("WSO records mapping and list", () => {
     expect(mockGetJsonArray).toHaveBeenCalledWith("/data/wso/records", { wso: "Carolina" });
   });
 
-  it("lists WSOs from the API, and from the cached records' keys, sorted", async () => {
-    mockFetchApiWsoList.mockResolvedValueOnce(["Carolina", "Ohio"]);
+  it("lists WSOs from the API and keeps the list for the next visit, sorted", async () => {
+    jest.spyOn(Date, "now").mockReturnValue(5);
+    mockFetchApiWsoList.mockResolvedValueOnce(["Ohio", "Carolina"]);
     await expect(wsoListResource.revalidate()).resolves.toMatchObject({
       data: ["Carolina", "Ohio"],
     });
 
-    await expect(wsoListResource.loadCached()).resolves.toBeNull();
+    await expect(wsoListResource.loadCached()).resolves.toEqual({
+      data: ["Carolina", "Ohio"],
+      lastUpdatedAt: 5,
+    });
+  });
 
-    await seed(WSO_KEY, { Ohio: {}, carolina: {} }, 1);
+  it("lists WSOs from a newer download's records keys over an older browsed list", async () => {
+    await seed(OFFLINE_CACHE_KEYS.wsoList, ["Old WSO"], 1);
+    await seed(WSO_KEY, { Ohio: {}, carolina: {} }, 2);
     await expect(wsoListResource.loadCached()).resolves.toEqual({
       data: ["carolina", "Ohio"],
-      lastUpdatedAt: 1,
+      lastUpdatedAt: 2,
     });
+
+    await seed(OFFLINE_CACHE_KEYS.wsoList, ["Newer"], 3);
+    await expect(wsoListResource.loadCached()).resolves.toEqual({ data: ["Newer"], lastUpdatedAt: 3 });
+  });
+
+  it("reads only the names from a stored list, and nothing from a stored value that is not a list", async () => {
+    await seed(OFFLINE_CACHE_KEYS.wsoList, ["Ohio", 7], 1);
+    await expect(wsoListResource.loadCached()).resolves.toEqual({ data: ["Ohio"], lastUpdatedAt: 1 });
+    await seed(OFFLINE_CACHE_KEYS.wsoList, { Ohio: true }, 1);
+    await expect(wsoListResource.loadCached()).resolves.toBeNull();
   });
 });
 
@@ -222,5 +243,33 @@ describe("fetchWSOAgeGroups", () => {
   it("rejects a non-string age-group list from the API", async () => {
     mockFetchApiWsoAgeGroups.mockResolvedValue([{ age: "Senior" }]);
     await expect(fetchWSOAgeGroups("Carolina")).rejects.toThrow();
+  });
+});
+
+describe("the WSO the screen shows", () => {
+  it("keeps the current WSO while it is listed or the list is not in yet", () => {
+    expect(wsoToShow("Ohio", "Carolina", [])).toBe("Ohio");
+    expect(wsoToShow("Ohio", "Carolina", ["Carolina", "Ohio"])).toBe("Ohio");
+  });
+
+  it("opens on the remembered WSO before the list arrives, and once it is listed", () => {
+    expect(wsoToShow("", "Carolina", [])).toBe("Carolina");
+    expect(wsoToShow("", "Carolina", ["Carolina", "Ohio"])).toBe("Carolina");
+  });
+
+  it("falls back to the first listed WSO when neither is listed, and waits when nothing is known", () => {
+    expect(wsoToShow("Gone", "Also Gone", ["Carolina", "Ohio"])).toBe("Carolina");
+    expect(wsoToShow("", null, ["Carolina"])).toBe("Carolina");
+    expect(wsoToShow("", null, [])).toBeNull();
+  });
+
+  it("remembers the WSO across visits, and ignores a blank one", async () => {
+    await expect(readRememberedWso()).resolves.toBeNull();
+    await rememberWso("Ohio");
+    await expect(readRememberedWso()).resolves.toBe("Ohio");
+    await rememberWso("  ");
+    await expect(readRememberedWso()).resolves.toBe("Ohio");
+    await AsyncStorage.setItem(LAST_WSO_STORAGE_KEY, " ");
+    await expect(readRememberedWso()).resolves.toBeNull();
   });
 });

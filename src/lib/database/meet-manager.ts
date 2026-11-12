@@ -2,13 +2,13 @@ import { MeetName } from '@/data/types/meet';
 import { isSnapshotFresh } from '@/lib/athletes';
 import { clearImplicitMeetData } from '@/lib/database/meet-data-clears';
 import { isMeetExplicitlyDownloaded } from '@/lib/database/meet-downloads-registry';
-import { getMeetAthletesSyncedAt } from '@/lib/database/offline-store-index';
+import { getMeetAthletesSyncedAt, getMeetAthletesTag } from '@/lib/database/offline-store-index';
 import { pruneOrphanedAthleteHistory } from '@/lib/database/athlete-history-clears';
-import { saveMeetAthletes, saveMeetSchedule } from '@/lib/database/meet-data-saves';
+import { markMeetAthletesCurrent, saveMeetAthletes, saveMeetSchedule } from '@/lib/database/meet-data-saves';
 import { isNetworkAvailable } from '@/lib/networkUtils';
 import { fetchApiMeetPackageConditional } from '@/lib/api/meet-package-api';
 import { mapApiAthletes } from '@/lib/api/api-athlete-mappers';
-import { fetchAthletesWithSession, fetchSchedule } from './queries';
+import { fetchRosterTagged, fetchSchedule } from './queries';
 import { ATTEMPT_HISTORY_YEARS, getHistoryCutoffDate } from '@/utils/dateTime';
 import { devLog } from '@/lib/logger';
 import { savePackageEtag } from './package-etags';
@@ -205,22 +205,21 @@ export async function prefetchCriticalMeetData(meet: MeetName, options: WarmMeet
       return schedule;
     });
 
-    const fetchAndSaveRoster = async () => {
-      const athletes = await fetchAthletesWithSession(meet);
-      await saveMeetAthletes(meet, athletes);
-      return athletes;
-    };
     const startedAt = captureClearEpoch();
+    const syncRosterUnlessCleared = async () => {
+      const answer = await fetchRosterTagged(meet, await getMeetAthletesTag(meet));
+      if (wasClearedSince(meet, startedAt)) return;
+      if (answer.status === 'unchanged') await markMeetAthletesCurrent(meet);
+      else await saveMeetAthletes(meet, answer.value, answer.tag);
+    };
+    const rosterStoredWhileDeferred = async () =>
+      isSnapshotFresh(await getMeetAthletesSyncedAt(meet), Date.now()) || wasClearedSince(meet, startedAt);
     const athletesRequest = turn
       ? turn.ready.then(async () => {
-          if (isSnapshotFresh(await getMeetAthletesSyncedAt(meet), Date.now())) return [];
-          if (wasClearedSince(meet, startedAt)) return [];
-          const athletes = await fetchAthletesWithSession(meet);
-          if (wasClearedSince(meet, startedAt)) return athletes;
-          await saveMeetAthletes(meet, athletes);
-          return athletes;
+          if (await rosterStoredWhileDeferred()) return;
+          await syncRosterUnlessCleared();
         })
-      : fetchAndSaveRoster();
+      : syncRosterUnlessCleared();
 
     const [scheduleResult, athletesResult] = await Promise.allSettled([
       scheduleRequest,

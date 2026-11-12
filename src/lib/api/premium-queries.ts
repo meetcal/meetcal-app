@@ -64,6 +64,14 @@ export const ACCESS_PASS_READY_TIMEOUT_MS = 5000;
 
 type PassSource = () => Promise<AccessPass | null>;
 
+export type HeldPassStore = {
+  read: () => Promise<AccessPass | null>;
+  write: (pass: AccessPass) => Promise<void>;
+  forget: () => Promise<void>;
+};
+
+export const ACCESS_PASS_RESTORE_TIMEOUT_MS = 1000;
+
 let source: PassSource | null = null;
 /** When the source became ready to fetch, in ms; null until it has. */
 let readyTime: number | null = 0;
@@ -71,6 +79,16 @@ let readyAt: Promise<number> = Promise.resolve(0);
 let held: { pass: string; until: number } | null = null;
 let fetching: { from: PassSource; startedAt: number; done: Promise<AccessPass | null> } | null = null;
 let skipUntil = 0;
+let store: HeldPassStore | null = null;
+let restoring: Promise<void> | null = null;
+
+function keepStored(write: (target: HeldPassStore) => Promise<void>): void {
+  const target = store;
+  if (!target) return;
+  write(target).catch((error: unknown) => {
+    console.warn('[access-pass] Could not update the stored pass', error);
+  });
+}
 
 /**
  * Where the pass comes from: `accessPass:pass` with the user's Clerk token
@@ -79,8 +97,9 @@ let skipUntil = 0;
  * starts before it, and the wait for it does not count against the fetch.
  * Forgets the pass held for the previous source.
  */
-export function setAccessPassSource(next: PassSource | null, ready?: Promise<void>): void {
+export function setAccessPassSource(next: PassSource | null, ready?: Promise<void>, heldStore?: HeldPassStore): void {
   source = next;
+  store = next ? (heldStore ?? null) : null;
   if (ready === undefined) {
     readyTime = Date.now();
     readyAt = Promise.resolve(readyTime);
@@ -95,6 +114,21 @@ export function setAccessPassSource(next: PassSource | null, ready?: Promise<voi
   held = null;
   fetching = null;
   skipUntil = 0;
+  if (store) {
+    const restore = restoreHeldPass(next, store).finally(() => {
+      if (restoring === restore) restoring = null;
+    });
+    restoring = restore;
+  } else {
+    restoring = null;
+  }
+}
+
+async function restoreHeldPass(from: PassSource | null, target: HeldPassStore): Promise<void> {
+  const stored = await target.read().catch(() => null);
+  if (source !== from || held !== null || !stored) return;
+  if (stored.rotatesAt <= Date.now()) return;
+  held = { pass: stored.pass, until: stored.rotatesAt };
 }
 
 /** Whether a call reads premium data. `results:search` does only with dates: name suggestions are public. */
@@ -120,8 +154,12 @@ function fetchPass(from: PassSource): { startedAt: number; done: Promise<AccessP
     .catch(() => null)
     .then((pass) => {
       if (source === from) {
-        if (pass) held = { pass: pass.pass, until: Math.max(pass.rotatesAt, Date.now() + ACCESS_PASS_MIN_HOLD_MS) };
-        else skipUntil = Date.now() + ACCESS_PASS_RETRY_AFTER_MS;
+        if (pass) {
+          held = { pass: pass.pass, until: Math.max(pass.rotatesAt, Date.now() + ACCESS_PASS_MIN_HOLD_MS) };
+          keepStored((target) => target.write(pass));
+        } else {
+          skipUntil = Date.now() + ACCESS_PASS_RETRY_AFTER_MS;
+        }
       }
       if (fetching?.done === done) fetching = null;
       return pass;
@@ -163,7 +201,14 @@ export async function accessPassFor(
 ): Promise<string | undefined> {
   const from = source;
   if (!from || !isPremiumCall(fn, args)) return undefined;
-  if (retry && refused !== undefined && held?.pass === refused) held = null;
+  if (restoring) {
+    await until(restoring, Date.now() + ACCESS_PASS_RESTORE_TIMEOUT_MS);
+    if (source !== from) return undefined;
+  }
+  if (retry && refused !== undefined && held?.pass === refused) {
+    held = null;
+    keepStored((target) => target.forget());
+  }
   if (held && (Date.now() < held.until || (retry && held.pass !== refused))) return held.pass;
   if (!retry && Date.now() < skipUntil) return held?.pass;
   if (readyTime === null) {
