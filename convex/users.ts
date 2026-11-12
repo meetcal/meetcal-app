@@ -2,7 +2,7 @@ import { v } from 'convex/values';
 import { internal } from './_generated/api';
 import { internalMutation, mutation, query, type MutationCtx, type QueryCtx } from './_generated/server';
 import type { Doc } from './_generated/dataModel';
-import { isMeetCalToken } from './lib/access';
+import { requireUserId } from './lib/access';
 import { deleteMeetSubmission } from './lib/meetSubmissions';
 import { compareCollated } from './lib/sort';
 import { apiError, isValidIsoDate, requireNonEmpty } from './lib/validation';
@@ -27,20 +27,7 @@ export const SAVED_SESSION_WRITE_ORDER_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 /** Expired revisions and markers one write deletes per table. */
 export const SAVED_SESSION_WRITE_ORDER_PRUNE_BATCH = 32;
 
-export async function requireUserId(ctx: QueryCtx): Promise<string> {
-  const identity = await ctx.auth.getUserIdentity();
-  // A MeetCal-issued token (the CLI's, Siri's) reads premium data only.
-  if (!identity || isMeetCalToken(identity)) throw apiError(401, 'unauthorized');
-  // A deleted account's token stays valid for a minute or so: a request it
-  // carries (a save still in flight, another device's sync) must not store
-  // the user's data again after `deleteUserData`.
-  const deleted = await ctx.db
-    .query('deleted_users')
-    .withIndex('by_userId', (q) => q.eq('userId', identity.subject))
-    .first();
-  if (deleted) throw apiError(403, 'account deleted');
-  return identity.subject;
-}
+export { requireUserId };
 
 /**
  * The mutations the app's outbox replays check their arguments here, not with

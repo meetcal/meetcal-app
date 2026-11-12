@@ -1,3 +1,4 @@
+import { MONTH_NUMBERS as MONTHS, pad2 as pad } from '../../lib/dates';
 import { parseHtml } from '../lib/html';
 import { countryTimeZone, usTerritoryTimeZone } from '../lib/countries';
 import { stateCode, usTimeZone } from '../lib/states';
@@ -24,10 +25,6 @@ export type UsamwEvent = {
   timeZone?: string;
 };
 
-const MONTHS: Record<string, number> = {
-  jan: 1, feb: 2, mar: 3, apr: 4, may: 5, jun: 6, jul: 7, aug: 8, sep: 9, oct: 10, nov: 11, dec: 12,
-};
-
 /**
  * The meet's time zone from its state and city (`lib/states.ts`), or the
  * country (or US territory) its state field or a part of its location names,
@@ -44,8 +41,6 @@ export function timeZoneFor(state: string, city = '', locationText = state): str
   const parts = locationText.split(/,|\n|\s-\s/);
   return countryTimeZone([state, ...parts], [city, ...parts].join(', '))?.zone ?? undefined;
 }
-
-const pad = (n: number) => String(n).padStart(2, '0');
 
 const DATE = /^([A-Za-z]{3,9})\.?\s+(\d{1,2})(?:\s*-\s*(?:([A-Za-z]{3,9})\.?\s+)?(\d{1,2}))?(?:,\s*(\d{4}))?$/;
 
