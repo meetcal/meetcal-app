@@ -36,6 +36,7 @@ pub(crate) const PREMIUM_FUNCTIONS: &[&str] = &[
     "results:yearBests",
     "results:bests",
     "results:groupMedals",
+    "results:athlete",
     "results:search",
     "meets:packageForMeet",
 ];
@@ -362,7 +363,7 @@ mod tests {
 
     #[test]
     fn the_premium_functions_match_the_servers_list() {
-        assert_eq!(PREMIUM_FUNCTIONS.len(), 28);
+        assert_eq!(PREMIUM_FUNCTIONS.len(), 29);
         assert!(!is_premium(queries::ACCESS_PASS.function));
         for public in [
             "meets:list",

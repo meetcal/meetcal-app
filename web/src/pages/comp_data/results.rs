@@ -6,8 +6,8 @@ use super::{
     format::{display_body_weight, format_us_date, yes_no},
     loading::{Load, LoadState, load_error},
     models::{
-        AthleteSearchQuery, AthleteSearchResponse, LiftingResult, MAX_ATHLETE_CHOICES, attempt,
-        distinct_athletes, normalize,
+        AthleteAnswer, AthleteQuery, AthleteSearchQuery, AthleteSearchResponse, LifterChoice,
+        LiftingResult, MAX_ATHLETE_CHOICES, attempt, distinct_athletes, normalize,
     },
     reference_table::position_in,
     ui::{DataPage, DataStatus, RowsTable, SortSelect, TableSkeleton},
@@ -47,6 +47,41 @@ pub(crate) fn results_url(athlete: &str) -> String {
     address("/results", &[("athlete", athlete)])
 }
 
+pub(crate) fn lifter_url(athlete: &str, lifter: &str) -> String {
+    address("/results", &[("athlete", athlete), ("lifter", lifter)])
+}
+
+pub(crate) fn member_url(athlete: &str, membership: &str) -> String {
+    address(
+        "/results",
+        &[("athlete", athlete), ("membership", membership)],
+    )
+}
+
+fn other_results_url(athlete: &str) -> String {
+    address("/results", &[("athlete", athlete), ("other", "1")])
+}
+
+fn results_count(count: f64) -> String {
+    if count == 1.0 {
+        "1 Result".to_owned()
+    } else {
+        format!("{count} Results")
+    }
+}
+
+fn lifter_choice_text(choice: &LifterChoice) -> String {
+    let mut parts = vec![choice.lifter.name.clone()];
+    if !choice.lifter.label.is_empty() {
+        parts.push(choice.lifter.label.clone());
+    }
+    parts.push(results_count(choice.results));
+    if !choice.latest_date.is_empty() {
+        parts.push(format!("Latest {}", format_us_date(&choice.latest_date)));
+    }
+    parts.join(" · ")
+}
+
 /// What one Results search answered, ready to show.
 #[derive(Debug)]
 enum ResultsAnswer {
@@ -61,9 +96,16 @@ enum ResultsAnswer {
     /// One athlete's history, under the athlete's stored spelling.
     Athlete {
         name: String,
+        label: String,
         rows: Vec<LiftingResult>,
         truncated: bool,
         suggestions: Vec<String>,
+    },
+    Lifters {
+        name: String,
+        searched: String,
+        lifters: Vec<LifterChoice>,
+        other_results: f64,
     },
     /// No athlete is named `query` exactly and several names contain it; each
     /// name searches that athlete. With `more_than_shown`, the athlete meant
@@ -103,6 +145,7 @@ fn results_answer(query: &str, response: AthleteSearchResponse) -> ResultsAnswer
     if let Some(matched) = matched_name {
         return ResultsAnswer::Athlete {
             name: matched,
+            label: String::new(),
             rows: results,
             truncated,
             suggestions,
@@ -120,6 +163,7 @@ fn results_answer(query: &str, response: AthleteSearchResponse) -> ResultsAnswer
             .collect();
         return ResultsAnswer::Athlete {
             name,
+            label: String::new(),
             rows,
             truncated,
             suggestions,
@@ -140,15 +184,76 @@ fn results_answer(query: &str, response: AthleteSearchResponse) -> ResultsAnswer
     }
 }
 
+fn athlete_answer(
+    query: &AthleteQuery,
+    answer: AthleteAnswer,
+) -> Result<Option<ResultsAnswer>, String> {
+    match answer {
+        AthleteAnswer::Choose {
+            name,
+            lifters,
+            other_results,
+        } => Ok(Some(ResultsAnswer::Lifters {
+            name,
+            searched: query.name.clone(),
+            lifters,
+            other_results,
+        })),
+        AthleteAnswer::Results { lifter, json } => {
+            let rows: Vec<LiftingResult> =
+                serde_json::from_str(&json).map_err(|error| error.to_string())?;
+            if rows.is_empty() && lifter.is_none() && !query.names_one_lifter() {
+                return Ok(None);
+            }
+            let (name, label) = match lifter {
+                Some(lifter) => (lifter.name, lifter.label),
+                None => (
+                    rows.first()
+                        .map_or_else(|| query.name.clone(), |row| row.name.clone()),
+                    String::new(),
+                ),
+            };
+            Ok(Some(ResultsAnswer::Athlete {
+                name,
+                label,
+                rows,
+                truncated: false,
+                suggestions: Vec::new(),
+            }))
+        }
+    }
+}
+
+async fn search_answer(name: String) -> Result<ResultsAnswer, String> {
+    let (start_date, end_date) = search_date_range();
+    let search = AthleteSearchQuery::between(name, start_date, end_date);
+    query_with::<AthleteSearchResponse, _>(queries::SEARCH, &search)
+        .await
+        .map(|response| results_answer(&search.query, response))
+        .map_err(|error| error.to_string())
+}
+
+fn optional_param(value: String) -> Option<String> {
+    (!value.is_empty()).then_some(value)
+}
+
 #[component]
 pub fn Results() -> impl IntoView {
     let athlete = query_param("athlete");
+    let lifter = query_param("lifter");
+    let membership = query_param("membership");
+    let other = query_param("other");
     let request = Memo::new(move |_| {
         let athlete = athlete.get();
-        (!athlete.is_empty()).then(|| {
-            let (start_date, end_date) = search_date_range();
-            AthleteSearchQuery::between(athlete, start_date, end_date)
+        (!athlete.is_empty()).then(|| AthleteQuery {
+            name: athlete,
+            lifter: optional_param(lifter.get()),
+            membership: optional_param(membership.get()),
+            other: other.get() == "1",
         })
+    });
+    let narrowed = Memo::new(move |_| {
+        request.with(|query| query.as_ref().is_some_and(AthleteQuery::names_one_lifter))
     });
     let (name, set_name) = signal(athlete.get_untracked());
     Effect::new(move |previous: Option<()>| {
@@ -165,16 +270,19 @@ pub fn Results() -> impl IntoView {
             let Some(query) = request else {
                 return Ok(None);
             };
-            query_with::<AthleteSearchResponse, _>(queries::SEARCH, &query)
+            let answer = query_with::<AthleteAnswer, _>(queries::ATHLETE, &query)
                 .await
-                .map(|response| Some(results_answer(&query.query, response)))
-                .map_err(|error| error.to_string())
+                .map_err(|error| error.to_string())?;
+            match athlete_answer(&query, answer)? {
+                Some(shown) => Ok(Some(shown)),
+                None => search_answer(query.name).await.map(Some),
+            }
         },
     );
 
     view! {
         <DataPage page=catalog::RESULTS>
-            <ResultsSearchForm name set_name current=athlete search_again=Callback::new(move |()| results.retry()) />
+            <ResultsSearchForm name set_name current=athlete narrowed search_again=Callback::new(move |()| results.retry()) />
 
             // Nothing asked yet is the prompt at once, never a loading skeleton.
             {move || if request.with(Option::is_none) {
@@ -205,8 +313,28 @@ pub fn Results() -> impl IntoView {
                     }
                     .into_any()
                 }
-                LoadState::Ready(Some(ResultsAnswer::Athlete { name, rows, truncated, suggestions })) => view! {
-                    <ResultsTable name=name.clone() rows=rows.clone() truncated=*truncated suggestions=suggestions.clone() sort set_sort />
+                LoadState::Ready(Some(ResultsAnswer::Lifters { name, searched, lifters, other_results })) => {
+                    let message = format!("Pick which {name} you mean.");
+                    let other_url = other_results_url(searched);
+                    let other = (*other_results > 0.0).then(|| {
+                        let text = format!("Other Results For This Name · {}", results_count(*other_results));
+                        view! { <A href=other_url>{text}</A> }
+                    });
+                    let choices = lifters
+                        .iter()
+                        .map(|choice| (lifter_url(searched, &choice.lifter.id), lifter_choice_text(choice)))
+                        .collect::<Vec<_>>();
+                    view! {
+                        <p class="data-status" role="status">{message}</p>
+                        <div class="wrapped-choices" role="group" aria-label="Lifters with this name">
+                            {choices.into_iter().map(|(href, text)| view! { <A href=href>{text}</A> }).collect_view()}
+                            {other}
+                        </div>
+                    }
+                    .into_any()
+                }
+                LoadState::Ready(Some(ResultsAnswer::Athlete { name, label, rows, truncated, suggestions })) => view! {
+                    <ResultsTable name=name.clone() label=label.clone() rows=rows.clone() truncated=*truncated suggestions=suggestions.clone() sort set_sort />
                 }
                 .into_any(),
             }) }}
@@ -222,6 +350,7 @@ fn ResultsSearchForm(
     name: ReadSignal<String>,
     set_name: WriteSignal<String>,
     current: Memo<String>,
+    narrowed: Memo<bool>,
     search_again: Callback<()>,
 ) -> impl IntoView {
     let page = use_page_address("/results");
@@ -232,7 +361,7 @@ fn ResultsSearchForm(
             if athlete.trim().is_empty() {
                 return;
             }
-            if athlete.trim() == current.get_untracked() {
+            if athlete.trim() == current.get_untracked() && !narrowed.get_untracked() {
                 search_again.run(());
             } else {
                 page.show(&[("athlete", &athlete)], HistoryEntry::Push);
@@ -286,6 +415,7 @@ fn result_row(row: &LiftingResult) -> AnyView {
 #[component]
 fn ResultsTable(
     name: String,
+    label: String,
     rows: Vec<LiftingResult>,
     truncated: bool,
     suggestions: Vec<String>,
@@ -325,7 +455,7 @@ fn ResultsTable(
     });
 
     view! {
-        <p class="data-status">"Results for " <strong>{name}</strong></p>
+        <p class="data-status">"Results for " <strong>{name}</strong> {(!label.is_empty()).then(|| format!(" · {label}"))}</p>
         <Suggestions names=suggestions />
         {truncated}
         <div class="data-filters">
@@ -349,6 +479,90 @@ mod tests {
             results_url("O'Neil & José"),
             "/results?athlete=O%27Neil%20%26%20Jos%C3%A9"
         );
+    }
+
+    fn lookup(name: &str) -> AthleteQuery {
+        AthleteQuery {
+            name: name.to_owned(),
+            ..AthleteQuery::default()
+        }
+    }
+
+    #[test]
+    fn a_lifters_links_name_the_lifter_or_the_membership_beside_the_name() {
+        assert_eq!(
+            lifter_url("Taylor Johnson", "20730"),
+            "/results?athlete=Taylor%20Johnson&lifter=20730"
+        );
+        assert_eq!(
+            member_url("Taylor Johnson", "555"),
+            "/results?athlete=Taylor%20Johnson&membership=555"
+        );
+        assert_eq!(
+            other_results_url("Taylor Johnson"),
+            "/results?athlete=Taylor%20Johnson&other=1"
+        );
+    }
+
+    #[test]
+    fn a_shared_name_offers_its_lifters_with_their_labels() {
+        let answer: AthleteAnswer = serde_json::from_str(
+            r#"{"kind":"choose","name":"Taylor Johnson","lifters":[{"id":"24655","name":"Taylor Johnson","label":"Age 18 · Barbell Club","results":2,"latest_date":"2025-06-01"}],"other_results":1}"#,
+        )
+        .unwrap();
+        let Ok(Some(ResultsAnswer::Lifters {
+            searched,
+            lifters,
+            other_results,
+            ..
+        })) = athlete_answer(&lookup("taylor  johnson"), answer)
+        else {
+            panic!("a shared name is a choice");
+        };
+        assert_eq!(searched, "taylor  johnson");
+        assert_eq!(
+            lifter_choice_text(&lifters[0]),
+            "Taylor Johnson · Age 18 · Barbell Club · 2 Results · Latest June 1, 2025"
+        );
+        assert_eq!(other_results, 1.0);
+    }
+
+    #[test]
+    fn one_lifters_results_show_under_their_name_and_label() {
+        let answer: AthleteAnswer = serde_json::from_str(
+            r#"{"kind":"results","lifter":{"id":"20730","name":"Taylor Johnson","label":"Age 37"},"json":"[{\"name\":\"Taylor Johnson\",\"lifter_id\":\"20730\",\"meet\":\"Open\",\"date\":\"2016-03-19\",\"age\":\"Open\",\"body_weight\":84.0,\"snatch1\":70.0,\"snatch2\":0.0,\"snatch3\":0.0,\"snatch_best\":70.0,\"cj1\":93.0,\"cj2\":0.0,\"cj3\":0.0,\"cj_best\":93.0,\"total\":163.0,\"adaptive\":false}]","prs":{}}"#,
+        )
+        .unwrap();
+        let Ok(Some(ResultsAnswer::Athlete {
+            name, label, rows, ..
+        })) = athlete_answer(&lookup("taylor johnson"), answer)
+        else {
+            panic!("one lifter is their results");
+        };
+        assert_eq!(
+            (name.as_str(), label.as_str()),
+            ("Taylor Johnson", "Age 37")
+        );
+        assert_eq!(rows[0].lifter_id.as_deref(), Some("20730"));
+    }
+
+    #[test]
+    fn a_name_with_no_results_falls_back_to_the_search_unless_a_lifter_was_asked_for() {
+        let empty = || -> AthleteAnswer {
+            serde_json::from_str(r#"{"kind":"results","lifter":null,"json":"[]"}"#).unwrap()
+        };
+        assert!(matches!(
+            athlete_answer(&lookup("Smith"), empty()),
+            Ok(None)
+        ));
+        let others = AthleteQuery {
+            other: true,
+            ..lookup("Smith")
+        };
+        assert!(matches!(
+            athlete_answer(&others, empty()),
+            Ok(Some(ResultsAnswer::Athlete { .. }))
+        ));
     }
 
     #[test]

@@ -9,7 +9,7 @@ use super::{
     loading::{Load, LoadState, load_error, load_meet_data, table_response},
     meets::load_meet_catalog,
     models::{Athlete, LiftingResult, Meet, ScheduleRow, attempt},
-    results::results_url,
+    results::{lifter_url, member_url, results_url},
     ui::{DataPage, DataStatus, SearchFieldLoading, StaticRowsTable},
 };
 use crate::utils::api::queries;
@@ -283,11 +283,18 @@ fn schedule_row(row: &ScheduleRow) -> AnyView {
 }
 
 fn athlete_row(row: &Athlete) -> AnyView {
-    view! { <tr><td>{row.name.clone()}</td><td>{display_gender(&row.gender)}</td><td>{row.age}</td><td>{display_weight_class(&row.weight_class)}</td><td>{row.entry_total}</td><td>{row.club.clone()}</td><td>{row.wso.clone().unwrap_or_else(|| NO_VALUE.to_owned())}</td><td>{session(row.session_number)}</td><td>{row.session_platform.clone().unwrap_or_else(|| NO_VALUE.to_owned())}</td><td>{yes_no(row.adaptive)}</td></tr> }.into_any()
+    let athlete_url = row.member_id.as_deref().map_or_else(
+        || results_url(&row.name),
+        |member| member_url(&row.name, member),
+    );
+    view! { <tr><td><a class="data-athlete-link" href=athlete_url>{row.name.clone()}</a></td><td>{display_gender(&row.gender)}</td><td>{row.age}</td><td>{display_weight_class(&row.weight_class)}</td><td>{row.entry_total}</td><td>{row.club.clone()}</td><td>{row.wso.clone().unwrap_or_else(|| NO_VALUE.to_owned())}</td><td>{session(row.session_number)}</td><td>{row.session_platform.clone().unwrap_or_else(|| NO_VALUE.to_owned())}</td><td>{yes_no(row.adaptive)}</td></tr> }.into_any()
 }
 
 fn result_row(row: &LiftingResult) -> AnyView {
-    let athlete_url = results_url(&row.name);
+    let athlete_url = row.lifter_id.as_deref().map_or_else(
+        || results_url(&row.name),
+        |lifter| lifter_url(&row.name, lifter),
+    );
     view! { <tr><td><a class="data-athlete-link" href=athlete_url>{row.name.clone()}</a></td><td><strong>{row.total}</strong></td><td>{row.age.clone()}</td><td>{display_body_weight(row.body_weight)}</td><td>{attempt(row.snatch1)}</td><td>{attempt(row.snatch2)}</td><td>{attempt(row.snatch3)}</td><td>{row.snatch_best}</td><td>{attempt(row.cj1)}</td><td>{attempt(row.cj2)}</td><td>{attempt(row.cj3)}</td><td>{row.cj_best}</td><td>{yes_no(row.adaptive)}</td></tr> }.into_any()
 }
 

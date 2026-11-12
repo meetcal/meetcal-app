@@ -1,11 +1,10 @@
 use crate::{
-    types::lifting_results::{LiftingResults, PRs},
+    types::lifting_results::{LiftingResults, PRs, PrMarks},
     utils::{
-        athletes::history,
+        athletes::{LifterPick, history},
         format::kg,
         make_rate::make_rate_tables,
         output::{self, Report},
-        stats::{Lift, valid_lift, valid_total},
     },
 };
 use anyhow::Result;
@@ -23,15 +22,18 @@ pub struct SearchArgs {
     /// Athlete name to search for
     #[arg(value_parser = crate::utils::filters::parse_name)]
     pub name: String,
+
+    #[command(flatten)]
+    pub pick: LifterPick,
 }
 
 pub async fn run(args: SearchArgs) -> Result<()> {
-    let results: Vec<LiftingResults> = history(&args.name).await?;
-    output::emit(report(&results));
+    let history = history(&args.name, &args.pick).await?;
+    output::emit(report(&history.rows, &history.prs));
     Ok(())
 }
 
-pub(crate) fn report(results: &[LiftingResults]) -> Report {
+pub(crate) fn report(results: &[LiftingResults], prs: &PrMarks) -> Report {
     let mut meets_table = Table::new();
     meets_table.set_header(vec![
         "Meet", "Date", "Age", "Sn1", "Sn2", "Sn3", "CJ1", "CJ2", "CJ3", "Total",
@@ -51,7 +53,7 @@ pub(crate) fn report(results: &[LiftingResults]) -> Report {
         ]);
     }
 
-    let prs = get_prs(results);
+    let prs = get_prs(results, prs);
     let pr_header = vec!["Snatch PR", "CJ PR", "Total PR"];
     let mut pr_table = Table::new();
     pr_table.set_header(pr_header.clone());
@@ -76,34 +78,34 @@ pub(crate) fn report(results: &[LiftingResults]) -> Report {
         .table("make_rate", by_lift)
 }
 
-pub(crate) fn get_prs(results: &[LiftingResults]) -> PRs {
-    results.iter().fold(
-        PRs {
-            snatch_best: 0.0,
-            cj_best: 0.0,
-            total_best: 0.0,
-        },
-        |acc, meet| PRs {
-            snatch_best: acc
-                .snatch_best
-                .max(valid_lift(meet, Lift::Snatch).unwrap_or(0.0)),
-            cj_best: acc
-                .cj_best
-                .max(valid_lift(meet, Lift::CleanAndJerk).unwrap_or(0.0)),
-            total_best: acc.total_best.max(valid_total(meet).unwrap_or(0.0)),
-        },
-    )
+pub(crate) fn get_prs(results: &[LiftingResults], prs: &PrMarks) -> PRs {
+    let at = |index: Option<usize>, lift: fn(&LiftingResults) -> f64| {
+        index.and_then(|index| results.get(index)).map_or(0.0, lift)
+    };
+    PRs {
+        snatch_best: at(prs.current.snatch, |row| row.snatch_best),
+        cj_best: at(prs.current.cj, |row| row.cj_best),
+        total_best: at(prs.current.total, |row| row.total),
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::types::lifting_results::ByLift;
     use crate::utils::stats::tests::raw_row;
+
+    fn current(snatch: Option<usize>, cj: Option<usize>, total: Option<usize>) -> PrMarks {
+        PrMarks {
+            current: ByLift { snatch, cj, total },
+            ..PrMarks::default()
+        }
+    }
 
     #[test]
     fn a_lift_never_made_exports_null_and_still_shows_zero() {
         let bombed_every_snatch = raw_row([-60.0, -60.0, -60.0], [85.0, 0.0, 0.0]);
-        let report = report(&[bombed_every_snatch]);
+        let report = report(&[bombed_every_snatch], &current(None, Some(0), None));
         let prs = &report.to_json()["prs"][0];
         assert_eq!(prs["snatch_pr"], serde_json::Value::Null);
         assert_eq!(prs["total_pr"], serde_json::Value::Null);
@@ -112,11 +114,12 @@ mod tests {
     }
 
     #[test]
-    fn prs_leave_out_source_errors() {
+    fn prs_are_the_lifts_of_the_results_the_server_marks_current() {
         let real = raw_row([60.0, 63.0, 65.0], [85.0, 90.0, 95.0]);
         let typo = raw_row([-63.0, 633.0, 65.0], [85.0, 90.0, -95.0]);
-        let prs = get_prs(&[real, typo]);
+        let prs = get_prs(&[real, typo], &current(Some(0), Some(0), Some(0)));
         assert_eq!(prs.snatch_best, 65.0);
         assert_eq!(prs.total_best, 160.0);
+        assert_eq!(get_prs(&[], &current(Some(3), None, None)).snatch_best, 0.0);
     }
 }

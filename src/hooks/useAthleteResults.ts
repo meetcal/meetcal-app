@@ -1,21 +1,36 @@
 import { useRetryOnReconnect } from "@/hooks/useRetryOnReconnect";
+import type { AthleteRequest } from "@/lib/api/results-api";
 import {
   canRetryFullHistory,
   loadAthleteResults,
+  type ApiDetails,
+  type AthleteChoice,
   type AthleteResultsOutcome,
   type ShownResultsSource,
 } from "@/lib/athlete-results-load";
+import { athleteRequestKey, rowsForRequest } from "@/lib/athlete-results-route";
 import { getAllCachedLiftingResultsForAthlete } from "@/lib/database/athlete-history-store";
-import { fetchAllResultsForName } from "@/lib/database/queries";
 import { readBrowsedAthleteResults, saveBrowsedAthleteResults } from "@/lib/database/browsed-athlete-results";
+import { fetchAthleteResults } from "@/lib/database/queries";
 import type { AthleteMeetResult } from "@/types/athlete-results";
 import { useCallback, useEffect, useRef, useState } from "react";
 
-type KeptRowsOnScreen = { name: string; rows: AthleteMeetResult[]; source: Exclude<ShownResultsSource, "api"> };
+type KeptRowsOnScreen = {
+  key: string;
+  rows: AthleteMeetResult[];
+  details: ApiDetails | null;
+  source: Exclude<ShownResultsSource, "api">;
+};
+
+type AnsweredPage =
+  | { kind: "rows"; rows: AthleteMeetResult[]; details: ApiDetails }
+  | { kind: "choice"; choice: AthleteChoice };
 
 export type AthleteResultsState = {
   loading: boolean;
   athleteResults: AthleteMeetResult[];
+  details: ApiDetails | null;
+  choice: AthleteChoice | null;
   loadFailed: boolean;
   rowsSource: ShownResultsSource | null;
   loadOutcome: AthleteResultsOutcome | null;
@@ -23,7 +38,7 @@ export type AthleteResultsState = {
 };
 
 function useSessionResultsCache() {
-  const resultsCacheRef = useRef<Map<string, AthleteMeetResult[]>>(new Map());
+  const resultsCacheRef = useRef<Map<string, AnsweredPage>>(new Map());
   useEffect(() => {
     const cache = resultsCacheRef.current;
     return () => {
@@ -33,9 +48,11 @@ function useSessionResultsCache() {
   return resultsCacheRef;
 }
 
-export function useAthleteResults(name: string | undefined): AthleteResultsState {
+export function useAthleteResults(request: AthleteRequest | null): AthleteResultsState {
   const [loading, setLoading] = useState(true);
   const [athleteResults, setAthleteResults] = useState<AthleteMeetResult[]>([]);
+  const [details, setDetails] = useState<ApiDetails | null>(null);
+  const [choice, setChoice] = useState<AthleteChoice | null>(null);
   const [loadFailed, setLoadFailed] = useState(false);
   const [rowsSource, setRowsSource] = useState<ShownResultsSource | null>(null);
   const [loadOutcome, setLoadOutcome] = useState<AthleteResultsOutcome | null>(null);
@@ -45,45 +62,64 @@ export function useAthleteResults(name: string | undefined): AthleteResultsState
   const keptRowsRef = useRef<KeptRowsOnScreen | null>(null);
 
   useEffect(() => {
-    const fetchAthleteResults = async () => {
-      if (!name) return;
+    if (!request) return;
+    const key = athleteRequestKey(request);
+    const showRows = (rows: AthleteMeetResult[], source: ShownResultsSource | null, shownDetails: ApiDetails | null) => {
+      setChoice(null);
+      setAthleteResults(rows);
+      setDetails(shownDetails);
+      setRowsSource(source);
+    };
+    const showChoice = (answer: AthleteChoice) => {
+      setChoice(answer);
+      setAthleteResults([]);
+      setDetails(null);
+      setRowsSource(null);
+    };
 
-      const nameStr = Array.isArray(name) ? name[0] : name;
-      const cacheKey = `all::${nameStr}`;
-      const cachedResults = resultsCacheRef.current.get(cacheKey);
-      setLoadFailed(false);
-      setLoadOutcome(null);
-      if (cachedResults) {
-        keptRowsRef.current = null;
-        setAthleteResults(cachedResults);
-        setRowsSource("api");
-        setLoading(false);
-      } else if (keptRowsRef.current?.name !== nameStr) {
-        keptRowsRef.current = null;
-        setAthleteResults([]);
-        setRowsSource(null);
-        setLoading(true);
-      }
-      const kept = cachedResults ? null : keptRowsRef.current;
+    const cached = resultsCacheRef.current.get(key);
+    setLoadFailed(false);
+    setLoadOutcome(null);
+    if (cached?.kind === "choice") {
+      keptRowsRef.current = null;
+      showChoice(cached.choice);
+      setLoading(false);
+      return;
+    }
+    if (cached) {
+      keptRowsRef.current = null;
+      showRows(cached.rows, "api", cached.details);
+      setLoading(false);
+    } else if (keptRowsRef.current?.key !== key) {
+      keptRowsRef.current = null;
+      showRows([], null, null);
+      setLoading(true);
+    }
+    const kept = cached ? null : keptRowsRef.current;
 
-      const requestId = ++requestIdRef.current;
+    const requestId = ++requestIdRef.current;
+    const load = async () => {
       try {
         const outcome = await loadAthleteResults({
-          shown: cachedResults ?? kept?.rows,
-          shownSource: cachedResults ? "api" : kept?.source,
-          readOffline: () => getAllCachedLiftingResultsForAthlete(nameStr),
-          readBrowsed: () => readBrowsedAthleteResults(nameStr),
-          rememberFull: (rows) => saveBrowsedAthleteResults(nameStr, rows),
-          fetchFull: () => fetchAllResultsForName(nameStr),
+          shown: cached?.rows ?? kept?.rows,
+          shownSource: cached ? "api" : kept?.source,
+          readOffline: async () => rowsForRequest(await getAllCachedLiftingResultsForAthlete(request.name), request),
+          readBrowsed: () => readBrowsedAthleteResults(request),
+          rememberFull: (rows, shownDetails) => saveBrowsedAthleteResults(request, rows, shownDetails),
+          fetchFull: () => fetchAthleteResults(request),
           isCurrent: () => requestId === requestIdRef.current,
-          show: (rows, source) => {
-            if (source === "api") {
-              resultsCacheRef.current.set(cacheKey, rows);
+          show: (rows, source, shownDetails) => {
+            if (source === "api" && shownDetails) {
+              resultsCacheRef.current.set(key, { kind: "rows", rows, details: shownDetails });
             }
-            keptRowsRef.current = source === "api" ? null : { name: nameStr, rows, source };
-            setAthleteResults(rows);
-            setRowsSource(source);
+            keptRowsRef.current = source === "api" ? null : { key, rows, details: shownDetails, source };
+            showRows(rows, source, shownDetails);
             if (source !== "api") setLoading(false);
+          },
+          choose: (answer) => {
+            resultsCacheRef.current.set(key, { kind: "choice", choice: answer });
+            keptRowsRef.current = null;
+            showChoice(answer);
           },
         });
         if (outcome === "superseded") return;
@@ -98,14 +134,14 @@ export function useAthleteResults(name: string | undefined): AthleteResultsState
       }
     };
 
-    void fetchAthleteResults();
+    void load();
     return () => {
       requestIdRef.current += 1;
     };
-  }, [name, retryCount, resultsCacheRef]);
+  }, [request, retryCount, resultsCacheRef]);
 
   const retryLoad = useCallback(() => setRetryCount((count) => count + 1), []);
   useRetryOnReconnect(canRetryFullHistory(loadOutcome), retryLoad);
 
-  return { loading, athleteResults, loadFailed, rowsSource, loadOutcome, retryLoad };
+  return { loading, athleteResults, details, choice, loadFailed, rowsSource, loadOutcome, retryLoad };
 }

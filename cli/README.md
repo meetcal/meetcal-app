@@ -175,6 +175,14 @@ Search for an athlete by name. Prints meet results, comp PRs, and make rates.
 meetcal search "Maddisen Mohnsen"
 ```
 
+When more than one lifter has the name, `search`, `progress` and `qualify` list each one's id,
+age, WSO and club instead; run again with `--lifter <id>`, or `--other` for the name's results no
+one lifter holds. `h2h` takes `--first-lifter` and `--second-lifter`.
+
+```sh
+meetcal search "Taylor Johnson" --lifter 20730
+```
+
 #### `wrapped`
 
 Show an athlete's Weightlifting Wrapped for a calendar year. The report includes meets competed,

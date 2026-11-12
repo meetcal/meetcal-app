@@ -14,7 +14,7 @@ use crate::commands::records::RecordCategory;
 use crate::commands::standards::Standards;
 use crate::types::athletes::Athletes;
 use crate::types::club::ClubMeetStats;
-use crate::types::lifting_results::{AdaptiveRecord, LiftingResults};
+use crate::types::lifting_results::{AdaptiveRecord, AthleteAnswer, LiftingResults};
 use crate::types::meets::{Meet, NamedBests, ScheduleRow};
 use crate::types::records::Record;
 use crate::types::wrapped::{SearchResponse, WrappedAnswer};
@@ -156,6 +156,32 @@ fn results_read_the_servers_answers() {
     let bests: Vec<Vec<NamedBests>> = read(queries::BESTS, wire_fixture!("results.bests"));
     let totals: Vec<_> = bests.iter().flatten().map(|row| row.best_total).collect();
     assert_eq!(totals, [184.0, 0.0]);
+    let athletes: Vec<AthleteAnswer> = read(queries::ATHLETE, wire_fixture!("results.athlete"));
+    let shapes: Vec<_> = athletes
+        .iter()
+        .map(|answer| match answer {
+            AthleteAnswer::Choose { lifters, .. } => (lifters.len(), None),
+            AthleteAnswer::Results { lifter, json, prs } => {
+                let rows: Vec<LiftingResults> = serde_json::from_str(json).expect("rows");
+                (
+                    rows.len(),
+                    lifter
+                        .as_ref()
+                        .map(|lifter| (lifter.id.clone(), prs.current.total)),
+                )
+            }
+        })
+        .collect();
+    assert_eq!(
+        shapes,
+        [
+            (2, None),
+            (1, Some(("30003".to_owned(), Some(0)))),
+            (1, None),
+            (2, Some(("30001".to_owned(), Some(0)))),
+            (2, Some(("30001".to_owned(), Some(0)))),
+        ]
+    );
     let searches: Vec<SearchResponse> = read(queries::SEARCH, wire_fixture!("results.search"));
     let suggestions: Vec<_> = searches
         .iter()
@@ -229,7 +255,7 @@ fn reference_tables_read_the_servers_answers() {
         queries::NATIONAL_RANKINGS,
         wire_fixture!("reference.nationalRankings"),
     );
-    assert_eq!(national.iter().flatten().count(), 2);
+    assert_eq!(national.iter().flatten().count(), 3);
     let by_year: Vec<Vec<NatRankingYear>> = read(
         queries::NATIONAL_RANKINGS_BY_YEAR,
         wire_fixture!("reference.nationalRankingsByYear"),

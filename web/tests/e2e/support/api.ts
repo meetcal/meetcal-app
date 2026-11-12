@@ -96,6 +96,8 @@ export async function mockAuth(
     return route.fulfill(valueAnswer({ pass: server.pass, rotatesAt: Date.now() + server.rotatesInMs }));
   });
 
+  await routeQuery(page, "results:athlete", (route) => route.fulfill(valueAnswer(NAME_WITHOUT_LIFTERS)));
+
   const entitlementRefreshes: Array<string | undefined> = [];
   await page.route(CONVEX_ACTION_URL, async (route) => {
     const request = route.request();
@@ -117,6 +119,14 @@ export async function mockAuth(
   });
   return { server, passRequests, entitlementRefreshes, accessCalls, revenueCatRequests };
 }
+
+export const NAME_WITHOUT_LIFTERS = {
+  kind: "results",
+  lifter: null,
+  json: "[]",
+  prs: { set: { snatch: [], cj: [], total: [] }, current: { snatch: null, cj: null, total: null } },
+  year_bests: null,
+};
 
 /** A signed-in user with the app's subscription entitlement. */
 export async function mockSubscribedUser(page: Page) {

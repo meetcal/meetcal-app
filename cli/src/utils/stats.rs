@@ -2,7 +2,7 @@
 
 use unicode_normalization::UnicodeNormalization;
 
-use crate::types::lifting_results::LiftingResults;
+use crate::types::lifting_results::{LiftingResults, PrMarks};
 
 /// Sinclair coefficients (IWF, 2021–2024 cycle; the latest set the IWF has published that we could
 /// confirm). A total `t` at bodyweight `bw` scores `t × 10^(A·log10(bw/b)²)` below `b` kg and `t`
@@ -434,11 +434,29 @@ pub(crate) fn pr_flags(rows: &[&LiftingResults]) -> Vec<PrFlags> {
         .collect()
 }
 
+fn oldest_first(a: &LiftingResults, b: &LiftingResults) -> std::cmp::Ordering {
+    a.date.cmp(&b.date).then_with(|| a.meet.cmp(&b.meet))
+}
+
 /// Results oldest first (by date, then meet name).
 pub(crate) fn chronological(rows: &[LiftingResults]) -> Vec<&LiftingResults> {
     let mut sorted: Vec<&LiftingResults> = rows.iter().collect();
-    sorted.sort_by(|a, b| a.date.cmp(&b.date).then_with(|| a.meet.cmp(&b.meet)));
+    sorted.sort_by(|a, b| oldest_first(a, b));
     sorted
+}
+
+pub(crate) fn chronological_indexes(rows: &[LiftingResults]) -> Vec<(usize, &LiftingResults)> {
+    let mut indexed: Vec<(usize, &LiftingResults)> = rows.iter().enumerate().collect();
+    indexed.sort_by(|(a, row_a), (b, row_b)| oldest_first(row_a, row_b).then_with(|| b.cmp(a)));
+    indexed
+}
+
+pub(crate) fn pr_flags_at(prs: &PrMarks, index: usize) -> PrFlags {
+    PrFlags {
+        snatch: prs.set.snatch.contains(&index),
+        cj: prs.set.cj.contains(&index),
+        total: prs.set.total.contains(&index),
+    }
 }
 
 pub(crate) fn fold(value: &str) -> String {

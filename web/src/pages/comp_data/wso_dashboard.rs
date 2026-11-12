@@ -319,6 +319,7 @@ mod tests {
 
     fn result(name: &str, total: f64) -> LiftingResult {
         LiftingResult {
+            lifter_id: None,
             name: name.to_owned(),
             result: LiftResult {
                 meet: "Meet".to_owned(),
@@ -359,6 +360,7 @@ mod tests {
     fn dashboard_data_filters_wso_and_uses_each_athletes_best_result() {
         let athletes = [
             Athlete {
+                member_id: None,
                 name: "Alex".to_owned(),
                 age: 25.0,
                 club: "A".to_owned(),
@@ -371,6 +373,7 @@ mod tests {
                 session_platform: None,
             },
             Athlete {
+                member_id: None,
                 name: "Blair".to_owned(),
                 age: 25.0,
                 club: "B".to_owned(),
@@ -401,6 +404,7 @@ mod tests {
     #[test]
     fn a_roster_without_wsos_and_a_meet_without_results_show_no_numbers() {
         let athlete = |wso: Option<&str>| Athlete {
+            member_id: None,
             name: "Casey".to_owned(),
             age: 30.0,
             club: "C".to_owned(),
@@ -430,6 +434,7 @@ mod tests {
     #[test]
     fn a_roster_with_some_wsos_never_claims_none_attended() {
         let athlete = |name: &str, wso: Option<&str>| Athlete {
+            member_id: None,
             name: name.to_owned(),
             age: 30.0,
             club: "C".to_owned(),
@@ -460,6 +465,7 @@ mod tests {
 
     fn entrant(name: &str, wso: Option<&str>) -> Athlete {
         Athlete {
+            member_id: None,
             name: name.to_owned(),
             age: 25.0,
             club: "Club".to_owned(),

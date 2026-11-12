@@ -303,6 +303,7 @@ test("meet center joins details, schedule, start list, and full results", async 
   await expect(page.locator("tbody")).toContainText("69+kg");
   await expect(page.locator("tbody")).toContainText("Women");
   await expect(page.locator("tbody")).not.toContainText("Female");
+  await expect(page.locator("tbody").getByRole("link", { name: "Test Athlete" })).toHaveAttribute("href", "/results?athlete=Test%20Athlete&membership=1");
 
   await page.getByRole("button", { name: "Full Results", exact: true }).click();
   await expect(page).toHaveURL(/section=results$/);

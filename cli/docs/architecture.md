@@ -154,9 +154,9 @@ another release list (the tests' local server).
 
 | Group | Commands | Reads |
 |---|---|---|
-| Athletes | `search`, `progress`, `h2h` | `results:byNames`, `results:search` |
+| Athletes | `search`, `progress`, `h2h` | `results:athlete`, `results:search` |
 | Wrapped | `wrapped`, `compare` | `results:wrapped` (public: the server scores the year, `convex/lib/wrapped.ts`) |
-| Standards | `qualify` | `results:byNames`, `results:bests`, `reference:standards`, `reference:qualifyingTotals` |
+| Standards | `qualify` | `results:athlete`, `reference:standards`, `reference:qualifyingTotals` |
 | Meets | `meets`, `meet-info`, `schedule`, `meet`, `meet-results` | `meets:list`, `meets:completed`, `meets:details`, `meets:schedule`, `meets:athletesSessions` with `results:bests`, `results:byMeet` with `results:meetSummaries` (each edition's headline numbers, summarized on the server, `convex/lib/meetSummary.ts`) |
 | Attendance | `attendance` | `meets:namesMatching`, `meets:attendance` |
 | Leaderboard | `leaderboard` | `results:leaderboard`, an action that ranks every athlete in the range on the server (`convex/lib/leaderboard.ts`, the rules `Filters`, `rank` and `stats.rs` hold here); with `--wso`/`--club`, the group's registrations and `results:recent`, ranked here |

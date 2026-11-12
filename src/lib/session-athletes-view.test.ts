@@ -26,6 +26,7 @@ describe("toSessionAthletesByPlatform", () => {
     expect(byPlatform.Red?.map((a) => a.name)).toEqual(["High", "Mid", "Low"]);
     expect(athletes.map((a) => a.name)).toEqual(["Low", "High", "Mid"]);
     expect(byPlatform.Red?.[0]).toEqual({
+      memberId: "High",
       name: "High",
       age: 25,
       club: "Club",

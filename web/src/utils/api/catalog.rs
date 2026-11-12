@@ -28,6 +28,7 @@ pub(crate) const SUBSCRIPTION_FUNCTIONS: &[&str] = &[
     "results:yearBests",
     "results:bests",
     "results:groupMedals",
+    "results:athlete",
     "results:search",
     "meets:packageForMeet",
 ];
@@ -81,6 +82,7 @@ pub(crate) mod queries {
     pub(crate) const MEET_ATHLETES: Query = Query::tagged("meets:athletes");
     pub(crate) const MEET_RESULTS: Query = Query::tagged("results:byMeet");
     pub(crate) const SEARCH: Query = Query::value("results:search");
+    pub(crate) const ATHLETE: Query = Query::value("results:athlete");
     pub(crate) const RECORDS: Query = Query::tagged("reference:records");
     pub(crate) const RECORD_CATEGORIES: Query = Query::tagged("reference:recordCategories");
     pub(crate) const QUALIFYING_TOTAL_CATEGORIES: Query =
