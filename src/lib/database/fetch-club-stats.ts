@@ -110,6 +110,10 @@ function mapClubMeetStats(row: ApiClubMeetStats): ClubMeetStats {
   };
 }
 
+export function clubMeetStatsFromApi(value: unknown): ClubMeetStats {
+  return mapClubMeetStats(toApiClubMeetStats(value));
+}
+
 async function readClubsCache() {
   const cached = await getOfflineCache<string[]>(OFFLINE_CACHE_KEYS.clubs);
   return cached ? { data: cached.data, lastUpdatedAt: cached.lastSynced } : null;
@@ -160,8 +164,7 @@ async function fetchClubMeetsFresh(club: string): Promise<ClubMeet[]> {
 async function fetchClubMeetStatsFresh(club: string, meet: string): Promise<ClubMeetStats> {
   const hasNetwork = await isNetworkAvailable();
   if (!hasNetwork) throw new Error('Offline');
-  const response = await fetchApiClubMeetStats(club, meet);
-  return mapClubMeetStats(toApiClubMeetStats(response));
+  return clubMeetStatsFromApi(await fetchApiClubMeetStats(club, meet));
 }
 
 async function persistClubs(clubs: string[]) {
