@@ -207,8 +207,16 @@ fn pass_answers_grant_the_pass_or_ask_for_a_refresh() {
         .unwrap(),
         PassAnswer::SubscriptionRequired
     );
+    assert_eq!(
+        read_pass_answer(answer(json!({
+            "status": "error",
+            "errorMessage": "Server Error",
+            "errorData": {"status": 401, "error": "unauthorized"}
+        })))
+        .unwrap(),
+        PassAnswer::SignedOut
+    );
     for response in [
-        json!({"status": "error", "errorMessage": "Server Error", "errorData": {"status": 401, "error": "unauthorized"}}),
         json!({"status": "error", "errorMessage": "Server Error", "errorData": {"status": 503, "error": "no access pass yet"}}),
         json!({"status": "success", "value": {"pass": "", "rotatesAt": 1.0}}),
         json!({"status": "success", "value": {"pass": "p1"}}),
@@ -219,6 +227,31 @@ fn pass_answers_grant_the_pass_or_ask_for_a_refresh() {
             "{response}"
         );
     }
+}
+
+#[test]
+fn the_pass_answer_decides_who_sees_data_pages() {
+    let pass = AccessPass {
+        pass: "p1".to_owned(),
+        rotates_at: 1.0,
+    };
+    assert_eq!(refusal_of(Ok(PassAnswer::Granted(pass.clone()))), Ok(pass));
+    assert_eq!(
+        refusal_of(Ok(PassAnswer::SubscriptionRequired)),
+        Err(PassRefusal::SubscriptionRequired)
+    );
+    assert_eq!(
+        refusal_of(Ok(PassAnswer::SignedOut)),
+        Err(PassRefusal::SignedOut)
+    );
+    assert_eq!(
+        refusal_of(Err(anyhow::anyhow!(
+            "MeetCal could not answer: no access pass yet"
+        ))),
+        Err(PassRefusal::Unavailable(
+            ACCESS_UNAVAILABLE_MESSAGE.to_owned()
+        ))
+    );
 }
 
 #[test]

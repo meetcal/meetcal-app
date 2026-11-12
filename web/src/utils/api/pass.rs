@@ -76,11 +76,24 @@ pub(super) struct AccessPass {
 pub(super) enum PassAnswer {
     Granted(AccessPass),
     SubscriptionRequired,
+    SignedOut,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) enum PassRefusal {
+    SignedOut,
+    SubscriptionRequired,
+    Unavailable(String),
+}
+
+pub(crate) const ACCESS_UNAVAILABLE_MESSAGE: &str =
+    "MeetCal couldn't check your subscription right now; please try again";
+
 pub(super) fn read_pass_answer(response: QueryResponse) -> Result<PassAnswer> {
-    if function_error_status(&response) == Some(403) {
-        return Ok(PassAnswer::SubscriptionRequired);
+    match function_error_status(&response) {
+        Some(403) => return Ok(PassAnswer::SubscriptionRequired),
+        Some(401) => return Ok(PassAnswer::SignedOut),
+        Some(_) | None => {}
     }
     let pass: AccessPass = serde_json::from_str(answer_value(response)?.get())?;
     if pass.pass.is_empty() || !pass.rotates_at.is_finite() {
@@ -118,39 +131,39 @@ pub(super) fn read_entitlement(response: QueryResponse) -> Result<bool> {
         .ok_or_else(|| anyhow!("answer has no active flag"))
 }
 
-pub(super) async fn fetch_access_pass() -> Option<AccessPass> {
-    let token = crate::auth::session_token().await?;
-    match request_access_pass(&token).await {
-        Ok(PassAnswer::Granted(pass)) => return Some(pass),
-        Ok(PassAnswer::SubscriptionRequired) => {}
-        Err(error) => {
-            leptos::logging::warn!("No access pass: {error}");
-            return None;
+pub(super) fn unavailable(error: &anyhow::Error) -> PassRefusal {
+    leptos::logging::warn!("No access pass: {error}");
+    PassRefusal::Unavailable(ACCESS_UNAVAILABLE_MESSAGE.to_owned())
+}
+
+pub(super) fn refusal_of(answer: Result<PassAnswer>) -> Result<AccessPass, PassRefusal> {
+    match answer {
+        Ok(PassAnswer::Granted(pass)) => Ok(pass),
+        Ok(PassAnswer::SubscriptionRequired) => Err(PassRefusal::SubscriptionRequired),
+        Ok(PassAnswer::SignedOut) => Err(PassRefusal::SignedOut),
+        Err(error) => Err(unavailable(&error)),
+    }
+}
+
+pub(super) async fn fetch_access_pass() -> Result<AccessPass, PassRefusal> {
+    let token = crate::auth::session_token()
+        .await
+        .ok_or(PassRefusal::SignedOut)?;
+    match refusal_of(request_access_pass(&token).await) {
+        Err(PassRefusal::SubscriptionRequired) => {}
+        settled @ (Ok(_) | Err(PassRefusal::SignedOut | PassRefusal::Unavailable(_))) => {
+            return settled;
         }
     }
     match refresh_entitlement(&token).await {
         Ok(true) => {}
-        Ok(false) => {
-            leptos::logging::warn!("No access pass: Convex found no active entitlement");
-            return None;
-        }
-        Err(error) => {
-            leptos::logging::warn!("No access pass: the entitlement refresh failed: {error}");
-            return None;
-        }
+        Ok(false) => return Err(PassRefusal::SubscriptionRequired),
+        Err(error) => return Err(unavailable(&error)),
     }
-    let token = crate::auth::session_token().await?;
-    match request_access_pass(&token).await {
-        Ok(PassAnswer::Granted(pass)) => Some(pass),
-        Ok(PassAnswer::SubscriptionRequired) => {
-            leptos::logging::warn!("No access pass: refused after the entitlement refresh");
-            None
-        }
-        Err(error) => {
-            leptos::logging::warn!("No access pass: {error}");
-            None
-        }
-    }
+    let token = crate::auth::session_token()
+        .await
+        .ok_or(PassRefusal::SignedOut)?;
+    refusal_of(request_access_pass(&token).await)
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -159,7 +172,7 @@ pub(super) struct HeldPass {
     pub(super) until: f64,
 }
 
-pub(super) type PassFetch = Shared<LocalBoxFuture<'static, Option<String>>>;
+pub(super) type PassFetch = Shared<LocalBoxFuture<'static, Result<String, PassRefusal>>>;
 
 #[derive(Default)]
 pub(super) struct PassState {
@@ -218,7 +231,7 @@ pub(super) async fn wait_for_pass(
     }
     let timer = sleep(Duration::from_millis(left as u64));
     match futures::future::select(Box::pin(fetch), Box::pin(timer)).await {
-        futures::future::Either::Left((pass, _)) => pass,
+        futures::future::Either::Left((pass, _)) => pass.ok(),
         futures::future::Either::Right(_) => None,
     }
 }
@@ -320,7 +333,7 @@ pub(super) fn start_pass_fetch() -> (PassFetch, f64) {
             }
             state.fetching = None;
             match &fetched {
-                Some(pass) => {
+                Ok(pass) => {
                     let until = held_until(pass.rotates_at, now);
                     state.held = Some(HeldPass {
                         pass: pass.pass.clone(),
@@ -331,7 +344,7 @@ pub(super) fn start_pass_fetch() -> (PassFetch, f64) {
                         let _ = store_pass(&user, &pass.pass, until);
                     }
                 }
-                None => state.failed_at = Some(now),
+                Err(_) => state.failed_at = Some(now),
             }
         });
         fetched.map(|pass| pass.pass)
@@ -341,9 +354,26 @@ pub(super) fn start_pass_fetch() -> (PassFetch, f64) {
     ACCESS_PASS_STATE.with_borrow_mut(|state| state.fetching = Some((fetch.clone(), started_at)));
     let running = fetch.clone();
     leptos::task::spawn_local(async move {
-        running.await;
+        let _ = running.await;
     });
     (fetch, started_at)
+}
+
+pub(crate) async fn check_access() -> Result<(), PassRefusal> {
+    let now = js_sys::Date::now();
+    if ACCESS_PASS_STATE.with_borrow(|state| usable_pass(state.held.as_ref(), now).is_some()) {
+        return Ok(());
+    }
+    if recalled_pass().await.is_some() {
+        return Ok(());
+    }
+    let running = ACCESS_PASS_STATE
+        .with_borrow(|state| state.fetching.as_ref().map(|(fetch, _)| fetch.clone()));
+    let fetch = match running {
+        Some(fetch) => fetch,
+        None => start_pass_fetch().0,
+    };
+    fetch.await.map(|_| ())
 }
 
 pub(crate) fn forget_access_pass() {
