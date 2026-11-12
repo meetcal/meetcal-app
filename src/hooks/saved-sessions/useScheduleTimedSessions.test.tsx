@@ -5,6 +5,7 @@ import { useScheduleTimedSessions } from "@/hooks/saved-sessions/useScheduleTime
 import { SyncManager } from "@/lib/database/sync-manager";
 import type { SavedSession } from "@/lib/saved-sessions-store";
 import type { Schedule } from "@/types/schedule";
+import { itemAt } from "@/test-support/checked-access";
 
 const mockGetMeetSchedule = jest.fn<Promise<Schedule>, [string]>();
 const mockFetchSchedule = jest.fn<Promise<Schedule>, [string]>();
@@ -81,7 +82,7 @@ describe("useScheduleTimedSessions follows the background schedule sync (#397)",
       tree = create(<Harness />);
     });
     await flush();
-    expect(captured[0].startTime).toBe("9:00 AM");
+    expect(itemAt(captured, 0).startTime).toBe("9:00 AM");
 
     // The meet director moves session 12; the 5-minute sync picks it up.
     mockFetchSchedule.mockResolvedValue(scheduleAt("11:00 AM"));
@@ -89,7 +90,7 @@ describe("useScheduleTimedSessions follows the background schedule sync (#397)",
       await new SyncManager(MEET).syncIfNeeded();
     });
     await flush();
-    expect(captured[0].startTime).toBe("11:00 AM");
+    expect(itemAt(captured, 0).startTime).toBe("11:00 AM");
 
     await act(async () => {
       tree.unmount();

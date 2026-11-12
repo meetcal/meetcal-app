@@ -9,6 +9,7 @@ import { act, create, type ReactTestRenderer } from "react-test-renderer";
 import { AutoUnsaveSetting } from "@/components/profile/AutoUnsaveSetting";
 import { fetchUserPreferences, patchAutoUnsavePreference } from "@/lib/api/user-preferences-api";
 import type { PremiumAccess } from "@/lib/premium-access";
+import { itemAt } from "@/test-support/checked-access";
 
 jest.mock("@/components/ui/IconSymbol", () => ({ IconSymbol: () => null }));
 jest.mock("@/components/ui/Toast", () => ({ showToast: jest.fn() }));
@@ -100,9 +101,9 @@ describe("AutoUnsaveSetting", () => {
 
     expect(theSwitch(renderer).props.value).toBe(false);
     expect(theSwitch(renderer).props.disabled).toBe(true);
-    const row = renderer.root.findAll(
+    const row = itemAt(renderer.root.findAll(
       (node) => typeof node.props.onPress === "function" && node.props.disabled === false,
-    )[0];
+    ), 0);
     await act(async () => {
       row.props.onPress();
     });

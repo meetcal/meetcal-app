@@ -9,6 +9,7 @@ import {
   YEAR_BESTS_PREFETCH_DELAY_MS,
   YEAR_BESTS_PREFETCH_NAME_CAP,
 } from "./useStartListBests";
+import { itemAt } from "@/test-support/checked-access";
 
 jest.mock("@/lib/start-list-api", () => ({
   getLastYearBestsBatch: jest.fn(),
@@ -64,10 +65,10 @@ describe("useYearBestsForSort", () => {
 
     act(() => tree.update(<BestsHarness athletes={[lifter("New")]} enabled />));
     await act(async () => {
-      pending[1]({ New: bests(200) });
+      itemAt(pending, 1)({ New: bests(200) });
     });
     await act(async () => {
-      pending[0]({ Old: bests(100) });
+      itemAt(pending, 0)({ Old: bests(100) });
     });
     expect(result).toEqual({ New: bests(200) });
   });
@@ -87,7 +88,7 @@ describe("usePreloadYearBests", () => {
     });
     expect(preloadYearBests).not.toHaveBeenCalled();
     act(() => jest.advanceTimersByTime(YEAR_BESTS_PREFETCH_DELAY_MS));
-    const names = jest.mocked(preloadYearBests).mock.calls[0][0];
+    const names = itemAt(jest.mocked(preloadYearBests).mock.calls, 0)[0];
     expect(names).toHaveLength(YEAR_BESTS_PREFETCH_NAME_CAP);
     expect(names).not.toContain("Bob Smith");
   });

@@ -10,6 +10,7 @@ import { act, create, type ReactTestRenderer } from "react-test-renderer";
 import InfoScreen from "@/app/(tabs)/(info)/index";
 import { isPremiumFeature } from "@/lib/premium-intent";
 import { isInternalRoutePath } from "@/utils/deepLinks";
+import { itemAt } from "@/test-support/checked-access";
 
 const mockRequireAuth = jest.fn<boolean | null, [Record<string, unknown>]>(() => false);
 jest.mock("@/utils/authGuard", () => ({
@@ -90,7 +91,7 @@ describe("Info tab data links", () => {
 
     expect(mockPush).toHaveBeenCalledTimes(1);
     const pushed = mockPush.mock.calls[0][0];
-    const options = mockRequireAuth.mock.calls[0][0];
+    const options = itemAt(mockRequireAuth.mock.calls, 0)[0];
     expect(options.returnPath).toBe(pushed);
     expect(isInternalRoutePath(options.returnPath)).toBe(true);
   });
@@ -99,7 +100,7 @@ describe("Info tab data links", () => {
     pressLink(renderer, testID);
 
     expect(mockPush).not.toHaveBeenCalled();
-    const options = mockRequireAuth.mock.calls[0][0];
+    const options = itemAt(mockRequireAuth.mock.calls, 0)[0];
     expect(isPremiumFeature(options.feature)).toBe(false);
   });
 });

@@ -10,6 +10,7 @@ import type { LiftResult } from "@/data/types/athletes";
 import { getMeetData } from "@/lib/database/meet-data-reads";
 import { getLastYearBestsBatch } from "@/lib/start-list-api";
 import { showToast } from "@/components/ui/Toast";
+import { itemAt } from "@/test-support/checked-access";
 
 // Charge react-native's lazy-getter cost to the file, not the first test.
 void [Animated, Pressable, ScrollView, TextInput];
@@ -189,7 +190,7 @@ const flush = async () => {
 const lastCall = <T,>(mock: jest.Mock<null, [T]>): T => {
   const calls = mock.mock.calls;
   if (calls.length === 0) throw new Error("component was never rendered");
-  return calls[calls.length - 1][0];
+  return itemAt(calls, -1)[0];
 };
 const pillBar = () => lastCall(mockPillBar);
 const pill = (id: string) => {
@@ -363,7 +364,7 @@ describe("Start List Add to Saved", () => {
     await act(async () => {
       await lastCall(mockActionModal).onSaveAll();
     });
-    const [title, , buttons] = jest.mocked(Alert.alert).mock.calls[0];
+    const [title, , buttons] = itemAt(jest.mocked(Alert.alert).mock.calls, 0);
     expect(title).toBe("Save Sessions");
     const save = buttons?.find((b) => b.text === "Save");
     await act(async () => {
@@ -389,7 +390,7 @@ describe("Start List Add to Saved", () => {
     await act(async () => {
       await lastCall(mockActionModal).onSaveAll();
     });
-    const [, , buttons] = jest.mocked(Alert.alert).mock.calls[0];
+    const [, , buttons] = itemAt(jest.mocked(Alert.alert).mock.calls, 0);
     await act(async () => {
       await buttons?.find((b) => b.text === "Save")?.onPress?.();
     });
@@ -458,7 +459,7 @@ describe("Start List row results link", () => {
   const seeAllResults = (name: string) => {
     const { data, renderItem } = lastCall(mockFlashList);
     const index = data.findIndex((a) => a.name === name);
-    act(() => renderItem({ item: data[index], index }).props.onSeeAllResults(name));
+    act(() => renderItem({ item: itemAt(data, index), index }).props.onSeeAllResults(name));
   };
 
   it("opens a subscriber's results", async () => {

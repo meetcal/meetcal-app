@@ -4,6 +4,7 @@ import { act, create } from "react-test-renderer";
 
 import SavedScreen from "@/app/(tabs)/(saved)/index";
 import type { SavedSession } from "@/lib/saved-sessions-store";
+import { itemAt } from "@/test-support/checked-access";
 
 const mockResetAllSessions = jest.fn(async () => true);
 const mockMigrateLegacySessions = jest.fn(async () => true);
@@ -84,7 +85,7 @@ function resetHandler(): () => void {
     return options.unstable_headerRightItems()[1].onPress;
   }
   const header = create(options.headerRight());
-  return header.root.findAllByProps({ accessibilityLabel: "Delete all saved sessions" })[0].props.onPress;
+  return itemAt(header.root.findAllByProps({ accessibilityLabel: "Delete all saved sessions" }), 0).props.onPress;
 }
 
 async function render() {
@@ -126,7 +127,7 @@ describe("Saved tab", () => {
     });
 
     expect(alert).toHaveBeenCalledTimes(1);
-    const buttons = alert.mock.calls[0][2] as { text: string; onPress?: () => Promise<void> }[];
+    const buttons = itemAt(alert.mock.calls, 0)[2] as { text: string; onPress?: () => Promise<void> }[];
     await act(async () => {
       await buttons.find((button) => button.text === "Reset")!.onPress!();
     });

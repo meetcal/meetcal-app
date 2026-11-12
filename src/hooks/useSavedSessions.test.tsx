@@ -29,6 +29,7 @@ import {
 import { MAX_RECONCILE_FETCHES } from "@/lib/saved-sessions-load";
 import type { LiftResult } from "@/data/types/athletes";
 import type { Schedule } from "@/types/schedule";
+import { itemAt } from "@/test-support/checked-access";
 
 /**
  * Clerk state the harness renders with. `null` is the cold-start case: no
@@ -908,9 +909,9 @@ describe("server reconcile with the pending-writes outbox", () => {
       await hook.current.saveSession(makeSession("Test-Meet-1-Red", { athleteNames: names }));
     });
 
-    const body = mockPutSavedSession.mock.calls[0][2];
+    const body = itemAt(mockPutSavedSession.mock.calls, 0)[2];
     expect(body.athlete_names).toHaveLength(MAX_SAVED_SESSION_ATHLETE_NAMES);
-    expect(hook.current.savedSessions[0].athleteNames).toHaveLength(MAX_SAVED_SESSION_ATHLETE_NAMES);
+    expect(itemAt(hook.current.savedSessions, 0).athleteNames).toHaveLength(MAX_SAVED_SESSION_ATHLETE_NAMES);
   });
 
   it("flags an expired session on 401 instead of only logging", async () => {
@@ -1406,7 +1407,7 @@ describe("session reminders follow the saved list", () => {
     await mountHook();
 
     expect(mockScheduleNotification).toHaveBeenCalledTimes(1);
-    expect(mockScheduleNotification.mock.calls[0][3]).toBe("Test-Meet-1-Red");
+    expect(itemAt(mockScheduleNotification.mock.calls, 0)[3]).toBe("Test-Meet-1-Red");
   });
 
   it("schedules the saved sessions' reminders when reminders are turned on", async () => {

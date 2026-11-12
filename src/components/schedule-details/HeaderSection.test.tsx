@@ -8,6 +8,7 @@ import { Text } from "react-native";
 import { act, create, type ReactTestInstance, type ReactTestRenderer } from "react-test-renderer";
 import type { Meet } from "@/data/types/meet";
 import HeaderSection from "@/components/schedule-details/HeaderSection";
+import { itemAt } from "@/test-support/checked-access";
 
 jest.mock("react-native-reanimated", () => ({
   __esModule: true,
@@ -99,7 +100,7 @@ function pressText(renderer: ReactTestRenderer, label: string) {
 
 async function summaryFor(meet: string, sessionFullDate?: string): Promise<string> {
   const renderer = await render(meet, { sessionFullDate });
-  const first = renderer.root.findAllByType(Text)[0];
+  const first = itemAt(renderer.root.findAllByType(Text), 0);
   return ([] as unknown[]).concat(first.props.children).join("");
 }
 
@@ -120,7 +121,7 @@ describe("HeaderSection time-zone label", () => {
   it("reads TBD, with no stray zone, for a row the schedule has not timed", async () => {
     mockSelection = { meetDetails: selected, availableMeets: [selected, other] };
     const renderer = await render("Selected Open", { platformStartTime: "" });
-    const first = renderer.root.findAllByType(Text)[0];
+    const first = itemAt(renderer.root.findAllByType(Text), 0);
     expect(([] as unknown[]).concat(first.props.children).join("")).toBe("Session 3 • TBD");
   });
 

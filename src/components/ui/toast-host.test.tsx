@@ -12,6 +12,7 @@ import {
   SCREEN_READER_MIN_TOAST_DURATION_MS,
   showToast,
 } from "@/lib/toast";
+import { itemAt } from "@/test-support/checked-access";
 
 jest.mock("@/components/ui/IconSymbol", () => ({ IconSymbol: () => null }));
 jest.mock("@/lib/haptics", () => ({
@@ -73,7 +74,7 @@ describe("ToastHost", () => {
     act(() => showToast({ type: "success", message: "Session 12 saved to your list" }));
 
     expect(announce).toHaveBeenCalledWith("Session 12 saved to your list");
-    const banner = renderer.root.findAll((node) => node.props.accessibilityRole === "alert")[0];
+    const banner = itemAt(renderer.root.findAll((node) => node.props.accessibilityRole === "alert"), 0);
     expect(banner.props.accessibilityLiveRegion).toBe("assertive");
     act(() => renderer.unmount());
     Object.defineProperty(Platform, "OS", { get: () => original, configurable: true });
@@ -202,7 +203,7 @@ describe("ToastHost", () => {
 
     act(() => renderer.update(<ModalScreen modalOpen={false} />));
 
-    const banner = renderer.root.findAll((node) => node.props.accessibilityRole === "alert")[0];
+    const banner = itemAt(renderer.root.findAll((node) => node.props.accessibilityRole === "alert"), 0);
     expect(banner.props.accessibilityLabel).toBe("Shared");
     expect(banner.props.accessibilityLiveRegion).toBe("none");
     act(() => renderer.unmount());
@@ -214,7 +215,7 @@ describe("ToastHost", () => {
       renderer = create(<ModalScreen modalOpen />);
     });
     act(() => showToast({ type: "info", message: "Copied" }));
-    const banner = renderer.root.findAll((node) => node.props.accessibilityRole === "alert")[0];
+    const banner = itemAt(renderer.root.findAll((node) => node.props.accessibilityRole === "alert"), 0);
 
     // Tapped away; the modal closes before the slide-out finishes.
     act(() => {
