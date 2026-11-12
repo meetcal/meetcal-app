@@ -42,7 +42,7 @@ POST https://disciplined-hare-790.convex.cloud/api/query
   may have done its work before its answer was lost.
 - The first request to a deployment goes alone: requests started beside it wait until it has an
   answer, then share its HTTP/2 connection instead of each opening one.
-- `query_each` runs one query per argument set, at most `CONCURRENT_READS` (8) at a time, and
+- `query_each` runs one query per argument set, at most `CONCURRENT_READS` (12) at a time, and
   returns the answers in the arguments' order (`in_order` is the bounded runner). The name batches
   of the club and WSO reports and the per-meet medal reads of the trends reports go through it.
 - One shared `reqwest` client with an 8-second connect timeout, a five-minute cap on any request,

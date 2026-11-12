@@ -590,7 +590,7 @@ where
     .await
 }
 
-pub(crate) const CONCURRENT_READS: usize = 8;
+pub(crate) const CONCURRENT_READS: usize = 12;
 
 pub(crate) async fn query_each<T>(query: Query, args: Vec<Value>) -> Result<Vec<T>>
 where

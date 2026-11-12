@@ -131,7 +131,11 @@ pub(crate) struct Target {
 }
 
 pub async fn run(args: QualifyArgs) -> Result<()> {
-    let rows = history(&args.name).await?;
+    let (rows, standards, totals) = tokio::try_join!(
+        history(&args.name),
+        query::<Vec<Standards>, _>(queries::STANDARDS, &NoArgs {}),
+        query::<Vec<QualifyingTotal>, _>(queries::QUALIFYING_TOTALS, &NoArgs {}),
+    )?;
     let Some(latest) = chronological(&rows).last().copied() else {
         bail!("No results found for athlete \"{}\"", args.name);
     };
@@ -146,9 +150,6 @@ pub async fn run(args: QualifyArgs) -> Result<()> {
     let cutoff = cutoff_date(Utc::now().date_naive(), YEAR_BESTS_YEARS);
     let limit = class_limit(&target.class);
     let (snatch, cj, total) = bests_within(&rows, &cutoff, limit);
-
-    let standards: Vec<Standards> = query(queries::STANDARDS, &NoArgs {}).await?;
-    let totals: Vec<QualifyingTotal> = query(queries::QUALIFYING_TOTALS, &NoArgs {}).await?;
 
     output::emit(report(
         latest,

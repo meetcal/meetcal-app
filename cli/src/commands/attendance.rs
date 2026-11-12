@@ -8,7 +8,7 @@ use serde_json::json;
 use tokio::task::JoinSet;
 
 use crate::types::lifting_results::LiftingResults;
-use crate::utils::backend::{FunctionError, queries, query};
+use crate::utils::backend::{CONCURRENT_READS, FunctionError, in_order, queries, query};
 use crate::utils::format::{NO_VALUE, date_range, us_date};
 use crate::utils::meet_names::{editions_by_year, equivalent_meets};
 use crate::utils::names::{MAX_NAME_PAGES, just_before, meet_names_between};
@@ -172,20 +172,30 @@ pub async fn run(args: AttendanceArgs) -> Result<()> {
         );
     }
 
-    let mut editions: Vec<Edition> = Vec::new();
     let answers = answers_for(&matched, |batch| async move {
         query::<Vec<Edition>, _>(queries::MEET_ATTENDANCE, &json!({ "meets": batch })).await
     })
     .await?;
-    for answered in answers {
-        for edition in answered {
-            if edition.spans_years() {
-                let rows: Vec<LiftingResults> =
-                    query(queries::MEET_RESULTS, &json!({ "meet": edition.meet })).await?;
-                editions.extend(split_by_year(&edition, rows));
-            } else {
-                editions.push(edition);
+    let answered: Vec<Edition> = answers.into_iter().flatten().collect();
+    let reads = answered
+        .iter()
+        .filter(|edition| edition.spans_years())
+        .map(|edition| {
+            let meet = edition.meet.clone();
+            async move {
+                query::<Vec<LiftingResults>, _>(queries::MEET_RESULTS, &json!({ "meet": meet }))
+                    .await
             }
+        });
+    let mut yearly_rows = in_order(CONCURRENT_READS, reads).await?.into_iter();
+    let mut editions: Vec<Edition> = Vec::new();
+    for edition in answered {
+        if edition.spans_years()
+            && let Some(rows) = yearly_rows.next()
+        {
+            editions.extend(split_by_year(&edition, rows));
+        } else {
+            editions.push(edition);
         }
     }
     output::emit(report(&search, &editions));

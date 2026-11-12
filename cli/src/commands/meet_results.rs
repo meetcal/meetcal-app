@@ -8,7 +8,7 @@ use tokio::task::JoinSet;
 use crate::{
     types::lifting_results::LiftingResults,
     utils::{
-        backend::{queries, query},
+        backend::{CONCURRENT_READS, in_order, queries, query},
         format::{capitalized, display_body_weight},
         make_rate::make_rate_tables,
         meet_names::{SPONSOR_WORDS, editions_by_year, series_name},
@@ -138,12 +138,20 @@ async fn earlier_editions(
         })
         .collect();
 
-    for candidate in edition_names(meet, current).await? {
-        // A name with a year outside the window has no edition we want.
-        if year_in(&candidate).is_some_and(|(_, y)| !(current - EDITIONS..current).contains(&y)) {
-            continue;
-        }
-        for (edition_year, rows) in editions_by_year(meet_rows(&candidate).await?) {
+    let candidates: Vec<String> = edition_names(meet, current)
+        .await?
+        .into_iter()
+        .filter(|candidate| {
+            year_in(candidate).is_none_or(|(_, y)| (current - EDITIONS..current).contains(&y))
+        })
+        .collect();
+    let reads = candidates
+        .iter()
+        .cloned()
+        .map(|candidate| async move { meet_rows(&candidate).await });
+    let answers = in_order(CONCURRENT_READS, reads).await?;
+    for (candidate, rows) in candidates.into_iter().zip(answers) {
+        for (edition_year, rows) in editions_by_year(rows) {
             if wanted(&edition_year) {
                 editions.push(EditionSummary {
                     meet: candidate.clone(),
