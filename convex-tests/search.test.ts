@@ -48,6 +48,10 @@ describe('results:search date range', () => {
     expect(exactSearchAnswer(respelled, '2026-01-01', '2026-12-31')?.matched_name).toBe('Ann Lee');
   });
 
+  it('answers the newest spelling without the spaces a source left around it', () => {
+    expect(exactSearchAnswer([row(' Ann Lee  ', '2026-06-01')], '2026-01-01', '2026-12-31')?.matched_name).toBe('Ann Lee');
+  });
+
   it('includes a one-day range', () => {
     const answer = fallbackSearchAnswer('ann', ['Ann Lee'], new Map([['ann lee', history]]), '2026-12-31', '2026-12-31');
     expect(answer.results.map((r) => r.date)).toEqual(['2026-12-31']);

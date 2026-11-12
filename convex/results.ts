@@ -543,7 +543,7 @@ export function exactSearchAnswer(
 ): SearchAnswer | null {
   const rows = inRange(history, start, end);
   if (rows.length === 0) return null;
-  return { matched_name: rows[rows.length - 1].name, suggestions: [], ...mostRecent(rows) };
+  return { matched_name: rows[rows.length - 1].name.trim(), suggestions: [], ...mostRecent(rows) };
 }
 
 /**
