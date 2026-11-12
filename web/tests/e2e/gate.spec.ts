@@ -3,138 +3,143 @@ import { errorAnswer, mockAuth, routeQuery, textAnswer, valueAnswer } from "./su
 
 type AuthMockState = {
   signInMounts: Array<Record<string, unknown>>;
-  customerInfoCalls: number;
-  customerInfoError?: string;
-  /** Replaces the entitlements the mock grants `user_ci`. */
-  activeEntitlements?: Record<string, unknown>;
   notify: () => void;
   setUser: (id: string | null) => void;
-  installPurchases: () => void;
 };
 
-/** Counts the Convex reads a page makes; a gated page that is not unlocked must make none. */
-function countConvexReads(page: Page) {
+const ACCESS_PASS = "accessPass:pass";
+
+function countDataReads(page: Page) {
   const reads: string[] = [];
   page.on("request", (request) => {
     if (request.url().includes(".convex.cloud/api/query") && request.method() === "POST") {
-      reads.push(String(request.postDataJSON()?.path));
+      const path = String(request.postDataJSON()?.path);
+      if (path !== ACCESS_PASS) reads.push(path);
     }
   });
   return reads;
 }
 
-const authMock = (page: Page) => page.evaluate(() => {
-  const mock = (window as unknown as { __authMock: AuthMockState }).__authMock;
-  return { signInMounts: mock.signInMounts, customerInfoCalls: mock.customerInfoCalls };
+const signInMounts = (page: Page) =>
+  page.evaluate(() => (window as unknown as { __authMock: AuthMockState }).__authMock.signInMounts);
+
+const authMock = (page: Page) => ({
+  notify: () => page.evaluate(() => (window as unknown as { __authMock: AuthMockState }).__authMock.notify()),
+  setUser: (id: string | null) =>
+    page.evaluate((id) => (window as unknown as { __authMock: AuthMockState }).__authMock.setUser(id), id),
 });
 
-/** A client-side move through the header's Competition Data menu. */
 async function openFromHeader(page: Page, path: string) {
   await page.locator(`.site-nav a[href="${path}"]`).dispatchEvent("click");
   await expect(page).toHaveURL(new RegExp(`${path.replace("?", "\\?")}$`));
 }
 
+const paywall = (page: Page) => page.getByRole("heading", { level: 1, name: "Continue in the MeetCal app" });
+const signIn = (page: Page) => page.getByRole("heading", { level: 1, name: "Sign in to continue" });
+const accessError = (page: Page) => page.getByRole("heading", { level: 1, name: "We couldn’t verify your access" });
+
 test("signed out, a data page shows the sign-in that returns to it, and reads no data", async ({ page }) => {
-  await mockAuth(page, { signedIn: false });
-  const reads = countConvexReads(page);
+  const { passRequests } = await mockAuth(page, { signedIn: false });
+  const reads = countDataReads(page);
 
   await page.goto("/results?athlete=Ann%20Lee");
-  await expect(page.getByRole("heading", { level: 1, name: "Sign in to continue" })).toBeVisible();
-  await expect.poll(async () => (await authMock(page)).signInMounts.length).toBeGreaterThan(0);
-  const [options] = (await authMock(page)).signInMounts;
+  await expect(signIn(page)).toBeVisible();
+  await expect.poll(async () => (await signInMounts(page)).length).toBeGreaterThan(0);
+  const [options] = await signInMounts(page);
   expect(options.fallbackRedirectUrl).toBe(page.url());
   expect(options.signUpFallbackRedirectUrl).toBe(page.url());
   expect(String(options.fallbackRedirectUrl)).toContain("/results?athlete=Ann%20Lee");
   expect(reads).toEqual([]);
-});
-
-test("signed in without the subscription, a data page hands off to the app and reads no data", async ({ page }) => {
-  const { passRequests, entitlementRefreshes } = await mockAuth(page, { entitlements: [] });
-  const reads = countConvexReads(page);
-
-  await page.goto("/records");
-  await expect(page.getByRole("heading", { level: 1, name: "Continue in the MeetCal app" })).toBeVisible();
-  expect(reads).toEqual([]);
   expect(passRequests).toEqual([]);
-  expect(entitlementRefreshes).toEqual([]);
 });
 
-test("another entitlement than the app's Subscriptions does not unlock the data pages", async ({ page }) => {
-  await mockAuth(page, { entitlements: ["atlas_pro"] });
-  const reads = countConvexReads(page);
-
-  await page.goto("/standards");
-  await expect(page.getByRole("heading", { level: 1, name: "Continue in the MeetCal app" })).toBeVisible();
-  expect(reads).toEqual([]);
-});
-
-test("a failed RevenueCat check explains itself and Try again checks again", async ({ page }) => {
-  await mockAuth(page, { revenueCatError: "RevenueCat is down" });
-  const reads = countConvexReads(page);
-
-  await page.goto("/standards");
-  await expect(page.getByRole("heading", { level: 1, name: "We couldn’t verify your access" })).toBeVisible();
-  await expect(page.getByRole("alert")).toContainText("RevenueCat is down");
-  expect(reads).toEqual([]);
-
-  await page.getByRole("button", { name: "Try again" }).click();
-  await expect(page.getByRole("heading", { level: 1, name: "We couldn’t verify your access" })).toBeVisible();
-  expect((await authMock(page)).customerInfoCalls).toBe(2);
-});
-
-test("a RevenueCat script that failed to load is fetched again on the next data page", async ({ page }) => {
-  let scriptRequests = 0;
-  // RevenueCat is left off the page, so the bridge loads its script, which fails here.
-  await mockAuth(page, { loadRevenueCat: true });
-  await page.route(/unpkg\.com\/@revenuecat\/purchases-js@/, async (route) => {
-    scriptRequests += 1;
-    await route.abort("failed");
+test("a subscriber's data page asks Convex for the pass first, then reads its data, and never loads RevenueCat", async ({ page }) => {
+  const { accessCalls, revenueCatRequests } = await mockAuth(page);
+  const order: string[] = [];
+  page.on("request", (request) => {
+    if (request.url().includes(".convex.cloud/api/query") && request.method() === "POST") {
+      order.push(String(request.postDataJSON()?.path));
+    }
   });
   await routeQuery(page, "reference:standards", (route) => route.fulfill(textAnswer([])));
 
-  await page.goto("/records");
-  await expect(page.getByRole("heading", { level: 1, name: "We couldn’t verify your access" })).toBeVisible();
-  await expect(page.getByRole("alert")).toContainText("The subscription service could not be loaded");
-  expect(scriptRequests).toBe(1);
-
-  // The next data page loads the script afresh instead of waiting on the failed tag.
-  await openFromHeader(page, "/standards");
-  await expect.poll(() => scriptRequests).toBe(2);
-  await expect(page.getByRole("heading", { level: 1, name: "We couldn’t verify your access" })).toBeVisible();
-
-  // Once RevenueCat is available, Try again unlocks the page.
-  await page.evaluate(() => (window as unknown as { __authMock: AuthMockState }).__authMock.installPurchases());
-  await page.getByRole("button", { name: "Try again" }).click();
+  await page.goto("/standards");
   await expect(page.getByRole("heading", { level: 1, name: "Standards" })).toBeVisible();
+  await expect.poll(() => order).toEqual([ACCESS_PASS, "reference:standards"]);
+  expect(accessCalls).toEqual(["pass"]);
+  expect(revenueCatRequests).toEqual([]);
 });
 
-test("a RevenueCat script that never finishes loading is given up, and Try again loads it afresh", async ({ page }) => {
-  await page.clock.install();
-  await mockAuth(page, { loadRevenueCat: true });
-  // The script never arrives. (The browser may share one stalled request
-  // between tags for the same URL, so this counts tags, not requests.)
-  await page.route(/unpkg\.com\/@revenuecat\/purchases-js@/, () => {});
-  const revenueCatTags = page.locator('script[src*="@revenuecat/purchases-js@"]');
+test("signed in without the subscription, Convex's refusal shows the paywall, which reads no data and loads no RevenueCat", async ({ page }) => {
+  const { accessCalls, entitlementRefreshes, revenueCatRequests } = await mockAuth(page, {
+    serverEntitled: false,
+    refreshGrants: false,
+  });
+  const reads = countDataReads(page);
 
   await page.goto("/records");
-  await expect(revenueCatTags).toHaveCount(1);
-  await page.clock.fastForward("00:16");
-  await expect(page.getByRole("alert")).toContainText("The subscription service could not be loaded");
-  // The hung tag is given up, not left for the next check to wait on.
-  await expect(revenueCatTags).toHaveCount(0);
-
-  // Try again inserts a fresh tag, and once RevenueCat is available the page unlocks.
-  await page.getByRole("button", { name: "Try again" }).click();
-  await expect(revenueCatTags).toHaveCount(1);
-  await page.evaluate(() => (window as unknown as { __authMock: AuthMockState }).__authMock.installPurchases());
-  await page.clock.fastForward("00:16");
-  await expect(page.getByRole("alert")).toContainText("The subscription service could not be loaded");
-  await page.getByRole("button", { name: "Try again" }).click();
-  await expect(page.getByRole("heading", { level: 1, name: "Records" })).toBeVisible();
+  await expect(paywall(page)).toBeVisible();
+  await expect(page.getByRole("link", { name: "Open on iPhone or iPad" })).toBeVisible();
+  expect(accessCalls).toEqual(["pass", "refresh"]);
+  expect(entitlementRefreshes).toEqual(["Bearer token_user_ci"]);
+  expect(reads).toEqual([]);
+  expect(revenueCatRequests).toEqual([]);
 });
+
+test("an unpaid user who subscribes in the app gets in on returning to the tab: refresh, then the pass, then the data", async ({ page }) => {
+  const { server, accessCalls, revenueCatRequests } = await mockAuth(page, { serverEntitled: false, refreshGrants: false });
+  await routeQuery(page, "reference:records", (route) => route.fulfill(textAnswer([])));
+
+  await page.goto("/records");
+  await expect(paywall(page)).toBeVisible();
+  expect(accessCalls).toEqual(["pass", "refresh"]);
+
+  server.refreshGrants = true;
+  await page.evaluate(() => document.dispatchEvent(new Event("visibilitychange", { bubbles: true })));
+  await expect(page.getByRole("heading", { level: 1, name: "Records" })).toBeVisible();
+  expect(accessCalls).toEqual(["pass", "refresh", "pass", "refresh", "pass"]);
+  expect(revenueCatRequests).toEqual([]);
+});
+
+test("a pass Convex refuses as signed out (401) shows the sign-in, not the paywall", async ({ page }) => {
+  await mockAuth(page);
+  await routeQuery(page, ACCESS_PASS, (route) =>
+    route.fulfill(errorAnswer("Server Error", { status: 401, error: "unauthorized" })),
+  );
+  const reads = countDataReads(page);
+
+  await page.goto("/standards");
+  await expect(signIn(page)).toBeVisible();
+  await expect(paywall(page)).toHaveCount(0);
+  expect(reads).toEqual([]);
+});
+
+for (const failure of ["answers 503", "cannot be reached"] as const) {
+  test(`when the pass ${failure}, the data page shows the error, not the paywall, and Try again asks again`, async ({ page }) => {
+    const { server, passRequests, revenueCatRequests } = await mockAuth(page);
+    let reachable = failure !== "cannot be reached";
+    server.unavailable = failure === "answers 503";
+    await routeQuery(page, ACCESS_PASS, (route) => (reachable ? route.fallback() : route.abort("failed")));
+    await routeQuery(page, "reference:standards", (route) => route.fulfill(textAnswer([])));
+    const reads = countDataReads(page);
+
+    await page.goto("/standards");
+    await expect(accessError(page)).toBeVisible();
+    await expect(page.getByRole("alert")).toContainText("MeetCal couldn't check your subscription right now");
+    await expect(paywall(page)).toHaveCount(0);
+    expect(reads).toEqual([]);
+
+    server.unavailable = false;
+    reachable = true;
+    await page.getByRole("button", { name: "Try again" }).click();
+    await expect(page.getByRole("heading", { level: 1, name: "Standards" })).toBeVisible();
+    expect(passRequests.at(-1)).toBe("Bearer token_user_ci");
+    expect(revenueCatRequests).toEqual([]);
+  });
+}
 
 test("moving between data pages and Clerk updates for the same user keep the page and its access", async ({ page }) => {
-  await mockAuth(page);
+  const { passRequests } = await mockAuth(page);
   await routeQuery(page, "reference:records", (route) => route.fulfill(textAnswer([])));
   await routeQuery(page, "reference:standards", (route) => route.fulfill(textAnswer([])));
   await routeQuery(page, "results:search", (route) => route.fulfill(valueAnswer({ matched_name: null, suggestions: [], results: [], truncated: false })));
@@ -143,10 +148,9 @@ test("moving between data pages and Clerk updates for the same user keep the pag
   const athleteSearch = page.getByLabel("Athlete", { exact: true });
   await athleteSearch.fill("Ann Lee");
 
-  // Clerk calls its listeners again for the same user (a session touch on focus).
-  await page.evaluate(() => (window as unknown as { __authMock: AuthMockState }).__authMock.notify());
+  await authMock(page).notify();
   await page.waitForTimeout(200);
-  await expect(page.getByRole("heading", { level: 1, name: "Checking your access" })).toHaveCount(0);
+  await expect(page.getByRole("status").filter({ hasText: "Checking your access" })).toHaveCount(0);
   await expect(athleteSearch).toHaveValue("Ann Lee");
 
   const checking: string[] = [];
@@ -164,7 +168,7 @@ test("moving between data pages and Clerk updates for the same user keep the pag
   await expect(page.getByRole("heading", { level: 1, name: "Standards" })).toBeVisible();
 
   expect(checking).toEqual([]);
-  expect((await authMock(page)).customerInfoCalls).toBe(1);
+  expect(passRequests).toHaveLength(1);
 });
 
 test("switching to an unsubscribed user or signing out locks an open data page", async ({ page }) => {
@@ -174,75 +178,48 @@ test("switching to an unsubscribed user or signing out locks an open data page",
   await page.goto("/standards");
   await expect(page.getByRole("heading", { level: 1, name: "Standards" })).toBeVisible();
 
-  await page.evaluate(() => (window as unknown as { __authMock: AuthMockState }).__authMock.setUser("user_other"));
-  await expect(page.getByRole("heading", { level: 1, name: "Continue in the MeetCal app" })).toBeVisible();
+  await authMock(page).setUser("user_other");
+  await expect(paywall(page)).toBeVisible();
 
-  await page.evaluate(() => (window as unknown as { __authMock: AuthMockState }).__authMock.setUser(null));
-  await expect(page.getByRole("heading", { level: 1, name: "Sign in to continue" })).toBeVisible();
+  await authMock(page).setUser(null);
+  await expect(signIn(page)).toBeVisible();
 
-  await page.evaluate(() => (window as unknown as { __authMock: AuthMockState }).__authMock.setUser("user_ci"));
+  await authMock(page).setUser("user_ci");
   await expect(page.getByRole("heading", { level: 1, name: "Standards" })).toBeVisible();
 });
 
-test("a stale grant is checked again in the background, and a failed check keeps the page", async ({ page }) => {
+test("a background check after the held pass ran out that cannot reach Convex keeps the open page", async ({ page }) => {
   await page.clock.install();
-  await mockAuth(page);
+  const { server, passRequests } = await mockAuth(page);
+  server.rotatesInMs = 0;
   await routeQuery(page, "reference:records", (route) => route.fulfill(textAnswer([])));
   await routeQuery(page, "reference:standards", (route) => route.fulfill(textAnswer([])));
 
   await page.goto("/records");
   await expect(page.getByRole("heading", { level: 1, name: "Records" })).toBeVisible();
-  expect((await authMock(page)).customerInfoCalls).toBe(1);
+  expect(passRequests).toHaveLength(1);
 
   await page.clock.fastForward("11:00");
-  await page.evaluate(() => {
-    (window as unknown as { __authMock: AuthMockState }).__authMock.customerInfoError = "RevenueCat is down";
-  });
+  server.unavailable = true;
   await openFromHeader(page, "/standards");
-  await expect.poll(async () => (await authMock(page)).customerInfoCalls).toBe(2);
+  await expect.poll(() => passRequests.length).toBe(2);
   await expect(page.getByRole("heading", { level: 1, name: "Standards" })).toBeVisible();
-  await expect(page.getByRole("heading", { level: 1, name: "We couldn’t verify your access" })).toHaveCount(0);
+  await expect(accessError(page)).toHaveCount(0);
 });
 
-test("a signed-in visit to a public page never checks the subscription; the first data page does", async ({ page }) => {
-  let scriptRequests = 0;
-  await mockAuth(page, { loadRevenueCat: true });
-  await page.route(/unpkg\.com\/@revenuecat\/purchases-js@/, async (route) => {
-    scriptRequests += 1;
-    await route.abort("failed");
-  });
+test("a signed-in visit to a public page never asks for the pass; the first data page does", async ({ page }) => {
+  const { passRequests, revenueCatRequests } = await mockAuth(page);
   await routeQuery(page, "reference:standards", (route) => route.fulfill(textAnswer([])));
 
   await page.goto("/");
   await expect(page.getByRole("heading", { level: 1 }).first()).toBeVisible();
   await page.waitForTimeout(300);
-  expect(scriptRequests).toBe(0);
-  expect((await authMock(page)).customerInfoCalls).toBe(0);
+  expect(passRequests).toEqual([]);
 
-  // The first data page checks the entitlement.
-  await page.evaluate(() => (window as unknown as { __authMock: AuthMockState }).__authMock.installPurchases());
   await openFromHeader(page, "/standards");
   await expect(page.getByRole("heading", { level: 1, name: "Standards" })).toBeVisible();
-  expect((await authMock(page)).customerInfoCalls).toBe(1);
-});
-
-test("an unpaid user who subscribes in the app gets in on returning to the tab", async ({ page }) => {
-  await mockAuth(page, { entitlements: [] });
-  await routeQuery(page, "reference:records", (route) => route.fulfill(textAnswer([])));
-
-  await page.goto("/records");
-  await expect(page.getByRole("heading", { level: 1, name: "Continue in the MeetCal app" })).toBeVisible();
-  expect((await authMock(page)).customerInfoCalls).toBe(1);
-
-  // Subscribed in the app; Clerk reports the same user, so only the return to the tab rechecks.
-  await page.evaluate(() => {
-    const mock = (window as unknown as { __authMock: AuthMockState }).__authMock;
-    mock.activeEntitlements = { Subscriptions: { identifier: "Subscriptions" } };
-    mock.notify();
-    document.dispatchEvent(new Event("visibilitychange", { bubbles: true }));
-  });
-  await expect(page.getByRole("heading", { level: 1, name: "Records" })).toBeVisible();
-  expect((await authMock(page)).customerInfoCalls).toBe(2);
+  expect(passRequests).toHaveLength(1);
+  expect(revenueCatRequests).toEqual([]);
 });
 
 test("a subscriber's premium reads carry the access pass, fetched once with the session token, and no read carries the token", async ({ page }) => {
@@ -267,14 +244,12 @@ test("a subscriber's premium reads carry the access pass, fetched once with the 
   expect(sent.get("reference:clubs")).toEqual({ pass: "pass_test", authorization: undefined });
   expect(sent.get("reference:clubMeets")).toEqual({ pass: "pass_test", authorization: undefined });
 
-  // The pass is held: the next data page's read uses it without fetching it again.
   await openFromHeader(page, "/standards");
   await expect(page.getByRole("heading", { level: 1, name: "Standards" })).toBeVisible();
   await expect.poll(() => sent.get("reference:standards")).toEqual({ pass: "pass_test", authorization: undefined });
   expect(passRequests).toEqual(["Bearer token_user_ci"]);
   expect(entitlementRefreshes).toEqual([]);
 
-  // Public, so it goes without the pass.
   await openFromHeader(page, "/meet-center");
   await expect.poll(() => sent.get("meets:completed")).toEqual({ pass: undefined, authorization: undefined });
 });
@@ -294,34 +269,6 @@ test("a subscriber Convex has no entitlement for yet gets the pass once Convex r
   expect(entitlementRefreshes).toEqual(["Bearer token_user_ci"]);
 });
 
-for (const [name, setup, refreshes] of [
-  ["Convex finds no entitlement", (page: Page) => mockAuth(page, { serverEntitled: false, refreshGrants: false }), 1],
-  [
-    "the pass cannot be fetched",
-    async (page: Page) => {
-      const mocks = await mockAuth(page);
-      await routeQuery(page, "accessPass:pass", (route) => route.abort("failed"));
-      return mocks;
-    },
-    0,
-  ],
-] as const) {
-  test(`when ${name}, a premium read goes out without a pass`, async ({ page }) => {
-    const { entitlementRefreshes } = await setup(page);
-    const sent: Array<Record<string, unknown>> = [];
-    await routeQuery(page, "reference:standards", (route, args) => {
-      sent.push(args);
-      return route.fulfill(textAnswer([]));
-    });
-
-    await page.goto("/standards");
-    await expect(page.getByRole("heading", { level: 1, name: "Standards" })).toBeVisible();
-    await expect.poll(() => sent).toEqual([{}]);
-    await expect(page.getByRole("alert")).toHaveCount(0);
-    expect(entitlementRefreshes).toHaveLength(refreshes);
-  });
-}
-
 for (const status of [401, 403]) {
   test(`a read Convex refuses for its pass (${status}) fetches a fresh pass and goes again once`, async ({ page }) => {
     const { server, passRequests } = await mockAuth(page);
@@ -330,7 +277,6 @@ for (const status of [401, 403]) {
     await routeQuery(page, "reference:standards", (route, args) => {
       sent.push(args.pass);
       if (args.pass !== "pass_old") return route.fulfill(textAnswer([]));
-      // Convex rotated the pass and no longer accepts this one.
       server.pass = "pass_new";
       return route.fulfill(errorAnswer("Server Error", { status, error: "access pass expired" }));
     });
@@ -343,26 +289,42 @@ for (const status of [401, 403]) {
   });
 }
 
-test("a read Convex refuses while a slow pass fetch still runs waits for that pass and goes again", async ({ page }) => {
+test("an answer store that never opens, as on WebKit 14, delays neither the gate nor the page's reads", async ({ page }) => {
+  await page.addInitScript(() => {
+    Object.defineProperty(window, "indexedDB", { configurable: true, value: { open: () => ({}) } });
+  });
+  const { passRequests } = await mockAuth(page);
+  const sent: unknown[] = [];
+  await routeQuery(page, "reference:standards", (route, args) => {
+    sent.push(args.pass);
+    return route.fulfill(textAnswer([]));
+  });
+
+  await page.goto("/standards");
+  await expect.poll(() => sent, { timeout: 5_000 }).toEqual(["pass_test"]);
+  await expect(page.getByText("No standards match these filters.")).toBeVisible();
+  await expect(page.getByRole("alert")).toHaveCount(0);
+  expect(passRequests).toHaveLength(1);
+});
+
+test("a slow pass keeps the data page checking, and its first read carries the pass once it arrives", async ({ page }) => {
   test.setTimeout(45_000);
   await mockAuth(page);
-  const slowerThanTheFirstReadsWaitMs = 4_500;
-  await routeQuery(page, "accessPass:pass", async (route) => {
-    await new Promise((resolve) => setTimeout(resolve, slowerThanTheFirstReadsWaitMs));
+  const slowerThanAReadsOwnWaitMs = 4_500;
+  await routeQuery(page, ACCESS_PASS, async (route) => {
+    await new Promise((resolve) => setTimeout(resolve, slowerThanAReadsOwnWaitMs));
     await route.fulfill(valueAnswer({ pass: "pass_slow", rotatesAt: Date.now() + 24 * 60 * 60 * 1000 }));
   });
   const sent: unknown[] = [];
   await routeQuery(page, "reference:standards", (route, args) => {
     sent.push(args.pass ?? null);
-    if (args.pass === undefined) {
-      return route.fulfill(errorAnswer("Server Error", { status: 401, error: "access pass required" }));
-    }
     return route.fulfill(textAnswer([]));
   });
 
   await page.goto("/standards");
-  await expect.poll(() => sent, { timeout: 20_000 }).toEqual([null, "pass_slow"]);
+  await expect(page.getByRole("status").filter({ hasText: "Checking your access" })).toBeAttached();
   await expect(page.getByRole("heading", { level: 1, name: "Standards" })).toBeVisible();
+  await expect.poll(() => sent, { timeout: 20_000 }).toEqual(["pass_slow"]);
   await expect(page.getByRole("alert")).toHaveCount(0);
 });
 

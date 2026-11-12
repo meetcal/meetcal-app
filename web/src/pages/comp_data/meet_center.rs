@@ -1,15 +1,16 @@
 use super::{
     address::{HistoryEntry, query_param, use_page_address},
+    catalog::{self, MEET_SEARCH, MEET_SEARCH_PROMPT},
     combobox::{Combobox, SuggestionCopy, Suggestions},
     format::{
         NO_VALUE, display_body_weight, display_gender, display_weight_class, format_us_date,
         format_us_time, yes_no,
     },
-    loading::{Load, load_meet_data, select_response, table_response},
+    loading::{Load, LoadState, load_error, load_meet_data, table_response},
     meets::load_meet_catalog,
     models::{Athlete, LiftingResult, Meet, ScheduleRow, attempt},
     results::results_url,
-    ui::{DataPage, DataStatus, DataTable, EmptyTableRow, TableHead},
+    ui::{DataPage, DataStatus, SearchFieldLoading, StaticRowsTable},
 };
 use crate::utils::api::queries;
 use leptos::prelude::*;
@@ -47,9 +48,14 @@ fn fold_meet_search(value: &str) -> String {
         .to_lowercase()
 }
 
-fn meet_suggestions(meets: &[Meet], query: &str, limit: usize) -> Vec<String> {
-    // The minimum is on the query as typed, as the picker checks it: `A's`
-    // folds to two letters but is three characters the user typed.
+fn folded_names(meets: &[Meet]) -> Vec<String> {
+    meets
+        .iter()
+        .map(|row| fold_meet_search(&row.name))
+        .collect()
+}
+
+fn meet_suggestions(meets: &[Meet], folded: &[String], query: &str, limit: usize) -> Vec<String> {
     if query.trim().chars().count() < 3 {
         return Vec::new();
     }
@@ -59,16 +65,56 @@ fn meet_suggestions(meets: &[Meet], query: &str, limit: usize) -> Vec<String> {
     }
     meets
         .iter()
-        .filter(|row| fold_meet_search(&row.name).contains(&query))
+        .zip(folded)
+        .filter(|(_, name)| name.contains(&query))
         .take(limit)
-        .map(|row| row.name.clone())
+        .map(|(row, _)| row.name.clone())
         .collect()
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum MeetSection {
+    Schedule,
+    StartList,
+    Results,
+}
+
+const SECTION_PARAM: &str = "section";
+
+impl MeetSection {
+    const ALL: [MeetSection; 3] = [Self::Schedule, Self::StartList, Self::Results];
+
+    fn value(self) -> &'static str {
+        match self {
+            Self::Schedule => "",
+            Self::StartList => "start-list",
+            Self::Results => "results",
+        }
+    }
+
+    fn label(self) -> &'static str {
+        match self {
+            Self::Schedule => "Schedule",
+            Self::StartList => "Start List",
+            Self::Results => "Full Results",
+        }
+    }
+
+    fn in_address(value: &str) -> Self {
+        Self::ALL
+            .into_iter()
+            .find(|section| section.value() == value)
+            .unwrap_or(Self::Schedule)
+    }
 }
 
 #[component]
 pub fn MeetCenter() -> impl IntoView {
     let page = use_page_address("/meet-center");
     let meet = query_param("meet");
+    let section_in_address = query_param(SECTION_PARAM);
+    let section =
+        Memo::new(move |_| section_in_address.with(|value| MeetSection::in_address(value)));
     let (meet_search, set_meet_search) = signal(meet.get_untracked());
     Effect::new(move |shown_before: Option<String>| {
         let shown = meet.get();
@@ -82,7 +128,13 @@ pub fn MeetCenter() -> impl IntoView {
         shown
     });
     let show_meet = Callback::new(move |(name, entry): (String, HistoryEntry)| {
-        page.show(&[("meet", &name)], entry);
+        page.show(
+            &[
+                ("meet", &name),
+                (SECTION_PARAM, section.get_untracked().value()),
+            ],
+            entry,
+        );
     });
     let meets = load_meet_catalog();
     let schedule = Load::new(
@@ -103,20 +155,34 @@ pub fn MeetCenter() -> impl IntoView {
 
     view! {
         <DataPage
-            heading="Meets"
-            intro="Search all meets to see venue details, session schedules, start lists, and published results."
+            page=catalog::MEET_CENTER
         >
-            {move || select_response(meets, "Loading meets…", "meets", |meets| {
-                view! { <MeetPicker meets=meets.to_vec() meet show_meet meet_search set_meet_search /> }.into_any()
+            {move || meets.with(|state| match state {
+                LoadState::Loading => view! { <SearchFieldLoading field=MEET_SEARCH /> }.into_any(),
+                LoadState::Failed(error) => load_error("meets", error, move || meets.retry()),
+                LoadState::Ready(meets) => view! { <MeetPicker meets=meets.to_vec() meet show_meet meet_search set_meet_search /> }.into_any(),
             })}
 
-            {move || if meet.get().is_empty() { view! { <DataStatus message="Search for and select a meet to load its competition data." /> }.into_any() } else { view! {
-                <h2 class="data-section-title">"Schedule"</h2>
-                {move || table_response(schedule, SCHEDULE_HEADERS.len(), "schedule", table_schedule)}
-                <h2 class="data-section-title">"Start List"</h2>
-                {move || table_response(athletes, START_LIST_HEADERS.len(), "start list", table_athletes)}
-                <h2 class="data-section-title">"Full Results"</h2>
-                {move || table_response(results, RESULTS_HEADERS.len(), "meet results", table_results)}
+            {move || if meet.get().is_empty() { view! { <DataStatus message=MEET_SEARCH_PROMPT /> }.into_any() } else if meets.with(|state| matches!(state, LoadState::Loading)) { ().into_any() } else { view! {
+                <div class="data-tabs" role="group" aria-label="Meet data">
+                    {MeetSection::ALL.into_iter().map(|choice| view! {
+                        <button
+                            type="button"
+                            class="data-tab"
+                            aria-pressed=move || if section.get() == choice { "true" } else { "false" }
+                            on:click=move |_| page.change(&[(SECTION_PARAM, choice.value())], HistoryEntry::Replace)
+                        >
+                            {choice.label()}
+                        </button>
+                    }).collect_view()}
+                </div>
+                <div role="region" aria-label=move || section.get().label()>
+                    {move || match section.get() {
+                        MeetSection::Schedule => table_response(schedule, SCHEDULE_HEADERS.len(), "schedule", table_schedule),
+                        MeetSection::StartList => table_response(athletes, START_LIST_HEADERS.len(), "start list", table_athletes),
+                        MeetSection::Results => table_response(results, RESULTS_HEADERS.len(), "meet results", table_results),
+                    }}
+                </div>
             }.into_any() }}
         </DataPage>
     }
@@ -130,14 +196,15 @@ fn MeetPicker(
     meet_search: ReadSignal<String>,
     set_meet_search: WriteSignal<String>,
 ) -> impl IntoView {
+    let folded = StoredValue::new(folded_names(&meets));
     let meets = StoredValue::new(meets);
     view! {
         <Combobox
-                input_id="meet-search-input"
-                label="Meet"
+                input_id=MEET_SEARCH.input_id
+                label=MEET_SEARCH.label
                 placeholder="Type at least 3 characters"
-                input_class="data-filter data-filter-wide"
-                wrapper_class="meet-search"
+                input_class=MEET_SEARCH.input_class
+                wrapper_class=MEET_SEARCH.wrapper_class
                 list_class="meet-suggestions"
                 value=meet_search
                 suggestions=Signal::derive(move || {
@@ -145,7 +212,7 @@ fn MeetPicker(
                     if !meet.get().is_empty() || query.trim().chars().count() < 3 {
                         return Suggestions::Idle;
                     }
-                    Suggestions::Ready(meets.with_value(|meets| meet_suggestions(meets, &query, 8)))
+                    Suggestions::Ready(meets.with_value(|meets| folded.with_value(|folded| meet_suggestions(meets, folded, &query, 8))))
                 })
                 copy=SuggestionCopy {
                     list_label: "Meet suggestions",
@@ -211,24 +278,31 @@ const RESULTS_HEADERS: &[&str] = &[
     "Adaptive",
 ];
 
+fn schedule_row(row: &ScheduleRow) -> AnyView {
+    view! { <tr><td>{format_us_date(&row.date)}</td><td>{session(Some(row.session_id))}</td><td>{row.platform.clone()}</td><td>{row.weight_class.clone()}</td><td>{format_us_time(&row.weigh_in_time)}</td><td>{format_us_time(&row.start_time)}</td></tr> }.into_any()
+}
+
+fn athlete_row(row: &Athlete) -> AnyView {
+    view! { <tr><td>{row.name.clone()}</td><td>{display_gender(&row.gender)}</td><td>{row.age}</td><td>{display_weight_class(&row.weight_class)}</td><td>{row.entry_total}</td><td>{row.club.clone()}</td><td>{row.wso.clone().unwrap_or_else(|| NO_VALUE.to_owned())}</td><td>{session(row.session_number)}</td><td>{row.session_platform.clone().unwrap_or_else(|| NO_VALUE.to_owned())}</td><td>{yes_no(row.adaptive)}</td></tr> }.into_any()
+}
+
+fn result_row(row: &LiftingResult) -> AnyView {
+    let athlete_url = results_url(&row.name);
+    view! { <tr><td><a class="data-athlete-link" href=athlete_url>{row.name.clone()}</a></td><td><strong>{row.total}</strong></td><td>{row.age.clone()}</td><td>{display_body_weight(row.body_weight)}</td><td>{attempt(row.snatch1)}</td><td>{attempt(row.snatch2)}</td><td>{attempt(row.snatch3)}</td><td>{row.snatch_best}</td><td>{attempt(row.cj1)}</td><td>{attempt(row.cj2)}</td><td>{attempt(row.cj3)}</td><td>{row.cj_best}</td><td>{yes_no(row.adaptive)}</td></tr> }.into_any()
+}
+
 fn table_schedule(rows: &[ScheduleRow]) -> AnyView {
-    let is_empty = rows.is_empty();
-    let body = rows.iter().map(|row| view! { <tr><td>{format_us_date(&row.date)}</td><td>{session(Some(row.session_id))}</td><td>{row.platform.clone()}</td><td>{row.weight_class.clone()}</td><td>{format_us_time(&row.weigh_in_time)}</td><td>{format_us_time(&row.start_time)}</td></tr> }).collect_view();
-    view! { <DataTable><TableHead headers=SCHEDULE_HEADERS /><tbody>{is_empty.then(|| view! { <EmptyTableRow columns=SCHEDULE_HEADERS.len() message="No schedule has been published for this meet." /> })}{body}</tbody></DataTable> }.into_any()
+    view! { <StaticRowsTable headers=SCHEDULE_HEADERS rows=rows.to_vec() row=schedule_row empty_message="No schedule has been published for this meet." /> }.into_any()
 }
 
 fn table_athletes(rows: &[Athlete]) -> AnyView {
-    let is_empty = rows.is_empty();
-    let body = rows.iter().map(|row| view! { <tr><td>{row.name.clone()}</td><td>{display_gender(&row.gender)}</td><td>{row.age}</td><td>{display_weight_class(&row.weight_class)}</td><td>{row.entry_total}</td><td>{row.club.clone()}</td><td>{row.wso.clone().unwrap_or_else(|| NO_VALUE.to_owned())}</td><td>{session(row.session_number)}</td><td>{row.session_platform.clone().unwrap_or_else(|| NO_VALUE.to_owned())}</td><td>{yes_no(row.adaptive)}</td></tr> }).collect_view();
-    view! { <DataTable><TableHead headers=START_LIST_HEADERS /><tbody>{is_empty.then(|| view! { <EmptyTableRow columns=START_LIST_HEADERS.len() message="No start list has been published for this meet." /> })}{body}</tbody></DataTable> }.into_any()
+    view! { <StaticRowsTable headers=START_LIST_HEADERS rows=rows.to_vec() row=athlete_row empty_message="No start list has been published for this meet." /> }.into_any()
 }
 
 fn table_results(rows: &[LiftingResult]) -> AnyView {
-    let mut rows = rows.iter().collect::<Vec<_>>();
+    let mut rows = rows.to_vec();
     rows.sort_by(|left, right| right.total.total_cmp(&left.total));
-    let is_empty = rows.is_empty();
-    let body = rows.iter().map(|row| { let athlete_url = results_url(&row.name); view! { <tr><td><a class="data-athlete-link" href=athlete_url>{row.name.clone()}</a></td><td><strong>{row.total}</strong></td><td>{row.age.clone()}</td><td>{display_body_weight(row.body_weight)}</td><td>{attempt(row.snatch1)}</td><td>{attempt(row.snatch2)}</td><td>{attempt(row.snatch3)}</td><td>{row.snatch_best}</td><td>{attempt(row.cj1)}</td><td>{attempt(row.cj2)}</td><td>{attempt(row.cj3)}</td><td>{row.cj_best}</td><td>{yes_no(row.adaptive)}</td></tr> } }).collect_view();
-    view! { <DataTable><TableHead headers=RESULTS_HEADERS /><tbody>{is_empty.then(|| view! { <EmptyTableRow columns=RESULTS_HEADERS.len() message="No results have been published for this meet." /> })}{body}</tbody></DataTable> }.into_any()
+    view! { <StaticRowsTable headers=RESULTS_HEADERS rows row=result_row empty_message="No results have been published for this meet." /> }.into_any()
 }
 
 #[cfg(test)]
@@ -253,6 +327,15 @@ mod tests {
     }
 
     #[test]
+    fn the_section_shown_is_the_one_in_the_address_or_the_schedule() {
+        for section in MeetSection::ALL {
+            assert_eq!(MeetSection::in_address(section.value()), section);
+        }
+        assert_eq!(MeetSection::in_address("standings"), MeetSection::Schedule);
+        assert_eq!(MeetSection::Schedule.value(), "");
+    }
+
+    #[test]
     fn absent_sessions_use_dash() {
         assert_eq!(session(None), "—");
         assert_eq!(session(Some(3.0)), "3");
@@ -264,9 +347,9 @@ mod tests {
             meet("National Championships", "2026-01-01"),
             meet("National Open", "2025-01-01"),
         ];
-        assert!(meet_suggestions(&meets, "na", 8).is_empty());
+        assert!(meet_suggestions(&meets, &folded_names(&meets), "na", 8).is_empty());
         assert_eq!(
-            meet_suggestions(&meets, "nat", 1),
+            meet_suggestions(&meets, &folded_names(&meets), "nat", 1),
             ["National Championships"]
         );
     }
@@ -282,14 +365,17 @@ mod tests {
             meet("USAMW Master's Nationals", "2026-04-01"),
         ];
         assert_eq!(
-            meet_suggestions(&meets, "2026 IMWA", 8),
+            meet_suggestions(&meets, &folded_names(&meets), "2026 IMWA", 8),
             ["2026\u{a0}IMWA WORLD MASTERS WEIGHTLIFTING CHAMPIONSHIP"]
         );
         assert_eq!(
-            meet_suggestions(&meets, "masters  nationals", 8),
+            meet_suggestions(&meets, &folded_names(&meets), "masters  nationals", 8),
             ["USAW Master\u{2019}s Nationals", "USAMW Master's Nationals"]
         );
-        assert_eq!(meet_suggestions(&meets, "master\u{2019}s", 8).len(), 3);
+        assert_eq!(
+            meet_suggestions(&meets, &folded_names(&meets), "master\u{2019}s", 8).len(),
+            3
+        );
     }
 
     #[test]
@@ -299,11 +385,14 @@ mod tests {
             meet("Bass Classic", "2025-01-01"),
         ];
         assert_eq!(
-            meet_suggestions(&meets, "A's", 8),
+            meet_suggestions(&meets, &folded_names(&meets), "A's", 8),
             ["A's Open", "Bass Classic"]
         );
-        assert_eq!(meet_suggestions(&meets, "A\u{2019}s", 8).len(), 2);
-        assert!(meet_suggestions(&meets, "'''", 8).is_empty());
-        assert!(meet_suggestions(&meets, "A'", 8).is_empty());
+        assert_eq!(
+            meet_suggestions(&meets, &folded_names(&meets), "A\u{2019}s", 8).len(),
+            2
+        );
+        assert!(meet_suggestions(&meets, &folded_names(&meets), "'''", 8).is_empty());
+        assert!(meet_suggestions(&meets, &folded_names(&meets), "A'", 8).is_empty());
     }
 }

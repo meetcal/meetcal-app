@@ -24,9 +24,9 @@ test("unknown URLs get a noindex 404 document that boots the app", async () => {
   assert.match(html, /<title>Page Not Found — MeetCal<\/title>/);
   assert.match(html, /<meta id="meta-robots" name="robots" content="noindex, nofollow"/);
   assert.doesNotMatch(html, /rel="canonical"/);
-  assert.match(html, /<script type="module" src="\/app-bootstrap\.js"><\/script>/);
+  assert.match(html, /<script type="module" src="\/app-bootstrap-[0-9a-f]{16}\.js"><\/script>/);
   // Asset URLs must be absolute: the 404 is served at any depth (/a/b/c).
-  assert.doesNotMatch(html, /(?:href|src)="(?!\/|https?:|data:)[^"#]/);
+  assert.doesNotMatch(html, /(?:href|src)="(?!\/|https?:|data:|mailto:)[^"#]/);
 });
 
 test("canonical URLs, the sitemap and robots.txt name www.meetcal.app", async () => {

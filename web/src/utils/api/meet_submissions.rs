@@ -45,31 +45,23 @@ pub(crate) async fn upload_meet_submission_file(
     content_type: &str,
     bytes: Vec<u8>,
 ) -> Result<String> {
-    let started_at_ms = js_sys::Date::now();
-    let response = reqwest::Client::new()
-        .post(upload_url)
-        .timeout(UPLOAD_TIMEOUT)
-        .header(reqwest::header::CONTENT_TYPE, content_type)
-        .body(bytes)
-        .send()
-        .await
-        .map_err(|error| transport_error("file upload", &error, error.is_timeout()))?;
-    let status = response.status();
-    if !status.is_success() {
+    let reply = crate::utils::http::post(crate::utils::http::Post {
+        url: upload_url,
+        body: js_sys::Uint8Array::from(bytes.as_slice()).into(),
+        content_type,
+        bearer: None,
+        timeout: UPLOAD_TIMEOUT,
+    })
+    .await
+    .map_err(|failure| transport_error("file upload", &failure))?;
+    if !(200..300).contains(&reply.status) {
         return Err(user_error(
             "file upload",
-            &format!("MeetCal couldn't store the file (HTTP {})", status.as_u16()),
-            status,
+            &format!("MeetCal couldn't store the file (HTTP {})", reply.status),
+            reply.status,
         ));
     }
-    let body = response.bytes().await.map_err(|error| {
-        transport_error(
-            "file upload",
-            &error,
-            body_read_failed_at_the_timeout(&error, started_at_ms, UPLOAD_TIMEOUT),
-        )
-    })?;
-    read_storage_id(&body)
+    read_storage_id(reply.body.as_bytes())
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -108,7 +100,7 @@ pub(super) fn meet_submission_value(response: QueryResponse) -> Result<Value> {
             sentence
         }));
     }
-    answer_value(response)
+    answer_json(response)
 }
 
 pub(super) fn read_upload_url(response: QueryResponse) -> Result<String> {

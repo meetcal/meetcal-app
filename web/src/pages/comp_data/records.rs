@@ -1,12 +1,15 @@
 use super::{
+    address::use_page_address,
+    catalog,
     filters::{SortDirection, sort_numeric, sort_orders},
     format::{display_weight_class, reference_value},
-    loading::{load_rows, table_response},
+    loading::{Load, load_query, table_response},
     models::RecordHolder,
+    narrowed::{Category, Narrowing, narrowed_choices, narrowing_row},
     reference_table::{Filter, OptionOrder, ReferenceTable, TableSort},
     ui::{DataPage, RecordLift},
 };
-use crate::utils::api::queries;
+use crate::utils::api::{queries, query_with};
 use leptos::prelude::*;
 use serde::Deserialize;
 
@@ -48,6 +51,8 @@ impl Record {
 
 const FEDERATION_NOT_LISTED: &str = "BWL";
 
+const PATH: &str = "/records";
+
 fn listed(records: &[Record]) -> Vec<Record> {
     records
         .iter()
@@ -56,54 +61,27 @@ fn listed(records: &[Record]) -> Vec<Record> {
         .collect()
 }
 
-fn organization(record: &Record) -> &str {
-    &record.record_type
-}
-
-fn gender(record: &Record) -> &str {
-    &record.gender
-}
-
-fn age(record: &Record) -> &str {
-    &record.age_category
-}
-
 fn weight_class(record: &Record) -> &str {
     &record.weight_class
 }
 
-const FILTERS: &[Filter<Record>] = &[
-    Filter {
-        label: "Organization",
-        param: "organization",
-        placeholder: "All organizations",
-        value: organization,
-        order: OptionOrder::Alphabetical,
-    },
-    Filter {
-        label: "Gender",
-        param: "gender",
-        placeholder: "All genders",
-        value: gender,
-        order: OptionOrder::Alphabetical,
-    },
-    Filter {
-        label: "Age",
-        param: "age",
-        placeholder: "All ages",
-        value: age,
-        order: OptionOrder::Alphabetical,
-    },
-    Filter {
-        label: "Weight class",
-        param: "class",
-        placeholder: "All classes",
-        value: weight_class,
-        order: OptionOrder::ByWeight,
-    },
-];
+const FILTERS: &[Filter<Record>] = &[Filter {
+    label: "Weight class",
+    param: "class",
+    placeholder: "All classes",
+    value: weight_class,
+    order: OptionOrder::ByWeight,
+}];
 
-const HEADERS: &[&str] = &[
+const NARROWING: Narrowing = Narrowing {
+    kind_label: "Organization",
+    kind_param: "organization",
+    kind_placeholder: "All organizations",
+    kind_argument: "federation",
+    kinds_left_out: &[FEDERATION_NOT_LISTED],
+};
+
+pub(crate) const HEADERS: &[&str] = &[
     "Type",
     "Gender",
     "Age",
@@ -176,16 +154,25 @@ fn record_row(record: &Record) -> AnyView {
 
 #[component]
 pub fn Records() -> impl IntoView {
-    let records = load_rows(queries::RECORDS, Record::shown);
+    let page = use_page_address(PATH);
+    let categories = load_query::<Vec<Category>>(queries::RECORD_CATEGORIES);
+    let chosen = narrowed_choices(NARROWING, categories);
+    let records = Load::new(
+        move || chosen.get(),
+        |chosen| async move {
+            query_with::<Vec<Record>, _>(queries::RECORDS, &NARROWING.arguments(&chosen))
+                .await
+                .map(|records| records.into_iter().map(Record::shown).collect())
+                .map_err(|error| error.to_string())
+        },
+    );
 
     view! {
-        <DataPage
-            heading="Records"
-            intro="Filter record performances by organization, division, and weight class."
-        >
+        <DataPage page=catalog::RECORDS>
+            {move || narrowing_row(NARROWING, categories, chosen, page, "record lists")}
             {move || table_response(records, HEADERS.len(), "records", |records| {
                 view! {
-                    <ReferenceTable rows=listed(records) filters=FILTERS headers=HEADERS row=record_row path="/records" default_sort=RecordSort::TotalDesc empty_message="No records match these filters." />
+                    <ReferenceTable rows=listed(records) filters=FILTERS headers=HEADERS row=record_row path=PATH default_sort=RecordSort::TotalDesc empty_message="No records match these filters." below_another_filter_row=true />
                 }
                 .into_any()
             })}
@@ -252,24 +239,14 @@ mod tests {
     }
 
     #[test]
-    fn filters_offer_only_what_the_listed_records_hold_in_one_class_form() {
+    fn the_class_filter_offers_only_what_the_listed_records_hold_in_one_class_form() {
         let records = [
             record("USAW", "Senior", "86+kg"),
             record("IWF", "Senior", "+86kg"),
             record("BWL", "U20", "88+kg"),
         ]
         .map(Record::shown);
-        let listed = listed(&records);
-        let options = |label: &str| {
-            FILTERS
-                .iter()
-                .find(|filter| filter.label == label)
-                .map(|filter| filter.options(&listed))
-                .unwrap()
-        };
-        assert_eq!(options("Age"), ["Senior"]);
-        assert_eq!(options("Weight class"), ["86+kg"]);
-        assert_eq!(options("Organization"), ["IWF", "USAW"]);
+        assert_eq!(FILTERS[0].options(&listed(&records)), ["86+kg"]);
     }
 
     // A class with one unset lift used to be missing from the answer; it now answers that lift

@@ -1,6 +1,6 @@
 use super::address::{HistoryEntry, query_param, use_page_address};
 use super::filters::{SortOrder, filter_options, matches_filter, weight_class_options};
-use super::ui::{DataTable, EmptyTableRow, FilterSelect, SortSelect, TableHead};
+use super::ui::{FilterSelect, RowsTable, SortSelect};
 use leptos::prelude::*;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -48,6 +48,22 @@ pub(crate) fn rows_shown<'a, R, S: TableSort<R>>(
         .collect::<Vec<_>>();
     order.sort(&mut shown);
     shown
+}
+
+pub(crate) fn position_in<R>(rows: &[R], row: &R) -> usize {
+    (row as *const R as usize - rows.as_ptr() as usize) / std::mem::size_of::<R>().max(1)
+}
+
+pub(crate) fn order_shown<R, S: TableSort<R>>(
+    rows: &[R],
+    filters: &[Filter<R>],
+    chosen: &[String],
+    order: S,
+) -> Vec<usize> {
+    rows_shown(rows, filters, chosen, order)
+        .into_iter()
+        .map(|row| position_in(rows, row))
+        .collect()
 }
 
 pub(crate) const SORT_PARAM: &str = "sort";
@@ -117,6 +133,10 @@ where
     let sort_in_address = query_param(SORT_PARAM);
     let sort = Memo::new(move |_| sort_in_address.with(|value| sort_or(value, default_sort)));
     let rows = StoredValue::new(rows);
+    let shown = Memo::new(move |_| {
+        let order = sort.get();
+        chosen.with(|chosen| rows.with_value(|rows| order_shown(rows, filters, chosen, order)))
+    });
     let filter_row_class = if below_another_filter_row {
         "data-filters data-filters-secondary"
     } else {
@@ -148,22 +168,7 @@ where
                 on_sort=move |order: S| page.change(&[(SORT_PARAM, sort_value(order, default_sort))], HistoryEntry::Push)
             />
         </div>
-        <DataTable>
-            <TableHead headers />
-            <tbody>
-                {move || {
-                    let order = sort.get();
-                    chosen.with(|chosen| rows.with_value(|rows| {
-                        let shown = rows_shown(rows, filters, chosen, order);
-                        if shown.is_empty() {
-                            view! { <EmptyTableRow columns=headers.len() message=empty_message /> }.into_any()
-                        } else {
-                            shown.into_iter().map(row).collect_view().into_any()
-                        }
-                    }))
-                }}
-            </tbody>
-        </DataTable>
+        <RowsTable headers rows order=shown row empty_message />
     }
 }
 
@@ -302,6 +307,21 @@ mod tests {
             ["65kg", "69kg", "110kg", "110+kg"]
         );
         assert!(FILTERS[0].options(&[]).is_empty());
+    }
+
+    #[test]
+    fn the_order_shown_names_each_row_by_its_place_in_the_answer() {
+        let rows = lifts();
+        let women = ["Women".to_owned(), String::new()];
+        assert_eq!(
+            order_shown(&rows, FILTERS, &women, LiftSort::TotalAsc),
+            [2, 0]
+        );
+        let nothing_chosen = [String::new(), String::new()];
+        assert_eq!(
+            order_shown(&rows, FILTERS, &nothing_chosen, LiftSort::TotalDesc),
+            [3, 1, 0, 2]
+        );
     }
 
     #[test]

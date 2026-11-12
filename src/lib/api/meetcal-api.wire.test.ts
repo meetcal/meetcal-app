@@ -4,7 +4,7 @@ import { fetchApiClubMeetStats, fetchApiClubMeets, fetchApiClubNames } from './c
 import { fetchAccessPass, refreshServerEntitlement } from './entitlement-api';
 import { generateMeetSubmissionUploadUrl, submitMeet } from './meet-submissions-api';
 import { fetchApiAthletes, fetchApiAthletesWithSession, fetchApiMeetByName, fetchApiMeets, fetchApiSchedule } from './meets-api';
-import { fetchApiAdaptiveRecords, fetchApiIntlRankings, fetchApiNationalRankings, fetchApiQualifyingTotals, fetchApiRecords, fetchApiStandards, fetchApiWsoAgeGroups, fetchApiWsoList, fetchApiWsoRecords } from './reference-api';
+import { fetchApiAdaptiveRecords, fetchApiIntlRankings, fetchApiNationalRankings, fetchApiQualifyingTotalCategories, fetchApiQualifyingTotals, fetchApiRecordCategories, fetchApiRecords, fetchApiStandards, fetchApiWsoAgeGroups, fetchApiWsoList, fetchApiWsoRecords } from './reference-api';
 import { fetchApiRecentResultsByNames, fetchApiResultsByNames, fetchApiYearBestsByNames, searchApi } from './results-api';
 import { clearHttpValidatorCache } from './revalidated-reads';
 import { resetServerClockForTests } from './server-clock';
@@ -165,6 +165,9 @@ const CHECKS: Record<string, Check> = {
   'reference:records': async (_args, body) => expectSameRowsOnTheirKeys(await fetchApiRecords(), body),
   'reference:standards': async (_args, body) => expectSameRowsOnTheirKeys(await fetchApiStandards(), body),
   'reference:qualifyingTotals': async (_args, body) => expectSameRowsOnTheirKeys(await fetchApiQualifyingTotals(), body),
+  'reference:recordCategories': async (_args, body) => expectSameRowsOnTheirKeys(await fetchApiRecordCategories(), body),
+  'reference:qualifyingTotalCategories': async (_args, body) =>
+    expectSameRowsOnTheirKeys(await fetchApiQualifyingTotalCategories(), body),
   'reference:intlRankings': async (_args, body) => expectSameRowsOnTheirKeys(await fetchApiIntlRankings(), body),
   'reference:nationalRankings': async (args, body) =>
     expectSameRowsOnTheirKeys(await fetchApiNationalRankings(text(args, 'federation'), text(args, 'ageCategory')), body),
