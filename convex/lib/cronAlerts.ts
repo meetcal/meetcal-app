@@ -85,6 +85,11 @@ export function nextLink(failure: RunFailure | undefined, asked: readonly string
   return { notReached, failed: failures.filter((f) => !f.notReached).map(({ source, error }) => ({ source, error })) };
 }
 
+export function latestPerSource<Failure extends { source: string }>(earlier: readonly Failure[], later: readonly Failure[]): Failure[] {
+  const reported = new Set(later.map((f) => f.source));
+  return [...earlier.filter((f) => !reported.has(f.source)), ...later];
+}
+
 export function chainOutcome(
   job: string,
   carried: readonly SourceFailure[],
@@ -93,7 +98,7 @@ export function chainOutcome(
 ): RunFailure | undefined {
   if (failure === undefined) return carried.length === 0 ? undefined : describeFailure(sourcesFailed(`${job}: failed earlier in this run`, carried));
   if (failure.failures !== undefined) {
-    return carried.length === 0 ? failure : describeFailure(sourcesFailed(`${job}: failed in this run and its continuations`, [...carried, ...failure.failures]));
+    return carried.length === 0 ? failure : describeFailure(sourcesFailed(`${job}: failed in this run and its continuations`, latestPerSource<SourceFailure>(carried, failure.failures)));
   }
   const left = [...carried, ...pending.map((source) => ({ source, error: `not reached: ${failure.error}` }))];
   if (left.length === 0) return failure;

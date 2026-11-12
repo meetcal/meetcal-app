@@ -3,7 +3,7 @@ import { internalAction, type ActionCtx } from './_generated/server';
 import { internal } from './_generated/api';
 import type { FunctionReference } from 'convex/server';
 import { lastScheduled } from './lib/cronSchedule';
-import { chainOutcome, describeFailure, nextLink, START_MARGIN_MS, type Notice, type RunFailure } from './lib/cronAlerts';
+import { chainOutcome, describeFailure, latestPerSource, nextLink, START_MARGIN_MS, type Notice, type RunFailure } from './lib/cronAlerts';
 import { escapeHtml, sendEmail } from './lib/email';
 import { pingHeartbeat } from './lib/heartbeat';
 import { RESULTS_JOB } from './scrapers/parse/sport80';
@@ -18,13 +18,11 @@ import { RESULTS_JOB } from './scrapers/parse/sport80';
  * the backend goes quiet. Without `ALERT_EMAIL` (the dev deployment) the
  * alerts are only logged.
  */
-type ContinuationArgs = { only?: string[]; continuing?: string[] };
-
 type Job = {
   schedule: string;
   run:
     | { kind: 'action'; fn: FunctionReference<'action', 'internal', { dryRun?: boolean }> }
-    | { kind: 'sources'; fn: FunctionReference<'action', 'internal', ContinuationArgs>; continueWith: (sources: readonly string[]) => ContinuationArgs }
+    | { kind: 'sources'; runLink: (ctx: ActionCtx, pending: readonly string[] | null) => Promise<unknown> }
     | { kind: 'mutation'; fn: FunctionReference<'mutation', 'internal', Record<string, never>> };
 };
 
@@ -49,10 +47,10 @@ export const JOBS: Record<string, Job> = {
   'intl-rankings': { schedule: '35 4 * * *', run: { kind: 'action', fn: internal.scrapers.intlRankings.run } },
   'meet-sync': { schedule: '5 5 * * *', run: { kind: 'action', fn: internal.scrapers.meets.run } },
   'usamw-events': { schedule: '35 5 * * *', run: { kind: 'action', fn: internal.scrapers.usamwEvents.run } },
-  [RESULTS_JOB]: { schedule: '5 6 * * *', run: { kind: 'sources', fn: internal.scrapers.sport80.run, continueWith: (sources) => ({ continuing: [...sources] }) } },
+  [RESULTS_JOB]: { schedule: '5 6 * * *', run: { kind: 'sources', runLink: (ctx, pending) => ctx.runAction(internal.scrapers.sport80.run, pending === null ? {} : { continuing: [...pending] }) } },
   'lifters-sport80': { schedule: '45 6 * * *', run: { kind: 'action', fn: internal.scrapers.lifters.run } },
-  'wso-records': { schedule: '40 6 * * *', run: { kind: 'sources', fn: internal.scrapers.wsoRecords.run, continueWith: (sources) => ({ only: [...sources] }) } },
-  entries: { schedule: '25 7 * * *', run: { kind: 'sources', fn: internal.scrapers.entries.run, continueWith: (sources) => ({ only: [...sources] }) } },
+  'wso-records': { schedule: '40 6 * * *', run: { kind: 'sources', runLink: (ctx, pending) => ctx.runAction(internal.scrapers.wsoRecords.run, pending === null ? {} : { only: [...pending] }) } },
+  entries: { schedule: '25 7 * * *', run: { kind: 'sources', runLink: (ctx, pending) => ctx.runAction(internal.scrapers.entries.run, pending === null ? {} : { only: [...pending] }) } },
   // A new access pass for premium reads (`accessPass.ts`), when US traffic
   // is lowest: it clears every premium query's cache once.
   'rotate-access-pass': { schedule: '0 9 * * *', run: { kind: 'action', fn: internal.accessPass.rotate } },
@@ -128,7 +126,7 @@ export const run = internalAction({
     let failure: unknown;
     try {
       if (spec.run.kind === 'mutation') await ctx.runMutation(spec.run.fn, {});
-      else if (spec.run.kind === 'sources') await ctx.runAction(spec.run.fn, continuations === 0 ? {} : spec.run.continueWith(pending));
+      else if (spec.run.kind === 'sources') await spec.run.runLink(ctx, continuations === 0 ? null : pending);
       else await ctx.runAction(spec.run.fn, {});
     } catch (error) {
       failure = error;
@@ -137,7 +135,7 @@ export const run = internalAction({
     if (spec.run.kind === 'sources') {
       const next = nextLink(described, continuations === 0 ? undefined : pending, continuations);
       if (next !== null) {
-        await ctx.scheduler.runAfter(0, internal.cronJobs.run, { job, pending: next.notReached, carried: [...carried, ...next.failed], continuations: continuations + 1 });
+        await ctx.scheduler.runAfter(0, internal.cronJobs.run, { job, pending: next.notReached, carried: latestPerSource(carried, next.failed), continuations: continuations + 1 });
         return;
       }
     }

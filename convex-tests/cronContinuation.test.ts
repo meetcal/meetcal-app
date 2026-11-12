@@ -1,6 +1,6 @@
 import { getFunctionName } from 'convex/server';
 import { JOBS, run } from '../convex/cronJobs';
-import { chainOutcome, describeFailure, MAX_CONTINUATIONS, nextLink, sourcesFailed } from '../convex/lib/cronAlerts';
+import { chainOutcome, describeFailure, latestPerSource, MAX_CONTINUATIONS, nextLink, sourcesFailed } from '../convex/lib/cronAlerts';
 import { NOT_REACHED } from '../convex/scrapers/lib/budget';
 import { handlerOf } from './fakeDb';
 
@@ -39,17 +39,30 @@ describe('continuing a run for the sources it did not reach (#622)', () => {
     expect(chainOutcome('wso-records', [], describeFailure(new Error('Google refused')), ['Texas'])).toMatchObject({ failedSources: ['Texas'] });
     expect(chainOutcome('wso-records', [], describeFailure(new Error('Google refused')))).toEqual({ error: 'Google refused' });
   });
+
+  it('names a source that failed in several runs of the chain once, with its latest error', () => {
+    const again = chainOutcome('results-sport80', [{ source: 'event index 2025', error: 'first' }], failed([{ source: 'event index 2025', error: 'second' }]));
+    expect(again?.error.match(/event index 2025/g)).toHaveLength(1);
+    expect(again?.error).toContain('event index 2025: second');
+    expect(latestPerSource([{ source: 'A', error: '1' }, { source: 'B', error: '1' }], [{ source: 'A', error: '2' }])).toEqual([{ source: 'B', error: '1' }, { source: 'A', error: '2' }]);
+  });
 });
 
 describe('the arguments a continuation sends', () => {
-  it("hands Sport80 its unreached sources by name, and asks the other jobs for them with only", () => {
+  it("hands Sport80 its unreached sources by name, and asks the other jobs for them with only", async () => {
     const continueWith = (job: string) => {
       const spec = JOBS[job]?.run;
-      return spec?.kind === 'sources' ? spec.continueWith : undefined;
+      if (spec?.kind !== 'sources') return undefined;
+      return async (pending: string[] | null) => {
+        const runAction = jest.fn(async (_fn: unknown, _args: unknown) => undefined);
+        await spec.runLink({ runAction } as never, pending);
+        return runAction.mock.calls[0]?.[1];
+      };
     };
-    expect(continueWith('results-sport80')?.(['Meet 1 (event 101)', 'event 102'])).toEqual({ continuing: ['Meet 1 (event 101)', 'event 102'] });
-    expect(continueWith('wso-records')?.(['Ohio'])).toEqual({ only: ['Ohio'] });
-    expect(continueWith('entries')?.(['Meet A'])).toEqual({ only: ['Meet A'] });
+    expect(await continueWith('results-sport80')?.(['Meet 1 (event 101)', 'event 102'])).toEqual({ continuing: ['Meet 1 (event 101)', 'event 102'] });
+    expect(await continueWith('wso-records')?.(['Ohio'])).toEqual({ only: ['Ohio'] });
+    expect(await continueWith('entries')?.(['Meet A'])).toEqual({ only: ['Meet A'] });
+    for (const job of ['results-sport80', 'wso-records', 'entries']) expect(await continueWith(job)?.(null)).toEqual({});
     expect(continueWith('urlwatch')).toBeUndefined();
   });
 });
@@ -89,6 +102,14 @@ describe("cronJobs:run for a job that reads many sources (#622)", () => {
     await call({});
     expect(scheduled).toEqual([{ job: 'wso-records', pending: ['Texas'], carried: [{ source: 'Ohio', error: 'boom' }], continuations: 1 }]);
     expect(finished).toEqual([]);
+  });
+
+  it('carries a source that failed again in a continuation once', async () => {
+    const { call, scheduled } = deployment(async () => {
+      throw sourcesFailed('wso records', [{ source: 'Ohio', error: 'again' }, unreached('Utah')]);
+    });
+    await call({ pending: ['Texas', 'Utah'], carried: [{ source: 'Ohio', error: 'boom' }], continuations: 1 });
+    expect(scheduled).toEqual([{ job: 'wso-records', pending: ['Utah'], carried: [{ source: 'Ohio', error: 'again' }], continuations: 2 }]);
   });
 
   it('records the whole chain once the continuation reaches its sources', async () => {
