@@ -1,5 +1,6 @@
 use super::{
     address::{HistoryEntry, query_param, use_page_address},
+    catalog,
     filters::{compare_weight_classes, sort_orders},
     format::{GENDERS, display_weight_class, reference_value},
     loading::{Load, table_response},
@@ -120,8 +121,7 @@ pub fn AdaptiveRecords() -> impl IntoView {
 
     view! {
         <DataPage
-            heading="Adaptive Records"
-            intro="Top USAW and USAMW adaptive performances by gender and weight class."
+            page=catalog::ADAPTIVE_RECORDS
         >
             <div class="data-filters">
                 <label>

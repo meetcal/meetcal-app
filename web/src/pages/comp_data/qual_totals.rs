@@ -1,4 +1,5 @@
 use super::{
+    catalog,
     filters::{SortDirection, sort_numeric, sort_orders, sort_text},
     format::display_weight_class,
     loading::{load_rows, table_response},
@@ -121,8 +122,7 @@ pub fn QualifyingTotals() -> impl IntoView {
 
     view! {
         <DataPage
-            heading="Qualifying Totals"
-            intro="Filter qualification totals by event, gender, age category, or weight class."
+            page=catalog::QUALIFYING_TOTALS
         >
             {move || table_response(totals, HEADERS.len(), "qualifying totals", |totals| {
                 view! {

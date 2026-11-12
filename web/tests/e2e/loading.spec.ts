@@ -354,7 +354,7 @@ for (const [name, pattern] of [
 test("a bootstrap that never loads still offers a reload", async ({ page }) => {
   // No script is left to report this failure, so the shell's CSS reveals a
   // plain reload link after a while.
-  await page.route("**/app-bootstrap.js", (route) => route.abort("internetdisconnected"));
+  await page.route("**/app-bootstrap-*.js", (route) => route.abort("internetdisconnected"));
   await page.goto("/standards");
   const reload = page.getByRole("link", { name: "Reload the page" });
   await expect(reload).toBeHidden();
@@ -369,7 +369,7 @@ test("a bootstrap that never loads still offers a reload", async ({ page }) => {
     return color;
   }));
 
-  await page.unroute("**/app-bootstrap.js");
+  await page.unroute("**/app-bootstrap-*.js");
   await reload.click();
   await expect(page).toHaveURL(/\/standards$/);
   await expect(page.locator("header.site-header")).toBeVisible();

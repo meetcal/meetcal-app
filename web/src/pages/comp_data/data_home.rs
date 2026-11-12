@@ -1,3 +1,4 @@
+use super::catalog;
 use super::catalog::DATA_PAGES;
 use super::ui::DataPage;
 use leptos::prelude::*;
@@ -7,8 +8,7 @@ use leptos_router::components::A;
 pub fn CompData() -> impl IntoView {
     view! {
         <DataPage
-            heading="Find the Numbers You Need"
-            intro="Browse meets, team performance, athlete history, qualification data, rankings, and records."
+            page=catalog::DATA_HOME
             section_class="data-page data-home"
         >
             <div class="data-card-grid">

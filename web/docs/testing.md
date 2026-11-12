@@ -58,6 +58,13 @@ disabled button while an upload is held) and the submission's arguments and
 token, a blank end date as `null`, the form's checks before anything uploads, a
 refused submission keeping the form filled, accessibility, and a small phone.
 
+`tests/shells.rs` renders every route's first frame natively and fails when `shells/` differs
+from it; `UPDATE_SHELLS=1 cargo test --test shells` rewrites `shells/`. The config tests
+(`npm run test:config`, after a build) check that every page in `dist/` carries its route's shell
+and the preloads, that every content-hashed file is `immutable` and nothing else is, and that the
+bootstrap starts analytics only after the app mounts. `src/utils/api.rs` also reads
+`../convex/` to check that exactly the queries whose function takes `ifNoneMatch` send one.
+
 ## Browser checks
 
 Build the WebAssembly application, install the browser-test dependencies, and run

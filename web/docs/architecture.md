@@ -20,7 +20,19 @@ POST https://disciplined-hare-790.convex.cloud/api/query
 - A query's answer carries its body one of two ways, recorded on the `Query`:
   - `Body::JsonText`: `{ json }` or `{ etag, json }`, the body as JSON text. Most list answers
     (records, rankings, rosters, results) come this way because Convex serves text faster than the
-    same rows as values. The site sends no `ifNoneMatch`, so `json` is always present.
+    same rows as values.
+- A query whose Convex function takes `ifNoneMatch` (`Query::tagged`; a test reads `../convex/` to
+  keep the list right) is revalidated. The site keeps its last `{ etag, json }` under the function
+  and its arguments (the pass and the tag left out): in memory for the session, and in IndexedDB
+  (`src/answer_store.js`, at most 200 answers) for the next visit. The next read sends the tag as
+  `ifNoneMatch`; Convex answers `{ etag }` alone when nothing changed, and the kept text is read
+  instead of downloading it again. A premium answer is kept only while a pass is held and only
+  until that pass's `rotatesAt`; signing out, or another user signing in, drops every premium
+  answer and the stored pass.
+- Each answer is read once: the HTTP body is text, its `value` stays raw JSON
+  (`serde_json::value::RawValue`), and only the inner `json` text is parsed into the page's rows.
+- Requests go through the browser's `fetch` (`src/utils/http.rs`), with an `AbortController` that
+  ends a request at its timeout, body included.
   - `Body::Value`: the answer is the body (`results:search`, `reference:clubMeetStats`). Convex
     writes its numbers as floats (`2.0`); `utils/api` turns whole numbers back into integers before
     parsing.
@@ -43,7 +55,7 @@ POST https://disciplined-hare-790.convex.cloud/api/query
 - The pass comes from `accessPass:pass` (`POST /api/query` with `Authorization: Bearer <Clerk
   session token>`, Clerk's default token, as the app sends), which answers `{ pass, rotatesAt }`.
   `utils/api` fetches it before the first premium read, only for a signed-in user, and holds it in
-  memory (never stored) until `rotatesAt`, or at least five minutes so a fast device clock cannot
+  memory, and in IndexedDB under the Clerk user's id so the next page load skips the fetch, until `rotatesAt`, or at least five minutes so a fast device clock cannot
   make every read fetch it; concurrent reads share one fetch. Convex accepts a pass until the
   rotation after the one that replaced it, so a slightly stale pass still works. Signing in, out
   or as another user forgets it.
@@ -64,10 +76,28 @@ The queries themselves are in `../convex/` (`reference.ts`, `meets.ts`, `results
 served from materialized views; `../docs/backend.md` explains when a view needs rebuilding after a
 deploy.
 
+## Tables
+
+Every long table renders through `RowsTable` (`src/pages/comp_data/ui.rs`): the first
+`ROWS_SHOWN_FIRST` (100) rows of the current filter and sort, and a Show More button that adds
+`ROWS_ADDED_BY_SHOW_MORE` (100) more; a new filter or sort starts again from the first rows. Rows
+are keyed by their place in the answer (`<For>`), so a new sort moves the rows already drawn
+instead of rewriting each cell. The reference tables (`reference_table.rs`) build their filter
+selects once per answer, outside the rows' reactive closure. A filter select commits a choice made
+with the keyboard (arrow keys, Home, End, typing) once the keys pause (`SELECT_STEP_SETTLE`), so
+stepping through a closed select is one query or one re-render, not one per step; a pick with the
+mouse or a tap commits at once. The Meet Center shows one of Schedule, Start List and Full Results
+at a time, chosen by a segmented control and kept in the address (`section`), and folds the meet
+names for search once per catalog, not per keystroke.
+
 ## Sign-in and the subscription gate
 
 `src/auth.rs` loads Clerk and RevenueCat's web SDKs through `src/auth_bridge.js`, from pinned
-versions on jsDelivr and unpkg. Each file loads with a Subresource Integrity hash, and the CSP
+versions on jsDelivr and unpkg. Clerk loads only when it is needed: on a route that needs an
+account (the data routes behind the gate, `/link`, `/submit-meet`), when Clerk's `__client_uat`
+cookie says this browser has a session, or when the visitor taps Sign in; its two files download
+in parallel. Every other visitor sees a plain Sign in button and downloads no Clerk at all. The
+sign-in card's container keeps its height before Clerk draws into it, so the page does not shift. Each file loads with a Subresource Integrity hash, and the CSP
 allows only those versions' directories. The chunks Clerk loads later from those directories
 carry no integrity hash (Clerk's chunk loader doesn't set one), so only the CSP pin covers them.
 Upgrading an SDK means changing its version and hash in `auth_bridge.js` and its path in
@@ -76,10 +106,14 @@ compiled in from
 `CLERK_PUBLISHABLE_KEY` and `REVENUECAT_PUBLIC_API_KEY`.
 
 `SubscriptionGate` (`src/components/subscription_gate.rs`) wraps each competition data route in
-`src/main.rs` except the free `/wrapped`: signed out, it mounts Clerk's sign-in, which returns to the same page; signed in,
+`src/app.rs` except the free `/wrapped`: signed out, it mounts Clerk's sign-in, which returns to the same page; signed in,
 it asks RevenueCat whether the Clerk user has the `Subscriptions` entitlement (the one the app
 checks, `src/lib/premium-intent.ts`), and shows the page or the subscription handoff. Purchases
 happen in the mobile app only (`/subscription` sends users there).
+
+While it checks, the gate shows the page's own heading and intro from `catalog.rs` over a table
+skeleton, the same first frame the route's static shell paints, so nothing moves when the app
+mounts or when the check passes.
 
 Every route's gate reads one shared answer (`provide_access`, next to `provide_auth`), so moving
 between data pages neither checks again nor rebuilds the page. It is checked again when the
@@ -115,7 +149,7 @@ The athlete field's suggestions come from `results:search` without dates, which 
 `meetcal login` (the CLI in `../cli/`) prints a code such as `WXYZ-BCDF`, a link to
 `https://meetcal.app/link?code=WXYZ-BCDF` and a QR code of it, and waits. `src/pages/link.rs`
 is the page the link opens. It needs a signed-in user but no subscription, so its route in
-`src/main.rs` sits outside `SubscriptionGate`, and it is in no navigation menu or sitemap
+`src/app.rs` sits outside `SubscriptionGate`, and it is in no navigation menu or sitemap
 (`noindex, nofollow`).
 
 - The URL holds the code. Signed out, the page mounts the same Clerk sign-in as the gate, which
@@ -182,10 +216,20 @@ in the sitemap.
 
 Each route needs a document that search engines and link previews can read before the Wasm loads:
 
-- `scripts/generate-bootstrap.sh` runs after every Trunk build. It writes `app-bootstrap.js` (which
-  loads the Wasm, then removes `index.html`'s `#app-loading` shell, or turns it into an error with
-  a retry when the load fails) and renders one shell per route into `dist/seo/<name>.html`, each with its own
-  title, description, canonical URL and robots directive. Competition data pages are
+- Every route's first frame is in its HTML: `tests/shells.rs` renders the app's own `SiteRoutes`
+  natively (Leptos' `ssr` feature, on in native tests only) for each route, as the app's first
+  frame shows it before Clerk answers (the header, and for a gated route the page's heading, intro
+  and a table skeleton from `catalog.rs`), and keeps `shells/<route>.html` and `shells/routes.txt`
+  (each route's title, description and robots) equal to it. After a change to a page, the header
+  or the catalog, run `UPDATE_SHELLS=1 cargo test --test shells`; the test fails until the
+  committed shells match.
+- `scripts/generate-bootstrap.sh` runs after every Trunk build. It writes the content-hashed
+  `app-bootstrap-<hash>.js` (which loads the Wasm, then removes the prerendered page and
+  `#app-loading`, or turns `#app-loading` into an error with a retry when the load fails, and
+  starts PostHog once the app has mounted), adds `modulepreload` for the glue and the auth bridge
+  and `preload` for the Wasm, so all three download with the HTML, and renders every line of
+  `shells/routes.txt` into its document (`index.html`, `404.html`, `dist/seo/<name>.html`), each
+  with its own title, description, canonical URL and robots directive and its route's shell. Competition data pages are
   `noindex, nofollow`, except the free `/wrapped`, which is `index, follow`, has its own
   description and is in `public/sitemap.xml`.
 - `vercel.json` rewrites each route to its shell (`/records` to `/seo/records.html`).
@@ -198,10 +242,13 @@ Each route needs a document that search engines and link previews can read befor
 For a new competition data page, all of these change together:
 
 1. `src/pages/comp_data/<page>.rs` (and `mod.rs`).
-2. `src/main.rs`: the route, inside `SubscriptionGate`.
-3. `src/pages/comp_data/catalog.rs`: a `DATA_PAGES` entry with `access: Access::Subscription`.
-   This adds it to the header menu, the data home and the route metadata.
-4. `scripts/generate-bootstrap.sh`: a line in the competition pages list.
+2. `src/app.rs`: the route, inside `SubscriptionGate page=catalog::<PAGE>`.
+3. `src/pages/comp_data/catalog.rs`: a `const` for the page (its label, heading, intro,
+   description and SEO title, `access: Access::Subscription`) listed in `DATA_PAGES`. The page
+   reads its heading and intro from it (`<DataPage page=catalog::<PAGE>>`), and so do the gate and
+   the page's prerendered shell; it also adds the page to the header menu, the data home and the
+   route metadata.
+4. `shells/`: run `UPDATE_SHELLS=1 cargo test --test shells`, which adds its shell and its line in `routes.txt`.
 5. `vercel.json`: the rewrite to its shell.
 6. `tests/e2e/support/routes.ts`: `protectedDataRoutes`, so the route, gate and metadata tests
    cover it; and a test for the page itself in `tests/e2e/competition.spec.ts`.
@@ -222,4 +269,11 @@ Vercel's project `meetcal-web` builds this folder (project root `web/`) with
 `master`; every pull request gets a preview. `vercel.json` also sets the security headers,
 including the CSP, for every response.
 
-Analytics: `public/posthog-init.js` loads PostHog with the key the build wrote.
+Analytics: once the app has mounted, the bootstrap loads `public/posthog-env.js` and
+`public/posthog-init.js` when the browser is idle, which start PostHog with the key the build
+wrote: autocapture, pageviews and web vitals, without surveys or dead-click capture.
+
+Caching (`vercel.json`): every content-hashed file (the glue, the Wasm, the stylesheet, the
+bootstrap and everything under `/snippets/`) is `immutable` for a year, and a config test checks
+each hashed file in `dist/` against the rules. Images, icons and the manifest are cached for a day,
+the PostHog files for an hour, and the HTML revalidates on every visit.

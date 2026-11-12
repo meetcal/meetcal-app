@@ -15,14 +15,14 @@ The repository root's `AGENTS.md` applies here too: its hard rules (worktrees, n
 
 | Path | Role |
 |---|---|
-| `src/main.rs` | The router: every route, and which ones sit behind `SubscriptionGate` (`/wrapped` is free, even signed out, and `/link` and `/submit-meet` need sign-in but no subscription, so none of them does) |
+| `src/app.rs` | The router: every route, and which ones sit behind `SubscriptionGate` (`/wrapped` is free, even signed out, and `/link` and `/submit-meet` need sign-in but no subscription, so none of them does) |
 | `src/utils/api/` | The only data access, in five modules (`transport.rs`: the HTTP call, its retries, timeouts and messages; `catalog.rs`: the queries and the premium lists; `pass.rs`: fetching, holding and renewing the access pass; `device_login.rs` and `meet_submissions.rs`: the `/link` and `/submit-meet` calls; `mod.rs`: the entry points pages call, re-exporting the rest): every Convex query the site reads (`queries::*`), which of them carry the access pass, the HTTP call with its retries, and fetching and holding the pass (`accessPass:pass`, with `entitlements:refresh` when Convex does not know the subscriber yet), the `/link` page's `deviceLogin` query and mutations and `apiTokens:revokeAllCli`, and `/submit-meet`'s `meetSubmissions` mutations and file uploads |
 | `src/auth.rs`, `src/auth_bridge.js` | Clerk sign-in and the RevenueCat entitlement check, through a small JavaScript bridge to the providers' web SDKs |
 | `src/components/` | Header, footer, feature cards, route metadata (`seo.rs`), the subscription gate |
 | `src/pages/` | Public pages (home, features, privacy, terms); `link.rs`: `/link`, where a signed-in user approves or denies a `meetcal login` from the CLI (no subscription needed, in no menu, noindex); and `submit_meet.rs`: `/submit-meet`, where a signed-in user sends the schedule and start lists of a meet MeetCal does not cover yet (no subscription needed, in the header, noindex). `/atlas` redirects to the Atlas home page at atlas.meetcal.app, which the Atlas repository serves |
 | `src/pages/comp_data/` | The competition data pages, one file each, plus their shared pieces: `models.rs` (answer types), `loading.rs`, `filters.rs`, `format.rs`, `ui.rs`, `catalog.rs` (the data page list, and each page's `Access`: subscription or free). `wrapped.rs` shows the server's Wrapped answer (`results:wrapped`) and scores nothing itself |
 | `styles.css` | All styling |
-| `index.html`, `scripts/generate-bootstrap.sh` | The page shell, and the post-build hook that writes the Wasm bootstrap and one metadata shell per route under `dist/seo/` |
+| `index.html`, `scripts/generate-bootstrap.sh`, `shells/` | The page shell, each route's prerendered first frame (`shells/`, kept equal to the app by `tests/shells.rs`; `UPDATE_SHELLS=1 cargo test --test shells` rewrites it), and the post-build hook that writes the Wasm bootstrap, the preloads and one shell per route under `dist/seo/` |
 | `vercel.json` | Build command, security headers (the CSP), and the rewrites that serve each route's metadata shell |
 | `tests/e2e/` | Playwright: routes, layout, accessibility, security headers, visual baselines, and the data pages against mocked Convex answers |
 | `tests/config/` | Node tests of `vercel.json` and the built shells |

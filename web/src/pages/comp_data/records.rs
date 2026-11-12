@@ -1,4 +1,5 @@
 use super::{
+    catalog,
     filters::{SortDirection, sort_numeric, sort_orders},
     format::{display_weight_class, reference_value},
     loading::{load_rows, table_response},
@@ -180,8 +181,7 @@ pub fn Records() -> impl IntoView {
 
     view! {
         <DataPage
-            heading="Records"
-            intro="Filter record performances by organization, division, and weight class."
+            page=catalog::RECORDS
         >
             {move || table_response(records, HEADERS.len(), "records", |records| {
                 view! {

@@ -153,6 +153,47 @@ body::before {
     text-decoration: underline;
 }
 
+.app-prerendered:not(:empty) ~ .app-loading {
+    position: fixed;
+    right: 12px;
+    bottom: 12px;
+    left: 12px;
+    z-index: 20;
+    min-height: 0;
+    padding: 0;
+    pointer-events: none;
+}
+
+.app-prerendered:not(:empty) ~ .app-loading > .app-loading-logo,
+.app-prerendered:not(:empty) ~ .app-loading > .app-loading-name,
+.app-prerendered:not(:empty) ~ .app-loading > .app-loading-message,
+.app-prerendered:not(:empty) ~ .app-loading > noscript > .app-loading-message {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+}
+
+.app-prerendered:not(:empty) ~ .app-loading > .app-loading-slow,
+.app-prerendered:not(:empty) ~ .app-loading > .app-loading-error,
+.app-prerendered:not(:empty) ~ .app-loading > noscript > .app-loading-error {
+    justify-self: center;
+    margin: 0;
+    padding: 8px 18px;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    background: var(--card);
+    box-shadow: var(--shadow-lg);
+    pointer-events: auto;
+}
+
+.app-prerendered:not(:empty) ~ .app-loading > .app-loading-retry {
+    justify-self: center;
+    pointer-events: auto;
+}
+
 .app-loading[role="alert"] .app-loading-slow {
     display: none;
 }
@@ -795,6 +836,7 @@ select.data-filter {
 
 .clerk-sign-in {
     width: 100%;
+    min-height: 520px;
 }
 
 .purchase-benefits {

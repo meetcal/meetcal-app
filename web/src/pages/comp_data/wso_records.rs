@@ -1,5 +1,6 @@
 use super::{
     address::{HistoryEntry, query_param, use_page_address},
+    catalog,
     filters::{compare_weight_classes, sort_orders},
     format::{display_weight_class, reference_value},
     loading::{Load, load_query, select_response, table_response},
@@ -161,8 +162,7 @@ pub fn WsoRecords() -> impl IntoView {
 
     view! {
         <DataPage
-            heading="WSO Records"
-            intro="Browse records published by USA Weightlifting state organizations."
+            page=catalog::WSO_RECORDS
         >
             {move || select_response(organizations, "Loading organizations…", "WSOs", |organizations| view! {
                 <div class="data-filters">
