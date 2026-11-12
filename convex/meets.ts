@@ -21,6 +21,7 @@ import {
   resultTitlesOf,
   meetLocalDate,
   narrowSessions,
+  nextMeetRow,
   packageAthlete,
   packageStaticText,
   plainRoster,
@@ -32,11 +33,12 @@ import {
   type ZoneFormatters,
 } from './lib/meetData';
 import { normalizeName } from './lib/names';
-import { DOCUMENTS_BEFORE_THE_OVERFLOW_PROBE, takeWithinBudget, type DocumentBudget } from './lib/readBudget';
+import { DOCUMENTS_BEFORE_THE_OVERFLOW_PROBE, takeWithinBudget, tooLargeToRead, type DocumentBudget } from './lib/readBudget';
 import { compareBytes } from './lib/sort';
-import { meetKey, meetSessionKey } from './lib/viewKeys';
-import { readFreshView } from './lib/views';
-import { apiError, requireIsoDate, requireNonEmpty } from './lib/validation';
+import { matchingMeetNames, MAX_MATCHING_WORDS, parseMeetNames } from './lib/meetNameMatch';
+import { MEET_NAMES_VIEW, meetKey, meetSessionKey } from './lib/viewKeys';
+import { readFreshView, readViewJsonAnyAge } from './lib/views';
+import { apiError, requireIsoDate, requireNonEmpty, requireTextList } from './lib/validation';
 
 // `GET /meets*`: each query answers the JSON of the Rust route of the same
 // name in `meetcal-backend/app/src/routes/meets`, from the meet's views when
@@ -137,14 +139,6 @@ export const MEET_NAMES_PAGE_SIZE = 500;
 /** The most meets `meets:attendance` counts in one call. */
 export const MAX_ATTENDANCE_MEETS = 8;
 
-/**
- * Every distinct meet name in the results (`source: 'results'`) or the registrations
- * (`'registrations'`), in name order after `after` and before `before` (when given), a page at a
- * time: one read per meet, skipping along the meet index, so the whole history is listable however
- * many rows it holds. Pass back `next` until it is null. Callers can list several name ranges at
- * once. Results meets carry one of their dates. Answers `{ json, next }`, the meets as JSON text
- * (`[{ meet, date }]`).
- */
 export const namesPage = query({
   args: {
     source: v.union(v.literal('results'), v.literal('registrations')),
@@ -160,17 +154,7 @@ export const namesPage = query({
     const meets: { meet: string; date: string | null }[] = [];
     let last = after;
     while (meets.length < pageSize) {
-      const from = last;
-      const row =
-        source === 'results'
-          ? await ctx.db
-              .query('lifting_results')
-              .withIndex('by_meet', (q) => (from === null ? q : q.gt('meet', from)))
-              .first()
-          : await ctx.db
-              .query('athletes')
-              .withIndex('by_meet', (q) => (from === null ? q : q.gt('meet', from)))
-              .first();
+      const row = await nextMeetRow(ctx, source === 'results' ? 'lifting_results' : 'athletes', last);
       if (!row || (before !== undefined && row.meet >= before)) {
         return { json: JSON.stringify(meets), next: null };
       }
@@ -180,8 +164,6 @@ export const namesPage = query({
     return { json: JSON.stringify(meets), next: last };
   },
 });
-
-const tooLargeToRead = (meet: string) => `${JSON.stringify(meet)} is too large to read in one request; try again later or report it.`;
 
 async function meetAttendance(ctx: QueryCtx, meet: string, budget: DocumentBudget) {
   const meetRows = await takeWithinBudget(budget, (limit) => meetsNamed(ctx, meet, Math.min(limit, MEET_ROWS_READ_PER_NAME)));
@@ -228,7 +210,7 @@ export async function attendanceRows(ctx: QueryCtx, meets: readonly string[], do
   for (const meet of meets) {
     const row = await meetAttendance(ctx, meet, budget);
     if (row === null) {
-      throw apiError(413, meets.length === 1 ? tooLargeToRead(meet) : 'these meets are too large to read in one request; try again later or report it.', { max: documentBudget });
+      throw apiError(413, tooLargeToRead(meets.length === 1 ? [meet] : meets), { max: documentBudget });
     }
     rows.push(row);
   }
@@ -242,6 +224,17 @@ export const attendance = query({
       throw apiError(400, `meets exceeds the ${MAX_ATTENDANCE_MEETS}-meet limit`);
     }
     return { json: JSON.stringify(await attendanceRows(ctx, meets)) };
+  },
+});
+
+export const namesMatching = query({
+  args: { words: v.array(v.string()), exclude: v.optional(v.array(v.string())) },
+  handler: async (ctx, { words, exclude = [] }) => {
+    requireTextList('words', words, MAX_MATCHING_WORDS);
+    if (exclude.length > 0) requireTextList('exclude', exclude, MAX_MATCHING_WORDS);
+    const text = await readViewJsonAnyAge(ctx, MEET_NAMES_VIEW);
+    if (text === null) throw apiError(503, 'the meet name index is being built; try again in a minute');
+    return matchingMeetNames(parseMeetNames(text), words, exclude);
   },
 });
 

@@ -2,33 +2,25 @@ import { isStringList, parsedAs } from '../lib/json';
 import { v } from 'convex/values';
 import { internalMutation, internalQuery, type ActionCtx } from '../_generated/server';
 import { internal } from '../_generated/api';
+import { nextMeetRow } from '../lib/meetData';
 import { compareBytes } from '../lib/sort';
 import { MEET_INDEX_VIEW, meetViewsPrefix } from '../lib/viewKeys';
 import { deleteViewsWithPrefix, jsonChunks, readViewJsonAnyAge, writeView, viewKeysWithPrefix as keysWithPrefix } from '../lib/views';
 
 // The meet index (`MEET_INDEX_VIEW`): every meet that has views, kept so a
 // refresh never rediscovers it from the tables.
-/** Distinct roster meets per `rosterMeetsPage` query, one index seek each. */
-const ROSTER_MEETS_PER_PAGE = 500;
+const DISTINCT_MEETS_PER_PAGE = 500;
 
-/**
- * The next roster meets after `after`: one read per meet (a skip along the
- * index), not one per roster row, since rosters are never deleted.
- */
-export const rosterMeetsPage = internalQuery({
-  args: { after: v.union(v.string(), v.null()) },
-  handler: async (ctx, { after }): Promise<{ meets: string[]; after: string | null }> => {
+export const distinctMeetsPage = internalQuery({
+  args: { table: v.union(v.literal('lifting_results'), v.literal('athletes')), after: v.union(v.string(), v.null()) },
+  handler: async (ctx, { table, after }): Promise<{ meets: string[]; after: string | null }> => {
     const meets: string[] = [];
     let last = after;
-    for (let i = 0; i < ROSTER_MEETS_PER_PAGE; i += 1) {
-      const lower = last;
-      const athlete = await ctx.db
-        .query('athletes')
-        .withIndex('by_meet', (q) => (lower === null ? q : q.gt('meet', lower)))
-        .first();
-      if (!athlete) return { meets, after: null };
-      meets.push(athlete.meet);
-      last = athlete.meet;
+    for (let i = 0; i < DISTINCT_MEETS_PER_PAGE; i += 1) {
+      const row = await nextMeetRow(ctx, table, last);
+      if (!row) return { meets, after: null };
+      meets.push(row.meet);
+      last = row.meet;
     }
     return { meets, after: last };
   },
@@ -54,7 +46,7 @@ export async function discoverMeets(ctx: ActionCtx): Promise<string[]> {
   } while (cursor !== null);
   let after: string | null = null;
   do {
-    const page: { meets: string[]; after: string | null } = await ctx.runQuery(internal.views.rosterMeetsPage, { after });
+    const page: { meets: string[]; after: string | null } = await ctx.runQuery(internal.views.distinctMeetsPage, { table: 'athletes', after });
     for (const meet of page.meets) names.add(meet);
     after = page.after;
   } while (after !== null);

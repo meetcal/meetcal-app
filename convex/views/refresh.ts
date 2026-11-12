@@ -1,3 +1,4 @@
+import { syncMeetNames } from '../meetNames';
 import { isStringList, isTextPair, parsedAs } from '../lib/json';
 import { chunks } from '../lib/concurrency';
 import { v } from 'convex/values';
@@ -432,7 +433,8 @@ async function refreshTargets(ctx: ActionCtx, hints: readonly Hint[]): Promise<R
       if (await build(`meet ${meet}`, () => rebuildMeet(ctx, meet))) covered.add(meet);
       else failedMeets.add(meet);
     }
-    await done(meetHints.filter((h) => covered.has(h.key)));
+    const meetNamesSynced = await build('meet name index', () => syncMeetNames(ctx, hinted));
+    await done(meetHints.filter((h) => meetNamesSynced && covered.has(h.key)));
   }
 
   if (athleteHints.length > 0 && inBudget()) {

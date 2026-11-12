@@ -376,6 +376,7 @@ export const rebuildStage = internalAction({
         );
         await rebuildTarget(ctx, 'club list', [{ kind: 'table', key: 'athletes' }], () => ctx.runAction(internal.views.buildClubs, {}));
         await rebuildTarget(ctx, 'WSO records', [{ kind: 'table', key: 'wso_records' }], () => ctx.runMutation(internal.views.buildWso, {}));
+        await rebuildTarget(ctx, 'meet name index', [], () => ctx.runAction(internal.meetNames.buildMeetNames, {}));
         return await next('sweep', 0);
       }
       case 'sweep': {

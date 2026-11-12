@@ -1,4 +1,5 @@
 import { getFunctionName } from 'convex/server';
+import * as meetNames from '../convex/meetNames';
 import * as views from '../convex/views';
 import { LEGACY_SEARCH_SHARD_SIZES_VIEWS, MEET_INDEX_VIEW, meetKey, natKey, RESULT_NAMES_VIEW, SEARCH_SHARD_SIZES_VIEW, searchShardKey } from '../convex/lib/viewKeys';
 import { search } from '../convex/results';
@@ -27,7 +28,9 @@ function harness(initial: Record<string, Record<string, unknown>[]> = {}, stubs:
     const name = getFunctionName(ref as never).replace(/^views:/, '');
     calls.push({ name, args });
     if (stubs[name]) return await stubs[name](args);
-    const fn = (views as Record<string, unknown>)[name];
+    const fn = name.startsWith('meetNames:')
+      ? (meetNames as Record<string, unknown>)[name.slice('meetNames:'.length)]
+      : (views as Record<string, unknown>)[name];
     return await handlerOf<Record<string, unknown>>(fn)(ctx, args);
   };
   const ctx = { db: fake.db, scheduler, runQuery: run, runMutation: run, runAction: run };

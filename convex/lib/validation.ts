@@ -81,6 +81,16 @@ export const MAX_NAME_LIST_LEN = 100;
 export const MAX_NAME_LEN = 400;
 
 /** `require_name_list`: a first name, at most 100 names, each at most 400 bytes. */
+export function requireTextList(field: string, values: readonly string[], maxItems: number): void {
+  if (values.length === 0) throw apiError(400, `${field} is required`);
+  if (values.length > maxItems) throw apiError(400, `${field} exceeds the ${maxItems}-item limit`);
+  const encoder = new TextEncoder();
+  for (const value of values) {
+    if (value.trim() === '') throw apiError(400, `${field} must not hold a blank value`);
+    if (encoder.encode(value).length > MAX_NAME_LEN) throw apiError(400, `each of ${field} must be at most ${MAX_NAME_LEN} bytes`);
+  }
+}
+
 export function requireNameList(names: readonly string[]): void {
   requireNonEmpty('names', names[0] ?? '');
   if (names.length > MAX_NAME_LIST_LEN) {

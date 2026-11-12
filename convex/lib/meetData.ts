@@ -391,6 +391,38 @@ export function narrowSessions(rows: readonly SessionRow[], sessionNumber?: numb
   );
 }
 
+export type MeetRowTable = 'lifting_results' | 'athletes';
+
+export async function nextMeetRow(ctx: QueryCtx, table: MeetRowTable, after: string | null) {
+  if (table === 'lifting_results') {
+    return await ctx.db
+      .query('lifting_results')
+      .withIndex('by_meet', (q) => (after === null ? q : q.gt('meet', after)))
+      .first();
+  }
+  return await ctx.db
+    .query('athletes')
+    .withIndex('by_meet', (q) => (after === null ? q : q.gt('meet', after)))
+    .first();
+}
+
+export async function meetHasRows(ctx: QueryCtx, table: MeetRowTable, meet: string): Promise<boolean> {
+  if (table === 'lifting_results') {
+    return (
+      (await ctx.db
+        .query('lifting_results')
+        .withIndex('by_meet', (q) => q.eq('meet', meet))
+        .first()) !== null
+    );
+  }
+  return (
+    (await ctx.db
+      .query('athletes')
+      .withIndex('by_meet', (q) => q.eq('meet', meet))
+      .first()) !== null
+  );
+}
+
 export function linkedResultTitles(ctx: QueryCtx, meet: string) {
   return ctx.db.query('meet_result_titles').withIndex('by_meet', (q) => q.eq('meet', meet));
 }
@@ -420,11 +452,12 @@ export async function meetResultDocs(ctx: QueryCtx, meet: string): Promise<Doc<'
   return groups.flat();
 }
 
-/** The package's `meet_results`: by name (SQL text order), newest first within a name. */
+export function byNameThenNewest(a: { name: string; date: string }, b: { name: string; date: string }): number {
+  return compareCollated(a.name, b.name) || compareBytes(b.date, a.date);
+}
+
 export async function computeMeetResults(ctx: QueryCtx, meet: string): Promise<ApiLiftingResult[]> {
-  return (await meetResultDocs(ctx, meet))
-    .sort((a, b) => compareCollated(a.name, b.name) || compareBytes(b.date, a.date))
-    .map(toApiLiftingResult);
+  return (await meetResultDocs(ctx, meet)).sort(byNameThenNewest).map(toApiLiftingResult);
 }
 
 /**
