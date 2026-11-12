@@ -63,6 +63,22 @@ Risk cases that belong in unit tests:
 - Meet timezone conversion (DST, invalid clock strings)
 - Error propagation from `MeetCalApiError` vs timeout vs 404
 
+## Wire fixtures
+
+`fixtures/wire/<module>.<function>.json` holds what a Convex function answers, for every function two or more of the app, the website and the CLI read: the function, how its answer travels (`value`, or `jsonText` for `{ json }` and `{ etag, json }`), and a list of `{ args, body }`. Each surface's own suite reads the same files:
+
+- `convex-tests/wireFixtures.test.ts` seeds one in-memory database (`convex-tests/fakeDb.ts`), runs each function's real handler with each fixture's `args`, and fails when the answer differs from the fixture. It also fails when a function in its list has no fixture, or a fixture has no function.
+- `src/lib/api/meetcal-api.wire.test.ts` answers the app's real fetchers from the fixtures and checks the mapped values and the arguments the app sends.
+- The website's (`wire_fixture!` in `web/src/utils/api.rs`) and the CLI's (`cli/src/utils/backend/wire_fixtures.rs`) Rust tests parse each fixture into the type the live answer is parsed into, through the same decoding, with value answers' numbers written as floats as Convex's HTTP API writes them.
+
+When a change to a Convex function changes its answer, regenerate the fixtures from the handlers and commit them with the change:
+
+```sh
+MEETCAL_UPDATE_FIXTURES=1 bunx jest --ci --watchman=false convex-tests/wireFixtures.test.ts
+```
+
+A client whose test then fails reads that answer wrongly: change the client, not the fixture. A change under `fixtures/wire/` runs the app, website and CLI suites in `mise run check` and the website's and CLI's CI.
+
 ## Maestro
 
 Device smoke coverage for routes. See `docs/maestro.md`. Not part of GitHub Actions CI.
