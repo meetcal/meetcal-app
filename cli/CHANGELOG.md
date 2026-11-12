@@ -30,6 +30,10 @@
   (exit 1), not an empty answer (exit 0).
 - A bad `--gender`, a blank name, a `--year` outside 1900 to 9999 and a `meet --session-number`
   that is not a number are usage errors (exit 2) before any request.
+- `club-results` and `wso` exit 1 with an explanation, instead of a report of zeros, when the
+  club or WSO has athletes at a meet and none of their results are counted while MeetCal holds
+  results under the meet's other names (a combined national meet whose results are not linked to
+  it); the message names those meets and the `meet-results` command that shows them.
 - `elite` without `--year` covers the current calendar year, as `leaderboard` does (it covered
   last year).
 - `leaderboard`'s age category is `-a`. `-c` still works there but is no longer listed.
