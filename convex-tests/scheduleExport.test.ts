@@ -53,6 +53,14 @@ describe('clock labels', () => {
 });
 
 describe('rows', () => {
+  it('writes a plus class as 61+, never a leading plus a spreadsheet reads as a number', () => {
+    const rows = startListRows(buildSchedule([entrant('Ann', 'Women', '+61', 80), entrant('Bo', 'Men', '+109kg', 200)], defaultBuilderOptions({ startDate: '2027-03-06', endDate: '2027-03-06' })));
+    expect(rows.map((row) => [row[5], row[9]])).toEqual([
+      ['W 61+', '61+'],
+      ['M 109+', '109+'],
+    ]);
+  });
+
   it('leaves the member ID blank for an entrant Sport80 lists without one', () => {
     const rows = startListRows(buildSchedule([entrant('Del Mullen', 'Women', '58', 80, { memberId: 'noid:del-mullen' })], defaultBuilderOptions({ startDate: '2027-03-06', endDate: '2027-03-06' })));
     expect(rows[0]?.at(-1)).toBe('');
