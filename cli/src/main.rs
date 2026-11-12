@@ -10,9 +10,10 @@ async fn main() -> Result<()> {
     meetcal::utils::output::set_format(cli.format);
 
     // `upgrade` checks for itself, and would otherwise announce the release it just installed.
-    let notice = match cli.command {
-        Commands::Upgrade(_) => None,
-        _ => update_notice::start(),
+    let notice = if matches!(cli.command, Commands::Upgrade(_)) {
+        None
+    } else {
+        update_notice::start()
     };
     let result = run(cli.command).await;
     if let Some(notice) = notice {
