@@ -458,9 +458,7 @@ where
         Some(action.timeout),
     )
     .await?;
-    let value = answer_value(function, answer)?;
-    serde_json::from_value(whole_numbers_as_integers(value))
-        .with_context(|| format!("Unexpected answer from MeetCal {function}"))
+    read_function_value(function, answer_value(function, answer)?)
 }
 
 /// Convex's answer to a premium read, a query or an action by `endpoint`. The read carries the
@@ -560,7 +558,10 @@ pub async fn call_function<T: DeserializeOwned>(
         timeout: None,
     };
     let answer = call(base_url, endpoint, function, args, token, sending).await?;
-    let value = answer_value(function, answer)?;
+    read_function_value(function, answer_value(function, answer)?)
+}
+
+fn read_function_value<T: DeserializeOwned>(function: &str, value: Value) -> Result<T> {
     serde_json::from_value(whole_numbers_as_integers(value))
         .with_context(|| format!("Unexpected answer from MeetCal {function}"))
 }
@@ -856,6 +857,9 @@ pub fn rate_limited_message(retry_after_secs: Option<u64>) -> String {
     };
     format!("The MeetCal API is rate limiting requests right now; try again in {wait}")
 }
+
+#[cfg(test)]
+mod wire_fixtures;
 
 #[cfg(test)]
 mod tests {
