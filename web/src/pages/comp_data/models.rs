@@ -1,4 +1,4 @@
-use super::format::format_us_date;
+use super::format::{NO_VALUE, format_us_date};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
@@ -110,8 +110,6 @@ pub(crate) struct AthleteSearchResponse {
     /// Without an exact name match these are every matching athlete's rows,
     /// so each carries its athlete's name.
     pub results: Vec<LiftingResult>,
-    /// More results matched than the answer holds (it keeps the most recent).
-    #[serde(default)]
     pub truncated: bool,
 }
 
@@ -182,24 +180,29 @@ pub(crate) fn normalize(value: &str) -> String {
 /// the list renders under the search, so it is capped (as the app's is).
 pub(crate) const MAX_ATHLETE_CHOICES: usize = 8;
 
-/// The distinct athletes among a search's rows: folded name (which also
-/// orders them) to the first spelling seen. Rows without a name are skipped.
 pub(crate) fn distinct_athletes(rows: &[LiftingResult]) -> BTreeMap<String, String> {
-    let mut athletes = BTreeMap::new();
+    let mut newest: BTreeMap<String, &LiftingResult> = BTreeMap::new();
     for row in rows {
         let key = normalize(&row.name);
-        if !key.is_empty() {
-            athletes
-                .entry(key)
-                .or_insert_with(|| row.name.trim().to_owned());
+        if key.is_empty() {
+            continue;
+        }
+        match newest.get(&key) {
+            Some(kept) if kept.date > row.date => {}
+            _ => {
+                newest.insert(key, row);
+            }
         }
     }
-    athletes
+    newest
+        .into_iter()
+        .map(|(key, row)| (key, row.name.trim().to_owned()))
+        .collect()
 }
 
 pub(crate) fn attempt(value: f64) -> String {
     if value == 0.0 {
-        "—".to_owned()
+        NO_VALUE.to_owned()
     } else if value < 0.0 {
         format!("{}×", -value)
     } else {
@@ -246,9 +249,9 @@ mod tests {
         assert_eq!(normalize("Jose\u{301}"), "jos\u{e9}");
     }
 
-    fn named(name: &str) -> LiftingResult {
+    fn named(name: &str, date: &str) -> LiftingResult {
         serde_json::from_value(serde_json::json!({
-            "name": name, "meet": "Meet", "date": "2026-01-01", "age": "Senior", "body_weight": 70.0,
+            "name": name, "meet": "Meet", "date": date, "age": "Senior", "body_weight": 70.0,
             "snatch1": 0.0, "snatch2": 0.0, "snatch3": 0.0, "snatch_best": 0.0,
             "cj1": 0.0, "cj2": 0.0, "cj3": 0.0, "cj_best": 0.0, "total": 0.0, "adaptive": false
         }))
@@ -256,18 +259,18 @@ mod tests {
     }
 
     #[test]
-    fn distinct_athletes_are_folded_ordered_and_keep_the_first_spelling() {
+    fn distinct_athletes_are_folded_ordered_and_keep_the_newest_spelling_trimmed() {
         let rows = [
-            named("John Smith"),
-            named("Jos\u{e9} Smith"),
-            named(" john  smith"),
-            named("Jose\u{301} Smith"),
-            named(""),
+            named("John Smith", "2026-01-01"),
+            named("Jos\u{e9} Smith", "2026-03-01"),
+            named(" john  smith ", "2026-02-01"),
+            named("Jose\u{301} Smith", "2026-01-01"),
+            named("", "2026-04-01"),
         ];
         let athletes = distinct_athletes(&rows);
         assert_eq!(
             athletes.into_values().collect::<Vec<_>>(),
-            ["John Smith", "Jos\u{e9} Smith"]
+            ["john  smith", "Jos\u{e9} Smith"]
         );
     }
 

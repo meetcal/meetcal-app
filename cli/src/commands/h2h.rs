@@ -24,9 +24,11 @@ use crate::utils::stats::{
 )]
 pub struct H2hArgs {
     /// First athlete (exact name)
+    #[arg(value_parser = crate::utils::filters::parse_name)]
     pub first: String,
 
     /// Second athlete (exact name)
+    #[arg(value_parser = crate::utils::filters::parse_name)]
     pub second: String,
 }
 
@@ -34,8 +36,8 @@ pub async fn run(args: H2hArgs) -> Result<()> {
     if fold(&args.first) == fold(&args.second) {
         bail!("Pick two different athletes");
     }
-    let first = history(&args.first).await?;
-    let second = history(&args.second).await?;
+    let (first, second) = tokio::join!(history(&args.first), history(&args.second));
+    let (first, second) = (first?, second?);
     // UTC, as the past-year bests in `meet` and `qualify` (and the app's start list) count it,
     // so the three agree.
     let cutoff = cutoff_date(Utc::now().date_naive(), YEAR_BESTS_YEARS);

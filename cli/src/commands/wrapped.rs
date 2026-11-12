@@ -22,6 +22,7 @@ pub const WRAPPED_YEARS: std::ops::RangeInclusive<i64> = 1900..=2100;
 )]
 pub struct WrappedArgs {
     /// Exact athlete name
+    #[arg(value_parser = crate::utils::filters::parse_name)]
     pub name: String,
 
     /// Calendar year to summarize (defaults to the current year)
@@ -119,7 +120,8 @@ pub fn other_names(name: &str, suggestions: Vec<String>) -> Vec<String> {
         .collect()
 }
 
-pub fn render_wrapped_report(name: &str, year: i32, stats: &WrappedStats) -> String {
+#[cfg(test)]
+fn render_wrapped_report(name: &str, year: i32, stats: &WrappedStats) -> String {
     wrapped_report(name, year, stats).to_text()
 }
 

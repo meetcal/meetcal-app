@@ -18,9 +18,9 @@ use crate::types::athletes::Athletes;
 use crate::types::lifting_results::LiftingResults;
 use crate::types::wso::Movement;
 use crate::utils::athletes::histories;
-use crate::utils::backend::{queries, query};
+use crate::utils::backend::{CONCURRENT_READS, in_order, queries, query};
 use crate::utils::format::us_date;
-use crate::utils::meet_names::{editions_by_year, equivalent_meets};
+use crate::utils::meet_names::{editions_by_year, equivalent_meets, year_of};
 use crate::utils::names::{NameKind, not_found};
 use crate::utils::output::{self, Report};
 use crate::utils::stats::{
@@ -42,6 +42,7 @@ pub const TOP_LIFTERS: usize = 15;
 )]
 pub struct ClubTrendsArgs {
     /// Exact club name (see `meetcal clubs`)
+    #[arg(value_parser = crate::utils::filters::parse_name)]
     pub club: String,
 
     /// Skip medals (one lookup per meet)
@@ -60,6 +61,7 @@ pub struct ClubTrendsArgs {
 )]
 pub struct WsoTrendsArgs {
     /// Exact WSO name (see `meetcal wsos`)
+    #[arg(value_parser = crate::utils::filters::parse_name)]
     pub wso: String,
 
     /// Skip medals (one lookup per meet)
@@ -134,13 +136,57 @@ async fn medals_by_year(
     memberships: &[ClubMembership],
     group_rows: &[LiftingResults],
 ) -> Result<BTreeMap<String, [usize; 3]>> {
+    let registered = members_by_meet(memberships);
+    let jobs: Vec<_> = meet_editions(group_rows)
+        .into_iter()
+        .map(|(spellings, years)| {
+            let members = members_at(&registered, &spellings);
+            meet_medals(spellings, years, members)
+        })
+        .collect();
     let mut medals: BTreeMap<String, [usize; 3]> = BTreeMap::new();
-    for (spellings, years) in meet_editions(group_rows) {
-        let members: Vec<String> = memberships
-            .iter()
-            .filter(|m| spellings.iter().any(|meet| equivalent_meets(&m.meet, meet)))
-            .map(|m| m.name.clone())
-            .collect();
+    for placings in in_order(CONCURRENT_READS, jobs).await? {
+        for (year, place) in placings {
+            medals.entry(year).or_default()[place - 1] += 1;
+        }
+    }
+    Ok(medals)
+}
+
+pub fn members_by_meet(memberships: &[ClubMembership]) -> HashMap<&str, Vec<&str>> {
+    let mut registered: HashMap<&str, Vec<&str>> = HashMap::new();
+    for membership in memberships {
+        registered
+            .entry(membership.meet.as_str())
+            .or_default()
+            .push(membership.name.as_str());
+    }
+    registered
+}
+
+pub fn members_at(registered: &HashMap<&str, Vec<&str>>, spellings: &[String]) -> Vec<String> {
+    let mut meets: Vec<&&str> = registered
+        .keys()
+        .filter(|registration| {
+            spellings
+                .iter()
+                .any(|meet| equivalent_meets(registration, meet))
+        })
+        .collect();
+    meets.sort();
+    meets
+        .into_iter()
+        .flat_map(|meet| registered[*meet].iter().map(|name| name.to_string()))
+        .collect()
+}
+
+async fn meet_medals(
+    spellings: Vec<String>,
+    years: Vec<String>,
+    members: Vec<String>,
+) -> Result<Vec<(String, usize)>> {
+    let mut placings = Vec::new();
+    {
         // Each spelling is a results meet already (the group's rows name it), so no aliases.
         // `results:byMeet` matches a name exactly, so each spelling is asked for. A meet also
         // answers the results titles linked to it: those spelled like it are the same meet and
@@ -180,12 +226,12 @@ async fn medals_by_year(
             };
             for detail in calculate_medal_details(&members, &edition, &roster) {
                 if detail.movement == Movement::Total && (1..=3).contains(&detail.place) {
-                    medals.entry(meet_year.clone()).or_default()[detail.place - 1] += 1;
+                    placings.push((meet_year.clone(), detail.place));
                 }
             }
         }
     }
-    Ok(medals)
+    Ok(placings)
 }
 
 /// The meets the group's rows come from, one entry per meet whatever its case or spacing: every
@@ -198,7 +244,7 @@ pub fn meet_editions(group_rows: &[LiftingResults]) -> Vec<(Vec<String>, Vec<Str
         if !spellings.contains(&row.meet) {
             spellings.push(row.meet.clone());
         }
-        let row_year = year(&row.date);
+        let row_year = year_of(&row.date).to_string();
         if !years.contains(&row_year) {
             years.push(row_year);
         }
@@ -212,10 +258,6 @@ fn own_title_rows(meet: &str, rows: Vec<LiftingResults>) -> Vec<LiftingResults> 
     rows.into_iter()
         .filter(|row| fold(&row.meet) == fold(meet))
         .collect()
-}
-
-fn year(date: &str) -> String {
-    date.get(..4).unwrap_or(date).to_string()
 }
 
 /// An athlete's best-total row (none while every row is a source error), best Sinclair, results,
@@ -236,7 +278,10 @@ pub fn report(
 ) -> Report {
     let mut years: BTreeMap<String, Vec<&LiftingResults>> = BTreeMap::new();
     for row in group_rows {
-        years.entry(year(&row.date)).or_default().push(row);
+        years
+            .entry(year_of(&row.date).to_string())
+            .or_default()
+            .push(row);
     }
 
     let mut by_year = Table::new();
@@ -433,6 +478,35 @@ mod tests {
             .map(|row| row.name)
             .collect::<Vec<_>>();
         assert_eq!(names, ["Ann", "Bea"]);
+    }
+
+    #[test]
+    fn a_meets_members_are_those_registered_at_the_same_event() {
+        let member = |name: &str, meet: &str| ClubMembership {
+            name: name.into(),
+            meet: meet.into(),
+            club: "Test Barbell".into(),
+            gender: "Women".into(),
+            weight_class: "64".into(),
+            member_id: "1".into(),
+            entry_total: 150.0,
+        };
+        let combined = "2026 USA Weightlifting National Championships";
+        let memberships = vec![
+            member("Ada", "Ohio Open 2026"),
+            member("Bea", "ohio open  2026"),
+            member("Cy", "Another Meet"),
+            member("Di", combined),
+        ];
+        let registered = members_by_meet(&memberships);
+        let at = |meet: &str| members_at(&registered, &[meet.to_string()]);
+        assert_eq!(at("Ohio Open 2026"), ["Ada", "Bea"]);
+        assert_eq!(at("Another Meet"), ["Cy"]);
+        assert_eq!(
+            at("The 2026 National Junior Championships, Powered by Rogue Fitness"),
+            ["Di"]
+        );
+        assert!(at("Some Other Meet").is_empty());
     }
 
     #[test]

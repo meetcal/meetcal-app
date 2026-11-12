@@ -5,6 +5,8 @@
 use anyhow::{Error, Result, anyhow, bail};
 use chrono::NaiveDate;
 
+use crate::utils::stats::Gender;
+
 /// The age categories `--category` takes, as divisions are labelled (`stats::Division`).
 pub const CATEGORIES: &str =
     "Senior, Junior, U17 (or Youth), U15, U13, U11, or Masters 30 … Masters 95";
@@ -17,6 +19,46 @@ pub fn parse_date(value: &str) -> Result<String, String> {
         .or_else(|_| NaiveDate::parse_from_str(value, "%b %d, %Y"))
         .map(|date| date.format("%Y-%m-%d").to_string())
         .map_err(|_| "expected a date as YYYY-MM-DD, like 2026-06-20".to_string())
+}
+
+pub fn parse_name(value: &str) -> Result<String, String> {
+    let name = value.trim();
+    if name.is_empty() {
+        return Err("must not be blank".to_string());
+    }
+    Ok(name.to_string())
+}
+
+pub fn parse_gender(value: &str) -> Result<Gender, String> {
+    Gender::parse(value).ok_or_else(|| "expected Men or Women (or m, f, male, female)".to_string())
+}
+
+pub fn is_gender(row_gender: &str, wanted: Gender) -> bool {
+    Gender::parse(row_gender) == Some(wanted)
+}
+
+pub fn gender_as_matched(row_gender: &str) -> &str {
+    Gender::parse(row_gender).map_or(row_gender, |gender| gender.label())
+}
+
+pub const YEARS: std::ops::RangeInclusive<i32> = 1900..=9999;
+
+pub fn parse_year(value: &str) -> Result<i32, String> {
+    value
+        .trim()
+        .parse::<i32>()
+        .ok()
+        .filter(|year| YEARS.contains(year))
+        .ok_or_else(|| format!("expected a year from {} to {}", YEARS.start(), YEARS.end()))
+}
+
+pub fn plus_years(date: &str, years: i32) -> String {
+    let year: i32 = date.get(..4).and_then(|y| y.parse().ok()).unwrap_or(0);
+    format!("{:04}{}", year + years, date.get(4..).unwrap_or(""))
+}
+
+pub fn year_range(year: i32) -> (String, String) {
+    (format!("{year:04}-01-01"), format!("{year:04}-12-31"))
 }
 
 /// The error for a `--federation` no row in the range has, naming the ones that do; `None`
@@ -132,6 +174,37 @@ pub fn no_match(what: &str, filters: &[Filter], rows: &[Vec<&str>]) -> Error {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn names_are_trimmed_and_must_not_be_blank() {
+        assert_eq!(parse_name("  Carolina "), Ok("Carolina".to_string()));
+        assert!(parse_name("   ").is_err());
+    }
+
+    #[test]
+    fn a_gender_is_read_however_it_is_spelled_and_anything_else_is_refused() {
+        for wanted in ["Men", "men", " m ", "male"] {
+            assert_eq!(parse_gender(wanted), Ok(Gender::Men), "{wanted}");
+        }
+        for wanted in ["Women", "w", "F", "female"] {
+            assert_eq!(parse_gender(wanted), Ok(Gender::Women), "{wanted}");
+        }
+        assert!(parse_gender("mne").is_err());
+        assert!(is_gender("Men", Gender::Men));
+        assert!(is_gender("male", Gender::Men));
+        assert!(!is_gender("Women", Gender::Men));
+        assert!(!is_gender("", Gender::Women));
+    }
+
+    #[test]
+    fn a_year_is_four_digits_from_1900() {
+        assert_eq!(parse_year("2026"), Ok(2026));
+        assert_eq!(parse_year(" 1900 "), Ok(1900));
+        assert_eq!(parse_year("9999"), Ok(9999));
+        for refused in ["1899", "10000", "-5", "26", "twenty"] {
+            assert!(parse_year(refused).is_err(), "{refused}");
+        }
+    }
 
     #[test]
     fn dates_take_iso_or_the_shown_format() {
