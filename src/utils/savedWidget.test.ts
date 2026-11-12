@@ -11,7 +11,7 @@ import {
   syncSavedWidget,
   widgetSessionStartAtMs,
 } from "@/utils/savedWidget";
-import type { SavedSession } from "@/hooks/useSavedSessions";
+import type { SavedSession } from "@/lib/saved-sessions-store";
 
 function session(
   overrides: Partial<SavedSession> & { id: string },

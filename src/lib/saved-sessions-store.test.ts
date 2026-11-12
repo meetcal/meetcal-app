@@ -87,6 +87,14 @@ describe("normalizeStoredSession", () => {
   });
 });
 
+describe("normalizeStoredSession fields", () => {
+  it("keeps only the fields a saved session declares", () => {
+    const stored = { ...session(), notes: 42, athleteNames: "Jane Doe", addedByAnotherBuild: { nested: true } };
+
+    expect(normalizeStoredSession(stored)).toEqual(session());
+  });
+});
+
 describe("parseStoredSessions", () => {
   it("treats missing, malformed and non-array values as empty", () => {
     expect(parseStoredSessions(null)).toEqual([]);

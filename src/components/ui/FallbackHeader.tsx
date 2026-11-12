@@ -1,3 +1,4 @@
+import { stackHeaderOptions } from "@/lib/stack-header-options";
 import { Stack } from "expo-router";
 import React from "react";
 
@@ -25,15 +26,9 @@ export function FallbackHeader({ title = "" }: { title?: string }) {
   return (
     <Stack.Screen
       options={{
-        headerShown: true,
+        ...stackHeaderOptions(colors),
         title,
         headerTitle: undefined,
-        headerBackTitle: "Back",
-        headerBackButtonDisplayMode: "minimal",
-        headerTintColor: colors.text,
-        headerTitleStyle: { color: colors.text },
-        headerStyle: { backgroundColor: colors.background },
-        headerShadowVisible: false,
       }}
     />
   );

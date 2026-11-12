@@ -1,1 +1,1 @@
-export type { SupabaseLiftResult } from "@/data/types/athletes";
+export type { AthleteMeetResult } from "@/data/types/athletes";

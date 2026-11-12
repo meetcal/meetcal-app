@@ -639,6 +639,41 @@ describe("SubscriptionProvider", () => {
     });
   });
 
+  it("hands consumers the same value when the provider re-renders with nothing changed", async () => {
+    mockSecureStore.set(
+      SECURE_KEY,
+      JSON.stringify({ isSubscribed: true, subscriptionType: "quarterly", timestamp: Date.now(), appUserId: "rc_user" }),
+    );
+    const seen: Value[] = [];
+    function Child() {
+      seen.push(useSubscription());
+      return null;
+    }
+    let tree!: ReturnType<typeof create>;
+    await act(async () => {
+      tree = create(
+        <SubscriptionProvider>
+          <Child />
+        </SubscriptionProvider>,
+      );
+    });
+    await flush();
+    const settled = seen[seen.length - 1];
+
+    await act(async () => {
+      tree.update(
+        <SubscriptionProvider>
+          <Child />
+        </SubscriptionProvider>,
+      );
+    });
+
+    expect(seen[seen.length - 1]).toBe(settled);
+    await act(async () => {
+      tree.unmount();
+    });
+  });
+
   it("does nothing after unmounting while the SecureStore read is pending", async () => {
     const getItem = jest.requireMock("expo-secure-store").getItemAsync as jest.Mock;
     let finishRead!: (raw: string | null) => void;

@@ -636,6 +636,8 @@ describe("offline-store corrupt payload handling", () => {
   it.each([
     ["invalid JSON", "{\"not\": "],
     ["valid JSON that is not an array", "{\"sessions\":[]}"],
+    ["a day with no sessions list", "[{\"date\":\"2026-06-20\",\"fullDate\":\"2026-06-20\"}]"],
+    ["a session with no platforms list", "[{\"date\":\"2026-06-20\",\"fullDate\":\"2026-06-20\",\"sessions\":[{\"id\":\"1\",\"number\":1}]}]"],
     ["an empty payload", ""],
   ])("reads no cached schedule when the payload is %s", async (_label, payload) => {
     await saveMeetSchedule("Test Meet", [
@@ -954,9 +956,16 @@ describe("cached lifting result row validation", () => {
     await initStore();
   });
 
+  it("reads rows an older build stored with an id as today's rows, so they compare equal to a fresh answer", async () => {
+    const fresh = { event_id: "evt", meet: "Meet A", date: "2025-01-01", name: "Jane Doe" };
+    await saveMeetLiftingResults("Meet A", [{ id: 41001, ...fresh }] as any);
+
+    await expect(getMeetLiftingResults("Meet A")).resolves.toEqual([fresh]);
+  });
+
   it("drops corrupt rows from a cached results payload instead of throwing", async () => {
     const warn = jest.spyOn(console, "warn").mockImplementation(() => {});
-    const good = { id: 1, event_id: "evt", meet: "Meet A", date: "2025-01-01", name: "Jane Doe" };
+    const good = { event_id: "evt", meet: "Meet A", date: "2025-01-01", name: "Jane Doe" };
     await saveMeetLiftingResults("Meet A", [good, null, 42, "nope", { date: "2025-01-01" }] as any);
 
     await expect(getMeetLiftingResults("Meet A")).resolves.toEqual([good]);
