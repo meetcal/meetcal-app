@@ -4,8 +4,11 @@ use comfy_table::Table;
 use serde::Deserialize;
 
 use crate::utils::backend::{NoArgs, queries, query};
-use crate::utils::filters::{Filter, gender_label, no_match, same_gender};
+use crate::utils::filters::{
+    Filter, gender_as_matched, is_gender, no_match, same_ignoring_case_and_surrounding_space,
+};
 use crate::utils::output::{self, Report};
+use crate::utils::stats::Gender;
 
 #[derive(Debug, Deserialize)]
 pub struct Rankings {
@@ -31,59 +34,19 @@ pub struct IntlRankingsArgs {
     #[arg(long, short = 'a')]
     pub age: String,
 
-    /// Gender: Men or Women
-    #[arg(long, short = 'g')]
-    pub gender: String,
+    /// Gender: Men or Women (m, f, male and female work too)
+    #[arg(long, short = 'g', value_parser = crate::utils::filters::parse_gender)]
+    pub gender: Gender,
 
     /// Meet to search for
-    #[arg(long, short = 'm')]
+    #[arg(long, short = 'm', value_parser = crate::utils::filters::parse_name)]
     pub meet: String,
 }
 
 pub async fn run(args: IntlRankingsArgs) -> Result<()> {
-    // assign args to vars
-    let age = args.age;
-    let gender = args.gender;
-    let meet = args.meet;
-
     let rankings: Vec<Rankings> = query(queries::INTL_RANKINGS, &NoArgs {}).await?;
+    let matching = selected(rankings, &args.age, args.gender, &args.meet)?;
 
-    let (matching, others): (Vec<Rankings>, Vec<Rankings>) =
-        rankings.into_iter().partition(|row| {
-            row.age_category.eq_ignore_ascii_case(age.trim())
-                && same_gender(&row.gender, &gender)
-                && row.meet.eq_ignore_ascii_case(meet.trim())
-        });
-    if matching.is_empty() {
-        let gender = gender_label(&gender);
-        let filters = [
-            Filter {
-                option: "--age",
-                value: &age,
-            },
-            Filter {
-                option: "--gender",
-                value: &gender,
-            },
-            Filter {
-                option: "--meet",
-                value: &meet,
-            },
-        ];
-        let rows: Vec<Vec<&str>> = others
-            .iter()
-            .map(|row| {
-                vec![
-                    row.age_category.as_str(),
-                    row.gender.as_str(),
-                    row.meet.as_str(),
-                ]
-            })
-            .collect();
-        return Err(no_match("international rankings", &filters, &rows));
-    }
-
-    // push to table
     let mut table = Table::new();
     table.set_header(vec!["Rank", "Name", "Class", "Percent A", "Total"]);
 
@@ -102,7 +65,47 @@ pub async fn run(args: IntlRankingsArgs) -> Result<()> {
     Ok(())
 }
 
-/// Rankings best (rank 1) first. The server answers the highest rank number first.
+pub fn selected(
+    rankings: Vec<Rankings>,
+    age: &str,
+    gender: Gender,
+    meet: &str,
+) -> Result<Vec<Rankings>> {
+    let same = same_ignoring_case_and_surrounding_space;
+    let (matching, others): (Vec<Rankings>, Vec<Rankings>) =
+        rankings.into_iter().partition(|row| {
+            same(&row.age_category, age) && is_gender(&row.gender, gender) && same(&row.meet, meet)
+        });
+    if matching.is_empty() {
+        let filters = [
+            Filter {
+                option: "--age",
+                value: age,
+            },
+            Filter {
+                option: "--gender",
+                value: gender.label(),
+            },
+            Filter {
+                option: "--meet",
+                value: meet,
+            },
+        ];
+        let rows: Vec<Vec<&str>> = others
+            .iter()
+            .map(|row| {
+                vec![
+                    row.age_category.as_str(),
+                    gender_as_matched(&row.gender),
+                    row.meet.as_str(),
+                ]
+            })
+            .collect();
+        return Err(no_match("international rankings", &filters, &rows));
+    }
+    Ok(matching)
+}
+
 pub fn best_first(mut rows: Vec<Rankings>) -> Vec<Rankings> {
     rows.sort_by(|a, b| a.ranking.total_cmp(&b.ranking));
     rows
@@ -134,5 +137,27 @@ mod tests {
         ]);
         let names: Vec<&str> = rows.iter().map(|row| row.name.as_str()).collect();
         assert_eq!(names, ["One", "Nine", "Ten"]);
+    }
+
+    #[test]
+    fn rankings_match_ignoring_case_and_space_and_a_miss_names_the_filter_at_fault() {
+        let rankings = || vec![ranked(1.0, "One"), ranked(2.0, "Two")];
+        let matched = selected(rankings(), " senior", Gender::Men, "worlds ").unwrap();
+        assert_eq!(matched.len(), 2);
+        let error = selected(rankings(), "Senior", Gender::Women, "Worlds")
+            .expect_err("matched nothing")
+            .to_string();
+        assert_eq!(
+            error,
+            "No international rankings for --gender \"Women\" with --age Senior. Try one of: Men"
+        );
+        let error = selected(rankings(), "Senior", Gender::Men, "World")
+            .expect_err("matched nothing")
+            .to_string();
+        assert_eq!(
+            error,
+            "No international rankings for --meet \"World\" with --age Senior --gender Men. Try \
+             one of: Worlds"
+        );
     }
 }

@@ -3,13 +3,9 @@ use comfy_table::Table;
 use crate::types::lifting_results::LiftingResults;
 use crate::utils::stats::{Lift, attempt_habits, percent};
 
-/// Make rates by attempt number, then by lift, as two tables. An attempt recorded as 0 was not
-/// taken and is not counted (`stats::attempt_habits`, the server's `makeRatePercent`); with no
-/// attempts taken a rate is `N/A`.
-pub fn make_rate_tables(results: &[LiftingResults]) -> (Table, Table) {
-    let rows: Vec<&LiftingResults> = results.iter().collect();
-    let snatch = attempt_habits(&rows, Lift::Snatch);
-    let cj = attempt_habits(&rows, Lift::CleanAndJerk);
+pub fn make_rate_tables(rows: &[&LiftingResults]) -> (Table, Table) {
+    let snatch = attempt_habits(rows, Lift::Snatch);
+    let cj = attempt_habits(rows, Lift::CleanAndJerk);
 
     let mut by_attempt = Table::new();
     by_attempt.set_header(vec!["Sn1 Make Rate", "Sn2", "Sn3", "CJ1", "CJ2", "CJ3"]);
@@ -44,7 +40,7 @@ mod tests {
 
     #[test]
     fn untaken_attempts_are_not_makes() {
-        let rows = vec![row(
+        let rows = [row(
             "A",
             "2026-01-01",
             "M",
@@ -53,7 +49,7 @@ mod tests {
             [100.0, -105.0, 0.0],
             [130.0, 0.0, 0.0],
         )];
-        let (by_attempt, by_lift) = make_rate_tables(&rows);
+        let (by_attempt, by_lift) = make_rate_tables(&rows.iter().collect::<Vec<_>>());
         let json = Report::new()
             .table("by_attempt", by_attempt)
             .table("by_lift", by_lift)

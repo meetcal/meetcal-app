@@ -1,5 +1,6 @@
 // Pure parts of `scrapers/sport80.ts` (port of `usaw/sport80_api/update_supabase_from_sport80.py`).
 
+import { isRecord, kindOf } from '../../lib/json';
 import { pyFloat } from '../lib/numbers';
 
 export const USAW_DOMAIN = 'https://usaweightlifting.sport80.com';
@@ -7,17 +8,8 @@ export const RECENT_EVENTS = 30;
 
 type Dict = Record<string, unknown>;
 
-const isDict = (value: unknown): value is Dict => typeof value === 'object' && value !== null && !Array.isArray(value);
-
-/** What the sync reads of the site's `window.env`: where the API is, and its public key. */
 export type Sport80Env = { RANKINGS_DOMAIN_URL: string; SERVICES_API_PUBLIC_KEY: string };
 
-/**
- * The site's `window.env` (the JSON text of the object), checked for the two
- * values the sync uses. Without them every request would fail one by one
- * (`Invalid URL`, or a 401 for each event with the key "undefined"); this
- * fails once, naming what the page no longer gives.
- */
 export function readSport80Env(json: string): Sport80Env {
   let env: unknown;
   try {
@@ -25,9 +17,9 @@ export function readSport80Env(json: string): Sport80Env {
   } catch {
     throw new Error('sport80: window.env on the rankings page is not JSON');
   }
-  if (!isDict(env)) throw new Error('sport80: window.env on the rankings page is not an object');
+  if (!isRecord(env)) throw new Error('sport80: window.env on the rankings page is not an object');
   const value = (key: keyof Sport80Env): string => {
-    const found = env[key];
+    const found = typeof env[key] === 'number' ? String(env[key]) : env[key];
     if (typeof found !== 'string' || found.trim() === '') throw new Error(`sport80: window.env has no ${key} (the rankings page changed?)`);
     return found;
   };
@@ -36,19 +28,17 @@ export function readSport80Env(json: string): Sport80Env {
   return { RANKINGS_DOMAIN_URL, SERVICES_API_PUBLIC_KEY: value('SERVICES_API_PUBLIC_KEY') };
 }
 
-/** A table response's body: an object, or the request fails saying what came instead. */
 export function readTablePage(body: unknown): Dict {
-  if (!isDict(body)) throw new Error(`the table response is ${Array.isArray(body) ? 'a list' : body === null ? 'null' : `a ${typeof body}`}, not an object`);
+  if (!isRecord(body)) throw new Error(`the table response is ${kindOf(body)}, not an object`);
   return body;
 }
 
-/** A table page's rows (`data`): none when absent, each an object; anything else is a changed payload. */
 export function pageRows(page: Dict): Dict[] {
   const { data } = page;
   if (data === undefined || data === null) return [];
-  if (!Array.isArray(data)) throw new Error(`the table's data is ${typeof data === 'object' ? 'an object' : `a ${typeof data}`}, not a list of rows`);
+  if (!Array.isArray(data)) throw new Error(`the table's data is ${kindOf(data)}, not a list of rows`);
   return data.map((row: unknown, i) => {
-    if (!isDict(row)) throw new Error(`the table's row ${i} is not an object`);
+    if (!isRecord(row)) throw new Error(`the table's row ${i} is not an object`);
     return row;
   });
 }
@@ -121,18 +111,22 @@ export function newestEvents(events: Dict[], count = RECENT_EVENTS): Dict[] {
     .map(({ event }) => event);
 }
 
-/** The event id: the last segment of `action[0].route`, else `id`. */
+function firstAction(event: Dict): unknown {
+  const actions: unknown = event.action;
+  if (!Array.isArray(actions)) return undefined;
+  const [first]: unknown[] = actions;
+  return first;
+}
+
 export function eventIdOf(event: Dict): string | null {
-  const action = event.action;
-  if (Array.isArray(action) && action[0] && typeof action[0] === 'object' && typeof (action[0] as Dict).route === 'string') {
-    return ((action[0] as Dict).route as string).split('/').pop()!.trim();
-  }
+  const action = firstAction(event);
+  if (isRecord(action) && typeof action.route === 'string') return (action.route.split('/').pop() ?? '').trim();
   return event.id ? String(event.id).trim() : null;
 }
 
 export function hasResultsRoute(event: Dict): boolean {
-  const action = event.action;
-  return Array.isArray(action) && !!action[0] && typeof action[0] === 'object' && 'route' in (action[0] as Dict);
+  const action = firstAction(event);
+  return isRecord(action) && 'route' in action;
 }
 
 /** Python `float(x) if x is not None else None`; a value float() rejects makes the row invalid. */

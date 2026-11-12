@@ -3,7 +3,7 @@ import { internal } from './_generated/api';
 import { action, internalMutation, mutation, query, type QueryCtx } from './_generated/server';
 import { isMeetCalToken } from './lib/access';
 import { apiError } from './lib/validation';
-import { mintApiToken, tokensConfigured, type IssuedToken } from './apiTokens';
+import { recordTokenEvictingTheOldest, signApiToken, tokenRow, tokensConfigured, type IssuedToken } from './apiTokens';
 
 /**
  * Device-code login for the `meetcal` CLI, so it signs in without a browser
@@ -26,6 +26,7 @@ import { mintApiToken, tokensConfigured, type IssuedToken } from './apiTokens';
 export const DEVICE_LOGIN_TTL_MS = 10 * 60 * 1000;
 /** How often the CLI polls, in seconds. Polling sooner answers `slow_down`. */
 export const DEVICE_LOGIN_POLL_INTERVAL_S = 5;
+const POLL_TIMER_JITTER_MS = 1000;
 export const MAX_DEVICE_NAME_LENGTH = 64;
 /** Expired logins one `start` deletes. */
 export const DEVICE_LOGIN_PRUNE_BATCH = 20;
@@ -156,18 +157,17 @@ export const start = action({
 type PollStatus = 'pending' | 'slow_down' | 'denied' | 'expired' | 'collected';
 type Claim = { status: PollStatus } | { status: 'approved'; userId: string };
 
-/**
- * Where a login stands, for its device code's hash. An approved login is
- * handed over once and kept as `collected` until it expires, so a poll after
- * a lost answer is told the token went out, not that the code expired.
- */
+async function loginByDeviceCodeHash(ctx: QueryCtx, deviceCodeHash: string) {
+  return await ctx.db
+    .query('device_logins')
+    .withIndex('by_deviceCodeHash', (q) => q.eq('deviceCodeHash', deviceCodeHash))
+    .first();
+}
+
 export const claim = internalMutation({
   args: { deviceCodeHash: v.string(), now: v.number() },
   handler: async (ctx, { deviceCodeHash, now }): Promise<Claim> => {
-    const row = await ctx.db
-      .query('device_logins')
-      .withIndex('by_deviceCodeHash', (q) => q.eq('deviceCodeHash', deviceCodeHash))
-      .first();
+    const row = await loginByDeviceCodeHash(ctx, deviceCodeHash);
     if (!row) return { status: 'expired' };
     if (row.expiresAt <= now) {
       await ctx.db.delete(row._id);
@@ -178,54 +178,41 @@ export const claim = internalMutation({
       return { status: 'denied' };
     }
     if (row.status === 'collected') return { status: 'collected' };
-    if (row.status === 'approved' && row.approvedBy !== undefined) {
-      await ctx.db.patch(row._id, { status: 'collected' });
-      return { status: 'approved', userId: row.approvedBy };
-    }
-    // A poll is allowed a second early, for timer jitter.
-    const tooSoon = row.lastPolledAt !== undefined && now - row.lastPolledAt < DEVICE_LOGIN_POLL_INTERVAL_S * 1000 - 1000;
+    if (row.status === 'approved' && row.approvedBy !== undefined) return { status: 'approved', userId: row.approvedBy };
+    const earliestNextPollMs = DEVICE_LOGIN_POLL_INTERVAL_S * 1000 - POLL_TIMER_JITTER_MS;
+    const tooSoon = row.lastPolledAt !== undefined && now - row.lastPolledAt < earliestNextPollMs;
     await ctx.db.patch(row._id, { lastPolledAt: now });
     return { status: tooSoon ? 'slow_down' : 'pending' };
   },
 });
 
-/**
- * Puts a login `claim` handed over back to `approved`, for a poll whose token
- * could not be minted: `collected` must mean a token was issued.
- */
-export const unclaim = internalMutation({
-  args: { deviceCodeHash: v.string() },
-  handler: async (ctx, { deviceCodeHash }) => {
-    const row = await ctx.db
-      .query('device_logins')
-      .withIndex('by_deviceCodeHash', (q) => q.eq('deviceCodeHash', deviceCodeHash))
-      .first();
-    if (row?.status === 'collected') await ctx.db.patch(row._id, { status: 'approved' });
+export const collectWithToken = internalMutation({
+  args: { deviceCodeHash: v.string(), now: v.number(), token: v.object(tokenRow) },
+  handler: async (ctx, { deviceCodeHash, now, token }): Promise<'approved' | 'denied' | 'expired' | 'collected'> => {
+    const row = await loginByDeviceCodeHash(ctx, deviceCodeHash);
+    if (!row || row.expiresAt <= now) return 'expired';
+    if (row.status === 'approved' && row.approvedBy === token.userId) {
+      await recordTokenEvictingTheOldest(ctx, token);
+      await ctx.db.patch(row._id, { status: 'collected' });
+      return 'approved';
+    }
+    if (row.status === 'denied') {
+      await ctx.db.delete(row._id);
+      return 'denied';
+    }
+    return row.status === 'collected' ? 'collected' : 'expired';
   },
 });
 
-/**
- * The CLI's poll. Answers `{ status }`: `pending`, `slow_down` (wait
- * `interval` plus five seconds), `denied`, `expired`, `approved` with the
- * token (`{ token, tokenId, expiresAt }`), answered once, or `collected`: it
- * was answered already, and that answer was lost (start again). A poll whose
- * token cannot be minted fails and leaves the login approved, so the next
- * poll tries again.
- */
 export const poll = action({
   args: { deviceCode: v.string() },
   handler: async (ctx, { deviceCode }): Promise<{ status: PollStatus } | ({ status: 'approved' } & IssuedToken)> => {
     const deviceCodeHash = await sha256Hex(deviceCode);
-    const answer = await ctx.runMutation(internal.deviceLogin.claim, { deviceCodeHash, now: Date.now() });
-    if (answer.status !== 'approved') return { status: answer.status };
-    try {
-      return { status: 'approved', ...(await mintApiToken(ctx, answer.userId, 'cli')) };
-    } catch (error) {
-      // No token went out: the login is approved again, so the next poll
-      // tries again rather than being told it was collected.
-      await ctx.runMutation(internal.deviceLogin.unclaim, { deviceCodeHash });
-      throw error;
-    }
+    const standing = await ctx.runMutation(internal.deviceLogin.claim, { deviceCodeHash, now: Date.now() });
+    if (standing.status !== 'approved') return { status: standing.status };
+    const { row, ...issued } = await signApiToken(standing.userId, 'cli');
+    const collected = await ctx.runMutation(internal.deviceLogin.collectWithToken, { deviceCodeHash, now: Date.now(), token: row });
+    return collected === 'approved' ? { status: 'approved', ...issued } : { status: collected };
   },
 });
 
