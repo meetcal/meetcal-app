@@ -8,7 +8,7 @@ use std::time::Duration;
 pub(super) const MEET_SUBMISSION_UPLOAD_URL: &str = "meetSubmissions:generateUploadUrl";
 pub(super) const MEET_SUBMISSION_SUBMIT: &str = "meetSubmissions:submit";
 
-pub(crate) const UPLOAD_TIMEOUT: Duration = Duration::from_secs(180);
+pub(crate) const UPLOAD_SILENCE_LIMIT: Duration = Duration::from_secs(120);
 
 #[derive(Clone, Debug, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -45,12 +45,11 @@ pub(crate) async fn upload_meet_submission_file(
     content_type: &str,
     bytes: Vec<u8>,
 ) -> Result<String> {
-    let reply = crate::utils::http::post(crate::utils::http::Post {
+    let reply = crate::utils::http::upload(crate::utils::http::Upload {
         url: upload_url,
-        body: js_sys::Uint8Array::from(bytes.as_slice()).into(),
+        body: &bytes,
         content_type,
-        bearer: None,
-        timeout: UPLOAD_TIMEOUT,
+        silence_limit: UPLOAD_SILENCE_LIMIT,
     })
     .await
     .map_err(|failure| transport_error("file upload", &failure))?;

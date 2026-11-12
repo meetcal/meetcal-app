@@ -8,4 +8,6 @@ disallowed-methods = [
   { path = "web_sys::AbortController::abort", reason = "only `utils::http::post` times a request out" },
   { path = "web_sys::AbortSignal::timeout_with_u32", reason = "only `utils::http::post` times a request out" },
   { path = "web_sys::AbortSignal::timeout_with_f64", reason = "only `utils::http::post` times a request out" },
+  { path = "web_sys::XmlHttpRequest::new", reason = "every upload goes through `utils::http::upload`, which cancels it once its progress stops" },
+  { path = "web_sys::XmlHttpRequest::abort", reason = "only `utils::http::upload` cancels an upload" },
 ]

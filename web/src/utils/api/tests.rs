@@ -855,6 +855,19 @@ fn files_already_in_a_submission_are_known_by_the_servers_code_not_its_words() {
 }
 
 #[test]
+fn an_upload_is_cancelled_after_the_same_silence_as_the_apps() {
+    let app = include_str!("../../../../src/lib/meet-submission.ts");
+    let millis = UPLOAD_SILENCE_LIMIT.as_millis();
+    let spelled = format!("{}_{:03}", millis / 1000, millis % 1000);
+    assert!(
+        app.contains(&format!(
+            "MEET_SUBMISSION_UPLOAD_SILENCE_LIMIT_MS = {spelled};"
+        )),
+        "UPLOAD_SILENCE_LIMIT differs from the app's"
+    );
+}
+
+#[test]
 fn the_already_submitted_code_is_the_servers() {
     let server = include_str!("../../../../convex/lib/meetSubmissions.ts");
     assert!(server.contains(&format!(
