@@ -1,3 +1,4 @@
+import { itemAt } from '@/test-support/checked-access';
 const plugin = require("./withOneSignalSuppressLaunchURLs");
 
 describe("withOneSignalSuppressLaunchURLs (#288)", () => {
@@ -17,7 +18,7 @@ describe("withOneSignalSuppressLaunchURLs (#288)", () => {
     };
     plugin.setSuppressLaunchURLsManifest(manifest);
     plugin.setSuppressLaunchURLsManifest(manifest);
-    const metaData = manifest.manifest.application[0]["meta-data"] as { $: Record<string, string> }[];
+    const metaData = itemAt(manifest.manifest.application, 0)["meta-data"] as { $: Record<string, string> }[];
     expect(metaData).toEqual([
       { $: { "android:name": "com.onesignal.suppressLaunchURLs", "android:value": "true" } },
     ]);

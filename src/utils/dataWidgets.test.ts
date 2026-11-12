@@ -24,6 +24,7 @@ import {
 } from "@/utils/dataWidgets";
 import type { IntlRanking } from "@/lib/database/fetchIntlRankings";
 import type { QualifyingTotalsData } from "@/lib/database/fetch-qualifying-totals";
+import { itemAt } from "@/test-support/checked-access";
 
 jest.mock("@react-native-async-storage/async-storage", () => ({
   getItem: jest.fn(),
@@ -151,7 +152,7 @@ describe("data widget payloads", () => {
     // payload itself carries up to 20 rows regardless of maxRows.
     expect(rankingsPayload.maxRows).toBe(7);
     expect(rankingsPayload.rows).toHaveLength(8);
-    expect(rankingsPayload.rows[0].trailing).toBe("99.95%");
+    expect(itemAt(rankingsPayload.rows, 0).trailing).toBe("99.95%");
 
     // The payload caps the underlying data at 20 rows even when more match.
     const cappedPayload = buildIntlRankingsWidgetPayload(
@@ -466,12 +467,12 @@ describe("widget filter policy", () => {
         "gender",
         "ageGroup",
       ]);
-      expect(sections[0].options.map((option) => option.value)).toEqual([
+      expect(itemAt(sections, 0).options.map((option) => option.value)).toEqual([
         "American Open",
         "Nationals",
       ]);
-      expect(sections[2].dependsOn).toEqual(["event"]);
-      expect(sections[2].options).toEqual([
+      expect(itemAt(sections, 2).dependsOn).toEqual(["event"]);
+      expect(itemAt(sections, 2).options).toEqual([
         { value: "Senior", label: "Senior" },
       ]);
     });
@@ -483,10 +484,10 @@ describe("widget filter policy", () => {
         "ageCategory",
         "gender",
       ]);
-      expect(sections[1].options).toEqual([
+      expect(itemAt(sections, 1).options).toEqual([
         { value: "Senior", label: "Senior" },
       ]);
-      expect(sections[2].options.map((option) => option.value)).toEqual([
+      expect(itemAt(sections, 2).options.map((option) => option.value)).toEqual([
         "Men",
         "Women",
       ]);
@@ -494,9 +495,9 @@ describe("widget filter policy", () => {
 
     it("renders empty option lists rather than throwing with no data", () => {
       expect(
-        buildQualifyingTotalsFilterSections({}, "")[0].options,
+        itemAt(buildQualifyingTotalsFilterSections({}, ""), 0).options,
       ).toEqual([]);
-      expect(buildIntlRankingsFilterSections([], "")[0].options).toEqual([]);
+      expect(itemAt(buildIntlRankingsFilterSections([], ""), 0).options).toEqual([]);
     });
   });
 });
