@@ -50,6 +50,27 @@ jobs:
       - name: Run tests
         run: cargo test --locked
 
+  release-size:
+    name: Release binary size
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.99.1"
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: cli
+          key: release
+
+      - name: Build the release binary
+        run: cargo build --release --locked
+
+      - name: Check the release binary and its tarball against their size budgets
+        run: scripts/check-size.sh target/release/meetcal
+
   dependency-audit:
     name: Dependency audit
     runs-on: ubuntu-latest
