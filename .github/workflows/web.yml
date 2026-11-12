@@ -5,9 +5,9 @@ name: Web CI
 on:
   push:
     branches: [main, master]
-    paths: ["web/**", "convex/**", "fixtures/wire/**", ".github/workflows/web.yml"]
+    paths: ["web/**", "convex/**", "fixtures/wire/**", "cli/README.md", ".github/workflows/web.yml"]
   pull_request:
-    paths: ["web/**", "convex/**", "fixtures/wire/**", ".github/workflows/web.yml"]
+    paths: ["web/**", "convex/**", "fixtures/wire/**", "cli/README.md", ".github/workflows/web.yml"]
   workflow_dispatch:
 
 permissions:

@@ -31,6 +31,7 @@ The repository root's `AGENTS.md` applies here too: its hard rules (worktrees, n
 | `src/types/` | Answer types shared across commands |
 | `tests/` | Integration tests: argument parsing and help per command, and, against a local HTTP server (`tests/support/`), the retry policy, the access pass and `login`/`logout` |
 | `scripts/build-release.sh` | Local release builds, for smoke testing |
+| `scripts/check-size.sh` | The release binary's and its tarball's size budgets (Linux x64), checked by CI and by the release workflow before upload; raising a budget is an edit here in the pull request that needs it |
 | `scripts/homebrew-formula.sh` | Writes the Homebrew tap's formula from a release's version and `SHA256SUMS`; the release workflow runs it |
 | `docs/` | [architecture.md](docs/architecture.md), [testing.md](docs/testing.md), [releasing.md](docs/releasing.md) |
 
@@ -62,12 +63,12 @@ Run from this folder.
 
 List what you ran in the PR's test plan, and anything you could not run and why. Unit tests use answer shapes written by hand, and CI never calls a deployment, so this local run is the only check that a command still works against live data.
 
-CI (`.github/workflows/cli.yml` at the root) runs `cargo fmt --check`, `clippy -D warnings`, `cargo test --locked` and `cargo audit` (also weekly, since advisories arrive without a change here). The release workflow runs the tests and the audit again before it builds.
+CI (`.github/workflows/cli.yml` at the root) runs `cargo fmt --check`, `clippy -D warnings`, `cargo test --locked` and `cargo audit` (also weekly, since advisories arrive without a change here), and the CLI Size workflow (`.github/workflows/cli-size.yml`, on changes to `cli/`) builds the release binary to check it against `scripts/check-size.sh`'s budgets (`cargo build --release` then `scripts/check-size.sh target/release/meetcal` runs the same check locally). The release workflow runs the tests and the audit again before it builds, and the size check on the Linux x64 archive before it uploads.
 
 ## Code Quality
 
 - Commands print through `src/utils/output.rs` (`output::emit(Report::…)`), never `println!`: that is what makes `--format json|csv` work for every command.
-- Every data call goes through `src/utils/backend.rs`: add a query to `queries`, never build a Convex URL in a command. Arguments are the query's own, camelCase (`serde_json::json!({ "ageCategory": age })`).
+- Every data call goes through `src/utils/backend.rs`: add a query to `queries`, never build a Convex URL in a command. A read times out when no answer comes or its bytes stop (`Sending` in `src/utils/transport.rs`); `clippy.toml`'s `disallowed-methods` refuses reqwest's whole-request `timeout` outside the transport and the upgrade download. Arguments are the query's own, camelCase (`serde_json::json!({ "ageCategory": age })`).
 - Name lists travel as JSON arrays, in batches of at most 100 names (the queries' limit); the commands batch 50.
 - Answer types are `serde` structs. A field that some answers lack (start-list rows carry no meet) is `#[serde(default)]` or an `Option`; free-form values from the data (platform names) are `String`, not enums.
 - Keep network code out of report logic: commands fetch, then call pure functions (stats, comparisons, meet matching) that tests can drive with fixture rows.

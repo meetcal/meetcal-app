@@ -14,7 +14,7 @@ serde = { version = "1.0.228", features = ["derive"] }
 serde_json = { version = "1.0.149", features = ["raw_value"] }
 wasm-bindgen = "0.2.103"
 wasm-bindgen-futures = "0.4.53"
-web-sys = { version = "0.3.103", features = ["AbortController", "AbortSignal", "Blob", "Clipboard", "Document", "Element", "File", "FileList", "Headers", "HtmlElement", "HtmlInputElement", "Navigator", "RequestInit", "Response", "Window"] }
+web-sys = { version = "0.3.103", features = ["AbortController", "AbortSignal", "Blob", "Clipboard", "Document", "Element", "File", "FileList", "Headers", "HtmlElement", "HtmlInputElement", "Navigator", "RequestInit", "Response", "Window", "XmlHttpRequest", "XmlHttpRequestEventTarget", "XmlHttpRequestUpload"] }
 
 # The site ships as one Wasm binary; size is what a visitor waits for (#203).
 # Trunk also runs wasm-opt -Oz on it (`data-wasm-opt` in index.html).

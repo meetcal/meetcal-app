@@ -1,6 +1,7 @@
 use std::cell::Cell;
 use std::rc::Rc;
 use std::time::Duration;
+use wasm_bindgen::closure::Closure;
 use wasm_bindgen::{JsCast, JsValue};
 use wasm_bindgen_futures::JsFuture;
 
@@ -29,6 +30,37 @@ pub(crate) struct Post<'a> {
     pub timeout: Duration,
 }
 
+pub(crate) struct Upload<'a> {
+    pub url: &'a str,
+    pub body: &'a [u8],
+    pub content_type: &'a str,
+    pub silence_limit: Duration,
+}
+
+pub(crate) const STALL_CHECK_EVERY: Duration = Duration::from_secs(1);
+
+pub(crate) struct SilenceWatch {
+    limit_ms: f64,
+    last_progress_ms: Cell<f64>,
+}
+
+impl SilenceWatch {
+    pub(crate) fn started_at(now_ms: f64, limit: Duration) -> Self {
+        Self {
+            limit_ms: limit.as_secs_f64() * 1000.0,
+            last_progress_ms: Cell::new(now_ms),
+        }
+    }
+
+    pub(crate) fn progressed(&self, now_ms: f64) {
+        self.last_progress_ms.set(now_ms);
+    }
+
+    pub(crate) fn stalled_at(&self, now_ms: f64) -> bool {
+        now_ms - self.last_progress_ms.get() >= self.limit_ms
+    }
+}
+
 pub(crate) struct OnDrop<F: FnOnce()>(Option<F>);
 
 impl<F: FnOnce()> OnDrop<F> {
@@ -53,6 +85,10 @@ fn described(error: JsValue) -> String {
         .unwrap_or_else(|| format!("{error:?}"))
 }
 
+#[expect(
+    clippy::disallowed_methods,
+    reason = "the one place the site sends a request and times it out"
+)]
 pub(crate) async fn post(request: Post<'_>) -> Result<Reply, Failure> {
     let window = web_sys::window().ok_or_else(|| Failure::Unreachable("no window".to_owned()))?;
     let abort =
@@ -123,11 +159,99 @@ pub(crate) async fn post(request: Post<'_>) -> Result<Reply, Failure> {
     .await
 }
 
+#[expect(
+    clippy::disallowed_methods,
+    reason = "the one place the site uploads a file, and cancels it once its progress stops"
+)]
+pub(crate) async fn upload(request: Upload<'_>) -> Result<Reply, Failure> {
+    let unreachable = |error: JsValue| Failure::Unreachable(described(error));
+    let xhr = web_sys::XmlHttpRequest::new().map_err(unreachable)?;
+    let sending = xhr.upload().map_err(unreachable)?;
+    xhr.open_with_async("POST", request.url, true)
+        .map_err(unreachable)?;
+    xhr.set_request_header("Content-Type", request.content_type)
+        .map_err(unreachable)?;
+    let silence = Rc::new(SilenceWatch::started_at(
+        js_sys::Date::now(),
+        request.silence_limit,
+    ));
+    let progressed = Closure::<dyn FnMut()>::new({
+        let silence = Rc::clone(&silence);
+        move || silence.progressed(js_sys::Date::now())
+    });
+    sending.set_onprogress(Some(progressed.as_ref().unchecked_ref()));
+    xhr.set_onprogress(Some(progressed.as_ref().unchecked_ref()));
+    let settled = js_sys::Promise::new(&mut |resolve, reject| {
+        xhr.set_onload(Some(&resolve));
+        xhr.set_onerror(Some(&reject));
+        xhr.set_onabort(Some(&reject));
+    });
+    let timed_out = Rc::new(Cell::new(false));
+    let watch = leptos::prelude::set_interval_with_handle(
+        {
+            let xhr = xhr.clone();
+            let timed_out = Rc::clone(&timed_out);
+            let silence = Rc::clone(&silence);
+            move || {
+                if !timed_out.get() && silence.stalled_at(js_sys::Date::now()) {
+                    timed_out.set(true);
+                    let _ = xhr.abort();
+                }
+            }
+        },
+        STALL_CHECK_EVERY,
+    )
+    .ok();
+    let _abandoned_or_settled = OnDrop::new({
+        let xhr = xhr.clone();
+        move || {
+            if let Some(watch) = watch {
+                watch.clear();
+            }
+            sending.set_onprogress(None);
+            xhr.set_onprogress(None);
+            let _ = xhr.abort();
+        }
+    });
+    xhr.send_with_opt_u8_array(Some(request.body))
+        .map_err(unreachable)?;
+    let outcome = JsFuture::from(settled).await;
+    drop(progressed);
+    match outcome {
+        Err(_) if timed_out.get() => Err(Failure::TimedOut),
+        Err(_) => Err(Failure::Unreachable(
+            "the upload could not reach the server".to_owned(),
+        )),
+        Ok(_) => Ok(Reply {
+            status: xhr.status().map_err(unreachable)?,
+            retry_after: xhr.get_response_header("Retry-After").ok().flatten(),
+            body: xhr.response_text().ok().flatten().unwrap_or_default(),
+        }),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::OnDrop;
     use futures::FutureExt;
     use std::{cell::Cell, rc::Rc};
+
+    #[test]
+    fn an_upload_with_no_progress_stalls_once_the_whole_limit_has_passed() {
+        let silence = super::SilenceWatch::started_at(0.0, std::time::Duration::from_secs(120));
+        assert!(!silence.stalled_at(119_999.0));
+        assert!(silence.stalled_at(120_000.0));
+    }
+
+    #[test]
+    fn each_progress_restarts_the_limit_so_a_long_upload_that_keeps_moving_never_stalls() {
+        let silence = super::SilenceWatch::started_at(0.0, std::time::Duration::from_secs(120));
+        silence.progressed(100_000.0);
+        assert!(!silence.stalled_at(200_000.0));
+        silence.progressed(200_000.0);
+        assert!(!silence.stalled_at(300_000.0));
+        assert!(silence.stalled_at(320_000.0));
+    }
 
     #[test]
     fn a_request_dropped_while_in_flight_is_cancelled_once() {

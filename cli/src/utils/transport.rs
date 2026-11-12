@@ -25,6 +25,10 @@ const FUNCTION_FAILED: u16 = 560;
 
 static CLIENT: OnceLock<Client> = OnceLock::new();
 
+#[expect(
+    clippy::disallowed_methods,
+    reason = "the transport sets the one whole-request ceiling, behind its answer and stall timers"
+)]
 pub(crate) fn client() -> Result<&'static Client> {
     if let Some(client) = CLIENT.get() {
         return Ok(client);
