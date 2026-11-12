@@ -42,11 +42,12 @@ pub const TOP_SINCLAIR: usize = 10;
 )]
 pub struct MeetResultsArgs {
     /// Meet to search for
+    #[arg(value_parser = crate::utils::filters::parse_name)]
     pub name: String,
 
     /// The edition to show, by year, for a meet held under one name every year (default: the
     /// latest)
-    #[arg(long)]
+    #[arg(long, short = 'y', value_parser = crate::utils::filters::parse_year)]
     pub year: Option<i32>,
 
     /// Skip the comparison with the meet's previous editions (a few lookups)
