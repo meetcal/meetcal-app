@@ -23,7 +23,7 @@ pub async fn run(args: WsosArgs) -> Result<()> {
     let Some(wso) = args.wso else {
         let records = wsos().await?;
         let registrations = registration_wsos().await?;
-        output::emit(Report::single("wsos", table(&registrations, &records)));
+        output::emit(report(&registrations, &records));
         return Ok(());
     };
 
@@ -32,11 +32,16 @@ pub async fn run(args: WsosArgs) -> Result<()> {
         let message = format!("No records found for WSO \"{wso}\"");
         return Err(not_found(NameKind::RecordWso, &wso, message).await);
     }
-    output::emit(Report::single(
-        "age_groups",
-        output::list("Age Group", groups),
-    ));
+    output::emit(age_groups_report(groups));
     Ok(())
+}
+
+pub fn report(registrations: &[String], records: &[String]) -> Report {
+    Report::single("wsos", table(registrations, records))
+}
+
+pub fn age_groups_report(groups: Vec<String>) -> Report {
+    Report::single("age_groups", output::list("Age Group", groups))
 }
 
 /// Every WSO name, as registrations name it (what `wso-wrapped`, `wso-compare`, `wso-trends`,

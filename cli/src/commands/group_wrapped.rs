@@ -6,7 +6,8 @@ use comfy_table::Table;
 use serde::Deserialize;
 
 use crate::commands::compare::{
-    MetricComparison, MetricUnit, comparison_tables, format_metric, percent_change,
+    MetricComparison, MetricUnit, YearsWithResults, comparison_tables, format_metric,
+    percent_change,
 };
 use crate::types::lifting_results::LiftingResults;
 use crate::types::wrapped::WrappedStats;
@@ -521,7 +522,11 @@ pub fn group_comparison_report(
             ]
         })
         .collect();
-    let (table, data) = comparison_tables(previous_year, current_year, rows);
+    let with_results = YearsWithResults {
+        previous: previous.athlete_count > 0,
+        current: current.athlete_count > 0,
+    };
+    let (table, data) = comparison_tables(previous_year, current_year, rows, with_results);
     Report::new()
         .table_with_data("comparison", table, data)
         .titled(format!(
@@ -678,6 +683,25 @@ mod tests {
             result("Jane", "Meet", "2026-01-01", 170.0),
             result("Jane", "Meet", "2027-01-01", 180.0),
         ]
+    }
+
+    #[test]
+    fn a_year_with_no_results_exports_null_for_its_values_and_the_difference() {
+        let with_results =
+            calculate_group_stats(&[result("Jane Doe", "Meet One", "2025-01-01", 170.0)]);
+        let without = calculate_group_stats(&[]);
+
+        let exported =
+            group_comparison_report("Club", "Test Club", 2025, 2026, &with_results, &without)
+                .to_json();
+
+        let metrics = exported.as_array().unwrap();
+        assert!(!metrics.is_empty());
+        for metric in metrics {
+            assert_ne!(metric["previous"], serde_json::Value::Null, "{metric}");
+            assert_eq!(metric["current"], serde_json::Value::Null, "{metric}");
+            assert_eq!(metric["difference"], serde_json::Value::Null, "{metric}");
+        }
     }
 
     #[test]

@@ -98,16 +98,16 @@ pub async fn run(args: ScheduleArgs) -> Result<()> {
         return Err(no_match("sessions", &given_filters, &rows));
     }
 
-    output::emit(
-        Report::new()
-            .table_with_data(
-                "sessions",
-                table(&sessions, us_date, us_time),
-                table(&sessions, str::to_string, time_24h),
-            )
-            .when_empty("No sessions match those filters."),
-    );
+    output::emit(report(&sessions).when_empty("No sessions match those filters."));
     Ok(())
+}
+
+pub fn report(sessions: &[Session]) -> Report {
+    Report::new().table_with_data(
+        "sessions",
+        table(sessions, us_date, us_time),
+        table(sessions, str::to_string, time_24h),
+    )
 }
 
 /// The sessions, with dates and times written by `date` and `time`: US dates and 12-hour times

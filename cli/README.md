@@ -101,6 +101,13 @@ other tools: each table's rows keyed by its column headers in snake_case, number
 as null. A table's keys are the same whatever flags the command was given. A command with several
 tables prints a JSON object keyed by table, or CSV sections headed `# <table>`.
 
+A key is its column header in snake_case, without a parenthesised note (`Sinclair (2021-24)` is
+`sinclair`, so the key does not change when the coefficients do) and with clean & jerk always
+`cj` (`C&J Make Rate` is `cj_make_rate`). A value that does not exist is null, not 0: a year with
+no results in `compare`, a lift never made in `search`'s PRs, a class with no adaptive record.
+`cli/tests/fixtures/export_keys.json` lists every command's keys, and a test fails when one
+changes.
+
 ```sh
 meetcal leaderboard --by sinclair --gender women --format csv > leaderboard.csv
 meetcal progress "Maddisen Mohnsen" --format json | jq '.attempts'
@@ -142,7 +149,7 @@ Options:
 - `--class`, `-c`: Weight class, e.g. `89` or `110+`
 - `--category`, `-a`: Age category, e.g. `Senior`, `Junior`, `U17`, `U15` or `Masters 40`
 
-Unlike `leaderboard` and `results`, where `-c` is `--category`, `qualify`'s `-c` is `--class`.
+The age category is `-a` here and in `leaderboard`.
 
 #### `h2h`
 
@@ -299,7 +306,7 @@ Options:
 
 - `--by`, `-b`: `total` (default), `snatch`, `cj`, `sinclair` or `qpoints`
 - `--year`, `-y`, or `--from` and `--to` (`YYYY-MM-DD`): the range; defaults to the current year
-- `--gender`, `-g`; `--category`, `-c` (`Senior`, `Junior`, `U17`, `U15`, `U13`, `U11`, `Masters 35` …); `--division`, `-d` (text the division contains, e.g. `89kg`); `--federation`, `-f`
+- `--gender`, `-g`; `--category`, `-a` (`Senior`, `Junior`, `U17`, `U15`, `U13`, `U11`, `Masters 35` …); `--division`, `-d` (text the division contains, e.g. `89kg`); `--federation`, `-f`
   (`USAW`, `USAMW` or `BWL`; without it, every federation but British Weightlifting, `BWL`). `--by sinclair` and `--by qpoints` need `--gender`: men and women score on separate scales.
 - `--wso`, `-w` or `--club`: only athletes registered with it at the meet
 - `--adaptive`: include adaptive results
@@ -308,14 +315,6 @@ Options:
 Without `--wso` or `--club`, MeetCal ranks every athlete on its servers and sends the top rows: it
 needs `meetcal login` with a MeetCal subscription, and a range of less than five years. With them,
 the CLI reads the group's results and ranks them itself, with no limit on the range or the rows.
-
-Options:
-
-- `--year`, `-y`, or `--from` and `--to` (`YYYY-MM-DD`): the range; defaults to the current year
-- `--gender`, `-g`; `--category`, `-c`; `--division`, `-d`; `--federation`, `-f`: as for
-  `leaderboard`
-
-`results` has no `--wso`, `--club` or `--adaptive`: it reads every result in the range.
 
 ### Club reports
 
@@ -442,7 +441,7 @@ meetcal elite Florida --from 2025-07-01 --to 2026-06-30 --overall sinclair
 
 Options:
 
-- `--year`, `-y`: Calendar year; defaults to last year
+- `--year`, `-y`: Calendar year; defaults to the current year, as `leaderboard`'s does
 - `--from`, `--to`: A date range (`YYYY-MM-DD`) of less than five years instead of a year
 - `--overall`: `percent-a` (default), `sinclair` or `qpoints` (Masters by Q-masters, Youth left out)
 - `--youth`: `percent-a` (default, against the Youth A standard) or `sinclair`
