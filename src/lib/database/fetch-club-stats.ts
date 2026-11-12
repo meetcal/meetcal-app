@@ -1,3 +1,4 @@
+import { readClubMeets, readClubMeetStats, readStringList, readUnknown } from './cached-shapes';
 import { isRecord } from '@/lib/is-record';
 import { createMutableResource } from '@/lib/data/mutable-resource';
 import { clubMeetsNewestFirst, type ClubMeet } from '@/lib/club-meets';
@@ -101,7 +102,7 @@ function mapClubMeetStats(row: ApiClubMeetStats): ClubMeetStats {
 }
 
 async function readClubsCache() {
-  const cached = await getOfflineCache<string[]>(OFFLINE_CACHE_KEYS.clubs);
+  const cached = await getOfflineCache(OFFLINE_CACHE_KEYS.clubs, readStringList);
   return cached ? { data: cached.data, lastUpdatedAt: cached.lastSynced } : null;
 }
 
@@ -111,9 +112,9 @@ async function readClubsCache() {
  * offline.
  */
 async function readClubMeetsCache(club: string) {
-  const cached = await readBoundedCacheEntry<ClubMeet[]>(OFFLINE_CACHE_KEYS.clubMeets, club);
+  const cached = await readBoundedCacheEntry(OFFLINE_CACHE_KEYS.clubMeets, club, readClubMeets);
   if (cached) return cached;
-  const legacy = await readBoundedCacheEntry<unknown>(OFFLINE_CACHE_KEYS.clubAthletes, club);
+  const legacy = await readBoundedCacheEntry(OFFLINE_CACHE_KEYS.clubAthletes, club, readUnknown);
   if (!legacy || !Array.isArray(legacy.data)) return null;
   const athletes = legacy.data.filter(
     (row: unknown): row is AthleteClub => isRecord(row) && isNonEmptyString(row.meet),
@@ -125,14 +126,11 @@ async function readClubMeetsCache(club: string) {
 }
 
 async function readClubMeetStatsCache(club: string, meet: string) {
-  const cached = await readBoundedCacheEntry<ClubMeetStats & { athleteResults?: unknown }>(
+  return readBoundedCacheEntry(
     OFFLINE_CACHE_KEYS.clubMeetStats,
     getClubMeetStatsKey(club, meet),
+    readClubMeetStats,
   );
-  if (!cached) return null;
-  // Entries stored before the per-athlete list was dropped still carry it.
-  const { athleteResults: _unused, ...stats } = cached.data;
-  return { data: stats, lastUpdatedAt: cached.lastUpdatedAt };
 }
 
 async function fetchAllClubsFresh(): Promise<string[]> {

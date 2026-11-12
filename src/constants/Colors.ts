@@ -141,3 +141,5 @@ export function platformColor(platform: string | null | undefined): string {
   const firstWord = key.split(' ')[0];
   return PLATFORM_COLOR_BY_KEY[firstWord] ?? PlatformPalette.neutral;
 }
+
+export type AppColors = (typeof Colors)['light'];

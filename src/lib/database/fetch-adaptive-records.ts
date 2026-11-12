@@ -1,3 +1,4 @@
+import { readRecordsData } from './cached-shapes';
 import { createMutableResource } from '@/lib/data/mutable-resource';
 import { RecordsData, WeightClassRecord } from '@/types/records';
 import { isNetworkAvailable } from '@/lib/networkUtils';
@@ -46,7 +47,7 @@ export function adaptiveRecordsFor(data: RecordsData, gender: Gender): WeightCla
 }
 
 async function readAdaptiveRecordsCache() {
-  const cached = await getOfflineCache<RecordsData>(OFFLINE_CACHE_KEYS.adaptiveRecords);
+  const cached = await getOfflineCache(OFFLINE_CACHE_KEYS.adaptiveRecords, readRecordsData);
   if (!cached?.data) return null;
   return { data: cached.data, lastUpdatedAt: cached.lastSynced };
 }

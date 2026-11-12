@@ -1,3 +1,4 @@
+import { readQualifyingTotalsData } from './cached-shapes';
 import { createMutableResource } from '@/lib/data/mutable-resource';
 import { isNetworkAvailable } from '@/lib/networkUtils';
 import {
@@ -20,7 +21,7 @@ export type QualifyingTotalsData = {
 
 async function readQualifyingTotalsCache() {
   const cacheKey = OFFLINE_CACHE_KEYS.qualifyingTotals;
-  const cached = await getOfflineCache<QualifyingTotalsData>(cacheKey);
+  const cached = await getOfflineCache(cacheKey, readQualifyingTotalsData);
   return cached
     ? { data: cached.data, lastUpdatedAt: cached.lastSynced }
     : null;

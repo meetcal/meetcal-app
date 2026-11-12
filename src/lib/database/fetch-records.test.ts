@@ -1,3 +1,4 @@
+import { readUnknown } from "@/lib/database/cached-shapes";
 import { jsonTransportStub } from "@/lib/api/json-transport-stub";
 import { setApiTransportForTests } from "@/lib/api/transport";
 import {
@@ -118,7 +119,7 @@ describe("federationRecordsResource and fetchAgeGroups", () => {
 
     await fetchRecords("USAW");
 
-    await expect(getOfflineCache(OFFLINE_CACHE_KEYS.records)).resolves.toBeNull();
+    await expect(getOfflineCache(OFFLINE_CACHE_KEYS.records, readUnknown)).resolves.toBeNull();
     expect(mockMemory.has(OFFLINE_CACHE_KEYS.recordsBrowse)).toBe(true);
   });
 
@@ -132,7 +133,7 @@ describe("federationRecordsResource and fetchAgeGroups", () => {
 
     await fetchRecords("USAW");
 
-    await expect(getOfflineCache(OFFLINE_CACHE_KEYS.records)).resolves.toEqual({
+    await expect(getOfflineCache(OFFLINE_CACHE_KEYS.records, readUnknown)).resolves.toEqual({
       data: { USAW: seniorMen(1), IWF: seniorMen(2) },
       lastSynced: monthAgo,
     });

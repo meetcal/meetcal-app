@@ -1,3 +1,4 @@
+import { readStandardsData } from './cached-shapes';
 import { createMutableResource } from '@/lib/data/mutable-resource';
 import { StandardsData } from '@/types/standards';
 import { isNetworkAvailable } from '@/lib/networkUtils';
@@ -56,7 +57,7 @@ function mapRows(rows: readonly CompleteStandardsRow[]): StandardsData {
 
 async function readStandardsCache() {
   const cacheKey = OFFLINE_CACHE_KEYS.standards;
-  const cached = await getOfflineCache<StandardsData>(cacheKey);
+  const cached = await getOfflineCache(cacheKey, readStandardsData);
   return cached ? { data: cached.data, lastUpdatedAt: cached.lastSynced } : null;
 }
 

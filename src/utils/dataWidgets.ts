@@ -3,7 +3,7 @@ import { filterSummary } from "@/lib/filter-summary";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { NativeModules, Platform } from "react-native";
 
-import type { FilterSection } from "@/components/ui/filters/GenericFilterModal";
+import type { FilterSection } from "@/types/filters";
 import { defaultQualifyingEvent, sortQualifyingEvents } from "@/lib/comp-data-filters";
 import { QualifyingTotalsData } from "@/lib/database/fetch-qualifying-totals";
 import { IntlRanking } from "@/lib/database/fetchIntlRankings";

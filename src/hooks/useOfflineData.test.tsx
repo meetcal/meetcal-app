@@ -4,7 +4,8 @@ import { act, create } from "react-test-renderer";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { BROWSE_CACHE_KEYS, OFFLINE_CACHE_KEYS } from "@/lib/database/offline-cache";
 import { resetOfflineActivityForTests } from "@/lib/database/offline-activity";
-import { describeDownloadStatus, isRowStatusKnown, useOfflineData } from "@/utils/offline";
+import { useOfflineData } from "@/hooks/useOfflineData";
+import { describeDownloadStatus, isRowStatusKnown } from "@/utils/offline";
 
 const mockIsNetworkAvailable = jest.fn<Promise<boolean>, []>(async () => true);
 jest.mock("@/lib/networkUtils", () => ({

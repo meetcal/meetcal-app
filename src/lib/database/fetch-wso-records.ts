@@ -1,3 +1,4 @@
+import { readRecordsData, readRecordsDataByKey } from './cached-shapes';
 import { createMutableResource } from '@/lib/data/mutable-resource';
 import { RecordsData, AgeGroupRecords, WeightClassRecord } from '@/types/records';
 import { isNetworkAvailable } from '@/lib/networkUtils';
@@ -35,7 +36,7 @@ export const MAX_OFFLINE_WSO_COUNT = 100;
 export const MAX_CACHED_WSO_RECORD_VIEWS = 30;
 
 async function readWSOCache() {
-  return await getOfflineCache<WSORecordsCache>(OFFLINE_CACHE_KEYS.wsoRecords);
+  return await getOfflineCache(OFFLINE_CACHE_KEYS.wsoRecords, readRecordsDataByKey);
 }
 
 function getFilteredCacheKey(wso: string, ageGroup: string, gender: 'Men' | 'Women') {
@@ -61,9 +62,10 @@ async function readFilteredWSORecordsCache(
   gender: 'Men' | 'Women',
 ) {
   const [browsed, downloaded] = await Promise.all([
-    readBoundedCacheEntry<RecordsData>(
+    readBoundedCacheEntry(
       OFFLINE_CACHE_KEYS.wsoRecordsFiltered,
       getFilteredCacheKey(wso, ageGroup, gender),
+      readRecordsData,
     ),
     readWSORecordsCache(wso),
   ]);
