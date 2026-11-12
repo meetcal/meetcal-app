@@ -5,12 +5,12 @@ min_version = "2026.9.2"
 # caches build output across worktrees. Older mise skips the integration. `MBX_DISABLE=1` runs plain Cargo for one command.
 rust = { version = "1.99.1", mr_boxington = true }
 "mr-boxington" = "1.28.0"
-"cargo:cargo-audit" = "latest"
-"cargo:trunk" = "latest"
-"cargo:leptosfmt" = "latest"
-"cargo:wasm-bindgen-cli" = "latest"
+"cargo:cargo-audit" = "0.22.2"
+"cargo:trunk" = "0.22.0"
+"cargo:leptosfmt" = "0.1.33"
+"cargo:wasm-bindgen-cli" = "0.2.126"
 node = "24"
-"npm:prettier" = "latest"
+"npm:prettier" = "3.9.10"
 
 [tasks.run]
 run = "env -u NO_COLOR trunk serve --port 3000 --open"
@@ -21,7 +21,7 @@ run = "cargo fmt --all -- --check && cargo test"
 [tasks.fmt]
 run = "cargo leptosfmt"
 [tasks.build]
-run = "env -u NO_COLOR trunk build --release"
+run = "env -u NO_COLOR trunk build --release --locked"
 [tasks.audit]
 run = "cargo audit"
 [tasks.clean]
