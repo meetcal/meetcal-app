@@ -36,8 +36,7 @@ const PREMIUM_SOURCES = [
   "qualifyingTotalsPayload()",
   "standardsPayload()",
   "intlRankingsPayload()",
-  "MeetCalAPI.shared.bests(",
-  "MeetCalAPI.shared.resultsByNames(",
+  "MeetCalAPI.shared.athlete(",
 ];
 
 const PREMIUM_ENDPOINTS = [
