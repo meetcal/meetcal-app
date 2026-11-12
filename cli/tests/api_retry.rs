@@ -267,3 +267,30 @@ async fn port_probes_take_no_scripted_reply() {
     assert_eq!(requests.lock().unwrap().len(), 1);
     drop(idle);
 }
+
+#[tokio::test]
+async fn asks_for_a_compressed_answer_and_reads_it() {
+    let (base_url, requests) = serve(vec![
+        reply(
+            OK,
+            None,
+            r#"{"status":"success","value":[{"meet":"Test Meet"}]}"#,
+        )
+        .gzipped(),
+    ]);
+
+    let body = fetch(&base_url)
+        .await
+        .expect("a compressed answer is read");
+
+    assert_eq!(body, json!([{ "meet": "Test Meet" }]));
+    let requests = requests.lock().unwrap();
+    assert_eq!(requests.len(), 1);
+    assert!(
+        requests[0]
+            .to_ascii_lowercase()
+            .contains("accept-encoding: gzip"),
+        "{}",
+        requests[0]
+    );
+}
