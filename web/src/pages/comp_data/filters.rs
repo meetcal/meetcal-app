@@ -82,6 +82,57 @@ where
         .collect()
 }
 
+pub(crate) trait SortOrder: Copy + PartialEq + Send + Sync + 'static {
+    const ALL: &'static [Self];
+    fn value(self) -> &'static str;
+    fn label(self) -> &'static str;
+    fn parse(value: &str) -> Option<Self> {
+        Self::ALL
+            .iter()
+            .copied()
+            .find(|order| order.value() == value)
+    }
+}
+
+macro_rules! sort_orders {
+    ($name:ident { $($variant:ident => ($value:literal, $label:literal)),+ $(,)? }) => {
+        #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+        enum $name {
+            $($variant),+
+        }
+
+        impl $crate::pages::comp_data::filters::SortOrder for $name {
+            const ALL: &'static [Self] = &[$(Self::$variant),+];
+
+            fn value(self) -> &'static str {
+                match self {
+                    $(Self::$variant => $value),+
+                }
+            }
+
+            fn label(self) -> &'static str {
+                match self {
+                    $(Self::$variant => $label),+
+                }
+            }
+        }
+    };
+}
+pub(crate) use sort_orders;
+
+#[cfg(test)]
+pub(crate) fn assert_each_sort_order_parses_to_itself<S: SortOrder + std::fmt::Debug>() {
+    let mut values = S::ALL.iter().map(|order| order.value()).collect::<Vec<_>>();
+    values.sort_unstable();
+    values.dedup();
+    assert_eq!(values.len(), S::ALL.len(), "two sort orders share a value");
+    for order in S::ALL {
+        assert_eq!(S::parse(order.value()), Some(*order));
+        assert!(!order.label().is_empty());
+    }
+    assert_eq!(S::parse("not_a_sort_order"), None);
+}
+
 #[derive(Clone, Copy)]
 pub(crate) enum SortDirection {
     Ascending,
