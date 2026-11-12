@@ -376,8 +376,10 @@ actor MeetCalAPI {
     /// lists equal). Calls to these carry the shared access pass.
     static let premiumFunctions: Set<String> = [
         "reference:records",
+        "reference:recordCategories",
         "reference:standards",
         "reference:qualifyingTotals",
+        "reference:qualifyingTotalCategories",
         "reference:intlRankings",
         "reference:nationalRankings",
         "reference:nationalRankingsByYear",
@@ -393,10 +395,12 @@ actor MeetCalAPI {
         "reference:clubMeetStats",
         "reference:wsoMeetStats",
         "results:byMeet",
+        "results:meetSummaries",
         "results:byNames",
         "results:recent",
         "results:yearBests",
         "results:bests",
+        "results:groupMedals",
         "results:search",
         "meets:packageForMeet",
     ]

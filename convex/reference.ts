@@ -22,7 +22,26 @@ import { ADAPTIVE_RECORDS_SEASON_START, clubNamesPage, computeAdaptiveRecords, c
 import { athleteGenderLabel } from './lib/normalize';
 import { DOCUMENTS_ONE_QUERY_MAY_READ } from './lib/readBudget';
 import { compareCollated } from './lib/sort';
-import { adaptiveKey, ADAPTIVE_VIEW_ARGS, meetKey, natKey, REF_VIEWS, wsoKey } from './lib/viewKeys';
+import {
+  narrowedByAgeAndGender,
+  qualifyingTotalCategories as categoriesOfQualifyingTotals,
+  recordCategories as categoriesOfRecords,
+  requireFilterValues,
+  isFilterableRow,
+  sameFilterValue,
+  type FilterableRow,
+  type ReferenceFilter,
+} from './lib/referenceFilters';
+import {
+  adaptiveKey,
+  ADAPTIVE_VIEW_ARGS,
+  meetKey,
+  natKey,
+  qualifyingTotalsOfEventKey,
+  recordsOfFederationKey,
+  REF_VIEWS,
+  wsoKey,
+} from './lib/viewKeys';
 import { readFreshView, readViewAnyAge, readViewJsonAnyAge } from './lib/views';
 import { apiError, requireNonEmpty } from './lib/validation';
 import { isMaintainedWso } from './lib/wsoSources';
@@ -45,10 +64,40 @@ async function viewOrLive(
   return revalidated(await compute(), ifNoneMatch);
 }
 
-/** `GET /data/records` */
+const filterValue = v.optional(v.string());
+
+async function narrowedViewOrLive(
+  ctx: QueryCtx,
+  key: string,
+  filter: ReferenceFilter,
+  ifNoneMatch: string | undefined,
+  compute: () => Promise<FilterableRow[]>,
+): Promise<Revalidated> {
+  const view = await readFreshView(ctx, key);
+  const narrows = filter.ageCategory !== undefined || filter.gender !== undefined;
+  if (view && !narrows) return await revalidatedText(view.etag, view.json, ifNoneMatch);
+  const rows = view ? await view.items(isFilterableRow) : await compute();
+  return revalidated(narrowedByAgeAndGender(rows, filter), ifNoneMatch);
+}
+
 export const records = premiumQuery('reference:records', {
+  args: { ifNoneMatch, federation: filterValue, ageCategory: filterValue, gender: filterValue },
+  handler: async (ctx, { ifNoneMatch, federation, ageCategory, gender }) => {
+    requireFilterValues({ federation, ageCategory, gender });
+    if (federation === undefined && ageCategory === undefined && gender === undefined) {
+      return await viewOrLive(ctx, REF_VIEWS.records, ifNoneMatch, () => computeRecords(ctx));
+    }
+    const key = federation === undefined ? REF_VIEWS.records : recordsOfFederationKey(federation);
+    return await narrowedViewOrLive(ctx, key, { ageCategory, gender }, ifNoneMatch, async () =>
+      (await computeRecords(ctx)).filter((row) => federation === undefined || sameFilterValue(row.record_type, federation)),
+    );
+  },
+});
+
+export const recordCategories = premiumQuery('reference:recordCategories', {
   args: { ifNoneMatch },
-  handler: async (ctx, args) => await viewOrLive(ctx, REF_VIEWS.records, args.ifNoneMatch, () => computeRecords(ctx)),
+  handler: async (ctx, args) =>
+    await viewOrLive(ctx, REF_VIEWS.record_categories, args.ifNoneMatch, async () => categoriesOfRecords(await computeRecords(ctx))),
 });
 
 /** `GET /data/standards` */
@@ -57,11 +106,26 @@ export const standards = premiumQuery('reference:standards', {
   handler: async (ctx, args) => await viewOrLive(ctx, REF_VIEWS.standards, args.ifNoneMatch, () => computeStandards(ctx)),
 });
 
-/** `GET /data/qualifying-totals` */
 export const qualifyingTotals = premiumQuery('reference:qualifyingTotals', {
+  args: { ifNoneMatch, event: filterValue, ageCategory: filterValue, gender: filterValue },
+  handler: async (ctx, { ifNoneMatch, event, ageCategory, gender }) => {
+    requireFilterValues({ event, ageCategory, gender });
+    if (event === undefined && ageCategory === undefined && gender === undefined) {
+      return await viewOrLive(ctx, REF_VIEWS.qualifying_totals, ifNoneMatch, () => computeQualifyingTotals(ctx));
+    }
+    const key = event === undefined ? REF_VIEWS.qualifying_totals : qualifyingTotalsOfEventKey(event);
+    return await narrowedViewOrLive(ctx, key, { ageCategory, gender }, ifNoneMatch, async () =>
+      (await computeQualifyingTotals(ctx)).filter((row) => event === undefined || sameFilterValue(row.event_name, event)),
+    );
+  },
+});
+
+export const qualifyingTotalCategories = premiumQuery('reference:qualifyingTotalCategories', {
   args: { ifNoneMatch },
   handler: async (ctx, args) =>
-    await viewOrLive(ctx, REF_VIEWS.qualifying_totals, args.ifNoneMatch, () => computeQualifyingTotals(ctx)),
+    await viewOrLive(ctx, REF_VIEWS.qualifying_total_categories, args.ifNoneMatch, async () =>
+      categoriesOfQualifyingTotals(await computeQualifyingTotals(ctx)),
+    ),
 });
 
 /** `GET /data/intl-rankings` */

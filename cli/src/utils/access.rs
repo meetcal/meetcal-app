@@ -21,8 +21,10 @@ use crate::utils::credentials::{self, Credentials};
 
 pub(crate) const PREMIUM_FUNCTIONS: &[&str] = &[
     "reference:records",
+    "reference:recordCategories",
     "reference:standards",
     "reference:qualifyingTotals",
+    "reference:qualifyingTotalCategories",
     "reference:intlRankings",
     "reference:nationalRankings",
     "reference:nationalRankingsByYear",
@@ -38,10 +40,12 @@ pub(crate) const PREMIUM_FUNCTIONS: &[&str] = &[
     "reference:clubMeetStats",
     "reference:wsoMeetStats",
     "results:byMeet",
+    "results:meetSummaries",
     "results:byNames",
     "results:recent",
     "results:yearBests",
     "results:bests",
+    "results:groupMedals",
     "results:search",
     "meets:packageForMeet",
 ];

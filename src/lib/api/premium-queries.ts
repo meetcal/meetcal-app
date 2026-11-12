@@ -8,8 +8,10 @@
  */
 export const PREMIUM_QUERY_FUNCTIONS: ReadonlySet<string> = new Set([
   'reference:records',
+  'reference:recordCategories',
   'reference:standards',
   'reference:qualifyingTotals',
+  'reference:qualifyingTotalCategories',
   'reference:intlRankings',
   'reference:nationalRankings',
   'reference:nationalRankingsByYear',
@@ -25,10 +27,12 @@ export const PREMIUM_QUERY_FUNCTIONS: ReadonlySet<string> = new Set([
   'reference:clubMeetStats',
   'reference:wsoMeetStats',
   'results:byMeet',
+  'results:meetSummaries',
   'results:byNames',
   'results:recent',
   'results:yearBests',
   'results:bests',
+  'results:groupMedals',
   'results:search',
   'meets:packageForMeet',
 ]);
