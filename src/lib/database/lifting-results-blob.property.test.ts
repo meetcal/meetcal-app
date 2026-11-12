@@ -6,17 +6,8 @@ import { saveMeetLiftingResults } from '@/lib/database/meet-data-saves';
 import { corruptedArb, hostileStringArb } from '@/test-support/arbitraries';
 import { bulkyLiftResults, liftResultsArb } from '@/test-support/lift-result-arbitraries';
 
-/**
- * Meet lifting results are stored deflated, base64'd and split into 180 KB
- * chunks behind a manifest (`offline-store.ts`). Whatever happens to those
- * bytes on disk, a read returns all of what was written or nothing: never a
- * subset, never someone else's rows, never a pako or JSON error.
- */
-
 jest.mock('@/lib/api/server-clock', () => ({ getTrustedNow: () => null }));
 
-// A multi-chunk case deflates and inflates ~300 KB; leave room for the
-// nightly run's larger case count.
 jest.setTimeout(Math.max(10_000, (fc.readConfigureGlobal().numRuns ?? 100) * 100));
 
 const MEET = 'Property Test Meet';
@@ -26,7 +17,6 @@ function storage(): Record<string, string> {
   return (AsyncStorage as unknown as { __INTERNAL_MOCK_STORAGE__: Record<string, string> }).__INTERNAL_MOCK_STORAGE__;
 }
 
-/** The chunk keys the stored manifest names, in order. */
 function chunkKeys(): string[] {
   return Object.keys(storage())
     .filter((key) => key.startsWith(`${RESULTS_KEY}__chunk_`))
@@ -60,11 +50,8 @@ describe('meet lifting results encoding', () => {
         await AsyncStorage.clear();
         await saveMeetLiftingResults(MEET, first);
         await saveMeetLiftingResults(MEET, second);
-        // An empty answer never overwrites a stored set: an upcoming meet has
-        // no results yet, and a stored copy is better than none.
         const expected = second.length === 0 ? first : second;
         expect(await getMeetLiftingResults(MEET)).toEqual(expected);
-        // Only the live generation's chunks are left behind.
         const manifest = JSON.parse(storage()[RESULTS_KEY]) as { chunks: number };
         expect(chunkKeys()).toHaveLength(manifest.chunks);
       }),
@@ -141,7 +128,6 @@ describe('corrupted lifting results on disk', () => {
             break;
           }
           case 'flip': {
-            // One base64 character changed: a single flipped byte on disk.
             const at = damage.at % chunk.length;
             const replacement = chunk[at] === 'A' ? 'B' : 'A';
             await AsyncStorage.setItem(key, chunk.slice(0, at) + replacement + chunk.slice(at + 1));
