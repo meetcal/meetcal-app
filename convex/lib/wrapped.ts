@@ -238,10 +238,9 @@ export function selectWrapped(search: WrappedSearch): WrappedAnswer {
   if (rows.length === 0) return none();
 
   if (search.matched_name !== null) {
-    const name = rows[0].name || search.matched_name;
+    const name = search.matched_name;
     if (search.truncated) return { kind: 'tooManyResults', name };
-    const ordered = inDateOrder(rows);
-    return { kind: 'athlete', name: ordered[0].name || search.matched_name, stats: wrappedStats(ordered) };
+    return { kind: 'athlete', name, stats: wrappedStats(inDateOrder(rows)) };
   }
 
   // Distinct athletes among the fallback rows, keeping the first spelling seen.
