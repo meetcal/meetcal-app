@@ -53,6 +53,10 @@ fn described(error: JsValue) -> String {
         .unwrap_or_else(|| format!("{error:?}"))
 }
 
+#[expect(
+    clippy::disallowed_methods,
+    reason = "the one place the site sends a request and times it out"
+)]
 pub(crate) async fn post(request: Post<'_>) -> Result<Reply, Failure> {
     let window = web_sys::window().ok_or_else(|| Failure::Unreachable("no window".to_owned()))?;
     let abort =

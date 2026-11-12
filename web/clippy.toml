@@ -2,3 +2,10 @@ allow-unwrap-in-tests = true
 allow-expect-in-tests = true
 allow-indexing-slicing-in-tests = true
 allow-panic-in-tests = true
+disallowed-methods = [
+  { path = "web_sys::Window::fetch_with_str", reason = "every request goes through `utils::http::post`, which owns its timeout" },
+  { path = "web_sys::Window::fetch_with_str_and_init", reason = "every request goes through `utils::http::post`, which owns its timeout" },
+  { path = "web_sys::AbortController::abort", reason = "only `utils::http::post` times a request out" },
+  { path = "web_sys::AbortSignal::timeout_with_u32", reason = "only `utils::http::post` times a request out" },
+  { path = "web_sys::AbortSignal::timeout_with_f64", reason = "only `utils::http::post` times a request out" },
+]
