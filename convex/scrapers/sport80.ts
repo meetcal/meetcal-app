@@ -133,6 +133,7 @@ class Sport80 {
 }
 
 const READ_SHARE = 0.5;
+const READ_DEADLINE_SHARE = 0.75;
 
 /** Rows per ingest call: each writes its rows and rewrites their athletes' history documents. */
 const INGEST_BATCH = 200;
@@ -222,7 +223,7 @@ export const run = internalAction({
       }
       let table: { rows: Dict[]; notWhole?: string };
       try {
-        table = await budget.orStop(api.eventResults(eventId));
+        table = await budget.orStop(api.eventResults(eventId), READ_DEADLINE_SHARE);
       } catch (error) {
         failures.push({ source: `${meet} (event ${eventId})`, error: `${eventDate(event)}: ${(error as Error).message}` });
         continue;
@@ -239,6 +240,7 @@ export const run = internalAction({
     if (dryRun) return { meets, outcomes: [], failed: failed() };
 
     const outcomes: MeetOutcome[] = [];
+    let storedCount = 0;
     for (const { eventId, meet, rows, notWhole } of meets) {
       const source = `${meet} (event ${eventId})`;
       if (budget.spent()) {
@@ -293,6 +295,7 @@ export const run = internalAction({
         failures.push({ source, error: `not stored: ${(error as Error).message}` });
         continue;
       }
+      storedCount += 1;
       // Only a meet read in full is a safe basis for deleting what it lacks.
       if (outcome.failed > 0 || valid.length === 0) continue;
       if (notWhole) {
@@ -316,7 +319,7 @@ export const run = internalAction({
     const updated = outcomes.filter((o) => o.inserted === 0 && o.updated > 0).map((o) => o.meet);
     const deleted = outcomes.reduce((sum, o) => sum + o.deleted, 0);
     console.log(`sport80: ${meets.length} meets, ${inserted.length} with new results, ${updated.length} updated, ${deleted} stale result(s) deleted`);
-    if (failures.length) throw sourcesFailed(`sport80: ${failures.length} problem(s), the rest was stored`, failures);
+    if (failures.length) throw sourcesFailed(`sport80: ${failures.length} problem(s), ${storedCount} of ${meets.length} meet(s) read were stored`, failures);
     return { meets, outcomes, failed: failed() };
   },
 });

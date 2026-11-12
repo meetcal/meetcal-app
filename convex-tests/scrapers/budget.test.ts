@@ -34,6 +34,15 @@ describe("a multi-source job's time budget (#574)", () => {
     expect(await outcome).toBe(OUT_OF_TIME);
   });
 
+  it('stops waiting at a share of the budget when asked, long before the hard stop', async () => {
+    jest.useFakeTimers();
+    const waited = runBudget({ budgetMs: 1_000, hardStopMs: 5_000 }).orStop(new Promise<string>(() => {}), 0.75);
+    const outcome = waited.then(() => 'answered', (error: Error) => error.message);
+    await jest.advanceTimersByTimeAsync(749);
+    await jest.advanceTimersByTimeAsync(1);
+    expect(await outcome).toBe(OUT_OF_TIME);
+  });
+
   it('stops at once for a source started after the hard stop', async () => {
     let now = 0;
     const budget = runBudget({ hardStopMs: 1_000, now: () => now });

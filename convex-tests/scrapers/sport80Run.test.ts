@@ -74,6 +74,18 @@ describe("the Sport80 results run's time budget (#574)", () => {
     expect(error).toContain(`Meet 1 (event 1): ${NOT_REACHED}`);
   });
 
+  it('stops waiting for an event read at three quarters of its budget, so the events read before it are still stored', async () => {
+    sport80((eventId) => (eventId === '2' ? void jest.advanceTimersByTime(200_000) : new Promise(() => {})));
+    const { storedMeets, failure } = deployment();
+    const outcome = failure();
+    await jest.advanceTimersByTimeAsync(RUN_BUDGET_MS);
+    const { error, failedSources } = await outcome;
+    expect(storedMeets).toEqual(['Meet 2']);
+    expect(failedSources).toEqual(['Meet 1 (event 1)']);
+    expect(error).toContain('1 of 1 meet(s) read were stored');
+    expect(error).toContain(OUT_OF_TIME);
+  });
+
   it('names an event it read but ran out of time to store, and does not prune it', async () => {
     sport80();
     const slowFirstStore = (meet: string) => {
