@@ -5,7 +5,7 @@ import { internalAction, type ActionCtx } from './_generated/server';
 import { internal } from './_generated/api';
 import type { FunctionReference } from 'convex/server';
 import { lastScheduled } from './lib/cronSchedule';
-import { describeFailure, queuedNotices, START_MARGIN_MS, type Notice } from './lib/cronAlerts';
+import { chainOutcome, describeFailure, latestPerSource, nextLink, queuedNotices, START_MARGIN_MS, type Notice, type RunFailure } from './lib/cronAlerts';
 import { escapeHtml, sendEmail } from './lib/email';
 import { pingHeartbeat } from './lib/heartbeat';
 import { RESULTS_JOB } from './scrapers/parse/sport80';
@@ -24,6 +24,7 @@ type Job = {
   schedule: string;
   run:
     | { kind: 'action'; fn: FunctionReference<'action', 'internal', { dryRun?: boolean }> }
+    | { kind: 'sources'; runLink: (ctx: ActionCtx, pending: readonly string[] | null) => Promise<unknown> }
     | { kind: 'mutation'; fn: FunctionReference<'mutation', 'internal', Record<string, never>> };
 };
 
@@ -48,10 +49,10 @@ export const JOBS: Record<string, Job> = {
   'intl-rankings': { schedule: '35 4 * * *', run: { kind: 'action', fn: internal.scrapers.intlRankings.run } },
   'meet-sync': { schedule: '5 5 * * *', run: { kind: 'action', fn: internal.scrapers.meets.run } },
   'usamw-events': { schedule: '35 5 * * *', run: { kind: 'action', fn: internal.scrapers.usamwEvents.run } },
-  [RESULTS_JOB]: { schedule: '5 6 * * *', run: { kind: 'action', fn: internal.scrapers.sport80.run } },
+  [RESULTS_JOB]: { schedule: '5 6 * * *', run: { kind: 'sources', runLink: (ctx, pending) => ctx.runAction(internal.scrapers.sport80.run, pending === null ? {} : { continuing: [...pending] }) } },
   'lifters-sport80': { schedule: '45 6 * * *', run: { kind: 'action', fn: internal.scrapers.lifters.run } },
-  'wso-records': { schedule: '40 6 * * *', run: { kind: 'action', fn: internal.scrapers.wsoRecords.run } },
-  entries: { schedule: '25 7 * * *', run: { kind: 'action', fn: internal.scrapers.entries.run } },
+  'wso-records': { schedule: '40 6 * * *', run: { kind: 'sources', runLink: (ctx, pending) => ctx.runAction(internal.scrapers.wsoRecords.run, pending === null ? {} : { only: [...pending] }) } },
+  entries: { schedule: '25 7 * * *', run: { kind: 'sources', runLink: (ctx, pending) => ctx.runAction(internal.scrapers.entries.run, pending === null ? {} : { only: [...pending] }) } },
   // A new access pass for premium reads (`accessPass.ts`), when US traffic
   // is lowest: it clears every premium query's cache once.
   'rotate-access-pass': { schedule: '0 9 * * *', run: { kind: 'action', fn: internal.accessPass.rotate } },
@@ -97,14 +98,8 @@ async function markAllSent(ctx: ActionCtx, notices: readonly Notice[]): Promise<
   for (const [job, sent] of byJob) await ctx.runMutation(internal.cronStatus.markSent, { job, sent });
 }
 
-/**
- * Records a run's outcome in `cron_status` and sends the alerts it queued,
- * with `extra` alerts already queued for another job. A failed send leaves
- * them queued: the watchdog sends them next hour. Returns whether every
- * alert was sent (true when there were none).
- */
-async function finishRun(ctx: ActionCtx, job: string, failure: unknown, extra: Notice[] = []): Promise<boolean> {
-  const { error, failedSources } = failure === undefined ? { error: undefined, failedSources: undefined } : describeFailure(failure);
+async function finishRun(ctx: ActionCtx, job: string, outcome: RunFailure | undefined, extra: Notice[] = []): Promise<boolean> {
+  const { error, failedSources } = outcome ?? { error: undefined, failedSources: undefined };
   const unsent: Notice[] = await ctx.runMutation(internal.cronStatus.finish, { job, error, failedSources });
   const notices = [...unsent, ...extra];
   if (!notices.length) return true;
@@ -118,24 +113,35 @@ async function finishRun(ctx: ActionCtx, job: string, failure: unknown, extra: N
   }
 }
 
+const carriedFailure = v.object({ source: v.string(), error: v.string() });
+
 export const run = internalAction({
-  args: { job: v.string() },
-  handler: async (ctx, { job }): Promise<void> => {
+  args: {
+    job: v.string(),
+    pending: v.optional(v.array(v.string())),
+    carried: v.optional(v.array(carriedFailure)),
+    continuations: v.optional(v.number()),
+  },
+  handler: async (ctx, { job, pending = [], carried = [], continuations = 0 }): Promise<void> => {
     const spec = JOBS[job];
     if (!spec) throw new Error(`unknown cron job ${job}`);
     await ctx.runMutation(internal.cronStatus.start, { job });
     let failure: unknown;
     try {
       if (spec.run.kind === 'mutation') await ctx.runMutation(spec.run.fn, {});
+      else if (spec.run.kind === 'sources') await spec.run.runLink(ctx, continuations === 0 ? null : pending);
       else await ctx.runAction(spec.run.fn, {});
     } catch (error) {
       failure = error;
     }
-    // Every job's run also checks on the watchdog, which nothing else does:
-    // one that missed its run or never finished is alerted from here, and
-    // while it is in trouble its queued alerts (which it would send itself)
-    // are sent from here too. A check that fails must not keep this run
-    // from being recorded.
+    const described = failure === undefined ? undefined : describeFailure(failure);
+    if (spec.run.kind === 'sources') {
+      const next = nextLink(described, continuations === 0 ? undefined : pending, continuations);
+      if (next !== null) {
+        await ctx.scheduler.runAfter(0, internal.cronJobs.run, { job, pending: next.notReached, carried: latestPerSource(carried, next.failed), continuations: continuations + 1 });
+        return;
+      }
+    }
     let watchdogQueued: Notice[] = [];
     try {
       await ctx.runMutation(internal.cronStatus.raiseAlert, {
@@ -146,9 +152,10 @@ export const run = internalAction({
     } catch (error) {
       console.error(`watchdog check from ${job} failed: ${errorMessage(error)}`);
     }
-    await finishRun(ctx, job, failure, watchdogQueued);
-    // Rethrown so the run also shows as failed in the Convex dashboard.
+    const outcome = chainOutcome(job, carried, described, pending);
+    await finishRun(ctx, job, outcome, watchdogQueued);
     if (failure !== undefined) throw failure;
+    if (outcome !== undefined) throw new Error(outcome.error);
   },
 });
 
@@ -172,10 +179,8 @@ export const watchdog = internalAction({
     } catch (error) {
       failure = error;
     }
-    const delivered = await finishRun(ctx, WATCHDOG_JOB, failure);
+    const delivered = await finishRun(ctx, WATCHDOG_JOB, failure === undefined ? undefined : describeFailure(failure));
     if (failure !== undefined) throw failure;
-    // Alerts left unsent (its own, say "is running again") mean alerting
-    // is broken: no ping, so the external monitor notices.
     if (delivered) await pingHeartbeat(process.env.HEARTBEAT_URL);
     return sent;
   },

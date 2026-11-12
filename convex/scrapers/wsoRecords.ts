@@ -322,7 +322,7 @@ async function replaceWso(
   return await ctx.runMutation(internal.ingest.replaceWsoRecordSet, { wso, rows: wsoRows(lastPerClass(records)), allowShrink });
 }
 
-type WsoResult = { wso: string; records: WsoRecord[]; inserted: number; updated: number; unchanged: number; deleted?: number; error?: string };
+type WsoResult = { wso: string; records: WsoRecord[]; inserted: number; updated: number; unchanged: number; deleted?: number; error?: string; notReached?: boolean };
 
 export async function syncWsoSources(
   sources: readonly WsoSource[],
@@ -334,6 +334,7 @@ export async function syncWsoSources(
     results.push(result);
     if (budget.spent()) {
       result.error = NOT_REACHED;
+      result.notReached = true;
       continue;
     }
     try {
@@ -345,8 +346,8 @@ export async function syncWsoSources(
       console.error(`wso records (${source.wso}): ${result.error}`);
     }
   }
-  const failed = results.filter((r) => r.error);
-  if (failed.length && !dryRun) throw sourcesFailed('wso records', failed.map((r) => ({ source: r.wso, error: r.error! })));
+  const failures = results.flatMap(({ wso, error, notReached }) => (error === undefined ? [] : [{ source: wso, error, notReached }]));
+  if (failures.length && !dryRun) throw sourcesFailed('wso records', failures);
   return results;
 }
 

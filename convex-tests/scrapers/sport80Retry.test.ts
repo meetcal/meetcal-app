@@ -14,7 +14,7 @@ const lifter = { lifter: 'Ann Lee', age_category: "Open Women's 63kg", body_weig
 const json = (body: unknown) => ({ ok: true, status: 200, json: async () => body, text: async (): Promise<string> => JSON.stringify(body) });
 const originalFetch = global.fetch;
 
-function sport80(unreadableYears: readonly string[] = []) {
+function sport80(unreadableYears: readonly string[] = [], emptyTables: readonly string[] = []) {
   const read: string[] = [];
   global.fetch = jest.fn(async (url: string, init?: { body?: string }) => {
     if (url.endsWith('/public/rankings/')) {
@@ -30,17 +30,18 @@ function sport80(unreadableYears: readonly string[] = []) {
     }
     const eventId = /\/api\/events\/(\d+)\/table\/data/.exec(path)?.[1] ?? '';
     read.push(eventId);
-    return json({ data: [lifter], total: 1 });
+    const rows = emptyTables.includes(eventId) ? [] : [lifter];
+    return json({ data: rows, total: rows.length });
   }) as never;
   return read;
 }
 
-function deployment(failedLastRun: string[]) {
+function deployment(failedLastRun: string[], args: { only?: string[]; continuing?: string[] } = {}) {
   const ctx = {
     runQuery: async (): Promise<string[]> => failedLastRun,
     runMutation: async () => ({ inserted: 1, updated: 0, unchanged: 0, deleted: 0, remaining: 0 }),
   };
-  return handlerOf<Record<string, never>>(run)(ctx, {}).then(
+  return handlerOf<{ only?: string[]; continuing?: string[] }>(run)(ctx, args).then(
     () => ({ error: '', failedSources: [] as string[] }),
     (error: unknown) => ({ failedSources: [] as string[], ...describeFailure(error) }),
   );
@@ -83,5 +84,24 @@ describe('reading again the events the last run named as failing (#566)', () => 
     const { error, failedSources } = await deployment([`Meet ${olderId} (event ${olderId})`]);
     expect(error).toContain('no events fetched');
     expect(failedSources).toContain(`Meet ${olderId} (event ${olderId})`);
+  });
+
+  it('names the events a run was asked for when no event index can be read (#622)', async () => {
+    sport80(['2025', '2026']);
+    const { failedSources } = await deployment([], { only: [String(olderId)] });
+    expect(failedSources).toContain(`event ${olderId}`);
+  });
+
+  it('reads the sources a continuation was sent to reach, under their names, and lets an empty table pass as a night does (#622)', async () => {
+    const read = sport80();
+    const source = `Meet ${olderId} (event ${olderId})`;
+    expect((await deployment([], { continuing: [source] })).failedSources).toEqual([]);
+    expect(read).toEqual([String(olderId)]);
+    sport80([], [String(olderId)]);
+    expect((await deployment([], { continuing: [source] })).failedSources).toEqual([]);
+    sport80([], [String(olderId)]);
+    expect((await deployment([], { only: [String(olderId)] })).failedSources).toEqual([`event ${olderId}`]);
+    sport80(['2025', '2026']);
+    expect((await deployment([], { continuing: [source] })).failedSources).toContain(source);
   });
 });

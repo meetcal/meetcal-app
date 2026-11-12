@@ -44,7 +44,14 @@ describe('alerts for a job that reads many sources (#92)', () => {
       { source: 'Florida', error: 'parsed 0 records' },
     ]);
     expect(error.message).toBe('wso records: Ohio: boom; Florida: parsed 0 records');
-    expect(describeFailure(error)).toEqual({ error: 'wso records: Ohio: boom; Florida: parsed 0 records', failedSources: ['Florida', 'Ohio'] });
+    expect(describeFailure(error)).toEqual({
+      error: 'wso records: Ohio: boom; Florida: parsed 0 records',
+      failedSources: ['Florida', 'Ohio'],
+      failures: [
+        { source: 'Ohio', error: 'boom', notReached: false },
+        { source: 'Florida', error: 'parsed 0 records', notReached: false },
+      ],
+    });
     // runAction rethrows a ConvexError with the message it was given and the data.
     const rethrown = new ConvexError('Uncaught ConvexError: wso records: …');
     rethrown.data = JSON.parse(JSON.stringify(error.data)) as never;

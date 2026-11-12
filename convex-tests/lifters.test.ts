@@ -1,3 +1,4 @@
+import { itemAt } from '../convex/lib/json';
 import {
   ageBandOf,
   condenseSightings,
@@ -271,7 +272,7 @@ describe('Sport80 rankings parsing', () => {
       { meet: 'Bad cell', date: '2026-01-01', age_category: "Junior Men's 65kg", lifter: 'Sebastian Stodel', total: 'abc' },
     ]);
     expect(rows[0]).toMatchObject({ date: '2026-10-04', age: "Junior Men's 65kg", total: 255, snatchBest: 109, cjBest: 146, name: 'Sebastian Stodel' });
-    expect(rows[1].name).toBeNull();
-    expect(rows[2].name).toBeNull();
+    expect(itemAt(rows, 1).name).toBeNull();
+    expect(itemAt(rows, 2).name).toBeNull();
   });
 });
