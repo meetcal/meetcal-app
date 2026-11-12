@@ -144,6 +144,7 @@ pub(crate) fn NarrowingSelects(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::utils::api::{queries, wire, wire_fixture};
 
     const RECORDS: Narrowing = Narrowing {
         kind_label: "Organization",
@@ -159,6 +160,26 @@ mod tests {
             gender: gender.to_owned(),
             age_category: age.to_owned(),
         }
+    }
+
+    #[test]
+    fn both_tables_read_the_servers_categories() {
+        let records: Vec<Vec<Category>> = wire::read(
+            queries::RECORD_CATEGORIES,
+            wire_fixture!("reference.recordCategories"),
+        );
+        let totals: Vec<Vec<Category>> = wire::read(
+            queries::QUALIFYING_TOTAL_CATEGORIES,
+            wire_fixture!("reference.qualifyingTotalCategories"),
+        );
+        assert_eq!(records, [vec![category("USAW", "Women", "Senior")]]);
+        assert_eq!(
+            totals,
+            [vec![
+                category("National Championships", "Men", "Senior"),
+                category("National Championships", "Women", "Senior"),
+            ]]
+        );
     }
 
     #[test]

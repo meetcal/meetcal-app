@@ -1,0 +1,16 @@
+{
+  "function": "reference:recordCategories",
+  "encoding": "jsonText",
+  "answers": [
+    {
+      "args": {},
+      "body": [
+        {
+          "record_type": "USAW",
+          "gender": "Women",
+          "age_category": "Senior"
+        }
+      ]
+    }
+  ]
+}

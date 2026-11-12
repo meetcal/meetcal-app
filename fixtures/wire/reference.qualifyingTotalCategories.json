@@ -1,0 +1,21 @@
+{
+  "function": "reference:qualifyingTotalCategories",
+  "encoding": "jsonText",
+  "answers": [
+    {
+      "args": {},
+      "body": [
+        {
+          "event_name": "National Championships",
+          "gender": "Men",
+          "age_category": "Senior"
+        },
+        {
+          "event_name": "National Championships",
+          "gender": "Women",
+          "age_category": "Senior"
+        }
+      ]
+    }
+  ]
+}
