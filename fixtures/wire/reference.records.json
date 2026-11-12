@@ -1,0 +1,43 @@
+{
+  "function": "reference:records",
+  "encoding": "jsonText",
+  "answers": [
+    {
+      "args": {},
+      "body": [
+        {
+          "age_category": "Senior",
+          "cj_record": 140,
+          "snatch_record": 112,
+          "total_record": 250,
+          "weight_class": "64kg",
+          "gender": "Women",
+          "record_type": "USAW",
+          "snatch_by": {
+            "name": "Record Holder One",
+            "date": "2024-06-01",
+            "location": "Fixture City"
+          },
+          "cj_by": {
+            "name": "Record Holder Two",
+            "date": null,
+            "location": null
+          },
+          "total_by": null
+        },
+        {
+          "age_category": "Senior",
+          "cj_record": 0,
+          "snatch_record": 0,
+          "total_record": 260,
+          "weight_class": "71kg",
+          "gender": "Women",
+          "record_type": "USAW",
+          "snatch_by": null,
+          "cj_by": null,
+          "total_by": null
+        }
+      ]
+    }
+  ]
+}

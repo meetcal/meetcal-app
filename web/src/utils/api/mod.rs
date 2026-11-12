@@ -5,12 +5,16 @@ mod pass;
 #[cfg(test)]
 mod tests;
 mod transport;
+#[cfg(test)]
+pub(crate) mod wire;
 
 pub(crate) use catalog::*;
 pub(crate) use device_login::*;
 pub(crate) use meet_submissions::*;
 pub(crate) use pass::*;
 pub(crate) use transport::*;
+#[cfg(test)]
+pub(crate) use wire::wire_fixture;
 
 use anyhow::Result;
 use serde::{Serialize, de::DeserializeOwned};
@@ -71,7 +75,11 @@ where
     } else {
         post_within(Endpoint::Action, function, &args, None, action.timeout).await?
     };
-    serde_json::from_value(whole_numbers_as_integers(answer_value(response)?))
+    read_action_body(function, answer_value(response)?)
+}
+
+pub(crate) fn read_action_body<T: DeserializeOwned>(function: &str, value: Value) -> Result<T> {
+    serde_json::from_value(whole_numbers_as_integers(value))
         .map_err(|error| user_error(function, UNREADABLE_MESSAGE, error))
 }
 

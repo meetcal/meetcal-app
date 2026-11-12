@@ -1,0 +1,25 @@
+{
+  "function": "reference:standards",
+  "encoding": "jsonText",
+  "answers": [
+    {
+      "args": {},
+      "body": [
+        {
+          "age_category": "Senior",
+          "gender": "Women",
+          "standard_a": 210,
+          "standard_b": 190,
+          "weight_class": "64kg"
+        },
+        {
+          "age_category": "Junior",
+          "gender": "Men",
+          "standard_a": 300,
+          "standard_b": 280,
+          "weight_class": "88kg"
+        }
+      ]
+    }
+  ]
+}

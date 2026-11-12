@@ -13,7 +13,8 @@
       "@/assets/*": [
         "./assets/*"
       ]
-    }
+    },
+    "noUncheckedIndexedAccess": true
   },
   "include": [
     "**/*.ts",

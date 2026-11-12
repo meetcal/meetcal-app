@@ -1,0 +1,12 @@
+{
+  "function": "entitlements:refresh",
+  "encoding": "value",
+  "answers": [
+    {
+      "args": {},
+      "body": {
+        "active": true
+      }
+    }
+  ]
+}

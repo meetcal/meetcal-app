@@ -1,0 +1,73 @@
+{
+  "function": "results:byMeet",
+  "encoding": "jsonText",
+  "answers": [
+    {
+      "args": {
+        "meet": "2026 Wire Fixture Classic"
+      },
+      "body": [
+        {
+          "id": 9001,
+          "event_id": "2026 Wire Fixture Classic|2026-03-07",
+          "federation": "USAW",
+          "meet": "2026 Wire Fixture Classic",
+          "date": "2026-03-07",
+          "name": "Avery Fixture",
+          "age": "Open Women's 63kg",
+          "body_weight": 63.4,
+          "snatch1": 78,
+          "snatch2": -82,
+          "snatch3": 82,
+          "snatch_best": 82,
+          "cj1": 98,
+          "cj2": 102,
+          "cj3": -105,
+          "cj_best": 102,
+          "total": 184,
+          "adaptive": false
+        },
+        {
+          "id": 0,
+          "event_id": "2026 Wire Fixture Classic|2026-03-08",
+          "federation": "USAW",
+          "meet": "2026 Wire Fixture Classic",
+          "date": "2026-03-08",
+          "name": "Blake Fixture",
+          "age": "Open Women's 69kg",
+          "body_weight": 0,
+          "snatch1": 85,
+          "snatch2": 88,
+          "snatch3": 0,
+          "snatch_best": 88,
+          "cj1": 108,
+          "cj2": 112,
+          "cj3": 0,
+          "cj_best": 112,
+          "total": 200,
+          "adaptive": true
+        },
+        {
+          "id": 0,
+          "event_id": "2026 Wire Fixture Classic|2026-03-07",
+          "federation": "USAW",
+          "meet": "2026 Wire Fixture Classic",
+          "date": "2026-03-07",
+          "name": "Drew Fixture",
+          "age": "Open Women's 63kg",
+          "body_weight": 62.1,
+          "snatch1": 70,
+          "snatch2": -75,
+          "snatch3": -75,
+          "snatch_best": 70,
+          "cj1": -90,
+          "cj2": -90,
+          "cj3": -90,
+          "cj_best": 0,
+          "total": 0,
+          "adaptive": false
+        }
+      ]
+    }
+  ]
+}
