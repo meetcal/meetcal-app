@@ -10,7 +10,12 @@ import {
   replaceOfflineCache,
   writeBoundedCacheEntry,
 } from './offline-cache';
-import { fetchApiRecords, fetchApiRecordsTagged, type ApiRecordRow } from '@/lib/api/reference-api';
+import {
+  fetchApiRecordCategories,
+  fetchApiRecords,
+  fetchApiRecordsTagged,
+  type ApiRecordRow,
+} from '@/lib/api/reference-api';
 import { mapTagged, requireNetwork, untagged } from './tagged-read';
 import { weightClassSort } from './weight-class-sort';
 
@@ -117,8 +122,8 @@ async function readFederationRecordsCache(federation: string) {
 
 async function fetchRecordsTagged(knownTag: string | null, federation: string) {
   await requireNetwork();
-  return mapTagged(await fetchApiRecordsTagged(knownTag), (allRows) =>
-    mapRowsToRecordsData(allRows.filter(isCompleteRecordsRow).filter((row) => row.record_type === federation)),
+  return mapTagged(await fetchApiRecordsTagged(knownTag, { federation }), (rows) =>
+    mapRowsToRecordsData(rows.filter(isCompleteRecordsRow).filter((row) => row.record_type === federation)),
   );
 }
 
@@ -200,8 +205,12 @@ export async function fetchAgeGroups(federation: string): Promise<string[]> {
   if (!federation) return [];
 
   try {
-    const data = await fetchRecordsFresh(federation);
-    return Object.keys(data).sort(ageGroupSort);
+    await requireNetwork();
+    const categories = await fetchApiRecordCategories();
+    const ageGroups = new Set(
+      categories.filter((category) => category.record_type === federation).map((category) => category.age_category),
+    );
+    return [...ageGroups].sort(ageGroupSort);
   } catch (error) {
     const cached = await readFederationRecordsCache(federation);
     if (cached?.data) {
@@ -231,9 +240,7 @@ export async function fetchRecordFederations(): Promise<string[]> {
   try {
     if (!(await isNetworkAvailable())) throw new Error('Offline');
     const federations = new Set<string>();
-    for (const row of await fetchApiRecords()) {
-      if (isCompleteRecordsRow(row)) federations.add(row.record_type);
-    }
+    for (const category of await fetchApiRecordCategories()) federations.add(category.record_type);
     if (federations.size === 0) throw new Error('Records table returned no federations');
     return sortRecordFederations(federations);
   } catch (error) {

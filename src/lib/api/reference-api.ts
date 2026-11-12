@@ -141,8 +141,54 @@ function validateApiAdaptiveRecords(
 
 type Rows<T> = readonly Readonly<T>[];
 
-export function fetchApiRecordsTagged(knownTag: string | null): Promise<TaggedAnswer<Rows<ApiRecordRow>>> {
-  return revalidateTagged('/data/records', 'reference:records', {}, validateApiRecords, { knownTag });
+export type RecordsFilter = { federation?: string; ageCategory?: string; gender?: string };
+
+export function fetchApiRecordsTagged(
+  knownTag: string | null,
+  filter: RecordsFilter = {},
+): Promise<TaggedAnswer<Rows<ApiRecordRow>>> {
+  return revalidateTagged('/data/records', 'reference:records', { ...filter }, validateApiRecords, { knownTag });
+}
+
+export type ApiRecordCategory = { record_type: string; gender: string; age_category: string };
+
+function validateApiRecordCategories(json: unknown): readonly Readonly<ApiRecordCategory>[] {
+  const rows = validateRows(json, '/data/record-categories', (row) => ({
+    record_type: nullableString(row.record_type),
+    gender: nullableString(row.gender),
+    age_category: nullableString(row.age_category),
+  }));
+  return rows.filter(
+    (row): row is Readonly<ApiRecordCategory> =>
+      row.record_type !== null && row.gender !== null && row.age_category !== null,
+  );
+}
+
+export async function fetchApiRecordCategories(): Promise<Rows<ApiRecordCategory>> {
+  return getRevalidated('/data/record-categories', 'reference:recordCategories', {}, validateApiRecordCategories);
+}
+
+export type ApiQualifyingTotalCategory = { event_name: string; gender: string; age_category: string };
+
+function validateApiQualifyingTotalCategories(json: unknown): readonly Readonly<ApiQualifyingTotalCategory>[] {
+  const rows = validateRows(json, '/data/qualifying-total-categories', (row) => ({
+    event_name: nullableString(row.event_name),
+    gender: nullableString(row.gender),
+    age_category: nullableString(row.age_category),
+  }));
+  return rows.filter(
+    (row): row is Readonly<ApiQualifyingTotalCategory> =>
+      row.event_name !== null && row.gender !== null && row.age_category !== null,
+  );
+}
+
+export async function fetchApiQualifyingTotalCategories(): Promise<Rows<ApiQualifyingTotalCategory>> {
+  return getRevalidated(
+    '/data/qualifying-total-categories',
+    'reference:qualifyingTotalCategories',
+    {},
+    validateApiQualifyingTotalCategories,
+  );
 }
 
 export async function fetchApiRecords(): Promise<Rows<ApiRecordRow>> {
@@ -157,13 +203,16 @@ export async function fetchApiStandards(): Promise<Rows<ApiStandardRow>> {
   return freshValue(await fetchApiStandardsTagged(null), '/data/standards');
 }
 
+export type QualifyingTotalsFilter = { event?: string; ageCategory?: string; gender?: string };
+
 export function fetchApiQualifyingTotalsTagged(
   knownTag: string | null,
+  filter: QualifyingTotalsFilter = {},
 ): Promise<TaggedAnswer<Rows<ApiQualifyingTotalRow>>> {
   return revalidateTagged(
     '/data/qualifying-totals',
     'reference:qualifyingTotals',
-    {},
+    { ...filter },
     validateApiQualifyingTotals,
     { knownTag },
   );

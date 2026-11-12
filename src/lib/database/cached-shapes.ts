@@ -86,6 +86,14 @@ const readGenderTotals: ReadCached<{
 
 export const readQualifyingTotalsData = mapOf(mapOf(readGenderTotals));
 
+export const readQualifyingTotalCategories = (value: unknown) => {
+  if (!isRecord(value)) return undefined;
+  const events = readStringList(value.events);
+  const ageGroupsByEvent = mapOf(readStringList)(value.ageGroupsByEvent);
+  if (events === undefined || ageGroupsByEvent === undefined) return undefined;
+  return { events, ageGroupsByEvent };
+};
+
 export const readNationalRankings = arrayOf((value) => {
   if (!isRecord(value) || typeof value.name !== 'string') return undefined;
   const id = finiteNumber(value.id);

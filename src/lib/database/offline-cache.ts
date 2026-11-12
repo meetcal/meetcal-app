@@ -19,6 +19,8 @@ type StoredOfflineCacheEntry = {
 export const OFFLINE_CACHE_KEYS = {
   standards: '@offline_cache/standards',
   qualifyingTotals: '@offline_cache/qualifying_totals',
+  qualifyingTotalsBrowse: '@offline_cache/qualifying_totals_browse',
+  qualifyingTotalCategories: '@offline_cache/qualifying_total_categories',
   intlRankings: '@offline_cache/intl_rankings',
   records: '@offline_cache/records',
   recordsBrowse: '@offline_cache/records_browse',
@@ -242,6 +244,8 @@ export const BROWSE_CACHE_KEYS = [
   OFFLINE_CACHE_KEYS.wsoRecordsFiltered,
   OFFLINE_CACHE_KEYS.wsoList,
   OFFLINE_CACHE_KEYS.athleteResultsBrowse,
+  OFFLINE_CACHE_KEYS.qualifyingTotalsBrowse,
+  OFFLINE_CACHE_KEYS.qualifyingTotalCategories,
 ] as const;
 
 /**
