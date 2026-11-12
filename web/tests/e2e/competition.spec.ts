@@ -134,7 +134,7 @@ test("WSO records omit the organization column after an organization is selected
           gender: "Men",
           snatch_record: 158,
           total_record: 347,
-          weight_class: "110+kg",
+          weight_class: "110+",
           wso: "California North",
           snatch_by: { name: "Ada Lift", date: "2024-03-02", location: "Oakland, CA" },
           cj_by: { name: "Standard", date: null, location: null },
@@ -151,6 +151,8 @@ test("WSO records omit the organization column after an organization is selected
   await expect(page.getByRole("columnheader", { name: "WSO" })).toHaveCount(0);
   await expect(page.locator("tbody tr").first().locator("td")).toHaveCount(6);
   await expect(page.locator("tbody")).not.toContainText("California North");
+  await expect(page.locator("tbody tr").first().locator("td").nth(2)).toHaveText("110+kg");
+  await expect(page.getByRole("combobox", { name: "Weight class", exact: true }).locator("option")).toHaveText(["All classes", "110+kg"]);
 
   const [snatch, cleanAndJerk, total] = await page.locator("tbody tr").first().locator("td.record-lift").all();
   await expect(snatch.locator(".record-value")).toHaveText("158");
@@ -239,7 +241,7 @@ test("athlete results show every competition field except federation", async ({ 
     const isSuggestion = !("startDate" in args);
     await route.fulfill(valueAnswer(isSuggestion
       ? { matched_name: null, suggestions: ["Test Athlete"], results: [], truncated: false }
-      : { matched_name: "Test Athlete", suggestions: [], results: [completeResult], truncated: false }));
+      : { matched_name: "Test Athlete", suggestions: [], results: [completeResult, { ...completeResult, meet: "Unweighed Meet", date: "2025-01-01", body_weight: 0 }], truncated: false }));
   });
   await page.goto("/results");
   const athleteSearch = page.getByLabel("Athlete", { exact: true });
@@ -252,8 +254,11 @@ test("athlete results show every competition field except federation", async ({ 
   const headers = await page.getByRole("columnheader").allTextContents();
   expect(headers).toEqual(["Date", "Meet", "Division", "Bodyweight", "S1", "S2", "S3", "Best snatch", "C&J 1", "C&J 2", "C&J 3", "Best C&J", "Total", "Adaptive"]);
   expect(headers).not.toContain("Federation");
-  await expect(page.locator("tbody tr")).toContainText("103×");
-  await expect(page.locator("tbody tr")).toContainText("Yes");
+  const weighed = page.locator("tbody tr").filter({ hasText: "Test Meet" });
+  await expect(weighed).toContainText("103×");
+  await expect(weighed).toContainText("Yes");
+  await expect(weighed.locator("td").nth(3)).toHaveText("70.5");
+  await expect(page.locator("tbody tr").filter({ hasText: "Unweighed Meet" }).locator("td").nth(3)).toHaveText("—");
 });
 
 test("meet center joins details, schedule, start list, and full results", async ({ page }) => {
@@ -267,7 +272,7 @@ test("meet center joins details, schedule, start list, and full results", async 
   ])));
   await routeQuery(page, "meets:schedule", (route) => route.fulfill(textAnswer([{ date: "2026-06-20", meet: "Test Meet", platform: "Red", session_id: 1, start_time: "10:00", weigh_in_time: "08:00", weight_class: "69kg" }])));
   await routeQuery(page, "meets:athletes", (route) => route.fulfill(textAnswer([{ member_id: "1", meet: "Test Meet", name: "Test Athlete", age: 27, club: "Test Barbell", wso: "California North", gender: "Female", weight_class: "+69", entry_total: 220, adaptive: false, session_number: 1, session_platform: "Red" }])));
-  await routeQuery(page, "results:byMeet", (route) => route.fulfill(textAnswer([completeResult])));
+  await routeQuery(page, "results:byMeet", (route) => route.fulfill(textAnswer([completeResult, { ...completeResult, name: "Unweighed Athlete", total: 200, body_weight: 0 }])));
   await routeQuery(page, "results:search", (route) => route.fulfill(valueAnswer({ matched_name: "Test Athlete", suggestions: [], results: [completeResult], truncated: false })));
   await page.goto("/meet-center");
   const meetSearch = page.locator("#meet-search-input");
@@ -292,6 +297,9 @@ test("meet center joins details, schedule, start list, and full results", async 
   await expect(page.locator("tbody").nth(1)).toContainText("Women");
   await expect(page.locator("tbody").nth(1)).not.toContainText("Female");
   await expect(page.locator("tbody").nth(2)).toContainText("Test Athlete");
+  const fullResults = page.locator("tbody").nth(2).locator("tr");
+  await expect(fullResults.filter({ hasText: "Test Athlete" }).locator("td").nth(3)).toHaveText("70.5");
+  await expect(fullResults.filter({ hasText: "Unweighed Athlete" }).locator("td").nth(3)).toHaveText("—");
   await expect(page.getByRole("columnheader").filter({ hasText: /^Total$/ })).toBeVisible();
   await page.getByRole("link", { name: "Test Athlete" }).click();
   await expect(page).toHaveURL(/\/results\?athlete=Test%20Athlete$/);
@@ -667,4 +675,47 @@ test("the WSO elite page ranks a WSO's athletes, and a list's score picker switc
   await expect(page.getByRole("heading", { name: "Masters — Sinclair" })).toBeVisible();
   await expect(page.getByText("251.20")).toBeVisible();
   expect(asked).toHaveLength(1);
+});
+
+test("WSO Elite asks for the current calendar year by default", async ({ page }) => {
+  await page.clock.setFixedTime(new Date("2026-11-11T12:00:00"));
+  await mockSubscribedUser(page);
+  await routeQuery(page, "reference:registrationWsos", (route) => route.fulfill(valueAnswer(["Carolina"])));
+  const asked: Record<string, unknown>[] = [];
+  await routeAction(page, "results:wsoElite", (route, args) => {
+    asked.push(args);
+    return route.fulfill(valueAnswer(eliteAnswer()));
+  });
+  await page.goto("/wso-elite");
+  await expect(page.getByLabel("From")).toHaveValue("2026-01-01");
+  await expect(page.getByLabel("To")).toHaveValue("2026-12-31");
+  await page.getByLabel("WSO").selectOption("Carolina");
+  await page.getByRole("button", { name: "View elite lists" }).click();
+  await expect(page).toHaveURL(/\/wso-elite\?wso=Carolina&from=2026-01-01&to=2026-12-31$/);
+  await expect.poll(() => asked[0]).toEqual({ wso: "Carolina", from: "2026-01-01", to: "2026-12-31", pass: "pass_test" });
+});
+
+test("a WSO elite score the answer lacks says so, and a score the page does not know is ignored", async ({ page }) => {
+  await mockSubscribedUser(page);
+  await routeQuery(page, "reference:registrationWsos", (route) => route.fulfill(valueAnswer(["Carolina"])));
+  await routeAction(page, "results:wsoElite", (route) => {
+    const answer = eliteAnswer();
+    const { sinclair: _dropped, ...youthWithoutSinclair } = answer.rankings.youth;
+    return route.fulfill(
+      valueAnswer({
+        ...answer,
+        rankings: { ...answer.rankings, youth: { ...youthWithoutSinclair, robi: { men: [], women: [] } } },
+      }),
+    );
+  });
+  await page.goto("/wso-elite");
+  await page.getByLabel("WSO").selectOption("Carolina");
+  await page.getByRole("button", { name: "View elite lists" }).click();
+
+  await expect(page.getByRole("heading", { name: "Youth — % of A standard" })).toBeVisible();
+  await expect(page.getByRole("alert")).toHaveCount(0);
+  await page.getByLabel("Youth score").selectOption("sinclair");
+  await expect(page.getByRole("heading", { name: "Youth — Sinclair" })).toBeVisible();
+  await expect(page.getByText("This score isn’t available for this list right now.")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Overall — % of A standard" })).toBeVisible();
 });

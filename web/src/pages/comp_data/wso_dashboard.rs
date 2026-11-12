@@ -1,6 +1,7 @@
 use std::collections::{HashMap, HashSet};
 
 use super::{
+    address::{HistoryEntry, query_param, use_page_address},
     analytics::percentage,
     format::{NO_VALUE, display_gender, display_weight_class},
     loading::{Load, LoadState, load_error, load_meet_data, select_response},
@@ -13,8 +14,9 @@ use leptos::prelude::*;
 
 #[component]
 pub fn WsoDashboard() -> impl IntoView {
-    let (meet, set_meet) = signal(String::new());
-    let (wso, set_wso) = signal(String::new());
+    let page = use_page_address("/wso-dashboard");
+    let meet = query_param("meet");
+    let wso = query_param("wso");
     let meets = load_meet_catalog();
     let athletes = Load::new(
         move || meet.get(),
@@ -34,10 +36,7 @@ pub fn WsoDashboard() -> impl IntoView {
                         values=meets
                         selected=meet
                         wide=true
-                        on_select=move |value: String| {
-                            set_meet.set(value);
-                            set_wso.set(String::new());
-                        }
+                        on_select=move |meet: String| page.show(&[("meet", &meet)], HistoryEntry::Push)
                     />
                     // The WSOs the meet's athletes registered under, spelled as
                     // the roster spells them: every one can be chosen, and each
@@ -49,7 +48,7 @@ pub fn WsoDashboard() -> impl IntoView {
                                 if options.is_empty() {
                                     view! { <DataStatus message="This meet’s start list doesn’t list athletes’ WSOs." /> }.into_any()
                                 } else {
-                                    view! { <FilterSelect label="WSO" placeholder="Choose a WSO" values=options selected=wso wide=true on_select=move |value| set_wso.set(value) /> }.into_any()
+                                    view! { <FilterSelect label="WSO" placeholder="Choose a WSO" values=options selected=wso wide=true on_select=move |wso: String| page.show(&[("meet", &meet.get_untracked()), ("wso", &wso)], HistoryEntry::Push) /> }.into_any()
                                 }
                             }
                             LoadState::Failed(error) => load_error("the meet’s WSOs", error, move || athletes.retry()),
@@ -58,7 +57,7 @@ pub fn WsoDashboard() -> impl IntoView {
                     }}
                 </div> }.into_any()
         })}
-        {move || if wso.get().is_empty() { view! { <DataStatus message="Choose a meet and WSO to view its dashboard." /> }.into_any() } else { athletes.with(|athlete_state| results.with(|result_state| match (athlete_state, result_state) { (LoadState::Ready(athletes), LoadState::Ready(results)) => dashboard(athletes, results, &wso.get()), (LoadState::Failed(error), _) | (_, LoadState::Failed(error)) => load_error("WSO dashboard", error, move || { athletes.retry_failed(); results.retry_failed(); }), _ => view! { <TableSkeleton columns=8 /> }.into_any() })) }}
+        {move || if meet.with(String::is_empty) || wso.with(String::is_empty) { view! { <DataStatus message="Choose a meet and WSO to view its dashboard." /> }.into_any() } else { athletes.with(|athlete_state| results.with(|result_state| match (athlete_state, result_state) { (LoadState::Ready(athletes), LoadState::Ready(results)) => dashboard(athletes, results, &wso.get()), (LoadState::Failed(error), _) | (_, LoadState::Failed(error)) => load_error("WSO dashboard", error, move || { athletes.retry_failed(); results.retry_failed(); }), _ => view! { <TableSkeleton columns=8 /> }.into_any() })) }}
     </DataPage> }
 }
 

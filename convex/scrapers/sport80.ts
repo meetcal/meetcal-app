@@ -26,28 +26,23 @@ import {
 } from './parse/sport80';
 import { sourcesFailed, type SourceFailure } from '../lib/cronAlerts';
 import { NOT_REACHED, runBudget } from './lib/budget';
+import { rowCount } from '../lib/json';
 
 type Dict = Record<string, unknown>;
 
 /** Pages one table may take: tables are requested as one page, so more is a misbehaving API. */
 const MAX_PAGES = 50;
 
-/** Whether a table provably read in full: it reports a row count (`total`), and that many rows were read. */
 export function tableComplete(rows: number, total: unknown): boolean {
-  return typeof total === 'number' && Number.isInteger(total) && total >= 0 && rows === total;
+  return rowCount(total) === rows;
 }
 
-/**
- * A table's pages joined. A table short of the `total` it reports throws.
- * `notWhole` says why the rows, though returned, are no proof the table was
- * read in full, so no basis for deleting what it lacks: it reports no
- * `total`, or a row came back on two pages (the pages' order shifted between
- * requests, so the repeat may stand in for a row no page returned).
- */
 export function joinPages(pages: readonly Dict[][], total: unknown): { rows: Dict[]; notWhole?: string } {
   const rows = pages.flat();
-  if (typeof total === 'number' && rows.length !== total) throw new Error(`read ${rows.length} rows of the ${total} the table reports`);
-  if (!tableComplete(rows.length, total)) return { rows, notWhole: 'the table reports no row count' };
+  const reported = rowCount(total);
+  if (typeof total === 'number' && reported === null) throw new Error(`read ${rows.length} rows of the ${total} the table reports`);
+  if (reported === null) return { rows, notWhole: 'the table reports no row count' };
+  if (!tableComplete(rows.length, reported)) throw new Error(`read ${rows.length} rows of the ${reported} the table reports`);
   const earlier = new Set<string>();
   for (const page of pages) {
     const keys = page.map((row) => JSON.stringify(row));
@@ -57,13 +52,11 @@ export function joinPages(pages: readonly Dict[][], total: unknown): { rows: Dic
   return { rows };
 }
 
-/** The Sport80 public API: key and base URL come from the site's `window.env`. */
 class Sport80 {
   private constructor(private readonly env: Sport80Env) {}
 
   static async connect(): Promise<Sport80> {
     const response = await fetch(`${USAW_DOMAIN}/public/rankings/`, { signal: AbortSignal.timeout(60_000) });
-    // A 5xx page has no `window.env` either: say what really failed.
     if (!response.ok) throw new Error(`sport80: rankings page failed with ${response.status}`);
     const page = await response.text();
     const match = /window\.env = ({.*?});/s.exec(page);
@@ -80,7 +73,6 @@ class Sport80 {
     };
   }
 
-  /** A page of a table; a failed request throws, so a partial table is never taken for a whole one. */
   private async post(url: string, payload?: Dict): Promise<Dict> {
     const response = await fetch(url, {
       method: 'POST',
@@ -92,12 +84,6 @@ class Sport80 {
     return readTablePage(await response.json());
   }
 
-  /**
-   * Every page's `data`, following `next_page_url`; any failed page fails
-   * the whole table, and so does a table short of the `total` it reports.
-   * The results sync deletes what a table lacks, so it prunes only a table
-   * `joinPages` finds whole.
-   */
   private async collate(first: Dict, payload?: Dict): Promise<{ rows: Dict[]; notWhole?: string }> {
     const pages: Dict[][] = [pageRows(first)];
     let current = first;
@@ -130,8 +116,8 @@ class Sport80 {
   }
 }
 
-/** The share of the run's time budget (`lib/budget.ts`) reading events' tables may take. */
 const READ_SHARE = 0.5;
+const READ_DEADLINE_SHARE = 0.75;
 
 /** Rows per ingest call: each writes its rows and rewrites their athletes' history documents. */
 const INGEST_BATCH = 200;
@@ -163,7 +149,7 @@ export const run = internalAction({
   args: { dryRun: v.optional(v.boolean()), only: v.optional(v.array(v.string())), allowShrink: v.optional(v.boolean()) },
   handler: async (ctx, { dryRun, only, allowShrink }): Promise<RunResult> => {
     const budget = runBudget();
-    const api = await Sport80.connect();
+    const api = await budget.orStop(Sport80.connect());
     const year = new Date().getUTCFullYear();
     // Everything that could not be read or stored, by a source name that
     // stays the same from run to run. The rest is still stored, then the run
@@ -173,7 +159,7 @@ export const run = internalAction({
     const events: Dict[] = [];
     for (const y of [year, year - 1]) {
       try {
-        events.push(...(await api.eventIndex(y)));
+        events.push(...(await budget.orStop(api.eventIndex(y))));
       } catch (error) {
         failures.push({ source: `event index ${y}`, error: (error as Error).message });
       }
@@ -219,14 +205,13 @@ export const run = internalAction({
       if (!eventId || !meet || seen.has(eventId)) continue;
       seen.add(eventId);
       if (!hasResultsRoute(event) || (only && !only.includes(eventId))) continue;
-      // Reading may take half the budget; storing what was read needs the rest.
       if (budget.spent(READ_SHARE)) {
         failures.push({ source: eventSource(meet, eventId), error: NOT_REACHED });
         continue;
       }
       let table: { rows: Dict[]; notWhole?: string };
       try {
-        table = await api.eventResults(eventId);
+        table = await budget.orStop(api.eventResults(eventId), READ_DEADLINE_SHARE);
       } catch (error) {
         failures.push({ source: eventSource(meet, eventId), error: `${eventDate(event)}: ${(error as Error).message}` });
         continue;
@@ -243,6 +228,7 @@ export const run = internalAction({
     if (dryRun) return { meets, outcomes: [], failed: failed() };
 
     const outcomes: MeetOutcome[] = [];
+    let storedCount = 0;
     for (const { eventId, meet, rows, notWhole } of meets) {
       const source = eventSource(meet, eventId);
       if (budget.spent()) {
@@ -263,6 +249,7 @@ export const run = internalAction({
       }
       try {
       for (let i = 0; i < valid.length; i += INGEST_BATCH) {
+        budget.writeOnlyBeforeTheHardStop();
         const counts: { inserted: number; updated: number; unchanged: number } = await ctx.runMutation(
           internal.ingest.upsertLiftingResults,
           {
@@ -293,10 +280,10 @@ export const run = internalAction({
         outcome.unchanged += counts.unchanged;
       }
       } catch (error) {
-        // One meet's write failing leaves the other meets to be stored.
         failures.push({ source, error: `not stored: ${(error as Error).message}` });
         continue;
       }
+      if (valid.length > 0) storedCount += 1;
       // Only a meet read in full is a safe basis for deleting what it lacks.
       if (outcome.failed > 0 || valid.length === 0) continue;
       if (notWhole) {
@@ -305,13 +292,9 @@ export const run = internalAction({
       }
       try {
         const keep = valid.map((row) => ({ meet: row.meet, name: row.name!, age: row.age, date: row.date }));
-        // A batch a call; the rest of a huge prune waits for the next run.
         for (let call = 0; call < MAX_PRUNE_CALLS; call++) {
-          const pruned: { deleted: number; remaining: number } = await ctx.runMutation(internal.ingest.pruneEventResults, {
-            eventId,
-            keep,
-            allowShrink: allowShrink ?? false,
-          });
+          budget.writeOnlyBeforeTheHardStop();
+          const pruned: { deleted: number; remaining: number } = await ctx.runMutation(internal.ingest.pruneEventResults, { eventId, keep, allowShrink: allowShrink ?? false });
           outcome.deleted += pruned.deleted;
           if (pruned.remaining === 0 || pruned.deleted === 0) break;
         }
@@ -324,7 +307,7 @@ export const run = internalAction({
     const updated = outcomes.filter((o) => o.inserted === 0 && o.updated > 0).map((o) => o.meet);
     const deleted = outcomes.reduce((sum, o) => sum + o.deleted, 0);
     console.log(`sport80: ${meets.length} meets, ${inserted.length} with new results, ${updated.length} updated, ${deleted} stale result(s) deleted`);
-    if (failures.length) throw sourcesFailed(`sport80: ${failures.length} problem(s), the rest was stored`, failures);
+    if (failures.length) throw sourcesFailed(`sport80: ${failures.length} problem(s), ${storedCount} of ${meets.length} meet(s) read were stored`, failures);
     return { meets, outcomes, failed: failed() };
   },
 });

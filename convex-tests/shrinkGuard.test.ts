@@ -37,9 +37,9 @@ describe('result columns emptied (#96)', () => {
     expect(tableComplete(29, 29)).toBe(true);
     expect(tableComplete(28, 29)).toBe(false);
     expect(tableComplete(0, 0)).toBe(true);
-    // No reported count proves nothing.
     expect(tableComplete(29, undefined)).toBe(false);
-    expect(tableComplete(29, '29')).toBe(false);
+    expect(tableComplete(29, '29')).toBe(true);
+    expect(tableComplete(29, 'many')).toBe(false);
     expect(tableComplete(29, 29.5)).toBe(false);
   });
 
@@ -63,7 +63,7 @@ describe('record lift cells (#91)', () => {
     expect(recordLift('128.5')).toBe(128);
     for (const kg of ['82kg', '82 kg', ' 82  kg ', '82KG']) expect(recordLift(kg)).toBe(82);
     for (const empty of ['', ' - ', '—', 'n/a', '#N/A', 'TBD', 'Vacant', 'open', 'Standard', 'WSO Standard']) expect(recordLift(empty)).toBeNull();
-    for (const bad of ['125*', '125* kg', '82.5kg', 'kg', '82 k g', 'Jane', 'Jane kg', 'x']) expect(() => recordLift(bad)).toThrow(`unreadable lift value ${JSON.stringify(bad)}`);
+    for (const bad of ['125*', '125* kg', '82.5kg', 'kg', '82 k g', 'Jane', 'Jane kg', 'x', '1e999']) expect(() => recordLift(bad)).toThrow(`unreadable lift value ${JSON.stringify(bad)}`);
   });
 });
 
@@ -110,7 +110,6 @@ describe('Sport80 sync prunes only a table read in full (#97)', () => {
       throw new Error(`unexpected fetch ${url}`);
     });
   const ctx = () => ({
-    runQuery: jest.fn(async (): Promise<string[]> => []),
     runMutation: jest.fn(async (_fn: unknown, args: Record<string, unknown>) =>
       'keep' in args ? { deleted: 0, remaining: 0 } : { inserted: 2, updated: 0, unchanged: 0 },
     ),

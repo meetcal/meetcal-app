@@ -10,15 +10,13 @@ pub(crate) fn load_meet_catalog() -> Load<(), Vec<Meet>> {
     Load::new(
         || (),
         |()| async {
-            let (upcoming, completed) = futures::future::join(
+            let (upcoming, completed) = futures::future::try_join(
                 query_with::<Vec<Meet>, _>(queries::UPCOMING_MEETS, &UpcomingMeetsQuery::current()),
                 query::<Vec<Meet>>(queries::COMPLETED_MEETS),
             )
-            .await;
-            match (upcoming, completed) {
-                (Ok(upcoming), Ok(completed)) => Ok(meet_catalog(&upcoming, &completed)),
-                (Err(error), _) | (_, Err(error)) => Err(error.to_string()),
-            }
+            .await
+            .map_err(|error| error.to_string())?;
+            Ok(meet_catalog(&upcoming, &completed))
         },
     )
 }
