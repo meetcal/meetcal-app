@@ -144,7 +144,7 @@ where
         <div class=filter_row_class>
             {selects}
             <SortSelect<S>
-                sort=Signal::derive(move || sort.get())
+                sort=sort
                 on_sort=move |order: S| page.change(&[(SORT_PARAM, sort_value(order, default_sort))], HistoryEntry::Push)
             />
         </div>

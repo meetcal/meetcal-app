@@ -77,7 +77,7 @@ pub(crate) fn FilterSelect(
 
 #[component]
 pub(crate) fn SortSelect<S: SortOrder>(
-    sort: Signal<S>,
+    #[prop(into)] sort: Signal<S>,
     #[prop(into)] on_sort: Callback<S>,
 ) -> impl IntoView {
     let initial = sort.get_untracked();

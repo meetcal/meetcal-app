@@ -93,9 +93,11 @@ fn shown_gender(chosen: &str) -> &'static str {
         .unwrap_or(DEFAULT_GENDER)
 }
 
+const PATH: &str = "/adaptive-records";
+
 #[component]
 pub fn AdaptiveRecords() -> impl IntoView {
-    let page = use_page_address("/adaptive-records");
+    let page = use_page_address(PATH);
     let gender_in_address = query_param("gender");
     let gender = Memo::new(move |_| {
         gender_in_address
@@ -140,7 +142,7 @@ pub fn AdaptiveRecords() -> impl IntoView {
             </div>
             {move || table_response(records, HEADERS.len(), "adaptive records", |records| {
                 view! {
-                    <ReferenceTable rows=records.to_vec() filters=FILTERS headers=HEADERS row=record_row path="/adaptive-records" default_sort=AdaptiveRecordSort::WeightAsc empty_message="No adaptive records match these filters." below_another_filter_row=true />
+                    <ReferenceTable rows=records.to_vec() filters=FILTERS headers=HEADERS row=record_row path=PATH default_sort=AdaptiveRecordSort::WeightAsc empty_message="No adaptive records match these filters." below_another_filter_row=true />
                 }
                 .into_any()
             })}
