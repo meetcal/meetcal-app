@@ -277,6 +277,7 @@ export function pickNightlyEvents(
   const dueTonight = [...older.values()].filter((event) => idNumber(event) % rollingNights === tonight).sort((a, b) => idNumber(b) - idNumber(a));
   const rolling = dueTonight.slice(0, maxRolling);
   const picked = new Set([...recent, ...rolling].map(eventIdOf));
+  const inTheIndex = new Set(events.map(eventIdOf));
   const retried = stillFailing.flatMap((id) => {
     const event = picked.has(id) ? undefined : older.get(id);
     return event === undefined ? [] : [event];
@@ -288,7 +289,7 @@ export function pickNightlyEvents(
     retriedCount: retried.length,
     rollingCount: rolling.length,
     rollingLeftOut: dueTonight.length - rolling.length,
-    notInTheIndex: stillFailing.filter((id) => !picked.has(id) && !older.has(id)),
+    notInTheIndex: stillFailing.filter((id) => !picked.has(id) && !older.has(id) && !inTheIndex.has(id)),
     unreadable: unreadable.map((entry) => ({ ...entry, recent: entry.recent || idNumber(entry.event) > oldestRecentId })),
   };
 }

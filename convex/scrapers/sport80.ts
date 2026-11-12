@@ -164,9 +164,13 @@ export const run = internalAction({
         failures.push({ source: `event index ${y}`, error: errorMessage(error) });
       }
     }
-    const stillFailing = only ? [] : failingEventIds(await ctx.runQuery(internal.cronStatus.failedSources, { job: RESULTS_JOB }));
+    const failedLastRun: string[] = only ? [] : await ctx.runQuery(internal.cronStatus.failedSources, { job: RESULTS_JOB });
+    const stillFailing = failingEventIds(failedLastRun);
     const notRetried = (ids: readonly string[]) =>
-      ids.map((id) => ({ source: eventSource(null, id), error: 'failed in the last run and the event index it is in could not be read, not synced' }));
+      ids.map((id) => ({
+        source: failedLastRun.find((source) => isSourceOfEvent(source, id)) ?? eventSource(null, id),
+        error: 'failed in the last run and the event index it is in could not be read, not synced',
+      }));
     if (!events.length) throw sourcesFailed('sport80: no events fetched', [...failures, ...notRetried(stillFailing)]);
 
     let newest: Dict[];
