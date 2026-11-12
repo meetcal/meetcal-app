@@ -5,6 +5,7 @@ import { fetchApiClubNames } from '@/lib/api/clubs-api';
 import { resetServerClockForTests } from '@/lib/api/server-clock';
 import { callQuery, isClockCall } from './json-transport-stub';
 import { setApiTransportForTests, TransportRequestError, type ApiCall } from './transport';
+import { itemAt } from '@/test-support/checked-access';
 
 type Responder = (call: ApiCall) => unknown;
 
@@ -19,7 +20,7 @@ function installTransport(respond: Responder, clock: Responder = () => Date.now(
   const lastCall = (): ApiCall => {
     const calls = dataCalls();
     if (calls.length === 0) throw new Error('no data call was made');
-    return calls[calls.length - 1];
+    return itemAt(calls, -1);
   };
   return { transport, dataCalls, clockCalls, lastCall };
 }
@@ -41,7 +42,7 @@ function queueTransport(replies: Reply[]) {
     if ('fail' in reply) throw apiFailure(reply.fail);
     return reply;
   });
-  return { ...fake, sentTag: (index: number) => fake.dataCalls()[index].args.ifNoneMatch };
+  return { ...fake, sentTag: (index: number) => itemAt(fake.dataCalls(), index).args.ifNoneMatch };
 }
 
 beforeEach(() => {
@@ -98,7 +99,7 @@ describe('conditional reads for reference data', () => {
       (rows[0] as { total_record: number | null }).total_record = 1;
     } catch {
     }
-    expect(rows[0].total_record).toBe(380);
+    expect(itemAt(rows, 0).total_record).toBe(380);
     await expect(fetchApiRecords()).resolves.toEqual([recordRow()]);
   });
 
@@ -264,7 +265,7 @@ describe('conditional reads for reference data', () => {
 
     transport.mockClear();
     await fetchApiMeets();
-    const [meetsCall] = dataCalls();
+    const meetsCall = itemAt(dataCalls(), 0);
     expect(meetsCall.fn).toBe('meets:list');
     expect(meetsCall.args.ifNoneMatch).toBe(tagFor(meetsCall));
   });

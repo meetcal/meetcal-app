@@ -5,6 +5,7 @@ import { MeetCalApiError } from '@/lib/api/meetcal-api';
 import { HTTP_VALIDATOR_CACHE_LIMIT } from './http-cache';
 import { isClockCall } from './json-transport-stub';
 import { setApiTransportForTests, TransportRequestError, type ApiCall } from './transport';
+import { itemAt } from '@/test-support/checked-access';
 
 type Responder = (call: ApiCall) => unknown;
 
@@ -19,7 +20,7 @@ function installTransport(respond: Responder, clock: Responder = () => Date.now(
   const lastCall = (): ApiCall => {
     const calls = dataCalls();
     if (calls.length === 0) throw new Error('no data call was made');
-    return calls[calls.length - 1];
+    return itemAt(calls, -1);
   };
   return { transport, dataCalls, clockCalls, lastCall };
 }
@@ -41,7 +42,7 @@ function queueTransport(replies: Reply[]) {
     if ('fail' in reply) throw apiFailure(reply.fail);
     return reply;
   });
-  return { ...fake, sentTag: (index: number) => fake.dataCalls()[index].args.ifNoneMatch };
+  return { ...fake, sentTag: (index: number) => itemAt(fake.dataCalls(), index).args.ifNoneMatch };
 }
 
 function meetRow(name: string, venue = 'Hall') {
@@ -91,7 +92,7 @@ describe('conditional reads for meet queries', () => {
     expect(sentTag(1)).toBe('"v1"');
     expect(dataCalls().every((call) => call.fn === 'meets:list' && call.conditional === true)).toBe(true);
     expect(second).toEqual(first);
-    expect(second[0].name).toBe('Meet A');
+    expect(itemAt(second, 0).name).toBe('Meet A');
     expect(second[0]).not.toBe(first[0]);
   });
 
@@ -141,7 +142,7 @@ describe('conditional reads for meet queries', () => {
     const first = await fetchApiSchedule('Meet A');
     const second = await fetchApiSchedule('Meet A');
     expect(second).toEqual(first);
-    expect(second[0].sessions[0].platforms[0].platform).toBe('Red');
+    expect(itemAt(second, 0).sessions[0]?.platforms[0]?.platform).toBe('Red');
     const details = await fetchApiMeetByName('Meet A');
     await expect(fetchApiMeetByName('Meet A')).resolves.toEqual(details);
 

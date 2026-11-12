@@ -5,6 +5,7 @@ import { getMeetData, getMeetSchedule } from "@/lib/database/meet-data-reads";
 import { getMeetAthletesSyncedAt, initStore } from "@/lib/database/offline-store-index";
 import { getSessionAthletesFromMeetCache, saveSessionAthletes } from "@/lib/database/session-roster-cache";
 import { markMeetScheduleVerified, saveMeetAthletes, saveMeetLiftingResults, saveMeetSchedule } from "@/lib/database/meet-data-saves";
+import { itemAt } from "@/test-support/checked-access";
 
 const mockStorage = new Map<string, string>();
 
@@ -68,7 +69,7 @@ describe("offline-store athlete lifting results", () => {
     const results = await getAllCachedLiftingResultsForAthlete("jane doe");
 
     expect(results).toHaveLength(1);
-    expect(results[0].name).toBe("  JANE   DOE ");
+    expect(itemAt(results, 0).name).toBe("  JANE   DOE ");
   });
 
   it("preserves cached athlete session details when saving a plain athlete payload", async () => {
@@ -253,7 +254,7 @@ describe("offline-store athlete lifting results", () => {
 
     expect(multiSet).toHaveBeenCalled();
     const meetData = await getMeetData("Test Meet" as any);
-    expect(meetData.athletes[0].entryTotal).toBe(205);
+    expect(itemAt(meetData.athletes, 0).entryTotal).toBe(205);
   });
 
   it("hydrates schedules from the out-of-line schedule key", async () => {
@@ -407,7 +408,7 @@ describe("offline-store athlete lifting results", () => {
       "Red",
     );
     expect(redSession).toHaveLength(1);
-    expect(redSession[0].name).toBe("Jane Doe");
+    expect(itemAt(redSession, 0).name).toBe("Jane Doe");
 
     await clearMeetData("Test Meet" as any);
 

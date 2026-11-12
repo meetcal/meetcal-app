@@ -11,6 +11,7 @@ import {
 } from "@/lib/database/fetch-wso-records";
 import { getOfflineCache, OFFLINE_CACHE_KEYS } from "@/lib/database/offline-cache";
 import type { RecordsData } from "@/types/records";
+import { valueAt } from "@/test-support/checked-access";
 
 const mockGetJsonArray = jest.fn();
 const mockFetchApiWsoList = jest.fn();
@@ -52,7 +53,7 @@ async function fetchWSORecords(wso: string): Promise<RecordsData> {
   mockFetchApiWsoList.mockResolvedValueOnce([wso]);
   await downloadWSORecordsForOffline();
   const stored = await getOfflineCache(WSO_KEY, readRecordsDataByKey);
-  return stored!.data[wso];
+  return valueAt(stored!.data, wso);
 }
 
 const row = (overrides: Record<string, unknown>) => ({
@@ -87,14 +88,14 @@ describe("WSO records mapping and list", () => {
     // A null age category used to become a literal "null" bucket the user
     // could select.
     expect(Object.keys(records)).toEqual(["Senior"]);
-    expect(records.Senior.Men.map((record) => record.weightClass)).toEqual(["67kg", "89kg"]);
-    expect(records.Senior.Men[0]).toEqual({
+    expect(records.Senior?.Men?.map((record) => record.weightClass)).toEqual(["67kg", "89kg"]);
+    expect(records.Senior?.Men?.[0]).toEqual({
       weightClass: "67kg",
       snatchRecord: null,
       cjRecord: null,
       totalRecord: null,
     });
-    expect(records.Senior.Women).toEqual([]);
+    expect(records.Senior?.Women).toEqual([]);
     expect(mockGetJsonArray).toHaveBeenCalledWith("/data/wso/records", { wso: "Carolina" });
   });
 

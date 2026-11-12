@@ -57,11 +57,11 @@ describe("standardsResource", () => {
 
     const standards = await fetchStandards();
 
-    expect(standards.senior.men).toEqual([
+    expect(standards.senior?.men).toEqual([
       { weightClass: "67kg", a: null, b: null },
       { weightClass: "89kg", a: 300, b: 280 },
     ]);
-    expect(standards.senior.women).toEqual([]);
+    expect(standards.senior?.women).toEqual([]);
     expect(Object.keys(standards).sort()).toEqual(["junior", "senior", "u15", "youth"]);
     expect(mockSetOfflineCache).toHaveBeenCalledWith("@offline_cache/standards", standards);
   });
@@ -75,7 +75,7 @@ describe("standardsResource", () => {
 
     const standards = await fetchStandards();
 
-    expect(standards.u15.men).toEqual([{ weightClass: "55kg", a: 184, b: 0 }]);
+    expect(standards.u15?.men).toEqual([{ weightClass: "55kg", a: 184, b: 0 }]);
   });
 
   it("rejects when the API fails, leaving the cached copy to the screen", async () => {

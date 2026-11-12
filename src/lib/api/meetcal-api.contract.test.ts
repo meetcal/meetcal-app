@@ -28,6 +28,7 @@ import { resetServerClockForTests } from '@/lib/api/server-clock';
 import { isClockCall } from './json-transport-stub';
 import { setApiTransportForTests, type ApiCall } from './transport';
 import type { MeetName } from '@/data/types/meet';
+import { itemAt, valueAt } from '@/test-support/checked-access';
 
 const MEET = '2026 USA Weightlifting National Championships, Powered by Rogue Fitness' as MeetName;
 
@@ -203,7 +204,7 @@ describe('meetcal API contract (serde output through the real client)', () => {
   it('fetchApiMeets: /meets row with null map links and a known zone', async () => {
     const calls = stubTransport({ 'meets:list': MEETS_JSON });
 
-    const [meet] = await fetchApiMeets();
+    const meet = itemAt(await fetchApiMeets(), 0);
 
     expect(calls.map((call) => [call.path, call.fn, call.kind])).toEqual([
       ['/meets', 'meets:list', 'query'],
@@ -242,7 +243,7 @@ describe('meetcal API contract (serde output through the real client)', () => {
     expect(calls).toHaveLength(1);
     expect(calls[0]).toMatchObject({ path: '/meets/schedule', fn: 'meets:schedule', conditional: true });
     // The meet name, commas and all, is one argument.
-    expect(calls[0].args).toEqual({ meet: MEET });
+    expect(itemAt(calls, 0).args).toEqual({ meet: MEET });
     expect(schedule).toEqual([
       {
         date: 'June 20, 2026',
@@ -261,7 +262,7 @@ describe('meetcal API contract (serde output through the real client)', () => {
         ],
       },
     ]);
-    expect(Number.isInteger(schedule[0].sessions[0].number)).toBe(true);
+    expect(Number.isInteger(itemAt(itemAt(schedule, 0).sessions, 0).number)).toBe(true);
   });
 
   it('fetchApiAthletesWithSession: an assigned row and a null-session row both survive', async () => {
@@ -310,8 +311,8 @@ describe('meetcal API contract (serde output through the real client)', () => {
 
     const athletes = await fetchApiAthletesWithSession(MEET, 45, 'red');
 
-    expect(calls[0].args.sessionNumber).toBe(45);
-    expect(calls[0].args.platform).toBeUndefined();
+    expect(itemAt(calls, 0).args.sessionNumber).toBe(45);
+    expect(itemAt(calls, 0).args.platform).toBeUndefined();
     expect(athletes.map((a) => a.name)).toEqual(['Package Test Lifter']);
   });
 
@@ -322,12 +323,12 @@ describe('meetcal API contract (serde output through the real client)', () => {
 
     expect(calls).toHaveLength(1);
     expect(calls[0]).toMatchObject({ path: '/meets/package', conditional: true });
-    expect(calls[0].args).toEqual({
+    expect(itemAt(calls, 0).args).toEqual({
       meet: MEET,
       historyCutoffDate: '2024-01-01',
       include: ['year_bests'],
     });
-    expect(calls[0].args.ifNoneMatch).toBeUndefined();
+    expect(itemAt(calls, 0).args.ifNoneMatch).toBeUndefined();
     expect(result.status).toBe('fresh');
     if (result.status !== 'fresh') throw new Error('unreachable');
     expect(result.etag).toBe('"pkg-v1"');
@@ -384,7 +385,7 @@ describe('meetcal API contract (serde output through the real client)', () => {
     expect(pkg.year_bests_by_name).toEqual({
       'Package Test Lifter': { best_snatch: 95, best_cj: 110, best_total: 205 },
     });
-    expect(mapApiYearBests(pkg.year_bests_by_name!['Package Test Lifter'])).toEqual({
+    expect(mapApiYearBests(valueAt(pkg.year_bests_by_name!, 'Package Test Lifter'))).toEqual({
       bestSnatch: 95,
       bestCJ: 110,
       bestTotal: 205,
@@ -441,7 +442,7 @@ describe('meetcal API contract (serde output through the real client)', () => {
 
     expect(calls).toHaveLength(1);
     expect(calls[0]).toMatchObject({ path: '/lifting-results/bests', kind: 'query' });
-    expect(calls[0].args).toEqual({
+    expect(itemAt(calls, 0).args).toEqual({
       names: ['Package Test Lifter', 'Another Lifter'],
       cutoffDate: '2025-01-01',
     });
@@ -457,7 +458,7 @@ describe('meetcal API contract (serde output through the real client)', () => {
 
     const bests = await fetchApiYearBestsByNames(names, '2025-01-01');
 
-    expect(calls[0].args.names).toEqual(names);
+    expect(itemAt(calls, 0).args.names).toEqual(names);
     expect(bests).toEqual({
       'Andrés Álvarez': { bestSnatch: 88, bestCJ: 112, bestTotal: 200 },
       'Zoë Ørsted': { bestSnatch: 70, bestCJ: 90, bestTotal: 160 },
@@ -524,7 +525,7 @@ describe('meetcal API contract (serde output through the real client)', () => {
       results: [],
       truncated: false,
     });
-    expect(calls[0].args).toEqual({ query: 'Alexan', startDate: '2025-01-01', endDate: '2025-12-31' });
+    expect(itemAt(calls, 0).args).toEqual({ query: 'Alexan', startDate: '2025-01-01', endDate: '2025-12-31' });
   });
 
   it('searchApi: carries truncated when the answer kept only the most recent rows', async () => {
@@ -598,7 +599,7 @@ describe('meetcal API contract (serde output through the real client)', () => {
         updated_at: 1718880000456,
       },
     ]);
-    expect(Number.isSafeInteger(sessions[0].updated_at)).toBe(true);
+    expect(Number.isSafeInteger(itemAt(sessions, 0).updated_at)).toBe(true);
   });
 
   it.each<[string, Record<string, string>, () => Promise<unknown>]>([

@@ -5,6 +5,7 @@ import { resetServerClockForTests } from '@/lib/api/server-clock';
 import { setApiTransportForTests } from './transport';
 import { UNKNOWN_PLATFORM } from '@/data/types/athletes';
 import { generateSessionId } from '@/utils/session';
+import { itemAt } from '@/test-support/checked-access';
 
 beforeEach(() => {
   resetServerClockForTests();
@@ -53,9 +54,9 @@ describe('meetcal API mappers', () => {
       },
     ]);
 
-    expect(schedule[0].sessions[0].number).toBe(2);
-    expect(schedule[0].sessions[0].startTime).toBe('1:30 PM');
-    expect(schedule[0].sessions[0].platforms[0]).toEqual({
+    expect(itemAt(itemAt(schedule, 0).sessions, 0).number).toBe(2);
+    expect(itemAt(itemAt(schedule, 0).sessions, 0).startTime).toBe('1:30 PM');
+    expect(itemAt(itemAt(schedule, 0).sessions, 0).platforms[0]).toEqual({
       platform: 'Blue',
       weightClass: '73kg',
       platformStartTime: '1:30 PM',
@@ -158,7 +159,7 @@ describe('meetcal API mappers', () => {
     });
 
     expect(schedule).toHaveLength(1);
-    expect(schedule[0].sessions[0].platforms).toHaveLength(2);
+    expect(itemAt(itemAt(schedule, 0).sessions, 0).platforms).toHaveLength(2);
     expect(formatApiTime('08:00:00')).toBe('8:00 AM');
   });
 
@@ -169,10 +170,10 @@ describe('meetcal API mappers', () => {
       { date: '2026-06-20', meet: 'Test Meet', platform: 'stars & stripes', session_id: 2, start_time: '10:00', weigh_in_time: '08:00', weight_class: '71kg' },
       { date: '2026-06-20', meet: 'Test Meet', platform: '  ', session_id: 3, start_time: '12:00', weigh_in_time: '10:00', weight_class: '81kg' },
     ]);
-    const sessions = schedule[0].sessions;
-    expect(sessions[0].platforms.map((p) => p.platform)).toEqual(['Red', 'Gold']);
-    expect(sessions[1].platforms.map((p) => p.platform)).toEqual(['Stars & Stripes']);
-    expect(sessions[2].platforms.map((p) => p.platform)).toEqual([UNKNOWN_PLATFORM]);
+    const sessions = itemAt(schedule, 0).sessions;
+    expect(itemAt(sessions, 0).platforms.map((p) => p.platform)).toEqual(['Red', 'Gold']);
+    expect(itemAt(sessions, 1).platforms.map((p) => p.platform)).toEqual(['Stars & Stripes']);
+    expect(itemAt(sessions, 2).platforms.map((p) => p.platform)).toEqual([UNKNOWN_PLATFORM]);
     expect(normalizePlatform('unknown-color')).toBe('Unknown-color');
   });
 
@@ -297,7 +298,7 @@ describe('meetcal API mappers', () => {
       'June 21, 2026',
       'TBD',
     ]);
-    expect(schedule[2].fullDate).toBe('TBD');
+    expect(itemAt(schedule, 2).fullDate).toBe('TBD');
   });
 
   it('computes New York DST offset from the meet date, not the device zone', () => {
@@ -417,7 +418,7 @@ describe('mapApiSchedule platform weigh-ins', () => {
       { date: '2026-06-20', platform: 'Red', session_id: 5, start_time: '09:00:00', weigh_in_time: '07:00:00', weight_class: '89' },
       { date: '2026-06-20', platform: 'Blue', session_id: 5, start_time: '09:30:00', weigh_in_time: '', weight_class: '96' },
     ]);
-    const session = schedule[0].sessions[0];
+    const session = itemAt(itemAt(schedule, 0).sessions, 0);
     expect(session.weighInTime).toBe('7:00 AM');
     expect(session.platforms.map((p) => [p.platform, p.platformStartTime, p.platformWeighInTime])).toEqual([
       ['Red', '9:00 AM', '7:00 AM'],

@@ -14,6 +14,7 @@ import { callQuery, isClockCall } from './json-transport-stub';
 import { setAccessPassSource } from './premium-queries';
 import { setApiTransportForTests, TransportRequestError, type ApiCall } from './transport';
 import { ATTEMPT_HISTORY_YEARS, getHistoryCutoffDate, YEAR_BESTS_YEARS } from '@/utils/dateTime';
+import { itemAt } from '@/test-support/checked-access';
 
 const DEFAULT_TIMEOUT_MS = 10000;
 
@@ -30,7 +31,7 @@ function installTransport(respond: Responder, clock: Responder = () => Date.now(
   const lastCall = (): ApiCall => {
     const calls = dataCalls();
     if (calls.length === 0) throw new Error('no data call was made');
-    return calls[calls.length - 1];
+    return itemAt(calls, -1);
   };
   return { transport, dataCalls, clockCalls, lastCall };
 }
@@ -56,7 +57,7 @@ function queueTransport(replies: Reply[]) {
     if ('fail' in reply) throw apiFailure(reply.fail);
     return reply;
   });
-  return { ...fake, sentTag: (index: number) => fake.dataCalls()[index].args.ifNoneMatch };
+  return { ...fake, sentTag: (index: number) => itemAt(fake.dataCalls(), index).args.ifNoneMatch };
 }
 
 function never(): Promise<never> {
@@ -287,7 +288,7 @@ describe('meetcal API client', () => {
     await invoke();
 
     expect(dataCalls()).toHaveLength(1);
-    const [call] = dataCalls();
+    const call = itemAt(dataCalls(), 0);
     expect(call.path).toBe(expected.path);
     expect(call.fn).toBe(expected.fn);
     expect(call.kind).toBe('query');
@@ -314,8 +315,8 @@ describe('meetcal API client', () => {
     const schedule = await fetchApiSchedule('Test Meet');
 
     expect(dataCalls().map((call) => call.fn)).toEqual(['meets:schedule']);
-    expect(dataCalls()[0].args).toEqual({ meet: 'Test Meet' });
-    expect(schedule[0].date).toBe('June 20, 2026');
+    expect(itemAt(dataCalls(), 0).args).toEqual({ meet: 'Test Meet' });
+    expect(itemAt(schedule, 0).date).toBe('June 20, 2026');
   });
 
   it('revalidates the meet package with ifNoneMatch and honours an answer without a body', async () => {
@@ -745,15 +746,15 @@ describe('meetcal API client error and auth boundaries', () => {
       fn: 'meets:athletesSessions',
       kind: 'query',
     });
-    expect(callQuery(dataCalls()[0])).toEqual({ meet: 'Test Meet', session_number: '2' });
-    expect(dataCalls()[0].args.sessionNumber).toBe(2);
-    expect(dataCalls()[0].args.platform).toBeUndefined();
+    expect(callQuery(itemAt(dataCalls(), 0))).toEqual({ meet: 'Test Meet', session_number: '2' });
+    expect(itemAt(dataCalls(), 0).args.sessionNumber).toBe(2);
+    expect(itemAt(dataCalls(), 0).args.platform).toBeUndefined();
 
     await fetchApiAthletesWithSession('Test Meet' as never);
-    expect(callQuery(dataCalls()[1])).toEqual({ meet: 'Test Meet' });
+    expect(callQuery(itemAt(dataCalls(), 1))).toEqual({ meet: 'Test Meet' });
 
     await fetchApiAthletesWithSession('Test Meet' as never, undefined, 'Gold');
-    expect(callQuery(dataCalls()[2])).toEqual({ meet: 'Test Meet', platform: 'Gold' });
+    expect(callQuery(itemAt(dataCalls(), 2))).toEqual({ meet: 'Test Meet', platform: 'Gold' });
 
     installTransport(answer({ athletes: [athlete] }));
     await expect(fetchApiAthletesWithSession('Test Meet' as never)).rejects.toThrow(

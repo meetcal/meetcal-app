@@ -76,7 +76,7 @@ describe("getAllCachedLiftingResultsForAthletes", () => {
 
     const byName = await getAllCachedLiftingResultsForAthletes(["Jane Doe"]);
 
-    expect(byName["Jane Doe"].map((r) => r.date)).toEqual([
+    expect(byName["Jane Doe"]?.map((r) => r.date)).toEqual([
       "2026-05-01",
       "2025-03-01",
     ]);
@@ -122,7 +122,7 @@ describe("getAllCachedLiftingResultsForAthletes", () => {
     const byName = await getAllCachedLiftingResultsForAthletes(["Jane Doe"]);
 
     expect(byName["Jane Doe"]).toHaveLength(1);
-    expect(byName["Jane Doe"][0].meet).toBe("History Meet");
+    expect(byName["Jane Doe"]?.[0]?.meet).toBe("History Meet");
   });
 
   it("returns the same rows as the single-athlete helper", async () => {

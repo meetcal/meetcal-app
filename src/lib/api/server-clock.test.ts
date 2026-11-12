@@ -6,6 +6,7 @@ import { awaitServerClock, getServerClockSample, getServerClockSkewMs, getTruste
 import { MeetCalApiError } from '@/lib/api/meetcal-api';
 import { isClockCall } from './json-transport-stub';
 import { setApiTransportForTests, TransportRequestError, type ApiCall } from './transport';
+import { itemAt } from '@/test-support/checked-access';
 
 const HOUR_MS = 60 * 60 * 1000;
 
@@ -22,7 +23,7 @@ function installTransport(respond: Responder, clock: Responder = () => Date.now(
   const lastCall = (): ApiCall => {
     const calls = dataCalls();
     if (calls.length === 0) throw new Error('no data call was made');
-    return calls[calls.length - 1];
+    return itemAt(calls, -1);
   };
   return { transport, dataCalls, clockCalls, lastCall };
 }

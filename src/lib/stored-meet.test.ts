@@ -1,5 +1,6 @@
 import { mapApiMeet } from '@/lib/api/api-meet-mappers';
 import { parseStoredMeetNamed } from './stored-meet';
+import { itemAt } from '@/test-support/checked-access';
 
 const stored = mapApiMeet({
   id: 'meet-1',
@@ -21,7 +22,7 @@ function without(path: string[]): string {
   const copy = JSON.parse(JSON.stringify(stored));
   let target = copy;
   for (const key of path.slice(0, -1)) target = target[key];
-  delete target[path[path.length - 1]];
+  delete target[itemAt(path, -1)];
   return JSON.stringify(copy);
 }
 

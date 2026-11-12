@@ -16,6 +16,7 @@ import {
 } from "@/lib/start-list-export";
 import { buildSessionDetailsLookup } from "@/lib/start-list-utils";
 import type { Schedule } from "@/types/schedule";
+import { itemAt } from "@/test-support/checked-access";
 
 jest.mock("expo-sharing", () => ({
   isAvailableAsync: jest.fn(async () => true),
@@ -112,7 +113,7 @@ describe("buildSessionExportRows", () => {
       weighInTime: "9:00 AM",
       weightClass: "96",
     });
-    expect(rows[2].startTime).toBe("9:00 AM");
+    expect(itemAt(rows, 2).startTime).toBe("9:00 AM");
   });
 
   // #281: Red at 9:00 and Blue at 9:30 with the session's published weigh-in
@@ -243,7 +244,7 @@ describe("shareScheduleCsv", () => {
       expect.objectContaining({ mimeType: "text/csv" }),
     );
     expect(mockWrite.mock.invocationCallOrder[0]).toBeLessThan(
-      jest.mocked(Sharing.shareAsync).mock.invocationCallOrder[0],
+      itemAt(jest.mocked(Sharing.shareAsync).mock.invocationCallOrder, 0),
     );
   });
 

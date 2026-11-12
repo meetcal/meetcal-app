@@ -3,6 +3,7 @@ import { fetchApiClubMeets } from '@/lib/api/clubs-api';
 import { resetServerClockForTests } from '@/lib/api/server-clock';
 import { isClockCall } from './json-transport-stub';
 import { setApiTransportForTests, type ApiCall } from './transport';
+import { itemAt } from '@/test-support/checked-access';
 
 type Responder = (call: ApiCall) => unknown;
 
@@ -17,7 +18,7 @@ function installTransport(respond: Responder, clock: Responder = () => Date.now(
   const lastCall = (): ApiCall => {
     const calls = dataCalls();
     if (calls.length === 0) throw new Error('no data call was made');
-    return calls[calls.length - 1];
+    return itemAt(calls, -1);
   };
   return { transport, dataCalls, clockCalls, lastCall };
 }

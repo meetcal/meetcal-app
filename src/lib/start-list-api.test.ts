@@ -1,4 +1,5 @@
 import type { AthleteMeetResult } from "@/data/types/athletes";
+import { itemAt } from "@/test-support/checked-access";
 
 const mockFetchApiYearBestsByNames = jest.fn();
 const mockFetchApiResultsByNames = jest.fn();
@@ -625,11 +626,11 @@ describe("in-memory bests cache bound", () => {
     mockFetchApiYearBestsByNames.mockClear();
 
     // The most recent name is still memoized...
-    await startListApi.getLastYearBestsBatch([names[names.length - 1]]);
+    await startListApi.getLastYearBestsBatch([itemAt(names, -1)]);
     expect(mockFetchApiYearBestsByNames).not.toHaveBeenCalled();
 
     // ...while the oldest has been evicted and has to be re-resolved.
-    await startListApi.getLastYearBestsBatch([names[0]]);
+    await startListApi.getLastYearBestsBatch([itemAt(names, 0)]);
     expect(mockFetchApiYearBestsByNames).toHaveBeenCalledWith(
       [names[0]],
       expect.any(String),

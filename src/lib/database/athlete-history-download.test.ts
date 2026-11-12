@@ -1,6 +1,7 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { prefetchMeetData } from "@/lib/database/meet-manager";
 import { HISTORY_DEFERRED_RETRY_DELAY_MS, HISTORY_RETRY_AFTER_DEFAULT_MS, HISTORY_RETRY_AFTER_MAX_MS, historyRetryDelayMs } from "@/lib/database/athlete-history-download";
+import { itemAt } from "@/test-support/checked-access";
 
 jest.mock("@react-native-async-storage/async-storage", () => ({
   __esModule: true,
@@ -255,12 +256,12 @@ describe("full athlete history download", () => {
     await prefetchMeetData("History Meet B" as any);
 
     expect(mockFetchApiResultsByNames).toHaveBeenCalledTimes(2);
-    expect(mockFetchApiResultsByNames.mock.calls[0][0]).toHaveLength(40);
-    expect(mockFetchApiResultsByNames.mock.calls[1][0]).toHaveLength(10);
+    expect(itemAt(mockFetchApiResultsByNames.mock.calls, 0)[0]).toHaveLength(40);
+    expect(itemAt(mockFetchApiResultsByNames.mock.calls, 1)[0]).toHaveLength(10);
     expect(mockSaveAthleteHistory).toHaveBeenCalledTimes(50);
     expect(mockSaveAthleteHistoryBatch).toHaveBeenCalledTimes(2);
-    expect(mockSaveAthleteHistoryBatch.mock.calls[0][0]).toHaveLength(40);
-    expect(mockSaveAthleteHistoryBatch.mock.calls[1][0]).toHaveLength(10);
+    expect(itemAt(mockSaveAthleteHistoryBatch.mock.calls, 0)[0]).toHaveLength(40);
+    expect(itemAt(mockSaveAthleteHistoryBatch.mock.calls, 1)[0]).toHaveLength(10);
   });
 
   it("waits once for Retry-After on a 429 mid-download and then completes", async () => {
@@ -293,8 +294,8 @@ describe("full athlete history download", () => {
       await expect(prefetch).resolves.toBeUndefined();
 
       expect(mockFetchApiResultsByNames).toHaveBeenCalledTimes(4);
-      expect(mockFetchApiResultsByNames.mock.calls[1][0]).toEqual(
-        mockFetchApiResultsByNames.mock.calls[2][0],
+      expect(itemAt(mockFetchApiResultsByNames.mock.calls, 1)[0]).toEqual(
+        itemAt(mockFetchApiResultsByNames.mock.calls, 2)[0],
       );
       expect(mockSaveAthleteHistory).toHaveBeenCalledWith("Athlete 41", [
         { name: "Athlete 41", date: "2025-01-01" },
@@ -426,8 +427,8 @@ describe("full athlete history download", () => {
       await expect(prefetch).resolves.toBeUndefined();
 
       expect(mockFetchApiResultsByNames).toHaveBeenCalledTimes(4);
-      expect(mockFetchApiResultsByNames.mock.calls[3][0]).toEqual(
-        mockFetchApiResultsByNames.mock.calls[1][0],
+      expect(itemAt(mockFetchApiResultsByNames.mock.calls, 3)[0]).toEqual(
+        itemAt(mockFetchApiResultsByNames.mock.calls, 1)[0],
       );
       expect(mockSaveAthleteHistory).toHaveBeenCalledWith("Athlete 41", [
         { name: "Athlete 41", date: "2025-01-01" },

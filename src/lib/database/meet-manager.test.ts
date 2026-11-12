@@ -6,6 +6,7 @@ import { PrefetchCancelledError } from "@/lib/database/prefetch-requests";
 import { runHistoryClear, runMeetClear } from "@/lib/database/offline-clears";
 import type { Schedule } from "@/types/schedule";
 import { mapApiLiftingResult } from "@/lib/api/api-athlete-mappers";
+import { itemAt } from "@/test-support/checked-access";
 
 jest.mock("@react-native-async-storage/async-storage", () => ({
   __esModule: true,
@@ -533,7 +534,7 @@ describe("package revalidation with ETag", () => {
     await prefetchMeetData("Etag Meet A" as any);
 
     expect(mockFetchApiMeetPackageConditional).toHaveBeenCalledTimes(1);
-    expect(mockFetchApiMeetPackageConditional.mock.calls[0][2]).toBe('"abc"');
+    expect(itemAt(mockFetchApiMeetPackageConditional.mock.calls, 0)[2]).toBe('"abc"');
     expect(mockSaveMeetAthletes).not.toHaveBeenCalled();
     expect(mockSaveMeetSchedule).not.toHaveBeenCalled();
     expect(mockFetchApiResultsByNames).not.toHaveBeenCalled();
@@ -612,7 +613,7 @@ describe("package revalidation with ETag", () => {
 
     await prefetchMeetData("Etag Meet Forced" as any, { forceHistoryRefresh: true });
 
-    expect(mockFetchApiMeetPackageConditional.mock.calls[0][2]).toBe('"abc"');
+    expect(itemAt(mockFetchApiMeetPackageConditional.mock.calls, 0)[2]).toBe('"abc"');
     expect(mockFindAthleteNamesWithoutHistory).not.toHaveBeenCalled();
     expect(mockFetchApiResultsByNames).toHaveBeenCalledWith(["Athlete A", "Athlete B"]);
     expect(mockSaveMeetAthletes).not.toHaveBeenCalled();
@@ -859,7 +860,7 @@ describe("package revalidation with ETag", () => {
     await prefetchMeetData("Etag Meet Live" as any);
 
     expect(mockFetchApiResultsByNames).toHaveBeenCalledTimes(1);
-    expect([...mockFetchApiResultsByNames.mock.calls[0][0]].sort()).toEqual([
+    expect([...itemAt(mockFetchApiResultsByNames.mock.calls, 0)[0]].sort()).toEqual([
       "Athlete B",
       "Athlete D",
     ]);
@@ -873,7 +874,7 @@ describe("package revalidation with ETag", () => {
       full: false,
     });
     expect(mockSetItem.mock.invocationCallOrder[firstPending]).toBeLessThan(
-      (saveMeetLiftingResults as jest.Mock).mock.invocationCallOrder[0],
+      itemAt((saveMeetLiftingResults as jest.Mock).mock.invocationCallOrder, 0),
     );
     const snapshots = mockSetItem.mock.calls.filter(([key]) => key === "@meet_package_year_bests_v1");
     expect(JSON.parse(snapshots[snapshots.length - 1][1] as string)).toEqual({
@@ -996,8 +997,8 @@ describe("package revalidation with ETag", () => {
     await prefetchMeetData("Etag Meet B" as any);
 
     expect(mockFetchApiMeetPackageConditional).toHaveBeenCalledTimes(2);
-    expect(mockFetchApiMeetPackageConditional.mock.calls[0][2]).toBe('"abc"');
-    expect(mockFetchApiMeetPackageConditional.mock.calls[1][2]).toBeNull();
+    expect(itemAt(mockFetchApiMeetPackageConditional.mock.calls, 0)[2]).toBe('"abc"');
+    expect(itemAt(mockFetchApiMeetPackageConditional.mock.calls, 1)[2]).toBeNull();
     expect(mockSaveMeetAthletes).toHaveBeenCalledTimes(1);
     expect(savedEtags()[0]).toEqual({});
   });
@@ -1011,7 +1012,7 @@ describe("package revalidation with ETag", () => {
 
     await prefetchMeetData("Etag Meet C" as any);
 
-    expect(mockFetchApiMeetPackageConditional.mock.calls[0][2]).toBeNull();
+    expect(itemAt(mockFetchApiMeetPackageConditional.mock.calls, 0)[2]).toBeNull();
     const saved = savedEtags();
     expect(saved[saved.length - 1]).toEqual({ "Etag Meet C": '"fresh-tag"' });
   });

@@ -7,6 +7,7 @@ import { getMeetLiftingResults } from '@/lib/database/meet-data-reads';
 import { saveMeetLiftingResults } from '@/lib/database/meet-data-saves';
 import { faultPlanArb, installStorageChaos, storageFaultArb, type StorageFault } from '@/test-support/chaos';
 import { bulkyLiftResults, liftResultArb, liftResultsArb } from '@/test-support/lift-result-arbitraries';
+import { itemAt } from '@/test-support/checked-access';
 
 jest.mock('@/lib/api/server-clock', () => ({ getTrustedNow: () => null }));
 
@@ -155,8 +156,8 @@ describe('meet lifting results under storage chaos', () => {
   });
 
   it('keeps the previous copy when the manifest reads corrupt and the multiSet is rejected', async () => {
-    const previous = [{ ...bulkyLiftResults(1, 1)[0], name: 'Previous Lifter' }];
-    const next = [{ ...bulkyLiftResults(2, 1)[0], name: 'Next Lifter' }];
+    const previous = [{ ...itemAt(bulkyLiftResults(1, 1), 0), name: 'Previous Lifter' }];
+    const next = [{ ...itemAt(bulkyLiftResults(2, 1), 0), name: 'Next Lifter' }];
     await saveMeetLiftingResults(MEET, previous);
     await underChaos([{ kind: 'corrupt-read', value: '' }, { kind: 'pass' }, { kind: 'pass' }, { kind: 'reject' }], () =>
       saveMeetLiftingResults(MEET, next).catch(() => undefined),
@@ -165,8 +166,8 @@ describe('meet lifting results under storage chaos', () => {
   });
 
   it('does not write corrupt bytes that read as legacy rows back over a landed rewrite', async () => {
-    const previous = [{ ...bulkyLiftResults(1, 1)[0], name: 'Previous Lifter' }];
-    const next = [{ ...bulkyLiftResults(2, 1)[0], name: 'Next Lifter' }];
+    const previous = [{ ...itemAt(bulkyLiftResults(1, 1), 0), name: 'Previous Lifter' }];
+    const next = [{ ...itemAt(bulkyLiftResults(2, 1), 0), name: 'Next Lifter' }];
     await saveMeetLiftingResults(MEET, previous);
     const multiGet = AsyncStorage.multiGet as jest.Mock;
     const realMultiGet = multiGet.getMockImplementation() as (keys: string[]) => Promise<[string, string | null][]>;
@@ -186,8 +187,8 @@ describe('meet lifting results under storage chaos', () => {
     const { getMeetLiftingResults, saveMeetLiftingResults } = restartedStore();
     const storage = (AsyncStorage as unknown as Storage).__INTERNAL_MOCK_STORAGE__;
     const chunkKeys = () => Object.keys(storage).filter((key) => key.includes('__chunk_')).sort();
-    const previous = [{ ...bulkyLiftResults(1, 1)[0], name: 'Previous Lifter' }];
-    const next = [{ ...bulkyLiftResults(2, 1)[0], name: 'Next Lifter' }];
+    const previous = [{ ...itemAt(bulkyLiftResults(1, 1), 0), name: 'Previous Lifter' }];
+    const next = [{ ...itemAt(bulkyLiftResults(2, 1), 0), name: 'Next Lifter' }];
     await saveMeetLiftingResults(MEET, previous);
     storage[`meetcal_lifting_results_${MEET}__chunk_0_g4`] = 'orphan';
     const liveChunk = storage[`meetcal_lifting_results_${MEET}__chunk_0`];
@@ -292,10 +293,10 @@ describe('athlete history batches under storage chaos', () => {
         faultPlanArb(honestFaultArb, 8),
         async (names, previousRows, nextRows, plan) => {
           await AsyncStorage.clear();
-          await saveAthleteHistoryBatch(names.map((name, i) => ({ name, results: previousRows[i] })));
+          await saveAthleteHistoryBatch(names.map((name, i) => ({ name, results: itemAt(previousRows, i) })));
 
           await underChaos(plan, () =>
-            saveAthleteHistoryBatch(names.map((name, i) => ({ name, results: nextRows[i] }))).catch(() => 0),
+            saveAthleteHistoryBatch(names.map((name, i) => ({ name, results: itemAt(nextRows, i) }))).catch(() => 0),
           );
 
           let sawPrevious = false;

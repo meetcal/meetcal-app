@@ -5,6 +5,7 @@ import { getMeetLiftingResults } from '@/lib/database/meet-data-reads';
 import { saveMeetLiftingResults } from '@/lib/database/meet-data-saves';
 import { corruptedArb, hostileStringArb } from '@/test-support/arbitraries';
 import { bulkyLiftResults, liftResultsArb } from '@/test-support/lift-result-arbitraries';
+import { itemAt, valueAt } from '@/test-support/checked-access';
 
 jest.mock('@/lib/api/server-clock', () => ({ getTrustedNow: () => null }));
 
@@ -20,7 +21,7 @@ function storage(): Record<string, string> {
 function chunkKeys(): string[] {
   return Object.keys(storage())
     .filter((key) => key.startsWith(`${RESULTS_KEY}__chunk_`))
-    .sort((a, b) => Number(a.split('__chunk_')[1].split('_')[0]) - Number(b.split('__chunk_')[1].split('_')[0]));
+    .sort((a, b) => Number(itemAt(a.split('__chunk_'), 1).split('_')[0]) - Number(itemAt(b.split('__chunk_'), 1).split('_')[0]));
 }
 
 beforeEach(async () => {
@@ -52,7 +53,7 @@ describe('meet lifting results encoding', () => {
         await saveMeetLiftingResults(MEET, second);
         const expected = second.length === 0 ? first : second;
         expect(await getMeetLiftingResults(MEET)).toEqual(expected);
-        const manifest = JSON.parse(storage()[RESULTS_KEY]) as { chunks: number };
+        const manifest = JSON.parse(valueAt(storage(), RESULTS_KEY)) as { chunks: number };
         expect(chunkKeys()).toHaveLength(manifest.chunks);
       }),
     );
@@ -74,7 +75,7 @@ describe('corrupted lifting results on disk', () => {
   it('a broken manifest reads as all the rows or none', async () => {
     const rows = bulkyLiftResults(11, 900);
     await saveMeetLiftingResults(MEET, rows);
-    const manifest: unknown = JSON.parse(storage()[RESULTS_KEY]);
+    const manifest: unknown = JSON.parse(valueAt(storage(), RESULTS_KEY));
     const pristine = { ...storage() };
 
     await fc.assert(
@@ -107,8 +108,8 @@ describe('corrupted lifting results on disk', () => {
       fc.asyncProperty(fc.nat({ max: keys.length - 1 }), damageArb, async (index, damage) => {
         await AsyncStorage.clear();
         await AsyncStorage.multiSet(Object.entries(pristine));
-        const key = keys[index];
-        const chunk = pristine[key];
+        const key = itemAt(keys, index);
+        const chunk = valueAt(pristine, key);
         switch (damage.kind) {
           case 'replace':
             await AsyncStorage.setItem(key, damage.value);
@@ -120,9 +121,9 @@ describe('corrupted lifting results on disk', () => {
             await AsyncStorage.removeItem(key);
             break;
           case 'swap': {
-            const other = keys[(index + 1) % keys.length];
+            const other = itemAt(keys, (index + 1) % keys.length);
             await AsyncStorage.multiSet([
-              [key, pristine[other]],
+              [key, valueAt(pristine, other)],
               [other, chunk],
             ]);
             break;

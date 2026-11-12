@@ -3,6 +3,7 @@ import { findAthleteNamesWithoutHistory, getAllCachedLiftingResultsForAthlete, s
 import { getMeetLiftingResults } from "@/lib/database/meet-data-reads";
 import { initStore } from "@/lib/database/offline-store-index";
 import { saveMeetLiftingResults } from "@/lib/database/meet-data-saves";
+import { itemAt } from "@/test-support/checked-access";
 
 const saveAthleteHistory = (name: string, results: Parameters<typeof saveAthleteHistoryBatch>[0][number]["results"]) =>
   saveAthleteHistoryBatch([{ name, results }]);
@@ -207,8 +208,8 @@ describe("batched athlete history writes", () => {
 
     await saveAthleteHistory("Jane Doe", [row("Jane Doe", "2026-01-01")]);
 
-    const multiSetOrder = (AsyncStorage.multiSet as jest.Mock).mock.invocationCallOrder[0];
-    const multiRemoveOrder = (AsyncStorage.multiRemove as jest.Mock).mock.invocationCallOrder[0];
+    const multiSetOrder = itemAt((AsyncStorage.multiSet as jest.Mock).mock.invocationCallOrder, 0);
+    const multiRemoveOrder = itemAt((AsyncStorage.multiRemove as jest.Mock).mock.invocationCallOrder, 0);
     expect(multiSetOrder).toBeLessThan(multiRemoveOrder);
     const manifest = JSON.parse(mockStorage.get(`${HISTORY_PREFIX}jane doe`) ?? "null");
     expect(manifest).toEqual({ format: "deflate-base64-chunks-v1", chunks: 1, generation: 1 });

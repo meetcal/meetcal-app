@@ -97,7 +97,7 @@ describe("schedule resource priming", () => {
     primeScheduleCache(MEET);
 
     const cached = await scheduleResource.loadCached("Other Meet" as MeetName);
-    expect(cached?.data[0].date).toBe("Other");
+    expect(cached?.data[0]?.date).toBe("Other");
     expect(mockGetMeetSchedule).toHaveBeenLastCalledWith("Other Meet");
   });
 
@@ -108,7 +108,7 @@ describe("schedule resource priming", () => {
     mockGetMeetSchedule.mockResolvedValueOnce(day("After the write"));
 
     const cached = await scheduleResource.loadCached(MEET);
-    expect(cached?.data[0].date).toBe("After the write");
+    expect(cached?.data[0]?.date).toBe("After the write");
     expect(mockGetMeetSchedule).toHaveBeenCalledTimes(2);
   });
 
@@ -133,7 +133,7 @@ describe("schedule resource priming", () => {
     mockGetMeetSchedule.mockResolvedValueOnce(day("Fresh read"));
 
     const cached = await scheduleResource.loadCached(MEET);
-    expect(cached?.data[0].date).toBe("Fresh read");
+    expect(cached?.data[0]?.date).toBe("Fresh read");
   });
 
   it("falls back to the store when the primed read fails", async () => {
@@ -142,7 +142,7 @@ describe("schedule resource priming", () => {
     mockGetMeetSchedule.mockResolvedValueOnce(day("Retried"));
 
     const cached = await scheduleResource.loadCached(MEET);
-    expect(cached?.data[0].date).toBe("Retried");
+    expect(cached?.data[0]?.date).toBe("Retried");
   });
 
   it("reports no cache for a primed empty schedule, as for a stored one", async () => {

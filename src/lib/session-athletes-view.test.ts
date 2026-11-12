@@ -23,9 +23,9 @@ describe("toSessionAthletesByPlatform", () => {
     const athletes = [lifter("Low", 150), lifter("High", 250), lifter("Mid", 200)];
     const byPlatform = toSessionAthletesByPlatform("Red", athletes);
     expect(Object.keys(byPlatform)).toEqual(["Red"]);
-    expect(byPlatform.Red.map((a) => a.name)).toEqual(["High", "Mid", "Low"]);
+    expect(byPlatform.Red?.map((a) => a.name)).toEqual(["High", "Mid", "Low"]);
     expect(athletes.map((a) => a.name)).toEqual(["Low", "High", "Mid"]);
-    expect(byPlatform.Red[0]).toEqual({
+    expect(byPlatform.Red?.[0]).toEqual({
       name: "High",
       age: 25,
       club: "Club",
