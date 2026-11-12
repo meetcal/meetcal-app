@@ -1,24 +1,6 @@
-/**
- * Sort key for a weight class: numeric order, the `+` class of a number after
- * the bounded one, and classes holding no integer at all last. Same rule as the
- * Rust API's `weight_class_key`.
- */
-function weightClassKey(weightClass: string): [boolean, number, boolean] {
-  let weight = weightClass;
-  while (weight.endsWith('kg')) weight = weight.slice(0, -2);
-  const isPlus = weight.endsWith('+');
-  while (weight.endsWith('+')) weight = weight.slice(0, -1);
-  // `str::parse::<i32>` accepts an optional sign and digits only.
-  if (/^[+-]?\d+$/.test(weight)) {
-    const parsed = Number(weight);
-    if (Number.isSafeInteger(parsed) && parsed >= -(2 ** 31) && parsed < 2 ** 31) {
-      return [false, parsed, isPlus];
-    }
-  }
-  return [true, 0, isPlus];
-}
+import { weightClassKey, type WeightClassSortKey } from './weightClass';
 
-function compareKeys(a: [boolean, number, boolean], b: [boolean, number, boolean]): number {
+function compareKeys(a: WeightClassSortKey, b: WeightClassSortKey): number {
   if (a[0] !== b[0]) return a[0] ? 1 : -1;
   if (a[1] !== b[1]) return a[1] - b[1];
   if (a[2] !== b[2]) return a[2] ? 1 : -1;

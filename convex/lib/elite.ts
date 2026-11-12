@@ -1,9 +1,13 @@
-import { type Gender, MAX_LEADERBOARD_YEARS, parseDivision, plausible, qpoints, type RankedFields, sinclair } from './leaderboard';
+import { MAX_LEADERBOARD_YEARS, parseDivision, plausible, qpoints, type RankedFields, sinclair } from './leaderboard';
+import type { Gender } from './gender';
 import { plusYears } from './dates';
+import { genderOfWord } from './gender';
 import { normalizeName } from './names';
 import { normalizeGender } from './normalize';
 import { compareBytes } from './sort';
+import { classLimit } from './weightClass';
 import { apiError, isValidIsoDate, requireNonEmpty } from './validation';
+
 
 /**
  * A WSO's elite lists (`results:wsoElite`): the WSO's top men and women
@@ -105,13 +109,6 @@ export type EliteStandard = { ageCategory: string; gender: string; weightClass: 
 /** The standards category a group is held to: Masters to Senior's. */
 const STANDARD_CATEGORY: Record<EliteGroup, string> = { youth: 'Youth', junior: 'Junior', senior: 'Senior', masters: 'Senior' };
 
-/** A class's upper limit (kg) and whether it is the open-ended top class (`+86kg`, `86+kg`); null for neither. */
-export function classLimit(weightClass: string): { limit: number; open: boolean } | null {
-  const match = /^\s*(\+)?\s*(\d+(?:\.\d+)?)\s*(\+)?\s*(?:kg)?\s*$/i.exec(weightClass);
-  if (!match) return null;
-  return { limit: Number(match[2]), open: match[1] !== undefined || match[3] !== undefined };
-}
-
 /** One category and gender's classes, lightest first, the open class last. */
 type ClassTable = { limit: number; open: boolean; weightClass: string; standardA: number }[];
 
@@ -153,13 +150,7 @@ export type EliteRegistration = { name: string; wso: string; gender: string; age
 /** A member as the lists read them: their WSO, name, gender and birth year from their registrations. */
 export type EliteMember = { name: string; wso: string; gender: Gender | null; birthYear: number | null };
 
-/** A registration's gender, or null for anything but men's and women's. */
-export function registrationGender(value: string): Gender | null {
-  const lower = value.trim().toLowerCase();
-  if (['women', 'woman', 'female', 'f', 'w'].includes(lower)) return 'Women';
-  if (['men', 'man', 'male', 'm'].includes(lower)) return 'Men';
-  return null;
-}
+export const registrationGender = (value: string): Gender | null => genderOfWord(value.trim().toLowerCase(), 'registration');
 
 /** Whether `next` is a more recent registration than `current`: a later meet start date, then written later. */
 const newer = (next: EliteRegistration, current: EliteRegistration | null) =>

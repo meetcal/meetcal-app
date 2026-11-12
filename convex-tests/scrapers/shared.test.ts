@@ -1,4 +1,5 @@
-import { fetchJson, fetchPdf, fetchText, HttpStatusError, mapLimited, throttledOrTransient, USER_AGENT, withRetries } from '../../convex/scrapers/lib/http';
+import { mapLimited } from '../../convex/lib/concurrency';
+import { fetchJson, fetchPdf, fetchText, HttpStatusError, throttledOrTransient, USER_AGENT, withRetries } from '../../convex/scrapers/lib/http';
 import { pyFloat, pyInt } from '../../convex/scrapers/lib/numbers';
 import { setHolder, type RecordHolder } from '../../convex/scrapers/parse/holder';
 import { blankRecord, columnDLift, liftsRecord, NO_LIFT, plusLast, setLift } from '../../convex/scrapers/parse/wso/common';

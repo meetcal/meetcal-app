@@ -113,30 +113,3 @@ export async function withRetries<T>(
   }
 }
 
-/**
- * `run` over `items`, at most `limit` at a time, the answers in `items`'
- * order. A failure starts no new calls and, once the calls already started
- * have finished, rejects with it.
- */
-export async function mapLimited<T, R>(items: readonly T[], limit: number, run: (item: T) => Promise<R>): Promise<R[]> {
-  if (!(limit >= 1)) throw new Error(`mapLimited: limit must be at least 1, got ${limit}`);
-  const results: R[] = new Array(items.length);
-  let next = 0;
-  let failed = false;
-  const worker = async () => {
-    while (!failed && next < items.length) {
-      const i = next++;
-      try {
-        results[i] = await run(items[i]);
-      } catch (error) {
-        failed = true;
-        throw error;
-      }
-    }
-  };
-  const workers = Array.from({ length: Math.min(limit, items.length) }, worker);
-  const settled = await Promise.allSettled(workers);
-  const failure = settled.find((outcome) => outcome.status === 'rejected');
-  if (failure) throw failure.reason;
-  return results;
-}

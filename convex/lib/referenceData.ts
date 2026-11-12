@@ -1,11 +1,13 @@
 import type { Infer } from 'convex/values';
 import type { QueryCtx } from '../_generated/server';
 import type { recordHolder } from '../schema';
+import { genderWordPattern } from './gender';
 import { normalizeName } from './names';
 import { normalizeGender } from './normalize';
 import { isPlausibleResult } from './plausible';
 import { compareBytes, compareCollated, sortByWeightClass } from './sort';
 import { apiError } from './validation';
+import { classNamedIn } from './weightClass';
 import { isMaintainedWso } from './wsoSources';
 
 // Reference answers, each the JSON of the Rust route named on it. Queries
@@ -386,9 +388,8 @@ export function wsoAgeGroups(rows: WsoRecordRow[]): string[] {
 
 export const ADAPTIVE_RECORDS_SEASON_START = '2026';
 
-const MEN = /\bmen\b/i;
-const WOMEN = /\bwomen\b/i;
-const WEIGHT_CLASS = /\b(\d+\+?)kg/gi;
+const MEN = genderWordPattern('Men', 'label');
+const WOMEN = genderWordPattern('Women', 'label');
 
 export type AdaptiveGender = 'men' | 'women';
 
@@ -402,21 +403,6 @@ export function requireAdaptiveGender(gender: string): AdaptiveGender {
 function matchesGender(age: string, gender: AdaptiveGender): boolean {
   if (gender === 'men') return MEN.test(age) && !WOMEN.test(age);
   return WOMEN.test(age);
-}
-
-function isInsideParens(text: string, index: number): boolean {
-  const before = text.slice(0, index);
-  const open = before.lastIndexOf('(');
-  return open !== -1 && !before.slice(open).includes(')');
-}
-
-/** The first `NNkg` / `NN+kg` in an age label that is not inside parentheses. */
-function classOf(age: string): string | null {
-  for (const match of age.matchAll(WEIGHT_CLASS)) {
-    const start = (match.index ?? 0) + match[0].indexOf(match[1]);
-    if (!isInsideParens(age, start)) return match[1];
-  }
-  return null;
 }
 
 export type AdaptiveRecord = { weight_class: string; snatch: number; cj: number; total: number };
@@ -439,7 +425,7 @@ export async function computeAdaptiveRecords(
     if (row.federation !== undefined && row.federation === excludeFederation) continue;
     const age = row.age ?? '';
     if (!matchesGender(age, gender)) continue;
-    const weightClass = classOf(age);
+    const weightClass = classNamedIn(age, 'firstOutsideParentheses');
     if (weightClass === null) continue;
     const current = byClass.get(weightClass) ?? { weight_class: weightClass, snatch: 0, cj: 0, total: 0 };
     byClass.set(weightClass, {

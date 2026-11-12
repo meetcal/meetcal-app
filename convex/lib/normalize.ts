@@ -1,3 +1,5 @@
+import { genderOfWord } from './gender';
+
 /**
  * The scrapers' value normalization, ported from `postgres_writer.py` in the
  * retired backend so rows written to Convex read exactly as they did in
@@ -14,26 +16,9 @@ export function titleCase(value: string): string {
     .join(' ');
 }
 
-/**
- * One spelling per gender, `Men` / `Women`, in every table. The Python
- * writer kept `Male` / `Female` as written, so older rows (athletes, mostly)
- * still hold those until `migrations:normalizeAthleteGenders` and
- * `migrations:normalizeReferenceCasing` rewrite them: compare stored genders
- * through `normalizeGender`, never as stored. A Map, not an object literal,
- * so a lookup cannot reach `Object.prototype` ('constructor', '__proto__').
- */
-const GENDERS = new Map([
-  ['men', 'Men'],
-  ['women', 'Women'],
-  ['male', 'Men'],
-  ['female', 'Women'],
-  ['m', 'Men'],
-  ['f', 'Women'],
-]);
-
 export function normalizeGender(value: string): string {
   const normalized = value.trim();
-  return GENDERS.get(normalized.toLowerCase()) ?? titleCase(normalized);
+  return genderOfWord(normalized.toLowerCase(), 'stored') ?? titleCase(normalized);
 }
 
 /** Every spelling a stored row of this (normalized) gender may still hold, for index lookups. */

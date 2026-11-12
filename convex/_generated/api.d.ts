@@ -18,7 +18,6 @@ import type * as entitlements from "../entitlements.js";
 import type * as http from "../http.js";
 import type * as ingest from "../ingest.js";
 import type * as lib_access from "../lib/access.js";
-import type * as lib_chunks from "../lib/chunks.js";
 import type * as lib_clubs from "../lib/clubs.js";
 import type * as lib_cronAlerts from "../lib/cronAlerts.js";
 import type * as lib_cronSchedule from "../lib/cronSchedule.js";
@@ -140,7 +139,6 @@ declare const fullApi: ApiFromModules<{
   http: typeof http;
   ingest: typeof ingest;
   "lib/access": typeof lib_access;
-  "lib/chunks": typeof lib_chunks;
   "lib/clubs": typeof lib_clubs;
   "lib/cronAlerts": typeof lib_cronAlerts;
   "lib/cronSchedule": typeof lib_cronSchedule;

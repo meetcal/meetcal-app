@@ -1,7 +1,6 @@
 'use node';
 
 import { v } from 'convex/values';
-import { chunks } from '../lib/chunks';
 import { errorMessage } from '../lib/errors';
 import { internalAction, type ActionCtx } from '../_generated/server';
 import { internal } from '../_generated/api';
@@ -10,7 +9,7 @@ import { MAX_LIFTER_NAME_LOOKUPS, type LifterName, type UnlinkedResult } from '.
 import { sourcesFailed, type SourceFailure } from '../lib/cronAlerts';
 import { DAY_MS, daysBetween, isoDateOf, isoDaysAfter } from '../lib/dates';
 import { condenseSightings, isSport80Result, needsSourceHistories, SAME_MEET_TOLERANCE_DAYS, SOURCE_DATE_TOLERANCE_DAYS, type SourceResult } from '../lib/lifters';
-import { mapLimited } from './lib/http';
+import { chunks, mapLimited } from '../lib/concurrency';
 import { logInLines } from '../lib/logLines';
 import { Sport80, Sport80HttpError } from './lib/sport80Api';
 import { formatAthleteResults, lifterSighting, rankingClasses, rankingClassIds, type LifterSighting, type RankingClass } from './parse/sport80';
