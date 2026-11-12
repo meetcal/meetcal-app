@@ -46,7 +46,7 @@ export async function fetchPdf(url: string): Promise<Uint8Array> {
 
 const isRed = (color: number[] | undefined) => {
   if (!color || color.length < 3) return false;
-  const [r, g, b] = color.slice(0, 3).map((c) => (c <= 1 ? c * 255 : c));
+  const [r = 0, g = 0, b = 0] = color.slice(0, 3).map((c) => (c <= 1 ? c * 255 : c));
   return r > 200 && g < 100 && b < 100;
 };
 
@@ -74,8 +74,9 @@ export function pdfWords(bytes: Uint8Array): PdfWord[][] {
     const byTop = [...chars].sort((a, b) => a.top - b.top);
     const lines: Char[][] = [];
     for (const char of byTop) {
-      const line = lines[lines.length - 1];
-      if (line && char.top - line[line.length - 1].top <= 2) line.push(char);
+      const line = lines.at(-1);
+      const previous = line?.at(-1);
+      if (line && previous && char.top - previous.top <= 2) line.push(char);
       else lines.push([char]);
     }
     const words: PdfWord[] = [];
