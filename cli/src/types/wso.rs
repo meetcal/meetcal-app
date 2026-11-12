@@ -4,7 +4,7 @@ use serde::Deserialize;
 
 use crate::types::records::RecordHolder;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Movement {
     Snatch,
     CleanAndJerk,
@@ -47,15 +47,7 @@ pub struct WSORecord {
     pub total_by: Option<RecordHolder>,
 }
 
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct AthleteRow {
-    pub name: String,
-    pub wso: Option<String>,
-}
-
-#[derive(Debug, PartialEq, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[derive(Debug, PartialEq)]
 pub struct ClubPrDetail {
     pub name: String,
     pub movement: Movement,
@@ -63,8 +55,7 @@ pub struct ClubPrDetail {
     pub previous_pr: f64,
 }
 
-#[derive(Debug, PartialEq, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[derive(Debug, PartialEq)]
 pub struct ClubMedalDetail {
     pub name: String,
     pub age: String,
