@@ -47,7 +47,7 @@ test("subscribed users can filter and sort qualifying totals", async ({ page }) 
 
   await page.goto("/qualifying-totals");
   await expect(page.getByRole("heading", { level: 1, name: "Qualifying Totals" })).toBeVisible();
-  expect(await page.getByLabel("Weight class").locator("option").allTextContents()).toEqual([
+  await expect(page.getByLabel("Weight class").locator("option")).toHaveText([
     "All classes",
     "63kg",
     "69kg",
