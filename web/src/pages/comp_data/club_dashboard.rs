@@ -1,5 +1,5 @@
 use super::{
-    format::{display_body_weight, display_weight_class, yes_no},
+    format::{NO_VALUE, display_body_weight, display_weight_class, yes_no},
     loading::{Load, LoadState, load_error, load_query, select_response},
     ui::{
         DataMetric, DataPage, DataStatus, DataTable, EmptyTableRow, FilterSelect, TableHead,
@@ -7,6 +7,7 @@ use super::{
     },
 };
 use crate::utils::api::{queries, query_with};
+use crate::utils::text::capitalize_first;
 use leptos::prelude::*;
 use serde::{Deserialize, Serialize};
 
@@ -23,8 +24,6 @@ struct StatsQuery {
 #[derive(Clone, Deserialize)]
 struct ClubMeets {
     meets: Vec<ClubMeet>,
-    /// Set when the club has more meets than one answer lists: it lists the most recent.
-    #[serde(default)]
     truncated: bool,
 }
 #[derive(Clone, Deserialize)]
@@ -166,14 +165,7 @@ fn club_meet_choices(answer: ClubMeets) -> MeetChoices {
 fn medal(value: &Option<String>) -> String {
     value
         .as_deref()
-        .map(|value| {
-            let mut characters = value.chars();
-            characters
-                .next()
-                .map(|first| first.to_uppercase().collect::<String>() + characters.as_str())
-                .unwrap_or_default()
-        })
-        .unwrap_or_else(|| "—".to_owned())
+        .map_or_else(|| NO_VALUE.to_owned(), capitalize_first)
 }
 
 fn dashboard_metrics(stats: &MeetStats) -> Vec<(&'static str, String)> {
@@ -334,15 +326,13 @@ mod tests {
     }
 
     #[test]
-    fn a_cut_short_answer_says_so_and_an_older_answer_reads_as_whole() {
+    fn a_cut_short_answer_says_so_and_one_that_does_not_say_is_unreadable() {
         let cut: ClubMeets = serde_json::from_str(
             r#"{"meets":[{"meet":"Arnold Open","has_results":true}],"truncated":true}"#,
         )
         .unwrap();
         assert!(club_meet_choices(cut).truncated);
-        let whole: ClubMeets =
-            serde_json::from_str(r#"{"meets":[{"meet":"Arnold Open","has_results":true}]}"#)
-                .unwrap();
-        assert!(!club_meet_choices(whole).truncated);
+        let answer_without_truncated = r#"{"meets":[{"meet":"Arnold Open","has_results":true}]}"#;
+        assert!(serde_json::from_str::<ClubMeets>(answer_without_truncated).is_err());
     }
 }

@@ -238,8 +238,8 @@ test("athlete results show every competition field except federation", async ({ 
   await routeQuery(page, "results:search", async (route, args) => {
     const isSuggestion = !("startDate" in args);
     await route.fulfill(valueAnswer(isSuggestion
-      ? { matched_name: null, suggestions: ["Test Athlete"], results: [] }
-      : { matched_name: "Test Athlete", suggestions: [], results: [completeResult, { ...completeResult, meet: "Unweighed Meet", date: "2025-01-01", body_weight: 0 }] }));
+      ? { matched_name: null, suggestions: ["Test Athlete"], results: [], truncated: false }
+      : { matched_name: "Test Athlete", suggestions: [], results: [completeResult, { ...completeResult, meet: "Unweighed Meet", date: "2025-01-01", body_weight: 0 }], truncated: false }));
   });
   await page.goto("/results");
   const athleteSearch = page.getByLabel("Athlete", { exact: true });
@@ -271,7 +271,7 @@ test("meet center joins details, schedule, start list, and full results", async 
   await routeQuery(page, "meets:schedule", (route) => route.fulfill(textAnswer([{ date: "2026-06-20", meet: "Test Meet", platform: "Red", session_id: 1, start_time: "10:00", weigh_in_time: "08:00", weight_class: "69kg" }])));
   await routeQuery(page, "meets:athletes", (route) => route.fulfill(textAnswer([{ member_id: "1", meet: "Test Meet", name: "Test Athlete", age: 27, club: "Test Barbell", wso: "California North", gender: "Female", weight_class: "+69", entry_total: 220, adaptive: false, session_number: 1, session_platform: "Red" }])));
   await routeQuery(page, "results:byMeet", (route) => route.fulfill(textAnswer([completeResult, { ...completeResult, name: "Unweighed Athlete", total: 200, body_weight: 0 }])));
-  await routeQuery(page, "results:search", (route) => route.fulfill(valueAnswer({ matched_name: "Test Athlete", suggestions: [], results: [completeResult] })));
+  await routeQuery(page, "results:search", (route) => route.fulfill(valueAnswer({ matched_name: "Test Athlete", suggestions: [], results: [completeResult], truncated: false })));
   await page.goto("/meet-center");
   const meetSearch = page.locator("#meet-search-input");
   await meetSearch.fill("me");
@@ -344,6 +344,7 @@ test("club and WSO dashboards expose meet performance metrics", async ({ page })
   await routeQuery(page, "meets:athletes", (route) => route.fulfill(textAnswer([entrant, { ...entrant, member_id: "2", name: "Other Athlete", wso: "Tennessee" }])));
   await routeQuery(page, "results:byMeet", (route) => route.fulfill(textAnswer([completeResult])));
   await page.goto("/wso-dashboard");
+  await expect(page.locator("select").and(page.getByRole("combobox", { name: "Meet" })).locator("option")).toHaveText(["Choose a meet", "Test Meet", "Older Meet"]);
   await page.locator("select").and(page.getByRole("combobox", { name: "Meet" })).selectOption("Test Meet");
   await expect(page.getByLabel("WSO").locator("option")).toHaveText(["Choose a WSO", "California North", "Tennessee"]);
   await page.getByLabel("WSO").selectOption("California North");
@@ -423,7 +424,7 @@ test("athlete autocomplete waits for typing to pause before searching", async ({
   await routeQuery(page, "results:search", async (route, args) => {
     const query = String(args.query ?? "");
     queries.push(query);
-    await route.fulfill(valueAnswer({ matched_name: null, suggestions: [query], results: [] }));
+    await route.fulfill(valueAnswer({ matched_name: null, suggestions: [query], results: [], truncated: false }));
   });
 
   await page.goto("/results");
@@ -449,11 +450,11 @@ test("a slow earlier athlete search cannot replace newer suggestions", async ({ 
     const query = args.query;
     if (query === "Ann") {
       slowSearchFulfilled = slowSearchReleased.then(() =>
-        route.fulfill(valueAnswer({ matched_name: null, suggestions: ["Ann Stale"], results: [] })),
+        route.fulfill(valueAnswer({ matched_name: null, suggestions: ["Ann Stale"], results: [], truncated: false })),
       );
       return;
     }
-    await route.fulfill(valueAnswer({ matched_name: null, suggestions: ["Bob Current"], results: [] }));
+    await route.fulfill(valueAnswer({ matched_name: null, suggestions: ["Bob Current"], results: [], truncated: false }));
   });
 
   await page.goto("/results");
@@ -480,8 +481,8 @@ test("the athlete search is a keyboard-operable combobox", async ({ page }) => {
   await routeQuery(page, "results:search", async (route, args) => {
     searches.push(args);
     await route.fulfill(valueAnswer("startDate" in args
-      ? { matched_name: String(args.query), suggestions: [], results: [completeResult] }
-      : { matched_name: null, suggestions: ["Test Athlete", "Tess Lifter"], results: [] }));
+      ? { matched_name: String(args.query), suggestions: [], results: [completeResult], truncated: false }
+      : { matched_name: null, suggestions: ["Test Athlete", "Tess Lifter"], results: [], truncated: false }));
   });
   await page.goto("/results");
   const athlete = page.getByRole("combobox", { name: "Athlete" });
@@ -523,8 +524,8 @@ test("submitting the athlete search closes its suggestions for good", async ({ p
   await mockSubscribedUser(page);
   await routeQuery(page, "results:search", async (route, args) => {
     await route.fulfill(valueAnswer("startDate" in args
-      ? { matched_name: String(args.query), suggestions: [], results: [completeResult] }
-      : { matched_name: null, suggestions: ["Test Athlete"], results: [] }));
+      ? { matched_name: String(args.query), suggestions: [], results: [completeResult], truncated: false }
+      : { matched_name: null, suggestions: ["Test Athlete"], results: [], truncated: false }));
   });
   await page.goto("/results");
   const athlete = page.getByRole("combobox", { name: "Athlete" });
@@ -672,4 +673,29 @@ test("the WSO elite page ranks a WSO's athletes, and a list's score picker switc
   await expect(page.getByRole("heading", { name: "Masters — Sinclair" })).toBeVisible();
   await expect(page.getByText("251.20")).toBeVisible();
   expect(asked).toHaveLength(1);
+});
+
+test("a WSO elite score the answer lacks says so, and a score the page does not know is ignored", async ({ page }) => {
+  await mockSubscribedUser(page);
+  await routeQuery(page, "reference:registrationWsos", (route) => route.fulfill(valueAnswer(["Carolina"])));
+  await routeAction(page, "results:wsoElite", (route) => {
+    const answer = eliteAnswer();
+    const { sinclair: _dropped, ...youthWithoutSinclair } = answer.rankings.youth;
+    return route.fulfill(
+      valueAnswer({
+        ...answer,
+        rankings: { ...answer.rankings, youth: { ...youthWithoutSinclair, robi: { men: [], women: [] } } },
+      }),
+    );
+  });
+  await page.goto("/wso-elite");
+  await page.getByLabel("WSO").selectOption("Carolina");
+  await page.getByRole("button", { name: "View elite lists" }).click();
+
+  await expect(page.getByRole("heading", { name: "Youth — % of A standard" })).toBeVisible();
+  await expect(page.getByRole("alert")).toHaveCount(0);
+  await page.getByLabel("Youth score").selectOption("sinclair");
+  await expect(page.getByRole("heading", { name: "Youth — Sinclair" })).toBeVisible();
+  await expect(page.getByText("This score isn’t available for this list right now.")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Overall — % of A standard" })).toBeVisible();
 });
