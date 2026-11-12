@@ -6,7 +6,8 @@ use std::fs;
 use std::io::{BufRead, BufReader, Write};
 use std::net::TcpListener;
 use std::path::{Path, PathBuf};
-use std::process::{Command, Output};
+use std::process::{Command, Output, Stdio};
+use std::sync::{PoisonError, RwLock};
 use std::thread;
 
 use meetcal::utils::upgrade::{archive_name, artifact, sha256_hex};
@@ -79,8 +80,12 @@ fn tar_gz(name: &str, bytes: &[u8]) -> Vec<u8> {
     builder.into_inner().unwrap().finish().unwrap()
 }
 
-/// A copy of the built binary in its own directory, so `upgrade` replaces the copy.
+static COPYING_EXCLUDES_SPAWNING: RwLock<()> = RwLock::new(());
+
 fn installed_copy(test: &str) -> PathBuf {
+    let _no_process_starts_while_copying = COPYING_EXCLUDES_SPAWNING
+        .write()
+        .unwrap_or_else(PoisonError::into_inner);
     let dir = std::env::temp_dir().join(format!("meetcal-upgrade-{test}-{}", std::process::id()));
     let _ = fs::remove_dir_all(&dir);
     fs::create_dir_all(&dir).unwrap();
@@ -90,12 +95,20 @@ fn installed_copy(test: &str) -> PathBuf {
 }
 
 fn run(exe: &Path, base_url: &str, args: &[&str]) -> Output {
-    Command::new(exe)
+    let no_copy_open_for_writing = COPYING_EXCLUDES_SPAWNING
+        .read()
+        .unwrap_or_else(PoisonError::into_inner);
+    let child = Command::new(exe)
         .args(args)
         .env("MEETCAL_RELEASES_URL", format!("{base_url}/releases"))
         .env("MEETCAL_NO_UPDATE_CHECK", "1")
-        .output()
-        .expect("run meetcal")
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("run meetcal");
+    drop(no_copy_open_for_writing);
+    child.wait_with_output().expect("wait for meetcal")
 }
 
 fn stderr(output: &Output) -> String {
