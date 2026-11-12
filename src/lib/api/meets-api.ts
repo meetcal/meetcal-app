@@ -43,22 +43,27 @@ export async function fetchApiAthletes(meet: MeetName): Promise<LiftResult[]> {
   return mapApiAthletes(rows, '/meets/athletes');
 }
 
+function validateApiAthletesWithSession(json: unknown): unknown[] {
+  return assertArray(json, '/meets/athletes-sessions');
+}
+
 export async function fetchApiAthletesWithSession(
   meet: MeetName,
   sessionNumber?: number,
   platform?: string,
 ): Promise<LiftResult[]> {
   const filterLocally = sessionNumber != null && !!platform;
-  const rows = assertArray(
-    decodeJsonText(
-      await readQuery('/meets/athletes-sessions', 'meets:athletesSessions', {
-        meet,
-        sessionNumber: sessionNumber ?? undefined,
-        platform: filterLocally ? undefined : platform,
-      }),
-      '/meets/athletes-sessions',
-    ),
+  const rows = await getRevalidated(
     '/meets/athletes-sessions',
+    'meets:athletesSessions',
+    {
+      meet,
+      sessionNumber: sessionNumber ?? undefined,
+      platform: filterLocally ? undefined : platform,
+    },
+    validateApiAthletesWithSession,
+    undefined,
+    true,
   );
   const athletes = mapApiAthletes(rows, '/meets/athletes-sessions');
   return filterLocally ? filterSessionAthletes(athletes, sessionNumber, platform) : athletes;

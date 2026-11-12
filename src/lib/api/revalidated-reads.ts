@@ -4,7 +4,8 @@ import { decodeJsonText, request } from '@/lib/api/meetcal-api';
 
 type ConditionalAnswer = { etag: string | null; body: unknown; hasBody: boolean };
 
-export function readConditional(value: unknown, path: string): ConditionalAnswer {
+export function readConditional(value: unknown, path: string, acceptsBareValue = false): ConditionalAnswer {
+  if (acceptsBareValue && Array.isArray(value)) return { etag: null, body: value, hasBody: true };
   assertObject(value, path);
   const etag = typeof value.etag === 'string' ? value.etag : null;
   if ('json' in value && value.json !== undefined) {
@@ -41,6 +42,7 @@ type ReadOutcome<T> = { answer: TaggedAnswer<T>; shared: SharedAnswer };
 type RevalidateOptions = {
   keyArgs?: Record<string, unknown>;
   knownTag?: string | null;
+  acceptsBareValue?: boolean;
 };
 
 export function revalidateTagged<T>(
@@ -48,13 +50,13 @@ export function revalidateTagged<T>(
   fn: string,
   args: Record<string, unknown>,
   validate: (json: unknown) => T,
-  { keyArgs = args, knownTag = null }: RevalidateOptions = {},
+  { keyArgs = args, knownTag = null, acceptsBareValue = false }: RevalidateOptions = {},
 ): Promise<TaggedAnswer<T>> {
   const key = stableKey(fn, keyArgs);
   const flightKey = `${key}\u0000${knownTag ?? ''}`;
   const joined = revalidationsInFlight.get(flightKey);
   if (joined) return joined.then((shared) => validatedShare(shared, validate));
-  const run = revalidateOnce(key, path, fn, args, validate, knownTag).finally(() => {
+  const run = revalidateOnce(key, path, fn, args, validate, knownTag, acceptsBareValue).finally(() => {
     revalidationsInFlight.delete(flightKey);
   });
   const shared = run.then((outcome) => outcome.shared);
@@ -83,6 +85,7 @@ async function revalidateOnce<T>(
   args: Record<string, unknown>,
   validate: (json: unknown) => T,
   knownTag: string | null,
+  acceptsBareValue: boolean,
 ): Promise<ReadOutcome<T>> {
   revalidationsStarted += 1;
   const started = revalidationsStarted;
@@ -90,7 +93,7 @@ async function revalidateOnce<T>(
   const call = (ifNoneMatch: string | undefined): Promise<unknown> =>
     request({ path, fn, kind: 'query', args: { ...args, ifNoneMatch }, conditional: true });
   const sentTag = held?.etag ?? knownTag ?? undefined;
-  let answer = readConditional(await call(sentTag), path);
+  let answer = readConditional(await call(sentTag), path, acceptsBareValue);
 
   if (!answer.hasBody) {
     if (held && (answer.etag == null || answer.etag === held.etag)) {
@@ -104,7 +107,7 @@ async function revalidateOnce<T>(
       return { answer: unchanged, shared: unchanged };
     }
     validatorCache.delete(key);
-    answer = readConditional(await call(undefined), path);
+    answer = readConditional(await call(undefined), path, acceptsBareValue);
     if (!answer.hasBody) throw new Error(`${path} answered without a body`);
   }
 
@@ -137,6 +140,7 @@ export async function getRevalidated<T>(
   args: Record<string, unknown>,
   validate: (json: unknown) => T,
   keyArgs: Record<string, unknown> = args,
+  acceptsBareValue = false,
 ): Promise<T> {
-  return freshValue(await revalidateTagged(path, fn, args, validate, { keyArgs }), path);
+  return freshValue(await revalidateTagged(path, fn, args, validate, { keyArgs, acceptsBareValue }), path);
 }
