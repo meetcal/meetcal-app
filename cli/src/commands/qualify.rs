@@ -35,6 +35,7 @@ use crate::utils::stats::{
 )]
 pub struct QualifyArgs {
     /// Exact athlete name
+    #[arg(value_parser = crate::utils::filters::parse_name)]
     pub name: String,
 
     /// Weight class to check, e.g. 89 or 110+ (defaults to the latest result's)

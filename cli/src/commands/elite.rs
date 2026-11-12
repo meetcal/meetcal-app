@@ -97,10 +97,11 @@ pub const LISTS: [(&str, &str, &[Method]); 5] = [
 )]
 pub struct EliteArgs {
     /// WSO, as registrations name it (see `meetcal wsos`)
+    #[arg(value_parser = crate::utils::filters::parse_name)]
     pub wso: String,
 
     /// Calendar year (defaults to last year; ignored with --from)
-    #[arg(long, short = 'y', value_parser = clap::value_parser!(i32).range(1900..=9999))]
+    #[arg(long, short = 'y', value_parser = crate::utils::filters::parse_year)]
     pub year: Option<i32>,
 
     /// Start of the range, YYYY-MM-DD (with --to)

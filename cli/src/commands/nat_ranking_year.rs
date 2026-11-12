@@ -27,7 +27,7 @@ pub struct NatRankingsYearArgs {
     pub federation: String,
 
     /// Calendar year to rank, e.g. 2025
-    #[arg(long, short = 'y', value_parser = clap::value_parser!(i32).range(1900..=9999))]
+    #[arg(long, short = 'y', value_parser = crate::utils::filters::parse_year)]
     pub year: i32,
 }
 

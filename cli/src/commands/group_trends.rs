@@ -42,6 +42,7 @@ pub const TOP_LIFTERS: usize = 15;
 )]
 pub struct ClubTrendsArgs {
     /// Exact club name (see `meetcal clubs`)
+    #[arg(value_parser = crate::utils::filters::parse_name)]
     pub club: String,
 
     /// Skip medals (one lookup per meet)
@@ -60,6 +61,7 @@ pub struct ClubTrendsArgs {
 )]
 pub struct WsoTrendsArgs {
     /// Exact WSO name (see `meetcal wsos`)
+    #[arg(value_parser = crate::utils::filters::parse_name)]
     pub wso: String,
 
     /// Skip medals (one lookup per meet)
