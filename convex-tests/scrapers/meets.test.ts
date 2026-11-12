@@ -325,17 +325,32 @@ describe("Sport80's event locator", () => {
     expect(readLocatorPage(TURKEY_CUP_LOCATOR)).toEqual({
       total: 13,
       rows: [
-        { id: '14189', entriesUrl: 'https://usaweightlifting.sport80.com/public/events/14189/entries/21081' },
-        { id: '15084', entriesUrl: ENTRIES },
+        {
+          id: '14189',
+          name: 'Turkey Cup',
+          subtitle: 'November 22nd 2025 - S Joseph, Missouri',
+          isEvent: true,
+          entriesUrl: 'https://usaweightlifting.sport80.com/public/events/14189/entries/21081',
+        },
+        { id: '15084', name: 'Turkey Cup', subtitle: 'November 21st 2026 - Saint Joseph, Missouri', isEvent: true, entriesUrl: ENTRIES },
       ],
     });
+  });
+
+  it('reads a row as an event unless Sport80 says it is not one, and trims its text', () => {
+    const page = { total: 3, data: [{ ...row('1', []), is_event: false }, { ...row('2', []), name: ' Open ', subtitle: ' May 1st ' }, { id: '3' }] };
+    expect(readLocatorPage(page).rows.map(({ id, name, subtitle, isEvent }) => [id, name, subtitle, isEvent])).toEqual([
+      ['1', 'Turkey Cup', '', false],
+      ['2', 'Open', 'May 1st', true],
+      ['3', '', '', true],
+    ]);
   });
 
   it('gives no entries page for an event without one, or whose only one is another event’s or another site’s', () => {
     const wizard = { url: 'https://usaweightlifting.sport80.com/public/wizard/e/15084', text: 'Enter Now' };
     const elsewhere = { url: 'https://example.com/public/events/15084/entries/21962', text: 'Entry List' };
     const page = { total: 4, data: [row(15084, [wizard]), row('15084', [entryList(999, 1), elsewhere, 'junk', { url: 7 }]), row('15084', []), row('15084', null)] };
-    expect(readLocatorPage(page).rows).toEqual([
+    expect(readLocatorPage(page).rows.map(({ id, entriesUrl }) => ({ id, entriesUrl }))).toEqual([
       { id: '15084', entriesUrl: null },
       { id: '15084', entriesUrl: null },
       { id: '15084', entriesUrl: null },
@@ -367,7 +382,7 @@ describe("Sport80's event locator", () => {
 
     it('stops at the page that has it', async () => {
       const { pages, fetchPage } = events(45, 1021);
-      expect(await findLocatorRow('1021', fetchPage)).toEqual({ id: '1021', entriesUrl: 'https://usaweightlifting.sport80.com/public/events/1021/entries/7' });
+      expect(await findLocatorRow('1021', fetchPage)).toMatchObject({ id: '1021', entriesUrl: 'https://usaweightlifting.sport80.com/public/events/1021/entries/7' });
       expect(pages).toEqual([0, 1]);
     });
 

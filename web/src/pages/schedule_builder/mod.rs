@@ -7,7 +7,7 @@ mod publish;
 
 use crate::auth::{AuthContext, AuthState, open_clerk_sign_in};
 use crate::pages::comp_data::loading::{Load, LoadState, load_error};
-use crate::utils::api::{self, BuilderEdit, BuilderOptions, ExportFormat};
+use crate::utils::api::{self, BuilderEdit, BuilderOptions, ExportFormat, MeetMatches};
 use board::{Board, BoardActions, Menu, MenuId, UNDO_BUTTON_ID};
 use browser::{
     focus_element, now_ms, print_page, read_local_work, save_download, write_local_work,
@@ -21,7 +21,7 @@ use leptos_router::components::A;
 use leptos_router::hooks::{use_navigate, use_query_map};
 use models::{
     BuiltSchedule, Defaults, LocalWork, MAX_BUILDER_EDITS, SavedDraft, Start, checked_options,
-    form_of, starting_point,
+    form_of, is_sport80_link, starting_point, unbuilt_message,
 };
 use publish::PublishPanel;
 
@@ -59,44 +59,90 @@ pub fn ScheduleBuilderPage() -> impl IntoView {
     }
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Finding {
+    Idle,
+    Searching,
+    Loading,
+}
+
 #[component]
 fn LoadForm() -> impl IntoView {
-    let navigate = use_navigate();
-    let url = RwSignal::new(String::new());
-    let loading = RwSignal::new(false);
+    let navigate = StoredValue::new_local(use_navigate());
+    let typed = RwSignal::new(String::new());
+    let finding = RwSignal::new(Finding::Idle);
     let error = RwSignal::new(None::<String>);
+    let found = RwSignal::new(None::<(String, MeetMatches)>);
     let in_flight = StoredValue::new_local(None::<AbortHandle>);
-    on_cleanup(move || {
-        if let Some(load) = in_flight.try_update_value(Option::take).flatten() {
-            load.abort();
+    let cancel = move || {
+        if let Some(request) = in_flight.try_update_value(Option::take).flatten() {
+            request.abort();
         }
-    });
-    let submit = move || {
-        if loading.get_untracked() {
-            return;
-        }
-        let pasted = url.get_untracked().trim().to_owned();
-        if pasted.is_empty() {
-            error.set(Some("Paste the meet’s Sport80 link.".to_owned()));
-            return;
-        }
+    };
+    on_cleanup(cancel);
+    let loading = move || finding.get() == Finding::Loading;
+    let load = move |link: String| {
+        cancel();
         error.set(None);
-        loading.set(true);
-        let navigate = navigate.clone();
-        let (task, handle) = abortable(async move { api::load_builder_meet(&pasted).await });
+        finding.set(Finding::Loading);
+        let (task, handle) = abortable(async move { api::load_builder_meet(&link).await });
         in_flight.set_value(Some(handle));
         spawn_local(async move {
             let Ok(result) = task.await else {
                 return;
             };
-            loading.try_set(false);
+            finding.try_set(Finding::Idle);
             match result {
-                Ok(loaded) => navigate(&builder_path(&loaded.meet), Default::default()),
+                Ok(loaded) => navigate.with_value(|navigate| {
+                    navigate(&builder_path(&loaded.meet), Default::default());
+                }),
                 Err(message) => {
                     error.try_set(Some(message.to_string()));
                 }
             }
         });
+    };
+    let search = move |query: String| {
+        cancel();
+        error.set(None);
+        found.set(None);
+        finding.set(Finding::Searching);
+        let (task, handle) = abortable(async move {
+            let answer = api::search_builder_meets(&query).await;
+            (query, answer)
+        });
+        in_flight.set_value(Some(handle));
+        spawn_local(async move {
+            let Ok((query, answer)) = task.await else {
+                return;
+            };
+            finding.try_set(Finding::Idle);
+            match answer {
+                Ok(matches) => {
+                    found.try_set(Some((query, matches)));
+                }
+                Err(message) => {
+                    error.try_set(Some(message.to_string()));
+                }
+            }
+        });
+    };
+    let submit = move || {
+        if finding.get_untracked() == Finding::Loading {
+            return;
+        }
+        let text = typed.get_untracked().trim().to_owned();
+        if text.is_empty() {
+            found.set(None);
+            error.set(Some(
+                "Type the meet’s name or paste its Sport80 link.".to_owned(),
+            ));
+        } else if is_sport80_link(&text) {
+            found.set(None);
+            load(text);
+        } else {
+            search(text);
+        }
     };
     view! {
         <section class="builder-panel builder-load" aria-labelledby="builder-load-heading">
@@ -104,32 +150,42 @@ fn LoadForm() -> impl IntoView {
             <form
                 class="builder-load-form"
                 novalidate=true
-                aria-busy=move || loading.get().then_some("true")
+                aria-busy=move || (finding.get() != Finding::Idle).then_some("true")
                 on:submit=move |event| {
                     event.prevent_default();
                     submit();
                 }
             >
                 <label class="builder-field builder-load-field">
-                    <span>"Sport80 Meet Link"</span>
+                    <span>"Sport80 Link or Meet Name"</span>
                     <input
                         class="builder-input"
-                        type="url"
-                        inputmode="url"
+                        type="text"
+                        enterkeyhint="search"
                         autocomplete="off"
-                        placeholder="https://usaweightlifting.sport80.com/public/events/12345"
-                        disabled=move || loading.get()
-                        prop:value=move || url.get()
-                        on:input=move |event| url.set(event_target_value(&event))
+                        placeholder="Turkey Cup or https://usaweightlifting.sport80.com/public/events/12345"
+                        disabled=loading
+                        prop:value=move || typed.get()
+                        on:input=move |event| typed.set(event_target_value(&event))
                     />
                 </label>
-                <button class="builder-button" type="submit" disabled=move || loading.get()>
-                    {move || if loading.get() { "Loading…" } else { "Load" }}
+                <button class="builder-button" type="submit" disabled=loading>
+                    {move || {
+                        if loading() {
+                            "Loading…"
+                        } else if typed.with(|text| is_sport80_link(text)) {
+                            "Load"
+                        } else {
+                            "Search"
+                        }
+                    }}
                 </button>
             </form>
             <p class="builder-progress" role="status" aria-live="polite">
-                {move || {
-                    if loading.get() { "Reading the meet’s entries from Sport80…" } else { "" }
+                {move || match finding.get() {
+                    Finding::Searching => "Searching Sport80’s upcoming meets…",
+                    Finding::Loading => "Reading the meet’s entries from Sport80…",
+                    Finding::Idle => "",
                 }}
             </p>
             {move || {
@@ -143,8 +199,89 @@ fn LoadForm() -> impl IntoView {
                         }
                     })
             }}
+            {move || {
+                found
+                    .get()
+                    .map(|(query, matches)| {
+                        view! { <MeetMatchList query matches loading=Signal::derive(loading) on_load=load /> }
+                    })
+            }}
         </section>
     }
+}
+
+#[component]
+fn MeetMatchList(
+    query: String,
+    matches: MeetMatches,
+    loading: Signal<bool>,
+    on_load: impl Fn(String) + Copy + 'static,
+) -> impl IntoView {
+    if matches.results.is_empty() {
+        return view! {
+            <p class="builder-help builder-matches-empty">
+                {format!("No upcoming Sport80 meets match “{query}”.")}
+            </p>
+        }
+        .into_any();
+    }
+    view! {
+        <ul class="builder-list builder-matches" aria-label="Matching Meets">
+            {matches
+                .results
+                .into_iter()
+                .map(|found| {
+                    let label = if found.subtitle.is_empty() {
+                        format!("Load {}", found.name)
+                    } else {
+                        format!("Load {}, {}", found.name, found.subtitle)
+                    };
+                    view! {
+                        <li class="builder-list-row">
+                            <span class="builder-match">
+                                <span class="builder-match-name">{found.name}</span>
+                                <span class="builder-list-meta">{found.subtitle}</span>
+                            </span>
+                            {match found.entries_url {
+                                Some(link) => {
+                                    view! {
+                                        <button
+                                            class="builder-button-quiet"
+                                            type="button"
+                                            aria-label=label
+                                            disabled=move || loading.get()
+                                            on:click=move |_| on_load(link.clone())
+                                        >
+                                            "Load"
+                                        </button>
+                                    }
+                                        .into_any()
+                                }
+                                None => {
+                                    view! {
+                                        <span class="builder-list-meta builder-match-missing">
+                                            "No Entry List Yet"
+                                        </span>
+                                    }
+                                        .into_any()
+                                }
+                            }}
+                        </li>
+                    }
+                })
+                .collect_view()}
+        </ul>
+        {matches
+            .truncated
+            .then(|| {
+                view! {
+                    <p class="builder-help builder-matches-more">
+                        "Sport80 has more matches than these. Add more of the name to narrow them."
+                    </p>
+                }
+            })}
+    }
+    .into_any()
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -267,7 +404,8 @@ fn Editor(opened: Opened, open_menu: RwSignal<Option<MenuId>>) -> impl IntoView 
     Effect::new(move |previous: Option<()>| {
         let options = applied.get();
         let changes = edits.get();
-        if previous.is_none() || replaced.with_untracked(Option::is_some) {
+        let rebuilding = replaced.with(Option::is_some);
+        if previous.is_none() || rebuilding {
             return;
         }
         if let Some(options) = options {
@@ -312,7 +450,9 @@ fn Editor(opened: Opened, open_menu: RwSignal<Option<MenuId>>) -> impl IntoView 
     let apply = move |options: BuilderOptions| {
         pending_rebuild.set(None);
         edit_error.set(None);
-        if let Some(previous) = applied.get_untracked() {
+        if replaced.with_untracked(Option::is_none)
+            && let Some(previous) = applied.get_untracked()
+        {
             replaced.set(Some((previous, edits.get_untracked())));
         }
         edits.set(Vec::new());
@@ -328,9 +468,7 @@ fn Editor(opened: Opened, open_menu: RwSignal<Option<MenuId>>) -> impl IntoView 
             LoadState::Failed(message) => {
                 if let Some((options, kept)) = replaced.get_untracked() {
                     replaced.set(None);
-                    form_error.set(Some(format!(
-                        "This schedule couldn’t be built, so your edits are kept: {message}"
-                    )));
+                    form_error.set(Some(unbuilt_message(kept.len(), message)));
                     edits.set(kept);
                     applied.set(Some(options));
                 }

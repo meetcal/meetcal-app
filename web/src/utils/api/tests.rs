@@ -881,6 +881,9 @@ fn schedule_options_and_edits_are_sent_as_convex_validates_them() {
     let edits = vec![
         BuilderEdit::MoveAthlete {
             athlete: "1|ann".to_owned(),
+            from_session: Some(1),
+            from_platform: Some("Blue".to_owned()),
+            occurrence: Some(1),
             to_session: 2,
             to_platform: "Red".to_owned(),
         },
@@ -905,7 +908,7 @@ fn schedule_options_and_edits_are_sent_as_convex_validates_them() {
     assert_eq!(
         sent,
         json!([
-            { "kind": "moveAthlete", "athlete": "1|ann", "toSession": 2, "toPlatform": "Red" },
+            { "kind": "moveAthlete", "athlete": "1|ann", "fromSession": 1, "fromPlatform": "Blue", "occurrence": 1, "toSession": 2, "toPlatform": "Red" },
             { "kind": "moveClass", "fromSession": 1, "fromPlatform": "Red", "weightClass": "48", "toSession": 2, "toPlatform": "Blue" },
             { "kind": "swapSessions", "session": 1, "withSession": 2 },
             { "kind": "setSessionTime", "session": 1, "date": "2026-11-14", "startTime": "10:30" }
@@ -916,6 +919,39 @@ fn schedule_options_and_edits_are_sent_as_convex_validates_them() {
     ))
     .unwrap();
     assert_eq!(stored.first(), edits.get(2));
+    let saved_before_moves_named_their_source: BuilderEdit = serde_json::from_value(json!(
+        { "kind": "moveAthlete", "athlete": "1|ann", "toSession": 2, "toPlatform": "Red" }
+    ))
+    .unwrap();
+    assert_eq!(
+        serde_json::to_value(&saved_before_moves_named_their_source).unwrap(),
+        json!({ "kind": "moveAthlete", "athlete": "1|ann", "toSession": 2, "toPlatform": "Red" })
+    );
+}
+
+#[test]
+fn meet_searches_read_each_match_and_its_entries_list() {
+    let found: MeetMatches = read_builder_answer(
+        BUILDER_SEARCH,
+        answer(json!({ "status": "success", "value": {
+            "results": [
+                { "eventId": "15084", "name": "Turkey Cup", "subtitle": "November 21st 2026 - Saint Joseph, Missouri", "entriesUrl": "https://usaweightlifting.sport80.com/public/events/15084/entries/21962" },
+                { "eventId": "15090", "name": "Turkey Open", "subtitle": "", "entriesUrl": null }
+            ],
+            "truncated": true
+        } })),
+    )
+    .unwrap();
+    assert!(found.truncated);
+    assert_eq!(
+        found
+            .results
+            .iter()
+            .map(|found| found.entries_url.is_some())
+            .collect::<Vec<_>>(),
+        [true, false]
+    );
+    assert_eq!(found.results[0].event_id, "15084");
 }
 
 #[test]

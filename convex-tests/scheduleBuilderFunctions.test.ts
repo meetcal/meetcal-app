@@ -1,7 +1,32 @@
 import { ConvexError } from 'convex/values';
 import { getFunctionName } from 'convex/server';
-import { claimLoad, defaults, deleteDraft, draft, drafts, finishLoad, LOAD_COOLDOWN_MS, MAX_DRAFTS_PER_USER, MAX_LOADS_PER_HOUR, preview, saveDraft } from '../convex/scheduleBuilder';
-import { listedMeetProblem, load, sport80LinkOf } from '../convex/scheduleBuilderLoad';
+import {
+  claimLoad,
+  claimSearch,
+  defaults,
+  deleteDraft,
+  draft,
+  drafts,
+  finishLoad,
+  LOAD_COOLDOWN_MS,
+  MAX_DRAFTS_PER_USER,
+  MAX_LOADS_PER_HOUR,
+  MAX_SEARCHES_PER_HOUR,
+  preview,
+  saveDraft,
+} from '../convex/scheduleBuilder';
+import {
+  listedMeetProblem,
+  load,
+  LOAD_BUDGET_MS,
+  MAX_SEARCH_LENGTH,
+  MAX_SEARCH_PAGES,
+  MAX_SEARCH_RESULTS,
+  MIN_SEARCH_LENGTH,
+  search,
+  SEARCH_BUDGET_MS,
+  sport80LinkOf,
+} from '../convex/scheduleBuilderLoad';
 import { upsertEntryAthletes, upsertMeets } from '../convex/ingest';
 import { addFromBuilder, BUILDER_TARGETS_MAX } from '../convex/scrapers/entryTargets';
 import { entriesMeet } from '../convex/scrapers/queries';
@@ -245,6 +270,7 @@ describe('load', () => {
   const functions: Record<string, unknown> = {
     'scheduleBuilder:claimLoad': claimLoad,
     'scheduleBuilder:finishLoad': finishLoad,
+    'scheduleBuilder:claimSearch': claimSearch,
     'scrapers/queries:entriesMeet': entriesMeet,
     'ingest:upsertMeets': upsertMeets,
     'scrapers/entryTargets:addFromBuilder': addFromBuilder,
@@ -259,7 +285,20 @@ describe('load', () => {
       return handlerOf<Args>(registered)(store.ctx, args);
     };
     const ctx = { ...store.ctx, runQuery: run, runMutation: run };
-    return { ...store, load: (url: string) => handlerOf<Args>(load)(ctx, { url }) };
+    return { ...store, load: (url: string) => handlerOf<Args>(load)(ctx, { url }), search: (query: string) => handlerOf<Args>(search)(ctx, { query }) };
+  }
+
+  const SLOW = { status: 504, error: 'Sport80 is slow right now; try again in a minute' };
+
+  async function afterTheBudget(work: Promise<unknown>, budgetMs: number) {
+    const answer = failure(work);
+    await jest.advanceTimersByTimeAsync(budgetMs);
+    return answer;
+  }
+
+  function withMovingClock() {
+    (Date.now as jest.Mock).mockRestore();
+    jest.useFakeTimers({ now: NOW });
   }
 
   beforeEach(() => {
@@ -363,11 +402,128 @@ describe('load', () => {
     });
   });
 
+  describe('within its time budget', () => {
+    afterEach(() => jest.useRealTimers());
+
+    it(`answers 504 once Sport80 has taken ${LOAD_BUDGET_MS / 1000} seconds, leaving the claim open for the next try`, async () => {
+      withMovingClock();
+      fetchEntriesMeetMock.mockReturnValueOnce(new Promise(() => {}));
+      const store = actionServer();
+      expect(await afterTheBudget(store.load(URL), LOAD_BUDGET_MS)).toEqual(SLOW);
+      expect(store.rows('schedule_builder_loads').map((row) => row.meet)).toEqual(['']);
+      jest.useRealTimers();
+      expect(await store.load(URL)).toEqual({ meet: 'Turkey Cup', refreshed: true });
+    });
+
+    it('stops before the next Sport80 read once an earlier one used up the budget', async () => {
+      fetchEntriesMeetMock.mockImplementationOnce(async () => {
+        (Date.now as jest.Mock).mockReturnValue(NOW + LOAD_BUDGET_MS);
+        return 'Turkey Cup';
+      });
+      const store = actionServer();
+      expect(await failure(store.load(URL))).toEqual(SLOW);
+      expect(readEntriesMock).not.toHaveBeenCalled();
+    });
+
+    it(`answers 504 when a search takes ${SEARCH_BUDGET_MS / 1000} seconds`, async () => {
+      withMovingClock();
+      fetchLocatorPageMock.mockReset().mockReturnValueOnce(new Promise(() => {}));
+      expect(await afterTheBudget(actionServer().search('Turkey Cup'), SEARCH_BUDGET_MS)).toEqual(SLOW);
+    });
+  });
+
   it('answers 502 when Sport80 does not answer, and lets the next try load', async () => {
     fetchEntriesMeetMock.mockRejectedValueOnce(new Error('timeout'));
     jest.spyOn(console, 'error').mockImplementation(() => undefined);
     const store = actionServer();
     expect(await failure(store.load(URL))).toEqual({ status: 502, error: 'Sport80 did not answer; try again in a minute' });
     expect(await store.load(URL)).toEqual({ meet: 'Turkey Cup', refreshed: true });
+  });
+});
+
+describe('search', () => {
+  const LOCATOR = 'https://usaweightlifting.sport80.com/api/public/events/locator/data';
+  const event = (id: number, extra: Record<string, unknown> = {}) => ({
+    id: String(id),
+    is_event: true,
+    name: `Cup ${id}`,
+    subtitle: `November 21st 2026 - Town ${id}`,
+    actions: [{ url: `https://usaweightlifting.sport80.com/public/events/${id}/entries/${id + 1}?bl=locator`, text: 'Entry List' }],
+    ...extra,
+  });
+  const pages = (total: number, rows: unknown[][]) => fetchLocatorPageMock.mockReset().mockImplementation(async (url) => ({ total: String(total), data: rows[Number(new URL(url).searchParams.get('p'))] ?? [] }));
+
+  function searchServer(seed: Record<string, Record<string, unknown>[]> = {}) {
+    const store = fakeMutationCtx(seed);
+    const ctx = { ...store.ctx, runMutation: (_fn: unknown, args: Args) => handlerOf<Args>(claimSearch)(store.ctx, args) };
+    return { ...store, search: (query: string) => handlerOf<Args>(search)(ctx, { query }) };
+  }
+
+  it("lists upcoming events by name, with each one's entries list when it has one", async () => {
+    pages(3, [[event(15084), event(15090, { actions: [{ url: 'https://usaweightlifting.sport80.com/public/wizard/e/15090', text: 'Enter Now' }] }), event(15091, { is_event: false })]]);
+    expect(await searchServer().search('  Turkey Cup ')).toEqual({
+      results: [
+        { eventId: '15084', name: 'Cup 15084', subtitle: 'November 21st 2026 - Town 15084', entriesUrl: 'https://usaweightlifting.sport80.com/public/events/15084/entries/15085' },
+        { eventId: '15090', name: 'Cup 15090', subtitle: 'November 21st 2026 - Town 15090', entriesUrl: null },
+      ],
+      truncated: false,
+    });
+    expect(fetchLocatorPageMock.mock.calls).toEqual([[`${LOCATOR}?p=0&l=20&s=Turkey%20Cup`]]);
+  });
+
+  it(`answers at most ${MAX_SEARCH_RESULTS} events from ${MAX_SEARCH_PAGES} pages, and says when there were more`, async () => {
+    const page = (from: number) => Array.from({ length: 20 }, (_, i) => event(from + i));
+    pages(100, [page(1000), page(2000), page(3000)]);
+    const answer = (await searchServer().search('Open')) as { results: { eventId: string }[]; truncated: boolean };
+    expect(answer.results.map((r) => r.eventId)).toEqual(page(1000).map((r) => r.id));
+    expect(answer.truncated).toBe(true);
+    expect(fetchLocatorPageMock).toHaveBeenCalledTimes(MAX_SEARCH_PAGES);
+  });
+
+  it('fills from the next page what non-events left out, and is not truncated once every match is read', async () => {
+    const first = Array.from({ length: 20 }, (_, i) => event(1000 + i, i < 5 ? { is_event: false } : {}));
+    pages(25, [first, Array.from({ length: 5 }, (_, i) => event(2000 + i))]);
+    const answer = (await searchServer().search('Open')) as { results: unknown[]; truncated: boolean };
+    expect(answer).toMatchObject({ truncated: false });
+    expect(answer.results).toHaveLength(20);
+  });
+
+  it.each([
+    ['ab', `type at least ${MIN_SEARCH_LENGTH} characters of the meet's name`],
+    ['   ', `type at least ${MIN_SEARCH_LENGTH} characters of the meet's name`],
+    ['x'.repeat(MAX_SEARCH_LENGTH + 1), `a meet name is at most ${MAX_SEARCH_LENGTH} characters`],
+  ])('refuses %j before asking Sport80 or counting it', async (query, error) => {
+    pages(0, []);
+    const store = searchServer();
+    expect(await failure(store.search(query))).toMatchObject({ status: 400, error });
+    expect(fetchLocatorPageMock).not.toHaveBeenCalled();
+    expect(store.rows('schedule_builder_searches')).toEqual([]);
+  });
+
+  it(`takes ${MAX_SEARCH_LENGTH} characters`, async () => {
+    pages(0, [[]]);
+    expect(await searchServer().search('x'.repeat(MAX_SEARCH_LENGTH))).toEqual({ results: [], truncated: false });
+  });
+
+  it(`caps searches at ${MAX_SEARCHES_PER_HOUR} an hour across everyone, and prunes day-old rows`, async () => {
+    pages(0, [[]]);
+    const recent = Array.from({ length: MAX_SEARCHES_PER_HOUR - 1 }, (_, i) => ({ searchedAt: NOW - i }));
+    const store = searchServer({ schedule_builder_searches: [{ searchedAt: NOW - 2 * 24 * 60 * 60 * 1000 }, ...recent] });
+    expect(await store.search('Turkey')).toEqual({ results: [], truncated: false });
+    expect(await failure(store.search('Turkey'))).toEqual({
+      status: 429,
+      error: 'MeetCal is searching Sport80 a lot right now; try again in a few minutes',
+      max: MAX_SEARCHES_PER_HOUR,
+    });
+    expect(store.rows('schedule_builder_searches')).toHaveLength(MAX_SEARCHES_PER_HOUR);
+    expect(fetchLocatorPageMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('answers 502 when Sport80 fails or answers something else', async () => {
+    jest.spyOn(console, 'error').mockImplementation(() => undefined);
+    fetchLocatorPageMock.mockReset().mockRejectedValueOnce(new Error('POST locator failed with 500')).mockResolvedValueOnce({ total: 1, data: 'nope' });
+    const store = searchServer();
+    expect(await failure(store.search('Turkey'))).toEqual({ status: 502, error: 'Sport80 did not answer; try again in a minute' });
+    expect(await failure(store.search('Turkey'))).toEqual({ status: 502, error: 'Sport80 did not answer; try again in a minute' });
   });
 });

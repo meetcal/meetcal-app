@@ -127,6 +127,19 @@ pub(crate) struct Publications {
     pub publications: Vec<Publication>,
 }
 
+pub(crate) fn is_sport80_link(text: &str) -> bool {
+    let text = text.trim().to_ascii_lowercase();
+    text.starts_with("http://") || text.starts_with("https://") || text.contains("sport80.com/")
+}
+
+pub(crate) fn unbuilt_message(kept_edits: usize, message: &str) -> String {
+    if kept_edits == 0 {
+        format!("This schedule couldn’t be built: {message}")
+    } else {
+        format!("This schedule couldn’t be built, so your edits are kept: {message}")
+    }
+}
+
 pub(crate) fn publication_status_label(status: &str) -> &'static str {
     match status {
         "pending" => "In Review",
@@ -419,6 +432,33 @@ pub(crate) fn session_when(session: &BuiltSession) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn links_load_and_anything_else_searches_by_name() {
+        for link in [
+            "https://usaweightlifting.sport80.com/public/events/15084",
+            " HTTPS://usaweightlifting.sport80.com/public/wizard/e/15084 ",
+            "usaweightlifting.sport80.com/public/events/15084/entries/21962",
+            "https://example.com/meet",
+        ] {
+            assert!(is_sport80_link(link), "{link}");
+        }
+        for name in ["Turkey Cup", "  ", "", "sport80", "Https Open"] {
+            assert!(!is_sport80_link(name), "{name}");
+        }
+    }
+
+    #[test]
+    fn a_refused_build_says_the_edits_are_kept_only_when_there_were_some() {
+        assert_eq!(
+            unbuilt_message(0, "too late"),
+            "This schedule couldn’t be built: too late"
+        );
+        assert_eq!(
+            unbuilt_message(2, "too late"),
+            "This schedule couldn’t be built, so your edits are kept: too late"
+        );
+    }
 
     fn options() -> BuilderOptions {
         BuilderOptions {

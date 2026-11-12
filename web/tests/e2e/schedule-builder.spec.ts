@@ -6,7 +6,7 @@ const MEET = "Turkey Cup";
 const ENTRIES_URL = "https://usaweightlifting.sport80.com/public/events/15084/entries/21962";
 const MEET_PAGE_URL = "https://usaweightlifting.sport80.com/public/events/15084";
 
-type Edit = { kind: string; athlete?: string; toSession?: number; toPlatform?: string; session?: number; withSession?: number; date?: string; startTime?: string };
+type Edit = { kind: string; athlete?: string; fromSession?: number; fromPlatform?: string; occurrence?: number; toSession?: number; toPlatform?: string; session?: number; withSession?: number; date?: string; startTime?: string };
 type Options = { days: { date: string; firstStart: string }[]; sessionMinutes: number; platforms: string[]; [key: string]: unknown };
 type Call = { args: Record<string, unknown>; authorization: string | undefined };
 
@@ -70,14 +70,16 @@ function schedule(edits: Edit[], { secondDay, twins = false }: Shape = {}) {
   };
 }
 
-type MockSetup = Shape & { signedIn?: boolean; loadError?: string; refuseSessionMinutes?: number };
+type Match = { eventId: string; name: string; subtitle: string; entriesUrl: string | null };
+type MockSetup = Shape & { signedIn?: boolean; loadError?: string; refuseSessionMinutes?: number[]; matches?: Match[]; truncated?: boolean };
 
-async function mockBuilder(page: Page, { signedIn = false, loadError = "", refuseSessionMinutes, ...shape }: MockSetup = {}) {
+async function mockBuilder(page: Page, { signedIn = false, loadError = "", refuseSessionMinutes = [], matches = [], truncated = false, ...shape }: MockSetup = {}) {
   const meetDays = shape.secondDay ? ["2026-11-21", shape.secondDay] : ["2026-11-21"];
   const options = { ...defaultOptions, days: meetDays.map((date) => ({ date, firstStart: "09:00" })) };
   await mockAuth(page, { signedIn });
   const calls = {
     loads: [] as Call[],
+    searches: [] as Call[],
     previews: [] as Call[],
     exports: [] as Call[],
     saves: [] as Call[],
@@ -92,12 +94,16 @@ async function mockBuilder(page: Page, { signedIn = false, loadError = "", refus
     if (loadError) return route.fulfill(errorAnswer("Server Error", { status: 422, error: loadError }));
     return route.fulfill(valueAnswer({ meet: MEET, refreshed: true }));
   });
+  await routeAction(page, "scheduleBuilderLoad:search", (route, args) => {
+    record(calls.searches, route, args);
+    return route.fulfill(valueAnswer({ results: matches, truncated }));
+  });
   await routeQuery(page, "scheduleBuilder:defaults", (route) =>
     route.fulfill(valueAnswer({ meet: MEET, startDate: "2026-11-21", endDate: meetDays.at(-1), timeZone: "America/Chicago", status: "upcoming", options })),
   );
   await routeQuery(page, "scheduleBuilder:preview", (route, args) => {
     record(calls.previews, route, args);
-    if ((args.options as Options).sessionMinutes === refuseSessionMinutes) {
+    if (refuseSessionMinutes.includes((args.options as Options).sessionMinutes)) {
       return route.fulfill(errorAnswer("Server Error", { status: 400, error: "the first session on 2026-11-21 would end after midnight" }));
     }
     return route.fulfill(valueAnswer(schedule(args.edits as Edit[], shape)));
@@ -142,7 +148,7 @@ async function mockBuilder(page: Page, { signedIn = false, loadError = "", refus
 
 async function loadAndBuild(page: Page, link = ENTRIES_URL) {
   await page.goto("/schedule-builder");
-  await page.getByLabel("Sport80 Meet Link").fill(link);
+  await page.getByLabel("Sport80 Link or Meet Name").fill(link);
   await page.getByRole("button", { name: "Load", exact: true }).click();
   await expect(page).toHaveURL(/\/schedule-builder\?meet=Turkey(%20|\+)Cup$/);
   await expect(page.getByRole("heading", { level: 2, name: MEET })).toBeVisible();
@@ -175,7 +181,7 @@ test("signed out, a meet loads, builds, takes an edit, exports and prints", asyn
   await expect(page.getByRole("button", { name: "Laney Johnson: Move To…" })).toHaveAttribute("aria-expanded", "true");
   await page.getByRole("group", { name: "Move To…" }).getByRole("button", { name: "Session 2 · Red" }).click();
   await expect(sessionCard(page, 2)).toContainText("Laney Johnson");
-  expect(calls.previews.at(-1)?.args.edits).toEqual([{ kind: "moveAthlete", athlete: "1|laney johnson", toSession: 2, toPlatform: "Red" }]);
+  expect(calls.previews.at(-1)?.args.edits).toEqual([{ kind: "moveAthlete", athlete: "1|laney johnson", fromSession: 1, fromPlatform: "Red", occurrence: 0, toSession: 2, toPlatform: "Red" }]);
 
   const exportButton = page.getByRole("button", { name: "Export", exact: true });
   const exports = page.getByRole("group", { name: "Export" });
@@ -222,7 +228,7 @@ test("signed out, a meet loads, builds, takes an edit, exports and prints", asyn
   await expect(sessionCard(page, 2)).toContainText("Ava Smith");
   await page.reload();
   await expect(sessionCard(page, 2)).toContainText("Ava Smith");
-  expect(calls.previews.at(-1)?.args.edits).toEqual([{ kind: "moveAthlete", athlete: "2|ava smith", toSession: 2, toPlatform: "Red" }]);
+  expect(calls.previews.at(-1)?.args.edits).toEqual([{ kind: "moveAthlete", athlete: "2|ava smith", fromSession: 1, fromPlatform: "Red", occurrence: 0, toSession: 2, toPlatform: "Red" }]);
 });
 
 test("a session can be retimed and swapped, and building again asks before dropping edits", async ({ page }) => {
@@ -293,7 +299,7 @@ test("the board's menus open, choose and close from the keyboard, and focus foll
   await expect(list.getByRole("button", { name: "Session 2 · Red" })).toBeFocused();
   await page.keyboard.press("Enter");
   await expect(sessionCard(page, 2)).toContainText("Laney Johnson");
-  expect(calls.previews.at(-1)?.args.edits).toEqual([{ kind: "moveAthlete", athlete: "1|laney johnson", toSession: 2, toPlatform: "Red" }]);
+  expect(calls.previews.at(-1)?.args.edits).toEqual([{ kind: "moveAthlete", athlete: "1|laney johnson", fromSession: 1, fromPlatform: "Red", occurrence: 0, toSession: 2, toPlatform: "Red" }]);
   await expect(page.getByRole("button", { name: "Ava Smith: Move To…" })).toBeFocused();
 
   await page.getByRole("button", { name: "Session 1: Edit Time" }).click();
@@ -368,7 +374,7 @@ test("entrants who share an identity open their own Move To lists", async ({ pag
 });
 
 test("a build the server refuses keeps the edits", async ({ page }) => {
-  const calls = await mockBuilder(page, { refuseSessionMinutes: 100 });
+  const calls = await mockBuilder(page, { refuseSessionMinutes: [100] });
   await loadAndBuild(page);
   await page.getByRole("button", { name: "Laney Johnson: Move To…" }).click();
   await page.getByRole("group", { name: "Move To…" }).getByRole("button", { name: "Session 2 · Red" }).click();
@@ -383,7 +389,7 @@ test("a build the server refuses keeps the edits", async ({ page }) => {
   expect(calls.previews.at(-1)?.args).toEqual({
     meet: MEET,
     options: defaultOptions,
-    edits: [{ kind: "moveAthlete", athlete: "1|laney johnson", toSession: 2, toPlatform: "Red" }],
+    edits: [{ kind: "moveAthlete", athlete: "1|laney johnson", fromSession: 1, fromPlatform: "Red", occurrence: 0, toSession: 2, toPlatform: "Red" }],
   });
   await expect(page.getByRole("button", { name: "Undo" })).toBeEnabled();
 });
@@ -391,7 +397,7 @@ test("a build the server refuses keeps the edits", async ({ page }) => {
 test("the meet's Sport80 page loads too, and the options have no weigh-in field", async ({ page }) => {
   const calls = await mockBuilder(page);
   await page.goto("/schedule-builder");
-  await expect(page.getByLabel("Sport80 Meet Link")).toHaveAttribute("placeholder", MEET_PAGE_URL.replace("15084", "12345"));
+  await expect(page.getByLabel("Sport80 Link or Meet Name")).toHaveAttribute("placeholder", `Turkey Cup or ${MEET_PAGE_URL.replace("15084", "12345")}`);
   await loadAndBuild(page, MEET_PAGE_URL);
   expect(calls.loads.map((call) => call.args)).toEqual([{ url: MEET_PAGE_URL }]);
   await expect(page.getByLabel(/Weigh-In/)).toHaveCount(0);
@@ -402,12 +408,167 @@ test("the meet's Sport80 page loads too, and the options have no weigh-in field"
 test("a load Sport80 refuses shows the server's reason", async ({ page }) => {
   await mockBuilder(page, { loadError: "Sport80 hasn't set this meet's dates yet" });
   await page.goto("/schedule-builder");
-  await page.getByRole("button", { name: "Load", exact: true }).click();
-  await expect(page.getByRole("alert")).toHaveText("Paste the meet’s Sport80 link.");
-  await page.getByLabel("Sport80 Meet Link").fill(ENTRIES_URL);
+  await page.getByRole("button", { name: "Search", exact: true }).click();
+  await expect(page.getByRole("alert")).toHaveText("Type the meet’s name or paste its Sport80 link.");
+  await page.getByLabel("Sport80 Link or Meet Name").fill(ENTRIES_URL);
   await page.getByRole("button", { name: "Load", exact: true }).click();
   await expect(page.getByRole("alert")).toHaveText("Sport80 hasn't set this meet's dates yet");
   await expect(page).toHaveURL(/\/schedule-builder$/);
+});
+
+const TURKEY_CUP: Match = { eventId: "15084", name: MEET, subtitle: "November 21st 2026 - Saint Joseph, Missouri", entriesUrl: ENTRIES_URL };
+const UNLISTED: Match = { eventId: "15090", name: "Turkey Open", subtitle: "December 5th 2026 - Austin, Texas", entriesUrl: null };
+
+test("a meet's name searches Sport80 on Enter, and a match loads from its entries list", async ({ page }) => {
+  const calls = await mockBuilder(page, { matches: [TURKEY_CUP, UNLISTED] });
+  await page.goto("/schedule-builder");
+  const field = page.getByLabel("Sport80 Link or Meet Name");
+  await field.pressSequentially("Turkey Cup");
+  await expect(page.getByRole("button", { name: "Search", exact: true })).toBeVisible();
+  expect(calls.searches).toHaveLength(0);
+  await field.press("Enter");
+  const matches = page.getByRole("list", { name: "Matching Meets" });
+  await expect(matches.getByRole("listitem")).toHaveCount(2);
+  expect(calls.searches.map((call) => call.args)).toEqual([{ query: "Turkey Cup" }]);
+  await expect(matches.getByRole("listitem").first()).toContainText("November 21st 2026 - Saint Joseph, Missouri");
+  const unlisted = matches.getByRole("listitem").filter({ hasText: "Turkey Open" });
+  await expect(unlisted).toContainText("No Entry List Yet");
+  await expect(unlisted.getByRole("button")).toHaveCount(0);
+  await expect(page.getByText("Sport80 has more matches")).toHaveCount(0);
+
+  await matches.getByRole("button", { name: "Load Turkey Cup, November 21st 2026 - Saint Joseph, Missouri" }).click();
+  await expect(page).toHaveURL(/\/schedule-builder\?meet=Turkey(%20|\+)Cup$/);
+  expect(calls.loads.map((call) => call.args)).toEqual([{ url: ENTRIES_URL }]);
+  expect(calls.searches).toHaveLength(1);
+});
+
+test("a search with no matches says so, and a long one says there are more", async ({ page }) => {
+  await mockBuilder(page);
+  await page.goto("/schedule-builder");
+  await page.getByLabel("Sport80 Link or Meet Name").fill("Nowhere Open");
+  await page.getByRole("button", { name: "Search", exact: true }).click();
+  await expect(page.getByText("No upcoming Sport80 meets match “Nowhere Open”.")).toBeVisible();
+  await expect(page.getByRole("list", { name: "Matching Meets" })).toHaveCount(0);
+
+  await routeAction(page, "scheduleBuilderLoad:search", (route) => route.fulfill(valueAnswer({ results: [TURKEY_CUP], truncated: true })));
+  await page.getByRole("button", { name: "Search", exact: true }).click();
+  await expect(page.getByRole("list", { name: "Matching Meets" }).getByRole("listitem")).toHaveCount(1);
+  await expect(page.getByText("Sport80 has more matches than these. Add more of the name to narrow them.")).toBeVisible();
+});
+
+test("only the latest search's answer is shown", async ({ page }) => {
+  const calls = await mockBuilder(page, { matches: [TURKEY_CUP] });
+  let release = () => {};
+  const held = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  let staleAnswered = false;
+  await routeAction(page, "scheduleBuilderLoad:search", async (route, args) => {
+    if (args.query !== "Turkey") return route.fallback();
+    await held;
+    await route.fulfill(valueAnswer({ results: [UNLISTED], truncated: false })).catch(() => {});
+    staleAnswered = true;
+  });
+  await page.goto("/schedule-builder");
+  const field = page.getByLabel("Sport80 Link or Meet Name");
+  await field.fill("Turkey");
+  await field.press("Enter");
+  await expect(page.getByRole("status").filter({ hasText: "Searching Sport80’s upcoming meets…" })).toBeVisible();
+  await expect(page.locator(".builder-load-form")).toHaveAttribute("aria-busy", "true");
+  await field.fill("Turkey Cup");
+  await field.press("Enter");
+  const matches = page.getByRole("list", { name: "Matching Meets" });
+  await expect(matches).toContainText(MEET);
+  release();
+  await expect.poll(() => staleAnswered).toBe(true);
+  expect(calls.searches.map((call) => call.args.query)).toEqual(["Turkey Cup"]);
+  await expect(matches.getByRole("listitem")).toHaveCount(1);
+  await expect(matches).not.toContainText("Turkey Open");
+});
+
+test("Build Again's options are kept on reload once its schedule is built", async ({ page }) => {
+  const calls = await mockBuilder(page);
+  await loadAndBuild(page);
+  await page.getByRole("button", { name: "Laney Johnson: Move To…" }).click();
+  await page.getByRole("group", { name: "Move To…" }).getByRole("button", { name: "Session 2 · Red" }).click();
+  await expect(sessionCard(page, 2)).toContainText("Laney Johnson");
+  await page.getByLabel("Session Length (Minutes)").fill("90");
+  await page.getByRole("button", { name: "Build Again" }).click();
+  await page.getByRole("button", { name: "Discard Edits and Build" }).click();
+  await expect.poll(() => calls.previews.at(-1)?.args).toEqual({ meet: MEET, options: { ...defaultOptions, sessionMinutes: 90 }, edits: [] });
+  await expect(page.getByTestId("schedule-board")).not.toHaveAttribute("inert");
+  await expect(sessionCard(page, 1)).toContainText("Laney Johnson");
+
+  await page.reload();
+  await expect(page.getByTestId("schedule-board")).toBeVisible();
+  await expect(page.getByLabel("Session Length (Minutes)")).toHaveValue("90");
+  await expect(sessionCard(page, 1)).toContainText("Laney Johnson");
+  await expect(page.getByRole("button", { name: "Undo" })).toBeDisabled();
+  expect(calls.previews.at(-1)?.args).toEqual({ meet: MEET, options: { ...defaultOptions, sessionMinutes: 90 }, edits: [] });
+});
+
+test("Move To names which of two entrants sharing an identity it moves", async ({ page }) => {
+  const calls = await mockBuilder(page, { twins: true });
+  await loadAndBuild(page);
+  await page.getByRole("button", { name: "Mia Lee: Move To…" }).last().click();
+  await page.getByRole("group", { name: "Move To…" }).getByRole("button", { name: "Session 1 · Red" }).click();
+  await expect.poll(() => calls.previews.at(-1)?.args.edits).toEqual([
+    { kind: "moveAthlete", athlete: "3|mia lee", fromSession: 2, fromPlatform: "Red", occurrence: 1, toSession: 1, toPlatform: "Red" },
+  ]);
+  await page.getByRole("button", { name: "Undo" }).click();
+  await page.getByRole("button", { name: "Mia Lee: Move To…" }).first().click();
+  await page.getByRole("group", { name: "Move To…" }).getByRole("button", { name: "Session 1 · Red" }).click();
+  await expect.poll(() => calls.previews.at(-1)?.args.edits).toEqual([
+    { kind: "moveAthlete", athlete: "3|mia lee", fromSession: 2, fromPlatform: "Red", occurrence: 0, toSession: 1, toPlatform: "Red" },
+  ]);
+});
+
+test("a second build while a rebuild loads still keeps the first edits when it is refused", async ({ page }) => {
+  const calls = await mockBuilder(page, { refuseSessionMinutes: [100, 110] });
+  await loadAndBuild(page);
+  await page.getByRole("button", { name: "Laney Johnson: Move To…" }).click();
+  await page.getByRole("group", { name: "Move To…" }).getByRole("button", { name: "Session 2 · Red" }).click();
+  await expect(sessionCard(page, 2)).toContainText("Laney Johnson");
+
+  let release = () => {};
+  const held = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  let heldAnswered = false;
+  await routeQuery(page, "scheduleBuilder:preview", async (route, args) => {
+    if ((args.options as Options).sessionMinutes !== 100) return route.fallback();
+    await held;
+    await route.fallback().catch(() => {});
+    heldAnswered = true;
+  });
+  await page.getByLabel("Session Length (Minutes)").fill("100");
+  await page.getByRole("button", { name: "Build Again" }).click();
+  await page.getByRole("button", { name: "Discard Edits and Build" }).click();
+  await expect(page.getByTestId("schedule-board")).toHaveAttribute("inert", "");
+  await page.getByLabel("Session Length (Minutes)").fill("110");
+  await page.getByRole("button", { name: "Build Again" }).click();
+  await expect(page.locator(".builder-options").getByRole("alert")).toContainText("This schedule couldn’t be built, so your edits are kept");
+  const kept = {
+    meet: MEET,
+    options: defaultOptions,
+    edits: [{ kind: "moveAthlete", athlete: "1|laney johnson", fromSession: 1, fromPlatform: "Red", occurrence: 0, toSession: 2, toPlatform: "Red" }],
+  };
+  await expect.poll(() => calls.previews.at(-1)?.args).toEqual(kept);
+  await expect(sessionCard(page, 2)).toContainText("Laney Johnson");
+  await expect(page.getByRole("button", { name: "Undo" })).toBeEnabled();
+  release();
+  await expect.poll(() => heldAnswered).toBe(true);
+  await expect(sessionCard(page, 2)).toContainText("Laney Johnson");
+  await expect(page.getByLabel("Session Length (Minutes)")).toHaveValue("110");
+});
+
+test("a refused build without edits doesn't claim to keep any", async ({ page }) => {
+  await mockBuilder(page, { refuseSessionMinutes: [100] });
+  await loadAndBuild(page);
+  await page.getByLabel("Session Length (Minutes)").fill("100");
+  await page.getByRole("button", { name: "Build Again" }).click();
+  const alert = page.locator(".builder-options").getByRole("alert");
+  await expect(alert).toHaveText("This schedule couldn’t be built: The first session on 2026-11-21 would end after midnight");
 });
 
 test("signed in, drafts save and list, and a publish is sent for review", async ({ page }) => {
@@ -440,7 +601,7 @@ test("signed in, drafts save and list, and a publish is sent for review", async 
   await expect(publish.getByRole("heading", { name: "Sent for Review" })).toHaveCount(0);
   await publish.getByRole("button", { name: "Publish", exact: true }).click();
   await expect(publish.getByRole("heading", { name: "Sent for Review" })).toBeVisible();
-  expect(calls.publishes.map((call) => call.args.edits)).toEqual([[], [{ kind: "moveAthlete", athlete: "2|ava smith", toSession: 2, toPlatform: "Red" }]]);
+  expect(calls.publishes.map((call) => call.args.edits)).toEqual([[], [{ kind: "moveAthlete", athlete: "2|ava smith", fromSession: 1, fromPlatform: "Red", occurrence: 0, toSession: 2, toPlatform: "Red" }]]);
   await expect(publish.getByText("In Review")).toHaveCount(2);
 
   await page.getByRole("link", { name: "Load Another Meet" }).click();

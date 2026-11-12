@@ -215,6 +215,47 @@ describe('edits', () => {
     expect(schedule.warnings.map((w) => w.code)).toEqual(['mixedGroup']);
   });
 
+  describe('entrants who share an identity', () => {
+    const twins = () => {
+      nextId = 1;
+      const twin = { memberId: '300', name: 'Mia Lee' };
+      return [lifter('Women', '77', 125, twin), lifter('Women', '77', 120, twin), lifter('Women', '58', 70)];
+    };
+    const totalsOf = (schedule: BuiltSchedule) => schedule.sessions[0]?.groups.map((g) => [g.platform, g.athletes.map((a) => a.entryTotal)]);
+    const key = athleteKey({ memberId: '300', name: 'Mia Lee' });
+
+    it('moves the one named by its source group and its place among them as the board lists it', () => {
+      const move = (occurrence: number) => buildSchedule(twins(), opts, [{ kind: 'moveAthlete', athlete: key, fromSession: 1, fromPlatform: 'Red', occurrence, toSession: 1, toPlatform: 'Blue' }]);
+      expect(totalsOf(move(0))).toEqual([
+        ['Red', [70, 125]],
+        ['Blue', [120]],
+      ]);
+      expect(totalsOf(move(1))).toEqual([
+        ['Red', [70, 120]],
+        ['Blue', [125]],
+      ]);
+    });
+
+    it('skips a move whose entrant is no longer in its source group', () => {
+      for (const from of [
+        { fromSession: 1, fromPlatform: 'Red', occurrence: 2 },
+        { fromSession: 1, fromPlatform: 'Blue', occurrence: 0 },
+        { fromSession: 9, fromPlatform: 'Red', occurrence: 0 },
+      ]) {
+        const schedule = buildSchedule(twins(), opts, [{ kind: 'moveAthlete', athlete: key, ...from, toSession: 1, toPlatform: 'Blue' }]);
+        expect(totalsOf(schedule)).toEqual([['Red', [70, 120, 125]]]);
+        expect(schedule.warnings.map((w) => w.code)).toEqual(['skippedEdit']);
+      }
+    });
+
+    it('moves the first match, as before, for an edit saved before moves named their source', () => {
+      expect(totalsOf(buildSchedule(twins(), opts, [{ kind: 'moveAthlete', athlete: key, toSession: 1, toPlatform: 'Blue' }]))).toEqual([
+        ['Red', [70, 125]],
+        ['Blue', [120]],
+      ]);
+    });
+  });
+
   it('moves a whole class out of a group', () => {
     const schedule = buildSchedule(base(), opts, [{ kind: 'moveClass', fromSession: 1, fromPlatform: 'Red', weightClass: '63kg', toSession: 1, toPlatform: 'Blue' }]);
     expect(summary(schedule)[0]?.groups).toEqual(['Red:Female:58:2', 'Blue:Male:63/65:2']);

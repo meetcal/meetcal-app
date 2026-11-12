@@ -40,7 +40,15 @@ export const builderOptionsValidator = v.object({
 });
 
 export const builderEditValidator = v.union(
-  v.object({ kind: v.literal('moveAthlete'), athlete: v.string(), toSession: v.number(), toPlatform: v.string() }),
+  v.object({
+    kind: v.literal('moveAthlete'),
+    athlete: v.string(),
+    fromSession: v.optional(v.number()),
+    fromPlatform: v.optional(v.string()),
+    occurrence: v.optional(v.number()),
+    toSession: v.number(),
+    toPlatform: v.string(),
+  }),
   v.object({
     kind: v.literal('moveClass'),
     fromSession: v.number(),

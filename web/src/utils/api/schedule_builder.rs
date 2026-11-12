@@ -6,6 +6,7 @@ use serde_json::{Map, Value, json};
 use std::time::Duration;
 
 pub(super) const BUILDER_LOAD: &str = "scheduleBuilderLoad:load";
+pub(super) const BUILDER_SEARCH: &str = "scheduleBuilderLoad:search";
 pub(super) const BUILDER_DEFAULTS: &str = "scheduleBuilder:defaults";
 pub(super) const BUILDER_PREVIEW: &str = "scheduleBuilder:preview";
 pub(super) const BUILDER_EXPORT: &str = "scheduleBuilder:exportFile";
@@ -17,6 +18,7 @@ pub(super) const SCHEDULE_PUBLISH: &str = "schedulePublications:publish";
 pub(super) const SCHEDULE_PUBLICATIONS: &str = "schedulePublications:publications";
 
 pub(crate) const SPORT80_LOAD_TIMEOUT: Duration = Duration::from_secs(120);
+pub(crate) const SPORT80_SEARCH_TIMEOUT: Duration = Duration::from_secs(45);
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -63,6 +65,12 @@ pub(crate) struct BuilderOptions {
 pub(crate) enum BuilderEdit {
     MoveAthlete {
         athlete: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        from_session: Option<u32>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        from_platform: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        occurrence: Option<u32>,
         to_session: u32,
         to_platform: String,
     },
@@ -110,6 +118,21 @@ pub(crate) struct ExportFile {
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize)]
 pub(crate) struct LoadedMeet {
     pub meet: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct MeetMatch {
+    pub event_id: String,
+    pub name: String,
+    pub subtitle: String,
+    pub entries_url: Option<String>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Deserialize)]
+pub(crate) struct MeetMatches {
+    pub results: Vec<MeetMatch>,
+    pub truncated: bool,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize)]
@@ -196,6 +219,16 @@ pub(crate) async fn load_builder_meet(url: &str) -> Result<LoadedMeet> {
         BUILDER_LOAD,
         json!({ "url": url }),
         SPORT80_LOAD_TIMEOUT,
+    )
+    .await
+}
+
+pub(crate) async fn search_builder_meets(query: &str) -> Result<MeetMatches> {
+    public_call(
+        Endpoint::Action,
+        BUILDER_SEARCH,
+        json!({ "query": query }),
+        SPORT80_SEARCH_TIMEOUT,
     )
     .await
 }

@@ -97,7 +97,9 @@ export function locatorPageUrl(search: string, page: number): string {
   return `${LOCATOR}?p=${page}&l=${LOCATOR_PAGE_SIZE}&s=${encodeURIComponent(search)}`;
 }
 
-export type LocatorRow = { id: string; entriesUrl: string | null };
+export type LocatorRow = { id: string; name: string; subtitle: string; isEvent: boolean; entriesUrl: string | null };
+
+const textOf = (value: unknown): string => (typeof value === 'string' ? value.trim() : '');
 
 function locatorActionUrls(actions: unknown, row: number): string[] {
   if (actions === undefined || actions === null) return [];
@@ -117,7 +119,7 @@ export function readLocatorPage(body: unknown): { total: number; rows: LocatorRo
     const entriesUrl = locatorActionUrls(item.actions, i)
       .map((url) => sport80EntriesUrlOf(url, id))
       .find((url) => url !== null);
-    return { id, entriesUrl: entriesUrl ?? null };
+    return { id, name: textOf(item.name), subtitle: textOf(item.subtitle), isEvent: item.is_event !== false, entriesUrl: entriesUrl ?? null };
   });
   return { total: count, rows };
 }

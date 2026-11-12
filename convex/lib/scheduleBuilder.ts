@@ -236,7 +236,9 @@ function initialSlots(entrants: readonly BuilderEntrant[], options: BuilderOptio
 
 type EditOutcome = 'applied' | 'skipped';
 
-function findAthlete(slots: readonly Slot[], key: string): { group: Group; index: number } | null {
+type MoveAthlete = Extract<BuilderEdit, { kind: 'moveAthlete' }>;
+
+function firstWithKey(slots: readonly Slot[], key: string): { group: Group; index: number } | null {
   for (const slot of slots) {
     for (const group of slot.groups.values()) {
       const index = group.athletes.findIndex((a) => a.key === key);
@@ -244,6 +246,13 @@ function findAthlete(slots: readonly Slot[], key: string): { group: Group; index
     }
   }
   return null;
+}
+
+function findAthlete(slots: readonly Slot[], edit: MoveAthlete): { group: Group; index: number } | null {
+  if (edit.fromSession === undefined || edit.fromPlatform === undefined) return firstWithKey(slots, edit.athlete);
+  const group = slots.find((s) => s.id === edit.fromSession)?.groups.get(edit.fromPlatform);
+  const athlete = group ? [...group.athletes].sort(byTotal).filter((a) => a.key === edit.athlete)[edit.occurrence ?? 0] : undefined;
+  return group && athlete ? { group, index: group.athletes.indexOf(athlete) } : null;
 }
 
 function targetGroup(slots: readonly Slot[], options: BuilderOptions, session: number, platform: string, like: Pick<Group, 'gender' | 'ageGroup'>): Group | null {
@@ -259,7 +268,7 @@ function targetGroup(slots: readonly Slot[], options: BuilderOptions, session: n
 function applyEdit(slots: Slot[], edit: BuilderEdit, options: BuilderOptions): EditOutcome {
   switch (edit.kind) {
     case 'moveAthlete': {
-      const found = findAthlete(slots, edit.athlete);
+      const found = findAthlete(slots, edit);
       if (!found) return 'skipped';
       const target = targetGroup(slots, options, edit.toSession, edit.toPlatform, found.group);
       if (!target) return 'skipped';

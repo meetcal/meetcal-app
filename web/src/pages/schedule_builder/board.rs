@@ -507,7 +507,7 @@ fn GroupView(
             <ol class="builder-athletes">
                 {group
                     .athletes
-                    .into_iter()
+                    .iter()
                     .enumerate()
                     .map(|(row, athlete)| {
                         let trigger_id = format!("builder-athlete-{session}-{index}-{row}");
@@ -516,8 +516,9 @@ fn GroupView(
                                 session
                                 platform=platform.get_value()
                                 row
+                                occurrence=occurrence_of(&group.athletes, row)
                                 trigger_id
-                                athlete
+                                athlete=athlete.clone()
                                 data
                                 actions
                             />
@@ -534,6 +535,18 @@ fn chip_label(weight_class: &str) -> String {
     shown
         .strip_suffix("kg")
         .map_or_else(|| shown.clone(), str::to_owned)
+}
+
+fn occurrence_of(athletes: &[BuiltAthlete], row: usize) -> u32 {
+    let Some(athlete) = athletes.get(row) else {
+        return 0;
+    };
+    let earlier = athletes
+        .iter()
+        .take(row)
+        .filter(|other| other.key == athlete.key)
+        .count();
+    u32::try_from(earlier).unwrap_or(u32::MAX)
 }
 
 fn athlete_menu_id(session: u32, platform: &str, row: usize, athlete: &BuiltAthlete) -> MenuId {
@@ -562,6 +575,7 @@ fn AthleteRow(
     session: u32,
     platform: String,
     row: usize,
+    occurrence: u32,
     trigger_id: String,
     athlete: BuiltAthlete,
     data: BoardData,
@@ -593,6 +607,9 @@ fn AthleteRow(
                         actions,
                         move |target| BuilderEdit::MoveAthlete {
                             athlete: key.get_value(),
+                            from_session: Some(session),
+                            from_platform: Some(platform.get_value()),
+                            occurrence: Some(occurrence),
                             to_session: target.session,
                             to_platform: target.platform,
                         },
@@ -652,6 +669,26 @@ mod tests {
         assert_ne!(first, athlete_menu_id(2, "Blue", 0, &twin));
         assert_ne!(first, athlete_menu_id(1, "Red", 0, &twin));
         assert_eq!(first, athlete_menu_id(2, "Red", 0, &twin));
+    }
+
+    #[test]
+    fn a_move_names_which_of_the_entrants_sharing_an_identity_it_takes() {
+        let lifter = |key: &str| BuiltAthlete {
+            key: key.to_owned(),
+            name: "Mia Lee".to_owned(),
+            age: 40.0,
+            club: String::new(),
+            weight_class: "77".to_owned(),
+            entry_total: 120.0,
+        };
+        let group = [lifter("3|mia lee"), lifter("4|ann"), lifter("3|mia lee")];
+        assert_eq!(
+            (0..group.len())
+                .map(|row| occurrence_of(&group, row))
+                .collect::<Vec<_>>(),
+            [0, 0, 1]
+        );
+        assert_eq!(occurrence_of(&group, 9), 0);
     }
 
     #[test]

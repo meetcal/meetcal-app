@@ -2695,6 +2695,27 @@ main > div:has(> h4) > p {
     margin-top: 10px;
 }
 
+.builder-matches {
+    margin-top: 14px;
+}
+
+.builder-match {
+    display: grid;
+    flex: 1 1 220px;
+    gap: 2px;
+    min-width: 0;
+}
+
+.builder-match-name {
+    font-weight: 700;
+    overflow-wrap: anywhere;
+}
+
+.builder-matches-empty,
+.builder-matches-more {
+    margin: 14px 0 0;
+}
+
 .builder-list {
     display: grid;
     margin: 0;
