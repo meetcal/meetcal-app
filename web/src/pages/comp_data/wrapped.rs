@@ -5,7 +5,6 @@
 
 use super::{
     athlete_autocomplete::AthleteAutocomplete,
-    format::NO_VALUE,
     loading::{Load, LoadState, load_error},
     ui::{DataMetric, DataPage, DataStatus, TableSkeleton},
 };
@@ -31,23 +30,23 @@ struct WrappedRequest {
 #[serde(tag = "kind", rename_all = "camelCase")]
 enum WrappedAnswer {
     /// One athlete's year, under the athlete's own spelling.
-    Athlete {
-        name: String,
-        stats: WrappedStats,
-    },
+    Athlete { name: String, stats: WrappedStats },
+    /// Several athletes matched; the user picks one, which asks again with
+    /// `picked`. With `truncated`, `names` may not hold the athlete meant.
     Ambiguous {
         names: Vec<String>,
+        #[serde(default)]
         truncated: bool,
     },
     /// The name matched too many athletes to look through: type more of it.
     Narrow,
     /// One athlete's year has more results than one answer holds, so a
     /// Wrapped would miss some.
-    TooManyResults {
-        name: String,
-    },
+    TooManyResults { name: String },
+    /// No results in the year; `suggestions` are names like the query.
     #[serde(rename = "none")]
     NoResults {
+        #[serde(default)]
         suggestions: Vec<String>,
     },
 }
@@ -156,16 +155,18 @@ fn unavailable_message(request: &WrappedRequest, answer: &WrappedAnswer) -> Stri
     }
 }
 
+/// The first-to-last change as shown, the app's `formatImprovement`:
+/// "+12kg", "-5kg", "Steady" for none, and "—" with fewer than two meets.
 fn format_improvement(improvement: Option<f64>) -> String {
     match improvement {
-        None => NO_VALUE.to_owned(),
+        None => "—".to_owned(),
         Some(0.0) => "Steady".to_owned(),
         Some(change) => format!("{change:+}kg"),
     }
 }
 
 fn report(athlete_name: &str, year: i32, stats: &WrappedStats) -> AnyView {
-    view! { <h2 class="data-section-title">{format!("{year} Wrapped — {athlete_name}")}</h2><div class="data-metric-grid"><DataMetric label="Meets" value=stats.total_meets.to_string() /><DataMetric label="Make rate" value=format!("{:.1}%", stats.make_percentage) /><DataMetric label="Best snatch" value=format!("{}kg", stats.best_snatch) /><DataMetric label="Best C&J" value=format!("{}kg", stats.best_clean_jerk) /><DataMetric label="Best total" value=format!("{}kg", stats.best_total) /><DataMetric label="Average total" value=format!("{:.1}kg", stats.average_total) /><DataMetric label="Weight lifted" value=format!("{}kg", stats.total_weight_lifted) /><DataMetric label="First-to-last" value=format_improvement(stats.improvement_from_first) /><DataMetric label="Longest make streak" value=stats.longest_make_streak.to_string() /><DataMetric label="Favorite attempt" value=stats.favorite_attempt.map(|value| value.to_string()).unwrap_or_else(|| NO_VALUE.to_owned()) /></div><div class="wrapped-top-meet"><span>"Top meet"</span><strong>{stats.top_meet.clone().unwrap_or_else(|| NO_VALUE.to_owned())}</strong></div> }.into_any()
+    view! { <h2 class="data-section-title">{format!("{year} Wrapped — {athlete_name}")}</h2><div class="data-metric-grid"><DataMetric label="Meets" value=stats.total_meets.to_string() /><DataMetric label="Make rate" value=format!("{:.1}%", stats.make_percentage) /><DataMetric label="Best snatch" value=format!("{}kg", stats.best_snatch) /><DataMetric label="Best C&J" value=format!("{}kg", stats.best_clean_jerk) /><DataMetric label="Best total" value=format!("{}kg", stats.best_total) /><DataMetric label="Average total" value=format!("{:.1}kg", stats.average_total) /><DataMetric label="Weight lifted" value=format!("{}kg", stats.total_weight_lifted) /><DataMetric label="First-to-last" value=format_improvement(stats.improvement_from_first) /><DataMetric label="Longest make streak" value=stats.longest_make_streak.to_string() /><DataMetric label="Favorite attempt" value=stats.favorite_attempt.map(|value| value.to_string()).unwrap_or_else(|| "—".to_owned()) /></div><div class="wrapped-top-meet"><span>"Top meet"</span><strong>{stats.top_meet.clone().unwrap_or_else(|| "—".to_owned())}</strong></div> }.into_any()
 }
 
 /// The athletes a search matched, each building that athlete's Wrapped.
@@ -326,8 +327,6 @@ mod tests {
         for value in [
             json!({"kind": "something"}),
             json!({"names": ["Ann Lee"]}),
-            json!({"kind": "ambiguous", "names": ["Ann Lee"]}),
-            json!({"kind": "none"}),
             json!({"kind": "athlete", "name": "Test Athlete"}),
             json!({"kind": "athlete", "name": "Test Athlete", "stats": {"totalMeets": 2.5}}),
         ] {

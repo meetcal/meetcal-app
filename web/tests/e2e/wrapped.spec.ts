@@ -22,7 +22,7 @@ const stats = {
 /** Answers the athlete autocomplete (`results:search` without dates) with `names`. */
 async function routeSuggestions(page: Page, names: string[] = []) {
   await routeQuery(page, "results:search", (route) =>
-    route.fulfill(valueAnswer({ matched_name: null, suggestions: names, results: [], truncated: false })),
+    route.fulfill(valueAnswer({ matched_name: null, suggestions: names, results: [] })),
   );
 }
 
