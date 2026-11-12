@@ -15,7 +15,7 @@
  * fallback and for the offline fallback both screens build from downloaded
  * meets.
  */
-import type { SupabaseBests, SupabaseLiftResult } from "@/data/types/athletes";
+import type { AthleteBests, AthleteMeetResult } from "@/data/types/athletes";
 import { fetchApiResultsByNames, fetchApiYearBestsByNames } from "@/lib/api/meetcal-api";
 import { maxSuccessfulAttempt, normalizeAthleteName } from "@/lib/athletes";
 import { hasAnyAthleteBest, saveAthleteBestsBatch } from "@/lib/database/offline-store";
@@ -26,11 +26,11 @@ import {
 } from "@/utils/dateTime";
 
 type ResultRowLifts = Pick<
-  SupabaseLiftResult,
+  AthleteMeetResult,
   "snatch_best" | "cj_best" | "total" | "snatch1" | "snatch2" | "snatch3" | "cj1" | "cj2" | "cj3"
 >;
 
-export function emptyBests(): SupabaseBests {
+export function emptyBests(): AthleteBests {
   return { snatch_best: null, cj_best: null, total: null };
 }
 
@@ -40,7 +40,7 @@ export function emptyBests(): SupabaseBests {
  * an 80 kg snatch with three missed C&Js read as an 80 kg total). Only a row
  * with no total at all gets one summed, and only from two made lifts.
  */
-export function deriveRowBests(row: Partial<ResultRowLifts>): SupabaseBests {
+export function deriveRowBests(row: Partial<ResultRowLifts>): AthleteBests {
   const snatch = maxSuccessfulAttempt([row.snatch_best, row.snatch1, row.snatch2, row.snatch3]);
   const cj = maxSuccessfulAttempt([row.cj_best, row.cj1, row.cj2, row.cj3]);
   let total: number | null;
@@ -59,7 +59,7 @@ function maxNullable(a: number | null, b: number | null): number | null {
 }
 
 /** Each lift's best across the rows (all-null for none). */
-export function deriveBestsFromResults(rows: readonly Partial<ResultRowLifts>[]): SupabaseBests {
+export function deriveBestsFromResults(rows: readonly Partial<ResultRowLifts>[]): AthleteBests {
   let bests = emptyBests();
   for (const row of rows) {
     const next = deriveRowBests(row);
@@ -73,7 +73,7 @@ export function deriveBestsFromResults(rows: readonly Partial<ResultRowLifts>[])
 }
 
 /** Bests from the athlete's most recent meet only (the newest date's rows of that meet). */
-export function deriveMostRecentMeetBests(rows: readonly SupabaseLiftResult[]): SupabaseBests {
+export function deriveMostRecentMeetBests(rows: readonly AthleteMeetResult[]): AthleteBests {
   if (rows.length === 0) return emptyBests();
   const latest = rows.reduce((newest, r) => ((r.date ?? "") > (newest.date ?? "") ? r : newest));
   return deriveBestsFromResults(
@@ -88,9 +88,9 @@ export function deriveMostRecentMeetBests(rows: readonly SupabaseLiftResult[]): 
  * `YYYY-MM-DD` strings, never through `new Date`.
  */
 export function deriveDownloadedBests(
-  rows: readonly SupabaseLiftResult[],
+  rows: readonly AthleteMeetResult[],
   cutoffDate: string = getHistoryCutoffDate(YEAR_BESTS_YEARS),
-): SupabaseBests {
+): AthleteBests {
   const recent = rows.filter((r) => {
     const day = toMeetCalendarDate(r.date);
     return !day || day >= cutoffDate;
@@ -99,7 +99,7 @@ export function deriveDownloadedBests(
 }
 
 /** API bests (0 for none) in the stored, nullable form. */
-function fromApiBests(row: { bestSnatch: number; bestCJ: number; bestTotal: number }): SupabaseBests {
+function fromApiBests(row: { bestSnatch: number; bestCJ: number; bestTotal: number }): AthleteBests {
   return {
     snatch_best: row.bestSnatch > 0 ? row.bestSnatch : null,
     cj_best: row.bestCJ > 0 ? row.bestCJ : null,
@@ -114,21 +114,21 @@ function fromApiBests(row: { bestSnatch: number; bestCJ: number; bestTotal: numb
  */
 async function fetchMostRecentMeetBests(
   names: string[],
-): Promise<Record<string, SupabaseBests> | null> {
-  let rows: SupabaseLiftResult[];
+): Promise<Record<string, AthleteBests> | null> {
+  let rows: AthleteMeetResult[];
   try {
     rows = await fetchApiResultsByNames(names, { latestOnly: true });
   } catch {
     return null;
   }
-  const grouped = new Map<string, SupabaseLiftResult[]>();
+  const grouped = new Map<string, AthleteMeetResult[]>();
   for (const row of rows) {
     const key = normalizeAthleteName(row.name);
     const group = grouped.get(key);
     if (group) group.push(row);
     else grouped.set(key, [row]);
   }
-  const byName: Record<string, SupabaseBests> = {};
+  const byName: Record<string, AthleteBests> = {};
   for (const name of names) {
     byName[name] = deriveMostRecentMeetBests(grouped.get(normalizeAthleteName(name)) ?? []);
   }
@@ -141,7 +141,7 @@ export type AthleteBestsLookup = {
    * bests inside the window, else the most recent meet's, else all-null
    * ("no results", which `offline-store` expires sooner).
    */
-  answered: Record<string, SupabaseBests>;
+  answered: Record<string, AthleteBests>;
   /**
    * Names with nothing inside the window whose most-recent-meet lookup
    * failed. Not an answer, so nothing is stored for them.
@@ -158,7 +158,7 @@ export type AthleteBestsLookup = {
  */
 export async function lookUpAthleteBests(names: readonly string[]): Promise<AthleteBestsLookup> {
   const uniqueNames = Array.from(new Set(names.filter(Boolean)));
-  const answered: Record<string, SupabaseBests> = {};
+  const answered: Record<string, AthleteBests> = {};
   if (uniqueNames.length === 0) return { answered, unanswered: [] };
 
   const windowed = await fetchApiYearBestsByNames(

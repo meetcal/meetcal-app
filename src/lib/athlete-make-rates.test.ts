@@ -1,9 +1,8 @@
-import type { SupabaseLiftResult } from '@/data/types/athletes';
+import type { AthleteMeetResult } from '@/data/types/athletes';
 import { calculateAthleteMakeRates } from '@/lib/athlete-make-rates';
 
-function row(overrides: Partial<SupabaseLiftResult> = {}): SupabaseLiftResult {
+function row(overrides: Partial<AthleteMeetResult> = {}): AthleteMeetResult {
   return {
-    id: 1,
     event_id: 'e1',
     meet: 'Test Open',
     date: '2026-03-01',

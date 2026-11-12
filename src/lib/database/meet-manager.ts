@@ -1,6 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { MeetName, Meet } from '@/data/types/meet';
-import type { SupabaseBests, SupabaseLiftResult } from '@/data/types/athletes';
+import type { AthleteBests, AthleteMeetResult } from '@/data/types/athletes';
 import { isSnapshotFresh, normalizeAthleteName } from '@/lib/athletes';
 import {
   clearImplicitMeetData,
@@ -492,12 +492,12 @@ type PackageBests = { snatch_best: number | null; cj_best: number | null; total:
  * history, so it does not count.
  */
 export function namesWithChangedPackageData(input: {
-  results: readonly SupabaseLiftResult[];
-  storedResults: readonly SupabaseLiftResult[];
+  results: readonly AthleteMeetResult[];
+  storedResults: readonly AthleteMeetResult[];
   yearBests: Readonly<Record<string, PackageBests>>;
-  storedBests: Readonly<Record<string, { bests: SupabaseBests }>>;
+  storedBests: Readonly<Record<string, { bests: AthleteBests }>>;
 }): Set<string> {
-  const rowsByName = (rows: readonly SupabaseLiftResult[]) => {
+  const rowsByName = (rows: readonly AthleteMeetResult[]) => {
     const byName = new Map<string, string[]>();
     for (const row of rows) {
       const name = normalizeAthleteName(row.name);
@@ -516,7 +516,7 @@ export function namesWithChangedPackageData(input: {
   for (const [name, rows] of fresh) if (stored.get(name) !== rows) changed.add(name);
   for (const name of stored.keys()) if (!fresh.has(name)) changed.add(name);
 
-  const storedBestsByName = new Map<string, SupabaseBests>();
+  const storedBestsByName = new Map<string, AthleteBests>();
   for (const [name, entry] of Object.entries(input.storedBests)) {
     storedBestsByName.set(normalizeAthleteName(name), entry.bests);
   }
@@ -988,7 +988,7 @@ async function downloadHistoryBatch(
   // Checked before the request and again before the write: a clear landing
   // in between must not get this batch written after it.
   throwIfCancelled();
-  let batchResults: SupabaseLiftResult[];
+  let batchResults: AthleteMeetResult[];
   try {
     batchResults = await fetchHistoryBatch(batch);
   } catch (historyError) {
@@ -997,7 +997,7 @@ async function downloadHistoryBatch(
   }
 
   throwIfCancelled();
-  const resultsByName = new Map<string, SupabaseLiftResult[]>();
+  const resultsByName = new Map<string, AthleteMeetResult[]>();
   for (const row of batchResults) {
     const key = normalizeAthleteName(row.name);
     const existing = resultsByName.get(key);
@@ -1045,7 +1045,7 @@ function isNetworkFailure(error: unknown): boolean {
 }
 
 /** One `/by-names` batch, retried once after `Retry-After` on a 429/503, or after a Convex overload. */
-async function fetchHistoryBatch(batch: readonly string[]): Promise<SupabaseLiftResult[]> {
+async function fetchHistoryBatch(batch: readonly string[]): Promise<AthleteMeetResult[]> {
   const names = Array.from(batch);
   try {
     return await fetchApiResultsByNames(names);
@@ -1188,10 +1188,10 @@ async function readPackageBestsSnapshots(): Promise<Record<string, BestsSnapshot
 /** The meet's last ingested package bests, null when there is none (compare nothing). */
 async function readPackageBestsSnapshot(
   meet: MeetName,
-): Promise<Record<string, { bests: SupabaseBests }> | null> {
+): Promise<Record<string, { bests: AthleteBests }> | null> {
   const snapshot = (await readPackageBestsSnapshots())[meet];
   if (!snapshot) return null;
-  const byName: Record<string, { bests: SupabaseBests }> = {};
+  const byName: Record<string, { bests: AthleteBests }> = {};
   for (const [name, [snatch, cj, total]] of Object.entries(snapshot)) {
     byName[name] = {
       bests: { snatch_best: snatch || null, cj_best: cj || null, total: total || null },

@@ -4,10 +4,10 @@ import {
   showsCareerStats,
   type AthleteResultsLoad,
 } from '@/lib/athlete-results-load';
-import type { SupabaseLiftResult } from '@/types/athlete-results';
+import type { AthleteMeetResult } from '@/types/athlete-results';
 
-function row(meet: string): SupabaseLiftResult {
-  return { meet, name: 'Jane Lifter', date: '2026-06-20', total: 200 } as unknown as SupabaseLiftResult;
+function row(meet: string): AthleteMeetResult {
+  return { meet, name: 'Jane Lifter', date: '2026-06-20', total: 200 } as unknown as AthleteMeetResult;
 }
 
 function deferred<T>() {
@@ -44,7 +44,7 @@ describe('loadAthleteResults', () => {
   // The on-device read scans every downloaded meet's stored results for an
   // athlete with no history blob; the request used to wait behind it.
   it('sends the API request before the on-device read finishes', async () => {
-    const offline = deferred<SupabaseLiftResult[]>();
+    const offline = deferred<AthleteMeetResult[]>();
     const fetchFull = jest.fn(async () => [row('API')]);
     const { load, painted } = makeLoad({ readOffline: () => offline.promise, fetchFull });
 
@@ -60,7 +60,7 @@ describe('loadAthleteResults', () => {
   });
 
   it('paints the on-device rows first even when the API answered first', async () => {
-    const offline = deferred<SupabaseLiftResult[]>();
+    const offline = deferred<AthleteMeetResult[]>();
     const { load, painted } = makeLoad({
       readOffline: () => offline.promise,
       fetchFull: async () => [row('API')],
@@ -95,8 +95,8 @@ describe('loadAthleteResults', () => {
   // Regression (#312): this returned 'shown', so the screen presented one
   // cached meet as the whole career, PR badges and success rates included.
   it('keeps the on-device rows when the request fails, says they are partial, and never rejects', async () => {
-    const full = deferred<SupabaseLiftResult[]>();
-    const offline = deferred<SupabaseLiftResult[]>();
+    const full = deferred<AthleteMeetResult[]>();
+    const offline = deferred<AthleteMeetResult[]>();
     const { load, painted } = makeLoad({
       readOffline: () => offline.promise,
       fetchFull: () => full.promise,
@@ -181,7 +181,7 @@ describe('loadAthleteResults', () => {
 
   it('paints nothing once the screen has moved on', async () => {
     let current = true;
-    const offline = deferred<SupabaseLiftResult[]>();
+    const offline = deferred<AthleteMeetResult[]>();
     const { load, painted } = makeLoad({
       readOffline: () => offline.promise,
       fetchFull: async () => [row('API')],
@@ -196,7 +196,7 @@ describe('loadAthleteResults', () => {
 
   it('paints nothing more when the screen moves on while the request is in flight', async () => {
     let current = true;
-    const full = deferred<SupabaseLiftResult[]>();
+    const full = deferred<AthleteMeetResult[]>();
     const { load, painted } = makeLoad({
       readOffline: async () => [row('Local')],
       fetchFull: () => full.promise,
@@ -214,7 +214,7 @@ describe('loadAthleteResults', () => {
 
   it('does not log a failure for a screen that has moved on', async () => {
     let current = true;
-    const full = deferred<SupabaseLiftResult[]>();
+    const full = deferred<AthleteMeetResult[]>();
     const { load, painted } = makeLoad({ fetchFull: () => full.promise, isCurrent: () => current });
     const done = loadAthleteResults(load);
     current = false;

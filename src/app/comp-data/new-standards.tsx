@@ -1,3 +1,4 @@
+import { SLIDE_IN_FROM_RIGHT, stackHeaderOptions } from "@/lib/stack-header-options";
 import { DataTable, dataTableStyles } from "@/components/ui/DataTable";
 import { FilterBar } from "@/components/ui/FilterBar";
 import { SubscriptionGate } from "@/components/ui/SubscriptionGate";
@@ -11,8 +12,9 @@ import { DEEP_LINKS } from "@/utils/deepLinks";
 import { useMutableResource } from "@/hooks/useMutableResource";
 import { selectStandards } from "@/lib/comp-data-filters";
 import { standardsResource } from "@/lib/database/fetch-standards";
+import { filterSummary } from "@/lib/filter-summary";
 import { formatAgeGroupLabel } from "@/lib/sortAgeGroups";
-import { AgeGroup, Filters, Gender, StandardsData } from "@/types/standards";
+import { StandardsAgeGroup, StandardsFilters, StandardsGender, StandardsData } from "@/types/standards";
 import { Stack, useLocalSearchParams } from "expo-router";
 import React, { useMemo } from "react";
 import { StyleSheet, View } from "react-native";
@@ -35,7 +37,7 @@ function NewStandardsScreenContent() {
     gender?: string;
     ageGroup?: string;
   }>();
-  const defaultFilters = useMemo<Filters>(
+  const defaultFilters = useMemo<StandardsFilters>(
     () => ({
       gender: routeParams.gender || "men",
       ageGroup: routeParams.ageGroup || "senior",
@@ -46,7 +48,7 @@ function NewStandardsScreenContent() {
     routeParams.gender,
     routeParams.ageGroup,
   ]);
-  const { filters, openFilters, filterModalProps } = useFilterState<Filters>({
+  const { filters, openFilters, filterModalProps } = useFilterState<StandardsFilters>({
     defaultFilters,
     resetKey: filterResetKey,
   });
@@ -68,15 +70,18 @@ function NewStandardsScreenContent() {
 
   const getFilterDisplayText = () => {
     const genderText = filters.gender === "men" ? "Men" : "Women";
-    return `${genderText} • ${formatAgeGroupLabel(filters.ageGroup)}`;
+    return filterSummary(
+      [genderText, formatAgeGroupLabel(filters.ageGroup)],
+      "All standards",
+    );
   };
 
-  const genderOptions: { id: Gender; label: string }[] = [
+  const genderOptions: { id: StandardsGender; label: string }[] = [
     { id: "men", label: "Men" },
     { id: "women", label: "Women" },
   ];
 
-  const ageGroupOptions: { id: AgeGroup; label: string }[] = [
+  const ageGroupOptions: { id: StandardsAgeGroup; label: string }[] = [
     { id: "u15", label: "U15" },
     { id: "youth", label: "Youth" },
     { id: "junior", label: "Junior" },
@@ -102,21 +107,9 @@ function NewStandardsScreenContent() {
     >
       <Stack.Screen
         options={{
+          ...stackHeaderOptions(colors),
+          ...SLIDE_IN_FROM_RIGHT,
           title: "A/B Standards",
-          headerBackTitle: "Back",
-          headerShown: true,
-          gestureEnabled: true,
-          gestureDirection: "horizontal",
-          animation: "slide_from_right",
-          headerTitleStyle: {
-            color: colors.headerTitle,
-          },
-          headerStyle: {
-            backgroundColor: colors.headerBackground,
-          },
-          headerShadowVisible: false,
-          headerBackButtonDisplayMode: "minimal",
-          headerTintColor: colors.text,
         }}
       />
 
