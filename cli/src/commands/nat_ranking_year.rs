@@ -32,20 +32,22 @@ pub struct NatRankingsYearArgs {
 }
 
 pub async fn run(args: NatRankingsYearArgs) -> Result<()> {
-    // assign args to vars
     let class = args.weight_class;
     let federation = args.federation.to_ascii_uppercase();
     let year = args.year.to_string();
 
     let query_args = json!({ "ageCategory": class, "federation": federation, "year": year });
-    let row_array: Vec<NatRankingYear> =
+    let rankings: Vec<NatRankingYear> =
         query(queries::NATIONAL_RANKINGS_BY_YEAR, &query_args).await?;
+    output::emit(report(rankings));
 
-    // push to table
+    Ok(())
+}
+
+pub fn report(rankings: Vec<NatRankingYear>) -> Report {
     let mut table = Table::new();
     table.set_header(vec!["Rank", "Name", "Total", "Meet Date"]);
-
-    for (rank, row) in (1..).zip(row_array) {
+    for (rank, row) in (1..).zip(rankings) {
         table.add_row(vec![
             rank.to_string(),
             row.name,
@@ -53,8 +55,5 @@ pub async fn run(args: NatRankingsYearArgs) -> Result<()> {
             row.date,
         ]);
     }
-
-    output::emit(Report::single("national_rankings", table));
-
-    Ok(())
+    Report::single("national_rankings", table)
 }
