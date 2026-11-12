@@ -112,7 +112,7 @@ export const completed = query({
   },
 });
 
-export async function completedMeetsStartingIn(ctx: QueryCtx, sinceInclusive: string | undefined, beforeExclusive: string | undefined) {
+async function completedMeetsStartingIn(ctx: QueryCtx, sinceInclusive: string | undefined, beforeExclusive: string | undefined) {
   return await ctx.db
     .query('meets')
     .withIndex('by_status_and_start_date', (q) => {

@@ -22,13 +22,8 @@ pub struct MeetsArgs {
     #[arg(long, short = 'c')]
     pub completed: bool,
 
-    #[arg(
-        long,
-        requires = "completed",
-        value_name = "YYYY-MM-DD",
-        value_parser = parse_date,
-        help = "With --completed: only meets starting on or after this date"
-    )]
+    /// With --completed: only meets starting on or after this date
+    #[arg(long, requires = "completed", value_name = "YYYY-MM-DD", value_parser = parse_date)]
     pub since: Option<String>,
 
     /// Only meets whose name contains this text (case-insensitive)
