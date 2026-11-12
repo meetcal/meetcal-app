@@ -1,9 +1,10 @@
 use super::{
+    address::{HistoryEntry, query_param, use_page_address},
     filters::{compare_weight_classes, sort_orders},
     format::{display_weight_class, reference_value},
     loading::{Load, load_query, select_response, table_response},
     models::RecordHolder,
-    reference_table::{Filter, OptionOrder, ReferenceTable, TableSort},
+    reference_table::{Filter, OptionOrder, ReferenceTable, TableSort, filters_cleared},
     ui::{DataPage, DataStatus, FilterSelect, RecordLift},
 };
 use crate::utils::api::{queries, query_with};
@@ -55,18 +56,21 @@ fn weight_class(record: &WsoRecord) -> &str {
 const FILTERS: &[Filter<WsoRecord>] = &[
     Filter {
         label: "Gender",
+        param: "gender",
         placeholder: "All genders",
         value: gender,
         order: OptionOrder::Alphabetical,
     },
     Filter {
         label: "Age",
+        param: "age",
         placeholder: "All ages",
         value: age,
         order: OptionOrder::Alphabetical,
     },
     Filter {
         label: "Weight class",
+        param: "class",
         placeholder: "All classes",
         value: weight_class,
         order: OptionOrder::ByWeight,
@@ -133,8 +137,8 @@ fn record_row(record: &WsoRecord) -> AnyView {
 
 #[component]
 pub fn WsoRecords() -> impl IntoView {
-    let (wso, set_wso) = signal(String::new());
-    let sort = RwSignal::new(WsoRecordSort::TotalDesc);
+    let page = use_page_address("/wso-records");
+    let wso = query_param("wso");
 
     let organizations = load_query::<Vec<String>>(queries::WSO_LIST);
     let records = Load::new(
@@ -165,7 +169,11 @@ pub fn WsoRecords() -> impl IntoView {
                         placeholder="Choose a WSO"
                         values=organizations.to_vec()
                         selected=wso
-                        on_select=move |value: String| set_wso.set(value)
+                        on_select=move |value: String| {
+                            let mut changes = filters_cleared(FILTERS);
+                            changes.push(("wso", value.as_str()));
+                            page.change(&changes, HistoryEntry::Push);
+                        }
                     />
                 </div>
             }.into_any())}
@@ -175,7 +183,7 @@ pub fn WsoRecords() -> impl IntoView {
             } else {
                 table_response(records, HEADERS.len(), "WSO records", |records| {
                     view! {
-                        <ReferenceTable rows=records.to_vec() filters=FILTERS headers=HEADERS row=record_row sort empty_message="No WSO records match these filters." below_another_filter_row=true />
+                        <ReferenceTable rows=records.to_vec() filters=FILTERS headers=HEADERS row=record_row path="/wso-records" default_sort=WsoRecordSort::TotalDesc empty_message="No WSO records match these filters." below_another_filter_row=true />
                     }
                     .into_any()
                 })

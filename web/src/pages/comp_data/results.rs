@@ -295,7 +295,7 @@ fn ResultsTable(
         <Suggestions names=suggestions />
         {truncated}
         <div class="data-filters">
-            <SortSelect sort set_sort />
+            <SortSelect<ResultSort> sort=Signal::derive(move || sort.get()) on_sort=move |order: ResultSort| set_sort.set(order) />
         </div>
         <DataTable>
             <thead><tr><th>"Date"</th><th>"Meet"</th><th>"Division"</th><th>"Bodyweight"</th><th>"S1"</th><th>"S2"</th><th>"S3"</th><th>"Best snatch"</th><th>"C&J 1"</th><th>"C&J 2"</th><th>"C&J 3"</th><th>"Best C&J"</th><th>"Total"</th><th>"Adaptive"</th></tr></thead>
