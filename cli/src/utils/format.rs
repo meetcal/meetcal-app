@@ -4,7 +4,7 @@
 use comfy_table::Table;
 
 use crate::types::records::RecordHolder;
-use crate::utils::stats::{number, weight_class};
+use crate::utils::stats::{Gender, number, weight_class};
 
 const MONTHS: [&str; 12] = [
     "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
@@ -97,6 +97,13 @@ pub(crate) fn display_body_weight(kilograms: f64) -> String {
     } else {
         NO_VALUE.to_string()
     }
+}
+
+pub(crate) fn display_gender(value: &str) -> String {
+    Gender::parse(value).map_or_else(
+        || value.trim().to_string(),
+        |gender| gender.label().to_string(),
+    )
 }
 
 pub(crate) fn display_weight_class(value: &str) -> String {
@@ -213,6 +220,17 @@ mod tests {
         assert_eq!(display_body_weight(0.0), "—");
         assert_eq!(display_body_weight(-1.0), "—");
         assert_eq!(display_body_weight(f64::NAN), "—");
+    }
+
+    #[test]
+    fn roster_genders_read_women_and_men_as_on_the_website() {
+        assert_eq!(display_gender("Female"), "Women");
+        assert_eq!(display_gender("MALE"), "Men");
+        assert_eq!(display_gender(" female "), "Women");
+        assert_eq!(display_gender("Women"), "Women");
+        assert_eq!(display_gender("Men"), "Men");
+        assert_eq!(display_gender("Mixed"), "Mixed");
+        assert_eq!(display_gender(""), "");
     }
 
     #[test]

@@ -5,7 +5,7 @@ use crate::{
     utils::{
         backend::{PassRefused, queries, query},
         bests::{bests_cell, year_bests},
-        format::{display_weight_class, kg, time_24h, us_date, us_time},
+        format::{display_gender, display_weight_class, kg, time_24h, us_date, us_time},
         names::{NameKind, not_found},
     },
 };
@@ -165,7 +165,7 @@ pub(crate) fn report(athletes: &[Athletes], bests: Option<&HashMap<String, Named
         let common = vec![
             athlete.name.clone(),
             athlete.age.to_string(),
-            athlete.gender.clone(),
+            display_gender(&athlete.gender),
             athlete.adaptive.to_string(),
             athlete.club.clone(),
             display_weight_class(&athlete.weight_class),
@@ -367,12 +367,12 @@ mod tests {
     fn exports_dates_times_session_platform_and_bests_apart() {
         let rows = r#"[{
             "adaptive": false, "age": 31, "club": "Test Club", "entry_total": 180,
-            "gender": "Women", "member_id": "9", "name": "Ada Lift", "session_number": 4,
+            "gender": "Female", "member_id": "9", "name": "Ada Lift", "session_number": 4,
             "session_platform": "Red", "weight_class": "63kg", "wso": "Florida",
             "date": "2026-10-03", "start_time": "10:00:00", "weigh_in_time": "08:00"
         }, {
             "adaptive": true, "age": 40, "club": "Test Club", "entry_total": 150,
-            "gender": "Men", "member_id": "10", "name": "Bo Lift", "session_number": null,
+            "gender": "Male", "member_id": "10", "name": "Bo Lift", "session_number": null,
             "session_platform": null, "weight_class": "+87", "wso": null
         }]"#;
         let athletes: Vec<Athletes> = serde_json::from_str(rows).unwrap();
@@ -395,6 +395,8 @@ mod tests {
         assert_eq!(json[0]["start"], "10:00");
         assert_eq!(json[0]["adaptive"], false);
         assert_eq!(json[0]["class"], "63kg");
+        assert_eq!(json[0]["gender"], "Women");
+        assert_eq!(json[1]["gender"], "Men");
         assert_eq!(json[1]["class"], "87+kg");
         assert_eq!(json[0]["past_year_best_total"], 180);
         assert_eq!(json[1]["session"], serde_json::Value::Null);
