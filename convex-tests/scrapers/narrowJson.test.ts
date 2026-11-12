@@ -1,9 +1,8 @@
 import { entryFromRow, readEntriesTable } from '../../convex/scrapers/parse/entries';
 import { wikitextOf } from '../../convex/scrapers/parse/iwfRecords';
+import { readWidgetPage } from '../../convex/scrapers/parse/meets';
 import { pageRows, readSport80Env, readTablePage } from '../../convex/scrapers/parse/sport80';
-
-// Fetched JSON is narrowed where it is read (#571): a field of another type
-// fails naming the field, not as a TypeError somewhere later.
+import { joinPages, tableComplete } from '../../convex/scrapers/sport80';
 
 describe('the entries table', () => {
   const row = { id: 7, member_id: '1012345', first_name: 'Ann', last_name: 'Lee', weightlifting_age: 31, club: 'Club', gender: 'Female', weight_class: '63', entry_total: '150' };
@@ -18,6 +17,18 @@ describe('the entries table', () => {
     const table = readEntriesTable({ total: '1', data: [{ ...row, member_id: 1012345 }] });
     expect(table.total).toBe(1);
     expect(entryFromRow(table.data![0], 'Open').memberId).toBe('1012345');
+  });
+
+  it('keeps a row id as sent, so ids of any kind still tell rows apart', () => {
+    const { id: _id, ...withoutId } = row;
+    const table = readEntriesTable({ total: 4, data: [{ ...row, id: 'a1' }, { ...row, id: 'b2' }, { ...row, id: null }, withoutId] });
+    expect(table.data!.map((entry) => ('id' in entry ? entry.id : 'absent'))).toEqual(['a1', 'b2', null, 'absent']);
+  });
+
+  it('reads an age or entry total that is neither a number nor text as missing, as before, and ignores a title that is not text', () => {
+    const table = readEntriesTable({ title: 7, data: [{ ...row, weightlifting_age: true, entry_total: { kg: 150 } }] });
+    expect(table.title).toBeUndefined();
+    expect(entryFromRow(table.data![0], 'Open')).toMatchObject({ age: 0, entryTotal: 0 });
   });
 
   it('names the field that is not what the sync reads', () => {
@@ -39,7 +50,8 @@ describe("Sport80's window.env and tables", () => {
   it('needs the API address and key, once, by name', () => {
     expect(readSport80Env('{"RANKINGS_DOMAIN_URL":"https://x.test","SERVICES_API_PUBLIC_KEY":"k","OTHER":1}')).toEqual({ RANKINGS_DOMAIN_URL: 'https://x.test', SERVICES_API_PUBLIC_KEY: 'k' });
     expect(() => readSport80Env('{"SERVICES_API_PUBLIC_KEY":"k"}')).toThrow('window.env has no RANKINGS_DOMAIN_URL');
-    expect(() => readSport80Env('{"RANKINGS_DOMAIN_URL":"https://x.test","SERVICES_API_PUBLIC_KEY":5}')).toThrow('window.env has no SERVICES_API_PUBLIC_KEY');
+    expect(readSport80Env('{"RANKINGS_DOMAIN_URL":"https://x.test","SERVICES_API_PUBLIC_KEY":5}').SERVICES_API_PUBLIC_KEY).toBe('5');
+    expect(() => readSport80Env('{"RANKINGS_DOMAIN_URL":"https://x.test","SERVICES_API_PUBLIC_KEY":null}')).toThrow('window.env has no SERVICES_API_PUBLIC_KEY');
     expect(() => readSport80Env('{"RANKINGS_DOMAIN_URL":"rankings","SERVICES_API_PUBLIC_KEY":"k"}')).toThrow('RANKINGS_DOMAIN_URL is not a URL');
     expect(() => readSport80Env('[]')).toThrow('not an object');
     expect(() => readSport80Env('{oops')).toThrow('not JSON');
@@ -61,5 +73,22 @@ describe("Wikipedia's parse answer", () => {
     expect(() => wikitextOf({ parse: { wikitext: { '*': 'old format' } } }, 'Page')).toThrow('Wikipedia Page: wikitext is a object');
     expect(() => wikitextOf({}, 'Page')).toThrow('Wikipedia Page: no wikitext');
     expect(() => wikitextOf('<html>', 'Page')).toThrow('Wikipedia Page: the response is not an object');
+  });
+});
+
+describe('row counts across the Sport80 readers', () => {
+  it('reads a results table count sent as digits in text, as the entries list and the widget do', () => {
+    expect(tableComplete(2, '2')).toBe(true);
+    expect(joinPages([[{ a: 1 }], [{ a: 2 }]], '2')).toEqual({ rows: [{ a: 1 }, { a: 2 }] });
+    expect(() => joinPages([[{ a: 1 }]], '2')).toThrow('read 1 rows of the 2 the table reports');
+    expect(joinPages([[{ a: 1 }]], undefined).notWhole).toBe('the table reports no row count');
+    expect(joinPages([[{ a: 1 }]], 'many').notWhole).toBe('the table reports no row count');
+    expect(() => joinPages([[{ a: 1 }]], -1)).toThrow('read 1 rows of the -1 the table reports');
+    expect(() => joinPages([[{ a: 1 }]], 1.5)).toThrow('read 1 rows of the 1.5 the table reports');
+  });
+
+  it('refuses a widget listing with a negative count', () => {
+    expect(() => readWidgetPage({ total: -1, data: [] })).toThrow('widget: no match count (total -1)');
+    expect(readWidgetPage({ total: '0', data: [] })).toEqual({ total: 0, rows: [] });
   });
 });

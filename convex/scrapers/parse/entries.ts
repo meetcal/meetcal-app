@@ -1,4 +1,5 @@
 import { placeholderMemberId } from '../../lib/memberIds';
+import { isRecord, rowCount } from '../../lib/json';
 // Meet entries from Sport80 (replaces `usaw/entry_scraper/csv_scraper.js`).
 // The Node scraper drove a headless browser through the public entries page;
 // the table on that page is filled from a public JSON endpoint, which this
@@ -48,7 +49,7 @@ export function meetFromTitle(title: string): string {
 export { placeholderMemberId } from '../../lib/memberIds';
 
 export type EntryRow = {
-  id?: number;
+  id?: unknown;
   member_id?: string | null;
   first_name?: string | null;
   last_name?: string | null;
@@ -72,26 +73,13 @@ export type Entry = {
   wso?: string;
 };
 
-const isObject = (value: unknown): value is Record<string, unknown> => typeof value === 'object' && value !== null && !Array.isArray(value);
-
-/** A page of the entries table: its title, the list's row count and the page's rows. */
 export type EntriesTable = { title?: string; total?: number; data?: EntryRow[] };
 
-/**
- * A page of Sport80's entries table, checked: the body is what the endpoint
- * sent, so every field the sync reads is narrowed here and a field of
- * another type fails naming it ("row 3: first_name is a number"), not as a
- * `trim is not a function` somewhere later. A membership number or row id
- * sent as a number is taken as its digits; absent and null fields stay so.
- */
 export function readEntriesTable(body: unknown): EntriesTable {
-  if (!isObject(body)) throw new Error('entries: the response is not an object');
+  if (!isRecord(body)) throw new Error('entries: the response is not an object');
   const { title, total, data } = body;
-  if (title !== undefined && title !== null && typeof title !== 'string') throw new Error(`entries: title is a ${typeof title}`);
-  const count = typeof total === 'string' && /^\d+$/.test(total.trim()) ? Number(total) : total;
-  if (count !== undefined && count !== null && !(typeof count === 'number' && Number.isInteger(count) && count >= 0)) {
-    throw new Error(`entries: total is not a row count (${JSON.stringify(total)})`);
-  }
+  const count = rowCount(total);
+  if (total !== undefined && total !== null && count === null) throw new Error(`entries: total is not a row count (${JSON.stringify(total)})`);
   if (data !== undefined && data !== null && !Array.isArray(data)) throw new Error('entries: data is not a list');
   const text = (row: Record<string, unknown>, i: number, field: string): string | null => {
     const value = row[field];
@@ -106,22 +94,22 @@ export function readEntriesTable(body: unknown): EntriesTable {
     return value;
   };
   const rows = (data ?? []).map((item: unknown, i: number): EntryRow => {
-    if (!isObject(item)) throw new Error(`entries: row ${i} is not an object`);
-    const id = scalar(item, i, 'id');
+    if (!isRecord(item)) throw new Error(`entries: row ${i} is not an object`);
     const memberId = scalar(item, i, 'member_id');
+    const numberOrText = (field: string) => (typeof item[field] === 'number' || typeof item[field] === 'string' ? (item[field] as number | string) : null);
     return {
-      ...(id === null ? {} : { id: typeof id === 'number' ? id : Number(id) }),
+      ...('id' in item ? { id: item.id } : {}),
       member_id: memberId === null ? null : String(memberId),
       first_name: text(item, i, 'first_name'),
       last_name: text(item, i, 'last_name'),
-      weightlifting_age: scalar(item, i, 'weightlifting_age'),
+      weightlifting_age: numberOrText('weightlifting_age'),
       club: text(item, i, 'club'),
       gender: text(item, i, 'gender'),
       weight_class: text(item, i, 'weight_class'),
-      entry_total: scalar(item, i, 'entry_total'),
+      entry_total: numberOrText('entry_total'),
     };
   });
-  return { ...(typeof title === 'string' ? { title } : {}), ...(typeof count === 'number' ? { total: count } : {}), ...(data ? { data: rows } : {}) };
+  return { ...(typeof title === 'string' ? { title } : {}), ...(count === null ? {} : { total: count }), ...(data ? { data: rows } : {}) };
 }
 
 /** JavaScript's `parseInt`, with the writer's default of 0 where it gives NaN. */
