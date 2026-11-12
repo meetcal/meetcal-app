@@ -1,5 +1,5 @@
 import type { ApiLiftingResult } from './results';
-import { normalizeName } from './names';
+import { newestSpelling, normalizeName } from './names';
 import { isPlausibleResult } from './plausible';
 
 /**
@@ -226,13 +226,6 @@ export type WrappedSearch = { matched_name: string | null; suggestions: string[]
 
 const inDateOrder = (rows: readonly ApiLiftingResult[]) => [...rows].sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
 
-/**
- * The Wrapped a dated search answer makes. An exact name match is one
- * athlete. Otherwise the name-contains fallback is one athlete's year only
- * when its rows carry exactly one distinct name; with more, scoring them
- * together would merge athletes, so the names are offered to pick from. A
- * truncated answer is never scored: its rows may miss part of the year.
- */
 export function selectWrapped(search: WrappedSearch): WrappedAnswer {
   const rows = search.results;
   const none = (): WrappedAnswer => (search.truncated ? { kind: 'narrow' } : { kind: 'none', suggestions: search.suggestions });
@@ -244,7 +237,6 @@ export function selectWrapped(search: WrappedSearch): WrappedAnswer {
     return { kind: 'athlete', name, stats: wrappedStats(inDateOrder(rows)) };
   }
 
-  // Distinct athletes among the fallback rows, keeping the first spelling seen.
   const byKey = new Map<string, string>();
   for (const row of rows) {
     const key = normalizeName(row.name ?? '');
@@ -252,8 +244,9 @@ export function selectWrapped(search: WrappedSearch): WrappedAnswer {
   }
   if (byKey.size === 0) return none();
   if (byKey.size === 1 && !search.truncated) {
-    const [[key, name]] = [...byKey];
-    return { kind: 'athlete', name, stats: wrappedStats(inDateOrder(rows.filter((row) => normalizeName(row.name ?? '') === key))) };
+    const [[key, firstSpelling]] = [...byKey];
+    const athleteRows = inDateOrder(rows.filter((row) => normalizeName(row.name ?? '') === key));
+    return { kind: 'athlete', name: newestSpelling(athleteRows) ?? firstSpelling, stats: wrappedStats(athleteRows) };
   }
   // The athletes who lifted in the year, so each pick has a Wrapped.
   const names = [...byKey.values()].sort((a, b) => a.localeCompare(b)).slice(0, MAX_WRAPPED_NAME_CHOICES);

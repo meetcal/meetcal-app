@@ -5,7 +5,7 @@ use super::{
     loading::{Load, LoadState, load_error},
     models::{
         AthleteSearchQuery, AthleteSearchResponse, LiftingResult, MAX_ATHLETE_CHOICES, attempt,
-        distinct_athletes, normalize,
+        distinct_athletes, newest_spelling, normalize,
     },
     ui::{DataPage, DataStatus, DataTable, SortSelect, TableSkeleton},
 };
@@ -114,14 +114,14 @@ fn results_answer(query: &str, response: AthleteSearchResponse) -> ResultsAnswer
     let mut athletes = distinct_athletes(&results);
     if athletes.len() == 1
         && !truncated
-        && let Some((key, name)) = athletes.pop_first()
+        && let Some((key, first_spelling)) = athletes.pop_first()
     {
-        let rows = results
+        let rows: Vec<LiftingResult> = results
             .into_iter()
             .filter(|row| normalize(&row.name) == key)
             .collect();
         return ResultsAnswer::Athlete {
-            name,
+            name: newest_spelling(&rows).unwrap_or(first_spelling),
             rows,
             truncated,
             suggestions,
@@ -382,6 +382,23 @@ mod tests {
     }
 
     #[test]
+    fn one_athlete_in_a_fallback_is_headed_with_the_newest_spelling() {
+        let response = answer(
+            None,
+            &[
+                row("AMELIA PHILLIPS", "2025-03-01"),
+                row(" Amelia Phillips ", "2026-03-01"),
+            ],
+            false,
+        );
+        let ResultsAnswer::Athlete { name, rows, .. } = results_answer("phillips", response) else {
+            panic!("expected one athlete");
+        };
+        assert_eq!(name, "Amelia Phillips");
+        assert_eq!(rows.len(), 2);
+    }
+
+    #[test]
     fn several_athletes_in_a_fallback_are_offered_not_merged() {
         let response = answer(
             None,
@@ -417,7 +434,7 @@ mod tests {
         let ResultsAnswer::Athlete { name, rows, .. } = results_answer("Cruz", response) else {
             panic!("one athlete in two spellings is one athlete");
         };
-        assert_eq!(name, "Jos\u{e9} Cruz");
+        assert_eq!(name, "Jose\u{301} Cruz");
         assert_eq!(rows.len(), 2);
     }
 

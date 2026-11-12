@@ -197,6 +197,15 @@ pub(crate) fn distinct_athletes(rows: &[LiftingResult]) -> BTreeMap<String, Stri
     athletes
 }
 
+pub(crate) fn newest_spelling(rows: &[LiftingResult]) -> Option<String> {
+    rows.iter()
+        .fold(None, |newest: Option<&LiftingResult>, row| match newest {
+            Some(kept) if kept.date > row.date => Some(kept),
+            _ => Some(row),
+        })
+        .map(|row| row.name.trim().to_owned())
+}
+
 pub(crate) fn attempt(value: f64) -> String {
     if value == 0.0 {
         "—".to_owned()

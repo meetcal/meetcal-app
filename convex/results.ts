@@ -31,7 +31,7 @@ import {
   standardTables,
 } from './lib/elite';
 import { computeMeetResults } from './lib/meetData';
-import { cleanNameList, distinctNameKeys, normalizeName, requestedNamesByKey } from './lib/names';
+import { cleanNameList, distinctNameKeys, newestSpelling, normalizeName, requestedNamesByKey } from './lib/names';
 import {
   bestsSince,
   namedBests,
@@ -542,8 +542,9 @@ export function exactSearchAnswer(
   end: string,
 ): SearchAnswer | null {
   const rows = inRange(history, start, end);
-  if (rows.length === 0) return null;
-  return { matched_name: rows[rows.length - 1].name.trim(), suggestions: [], ...mostRecent(rows) };
+  const matchedName = newestSpelling(rows);
+  if (matchedName === null) return null;
+  return { matched_name: matchedName, suggestions: [], ...mostRecent(rows) };
 }
 
 /**

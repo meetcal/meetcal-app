@@ -361,6 +361,11 @@ describe('selectWrapped', () => {
     expect(search({ results: rows })).toEqual({ kind: 'athlete', name: 'Jane Doe', stats: wrappedStats([rows[1], rows[0]]) });
   });
 
+  it('names the one athlete of a fallback as an exact search would: the newest spelling, without spaces around it', () => {
+    const rows = [searchRow('AMELIA PHILLIPS', '2025-02-01', 200), searchRow(' Amelia Phillips ', '2025-06-01', 220)];
+    expect(search({ results: rows })).toMatchObject({ kind: 'athlete', name: 'Amelia Phillips' });
+  });
+
   it('drops blank-named rows rather than scoring them with the one athlete', () => {
     const rows = [searchRow('Jane Doe', '2025-05-01'), searchRow('', '2025-01-01')];
     const answer = search({ results: rows });

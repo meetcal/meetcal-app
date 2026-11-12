@@ -17,6 +17,12 @@ export function normalizeName(name: string): string {
   return name.normalize('NFC').split(/\s+/).filter(Boolean).join(' ').toLowerCase();
 }
 
+export function newestSpelling(rows: readonly { name: string; date: string }[]): string | null {
+  let newest: { name: string; date: string } | null = null;
+  for (const row of rows) if (newest === null || row.date >= newest.date) newest = row;
+  return newest === null ? null : newest.name.trim();
+}
+
 /** Trims every name and drops the empty ones (`clean_name_list`). */
 export function cleanNameList(names: readonly string[]): string[] {
   return names.map((name) => name.trim()).filter((name) => name.length > 0);

@@ -1,4 +1,5 @@
 import type { ApiLiftingResult } from '../convex/lib/results';
+import { newestSpelling } from '../convex/lib/names';
 import { exactSearchAnswer, fallbackSearchAnswer, MAX_SEARCH_RESULT_ROWS } from '../convex/results';
 
 function row(name: string, date: string, total = 100): ApiLiftingResult {
@@ -95,5 +96,13 @@ describe('results:search row bound', () => {
     const answer = fallbackSearchAnswer('smith', names, new Map(), '1990-01-01', '2030-12-31');
     expect(answer.truncated).toBe(true);
     expect(answer.suggestions).toHaveLength(8);
+  });
+});
+
+describe("an athlete's newest spelling", () => {
+  it('is the name on the latest-dated row, the last of rows on the same date, trimmed', () => {
+    expect(newestSpelling([row('ANN LEE', '2026-01-01'), row('Ann Lee ', '2026-06-01'), row('ann lee', '2026-03-01')])).toBe('Ann Lee');
+    expect(newestSpelling([row('ANN LEE', '2026-06-01'), row('Ann Lee', '2026-06-01')])).toBe('Ann Lee');
+    expect(newestSpelling([])).toBeNull();
   });
 });
