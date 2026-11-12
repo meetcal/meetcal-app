@@ -276,9 +276,7 @@ async fn recalled_pass() -> Option<String> {
         first.then_some(state.generation)
     })?;
     let user = crate::auth::signed_in_user()?;
-    let stored = wasm_bindgen_futures::JsFuture::from(stored_pass(&user, js_sys::Date::now()))
-        .await
-        .ok()?;
+    let stored = read_store(stored_pass(&user, js_sys::Date::now())).await?;
     let pass = js_text(&stored, "pass")?;
     let until = js_sys::Reflect::get(&stored, &wasm_bindgen::JsValue::from_str("until"))
         .ok()?

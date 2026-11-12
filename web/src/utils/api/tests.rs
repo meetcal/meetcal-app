@@ -913,3 +913,73 @@ fn exhausted_retries_explain_the_failure() {
         OVERLOADED_MESSAGE
     );
 }
+
+fn kept(etag: &str) -> KeptAnswer {
+    KeptAnswer {
+        etag: etag.to_owned(),
+        json: std::rc::Rc::from("[]"),
+    }
+}
+
+#[test]
+fn answers_kept_in_memory_stop_at_the_limit_dropping_the_least_recently_used() {
+    let mut memory = KeptInMemory::default();
+    for index in 0..MAX_ANSWERS_KEPT_IN_MEMORY {
+        memory.insert(format!("query:{index}"), kept(&index.to_string()), false);
+    }
+    assert!(memory.get("query:0").is_some());
+    memory.insert("query:new".to_owned(), kept("new"), false);
+
+    assert!(memory.get("query:0").is_some());
+    assert!(memory.get("query:1").is_none());
+    assert!(memory.get("query:new").is_some());
+    let kept_now = (0..MAX_ANSWERS_KEPT_IN_MEMORY)
+        .filter(|index| memory.get(&format!("query:{index}")).is_some())
+        .count()
+        + 1;
+    assert_eq!(kept_now, MAX_ANSWERS_KEPT_IN_MEMORY);
+}
+
+#[test]
+fn signing_out_drops_only_the_premium_answers_kept_in_memory() {
+    let mut memory = KeptInMemory::default();
+    memory.insert("meets:list:[]".to_owned(), kept("public"), false);
+    memory.insert("reference:records:[]".to_owned(), kept("premium"), true);
+    memory.forget_premium();
+    assert!(memory.get("meets:list:[]").is_some());
+    assert!(memory.get("reference:records:[]").is_none());
+}
+
+#[test]
+fn a_store_read_that_never_answers_is_given_up_when_the_wait_runs_out() {
+    use futures::FutureExt;
+    let hung = futures::future::pending::<&str>();
+    let wait_over = futures::future::ready(());
+    assert_eq!(first_or_none(hung, wait_over).now_or_never(), Some(None));
+}
+
+#[test]
+fn a_store_read_that_answers_in_time_is_used() {
+    use futures::FutureExt;
+    let answered = futures::future::ready("stored");
+    let still_waiting = futures::future::pending::<()>();
+    assert_eq!(
+        first_or_none(answered, still_waiting).now_or_never(),
+        Some(Some("stored"))
+    );
+}
+
+#[test]
+fn after_the_store_timed_out_reads_skip_it_for_a_while_then_try_again() {
+    let timed_out_at = 1_000.0;
+    assert!(may_read_store(None, timed_out_at));
+    assert!(!may_read_store(Some(timed_out_at), timed_out_at + 1.0));
+    assert!(!may_read_store(
+        Some(timed_out_at),
+        timed_out_at + STORE_RETRY_AFTER_MS - 1.0
+    ));
+    assert!(may_read_store(
+        Some(timed_out_at),
+        timed_out_at + STORE_RETRY_AFTER_MS
+    ));
+}

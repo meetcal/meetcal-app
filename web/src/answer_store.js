@@ -109,3 +109,5 @@ export function forget_premium_answers() {
     });
   }, undefined);
 }
+
+quietly(database, null);
