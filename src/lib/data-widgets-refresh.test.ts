@@ -12,6 +12,7 @@ import {
   type DataWidgetSourceData,
   type WidgetSettings,
 } from "@/utils/dataWidgets";
+import { itemAt } from "@/test-support/checked-access";
 
 const source: DataWidgetSourceData = {
   totalsData: {
@@ -86,7 +87,7 @@ describe("createDataWidgetRefresher", () => {
     await expect(refresher.refresh(true)).resolves.toBe("synced");
 
     expect(deps.sync).toHaveBeenCalledTimes(1);
-    const payloads = jest.mocked(deps.sync).mock.calls[0][0];
+    const payloads = itemAt(jest.mocked(deps.sync).mock.calls, 0)[0];
     expect(payloads.qualifyingTotals.rows).toEqual([
       { leading: "89", title: "", trailing: "300kg" },
     ]);
@@ -305,7 +306,7 @@ describe("createDataWidgetRefresher", () => {
 
       expect(deps.loadSource).not.toHaveBeenCalled();
       expect(deps.sync).toHaveBeenCalledTimes(1);
-      const payloads = jest.mocked(deps.sync).mock.calls[0][0];
+      const payloads = itemAt(jest.mocked(deps.sync).mock.calls, 0)[0];
       expect(payloads).toEqual(buildLockedDataWidgetPayloads());
       for (const payload of Object.values(payloads)) {
         expect(payload.rows).toEqual([]);
@@ -329,7 +330,7 @@ describe("createDataWidgetRefresher", () => {
       await expect(refresher.refresh(false)).resolves.toBe("locked");
       advance(1);
       await expect(refresher.refresh(true)).resolves.toBe("synced");
-      expect(jest.mocked(deps.sync).mock.calls[1][0].qualifyingTotals.rows).toHaveLength(1);
+      expect(itemAt(jest.mocked(deps.sync).mock.calls, 1)[0].qualifyingTotals.rows).toHaveLength(1);
     });
 
     it("locks the widgets at once when the entitlement ends", async () => {
@@ -338,7 +339,7 @@ describe("createDataWidgetRefresher", () => {
       await refresher.refresh(true);
       advance(1);
       await expect(refresher.refresh(false)).resolves.toBe("locked");
-      expect(jest.mocked(deps.sync).mock.calls[1][0]).toEqual(buildLockedDataWidgetPayloads());
+      expect(itemAt(jest.mocked(deps.sync).mock.calls, 1)[0]).toEqual(buildLockedDataWidgetPayloads());
     });
 
     it("runs a changed answer after the run in flight instead of sharing it", async () => {

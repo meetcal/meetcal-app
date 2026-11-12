@@ -10,6 +10,7 @@ import { act, create, type ReactTestRenderer } from "react-test-renderer";
 import PaywallScreen from "@/app/shared-screens/paywall";
 import { showToast } from "@/lib/toast";
 import { isPremiumFeature } from "@/lib/premium-intent";
+import { itemAt } from "@/test-support/checked-access";
 
 jest.mock("@/contexts/ThemeContext", () => ({ useTheme: () => ({ currentTheme: "light" }) }));
 jest.mock("@/hooks/useScreenInsets", () => ({
@@ -119,11 +120,11 @@ function texts(renderer: ReactTestRenderer): string[] {
 }
 
 async function pressTryAgain(renderer: ReactTestRenderer): Promise<void> {
-  const target = renderer.root.findAll(
+  const target = itemAt(renderer.root.findAll(
     (node) =>
       typeof node.props.onPress === "function" &&
       node.findAllByType(Text).some((text) => text.props.children === "Try Again"),
-  )[0];
+  ), 0);
   await act(async () => {
     target.props.onPress();
   });

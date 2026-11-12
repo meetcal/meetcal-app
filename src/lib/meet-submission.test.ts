@@ -9,6 +9,7 @@ import {
   MAX_MEET_SUBMISSION_FILE_NAME_LEN,
   MAX_MEET_SUBMISSION_FILES,
   MAX_MEET_SUBMISSION_NAME_LEN,
+  FILE_ALREADY_SUBMITTED_CODE,
   MAX_MEET_SUBMISSIONS_PER_DAY,
   MEET_SUBMISSION_FILE_EXTENSIONS,
   meetSubmissionErrorMessage,
@@ -45,6 +46,7 @@ describe('meet submission limits', () => {
     expect(MAX_MEET_SUBMISSION_FILES).toBe(server.MAX_MEET_SUBMISSION_FILES);
     expect(MAX_MEET_SUBMISSION_FILE_BYTES).toBe(server.MAX_MEET_SUBMISSION_FILE_BYTES);
     expect(MAX_MEET_SUBMISSIONS_PER_DAY).toBe(server.MAX_MEET_SUBMISSIONS_PER_DAY);
+    expect(FILE_ALREADY_SUBMITTED_CODE).toBe(server.FILE_ALREADY_SUBMITTED_CODE);
     expect(MAX_MEET_SUBMISSION_NAME_LEN).toBe(server.MAX_MEET_SUBMISSION_NAME_LEN);
     expect(MAX_MEET_SUBMISSION_FILE_NAME_LEN).toBe(server.MAX_MEET_SUBMISSION_FILE_NAME_LEN);
     expect(MEET_SUBMISSION_FILE_EXTENSIONS).toEqual(server.MEET_SUBMISSION_FILE_EXTENSIONS);
@@ -260,6 +262,13 @@ describe('sendMeetSubmission', () => {
     const { deps } = fakeDeps();
     const refusal = apiError(400, 'file already submitted: a.pdf', { code: server.FILE_ALREADY_SUBMITTED_CODE });
     deps.submit.mockRejectedValue(new MeetCalApiError('failed', 400, JSON.stringify(refusal.data)));
+    await expect(sendMeetSubmission('token', form([pdf('a.pdf')]), null, new Map([[pdf('a.pdf').uri, 'id-a.pdf']]), undefined, deps)).resolves.toBeUndefined();
+  });
+
+  it("reads the already-submitted code before the server's wording", async () => {
+    const { deps } = fakeDeps();
+    const reworded = apiError(400, 'this file was sent before', { code: server.FILE_ALREADY_SUBMITTED_CODE });
+    deps.submit.mockRejectedValue(new MeetCalApiError('failed', 400, JSON.stringify(reworded.data)));
     await expect(sendMeetSubmission('token', form([pdf('a.pdf')]), null, new Map([[pdf('a.pdf').uri, 'id-a.pdf']]), undefined, deps)).resolves.toBeUndefined();
   });
 });

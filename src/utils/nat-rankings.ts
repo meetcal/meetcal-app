@@ -93,11 +93,7 @@ export function getWeightClassOptions(
  * (`scripts/write-ranking-divisions.ts` writes it).
  */
 export function rankingDivisionGroups(): Record<Gender, Record<string, WeightClassGroup[]>> {
-  const byGender = {} as Record<Gender, Record<string, WeightClassGroup[]>>;
-  for (const gender of ["Men", "Women"] as const) {
-    byGender[gender] = Object.fromEntries(
-      AGE_GROUPS.map((ageGroup) => [ageGroup, getWeightClassGroups(gender, ageGroup)]),
-    );
-  }
-  return byGender;
+  const groupsByAge = (gender: Gender): Record<string, WeightClassGroup[]> =>
+    Object.fromEntries(AGE_GROUPS.map((ageGroup) => [ageGroup, getWeightClassGroups(gender, ageGroup)]));
+  return { Men: groupsByAge("Men"), Women: groupsByAge("Women") };
 }

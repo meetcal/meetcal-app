@@ -7,6 +7,7 @@ import {
 } from "@/lib/saved-schedule-lookup";
 import type { SavedSession } from "@/lib/saved-sessions-store";
 import type { Schedule } from "@/types/schedule";
+import { itemAt } from "@/test-support/checked-access";
 
 const ALLOWED = new Set(["Meet A", "Meet B"]);
 
@@ -127,7 +128,7 @@ describe("withScheduleTimes / applyScheduleTimes", () => {
     const other = row({ meet: "Meet B" as MeetName });
     const sessions = [row(), other];
     const next = applyScheduleTimes(sessions, "Meet A" as MeetName, lookup);
-    expect(next[0].startTime).toBe("2:00 PM");
+    expect(itemAt(next, 0).startTime).toBe("2:00 PM");
     expect(next[1]).toBe(other);
     expect(applyScheduleTimes(next, "Meet A" as MeetName, lookup)).toBe(next);
     expect(applyScheduleTimes([other], "Meet A" as MeetName, lookup)).toEqual([other]);

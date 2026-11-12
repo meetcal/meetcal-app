@@ -2,27 +2,25 @@ import {
   getAthleteBestsBatch,
   getCachedAthleteBestsBatch,
 } from "@/lib/athlete-bests";
-import {
-  getAllCachedLiftingResultsForAthletes,
-  getStoredAthleteBestsForNames,
-  saveAthleteBestsBatch,
-  type StoredAthleteBests,
-} from "@/lib/database/offline-store";
-import { fetchApiResultsByNames, fetchApiYearBestsByNames } from "@/lib/api/meetcal-api";
+import { getAllCachedLiftingResultsForAthletes } from "@/lib/database/athlete-history-store";
+import { getStoredAthleteBestsForNames, saveAthleteBestsBatch, type StoredAthleteBests } from "@/lib/database/athlete-bests-store";
+import { fetchApiResultsByNames, fetchApiYearBestsByNames } from "@/lib/api/results-api";
 import { isNetworkAvailable } from "@/lib/networkUtils";
 
 jest.mock("@/lib/networkUtils", () => ({
   isNetworkAvailable: jest.fn(),
 }));
 
-jest.mock("@/lib/database/offline-store", () => ({
+jest.mock("@/lib/database/athlete-history-store", () => ({
   getAllCachedLiftingResultsForAthletes: jest.fn(),
+}));
+jest.mock("@/lib/database/athlete-bests-store", () => ({
   getStoredAthleteBestsForNames: jest.fn(),
-  hasAnyAthleteBest: jest.requireActual("@/lib/database/offline-store").hasAnyAthleteBest,
+  hasAnyAthleteBest: jest.requireActual("@/lib/database/athlete-bests-store").hasAnyAthleteBest,
   saveAthleteBestsBatch: jest.fn(),
 }));
 
-jest.mock("@/lib/api/meetcal-api", () => ({
+jest.mock("@/lib/api/results-api", () => ({
   fetchApiYearBestsByNames: jest.fn(),
   fetchApiResultsByNames: jest.fn(),
 }));

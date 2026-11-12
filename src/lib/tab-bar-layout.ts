@@ -24,7 +24,7 @@ export function usesNativeTabs(
   isMaestroE2E: boolean,
 ): boolean {
   if (platformOS !== "ios" || isMaestroE2E) return false;
-  const major = parseInt(String(platformVersion).split(".")[0], 10);
+  const major = parseInt(String(platformVersion), 10);
   return Number.isFinite(major) && major >= 26;
 }
 

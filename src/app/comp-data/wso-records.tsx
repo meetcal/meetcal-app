@@ -1,3 +1,4 @@
+import { genderOr } from "@/lib/gender";
 import { SLIDE_IN_FROM_RIGHT, stackHeaderOptions } from "@/lib/stack-header-options";
 import { RecordsTable } from "@/components/comp-data/RecordsTable";
 import { FilterBar } from "@/components/ui/FilterBar";
@@ -15,7 +16,6 @@ import {
 import { filterSummary } from "@/lib/filter-summary";
 import { formatAgeGroupLabel, sortAgeGroups } from "@/lib/sortAgeGroups";
 import {
-  AgeGroupRecords,
   Gender,
   RecordsData,
   WeightClassRecord,
@@ -27,7 +27,7 @@ import { StyleSheet } from "react-native";
 import { useScreenHorizontalInsets } from "@/hooks/useScreenInsets";
 
 const EMPTY_WSO_LIST: string[] = [];
-const EMPTY_RECORDS_DATA: RecordsData = {} as RecordsData;
+const EMPTY_RECORDS_DATA: RecordsData = {};
 
 export default function WSORecordsScreen() {
   return (
@@ -64,7 +64,7 @@ function WSORecordsScreenContent() {
   const wsoParams = useMemo<[string, string, Gender] | null>(
     () =>
       filters.wso
-        ? [filters.wso, filters.ageGroup, filters.gender as Gender]
+        ? [filters.wso, filters.ageGroup, genderOr(filters.gender, "Men")]
         : null,
     [filters.ageGroup, filters.gender, filters.wso],
   );
@@ -79,8 +79,8 @@ function WSORecordsScreenContent() {
   });
 
   useEffect(() => {
-    if (filters.wso || !availableWSOs.length) return;
     const nextWSO = availableWSOs[0];
+    if (filters.wso || nextWSO === undefined) return;
     setFilters((prev) => ({ ...prev, wso: nextWSO }));
     setTempFilters((prev) => ({ ...prev, wso: nextWSO }));
   }, [availableWSOs, filters.wso, setFilters, setTempFilters]);
@@ -91,18 +91,16 @@ function WSORecordsScreenContent() {
   const loadedAgeGroups: string[] | undefined = ageGroupsByWSO[filters.wso];
 
   useEffect(() => {
-    if (!loadedAgeGroups?.length) return;
+    const nextAgeGroup = loadedAgeGroups?.[0];
+    if (!loadedAgeGroups || nextAgeGroup === undefined) return;
     if (loadedAgeGroups.includes(filters.ageGroup)) return;
-    const nextAgeGroup = loadedAgeGroups[0];
     setFilters((prev) => ({ ...prev, ageGroup: nextAgeGroup }));
     setTempFilters((prev) => ({ ...prev, ageGroup: nextAgeGroup }));
   }, [loadedAgeGroups, filters.ageGroup, setFilters, setTempFilters]);
 
   const currentRecords = useMemo<WeightClassRecord[]>(() => {
     return (
-      records[filters.ageGroup as keyof RecordsData]?.[
-        filters.gender as keyof AgeGroupRecords
-      ] ?? []
+      records[filters.ageGroup]?.[genderOr(filters.gender, "Men")] ?? []
     );
   }, [records, filters.ageGroup, filters.gender]);
 

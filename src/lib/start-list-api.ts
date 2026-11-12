@@ -1,10 +1,6 @@
 import type { AthleteBests } from '@/data/types/athletes';
-import {
-  getAllCachedLiftingResultsForAthlete,
-  getStoredAthleteBestsForNames,
-  isAthleteBestsFresh,
-  type StoredAthleteBests,
-} from '@/lib/database/offline-store';
+import { getAllCachedLiftingResultsForAthlete } from '@/lib/database/athlete-history-store';
+import { getStoredAthleteBestsForNames, isAthleteBestsFresh, type StoredAthleteBests } from '@/lib/database/athlete-bests-store';
 import {
   deriveDownloadedBests,
   lookUpAthleteBests,
@@ -159,9 +155,6 @@ export async function getLastYearBests(athleteName: string): Promise<YearBests> 
 }
 
 async function getLastYearBestsUncached(athleteName: string): Promise<YearBests> {
-  // Freshness is `offline-store`'s rule, shared with session details: a
-  // fresh entry is final, real numbers or "no results" alike; a stale one
-  // (or one stored before entries carried a time) is looked up again.
   const stored = (await getStoredAthleteBestsForNames([athleteName]))[athleteName];
   if (stored?.isFresh) {
     const result = fromStoredBests(stored.bests);

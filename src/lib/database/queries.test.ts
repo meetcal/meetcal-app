@@ -13,11 +13,13 @@ const mockFetchApiRecentResultsByNames = jest.fn();
 const mockFetchApiResultsByNames = jest.fn();
 const mockSearchApi = jest.fn();
 
-jest.mock("@/lib/api/meetcal-api", () => ({
+jest.mock("@/lib/api/meets-api", () => ({
   fetchApiSchedule: (...args: unknown[]) => mockFetchApiSchedule(...args),
   fetchApiAthletesWithSession: (...args: unknown[]) =>
     mockFetchApiAthletesWithSession(...args),
   fetchApiAthletes: (...args: unknown[]) => mockFetchApiAthletes(...args),
+}));
+jest.mock("@/lib/api/results-api", () => ({
   fetchApiRecentResultsByNames: (...args: unknown[]) =>
     mockFetchApiRecentResultsByNames(...args),
   fetchApiResultsByNames: (...args: unknown[]) => mockFetchApiResultsByNames(...args),

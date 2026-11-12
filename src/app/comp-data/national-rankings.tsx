@@ -1,3 +1,4 @@
+import { genderOr } from "@/lib/gender";
 import { SLIDE_IN_FROM_RIGHT, stackHeaderOptions } from "@/lib/stack-header-options";
 import { DataTable } from "@/components/ui/DataTable";
 import { useIsOffline } from "@/hooks/useIsOffline";
@@ -62,9 +63,10 @@ function NationalRankingsScreenContent() {
   const [isOffline, setIsOffline] = useIsOffline();
 
   useEffect(() => {
-    const classes = getWeightClasses(filters.gender as Gender, filters.ageGroup);
-    if (!classes.includes(filters.weightClass) && classes.length > 0) {
-      setFilters((prev) => ({ ...prev, weightClass: classes[0] }));
+    const classes = getWeightClasses(genderOr(filters.gender, "Men"), filters.ageGroup);
+    const firstClass = classes[0];
+    if (firstClass !== undefined && !classes.includes(filters.weightClass)) {
+      setFilters((prev) => ({ ...prev, weightClass: firstClass }));
     }
   }, [filters.gender, filters.ageGroup, filters.weightClass, setFilters]);
 
@@ -115,7 +117,7 @@ function NationalRankingsScreenContent() {
   const buildFilterSections = (
     tempFilters: Record<string, string>,
   ): FilterSection[] => {
-    const gender = (tempFilters.gender || "Men") as Gender;
+    const gender = genderOr(tempFilters.gender, "Men");
     const ageGroup = tempFilters.ageGroup || "Senior";
     const weightClassOptions = getWeightClassOptions(gender, ageGroup);
 

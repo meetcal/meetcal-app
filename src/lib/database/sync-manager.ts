@@ -1,6 +1,6 @@
 import { AppState, type NativeEventSubscription } from 'react-native';
 import type { MeetName } from '@/data/types/meet';
-import { markMeetScheduleVerified } from '@/lib/database/offline-store';
+import { markMeetScheduleVerified } from '@/lib/database/meet-data-saves';
 import { scheduleResource } from '@/lib/database/schedule-resource';
 import { isNetworkAvailable } from '@/lib/networkUtils';
 import { devLog } from '../logger';

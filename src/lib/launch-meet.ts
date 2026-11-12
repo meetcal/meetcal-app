@@ -5,6 +5,8 @@ import {
   toMeetCalendarDate,
 } from '@/utils/dateTime';
 import { resolvedMeetTimeZone } from '@/utils/timezone';
+import { stableSerialize } from '@/lib/data/mutable-resource';
+import { parseStoredMeetNamed } from '@/lib/stored-meet';
 
 type CompletionSource = Pick<Meet, 'status' | 'dates' | 'time' | 'timeZoneUnknown'>;
 
@@ -40,4 +42,138 @@ export function chooseLaunchMeet(
   const storedMeet = stored ? meets.find((meet) => meet.name === stored) : undefined;
   if (storedMeet && !isMeetCompleted(storedMeet, now)) return storedMeet;
   return meets.find((meet) => !isMeetCompleted(meet, now)) ?? storedMeet ?? meets[0] ?? null;
+}
+
+export function refreshedMeetDetails(
+  current: Meet | null,
+  freshMeets: readonly Meet[],
+): Meet | null {
+  if (!current) return null;
+  const fresh = freshMeets.find((meet) => meet.name === current.name);
+  if (!fresh || stableSerialize(fresh) === stableSerialize(current)) return null;
+  return fresh;
+}
+
+export type LaunchDecision = {
+  select: Meet | null;
+  persistDetails: Meet | null;
+  clearStored: boolean;
+};
+
+const KEEP_EVERYTHING: LaunchDecision = { select: null, persistDetails: null, clearStored: false };
+
+export type CachedListDecision = LaunchDecision & {
+  paintCachedList: boolean;
+  lookUpStoredMeet: boolean;
+  resolving: boolean;
+  activeMeet: string | null;
+};
+
+export function decideFromCachedList(input: {
+  cachedMeets: readonly Meet[];
+  stored: string | null;
+  selectedMeet: string | null;
+  now: Date;
+}): CachedListDecision {
+  const { cachedMeets, stored, selectedMeet } = input;
+  const paintCachedList = cachedMeets.length > 0;
+  const lookUpStoredMeet =
+    !selectedMeet && !!stored && !cachedMeets.some((meet) => meet.name === stored);
+  const waiting = {
+    ...KEEP_EVERYTHING,
+    paintCachedList,
+    lookUpStoredMeet,
+    resolving: paintCachedList && lookUpStoredMeet,
+    activeMeet: selectedMeet,
+  };
+  if (!paintCachedList || lookUpStoredMeet) return waiting;
+  const choice = selectedMeet
+    ? cachedMeets.find((meet) => meet.name === selectedMeet) ?? null
+    : chooseLaunchMeet(cachedMeets, stored, input.now);
+  return {
+    ...waiting,
+    select: selectedMeet ? null : choice,
+    activeMeet: choice?.name ?? selectedMeet,
+  };
+}
+
+export type StoredMeetLookupDecision = LaunchDecision & { keepsStoredMeet: boolean };
+
+export function decideAfterStoredMeetLookup(input: {
+  stored: string;
+  found: Meet | null;
+  lookupFailed: boolean;
+  cachedMeets: readonly Meet[];
+  now: Date;
+}): StoredMeetLookupDecision {
+  const { found, lookupFailed, cachedMeets, now } = input;
+  const passedOver =
+    found !== null &&
+    isMeetCompleted(found, now) &&
+    (!lookupFailed || cachedMeets.some((meet) => !isMeetCompleted(meet, now)));
+  if (found && !passedOver) {
+    return { select: found, persistDetails: found, clearStored: false, keepsStoredMeet: true };
+  }
+  return {
+    select: chooseLaunchMeet(cachedMeets, lookupFailed ? input.stored : null, now),
+    persistDetails: null,
+    clearStored: !lookupFailed,
+    keepsStoredMeet: false,
+  };
+}
+
+export type FreshListDecision =
+  | { kind: 'noMeets' }
+  | { kind: 'keepSelection' }
+  | { kind: 'lookUpActiveMeet'; meet: string }
+  | ({ kind: 'listed'; refreshShownDetails: boolean } & LaunchDecision);
+
+export function decideAfterFreshList(input: {
+  freshMeets: readonly Meet[];
+  activeMeet: string | null;
+  selectedMeet: string | null;
+  shownMeetName: string | null;
+  keepsStoredMeet: boolean;
+  choseFromCache: boolean;
+  stored: string | null;
+  storedDetailsRaw: string | null;
+  now: Date;
+}): FreshListDecision {
+  const { freshMeets, activeMeet } = input;
+  if (freshMeets.length === 0) return { kind: 'noMeets' };
+  const listed = activeMeet ? freshMeets.find((meet) => meet.name === activeMeet) ?? null : null;
+  if (activeMeet && !listed) {
+    if (input.keepsStoredMeet) return { kind: 'keepSelection' };
+    if (activeMeet === input.selectedMeet && input.shownMeetName === activeMeet) {
+      return { kind: 'keepSelection' };
+    }
+    return { kind: 'lookUpActiveMeet', meet: activeMeet };
+  }
+  if (listed) {
+    const persisted = parseStoredMeetNamed(input.storedDetailsRaw, listed.name);
+    const persistDetails = persisted && refreshedMeetDetails(persisted, [listed]) ? listed : null;
+    return { kind: 'listed', refreshShownDetails: true, ...KEEP_EVERYTHING, persistDetails };
+  }
+  return {
+    kind: 'listed',
+    refreshShownDetails: false,
+    ...KEEP_EVERYTHING,
+    select: input.choseFromCache ? null : chooseLaunchMeet(freshMeets, input.stored, input.now),
+  };
+}
+
+export function decideAfterActiveMeetLookup(input: {
+  found: Meet | null;
+  selectedMeet: string | null;
+  freshMeets: readonly Meet[];
+  now: Date;
+}): LaunchDecision {
+  const { found } = input;
+  const kept = found && (input.selectedMeet || !isMeetCompleted(found, input.now)) ? found : null;
+  if (kept) return { select: kept, persistDetails: kept, clearStored: false };
+  return {
+    select: chooseLaunchMeet(input.freshMeets, null, input.now),
+    persistDetails: null,
+    clearStored: true,
+  };
 }

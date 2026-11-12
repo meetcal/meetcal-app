@@ -1,7 +1,7 @@
 import * as fs from "fs";
 import * as path from "path";
 
-import { issueSiriToken, revokeApiToken } from "@/lib/api/meetcal-api";
+import { issueSiriToken, revokeApiToken } from "@/lib/api/siri-tokens-api";
 import {
   readStoredSiriToken,
   resetSiriTokenForTests,
@@ -29,7 +29,7 @@ jest.mock("expo-secure-store", () => ({
   }),
 }));
 
-jest.mock("@/lib/api/meetcal-api", () => ({
+jest.mock("@/lib/api/siri-tokens-api", () => ({
   issueSiriToken: jest.fn(),
   revokeApiToken: jest.fn(async () => {}),
 }));

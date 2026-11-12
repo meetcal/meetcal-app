@@ -51,7 +51,7 @@ jest.mock("@/contexts/SubscriptionContext", () => ({
 jest.mock("@/contexts/SelectedMeetContext", () => ({
   useSelectedMeet: () => ({ forceSync: jest.fn(), refreshAvailableMeets: jest.fn() }),
 }));
-jest.mock("@/utils/authGuard", () => ({ useAuthGuard: () => ({ requireAuth: jest.fn() }) }));
+jest.mock("@/hooks/useAuthGuard", () => ({ useAuthGuard: () => ({ requireAuth: jest.fn() }) }));
 jest.mock("@/lib/database/clear-cache", () => ({
   clearCachedMeetData: jest.fn(),
   clearCacheToast: jest.fn(),

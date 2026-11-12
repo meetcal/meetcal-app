@@ -67,8 +67,14 @@ const SESSION_TIMES: { start: string; weighIn: string }[] = [
 
 const PLATFORMS: Platform[] = ['Red', 'Blue'];
 
-const WOMEN_CLASSES = ['48kg', '53kg', '58kg', '63kg', '69kg', '77kg', '86kg', '86+kg'];
-const MEN_CLASSES = ['60kg', '65kg', '71kg', '79kg', '88kg', '94kg', '110kg', '110+kg'];
+type NonEmptyList = readonly [string, ...string[]];
+
+function cyclicPick(items: NonEmptyList, seed: number): string {
+  return items[seed % items.length] ?? items[0];
+}
+
+const WOMEN_CLASSES: NonEmptyList = ['48kg', '53kg', '58kg', '63kg', '69kg', '77kg', '86kg', '86+kg'];
+const MEN_CLASSES: NonEmptyList = ['60kg', '65kg', '71kg', '79kg', '88kg', '94kg', '110kg', '110+kg'];
 
 const FIRST_NAMES = [
   'Alex', 'Jordan', 'Taylor', 'Morgan', 'Casey', 'Riley', 'Quinn', 'Avery',
@@ -78,7 +84,7 @@ const LAST_NAMES = [
   'Stone', 'Rivera', 'Chen', 'Novak', 'Okafor', 'Silva', 'Kowalski', 'Haddad',
   'Bergman', 'Ito', 'Marsh', 'Delgado', 'Frey', 'Lund', 'Pratt', 'Vance',
 ];
-const CLUBS = [
+const CLUBS: NonEmptyList = [
   'Iron Path Barbell', 'Northside Weightlifting', 'Anvil Athletics',
   'Summit Strength', 'Riverbend Barbell', 'Test Club WL',
 ];
@@ -129,8 +135,8 @@ export function getMockSchedule(_meet: MeetName): Schedule {
             platform,
             weightClass:
               platform === 'Red'
-                ? WOMEN_CLASSES[(sessionNumber + platformIndex) % WOMEN_CLASSES.length]
-                : MEN_CLASSES[(sessionNumber + platformIndex) % MEN_CLASSES.length],
+                ? cyclicPick(WOMEN_CLASSES, sessionNumber + platformIndex)
+                : cyclicPick(MEN_CLASSES, sessionNumber + platformIndex),
           })),
         };
       }),
@@ -162,7 +168,7 @@ export function getMockAthletesWithSession(
             memberId: `mock-${session.number}-${sessionPlatform.platform}-${i}`,
             name,
             age: 18 + (seed % 22),
-            club: CLUBS[seed % CLUBS.length],
+            club: cyclicPick(CLUBS, seed),
             wso: WSOS[seed % WSOS.length],
             gender: isWomen ? 'F' : 'M',
             weightClass: sessionPlatform.weightClass,

@@ -24,7 +24,7 @@ jest.mock("@/contexts/SelectedMeetContext", () => ({
   useSelectedMeet: () => ({ selectedMeet: "Meet A" }),
 }));
 const mockGetLastSyncTime = jest.fn<Promise<number | null>, [string]>(async () => null);
-jest.mock("@/lib/database/offline-store", () => ({
+jest.mock("@/lib/database/offline-store-index", () => ({
   getLastSyncTime: (meet: string) => mockGetLastSyncTime(meet),
 }));
 

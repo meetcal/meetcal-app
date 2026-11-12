@@ -10,7 +10,7 @@ const mockFetchApiClubMeets = jest.fn();
 const mockFetchApiClubMeetStats = jest.fn();
 const mockFetchApiClubNames = jest.fn();
 
-jest.mock("@/lib/api/meetcal-api", () => ({
+jest.mock("@/lib/api/clubs-api", () => ({
   fetchApiClubMeets: (...args: unknown[]) => mockFetchApiClubMeets(...args),
   fetchApiClubMeetStats: (...args: unknown[]) => mockFetchApiClubMeetStats(...args),
   fetchApiClubNames: (...args: unknown[]) => mockFetchApiClubNames(...args),
@@ -35,6 +35,19 @@ beforeEach(async () => {
   jest.clearAllMocks();
   await AsyncStorage.clear();
 });
+
+const STORED_STATS = {
+  totalAthletes: 1,
+  goldMedals: 1,
+  silverMedals: 0,
+  bronzeMedals: 0,
+  totalPRs: 1,
+  perfect6for6: 0,
+  totalWeightLifted: 200,
+  snatchMakeRate: 66.7,
+  cjMakeRate: 100,
+  combinedMakeRate: 83.3,
+};
 
 describe("club stats mappers", () => {
   it("maps meet stats and tolerates a missing athlete_results section", async () => {
@@ -188,14 +201,23 @@ describe("club browse caches are bounded", () => {
     await AsyncStorage.setItem(
       OFFLINE_CACHE_KEYS.clubMeetStats,
       JSON.stringify({
-        data: { "Club::Meet": { totalAthletes: 1, athleteResults: [{ name: "Old" }] } },
+        data: { "Club::Meet": { ...STORED_STATS, athleteResults: [{ name: "Old" }] } },
         lastSynced: 7,
       }),
     );
     await expect(clubMeetStatsResource.loadCached("Club", "Meet")).resolves.toEqual({
-      data: { totalAthletes: 1 },
+      data: STORED_STATS,
       lastUpdatedAt: 7,
     });
+  });
+
+  it("reads a stored stats entry missing a count as nothing cached", async () => {
+    const { goldMedals: _missing, ...partial } = STORED_STATS;
+    await AsyncStorage.setItem(
+      OFFLINE_CACHE_KEYS.clubMeetStats,
+      JSON.stringify({ data: { "Club::Meet": partial }, lastSynced: 7 }),
+    );
+    await expect(clubMeetStatsResource.loadCached("Club", "Meet")).resolves.toBeNull();
   });
 });
 

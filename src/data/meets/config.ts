@@ -1,5 +1,5 @@
 import { MeetConfig, MeetName } from '../types/meet';
-import { fetchMeetByName } from '@/lib/database/meet-manager';
+import { fetchMeetByName } from '@/lib/database/meets-fetch';
 import { formatTo12Hour } from '@/utils/time';
 import { formatVenueLocation } from '@/lib/venue-address';
 import { convertZonedLocalToUTC, meetTimeZoneLabel } from '@/utils/timezone';

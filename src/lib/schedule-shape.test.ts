@@ -1,4 +1,4 @@
-import { isSchedule, scheduleShapeProblem } from './schedule-shape';
+import { isDaySchedule, isSchedule, scheduleShapeProblem } from './schedule-shape';
 
 const session = { id: '1', number: 1, startTime: '9:00 AM', weighInTime: '', platforms: [{ platform: 'Red', weightClass: '71kg' }] };
 const day = { date: 'June 20, 2026', fullDate: '2026-06-20', sessions: [session] };
@@ -28,5 +28,14 @@ describe('scheduleShapeProblem', () => {
       'Invalid session structure at day 0, session 0',
     );
     expect(isSchedule([{ ...day, sessions: [{ ...session, number: '1' }] }])).toBe(false);
+  });
+});
+
+describe('isDaySchedule', () => {
+  it('accepts one day of the schedule and rejects anything else a list can hand back', () => {
+    expect(isDaySchedule(day)).toBe(true);
+    expect(isDaySchedule([day])).toBe(false);
+    expect(isDaySchedule(undefined)).toBe(false);
+    expect(isDaySchedule({ ...day, sessions: undefined })).toBe(false);
   });
 });

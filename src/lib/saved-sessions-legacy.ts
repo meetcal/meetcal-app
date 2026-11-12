@@ -1,3 +1,4 @@
+import { isRecord } from '@/lib/is-record';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import type { MeetName } from '@/data/types/meet';
 import { normalizeStoredSession, type SavedSession } from '@/lib/saved-sessions-store';
@@ -30,14 +31,14 @@ function parseRows(raw: string | null): unknown[] {
 }
 
 function rowNeedsMeet(row: unknown): boolean {
-  if (!row || typeof row !== 'object' || Array.isArray(row)) return true;
-  const meet = (row as Record<string, unknown>).meet;
+  if (!isRecord(row)) return true;
+  const meet = row.meet;
   return typeof meet !== 'string' || meet.length === 0;
 }
 
 function rowMeet(row: unknown): string | null {
-  if (!row || typeof row !== 'object' || Array.isArray(row)) return null;
-  const meet = (row as Record<string, unknown>).meet;
+  if (!isRecord(row)) return null;
+  const meet = row.meet;
   return typeof meet === 'string' ? meet : null;
 }
 

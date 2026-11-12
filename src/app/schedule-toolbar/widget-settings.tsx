@@ -7,7 +7,7 @@ import { GenericFilterModal } from "@/components/ui/filters";
 import { useAppColors } from "@/hooks/useAppColors";
 import { useMutableResource } from "@/hooks/useMutableResource";
 import {
-  QualifyingTotalsData,
+  EMPTY_QUALIFYING_TOTALS,
   qualifyingTotalsResource,
 } from "@/lib/database/fetch-qualifying-totals";
 import { standardsResource } from "@/lib/database/fetch-standards";
@@ -15,8 +15,9 @@ import {
   IntlRanking,
   intlRankingsResource,
 } from "@/lib/database/fetchIntlRankings";
-import { StandardsData } from "@/types/standards";
+import { EMPTY_STANDARDS } from "@/types/standards";
 import {
+  applyWidgetFilters,
   buildDataWidgetPayloads,
   buildIntlRankingsFilterSections,
   buildIntlRankingsWidgetPayload,
@@ -29,6 +30,7 @@ import {
   loadWidgetSettings,
   markDataWidgetCommitStarted,
   normalizeWidgetSettings,
+  readWidgetFilters,
   saveWidgetSettings,
   STANDARDS_FILTER_SECTIONS,
   syncDataWidgets,
@@ -101,7 +103,7 @@ function WidgetSettingsContent() {
   } = useMutableResource({
     resource: qualifyingTotalsResource,
     params: [] as const,
-    initialData: {} as QualifyingTotalsData,
+    initialData: EMPTY_QUALIFYING_TOTALS,
   });
   const {
     data: standardsData,
@@ -110,7 +112,7 @@ function WidgetSettingsContent() {
   } = useMutableResource({
     resource: standardsResource,
     params: [] as const,
-    initialData: {} as StandardsData,
+    initialData: EMPTY_STANDARDS,
   });
   const {
     data: intlRankings,
@@ -232,10 +234,7 @@ function WidgetSettingsContent() {
   );
 
   const handleApply = (kind: WidgetKind, filters: Record<string, string>) => {
-    const nextSettings = {
-      ...settings,
-      [kind]: filters,
-    } as WidgetSettings;
+    const nextSettings = applyWidgetFilters(settings, kind, filters);
     setSettings(nextSettings);
     setActiveModal(null);
     void commitWidgets(nextSettings, { interactive: true });
@@ -373,7 +372,7 @@ function WidgetSettingsContent() {
         resultCount={(tempFilters) =>
           buildQualifyingTotalsWidgetPayload(
             totalsData,
-            tempFilters as WidgetSettings["qualifyingTotals"],
+            readWidgetFilters("qualifyingTotals", tempFilters),
           ).rows.length
         }
         resultLabel="weight classes"
@@ -391,7 +390,7 @@ function WidgetSettingsContent() {
         resultCount={(tempFilters) =>
           buildStandardsWidgetPayload(
             standardsData,
-            tempFilters as WidgetSettings["standards"],
+            readWidgetFilters("standards", tempFilters),
           ).rows.length
         }
         resultLabel="standards"
@@ -414,7 +413,7 @@ function WidgetSettingsContent() {
         resultCount={(tempFilters) =>
           buildIntlRankingsWidgetPayload(
             intlRankings,
-            tempFilters as WidgetSettings["intlRankings"],
+            readWidgetFilters("intlRankings", tempFilters),
           ).rows.length
         }
         resultLabel="rankings"
