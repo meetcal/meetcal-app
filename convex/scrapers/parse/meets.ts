@@ -242,10 +242,14 @@ export function addressTimeZone(raw: string, state: string, city: string): { zon
  * `addressTimeZone`). A meet with no address is synced without venue or zone,
  * so the stored ones stay.
  */
+export function isAdaptiveListing(name: string): boolean {
+  return name.toUpperCase().includes('ADAPTIVE');
+}
+
 export function transformMeets(rows: (Pick<WidgetRow, 'name' | 'address' | 'subtitle'> & { id?: string | null })[]): TransformedMeets {
   const result: TransformedMeets = { meets: [], rejected: [], undated: [], unknownZone: [] };
   for (const row of rows) {
-    if (row.name.toUpperCase().includes('ADAPTIVE')) continue;
+    if (isAdaptiveListing(row.name)) continue;
     const source = row.id ? { sourceId: row.id } : {};
     if (row.subtitle === null) {
       result.rejected.push(`${row.name}: no dates`);

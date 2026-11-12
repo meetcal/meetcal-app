@@ -3,12 +3,13 @@
 import { v } from 'convex/values';
 import { action, type ActionCtx } from './_generated/server';
 import { internal } from './_generated/api';
+import type { Id } from './_generated/dataModel';
 import { apiError } from './lib/validation';
 import { errorMessage } from './lib/errors';
 import { fetchEntriesMeet, readEntries } from './scrapers/entries';
 import { fetchWidgetPage } from './scrapers/meets';
 import { canonicalEntriesUrl, entriesEventId } from './scrapers/parse/entries';
-import { readAllWidgetPages, transformMeets, widgetPageUrl, type WidgetRow } from './scrapers/parse/meets';
+import { isAdaptiveListing, readAllWidgetPages, transformMeets, widgetPageUrl, type WidgetRow } from './scrapers/parse/meets';
 
 const SPORT80_HOST = 'usaweightlifting.sport80.com';
 
@@ -44,7 +45,7 @@ export function listedMeetProblem(rows: readonly WidgetRow[], eventId: string): 
   const { meets, undated } = transformMeets([row]);
   if (meets.length > 0) return { row };
   if (undated.length > 0) return { problem: "Sport80 hasn't set this meet's dates yet" };
-  if (row.name.toUpperCase().includes('ADAPTIVE')) return { problem: "MeetCal doesn't build schedules for adaptive events yet" };
+  if (isAdaptiveListing(row.name)) return { problem: "MeetCal doesn't build schedules for adaptive events yet" };
   return { problem: "MeetCal couldn't read this meet's dates on Sport80" };
 }
 
@@ -64,12 +65,12 @@ export const load = action({
   args: { url: v.string() },
   handler: async (ctx, { url }): Promise<{ meet: string; refreshed: boolean }> => {
     const page = entriesPageOf(url);
-    const { recentMeet }: { recentMeet: string | null } = await ctx.runMutation(internal.scheduleBuilder.claimLoad, { eventId: page.eventId });
-    if (recentMeet !== null) return { meet: recentMeet, refreshed: false };
+    const claimed: { recentMeet: string } | { claim: Id<'schedule_builder_loads'> } = await ctx.runMutation(internal.scheduleBuilder.claimLoad, { eventId: page.eventId });
+    if ('recentMeet' in claimed) return { meet: claimed.recentMeet, refreshed: false };
     const title = await fromSport80(fetchEntriesMeet(page.url));
     const meet = await storeMeet(ctx, page.eventId, title);
     if (meet.status === 'completed') throw apiError(409, 'this meet is over, so its schedule can no longer be built');
-    await ctx.runMutation(internal.scrapers.entryTargets.add, { label: title, url: page.url });
+    await ctx.runMutation(internal.scrapers.entryTargets.addFromBuilder, { label: title, url: page.url });
     const entries = await fromSport80(readEntries(ctx, page.url, meet.name));
     if (entries.length > 0) {
       try {
@@ -79,7 +80,7 @@ export const load = action({
         throw apiError(409, "the meet's entries changed more than MeetCal updates on its own; they'll be checked by hand. Try again later");
       }
     }
-    await ctx.runMutation(internal.scheduleBuilder.finishLoad, { eventId: page.eventId, meet: meet.name });
+    await ctx.runMutation(internal.scheduleBuilder.finishLoad, { claim: claimed.claim, meet: meet.name });
     return { meet: meet.name, refreshed: true };
   },
 });

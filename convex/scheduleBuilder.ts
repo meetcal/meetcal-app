@@ -1,5 +1,6 @@
 import { v } from 'convex/values';
 import { internalMutation, mutation, query, type QueryCtx } from './_generated/server';
+import type { Id } from './_generated/dataModel';
 import { MEET_ROSTER_MAX, readAll } from './lib/boundedRead';
 import { requireUserId } from './lib/access';
 import { meetByName } from './lib/meetData';
@@ -134,7 +135,7 @@ export const deleteDraft = mutation({
 
 export const claimLoad = internalMutation({
   args: { eventId: v.string() },
-  handler: async (ctx, { eventId }): Promise<{ recentMeet: string | null }> => {
+  handler: async (ctx, { eventId }): Promise<{ recentMeet: string } | { claim: Id<'schedule_builder_loads'> }> => {
     const now = Date.now();
     const stale = await ctx.db
       .query('schedule_builder_loads')
@@ -155,14 +156,13 @@ export const claimLoad = internalMutation({
     if (lastHour.length >= MAX_LOADS_PER_HOUR) {
       throw apiError(429, 'MeetCal is loading many meets right now; try again in a few minutes', { max: MAX_LOADS_PER_HOUR });
     }
-    await ctx.db.insert('schedule_builder_loads', { eventId, meet: '', loadedAt: now });
-    return { recentMeet: null };
+    return { claim: await ctx.db.insert('schedule_builder_loads', { eventId, meet: '', loadedAt: now }) };
   },
 });
 
 export const finishLoad = internalMutation({
-  args: { eventId: v.string(), meet: v.string() },
-  handler: async (ctx, { eventId, meet }) => {
-    await ctx.db.insert('schedule_builder_loads', { eventId, meet, loadedAt: Date.now() });
+  args: { claim: v.id('schedule_builder_loads'), meet: v.string() },
+  handler: async (ctx, { claim, meet }) => {
+    await ctx.db.patch(claim, { meet, loadedAt: Date.now() });
   },
 });

@@ -92,6 +92,7 @@ export function checkBuilderOptions(options: BuilderOptions): void {
   for (const day of options.days) {
     if (!isValidIsoDate(day.date)) throw apiError(400, `day ${JSON.stringify(day.date)} is not a YYYY-MM-DD date`);
     if (dates.has(day.date)) throw apiError(400, `day ${day.date} is listed twice`);
+    if ([...dates].some((earlier) => earlier > day.date)) throw apiError(400, 'days must be listed in date order');
     dates.add(day.date);
     const start = minutesOfClock(day.firstStart);
     if (start === null) throw apiError(400, `the first start on ${day.date} is not an HH:MM time`);

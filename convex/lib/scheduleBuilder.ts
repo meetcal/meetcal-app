@@ -43,7 +43,7 @@ export type BuilderWarning = { code: BuilderWarningCode; message: string };
 
 export type BuiltSchedule = { athletes: number; sessions: BuiltSession[]; warnings: BuilderWarning[] };
 
-type Group = { gender: string; ageGroup: AgePool; split: string; athletes: BuiltAthlete[] };
+type Group = { gender: string; ageGroup: AgePool; split: string; athletes: BuiltAthlete[]; edited: boolean };
 
 type Slot = { id: number; date: string; start: number | null; groups: Map<string, Group> };
 
@@ -96,7 +96,7 @@ function groupsByWeightClass(athletes: BuiltAthlete[], max: number, gender: stri
     const lifters = athletes.filter((a) => a.weightClass === weightClass).sort(byTotal);
     if (lifters.length > max) {
       const chunks = balancedChunks(lifters, max);
-      chunks.forEach((chunk, i) => groups.push({ gender, ageGroup, split: splitLabel(i, chunks.length), athletes: chunk }));
+      chunks.forEach((chunk, i) => groups.push({ gender, ageGroup, split: splitLabel(i, chunks.length), athletes: chunk, edited: false }));
       open = null;
       continue;
     }
@@ -104,14 +104,14 @@ function groupsByWeightClass(athletes: BuiltAthlete[], max: number, gender: stri
       open.athletes.push(...lifters);
       continue;
     }
-    open = { gender, ageGroup, split: '', athletes: [...lifters] };
+    open = { gender, ageGroup, split: '', athletes: [...lifters], edited: false };
     groups.push(open);
   }
   return groups;
 }
 
 function groupsByEntryTotal(athletes: BuiltAthlete[], max: number, gender: string, ageGroup: AgePool): Group[] {
-  return balancedChunks([...athletes].sort(byTotal), max).map((chunk) => ({ gender, ageGroup, split: '', athletes: chunk }));
+  return balancedChunks([...athletes].sort(byTotal), max).map((chunk) => ({ gender, ageGroup, split: '', athletes: chunk, edited: false }));
 }
 
 function genderSequences(entrants: readonly BuilderEntrant[], options: BuilderOptions): Group[][] {
@@ -244,7 +244,7 @@ function targetGroup(slots: readonly Slot[], options: BuilderOptions, session: n
   if (!slot || !options.platforms.includes(platform)) return null;
   const existing = slot.groups.get(platform);
   if (existing) return existing;
-  const created: Group = { gender: like.gender, ageGroup: like.ageGroup, split: '', athletes: [] };
+  const created: Group = { gender: like.gender, ageGroup: like.ageGroup, split: '', athletes: [], edited: true };
   slot.groups.set(platform, created);
   return created;
 }
@@ -258,6 +258,8 @@ function applyEdit(slots: Slot[], edit: BuilderEdit, options: BuilderOptions): E
       if (!target) return 'skipped';
       const [athlete] = found.group.athletes.splice(found.index, 1);
       if (athlete) target.athletes.push(athlete);
+      found.group.edited = true;
+      target.edited = true;
       return 'applied';
     }
     case 'moveClass': {
@@ -268,6 +270,8 @@ function applyEdit(slots: Slot[], edit: BuilderEdit, options: BuilderOptions): E
       if (!target || target === source) return 'skipped';
       target.athletes.push(...source.athletes.filter((a) => a.weightClass === weightClass));
       source.athletes = source.athletes.filter((a) => a.weightClass !== weightClass);
+      source.edited = true;
+      target.edited = true;
       return 'applied';
     }
     case 'swapSessions': {
@@ -280,12 +284,23 @@ function applyEdit(slots: Slot[], edit: BuilderEdit, options: BuilderOptions): E
     case 'setSessionTime': {
       const slot = slots.find((s) => s.id === edit.session);
       const start = minutesOfClock(edit.startTime);
-      if (!slot || start === null || start < options.weighInMinutes || !options.days.some((d) => d.date === edit.date)) return 'skipped';
+      if (!slot || start === null || start < options.weighInMinutes || start + options.sessionMinutes > MINUTES_PER_DAY) return 'skipped';
+      if (!options.days.some((d) => d.date === edit.date)) return 'skipped';
       slot.date = edit.date;
       slot.start = start;
       return 'applied';
     }
   }
+}
+
+function groupLabels(group: Group, athletes: readonly BuiltAthlete[], options: BuilderOptions): { gender: string; ageGroup: AgePool; split: string; mixed: boolean } {
+  const genders = [...new Set(athletes.map((a) => a.gender))];
+  const [only] = genders;
+  const gender = genders.length === 1 && only !== undefined ? only : group.gender;
+  if (!group.edited) return { gender, ageGroup: group.ageGroup, split: group.split, mixed: genders.length > 1 };
+  const pools = [...new Set(athletes.map((a) => ageGroupOf(a.age, options.separateAgeGroups)))];
+  const [pool] = pools;
+  return { gender, ageGroup: pools.length === 1 && pool !== undefined ? pool : '', split: '', mixed: genders.length > 1 };
 }
 
 function finish(slots: readonly Slot[], options: BuilderOptions, athletes: number, skipped: number): BuiltSchedule {
@@ -309,16 +324,16 @@ function finish(slots: readonly Slot[], options: BuilderOptions, athletes: numbe
     const scheduled = slot.start !== null && slot.date !== '';
     const builtGroups = groups.map(({ platform, group }): BuiltGroup => {
       const sorted = [...group.athletes].sort(byTotal);
-      const genders = new Set(sorted.map((a) => a.gender));
-      if (genders.size > 1) warnings.push({ code: 'mixedGroup', message: `Session ${i + 1} ${platform} mixes women and men.` });
+      const labels = groupLabels(group, sorted, options);
+      if (labels.mixed) warnings.push({ code: 'mixedGroup', message: `Session ${i + 1} ${platform} mixes women and men.` });
       if (sorted.length > options.maxAthletesPerPlatform) {
         warnings.push({ code: 'overCapacity', message: `Session ${i + 1} ${platform} has ${sorted.length} athletes, more than the ${options.maxAthletesPerPlatform} allowed.` });
       }
       return {
         platform,
-        gender: athleteGenderLabel(group.gender),
-        ageGroup: group.ageGroup,
-        split: group.split,
+        gender: athleteGenderLabel(labels.gender),
+        ageGroup: labels.ageGroup,
+        split: labels.split,
         weightClasses: sortByWeightClass([...new Set(sorted.map((a) => a.weightClass))], (c) => c),
         athletes: sorted.map((a) => ({ ...a, gender: athleteGenderLabel(a.gender) })),
       };

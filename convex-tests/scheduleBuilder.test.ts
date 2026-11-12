@@ -58,7 +58,7 @@ describe('balancedChunks and splitLabel', () => {
   });
 
   it('interleaves lists of different lengths', () => {
-    expect(interleave([[1, 2, 3], ['a']])).toEqual([1, 'a', 2, 3]);
+    expect(interleave<number | string>([[1, 2, 3], ['a']])).toEqual([1, 'a', 2, 3]);
   });
 });
 
@@ -224,6 +224,37 @@ describe('edits', () => {
     ]);
   });
 
+  it('labels a group by the lifters it holds after edits, not by how it was built', () => {
+    nextId = 1;
+    const woman = lifter('Women', '58', 70, { age: 15 });
+    const man = lifter('Men', '89', 150);
+    const schedule = buildSchedule([woman, man], options({ separateAgeGroups: true }), [
+      { kind: 'moveAthlete', athlete: athleteKey(woman), toSession: 2, toPlatform: 'Red' },
+      { kind: 'moveAthlete', athlete: athleteKey(man), toSession: 1, toPlatform: 'Red' },
+    ]);
+    expect(schedule.sessions.map((s) => [s.id, s.groups[0]?.gender, s.groups[0]?.ageGroup])).toEqual([
+      [1, 'Male', 'open'],
+      [2, 'Female', 'youth'],
+    ]);
+    expect(schedule.warnings).toEqual([]);
+  });
+
+  it('drops the A/B label of a split group an edit changed', () => {
+    nextId = 1;
+    const entrants = many(4, (i) => lifter('Men', '89', 100 + i));
+    const schedule = buildSchedule(entrants, options({ maxAthletesPerPlatform: 2 }), [{ kind: 'moveAthlete', athlete: athleteKey(entrants[0] as BuilderEntrant), toSession: 2, toPlatform: 'Red' }]);
+    expect(schedule.sessions.map((s) => [s.groups[0]?.split, s.groups[0]?.athletes.length])).toEqual([
+      ['', 1],
+      ['', 3],
+    ]);
+  });
+
+  it('skips a retime that would end after midnight', () => {
+    const schedule = buildSchedule([lifter('Men', '89', 150)], options(), [{ kind: 'setSessionTime', session: 1, date: '2027-03-06', startTime: '23:30' }]);
+    expect(schedule.sessions[0]?.startTime).toBe('09:00:00');
+    expect(schedule.warnings.map((w) => w.code)).toEqual(['skippedEdit']);
+  });
+
   it('skips edits that no longer fit and warns about them and about overfull groups', () => {
     const entrants = base();
     const schedule = buildSchedule(entrants, opts, [
@@ -265,6 +296,15 @@ describe('options', () => {
     [{ sessionMinutes: 90.5 }, 'sessionMinutes must be a whole number from 15 to 480'],
     [{ maxSessionsPerDay: 0 }, 'maxSessionsPerDay must be a whole number from 1 to 30'],
     [{ days: [{ date: '2027-02-30', firstStart: '09:00' }] }, 'day "2027-02-30" is not a YYYY-MM-DD date'],
+    [
+      {
+        days: [
+          { date: '2027-03-07', firstStart: '09:00' },
+          { date: '2027-03-06', firstStart: '09:00' },
+        ],
+      },
+      'days must be listed in date order',
+    ],
     [{ days: [{ date: '2027-03-06', firstStart: '9am' }] }, 'the first start on 2027-03-06 is not an HH:MM time'],
     [{ days: [{ date: '2027-03-06', firstStart: '01:00' }] }, 'the first start on 2027-03-06 leaves no time for its weigh-in'],
     [{ days: [{ date: '2027-03-06', firstStart: '23:00' }] }, 'the first session on 2027-03-06 would end after midnight'],
