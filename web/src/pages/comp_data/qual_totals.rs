@@ -46,24 +46,28 @@ fn weight_class(total: &QualifyingTotal) -> &str {
 const FILTERS: &[Filter<QualifyingTotal>] = &[
     Filter {
         label: "Event",
+        param: "event",
         placeholder: "All events",
         value: event,
         order: OptionOrder::Alphabetical,
     },
     Filter {
         label: "Gender",
+        param: "gender",
         placeholder: "All genders",
         value: gender,
         order: OptionOrder::Alphabetical,
     },
     Filter {
         label: "Age",
+        param: "age",
         placeholder: "All ages",
         value: age,
         order: OptionOrder::Alphabetical,
     },
     Filter {
         label: "Weight class",
+        param: "class",
         placeholder: "All classes",
         value: weight_class,
         order: OptionOrder::ByWeight,
@@ -113,7 +117,6 @@ fn total_row(total: &QualifyingTotal) -> AnyView {
 
 #[component]
 pub fn QualifyingTotals() -> impl IntoView {
-    let sort = RwSignal::new(QualifyingTotalSort::TotalAsc);
     let totals = load_rows(queries::QUALIFYING_TOTALS, QualifyingTotal::shown);
 
     view! {
@@ -123,7 +126,7 @@ pub fn QualifyingTotals() -> impl IntoView {
         >
             {move || table_response(totals, HEADERS.len(), "qualifying totals", |totals| {
                 view! {
-                    <ReferenceTable rows=totals.to_vec() filters=FILTERS headers=HEADERS row=total_row sort empty_message="No qualifying totals match these filters." />
+                    <ReferenceTable rows=totals.to_vec() filters=FILTERS headers=HEADERS row=total_row path="/qualifying-totals" default_sort=QualifyingTotalSort::TotalAsc empty_message="No qualifying totals match these filters." />
                 }
                 .into_any()
             })}
