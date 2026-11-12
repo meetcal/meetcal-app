@@ -16,6 +16,7 @@ use crate::utils::stats::number;
 )]
 pub struct CompareArgs {
     /// Exact athlete name
+    #[arg(value_parser = crate::utils::filters::parse_name)]
     pub name: String,
 }
 

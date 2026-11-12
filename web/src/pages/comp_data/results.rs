@@ -84,13 +84,6 @@ fn empty_message(query: &str, cut: bool) -> String {
     }
 }
 
-/// How to show `response` to a search for `query`.
-///
-/// An exact match (`matched_name`) is one athlete; it is headed with a row's
-/// spelling, not the query's typing. Without one, the rows are every athlete
-/// whose name contains the query: they are one history only when they carry
-/// one athlete's name and the answer was not cut, otherwise the athletes are
-/// offered to pick from, never shown as one history.
 fn results_answer(query: &str, response: AthleteSearchResponse) -> ResultsAnswer {
     let AthleteSearchResponse {
         matched_name,
@@ -106,13 +99,8 @@ fn results_answer(query: &str, response: AthleteSearchResponse) -> ResultsAnswer
         };
     }
     if let Some(matched) = matched_name {
-        let name = results
-            .first()
-            .map(|row| row.name.trim())
-            .filter(|name| !name.is_empty())
-            .map_or(matched, str::to_owned);
         return ResultsAnswer::Athlete {
-            name,
+            name: matched,
             rows: results,
             truncated,
             suggestions,
@@ -380,10 +368,13 @@ mod tests {
     }
 
     #[test]
-    fn an_exact_match_is_headed_with_the_athletes_spelling_not_the_typing() {
+    fn an_exact_match_is_headed_with_the_matched_name_whatever_its_rows_spell() {
         let response = answer(
-            Some("amelia  PHILLIPS"),
-            &[row("Amelia Phillips", "2026-03-01")],
+            Some("Amelia Phillips"),
+            &[
+                row("AMELIA PHILLIPS", "2025-03-01"),
+                row("Amelia Phillips", "2026-03-01"),
+            ],
             false,
         );
         let ResultsAnswer::Athlete { name, rows, .. } =
@@ -392,17 +383,34 @@ mod tests {
             panic!("expected one athlete");
         };
         assert_eq!(name, "Amelia Phillips");
-        assert_eq!(rows.len(), 1);
+        assert_eq!(rows.len(), 2);
     }
 
     #[test]
-    fn several_athletes_in_a_fallback_are_offered_not_merged() {
+    fn one_athlete_in_a_fallback_is_headed_with_the_newest_spelling() {
         let response = answer(
             None,
             &[
-                row("John Smith", "2026-02-01"),
+                row("AMELIA PHILLIPS", "2025-03-01"),
+                row(" Amelia Phillips ", "2026-03-01"),
+            ],
+            false,
+        );
+        let ResultsAnswer::Athlete { name, rows, .. } = results_answer("phillips", response) else {
+            panic!("expected one athlete");
+        };
+        assert_eq!(name, "Amelia Phillips");
+        assert_eq!(rows.len(), 2);
+    }
+
+    #[test]
+    fn several_athletes_in_a_fallback_are_offered_by_their_newest_spelling_not_merged() {
+        let response = answer(
+            None,
+            &[
+                row("john  smith", "2026-02-01"),
                 row("Ann Smith", "2026-03-01"),
-                row("john  smith", "2026-05-01"),
+                row("John Smith", "2026-05-01"),
             ],
             false,
         );
@@ -431,7 +439,7 @@ mod tests {
         let ResultsAnswer::Athlete { name, rows, .. } = results_answer("Cruz", response) else {
             panic!("one athlete in two spellings is one athlete");
         };
-        assert_eq!(name, "Jos\u{e9} Cruz");
+        assert_eq!(name, "Jose\u{301} Cruz");
         assert_eq!(rows.len(), 2);
     }
 
