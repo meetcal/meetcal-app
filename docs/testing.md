@@ -32,7 +32,7 @@ Put tests next to the module they cover (`src/lib/api/meetcal-api.test.ts`, not 
 
 `react-native`'s exports are lazy getters. On a cold transform cache (every CI run) the first access to `Animated` costs about 2.3s and `ScrollView`/`Pressable` about 0.7s, which used to land inside whichever test rendered first and push it past Jest's 5s timeout. `jest.setup.js` touches those modules during setup, outside any test's timeout, in `.tsx`/`.jsx` suites only; the environment sets `__MEETCAL_WARM_RN_UI__` from the test path so `.ts` suites skip the cost. A test that renders React Native UI must therefore live in a `.tsx` file. When a test is slow on CI, find what it pays for on first use; do not raise its timeout. To approximate a CI runner: `bunx jest --ci --watchman=false --no-cache --maxWorkers=2`.
 
-`mise run check` runs Jest with a 20s default timeout (`LOCAL_GATE_TEST_TIMEOUT_MS` in `scripts/check/plan.ts`), because it runs on a machine many agents share and a load average of 40 or more pushes ordinary tests past 5s. CI keeps Jest's 5s, so it stays the check that a test is fast; a test that hangs still fails locally.
+`mise run check`, `mise run app:test` and `mise run app:test:coverage` run Jest with a 20s default timeout (`LOCAL_GATE_TEST_TIMEOUT_MS` in `scripts/check/plan.ts`, and the same flag in `mise.toml`), because they run on a machine many agents share and a load average of 40 or more pushes ordinary tests past 5s. CI keeps Jest's 5s, so it stays the check that a test is fast; a test that hangs still fails locally. A file's own `jest.setTimeout` replaces that default, so a file that sets one sets at least 20s.
 
 ### Property and chaos tests
 

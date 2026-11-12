@@ -1,4 +1,5 @@
 import { execFileSync } from 'node:child_process';
+import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { checkSteps, LOCAL_GATE_TEST_TIMEOUT_MS, planChecks, type CheckPlan } from './plan';
@@ -91,6 +92,13 @@ describe('checkSteps', () => {
     const tests = checkSteps({ suites: ['app'], reason: '' }).find((step) => step.name === 'App tests and coverage');
     expect(tests?.command).toEqual(['bun', 'run', 'test:coverage', '--testTimeout=20000']);
     expect(LOCAL_GATE_TEST_TIMEOUT_MS).toBeGreaterThan(5_000);
+  });
+
+  it("gives mise's local Jest tasks the same timeout as the gate", () => {
+    const miseTasks = readFileSync(join(__dirname, '..', '..', 'mise.toml'), 'utf8');
+    const jestRuns = miseTasks.split('\n').filter((line) => /^run = .*bun run test:(ci|coverage)/.test(line));
+    expect(jestRuns).toHaveLength(2);
+    for (const run of jestRuns) expect(run).toContain(`--testTimeout=${LOCAL_GATE_TEST_TIMEOUT_MS}`);
   });
 
   it("runs the website's and CLI's Cargo gates in their own folders, as CI does", () => {

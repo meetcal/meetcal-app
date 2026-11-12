@@ -32,11 +32,11 @@ run = "bun run web"
 
 [tasks."app:test"]
 description = "Run the Jest CI suite (waits for any other worktree's gate)"
-run = "bun scripts/check-lock.ts bun run test:ci"
+run = "bun scripts/check-lock.ts bun run test:ci --testTimeout=20000"
 
 [tasks."app:test:coverage"]
 description = "Run Jest with coverage (waits for any other worktree's gate)"
-run = "bun scripts/check-lock.ts bun run test:coverage"
+run = "bun scripts/check-lock.ts bun run test:coverage --testTimeout=20000"
 
 [tasks."app:maestro"]
 description = "Run device smoke flows in their own E2E Metro session (waits for the simulator lock)"
