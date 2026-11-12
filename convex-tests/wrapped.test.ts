@@ -333,19 +333,24 @@ const search = (overrides: { matched_name?: string | null; suggestions?: string[
   selectWrapped({ matched_name: null, suggestions: [], results: [], truncated: false, ...overrides });
 
 describe('selectWrapped', () => {
-  it('scores every row of an exact match, in date order', () => {
+  it("names an exact match as the search's matched name does, whatever its rows spell (#569)", () => {
+    const rows = [searchRow('JOHN SMITH', '2025-02-01', 200), searchRow('John Smith', '2025-06-01', 220)];
+    expect(search({ matched_name: 'John Smith', results: rows })).toMatchObject({ kind: 'athlete', name: 'John Smith' });
+    expect(search({ matched_name: 'John Smith', results: rows, truncated: true })).toEqual({ kind: 'tooManyResults', name: 'John Smith' });
+  });
+
+  it('scores every row of an exact match oldest first, so improvement from first is +20kg', () => {
     const rows = [searchRow('John Smith', '2025-06-01', 220), searchRow('John Smith', '2025-02-01', 200)];
-    const answer = search({ matched_name: 'john smith', results: rows });
+    const answer = search({ matched_name: 'John Smith', results: rows });
     expect(answer).toEqual({ kind: 'athlete', name: 'John Smith', stats: wrappedStats([rows[1], rows[0]]) });
-    // Oldest first: +20kg, not -20kg.
     expect(answer.kind === 'athlete' && answer.stats.improvementFromFirst).toBe(20);
   });
 
-  it('does not merge several athletes from the name-contains fallback', () => {
+  it('does not merge several athletes from the name-contains fallback, and offers each by their newest spelling', () => {
     const rows = [
-      searchRow('John Smith', '2025-03-01', 300),
+      searchRow('JOHN  SMITH', '2025-03-01', 300),
       searchRow('Jane Smith', '2025-01-01', 150),
-      searchRow('JOHN  SMITH', '2025-05-01', 310),
+      searchRow(' John Smith ', '2025-05-01', 310),
       searchRow('Adam Smithers', '2025-04-01', 250),
     ];
     expect(search({ results: rows })).toEqual({ kind: 'ambiguous', names: ['Adam Smithers', 'Jane Smith', 'John Smith'], truncated: false });
@@ -354,6 +359,11 @@ describe('selectWrapped', () => {
   it('accepts the fallback when its rows are one athlete (spelling variants included)', () => {
     const rows = [searchRow('Jane Doe', '2025-05-01', 220), searchRow('jane  doe ', '2025-01-01', 200)];
     expect(search({ results: rows })).toEqual({ kind: 'athlete', name: 'Jane Doe', stats: wrappedStats([rows[1], rows[0]]) });
+  });
+
+  it('names the one athlete of a fallback as an exact search would: the newest spelling, without spaces around it', () => {
+    const rows = [searchRow('AMELIA PHILLIPS', '2025-02-01', 200), searchRow(' Amelia Phillips ', '2025-06-01', 220)];
+    expect(search({ results: rows })).toMatchObject({ kind: 'athlete', name: 'Amelia Phillips' });
   });
 
   it('drops blank-named rows rather than scoring them with the one athlete', () => {
@@ -371,7 +381,7 @@ describe('selectWrapped', () => {
 
   it('refuses to score an exact match whose year was cut', () => {
     const rows = [searchRow('John Smith', '2025-02-01'), searchRow('John Smith', '2025-06-01')];
-    expect(search({ matched_name: 'john smith', results: rows, truncated: true })).toEqual({ kind: 'tooManyResults', name: 'John Smith' });
+    expect(search({ matched_name: 'John Smith', results: rows, truncated: true })).toEqual({ kind: 'tooManyResults', name: 'John Smith' });
   });
 
   it('offers the one athlete of a cut fallback to pick, not as the match', () => {

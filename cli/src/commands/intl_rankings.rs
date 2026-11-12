@@ -5,7 +5,7 @@ use serde::Deserialize;
 
 use crate::utils::backend::{NoArgs, queries, query};
 use crate::utils::filters::{
-    Filter, is_gender, no_match, same_ignoring_case_and_surrounding_space,
+    Filter, gender_as_matched, is_gender, no_match, same_ignoring_case_and_surrounding_space,
 };
 use crate::utils::output::{self, Report};
 use crate::utils::stats::Gender;
@@ -39,7 +39,7 @@ pub struct IntlRankingsArgs {
     pub gender: Gender,
 
     /// Meet to search for
-    #[arg(long, short = 'm')]
+    #[arg(long, short = 'm', value_parser = crate::utils::filters::parse_name)]
     pub meet: String,
 }
 
@@ -96,7 +96,7 @@ pub fn selected(
             .map(|row| {
                 vec![
                     row.age_category.as_str(),
-                    row.gender.as_str(),
+                    gender_as_matched(&row.gender),
                     row.meet.as_str(),
                 ]
             })

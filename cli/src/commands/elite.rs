@@ -250,7 +250,7 @@ pub async fn run(args: EliteArgs) -> Result<()> {
     let wsos = registration_wsos().await?;
     let wso = wsos
         .iter()
-        .find(|name| name.as_str() == args.wso.trim())
+        .find(|name| name.as_str() == args.wso)
         .or_else(|| wsos.iter().find(|name| fold(name) == fold(&args.wso)))
         .cloned();
     let Some(wso) = wso else {

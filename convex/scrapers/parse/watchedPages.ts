@@ -63,3 +63,13 @@ export function pageText(html: string, selector: string, options: { pdfLinks?: b
     ...pdfs,
   ].join('\n');
 }
+
+export function pageChange(previous: { text: string } | null, text: string): 'new' | 'unchanged' | 'changed' {
+  if (!previous || previous.text === '') return 'new';
+  return previous.text === text ? 'unchanged' : 'changed';
+}
+
+export function reportDelivery(env: { URLWATCH_EMAIL?: string; ALERT_EMAIL?: string }): 'send' | 'log' | 'fail' {
+  if (env.URLWATCH_EMAIL) return 'send';
+  return env.ALERT_EMAIL ? 'fail' : 'log';
+}
