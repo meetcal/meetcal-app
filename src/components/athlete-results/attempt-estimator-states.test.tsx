@@ -11,10 +11,8 @@ import {
   fetchAthletesWithSession,
   fetchRecentAthleteHistoryForNames,
 } from "@/lib/database/queries";
-import {
-  getAllCachedLiftingResultsForAthletes,
-  getSessionAthletesFromMeetCache,
-} from "@/lib/database/offline-store";
+import { getAllCachedLiftingResultsForAthletes } from "@/lib/database/athlete-history-store";
+import { getSessionAthletesFromMeetCache } from "@/lib/database/session-roster-cache";
 import { isNetworkAvailable } from "@/lib/networkUtils";
 
 // See attempt-estimator-route.test.tsx: charge the lazy getters to the file.
@@ -34,10 +32,12 @@ jest.mock("react-native-safe-area-context", () => ({
   useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }),
 }));
 jest.mock("@/components/ui/IconSymbol", () => ({ IconSymbol: () => null }));
-jest.mock("@/lib/database/offline-store", () => ({
+jest.mock("@/lib/database/session-roster-cache", () => ({
   getSessionAthletesFromMeetCache: jest.fn(async () => []),
-  getAllCachedLiftingResultsForAthletes: jest.fn(async () => ({})),
   saveSessionAthletes: jest.fn(async () => {}),
+}));
+jest.mock("@/lib/database/athlete-history-store", () => ({
+  getAllCachedLiftingResultsForAthletes: jest.fn(async () => ({})),
 }));
 jest.mock("@/lib/database/queries", () => ({
   fetchAthletesWithSession: jest.fn(),

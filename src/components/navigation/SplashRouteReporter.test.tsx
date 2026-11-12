@@ -29,12 +29,12 @@ function launch(location: string) {
   const timing = createStartupTiming({
     now: () => Date.now(),
     setTimer: (callback, ms) => setTimeout(callback, ms),
-    clearTimer: (handle) => clearTimeout(handle as ReturnType<typeof setTimeout>),
+    clearTimer: (handle) => clearTimeout(handle),
   });
   const gate = createSplashGate({
     timing,
     setTimer: (callback, ms) => setTimeout(callback, ms),
-    clearTimer: (handle) => clearTimeout(handle as ReturnType<typeof setTimeout>),
+    clearTimer: (handle) => clearTimeout(handle),
   });
   const hide = jest.fn(async () => undefined);
   const setRoute = jest.spyOn(gate, "setRoute");

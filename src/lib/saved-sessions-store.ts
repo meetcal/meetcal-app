@@ -1,3 +1,4 @@
+import { isRecord } from '@/lib/is-record';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { MeetName } from '@/data/types/meet';
 import { isAccountDeleted } from '@/lib/deleted-accounts';
@@ -33,8 +34,8 @@ export interface SavedSession {
  * the server then answered `[]`, the reconcile removed the key for good.
  */
 export function normalizeStoredSession(value: unknown): SavedSession | null {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
-  const row = value as Record<string, unknown>;
+  if (!isRecord(value)) return null;
+  const row = value;
   const text = (field: unknown): string => (typeof field === 'string' ? field : '');
 
   const sessionNumber =

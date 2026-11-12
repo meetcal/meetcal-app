@@ -13,15 +13,10 @@ import {
   scheduleNotification,
 } from "@/utils/notifications";
 import { setRemindersEnabled } from "@/lib/reminder-preference";
-import {
-  deleteSavedSession,
-  deleteSavedSessions,
-  fetchSavedSessions,
-  fetchUserPreferences,
-  MeetCalApiError,
-  putSavedSession,
-} from "@/lib/api/meetcal-api";
-import { getMeetData } from "@/lib/database/offline-store";
+import { deleteSavedSession, deleteSavedSessions, fetchSavedSessions, putSavedSession } from "@/lib/api/saved-sessions-api";
+import { fetchUserPreferences } from "@/lib/api/user-preferences-api";
+import { MeetCalApiError } from "@/lib/api/meetcal-api";
+import { getMeetData } from "@/lib/database/meet-data-reads";
 import { convertToUTC, getMeetConfig } from "@/data/meets/config";
 import { clearSavedWidget, syncSavedWidget } from "@/utils/savedWidget";
 import {
@@ -34,6 +29,7 @@ import {
 import { MAX_RECONCILE_FETCHES } from "@/lib/saved-sessions-load";
 import type { LiftResult } from "@/data/types/athletes";
 import type { Schedule } from "@/types/schedule";
+import { itemAt } from "@/test-support/checked-access";
 
 /**
  * Clerk state the harness renders with. `null` is the cold-start case: no
@@ -112,7 +108,7 @@ jest.mock("@/lib/database/queries", () => ({
   fetchSchedule: jest.fn(),
 }));
 
-jest.mock("@/lib/database/offline-store", () => ({
+jest.mock("@/lib/database/meet-data-reads", () => ({
   getMeetData: jest.fn(async () => ({ schedule: null })),
   getMeetSchedule: jest.fn(async () => []),
 }));
@@ -159,27 +155,27 @@ jest.mock("@/lib/api/meetcal-api", () => {
     }
   }
   class MeetCalApiTimeoutError extends Error {}
-  return {
-    MeetCalApiError,
-    MeetCalApiTimeoutError,
-    deleteSavedSession: jest.fn(async () => ({ deleted: true })),
-    deleteSavedSessions: jest.fn(async () => ({ deleted_count: 0 })),
-    fetchSavedSessions: jest.fn(async () => []),
-    fetchUserPreferences: jest.fn(async () => ({
-      auto_unsave_started_sessions: false,
-    })),
-    // The prune needs a fresh server clock sample; the server agrees with
-    // the device here.
-    refreshServerClock: async () => ({ skewMs: 0, sampledAt: Date.now() }),
-    // The reminders correct by the last sample: none yet here.
-    getServerClockSample: () => null,
-    MAX_PLAUSIBLE_CLOCK_SKEW_MS: 15 * 60 * 1000,
-    putSavedSession: jest.fn(async (_token: string, id: string) => ({
-      session_id: id,
-      updated_at: 1,
-    })),
-  };
+  return { MeetCalApiError, MeetCalApiTimeoutError };
 });
+jest.mock("@/lib/api/saved-sessions-api", () => ({
+  deleteSavedSession: jest.fn(async () => ({ deleted: true })),
+  deleteSavedSessions: jest.fn(async () => ({ deleted_count: 0 })),
+  fetchSavedSessions: jest.fn(async () => []),
+  putSavedSession: jest.fn(async (_token: string, id: string) => ({
+    session_id: id,
+    updated_at: 1,
+  })),
+}));
+jest.mock("@/lib/api/user-preferences-api", () => ({
+  fetchUserPreferences: jest.fn(async () => ({
+    auto_unsave_started_sessions: false,
+  })),
+}));
+jest.mock("@/lib/api/server-clock", () => ({
+  refreshServerClock: async () => ({ skewMs: 0, sampledAt: Date.now() }),
+  getServerClockSample: () => null,
+  MAX_PLAUSIBLE_CLOCK_SKEW_MS: 15 * 60 * 1000,
+}));
 
 const mockFetchSavedSessions = fetchSavedSessions as jest.MockedFunction<
   typeof fetchSavedSessions
@@ -913,9 +909,9 @@ describe("server reconcile with the pending-writes outbox", () => {
       await hook.current.saveSession(makeSession("Test-Meet-1-Red", { athleteNames: names }));
     });
 
-    const body = mockPutSavedSession.mock.calls[0][2];
+    const body = itemAt(mockPutSavedSession.mock.calls, 0)[2];
     expect(body.athlete_names).toHaveLength(MAX_SAVED_SESSION_ATHLETE_NAMES);
-    expect(hook.current.savedSessions[0].athleteNames).toHaveLength(MAX_SAVED_SESSION_ATHLETE_NAMES);
+    expect(itemAt(hook.current.savedSessions, 0).athleteNames).toHaveLength(MAX_SAVED_SESSION_ATHLETE_NAMES);
   });
 
   it("flags an expired session on 401 instead of only logging", async () => {
@@ -1411,7 +1407,7 @@ describe("session reminders follow the saved list", () => {
     await mountHook();
 
     expect(mockScheduleNotification).toHaveBeenCalledTimes(1);
-    expect(mockScheduleNotification.mock.calls[0][3]).toBe("Test-Meet-1-Red");
+    expect(itemAt(mockScheduleNotification.mock.calls, 0)[3]).toBe("Test-Meet-1-Red");
   });
 
   it("schedules the saved sessions' reminders when reminders are turned on", async () => {

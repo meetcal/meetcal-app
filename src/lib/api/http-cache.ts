@@ -34,9 +34,9 @@
  */
 export const HTTP_VALIDATOR_CACHE_LIMIT = 64;
 
-export type ValidatorEntry<T = unknown> = {
+export type ValidatorEntry = {
   etag: string;
-  value: T;
+  body: unknown;
   /**
    * When the request that stored this entry started (a counter, not a
    * clock). Tags are content hashes with no order, so of two overlapping

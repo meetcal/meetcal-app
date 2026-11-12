@@ -3,15 +3,16 @@ import { act, create, type ReactTestRenderer } from "react-test-renderer";
 
 import { showToast } from "@/components/ui/Toast";
 import type { LiftResult } from "@/data/types/athletes";
-import { getMeetData, saveMeetAthletes, saveMeetSchedule } from "@/lib/database/offline-store";
+import { getMeetData } from "@/lib/database/meet-data-reads";
+import { saveMeetAthletes, saveMeetSchedule } from "@/lib/database/meet-data-saves";
 import { fetchAthletesWithSession, fetchSchedule } from "@/lib/database/queries";
 import { isNetworkAvailable, subscribeToNetworkChanges } from "@/lib/networkUtils";
 import type { Schedule } from "@/types/schedule";
 import { FRESH_SNAPSHOT_TTL_MS, isSnapshotFresh, useStartListData } from "./useStartListData";
 
 jest.mock("@/components/ui/Toast", () => ({ showToast: jest.fn() }));
-jest.mock("@/lib/database/offline-store", () => ({
-  getMeetData: jest.fn(),
+jest.mock("@/lib/database/meet-data-reads", () => ({ getMeetData: jest.fn() }));
+jest.mock("@/lib/database/meet-data-saves", () => ({
   saveMeetAthletes: jest.fn(async () => {}),
   saveMeetSchedule: jest.fn(async () => {}),
 }));

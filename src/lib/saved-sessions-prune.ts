@@ -1,10 +1,7 @@
 import { convertToUTC, getMeetConfig } from '@/data/meets/config';
 import { MeetName } from '@/data/types/meet';
-import {
-  fetchUserPreferences,
-  refreshServerClock,
-  MAX_PLAUSIBLE_CLOCK_SKEW_MS,
-} from '@/lib/api/meetcal-api';
+import { fetchUserPreferences } from '@/lib/api/user-preferences-api';
+import { refreshServerClock, MAX_PLAUSIBLE_CLOCK_SKEW_MS } from '@/lib/api/server-clock';
 import { devLog } from '@/lib/logger';
 import { buildSessionScheduleLookup, withScheduleTimes } from '@/lib/saved-schedule-lookup';
 import { tokenBelongsTo } from '@/lib/saved-sessions-outbox';

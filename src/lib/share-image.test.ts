@@ -2,6 +2,7 @@ import * as Sharing from "expo-sharing";
 import { captureRef } from "react-native-view-shot";
 
 import { captureViewAsPng, shareImageFile } from "@/lib/share-image";
+import { itemAt } from "@/test-support/checked-access";
 
 jest.mock("expo-sharing", () => ({
   isAvailableAsync: jest.fn(),
@@ -38,7 +39,7 @@ describe("captureViewAsPng", () => {
     });
     // view-shot checks `"width" in options`; an explicit undefined key makes
     // it warn "bad options" on every capture.
-    const options = mockCaptureRef.mock.calls[0][1] as object;
+    const options = itemAt(mockCaptureRef.mock.calls, 0)[1] as object;
     expect("width" in options).toBe(false);
     expect("height" in options).toBe(false);
   });
@@ -52,7 +53,7 @@ describe("captureViewAsPng", () => {
       null,
       expect.objectContaining({ width: 850 }),
     );
-    expect("height" in (mockCaptureRef.mock.calls[0][1] as object)).toBe(false);
+    expect("height" in (itemAt(mockCaptureRef.mock.calls, 0)[1] as object)).toBe(false);
   });
 });
 

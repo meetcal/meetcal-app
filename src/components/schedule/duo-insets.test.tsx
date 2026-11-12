@@ -12,6 +12,7 @@ import { CalendarDestinationPickerModal } from "@/components/calendar/CalendarDe
 import type { SessionSortControlProps } from "@/components/schedule-details/sessionSort/types";
 import EventInfoScreen from "@/components/info/EventInfoScreen";
 import { UpdateNotification } from "@/components/schedule/UpdateNotification";
+import { itemAt } from "@/test-support/checked-access";
 
 void [Modal, Pressable, ScrollView, View];
 
@@ -62,10 +63,12 @@ function horizontalPadding(tree: ReactTestRenderer, testID: string) {
 }
 
 function pressTestID(tree: ReactTestRenderer, testID: string): void {
-  const node = tree.root.findAll(
+  const node = itemAt(tree.root.findAll(
     (n) => n.props?.testID === testID && typeof n.props.onPress === "function",
-  )[0];
-  act(() => node.props.onPress());
+  ), 0);
+  act(() => {
+    node.props.onPress();
+  });
 }
 
 function render(element: React.ReactElement): ReactTestRenderer {
@@ -77,7 +80,7 @@ function render(element: React.ReactElement): ReactTestRenderer {
 }
 
 function paddingOf(tree: ReactTestRenderer) {
-  const node = tree.root.findAll((n) => typeof n.type === "string")[0];
+  const node = itemAt(tree.root.findAll((n) => typeof n.type === "string"), 0);
   const style = StyleSheet.flatten(node.props.style) as {
     paddingLeft?: number;
     paddingRight?: number;
@@ -126,9 +129,9 @@ describe("iPhone Duo side band", () => {
         onSelect={jest.fn()}
       />,
     );
-    const overlay = tree.root.findAll(
+    const overlay = itemAt(tree.root.findAll(
       (n) => typeof n.type === "string" && n.props.style != null,
-    )[0];
+    ), 0);
     const style = StyleSheet.flatten(overlay.props.style) as {
       paddingLeft?: number;
       paddingRight?: number;
@@ -154,10 +157,12 @@ describe("iPhone Duo side band", () => {
         onLockedPress={jest.fn()}
       />,
     );
-    const button = tree.root.findAll(
+    const button = itemAt(tree.root.findAll(
       (n) => n.props?.accessibilityLabel === "Sort athletes" && typeof n.props.onPress === "function",
-    )[0];
-    act(() => button.props.onPress());
+    ), 0);
+    act(() => {
+      button.props.onPress();
+    });
     expect(horizontalPadding(tree, "session-sort-backdrop")).toEqual({ left: 20 + 84, right: 20 });
     act(() => tree.unmount());
   });

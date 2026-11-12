@@ -1,6 +1,6 @@
 import { IconSymbol } from '@/components/ui/IconSymbol';
 import { useSelectedMeet } from '@/contexts/SelectedMeetContext';
-import { getLastSyncTime } from '@/lib/database/offline-store';
+import { getLastSyncTime } from '@/lib/database/offline-store-index';
 import { isNetworkAvailable, subscribeToNetworkChanges } from '@/lib/networkUtils';
 import { offlineBannerText } from '@/utils/offlineBanner';
 import React, { useEffect, useState } from 'react';

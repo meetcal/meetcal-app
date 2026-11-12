@@ -116,7 +116,7 @@ function AllMeetResultsScreenContent() {
     const query = searchText.trim();
     if (query.length < MIN_SEARCH_QUERY_LENGTH) return;
     const timer = setTimeout(() => {
-      performSearch(query);
+      void performSearch(query);
     }, SEARCH_DEBOUNCE_MS);
 
     return () => clearTimeout(timer);

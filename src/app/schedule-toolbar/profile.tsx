@@ -21,7 +21,7 @@ import {
 import { clearAuthCache } from "@/lib/authCache";
 import { clearCachedMeetData, clearCacheToast } from "@/lib/database/clear-cache";
 import { resolvePremiumAccess } from "@/lib/premium-access";
-import { useAuthGuard } from "@/utils/authGuard";
+import { useAuthGuard } from "@/hooks/useAuthGuard";
 import { openWebLink } from "@/utils/openWebLink";
 import { SUBMIT_MEET_ROUTE } from "@/lib/meet-submission";
 import {
