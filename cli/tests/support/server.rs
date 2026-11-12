@@ -1,20 +1,11 @@
-//! A local HTTP server that answers each request with the next scripted Convex answer, shared by
-//! the integration tests that call the real HTTP client; nothing here calls the live API.
-#![allow(dead_code)]
-
 use std::io::{BufRead, BufReader, Read, Write};
 use std::net::TcpListener;
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Duration;
 
-use serde_json::Value;
-
-pub(crate) const RATE_LIMITED: &str = "429 Too Many Requests";
-pub(crate) const UNAVAILABLE: &str = "503 Service Unavailable";
 pub(crate) const OK: &str = "200 OK";
 pub(crate) const NOT_FOUND: &str = "404 Not Found";
-pub(crate) const FUNCTION_FAILED: &str = "560 Function Failed";
 pub(crate) const DROPPED: &str = "dropped";
 
 pub(crate) struct Reply {
@@ -35,13 +26,6 @@ pub(crate) fn reply(
     }
 }
 
-/// A server that answers each Convex call (a `POST /api/…`) with the next scripted reply, then
-/// with 500s. Returns its base URL and the Convex calls (head and body) it has received.
-///
-/// A port probe (`is_probe`) is answered 404 and neither recorded nor given a scripted reply:
-/// tools on a developer's machine probe new local ports (`GET /`, or a connection that sends
-/// nothing), and counting those made the tests fail at random. A connection that sends nothing
-/// is dropped after `PROBE_READ_TIMEOUT`, so it cannot hold up the requests behind it.
 pub(crate) fn serve(replies: Vec<Reply>) -> (String, Arc<Mutex<Vec<String>>>) {
     let listener = TcpListener::bind("127.0.0.1:0").expect("bind local test server");
     let base_url = format!("http://{}", listener.local_addr().unwrap());
@@ -102,53 +86,9 @@ pub(crate) fn serve(replies: Vec<Reply>) -> (String, Arc<Mutex<Vec<String>>>) {
     (base_url, requests)
 }
 
-/// How long the server waits for a connection's request before treating it as a probe.
 const PROBE_READ_TIMEOUT: Duration = Duration::from_secs(5);
 
-/// Whether a connection is a port probe rather than a request from the CLI: it sent no request
-/// line, or asked for `GET /`. Anything else, a wrong method or path included, is recorded and
-/// answered from the script, so the tests still catch the CLI calling the wrong endpoint.
 fn is_probe(head: &str) -> bool {
     let line = head.lines().next().unwrap_or_default();
     line.trim().is_empty() || line.starts_with("GET / ")
-}
-
-/// The JSON body of each request the test server received.
-pub(crate) fn request_bodies(requests: &Mutex<Vec<String>>) -> Vec<Value> {
-    requests
-        .lock()
-        .unwrap()
-        .iter()
-        .map(|request| {
-            serde_json::from_str(&request[request.find("\r\n\r\n").unwrap() + 4..]).unwrap()
-        })
-        .collect()
-}
-
-/// The request line's path (`/api/query`) of each request the test server received.
-pub(crate) fn request_paths(requests: &Mutex<Vec<String>>) -> Vec<String> {
-    requests
-        .lock()
-        .unwrap()
-        .iter()
-        .map(|request| request.split(' ').nth(1).unwrap_or_default().to_string())
-        .collect()
-}
-
-/// The `Authorization` header of each request the test server received, if it had one.
-pub(crate) fn authorizations(requests: &Mutex<Vec<String>>) -> Vec<Option<String>> {
-    requests
-        .lock()
-        .unwrap()
-        .iter()
-        .map(|request| {
-            request[..request.find("\r\n\r\n").unwrap()]
-                .lines()
-                .find_map(|line| {
-                    let (name, value) = line.split_once(':')?;
-                    name.eq_ignore_ascii_case("authorization")
-                        .then(|| value.trim().to_string())
-                })
-        })
-        .collect()
 }

@@ -1,5 +1,9 @@
 #![cfg(test)]
-mod support;
+mod support {
+    pub(crate) mod bodies;
+    pub(crate) mod headers;
+    pub(crate) mod server;
+}
 
 use std::path::PathBuf;
 
@@ -10,7 +14,9 @@ use meetcal::types::wrapped::WrappedAnswer;
 use meetcal::utils::access::Access;
 use meetcal::utils::credentials::{self, Credentials};
 use serde_json::json;
-use support::{OK, authorizations, reply, request_bodies, request_paths, serve};
+use support::bodies::request_bodies;
+use support::headers::{authorizations, request_paths};
+use support::server::{OK, reply, serve};
 
 #[test]
 fn parses_wrapped_with_default_year() {
