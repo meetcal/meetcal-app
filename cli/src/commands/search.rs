@@ -63,7 +63,7 @@ pub async fn run(args: SearchArgs) -> Result<()> {
         prs.total_best.to_string(),
     ]);
 
-    let (by_attempt, by_lift) = make_rate_tables(&results);
+    let (by_attempt, by_lift) = make_rate_tables(&results.iter().collect::<Vec<_>>());
     output::emit(
         Report::new()
             .table("results", meets_table)
