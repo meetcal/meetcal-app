@@ -208,6 +208,7 @@ pub(crate) fn attempt(value: f64) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::utils::api::{queries, wire, wire_fixture};
 
     fn holder(date: Option<&str>, location: Option<&str>) -> RecordHolder {
         RecordHolder {
@@ -293,5 +294,57 @@ mod tests {
             serde_json::to_value(dated).unwrap(),
             serde_json::json!({"query": "Test", "startDate": "2026-01-01", "endDate": "2026-12-31"})
         );
+    }
+
+    #[test]
+    fn the_meet_lists_read_the_servers_answers() {
+        for (query, fixture) in [
+            (queries::UPCOMING_MEETS, wire_fixture!("meets.list")),
+            (queries::COMPLETED_MEETS, wire_fixture!("meets.completed")),
+        ] {
+            let meets: Vec<Vec<Meet>> = wire::read(query, fixture);
+            assert!(meets.iter().flatten().all(|meet| !meet.name.is_empty()));
+        }
+        let upcoming: Vec<Vec<Meet>> =
+            wire::read(queries::UPCOMING_MEETS, wire_fixture!("meets.list"));
+        let maps: Vec<_> = upcoming
+            .iter()
+            .flatten()
+            .map(|meet| meet.venue_map_pdf_url.is_some())
+            .collect();
+        assert_eq!(maps, [false, true]);
+    }
+
+    #[test]
+    fn a_meets_schedule_roster_and_results_read_the_servers_answers() {
+        let schedule: Vec<Vec<ScheduleRow>> =
+            wire::read(queries::MEET_SCHEDULE, wire_fixture!("meets.schedule"));
+        assert_eq!(schedule.concat().len(), 2);
+        let athletes: Vec<Vec<Athlete>> =
+            wire::read(queries::MEET_ATHLETES, wire_fixture!("meets.athletes"));
+        let seated: Vec<_> = athletes
+            .concat()
+            .iter()
+            .map(|athlete| (athlete.wso.is_some(), athlete.session_number))
+            .collect();
+        assert_eq!(
+            seated,
+            [(true, Some(1.0)), (false, Some(2.0)), (false, None)]
+        );
+        let results: Vec<Vec<LiftingResult>> =
+            wire::read(queries::MEET_RESULTS, wire_fixture!("results.byMeet"));
+        let totals: Vec<_> = results.concat().iter().map(|row| row.total).collect();
+        assert_eq!(totals, [184.0, 200.0, 0.0]);
+    }
+
+    #[test]
+    fn a_search_reads_the_servers_answers() {
+        let answers: Vec<AthleteSearchResponse> =
+            wire::read(queries::SEARCH, wire_fixture!("results.search"));
+        let shapes: Vec<_> = answers
+            .iter()
+            .map(|answer| (answer.matched_name.is_some(), answer.results.len()))
+            .collect();
+        assert_eq!(shapes, [(true, 1), (false, 2), (false, 0)]);
     }
 }

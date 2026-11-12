@@ -164,6 +164,19 @@ pub fn Records() -> impl IntoView {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::utils::api::{queries, wire, wire_fixture};
+
+    #[test]
+    fn records_read_the_servers_answer() {
+        let answers: Vec<Vec<Record>> =
+            wire::read(queries::RECORDS, wire_fixture!("reference.records"));
+        let holders: Vec<_> = answers
+            .iter()
+            .flatten()
+            .map(|record| (record.snatch_by.is_some(), record.total_record))
+            .collect();
+        assert_eq!(holders, [(true, Some(250.0)), (false, Some(260.0))]);
+    }
 
     #[test]
     fn record_deserializes_from_the_api_shape() {

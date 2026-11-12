@@ -312,6 +312,21 @@ fn NationalRankingsTable(rankings: Vec<NationalRanking>) -> impl IntoView {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::utils::api::{queries, wire, wire_fixture};
+
+    #[test]
+    fn national_rankings_read_the_servers_answers() {
+        let all_time: Vec<Vec<NationalRanking>> = wire::read(
+            queries::NATIONAL_RANKINGS,
+            wire_fixture!("reference.nationalRankings"),
+        );
+        assert!(all_time.iter().flatten().all(|row| row.date.is_none()));
+        let by_year: Vec<Vec<NationalRanking>> = wire::read(
+            queries::NATIONAL_RANKINGS_BY_YEAR,
+            wire_fixture!("reference.nationalRankingsByYear"),
+        );
+        assert!(by_year.iter().flatten().all(|row| row.date.is_some()));
+    }
 
     #[test]
     fn a_year_is_four_digits_or_blank_as_the_server_requires() {

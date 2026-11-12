@@ -212,6 +212,34 @@ mod tests {
 
     use super::*;
     use crate::utils::api::read_body;
+    use crate::utils::api::{wire, wire_fixture};
+
+    #[test]
+    fn every_kind_of_wrapped_answer_reads_the_servers_answer() {
+        let answers: Vec<WrappedAnswer> =
+            wire::read(queries::WRAPPED, wire_fixture!("results.wrapped"));
+        let kinds: Vec<_> = answers
+            .iter()
+            .map(|answer| match answer {
+                WrappedAnswer::Athlete { .. } => "athlete",
+                WrappedAnswer::Ambiguous { .. } => "ambiguous",
+                WrappedAnswer::Narrow => "narrow",
+                WrappedAnswer::TooManyResults { .. } => "tooManyResults",
+                WrappedAnswer::NoResults { .. } => "none",
+            })
+            .collect();
+        assert_eq!(
+            kinds,
+            [
+                "athlete",
+                "ambiguous",
+                "athlete",
+                "none",
+                "tooManyResults",
+                "narrow"
+            ]
+        );
+    }
     use serde_json::json;
 
     /// `value` read as Convex's HTTP API answer would be, floats and all.

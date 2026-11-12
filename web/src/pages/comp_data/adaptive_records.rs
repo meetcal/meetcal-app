@@ -118,6 +118,17 @@ pub fn AdaptiveRecords() -> impl IntoView {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::utils::api::{queries, wire, wire_fixture};
+
+    #[test]
+    fn adaptive_records_read_the_servers_answer() {
+        let answers: Vec<Vec<AdaptiveRecord>> = wire::read(
+            queries::ADAPTIVE_RECORDS,
+            wire_fixture!("reference.adaptiveRecords"),
+        );
+        let totals: Vec<_> = answers.iter().flatten().map(|row| row.total).collect();
+        assert_eq!(totals, [200.0]);
+    }
 
     #[test]
     fn adaptive_query_matches_the_backend_contract() {

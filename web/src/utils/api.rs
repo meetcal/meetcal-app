@@ -484,7 +484,11 @@ where
     } else {
         post_within(Endpoint::Action, function, &args, None, action.timeout).await?
     };
-    serde_json::from_value(whole_numbers_as_integers(answer_value(response)?))
+    read_action_body(function, answer_value(response)?)
+}
+
+pub(crate) fn read_action_body<T: DeserializeOwned>(function: &str, value: Value) -> Result<T> {
+    serde_json::from_value(whole_numbers_as_integers(value))
         .map_err(|error| user_error(function, UNREADABLE_MESSAGE, error))
 }
 
@@ -1251,12 +1255,142 @@ fn read_submitted(response: QueryResponse) -> Result<()> {
 }
 
 #[cfg(test)]
+macro_rules! wire_fixture {
+    ($name:literal) => {
+        include_str!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../fixtures/wire/",
+            $name,
+            ".json"
+        ))
+    };
+}
+
+#[cfg(test)]
+pub(crate) use wire_fixture;
+
+#[cfg(test)]
+pub(crate) mod wire {
+    use super::{Body, Query, QueryResponse, read_body};
+    use serde::{Deserialize, de::DeserializeOwned};
+    use serde_json::{Value, json};
+
+    #[derive(Deserialize)]
+    struct Fixture {
+        function: String,
+        encoding: String,
+        answers: Vec<Answer>,
+    }
+
+    #[derive(Deserialize)]
+    struct Answer {
+        body: Value,
+    }
+
+    fn as_convex_sends(value: Value) -> Value {
+        match value {
+            Value::Number(number) => number
+                .as_f64()
+                .filter(|_| !number.is_f64())
+                .map_or(Value::Number(number), Value::from),
+            Value::Array(items) => items.into_iter().map(as_convex_sends).collect(),
+            Value::Object(fields) => fields
+                .into_iter()
+                .map(|(key, field)| (key, as_convex_sends(field)))
+                .collect(),
+            other @ (Value::Null | Value::Bool(_) | Value::String(_)) => other,
+        }
+    }
+
+    pub(crate) fn answers(function: &str, body: Body, fixture: &str) -> Vec<Value> {
+        let fixture: Fixture = serde_json::from_str(fixture).unwrap();
+        assert_eq!(fixture.function, function);
+        let encoding = match body {
+            Body::Value => "value",
+            Body::JsonText => "jsonText",
+        };
+        assert_eq!(fixture.encoding, encoding, "{function}");
+        fixture
+            .answers
+            .into_iter()
+            .map(|answer| match body {
+                Body::Value => as_convex_sends(answer.body),
+                Body::JsonText => json!({
+                    "etag": "\"wire-fixture\"",
+                    "json": answer.body.to_string(),
+                }),
+            })
+            .collect()
+    }
+
+    pub(crate) fn read<T: DeserializeOwned>(query: Query, fixture: &str) -> Vec<T> {
+        answers(query.function, query.body, fixture)
+            .into_iter()
+            .map(|value| read_body(query, value).unwrap())
+            .collect()
+    }
+
+    pub(super) fn responses(function: &str, fixture: &str) -> Vec<QueryResponse> {
+        answers(function, Body::Value, fixture)
+            .into_iter()
+            .map(|value| QueryResponse::Success { value })
+            .collect()
+    }
+}
+
+#[cfg(test)]
 mod tests {
     use super::*;
     use serde_json::json;
 
     fn answer(value: Value) -> QueryResponse {
         serde_json::from_value(value).unwrap()
+    }
+
+    #[test]
+    fn the_name_lists_read_the_servers_answers() {
+        for (query, fixture) in [
+            (queries::WSO_LIST, wire_fixture!("reference.wsoList")),
+            (
+                queries::REGISTRATION_WSOS,
+                wire_fixture!("reference.registrationWsos"),
+            ),
+            (queries::CLUBS, wire_fixture!("reference.clubs")),
+        ] {
+            for names in wire::read::<Vec<String>>(query, fixture) {
+                assert!(!names.is_empty(), "{}", query.function);
+            }
+        }
+    }
+
+    #[test]
+    fn the_pass_and_the_entitlement_read_the_servers_answers() {
+        for response in wire::responses(ACCESS_PASS, wire_fixture!("accessPass.pass")) {
+            assert!(matches!(
+                read_pass_answer(response).unwrap(),
+                PassAnswer::Granted(pass) if pass.pass == "fixture-pass"
+            ));
+        }
+        for response in wire::responses(REFRESH_ENTITLEMENT, wire_fixture!("entitlements.refresh"))
+        {
+            assert!(read_entitlement(response).unwrap());
+        }
+    }
+
+    #[test]
+    fn a_meet_submission_reads_the_servers_answers() {
+        for response in wire::responses(
+            MEET_SUBMISSION_UPLOAD_URL,
+            wire_fixture!("meetSubmissions.generateUploadUrl"),
+        ) {
+            assert!(read_upload_url(response).unwrap().starts_with("https://"));
+        }
+        for response in wire::responses(
+            MEET_SUBMISSION_SUBMIT,
+            wire_fixture!("meetSubmissions.submit"),
+        ) {
+            read_submitted(response).unwrap();
+        }
     }
 
     #[test]

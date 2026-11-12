@@ -239,6 +239,25 @@ fn athlete_cells(row: &AthleteResult) -> [String; ATHLETE_COLUMNS] {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::utils::api::{queries, wire, wire_fixture};
+
+    #[test]
+    fn a_clubs_meets_and_stats_read_the_servers_answers() {
+        let meets: Vec<ClubMeets> =
+            wire::read(queries::CLUB_MEETS, wire_fixture!("reference.clubMeets"));
+        let results: Vec<_> = meets
+            .iter()
+            .flat_map(|answer| answer.meets.iter().map(|meet| meet.has_results))
+            .collect();
+        assert_eq!(results, [false, true]);
+        let stats: Vec<MeetStats> = wire::read(
+            queries::CLUB_MEET_STATS,
+            wire_fixture!("reference.clubMeetStats"),
+        );
+        let athletes: Vec<_> = stats.iter().map(|stats| stats.total_athletes).collect();
+        assert_eq!(athletes, [3]);
+    }
+
     #[test]
     fn stats_payload_deserializes() {
         let stats: MeetStats = serde_json::from_str(r#"{"total_athletes":1,"gold_medals":1,"silver_medals":0,"bronze_medals":0,"total_prs":1,"perfect_6_for_6":1,"total_weight_lifted":225.0,"snatch_make_rate":100,"cj_make_rate":100,"combined_make_rate":100,"athlete_results":[]}"#).unwrap();
