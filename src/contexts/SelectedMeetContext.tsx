@@ -11,12 +11,18 @@ import { getCachedMeets } from '@/lib/database/meets-list-cache';
 import { awaitServerClock, getTrustedNow } from '@/lib/api/server-clock';
 import { fetchApiMeetByName } from '@/lib/api/meets-api';
 import { startupTiming } from '@/lib/startup-timing';
-import { chooseLaunchMeet, isMeetCompleted } from '@/lib/launch-meet';
+import {
+  decideAfterActiveMeetLookup,
+  decideAfterFreshList,
+  decideAfterStoredMeetLookup,
+  decideFromCachedList,
+  refreshedMeetDetails,
+  type LaunchDecision,
+} from '@/lib/launch-meet';
 import { subscribeToNetworkChanges } from '@/lib/networkUtils';
 import {
   RECONNECT_REFETCH_JITTER_MAX_MS,
   reconnectRefetchDelayMs,
-  stableSerialize,
 } from '@/lib/data/mutable-resource';
 import { reindexAppEntities } from '@/utils/appIntents';
 import { devLog } from '@/lib/logger';
@@ -76,22 +82,6 @@ async function lookUpMeetForLaunch(name: string): Promise<Meet | null> {
   return meet;
 }
 
-/**
- * The fresh `/meets` copy of the meet `current` describes, when it differs
- * from `current`; null when there is nothing to update (no meet, the meet is
- * not in the list, or nothing changed). Compared key-order independently, so
- * a list that only re-serialized differently does not count as a change.
- */
-export function refreshedMeetDetails(
-  current: Meet | null,
-  freshMeets: readonly Meet[],
-): Meet | null {
-  if (!current) return null;
-  const fresh = freshMeets.find((meet) => meet.name === current.name);
-  if (!fresh || stableSerialize(fresh) === stableSerialize(current)) return null;
-  return fresh;
-}
-
 const SelectedMeetContext = createContext<SelectedMeetContextType | undefined>(undefined);
 
 export function SelectedMeetProvider({ children }: { children: React.ReactNode }) {
@@ -107,16 +97,6 @@ export function SelectedMeetProvider({ children }: { children: React.ReactNode }
     timer: ReturnType<typeof setTimeout> | null;
     inFlight: boolean;
   }>({ timer: null, inFlight: false });
-  // `loadMeets` is a ~150-line async sequence with a dozen commit points, and
-  // three things start it: the mount/identity effect, a 5-minute interval, and
-  // the network-reconnect handler. Nothing serialised them, so two runs could
-  // interleave their `setSelectedMeetState` / `setAvailableMeets` /
-  // `initializeMeetData` / AsyncStorage writes and the loser's *older*
-  // decisions landed last. Every run takes a token; only the newest token is
-  // allowed to commit, and any run whose token has been superseded bails at
-  // its next checkpoint. `setSelectedMeet` bumps the token too, so an explicit
-  // user selection can never be stomped by a background refresh that was
-  // already in flight.
   const loadRunRef = useRef(0);
   const isMountedRef = useRef(true);
   useEffect(() => {
@@ -125,11 +105,6 @@ export function SelectedMeetProvider({ children }: { children: React.ReactNode }
       isMountedRef.current = false;
     };
   }, []);
-  // Mirror of meetDetails so loadMeets can read the latest value without
-  // taking it as a dependency. Note this does NOT keep `loadMeets` stable:
-  // it still closes over `selectedMeet` (directly and via `chooseMeet`), so
-  // selecting a meet rebuilds the 5-minute refresh interval below and runs one
-  // extra `loadMeets()`. That extra run is the refresh, so nothing goes stale.
   const meetDetailsRef = useRef<Meet | null>(null);
   useEffect(() => {
     meetDetailsRef.current = meetDetails;
@@ -264,266 +239,157 @@ export function SelectedMeetProvider({ children }: { children: React.ReactNode }
     beginMeetWarmup(meet, 'initializing meet data', true);
   }, [activateMeet, beginMeetWarmup]);
 
-  // Load available meets. A selection made this session stays, even once its
-  // meet is over; opening the app skips an ended meet (`chooseLaunchMeet`).
-  const chooseMeet = useCallback(
-    (meets: Meet[], stored: string | null) => {
-      if (selectedMeet) {
-        return meets.find((meet) => meet.name === selectedMeet) ?? null;
+  const applyLaunchDecision = useCallback(
+    async (decision: LaunchDecision, isStale: () => boolean): Promise<boolean> => {
+      if (decision.clearStored) {
+        await AsyncStorage.multiRemove([SELECTED_MEET_KEY, SELECTED_MEET_DETAILS_KEY]);
+        if (isStale()) return false;
       }
-      return chooseLaunchMeet(meets, stored, launchNow());
+      if (decision.select) {
+        await initializeMeetData(decision.select.name, decision.select);
+        if (isStale()) return false;
+      }
+      if (decision.persistDetails) {
+        await AsyncStorage.setItem(SELECTED_MEET_DETAILS_KEY, JSON.stringify(decision.persistDetails));
+        if (isStale()) return false;
+      }
+      return true;
     },
-    [selectedMeet],
+    [initializeMeetData],
   );
 
   const loadMeets = useCallback(async () => {
-      const runId = ++loadRunRef.current;
-      // True once a newer run has started (or the provider unmounted). Checked
-      // after every await, before anything is committed.
-      const isStale = () => !isMountedRef.current || loadRunRef.current !== runId;
-      // The expiry sweep runs once the meets list refresh below has settled,
-      // so it reads current end dates: a meet postponed while the app was
-      // closed was otherwise expired on its old date before the new one
-      // arrived. Offline, the request fails at once and the sweep uses the
-      // cached list. Unawaited, once per run.
-      let swept = false;
-      const sweepExpired = () => {
-        if (swept) return;
-        swept = true;
-        // The sweep skips without a server clock sample, and the request
-        // that starts one no longer waits for it: give it a moment first.
-        void awaitServerClock()
-          .then(() => clearExpiredDownloadedMeets())
-          .catch((error) => {
-            console.error('Error clearing expired downloaded meets:', error);
-          });
-      };
-      // The provider's first run, before anything is selected: the launch.
-      const isLaunchRun = runId === 1 && !selectedMeet;
-
-      try {
-
-        const [cachedMeets, stored, storedDetailsRaw] = await Promise.all([
-          getCachedMeets(),
-          // On a launch, the stored meet's schedule is read alongside the
-          // meets list instead of after the Schedule tab mounts, so the tab's
-          // first cache read finds it ready (`primeScheduleCache`). Usually
-          // the stored meet is the one the app opens on; when it is not (it
-          // ended), the read is wasted and expires.
-          AsyncStorage.getItem(SELECTED_MEET_KEY).then((name) => {
-            if (isLaunchRun && name) primeScheduleCache(name);
-            return name;
-          }),
-          AsyncStorage.getItem(SELECTED_MEET_DETAILS_KEY),
-        ]);
-        if (isStale()) return;
-
-        let activeMeet = selectedMeet;
-        let initializedFromCache = false;
-        let outOfWindowResolved = false;
-
-        // A stored meet missing from the upcoming window may still be valid
-        // (selected via dev tools or a deep link). It must be resolved by name
-        // before chooseMeet can fall back to the first available meet.
-        const pendingOutOfWindow =
-          !activeMeet && !!stored && !cachedMeets.find(m => m.name === stored);
-        if (isLaunchRun) {
-          startupTiming.setFlags({
-            meetsCacheHit: cachedMeets.length > 0,
-            neededMeetLookup: pendingOutOfWindow,
-          });
-        }
-
-        // Paint the cached upcoming meets immediately for a fast first paint.
-        // When an out-of-window meet is pending resolution, hold off on the
-        // fallback choice so we don't stomp the user's stored selection —
-        // resolution happens below and swaps the real meet in.
-        if (cachedMeets.length > 0) {
-          setAvailableMeets(cachedMeets);
-          if (!pendingOutOfWindow) {
-            const cachedChoice = chooseMeet(cachedMeets, stored);
-            if (cachedChoice) {
-              activeMeet = cachedChoice.name;
-            }
-            if (cachedChoice && !selectedMeet) {
-              await initializeMeetData(cachedChoice.name, cachedChoice);
-              if (isStale()) return;
-              initializedFromCache = true;
-            }
-          }
-          // With the stored meet still to be looked up by name, the list is
-          // shown but no meet is chosen yet: not "no meet", and not a meet
-          // painted from the cache.
-          if (pendingOutOfWindow) setIsResolvingStoredMeet(true);
-          setIsLoading(false);
-          if (isLaunchRun && !pendingOutOfWindow) startupTiming.mark('meetsPaintedFromCache');
-        }
-
-        // Resolve the stored out-of-window meet by name AFTER the cache paint,
-        // so the by-name lookup's timeout never blocks first paint.
-        if (pendingOutOfWindow && stored) {
-          let resolved: Meet | null = null;
-          let lookupFailed = false;
-          try {
-            resolved = await lookUpMeetForLaunch(stored);
-          } catch {
-            // Offline or lookup failure: rehydrate from the persisted details
-            // so the user's out-of-window selection isn't silently dropped.
-            lookupFailed = true;
-            resolved = parseStoredMeetNamed(storedDetailsRaw, stored);
-          }
-          if (isStale()) return;
-          // A stored meet that has left the list is usually one that ended
-          // since the app last ran; that one does not open the app. Offline,
-          // the persisted copy is read on the device clock, so it is passed
-          // over only for a cached meet that is not over, and kept on disk.
-          const now = launchNow();
-          const completed =
-            resolved !== null &&
-            isMeetCompleted(resolved, now) &&
-            (!lookupFailed || cachedMeets.some((meet) => !isMeetCompleted(meet, now)));
-
-          if (resolved && !completed) {
-            await initializeMeetData(resolved.name, resolved);
-            if (isStale()) return;
-            activeMeet = resolved.name;
-            outOfWindowResolved = true;
-            // Keep the persisted copy fresh for the next offline cold start.
-            await AsyncStorage.setItem(
-              SELECTED_MEET_DETAILS_KEY,
-              JSON.stringify(resolved),
-            );
-            if (isStale()) return;
-          } else {
-            // Neither the window cache nor persisted details have the meet,
-            // or the meet is over.
-            if (!lookupFailed) {
-              // Online lookup confirmed the stored meet no longer exists, or
-              // that it has ended — clean up the stale keys before falling back.
-              await AsyncStorage.multiRemove([
-                SELECTED_MEET_KEY,
-                SELECTED_MEET_DETAILS_KEY,
-              ]);
-              if (isStale()) return;
-            }
-            const fallback = chooseMeet(cachedMeets, lookupFailed ? stored : null);
-            if (fallback) {
-              activeMeet = fallback.name;
-              if (!selectedMeet) {
-                await initializeMeetData(fallback.name, fallback);
-                if (isStale()) return;
-                initializedFromCache = true;
-              }
-            }
-          }
-          setIsResolvingStoredMeet(false);
-        }
-
-        let freshMeets: Meet[];
-        try {
-          freshMeets = await fetchMeetsFresh();
-        } finally {
-          sweepExpired();
-        }
-        if (isStale()) return;
-        setAvailableMeets((current) => {
-          const currentSerialized = JSON.stringify(current);
-          const nextSerialized = JSON.stringify(freshMeets);
-          return currentSerialized === nextSerialized ? current : freshMeets;
+    const runId = ++loadRunRef.current;
+    const isStale = () => !isMountedRef.current || loadRunRef.current !== runId;
+    let swept = false;
+    const sweepExpiredOnce = () => {
+      if (swept) return;
+      swept = true;
+      void awaitServerClock()
+        .then(() => clearExpiredDownloadedMeets())
+        .catch((error) => {
+          console.error('Error clearing expired downloaded meets:', error);
         });
+    };
+    const isLaunchRun = runId === 1 && !selectedMeet;
 
-        if (freshMeets.length === 0) {
-          devLog('No meets available');
-          setIsLoading(false);
-          return;
-        }
+    try {
+      const [cachedMeets, stored, storedDetailsRaw] = await Promise.all([
+        getCachedMeets(),
+        AsyncStorage.getItem(SELECTED_MEET_KEY).then((name) => {
+          if (isLaunchRun && name) primeScheduleCache(name);
+          return name;
+        }),
+        AsyncStorage.getItem(SELECTED_MEET_DETAILS_KEY),
+      ]);
+      if (isStale()) return;
 
-        if (activeMeet && !freshMeets.find(m => m.name === activeMeet)) {
-          if (outOfWindowResolved) {
-            // Already validated by name above — keep it.
-            return;
-          }
-          // When the out-of-window meet is already the active selection with
-          // its details loaded, it was resolved on a prior run. Skip the
-          // by-name refetch + re-initialization so we don't churn a new
-          // SyncManager and re-warm every 5 minutes / on every reconnect.
-          if (activeMeet === selectedMeet && meetDetailsRef.current?.name === activeMeet) {
-            return;
-          }
-          // Not in the upcoming window, but it may still be a valid meet
-          // (selected via dev tools or a deep link) — only revert when the
-          // meet can't be resolved by name at all.
-          let outOfWindowMeet: Meet | null = null;
-          try {
-            outOfWindowMeet = await lookUpMeetForLaunch(activeMeet);
-          } catch {
-            // Network hiccup: keep the current selection rather than
-            // discarding the user's meet on a failed lookup.
-            return;
-          }
-          if (isStale()) return;
-          // Picked this run from the cached list, which still had it: the
-          // meet has ended since, so the app opens on the next one instead.
-          // A meet selected this session (`selectedMeet`) is kept.
-          if (outOfWindowMeet && !selectedMeet && isMeetCompleted(outOfWindowMeet, launchNow())) {
-            outOfWindowMeet = null;
-          }
-          if (outOfWindowMeet) {
-            await initializeMeetData(outOfWindowMeet.name, outOfWindowMeet);
-            if (isStale()) return;
-            // Persist so an offline cold start can rehydrate this selection.
-            await AsyncStorage.setItem(
-              SELECTED_MEET_DETAILS_KEY,
-              JSON.stringify(outOfWindowMeet),
-            );
-            return;
-          }
-          devLog('Selected meet no longer available, switching to first available meet');
-          await AsyncStorage.multiRemove([SELECTED_MEET_KEY, SELECTED_MEET_DETAILS_KEY]);
-          if (isStale()) return;
-          const next = chooseLaunchMeet(freshMeets, null, launchNow()) ?? freshMeets[0];
-          await initializeMeetData(next.name, next);
-          return;
-        }
-
-        if (activeMeet) {
-          // The selected meet's details were painted from the cached list,
-          // and nothing below replaced them while it stayed in the list: a
-          // corrected time zone, new dates, venue or venue map did not reach
-          // any tab until a cold start, which iOS can hold off for days
-          // during a meet. Only the details change; the SyncManager and the
-          // warm-up are keyed on the meet name and keep running.
-          const fresh = freshMeets.find((meet) => meet.name === activeMeet) ?? null;
-          setMeetDetails((current) => refreshedMeetDetails(current, freshMeets) ?? current);
-          // Persisted details exist only for a meet that was selected from
-          // outside the window; keep that copy current too.
-          const persisted = fresh ? parseStoredMeetNamed(storedDetailsRaw, fresh.name) : null;
-          if (fresh && persisted && refreshedMeetDetails(persisted, [fresh])) {
-            await AsyncStorage.setItem(SELECTED_MEET_DETAILS_KEY, JSON.stringify(fresh));
-            if (isStale()) return;
-          }
-        }
-
-        if (!initializedFromCache && !activeMeet) {
-          const freshChoice = chooseMeet(freshMeets, stored);
-          if (freshChoice) {
-            await initializeMeetData(freshChoice.name, freshChoice);
-          }
-        }
-      } catch (error) {
-        // Failed before the list request: the sweep still runs, on the
-        // cached list.
-        sweepExpired();
-        console.error('Error loading available meets:', error);
-      } finally {
-        // A superseded run must not clear the spinner out from under the run
-        // that replaced it — that one owns `isLoading` now.
-        if (!isStale()) {
-          setIsLoading(false);
-          setIsResolvingStoredMeet(false);
-        }
+      const fromCache = decideFromCachedList({ cachedMeets, stored, selectedMeet, now: launchNow() });
+      let activeMeet = fromCache.activeMeet;
+      let choseFromCache = fromCache.select !== null;
+      let keepsStoredMeet = false;
+      if (isLaunchRun) {
+        startupTiming.setFlags({
+          meetsCacheHit: fromCache.paintCachedList,
+          neededMeetLookup: fromCache.lookUpStoredMeet,
+        });
       }
-  }, [chooseMeet, initializeMeetData, selectedMeet]);
+      if (fromCache.paintCachedList) {
+        setAvailableMeets(cachedMeets);
+        if (!(await applyLaunchDecision(fromCache, isStale))) return;
+        if (fromCache.resolving) setIsResolvingStoredMeet(true);
+        setIsLoading(false);
+        if (isLaunchRun && !fromCache.lookUpStoredMeet) startupTiming.mark('meetsPaintedFromCache');
+      }
+
+      if (fromCache.lookUpStoredMeet && stored) {
+        let found: Meet | null = null;
+        let lookupFailed = false;
+        try {
+          found = await lookUpMeetForLaunch(stored);
+        } catch {
+          lookupFailed = true;
+          found = parseStoredMeetNamed(storedDetailsRaw, stored);
+        }
+        if (isStale()) return;
+        const afterLookup = decideAfterStoredMeetLookup({
+          stored,
+          found,
+          lookupFailed,
+          cachedMeets,
+          now: launchNow(),
+        });
+        if (!(await applyLaunchDecision(afterLookup, isStale))) return;
+        keepsStoredMeet = afterLookup.keepsStoredMeet;
+        if (afterLookup.select) activeMeet = afterLookup.select.name;
+        choseFromCache = !keepsStoredMeet && afterLookup.select !== null;
+        setIsResolvingStoredMeet(false);
+      }
+
+      let freshMeets: Meet[];
+      try {
+        freshMeets = await fetchMeetsFresh();
+      } finally {
+        sweepExpiredOnce();
+      }
+      if (isStale()) return;
+      setAvailableMeets((current) => {
+        const currentSerialized = JSON.stringify(current);
+        const nextSerialized = JSON.stringify(freshMeets);
+        return currentSerialized === nextSerialized ? current : freshMeets;
+      });
+
+      const afterFreshList = decideAfterFreshList({
+        freshMeets,
+        activeMeet,
+        selectedMeet,
+        shownMeetName: meetDetailsRef.current?.name ?? null,
+        keepsStoredMeet,
+        choseFromCache,
+        stored,
+        storedDetailsRaw,
+        now: launchNow(),
+      });
+      if (afterFreshList.kind === 'noMeets') {
+        devLog('No meets available');
+        setIsLoading(false);
+        return;
+      }
+      if (afterFreshList.kind === 'keepSelection') return;
+      if (afterFreshList.kind === 'lookUpActiveMeet') {
+        let found: Meet | null;
+        try {
+          found = await lookUpMeetForLaunch(afterFreshList.meet);
+        } catch {
+          return;
+        }
+        if (isStale()) return;
+        const afterLookup = decideAfterActiveMeetLookup({
+          found,
+          selectedMeet,
+          freshMeets,
+          now: launchNow(),
+        });
+        if (afterLookup.clearStored) {
+          devLog('Selected meet no longer available, switching to first available meet');
+        }
+        await applyLaunchDecision(afterLookup, isStale);
+        return;
+      }
+      if (afterFreshList.refreshShownDetails) {
+        setMeetDetails((current) => refreshedMeetDetails(current, freshMeets) ?? current);
+      }
+      await applyLaunchDecision(afterFreshList, isStale);
+    } catch (error) {
+      sweepExpiredOnce();
+      console.error('Error loading available meets:', error);
+    } finally {
+      if (!isStale()) {
+        setIsLoading(false);
+        setIsResolvingStoredMeet(false);
+      }
+    }
+  }, [applyLaunchDecision, selectedMeet]);
 
     // Initial load
   useEffect(() => {

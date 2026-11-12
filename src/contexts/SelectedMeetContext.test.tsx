@@ -5,10 +5,10 @@ import { act, create } from "react-test-renderer";
 import type { Meet, MeetName } from "@/data/types/meet";
 import {
   RECONNECT_REFETCH_JITTER_MAX_MS,
-  refreshedMeetDetails,
   SelectedMeetProvider,
   useSelectedMeet,
 } from "@/contexts/SelectedMeetContext";
+import { refreshedMeetDetails } from "@/lib/launch-meet";
 import { scheduleScreenOutcome } from "@/lib/startup-timing";
 
 const mockGetCachedMeets = jest.fn<Promise<Meet[]>, []>();
