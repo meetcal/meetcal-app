@@ -139,6 +139,36 @@ test("a meet uploads each file in turn, then submits", async ({ page }) => {
   await expect(page.getByRole("list", { name: "Chosen files" })).toHaveCount(0);
 });
 
+test("leaving the page during an upload stops the submission and the site keeps working", async ({ page }) => {
+  await mockAuth(page);
+  const { calls, release } = await mockSubmissions(page, { holdUpload: "t1" });
+  const pageErrors: Error[] = [];
+  page.on("pageerror", (error) => pageErrors.push(error));
+
+  await page.goto("/submit-meet");
+  await expect(heading(page)).toBeVisible();
+  await fillMeet(page);
+  await files(page).setInputFiles([pdf, sheet]);
+  await page.getByRole("button", { name: "Submit meet" }).click();
+  await expect(page.getByRole("status")).toHaveText("Uploading 1 of 2…");
+  await expect.poll(() => calls.uploads.length).toBe(1);
+  await page.evaluate(() => Object.assign(window, { __sameDocument: true }));
+
+  const footer = page.getByRole("contentinfo");
+  await footer.getByRole("link", { name: "Terms of Use" }).click();
+  await expect(page).toHaveURL(/\/terms$/);
+  release();
+  const longEnoughForTheHeldUploadToFinishMs = 500;
+  await page.waitForTimeout(longEnoughForTheHeldUploadToFinishMs);
+
+  await footer.getByRole("link", { name: "Privacy Policy" }).click();
+  await expect(page.getByRole("heading", { level: 1, name: "Privacy Policy" })).toBeVisible();
+  expect(await page.evaluate(() => (window as unknown as { __sameDocument?: boolean }).__sameDocument)).toBe(true);
+  expect(pageErrors).toEqual([]);
+  expect(calls.uploadUrls).toHaveLength(1);
+  expect(calls.submits).toEqual([]);
+});
+
 test("the end date is optional and goes as null", async ({ page }) => {
   await mockAuth(page);
   const { calls } = await mockSubmissions(page);
