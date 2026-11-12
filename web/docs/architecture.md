@@ -21,8 +21,11 @@ POST https://disciplined-hare-790.convex.cloud/api/query
   - `Body::JsonText`: `{ json }` or `{ etag, json }`, the body as JSON text. Most list answers
     (records, rankings, rosters, results) come this way because Convex serves text faster than the
     same rows as values.
+  - `Body::Value`: the answer is the body (`results:search`, `reference:clubMeetStats`). Convex
+    writes its numbers as floats (`2.0`); `utils/api` turns whole numbers back into integers before
+    parsing.
 - A query whose Convex function takes `ifNoneMatch` (`Query::tagged`; a test reads `../convex/` to
-  keep the list right) is revalidated. The site keeps its last `{ etag, json }` under the function
+  keep the list right) is revalidated. `api/kept_answers.rs` keeps its last `{ etag, json }` under the function
   and its arguments (the pass and the tag left out): in memory for the session, and in IndexedDB
   (`src/answer_store.js`, at most 200 answers) for the next visit. The next read sends the tag as
   `ifNoneMatch`; Convex answers `{ etag }` alone when nothing changed, and the kept text is read
@@ -33,9 +36,6 @@ POST https://disciplined-hare-790.convex.cloud/api/query
   (`serde_json::value::RawValue`), and only the inner `json` text is parsed into the page's rows.
 - Requests go through the browser's `fetch` (`src/utils/http.rs`), with an `AbortController` that
   ends a request at its timeout, body included.
-  - `Body::Value`: the answer is the body (`results:search`, `reference:clubMeetStats`). Convex
-    writes its numbers as floats (`2.0`); `utils/api` turns whole numbers back into integers before
-    parsing.
 - The Club Dashboard's Meet picker reads `reference:clubMeets`, the club's distinct meets in one
   bounded answer, not the club's registrations (`reference:clubAthletes`, which the site no longer
   reads).

@@ -183,10 +183,9 @@ pub(crate) const ROWS_SHOWN_FIRST: usize = 100;
 pub(crate) const ROWS_ADDED_BY_SHOW_MORE: usize = 100;
 
 pub(crate) fn rows_shown_for(order: &[usize], raised: Option<&(Vec<usize>, usize)>) -> usize {
-    let limit = match raised {
-        Some((raised_for, limit)) if raised_for.as_slice() == order => *limit,
-        _ => ROWS_SHOWN_FIRST,
-    };
+    let limit = raised
+        .filter(|(raised_for, _)| raised_for.as_slice() == order)
+        .map_or(ROWS_SHOWN_FIRST, |(_, limit)| *limit);
     limit.min(order.len())
 }
 

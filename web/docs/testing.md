@@ -62,7 +62,7 @@ refused submission keeping the form filled, accessibility, and a small phone.
 from it; `UPDATE_SHELLS=1 cargo test --test shells` rewrites `shells/`. The config tests
 (`npm run test:config`, after a build) check that every page in `dist/` carries its route's shell
 and the preloads, that every content-hashed file is `immutable` and nothing else is, and that the
-bootstrap starts analytics only after the app mounts. `src/utils/api.rs` also reads
+bootstrap starts analytics only after the app mounts. `src/utils/api/tests.rs` also reads
 `../convex/` to check that exactly the queries whose function takes `ifNoneMatch` send one.
 
 ## Browser checks

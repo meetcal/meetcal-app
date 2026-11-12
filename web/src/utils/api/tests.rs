@@ -1,4 +1,5 @@
 use super::*;
+use crate::utils::http::{OK, SERVICE_UNAVAILABLE, TOO_MANY_REQUESTS};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use serde_json::json;
@@ -521,23 +522,14 @@ fn function_errors_explain_themselves() {
 fn only_throttled_and_overloaded_responses_are_retryable() {
     assert!(is_retryable_status(TOO_MANY_REQUESTS));
     assert!(is_retryable_status(SERVICE_UNAVAILABLE));
-    for status in [
-        OK,
-        404,
-        500,
-        502,
-        504,
-    ] {
+    for status in [OK, 404, 500, 502, 504] {
         assert!(!is_retryable_status(status), "{status} must not retry");
     }
 }
 
 #[test]
 fn retries_stop_after_the_limit() {
-    for status in [
-        TOO_MANY_REQUESTS,
-        SERVICE_UNAVAILABLE,
-    ] {
+    for status in [TOO_MANY_REQUESTS, SERVICE_UNAVAILABLE] {
         assert!(should_retry(status, 0));
         assert!(should_retry(status, 1));
         assert!(!should_retry(status, MAX_RETRIES));

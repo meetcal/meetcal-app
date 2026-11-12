@@ -130,10 +130,12 @@ pub fn route_needs_sign_in(path: &str) -> bool {
 }
 
 pub fn leaves_premium_answers_behind(previous: &AuthState, next: &AuthState) -> bool {
-    match (previous, next) {
-        (_, AuthState::SignedOut) => true,
-        (AuthState::SignedIn(before), AuthState::SignedIn(now)) => before != now,
-        _ => false,
+    match next {
+        AuthState::SignedOut => true,
+        AuthState::SignedIn(now) => {
+            matches!(previous, AuthState::SignedIn(before) if before != now)
+        }
+        AuthState::Loading | AuthState::ConfigurationError(_) => false,
     }
 }
 

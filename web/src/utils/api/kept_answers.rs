@@ -124,12 +124,10 @@ pub(super) fn text_of(
     let TextAnswer { etag, json } = answer;
     if let Some(json) = json {
         let json: Rc<str> = Rc::from(json);
-        let fresh = etag
-            .filter(|_| query.revalidates)
-            .map(|etag| KeptAnswer {
-                etag,
-                json: Rc::clone(&json),
-            });
+        let fresh = etag.filter(|_| query.revalidates).map(|etag| KeptAnswer {
+            etag,
+            json: Rc::clone(&json),
+        });
         return Ok((json, fresh));
     }
     match (etag, kept) {
