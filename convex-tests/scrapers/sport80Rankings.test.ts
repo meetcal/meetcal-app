@@ -1,5 +1,5 @@
 import { daysBetween } from '../../convex/lib/dates';
-import { halvesOf, MAX_RANKINGS_RANGES, RANKINGS_PAGE_ROWS, RANKINGS_UNSPLIT_DAYS, Sport80 } from '../../convex/scrapers/lib/sport80Api';
+import { halvesOf, MAX_RANKINGS_RANGES, RANKINGS_PAGE_ATTEMPTS, RANKINGS_PAGE_ROWS, RANKINGS_UNSPLIT_DAYS, Sport80 } from '../../convex/scrapers/lib/sport80Api';
 
 type Request = { start: string; end: string; rows: number; page: string | null };
 
@@ -138,5 +138,69 @@ describe('a range whose rows shift between pages', () => {
     await expect((await Sport80.connect()).rankings(938, '2026-11-12', '2026-11-12', { wholeTables: true })).rejects.toThrow(
       '2026-11-12 to 2026-11-12: a row came back on two pages (their order shifted)',
     );
+  });
+});
+
+describe('a connection Sport80 drops part way through an answer', () => {
+  const droppedMidBody = () =>
+    new Response(
+      new ReadableStream({
+        start(controller) {
+          controller.enqueue(new TextEncoder().encode('{"data":['));
+          controller.error(new TypeError('terminated', { cause: Object.assign(new Error('other side closed'), { code: 'UND_ERR_SOCKET' }) }));
+        },
+      }),
+    );
+  const askedFor = (requests: Request[], start: string, end: string) => requests.filter((r) => r.start === start && r.end === end).length;
+
+  beforeEach(() => {
+    jest.spyOn(globalThis, 'setTimeout').mockImplementation(((resume: () => void) => {
+      resume();
+      return 0;
+    }) as never);
+  });
+
+  it('asks the backfill’s page again and reads the class', async () => {
+    let dropped = false;
+    const requests = fakeSport80((request) => {
+      if (dropped) return rowsFor(request);
+      dropped = true;
+      return droppedMidBody();
+    });
+    const rows = await (await Sport80.connect()).rankings(767, '1963-06-09', '2026-11-12', { retryDroppedConnections: true });
+    expect(rows).toEqual([{ lifter: '1963-06-09..2026-11-12' }]);
+    expect(requests).toHaveLength(2);
+  });
+
+  it('reads in halves a long range whose connection keeps dropping, as it would one Sport80 answers with a 5xx', async () => {
+    const requests = fakeSport80((request) => (request.start === '1963-06-09' && request.end === '2026-11-12' ? droppedMidBody() : rowsFor(request)));
+    const rows = await (await Sport80.connect()).rankings(767, '1963-06-09', '2026-11-12', { retryDroppedConnections: true });
+    expect(rows).toEqual([{ lifter: '1963-06-09..1995-02-24' }, { lifter: '1995-02-25..2026-11-12' }]);
+    expect(askedFor(requests, '1963-06-09', '2026-11-12')).toBe(RANKINGS_PAGE_ATTEMPTS);
+  });
+
+  it('fails the class naming the range when even a year keeps dropping', async () => {
+    const requests = fakeSport80(() => droppedMidBody());
+    await expect((await Sport80.connect()).rankings(767, '2026-01-01', '2026-11-12', { retryDroppedConnections: true })).rejects.toThrow('2026-01-01 to 2026-11-12: terminated');
+    expect(requests).toHaveLength(RANKINGS_PAGE_ATTEMPTS);
+  });
+
+  it('asks no page again once the backfill’s time is spent', async () => {
+    let now = 0;
+    jest.spyOn(Date, 'now').mockImplementation(() => now);
+    const requests = fakeSport80(() => {
+      now = 10;
+      return droppedMidBody();
+    });
+    const api = await Sport80.connect();
+    now = 0;
+    await expect(api.rankings(767, '2026-01-01', '2026-11-12', { deadline: 10, retryDroppedConnections: true })).rejects.toThrow('terminated');
+    expect(requests).toHaveLength(1);
+  });
+
+  it('fails a nightly read at once, as before', async () => {
+    const requests = fakeSport80(() => droppedMidBody());
+    await expect((await Sport80.connect()).rankings(767, '1963-06-09', '2026-11-12')).rejects.toThrow('1963-06-09 to 2026-11-12: terminated');
+    expect(requests).toHaveLength(1);
   });
 });
