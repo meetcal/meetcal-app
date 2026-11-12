@@ -25,7 +25,7 @@ import { meetStatusAt } from '../lib/meetStatus';
  * future: `upsertMeets` then takes the new dates and venue but keeps it
  * completed (`nextMeetStatus`, `lib/meetStatus.ts`).
  */
-const fetchWidgetPage = (url: string): Promise<unknown> =>
+export const fetchWidgetPage = (url: string): Promise<unknown> =>
   withRetries(() => fetchJson(url, { timeoutMs: 30_000 }), { attempts: 3, delayMs: (attempt) => 2 ** attempt * 1000 });
 
 /** The failing source for the listing itself: stable from run to run, as the problem text is not. */

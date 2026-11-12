@@ -71,7 +71,7 @@ async function storedTarget(ctx: ActionCtx, url: string): Promise<StoredTarget> 
   return { meet: stored.name, title, ...(stored.status === 'completed' ? { completedOn: stored.endDate } : {}) };
 }
 
-async function readEntries(ctx: ActionCtx, url: string, meet: string): Promise<Entry[]> {
+export async function readEntries(ctx: ActionCtx, url: string, meet: string): Promise<Entry[]> {
   return withKnownWsos(ctx, await fetchEntries(url, meet));
 }
 
