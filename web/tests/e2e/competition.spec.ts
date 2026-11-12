@@ -301,7 +301,8 @@ test("meet center joins details, schedule, start list, and full results", async 
   await expect(fullResults.filter({ hasText: "Test Athlete" }).locator("td").nth(3)).toHaveText("70.5");
   await expect(fullResults.filter({ hasText: "Unweighed Athlete" }).locator("td").nth(3)).toHaveText("—");
   await expect(page.getByRole("columnheader").filter({ hasText: /^Total$/ })).toBeVisible();
-  await page.getByRole("link", { name: "Test Athlete" }).click();
+  await expect(page.locator("tbody").nth(1).getByRole("link", { name: "Test Athlete" })).toHaveAttribute("href", "/results?athlete=Test%20Athlete&membership=1");
+  await page.locator("tbody").nth(2).getByRole("link", { name: "Test Athlete" }).click();
   await expect(page).toHaveURL(/\/results\?athlete=Test%20Athlete$/);
   await expect(page.getByText("Results for")).toBeVisible();
 });

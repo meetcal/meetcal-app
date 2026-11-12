@@ -145,7 +145,7 @@ test("an athlete link from a meet's results comes back to the same meet", async 
   await routeQuery(page, "results:byMeet", (route) => route.fulfill(textAnswer([result])));
   await routeQuery(page, "results:search", (route) => route.fulfill(valueAnswer({ matched_name: "Test Athlete", suggestions: [], results: [result], truncated: false })));
   await page.goto("/meet-center?meet=Meet%20Alpha");
-  await page.getByRole("link", { name: "Test Athlete" }).click();
+  await page.locator("tbody").last().getByRole("link", { name: "Test Athlete" }).click();
   await expect(page).toHaveURL(/\/results\?athlete=Test%20Athlete$/);
   await page.goBack();
   await expect(page).toHaveURL(/\/meet-center\?meet=Meet%20Alpha$/);

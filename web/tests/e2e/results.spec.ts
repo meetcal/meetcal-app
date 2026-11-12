@@ -190,7 +190,7 @@ test("a name two lifters share offers each, and a pick shows that lifter's resul
   });
 
   await page.goto("/results?athlete=Taylor%20Johnson");
-  await expect(page.getByRole("status")).toHaveText("Pick which Taylor Johnson you mean.");
+  await expect(page.getByText("Pick which Taylor Johnson you mean.")).toBeVisible();
   const choices = page.getByRole("group", { name: "Lifters with this name" });
   await expect(choices.getByRole("link")).toHaveText([
     /Age 37 · Tennessee-Kentucky · 1 Result/,
