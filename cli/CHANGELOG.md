@@ -14,11 +14,12 @@
   total athlete count.
 - Export keys have one spelling. Clean & jerk is `cj` wherever it appears, and a header's
   parenthesised note is not part of its key:
-  - `c_j_make_rate` is `cj_make_rate` (`club-results`, `wso`)
+  - `c_j_make_rate` is `cj_make_rate` and `c_j_medal` is `cj_medal` (`club-results`, `wso`)
   - `best_c_j` is `best_cj` (`wrapped`, `club-wrapped`, `wso-wrapped`, `h2h`)
-  - `c_j` is `cj` (`progress`); `past_year_c_j` is `past_year_cj` (`qualify`)
-  - `sinclair_2021_24` is `sinclair` (`progress`, `meet-results`); `best_sinclair_2021_24` is
-    `best_sinclair` (`h2h`, `club-trends`, `wso-trends`)
+  - `c_j` is `cj` (`progress`, `leaderboard`, `elite`, `club-results`, `wso`);
+    `past_year_c_j` is `past_year_cj` (`qualify`)
+  - `sinclair_2021_24` is `sinclair` (`progress`, `meet-results`, `leaderboard`);
+    `best_sinclair_2021_24` is `best_sinclair` (`h2h`, `club-trends`, `wso-trends`)
   - `top_meet_best_total` is `top_meet` (`club-wrapped`, `wso-wrapped`)
 - A value that does not exist exports as null, not 0: a year with no results (and the difference
   against it) in `compare`, `club-compare` and `wso-compare`; a lift with no record in
