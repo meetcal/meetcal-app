@@ -31,7 +31,7 @@ MeetCal answers the same questions on four surfaces: the app (TypeScript), the w
 | What you are writing | Single source | How the surfaces read it |
 | --- | --- | --- |
 | Computed answers (rankings, Wrapped scores, elite lists, qualifying status) | A Convex query, with its logic in `convex/lib/` | Every surface shows the query's answer and computes nothing itself (as `web/src/pages/comp_data/wrapped.rs` shows `results:wrapped`). |
-| Request and response shapes | The Convex function's `args` and `returns` validators | The app maps them once in `src/lib/api/meetcal-api.ts`; the website in `web/src/utils/api.rs` and `web/src/pages/comp_data/models.rs`; the CLI in `cli/src/utils/backend.rs`; Siri in `plugins/ios-app-intents/MeetCalAPI.swift`. |
+| Request and response shapes | The Convex function's `args` and `returns` validators | The app maps them once in `src/lib/api/meetcal-api.ts`; the website in `web/src/utils/api/` and `web/src/pages/comp_data/models.rs`; the CLI in `cli/src/utils/backend.rs`; Siri in `plugins/ios-app-intents/MeetCalAPI.swift`. |
 | Which reads are premium | `PREMIUM_FUNCTIONS` in `convex/lib/access.ts` | Each client keeps its own list (the languages differ), held equal to the server's by tests. A new premium read changes every list and passes those tests. |
 | App-only policy (meet time, session selection, offline cache) | TypeScript in `src/lib/` or `src/utils/` | Screens, hooks, widgets data and notifications import it; never a second copy in a screen. |
 
@@ -46,7 +46,7 @@ A twin is the rule you are about to write, already written for another surface o
 - **Code graph.** For definitions, callers and blast radius in TypeScript, Rust and Swift, use `entire graph def --repo . --head <Name>`, `entire graph neighbors --repo . --head --format agent --symbol <Name> --direction in`, and `entire graph impact --repo . --head --symbol <Name>` before changing a shared helper, validator or Convex function. Add `--max-context-bytes 4096` to bound the output. An empty result is not proof of no callers; literal strings, config keys and file names are faster with `rg`.
 - Run `entire agent-help` for the installed CLI's exact flags. `entire review` runs locally and is fine to use.
 
-The website (meetcal.app, Rust + Leptos compiled to WebAssembly) is in `web/` and reads the same Convex queries over Convex's HTTP API (`web/src/utils/api.rs`). It has its own toolchain and gates (Cargo and Trunk, and npm for its Playwright tests, the one exception to the Bun rule): see `web/AGENTS.md`, which applies with this file for work in `web/`. The app's lint, typecheck, Jest, Metro and EAS all skip `web/`.
+The website (meetcal.app, Rust + Leptos compiled to WebAssembly) is in `web/` and reads the same Convex queries over Convex's HTTP API (`web/src/utils/api/`). It has its own toolchain and gates (Cargo and Trunk, and npm for its Playwright tests, the one exception to the Bun rule): see `web/AGENTS.md`, which applies with this file for work in `web/`. The app's lint, typecheck, Jest, Metro and EAS all skip `web/`.
 
 The CLI (`meetcal`, distributed through Homebrew) is in `cli/` and reads the same Convex queries over Convex's HTTP API (`cli/src/utils/backend.rs`). It builds with Cargo (`mise run check-all` from `cli/`) and releases from `cli-vX.Y.Z` tags; `cli/AGENTS.md` applies with this file for work in `cli/`, and `cli/docs/releasing.md` has the release and Homebrew steps. Metro, EAS and the app's CI skip `cli/`.
 

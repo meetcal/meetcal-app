@@ -194,7 +194,7 @@ export function retryableResponse(status: 429 | 503, retryAfter?: string) {
   };
 }
 
-/** Every read is a `POST` of `{ path, args }` here (see src/utils/api.rs). */
+/** Every read is a `POST` of `{ path, args }` here (see src/utils/api/). */
 const CONVEX_QUERY_URL = "https://disciplined-hare-790.convex.cloud/api/query";
 /** The mutations the site calls: `deviceLogin:approve` and `deviceLogin:deny` (`/link`), `meetSubmissions:*` (`/submit-meet`). */
 const CONVEX_MUTATION_URL = "https://disciplined-hare-790.convex.cloud/api/mutation";
