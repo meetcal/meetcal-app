@@ -102,7 +102,7 @@ tests answer by function name with the helpers in `tests/e2e/support/api.ts`:
 ```ts
 await routeQuery(page, "reference:records", (route) => route.fulfill(textAnswer(rows)));
 await routeQuery(page, "results:search", (route, args) =>
-  route.fulfill(valueAnswer({ matched_name: null, suggestions: [String(args.query)], results: [], truncated: false })),
+  route.fulfill(valueAnswer({ matched_name: null, suggestions: [String(args.query)], results: [] })),
 );
 ```
 

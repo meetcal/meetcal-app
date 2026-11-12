@@ -9,7 +9,6 @@ pub(crate) mod filters;
 pub(crate) mod format;
 pub(crate) mod loading;
 pub mod meet_center;
-pub(crate) mod meets;
 pub(crate) mod models;
 pub mod national_rankings;
 pub mod qual_totals;
