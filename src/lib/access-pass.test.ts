@@ -1,8 +1,8 @@
-import { fetchAccessPass, MeetCalApiError, refreshServerEntitlement } from '@/lib/api/meetcal-api';
+import { fetchAccessPass, refreshServerEntitlement } from '@/lib/api/entitlement-api';
+import { MeetCalApiError } from '@/lib/api/meetcal-api';
 import { loadAccessPass } from './access-pass';
 
-jest.mock('@/lib/api/meetcal-api', () => ({
-  ...jest.requireActual('@/lib/api/meetcal-api'),
+jest.mock('@/lib/api/entitlement-api', () => ({
   fetchAccessPass: jest.fn(),
   refreshServerEntitlement: jest.fn(),
 }));

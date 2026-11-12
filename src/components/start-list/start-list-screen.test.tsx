@@ -7,9 +7,10 @@ import { act, create, type ReactTestRenderer } from "react-test-renderer";
 import StartListScreen from "@/components/start-list/StartListScreen";
 import type { PillFilterConfig } from "@/components/ui/filters";
 import type { LiftResult } from "@/data/types/athletes";
-import { getMeetData } from "@/lib/database/offline-store";
+import { getMeetData } from "@/lib/database/meet-data-reads";
 import { getLastYearBestsBatch } from "@/lib/start-list-api";
 import { showToast } from "@/components/ui/Toast";
+import { itemAt } from "@/test-support/checked-access";
 
 // Charge react-native's lazy-getter cost to the file, not the first test.
 void [Animated, Pressable, ScrollView, TextInput];
@@ -103,7 +104,7 @@ jest.mock("@/contexts/SavedSessionsContext", () => ({
 jest.mock("@/contexts/ThemeContext", () => ({
   useTheme: () => ({ currentTheme: "light" }),
 }));
-jest.mock("@/utils/authGuard", () => ({
+jest.mock("@/hooks/useAuthGuard", () => ({
   useAuthGuard: () => ({ requireAuth: mockRequireAuth }),
 }));
 jest.mock("expo-router", () => ({
@@ -113,8 +114,8 @@ jest.mock("expo-router", () => ({
 jest.mock("react-native-safe-area-context", () => ({
   useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }),
 }));
-jest.mock("@/lib/database/offline-store", () => ({
-  getMeetData: jest.fn(),
+jest.mock("@/lib/database/meet-data-reads", () => ({ getMeetData: jest.fn() }));
+jest.mock("@/lib/database/meet-data-saves", () => ({
   saveMeetAthletes: jest.fn(async () => {}),
   saveMeetSchedule: jest.fn(async () => {}),
 }));
@@ -189,7 +190,7 @@ const flush = async () => {
 const lastCall = <T,>(mock: jest.Mock<null, [T]>): T => {
   const calls = mock.mock.calls;
   if (calls.length === 0) throw new Error("component was never rendered");
-  return calls[calls.length - 1][0];
+  return itemAt(calls, -1)[0];
 };
 const pillBar = () => lastCall(mockPillBar);
 const pill = (id: string) => {
@@ -256,8 +257,11 @@ describe("Start List filters across meets", () => {
 });
 
 describe("Start List search", () => {
-  const search = (text: string) =>
-    act(() => tree.root.findByProps({ testID: "start-list-search" }).props.onChangeText(text));
+  const search = (text: string) => {
+    act(() => {
+      tree.root.findByProps({ testID: "start-list-search" }).props.onChangeText(text);
+    });
+  };
 
   it("matches names word by word, ignoring order and stray spaces", async () => {
     await mount();
@@ -360,7 +364,7 @@ describe("Start List Add to Saved", () => {
     await act(async () => {
       await lastCall(mockActionModal).onSaveAll();
     });
-    const [title, , buttons] = jest.mocked(Alert.alert).mock.calls[0];
+    const [title, , buttons] = itemAt(jest.mocked(Alert.alert).mock.calls, 0);
     expect(title).toBe("Save Sessions");
     const save = buttons?.find((b) => b.text === "Save");
     await act(async () => {
@@ -386,7 +390,7 @@ describe("Start List Add to Saved", () => {
     await act(async () => {
       await lastCall(mockActionModal).onSaveAll();
     });
-    const [, , buttons] = jest.mocked(Alert.alert).mock.calls[0];
+    const [, , buttons] = itemAt(jest.mocked(Alert.alert).mock.calls, 0);
     await act(async () => {
       await buttons?.find((b) => b.text === "Save")?.onPress?.();
     });
@@ -455,7 +459,7 @@ describe("Start List row results link", () => {
   const seeAllResults = (name: string) => {
     const { data, renderItem } = lastCall(mockFlashList);
     const index = data.findIndex((a) => a.name === name);
-    act(() => renderItem({ item: data[index], index }).props.onSeeAllResults(name));
+    act(() => renderItem({ item: itemAt(data, index), index }).props.onSeeAllResults(name));
   };
 
   it("opens a subscriber's results", async () => {

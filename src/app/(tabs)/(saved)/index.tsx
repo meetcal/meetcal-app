@@ -243,7 +243,7 @@ export default function SavedScreen() {
 
   useEffect(() => {
     if (!hasMigrated) {
-      migrateSessions();
+      void migrateSessions();
     }
   }, [hasMigrated, migrateSessions]);
 

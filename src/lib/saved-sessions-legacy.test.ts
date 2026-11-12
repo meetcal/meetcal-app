@@ -6,6 +6,7 @@ import {
   resetLegacySavedSessions,
 } from "@/lib/saved-sessions-legacy";
 import { getSavedSessionsKey } from "@/utils/session";
+import { itemAt } from "@/test-support/checked-access";
 
 const USER = "user_1";
 const PRIMARY = getSavedSessionsKey(USER);
@@ -33,35 +34,35 @@ afterEach(() => {
 
 describe("findLegacySessionsNeedingMigration", () => {
   it("returns only keys that hold a row without a meet, re-keyed to the current meet", async () => {
-    const [legacyKey] = getLegacySavedSessionsKeys(USER);
+    const legacyKey = itemAt(getLegacySavedSessionsKeys(USER), 0);
     await AsyncStorage.setItem(PRIMARY, JSON.stringify([row({ meet: MEET, id: "Test-Meet-1-Red" })]));
     await AsyncStorage.setItem(legacyKey, JSON.stringify([row(), null, "junk", row({ meet: "" })]));
 
     const batches = await findLegacySessionsNeedingMigration(USER, MEET);
 
     expect(batches).toHaveLength(1);
-    expect(batches[0].key).toBe(legacyKey);
-    expect(batches[0].sessions.every((s) => s.meet === MEET)).toBe(true);
-    expect(batches[0].sessions.map((s) => s.id)).toEqual(["Test-Meet-1-Red", "Test-Meet-1-Red"]);
+    expect(itemAt(batches, 0).key).toBe(legacyKey);
+    expect(itemAt(batches, 0).sessions.every((s) => s.meet === MEET)).toBe(true);
+    expect(itemAt(batches, 0).sessions.map((s) => s.id)).toEqual(["Test-Meet-1-Red", "Test-Meet-1-Red"]);
   });
 
   it("leaves out rows the outbox would refuse, so they are not retried on every mount", async () => {
-    const [legacyKey] = getLegacySavedSessionsKeys(USER);
+    const legacyKey = itemAt(getLegacySavedSessionsKeys(USER), 0);
     await AsyncStorage.setItem(legacyKey, JSON.stringify([row(), row({ id: "zero", sessionNumber: 0 })]));
 
-    const [batch] = await findLegacySessionsNeedingMigration(USER, MEET);
+    const batch = itemAt(await findLegacySessionsNeedingMigration(USER, MEET), 0);
 
     expect(batch.sessions.map((s) => s.sessionNumber)).toEqual([1]);
   });
 
   it.each(["{", "{}", "null", '"x"'])("ignores malformed legacy storage %s", async (raw) => {
-    const [legacyKey] = getLegacySavedSessionsKeys(USER);
+    const legacyKey = itemAt(getLegacySavedSessionsKeys(USER), 0);
     await AsyncStorage.setItem(legacyKey, raw);
     await expect(findLegacySessionsNeedingMigration(USER, MEET)).resolves.toEqual([]);
   });
 
   it("drops rows that have no session number or platform", async () => {
-    const [legacyKey] = getLegacySavedSessionsKeys(USER);
+    const legacyKey = itemAt(getLegacySavedSessionsKeys(USER), 0);
     await AsyncStorage.setItem(
       legacyKey,
       JSON.stringify([{ id: "x" }, row({ platform: "" }), row({ sessionNumber: "2" })]),
@@ -72,7 +73,7 @@ describe("findLegacySessionsNeedingMigration", () => {
 
 describe("removeLegacySavedSessionsKey", () => {
   it("removes a legacy key but never the primary key", async () => {
-    const [legacyKey] = getLegacySavedSessionsKeys(USER);
+    const legacyKey = itemAt(getLegacySavedSessionsKeys(USER), 0);
     await AsyncStorage.setItem(PRIMARY, "[]");
     await AsyncStorage.setItem(legacyKey, "[]");
 
@@ -86,7 +87,9 @@ describe("removeLegacySavedSessionsKey", () => {
 
 describe("resetLegacySavedSessions", () => {
   it("filters one meet out of every legacy key and leaves the primary key alone", async () => {
-    const [a, b] = getLegacySavedSessionsKeys(USER);
+    const legacyKeys = getLegacySavedSessionsKeys(USER);
+    const a = itemAt(legacyKeys, 0);
+    const b = itemAt(legacyKeys, 1);
     await AsyncStorage.setItem(PRIMARY, JSON.stringify([row({ meet: MEET })]));
     await AsyncStorage.setItem(a, JSON.stringify([row({ meet: MEET }), row({ meet: "Other" })]));
     await AsyncStorage.setItem(b, JSON.stringify([row({ meet: MEET })]));

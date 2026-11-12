@@ -11,6 +11,7 @@ import {
 } from "@/utils/nat-rankings";
 
 import resultsFixture from "./__fixtures__/usaw-divisions-with-results.json";
+import { itemAt } from "@/test-support/checked-access";
 
 const GENDERS = ["Men", "Women"] as const;
 
@@ -106,10 +107,10 @@ describe("National Rankings divisions", () => {
   });
 
   it("date the eras newest first without gaps", () => {
-    expect(WEIGHT_CLASS_ERAS[0].to).toBeNull();
+    expect(itemAt(WEIGHT_CLASS_ERAS, 0).to).toBeNull();
     for (let i = 1; i < WEIGHT_CLASS_ERAS.length; i += 1) {
-      const newer = WEIGHT_CLASS_ERAS[i - 1];
-      const older = WEIGHT_CLASS_ERAS[i];
+      const newer = itemAt(WEIGHT_CLASS_ERAS, i - 1);
+      const older = itemAt(WEIGHT_CLASS_ERAS, i);
       expect(older.to).not.toBeNull();
       const dayAfter = new Date(`${older.to}T00:00:00Z`);
       dayAfter.setUTCDate(dayAfter.getUTCDate() + 1);

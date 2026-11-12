@@ -1,15 +1,16 @@
 import React from 'react';
 import { act, create } from 'react-test-renderer';
 import { useSessionAthletes } from './useMeetAthletes';
-import { getMeetData, getSessionAthletesFromMeetCache, saveSessionAthletes } from '@/lib/database/offline-store';
+import { getMeetData } from '@/lib/database/meet-data-reads';
+import { getSessionAthletesFromMeetCache, saveSessionAthletes } from '@/lib/database/session-roster-cache';
 import { fetchAthletesWithSession } from '@/lib/database/queries';
 import type { LiftResult } from '@/data/types/athletes';
 
 jest.mock('@/lib/networkUtils', () => ({
   subscribeToNetworkChanges: jest.fn(() => () => {}),
 }));
-jest.mock('@/lib/database/offline-store', () => ({
-  getMeetData: jest.fn(),
+jest.mock('@/lib/database/meet-data-reads', () => ({ getMeetData: jest.fn() }));
+jest.mock('@/lib/database/session-roster-cache', () => ({
   getSessionAthletesFromMeetCache: jest.fn(async () => []),
   saveSessionAthletes: jest.fn(),
 }));

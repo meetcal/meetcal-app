@@ -11,12 +11,8 @@
 import { AthleteBests, AthleteMeetResult } from "@/data/types/athletes";
 import { MeetName } from "@/data/types/meet";
 import { normalizeAthleteName } from "@/lib/athletes";
-import {
-  getAllCachedLiftingResultsForAthletes,
-  getStoredAthleteBestsForNames,
-  hasAnyAthleteBest,
-  type StoredAthleteBests,
-} from "@/lib/database/offline-store";
+import { getAllCachedLiftingResultsForAthletes } from "@/lib/database/athlete-history-store";
+import { getStoredAthleteBestsForNames, hasAnyAthleteBest, type StoredAthleteBests } from "@/lib/database/athlete-bests-store";
 import { isNetworkAvailable } from "@/lib/networkUtils";
 import {
   deriveDownloadedBests,
@@ -51,18 +47,6 @@ async function loadCachedBestsForNames(
   return bestsByName;
 }
 
-/**
- * The stored-bests layer, shared by both entry points: de-duplicate the
- * names, seed every one with an empty record, then overwrite whatever
- * `offline-store` already holds, fresh or not (a stale answer still beats
- * "—"). `getCachedAthleteBestsBatch` stops here;
- * `getAthleteBestsBatchUncached` continues with `namesNeedingLookup`.
- *
- * Freshness is `offline-store`'s rule (`isAthleteBestsFresh`), the one the
- * start list uses too: a stored all-null entry used to count as a final
- * "no results" forever, even when it was an offline or failed lookup's
- * fallback.
- */
 async function loadStoredBests(names: string[]): Promise<{
   bestsByName: Record<string, AthleteBests>;
   namesNeedingLookup: string[];

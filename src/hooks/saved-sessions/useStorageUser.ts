@@ -68,7 +68,7 @@ export function useStorageUser(
       setHasResolvedUser(true);
     };
 
-    resolveUser();
+    void resolveUser();
     return () => {
       cancelled = true;
     };

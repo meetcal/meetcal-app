@@ -1,3 +1,4 @@
+import { isRecord } from '@/lib/is-record';
 import { createContext, useCallback, useContext, useEffect, useEffectEvent, useMemo, useRef, useState } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as SecureStore from 'expo-secure-store';
@@ -85,8 +86,8 @@ function parseSubscriptionCache(raw: string | null): SubscriptionCacheData | nul
   } catch {
     return null;
   }
-  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return null;
-  const record = parsed as Record<string, unknown>;
+  if (!isRecord(parsed)) return null;
+  const record = parsed;
   if (typeof record.isSubscribed !== 'boolean') return null;
   if (typeof record.timestamp !== 'number' || !Number.isFinite(record.timestamp)) return null;
   const type = record.subscriptionType;
@@ -535,7 +536,7 @@ export function SubscriptionProvider({ children }: { children: React.ReactNode }
       }
     };
 
-    initializeStatus();
+    void initializeStatus();
 
     return () => {
       cancelled = true;
@@ -551,7 +552,7 @@ export function SubscriptionProvider({ children }: { children: React.ReactNode }
 
     const setupListener = async () => {
       try {
-        const listener = async (info: CustomerInfo) => {
+        const publishCustomerInfo = async (info: CustomerInfo) => {
           // RevenueCat pushes this for the current user (after `logIn`, a
           // purchase, a renewal), so it supersedes any check still in flight.
           const generation = beginAnswer();
@@ -570,15 +571,20 @@ export function SubscriptionProvider({ children }: { children: React.ReactNode }
           await saveSubscriptionCache(generation, hasActiveSubscription, type);
         };
 
+        const listener = (info: CustomerInfo) => {
+          void publishCustomerInfo(info);
+        };
         Purchases.addCustomerInfoUpdateListener(listener);
-        customerInfoUpdateListener = () => Purchases.removeCustomerInfoUpdateListener(listener);
+        customerInfoUpdateListener = () => {
+          Purchases.removeCustomerInfoUpdateListener(listener);
+        };
       } catch (error) {
         console.error('Failed to setup customer info listener:', error);
         setIsLoading(false);
       }
     };
 
-    setupListener();
+    void setupListener();
 
     return () => {
       if (customerInfoUpdateListener) {

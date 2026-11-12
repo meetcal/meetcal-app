@@ -1,3 +1,5 @@
+import { isRecord } from '@/lib/is-record';
+import { arrayOf, finiteNumber } from './cached-shapes';
 import { createMutableResource } from '@/lib/data/mutable-resource';
 import { isNetworkAvailable } from '@/lib/networkUtils';
 import {
@@ -6,7 +8,7 @@ import {
   replaceOfflineCache,
   setOfflineCache,
 } from './offline-cache';
-import { fetchApiIntlRankings, type ApiIntlRankingRow } from '@/lib/api/meetcal-api';
+import { fetchApiIntlRankings, type ApiIntlRankingRow } from '@/lib/api/reference-api';
 
 export type IntlRanking = {
   meet: string;
@@ -59,8 +61,21 @@ function toIntlRanking(row: Readonly<ApiIntlRankingRow>): IntlRanking | null {
   };
 }
 
+const readIntlRankings = arrayOf((value): IntlRanking | undefined => {
+  if (!isRecord(value)) return undefined;
+  const { meet, name, weightClass, gender, ageCategory } = value;
+  const ranking = finiteNumber(value.ranking);
+  const total = finiteNumber(value.total);
+  const percentA = finiteNumber(value.percentA);
+  if (typeof meet !== 'string' || typeof name !== 'string' || typeof weightClass !== 'string') return undefined;
+  if (ranking === null || total === null || percentA === null) return undefined;
+  if (typeof gender !== 'string' || !isIntlGender(gender)) return undefined;
+  if (typeof ageCategory !== 'string' || !isIntlAgeCategory(ageCategory)) return undefined;
+  return { meet, ranking, name, weightClass, total, percentA, gender, ageCategory };
+});
+
 async function readIntlRankingsCache() {
-  const cached = await getOfflineCache<IntlRanking[]>(OFFLINE_CACHE_KEYS.intlRankings);
+  const cached = await getOfflineCache(OFFLINE_CACHE_KEYS.intlRankings, readIntlRankings);
   return cached ? { data: cached.data, lastUpdatedAt: cached.lastSynced } : null;
 }
 

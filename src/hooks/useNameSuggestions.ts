@@ -76,7 +76,7 @@ export function useNameSuggestions(fetchNames: (query: string) => Promise<string
         return;
       }
       const version = versionRef.current;
-      timerRef.current = setTimeout(async () => {
+      const fetchSuggestions = async () => {
         timerRef.current = null;
         setLoadingSuggestions(true);
         try {
@@ -89,7 +89,8 @@ export function useNameSuggestions(fetchNames: (query: string) => Promise<string
         } finally {
           if (version === versionRef.current) setLoadingSuggestions(false);
         }
-      }, SUGGESTION_DEBOUNCE_MS);
+      };
+      timerRef.current = setTimeout(() => void fetchSuggestions(), SUGGESTION_DEBOUNCE_MS);
     },
     [fetchNames, supersede],
   );

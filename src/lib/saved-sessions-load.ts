@@ -1,10 +1,6 @@
 import { MeetName } from '@/data/types/meet';
-import {
-  type ApiSavedSession,
-  fetchSavedSessions,
-  MeetCalApiError,
-  MeetCalApiTimeoutError,
-} from '@/lib/api/meetcal-api';
+import { type ApiSavedSession, fetchSavedSessions } from '@/lib/api/saved-sessions-api';
+import { MeetCalApiError, MeetCalApiTimeoutError } from '@/lib/api/meetcal-api';
 import { devLog, devWarn } from '@/lib/logger';
 import {
   adoptPreOutboxSessions,

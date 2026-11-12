@@ -14,6 +14,7 @@ import {
   setPreferredAndroidCalendarId,
 } from "@/utils/calendar";
 import { useCalendarSessionsExport } from "./useCalendarSessionsExport";
+import { itemAt } from "@/test-support/checked-access";
 
 jest.mock("@/components/ui/Toast", () => ({ showToast: jest.fn() }));
 jest.mock("@/utils/calendar", () => {
@@ -59,7 +60,7 @@ async function settle() {
 /** Runs the export and presses "Add" on the confirmation. */
 async function confirmExport(sessions: CalendarSession[], skipped?: number) {
   act(() => hook.exportSessions(sessions, { skipped }));
-  const buttons = jest.mocked(Alert.alert).mock.calls[0][2] ?? [];
+  const buttons = itemAt(jest.mocked(Alert.alert).mock.calls, 0)[2] ?? [];
   await act(async () => {
     buttons.find((b) => b.text === "Add")?.onPress?.();
   });
@@ -102,7 +103,7 @@ describe("useCalendarSessionsExport", () => {
   it("writes to the system calendar on iOS after confirmation", async () => {
     onPlatform("ios");
     await confirmExport([SESSION]);
-    expect(jest.mocked(Alert.alert).mock.calls[0][1]).toBe("Add 1 session to your calendar?");
+    expect(itemAt(jest.mocked(Alert.alert).mock.calls, 0)[1]).toBe("Add 1 session to your calendar?");
     expect(createCalendarEvents).toHaveBeenCalledWith([SESSION]);
     expect(showToast).toHaveBeenCalledWith({
       type: "success",

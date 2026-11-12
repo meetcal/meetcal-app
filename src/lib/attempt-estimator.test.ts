@@ -10,6 +10,7 @@ import {
   ATTEMPT_HISTORY_YEARS,
   getHistoryCutoffDate,
 } from "@/utils/dateTime";
+import { itemAt } from "@/test-support/checked-access";
 
 const athlete = (overrides: Partial<LiftResult>): LiftResult => ({
   memberId: "1",
@@ -26,8 +27,11 @@ const athlete = (overrides: Partial<LiftResult>): LiftResult => ({
 const recentDate = () => {
   const d = new Date();
   d.setMonth(d.getMonth() - 1);
-  return d.toISOString().split("T")[0];
+  return d.toISOString().slice(0, 10);
 };
+
+const onlyEstimate = (athletes: LiftResult[], history: AthleteMeetResult[]) =>
+  itemAt(calculateEstimates(athletes, history), 0);
 
 const result = (overrides: Partial<AthleteMeetResult>): AthleteMeetResult => ({
   event_id: "e1",
@@ -62,7 +66,7 @@ describe("calculateEstimates", () => {
         cj_best: 130,
       }),
     ];
-    const [estimate] = calculateEstimates(
+    const estimate = onlyEstimate(
       [athlete({ name: "Test Athlete" })],
       history,
     );
@@ -77,7 +81,7 @@ describe("calculateEstimates", () => {
   });
 
   it("falls back to entry total when there is no recent history", () => {
-    const [estimate] = calculateEstimates(
+    const estimate = onlyEstimate(
       [athlete({ name: "No History", entryTotal: 200 })],
       [],
     );
@@ -96,7 +100,7 @@ describe("calculateEstimates", () => {
       snatch_best: 150,
       cj_best: 180,
     });
-    const [estimate] = calculateEstimates(
+    const estimate = onlyEstimate(
       [athlete({ name: "Test Athlete", entryTotal: 0 })],
       [old],
     );
@@ -107,7 +111,7 @@ describe("calculateEstimates", () => {
 
   it("matches athletes by normalized name (case/whitespace insensitive)", () => {
     const history = [result({ name: "  test   ATHLETE ", snatch_best: 100 })];
-    const [estimate] = calculateEstimates(
+    const estimate = onlyEstimate(
       [athlete({ name: "Test Athlete" })],
       history,
     );
@@ -119,7 +123,7 @@ describe("calculateEstimates", () => {
     // its stored spelling; the roster can carry the other form.
     const nfc = "José Núñez".normalize("NFC");
     const history = [result({ name: nfc, snatch_best: 100, cj_best: 120 })];
-    const [estimate] = calculateEstimates(
+    const estimate = onlyEstimate(
       [athlete({ name: nfc.normalize("NFD") })],
       history,
     );
@@ -271,7 +275,7 @@ describe("opener make rates", () => {
       result({ snatch1: -105, cj1: -125 }),
       result({ snatch1: 105, cj1: 125 }),
     ];
-    const [estimate] = calculateEstimates(
+    const estimate = onlyEstimate(
       [athlete({ name: "Test Athlete" })],
       history,
     );
@@ -280,7 +284,7 @@ describe("opener make rates", () => {
   });
 
   it("reports 0 when every opener was missed", () => {
-    const [estimate] = calculateEstimates(
+    const estimate = onlyEstimate(
       [athlete({ name: "Test Athlete" })],
       [result({ snatch1: -100, cj1: -120 })],
     );
@@ -289,7 +293,7 @@ describe("opener make rates", () => {
   });
 
   it("ignores meets where the opener was never taken", () => {
-    const [estimate] = calculateEstimates(
+    const estimate = onlyEstimate(
       [athlete({ name: "Test Athlete" })],
       [result({ snatch1: null, cj1: 0 }), result({ snatch1: 100, cj1: 120 })],
     );
@@ -300,7 +304,7 @@ describe("opener make rates", () => {
 
 describe("generateAthleteNotes", () => {
   it("flags athletes with no historical data", () => {
-    const [estimate] = calculateEstimates(
+    const estimate = onlyEstimate(
       [athlete({ name: "No History", entryTotal: 200 })],
       [],
     );
@@ -322,7 +326,7 @@ describe("generateAthleteNotes", () => {
         cj_best: 130,
       }),
     ];
-    const [estimate] = calculateEstimates(
+    const estimate = onlyEstimate(
       [athlete({ name: "Test Athlete" })],
       history,
     );
@@ -344,7 +348,7 @@ describe("history window", () => {
     });
 
   const bestsFor = (history: AthleteMeetResult[]) => {
-    const [estimate] = calculateEstimates(
+    const estimate = onlyEstimate(
       [athlete({ name: "Test Athlete" })],
       history,
     );
@@ -354,7 +358,7 @@ describe("history window", () => {
   it("drops results older than the shared two-year cutoff", () => {
     const old = new Date();
     old.setUTCFullYear(old.getUTCFullYear() - 3);
-    const estimate = bestsFor([lifted(old.toISOString().split("T")[0])]);
+    const estimate = bestsFor([lifted(old.toISOString().slice(0, 10))]);
     expect(estimate.snatchEstimates).toEqual([]);
     expect(estimate.cjEstimates).toEqual([]);
   });

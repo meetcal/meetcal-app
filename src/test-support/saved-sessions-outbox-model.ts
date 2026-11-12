@@ -4,6 +4,8 @@ import * as fc from 'fast-check';
 
 import { isClockCall } from '@/lib/api/json-transport-stub';
 import * as api from '@/lib/api/meetcal-api';
+import * as savedSessionsApi from '@/lib/api/saved-sessions-api';
+import { resetServerClockForTests } from '@/lib/api/server-clock';
 import { TransportRequestError, type ApiCall, type Transport } from '@/lib/api/transport';
 import { MAX_RECONCILE_FETCHES } from '@/lib/saved-sessions-load';
 import * as store from '@/lib/saved-sessions-store';
@@ -22,6 +24,7 @@ import {
   type TokenFault,
   type TransportFault,
 } from '@/test-support/chaos';
+import { itemAt } from '@/test-support/checked-access';
 
 /**
  * Model-based chaos harness for the saved-sessions outbox
@@ -50,7 +53,7 @@ export type OutboxModule = typeof import('@/lib/saved-sessions-outbox');
 export const OWNER = 'user_outbox_owner';
 export const OTHER_USER = 'user_outbox_other';
 export const MEETS = ['Spring Open', 'Fall Classic'] as const;
-export type Meet = (typeof MEETS)[number];
+export type ModelMeet = (typeof MEETS)[number];
 export const SESSION_IDS: readonly string[] = MEETS.flatMap((meet) => [1, 2, 3].map((n) => `${meet}-${n}-Red`));
 const RESET_ALL_KEY = '*';
 
@@ -83,7 +86,7 @@ function subjectOf(token: string | undefined): string | null {
   }
 }
 
-export function meetOf(id: string): Meet {
+export function meetOf(id: string): ModelMeet {
   const meet = MEETS.find((candidate) => id.startsWith(`${candidate}-`));
   if (!meet) throw new Error(`no meet for ${id}`);
   return meet;
@@ -338,7 +341,9 @@ export function serverTransport(
     if (!h.online) throw new TypeError('Network request failed');
     if (isClockCall(call)) return Date.now();
     if (gate) await gate(call);
-    const answer = next < answers.length ? answers[next++] : ({ kind: 'answer' } as const);
+    const scripted = answers[next];
+    if (scripted !== undefined) next += 1;
+    const answer = scripted ?? ({ kind: 'answer' } as const);
     answered.push(answer);
     if (answer.kind === 'late') {
       // Already on the wire: the client's abort cannot recall it.
@@ -370,11 +375,9 @@ export function serverTransport(
 export function loadOutbox(): OutboxModule {
   let loaded!: OutboxModule;
   jest.isolateModules(() => {
-    // Storage and the API client survive the "restart": the device keeps its
-    // disk and the transport stays the stub. Only the outbox's in-memory
-    // state (write chain, single-flight runner, delivery log) starts over.
     jest.doMock('@react-native-async-storage/async-storage', () => AsyncStorage);
     jest.doMock('@/lib/api/meetcal-api', () => api);
+    jest.doMock('@/lib/api/saved-sessions-api', () => savedSessionsApi);
     jest.doMock('@/lib/saved-sessions-store', () => store);
     // Only `require()` loads a module inside `jest.isolateModules()` (the
     // test-file exemption in eslint.config.js does not cover test-support/).
@@ -445,7 +448,7 @@ export function emptyModel(): Model {
 export type Intent =
   | { kind: 'save'; id: string; version: number; invalid?: boolean }
   | { kind: 'unsave'; id: string }
-  | { kind: 'reset'; meet: Meet | null };
+  | { kind: 'reset'; meet: ModelMeet | null };
 
 function describeIntent(intent: Intent): string {
   if (intent.kind === 'save') return `save(${intent.id}, v${intent.version}${intent.invalid ? ', invalid' : ''})`;
@@ -539,7 +542,7 @@ function isFinalStatus(status: number): boolean {
 export function processRefusals(m: Model, h: Harness, calls: ChaosTransport['calls'], cursor: { seen: number }): void {
   const rows = h.server.wires(OWNER);
   for (; cursor.seen < calls.length; cursor.seen += 1) {
-    const { call, fault } = calls[cursor.seen];
+    const { call, fault } = itemAt(calls, cursor.seen);
     if (fault.kind !== 'status' || !isFinalStatus(fault.status)) continue;
     if (call.fn === 'users:deleteSavedSessions') {
       const key = typeof call.args.meet === 'string' ? call.args.meet : RESET_ALL_KEY;
@@ -696,7 +699,7 @@ export class MarkCommand implements Command {
       intent.kind === 'reset'
         ? outbox.resets[intent.meet ?? RESET_ALL_KEY]
         : outbox.sessions[intent.id]?.op === (intent.kind === 'save' ? 'put' : 'delete')
-          ? outbox.sessions[intent.id].rev
+          ? outbox.sessions[intent.id]?.rev
           : undefined;
     if (stored !== rev) {
       throw new Error(`${describeIntent(intent)} resolved with rev ${rev}, but the outbox holds ${JSON.stringify(outbox)}`);
@@ -725,7 +728,8 @@ export class FlushCommand implements Command {
       processRefusals(m, h, chaos.calls, { seen: 0 });
       const writes = chaos.calls.filter(({ call }) => !isClockCall(call));
       const foreign = writes.filter(({ call }) => call.token !== OWNER_TOKEN);
-      if (foreign.length > 0) throw new Error(`sent ${foreign[0].call.fn} with a token that is not the owner's`);
+      const [firstForeign] = foreign;
+      if (firstForeign) throw new Error(`sent ${firstForeign.call.fn} with a token that is not the owner's`);
       const sawAuthFailure = writes.some(({ fault }) => fault.kind === 'status' && fault.status === 401);
       if (result.authExpired !== sawAuthFailure) {
         throw new Error(`authExpired ${result.authExpired}, but a 401 was ${sawAuthFailure ? '' : 'not '}answered`);
@@ -1005,7 +1009,7 @@ export const intentArb: fc.Arbitrary<Intent> = fc.oneof(
       .map(({ id, version }): Intent => ({ kind: 'save', id, version, invalid: true })),
   },
   { weight: 3, arbitrary: sessionIdArb.map((id): Intent => ({ kind: 'unsave', id })) },
-  { weight: 2, arbitrary: fc.constantFrom<Meet | null>(...MEETS, null).map((meet): Intent => ({ kind: 'reset', meet })) },
+  { weight: 2, arbitrary: fc.constantFrom<ModelMeet | null>(...MEETS, null).map((meet): Intent => ({ kind: 'reset', meet })) },
 );
 
 /**
@@ -1078,7 +1082,7 @@ export const outboxCommandArbs: fc.Arbitrary<Command>[] = [
 export async function startRun(): Promise<{ m: Model; h: Harness; dispose: () => void }> {
   jest.useFakeTimers({ doNotFake: ['nextTick', 'setImmediate', 'queueMicrotask'] });
   await AsyncStorage.clear();
-  api.resetServerClockForTests();
+  resetServerClockForTests();
   const h: Harness = { server: new FakeServer(), outbox: loadOutbox(), online: true, inFlight: new Set(), landed: [] };
   setOnline(h, true);
   return {
@@ -1088,7 +1092,7 @@ export async function startRun(): Promise<{ m: Model; h: Harness; dispose: () =>
       jest.clearAllTimers();
       jest.useRealTimers();
       setOnline(h, true);
-      api.resetServerClockForTests();
+      resetServerClockForTests();
     },
   };
 }
