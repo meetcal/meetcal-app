@@ -441,10 +441,17 @@ pub(crate) fn chronological(rows: &[LiftingResults]) -> Vec<&LiftingResults> {
     sorted
 }
 
-/// Unicode NFC, lowercase, single-spaced: how names and meets are matched. The server keys names
-/// the same way (`normalizeName` in `convex/lib/names.ts`), since sources send both a composed
-/// "é" and an "e" with a combining accent.
 pub(crate) fn fold(value: &str) -> String {
+    if value.is_ascii() {
+        let mut folded = String::with_capacity(value.len());
+        for word in value.split_whitespace() {
+            if !folded.is_empty() {
+                folded.push(' ');
+            }
+            folded.extend(word.chars().map(|character| character.to_ascii_lowercase()));
+        }
+        return folded;
+    }
     value
         .nfc()
         .collect::<String>()
@@ -881,6 +888,9 @@ pub(crate) mod tests {
         // "José" written with a combining acute accent (NFD) and with "é" (NFC).
         assert_eq!(fold("Jose\u{301}  Garci\u{301}a"), fold("JOSÉ García"));
         assert_eq!(fold(" Jane   Doe "), "jane doe");
+        assert_eq!(fold("\tJANE\x0bDoe\r\n"), "jane doe");
+        assert_eq!(fold(""), "");
+        assert_eq!(fold("ΣΟΦΙΑ  Παπαδοπουλος"), "σοφια παπαδοπουλος");
     }
 
     #[test]

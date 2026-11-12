@@ -30,6 +30,7 @@ pub(crate) fn client() -> Result<&'static Client> {
         return Ok(client);
     }
 
+    let _ = rustls::crypto::ring::default_provider().install_default();
     let client = Client::builder()
         .user_agent(USER_AGENT)
         .connect_timeout(CONNECT_TIMEOUT)

@@ -261,11 +261,10 @@ pub(crate) fn meet_editions(group_rows: &[LiftingResults]) -> Vec<(Vec<String>, 
     meets.into_values().collect()
 }
 
-/// The rows of `meet`'s own results title, leaving out the linked titles a
-/// meet also answers (each is ranked when the group's rows name it).
 fn own_title_rows(meet: &str, rows: Vec<LiftingResults>) -> Vec<LiftingResults> {
+    let folded_meet = fold(meet);
     rows.into_iter()
-        .filter(|row| fold(&row.meet) == fold(meet))
+        .filter(|row| row.meet == meet || fold(&row.meet) == folded_meet)
         .collect()
 }
 
