@@ -958,8 +958,6 @@ const DEVICE_LOGIN_DESCRIBE: &str = "deviceLogin:describe";
 const DEVICE_LOGIN_APPROVE: &str = "deviceLogin:approve";
 const DEVICE_LOGIN_DENY: &str = "deviceLogin:deny";
 
-/// Clerk had no session token to hand over, or Convex refused the one it did
-/// (401): the user is asked to try again, which fetches a fresh one.
 pub(crate) const SESSION_MESSAGE: &str =
     "MeetCal couldn't confirm you're signed in; please sign in again";
 

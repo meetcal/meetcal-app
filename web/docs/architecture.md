@@ -132,8 +132,9 @@ is the page the link opens. It needs a signed-in user but no subscription, so it
   function error with status 404 for a code no login is waiting on. Deny also turns down a login
   this user approved whose token the CLI has not collected yet (second thoughts in another tab),
   and answers 404 when nothing is left to turn down (expired, or the CLI already has its token):
-  the page then shows the code as expired or used, never "denied", since the CLI may be signed in. All three carry `Authorization: Bearer <Clerk session token>`, and a 401 asks the user to try
-  again, which fetches a fresh token. The calls are in `api.rs` (`describe_device_login`,
+  the page then shows the code as expired or used, never "denied", since the CLI may be signed in. All three carry `Authorization: Bearer <Clerk session token>`, and a 401 shows "MeetCal
+  couldn't confirm you're signed in; please sign in again", with a Try again button that asks again
+  with a fresh token. The calls are in `api.rs` (`describe_device_login`,
   `approve_device_login`, `deny_device_login`, `revoke_all_cli_logins`).
 - States: checking sign-in, sign-in, code entry, looking up, the request (Approve / Deny),
   approved ("Done — you can return to your terminal."), denied, expired or used (a `null`
