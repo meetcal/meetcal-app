@@ -266,3 +266,33 @@ describe('placeholder meets (#405)', () => {
   });
 });
 
+describe('the completed list in a date window (#570)', () => {
+  const completedMeet = (name: string, startDate: string) => ({ name, status: 'completed', startDate, endDate: startDate, timeZone: 'America/Denver', venueName: 'Gym', venueCity: 'Denver', venueStreet: '1 Main', venueState: 'CO', venueZip: '80202', updatedAt: 1 });
+  const stored = () =>
+    fakeDb({
+      meets: [completedMeet('2023 Open', '2023-06-01'), completedMeet('2025 Open', '2025-06-01'), completedMeet('2026 Open', '2026-06-01'), { ...completedMeet('2026 Upcoming', '2026-12-01'), status: 'upcoming' }],
+    }).db;
+  const names = async (args: Record<string, unknown>) => (JSON.parse(((await handlerOf(completedMeets)({ db: stored() }, args)) as { json: string }).json) as { name: string }[]).map((m) => m.name);
+
+  it('answers every completed meet, newest first, to a caller that sends no window, as released clients do', async () => {
+    expect(await names({})).toEqual(['2026 Open', '2025 Open', '2023 Open']);
+  });
+
+  it('answers the meets starting on or after since', async () => {
+    expect(await names({ since: '2025-06-01' })).toEqual(['2026 Open', '2025 Open']);
+    expect(await names({ since: '2025-06-02' })).toEqual(['2026 Open']);
+  });
+
+  it('answers the meets starting before before, so windows laid end to end list each meet once', async () => {
+    expect(await names({ before: '2025-06-01' })).toEqual(['2023 Open']);
+    expect(await names({ since: '2025-01-01', before: '2026-01-01' })).toEqual(['2025 Open']);
+    expect(await names({ since: '2026-01-01', before: '2027-01-01' })).toEqual(['2026 Open']);
+  });
+
+  it('refuses a window that is not dates in order', async () => {
+    const status = async (args: Record<string, unknown>) => handlerOf(completedMeets)({ db: stored() }, args).then(() => 'ok', (error: { data?: { status?: number } }) => error.data?.status);
+    expect(await status({ since: '2025' })).toBe(400);
+    expect(await status({ before: 'June' })).toBe(400);
+    expect(await status({ since: '2026-01-01', before: '2026-01-01' })).toBe(400);
+  });
+});
