@@ -7,19 +7,6 @@ import { fetchJson } from './lib/http';
 import { entriesEndpoint, entriesEventId, entryFromRow, meetFromTitle, readEntriesTable, unstoredEntriesMessage, type EntriesTable, type Entry, type EntryRow } from './parse/entries';
 import { sourcesFailed } from '../lib/cronAlerts';
 
-/**
- * Meet entries (replaces the `entries` job's `usaw/entry_scraper/csv_scraper.js`):
- * each target's entries list from Sport80's public entries endpoint, upserted
- * into `athletes`. A target's meet is the stored meet of its Sport80 event
- * (`meets.sourceId`, from the page URL), else the one named by the list's
- * title, found before any page of entries; a list with neither fails the
- * target rather than store a roster no meet page shows (#413). Entries are
- * stored under the meet's stored name, whatever Sport80 now titles it. A
- * completed meet is skipped without downloading its list,
- * and its target is removed once the meet ended TARGET_RETENTION_DAYS ago
- * (the list was pruned by hand before), so the job's work stays bounded by
- * the meets still to come.
- */
 async function getJson(url: string): Promise<EntriesTable> {
   return readEntriesTable(await fetchJson(url, { timeoutMs: 60_000 }));
 }

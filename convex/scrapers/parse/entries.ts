@@ -102,7 +102,10 @@ export function readEntriesTable(body: unknown): EntriesTable {
   const rows = (data ?? []).map((item: unknown, i: number): EntryRow => {
     if (!isRecord(item)) throw new Error(`entries: row ${i} is not an object`);
     const memberId = scalar(item, i, 'member_id');
-    const numberOrText = (field: string) => (typeof item[field] === 'number' || typeof item[field] === 'string' ? (item[field] as number | string) : null);
+    const numberOrText = (field: string) => {
+      const value = item[field];
+      return typeof value === 'number' || typeof value === 'string' ? value : null;
+    };
     return {
       ...('id' in item ? { id: item.id } : {}),
       member_id: memberId === null ? null : String(memberId),

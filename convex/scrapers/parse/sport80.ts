@@ -111,7 +111,6 @@ export function newestEvents(events: Dict[], count = RECENT_EVENTS): Dict[] {
     .map(({ event }) => event);
 }
 
-/** The event id: the last segment of `action[0].route`, else `id`. */
 function firstAction(event: Dict): unknown {
   const actions: unknown = event.action;
   if (!Array.isArray(actions)) return undefined;
