@@ -1,3 +1,4 @@
+import { attemptCounts } from './attempts';
 import type { Gender } from './gender';
 import { parseDivision, plausible, rowQpoints, rowSinclair } from './leaderboard';
 import { normalizeName } from './names';
@@ -43,13 +44,7 @@ function attemptsOf(row: ApiLiftingResult): number[] {
 }
 
 function makeRate(rows: readonly ApiLiftingResult[]): number | null {
-  let taken = 0;
-  let made = 0;
-  for (const attempt of rows.flatMap(attemptsOf)) {
-    if (attempt === 0 || !Number.isFinite(attempt)) continue;
-    taken += 1;
-    if (attempt > 0) made += 1;
-  }
+  const { taken, made } = attemptCounts(rows.flatMap(attemptsOf));
   return taken > 0 ? (made * 100) / taken : null;
 }
 

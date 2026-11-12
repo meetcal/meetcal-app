@@ -1,3 +1,4 @@
+import { attemptCounts } from './attempts';
 import { isListOf, isNumber, isPairOf, isRecord, isString, itemAt } from './json';
 import { ATHLETE_RESULTS_MAX, readAll } from './boundedRead';
 import type { QueryCtx } from '../_generated/server';
@@ -344,10 +345,9 @@ export function medalFor(placing: Placing, lift: number): Medal | null {
 }
 
 function makeRatePercent(attempts: number[]): number {
-  const declared = attempts.filter((a) => a !== 0).length;
-  if (declared === 0) return 0;
-  const made = attempts.filter((a) => a > 0).length;
-  return Math.round((made / declared) * 100);
+  const { taken, made } = attemptCounts(attempts);
+  if (taken === 0) return 0;
+  return Math.round((made / taken) * 100);
 }
 
 /** `GET /clubs/meet-stats` from the meet's stats rows and the club's roster count. */
