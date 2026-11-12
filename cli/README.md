@@ -316,14 +316,6 @@ Without `--wso` or `--club`, MeetCal ranks every athlete on its servers and send
 needs `meetcal login` with a MeetCal subscription, and a range of less than five years. With them,
 the CLI reads the group's results and ranks them itself, with no limit on the range or the rows.
 
-Options:
-
-- `--year`, `-y`, or `--from` and `--to` (`YYYY-MM-DD`): the range; defaults to the current year
-- `--gender`, `-g`; `--category`, `-a`; `--division`, `-d`; `--federation`, `-f`: as for
-  `leaderboard`
-
-`results` has no `--wso`, `--club` or `--adaptive`: it reads every result in the range.
-
 ### Club reports
 
 #### `clubs`

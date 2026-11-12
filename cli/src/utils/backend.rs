@@ -1053,6 +1053,32 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn a_read_stopped_at_its_page_limit_keeps_the_rows_it_read() {
+        let mut pages = vec![
+            page(&[1, 2], "c1", false),
+            page(&[3], "c2", false),
+            page(&[4], "c3", true),
+        ]
+        .into_iter();
+        let read = collect_pages_within::<u32, _, _>("test:paged", 2, |_| {
+            let next = pages.next().expect("no more pages");
+            async move { Ok(next) }
+        })
+        .await
+        .unwrap();
+        assert!(matches!(read, PagesRead::CutShort(rows) if rows == vec![1, 2, 3]));
+
+        let mut pages = vec![page(&[1], "c1", false), page(&[2], "c2", true)].into_iter();
+        let read = collect_pages_within::<u32, _, _>("test:paged", 2, |_| {
+            let next = pages.next().expect("no more pages");
+            async move { Ok(next) }
+        })
+        .await
+        .unwrap();
+        assert!(matches!(read, PagesRead::All(rows) if rows == vec![1, 2]));
+    }
+
+    #[tokio::test]
     async fn a_malformed_or_failed_page_fails_the_whole_read() {
         let mut pages = vec![
             page(&[1], "c1", false),
