@@ -170,6 +170,8 @@ export const namesPage = query({
   },
 });
 
+const tooLargeToRead = (meet: string) => `${JSON.stringify(meet)} is too large to read in one request; try again later or report it.`;
+
 async function meetAttendance(ctx: QueryCtx, meet: string, budget: DocumentBudget) {
   const meetRows = await takeWithinBudget(budget, (limit) => meetsNamed(ctx, meet, Math.min(limit, MEET_ROWS_READ_PER_NAME)));
   if (meetRows === null) return null;
@@ -215,8 +217,7 @@ export async function attendanceRows(ctx: QueryCtx, meets: readonly string[], do
   for (const meet of meets) {
     const row = await meetAttendance(ctx, meet, budget);
     if (row === null) {
-      const tooMany = `more results and registrations than one call reads (${documentBudget})`;
-      throw apiError(413, meets.length === 1 ? `${JSON.stringify(meet)} has ${tooMany}` : `these meets have ${tooMany}: ask for fewer meets at once`, { max: documentBudget });
+      throw apiError(413, meets.length === 1 ? tooLargeToRead(meet) : 'these meets are too large to read in one request; try fewer at once.', { max: documentBudget });
     }
     rows.push(row);
   }

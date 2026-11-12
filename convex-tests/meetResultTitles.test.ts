@@ -106,9 +106,8 @@ describe('results titles of a meet (#362)', () => {
   it('says which meet is too large when one meet alone does not fit, where asking for fewer cannot help', async () => {
     const store = world();
     const message = (meets: string[]) => attendanceRows(store.ctx as never, meets, 0).then(() => '', (error: { data?: { error?: string } }) => error.data?.error ?? '');
-    expect(await message([NATIONALS])).toContain(JSON.stringify(NATIONALS));
-    expect(await message([NATIONALS])).not.toContain('fewer meets');
-    expect(await message([NATIONALS, JUNIOR])).toContain('ask for fewer meets at once');
+    expect(await message([NATIONALS])).toBe('"2026 USA Weightlifting National Championships" is too large to read in one request; try again later or report it.');
+    expect(await message([NATIONALS, JUNIOR])).toBe('these meets are too large to read in one request; try fewer at once.');
   });
 
   it('counts every document it reads against what one query may read, and keeps nothing back', async () => {

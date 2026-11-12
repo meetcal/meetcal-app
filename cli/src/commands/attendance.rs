@@ -213,15 +213,22 @@ where
     while let Some(batch) = batches.pop() {
         match ask(batch.to_vec()).await {
             Ok(answer) => answers.push(answer),
-            Err(error) if too_many_rows(&error) && batch.len() > 1 => {
-                let (first, second) = halves(batch);
-                batches.push(second);
-                batches.push(first);
-            }
+            Err(error) if too_many_rows(&error) => match batch {
+                [meet] => bail!(too_large_to_read(meet)),
+                _ => {
+                    let (first, second) = halves(batch);
+                    batches.push(second);
+                    batches.push(first);
+                }
+            },
             Err(error) => return Err(error),
         }
     }
     Ok(answers)
+}
+
+fn too_large_to_read(meet: &str) -> String {
+    format!("\"{meet}\" is too large to read in one request; try again later or report it.")
 }
 
 fn too_many_rows(error: &anyhow::Error) -> bool {
@@ -527,7 +534,10 @@ mod tests {
         .await
         .unwrap_err();
         assert_eq!(asked.get(), 1);
-        assert!(too_many_rows(&failure));
+        assert_eq!(
+            failure.to_string(),
+            "\"meet 1\" is too large to read in one request; try again later or report it."
+        );
     }
 
     #[tokio::test]
