@@ -8,7 +8,7 @@ import {
   replaceOfflineCache,
   setOfflineCache,
 } from './offline-cache';
-import { fetchApiIntlRankings, type ApiIntlRankingRow } from '@/lib/api/meetcal-api';
+import { fetchApiIntlRankings, type ApiIntlRankingRow } from '@/lib/api/reference-api';
 
 export type IntlRanking = {
   meet: string;

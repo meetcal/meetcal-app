@@ -21,7 +21,8 @@ import {
 import { captureViewAsPng } from "@/lib/share-image";
 import { act, create, type ReactTestRenderer } from "react-test-renderer";
 import WeightliftingWrappedScreen from "@/app/comp-data/weightlifting-wrapped";
-import { fetchWrapped, searchApi, type ApiWrappedStats } from "@/lib/api/meetcal-api";
+import { fetchWrapped, type ApiWrappedStats } from "@/lib/api/wrapped-api";
+import { searchApi } from "@/lib/api/results-api";
 import { SUGGESTION_DEBOUNCE_MS } from "@/hooks/useNameSuggestions";
 import { showToast } from "@/components/ui/Toast";
 
@@ -76,7 +77,8 @@ jest.mock("@/lib/share-image", () => ({
   shareImageFile: jest.fn(),
 }));
 jest.mock("@/hooks/useIsOffline", () => ({ useIsOffline: () => [false, jest.fn()] }));
-jest.mock("@/lib/api/meetcal-api", () => ({ searchApi: jest.fn(), fetchWrapped: jest.fn() }));
+jest.mock("@/lib/api/results-api", () => ({ searchApi: jest.fn() }));
+jest.mock("@/lib/api/wrapped-api", () => ({ fetchWrapped: jest.fn() }));
 
 type SearchResponse = Awaited<ReturnType<typeof searchApi>>;
 type Pending = { query: string; resolve: (response: SearchResponse) => void };

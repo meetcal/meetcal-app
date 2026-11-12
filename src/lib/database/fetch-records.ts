@@ -10,7 +10,7 @@ import {
   replaceOfflineCache,
   writeBoundedCacheEntry,
 } from './offline-cache';
-import { fetchApiRecords, type ApiRecordRow } from '@/lib/api/meetcal-api';
+import { fetchApiRecords, type ApiRecordRow } from '@/lib/api/reference-api';
 import { weightClassSort } from './weight-class-sort';
 
 type RecordsCache = Record<string, RecordsData>;

@@ -4,14 +4,8 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Crypto from 'expo-crypto';
 import { isAccountDeleted } from '@/lib/deleted-accounts';
 import { normalizeStoredSession, type SavedSession } from '@/lib/saved-sessions-store';
-import {
-  deleteSavedSession,
-  deleteSavedSessions,
-  MeetCalApiError,
-  MeetCalApiTimeoutError,
-  putSavedSession,
-  type SavedSessionWriteRevision,
-} from '@/lib/api/meetcal-api';
+import { deleteSavedSession, deleteSavedSessions, putSavedSession, type SavedSessionWriteRevision } from '@/lib/api/saved-sessions-api';
+import { MeetCalApiError, MeetCalApiTimeoutError } from '@/lib/api/meetcal-api';
 import { devWarn } from '@/lib/logger';
 
 /**

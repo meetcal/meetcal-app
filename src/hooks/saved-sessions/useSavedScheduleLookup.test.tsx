@@ -10,7 +10,7 @@ import { act, create } from "react-test-renderer";
 import type { MeetName } from "@/data/types/meet";
 import type { Schedule } from "@/types/schedule";
 import { useSavedScheduleLookup } from "@/hooks/saved-sessions/useSavedScheduleLookup";
-import { clearHttpValidatorCache } from "@/lib/api/meetcal-api";
+import { clearHttpValidatorCache } from "@/lib/api/revalidated-reads";
 import { jsonTransportStub } from "@/lib/api/json-transport-stub";
 import { setApiTransportForTests } from "@/lib/api/transport";
 import { MEETS_LIST_CACHE_KEY } from "@/lib/database/meets-list-cache";

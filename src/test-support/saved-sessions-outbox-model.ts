@@ -4,6 +4,8 @@ import * as fc from 'fast-check';
 
 import { isClockCall } from '@/lib/api/json-transport-stub';
 import * as api from '@/lib/api/meetcal-api';
+import * as savedSessionsApi from '@/lib/api/saved-sessions-api';
+import { resetServerClockForTests } from '@/lib/api/server-clock';
 import { TransportRequestError, type ApiCall, type Transport } from '@/lib/api/transport';
 import { MAX_RECONCILE_FETCHES } from '@/lib/saved-sessions-load';
 import * as store from '@/lib/saved-sessions-store';
@@ -370,11 +372,9 @@ export function serverTransport(
 export function loadOutbox(): OutboxModule {
   let loaded!: OutboxModule;
   jest.isolateModules(() => {
-    // Storage and the API client survive the "restart": the device keeps its
-    // disk and the transport stays the stub. Only the outbox's in-memory
-    // state (write chain, single-flight runner, delivery log) starts over.
     jest.doMock('@react-native-async-storage/async-storage', () => AsyncStorage);
     jest.doMock('@/lib/api/meetcal-api', () => api);
+    jest.doMock('@/lib/api/saved-sessions-api', () => savedSessionsApi);
     jest.doMock('@/lib/saved-sessions-store', () => store);
     // Only `require()` loads a module inside `jest.isolateModules()` (the
     // test-file exemption in eslint.config.js does not cover test-support/).
@@ -1078,7 +1078,7 @@ export const outboxCommandArbs: fc.Arbitrary<Command>[] = [
 export async function startRun(): Promise<{ m: Model; h: Harness; dispose: () => void }> {
   jest.useFakeTimers({ doNotFake: ['nextTick', 'setImmediate', 'queueMicrotask'] });
   await AsyncStorage.clear();
-  api.resetServerClockForTests();
+  resetServerClockForTests();
   const h: Harness = { server: new FakeServer(), outbox: loadOutbox(), online: true, inFlight: new Set(), landed: [] };
   setOnline(h, true);
   return {
@@ -1088,7 +1088,7 @@ export async function startRun(): Promise<{ m: Model; h: Harness; dispose: () =>
       jest.clearAllTimers();
       jest.useRealTimers();
       setOnline(h, true);
-      api.resetServerClockForTests();
+      resetServerClockForTests();
     },
   };
 }

@@ -23,8 +23,8 @@ const mockPrefetchMeetData = jest.fn(async (_meet: string, _options?: unknown) =
 let mockTrustedNow: Date | null = null;
 // The server clock sample the clear waits for; none arrives by default.
 const mockAwaitServerClock = jest.fn(async (): Promise<unknown> => null);
-jest.mock("@/lib/api/meetcal-api", () => ({
-  ...jest.requireActual("@/lib/api/meetcal-api"),
+jest.mock("@/lib/api/server-clock", () => ({
+  ...jest.requireActual("@/lib/api/server-clock"),
   getTrustedNow: () => mockTrustedNow,
   awaitServerClock: () => mockAwaitServerClock(),
 }));

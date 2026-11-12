@@ -8,7 +8,7 @@
 // device east of every meet.
 import { convertToUTC } from '@/data/meets/config';
 import { selectNextSession } from '@/lib/next-session';
-import { mapApiMeet, mapApiSchedule, type ApiMeet } from '@/lib/api/meetcal-api';
+import { mapApiMeet, mapApiSchedule, type ApiMeet } from '@/lib/api/api-meet-mappers';
 
 function apiMeet(timeZone: string, start: string, end = start): ApiMeet {
   return {

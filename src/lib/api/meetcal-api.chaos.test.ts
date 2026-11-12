@@ -1,22 +1,14 @@
 import * as fc from 'fast-check';
 
-import {
-  clearHttpValidatorCache,
-  deleteSavedSession,
-  fetchApiAthletes,
-  fetchApiClubMeets,
-  fetchApiMeetByName,
-  fetchApiMeetPackageConditional,
-  fetchApiMeets,
-  fetchApiWsoRecords,
-  fetchApiYearBestsByNames,
-  fetchSavedSessions,
-  MEET_PACKAGE_TIMEOUT_MS,
-  MeetCalApiError,
-  MeetCalApiTimeoutError,
-  resetServerClockForTests,
-  type ApiWsoRecordRow,
-} from './meetcal-api';
+import { clearHttpValidatorCache } from '@/lib/api/revalidated-reads';
+import { deleteSavedSession, fetchSavedSessions } from '@/lib/api/saved-sessions-api';
+import { fetchApiAthletes, fetchApiMeetByName, fetchApiMeets } from '@/lib/api/meets-api';
+import { fetchApiClubMeets } from '@/lib/api/clubs-api';
+import { fetchApiMeetPackageConditional, MEET_PACKAGE_TIMEOUT_MS } from '@/lib/api/meet-package-api';
+import { fetchApiWsoRecords, type ApiWsoRecordRow } from '@/lib/api/reference-api';
+import { fetchApiYearBestsByNames } from '@/lib/api/results-api';
+import { MeetCalApiError, MeetCalApiTimeoutError } from '@/lib/api/meetcal-api';
+import { resetServerClockForTests } from '@/lib/api/server-clock';
 import type { TransportFault } from './chaos-transport';
 import { isClockCall, jsonTransportStub } from './json-transport-stub';
 import { CONVEX_TRANSIENT_MESSAGE, setApiTransportForTests, type ApiCall, type Transport } from './transport';

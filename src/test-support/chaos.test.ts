@@ -2,7 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import NetInfo, { type NetInfoState } from '@react-native-community/netinfo';
 import * as fc from 'fast-check';
 
-import { SERVER_CLOCK_CALL } from '@/lib/api/meetcal-api';
+import { SERVER_CLOCK_CALL } from '@/lib/api/server-clock';
 import { callApi } from '@/lib/api/transport';
 import {
   chaosGetToken,

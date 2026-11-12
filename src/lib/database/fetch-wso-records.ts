@@ -9,12 +9,7 @@ import {
   replaceOfflineCache,
   writeBoundedCacheEntry,
 } from './offline-cache';
-import {
-  fetchApiWsoAgeGroups,
-  fetchApiWsoList,
-  fetchApiWsoRecords,
-  type ApiWsoRecordRow,
-} from '@/lib/api/meetcal-api';
+import { fetchApiWsoAgeGroups, fetchApiWsoList, fetchApiWsoRecords, type ApiWsoRecordRow } from '@/lib/api/reference-api';
 import { filterRecordsData } from './records-filter';
 import { weightClassSort } from './weight-class-sort';
 

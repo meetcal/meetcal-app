@@ -1,4 +1,4 @@
-import { mapApiMeet } from '@/lib/api/meetcal-api';
+import { mapApiMeet } from '@/lib/api/api-meet-mappers';
 import { parseStoredMeetNamed } from './stored-meet';
 
 const stored = mapApiMeet({

@@ -2,7 +2,8 @@ import { IconSymbol } from "@/components/ui/IconSymbol";
 import { useIsOffline } from "@/hooks/useIsOffline";
 import { useNameSuggestions } from "@/hooks/useNameSuggestions";
 import { showToast } from "@/components/ui/Toast";
-import { fetchWrapped, searchApi } from "@/lib/api/meetcal-api";
+import { fetchWrapped } from "@/lib/api/wrapped-api";
+import { searchApi } from "@/lib/api/results-api";
 import { captureViewAsPng, shareImageFile } from "@/lib/share-image";
 import {
   buildWrappedShareText,

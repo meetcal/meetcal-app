@@ -3,7 +3,8 @@ import * as fc from 'fast-check';
 
 import type { AthleteMeetResult } from '@/data/types/athletes';
 import { jsonTransportStub } from '@/lib/api/json-transport-stub';
-import { mapApiAthletes, mapApiLiftingResult, NAMES_QUERY_CHUNK_SIZE } from '@/lib/api/meetcal-api';
+import { mapApiAthletes, mapApiLiftingResult } from '@/lib/api/api-athlete-mappers';
+import { NAMES_QUERY_CHUNK_SIZE } from '@/lib/api/results-api';
 import type { ApiCall, Transport } from '@/lib/api/transport';
 import { prefetchMeetData, warmMeetData } from '@/lib/database/meet-manager';
 import { findAthleteNamesWithoutHistory, getAllCachedLiftingResultsForAthlete } from '@/lib/database/athlete-history-store';

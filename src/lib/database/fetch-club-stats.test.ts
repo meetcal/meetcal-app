@@ -10,7 +10,7 @@ const mockFetchApiClubMeets = jest.fn();
 const mockFetchApiClubMeetStats = jest.fn();
 const mockFetchApiClubNames = jest.fn();
 
-jest.mock("@/lib/api/meetcal-api", () => ({
+jest.mock("@/lib/api/clubs-api", () => ({
   fetchApiClubMeets: (...args: unknown[]) => mockFetchApiClubMeets(...args),
   fetchApiClubMeetStats: (...args: unknown[]) => mockFetchApiClubMeetStats(...args),
   fetchApiClubNames: (...args: unknown[]) => mockFetchApiClubNames(...args),

@@ -9,7 +9,7 @@
  * answers what meetcal-backend `app/src/routes/users/saved_sessions.rs` did.
  */
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { resetServerClockForTests } from "@/lib/api/meetcal-api";
+import { resetServerClockForTests } from "@/lib/api/server-clock";
 import { isClockCall } from "@/lib/api/json-transport-stub";
 import { setApiTransportForTests, TransportRequestError, type ApiCall } from "@/lib/api/transport";
 import type { SavedSession } from "@/lib/saved-sessions-store";

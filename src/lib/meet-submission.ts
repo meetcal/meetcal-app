@@ -1,11 +1,6 @@
 import { File } from 'expo-file-system';
-import {
-  generateMeetSubmissionUploadUrl,
-  MeetCalApiError,
-  MeetCalApiTimeoutError,
-  submitMeet,
-  type MeetSubmissionBody,
-} from '@/lib/api/meetcal-api';
+import { generateMeetSubmissionUploadUrl, submitMeet, type MeetSubmissionBody } from '@/lib/api/meet-submissions-api';
+import { MeetCalApiError, MeetCalApiTimeoutError } from '@/lib/api/meetcal-api';
 
 // Sending a schedule or start list for a meet MeetCal does not cover yet
 // (`convex/meetSubmissions.ts`): the form's checks, the uploads and the

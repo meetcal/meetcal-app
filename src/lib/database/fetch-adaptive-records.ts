@@ -8,7 +8,7 @@ import {
   replaceOfflineCache,
   setOfflineCache,
 } from './offline-cache';
-import { fetchApiAdaptiveRecords, type ApiAdaptiveRecordRow } from '@/lib/api/meetcal-api';
+import { fetchApiAdaptiveRecords, type ApiAdaptiveRecordRow } from '@/lib/api/reference-api';
 import { weightClassSort } from './weight-class-sort';
 
 type Gender = 'Men' | 'Women';

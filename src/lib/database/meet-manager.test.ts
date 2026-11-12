@@ -22,7 +22,7 @@ import {
 } from "@/lib/database/meet-manager";
 import { runHistoryClear, runMeetClear } from "@/lib/database/offline-clears";
 import type { Schedule } from "@/types/schedule";
-import { mapApiLiftingResult } from "@/lib/api/meetcal-api";
+import { mapApiLiftingResult } from "@/lib/api/api-athlete-mappers";
 
 jest.mock("@react-native-async-storage/async-storage", () => ({
   __esModule: true,
@@ -106,19 +106,22 @@ jest.mock("@/lib/database/queries", () => ({
     mockFetchAthletesWithSession(...args),
 }));
 
-jest.mock("@/lib/api/meetcal-api", () => {
-  const actual = jest.requireActual("@/lib/api/meetcal-api");
-  return {
-    ...actual,
-    fetchApiMeetPackageConditional: (...args: unknown[]) =>
-      mockFetchApiMeetPackageConditional(
-        ...(args as [string, string | undefined, string | null | undefined]),
-      ),
-    fetchApiResultsByNames: (...args: unknown[]) =>
-      mockFetchApiResultsByNames(...(args as [string[]])),
-    fetchApiMeets: () => mockFetchApiMeets(),
-  };
-});
+jest.mock("@/lib/api/meet-package-api", () => ({
+  ...jest.requireActual("@/lib/api/meet-package-api"),
+  fetchApiMeetPackageConditional: (...args: unknown[]) =>
+    mockFetchApiMeetPackageConditional(
+      ...(args as [string, string | undefined, string | null | undefined]),
+    ),
+}));
+jest.mock("@/lib/api/results-api", () => ({
+  ...jest.requireActual("@/lib/api/results-api"),
+  fetchApiResultsByNames: (...args: unknown[]) =>
+    mockFetchApiResultsByNames(...(args as [string[]])),
+}));
+jest.mock("@/lib/api/meets-api", () => ({
+  ...jest.requireActual("@/lib/api/meets-api"),
+  fetchApiMeets: () => mockFetchApiMeets(),
+}));
 
 jest.mock("@/lib/database/meet-data-clears", () => ({
   clearImplicitMeetData: (...args: unknown[]) =>

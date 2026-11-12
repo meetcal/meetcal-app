@@ -6,7 +6,7 @@ import { clearAllAthleteHistory } from '@/lib/database/athlete-history-clears';
 import { clearAllMeetData } from '@/lib/database/meet-data-clears';
 import { getExplicitMeetDownloadEntries } from '@/lib/database/meet-downloads-registry';
 import { hasMeetEnded } from '@/lib/database/downloaded-meet-expiry';
-import { awaitServerClock, getTrustedNow } from '@/lib/api/meetcal-api';
+import { awaitServerClock, getTrustedNow } from '@/lib/api/server-clock';
 import { isNetworkAvailable } from '@/lib/networkUtils';
 
 export type ClearCacheOutcome =

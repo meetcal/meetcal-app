@@ -102,8 +102,8 @@ describe("usePreloadYearBests", () => {
 
   it("caps the warm to one bests request", () => {
     const { SMALL_ROWS_NAMES_CHUNK_SIZE } = jest.requireActual<
-      typeof import("@/lib/api/meetcal-api")
-    >("@/lib/api/meetcal-api");
+      typeof import("@/lib/api/results-api")
+    >("@/lib/api/results-api");
     expect(YEAR_BESTS_PREFETCH_NAME_CAP).toBeLessThanOrEqual(SMALL_ROWS_NAMES_CHUNK_SIZE);
   });
 

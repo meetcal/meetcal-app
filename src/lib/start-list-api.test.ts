@@ -3,7 +3,7 @@ import type { AthleteMeetResult } from "@/data/types/athletes";
 const mockFetchApiYearBestsByNames = jest.fn();
 const mockFetchApiResultsByNames = jest.fn();
 
-jest.mock("@/lib/api/meetcal-api", () => ({
+jest.mock("@/lib/api/results-api", () => ({
   fetchApiYearBestsByNames: (...args: any[]) =>
     mockFetchApiYearBestsByNames(...args),
   fetchApiResultsByNames: (...args: any[]) => mockFetchApiResultsByNames(...args),

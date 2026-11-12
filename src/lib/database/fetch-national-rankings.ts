@@ -5,7 +5,7 @@ import {
   readBoundedCacheEntry,
   writeBoundedCacheEntry,
 } from './offline-cache';
-import { fetchApiNationalRankings, type ApiNationalRankingRow } from '@/lib/api/meetcal-api';
+import { fetchApiNationalRankings, type ApiNationalRankingRow } from '@/lib/api/reference-api';
 
 export type NationalRanking = {
   id: number;

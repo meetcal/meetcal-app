@@ -12,7 +12,7 @@ import {
   writeBoundedCacheEntry,
 } from './offline-cache';
 import { isNetworkAvailable } from '@/lib/networkUtils';
-import { fetchApiClubMeets, fetchApiClubMeetStats, fetchApiClubNames } from '@/lib/api/meetcal-api';
+import { fetchApiClubMeets, fetchApiClubMeetStats, fetchApiClubNames } from '@/lib/api/clubs-api';
 
 /**
  * Clubs whose meet lists stay cached for offline browsing. A list is one

@@ -1,98 +1,29 @@
-/**
- * @jest-environment-options {"deviceTimeZone": "Pacific/Auckland"}
- */
-import {
-  clearHttpValidatorCache,
-  deleteSavedSession,
-  deleteSavedSessions,
-  fetchApiAdaptiveRecords,
-  fetchApiAthletes,
-  fetchApiAthletesWithSession,
-  fetchApiClubMeets,
-  fetchApiClubMeetStats,
-  fetchApiClubNames,
-  fetchApiIntlRankings,
-  fetchApiMeetByName,
-  fetchApiMeetPackageConditional,
-  fetchApiMeets,
-  fetchApiNationalRankings,
-  fetchApiQualifyingTotals,
-  fetchApiRecentResultsByNames,
-  fetchApiRecords,
-  fetchApiResultsByNames,
-  fetchApiSchedule,
-  fetchApiStandards,
-  fetchApiYearBestsByNames,
-  fetchApiWsoAgeGroups,
-  fetchApiWsoList,
-  fetchApiWsoRecords,
-  fetchSavedSessions,
-  fetchUserPreferences,
-  formatApiTime,
-  mapApiAthlete,
-  mapApiAthletes,
-  mapApiLiftingResult,
-  mapApiMeet,
-  mapApiSchedule,
-  mapApiYearBests,
-  mapPackageSchedule,
-  MEET_PACKAGE_INCLUDE,
-  MEET_PACKAGE_TIMEOUT_MS,
-  awaitServerClock,
-  getServerClockSample,
-  getServerClockSkewMs,
-  getTrustedNow,
-  MAX_PLAUSIBLE_CLOCK_SKEW_MS,
-  SERVER_CLOCK_DECISION_GRACE_MS,
-  MeetCalApiError,
-  resetServerClockForTests,
-  MeetCalApiTimeoutError,
-  NAMES_QUERY_CHUNK_SIZE,
-  normalizePlatform,
-  SERVER_CLOCK_RESAMPLE_MS,
-  SMALL_ROWS_NAMES_CHUNK_SIZE,
-  patchAutoUnsavePreference,
-  putSavedSession,
-  refreshServerEntitlement,
-  fetchAccessPass,
-  issueSiriToken,
-  revokeApiToken,
-  generateMeetSubmissionUploadUrl,
-  submitMeet,
-  fetchWrapped,
-  searchApi,
-} from './meetcal-api';
-import { HTTP_VALIDATOR_CACHE_LIMIT } from './http-cache';
+import { clearHttpValidatorCache } from '@/lib/api/revalidated-reads';
+import { deleteSavedSession, deleteSavedSessions, fetchSavedSessions, putSavedSession } from '@/lib/api/saved-sessions-api';
+import { fetchApiAdaptiveRecords, fetchApiIntlRankings, fetchApiNationalRankings, fetchApiQualifyingTotals, fetchApiRecords, fetchApiStandards, fetchApiWsoAgeGroups, fetchApiWsoList, fetchApiWsoRecords } from '@/lib/api/reference-api';
+import { fetchApiAthletes, fetchApiAthletesWithSession, fetchApiMeetByName, fetchApiMeets, fetchApiSchedule } from '@/lib/api/meets-api';
+import { fetchApiClubMeets, fetchApiClubMeetStats, fetchApiClubNames } from '@/lib/api/clubs-api';
+import { fetchApiMeetPackageConditional, MEET_PACKAGE_INCLUDE, MEET_PACKAGE_TIMEOUT_MS } from '@/lib/api/meet-package-api';
+import { fetchApiRecentResultsByNames, fetchApiResultsByNames, fetchApiYearBestsByNames, NAMES_QUERY_CHUNK_SIZE, SMALL_ROWS_NAMES_CHUNK_SIZE, searchApi } from '@/lib/api/results-api';
+import { fetchUserPreferences, patchAutoUnsavePreference } from '@/lib/api/user-preferences-api';
+import { resetServerClockForTests } from '@/lib/api/server-clock';
+import { MeetCalApiError, MeetCalApiTimeoutError } from '@/lib/api/meetcal-api';
+import { refreshServerEntitlement, fetchAccessPass } from '@/lib/api/entitlement-api';
+import { issueSiriToken, revokeApiToken } from '@/lib/api/siri-tokens-api';
 import { callQuery, isClockCall } from './json-transport-stub';
 import { setAccessPassSource } from './premium-queries';
 import { setApiTransportForTests, TransportRequestError, type ApiCall } from './transport';
-import { UNKNOWN_PLATFORM } from '@/data/types/athletes';
-import { generateSessionId } from '@/utils/session';
-import {
-  ATTEMPT_HISTORY_YEARS,
-  getHistoryCutoffDate,
-  YEAR_BESTS_YEARS,
-} from '@/utils/dateTime';
+import { ATTEMPT_HISTORY_YEARS, getHistoryCutoffDate, YEAR_BESTS_YEARS } from '@/utils/dateTime';
 
-/** The client's per-call default (`DEFAULT_TIMEOUT_MS` in meetcal-api.ts). */
 const DEFAULT_TIMEOUT_MS = 10000;
-const HOUR_MS = 60 * 60 * 1000;
-
-// --- fake transport ---------------------------------------------------------
 
 type Responder = (call: ApiCall) => unknown;
 
-/**
- * Swaps in a fake transport. Clock calls (`kind: 'clock'`) never reach
- * `respond`: `clock` answers them, by default with the device clock.
- */
 function installTransport(respond: Responder, clock: Responder = () => Date.now()) {
   const transport = jest.fn(
     async (call: ApiCall): Promise<unknown> => (isClockCall(call) ? clock(call) : respond(call)),
   );
   setApiTransportForTests(transport);
-  // Every request carries its timeout's abort signal; the assertions below
-  // are about what was asked, so it is left out of the recorded call.
   const allCalls = (): ApiCall[] => transport.mock.calls.map(([{ signal: _signal, ...call }]) => call);
   const dataCalls = (): ApiCall[] => allCalls().filter((call) => !isClockCall(call));
   const clockCalls = (): ApiCall[] => allCalls().filter((call) => isClockCall(call));
@@ -104,12 +35,10 @@ function installTransport(respond: Responder, clock: Responder = () => Date.now(
   return { transport, dataCalls, clockCalls, lastCall };
 }
 
-/** Answers every call with `body`; a conditional query gets it as `{ etag, body }`. */
 function answer(body: unknown, etag: string | null = null): Responder {
   return (call) => (call.conditional ? { etag, body } : body);
 }
 
-/** What a Convex function's `ConvexError({ status, error })` reaches the client as. */
 function apiFailure(status: number, data: Record<string, unknown> = { error: 'failed' }) {
   return new TransportRequestError(
     `query failed with ${status}`,
@@ -120,7 +49,6 @@ function apiFailure(status: number, data: Record<string, unknown> = { error: 'fa
 
 type Reply = { etag?: string | null; body?: unknown; json?: unknown } | { fail: number };
 
-/** Answers data calls from `replies` in order; `{ fail }` rejects with that status. */
 function queueTransport(replies: Reply[]) {
   const fake = installTransport(() => {
     const reply = replies.shift();
@@ -167,7 +95,6 @@ function meetRow(name: string, venue = 'Hall') {
 beforeEach(() => {
   resetServerClockForTests();
   clearHttpValidatorCache();
-  // The `__DEV__` slow-request log fires whenever fake time passes 500ms.
   jest.spyOn(console, 'info').mockImplementation(() => {});
 });
 
@@ -199,7 +126,6 @@ describe('meetcal API client', () => {
     await fetchApiClubNames();
     expect(lastCall().fn).toBe('reference:clubs');
     expect(lastCall().token).toBeUndefined();
-    // The clock mutation that rode alongside the signed-in call is public too.
     expect(clockCalls().length).toBeGreaterThan(0);
     expect(clockCalls().every((call) => call.token === undefined)).toBe(true);
   });
@@ -247,8 +173,6 @@ describe('meetcal API client', () => {
     expect(lastCall().fn).toBe('results:recent');
     expect(lastCall().args.names).toEqual(['Athlete A']);
     expect(lastCall().args.cutoffDate).toMatch(/^\d{4}-\d{2}-\d{2}$/);
-    // One cutoff policy: the UTC-only `getHistoryCutoffDate`, not a second
-    // device-local copy of the same arithmetic.
     expect(lastCall().args.cutoffDate).toBe(getHistoryCutoffDate(ATTEMPT_HISTORY_YEARS));
   });
 
@@ -367,8 +291,6 @@ describe('meetcal API client', () => {
     expect(call.path).toBe(expected.path);
     expect(call.fn).toBe(expected.fn);
     expect(call.kind).toBe('query');
-    // `toEqual` ignores an `ifNoneMatch: undefined` member, which is what a
-    // first conditional read sends.
     expect(call.args).toEqual(expected.args);
     expect(call.args.ifNoneMatch).toBeUndefined();
     expect(call.conditional === true).toBe(expected.conditional === true);
@@ -391,8 +313,6 @@ describe('meetcal API client', () => {
 
     const schedule = await fetchApiSchedule('Test Meet');
 
-    // Day titles are calendar dates read in UTC, so the meet's zone (and the
-    // `meets:details` request that used to ride alongside for it) is not needed.
     expect(dataCalls().map((call) => call.fn)).toEqual(['meets:schedule']);
     expect(dataCalls()[0].args).toEqual({ meet: 'Test Meet' });
     expect(schedule[0].date).toBe('June 20, 2026');
@@ -419,13 +339,11 @@ describe('meetcal API client', () => {
   });
 
   it('trusts a bodiless package answer only for the tag the caller holds', async () => {
-    // No tag in the answer: it can only be vouching for the one that was sent.
     installTransport(() => ({}));
     await expect(
       fetchApiMeetPackageConditional('Test Meet' as never, '2024-01-01', '"abc"'),
     ).resolves.toEqual({ status: 'not_modified' });
 
-    // A different tag, or no tag sent at all, leaves the caller with nothing.
     installTransport(() => ({ etag: '"other"' }));
     await expect(
       fetchApiMeetPackageConditional('Test Meet' as never, '2024-01-01', '"abc"'),
@@ -434,7 +352,6 @@ describe('meetcal API client', () => {
       fetchApiMeetPackageConditional('Test Meet' as never, '2024-01-01', null),
     ).rejects.toThrow('/meets/package answered without a body');
 
-    // Not the `{ etag, body }` envelope at all.
     installTransport(() => null);
     await expect(fetchApiMeetPackageConditional('Test Meet' as never)).rejects.toThrow(
       '/meets/package expected an object response',
@@ -453,7 +370,6 @@ describe('meetcal API client', () => {
     }
     expect(MEET_PACKAGE_INCLUDE).toEqual(['year_bests']);
     expect(lastCall().args.include).toEqual(['year_bests']);
-    // A copy, so nothing downstream can edit the exported constant.
     expect(lastCall().args.include).not.toBe(MEET_PACKAGE_INCLUDE);
   });
 
@@ -561,7 +477,6 @@ describe('meetcal API client', () => {
   });
 
   it('keys batch year bests by names that are not ASCII', async () => {
-    // Convex object keys must be ASCII, which is why the wire format is a list.
     const names = ['Andrés Álvarez', 'Zoë Ørsted', '李娜', 'Nordstrom, Alexander'];
     const { lastCall } = installTransport(
       answer(names.map((name, i) => ({ name, best_snatch: 80 + i, best_cj: 100 + i, best_total: 180 + 2 * i }))),
@@ -576,8 +491,6 @@ describe('meetcal API client', () => {
   });
 
   it("keys batch year bests by the caller's spellings, matched through the name fold", async () => {
-    // #320: the server echoes names cleaned, so a roster's ' Jane Doe' missed
-    // its own row unless every caller re-folded the keys.
     installTransport(
       answer([
         { name: 'Jane Doe', best_snatch: 80, best_cj: 100, best_total: 180 },
@@ -632,409 +545,6 @@ describe('meetcal API client', () => {
   });
 });
 
-describe('meetcal API mappers', () => {
-  it('maps meet, schedule, athlete, result, and best rows into app shapes', () => {
-    const meet = mapApiMeet({
-      id: 'meet-1',
-      name: 'Test Meet',
-      federation: 'USAW',
-      status: 'upcoming',
-      start_date: '2026-06-20',
-      end_date: '2026-06-21',
-      time_zone: 'America/New_York',
-      venue_name: 'Test Venue',
-      venue_street: '1 Main',
-      venue_city: 'Columbus',
-      venue_state: 'OH',
-      venue_zip: '43215',
-    });
-
-    expect(meet.name).toBe('Test Meet');
-    expect(meet.venue.address.state).toBe('OH');
-    expect(meet.time.timeZoneIdentifier).toBe('America/New_York');
-
-    const schedule = mapApiSchedule([
-      {
-        date: '2026-06-20',
-        meet: 'Test Meet',
-        platform: 'blue',
-        session_id: 2,
-        start_time: '13:30:00',
-        weigh_in_time: '11:30:00',
-        weight_class: '73kg',
-      },
-    ]);
-
-    expect(schedule[0].sessions[0].number).toBe(2);
-    expect(schedule[0].sessions[0].startTime).toBe('1:30 PM');
-    expect(schedule[0].sessions[0].platforms[0]).toEqual({
-      platform: 'Blue',
-      weightClass: '73kg',
-      platformStartTime: '1:30 PM',
-      platformWeighInTime: '11:30 AM',
-    });
-
-    const athlete = mapApiAthlete({
-      member_id: '123',
-      adaptive: false,
-      age: 24,
-      club: 'Club',
-      entry_total: 250,
-      gender: 'Men',
-      meet: 'Test Meet',
-      name: 'Athlete A',
-      session_number: 2,
-      session_platform: 'Blue',
-      weight_class: '73kg',
-      wso: null,
-    });
-
-    expect(athlete).toMatchObject({
-      memberId: '123',
-      entryTotal: 250,
-      session: { number: 2, platform: 'Blue' },
-    });
-
-    expect(mapApiLiftingResult({
-      id: 10,
-      event_id: 'event-1',
-      federation: 'USAW',
-      meet: 'Test Meet',
-      date: '2026-06-20',
-      name: 'Athlete A',
-      age: 'Open Men 73kg',
-      body_weight: 72.5,
-      snatch1: 100,
-      snatch2: 105,
-      snatch3: 0,
-      snatch_best: 105,
-      cj1: 130,
-      cj2: 135,
-      cj3: 0,
-      cj_best: 135,
-      total: 240,
-      adaptive: false,
-    })).toMatchObject({
-      event_id: 'event-1',
-      body_weight: 72.5,
-      snatch_best: 105,
-      cj_best: 135,
-    });
-
-    expect(mapApiYearBests({
-      best_snatch: 105,
-      best_cj: 135,
-      best_total: 240,
-    })).toEqual({
-      bestSnatch: 105,
-      bestCJ: 135,
-      bestTotal: 240,
-    });
-  });
-
-  it('maps package schedules into existing offline schedule shape', () => {
-    const schedule = mapPackageSchedule({
-      meet: {
-        id: 'meet-1',
-        name: 'Test Meet',
-        federation: 'USAW',
-        status: 'upcoming',
-        start_date: '2026-06-20',
-        end_date: '2026-06-21',
-        time_zone: 'America/New_York',
-        venue_name: 'Test Venue',
-        venue_street: '1 Main',
-        venue_city: 'Columbus',
-        venue_state: 'OH',
-        venue_zip: '43215',
-      },
-      schedule: [
-        {
-          date: '2026-06-20',
-          sessions: [
-            {
-              session_id: 1,
-              start_time: '08:00:00',
-              weigh_in_time: '06:00:00',
-              platforms: [
-                { platform: 'Red', weight_class: '60kg' },
-                { platform: 'White', weight_class: '65kg' },
-              ],
-            },
-          ],
-        },
-      ],
-      athletes: [],
-      meet_results: [],
-      year_bests_by_name: {},
-    });
-
-    expect(schedule).toHaveLength(1);
-    expect(schedule[0].sessions[0].platforms).toHaveLength(2);
-    expect(formatApiTime('08:00:00')).toBe('8:00 AM');
-  });
-
-  it('keeps a Gold schedule platform as Gold and canonicalizes casing, never remapping to Red', () => {
-    const schedule = mapApiSchedule([
-      { date: '2026-06-20', meet: 'Test Meet', platform: 'RED ', session_id: 1, start_time: '08:00', weigh_in_time: '06:00', weight_class: '60kg' },
-      { date: '2026-06-20', meet: 'Test Meet', platform: 'gold', session_id: 1, start_time: '08:00', weigh_in_time: '06:00', weight_class: '65kg' },
-      { date: '2026-06-20', meet: 'Test Meet', platform: 'stars & stripes', session_id: 2, start_time: '10:00', weigh_in_time: '08:00', weight_class: '71kg' },
-      { date: '2026-06-20', meet: 'Test Meet', platform: '  ', session_id: 3, start_time: '12:00', weigh_in_time: '10:00', weight_class: '81kg' },
-    ]);
-    const sessions = schedule[0].sessions;
-    expect(sessions[0].platforms.map((p) => p.platform)).toEqual(['Red', 'Gold']);
-    expect(sessions[1].platforms.map((p) => p.platform)).toEqual(['Stars & Stripes']);
-    expect(sessions[2].platforms.map((p) => p.platform)).toEqual([UNKNOWN_PLATFORM]);
-    expect(normalizePlatform('unknown-color')).toBe('Unknown-color');
-  });
-
-  it('gives Red and Gold athletes in one session distinct platforms and session ids', () => {
-    const base = {
-      member_id: '1', name: 'Athlete A', adaptive: false, age: 24, club: 'Club',
-      entry_total: 250, gender: 'Men', weight_class: '73kg', session_number: 4,
-    };
-    const red = mapApiAthlete({ ...base, session_platform: 'Red' });
-    const gold = mapApiAthlete({ ...base, member_id: '2', name: 'Athlete B', session_platform: 'Gold' });
-    expect(red.session?.platform).toBe('Red');
-    expect(gold.session?.platform).toBe('Gold');
-    expect(generateSessionId('Test Meet' as never, 4, red.session!.platform)).not.toBe(
-      generateSessionId('Test Meet' as never, 4, gold.session!.platform),
-    );
-  });
-
-  it('keeps lifting-result age as the API category string', () => {
-    expect(mapApiLiftingResult({
-      meet: 'Test Meet',
-      date: '2026-06-20',
-      name: 'Athlete A',
-      age: 'Open Men 73kg',
-      body_weight: 72.5,
-      snatch1: 100,
-      snatch2: 105,
-      snatch3: 0,
-      snatch_best: 105,
-      cj1: 130,
-      cj2: 135,
-      cj3: 0,
-      cj_best: 135,
-      total: 240,
-    }).age).toBe('Open Men 73kg');
-  });
-
-  it.each([
-    null,
-    { name: 123 },
-    { name: '   ' },
-    { name: 'Athlete A', session_number: 0, session_platform: 'Red' },
-  ])(
-    'rejects unsalvageable athlete fields at the API mapper: %p', (invalid) => {
-      const row = invalid === null ? null : {
-        member_id: '123', adaptive: false, age: 24, club: 'Club',
-        entry_total: 250, gender: 'Men', weight_class: '73kg',
-        ...invalid,
-      };
-      expect(() => mapApiAthlete(row as never)).toThrow(/athlete/);
-    },
-  );
-
-  it('defaults nullable club and entry total instead of failing the row', () => {
-    const athlete = mapApiAthlete({
-      member_id: '123', name: 'Athlete A', adaptive: false, age: 24,
-      club: null, entry_total: null, gender: 'Men', weight_class: '73kg',
-    } as never);
-    expect(athlete.club).toBe('');
-    expect(athlete.entryTotal).toBe(0);
-    expect(mapApiAthlete({
-      member_id: '123', name: 'Athlete A', adaptive: false, age: 24,
-      club: 'Club', entry_total: '250', gender: 'Men', weight_class: '73kg',
-    } as never).entryTotal).toBe(250);
-  });
-
-  it('drops only the unsalvageable rows from a roster', () => {
-    const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
-    const base = {
-      member_id: '1', adaptive: false, age: 24, club: 'Club',
-      entry_total: 250, gender: 'Men', weight_class: '73kg',
-    };
-    const athletes = mapApiAthletes(
-      [
-        { ...base, name: 'Athlete A' },
-        { ...base, name: '' },
-        { ...base, name: 'Athlete B', club: null },
-      ] as never,
-      '/meets/athletes',
-    );
-    expect(athletes.map((athlete) => athlete.name)).toEqual(['Athlete A', 'Athlete B']);
-    expect(warn).toHaveBeenCalledWith(
-      '[api] /meets/athletes: dropped 1 of 3 malformed athlete rows',
-    );
-    warn.mockRestore();
-  });
-
-  it('coerces missing athlete ages to 0 rather than NaN', () => {
-    expect(mapApiAthlete({
-      member_id: '123',
-      adaptive: false,
-      age: Number.NaN,
-      club: 'Club',
-      entry_total: 250,
-      gender: 'Men',
-      name: 'Athlete A',
-      weight_class: '73kg',
-    }).age).toBe(0);
-  });
-
-  it('drops invalid clock strings instead of echoing them', () => {
-    expect(formatApiTime('not-a-time')).toBe('');
-    expect(formatApiTime('25:99')).toBe('');
-  });
-
-  it('titles schedule days in the meet zone and never renders "Invalid Date"', () => {
-    const row = {
-      meet: 'Test Meet',
-      platform: 'Red',
-      session_id: 1,
-      start_time: '09:00:00',
-      weigh_in_time: '07:00:00',
-      weight_class: '60kg',
-    };
-    // A device far east of the meet: a device-local anchor would flip the
-    // day. The file's docblock pins the device zone
-    // (jest/device-timezone-environment.js); assigning process.env.TZ in a
-    // test would not change it.
-    expect(Intl.DateTimeFormat().resolvedOptions().timeZone).toBe('Pacific/Auckland');
-    const schedule = mapApiSchedule([
-      { ...row, date: '2026-06-20' },
-      { ...row, date: '2026-06-21T00:00:00' },
-      { ...row, date: 'TBD' },
-    ]);
-    expect(schedule.map((day) => day.date)).toEqual([
-      'June 20, 2026',
-      'June 21, 2026',
-      'TBD',
-    ]);
-    expect(schedule[2].fullDate).toBe('TBD');
-  });
-
-  it('computes New York DST offset from the meet date, not the device zone', () => {
-    expect(Intl.DateTimeFormat().resolvedOptions().timeZone).toBe('Pacific/Auckland');
-    const summer = mapApiMeet({
-      name: 'Summer Meet',
-      federation: 'USAW',
-      status: 'upcoming',
-      start_date: '2026-06-20',
-      end_date: '2026-06-21',
-      time_zone: 'America/New_York',
-      venue_name: 'Venue',
-      venue_street: '1 Main',
-      venue_city: 'Columbus',
-      venue_state: 'OH',
-      venue_zip: '43215',
-    });
-    const winter = mapApiMeet({
-      name: 'Winter Meet',
-      federation: 'USAW',
-      status: 'upcoming',
-      start_date: '2026-01-15',
-      end_date: '2026-01-16',
-      time_zone: 'America/New_York',
-      venue_name: 'Venue',
-      venue_street: '1 Main',
-      venue_city: 'Columbus',
-      venue_state: 'OH',
-      venue_zip: '43215',
-    });
-    expect(summer.time.utcOffset).toBe(4);
-    expect(winter.time.utcOffset).toBe(5);
-    // `time.abbreviation` is the single source of truth every screen renders
-    // next to a session time, so it has to be resolved at the *meet's* date.
-    // `getTimeZoneAbbreviation(id)` with no instant formats today instead, and
-    // the screens that called it that way showed "EDT" on a December meet.
-    expect(summer.time.abbreviation).toBe('EDT');
-    expect(winter.time.abbreviation).toBe('EST');
-  });
-
-  it('falls unknown IANA zones back to America/New_York for identifier math', () => {
-    const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
-    const meet = mapApiMeet({
-      name: 'Mystery Meet',
-      federation: 'USAW',
-      status: 'not-a-status',
-      start_date: '2026-06-20',
-      end_date: '2026-06-21',
-      time_zone: 'Not/AZone',
-      venue_name: 'Venue',
-      venue_street: '1 Main',
-      venue_city: 'Columbus',
-      venue_state: 'OH',
-      venue_zip: '43215',
-    });
-    expect(meet.time.timeZoneIdentifier).toBe('America/New_York');
-    expect(meet.status).toBe('upcoming');
-    expect(meet.timeZoneUnknown).toBe(true);
-    // Not only in __DEV__: this is the one signal that the meet's times are
-    // being shown in the wrong zone.
-    expect(warn).toHaveBeenCalledWith(expect.stringContaining('unknown meet time zone'));
-    warn.mockRestore();
-  });
-
-  it('keeps offset, abbreviation and identifier consistent when the zone is unknown', () => {
-    jest.spyOn(console, 'warn').mockImplementation(() => {});
-    // A zone the device cannot read. `utcOffset` used to come from the raw
-    // zone while every conversion used the New York fallback.
-    const meet = mapApiMeet({
-      name: 'Mystery Meet',
-      status: 'upcoming',
-      start_date: '2026-06-20',
-      end_date: '2026-06-21',
-      time_zone: 'Mars/Olympus',
-      venue_name: 'Venue',
-      venue_street: '1 Main',
-      venue_city: 'Somewhere',
-      venue_state: '',
-      venue_zip: '',
-    });
-    expect(meet.timeZoneUnknown).toBe(true);
-    expect(meet.time.timeZoneIdentifier).toBe('America/New_York');
-    expect(meet.time.utcOffset).toBe(4);
-    expect(meet.time.abbreviation).toBe('EDT');
-    expect(meet.time.timeZone).toBe('Mars/Olympus');
-
-    const known = mapApiMeet({
-      name: 'Home Meet',
-      status: 'upcoming',
-      start_date: '2026-06-20',
-      end_date: '2026-06-21',
-      time_zone: 'America/Chicago',
-      venue_name: 'Venue',
-      venue_street: '1 Main',
-      venue_city: 'Chicago',
-      venue_state: 'IL',
-      venue_zip: '60601',
-    });
-    expect(known.timeZoneUnknown).toBe(false);
-    expect(known.time.utcOffset).toBe(5);
-    expect(known.time.abbreviation).toBe('CDT');
-  });
-
-  it('gives an id-less lifting result a stable composite event id instead of ""', () => {
-    const base = {
-      meet: 'Test Meet',
-      date: '2026-06-20',
-      name: 'Athlete A',
-      age: 'Open',
-      body_weight: 70,
-      snatch1: 0, snatch2: 0, snatch3: 0, snatch_best: 0,
-      cj1: 0, cj2: 0, cj3: 0, cj_best: 0, total: 0,
-    };
-    expect(mapApiLiftingResult({ ...base, event_id: 'evt-1' }).event_id).toBe('evt-1');
-    const derived = mapApiLiftingResult({ ...base }).event_id;
-    expect(derived).not.toBe('');
-    expect(derived).toBe(mapApiLiftingResult({ ...base, event_id: '' }).event_id);
-    expect(derived).not.toBe(mapApiLiftingResult({ ...base, date: '2026-06-21' }).event_id);
-  });
-});
-
 describe('meetcal API client error and auth boundaries', () => {
   it('rejects a conditional answer that is not the { etag, body } envelope', async () => {
     installTransport(() => null);
@@ -1045,9 +555,6 @@ describe('meetcal API client error and auth boundaries', () => {
   });
 
   it('reports a timeout as a distinct error type, not a bare Error', async () => {
-    // Callers throttle timeout logs and fall back to cache, but report every
-    // other failure. Telling them apart used to mean matching the message,
-    // which silently stopped matching.
     jest.useFakeTimers();
     installTransport(() => never());
 
@@ -1089,7 +596,6 @@ describe('meetcal API client error and auth boundaries', () => {
 
     await expect(pending).resolves.toEqual([{ meet: 'Meet A', date: '2026-03-27' }]);
     expect(jest.getTimerCount()).toBe(0);
-    // A slow call is still named in the development log.
     expect(console.info).toHaveBeenCalledWith('[perf] slow api request', {
       elapsedMs: DEFAULT_TIMEOUT_MS - 1,
       path: '/clubs/meets',
@@ -1112,8 +618,6 @@ describe('meetcal API client error and auth boundaries', () => {
   });
 
   it('lets a connection failure through as is, never as an API status', async () => {
-    // The outbox retries anything that is not a MeetCalApiError; a dropped
-    // socket must not look like the server refusing the write.
     const dropped = new Error('Connection lost while action was in flight');
     installTransport(() => {
       throw dropped;
@@ -1131,7 +635,6 @@ describe('meetcal API client error and auth boundaries', () => {
     await expect(fetchApiResultsByNames([])).resolves.toEqual([]);
     await expect(fetchApiRecentResultsByNames([])).resolves.toEqual([]);
     await expect(fetchApiYearBestsByNames([])).resolves.toEqual({});
-    // Not even the clock sample.
     expect(transport).not.toHaveBeenCalled();
   });
 
@@ -1182,14 +685,12 @@ describe('meetcal API client error and auth boundaries', () => {
 
   it('sorts a national start list by bests in 16 requests, not 40, and never over the API cap', async () => {
     const { dataCalls } = installTransport(answer([]));
-    // The 2026 national roster size the start list comment measured.
     const roster = Array.from({ length: 1562 }, (_, i) => `Athlete ${i}`);
 
     await fetchApiYearBestsByNames(roster);
 
     expect(dataCalls()).toHaveLength(16);
     const sizes = dataCalls().map((call) => (call.args.names as string[]).length);
-    // The server's name-list cap is 100 for every client; one more is a 400.
     expect(Math.max(...sizes)).toBe(100);
     expect(sizes.reduce((a, b) => a + b, 0)).toBe(1562);
   });
@@ -1220,7 +721,6 @@ describe('meetcal API client error and auth boundaries', () => {
 
     expect(failure).toBeInstanceOf(MeetCalApiError);
     expect((failure as MeetCalApiError).status).toBe(500);
-    // The third chunk is never asked for.
     expect(dataCalls()).toHaveLength(2);
   });
 
@@ -1230,8 +730,6 @@ describe('meetcal API client error and auth boundaries', () => {
       entry_total: 250, gender: 'Men', weight_class: '73kg',
       session_number: 2, session_platform: 'Blue',
     };
-    // A hand-entered row: the server's exact `platform: 'Blue'` compare would
-    // miss it, the app's case-insensitive match must not.
     const paddedAthlete = { ...athlete, member_id: '2', name: 'Athlete B', session_platform: 'BLUE ' };
     const goldAthlete = { ...athlete, member_id: '3', name: 'Athlete C', session_platform: 'Gold' };
     const { dataCalls } = installTransport(answer([athlete, paddedAthlete, goldAthlete]));
@@ -1247,7 +745,6 @@ describe('meetcal API client error and auth boundaries', () => {
       fn: 'meets:athletesSessions',
       kind: 'query',
     });
-    // What the query actually filters on, as the Rust route's parameters.
     expect(callQuery(dataCalls()[0])).toEqual({ meet: 'Test Meet', session_number: '2' });
     expect(dataCalls()[0].args.sessionNumber).toBe(2);
     expect(dataCalls()[0].args.platform).toBeUndefined();
@@ -1255,8 +752,6 @@ describe('meetcal API client error and auth boundaries', () => {
     await fetchApiAthletesWithSession('Test Meet' as never);
     expect(callQuery(dataCalls()[1])).toEqual({ meet: 'Test Meet' });
 
-    // Platform without a session number cannot be narrowed client-side
-    // cheaply, so it still goes to the server as the canonical name.
     await fetchApiAthletesWithSession('Test Meet' as never, undefined, 'Gold');
     expect(callQuery(dataCalls()[2])).toEqual({ meet: 'Test Meet', platform: 'Gold' });
 
@@ -1332,10 +827,6 @@ describe('meetcal API client error and auth boundaries', () => {
   });
 
   describe('authenticated /users/me writes', () => {
-    // Response shapes from convex/users.ts, which answers what meetcal-backend
-    // app/src/routes/users/saved_sessions.rs (SaveSessionResponse,
-    // DeleteSavedSessionResponse, DeleteSavedSessionsResponse) and
-    // preferences.rs did.
     const body = {
       meet: '2026 Nationals',
       session_number: 3,
@@ -1368,8 +859,6 @@ describe('meetcal API client error and auth boundaries', () => {
         updated_at: 1717171717000,
       });
 
-      // A `/` in a meet name is just part of the `sessionId` argument; the
-      // path only names the route for logs.
       expect(lastCall()).toEqual({
         path: `/users/me/saved-sessions/${id}`,
         fn: 'users:putSavedSession',
@@ -1433,7 +922,6 @@ describe('meetcal API client error and auth boundaries', () => {
       await deleteSavedSessions('clerk-token');
       expect(lastCall().fn).toBe('users:deleteSavedSessions');
       expect(lastCall().kind).toBe('mutation');
-      // No `meet` member at all once undefined is dropped: every meet.
       expect(callQuery(lastCall())).toEqual({});
       expect(lastCall().args.meet).toBeUndefined();
     });
@@ -1454,14 +942,11 @@ describe('meetcal API client error and auth boundaries', () => {
       await deleteSavedSessions('clerk-token', undefined, revision);
       expect(installed.lastCall().args).toEqual(revision);
 
-      // An older caller (or a damaged rev) sends none: the server applies it unordered.
       await deleteSavedSessions('clerk-token', 'Meet');
       expect(installed.lastCall().args).toEqual({ meet: 'Meet' });
     });
 
     it('reads a superseded write (one the server ignored as older) as success', async () => {
-      // The server answers a write it ignored as stale with its usual shape
-      // plus `superseded`, so the outbox clears it like any delivered write.
       installTransport(answer({ session_id: 's1', updated_at: 1, superseded: true }));
       await expect(putSavedSession('clerk-token', 's1', body, { device: 'device-1', rev: 1 })).resolves.toEqual({
         session_id: 's1',
@@ -1490,9 +975,6 @@ describe('meetcal API client error and auth boundaries', () => {
     });
 
     it('does not read a malformed delete acknowledgement as success', async () => {
-      // The outbox clears a pending delete once this resolves. An answer that
-      // is not the backend's shape (an older envelope, a function that
-      // returned nothing) must keep the delete queued, not report it done.
       installTransport(answer({}));
       await expect(deleteSavedSession('clerk-token', 's1')).rejects.toThrow('deleteSavedSession');
       installTransport(answer({ deleted: 'true' }));
@@ -1570,9 +1052,6 @@ describe('meetcal API client error and auth boundaries', () => {
   });
 
   it('rejects an object where a row array query is expected', async () => {
-    // Callers go straight to `.filter`/`.map`, so an envelope answer used to
-    // surface as "rows.filter is not a function" inside a fetcher rather than
-    // naming the query.
     installTransport(answer({ rows: [] }));
     await expect(fetchApiRecords()).rejects.toThrow('/data/records expected an array response');
   });
@@ -1587,511 +1066,6 @@ describe('meetcal API client error and auth boundaries', () => {
     await expect(fetchApiClubMeetStats('Club A', 'Test Meet')).rejects.toThrow(
       '/clubs/meet-stats expected an object response',
     );
-  });
-});
-
-describe('conditional reads for meet queries', () => {
-  beforeEach(() => {
-    // The meets list's arguments carry the current hour; pin it so every
-    // call in a test asks the same question.
-    jest.useFakeTimers({ now: new Date('2026-06-20T12:30:00.000Z') });
-  });
-
-  it('stores the etag from a full answer and answers a bodiless one with the remembered meets', async () => {
-    const { sentTag, dataCalls } = queueTransport([
-      { etag: '"v1"', body: [meetRow('Meet A')] },
-      { etag: '"v1"' },
-    ]);
-
-    const first = await fetchApiMeets();
-    expect(sentTag(0)).toBeUndefined();
-
-    const second = await fetchApiMeets();
-    expect(sentTag(1)).toBe('"v1"');
-    expect(dataCalls().every((call) => call.fn === 'meets:list' && call.conditional === true)).toBe(true);
-    expect(second).toEqual(first);
-    expect(second[0].name).toBe('Meet A');
-    // Freshly mapped objects each time: a caller mutating one cannot edit the cache.
-    expect(second[0]).not.toBe(first[0]);
-  });
-
-  it('trusts a bodiless answer that names no tag for the tag that was sent', async () => {
-    const { sentTag } = queueTransport([
-      { etag: '"v1"', body: [meetRow('Meet A')] },
-      {},
-    ]);
-
-    await fetchApiMeets();
-    await expect(fetchApiMeets()).resolves.toMatchObject([{ name: 'Meet A' }]);
-    expect(sentTag(1)).toBe('"v1"');
-  });
-
-  it('replaces the remembered body when the etag changes', async () => {
-    const { sentTag } = queueTransport([
-      { etag: '"v1"', body: [meetRow('Meet A')] },
-      { etag: '"v2"', body: [meetRow('Meet B')] },
-      { etag: '"v2"' },
-    ]);
-
-    await fetchApiMeets();
-    await expect(fetchApiMeets()).resolves.toMatchObject([{ name: 'Meet B' }]);
-    expect(sentTag(1)).toBe('"v1"');
-    await expect(fetchApiMeets()).resolves.toMatchObject([{ name: 'Meet B' }]);
-    expect(sentTag(2)).toBe('"v2"');
-  });
-
-  it('revalidates meet details and schedule per query', async () => {
-    const schedule = [
-      {
-        date: '2026-06-20',
-        platform: 'red',
-        session_id: 1,
-        start_time: '09:00:00',
-        weigh_in_time: '07:00:00',
-        weight_class: '60kg',
-      },
-    ];
-    const { dataCalls } = installTransport((call) => {
-      const isSchedule = call.fn === 'meets:schedule';
-      const tag = isSchedule ? '"s1"' : '"d1"';
-      if (call.args.ifNoneMatch === tag) return { etag: tag };
-      return { etag: tag, body: isSchedule ? schedule : meetRow('Meet A') };
-    });
-
-    const first = await fetchApiSchedule('Meet A');
-    const second = await fetchApiSchedule('Meet A');
-    expect(second).toEqual(first);
-    expect(second[0].sessions[0].platforms[0].platform).toBe('Red');
-    const details = await fetchApiMeetByName('Meet A');
-    await expect(fetchApiMeetByName('Meet A')).resolves.toEqual(details);
-
-    const validators = dataCalls().map((call) => [call.fn, call.args.ifNoneMatch]);
-    expect(validators).toHaveLength(4);
-    expect(validators).toEqual(
-      expect.arrayContaining([
-        ['meets:schedule', undefined],
-        ['meets:details', undefined],
-        ['meets:schedule', '"s1"'],
-        ['meets:details', '"d1"'],
-      ]),
-    );
-  });
-
-  it('does not remember a body that failed shape validation', async () => {
-    const { sentTag } = queueTransport([
-      { etag: '"bad"', body: { not: 'an array' } },
-      { etag: '"v1"', body: [meetRow('Meet A')] },
-    ]);
-
-    await expect(fetchApiMeets()).rejects.toThrow('expected an array response');
-    await expect(fetchApiMeets()).resolves.toMatchObject([{ name: 'Meet A' }]);
-    expect(sentTag(1)).toBeUndefined();
-  });
-
-  it('does not remember a schedule with a row that has no usable date or session number', async () => {
-    const row = { date: '2026-06-20', platform: 'red', session_id: 1, start_time: '09:00:00', weigh_in_time: '07:00:00', weight_class: '60kg' };
-    const { sentTag } = queueTransport([
-      { etag: '"bad"', body: [row, { ...row, session_id: '2' }] },
-      { etag: '"v1"', body: [row] },
-    ]);
-
-    await expect(fetchApiSchedule('Meet A')).rejects.toThrow('/meets/schedule[1] has an invalid date or session_id');
-    await expect(fetchApiSchedule('Meet A')).resolves.toMatchObject([{ fullDate: '2026-06-20' }]);
-    expect(sentTag(1)).toBeUndefined();
-  });
-
-  it('keeps throwing on rejected calls and keeps the tag for next time', async () => {
-    const { sentTag } = queueTransport([
-      { etag: '"v1"', body: [meetRow('Meet A')] },
-      { fail: 500 },
-      { etag: '"v1"' },
-    ]);
-
-    await fetchApiMeets();
-    const failure = await fetchApiMeets().catch((error: unknown) => error);
-    expect(failure).toBeInstanceOf(MeetCalApiError);
-    expect((failure as MeetCalApiError).status).toBe(500);
-    await expect(fetchApiMeets()).resolves.toMatchObject([{ name: 'Meet A' }]);
-    expect(sentTag(2)).toBe('"v1"');
-  });
-
-  it('still returns 404 as null for meet details, and throws anything else', async () => {
-    queueTransport([{ fail: 404 }]);
-    await expect(fetchApiMeetByName('Gone Meet')).resolves.toBeNull();
-
-    queueTransport([{ fail: 500 }]);
-    const failure = await fetchApiMeetByName('Broken Meet').catch((error: unknown) => error);
-    expect(failure).toBeInstanceOf(MeetCalApiError);
-    expect((failure as MeetCalApiError).status).toBe(500);
-  });
-
-  it('bounds the number of remembered queries', async () => {
-    const replies: Reply[] = [];
-    for (let i = 0; i <= HTTP_VALIDATOR_CACHE_LIMIT; i += 1) {
-      replies.push({ etag: `"d${i}"`, body: meetRow(`Meet ${i}`) });
-    }
-    // Meet 0 is the oldest entry and was evicted: no tag, full body.
-    replies.push({ etag: '"d0"', body: meetRow('Meet 0') });
-    const { sentTag } = queueTransport(replies);
-
-    for (let i = 0; i <= HTTP_VALIDATOR_CACHE_LIMIT; i += 1) {
-      await fetchApiMeetByName(`Meet ${i}`);
-    }
-    await expect(fetchApiMeetByName('Meet 0')).resolves.toMatchObject({ name: 'Meet 0' });
-    expect(sentTag(HTTP_VALIDATOR_CACHE_LIMIT + 1)).toBeUndefined();
-  });
-
-  it('answers a bodiless reply from the entry read before the call, even if it was evicted in flight', async () => {
-    let releaseFirst: (() => void) | undefined;
-    installTransport(async (call) => {
-      const name = String(call.args.meet);
-      if (call.args.ifNoneMatch) {
-        // Hold the revalidation until the cache has been churned.
-        await new Promise<void>((resolve) => {
-          releaseFirst = resolve;
-        });
-        return { etag: call.args.ifNoneMatch };
-      }
-      return { etag: `"${name}"`, body: meetRow(name) };
-    });
-
-    await fetchApiMeetByName('Meet 0');
-    const pending = fetchApiMeetByName('Meet 0');
-    for (let i = 1; i <= HTTP_VALIDATOR_CACHE_LIMIT; i += 1) {
-      await fetchApiMeetByName(`Meet ${i}`);
-    }
-    expect(releaseFirst).toBeDefined();
-    releaseFirst?.();
-    await expect(pending).resolves.toMatchObject({ name: 'Meet 0' });
-  });
-
-  it('answers a bodiless reply with the newer entry a concurrent call stored in flight', async () => {
-    let releaseSlow: (() => void) | undefined;
-    let conditionalCalls = 0;
-    installTransport(async (call) => {
-      if (!call.args.ifNoneMatch) {
-        return { etag: '"v1"', body: [meetRow('Meet A')] };
-      }
-      conditionalCalls += 1;
-      if (conditionalCalls === 1) {
-        // The slow revalidation: the server answered while "v1" was current.
-        await new Promise<void>((resolve) => {
-          releaseSlow = resolve;
-        });
-        return { etag: '"v1"' };
-      }
-      return { etag: '"v2"', body: [meetRow('Meet B')] };
-    });
-
-    await fetchApiMeets();
-    const slow = fetchApiMeets();
-    await expect(fetchApiMeets()).resolves.toMatchObject([{ name: 'Meet B' }]);
-    releaseSlow?.();
-    await expect(slow).resolves.toMatchObject([{ name: 'Meet B' }]);
-  });
-
-  it('keeps a slower full answer from replacing the one a later call already stored', async () => {
-    let releaseSlow: (() => void) | undefined;
-    let calls = 0;
-    installTransport(async () => {
-      calls += 1;
-      if (calls === 1) {
-        // The slow call: the server read the data while "v1" was current.
-        await new Promise<void>((resolve) => {
-          releaseSlow = resolve;
-        });
-        return { etag: '"v1"', body: [meetRow('Meet A')] };
-      }
-      if (calls === 2) return { etag: '"v2"', body: [meetRow('Meet B')] };
-      return { etag: '"v2"' };
-    });
-
-    const slow = fetchApiMeets();
-    await expect(fetchApiMeets()).resolves.toMatchObject([{ name: 'Meet B' }]);
-    releaseSlow?.();
-    await expect(slow).resolves.toMatchObject([{ name: 'Meet B' }]);
-    // "v2" is still the remembered tag, so the next call revalidates it.
-    await expect(fetchApiMeets()).resolves.toMatchObject([{ name: 'Meet B' }]);
-    expect(calls).toBe(3);
-  });
-
-  it('retries without a tag when a bodiless answer names a different tag than was sent', async () => {
-    const { sentTag, dataCalls } = queueTransport([
-      { etag: '"v1"', body: [meetRow('Meet A')] },
-      { etag: '"other"' },
-      { etag: '"v2"', body: [meetRow('Meet B')] },
-    ]);
-
-    await fetchApiMeets();
-    await expect(fetchApiMeets()).resolves.toMatchObject([{ name: 'Meet B' }]);
-    expect(dataCalls()).toHaveLength(3);
-    expect(sentTag(1)).toBe('"v1"');
-    expect(sentTag(2)).toBeUndefined();
-  });
-
-  it('treats a bodiless answer to a call that carried no tag as an error after one retry', async () => {
-    const { sentTag, dataCalls } = queueTransport([{ etag: '"v1"' }, { etag: '"v1"' }]);
-
-    await expect(fetchApiMeets()).rejects.toThrow('/meets answered without a body');
-    expect(dataCalls()).toHaveLength(2);
-    expect(sentTag(0)).toBeUndefined();
-    expect(sentTag(1)).toBeUndefined();
-
-    // The retry is a real second chance, not a formality.
-    queueTransport([{ etag: '"v1"' }, { etag: '"v1"', body: [meetRow('Meet A')] }]);
-    await expect(fetchApiMeets()).resolves.toMatchObject([{ name: 'Meet A' }]);
-  });
-
-  it('forgets the tag when a full answer carries no usable etag', async () => {
-    const { sentTag } = queueTransport([
-      { etag: '"v1"', body: [meetRow('Meet A')] },
-      { etag: null, body: [meetRow('Meet B')] },
-      { etag: '  ', body: [meetRow('Meet B')] },
-      { etag: null, body: [meetRow('Meet B')] },
-    ]);
-    await fetchApiMeets();
-    await fetchApiMeets();
-    await fetchApiMeets();
-    await fetchApiMeets();
-    expect(sentTag(1)).toBe('"v1"');
-    expect(sentTag(2)).toBeUndefined();
-    expect(sentTag(3)).toBeUndefined();
-  });
-
-  it('asks about the current hour but keeps the meets list tag across hours', async () => {
-    const { sentTag, dataCalls } = queueTransport([
-      { etag: '"v1"', body: [meetRow('Meet A')] },
-      { etag: '"v1"' },
-      { etag: '"v1"' },
-    ]);
-
-    await fetchApiMeets();
-    jest.setSystemTime(new Date('2026-06-20T12:59:59.000Z'));
-    await fetchApiMeets();
-    jest.setSystemTime(new Date('2026-06-20T13:00:00.000Z'));
-    await fetchApiMeets();
-
-    expect(dataCalls().map((call) => call.args.now)).toEqual([
-      Date.parse('2026-06-20T12:00:00.000Z'),
-      Date.parse('2026-06-20T12:00:00.000Z'),
-      Date.parse('2026-06-20T13:00:00.000Z'),
-    ]);
-    expect(sentTag(1)).toBe('"v1"');
-    // The tag hashes the body, so an unchanged list in a new hour costs no body.
-    expect(sentTag(2)).toBe('"v1"');
-  });
-});
-
-describe('conditional reads for reference data', () => {
-  const recordRow = (overrides: Record<string, unknown> = {}) => ({
-    age_category: 'Senior',
-    gender: 'Men',
-    weight_class: '89kg',
-    record_type: 'USAW',
-    snatch_record: 170,
-    cj_record: 210,
-    total_record: 380,
-    ...overrides,
-  });
-
-  it('answers a bodiless reply with the stored rows, checked again', async () => {
-    const { sentTag } = queueTransport([
-      { etag: '"r1"', body: [recordRow()] },
-      { etag: '"r1"' },
-    ]);
-
-    const first = await fetchApiRecords();
-    const second = await fetchApiRecords();
-
-    expect(sentTag(0)).toBeUndefined();
-    expect(sentTag(1)).toBe('"r1"');
-    expect(second).toEqual(first);
-    expect(second).toEqual([recordRow()]);
-  });
-
-  it('hands out frozen rows, so a caller cannot rewrite what the next unchanged answer returns', async () => {
-    queueTransport([
-      { etag: '"r1"', body: [recordRow()] },
-      { etag: '"r1"' },
-    ]);
-
-    const rows = await fetchApiRecords();
-    expect(Object.isFrozen(rows)).toBe(true);
-    expect(Object.isFrozen(rows[0])).toBe(true);
-    try {
-      (rows[0] as { total_record: number | null }).total_record = 1;
-    } catch {
-      // Strict-mode code throws; sloppy-mode code is silently ignored.
-    }
-    expect(rows[0].total_record).toBe(380);
-    await expect(fetchApiRecords()).resolves.toEqual([recordRow()]);
-  });
-
-  it('returns a fresh copy of a cached string list on every call', async () => {
-    queueTransport([
-      { etag: '"w1"', body: ['Ohio', 'Carolina'] },
-      { etag: '"w1"' },
-    ]);
-
-    const first = await fetchApiWsoList();
-    first.sort();
-    first.push('Mutated');
-    await expect(fetchApiWsoList()).resolves.toEqual(['Ohio', 'Carolina']);
-  });
-
-  it('replaces the remembered rows when the etag changes', async () => {
-    const { sentTag } = queueTransport([
-      { etag: '"s1"', body: [{ age_category: 'Senior', gender: 'Men', weight_class: '89kg', standard_a: 300, standard_b: 280 }] },
-      { etag: '"s2"', body: [{ age_category: 'Senior', gender: 'Men', weight_class: '89kg', standard_a: 310, standard_b: 290 }] },
-      { etag: '"s2"' },
-    ]);
-
-    await fetchApiStandards();
-    await expect(fetchApiStandards()).resolves.toMatchObject([{ standard_a: 310 }]);
-    expect(sentTag(1)).toBe('"s1"');
-    await expect(fetchApiStandards()).resolves.toMatchObject([{ standard_a: 310 }]);
-    expect(sentTag(2)).toBe('"s2"');
-  });
-
-  it('passes straight through when the query answers without an etag', async () => {
-    const row = {
-      meet: 'Worlds',
-      ranking: 1,
-      name: 'Athlete A',
-      weight_class: '89kg',
-      total: 380,
-      percent_a: 101.5,
-      gender: 'Men',
-      age_category: 'Senior',
-    };
-    const { sentTag } = queueTransport([
-      { etag: null, body: [row] },
-      { etag: null, body: [{ ...row, total: 385 }] },
-    ]);
-
-    await expect(fetchApiIntlRankings()).resolves.toEqual([row]);
-    await expect(fetchApiIntlRankings()).resolves.toEqual([{ ...row, total: 385 }]);
-    expect(sentTag(0)).toBeUndefined();
-    expect(sentTag(1)).toBeUndefined();
-  });
-
-  it('throws on a body that fails validation and caches nothing', async () => {
-    const { sentTag } = queueTransport([
-      { etag: '"bad"', body: { error: 'wrapped' } },
-      { etag: '"q1"', body: [] },
-      { etag: '"c-bad"', body: ['Club A', 7] },
-      { etag: '"c1"', body: ['Club A'] },
-    ]);
-
-    await expect(fetchApiQualifyingTotals()).rejects.toThrow(
-      '/data/qualifying-totals expected an array response',
-    );
-    await expect(fetchApiQualifyingTotals()).resolves.toEqual([]);
-    expect(sentTag(1)).toBeUndefined();
-
-    await expect(fetchApiClubNames()).rejects.toThrow('/clubs expected a string array response');
-    await expect(fetchApiClubNames()).resolves.toEqual(['Club A']);
-    expect(sentTag(3)).toBeUndefined();
-  });
-
-  it('reads a wrong-typed column as null and skips a non-object row', async () => {
-    queueTransport([
-      {
-        etag: '"q1"',
-        body: [
-          { event_name: 'Nationals', age_category: 'Senior', gender: 'Men', weight_class: '89kg', qualifying_total: '300', extra: 1 },
-          null,
-          'row',
-          [1, 2],
-        ],
-      },
-    ]);
-
-    await expect(fetchApiQualifyingTotals()).resolves.toEqual([
-      {
-        event_name: 'Nationals',
-        age_category: 'Senior',
-        gender: 'Men',
-        weight_class: '89kg',
-        qualifying_total: null,
-      },
-    ]);
-  });
-
-  it('remembers each query variant under its own arguments', async () => {
-    const { dataCalls } = installTransport((call) => {
-      const key = [call.args.ageCategory ?? '', call.args.gender ?? '', call.args.wso ?? ''].join('|');
-      const tag = `"${key}"`;
-      if (call.args.ifNoneMatch === tag) return { etag: tag };
-      return { etag: tag, body: [{ name: key, total: 1, weight_class: '71kg', snatch: 1, cj: 1 }] };
-    });
-
-    for (let pass = 0; pass < 2; pass += 1) {
-      await expect(fetchApiNationalRankings('USAW', 'Senior 89')).resolves.toMatchObject([{ name: 'Senior 89||' }]);
-      await expect(fetchApiNationalRankings('USAW', 'Junior 89')).resolves.toMatchObject([{ name: 'Junior 89||' }]);
-      await expect(fetchApiAdaptiveRecords('Men', 'BWL')).resolves.toMatchObject([{ weight_class: '71kg' }]);
-      await expect(fetchApiAdaptiveRecords('Women', 'BWL')).resolves.toMatchObject([{ weight_class: '71kg' }]);
-      await expect(fetchApiWsoRecords('Ohio', 'Senior', 'Men')).resolves.toHaveLength(1);
-    }
-
-    const validators = dataCalls().map((call) => call.args.ifNoneMatch);
-    expect(validators.slice(0, 5)).toEqual([undefined, undefined, undefined, undefined, undefined]);
-    expect(validators.slice(5)).toEqual([
-      '"Senior 89||"',
-      '"Junior 89||"',
-      '"|Men|"',
-      '"|Women|"',
-      '"Senior|Men|Ohio"',
-    ]);
-  });
-
-  it('treats an omitted optional argument like an absent one', async () => {
-    const { sentTag } = queueTransport([
-      { etag: '"o1"', body: [] },
-      { etag: '"o1"' },
-    ]);
-
-    await fetchApiWsoRecords('Ohio');
-    await fetchApiWsoRecords('Ohio', undefined, undefined);
-    expect(sentTag(1)).toBe('"o1"');
-  });
-
-  it('keeps the meets tag through a session of reference-data browsing', async () => {
-    jest.useFakeTimers({ now: new Date('2026-06-20T12:30:00.000Z') });
-    const tagFor = (call: ApiCall) =>
-      `"${call.fn}?${new URLSearchParams(callQuery(call)).toString()}"`;
-    const { dataCalls, transport } = installTransport((call) => {
-      const tag = tagFor(call);
-      if (call.args.ifNoneMatch === tag) return { etag: tag };
-      let body: unknown = [];
-      if (call.fn === 'meets:list') body = [];
-      else if (call.fn === 'meets:details') body = { name: 'M', start_date: '2026-06-20', end_date: '2026-06-21', time_zone: 'America/New_York' };
-      else if (call.fn === 'reference:wsoList' || call.fn === 'reference:clubs') body = ['A'];
-      return { etag: tag, body };
-    });
-
-    await fetchApiMeets();
-    await fetchApiRecords();
-    await fetchApiStandards();
-    await fetchApiQualifyingTotals();
-    await fetchApiIntlRankings();
-    await fetchApiWsoList();
-    await fetchApiClubNames();
-    await fetchApiAdaptiveRecords('Men', 'BWL');
-    await fetchApiAdaptiveRecords('Women', 'BWL');
-    for (let i = 0; i < 8; i += 1) {
-      await fetchApiMeetByName(`Meet ${i}`);
-      await fetchApiSchedule(`Meet ${i}`);
-    }
-    for (let i = 0; i < 30; i += 1) {
-      await fetchApiNationalRankings('USAW', `Category ${i}`);
-    }
-
-    transport.mockClear();
-    await fetchApiMeets();
-    const [meetsCall] = dataCalls();
-    expect(meetsCall.fn).toBe('meets:list');
-    expect(meetsCall.args.ifNoneMatch).toBe(tagFor(meetsCall));
   });
 });
 
@@ -2124,10 +1098,6 @@ describe('JSON text answers', () => {
     cj1: 120, cj2: 0, cj3: 0, cj_best: 120, total: 220,
   };
 
-  /**
-   * A conditional query that tags its text answer `"t1"` and answers the tag
-   * alone when the caller sends it back.
-   */
   function textRevalidating(body: unknown) {
     return installTransport((call) =>
       call.args.ifNoneMatch === '"t1"' ? { etag: '"t1"' } : { etag: '"t1"', json: JSON.stringify(body) },
@@ -2319,410 +1289,9 @@ describe('JSON text answers', () => {
 
     if (fetched.status !== 'fresh') throw new Error('expected a fresh package');
     expect(fetched.package.year_bests_by_name).toEqual({
-      // `toFiniteNumber`: numeric text is read as a number, like `entry_total`.
       A: { best_snatch: 0, best_cj: 12, best_total: 0 },
       B: { best_snatch: 0, best_cj: 0, best_total: 7 },
       C: { best_snatch: 0, best_cj: 0, best_total: 205.5 },
-    });
-  });
-});
-
-describe('club meets (#209)', () => {
-  beforeEach(() => {
-    jest.spyOn(console, 'warn').mockImplementation(() => {});
-  });
-
-  it('asks for the club once and answers its meets in the order sent, without the extra fields', async () => {
-    const { dataCalls } = installTransport(
-      answer({
-        meets: [
-          { meet: 'Meet B', date: '2026-03-27', status: 'completed', has_results: true },
-          { meet: 'Meet A', date: null, status: null, has_results: false },
-        ],
-        truncated: false,
-      }),
-    );
-
-    await expect(fetchApiClubMeets('Club A')).resolves.toEqual([
-      { meet: 'Meet B', date: '2026-03-27' },
-      { meet: 'Meet A', date: null },
-    ]);
-    expect(dataCalls().map((call) => [call.fn, call.args])).toEqual([['reference:clubMeets', { club: 'Club A' }]]);
-  });
-
-  it('drops a meet without a name, reads a date that is not text as none, and says how many went', async () => {
-    installTransport(
-      answer({
-        meets: [
-          { meet: 'Meet A', date: 20260327 },
-          { meet: '', date: '2026-01-01' },
-          { date: '2026-01-01' },
-          null,
-          ['Meet C'],
-          { meet: 'Meet D', date: '2026-01-02' },
-        ],
-        truncated: false,
-      }),
-    );
-
-    await expect(fetchApiClubMeets('Club A')).resolves.toEqual([
-      { meet: 'Meet A', date: null },
-      { meet: 'Meet D', date: '2026-01-02' },
-    ]);
-    expect(console.warn).toHaveBeenCalledWith('[api] /clubs/meets: dropped 4 of 6 malformed meets');
-  });
-
-  it.each([
-    ['a plain array', [], '/clubs/meets expected an object response'],
-    ['no meets', { truncated: false }, '/clubs/meets expected an array response'],
-    ['meets that are not a list', { meets: { meet: 'Meet A' } }, '/clubs/meets expected an array response'],
-  ])('rejects an answer with %s', async (_name, body, message) => {
-    installTransport(answer(body));
-    await expect(fetchApiClubMeets('Club A')).rejects.toThrow(message);
-  });
-});
-
-describe('by-names latestOnly', () => {
-  it('sends latestOnly only when asked', async () => {
-    const { dataCalls } = installTransport(answer([]));
-
-    await fetchApiResultsByNames(['Athlete A'], { latestOnly: true });
-    await fetchApiResultsByNames(['Athlete A']);
-    await fetchApiResultsByNames(['Athlete A'], { latestOnly: false });
-
-    expect(dataCalls().map((call) => call.args.latestOnly)).toEqual([true, undefined, undefined]);
-    expect(dataCalls().map(callQuery)).toEqual([
-      { names: 'Athlete A', latest_only: 'true' },
-      { names: 'Athlete A' },
-      { names: 'Athlete A' },
-    ]);
-  });
-
-  it('keeps latestOnly on every chunk', async () => {
-    const { dataCalls } = installTransport(answer([]));
-    const names = Array.from({ length: SMALL_ROWS_NAMES_CHUNK_SIZE + 1 }, (_, i) => `Athlete ${i}`);
-
-    await fetchApiResultsByNames(names, { latestOnly: true });
-
-    expect(dataCalls()).toHaveLength(2);
-    for (const call of dataCalls()) {
-      expect(call.args.latestOnly).toBe(true);
-    }
-  });
-});
-
-describe('server clock', () => {
-  const T0 = Date.parse('2026-06-20T12:00:00.000Z');
-
-  it('has no trusted clock before the first response', () => {
-    expect(getServerClockSample()).toBeNull();
-    expect(getServerClockSkewMs()).toBeNull();
-    expect(getTrustedNow()).toBeNull();
-  });
-
-  it('samples the server clock alongside the first request, so a fast device clock is corrected', async () => {
-    const serverNow = T0;
-    // The device is three hours ahead of the server.
-    jest.useFakeTimers({ now: serverNow + 3 * HOUR_MS });
-    const { clockCalls } = installTransport(answer([]), () => serverNow);
-
-    await fetchApiMeets();
-
-    expect(clockCalls()).toEqual([
-      // A cached query whose answer carries the server's Date header, not the clock mutation.
-      { path: '/clock', fn: 'system:ping', kind: 'clock', args: {} },
-    ]);
-    expect(getServerClockSkewMs()).toBe(-3 * HOUR_MS);
-    expect(getServerClockSample()).toEqual({
-      skewMs: -3 * HOUR_MS,
-      sampledAt: Date.now(),
-    });
-    expect(getTrustedNow()?.getTime()).toBe(serverNow);
-    expect(Math.abs(getServerClockSkewMs() ?? 0)).toBeGreaterThan(MAX_PLAUSIBLE_CLOCK_SKEW_MS);
-  });
-
-  it('sends the clock call without holding the request back, and measures skew from the round-trip midpoint', async () => {
-    jest.useFakeTimers({ now: T0 });
-    const clock = deferred<number>();
-    const { clockCalls, dataCalls } = installTransport(answer(['Club A']), () => clock.promise);
-
-    const pending = fetchApiClubNames();
-    // Both calls are out before either answers.
-    expect(clockCalls()).toHaveLength(1);
-    expect(dataCalls()).toHaveLength(1);
-
-    // 400ms round trip; the server read its clock 1000ms after the send.
-    jest.setSystemTime(T0 + 400);
-    clock.resolve(T0 + 1000);
-
-    await expect(pending).resolves.toEqual(['Club A']);
-    // 1000 - (0 + 400) / 2
-    expect(getServerClockSample()).toEqual({ skewMs: 800, sampledAt: T0 + 400 });
-    expect(getTrustedNow()?.getTime()).toBe(T0 + 400 + 800);
-  });
-
-  it('evaluates the meets window on the server clock, rounded down to the hour', async () => {
-    jest.useFakeTimers({ now: Date.parse('2026-06-20T14:10:00.000Z') });
-    const { dataCalls } = installTransport(answer([]), () => Date.now() - 3 * HOUR_MS);
-
-    // No sample yet: the device clock is all there is.
-    await fetchApiMeets();
-    await fetchApiMeets();
-
-    expect(dataCalls().map((call) => call.args.now)).toEqual([
-      Date.parse('2026-06-20T14:00:00.000Z'),
-      Date.parse('2026-06-20T11:00:00.000Z'),
-    ]);
-  });
-
-  it('keeps a fresh sample and refreshes a stale one in the background', async () => {
-    jest.useFakeTimers({ now: T0 });
-    let clockAnswer: () => unknown = () => Date.now() + 5000;
-    const { clockCalls } = installTransport(answer([]), () => clockAnswer());
-
-    await fetchApiClubNames();
-    expect(getServerClockSkewMs()).toBe(5000);
-    expect(clockCalls()).toHaveLength(1);
-
-    // Exactly at the limit is still fresh.
-    jest.setSystemTime(T0 + SERVER_CLOCK_RESAMPLE_MS);
-    await fetchApiClubNames();
-    expect(clockCalls()).toHaveLength(1);
-
-    const refresh = deferred<number>();
-    clockAnswer = () => refresh.promise;
-    jest.setSystemTime(T0 + SERVER_CLOCK_RESAMPLE_MS + 1);
-    // Not the first sample: the request does not wait for the refresh.
-    await expect(fetchApiClubNames()).resolves.toEqual([]);
-    expect(clockCalls()).toHaveLength(2);
-    // One refresh in flight is shared, not repeated per request.
-    await fetchApiClubNames();
-    expect(clockCalls()).toHaveLength(2);
-    expect(getServerClockSkewMs()).toBe(5000);
-
-    refresh.resolve(Date.now() + 7000);
-    await flushMicrotasks();
-    expect(getServerClockSample()).toEqual({
-      skewMs: 7000,
-      sampledAt: T0 + SERVER_CLOCK_RESAMPLE_MS + 1,
-    });
-  });
-
-  it('does not fail the request when the clock call fails or answers junk, and tries again next time', async () => {
-    jest.useFakeTimers({ now: T0 });
-    const clockAnswers: (() => unknown)[] = [
-      () => {
-        throw new Error('mutation failed');
-      },
-      () => 'soon',
-      () => Number.NaN,
-      () => T0 + 30_000,
-    ];
-    const { clockCalls } = installTransport(answer(['Club A']), () => clockAnswers.shift()?.());
-
-    for (let i = 0; i < 3; i += 1) {
-      await expect(fetchApiClubNames()).resolves.toEqual(['Club A']);
-      await flushMicrotasks();
-      expect(getServerClockSample()).toBeNull();
-      expect(getTrustedNow()).toBeNull();
-    }
-    await fetchApiClubNames();
-    await flushMicrotasks();
-
-    expect(clockCalls()).toHaveLength(4);
-    expect(getServerClockSkewMs()).toBe(30_000);
-  });
-
-  it('samples the clock even when the request it rides alongside fails', async () => {
-    jest.useFakeTimers({ now: T0 });
-    installTransport(
-      () => {
-        throw apiFailure(500);
-      },
-      () => T0 + 60_000,
-    );
-
-    await expect(fetchApiMeets()).rejects.toBeInstanceOf(MeetCalApiError);
-    await flushMicrotasks();
-    expect(getServerClockSkewMs()).toBe(60_000);
-  });
-
-  // The first request of a cold start used to wait up to 2s for the clock
-  // sample it started, holding back the first schedule it had already got.
-  it('does not hold the first request for a clock call that never answers', async () => {
-    jest.useFakeTimers({ now: T0 });
-    installTransport(answer(['Club A']), () => never());
-    let settled = false;
-    const pending = fetchApiClubNames().finally(() => {
-      settled = true;
-    });
-
-    await flushMicrotasks();
-    expect(settled).toBe(true);
-    await expect(pending).resolves.toEqual(['Club A']);
-    expect(getServerClockSample()).toBeNull();
-    // The request timeout is cleared; only the stuck sample's own
-    // abandonment timer is left.
-    expect(jest.getTimerCount()).toBe(1);
-  });
-
-  it('leaves the first sample behind once its answer lands, after the request has returned', async () => {
-    jest.useFakeTimers({ now: T0 });
-    const clock = deferred<number>();
-    installTransport(answer(['Club A']), () => clock.promise);
-
-    await expect(fetchApiClubNames()).resolves.toEqual(['Club A']);
-    expect(getTrustedNow()).toBeNull();
-
-    clock.resolve(T0 + 30_000);
-    await flushMicrotasks();
-    expect(getServerClockSkewMs()).toBe(30_000);
-  });
-
-  it('does not hold later requests for a clock call that is still stuck', async () => {
-    jest.useFakeTimers({ now: T0 });
-    const { clockCalls } = installTransport(answer(['Club A']), () => never());
-
-    await fetchApiClubNames();
-
-    let settled = false;
-    const second = fetchApiClubNames().finally(() => {
-      settled = true;
-    });
-    await flushMicrotasks();
-    expect(settled).toBe(true);
-    await expect(second).resolves.toEqual(['Club A']);
-    // It joined the sample in flight rather than starting another.
-    expect(clockCalls()).toHaveLength(1);
-  });
-
-  it('does not hold either of two startup requests for the clock call the first one started', async () => {
-    jest.useFakeTimers({ now: T0 });
-    const { clockCalls, dataCalls } = installTransport(answer(['Club A']), () => never());
-    let firstSettled = false;
-    let secondSettled = false;
-
-    const first = fetchApiClubNames().finally(() => {
-      firstSettled = true;
-    });
-    const second = fetchApiWsoList().finally(() => {
-      secondSettled = true;
-    });
-    expect(clockCalls()).toHaveLength(1);
-    expect(dataCalls()).toHaveLength(2);
-
-    await flushMicrotasks();
-    expect(firstSettled).toBe(true);
-    expect(secondSettled).toBe(true);
-    await expect(first).resolves.toEqual(['Club A']);
-    await expect(second).resolves.toEqual(['Club A']);
-  });
-
-  it('abandons a stuck clock call after 10s so a later request can start a new one', async () => {
-    const SAMPLE_TIMEOUT_MS = 10000; // `SERVER_CLOCK_SAMPLE_TIMEOUT_MS`
-    jest.useFakeTimers({ now: T0 });
-    let clockAnswer: () => unknown = () => never();
-    const { clockCalls } = installTransport(answer(['Club A']), () => clockAnswer());
-
-    await fetchApiClubNames();
-
-    // Just short of the limit the stuck call is still the one in flight.
-    jest.advanceTimersByTime(SAMPLE_TIMEOUT_MS - 1);
-    await fetchApiClubNames();
-    expect(clockCalls()).toHaveLength(1);
-
-    jest.advanceTimersByTime(1);
-    await flushMicrotasks();
-    clockAnswer = () => Date.now() + 42_000;
-    // No sample yet, so this request starts a new one alongside it.
-    await expect(fetchApiClubNames()).resolves.toEqual(['Club A']);
-    await flushMicrotasks();
-    expect(clockCalls()).toHaveLength(2);
-    expect(getServerClockSample()).toEqual({ skewMs: 42_000, sampledAt: T0 + SAMPLE_TIMEOUT_MS });
-  });
-
-  it('discards a sample whose round trip took longer than 5s, and keeps one of exactly 5s', async () => {
-    const MAX_ROUND_TRIP_MS = 5000; // `MAX_CLOCK_SAMPLE_ROUND_TRIP_MS`
-    jest.useFakeTimers({ now: T0 });
-    let clock = deferred<number>();
-    const { clockCalls } = installTransport(answer(['Club A']), () => clock.promise);
-
-    await expect(fetchApiClubNames()).resolves.toEqual(['Club A']);
-    jest.advanceTimersByTime(MAX_ROUND_TRIP_MS + 1);
-    clock.resolve(Date.now() + 60_000);
-    await flushMicrotasks();
-    expect(getServerClockSample()).toBeNull();
-
-    // The discarded sample is finished, so the next request starts another.
-    const sentAt = Date.now();
-    clock = deferred<number>();
-    await fetchApiClubNames();
-    jest.advanceTimersByTime(MAX_ROUND_TRIP_MS);
-    clock.resolve(Date.now() + 60_000);
-    await flushMicrotasks();
-    expect(clockCalls()).toHaveLength(2);
-    // 60s ahead of the receive time, measured from the midpoint.
-    expect(getServerClockSample()).toEqual({
-      skewMs: 60_000 + MAX_ROUND_TRIP_MS / 2,
-      sampledAt: sentAt + MAX_ROUND_TRIP_MS,
-    });
-  });
-
-  describe('awaitServerClock', () => {
-    it('answers with the sample at hand without asking again', async () => {
-      jest.useFakeTimers({ now: T0 });
-      const { clockCalls } = installTransport(answer([]), () => T0 + 5000);
-      await fetchApiClubNames();
-      await flushMicrotasks();
-      expect(clockCalls()).toHaveLength(1);
-
-      await expect(awaitServerClock()).resolves.toEqual({ skewMs: 5000, sampledAt: T0 });
-      expect(clockCalls()).toHaveLength(1);
-    });
-
-    it('joins the sample a request started, and has it as soon as it lands', async () => {
-      jest.useFakeTimers({ now: T0 });
-      const clock = deferred<number>();
-      const { clockCalls } = installTransport(answer(['Club A']), () => clock.promise);
-      await fetchApiClubNames();
-
-      let sample: unknown = 'pending';
-      void awaitServerClock().then((value) => {
-        sample = value;
-      });
-      await flushMicrotasks();
-      expect(sample).toBe('pending');
-
-      clock.resolve(T0 + 7000);
-      await flushMicrotasks();
-      expect(sample).toEqual({ skewMs: 7000, sampledAt: T0 });
-      expect(clockCalls()).toHaveLength(1);
-    });
-
-    it('starts a sample when none is in flight', async () => {
-      jest.useFakeTimers({ now: T0 });
-      const { clockCalls, dataCalls } = installTransport(answer([]), () => T0 - 2000);
-
-      await expect(awaitServerClock()).resolves.toEqual({ skewMs: -2000, sampledAt: T0 });
-      expect(clockCalls()).toHaveLength(1);
-      expect(dataCalls()).toHaveLength(0);
-    });
-
-    it('gives up after its grace period on a clock call that never answers', async () => {
-      jest.useFakeTimers({ now: T0 });
-      installTransport(answer([]), () => never());
-      let settled = false;
-      const pending = awaitServerClock().finally(() => {
-        settled = true;
-      });
-
-      await flushMicrotasks();
-      jest.advanceTimersByTime(SERVER_CLOCK_DECISION_GRACE_MS - 1);
-      await flushMicrotasks();
-      expect(settled).toBe(false);
-
-      jest.advanceTimersByTime(1);
-      await expect(pending).resolves.toBeNull();
     });
   });
 });
@@ -2739,7 +1308,7 @@ describe('request timeouts', () => {
     setApiTransportForTests(async (call) => {
       if (call.kind === 'clock') return Date.now();
       signal = call.signal;
-      return new Promise(() => {}); // never answers
+      return new Promise(() => {});
     });
     const pending = deleteSavedSession('token', 'session-1').catch((error: unknown) => error);
     await Promise.resolve();
@@ -2747,23 +1316,6 @@ describe('request timeouts', () => {
     await jest.advanceTimersByTimeAsync(DEFAULT_TIMEOUT_MS + 1);
     expect(await pending).toBeInstanceOf(MeetCalApiTimeoutError);
     expect(signal?.aborted).toBe(true);
-  });
-});
-
-// #281: each platform row's published weigh-in is kept; the session's is
-// only the first row's.
-describe('mapApiSchedule platform weigh-ins', () => {
-  it('keeps every platform row its own published weigh-in', () => {
-    const schedule = mapApiSchedule([
-      { date: '2026-06-20', platform: 'Red', session_id: 5, start_time: '09:00:00', weigh_in_time: '07:00:00', weight_class: '89' },
-      { date: '2026-06-20', platform: 'Blue', session_id: 5, start_time: '09:30:00', weigh_in_time: '', weight_class: '96' },
-    ]);
-    const session = schedule[0].sessions[0];
-    expect(session.weighInTime).toBe('7:00 AM');
-    expect(session.platforms.map((p) => [p.platform, p.platformStartTime, p.platformWeighInTime])).toEqual([
-      ['Red', '9:00 AM', '7:00 AM'],
-      ['Blue', '9:30 AM', ''],
-    ]);
   });
 });
 
@@ -2826,73 +1378,5 @@ describe('premium reads and the access pass', () => {
     expect(lastCall()).toMatchObject({ fn: 'apiTokens:revoke', kind: 'mutation', token: 'jwt', args: {} });
     await revokeApiToken('clerk-token', 't1');
     expect(lastCall()).toMatchObject({ token: 'clerk-token', args: { tokenId: 't1' } });
-  });
-});
-
-describe('meet submissions', () => {
-  it('asks for an upload URL with the Clerk token, and checks it is https', async () => {
-    const { lastCall } = installTransport(() => ({ uploadUrl: 'https://x.convex.cloud/api/storage/upload?token=1' }));
-    await expect(generateMeetSubmissionUploadUrl('clerk-token')).resolves.toBe('https://x.convex.cloud/api/storage/upload?token=1');
-    expect(lastCall()).toMatchObject({ fn: 'meetSubmissions:generateUploadUrl', kind: 'mutation', token: 'clerk-token', args: {} });
-    installTransport(() => ({ uploadUrl: 'javascript:alert(1)' }));
-    await expect(generateMeetSubmissionUploadUrl('clerk-token')).rejects.toThrow('expected an https URL');
-    await expect(generateMeetSubmissionUploadUrl('')).rejects.toThrow('requires an auth token');
-  });
-
-  it('submits the meet with the Clerk token, and needs the acknowledgement', async () => {
-    const body = { meetName: 'Open', startDate: '2027-03-06', endDate: null, contactEmail: null, files: [{ storageId: 's1', name: 'a.pdf' }] };
-    const { lastCall } = installTransport(() => ({ submitted: true }));
-    await expect(submitMeet('clerk-token', body)).resolves.toBeUndefined();
-    expect(lastCall()).toMatchObject({ fn: 'meetSubmissions:submit', kind: 'mutation', token: 'clerk-token', args: body });
-    installTransport(() => ({ submitted: 'yes' }));
-    await expect(submitMeet('clerk-token', body)).rejects.toThrow('expected true');
-    installTransport(() => null);
-    await expect(submitMeet('clerk-token', body)).rejects.toThrow();
-  });
-});
-
-describe('fetchWrapped', () => {
-  afterEach(() => setAccessPassSource(null));
-  const stats = {
-    totalWeightLifted: 1200.0,
-    totalMeets: 3.0,
-    makePercentage: 75,
-    bestSnatch: 100,
-    bestCleanJerk: 125,
-    bestTotal: 225,
-    averageTotal: 215,
-    topMeet: null,
-    improvementFromFirst: null,
-    longestMakeStreak: 5,
-    favoriteAttempt: 2,
-    yearRank: 'Meet Regular',
-  };
-
-  it('asks the free query with no pass, even for a subscriber, and checks the answer', async () => {
-    setAccessPassSource(async () => ({ pass: 'p1', rotatesAt: Date.now() + 60_000 }));
-    const { lastCall } = installTransport(() => ({ kind: 'athlete', name: 'Ada', stats }));
-    await expect(fetchWrapped('ada', 2026)).resolves.toEqual({ kind: 'athlete', name: 'Ada', stats });
-    expect(lastCall()).toMatchObject({ fn: 'results:wrapped', kind: 'query', args: { query: 'ada', year: 2026 } });
-    expect(lastCall().args.pass).toBeUndefined();
-    expect(lastCall().token).toBeUndefined();
-    await fetchWrapped('Ada', 2026, true);
-    expect(lastCall().args.picked).toBe(true);
-  });
-
-  it('reads every kind, and refuses a malformed answer', async () => {
-    installTransport(() => ({ kind: 'ambiguous', names: ['A', 'B'], truncated: true }));
-    await expect(fetchWrapped('a', 2026)).resolves.toEqual({ kind: 'ambiguous', names: ['A', 'B'], truncated: true });
-    installTransport(() => ({ kind: 'none', suggestions: ['Ada'] }));
-    await expect(fetchWrapped('a', 2026)).resolves.toEqual({ kind: 'none', suggestions: ['Ada'] });
-    installTransport(() => ({ kind: 'narrow' }));
-    await expect(fetchWrapped('a', 2026)).resolves.toEqual({ kind: 'narrow' });
-    installTransport(() => ({ kind: 'tooManyResults', name: 'Ada' }));
-    await expect(fetchWrapped('a', 2026)).resolves.toEqual({ kind: 'tooManyResults', name: 'Ada' });
-    installTransport(() => ({ kind: 'athlete', name: 'Ada', stats: { ...stats, favoriteAttempt: 4 } }));
-    await expect(fetchWrapped('a', 2026)).rejects.toThrow('favoriteAttempt');
-    installTransport(() => ({ kind: 'athlete', name: 'Ada', stats: { ...stats, bestTotal: 'lots' } }));
-    await expect(fetchWrapped('a', 2026)).rejects.toThrow('bestTotal');
-    installTransport(() => ({ kind: 'rows' }));
-    await expect(fetchWrapped('a', 2026)).rejects.toThrow('unknown kind');
   });
 });

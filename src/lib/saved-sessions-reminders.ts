@@ -1,10 +1,6 @@
 import { convertToUTC, getMeetConfig } from '@/data/meets/config';
 import type { MeetName } from '@/data/types/meet';
-import {
-  getServerClockSample,
-  MAX_PLAUSIBLE_CLOCK_SKEW_MS,
-  type ServerClockSample,
-} from '@/lib/api/meetcal-api';
+import { getServerClockSample, MAX_PLAUSIBLE_CLOCK_SKEW_MS, type ServerClockSample } from '@/lib/api/server-clock';
 import { exactAlarmsFromStatus, readExactAlarmStatus } from '@/lib/exact-alarms';
 import { devLog } from '@/lib/logger';
 import { getMeetSchedule } from '@/lib/database/meet-data-reads';

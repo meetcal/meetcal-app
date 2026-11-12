@@ -7,10 +7,7 @@ import React from "react";
 import { Switch } from "react-native";
 import { act, create, type ReactTestRenderer } from "react-test-renderer";
 import { AutoUnsaveSetting } from "@/components/profile/AutoUnsaveSetting";
-import {
-  fetchUserPreferences,
-  patchAutoUnsavePreference,
-} from "@/lib/api/meetcal-api";
+import { fetchUserPreferences, patchAutoUnsavePreference } from "@/lib/api/user-preferences-api";
 import type { PremiumAccess } from "@/lib/premium-access";
 
 jest.mock("@/components/ui/IconSymbol", () => ({ IconSymbol: () => null }));
@@ -23,7 +20,7 @@ jest.mock("@clerk/expo", () => {
     useAuth: () => ({ getToken }),
   };
 });
-jest.mock("@/lib/api/meetcal-api", () => ({
+jest.mock("@/lib/api/user-preferences-api", () => ({
   fetchUserPreferences: jest.fn(),
   patchAutoUnsavePreference: jest.fn(),
 }));

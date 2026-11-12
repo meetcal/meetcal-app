@@ -2,7 +2,7 @@ import { isRecord } from '@/lib/is-record';
 import { createWriteChain } from '@/lib/data/write-chain';
 import * as SecureStore from 'expo-secure-store';
 
-import { issueSiriToken, revokeApiToken, type IssuedApiToken } from '@/lib/api/meetcal-api';
+import { issueSiriToken, revokeApiToken, type IssuedApiToken } from '@/lib/api/siri-tokens-api';
 
 /**
  * Siri's sign-in token. The App Intents (`plugins/ios-app-intents/`) cannot

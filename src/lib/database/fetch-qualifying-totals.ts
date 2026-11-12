@@ -7,7 +7,7 @@ import {
   replaceOfflineCache,
   setOfflineCache,
 } from './offline-cache';
-import { fetchApiQualifyingTotals } from '@/lib/api/meetcal-api';
+import { fetchApiQualifyingTotals } from '@/lib/api/reference-api';
 
 
 export type QualifyingTotalsData = {

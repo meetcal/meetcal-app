@@ -13,14 +13,9 @@ import {
   scheduleNotification,
 } from "@/utils/notifications";
 import { setRemindersEnabled } from "@/lib/reminder-preference";
-import {
-  deleteSavedSession,
-  deleteSavedSessions,
-  fetchSavedSessions,
-  fetchUserPreferences,
-  MeetCalApiError,
-  putSavedSession,
-} from "@/lib/api/meetcal-api";
+import { deleteSavedSession, deleteSavedSessions, fetchSavedSessions, putSavedSession } from "@/lib/api/saved-sessions-api";
+import { fetchUserPreferences } from "@/lib/api/user-preferences-api";
+import { MeetCalApiError } from "@/lib/api/meetcal-api";
 import { getMeetData } from "@/lib/database/meet-data-reads";
 import { convertToUTC, getMeetConfig } from "@/data/meets/config";
 import { clearSavedWidget, syncSavedWidget } from "@/utils/savedWidget";
@@ -159,27 +154,27 @@ jest.mock("@/lib/api/meetcal-api", () => {
     }
   }
   class MeetCalApiTimeoutError extends Error {}
-  return {
-    MeetCalApiError,
-    MeetCalApiTimeoutError,
-    deleteSavedSession: jest.fn(async () => ({ deleted: true })),
-    deleteSavedSessions: jest.fn(async () => ({ deleted_count: 0 })),
-    fetchSavedSessions: jest.fn(async () => []),
-    fetchUserPreferences: jest.fn(async () => ({
-      auto_unsave_started_sessions: false,
-    })),
-    // The prune needs a fresh server clock sample; the server agrees with
-    // the device here.
-    refreshServerClock: async () => ({ skewMs: 0, sampledAt: Date.now() }),
-    // The reminders correct by the last sample: none yet here.
-    getServerClockSample: () => null,
-    MAX_PLAUSIBLE_CLOCK_SKEW_MS: 15 * 60 * 1000,
-    putSavedSession: jest.fn(async (_token: string, id: string) => ({
-      session_id: id,
-      updated_at: 1,
-    })),
-  };
+  return { MeetCalApiError, MeetCalApiTimeoutError };
 });
+jest.mock("@/lib/api/saved-sessions-api", () => ({
+  deleteSavedSession: jest.fn(async () => ({ deleted: true })),
+  deleteSavedSessions: jest.fn(async () => ({ deleted_count: 0 })),
+  fetchSavedSessions: jest.fn(async () => []),
+  putSavedSession: jest.fn(async (_token: string, id: string) => ({
+    session_id: id,
+    updated_at: 1,
+  })),
+}));
+jest.mock("@/lib/api/user-preferences-api", () => ({
+  fetchUserPreferences: jest.fn(async () => ({
+    auto_unsave_started_sessions: false,
+  })),
+}));
+jest.mock("@/lib/api/server-clock", () => ({
+  refreshServerClock: async () => ({ skewMs: 0, sampledAt: Date.now() }),
+  getServerClockSample: () => null,
+  MAX_PLAUSIBLE_CLOCK_SKEW_MS: 15 * 60 * 1000,
+}));
 
 const mockFetchSavedSessions = fetchSavedSessions as jest.MockedFunction<
   typeof fetchSavedSessions

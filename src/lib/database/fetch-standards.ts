@@ -8,7 +8,7 @@ import {
   replaceOfflineCache,
   setOfflineCache,
 } from './offline-cache';
-import { fetchApiStandards, type ApiStandardRow } from '@/lib/api/meetcal-api';
+import { fetchApiStandards, type ApiStandardRow } from '@/lib/api/reference-api';
 import { weightClassSort } from './weight-class-sort';
 
 type CompleteStandardsRow = Readonly<ApiStandardRow> & {

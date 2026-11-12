@@ -8,7 +8,7 @@ import {
   type ChaosConfig,
   type ChaosFaultKind,
 } from '@/lib/api/dev-chaos';
-import { SERVER_CLOCK_CALL } from '@/lib/api/meetcal-api';
+import { SERVER_CLOCK_CALL } from '@/lib/api/server-clock';
 import type { ApiCall } from '@/lib/api/transport';
 
 const ALL_KINDS: ChaosFaultKind[] = ['network', 'hang', 'delay', 'status', 'transient', 'garbage', 'truncate'];

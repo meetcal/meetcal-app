@@ -17,21 +17,14 @@
  * out by `skip_serializing_if` — reaches the client as the wire would deliver
  * it.
  */
-import {
-  clearHttpValidatorCache,
-  fetchApiAthletesWithSession,
-  fetchApiMeetPackageConditional,
-  fetchApiMeets,
-  fetchApiResultsByNames,
-  fetchApiSchedule,
-  fetchApiYearBestsByNames,
-  fetchSavedSessions,
-  mapApiAthletes,
-  mapApiYearBests,
-  mapPackageSchedule,
-  resetServerClockForTests,
-  searchApi,
-} from './meetcal-api';
+import { clearHttpValidatorCache } from '@/lib/api/revalidated-reads';
+import { fetchApiAthletesWithSession, fetchApiMeets, fetchApiSchedule } from '@/lib/api/meets-api';
+import { fetchApiMeetPackageConditional } from '@/lib/api/meet-package-api';
+import { fetchApiResultsByNames, fetchApiYearBestsByNames, searchApi } from '@/lib/api/results-api';
+import { fetchSavedSessions } from '@/lib/api/saved-sessions-api';
+import { mapApiAthletes, mapApiYearBests } from '@/lib/api/api-athlete-mappers';
+import { mapPackageSchedule } from '@/lib/api/api-meet-mappers';
+import { resetServerClockForTests } from '@/lib/api/server-clock';
 import { isClockCall } from './json-transport-stub';
 import { setApiTransportForTests, type ApiCall } from './transport';
 import type { MeetName } from '@/data/types/meet';

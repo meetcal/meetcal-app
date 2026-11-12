@@ -16,7 +16,7 @@
  * meets.
  */
 import type { AthleteBests, AthleteMeetResult } from "@/data/types/athletes";
-import { fetchApiResultsByNames, fetchApiYearBestsByNames } from "@/lib/api/meetcal-api";
+import { fetchApiResultsByNames, fetchApiYearBestsByNames } from "@/lib/api/results-api";
 import { maxSuccessfulAttempt, normalizeAthleteName } from "@/lib/athletes";
 import { hasAnyAthleteBest, saveAthleteBestsBatch } from "@/lib/database/athlete-bests-store";
 import {

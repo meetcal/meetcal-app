@@ -12,7 +12,8 @@ import {
   getCachedMeets,
   warmMeetData,
 } from '@/lib/database/meet-manager';
-import { awaitServerClock, fetchApiMeetByName, getTrustedNow } from '@/lib/api/meetcal-api';
+import { awaitServerClock, getTrustedNow } from '@/lib/api/server-clock';
+import { fetchApiMeetByName } from '@/lib/api/meets-api';
 import { startupTiming } from '@/lib/startup-timing';
 import { chooseLaunchMeet, isMeetCompleted } from '@/lib/launch-meet';
 import { subscribeToNetworkChanges } from '@/lib/networkUtils';

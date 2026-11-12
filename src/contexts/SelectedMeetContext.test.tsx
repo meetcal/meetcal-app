@@ -41,8 +41,10 @@ jest.mock("@/lib/database/meet-downloads-registry", () => ({
 }));
 
 const mockAwaitServerClock = jest.fn(async () => null);
-jest.mock("@/lib/api/meetcal-api", () => ({
+jest.mock("@/lib/api/meets-api", () => ({
   fetchApiMeetByName: (name: string) => mockFetchApiMeetByName(name),
+}));
+jest.mock("@/lib/api/server-clock", () => ({
   getTrustedNow: () => null,
   awaitServerClock: () => mockAwaitServerClock(),
 }));

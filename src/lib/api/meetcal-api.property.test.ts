@@ -3,41 +3,18 @@
  */
 import * as fc from 'fast-check';
 
-import {
-  clearHttpValidatorCache,
-  fetchApiAthletes,
-  fetchApiAthletesWithSession,
-  fetchApiMeetPackageConditional,
-  fetchApiMeets,
-  fetchApiRecentResultsByNames,
-  fetchApiResultsByNames,
-  fetchApiSchedule,
-  fetchApiYearBestsByNames,
-  fetchSavedSessions,
-  fetchApiClubMeetStats,
-  fetchApiClubNames,
-  fetchApiMeetByName,
-  fetchApiRecords,
-  fetchApiWsoAgeGroups,
-  fetchUserPreferences,
-  formatApiTime,
-  mapApiAthlete,
-  mapApiAthletes,
-  mapApiLiftingResult,
-  mapApiMeet,
-  mapApiSchedule,
-  mapApiYearBests,
-  mapPackageSchedule,
-  MeetCalApiTimeoutError,
-  normalizePlatform,
-  resetServerClockForTests,
-  searchApi,
-  type ApiAthleteWithSession,
-  type ApiLiftingResult,
-  type ApiMeet,
-  type ApiScheduleRow,
-  type ApiYearBests,
-} from './meetcal-api';
+import { clearHttpValidatorCache } from '@/lib/api/revalidated-reads';
+import { fetchApiAthletes, fetchApiAthletesWithSession, fetchApiMeets, fetchApiSchedule, fetchApiMeetByName } from '@/lib/api/meets-api';
+import { fetchApiMeetPackageConditional } from '@/lib/api/meet-package-api';
+import { fetchApiRecentResultsByNames, fetchApiResultsByNames, fetchApiYearBestsByNames, searchApi } from '@/lib/api/results-api';
+import { fetchSavedSessions } from '@/lib/api/saved-sessions-api';
+import { fetchApiClubMeetStats, fetchApiClubNames } from '@/lib/api/clubs-api';
+import { fetchApiRecords, fetchApiWsoAgeGroups } from '@/lib/api/reference-api';
+import { fetchUserPreferences } from '@/lib/api/user-preferences-api';
+import { formatApiTime, mapApiMeet, mapApiSchedule, mapPackageSchedule, normalizePlatform, type ApiMeet, type ApiScheduleRow } from '@/lib/api/api-meet-mappers';
+import { mapApiAthlete, mapApiAthletes, mapApiLiftingResult, mapApiYearBests, type ApiAthleteWithSession, type ApiLiftingResult, type ApiYearBests } from '@/lib/api/api-athlete-mappers';
+import { MeetCalApiTimeoutError } from '@/lib/api/meetcal-api';
+import { resetServerClockForTests } from '@/lib/api/server-clock';
 import { callQuery, isClockCall, jsonTransportStub, type JsonResponder } from './json-transport-stub';
 import { setApiTransportForTests } from './transport';
 import { isLiftResult } from '@/lib/athletes';

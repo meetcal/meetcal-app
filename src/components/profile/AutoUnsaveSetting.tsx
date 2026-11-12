@@ -1,8 +1,5 @@
 import { showToast } from "@/components/ui/Toast";
-import {
-  fetchUserPreferences,
-  patchAutoUnsavePreference,
-} from "@/lib/api/meetcal-api";
+import { fetchUserPreferences, patchAutoUnsavePreference } from "@/lib/api/user-preferences-api";
 import { premiumActionFor, type PremiumAccess } from "@/lib/premium-access";
 import { AuthGuardOptions } from "@/utils/authGuard";
 import { useAuth, useUser } from "@clerk/expo";

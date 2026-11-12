@@ -13,19 +13,12 @@ import { saveAthleteBestsBatch } from '@/lib/database/athlete-bests-store';
 import { saveMeetAthletes, saveMeetLiftingResults, saveMeetSchedule } from '@/lib/database/meet-data-saves';
 import { isNetworkAvailable } from '@/lib/networkUtils';
 import { CONVEX_TRANSIENT_MESSAGE } from '@/lib/api/transport';
-import {
-  type ApiMeetPackage,
-  fetchApiMeetByName,
-  fetchApiMeetPackageConditional,
-  fetchApiMeets,
-  fetchApiResultsByNames,
-  mapApiAthletes,
-  mapApiLiftingResult,
-  mapPackageSchedule,
-  MeetCalApiError,
-  MeetCalApiTimeoutError,
-  NAMES_QUERY_CHUNK_SIZE,
-} from '@/lib/api/meetcal-api';
+import { type ApiMeetPackage, fetchApiMeetPackageConditional } from '@/lib/api/meet-package-api';
+import { fetchApiMeetByName, fetchApiMeets } from '@/lib/api/meets-api';
+import { fetchApiResultsByNames, NAMES_QUERY_CHUNK_SIZE } from '@/lib/api/results-api';
+import { mapApiAthletes, mapApiLiftingResult } from '@/lib/api/api-athlete-mappers';
+import { mapPackageSchedule } from '@/lib/api/api-meet-mappers';
+import { MeetCalApiError, MeetCalApiTimeoutError } from '@/lib/api/meetcal-api';
 import { fetchAthletesWithSession, fetchSchedule } from './queries';
 import {
   getCachedMeetByName,

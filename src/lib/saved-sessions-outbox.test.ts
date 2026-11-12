@@ -1,12 +1,8 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Crypto from "expo-crypto";
 import type { SavedSession } from "@/lib/saved-sessions-store";
-import {
-  deleteSavedSession,
-  deleteSavedSessions,
-  MeetCalApiError,
-  putSavedSession,
-} from "@/lib/api/meetcal-api";
+import { deleteSavedSession, deleteSavedSessions, putSavedSession } from "@/lib/api/saved-sessions-api";
+import { MeetCalApiError } from "@/lib/api/meetcal-api";
 import {
   adoptPreOutboxSessions,
   capAthleteNames,
@@ -40,17 +36,16 @@ jest.mock("@/lib/api/meetcal-api", () => {
     }
   }
   class MeetCalApiTimeoutError extends Error {}
-  return {
-    MeetCalApiError,
-    MeetCalApiTimeoutError,
-    deleteSavedSession: jest.fn(async () => ({ deleted: true })),
-    deleteSavedSessions: jest.fn(async () => ({ deleted_count: 0 })),
-    putSavedSession: jest.fn(async (_t: string, id: string) => ({
-      session_id: id,
-      updated_at: 1,
-    })),
-  };
+  return { MeetCalApiError, MeetCalApiTimeoutError };
 });
+jest.mock("@/lib/api/saved-sessions-api", () => ({
+  deleteSavedSession: jest.fn(async () => ({ deleted: true })),
+  deleteSavedSessions: jest.fn(async () => ({ deleted_count: 0 })),
+  putSavedSession: jest.fn(async (_t: string, id: string) => ({
+    session_id: id,
+    updated_at: 1,
+  })),
+}));
 
 const mockPut = putSavedSession as jest.MockedFunction<typeof putSavedSession>;
 const mockDelete = deleteSavedSession as jest.MockedFunction<typeof deleteSavedSession>;

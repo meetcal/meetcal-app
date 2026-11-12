@@ -4,7 +4,7 @@ import {
 } from "@/lib/athlete-bests";
 import { getAllCachedLiftingResultsForAthletes } from "@/lib/database/athlete-history-store";
 import { getStoredAthleteBestsForNames, saveAthleteBestsBatch, type StoredAthleteBests } from "@/lib/database/athlete-bests-store";
-import { fetchApiResultsByNames, fetchApiYearBestsByNames } from "@/lib/api/meetcal-api";
+import { fetchApiResultsByNames, fetchApiYearBestsByNames } from "@/lib/api/results-api";
 import { isNetworkAvailable } from "@/lib/networkUtils";
 
 jest.mock("@/lib/networkUtils", () => ({
@@ -20,7 +20,7 @@ jest.mock("@/lib/database/athlete-bests-store", () => ({
   saveAthleteBestsBatch: jest.fn(),
 }));
 
-jest.mock("@/lib/api/meetcal-api", () => ({
+jest.mock("@/lib/api/results-api", () => ({
   fetchApiYearBestsByNames: jest.fn(),
   fetchApiResultsByNames: jest.fn(),
 }));
