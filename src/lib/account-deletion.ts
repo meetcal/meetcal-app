@@ -47,5 +47,5 @@ export async function clearLocalUserData(userId: string): Promise<void> {
   // Before the removal, so a write still in flight for the account skips
   // storing it again (`deleted-accounts.ts`).
   markAccountDeleted(userId);
-  await AsyncStorage.multiRemove([...getAllSavedSessionsKeys(userId), getSavedSessionsOutboxKey(userId), getOutboxSeededKey(userId)]);
+  await AsyncStorage.removeMany([...getAllSavedSessionsKeys(userId), getSavedSessionsOutboxKey(userId), getOutboxSeededKey(userId)]);
 }

@@ -74,14 +74,14 @@ describe('installStorageChaos', () => {
     expect(chaos.calls.map(({ method }) => method)).toEqual(['setItem', 'setItem', 'setItem', 'getItem', 'getItem']);
   });
 
-  it('corrupts every stored value a multiGet returns, and only those', async () => {
+  it('corrupts every stored value a getMany returns, and only those', async () => {
     await AsyncStorage.setItem('a', '1');
     const chaos = installStorageChaos([{ kind: 'corrupt-read', value: 'x' }]);
     try {
-      await expect(AsyncStorage.multiGet(['a', 'missing'])).resolves.toEqual([
-        ['a', 'x'],
-        ['missing', null],
-      ]);
+      await expect(AsyncStorage.getMany(['a', 'missing'])).resolves.toEqual({
+        a: 'x',
+        missing: null,
+      });
     } finally {
       chaos.restore();
     }
