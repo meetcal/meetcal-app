@@ -1,7 +1,14 @@
 use crate::{
-    auth::{AuthContext, AuthState, has_comp_data_access, mount_sign_in, unmount_sign_in},
+    auth::{AuthContext, AuthState, mount_sign_in, unmount_sign_in},
     components::store_links::{APP_STORE_URL, PLAY_STORE_URL},
-    utils::page,
+    pages::comp_data::{
+        catalog::{DataPageLink, FirstView},
+        ui::{DataPage, DataStatus, SearchFieldLoading, TableSkeleton},
+    },
+    utils::{
+        api::{PassRefusal, check_access},
+        page,
+    },
 };
 use leptos::prelude::*;
 
@@ -63,13 +70,6 @@ pub fn provide_access() {
         AuthState::SignedIn(user_id) if access.gate_open() => access.check(user_id, true),
         AuthState::SignedIn(_) => access.forget(),
     });
-
-    // Clerk does not report the same user again (see `provide_auth`), so an
-    // unpaid user back from subscribing in the app is checked on return.
-    // Dropping the handle keeps the listener, for as long as the app runs.
-    let _ = window_event_listener(leptos::ev::visibilitychange, move |_| {
-        access.recheck_unpaid();
-    });
 }
 
 impl AccessContext {
@@ -107,8 +107,6 @@ impl AccessContext {
         }
     }
 
-    /// Checks `user_id`'s entitlement; `show_checking` replaces the page with
-    /// the checking card meanwhile.
     fn check(self, user_id: String, show_checking: bool) {
         let Some(check) = self.latest_check.try_update_value(|latest| {
             *latest += 1;
@@ -119,16 +117,13 @@ impl AccessContext {
         if show_checking {
             self.show(AccessState::Checking);
         }
-        // A background check counts as recent from its start, so pages opened
-        // while it runs don't start more; if it fails, the previous time is
-        // restored and the next page opened tries again.
         let previous = self.checked.get_value();
         if !show_checking {
             self.checked
                 .set_value(Some((user_id.clone(), js_sys::Date::now())));
         }
         leptos::task::spawn_local(async move {
-            let result = has_comp_data_access(&user_id).await;
+            let result = check_access().await;
             let is_latest = self
                 .latest_check
                 .try_with_value(|latest| *latest == check)
@@ -137,8 +132,7 @@ impl AccessContext {
             {
                 return;
             }
-            if !show_checking && result.is_err() {
-                // A failed background check keeps the page the user is on.
+            if !show_checking && keeps_the_page_on_a_background_check(&result) {
                 self.checked.set_value(previous);
                 return;
             }
@@ -178,12 +172,17 @@ impl AccessContext {
     }
 }
 
-fn access_for(result: Result<bool, String>) -> AccessState {
+fn access_for(result: Result<(), PassRefusal>) -> AccessState {
     match result {
-        Ok(true) => AccessState::Paid,
-        Ok(false) => AccessState::Unpaid,
-        Err(message) => AccessState::Error(message),
+        Ok(()) => AccessState::Paid,
+        Err(PassRefusal::SubscriptionRequired) => AccessState::Unpaid,
+        Err(PassRefusal::SignedOut) => AccessState::SignedOut,
+        Err(PassRefusal::Unavailable(message)) => AccessState::Error(message),
     }
+}
+
+fn keeps_the_page_on_a_background_check(result: &Result<(), PassRefusal>) -> bool {
+    matches!(result, Err(PassRefusal::Unavailable(_)))
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -193,15 +192,13 @@ enum Recheck {
     Showing,
 }
 
-/// Whether a data page opening should check access again, given the shown
-/// state and when the signed-in user's last check finished.
 fn recheck_on_open(state: &AccessState, checked_at: Option<f64>, now: f64) -> Recheck {
     match state {
         AccessState::Checking => Recheck::No,
-        AccessState::Paid => match checked_at {
-            Some(at) if now - at < ACCESS_RECHECK_AFTER_MS => Recheck::No,
-            _ => Recheck::InBackground,
-        },
+        AccessState::Paid if checked_at.is_some_and(|at| now - at < ACCESS_RECHECK_AFTER_MS) => {
+            Recheck::No
+        }
+        AccessState::Paid => Recheck::InBackground,
         AccessState::Unchecked
         | AccessState::SignedOut
         | AccessState::Unpaid
@@ -210,10 +207,21 @@ fn recheck_on_open(state: &AccessState, checked_at: Option<f64>, now: f64) -> Re
 }
 
 #[component]
-pub fn SubscriptionGate(children: ChildrenFn) -> impl IntoView {
+pub fn SubscriptionGate(page: DataPageLink, children: ChildrenFn) -> impl IntoView {
     let access = expect_context::<AccessContext>();
+    access.auth.require_sign_in();
+    let tab_shown = StoredValue::new_local(None::<WindowListenerHandle>);
+    Effect::new(move |_| {
+        tab_shown.set_value(Some(window_event_listener(
+            leptos::ev::visibilitychange,
+            move |_| access.recheck_unpaid(),
+        )));
+    });
     access.open_gates.update_value(|open| *open += 1);
     on_cleanup(move || {
+        if let Some(listener) = tab_shown.try_update_value(Option::take).flatten() {
+            listener.remove();
+        }
         access
             .open_gates
             .try_update_value(|open| *open = open.saturating_sub(1));
@@ -223,13 +231,14 @@ pub fn SubscriptionGate(children: ChildrenFn) -> impl IntoView {
     view! {
         {move || match access.state.get() {
             AccessState::Unchecked | AccessState::Checking => view! {
-                <AccessShell>
-                    <div class="access-status" role="status" aria-live="polite">
-                        <span class="access-spinner" aria-hidden="true"></span>
-                        <h1>"Checking your access"</h1>
-                        <p>"Confirming your account and subscription…"</p>
-                    </div>
-                </AccessShell>
+                <DataPage page>
+                    <p class="visually-hidden" role="status">"Checking your access"</p>
+                    {match page.first_view {
+                        FirstView::Table { columns } => Some(view! { <TableSkeleton columns /> }.into_any()),
+                        FirstView::Search { field, prompt } => Some(view! { <SearchFieldLoading field /> <DataStatus message=prompt /> }.into_any()),
+                        FirstView::Form => None,
+                    }}
+                </DataPage>
             }.into_any(),
             AccessState::SignedOut => view! {
                 <AccessShell>
@@ -372,12 +381,33 @@ mod tests {
     }
 
     #[test]
-    fn entitlement_answers_map_to_access() {
-        assert_eq!(access_for(Ok(true)), AccessState::Paid);
-        assert_eq!(access_for(Ok(false)), AccessState::Unpaid);
+    fn the_pass_answer_maps_to_access() {
+        assert_eq!(access_for(Ok(())), AccessState::Paid);
         assert_eq!(
-            access_for(Err("boom".to_owned())),
-            AccessState::Error("boom".to_owned())
+            access_for(Err(PassRefusal::SubscriptionRequired)),
+            AccessState::Unpaid
         );
+        assert_eq!(
+            access_for(Err(PassRefusal::SignedOut)),
+            AccessState::SignedOut
+        );
+        assert_eq!(
+            access_for(Err(PassRefusal::Unavailable("offline".to_owned()))),
+            AccessState::Error("offline".to_owned())
+        );
+    }
+
+    #[test]
+    fn only_an_unavailable_check_keeps_a_page_already_open() {
+        assert!(keeps_the_page_on_a_background_check(&Err(
+            PassRefusal::Unavailable("offline".to_owned())
+        )));
+        assert!(!keeps_the_page_on_a_background_check(&Err(
+            PassRefusal::SubscriptionRequired
+        )));
+        assert!(!keeps_the_page_on_a_background_check(&Err(
+            PassRefusal::SignedOut
+        )));
+        assert!(!keeps_the_page_on_a_background_check(&Ok(())));
     }
 }

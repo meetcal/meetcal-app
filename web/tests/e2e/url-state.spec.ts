@@ -1,5 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
-import { mockAuth, mockSubscribedUser, routeAction, routeQuery, textAnswer, valueAnswer } from "./support/api";
+import { mockAuth, mockSubscribedUser, routeAction, routeNarrowedTable, routeQuery, textAnswer, valueAnswer } from "./support/api";
 
 const stats = {
   totalWeightLifted: 1234, totalMeets: 3, makePercentage: 83.3, bestSnatch: 100, bestCleanJerk: 125, bestTotal: 225,
@@ -144,12 +144,13 @@ test("an athlete link from a meet's results comes back to the same meet", async 
   const result = { name: "Test Athlete", meet: "Meet Alpha", date: "2026-06-20", age: "Senior", body_weight: 70.5, snatch1: 95, snatch2: 100, snatch3: -103, snatch_best: 100, cj1: 120, cj2: 125, cj3: 0, cj_best: 125, total: 225, adaptive: false };
   await routeQuery(page, "results:byMeet", (route) => route.fulfill(textAnswer([result])));
   await routeQuery(page, "results:search", (route) => route.fulfill(valueAnswer({ matched_name: "Test Athlete", suggestions: [], results: [result], truncated: false })));
-  await page.goto("/meet-center?meet=Meet%20Alpha");
-  await page.locator("tbody").last().getByRole("link", { name: "Test Athlete" }).click();
+  await page.goto("/meet-center?meet=Meet%20Alpha&section=results");
+  await page.getByRole("link", { name: "Test Athlete" }).click();
   await expect(page).toHaveURL(/\/results\?athlete=Test%20Athlete$/);
   await page.goBack();
-  await expect(page).toHaveURL(/\/meet-center\?meet=Meet%20Alpha$/);
-  await expect(page.locator("tbody").first()).toContainText("Meet Alpha Platform");
+  await expect(page).toHaveURL(/\/meet-center\?meet=Meet%20Alpha&section=results$/);
+  await expect(page.getByRole("button", { name: "Full Results", exact: true })).toHaveAttribute("aria-pressed", "true");
+  await expect(page.locator("tbody").first()).toContainText("Test Athlete");
 });
 
 test("the dashboards open from their addresses and write their picks to them", async ({ page }) => {
@@ -260,18 +261,19 @@ const recordRow = (gender: string, weight_class: string, total_record: number) =
 });
 
 async function routeRecords(page: Page) {
-  await routeQuery(page, "reference:records", (route) => route.fulfill(textAnswer([
+  return await routeNarrowedTable(page, "records", [
     recordRow("Women", "77kg", 280), recordRow("Women", "69kg", 260), recordRow("Men", "89kg", 380),
-  ])));
+  ]);
 }
 
 const shownTotals = (page: Page) => page.locator("tbody tr td:last-child");
 
 test("a reference table opens filtered and sorted from its address, and each pick adds an entry Back returns through", async ({ page }) => {
   await mockSubscribedUser(page);
-  await routeRecords(page);
+  const asked = await routeRecords(page);
   await page.goto("/records?gender=Women&sort=total_asc");
   await expect(page.getByRole("combobox", { name: "Gender", exact: true })).toHaveValue("Women");
+  expect(asked[0]).toEqual({ gender: "Women", pass: "pass_test" });
   await expect(page.locator("tbody tr")).toHaveCount(2);
   await expect(page.locator("tbody tr").first()).toContainText("69kg");
 
@@ -292,11 +294,34 @@ test("a reference table opens filtered and sorted from its address, and each pic
   await expect(page.locator("tbody tr").first()).toContainText("69kg");
 });
 
+test("arrowing through a closed select asks for the choice it settles on, once", async ({ page, browserName }) => {
+  test.skip(browserName !== "chromium", "Only Chromium steps a closed select's choice with the arrow keys.");
+  await mockSubscribedUser(page);
+  const asked = await routeNarrowedTable(page, "records", [
+    { ...recordRow("Women", "77kg", 280), record_type: "IWF" },
+    { ...recordRow("Women", "69kg", 260), record_type: "USAMW" },
+    recordRow("Men", "89kg", 380),
+  ]);
+  await page.goto("/records");
+  await expect(page.locator("tbody tr")).toHaveCount(3);
+  const organization = page.getByRole("combobox", { name: "Organization", exact: true });
+  await expect(organization.locator("option")).toHaveText(["All organizations", "IWF", "USAMW", "USAW"]);
+  const before = asked.length;
+  await organization.focus();
+  await page.keyboard.press("ArrowDown");
+  await page.keyboard.press("ArrowDown");
+  await page.keyboard.press("ArrowDown");
+  await expect(page).toHaveURL(/\/records\?organization=USAW$/);
+  await expect(page.locator("tbody tr")).toHaveCount(1);
+  expect(asked.slice(before).map((args) => args.federation)).toEqual(["USAW"]);
+});
+
 test("a reference table address naming a choice the table does not offer shows every row", async ({ page }) => {
   await mockSubscribedUser(page);
-  await routeRecords(page);
+  const asked = await routeRecords(page);
   await page.goto("/records?gender=Nobody&class=200kg&sort=not_a_sort");
   await expect(page.locator("tbody tr")).toHaveCount(3);
+  expect(asked.at(-1)).toEqual({ pass: "pass_test" });
   await expect(page.getByRole("combobox", { name: "Gender", exact: true })).toHaveValue("");
   await expect(page.locator("tbody tr").first()).toContainText("380");
 });

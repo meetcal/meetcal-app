@@ -1,11 +1,9 @@
 import { expect, test } from "@playwright/test";
-import { errorAnswer, mockSubscribedUser, retryableResponse, routeAction, routeQuery, textAnswer, valueAnswer } from "./support/api";
+import { errorAnswer, mockSubscribedUser, retryableResponse, routeAction, routeNarrowedTable, routeQuery, textAnswer, valueAnswer } from "./support/api";
 
 test("subscribed users can filter and sort qualifying totals", async ({ page }) => {
   await mockSubscribedUser(page);
-  await routeQuery(page, "reference:qualifyingTotals", async (route) => {
-    await route.fulfill(
-      textAnswer([
+  await routeNarrowedTable(page, "qualifyingTotals", [
         {
           qualifying_total: 210,
           event_name: "Nationals",
@@ -41,9 +39,7 @@ test("subscribed users can filter and sort qualifying totals", async ({ page }) 
           age_category: "Senior",
           weight_class: "110kg",
         },
-      ]),
-    );
-  });
+      ]);
 
   await page.goto("/qualifying-totals");
   await expect(page.getByRole("heading", { level: 1, name: "Qualifying Totals" })).toBeVisible();
@@ -56,6 +52,7 @@ test("subscribed users can filter and sort qualifying totals", async ({ page }) 
     "110+kg",
   ]);
   await page.getByLabel("Gender").selectOption("Women");
+  await expect(page).toHaveURL(/\/qualifying-totals\?gender=Women$/);
   await expect(page.locator("tbody tr")).toHaveCount(2);
   await expect(page.locator("tbody")).not.toContainText("88kg");
 
@@ -251,6 +248,7 @@ test("athlete results show every competition field except federation", async ({ 
   await page.getByRole("option", { name: "Test Athlete" }).click();
   await page.getByRole("button", { name: "Search" }).click();
 
+  await expect(page.getByRole("columnheader").first()).toHaveText("Date");
   const headers = await page.getByRole("columnheader").allTextContents();
   expect(headers).toEqual(["Date", "Meet", "Division", "Bodyweight", "S1", "S2", "S3", "Best snatch", "C&J 1", "C&J 2", "C&J 3", "Best C&J", "Total", "Adaptive"]);
   expect(headers).not.toContain("Federation");
@@ -285,24 +283,37 @@ test("meet center joins details, schedule, start list, and full results", async 
   await expect(page.getByText("scheduled", { exact: true })).toBeVisible();
   await expect(page.getByText("Test Arena", { exact: false })).toBeVisible();
   await expect(page.getByText(/June 20, 2026.*June 20, 2026/)).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Schedule" })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Start List" })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Full Results" })).toBeVisible();
-  await expect(page.locator("tbody").first()).toContainText("June 20, 2026");
-  await expect(page.locator("tbody").first()).toContainText("8:00 AM");
-  await expect(page.locator("tbody").first()).toContainText("10:00 AM");
-  await expect(page.locator("tbody").nth(1)).toContainText("Test Athlete");
+  const tabs = page.getByRole("group", { name: "Meet data" }).getByRole("button");
+  await expect(tabs).toHaveText(["Schedule", "Start List", "Full Results"]);
+  await expect(page.getByRole("button", { name: "Schedule", exact: true })).toHaveAttribute("aria-pressed", "true");
+  await expect(page.locator("tbody")).toHaveCount(1);
+  await expect(page.locator("tbody")).toContainText("June 20, 2026");
+  await expect(page.locator("tbody")).toContainText("8:00 AM");
+  await expect(page.locator("tbody")).toContainText("10:00 AM");
+
+  await page.getByRole("button", { name: "Start List", exact: true }).click();
+  await expect(page).toHaveURL(/\/meet-center\?meet=Test%20Meet&section=start-list$/);
+  await expect(page.getByRole("button", { name: "Start List", exact: true })).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByRole("button", { name: "Schedule", exact: true })).toHaveAttribute("aria-pressed", "false");
+  await expect(page.getByRole("region", { name: "Start List" })).toContainText("Test Athlete");
+  await expect(page.getByRole("tab")).toHaveCount(0);
+  await expect(page.locator("tbody")).toHaveCount(1);
+  await expect(page.locator("tbody")).toContainText("Test Athlete");
   // The roster's raw class and gender read as every other table does.
-  await expect(page.locator("tbody").nth(1)).toContainText("69+kg");
-  await expect(page.locator("tbody").nth(1)).toContainText("Women");
-  await expect(page.locator("tbody").nth(1)).not.toContainText("Female");
-  await expect(page.locator("tbody").nth(2)).toContainText("Test Athlete");
-  const fullResults = page.locator("tbody").nth(2).locator("tr");
+  await expect(page.locator("tbody")).toContainText("69+kg");
+  await expect(page.locator("tbody")).toContainText("Women");
+  await expect(page.locator("tbody")).not.toContainText("Female");
+  await expect(page.locator("tbody").getByRole("link", { name: "Test Athlete" })).toHaveAttribute("href", "/results?athlete=Test%20Athlete&membership=1");
+
+  await page.getByRole("button", { name: "Full Results", exact: true }).click();
+  await expect(page).toHaveURL(/section=results$/);
+  await page.reload();
+  await expect(page.getByRole("button", { name: "Full Results", exact: true })).toHaveAttribute("aria-pressed", "true");
+  const fullResults = page.locator("tbody").locator("tr");
   await expect(fullResults.filter({ hasText: "Test Athlete" }).locator("td").nth(3)).toHaveText("70.5");
   await expect(fullResults.filter({ hasText: "Unweighed Athlete" }).locator("td").nth(3)).toHaveText("—");
   await expect(page.getByRole("columnheader").filter({ hasText: /^Total$/ })).toBeVisible();
-  await expect(page.locator("tbody").nth(1).getByRole("link", { name: "Test Athlete" })).toHaveAttribute("href", "/results?athlete=Test%20Athlete&membership=1");
-  await page.locator("tbody").nth(2).getByRole("link", { name: "Test Athlete" }).click();
+  await page.getByRole("link", { name: "Test Athlete" }).click();
   await expect(page).toHaveURL(/\/results\?athlete=Test%20Athlete$/);
   await expect(page.getByText("Results for")).toBeVisible();
 });
@@ -564,7 +575,7 @@ test("the meet search is a keyboard-operable combobox", async ({ page }) => {
   await expect(page.getByRole("option", { name: "Test Meet" })).toHaveAttribute("aria-selected", "true");
   await meet.press("Enter");
   await expect(meet).toHaveValue("Test Meet");
-  await expect(page.getByRole("heading", { name: "Schedule" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Schedule", exact: true })).toBeVisible();
 });
 
 test("tapping a suggestion picks it on touch screens", async ({ page, isMobile }) => {
@@ -581,7 +592,7 @@ test("tapping a suggestion picks it on touch screens", async ({ page, isMobile }
   await meet.fill("Test");
   await page.getByRole("option", { name: "Test Meet" }).tap();
   await expect(meet).toHaveValue("Test Meet");
-  await expect(page.getByRole("heading", { name: "Schedule" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Schedule", exact: true })).toBeVisible();
 });
 
 test("data page fields are at least 16px on phones, so iOS doesn't zoom", async ({ page, isMobile }) => {
@@ -721,4 +732,32 @@ test("a WSO elite score the answer lacks says so, and a score the page does not 
   await expect(page.getByRole("heading", { name: "Youth — Sinclair" })).toBeVisible();
   await expect(page.getByText("This score isn’t available for this list right now.")).toBeVisible();
   await expect(page.getByRole("heading", { name: "Overall — % of A standard" })).toBeVisible();
+});
+
+test("Show More announces the row count, and its last click moves focus to the first row it added", async ({ page }) => {
+  await mockSubscribedUser(page);
+  const rankings = Array.from({ length: 150 }, (_, index) => ({
+    meet: "World Championships",
+    ranking: index + 1,
+    name: `Athlete ${String(index + 1).padStart(3, "0")}`,
+    weight_class: "88kg",
+    total: 400 - index,
+    percent_a: 100,
+    gender: "Men",
+    age_category: "Senior",
+  }));
+  await routeQuery(page, "reference:intlRankings", (route) => route.fulfill(textAnswer(rankings)));
+
+  await page.goto("/rankings");
+  const rows = page.locator("table.data-table tbody tr");
+  await expect(rows).toHaveCount(100);
+  await expect(page.getByRole("status").filter({ hasText: "100 of 150 rows" })).toBeVisible();
+
+  const showMore = page.getByRole("button", { name: "Show More" });
+  await showMore.focus();
+  await page.keyboard.press("Enter");
+  await expect(rows).toHaveCount(150);
+  await expect(showMore).toHaveCount(0);
+  await expect(rows.nth(100)).toBeFocused();
+  await expect(rows.nth(100)).toContainText("Athlete 101");
 });

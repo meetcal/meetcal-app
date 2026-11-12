@@ -1,4 +1,4 @@
-use crate::pages::comp_data::catalog::{Access, DATA_PAGES};
+use crate::pages::comp_data::catalog::{Access, DATA_HOME, DATA_PAGES};
 use leptos::prelude::*;
 use leptos_router::hooks::use_location;
 
@@ -17,8 +17,29 @@ pub struct PageMetadata {
     pub canonical: bool,
 }
 
+pub const SITE_PAGES: [&str; 7] = [
+    "/",
+    "/features",
+    "/privacy",
+    "/terms",
+    "/subscription",
+    "/link",
+    "/submit-meet",
+];
+
+pub fn shell_paths() -> impl Iterator<Item = &'static str> {
+    SITE_PAGES
+        .into_iter()
+        .chain([DATA_HOME.path])
+        .chain(DATA_PAGES.iter().map(|page| page.path))
+}
+
 pub fn metadata_for_path(path: &str) -> PageMetadata {
-    if let Some(page) = DATA_PAGES.iter().find(|page| page.path == path) {
+    if let Some(page) = DATA_PAGES
+        .iter()
+        .chain([&DATA_HOME])
+        .find(|page| page.path == path)
+    {
         return match page.access {
             Access::Subscription => competition_metadata(page.seo_title),
             Access::Free { seo_description } => PageMetadata {
@@ -73,7 +94,6 @@ pub fn metadata_for_path(path: &str) -> PageMetadata {
             indexable: false,
             canonical: true,
         },
-        "/comp-data" => competition_metadata("Competition Data"),
         _ => PageMetadata {
             title: "Page Not Found — MeetCal",
             description: "The requested MeetCal page could not be found.",

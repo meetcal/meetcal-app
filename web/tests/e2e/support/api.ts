@@ -1,84 +1,37 @@
 import type { Page, Route } from "@playwright/test";
 
 export type AuthMock = {
-  /** Clerk reports a signed-in user (`user_ci`). Default true. */
   signedIn?: boolean;
-  /** The active RevenueCat entitlements. Default `["Subscriptions"]`, the one the app checks. */
-  entitlements?: string[];
-  /** `getCustomerInfo` rejects with this message. */
-  revenueCatError?: string;
-  /**
-   * Leave RevenueCat off the page, so the bridge loads its script (which a
-   * test can then route); `window.__authMock.installPurchases()` puts the
-   * stand-in on the page later.
-   */
-  loadRevenueCat?: boolean;
-  /**
-   * Convex holds an active entitlement for `user_ci`, so `accessPass:pass`
-   * answers it the pass. Default true; false answers 403 until
-   * `entitlements:refresh` grants it.
-   */
   serverEntitled?: boolean;
-  /** What `entitlements:refresh` answers as `active`. Default true. */
   refreshGrants?: boolean;
 };
 
-/**
- * Convex's side of the access pass in the mocks: the pass it hands out, and
- * whether it holds `user_ci`'s entitlement. A test may change either.
- */
 export type PassServer = {
   pass: string;
   entitled: boolean;
+  refreshGrants: boolean;
+  unavailable: boolean;
+  rotatesInMs: number;
 };
 
-/**
- * Puts stand-ins for the Clerk and RevenueCat SDKs on the page: the auth
- * bridge uses an SDK already on the page instead of loading it, and a mocked
- * CDN file would fail its integrity check. The stand-ins record what the site
- * asked of them on `window.__authMock`: `mountSignIn` options and
- * `getCustomerInfo` calls. `notify()` calls Clerk's listeners again;
- * `setUser(id | null)` switches or signs out the Clerk user and notifies;
- * setting `customerInfoError` makes later checks fail, and
- * `activeEntitlements` replaces the granted entitlements. Only `user_ci`
- * holds entitlements. A signed-in user's session token is `token_<id>`, and
- * their primary email `<id>@example.com`.
- *
- * Also answers the Convex calls that carry that token: `accessPass:pass` answers `server.pass` (default
- * `pass_test`) to `Bearer token_user_ci` while `server.entitled`, 403 to
- * another user or while not entitled, and 401 without a token; the
- * `entitlements:refresh` action answers `{ active: refreshGrants }` and, when
- * active, makes `server.entitled` true. Any other Convex call the test does
- * not route fails with an `errorAnswer`, so no test reaches the real
- * deployment (it once sent `pass_test` to production's `reference:records`).
- * Returns `server`, and the
- * Authorization header of each call: `passRequests` and
- * `entitlementRefreshes`.
- */
 export async function mockAuth(
   page: Page,
-  { signedIn = true, entitlements = ["Subscriptions"], revenueCatError, loadRevenueCat = false, serverEntitled = true, refreshGrants = true }: AuthMock = {},
+  { signedIn = true, serverEntitled = true, refreshGrants = true }: AuthMock = {},
 ) {
-  const active = Object.fromEntries(entitlements.map((id) => [id, { identifier: id }]));
-  await page.addInitScript(({ signedIn, active, revenueCatError, loadRevenueCat }) => {
+  await page.addInitScript(({ signedIn }) => {
     type Listener = () => void;
+    type ClerkUser = { id: string; primaryEmailAddress: { emailAddress: string } };
+    const clerkUser = (id: string): ClerkUser => ({ id, primaryEmailAddress: { emailAddress: `${id}@example.com` } });
     const mock = {
       signInMounts: [] as unknown[],
-      customerInfoCalls: 0,
       listeners: [] as Listener[],
-      customerInfoError: revenueCatError as string | undefined,
-      activeEntitlements: undefined as Record<string, unknown> | undefined,
       notify: () => mock.listeners.forEach((listener) => listener()),
       setUser: (id: string | null) => {
         clerk.isSignedIn = id !== null;
         clerk.user = id === null ? null : clerkUser(id);
         mock.notify();
       },
-      installPurchases: () => Object.assign(window, { Purchases: { Purchases: revenueCat } }),
     };
-    // A Clerk user, with the primary email `/submit-meet` sends as its contact.
-    type ClerkUser = { id: string; primaryEmailAddress: { emailAddress: string } };
-    const clerkUser = (id: string): ClerkUser => ({ id, primaryEmailAddress: { emailAddress: `${id}@example.com` } });
     const clerk = {
       isSignedIn: signedIn,
       user: signedIn ? (clerkUser("user_ci") as ClerkUser | null) : null,
@@ -101,31 +54,14 @@ export async function mockAuth(
         return clerk.isSignedIn && user ? { getToken: async () => `token_${user.id}` } : null;
       },
     };
-    let appUserId: string | null = null;
-    const purchases = {
-      getAppUserId: () => appUserId,
-      changeUser: async (id: string) => {
-        appUserId = id;
-      },
-      getCustomerInfo: async () => {
-        mock.customerInfoCalls += 1;
-        if (mock.customerInfoError) throw new Error(mock.customerInfoError);
-        return { entitlements: { active: appUserId === "user_ci" ? (mock.activeEntitlements ?? active) : {} } };
-      },
-    };
-    const revenueCat = {
-      isConfigured: () => appUserId !== null,
-      configure: ({ appUserId: id }: { appUserId: string }) => {
-        appUserId = id;
-        return purchases;
-      },
-      getSharedInstance: () => purchases,
-    };
     Object.assign(window, { __authMock: mock, __internal_ClerkUICtor: function ClerkUI() {}, Clerk: clerk });
-    if (!loadRevenueCat) mock.installPurchases();
-  }, { signedIn, active, revenueCatError, loadRevenueCat });
+  }, { signedIn });
 
-  // Routed first, so every route a test adds later answers before it.
+  const revenueCatRequests: string[] = [];
+  page.on("request", (request) => {
+    if (/revenuecat|revenue\.cat/i.test(request.url())) revenueCatRequests.push(request.url());
+  });
+
   await page.route(CONVEX_API_URL, async (route) => {
     if (route.request().method() === "OPTIONS") {
       await route.fulfill({ status: 204, headers: CORS_HEADERS });
@@ -135,16 +71,29 @@ export async function mockAuth(
     await route.fulfill(errorAnswer(`${body?.path ?? "a Convex function"} is not mocked in this test`));
   });
 
-  const server: PassServer = { pass: "pass_test", entitled: serverEntitled };
+  for (const categories of ["reference:recordCategories", "reference:qualifyingTotalCategories"]) {
+    await routeQuery(page, categories, (route) => route.fulfill(textAnswer([])));
+  }
+
+  const server: PassServer = {
+    pass: "pass_test",
+    entitled: serverEntitled,
+    refreshGrants,
+    unavailable: false,
+    rotatesInMs: 24 * 60 * 60 * 1000,
+  };
   const passRequests: Array<string | undefined> = [];
+  const accessCalls: Array<"pass" | "refresh"> = [];
   await routeQuery(page, "accessPass:pass", (route) => {
     const authorization = route.request().headers().authorization;
     passRequests.push(authorization);
+    accessCalls.push("pass");
     if (!authorization) return route.fulfill(errorAnswer("Server Error", { status: 401, error: "unauthorized" }));
+    if (server.unavailable) return route.fulfill(errorAnswer("Server Error", { status: 503, error: "no access pass yet" }));
     if (authorization !== "Bearer token_user_ci" || !server.entitled) {
       return route.fulfill(errorAnswer("Server Error", { status: 403, error: "subscription required" }));
     }
-    return route.fulfill(valueAnswer({ pass: server.pass, rotatesAt: Date.now() + 24 * 60 * 60 * 1000 }));
+    return route.fulfill(valueAnswer({ pass: server.pass, rotatesAt: Date.now() + server.rotatesInMs }));
   });
 
   await routeQuery(page, "results:athlete", (route) => route.fulfill(valueAnswer(NAME_WITHOUT_LIFTERS)));
@@ -163,11 +112,12 @@ export async function mockAuth(
     }
     const authorization = request.headers().authorization;
     entitlementRefreshes.push(authorization);
-    const active = refreshGrants && authorization === "Bearer token_user_ci";
+    accessCalls.push("refresh");
+    const active = server.refreshGrants && authorization === "Bearer token_user_ci";
     if (active) server.entitled = true;
     await route.fulfill(valueAnswer({ active }));
   });
-  return { server, passRequests, entitlementRefreshes };
+  return { server, passRequests, entitlementRefreshes, accessCalls, revenueCatRequests };
 }
 
 export const NAME_WITHOUT_LIFTERS = {
@@ -271,6 +221,33 @@ async function routeFunction(
     }
     await handler(route, body.args ?? {});
   });
+}
+
+type NarrowedTable = "records" | "qualifyingTotals";
+
+const NARROWED: Record<NarrowedTable, { categories: string; kind: string; argument: string }> = {
+  records: { categories: "reference:recordCategories", kind: "record_type", argument: "federation" },
+  qualifyingTotals: { categories: "reference:qualifyingTotalCategories", kind: "event_name", argument: "event" },
+};
+
+export async function routeNarrowedTable(page: Page, table: NarrowedTable, rows: Array<Record<string, unknown>>) {
+  const { categories, kind, argument } = NARROWED[table];
+  const distinct = new Map<string, Record<string, unknown>>();
+  for (const row of rows) {
+    const category = { [kind]: row[kind], gender: row.gender, age_category: row.age_category };
+    distinct.set(JSON.stringify(category), category);
+  }
+  await routeQuery(page, categories, (route) => route.fulfill(textAnswer([...distinct.values()])));
+  const asked: Array<Record<string, unknown>> = [];
+  const same = (value: unknown, filter: unknown) =>
+    filter === undefined || String(value).trim().toLowerCase() === String(filter).trim().toLowerCase();
+  await routeQuery(page, `reference:${table}`, (route, args) => {
+    asked.push(args);
+    return route.fulfill(
+      textAnswer(rows.filter((row) => same(row[kind], args[argument]) && same(row.gender, args.gender) && same(row.age_category, args.ageCategory))),
+    );
+  });
+  return asked;
 }
 
 /** Convex's answer to a query whose value is the body. */
