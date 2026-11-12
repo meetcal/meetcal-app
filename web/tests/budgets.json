@@ -1,17 +1,18 @@
 {
   "wasmRawBytes": 1850000,
-  "wasmBrotli11Bytes": 500000,
+  "wasmBrotli11Bytes": 502000,
   "requestsBeforeWasm": 5,
   "slow4gPhone": {
     "ownRequests": 11,
     "filterBlockingMs": 800,
     "routes": {
-      "home": { "paintsFromShell": true, "lcpMs": 4000, "cls": 0.05, "ownBytes": 675000 },
-      "records": { "paintsFromShell": true, "lcpMs": 4000, "cls": 0.05, "ownBytes": 682000 },
-      "qualifyingTotals": { "paintsFromShell": true, "lcpMs": 4000, "cls": 0.05, "ownBytes": 681000 },
-      "meetCenter": { "paintsFromShell": false, "lcpMs": 12000, "cls": 0.15, "ownBytes": 678000 },
-      "wrapped": { "paintsFromShell": false, "lcpMs": 12000, "cls": 0.05, "ownBytes": 679000 },
-      "signIn": { "paintsFromShell": true, "lcpMs": 4000, "cls": 0.05, "ownBytes": 682000 }
+      "home": { "lcpMs": 4000, "cls": 0.01, "ownBytes": 678000 },
+      "records": { "lcpMs": 4000, "cls": 0.01, "ownBytes": 685000 },
+      "qualifyingTotals": { "lcpMs": 4000, "cls": 0.01, "ownBytes": 684000 },
+      "meetCenter": { "lcpMs": 4000, "cls": 0.01, "ownBytes": 682000 },
+      "meetCenterOnAMeet": { "lcpMs": 4000, "cls": 0.01, "ownBytes": 682000 },
+      "wrapped": { "lcpMs": 4000, "cls": 0.01, "ownBytes": 682000 },
+      "signIn": { "lcpMs": 4000, "cls": 0.01, "ownBytes": 685000 }
     }
   }
 }

@@ -15,8 +15,8 @@ const vercel: { rewrites: Array<{ source: string; destination: string }> } = JSO
   readFileSync(join(process.cwd(), "vercel.json"), "utf8"),
 );
 
-type RouteBudget = { paintsFromShell: boolean; lcpMs: number; cls: number; ownBytes: number };
-type RouteName = "home" | "records" | "qualifyingTotals" | "meetCenter" | "wrapped" | "signIn";
+type RouteBudget = { lcpMs: number; cls: number; ownBytes: number };
+type RouteName = "home" | "records" | "qualifyingTotals" | "meetCenter" | "meetCenterOnAMeet" | "wrapped" | "signIn";
 
 const budgets: {
   requestsBeforeWasm: number;
@@ -65,6 +65,22 @@ const meet = {
   venue_city: "Oakland", venue_name: "Test Arena", venue_state: "CA", venue_street: "100 Main St", venue_zip: "94612",
   status: "scheduled", venue_map_pdf_url: null, venue_map_apple_url: null,
 };
+
+const scheduleRows = Array.from({ length: 48 }, (_, index) => ({
+  date: index < 24 ? "2026-06-20" : "2026-06-21", meet: "Test Meet", platform: index % 2 === 0 ? "Red" : "Blue",
+  session_id: index + 1, start_time: `${String(8 + (index % 12)).padStart(2, "0")}:00`, weigh_in_time: "07:00",
+  weight_class: WOMEN_CLASSES[index % WOMEN_CLASSES.length],
+}));
+
+async function routeMeets(page: Page) {
+  await mockAuth(page);
+  await routeQuery(page, "meets:list", (route) => route.fulfill(textAnswer([meet])));
+  await routeQuery(page, "meets:completed", (route) => route.fulfill(textAnswer([])));
+  await routeQuery(page, "meets:schedule", (route) => route.fulfill(textAnswer(scheduleRows)));
+  await routeQuery(page, "meets:athletes", (route) => route.fulfill(textAnswer([])));
+  await routeQuery(page, "meets:athletesSessions", (route) => route.fulfill(textAnswer([])));
+  await routeQuery(page, "results:byMeet", (route) => route.fulfill(textAnswer([])));
+}
 
 type Measured = {
   lcpMs: number;
@@ -161,9 +177,7 @@ function expectWithin(measured: Measured, budget: RouteBudget) {
   expect(measured.ownRequests, "requests to the site").toBeLessThanOrEqual(budgets.slow4gPhone.ownRequests);
   expect(measured.ownBytes, "bytes from the site").toBeLessThanOrEqual(budget.ownBytes);
   expect(measured.cls, "cumulative layout shift").toBeLessThanOrEqual(budget.cls);
-  if (budget.paintsFromShell) {
-    expect(measured.lcpMs, "the largest paint comes from the route's shell, before the app mounts").toBeLessThan(measured.appMountedMs);
-  }
+  expect(measured.lcpMs, "the largest paint comes from the route's shell, before the app mounts").toBeLessThan(measured.appMountedMs);
   expect(measured.lcpMs, "largest contentful paint, ms").toBeLessThanOrEqual(budget.lcpMs);
 }
 
@@ -270,13 +284,19 @@ test.describe("throttled budgets on a Slow 4G phone", () => {
   });
 
   test("Meet Center", async ({ page }, testInfo) => {
-    await mockAuth(page);
-    await routeQuery(page, "meets:list", (route) => route.fulfill(textAnswer([meet])));
-    await routeQuery(page, "meets:completed", (route) => route.fulfill(textAnswer([])));
+    await routeMeets(page);
     const measured = await measureLoad(page, "/meet-center", async () => {
       await expect(page.locator("#meet-search-input")).toBeVisible();
     }, testInfo);
     expectWithin(measured, BUDGETS.meetCenter);
+  });
+
+  test("Meet Center opened on a meet", async ({ page }, testInfo) => {
+    await routeMeets(page);
+    const measured = await measureLoad(page, "/meet-center?meet=Test%20Meet", async () => {
+      await expect(page.locator("tbody")).toContainText("8:00 AM", { timeout: SETTLE_TIMEOUT_MS });
+    }, testInfo);
+    expectWithin(measured, BUDGETS.meetCenterOnAMeet);
   });
 
   test("Wrapped", async ({ page }, testInfo) => {
