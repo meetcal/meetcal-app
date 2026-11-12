@@ -1,4 +1,11 @@
-import { storedLifts, tally } from '../../convex/scrapers/lib/recordRows';
+import { recordRow, tally } from '../../convex/scrapers/lib/recordRows';
+
+const senior = { ageCategory: 'Senior', gender: 'Women', weightClass: '63kg' };
+const storedLifts = (lifts: Omit<Parameters<typeof recordRow>[1], keyof typeof senior>, options?: { zeroMeansNoRecord?: boolean }) => {
+  const { recordType, ageCategory, gender, weightClass, ...stored } = recordRow({ recordType: 'national' }, { ...senior, ...lifts }, options);
+  expect({ recordType, ageCategory, gender, weightClass }).toEqual({ recordType: 'national', ...senior });
+  return stored;
+};
 
 describe('record rows as the record syncs send them (#573)', () => {
   const holder = { name: 'Ann Lee', date: '2026-06-20' };

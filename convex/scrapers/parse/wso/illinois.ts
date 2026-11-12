@@ -172,26 +172,10 @@ function validate(records: Parsed[], pages: readonly number[], warnings: string[
   }
 }
 
-/**
- * Totals the PDF has wrong, each checked against the athlete's meet results.
- * One applies only while the PDF still says what it was checked against, so
- * a corrected (or changed) PDF wins.
- */
 const TOTAL_CORRECTIONS: readonly { ageCategory: string; gender: string; weightClass: string; written: number; total: number }[] = [
-  // Stephanie Rosario, 2026 Mid American Championships: 66 + 84 = 150.
   { ageCategory: 'Masters 40', gender: 'Women', weightClass: '69', written: 1580, total: 150 },
 ];
 
-/**
- * A total above snatch + clean & jerk can't be right, but the three numbers
- * don't say which one is wrong: William Lund's M50 >110 total of 147
- * (October 2026) is his meet total, and the 84 kg clean & jerk beside it is
- * the slip (he made 85). A rule that guessed would overwrite a right total
- * whenever a lift was the typo, so such a total is kept as written and
- * logged, and corrected only once checked (`TOTAL_CORRECTIONS`). Standards
- * over their lifts' sum are not logged: the conversion rules set a standard
- * total apart from its lifts (see the PDF's last page).
- */
 function checkTotal(r: Parsed, identity: string, warnings: string[]) {
   const correction = TOTAL_CORRECTIONS.find(
     (c) => c.ageCategory === r.ageCategory && c.gender === r.gender && c.weightClass === r.weightClass && c.written === r.totalRecord,

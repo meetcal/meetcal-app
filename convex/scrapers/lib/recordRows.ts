@@ -14,7 +14,7 @@ export type ScrapedLifts = {
 
 type StoredLifts = { snatchRecord?: number; cjRecord?: number; totalRecord?: number; snatchBy?: RecordHolder; cjBy?: RecordHolder; totalBy?: RecordHolder };
 
-export function storedLifts(record: ScrapedLifts, { zeroMeansNoRecord = false } = {}): StoredLifts {
+function storedLifts(record: ScrapedLifts, { zeroMeansNoRecord = false } = {}): StoredLifts {
   const lift = (value: Lift) => (value === null || value === undefined || (zeroMeansNoRecord && value === 0) ? undefined : value);
   return {
     snatchRecord: lift(record.snatchRecord),
@@ -24,6 +24,16 @@ export function storedLifts(record: ScrapedLifts, { zeroMeansNoRecord = false } 
     cjBy: record.cjBy,
     totalBy: record.totalBy,
   };
+}
+
+type RecordClass = { ageCategory: string; gender: string; weightClass: string };
+
+export function recordRow<Scope extends { recordType: string } | { wso: string }>(
+  scope: Scope,
+  record: RecordClass & ScrapedLifts,
+  options: { zeroMeansNoRecord?: boolean } = {},
+) {
+  return { ...scope, ageCategory: record.ageCategory, gender: record.gender, weightClass: record.weightClass, ...storedLifts(record, options) };
 }
 
 export type RowOutcome = Pick<UpsertOutcome, 'wasInsert' | 'wasChanged'>;

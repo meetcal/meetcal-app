@@ -77,7 +77,6 @@ const CLASS_SHAPE = /^\+?\d+\+?\s+[A-Za-z]/;
 /** An age group's heading: "OPEN MEN", "MASTER WOMEN W35 (35-39)". */
 const SECTION = /^(?:OPEN|JUNIOR|YOUTH|MASTERS?)\s+(?:WO)?MEN\b/;
 
-/** Lifts by their first letter: "Clean & Jerk" may print without its spaces. */
 const FIELDS = { s: 'snatchRecord', c: 'cjRecord', t: 'totalRecord' } as const;
 const HOLDER_FIELDS = { snatchRecord: 'snatchBy', cjRecord: 'cjBy', totalRecord: 'totalBy' } as const;
 

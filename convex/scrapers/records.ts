@@ -8,7 +8,7 @@ import { pdfLines } from './lib/pdf';
 import { findRecordsPdfUrl, parseRecordsReport, type UsawRecord } from './parse/records';
 import { sourcesFailed } from '../lib/cronAlerts';
 import { previewPrune, writeThenPrune } from './lib/prune';
-import { storedLifts, tally, type RowOutcome as Outcome } from './lib/recordRows';
+import { recordRow, type RowOutcome as Outcome, tally } from './lib/recordRows';
 
 /**
  * USA Weightlifting American records (port of `usaw/records_scraper`): the
@@ -67,7 +67,7 @@ export const run = internalAction({
     const upsert = (): Promise<Outcome[]> =>
       ctx.runMutation(internal.ingest.upsertRecords, {
         allowShrink: allowShrink ?? false,
-        rows: records.map((r) => ({ recordType: r.recordType, ageCategory: r.ageCategory, gender: r.gender, weightClass: r.weightClass, ...storedLifts(r) })),
+        rows: records.map((r) => recordRow({ recordType: r.recordType }, r)),
       });
     const log = (outcomes: Outcome[], deleted: string[]) => {
       const { inserted, updated } = tally(outcomes);
