@@ -85,8 +85,6 @@ export function parseFlatSheet(csv: string, wso: string, columns: FlatColumns = 
     const entry = grouped.get(key) ?? { wso, ageCategory: age, gender, weightClass: weightClass, snatchRecord: null, cjRecord: null, totalRecord: null };
     const record = value ? intOrNull(value) : null;
     entry[`${field}Record`] = record;
-    // The holder goes with the value: a later row for the same lift replaces
-    // both. A sheet without a name column says nothing about who holds it.
     const at = (column: string | undefined) => (column ? row[column] : undefined);
     const holder = columns.name && columns.name in row ? recordHolder(record, at(columns.name), at(columns.date), at(columns.location)) : undefined;
     if (holder) entry[`${field}By`] = holder;

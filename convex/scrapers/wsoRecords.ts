@@ -33,7 +33,7 @@ import { parseUsawTemplate } from './parse/wso/usawTemplate';
 import { FLAT_COLUMNS, parseFlatSheet, type FlatColumns } from './parse/wso/flat';
 import { classKey } from '../lib/normalize';
 import { sourcesFailed } from '../lib/cronAlerts';
-import { storedLifts } from './lib/recordRows';
+import { recordRow } from './lib/recordRows';
 import { NOT_REACHED, runBudget, type RunBudget } from './lib/budget';
 
 /**
@@ -297,7 +297,7 @@ export const WSO_SOURCES: WsoSource[] = [
 ];
 
 const wsoRows = (records: WsoRecord[]) =>
-  records.map((r) => ({ wso: r.wso, ageCategory: r.ageCategory, gender: r.gender, weightClass: r.weightClass, ...storedLifts(r) }));
+  records.map((r) => recordRow({ wso: r.wso }, r));
 
 function lastPerClass(records: WsoRecord[]): WsoRecord[] {
   const byClass = new Map<string, WsoRecord>();
