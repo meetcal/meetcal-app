@@ -110,6 +110,7 @@ describe('Sport80 sync prunes only a table read in full (#97)', () => {
       throw new Error(`unexpected fetch ${url}`);
     });
   const ctx = () => ({
+    runQuery: jest.fn(async (): Promise<string[]> => []),
     runMutation: jest.fn(async (_fn: unknown, args: Record<string, unknown>) =>
       'keep' in args ? { deleted: 0, remaining: 0 } : { inserted: 2, updated: 0, unchanged: 0 },
     ),
