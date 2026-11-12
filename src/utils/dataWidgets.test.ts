@@ -14,7 +14,9 @@ import {
   getDataWidgetWriteCount,
   hasResolvedWidgetFilters,
   isDataWidgetModuleAvailable,
+  applyWidgetFilters,
   mergeWidgetSettings,
+  readWidgetFilters,
   normalizeWidgetSettings,
   syncDataWidgets,
   WIDGET_PAYLOAD_ROW_LIMIT,
@@ -535,5 +537,33 @@ describe("syncDataWidgets", () => {
     expect(isDataWidgetModuleAvailable()).toBe(false);
     syncDataWidgets({} as never);
     expect(getDataWidgetWriteCount()).toBe(before);
+  });
+});
+
+describe("readWidgetFilters", () => {
+  it("reads one widget's filters from the filter modal", () => {
+    expect(
+      readWidgetFilters("intlRankings", { meet: "Worlds", ageCategory: "Junior", gender: "Women" }),
+    ).toEqual({ meet: "Worlds", ageCategory: "Junior", gender: "Women" });
+  });
+
+  it("replaces a value the widget cannot use with its default", () => {
+    expect(readWidgetFilters("standards", { gender: "M", ageGroup: "u15" })).toEqual({
+      gender: defaultWidgetSettings.standards.gender,
+      ageGroup: "u15",
+    });
+  });
+});
+
+describe("applyWidgetFilters", () => {
+  it("changes only the widget whose filters were applied", () => {
+    const next = applyWidgetFilters(defaultWidgetSettings, "qualifyingTotals", {
+      event: "Masters",
+      gender: "Women",
+      ageGroup: "35-39",
+    });
+    expect(next.qualifyingTotals).toEqual({ event: "Masters", gender: "Women", ageGroup: "35-39" });
+    expect(next.standards).toBe(defaultWidgetSettings.standards);
+    expect(next.intlRankings).toBe(defaultWidgetSettings.intlRankings);
   });
 });

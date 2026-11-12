@@ -200,6 +200,28 @@ export function mergeWidgetSettings(value: unknown): WidgetSettings {
   };
 }
 
+export function readWidgetFilters<K extends WidgetKind>(
+  kind: K,
+  filters: Record<string, string>,
+): WidgetSettings[K] {
+  return mergeWidgetSettings({ [kind]: filters })[kind];
+}
+
+export function applyWidgetFilters(
+  settings: WidgetSettings,
+  kind: WidgetKind,
+  filters: Record<string, string>,
+): WidgetSettings {
+  switch (kind) {
+    case "qualifyingTotals":
+      return { ...settings, qualifyingTotals: readWidgetFilters(kind, filters) };
+    case "standards":
+      return { ...settings, standards: readWidgetFilters(kind, filters) };
+    case "intlRankings":
+      return { ...settings, intlRankings: readWidgetFilters(kind, filters) };
+  }
+}
+
 export function buildQualifyingTotalsWidgetPayload(
   totalsData: QualifyingTotalsData,
   settings: WidgetSettings["qualifyingTotals"],

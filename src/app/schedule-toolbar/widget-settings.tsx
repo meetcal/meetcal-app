@@ -17,6 +17,7 @@ import {
 } from "@/lib/database/fetchIntlRankings";
 import { EMPTY_STANDARDS } from "@/types/standards";
 import {
+  applyWidgetFilters,
   buildDataWidgetPayloads,
   buildIntlRankingsFilterSections,
   buildIntlRankingsWidgetPayload,
@@ -29,6 +30,7 @@ import {
   loadWidgetSettings,
   markDataWidgetCommitStarted,
   normalizeWidgetSettings,
+  readWidgetFilters,
   saveWidgetSettings,
   STANDARDS_FILTER_SECTIONS,
   syncDataWidgets,
@@ -232,10 +234,7 @@ function WidgetSettingsContent() {
   );
 
   const handleApply = (kind: WidgetKind, filters: Record<string, string>) => {
-    const nextSettings = {
-      ...settings,
-      [kind]: filters,
-    } as WidgetSettings;
+    const nextSettings = applyWidgetFilters(settings, kind, filters);
     setSettings(nextSettings);
     setActiveModal(null);
     void commitWidgets(nextSettings, { interactive: true });
@@ -373,7 +372,7 @@ function WidgetSettingsContent() {
         resultCount={(tempFilters) =>
           buildQualifyingTotalsWidgetPayload(
             totalsData,
-            tempFilters as WidgetSettings["qualifyingTotals"],
+            readWidgetFilters("qualifyingTotals", tempFilters),
           ).rows.length
         }
         resultLabel="weight classes"
@@ -391,7 +390,7 @@ function WidgetSettingsContent() {
         resultCount={(tempFilters) =>
           buildStandardsWidgetPayload(
             standardsData,
-            tempFilters as WidgetSettings["standards"],
+            readWidgetFilters("standards", tempFilters),
           ).rows.length
         }
         resultLabel="standards"
@@ -414,7 +413,7 @@ function WidgetSettingsContent() {
         resultCount={(tempFilters) =>
           buildIntlRankingsWidgetPayload(
             intlRankings,
-            tempFilters as WidgetSettings["intlRankings"],
+            readWidgetFilters("intlRankings", tempFilters),
           ).rows.length
         }
         resultLabel="rankings"
