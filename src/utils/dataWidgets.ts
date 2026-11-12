@@ -132,7 +132,7 @@ function readEnum<T extends string>(
   fallback: T,
 ): T {
   const value = section[key];
-  return allowed.includes(value as T) ? (value as T) : fallback;
+  return allowed.find((option) => option === value) ?? fallback;
 }
 
 /**
@@ -452,9 +452,9 @@ function compareOptionLabels(left: string, right: string): number {
   return left.localeCompare(right, undefined, OPTION_COLLATOR_OPTIONS);
 }
 
-function sortedUnique(values: (string | undefined | null)[]): string[] {
+function sortedUnique<T extends string>(values: readonly (T | undefined | null)[]): T[] {
   return Array.from(new Set(values))
-    .filter((value): value is string => Boolean(value))
+    .filter((value): value is T => Boolean(value))
     .sort(compareOptionLabels);
 }
 
@@ -464,7 +464,7 @@ export type WidgetFilterOptions = {
   /** Meets that international rankings exist for. */
   rankingMeets: string[];
   /** Genders that international rankings exist for. */
-  rankingGenders: string[];
+  rankingGenders: IntlRanking["gender"][];
 };
 
 export function buildWidgetFilterOptions(
@@ -510,12 +510,12 @@ export function areWidgetSettingsEqual(
 
 function pickOption<T extends string>(
   current: T,
-  options: readonly string[],
+  options: readonly T[],
   preferred?: T,
 ): T {
   if (options.includes(current)) return current;
   if (preferred && options.includes(preferred)) return preferred;
-  return (options[0] as T | undefined) ?? current;
+  return options[0] ?? current;
 }
 
 /**

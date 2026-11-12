@@ -71,11 +71,11 @@ export type StartupFlags = {
 
 export type StartupTimingProperties = Record<string, string | number | boolean | null>;
 
-export type StartupTimingDeps = {
+export type StartupTimingDeps<Handle = ReturnType<typeof setTimeout>> = {
   /** Monotonic ms. */
   now: () => number;
-  setTimer: (callback: () => void, ms: number) => unknown;
-  clearTimer: (handle: unknown) => void;
+  setTimer: (callback: () => void, ms: number) => Handle;
+  clearTimer: (handle: Handle) => void;
 };
 
 export type StartupTiming = ReturnType<typeof createStartupTiming>;
@@ -100,14 +100,25 @@ const FLAG_PROPERTIES: Record<keyof StartupFlags, string> = {
   splashHideReason: "splash_hide_reason",
 };
 
-export function createStartupTiming(deps: StartupTimingDeps) {
+function isStartupMark(key: string): key is StartupMark {
+  return key in MARK_PROPERTIES;
+}
+
+function isStartupFlag(key: string): key is keyof StartupFlags {
+  return key in FLAG_PROPERTIES;
+}
+
+const STARTUP_MARKS = Object.keys(MARK_PROPERTIES).filter(isStartupMark);
+const STARTUP_FLAGS = Object.keys(FLAG_PROPERTIES).filter(isStartupFlag);
+
+export function createStartupTiming<Handle>(deps: StartupTimingDeps<Handle>) {
   const origin = deps.now();
   const marks: Partial<Record<StartupMark, number>> = {};
   const flags: StartupFlags = {};
   let outcome: StartupOutcome | null = null;
   let send: ((event: string, properties: StartupTimingProperties) => void) | null = null;
   let sent = false;
-  let capTimer: unknown = null;
+  let capTimer: Handle | null = null;
   const listeners = new Set<() => void>();
   const screenWaiters: (() => void)[] = [];
 
@@ -131,10 +142,11 @@ export function createStartupTiming(deps: StartupTimingDeps) {
       complete: isComplete(),
       reported_at_ms: elapsed(),
     };
-    for (const [mark, name] of Object.entries(MARK_PROPERTIES) as [StartupMark, string][]) {
-      props[name] = marks[mark] ?? null;
+    for (const mark of STARTUP_MARKS) {
+      props[MARK_PROPERTIES[mark]] = marks[mark] ?? null;
     }
-    for (const [flag, name] of Object.entries(FLAG_PROPERTIES) as [keyof StartupFlags, string][]) {
+    for (const flag of STARTUP_FLAGS) {
+      const name = FLAG_PROPERTIES[flag];
       const value = flags[flag];
       props[name] = value === undefined ? null : value;
     }
@@ -188,9 +200,9 @@ export function createStartupTiming(deps: StartupTimingDeps) {
     /** Sets flags not already set (the first answer is the launch's answer). */
     setFlags(next: StartupFlags) {
       if (sent) return;
-      for (const [key, value] of Object.entries(next) as [keyof StartupFlags, StartupFlags[keyof StartupFlags]][]) {
-        if (value === undefined || flags[key] !== undefined) continue;
-        (flags as Record<string, unknown>)[key] = value;
+      for (const key of STARTUP_FLAGS) {
+        if (next[key] === undefined || flags[key] !== undefined) continue;
+        Object.assign(flags, { [key]: next[key] });
       }
     },
     /** Like `setFlags`, but replaces a value already set. */
@@ -278,5 +290,5 @@ function monotonicNow(): number {
 export const startupTiming = createStartupTiming({
   now: monotonicNow,
   setTimer: (callback, ms) => setTimeout(callback, ms),
-  clearTimer: (handle) => clearTimeout(handle as ReturnType<typeof setTimeout>),
+  clearTimer: (handle) => clearTimeout(handle),
 });

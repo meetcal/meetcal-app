@@ -60,22 +60,22 @@ export function isScheduleRoute(segments: readonly string[]): boolean | null {
   );
 }
 
-export type SplashGateDeps = {
+export type SplashGateDeps<Handle = ReturnType<typeof setTimeout>> = {
   timing: StartupTiming;
-  setTimer: (callback: () => void, ms: number) => unknown;
-  clearTimer: (handle: unknown) => void;
+  setTimer: (callback: () => void, ms: number) => Handle;
+  clearTimer: (handle: Handle) => void;
   holdMaxMs?: number;
 };
 
 export type SplashGate = ReturnType<typeof createSplashGate>;
 
-export function createSplashGate(deps: SplashGateDeps) {
+export function createSplashGate<Handle>(deps: SplashGateDeps<Handle>) {
   const holdMaxMs = deps.holdMaxMs ?? SPLASH_HOLD_MAX_MS;
   let armed = false;
   let hidden = false;
   let onScheduleRoute: boolean | null = null;
   let overlayShown = false;
-  let capTimer: unknown = null;
+  let capTimer: Handle | null = null;
   let unsubscribe: (() => void) | null = null;
   let hide: () => Promise<unknown> | unknown = () => undefined;
 
@@ -153,5 +153,5 @@ export function createSplashGate(deps: SplashGateDeps) {
 export const splashGate = createSplashGate({
   timing: startupTiming,
   setTimer: (callback, ms) => setTimeout(callback, ms),
-  clearTimer: (handle) => clearTimeout(handle as ReturnType<typeof setTimeout>),
+  clearTimer: (handle) => clearTimeout(handle),
 });
