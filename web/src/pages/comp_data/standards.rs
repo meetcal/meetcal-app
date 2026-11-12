@@ -1,7 +1,7 @@
 use super::{
     filters::{
         ClassificationFilters, ClassifiedRow, SortDirection, classified_rows, filter_options,
-        sort_numeric, weight_class_options,
+        sort_numeric, sort_orders, weight_class_options,
     },
     format::reference_value,
     loading::{load_query, table_response},
@@ -33,19 +33,19 @@ impl ClassifiedRow for Standard {
     }
 }
 
-const SORT_OPTIONS: &[(&str, &str)] = &[
-    ("standard_a_desc", "A: high to low"),
-    ("standard_a_asc", "A: low to high"),
-    ("standard_b_desc", "B: high to low"),
-    ("standard_b_asc", "B: low to high"),
-];
+sort_orders!(StandardSort {
+    ADesc => ("standard_a_desc", "A: high to low"),
+    AAsc => ("standard_a_asc", "A: low to high"),
+    BDesc => ("standard_b_desc", "B: high to low"),
+    BAsc => ("standard_b_asc", "B: low to high"),
+});
 
 #[component]
 pub fn Standards() -> impl IntoView {
     let (gender, set_gender) = signal(String::new());
     let (age, set_age) = signal(String::new());
     let (weight_class, set_weight_class) = signal(String::new());
-    let (sort, set_sort) = signal("standard_a_desc".to_string());
+    let (sort, set_sort) = signal(StandardSort::ADesc);
     let standards = load_query::<Vec<Standard>>(queries::STANDARDS);
 
     view! {
@@ -63,11 +63,11 @@ pub fn Standards() -> impl IntoView {
                 let filters = ClassificationFilters { gender: &selected_gender, age_category: &selected_age, weight_class: &selected_weight };
                 let mut filtered_standards = classified_rows(rows, &filters, |_| true);
 
-                match sort.get().as_str() {
-                    "standard_a_asc" => sort_numeric(&mut filtered_standards, |row| row.standard_a, SortDirection::Ascending),
-                    "standard_b_desc" => sort_numeric(&mut filtered_standards, |row| row.standard_b, SortDirection::Descending),
-                    "standard_b_asc" => sort_numeric(&mut filtered_standards, |row| row.standard_b, SortDirection::Ascending),
-                    _ => sort_numeric(&mut filtered_standards, |row| row.standard_a, SortDirection::Descending),
+                match sort.get() {
+                    StandardSort::AAsc => sort_numeric(&mut filtered_standards, |row| row.standard_a, SortDirection::Ascending),
+                    StandardSort::BDesc => sort_numeric(&mut filtered_standards, |row| row.standard_b, SortDirection::Descending),
+                    StandardSort::BAsc => sort_numeric(&mut filtered_standards, |row| row.standard_b, SortDirection::Ascending),
+                    StandardSort::ADesc => sort_numeric(&mut filtered_standards, |row| row.standard_a, SortDirection::Descending),
                 }
                 let is_empty = filtered_standards.is_empty();
                 let rows = filtered_standards
@@ -88,7 +88,7 @@ pub fn Standards() -> impl IntoView {
                         <FilterSelect label="Gender" placeholder="All genders" values=genders selected=gender on_select=move |value| set_gender.set(value) />
                         <FilterSelect label="Age" placeholder="All ages" values=ages selected=age on_select=move |value| set_age.set(value) />
                         <FilterSelect label="Weight class" placeholder="All classes" values=weights selected=weight_class on_select=move |value| set_weight_class.set(value) />
-                        <SortSelect options=SORT_OPTIONS sort set_sort />
+                        <SortSelect sort set_sort />
                     </div>
                     <DataTable>
                         <thead>
@@ -137,5 +137,10 @@ mod tests {
 
         assert_eq!(reference_value(Some(standard.standard_a)), "184");
         assert_eq!(reference_value(Some(standard.standard_b)), "—");
+    }
+
+    #[test]
+    fn every_sort_order_in_the_menu_is_one_the_table_sorts_by() {
+        crate::pages::comp_data::filters::assert_each_sort_order_parses_to_itself::<StandardSort>();
     }
 }
