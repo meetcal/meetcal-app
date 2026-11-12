@@ -135,6 +135,10 @@ export async function mockAuth(
     await route.fulfill(errorAnswer(`${body?.path ?? "a Convex function"} is not mocked in this test`));
   });
 
+  for (const categories of ["reference:recordCategories", "reference:qualifyingTotalCategories"]) {
+    await routeQuery(page, categories, (route) => route.fulfill(textAnswer([])));
+  }
+
   const server: PassServer = { pass: "pass_test", entitled: serverEntitled };
   const passRequests: Array<string | undefined> = [];
   await routeQuery(page, "accessPass:pass", (route) => {
@@ -261,6 +265,38 @@ async function routeFunction(
     }
     await handler(route, body.args ?? {});
   });
+}
+
+type NarrowedTable = "records" | "qualifyingTotals";
+
+const NARROWED: Record<NarrowedTable, { categories: string; kind: string; argument: string }> = {
+  records: { categories: "reference:recordCategories", kind: "record_type", argument: "federation" },
+  qualifyingTotals: { categories: "reference:qualifyingTotalCategories", kind: "event_name", argument: "event" },
+};
+
+/**
+ * Answers Records' or Qualifying Totals' categories from `rows` and their rows
+ * narrowed by the `federation`/`event`, `gender` and `ageCategory` arguments,
+ * as Convex does. Returns the arguments of each rows request.
+ */
+export async function routeNarrowedTable(page: Page, table: NarrowedTable, rows: Array<Record<string, unknown>>) {
+  const { categories, kind, argument } = NARROWED[table];
+  const distinct = new Map<string, Record<string, unknown>>();
+  for (const row of rows) {
+    const category = { [kind]: row[kind], gender: row.gender, age_category: row.age_category };
+    distinct.set(JSON.stringify(category), category);
+  }
+  await routeQuery(page, categories, (route) => route.fulfill(textAnswer([...distinct.values()])));
+  const asked: Array<Record<string, unknown>> = [];
+  const same = (value: unknown, filter: unknown) =>
+    filter === undefined || String(value).trim().toLowerCase() === String(filter).trim().toLowerCase();
+  await routeQuery(page, `reference:${table}`, (route, args) => {
+    asked.push(args);
+    return route.fulfill(
+      textAnswer(rows.filter((row) => same(row[kind], args[argument]) && same(row.gender, args.gender) && same(row.age_category, args.ageCategory))),
+    );
+  });
+  return asked;
 }
 
 /** Convex's answer to a query whose value is the body. */

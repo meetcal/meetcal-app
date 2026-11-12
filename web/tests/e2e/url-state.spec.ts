@@ -1,5 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
-import { mockAuth, mockSubscribedUser, routeAction, routeQuery, textAnswer, valueAnswer } from "./support/api";
+import { mockAuth, mockSubscribedUser, routeAction, routeNarrowedTable, routeQuery, textAnswer, valueAnswer } from "./support/api";
 
 const stats = {
   totalWeightLifted: 1234, totalMeets: 3, makePercentage: 83.3, bestSnatch: 100, bestCleanJerk: 125, bestTotal: 225,
@@ -261,18 +261,19 @@ const recordRow = (gender: string, weight_class: string, total_record: number) =
 });
 
 async function routeRecords(page: Page) {
-  await routeQuery(page, "reference:records", (route) => route.fulfill(textAnswer([
+  return await routeNarrowedTable(page, "records", [
     recordRow("Women", "77kg", 280), recordRow("Women", "69kg", 260), recordRow("Men", "89kg", 380),
-  ])));
+  ]);
 }
 
 const shownTotals = (page: Page) => page.locator("tbody tr td:last-child");
 
 test("a reference table opens filtered and sorted from its address, and each pick adds an entry Back returns through", async ({ page }) => {
   await mockSubscribedUser(page);
-  await routeRecords(page);
+  const asked = await routeRecords(page);
   await page.goto("/records?gender=Women&sort=total_asc");
   await expect(page.getByRole("combobox", { name: "Gender", exact: true })).toHaveValue("Women");
+  expect(asked[0]).toEqual({ gender: "Women", pass: "pass_test" });
   await expect(page.locator("tbody tr")).toHaveCount(2);
   await expect(page.locator("tbody tr").first()).toContainText("69kg");
 
@@ -295,9 +296,10 @@ test("a reference table opens filtered and sorted from its address, and each pic
 
 test("a reference table address naming a choice the table does not offer shows every row", async ({ page }) => {
   await mockSubscribedUser(page);
-  await routeRecords(page);
+  const asked = await routeRecords(page);
   await page.goto("/records?gender=Nobody&class=200kg&sort=not_a_sort");
   await expect(page.locator("tbody tr")).toHaveCount(3);
+  expect(asked.at(-1)).toEqual({ pass: "pass_test" });
   await expect(page.getByRole("combobox", { name: "Gender", exact: true })).toHaveValue("");
   await expect(page.locator("tbody tr").first()).toContainText("380");
 });

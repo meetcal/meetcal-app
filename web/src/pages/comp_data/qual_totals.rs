@@ -1,12 +1,14 @@
 use super::{
+    address::use_page_address,
     catalog,
     filters::{SortDirection, sort_numeric, sort_orders, sort_text},
     format::display_weight_class,
-    loading::{load_rows, table_response},
+    loading::{Load, load_query, select_response, table_response},
+    narrowed::{Category, Narrowing, NarrowingSelects, narrowed_choices},
     reference_table::{Filter, OptionOrder, ReferenceTable, TableSort},
     ui::DataPage,
 };
-use crate::utils::api::queries;
+use crate::utils::api::{queries, query_with};
 use leptos::prelude::*;
 use serde::Deserialize;
 
@@ -28,52 +30,27 @@ impl QualifyingTotal {
     }
 }
 
-fn event(total: &QualifyingTotal) -> &str {
-    &total.event_name
-}
-
-fn gender(total: &QualifyingTotal) -> &str {
-    &total.gender
-}
-
-fn age(total: &QualifyingTotal) -> &str {
-    &total.age_category
-}
-
 fn weight_class(total: &QualifyingTotal) -> &str {
     &total.weight_class
 }
 
-const FILTERS: &[Filter<QualifyingTotal>] = &[
-    Filter {
-        label: "Event",
-        param: "event",
-        placeholder: "All events",
-        value: event,
-        order: OptionOrder::Alphabetical,
-    },
-    Filter {
-        label: "Gender",
-        param: "gender",
-        placeholder: "All genders",
-        value: gender,
-        order: OptionOrder::Alphabetical,
-    },
-    Filter {
-        label: "Age",
-        param: "age",
-        placeholder: "All ages",
-        value: age,
-        order: OptionOrder::Alphabetical,
-    },
-    Filter {
-        label: "Weight class",
-        param: "class",
-        placeholder: "All classes",
-        value: weight_class,
-        order: OptionOrder::ByWeight,
-    },
-];
+const FILTERS: &[Filter<QualifyingTotal>] = &[Filter {
+    label: "Weight class",
+    param: "class",
+    placeholder: "All classes",
+    value: weight_class,
+    order: OptionOrder::ByWeight,
+}];
+
+const NARROWING: Narrowing = Narrowing {
+    kind_label: "Event",
+    kind_param: "event",
+    kind_placeholder: "All events",
+    kind_argument: "event",
+    kinds_left_out: &[],
+};
+
+const PATH: &str = "/qualifying-totals";
 
 pub(crate) const HEADERS: &[&str] = &["Event", "Gender", "Age", "Weight class", "Total"];
 
@@ -118,15 +95,30 @@ fn total_row(total: &QualifyingTotal) -> AnyView {
 
 #[component]
 pub fn QualifyingTotals() -> impl IntoView {
-    let totals = load_rows(queries::QUALIFYING_TOTALS, QualifyingTotal::shown);
+    let page = use_page_address(PATH);
+    let categories = load_query::<Vec<Category>>(queries::QUALIFYING_TOTAL_CATEGORIES);
+    let chosen = narrowed_choices(NARROWING, categories);
+    let totals = Load::new(
+        move || chosen.get(),
+        |chosen| async move {
+            query_with::<Vec<QualifyingTotal>, _>(
+                queries::QUALIFYING_TOTALS,
+                &NARROWING.arguments(&chosen),
+            )
+            .await
+            .map(|totals| totals.into_iter().map(QualifyingTotal::shown).collect())
+            .map_err(|error| error.to_string())
+        },
+    );
 
     view! {
-        <DataPage
-            page=catalog::QUALIFYING_TOTALS
-        >
+        <DataPage page=catalog::QUALIFYING_TOTALS>
+            {move || select_response(categories, "Loading the events…", "events", |categories| {
+                view! { <NarrowingSelects narrowing=NARROWING options=NARROWING.options(categories) chosen page /> }.into_any()
+            })}
             {move || table_response(totals, HEADERS.len(), "qualifying totals", |totals| {
                 view! {
-                    <ReferenceTable rows=totals.to_vec() filters=FILTERS headers=HEADERS row=total_row path="/qualifying-totals" default_sort=QualifyingTotalSort::TotalAsc empty_message="No qualifying totals match these filters." />
+                    <ReferenceTable rows=totals.to_vec() filters=FILTERS headers=HEADERS row=total_row path=PATH default_sort=QualifyingTotalSort::TotalAsc empty_message="No qualifying totals match these filters." below_another_filter_row=true />
                 }
                 .into_any()
             })}

@@ -1,11 +1,9 @@
 import { expect, test } from "@playwright/test";
-import { errorAnswer, mockSubscribedUser, retryableResponse, routeAction, routeQuery, textAnswer, valueAnswer } from "./support/api";
+import { errorAnswer, mockSubscribedUser, retryableResponse, routeAction, routeNarrowedTable, routeQuery, textAnswer, valueAnswer } from "./support/api";
 
 test("subscribed users can filter and sort qualifying totals", async ({ page }) => {
   await mockSubscribedUser(page);
-  await routeQuery(page, "reference:qualifyingTotals", async (route) => {
-    await route.fulfill(
-      textAnswer([
+  await routeNarrowedTable(page, "qualifyingTotals", [
         {
           qualifying_total: 210,
           event_name: "Nationals",
@@ -41,9 +39,7 @@ test("subscribed users can filter and sort qualifying totals", async ({ page }) 
           age_category: "Senior",
           weight_class: "110kg",
         },
-      ]),
-    );
-  });
+      ]);
 
   await page.goto("/qualifying-totals");
   await expect(page.getByRole("heading", { level: 1, name: "Qualifying Totals" })).toBeVisible();
@@ -56,6 +52,7 @@ test("subscribed users can filter and sort qualifying totals", async ({ page }) 
     "110+kg",
   ]);
   await page.getByLabel("Gender").selectOption("Women");
+  await expect(page).toHaveURL(/\/qualifying-totals\?gender=Women$/);
   await expect(page.locator("tbody tr")).toHaveCount(2);
   await expect(page.locator("tbody")).not.toContainText("88kg");
 

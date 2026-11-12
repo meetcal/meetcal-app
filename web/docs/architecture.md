@@ -86,7 +86,12 @@ instead of rewriting each cell. The reference tables (`reference_table.rs`) buil
 selects once per answer, outside the rows' reactive closure. A filter select commits a choice made
 with the keyboard (arrow keys, Home, End, typing) once the keys pause (`SELECT_STEP_SETTLE`), so
 stepping through a closed select is one query or one re-render, not one per step; a pick with the
-mouse or a tap commits at once. The Meet Center shows one of Schedule, Start List and Full Results
+mouse or a tap commits at once. Records and Qualifying Totals ask Convex for the rows of the chosen organization (or event), gender
+and age (`reference:records` with `federation`, `gender`, `ageCategory`; `reference:qualifyingTotals`
+with `event`, `gender`, `ageCategory`), and fill those three selects from
+`reference:recordCategories` / `reference:qualifyingTotalCategories` (`narrowed.rs`), so a filtered
+address downloads only its rows; the weight class and the sort stay on the page. A choice the
+categories do not offer reads as no filter. The Meet Center shows one of Schedule, Start List and Full Results
 at a time, chosen by a segmented control and kept in the address (`section`), and folds the meet
 names for search once per catalog, not per keystroke.
 

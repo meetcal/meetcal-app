@@ -105,6 +105,8 @@ fn premium_queries_carry_the_pass_and_the_rest_do_not() {
         queries::NATIONAL_RANKINGS_BY_YEAR,
         queries::WSO_LIST,
         queries::WSO_RECORDS,
+        queries::RECORD_CATEGORIES,
+        queries::QUALIFYING_TOTAL_CATEGORIES,
         queries::ADAPTIVE_RECORDS,
         queries::CLUBS,
         queries::CLUB_MEETS,
