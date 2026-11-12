@@ -10,6 +10,7 @@ pub fn SignedInOnly(
     children: ChildrenFn,
 ) -> impl IntoView {
     let auth = expect_context::<AuthContext>();
+    auth.require_sign_in();
 
     move || match auth.state.get() {
         AuthState::Loading => view! {

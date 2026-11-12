@@ -1,6 +1,10 @@
 use crate::{
     auth::{AuthContext, AuthState, has_comp_data_access, mount_sign_in, unmount_sign_in},
     components::store_links::{APP_STORE_URL, PLAY_STORE_URL},
+    pages::comp_data::{
+        catalog::DataPageLink,
+        ui::{DataPage, TableSkeleton},
+    },
     utils::page,
 };
 use leptos::prelude::*;
@@ -8,6 +12,8 @@ use leptos::prelude::*;
 /// How long a granted subscription is trusted before a data page checks it
 /// again (in the background, keeping the page).
 const ACCESS_RECHECK_AFTER_MS: f64 = 10.0 * 60.0 * 1000.0;
+
+const GATE_SKELETON_COLUMNS: usize = 5;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 enum AccessState {
@@ -62,13 +68,6 @@ pub fn provide_access() {
         AuthState::ConfigurationError(message) => access.show(AccessState::Error(message)),
         AuthState::SignedIn(user_id) if access.gate_open() => access.check(user_id, true),
         AuthState::SignedIn(_) => access.forget(),
-    });
-
-    // Clerk does not report the same user again (see `provide_auth`), so an
-    // unpaid user back from subscribing in the app is checked on return.
-    // Dropping the handle keeps the listener, for as long as the app runs.
-    let _ = window_event_listener(leptos::ev::visibilitychange, move |_| {
-        access.recheck_unpaid();
     });
 }
 
@@ -210,10 +209,21 @@ fn recheck_on_open(state: &AccessState, checked_at: Option<f64>, now: f64) -> Re
 }
 
 #[component]
-pub fn SubscriptionGate(children: ChildrenFn) -> impl IntoView {
+pub fn SubscriptionGate(page: DataPageLink, children: ChildrenFn) -> impl IntoView {
     let access = expect_context::<AccessContext>();
+    access.auth.require_sign_in();
+    let tab_shown = StoredValue::new_local(None::<WindowListenerHandle>);
+    Effect::new(move |_| {
+        tab_shown.set_value(Some(window_event_listener(
+            leptos::ev::visibilitychange,
+            move |_| access.recheck_unpaid(),
+        )));
+    });
     access.open_gates.update_value(|open| *open += 1);
     on_cleanup(move || {
+        if let Some(listener) = tab_shown.try_update_value(Option::take).flatten() {
+            listener.remove();
+        }
         access
             .open_gates
             .try_update_value(|open| *open = open.saturating_sub(1));
@@ -223,13 +233,10 @@ pub fn SubscriptionGate(children: ChildrenFn) -> impl IntoView {
     view! {
         {move || match access.state.get() {
             AccessState::Unchecked | AccessState::Checking => view! {
-                <AccessShell>
-                    <div class="access-status" role="status" aria-live="polite">
-                        <span class="access-spinner" aria-hidden="true"></span>
-                        <h1>"Checking your access"</h1>
-                        <p>"Confirming your account and subscription…"</p>
-                    </div>
-                </AccessShell>
+                <DataPage page>
+                    <p class="visually-hidden" role="status">"Checking your access"</p>
+                    <TableSkeleton columns=GATE_SKELETON_COLUMNS />
+                </DataPage>
             }.into_any(),
             AccessState::SignedOut => view! {
                 <AccessShell>

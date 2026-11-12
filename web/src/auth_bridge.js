@@ -87,21 +87,43 @@ function clerkUserId() {
   return window.Clerk?.isSignedIn && window.Clerk.user ? window.Clerk.user.id : null;
 }
 
-export async function initialize_clerk(publishableKey, onAuthChanged) {
+const CLERK_SESSION_COOKIE = /(?:^|;\s*)(__client_uat(?:_[^=]*)?)=([^;]*)/g;
+
+export function clerk_signed_in_user() {
+  return clerkUserId();
+}
+
+export function clerk_may_be_signed_in() {
+  if (window.Clerk) return true;
+  for (const [, , value] of document.cookie.matchAll(CLERK_SESSION_COOKIE)) {
+    if (value !== "" && value !== "0") return true;
+  }
+  return false;
+}
+
+let clerkReady = null;
+
+export function initialize_clerk(publishableKey, onAuthChanged) {
+  if (!clerkReady) {
+    clerkReady = startClerk(publishableKey, onAuthChanged);
+    clerkReady.catch(() => { clerkReady = null; });
+  }
+  return clerkReady;
+}
+
+async function startClerk(publishableKey, onAuthChanged) {
   if (!publishableKey) throw new Error("CLERK_PUBLISHABLE_KEY is not configured");
 
   const uiUrl = `https://cdn.jsdelivr.net/npm/@clerk/ui@${CLERK_UI_VERSION}/dist/ui.browser.js`;
   const clerkUrl = `https://cdn.jsdelivr.net/npm/@clerk/clerk-js@${CLERK_JS_VERSION}/dist/clerk.browser.js`;
 
-  if (!window.__internal_ClerkUICtor) {
-    await loadScript(uiUrl, "sign-in", { integrity: CLERK_UI_INTEGRITY });
-  }
-  if (!window.Clerk) {
-    await loadScript(clerkUrl, "sign-in", {
+  await Promise.all([
+    window.__internal_ClerkUICtor ? null : loadScript(uiUrl, "sign-in", { integrity: CLERK_UI_INTEGRITY }),
+    window.Clerk ? null : loadScript(clerkUrl, "sign-in", {
       integrity: CLERK_JS_INTEGRITY,
       "data-clerk-publishable-key": publishableKey,
-    });
-  }
+    }),
+  ]);
   if (!window.Clerk) throw new Error("Clerk did not initialize");
   await window.Clerk.load({
     ui: { ClerkUI: window.__internal_ClerkUICtor },
@@ -191,7 +213,8 @@ export function unmount_clerk_sign_in(element) {
   if (window.Clerk) window.Clerk.unmountSignIn(element);
 }
 
-export function open_clerk_sign_in() {
+export async function open_clerk_sign_in() {
+  if (clerkReady) await clerkReady;
   if (window.Clerk) window.Clerk.openSignIn();
 }
 

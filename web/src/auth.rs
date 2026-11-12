@@ -16,17 +16,21 @@ pub enum AuthState {
 #[derive(Clone, Copy)]
 pub struct AuthContext {
     pub state: ReadSignal<AuthState>,
+    set_state: WriteSignal<AuthState>,
+    started: StoredValue<bool>,
 }
 
 #[wasm_bindgen(module = "/src/auth_bridge.js")]
 extern "C" {
     fn initialize_clerk(publishable_key: &str, callback: &js_sys::Function) -> js_sys::Promise;
+    fn clerk_may_be_signed_in() -> bool;
+    fn clerk_signed_in_user() -> Option<String>;
 
     fn mount_clerk_user_button(element: &web_sys::HtmlElement);
     fn unmount_clerk_user_button(element: &web_sys::HtmlElement);
     fn mount_clerk_sign_in(element: &web_sys::HtmlElement);
     fn unmount_clerk_sign_in(element: &web_sys::HtmlElement);
-    pub fn open_clerk_sign_in();
+    fn open_clerk_sign_in() -> js_sys::Promise;
 
     fn check_revenuecat_entitlement(api_key: &str, app_user_id: &str) -> js_sys::Promise;
 
@@ -34,39 +38,107 @@ extern "C" {
     fn clerk_primary_email() -> Option<String>;
 }
 
-pub fn provide_auth() {
-    let (state, set_state) = signal(AuthState::Loading);
-    provide_context(AuthContext { state });
-
-    let Some(publishable_key) = CLERK_PUBLISHABLE_KEY else {
-        set_state.set(AuthState::ConfigurationError(
-            "Clerk is not configured for this deployment.".to_owned(),
-        ));
-        return;
-    };
-
-    // Clerk calls back whenever its client, session or user resources update
-    // (a session touch when the tab regains focus, for one), mostly with the
-    // same user. Only a real change is written: every write notifies, and
-    // the subscription gate would rebuild the page for it.
-    let callback = Closure::<dyn Fn(JsValue)>::new(move |user_id: JsValue| {
-        let next = auth_state_for(user_id.as_string());
-        if state.get_untracked() != next {
-            // The access pass came with the previous user's subscription;
-            // the next user (or a signed-out visitor) must earn their own.
-            crate::utils::api::forget_access_pass();
-            set_state.set(next);
+impl AuthContext {
+    pub fn new(initial: AuthState) -> Self {
+        let (state, set_state) = signal(initial);
+        Self {
+            state,
+            set_state,
+            started: StoredValue::new(false),
         }
-    });
+    }
 
-    let initialization = initialize_clerk(publishable_key, callback.as_ref().unchecked_ref());
-    callback.forget();
+    pub fn prerendered(initial: AuthState) -> Self {
+        let auth = Self::new(initial);
+        auth.started.set_value(true);
+        auth
+    }
 
-    leptos::task::spawn_local(async move {
-        if let Err(error) = JsFuture::from(initialization).await {
-            set_state.set(AuthState::ConfigurationError(js_error_message(error)));
+    pub fn require_sign_in(self) {
+        if self.started.get_value() {
+            return;
         }
-    });
+        self.started.set_value(true);
+        let Some(publishable_key) = CLERK_PUBLISHABLE_KEY else {
+            self.set_state.set(AuthState::ConfigurationError(
+                "Clerk is not configured for this deployment.".to_owned(),
+            ));
+            return;
+        };
+        if self.state.get_untracked() != AuthState::Loading {
+            self.set_state.set(AuthState::Loading);
+        }
+        let state = self.state;
+        let set_state = self.set_state;
+        let callback = Closure::<dyn Fn(JsValue)>::new(move |user_id: JsValue| {
+            let next = auth_state_for(user_id.as_string());
+            let previous = state.get_untracked();
+            if previous != next {
+                crate::utils::api::forget_access_pass();
+                if leaves_premium_answers_behind(&previous, &next) {
+                    crate::utils::api::forget_premium_answers_kept();
+                }
+                set_state.set(next);
+            }
+        });
+        let initialization = initialize_clerk(publishable_key, callback.as_ref().unchecked_ref());
+        callback.forget();
+        leptos::task::spawn_local(async move {
+            if let Err(error) = JsFuture::from(initialization).await {
+                set_state.set(AuthState::ConfigurationError(js_error_message(error)));
+            }
+        });
+    }
+
+    pub fn open_sign_in(self) {
+        self.require_sign_in();
+        let opening = open_clerk_sign_in();
+        leptos::task::spawn_local(async move {
+            if let Err(error) = JsFuture::from(opening).await {
+                leptos::logging::warn!("Clerk sign-in did not open: {}", js_error_message(error));
+            }
+        });
+    }
+}
+
+pub fn provide_auth(path: &str) {
+    let loads_now = route_needs_sign_in(path) || clerk_may_be_signed_in();
+    let auth = AuthContext::new(initial_auth_state(loads_now));
+    provide_context(auth);
+    if loads_now {
+        auth.require_sign_in();
+    }
+}
+
+pub fn initial_auth_state(loads_clerk_now: bool) -> AuthState {
+    if loads_clerk_now {
+        AuthState::Loading
+    } else {
+        AuthState::SignedOut
+    }
+}
+
+pub const SIGNED_IN_ROUTES: [&str; 2] = ["/link", "/submit-meet"];
+
+pub fn route_needs_sign_in(path: &str) -> bool {
+    use crate::pages::comp_data::catalog::{Access, DATA_HOME, DATA_PAGES};
+    SIGNED_IN_ROUTES.contains(&path)
+        || DATA_PAGES
+            .iter()
+            .chain([&DATA_HOME])
+            .any(|page| page.path == path && page.access == Access::Subscription)
+}
+
+pub fn leaves_premium_answers_behind(previous: &AuthState, next: &AuthState) -> bool {
+    match (previous, next) {
+        (_, AuthState::SignedOut) => true,
+        (AuthState::SignedIn(before), AuthState::SignedIn(now)) => before != now,
+        _ => false,
+    }
+}
+
+pub fn signed_in_user() -> Option<String> {
+    clerk_signed_in_user()
 }
 
 /// The auth state for the user id Clerk reports (`None` when signed out).
@@ -135,6 +207,46 @@ fn js_error_message(error: JsValue) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn only_routes_that_need_an_account_load_clerk_for_a_visitor_without_a_session() {
+        for path in [
+            "/records",
+            "/comp-data",
+            "/meet-center",
+            "/link",
+            "/submit-meet",
+        ] {
+            assert!(route_needs_sign_in(path), "{path}");
+        }
+        for path in [
+            "/",
+            "/features",
+            "/privacy",
+            "/terms",
+            "/wrapped",
+            "/subscription",
+            "/missing",
+        ] {
+            assert!(!route_needs_sign_in(path), "{path}");
+        }
+        assert_eq!(initial_auth_state(true), AuthState::Loading);
+        assert_eq!(initial_auth_state(false), AuthState::SignedOut);
+    }
+
+    #[test]
+    fn premium_answers_kept_on_this_device_go_when_their_user_signs_out_or_changes() {
+        let ada = AuthState::SignedIn("user_ada".to_owned());
+        let bo = AuthState::SignedIn("user_bo".to_owned());
+        assert!(leaves_premium_answers_behind(&ada, &AuthState::SignedOut));
+        assert!(leaves_premium_answers_behind(
+            &AuthState::Loading,
+            &AuthState::SignedOut
+        ));
+        assert!(leaves_premium_answers_behind(&ada, &bo));
+        assert!(!leaves_premium_answers_behind(&AuthState::Loading, &ada));
+        assert!(!leaves_premium_answers_behind(&ada, &ada));
+    }
 
     #[test]
     fn clerk_user_ids_map_to_auth_states() {
