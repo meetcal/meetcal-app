@@ -1,42 +1,9 @@
 const CLERK_UI_VERSION = "1.25.5";
 const CLERK_JS_VERSION = "6.25.5";
-const REVENUECAT_JS_VERSION = "1.47.3";
-// The RevenueCat entitlement that unlocks the data pages: the app's
-// `SUBSCRIPTION_ENTITLEMENT_ID` (src/lib/premium-intent.ts). Any other
-// entitlement in the project must not unlock them.
-const SUBSCRIPTION_ENTITLEMENT_ID = "Subscriptions";
-// Longest one RevenueCat check may hold the queue, so a stuck call cannot
-// block every later check for the rest of the session.
-const REVENUECAT_OPERATION_TIMEOUT_MS = 20_000;
-// Longest one SDK script may take to load. A load that neither loads nor
-// fails by then is given up and forgotten, so the next call (Try again, the
-// next data page) fetches the script afresh instead of reusing a hung load.
-// Shorter than the operation timeout, so the check reports this failure.
 const SCRIPT_LOAD_TIMEOUT_MS = 15_000;
-// Longest Clerk may take to hand over a session token (it fetches a fresh one
-// when the cached one has expired). A premium read waits for the access pass,
-// which needs the token, so a stuck fetch gives up and the read goes out
-// without a pass instead.
 const SESSION_TOKEN_TIMEOUT_MS = 5_000;
-
-// Subresource Integrity for the pinned SDK files, so a compromised or
-// mis-served CDN file is refused instead of running with the Clerk session.
-// The CSP in vercel.json allows only these versions' directories. Clerk's own
-// chunk loader fetches its lazily loaded chunks from those directories without
-// integrity hashes, so the chunks rest on the CSP pin and the npm version's
-// immutability alone; covering them too means serving the SDKs from this
-// site's origin. Changing a
-// version means changing its hash here and its path there
-// (tests/config/vercel.test.mjs checks they agree). To compute a hash:
-//   curl -sL <url> | openssl dgst -sha384 -binary | openssl base64 -A
-// An SDK already on the page (window.Clerk and so on) is used as it is; the
-// Playwright tests put stand-ins there, since SRI refuses a mocked file.
 const CLERK_UI_INTEGRITY = "sha384-1bG6zomvWoiEKel4ssWZFXxTG1vUyWR1Yi8dCSRBg59G5Zb5/tCR7EDtTqTc8GiH";
 const CLERK_JS_INTEGRITY = "sha384-f4psDrrkr4x7x3UCVrkr3dz+q3oPInry3lNTkjprqzRjPeMrgdGtLHBsIvZ3FViN";
-const REVENUECAT_JS_INTEGRITY = "sha384-uxK23EQfDmI/oo6YmVrqk+9HhGysN0x/nGR3rCt/WWke/GFeWKQDTigtWvgCEZrF";
-let revenueCatOperationQueue = Promise.resolve();
-// One load per script URL. A failed load is forgotten and its tag removed,
-// so the next call inserts a fresh tag instead of waiting on a dead one.
 const scriptLoads = new Map();
 
 function loadScript(src, label, attributes = {}) {
@@ -216,61 +183,4 @@ export function unmount_clerk_sign_in(element) {
 export async function open_clerk_sign_in() {
   if (clerkReady) await clerkReady;
   if (window.Clerk) window.Clerk.openSignIn();
-}
-
-async function revenueCatForUser(apiKey, appUserId) {
-  if (!apiKey) throw new Error("REVENUECAT_PUBLIC_API_KEY is not configured");
-  if (!window.Purchases) {
-    await loadScript(
-      `https://unpkg.com/@revenuecat/purchases-js@${REVENUECAT_JS_VERSION}/dist/Purchases.umd.js`,
-      "subscription",
-      { integrity: REVENUECAT_JS_INTEGRITY },
-    );
-  }
-
-  const Purchases = window.Purchases?.Purchases;
-  if (!Purchases) throw new Error("RevenueCat Web SDK did not initialize");
-
-  if (!Purchases.isConfigured()) {
-    return Purchases.configure({ apiKey, appUserId });
-  }
-
-  const purchases = Purchases.getSharedInstance();
-  if (purchases.getAppUserId() !== appUserId) await purchases.changeUser(appUserId);
-  return purchases;
-}
-
-function withRevenueCatUser(apiKey, appUserId, operation) {
-  const run = async () => {
-    if (clerkUserId() !== appUserId) throw new Error("Your signed-in account changed. Please try again.");
-    const purchases = await revenueCatForUser(apiKey, appUserId);
-    if (clerkUserId() !== appUserId) throw new Error("Your signed-in account changed. Please try again.");
-    const result = await operation(purchases);
-    // A timed-out call for another user may have switched the shared
-    // instance meanwhile; never answer with someone else's entitlements.
-    if (purchases.getAppUserId() !== appUserId || clerkUserId() !== appUserId) {
-      throw new Error("Your signed-in account changed. Please try again.");
-    }
-    return result;
-  };
-
-  const timedRun = () => withTimeout(
-    run(),
-    REVENUECAT_OPERATION_TIMEOUT_MS,
-    "Checking your subscription took too long. Please try again.",
-  );
-  const result = revenueCatOperationQueue.then(timedRun, timedRun);
-  revenueCatOperationQueue = result.catch(() => undefined);
-  return result;
-}
-
-function hasActiveEntitlement(customerInfo) {
-  return customerInfo?.entitlements?.active?.[SUBSCRIPTION_ENTITLEMENT_ID] != null;
-}
-
-export async function check_revenuecat_entitlement(apiKey, appUserId) {
-  return withRevenueCatUser(apiKey, appUserId, async purchases => {
-    const customerInfo = await purchases.getCustomerInfo();
-    return hasActiveEntitlement(customerInfo);
-  });
 }

@@ -62,7 +62,6 @@ jobs:
         env:
           NO_COLOR: ""
           CLERK_PUBLISHABLE_KEY: pk_test_ci_placeholder
-          REVENUECAT_PUBLIC_API_KEY: rcb_ci_placeholder
         run: env -u NO_COLOR trunk build --release --locked
 
       - uses: actions/upload-artifact@v7

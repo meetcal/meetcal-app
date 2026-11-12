@@ -3,7 +3,6 @@ use wasm_bindgen::{JsCast, JsValue, closure::Closure, prelude::wasm_bindgen};
 use wasm_bindgen_futures::JsFuture;
 
 pub const CLERK_PUBLISHABLE_KEY: Option<&str> = option_env!("CLERK_PUBLISHABLE_KEY");
-pub const REVENUECAT_PUBLIC_API_KEY: Option<&str> = option_env!("REVENUECAT_PUBLIC_API_KEY");
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum AuthState {
@@ -31,8 +30,6 @@ extern "C" {
     fn mount_clerk_sign_in(element: &web_sys::HtmlElement);
     fn unmount_clerk_sign_in(element: &web_sys::HtmlElement);
     fn open_clerk_sign_in() -> js_sys::Promise;
-
-    fn check_revenuecat_entitlement(api_key: &str, app_user_id: &str) -> js_sys::Promise;
 
     fn clerk_session_token() -> js_sys::Promise;
     fn clerk_primary_email() -> Option<String>;
@@ -165,15 +162,6 @@ pub fn mount_sign_in(element: &web_sys::HtmlElement) {
 
 pub fn unmount_sign_in(element: &web_sys::HtmlElement) {
     unmount_clerk_sign_in(element);
-}
-
-pub async fn has_comp_data_access(app_user_id: &str) -> Result<bool, String> {
-    let api_key = REVENUECAT_PUBLIC_API_KEY
-        .ok_or_else(|| "RevenueCat is not configured for this deployment.".to_owned())?;
-    JsFuture::from(check_revenuecat_entitlement(api_key, app_user_id))
-        .await
-        .map(|value| value.as_bool().unwrap_or(false))
-        .map_err(js_error_message)
 }
 
 /// The signed-in user's Clerk session token, for the Convex calls that read
