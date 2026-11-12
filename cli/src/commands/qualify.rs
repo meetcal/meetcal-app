@@ -303,7 +303,7 @@ pub(crate) fn standards_table(standards: &[Standards], target: &Target, total: f
         let wanted = standards_category(category);
         let Some(standard) = standards.iter().find(|s| {
             s.age_category.eq_ignore_ascii_case(wanted)
-                && Gender::parse(&s.gender) == Some(target.gender)
+                && filters::is_gender(&s.gender, target.gender)
                 && weight_class(&s.weight_class).as_deref() == Some(target.class.as_str())
         }) else {
             continue;
@@ -324,7 +324,7 @@ pub(crate) fn totals_table(totals: &[QualifyingTotal], target: &Target, total: f
                 .categories
                 .iter()
                 .any(|c| t.age_category.eq_ignore_ascii_case(c))
-                && Gender::parse(&t.gender) == Some(target.gender)
+                && filters::is_gender(&t.gender, target.gender)
                 && weight_class(&t.weight_class).as_deref() == Some(target.class.as_str())
         })
         .collect();
