@@ -57,3 +57,6 @@ export function normalizeFederation(value: string): string {
   const normalized = value.trim();
   return ['usaw', 'iwf', 'umwf', 'bwl'].includes(normalized.toLowerCase()) ? normalized.toUpperCase() : normalized;
 }
+
+export const classKey = (row: { ageCategory: string; gender: string; weightClass: string }) =>
+  JSON.stringify([normalizeAgeCategory(row.ageCategory), normalizeGender(row.gender), row.weightClass]);

@@ -3,7 +3,7 @@ import { internalMutation, type MutationCtx } from './_generated/server';
 import type { WithoutSystemFields } from 'convex/server';
 import type { Doc, Id, TableNames } from './_generated/dataModel';
 import { writeHistories } from './lib/history';
-import { normalizeAgeCategory, normalizeFederation, normalizeGender, storedGenderSpellings } from './lib/normalize';
+import { classKey, normalizeAgeCategory, normalizeFederation, normalizeGender, storedGenderSpellings } from './lib/normalize';
 import { disambiguatedMeetName, MAX_DISAMBIGUATED_NAMES, oldestMeet, type ZoneFormatters } from './lib/meetData';
 import { meetStatusAt, nextMeetStatus, type MeetStatus } from './lib/meetStatus';
 import { mapInBatches } from './lib/concurrency';
@@ -1277,17 +1277,6 @@ const recordRow = v.object({
   ...holderArgs,
 });
 
-/**
- * Inserts or updates records matched on (type, age, gender, class),
- * normalized like `upsert_record`. A lift missing from the row clears it, as
- * the Python writer's `None` did. Deletes nothing (the syncs then prune the
- * classes their source no longer lists, `pruneRecords`). Without `allowShrink`, a
- * payload that clears more of the matched records' stored lifts than
- * `exceedsShrink` allows is refused (nothing written): a lift row the parser
- * stopped finding reads as no record for every class at once. A key the
- * payload repeats is one record, written in payload order (the last row
- * wins), and the guard judges that last row.
- */
 export const upsertRecords = internalMutation({
   args: { rows: v.array(recordRow), allowShrink: v.optional(v.boolean()) },
   handler: async (ctx, { rows, allowShrink }): Promise<UpsertOutcome[]> => {
@@ -1305,7 +1294,6 @@ export const upsertRecords = internalMutation({
       pairs.push({ key: JSON.stringify([doc.recordType, doc.ageCategory, doc.gender, doc.weightClass]), doc, existing });
     }
     if (!allowShrink) {
-      // One pair a key, its last row: that is what the key ends up holding.
       const final = new Map(pairs.map((pair) => [pair.key, pair]));
       const matched = [...final.values()].filter((pair) => pair.existing !== undefined);
       const storedLifts = matched.reduce((sum, { existing }) => sum + liftCount(existing!), 0);
@@ -1318,8 +1306,6 @@ export const upsertRecords = internalMutation({
       }
     }
     const outcomes: UpsertOutcome[] = [];
-    // What each key holds so far: an earlier row of this payload may have
-    // inserted or rewritten it, after `existing` was read.
     const written = new Map<string, Lifts & { gender: string; ageCategory: string; _id: Id<'records'> }>();
     for (const { key, doc, existing } of pairs) {
       const current = written.get(key) ?? existing;
@@ -1339,9 +1325,6 @@ export const upsertRecords = internalMutation({
   },
 });
 
-/** A stored class (record or standard) as the prunes compare it: age and gender normalized. */
-const classKey = (r: { ageCategory: string; gender: string; weightClass: string }) =>
-  JSON.stringify([normalizeAgeCategory(r.ageCategory), normalizeGender(r.gender), r.weightClass]);
 const groupKey = (r: { ageCategory: string; gender: string }) => JSON.stringify([normalizeAgeCategory(r.ageCategory), normalizeGender(r.gender)]);
 const classArg = v.object({ ageCategory: v.string(), gender: v.string(), weightClass: v.string() });
 
@@ -1522,8 +1505,10 @@ export const replaceRecordSet = internalMutation({
       docs: rows.map((row) => ({ recordType, ...recordClassDoc(row) })),
       changed: recordChanged,
       duplicate: (key) => `Duplicate ${recordType} record in payload: ${key}`,
-      onUpdate: (current, doc) =>
-        changes.push(`${doc.ageCategory} ${doc.gender} ${doc.weightClass}: ${current.snatchRecord}/${current.cjRecord}/${current.totalRecord} -> ${doc.snatchRecord}/${doc.cjRecord}/${doc.totalRecord}`),
+      onUpdate: (current, doc) => {
+        if (!liftsChanged(current, doc)) return;
+        changes.push(`${doc.ageCategory} ${doc.gender} ${doc.weightClass}: ${current.snatchRecord}/${current.cjRecord}/${current.totalRecord} -> ${doc.snatchRecord}/${doc.cjRecord}/${doc.totalRecord}`);
+      },
     });
     if (counts.inserted + counts.updated + counts.deleted > 0) await recordWrite(ctx, 'records', [{ kind: 'table', key: 'records' }]);
     return { ...counts, changes };

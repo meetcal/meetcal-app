@@ -579,7 +579,7 @@ describe('reference writers tolerate the old gender spelling until the migration
       const stored = { recordType: 'IWF', ageCategory: 'senior', gender: 'Male', weightClass: '89kg', snatchRecord: 180, cjRecord: 220, totalRecord: 400 };
       const { ctx, rows, docs } = fakeMutationCtx({ records: [stored] });
       const storedId = docs('records')[0]._id;
-      expect(await replaceRecords(ctx, { recordType: 'IWF', rows: [{ ...stored, ageCategory: 'Senior', gender: 'Men' }] })).toMatchObject({ inserted: 0, updated: 1, deleted: 0, unchanged: 0 });
+      expect(await replaceRecords(ctx, { recordType: 'IWF', rows: [{ ...stored, ageCategory: 'Senior', gender: 'Men' }] })).toEqual({ inserted: 0, updated: 1, deleted: 0, unchanged: 0, changes: [] });
       expect(rows('records')).toEqual([{ ...stored, ageCategory: 'Senior', gender: 'Men' }]);
       expect(docs('records').map((doc) => doc._id)).toEqual([storedId]);
     });
