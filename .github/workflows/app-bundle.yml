@@ -3,9 +3,9 @@ name: App Bundle
 on:
   push:
     branches: [main, master]
-    paths: ["src/**", "assets/**", "metro/**", "patches/**", "package.json", "bun.lock", "app.config.js", "metro.config.js", "babel.config.js", "tsconfig.json", "scripts/bundle/**", "scripts/check-bundle.ts", ".github/workflows/app-bundle.yml"]
+    paths: ["src/**", "assets/**", "metro/**", "patches/**", "package.json", "bun.lock", "bunfig.toml", "app.config.js", "metro.config.js", "babel.config.js", "tsconfig.json", "scripts/bundle/**", "scripts/check-bundle.ts", ".github/workflows/app-bundle.yml"]
   pull_request:
-    paths: ["src/**", "assets/**", "metro/**", "patches/**", "package.json", "bun.lock", "app.config.js", "metro.config.js", "babel.config.js", "tsconfig.json", "scripts/bundle/**", "scripts/check-bundle.ts", ".github/workflows/app-bundle.yml"]
+    paths: ["src/**", "assets/**", "metro/**", "patches/**", "package.json", "bun.lock", "bunfig.toml", "app.config.js", "metro.config.js", "babel.config.js", "tsconfig.json", "scripts/bundle/**", "scripts/check-bundle.ts", ".github/workflows/app-bundle.yml"]
   workflow_dispatch:
 
 permissions:
