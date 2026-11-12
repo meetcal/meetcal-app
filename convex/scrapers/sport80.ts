@@ -9,13 +9,18 @@ import {
   formatResults,
   hasResultsRoute,
   nested,
+  pageRows,
   pickNewestEvents,
   pickRequestedEvents,
+  readSport80Env,
+  readTablePage,
   USAW_DOMAIN,
   type ResultRow,
+  type Sport80Env,
 } from './parse/sport80';
 import { sourcesFailed, type SourceFailure } from '../lib/cronAlerts';
 import { NOT_REACHED, runBudget } from './lib/budget';
+import { rowCount } from '../lib/json';
 
 /**
  * USAW meet results from Sport80 (port of
@@ -34,22 +39,16 @@ type Dict = Record<string, unknown>;
 /** Pages one table may take: tables are requested as one page, so more is a misbehaving API. */
 const MAX_PAGES = 50;
 
-/** Whether a table provably read in full: it reports a row count (`total`), and that many rows were read. */
 export function tableComplete(rows: number, total: unknown): boolean {
-  return typeof total === 'number' && Number.isInteger(total) && total >= 0 && rows === total;
+  return rowCount(total) === rows;
 }
 
-/**
- * A table's pages joined. A table short of the `total` it reports throws.
- * `notWhole` says why the rows, though returned, are no proof the table was
- * read in full, so no basis for deleting what it lacks: it reports no
- * `total`, or a row came back on two pages (the pages' order shifted between
- * requests, so the repeat may stand in for a row no page returned).
- */
 export function joinPages(pages: readonly Dict[][], total: unknown): { rows: Dict[]; notWhole?: string } {
   const rows = pages.flat();
-  if (typeof total === 'number' && rows.length !== total) throw new Error(`read ${rows.length} rows of the ${total} the table reports`);
-  if (!tableComplete(rows.length, total)) return { rows, notWhole: 'the table reports no row count' };
+  const reported = rowCount(total);
+  if (typeof total === 'number' && reported === null) throw new Error(`read ${rows.length} rows of the ${total} the table reports`);
+  if (reported === null) return { rows, notWhole: 'the table reports no row count' };
+  if (!tableComplete(rows.length, reported)) throw new Error(`read ${rows.length} rows of the ${reported} the table reports`);
   const earlier = new Set<string>();
   for (const page of pages) {
     const keys = page.map((row) => JSON.stringify(row));
@@ -59,18 +58,16 @@ export function joinPages(pages: readonly Dict[][], total: unknown): { rows: Dic
   return { rows };
 }
 
-/** The Sport80 public API: key and base URL come from the site's `window.env`. */
 class Sport80 {
-  private constructor(private readonly env: Record<string, string>) {}
+  private constructor(private readonly env: Sport80Env) {}
 
   static async connect(): Promise<Sport80> {
     const response = await fetch(`${USAW_DOMAIN}/public/rankings/`, { signal: AbortSignal.timeout(60_000) });
-    // A 5xx page has no `window.env` either: say what really failed.
     if (!response.ok) throw new Error(`sport80: rankings page failed with ${response.status}`);
     const page = await response.text();
     const match = /window\.env = ({.*?});/s.exec(page);
     if (!match) throw new Error('sport80: window.env not found on the rankings page');
-    return new Sport80(JSON.parse(match[1]));
+    return new Sport80(readSport80Env(match[1]));
   }
 
   private headers() {
@@ -82,7 +79,6 @@ class Sport80 {
     };
   }
 
-  /** A page of a table; a failed request throws, so a partial table is never taken for a whole one. */
   private async post(url: string, payload?: Dict): Promise<Dict> {
     const response = await fetch(url, {
       method: 'POST',
@@ -91,22 +87,16 @@ class Sport80 {
       signal: AbortSignal.timeout(60_000),
     });
     if (!response.ok) throw new Error(`POST ${new URL(url).pathname} failed with ${response.status}`);
-    return (await response.json()) as Dict;
+    return readTablePage(await response.json());
   }
 
-  /**
-   * Every page's `data`, following `next_page_url`; any failed page fails
-   * the whole table, and so does a table short of the `total` it reports.
-   * The results sync deletes what a table lacks, so it prunes only a table
-   * `joinPages` finds whole.
-   */
   private async collate(first: Dict, payload?: Dict): Promise<{ rows: Dict[]; notWhole?: string }> {
-    const pages: Dict[][] = [(first.data as Dict[]) ?? []];
+    const pages: Dict[][] = [pageRows(first)];
     let current = first;
     for (let page = 1; typeof current.next_page_url === 'string' && current.next_page_url; page++) {
       if (page > MAX_PAGES) throw new Error(`table has over ${MAX_PAGES} pages`);
       current = await this.post(current.next_page_url, payload);
-      pages.push((current.data as Dict[]) ?? []);
+      pages.push(pageRows(current));
     }
     return joinPages(pages, first.total);
   }

@@ -37,9 +37,9 @@ describe('result columns emptied (#96)', () => {
     expect(tableComplete(29, 29)).toBe(true);
     expect(tableComplete(28, 29)).toBe(false);
     expect(tableComplete(0, 0)).toBe(true);
-    // No reported count proves nothing.
     expect(tableComplete(29, undefined)).toBe(false);
-    expect(tableComplete(29, '29')).toBe(false);
+    expect(tableComplete(29, '29')).toBe(true);
+    expect(tableComplete(29, 'many')).toBe(false);
     expect(tableComplete(29, 29.5)).toBe(false);
   });
 
