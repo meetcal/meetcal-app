@@ -1,7 +1,7 @@
 import { recordWrite, setMeetResultTitles, setMeetStatus, upsertMeets } from '../convex/ingest';
 import { computeStatsRows } from '../convex/lib/meetData';
 import { byMeet } from '../convex/results';
-import { attendance } from '../convex/meets';
+import { attendance, attendanceRows } from '../convex/meets';
 import { meetDataProblems } from '../convex/scrapers/queries';
 import { fakeMutationCtx, handlerOf } from './fakeDb';
 
@@ -84,6 +84,43 @@ describe('results titles of a meet (#362)', () => {
     await link(store.ctx, { meet: NATIONALS, titles: [JUNIOR, YOUTH] });
     const answer = await handlerOf<{ meets: string[] }, { json: string }>(attendance)(store.ctx, { meets: [NATIONALS] });
     expect(JSON.parse(answer.json)).toEqual([expect.objectContaining({ meet: NATIONALS, lifters: 3, registrations: 3, first_date: '2026-06-20', results_titles: [JUNIOR, YOUTH] })]);
+  });
+
+  it('refuses meets whose rows do not fit one call, and answers the same meets asked for in smaller batches (#564)', async () => {
+    const store = world();
+    await link(store.ctx, { meet: NATIONALS, titles: [JUNIOR, YOUTH] });
+    const whole = await attendanceRows(store.ctx as never, [NATIONALS], 1000);
+    const refused = (meets: string[], budget: number) =>
+      attendanceRows(store.ctx as never, meets, budget).then(
+        () => false,
+        (error: { data?: { status?: number } }) => error.data?.status === 413,
+      );
+    let used = 0;
+    while (await refused([NATIONALS], used)) used += 1;
+    expect(used).toBeGreaterThanOrEqual(6);
+    expect(await attendanceRows(store.ctx as never, [NATIONALS], used)).toEqual(whole);
+    expect(await refused([NATIONALS], used - 1)).toBe(true);
+    expect(await refused([NATIONALS, NATIONALS], used * 2 - 1)).toBe(true);
+    expect(await attendanceRows(store.ctx as never, [NATIONALS, NATIONALS], used * 2)).toEqual([...whole, ...whole]);
+  });
+
+  it('says which meet is too large when one meet alone does not fit, where asking for fewer cannot help', async () => {
+    const store = world();
+    const message = (meets: string[]) => attendanceRows(store.ctx as never, meets, 0).then(() => '', (error: { data?: { error?: string } }) => error.data?.error ?? '');
+    expect(await message([NATIONALS])).toBe('"2026 USA Weightlifting National Championships" is too large to read in one request; try again later or report it.');
+    expect(await message([NATIONALS, JUNIOR])).toBe('these meets are too large to read in one request; try again later or report it.');
+  });
+
+  it('counts every document it reads against what one query may read, and keeps nothing back', async () => {
+    const store = world();
+    await link(store.ctx, { meet: NATIONALS, titles: [JUNIOR, YOUTH] });
+    const meetRow = 1;
+    const linkedTitles = 2;
+    const results = 3;
+    const registrations = 3;
+    const everyDocument = meetRow + linkedTitles + results + registrations;
+    await expect(attendanceRows(store.ctx as never, [NATIONALS], everyDocument)).resolves.toHaveLength(1);
+    await expect(attendanceRows(store.ctx as never, [NATIONALS], everyDocument - 1)).rejects.toMatchObject({ data: { status: 413, max: everyDocument - 1 } });
   });
 
   it('looks up linked titles only for results writes', async () => {

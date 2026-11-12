@@ -34,8 +34,10 @@ git tag cli-v2.1.0
 git push origin cli-v2.1.0
 ```
 
-The workflow first runs the tests and `cargo audit` on the tagged commit; a failure stops the
-release before anything is built. It then builds `darwin-arm64`, `darwin-x64`, `linux-arm64` and
+The workflow first checks that the tagged commit is on `master` and that the tag is the crate's
+version, then runs the tests and `cargo audit` on it; a failure stops the release before anything
+is built. A release is therefore always of a commit of `master`: a fix for an older line cannot be
+released from a maintenance branch, and ships in the next release from `master` instead. It then builds `darwin-arm64`, `darwin-x64`, `linux-arm64` and
 `linux-x64`, each a `.tar.gz` holding one `meetcal` binary, and attaches them to the release with a
 `SHA256SUMS` file of their checksums. `meetcal upgrade` refuses an archive that does not match it,
 so a release without it cannot be installed that way. It does not mark the release as the
@@ -45,7 +47,9 @@ The Linux binaries are built with `cargo zigbuild` against glibc 2.17, so they s
 distributions than the runner (Ubuntu 22.04, Debian 12, RHEL 9, Amazon Linux 2023). A binary
 built on the runner itself would need the runner's glibc and fail at its first run elsewhere with
 ``version `GLIBC_2.38' not found``. The workflow fails a build whose binary needs a newer glibc
-than 2.17, and runs each one in a Debian 11 container before uploading it.
+than 2.17, and runs each one in a Debian 11 container before uploading it. The macOS binaries are
+run on the runner (the Intel one under Rosetta). Every one of the four must print the tagged
+version.
 
 Verify:
 
