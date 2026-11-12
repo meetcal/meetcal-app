@@ -12,7 +12,8 @@ import {
   writeBoundedCacheEntry,
 } from './offline-cache';
 import { isNetworkAvailable } from '@/lib/networkUtils';
-import { fetchApiClubMeets, fetchApiClubMeetStats, fetchApiClubNames } from '@/lib/api/clubs-api';
+import { fetchApiClubMeets, fetchApiClubMeetStats, fetchApiClubNamesTagged } from '@/lib/api/clubs-api';
+import { mapTagged, requireNetwork, resourceEntry, untagged } from './tagged-read';
 
 /**
  * Clubs whose meet lists stay cached for offline browsing. A list is one
@@ -106,8 +107,7 @@ export function clubMeetStatsFromApi(value: unknown): ClubMeetStats {
 }
 
 async function readClubsCache() {
-  const cached = await getOfflineCache(OFFLINE_CACHE_KEYS.clubs, readStringList);
-  return cached ? { data: cached.data, lastUpdatedAt: cached.lastSynced } : null;
+  return resourceEntry(await getOfflineCache(OFFLINE_CACHE_KEYS.clubs, readStringList));
 }
 
 /**
@@ -137,10 +137,13 @@ async function readClubMeetStatsCache(club: string, meet: string) {
   );
 }
 
-async function fetchAllClubsFresh(): Promise<string[]> {
-  const hasNetwork = await isNetworkAvailable();
-  if (!hasNetwork) throw new Error('Offline');
-  return fetchApiClubNames();
+async function fetchAllClubsTagged(knownTag: string | null) {
+  await requireNetwork();
+  return mapTagged(await fetchApiClubNamesTagged(knownTag), (clubs) => clubs);
+}
+
+function fetchAllClubsFresh(): Promise<string[]> {
+  return untagged(fetchAllClubsTagged(null), '/clubs');
 }
 
 async function fetchClubMeetsFresh(club: string): Promise<ClubMeet[]> {
@@ -155,9 +158,8 @@ async function fetchClubMeetStatsFresh(club: string, meet: string): Promise<Club
   return clubMeetStatsFromApi(await fetchApiClubMeetStats(club, meet));
 }
 
-async function persistClubs(clubs: string[]) {
-  const entry = await setOfflineCache(OFFLINE_CACHE_KEYS.clubs, clubs);
-  return { data: entry.data, lastUpdatedAt: entry.lastSynced };
+async function persistClubs(clubs: string[], tag: string | null) {
+  return resourceEntry(await setOfflineCache(OFFLINE_CACHE_KEYS.clubs, clubs, tag));
 }
 
 /** Stores a club's meets, and drops the club from the athlete lists an earlier version cached. */
@@ -180,7 +182,11 @@ export const clubsResource = createMutableResource<string[], []>({
   getKey: () => OFFLINE_CACHE_KEYS.clubs,
   loadCached: () => readClubsCache(),
   fetchFresh: () => fetchAllClubsFresh(),
-  persistFresh: (data) => persistClubs(data),
+  persistFresh: (data) => persistClubs(data, null),
+  tagged: {
+    fetch: (knownTag) => fetchAllClubsTagged(knownTag),
+    persist: (data, tag) => persistClubs(data, tag),
+  },
 });
 
 /** A club's meets, newest first (`reference:clubMeets`). */

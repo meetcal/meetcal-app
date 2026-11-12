@@ -5,7 +5,7 @@ import {
   toMeetCalendarDate,
 } from '@/utils/dateTime';
 import { resolvedMeetTimeZone } from '@/utils/timezone';
-import { stableSerialize } from '@/lib/data/mutable-resource';
+import { jsonEqual } from '@/lib/data/mutable-resource';
 import { parseStoredMeetNamed } from '@/lib/stored-meet';
 
 type CompletionSource = Pick<Meet, 'status' | 'dates' | 'time' | 'timeZoneUnknown'>;
@@ -50,7 +50,7 @@ export function refreshedMeetDetails(
 ): Meet | null {
   if (!current) return null;
   const fresh = freshMeets.find((meet) => meet.name === current.name);
-  if (!fresh || stableSerialize(fresh) === stableSerialize(current)) return null;
+  if (!fresh || jsonEqual(fresh, current)) return null;
   return fresh;
 }
 

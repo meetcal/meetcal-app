@@ -3,7 +3,7 @@ import { LiftResult } from '@/data/types/athletes';
 import { Meet, MeetName } from '@/data/types/meet';
 import type { Schedule } from '@/types/schedule';
 import { getTrustedNow } from '@/lib/api/server-clock';
-import { getRevalidated } from '@/lib/api/revalidated-reads';
+import { getRevalidated, revalidateTagged, type TaggedAnswer } from '@/lib/api/revalidated-reads';
 import { mapApiMeet, mapApiSchedule, validateApiMeetDetails, validateApiMeets, validateApiSchedule } from '@/lib/api/api-meet-mappers';
 import { MeetCalApiError, decodeJsonText, readQuery } from '@/lib/api/meetcal-api';
 import { assertArray } from '@/lib/api/api-validators';
@@ -43,22 +43,39 @@ export async function fetchApiAthletes(meet: MeetName): Promise<LiftResult[]> {
   return mapApiAthletes(rows, '/meets/athletes');
 }
 
+function validateApiAthletesWithSession(json: unknown): unknown[] {
+  return assertArray(json, '/meets/athletes-sessions');
+}
+
+export async function fetchApiRosterTagged(meet: MeetName, knownTag: string | null): Promise<TaggedAnswer<LiftResult[]>> {
+  const answer = await revalidateTagged(
+    '/meets/athletes-sessions',
+    'meets:athletesSessions',
+    { meet },
+    validateApiAthletesWithSession,
+    { knownTag, acceptsBareValue: true },
+  );
+  if (answer.status === 'unchanged') return answer;
+  return { status: 'fresh', value: mapApiAthletes(answer.value, '/meets/athletes-sessions'), tag: answer.tag };
+}
+
 export async function fetchApiAthletesWithSession(
   meet: MeetName,
   sessionNumber?: number,
   platform?: string,
 ): Promise<LiftResult[]> {
   const filterLocally = sessionNumber != null && !!platform;
-  const rows = assertArray(
-    decodeJsonText(
-      await readQuery('/meets/athletes-sessions', 'meets:athletesSessions', {
-        meet,
-        sessionNumber: sessionNumber ?? undefined,
-        platform: filterLocally ? undefined : platform,
-      }),
-      '/meets/athletes-sessions',
-    ),
+  const rows = await getRevalidated(
     '/meets/athletes-sessions',
+    'meets:athletesSessions',
+    {
+      meet,
+      sessionNumber: sessionNumber ?? undefined,
+      platform: filterLocally ? undefined : platform,
+    },
+    validateApiAthletesWithSession,
+    undefined,
+    true,
   );
   const athletes = mapApiAthletes(rows, '/meets/athletes-sessions');
   return filterLocally ? filterSessionAthletes(athletes, sessionNumber, platform) : athletes;

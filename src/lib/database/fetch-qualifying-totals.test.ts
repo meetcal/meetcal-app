@@ -68,6 +68,7 @@ describe("qualifyingTotalsResource", () => {
     expect(mockSetOfflineCache).toHaveBeenCalledWith(
       "@offline_cache/qualifying_totals",
       totals,
+      null,
     );
   });
 

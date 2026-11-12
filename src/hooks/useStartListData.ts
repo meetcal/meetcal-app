@@ -4,8 +4,9 @@ import { showToast } from "@/components/ui/Toast";
 import type { LiftResult } from "@/data/types/athletes";
 import { isMeetName, type MeetName } from "@/data/types/meet";
 import { getMeetData } from "@/lib/database/meet-data-reads";
-import { saveMeetAthletes, saveMeetSchedule } from "@/lib/database/meet-data-saves";
-import { fetchAthletesWithSession, fetchSchedule } from "@/lib/database/queries";
+import { markMeetAthletesCurrent, saveMeetAthletes, saveMeetSchedule } from "@/lib/database/meet-data-saves";
+import { getMeetAthletesTag } from "@/lib/database/offline-store-index";
+import { fetchRosterTagged, fetchSchedule } from "@/lib/database/queries";
 import { useRetryOnReconnect } from "@/hooks/useRetryOnReconnect";
 import {
   FRESH_SNAPSHOT_TTL_MS,
@@ -127,8 +128,10 @@ export function useStartListData(selectedMeet: string | null) {
         return;
       }
 
-      const [athletesResult, scheduleResult] = await Promise.allSettled([
-        fetchAthletesWithSession(validMeet),
+      const rosterTag = snapshot.cachedAthletes.length > 0 ? await getMeetAthletesTag(validMeet) : null;
+      if (isStale()) return;
+      const [rosterResult, scheduleResult] = await Promise.allSettled([
+        fetchRosterTagged(validMeet, rosterTag),
         fetchSchedule(validMeet),
       ]);
 
@@ -137,17 +140,19 @@ export function useStartListData(selectedMeet: string | null) {
       let nextAthletes = snapshot.cachedAthletes;
       let nextSchedule = snapshot.cachedSchedule;
 
-      // An empty answer does not replace the saved roster on screen either;
-      // `saveMeetAthletes` already refuses to store it over one.
-      if (
-        athletesResult.status === "fulfilled" &&
-        freshRosterReplacesShown(
-          athletesResult.value.length,
-          snapshot.cachedAthletes.length,
-        )
+      const rosterAnswer = rosterResult.status === "fulfilled" ? rosterResult.value : null;
+      if (rosterAnswer?.status === "unchanged") {
+        markMeetAthletesCurrent(validMeet).catch((error: unknown) => {
+          console.warn("Could not mark the stored roster current", error);
+        });
+      } else if (
+        rosterAnswer?.status === "fresh" &&
+        freshRosterReplacesShown(rosterAnswer.value.length, snapshot.cachedAthletes.length)
       ) {
-        nextAthletes = athletesResult.value;
-        saveMeetAthletes(validMeet, nextAthletes).catch(() => {});
+        nextAthletes = rosterAnswer.value;
+        saveMeetAthletes(validMeet, nextAthletes, rosterAnswer.tag).catch((error: unknown) => {
+          console.warn("Could not store the roster", error);
+        });
       }
 
       if (scheduleResult.status === "fulfilled") {
@@ -160,7 +165,7 @@ export function useStartListData(selectedMeet: string | null) {
       // The roster is what the Start List is: a failed roster request leaves
       // the saved one on screen, which the user must be told is stale even
       // when the schedule came back.
-      if (athletesResult.status === "rejected" && forceRefresh) {
+      if (rosterResult.status === "rejected" && forceRefresh) {
         showToast({ type: "error", message: REFRESH_FAILED_MESSAGE });
       }
 
@@ -170,7 +175,7 @@ export function useStartListData(selectedMeet: string | null) {
         emptyLoadFailure({
           shownCount: nextAthletes.length,
           hasNetwork,
-          requestFailed: athletesResult.status === "rejected",
+          requestFailed: rosterResult.status === "rejected",
         }),
       );
       // Unconditional: a forced refresh can supersede an initial load that

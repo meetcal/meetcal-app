@@ -5,15 +5,17 @@ import { LifterChoiceList } from "@/components/athlete-results/LifterChoiceList"
 import { PartialResultsStatus } from "@/components/athlete-results/PartialResultsStatus";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { SubscriptionGate } from "@/components/ui/SubscriptionGate";
+import { LoadingLabel } from "@/components/ui/LoadingLabel";
 import { ThemedText } from "@/components/ui/ThemedText";
 import { ThemedView } from "@/components/ui/ThemedView";
 import { useAppColors } from "@/hooks/useAppColors";
 import { useAthleteResults } from "@/hooks/useAthleteResults";
 import { useIsOffline } from "@/hooks/useIsOffline";
 import { useScreenHorizontalInsets } from "@/hooks/useScreenInsets";
+import { useScreenTiming } from "@/hooks/useScreenTiming";
 import { meetResultKey } from "@/lib/athlete-result-display";
 import { NO_PR } from "@/lib/api/api-athlete-mappers";
-import { partialResultsStatus, showsCareerStats } from "@/lib/athlete-results-load";
+import { canRetryFullHistory, partialResultsStatus, showsCareerStats } from "@/lib/athlete-results-load";
 import { athleteRequestOf, athleteResultsHref } from "@/lib/athlete-results-route";
 import { loadFailureCopy } from "@/lib/load-failure";
 import { SLIDE_IN_FROM_RIGHT, stackHeaderOptions } from "@/lib/stack-header-options";
@@ -53,6 +55,10 @@ function AthleteResultsContent() {
   const [isOffline] = useIsOffline();
   const { loading, athleteResults, details, choice, loadFailed, rowsSource, loadOutcome, retryLoad } =
     useAthleteResults(request);
+  useScreenTiming("athlete-results", {
+    source: loadOutcome === "shown" ? "network" : rowsSource === null ? null : "cache",
+    failed: loadFailed,
+  });
 
   const careerStats = showsCareerStats(rowsSource);
   const prIndexes = careerStats && details ? details.prs : NO_PR_INDEXES;
@@ -123,6 +129,7 @@ function AthleteResultsContent() {
             {loading ? (
               <View style={styles.loadingContainer}>
                 <ActivityIndicator size="large" color={colors.secondaryText} />
+                <LoadingLabel label="" style={[styles.loadingLabel, { color: colors.secondaryText }]} />
               </View>
             ) : loadFailed ? (
               <EmptyState
@@ -152,7 +159,7 @@ function AthleteResultsContent() {
               {partialStatus ? (
                 <PartialResultsStatus
                   status={partialStatus}
-                  canRetry={loadOutcome === "offline-partial"}
+                  canRetry={canRetryFullHistory(loadOutcome)}
                   onRetry={retryLoad}
                   colors={colors}
                 />

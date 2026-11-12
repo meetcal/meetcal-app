@@ -15,8 +15,7 @@ import { setAccessPassSource } from './premium-queries';
 import { setApiTransportForTests, TransportRequestError, type ApiCall } from './transport';
 import { ATTEMPT_HISTORY_YEARS, getHistoryCutoffDate, YEAR_BESTS_YEARS } from '@/utils/dateTime';
 import { itemAt } from '@/test-support/checked-access';
-
-const DEFAULT_TIMEOUT_MS = 10000;
+import { REQUEST_INACTIVITY_TIMEOUT_MS } from '@/lib/api/network-policy';
 
 type Responder = (call: ApiCall) => unknown;
 
@@ -25,7 +24,8 @@ function installTransport(respond: Responder, clock: Responder = () => Date.now(
     async (call: ApiCall): Promise<unknown> => (isClockCall(call) ? clock(call) : respond(call)),
   );
   setApiTransportForTests(transport);
-  const allCalls = (): ApiCall[] => transport.mock.calls.map(([{ signal: _signal, ...call }]) => call);
+  const allCalls = (): ApiCall[] =>
+    transport.mock.calls.map(([{ signal: _signal, onProgress: _onProgress, ...call }]) => call);
   const dataCalls = (): ApiCall[] => allCalls().filter((call) => !isClockCall(call));
   const clockCalls = (): ApiCall[] => allCalls().filter((call) => isClockCall(call));
   const lastCall = (): ApiCall => {
@@ -441,15 +441,15 @@ describe('meetcal API client', () => {
       });
 
     await flushMicrotasks();
-    jest.advanceTimersByTime(DEFAULT_TIMEOUT_MS);
+    jest.advanceTimersByTime(REQUEST_INACTIVITY_TIMEOUT_MS);
     await flushMicrotasks();
     expect(settled).toBe(false);
 
-    jest.advanceTimersByTime(MEET_PACKAGE_TIMEOUT_MS - DEFAULT_TIMEOUT_MS);
+    jest.advanceTimersByTime(MEET_PACKAGE_TIMEOUT_MS - REQUEST_INACTIVITY_TIMEOUT_MS);
     const failure = await pending;
     expect(failure).toBeInstanceOf(MeetCalApiTimeoutError);
     expect((failure as MeetCalApiTimeoutError).message).toBe(
-      `GET /meets/package timed out after ${MEET_PACKAGE_TIMEOUT_MS}ms`,
+      `GET /meets/package received nothing for ${MEET_PACKAGE_TIMEOUT_MS}ms`,
     );
     expect((failure as MeetCalApiTimeoutError).timeoutMs).toBe(MEET_PACKAGE_TIMEOUT_MS);
   });
@@ -560,15 +560,15 @@ describe('meetcal API client error and auth boundaries', () => {
     installTransport(() => never());
 
     const pending = fetchApiMeets().catch((error: unknown) => error);
-    jest.advanceTimersByTime(DEFAULT_TIMEOUT_MS);
+    jest.advanceTimersByTime(REQUEST_INACTIVITY_TIMEOUT_MS);
     const failure = await pending;
 
     expect(failure).toBeInstanceOf(MeetCalApiTimeoutError);
     expect(failure).not.toBeInstanceOf(MeetCalApiError);
     expect((failure as MeetCalApiTimeoutError).path).toBe('/meets');
-    expect((failure as MeetCalApiTimeoutError).timeoutMs).toBe(DEFAULT_TIMEOUT_MS);
+    expect((failure as MeetCalApiTimeoutError).timeoutMs).toBe(REQUEST_INACTIVITY_TIMEOUT_MS);
     expect((failure as MeetCalApiTimeoutError).message).toBe(
-      `GET /meets timed out after ${DEFAULT_TIMEOUT_MS}ms`,
+      `GET /meets received nothing for ${REQUEST_INACTIVITY_TIMEOUT_MS}ms`,
     );
   });
 
@@ -577,12 +577,12 @@ describe('meetcal API client error and auth boundaries', () => {
     installTransport(() => never());
 
     const pending = patchAutoUnsavePreference('clerk-token', true).catch((error: unknown) => error);
-    jest.advanceTimersByTime(DEFAULT_TIMEOUT_MS);
+    jest.advanceTimersByTime(REQUEST_INACTIVITY_TIMEOUT_MS);
     const failure = await pending;
 
     expect(failure).toBeInstanceOf(MeetCalApiTimeoutError);
     expect((failure as MeetCalApiTimeoutError).message).toBe(
-      `POST /users/me/preferences/auto-unsave timed out after ${DEFAULT_TIMEOUT_MS}ms`,
+      `POST /users/me/preferences/auto-unsave received nothing for ${REQUEST_INACTIVITY_TIMEOUT_MS}ms`,
     );
   });
 
@@ -592,13 +592,13 @@ describe('meetcal API client error and auth boundaries', () => {
     installTransport(() => reply.promise);
 
     const pending = fetchApiClubMeets('Club A');
-    jest.advanceTimersByTime(DEFAULT_TIMEOUT_MS - 1);
+    jest.advanceTimersByTime(REQUEST_INACTIVITY_TIMEOUT_MS - 1);
     reply.resolve({ meets: [{ meet: 'Meet A', date: '2026-03-27' }], truncated: false });
 
     await expect(pending).resolves.toEqual([{ meet: 'Meet A', date: '2026-03-27' }]);
     expect(jest.getTimerCount()).toBe(0);
     expect(console.info).toHaveBeenCalledWith('[perf] slow api request', {
-      elapsedMs: DEFAULT_TIMEOUT_MS - 1,
+      elapsedMs: REQUEST_INACTIVITY_TIMEOUT_MS - 1,
       path: '/clubs/meets',
       fn: 'reference:clubMeets',
     });
@@ -1314,7 +1314,7 @@ describe('request timeouts', () => {
     const pending = deleteSavedSession('token', 'session-1').catch((error: unknown) => error);
     await Promise.resolve();
     expect(signal?.aborted).toBe(false);
-    await jest.advanceTimersByTimeAsync(DEFAULT_TIMEOUT_MS + 1);
+    await jest.advanceTimersByTimeAsync(REQUEST_INACTIVITY_TIMEOUT_MS + 1);
     expect(await pending).toBeInstanceOf(MeetCalApiTimeoutError);
     expect(signal?.aborted).toBe(true);
   });

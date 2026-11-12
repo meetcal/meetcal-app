@@ -11,6 +11,8 @@
 /** iOS App Group shared by the app, the widget extension and the intents. */
 export const WIDGET_APP_GROUP_ID = "group.com.memohnsen.meetcal";
 
+export const DATA_WIDGET_KINDS = ["QualifyingTotalsWidget", "StandardsWidget", "InternationalRankingsWidget"] as const;
+
 /**
  * Native storage keys (iOS App Group `UserDefaults`, Android
  * `SharedPreferences`) the native module writes the payloads under.

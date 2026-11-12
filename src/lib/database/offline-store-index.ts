@@ -6,6 +6,7 @@ import { MeetName } from '@/data/types/meet';
 import { createKeyedWriteChain, createWriteChain } from '@/lib/data/write-chain';
 import { normalizeLiftResults } from '@/lib/athletes';
 import { ATHLETES_KEY_PREFIX, LIFTING_RESULTS_KEY_PREFIX, SCHEDULE_KEY_PREFIX } from './offline-storage-keys';
+import { decodePersistedTag } from './persisted-tag';
 
 const STORE_KEY = 'meetcal_offline_store';
 
@@ -17,6 +18,7 @@ export interface MeetData {
   liftingResultsKey: string;
   lastSyncTime: number;
   athletesSyncedAt?: number;
+  athletesTag?: string;
 }
 
 export interface OfflineStore {
@@ -90,6 +92,16 @@ export async function getMeetAthletesSyncedAt(meetId: string): Promise<number> {
   }
 }
 
+export async function getMeetAthletesTag(meetId: string): Promise<string | null> {
+  try {
+    const entry = (await getStore()).meets[meetId];
+    if (!entry || !entry.athletesSyncedAt) return null;
+    return decodePersistedTag(entry.athletesTag);
+  } catch {
+    return null;
+  }
+}
+
 export async function getLastSyncTime(meet: MeetName): Promise<number | null> {
   try {
     const data = await getStore();
@@ -122,6 +134,7 @@ function toStoredMeetData(meetId: string, value: unknown): MeetData | null {
       typeof entry.athletesSyncedAt === 'number' && Number.isFinite(entry.athletesSyncedAt)
         ? entry.athletesSyncedAt
         : 0,
+    ...(typeof entry.athletesTag === 'string' && entry.athletesTag.length > 0 ? { athletesTag: entry.athletesTag } : {}),
   };
 }
 

@@ -88,6 +88,9 @@ describe("startup timing", () => {
       app_state_at_start: null,
       backgrounded: null,
       splash_hide_reason: "screen",
+      device_model: null,
+      device_memory_mb: null,
+      network_type: null,
     });
     // The give-up timer is cleared.
     expect(clock.pendingTimers()).toBe(0);
@@ -236,5 +239,19 @@ describe("scheduleScreenOutcome", () => {
     ["a failed load with nothing cached", { scheduleDays: 0, loadFailed: true }, "error"],
   ])("%s", (_label, overrides, expected) => {
     expect(scheduleScreenOutcome({ ...base, ...overrides })).toBe(expected);
+  });
+});
+
+describe("device and network facts", () => {
+  it("reports the device model, its memory and the network type", () => {
+    let now = 0;
+    const sent: StartupTimingProperties[] = [];
+    const timing = createStartupTiming({ now: () => now, setTimer: () => null, clearTimer: () => undefined });
+    timing.setFlags({ deviceModel: "iPhone12,8", deviceMemoryMb: 3072, networkType: "cellular-3g" });
+    timing.begin((_event, properties) => sent.push(properties));
+    now = 10;
+    timing.mark("splashHidden");
+    timing.firstScreen("schedule");
+    expect(sent[0]).toMatchObject({ device_model: "iPhone12,8", device_memory_mb: 3072, network_type: "cellular-3g" });
   });
 });

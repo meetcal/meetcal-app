@@ -12,6 +12,7 @@ import type { SavedSession } from "@/lib/saved-sessions-store";
 import { buildDataWidgetPayloads, defaultWidgetSettings } from "@/utils/dataWidgets";
 import { buildSavedWidgetRows } from "@/utils/savedWidget";
 import {
+  DATA_WIDGET_KINDS,
   DATA_WIDGET_PAYLOAD_FIELDS,
   DATA_WIDGET_PAYLOAD_KEYS,
   DATA_WIDGET_ROW_FIELDS,
@@ -209,5 +210,17 @@ describe("storage keys and App Group", () => {
     const kotlinClear = /fun clearSavedWidget\(\)\s*\{([\s\S]*?)\n {2}\}/.exec(KOTLIN_MODULE)?.[1];
     expect(kotlinClear).toBeDefined();
     expect(kotlinClear).not.toMatch(/KEY_QUALIFYING|KEY_STANDARDS|KEY_INTL|DataWidgetProvider/);
+  });
+});
+
+describe("installed widget kinds", () => {
+  it.each(DATA_WIDGET_KINDS)("names the %s widget as both platforms report it", (kind) => {
+    expect(SWIFT_WIDGET).toContain(`let kind: String = "${kind}"`);
+    expect(KOTLIN_MODULE).toContain(`"${kind}" to `);
+  });
+
+  it("asks WidgetKit through the module's reloader class", () => {
+    expect(OBJC_MODULE).toContain("RCT_EXPORT_METHOD(installedWidgetKinds:");
+    expect(read("plugins/ios-saved-widget/MeetCalWidgetReloader.swift")).toContain("@objc(currentWidgetKinds:)");
   });
 });

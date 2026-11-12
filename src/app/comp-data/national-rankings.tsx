@@ -4,6 +4,7 @@ import { DataTable } from "@/components/ui/DataTable";
 import { useIsOffline } from "@/hooks/useIsOffline";
 import { FilterBar } from "@/components/ui/FilterBar";
 import { SubscriptionGate } from "@/components/ui/SubscriptionGate";
+import { LoadingLabel } from "@/components/ui/LoadingLabel";
 import { ThemedText } from "@/components/ui/ThemedText";
 import { ThemedView } from "@/components/ui/ThemedView";
 import { FilterSection, GenericFilterModal } from "@/components/ui/filters";
@@ -80,6 +81,7 @@ function NationalRankingsScreenContent() {
     error,
   } = useMutableResource({
     resource: nationalRankingsResource,
+    screen: "national-rankings",
     params: resourceParams,
     initialData: EMPTY_RANKINGS,
   });
@@ -183,9 +185,7 @@ function NationalRankingsScreenContent() {
         loadingContent={
           <View style={styles.loadingContainer}>
             <ActivityIndicator size="small" color={colors.link} />
-            <ThemedText style={{ color: colors.secondaryText, marginTop: 8 }}>
-              Loading...
-            </ThemedText>
+            <LoadingLabel style={{ color: colors.secondaryText, marginTop: 8 }} />
           </View>
         }
         renderRow={(athlete, index) => (

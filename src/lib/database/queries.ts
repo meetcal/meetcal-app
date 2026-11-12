@@ -6,7 +6,8 @@ import {
   getMockSchedule,
   isMockedMeet,
 } from '@/config/dev-mock-meet';
-import { fetchApiAthletes, fetchApiAthletesWithSession, fetchApiSchedule } from '@/lib/api/meets-api';
+import { fetchApiAthletes, fetchApiAthletesWithSession, fetchApiRosterTagged, fetchApiSchedule } from '@/lib/api/meets-api';
+import type { TaggedAnswer } from '@/lib/api/revalidated-reads';
 import { fetchApiRecentResultsByNames, fetchAthlete, searchApi, type AthleteRequest } from '@/lib/api/results-api';
 
 const scheduleInFlight = new Map<MeetName, Promise<Schedule>>();
@@ -63,6 +64,29 @@ export async function fetchAthletesWithSession(
     });
 
   athletesWithSessionInFlight.set(key, request);
+  return request;
+}
+
+const rosterInFlight = new Map<string, Promise<TaggedAnswer<LiftResult[]>>>();
+
+export function fetchRosterTagged(meet: MeetName, knownTag: string | null): Promise<TaggedAnswer<LiftResult[]>> {
+  const key = `${meet}\u0000${knownTag ?? ''}`;
+  const inFlight = rosterInFlight.get(key);
+  if (inFlight) return inFlight;
+  const request = (async (): Promise<TaggedAnswer<LiftResult[]>> => {
+    if (__DEV__ && (await isMockedMeet(meet))) {
+      return { status: 'fresh', value: await getMockAthletesWithSession(meet), tag: null };
+    }
+    try {
+      return await fetchApiRosterTagged(meet, knownTag);
+    } catch (error) {
+      console.error('Error fetching athletes with session, falling back to fetchAthletes', { meet, error });
+      return { status: 'fresh', value: await fetchAthletes(meet), tag: null };
+    }
+  })().finally(() => {
+    rosterInFlight.delete(key);
+  });
+  rosterInFlight.set(key, request);
   return request;
 }
 

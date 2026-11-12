@@ -209,16 +209,39 @@ describe("fetchRecordFederations", () => {
     mockMemory.clear();
   });
 
-  it("lists the federations the records table holds, USAW first", async () => {
-    mockGetJsonArray.mockResolvedValue([
-      row({ record_type: "UMWF" }),
-      row({ record_type: "IMWA" }),
-      row({ record_type: "USAW" }),
-      row({ record_type: "IWF" }),
-      row({ record_type: "IMWA", weight_class: "96kg" }),
-      row({ record_type: "Partial", age_category: "" }),
-    ]);
+  it("lists the federations the records categories name, USAW first, without downloading records", async () => {
+    mockGetJsonArray.mockImplementation(async (path: string) => {
+      if (path !== "/data/record-categories") throw new Error(`unexpected ${path}`);
+      return [
+        { record_type: "UMWF", gender: "Men", age_category: "Senior" },
+        { record_type: "IMWA", gender: "Men", age_category: "Senior" },
+        { record_type: "USAW", gender: "Women", age_category: "Junior" },
+        { record_type: "IWF", gender: "Men", age_category: "Senior" },
+        { record_type: "IMWA", gender: "Women", age_category: "Senior" },
+        { record_type: null, gender: "Men", age_category: "Senior" },
+        "not a row",
+      ];
+    });
     await expect(fetchRecordFederations()).resolves.toEqual(["USAW", "IMWA", "IWF", "UMWF"]);
+  });
+
+  it("lists one federation's age groups from the categories, in age order", async () => {
+    mockGetJsonArray.mockImplementation(async () => [
+      { record_type: "USAW", gender: "Men", age_category: "Senior" },
+      { record_type: "USAW", gender: "Women", age_category: "Senior" },
+      { record_type: "USAW", gender: "Men", age_category: "U15" },
+      { record_type: "IWF", gender: "Men", age_category: "Junior" },
+    ]);
+    await expect(fetchAgeGroups("USAW")).resolves.toEqual(["U15", "Senior"]);
+  });
+
+  it("asks the server for one federation's records only", async () => {
+    mockGetJsonArray.mockImplementation(async (path: string, query: Record<string, string>) => {
+      expect(path).toBe("/data/records");
+      expect(query).toEqual({ federation: "IWF" });
+      return [row({ record_type: "IWF" })];
+    });
+    await expect(federationRecordsResource.revalidate("IWF")).resolves.toMatchObject({ changed: true });
   });
 
   it("falls back to the federations stored on the device", async () => {

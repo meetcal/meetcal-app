@@ -86,10 +86,15 @@ const mockClearMeetData = jest.fn(
 
 const mockGetMeetAthletesSyncedAt = jest.fn(async (_meet: string): Promise<number> => 0);
 
+const mockFetchRosterTagged = jest.fn(async (meet: string, _knownTag: string | null) => ({
+  status: "fresh" as const,
+  value: await mockFetchAthletesWithSession(meet),
+  tag: null,
+}));
+
 jest.mock("@/lib/database/queries", () => ({
   fetchSchedule: (...args: unknown[]) => mockFetchSchedule(...args),
-  fetchAthletesWithSession: (...args: unknown[]) =>
-    mockFetchAthletesWithSession(...args),
+  fetchRosterTagged: (meet: string, knownTag: string | null) => mockFetchRosterTagged(meet, knownTag),
 }));
 
 jest.mock("@/lib/api/meet-package-api", () => ({
@@ -144,6 +149,7 @@ jest.mock("@/lib/database/meet-downloads-registry", () => ({
 
 jest.mock("@/lib/database/offline-store-index", () => ({
   getMeetAthletesSyncedAt: (meet: string) => mockGetMeetAthletesSyncedAt(meet),
+  getMeetAthletesTag: async () => null,
 }));
 
 jest.mock("@/lib/database/athlete-history-store", () => ({
@@ -161,6 +167,7 @@ jest.mock("@/lib/database/meet-data-saves", () => ({
   saveMeetAthletes: (...args: unknown[]) =>
     mockSaveMeetAthletes.apply(null, args),
   saveMeetLiftingResults: jest.fn(async () => undefined),
+  markMeetAthletesCurrent: jest.fn(async () => undefined),
   saveMeetSchedule: (...args: unknown[]) =>
     mockSaveMeetSchedule.apply(null, args),
 }));

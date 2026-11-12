@@ -1,6 +1,7 @@
 import { useRetryOnReconnect } from "@/hooks/useRetryOnReconnect";
 import type { AthleteRequest } from "@/lib/api/results-api";
 import {
+  canRetryFullHistory,
   loadAthleteResults,
   type ApiDetails,
   type AthleteChoice,
@@ -9,11 +10,17 @@ import {
 } from "@/lib/athlete-results-load";
 import { athleteRequestKey, rowsForRequest } from "@/lib/athlete-results-route";
 import { getAllCachedLiftingResultsForAthlete } from "@/lib/database/athlete-history-store";
+import { readBrowsedAthleteResults, saveBrowsedAthleteResults } from "@/lib/database/browsed-athlete-results";
 import { fetchAthleteResults } from "@/lib/database/queries";
 import type { AthleteMeetResult } from "@/types/athlete-results";
 import { useCallback, useEffect, useRef, useState } from "react";
 
-type OfflineRowsOnScreen = { key: string; rows: AthleteMeetResult[] };
+type KeptRowsOnScreen = {
+  key: string;
+  rows: AthleteMeetResult[];
+  details: ApiDetails | null;
+  source: Exclude<ShownResultsSource, "api">;
+};
 
 type AnsweredPage =
   | { kind: "rows"; rows: AthleteMeetResult[]; details: ApiDetails }
@@ -52,12 +59,12 @@ export function useAthleteResults(request: AthleteRequest | null): AthleteResult
   const [retryCount, setRetryCount] = useState(0);
   const resultsCacheRef = useSessionResultsCache();
   const requestIdRef = useRef(0);
-  const offlineRowsRef = useRef<OfflineRowsOnScreen | null>(null);
+  const keptRowsRef = useRef<KeptRowsOnScreen | null>(null);
 
   useEffect(() => {
     if (!request) return;
     const key = athleteRequestKey(request);
-    const showRows = (rows: AthleteMeetResult[], source: ShownResultsSource, shownDetails: ApiDetails | null) => {
+    const showRows = (rows: AthleteMeetResult[], source: ShownResultsSource | null, shownDetails: ApiDetails | null) => {
       setChoice(null);
       setAthleteResults(rows);
       setDetails(shownDetails);
@@ -74,43 +81,44 @@ export function useAthleteResults(request: AthleteRequest | null): AthleteResult
     setLoadFailed(false);
     setLoadOutcome(null);
     if (cached?.kind === "choice") {
-      offlineRowsRef.current = null;
+      keptRowsRef.current = null;
       showChoice(cached.choice);
       setLoading(false);
       return;
     }
     if (cached) {
-      offlineRowsRef.current = null;
+      keptRowsRef.current = null;
       showRows(cached.rows, "api", cached.details);
       setLoading(false);
-    } else if (offlineRowsRef.current?.key !== key) {
-      offlineRowsRef.current = null;
-      showRows([], "api", null);
-      setRowsSource(null);
+    } else if (keptRowsRef.current?.key !== key) {
+      keptRowsRef.current = null;
+      showRows([], null, null);
       setLoading(true);
     }
-    const shown = cached ? cached.rows : offlineRowsRef.current?.rows;
+    const kept = cached ? null : keptRowsRef.current;
 
     const requestId = ++requestIdRef.current;
     const load = async () => {
       try {
         const outcome = await loadAthleteResults({
-          shown,
-          shownSource: cached ? "api" : "offline",
+          shown: cached?.rows ?? kept?.rows,
+          shownSource: cached ? "api" : kept?.source,
           readOffline: async () => rowsForRequest(await getAllCachedLiftingResultsForAthlete(request.name), request),
+          readBrowsed: () => readBrowsedAthleteResults(request),
+          rememberFull: (rows, shownDetails) => saveBrowsedAthleteResults(request, rows, shownDetails),
           fetchFull: () => fetchAthleteResults(request),
           isCurrent: () => requestId === requestIdRef.current,
           show: (rows, source, shownDetails) => {
             if (source === "api" && shownDetails) {
               resultsCacheRef.current.set(key, { kind: "rows", rows, details: shownDetails });
             }
-            offlineRowsRef.current = source === "offline" ? { key, rows } : null;
+            keptRowsRef.current = source === "api" ? null : { key, rows, details: shownDetails, source };
             showRows(rows, source, shownDetails);
-            if (source === "offline") setLoading(false);
+            if (source !== "api") setLoading(false);
           },
           choose: (answer) => {
             resultsCacheRef.current.set(key, { kind: "choice", choice: answer });
-            offlineRowsRef.current = null;
+            keptRowsRef.current = null;
             showChoice(answer);
           },
         });
@@ -133,7 +141,7 @@ export function useAthleteResults(request: AthleteRequest | null): AthleteResult
   }, [request, retryCount, resultsCacheRef]);
 
   const retryLoad = useCallback(() => setRetryCount((count) => count + 1), []);
-  useRetryOnReconnect(loadOutcome === "offline-partial", retryLoad);
+  useRetryOnReconnect(canRetryFullHistory(loadOutcome), retryLoad);
 
   return { loading, athleteResults, details, choice, loadFailed, rowsSource, loadOutcome, retryLoad };
 }

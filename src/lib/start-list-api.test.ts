@@ -5,8 +5,10 @@ const mockFetchApiYearBestsByNames = jest.fn();
 const mockFetchApiResultsByNames = jest.fn();
 
 jest.mock("@/lib/api/results-api", () => ({
-  fetchApiYearBestsByNames: (...args: any[]) =>
-    mockFetchApiYearBestsByNames(...args),
+  fetchApiYearBestsByNames: (names: string[], cutoffDate?: string, options?: { latestWhenEmpty?: boolean }) =>
+    jest
+      .requireActual("@/test-support/latest-bests")
+      .answerBestsOrLatest(names, cutoffDate, options, mockFetchApiYearBestsByNames, mockFetchApiResultsByNames),
   fetchApiResultsByNames: (...args: any[]) => mockFetchApiResultsByNames(...args),
 }));
 
@@ -290,15 +292,13 @@ describe("getLastYearBestsBatch", () => {
     });
   });
 
-  it("does not store \"no results\" when the latest-meet lookup failed", async () => {
+  it("does not store \"no results\" when the lookup failed", async () => {
     mockFetchApiYearBestsByNames.mockResolvedValue({
       Never: { bestSnatch: 0, bestCJ: 0, bestTotal: 0 },
     });
     mockFetchApiResultsByNames.mockRejectedValue(new Error("timed out"));
 
-    const result = await startListApi.getLastYearBestsBatch(["Never"]);
-
-    expect(result.Never).toEqual({ bestSnatch: 0, bestCJ: 0, bestTotal: 0 });
+    await expect(startListApi.getLastYearBestsBatch(["Never"])).rejects.toThrow("timed out");
     expect(mockSaveAthleteBestsBatch).not.toHaveBeenCalled();
   });
 

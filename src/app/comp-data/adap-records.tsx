@@ -1,6 +1,7 @@
 import { SLIDE_IN_FROM_RIGHT, stackHeaderOptions } from "@/lib/stack-header-options";
 import { DataTable, dataTableStyles } from "@/components/ui/DataTable";
 import { SubscriptionGate } from "@/components/ui/SubscriptionGate";
+import { LoadingLabel } from "@/components/ui/LoadingLabel";
 import { ThemedText } from "@/components/ui/ThemedText";
 import { ThemedView } from "@/components/ui/ThemedView";
 import { EMPTY_RECORDS_DATA } from "@/constants/adapative";
@@ -41,6 +42,7 @@ function AdaptiveRecordsScreenContent() {
     error: fetchError,
   } = useMutableResource({
     resource: adaptiveRecordsResource,
+    screen: "adap-records",
     params: [] as const,
     initialData: EMPTY_RECORDS_DATA as RecordsData,
   });
@@ -122,9 +124,7 @@ function AdaptiveRecordsScreenContent() {
         loadingContent={
           <View style={styles.loadingContainer}>
             <ActivityIndicator size="small" color={colors.link} />
-            <ThemedText style={{ color: colors.secondaryText, marginTop: 8 }}>
-              Loading...
-            </ThemedText>
+            <LoadingLabel style={{ color: colors.secondaryText, marginTop: 8 }} />
           </View>
         }
         renderRow={(record, index) => (

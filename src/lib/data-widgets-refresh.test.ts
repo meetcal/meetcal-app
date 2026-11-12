@@ -1,5 +1,9 @@
 import {
+  afterLaunchSettles,
   createDataWidgetRefresher,
+  DATA_WIDGET_REFRESH_AFTER_FIRST_SCREEN_MS,
+  DATA_WIDGET_REFRESH_MAX_LAUNCH_DEFER_MS,
+  resetLaunchWaitForTests,
   DATA_WIDGET_REFRESH_MIN_INTERVAL_MS,
   DATA_WIDGET_SOURCE_MAX_AGE_MS,
   readWidgetSource,
@@ -44,12 +48,18 @@ const storedSettings: WidgetSettings = {
   intlRankings: { meet: "Worlds", ageCategory: "Senior", gender: "Men" },
 };
 
+async function untilSourceRequested() {
+  for (let turn = 0; turn < 10; turn += 1) await Promise.resolve();
+}
+
 function setup(overrides: Partial<DataWidgetRefreshDeps> = {}) {
   let now = 1_000_000;
   let writeCount = 0;
   const deps: DataWidgetRefreshDeps = {
     now: () => now,
     isAvailable: () => true,
+    installedWidgets: jest.fn(async () => "some" as const),
+    launchSettled: jest.fn(async () => {}),
     loadSource: jest.fn(async () => source),
     loadSettings: jest.fn(async () => storedSettings),
     saveSettings: jest.fn(async () => {}),
@@ -115,6 +125,7 @@ describe("createDataWidgetRefresher", () => {
 
     const first = refresher.refresh(true);
     const second = refresher.refresh(true);
+    await untilSourceRequested();
     release(source);
 
     await expect(first).resolves.toBe("synced");
@@ -201,6 +212,7 @@ describe("createDataWidgetRefresher", () => {
 
     const pending = refresher.refresh(true);
     simulateScreenWrite();
+    await untilSourceRequested();
     release(source);
 
     await expect(pending).resolves.toBe("superseded");
@@ -225,6 +237,7 @@ describe("createDataWidgetRefresher", () => {
 
     const pending = refresher.refresh(true);
     simulateScreenWrite();
+    await untilSourceRequested();
     release(source);
     await expect(pending).resolves.toBe("superseded");
 
@@ -251,6 +264,7 @@ describe("createDataWidgetRefresher", () => {
     // `markDataWidgetCommitStarted`: the screen's save is still in flight and
     // it has not synced the widget yet.
     simulateScreenWrite();
+    await untilSourceRequested();
     release(source);
 
     await expect(pending).resolves.toBe("superseded");
@@ -355,6 +369,7 @@ describe("createDataWidgetRefresher", () => {
 
       const subscribed = refresher.refresh(true);
       const expired = refresher.refresh(false);
+      await untilSourceRequested();
       release(source);
 
       await expect(subscribed).resolves.toBe("synced");
@@ -379,6 +394,7 @@ describe("createDataWidgetRefresher", () => {
       const first = refresher.refresh(true);
       const lapsed = refresher.refresh(false);
       const back = refresher.refresh(true);
+      await untilSourceRequested();
       release(source);
 
       await expect(first).resolves.toBe("synced");
@@ -473,5 +489,82 @@ describe("readWidgetSource", () => {
       throw new Error("Offline");
     });
     await expect(readWidgetSource(r, now, new Map())).resolves.toBeNull();
+  });
+});
+
+describe("data widget refresh at launch", () => {
+  it("fetches nothing for a subscriber with no data widget installed, and checks again next time", async () => {
+    const installedWidgets = jest.fn<Promise<"some" | "none" | "unknown">, []>(async () => "none");
+    const { deps, refresher } = setup({ installedWidgets });
+    await expect(refresher.refresh(true)).resolves.toBe("no-widgets");
+    expect(deps.loadSource).not.toHaveBeenCalled();
+    expect(deps.sync).not.toHaveBeenCalled();
+
+    installedWidgets.mockResolvedValueOnce("some");
+    await expect(refresher.refresh(true)).resolves.toBe("synced");
+    expect(deps.loadSource).toHaveBeenCalledTimes(1);
+  });
+
+  it("refreshes when the installed widgets cannot be listed (a build without the method)", async () => {
+    const { deps, refresher } = setup({ installedWidgets: async () => "unknown" });
+    await expect(refresher.refresh(true)).resolves.toBe("synced");
+    expect(deps.loadSource).toHaveBeenCalledTimes(1);
+  });
+
+  it("waits for the launch to settle before reading any source", async () => {
+    let settle: () => void = () => undefined;
+    const launchSettled = jest.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          settle = resolve;
+        }),
+    );
+    const { deps, refresher } = setup({ launchSettled });
+    const pending = refresher.refresh(true);
+    await Promise.resolve();
+    expect(deps.loadSource).not.toHaveBeenCalled();
+    settle();
+    await expect(pending).resolves.toBe("synced");
+  });
+
+  it("writes the locked payloads without waiting for the launch", async () => {
+    const launchSettled = jest.fn(() => new Promise<void>(() => {}));
+    const { deps, refresher } = setup({ launchSettled });
+    await expect(refresher.refresh(false)).resolves.toBe("locked");
+    expect(deps.sync).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("afterLaunchSettles", () => {
+  beforeEach(() => {
+    jest.useFakeTimers();
+    resetLaunchWaitForTests();
+  });
+  afterEach(() => {
+    jest.useRealTimers();
+    resetLaunchWaitForTests();
+  });
+
+  it(`resolves ${DATA_WIDGET_REFRESH_AFTER_FIRST_SCREEN_MS} ms after the first screen, once per process`, async () => {
+    let firstScreen: () => void = () => undefined;
+    const settled = jest.fn();
+    void afterLaunchSettles(() => new Promise<void>((resolve) => (firstScreen = resolve))).then(settled);
+    await jest.advanceTimersByTimeAsync(5000);
+    expect(settled).not.toHaveBeenCalled();
+    firstScreen();
+    await jest.advanceTimersByTimeAsync(DATA_WIDGET_REFRESH_AFTER_FIRST_SCREEN_MS);
+    expect(settled).toHaveBeenCalled();
+    const again = jest.fn();
+    void afterLaunchSettles(() => new Promise<void>(() => {})).then(again);
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(again).toHaveBeenCalled();
+  });
+
+  it(`gives up waiting after ${DATA_WIDGET_REFRESH_MAX_LAUNCH_DEFER_MS} ms when no screen settles`, async () => {
+    const settled = jest.fn();
+    void afterLaunchSettles(() => new Promise<void>(() => {})).then(settled);
+    await jest.advanceTimersByTimeAsync(DATA_WIDGET_REFRESH_MAX_LAUNCH_DEFER_MS);
+    expect(settled).toHaveBeenCalled();
   });
 });

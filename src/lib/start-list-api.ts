@@ -131,7 +131,6 @@ async function settleFromLookup(
   }
   const answer = result.answered[athleteName];
   if (!answer) {
-    // The most-recent-meet lookup failed.
     return staleRealBests(stored) ?? ZERO_BESTS;
   }
   const bests = fromStoredBests(answer);
@@ -266,7 +265,6 @@ export async function getLastYearBestsBatch(names: string[]): Promise<Record<str
   missing.forEach((name) => {
     const answer = result.answered[name];
     if (!answer) {
-      // The most-recent-meet lookup failed: not an answer, so not memoized.
       byName[name] = staleByName[name] ?? ZERO_BESTS;
       return;
     }
@@ -277,13 +275,6 @@ export async function getLastYearBestsBatch(names: string[]): Promise<Record<str
   return byName;
 }
 
-/**
- * Warms the bests of the names the start list opens on, so expanding a row
- * reads them from memory instead of sending its own requests. The caller
- * caps the names (`YEAR_BESTS_PREFETCH_NAME_CAP`), so this is one
- * `results:bests` request plus, for the names with nothing in the window,
- * one `latest_only` request. A failure is left to the rows' own lookups.
- */
 export function preloadYearBests(names: string[]): void {
   getLastYearBestsBatch(names).catch(() => {});
 }

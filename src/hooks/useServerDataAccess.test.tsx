@@ -12,7 +12,23 @@ const mockSubscription: { isSubscribed: boolean | null } = { isSubscribed: true 
 jest.mock("@clerk/expo", () => ({ useAuth: () => mockAuth }));
 jest.mock("@/contexts/SubscriptionContext", () => ({ useSubscription: () => mockSubscription }));
 jest.mock("@/lib/authCache", () => ({ getCachedAuthState: jest.fn(async () => mockHint.state) }));
-jest.mock("@/lib/access-pass", () => ({ loadAccessPass: jest.fn(async () => ({ pass: "p1", rotatesAt: Date.now() + 60_000 })) }));
+const mockStored: { value: { owner: string; pass: string; rotatesAt: number } | null } = { value: null };
+jest.mock("@/lib/access-pass", () => ({
+  loadAccessPass: jest.fn(async () => ({ pass: "p1", rotatesAt: Date.now() + 60_000 })),
+  storedAccessPassFor: (owner: string) => ({
+    read: async () =>
+      mockStored.value?.owner === owner ? { pass: mockStored.value.pass, rotatesAt: mockStored.value.rotatesAt } : null,
+    write: async (pass: { pass: string; rotatesAt: number }) => {
+      mockStored.value = { owner, ...pass };
+    },
+    forget: async () => {
+      mockStored.value = null;
+    },
+  }),
+  forgetStoredAccessPass: jest.fn(async () => {
+    mockStored.value = null;
+  }),
+}));
 
 function Harness() {
   useServerDataAccess();
@@ -32,6 +48,7 @@ beforeEach(() => {
   mockAuth.isSignedIn = true;
   mockAuth.userId = "user_a";
   mockSubscription.isSubscribed = true;
+  mockStored.value = null;
   jest.mocked(loadAccessPass).mockClear();
 });
 
@@ -146,5 +163,49 @@ describe("useServerDataAccess", () => {
     render();
     await act(async () => {});
     expect(loadAccessPass).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("the pass kept across restarts", () => {
+  it("uses the stored pass until it rotates, without fetching or waiting for Clerk", async () => {
+    mockAuth.isLoaded = false;
+    mockHint.state = { isSignedIn: true, timestamp: Date.now(), userId: "user_a" };
+    mockStored.value = { owner: "user_a", pass: "kept", rotatesAt: Date.now() + 60 * 60_000 };
+    render();
+    await act(async () => {});
+    await expect(accessPassFor("reference:records")).resolves.toBe("kept");
+    expect(loadAccessPass).not.toHaveBeenCalled();
+  });
+
+  it("does not use another user's stored pass, and stores the one it fetches", async () => {
+    mockStored.value = { owner: "user_b", pass: "theirs", rotatesAt: Date.now() + 60 * 60_000 };
+    render();
+    await act(async () => {});
+    await expect(accessPassFor("reference:records")).resolves.toBe("p1");
+    expect(mockStored.value).toMatchObject({ owner: "user_a", pass: "p1" });
+  });
+
+  it("fetches a new pass once the stored one has rotated", async () => {
+    mockStored.value = { owner: "user_a", pass: "old", rotatesAt: Date.now() - 1 };
+    render();
+    await act(async () => {});
+    await expect(accessPassFor("reference:records")).resolves.toBe("p1");
+  });
+
+  it("forgets the stored pass on sign-out and when the user does not subscribe", async () => {
+    mockStored.value = { owner: "user_a", pass: "kept", rotatesAt: Date.now() + 60_000 };
+    mockAuth.isSignedIn = false;
+    mockAuth.userId = null;
+    render();
+    await act(async () => {});
+    expect(mockStored.value).toBeNull();
+
+    mockStored.value = { owner: "user_a", pass: "kept", rotatesAt: Date.now() + 60_000 };
+    mockAuth.isSignedIn = true;
+    mockAuth.userId = "user_a";
+    mockSubscription.isSubscribed = false;
+    render();
+    await act(async () => {});
+    expect(mockStored.value).toBeNull();
   });
 });

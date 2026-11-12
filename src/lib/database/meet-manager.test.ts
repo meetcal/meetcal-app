@@ -91,10 +91,17 @@ const mockClearMeetData = jest.fn(
 
 const mockGetMeetAthletesSyncedAt = jest.fn(async (_meet: string): Promise<number> => 0);
 
+const mockGetMeetAthletesTag = jest.fn(async (_meet: string): Promise<string | null> => null);
+const mockMarkMeetAthletesCurrent = jest.fn(async (_meet: string): Promise<void> => undefined);
+const mockFetchRosterTagged = jest.fn(async (meet: string, _knownTag: string | null) => ({
+  status: "fresh" as const,
+  value: await mockFetchAthletesWithSession(meet),
+  tag: null,
+}));
+
 jest.mock("@/lib/database/queries", () => ({
   fetchSchedule: (...args: unknown[]) => mockFetchSchedule(...args),
-  fetchAthletesWithSession: (...args: unknown[]) =>
-    mockFetchAthletesWithSession(...args),
+  fetchRosterTagged: (meet: string, knownTag: string | null) => mockFetchRosterTagged(meet, knownTag),
 }));
 
 jest.mock("@/lib/api/meet-package-api", () => ({
@@ -149,6 +156,7 @@ jest.mock("@/lib/database/meet-downloads-registry", () => ({
 
 jest.mock("@/lib/database/offline-store-index", () => ({
   getMeetAthletesSyncedAt: (meet: string) => mockGetMeetAthletesSyncedAt(meet),
+  getMeetAthletesTag: (meet: string) => mockGetMeetAthletesTag(meet),
 }));
 
 jest.mock("@/lib/database/athlete-history-store", () => ({
@@ -166,6 +174,7 @@ jest.mock("@/lib/database/meet-data-saves", () => ({
   saveMeetAthletes: (...args: unknown[]) =>
     mockSaveMeetAthletes.apply(null, args),
   saveMeetLiftingResults: jest.fn(async () => undefined),
+  markMeetAthletesCurrent: (meet: string) => mockMarkMeetAthletesCurrent(meet),
   saveMeetSchedule: (...args: unknown[]) =>
     mockSaveMeetSchedule.apply(null, args),
 }));
@@ -224,7 +233,31 @@ describe("prefetchCriticalMeetData", () => {
     expect(mockSaveMeetSchedule).toHaveBeenCalledWith("Test Meet", schedule);
     expect(mockFetchAthletesWithSession).toHaveBeenCalledTimes(1);
     expect(mockFetchAthletesWithSession).toHaveBeenCalledWith("Test Meet");
-    expect(mockSaveMeetAthletes).toHaveBeenCalledWith("Test Meet", roster);
+    expect(mockSaveMeetAthletes).toHaveBeenCalledWith("Test Meet", roster, null);
+  });
+
+  it("revalidates the stored roster with its tag and keeps it when the server says it is unchanged", async () => {
+    mockFetchSchedule.mockResolvedValue([]);
+    mockGetMeetAthletesTag.mockResolvedValueOnce('"r1"');
+    mockFetchRosterTagged.mockResolvedValueOnce({ status: "unchanged", tag: '"r1"' } as never);
+
+    await prefetchCriticalMeetData("Tagged Meet" as any);
+
+    expect(mockFetchRosterTagged).toHaveBeenCalledWith("Tagged Meet", '"r1"');
+    expect(mockMarkMeetAthletesCurrent).toHaveBeenCalledWith("Tagged Meet");
+    expect(mockSaveMeetAthletes).not.toHaveBeenCalled();
+  });
+
+  it("stores a changed roster with the tag it came with", async () => {
+    mockFetchSchedule.mockResolvedValue([]);
+    mockGetMeetAthletesTag.mockResolvedValueOnce('"r1"');
+    const roster = [{ name: "A Lifter" }];
+    mockFetchRosterTagged.mockResolvedValueOnce({ status: "fresh", value: roster, tag: '"r2"' } as never);
+
+    await prefetchCriticalMeetData("Tagged Meet" as any);
+
+    expect(mockSaveMeetAthletes).toHaveBeenCalledWith("Tagged Meet", roster, '"r2"');
+    expect(mockMarkMeetAthletesCurrent).not.toHaveBeenCalled();
   });
 
   it("defers full meet package prefetch for explicitly downloaded meets", async () => {
@@ -252,7 +285,7 @@ describe("prefetchCriticalMeetData", () => {
     try {
       await warmMeetData("Test Meet" as any);
 
-      expect(mockSaveMeetAthletes).toHaveBeenCalledWith("Test Meet", roster);
+      expect(mockSaveMeetAthletes).toHaveBeenCalledWith("Test Meet", roster, null);
       expect(mockFetchApiMeetPackage).not.toHaveBeenCalled();
 
       await jest.advanceTimersByTimeAsync(4999);
@@ -337,7 +370,7 @@ describe("prefetchCriticalMeetData", () => {
       await jest.advanceTimersByTimeAsync(1);
       await warming;
       expect(mockFetchAthletesWithSession).toHaveBeenCalledWith("Launch Meet");
-      expect(mockSaveMeetAthletes).toHaveBeenCalledWith("Launch Meet", roster);
+      expect(mockSaveMeetAthletes).toHaveBeenCalledWith("Launch Meet", roster, null);
       expect(jest.getTimerCount()).toBe(0);
     });
 
@@ -454,7 +487,7 @@ describe("prefetchCriticalMeetData", () => {
     try {
       await warmMeetData("Test Meet" as any);
 
-      expect(mockSaveMeetAthletes).toHaveBeenCalledWith("Test Meet", roster);
+      expect(mockSaveMeetAthletes).toHaveBeenCalledWith("Test Meet", roster, null);
 
       await jest.advanceTimersByTimeAsync(10000);
       expect(mockFetchApiMeetPackage).not.toHaveBeenCalled();

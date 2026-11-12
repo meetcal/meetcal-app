@@ -8,6 +8,7 @@ import { emptyMeetEntry, getStore, meetDataWrites, updateStore } from './offline
 import { ATHLETES_KEY_PREFIX, LIFTING_RESULTS_KEY_PREFIX, SCHEDULE_KEY_PREFIX } from './offline-storage-keys';
 import { saveSessionAthleteCaches } from './session-roster-cache';
 import { writeStoredLiftingResults } from './lifting-results-blob';
+import { encodePersistedTag } from './persisted-tag';
 
 export async function saveMeetSchedule(meetId: string, schedule: Schedule): Promise<void> {
   return meetDataWrites(meetId, async () => {
@@ -42,6 +43,7 @@ export async function saveMeetSchedule(meetId: string, schedule: Schedule): Prom
             liftingResultsKey: currentLiftingResultsKey,
             lastSyncTime: Date.now(),
             athletesSyncedAt: store.meets[meetId]?.athletesSyncedAt ?? 0,
+            ...(store.meets[meetId]?.athletesTag ? { athletesTag: store.meets[meetId]?.athletesTag } : {}),
           };
         });
       } catch (metadataError) {
@@ -78,7 +80,18 @@ export async function markMeetScheduleVerified(
   return wrote;
 }
 
-export async function saveMeetAthletes(meetId: string, athletes: LiftResult[]): Promise<boolean> {
+export async function markMeetAthletesCurrent(meetId: string): Promise<void> {
+  await meetDataWrites(meetId, () =>
+    updateStore((store) => {
+      const entry = store.meets[meetId];
+      if (!entry) return;
+      entry.lastSyncTime = Date.now();
+      entry.athletesSyncedAt = Date.now();
+    }),
+  );
+}
+
+export async function saveMeetAthletes(meetId: string, athletes: LiftResult[], tag: string | null = null): Promise<boolean> {
   return meetDataWrites(meetId, async () => {
     try {
       const athletesKey = `${ATHLETES_KEY_PREFIX}${meetId}`;
@@ -127,6 +140,9 @@ export async function saveMeetAthletes(meetId: string, athletes: LiftResult[]): 
           store.meets[meetId].athletes = [];
           store.meets[meetId].lastSyncTime = Date.now();
           store.meets[meetId].athletesSyncedAt = Date.now();
+          const storedTag = encodePersistedTag(tag);
+          if (storedTag) store.meets[meetId].athletesTag = storedTag;
+          else delete store.meets[meetId].athletesTag;
         });
       } catch (metadataError) {
         console.warn('Saved athletes payload but failed to update store metadata:', metadataError);

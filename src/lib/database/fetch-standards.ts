@@ -1,14 +1,14 @@
 import { readStandardsData } from './cached-shapes';
 import { createMutableResource } from '@/lib/data/mutable-resource';
 import { StandardsData } from '@/types/standards';
-import { isNetworkAvailable } from '@/lib/networkUtils';
 import {
   getOfflineCache,
   OFFLINE_CACHE_KEYS,
   replaceOfflineCache,
   setOfflineCache,
 } from './offline-cache';
-import { fetchApiStandards, type ApiStandardRow } from '@/lib/api/reference-api';
+import { fetchApiStandardsTagged, type ApiStandardRow } from '@/lib/api/reference-api';
+import { mapTagged, requireNetwork, resourceEntry, untagged } from './tagged-read';
 import { weightClassSort } from './weight-class-sort';
 
 type CompleteStandardsRow = Readonly<ApiStandardRow> & {
@@ -57,18 +57,16 @@ function mapRows(rows: readonly CompleteStandardsRow[]): StandardsData {
 
 async function readStandardsCache() {
   const cacheKey = OFFLINE_CACHE_KEYS.standards;
-  const cached = await getOfflineCache(cacheKey, readStandardsData);
-  return cached ? { data: cached.data, lastUpdatedAt: cached.lastSynced } : null;
+  return resourceEntry(await getOfflineCache(cacheKey, readStandardsData));
 }
 
-async function fetchStandardsFresh(): Promise<StandardsData> {
-  const hasNetwork = await isNetworkAvailable();
-  if (!hasNetwork) {
-    throw new Error('Offline');
-  }
+async function fetchStandardsTagged(knownTag: string | null) {
+  await requireNetwork();
+  return mapTagged(await fetchApiStandardsTagged(knownTag), (rows) => mapRows(rows.filter(isCompleteStandardsRow)));
+}
 
-  const rows = await fetchApiStandards();
-  return mapRows(rows.filter(isCompleteStandardsRow));
+function fetchStandardsFresh(): Promise<StandardsData> {
+  return untagged(fetchStandardsTagged(null), '/data/standards');
 }
 
 /**
@@ -81,10 +79,9 @@ export function isStandardsDataEmpty(data: StandardsData): boolean {
   return Object.values(data).every((group) => (group.men?.length ?? 0) + (group.women?.length ?? 0) === 0);
 }
 
-async function persistStandards(data: StandardsData) {
+async function persistStandards(data: StandardsData, tag: string | null) {
   if (isStandardsDataEmpty(data)) return null;
-  const entry = await setOfflineCache(OFFLINE_CACHE_KEYS.standards, data);
-  return { data: entry.data, lastUpdatedAt: entry.lastSynced };
+  return resourceEntry(await setOfflineCache(OFFLINE_CACHE_KEYS.standards, data, tag));
 }
 
 /**
@@ -104,5 +101,9 @@ export const standardsResource = createMutableResource<StandardsData, []>({
   getKey: () => OFFLINE_CACHE_KEYS.standards,
   loadCached: () => readStandardsCache(),
   fetchFresh: () => fetchStandardsFresh(),
-  persistFresh: (data) => persistStandards(data),
+  persistFresh: (data) => persistStandards(data, null),
+  tagged: {
+    fetch: (knownTag) => fetchStandardsTagged(knownTag),
+    persist: (data, tag) => persistStandards(data, tag),
+  },
 });

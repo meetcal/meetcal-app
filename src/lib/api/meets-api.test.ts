@@ -244,51 +244,37 @@ describe('conditional reads for meet queries', () => {
     await expect(pending).resolves.toMatchObject({ name: 'Meet 0' });
   });
 
-  it('answers a bodiless reply with the newer entry a concurrent call stored in flight', async () => {
-    let releaseSlow: (() => void) | undefined;
-    let conditionalCalls = 0;
-    installTransport(async (call) => {
-      if (!call.args.ifNoneMatch) {
-        return { etag: '"v1"', body: [meetRow('Meet A')] };
-      }
-      conditionalCalls += 1;
-      if (conditionalCalls === 1) {
-        await new Promise<void>((resolve) => {
-          releaseSlow = resolve;
-        });
-        return { etag: '"v1"' };
-      }
-      return { etag: '"v2"', body: [meetRow('Meet B')] };
+  it('sends one request for identical reads in flight together, and answers each caller with it', async () => {
+    let release: (() => void) | undefined;
+    const { dataCalls } = installTransport(async (call) => {
+      if (call.args.ifNoneMatch) return { etag: '"v1"' };
+      await new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      return { etag: '"v1"', body: [meetRow('Meet A')] };
     });
 
-    await fetchApiMeets();
-    const slow = fetchApiMeets();
-    await expect(fetchApiMeets()).resolves.toMatchObject([{ name: 'Meet B' }]);
-    releaseSlow?.();
-    await expect(slow).resolves.toMatchObject([{ name: 'Meet B' }]);
+    const first = fetchApiMeets();
+    const second = fetchApiMeets();
+    await Promise.resolve();
+    release?.();
+    await expect(first).resolves.toMatchObject([{ name: 'Meet A' }]);
+    await expect(second).resolves.toMatchObject([{ name: 'Meet A' }]);
+    expect(dataCalls()).toHaveLength(1);
+
+    await expect(fetchApiMeets()).resolves.toMatchObject([{ name: 'Meet A' }]);
+    expect(dataCalls()).toHaveLength(2);
+    expect(itemAt(dataCalls(), 1).args.ifNoneMatch).toBe('"v1"');
   });
 
-  it('keeps a slower full answer from replacing the one a later call already stored', async () => {
-    let releaseSlow: (() => void) | undefined;
-    let calls = 0;
-    installTransport(async () => {
-      calls += 1;
-      if (calls === 1) {
-        await new Promise<void>((resolve) => {
-          releaseSlow = resolve;
-        });
-        return { etag: '"v1"', body: [meetRow('Meet A')] };
-      }
-      if (calls === 2) return { etag: '"v2"', body: [meetRow('Meet B')] };
-      return { etag: '"v2"' };
-    });
+  it('fails every caller of a merged read that failed, and asks again on the next read', async () => {
+    const { dataCalls } = queueTransport([{ fail: 503 }, { etag: '"v1"', body: [meetRow('Meet A')] }]);
 
-    const slow = fetchApiMeets();
-    await expect(fetchApiMeets()).resolves.toMatchObject([{ name: 'Meet B' }]);
-    releaseSlow?.();
-    await expect(slow).resolves.toMatchObject([{ name: 'Meet B' }]);
-    await expect(fetchApiMeets()).resolves.toMatchObject([{ name: 'Meet B' }]);
-    expect(calls).toBe(3);
+    const results = await Promise.allSettled([fetchApiMeets(), fetchApiMeets()]);
+    expect(results.map((result) => result.status)).toEqual(['rejected', 'rejected']);
+    expect(dataCalls()).toHaveLength(1);
+    await expect(fetchApiMeets()).resolves.toHaveLength(1);
+    expect(dataCalls()).toHaveLength(2);
   });
 
   it('retries without a tag when a bodiless answer names a different tag than was sent', async () => {

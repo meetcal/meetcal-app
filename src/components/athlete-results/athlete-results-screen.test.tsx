@@ -3,6 +3,7 @@ import { act, create } from "react-test-renderer";
 import AthleteResultsScreen from "@/app/shared-screens/athlete-results";
 import type { AthleteLookup, AthleteMeetResult } from "@/data/types/athletes";
 import { getAllCachedLiftingResultsForAthlete } from "@/lib/database/athlete-history-store";
+import { readBrowsedAthleteResults } from "@/lib/database/browsed-athlete-results";
 
 jest.mock("@/contexts/ThemeContext", () => ({ useTheme: () => ({ currentTheme: "light" }) }));
 
@@ -57,6 +58,10 @@ jest.mock("@/lib/database/queries", () => ({
     const best = rows.length > 0 ? 0 : -1;
     return { kind: "results", lifter: null, rows, prs: { snatch: best, cj: best, total: best } };
   },
+}));
+jest.mock("@/lib/database/browsed-athlete-results", () => ({
+  readBrowsedAthleteResults: jest.fn(async () => null),
+  saveBrowsedAthleteResults: jest.fn(async () => {}),
 }));
 let mockNetworkListeners: ((isConnected: boolean) => void)[] = [];
 jest.mock("@/lib/networkUtils", () => ({
@@ -326,4 +331,35 @@ it("shows only the chosen lifter's downloaded results while offline", async () =
   await act(async () => { tree.unmount(); });
   mockLifter = undefined;
   errorLog.mockRestore();
+});
+
+it("says a history saved on an earlier visit may be out of date when it cannot refresh, and refreshes it on reconnect", async () => {
+  mockIsOffline = false;
+  mockName = "Saved Athlete";
+  const errorLog = jest.spyOn(console, "error").mockImplementation(() => {});
+  jest.mocked(readBrowsedAthleteResults).mockResolvedValueOnce({ rows: cachedRow(mockName), details: null });
+  jest.mocked(mockFetchRows).mockRejectedValueOnce(new Error("MeetCal API error 503"));
+  let tree!: ReturnType<typeof create>;
+  await act(async () => { tree = create(<AthleteResultsScreen />); });
+
+  const rendered = JSON.stringify(tree.toJSON());
+  expect(rendered).toContain("Cached Open");
+  expect(rendered).toContain("Full history unavailable. Showing the history saved on this device, which may be out of date.");
+  expect(rendered).toContain("Success Rates");
+  expect(tree.root.findAllByProps({ testID: "athlete-results-partial-retry" }).length).toBeGreaterThan(0);
+
+  jest.mocked(mockFetchRows).mockResolvedValueOnce(apiRows(mockName));
+  await act(async () => {
+    mockNetworkListeners.forEach((listener) => listener(false));
+    mockNetworkListeners.forEach((listener) => listener(true));
+    await new Promise<void>((resolve) => setTimeout(resolve, 0));
+  });
+  await act(async () => { await new Promise<void>((resolve) => setImmediate(resolve)); });
+
+  expect(mockFetchRows).toHaveBeenLastCalledWith("Saved Athlete");
+  expect(JSON.stringify(tree.toJSON())).toContain("Earlier Open");
+  expect(tree.root.findAllByProps({ testID: "athlete-results-partial-status" })).toHaveLength(0);
+  await act(async () => { tree.unmount(); });
+  errorLog.mockRestore();
+  mockIsOffline = true;
 });
