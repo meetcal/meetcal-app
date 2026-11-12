@@ -87,7 +87,7 @@ test("every page starts the app's downloads with the HTML", async () => {
     const head = html.slice(0, html.indexOf("</head>"));
     assert.match(head, /<link rel="modulepreload" href="\/meetcal-web-[0-9a-f]+\.js"/, `${file}: no glue modulepreload`);
     for (const snippet of ["auth_bridge.js", "answer_store.js"]) {
-      assert.match(head, new RegExp(`<link rel="modulepreload" href="/snippets/meetcal-web-[0-9a-f]+/src/${snippet.replace(".", "\\.")}"`), `${file}: no ${snippet} modulepreload`);
+      assert.match(head, new RegExp(`<link rel="modulepreload" href="/snippets/meetcal-web-[0-9a-f]+-[0-9a-f]{16}/src/${snippet.replace(".", "\\.")}"`), `${file}: no ${snippet} modulepreload`);
     }
     assert.match(head, /<link rel="preload" href="\/meetcal-web-[0-9a-f]+_bg\.wasm" as="fetch" type="application\/wasm" crossorigin/, `${file}: no wasm preload`);
     assert.doesNotMatch(head, /<script src=/, `${file}: a classic script in <head> blocks the first paint`);
