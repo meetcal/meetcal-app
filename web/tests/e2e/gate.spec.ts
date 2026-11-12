@@ -137,7 +137,7 @@ test("moving between data pages and Clerk updates for the same user keep the pag
   await mockAuth(page);
   await routeQuery(page, "reference:records", (route) => route.fulfill(textAnswer([])));
   await routeQuery(page, "reference:standards", (route) => route.fulfill(textAnswer([])));
-  await routeQuery(page, "results:search", (route) => route.fulfill(valueAnswer({ matched_name: null, suggestions: [], results: [], truncated: false })));
+  await routeQuery(page, "results:search", (route) => route.fulfill(valueAnswer({ matched_name: null, suggestions: [], results: [] })));
 
   await page.goto("/results");
   const athleteSearch = page.getByLabel("Athlete", { exact: true });

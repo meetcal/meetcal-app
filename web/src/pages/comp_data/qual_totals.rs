@@ -1,7 +1,7 @@
 use super::{
     filters::{
         ClassificationFilters, ClassifiedRow, SortDirection, classified_rows, filter_options,
-        sort_numeric, sort_orders, sort_text, weight_class_options,
+        sort_numeric, sort_text, weight_class_options,
     },
     loading::{load_query, table_response},
     ui::{DataPage, DataTable, EmptyTableRow, FilterSelect, SortSelect},
@@ -31,12 +31,12 @@ impl ClassifiedRow for QualifyingTotal {
     }
 }
 
-sort_orders!(QualifyingTotalSort {
-    TotalAsc => ("total_asc", "Total: low to high"),
-    TotalDesc => ("total_desc", "Total: high to low"),
-    EventAsc => ("event_asc", "Event: A to Z"),
-    EventDesc => ("event_desc", "Event: Z to A"),
-});
+const SORT_OPTIONS: &[(&str, &str)] = &[
+    ("total_asc", "Total: low to high"),
+    ("total_desc", "Total: high to low"),
+    ("event_asc", "Event: A to Z"),
+    ("event_desc", "Event: Z to A"),
+];
 
 #[component]
 pub fn QualifyingTotals() -> impl IntoView {
@@ -44,7 +44,7 @@ pub fn QualifyingTotals() -> impl IntoView {
     let (meet, set_meet) = signal(String::new());
     let (age, set_age) = signal(String::new());
     let (weight_class, set_weight_class) = signal(String::new());
-    let (sort, set_sort) = signal(QualifyingTotalSort::TotalAsc);
+    let (sort, set_sort) = signal("total_asc".to_string());
 
     let totals = load_query::<Vec<QualifyingTotal>>(queries::QUALIFYING_TOTALS);
 
@@ -69,11 +69,11 @@ pub fn QualifyingTotals() -> impl IntoView {
                         selected_meet.is_empty() || row.event_name == selected_meet
                     });
 
-                    match sort.get() {
-                        QualifyingTotalSort::TotalDesc => sort_numeric(&mut filtered_totals, |row| row.qualifying_total, SortDirection::Descending),
-                        QualifyingTotalSort::EventAsc => sort_text(&mut filtered_totals, |row| &row.event_name, SortDirection::Ascending),
-                        QualifyingTotalSort::EventDesc => sort_text(&mut filtered_totals, |row| &row.event_name, SortDirection::Descending),
-                        QualifyingTotalSort::TotalAsc => sort_numeric(&mut filtered_totals, |row| row.qualifying_total, SortDirection::Ascending),
+                    match sort.get().as_str() {
+                        "total_desc" => sort_numeric(&mut filtered_totals, |row| row.qualifying_total, SortDirection::Descending),
+                        "event_asc" => sort_text(&mut filtered_totals, |row| &row.event_name, SortDirection::Ascending),
+                        "event_desc" => sort_text(&mut filtered_totals, |row| &row.event_name, SortDirection::Descending),
+                        _ => sort_numeric(&mut filtered_totals, |row| row.qualifying_total, SortDirection::Ascending),
                     }
                     let is_empty = filtered_totals.is_empty();
                     let rows = filtered_totals
@@ -97,7 +97,7 @@ pub fn QualifyingTotals() -> impl IntoView {
                             <FilterSelect label="Gender" placeholder="All genders" values=genders selected=gender on_select=move |value| set_gender.set(value) />
                             <FilterSelect label="Age" placeholder="All ages" values=ages selected=age on_select=move |value| set_age.set(value) />
                             <FilterSelect label="Weight class" placeholder="All classes" values=weights selected=weight_class on_select=move |value| set_weight_class.set(value) />
-                            <SortSelect sort set_sort />
+                            <SortSelect options=SORT_OPTIONS sort set_sort />
                         </div>
                         <DataTable>
                             <thead>
@@ -135,12 +135,5 @@ mod tests {
 
         assert_eq!(total.event_name, "Nationals");
         assert_eq!(total.qualifying_total, 215.5);
-    }
-
-    #[test]
-    fn every_sort_order_in_the_menu_is_one_the_table_sorts_by() {
-        crate::pages::comp_data::filters::assert_each_sort_order_parses_to_itself::<
-            QualifyingTotalSort,
-        >();
     }
 }

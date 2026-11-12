@@ -14,17 +14,24 @@ function only(text, pattern, what) {
   return versions[0];
 }
 
+const toolsTable = mise.slice(mise.indexOf("[tools]"), mise.indexOf("[tasks."));
 const miseTools = Object.fromEntries(
-  [...mise.matchAll(/^"?([\w:.-]+)"? = (?:"([^"]+)"|\{ version = "([^"]+)")/gm)].map((match) => [
+  [...toolsTable.matchAll(/^"?([\w:.-]+)"? = (?:"([^"]+)"|\{ version = "([^"]+)")/gm)].map((match) => [
     match[1],
     match[2] ?? match[3],
   ]),
 );
 
-test("CI builds with the Trunk the deploy installs", () => {
+test("local builds and CI use the Trunk the deploy installs", () => {
   const deployed = only(vercelBuild, /cargo install trunk --version (\S+)/g, "Trunk install in vercel-build.sh");
   const ci = only(workflow, /cargo install trunk --version (\S+)/g, "Trunk install in web.yml");
   assert.equal(ci, deployed);
+  assert.equal(miseTools["cargo:trunk"], deployed);
+});
+
+test("local audits use the cargo-audit that CI installs", () => {
+  const ci = only(workflow, /cargo install cargo-audit --version (\S+)/g, "cargo-audit install in web.yml");
+  assert.equal(miseTools["cargo:cargo-audit"], ci);
 });
 
 test("local builds use the Rust that CI and the deploy install", () => {
@@ -34,10 +41,17 @@ test("local builds use the Rust that CI and the deploy install", () => {
   assert.equal(miseTools.rust, deployed);
 });
 
-test("every build tool is pinned to an exact version", () => {
+test("every tool in mise.toml is pinned to an exact version, except Node's major", () => {
   const exact = /^\d+\.\d+\.\d+$/;
-  for (const tool of ["rust", "mr-boxington", "cargo:cargo-audit", "cargo:trunk", "cargo:leptosfmt", "cargo:wasm-bindgen-cli", "npm:prettier"]) {
-    assert.match(miseTools[tool] ?? "missing", exact, `${tool} is not pinned in mise.toml`);
+  const tools = Object.entries(miseTools);
+  assert.ok(tools.length >= 8, `read only ${tools.length} tools from mise.toml`);
+  for (const [tool, version] of tools) {
+    if (tool === "node") {
+      const ci = new Set([...workflow.matchAll(/node-version: (\S+)/g)].map((match) => match[1]));
+      assert.deepEqual([...ci], [version]);
+    } else {
+      assert.match(version, exact, `${tool} is not pinned in mise.toml`);
+    }
   }
 });
 
