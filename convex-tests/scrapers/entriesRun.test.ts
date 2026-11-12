@@ -32,7 +32,8 @@ function deployment(afterStoring: (meet: string) => void = () => {}) {
       (error: unknown) => describeFailure(error).failedSources ?? [],
     );
   const failureText = () => handlerOf<Record<string, never>>(run)(ctx, {}).then(() => '', (error: unknown) => describeFailure(error).error);
-  return { stored, failedSources, failureText };
+  const dryRun = () => handlerOf<{ dryRun: boolean }>(run)(ctx, { dryRun: true });
+  return { stored, failedSources, failureText, dryRun };
 }
 
 beforeEach(() => {
@@ -44,6 +45,14 @@ beforeEach(() => {
 afterEach(() => {
   jest.useRealTimers();
   jest.restoreAllMocks();
+});
+
+describe('a dry run of the entries', () => {
+  it('names the stored meet of a target whose entries could not be read', async () => {
+    jest.mocked(fetchJson).mockImplementation(async (url: string) => (url.includes('?') ? { total: 2, data: [entrant] } : { title: `${meetOf(url)} - Members` }));
+    const results = await deployment().dryRun();
+    expect(results[0]).toMatchObject({ label: 'Meet A', meet: 'Meet A', error: expect.any(String) });
+  });
 });
 
 describe("the entries run's time budget (#574)", () => {

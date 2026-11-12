@@ -77,15 +77,18 @@ async function withKnownWsos(ctx: ActionCtx, entries: Entry[]): Promise<Entry[]>
   return entries.map((entry) => (wsos[entry.memberId] ? { ...entry, wso: wsos[entry.memberId] } : entry));
 }
 
-type TargetRead = { meet: string; title: string; completedOn?: string; entries: Entry[] };
+type StoredTarget = { meet: string; title: string; completedOn?: string };
 
-async function readTarget(ctx: ActionCtx, url: string): Promise<TargetRead> {
+async function storedTarget(ctx: ActionCtx, url: string): Promise<StoredTarget> {
   const title = await fetchEntriesMeet(url);
   const eventId = entriesEventId(url);
   const stored: { name: string; status: string; endDate: string } | null = await ctx.runQuery(internal.scrapers.queries.entriesMeet, { sourceId: eventId, title });
   if (!stored) throw new Error(unstoredEntriesMessage(title, eventId, url));
-  if (stored.status === 'completed') return { meet: stored.name, title, completedOn: stored.endDate, entries: [] };
-  return { meet: stored.name, title, entries: await withKnownWsos(ctx, await fetchEntries(url, stored.name)) };
+  return { meet: stored.name, title, ...(stored.status === 'completed' ? { completedOn: stored.endDate } : {}) };
+}
+
+async function readEntries(ctx: ActionCtx, url: string, meet: string): Promise<Entry[]> {
+  return withKnownWsos(ctx, await fetchEntries(url, meet));
 }
 
 type MeetResult = {
@@ -124,23 +127,24 @@ export const run = internalAction({
         continue;
       }
       try {
-        const read = await budget.orStop(readTarget(ctx, target.url));
-        result.meet = read.meet;
-        if (read.title !== read.meet) result.title = read.title;
-        if (read.completedOn !== undefined) {
+        const stored = await budget.orStop(storedTarget(ctx, target.url));
+        result.meet = stored.meet;
+        if (stored.title !== stored.meet) result.title = stored.title;
+        if (stored.completedOn !== undefined) {
           result.skipped = 'meet completed';
-          if (!dryRun && targetExpired(read.completedOn, Date.now())) {
+          if (!dryRun && targetExpired(stored.completedOn, Date.now())) {
             await ctx.runMutation(internal.scrapers.entryTargets.remove, { url: target.url });
-            result.skipped = `meet completed ${read.completedOn}, target removed`;
+            result.skipped = `meet completed ${stored.completedOn}, target removed`;
           }
           continue;
         }
-        result.entries = read.entries.length;
-        result.withWso = read.entries.filter((entry) => entry.wso).length;
-        if (dryRun || read.entries.length === 0) continue;
+        const entries = await budget.orStop(readEntries(ctx, target.url, stored.meet));
+        result.entries = entries.length;
+        result.withWso = entries.filter((entry) => entry.wso).length;
+        if (dryRun || entries.length === 0) continue;
         const counts: { inserted: number; updated: number; unchanged: number; sessionSkipped: number; notOnStartList: number; rejected: number; deleted: number } = await ctx.runMutation(
           internal.ingest.upsertEntryAthletes,
-          { meet: read.meet, rows: read.entries, complete: true, ...(allowShrink ? { allowShrink } : {}) },
+          { meet: stored.meet, rows: entries, complete: true, ...(allowShrink ? { allowShrink } : {}) },
         );
         Object.assign(result, counts);
       } catch (error) {
