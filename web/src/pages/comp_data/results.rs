@@ -101,6 +101,7 @@ enum ResultsAnswer {
     },
     Lifters {
         name: String,
+        searched: String,
         lifters: Vec<LifterChoice>,
         other_results: f64,
     },
@@ -192,6 +193,7 @@ fn athlete_answer(
             other_results,
         } => Ok(Some(ResultsAnswer::Lifters {
             name,
+            searched: query.name.clone(),
             lifters,
             other_results,
         })),
@@ -309,16 +311,16 @@ pub fn Results() -> impl IntoView {
                     }
                     .into_any()
                 }
-                LoadState::Ready(Some(ResultsAnswer::Lifters { name, lifters, other_results })) => {
+                LoadState::Ready(Some(ResultsAnswer::Lifters { name, searched, lifters, other_results })) => {
                     let message = format!("More than one lifter is named {name}. Pick one.");
-                    let other_url = other_results_url(name);
+                    let other_url = other_results_url(searched);
                     let other = (*other_results > 0.0).then(|| {
                         let text = format!("Other results for this name · {}", results_count(*other_results));
                         view! { <A href=other_url>{text}</A> }
                     });
                     let choices = lifters
                         .iter()
-                        .map(|choice| (lifter_url(name, &choice.lifter.id), lifter_choice_text(choice)))
+                        .map(|choice| (lifter_url(searched, &choice.lifter.id), lifter_choice_text(choice)))
                         .collect::<Vec<_>>();
                     view! {
                         <p class="data-status" role="status">{message}</p>
@@ -475,13 +477,15 @@ mod tests {
         )
         .unwrap();
         let Ok(Some(ResultsAnswer::Lifters {
+            searched,
             lifters,
             other_results,
             ..
-        })) = athlete_answer(&lookup("Taylor Johnson"), answer)
+        })) = athlete_answer(&lookup("taylor  johnson"), answer)
         else {
             panic!("a shared name is a choice");
         };
+        assert_eq!(searched, "taylor  johnson");
         assert_eq!(
             lifter_choice_text(&lifters[0]),
             "Taylor Johnson · Age 18 · Barbell Club · 2 results · latest June 1, 2025"
