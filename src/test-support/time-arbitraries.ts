@@ -289,7 +289,7 @@ export function calendarDateTitle(date: string): string {
 }
 
 /** The UTC calendar date of `instant`, from its components. */
-export function utcCalendarDate(instant: Date | number): string {
+export function oracleUtcCalendarDate(instant: Date | number): string {
   return new Date(instant).toISOString().slice(0, 10);
 }
 

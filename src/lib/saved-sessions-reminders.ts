@@ -11,6 +11,7 @@ import {
 } from '@/lib/reminder-preference';
 import { buildSessionScheduleLookup, withScheduleTimes } from '@/lib/saved-schedule-lookup';
 import type { SavedSession } from '@/lib/saved-sessions-store';
+import { utcCalendarDate } from '@/utils/dateTime';
 import type { Schedule as ScheduleType } from '@/types/schedule';
 import {
   cancelNotification,
@@ -291,10 +292,8 @@ export const defaultReminderSyncDeps: ReminderSyncDeps = {
   exactAlarms: async () => exactAlarmsFromStatus(await readExactAlarmStatus()),
 };
 
-/** `YYYY-MM-DD` dates before this cannot be upcoming anywhere. */
 function pastDateCutoff(now: Date): string {
-  const cutoff = new Date(now.getTime() - PAST_DATE_SLACK_DAYS * 24 * 60 * 60 * 1000);
-  return cutoff.toISOString().slice(0, 10);
+  return utcCalendarDate(new Date(now.getTime() - PAST_DATE_SLACK_DAYS * 24 * 60 * 60 * 1000));
 }
 
 /**

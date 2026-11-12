@@ -12,7 +12,7 @@ import {
   meetLocalDate,
   meetTimeZoneArb,
   readWallClock,
-  utcCalendarDate,
+  oracleUtcCalendarDate,
   wallClockExists,
   zonedWallClockArb,
 } from '@/test-support/time-arbitraries';
@@ -73,7 +73,7 @@ export function describeDeviceZoneProperties(deviceTimeZone: string): void {
         fc.property(isoCalendarDateArb, (date) => {
           const anchor = meetCalendarDateAnchor(date);
           expect(anchor).not.toBeNull();
-          expect(utcCalendarDate(anchor!)).toBe(date);
+          expect(oracleUtcCalendarDate(anchor!)).toBe(date);
         }),
       );
     });
@@ -113,7 +113,7 @@ export function describeDeviceZoneProperties(deviceTimeZone: string): void {
     it('cuts history off at the same UTC calendar date on every device', () => {
       fc.assert(
         fc.property(instantArb, fc.integer({ min: 0, max: 10 }), (now, years) => {
-          const { year, month, day } = calendarDateParts(utcCalendarDate(now));
+          const { year, month, day } = calendarDateParts(oracleUtcCalendarDate(now));
           const isLeap = (y: number) => (y % 4 === 0 && y % 100 !== 0) || y % 400 === 0;
           const cutoffYear = String(year - years).padStart(4, '0');
           // Feb 29 into a non-leap year is Mar 1, as `Date.UTC` rolls it and
