@@ -21,16 +21,16 @@ pub struct CompareArgs {
 }
 
 #[derive(Debug, PartialEq)]
-pub struct MetricComparison {
-    pub label: &'static str,
-    pub previous: f64,
-    pub current: f64,
-    pub percent_change: Option<f64>,
-    pub unit: MetricUnit,
+pub(crate) struct MetricComparison {
+    pub(crate) label: &'static str,
+    pub(crate) previous: f64,
+    pub(crate) current: f64,
+    pub(crate) percent_change: Option<f64>,
+    pub(crate) unit: MetricUnit,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum MetricUnit {
+pub(crate) enum MetricUnit {
     Count,
     Kilograms,
     Percent,
@@ -39,10 +39,10 @@ pub enum MetricUnit {
 /// Both years of an athlete's comparison: the name to show and each year's stats (zeros for a
 /// year without results).
 #[derive(Debug, PartialEq)]
-pub struct ComparedYears {
-    pub name: String,
-    pub previous: WrappedStats,
-    pub current: WrappedStats,
+pub(crate) struct ComparedYears {
+    pub(crate) name: String,
+    pub(crate) previous: WrappedStats,
+    pub(crate) current: WrappedStats,
 }
 
 pub async fn run(args: CompareArgs) -> Result<()> {
@@ -71,7 +71,7 @@ pub async fn run(args: CompareArgs) -> Result<()> {
 /// The previous and current years' Wrapped answers (`results:wrapped`), as the stats to compare.
 /// Refuses a year with more results than the server scores, since its stats would miss part of
 /// that year, and a name with no results in either year (with the server's suggestions).
-pub fn compared_years(
+pub(crate) fn compared_years(
     name: &str,
     (previous, previous_answer): (i32, WrappedAnswer),
     (current, current_answer): (i32, WrappedAnswer),
@@ -84,7 +84,9 @@ pub fn compared_years(
                 suggestions.extend(other_names(name, names));
                 Ok(None)
             }
-            other => Err(unscored(name, year, other)),
+            other @ (WrappedAnswer::Ambiguous { .. }
+            | WrappedAnswer::Narrow
+            | WrappedAnswer::TooManyResults { .. }) => Err(unscored(name, year, other)),
         }
     };
     let previous_year = read(previous, previous_answer)?;
@@ -112,7 +114,10 @@ pub fn compared_years(
     })
 }
 
-pub fn comparisons(previous: &WrappedStats, current: &WrappedStats) -> Vec<MetricComparison> {
+pub(crate) fn comparisons(
+    previous: &WrappedStats,
+    current: &WrappedStats,
+) -> Vec<MetricComparison> {
     [
         (
             "Total Weight Lifted",
@@ -168,7 +173,7 @@ pub fn comparisons(previous: &WrappedStats, current: &WrappedStats) -> Vec<Metri
     .collect()
 }
 
-pub fn percent_change(current: f64, previous: f64) -> Option<f64> {
+pub(crate) fn percent_change(current: f64, previous: f64) -> Option<f64> {
     if !current.is_finite() || !previous.is_finite() || previous == 0.0 {
         None
     } else {
@@ -187,7 +192,7 @@ fn render_comparison(
     comparison_report(name, previous_year, current_year, previous, current).to_text()
 }
 
-pub fn comparison_report(
+pub(crate) fn comparison_report(
     name: &str,
     previous_year: i32,
     current_year: i32,
@@ -208,7 +213,11 @@ pub fn comparison_report(
             ]
         })
         .collect();
-    let (table, data) = comparison_tables(previous_year, current_year, rows);
+    let with_results = YearsWithResults {
+        previous: previous.total_meets > 0,
+        current: current.total_meets > 0,
+    };
+    let (table, data) = comparison_tables(previous_year, current_year, rows, with_results);
     Report::new()
         .table_with_data("comparison", table, data)
         .titled(format!(
@@ -216,14 +225,21 @@ pub fn comparison_report(
         ))
 }
 
-/// A year-over-year comparison of `rows` (metric, previous, current, % difference): shown with
-/// the years as column headers, exported with fixed keys and the years as values, so a script
-/// reads `.previous` whatever the years.
-pub fn comparison_tables(
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct YearsWithResults {
+    pub(crate) previous: bool,
+    pub(crate) current: bool,
+}
+
+pub(crate) fn comparison_tables(
     previous_year: i32,
     current_year: i32,
     rows: Vec<[String; 4]>,
+    with_results: YearsWithResults,
 ) -> (Table, Table) {
+    let exported = |value: String, has_results: bool| {
+        if has_results { value } else { String::new() }
+    };
     let mut table = Table::new();
     table.set_header(vec![
         "Metric".to_string(),
@@ -250,17 +266,17 @@ pub fn comparison_tables(
         data.add_row(vec![
             label,
             previous_year.to_string(),
-            previous,
+            exported(previous, with_results.previous),
             current_year.to_string(),
-            current,
-            difference,
+            exported(current, with_results.current),
+            exported(difference, with_results.previous && with_results.current),
         ]);
     }
     (table, data)
 }
 
 /// A metric's value as the comparison tables show it.
-pub fn format_metric(value: f64, unit: MetricUnit) -> String {
+pub(crate) fn format_metric(value: f64, unit: MetricUnit) -> String {
     match unit {
         MetricUnit::Count => format!("{value:.0}"),
         MetricUnit::Kilograms => format!("{}kg", number(value)),
@@ -353,6 +369,14 @@ mod tests {
         assert_eq!(years.current, WrappedStats::default());
         let report = render_comparison("Jane Doe", 2025, 2026, &years.previous, &years.current);
         assert!(report.contains("-100.0%"));
+
+        let exported =
+            comparison_report("Jane Doe", 2025, 2026, &years.previous, &years.current).to_json();
+        for metric in exported.as_array().unwrap() {
+            assert_eq!(metric["current"], serde_json::Value::Null, "{metric}");
+            assert_ne!(metric["previous"], serde_json::Value::Null, "{metric}");
+            assert_eq!(metric["difference"], serde_json::Value::Null, "{metric}");
+        }
     }
 
     #[test]

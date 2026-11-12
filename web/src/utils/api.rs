@@ -63,6 +63,7 @@ pub(crate) const SUBSCRIPTION_FUNCTIONS: &[&str] = &[
     "reference:clubMeets",
     "reference:wsoAthletes",
     "reference:clubMeetStats",
+    "reference:wsoMeetStats",
     "results:byMeet",
     "results:byNames",
     "results:recent",
@@ -1338,7 +1339,7 @@ mod tests {
             assert!(!query.is_premium(), "{}", query.function);
             assert!(!carries_pass(query, &args), "{}", query.function);
         }
-        assert_eq!(SUBSCRIPTION_FUNCTIONS.len(), 23);
+        assert_eq!(SUBSCRIPTION_FUNCTIONS.len(), 24);
         assert!(!SUBSCRIPTION_FUNCTIONS.contains(&ACCESS_PASS));
         assert!(!SUBSCRIPTION_FUNCTIONS.contains(&REFRESH_ENTITLEMENT));
     }

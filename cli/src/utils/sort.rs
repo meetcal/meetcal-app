@@ -3,7 +3,7 @@
 /// Sort key for a weight class: classes holding no whole number at all last (`Open`, `45.5`),
 /// then numeric order, a number's `+` class after the bounded one. Trailing `kg`s and `+`s are
 /// stripped first. Never fails: a class the data spells some new way sorts last instead.
-pub fn weight_class_key(class: &str) -> (bool, i32, bool) {
+pub(crate) fn weight_class_key(class: &str) -> (bool, i32, bool) {
     let mut weight = class;
     while let Some(rest) = weight.strip_suffix("kg") {
         weight = rest;
@@ -22,7 +22,7 @@ pub fn weight_class_key(class: &str) -> (bool, i32, bool) {
 }
 
 /// `items` in weight-class order; items of the same class keep their order.
-pub fn sort_by_class<T, F>(mut items: Vec<T>, mut get_weight_class: F) -> Vec<T>
+pub(crate) fn sort_by_class<T, F>(mut items: Vec<T>, mut get_weight_class: F) -> Vec<T>
 where
     F: FnMut(&T) -> &str,
 {

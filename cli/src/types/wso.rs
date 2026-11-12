@@ -5,14 +5,14 @@ use serde::Deserialize;
 use crate::types::records::RecordHolder;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Movement {
+pub(crate) enum Movement {
     Snatch,
     CleanAndJerk,
     Total,
 }
 
 impl Movement {
-    pub fn rank(self) -> u8 {
+    pub(crate) fn rank(self) -> u8 {
         match self {
             Self::Snatch => 0,
             Self::CleanAndJerk => 1,
@@ -32,34 +32,24 @@ impl fmt::Display for Movement {
 }
 
 #[derive(Debug, Deserialize)]
-pub struct WSORecord {
-    pub weight_class: String,
-    pub snatch_record: Option<f64>,
-    pub cj_record: Option<f64>,
-    pub total_record: Option<f64>,
-    pub gender: String,
-    pub age_category: String,
+pub(crate) struct WSORecord {
+    pub(crate) weight_class: String,
+    pub(crate) snatch_record: Option<f64>,
+    pub(crate) cj_record: Option<f64>,
+    pub(crate) total_record: Option<f64>,
     #[serde(default)]
-    pub snatch_by: Option<RecordHolder>,
+    pub(crate) snatch_by: Option<RecordHolder>,
     #[serde(default)]
-    pub cj_by: Option<RecordHolder>,
+    pub(crate) cj_by: Option<RecordHolder>,
     #[serde(default)]
-    pub total_by: Option<RecordHolder>,
+    pub(crate) total_by: Option<RecordHolder>,
 }
 
 #[derive(Debug, PartialEq)]
-pub struct ClubPrDetail {
-    pub name: String,
-    pub movement: Movement,
-    pub new_pr: f64,
-    pub previous_pr: f64,
-}
-
-#[derive(Debug, PartialEq)]
-pub struct ClubMedalDetail {
-    pub name: String,
-    pub age: String,
-    pub movement: Movement,
-    pub place: usize,
-    pub result: f64,
+pub(crate) struct ClubMedalDetail {
+    pub(crate) name: String,
+    pub(crate) age: String,
+    pub(crate) movement: Movement,
+    pub(crate) place: usize,
+    pub(crate) result: f64,
 }

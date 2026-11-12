@@ -1,3 +1,4 @@
+#![cfg(test)]
 //! A reader that stops early (`meetcal clubs | head -1`) must end the run quietly, not with a
 //! panic. Runs the binary against a local HTTP server; nothing here calls the live API.
 

@@ -1,3 +1,4 @@
+#![cfg(test)]
 //! `meetcal upgrade`, run as a binary against a local HTTP server that plays GitHub's release
 //! list and downloads (`MEETCAL_RELEASES_URL`). Nothing here calls GitHub.
 

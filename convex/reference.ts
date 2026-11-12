@@ -6,7 +6,17 @@ import type { QueryCtx } from './_generated/server';
 import { revalidated, revalidatedText, type Revalidated } from './lib/etag';
 import type { Doc } from './_generated/dataModel';
 import { clubKey, clubLabels } from './lib/clubs';
-import { clubAthleteCount, clubStats, computeStatsRows, isPlaceholderMeet, meetByName, meetResultTitles, readStatsViewItems } from './lib/meetData';
+import {
+  clubAthleteCount,
+  clubStats,
+  computeStatsRows,
+  computeStatsRowsOfWso,
+  isPlaceholderMeet,
+  meetByName,
+  meetResultTitles,
+  readStatsViewItems,
+  wsoStats,
+} from './lib/meetData';
 import { paddedDate, type MeetStatus } from './lib/meetStatus';
 import { ADAPTIVE_RECORDS_SEASON_START, clubNamesPage, computeAdaptiveRecords, computeIntlRankings, computeNationalRankingsForYear, computeQualifyingTotals, computeRecords, computeStandards, computeWsoList, computeWsoRows, distinctCollated, filterWsoRows, nationalRankingPage, requireAdaptiveGender, requireKnownRankingClass, wsoAgeGroups as ageGroupsOf, type WsoRecordRow, isWsoRecordRow } from './lib/referenceData';
 import { athleteGenderLabel } from './lib/normalize';
@@ -618,5 +628,23 @@ export const clubMeetStats = premiumQuery('reference:clubMeetStats', {
       ),
     ]);
     return clubStats(rows, club, clubAthleteCount(roster, club));
+  },
+});
+
+export const wsoMeetStats = premiumQuery('reference:wsoMeetStats', {
+  args: { wso: v.string(), meet: v.string() },
+  handler: async (ctx, { wso, meet }) => {
+    requireNonEmpty('wso', wso);
+    requireNonEmpty('meet', meet);
+    const roster = await readAll(
+      ctx.db
+        .query('athletes')
+        .withIndex('by_meet', (q) => q.eq('meet', meet)),
+      MEET_ROSTER_MAX,
+      'athletes of one meet',
+    );
+    const statsView = await readFreshView(ctx, meetKey(meet, 'stats'));
+    const rows = statsView ? readStatsViewItems(await statsView.items(isAnything)).rows : await computeStatsRowsOfWso(ctx, meet, wso);
+    return wsoStats(rows, roster, wso);
   },
 });
