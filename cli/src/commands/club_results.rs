@@ -4,7 +4,7 @@ use comfy_table::Table;
 
 use crate::types::club::ClubMeetStats;
 use crate::utils::backend::{queries, query};
-use crate::utils::format::{capitalized, display_body_weight, display_weight_class};
+use crate::utils::format::{NO_VALUE, capitalized, display_body_weight, display_weight_class};
 use crate::utils::meet_names::result_meet_aliases;
 use crate::utils::names::{NameKind, clubs, not_found, not_found_message};
 use crate::utils::output::{self, Report};
@@ -239,7 +239,9 @@ fn yes_no(value: bool) -> String {
 }
 
 fn medal_name(medal: Option<&str>) -> String {
-    medal.map(capitalized).unwrap_or_else(|| "-".to_string())
+    medal
+        .map(capitalized)
+        .unwrap_or_else(|| NO_VALUE.to_string())
 }
 
 #[cfg(test)]
@@ -449,7 +451,7 @@ mod tests {
 
     #[test]
     fn formats_missing_and_present_medals() {
-        assert_eq!(medal_name(None), "-");
+        assert_eq!(medal_name(None), NO_VALUE);
         assert_eq!(medal_name(Some("bronze")), "Bronze");
         assert_eq!(medal_name(Some("")), "");
     }

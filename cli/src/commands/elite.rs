@@ -339,7 +339,6 @@ pub(crate) fn report(lists: &EliteLists, methods: &[(EliteList, Method)]) -> Rep
     report
 }
 
-/// A list's rows, with dates written by `date` (US dates to show, ISO ones to export).
 pub(crate) fn table(rows: &[EliteRow], method: Method, date: fn(&str) -> String) -> Table {
     let mut table = Table::new();
     table.set_header(vec![
@@ -509,6 +508,22 @@ pub(crate) mod tests {
         let shown = report(&lists, &default_methods()).to_text();
         assert!(shown.contains("MASTERS — WOMEN (Q-masters)"));
         assert!(shown.contains("OVERALL — WOMEN (% of A)"));
+    }
+
+    #[test]
+    fn a_rows_class_shows_with_its_unit_in_the_table_and_the_export() {
+        let mut open = row("Bea", 90.0);
+        open.weight_class = Some("+87".into());
+        let lists = EliteLists {
+            senior: EliteRanking {
+                men: vec![],
+                women: vec![open],
+            },
+            ..EliteLists::default()
+        };
+        let report = report(&lists, &default_methods());
+        assert_eq!(report.to_json()["senior_women"][0]["class"], "87+kg");
+        assert!(report.to_text().contains("| 87+kg "));
     }
 
     #[test]

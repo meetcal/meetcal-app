@@ -117,9 +117,6 @@ pub(crate) fn session_platform(platform: Option<&str>) -> Result<Option<String>>
     Ok(Some(platform.to_string()))
 }
 
-/// The start list: shown with US dates, 12-hour times, and the session, platform and past-year
-/// bests packed into cells; exported with ISO dates, 24-hour times and a column for each.
-/// `bests` is `None` when they were not asked for.
 pub(crate) fn report(athletes: &[Athletes], bests: Option<&HashMap<String, NamedBests>>) -> Report {
     let mut table = Table::new();
     let mut header = vec![
