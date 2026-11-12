@@ -427,7 +427,7 @@ describe('load', () => {
 
     it(`answers 504 when a search takes ${SEARCH_BUDGET_MS / 1000} seconds`, async () => {
       withMovingClock();
-      fetchLocatorPageMock.mockReset().mockReturnValueOnce(new Promise(() => {}));
+      fetchWidgetPageMock.mockReset().mockReturnValueOnce(new Promise(() => {}));
       expect(await afterTheBudget(actionServer().search('Turkey Cup'), SEARCH_BUDGET_MS)).toEqual(SLOW);
     });
   });
@@ -442,16 +442,23 @@ describe('load', () => {
 });
 
 describe('search', () => {
-  const LOCATOR = 'https://usaweightlifting.sport80.com/api/public/events/locator/data';
+  const LISTING = 'https://usaweightlifting.sport80.com/api/public/widget/data/new/1';
   const event = (id: number, extra: Record<string, unknown> = {}) => ({
     id: String(id),
     is_event: true,
     name: `Cup ${id}`,
-    subtitle: `November 21st 2026 - Town ${id}`,
-    actions: [{ url: `https://usaweightlifting.sport80.com/public/events/${id}/entries/${id + 1}?bl=locator`, text: 'Entry List' }],
+    subtitle: '11/21/2026 - 11/22/2026',
+    address: `Gym, 1 Main St, Town ${id}, Missouri, United States of America, 64504`,
+    actions: [
+      { url: `https://usaweightlifting.sport80.com/public/wizard/e/${id}`, text: 'Enter Now' },
+      { url: `https://usaweightlifting.sport80.com/public/events/${id}/entries/${id + 1}?bl=`, text: 'Entry List' },
+    ],
     ...extra,
   });
-  const pages = (total: number, rows: unknown[][]) => fetchLocatorPageMock.mockReset().mockImplementation(async (url) => ({ total: String(total), data: rows[Number(new URL(url).searchParams.get('p'))] ?? [] }));
+  const pages = (total: number, rows: unknown[][]) =>
+    fetchWidgetPageMock.mockReset().mockImplementation(async (url) => ({ total, data: rows[Number(new URL(url).searchParams.get('p'))] ?? [] }));
+
+  beforeEach(() => fetchLocatorPageMock.mockReset());
 
   function searchServer(seed: Record<string, Record<string, unknown>[]> = {}) {
     const store = fakeMutationCtx(seed);
@@ -459,16 +466,39 @@ describe('search', () => {
     return { ...store, search: (query: string) => handlerOf<Args>(search)(ctx, { query }) };
   }
 
-  it("lists upcoming events by name, with each one's entries list when it has one", async () => {
-    pages(3, [[event(15084), event(15090, { actions: [{ url: 'https://usaweightlifting.sport80.com/public/wizard/e/15090', text: 'Enter Now' }] }), event(15091, { is_event: false })]]);
+  it("lists Sport80's upcoming events by name, with their dates, place and entries list when they have one", async () => {
+    pages(4, [
+      [
+        event(15084),
+        event(15090, { actions: [{ url: 'https://usaweightlifting.sport80.com/public/wizard/e/15090', text: 'Enter Now' }], subtitle: 'TBD', address: null }),
+        event(15091, { is_event: false }),
+        event(15092, { subtitle: '12/05/2026', address: 'Arena, 2 Rue, Paris, France, 75001' }),
+      ],
+    ]);
     expect(await searchServer().search('  Turkey Cup ')).toEqual({
       results: [
-        { eventId: '15084', name: 'Cup 15084', subtitle: 'November 21st 2026 - Town 15084', entriesUrl: 'https://usaweightlifting.sport80.com/public/events/15084/entries/15085' },
-        { eventId: '15090', name: 'Cup 15090', subtitle: 'November 21st 2026 - Town 15090', entriesUrl: null },
+        {
+          eventId: '15084',
+          name: 'Cup 15084',
+          startDate: '2026-11-21',
+          endDate: '2026-11-22',
+          place: 'Town 15084, Missouri',
+          entriesUrl: 'https://usaweightlifting.sport80.com/public/events/15084/entries/15085',
+        },
+        { eventId: '15090', name: 'Cup 15090', startDate: '', endDate: '', place: '', entriesUrl: null },
+        {
+          eventId: '15092',
+          name: 'Cup 15092',
+          startDate: '2026-12-05',
+          endDate: '2026-12-05',
+          place: 'Paris, France',
+          entriesUrl: 'https://usaweightlifting.sport80.com/public/events/15092/entries/15093',
+        },
       ],
       truncated: false,
     });
-    expect(fetchLocatorPageMock.mock.calls).toEqual([[`${LOCATOR}?p=0&l=20&s=Turkey%20Cup`]]);
+    expect(fetchWidgetPageMock.mock.calls).toEqual([[`${LISTING}?p=0&i=20&l=&d=10&f=&s=Turkey%20Cup`]]);
+    expect(fetchLocatorPageMock).not.toHaveBeenCalled();
   });
 
   it(`answers at most ${MAX_SEARCH_RESULTS} events from ${MAX_SEARCH_PAGES} pages, and says when there were more`, async () => {
@@ -477,7 +507,7 @@ describe('search', () => {
     const answer = (await searchServer().search('Open')) as { results: { eventId: string }[]; truncated: boolean };
     expect(answer.results.map((r) => r.eventId)).toEqual(page(1000).map((r) => r.id));
     expect(answer.truncated).toBe(true);
-    expect(fetchLocatorPageMock).toHaveBeenCalledTimes(MAX_SEARCH_PAGES);
+    expect(fetchWidgetPageMock).toHaveBeenCalledTimes(MAX_SEARCH_PAGES);
   });
 
   it('fills from the next page what non-events left out, and is not truncated once every match is read', async () => {
@@ -496,7 +526,7 @@ describe('search', () => {
     pages(0, []);
     const store = searchServer();
     expect(await failure(store.search(query))).toMatchObject({ status: 400, error });
-    expect(fetchLocatorPageMock).not.toHaveBeenCalled();
+    expect(fetchWidgetPageMock).not.toHaveBeenCalled();
     expect(store.rows('schedule_builder_searches')).toEqual([]);
   });
 
@@ -516,12 +546,12 @@ describe('search', () => {
       max: MAX_SEARCHES_PER_HOUR,
     });
     expect(store.rows('schedule_builder_searches')).toHaveLength(MAX_SEARCHES_PER_HOUR);
-    expect(fetchLocatorPageMock).toHaveBeenCalledTimes(1);
+    expect(fetchWidgetPageMock).toHaveBeenCalledTimes(1);
   });
 
   it('answers 502 when Sport80 fails or answers something else', async () => {
     jest.spyOn(console, 'error').mockImplementation(() => undefined);
-    fetchLocatorPageMock.mockReset().mockRejectedValueOnce(new Error('POST locator failed with 500')).mockResolvedValueOnce({ total: 1, data: 'nope' });
+    fetchWidgetPageMock.mockReset().mockRejectedValueOnce(new Error('GET widget failed with 500')).mockResolvedValueOnce({ total: 1, data: 'nope' });
     const store = searchServer();
     expect(await failure(store.search('Turkey'))).toEqual({ status: 502, error: 'Sport80 did not answer; try again in a minute' });
     expect(await failure(store.search('Turkey'))).toEqual({ status: 502, error: 'Sport80 did not answer; try again in a minute' });

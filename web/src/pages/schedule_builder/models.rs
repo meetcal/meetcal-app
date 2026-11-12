@@ -1,4 +1,4 @@
-use crate::utils::api::{BuilderDay, BuilderEdit, BuilderOptions, Grouping, SessionOrder};
+use crate::utils::api::{BuilderDay, BuilderEdit, BuilderOptions, Grouping, MeetMatch, SessionOrder};
 use serde::{Deserialize, Serialize};
 
 pub(crate) const MAX_BUILDER_DAYS: usize = 7;
@@ -130,6 +130,20 @@ pub(crate) struct Publications {
 pub(crate) fn is_sport80_link(text: &str) -> bool {
     let text = text.trim().to_ascii_lowercase();
     text.starts_with("http://") || text.starts_with("https://") || text.contains("sport80.com/")
+}
+
+pub(crate) fn match_details(found: &MeetMatch) -> String {
+    use crate::pages::comp_data::format::format_us_date;
+    let dates = match (found.start_date.as_str(), found.end_date.as_str()) {
+        ("", _) => String::new(),
+        (start, end) if end.is_empty() || end == start => format_us_date(start),
+        (start, end) => format!("{} – {}", format_us_date(start), format_us_date(end)),
+    };
+    [dates, found.place.clone()]
+        .into_iter()
+        .filter(|part| !part.is_empty())
+        .collect::<Vec<_>>()
+        .join(" · ")
 }
 
 pub(crate) fn unbuilt_message(kept_edits: usize, message: &str) -> String {
@@ -446,6 +460,37 @@ mod tests {
         for name in ["Turkey Cup", "  ", "", "sport80", "Https Open"] {
             assert!(!is_sport80_link(name), "{name}");
         }
+    }
+
+    #[test]
+    fn a_match_reads_its_dates_and_place() {
+        let found = MeetMatch {
+            event_id: "15084".to_owned(),
+            name: "Turkey Cup".to_owned(),
+            start_date: "2026-11-21".to_owned(),
+            end_date: "2026-11-21".to_owned(),
+            place: "Saint Joseph, Missouri".to_owned(),
+            entries_url: None,
+        };
+        assert_eq!(
+            match_details(&found),
+            "November 21, 2026 · Saint Joseph, Missouri"
+        );
+        let two_days = MeetMatch {
+            end_date: "2026-11-22".to_owned(),
+            place: String::new(),
+            ..found.clone()
+        };
+        assert_eq!(
+            match_details(&two_days),
+            "November 21, 2026 – November 22, 2026"
+        );
+        let undated = MeetMatch {
+            start_date: String::new(),
+            end_date: String::new(),
+            ..found
+        };
+        assert_eq!(match_details(&undated), "Saint Joseph, Missouri");
     }
 
     #[test]

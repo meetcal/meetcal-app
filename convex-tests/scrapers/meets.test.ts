@@ -329,10 +329,18 @@ describe("Sport80's event locator", () => {
           id: '14189',
           name: 'Turkey Cup',
           subtitle: 'November 22nd 2025 - S Joseph, Missouri',
+          address: '5400 King Hill Ave, S Joseph, Missouri, United States of America, 64504',
           isEvent: true,
           entriesUrl: 'https://usaweightlifting.sport80.com/public/events/14189/entries/21081',
         },
-        { id: '15084', name: 'Turkey Cup', subtitle: 'November 21st 2026 - Saint Joseph, Missouri', isEvent: true, entriesUrl: ENTRIES },
+        {
+          id: '15084',
+          name: 'Turkey Cup',
+          subtitle: 'November 21st 2026 - Saint Joseph, Missouri',
+          address: '5400 King Hill Ave, Saint Joseph, Missouri, United States of America, 64504-1503',
+          isEvent: true,
+          entriesUrl: ENTRIES,
+        },
       ],
     });
   });

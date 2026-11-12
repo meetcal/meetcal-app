@@ -935,8 +935,8 @@ fn meet_searches_read_each_match_and_its_entries_list() {
         BUILDER_SEARCH,
         answer(json!({ "status": "success", "value": {
             "results": [
-                { "eventId": "15084", "name": "Turkey Cup", "subtitle": "November 21st 2026 - Saint Joseph, Missouri", "entriesUrl": "https://usaweightlifting.sport80.com/public/events/15084/entries/21962" },
-                { "eventId": "15090", "name": "Turkey Open", "subtitle": "", "entriesUrl": null }
+                { "eventId": "15084", "name": "Turkey Cup", "startDate": "2026-11-21", "endDate": "2026-11-21", "place": "Saint Joseph, Missouri", "entriesUrl": "https://usaweightlifting.sport80.com/public/events/15084/entries/21962" },
+                { "eventId": "15090", "name": "Turkey Open", "startDate": "", "endDate": "", "place": "", "entriesUrl": null }
             ],
             "truncated": true
         } })),

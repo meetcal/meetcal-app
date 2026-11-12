@@ -21,7 +21,7 @@ use leptos_router::components::A;
 use leptos_router::hooks::{use_navigate, use_query_map};
 use models::{
     BuiltSchedule, Defaults, LocalWork, MAX_BUILDER_EDITS, SavedDraft, Start, checked_options,
-    form_of, is_sport80_link, starting_point, unbuilt_message,
+    form_of, is_sport80_link, match_details, starting_point, unbuilt_message,
 };
 use publish::PublishPanel;
 
@@ -231,16 +231,17 @@ fn MeetMatchList(
                 .results
                 .into_iter()
                 .map(|found| {
-                    let label = if found.subtitle.is_empty() {
+                    let details = match_details(&found);
+                    let label = if details.is_empty() {
                         format!("Load {}", found.name)
                     } else {
-                        format!("Load {}, {}", found.name, found.subtitle)
+                        format!("Load {}, {details}", found.name)
                     };
                     view! {
                         <li class="builder-list-row">
                             <span class="builder-match">
                                 <span class="builder-match-name">{found.name}</span>
-                                <span class="builder-list-meta">{found.subtitle}</span>
+                                <span class="builder-list-meta">{details}</span>
                             </span>
                             {match found.entries_url {
                                 Some(link) => {

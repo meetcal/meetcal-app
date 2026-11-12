@@ -70,7 +70,7 @@ function schedule(edits: Edit[], { secondDay, twins = false }: Shape = {}) {
   };
 }
 
-type Match = { eventId: string; name: string; subtitle: string; entriesUrl: string | null };
+type Match = { eventId: string; name: string; startDate: string; endDate: string; place: string; entriesUrl: string | null };
 type MockSetup = Shape & { signedIn?: boolean; loadError?: string; refuseSessionMinutes?: number[]; matches?: Match[]; truncated?: boolean };
 
 async function mockBuilder(page: Page, { signedIn = false, loadError = "", refuseSessionMinutes = [], matches = [], truncated = false, ...shape }: MockSetup = {}) {
@@ -416,8 +416,8 @@ test("a load Sport80 refuses shows the server's reason", async ({ page }) => {
   await expect(page).toHaveURL(/\/schedule-builder$/);
 });
 
-const TURKEY_CUP: Match = { eventId: "15084", name: MEET, subtitle: "November 21st 2026 - Saint Joseph, Missouri", entriesUrl: ENTRIES_URL };
-const UNLISTED: Match = { eventId: "15090", name: "Turkey Open", subtitle: "December 5th 2026 - Austin, Texas", entriesUrl: null };
+const TURKEY_CUP: Match = { eventId: "15084", name: MEET, startDate: "2026-11-21", endDate: "2026-11-21", place: "Saint Joseph, Missouri", entriesUrl: ENTRIES_URL };
+const UNLISTED: Match = { eventId: "15090", name: "Turkey Open", startDate: "2026-12-05", endDate: "2026-12-06", place: "Austin, Texas", entriesUrl: null };
 
 test("a meet's name searches Sport80 on Enter, and a match loads from its entries list", async ({ page }) => {
   const calls = await mockBuilder(page, { matches: [TURKEY_CUP, UNLISTED] });
@@ -430,13 +430,14 @@ test("a meet's name searches Sport80 on Enter, and a match loads from its entrie
   const matches = page.getByRole("list", { name: "Matching Meets" });
   await expect(matches.getByRole("listitem")).toHaveCount(2);
   expect(calls.searches.map((call) => call.args)).toEqual([{ query: "Turkey Cup" }]);
-  await expect(matches.getByRole("listitem").first()).toContainText("November 21st 2026 - Saint Joseph, Missouri");
+  await expect(matches.getByRole("listitem").first()).toContainText("November 21, 2026 · Saint Joseph, Missouri");
+  await expect(matches.getByRole("listitem").last()).toContainText("December 5, 2026 – December 6, 2026 · Austin, Texas");
   const unlisted = matches.getByRole("listitem").filter({ hasText: "Turkey Open" });
   await expect(unlisted).toContainText("No Entry List Yet");
   await expect(unlisted.getByRole("button")).toHaveCount(0);
   await expect(page.getByText("Sport80 has more matches")).toHaveCount(0);
 
-  await matches.getByRole("button", { name: "Load Turkey Cup, November 21st 2026 - Saint Joseph, Missouri" }).click();
+  await matches.getByRole("button", { name: "Load Turkey Cup, November 21, 2026 · Saint Joseph, Missouri" }).click();
   await expect(page).toHaveURL(/\/schedule-builder\?meet=Turkey(%20|\+)Cup$/);
   expect(calls.loads.map((call) => call.args)).toEqual([{ url: ENTRIES_URL }]);
   expect(calls.searches).toHaveLength(1);

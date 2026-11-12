@@ -125,7 +125,9 @@ pub(crate) struct LoadedMeet {
 pub(crate) struct MeetMatch {
     pub event_id: String,
     pub name: String,
-    pub subtitle: String,
+    pub start_date: String,
+    pub end_date: String,
+    pub place: String,
     pub entries_url: Option<String>,
 }
 

@@ -13,12 +13,15 @@ import { runBudget } from './scrapers/lib/budget';
 import {
   findLocatorRow,
   isAdaptiveListing,
-  LOCATOR_PAGE_SIZE,
   locatorPageUrl,
+  parseAddress,
+  parseDateRange,
   readAllWidgetPages,
   readLocatorPage,
   transformMeets,
+  WIDGET_PAGE_SIZE,
   widgetPageUrl,
+  type LocatorRow,
   type WidgetRow,
 } from './scrapers/parse/meets';
 
@@ -132,13 +135,28 @@ export const load = action({
   },
 });
 
-export type MeetMatch = { eventId: string; name: string; subtitle: string; entriesUrl: string | null };
+export type MeetMatch = { eventId: string; name: string; startDate: string; endDate: string; place: string; entriesUrl: string | null };
 
 export function searchQueryOf(query: string): string {
   const trimmed = query.trim();
   if (trimmed.length < MIN_SEARCH_LENGTH) throw apiError(400, `type at least ${MIN_SEARCH_LENGTH} characters of the meet's name`);
   if (trimmed.length > MAX_SEARCH_LENGTH) throw apiError(400, `a meet name is at most ${MAX_SEARCH_LENGTH} characters`, { max: MAX_SEARCH_LENGTH });
   return trimmed;
+}
+
+const KNOWN = (part: string) => part !== '' && part !== 'Unknown';
+
+export function meetMatchOf(row: LocatorRow): MeetMatch {
+  const dates = parseDateRange(row.subtitle);
+  const { city, state } = parseAddress(row.address);
+  return {
+    eventId: row.id,
+    name: row.name,
+    startDate: dates?.startDate ?? '',
+    endDate: dates?.endDate ?? '',
+    place: row.address === '' ? '' : [city, state].filter(KNOWN).join(', '),
+    entriesUrl: row.entriesUrl,
+  };
 }
 
 export async function upcomingMatches(fetchPage: (page: number) => Promise<unknown>): Promise<{ results: MeetMatch[]; truncated: boolean }> {
@@ -148,8 +166,8 @@ export async function upcomingMatches(fetchPage: (page: number) => Promise<unkno
   for (let page = 0; page < MAX_SEARCH_PAGES && matches.length <= MAX_SEARCH_RESULTS; page++) {
     const { total, rows } = readLocatorPage(await fetchPage(page));
     read += rows.length;
-    for (const row of rows) if (row.isEvent) matches.push({ eventId: row.id, name: row.name, subtitle: row.subtitle, entriesUrl: row.entriesUrl });
-    more = read < total && rows.length === LOCATOR_PAGE_SIZE;
+    matches.push(...rows.filter((row) => row.isEvent).map(meetMatchOf));
+    more = read < total && rows.length === WIDGET_PAGE_SIZE;
     if (!more) break;
   }
   return { results: matches.slice(0, MAX_SEARCH_RESULTS), truncated: matches.length > MAX_SEARCH_RESULTS || more };
@@ -161,6 +179,6 @@ export const search = action({
     const name = searchQueryOf(query);
     await ctx.runMutation(internal.scheduleBuilder.claimSearch, {});
     const fromSport80 = sport80Within(SEARCH_BUDGET_MS, 'search');
-    return await fromSport80(upcomingMatches((page) => fetchLocatorPage(locatorPageUrl(name, page))));
+    return await fromSport80(upcomingMatches((page) => fetchWidgetPage(widgetPageUrl(name, page))));
   },
 });
