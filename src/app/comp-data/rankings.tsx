@@ -1,3 +1,4 @@
+import { SLIDE_IN_FROM_RIGHT, stackHeaderOptions } from "@/lib/stack-header-options";
 import { DataTable } from "@/components/ui/DataTable";
 import { FilterBar } from "@/components/ui/FilterBar";
 import { SubscriptionGate } from "@/components/ui/SubscriptionGate";
@@ -17,8 +18,9 @@ import {
   computeDefaultRankingFilters,
   filterIntlRankings,
 } from "@/lib/rankings-filters";
+import { filterSummary } from "@/lib/filter-summary";
 import { sortAgeGroups } from "@/lib/sortAgeGroups";
-import { Filters } from "@/types/rankings";
+import { RankingsFilters } from "@/types/rankings";
 import { Stack, useLocalSearchParams } from "expo-router";
 import React, { useEffect, useMemo, useState } from "react";
 import { StyleSheet, View } from "react-native";
@@ -42,7 +44,7 @@ function IntlRankingsScreenContent() {
     age_category?: string;
     gender?: string;
   }>();
-  const defaultFilters = useMemo<Filters>(
+  const defaultFilters = useMemo<RankingsFilters>(
     () => ({
       meet: routeParams.meet || "",
       age_category: routeParams.age_category || "",
@@ -64,7 +66,7 @@ function IntlRankingsScreenContent() {
     setTempFilters,
     openFilters,
     filterModalProps,
-  } = useFilterState<Filters>({
+  } = useFilterState<RankingsFilters>({
     defaultFilters,
     resetKey: filterResetKey,
   });
@@ -139,12 +141,11 @@ function IntlRankingsScreenContent() {
     [intlRankings, filters],
   );
 
-  const getFilterDisplayText = () => {
-    const meet = filters.meet;
-    const age_category = filters.age_category;
-    const gender = filters.gender;
-    return `${meet} • ${age_category} • ${gender}`;
-  };
+  const getFilterDisplayText = () =>
+    filterSummary(
+      [filters.meet, filters.age_category, filters.gender],
+      "All rankings",
+    );
 
   // Unlike the sibling screens, reset cannot go through `useFilterState`'s
   // `onReset`: the defaults here are derived from the fetched rankings, not
@@ -211,21 +212,9 @@ function IntlRankingsScreenContent() {
     >
       <Stack.Screen
         options={{
+          ...stackHeaderOptions(colors),
+          ...SLIDE_IN_FROM_RIGHT,
           title: `International Rankings`,
-          headerBackTitle: "Back",
-          headerShown: true,
-          gestureEnabled: true,
-          gestureDirection: "horizontal",
-          animation: "slide_from_right",
-          headerTitleStyle: {
-            color: colors.headerTitle,
-          },
-          headerStyle: {
-            backgroundColor: colors.headerBackground,
-          },
-          headerShadowVisible: false,
-          headerBackButtonDisplayMode: "minimal",
-          headerTintColor: colors.text,
         }}
       />
 

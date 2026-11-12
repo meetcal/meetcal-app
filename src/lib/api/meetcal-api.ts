@@ -1,5 +1,5 @@
 import { canonicalizePlatform, filterSessionAthletes, isLiftResult, normalizeAthleteName } from '@/lib/athletes';
-import { LiftResult, Platform, SupabaseLiftResult } from '@/data/types/athletes';
+import { LiftResult, Platform, AthleteMeetResult } from '@/data/types/athletes';
 import { Meet, MeetName } from '@/data/types/meet';
 import type { Schedule } from '@/types/schedule';
 import {
@@ -23,6 +23,21 @@ import {
 } from '@/lib/api/http-cache';
 import { accessPassFor, wantsAccessPass, type AccessPass } from '@/lib/api/premium-queries';
 import { callApi, TransportRequestError, type ApiCall } from '@/lib/api/transport';
+import { getTrustedNow, sampleServerClockWhenStale } from '@/lib/api/server-clock';
+
+export {
+  awaitServerClock,
+  getServerClockSample,
+  getServerClockSkewMs,
+  getTrustedNow,
+  MAX_PLAUSIBLE_CLOCK_SKEW_MS,
+  refreshServerClock,
+  resetServerClockForTests,
+  SERVER_CLOCK_CALL,
+  SERVER_CLOCK_DECISION_GRACE_MS,
+  SERVER_CLOCK_RESAMPLE_MS,
+  type ServerClockSample,
+} from '@/lib/api/server-clock';
 
 // The app's backend is Convex (`convex/`). Each function below calls the
 // Convex query or mutation that answers exactly the JSON the Rust API's route
@@ -137,146 +152,6 @@ export class MeetCalApiError extends Error {
 }
 
 /**
- * Server clock, as sampled from the `Date` header of a `system:ping` answer
- * (a constant query, so always a cache hit; see `serverClockMs`).
- *
- * Destructive housekeeping — auto-unsaving started sessions (server DELETE
- * included), clearing a downloaded meet once it has ended — used to trust
- * `Date.now()`. A device clock a few hours ahead deleted today's sessions
- * before they began; a day ahead wiped the downloaded meet at the next
- * refresh tick, offline included. Those decisions now use the server's
- * clock, sampled alongside the first request and refreshed while the app
- * talks to the backend, never persisted: a fresh process has no sample until
- * it has talked to the backend, and callers skip rather than guess (late is
- * harmless, early is data loss).
- */
-export type ServerClockSample = {
-  /** Server time minus device time at the sample, in ms. Positive: device is behind. */
-  skewMs: number;
-  /** `Date.now()` on the device when the sample was taken. */
-  sampledAt: number;
-};
-
-/**
- * Beyond this, the device clock is not merely drifting and a decision that
- * mixes device wall-clock inputs (stored meet-local times) with server time
- * is not one to make automatically. Well past NTP drift, well short of a
- * time-zone mistake.
- */
-export const MAX_PLAUSIBLE_CLOCK_SKEW_MS = 15 * 60 * 1000;
-
-/** A sample older than this is refreshed (in the background) on the next request. */
-export const SERVER_CLOCK_RESAMPLE_MS = 10 * 60 * 1000;
-/**
- * How long `awaitServerClock` waits for a sample in flight. The first
- * request of the process used to wait this long for its sample before
- * handing back data that had already arrived, which delayed the first
- * schedule on every cold start; now only the decisions that want the
- * server's clock right after a request wait, and only for this long.
- */
-export const SERVER_CLOCK_DECISION_GRACE_MS = 2000;
-
-function waitAtMost(promise: Promise<void>, ms: number): Promise<void> {
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  return Promise.race([
-    promise,
-    new Promise<void>((resolve) => {
-      timer = setTimeout(resolve, ms);
-    }),
-  ]).finally(() => clearTimeout(timer));
-}
-
-/** After this, an unanswered clock sample is given up on and may be retried. */
-const SERVER_CLOCK_SAMPLE_TIMEOUT_MS = 10000;
-/** A sample whose round trip took longer than this is too imprecise to keep. */
-const MAX_CLOCK_SAMPLE_ROUND_TRIP_MS = 5000;
-
-/**
- * The clock sample's request. App bundles before this one called the
- * `system:serverTime` mutation instead, which runs (and bills) every time.
- */
-export const SERVER_CLOCK_CALL: ApiCall = { path: '/clock', fn: 'system:ping', kind: 'clock', args: {} };
-
-let serverClockSample: ServerClockSample | null = null;
-let serverClockInFlight: Promise<void> | null = null;
-
-/**
- * Asks the server for its clock and records the skew against the midpoint of
- * the round trip. Failures are swallowed: the sample is a hint, and the
- * request it rides alongside reports its own errors.
- */
-function sampleServerClock(): Promise<void> {
-  if (serverClockInFlight) return serverClockInFlight;
-  const sentAt = Date.now();
-  const sample = callApi(SERVER_CLOCK_CALL)
-    .then((serverNow) => {
-      if (typeof serverNow !== 'number' || !Number.isFinite(serverNow)) return;
-      const receivedAt = Date.now();
-      // The midpoint is only as good as half the round trip.
-      if (receivedAt - sentAt > MAX_CLOCK_SAMPLE_ROUND_TRIP_MS) return;
-      serverClockSample = { skewMs: serverNow - (sentAt + receivedAt) / 2, sampledAt: receivedAt };
-    })
-    .catch(() => {});
-  // A sample stuck on a dropped connection is abandoned, so a later request
-  // can start a fresh one instead of joining it forever.
-  serverClockInFlight = waitAtMost(sample, SERVER_CLOCK_SAMPLE_TIMEOUT_MS).finally(() => {
-    serverClockInFlight = null;
-  });
-  return serverClockInFlight;
-}
-
-/**
- * Takes a new server clock sample (or joins the one in flight) and returns
- * the latest sample once it settles. For a decision that needs the server's
- * time now, not whenever the last request happened to sample it (the prune of
- * started sessions). Bounded by `SERVER_CLOCK_SAMPLE_TIMEOUT_MS`.
- */
-export async function refreshServerClock(): Promise<ServerClockSample | null> {
-  await sampleServerClock();
-  return serverClockSample;
-}
-
-/**
- * The server clock sample, waiting up to `maxWaitMs` for one when this
- * process has none yet (joining the sample in flight, or starting one).
- * Null when none arrives in time (offline, a dropped connection). For a
- * decision made right after a request that wants the server's clock (is the
- * stored meet over?) now that requests no longer wait for their sample.
- */
-export async function awaitServerClock(
-  maxWaitMs: number = SERVER_CLOCK_DECISION_GRACE_MS,
-): Promise<ServerClockSample | null> {
-  if (serverClockSample) return serverClockSample;
-  await waitAtMost(sampleServerClock(), maxWaitMs);
-  return serverClockSample;
-}
-
-/** The last server clock sample this process took, or null before any response. */
-export function getServerClockSample(): ServerClockSample | null {
-  return serverClockSample;
-}
-
-/** Server time minus device time in ms, or null before any response. */
-export function getServerClockSkewMs(): number | null {
-  return serverClockSample?.skewMs ?? null;
-}
-
-/**
- * Now, on the server's clock: the device clock corrected by the last sample.
- * Null when this process has not heard from the backend yet.
- */
-export function getTrustedNow(): Date | null {
-  if (!serverClockSample) return null;
-  return new Date(Date.now() + serverClockSample.skewMs);
-}
-
-/** Forgets the clock sample. For tests. */
-export function resetServerClockForTests(): void {
-  serverClockSample = null;
-  serverClockInFlight = null;
-}
-
-/**
  * The request did not finish inside its timeout.
  *
  * A distinct class rather than a plain `Error`, because "the request timed
@@ -376,9 +251,7 @@ async function send(call: ApiCall, timeoutMs: number): Promise<unknown> {
       abort?.abort();
     }, timeoutMs);
   });
-  if (serverClockSample === null || Date.now() - serverClockSample.sampledAt > SERVER_CLOCK_RESAMPLE_MS) {
-    void sampleServerClock();
-  }
+  sampleServerClockWhenStale();
 
   try {
     return await Promise.race([callApi(abort ? { ...call, signal: abort.signal } : call), timeout]);
@@ -530,17 +403,17 @@ async function getRevalidated<T>(
 }
 
 export type ApiMeet = {
-  id?: string;
-  federation?: string;
+  id?: string | null;
+  federation?: string | null;
   end_date: string;
   name: string;
   start_date: string;
   time_zone: string;
-  venue_city: string;
-  venue_name: string;
-  venue_state: string;
-  venue_street: string;
-  venue_zip: string;
+  venue_city?: string | null;
+  venue_name?: string | null;
+  venue_state?: string | null;
+  venue_street?: string | null;
+  venue_zip?: string | null;
   venue_map_pdf_url?: string | null;
   venue_map_apple_url?: string | null;
   status: string;
@@ -549,25 +422,25 @@ export type ApiMeet = {
 export type ApiScheduleRow = {
   date: string;
   meet?: string;
-  platform: string;
+  platform?: string | null;
   session_id: number;
-  start_time: string;
-  weigh_in_time: string;
-  weight_class: string;
+  start_time?: string | null;
+  weigh_in_time?: string | null;
+  weight_class?: string | null;
 };
 
 export type ApiAthlete = {
-  member_id: string;
-  adaptive: boolean;
-  age: number;
-  club: string;
-  entry_total: number;
-  gender: string;
+  member_id?: string | null;
+  adaptive?: boolean | null;
+  age?: number | string | null;
+  club?: string | null;
+  entry_total?: number | string | null;
+  gender?: string | null;
   meet?: string;
   name: string;
   session_number?: number | null;
   session_platform?: string | null;
-  weight_class: string;
+  weight_class?: string | null;
   wso?: string | null;
 };
 
@@ -586,24 +459,24 @@ export type ApiAthleteWithSession = ApiAthlete & {
 };
 
 export type ApiLiftingResult = {
-  id?: number;
-  event_id?: string;
-  federation?: string;
+  id?: number | null;
+  event_id?: string | null;
+  federation?: string | null;
   meet: string;
   date: string;
   name: string;
-  age: string;
-  body_weight: number;
-  snatch1: number;
-  snatch2: number;
-  snatch3: number;
-  snatch_best: number;
-  cj1: number;
-  cj2: number;
-  cj3: number;
-  cj_best: number;
-  total: number;
-  adaptive?: boolean;
+  age?: string | number | null;
+  body_weight?: number | null;
+  snatch1?: number | null;
+  snatch2?: number | null;
+  snatch3?: number | null;
+  snatch_best?: number | null;
+  cj1?: number | null;
+  cj2?: number | null;
+  cj3?: number | null;
+  cj_best?: number | null;
+  total?: number | null;
+  adaptive?: boolean | null;
 };
 
 export type ApiYearBests = {
@@ -858,9 +731,6 @@ export function mapApiAthlete(row: ApiAthleteWithSession): LiftResult {
     memberId: row.member_id || '',
     name: row.name,
     age: toFiniteNumber(row.age, 0),
-    // Nullable in practice even though the row type says otherwise; the
-    // screens already render '' and 0 for these, so default rather than
-    // failing the row.
     club: row.club ?? '',
     wso: row.wso || undefined,
     gender: row.gender || '',
@@ -916,13 +786,12 @@ function fallbackEventId(meet: string, date: string, name: string): string {
  * (text) or `null` (a lift), so one bad cell never reaches a screen or the
  * offline cache as a string where a number belongs.
  */
-export function mapApiLiftingResult(row: ApiLiftingResult, index = 0): SupabaseLiftResult {
+export function mapApiLiftingResult(row: ApiLiftingResult): AthleteMeetResult {
   assertObject(row, 'lifting result');
   const meet = nullableString(row.meet) ?? '';
   const date = nullableString(row.date) ?? '';
   const name = nullableString(row.name) ?? '';
   return {
-    id: nullableNumber(row.id) ?? index,
     event_id: nullableString(row.event_id) || fallbackEventId(meet, date, name),
     meet,
     date,
@@ -1085,9 +954,9 @@ export type ResultsByNamesOptions = {
 export async function fetchApiResultsByNames(
   names: string[],
   options: ResultsByNamesOptions = {},
-): Promise<SupabaseLiftResult[]> {
+): Promise<AthleteMeetResult[]> {
   if (names.length === 0) return [];
-  const rows: SupabaseLiftResult[] = [];
+  const rows: AthleteMeetResult[] = [];
   const chunkSize = options.latestOnly ? SMALL_ROWS_NAMES_CHUNK_SIZE : NAMES_QUERY_CHUNK_SIZE;
   for (const chunk of chunkValues(names, chunkSize)) {
     const part = assertArray<ApiLiftingResult>(
@@ -1108,9 +977,9 @@ export async function fetchApiResultsByNames(
 export async function fetchApiRecentResultsByNames(
   names: string[],
   cutoffDate: string = getHistoryCutoffDate(ATTEMPT_HISTORY_YEARS),
-): Promise<SupabaseLiftResult[]> {
+): Promise<AthleteMeetResult[]> {
   if (names.length === 0) return [];
-  const rows: SupabaseLiftResult[] = [];
+  const rows: AthleteMeetResult[] = [];
   for (const chunk of chunkValues(names, NAMES_QUERY_CHUNK_SIZE)) {
     const part = assertArray<ApiLiftingResult>(
       decodeJsonText(
@@ -1215,12 +1084,20 @@ export type MeetPackageFetch =
   | { status: 'fresh'; etag: string | null; package: ApiMeetPackage }
   | { status: 'not_modified' };
 
-/**
- * Fetches the meet package, revalidating with `ifNoneMatch` when the caller
- * still holds the previous tag. `not_modified` means the package the caller
- * already decomposed into local storage is identical to what the server would
- * send.
- */
+function assertPackageSchedule(schedule: unknown): void {
+  assertArray<unknown>(schedule, '/meets/package.schedule').forEach((day, dayIndex) => {
+    const dayLabel = `/meets/package.schedule[${dayIndex}]`;
+    assertObject(day, dayLabel);
+    assertArray<unknown>(day.sessions, `${dayLabel}.sessions`).forEach((session, sessionIndex) => {
+      const sessionLabel = `${dayLabel}.sessions[${sessionIndex}]`;
+      assertObject(session, sessionLabel);
+      assertArray<unknown>(session.platforms, `${sessionLabel}.platforms`).forEach((platform, platformIndex) =>
+        assertObject(platform, `${sessionLabel}.platforms[${platformIndex}]`),
+      );
+    });
+  });
+}
+
 export async function fetchApiMeetPackageConditional(
   meet: MeetName,
   historyCutoffDate?: string,
@@ -1252,7 +1129,7 @@ export async function fetchApiMeetPackageConditional(
   }
   const pkg = assertHasFields(answer.body, '/meets/package', MEET_PACKAGE_FIELDS);
   assertObject(pkg.meet, '/meets/package.meet');
-  assertArray(pkg.schedule, '/meets/package.schedule');
+  assertPackageSchedule(pkg.schedule);
   assertArray(pkg.athletes, '/meets/package.athletes');
   assertArray(pkg.meet_results, '/meets/package.meet_results');
   if ('year_bests' in pkg) {
