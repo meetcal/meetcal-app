@@ -1,6 +1,6 @@
 use super::models::{
     BREAK_MINUTES, Limit, MAX_ATHLETES_PER_PLATFORM, MAX_BUILDER_PLATFORMS, MAX_SESSIONS_PER_DAY,
-    OptionsForm, SESSION_MINUTES, WEIGH_IN_MINUTES, new_platform_name,
+    OptionsForm, SESSION_MINUTES, new_platform_name,
 };
 use crate::pages::comp_data::format::format_us_date;
 use crate::utils::api::{Grouping, SessionOrder};
@@ -146,13 +146,6 @@ pub(crate) fn OptionsPanel(
                         limit=BREAK_MINUTES
                         read=|form| &form.break_minutes
                         write=|form, value| form.break_minutes = value
-                    />
-                    <NumberField
-                        form
-                        label="Weigh-In Before Start (Minutes)"
-                        limit=WEIGH_IN_MINUTES
-                        read=|form| &form.weigh_in_minutes
-                        write=|form, value| form.weigh_in_minutes = value
                     />
                     <NumberField
                         form

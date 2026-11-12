@@ -46,7 +46,6 @@ pub(crate) struct BuilderOptions {
     pub days: Vec<BuilderDay>,
     pub session_minutes: u32,
     pub break_minutes: u32,
-    pub weigh_in_minutes: u32,
     pub max_athletes_per_platform: u32,
     pub max_sessions_per_day: Option<u32>,
     pub platforms: Vec<String>,

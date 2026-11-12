@@ -17,10 +17,10 @@ const entrant = (name: string, gender: string, weightClass: string, entryTotal: 
 });
 
 const schedule = () =>
-  buildSchedule([entrant('Ann', 'Women', '58', 80), entrant('Bea', 'Women', '63', 90), entrant('Cal', 'Men', '89', 150)], {
-    ...defaultBuilderOptions({ startDate: '2027-03-06', endDate: '2027-03-06' }),
-    weighInMinutes: 90,
-  });
+  buildSchedule(
+    [entrant('Ann', 'Women', '58', 80), entrant('Bea', 'Women', '63', 90), entrant('Cal', 'Men', '89', 150)],
+    defaultBuilderOptions({ startDate: '2027-03-06', endDate: '2027-03-06' }),
+  );
 
 const text = (bytes: Uint8Array) => new TextDecoder().decode(bytes);
 
@@ -68,13 +68,13 @@ describe('rows', () => {
 
   it('lists every athlete with their session, platform, times and group', () => {
     expect(startListRows(schedule())).toEqual([
-      [1, 'Red', '2027-03-06', '7:30 AM', '9:00 AM', 'W 58, 63', 'Ann', 'Female', 30, '58', 80, 'Iron, "Steel" & Co', '380'],
-      [1, 'Red', '2027-03-06', '7:30 AM', '9:00 AM', 'W 58, 63', 'Bea', 'Female', 30, '63', 90, 'Iron, "Steel" & Co', '390'],
-      [2, 'Red', '2027-03-06', '9:30 AM', '11:00 AM', 'M 89', 'Cal', 'Male', 30, '89', 150, 'Iron, "Steel" & Co', '3150'],
+      [1, 'Red', '2027-03-06', '7:00 AM', '9:00 AM', 'W 58, 63', 'Ann', 'Female', 30, '58', 80, 'Iron, "Steel" & Co', '380'],
+      [1, 'Red', '2027-03-06', '7:00 AM', '9:00 AM', 'W 58, 63', 'Bea', 'Female', 30, '63', 90, 'Iron, "Steel" & Co', '390'],
+      [2, 'Red', '2027-03-06', '9:00 AM', '11:00 AM', 'M 89', 'Cal', 'Male', 30, '89', 150, 'Iron, "Steel" & Co', '3150'],
     ]);
     expect(sessionRows(schedule())).toEqual([
-      [1, 'Red', '2027-03-06', '7:30 AM', '9:00 AM', 'W 58, 63', 2],
-      [2, 'Red', '2027-03-06', '9:30 AM', '11:00 AM', 'M 89', 1],
+      [1, 'Red', '2027-03-06', '7:00 AM', '9:00 AM', 'W 58, 63', 2],
+      [2, 'Red', '2027-03-06', '9:00 AM', '11:00 AM', 'M 89', 1],
     ]);
   });
 });
@@ -101,7 +101,7 @@ describe('CSV', () => {
     expect(csv.startsWith('\uFEFF')).toBe(true);
     const lines = csv.slice(1).split('\r\n');
     expect(lines[0]).toBe('Session,Platform,Date,Weigh-In,Start Time,Group,Name,Gender,Age,Weight Class,Entry Total,Club,Member ID');
-    expect(lines[1]).toBe('1,Red,2027-03-06,7:30 AM,9:00 AM,"W 58, 63",Ann,Female,30,58,80,"Iron, ""Steel"" & Co",380');
+    expect(lines[1]).toBe('1,Red,2027-03-06,7:00 AM,9:00 AM,"W 58, 63",Ann,Female,30,58,80,"Iron, ""Steel"" & Co",380');
     expect(lines).toHaveLength(4);
   });
 });

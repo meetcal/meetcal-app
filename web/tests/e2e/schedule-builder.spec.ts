@@ -4,6 +4,7 @@ import { errorAnswer, mockAuth, routeAction, routeMutation, routeQuery, valueAns
 
 const MEET = "Turkey Cup";
 const ENTRIES_URL = "https://usaweightlifting.sport80.com/public/events/15084/entries/21962";
+const MEET_PAGE_URL = "https://usaweightlifting.sport80.com/public/events/15084";
 
 type Edit = { kind: string; athlete?: string; toSession?: number; toPlatform?: string; session?: number; withSession?: number; date?: string; startTime?: string };
 type Options = { days: { date: string; firstStart: string }[]; sessionMinutes: number; platforms: string[]; [key: string]: unknown };
@@ -13,7 +14,6 @@ const defaultOptions: Options = {
   days: [{ date: "2026-11-21", firstStart: "09:00" }],
   sessionMinutes: 120,
   breakMinutes: 0,
-  weighInMinutes: 120,
   maxAthletesPerPlatform: 15,
   maxSessionsPerDay: null,
   platforms: ["Red"],
@@ -140,9 +140,9 @@ async function mockBuilder(page: Page, { signedIn = false, loadError = "", refus
   return calls;
 }
 
-async function loadAndBuild(page: Page) {
+async function loadAndBuild(page: Page, link = ENTRIES_URL) {
   await page.goto("/schedule-builder");
-  await page.getByLabel("Sport80 Entries URL").fill(ENTRIES_URL);
+  await page.getByLabel("Sport80 Meet Link").fill(link);
   await page.getByRole("button", { name: "Load", exact: true }).click();
   await expect(page).toHaveURL(/\/schedule-builder\?meet=Turkey(%20|\+)Cup$/);
   await expect(page.getByRole("heading", { level: 2, name: MEET })).toBeVisible();
@@ -177,11 +177,20 @@ test("signed out, a meet loads, builds, takes an edit, exports and prints", asyn
   await expect(sessionCard(page, 2)).toContainText("Laney Johnson");
   expect(calls.previews.at(-1)?.args.edits).toEqual([{ kind: "moveAthlete", athlete: "1|laney johnson", toSession: 2, toPlatform: "Red" }]);
 
+  const exportButton = page.getByRole("button", { name: "Export", exact: true });
+  const exports = page.getByRole("group", { name: "Export" });
+  await expect(exportButton).toHaveAttribute("aria-expanded", "false");
+  await exportButton.click();
+  await expect(exportButton).toHaveAttribute("aria-expanded", "true");
+  await expect(exports.getByRole("button")).toHaveText(["CSV", "Excel", "PDF"]);
   const csv = page.waitForEvent("download");
-  await page.getByRole("button", { name: "Download CSV" }).click();
+  await exports.getByRole("button", { name: "CSV" }).click();
   expect((await csv).suggestedFilename()).toBe("turkey-cup-schedule.csv");
+  await expect(exports).toHaveCount(0);
+  await expect(exportButton).toBeFocused();
   const xlsx = page.waitForEvent("download");
-  await page.getByRole("button", { name: "Download Excel" }).click();
+  await exportButton.click();
+  await exports.getByRole("button", { name: "Excel" }).click();
   const workbook = await xlsx;
   expect(workbook.suggestedFilename()).toBe("turkey-cup-schedule.xlsx");
   const bytes = await (await workbook.createReadStream()).toArray();
@@ -189,12 +198,16 @@ test("signed out, a meet loads, builds, takes an edit, exports and prints", asyn
   expect(calls.exports.map((call) => call.args.format)).toEqual(["csv", "xlsx"]);
   expect(calls.exports.at(-1)?.args.edits).toEqual(calls.previews.at(-1)?.args.edits);
 
-  await page.getByRole("button", { name: "Print / Save as PDF" }).click();
+  await exportButton.click();
+  await exports.getByRole("button", { name: "PDF" }).click();
   expect(await page.evaluate(() => (window as unknown as { __printed: number }).__printed)).toBe(1);
+  await expect(exports).toHaveCount(0);
+  expect(calls.exports).toHaveLength(2);
   await page.emulateMedia({ media: "print" });
   await expect(page.locator("header.site-header")).toBeHidden();
   await expect(page.locator(".builder-options")).toBeHidden();
   await expect(page.getByRole("button", { name: "Laney Johnson: Move To…" })).toBeHidden();
+  await expect(exportButton).toBeHidden();
   await expect(sessionCard(page, 2)).toContainText("Laney Johnson");
   await page.emulateMedia({ media: "screen" });
 
@@ -250,9 +263,9 @@ test("a session can be retimed and swapped, and building again asks before dropp
   await expect(page.getByRole("alert")).toContainText("Session length must be a whole number from 15 to 480.");
 
   await page.getByLabel("Session Length (Minutes)").fill("120");
-  await page.getByLabel("First start on November 21, 2026").fill("01:00");
+  await page.getByLabel("First start on November 21, 2026").fill("01:59");
   await page.getByRole("button", { name: "Build Again" }).click();
-  await expect(page.getByRole("alert")).toHaveText("The first start on November 21, 2026 leaves no time for its 120-minute weigh-in.");
+  await expect(page.getByRole("alert")).toHaveText("The first start on November 21, 2026 leaves no time for its weigh-in 2 hours before.");
   await page.getByLabel("First start on November 21, 2026").fill("23:00");
   await page.getByRole("button", { name: "Build Again" }).click();
   await expect(page.getByRole("alert")).toHaveText("The first session on November 21, 2026 would end after midnight.");
@@ -290,6 +303,25 @@ test("the board's menus open, choose and close from the keyboard, and focus foll
   await dialog.getByLabel("Start Time").press("Enter");
   await expect(sessionCard(page, 1)).toContainText("Start 11:00 AM");
   await expect(page.getByRole("button", { name: "Session 1: Edit Time" })).toBeFocused();
+
+  const exportButton = page.getByRole("button", { name: "Export", exact: true });
+  await exportButton.focus();
+  await page.keyboard.press("Enter");
+  await expect(exportButton).toHaveAttribute("aria-expanded", "true");
+  await page.keyboard.press("Tab");
+  await expect(page.getByRole("group", { name: "Export" }).getByRole("button", { name: "CSV" })).toBeFocused();
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("group", { name: "Export" })).toHaveCount(0);
+  await expect(exportButton).toBeFocused();
+  await expect(exportButton).toHaveAttribute("aria-expanded", "false");
+  await page.keyboard.press("Enter");
+  await page.keyboard.press("Tab");
+  await page.keyboard.press("Tab");
+  const xlsx = page.waitForEvent("download");
+  await page.keyboard.press("Enter");
+  expect((await xlsx).suggestedFilename()).toBe("turkey-cup-schedule.xlsx");
+  await expect(exportButton).toBeFocused();
+  expect(calls.exports.map((call) => call.args.format)).toEqual(["xlsx"]);
 });
 
 test("the board is inert while the next answer loads", async ({ page }) => {
@@ -356,12 +388,23 @@ test("a build the server refuses keeps the edits", async ({ page }) => {
   await expect(page.getByRole("button", { name: "Undo" })).toBeEnabled();
 });
 
+test("the meet's Sport80 page loads too, and the options have no weigh-in field", async ({ page }) => {
+  const calls = await mockBuilder(page);
+  await page.goto("/schedule-builder");
+  await expect(page.getByLabel("Sport80 Meet Link")).toHaveAttribute("placeholder", MEET_PAGE_URL.replace("15084", "12345"));
+  await loadAndBuild(page, MEET_PAGE_URL);
+  expect(calls.loads.map((call) => call.args)).toEqual([{ url: MEET_PAGE_URL }]);
+  await expect(page.getByLabel(/Weigh-In/)).toHaveCount(0);
+  expect(calls.previews.at(-1)?.args.options).not.toHaveProperty("weighInMinutes");
+  await expect(sessionCard(page, 1)).toContainText("Weigh-In 7:00 AM · Start 9:00 AM");
+});
+
 test("a load Sport80 refuses shows the server's reason", async ({ page }) => {
   await mockBuilder(page, { loadError: "Sport80 hasn't set this meet's dates yet" });
   await page.goto("/schedule-builder");
   await page.getByRole("button", { name: "Load", exact: true }).click();
-  await expect(page.getByRole("alert")).toHaveText("Paste the meet’s Sport80 entries URL.");
-  await page.getByLabel("Sport80 Entries URL").fill(ENTRIES_URL);
+  await expect(page.getByRole("alert")).toHaveText("Paste the meet’s Sport80 link.");
+  await page.getByLabel("Sport80 Meet Link").fill(ENTRIES_URL);
   await page.getByRole("button", { name: "Load", exact: true }).click();
   await expect(page.getByRole("alert")).toHaveText("Sport80 hasn't set this meet's dates yet");
   await expect(page).toHaveURL(/\/schedule-builder$/);

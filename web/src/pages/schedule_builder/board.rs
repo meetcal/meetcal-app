@@ -26,6 +26,7 @@ pub(crate) enum MenuId {
     },
     Swap(u32),
     Time(u32),
+    Export,
 }
 
 #[derive(Clone, Copy)]
@@ -85,16 +86,15 @@ pub(crate) enum MenuKind {
 #[component]
 pub(crate) fn Menu(
     id: MenuId,
-    actions: BoardActions,
+    open_menu: RwSignal<Option<MenuId>>,
     #[prop(into)] trigger_id: String,
     #[prop(into)] label: String,
-    #[prop(into)] whose: String,
+    #[prop(into, optional)] whose: String,
     #[prop(into)] title: String,
     #[prop(default = "builder-menu-button")] button_class: &'static str,
     #[prop(default = MenuKind::List)] kind: MenuKind,
     children: ChildrenFn,
 ) -> impl IntoView {
-    let open_menu = actions.open_menu;
     let is_open = {
         let id = id.clone();
         Memo::new(move |_| open_menu.with(|open| open.as_ref() == Some(&id)))
@@ -257,7 +257,7 @@ fn SessionCard(session: BuiltSession, data: BoardData, actions: BoardActions) ->
                 <div class="builder-session-actions">
                     <Menu
                         id=MenuId::Swap(id)
-                        actions
+                        open_menu=actions.open_menu
                         trigger_id=swap_trigger.get_value()
                         label="Swap With…"
                         whose=format!("Session {number}: ")
@@ -292,7 +292,7 @@ fn SessionCard(session: BuiltSession, data: BoardData, actions: BoardActions) ->
                     </Menu>
                     <Menu
                         id=MenuId::Time(id)
-                        actions
+                        open_menu=actions.open_menu
                         trigger_id=time_trigger.get_value()
                         label="Edit Time"
                         whose=format!("Session {number}: ")
@@ -477,7 +477,7 @@ fn GroupView(
                                     platform: platform.get_value(),
                                     weight_class,
                                 }
-                                actions
+                                open_menu=actions.open_menu
                                 trigger_id=trigger_id.get_value()
                                 label=shown.clone()
                                 whose="Move Class: "
@@ -580,7 +580,7 @@ fn AthleteRow(
             </div>
             <Menu
                 id=menu_id
-                actions
+                open_menu=actions.open_menu
                 trigger_id=trigger.get_value()
                 label="Move To…"
                 whose=format!("{}: ", athlete.name)

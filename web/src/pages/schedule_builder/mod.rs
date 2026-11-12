@@ -8,7 +8,7 @@ mod publish;
 use crate::auth::{AuthContext, AuthState, open_clerk_sign_in};
 use crate::pages::comp_data::loading::{Load, LoadState, load_error};
 use crate::utils::api::{self, BuilderEdit, BuilderOptions, ExportFormat};
-use board::{Board, BoardActions, MenuId, UNDO_BUTTON_ID};
+use board::{Board, BoardActions, Menu, MenuId, UNDO_BUTTON_ID};
 use browser::{
     focus_element, now_ms, print_page, read_local_work, save_download, write_local_work,
 };
@@ -77,7 +77,7 @@ fn LoadForm() -> impl IntoView {
         }
         let pasted = url.get_untracked().trim().to_owned();
         if pasted.is_empty() {
-            error.set(Some("Paste the meet’s Sport80 entries URL.".to_owned()));
+            error.set(Some("Paste the meet’s Sport80 link.".to_owned()));
             return;
         }
         error.set(None);
@@ -111,13 +111,13 @@ fn LoadForm() -> impl IntoView {
                 }
             >
                 <label class="builder-field builder-load-field">
-                    <span>"Sport80 Entries URL"</span>
+                    <span>"Sport80 Meet Link"</span>
                     <input
                         class="builder-input"
                         type="url"
                         inputmode="url"
                         autocomplete="off"
-                        placeholder="https://usaweightlifting.sport80.com/public/events/12345/entries/67890"
+                        placeholder="https://usaweightlifting.sport80.com/public/events/12345"
                         disabled=move || loading.get()
                         prop:value=move || url.get()
                         on:input=move |event| url.set(event_target_value(&event))
@@ -476,7 +476,7 @@ fn Editor(opened: Opened, open_menu: RwSignal<Option<MenuId>>) -> impl IntoView 
                         }}
                     </p>
                 </div>
-                <Toolbar meet applied edits />
+                <Toolbar meet applied edits open_menu />
                 {move || {
                     edit_error
                         .get()
@@ -571,11 +571,48 @@ enum DraftSave {
     Saved(BuilderOptions, Vec<BuilderEdit>),
 }
 
+const EXPORT_BUTTON_ID: &str = "builder-export";
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum ExportChoice {
+    Csv,
+    Excel,
+    Pdf,
+}
+
+impl ExportChoice {
+    const ALL: [Self; 3] = [Self::Csv, Self::Excel, Self::Pdf];
+
+    fn label(self) -> &'static str {
+        match self {
+            Self::Csv => "CSV",
+            Self::Excel => "Excel",
+            Self::Pdf => "PDF",
+        }
+    }
+
+    fn file_format(self) -> Option<ExportFormat> {
+        match self {
+            Self::Csv => Some(ExportFormat::Csv),
+            Self::Excel => Some(ExportFormat::Xlsx),
+            Self::Pdf => None,
+        }
+    }
+}
+
+fn preparing_label(format: ExportFormat) -> &'static str {
+    match format {
+        ExportFormat::Csv => "Preparing the CSV…",
+        ExportFormat::Xlsx => "Preparing the Excel workbook…",
+    }
+}
+
 #[component]
 fn Toolbar(
     meet: StoredValue<String>,
     applied: RwSignal<Option<BuilderOptions>>,
     edits: RwSignal<Vec<BuilderEdit>>,
+    open_menu: RwSignal<Option<MenuId>>,
 ) -> impl IntoView {
     let auth = expect_context::<AuthContext>();
     let exporting = RwSignal::new(None::<ExportFormat>);
@@ -677,37 +714,49 @@ fn Toolbar(
                     })
             }}
             <span class="builder-toolbar-spacer"></span>
-            <button
-                class="builder-button-quiet"
-                type="button"
-                disabled=move || exporting.with(Option::is_some)
-                on:click=move |_| download(ExportFormat::Csv)
-            >
-                {move || {
-                    if exporting.get() == Some(ExportFormat::Csv) {
-                        "Preparing…"
-                    } else {
-                        "Download CSV"
-                    }
-                }}
-            </button>
-            <button
-                class="builder-button-quiet"
-                type="button"
-                disabled=move || exporting.with(Option::is_some)
-                on:click=move |_| download(ExportFormat::Xlsx)
-            >
-                {move || {
-                    if exporting.get() == Some(ExportFormat::Xlsx) {
-                        "Preparing…"
-                    } else {
-                        "Download Excel"
-                    }
-                }}
-            </button>
-            <button class="builder-button-quiet" type="button" on:click=move |_| print_page()>
-                "Print / Save as PDF"
-            </button>
+            <span class="builder-toolbar-status" role="status">
+                {move || exporting.get().map(preparing_label)}
+            </span>
+            <div class="builder-export">
+                <Menu
+                    id=MenuId::Export
+                    open_menu
+                    trigger_id=EXPORT_BUTTON_ID
+                    label="Export"
+                    title="Export"
+                    button_class="builder-button-quiet"
+                >
+                    {move || {
+                        ExportChoice::ALL
+                            .into_iter()
+                            .map(|choice| {
+                                view! {
+                                    <li>
+                                        <button
+                                            type="button"
+                                            class="builder-menu-item"
+                                            disabled=move || {
+                                                choice.file_format().is_some()
+                                                    && exporting.with(Option::is_some)
+                                            }
+                                            on:click=move |_| {
+                                                open_menu.set(None);
+                                                focus_element(EXPORT_BUTTON_ID);
+                                                match choice.file_format() {
+                                                    Some(format) => download(format),
+                                                    None => print_page(),
+                                                }
+                                            }
+                                        >
+                                            {choice.label()}
+                                        </button>
+                                    </li>
+                                }
+                            })
+                            .collect_view()
+                    }}
+                </Menu>
+            </div>
         </div>
         {move || {
             problem

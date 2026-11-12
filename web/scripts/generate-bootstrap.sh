@@ -101,7 +101,7 @@ render_page "wrapped" "/wrapped" \
   "index, follow"
 render_page "schedule-builder" "/schedule-builder" \
   "Weightlifting Meet Schedule Builder — MeetCal" \
-  "Free for meet organizers: paste a Sport80 entries URL, build the meet's sessions in one click, adjust them, and export or publish the schedule." \
+  "Free for meet organizers: paste a meet's Sport80 link, build the meet's sessions in one click, adjust them, and export or publish the schedule." \
   "index, follow"
 render_page "subscription" "/subscription" \
   "Manage Your MeetCal Subscription in the App" \

@@ -2885,6 +2885,20 @@ main > div:has(> h4) > p {
     flex: 1 1 0;
 }
 
+.builder-toolbar-status {
+    color: var(--text-secondary);
+    font-size: 0.86rem;
+    font-weight: 650;
+}
+
+.builder-toolbar-status:empty {
+    display: none;
+}
+
+.builder-export .builder-menu-panel {
+    min-width: 160px;
+}
+
 .builder-warnings {
     display: grid;
     gap: 6px;
@@ -3176,6 +3190,11 @@ main > div:has(> h4) > p {
 
     .builder-toolbar-spacer {
         display: none;
+    }
+
+    .builder-export .builder-menu-panel {
+        right: auto;
+        left: 0;
     }
 }
 

@@ -6,6 +6,7 @@ pub(crate) const MAX_BUILDER_PLATFORMS: usize = 6;
 pub(crate) const MAX_PLATFORM_NAME_LENGTH: usize = 30;
 pub(crate) const MAX_BUILDER_EDITS: usize = 500;
 pub(crate) const MINUTES_PER_DAY: u32 = 24 * 60;
+pub(crate) const WEIGH_IN_MINUTES: u32 = 120;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) struct Limit {
@@ -24,12 +25,6 @@ pub(crate) const SESSION_MINUTES: Limit = Limit {
 pub(crate) const BREAK_MINUTES: Limit = Limit {
     field: "breakMinutes",
     label: "Break between sessions",
-    min: 0,
-    max: 240,
-};
-pub(crate) const WEIGH_IN_MINUTES: Limit = Limit {
-    field: "weighInMinutes",
-    label: "Weigh-in before start",
     min: 0,
     max: 240,
 };
@@ -198,7 +193,6 @@ pub(crate) struct OptionsForm {
     pub days: Vec<FormDay>,
     pub session_minutes: String,
     pub break_minutes: String,
-    pub weigh_in_minutes: String,
     pub max_athletes_per_platform: String,
     pub max_sessions_per_day: String,
     pub platforms: Vec<String>,
@@ -233,7 +227,6 @@ pub(crate) fn form_of(meet_days: &[BuilderDay], options: &BuilderOptions) -> Opt
         days,
         session_minutes: options.session_minutes.to_string(),
         break_minutes: options.break_minutes.to_string(),
-        weigh_in_minutes: options.weigh_in_minutes.to_string(),
         max_athletes_per_platform: options.max_athletes_per_platform.to_string(),
         max_sessions_per_day: options
             .max_sessions_per_day
@@ -305,7 +298,6 @@ pub(crate) fn checked_options(form: &OptionsForm) -> Result<BuilderOptions, Stri
     }
     let session_minutes = whole_number(&form.session_minutes, SESSION_MINUTES)?;
     let break_minutes = whole_number(&form.break_minutes, BREAK_MINUTES)?;
-    let weigh_in_minutes = whole_number(&form.weigh_in_minutes, WEIGH_IN_MINUTES)?;
     let max_athletes_per_platform =
         whole_number(&form.max_athletes_per_platform, MAX_ATHLETES_PER_PLATFORM)?;
     let max_sessions_per_day = if form.max_sessions_per_day.trim().is_empty() {
@@ -318,10 +310,11 @@ pub(crate) fn checked_options(form: &OptionsForm) -> Result<BuilderOptions, Stri
     };
     for day in &days {
         let start = minutes_of_clock(&day.first_start).unwrap_or_default();
-        if start < weigh_in_minutes {
+        if start < WEIGH_IN_MINUTES {
             return Err(format!(
-                "The first start on {} leaves no time for its {weigh_in_minutes}-minute weigh-in.",
-                format_us_date(&day.date)
+                "The first start on {} leaves no time for its weigh-in {} hours before.",
+                format_us_date(&day.date),
+                WEIGH_IN_MINUTES / 60
             ));
         }
         if start + session_minutes > MINUTES_PER_DAY {
@@ -362,7 +355,6 @@ pub(crate) fn checked_options(form: &OptionsForm) -> Result<BuilderOptions, Stri
         days,
         session_minutes,
         break_minutes,
-        weigh_in_minutes,
         max_athletes_per_platform,
         max_sessions_per_day,
         platforms,
@@ -442,7 +434,6 @@ mod tests {
             ],
             session_minutes: 120,
             break_minutes: 0,
-            weigh_in_minutes: 120,
             max_athletes_per_platform: 15,
             max_sessions_per_day: None,
             platforms: vec!["Red".to_owned()],
@@ -458,7 +449,6 @@ mod tests {
         for limit in [
             SESSION_MINUTES,
             BREAK_MINUTES,
-            WEIGH_IN_MINUTES,
             MAX_ATHLETES_PER_PLATFORM,
             MAX_SESSIONS_PER_DAY,
         ] {
@@ -481,6 +471,9 @@ mod tests {
         }
         assert_eq!(MINUTES_PER_DAY, 24 * 60);
         assert!(server.contains("export const MINUTES_PER_DAY = 24 * 60;"));
+        assert_eq!(WEIGH_IN_MINUTES, 120);
+        assert!(server.contains("export const WEIGH_IN_MINUTES = 120;"));
+        assert!(!server.contains("weighInMinutes"));
     }
 
     #[test]
@@ -577,13 +570,13 @@ mod tests {
         assert_eq!(
             checked_options(&form),
             Err(
-                "The first start on November 15, 2026 leaves no time for its 120-minute weigh-in."
+                "The first start on November 15, 2026 leaves no time for its weigh-in 2 hours before."
                     .to_owned()
             )
         );
-        form.weigh_in_minutes = "0".to_owned();
-        assert!(checked_options(&form).is_ok());
-        form.weigh_in_minutes = "119".to_owned();
+        if let Some(day) = form.days.get_mut(1) {
+            day.first_start = "02:00".to_owned();
+        }
         assert!(checked_options(&form).is_ok());
         if let Some(day) = form.days.first_mut() {
             day.first_start = "22:01".to_owned();
@@ -625,6 +618,24 @@ mod tests {
             checked_options(&form),
             Err("Use 1 to 6 platforms.".to_owned())
         );
+    }
+
+    #[test]
+    fn work_saved_with_a_weigh_in_option_still_opens_and_sends_without_it() {
+        let saved: LocalWork = serde_json::from_value(serde_json::json!({
+            "options": {
+                "days": [{ "date": "2026-11-14", "firstStart": "09:00" }],
+                "sessionMinutes": 120, "breakMinutes": 0, "weighInMinutes": 90,
+                "maxAthletesPerPlatform": 15, "maxSessionsPerDay": null, "platforms": ["Red"],
+                "grouping": "weightClass", "separateAgeGroups": true, "order": "womenThenMen"
+            },
+            "edits": [],
+            "savedAt": 1
+        }))
+        .unwrap();
+        let sent = serde_json::to_value(&saved.options).unwrap();
+        assert_eq!(sent.get("weighInMinutes"), None);
+        assert_eq!(sent.get("sessionMinutes"), Some(&serde_json::json!(120)));
     }
 
     #[test]

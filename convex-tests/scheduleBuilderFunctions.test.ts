@@ -1,20 +1,21 @@
 import { ConvexError } from 'convex/values';
 import { getFunctionName } from 'convex/server';
 import { claimLoad, defaults, deleteDraft, draft, drafts, finishLoad, LOAD_COOLDOWN_MS, MAX_DRAFTS_PER_USER, MAX_LOADS_PER_HOUR, preview, saveDraft } from '../convex/scheduleBuilder';
-import { entriesPageOf, listedMeetProblem, load } from '../convex/scheduleBuilderLoad';
+import { listedMeetProblem, load, sport80LinkOf } from '../convex/scheduleBuilderLoad';
 import { upsertEntryAthletes, upsertMeets } from '../convex/ingest';
 import { addFromBuilder, BUILDER_TARGETS_MAX } from '../convex/scrapers/entryTargets';
 import { entriesMeet } from '../convex/scrapers/queries';
 import { fetchEntriesMeet, readEntries } from '../convex/scrapers/entries';
-import { fetchWidgetPage } from '../convex/scrapers/meets';
+import { fetchLocatorPage, fetchWidgetPage } from '../convex/scrapers/meets';
 import { defaultBuilderOptions } from '../convex/lib/scheduleBuilderOptions';
 import { fakeMutationCtx, handlerOf } from './fakeDb';
 
 jest.mock('../convex/scrapers/entries', () => ({ ...jest.requireActual('../convex/scrapers/entries'), fetchEntriesMeet: jest.fn(), readEntries: jest.fn() }));
-jest.mock('../convex/scrapers/meets', () => ({ ...jest.requireActual('../convex/scrapers/meets'), fetchWidgetPage: jest.fn() }));
+jest.mock('../convex/scrapers/meets', () => ({ ...jest.requireActual('../convex/scrapers/meets'), fetchWidgetPage: jest.fn(), fetchLocatorPage: jest.fn() }));
 const fetchEntriesMeetMock = fetchEntriesMeet as jest.MockedFunction<typeof fetchEntriesMeet>;
 const readEntriesMock = readEntries as jest.MockedFunction<typeof readEntries>;
 const fetchWidgetPageMock = fetchWidgetPage as jest.MockedFunction<typeof fetchWidgetPage>;
+const fetchLocatorPageMock = fetchLocatorPage as jest.MockedFunction<typeof fetchLocatorPage>;
 
 const NOW = Date.UTC(2027, 0, 10, 12);
 const MEET = '2027 Turkey Cup';
@@ -177,18 +178,31 @@ describe('load bookkeeping', () => {
 
 describe('reading the pasted URL', () => {
   it('takes a Sport80 entries page and gives its event and canonical URL', () => {
-    expect(entriesPageOf(' https://usaweightlifting.sport80.com/public/events/15084/entries/22001?tab=1 ')).toEqual({
+    expect(sport80LinkOf(' https://usaweightlifting.sport80.com/public/events/15084/entries/22001?tab=1 ')).toEqual({
       eventId: '15084',
-      url: 'https://usaweightlifting.sport80.com/public/events/15084/entries/22001',
+      entriesUrl: 'https://usaweightlifting.sport80.com/public/events/15084/entries/22001',
     });
   });
 
   it.each([
-    ['not a url', 'paste the Sport80 entries page URL, like https://usaweightlifting.sport80.com/public/events/12345/entries/67890'],
-    ['https://example.com/public/events/1/entries/2', 'the URL must be a usaweightlifting.sport80.com entries page'],
-    ['https://usaweightlifting.sport80.com/public/events/15084', "that page is not a Sport80 entries list; open the meet's Entries tab on Sport80 and copy its URL"],
+    'https://usaweightlifting.sport80.com/public/events/15084',
+    'https://usaweightlifting.sport80.com/public/events/15084/?bl=locator',
+    'https://usaweightlifting.sport80.com/public/wizard/e/15084',
+    ' https://usaweightlifting.sport80.com/public/wizard/e/15084?ref=email ',
+  ])("takes the meet's page or registration link %s, whose entries list is found later", (url) => {
+    expect(sport80LinkOf(url)).toEqual({ eventId: '15084', entriesUrl: null });
+  });
+
+  it.each([
+    ['not a url', "paste the meet's Sport80 link, like https://usaweightlifting.sport80.com/public/events/12345, or its entries list"],
+    ['https://example.com/public/events/1/entries/2', 'the URL must be a usaweightlifting.sport80.com meet page or entries list'],
+    ['https://example.com/public/events/15084', 'the URL must be a usaweightlifting.sport80.com meet page or entries list'],
+    ...['/public/events', '/public/events/abc', '/public/events/15084/results', '/public/wizard/e/', '/public/wizard/x/15084', '/public/rankings'].map((path) => [
+      `https://usaweightlifting.sport80.com${path}`,
+      'that page is not a Sport80 meet page or entries list; open the meet on Sport80 and copy its URL from the address bar',
+    ]),
   ])('refuses %s', async (url, error) => {
-    expect(await failure(Promise.resolve().then(() => entriesPageOf(url)))).toEqual({ status: 400, error });
+    expect(await failure(Promise.resolve().then(() => sport80LinkOf(url)))).toEqual({ status: 400, error });
   });
 
   it("explains why a listed event can't be stored", () => {
@@ -282,6 +296,70 @@ describe('load', () => {
     expect(await failure(store.load(URL))).toEqual({
       status: 409,
       error: "the meet's entries changed more than MeetCal updates on its own; they'll be checked by hand. Try again later",
+    });
+  });
+
+  describe("from the meet's page", () => {
+    const MEET_PAGE = 'https://usaweightlifting.sport80.com/public/events/15084';
+    const WIZARD = 'https://usaweightlifting.sport80.com/public/wizard/e/15084?x=1';
+    const locator = (actions: unknown[]) => ({
+      total: '2',
+      data: [
+        { id: '14189', name: 'Turkey Cup', actions: [{ url: 'https://usaweightlifting.sport80.com/public/events/14189/entries/21081?bl=locator', text: 'Entry List' }] },
+        { id: '15084', name: 'Turkey Cup', actions },
+      ],
+    });
+    const entryList = { url: `${URL}?bl=locator`, text: 'Entry List' };
+    const enterNow = { url: 'https://usaweightlifting.sport80.com/public/wizard/e/15084', text: 'Enter Now' };
+
+    beforeEach(() => {
+      fetchLocatorPageMock.mockReset().mockResolvedValue(locator([entryList, enterNow]));
+    });
+
+    it.each([MEET_PAGE, WIZARD])('finds the entries list of %s by its name and event id, reading the listing once', async (link) => {
+      const store = actionServer();
+      expect(await store.load(link)).toEqual({ meet: 'Turkey Cup', refreshed: true });
+      expect(fetchLocatorPageMock.mock.calls).toEqual([['https://usaweightlifting.sport80.com/api/public/events/locator/data?p=0&l=20&s=Turkey%20Cup']]);
+      expect(fetchEntriesMeetMock).toHaveBeenCalledWith(URL);
+      expect(fetchWidgetPageMock).toHaveBeenCalledTimes(1);
+      expect(store.rows('entry_targets').map((t) => t.url)).toEqual([URL]);
+      expect(store.rows('schedule_builder_loads').map((row) => [row.eventId, row.meet])).toEqual([['15084', 'Turkey Cup']]);
+    });
+
+    it('shares the cooldown with the entries link of the same event', async () => {
+      const store = actionServer();
+      await store.load(URL);
+      expect(await store.load(MEET_PAGE)).toEqual({ meet: 'Turkey Cup', refreshed: false });
+      expect(await store.load(WIZARD)).toEqual({ meet: 'Turkey Cup', refreshed: false });
+      expect(fetchLocatorPageMock).not.toHaveBeenCalled();
+    });
+
+    it('refuses an event Sport80 does not list as upcoming', async () => {
+      const store = actionServer();
+      expect(await failure(store.load('https://usaweightlifting.sport80.com/public/events/999'))).toEqual({
+        status: 422,
+        error: "Sport80 doesn't list this event as upcoming, so MeetCal can't add it",
+      });
+      expect(fetchLocatorPageMock).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      ['no entries action', locator([enterNow])],
+      ['no row for the event', { total: 1, data: [{ id: '14189', name: 'Turkey Cup', actions: [entryList] }] }],
+    ])('says Sport80 shows no entry list yet when the locator has %s', async (_, answer) => {
+      fetchLocatorPageMock.mockResolvedValue(answer);
+      const store = actionServer();
+      expect(await failure(store.load(MEET_PAGE))).toEqual({ status: 422, error: "Sport80 doesn't show a public entry list for this meet yet" });
+      expect(fetchEntriesMeetMock).not.toHaveBeenCalled();
+    });
+
+    it('answers 502 when the locator fails or answers something else', async () => {
+      jest.spyOn(console, 'error').mockImplementation(() => undefined);
+      const store = actionServer();
+      fetchLocatorPageMock.mockRejectedValueOnce(new Error('POST locator failed with 500'));
+      expect(await failure(store.load(MEET_PAGE))).toEqual({ status: 502, error: 'Sport80 did not answer; try again in a minute' });
+      fetchLocatorPageMock.mockResolvedValueOnce({ total: 1, data: 'nope' });
+      expect(await failure(store.load(MEET_PAGE))).toEqual({ status: 502, error: 'Sport80 did not answer; try again in a minute' });
     });
   });
 

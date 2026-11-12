@@ -320,7 +320,6 @@ mod tests {
             days: Vec::new(),
             session_minutes: 120,
             break_minutes: 0,
-            weigh_in_minutes: 120,
             max_athletes_per_platform: 15,
             max_sessions_per_day: None,
             platforms: vec!["Red".to_owned()],

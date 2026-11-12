@@ -6,7 +6,7 @@ import { v } from 'convex/values';
 import { isoDateOf } from '../lib/dates';
 import { internalAction } from '../_generated/server';
 import { internal } from '../_generated/api';
-import { fetchJson, withRetries } from './lib/http';
+import { fetchJson, postJson, withRetries } from './lib/http';
 import { listedMeetTitle, readAllWidgetPages, renamedMeetMessage, transformMeets, widgetPageUrl, type ScrapedMeet, type TransformedMeets } from './parse/meets';
 import { sourcesFailed, type SourceFailure } from '../lib/cronAlerts';
 import type { ZoneFormatters } from '../lib/meetData';
@@ -27,6 +27,9 @@ import { meetStatusAt } from '../lib/meetStatus';
  */
 export const fetchWidgetPage = (url: string): Promise<unknown> =>
   withRetries(() => fetchJson(url, { timeoutMs: 30_000 }), { attempts: 3, delayMs: (attempt) => 2 ** attempt * 1000 });
+
+export const fetchLocatorPage = (url: string): Promise<unknown> =>
+  withRetries(() => postJson(url, { from_date: isoDateOf(Date.now()) }, { timeoutMs: 30_000 }), { attempts: 3, delayMs: (attempt) => 2 ** attempt * 1000 });
 
 /** The failing source for the listing itself: stable from run to run, as the problem text is not. */
 const LISTING = 'widget';

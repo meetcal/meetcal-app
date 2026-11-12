@@ -190,21 +190,23 @@ indexable, in the sitemap, and linked as "Schedule Builder" in the header; signi
 and publishing. The page computes nothing about a schedule: it sends options and edits and shows
 Convex's answer.
 
-- Pasting an entries URL calls the action `scheduleBuilderLoad:load` (`{ url }`, within
+- Pasting the meet's Sport80 link (its entries list, public page or registration link; Convex
+  alone decides which links it takes) calls the action `scheduleBuilderLoad:load` (`{ url }`, within
   `SPORT80_LOAD_TIMEOUT`), which answers `{ meet }`; the page then moves to
   `/schedule-builder?meet=<name>`, the address the drafts list and a shared link open.
 - `scheduleBuilder:defaults` answers the meet's days and default options, which fill the options
   form. The form's checks (`checked_options` in `models.rs`) give each limit a readable sentence,
   and refuse, as `checkBuilderOptions` does, a day whose first start leaves no time for the
-  weigh-in or whose first session would end after midnight; the limits are the server's
-  `BUILDER_LIMITS`, maximums and `MINUTES_PER_DAY`, which a test keeps equal. Building sends the
+  two-hour weigh-in or whose first session would end after midnight; the limits are the server's
+  `BUILDER_LIMITS`, maximums, `WEIGH_IN_MINUTES` and `MINUTES_PER_DAY`, which a test keeps equal.
+  The weigh-in is not an option: every session weighs in two hours before its start. Building sends the
   options, with the edits made so far, to `scheduleBuilder:preview`, which answers the sessions,
   each group's `label` (the one the export and a published schedule use) and the warnings. A new
   build with changed options drops the edits after the user confirms, and only once `preview`
   accepts the new options: a refused build brings the previous options and edits back.
 - Edits come from disclosure lists, with no drag and drop and no menu roles: Move To… on each
   athlete, a class chip's Move Class To…, and Swap With… on each session each open a list of
-  plain buttons, and Edit Time opens a small dialog. Escape or a click outside closes one and
+  plain buttons (the toolbar's Export list is the same disclosure), and Edit Time opens a small dialog. Escape or a click outside closes one and
   returns focus to its button; after an edit, focus goes to the button in the same place on the
   new board, or to Undo. Each edit is appended to the list sent to `preview` (at most
   `MAX_BUILDER_EDITS`, the server's), and Undo drops the last. While the next answer loads, the
@@ -215,8 +217,8 @@ Convex's answer.
   `scheduleBuilder:drafts` with Delete (`scheduleBuilder:deleteDraft`). Opening a meet starts from
   the newer of the saved draft (`scheduleBuilder:draft`) and the browser's copy, or from the
   defaults, unbuilt.
-- Download CSV and Download Excel save `scheduleBuilder:exportFile`'s answer as a file (an Excel
-  workbook arrives as base64). Print / Save as PDF prints the page: the print styles in
+- Export opens a list of CSV, Excel and PDF. CSV and Excel save `scheduleBuilder:exportFile`'s
+  answer as a file (an Excel workbook arrives as base64). PDF prints the page: the print styles in
   `styles.css` hide the header, footer, options and every control (`.no-print`) and keep each
   session's date, weigh-in, start, platforms, group labels and athletes.
 - Publishing needs sign-in: `schedulePublications:publish` takes the options, edits and the contact

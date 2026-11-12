@@ -69,7 +69,7 @@ pub fn metadata_for_path(path: &str) -> PageMetadata {
         },
         "/schedule-builder" => PageMetadata {
             title: "Weightlifting Meet Schedule Builder — MeetCal",
-            description: "Free for meet organizers: paste a Sport80 entries URL, build the meet's sessions in one click, adjust them, and export or publish the schedule.",
+            description: "Free for meet organizers: paste a meet's Sport80 link, build the meet's sessions in one click, adjust them, and export or publish the schedule.",
             indexable: true,
             canonical: true,
         },

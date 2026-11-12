@@ -1,6 +1,7 @@
 // Pure parts of `scrapers/meets.ts` (port of `usaw/meet_to_supabase/scripts/sync-*.js`).
 
 import { isRecord, rowCount, itemAt } from '../../lib/json';
+import { sport80EntriesUrlOf } from './entries';
 import { isValidIsoDate } from '../../lib/validation';
 import { countryTimeZone, isUnitedStates, usTerritoryTimeZone } from '../lib/countries';
 import { stateCode, usTimeZone } from '../lib/states';
@@ -86,6 +87,51 @@ export async function readAllWidgetPages(fetchPage: (page: number) => Promise<un
   }
   if (rows.length < total) throw new Error(`widget: read ${rows.length} distinct meets of ${total} (${MAX_WIDGET_PAGES} pages of ${WIDGET_PAGE_SIZE} at most)`);
   return rows;
+}
+
+const LOCATOR = 'https://usaweightlifting.sport80.com/api/public/events/locator/data';
+export const LOCATOR_PAGE_SIZE = 20;
+export const MAX_LOCATOR_PAGES = 5;
+
+export function locatorPageUrl(search: string, page: number): string {
+  return `${LOCATOR}?p=${page}&l=${LOCATOR_PAGE_SIZE}&s=${encodeURIComponent(search)}`;
+}
+
+export type LocatorRow = { id: string; entriesUrl: string | null };
+
+function locatorActionUrls(actions: unknown, row: number): string[] {
+  if (actions === undefined || actions === null) return [];
+  if (!Array.isArray(actions)) throw new Error(`locator: row ${row} has actions that are not a list`);
+  return actions.flatMap((action: unknown) => (isRecord(action) && typeof action.url === 'string' ? [action.url] : []));
+}
+
+export function readLocatorPage(body: unknown): { total: number; rows: LocatorRow[] } {
+  if (!isRecord(body)) throw new Error('locator: response is not an object');
+  const count = rowCount(body.total);
+  if (count === null) throw new Error(`locator: no match count (total ${JSON.stringify(body.total)})`);
+  if (!Array.isArray(body.data)) throw new Error('locator: no data array');
+  const rows = body.data.map((item: unknown, i): LocatorRow => {
+    if (!isRecord(item)) throw new Error(`locator: row ${i} is not an object`);
+    const id = typeof item.id === 'string' || typeof item.id === 'number' ? String(item.id) : '';
+    if (!/^\d+$/.test(id)) throw new Error(`locator: row ${i} has no event id`);
+    const entriesUrl = locatorActionUrls(item.actions, i)
+      .map((url) => sport80EntriesUrlOf(url, id))
+      .find((url) => url !== null);
+    return { id, entriesUrl: entriesUrl ?? null };
+  });
+  return { total: count, rows };
+}
+
+export async function findLocatorRow(eventId: string, fetchPage: (page: number) => Promise<unknown>): Promise<LocatorRow | null> {
+  let read = 0;
+  for (let page = 0; page < MAX_LOCATOR_PAGES; page++) {
+    const { total, rows } = readLocatorPage(await fetchPage(page));
+    const row = rows.find((candidate) => candidate.id === eventId);
+    if (row) return row;
+    read += rows.length;
+    if (read >= total || rows.length < LOCATOR_PAGE_SIZE) return null;
+  }
+  return null;
 }
 
 /** The venue fields; absent together when the widget gave no address, so the stored venue stays. */

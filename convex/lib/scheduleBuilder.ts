@@ -4,7 +4,7 @@ import { athleteGenderLabel, normalizeGender } from './normalize';
 import { normalizeName } from './names';
 import { compareBytes, compareCollated, sortByWeightClass } from './sort';
 import { bareWeightClass } from './weightClass';
-import { MINUTES_PER_DAY, minutesOfClock, storedClockOf, type BuilderEdit, type BuilderOptions, type BuilderOrder } from './scheduleBuilderOptions';
+import { MINUTES_PER_DAY, WEIGH_IN_MINUTES, minutesOfClock, storedClockOf, type BuilderEdit, type BuilderOptions, type BuilderOrder } from './scheduleBuilderOptions';
 
 export type BuilderEntrant = {
   memberId: string;
@@ -293,7 +293,7 @@ function applyEdit(slots: Slot[], edit: BuilderEdit, options: BuilderOptions): E
     case 'setSessionTime': {
       const slot = slots.find((s) => s.id === edit.session);
       const start = minutesOfClock(edit.startTime);
-      if (!slot || start === null || start < options.weighInMinutes || start + options.sessionMinutes > MINUTES_PER_DAY) return 'skipped';
+      if (!slot || start === null || start < WEIGH_IN_MINUTES || start + options.sessionMinutes > MINUTES_PER_DAY) return 'skipped';
       if (!options.days.some((d) => d.date === edit.date)) return 'skipped';
       slot.date = edit.date;
       slot.start = start;
@@ -372,7 +372,7 @@ function finish(slots: readonly Slot[], options: BuilderOptions, athletes: numbe
       number: i + 1,
       date: scheduled ? slot.date : '',
       startTime: scheduled ? storedClockOf(slot.start ?? 0) : '',
-      weighInTime: scheduled ? storedClockOf((slot.start ?? 0) - options.weighInMinutes) : '',
+      weighInTime: scheduled ? storedClockOf((slot.start ?? 0) - WEIGH_IN_MINUTES) : '',
       groups: builtGroups,
     };
   });

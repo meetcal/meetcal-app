@@ -1,11 +1,16 @@
 import { readFileSync } from 'fs';
 import { join } from 'path';
 import {
+  findLocatorRow,
   listedMeetTitle,
+  LOCATOR_PAGE_SIZE,
+  locatorPageUrl,
+  MAX_LOCATOR_PAGES,
   MAX_WIDGET_PAGES,
   parseAddress,
   parseDateRange,
   readAllWidgetPages,
+  readLocatorPage,
   readWidgetPage,
   transformMeets,
   WIDGET_PAGE_SIZE,
@@ -23,6 +28,7 @@ const WSO_PAGE: unknown = JSON.parse(readFileSync(join(__dirname, 'fixtures/spor
 // addresses whose city or state reads like a country, and the live online
 // qualifier row, whose address is the country alone.
 const ABROAD_PAGE: unknown = JSON.parse(readFileSync(join(__dirname, 'fixtures/sport80-meet-widget-abroad.json'), 'utf8'));
+const TURKEY_CUP_LOCATOR: unknown = JSON.parse(readFileSync(join(__dirname, 'fixtures/sport80-event-locator-turkey-cup-20261112.json'), 'utf8'));
 
 describe('meet sync (port of sync-meets.js / sync-nat-meets.js / sync-virus-meets.js)', () => {
   it('parses Sport80 addresses the way the Node scripts did', () => {
@@ -303,5 +309,78 @@ describe('US states and time zones', () => {
     for (const state of ['AL', 'AK', 'AZ', 'CA', 'FL', 'HI', 'ID', 'IN', 'KS', 'KY', 'MI', 'NE', 'ND', 'OR', 'SD', 'TN', 'TX']) {
       expect(isMeetTimeZone(usTimeZone(state) ?? '')).toBe(true);
     }
+  });
+});
+
+describe("Sport80's event locator", () => {
+  const ENTRIES = 'https://usaweightlifting.sport80.com/public/events/15084/entries/21962';
+  const row = (id: string | number, actions: unknown) => ({ id, name: 'Turkey Cup', actions });
+  const entryList = (id: number, stage: number) => ({ type: 'external', url: `https://usaweightlifting.sport80.com/public/events/${id}/entries/${stage}?bl=locator`, text: 'Entry List' });
+
+  it('searches by name, a page at a time', () => {
+    expect(locatorPageUrl('Turkey Cup & Open', 2)).toBe('https://usaweightlifting.sport80.com/api/public/events/locator/data?p=2&l=20&s=Turkey%20Cup%20%26%20Open');
+  });
+
+  it("reads each event's id and its entries page, from Sport80's answer", () => {
+    expect(readLocatorPage(TURKEY_CUP_LOCATOR)).toEqual({
+      total: 13,
+      rows: [
+        { id: '14189', entriesUrl: 'https://usaweightlifting.sport80.com/public/events/14189/entries/21081' },
+        { id: '15084', entriesUrl: ENTRIES },
+      ],
+    });
+  });
+
+  it('gives no entries page for an event without one, or whose only one is another event’s or another site’s', () => {
+    const wizard = { url: 'https://usaweightlifting.sport80.com/public/wizard/e/15084', text: 'Enter Now' };
+    const elsewhere = { url: 'https://example.com/public/events/15084/entries/21962', text: 'Entry List' };
+    const page = { total: 4, data: [row(15084, [wizard]), row('15084', [entryList(999, 1), elsewhere, 'junk', { url: 7 }]), row('15084', []), row('15084', null)] };
+    expect(readLocatorPage(page).rows).toEqual([
+      { id: '15084', entriesUrl: null },
+      { id: '15084', entriesUrl: null },
+      { id: '15084', entriesUrl: null },
+      { id: '15084', entriesUrl: null },
+    ]);
+  });
+
+  it.each([
+    [null, 'locator: response is not an object'],
+    [{ total: 'many', data: [] }, 'locator: no match count (total "many")'],
+    [{ total: 1 }, 'locator: no data array'],
+    [{ total: 1, data: ['x'] }, 'locator: row 0 is not an object'],
+    [{ total: 1, data: [{ name: 'Turkey Cup', actions: [] }] }, 'locator: row 0 has no event id'],
+    [{ total: 1, data: [row('15084', { url: 'x' })] }, 'locator: row 0 has actions that are not a list'],
+  ])('refuses a malformed answer %j', (body, message) => {
+    expect(() => readLocatorPage(body)).toThrow(message);
+  });
+
+  describe('finding one event', () => {
+    const events = (total: number, target: number | null) => {
+      const pages: number[] = [];
+      const fetchPage = async (page: number) => {
+        pages.push(page);
+        const ids = Array.from({ length: total }, (_, i) => 1000 + i).slice(page * LOCATOR_PAGE_SIZE, (page + 1) * LOCATOR_PAGE_SIZE);
+        return { total: String(total), data: ids.map((id) => row(String(id), id === target ? [entryList(id, 7)] : [])) };
+      };
+      return { pages, fetchPage };
+    };
+
+    it('stops at the page that has it', async () => {
+      const { pages, fetchPage } = events(45, 1021);
+      expect(await findLocatorRow('1021', fetchPage)).toEqual({ id: '1021', entriesUrl: 'https://usaweightlifting.sport80.com/public/events/1021/entries/7' });
+      expect(pages).toEqual([0, 1]);
+    });
+
+    it('answers null once every match is read', async () => {
+      const { pages, fetchPage } = events(25, null);
+      expect(await findLocatorRow('15084', fetchPage)).toBeNull();
+      expect(pages).toEqual([0, 1]);
+    });
+
+    it(`reads at most ${MAX_LOCATOR_PAGES} pages`, async () => {
+      const { pages, fetchPage } = events(1000, 1999);
+      expect(await findLocatorRow('1999', fetchPage)).toBeNull();
+      expect(pages).toHaveLength(MAX_LOCATOR_PAGES);
+    });
   });
 });

@@ -7,26 +7,32 @@ import type { Id } from './_generated/dataModel';
 import { apiError } from './lib/validation';
 import { errorMessage } from './lib/errors';
 import { fetchEntriesMeet, readEntries } from './scrapers/entries';
-import { fetchWidgetPage } from './scrapers/meets';
-import { canonicalEntriesUrl, entriesEventId } from './scrapers/parse/entries';
-import { isAdaptiveListing, readAllWidgetPages, transformMeets, widgetPageUrl, type WidgetRow } from './scrapers/parse/meets';
+import { fetchLocatorPage, fetchWidgetPage } from './scrapers/meets';
+import { canonicalEntriesUrl, entriesEventId, meetPageEventId } from './scrapers/parse/entries';
+import { findLocatorRow, isAdaptiveListing, locatorPageUrl, readAllWidgetPages, transformMeets, widgetPageUrl, type WidgetRow } from './scrapers/parse/meets';
 
 const SPORT80_HOST = 'usaweightlifting.sport80.com';
+const NOT_UPCOMING = "Sport80 doesn't list this event as upcoming, so MeetCal can't add it";
+const NO_ENTRY_LIST = "Sport80 doesn't show a public entry list for this meet yet";
 
 type StoredMeet = { name: string; status: string; endDate: string };
 
-export function entriesPageOf(url: string): { eventId: string; url: string } {
+export type Sport80Link = { eventId: string; entriesUrl: string | null };
+
+export function sport80LinkOf(url: string): Sport80Link {
   let parsed: URL;
   try {
     parsed = new URL(url.trim());
   } catch {
-    throw apiError(400, 'paste the Sport80 entries page URL, like https://usaweightlifting.sport80.com/public/events/12345/entries/67890');
+    throw apiError(400, "paste the meet's Sport80 link, like https://usaweightlifting.sport80.com/public/events/12345, or its entries list");
   }
-  if (parsed.hostname !== SPORT80_HOST) throw apiError(400, `the URL must be a ${SPORT80_HOST} entries page`);
+  if (parsed.hostname !== SPORT80_HOST) throw apiError(400, `the URL must be a ${SPORT80_HOST} meet page or entries list`);
+  const eventId = meetPageEventId(parsed.pathname);
+  if (eventId !== null) return { eventId, entriesUrl: null };
   try {
-    return { eventId: entriesEventId(parsed.pathname), url: canonicalEntriesUrl(parsed.pathname) };
+    return { eventId: entriesEventId(parsed.pathname), entriesUrl: canonicalEntriesUrl(parsed.pathname) };
   } catch {
-    throw apiError(400, "that page is not a Sport80 entries list; open the meet's Entries tab on Sport80 and copy its URL");
+    throw apiError(400, "that page is not a Sport80 meet page or entries list; open the meet on Sport80 and copy its URL from the address bar");
   }
 }
 
@@ -41,7 +47,7 @@ async function fromSport80<T>(work: Promise<T>): Promise<T> {
 
 export function listedMeetProblem(rows: readonly WidgetRow[], eventId: string): { row: WidgetRow } | { problem: string } {
   const row = rows.find((r) => r.id === eventId);
-  if (!row) return { problem: "Sport80 doesn't list this event as upcoming, so MeetCal can't add it" };
+  if (!row) return { problem: NOT_UPCOMING };
   const { meets, undated } = transformMeets([row]);
   if (meets.length > 0) return { row };
   if (undated.length > 0) return { problem: "Sport80 hasn't set this meet's dates yet" };
@@ -49,11 +55,26 @@ export function listedMeetProblem(rows: readonly WidgetRow[], eventId: string): 
   return { problem: "MeetCal couldn't read this meet's dates on Sport80" };
 }
 
-async function storeMeet(ctx: ActionCtx, eventId: string, title: string): Promise<StoredMeet> {
+type Listing = () => Promise<WidgetRow[]>;
+
+function upcomingListing(): Listing {
+  let rows: Promise<WidgetRow[]> | null = null;
+  return () => (rows ??= fromSport80(readAllWidgetPages((page) => fetchWidgetPage(widgetPageUrl('', page)))));
+}
+
+async function entriesUrlOf(link: Sport80Link, listing: Listing): Promise<string> {
+  if (link.entriesUrl !== null) return link.entriesUrl;
+  const listed = (await listing()).find((row) => row.id === link.eventId);
+  if (!listed) throw apiError(422, NOT_UPCOMING);
+  const row = await fromSport80(findLocatorRow(link.eventId, (page) => fetchLocatorPage(locatorPageUrl(listed.name, page))));
+  if (!row?.entriesUrl) throw apiError(422, NO_ENTRY_LIST);
+  return row.entriesUrl;
+}
+
+async function storeMeet(ctx: ActionCtx, eventId: string, title: string, listing: Listing): Promise<StoredMeet> {
   const known: StoredMeet | null = await ctx.runQuery(internal.scrapers.queries.entriesMeet, { sourceId: eventId, title });
   if (known) return known;
-  const rows = await fromSport80(readAllWidgetPages((page) => fetchWidgetPage(widgetPageUrl('', page))));
-  const listed = listedMeetProblem(rows, eventId);
+  const listed = listedMeetProblem(await listing(), eventId);
   if ('problem' in listed) throw apiError(422, listed.problem);
   await ctx.runMutation(internal.ingest.upsertMeets, { rows: transformMeets([listed.row]).meets });
   const stored: StoredMeet | null = await ctx.runQuery(internal.scrapers.queries.entriesMeet, { sourceId: eventId, title });
@@ -64,14 +85,16 @@ async function storeMeet(ctx: ActionCtx, eventId: string, title: string): Promis
 export const load = action({
   args: { url: v.string() },
   handler: async (ctx, { url }): Promise<{ meet: string; refreshed: boolean }> => {
-    const page = entriesPageOf(url);
-    const claimed: { recentMeet: string } | { claim: Id<'schedule_builder_loads'> } = await ctx.runMutation(internal.scheduleBuilder.claimLoad, { eventId: page.eventId });
+    const link = sport80LinkOf(url);
+    const claimed: { recentMeet: string } | { claim: Id<'schedule_builder_loads'> } = await ctx.runMutation(internal.scheduleBuilder.claimLoad, { eventId: link.eventId });
     if ('recentMeet' in claimed) return { meet: claimed.recentMeet, refreshed: false };
-    const title = await fromSport80(fetchEntriesMeet(page.url));
-    const meet = await storeMeet(ctx, page.eventId, title);
+    const listing = upcomingListing();
+    const entriesUrl = await entriesUrlOf(link, listing);
+    const title = await fromSport80(fetchEntriesMeet(entriesUrl));
+    const meet = await storeMeet(ctx, link.eventId, title, listing);
     if (meet.status === 'completed') throw apiError(409, 'this meet is over, so its schedule can no longer be built');
-    await ctx.runMutation(internal.scrapers.entryTargets.addFromBuilder, { label: title, url: page.url });
-    const entries = await fromSport80(readEntries(ctx, page.url, meet.name));
+    await ctx.runMutation(internal.scrapers.entryTargets.addFromBuilder, { label: title, url: entriesUrl });
+    const entries = await fromSport80(readEntries(ctx, entriesUrl, meet.name));
     if (entries.length > 0) {
       try {
         await ctx.runMutation(internal.ingest.upsertEntryAthletes, { meet: meet.name, rows: entries, complete: true });
