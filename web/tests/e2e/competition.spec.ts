@@ -95,6 +95,31 @@ test("national rankings submit the expected query and rank totals descending", a
   });
 });
 
+test("national rankings ask for a four-digit year before sending anything", async ({ page }) => {
+  await mockSubscribedUser(page);
+  const sentYears: unknown[] = [];
+  await routeQuery(page, "reference:nationalRankingsByYear", async (route, args) => {
+    sentYears.push(args.year);
+    await route.fulfill(textAnswer([{ name: "First Athlete", total: 260, date: "2026-03-01" }]));
+  });
+
+  await page.goto("/national-rankings");
+  const year = page.getByLabel("Year (optional)");
+  await year.fill("26");
+  await page.getByRole("button", { name: "View rankings" }).click();
+
+  await expect(page.getByRole("alert")).toHaveText("Enter a four-digit year, or leave it blank for all-time rankings.");
+  await expect(year).toHaveAttribute("aria-invalid", "true");
+  await expect(page.getByRole("button", { name: "Try again" })).toHaveCount(0);
+  expect(sentYears).toEqual([]);
+
+  await year.fill("2026");
+  await expect(page.getByRole("alert")).toHaveCount(0);
+  await page.getByRole("button", { name: "View rankings" }).click();
+  await expect(page.locator("tbody tr")).toHaveCount(1);
+  expect(sentYears).toEqual(["2026"]);
+});
+
 test("WSO records omit the organization column after an organization is selected", async ({ page }) => {
   await mockSubscribedUser(page);
   await routeQuery(page, "reference:wsoList", async (route) => {
