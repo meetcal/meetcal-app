@@ -31,8 +31,12 @@ pub async fn run(args: MeetInfoArgs) -> Result<()> {
         }
         Err(error) => return Err(error),
     };
-    output::emit(Report::new().table_with_data("meet", render(&meet), data(&meet)));
+    output::emit(report(&meet));
     Ok(())
+}
+
+pub fn report(meet: &Meet) -> Report {
+    Report::new().table_with_data("meet", render(meet), data(meet))
 }
 
 pub fn is_unknown_meet(error: &anyhow::Error) -> bool {

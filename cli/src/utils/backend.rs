@@ -184,6 +184,7 @@ pub mod queries {
     pub const CLUB_ATHLETES: Query = Query::value("reference:clubAthletes");
     /// `GET /clubs/meet-stats`; takes `club` and `meet`.
     pub const CLUB_MEET_STATS: Query = Query::value("reference:clubMeetStats");
+    pub const WSO_MEET_STATS: Query = Query::value("reference:wsoMeetStats");
     /// `GET /wsos/athletes`; takes `wso`, and `cursor` (null to start) to page. Read it with
     /// [`super::query_all_pages`]: a page answers `{ json, cursor, isDone }`.
     pub const WSO_ATHLETES: Query = Query::value("reference:wsoAthletes");

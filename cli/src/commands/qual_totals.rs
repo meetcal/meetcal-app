@@ -46,16 +46,18 @@ pub async fn run(args: QualTotalsArgs) -> Result<()> {
     let totals: Vec<QualifyingTotal> = query(queries::QUALIFYING_TOTALS, &NoArgs {}).await?;
     let matching = selected(totals, &args.age, args.gender, &args.event)?;
 
-    let mut table = Table::new();
-    table.set_header(vec!["Class", "Total"]);
-
-    for total in matching {
-        table.add_row(vec![total.weight_class, total.qualifying_total.to_string()]);
-    }
-
-    output::emit(Report::single("qualifying_totals", table));
+    output::emit(report(matching));
 
     Ok(())
+}
+
+pub fn report(totals: Vec<QualifyingTotal>) -> Report {
+    let mut table = Table::new();
+    table.set_header(vec!["Class", "Total"]);
+    for total in totals {
+        table.add_row(vec![total.weight_class, total.qualifying_total.to_string()]);
+    }
+    Report::single("qualifying_totals", table)
 }
 
 pub fn selected(

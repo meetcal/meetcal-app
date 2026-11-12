@@ -35,14 +35,15 @@ pub struct StandardsArgs {
 }
 
 pub async fn run(args: StandardsArgs) -> Result<()> {
-    // assign args to vars
-    let age = args.age;
-    let gender = args.gender;
     let standards: Vec<Standards> = query(queries::STANDARDS, &NoArgs {}).await?;
-    let (table, data) = tables(&selected(standards, &age, gender)?);
-    output::emit(Report::new().table_with_data("standards", table, data));
+    output::emit(report(&selected(standards, &args.age, args.gender)?));
 
     Ok(())
+}
+
+pub fn report(standards: &[Standards]) -> Report {
+    let (table, data) = tables(standards);
+    Report::new().table_with_data("standards", table, data)
 }
 
 pub fn selected(standards: Vec<Standards>, age: &str, gender: Gender) -> Result<Vec<Standards>> {

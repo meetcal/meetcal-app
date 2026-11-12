@@ -8,7 +8,7 @@ import { BrowserlessKeyError, BrowserlessQuotaError, ChallengeError, fetchUnbloc
 import { sourcesFailed } from '../lib/cronAlerts';
 import { normalizeAgeCategory, normalizeGender } from '../lib/normalize';
 import type { RecordHolder } from './parse/holder';
-import { IWF_PAGES, parseIwfWikitext, wikitextUrl, type IwfAge, type IwfRecord } from './parse/iwfRecords';
+import { IWF_PAGES, parseIwfWikitext, wikitextOf, wikitextUrl, type IwfAge, type IwfRecord } from './parse/iwfRecords';
 import { iwfSiteUrl, parseIwfSiteHtml } from './parse/iwfSite';
 
 /**
@@ -69,9 +69,7 @@ async function fromIwfSite(token: string): Promise<IwfRecord[]> {
 
 async function wikitext(page: string): Promise<string> {
   const read = () => fetchJson(wikitextUrl(page), { timeoutMs: WIKIPEDIA_TIMEOUT_MS, headers: { 'User-Agent': WIKIPEDIA_USER_AGENT } });
-  const body = (await withRetries(read, WIKIPEDIA_RETRY)) as { parse?: { wikitext?: string }; error?: { info?: string } };
-  if (!body.parse?.wikitext) throw new Error(`Wikipedia ${page}: ${body.error?.info ?? 'no wikitext'}`);
-  return body.parse.wikitext;
+  return wikitextOf(await withRetries(read, WIKIPEDIA_RETRY), page);
 }
 
 async function fromWikipedia(): Promise<IwfRecord[]> {
