@@ -2,6 +2,8 @@
 //! stderr is a terminal.
 
 use std::io::{IsTerminal, Write};
+use std::sync::{Arc, Mutex, MutexGuard, OnceLock};
+use std::time::Duration;
 
 /// Clears the line on a terminal.
 const CLEAR_LINE: &str = "\r\x1b[2K";
@@ -33,8 +35,8 @@ impl Progress {
         }
     }
 
-    /// Shows `label… status` in place of the last status.
     pub(crate) fn update(&mut self, status: impl std::fmt::Display) {
+        stop_waiting_line();
         if let Some(out) = self.out.as_mut() {
             let _ = write!(out, "\r{}… {status}", self.label);
             let _ = out.flush();
@@ -52,10 +54,89 @@ impl Drop for Progress {
     }
 }
 
+pub(crate) const WAITING_DELAY: Duration = Duration::from_secs(1);
+
+pub(crate) const WAITING_LABEL: &str = "Fetching from MeetCal…";
+
+const WAITING_FRAME_INTERVAL: Duration = Duration::from_millis(100);
+
+const WAITING_FRAMES: [char; 10] = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
+
+struct Waiting {
+    out: Box<dyn Write + Send>,
+    shown: bool,
+}
+
+#[derive(Clone, Default)]
+struct WaitingLine {
+    state: Arc<Mutex<Option<Waiting>>>,
+}
+
+impl WaitingLine {
+    fn lock(&self) -> MutexGuard<'_, Option<Waiting>> {
+        self.state
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+    }
+
+    fn start(&self, out: Box<dyn Write + Send>, delay: Duration) {
+        *self.lock() = Some(Waiting { out, shown: false });
+        let line = self.clone();
+        tokio::spawn(async move {
+            tokio::time::sleep(delay).await;
+            for frame in WAITING_FRAMES.iter().cycle() {
+                if !line.draw(*frame) {
+                    break;
+                }
+                tokio::time::sleep(WAITING_FRAME_INTERVAL).await;
+            }
+        });
+    }
+
+    fn draw(&self, frame: char) -> bool {
+        let mut state = self.lock();
+        let Some(waiting) = state.as_mut() else {
+            return false;
+        };
+        let _ = write!(waiting.out, "\r{frame} {WAITING_LABEL}");
+        let _ = waiting.out.flush();
+        waiting.shown = true;
+        true
+    }
+
+    fn stop(&self) {
+        if let Some(mut waiting) = self.lock().take()
+            && waiting.shown
+        {
+            let _ = write!(waiting.out, "{CLEAR_LINE}");
+            let _ = waiting.out.flush();
+        }
+    }
+}
+
+fn waiting_line() -> &'static WaitingLine {
+    static LINE: OnceLock<WaitingLine> = OnceLock::new();
+    LINE.get_or_init(WaitingLine::default)
+}
+
+pub fn start_waiting_line() {
+    if std::io::stderr().is_terminal() {
+        waiting_line().start(Box::new(std::io::stderr()), WAITING_DELAY);
+    }
+}
+
+pub fn stop_waiting_line() {
+    waiting_line().stop();
+}
+
+pub(crate) fn note(line: impl std::fmt::Display) {
+    stop_waiting_line();
+    eprintln!("{line}");
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::{Arc, Mutex};
 
     #[derive(Clone, Default)]
     struct Shared(Arc<Mutex<Vec<u8>>>);
@@ -94,5 +175,58 @@ mod tests {
         assert!(out.0.lock().unwrap().is_empty());
         let mut silent = Progress::to("Reading results", None);
         silent.update(1);
+    }
+}
+
+#[cfg(test)]
+mod waiting_tests {
+    use super::*;
+    use std::sync::{Arc, Mutex};
+
+    #[derive(Clone, Default)]
+    struct Shared(Arc<Mutex<Vec<u8>>>);
+
+    impl Write for Shared {
+        fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+            self.0.lock().unwrap().extend_from_slice(bytes);
+            Ok(bytes.len())
+        }
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+
+    impl Shared {
+        fn text(&self) -> String {
+            String::from_utf8(self.0.lock().unwrap().clone()).unwrap()
+        }
+    }
+
+    #[tokio::test]
+    async fn a_slow_command_shows_the_waiting_line_and_clears_it_before_output() {
+        let out = Shared::default();
+        let line = WaitingLine::default();
+        line.start(Box::new(out.clone()), Duration::from_millis(20));
+        tokio::time::sleep(Duration::from_millis(400)).await;
+        line.stop();
+        let written = out.text();
+        assert!(
+            written.starts_with(&format!("\r⠋ {WAITING_LABEL}")),
+            "{written:?}"
+        );
+        assert!(written.ends_with(CLEAR_LINE), "{written:?}");
+        tokio::time::sleep(Duration::from_millis(250)).await;
+        assert_eq!(out.text(), written);
+    }
+
+    #[tokio::test]
+    async fn a_command_that_answers_within_the_delay_shows_nothing() {
+        let out = Shared::default();
+        let line = WaitingLine::default();
+        line.start(Box::new(out.clone()), Duration::from_millis(200));
+        line.stop();
+        tokio::time::sleep(Duration::from_millis(350)).await;
+        line.stop();
+        assert_eq!(out.text(), "");
     }
 }

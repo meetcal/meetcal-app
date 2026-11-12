@@ -7,6 +7,7 @@ use tokio::sync::Mutex;
 use crate::utils::backend::{self, Endpoint, FunctionError, functions, queries};
 use crate::utils::cache::{Cache, StoredPass};
 use crate::utils::credentials::{self, Credentials};
+use crate::utils::progress;
 
 pub(crate) const PREMIUM_FUNCTIONS: &[&str] = &[
     "reference:records",
@@ -345,7 +346,7 @@ fn note_login_problem(outcome: &Result<String, NoPass>) {
         reason @ (NoPass::LoginExpired | NoPass::LoginRejected | NoPass::UnreadableLogin(_)),
     ) = outcome
     {
-        eprintln!("Note: {}", reason.message());
+        progress::note(format!("Note: {}", reason.message()));
     }
 }
 
