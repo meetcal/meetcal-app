@@ -1,7 +1,7 @@
 use crate::types::records::Record;
 use crate::utils::backend::{NoArgs, queries, query};
 use crate::utils::filters::{
-    Filter, is_gender, no_match, same_ignoring_case_and_surrounding_space,
+    Filter, gender_as_matched, is_gender, no_match, same_ignoring_case_and_surrounding_space,
 };
 use crate::utils::format::{record_cell, record_data_cells, record_data_header};
 use crate::utils::output::{self, Report};
@@ -101,7 +101,7 @@ pub fn selected(
             .map(|row| {
                 vec![
                     row.record_type.as_str(),
-                    row.gender.as_str(),
+                    gender_as_matched(&row.gender),
                     row.age_category.as_str(),
                 ]
             })
@@ -149,7 +149,6 @@ mod tests {
         };
         assert_eq!(classes("Senior", Gender::Men, "USAW"), ["60", "110+"]);
         assert_eq!(classes(" senior ", Gender::Men, " usaw"), ["60", "110+"]);
-        assert_eq!(classes("Senior", Gender::Men, "USAW"), ["60", "110+"]);
         assert_eq!(classes("Senior", Gender::Women, "USAW"), ["48"]);
     }
 
@@ -166,11 +165,6 @@ mod tests {
              Masters 35, Senior"
         );
         assert_eq!(
-            error("Seniors", Gender::Men, "USAW"),
-            "No records for --age \"Seniors\" with --federation USAW --gender Men. Try one of: \
-             Masters 35, Senior"
-        );
-        assert_eq!(
             error("Senior", Gender::Men, "USAWW"),
             "No records for --federation \"USAWW\". Try one of: IWF, USAW"
         );
@@ -178,6 +172,29 @@ mod tests {
             error("Masters 35", Gender::Women, "USAW"),
             "No records for --age \"Masters 35\" with --federation USAW --gender Women. Try one \
              of: Senior"
+        );
+    }
+
+    #[test]
+    fn a_row_spelling_its_gender_another_way_is_named_by_the_gender_it_matched() {
+        let rows = || {
+            vec![
+                record("USAW", "Male", "Senior", "60"),
+                record("USAW", "Male", "Junior", "60"),
+            ]
+        };
+        assert_eq!(
+            selected(rows(), "Senior", Gender::Men, "USAW")
+                .unwrap()
+                .len(),
+            1
+        );
+        assert_eq!(
+            selected(rows(), "Seniors", Gender::Men, "USAW")
+                .expect_err("matched nothing")
+                .to_string(),
+            "No records for --age \"Seniors\" with --federation USAW --gender Men. Try one of: \
+             Junior, Senior"
         );
     }
 }

@@ -37,6 +37,10 @@ pub fn is_gender(row_gender: &str, wanted: Gender) -> bool {
     Gender::parse(row_gender) == Some(wanted)
 }
 
+pub fn gender_as_matched(row_gender: &str) -> &str {
+    Gender::parse(row_gender).map_or(row_gender, |gender| gender.label())
+}
+
 pub const YEARS: std::ops::RangeInclusive<i32> = 1900..=9999;
 
 pub fn parse_year(value: &str) -> Result<i32, String> {
