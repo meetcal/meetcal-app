@@ -4,6 +4,18 @@ export type ResourceSource = "cache" | "network";
 export type ResourceCacheEntry<T> = {
   data: T;
   lastUpdatedAt: number | null;
+  tag?: string | null;
+};
+
+export type TaggedFresh<T> = { status: "unchanged" } | { status: "fresh"; data: T; tag: string | null };
+
+export type TaggedResourceSource<T, TParams extends readonly unknown[]> = {
+  fetch: (knownTag: string | null, ...params: TParams) => Promise<TaggedFresh<T>>;
+  persist: (
+    data: T,
+    tag: string | null,
+    ...params: TParams
+  ) => Promise<ResourceCacheEntry<T> | null | void>;
 };
 
 export type MutableResourceConfig<T, TParams extends readonly unknown[]> = {
@@ -29,6 +41,7 @@ export type MutableResourceConfig<T, TParams extends readonly unknown[]> = {
    * when there is a cache entry.
    */
   keepCached?: (cached: T, fresh: T) => boolean;
+  tagged?: TaggedResourceSource<T, TParams>;
 };
 
 export type ResourceRevalidation<T> = {
@@ -38,32 +51,17 @@ export type ResourceRevalidation<T> = {
   source: "network";
   /** False when the answer changed and could not be stored. */
   stored?: boolean;
+  tag?: string | null;
 };
 
 export type MutableResource<T, TParams extends readonly unknown[]> = {
   getKey: (...params: TParams) => string;
   loadCached: (...params: TParams) => Promise<ResourceCacheEntry<T> | null>;
-  revalidate: (
-    ...params: TParams
-  ) => Promise<{
-    data: T;
-    changed: boolean;
-    lastUpdatedAt: number | null;
-    source: "network";
-    /** False when the answer changed and could not be stored. */
-    stored?: boolean;
-  }>;
+  revalidate: (...params: TParams) => Promise<ResourceRevalidation<T>>;
   revalidateWithCached(
     cached: ResourceCacheEntry<T> | null,
     ...params: TParams
-  ): Promise<{
-    data: T;
-    changed: boolean;
-    lastUpdatedAt: number | null;
-    source: "network";
-    /** False when the answer changed and could not be stored. */
-    stored?: boolean;
-  }>;
+  ): Promise<ResourceRevalidation<T>>;
   /**
    * Hear every successful revalidate of `key`, whoever started it (a screen,
    * a pull to refresh, the background `SyncManager`), so every mounted copy
@@ -98,10 +96,9 @@ function sortObjectKeys(value: unknown): unknown {
   }
 
   if (isRecord(value)) {
-    const sortedEntries = Object.entries(value)
-      .sort(([left], [right]) => left.localeCompare(right))
-      .map(([key, nestedValue]) => [key, sortObjectKeys(nestedValue)]);
-    return Object.fromEntries(sortedEntries);
+    const sorted: Record<string, unknown> = {};
+    for (const key of Object.keys(value).sort()) sorted[key] = sortObjectKeys(value[key]);
+    return sorted;
   }
 
   return value;
@@ -111,23 +108,39 @@ export function stableSerialize(value: unknown): string {
   return JSON.stringify(sortObjectKeys(value));
 }
 
-export function defaultIsEqual<T>(left: T, right: T): boolean {
-  return stableSerialize(left) === stableSerialize(right);
+function definedKeyCount(record: Record<string, unknown>): number {
+  let count = 0;
+  for (const key of Object.keys(record)) if (record[key] !== undefined) count += 1;
+  return count;
 }
 
-type NetworkRevalidation<T> = {
-  data: T;
-  changed: boolean;
-  lastUpdatedAt: number | null;
-  source: "network";
-  stored?: boolean;
-};
+export function jsonEqual(left: unknown, right: unknown): boolean {
+  if (left === right) return true;
+  if (Array.isArray(left) || Array.isArray(right)) {
+    if (!Array.isArray(left) || !Array.isArray(right) || left.length !== right.length) return false;
+    for (let index = 0; index < left.length; index += 1) {
+      if (!jsonEqual(left[index] ?? null, right[index] ?? null)) return false;
+    }
+    return true;
+  }
+  if (!isRecord(left) || !isRecord(right)) return false;
+  for (const key of Object.keys(left)) {
+    const value = left[key];
+    if (value === undefined) continue;
+    if (!Object.prototype.hasOwnProperty.call(right, key) || !jsonEqual(value, right[key])) return false;
+  }
+  return definedKeyCount(left) === definedKeyCount(right);
+}
+
+export function defaultIsEqual<T>(left: T, right: T): boolean {
+  return jsonEqual(left, right);
+}
 
 export function createMutableResource<T, TParams extends readonly unknown[]>(
   config: MutableResourceConfig<T, TParams>,
 ): MutableResource<T, TParams> {
   const isEqual = config.isEqual ?? defaultIsEqual<T>;
-  const inFlightRequests = new Map<string, Promise<NetworkRevalidation<T>>>();
+  const inFlightRequests = new Map<string, Promise<ResourceRevalidation<T>>>();
   const listeners = new Map<string, Set<(result: ResourceRevalidation<T>) => void>>();
   const publish = (key: string, result: ResourceRevalidation<T>) => {
     if (config.isPublishable && !config.isPublishable(result.data)) return;
@@ -151,27 +164,49 @@ export function createMutableResource<T, TParams extends readonly unknown[]>(
       const cacheEntry = cached === undefined
         ? await config.loadCached(...params)
         : cached;
-      const fresh = await config.fetchFresh(...params);
+      const knownTag = cacheEntry?.tag ?? null;
+      let fresh: T;
+      let tag: string | null | undefined;
+      if (config.tagged) {
+        const answer = await config.tagged.fetch(cacheEntry ? knownTag : null, ...params);
+        if (answer.status === "unchanged") {
+          if (!cacheEntry) throw new Error(`${key} answered unchanged with nothing cached`);
+          const result: ResourceRevalidation<T> = {
+            data: cacheEntry.data,
+            changed: false,
+            lastUpdatedAt: cacheEntry.lastUpdatedAt ?? Date.now(),
+            source: "network",
+            tag: knownTag,
+          };
+          publish(key, result);
+          return result;
+        }
+        fresh = answer.data;
+        tag = answer.tag;
+      } else {
+        fresh = await config.fetchFresh(...params);
+      }
       if (cacheEntry && config.keepCached?.(cacheEntry.data, fresh)) {
         return {
           data: cacheEntry.data,
           changed: false,
           lastUpdatedAt: cacheEntry.lastUpdatedAt ?? Date.now(),
           source: "network" as const,
+          ...(config.tagged ? { tag: knownTag } : {}),
         };
       }
-      const changed = !cacheEntry || !isEqual(cacheEntry.data, fresh);
-      // The fresh data is the result; the cache write is a side effect. A
-      // failed write (storage full, a validator rejecting one row) used to
-      // reject the whole refresh, so the screen kept showing the stale copy —
-      // or "nothing yet" — of data that had already arrived.
+      const sameVersion = tag != null && tag === knownTag;
+      const changed = !cacheEntry || (!sameVersion && !isEqual(cacheEntry.data, fresh));
+      const retag = config.tagged !== undefined && !changed && tag !== undefined && tag !== knownTag;
       let persisted: ResourceCacheEntry<T> | null | void = null;
       let stored = true;
-      if (changed) {
+      if (changed || retag) {
         try {
-          persisted = await config.persistFresh(fresh, ...params);
+          persisted = config.tagged
+            ? await config.tagged.persist(fresh, tag ?? null, ...params)
+            : await config.persistFresh(fresh, ...params);
         } catch (persistError) {
-          stored = false;
+          stored = !changed;
           console.warn("Failed to persist fresh resource data; serving it uncached", {
             key,
             error: persistError,
@@ -186,6 +221,7 @@ export function createMutableResource<T, TParams extends readonly unknown[]>(
           persisted?.lastUpdatedAt ?? cacheEntry?.lastUpdatedAt ?? Date.now(),
         source: "network",
         stored,
+        ...(config.tagged ? { tag: tag === undefined ? knownTag : tag } : {}),
       };
       publish(key, result);
       return result;

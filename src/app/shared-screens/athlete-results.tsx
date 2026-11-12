@@ -4,6 +4,7 @@ import { MeetResultCard } from "@/components/athlete-results/MeetResultCard";
 import { PartialResultsStatus } from "@/components/athlete-results/PartialResultsStatus";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { SubscriptionGate } from "@/components/ui/SubscriptionGate";
+import { LoadingLabel } from "@/components/ui/LoadingLabel";
 import { ThemedText } from "@/components/ui/ThemedText";
 import { ThemedView } from "@/components/ui/ThemedView";
 import { useAppColors } from "@/hooks/useAppColors";
@@ -96,6 +97,7 @@ function AthleteResultsContent() {
             {loading ? (
               <View style={styles.loadingContainer}>
                 <ActivityIndicator size="large" color={colors.secondaryText} />
+                <LoadingLabel label="" style={[styles.loadingLabel, { color: colors.secondaryText }]} />
               </View>
             ) : loadFailed ? (
               <EmptyState
