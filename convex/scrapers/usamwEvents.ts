@@ -6,7 +6,7 @@ import { internal } from '../_generated/api';
 import { fetchPageText } from './lib/incompleteChain';
 import { EVENTS_URL, parseUsamwEvents, type UsamwEvent } from './parse/usamwEvents';
 import { sourcesFailed, type SourceFailure } from '../lib/cronAlerts';
-import { renamedMeetMessage } from './meets';
+import { renamedMeetMessage } from './parse/meets';
 
 /**
  * USA Masters events (replaces `usamw/meets/scrape_events.py`): the events

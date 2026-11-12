@@ -239,10 +239,12 @@ struct EliteAnswer {
     rankings: EliteRankings,
 }
 
-/// The default range: last calendar year.
-fn last_year() -> (String, String) {
-    let year = js_sys::Date::new_0().get_full_year() - 1;
+fn calendar_year(year: u32) -> (String, String) {
     (format!("{year:04}-01-01"), format!("{year:04}-12-31"))
+}
+
+fn this_year() -> (String, String) {
+    calendar_year(js_sys::Date::new_0().get_full_year())
 }
 
 /// Ages each group covers, as the server's `groupOfAge` splits them.
@@ -259,7 +261,7 @@ pub fn WsoElite() -> impl IntoView {
             &wso_in_address.get(),
             &from_in_address.get(),
             &to_in_address.get(),
-            last_year(),
+            this_year(),
         )
     });
     let methods = RwSignal::new(Methods::default());
@@ -362,7 +364,7 @@ fn form_range(shown: Option<&EliteQuery>) -> (String, String, String) {
     match shown {
         Some(shown) => (shown.wso.clone(), shown.from.clone(), shown.to.clone()),
         None => {
-            let (from, to) = last_year();
+            let (from, to) = this_year();
             (String::new(), from, to)
         }
     }
@@ -592,6 +594,14 @@ fn elite_csv(shown: &[ShownList<'_>]) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_calendar_year_runs_from_new_years_day_to_new_years_eve() {
+        assert_eq!(
+            calendar_year(2026),
+            ("2026-01-01".to_owned(), "2026-12-31".to_owned())
+        );
+    }
 
     fn row(name: &str, score: f64) -> EliteRow {
         EliteRow {

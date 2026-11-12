@@ -1,4 +1,5 @@
 import { recordHolder, setHolder, type RecordHolder } from './holder';
+import { MONTH_NUMBERS, pad2 } from '../../lib/dates';
 import { unescapeHtml } from '../lib/html';
 import type { PdfLine, PdfLineOptions } from '../lib/pdf';
 
@@ -22,12 +23,6 @@ export type UsamwRecord = {
   totalBy?: RecordHolder;
 };
 
-/**
- * The current national records PDFs ("NM<date>-MEN.pdf" / "-WOMEN.pdf" on
- * Google Storage), keyed Men/Women; the last match on the page wins, as
- * before. A trailing copy number ("NM20260713-MEN 1.pdf", the July 2026
- * upload) is accepted; the Python pattern rejected it and the job failed.
- */
 export function discoverRecordPdfs(page: string): { Men: string; Women: string } {
   const html = unescapeHtml(page);
   const urls: { Men?: string; Women?: string } = {};
@@ -38,9 +33,12 @@ export function discoverRecordPdfs(page: string): { Men: string; Women: string }
     if (/[-_ ]women(?:[ _-]*\d+)?\.pdf\b/.test(lower)) urls.Women = url;
     else if (/[-_ ]men(?:[ _-]*\d+)?\.pdf\b/.test(lower)) urls.Men = url;
   }
-  const missing = (['Men', 'Women'] as const).filter((g) => !urls[g]);
-  if (missing.length) throw new Error(`Could not find national records PDFs for: ${missing.join(', ')}`);
-  return urls as { Men: string; Women: string };
+  const { Men, Women } = urls;
+  if (!Men || !Women) {
+    const missing = (['Men', 'Women'] as const).filter((gender) => !urls[gender]);
+    throw new Error(`Could not find national records PDFs for: ${missing.join(', ')}`);
+  }
+  return { Men, Women };
 }
 
 export function ageCategory(text: string): string | null {
@@ -52,15 +50,14 @@ export function ageCategory(text: string): string | null {
 
 const LINE = /^(\d+\+?)\s+(SNA|SNATCH|CNJ|C&J|CLEAN|TOT|TOTAL)\s+(\d+(?:\.\d+)?)\b/i;
 
-const MONTHS = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'];
+const LATEST_TWO_DIGIT_YEAR_IN_THE_2000S = 50;
 
-/** "12-Sep-25" -> "2025-09-12" (two-digit years up to 50 are 20xx); any other date as written. */
 function recordsDate(text: string): string {
   const match = /^(\d{1,2})-([A-Za-z]{3})[a-z]*-(\d{2}|\d{4})$/.exec(text);
-  const month = match ? MONTHS.indexOf(match[2].toLowerCase()) + 1 : 0;
+  const month = match ? (MONTH_NUMBERS[match[2].toLowerCase()] ?? 0) : 0;
   if (!match || !month) return text;
-  const year = match[3].length === 4 ? Number(match[3]) : Number(match[3]) + (Number(match[3]) <= 50 ? 2000 : 1900);
-  return `${year}-${String(month).padStart(2, '0')}-${match[1].padStart(2, '0')}`;
+  const year = match[3].length === 4 ? Number(match[3]) : Number(match[3]) + (Number(match[3]) <= LATEST_TWO_DIGIT_YEAR_IN_THE_2000S ? 2000 : 1900);
+  return `${year}-${pad2(month)}-${match[1].padStart(2, '0')}`;
 }
 
 const DATE_WORD = /^(?:\d{1,2}-[A-Za-z]{3,}-\d{2,4}|\d{1,2}\/\d{1,2}\/\d{2,4})$/;

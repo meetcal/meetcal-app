@@ -1,4 +1,5 @@
 import { type Gender, MAX_LEADERBOARD_YEARS, parseDivision, plausible, qpoints, type RankedFields, sinclair } from './leaderboard';
+import { plusYears } from './dates';
 import { normalizeName } from './names';
 import { normalizeGender } from './normalize';
 import { compareBytes } from './sort';
@@ -345,8 +346,6 @@ export function rankAll(
 
 export type EliteArgs = { wso: string; from: string; to: string; methods?: Partial<Record<EliteList, string>> };
 export type CheckedEliteArgs = { wso: string; from: string; to: string; methods: EliteMethods };
-
-const plusYears = (date: string, years: number) => `${String(Number(date.slice(0, 4)) + years).padStart(4, '0')}${date.slice(4)}`;
 
 /** The arguments checked, each list's method defaulted: 400 for a blank WSO, a bad range, or a method a list does not offer. */
 export function checkEliteArgs(args: EliteArgs): CheckedEliteArgs {
