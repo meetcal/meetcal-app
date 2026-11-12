@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { readFile, readdir } from "node:fs/promises";
 import { createHash } from "node:crypto";
 import test from "node:test";
+import { pathToRegexp } from "path-to-regexp";
 
 const config = JSON.parse(
   await readFile(new URL("../../vercel.json", import.meta.url), "utf8"),
@@ -17,15 +18,10 @@ function headersFor(source) {
 const IMMUTABLE = "public, max-age=31536000, immutable";
 const CONTENT_HASH = /[-_.][0-9a-f]{16}(?:_bg)?(?:[./]|$)/;
 
-function sourcePattern(source) {
-  const literal = (text) => text.replace(/[.+?^${}[\]\\]/g, "\\$&");
-  return new RegExp(`^${source.split("(.*)").map(literal).join("(.*)")}$`);
-}
-
 function cacheControlFor(path) {
   for (const { source, headers } of config.headers) {
     const header = headers.find(({ key }) => key.toLowerCase() === "cache-control");
-    if (header && sourcePattern(source).test(path)) return header.value;
+    if (header && pathToRegexp(source).test(path)) return header.value;
   }
   return undefined;
 }

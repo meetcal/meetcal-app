@@ -12,6 +12,7 @@
     "@axe-core/playwright": "4.14.0",
     "@playwright/test": "1.65.0",
     "@types/node": "26.6.6",
+    "path-to-regexp": "6.3.0",
     "serve": "14.2.7",
     "tsrs": "0.25.0-ts7.1.0-beta"
   },

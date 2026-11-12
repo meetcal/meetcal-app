@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
+import { pathToRegexp } from "path-to-regexp";
 
 const config = JSON.parse(
   await readFile(new URL("../../vercel.json", import.meta.url), "utf8"),
@@ -150,5 +151,13 @@ test("script-src allows only the pinned SDK versions, which load with SRI", asyn
   }
   for (const source of scriptSrc.filter((source) => /jsdelivr|unpkg/.test(source))) {
     assert.ok(pinned.some(([name, prefix]) => source === `${prefix}${constant(`${name}_VERSION`)}/`), source);
+  }
+});
+
+test("every route source is a pattern Vercel accepts", () => {
+  const rules = [...(config.headers ?? []), ...(config.redirects ?? []), ...(config.rewrites ?? [])];
+  assert.ok(rules.length > 0, "vercel.json has no route rules");
+  for (const { source } of rules) {
+    assert.doesNotThrow(() => pathToRegexp(source), `${source} is not a valid route source pattern`);
   }
 });

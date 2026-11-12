@@ -49,7 +49,16 @@
       ]
     },
     {
-      "source": "/(favicon.ico|favicon.svg|favicon-(.*).png|apple-touch-icon.png|android-chrome-(.*).png|web-app-manifest-(.*).png|site.webmanifest)",
+      "source": "/(favicon\\.ico|favicon\\.svg|apple-touch-icon\\.png|site\\.webmanifest)",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "public, max-age=86400, stale-while-revalidate=604800"
+        }
+      ]
+    },
+    {
+      "source": "/(favicon|android-chrome|web-app-manifest)-(.*).png",
       "headers": [
         {
           "key": "Cache-Control",
