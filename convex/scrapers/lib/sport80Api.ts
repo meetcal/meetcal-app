@@ -2,7 +2,7 @@ import { daysBetween, isoDaysAfter } from '../../lib/dates';
 import { errorMessage } from '../../lib/errors';
 import { rowCount } from '../../lib/json';
 import { pageRows, readSport80Env, readTablePage, USAW_DOMAIN, type Sport80Env } from '../parse/sport80';
-import { retryable, withRetries } from './http';
+import { retryable, withRetries, type RetryPolicy } from './http';
 import { gaveUp, TRANSIENT_RETRY } from './transientFetch';
 
 type Dict = Record<string, unknown>;
@@ -19,9 +19,7 @@ export type DateRange = readonly [start: string, end: string];
 
 export type RankingsReading = { deadline?: number; wholeTables?: boolean; retryDroppedConnections?: boolean };
 
-type PageRetry = { attempts: number; delayMs: (attempt: number) => number; retryIf: (error: unknown) => boolean };
-
-const ONE_TRY: PageRetry = { attempts: 1, delayMs: () => 0, retryIf: () => false };
+const ONE_TRY: RetryPolicy = { attempts: 1, delayMs: () => 0 };
 
 const droppedConnection = (error: unknown) => retryable(error) || (error instanceof Error && 'cause' in error && retryable(error.cause));
 
@@ -95,7 +93,7 @@ export class Sport80 {
     };
   }
 
-  private async request(method: 'GET' | 'POST', url: string, payload?: Dict, retry: PageRetry = ONE_TRY): Promise<Dict> {
+  private async request(method: 'GET' | 'POST', url: string, payload?: Dict, retry: RetryPolicy = ONE_TRY): Promise<Dict> {
     const path = new URL(url).pathname;
     return await withRetries(
       async () => {
@@ -113,7 +111,7 @@ export class Sport80 {
     );
   }
 
-  private async collate(first: Dict, payload?: Dict, retry: PageRetry = ONE_TRY): Promise<TableRead> {
+  private async collate(first: Dict, payload?: Dict, retry: RetryPolicy = ONE_TRY): Promise<TableRead> {
     const pages: Dict[][] = [pageRows(first)];
     let current = first;
     for (let page = 1; typeof current.next_page_url === 'string' && current.next_page_url; page++) {
@@ -142,7 +140,7 @@ export class Sport80 {
     return await this.request('GET', this.url('/api/categories/rankings/table'));
   }
 
-  private async rankingsRange(classId: number, [start, end]: DateRange, pageSizes: readonly number[], retry: PageRetry): Promise<TableRead> {
+  private async rankingsRange(classId: number, [start, end]: DateRange, pageSizes: readonly number[], retry: RetryPolicy): Promise<TableRead> {
     const payload = { date_range_start: start, date_range_end: end, weight_class: classId };
     let serverError: Sport80HttpError | null = null;
     for (const rows of pageSizes) {
@@ -163,7 +161,9 @@ export class Sport80 {
     { deadline = Infinity, wholeTables = false, retryDroppedConnections = false }: RankingsReading = {},
   ): Promise<Dict[]> {
     const dropped = (error: unknown) => retryDroppedConnections && droppedConnection(error);
-    const retry: PageRetry = retryDroppedConnections ? { ...TRANSIENT_RETRY, retryIf: (error) => retryable(error) && Date.now() < deadline } : ONE_TRY;
+    const retry: RetryPolicy = retryDroppedConnections
+      ? { ...TRANSIENT_RETRY, retryIf: (error) => (TRANSIENT_RETRY.retryIf?.(error) ?? true) && Date.now() < deadline }
+      : ONE_TRY;
     const pending: DateRange[] = [[start, end]];
     const parts: Dict[][] = [];
     for (let asked = 0; asked < MAX_RANKINGS_RANGES; asked++) {

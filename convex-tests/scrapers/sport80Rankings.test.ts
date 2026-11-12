@@ -180,6 +180,19 @@ describe('a connection Sport80 drops part way through an answer', () => {
     expect(askedFor(requests, '1963-06-09', '2026-11-12')).toBe(TRANSIENT_RETRY.attempts);
   });
 
+  it('still reads in halves a long range that drops and then answers with a 5xx', async () => {
+    let droppedOnce = false;
+    const whole = (request: Request) => request.start === '1963-06-09' && request.end === '2026-11-12';
+    fakeSport80((request) => {
+      if (!whole(request)) return rowsFor(request);
+      if (droppedOnce) return new Response('', { status: 502 });
+      droppedOnce = true;
+      return droppedMidBody();
+    });
+    const rows = await (await Sport80.connect()).rankings(767, '1963-06-09', '2026-11-12', { retryDroppedConnections: true });
+    expect(rows).toEqual([{ lifter: '1963-06-09..1995-02-24' }, { lifter: '1995-02-25..2026-11-12' }]);
+  });
+
   it('fails the class naming the range, the tries and the socket error when even a year keeps dropping', async () => {
     const requests = fakeSport80(() => droppedMidBody());
     await expect((await Sport80.connect()).rankings(767, '2026-01-01', '2026-11-12', { retryDroppedConnections: true })).rejects.toThrow(
