@@ -1,6 +1,7 @@
 use super::{
     address::{HistoryEntry, address, query_param, use_page_address},
     athlete_autocomplete::AthleteAutocomplete,
+    catalog,
     filters::{SortDirection, sort_numeric, sort_orders, sort_text},
     format::{display_body_weight, format_us_date, yes_no},
     loading::{Load, LoadState, load_error},
@@ -8,7 +9,8 @@ use super::{
         AthleteSearchQuery, AthleteSearchResponse, LiftingResult, MAX_ATHLETE_CHOICES, attempt,
         distinct_athletes, normalize,
     },
-    ui::{DataPage, DataStatus, DataTable, SortSelect, TableSkeleton},
+    reference_table::position_in,
+    ui::{DataPage, DataStatus, RowsTable, SortSelect, TableSkeleton},
 };
 use crate::utils::api::{queries, query_with};
 use js_sys::Date;
@@ -171,7 +173,7 @@ pub fn Results() -> impl IntoView {
     );
 
     view! {
-        <DataPage heading="Results" intro="Search an athlete’s competition history.">
+        <DataPage page=catalog::RESULTS>
             <ResultsSearchForm name set_name current=athlete search_again=Callback::new(move |()| results.retry()) />
 
             // Nothing asked yet is the prompt at once, never a loading skeleton.
@@ -260,6 +262,27 @@ fn Suggestions(names: Vec<String>) -> impl IntoView {
     })
 }
 
+const RESULT_HEADERS: &[&str] = &[
+    "Date",
+    "Meet",
+    "Division",
+    "Bodyweight",
+    "S1",
+    "S2",
+    "S3",
+    "Best snatch",
+    "C&J 1",
+    "C&J 2",
+    "C&J 3",
+    "Best C&J",
+    "Total",
+    "Adaptive",
+];
+
+fn result_row(row: &LiftingResult) -> AnyView {
+    view! { <tr><td>{format_us_date(&row.date)}</td><td>{row.meet.clone()}</td><td>{row.age.clone()}</td><td>{display_body_weight(row.body_weight)}</td><td>{attempt(row.snatch1)}</td><td>{attempt(row.snatch2)}</td><td>{attempt(row.snatch3)}</td><td>{row.snatch_best}</td><td>{attempt(row.cj1)}</td><td>{attempt(row.cj2)}</td><td>{attempt(row.cj3)}</td><td>{row.cj_best}</td><td>{row.total}</td><td>{yes_no(row.adaptive)}</td></tr> }.into_any()
+}
+
 #[component]
 fn ResultsTable(
     name: String,
@@ -277,6 +300,29 @@ fn ResultsTable(
         }
     });
     let results = StoredValue::new(rows);
+    let order = Memo::new(move |_| {
+        let order = sort.get();
+        results.with_value(|results| {
+            let mut rows = results.iter().collect::<Vec<_>>();
+            match order {
+                ResultSort::DateAsc => {
+                    sort_text(&mut rows, |row| &row.date, SortDirection::Ascending)
+                }
+                ResultSort::TotalDesc => {
+                    sort_numeric(&mut rows, |row| row.total, SortDirection::Descending)
+                }
+                ResultSort::TotalAsc => {
+                    sort_numeric(&mut rows, |row| row.total, SortDirection::Ascending)
+                }
+                ResultSort::DateDesc => {
+                    sort_text(&mut rows, |row| &row.date, SortDirection::Descending)
+                }
+            }
+            rows.into_iter()
+                .map(|row| position_in(results, row))
+                .collect::<Vec<_>>()
+        })
+    });
 
     view! {
         <p class="data-status">"Results for " <strong>{name}</strong></p>
@@ -285,19 +331,7 @@ fn ResultsTable(
         <div class="data-filters">
             <SortSelect<ResultSort> sort=sort on_sort=move |order: ResultSort| set_sort.set(order) />
         </div>
-        <DataTable>
-            <thead><tr><th>"Date"</th><th>"Meet"</th><th>"Division"</th><th>"Bodyweight"</th><th>"S1"</th><th>"S2"</th><th>"S3"</th><th>"Best snatch"</th><th>"C&J 1"</th><th>"C&J 2"</th><th>"C&J 3"</th><th>"Best C&J"</th><th>"Total"</th><th>"Adaptive"</th></tr></thead>
-            <tbody>{move || results.with_value(|results| {
-                let mut rows = results.iter().collect::<Vec<_>>();
-                match sort.get() {
-                    ResultSort::DateAsc => sort_text(&mut rows, |row| &row.date, SortDirection::Ascending),
-                    ResultSort::TotalDesc => sort_numeric(&mut rows, |row| row.total, SortDirection::Descending),
-                    ResultSort::TotalAsc => sort_numeric(&mut rows, |row| row.total, SortDirection::Ascending),
-                    ResultSort::DateDesc => sort_text(&mut rows, |row| &row.date, SortDirection::Descending),
-                }
-                rows.into_iter().map(|row| view! { <tr><td>{format_us_date(&row.date)}</td><td>{row.meet.clone()}</td><td>{row.age.clone()}</td><td>{display_body_weight(row.body_weight)}</td><td>{attempt(row.snatch1)}</td><td>{attempt(row.snatch2)}</td><td>{attempt(row.snatch3)}</td><td>{row.snatch_best}</td><td>{attempt(row.cj1)}</td><td>{attempt(row.cj2)}</td><td>{attempt(row.cj3)}</td><td>{row.cj_best}</td><td>{row.total}</td><td>{yes_no(row.adaptive)}</td></tr> }).collect_view()
-            })}</tbody>
-        </DataTable>
+        <RowsTable headers=RESULT_HEADERS rows=results order row=result_row empty_message="No results were found for this athlete." />
     }
 }
 

@@ -285,19 +285,29 @@ test("meet center joins details, schedule, start list, and full results", async 
   await expect(page.getByText("scheduled", { exact: true })).toBeVisible();
   await expect(page.getByText("Test Arena", { exact: false })).toBeVisible();
   await expect(page.getByText(/June 20, 2026.*June 20, 2026/)).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Schedule" })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Start List" })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Full Results" })).toBeVisible();
-  await expect(page.locator("tbody").first()).toContainText("June 20, 2026");
-  await expect(page.locator("tbody").first()).toContainText("8:00 AM");
-  await expect(page.locator("tbody").first()).toContainText("10:00 AM");
-  await expect(page.locator("tbody").nth(1)).toContainText("Test Athlete");
+  const tabs = page.getByRole("tablist", { name: "Meet data" }).getByRole("tab");
+  await expect(tabs).toHaveText(["Schedule", "Start List", "Full Results"]);
+  await expect(page.getByRole("tab", { name: "Schedule" })).toHaveAttribute("aria-selected", "true");
+  await expect(page.locator("tbody")).toHaveCount(1);
+  await expect(page.locator("tbody")).toContainText("June 20, 2026");
+  await expect(page.locator("tbody")).toContainText("8:00 AM");
+  await expect(page.locator("tbody")).toContainText("10:00 AM");
+
+  await page.getByRole("tab", { name: "Start List" }).click();
+  await expect(page).toHaveURL(/\/meet-center\?meet=Test%20Meet&section=start-list$/);
+  await expect(page.getByRole("tab", { name: "Start List" })).toHaveAttribute("aria-selected", "true");
+  await expect(page.locator("tbody")).toHaveCount(1);
+  await expect(page.locator("tbody")).toContainText("Test Athlete");
   // The roster's raw class and gender read as every other table does.
-  await expect(page.locator("tbody").nth(1)).toContainText("69+kg");
-  await expect(page.locator("tbody").nth(1)).toContainText("Women");
-  await expect(page.locator("tbody").nth(1)).not.toContainText("Female");
-  await expect(page.locator("tbody").nth(2)).toContainText("Test Athlete");
-  const fullResults = page.locator("tbody").nth(2).locator("tr");
+  await expect(page.locator("tbody")).toContainText("69+kg");
+  await expect(page.locator("tbody")).toContainText("Women");
+  await expect(page.locator("tbody")).not.toContainText("Female");
+
+  await page.getByRole("tab", { name: "Full Results" }).click();
+  await expect(page).toHaveURL(/section=results$/);
+  await page.reload();
+  await expect(page.getByRole("tab", { name: "Full Results" })).toHaveAttribute("aria-selected", "true");
+  const fullResults = page.locator("tbody").locator("tr");
   await expect(fullResults.filter({ hasText: "Test Athlete" }).locator("td").nth(3)).toHaveText("70.5");
   await expect(fullResults.filter({ hasText: "Unweighed Athlete" }).locator("td").nth(3)).toHaveText("—");
   await expect(page.getByRole("columnheader").filter({ hasText: /^Total$/ })).toBeVisible();
@@ -563,7 +573,7 @@ test("the meet search is a keyboard-operable combobox", async ({ page }) => {
   await expect(page.getByRole("option", { name: "Test Meet" })).toHaveAttribute("aria-selected", "true");
   await meet.press("Enter");
   await expect(meet).toHaveValue("Test Meet");
-  await expect(page.getByRole("heading", { name: "Schedule" })).toBeVisible();
+  await expect(page.getByRole("tab", { name: "Schedule" })).toBeVisible();
 });
 
 test("tapping a suggestion picks it on touch screens", async ({ page, isMobile }) => {
@@ -580,7 +590,7 @@ test("tapping a suggestion picks it on touch screens", async ({ page, isMobile }
   await meet.fill("Test");
   await page.getByRole("option", { name: "Test Meet" }).tap();
   await expect(meet).toHaveValue("Test Meet");
-  await expect(page.getByRole("heading", { name: "Schedule" })).toBeVisible();
+  await expect(page.getByRole("tab", { name: "Schedule" })).toBeVisible();
 });
 
 test("data page fields are at least 16px on phones, so iOS doesn't zoom", async ({ page, isMobile }) => {
