@@ -12,9 +12,9 @@ use std::time::Duration;
 use serde::{Deserialize, Serialize};
 use tokio::task::JoinHandle;
 
-use crate::utils::backend;
 use crate::utils::credentials;
 use crate::utils::releases::{self, Version};
+use crate::utils::transport;
 
 /// Set (to anything but `0` or `false`) to turn the notice and its check off.
 pub(crate) const OPT_OUT_ENV: &str = "MEETCAL_NO_UPDATE_CHECK";
@@ -120,7 +120,7 @@ pub fn start() -> Option<Pending> {
     let cache = load(&path);
     let check = cache.needs_check(now_ms()).then(|| {
         tokio::spawn(async {
-            let client = backend::client().ok()?;
+            let client = transport::client().ok()?;
             let newest = tokio::time::timeout(CHECK_TIMEOUT, releases::fetch_newest(client))
                 .await
                 .ok()?

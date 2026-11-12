@@ -2,23 +2,18 @@
 //! ones the app and the website read, called over Convex's HTTP API (`POST /api/query`), the
 //! premium action `leaderboard` ranks with, and the few actions and mutations `meetcal login` and
 //! `logout` call.
-//!
-//! Every request goes through [`send_with_retry`], which uses one shared client and applies the
-//! policy in `utils::retry`. A premium query's or action's read carries the access pass
-//! (`utils::access`).
 
 use std::sync::OnceLock;
 use std::time::Duration;
 
 use anyhow::{Context, Result, anyhow};
-use reqwest::{Client, Request, Response, StatusCode, header::RETRY_AFTER};
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use serde_json::Value;
 use tokio::task::JoinSet;
 
 use crate::utils::access::{self, Access, Refusal};
 use crate::utils::credentials;
-use crate::utils::retry::{next_retry_delay, next_transport_retry_delay, parse_retry_after_secs};
+use crate::utils::transport::{self, Sending};
 
 /// The production Convex deployment, which the app and the website read too.
 pub(crate) const CONVEX_URL: &str = "https://disciplined-hare-790.convex.cloud";
@@ -29,36 +24,10 @@ pub(crate) const CONVEX_URL_ENV: &str = "MEETCAL_CONVEX_URL";
 /// User-Agent sent with every request.
 pub const USER_AGENT: &str = concat!("meetcal-cli/", env!("CARGO_PKG_VERSION"));
 
-/// Time allowed to establish a connection.
-pub(crate) const CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
-
-/// Time allowed for a whole request, from connecting to reading the body.
-pub(crate) const REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
-
-/// Convex answers a function that ran but failed with this status (or 200).
-const FUNCTION_FAILED: u16 = 560;
-
 /// Most pages [`query_all_pages`] reads before giving up. A club's or WSO's entries arrive 2,000
 /// rows a page, so this allows 200,000 rows; an answer that never reports `isDone` fails here
 /// instead of looping forever.
 pub(crate) const MAX_PAGES: usize = 100;
-
-static CLIENT: OnceLock<Client> = OnceLock::new();
-
-/// The HTTP client shared by every request.
-pub(crate) fn client() -> Result<&'static Client> {
-    if let Some(client) = CLIENT.get() {
-        return Ok(client);
-    }
-
-    let client = Client::builder()
-        .user_agent(USER_AGENT)
-        .connect_timeout(CONNECT_TIMEOUT)
-        .timeout(REQUEST_TIMEOUT)
-        .build()
-        .context("Failed to build the HTTP client")?;
-    Ok(CLIENT.get_or_init(|| client))
-}
 
 static ACCESS: OnceLock<Access> = OnceLock::new();
 
@@ -195,13 +164,10 @@ pub mod queries {
     pub(crate) const ACCESS_PASS: Query = Query::value("accessPass:pass");
 }
 
-/// A premium Convex action the CLI calls (`utils::access::PREMIUM_ACTIONS`), and how long its
-/// whole request may take: such an action reads many rows on the server before it answers.
 #[derive(Clone, Copy, Debug)]
 pub struct PremiumAction {
-    /// `module:function`.
     pub(crate) function: &'static str,
-    pub(crate) timeout: Duration,
+    pub(crate) answer_within: Duration,
 }
 
 /// The actions and mutations the CLI calls: the premium leaderboard and WSO elite lists, `meetcal
@@ -214,19 +180,18 @@ pub mod functions {
     /// `to` (`YYYY-MM-DD`, under five years apart), `by` (`total`, `snatch`, `cj`, `sinclair`,
     /// `qpoints`), and optionally `gender` (`Men` or `Women`, needed for `sinclair` and
     /// `qpoints`), `category`, `division`, `federation`, `adaptive` and `limit` (1 to 500).
-    /// Answers `{ rows, federations }`. It pages through every result in the range, so it gets
-    /// two minutes. Read it with [`super::premium_action`].
+    /// Answers `{ rows, federations }`. Read it with [`super::premium_action`].
     pub const LEADERBOARD: PremiumAction = PremiumAction {
         function: "results:leaderboard",
-        timeout: Duration::from_secs(120),
+        answer_within: Duration::from_secs(120),
     };
     /// Premium action: a WSO's elite lists (`convex/lib/elite.ts`). Takes `wso` (as registrations
     /// spell it), `from`, `to` (under five years apart) and `methods` (each list's score, by
     /// `overall`, `youth`, `junior`, `senior`, `masters`). Answers `{ wso, from, to, members,
-    /// lists }`. It reads every member's registrations and history, so it gets two minutes.
+    /// lists }`.
     pub(crate) const WSO_ELITE: PremiumAction = PremiumAction {
         function: "results:wsoElite",
-        timeout: Duration::from_secs(120),
+        answer_within: Duration::from_secs(120),
     };
     /// Action. Starts a device login; takes `deviceName` (at most 64 characters). Answers
     /// `{ deviceCode, userCode, verificationUrl, expiresAt, interval }`.
@@ -404,7 +369,7 @@ where
             Endpoint::Query,
             query.function,
             &args,
-            None,
+            Sending::READ,
         )
         .await?
     } else {
@@ -431,9 +396,6 @@ where
     premium_action_from(&convex_url(), default_access(), action, args).await
 }
 
-/// Runs the premium `action` with `args` on the deployment at `base_url`, carrying the pass
-/// `access` holds, within the action's timeout, with a refusal handled as a premium query's (see
-/// [`premium_answer`]).
 pub async fn premium_action_from<T, A>(
     base_url: &str,
     access: &Access,
@@ -458,30 +420,23 @@ where
         Endpoint::Action,
         function,
         &args,
-        Some(action.timeout),
+        Sending {
+            answer_within: action.answer_within,
+            ..Sending::READ
+        },
     )
     .await?;
     read_function_value(function, answer_value(function, answer)?)
 }
 
-/// Convex's answer to a premium read, a query or an action by `endpoint`. The read carries the
-/// pass `access` holds, fetching one first if it has none, and goes without one when it cannot get
-/// one. If Convex refuses the read for its pass (status 401 or 403), [`access::on_refusal`]
-/// decides: a fresh pass and one more read, or a message telling the user to log in or subscribe.
-/// A premium function only reads, so a throttled or overloaded answer is sent again whatever its
-/// endpoint. `timeout` replaces [`REQUEST_TIMEOUT`] for each request when given.
 async fn premium_answer(
     base_url: &str,
     access: &Access,
     endpoint: Endpoint,
     function: &str,
     args: &Value,
-    timeout: Option<Duration>,
+    sending: Sending,
 ) -> Result<QueryResponse> {
-    let sending = Sending {
-        retries: true,
-        timeout,
-    };
     let held = access.current_pass(base_url).await;
     let pass = held.pass.as_deref().ok();
     let answer = call(
@@ -556,9 +511,10 @@ pub async fn call_function<T: DeserializeOwned>(
     args: &Value,
     token: Option<&str>,
 ) -> Result<T> {
-    let sending = Sending {
-        retries: endpoint.retries(),
-        timeout: None,
+    let sending = if endpoint.retries() {
+        Sending::READ
+    } else {
+        Sending::ONCE
     };
     let answer = call(base_url, endpoint, function, args, token, sending).await?;
     read_function_value(function, answer_value(function, answer)?)
@@ -569,22 +525,6 @@ fn read_function_value<T: DeserializeOwned>(function: &str, value: Value) -> Res
         .with_context(|| format!("Unexpected answer from MeetCal {function}"))
 }
 
-#[derive(Clone, Copy, Debug)]
-struct Sending {
-    retries: bool,
-    timeout: Option<Duration>,
-}
-
-impl Sending {
-    /// A read: retried, within [`REQUEST_TIMEOUT`].
-    const READ: Sending = Sending {
-        retries: true,
-        timeout: None,
-    };
-}
-
-/// Posts `function` with `args` to the deployment at `base_url`, with `token` as the bearer when
-/// given, and returns Convex's answer.
 async fn call(
     base_url: &str,
     endpoint: Endpoint,
@@ -593,7 +533,7 @@ async fn call(
     token: Option<&str>,
     sending: Sending,
 ) -> Result<QueryResponse> {
-    let mut builder = client()?
+    let mut builder = transport::client()?
         .post(format!(
             "{}/{}",
             base_url.trim_end_matches('/'),
@@ -607,17 +547,12 @@ async fn call(
     if let Some(token) = token {
         builder = builder.bearer_auth(token);
     }
-    if let Some(timeout) = sending.timeout {
-        builder = builder.timeout(timeout);
-    }
     let request = builder
         .build()
         .with_context(|| format!("Failed to build request for MeetCal query {function}"))?;
 
-    send_with_retry(request, function, sending.retries)
-        .await?
-        .json()
-        .await
+    let body = transport::send(request, function, sending).await?;
+    serde_json::from_slice(&body)
         .with_context(|| format!("Failed to parse MeetCal's answer to {function}"))
 }
 
@@ -805,77 +740,6 @@ fn read_answer<T: DeserializeOwned>(query: Query, answer: QueryResponse) -> Resu
     }
 }
 
-fn used_its_whole_request_allowance(error: &reqwest::Error) -> bool {
-    error.is_timeout() && !error.is_connect()
-}
-
-pub(crate) async fn send_with_retry(
-    request: Request,
-    function: &str,
-    retries: bool,
-) -> Result<Response> {
-    let mut retries_done = 0;
-
-    loop {
-        let attempt = request
-            .try_clone()
-            .with_context(|| format!("Failed to prepare request for MeetCal query {function}"))?;
-        let response = match client()?.execute(attempt).await {
-            Ok(response) => response,
-            Err(error) => {
-                if retries
-                    && !used_its_whole_request_allowance(&error)
-                    && let Some(delay) = next_transport_retry_delay(retries_done)
-                {
-                    tokio::time::sleep(delay).await;
-                    retries_done += 1;
-                    continue;
-                }
-                return Err(error)
-                    .with_context(|| format!("Failed to call MeetCal query {function}"));
-            }
-        };
-
-        let status = response.status();
-        let retry_after = response
-            .headers()
-            .get(RETRY_AFTER)
-            .and_then(|value| value.to_str().ok());
-
-        if let Some(delay) = next_retry_delay(status, retry_after, retries_done).filter(|_| retries)
-        {
-            tokio::time::sleep(delay).await;
-            retries_done += 1;
-            continue;
-        }
-
-        if status == StatusCode::TOO_MANY_REQUESTS {
-            let retry_after_secs = retry_after.and_then(parse_retry_after_secs);
-            return Err(anyhow!(
-                "MeetCal query {function} returned {status} after {retries_done} retries"
-            )
-            .context(rate_limited_message(retry_after_secs)));
-        }
-
-        if status.as_u16() == FUNCTION_FAILED {
-            return Ok(response);
-        }
-        return response
-            .error_for_status()
-            .with_context(|| format!("MeetCal query {function} returned an error"));
-    }
-}
-
-/// The message shown when the API is still rate limiting after every retry.
-pub(crate) fn rate_limited_message(retry_after_secs: Option<u64>) -> String {
-    let wait = match retry_after_secs {
-        Some(0 | 1) => "1 second".to_string(),
-        Some(secs) => format!("{secs} seconds"),
-        None => "a few seconds".to_string(),
-    };
-    format!("The MeetCal API is rate limiting requests right now; try again in {wait}")
-}
-
 #[cfg(test)]
 mod wire_fixtures;
 
@@ -894,13 +758,6 @@ mod tests {
             USER_AGENT,
             format!("meetcal-cli/{}", env!("CARGO_PKG_VERSION"))
         );
-    }
-
-    #[test]
-    fn client_is_built_once() {
-        let first = client().unwrap();
-        let second = client().unwrap();
-        assert!(std::ptr::eq(first, second));
     }
 
     #[test]
@@ -1075,7 +932,7 @@ mod tests {
     async fn an_action_that_is_not_on_the_premium_list_is_refused_before_any_request() {
         let unlisted = PremiumAction {
             function: "results:other",
-            timeout: Duration::from_secs(1),
+            answer_within: Duration::from_secs(1),
         };
         let error = premium_action_from::<serde_json::Value, _>(
             "http://127.0.0.1:1",
@@ -1281,21 +1138,5 @@ mod tests {
                 "{value}"
             );
         }
-    }
-
-    #[test]
-    fn rate_limited_message_names_the_wait() {
-        assert_eq!(
-            rate_limited_message(Some(12)),
-            "The MeetCal API is rate limiting requests right now; try again in 12 seconds"
-        );
-        assert_eq!(
-            rate_limited_message(Some(1)),
-            "The MeetCal API is rate limiting requests right now; try again in 1 second"
-        );
-        assert_eq!(
-            rate_limited_message(None),
-            "The MeetCal API is rate limiting requests right now; try again in a few seconds"
-        );
     }
 }

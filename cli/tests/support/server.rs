@@ -30,22 +30,6 @@ pub(crate) fn reply(
     }
 }
 
-impl Reply {
-    pub(crate) fn gzipped(mut self) -> Self {
-        use flate2::{Compression, write::GzEncoder};
-        let mut encoder = GzEncoder::new(Vec::new(), Compression::default());
-        encoder.write_all(&self.body).unwrap();
-        self.body = encoder.finish().unwrap();
-        self.encoding = Some("gzip");
-        self
-    }
-
-    pub(crate) fn cut_after(mut self, bytes: usize) -> Self {
-        self.cut_after = Some(bytes);
-        self
-    }
-}
-
 pub(crate) fn serve(replies: Vec<Reply>) -> (String, Arc<Mutex<Vec<String>>>) {
     let listener = TcpListener::bind("127.0.0.1:0").expect("bind local test server");
     let base_url = format!("http://{}", listener.local_addr().unwrap());

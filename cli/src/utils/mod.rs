@@ -16,5 +16,6 @@ pub mod releases;
 pub mod retry;
 pub mod sort;
 pub mod stats;
+pub mod transport;
 pub mod update_notice;
 pub mod upgrade;

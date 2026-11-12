@@ -29,19 +29,27 @@ POST https://disciplined-hare-790.convex.cloud/api/query
 - A function that ran and failed answers `{ status: "error", errorMessage, errorData }` (HTTP 200
   or 560). Our functions throw `{ status, error }` as `errorData`; the CLI prints
   `MeetCal could not answer <query>: <error>`.
-- `send_with_retry` applies `src/utils/retry.rs` to queries and premium actions: 429 and 503 are
-  retried twice, honoring `Retry-After` (clamped to 1 to 30 seconds) or backing off 1 then 2
-  seconds. Once retries run out, a 429 explains how long to wait. A request that failed before any
-  answer arrived (a refused, dropped or timed-out connection) counts toward the same two retries;
-  one that used its whole request timeout is not sent again. Other actions and mutations are sent
-  once (`Endpoint::retries`): one may have done its work before its answer was lost.
+- `src/utils/transport.rs` sends every request and applies `src/utils/retry.rs` to queries and
+  premium actions. It asks for gzip, which Convex serves (answers are 8 to 22 times smaller). 429
+  and 503 are retried twice, honoring `Retry-After` (clamped to 1 to 30 seconds) or backing off 1
+  then 2 seconds; once retries run out, a 429 explains how long to wait. Network failures are
+  `retry::Failure`s, each with its own budget and a message that says to check the connection:
+  a connection that could not be made (DNS, refused, or no handshake within 8 seconds) is tried
+  once more, then the deployment counts as unreachable for the rest of the run, so the pass fetch
+  and the read after it fail together; a request dropped before its answer, an answer that stops
+  arriving (20 seconds without a byte) or one cut short is sent again twice; a read with no answer
+  within 60 seconds is not. Other actions and mutations are sent once (`Endpoint::retries`): one
+  may have done its work before its answer was lost.
+- The first request to a deployment goes alone: requests started beside it wait until it has an
+  answer, then share its HTTP/2 connection instead of each opening one.
 - `query_each` runs one query per argument set, at most `CONCURRENT_READS` (8) at a time, and
   returns the answers in the arguments' order (`in_order` is the bounded runner). The name batches
   of the club and WSO reports and the per-meet medal reads of the trends reports go through it.
-- One shared `reqwest` client with a 10-second connect timeout, a 30-second request timeout, and a
-  `meetcal-cli/<version>` User-Agent. A premium action carries its own timeout (`PremiumAction`):
-  two minutes for `results:leaderboard`, which reads a whole range before it answers, and for
-  `results:wsoElite`, which reads every member's registrations and history.
+- One shared `reqwest` client with an 8-second connect timeout, a five-minute cap on any request,
+  and a `meetcal-cli/<version>` User-Agent. A premium action waits longer for its answer
+  (`PremiumAction::answer_within`): two minutes for `results:leaderboard`, which reads a whole
+  range before it answers, and for `results:wsoElite`, which reads every member's registrations
+  and history.
 - `MEETCAL_CONVEX_URL` (read at run time) points the CLI at another deployment.
 - `call_function` runs any query, mutation or action (`Endpoint`) with an optional bearer token,
   for the few calls that are not data reads (`functions::*`, `queries::ACCESS_PASS`). A function
