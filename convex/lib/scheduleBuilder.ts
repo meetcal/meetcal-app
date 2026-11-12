@@ -274,7 +274,8 @@ function applyEdit(slots: Slot[], edit: BuilderEdit, options: BuilderOptions): E
       const weightClass = bareWeightClass(edit.weightClass);
       if (!source || !source.athletes.some((a) => a.weightClass === weightClass)) return 'skipped';
       const target = targetGroup(slots, options, edit.toSession, edit.toPlatform, source);
-      if (!target || target === source) return 'skipped';
+      if (!target) return 'skipped';
+      if (target === source) return 'applied';
       target.athletes.push(...source.athletes.filter((a) => a.weightClass === weightClass));
       source.athletes = source.athletes.filter((a) => a.weightClass !== weightClass);
       source.edited = true;

@@ -286,10 +286,33 @@ describe('edits', () => {
     expect(partial.warnings.map((w) => w.message)).toEqual(['Sessions 2 and 3 use the Red platform at the same time.']);
   });
 
-  it('does not warn about back-to-back sessions or ones on other platforms', () => {
+  it('does not warn about back-to-back sessions', () => {
     nextId = 1;
     const entrants = many(4, (i) => lifter('Women', String(48 + i * 5), 70));
     expect(buildSchedule(entrants, options({ maxAthletesPerPlatform: 1, platforms: ['Red', 'Blue'] })).warnings).toEqual([]);
+  });
+
+  it('does not warn about sessions at the same time on other platforms', () => {
+    nextId = 1;
+    const entrants = many(3, (i) => lifter('Women', String(48 + i * 5), 70));
+    const schedule = buildSchedule(entrants, options({ maxAthletesPerPlatform: 1, platforms: ['Red', 'Blue'] }), [
+      { kind: 'moveAthlete', athlete: athleteKey(entrants[2] as BuilderEntrant), toSession: 2, toPlatform: 'Blue' },
+      { kind: 'moveAthlete', athlete: athleteKey(entrants[1] as BuilderEntrant), toSession: 1, toPlatform: 'Red' },
+      { kind: 'setSessionTime', session: 2, date: '2027-03-06', startTime: '09:00' },
+    ]);
+    expect(schedule.sessions.map((s) => [s.startTime, s.groups.map((g) => g.platform)])).toEqual([
+      ['09:00:00', ['Red']],
+      ['09:00:00', ['Blue']],
+    ]);
+    expect(schedule.warnings.map((w) => w.code)).not.toContain('overlap');
+  });
+
+  it('changes nothing when a class is moved to the group it is in', () => {
+    nextId = 1;
+    const entrants = [...many(4, (i) => lifter('Women', '71', 60 + i)), lifter('Women', '76', 90)];
+    const schedule = buildSchedule(entrants, options({ maxAthletesPerPlatform: 2 }), [{ kind: 'moveClass', fromSession: 1, fromPlatform: 'Red', weightClass: '71', toSession: 1, toPlatform: 'Red' }]);
+    expect(schedule.sessions.map((s) => s.groups[0]?.split)).toEqual(['B', 'A', '']);
+    expect(schedule.warnings).toEqual([]);
   });
 
   it('changes nothing when an athlete is moved to the group they are in', () => {
