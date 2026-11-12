@@ -1,7 +1,7 @@
 import { recordWrite, setMeetResultTitles } from '../convex/ingest';
 import { computeStatsRows } from '../convex/lib/meetData';
 import { byMeet } from '../convex/results';
-import { attendance, attendanceRows } from '../convex/meets';
+import { attendance, attendanceRows, ATTENDANCE_ROW_BUDGET } from '../convex/meets';
 import { fakeMutationCtx, handlerOf } from './fakeDb';
 
 // Premium queries may log their caller (`convex/lib/access.ts`).
@@ -94,16 +94,25 @@ describe('results titles of a meet (#362)', () => {
         () => false,
         (error: { data?: { status?: number } }) => error.data?.status === 413,
       );
-    // The meet's rows: its results under every title, and its registrations.
     let used = 0;
     while (await refused([NATIONALS], used)) used += 1;
     expect(used).toBeGreaterThanOrEqual(6);
-    // Exactly its rows fit; one fewer is a 413, never a short count.
     expect(await attendanceRows(store.ctx as never, [NATIONALS], used)).toEqual(whole);
     expect(await refused([NATIONALS], used - 1)).toBe(true);
-    // Two meets share one budget.
     expect(await refused([NATIONALS, NATIONALS], used * 2 - 1)).toBe(true);
     expect(await attendanceRows(store.ctx as never, [NATIONALS, NATIONALS], used * 2)).toEqual([...whole, ...whole]);
+  });
+
+  it('says which meet is too large when one meet alone does not fit, where asking for fewer cannot help', async () => {
+    const store = world();
+    const message = (meets: string[]) => attendanceRows(store.ctx as never, meets, 0).then(() => '', (error: { data?: { error?: string } }) => error.data?.error ?? '');
+    expect(await message([NATIONALS])).toContain(JSON.stringify(NATIONALS));
+    expect(await message([NATIONALS])).not.toContain('fewer meets');
+    expect(await message([NATIONALS, JUNIOR])).toContain('ask for fewer meets at once');
+  });
+
+  it('gives every batch size the same budget, all but a few hundred of what one query may read', () => {
+    expect(ATTENDANCE_ROW_BUDGET).toBe(31500);
   });
 
   it('looks up linked titles only for results writes', async () => {
