@@ -8,7 +8,7 @@ use crate::commands::leaderboard::EXCLUDED_FEDERATION;
 use crate::commands::qual_totals::QualifyingTotal;
 use crate::commands::standards::Standards;
 use crate::types::lifting_results::LiftingResults;
-use crate::utils::athletes::history;
+use crate::utils::athletes::{LifterPick, history};
 use crate::utils::backend::{NoArgs, queries, query};
 use crate::utils::bests::{YEAR_BESTS_YEARS, cutoff_date};
 use crate::utils::filters;
@@ -47,6 +47,9 @@ pub struct QualifyArgs {
     /// result's; Senior standards are always shown too)
     #[arg(long, short = 'a')]
     pub category: Option<String>,
+
+    #[command(flatten)]
+    pub pick: LifterPick,
 }
 
 /// The day USA Weightlifting replaced its bodyweight classes with the IWF's new set.
@@ -131,7 +134,7 @@ pub(crate) struct Target {
 }
 
 pub async fn run(args: QualifyArgs) -> Result<()> {
-    let rows = history(&args.name).await?;
+    let rows = history(&args.name, &args.pick).await?.rows;
     let Some(latest) = chronological(&rows).last().copied() else {
         bail!("No results found for athlete \"{}\"", args.name);
     };

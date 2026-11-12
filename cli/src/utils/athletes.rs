@@ -2,36 +2,123 @@
 
 use std::collections::HashMap;
 
-use anyhow::{Result, anyhow};
+use anyhow::{Context, Result, anyhow};
+use serde::Serialize;
 use serde_json::json;
 
-use crate::types::lifting_results::LiftingResults;
+use crate::types::lifting_results::{
+    AthleteAnswer, LifterCard, LifterChoice, LiftingResults, PrMarks,
+};
 use crate::types::wrapped::SearchResponse;
 use crate::utils::backend::{queries, query, query_each};
+use crate::utils::format::us_date;
 use crate::utils::names::{MAX_SUGGESTIONS, closest};
 use crate::utils::stats::fold;
 
 pub(crate) const NAMES_PER_READ: usize = 50;
 
-/// Every result of the athlete named `name` (case and spacing ignored). An unknown name is an
-/// error naming the closest athletes MeetCal has.
-pub(crate) async fn history(name: &str) -> Result<Vec<LiftingResults>> {
-    let rows: Vec<LiftingResults> =
-        query(queries::RESULTS_BY_NAMES, &json!({ "names": [name] })).await?;
-    let rows = rows_named(rows, name);
-    if !rows.is_empty() {
-        return Ok(rows);
-    }
-    Err(unknown_athlete(name).await)
+#[derive(Clone, Debug, Default, clap::Args)]
+pub struct LifterPick {
+    /// One lifter's results, by the id a shared name lists
+    #[arg(long, value_name = "ID", conflicts_with = "other")]
+    pub lifter: Option<String>,
+
+    /// The name's results no one lifter holds
+    #[arg(long)]
+    pub other: bool,
 }
 
-/// The rows of the athlete named `name`, by the folded name (the server's rule, so a row written
-/// with a decomposed accent still belongs to the athlete).
-pub(crate) fn rows_named(rows: Vec<LiftingResults>, name: &str) -> Vec<LiftingResults> {
-    let wanted = fold(name);
-    rows.into_iter()
-        .filter(|row| fold(&row.name) == wanted)
-        .collect()
+impl LifterPick {
+    fn names_one_lifter(&self) -> bool {
+        self.lifter.is_some() || self.other
+    }
+}
+
+#[derive(Serialize)]
+struct AthleteArgs<'a> {
+    name: &'a str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    lifter: Option<&'a str>,
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    other: bool,
+}
+
+#[derive(Debug)]
+pub(crate) struct AthleteHistory {
+    pub(crate) lifter: Option<LifterCard>,
+    pub(crate) rows: Vec<LiftingResults>,
+    pub(crate) prs: PrMarks,
+}
+
+pub(crate) async fn history(name: &str, pick: &LifterPick) -> Result<AthleteHistory> {
+    let args = AthleteArgs {
+        name,
+        lifter: pick.lifter.as_deref(),
+        other: pick.other,
+    };
+    let answer: AthleteAnswer = query(queries::ATHLETE, &args).await?;
+    match athlete_history(answer, pick)? {
+        Some(history) => Ok(history),
+        None => Err(unknown_athlete(name).await),
+    }
+}
+
+pub(crate) fn athlete_history(
+    answer: AthleteAnswer,
+    pick: &LifterPick,
+) -> Result<Option<AthleteHistory>> {
+    match answer {
+        AthleteAnswer::Choose {
+            name,
+            lifters,
+            other_results,
+        } => Err(anyhow!(shared_name(&name, &lifters, other_results))),
+        AthleteAnswer::Results { lifter, json, prs } => {
+            let rows: Vec<LiftingResults> =
+                serde_json::from_str(&json).context("reading an athlete's results")?;
+            if rows.is_empty() && lifter.is_none() && !pick.names_one_lifter() {
+                return Ok(None);
+            }
+            Ok(Some(AthleteHistory { lifter, rows, prs }))
+        }
+    }
+}
+
+fn results_count(count: f64) -> String {
+    if count == 1.0 {
+        "1 result".to_owned()
+    } else {
+        format!("{count} results")
+    }
+}
+
+pub(crate) fn shared_name(name: &str, lifters: &[LifterChoice], other_results: f64) -> String {
+    let mut lines = vec![format!(
+        "More than one lifter is named \"{name}\". Run again with one of:"
+    )];
+    for choice in lifters {
+        let mut about = vec![results_count(choice.results)];
+        if !choice.latest_date.is_empty() {
+            about.push(format!("latest {}", us_date(&choice.latest_date)));
+        }
+        let label = if choice.lifter.label.is_empty() {
+            String::new()
+        } else {
+            format!("{}, ", choice.lifter.label)
+        };
+        lines.push(format!(
+            "  --lifter {}  {label}{}",
+            choice.lifter.id,
+            about.join(", ")
+        ));
+    }
+    if other_results > 0.0 {
+        lines.push(format!(
+            "  --other  {} no one lifter holds",
+            results_count(other_results)
+        ));
+    }
+    lines.join("\n")
 }
 
 /// The error for an athlete with no results, with the names MeetCal has that are closest to
@@ -101,26 +188,50 @@ pub(crate) async fn histories(names: &[String]) -> Result<HashMap<String, Vec<Li
 mod tests {
     use super::*;
 
+    fn choose() -> AthleteAnswer {
+        serde_json::from_value(json!({
+            "kind": "choose",
+            "name": "Taylor Johnson",
+            "lifters": [
+                { "id": "24655", "name": "Taylor Johnson", "label": "Age 18 · Barbell Club", "results": 2, "latest_date": "2025-06-01" },
+                { "id": "20730", "name": "Taylor Johnson", "label": "", "results": 1, "latest_date": "" },
+            ],
+            "other_results": 3,
+        }))
+        .unwrap()
+    }
+
+    fn empty() -> AthleteAnswer {
+        serde_json::from_value(json!({
+            "kind": "results",
+            "lifter": null,
+            "json": "[]",
+            "prs": { "set": { "snatch": [], "cj": [], "total": [] }, "current": { "snatch": null, "cj": null, "total": null } },
+        }))
+        .unwrap()
+    }
+
     #[test]
-    fn rows_written_with_a_decomposed_accent_belong_to_the_athlete() {
-        use crate::utils::stats::tests::row;
-        let lift = |name: &str| {
-            row(
-                name,
-                "2026-01-01",
-                "M",
-                "Open Women's 64kg",
-                63.0,
-                [80.0, 0.0, 0.0],
-                [100.0, 0.0, 0.0],
-            )
+    fn a_shared_name_lists_each_lifter_with_the_flag_that_picks_them() {
+        let error = athlete_history(choose(), &LifterPick::default()).unwrap_err();
+        assert_eq!(
+            error.to_string(),
+            "More than one lifter is named \"Taylor Johnson\". Run again with one of:\n  --lifter 24655  Age 18 · Barbell Club, 2 results, latest Jun 1, 2025\n  --lifter 20730  1 result\n  --other  3 results no one lifter holds"
+        );
+    }
+
+    #[test]
+    fn an_unknown_name_is_left_for_suggestions_unless_a_lifter_was_picked() {
+        assert!(
+            athlete_history(empty(), &LifterPick::default())
+                .unwrap()
+                .is_none()
+        );
+        let others = LifterPick {
+            lifter: None,
+            other: true,
         };
-        let rows = vec![
-            lift("Ze\u{301}lie Martin"),
-            lift("Zélie Martin"),
-            lift("Zelie Martin"),
-        ];
-        assert_eq!(rows_named(rows, "zélie  martin").len(), 2);
+        assert!(athlete_history(empty(), &others).unwrap().is_some());
     }
 
     #[test]

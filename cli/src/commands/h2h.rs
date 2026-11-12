@@ -4,7 +4,7 @@ use clap::Parser;
 use comfy_table::Table;
 
 use crate::types::lifting_results::LiftingResults;
-use crate::utils::athletes::history;
+use crate::utils::athletes::{LifterPick, history};
 use crate::utils::bests::{YEAR_BESTS_YEARS, cutoff_date};
 use crate::utils::format::us_date;
 use crate::utils::meet_names::result_year;
@@ -30,14 +30,30 @@ pub struct H2hArgs {
     /// Second athlete (exact name)
     #[arg(value_parser = crate::utils::filters::parse_name)]
     pub second: String,
+
+    /// The first athlete's lifter id, when their name is shared
+    #[arg(long, value_name = "ID")]
+    pub first_lifter: Option<String>,
+
+    /// The second athlete's lifter id, when their name is shared
+    #[arg(long, value_name = "ID")]
+    pub second_lifter: Option<String>,
 }
 
 pub async fn run(args: H2hArgs) -> Result<()> {
-    if fold(&args.first) == fold(&args.second) {
+    if fold(&args.first) == fold(&args.second) && args.first_lifter == args.second_lifter {
         bail!("Pick two different athletes");
     }
-    let (first, second) = tokio::join!(history(&args.first), history(&args.second));
-    let (first, second) = (first?, second?);
+    let pick = |lifter: &Option<String>| LifterPick {
+        lifter: lifter.clone(),
+        other: false,
+    };
+    let (first_pick, second_pick) = (pick(&args.first_lifter), pick(&args.second_lifter));
+    let (first, second) = tokio::join!(
+        history(&args.first, &first_pick),
+        history(&args.second, &second_pick)
+    );
+    let (first, second) = (first?.rows, second?.rows);
     // UTC, as the past-year bests in `meet` and `qualify` (and the app's start list) count it,
     // so the three agree.
     let cutoff = cutoff_date(Utc::now().date_naive(), YEAR_BESTS_YEARS);
