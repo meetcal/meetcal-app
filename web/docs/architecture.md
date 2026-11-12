@@ -214,7 +214,7 @@ instead; `/submit-meet`, which the header links to, has its own spec.
 
 Vercel's project `meetcal-web` builds this folder (project root `web/`) with
 `scripts/vercel-build.sh`: it installs Rust and Trunk, writes `public/posthog-env.js` from
-`POSTHOG_API_KEY`, and runs `trunk build --release` into `dist/`. Production deploys from
+`POSTHOG_API_KEY`, and runs `trunk build --release --locked` into `dist/`. Production deploys from
 `master`; every pull request gets a preview. `vercel.json` also sets the security headers,
 including the CSP, for every response.
 
