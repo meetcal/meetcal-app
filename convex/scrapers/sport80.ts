@@ -295,7 +295,7 @@ export const run = internalAction({
         failures.push({ source, error: `not stored: ${(error as Error).message}` });
         continue;
       }
-      storedCount += 1;
+      if (valid.length > 0) storedCount += 1;
       // Only a meet read in full is a safe basis for deleting what it lacks.
       if (outcome.failed > 0 || valid.length === 0) continue;
       if (notWhole) {
