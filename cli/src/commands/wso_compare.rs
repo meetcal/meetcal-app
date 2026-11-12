@@ -13,6 +13,7 @@ use crate::commands::wrapped::current_year;
 )]
 pub struct WsoCompareArgs {
     /// Weightlifting State Organization
+    #[arg(value_parser = crate::utils::filters::parse_name)]
     pub wso: String,
 }
 

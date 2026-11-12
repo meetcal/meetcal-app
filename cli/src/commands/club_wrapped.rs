@@ -13,10 +13,11 @@ use crate::commands::wrapped::current_year;
   meetcal club-wrapped "Columbus Weightlifting" --year 2025"#
 )]
 pub struct ClubWrappedArgs {
+    #[arg(value_parser = crate::utils::filters::parse_name)]
     pub club: String,
 
     /// Calendar year to summarize (defaults to the current year)
-    #[arg(long, short = 'y', value_parser = clap::value_parser!(i32).range(1900..=9999))]
+    #[arg(long, short = 'y', value_parser = crate::utils::filters::parse_year)]
     pub year: Option<i32>,
 }
 

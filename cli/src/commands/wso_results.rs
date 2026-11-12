@@ -24,10 +24,11 @@ use serde_json::json;
 )]
 pub struct WsoResultsArgs {
     /// Meet to search for
+    #[arg(value_parser = crate::utils::filters::parse_name)]
     pub meet: String,
 
     /// WSO to search for
-    #[arg(long, short = 'w')]
+    #[arg(long, short = 'w', value_parser = crate::utils::filters::parse_name)]
     pub wso: String,
 }
 
@@ -408,15 +409,17 @@ pub fn roster_classes(roster: &[Athletes]) -> RosterClasses {
     });
     let mut classes = RosterClasses::new();
     for athlete in sorted {
-        classes
-            .entry(fold(&athlete.name))
-            .or_insert_with(|| (gender_key(&athlete.gender), athlete.weight_class.clone()));
+        classes.entry(fold(&athlete.name)).or_insert_with(|| {
+            (
+                gender_as_the_server_groups_it(&athlete.gender),
+                athlete.weight_class.clone(),
+            )
+        });
     }
     classes
 }
 
-/// The server's `normalizeGender`, for grouping only.
-fn gender_key(gender: &str) -> String {
+fn gender_as_the_server_groups_it(gender: &str) -> String {
     match gender.trim().to_lowercase().as_str() {
         "men" | "male" | "m" => "men".to_string(),
         "women" | "female" | "f" => "women".to_string(),

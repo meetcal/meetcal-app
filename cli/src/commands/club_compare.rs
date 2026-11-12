@@ -12,6 +12,7 @@ use crate::commands::wrapped::current_year;
   meetcal club-compare "POWER AND GRACE PERFORMANCE.""#
 )]
 pub struct ClubCompareArgs {
+    #[arg(value_parser = crate::utils::filters::parse_name)]
     pub club: String,
 }
 
