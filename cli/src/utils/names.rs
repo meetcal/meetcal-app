@@ -26,7 +26,7 @@ const HOUR_MS: i64 = 60 * 60 * 1000;
 const SUGGESTION_PAGES: usize = 6;
 
 /// Most pages of meet names one range is read for; a server that never finishes stops here.
-pub const MAX_NAME_PAGES: usize = crate::utils::backend::MAX_PAGES;
+pub const MAX_NAME_PAGES: usize = 100;
 
 /// What kind of name a command was given.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -110,10 +110,7 @@ pub async fn meet_names_between(
 ) -> Result<Vec<String>> {
     let function = queries::MEET_NAMES_PAGE.function;
     let read = collect_pages_within(function, max_pages, |cursor| {
-        let mut args = json!({ "source": source, "after": cursor.or_else(|| after.clone()) });
-        if let Some(before) = &before {
-            args["before"] = json!(before);
-        }
+        let args = names_page_args(source, &after, &before, cursor);
         async move {
             let page: NamesPage = query(queries::MEET_NAMES_PAGE, &args).await?;
             Ok(Page {
@@ -124,10 +121,29 @@ pub async fn meet_names_between(
         }
     })
     .await?;
+    names_read(read, partial, max_pages)
+}
+
+fn names_page_args(
+    source: &str,
+    after: &Option<String>,
+    before: &Option<String>,
+    cursor: Option<String>,
+) -> serde_json::Value {
+    let mut args = json!({ "source": source, "after": cursor.or_else(|| after.clone()) });
+    if let Some(before) = before {
+        args["before"] = json!(before);
+    }
+    args
+}
+
+fn names_read(read: PagesRead<MeetName>, partial: bool, max_pages: usize) -> Result<Vec<String>> {
     let meets: Vec<MeetName> = match read {
         PagesRead::All(meets) => meets,
         PagesRead::CutShort(meets) if partial => meets,
-        PagesRead::CutShort(_) => return Err(unfinished(function, max_pages)),
+        PagesRead::CutShort(_) => {
+            return Err(unfinished(queries::MEET_NAMES_PAGE.function, max_pages));
+        }
     };
     Ok(meets.into_iter().map(|meet| meet.meet).collect())
 }
@@ -347,6 +363,42 @@ fn edit_distance(a: &str, b: &str) -> usize {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_first_names_page_starts_after_the_callers_name_and_later_pages_at_the_servers_cursor() {
+        let after = Some("2025 Ohio Open".to_string());
+        let before = Some("2026".to_string());
+        assert_eq!(
+            names_page_args("results", &after, &before, None),
+            json!({ "source": "results", "after": "2025 Ohio Open", "before": "2026" })
+        );
+        assert_eq!(
+            names_page_args("results", &after, &None, Some("page-2".to_string())),
+            json!({ "source": "results", "after": "page-2" })
+        );
+        assert_eq!(
+            names_page_args("meets", &None, &None, None),
+            json!({ "source": "meets", "after": null })
+        );
+    }
+
+    #[test]
+    fn names_cut_short_at_the_page_limit_are_kept_only_when_a_partial_list_will_do() {
+        let read = || {
+            PagesRead::CutShort(vec![MeetName {
+                meet: "2026 Ohio Open".to_string(),
+            }])
+        };
+        assert_eq!(names_read(read(), true, 3).unwrap(), ["2026 Ohio Open"]);
+        assert_eq!(
+            names_read(read(), false, 3).unwrap_err().to_string(),
+            "MeetCal query meets:namesPage did not finish within 3 pages"
+        );
+        assert_eq!(
+            names_read(PagesRead::All(Vec::new()), false, 3).unwrap(),
+            Vec::<String>::new()
+        );
+    }
 
     const SPELLINGS_THAT_ARE_ONE_NAME_SINCE_NFC_FOLDING: [(&str, &str); 4] = [
         ("Cafe\u{301} Barbell", "Café Barbell"),
