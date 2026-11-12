@@ -11,11 +11,11 @@ The backend lives in `convex/`. Deployments:
 
 Every write to competition data goes through the internal mutations in `convex/ingest.ts`. The scrapers (`convex/scrapers/`, scheduled by `convex/cronJobs.ts`) and `scripts/usamw-results.ts` all use them. Each ingest write:
 
-`convex/ingest.ts` and `convex/views.ts` hold no code of their own: each re-exports the modules in its directory (`convex/ingest/`: `hints`, `results`, `rosters`, `meets`, `reference`, `records`, `shared`; `convex/views/`: `builders`, `searchDirectory`, `meetIndex`, `refresh`, `rebuild`, `shared`), so every function keeps its name (`ingest:upsertLiftingResults`, `views:refresh`) and crons, scrapers and the commands in this document call them as before. Call a function by that name, not by its module's (`views/refresh:refresh` is the same function, registered a second time by the split). `convex/lib/meetData.ts` re-exports the club meet statistics in `convex/lib/clubStats.ts` the same way.
-
 1. writes the rows;
 2. rewrites the touched athletes' **history** (`athlete_history`) and **summary** (`athlete_summary`) documents in the same transaction, so those can never lag behind `lifting_results`;
 3. leaves **hints** naming what changed (a meet, a ranking class, an athlete, a reference table), then schedules a refresh.
+
+`convex/ingest.ts` and `convex/views.ts` hold no code of their own: each re-exports the modules in its directory (`convex/ingest/`: `hints`, `results`, `rosters`, `meets`, `reference`, `records`, `shared`; `convex/views/`: `builders`, `searchDirectory`, `meetIndex`, `refresh`, `rebuild`, `shared`), so every function keeps its name (`ingest:upsertLiftingResults`, `views:refresh`) and crons, scrapers and the commands in this document call them as before. Call a function by that name, not by its module's (`views/refresh:refresh` is the same function, registered a second time by the split). `convex/lib/meetData.ts` re-exports the club meet statistics in `convex/lib/clubStats.ts` the same way.
 
 Freshness is tracked per view: while a hint a view depends on is pending, that view is not served as fresh, and every other view is. A few seconds later `views:refresh` uses the hints to rebuild only what those rows feed:
 

@@ -36,7 +36,7 @@ Each entry: what it looks like here, what to do instead, and a search that finds
 
 ## A Module With Several Jobs
 
-**Looks like:** a file past a thousand lines holding unrelated things: the offline store (six jobs), the API module (clock, cache, every fetcher), `convex/views.ts` and `convex/ingest.ts`, the website's `api.rs`, a route file that also defines its components and styles, a provider that runs a state machine.
+**Looks like:** a file past a thousand lines holding unrelated things: the offline store (six jobs), the API module (clock, cache, every fetcher), the website's `api.rs`, a route file that also defines its components and styles, a provider that runs a state machine.
 
 **Do instead:** when a change adds a second job to a file, put it in its own module. Screens and pages orchestrate; policy lives in `src/lib/`, `convex/lib/`, or a module the page imports, where it can be tested without rendering.
 
