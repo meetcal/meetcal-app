@@ -99,6 +99,10 @@ render_page "wrapped" "/wrapped" \
   "Weightlifting Athlete Wrapped" \
   "Free Weightlifting Wrapped: an athlete's competition year in numbers, with meets, best lifts, make rate, and progress." \
   "index, follow"
+render_page "schedule-builder" "/schedule-builder" \
+  "Weightlifting Meet Schedule Builder — MeetCal" \
+  "Free for meet organizers: paste a Sport80 entries URL, build the meet's sessions in one click, adjust them, and export or publish the schedule." \
+  "index, follow"
 render_page "subscription" "/subscription" \
   "Manage Your MeetCal Subscription in the App" \
   "Open MeetCal on iOS or Android to start, change, restore, or cancel your subscription." \

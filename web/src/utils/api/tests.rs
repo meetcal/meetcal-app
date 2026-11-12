@@ -803,3 +803,145 @@ fn exhausted_retries_explain_the_failure() {
         OVERLOADED_MESSAGE
     );
 }
+
+fn builder_error(status: f64, error: &str) -> QueryResponse {
+    answer(json!({
+        "status": "error",
+        "errorMessage": "Server Error",
+        "errorData": { "status": status, "error": error }
+    }))
+}
+
+#[test]
+fn schedule_builder_errors_show_the_servers_sentence() {
+    let message = |response| {
+        read_builder_answer::<Value>(BUILDER_LOAD, response)
+            .unwrap_err()
+            .to_string()
+    };
+    assert_eq!(
+        message(builder_error(
+            422.0,
+            "Sport80 hasn't set this meet's dates yet"
+        )),
+        "Sport80 hasn't set this meet's dates yet"
+    );
+    assert_eq!(
+        message(builder_error(429.0, "at most 10 schedule publishes a day")),
+        "At most 10 schedule publishes a day"
+    );
+    assert_eq!(
+        message(builder_error(401.0, "unauthorized")),
+        SESSION_MESSAGE
+    );
+    assert_eq!(
+        message(answer(json!({ "status": "error", "errorMessage": "boom" }))),
+        "MeetCal could not answer: boom"
+    );
+    let loaded: LoadedMeet = read_builder_answer(
+        BUILDER_LOAD,
+        answer(
+            json!({ "status": "success", "value": { "meet": "Turkey Cup", "refreshed": true } }),
+        ),
+    )
+    .unwrap();
+    assert_eq!(loaded.meet, "Turkey Cup");
+}
+
+#[test]
+fn schedule_options_and_edits_are_sent_as_convex_validates_them() {
+    let options = BuilderOptions {
+        days: vec![BuilderDay {
+            date: "2026-11-14".to_owned(),
+            first_start: "09:00".to_owned(),
+        }],
+        session_minutes: 120,
+        break_minutes: 0,
+        weigh_in_minutes: 120,
+        max_athletes_per_platform: 15,
+        max_sessions_per_day: None,
+        platforms: vec!["Red".to_owned()],
+        grouping: Grouping::EntryTotal,
+        separate_age_groups: true,
+        order: SessionOrder::WomenDayMenDay,
+    };
+    assert_eq!(
+        serde_json::to_value(&options).unwrap(),
+        json!({
+            "days": [{ "date": "2026-11-14", "firstStart": "09:00" }],
+            "sessionMinutes": 120,
+            "breakMinutes": 0,
+            "weighInMinutes": 120,
+            "maxAthletesPerPlatform": 15,
+            "maxSessionsPerDay": null,
+            "platforms": ["Red"],
+            "grouping": "entryTotal",
+            "separateAgeGroups": true,
+            "order": "womenDayMenDay"
+        })
+    );
+    let edits = vec![
+        BuilderEdit::MoveAthlete {
+            athlete: "1|ann".to_owned(),
+            to_session: 2,
+            to_platform: "Red".to_owned(),
+        },
+        BuilderEdit::MoveClass {
+            from_session: 1,
+            from_platform: "Red".to_owned(),
+            weight_class: "48".to_owned(),
+            to_session: 2,
+            to_platform: "Blue".to_owned(),
+        },
+        BuilderEdit::SwapSessions {
+            session: 1,
+            with_session: 2,
+        },
+        BuilderEdit::SetSessionTime {
+            session: 1,
+            date: "2026-11-14".to_owned(),
+            start_time: "10:30".to_owned(),
+        },
+    ];
+    let sent = serde_json::to_value(&edits).unwrap();
+    assert_eq!(
+        sent,
+        json!([
+            { "kind": "moveAthlete", "athlete": "1|ann", "toSession": 2, "toPlatform": "Red" },
+            { "kind": "moveClass", "fromSession": 1, "fromPlatform": "Red", "weightClass": "48", "toSession": 2, "toPlatform": "Blue" },
+            { "kind": "swapSessions", "session": 1, "withSession": 2 },
+            { "kind": "setSessionTime", "session": 1, "date": "2026-11-14", "startTime": "10:30" }
+        ])
+    );
+    let stored: Vec<BuilderEdit> = serde_json::from_value(whole_numbers_as_integers(
+        json!([{ "kind": "swapSessions", "session": 1.0, "withSession": 2.0 }]),
+    ))
+    .unwrap();
+    assert_eq!(stored.first(), edits.get(2));
+}
+
+#[test]
+fn exported_workbooks_decode_from_base64() {
+    assert_eq!(decode_base64("UEsDBA==").unwrap(), b"PK\x03\x04");
+    assert_eq!(decode_base64("YWJj").unwrap(), b"abc");
+    assert_eq!(decode_base64("YWI=").unwrap(), b"ab");
+    assert_eq!(decode_base64("").unwrap(), b"");
+    assert_eq!(decode_base64("YW Jj\n").unwrap(), b"abc");
+    for broken in ["YWJ", "Y===", "YQ==YWJj", "YW=j", "YW*j"] {
+        assert_eq!(decode_base64(broken), None, "{broken}");
+    }
+    let workbook = ExportFile {
+        file_name: "turkey-cup-schedule.xlsx".to_owned(),
+        content_type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            .to_owned(),
+        encoding: ExportEncoding::Base64,
+        content: "UEsDBA==".to_owned(),
+    };
+    assert_eq!(workbook.bytes().unwrap(), b"PK\x03\x04");
+    let csv = ExportFile {
+        encoding: ExportEncoding::Utf8,
+        content: "\u{feff}Session".to_owned(),
+        ..workbook
+    };
+    assert_eq!(csv.bytes().unwrap(), "\u{feff}Session".as_bytes());
+}

@@ -137,6 +137,10 @@
     {
       "source": "/submit-meet",
       "destination": "/seo/submit-meet.html"
+    },
+    {
+      "source": "/schedule-builder",
+      "destination": "/seo/schedule-builder.html"
     }
   ],
   "trailingSlash": false

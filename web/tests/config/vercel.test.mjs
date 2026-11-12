@@ -104,6 +104,12 @@ test("production rewrites serve route-specific metadata shells", async () => {
   assert.match(wrappedHtml, /content="index, follow"/);
   assert.match(wrappedHtml, /name="description"\s+content="Free Weightlifting Wrapped: /);
   assert.doesNotMatch(wrappedHtml, /Sign in with your MeetCal account/);
+
+  assert.equal(config.rewrites.find(({ source }) => source === "/schedule-builder").destination, "/seo/schedule-builder.html");
+  const builderHtml = await readFile(new URL("../../dist/seo/schedule-builder.html", import.meta.url), "utf8");
+  assert.match(builderHtml, /<title>Weightlifting Meet Schedule Builder — MeetCal<\/title>/);
+  assert.match(builderHtml, /content="index, follow"/);
+  assert.match(builderHtml, /href="https:\/\/www\.meetcal\.app\/schedule-builder"/);
 });
 
 test("every deployment reads Convex directly, with no API proxy", () => {

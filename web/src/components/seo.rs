@@ -67,6 +67,12 @@ pub fn metadata_for_path(path: &str) -> PageMetadata {
             indexable: false,
             canonical: true,
         },
+        "/schedule-builder" => PageMetadata {
+            title: "Weightlifting Meet Schedule Builder — MeetCal",
+            description: "Free for meet organizers: paste a Sport80 entries URL, build the meet's sessions in one click, adjust them, and export or publish the schedule.",
+            indexable: true,
+            canonical: true,
+        },
         "/submit-meet" => PageMetadata {
             title: "Submit a Meet — MeetCal",
             description: "Send MeetCal the schedule and start lists of a weightlifting meet it doesn't cover yet, and we'll add the meet.",
@@ -178,7 +184,14 @@ mod tests {
 
     #[test]
     fn public_pages_are_indexable_with_distinct_titles() {
-        let public = ["/", "/features", "/privacy", "/terms", "/wrapped"];
+        let public = [
+            "/",
+            "/features",
+            "/privacy",
+            "/terms",
+            "/wrapped",
+            "/schedule-builder",
+        ];
         let mut titles = public
             .into_iter()
             .map(metadata_for_path)
@@ -221,6 +234,7 @@ mod tests {
             "/",
             "/features",
             "/wrapped",
+            "/schedule-builder",
             "/comp-data",
             "/qualifying-totals",
             "/subscription",

@@ -58,6 +58,19 @@ disabled button while an upload is held) and the submission's arguments and
 token, a blank end date as `null`, the form's checks before anything uploads, a
 refused submission keeping the form filled, accessibility, and a small phone.
 
+`src/utils/api/` tests the Schedule Builder's calls: the options and edits as
+Convex's validators take them (camelCase, edits tagged by `kind`), reading a
+server error as its sentence, and decoding an exported workbook's base64.
+`src/pages/schedule_builder/` tests the options form's checks against the
+server's limits, which saved work a meet opens with, the Move To… targets, and
+how sessions, athletes and publish answers read.
+`tests/e2e/schedule-builder.spec.ts` covers `/schedule-builder` against mocked
+Convex answers: loading a meet, building, moving an athlete, Undo, both
+downloads, printing and the print styles, the browser's copy after a reload,
+retiming and swapping sessions, the confirmation before a new build drops
+edits, a load Sport80 refuses, and, signed in, saving a draft, publishing for
+review, the drafts list with Delete, and accessibility.
+
 ## Browser checks
 
 Build the WebAssembly application, install the browser-test dependencies, and run

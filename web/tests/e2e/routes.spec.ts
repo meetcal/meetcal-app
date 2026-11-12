@@ -131,6 +131,7 @@ test("routes expose specific titles, descriptions, canonicals, and indexing rule
     ["/link", /Approve a MeetCal CLI Sign-In/, "noindex, nofollow"],
     ["/submit-meet", /Submit a Meet/, "noindex, nofollow"],
     ["/wrapped", /Weightlifting Athlete Wrapped/, "index, follow"],
+    ["/schedule-builder", /Schedule Builder/, "index, follow"],
     ["/qualifying-totals", /Weightlifting Qualifying Totals/, "noindex, nofollow"],
   ] as const;
   for (const [path, title, robots] of expectations) {

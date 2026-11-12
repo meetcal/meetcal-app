@@ -32,13 +32,16 @@ POST https://disciplined-hare-790.convex.cloud/api/query
 - 429 and 503 are retried twice, honoring `Retry-After` (1 to 10 seconds). Every query is a read,
   so a retry is safe. The site's only mutations, `deviceLogin:approve`, `deviceLogin:deny` and
   `apiTokens:revokeAllCli` (`POST /api/mutation`, from `/link`), and
-  `meetSubmissions:generateUploadUrl` and `meetSubmissions:submit` (from `/submit-meet`), are never
-  retried by themselves: the user taps again.
+  `meetSubmissions:generateUploadUrl` and `meetSubmissions:submit` (from `/submit-meet`), and
+  `scheduleBuilder:saveDraft`, `scheduleBuilder:deleteDraft` and `schedulePublications:publish`
+  (from `/schedule-builder`), are never retried by themselves: the user taps again.
 - The premium functions (`SUBSCRIPTION_FUNCTIONS` in `api/catalog.rs`, Convex's `PREMIUM_FUNCTIONS`) take
   the access pass as their `pass` argument; `utils/api` adds it to their arguments. A search
   (`results:search`) takes it only with `startDate` and `endDate`: name suggestions are public.
   Every other query goes out without it, `results:wrapped` (Athlete Wrapped, below) included. No query carries the user's session token except
-  `accessPass:pass` and `deviceLogin:describe` (one user's own CLI sign-in, below): a query that reads its caller is cached per user, while every subscriber sends
+  `accessPass:pass`, `deviceLogin:describe` (one user's own CLI sign-in, below) and the Schedule
+  Builder's `scheduleBuilder:draft`, `scheduleBuilder:drafts` and
+  `schedulePublications:publications` (one user's own drafts and publishes, below): a query that reads its caller is cached per user, while every subscriber sends
   the same pass, so premium answers stay in Convex's shared query cache.
 - The pass comes from `accessPass:pass` (`POST /api/query` with `Authorization: Bearer <Clerk
   session token>`, Clerk's default token, as the app sends), which answers `{ pass, rotatesAt }`.
@@ -178,6 +181,45 @@ in the sitemap.
   what the user entered. Done, the page thanks the user and offers to send another meet.
 - Upload URLs are on the Convex deployment's own origin, which the CSP's `connect-src` already allows.
 
+## Building a meet's schedule: `/schedule-builder`
+
+Meet organizers build a meet's sessions from its Sport80 entries (`src/pages/schedule_builder/`,
+calls in `src/utils/api/schedule_builder.rs`, backend in `../convex/scheduleBuilder.ts`,
+`../convex/scheduleBuilderLoad.ts` and `../convex/schedulePublications.ts`). The page is public and
+indexable, in the sitemap, and linked as "Schedule Builder" in the header; signing in adds drafts
+and publishing. The page computes nothing about a schedule: it sends options and edits and shows
+Convex's answer.
+
+- Pasting an entries URL calls the action `scheduleBuilderLoad:load` (`{ url }`, within
+  `SPORT80_LOAD_TIMEOUT`), which answers `{ meet }`; the page then moves to
+  `/schedule-builder?meet=<name>`, the address the drafts list and a shared link open.
+- `scheduleBuilder:defaults` answers the meet's days and default options, which fill the options
+  form. The form's checks (`checked_options` in `models.rs`) give each limit a readable sentence;
+  the limits are the server's `BUILDER_LIMITS` and maximums, which a test keeps equal. Building
+  sends the options, with the edits made so far, to `scheduleBuilder:preview`, which answers the
+  sessions, each group's `label` (the one the export and a published schedule use) and the
+  warnings. A new build with changed options drops the edits after the user confirms.
+- Edits come from menus, with no drag and drop: Move To… on each athlete, a class chip's Move
+  Class To…, and Swap With… and Edit Time on each session. Each edit is appended to the list sent
+  to `preview` (at most `MAX_BUILDER_EDITS`, the server's), and Undo drops the last. While the next
+  answer loads, the previous board stays on screen dimmed and inert.
+- Signed out, the options and edits of each meet are kept in `localStorage`
+  (`meetcal.scheduleBuilder:<meet>`, every access guarded, so the page works without it). Signed
+  in, Save Draft calls `scheduleBuilder:saveDraft`, and the landing page lists
+  `scheduleBuilder:drafts` with Delete (`scheduleBuilder:deleteDraft`). Opening a meet starts from
+  the newer of the saved draft (`scheduleBuilder:draft`) and the browser's copy, or from the
+  defaults, unbuilt.
+- Download CSV and Download Excel save `scheduleBuilder:exportFile`'s answer as a file (an Excel
+  workbook arrives as base64). Print / Save as PDF prints the page: the print styles in
+  `styles.css` hide the header, footer, options and every control (`.no-print`) and keep each
+  session's date, weigh-in, start, platforms, group labels and athletes.
+- Publishing needs sign-in: `schedulePublications:publish` takes the options, edits and the contact
+  email (prefilled with the Clerk user's primary email) and answers `live` or `pending`, shown as
+  "Live on MeetCal" or "Sent for Review"; `schedulePublications:publications` lists the user's
+  publishes of the meet and whether they organize it.
+- A function error's `error` is shown as the sentence the server wrote, and a 401 asks the user to
+  sign in again.
+
 ## Routes and metadata
 
 Each route needs a document that search engines and link previews can read before the Wasm loads:
@@ -187,7 +229,7 @@ Each route needs a document that search engines and link previews can read befor
   a retry when the load fails) and renders one shell per route into `dist/seo/<name>.html`, each with its own
   title, description, canonical URL and robots directive. Competition data pages are
   `noindex, nofollow`, except the free `/wrapped`, which is `index, follow`, has its own
-  description and is in `public/sitemap.xml`.
+  description and is in `public/sitemap.xml`, as is `/schedule-builder`.
 - `vercel.json` rewrites each route to its shell (`/records` to `/seo/records.html`).
 - Once the app runs, `RouteMetadata` (`src/components/seo.rs`) keeps the title and meta tags in
   step as the user navigates. Data pages take theirs from `DATA_PAGES` in

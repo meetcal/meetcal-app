@@ -72,6 +72,7 @@ pub fn Header() -> impl IntoView {
                     </div>
                 </div>
                 <A href="/features">"Features"</A>
+                <A href="/schedule-builder">"Schedule Builder"</A>
                 <A href="/submit-meet">"Submit a Meet"</A>
                 <A href="mailto:maddisen@meetcal.app">"Contact Us"</A>
             </nav>
@@ -85,6 +86,7 @@ pub fn Header() -> impl IntoView {
                     <a href="https://atlas.meetcal.app/">"Atlas"</a>
                     <A href="/comp-data">"Competition Data"</A>
                     <A href="/features">"Features"</A>
+                    <A href="/schedule-builder">"Schedule Builder"</A>
                     <A href="/submit-meet">"Submit a Meet"</A>
                     <A href="mailto:maddisen@meetcal.app">"Contact Us"</A>
                     <div class="mobile-nav-socials">
