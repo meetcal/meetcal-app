@@ -97,18 +97,30 @@ export const list = query({
   },
 });
 
-/** `GET /meets/completed`: completed meets, newest first (test entries left out, `isPlaceholderMeet`). */
 export const completed = query({
-  args: { ifNoneMatch: v.optional(v.string()) },
-  handler: async (ctx, { ifNoneMatch }) => {
-    const meets = await ctx.db
-      .query('meets')
-      .withIndex('by_status_and_start_date', (q) => q.eq('status', 'completed'))
-      .order('desc')
-      .collect();
+  args: { since: v.optional(v.string()), before: v.optional(v.string()), ifNoneMatch: v.optional(v.string()) },
+  handler: async (ctx, { since, before, ifNoneMatch }) => {
+    requireIsoDate('since', since);
+    requireIsoDate('before', before);
+    if (since !== undefined && before !== undefined && before <= since) throw apiError(400, 'before must be after since');
+    const meets = await completedMeetsStartingIn(ctx, since, before);
     return revalidated(meets.filter((meet) => !isPlaceholderMeet(meet)).map(toApiMeet), ifNoneMatch);
   },
 });
+
+export async function completedMeetsStartingIn(ctx: QueryCtx, sinceInclusive: string | undefined, beforeExclusive: string | undefined) {
+  return await ctx.db
+    .query('meets')
+    .withIndex('by_status_and_start_date', (q) => {
+      const completedMeets = q.eq('status', 'completed');
+      if (sinceInclusive !== undefined && beforeExclusive !== undefined) return completedMeets.gte('startDate', sinceInclusive).lt('startDate', beforeExclusive);
+      if (sinceInclusive !== undefined) return completedMeets.gte('startDate', sinceInclusive);
+      if (beforeExclusive !== undefined) return completedMeets.lt('startDate', beforeExclusive);
+      return completedMeets;
+    })
+    .order('desc')
+    .collect();
+}
 
 /** Meet names per `meets:namesPage` call, unless the caller asks for fewer. */
 export const MEET_NAMES_PAGE_SIZE = 500;
