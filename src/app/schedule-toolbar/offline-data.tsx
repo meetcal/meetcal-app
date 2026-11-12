@@ -5,8 +5,8 @@ import { ThemedText } from "@/components/ui/ThemedText";
 import { ThemedView } from "@/components/ui/ThemedView";
 import { useAppColors } from "@/hooks/useAppColors";
 import { prefetchMeetData } from "@/lib/database/meet-manager";
-import { clearMeetData } from "@/lib/database/offline-store";
-import { useOfflineData } from "@/utils/offline";
+import { clearMeetData } from "@/lib/database/meet-data-clears";
+import { useOfflineData } from "@/hooks/useOfflineData";
 import { Stack } from "expo-router";
 import React from "react";
 import {

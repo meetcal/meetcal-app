@@ -19,6 +19,7 @@ import {
   WIDGET_APP_GROUP_ID,
   WIDGET_STORAGE_KEYS,
 } from "@/utils/widgetContract";
+import { itemAt } from "@/test-support/checked-access";
 
 const ROOT = path.join(__dirname, "..", "..");
 
@@ -38,19 +39,19 @@ const KOTLIN_MODULE = read("widget/java/SavedWidgetModule.kt");
 function swiftStructBody(source: string, name: string): string {
   const match = new RegExp(`struct ${name}\\b[^{]*\\{([^}]*)\\}`).exec(source);
   if (!match) throw new Error(`struct ${name} not found`);
-  return match[1];
+  return itemAt(match, 1);
 }
 
 /** Stored `let` property names declared in a Swift struct body. */
 function swiftLetNames(body: string): string[] {
-  return Array.from(body.matchAll(/^\s*let\s+(\w+)\s*:/gm), (m) => m[1]);
+  return Array.from(body.matchAll(/^\s*let\s+(\w+)\s*:/gm), (m) => itemAt(m, 1));
 }
 
 /** JSON keys a Kotlin source reads with `opt*("key"`. */
 function kotlinReadKeys(source: string): string[] {
   return Array.from(
     source.matchAll(/\.opt(?:String|Int|Long|Double|Boolean|JSONArray|JSONObject)\(\s*"(\w+)"/g),
-    (m) => m[1],
+    (m) => itemAt(m, 1),
   );
 }
 
@@ -71,7 +72,7 @@ const fullSession: SavedSession = {
 
 describe("saved-session row contract", () => {
   it("JS writes exactly the documented fields when every field resolves", () => {
-    const [row] = buildSavedWidgetRows([fullSession], "America/Denver");
+    const row = itemAt(buildSavedWidgetRows([fullSession], "America/Denver"), 0);
     expect(sorted(Object.keys(row))).toEqual(sorted(SAVED_WIDGET_ROW_FIELDS));
   });
 

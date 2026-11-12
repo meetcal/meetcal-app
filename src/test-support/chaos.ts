@@ -58,7 +58,12 @@ export function faultPlanArb<T>(fault: fc.Arbitrary<T>, maxLength = 8): fc.Arbit
 /** Pops the next fault, or `healthy` once the plan has run out. */
 function planCursor<T>(plan: readonly T[], healthy: T): () => T {
   let next = 0;
-  return () => (next < plan.length ? plan[next++] : healthy);
+  return () => {
+    const planned = plan[next];
+    if (planned === undefined) return healthy;
+    next += 1;
+    return planned;
+  };
 }
 
 export type ChaosTransport = {

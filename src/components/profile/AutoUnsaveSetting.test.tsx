@@ -7,11 +7,9 @@ import React from "react";
 import { Switch } from "react-native";
 import { act, create, type ReactTestRenderer } from "react-test-renderer";
 import { AutoUnsaveSetting } from "@/components/profile/AutoUnsaveSetting";
-import {
-  fetchUserPreferences,
-  patchAutoUnsavePreference,
-} from "@/lib/api/meetcal-api";
+import { fetchUserPreferences, patchAutoUnsavePreference } from "@/lib/api/user-preferences-api";
 import type { PremiumAccess } from "@/lib/premium-access";
+import { itemAt } from "@/test-support/checked-access";
 
 jest.mock("@/components/ui/IconSymbol", () => ({ IconSymbol: () => null }));
 jest.mock("@/components/ui/Toast", () => ({ showToast: jest.fn() }));
@@ -23,7 +21,7 @@ jest.mock("@clerk/expo", () => {
     useAuth: () => ({ getToken }),
   };
 });
-jest.mock("@/lib/api/meetcal-api", () => ({
+jest.mock("@/lib/api/user-preferences-api", () => ({
   fetchUserPreferences: jest.fn(),
   patchAutoUnsavePreference: jest.fn(),
 }));
@@ -103,9 +101,9 @@ describe("AutoUnsaveSetting", () => {
 
     expect(theSwitch(renderer).props.value).toBe(false);
     expect(theSwitch(renderer).props.disabled).toBe(true);
-    const row = renderer.root.findAll(
+    const row = itemAt(renderer.root.findAll(
       (node) => typeof node.props.onPress === "function" && node.props.disabled === false,
-    )[0];
+    ), 0);
     await act(async () => {
       row.props.onPress();
     });

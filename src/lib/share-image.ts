@@ -34,7 +34,8 @@ export function captureViewAsPng(
   // but Jest's CommonJS environment cannot execute a dynamic import, and this
   // is the module worth having a test for.
   // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const { captureRef } = require("react-native-view-shot") as typeof ViewShot;
+  const viewShot: typeof ViewShot = require("react-native-view-shot");
+  const { captureRef } = viewShot;
   // Include `width` only when set. view-shot validates with `"width" in
   // options`, so an explicit `undefined` key (or `height: undefined`) logs a
   // "bad options" warning on every capture, in release builds too.

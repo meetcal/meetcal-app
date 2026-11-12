@@ -1,14 +1,13 @@
-import { SkeletonBlock } from "@/components/ui/Skeleton";
+import { SkeletonBlock, useSkeletonPulse } from "@/components/ui/Skeleton";
 import { ThemedView } from "@/components/ui/ThemedView";
 import { useAppColors } from "@/hooks/useAppColors";
 import { useScreenHorizontalInsets } from "@/hooks/useScreenInsets";
-import { StartListSkeletonProps } from "@/types/start-list";
 import React from "react";
 import { ScrollView, StyleSheet, View } from "react-native";
 
-export function StartListSkeleton({ skeletonPulse }: StartListSkeletonProps) {
+export function StartListSkeleton() {
+  const skeletonPulse = useSkeletonPulse();
   const colors = useAppColors();
-  // Replaces the whole screen: clears the iPhone Duo side band itself.
   const screenInsets = useScreenHorizontalInsets();
 
   return (

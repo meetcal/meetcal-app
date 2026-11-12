@@ -50,7 +50,9 @@ describe("ClerkAccountModal", () => {
     const viewProps = mockUserProfileView.mock.calls.at(-1)?.[0];
     expect(viewProps.isDismissible).toBe(true);
 
-    act(() => viewProps.onDismiss());
+    act(() => {
+      viewProps.onDismiss();
+    });
     expect(props.onClose).toHaveBeenCalledTimes(1);
     expect(props.onSignedOut).not.toHaveBeenCalled();
     act(() => tree.unmount());

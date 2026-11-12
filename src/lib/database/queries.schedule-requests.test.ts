@@ -5,10 +5,11 @@
  */
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
-import { clearHttpValidatorCache } from "@/lib/api/meetcal-api";
+import { clearHttpValidatorCache } from "@/lib/api/revalidated-reads";
 import { jsonTransportStub } from "@/lib/api/json-transport-stub";
 import { setApiTransportForTests } from "@/lib/api/transport";
 import { fetchSchedule } from "@/lib/database/queries";
+import { itemAt } from "@/test-support/checked-access";
 
 jest.mock("@/config/dev-mock-meet", () => ({
   isMockedMeet: jest.fn(async () => false),
@@ -49,7 +50,7 @@ describe("fetchSchedule request count", () => {
 
     expect(requests).toEqual(["/meets/schedule"]);
     expect(schedule).toHaveLength(1);
-    expect(schedule[0].fullDate).toBe("2099-06-20");
+    expect(itemAt(schedule, 0).fullDate).toBe("2099-06-20");
   });
 });
 

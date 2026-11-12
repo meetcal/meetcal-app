@@ -8,8 +8,9 @@ import {
   type ChaosConfig,
   type ChaosFaultKind,
 } from '@/lib/api/dev-chaos';
-import { SERVER_CLOCK_CALL } from '@/lib/api/meetcal-api';
+import { SERVER_CLOCK_CALL } from '@/lib/api/server-clock';
 import type { ApiCall } from '@/lib/api/transport';
+import { itemAt } from '@/test-support/checked-access';
 
 const ALL_KINDS: ChaosFaultKind[] = ['network', 'hang', 'delay', 'status', 'transient', 'garbage', 'truncate'];
 
@@ -34,7 +35,7 @@ const drawsArb = fc.array(fc.double({ min: 0, max: 1, maxExcluded: true, noNaN: 
 
 function randomFrom(draws: readonly number[]): () => number {
   let next = 0;
-  return () => draws[next++ % draws.length];
+  return () => itemAt(draws, next++ % draws.length);
 }
 
 describe('pickChaosFault', () => {

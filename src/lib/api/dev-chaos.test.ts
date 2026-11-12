@@ -1,6 +1,6 @@
 import { DEV_CONFIG, getChaosConfig } from '@/config/development';
 import { CHAOS_GARBAGE, validateChaosConfig, withDevChaos, type ChaosConfig } from '@/lib/api/dev-chaos';
-import { SERVER_CLOCK_CALL } from '@/lib/api/meetcal-api';
+import { SERVER_CLOCK_CALL } from '@/lib/api/server-clock';
 import { callApi, setApiTransportForTests, type ApiCall } from '@/lib/api/transport';
 import { isMaestroE2E } from '@/lib/e2e';
 

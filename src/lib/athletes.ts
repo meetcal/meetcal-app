@@ -1,3 +1,4 @@
+import { isRecord } from '@/lib/is-record';
 import { UNKNOWN_PLATFORM, type LiftResult, type Platform } from '@/data/types/athletes';
 
 /**
@@ -34,8 +35,8 @@ export function isSnapshotFresh(athletesSyncedAt: number, now: number): boolean 
 
 /** Runtime boundary for persisted/API-mapped athlete rows. */
 export function isLiftResult(value: unknown): value is LiftResult {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
-  const row = value as Record<string, unknown>;
+  if (!isRecord(value)) return false;
+  const row = value;
   if (
     typeof row.memberId !== 'string' ||
     typeof row.name !== 'string' || row.name.trim().length === 0 ||
@@ -48,8 +49,8 @@ export function isLiftResult(value: unknown): value is LiftResult {
     typeof row.adaptive !== 'boolean'
   ) return false;
   if (row.session === undefined) return true;
-  if (!row.session || typeof row.session !== 'object' || Array.isArray(row.session)) return false;
-  const session = row.session as Record<string, unknown>;
+  if (!isRecord(row.session)) return false;
+  const session = row.session;
   return (
     typeof session.number === 'number' && Number.isInteger(session.number) && session.number > 0 &&
     typeof session.platform === 'string' && session.platform.trim().length > 0 &&
@@ -70,8 +71,8 @@ export function isLiftResult(value: unknown): value is LiftResult {
  * Only rows with no usable name or a malformed session are discarded.
  */
 export function normalizeLiftResult(value: unknown): LiftResult | null {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
-  const row = value as Record<string, unknown>;
+  if (!isRecord(value)) return null;
+  const row = value;
   const toNumber = (field: unknown): number => {
     if (typeof field === 'number' && Number.isFinite(field)) return field;
     if (typeof field === 'string' && field.trim() !== '') {

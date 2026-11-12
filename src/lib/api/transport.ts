@@ -1,5 +1,6 @@
+import { isRecord } from '@/lib/is-record';
 import { ConvexHttpClient } from 'convex/browser';
-import { anyApi } from 'convex/server';
+import { makeFunctionReference } from 'convex/server';
 import { ConvexError } from 'convex/values';
 
 import { getChaosConfig } from '@/config/development';
@@ -104,14 +105,15 @@ export function serverClockMs(header: string | null): number | null {
   const match = header === null ? null : HTTP_DATE.exec(header.trim());
   if (!match) return null;
   const [, day, month, year, hours, minutes, seconds] = match;
+  if (month === undefined) return null;
   const ms = Date.UTC(Number(year), MONTHS.indexOf(month), Number(day), Number(hours), Number(minutes), Number(seconds));
   return Number.isFinite(ms) ? ms + 500 : null;
 }
 
-function functionReference(fn: string): any {
+function checkedFunctionName(fn: string): string {
   const [module, name] = fn.split(':');
   if (!module || !name) throw new Error(`invalid Convex function name ${JSON.stringify(fn)}`);
-  return (anyApi as any)[module][name];
+  return fn;
 }
 
 /**
@@ -138,8 +140,8 @@ function functionReference(fn: string): any {
  */
 function toTransportError(call: ApiCall, error: unknown, httpStatus: number | null): unknown {
   if (error instanceof ConvexError) {
-    const data = error.data as { status?: unknown; error?: unknown } | undefined;
-    const status = typeof data?.status === 'number' ? data.status : 400;
+    const data: unknown = error.data;
+    const status = isRecord(data) && typeof data.status === 'number' ? data.status : 400;
     const body = JSON.stringify(data ?? null);
     return new TransportRequestError(`${call.kind} ${call.path} failed with ${status}`, status, body);
   }
@@ -191,7 +193,7 @@ function definedArgs(args: Record<string, unknown>): Record<string, unknown> {
 }
 
 export const convexTransport: Transport = async (call) => {
-  const ref = functionReference(call.fn);
+  const name = checkedFunctionName(call.fn);
   const args = definedArgs(call.args);
   const facts: ResponseFacts = { status: null, date: null };
   const client = httpClient(facts, call.signal);
@@ -200,11 +202,15 @@ export const convexTransport: Transport = async (call) => {
     if (call.kind === 'clock') {
       // A cached query's answer still carries the time it was sent, so the
       // clock costs a cache hit rather than a mutation.
-      await client.query(ref, args);
-      return serverClockMs(facts.date) ?? (await client.mutation(functionReference(SERVER_TIME_MUTATION), {}));
+      await client.query(makeFunctionReference<'query'>(name), args);
+      return (
+        serverClockMs(facts.date) ??
+        (await client.mutation(makeFunctionReference<'mutation'>(SERVER_TIME_MUTATION), {}))
+      );
     }
-    if (call.kind === 'query') return await client.query(ref, args);
-    return call.kind === 'action' ? await client.action(ref, args) : await client.mutation(ref, args);
+    if (call.kind === 'query') return await client.query(makeFunctionReference<'query'>(name), args);
+    if (call.kind === 'action') return await client.action(makeFunctionReference<'action'>(name), args);
+    return await client.mutation(makeFunctionReference<'mutation'>(name), args);
   } catch (error) {
     throw toTransportError(call, error, facts.status);
   }

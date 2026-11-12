@@ -2,20 +2,25 @@ import { MenuView, type MenuAction } from "@react-native-menu/menu";
 import React, { useCallback } from "react";
 import { Pressable, View } from "react-native";
 import { SortButtonContent } from "./SortButtonContent";
-import type {
-  SessionSortControlProps,
-  SortDirection,
-  SortKey,
-} from "./types";
+import {
+  SESSION_ATHLETE_SORT_DIRECTIONS,
+  SESSION_ATHLETE_SORT_KEYS,
+  type SessionAthleteSortDirection,
+  type SessionAthleteSortKey,
+} from "@/lib/session-athlete-sort";
+import type { SessionSortControlProps } from "./types";
 
 const ACTION_SEPARATOR = "::";
 
-const encodeActionId = (key: SortKey, direction: SortDirection) =>
+const encodeActionId = (key: SessionAthleteSortKey, direction: SessionAthleteSortDirection) =>
   `${key}${ACTION_SEPARATOR}${direction}`;
 
-const decodeActionId = (id: string): [SortKey, SortDirection] => {
+
+const decodeActionId = (id: string): [SessionAthleteSortKey, SessionAthleteSortDirection] | null => {
   const [key, direction] = id.split(ACTION_SEPARATOR);
-  return [key as SortKey, direction as SortDirection];
+  const sortKey = SESSION_ATHLETE_SORT_KEYS.find((candidate) => candidate === key);
+  const sortDirection = SESSION_ATHLETE_SORT_DIRECTIONS.find((candidate) => candidate === direction);
+  return sortKey && sortDirection ? [sortKey, sortDirection] : null;
 };
 
 /**
@@ -61,8 +66,8 @@ const SessionSortControl: React.FC<SessionSortControlProps> = ({
       title="Sort Athletes"
       actions={buildActions()}
       onPressAction={({ nativeEvent }) => {
-        const [key, direction] = decodeActionId(nativeEvent.event);
-        onSelect(key, direction);
+        const decoded = decodeActionId(nativeEvent.event);
+        if (decoded) onSelect(...decoded);
       }}
     >
       <View accessibilityLabel="Sort athletes">

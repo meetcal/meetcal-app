@@ -1,3 +1,4 @@
+import { readUnknown } from "@/lib/database/cached-shapes";
 import {
   BROWSE_CACHE_KEYS,
   clearBrowseCaches,
@@ -42,23 +43,23 @@ describe("offline cache", () => {
 
   it("round-trips a well-formed entry", async () => {
     await setOfflineCache("k", { rows: [1] });
-    await expect(getOfflineCache("k")).resolves.toMatchObject({
+    await expect(getOfflineCache("k", readUnknown)).resolves.toMatchObject({
       data: { rows: [1] },
     });
   });
 
   it("returns null for invalid JSON", async () => {
     mockMemory.set("k", "{nope");
-    await expect(getOfflineCache("k")).resolves.toBeNull();
+    await expect(getOfflineCache("k", readUnknown)).resolves.toBeNull();
   });
 
   it("returns null when lastSynced is missing", async () => {
     mockMemory.set("k", JSON.stringify({ data: { rows: [] } }));
-    await expect(getOfflineCache("k")).resolves.toBeNull();
+    await expect(getOfflineCache("k", readUnknown)).resolves.toBeNull();
   });
 
   it("returns null for an empty store", async () => {
-    await expect(getOfflineCache("missing")).resolves.toBeNull();
+    await expect(getOfflineCache("missing", readUnknown)).resolves.toBeNull();
   });
 });
 
@@ -80,8 +81,8 @@ describe("bounded browse caches", () => {
     await writeBoundedCacheEntry(KEY, "b", "B", 5);
     await removeBoundedCacheEntry(KEY, "a");
     await removeBoundedCacheEntry(KEY, "missing");
-    await expect(readBoundedCacheEntry(KEY, "a")).resolves.toBeNull();
-    await expect(readBoundedCacheEntry(KEY, "b")).resolves.toMatchObject({ data: "B" });
+    await expect(readBoundedCacheEntry(KEY, "a", readUnknown)).resolves.toBeNull();
+    await expect(readBoundedCacheEntry(KEY, "b", readUnknown)).resolves.toMatchObject({ data: "B" });
     await removeBoundedCacheEntry(KEY, "b");
     expect(mockMemory.has(KEY)).toBe(false);
   });
@@ -91,12 +92,12 @@ describe("bounded browse caches", () => {
       jest.mocked(Date.now).mockReturnValue(1000 + i);
       await writeBoundedCacheEntry(KEY, name, { name }, 3);
     }
-    await expect(readBoundedCacheEntry(KEY, "a")).resolves.toBeNull();
-    await expect(readBoundedCacheEntry(KEY, "b")).resolves.toEqual({
+    await expect(readBoundedCacheEntry(KEY, "a", readUnknown)).resolves.toBeNull();
+    await expect(readBoundedCacheEntry(KEY, "b", readUnknown)).resolves.toEqual({
       data: { name: "b" },
       lastUpdatedAt: 1001,
     });
-    await expect(readBoundedCacheEntry(KEY, "d")).resolves.toEqual({
+    await expect(readBoundedCacheEntry(KEY, "d", readUnknown)).resolves.toEqual({
       data: { name: "d" },
       lastUpdatedAt: 1003,
     });
@@ -111,17 +112,17 @@ describe("bounded browse caches", () => {
     jest.mocked(Date.now).mockReturnValue(4000);
     await writeBoundedCacheEntry(KEY, "c", 4, 2);
 
-    await expect(readBoundedCacheEntry(KEY, "b")).resolves.toBeNull();
-    await expect(readBoundedCacheEntry(KEY, "a")).resolves.toEqual({ data: 3, lastUpdatedAt: 3000 });
-    await expect(readBoundedCacheEntry(KEY, "c")).resolves.toEqual({ data: 4, lastUpdatedAt: 4000 });
+    await expect(readBoundedCacheEntry(KEY, "b", readUnknown)).resolves.toBeNull();
+    await expect(readBoundedCacheEntry(KEY, "a", readUnknown)).resolves.toEqual({ data: 3, lastUpdatedAt: 3000 });
+    await expect(readBoundedCacheEntry(KEY, "c", readUnknown)).resolves.toEqual({ data: 4, lastUpdatedAt: 4000 });
   });
 
   it("rewriting an entry replaces its old copy instead of keeping both", async () => {
     await writeBoundedCacheEntry(KEY, "a", "v1", 5);
     await writeBoundedCacheEntry(KEY, "a", "v2", 5);
 
-    await expect(readBoundedCacheEntry(KEY, "a")).resolves.toMatchObject({ data: "v2" });
-    const stored = await getOfflineCache<unknown[]>(KEY);
+    await expect(readBoundedCacheEntry(KEY, "a", readUnknown)).resolves.toMatchObject({ data: "v2" });
+    const stored = await getOfflineCache(KEY, readUnknown);
     expect(stored?.data).toHaveLength(1);
   });
 
@@ -130,13 +131,13 @@ describe("bounded browse caches", () => {
       KEY,
       JSON.stringify({ data: { old1: [1], old2: [2], old3: [3] }, lastSynced: 50 }),
     );
-    await expect(readBoundedCacheEntry(KEY, "old2")).resolves.toEqual({
+    await expect(readBoundedCacheEntry(KEY, "old2", readUnknown)).resolves.toEqual({
       data: [2],
       lastUpdatedAt: 50,
     });
     await writeBoundedCacheEntry(KEY, "new", [4], 2);
-    await expect(readBoundedCacheEntry(KEY, "old1")).resolves.toBeNull();
-    await expect(readBoundedCacheEntry(KEY, "old3")).resolves.toEqual({
+    await expect(readBoundedCacheEntry(KEY, "old1", readUnknown)).resolves.toBeNull();
+    await expect(readBoundedCacheEntry(KEY, "old3", readUnknown)).resolves.toEqual({
       data: [3],
       lastUpdatedAt: 50,
     });
@@ -147,8 +148,8 @@ describe("bounded browse caches", () => {
       KEY,
       JSON.stringify({ data: [{ key: "x" }, null, { key: "y", data: 1, lastSynced: 5 }], lastSynced: 5 }),
     );
-    await expect(readBoundedCacheEntry(KEY, "x")).resolves.toBeNull();
-    await expect(readBoundedCacheEntry(KEY, "y")).resolves.toEqual({ data: 1, lastUpdatedAt: 5 });
+    await expect(readBoundedCacheEntry(KEY, "x", readUnknown)).resolves.toBeNull();
+    await expect(readBoundedCacheEntry(KEY, "y", readUnknown)).resolves.toEqual({ data: 1, lastUpdatedAt: 5 });
     await expect(writeBoundedCacheEntry(KEY, "z", 1, 0)).rejects.toThrow("maxEntries");
   });
 
@@ -177,8 +178,8 @@ describe("bounded browse caches", () => {
       writeBoundedCacheEntry(KEY, "b", "B", 5),
     ]);
 
-    await expect(readBoundedCacheEntry(KEY, "a")).resolves.toMatchObject({ data: "A" });
-    await expect(readBoundedCacheEntry(KEY, "b")).resolves.toMatchObject({ data: "B" });
+    await expect(readBoundedCacheEntry(KEY, "a", readUnknown)).resolves.toMatchObject({ data: "A" });
+    await expect(readBoundedCacheEntry(KEY, "b", readUnknown)).resolves.toMatchObject({ data: "B" });
   });
 
   it("a write in progress when a clear starts does not write the cleared entries back", async () => {
@@ -198,6 +199,6 @@ describe("bounded browse caches", () => {
     mockReadGate = null;
 
     expect(mockMemory.has(cacheKey)).toBe(false);
-    await expect(readBoundedCacheEntry(cacheKey, "old")).resolves.toBeNull();
+    await expect(readBoundedCacheEntry(cacheKey, "old", readUnknown)).resolves.toBeNull();
   });
 });

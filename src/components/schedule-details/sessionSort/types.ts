@@ -1,19 +1,15 @@
-export type SortKey = "entryTotal" | "snatch" | "cj" | "total";
-export type SortDirection = "asc" | "desc";
-
-export interface SortOption {
-  label: string;
-  key: SortKey;
-  direction: SortDirection;
-}
+import type {
+  SessionAthleteSortDirection,
+  SessionAthleteSortKey,
+} from "@/lib/session-athlete-sort";
+import type { SessionSortOption } from "@/lib/session-athletes-view";
 
 export interface SessionSortControlProps {
   isSubscribed: boolean;
   sortLabel: string;
-  sortKey: SortKey;
-  sortDirection: SortDirection;
-  sortOptions: SortOption[];
-  onSelect: (key: SortKey, direction: SortDirection) => void;
-  /** Invoked when a non-subscribed user taps the control (triggers paywall). */
+  sortKey: SessionAthleteSortKey;
+  sortDirection: SessionAthleteSortDirection;
+  sortOptions: readonly SessionSortOption[];
+  onSelect: (key: SessionAthleteSortKey, direction: SessionAthleteSortDirection) => void;
   onLockedPress: () => void;
 }

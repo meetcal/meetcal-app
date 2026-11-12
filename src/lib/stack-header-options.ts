@@ -1,4 +1,4 @@
-import type { AppColors } from '@/hooks/useAppColors';
+import type { AppColors } from '@/constants/Colors';
 
 type HeaderColors = Pick<AppColors, 'headerTitle' | 'headerBackground' | 'text'>;
 

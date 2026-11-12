@@ -8,9 +8,12 @@
  * same rule.
  */
 export function competitionRanks(totals: readonly number[]): number[] {
-  const ranks: number[] = [];
-  totals.forEach((total, index) => {
-    ranks.push(index > 0 && total === totals[index - 1] ? ranks[index - 1] : index + 1);
+  let previousTotal: number | undefined;
+  let previousRank = 0;
+  return totals.map((total, index) => {
+    const rank = index > 0 && total === previousTotal ? previousRank : index + 1;
+    previousTotal = total;
+    previousRank = rank;
+    return rank;
   });
-  return ranks;
 }
