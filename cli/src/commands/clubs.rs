@@ -49,12 +49,12 @@ pub async fn run(args: ClubsArgs) -> Result<()> {
     Ok(())
 }
 
-pub fn report(names: impl IntoIterator<Item = impl Into<String>>) -> Report {
+pub(crate) fn report(names: impl IntoIterator<Item = impl Into<String>>) -> Report {
     Report::single("clubs", output::list("Club", names))
 }
 
 /// The names containing `search`, ignoring case.
-pub fn matching<'a>(names: &'a [String], search: &str) -> Vec<&'a str> {
+pub(crate) fn matching<'a>(names: &'a [String], search: &str) -> Vec<&'a str> {
     let search = search.to_lowercase();
     names
         .iter()

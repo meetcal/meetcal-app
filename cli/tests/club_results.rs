@@ -1,3 +1,4 @@
+#![cfg(test)]
 use clap::Parser;
 use meetcal::parser::{Cli, Commands};
 

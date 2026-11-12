@@ -14,7 +14,7 @@ enum NationalEvent {
 /// USA Weightlifting publishes some national-week start lists under a combined event name while
 /// publishing results under the individual championships. Keep that intentionally narrow so a
 /// registration at one national event is never attributed to a different national event.
-pub fn equivalent_meets(registration_meet: &str, result_meet: &str) -> bool {
+pub(crate) fn equivalent_meets(registration_meet: &str, result_meet: &str) -> bool {
     let registration = folded_words(registration_meet);
     let result = folded_words(result_meet);
 
@@ -37,7 +37,7 @@ pub fn equivalent_meets(registration_meet: &str, result_meet: &str) -> bool {
 }
 
 /// Exact result-meet names to request for a registration/start-list event.
-pub fn result_meet_aliases(meet: &str) -> Vec<String> {
+pub(crate) fn result_meet_aliases(meet: &str) -> Vec<String> {
     let mut aliases = vec![meet.to_string()];
     let normalized = folded_words(meet);
     let Some(year) = meet_year(&normalized) else {
@@ -67,14 +67,14 @@ pub fn result_meet_aliases(meet: &str) -> Vec<String> {
 
 /// Words sponsors add to a meet's name one year and drop the next ("The 2024 Nike USA
 /// Weightlifting National Championships").
-pub const SPONSOR_WORDS: &[&str] = &["nike"];
+pub(crate) const SPONSOR_WORDS: &[&str] = &["nike"];
 
 /// What stays the same across a meet's editions: its name's words, lowercase, without the year,
 /// "The", punctuation, sponsor words, or a trailing "powered by …", "presented by …" or
 /// "sponsored by …". `The 2025 DMV WSO Championships` and `2024 DMV WSO Championships` share
 /// one; so do `2025 USA Weightlifting National Championships, Powered by Rogue Fitness` and
 /// `The 2024 Nike USA Weightlifting National Championships, powered by Rogue`.
-pub fn series_name(meet: &str) -> String {
+pub(crate) fn series_name(meet: &str) -> String {
     let normalized = folded_words(meet);
     let words: Vec<&str> = normalized.split_whitespace().collect();
     let mut kept = Vec::new();
@@ -92,18 +92,18 @@ pub fn series_name(meet: &str) -> String {
     kept.join(" ")
 }
 
-pub fn year_of(date: &str) -> &str {
+pub(crate) fn year_of(date: &str) -> &str {
     date.get(..4).unwrap_or(date)
 }
 
-pub fn result_year(row: &LiftingResults) -> String {
+pub(crate) fn result_year(row: &LiftingResults) -> String {
     year_of(&row.date).to_string()
 }
 
 /// A meet's results split into editions by year, oldest first. Many meets keep one name every
 /// year (`Testify Leprechaun Lift-off`), and `results:byMeet` answers every edition's rows for
 /// it, so a meet name alone is not one event.
-pub fn editions_by_year(rows: Vec<LiftingResults>) -> BTreeMap<String, Vec<LiftingResults>> {
+pub(crate) fn editions_by_year(rows: Vec<LiftingResults>) -> BTreeMap<String, Vec<LiftingResults>> {
     let mut years: BTreeMap<String, Vec<LiftingResults>> = BTreeMap::new();
     for row in rows {
         years.entry(result_year(&row)).or_default().push(row);

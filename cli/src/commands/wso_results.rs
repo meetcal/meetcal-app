@@ -59,7 +59,7 @@ async fn nobody_registered(wso: &str, meet: &str) -> anyhow::Error {
     not_found(NameKind::Meet, meet, message).await
 }
 
-pub fn no_athletes_message(roster: &[Athletes], wso: &str, meet: &str) -> String {
+pub(crate) fn no_athletes_message(roster: &[Athletes], wso: &str, meet: &str) -> String {
     let mut wsos_at_the_meet: Vec<&str> = roster
         .iter()
         .filter_map(|athlete| athlete.wso.as_deref())
@@ -87,8 +87,6 @@ mod tests {
             club: "Club".to_string(),
             entry_total: 200.0,
             gender: "Female".to_string(),
-            meet: "Meet".to_string(),
-            member_id: "1".to_string(),
             name: name.to_string(),
             session_number: None,
             session_platform: None,

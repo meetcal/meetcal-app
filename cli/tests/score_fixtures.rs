@@ -1,3 +1,4 @@
+#![cfg(test)]
 //! The scores and guards `leaderboard` ranks by, checked against `tests/fixtures/scores.json`, which
 //! the server's port (`convex/lib/leaderboard.ts`) is checked against too
 //! (`convex-tests/leaderboard.test.ts`): a rule changed on one side fails the other side's test.
