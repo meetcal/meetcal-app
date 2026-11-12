@@ -623,6 +623,7 @@ const eliteAnswer = () => {
   const empty = { men: [], women: [] };
   const harley = eliteRow("Harley Creech", "senior", 22, 90.5);
   const mahassen = eliteRow("Mahassen Paiva", "masters", 36, 283.79, { weight_class: null, standard_a: null });
+  const clair = eliteRow("Clair Callahan", "junior", 18, 76.8, { division: "Junior Women's 86+kg", weight_class: "+86kg", standard_a: 237 });
   return {
     wso: "Carolina",
     from: "2025-01-01",
@@ -631,7 +632,7 @@ const eliteAnswer = () => {
     rankings: {
       overall: { percentA: { men: [], women: [harley] }, sinclair: empty, qpoints: empty },
       youth: { percentA: empty, sinclair: empty },
-      junior: { percentA: empty, qpoints: empty, sinclair: empty },
+      junior: { percentA: { men: [], women: [clair] }, qpoints: empty, sinclair: empty },
       senior: { percentA: { men: [], women: [harley] }, qpoints: empty, sinclair: empty },
       masters: { qmasters: { men: [], women: [mahassen] }, percentA: empty, sinclair: { men: [], women: [{ ...mahassen, score: 251.2 }] } },
     },
@@ -659,6 +660,7 @@ test("the WSO elite page ranks a WSO's athletes, and a list's score picker switc
   await expect(page.locator("tbody").first()).toContainText("Harley Creech");
   await expect(page.locator("tbody").first()).toContainText("90.5%");
   await expect(page.locator("tbody").first()).toContainText("242 (86kg)");
+  await expect(page.getByRole("row", { name: /Clair Callahan/ })).toContainText("237 (86+kg)");
   await expect(page.getByText("No results in this range.").first()).toBeVisible();
   expect(asked[0]).toEqual({
     wso: "Carolina",

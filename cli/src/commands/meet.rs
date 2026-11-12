@@ -5,7 +5,8 @@ use crate::{
     utils::{
         backend::{PassRefused, queries, query},
         bests::{bests_cell, year_bests},
-        format::{kg, time_24h, us_date, us_time},
+        filters::gender_as_matched,
+        format::{display_weight_class, kg, time_24h, us_date, us_time},
         names::{NameKind, not_found},
     },
 };
@@ -117,9 +118,6 @@ pub(crate) fn session_platform(platform: Option<&str>) -> Result<Option<String>>
     Ok(Some(platform.to_string()))
 }
 
-/// The start list: shown with US dates, 12-hour times, and the session, platform and past-year
-/// bests packed into cells; exported with ISO dates, 24-hour times and a column for each.
-/// `bests` is `None` when they were not asked for.
 pub(crate) fn report(athletes: &[Athletes], bests: Option<&HashMap<String, NamedBests>>) -> Report {
     let mut table = Table::new();
     let mut header = vec![
@@ -168,10 +166,10 @@ pub(crate) fn report(athletes: &[Athletes], bests: Option<&HashMap<String, Named
         let common = vec![
             athlete.name.clone(),
             athlete.age.to_string(),
-            athlete.gender.clone(),
+            gender_as_matched(&athlete.gender).to_string(),
             athlete.adaptive.to_string(),
             athlete.club.clone(),
-            athlete.weight_class.clone(),
+            display_weight_class(&athlete.weight_class),
             athlete.entry_total.to_string(),
         ];
 
@@ -370,13 +368,13 @@ mod tests {
     fn exports_dates_times_session_platform_and_bests_apart() {
         let rows = r#"[{
             "adaptive": false, "age": 31, "club": "Test Club", "entry_total": 180,
-            "gender": "Women", "member_id": "9", "name": "Ada Lift", "session_number": 4,
+            "gender": "Female", "member_id": "9", "name": "Ada Lift", "session_number": 4,
             "session_platform": "Red", "weight_class": "63kg", "wso": "Florida",
             "date": "2026-10-03", "start_time": "10:00:00", "weigh_in_time": "08:00"
         }, {
             "adaptive": true, "age": 40, "club": "Test Club", "entry_total": 150,
-            "gender": "Men", "member_id": "10", "name": "Bo Lift", "session_number": null,
-            "session_platform": null, "weight_class": "81kg", "wso": null
+            "gender": "Male", "member_id": "10", "name": "Bo Lift", "session_number": null,
+            "session_platform": null, "weight_class": "+87", "wso": null
         }]"#;
         let athletes: Vec<Athletes> = serde_json::from_str(rows).unwrap();
         let mut bests = HashMap::new();
@@ -397,6 +395,10 @@ mod tests {
         assert_eq!(json[0]["weigh_in"], "08:00");
         assert_eq!(json[0]["start"], "10:00");
         assert_eq!(json[0]["adaptive"], false);
+        assert_eq!(json[0]["class"], "63kg");
+        assert_eq!(json[0]["gender"], "Women");
+        assert_eq!(json[1]["gender"], "Men");
+        assert_eq!(json[1]["class"], "87+kg");
         assert_eq!(json[0]["past_year_best_total"], 180);
         assert_eq!(json[1]["session"], serde_json::Value::Null);
         assert_eq!(json[1]["platform"], serde_json::Value::Null);

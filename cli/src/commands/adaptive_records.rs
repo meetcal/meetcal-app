@@ -4,7 +4,7 @@ use comfy_table::Table;
 
 use crate::types::lifting_results::AdaptiveRecord;
 use crate::utils::backend::{queries, query};
-use crate::utils::format::kg;
+use crate::utils::format::{display_weight_class, kg};
 use crate::utils::output::{self, Report};
 use crate::utils::stats::Gender;
 use serde_json::json;
@@ -36,14 +36,15 @@ pub(crate) fn report(records: &[AdaptiveRecord]) -> Report {
     let mut unset_records_as_null = Table::new();
     unset_records_as_null.set_header(header);
     for record in records {
+        let weight_class = display_weight_class(&record.weight_class);
         table.add_row(vec![
-            record.weight_class.to_string(),
+            weight_class.clone(),
             record.snatch.to_string(),
             record.cj.to_string(),
             record.total.to_string(),
         ]);
         unset_records_as_null.add_row(vec![
-            record.weight_class.to_string(),
+            weight_class,
             kg(record.snatch),
             kg(record.cj),
             kg(record.total),
@@ -55,6 +56,19 @@ pub(crate) fn report(records: &[AdaptiveRecord]) -> Report {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn classes_show_with_their_unit_in_the_table_and_the_export() {
+        let records = vec![AdaptiveRecord {
+            weight_class: "+110".into(),
+            snatch: 80.0,
+            cj: 100.0,
+            total: 180.0,
+        }];
+        let report = report(&records);
+        assert_eq!(report.to_json()[0]["weight_class"], "110+kg");
+        assert!(report.to_text().contains("| 110+kg "));
+    }
 
     #[test]
     fn a_class_with_no_record_exports_null_and_still_shows_zero() {

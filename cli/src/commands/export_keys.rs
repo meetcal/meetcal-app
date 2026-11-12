@@ -66,21 +66,6 @@ fn a_meet() -> Meet {
     }
 }
 
-fn elite_lists() -> elite::EliteLists {
-    let list = || elite::EliteList {
-        method: elite::Method::PercentA,
-        men: Vec::new(),
-        women: Vec::new(),
-    };
-    elite::EliteLists {
-        overall: list(),
-        youth: list(),
-        junior: list(),
-        senior: list(),
-        masters: list(),
-    }
-}
-
 fn every_commands_report_under_every_flag_that_shapes_it() -> Vec<(&'static str, Report)> {
     let rows = vec![lifter("Ada"), lifter("Bea")];
     let no_stats = WrappedStats::default();
@@ -124,7 +109,13 @@ fn every_commands_report_under_every_flag_that_shapes_it() -> Vec<(&'static str,
             "compare",
             compare::comparison_report("Ada", 2025, 2026, &no_stats, &no_stats),
         ),
-        ("elite", elite::report(&elite_lists())),
+        (
+            "elite",
+            elite::report(
+                &elite::EliteLists::default(),
+                &elite::tests::default_methods(),
+            ),
+        ),
         ("h2h", h2h::report(&rows[..1], &rows[1..], "2025-03-01")),
         ("intl-rankings", intl_rankings::report(Vec::new())),
         ("leaderboard", leaderboard::report(&[])),
