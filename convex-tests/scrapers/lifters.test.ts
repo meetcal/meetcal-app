@@ -5,6 +5,7 @@ import {
   backfill,
   BACKFILL_ATTEMPTS,
   BACKFILL_CLASSES_PER_RUN,
+  BACKFILL_READ_STOP_MS,
   BACKFILL_RUN_BUDGET_MS,
   IN_FLIGHT_WRITE_MS,
   NAMES_PER_LINK,
@@ -25,7 +26,7 @@ type Dict = Record<string, unknown>;
 
 const mockApi = {
   rankingsTable: jest.fn(async (): Promise<Dict> => ({ filters: [{ name: 'weight_class', items: mockClassItems }] })),
-  rankings: jest.fn(async (_classId: number, _from: string, _to: string): Promise<Dict[]> => []),
+  rankings: jest.fn(async (_classId: number, _from: string, _to: string, _reading?: Dict): Promise<Dict[]> => []),
   athleteResults: jest.fn(async (_athleteId: string): Promise<Dict[]> => []),
 };
 
@@ -129,6 +130,7 @@ describe('the nightly lifter links', () => {
 
     expect(mockApi.rankings).toHaveBeenCalledTimes(1);
     expect(itemAt(itemAt(mockApi.rankings.mock.calls, 0), 0)).toBe(939);
+    expect(itemAt(mockApi.rankings.mock.calls, 0)[3]).toEqual({});
     const stored = mutations.find((m) => m.name === 'ingest:upsertLifters')!.args.sightings as Dict[];
     expect(stored.map((s) => [s.athleteId, s.birthYear])).toEqual([
       ['1', 1999],
@@ -459,6 +461,59 @@ describe('the lifter backfill', () => {
     await handlerOf<Dict, void>(backfill)(again.ctx, { stage: 'rankings', classIds: [1] });
     expect(mockApi.rankings.mock.calls.map((call) => call[0])).toEqual([1]);
     expect(itemAt(again.scheduled, 0).args).toMatchObject({ stage: 'link', after: '' });
+  });
+
+  it('reads each class whole or not at all, and only until the run must store what it read', async () => {
+    mockClassItems = [{ text: 'Class 0', value: 0 }];
+    jest.spyOn(Date, 'now').mockReturnValue(Date.UTC(2026, 10, 12));
+    const { ctx } = fakeCtx();
+    await handlerOf<Dict, void>(backfill)(ctx, {});
+    expect(mockApi.rankings.mock.calls).toEqual([[0, '1900-01-01', '2026-11-12', { deadline: Date.UTC(2026, 10, 12) + BACKFILL_READ_STOP_MS, wholeTables: true }]]);
+  });
+
+  describe('against a Sport80 that cannot answer a range reaching from before 2000 to after 2010', () => {
+    const RANKINGS_PATH = '/api/categories/all/rankings/table/data';
+    const rows = [rankingRow('1', { lift_date: '1998-05-01' }), rankingRow('2', { lift_date: '2015-03-01' })];
+    const tooWide = (start: string, end: string) => start < '2000-01-01' && end > '2010-01-01';
+    const actual = jest.requireActual<typeof import('../../convex/scrapers/lib/sport80Api')>('../../convex/scrapers/lib/sport80Api');
+
+    function backfillClass863(ctx: ReturnType<typeof fakeCtx>['ctx'], fails: (start: string, end: string) => boolean): Promise<void> {
+      jest.mocked(Sport80.connect).mockImplementationOnce(async () => (await actual.Sport80.connect()) as never);
+      jest.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+        const url = new URL(String(input));
+        if (url.pathname === '/public/rankings/') return new Response('window.env = {"SERVICES_API_PUBLIC_KEY":"k","RANKINGS_DOMAIN_URL":"https://api.test"};');
+        if (url.pathname === '/api/categories/rankings/table') return Response.json({ filters: [{ name: 'weight_class', items: mockClassItems }] });
+        if (url.pathname !== RANKINGS_PATH) throw new Error(`unexpected fetch ${url.toString()}`);
+        const { date_range_start: start, date_range_end: end } = JSON.parse(String(init?.body)) as { date_range_start: string; date_range_end: string };
+        if (fails(start, end)) return new Response('', { status: 500 });
+        const inRange = rows.filter((row) => String(row.lift_date) >= start && String(row.lift_date) <= end);
+        return Response.json({ data: inRange, total: inRange.length });
+      });
+      return handlerOf<Dict, void>(backfill)(ctx, { stage: 'rankings', classIds: [863] });
+    }
+
+    const storedAthletes = (mutations: Call[]) =>
+      mutations.filter((m) => m.name === 'ingest:upsertLifters').flatMap((m) => (m.args.sightings as { athleteId: string }[]).map((s) => s.athleteId));
+
+    beforeEach(() => {
+      mockClassItems = [{ text: "Women's 11 Under Age Group 61+kg", value: 863 }];
+    });
+
+    it('reads the class in ranges it can answer, stores the rows of every range, and moves on to linking', async () => {
+      const { ctx, mutations, scheduled } = fakeCtx();
+      await backfillClass863(ctx, tooWide);
+      expect(storedAthletes(mutations).sort()).toEqual(['1', '2']);
+      expect(scheduled).toEqual([{ name: 'scrapers/lifters:backfill', args: expect.objectContaining({ stage: 'link', after: '', failures: [] }), delay: 0 }]);
+    });
+
+    it('leaves the class unread when a range keeps failing, so the backfill stops before linking and names it', async () => {
+      const { ctx, scheduled } = fakeCtx();
+      const failure = await backfillClass863(ctx, (start, end) => start <= '1998-05-01' && end >= '1998-05-01').catch((error: unknown) => error);
+      expect(scheduled).toEqual([]);
+      expect(String(failure)).toContain('the rankings of 1 weight class(es) could not be read');
+      expect(String(failure)).toContain(JSON.stringify({ links: { history: 0, fit: 0, unlinked: 0, changed: 0 }, stage: 'rankings', classIds: [863] }));
+      expect(jest.mocked(console.warn).mock.calls.flat().join('\n')).toContain(`failed with 500`);
+    });
   });
 
   it('links a page of names and carries on after the last one', async () => {

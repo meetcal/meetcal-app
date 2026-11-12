@@ -1,4 +1,5 @@
 import { daysBetween, isoDaysAfter } from '../../lib/dates';
+import { errorMessage } from '../../lib/errors';
 import { rowCount } from '../../lib/json';
 import { pageRows, readSport80Env, readTablePage, USAW_DOMAIN, type Sport80Env } from '../parse/sport80';
 
@@ -10,12 +11,17 @@ const EVENT_INDEX_PAGE_ROWS = 1000;
 const TABLE_PAGE_ROWS = 2000;
 export const RANKINGS_PAGE_ROWS = [2000, 1000, 500] as const;
 export const RANKINGS_UNSPLIT_DAYS = 366;
+export const MAX_RANKINGS_RANGES = 64;
 
 export type DateRange = readonly [start: string, end: string];
 
-export function halvesOf([start, end]: DateRange): [DateRange, DateRange] | null {
+export type RankingsReading = { deadline?: number; wholeTables?: boolean };
+
+type TableRead = { rows: Dict[]; notWhole?: string; shifted?: boolean };
+
+export function halvesOf([start, end]: DateRange, unsplitDays = RANKINGS_UNSPLIT_DAYS): [DateRange, DateRange] | null {
   const days = daysBetween(start, end);
-  if (end < start || days <= RANKINGS_UNSPLIT_DAYS) return null;
+  if (end < start || days <= unsplitDays) return null;
   const firstEnd = isoDaysAfter(start, Math.floor(days / 2));
   return [
     [start, firstEnd],
@@ -41,7 +47,7 @@ export function tableComplete(rows: number, total: unknown): boolean {
   return rowCount(total) === rows;
 }
 
-export function joinPages(pages: readonly Dict[][], total: unknown): { rows: Dict[]; notWhole?: string } {
+export function joinPages(pages: readonly Dict[][], total: unknown): TableRead {
   const rows = pages.flat();
   const reported = rowCount(total);
   if (typeof total === 'number' && reported === null) throw new Error(`read ${rows.length} rows of the ${total} the table reports`);
@@ -50,11 +56,15 @@ export function joinPages(pages: readonly Dict[][], total: unknown): { rows: Dic
   const earlier = new Set<string>();
   for (const page of pages) {
     const keys = page.map((row) => JSON.stringify(row));
-    if (keys.some((key) => earlier.has(key))) return { rows, notWhole: 'a row came back on two pages (their order shifted)' };
+    if (keys.some((key) => earlier.has(key))) return { rows, notWhole: 'a row came back on two pages (their order shifted)', shifted: true };
     for (const key of keys) earlier.add(key);
   }
   return { rows };
 }
+
+const isServerError = (error: unknown): error is Sport80HttpError => error instanceof Sport80HttpError && error.isServerError;
+
+const rangeFailure = ([start, end]: DateRange, reason: unknown) => new Error(`${start} to ${end}: ${errorMessage(reason)}`);
 
 export class Sport80 {
   private constructor(private readonly env: Sport80Env) {}
@@ -88,7 +98,7 @@ export class Sport80 {
     return readTablePage(await response.json());
   }
 
-  private async collate(first: Dict, payload?: Dict): Promise<{ rows: Dict[]; notWhole?: string }> {
+  private async collate(first: Dict, payload?: Dict): Promise<TableRead> {
     const pages: Dict[][] = [pageRows(first)];
     let current = first;
     for (let page = 1; typeof current.next_page_url === 'string' && current.next_page_url; page++) {
@@ -117,20 +127,47 @@ export class Sport80 {
     return await this.request('GET', this.url('/api/categories/rankings/table'));
   }
 
-  async rankings(classId: number, start: string, end: string): Promise<Dict[]> {
+  private async rankingsRange(classId: number, [start, end]: DateRange, pageSizes: readonly number[]): Promise<TableRead> {
     const payload = { date_range_start: start, date_range_end: end, weight_class: classId };
-    const halves = halvesOf([start, end]);
     let serverError: Sport80HttpError | null = null;
-    for (const rows of halves ? RANKINGS_PAGE_ROWS.slice(0, 1) : RANKINGS_PAGE_ROWS) {
+    for (const rows of pageSizes) {
       try {
-        return (await this.collate(await this.request('POST', this.url('/api/categories/all/rankings/table/data', rows), payload), payload)).rows;
+        return await this.collate(await this.request('POST', this.url('/api/categories/all/rankings/table/data', rows), payload), payload);
       } catch (error) {
-        if (!(error instanceof Sport80HttpError) || !error.isServerError) throw error;
+        if (!isServerError(error)) throw error;
         serverError = error;
       }
     }
-    if (halves) return [...(await this.rankings(classId, ...halves[0])), ...(await this.rankings(classId, ...halves[1]))];
     throw serverError ?? new Error(`sport80: rankings of class ${classId} not read`);
+  }
+
+  async rankings(classId: number, start: string, end: string, { deadline = Infinity, wholeTables = false }: RankingsReading = {}): Promise<Dict[]> {
+    const pending: DateRange[] = [[start, end]];
+    const parts: Dict[][] = [];
+    for (let asked = 0; asked < MAX_RANKINGS_RANGES; asked++) {
+      const range = pending.shift();
+      if (range === undefined) return parts.flat();
+      if (Date.now() >= deadline) throw rangeFailure(range, `not read in time, with ${pending.length} more range(s) after it`);
+      const halves = halvesOf(range);
+      let table: TableRead;
+      try {
+        table = await this.rankingsRange(classId, range, halves ? RANKINGS_PAGE_ROWS.slice(0, 1) : RANKINGS_PAGE_ROWS);
+      } catch (error) {
+        if (!halves || !isServerError(error)) throw rangeFailure(range, error);
+        pending.unshift(...halves);
+        continue;
+      }
+      if (table.notWhole === undefined || !wholeTables) {
+        parts.push(table.rows);
+        continue;
+      }
+      const smaller = table.shifted ? halvesOf(range, 0) : null;
+      if (!smaller) throw rangeFailure(range, table.notWhole);
+      pending.unshift(...smaller);
+    }
+    const [unread] = pending;
+    if (unread === undefined) return parts.flat();
+    throw rangeFailure(unread, `still not read after ${MAX_RANKINGS_RANGES} ranges were asked, with ${pending.length - 1} more after it`);
   }
 
   async athleteResults(athleteId: string): Promise<Dict[]> {

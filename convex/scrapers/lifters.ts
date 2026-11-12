@@ -12,7 +12,7 @@ import { condenseSightings, isSport80Result, needsSourceHistories, SAME_MEET_TOL
 import { chunks, mapLimited } from '../lib/concurrency';
 import { logInLines } from '../lib/logLines';
 import { itemAt } from '../lib/json';
-import { Sport80, Sport80HttpError } from './lib/sport80Api';
+import { Sport80, Sport80HttpError, type RankingsReading } from './lib/sport80Api';
 import { formatAthleteResults, lifterSighting, rankingClasses, rankingClassIds, type LifterSighting, type RankingClass } from './parse/sport80';
 import { compareBytes } from '../lib/sort';
 import { isDatedResult } from '../lib/results';
@@ -22,6 +22,7 @@ export const SIGHTINGS_PER_STORE = Math.min(100, MAX_LIFTER_SIGHTINGS);
 export const NAMES_PER_LINK = Math.min(10, MAX_LINK_NAMES);
 export const BACKFILL_CLASSES_PER_RUN = 30;
 export const BACKFILL_RUN_BUDGET_MS = 3 * 60 * 1000;
+export const BACKFILL_READ_STOP_MS = 6 * 60 * 1000;
 export const NIGHTLY_READ_BUDGET_MS = 3 * 60 * 1000;
 export const NIGHTLY_LINK_BUDGET_MS = 3 * 60 * 1000;
 export const RECENT_INSERT_DAYS = 10;
@@ -48,7 +49,7 @@ export async function readSightings(
   from: string,
   to: string,
   failures: SourceFailure[],
-  deadline = Infinity,
+  { deadline = Infinity, reading = {} }: { deadline?: number; reading?: RankingsReading } = {},
 ): Promise<{ sightings: LifterSighting[]; unread: Set<number>; late: number }> {
   const unread = new Set<number>();
   let late = 0;
@@ -60,7 +61,7 @@ export async function readSightings(
       return [];
     }
     try {
-      const rows = await api.rankings(rankingClass.id, from, to);
+      const rows = await api.rankings(rankingClass.id, from, to, reading);
       const sightings = rows.map(lifterSighting).filter((s): s is LifterSighting => s !== null);
       if (rows.length > 0 && sightings.length === 0) {
         failures.push({ source, error: `none of ${rows.length} rows readable (payload changed?)` });
@@ -297,7 +298,7 @@ async function sightingsAround(
     }
     const { picked, unknown } = classesOfResults(window.rows, known);
     for (const age of unknown) failures.push({ source: `rankings class ${JSON.stringify(age)}`, error: 'no Sport80 rankings class has this name, so its results are not linked' });
-    const classRead = await readSightings(api, picked, window.from, window.to, failures, deadline);
+    const classRead = await readSightings(api, picked, window.from, window.to, failures, { deadline });
     read.classes += picked.length - classRead.late;
     await store(classRead.sightings);
     read.sightings += classRead.sightings.length;
@@ -421,10 +422,11 @@ async function backfillStep(ctx: ActionCtx, args: BackfillArgs): Promise<Backfil
     const startedAt = Date.now();
     const sightings: LifterSighting[] = [];
     const unread = new Set(args.unreadClassIds ?? []);
+    const reading: RankingsReading = { deadline: startedAt + BACKFILL_READ_STOP_MS, wholeTables: true };
     let read = 0;
     while (read < slice.length && Date.now() - startedAt < BACKFILL_RUN_BUDGET_MS) {
       const batch = slice.slice(read, read + SPORT80_CONCURRENCY);
-      const classRead = await readSightings(api, batch, BACKFILL_FROM, today(), failures);
+      const classRead = await readSightings(api, batch, BACKFILL_FROM, today(), failures, { reading });
       sightings.push(...classRead.sightings);
       for (const id of classRead.unread) unread.add(id);
       read += batch.length;
