@@ -122,6 +122,17 @@ export async function signedInUser(ctx: QueryCtx): Promise<{ userId: string; via
   return { userId: identity.subject, via: 'meetcal' };
 }
 
+export async function requireUserId(ctx: QueryCtx): Promise<string> {
+  const identity = await ctx.auth.getUserIdentity();
+  if (!identity || isMeetCalToken(identity)) throw apiError(401, 'unauthorized');
+  const deleted = await ctx.db
+    .query('deleted_users')
+    .withIndex('by_userId', (q) => q.eq('userId', identity.subject))
+    .first();
+  if (deleted) throw apiError(403, 'account deleted');
+  return identity.subject;
+}
+
 /** Whether a stored entitlement is active at `now`: RevenueCat said so, and it has not expired since. */
 export function entitlementIsActive(row: { active: boolean; expiresAt: number | null }, now: number): boolean {
   return row.active && (row.expiresAt === null || row.expiresAt > now);

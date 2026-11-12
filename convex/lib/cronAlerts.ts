@@ -1,4 +1,5 @@
 import { ConvexError } from 'convex/values';
+import { isRecord } from './json';
 
 /**
  * When a scheduled job's state is worth an email. One incident sends one
@@ -59,14 +60,13 @@ export function sourcesFailed(summary: string, failures: readonly SourceFailure[
 }
 
 function isSourcesFailedData(data: unknown): data is SourcesFailedData {
-  if (typeof data !== 'object' || data === null) return false;
-  const { message, failedSources } = data as Record<string, unknown>;
+  if (!isRecord(data)) return false;
+  const { message, failedSources } = data;
   return typeof message === 'string' && Array.isArray(failedSources) && failedSources.every((s) => typeof s === 'string');
 }
 
-/** A failed run's error text, and its failed sources when the job threw `sourcesFailed` (the data survives `runAction`). */
 export function describeFailure(failure: unknown): { error: string; failedSources?: string[] } {
-  const data = typeof failure === 'object' && failure !== null && 'data' in failure ? failure.data : undefined;
+  const data = isRecord(failure) ? failure.data : undefined;
   if (isSourcesFailedData(data)) return { error: data.message, failedSources: data.failedSources };
   return { error: failure instanceof Error ? failure.message : String(failure) };
 }

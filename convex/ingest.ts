@@ -5,13 +5,14 @@ import { writeHistories } from './lib/history';
 import { normalizeAgeCategory, normalizeFederation, normalizeGender, storedGenderSpellings } from './lib/normalize';
 import { disambiguatedMeetName, MAX_DISAMBIGUATED_NAMES, oldestMeet, type ZoneFormatters } from './lib/meetData';
 import { meetStatusAt, nextMeetStatus, type MeetStatus } from './lib/meetStatus';
+import { DAY_MS } from './lib/dates';
+import { hasNoMemberId, ONE_OFF_MEMBER_ID, placeholderMemberId } from './lib/memberIds';
 import { normalizeName } from './lib/names';
 import { isMeetTimeZone } from './lib/validation';
 import { earliestSince } from './lib/viewKeys';
 import { bumpVersion, type SourceTable } from './lib/views';
-import { clearedColumns, clearedLifts, exceedsShrink, liftCount } from './lib/shrinkGuard';
+import { clearedColumns, clearedLifts, exceedsShrink, liftCount, RESULT_COLUMNS } from './lib/shrinkGuard';
 import { halfSession, hasSession, isJunkEntrant, isStoredMemberId, rosterProblems } from './lib/roster';
-import { placeholderMemberId } from './scrapers/parse/entries';
 import { athletesFields, liftingResultsFields, recordHolder, sessionScheduleFields } from './schema';
 import { scheduleRefresh } from './views';
 
@@ -205,11 +206,10 @@ export type ResultIdentity = { meet: string; name: string; age?: string | null }
 export const resultKey = (row: ResultIdentity) => JSON.stringify([row.meet, normalizeName(row.name), row.age ?? null]);
 
 /** The values of a result: the body weight, every attempt, the bests and the total. */
-const RESULT_VALUES = ['bodyWeight', 'snatch1', 'snatch2', 'snatch3', 'snatchBest', 'cj1', 'cj2', 'cj3', 'cjBest', 'total'] as const;
-type ResultValues = Pick<Doc<'lifting_results'>, (typeof RESULT_VALUES)[number]>;
+type ResultValues = Pick<Doc<'lifting_results'>, (typeof RESULT_COLUMNS)[number]>;
 
 /** Whether two results hold the same values (absent and `undefined` are the same). */
-export const sameResultValues = (a: ResultValues, b: ResultValues) => RESULT_VALUES.every((field) => a[field] === b[field]);
+export const sameResultValues = (a: ResultValues, b: ResultValues) => RESULT_COLUMNS.every((field) => a[field] === b[field]);
 
 /**
  * How far apart two results' dates may be and still be one edition of a
@@ -217,8 +217,6 @@ export const sameResultValues = (a: ResultValues, b: ResultValues) => RESULT_VAL
  * re-sync that restamped the date), editions a year.
  */
 export const SAME_EDITION_DAYS = 180;
-
-const DAY_MS = 24 * 60 * 60 * 1000;
 
 /** Whether two `YYYY-MM-DD` result dates are of one edition of a meet; an unreadable date matches only itself. */
 export function sameEditionDates(a: string, b: string): boolean {
@@ -977,17 +975,12 @@ const entryRow = v.object({
   wso: v.optional(v.string()),
 });
 
-const isPlaceholderMemberId = (id: string) => id === '' || id.startsWith('noid:');
-
 /**
  * An entries sync may delete at most this share of a meet's stored entrants
  * (and always this many) in one run without `allowShrink`: withdrawals are a
  * few lifters, not a quarter of a meet.
  */
 const ENTRY_PRUNE_LIMIT = { share: 0.25, min: 5 };
-
-/** A membership number the old entries scraper minted per run: nine digits, at no other meet. */
-const ONE_OFF_ID = /^[1-9]\d{8}$/;
 
 /**
  * The one stored athlete whose folded name is a leading run of whole words of
@@ -1004,10 +997,10 @@ export function truncatedEntryRow<T extends { memberId: string; name: string; ge
   gender: string,
   incomingKeys: ReadonlySet<string>,
 ): T | undefined {
-  const idless = isPlaceholderMemberId(row.memberId);
+  const idless = hasNoMemberId(row.memberId);
   const candidates = existing.filter((a) => {
     // The cheap checks first: this runs for each new entrant over the meet's rows.
-    const same = idless ? isPlaceholderMemberId(a.memberId) && normalizeGender(a.gender) === gender && a.age === row.age : a.memberId === row.memberId;
+    const same = idless ? hasNoMemberId(a.memberId) && normalizeGender(a.gender) === gender && a.age === row.age : a.memberId === row.memberId;
     if (!same) return false;
     const key = normalizeName(a.name);
     return key !== '' && nameKey.startsWith(`${key} `) && !incomingKeys.has(key);
@@ -1060,7 +1053,7 @@ export const upsertEntryAthletes = internalMutation({
     const claimed = new Set<string>();
     const oneOffIds = new Map<string, boolean>();
     const isOneOff = async (memberId: string) => {
-      if (!ONE_OFF_ID.test(memberId)) return false;
+      if (!ONE_OFF_MEMBER_ID.test(memberId)) return false;
       if (!oneOffIds.has(memberId)) {
         const elsewhere = await ctx.db
           .query('athletes')
@@ -1075,11 +1068,11 @@ export const upsertEntryAthletes = internalMutation({
     for (const row of accepted) {
       const gender = normalizeGender(row.gender);
       const nameKey = normalizeName(row.name);
-      const idless = isPlaceholderMemberId(row.memberId);
+      const idless = hasNoMemberId(row.memberId);
       let match: Doc<'athletes'> | undefined;
       if (idless) {
         const sameName = existing.filter((a) => unclaimed(a) && normalizeName(a.name) === nameKey && normalizeGender(a.gender) === gender);
-        match = sameName.find((a) => isPlaceholderMemberId(a.memberId));
+        match = sameName.find((a) => hasNoMemberId(a.memberId));
         for (const a of sameName) {
           if (match) break;
           if (a.age === row.age && (await isOneOff(a.memberId))) match = a;
@@ -1113,7 +1106,7 @@ export const upsertEntryAthletes = internalMutation({
       if (match) claimed.add(match._id);
       const values = {
         // An adopted older row keeps its id rather than take a placeholder.
-        memberId: idless && match && !isPlaceholderMemberId(match.memberId) ? match.memberId : row.memberId,
+        memberId: idless && match && !hasNoMemberId(match.memberId) ? match.memberId : row.memberId,
         name: row.name,
         age: row.age,
         club: row.club,
