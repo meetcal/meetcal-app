@@ -140,12 +140,8 @@ export const meetSample = internalQuery({
   },
 });
 
-/** Unwraps `{ json }` / `{ etag, json }` answers into parsed values. */
 function decode(answer: unknown): unknown {
-  if (answer && typeof answer === 'object' && 'json' in answer) {
-    return JSON.parse((answer as { json: string }).json);
-  }
-  return answer;
+  return isRecord(answer) && typeof answer.json === 'string' ? JSON.parse(answer.json) : answer;
 }
 
 function canonical(value: unknown): string {
