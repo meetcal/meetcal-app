@@ -31,7 +31,7 @@ import {
   standardTables,
 } from './lib/elite';
 import { computeMeetResults } from './lib/meetData';
-import { cleanNameList, distinctNameKeys, normalizeName, requestedNamesByKey } from './lib/names';
+import { cleanNameList, distinctNameKeys, newestSpelling, normalizeName, requestedNamesByKey } from './lib/names';
 import {
   bestsSince,
   namedBests,
@@ -536,16 +536,15 @@ function mostRecent(rows: ApiLiftingResult[]): { results: ApiLiftingResult[]; tr
   return { results: rows.slice(rows.length - MAX_SEARCH_RESULT_ROWS), truncated: true };
 }
 
-/** The exact name's answer from its newest-first history, or null when it has no result in the range. */
 export function exactSearchAnswer(
-  query: string,
   history: readonly ApiLiftingResult[],
   start: string,
   end: string,
 ): SearchAnswer | null {
   const rows = inRange(history, start, end);
-  if (rows.length === 0) return null;
-  return { matched_name: query, suggestions: [], ...mostRecent(rows) };
+  const matchedName = newestSpelling(rows);
+  if (matchedName === null) return null;
+  return { matched_name: matchedName, suggestions: [], ...mostRecent(rows) };
 }
 
 /**
@@ -626,7 +625,7 @@ async function datedSearch(
 ): Promise<SearchAnswer> {
   const exactKey = normalizeName(query);
   const history = (await readHistories(ctx, [exactKey])).get(exactKey) ?? [];
-  const exact = exactSearchAnswer(query, history, start, end);
+  const exact = exactSearchAnswer(history, start, end);
   if (exact) return exact;
   // `exactOnly`, or (unless `fallbackForKnownName`) the exact name is an
   // athlete with no results in the range: no fallback, which would show

@@ -11,7 +11,7 @@ use crate::{
 };
 use std::collections::HashMap;
 
-use anyhow::{Context, Result, bail};
+use anyhow::{Result, bail};
 use clap::Parser;
 use comfy_table::Table;
 
@@ -25,11 +25,12 @@ use comfy_table::Table;
 )]
 pub struct MeetArgs {
     /// Meet to search for
+    #[arg(value_parser = crate::utils::filters::parse_name)]
     pub name: String,
 
     /// Session number to search for
-    #[arg(long, short = 's')]
-    pub session_number: Option<String>,
+    #[arg(long, short = 's', value_parser = clap::value_parser!(u32))]
+    pub session_number: Option<u32>,
 
     /// Session platform, as the meet names it, e.g. Red, White, Blue, Stars, Stripes, Rogue or
     /// Gold (case-insensitive)
@@ -43,15 +44,12 @@ pub struct MeetArgs {
 
 pub async fn run(args: MeetArgs) -> Result<()> {
     let meet_name = args.name.clone();
-    let session_number = args.session_number.clone();
+    let session_number = args.session_number;
     let narrowed = session_number.is_some() || args.session_platform.is_some();
     let session_platform = session_platform(args.session_platform.as_deref())?;
 
     let mut query_args = serde_json::json!({ "meet": meet_name });
     if let Some(session_number) = session_number {
-        let session_number: u32 = session_number.trim().parse().with_context(|| {
-            format!("Session number must be a whole number, not {session_number:?}")
-        })?;
         query_args["sessionNumber"] = session_number.into();
     }
     if let Some(platform) = session_platform {
