@@ -294,14 +294,14 @@ export function statsViewItems(rows: readonly StatsRow[], clubCounts: [string, n
   return [['club_counts', clubCounts], ...rows];
 }
 
-/**
- * The rows and club counts back from the stats view's items; also reads the
- * single `{ rows, club_counts }` item views were built as before.
- */
 const isStatsRow = (row: unknown): row is StatsRow => isRecord(row) && typeof row.name === 'string' && typeof row.club === 'string';
 
 const isClubCounts = isListOf(isPairOf(isString, isNumber));
 
+/**
+ * The rows and club counts back from the stats view's items; also reads the
+ * single `{ rows, club_counts }` item views were built as before.
+ */
 export function readStatsViewItems(items: readonly unknown[]): { rows: StatsRow[]; club_counts: [string, number][] } {
   const [first, ...rest] = items;
   if (Array.isArray(first) && first[0] === 'club_counts' && Array.isArray(first[1])) {

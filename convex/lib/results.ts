@@ -8,13 +8,13 @@ export const UNDATED_RESULT_DATE = '1970-01-01';
 
 export const isDatedResult = (date: string) => date !== UNDATED_RESULT_DATE && isValidIsoDate(date);
 
+export const isApiLiftingResults = (value: unknown): value is ApiLiftingResult[] =>
+  isListOf((row: unknown): row is ApiLiftingResult => isRecord(row) && typeof row.name === 'string' && typeof row.meet === 'string' && typeof row.date === 'string')(value);
+
 /**
  * One `lifting_results` row as the Rust API serializes it
  * (`lifting_result_columns!`): nullable numbers and text read as `0` / `''`.
  */
-export const isApiLiftingResults = (value: unknown): value is ApiLiftingResult[] =>
-  isListOf((row: unknown): row is ApiLiftingResult => isRecord(row) && typeof row.name === 'string' && typeof row.meet === 'string' && typeof row.date === 'string')(value);
-
 export type ApiLiftingResult = {
   id: number;
   event_id: string;

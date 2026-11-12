@@ -158,7 +158,6 @@ export async function computeNationalRankingsForYear(
   ageCategory: string,
   year: string,
 ): Promise<DatedTotal[]> {
-  // One year's rows only: a class's whole history is too many reads for one query.
   const rows = await readAll(
     ctx.db
       .query('lifting_results')

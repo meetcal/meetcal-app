@@ -9,7 +9,7 @@ export async function readAll<Row>(rows: Takeable<Row>, limit: number, what: str
 export const MEET_RESULTS_MAX = 10_000;
 export const EVENT_RESULTS_MAX = 10_000;
 export const ATHLETE_RESULTS_MAX = 2_000;
-export const DIVISION_YEAR_RESULTS_MAX = 20_000;
+export const DIVISION_YEAR_RESULTS_MAX = 30_000;
 export const ADAPTIVE_SEASON_RESULTS_MAX = 10_000;
 export const MEET_ROSTER_MAX = 10_000;
 export const MEMBER_REGISTRATIONS_MAX = 1_000;
