@@ -9,7 +9,6 @@ import {
   buildLockedDataWidgetPayloads,
   getDataWidgetWriteCount,
   hasResolvedWidgetFilters,
-  installedDataWidgets,
   isDataWidgetModuleAvailable,
   loadWidgetSettings,
   normalizeWidgetSettings,
@@ -17,9 +16,9 @@ import {
   syncDataWidgets,
   type DataWidgetPayloads,
   type DataWidgetSourceData,
-  type InstalledDataWidgets,
   type WidgetSettings,
 } from '@/utils/dataWidgets';
+import { installedDataWidgets, type InstalledDataWidgets } from '@/utils/installedDataWidgets';
 
 /**
  * Keeps the qualifying totals, standards and international rankings widgets

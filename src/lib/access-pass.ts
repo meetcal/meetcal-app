@@ -1,5 +1,6 @@
 import * as SecureStore from 'expo-secure-store';
 
+import { isRecord } from '@/lib/is-record';
 import { fetchAccessPass, refreshServerEntitlement } from '@/lib/api/entitlement-api';
 import { MeetCalApiError } from '@/lib/api/meetcal-api';
 import type { AccessPass, HeldPassStore } from '@/lib/api/premium-queries';
@@ -34,8 +35,8 @@ export function parseStoredAccessPass(raw: string | null, owner: string): Access
   } catch {
     return null;
   }
-  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return null;
-  const record = parsed as Record<string, unknown>;
+  if (!isRecord(parsed)) return null;
+  const record = parsed;
   if (record.owner !== owner) return null;
   if (typeof record.pass !== 'string' || record.pass.length === 0) return null;
   if (typeof record.rotatesAt !== 'number' || !Number.isFinite(record.rotatesAt)) return null;

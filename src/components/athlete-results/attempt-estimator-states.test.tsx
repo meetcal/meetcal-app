@@ -165,7 +165,7 @@ describe("attempt estimator states", () => {
     expect(textOf(tree)).not.toContain("No athletes in this session");
     expect(textOf(tree)).not.toContain("Refreshing");
     expect(fetchRecentAthleteHistoryForNames).toHaveBeenCalledTimes(1);
-    expect(jest.mocked(fetchRecentAthleteHistoryForNames).mock.calls[0][0]).toEqual(["Cached Lifter"]);
+    expect(jest.mocked(fetchRecentAthleteHistoryForNames)).toHaveBeenCalledWith(["Cached Lifter"], expect.any(String));
     act(() => tree.unmount());
   });
 

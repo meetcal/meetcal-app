@@ -46,7 +46,23 @@ function requestUrl(input: RequestInfo | URL): string {
 function requestBody(init: RequestInit | undefined): XMLHttpRequestBodyInit | null {
   const body = init?.body;
   if (body === undefined || body === null) return null;
-  return body as XMLHttpRequestBodyInit;
+  if (
+    typeof body === 'string' ||
+    body instanceof Blob ||
+    body instanceof ArrayBuffer ||
+    ArrayBuffer.isView(body) ||
+    body instanceof FormData ||
+    body instanceof URLSearchParams
+  ) {
+    return body;
+  }
+  throw new TypeError('A streamed request body cannot be sent over XMLHttpRequest');
+}
+
+function responseBody(xhr: XMLHttpRequest): BodyInit | null {
+  const body: unknown = xhr.response ?? xhr.responseText;
+  if (typeof body === 'string' || body instanceof Blob || body instanceof ArrayBuffer) return body;
+  return null;
 }
 
 export function createProgressFetch({ onProgress, createRequest }: ProgressFetchOptions): typeof fetch {
@@ -57,6 +73,7 @@ export function createProgressFetch({ onProgress, createRequest }: ProgressFetch
         reject(abortError());
         return;
       }
+      const body = requestBody(init);
       const xhr = createRequest ? createRequest() : new XMLHttpRequest();
       const abort = () => xhr.abort();
       const detach = () => signal?.removeEventListener('abort', abort);
@@ -69,9 +86,8 @@ export function createProgressFetch({ onProgress, createRequest }: ProgressFetch
       if (xhr.upload) xhr.upload.onprogress = () => onProgress();
       xhr.onload = () => {
         detach();
-        const body = (xhr.response ?? xhr.responseText) as BodyInit | null;
         resolve(
-          new Response(body, {
+          new Response(responseBody(xhr), {
             status: xhr.status,
             statusText: xhr.statusText,
             headers: parseResponseHeaders(xhr.getAllResponseHeaders() || ''),
@@ -97,6 +113,6 @@ export function createProgressFetch({ onProgress, createRequest }: ProgressFetch
       if ('responseType' in xhr) xhr.responseType = 'blob';
       for (const [name, value] of requestHeaders(init)) xhr.setRequestHeader(name, value);
       signal?.addEventListener('abort', abort);
-      xhr.send(requestBody(init));
+      xhr.send(body);
     });
 }

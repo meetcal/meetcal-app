@@ -1,3 +1,4 @@
+import { itemAt } from '@/test-support/checked-access';
 import { clearHttpValidatorCache } from './revalidated-reads';
 import { fetchApiAthletesWithSession, fetchApiRosterTagged } from './meets-api';
 import { fetchApiYearBestsByNames } from './results-api';
@@ -34,7 +35,7 @@ describe('the meet roster read', () => {
     );
     const first = await fetchApiAthletesWithSession(MEET);
     const second = await fetchApiAthletesWithSession(MEET);
-    expect(calls[1].args.ifNoneMatch).toBe('"r1"');
+    expect(itemAt(calls, 1).args.ifNoneMatch).toBe('"r1"');
     expect(second).toEqual(first);
     expect(second.map((athlete) => athlete.name)).toEqual(['A Lifter']);
   });
@@ -43,8 +44,8 @@ describe('the meet roster read', () => {
     const calls = server(() => ({ etag: '"r1"', json: JSON.stringify(roster) }));
     await fetchApiAthletesWithSession(MEET);
     await fetchApiAthletesWithSession(MEET, 1);
-    expect(calls[1].args.ifNoneMatch).toBeUndefined();
-    expect(calls[1].args.sessionNumber).toBe(1);
+    expect(itemAt(calls, 1).args.ifNoneMatch).toBeUndefined();
+    expect(itemAt(calls, 1).args.sessionNumber).toBe(1);
   });
 
   it('rejects a roster that is not a list', async () => {
@@ -57,7 +58,7 @@ describe('the roster read against a tag held on disk', () => {
   it('sends the stored tag after a restart and hears that the stored roster is current', async () => {
     const calls = server((call) => (call.args.ifNoneMatch === '"r1"' ? { etag: '"r1"' } : { etag: '"r1"', json: JSON.stringify(roster) }));
     await expect(fetchApiRosterTagged(MEET, '"r1"')).resolves.toEqual({ status: 'unchanged', tag: '"r1"' });
-    expect(calls[0].args).toMatchObject({ meet: MEET, ifNoneMatch: '"r1"' });
+    expect(itemAt(calls, 0).args).toMatchObject({ meet: MEET, ifNoneMatch: '"r1"' });
   });
 
   it('answers a changed roster in full with its new tag', async () => {
@@ -73,7 +74,7 @@ describe('the roster read against a tag held on disk', () => {
     const calls = server((call) => (call.args.ifNoneMatch ? { etag: '"other"' } : { etag: '"r2"', json: JSON.stringify(roster) }));
     await expect(fetchApiRosterTagged(MEET, '"r1"')).resolves.toMatchObject({ status: 'fresh', tag: '"r2"' });
     expect(calls).toHaveLength(2);
-    expect(calls[1].args.ifNoneMatch).toBeUndefined();
+    expect(itemAt(calls, 1).args.ifNoneMatch).toBeUndefined();
   });
 });
 
@@ -84,10 +85,10 @@ describe('results:bests with the latest meet for empty windows', () => {
       { name: 'B Lifter', best_snatch: 77.5, best_cj: 97.5, best_total: 175, latest: true },
     ]);
     const answer = await fetchApiYearBestsByNames(['A Lifter', 'B Lifter'], '2024-11-12', { latestWhenEmpty: true });
-    expect(calls[0].args).toMatchObject({ latestWhenEmpty: true, cutoffDate: '2024-11-12' });
+    expect(itemAt(calls, 0).args).toMatchObject({ latestWhenEmpty: true, cutoffDate: '2024-11-12' });
     expect(answer['B Lifter']).toEqual({ bestSnatch: 77.5, bestCJ: 97.5, bestTotal: 175 });
 
     await fetchApiYearBestsByNames(['A Lifter'], '2024-11-12');
-    expect(calls[1].args.latestWhenEmpty).toBeUndefined();
+    expect(itemAt(calls, 1).args.latestWhenEmpty).toBeUndefined();
   });
 });

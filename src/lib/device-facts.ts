@@ -1,5 +1,6 @@
 import * as Device from 'expo-device';
 import NetInfo, { type NetInfoState } from '@react-native-community/netinfo';
+import { isRecord } from '@/lib/is-record';
 
 const BYTES_PER_MB = 1024 * 1024;
 
@@ -19,8 +20,8 @@ export function deviceFacts(): DeviceFacts {
 export function networkTypeOf(state: Pick<NetInfoState, 'type' | 'isConnected' | 'details'>): string {
   if (state.isConnected === false) return 'none';
   if (state.type === 'cellular') {
-    const details = state.details as { cellularGeneration?: string | null } | null;
-    const generation = details?.cellularGeneration;
+    const generation = isRecord(state.details) ? state.details.cellularGeneration : null;
+    if (typeof generation !== 'string') return 'cellular';
     return generation ? `cellular-${generation}` : 'cellular';
   }
   return state.type;
