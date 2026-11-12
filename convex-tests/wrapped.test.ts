@@ -339,11 +339,10 @@ describe('selectWrapped', () => {
     expect(search({ matched_name: 'John Smith', results: rows, truncated: true })).toEqual({ kind: 'tooManyResults', name: 'John Smith' });
   });
 
-  it('scores every row of an exact match, in date order', () => {
+  it('scores every row of an exact match oldest first, so improvement from first is +20kg', () => {
     const rows = [searchRow('John Smith', '2025-06-01', 220), searchRow('John Smith', '2025-02-01', 200)];
     const answer = search({ matched_name: 'John Smith', results: rows });
     expect(answer).toEqual({ kind: 'athlete', name: 'John Smith', stats: wrappedStats([rows[1], rows[0]]) });
-    // Oldest first: +20kg, not -20kg.
     expect(answer.kind === 'athlete' && answer.stats.improvementFromFirst).toBe(20);
   });
 
