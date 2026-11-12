@@ -130,7 +130,7 @@ pub struct LeaderboardArgs {
     pub gender: Option<Gender>,
 
     /// Age category: Senior, Junior, U17, U15, U13, U11, or Masters 35 … Masters 90
-    #[arg(long, short = 'c')]
+    #[arg(long, short = 'a', short_alias = 'c')]
     pub category: Option<String>,
 
     /// Only divisions containing this text, e.g. "89kg" or "Masters (45-49)"
@@ -407,16 +407,19 @@ pub async fn run(args: LeaderboardArgs) -> Result<()> {
         us_date(&to)
     );
     output::emit(
-        Report::new()
-            .table_with_data(
-                "leaderboard",
-                table(&ranked, us_date),
-                table(&ranked, str::to_string),
-            )
+        report(&ranked)
             .titled(title)
             .when_empty("No results match those filters."),
     );
     Ok(())
+}
+
+pub fn report(ranked: &[LeaderboardRow]) -> Report {
+    Report::new().table_with_data(
+        "leaderboard",
+        table(ranked, us_date),
+        table(ranked, str::to_string),
+    )
 }
 
 /// A group's members' results in the range, at meets where they registered with the group.
@@ -594,6 +597,18 @@ mod tests {
             ..Filters::default()
         };
         assert_eq!(names(&bwl), ["Ramiro"]);
+    }
+
+    #[test]
+    fn the_age_category_is_dash_a_and_the_old_dash_c_still_works_unlisted() {
+        use clap::CommandFactory;
+        for flag in ["-a", "-c", "--category"] {
+            let args = LeaderboardArgs::parse_from(["leaderboard", flag, "Junior"]);
+            assert_eq!(args.category.as_deref(), Some("Junior"), "{flag}");
+        }
+        let help = LeaderboardArgs::command().render_help().to_string();
+        assert!(help.contains("-a, --category"), "{help}");
+        assert!(!help.contains("-c,"), "{help}");
     }
 
     #[test]

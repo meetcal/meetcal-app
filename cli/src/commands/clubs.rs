@@ -26,7 +26,7 @@ pub async fn run(args: ClubsArgs) -> Result<()> {
         .map(str::trim)
         .filter(|search| !search.is_empty());
     let Some(search) = search else {
-        output::emit(Report::single("clubs", output::list("Club", clubs)));
+        output::emit(report(clubs));
         return Ok(());
     };
 
@@ -45,8 +45,12 @@ pub async fn run(args: ClubsArgs) -> Result<()> {
     } else {
         String::new()
     };
-    output::emit(Report::single("clubs", output::list("Club", matches)).when_empty(message));
+    output::emit(report(matches).when_empty(message));
     Ok(())
+}
+
+pub fn report(names: impl IntoIterator<Item = impl Into<String>>) -> Report {
+    Report::single("clubs", output::list("Club", names))
 }
 
 /// The names containing `search`, ignoring case.

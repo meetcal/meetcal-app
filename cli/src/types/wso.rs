@@ -48,14 +48,6 @@ pub struct WSORecord {
 }
 
 #[derive(Debug, PartialEq)]
-pub struct ClubPrDetail {
-    pub name: String,
-    pub movement: Movement,
-    pub new_pr: f64,
-    pub previous_pr: f64,
-}
-
-#[derive(Debug, PartialEq)]
 pub struct ClubMedalDetail {
     pub name: String,
     pub age: String,
