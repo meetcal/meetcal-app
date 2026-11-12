@@ -1,9 +1,12 @@
 use crate::types::records::Record;
 use crate::utils::backend::{NoArgs, queries, query};
-use crate::utils::filters::{Filter, no_match, same_ignoring_case_and_surrounding_space};
+use crate::utils::filters::{
+    Filter, gender_as_matched, is_gender, no_match, same_ignoring_case_and_surrounding_space,
+};
 use crate::utils::format::{record_cell, record_data_cells, record_data_header};
 use crate::utils::output::{self, Report};
 use crate::utils::sort::sort_by_class;
+use crate::utils::stats::Gender;
 use anyhow::Result;
 use clap::Parser;
 use comfy_table::Table;
@@ -23,9 +26,9 @@ pub struct RecordsArgs {
     #[arg(long, short = 'a')]
     pub age: String,
 
-    /// Gender: Men or Women
-    #[arg(long, short = 'g')]
-    pub gender: String,
+    /// Gender: Men or Women (m, f, male and female work too)
+    #[arg(long, short = 'g', value_parser = crate::utils::filters::parse_gender)]
+    pub gender: Gender,
 
     /// Federation: BWL, IWF, UMWF, USAMW, or USAW
     #[arg(long, short = 'f')]
@@ -34,7 +37,7 @@ pub struct RecordsArgs {
 
 pub async fn run(args: RecordsArgs) -> Result<()> {
     let records: Vec<Record> = query(queries::RECORDS, &NoArgs {}).await?;
-    let sorted = selected(records, &args.age, &args.gender, &args.federation)?;
+    let sorted = selected(records, &args.age, args.gender, &args.federation)?;
 
     let mut table = Table::new();
     table.set_header(vec!["Class", "Snatch", "CJ", "Total"]);
@@ -69,13 +72,13 @@ pub async fn run(args: RecordsArgs) -> Result<()> {
 pub fn selected(
     records: Vec<Record>,
     age: &str,
-    gender: &str,
+    gender: Gender,
     federation: &str,
 ) -> Result<Vec<Record>> {
     let same = same_ignoring_case_and_surrounding_space;
     let (matching, others): (Vec<Record>, Vec<Record>) = records.into_iter().partition(|row| {
         same(&row.age_category, age)
-            && same(&row.gender, gender)
+            && is_gender(&row.gender, gender)
             && same(&row.record_type, federation)
     });
     if matching.is_empty() {
@@ -86,7 +89,7 @@ pub fn selected(
             },
             Filter {
                 option: "--gender",
-                value: gender,
+                value: gender.label(),
             },
             Filter {
                 option: "--age",
@@ -98,7 +101,7 @@ pub fn selected(
             .map(|row| {
                 vec![
                     row.record_type.as_str(),
-                    row.gender.as_str(),
+                    gender_as_matched(&row.gender),
                     row.age_category.as_str(),
                 ]
             })
@@ -137,37 +140,61 @@ mod tests {
 
     #[test]
     fn filters_ignore_case_and_surrounding_space() {
-        let classes = |age: &str, gender: &str, federation: &str| -> Vec<String> {
+        let classes = |age: &str, gender: Gender, federation: &str| -> Vec<String> {
             selected(records(), age, gender, federation)
                 .unwrap()
                 .into_iter()
                 .map(|row| row.weight_class)
                 .collect()
         };
-        assert_eq!(classes("Senior", "Men", "USAW"), ["60", "110+"]);
-        assert_eq!(classes(" senior ", "men ", " usaw"), ["60", "110+"]);
+        assert_eq!(classes("Senior", Gender::Men, "USAW"), ["60", "110+"]);
+        assert_eq!(classes(" senior ", Gender::Men, " usaw"), ["60", "110+"]);
+        assert_eq!(classes("Senior", Gender::Women, "USAW"), ["48"]);
     }
 
     #[test]
     fn a_filter_that_matches_nothing_is_an_error_naming_the_values() {
-        let error = |age: &str, gender: &str, federation: &str| {
+        let error = |age: &str, gender: Gender, federation: &str| {
             selected(records(), age, gender, federation)
                 .expect_err("matched nothing")
                 .to_string()
         };
         assert_eq!(
-            error("Seniors", "Men", "USAW"),
+            error("Seniors", Gender::Men, "USAW"),
             "No records for --age \"Seniors\" with --federation USAW --gender Men. Try one of: \
              Masters 35, Senior"
         );
         assert_eq!(
-            error("Senior", "Men", "USAWW"),
+            error("Senior", Gender::Men, "USAWW"),
             "No records for --federation \"USAWW\". Try one of: IWF, USAW"
         );
         assert_eq!(
-            error("Masters 35", "Women", "USAW"),
+            error("Masters 35", Gender::Women, "USAW"),
             "No records for --age \"Masters 35\" with --federation USAW --gender Women. Try one \
              of: Senior"
+        );
+    }
+
+    #[test]
+    fn a_row_spelling_its_gender_another_way_is_named_by_the_gender_it_matched() {
+        let rows = || {
+            vec![
+                record("USAW", "Male", "Senior", "60"),
+                record("USAW", "Male", "Junior", "60"),
+            ]
+        };
+        assert_eq!(
+            selected(rows(), "Senior", Gender::Men, "USAW")
+                .unwrap()
+                .len(),
+            1
+        );
+        assert_eq!(
+            selected(rows(), "Seniors", Gender::Men, "USAW")
+                .expect_err("matched nothing")
+                .to_string(),
+            "No records for --age \"Seniors\" with --federation USAW --gender Men. Try one of: \
+             Junior, Senior"
         );
     }
 }

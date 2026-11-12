@@ -16,6 +16,7 @@ use crate::utils::stats::number;
 )]
 pub struct CompareArgs {
     /// Exact athlete name
+    #[arg(value_parser = crate::utils::filters::parse_name)]
     pub name: String,
 }
 
@@ -175,7 +176,8 @@ pub fn percent_change(current: f64, previous: f64) -> Option<f64> {
     }
 }
 
-pub fn render_comparison(
+#[cfg(test)]
+fn render_comparison(
     name: &str,
     previous_year: i32,
     current_year: i32,
