@@ -1,4 +1,4 @@
-import { expect, test, type Locator, type Route } from "@playwright/test";
+import { expect, test, type Locator, type Page, type Route } from "@playwright/test";
 import { errorAnswer, mockSubscribedUser, routeQuery, textAnswer, valueAnswer } from "./support/api";
 
 const meet = (name: string) => ({
@@ -419,4 +419,65 @@ test("a bootstrap that reports its own error doesn't also offer the slow-load li
   await expect(page.getByRole("alert").getByRole("button", { name: "Try again" })).toBeVisible();
   await expect(page.locator(".app-loading-slow")).toBeHidden();
   await expect(page.locator(".app-loading-slow")).toHaveCSS("display", "none");
+});
+
+async function routeMeetData(page: Page) {
+  await routeQuery(page, "meets:list", (route) => route.fulfill(textAnswer([])));
+  await routeQuery(page, "meets:schedule", (route) => route.fulfill(textAnswer([scheduleRow("Meet Alpha", "Alpha Platform")])));
+  await routeQuery(page, "meets:athletes", (route) => route.fulfill(textAnswer([])));
+  await routeQuery(page, "results:byMeet", (route) => route.fulfill(textAnswer([])));
+}
+
+test("an addressed meet's sections wait for the meet list, then appear with its details", async ({ page }) => {
+  await mockSubscribedUser(page);
+  await routeMeetData(page);
+  let listAsked = false;
+  let releaseList = () => {};
+  const listReleased = new Promise<void>((resolve) => {
+    releaseList = resolve;
+  });
+  await routeQuery(page, "meets:completed", async (route) => {
+    listAsked = true;
+    await listReleased;
+    await route.fulfill(textAnswer([meet("Meet Alpha")]));
+  });
+
+  await page.goto("/meet-center?meet=Meet%20Alpha");
+  await expect.poll(() => listAsked).toBe(true);
+  await expect(page.locator("#meet-search-input")).toBeDisabled();
+  await expect(page.getByRole("button", { name: "Schedule", exact: true })).toHaveCount(0);
+  await expect(page.locator(".meet-summary")).toHaveCount(0);
+
+  releaseList();
+  await expect(page.locator(".meet-summary")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Schedule", exact: true })).toBeVisible();
+  await expect(page.locator("#meet-search-input")).toBeEnabled();
+  await expect(page.locator("tbody").first()).toContainText("Alpha Platform");
+});
+
+test("an addressed meet's sections still show when the meet list fails, without its details", async ({ page }) => {
+  await mockSubscribedUser(page);
+  await routeMeetData(page);
+  await routeQuery(page, "meets:completed", (route) => route.fulfill(errorAnswer("Server Error")));
+
+  await page.goto("/meet-center?meet=Meet%20Alpha");
+  await expect(page.getByRole("button", { name: "Try again" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Schedule", exact: true })).toBeVisible();
+  await expect(page.locator("tbody").first()).toContainText("Alpha Platform");
+  await expect(page.locator(".meet-summary")).toHaveCount(0);
+});
+
+test("a short data page is at least a screen tall, so the footer starts below the first screen", async ({ page }) => {
+  await mockSubscribedUser(page);
+  await routeQuery(page, "reference:standards", (route) => route.fulfill(textAnswer([])));
+
+  await page.goto("/standards");
+  await expect(page.getByText("No standards match these filters.")).toBeVisible();
+  const footer = page.locator("footer.site-footer");
+  await expect(footer).toBeAttached();
+  const { footerTop, viewportHeight } = await footer.evaluate((element) => ({
+    footerTop: element.getBoundingClientRect().top,
+    viewportHeight: window.innerHeight,
+  }));
+  expect(footerTop).toBeGreaterThanOrEqual(viewportHeight);
 });
