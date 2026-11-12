@@ -34,6 +34,7 @@ export type ApiLiftingResult = {
   cj_best: number;
   total: number;
   adaptive: boolean;
+  lifter_id?: string;
 };
 
 /**
@@ -61,6 +62,7 @@ export function toApiLiftingResult(row: Doc<'lifting_results'>): ApiLiftingResul
     cj_best: row.cjBest ?? 0,
     total: row.total ?? 0,
     adaptive: row.adaptive,
+    ...(row.lifterId === undefined ? {} : { lifter_id: row.lifterId }),
   };
 }
 
