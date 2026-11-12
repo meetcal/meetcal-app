@@ -55,14 +55,6 @@ export function toApiMeet(meet: Doc<'meets'>): ApiMeet {
   };
 }
 
-/**
- * The meet a name identifies. Names are meant to be unique (the ingest
- * mutations store a second federation's meet of the same name under
- * `disambiguatedMeetName`), but older rows can repeat one: then the oldest
- * row is the meet, the one its roster and results were written for, and the
- * duplicate is logged (`migrations:duplicateMeetNames` lists them all)
- * rather than chosen by chance.
- */
 export const MEET_ROWS_READ_PER_NAME = 2;
 
 export async function meetsNamed(ctx: QueryCtx, name: string, limit = MEET_ROWS_READ_PER_NAME): Promise<Doc<'meets'>[]> {
@@ -409,10 +401,6 @@ export function narrowSessions(rows: readonly SessionRow[], sessionNumber?: numb
 // Results, bests
 // ---------------------------------------------------------------------------
 
-/**
- * The titles a meet's results are stored under: its own name, then the
- * results titles linked to it (`meet_result_titles`, #362).
- */
 export function linkedResultTitles(ctx: QueryCtx, meet: string) {
   return ctx.db.query('meet_result_titles').withIndex('by_meet', (q) => q.eq('meet', meet));
 }
