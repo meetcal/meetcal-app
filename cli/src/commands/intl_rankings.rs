@@ -7,6 +7,7 @@ use crate::utils::backend::{NoArgs, queries, query};
 use crate::utils::filters::{
     Filter, gender_as_matched, is_gender, no_match, same_ignoring_case_and_surrounding_space,
 };
+use crate::utils::format::display_weight_class;
 use crate::utils::output::{self, Report};
 use crate::utils::stats::Gender;
 
@@ -59,7 +60,7 @@ pub(crate) fn report(rankings: Vec<Rankings>) -> Report {
         table.add_row(vec![
             total.ranking.to_string(),
             total.name,
-            total.weight_class,
+            display_weight_class(&total.weight_class),
             total.percent_a.to_string(),
             total.total.to_string(),
         ]);
@@ -128,6 +129,17 @@ mod tests {
             gender: "Men".into(),
             age_category: "Senior".into(),
         }
+    }
+
+    #[test]
+    fn classes_show_with_their_unit() {
+        let mut open = ranked(2.0, "Open");
+        open.weight_class = "110+".into();
+        let report = report(vec![ranked(1.0, "Eighty-eight"), open]);
+        let json = report.to_json();
+        assert_eq!(json[0]["class"], "88kg");
+        assert_eq!(json[1]["class"], "110+kg");
+        assert!(report.to_text().contains("| 110+kg "));
     }
 
     #[test]

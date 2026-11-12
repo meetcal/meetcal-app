@@ -123,6 +123,17 @@ mod tests {
     }
 
     #[test]
+    fn classes_show_with_their_unit_in_the_table_and_the_export() {
+        let report = report(&records());
+        let json = report.to_json();
+        assert_eq!(json[0]["class"], "110+kg");
+        assert_eq!(json[1]["class"], "60kg");
+        let text = report.to_text();
+        assert!(text.contains("| 110+kg "));
+        assert!(text.contains("| 48kg "));
+    }
+
+    #[test]
     fn filters_ignore_case_and_surrounding_space() {
         let classes = |age: &str, gender: Gender, federation: &str| -> Vec<String> {
             selected(records(), age, gender, federation)

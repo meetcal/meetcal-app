@@ -9,7 +9,7 @@ use tokio::task::JoinSet;
 
 use crate::types::lifting_results::LiftingResults;
 use crate::utils::backend::{FunctionError, queries, query};
-use crate::utils::format::{date_range, us_date};
+use crate::utils::format::{NO_VALUE, date_range, us_date};
 use crate::utils::meet_names::{editions_by_year, equivalent_meets};
 use crate::utils::names::{MAX_NAME_PAGES, just_before, meet_names_between};
 use crate::utils::output::{self, Report};
@@ -470,11 +470,9 @@ pub(crate) fn report(search: &str, editions: &[Edition]) -> Report {
         .headed_with_data("editions", "EDITIONS", meets, meets_data)
 }
 
-/// A count, or a dash for none (registrations exist only for meets MeetCal tracked). JSON and
-/// CSV carry the dash as null.
 fn count(value: usize) -> String {
     if value == 0 {
-        "—".into()
+        NO_VALUE.into()
     } else {
         value.to_string()
     }
@@ -483,6 +481,14 @@ fn count(value: usize) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn no_registrations_show_the_no_value_dash_and_export_as_null() {
+        assert_eq!(count(0), NO_VALUE);
+        assert_eq!(count(12), "12");
+        assert_eq!(output::value(&count(0)), serde_json::Value::Null);
+        assert_eq!(output::value(&count(12)), serde_json::json!(12));
+    }
 
     #[test]
     fn words_match_a_meet_name_written_with_another_accent_form_or_case() {

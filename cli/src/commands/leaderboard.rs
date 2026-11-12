@@ -14,7 +14,7 @@ use crate::commands::wrapped::current_year;
 use crate::types::lifting_results::LiftingResults;
 use crate::utils::backend::{functions, premium_action};
 use crate::utils::filters::{category, parse_date, plus_years, unknown_federation, year_range};
-use crate::utils::format::us_date;
+use crate::utils::format::{display_body_weight, us_date};
 use crate::utils::names::{NameKind, not_found};
 use crate::utils::output::{self, Report};
 use crate::utils::progress::Progress;
@@ -457,7 +457,7 @@ pub(crate) fn table(ranked: &[LeaderboardRow], date: fn(&str) -> String) -> Tabl
             rank.to_string(),
             row.name.clone(),
             row.age.clone(),
-            number(row.body_weight),
+            display_body_weight(row.body_weight),
             number(row.snatch_best),
             number(row.cj_best),
             number(row.total),

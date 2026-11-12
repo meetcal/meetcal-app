@@ -12,7 +12,7 @@ use crate::utils::athletes::history;
 use crate::utils::backend::{NoArgs, queries, query};
 use crate::utils::bests::{YEAR_BESTS_YEARS, cutoff_date};
 use crate::utils::filters;
-use crate::utils::format::us_date;
+use crate::utils::format::{NO_VALUE, us_date};
 use crate::utils::output::{self, Report};
 use crate::utils::stats::{
     Division, Gender, Lift, PLAUSIBLE_BODY_WEIGHT, chronological, number, valid_lift, valid_total,
@@ -286,7 +286,7 @@ fn standards_category(category: &str) -> &str {
 
 fn gap_cells(needed: f64, best: f64) -> (String, String) {
     if needed <= 0.0 {
-        return ("—".into(), "No standard".into());
+        return (NO_VALUE.into(), "No standard".into());
     }
     let gap = needed - best;
     if gap <= 0.0 {
@@ -337,9 +337,9 @@ pub(crate) fn totals_table(totals: &[QualifyingTotal], target: &Target, total: f
     table.set_header(vec!["Event", "Category", "Needed Total", "Status"]);
     if rows.is_empty() {
         table.add_row(vec![
-            "—".to_string(),
+            NO_VALUE.to_string(),
             target.categories.join(" / "),
-            "—".to_string(),
+            NO_VALUE.to_string(),
             format!(
                 "No event lists a {}kg total for this category",
                 target.class

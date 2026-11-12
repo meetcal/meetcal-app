@@ -5,6 +5,7 @@ use serde::Deserialize;
 
 use crate::utils::backend::{NoArgs, queries, query};
 use crate::utils::filters::{Filter, gender_as_matched, is_gender, no_match};
+use crate::utils::format::{NO_VALUE, display_weight_class};
 use crate::utils::output::{self, Report};
 use crate::utils::stats::{Gender, number, weight_class};
 
@@ -101,8 +102,6 @@ fn class_key(class: &str) -> (bool, f64, bool) {
     }
 }
 
-/// The table as shown (a missing level as a dash) and as exported (a missing level empty, so
-/// JSON has null rather than a 0 that reads as a real standard).
 fn tables(standards: &[Standards]) -> (Table, Table) {
     let mut table = Table::new();
     let mut data = Table::new();
@@ -116,13 +115,14 @@ fn tables(standards: &[Standards]) -> (Table, Table) {
         }
     };
     for row in standards {
+        let weight_class = display_weight_class(&row.weight_class);
         table.add_row(vec![
-            row.weight_class.clone(),
-            level(row.standard_a, "—"),
-            level(row.standard_b, "—"),
+            weight_class.clone(),
+            level(row.standard_a, NO_VALUE),
+            level(row.standard_b, NO_VALUE),
         ]);
         data.add_row(vec![
-            row.weight_class.clone(),
+            weight_class,
             level(row.standard_a, ""),
             level(row.standard_b, ""),
         ]);
@@ -189,6 +189,19 @@ mod tests {
             .map(|row| row.weight_class)
             .collect();
         assert_eq!(classes, ["55kg", "56kg", "60kg", "+94kg", "+95kg", "Open"]);
+    }
+
+    #[test]
+    fn classes_show_with_their_unit_in_the_table_and_the_export() {
+        let (table, data) = tables(&[
+            standard("55", 184.0, 170.0),
+            standard("+94kg", 310.0, 290.0),
+        ]);
+        let report = Report::new().table_with_data("standards", table, data);
+        let json = report.to_json();
+        assert_eq!(json[0]["class"], "55kg");
+        assert_eq!(json[1]["class"], "94+kg");
+        assert!(report.to_text().contains("| 94+kg "));
     }
 
     #[test]

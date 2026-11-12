@@ -22,6 +22,7 @@
 //! packed cells, wraps its tables to the terminal's width, and leaves out a table that is
 //! optional and empty.
 
+use crate::utils::format::NO_VALUE;
 use std::io::{self, Write};
 use std::sync::OnceLock;
 
@@ -413,7 +414,9 @@ fn text_value(cell: &str) -> Value {
 
 pub(crate) fn value(cell: &str) -> Value {
     let text = cell.trim();
-    if text.is_empty() || text.eq_ignore_ascii_case("n/a") || matches!(text, "—" | "–" | "-" | "?")
+    if text.is_empty()
+        || text.eq_ignore_ascii_case("n/a")
+        || matches!(text, NO_VALUE | "–" | "-" | "?")
     {
         return Value::Null;
     }
