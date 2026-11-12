@@ -262,6 +262,14 @@ test("a failed lookup explains itself, and Try again looks again", async ({ page
   expect(attempts).toBe(2);
 });
 
+test("a session the server refuses says to sign in again", async ({ page }) => {
+  await mockAuth(page);
+  await routeQuery(page, "deviceLogin:describe", (route) => route.fulfill(errorAnswer("Server Error", { status: 401, error: "unauthorized" })));
+  await page.goto("/link?code=WXYZ-BCDF");
+  await expect(page.getByRole("heading", { level: 1, name: "Something went wrong" })).toBeVisible();
+  await expect(page.getByRole("alert")).toContainText("MeetCal couldn't confirm you're signed in; please sign in again");
+});
+
 test("a failed approval keeps the request, and Try again approves again", async ({ page }) => {
   await mockAuth(page);
   await routeQuery(page, "deviceLogin:describe", (route) => route.fulfill(valueAnswer(pendingLogin())));

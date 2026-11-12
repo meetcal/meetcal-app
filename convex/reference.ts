@@ -1,6 +1,6 @@
 import { v } from 'convex/values';
 import { premiumQuery } from './lib/access';
-import { query, type QueryCtx } from './_generated/server';
+import type { QueryCtx } from './_generated/server';
 import { revalidated, revalidatedText, type Revalidated } from './lib/etag';
 import type { Doc } from './_generated/dataModel';
 import { clubKey, clubLabels } from './lib/clubs';
@@ -9,13 +9,13 @@ import {
   clubStats,
   computeStatsRows,
   computeStatsRowsOfWso,
+  isPlaceholderMeet,
   meetByName,
   meetResultTitles,
   readStatsViewItems,
   wsoStats,
 } from './lib/meetData';
 import { paddedDate, type MeetStatus } from './lib/meetStatus';
-import { isPlaceholderMeet } from './meets';
 import {
   ADAPTIVE_RECORDS_SEASON_START,
   clubNamesPage,

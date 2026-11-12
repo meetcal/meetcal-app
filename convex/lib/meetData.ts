@@ -2,7 +2,7 @@ import type { QueryCtx } from '../_generated/server';
 import type { Doc } from '../_generated/dataModel';
 import { clubKey, sameClub } from './clubs';
 import { normalizeName } from './names';
-import { hasSession } from './roster';
+import { bareWeightClass, hasSession } from './roster';
 import { athleteGenderLabel, normalizeGender } from './normalize';
 import {
   accumulateBests,
@@ -15,6 +15,7 @@ import {
   type YearBests,
 } from './results';
 import { compareBytes, compareCollated } from './sort';
+import { isMeetTimeZone } from './validation';
 
 // Per-meet answers. Queries serve them from the meet's views when fresh and
 // compute them here otherwise; the view builders compute them here too.
@@ -76,6 +77,10 @@ export async function meetByName(ctx: QueryCtx, name: string): Promise<Doc<'meet
 /** The first-created of `rows`, or null. Index order already ties by creation time; this does not rely on it. */
 export function oldestMeet<T extends { _creationTime: number }>(rows: readonly T[]): T | null {
   return rows.reduce<T | null>((oldest, row) => (oldest === null || row._creationTime < oldest._creationTime ? row : oldest), null);
+}
+
+export function isPlaceholderMeet(meet: { timeZone: string; venueName: string; venueCity: string }): boolean {
+  return !isMeetTimeZone(meet.timeZone) && [meet.venueName, meet.venueCity].every((field) => field.trim().length === 1);
 }
 
 /** Disambiguated names tried for one meet before a write gives up. */
@@ -679,12 +684,6 @@ async function statsEntries(ctx: QueryCtx, meet: string): Promise<{ joined: Stat
     });
   }
   return { joined, groups };
-}
-
-/** A weight class as `86+`: `kg` and spaces dropped, a leading plus moved to the end. */
-function bareWeightClass(text: string): string {
-  const bare = text.replace(/kg/gi, '').replace(/\s+/g, '');
-  return bare.startsWith('+') ? `${bare.slice(1)}+` : bare;
 }
 
 /** The weight class a division names ("Open Men's 89kg" -> "89", "... 86+kg" -> "86+"), or null. */
