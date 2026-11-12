@@ -16,7 +16,7 @@ function headersFor(source) {
 }
 
 const IMMUTABLE = "public, max-age=31536000, immutable";
-const CONTENT_HASH = /[-_.][0-9a-f]{16}(?:_bg)?(?:[./]|$)/;
+const CONTENT_HASH = /[-_.][0-9a-f]{15,16}(?:_bg)?(?:[./]|$)/;
 
 function cacheControlFor(path) {
   for (const { source, headers } of config.headers) {
