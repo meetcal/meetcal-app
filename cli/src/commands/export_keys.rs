@@ -70,11 +70,19 @@ fn every_commands_report_under_every_flag_that_shapes_it() -> Vec<(&'static str,
     let rows = vec![lifter("Ada"), lifter("Bea")];
     let no_stats = WrappedStats::default();
     let no_group = group_wrapped::calculate_group_stats(&[]);
-    let edition = |rows| meet_results::EditionSummary {
-        meet: "Open".into(),
-        year: "2026".into(),
-        summary: meet_results::summarize(rows),
-    };
+    let edition =
+        |rows: &[crate::types::lifting_results::LiftingResults]| meet_results::EditionSummary {
+            meet: "Open".into(),
+            year: "2026".into(),
+            summary: meet_results::MeetSummary {
+                athletes: rows.len(),
+                bomb_outs: 0,
+                average_total: Some(250.0),
+                make_rate: Some(50.0),
+                best_sinclair: [None, None],
+                best_qpoints: [None, None],
+            },
+        };
     let target = qualify::Target {
         gender: Gender::Women,
         categories: vec!["Senior".into()],

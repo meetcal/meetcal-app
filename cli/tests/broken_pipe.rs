@@ -50,6 +50,10 @@ fn a_reader_closing_the_pipe_ends_the_run_quietly() {
     let mut child = Command::new(env!("CARGO_BIN_EXE_meetcal"))
         .args(["clubs", "--format", "csv"])
         .env("MEETCAL_CONVEX_URL", &base_url)
+        .env(
+            "XDG_CACHE_HOME",
+            std::env::temp_dir().join(format!("meetcal-broken-pipe-{}", std::process::id())),
+        )
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()

@@ -55,7 +55,7 @@ Run from this folder.
 | Format, lint, tests | `mise run check-all` | Exit 0 |
 | Local run of every new or changed command | See below | Every one exits 0 with the expected output in all three formats |
 
-**Before opening or updating a PR, run every command that is new or that the change touches, locally, against a real deployment** (production for reads, or the dev deployment with `MEETCAL_CONVEX_URL`). "Touches" includes commands that share code you changed: a change to `utils/output.rs`, `utils/backend.rs`, `utils/stats.rs` or a shared report module (`group_wrapped.rs`, `club_results.rs`, `utils/placings.rs`) means every command using it. For each command:
+**Before opening or updating a PR, run every command that is new or that the change touches, locally, against a real deployment** (production for reads, or the dev deployment with `MEETCAL_CONVEX_URL`). "Touches" includes commands that share code you changed: a change to `utils/output.rs`, `utils/backend.rs`, `utils/stats.rs` or a shared report module (`group_wrapped.rs`, `club_results.rs`) means every command using it. For each command:
 
 - run it with real names and its main flags, in `--format table`, `json` and `csv`: it exits 0, the table reads right, the JSON parses, and the CSV has its header;
 - run it with a misspelled meet, club, WSO or athlete name where it takes one, and check the suggestion.

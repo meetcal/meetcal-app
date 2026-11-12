@@ -29,19 +29,29 @@ POST https://disciplined-hare-790.convex.cloud/api/query
 - A function that ran and failed answers `{ status: "error", errorMessage, errorData }` (HTTP 200
   or 560). Our functions throw `{ status, error }` as `errorData`; the CLI prints
   `MeetCal could not answer <query>: <error>`.
-- `send_with_retry` applies `src/utils/retry.rs` to queries and premium actions: 429 and 503 are
-  retried twice, honoring `Retry-After` (clamped to 1 to 30 seconds) or backing off 1 then 2
-  seconds. Once retries run out, a 429 explains how long to wait. A request that failed before any
-  answer arrived (a refused, dropped or timed-out connection) counts toward the same two retries;
-  one that used its whole request timeout is not sent again. Other actions and mutations are sent
-  once (`Endpoint::retries`): one may have done its work before its answer was lost.
-- `query_each` runs one query per argument set, at most `CONCURRENT_READS` (8) at a time, and
+- `src/utils/transport.rs` sends every request and applies `src/utils/retry.rs` to queries and
+  premium actions. It asks for gzip, which Convex serves (answers are 8 to 22 times smaller). 429
+  and 503 are retried twice, honoring `Retry-After` (clamped to 1 to 30 seconds) or backing off 1
+  then 2 seconds; once retries run out, a 429 explains how long to wait. Network failures are
+  `retry::Failure`s, each with its own budget and a message that says to check the connection:
+  a connection that could not be made (DNS, refused, or no handshake within 8 seconds) is tried
+  once more, then the deployment counts as unreachable for the rest of the run, so the pass fetch
+  and the read after it fail together; a request dropped before its answer, an answer that stops
+  arriving (20 seconds without a byte) or one cut short is sent again twice; a read with no answer
+  within 60 seconds is not. Other actions and mutations are sent once (`Endpoint::retries`): one
+  may have done its work before its answer was lost.
+- The first request to a deployment goes alone: requests started beside it wait until its
+  connection is made (`src/utils/connections.rs` counts the connections reqwest's connector
+  completes), not for its answer, then share that HTTP/2 connection instead of each opening one.
+  If the first request fails before connecting, the next one goes first.
+- `query_each` runs one query per argument set, at most `CONCURRENT_READS` (12) at a time, and
   returns the answers in the arguments' order (`in_order` is the bounded runner). The name batches
   of the club and WSO reports and the per-meet medal reads of the trends reports go through it.
-- One shared `reqwest` client with a 10-second connect timeout, a 30-second request timeout, and a
-  `meetcal-cli/<version>` User-Agent. A premium action carries its own timeout (`PremiumAction`):
-  two minutes for `results:leaderboard`, which reads a whole range before it answers, and for
-  `results:wsoElite`, which reads every member's registrations and history.
+- One shared `reqwest` client with an 8-second connect timeout, a five-minute cap on any request,
+  and a `meetcal-cli/<version>` User-Agent. A premium action waits longer for its answer
+  (`PremiumAction::answer_within`): two minutes for `results:leaderboard`, which reads a whole
+  range before it answers, and for `results:wsoElite`, which reads every member's registrations
+  and history.
 - `MEETCAL_CONVEX_URL` (read at run time) points the CLI at another deployment.
 - `call_function` runs any query, mutation or action (`Endpoint`) with an optional bearer token,
   for the few calls that are not data reads (`functions::*`, `queries::ACCESS_PASS`). A function
@@ -70,9 +80,12 @@ server's), through
   0600 in a 0700 directory, as `{ token, tokenId, expiresAt, deployment }`. A login is used only
   on the deployment that issued it. Logging in again replaces it and revokes the old token
   (`apiTokens:revoke`, best effort); `meetcal logout` revokes and deletes it.
-- `Access` (`src/utils/access.rs`) holds the run's pass. The first premium read trades the saved
-  token for it (`accessPass:pass`; only it, `entitlements:refresh` and `apiTokens:revoke` send the token);
-  concurrent reads share that fetch. When it answers 403, the CLI asks `entitlements:refresh` (an
+- `Access` (`src/utils/access.rs`) holds the run's pass. The first premium read takes the pass
+  kept in the cache (below) while it belongs to the saved login and is not yet due, or else trades the saved token for one (`accessPass:pass`; only it,
+  `entitlements:refresh` and `apiTokens:revoke` send the token) and keeps it; concurrent reads
+  share that fetch. A pass is due at its `rotatesAt`, but is held at least five minutes from
+  its fetch (`ACCESS_PASS_MIN_HOLD_MS`, as the app, the website and Siri hold it), so a clock
+  running ahead or a late rotation does not turn every run into a pass fetch. A pass Convex refuses is fetched again, never taken from the cache. When it answers 403, the CLI asks `entitlements:refresh` (an
   action, with the token) to re-check the subscription with RevenueCat, and asks for the pass once
   more if that answers `{ active: true }`; `login` does the same for its subscription check.
   Numbers outside the data rows (`expiresAt`, `rotatesAt`, `interval`) are read with
@@ -85,6 +98,24 @@ server's), through
   pass again and reads once more; without a login, with an expired or rejected one, or without a
   subscription, it fails with a `PassRefused` error saying to run `meetcal login` or to subscribe.
   `meet` shows its start list without past-year bests in that case, since the start list is free.
+
+## The answer cache
+
+`src/utils/cache.rs` keeps answers between runs in `$XDG_CACHE_HOME/meetcal/` (else
+`~/.cache/meetcal/`; `%LOCALAPPDATA%` on Windows), 0600 files in 0700 directories:
+
+- The queries that take `ifNoneMatch` (`Body::Revalidated` in `queries`: the meet lists, details,
+  schedules, rosters and start lists, a meet's results, and the reference tables) keep their `{ etag, json }` under `answers/`, one file
+  per deployment, function and arguments (a SHA-256 of them, the pass and tag left out). The next
+  read sends the kept tag; Convex answers `{ etag }` alone when the body is unchanged (72 bytes
+  instead of 377 KB for `reference:records`), and the kept body is used. Nothing is served
+  without asking. A test reads each function's `args` in `../convex/` and fails when a query
+  marked revalidated takes no `ifNoneMatch`, or one that takes it is not marked.
+- Premium answers go under `answers/premium/`, and only when the read carried a pass. A new pass
+  (`pass.json`, with the login's token id, the deployment and when it is due) drops them, as do
+  `logout`, a rejected login and a lapsed subscription.
+- Writes go to a temporary file renamed into place; an unreadable file is a miss and is
+  replaced. Past 64 MB the least recently used answers go, and one larger than 16 MB is not kept.
 
 The queries themselves are in `../convex/` (`reference.ts`, `meets.ts`, `results.ts`). Many are
 served from materialized views; `../docs/backend.md` explains when a view needs rebuilding.
@@ -126,20 +157,23 @@ another release list (the tests' local server).
 | Athletes | `search`, `progress`, `h2h` | `results:byNames`, `results:search` |
 | Wrapped | `wrapped`, `compare` | `results:wrapped` (public: the server scores the year, `convex/lib/wrapped.ts`) |
 | Standards | `qualify` | `results:byNames`, `results:bests`, `reference:standards`, `reference:qualifyingTotals` |
-| Meets | `meets`, `meet-info`, `schedule`, `meet`, `meet-results` | `meets:list`, `meets:completed`, `meets:details`, `meets:schedule`, `meets:athletesSessions` with `results:bests`, `results:byMeet` |
-| Attendance | `attendance` | `meets:namesPage`, `meets:attendance` |
+| Meets | `meets`, `meet-info`, `schedule`, `meet`, `meet-results` | `meets:list`, `meets:completed`, `meets:details`, `meets:schedule`, `meets:athletesSessions` with `results:bests`, `results:byMeet` with `results:meetSummaries` (each edition's headline numbers, summarized on the server, `convex/lib/meetSummary.ts`) |
+| Attendance | `attendance` | `meets:namesMatching`, `meets:attendance` |
 | Leaderboard | `leaderboard` | `results:leaderboard`, an action that ranks every athlete in the range on the server (`convex/lib/leaderboard.ts`, the rules `Filters`, `rank` and `stats.rs` hold here); with `--wso`/`--club`, the group's registrations and `results:recent`, ranked here |
 | Names | `clubs`, `wsos` | `reference:clubs`, `reference:registrationWsos`, `reference:wsoList`, `reference:wsoAgeGroups` |
-| Clubs | `club-results`, `club-wrapped`, `club-compare`, `club-trends` | `reference:clubMeetStats`, `reference:clubAthletes`, `results:recent`, `results:byNames`, `results:byMeet` |
-| WSOs | `wso`, `wso-wrapped`, `wso-compare`, `wso-trends` | `reference:wsoMeetStats`, `meets:athletes`, `results:byNames`, `results:byMeet`, `reference:wsoAthletes`, `results:recent` |
+| Clubs | `club-results`, `club-wrapped`, `club-compare`, `club-trends` | `reference:clubMeetStats`, `reference:clubAthletes`, `results:recent`, `results:byNames`, `results:groupMedals` |
+| WSOs | `wso`, `wso-wrapped`, `wso-compare`, `wso-trends` | `reference:wsoMeetStats`, `results:byNames`, `results:groupMedals`, `reference:wsoAthletes`, `results:recent` |
 | WSO elite | `elite` | `reference:registrationWsos`, then `results:wsoElite`, an action that finds the WSO's members and ranks each list on the server (`convex/lib/elite.ts`) |
 | Reference | `records`, `standards`, `qualifying-totals`, `intl-rankings`, `nat-rankings`, `nat-ranking-year`, `wso-records`, `adaptive-records` | the matching `reference:*` query |
 | Login | `login`, `logout` | `deviceLogin:start`, `deviceLogin:poll` (actions), `accessPass:pass`, `apiTokens:revoke` (mutation) |
 | Upgrade | `upgrade` | GitHub, not Convex: the release list (`api.github.com/repos/meetcal/meetcal-app/releases`) and the newest `cli-v*` release's archive and `SHA256SUMS` |
 
-Reference commands fetch the whole table and filter it locally by the flags (`records --age --gender
---federation`), except where the query takes the filter itself (`wso-records`, `nat-rankings`,
-`adaptive-records`).
+`records` and `qualifying-totals` send their flags to the query (`federation`, `ageCategory`,
+`gender`; `event`), which answers the one table. When it answers none, `reference:recordCategories`
+or `reference:qualifyingTotalCategories` (every federation, gender and age group; every event,
+gender and age group) names the values to try. `wso-records`, `nat-rankings` and
+`adaptive-records` take their filters the same way; `standards` and `intl-rankings` read the whole
+table and filter it here.
 
 ### Club and WSO reports
 
@@ -162,9 +196,9 @@ national event is never credited to another.
 
 `wso` (one WSO at one meet) prints the server's `reference:wsoMeetStats` answer through the same
 report as `club-results` (`club_results::report`); it computes nothing itself. `club-trends` and
-`wso-trends` still place medals on the client for every meet of every year, with the rules in
-`src/utils/placings.rs`, a port of `rankingGroup`, `liftKey` and `rankOf` in
-`convex/lib/meetData.ts`.
+`wso-trends` ask `results:groupMedals` for each meet the group lifted at (every spelling of its
+name, and the members registered there, 2,000 a call): the server places the meet's results
+(`convex/lib/placings.ts`) and answers the members' medals by year.
 
 ### Names and suggestions
 
@@ -217,12 +251,11 @@ that pages through the range on the server (a month at a time, 2,000 rows per in
 answers only the ranked rows and the range's federations (for the unknown-federation message). Its
 rules are a port of `Filters::keeps`, `rank` and `stats.rs` (`convex/lib/leaderboard.ts`), which
 still rank `--wso` and `--club` leaderboards here; change both together. `meets:namesPage` lists distinct meet
-names in the results or the registrations by skipping along the meet index, one read per meet;
-`attendance` lists 44 name ranges at once (`RANGE_BOUNDARIES`), about four seconds for the whole
-history, then counts each matched edition with `meets:attendance` (eight meets per call; a batch the
-server refuses as too many rows for one call, status 413, is asked for again as two halves, and one
-meet refused alone is an error). The
-ranges only balance the work: they cover every name whatever the data holds.
+names in the results or the registrations by skipping along the meet index, one read per meet.
+`attendance` asks `meets:namesMatching` for the names holding every word (the server folds names
+and words, `convex/lib/meetNameMatch.ts`), then counts each matched edition with
+`meets:attendance` (eight meets per call; a batch the server refuses as too many rows for one
+call, status 413, is asked for again as two halves, and one meet refused alone is an error).
 
 ## Adding a command
 
