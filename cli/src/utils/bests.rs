@@ -13,7 +13,7 @@ use crate::utils::format::kg;
 /// How far back "year bests" look, as in the app.
 pub(crate) const YEAR_BESTS_YEARS: i32 = 1;
 
-pub const NAMES_PER_BESTS_READ: usize = 100;
+pub(crate) const NAMES_PER_BESTS_READ: usize = 100;
 
 /// The date `years` before `today`, as the app computes it (29 February falls to 1 March).
 ///

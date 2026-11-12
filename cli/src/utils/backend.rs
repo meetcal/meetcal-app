@@ -1068,6 +1068,26 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn an_action_that_is_not_on_the_premium_list_is_refused_before_any_request() {
+        let unlisted = PremiumAction {
+            function: "results:other",
+            timeout: Duration::from_secs(1),
+        };
+        let error = premium_action_from::<serde_json::Value, _>(
+            "http://127.0.0.1:1",
+            &Access::anonymous(),
+            unlisted,
+            &json!({}),
+        )
+        .await
+        .unwrap_err();
+        assert_eq!(
+            error.to_string(),
+            "results:other is not on the CLI's list of premium actions"
+        );
+    }
+
+    #[tokio::test]
     async fn a_read_stopped_at_its_page_limit_keeps_the_rows_it_read() {
         let mut pages = vec![
             page(&[1, 2], "c1", false),
