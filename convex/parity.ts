@@ -32,6 +32,7 @@ import {
   requireAdaptiveGender,
   wsoAgeGroups,
 } from './lib/referenceData';
+import { qualifyingTotalCategories, recordCategories, sameFilterValue } from './lib/referenceFilters';
 import { compareBytes } from './lib/sort';
 import { liveAthletesJson, livePackageJson, liveSessionsJson } from './meets';
 import { answerBests, answerByNames, answerRecent } from './results';
@@ -72,6 +73,14 @@ export const live = internalQuery({
       }
       case 'records':
         return JSON.stringify(await computeRecords(ctx));
+      case 'recordsOfFederation':
+        return JSON.stringify((await computeRecords(ctx)).filter((row) => sameFilterValue(row.record_type, a.federation)));
+      case 'recordCategories':
+        return JSON.stringify(recordCategories(await computeRecords(ctx)));
+      case 'qualifyingTotalsOfEvent':
+        return JSON.stringify((await computeQualifyingTotals(ctx)).filter((row) => sameFilterValue(row.event_name, a.event)));
+      case 'qualifyingTotalCategories':
+        return JSON.stringify(qualifyingTotalCategories(await computeQualifyingTotals(ctx)));
       case 'standards':
         return JSON.stringify(await computeStandards(ctx));
       case 'qualifyingTotals':
@@ -151,6 +160,12 @@ export const meetSample = internalQuery({
 
 function decode(answer: unknown): unknown {
   return isRecord(answer) && typeof answer.json === 'string' ? JSON.parse(answer.json) : answer;
+}
+
+function textFieldValues(answer: unknown, field: string): string[] {
+  const rows = decode(answer);
+  if (!Array.isArray(rows)) return [];
+  return [...new Set(rows.flatMap((row) => (isRecord(row) && typeof row[field] === 'string' ? [row[field]] : [])))];
 }
 
 function canonical(value: unknown): string {
@@ -254,6 +269,14 @@ export const run = internalAction({
       ['wsoList', api.reference.wsoList],
     ] as const) {
       await compare(endpoint, ctx.runQuery(fn, withPass({})), endpoint, {});
+    }
+    await compare('recordCategories', ctx.runQuery(api.reference.recordCategories, withPass({})), 'recordCategories', {});
+    for (const federation of textFieldValues(await ctx.runQuery(api.reference.recordCategories, withPass({})), 'record_type')) {
+      await compare(`records ${federation}`, ctx.runQuery(api.reference.records, withPass({ federation })), 'recordsOfFederation', { federation });
+    }
+    await compare('qualifyingTotalCategories', ctx.runQuery(api.reference.qualifyingTotalCategories, withPass({})), 'qualifyingTotalCategories', {});
+    for (const event of textFieldValues(await ctx.runQuery(api.reference.qualifyingTotalCategories, withPass({})), 'event_name')) {
+      await compare(`qualifyingTotals ${event}`, ctx.runQuery(api.reference.qualifyingTotals, withPass({ event })), 'qualifyingTotalsOfEvent', { event });
     }
     for (const gender of ['men', 'women']) {
       await compare(`adaptive ${gender}`, ctx.runQuery(api.reference.adaptiveRecords, withPass({ gender, excludeFederation: 'BWL' })), 'adaptive', { gender, excludeFederation: 'BWL' });
