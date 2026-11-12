@@ -89,7 +89,7 @@ const RESULT_FIELDS_THE_APP_DROPS = ['id', 'federation', 'adaptive'];
 function expectSameRowsOnTheirKeys(mapped: readonly object[], body: unknown) {
   const sent = rows(body);
   expect(mapped).toHaveLength(sent.length);
-  mapped.forEach((kept, index) => expect(kept).toEqual(pick(sent[index], Object.keys(kept))));
+  mapped.forEach((kept, index) => expect(kept).toEqual(pick(sent[index] ?? {}, Object.keys(kept))));
 }
 
 function sentArgs(call: ApiCall): Row {
@@ -234,9 +234,9 @@ const CHECKS: Record<string, Check> = {
   },
 };
 
-const CASES = Object.keys(CHECKS).flatMap((fn) => {
+const CASES = Object.entries(CHECKS).flatMap(([fn, check]) => {
   const fixture = readWireFixture(fn);
-  return fixture.answers.map((answer, index) => ({ fn, index, answer, encode: (body: unknown) => wireAnswer(fixture, body) }));
+  return fixture.answers.map((answer, index) => ({ fn, index, answer, check, encode: (body: unknown) => wireAnswer(fixture, body) }));
 });
 
 describe("the app reads the server's answers (fixtures/wire)", () => {
@@ -252,9 +252,9 @@ describe("the app reads the server's answers (fixtures/wire)", () => {
     jest.restoreAllMocks();
   });
 
-  it.each(CASES)('$fn answer $index', async ({ fn, answer, encode }) => {
+  it.each(CASES)('$fn answer $index', async ({ fn, answer, check, encode }) => {
     const calls = serve(fn, answer, encode);
-    await CHECKS[fn](answer.args, answer.body);
+    await check(answer.args, answer.body);
     expect(calls.map(sentArgs)).toEqual([answer.args]);
   });
 });

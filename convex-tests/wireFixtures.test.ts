@@ -247,7 +247,7 @@ const PREMIUM: ReadonlySet<string> = new Set<string>([...PREMIUM_FUNCTIONS, ...P
 
 function registered(fn: string): unknown {
   const [module, name] = fn.split(':');
-  const found = MODULES[module]?.[name];
+  const found = module === undefined || name === undefined ? undefined : MODULES[module]?.[name];
   if (found === undefined) throw new Error(`no Convex function ${fn}`);
   return found;
 }
