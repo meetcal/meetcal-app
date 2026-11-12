@@ -5,7 +5,8 @@ use crate::{
     utils::{
         backend::{PassRefused, queries, query},
         bests::{bests_cell, year_bests},
-        format::{display_gender, display_weight_class, kg, time_24h, us_date, us_time},
+        filters::gender_as_matched,
+        format::{display_weight_class, kg, time_24h, us_date, us_time},
         names::{NameKind, not_found},
     },
 };
@@ -165,7 +166,7 @@ pub(crate) fn report(athletes: &[Athletes], bests: Option<&HashMap<String, Named
         let common = vec![
             athlete.name.clone(),
             athlete.age.to_string(),
-            display_gender(&athlete.gender),
+            gender_as_matched(&athlete.gender).to_string(),
             athlete.adaptive.to_string(),
             athlete.club.clone(),
             display_weight_class(&athlete.weight_class),
