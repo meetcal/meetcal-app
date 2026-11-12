@@ -20,6 +20,7 @@ use comfy_table::Table;
 )]
 pub struct SearchArgs {
     /// Athlete name to search for
+    #[arg(value_parser = crate::utils::filters::parse_name)]
     pub name: String,
 }
 

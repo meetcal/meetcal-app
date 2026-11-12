@@ -35,7 +35,7 @@ async function routeSearch(page: Page) {
     };
     const stored = exact[query.toLowerCase()];
     if (stored) {
-      return route.fulfill(valueAnswer({ matched_name: query, suggestions: [], results: [result(stored, `${stored} Open`)], truncated: false }));
+      return route.fulfill(valueAnswer({ matched_name: stored, suggestions: [], results: [result(stored, `${stored} Open`)], truncated: false }));
     }
     if (query === "Smith") {
       return route.fulfill(valueAnswer({
