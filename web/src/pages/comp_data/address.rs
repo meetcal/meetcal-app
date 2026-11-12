@@ -1,6 +1,7 @@
 use leptos::prelude::*;
 use leptos_router::NavigateOptions;
 use leptos_router::hooks::{use_location, use_navigate, use_query_map};
+use leptos_router::params::ParamsMap;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum HistoryEntry {
@@ -35,6 +36,21 @@ pub(crate) fn address(path: &str, params: &[(&str, &str)]) -> String {
     }
 }
 
+fn with_changes(current: &[(String, String)], changes: &[(&str, &str)]) -> Vec<(String, String)> {
+    let replaced = current.iter().map(|(name, value)| {
+        let value = changes
+            .iter()
+            .find(|(changed, _)| *changed == name.as_str())
+            .map_or(value.as_str(), |(_, new)| *new);
+        (name.clone(), value.to_owned())
+    });
+    let added = changes
+        .iter()
+        .filter(|(changed, _)| !current.iter().any(|(name, _)| name == changed))
+        .map(|(name, value)| ((*name).to_owned(), (*value).to_owned()));
+    replaced.chain(added).collect()
+}
+
 pub(crate) fn query_param(name: &'static str) -> Memo<String> {
     let query = use_query_map();
     Memo::new(move |_| {
@@ -49,12 +65,28 @@ pub(crate) fn query_param(name: &'static str) -> Memo<String> {
 #[derive(Clone, Copy)]
 pub(crate) struct PageAddress {
     path: &'static str,
+    query: Memo<ParamsMap>,
     go: Callback<(String, HistoryEntry)>,
 }
 
 impl PageAddress {
     pub(crate) fn show(&self, params: &[(&str, &str)], entry: HistoryEntry) {
         self.go.run((address(self.path, params), entry));
+    }
+
+    pub(crate) fn change(&self, changes: &[(&str, &str)], entry: HistoryEntry) {
+        let current = self.query.with_untracked(|params| {
+            params
+                .latest_values()
+                .map(|(name, value)| (name.to_string(), value.to_owned()))
+                .collect::<Vec<_>>()
+        });
+        let params = with_changes(&current, changes);
+        let params = params
+            .iter()
+            .map(|(name, value)| (name.as_str(), value.as_str()))
+            .collect::<Vec<_>>();
+        self.show(&params, entry);
     }
 }
 
@@ -97,6 +129,7 @@ pub(crate) fn use_page_address(path: &'static str) -> PageAddress {
     let location = use_location();
     PageAddress {
         path,
+        query: use_query_map(),
         go: Callback::new(move |(to, entry): (String, HistoryEntry)| {
             let browser_before = browser_address();
             navigate(
@@ -137,6 +170,33 @@ pub(crate) fn use_page_address(path: &'static str) -> PageAddress {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_change_replaces_its_choices_in_place_adds_new_ones_and_keeps_the_rest() {
+        let current = vec![
+            ("wso".to_owned(), "Carolina".to_owned()),
+            ("gender".to_owned(), "Women".to_owned()),
+            ("sort".to_owned(), "total_desc".to_owned()),
+        ];
+        assert_eq!(
+            with_changes(&current, &[("gender", "Men"), ("class", "69kg")]),
+            vec![
+                ("wso".to_owned(), "Carolina".to_owned()),
+                ("gender".to_owned(), "Men".to_owned()),
+                ("sort".to_owned(), "total_desc".to_owned()),
+                ("class".to_owned(), "69kg".to_owned()),
+            ]
+        );
+        let cleared = with_changes(&current, &[("gender", "")]);
+        let cleared = cleared
+            .iter()
+            .map(|(name, value)| (name.as_str(), value.as_str()))
+            .collect::<Vec<_>>();
+        assert_eq!(
+            address("/wso-records", &cleared),
+            "/wso-records?wso=Carolina&sort=total_desc"
+        );
+    }
 
     #[test]
     fn an_address_carries_only_the_choices_that_are_set() {

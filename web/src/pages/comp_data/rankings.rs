@@ -49,24 +49,28 @@ fn weight_class(ranking: &Ranking) -> &str {
 const FILTERS: &[Filter<Ranking>] = &[
     Filter {
         label: "Meet",
+        param: "meet",
         placeholder: "All meets",
         value: meet,
         order: OptionOrder::Alphabetical,
     },
     Filter {
         label: "Gender",
+        param: "gender",
         placeholder: "All genders",
         value: gender,
         order: OptionOrder::Alphabetical,
     },
     Filter {
         label: "Age",
+        param: "age",
         placeholder: "All ages",
         value: age,
         order: OptionOrder::Alphabetical,
     },
     Filter {
         label: "Weight class",
+        param: "class",
         placeholder: "All classes",
         value: weight_class,
         order: OptionOrder::ByWeight,
@@ -132,7 +136,6 @@ fn ranking_row(ranking: &Ranking) -> AnyView {
 
 #[component]
 pub fn Rankings() -> impl IntoView {
-    let sort = RwSignal::new(RankingSort::RankAsc);
     let rankings = load_rows(queries::INTL_RANKINGS, Ranking::shown);
 
     view! {
@@ -142,7 +145,7 @@ pub fn Rankings() -> impl IntoView {
         >
             {move || table_response(rankings, HEADERS.len(), "rankings", |rankings| {
                 view! {
-                    <ReferenceTable rows=rankings.to_vec() filters=FILTERS headers=HEADERS row=ranking_row sort empty_message="No rankings match these filters." />
+                    <ReferenceTable rows=rankings.to_vec() filters=FILTERS headers=HEADERS row=ranking_row path="/rankings" default_sort=RankingSort::RankAsc empty_message="No rankings match these filters." />
                 }
                 .into_any()
             })}

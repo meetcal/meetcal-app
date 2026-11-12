@@ -77,8 +77,8 @@ pub(crate) fn FilterSelect(
 
 #[component]
 pub(crate) fn SortSelect<S: SortOrder>(
-    sort: ReadSignal<S>,
-    set_sort: WriteSignal<S>,
+    #[prop(into)] sort: Signal<S>,
+    #[prop(into)] on_sort: Callback<S>,
 ) -> impl IntoView {
     let initial = sort.get_untracked();
     view! {
@@ -89,7 +89,7 @@ pub(crate) fn SortSelect<S: SortOrder>(
                 prop:value=move || sort.get().value()
                 on:change=move |event| {
                     if let Some(order) = S::parse(&event_target_value(&event)) {
-                        set_sort.set(order);
+                        on_sort.run(order);
                     }
                 }
             >

@@ -253,3 +253,101 @@ test("the header's link to a data page opens it empty again", async ({ page, isM
   await expect(page.locator("#meet-search-input")).toHaveValue("");
   await expect(page.getByText("Search for and select a meet to load its competition data.")).toBeVisible();
 });
+
+const recordRow = (gender: string, weight_class: string, total_record: number) => ({
+  age_category: "Senior", gender, weight_class, record_type: "USAW", snatch_record: total_record - 150, cj_record: 150, total_record,
+  snatch_by: null, cj_by: null, total_by: null,
+});
+
+async function routeRecords(page: Page) {
+  await routeQuery(page, "reference:records", (route) => route.fulfill(textAnswer([
+    recordRow("Women", "77kg", 280), recordRow("Women", "69kg", 260), recordRow("Men", "89kg", 380),
+  ])));
+}
+
+const shownTotals = (page: Page) => page.locator("tbody tr td:last-child");
+
+test("a reference table opens filtered and sorted from its address, and each pick adds an entry Back returns through", async ({ page }) => {
+  await mockSubscribedUser(page);
+  await routeRecords(page);
+  await page.goto("/records?gender=Women&sort=total_asc");
+  await expect(page.getByRole("combobox", { name: "Gender", exact: true })).toHaveValue("Women");
+  await expect(page.locator("tbody tr")).toHaveCount(2);
+  await expect(page.locator("tbody tr").first()).toContainText("69kg");
+
+  await page.getByRole("combobox", { name: "Weight class", exact: true }).selectOption("77kg");
+  await expect(page).toHaveURL(/\/records\?gender=Women&sort=total_asc&class=77kg$/);
+  await expect(page.locator("tbody tr")).toHaveCount(1);
+  await page.getByLabel("Sort").selectOption({ index: 0 });
+  await expect(page).toHaveURL(/\/records\?gender=Women&class=77kg$/);
+
+  await page.goBack();
+  await expect(page).toHaveURL(/\/records\?gender=Women&sort=total_asc&class=77kg$/);
+  await page.goBack();
+  await expect(page).toHaveURL(/\/records\?gender=Women&sort=total_asc$/);
+  await expect(page.locator("tbody tr")).toHaveCount(2);
+  await expect(page.getByRole("combobox", { name: "Weight class", exact: true })).toHaveValue("");
+  await page.reload();
+  await expect(page.locator("tbody tr")).toHaveCount(2);
+  await expect(page.locator("tbody tr").first()).toContainText("69kg");
+});
+
+test("a reference table address naming a choice the table does not offer shows every row", async ({ page }) => {
+  await mockSubscribedUser(page);
+  await routeRecords(page);
+  await page.goto("/records?gender=Nobody&class=200kg&sort=not_a_sort");
+  await expect(page.locator("tbody tr")).toHaveCount(3);
+  await expect(page.getByRole("combobox", { name: "Gender", exact: true })).toHaveValue("");
+  await expect(page.locator("tbody tr").first()).toContainText("380");
+});
+
+test("WSO Records keeps its organization and filters in the address, and a new organization clears the filters", async ({ page }) => {
+  await mockSubscribedUser(page);
+  await routeQuery(page, "reference:wsoList", (route) => route.fulfill(textAnswer(["Carolina", "Florida"])));
+  await routeQuery(page, "reference:wsoRecords", (route, args) => route.fulfill(textAnswer([
+    { ...recordRow("Women", "69kg", 200), wso: String(args.wso) },
+    { ...recordRow("Men", "89kg", 300), wso: String(args.wso) },
+  ])));
+  await page.goto("/wso-records?wso=Carolina&gender=Men");
+  await expect(page.getByRole("combobox", { name: "Organization", exact: true })).toHaveValue("Carolina");
+  await expect(page.locator("tbody tr")).toHaveCount(1);
+  await expect(page.locator("tbody tr").first()).toContainText("89kg");
+
+  await page.getByRole("combobox", { name: "Organization", exact: true }).selectOption("Florida");
+  await expect(page).toHaveURL(/\/wso-records\?wso=Florida$/);
+  await expect(page.locator("tbody tr")).toHaveCount(2);
+  await page.goBack();
+  await expect(page).toHaveURL(/\/wso-records\?wso=Carolina&gender=Men$/);
+  await expect(page.locator("tbody tr")).toHaveCount(1);
+});
+
+test("Adaptive Records keeps its gender in the address", async ({ page }) => {
+  await mockSubscribedUser(page);
+  const asked: unknown[] = [];
+  await routeQuery(page, "reference:adaptiveRecords", (route, args) => {
+    asked.push(args.gender);
+    return route.fulfill(textAnswer([{ weight_class: "69kg", snatch: 60, cj: 80, total: 140 }]));
+  });
+  await page.goto("/adaptive-records?gender=Women");
+  await expect(page.getByRole("combobox", { name: "Gender", exact: true })).toHaveValue("Women");
+  await expect(page.locator("tbody tr")).toHaveCount(1);
+  await page.getByRole("combobox", { name: "Gender", exact: true }).selectOption("Men");
+  await expect(page).toHaveURL(/\/adaptive-records$/);
+  await expect.poll(() => asked).toEqual(["Women", "Men"]);
+  await page.goBack();
+  await expect(page).toHaveURL(/\/adaptive-records\?gender=Women$/);
+  await expect(page.getByRole("combobox", { name: "Gender", exact: true })).toHaveValue("Women");
+});
+
+test("the header's link to a reference table opens it unfiltered", async ({ page, isMobile }) => {
+  test.skip(isMobile, "The data pages are listed in the desktop menu.");
+  await mockSubscribedUser(page);
+  await routeRecords(page);
+  await page.goto("/records?gender=Women&class=77kg");
+  await expect(page.locator("tbody tr")).toHaveCount(1);
+  await page.getByRole("navigation", { name: "Primary navigation" }).getByRole("link", { name: "Competition Data" }).hover();
+  await page.getByRole("navigation", { name: "Primary navigation" }).getByRole("link", { name: "Records", exact: true }).click();
+  await expect(page).toHaveURL(/\/records$/);
+  await expect(page.locator("tbody tr")).toHaveCount(3);
+  await expect(shownTotals(page)).toHaveCount(3);
+});
