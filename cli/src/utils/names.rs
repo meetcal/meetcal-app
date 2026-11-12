@@ -8,7 +8,11 @@ use serde_json::json;
 use tokio::task::JoinSet;
 
 use crate::types::meets::Meet;
-use crate::utils::backend::{NoArgs, queries, query};
+use crate::utils::backend::{
+    NoArgs, Page, PagesRead, collect_pages_within, queries, query, unfinished,
+};
+use crate::utils::format::capitalized;
+use crate::utils::stats::folded_words;
 
 /// Suggestions shown for a name MeetCal does not know.
 pub const MAX_SUGGESTIONS: usize = 5;
@@ -97,9 +101,6 @@ struct MeetName {
     meet: String,
 }
 
-/// The distinct meet names in `source` (`results` or `registrations`) after `after` and before
-/// `before` (both excluded; `None` for no bound), in name order, at most `max_pages` pages of
-/// `meets:namesPage`. More than that is an error unless `partial`, which keeps what was read.
 pub async fn meet_names_between(
     source: &'static str,
     after: Option<String>,
@@ -107,29 +108,44 @@ pub async fn meet_names_between(
     max_pages: usize,
     partial: bool,
 ) -> Result<Vec<String>> {
-    let mut names = Vec::new();
-    let mut after = after;
-    for _ in 0..max_pages {
-        let mut args = json!({ "source": source, "after": after });
-        if let Some(before) = &before {
-            args["before"] = json!(before);
+    let function = queries::MEET_NAMES_PAGE.function;
+    let read = collect_pages_within(function, max_pages, |cursor| {
+        let args = names_page_args(source, &after, &before, cursor);
+        async move {
+            let page: NamesPage = query(queries::MEET_NAMES_PAGE, &args).await?;
+            Ok(Page {
+                json: page.json,
+                is_done: page.next.is_none(),
+                cursor: page.next.unwrap_or_default(),
+            })
         }
-        let page: NamesPage = query(queries::MEET_NAMES_PAGE, &args).await?;
-        let meets: Vec<MeetName> = serde_json::from_str(&page.json).map_err(|error| {
-            anyhow!("Unexpected answer from MeetCal query meets:namesPage: {error}")
-        })?;
-        names.extend(meets.into_iter().map(|m| m.meet));
-        match page.next {
-            Some(next) => after = Some(next),
-            None => return Ok(names),
+    })
+    .await?;
+    names_read(read, partial, max_pages)
+}
+
+fn names_page_args(
+    source: &str,
+    after: &Option<String>,
+    before: &Option<String>,
+    cursor: Option<String>,
+) -> serde_json::Value {
+    let mut args = json!({ "source": source, "after": cursor.or_else(|| after.clone()) });
+    if let Some(before) = before {
+        args["before"] = json!(before);
+    }
+    args
+}
+
+fn names_read(read: PagesRead<MeetName>, partial: bool, max_pages: usize) -> Result<Vec<String>> {
+    let meets: Vec<MeetName> = match read {
+        PagesRead::All(meets) => meets,
+        PagesRead::CutShort(meets) if partial => meets,
+        PagesRead::CutShort(_) => {
+            return Err(unfinished(queries::MEET_NAMES_PAGE.function, max_pages));
         }
-    }
-    if partial {
-        return Ok(names);
-    }
-    Err(anyhow!(
-        "MeetCal query meets:namesPage did not finish within {max_pages} pages"
-    ))
+    };
+    Ok(meets.into_iter().map(|meet| meet.meet).collect())
 }
 
 /// The greatest string sorting before `boundary` for our purposes: `boundary` with its last
@@ -159,10 +175,7 @@ pub fn meet_prefixes(input: &str) -> Vec<String> {
     if first.is_empty() {
         return Vec::new();
     }
-    let mut capitalized = first.to_lowercase();
-    if let Some(initial) = capitalized.get(..1) {
-        capitalized = initial.to_uppercase() + &capitalized[1..];
-    }
+    let capitalized = capitalized(&first.to_lowercase());
     let mut prefixes = Vec::new();
     for word in [first.to_string(), capitalized, first.to_uppercase()] {
         for prefix in [format!("{word} "), format!("The {word} ")] {
@@ -250,7 +263,7 @@ pub fn not_found_message(
     }
     let same: Vec<&String> = candidates
         .iter()
-        .filter(|name| normalize(name) == normalize(input))
+        .filter(|name| folded_words(name) == folded_words(input))
         .collect();
     if !same.is_empty() {
         let list: Vec<String> = same.iter().map(|name| format!("  {name}")).collect();
@@ -272,7 +285,7 @@ pub fn not_found_message(
 /// it) come first; then names matching most of its words, a word matching when it is the same,
 /// a prefix, or a typo or two away. Case, punctuation and spacing are ignored.
 pub fn closest<'a>(input: &str, candidates: &'a [String], limit: usize) -> Vec<&'a str> {
-    let wanted = normalize(input);
+    let wanted = folded_words(input);
     if wanted.is_empty() {
         return Vec::new();
     }
@@ -280,7 +293,7 @@ pub fn closest<'a>(input: &str, candidates: &'a [String], limit: usize) -> Vec<&
     let mut scored: Vec<(u8, f64, usize, &str)> = candidates
         .iter()
         .filter_map(|candidate| {
-            let name = normalize(candidate);
+            let name = folded_words(candidate);
             if name.is_empty() {
                 return None;
             }
@@ -331,23 +344,6 @@ fn words_match(typed: &str, word: &str) -> bool {
     typed.len().abs_diff(word.len()) <= allowed && edit_distance(typed, word) <= allowed
 }
 
-/// Lowercase letters and digits, single-spaced.
-fn normalize(value: &str) -> String {
-    value
-        .chars()
-        .map(|c| {
-            if c.is_alphanumeric() {
-                c.to_ascii_lowercase()
-            } else {
-                ' '
-            }
-        })
-        .collect::<String>()
-        .split_whitespace()
-        .collect::<Vec<_>>()
-        .join(" ")
-}
-
 /// Levenshtein distance, by characters.
 fn edit_distance(a: &str, b: &str) -> usize {
     let a: Vec<char> = a.chars().collect();
@@ -367,6 +363,92 @@ fn edit_distance(a: &str, b: &str) -> usize {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_first_names_page_starts_after_the_callers_name_and_later_pages_at_the_servers_cursor() {
+        let after = Some("2025 Ohio Open".to_string());
+        let before = Some("2026".to_string());
+        assert_eq!(
+            names_page_args("results", &after, &before, None),
+            json!({ "source": "results", "after": "2025 Ohio Open", "before": "2026" })
+        );
+        assert_eq!(
+            names_page_args("results", &after, &None, Some("page-2".to_string())),
+            json!({ "source": "results", "after": "page-2" })
+        );
+        assert_eq!(
+            names_page_args("meets", &None, &None, None),
+            json!({ "source": "meets", "after": null })
+        );
+    }
+
+    #[test]
+    fn names_cut_short_at_the_page_limit_are_kept_only_when_a_partial_list_will_do() {
+        let read = || {
+            PagesRead::CutShort(vec![MeetName {
+                meet: "2026 Ohio Open".to_string(),
+            }])
+        };
+        assert_eq!(names_read(read(), true, 3).unwrap(), ["2026 Ohio Open"]);
+        assert_eq!(
+            names_read(read(), false, 3).unwrap_err().to_string(),
+            "MeetCal query meets:namesPage did not finish within 3 pages"
+        );
+        assert_eq!(
+            names_read(PagesRead::All(Vec::new()), false, 3).unwrap(),
+            Vec::<String>::new()
+        );
+    }
+
+    const SPELLINGS_THAT_ARE_ONE_NAME_SINCE_NFC_FOLDING: [(&str, &str); 4] = [
+        ("Cafe\u{301} Barbell", "Café Barbell"),
+        ("ÉLAN WEIGHTLIFTING", "élan weightlifting"),
+        ("KĀKOʻO OPEN", "Kākoʻo Open"),
+        ("Sa\u{303}o Paulo Classic", "São Paulo Classic"),
+    ];
+
+    #[test]
+    fn a_name_typed_with_another_accent_form_or_case_is_the_known_name() {
+        for (typed, known) in SPELLINGS_THAT_ARE_ONE_NAME_SINCE_NFC_FOLDING {
+            assert_eq!(folded_words(typed), folded_words(known), "{typed}");
+            let candidates = vec![known.to_string(), "Another Club".to_string()];
+            let message =
+                not_found_message(NameKind::Club, typed, &candidates, "Not found".to_string());
+            assert_eq!(
+                message,
+                format!("Not found\nDid you mean:\n  {known}"),
+                "{typed}"
+            );
+        }
+    }
+
+    const SPELLINGS_THAT_STOPPED_BEING_ONE_NAME_SINCE_NFC_FOLDING: [(&str, &str); 2] = [
+        ("Cafe Barbell", "Cafe\u{301} Barbell"),
+        ("Sao Paulo Classic", "Sa\u{303}o Paulo Classic"),
+    ];
+
+    #[test]
+    fn a_name_typed_without_its_accent_is_a_close_name_not_the_same_name() {
+        for (typed, known) in SPELLINGS_THAT_STOPPED_BEING_ONE_NAME_SINCE_NFC_FOLDING {
+            assert_ne!(folded_words(typed), folded_words(known), "{typed}");
+            let candidates = vec![known.to_string(), "Another Club".to_string()];
+            let message =
+                not_found_message(NameKind::Club, typed, &candidates, "Not found".to_string());
+            assert!(
+                message.starts_with(&format!("Not found\nDid you mean:\n  {known}")),
+                "{message}"
+            );
+        }
+    }
+
+    #[test]
+    fn plain_ascii_names_match_as_they_always_did() {
+        assert_eq!(
+            folded_words("  Texas   Barbell, Club! "),
+            "texas barbell club"
+        );
+        assert_ne!(folded_words("Texas Barbell"), folded_words("Texas Barbel"));
+    }
 
     fn names(values: &[&str]) -> Vec<String> {
         values.iter().map(|value| value.to_string()).collect()

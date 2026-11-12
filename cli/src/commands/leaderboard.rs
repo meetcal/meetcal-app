@@ -19,8 +19,8 @@ use crate::utils::names::{NameKind, not_found};
 use crate::utils::output::{self, Report};
 use crate::utils::progress::Progress;
 use crate::utils::stats::{
-    Division, Gender, QPOINTS_LABEL, SINCLAIR_LABEL, fold, number, plausible, points, row_qpoints,
-    row_sinclair,
+    Division, Gender, QPOINTS_LABEL, SINCLAIR_LABEL, SINCLAIR_WITH_COEFFICIENTS, fold, number,
+    plausible, points, row_qpoints, row_sinclair,
 };
 
 /// What a leaderboard ranks by.
@@ -398,7 +398,7 @@ pub async fn run(args: LeaderboardArgs) -> Result<()> {
         Metric::Total => "total",
         Metric::Snatch => "snatch",
         Metric::Cj => "clean & jerk",
-        Metric::Sinclair => "Sinclair (2021-24 coefficients)",
+        Metric::Sinclair => SINCLAIR_WITH_COEFFICIENTS,
         Metric::Qpoints => "Q-points",
     };
     let title = format!(

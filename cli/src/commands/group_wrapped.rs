@@ -11,13 +11,12 @@ use crate::commands::compare::{
 };
 use crate::types::lifting_results::LiftingResults;
 use crate::types::wrapped::WrappedStats;
+use crate::utils::athletes::NAMES_PER_READ;
 use crate::utils::backend::{queries, query_all_pages, query_each};
 use crate::utils::meet_names::equivalent_meets;
 use crate::utils::output::Report;
 use crate::utils::stats::{Lift, fold, number, percentage, valid_lift, valid_total};
 use serde_json::json;
-
-const RESULTS_REQUEST_BATCH_SIZE: usize = 50;
 
 #[derive(Debug, Deserialize)]
 pub struct ClubMembership {
@@ -52,7 +51,7 @@ pub async fn get_recent_results(
     cutoff_date: &str,
 ) -> Result<Vec<LiftingResults>> {
     let batches = names
-        .chunks(RESULTS_REQUEST_BATCH_SIZE)
+        .chunks(NAMES_PER_READ)
         .map(|batch| json!({ "names": batch, "cutoffDate": cutoff_date }))
         .collect();
     let answers: Vec<Vec<LiftingResults>> = query_each(queries::RECENT_RESULTS, batches).await?;

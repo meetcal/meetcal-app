@@ -11,8 +11,7 @@ use crate::utils::backend::{queries, query, query_each};
 use crate::utils::names::{MAX_SUGGESTIONS, closest};
 use crate::utils::stats::fold;
 
-/// Names per `results:byNames` call (the query takes at most 100).
-pub const HISTORY_BATCH_SIZE: usize = 50;
+pub const NAMES_PER_READ: usize = 50;
 
 /// Every result of the athlete named `name` (case and spacing ignored). An unknown name is an
 /// error naming the closest athletes MeetCal has.
@@ -86,7 +85,7 @@ async fn athlete_candidates(name: &str) -> Vec<String> {
 
 pub async fn histories(names: &[String]) -> Result<HashMap<String, Vec<LiftingResults>>> {
     let batches = names
-        .chunks(HISTORY_BATCH_SIZE)
+        .chunks(NAMES_PER_READ)
         .map(|batch| json!({ "names": batch }))
         .collect();
     let mut by_name: HashMap<String, Vec<LiftingResults>> = HashMap::new();
