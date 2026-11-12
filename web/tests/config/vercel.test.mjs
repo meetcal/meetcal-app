@@ -108,7 +108,7 @@ test("production rewrites serve route-specific metadata shells", async () => {
 
 test("every deployment reads Convex directly, with no API proxy", () => {
   // Convex answers any origin, so previews need no same-origin rewrite (see
-  // src/utils/api.rs), and the retired Rust API is not reachable.
+  // src/utils/api/), and the retired Rust API is not reachable.
   assert.equal(config.rewrites.find(({ source }) => source.startsWith("/api")), undefined);
   assert.ok(
     !globalHeaders["content-security-policy"].includes("api.meetcal.app"),
