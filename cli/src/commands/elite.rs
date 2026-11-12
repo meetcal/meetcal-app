@@ -7,11 +7,11 @@ use serde_json::json;
 use crate::commands::leaderboard::MAX_YEARS;
 use crate::utils::backend::{functions, premium_action};
 use crate::utils::filters::{parse_date, plus_years};
-use crate::utils::format::us_date;
+use crate::utils::format::{capitalized, us_date};
 use crate::utils::names::{NameKind, not_found, registration_wsos};
 use crate::utils::output::{self, Report};
 use crate::utils::progress::Progress;
-use crate::utils::stats::{fold, number, percent, points};
+use crate::utils::stats::{SINCLAIR_WITH_COEFFICIENTS, fold, number, percent, points};
 
 /// What an elite list ranks by.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, ValueEnum, Serialize, Deserialize)]
@@ -24,7 +24,7 @@ pub enum Method {
     Qpoints,
     /// Q-points times the Masters age factor
     Qmasters,
-    /// Sinclair (2021-24 coefficients)
+    #[value(help = SINCLAIR_WITH_COEFFICIENTS)]
     Sinclair,
 }
 
@@ -340,14 +340,6 @@ pub fn table(rows: &[EliteRow], method: Method, date: fn(&str) -> String) -> Tab
         ]);
     }
     table
-}
-
-fn capitalized(value: &str) -> String {
-    let mut chars = value.chars();
-    chars
-        .next()
-        .map(|first| first.to_uppercase().chain(chars).collect())
-        .unwrap_or_default()
 }
 
 #[cfg(test)]
