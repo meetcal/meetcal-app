@@ -31,7 +31,7 @@ import {
   type ZoneFormatters,
 } from './lib/meetData';
 import { normalizeName } from './lib/names';
-import { DOCUMENTS_ONE_QUERY_MAY_READ, takeWithinBudget, type DocumentBudget } from './lib/readBudget';
+import { DOCUMENTS_BEFORE_THE_OVERFLOW_PROBE, takeWithinBudget, type DocumentBudget } from './lib/readBudget';
 import { compareBytes } from './lib/sort';
 import { meetKey, meetSessionKey } from './lib/viewKeys';
 import { readFreshView } from './lib/views';
@@ -209,7 +209,7 @@ async function meetAttendance(ctx: QueryCtx, meet: string, budget: DocumentBudge
   };
 }
 
-export async function attendanceRows(ctx: QueryCtx, meets: readonly string[], documentBudget = DOCUMENTS_ONE_QUERY_MAY_READ) {
+export async function attendanceRows(ctx: QueryCtx, meets: readonly string[], documentBudget = DOCUMENTS_BEFORE_THE_OVERFLOW_PROBE) {
   const budget: DocumentBudget = { left: documentBudget };
   const rows = [];
   for (const meet of meets) {
