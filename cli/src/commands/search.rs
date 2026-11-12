@@ -31,7 +31,7 @@ pub async fn run(args: SearchArgs) -> Result<()> {
     Ok(())
 }
 
-pub fn report(results: &[LiftingResults]) -> Report {
+pub(crate) fn report(results: &[LiftingResults]) -> Report {
     let mut meets_table = Table::new();
     meets_table.set_header(vec![
         "Meet", "Date", "Age", "Sn1", "Sn2", "Sn3", "CJ1", "CJ2", "CJ3", "Total",
@@ -76,7 +76,7 @@ pub fn report(results: &[LiftingResults]) -> Report {
         .table("make_rate", by_lift)
 }
 
-pub fn get_prs(results: &[LiftingResults]) -> PRs {
+pub(crate) fn get_prs(results: &[LiftingResults]) -> PRs {
     results.iter().fold(
         PRs {
             snatch_best: 0.0,

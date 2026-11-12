@@ -1,17 +1,23 @@
+#![cfg(test)]
 //! Exercises the retry policy, and paging, against a local HTTP server; nothing here calls the
 //! live API.
 
-mod support;
+mod support {
+    pub(crate) mod bodies;
+    pub(crate) mod failures;
+    pub(crate) mod retries;
+    pub(crate) mod server;
+}
 
 use meetcal::utils::access::Access;
 use meetcal::utils::backend::{
     Endpoint, USER_AGENT, call_function, queries, query_all_pages_from, query_from,
 };
 use serde_json::{Value, json};
-use support::{
-    DROPPED, FUNCTION_FAILED, NOT_FOUND, OK, RATE_LIMITED, UNAVAILABLE, reply, request_bodies,
-    serve,
-};
+use support::bodies::request_bodies;
+use support::failures::FUNCTION_FAILED;
+use support::retries::{RATE_LIMITED, UNAVAILABLE};
+use support::server::{DROPPED, NOT_FOUND, OK, reply, serve};
 
 async fn fetch(base_url: &str) -> anyhow::Result<Value> {
     query_from(

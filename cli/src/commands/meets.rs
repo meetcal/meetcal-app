@@ -47,12 +47,12 @@ pub async fn run(args: MeetsArgs) -> Result<()> {
     Ok(())
 }
 
-pub fn report(meets: &[Meet]) -> Report {
+pub(crate) fn report(meets: &[Meet]) -> Report {
     Report::new().table_with_data("meets", table(meets), data(meets))
 }
 
 /// The meets as shown: a date range for reading.
-pub fn table(meets: &[Meet]) -> Table {
+pub(crate) fn table(meets: &[Meet]) -> Table {
     let mut table = Table::new();
     table.set_header(vec!["Meet", "Dates", "Location", "Status"]);
     for meet in meets {
@@ -67,7 +67,7 @@ pub fn table(meets: &[Meet]) -> Table {
 }
 
 /// The meets as exported: the first and last day, `YYYY-MM-DD`.
-pub fn data(meets: &[Meet]) -> Table {
+pub(crate) fn data(meets: &[Meet]) -> Table {
     let mut table = Table::new();
     table.set_header(vec!["Meet", "Start Date", "End Date", "Location", "Status"]);
     for meet in meets {
@@ -83,7 +83,7 @@ pub fn data(meets: &[Meet]) -> Table {
 }
 
 /// The meets whose name contains `search`, ignoring case; all of them without one.
-pub fn matching(meets: Vec<Meet>, search: Option<&str>) -> Vec<Meet> {
+pub(crate) fn matching(meets: Vec<Meet>, search: Option<&str>) -> Vec<Meet> {
     let Some(search) = search.map(str::trim).filter(|search| !search.is_empty()) else {
         return meets;
     };
@@ -95,7 +95,7 @@ pub fn matching(meets: Vec<Meet>, search: Option<&str>) -> Vec<Meet> {
 }
 
 /// `City, ST`, or whichever of the two the meet has.
-pub fn location(meet: &Meet) -> String {
+pub(crate) fn location(meet: &Meet) -> String {
     [meet.venue_city.trim(), meet.venue_state.trim()]
         .into_iter()
         .filter(|part| !part.is_empty())

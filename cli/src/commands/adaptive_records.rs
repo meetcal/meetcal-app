@@ -29,7 +29,7 @@ pub async fn run(args: AdaptiveArgs) -> Result<()> {
     Ok(())
 }
 
-pub fn report(records: &[AdaptiveRecord]) -> Report {
+pub(crate) fn report(records: &[AdaptiveRecord]) -> Report {
     let header = vec!["Weight Class", "Snatch", "CJ", "Total"];
     let mut table = Table::new();
     table.set_header(header.clone());

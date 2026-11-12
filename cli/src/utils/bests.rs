@@ -11,15 +11,15 @@ use crate::utils::backend::{queries, query_each};
 use crate::utils::format::kg;
 
 /// How far back "year bests" look, as in the app.
-pub const YEAR_BESTS_YEARS: i32 = 1;
+pub(crate) const YEAR_BESTS_YEARS: i32 = 1;
 
-pub const NAMES_PER_BESTS_READ: usize = 100;
+pub(crate) const NAMES_PER_BESTS_READ: usize = 100;
 
 /// The date `years` before `today`, as the app computes it (29 February falls to 1 March).
 ///
 /// Callers pass today's UTC date, not the user's: the app's start list computes its cutoff in
 /// UTC (`getHistoryCutoffDate`), and the CLI's past-year bests must be the same numbers.
-pub fn cutoff_date(today: NaiveDate, years: i32) -> String {
+pub(crate) fn cutoff_date(today: NaiveDate, years: i32) -> String {
     let year = today.year() - years;
     today
         .with_year(year)
@@ -29,7 +29,7 @@ pub fn cutoff_date(today: NaiveDate, years: i32) -> String {
         .to_string()
 }
 
-pub async fn year_bests(names: &[String]) -> Result<HashMap<String, NamedBests>> {
+pub(crate) async fn year_bests(names: &[String]) -> Result<HashMap<String, NamedBests>> {
     let cutoff = cutoff_date(Utc::now().date_naive(), YEAR_BESTS_YEARS);
     let batches = names
         .chunks(NAMES_PER_BESTS_READ)
@@ -45,7 +45,7 @@ pub async fn year_bests(names: &[String]) -> Result<HashMap<String, NamedBests>>
 }
 
 /// `95 / 120 / 215`, blank lifts left blank; empty when there is nothing.
-pub fn bests_cell(bests: Option<&NamedBests>) -> String {
+pub(crate) fn bests_cell(bests: Option<&NamedBests>) -> String {
     match bests {
         Some(bests) if bests.best_total > 0.0 || bests.best_snatch > 0.0 || bests.best_cj > 0.0 => {
             format!(

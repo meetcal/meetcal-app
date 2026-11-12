@@ -50,28 +50,28 @@ pub fn set_format(format: Format) {
     let _ = FORMAT.set(format);
 }
 
-pub fn format() -> Format {
+pub(crate) fn format() -> Format {
     FORMAT.get().copied().unwrap_or_default()
 }
 
 /// One table of a report.
-pub struct Section {
+pub(crate) struct Section {
     /// The table's key in JSON and CSV (snake_case).
-    pub key: String,
+    pub(crate) key: String,
     /// A line printed above the table in table format.
-    pub heading: Option<String>,
+    pub(crate) heading: Option<String>,
     /// What table format shows.
-    pub table: Table,
+    pub(crate) table: Table,
     /// What JSON and CSV export instead of `table`, when the display packs several values into
     /// one cell (a record's holder under its weight) or shows dates for reading.
-    pub data: Option<Table>,
+    pub(crate) data: Option<Table>,
     /// When table format shows the table; JSON and CSV always carry it.
-    pub shown: Shown,
+    pub(crate) shown: Shown,
 }
 
 /// When table format shows a section.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Shown {
+pub(crate) enum Shown {
     Always,
     /// Only when it has rows.
     WithRows,
@@ -81,43 +81,43 @@ pub enum Shown {
 
 /// A command's output: an optional title and its tables.
 #[derive(Default)]
-pub struct Report {
-    pub title: Option<String>,
-    pub sections: Vec<Section>,
+pub(crate) struct Report {
+    pub(crate) title: Option<String>,
+    pub(crate) sections: Vec<Section>,
     /// Printed instead of the tables in table format when there are no rows to show.
-    pub empty_message: Option<String>,
+    pub(crate) empty_message: Option<String>,
 }
 
 impl Report {
-    pub fn new() -> Self {
+    pub(crate) fn new() -> Self {
         Self::default()
     }
 
     /// A report of one table.
-    pub fn single(key: &str, table: Table) -> Self {
+    pub(crate) fn single(key: &str, table: Table) -> Self {
         Self::new().table(key, table)
     }
 
-    pub fn titled(mut self, title: impl Into<String>) -> Self {
+    pub(crate) fn titled(mut self, title: impl Into<String>) -> Self {
         self.title = Some(title.into());
         self
     }
 
-    pub fn table(self, key: &str, table: Table) -> Self {
+    pub(crate) fn table(self, key: &str, table: Table) -> Self {
         self.section(key, None, table, None, Shown::Always)
     }
 
-    pub fn headed(self, key: &str, heading: impl Into<String>, table: Table) -> Self {
+    pub(crate) fn headed(self, key: &str, heading: impl Into<String>, table: Table) -> Self {
         self.section(key, Some(heading.into()), table, None, Shown::Always)
     }
 
     /// A table shown as `table` but exported as `data`.
-    pub fn table_with_data(self, key: &str, table: Table, data: Table) -> Self {
+    pub(crate) fn table_with_data(self, key: &str, table: Table, data: Table) -> Self {
         self.section(key, None, table, Some(data), Shown::Always)
     }
 
     /// A headed table shown as `table` but exported as `data`.
-    pub fn headed_with_data(
+    pub(crate) fn headed_with_data(
         self,
         key: &str,
         heading: impl Into<String>,
@@ -129,12 +129,12 @@ impl Report {
 
     /// A headed table that table format shows only when it has rows; JSON and CSV always carry
     /// it, so a script finds the key whatever the data.
-    pub fn headed_if_any(self, key: &str, heading: impl Into<String>, table: Table) -> Self {
+    pub(crate) fn headed_if_any(self, key: &str, heading: impl Into<String>, table: Table) -> Self {
         self.section(key, Some(heading.into()), table, None, Shown::WithRows)
     }
 
     /// A table that only JSON and CSV carry, for a key they must always have.
-    pub fn exported(self, key: &str, table: Table) -> Self {
+    pub(crate) fn exported(self, key: &str, table: Table) -> Self {
         self.section(key, None, table, None, Shown::Never)
     }
 
@@ -159,7 +159,7 @@ impl Report {
         self
     }
 
-    pub fn when_empty(mut self, message: impl Into<String>) -> Self {
+    pub(crate) fn when_empty(mut self, message: impl Into<String>) -> Self {
         self.empty_message = Some(message.into());
         self
     }
@@ -171,7 +171,7 @@ impl Report {
     }
 
     /// The report as table format prints it.
-    pub fn to_text(&self) -> String {
+    pub(crate) fn to_text(&self) -> String {
         if let (true, Some(message)) = (self.is_empty(), &self.empty_message) {
             return message.clone();
         }
@@ -192,7 +192,8 @@ impl Report {
         parts.join("\n")
     }
 
-    pub fn export_keys(&self) -> std::collections::BTreeMap<String, Vec<String>> {
+    #[cfg(test)]
+    pub(crate) fn export_keys(&self) -> std::collections::BTreeMap<String, Vec<String>> {
         self.sections
             .iter()
             .map(|section| (section.key.clone(), headers(export_table(section))))
@@ -200,9 +201,9 @@ impl Report {
     }
 
     /// The report as JSON: one table's rows, or an object of each table's rows.
-    pub fn to_json(&self) -> Value {
-        if self.sections.len() == 1 {
-            return Value::Array(rows(export_table(&self.sections[0])));
+    pub(crate) fn to_json(&self) -> Value {
+        if let [only_table] = self.sections.as_slice() {
+            return Value::Array(rows(export_table(only_table)));
         }
         let mut object = Map::new();
         for section in &self.sections {
@@ -215,7 +216,7 @@ impl Report {
     }
 
     /// The report as CSV.
-    pub fn to_csv(&self) -> String {
+    pub(crate) fn to_csv(&self) -> String {
         let several = self.sections.len() > 1;
         self.sections
             .iter()
@@ -237,7 +238,7 @@ impl Report {
 /// A reader that stops early (`meetcal leaderboard | head`, quitting `less`) closes the pipe; the
 /// run then ends quietly with status 0, as other command line tools do, instead of panicking
 /// in `println!`. Any other failure to write ends it with status 1.
-pub fn emit(report: Report) {
+pub(crate) fn emit(report: Report) {
     let mut stdout = io::stdout().lock();
     let written = write(&mut stdout, &report, format()).and_then(|()| stdout.flush());
     if let Err(error) = written {
@@ -250,7 +251,7 @@ pub fn emit(report: Report) {
 }
 
 /// Writes `report` to `out` in `format`.
-pub fn write(out: &mut impl Write, report: &Report, format: Format) -> io::Result<()> {
+pub(crate) fn write(out: &mut impl Write, report: &Report, format: Format) -> io::Result<()> {
     match format {
         Format::Table => writeln!(out, "{}", report.to_text()),
         Format::Json => writeln!(
@@ -263,7 +264,7 @@ pub fn write(out: &mut impl Write, report: &Report, format: Format) -> io::Resul
 }
 
 /// A one-column table of `values` under `header`, for plain lists (club names, WSOs).
-pub fn list(header: &str, values: impl IntoIterator<Item = impl Into<String>>) -> Table {
+pub(crate) fn list(header: &str, values: impl IntoIterator<Item = impl Into<String>>) -> Table {
     let mut table = Table::new();
     table.set_header(vec![header]);
     for value in values {
@@ -316,10 +317,11 @@ fn rows(table: &Table) -> Vec<Value> {
 
 fn export_value(name: &str, cell: &str) -> Value {
     let holds_weight_classes = name.contains("class");
-    match value(cell) {
-        Value::Null => Value::Null,
-        _ if holds_weight_classes => text_value(cell),
-        exported => exported,
+    let exported = value(cell);
+    if holds_weight_classes && !exported.is_null() {
+        text_value(cell)
+    } else {
+        exported
     }
 }
 
@@ -351,7 +353,9 @@ fn csv_value(name: &str, cell: &str) -> String {
     match export_value(name, cell) {
         Value::Null => String::new(),
         Value::String(text) => text,
-        other => other.to_string(),
+        other @ (Value::Bool(_) | Value::Number(_) | Value::Array(_) | Value::Object(_)) => {
+            other.to_string()
+        }
     }
 }
 
@@ -382,7 +386,7 @@ fn without_parenthesised_notes(header: &str) -> String {
         .collect()
 }
 
-pub fn key(header: &str) -> String {
+pub(crate) fn key(header: &str) -> String {
     let mut key = String::new();
     for c in without_parenthesised_notes(header).chars() {
         if c == '&' {
@@ -407,7 +411,7 @@ fn text_value(cell: &str) -> Value {
     }
 }
 
-pub fn value(cell: &str) -> Value {
+pub(crate) fn value(cell: &str) -> Value {
     let text = cell.trim();
     if text.is_empty() || text.eq_ignore_ascii_case("n/a") || matches!(text, "—" | "–" | "-" | "?")
     {

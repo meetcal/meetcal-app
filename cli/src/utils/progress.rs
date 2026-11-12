@@ -8,7 +8,7 @@ const CLEAR_LINE: &str = "\r\x1b[2K";
 
 /// A counter rewritten in place on one line. Dropping it clears the line, however the read
 /// ends: an error returned with `?` then prints on a clean line, not glued to the counter.
-pub struct Progress {
+pub(crate) struct Progress {
     label: &'static str,
     out: Option<Box<dyn Write>>,
     written: bool,
@@ -17,7 +17,7 @@ pub struct Progress {
 impl Progress {
     /// A counter on stderr, or one that prints nothing when stderr is not a terminal (piped,
     /// redirected, or a script's).
-    pub fn new(label: &'static str) -> Self {
+    pub(crate) fn new(label: &'static str) -> Self {
         let out: Option<Box<dyn Write>> = std::io::stderr()
             .is_terminal()
             .then(|| Box::new(std::io::stderr()) as Box<dyn Write>);
@@ -25,7 +25,7 @@ impl Progress {
     }
 
     /// A counter writing to `out` (`None` prints nothing).
-    pub fn to(label: &'static str, out: Option<Box<dyn Write>>) -> Self {
+    pub(crate) fn to(label: &'static str, out: Option<Box<dyn Write>>) -> Self {
         Self {
             label,
             out,
@@ -34,7 +34,7 @@ impl Progress {
     }
 
     /// Shows `label… status` in place of the last status.
-    pub fn update(&mut self, status: impl std::fmt::Display) {
+    pub(crate) fn update(&mut self, status: impl std::fmt::Display) {
         if let Some(out) = self.out.as_mut() {
             let _ = write!(out, "\r{}… {status}", self.label);
             let _ = out.flush();
