@@ -7,7 +7,6 @@ import { compareBytes } from './sort';
 import { apiError, isValidIsoDate } from './validation';
 
 export type LeaderboardMetric = 'total' | 'snatch' | 'cj' | 'sinclair' | 'qpoints';
-export type { Gender };
 
 /** The rows a leaderboard shows when the caller does not say. */
 export const DEFAULT_LEADERBOARD_LIMIT = 50;
@@ -136,11 +135,6 @@ export function normalizeCategory(value: string): string | null {
 }
 
 export const CATEGORIES = 'Senior, Junior, U17 (or Youth), U15, U13, U11, or Masters 30 … Masters 95';
-
-export const MAX_SNATCH = LEADERBOARD_GUARD.ceiling.snatch;
-export const MAX_CJ = LEADERBOARD_GUARD.ceiling.cj;
-export const MAX_TOTAL = LEADERBOARD_GUARD.ceiling.total;
-export const MAX_ATTEMPT_JUMP = LEADERBOARD_GUARD.jumpRatio;
 
 /** The numbers of a row the guards and scores read. */
 export type RankedFields = Pick<

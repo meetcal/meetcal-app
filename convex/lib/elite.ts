@@ -1,4 +1,5 @@
-import { type Gender, MAX_LEADERBOARD_YEARS, parseDivision, plausible, qpoints, type RankedFields, sinclair } from './leaderboard';
+import { MAX_LEADERBOARD_YEARS, parseDivision, plausible, qpoints, type RankedFields, sinclair } from './leaderboard';
+import type { Gender } from './gender';
 import { plusYears } from './dates';
 import { genderOfWord } from './gender';
 import { normalizeName } from './names';
@@ -7,7 +8,6 @@ import { compareBytes } from './sort';
 import { classLimit } from './weightClass';
 import { apiError, isValidIsoDate, requireNonEmpty } from './validation';
 
-export { classLimit };
 
 /**
  * A WSO's elite lists (`results:wsoElite`): the WSO's top men and women
