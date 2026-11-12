@@ -15,7 +15,7 @@ beforeEach(() => {
     return id;
   });
   jest.spyOn(global, "cancelAnimationFrame").mockImplementation((id) => {
-    queued.delete(id);
+    if (typeof id === "number") queued.delete(id);
   });
 });
 
