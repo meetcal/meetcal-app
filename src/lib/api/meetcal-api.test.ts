@@ -1896,7 +1896,7 @@ describe('conditional reads for reference data', () => {
     ...overrides,
   });
 
-  it('answers a bodiless reply with the rows validated when the etag was stored', async () => {
+  it('answers a bodiless reply with the stored rows, checked again', async () => {
     const { sentTag } = queueTransport([
       { etag: '"r1"', body: [recordRow()] },
       { etag: '"r1"' },
@@ -1907,7 +1907,7 @@ describe('conditional reads for reference data', () => {
 
     expect(sentTag(0)).toBeUndefined();
     expect(sentTag(1)).toBe('"r1"');
-    expect(second).toBe(first);
+    expect(second).toEqual(first);
     expect(second).toEqual([recordRow()]);
   });
 

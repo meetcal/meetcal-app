@@ -20,7 +20,6 @@ import {
   HTTP_VALIDATOR_CACHE_LIMIT,
   usableEtag,
   ValidatorCache,
-  type ValidatorEntry,
 } from '@/lib/api/http-cache';
 import { accessPassFor, wantsAccessPass, type AccessPass } from '@/lib/api/premium-queries';
 import { callApi, TransportRequestError, type ApiCall } from '@/lib/api/transport';
@@ -338,9 +337,9 @@ function stableKey(fn: string, args: Record<string, unknown>): string {
 /**
  * Conditional read for the queries that tag their answers (see
  * `convex/lib/etag.ts`). Sends the tag last stored for these exact arguments
- * as `ifNoneMatch`; an answer without a body resolves to the value `validate`
- * accepted when that tag was stored, so shape checks never get skipped, only
- * repeated work and bytes on the wire.
+ * as `ifNoneMatch`; an answer without a body resolves to the body stored with
+ * that tag, run through `validate` again, so a remembered body is checked on
+ * every read and no caller gets a value it did not check.
  *
  * The remembered entry is read once, before the request, so an eviction while
  * the request is in flight cannot strand a bodiless answer; if a concurrent
@@ -368,23 +367,17 @@ async function getRevalidated<T>(
   const key = stableKey(fn, keyArgs);
   revalidationsStarted += 1;
   const started = revalidationsStarted;
-  const held = validatorCache.get(key) as ValidatorEntry<T> | undefined;
+  const held = validatorCache.get(key);
   const call = (ifNoneMatch: string | undefined): Promise<unknown> =>
     request({ path, fn, kind: 'query', args: { ...args, ifNoneMatch }, conditional: true });
   let answer = readConditional(await call(held?.etag), path);
 
   if (!answer.hasBody) {
     if (held && (answer.etag == null || answer.etag === held.etag)) {
-      const current = validatorCache.get(key) as ValidatorEntry<T> | undefined;
-      if (current && current !== held) {
-        // A concurrent request stored a newer body while this one was in
-        // flight; this answer only vouches for the older tag, so never
-        // publish the superseded value over it.
-        return current.value;
-      }
-      // Refreshes recency, and dates the entry to this confirmation.
+      const current = validatorCache.get(key);
+      if (current && current !== held) return validate(current.body);
       if (current === held) validatorCache.set(key, { ...held, started });
-      return held.value;
+      return validate(held.body);
     }
     validatorCache.delete(key);
     answer = readConditional(await call(undefined), path);
@@ -392,11 +385,11 @@ async function getRevalidated<T>(
   }
 
   const value = validate(answer.body);
-  const current = validatorCache.get(key) as ValidatorEntry<T> | undefined;
-  if (current && (current.started ?? 0) > started) return current.value;
+  const current = validatorCache.get(key);
+  if (current && (current.started ?? 0) > started) return validate(current.body);
   const etag = usableEtag(answer.etag);
   if (etag) {
-    validatorCache.set(key, { etag, value, started });
+    validatorCache.set(key, { etag, body: answer.body, started });
   } else {
     validatorCache.delete(key);
   }
