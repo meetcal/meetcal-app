@@ -33,3 +33,8 @@ expect_used = "deny"
 indexing_slicing = "deny"
 panic = "deny"
 wildcard_enum_match_arm = "deny"
+
+[profile.release]
+strip = true
+lto = true
+codegen-units = 1
