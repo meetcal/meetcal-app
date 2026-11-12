@@ -1,5 +1,5 @@
 import { clearHttpValidatorCache } from './revalidated-reads';
-import { fetchApiAthletesWithSession } from './meets-api';
+import { fetchApiAthletesWithSession, fetchApiRosterTagged } from './meets-api';
 import { setApiTransportForTests, type ApiCall } from './transport';
 import type { MeetName } from '@/data/types/meet';
 
@@ -49,5 +49,29 @@ describe('the meet roster read', () => {
   it('rejects a roster that is not a list', async () => {
     server(() => ({ json: JSON.stringify({ rows: [] }) }));
     await expect(fetchApiAthletesWithSession(MEET)).rejects.toThrow('/meets/athletes-sessions expected an array response');
+  });
+});
+
+describe('the roster read against a tag held on disk', () => {
+  it('sends the stored tag after a restart and hears that the stored roster is current', async () => {
+    const calls = server((call) => (call.args.ifNoneMatch === '"r1"' ? { etag: '"r1"' } : { etag: '"r1"', json: JSON.stringify(roster) }));
+    await expect(fetchApiRosterTagged(MEET, '"r1"')).resolves.toEqual({ status: 'unchanged', tag: '"r1"' });
+    expect(calls[0].args).toMatchObject({ meet: MEET, ifNoneMatch: '"r1"' });
+  });
+
+  it('answers a changed roster in full with its new tag', async () => {
+    server(() => ({ etag: '"r2"', json: JSON.stringify(roster) }));
+    const answer = await fetchApiRosterTagged(MEET, '"r1"');
+    expect(answer.status).toBe('fresh');
+    if (answer.status !== 'fresh') return;
+    expect(answer.tag).toBe('"r2"');
+    expect(answer.value.map((athlete) => athlete.name)).toEqual(['A Lifter']);
+  });
+
+  it('asks again without a tag when a bodiless answer names another tag', async () => {
+    const calls = server((call) => (call.args.ifNoneMatch ? { etag: '"other"' } : { etag: '"r2"', json: JSON.stringify(roster) }));
+    await expect(fetchApiRosterTagged(MEET, '"r1"')).resolves.toMatchObject({ status: 'fresh', tag: '"r2"' });
+    expect(calls).toHaveLength(2);
+    expect(calls[1].args.ifNoneMatch).toBeUndefined();
   });
 });
