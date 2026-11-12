@@ -586,7 +586,8 @@ fn place_of(key: &LiftKey, group: &[LiftKey]) -> Option<usize> {
     Some(group.iter().filter(|other| ranks_ahead(other, key)).count() + 1)
 }
 
-pub fn render_report(
+#[cfg(test)]
+fn render_report(
     wso: &str,
     meet: &str,
     total_athletes: usize,
