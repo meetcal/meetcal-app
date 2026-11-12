@@ -80,7 +80,6 @@ export function requirePresentIsoDate(field: string, value: string | undefined):
 export const MAX_NAME_LIST_LEN = 100;
 export const MAX_NAME_LEN = 400;
 
-/** `require_name_list`: a first name, at most 100 names, each at most 400 bytes. */
 export function requireTextList(field: string, values: readonly string[], maxItems: number): void {
   if (values.length === 0) throw apiError(400, `${field} is required`);
   if (values.length > maxItems) throw apiError(400, `${field} exceeds the ${maxItems}-item limit`);

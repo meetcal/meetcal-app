@@ -299,7 +299,6 @@ export const wsoElite = action({
   },
 });
 
-/** `GET /lifting-results`: a meet's results, by name. Answers `{ json }`. */
 export const byMeet = premiumQuery('results:byMeet', {
   args: { meet: v.string(), ifNoneMatch: v.optional(v.string()) },
   handler: async (ctx, { meet, ifNoneMatch }) => {
@@ -496,11 +495,6 @@ export const yearBests = premiumQuery('results:yearBests', {
   },
 });
 
-/**
- * `POST /lifting-results/bests`: bests since `cutoffDate` for each requested
- * spelling (unknown names get zeros), as a list in byte order of name; see
- * `NamedBests` for why not a name-keyed map.
- */
 export const bests = premiumQuery('results:bests', {
   args: { names: v.array(v.string()), cutoffDate: v.optional(v.string()), latestWhenEmpty: v.optional(v.boolean()) },
   handler: async (ctx, args): Promise<NamedBests[] | NamedBestsOrLatest[]> => {
