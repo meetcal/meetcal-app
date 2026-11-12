@@ -168,13 +168,6 @@ describe('meet lifting results under storage chaos', () => {
     );
   });
 
-  // Regression: a rewrite used to keep whatever bytes its first read returned
-  // and, on failure, write them back over the good manifest it never touched
-  // (seed 494037883: the manifest read as `""`, then the `multiSet` was
-  // rejected, and the meet read as no results). The unparseable read also
-  // picked generation 0, so the new chunks overwrote the live ones before the
-  // commit point. Now only a payload that parsed as a manifest is restored,
-  // and an unreadable one takes its generation from a key listing.
   it('a corrupted read during a failed rewrite does not cost the previous copy', async () => {
     await fc.assert(
       fc.asyncProperty(
@@ -192,11 +185,10 @@ describe('meet lifting results under storage chaos', () => {
   });
 
   // The shrunk counterexample of the regression above.
-  it('keeps the previous copy when the manifest reads corrupt and the multiSet is rejected', async () => {
+  it('keeps the previous copy when the manifest reads corrupt and the setMany is rejected', async () => {
     const previous = [{ ...bulkyLiftResults(1, 1)[0], name: 'Previous Lifter' }];
     const next = [{ ...bulkyLiftResults(2, 1)[0], name: 'Next Lifter' }];
     await saveMeetLiftingResults(MEET, previous);
-    // The manifest read, the key listing, the listed chunks' read, the rejected multiSet.
     await underChaos([{ kind: 'corrupt-read', value: '' }, { kind: 'pass' }, { kind: 'pass' }, { kind: 'reject' }], () =>
       saveMeetLiftingResults(MEET, next).catch(() => undefined),
     );
@@ -210,13 +202,20 @@ describe('meet lifting results under storage chaos', () => {
     // The manifest reads as `[]` (a legacy row array), the listed chunks read
     // fine, the commit lands, and the read-back that would confirm it is
     // rejected.
-    const multiGet = AsyncStorage.multiGet as jest.Mock;
-    const realMultiGet = multiGet.getMockImplementation() as (keys: string[]) => Promise<[string, string | null][]>;
-    multiGet
+    const getMany = AsyncStorage.getMany as jest.Mock;
+    const realGetMany = getMany.getMockImplementation() as (
+      keys: string[],
+    ) => Promise<Record<string, string | null>>;
+    getMany
       .mockImplementationOnce(async (keys: string[]) =>
-        (await realMultiGet(keys)).map(([key, value]) => [key, value === null ? null : '[]']),
+        Object.fromEntries(
+          Object.entries(await realGetMany(keys)).map(([key, value]) => [
+            key,
+            value === null ? null : '[]',
+          ]),
+        ),
       )
-      .mockImplementationOnce(realMultiGet)
+      .mockImplementationOnce(realGetMany)
       .mockImplementationOnce(async () => {
         throw new Error('chaos: storage unavailable');
       });
@@ -237,10 +236,14 @@ describe('meet lifting results under storage chaos', () => {
 
     // The manifest reads unparseable, then the process dies once the chunks
     // are down: the live generation-0 chunk must be untouched.
-    const multiSet = AsyncStorage.multiSet as jest.Mock;
-    const realMultiSet = multiSet.getMockImplementation() as (pairs: [string, string][]) => Promise<null>;
-    multiSet.mockImplementationOnce(async (pairs: [string, string][]) => {
-      await realMultiSet(pairs.filter(([key]) => key.includes('__chunk_')));
+    const setMany = AsyncStorage.setMany as jest.Mock;
+    const realSetMany = setMany.getMockImplementation() as (
+      entries: Record<string, string>,
+    ) => Promise<void>;
+    setMany.mockImplementationOnce(async (entries: Record<string, string>) => {
+      await realSetMany(
+        Object.fromEntries(Object.entries(entries).filter(([key]) => key.includes('__chunk_'))),
+      );
       return new Promise(() => {});
     });
     void underChaos([{ kind: 'corrupt-read', value: 'not json' }], () => saveMeetLiftingResults(MEET, next));
@@ -260,8 +263,10 @@ describe('meet lifting results under storage chaos', () => {
   });
 
   it('a crash part-way through the chunk writes leaves the previous copy readable', async () => {
-    const multiSet = AsyncStorage.multiSet as jest.Mock;
-    const realMultiSet = multiSet.getMockImplementation() as (pairs: [string, string][]) => Promise<null>;
+    const setMany = AsyncStorage.setMany as jest.Mock;
+    const realSetMany = setMany.getMockImplementation() as (
+      entries: Record<string, string>,
+    ) => Promise<void>;
 
     await fc.assert(
       fc.asyncProperty(
@@ -275,14 +280,13 @@ describe('meet lifting results under storage chaos', () => {
           const { getMeetLiftingResults, saveMeetLiftingResults } = restartedStore();
           if (previous) await saveMeetLiftingResults(MEET, previous);
 
-          // The data `multiSet` persists its first `crashAfter` pairs and the
-          // process dies: the promise never settles, nothing after it runs.
           let total = 0;
           let persisted = 0;
-          multiSet.mockImplementationOnce(async (pairs: [string, string][]) => {
+          setMany.mockImplementationOnce(async (entries: Record<string, string>) => {
+            const pairs = Object.entries(entries);
             total = pairs.length;
             persisted = Math.min(crashAfter % (pairs.length + 1), pairs.length);
-            await realMultiSet(pairs.slice(0, persisted));
+            await realSetMany(Object.fromEntries(pairs.slice(0, persisted)));
             return new Promise(() => {});
           });
           let settled = false;
@@ -294,8 +298,8 @@ describe('meet lifting results under storage chaos', () => {
           }
           if (total === 0) {
             // Nothing to write: the stored bytes already matched.
-            multiSet.mockReset();
-            multiSet.mockImplementation(realMultiSet);
+            setMany.mockReset();
+            setMany.mockImplementation(realSetMany);
             expect(settled).toBe(true);
             expect(await getMeetLiftingResults(MEET)).toEqual(next);
             return;
@@ -315,10 +319,12 @@ describe('meet lifting results under storage chaos', () => {
     const previous = bulkyLiftResults(3, 900);
     const next = bulkyLiftResults(5, 900);
     await saveMeetLiftingResults(MEET, previous);
-    const multiSet = AsyncStorage.multiSet as jest.Mock;
-    const realMultiSet = multiSet.getMockImplementation() as (pairs: [string, string][]) => Promise<null>;
-    multiSet.mockImplementationOnce(async (pairs: [string, string][]) => {
-      await realMultiSet(pairs.slice(0, 1));
+    const setMany = AsyncStorage.setMany as jest.Mock;
+    const realSetMany = setMany.getMockImplementation() as (
+      entries: Record<string, string>,
+    ) => Promise<void>;
+    setMany.mockImplementationOnce(async (entries: Record<string, string>) => {
+      await realSetMany(Object.fromEntries(Object.entries(entries).slice(0, 1)));
       return new Promise(() => {});
     });
     void saveMeetLiftingResults(MEET, next);
@@ -364,7 +370,6 @@ describe('athlete history batches under storage chaos', () => {
             if (!isNext) sawPrevious = true;
             if (!isPrevious) sawNext = true;
           }
-          // The batch commits together: one multiSet carries every manifest.
           expect(sawPrevious && sawNext).toBe(false);
         },
       ),
