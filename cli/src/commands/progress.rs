@@ -6,7 +6,7 @@ use comfy_table::Table;
 
 use crate::types::lifting_results::LiftingResults;
 use crate::utils::athletes::history;
-use crate::utils::format::us_date;
+use crate::utils::format::{display_body_weight, us_date};
 use crate::utils::output::{self, Report};
 use crate::utils::stats::{
     Lift, QPOINTS_LABEL, SINCLAIR_LABEL, attempt_habits, bombed_out, chronological, fold, number,
@@ -76,7 +76,7 @@ pub(crate) fn report(name: &str, rows: &[LiftingResults], since: Option<i32>) ->
         let cells = vec![
             row.meet.clone(),
             row.age.clone(),
-            number(row.body_weight),
+            display_body_weight(row.body_weight),
             number(row.snatch_best),
             number(row.cj_best),
             number(row.total),
@@ -260,6 +260,25 @@ mod tests {
         let text = report.to_text();
         assert!(text.contains("Mar 1, 2025"));
         assert!(text.contains("0 of 1"));
+    }
+
+    #[test]
+    fn a_meet_without_a_recorded_body_weight_shows_a_dash() {
+        let rows = vec![row(
+            "Ada",
+            "2024-03-01",
+            "M1",
+            "Open Women's 64kg",
+            0.0,
+            [80.0, 85.0, -88.0],
+            [100.0, 105.0, 0.0],
+        )];
+        let report = report("Ada", &rows, None);
+        assert_eq!(
+            report.to_json()["results"][0]["bw"],
+            serde_json::Value::Null
+        );
+        assert!(report.to_text().contains("| —  "));
     }
 
     #[test]

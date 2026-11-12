@@ -4,7 +4,7 @@ use comfy_table::Table;
 
 use crate::types::club::ClubMeetStats;
 use crate::utils::backend::{queries, query};
-use crate::utils::format::capitalized;
+use crate::utils::format::{NO_VALUE, capitalized, display_body_weight, display_weight_class};
 use crate::utils::meet_names::result_meet_aliases;
 use crate::utils::names::{NameKind, clubs, not_found, not_found_message};
 use crate::utils::output::{self, Report};
@@ -215,8 +215,8 @@ pub(crate) fn report(group: &str, name: &str, meet: &str, stats: &ClubMeetStats)
         for result in &stats.athlete_results {
             athletes.add_row(vec![
                 result.name.clone(),
-                result.weight_class.clone(),
-                number(result.body_weight),
+                display_weight_class(&result.weight_class),
+                display_body_weight(result.body_weight),
                 number(result.snatch_best),
                 number(result.cj_best),
                 number(result.total),
@@ -239,7 +239,9 @@ fn yes_no(value: bool) -> String {
 }
 
 fn medal_name(medal: Option<&str>) -> String {
-    medal.map(capitalized).unwrap_or_else(|| "-".to_string())
+    medal
+        .map(capitalized)
+        .unwrap_or_else(|| NO_VALUE.to_string())
 }
 
 #[cfg(test)]
@@ -401,6 +403,22 @@ mod tests {
     }
 
     #[test]
+    fn athletes_show_the_class_with_its_unit_and_a_dash_for_an_unrecorded_body_weight() {
+        let mut unweighed = stats();
+        unweighed.athlete_results[0].body_weight = 0.0;
+        unweighed.athlete_results[0].weight_class = "+110".to_string();
+        unweighed.athlete_results.push(athlete_result());
+        let json = report("Club", "Test Club", "Test Meet", &unweighed).to_json();
+        assert_eq!(json["athletes"][0]["class"], "110+kg");
+        assert_eq!(json["athletes"][0]["bw"], serde_json::Value::Null);
+        assert_eq!(json["athletes"][1]["class"], "69kg");
+        assert_eq!(json["athletes"][1]["bw"], 68.4);
+        let text = render_report("Test Club", "Test Meet", &unweighed);
+        assert!(text.contains("| 110+kg "));
+        assert!(text.contains("| —  "));
+    }
+
+    #[test]
     fn a_wso_report_is_the_club_report_under_a_wso_column() {
         let club = report("Club", "Test Club", "Test Meet", &stats()).to_json();
         let wso = report("WSO", "Carolina", "Test Meet", &stats()).to_json();
@@ -433,7 +451,7 @@ mod tests {
 
     #[test]
     fn formats_missing_and_present_medals() {
-        assert_eq!(medal_name(None), "-");
+        assert_eq!(medal_name(None), NO_VALUE);
         assert_eq!(medal_name(Some("bronze")), "Bronze");
         assert_eq!(medal_name(Some("")), "");
     }

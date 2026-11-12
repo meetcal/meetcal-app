@@ -38,7 +38,7 @@ pub(crate) fn is_gender(row_gender: &str, wanted: Gender) -> bool {
 }
 
 pub(crate) fn gender_as_matched(row_gender: &str) -> &str {
-    Gender::parse(row_gender).map_or(row_gender, |gender| gender.label())
+    Gender::parse(row_gender).map_or(row_gender.trim(), |gender| gender.label())
 }
 
 pub(crate) const YEARS: std::ops::RangeInclusive<i32> = 1900..=9999;
@@ -180,6 +180,16 @@ mod tests {
     fn names_are_trimmed_and_must_not_be_blank() {
         assert_eq!(parse_name("  Carolina "), Ok("Carolina".to_string()));
         assert!(parse_name("   ").is_err());
+    }
+
+    #[test]
+    fn a_roster_gender_reads_women_or_men_as_on_the_website() {
+        assert_eq!(gender_as_matched("Female"), "Women");
+        assert_eq!(gender_as_matched("MALE"), "Men");
+        assert_eq!(gender_as_matched(" female "), "Women");
+        assert_eq!(gender_as_matched("Women"), "Women");
+        assert_eq!(gender_as_matched(" Mixed "), "Mixed");
+        assert_eq!(gender_as_matched(""), "");
     }
 
     #[test]

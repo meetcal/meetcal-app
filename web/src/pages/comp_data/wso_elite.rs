@@ -1,6 +1,6 @@
 use super::{
     address::{HistoryEntry, query_param, use_page_address},
-    format::{NO_VALUE, format_us_date},
+    format::{NO_VALUE, display_weight_class, format_us_date},
     loading::{Load, LoadState, load_error, load_query},
     ui::{DataMetric, DataPage, DataStatus, DataTable, EmptyTableRow, FilterSelect, TableSkeleton},
 };
@@ -491,15 +491,19 @@ const SCORE_NOT_IN_ANSWER: &str = "This score isn’t available for this list ri
 
 const COLUMNS: usize = 10;
 
+fn a_standard_cell(row: &EliteRow) -> String {
+    match (&row.weight_class, row.standard_a) {
+        (Some(class), Some(standard)) => format!("{standard} ({})", display_weight_class(class)),
+        _ => NO_VALUE.to_owned(),
+    }
+}
+
 fn elite_table(rows: &[EliteRow], method: Method) -> AnyView {
     let body = rows
         .iter()
         .zip(1..)
         .map(|(row, rank)| {
-            let standard = match (&row.weight_class, row.standard_a) {
-                (Some(class), Some(standard)) => format!("{standard} ({class})"),
-                _ => NO_VALUE.to_owned(),
-            };
+            let standard = a_standard_cell(row);
             view! {
                 <tr>
                     <td>{rank}</td>
@@ -662,6 +666,21 @@ mod tests {
             senior: only(Method::Sinclair, vec![row("Ada \"Lift\"", 251.236)]),
             masters: only(Method::Qmasters, vec![]),
         }
+    }
+
+    #[test]
+    fn the_a_standard_cell_shows_the_class_as_every_other_table_does() {
+        let mut open = row("Clair Callahan", 76.8);
+        open.weight_class = Some("+86kg".to_owned());
+        open.standard_a = Some(237.0);
+        assert_eq!(a_standard_cell(&open), "237 (86+kg)");
+        assert_eq!(a_standard_cell(&row("Ada", 100.0)), "200 (63kg)");
+        let mut unscored = row("Mahassen Paiva", 283.79);
+        unscored.weight_class = None;
+        assert_eq!(a_standard_cell(&unscored), NO_VALUE);
+        let mut no_standard = row("Bea", 90.0);
+        no_standard.standard_a = None;
+        assert_eq!(a_standard_cell(&no_standard), NO_VALUE);
     }
 
     #[test]

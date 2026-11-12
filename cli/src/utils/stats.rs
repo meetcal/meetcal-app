@@ -122,23 +122,26 @@ fn category(lower: &str) -> Option<String> {
     None
 }
 
-/// `89kg`, `+110kg`, `110+kg`, `110+` or `89` as `89` / `110+`; `None` for anything else.
 pub(crate) fn weight_class(value: &str) -> Option<String> {
-    let trimmed = value
-        .trim()
-        .trim_end_matches("kg")
-        .trim_end_matches("Kg")
+    let trimmed = value.trim();
+    let number = ["kg", "KG", "Kg"]
+        .into_iter()
+        .find_map(|unit| trimmed.strip_suffix(unit))
+        .unwrap_or(trimmed)
         .trim();
-    let plus = trimmed.starts_with('+') || trimmed.ends_with('+');
-    let number = trimmed.trim_matches('+');
-    if number.is_empty() || !number.chars().all(|c| c.is_ascii_digit() || c == '.') {
-        return None;
+    let (open, digits) = match (number.strip_prefix('+'), number.strip_suffix('+')) {
+        (Some(rest), _) | (None, Some(rest)) => (true, rest),
+        (None, None) => (false, number),
+    };
+    let is_class = digits.starts_with(|character: char| character.is_ascii_digit())
+        && digits
+            .chars()
+            .all(|character| character.is_ascii_digit() || character == '.');
+    match (is_class, open) {
+        (true, true) => Some(format!("{digits}+")),
+        (true, false) => Some(digits.to_string()),
+        (false, _) => None,
     }
-    Some(if plus {
-        format!("{number}+")
-    } else {
-        number.to_string()
-    })
 }
 
 /// Bodyweights outside this range are source errors (a handful of rows say 0.9 or 12 kg), not
@@ -579,6 +582,30 @@ pub(crate) mod tests {
         assert_eq!(weight_class("110+kg").as_deref(), Some("110+"));
         assert_eq!(weight_class("+110kg").as_deref(), Some("110+"));
         assert_eq!(weight_class("Open"), None);
+    }
+
+    #[test]
+    fn weight_classes_parse_as_the_website_reads_them() {
+        for (raw, class) in [
+            ("69", Some("69")),
+            ("86+", Some("86+")),
+            ("+86", Some("86+")),
+            ("110+", Some("110+")),
+            ("+110", Some("110+")),
+            ("71kg", Some("71")),
+            ("+86kg", Some("86+")),
+            ("86+kg", Some("86+")),
+            ("+110KG", Some("110+")),
+            ("45Kg", Some("45")),
+            (" 63 ", Some("63")),
+            ("+110+", None),
+            (".5", None),
+            ("69kgkg", None),
+            ("", None),
+            ("Open", None),
+        ] {
+            assert_eq!(weight_class(raw).as_deref(), class, "{raw:?}");
+        }
     }
 
     #[test]
