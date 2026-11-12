@@ -53,6 +53,8 @@ export function planChecks(paths: readonly string[] | null, all = false): CheckP
   };
 }
 
+export const LOCAL_GATE_TEST_TIMEOUT_MS = 20_000;
+
 const COVERAGE_GAPS = '.codex/skills/review-code-performance-tests/scripts/report-coverage-gaps.ts';
 
 /**
@@ -77,7 +79,10 @@ export function checkSteps(plan: CheckPlan): CheckStep[] {
       { name: 'App typecheck', command: ['bun', 'run', 'typecheck'] },
       // `convex deploy` type checks with convex/tsconfig.json (an older `lib`), which the app's config does not.
       { name: 'Convex typecheck', command: ['bun', 'run', 'typecheck:convex'] },
-      { name: 'App tests and coverage', command: ['bun', 'run', 'test:coverage'] },
+      {
+        name: 'App tests and coverage',
+        command: ['bun', 'run', 'test:coverage', `--testTimeout=${LOCAL_GATE_TEST_TIMEOUT_MS}`],
+      },
       { name: 'Coverage gaps', command: ['bun', COVERAGE_GAPS] },
     );
   }

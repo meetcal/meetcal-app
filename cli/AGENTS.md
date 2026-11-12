@@ -20,7 +20,7 @@ The repository root's `AGENTS.md` applies here too: its hard rules (worktrees, n
 | `src/utils/backend.rs` | The only data access: every Convex query the CLI reads (`queries::*`), the premium leaderboard action and the login's actions and mutation (`functions::*`), and the HTTP call |
 | `src/utils/access.rs` | The access pass premium reads carry: `PREMIUM_FUNCTIONS` and `PREMIUM_ACTIONS` (equal to `convex/lib/access.ts`'s lists), fetching the pass with the saved login, and what a refused read does |
 | `src/utils/credentials.rs`, `device_login.rs` | The saved login (`~/.config/meetcal/credentials.json`, 0600), and the device-code login's answers, polling policy and QR code; `src/commands/login.rs` runs `login` and `logout` |
-| `src/utils/retry.rs` | The retry policy for throttled and overloaded answers, free of I/O |
+| `src/utils/retry.rs` | The retry policy for throttled and overloaded answers and for requests that got no answer, free of I/O |
 | `src/utils/releases.rs`, `upgrade.rs`, `update_notice.rs` | `meetcal upgrade` and the daily new-release notice: the newest `cli-v*` release on GitHub, how this copy was installed and how to replace it (checked against the release's `SHA256SUMS`), and the notice's cache; `src/commands/upgrade.rs` runs `upgrade` |
 | `src/utils/output.rs` | How results print: tables, or `--format json` / `csv` from the same `Report` |
 | `src/utils/stats.rs` | Divisions, Sinclair (and its coefficients), attempt habits, PRs, source-error guards |

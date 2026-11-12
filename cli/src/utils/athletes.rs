@@ -7,7 +7,7 @@ use serde_json::json;
 
 use crate::types::lifting_results::LiftingResults;
 use crate::types::wrapped::SearchResponse;
-use crate::utils::backend::{queries, query};
+use crate::utils::backend::{queries, query, query_each};
 use crate::utils::names::{MAX_SUGGESTIONS, closest};
 use crate::utils::stats::fold;
 
@@ -84,12 +84,13 @@ async fn athlete_candidates(name: &str) -> Vec<String> {
     candidates
 }
 
-/// Every result of each of `names`, keyed by folded name. Names with no results are absent.
 pub async fn histories(names: &[String]) -> Result<HashMap<String, Vec<LiftingResults>>> {
+    let batches = names
+        .chunks(HISTORY_BATCH_SIZE)
+        .map(|batch| json!({ "names": batch }))
+        .collect();
     let mut by_name: HashMap<String, Vec<LiftingResults>> = HashMap::new();
-    for batch in names.chunks(HISTORY_BATCH_SIZE) {
-        let rows: Vec<LiftingResults> =
-            query(queries::RESULTS_BY_NAMES, &json!({ "names": batch })).await?;
+    for rows in query_each::<Vec<LiftingResults>>(queries::RESULTS_BY_NAMES, batches).await? {
         for row in rows {
             by_name.entry(fold(&row.name)).or_default().push(row);
         }
