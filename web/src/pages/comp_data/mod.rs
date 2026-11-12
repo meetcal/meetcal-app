@@ -16,6 +16,7 @@ pub mod national_rankings;
 pub mod qual_totals;
 pub mod rankings;
 pub mod records;
+pub(crate) mod reference_table;
 pub mod results;
 pub mod standards;
 pub(crate) mod ui;
