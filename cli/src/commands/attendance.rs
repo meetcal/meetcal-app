@@ -8,7 +8,7 @@ use serde_json::json;
 use tokio::task::JoinSet;
 
 use crate::types::lifting_results::LiftingResults;
-use crate::utils::backend::{queries, query};
+use crate::utils::backend::{FunctionError, queries, query};
 use crate::utils::format::{date_range, us_date};
 use crate::utils::meet_names::{editions_by_year, equivalent_meets};
 use crate::utils::names::{MAX_NAME_PAGES, just_before, meet_names_between};
@@ -173,13 +173,13 @@ pub async fn run(args: AttendanceArgs) -> Result<()> {
     }
 
     let mut editions: Vec<Edition> = Vec::new();
-    for batch in matched.chunks(ATTENDANCE_BATCH) {
-        let answered: Vec<Edition> =
-            query(queries::MEET_ATTENDANCE, &json!({ "meets": batch })).await?;
+    let answers = answers_for(&matched, |batch| async move {
+        query::<Vec<Edition>, _>(queries::MEET_ATTENDANCE, &json!({ "meets": batch })).await
+    })
+    .await?;
+    for answered in answers {
         for edition in answered {
             if edition.spans_years() {
-                // A name used every year: `meets:attendance` counts every year's results as one
-                // meet, so count each year from the results themselves.
                 let rows: Vec<LiftingResults> =
                     query(queries::MEET_RESULTS, &json!({ "meet": edition.meet })).await?;
                 editions.extend(split_by_year(&edition, rows));
@@ -190,6 +190,44 @@ pub async fn run(args: AttendanceArgs) -> Result<()> {
     }
     output::emit(report(&search, &editions));
     Ok(())
+}
+
+const TOO_MANY_ROWS_STATUS: u16 = 413;
+
+async fn answers_for<T, F, Fut>(meets: &[String], ask: F) -> Result<Vec<T>>
+where
+    F: Fn(Vec<String>) -> Fut,
+    Fut: std::future::Future<Output = Result<T>>,
+{
+    let mut answers = Vec::new();
+    let mut batches: Vec<&[String]> = meets.chunks(ATTENDANCE_BATCH).rev().collect();
+    while let Some(batch) = batches.pop() {
+        match ask(batch.to_vec()).await {
+            Ok(answer) => answers.push(answer),
+            Err(error) if too_many_rows(&error) => match batch {
+                [meet] => bail!(too_large_to_read(meet)),
+                _ => {
+                    let (first, second) = halves(batch);
+                    batches.push(second);
+                    batches.push(first);
+                }
+            },
+            Err(error) => return Err(error),
+        }
+    }
+    Ok(answers)
+}
+
+fn too_large_to_read(meet: &str) -> String {
+    format!("\"{meet}\" is too large to read in one request; try again later or report it.")
+}
+
+fn too_many_rows(error: &anyhow::Error) -> bool {
+    FunctionError::status_of(error) == Some(TOO_MANY_ROWS_STATUS)
+}
+
+fn halves(batch: &[String]) -> (&[String], &[String]) {
+    batch.split_at(batch.len().div_ceil(2))
 }
 
 impl Edition {
@@ -461,6 +499,76 @@ mod tests {
             &words("ohio wso"),
             &[]
         ));
+    }
+
+    fn refused(status: u16) -> anyhow::Error {
+        anyhow::Error::new(FunctionError {
+            function: "meets:attendance".to_owned(),
+            status: Some(status),
+            reason: "refused".to_owned(),
+        })
+    }
+
+    fn meets(count: usize) -> Vec<String> {
+        (1..=count).map(|n| format!("meet {n}")).collect()
+    }
+
+    #[tokio::test]
+    async fn a_batch_refused_as_too_many_rows_is_asked_for_in_halves_keeping_the_meets_in_order() {
+        let asked = std::cell::RefCell::new(Vec::new());
+        let answers = answers_for(&meets(10), |batch| {
+            asked.borrow_mut().push(batch.len());
+            async move {
+                if batch.len() > 2 {
+                    Err(refused(413))
+                } else {
+                    Ok(batch)
+                }
+            }
+        })
+        .await
+        .unwrap();
+        assert_eq!(*asked.borrow(), [8, 4, 2, 2, 4, 2, 2, 2]);
+        assert_eq!(answers.concat(), meets(10));
+    }
+
+    #[tokio::test]
+    async fn one_meet_too_large_to_count_is_an_error_not_an_endless_retry() {
+        let asked = std::cell::Cell::new(0);
+        let failure = answers_for(&meets(1), |_batch| {
+            asked.set(asked.get() + 1);
+            async { Err::<Vec<String>, _>(refused(413)) }
+        })
+        .await
+        .unwrap_err();
+        assert_eq!(asked.get(), 1);
+        assert_eq!(
+            failure.to_string(),
+            "\"meet 1\" is too large to read in one request; try again later or report it."
+        );
+    }
+
+    #[tokio::test]
+    async fn any_other_refusal_ends_the_run_without_a_retry() {
+        let asked = std::cell::Cell::new(0);
+        let failure = answers_for(&meets(8), |_batch| {
+            asked.set(asked.get() + 1);
+            async { Err::<Vec<String>, _>(refused(400)) }
+        })
+        .await
+        .unwrap_err();
+        assert_eq!(asked.get(), 1);
+        assert!(!too_many_rows(&failure));
+    }
+
+    #[test]
+    fn halves_put_the_odd_meet_in_the_first_half() {
+        let names: Vec<String> = (1..=5).map(|n| format!("meet {n}")).collect();
+        let (first, second) = halves(&names);
+        assert_eq!(first, &names[..3]);
+        assert_eq!(second, &names[3..]);
+        let (first, second) = halves(&names[..2]);
+        assert_eq!((first.len(), second.len()), (1, 1));
     }
 
     fn words(values: &[&str]) -> Vec<String> {
