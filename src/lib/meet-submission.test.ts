@@ -1,3 +1,6 @@
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+
 import * as server from '../../convex/lib/meetSubmissions';
 import { apiError } from '../../convex/lib/validation';
 import { MeetCalApiError, MeetCalApiTimeoutError } from '@/lib/api/meetcal-api';
@@ -50,6 +53,13 @@ describe('meet submission limits', () => {
     expect(MAX_MEET_SUBMISSION_NAME_LEN).toBe(server.MAX_MEET_SUBMISSION_NAME_LEN);
     expect(MAX_MEET_SUBMISSION_FILE_NAME_LEN).toBe(server.MAX_MEET_SUBMISSION_FILE_NAME_LEN);
     expect(MEET_SUBMISSION_FILE_EXTENSIONS).toEqual(server.MEET_SUBMISSION_FILE_EXTENSIONS);
+  });
+
+  it("cancel an upload after the website's silence", () => {
+    const website = readFileSync(join(__dirname, '../../web/src/utils/api/meet_submissions.rs'), 'utf8');
+    expect(website).toContain(
+      `UPLOAD_SILENCE_LIMIT: Duration = Duration::from_secs(${MEET_SUBMISSION_UPLOAD_SILENCE_LIMIT_MS / 1000});`,
+    );
   });
 });
 
