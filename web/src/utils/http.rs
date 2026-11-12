@@ -39,8 +39,26 @@ pub(crate) struct Upload<'a> {
 
 pub(crate) const STALL_CHECK_EVERY: Duration = Duration::from_secs(1);
 
-pub(crate) fn stalled(last_progress_ms: f64, now_ms: f64, silence_limit: Duration) -> bool {
-    now_ms - last_progress_ms >= silence_limit.as_secs_f64() * 1000.0
+pub(crate) struct SilenceWatch {
+    limit_ms: f64,
+    last_progress_ms: Cell<f64>,
+}
+
+impl SilenceWatch {
+    pub(crate) fn started_at(now_ms: f64, limit: Duration) -> Self {
+        Self {
+            limit_ms: limit.as_secs_f64() * 1000.0,
+            last_progress_ms: Cell::new(now_ms),
+        }
+    }
+
+    pub(crate) fn progressed(&self, now_ms: f64) {
+        self.last_progress_ms.set(now_ms);
+    }
+
+    pub(crate) fn stalled_at(&self, now_ms: f64) -> bool {
+        now_ms - self.last_progress_ms.get() >= self.limit_ms
+    }
 }
 
 pub(crate) struct OnDrop<F: FnOnce()>(Option<F>);
@@ -153,10 +171,13 @@ pub(crate) async fn upload(request: Upload<'_>) -> Result<Reply, Failure> {
         .map_err(unreachable)?;
     xhr.set_request_header("Content-Type", request.content_type)
         .map_err(unreachable)?;
-    let last_progress = Rc::new(Cell::new(js_sys::Date::now()));
+    let silence = Rc::new(SilenceWatch::started_at(
+        js_sys::Date::now(),
+        request.silence_limit,
+    ));
     let progressed = Closure::<dyn FnMut()>::new({
-        let last_progress = Rc::clone(&last_progress);
-        move || last_progress.set(js_sys::Date::now())
+        let silence = Rc::clone(&silence);
+        move || silence.progressed(js_sys::Date::now())
     });
     sending.set_onprogress(Some(progressed.as_ref().unchecked_ref()));
     xhr.set_onprogress(Some(progressed.as_ref().unchecked_ref()));
@@ -170,12 +191,9 @@ pub(crate) async fn upload(request: Upload<'_>) -> Result<Reply, Failure> {
         {
             let xhr = xhr.clone();
             let timed_out = Rc::clone(&timed_out);
-            let last_progress = Rc::clone(&last_progress);
-            let silence_limit = request.silence_limit;
+            let silence = Rc::clone(&silence);
             move || {
-                if !timed_out.get()
-                    && stalled(last_progress.get(), js_sys::Date::now(), silence_limit)
-                {
+                if !timed_out.get() && silence.stalled_at(js_sys::Date::now()) {
                     timed_out.set(true);
                     let _ = xhr.abort();
                 }
@@ -219,16 +237,20 @@ mod tests {
     use std::{cell::Cell, rc::Rc};
 
     #[test]
-    fn an_upload_is_stalled_only_once_its_progress_has_stopped_for_the_whole_limit() {
-        let limit = std::time::Duration::from_secs(120);
-        assert!(!super::stalled(0.0, 119_999.0, limit));
-        assert!(super::stalled(0.0, 120_000.0, limit));
-        let progressed_at = 600_000.0;
-        assert!(!super::stalled(
-            progressed_at,
-            progressed_at + 119_000.0,
-            limit
-        ));
+    fn an_upload_with_no_progress_stalls_once_the_whole_limit_has_passed() {
+        let silence = super::SilenceWatch::started_at(0.0, std::time::Duration::from_secs(120));
+        assert!(!silence.stalled_at(119_999.0));
+        assert!(silence.stalled_at(120_000.0));
+    }
+
+    #[test]
+    fn each_progress_restarts_the_limit_so_a_long_upload_that_keeps_moving_never_stalls() {
+        let silence = super::SilenceWatch::started_at(0.0, std::time::Duration::from_secs(120));
+        silence.progressed(100_000.0);
+        assert!(!silence.stalled_at(200_000.0));
+        silence.progressed(200_000.0);
+        assert!(!silence.stalled_at(300_000.0));
+        assert!(silence.stalled_at(320_000.0));
     }
 
     #[test]
