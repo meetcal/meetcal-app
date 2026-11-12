@@ -21,9 +21,11 @@ import {
 import { captureViewAsPng } from "@/lib/share-image";
 import { act, create, type ReactTestRenderer } from "react-test-renderer";
 import WeightliftingWrappedScreen from "@/app/comp-data/weightlifting-wrapped";
-import { fetchWrapped, searchApi, type ApiWrappedStats } from "@/lib/api/meetcal-api";
+import { fetchWrapped, type ApiWrappedStats } from "@/lib/api/wrapped-api";
+import { searchApi } from "@/lib/api/results-api";
 import { SUGGESTION_DEBOUNCE_MS } from "@/hooks/useNameSuggestions";
 import { showToast } from "@/components/ui/Toast";
+import { itemAt } from "@/test-support/checked-access";
 
 jest.mock("react-native/Libraries/Utilities/useWindowDimensions", () => ({
   __esModule: true,
@@ -76,7 +78,8 @@ jest.mock("@/lib/share-image", () => ({
   shareImageFile: jest.fn(),
 }));
 jest.mock("@/hooks/useIsOffline", () => ({ useIsOffline: () => [false, jest.fn()] }));
-jest.mock("@/lib/api/meetcal-api", () => ({ searchApi: jest.fn(), fetchWrapped: jest.fn() }));
+jest.mock("@/lib/api/results-api", () => ({ searchApi: jest.fn() }));
+jest.mock("@/lib/api/wrapped-api", () => ({ fetchWrapped: jest.fn() }));
 
 type SearchResponse = Awaited<ReturnType<typeof searchApi>>;
 type Pending = { query: string; resolve: (response: SearchResponse) => void };
@@ -164,11 +167,11 @@ describe("WeightliftingWrappedScreen name suggestions", () => {
     typeAndPause("john smi");
     await answer("john smi", ["John Smith", "Johnny Smithers"]);
 
-    const pick = tree.root.findAll(
+    const pick = itemAt(tree.root.findAll(
       (n) =>
         typeof n.props.onPress === "function" &&
         n.findAll((c) => c.props.children === "John Smith").length > 0,
-    )[0];
+    ), 0);
     expect(pick).toBeDefined();
     act(() => {
       pick.props.onPress();
@@ -230,11 +233,11 @@ function texts(): string[] {
 }
 
 function pickShown(name: string) {
-  const pick = tree.root.findAll(
+  const pick = itemAt(tree.root.findAll(
     (n) =>
       typeof n.props.onPress === "function" &&
       n.findAll((c) => c.props.children === name).length > 0,
-  )[0];
+  ), 0);
   expect(pick).toBeDefined();
   act(() => {
     pick.props.onPress();
@@ -428,12 +431,14 @@ describe("WeightliftingWrappedScreen share", () => {
     const isShareLabel = (child: unknown) =>
       React.isValidElement<{ children?: unknown }>(child) &&
       child.props.children === "SHARE YOUR WRAPPED";
-    const [shareButton] = tree.root.findAll(
-      (n) =>
-        typeof n.props.onPress === "function" &&
-        n.findAll((c) => React.Children.toArray(c.props.children).some(isShareLabel)).length > 0,
+    const shareButton = itemAt(
+      tree.root.findAll(
+        (n) =>
+          typeof n.props.onPress === "function" &&
+          n.findAll((c) => React.Children.toArray(c.props.children).some(isShareLabel)).length > 0,
+      ),
+      0,
     );
-    expect(shareButton).toBeDefined();
     await act(async () => {
       await shareButton.props.onPress();
     });
@@ -550,7 +555,7 @@ describe("WeightliftingWrappedScreen tap to advance", () => {
         StyleSheet.flatten(n.props.style)?.paddingLeft === 24,
     );
     act(() => {
-      slides[index].props.onPress({ nativeEvent: { pageX, locationX } });
+      itemAt(slides, index).props.onPress({ nativeEvent: { pageX, locationX } });
     });
   }
 

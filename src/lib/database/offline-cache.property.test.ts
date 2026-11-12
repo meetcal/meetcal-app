@@ -1,3 +1,4 @@
+import { readUnknown } from '@/lib/database/cached-shapes';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as fc from 'fast-check';
 
@@ -54,13 +55,16 @@ afterEach(() => {
   jest.restoreAllMocks();
 });
 
+type StoredRecord = { key: string; data: unknown; lastSynced: number };
+const readStoredRecords = (value: unknown) => (Array.isArray(value) ? (value as StoredRecord[]) : undefined);
+
 describe('getOfflineCache', () => {
   it('reads any stored bytes as a well-formed entry or as no entry, never a throw', async () => {
     await fc.assert(
       fc.asyncProperty(storedBytesArb, async (bytes) => {
         await AsyncStorage.clear();
         await AsyncStorage.setItem(KEY, bytes);
-        const entry = await getOfflineCache<unknown>(KEY);
+        const entry = await getOfflineCache(KEY, readUnknown);
         if (entry === null) return;
         // Not a half-valid object: exactly what was stored, with the shape
         // every caller reads.
@@ -80,7 +84,7 @@ describe('getOfflineCache', () => {
         jest.setSystemTime(now);
         const written = await setOfflineCache(KEY, data);
         expect(written.lastSynced).toBe(now);
-        expect(await getOfflineCache(KEY)).toEqual({ data: jsonRoundTrip(data), lastSynced: now });
+        expect(await getOfflineCache(KEY, readUnknown)).toEqual({ data: jsonRoundTrip(data), lastSynced: now });
       }),
     );
   });
@@ -95,7 +99,7 @@ describe('getOfflineCache', () => {
           const chaos = installStorageChaos(plan);
           try {
             await setOfflineCache(KEY, data);
-            const entry = await getOfflineCache(KEY);
+            const entry = await getOfflineCache(KEY, readUnknown);
             if (entry !== null) expect(Number.isFinite(entry.lastSynced)).toBe(true);
           } finally {
             chaos.restore();
@@ -129,13 +133,13 @@ describe('bounded browse caches', () => {
             at: write.now,
           }].slice(-max);
 
-          const stored = await getOfflineCache<{ key: string }[]>(KEY);
+          const stored = await getOfflineCache(KEY, readStoredRecords);
           expect(stored?.data.length).toBeLessThanOrEqual(max);
           expect(stored?.data.map((record) => record.key)).toEqual(model.map((entry) => entry.key));
         }
         for (const key of new Set(writes.map((write) => write.key))) {
           const expected = model.find((entry) => entry.key === key);
-          expect(await readBoundedCacheEntry(KEY, key)).toEqual(
+          expect(await readBoundedCacheEntry(KEY, key, readUnknown)).toEqual(
             expected ? { data: expected.data, lastUpdatedAt: expected.at } : null,
           );
         }
@@ -149,7 +153,7 @@ describe('bounded browse caches', () => {
         await AsyncStorage.clear();
         await AsyncStorage.setItem(KEY, bytes);
         await writeBoundedCacheEntry(KEY, 'fresh', { ok: true }, max);
-        const stored = await getOfflineCache<{ key: string; data: unknown; lastSynced: number }[]>(KEY);
+        const stored = await getOfflineCache(KEY, readStoredRecords);
         expect(Array.isArray(stored?.data)).toBe(true);
         expect(stored!.data.length).toBeLessThanOrEqual(max);
         expect(stored!.data.at(-1)).toMatchObject({ key: 'fresh', data: { ok: true } });
@@ -174,13 +178,13 @@ describe('bounded browse caches', () => {
             for (const write of writes) {
               jest.setSystemTime(write.now);
               await writeBoundedCacheEntry(KEY, write.key, write.data, max);
-              await readBoundedCacheEntry(KEY, write.key);
+              await readBoundedCacheEntry(KEY, write.key, readUnknown);
             }
           } finally {
             chaos.restore();
           }
 
-          const stored = await getOfflineCache<{ key: string; data: unknown; lastSynced: number }[]>(KEY);
+          const stored = await getOfflineCache(KEY, readStoredRecords);
           if (stored === null) return;
           expect(stored.data.length).toBeLessThanOrEqual(max);
           // A corrupt read can hand the writer a blob nobody wrote, which it

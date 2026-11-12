@@ -6,6 +6,7 @@ import {
   type ScheduleScreenState,
   type StartupTimingProperties,
 } from "@/lib/startup-timing";
+import { itemAt } from '@/test-support/checked-access';
 
 /** A clock and timer queue the test moves by hand. */
 function fakeDeps(start = 1000) {
@@ -68,8 +69,8 @@ describe("startup timing", () => {
     timing.mark("splashHidden");
 
     expect(sent).toHaveLength(1);
-    expect(sent[0].event).toBe(STARTUP_TIMING_EVENT);
-    expect(sent[0].properties).toEqual({
+    expect(itemAt(sent, 0).event).toBe(STARTUP_TIMING_EVENT);
+    expect(itemAt(sent, 0).properties).toEqual({
       outcome: "schedule",
       complete: true,
       reported_at_ms: 235,
@@ -108,7 +109,7 @@ describe("startup timing", () => {
     clock.advance(1);
 
     expect(sent).toHaveLength(1);
-    expect(sent[0].properties).toMatchObject({
+    expect(itemAt(sent, 0).properties).toMatchObject({
       complete: false,
       outcome: null,
       splash_hidden_ms: 0,
@@ -136,7 +137,7 @@ describe("startup timing", () => {
 
     begin();
     expect(sent).toHaveLength(1);
-    expect(sent[0].properties.outcome).toBe("no-meet");
+    expect(itemAt(sent, 0).properties.outcome).toBe("no-meet");
   });
 
   it("keeps the first answer for a flag, a mark and the first screen", () => {

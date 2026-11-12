@@ -2,7 +2,7 @@ import { describeSaveSessionsFailure } from "@/lib/saved-sessions-actions";
 
 jest.mock("@/lib/posthog", () => ({ posthog: { capture: jest.fn() } }));
 jest.mock("@/lib/database/queries", () => ({ fetchSchedule: jest.fn() }));
-jest.mock("@/lib/database/offline-store", () => ({ getMeetData: jest.fn() }));
+jest.mock("@/lib/database/meet-data-reads", () => ({ getMeetData: jest.fn() }));
 
 describe("describeSaveSessionsFailure", () => {
   it("is null when every session was saved", () => {

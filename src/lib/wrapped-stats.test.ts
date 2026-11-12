@@ -1,4 +1,4 @@
-import type { ApiWrappedStats } from '@/lib/api/meetcal-api';
+import type { ApiWrappedStats } from '@/lib/api/wrapped-api';
 import { buildWrappedShareText, formatImprovement, NO_FAVORITE_ATTEMPT, toWrappedStats } from '@/lib/wrapped-stats';
 
 // The scoring rules themselves are tested on the server (`convex-tests/wrapped.test.ts`).

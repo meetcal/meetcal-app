@@ -1,4 +1,5 @@
 import * as fc from 'fast-check';
+import { itemAt } from '@/test-support/checked-access';
 
 /**
  * Shared fast-check generators for property tests. Test-only: nothing in the
@@ -189,5 +190,5 @@ export function corruptedArb(valid: unknown): fc.Arbitrary<unknown> {
   );
   return fc
     .tuple(fc.nat({ max: paths.length - 1 }), mutationArb)
-    .map(([index, mutation]) => mutateAt(valid, paths[index], mutation));
+    .map(([index, mutation]) => mutateAt(valid, itemAt(paths, index), mutation));
 }

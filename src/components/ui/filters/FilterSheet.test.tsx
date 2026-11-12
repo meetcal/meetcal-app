@@ -22,7 +22,9 @@ describe("FilterSheet (iOS)", () => {
     expect(modal.props.transparent).toBeFalsy();
 
     // UIKit reports the swipe dismissal through `onRequestClose`.
-    act(() => modal.props.onRequestClose());
+    act(() => {
+      modal.props.onRequestClose();
+    });
     expect(onClose).toHaveBeenCalledTimes(1);
 
     const json = JSON.stringify(tree.toJSON());

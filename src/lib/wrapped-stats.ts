@@ -1,4 +1,4 @@
-import type { ApiWrappedStats } from '@/lib/api/meetcal-api';
+import type { ApiWrappedStats } from '@/lib/api/wrapped-api';
 import type { WrappedStats } from '@/types/wrapped';
 
 /**

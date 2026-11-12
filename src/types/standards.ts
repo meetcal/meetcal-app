@@ -17,3 +17,5 @@ export interface StandardsData {
     }[];
   };
 }
+
+export const EMPTY_STANDARDS: StandardsData = {};

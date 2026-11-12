@@ -1,3 +1,4 @@
+import { readRecordsData, readRecordsDataByKey } from './cached-shapes';
 import { createMutableResource } from '@/lib/data/mutable-resource';
 import { RecordsData } from '@/types/records';
 import { isNetworkAvailable } from '@/lib/networkUtils';
@@ -9,7 +10,7 @@ import {
   replaceOfflineCache,
   writeBoundedCacheEntry,
 } from './offline-cache';
-import { fetchApiRecords, type ApiRecordRow } from '@/lib/api/meetcal-api';
+import { fetchApiRecords, type ApiRecordRow } from '@/lib/api/reference-api';
 import { weightClassSort } from './weight-class-sort';
 
 type RecordsCache = Record<string, RecordsData>;
@@ -83,8 +84,8 @@ function ageGroupSort(a: string, b: string): number {
   const matchB = bLower.match(mastersRegex);
 
   if (matchA && matchB) {
-    const numA = parseInt(matchA[1], 10);
-    const numB = parseInt(matchB[1], 10);
+    const numA = parseInt(matchA[1] ?? '', 10);
+    const numB = parseInt(matchB[1] ?? '', 10);
     return numA - numB;
   }
   if (matchA) return 1;
@@ -94,7 +95,7 @@ function ageGroupSort(a: string, b: string): number {
 }
 
 async function readRecordsCache() {
-  return await getOfflineCache<RecordsCache>(OFFLINE_CACHE_KEYS.records);
+  return await getOfflineCache(OFFLINE_CACHE_KEYS.records, readRecordsDataByKey);
 }
 
 /**
@@ -104,7 +105,7 @@ async function readRecordsCache() {
 async function readFederationRecordsCache(federation: string) {
   const [downloaded, browsed] = await Promise.all([
     readRecordsCache(),
-    readBoundedCacheEntry<RecordsData>(OFFLINE_CACHE_KEYS.recordsBrowse, federation),
+    readBoundedCacheEntry(OFFLINE_CACHE_KEYS.recordsBrowse, federation, readRecordsData),
   ]);
   const data = downloaded?.data?.[federation];
   const fromDownload = data ? { data, lastUpdatedAt: downloaded.lastSynced } : null;

@@ -1,4 +1,5 @@
-import { fetchAccessPass, MeetCalApiError, refreshServerEntitlement } from '@/lib/api/meetcal-api';
+import { fetchAccessPass, refreshServerEntitlement } from '@/lib/api/entitlement-api';
+import { MeetCalApiError } from '@/lib/api/meetcal-api';
 import type { AccessPass } from '@/lib/api/premium-queries';
 
 /**

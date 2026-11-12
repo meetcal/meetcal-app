@@ -3,16 +3,17 @@ import { Text, View } from "react-native";
 import { act, create, type ReactTestRenderer } from "react-test-renderer";
 import { PlatformBadge } from "@/components/schedule-details/PlatformBadge";
 import { PlatformPalette } from "@/constants/Palette";
+import { itemAt } from "@/test-support/checked-access";
 
 async function render(platform: string) {
   let renderer!: ReactTestRenderer;
   await act(async () => {
     renderer = create(<PlatformBadge platform={platform} />);
   });
-  const badge = renderer.root.findAll(
+  const badge = itemAt(renderer.root.findAll(
     (node) => node.type === View && node.props.testID === "platform-badge",
-  )[0];
-  const text = renderer.root.findAllByType(Text)[0];
+  ), 0);
+  const text = itemAt(renderer.root.findAllByType(Text), 0);
   const backgroundColor = ([] as { backgroundColor?: string }[])
     .concat(badge.props.style)
     .flat()
