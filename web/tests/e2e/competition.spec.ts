@@ -248,6 +248,7 @@ test("athlete results show every competition field except federation", async ({ 
   await page.getByRole("option", { name: "Test Athlete" }).click();
   await page.getByRole("button", { name: "Search" }).click();
 
+  await expect(page.getByRole("columnheader").first()).toHaveText("Date");
   const headers = await page.getByRole("columnheader").allTextContents();
   expect(headers).toEqual(["Date", "Meet", "Division", "Bodyweight", "S1", "S2", "S3", "Best snatch", "C&J 1", "C&J 2", "C&J 3", "Best C&J", "Total", "Adaptive"]);
   expect(headers).not.toContain("Federation");

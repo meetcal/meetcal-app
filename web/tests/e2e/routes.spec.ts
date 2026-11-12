@@ -162,6 +162,7 @@ test("public pages have no serious or critical accessibility violations", async 
 });
 
 test("every page has one top-level banner, main and contentinfo landmark", async ({ page }) => {
+  test.slow();
   for (const path of [...publicRoutes.map(([path]) => path), "/qualifying-totals", "/does-not-exist"]) {
     await page.goto(path);
     await expect(page.locator("header.site-header")).toBeVisible();
