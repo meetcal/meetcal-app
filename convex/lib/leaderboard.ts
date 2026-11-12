@@ -111,18 +111,27 @@ const YOUTH_MARKERS: readonly (readonly [string, string])[] = [
   ['youth', 'U17'],
 ];
 
-/** The age category a division names: `Senior`, `Junior`, `U23`, `U17` … `U11`, `Masters 40`; null otherwise. */
+const MASTERS_BAND = /masters \((\d*)(?:-(\d+)|(\+))?/;
+const MASTERS_BAND_YEARS = 4;
+
 function divisionCategory(lower: string): string | null {
-  const masters = lower.split('masters (');
-  if (masters.length > 1) {
-    const start = /^\d*/.exec(masters[1])![0];
-    return start === '' ? null : `Masters ${start}`;
-  }
+  const masters = MASTERS_BAND.exec(lower);
+  if (masters) return masters[1] === '' ? null : `Masters ${masters[1]}`;
   if (lower.startsWith('open') || lower.includes(' open ') || lower.includes('senior')) return 'Senior';
   if (lower.includes('junior')) return 'Junior';
   if (lower.includes('under 23')) return 'U23';
   for (const [marker, label] of YOUTH_MARKERS) if (lower.includes(marker)) return label;
   return null;
+}
+
+export type MastersAges = { min: number; max: number | null };
+
+export function mastersAges(division: string): MastersAges | null {
+  const masters = MASTERS_BAND.exec(asciiLower(division));
+  if (!masters || masters[1] === '') return null;
+  const min = Number(masters[1]);
+  if (masters[2] !== undefined) return { min, max: Number(masters[2]) };
+  return { min, max: masters[3] === '+' ? null : min + MASTERS_BAND_YEARS };
 }
 
 export type Division = { gender: Gender | null; category: string | null };

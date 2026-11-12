@@ -9,18 +9,13 @@ import {
   formatResults,
   hasResultsRoute,
   nested,
-  pageRows,
   pickNewestEvents,
   pickRequestedEvents,
-  readSport80Env,
-  readTablePage,
-  USAW_DOMAIN,
   type ResultRow,
-  type Sport80Env,
 } from './parse/sport80';
 import { sourcesFailed, type SourceFailure } from '../lib/cronAlerts';
 import { NOT_REACHED, runBudget } from './lib/budget';
-import { rowCount } from '../lib/json';
+import { Sport80 } from './lib/sport80Api';
 
 /**
  * USAW meet results from Sport80 (port of
@@ -35,92 +30,6 @@ import { rowCount } from '../lib/json';
  * every row was read: a row that could not be read is not one Sport80 dropped.
  */
 type Dict = Record<string, unknown>;
-
-/** Pages one table may take: tables are requested as one page, so more is a misbehaving API. */
-const MAX_PAGES = 50;
-
-export function tableComplete(rows: number, total: unknown): boolean {
-  return rowCount(total) === rows;
-}
-
-export function joinPages(pages: readonly Dict[][], total: unknown): { rows: Dict[]; notWhole?: string } {
-  const rows = pages.flat();
-  const reported = rowCount(total);
-  if (typeof total === 'number' && reported === null) throw new Error(`read ${rows.length} rows of the ${total} the table reports`);
-  if (reported === null) return { rows, notWhole: 'the table reports no row count' };
-  if (!tableComplete(rows.length, reported)) throw new Error(`read ${rows.length} rows of the ${reported} the table reports`);
-  const earlier = new Set<string>();
-  for (const page of pages) {
-    const keys = page.map((row) => JSON.stringify(row));
-    if (keys.some((key) => earlier.has(key))) return { rows, notWhole: 'a row came back on two pages (their order shifted)' };
-    for (const key of keys) earlier.add(key);
-  }
-  return { rows };
-}
-
-class Sport80 {
-  private constructor(private readonly env: Sport80Env) {}
-
-  static async connect(): Promise<Sport80> {
-    const response = await fetch(`${USAW_DOMAIN}/public/rankings/`, { signal: AbortSignal.timeout(60_000) });
-    if (!response.ok) throw new Error(`sport80: rankings page failed with ${response.status}`);
-    const page = await response.text();
-    const match = /window\.env = ({.*?});/s.exec(page);
-    if (!match) throw new Error('sport80: window.env not found on the rankings page');
-    return new Sport80(readSport80Env(match[1]));
-  }
-
-  private headers() {
-    return {
-      'X-API-TOKEN': this.env.SERVICES_API_PUBLIC_KEY,
-      authority: this.env.RANKINGS_DOMAIN_URL,
-      accept: 'application/json',
-      'Content-Type': 'application/json',
-    };
-  }
-
-  private async post(url: string, payload?: Dict): Promise<Dict> {
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: this.headers(),
-      body: payload === undefined ? undefined : JSON.stringify(payload),
-      signal: AbortSignal.timeout(60_000),
-    });
-    if (!response.ok) throw new Error(`POST ${new URL(url).pathname} failed with ${response.status}`);
-    return readTablePage(await response.json());
-  }
-
-  private async collate(first: Dict, payload?: Dict): Promise<{ rows: Dict[]; notWhole?: string }> {
-    const pages: Dict[][] = [pageRows(first)];
-    let current = first;
-    for (let page = 1; typeof current.next_page_url === 'string' && current.next_page_url; page++) {
-      if (page > MAX_PAGES) throw new Error(`table has over ${MAX_PAGES} pages`);
-      current = await this.post(current.next_page_url, payload);
-      pages.push(pageRows(current));
-    }
-    return joinPages(pages, first.total);
-  }
-
-  /**
-   * Tables are requested as one page (`p=0&l=…`). The API's default 30-row
-   * pages are sorted by a key with ties it orders differently from one
-   * request to the next, so walking them could skip or repeat rows (the
-   * Python job's did); `next_page_url` is still followed if a table outgrows
-   * the page.
-   */
-  private url(path: string, rows: number): string {
-    return new URL(`${path}?p=0&l=${rows}&s=`, this.env.RANKINGS_DOMAIN_URL).toString();
-  }
-
-  async eventIndex(year: number): Promise<Dict[]> {
-    const payload = { date_range_start: `${year}-01-01`, date_range_end: `${year}-12-31` };
-    return (await this.collate(await this.post(this.url('/api/events/table/data', 1000), payload), payload)).rows;
-  }
-
-  async eventResults(eventId: string): Promise<{ rows: Dict[]; notWhole?: string }> {
-    return await this.collate(await this.post(this.url(`/api/events/${eventId}/table/data`, 2000)));
-  }
-}
 
 const READ_SHARE = 0.5;
 const READ_DEADLINE_SHARE = 0.75;

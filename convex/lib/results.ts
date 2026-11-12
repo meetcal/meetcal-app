@@ -1,6 +1,11 @@
 import type { Doc } from '../_generated/dataModel';
 import { normalizeName } from './names';
 import { compareBytes } from './sort';
+import { isValidIsoDate } from './validation';
+
+export const UNDATED_RESULT_DATE = '1970-01-01';
+
+export const isDatedResult = (date: string) => date !== UNDATED_RESULT_DATE && isValidIsoDate(date);
 
 /**
  * One `lifting_results` row as the Rust API serializes it

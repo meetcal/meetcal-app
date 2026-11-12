@@ -1,4 +1,5 @@
 import { ConvexError } from 'convex/values';
+import { errorMessage } from './errors';
 import { isRecord } from './json';
 
 /**
@@ -68,7 +69,7 @@ function isSourcesFailedData(data: unknown): data is SourcesFailedData {
 export function describeFailure(failure: unknown): { error: string; failedSources?: string[] } {
   const data = isRecord(failure) ? failure.data : undefined;
   if (isSourcesFailedData(data)) return { error: data.message, failedSources: data.failedSources };
-  return { error: failure instanceof Error ? failure.message : String(failure) };
+  return { error: errorMessage(failure) };
 }
 
 // A run should have started within this long of its scheduled time.

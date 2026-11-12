@@ -1,4 +1,5 @@
 import type { QueryCtx } from '../_generated/server';
+import { isoDateOf } from './dates';
 import type { Doc } from '../_generated/dataModel';
 import { clubKey, sameClub } from './clubs';
 import { normalizeName } from './names';
@@ -105,15 +106,9 @@ export function disambiguatedMeetName(name: string, federation: string, attempt 
  */
 export type ZoneFormatters = Map<string, Intl.DateTimeFormat | null>;
 
-/**
- * `YYYY-MM-DD` for `instant` on the wall calendar of `timeZone`: the Rust
- * backend's `meet_local_date(time_zone)`, including its fallback to the UTC
- * date for a blank or unknown zone (meet status does not use that fallback:
- * see `meetStatusAt`).
- */
 export function meetLocalDate(instant: number, timeZone: string, formatters: ZoneFormatters = new Map()): string {
   const formatter = zoneFormatter(timeZone, formatters);
-  if (!formatter) return new Date(instant).toISOString().slice(0, 10);
+  if (!formatter) return isoDateOf(instant);
   const parts = formatter.formatToParts(instant);
   const part = (type: string) => parts.find((p) => p.type === type)?.value ?? '';
   return `${part('year')}-${part('month')}-${part('day')}`;
@@ -144,7 +139,7 @@ export function addMonths(date: string, months: number): string {
   const target = new Date(Date.UTC(year, month - 1 + months, 1));
   const lastDay = new Date(Date.UTC(target.getUTCFullYear(), target.getUTCMonth() + 1, 0)).getUTCDate();
   target.setUTCDate(Math.min(day, lastDay));
-  return target.toISOString().slice(0, 10);
+  return isoDateOf(target.getTime());
 }
 
 // ---------------------------------------------------------------------------
