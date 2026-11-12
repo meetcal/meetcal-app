@@ -90,6 +90,8 @@ describe('defaults and preview', () => {
     const built = (await as(null)(preview, { meet: MEET, options: options(), edits: [] })) as { athletes: number; sessions: { groups: { gender: string }[] }[] };
     expect(built.athletes).toBe(2);
     expect(built.sessions.map((s) => s.groups.map((g) => g.gender))).toEqual([['Female'], ['Male']]);
+    const labelled = (await as(null)(preview, { meet: MEET, options: options(), edits: [] })) as { sessions: { groups: { label: string }[] }[] };
+    expect(labelled.sessions.map((s) => s.groups.map((g) => g.label))).toEqual([['W 58'], ['M 89']]);
     expect(await failure(as(null)(preview, { meet: 'Nope', options: options(), edits: [] }))).toEqual({ status: 404, error: 'meet not found' });
   });
 

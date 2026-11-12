@@ -5,7 +5,8 @@ import { MEET_ROSTER_MAX, readAll } from './lib/boundedRead';
 import { requireUserId } from './lib/access';
 import { meetByName } from './lib/meetData';
 import { apiError, requireNonEmpty } from './lib/validation';
-import { buildSchedule, type BuilderEntrant } from './lib/scheduleBuilder';
+import { buildSchedule, type BuilderEntrant, type BuiltSchedule } from './lib/scheduleBuilder';
+import { platformLabel } from './lib/schedulePublishing';
 import { bytesToBase64 } from './lib/base64';
 import { EXPORT_CONTENT_TYPES, exportFileName, scheduleCsv, scheduleWorkbook } from './lib/scheduleExport';
 import {
@@ -61,12 +62,19 @@ export const defaults = query({
   },
 });
 
+export function withGroupLabels(schedule: BuiltSchedule) {
+  return {
+    ...schedule,
+    sessions: schedule.sessions.map((session) => ({ ...session, groups: session.groups.map((group) => ({ ...group, label: platformLabel(group) })) })),
+  };
+}
+
 export const preview = query({
   args: { meet: v.string(), options: builderOptionsValidator, edits: v.array(builderEditValidator) },
   handler: async (ctx, { meet, options, edits }) => {
     checked(options, edits);
     const row = await requireMeet(ctx, meet);
-    return buildSchedule(await entrantsOf(ctx, row.name), options, edits);
+    return withGroupLabels(buildSchedule(await entrantsOf(ctx, row.name), options, edits));
   },
 });
 
