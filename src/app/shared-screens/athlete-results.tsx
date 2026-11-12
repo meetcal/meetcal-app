@@ -14,7 +14,7 @@ import { useScreenHorizontalInsets } from "@/hooks/useScreenInsets";
 import { useScreenTiming } from "@/hooks/useScreenTiming";
 import { findPRIndexes, type PRIndexes } from "@/lib/athlete-prs";
 import { meetResultKey } from "@/lib/athlete-result-display";
-import { partialResultsStatus, showsCareerStats } from "@/lib/athlete-results-load";
+import { canRetryFullHistory, partialResultsStatus, showsCareerStats } from "@/lib/athlete-results-load";
 import { loadFailureCopy } from "@/lib/load-failure";
 import { SLIDE_IN_FROM_RIGHT, stackHeaderOptions } from "@/lib/stack-header-options";
 import type { AthleteMeetResult } from "@/types/athlete-results";
@@ -132,7 +132,7 @@ function AthleteResultsContent() {
               {partialStatus ? (
                 <PartialResultsStatus
                   status={partialStatus}
-                  canRetry={loadOutcome === "offline-partial"}
+                  canRetry={canRetryFullHistory(loadOutcome)}
                   onRetry={retryLoad}
                   colors={colors}
                 />

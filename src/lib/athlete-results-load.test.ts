@@ -1,8 +1,10 @@
 import {
+  canRetryFullHistory,
   loadAthleteResults,
   partialResultsStatus,
   showsCareerStats,
   type AthleteResultsLoad,
+  type ShownResultsSource,
 } from '@/lib/athlete-results-load';
 import type { AthleteMeetResult } from '@/types/athlete-results';
 
@@ -21,7 +23,7 @@ function deferred<T>() {
 }
 
 function makeLoad(overrides: Partial<AthleteResultsLoad> = {}) {
-  const painted: { source: 'offline' | 'api'; meets: string[] }[] = [];
+  const painted: { source: ShownResultsSource; meets: string[] }[] = [];
   const load: AthleteResultsLoad = {
     shown: undefined,
     readOffline: jest.fn(async () => []),
@@ -226,10 +228,21 @@ describe('loadAthleteResults', () => {
 });
 
 describe('showsCareerStats', () => {
-  it('only trusts PRs and success rates computed from the API history', () => {
+  it('trusts PRs and success rates computed from a whole history, fresh or saved', () => {
     expect(showsCareerStats('api')).toBe(true);
+    expect(showsCareerStats('saved')).toBe(true);
     expect(showsCareerStats('offline')).toBe(false);
     expect(showsCareerStats(null)).toBe(false);
+  });
+});
+
+describe('canRetryFullHistory', () => {
+  it('offers a retry whenever the full history did not load', () => {
+    expect(canRetryFullHistory('offline-partial')).toBe(true);
+    expect(canRetryFullHistory('kept-stale')).toBe(true);
+    expect(canRetryFullHistory('failed')).toBe(true);
+    expect(canRetryFullHistory('shown')).toBe(false);
+    expect(canRetryFullHistory(null)).toBe(false);
   });
 });
 
@@ -248,6 +261,19 @@ describe('partialResultsStatus', () => {
       .toMatch(/^Offline\. Showing downloaded data/);
   });
 
+  it('says nothing over a saved history while it refreshes or once it refreshed', () => {
+    expect(partialResultsStatus({ source: 'saved', outcome: null, isOffline: false })).toBeNull();
+    expect(partialResultsStatus({ source: 'saved', outcome: 'shown', isOffline: false })).toBeNull();
+  });
+
+  it('says a saved history may be out of date once its refresh failed', () => {
+    expect(partialResultsStatus({ source: 'saved', outcome: 'kept-stale', isOffline: false })).toBe(
+      'Full history unavailable. Showing the history saved on this device, which may be out of date.',
+    );
+    expect(partialResultsStatus({ source: 'saved', outcome: 'kept-stale', isOffline: true }))
+      .toMatch(/^Offline\. Showing the history saved on this device/);
+  });
+
   it('says the full history is unavailable when online', () => {
     expect(partialResultsStatus({ source: 'offline', outcome: 'offline-partial', isOffline: false }))
       .toMatch(/^Full history unavailable\. Showing downloaded data/);
@@ -262,7 +288,7 @@ describe('loadAthleteResults with a browsed copy', () => {
     jest.restoreAllMocks();
   });
 
-  it('paints the history kept from the last visit, and keeps it when the request fails', async () => {
+  it('paints the history saved on an earlier visit, and keeps it as possibly stale when the request fails', async () => {
     const readOffline = jest.fn(async () => [row('Downloaded')]);
     const { load, painted } = makeLoad({
       readBrowsed: async () => [row('Kept A'), row('Kept B')],
@@ -271,9 +297,27 @@ describe('loadAthleteResults with a browsed copy', () => {
         throw new Error('Network request failed');
       },
     });
-    await expect(loadAthleteResults(load)).resolves.toBe('shown');
-    expect(painted).toEqual([{ source: 'api', meets: ['Kept A', 'Kept B'] }]);
+    await expect(loadAthleteResults(load)).resolves.toBe('kept-stale');
+    expect(painted).toEqual([{ source: 'saved', meets: ['Kept A', 'Kept B'] }]);
     expect(readOffline).not.toHaveBeenCalled();
+  });
+
+  it('keeps a saved history on screen through a retry, and replaces it once the request answers', async () => {
+    const readBrowsed = jest.fn(async () => [row('Kept')]);
+    const { load, painted } = makeLoad({
+      shown: [row('Kept')],
+      shownSource: 'saved',
+      readBrowsed,
+      fetchFull: async () => [row('Fresh')],
+    });
+    await expect(loadAthleteResults(load)).resolves.toBe('shown');
+    expect(readBrowsed).not.toHaveBeenCalled();
+    expect(painted).toEqual([{ source: 'api', meets: ['Fresh'] }]);
+  });
+
+  it('keeps a saved history as possibly stale when the request answers empty over it', async () => {
+    const { load } = makeLoad({ readBrowsed: async () => [row('Kept')], fetchFull: async () => [] });
+    await expect(loadAthleteResults(load)).resolves.toBe('kept-stale');
   });
 
   it('replaces the kept history with the answer and keeps the answer for next time', async () => {

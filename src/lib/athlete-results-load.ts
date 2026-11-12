@@ -21,11 +21,6 @@ import type { AthleteMeetResult } from '@/types/athlete-results';
 export type AthleteResultsLoad = {
   /** Rows this screen already holds for the athlete (its in-memory copy). */
   shown: readonly AthleteMeetResult[] | undefined;
-  /**
-   * Where `shown` came from (default `api`). On-device rows kept on screen
-   * through a retry are still a partial history: an empty answer must not
-   * clear them, and a failed request leaves them `offline-partial`.
-   */
   shownSource?: ShownResultsSource;
   readOffline: () => Promise<AthleteMeetResult[]>;
   readBrowsed?: () => Promise<AthleteMeetResult[] | null>;
@@ -33,52 +28,43 @@ export type AthleteResultsLoad = {
   fetchFull: () => Promise<AthleteMeetResult[]>;
   /** False once the screen moved on (another athlete, or unmounted). */
   isCurrent: () => boolean;
-  /** Paint rows. `api` rows are the complete history and may be memoized. */
-  show: (rows: AthleteMeetResult[], source: 'offline' | 'api') => void;
+  show: (rows: AthleteMeetResult[], source: ShownResultsSource) => void;
 };
 
 type FullOutcome =
   | { ok: true; rows: AthleteMeetResult[] }
   | { ok: false; error: unknown };
 
-/**
- * How a load ended: `shown` once the screen holds the API's complete history
- * (rows, or its own empty answer), `offline-partial` when what stays on
- * screen is only the on-device copy (the request failed, or answered empty
- * over it), `failed` when the request failed with nothing on screen
- * (offline, or an error: not "this athlete has no results"), `superseded`
- * when the screen moved on.
- */
-export type AthleteResultsOutcome = 'shown' | 'offline-partial' | 'failed' | 'superseded';
+export type AthleteResultsOutcome = 'shown' | 'offline-partial' | 'kept-stale' | 'failed' | 'superseded';
 
-/** Where the rows on screen came from; null with nothing shown. */
-export type ShownResultsSource = 'offline' | 'api';
+export type ShownResultsSource = 'offline' | 'saved' | 'api';
 
-/**
- * PR badges and success rates are claims about a whole career, so they are
- * computed only from the API's complete history. The on-device copy holds
- * just the downloaded meets: one cached meet would read as a PR on every
- * lift.
- */
 export function showsCareerStats(source: ShownResultsSource | null): boolean {
-  return source === 'api';
+  return source === 'api' || source === 'saved';
 }
 
-/**
- * The note above on-device rows: still loading the full history, or (once
- * the load ended without it) why only downloaded data is shown. Null over
- * the API history. The offline copy matches the attempt estimator's.
- */
+export function canRetryFullHistory(outcome: AthleteResultsOutcome | null): boolean {
+  return outcome === 'offline-partial' || outcome === 'kept-stale' || outcome === 'failed';
+}
+
 export function partialResultsStatus(input: {
   source: ShownResultsSource | null;
   outcome: AthleteResultsOutcome | null;
   isOffline: boolean;
 }): string | null {
+  const reason = input.isOffline ? 'Offline.' : 'Full history unavailable.';
+  if (input.source === 'saved') {
+    return input.outcome === 'kept-stale' ? `${reason} Showing the history saved on this device, which may be out of date.` : null;
+  }
   if (input.source !== 'offline') return null;
   if (input.outcome === null) return 'Loading full history…';
-  // Online, the request failed or answered empty over the downloaded rows.
-  const reason = input.isOffline ? 'Offline.' : 'Full history unavailable.';
   return `${reason} Showing downloaded data. PRs and success rates appear once the full history loads.`;
+}
+
+function keptOutcome(source: ShownResultsSource | null): AthleteResultsOutcome {
+  if (source === 'offline') return 'offline-partial';
+  if (source === 'saved') return 'kept-stale';
+  return 'shown';
 }
 
 export async function loadAthleteResults(
@@ -92,13 +78,14 @@ export async function loadAthleteResults(
   );
 
   let displayedCount = load.shown?.length ?? 0;
-  let displayedOffline = displayedCount > 0 && load.shownSource === 'offline';
+  let displayedSource: ShownResultsSource | null = displayedCount > 0 ? (load.shownSource ?? 'api') : null;
   if (displayedCount === 0 && load.readBrowsed) {
     const browsed = await load.readBrowsed().catch(() => null);
     if (!load.isCurrent()) return 'superseded';
     if (browsed && browsed.length > 0) {
       displayedCount = browsed.length;
-      load.show(browsed, 'api');
+      displayedSource = 'saved';
+      load.show(browsed, 'saved');
     }
   }
   if (displayedCount === 0) {
@@ -107,7 +94,7 @@ export async function loadAthleteResults(
       if (!load.isCurrent()) return 'superseded';
       if (offline.length > 0) {
         displayedCount = offline.length;
-        displayedOffline = true;
+        displayedSource = 'offline';
         load.show(offline, 'offline');
       }
     } catch (cacheError) {
@@ -118,8 +105,6 @@ export async function loadAthleteResults(
   const outcome = await full;
   if (!load.isCurrent()) return 'superseded';
   if (outcome.ok) {
-    // An empty answer (e.g. a transient name-normalization miss) must not
-    // clobber rows already on screen.
     if (outcome.rows.length > 0 || displayedCount === 0) {
       load.show(outcome.rows, 'api');
       if (outcome.rows.length > 0) {
@@ -129,13 +114,9 @@ export async function loadAthleteResults(
       }
       return 'shown';
     }
-    return displayedOffline ? 'offline-partial' : 'shown';
+    return keptOutcome(displayedSource);
   }
-  if (displayedCount > 0) {
-    // Offline or the request failed: whatever was shown stays. Rows the API
-    // already answered are complete; the on-device copy is not.
-    return displayedOffline ? 'offline-partial' : 'shown';
-  }
+  if (displayedCount > 0) return keptOutcome(displayedSource);
   console.error('Error fetching athlete results:', outcome.error);
   return 'failed';
 }

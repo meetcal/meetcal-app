@@ -1,5 +1,6 @@
 import { useRetryOnReconnect } from "@/hooks/useRetryOnReconnect";
 import {
+  canRetryFullHistory,
   loadAthleteResults,
   type AthleteResultsOutcome,
   type ShownResultsSource,
@@ -10,7 +11,7 @@ import { readBrowsedAthleteResults, saveBrowsedAthleteResults } from "@/lib/data
 import type { AthleteMeetResult } from "@/types/athlete-results";
 import { useCallback, useEffect, useRef, useState } from "react";
 
-type OfflineRowsOnScreen = { name: string; rows: AthleteMeetResult[] };
+type KeptRowsOnScreen = { name: string; rows: AthleteMeetResult[]; source: Exclude<ShownResultsSource, "api"> };
 
 export type AthleteResultsState = {
   loading: boolean;
@@ -41,7 +42,7 @@ export function useAthleteResults(name: string | undefined): AthleteResultsState
   const [retryCount, setRetryCount] = useState(0);
   const resultsCacheRef = useSessionResultsCache();
   const requestIdRef = useRef(0);
-  const offlineRowsRef = useRef<OfflineRowsOnScreen | null>(null);
+  const keptRowsRef = useRef<KeptRowsOnScreen | null>(null);
 
   useEffect(() => {
     const fetchAthleteResults = async () => {
@@ -53,23 +54,23 @@ export function useAthleteResults(name: string | undefined): AthleteResultsState
       setLoadFailed(false);
       setLoadOutcome(null);
       if (cachedResults) {
-        offlineRowsRef.current = null;
+        keptRowsRef.current = null;
         setAthleteResults(cachedResults);
         setRowsSource("api");
         setLoading(false);
-      } else if (offlineRowsRef.current?.name !== nameStr) {
-        offlineRowsRef.current = null;
+      } else if (keptRowsRef.current?.name !== nameStr) {
+        keptRowsRef.current = null;
         setAthleteResults([]);
         setRowsSource(null);
         setLoading(true);
       }
-      const keptOffline = cachedResults ? undefined : offlineRowsRef.current?.rows;
+      const kept = cachedResults ? null : keptRowsRef.current;
 
       const requestId = ++requestIdRef.current;
       try {
         const outcome = await loadAthleteResults({
-          shown: cachedResults ?? keptOffline,
-          shownSource: cachedResults ? "api" : "offline",
+          shown: cachedResults ?? kept?.rows,
+          shownSource: cachedResults ? "api" : kept?.source,
           readOffline: () => getAllCachedLiftingResultsForAthlete(nameStr),
           readBrowsed: () => readBrowsedAthleteResults(nameStr),
           rememberFull: (rows) => saveBrowsedAthleteResults(nameStr, rows),
@@ -79,10 +80,10 @@ export function useAthleteResults(name: string | undefined): AthleteResultsState
             if (source === "api") {
               resultsCacheRef.current.set(cacheKey, rows);
             }
-            offlineRowsRef.current = source === "offline" ? { name: nameStr, rows } : null;
+            keptRowsRef.current = source === "api" ? null : { name: nameStr, rows, source };
             setAthleteResults(rows);
             setRowsSource(source);
-            if (source === "offline") setLoading(false);
+            if (source !== "api") setLoading(false);
           },
         });
         if (outcome === "superseded") return;
@@ -104,7 +105,7 @@ export function useAthleteResults(name: string | undefined): AthleteResultsState
   }, [name, retryCount, resultsCacheRef]);
 
   const retryLoad = useCallback(() => setRetryCount((count) => count + 1), []);
-  useRetryOnReconnect(loadOutcome === "offline-partial" || loadOutcome === "failed", retryLoad);
+  useRetryOnReconnect(canRetryFullHistory(loadOutcome), retryLoad);
 
   return { loading, athleteResults, loadFailed, rowsSource, loadOutcome, retryLoad };
 }

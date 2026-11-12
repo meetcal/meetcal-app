@@ -3,6 +3,7 @@ import { act, create } from "react-test-renderer";
 import AthleteResultsScreen from "@/app/shared-screens/athlete-results";
 import { fetchAllResultsForName } from "@/lib/database/queries";
 import { getAllCachedLiftingResultsForAthlete } from "@/lib/database/athlete-history-store";
+import { readBrowsedAthleteResults } from "@/lib/database/browsed-athlete-results";
 
 jest.mock("@/contexts/ThemeContext", () => ({ useTheme: () => ({ currentTheme: "light" }) }));
 
@@ -46,6 +47,10 @@ jest.mock("@/lib/database/athlete-history-store", () => ({
   getAllCachedLiftingResultsForAthlete: jest.fn(async () => []),
 }));
 jest.mock("@/lib/database/queries", () => ({ fetchAllResultsForName: jest.fn() }));
+jest.mock("@/lib/database/browsed-athlete-results", () => ({
+  readBrowsedAthleteResults: jest.fn(async () => null),
+  saveBrowsedAthleteResults: jest.fn(async () => {}),
+}));
 let mockNetworkListeners: ((isConnected: boolean) => void)[] = [];
 jest.mock("@/lib/networkUtils", () => ({
   subscribeToNetworkChanges: (listener: (isConnected: boolean) => void) => {
@@ -264,4 +269,35 @@ it("loads the full history when the connection comes back", async () => {
   await act(async () => { tree.unmount(); });
   jest.mocked(getAllCachedLiftingResultsForAthlete).mockResolvedValue([]);
   errorLog.mockRestore();
+});
+
+it("says a history saved on an earlier visit may be out of date when it cannot refresh, and refreshes it on reconnect", async () => {
+  mockIsOffline = false;
+  mockName = "Saved Athlete";
+  const errorLog = jest.spyOn(console, "error").mockImplementation(() => {});
+  jest.mocked(readBrowsedAthleteResults).mockResolvedValueOnce(cachedRow(mockName));
+  jest.mocked(fetchAllResultsForName).mockRejectedValueOnce(new Error("MeetCal API error 503"));
+  let tree!: ReturnType<typeof create>;
+  await act(async () => { tree = create(<AthleteResultsScreen />); });
+
+  const rendered = JSON.stringify(tree.toJSON());
+  expect(rendered).toContain("Cached Open");
+  expect(rendered).toContain("Full history unavailable. Showing the history saved on this device, which may be out of date.");
+  expect(rendered).toContain("Success Rates");
+  expect(tree.root.findAllByProps({ testID: "athlete-results-partial-retry" }).length).toBeGreaterThan(0);
+
+  jest.mocked(fetchAllResultsForName).mockResolvedValueOnce(apiRows(mockName));
+  await act(async () => {
+    mockNetworkListeners.forEach((listener) => listener(false));
+    mockNetworkListeners.forEach((listener) => listener(true));
+    await new Promise<void>((resolve) => setTimeout(resolve, 0));
+  });
+  await act(async () => { await new Promise<void>((resolve) => setImmediate(resolve)); });
+
+  expect(fetchAllResultsForName).toHaveBeenLastCalledWith("Saved Athlete");
+  expect(JSON.stringify(tree.toJSON())).toContain("Earlier Open");
+  expect(tree.root.findAllByProps({ testID: "athlete-results-partial-status" })).toHaveLength(0);
+  await act(async () => { tree.unmount(); });
+  errorLog.mockRestore();
+  mockIsOffline = true;
 });
