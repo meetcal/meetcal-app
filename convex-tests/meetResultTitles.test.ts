@@ -210,14 +210,18 @@ describe('a combined meet whose results title is a meet of its own (#608)', () =
   });
 
   it('keeps a secondary meet completed by hand when the meet sync lists it with dates still ahead', async () => {
-    jest.spyOn(Date, 'now').mockReturnValue(Date.UTC(2026, 10, 11, 16));
-    const store = combinedWorld();
-    await link(store.ctx, { meet: COMBINED, titles: [MASTERS] });
-    expect(await handlerOf(setMeetStatus)(store.ctx, { name: MASTERS, status: 'completed' })).toEqual({ changed: true });
-    const sync = handlerOf<{ rows: unknown[] }, unknown[]>(upsertMeets);
-    await sync(store.ctx, { rows: [meetRow(MASTERS, { startDate: '2026-12-01', endDate: '2026-12-04' })] });
-    await sync(store.ctx, { rows: [meetRow(MASTERS, { startDate: '2026-12-02', endDate: '2026-12-05' })] });
-    expect(store.rows('meets').find((meet) => meet.name === MASTERS)).toMatchObject({ status: 'completed', startDate: '2026-12-02' });
+    const clock = jest.spyOn(Date, 'now').mockReturnValue(Date.UTC(2026, 10, 11, 16));
+    try {
+      const store = combinedWorld();
+      await link(store.ctx, { meet: COMBINED, titles: [MASTERS] });
+      expect(await handlerOf(setMeetStatus)(store.ctx, { name: MASTERS, status: 'completed' })).toEqual({ changed: true });
+      const sync = handlerOf<{ rows: unknown[] }, unknown[]>(upsertMeets);
+      await sync(store.ctx, { rows: [meetRow(MASTERS, { startDate: '2026-12-01', endDate: '2026-12-04' })] });
+      await sync(store.ctx, { rows: [meetRow(MASTERS, { startDate: '2026-12-02', endDate: '2026-12-05' })] });
+      expect(store.rows('meets').find((meet) => meet.name === MASTERS)).toMatchObject({ status: 'completed', startDate: '2026-12-02' });
+    } finally {
+      clock.mockRestore();
+    }
   });
 
   it('lists completed meets with a roster and no results under their name or a linked title until they are linked', async () => {
