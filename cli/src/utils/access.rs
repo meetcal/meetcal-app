@@ -164,7 +164,6 @@ pub struct AccessPass {
     pub pass: String,
     /// When to ask again (epoch ms). A process lives far shorter than a pass, so the CLI fetches
     /// once per run and does not read this.
-    #[allow(dead_code)]
     #[serde(deserialize_with = "backend::whole_number")]
     pub rotates_at: i64,
 }
