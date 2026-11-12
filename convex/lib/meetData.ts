@@ -1,4 +1,5 @@
 import type { QueryCtx } from '../_generated/server';
+import { isoDateOf } from './dates';
 import type { Doc } from '../_generated/dataModel';
 import { clubKey, sameClub } from './clubs';
 import { normalizeName } from './names';
@@ -105,15 +106,9 @@ export function disambiguatedMeetName(name: string, federation: string, attempt 
  */
 export type ZoneFormatters = Map<string, Intl.DateTimeFormat | null>;
 
-/**
- * `YYYY-MM-DD` for `instant` on the wall calendar of `timeZone`: the Rust
- * backend's `meet_local_date(time_zone)`, including its fallback to the UTC
- * date for a blank or unknown zone (meet status does not use that fallback:
- * see `meetStatusAt`).
- */
 export function meetLocalDate(instant: number, timeZone: string, formatters: ZoneFormatters = new Map()): string {
   const formatter = zoneFormatter(timeZone, formatters);
-  if (!formatter) return new Date(instant).toISOString().slice(0, 10);
+  if (!formatter) return isoDateOf(instant);
   const parts = formatter.formatToParts(instant);
   const part = (type: string) => parts.find((p) => p.type === type)?.value ?? '';
   return `${part('year')}-${part('month')}-${part('day')}`;
@@ -144,7 +139,7 @@ export function addMonths(date: string, months: number): string {
   const target = new Date(Date.UTC(year, month - 1 + months, 1));
   const lastDay = new Date(Date.UTC(target.getUTCFullYear(), target.getUTCMonth() + 1, 0)).getUTCDate();
   target.setUTCDate(Math.min(day, lastDay));
-  return target.toISOString().slice(0, 10);
+  return isoDateOf(target.getTime());
 }
 
 // ---------------------------------------------------------------------------
@@ -899,6 +894,54 @@ export function clubStats(rows: readonly StatsRow[], club: string, totalAthletes
     combined_make_rate: makeRatePercent([...snatchAttempts, ...cjAttempts]),
     athlete_results: athleteResults,
   };
+}
+
+type WsoRosterEntry = { name: string; club: string; weightClass: string; wso?: string };
+
+export function registeredWithWso(entry: { wso?: string }, wso: string): boolean {
+  return entry.wso !== undefined && normalizeName(entry.wso) === normalizeName(wso);
+}
+
+function rosterEntryId(nameKey: string, club: string, weightClass: string): string {
+  return `${nameKey}\u0000${club}\u0000${weightClass}`;
+}
+
+const EVERY_ROW_IN_ONE_CLUB = 'wso';
+
+function entryEachStatsRowWasJoinedTo(roster: readonly WsoRosterEntry[]): Map<string, WsoRosterEntry> {
+  const inStatsEntriesOrder = [...roster].sort(
+    (a, b) => compareCollated(a.name, b.name) || compareCollated(a.weightClass, b.weightClass) || compareCollated(a.club, b.club),
+  );
+  const joined = new Map<string, WsoRosterEntry>();
+  for (const entry of inStatsEntriesOrder) {
+    const id = rosterEntryId(normalizeName(entry.name), entry.club, entry.weightClass);
+    if (!joined.has(id)) joined.set(id, entry);
+  }
+  return joined;
+}
+
+export function wsoStats(rows: readonly StatsRow[], roster: readonly WsoRosterEntry[], wso: string) {
+  const members = roster.filter((entry) => registeredWithWso(entry, wso));
+  const joined = entryEachStatsRowWasJoinedTo(roster);
+  const memberRows = rows
+    .filter((row) => {
+      const entry = joined.get(rosterEntryId(row.key, row.club, row.weight_class));
+      return entry !== undefined && registeredWithWso(entry, wso);
+    })
+    .map((row) => ({ ...row, club: EVERY_ROW_IN_ONE_CLUB }));
+  const distinctMembers = new Set(members.map((entry) => normalizeName(entry.name))).size;
+  return clubStats(memberRows, EVERY_ROW_IN_ONE_CLUB, distinctMembers);
+}
+
+export async function computeStatsRowsOfWso(ctx: QueryCtx, meet: string, wso: string): Promise<StatsRow[]> {
+  const { joined, groups } = await statsEntries(ctx, meet);
+  const wanted = joined.filter(({ athlete }) => registeredWithWso(athlete, wso));
+  const bests = await previousBests(
+    ctx,
+    wanted.map(({ key, row }) => ({ key, before: row.date })),
+  );
+  const found = new Map(bests.map((best) => [previousBestId(best.key, best.before), best.best]));
+  return wanted.map((entry) => statsRow(entry, groups, found.get(previousBestId(entry.key, entry.row.date)) ?? null));
 }
 
 /** `COUNT(DISTINCT folded name)` of the club's entries at the meet, under any spelling of it (`clubKey`). */

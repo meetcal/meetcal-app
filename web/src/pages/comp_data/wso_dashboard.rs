@@ -106,7 +106,7 @@ fn wso_count(count: usize, coverage: WsoCoverage) -> String {
     match coverage {
         WsoCoverage::Full => count.to_string(),
         WsoCoverage::Partial if count > 0 => format!("{count}+"),
-        _ => NO_VALUE.to_owned(),
+        WsoCoverage::Partial | WsoCoverage::None => NO_VALUE.to_owned(),
     }
 }
 

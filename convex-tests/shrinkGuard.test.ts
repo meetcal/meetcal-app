@@ -1,7 +1,8 @@
 import { describeFailure } from '../convex/lib/cronAlerts';
 import { clearedColumns, clearedLifts, exceedsShrink, liftCount, MAX_SHRINK_SHARE, MIN_SHRINK_ALLOWED } from '../convex/lib/shrinkGuard';
 import { targetExpired, TARGET_RETENTION_DAYS } from '../convex/scrapers/entries';
-import { joinPages, MAX_UNREADABLE_SHARE, run as sport80Run, tableComplete, tooManyUnreadable } from '../convex/scrapers/sport80';
+import { MAX_UNREADABLE_SHARE, run as sport80Run, tooManyUnreadable } from '../convex/scrapers/sport80';
+import { joinPages, tableComplete } from '../convex/scrapers/lib/sport80Api';
 import { recordLift } from '../convex/scrapers/parse/holder';
 import { handlerOf } from './fakeDb';
 

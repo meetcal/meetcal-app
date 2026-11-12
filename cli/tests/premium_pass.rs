@@ -1,8 +1,14 @@
+#![cfg(test)]
 //! Premium reads and the access pass, against a local HTTP server: a saved login is traded for
 //! the pass once, the pass rides in premium reads' arguments, and a refused read renews it once
 //! or tells the user to log in or subscribe. Nothing here calls the live API.
 
-mod support;
+mod support {
+    pub(crate) mod bodies;
+    pub(crate) mod failures;
+    pub(crate) mod headers;
+    pub(crate) mod server;
+}
 
 use std::path::PathBuf;
 
@@ -10,7 +16,10 @@ use meetcal::utils::access::{Access, LOGIN_NEEDED};
 use meetcal::utils::backend::{PassRefused, functions, premium_action_from, queries, query_from};
 use meetcal::utils::credentials::{self, Credentials};
 use serde_json::{Value, json};
-use support::{FUNCTION_FAILED, OK, authorizations, reply, request_bodies, request_paths, serve};
+use support::bodies::request_bodies;
+use support::failures::FUNCTION_FAILED;
+use support::headers::{authorizations, request_paths};
+use support::server::{OK, reply, serve};
 
 const ROWS: &str = r#"{"status":"success","value":[{"meet":"Test Meet"}]}"#;
 

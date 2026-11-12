@@ -1,4 +1,5 @@
 import { v } from 'convex/values';
+import { chunks } from './lib/chunks';
 import { checkPass, premiumQuery, premiumRead } from './lib/access';
 import { action, internalQuery, query, type QueryCtx } from './_generated/server';
 import { internal } from './_generated/api';
@@ -260,9 +261,6 @@ async function inParallel<T, R>(items: readonly T[], concurrency: number, work: 
   await Promise.all(Array.from({ length: Math.min(concurrency, items.length) }, worker));
   return answers;
 }
-
-const chunks = <T>(items: readonly T[], size: number): T[][] =>
-  Array.from({ length: Math.ceil(items.length / size) }, (_, index) => items.slice(index * size, (index + 1) * size));
 
 const eliteMethodArg = v.union(v.literal('percentA'), v.literal('qpoints'), v.literal('qmasters'), v.literal('sinclair'));
 
