@@ -1,7 +1,10 @@
 const path = require("path");
 const { getSentryExpoConfig } = require("@sentry/react-native/metro");
+const { withNativeOnlyResolver } = require("./metro/native-only");
 
-const config = getSentryExpoConfig(__dirname);
+const config = withNativeOnlyResolver(
+  getSentryExpoConfig(__dirname, { includeWebReplay: false, includeWebFeedback: false }),
+);
 
 // The website in `web/` and the CLI in `cli/` are not part of the app
 // bundle, and their Rust build output (`target/`) runs to gigabytes; keep
