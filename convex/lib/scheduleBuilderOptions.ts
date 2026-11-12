@@ -72,6 +72,13 @@ export function storedClockOf(minutes: number): string {
   return `${pad2(Math.floor(minutes / 60))}:${pad2(minutes % 60)}:00`;
 }
 
+export function clockLabel(stored: string): string {
+  const minutes = minutesOfClock(stored.slice(0, 5));
+  if (minutes === null) return '';
+  const hour = Math.floor(minutes / 60);
+  return `${hour % 12 === 0 ? 12 : hour % 12}:${pad2(minutes % 60)} ${hour < 12 ? 'AM' : 'PM'}`;
+}
+
 function requireWhole(field: keyof typeof BUILDER_LIMITS, value: number): void {
   const { min, max } = BUILDER_LIMITS[field];
   if (!Number.isInteger(value) || value < min || value > max) {
