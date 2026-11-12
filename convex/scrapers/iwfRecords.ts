@@ -1,6 +1,7 @@
 'use node';
 
 import { v } from 'convex/values';
+import { errorMessage } from '../lib/errors';
 import { internalAction, type ActionCtx } from '../_generated/server';
 import { internal } from '../_generated/api';
 import { fetchJson, throttledOrTransient, withRetries, type RetryPolicy } from './lib/http';
@@ -105,7 +106,6 @@ export function keepStoredHolders(records: readonly IwfRecord[], stored: readonl
   });
 }
 
-const message = (error: unknown) => (error instanceof Error ? error.message : String(error));
 
 type Source = 'iwf.sport' | 'wikipedia';
 type RunResult = { source: Source | 'skipped'; records: IwfRecord[]; inserted: number; updated: number; deleted: number; unchanged: number; changes: string[] };
@@ -119,7 +119,7 @@ const NOTHING = { inserted: 0, updated: 0, deleted: 0, unchanged: 0, changes: []
  */
 function tokenRefused(refused: BrowserlessKeyError, wikipediaFailure?: unknown) {
   const failures = [{ source: 'browserless', error: refused.message }];
-  if (wikipediaFailure !== undefined) failures.push({ source: 'wikipedia', error: message(wikipediaFailure) });
+  if (wikipediaFailure !== undefined) failures.push({ source: 'wikipedia', error: errorMessage(wikipediaFailure) });
   return sourcesFailed('iwf-world-records read Wikipedia instead of iwf.sport', failures);
 }
 
@@ -139,7 +139,7 @@ export const run = internalAction({
         // Wikipedia is stored (`tokenRefused`). Nothing else here throws, so
         // only that reaches Convex's exception reporting (Sentry).
         if (error instanceof BrowserlessQuotaError) console.log(`iwf-world-records: Browserless plan limit, using Wikipedia: ${error.message}`);
-        else console.warn(`iwf-world-records: iwf.sport failed, using Wikipedia: ${message(error)}`);
+        else console.warn(`iwf-world-records: iwf.sport failed, using Wikipedia: ${errorMessage(error)}`);
         if (error instanceof BrowserlessKeyError) refused = error;
       }
     }
@@ -161,7 +161,7 @@ async function store(ctx: ActionCtx, token: string | undefined, found: { source:
       found = { source: 'wikipedia', records: await fromWikipedia() };
     } catch (error) {
       if (!throttledOrTransient(error)) throw error;
-      console.warn(`iwf-world-records: Wikipedia unavailable, run skipped and stored records kept: ${message(error)}`);
+      console.warn(`iwf-world-records: Wikipedia unavailable, run skipped and stored records kept: ${errorMessage(error)}`);
       return { source: 'skipped', records: [], ...NOTHING };
     }
   }

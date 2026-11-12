@@ -1,4 +1,5 @@
 import { parseCsvDicts } from '../../lib/csv';
+import { isoDateOf } from '../../../lib/dates';
 import { recordDate, recordHolder } from '../holder';
 import { intOrNull, type WsoRecord } from './common';
 
@@ -58,7 +59,7 @@ const CJ = new Set(['clean & jerk', 'clean and jerk', 'c&j', 'cleanjerk']);
  */
 export function parseFlatSheet(csv: string, wso: string, columns: FlatColumns = FLAT_COLUMNS, today: Date = new Date()): WsoRecord[] {
   const grouped = new Map<string, WsoRecord>();
-  const todayIso = today.toISOString().slice(0, 10);
+  const todayIso = isoDateOf(today.getTime());
   for (const row of parseCsvDicts(csv)) {
     const ended = columns.end ? recordDate(row[columns.end]) : undefined;
     if (ended && /^\d{4}-\d{2}-\d{2}$/.test(ended) && ended < todayIso) continue;

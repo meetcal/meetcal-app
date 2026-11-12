@@ -1,4 +1,4 @@
-import { DAY_MS, MONTH_NUMBERS as MONTHS, pad2 as pad } from '../../lib/dates';
+import { DAY_MS, isoDateOf, MONTH_NUMBERS as MONTHS, pad2 as pad } from '../../lib/dates';
 import { pyInt } from '../lib/numbers';
 
 // Who holds a record, stored beside each lift (`snatchBy`, `cjBy`, `totalBy`
@@ -69,21 +69,12 @@ const DATE_CORRECTIONS: readonly { name: string; written: string; date: string }
  */
 const FUTURE_SLACK_DAYS = 2;
 
-/**
- * `date` (as `recordDate` read it) with the sources' known mistakes
- * corrected (`DATE_CORRECTIONS`). A date that has not happened yet throws:
- * no record can have one, and the usual cause (a sheet writing the year
- * after, as two WSOs did for the December 2025 Virus Finals) cannot be told
- * from a real record once that day comes, so it fails the source until the
- * cell is listed above or the source fixes it. `today` only decides what is
- * in the future; it never changes the date returned.
- */
 export function correctRecordDate(name: string, date: string | undefined, today: Date): string | undefined {
   if (date === undefined) return undefined;
   const known = DATE_CORRECTIONS.find((c) => c.name === name && c.written === date);
   if (known) return known.date;
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return date;
-  const latest = new Date(today.getTime() + FUTURE_SLACK_DAYS * DAY_MS).toISOString().slice(0, 10);
+  const latest = isoDateOf(today.getTime() + FUTURE_SLACK_DAYS * DAY_MS);
   if (date > latest) {
     throw new Error(`record date ${date} for ${JSON.stringify(name)} is in the future (a year written wrong? add it to DATE_CORRECTIONS in parse/holder.ts)`);
   }
