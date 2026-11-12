@@ -217,7 +217,7 @@ pub fn Wrapped() -> impl IntoView {
             LoadState::Ready(Some((request, answer))) => match answer {
                 WrappedAnswer::Athlete { name, stats } => report(name, request.year, stats),
                 WrappedAnswer::Ambiguous { names, truncated } => choices(&request.query, request.year, names, *truncated, pick),
-                _ => view! { <p class="data-status error">{format!("Could not build wrapped: {}", unavailable_message(request, answer))}</p> }.into_any(),
+                WrappedAnswer::Narrow | WrappedAnswer::TooManyResults { .. } | WrappedAnswer::NoResults { .. } => view! { <p class="data-status error">{format!("Could not build wrapped: {}", unavailable_message(request, answer))}</p> }.into_any(),
             },
         }) }}
     </DataPage> }
