@@ -36,14 +36,17 @@ export function WrappedSlide({
   insets: EdgeInsets;
   onTapAtScreenX: (pageX: number) => void;
 }) {
+  const gradient = WrappedGradients.slides[index];
   return (
     <View style={{ width, height }}>
-      <LinearGradient
-        colors={WrappedGradients.slides[index]}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 1 }}
-        style={StyleSheet.absoluteFill}
-      />
+      {gradient && (
+        <LinearGradient
+          colors={gradient}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={StyleSheet.absoluteFill}
+        />
+      )}
       <View style={styles.slideOverlay} />
 
       <Pressable

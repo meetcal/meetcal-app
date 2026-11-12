@@ -74,7 +74,7 @@ function QualifyingTotalsScreenContent() {
 
   const getFilterDisplayText = () => {
     const ageGroup = filters.ageGroup
-      ? filters.ageGroup[0].toUpperCase() + filters.ageGroup.slice(1)
+      ? filters.ageGroup.charAt(0).toUpperCase() + filters.ageGroup.slice(1)
       : "";
     return filterSummary(
       [filters.event, filters.gender, ageGroup],

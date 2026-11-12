@@ -64,8 +64,9 @@ function NationalRankingsScreenContent() {
 
   useEffect(() => {
     const classes = getWeightClasses(genderOr(filters.gender, "Men"), filters.ageGroup);
-    if (!classes.includes(filters.weightClass) && classes.length > 0) {
-      setFilters((prev) => ({ ...prev, weightClass: classes[0] }));
+    const firstClass = classes[0];
+    if (firstClass !== undefined && !classes.includes(filters.weightClass)) {
+      setFilters((prev) => ({ ...prev, weightClass: firstClass }));
     }
   }, [filters.gender, filters.ageGroup, filters.weightClass, setFilters]);
 

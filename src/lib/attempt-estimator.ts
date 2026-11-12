@@ -9,6 +9,7 @@ import {
   ATTEMPT_HISTORY_YEARS,
   getHistoryCutoffDate,
   toMeetCalendarDate,
+  utcCalendarDate,
 } from '@/utils/dateTime';
 
 export interface AthleteAttemptEstimate {
@@ -175,13 +176,13 @@ function countAttemptsOut(order: AttemptData[], athleteIndex: number): number | 
   );
   if (openerIndex === -1) return null;
 
-  let out = 0;
-  for (let i = 0; i < openerIndex; i++) {
-    out++;
-    if (i + 1 < openerIndex && order[i].athleteIndex === order[i + 1].athleteIndex) {
+  const beforeOpener = order.slice(0, openerIndex);
+  let out = beforeOpener.length;
+  beforeOpener.forEach((attempt, i) => {
+    if (beforeOpener[i + 1]?.athleteIndex === attempt.athleteIndex) {
       out++;
     }
-  }
+  });
   return out;
 }
 
@@ -234,7 +235,7 @@ function normalizeDate(raw: string | null | undefined): string {
   if (calendarDate) return calendarDate;
   const parsed = new Date(raw);
   if (Number.isNaN(parsed.getTime())) return raw;
-  return parsed.toISOString().split("T")[0];
+  return utcCalendarDate(parsed);
 }
 
 export function calculateEstimates(
@@ -401,13 +402,13 @@ export function generateAthleteNotes(estimate: AthleteAttemptEstimate): string {
     (estimate.averageCJIncrease.first + estimate.averageCJIncrease.second) / 2
   );
 
-  if (estimate.snatchEstimates.length > 0 && estimate.snatchEstimates[0] > 0) {
+  if ((estimate.snatchEstimates[0] ?? 0) > 0) {
     notes.push(
       `${estimate.athleteName} typically takes ${averageSnatchIncrease}kg jumps in the Snatch, ${Math.round(estimate.snatchMakeRate * 100)}% opener make rate`
     );
   }
 
-  if (estimate.cjEstimates.length > 0 && estimate.cjEstimates[0] > 0) {
+  if ((estimate.cjEstimates[0] ?? 0) > 0) {
     notes.push(
       `They take ${averageCJIncrease}kg jumps in the Clean & Jerk, ${Math.round(estimate.cjMakeRate * 100)}% opener make rate`
     );

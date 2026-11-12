@@ -49,7 +49,8 @@ function EstimatedAttemptsRow({
 }
 
 function hasOpener(estimates: number[]): boolean {
-  return estimates.length > 0 && estimates[0] > 0;
+  const opener = estimates[0];
+  return opener !== undefined && opener > 0;
 }
 
 function EstimatedAttemptsTable({

@@ -48,7 +48,7 @@ export async function saveSessionAthleteCaches(
   const grouped = groupAthletesBySession(athletes);
 
   const entries = Array.from(grouped.entries()).map(([groupKey, group]) => {
-    const [sessionNumber, platform] = groupKey.split(':');
+    const [sessionNumber, platform = ''] = groupKey.split(':');
     return [
       getSessionAthletesKey(meetId, Number(sessionNumber), platform),
       JSON.stringify(group),

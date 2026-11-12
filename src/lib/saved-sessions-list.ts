@@ -89,7 +89,8 @@ export function revertRefusedSave(
   previousSession: SavedSession | undefined,
 ): SavedSession[] | null {
   const index = currentSessions.findIndex(s => s.id === refused.id);
-  if (index < 0 || !sameSession(currentSessions[index], refused)) {
+  const current = currentSessions[index];
+  if (!current || !sameSession(current, refused)) {
     return null;
   }
   const next = [...currentSessions];

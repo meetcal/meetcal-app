@@ -173,7 +173,8 @@ export function normalizeDeepLinkHref(value: string): Href | null {
 export function deepLinkOpensPath(url: string, pathname: string): boolean {
   const href = normalizeDeepLinkHref(url);
   if (typeof href !== "string") return false;
-  const path = href.split(/[?#]/, 1)[0].replace(/\/+$/, "") || "/";
+  const [hrefPath = ""] = href.split(/[?#]/, 1);
+  const path = hrefPath.replace(/\/+$/, "") || "/";
   return path === (pathname.replace(/\/+$/, "") || "/");
 }
 

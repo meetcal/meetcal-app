@@ -105,6 +105,7 @@ export function serverClockMs(header: string | null): number | null {
   const match = header === null ? null : HTTP_DATE.exec(header.trim());
   if (!match) return null;
   const [, day, month, year, hours, minutes, seconds] = match;
+  if (month === undefined) return null;
   const ms = Date.UTC(Number(year), MONTHS.indexOf(month), Number(day), Number(hours), Number(minutes), Number(seconds));
   return Number.isFinite(ms) ? ms + 500 : null;
 }

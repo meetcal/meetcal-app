@@ -1,5 +1,6 @@
 import {
   toMeetCalendarDate,
+  utcCalendarDate,
 } from "@/utils/dateTime";
 import {
   formatDistanceToNow,
@@ -34,9 +35,8 @@ const DOWNLOADABLE_MEET_WINDOW_DAYS = 21;
 
 /** `YYYY-MM-DD`, `days` after `from`. */
 function shiftCalendarDate(from: string, days: number): string {
-  const [year, month, day] = from.split("-").map(Number);
-  const shifted = new Date(Date.UTC(year, month - 1, day + days));
-  return shifted.toISOString().split("T")[0];
+  const [year = NaN, month = NaN, day = NaN] = from.split("-").map(Number);
+  return utcCalendarDate(new Date(Date.UTC(year, month - 1, day + days)));
 }
 
 /**

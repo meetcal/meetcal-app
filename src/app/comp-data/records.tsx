@@ -107,12 +107,13 @@ function RecordsScreenContent() {
   );
 
   useEffect(() => {
-    if (!filters.federation || !ageGroupsForFederation.length) {
+    const firstAgeGroup = ageGroupsForFederation[0];
+    if (!filters.federation || firstAgeGroup === undefined) {
       return;
     }
     if (!ageGroupsForFederation.includes(filters.ageGroup)) {
-      setFilters((prev) => ({ ...prev, ageGroup: ageGroupsForFederation[0] }));
-      setTempFilters((prev) => ({ ...prev, ageGroup: ageGroupsForFederation[0] }));
+      setFilters((prev) => ({ ...prev, ageGroup: firstAgeGroup }));
+      setTempFilters((prev) => ({ ...prev, ageGroup: firstAgeGroup }));
     }
   }, [
     ageGroupsForFederation,

@@ -86,8 +86,8 @@ export function usePaginatedSchedule({
       viewableItems: ListViewToken[];
       changed: ListViewToken[];
     }) => {
-      if (viewableItems.length > 0) {
-        const [first] = viewableItems;
+      const [first] = viewableItems;
+      if (first) {
         // Keep `currentPage` honest even when the user never swiped: the list
         // can open on `initialScrollIndex` (today's day), and the re-anchor
         // effect below would otherwise snap back to day 0 on the first fold.

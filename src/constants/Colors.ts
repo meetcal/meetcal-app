@@ -138,7 +138,7 @@ export function platformColor(platform: string | null | undefined): string {
   if (key.length === 0) return PlatformPalette.neutral;
   const exact = PLATFORM_COLOR_BY_KEY[key];
   if (exact) return exact;
-  const firstWord = key.split(' ')[0];
+  const [firstWord = ''] = key.split(' ');
   return PLATFORM_COLOR_BY_KEY[firstWord] ?? PlatformPalette.neutral;
 }
 

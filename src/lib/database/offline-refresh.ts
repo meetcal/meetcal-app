@@ -76,8 +76,7 @@ export async function refreshOfflineDownloads(
   const failed: string[] = [];
   let connectionLost = false;
 
-  for (let index = 0; index < steps.length; index += 1) {
-    const step = steps[index];
+  for (const [index, step] of steps.entries()) {
     try {
       await step.run();
       refreshed.push(step.title);

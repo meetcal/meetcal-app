@@ -301,7 +301,10 @@ export async function writeStoredLiftingResultsBatch(
 
   const pairs: [string, string][] = [];
   for (const plan of planned) {
-    plan.chunkKeys.forEach((chunkKey, index) => pairs.push([chunkKey, plan.chunks[index]]));
+    plan.chunkKeys.forEach((chunkKey, index) => {
+      const chunk = plan.chunks[index];
+      if (chunk !== undefined) pairs.push([chunkKey, chunk]);
+    });
   }
   for (const plan of planned) {
     pairs.push([plan.key, plan.manifestPayload]);

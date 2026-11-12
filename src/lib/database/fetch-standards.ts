@@ -48,8 +48,8 @@ function mapRows(rows: readonly CompleteStandardsRow[]): StandardsData {
   });
 
   Object.values(result).forEach((group) => {
-    group.men.sort((a, b) => weightClassSort(a.weightClass, b.weightClass));
-    group.women.sort((a, b) => weightClassSort(a.weightClass, b.weightClass));
+    group.men?.sort((a, b) => weightClassSort(a.weightClass, b.weightClass));
+    group.women?.sort((a, b) => weightClassSort(a.weightClass, b.weightClass));
   });
 
   return result;
@@ -78,7 +78,7 @@ async function fetchStandardsFresh(): Promise<StandardsData> {
  * shows the empty answer; the stored copy stays.
  */
 export function isStandardsDataEmpty(data: StandardsData): boolean {
-  return Object.values(data).every((group) => group.men.length + group.women.length === 0);
+  return Object.values(data).every((group) => (group.men?.length ?? 0) + (group.women?.length ?? 0) === 0);
 }
 
 async function persistStandards(data: StandardsData) {

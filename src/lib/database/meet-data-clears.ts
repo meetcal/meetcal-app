@@ -35,10 +35,11 @@ export async function clearMeetData(
       const scheduleKeys = keysFor(entry?.scheduleKey, fixed.scheduleKey);
       const athletesKeys = keysFor(entry?.athletesKey, fixed.athletesKey);
       const liftingResultsKeys = keysFor(entry?.liftingResultsKey, fixed.liftingResultsKey);
+      const [primaryAthletesKey] = athletesKeys;
       const rosterNames =
-        options?.pruneHistory === false
+        options?.pruneHistory === false || primaryAthletesKey === undefined
           ? []
-          : (await readStoredAthletes(athletesKeys[0], [])).map((athlete) => athlete.name);
+          : (await readStoredAthletes(primaryAthletesKey, [])).map((athlete) => athlete.name);
       await markMeetExplicitlyDownloaded(meet, false);
       for (const key of [...scheduleKeys, ...athletesKeys]) {
         await AsyncStorage.removeItem(key);

@@ -126,13 +126,13 @@ export async function getAllCachedLiftingResultsForAthletes(
           }
           if (seen.has(dedupeKey)) continue;
           seen.add(dedupeKey);
-          byName[athleteName].push(r);
+          byName[athleteName]?.push(r);
         }
       }
     }
 
     for (const athleteName of needsMeetScan) {
-      byName[athleteName].sort((a, b) => (b.date ?? '').localeCompare(a.date ?? ''));
+      byName[athleteName]?.sort((a, b) => (b.date ?? '').localeCompare(a.date ?? ''));
     }
   } catch (error) {
     console.error('Error getting cached lifting results for athlete:', error);

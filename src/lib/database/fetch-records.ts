@@ -84,8 +84,8 @@ function ageGroupSort(a: string, b: string): number {
   const matchB = bLower.match(mastersRegex);
 
   if (matchA && matchB) {
-    const numA = parseInt(matchA[1], 10);
-    const numB = parseInt(matchB[1], 10);
+    const numA = parseInt(matchA[1] ?? '', 10);
+    const numB = parseInt(matchB[1] ?? '', 10);
     return numA - numB;
   }
   if (matchA) return 1;

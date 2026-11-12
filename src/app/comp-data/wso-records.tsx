@@ -79,8 +79,8 @@ function WSORecordsScreenContent() {
   });
 
   useEffect(() => {
-    if (filters.wso || !availableWSOs.length) return;
     const nextWSO = availableWSOs[0];
+    if (filters.wso || nextWSO === undefined) return;
     setFilters((prev) => ({ ...prev, wso: nextWSO }));
     setTempFilters((prev) => ({ ...prev, wso: nextWSO }));
   }, [availableWSOs, filters.wso, setFilters, setTempFilters]);
@@ -91,9 +91,9 @@ function WSORecordsScreenContent() {
   const loadedAgeGroups: string[] | undefined = ageGroupsByWSO[filters.wso];
 
   useEffect(() => {
-    if (!loadedAgeGroups?.length) return;
+    const nextAgeGroup = loadedAgeGroups?.[0];
+    if (!loadedAgeGroups || nextAgeGroup === undefined) return;
     if (loadedAgeGroups.includes(filters.ageGroup)) return;
-    const nextAgeGroup = loadedAgeGroups[0];
     setFilters((prev) => ({ ...prev, ageGroup: nextAgeGroup }));
     setTempFilters((prev) => ({ ...prev, ageGroup: nextAgeGroup }));
   }, [loadedAgeGroups, filters.ageGroup, setFilters, setTempFilters]);
