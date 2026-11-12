@@ -93,9 +93,6 @@ export function parseUmwfSheet(csv: string, ageCategory: string, gender: string)
     if (row[1].includes('kg Category')) {
       columns = holderColumns(row, columns);
       if (current) records.push(current);
-      // A class the heading calls retired ("98 kg Category (retired after
-      // Singapore World Cup)") no longer exists: its rows are skipped, so the
-      // sync prunes it rather than serve it beside the current classes.
       const weightClass = /\(\s*retired\b/i.test(row[1]) ? null : formatWeightClass(row[1]);
       current = weightClass
         ? { recordType: 'UMWF', ageCategory: ageCategory, gender, weightClass: weightClass, snatchRecord: 0, cjRecord: 0, totalRecord: 0 }
