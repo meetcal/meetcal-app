@@ -1,6 +1,6 @@
 use super::address::{HistoryEntry, PageAddress, query_param};
 use super::filters::filter_options;
-use super::loading::{Load, LoadState};
+use super::loading::{Load, LoadState, load_error};
 use super::ui::FilterSelect;
 use leptos::prelude::*;
 use serde::Deserialize;
@@ -85,6 +85,26 @@ pub(crate) fn narrowed_choices(
             }
             LoadState::Loading | LoadState::Failed(_) => in_address,
         })
+    })
+}
+
+pub(crate) fn narrowing_row(
+    narrowing: Narrowing,
+    categories: Load<(), Vec<Category>>,
+    chosen: Memo<Choices>,
+    page: PageAddress,
+    label: &'static str,
+) -> AnyView {
+    categories.with(|state| match state {
+        LoadState::Ready(categories) => view! {
+            <NarrowingSelects narrowing options=narrowing.options(categories) chosen page />
+        }
+        .into_any(),
+        LoadState::Loading => view! {
+            <NarrowingSelects narrowing options=Default::default() chosen page />
+        }
+        .into_any(),
+        LoadState::Failed(error) => load_error(label, error, move || categories.retry()),
     })
 }
 

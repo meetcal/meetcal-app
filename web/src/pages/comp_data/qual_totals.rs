@@ -3,8 +3,8 @@ use super::{
     catalog,
     filters::{SortDirection, sort_numeric, sort_orders, sort_text},
     format::display_weight_class,
-    loading::{Load, load_query, select_response, table_response},
-    narrowed::{Category, Narrowing, NarrowingSelects, narrowed_choices},
+    loading::{Load, load_query, table_response},
+    narrowed::{Category, Narrowing, narrowed_choices, narrowing_row},
     reference_table::{Filter, OptionOrder, ReferenceTable, TableSort},
     ui::DataPage,
 };
@@ -113,9 +113,7 @@ pub fn QualifyingTotals() -> impl IntoView {
 
     view! {
         <DataPage page=catalog::QUALIFYING_TOTALS>
-            {move || select_response(categories, "Loading the events…", "events", |categories| {
-                view! { <NarrowingSelects narrowing=NARROWING options=NARROWING.options(categories) chosen page /> }.into_any()
-            })}
+            {move || narrowing_row(NARROWING, categories, chosen, page, "events")}
             {move || table_response(totals, HEADERS.len(), "qualifying totals", |totals| {
                 view! {
                     <ReferenceTable rows=totals.to_vec() filters=FILTERS headers=HEADERS row=total_row path=PATH default_sort=QualifyingTotalSort::TotalAsc empty_message="No qualifying totals match these filters." below_another_filter_row=true />

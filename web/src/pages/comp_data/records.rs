@@ -3,9 +3,9 @@ use super::{
     catalog,
     filters::{SortDirection, sort_numeric, sort_orders},
     format::{display_weight_class, reference_value},
-    loading::{Load, load_query, select_response, table_response},
+    loading::{Load, load_query, table_response},
     models::RecordHolder,
-    narrowed::{Category, Narrowing, NarrowingSelects, narrowed_choices},
+    narrowed::{Category, Narrowing, narrowed_choices, narrowing_row},
     reference_table::{Filter, OptionOrder, ReferenceTable, TableSort},
     ui::{DataPage, RecordLift},
 };
@@ -169,9 +169,7 @@ pub fn Records() -> impl IntoView {
 
     view! {
         <DataPage page=catalog::RECORDS>
-            {move || select_response(categories, "Loading the record lists…", "record lists", |categories| {
-                view! { <NarrowingSelects narrowing=NARROWING options=NARROWING.options(categories) chosen page /> }.into_any()
-            })}
+            {move || narrowing_row(NARROWING, categories, chosen, page, "record lists")}
             {move || table_response(records, HEADERS.len(), "records", |records| {
                 view! {
                     <ReferenceTable rows=listed(records) filters=FILTERS headers=HEADERS row=record_row path=PATH default_sort=RecordSort::TotalDesc empty_message="No records match these filters." below_another_filter_row=true />

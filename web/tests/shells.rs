@@ -28,7 +28,25 @@ fn first_frame(path: &str) -> String {
     provide_access();
     let html = view! { <SiteRoutes footer=false /> }.to_html();
     drop(owner);
-    html.replace("<!>", "").replace("<form ", "<form inert ")
+    without_lazy_downloads(&html.replace("<!>", "").replace("<form ", "<form inert "))
+}
+
+fn without_lazy_downloads(html: &str) -> String {
+    let mut out = String::with_capacity(html.len());
+    let mut rest = html;
+    while let Some(start) = rest.find("<img ") {
+        let end = start + rest[start..].find('>').expect("an <img> tag ends");
+        let tag = &rest[start..=end];
+        out.push_str(&rest[..start]);
+        if tag.contains(r#"loading="lazy""#) {
+            out.push_str(&tag.replace(" src=\"", " data-app-src=\""));
+        } else {
+            out.push_str(tag);
+        }
+        rest = &rest[end + 1..];
+    }
+    out.push_str(rest);
+    out
 }
 
 fn stem(path: &str) -> &str {
@@ -94,6 +112,17 @@ fn the_committed_shells_are_the_first_frame_the_app_renders_on_each_route() {
     assert!(
         stale.is_empty(),
         "shells/ is out of date for {stale:?}: run UPDATE_SHELLS=1 cargo test --test shells"
+    );
+}
+
+#[test]
+fn a_shell_leaves_the_images_the_app_loads_lazily_to_the_app() {
+    let shell = without_lazy_downloads(
+        r#"<img src="/a.png" alt="A"><img src="/b.webp" alt="" loading="lazy">"#,
+    );
+    assert_eq!(
+        shell,
+        r#"<img src="/a.png" alt="A"><img data-app-src="/b.webp" alt="" loading="lazy">"#
     );
 }
 
