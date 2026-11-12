@@ -146,7 +146,7 @@ export function defaultBuilderOptions(meet: { startDate: string; endDate: string
     maxSessionsPerDay: null,
     platforms: [...DEFAULT_BUILDER_SETTINGS.platforms],
     grouping: 'weightClass',
-    separateAgeGroups: false,
+    separateAgeGroups: true,
     order: 'womenThenMen',
   };
 }

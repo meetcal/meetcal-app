@@ -348,12 +348,13 @@ describe('edits', () => {
 });
 
 describe('options', () => {
-  it('defaults to the meet days at 9:00 on one platform', () => {
+  it('defaults to the meet days at 9:00 on one platform, youth and masters lifting on their own', () => {
     const defaults = defaultBuilderOptions({ startDate: '2027-03-06', endDate: '2027-03-07' });
     expect(defaults.days).toEqual([
       { date: '2027-03-06', firstStart: '09:00' },
       { date: '2027-03-07', firstStart: '09:00' },
     ]);
+    expect(defaults.separateAgeGroups).toBe(true);
     expect(() => checkBuilderOptions(defaults)).not.toThrow();
   });
 
