@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 
 use anyhow::{Result, bail};
 use clap::Parser;
@@ -15,7 +15,7 @@ use crate::{
         output::{self, Report},
         stats::{
             Division, Gender, Lift, QPOINTS_LABEL, SINCLAIR_LABEL, attempt_habits, average,
-            bombed_out, number, percent, points, row_qpoints, row_sinclair, valid_lift,
+            bombed_out, fold, number, percent, points, row_qpoints, row_sinclair, valid_lift,
             valid_total,
         },
     },
@@ -244,10 +244,41 @@ pub struct MeetSummary {
 /// The genders scores are ranked within, in report order.
 const GENDERS: [Gender; 2] = [Gender::Men, Gender::Women];
 
+pub fn performances(rows: &[LiftingResults]) -> Vec<Vec<&LiftingResults>> {
+    let mut index: HashMap<(String, String, [u64; 7]), usize> = HashMap::new();
+    let mut groups: Vec<Vec<&LiftingResults>> = Vec::new();
+    for row in rows {
+        let lifts = [
+            row.body_weight,
+            row.snatch1,
+            row.snatch2,
+            row.snatch3,
+            row.cj1,
+            row.cj2,
+            row.cj3,
+        ]
+        .map(f64::to_bits);
+        let key = (fold(&row.name), row.date.clone(), lifts);
+        let at = *index.entry(key).or_insert_with(|| {
+            groups.push(Vec::new());
+            groups.len() - 1
+        });
+        groups[at].push(row);
+    }
+    groups
+}
+
+fn one_row_per_performance(rows: &[LiftingResults]) -> Vec<&LiftingResults> {
+    performances(rows)
+        .into_iter()
+        .filter_map(|group| group.first().copied())
+        .collect()
+}
+
 pub fn summarize(rows: &[LiftingResults]) -> MeetSummary {
-    let all: Vec<&LiftingResults> = rows.iter().collect();
+    let all = one_row_per_performance(rows);
     // Source errors (`stats::plausible`) count as athletes, but not toward the average total.
-    let totals: Vec<f64> = rows.iter().filter_map(valid_total).collect();
+    let totals: Vec<f64> = all.iter().filter_map(|row| valid_total(row)).collect();
     let (mut taken, mut made) = (0, 0);
     for lift in [Lift::Snatch, Lift::CleanAndJerk] {
         let habits = attempt_habits(&all, lift);
@@ -261,8 +292,8 @@ pub fn summarize(rows: &[LiftingResults]) -> MeetSummary {
             .max_by(|a, b| a.0.total_cmp(&b.0))
     };
     MeetSummary {
-        athletes: rows.len(),
-        bomb_outs: rows.iter().filter(|row| bombed_out(row)).count(),
+        athletes: all.len(),
+        bomb_outs: all.iter().filter(|row| bombed_out(row)).count(),
         average_total: average(&totals),
         make_rate: (taken > 0).then(|| made as f64 * 100.0 / taken as f64),
         best_sinclair: GENDERS.map(|gender| best(row_sinclair, gender)),
@@ -270,17 +301,21 @@ pub fn summarize(rows: &[LiftingResults]) -> MeetSummary {
     }
 }
 
-/// The meet's best lifters of `gender` by `score`, best first.
 fn top_table(
     results: &[LiftingResults],
     score: fn(&LiftingResults) -> Option<f64>,
     label: &str,
     gender: Gender,
 ) -> Table {
-    let mut ranked: Vec<(&LiftingResults, f64)> = results
-        .iter()
-        .filter(|row| Division::parse(&row.age).gender == Some(gender))
-        .filter_map(|row| score(row).map(|value| (row, value)))
+    let mut ranked: Vec<(&LiftingResults, f64)> = performances(results)
+        .into_iter()
+        .filter_map(|group| {
+            group
+                .into_iter()
+                .filter(|row| Division::parse(&row.age).gender == Some(gender))
+                .filter_map(|row| score(row).map(|value| (row, value)))
+                .reduce(|best, next| if next.1 > best.1 { next } else { best })
+        })
         .collect();
     ranked.sort_by(|a, b| b.1.total_cmp(&a.1));
     let mut top = Table::new();
@@ -392,7 +427,7 @@ pub fn report(
         }
     }
 
-    let (by_attempt, by_lift) = make_rate_tables(results);
+    let (by_attempt, by_lift) = make_rate_tables(&one_row_per_performance(results));
     let mut report = Report::new()
         .table("results", meet_table)
         .headed("summary", "SUMMARY", summary_table)
@@ -647,6 +682,87 @@ mod tests {
         assert_eq!(json["top_sinclair_men"].as_array().unwrap().len(), 1);
         assert_eq!(json["heaviest_lifts"][0]["athlete"], "Hampton");
         assert_eq!(json["heaviest_lifts"][2]["weight"], 315);
+    }
+
+    #[test]
+    fn a_lifter_listed_in_two_divisions_counts_once() {
+        let lift = |name: &str, division: &str, snatch: [f64; 3]| {
+            row(
+                name,
+                "2026-03-01",
+                "M",
+                division,
+                70.0,
+                snatch,
+                [100.0, -105.0, 0.0],
+            )
+        };
+        let rows = vec![
+            lift("Ada Lift", "Open Women's 71kg", [80.0, 0.0, 0.0]),
+            lift(
+                "Ada  Lift",
+                "Women's Masters (40-44) 71kg",
+                [80.0, 0.0, 0.0],
+            ),
+            lift("Bea", "Open Women's 71kg", [-70.0, -70.0, -70.0]),
+            lift("Bea", "Women's 16-17 Age Group 71kg", [-70.0, -70.0, -70.0]),
+            lift("Ada Lift", "Open Women's 71kg", [60.0, 0.0, 0.0]),
+        ];
+        let mut rows = rows;
+        let mut same_lifts_on_another_day = lift("Ada Lift", "Open Women's 71kg", [60.0, 0.0, 0.0]);
+        same_lifts_on_another_day.date = "2026-04-05".into();
+        rows.push(same_lifts_on_another_day);
+        let summary = summarize(&rows);
+        assert_eq!(summary.athletes, 4);
+        assert_eq!(summary.bomb_outs, 1);
+        assert_eq!(summary.average_total, Some(500.0 / 3.0));
+        assert_eq!(summary.make_rate, Some(700.0 / 14.0));
+
+        let editions = [EditionSummary {
+            meet: "M".into(),
+            year: "2026".into(),
+            summary,
+        }];
+        let json = report(&rows, &editions, &[], false).to_json();
+        assert_eq!(json["results"].as_array().unwrap().len(), 6);
+        assert_eq!(json["summary"][0]["make_rate"], 50);
+        assert_eq!(json["make_rate"][0]["total_make_rate"], 50);
+        let top = json["top_sinclair_women"].as_array().unwrap();
+        let names: Vec<&str> = top.iter().filter_map(|r| r["athlete"].as_str()).collect();
+        assert_eq!(names, ["Ada Lift", "Ada Lift", "Ada Lift"]);
+        assert_eq!(top[0]["total"], 180);
+        assert_eq!(top[1]["total"], 160);
+        assert_eq!(top[2]["total"], 160);
+        assert_eq!(json["top_qpoints_women"].as_array().unwrap().len(), 3);
+    }
+
+    #[test]
+    fn a_lifter_in_a_youth_and_an_open_division_is_ranked_under_the_one_that_scores() {
+        let lift = |division: &str| {
+            row(
+                "Bea",
+                "2026-03-01",
+                "M",
+                division,
+                70.0,
+                [70.0, 0.0, 0.0],
+                [90.0, 0.0, 0.0],
+            )
+        };
+        let rows = vec![
+            lift("Women's 16-17 Age Group 71kg"),
+            lift("Open Women's 71kg"),
+        ];
+        let editions = [EditionSummary {
+            meet: "M".into(),
+            year: "2026".into(),
+            summary: summarize(&rows),
+        }];
+        let json = report(&rows, &editions, &[], false).to_json();
+        let top = json["top_qpoints_women"].as_array().unwrap();
+        assert_eq!(top.len(), 1);
+        assert_eq!(top[0]["division"], "Open Women's 71kg");
+        assert_eq!(json["top_sinclair_women"].as_array().unwrap().len(), 1);
     }
 
     #[test]
