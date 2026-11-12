@@ -1,9 +1,10 @@
 use super::{
-    filters::{compare_weight_classes, filter_options, matches_filter, weight_class_options},
-    format::reference_value,
+    filters::{compare_weight_classes, sort_orders},
+    format::{display_weight_class, reference_value},
     loading::{Load, load_query, select_response, table_response},
     models::RecordHolder,
-    ui::{DataPage, DataStatus, DataTable, EmptyTableRow, FilterSelect, RecordLift, SortSelect},
+    reference_table::{Filter, OptionOrder, ReferenceTable, TableSort},
+    ui::{DataPage, DataStatus, FilterSelect, RecordLift},
 };
 use crate::utils::api::{queries, query_with};
 use leptos::prelude::*;
@@ -14,7 +15,7 @@ struct WsoRecordsQuery {
     wso: String,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize)]
 struct WsoRecord {
     age_category: String,
     cj_record: Option<f64>,
@@ -30,20 +31,110 @@ struct WsoRecord {
     total_by: Option<RecordHolder>,
 }
 
-const SORT_OPTIONS: &[(&str, &str)] = &[
-    ("total_desc", "Total: high to low"),
-    ("snatch_desc", "Snatch: high to low"),
-    ("cj_desc", "Clean & jerk: high to low"),
-    ("weight_asc", "Weight class"),
+impl WsoRecord {
+    fn shown(self) -> Self {
+        Self {
+            weight_class: display_weight_class(&self.weight_class),
+            ..self
+        }
+    }
+}
+
+fn gender(record: &WsoRecord) -> &str {
+    &record.gender
+}
+
+fn age(record: &WsoRecord) -> &str {
+    &record.age_category
+}
+
+fn weight_class(record: &WsoRecord) -> &str {
+    &record.weight_class
+}
+
+const FILTERS: &[Filter<WsoRecord>] = &[
+    Filter {
+        label: "Gender",
+        placeholder: "All genders",
+        value: gender,
+        order: OptionOrder::Alphabetical,
+    },
+    Filter {
+        label: "Age",
+        placeholder: "All ages",
+        value: age,
+        order: OptionOrder::Alphabetical,
+    },
+    Filter {
+        label: "Weight class",
+        placeholder: "All classes",
+        value: weight_class,
+        order: OptionOrder::ByWeight,
+    },
 ];
+
+const HEADERS: &[&str] = &[
+    "Gender",
+    "Age",
+    "Weight class",
+    "Snatch",
+    "Clean & jerk",
+    "Total",
+];
+
+sort_orders!(WsoRecordSort {
+    TotalDesc => ("total_desc", "Total: high to low"),
+    SnatchDesc => ("snatch_desc", "Snatch: high to low"),
+    CjDesc => ("cj_desc", "Clean & jerk: high to low"),
+    WeightAsc => ("weight_asc", "Weight class"),
+});
+
+impl TableSort<WsoRecord> for WsoRecordSort {
+    fn sort(self, rows: &mut [&WsoRecord]) {
+        match self {
+            WsoRecordSort::SnatchDesc => rows.sort_by(|left, right| {
+                right
+                    .snatch_record
+                    .unwrap_or_default()
+                    .total_cmp(&left.snatch_record.unwrap_or_default())
+            }),
+            WsoRecordSort::CjDesc => rows.sort_by(|left, right| {
+                right
+                    .cj_record
+                    .unwrap_or_default()
+                    .total_cmp(&left.cj_record.unwrap_or_default())
+            }),
+            WsoRecordSort::WeightAsc => rows.sort_by(|left, right| {
+                compare_weight_classes(&left.weight_class, &right.weight_class)
+            }),
+            WsoRecordSort::TotalDesc => rows.sort_by(|left, right| {
+                right
+                    .total_record
+                    .unwrap_or_default()
+                    .total_cmp(&left.total_record.unwrap_or_default())
+            }),
+        }
+    }
+}
+
+fn record_row(record: &WsoRecord) -> AnyView {
+    view! {
+        <tr>
+            <td>{record.gender.clone()}</td>
+            <td>{record.age_category.clone()}</td>
+            <td>{record.weight_class.clone()}</td>
+            <RecordLift value=reference_value(record.snatch_record) holder=record.snatch_by.clone() />
+            <RecordLift value=reference_value(record.cj_record) holder=record.cj_by.clone() />
+            <RecordLift value=reference_value(record.total_record) holder=record.total_by.clone() />
+        </tr>
+    }
+    .into_any()
+}
 
 #[component]
 pub fn WsoRecords() -> impl IntoView {
     let (wso, set_wso) = signal(String::new());
-    let (gender, set_gender) = signal(String::new());
-    let (age, set_age) = signal(String::new());
-    let (weight_class, set_weight_class) = signal(String::new());
-    let (sort, set_sort) = signal("total_desc".to_owned());
+    let sort = RwSignal::new(WsoRecordSort::TotalDesc);
 
     let organizations = load_query::<Vec<String>>(queries::WSO_LIST);
     let records = Load::new(
@@ -57,6 +148,7 @@ pub fn WsoRecords() -> impl IntoView {
                 &WsoRecordsQuery { wso: selected_wso },
             )
             .await
+            .map(|records| records.into_iter().map(WsoRecord::shown).collect())
             .map_err(|error| error.to_string())
         },
     );
@@ -73,12 +165,7 @@ pub fn WsoRecords() -> impl IntoView {
                         placeholder="Choose a WSO"
                         values=organizations.to_vec()
                         selected=wso
-                        on_select=move |value: String| {
-                            set_wso.set(value);
-                            set_gender.set(String::new());
-                            set_age.set(String::new());
-                            set_weight_class.set(String::new());
-                        }
+                        on_select=move |value: String| set_wso.set(value)
                     />
                 </div>
             }.into_any())}
@@ -86,47 +173,11 @@ pub fn WsoRecords() -> impl IntoView {
             {move || if wso.get().is_empty() {
                 view! { <DataStatus message="Choose an organization to view its records." /> }.into_any()
             } else {
-                table_response(records, 6, "WSO records", |records| {
-                    let genders = filter_options(records.iter().map(|row| row.gender.as_str()));
-                    let ages = filter_options(records.iter().map(|row| row.age_category.as_str()));
-                    let weights = weight_class_options(records.iter().map(|row| row.weight_class.as_str()));
-                    let selected_gender = gender.get();
-                    let selected_age = age.get();
-                    let selected_weight = weight_class.get();
-                    let mut filtered = records.iter().filter(|row| {
-                        matches_filter(&row.gender, &selected_gender)
-                            && matches_filter(&row.age_category, &selected_age)
-                            && matches_filter(&row.weight_class, &selected_weight)
-                    }).collect::<Vec<_>>();
-                    match sort.get().as_str() {
-                        "snatch_desc" => filtered.sort_by(|left, right| right.snatch_record.unwrap_or_default().total_cmp(&left.snatch_record.unwrap_or_default())),
-                        "cj_desc" => filtered.sort_by(|left, right| right.cj_record.unwrap_or_default().total_cmp(&left.cj_record.unwrap_or_default())),
-                        "weight_asc" => filtered.sort_by(|left, right| compare_weight_classes(&left.weight_class, &right.weight_class)),
-                        _ => filtered.sort_by(|left, right| right.total_record.unwrap_or_default().total_cmp(&left.total_record.unwrap_or_default())),
-                    }
-                    let is_empty = filtered.is_empty();
-                    let rows = filtered.into_iter().map(|row| view! {
-                        <tr>
-                            <td>{row.gender.clone()}</td><td>{row.age_category.clone()}</td>
-                            <td>{row.weight_class.clone()}</td>
-                            <RecordLift value=reference_value(row.snatch_record) holder=row.snatch_by.clone() />
-                            <RecordLift value=reference_value(row.cj_record) holder=row.cj_by.clone() />
-                            <RecordLift value=reference_value(row.total_record) holder=row.total_by.clone() />
-                        </tr>
-                    }).collect_view();
-
+                table_response(records, HEADERS.len(), "WSO records", |records| {
                     view! {
-                        <div class="data-filters data-filters-secondary">
-                            <FilterSelect label="Gender" placeholder="All genders" values=genders selected=gender on_select=move |value| set_gender.set(value) />
-                            <FilterSelect label="Age" placeholder="All ages" values=ages selected=age on_select=move |value| set_age.set(value) />
-                            <FilterSelect label="Weight class" placeholder="All classes" values=weights selected=weight_class on_select=move |value| set_weight_class.set(value) />
-                            <SortSelect options=SORT_OPTIONS sort set_sort />
-                        </div>
-                        <DataTable>
-                            <thead><tr><th>"Gender"</th><th>"Age"</th><th>"Weight class"</th><th>"Snatch"</th><th>"Clean & jerk"</th><th>"Total"</th></tr></thead>
-                            <tbody>{is_empty.then(|| view! { <EmptyTableRow columns=6 message="No WSO records match these filters." /> })}{rows}</tbody>
-                        </DataTable>
-                    }.into_any()
+                        <ReferenceTable rows=records.to_vec() filters=FILTERS headers=HEADERS row=record_row sort empty_message="No WSO records match these filters." below_another_filter_row=true />
+                    }
+                    .into_any()
                 })
             }}
         </DataPage>
@@ -173,5 +224,25 @@ mod tests {
             Some("March 2, 2024 · Raleigh, NC")
         );
         assert_eq!(record.cj_by, None);
+    }
+
+    #[test]
+    fn every_sort_order_in_the_menu_is_one_the_table_sorts_by() {
+        crate::pages::comp_data::filters::assert_each_sort_order_parses_to_itself::<WsoRecordSort>(
+        );
+    }
+
+    #[test]
+    fn a_class_without_its_unit_reads_as_the_other_tables_write_it() {
+        let record = |class: &str| -> WsoRecord {
+            serde_json::from_value(serde_json::json!({
+                "age_category": "Senior", "cj_record": 100.0, "gender": "Men", "snatch_record": 80.0,
+                "total_record": 180.0, "weight_class": class
+            }))
+            .unwrap()
+        };
+        assert_eq!(record("110").shown().weight_class, "110kg");
+        assert_eq!(record("110+").shown().weight_class, "110+kg");
+        assert_eq!(record("69kg").shown().weight_class, "69kg");
     }
 }
