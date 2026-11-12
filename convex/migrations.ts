@@ -10,7 +10,8 @@ import { normalizeAgeCategory, normalizeGender } from './lib/normalize';
 import { canonicalMeetDate, isValidIsoDate } from './lib/validation';
 import { isMaintainedWso } from './lib/wsoSources';
 import { writeHistories } from './lib/history';
-import { bareWeightClass, hasSession, isJunkEntrant, isJunkMeetName } from './lib/roster';
+import { hasSession, isJunkEntrant, isJunkMeetName } from './lib/roster';
+import { bareWeightClass } from './lib/weightClass';
 import {
   athleteKeys,
   deleteResultRows,

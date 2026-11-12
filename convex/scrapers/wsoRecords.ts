@@ -4,7 +4,8 @@ import { errorMessage, itemAt } from '../lib/json';
 import { v } from 'convex/values';
 import { internalAction, type ActionCtx } from '../_generated/server';
 import { internal } from '../_generated/api';
-import { absoluteUrl, fetchText, mapLimited, throttledOrTransient, withRetries, type RetryPolicy } from './lib/http';
+import { absoluteUrl, fetchText, throttledOrTransient, withRetries, type RetryPolicy } from './lib/http';
+import { mapLimited } from '../lib/concurrency';
 import { unescapeHtml } from './lib/html';
 import { pdfLines, pdfRunLines } from './lib/pdf';
 import {

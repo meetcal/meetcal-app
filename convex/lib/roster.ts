@@ -3,7 +3,6 @@ import { normalizeGender } from './normalize';
 import { currentWeightClasses } from './referenceData';
 import { bareWeightClass } from './weightClass';
 
-export { bareWeightClass };
 
 /**
  * Rules for a meet's roster (`athletes`): when an athlete has a session, and

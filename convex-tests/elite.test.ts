@@ -1,3 +1,4 @@
+import { classLimit } from '../convex/lib/weightClass';
 import { getFunctionName } from 'convex/server';
 import { ConvexError } from 'convex/values';
 import { passes } from '../convex/accessPass';
@@ -7,7 +8,6 @@ import {
   AGE_FACTORS_WOMEN,
   ageFactor,
   checkEliteArgs,
-  classLimit,
   type EliteMember,
   groupOfAge,
   latestRegistration,
