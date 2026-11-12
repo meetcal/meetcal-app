@@ -47,10 +47,15 @@ pub async fn run(args: IntlRankingsArgs) -> Result<()> {
     let rankings: Vec<Rankings> = query(queries::INTL_RANKINGS, &NoArgs {}).await?;
     let matching = selected(rankings, &args.age, args.gender, &args.meet)?;
 
+    output::emit(report(matching));
+
+    Ok(())
+}
+
+pub fn report(rankings: Vec<Rankings>) -> Report {
     let mut table = Table::new();
     table.set_header(vec!["Rank", "Name", "Class", "Percent A", "Total"]);
-
-    for total in best_first(matching) {
+    for total in best_first(rankings) {
         table.add_row(vec![
             total.ranking.to_string(),
             total.name,
@@ -59,10 +64,7 @@ pub async fn run(args: IntlRankingsArgs) -> Result<()> {
             total.total.to_string(),
         ]);
     }
-
-    output::emit(Report::single("intl_rankings", table));
-
-    Ok(())
+    Report::single("intl_rankings", table)
 }
 
 pub fn selected(

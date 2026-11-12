@@ -1,12 +1,11 @@
 use anyhow::{Result, bail};
 use clap::Parser;
-use comfy_table::Table;
 
 use crate::{
     types::wso::WSORecord,
     utils::{
         backend::{queries, query},
-        format::{record_cell, record_data_cells, record_data_header},
+        format::{RecordRow, record_tables},
         names::{NameKind, not_found, wso_age_groups},
         output::{self, Report},
         sort::sort_by_class,
@@ -57,32 +56,17 @@ pub async fn run(args: WsoRecordsArgs) -> Result<()> {
     }
     let sorted = sort_by_class(records, |r| r.weight_class.as_str());
 
-    let mut table = Table::new();
-    table.set_header(vec!["Class", "Snatch", "CJ", "Total"]);
-    let mut data = Table::new();
-    data.set_header(record_data_header());
-
-    for record in sorted {
-        let lifts = [
-            (record.snatch_record, record.snatch_by.as_ref()),
-            (record.cj_record, record.cj_by.as_ref()),
-            (record.total_record, record.total_by.as_ref()),
-        ];
-        let mut row = vec![record.weight_class.clone()];
-        row.extend(
-            lifts
-                .iter()
-                .map(|(value, holder)| record_cell(*value, *holder)),
-        );
-        table.add_row(row);
-        let mut data_row = vec![record.weight_class.clone()];
-        for (value, holder) in lifts {
-            data_row.extend(record_data_cells(value, holder));
-        }
-        data.add_row(data_row);
-    }
-
-    output::emit(Report::new().table_with_data("wso_records", table, data));
+    output::emit(report(&sorted));
 
     Ok(())
+}
+
+pub fn report(records: &[WSORecord]) -> Report {
+    let (table, data) = record_tables(records.iter().map(|record| RecordRow {
+        weight_class: &record.weight_class,
+        snatch: (record.snatch_record, record.snatch_by.as_ref()),
+        cj: (record.cj_record, record.cj_by.as_ref()),
+        total: (record.total_record, record.total_by.as_ref()),
+    }));
+    Report::new().table_with_data("wso_records", table, data)
 }

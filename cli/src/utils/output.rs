@@ -14,7 +14,7 @@
 //!   input or the data (athlete names, years): a command whose table shows them exports a data
 //!   table with fixed headers instead ([`Report::table_with_data`]).
 //! - Cells that are numbers (optionally with a `kg` or `%` unit, or a sign) are numbers; `true`
-//!   and `false` (and `Yes` and `No`) are booleans; `N/A`, a dash and empty cells are null.
+//!   and `false` (and `Yes` and `No`) are booleans; `N/A`, `?`, a dash and empty cells are null.
 //!   Weight classes stay text.
 //! - Dates are `YYYY-MM-DD`, times `HH:MM` on a 24-hour clock, both as the data stores them in
 //!   the meet's own time zone; a range is two columns (`start_date`, `end_date`). One cell holds
@@ -195,6 +195,13 @@ impl Report {
         parts.join("\n")
     }
 
+    pub fn export_keys(&self) -> std::collections::BTreeMap<String, Vec<String>> {
+        self.sections
+            .iter()
+            .map(|section| (section.key.clone(), headers(export_table(section))))
+            .collect()
+    }
+
     /// The report as JSON: one table's rows, or an object of each table's rows.
     pub fn to_json(&self) -> Value {
         if self.sections.len() == 1 {
@@ -360,10 +367,30 @@ fn csv_field(value: &str) -> String {
     }
 }
 
-/// A header as a JSON key: `Best C&J` becomes `best_c_j`, `% Difference` `difference`.
+fn without_parenthesised_notes(header: &str) -> String {
+    let mut depth = 0usize;
+    header
+        .chars()
+        .filter(|c| match c {
+            '(' => {
+                depth += 1;
+                false
+            }
+            ')' => {
+                depth = depth.saturating_sub(1);
+                false
+            }
+            _ => depth == 0,
+        })
+        .collect()
+}
+
 pub fn key(header: &str) -> String {
     let mut key = String::new();
-    for c in header.chars() {
+    for c in without_parenthesised_notes(header).chars() {
+        if c == '&' {
+            continue;
+        }
         if c.is_alphanumeric() {
             key.extend(c.to_lowercase());
         } else if !key.is_empty() && !key.ends_with('_') {
@@ -384,11 +411,12 @@ fn text_value(cell: &str) -> Value {
 }
 
 /// A cell as a JSON value: a number when it is one (units `kg` and `%` and a sign allowed), a
-/// boolean for `true`/`false` and `Yes`/`No`, null when empty, `N/A` or a dash, the text
+/// boolean for `true`/`false` and `Yes`/`No`, null when empty, `N/A`, `?` or a dash, the text
 /// otherwise.
 pub fn value(cell: &str) -> Value {
     let text = cell.trim();
-    if text.is_empty() || text.eq_ignore_ascii_case("n/a") || matches!(text, "—" | "–" | "-") {
+    if text.is_empty() || text.eq_ignore_ascii_case("n/a") || matches!(text, "—" | "–" | "-" | "?")
+    {
         return Value::Null;
     }
     match text {
@@ -431,12 +459,26 @@ mod tests {
 
     #[test]
     fn keys_are_snake_case() {
-        assert_eq!(key("Best C&J"), "best_c_j");
         assert_eq!(key("% Difference"), "difference");
-        assert_eq!(
-            key("Past-year bests\n(Sn / CJ / Total)"),
-            "past_year_bests_sn_cj_total"
-        );
+        assert_eq!(key("Lifters With Results"), "lifters_with_results");
+        assert_eq!(key("Q-points"), "q_points");
+    }
+
+    #[test]
+    fn clean_and_jerk_has_one_key_however_the_header_spells_it() {
+        assert_eq!(key("C&J"), "cj");
+        assert_eq!(key("CJ"), "cj");
+        assert_eq!(key("Best C&J"), "best_cj");
+        assert_eq!(key("C&J Make Rate"), key("CJ Make Rate"));
+    }
+
+    #[test]
+    fn a_parenthesised_note_in_a_header_is_not_part_of_its_key() {
+        assert_eq!(key("Sinclair (2021-24)"), "sinclair");
+        assert_eq!(key("Best Sinclair (2021-24)"), "best_sinclair");
+        assert_eq!(key("Sinclair (2025-28)"), key("Sinclair (2021-24)"));
+        assert_eq!(key("Top Meet (Best Total)"), "top_meet");
+        assert_eq!(key("Past-year bests\n(Sn / CJ / Total)"), "past_year_bests");
     }
 
     #[test]
@@ -538,6 +580,7 @@ mod tests {
     #[test]
     fn placeholders_become_null_and_yes_no_booleans() {
         assert_eq!(value("—"), Value::Null);
+        assert_eq!(value("?"), Value::Null);
         assert_eq!(value("-"), Value::Null);
         assert_eq!(value("true"), json!(true));
         assert_eq!(value("Yes"), json!(true));

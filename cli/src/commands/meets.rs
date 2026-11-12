@@ -43,12 +43,12 @@ pub async fn run(args: MeetsArgs) -> Result<()> {
         None => format!("No {which} meets."),
     };
 
-    output::emit(
-        Report::new()
-            .table_with_data("meets", table(&meets), data(&meets))
-            .when_empty(empty),
-    );
+    output::emit(report(&meets).when_empty(empty));
     Ok(())
+}
+
+pub fn report(meets: &[Meet]) -> Report {
+    Report::new().table_with_data("meets", table(meets), data(meets))
 }
 
 /// The meets as shown: a date range for reading.
