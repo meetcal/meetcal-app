@@ -14,7 +14,7 @@ import {
   MEET_SUBMISSION_FILE_EXTENSIONS,
   meetSubmissionErrorMessage,
   MeetSubmissionUploadError,
-  MEET_SUBMISSION_UPLOAD_TIMEOUT_MS,
+  MEET_SUBMISSION_UPLOAD_SILENCE_LIMIT_MS,
   parseUsDate,
   sendFileFromDisk,
   sendMeetSubmission,
@@ -151,7 +151,11 @@ describe('sendFileFromDisk', () => {
   it('streams the file from disk with its type and answers the response', async () => {
     mockUploadAsync.mockResolvedValue({ status: 200, body: '{"storageId":"x"}', headers: {} });
     expect(await sendFileFromDisk(pdf(), 'https://up.example/1', 'application/pdf')).toEqual({ status: 200, body: '{"storageId":"x"}' });
-    expect(mockCreateUploadTask).toHaveBeenCalledWith('https://up.example/1', { httpMethod: 'POST', headers: { 'Content-Type': 'application/pdf' } });
+    expect(mockCreateUploadTask).toHaveBeenCalledWith('https://up.example/1', {
+      httpMethod: 'POST',
+      headers: { 'Content-Type': 'application/pdf' },
+      onProgress: expect.any(Function),
+    });
   });
 
   it('refuses a file over the limit before sending it', async () => {
@@ -160,13 +164,28 @@ describe('sendFileFromDisk', () => {
     expect(mockCreateUploadTask).not.toHaveBeenCalled();
   });
 
-  it('cancels an upload that takes too long', async () => {
+  it('cancels an upload that sends nothing for the silence limit', async () => {
     jest.useFakeTimers();
     mockUploadAsync.mockReturnValue(new Promise(() => {}));
     const sent = sendFileFromDisk(pdf(), 'https://up.example/1', 'application/pdf');
-    jest.advanceTimersByTime(MEET_SUBMISSION_UPLOAD_TIMEOUT_MS);
-    await expect(sent).rejects.toThrow('took too long');
+    jest.advanceTimersByTime(MEET_SUBMISSION_UPLOAD_SILENCE_LIMIT_MS);
+    await expect(sent).rejects.toThrow('schedule.pdf stopped making progress');
     expect(mockCancel).toHaveBeenCalled();
+  });
+
+  it('keeps a slow upload going for as long as it reports progress', async () => {
+    jest.useFakeTimers();
+    let finish: (answer: { status: number; body: string }) => void = () => undefined;
+    mockUploadAsync.mockReturnValue(new Promise((resolve) => (finish = resolve)));
+    const sent = sendFileFromDisk(pdf(), 'https://up.example/1', 'application/pdf');
+    const [, options] = mockCreateUploadTask.mock.lastCall as [string, { onProgress: () => void }];
+    for (let step = 0; step < 4; step += 1) {
+      jest.advanceTimersByTime(MEET_SUBMISSION_UPLOAD_SILENCE_LIMIT_MS - 1);
+      options.onProgress();
+    }
+    finish({ status: 200, body: '{"storageId":"x"}' });
+    await expect(sent).resolves.toEqual({ status: 200, body: '{"storageId":"x"}' });
+    expect(mockCancel).not.toHaveBeenCalled();
   });
 });
 
