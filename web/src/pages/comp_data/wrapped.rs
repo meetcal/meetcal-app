@@ -31,23 +31,23 @@ struct WrappedRequest {
 #[serde(tag = "kind", rename_all = "camelCase")]
 enum WrappedAnswer {
     /// One athlete's year, under the athlete's own spelling.
-    Athlete { name: String, stats: WrappedStats },
-    /// Several athletes matched; the user picks one, which asks again with
-    /// `picked`. With `truncated`, `names` may not hold the athlete meant.
+    Athlete {
+        name: String,
+        stats: WrappedStats,
+    },
     Ambiguous {
         names: Vec<String>,
-        #[serde(default)]
         truncated: bool,
     },
     /// The name matched too many athletes to look through: type more of it.
     Narrow,
     /// One athlete's year has more results than one answer holds, so a
     /// Wrapped would miss some.
-    TooManyResults { name: String },
-    /// No results in the year; `suggestions` are names like the query.
+    TooManyResults {
+        name: String,
+    },
     #[serde(rename = "none")]
     NoResults {
-        #[serde(default)]
         suggestions: Vec<String>,
     },
 }
@@ -326,6 +326,8 @@ mod tests {
         for value in [
             json!({"kind": "something"}),
             json!({"names": ["Ann Lee"]}),
+            json!({"kind": "ambiguous", "names": ["Ann Lee"]}),
+            json!({"kind": "none"}),
             json!({"kind": "athlete", "name": "Test Athlete"}),
             json!({"kind": "athlete", "name": "Test Athlete", "stats": {"totalMeets": 2.5}}),
         ] {

@@ -24,8 +24,6 @@ struct StatsQuery {
 #[derive(Clone, Deserialize)]
 struct ClubMeets {
     meets: Vec<ClubMeet>,
-    /// Set when the club has more meets than one answer lists: it lists the most recent.
-    #[serde(default)]
     truncated: bool,
 }
 #[derive(Clone, Deserialize)]
@@ -328,15 +326,13 @@ mod tests {
     }
 
     #[test]
-    fn a_cut_short_answer_says_so_and_an_older_answer_reads_as_whole() {
+    fn a_cut_short_answer_says_so_and_one_that_does_not_say_is_unreadable() {
         let cut: ClubMeets = serde_json::from_str(
             r#"{"meets":[{"meet":"Arnold Open","has_results":true}],"truncated":true}"#,
         )
         .unwrap();
         assert!(club_meet_choices(cut).truncated);
-        let whole: ClubMeets =
-            serde_json::from_str(r#"{"meets":[{"meet":"Arnold Open","has_results":true}]}"#)
-                .unwrap();
-        assert!(!club_meet_choices(whole).truncated);
+        let answer_without_truncated = r#"{"meets":[{"meet":"Arnold Open","has_results":true}]}"#;
+        assert!(serde_json::from_str::<ClubMeets>(answer_without_truncated).is_err());
     }
 }

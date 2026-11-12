@@ -7,11 +7,9 @@ use crate::utils::api::{actions, premium_action, queries};
 use crate::utils::text::capitalize_first;
 use leptos::prelude::*;
 use serde::{Deserialize, Serialize};
-use std::{borrow::Cow, collections::HashMap};
+use std::collections::HashMap;
 
-/// What an elite list ranks by, as `results:wsoElite` names it.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Method {
     PercentA,
     Qpoints,
@@ -58,43 +56,66 @@ impl Method {
     }
 }
 
-/// The lists, in the order they show, with what each may be scored by (its
-/// default first): the server's `ELITE_METHOD_CHOICES` (`convex/lib/elite.ts`).
-const LISTS: [(&str, &str, &[Method]); 5] = [
-    (
-        "overall",
-        "Overall",
-        &[Method::PercentA, Method::Sinclair, Method::Qpoints],
-    ),
-    ("youth", "Youth", &[Method::PercentA, Method::Sinclair]),
-    (
-        "junior",
-        "Junior",
-        &[Method::PercentA, Method::Qpoints, Method::Sinclair],
-    ),
-    (
-        "senior",
-        "Senior",
-        &[Method::PercentA, Method::Qpoints, Method::Sinclair],
-    ),
-    (
-        "masters",
-        "Masters",
-        &[Method::Qmasters, Method::PercentA, Method::Sinclair],
-    ),
-];
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum EliteList {
+    Overall,
+    Youth,
+    Junior,
+    Senior,
+    Masters,
+}
 
-/// What a list's Q-points choice means there, where it differs from plain Q-points.
-fn choice_label(list: &str, method: Method) -> &'static str {
+impl EliteList {
+    const IN_PAGE_ORDER: [Self; 5] = [
+        Self::Overall,
+        Self::Youth,
+        Self::Junior,
+        Self::Senior,
+        Self::Masters,
+    ];
+
+    fn key(self) -> &'static str {
+        match self {
+            Self::Overall => "overall",
+            Self::Youth => "youth",
+            Self::Junior => "junior",
+            Self::Senior => "senior",
+            Self::Masters => "masters",
+        }
+    }
+
+    fn label(self) -> &'static str {
+        match self {
+            Self::Overall => "Overall",
+            Self::Youth => "Youth",
+            Self::Junior => "Junior",
+            Self::Senior => "Senior",
+            Self::Masters => "Masters",
+        }
+    }
+
+    fn methods_default_first(self) -> &'static [Method] {
+        match self {
+            Self::Overall => &[Method::PercentA, Method::Sinclair, Method::Qpoints],
+            Self::Youth => &[Method::PercentA, Method::Sinclair],
+            Self::Junior | Self::Senior => &[Method::PercentA, Method::Qpoints, Method::Sinclair],
+            Self::Masters => &[Method::Qmasters, Method::PercentA, Method::Sinclair],
+        }
+    }
+
+    fn default_method(self) -> Method {
+        self.methods_default_first()[0]
+    }
+}
+
+fn choice_label(list: EliteList, method: Method) -> &'static str {
     match (list, method) {
-        ("overall", Method::Qpoints) => "Q-points (Masters: Q-masters)",
-        ("masters", Method::PercentA) => "% of Senior A standard",
+        (EliteList::Overall, Method::Qpoints) => "Q-points (Masters: Q-masters)",
+        (EliteList::Masters, Method::PercentA) => "% of Senior A standard",
         _ => method.label(),
     }
 }
 
-/// The method each list is shown by: a list's picker switches between the
-/// rankings the answer already holds, so it never asks again.
 #[derive(Clone, Debug, PartialEq)]
 struct Methods {
     overall: Method,
@@ -107,33 +128,33 @@ struct Methods {
 impl Default for Methods {
     fn default() -> Self {
         Self {
-            overall: LISTS[0].2[0],
-            youth: LISTS[1].2[0],
-            junior: LISTS[2].2[0],
-            senior: LISTS[3].2[0],
-            masters: LISTS[4].2[0],
+            overall: EliteList::Overall.default_method(),
+            youth: EliteList::Youth.default_method(),
+            junior: EliteList::Junior.default_method(),
+            senior: EliteList::Senior.default_method(),
+            masters: EliteList::Masters.default_method(),
         }
     }
 }
 
 impl Methods {
-    fn get(&self, list: &str) -> Method {
+    fn get(&self, list: EliteList) -> Method {
         match list {
-            "youth" => self.youth,
-            "junior" => self.junior,
-            "senior" => self.senior,
-            "masters" => self.masters,
-            _ => self.overall,
+            EliteList::Overall => self.overall,
+            EliteList::Youth => self.youth,
+            EliteList::Junior => self.junior,
+            EliteList::Senior => self.senior,
+            EliteList::Masters => self.masters,
         }
     }
 
-    fn set(&mut self, list: &str, method: Method) {
+    fn set(&mut self, list: EliteList, method: Method) {
         match list {
-            "youth" => self.youth = method,
-            "junior" => self.junior = method,
-            "senior" => self.senior = method,
-            "masters" => self.masters = method,
-            _ => self.overall = method,
+            EliteList::Overall => self.overall = method,
+            EliteList::Youth => self.youth = method,
+            EliteList::Junior => self.junior = method,
+            EliteList::Senior => self.senior = method,
+            EliteList::Masters => self.masters = method,
         }
     }
 }
@@ -173,42 +194,36 @@ struct EliteRanking {
     women: Vec<EliteRow>,
 }
 
-/// Every list by every method it offers (the action's `rankings`).
+type RankingsByMethodName = HashMap<String, EliteRanking>;
+
 #[derive(Clone, Debug, PartialEq, Deserialize)]
 struct EliteRankings {
-    overall: HashMap<Method, EliteRanking>,
-    youth: HashMap<Method, EliteRanking>,
-    junior: HashMap<Method, EliteRanking>,
-    senior: HashMap<Method, EliteRanking>,
-    masters: HashMap<Method, EliteRanking>,
+    overall: RankingsByMethodName,
+    youth: RankingsByMethodName,
+    junior: RankingsByMethodName,
+    senior: RankingsByMethodName,
+    masters: RankingsByMethodName,
 }
 
+type ShownList<'a> = (EliteList, Method, Option<&'a EliteRanking>);
+
 impl EliteRankings {
-    fn of(&self, list: &str) -> &HashMap<Method, EliteRanking> {
+    fn of(&self, list: EliteList) -> &RankingsByMethodName {
         match list {
-            "youth" => &self.youth,
-            "junior" => &self.junior,
-            "senior" => &self.senior,
-            "masters" => &self.masters,
-            _ => &self.overall,
+            EliteList::Overall => &self.overall,
+            EliteList::Youth => &self.youth,
+            EliteList::Junior => &self.junior,
+            EliteList::Senior => &self.senior,
+            EliteList::Masters => &self.masters,
         }
     }
 
-    /// Each list, in `LISTS` order, by the method `methods` picks for it;
-    /// empty when the answer lacks that method.
-    fn shown<'a>(
-        &'a self,
-        methods: &Methods,
-    ) -> Vec<(&'static str, &'static str, Method, Cow<'a, EliteRanking>)> {
-        LISTS
-            .iter()
-            .map(|(key, label, _)| {
-                let method = methods.get(key);
-                let ranking = self
-                    .of(key)
-                    .get(&method)
-                    .map_or_else(|| Cow::Owned(EliteRanking::default()), Cow::Borrowed);
-                (*key, *label, method, ranking)
+    fn shown<'a>(&'a self, methods: &Methods) -> Vec<ShownList<'a>> {
+        EliteList::IN_PAGE_ORDER
+            .into_iter()
+            .map(|list| {
+                let method = methods.get(list);
+                (list, method, self.of(list).get(method.value()))
             })
             .collect()
     }
@@ -296,25 +311,25 @@ fn EliteForm(
     let (from, set_from) = signal(default_from);
     let (to, set_to) = signal(default_to);
 
-    let pickers = LISTS
-        .iter()
-        .map(|(key, label, choices)| {
-            let key = *key;
-            let options = choices
+    let pickers = EliteList::IN_PAGE_ORDER
+        .into_iter()
+        .map(|list| {
+            let options = list
+                .methods_default_first()
                 .iter()
                 .map(|method| {
-                    view! { <option value=method.value() selected=*method == choices[0]>{choice_label(key, *method)}</option> }
+                    view! { <option value=method.value() selected=*method == list.default_method()>{choice_label(list, *method)}</option> }
                 })
                 .collect_view();
             view! {
                 <label>
-                    {format!("{label} score")}
+                    {format!("{} score", list.label())}
                     <select
                         class="data-filter"
-                        prop:value=move || methods.with(|methods| methods.get(key).value())
+                        prop:value=move || methods.with(|methods| methods.get(list).value())
                         on:change=move |event| {
                             if let Some(method) = Method::parse(&event_target_value(&event)) {
-                                methods.update(|methods| methods.set(key, method));
+                                methods.update(|methods| methods.set(list, method));
                             }
                         }
                     >
@@ -359,14 +374,21 @@ fn elite_lists(answer: &EliteAnswer, methods: &Methods) -> AnyView {
     );
     let sections = shown
         .iter()
-        .map(|(key, label, method, ranking)| {
-            let heading = format!("{label} — {}", choice_label(key, *method));
+        .map(|(list, method, ranking)| {
+            let heading = format!("{} — {}", list.label(), choice_label(*list, *method));
+            let tables = match ranking {
+                Some(ranking) => view! {
+                    <h3 class="elite-gender">"Women"</h3>
+                    {elite_table(&ranking.women, *method)}
+                    <h3 class="elite-gender">"Men"</h3>
+                    {elite_table(&ranking.men, *method)}
+                }
+                .into_any(),
+                None => view! { <p class="data-status">{SCORE_NOT_IN_ANSWER}</p> }.into_any(),
+            };
             view! {
                 <h2 class="data-section-title">{heading}</h2>
-                <h3 class="elite-gender">"Women"</h3>
-                {elite_table(&ranking.women, *method)}
-                <h3 class="elite-gender">"Men"</h3>
-                {elite_table(&ranking.men, *method)}
+                {tables}
             }
         })
         .collect_view();
@@ -380,6 +402,8 @@ fn elite_lists(answer: &EliteAnswer, methods: &Methods) -> AnyView {
     }
     .into_any()
 }
+
+const SCORE_NOT_IN_ANSWER: &str = "This score isn’t available for this list right now.";
 
 const COLUMNS: usize = 10;
 
@@ -443,17 +467,19 @@ fn csv_cell(value: &str) -> String {
     }
 }
 
-/// The lists shown, as one CSV: a line per ranked athlete, with the list, gender and method.
-fn elite_csv(shown: &[(&str, &str, Method, Cow<'_, EliteRanking>)]) -> String {
+fn elite_csv(shown: &[ShownList<'_>]) -> String {
     let mut lines = vec![
         "list,gender,rank,athlete,group,age,body_weight,snatch,cj,total,method,score,weight_class,standard_a,date,meet"
             .to_owned(),
     ];
-    for (key, _, method, ranking) in shown {
+    for (list, method, ranking) in shown {
+        let Some(ranking) = ranking else {
+            continue;
+        };
         for (gender, rows) in [("women", &ranking.women), ("men", &ranking.men)] {
             for (rank, row) in (1..).zip(rows) {
                 let cells = [
-                    (*key).to_owned(),
+                    list.key().to_owned(),
                     gender.to_owned(),
                     rank.to_string(),
                     row.name.clone(),
@@ -512,11 +538,12 @@ mod tests {
     }
 
     fn rankings() -> EliteRankings {
-        let only = |method, women| HashMap::from([(method, ranking(women))]);
+        let only =
+            |method: Method, women| HashMap::from([(method.value().to_owned(), ranking(women))]);
         EliteRankings {
             overall: HashMap::from([
-                (Method::PercentA, ranking(vec![row("Ada", 100.0)])),
-                (Method::Sinclair, ranking(vec![row("Ada", 262.1)])),
+                ("percentA".to_owned(), ranking(vec![row("Ada", 100.0)])),
+                ("sinclair".to_owned(), ranking(vec![row("Ada", 262.1)])),
             ]),
             youth: only(Method::PercentA, vec![]),
             junior: only(Method::PercentA, vec![]),
@@ -565,11 +592,11 @@ mod tests {
         let answer: EliteAnswer = serde_json::from_value(value).unwrap();
         assert_eq!(answer.rankings.overall.len(), 3);
         assert_eq!(
-            answer.rankings.overall[&Method::PercentA].women[0].standard_a,
+            answer.rankings.overall["percentA"].women[0].standard_a,
             Some(200.0)
         );
         assert_eq!(
-            answer.rankings.masters[&Method::Qmasters].women[0].weight_class,
+            answer.rankings.masters["qmasters"].women[0].weight_class,
             None
         );
     }
@@ -578,23 +605,46 @@ mod tests {
     fn shows_each_list_by_its_picked_method() {
         let rankings = rankings();
         let mut methods = Methods::default();
-        assert_eq!(rankings.shown(&methods)[0].3.women[0].score, 100.0);
-        methods.set("overall", Method::Sinclair);
+        let women = |list: &ShownList<'_>| list.2.map(|ranking| ranking.women.clone());
+        assert_eq!(women(&rankings.shown(&methods)[0]).unwrap()[0].score, 100.0);
+        methods.set(EliteList::Overall, Method::Sinclair);
         let shown = rankings.shown(&methods);
         assert_eq!(
-            (shown[0].2, shown[0].3.women[0].score),
+            (shown[0].1, women(&shown[0]).unwrap()[0].score),
             (Method::Sinclair, 262.1)
         );
-        // A method the answer lacks shows an empty list.
-        methods.set("overall", Method::Qpoints);
-        assert!(rankings.shown(&methods)[0].3.women.is_empty());
+    }
+
+    #[test]
+    fn a_picked_method_the_answer_lacks_is_missing_not_an_empty_ranking() {
+        let rankings = rankings();
+        let mut methods = Methods::default();
+        methods.set(EliteList::Overall, Method::Qpoints);
+        let shown = rankings.shown(&methods);
+        assert_eq!(shown[0].2, None);
+        assert_eq!(shown[1].2, Some(&ranking(vec![])));
+        assert_eq!(elite_csv(&shown).lines().count(), 1);
+    }
+
+    #[test]
+    fn a_method_the_page_does_not_know_does_not_make_the_answer_unreadable() {
+        let empty = serde_json::json!({ "men": [], "women": [] });
+        let lists: EliteRankings = serde_json::from_value(serde_json::json!({
+            "overall": { "percentA": empty, "robi": empty },
+            "youth": { "percentA": empty },
+            "junior": { "percentA": empty },
+            "senior": { "percentA": empty },
+            "masters": { "qmasters": empty }
+        }))
+        .unwrap();
+        assert!(lists.shown(&Methods::default())[0].2.is_some());
     }
 
     #[test]
     fn writes_the_shown_lists_to_one_csv_quoting_where_needed() {
         let rankings = rankings();
         let mut methods = Methods::default();
-        methods.set("senior", Method::Sinclair);
+        methods.set(EliteList::Senior, Method::Sinclair);
         let csv = elite_csv(&rankings.shown(&methods));
         let lines: Vec<&str> = csv.lines().collect();
         assert_eq!(lines.len(), 3);
@@ -617,11 +667,11 @@ mod tests {
         );
         assert_eq!(file_slug("  "), "wso");
         assert_eq!(
-            choice_label("overall", Method::Qpoints),
+            choice_label(EliteList::Overall, Method::Qpoints),
             "Q-points (Masters: Q-masters)"
         );
         assert_eq!(
-            choice_label("masters", Method::PercentA),
+            choice_label(EliteList::Masters, Method::PercentA),
             "% of Senior A standard"
         );
         assert_eq!(Method::parse("qmasters"), Some(Method::Qmasters));
@@ -629,11 +679,31 @@ mod tests {
     }
 
     #[test]
-    fn defaults_match_the_servers() {
-        let defaults = Methods::default();
-        for (key, _, choices) in LISTS {
-            assert_eq!(defaults.get(key), choices[0]);
+    fn each_lists_methods_and_default_are_the_servers() {
+        let server = include_str!("../../../../convex/lib/elite.ts");
+        let choices = server
+            .split_once("export const ELITE_METHOD_CHOICES")
+            .and_then(|(_, rest)| rest.split_once("};"))
+            .map(|(choices, _)| choices)
+            .expect("convex/lib/elite.ts declares ELITE_METHOD_CHOICES");
+        for list in EliteList::IN_PAGE_ORDER {
+            let line = choices
+                .lines()
+                .find(|line| line.trim_start().starts_with(&format!("{}:", list.key())))
+                .unwrap_or_else(|| panic!("the server has no {} list", list.key()));
+            let server_methods = line.split('\'').skip(1).step_by(2).collect::<Vec<_>>();
+            let page_methods = list
+                .methods_default_first()
+                .iter()
+                .map(|method| method.value())
+                .collect::<Vec<_>>();
+            assert_eq!(page_methods, server_methods, "{}", list.key());
+            assert_eq!(
+                Methods::default().get(list).value(),
+                server_methods[0],
+                "{}",
+                list.key()
+            );
         }
-        assert_eq!(defaults.masters, Method::Qmasters);
     }
 }
