@@ -1,5 +1,6 @@
 import { rosterProblems } from '../convex/lib/roster';
 import { computeNationalRankingsForYear, computeRecords, computeWsoList, computeWsoRows, currentWeightClasses } from '../convex/lib/referenceData';
+import { itemAt } from '../convex/lib/json';
 
 type Row = Record<string, unknown>;
 
@@ -54,7 +55,7 @@ describe('record holders', () => {
       ],
     });
 
-    const [row] = await computeRecords(ctx);
+    const row = itemAt(await computeRecords(ctx), 0);
 
     expect(row.snatch_by).toEqual({ name: 'Ada Lift', date: '2025-06-01', location: 'Nationals, Columbus OH' });
     expect(row.cj_by).toEqual({ name: 'Standard', date: null, location: null });
@@ -109,7 +110,7 @@ describe('record holders', () => {
       ],
     });
 
-    const [row] = await computeWsoRows(ctx, 'Carolina');
+    const row = itemAt(await computeWsoRows(ctx, 'Carolina'), 0);
 
     expect(row.total_by).toEqual({ name: 'Bo Press', date: '2024-03-02', location: 'Raleigh' });
     expect(row.snatch_by).toBeNull();

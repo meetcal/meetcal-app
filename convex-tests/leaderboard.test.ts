@@ -24,6 +24,7 @@ import {
 } from '../convex/lib/leaderboard';
 import { LEADERBOARD_MAX_PAGES, LEADERBOARD_PAGE_SIZE, leaderboard, leaderboardPage, type LeaderboardAnswer } from '../convex/results';
 import { fakeDb, handlerOf } from './fakeDb';
+import { itemAt } from '../convex/lib/json';
 
 /**
  * `results:leaderboard` (`convex/lib/leaderboard.ts`): the CLI's
@@ -43,13 +44,13 @@ function row(name: string, date: string, meet: string, age: string, bw: number, 
     name,
     age,
     body_weight: bw,
-    snatch1: snatch[0],
-    snatch2: snatch[1],
-    snatch3: snatch[2],
+    snatch1: itemAt(snatch, 0),
+    snatch2: itemAt(snatch, 1),
+    snatch3: itemAt(snatch, 2),
     snatch_best: sb,
-    cj1: cj[0],
-    cj2: cj[1],
-    cj3: cj[2],
+    cj1: itemAt(cj, 0),
+    cj2: itemAt(cj, 1),
+    cj3: itemAt(cj, 2),
     cj_best: cb,
     total: sb > 0 && cb > 0 ? sb + cb : 0,
     adaptive: false,
@@ -70,8 +71,8 @@ describe('the ranking (the CLI’s `rank`)', () => {
   it('ranks each athlete once, by their best', () => {
     const ranked = rank(rows(), 'total', {}, 10);
     expect(ranked.map(({ row }) => row.name)).toEqual(['Bo', 'Ada', 'Cy']);
-    expect(ranked[1].row.date).toBe('2026-05-01');
-    expect(ranked[1].value).toBe(196);
+    expect(itemAt(ranked, 1).row.date).toBe('2026-05-01');
+    expect(itemAt(ranked, 1).value).toBe(196);
     expect(names('total', {}, rows(), 2)).toEqual(['Bo', 'Ada']);
   });
 
@@ -141,7 +142,7 @@ describe('pruning (`pruneBests`)', () => {
   const candidate = (name: string, value: number) => ({ value, row: row(name, '2026-01-01', 'M', "Open Men's 89kg", 88, [value, 0, 0], [0, 0, 0]) });
 
   it('drops only athletes strictly below the limit-th best, keeping ties', () => {
-    const best = new Map(['a', 'b', 'c', 'd', 'e'].map((name, i) => [name, candidate(name, [100, 90, 80, 80, 70][i])]));
+    const best = new Map(['a', 'b', 'c', 'd', 'e'].map((name, i) => [name, candidate(name, itemAt([100, 90, 80, 80, 70], i))]));
     pruneBests(best, 3);
     expect([...best.keys()]).toEqual(['a', 'b', 'c', 'd']);
     pruneBests(best, 10);
@@ -424,7 +425,7 @@ describe('results:leaderboard', () => {
     const pages = runQuery.mock.calls.filter(([ref]) => getFunctionName(ref as never) === 'results:leaderboardPage');
     const march = pages.filter(([, args]) => (args as { start: string }).start === '2026-03-01');
     expect(march).toHaveLength(2);
-    expect((march[1][1] as { cursor: string | null }).cursor).not.toBeNull();
+    expect((itemAt(march, 1)[1] as { cursor: string | null }).cursor).not.toBeNull();
     expect(pages).toHaveLength(13);
     expect(answer.rows).toHaveLength(500);
     expect(answer.rows.slice(0, 2).map((r) => [r.name, r.value, r.date])).toEqual([
@@ -475,7 +476,7 @@ describe('results:leaderboard', () => {
   it('asks for pages by range and cursor alone, so every leaderboard shares them in the query cache', async () => {
     const { ctx, runQuery } = actionCtx({ access_passes: PASSES, lifting_results: [stored('Bo', '2026-02-01', 140, 175)] });
     await run(ctx, { pass: 'today', by: 'sinclair', gender: 'Men', federation: 'USAW', from: '2026-02-01', to: '2026-02-28' });
-    expect(runQuery.mock.calls[1][1]).toEqual({ start: '2026-02-01', end: '2026-02-28', cursor: null });
+    expect(itemAt(runQuery.mock.calls, 1)[1]).toEqual({ start: '2026-02-01', end: '2026-02-28', cursor: null });
   });
 
   it('answers as ranking every row at once would, while holding about `limit` athletes', async () => {

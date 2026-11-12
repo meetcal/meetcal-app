@@ -4,6 +4,7 @@ import { targetExpired, TARGET_RETENTION_DAYS } from '../convex/scrapers/entries
 import { joinPages, MAX_UNREADABLE_SHARE, run as sport80Run, tableComplete, tooManyUnreadable } from '../convex/scrapers/sport80';
 import { recordLift } from '../convex/scrapers/parse/holder';
 import { handlerOf } from './fakeDb';
+import { itemAt } from '../convex/lib/json';
 
 describe('shrink guard', () => {
   it('always allows the minimum, then a share of what is stored', () => {
@@ -145,7 +146,7 @@ describe('Sport80 sync prunes only a table read in full (#97)', () => {
       const c = ctx();
       await handlerOf<Only, unknown>(sport80Run)(c, { only: ['123'], allowShrink: true });
       expect(pruneCalls(c)).toHaveLength(1);
-      expect(pruneCalls(c)[0][1]).toMatchObject({ eventId: '123', allowShrink: true });
+      expect(itemAt(pruneCalls(c), 0)[1]).toMatchObject({ eventId: '123', allowShrink: true });
     });
 
     it('fails naming an id the event index does not have, instead of finishing as if done', async () => {

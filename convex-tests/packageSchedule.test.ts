@@ -6,6 +6,7 @@
  */
 import { packageSchedule } from '../convex/lib/meetData';
 import { mapApiSchedule, mapPackageSchedule, type ApiMeetPackage } from '../src/lib/api/meetcal-api';
+import { itemAt } from '../convex/lib/json';
 
 // In the order both queries return them: date, session, platform.
 const rows = [
@@ -31,7 +32,7 @@ describe('package schedule', () => {
     const fromPackage = mapPackageSchedule(packageWith(packageSchedule(rows as never)));
 
     expect(fromPackage).toEqual(mapApiSchedule(rows));
-    const session3 = fromPackage[0].sessions.find((s) => s.number === 3);
+    const session3 = itemAt(fromPackage, 0).sessions.find((s) => s.number === 3);
     expect(session3?.platforms.map((p) => [p.platform, p.platformStartTime])).toEqual([
       ['Blue', '9:30 AM'],
       ['Red', '9:00 AM'],
@@ -49,7 +50,7 @@ describe('package schedule', () => {
 
     const fromPackage = mapPackageSchedule(packageWith(legacy));
 
-    const session3 = fromPackage[0].sessions.find((s) => s.number === 3);
-    expect(session3?.platforms.every((p) => p.platformStartTime === session3.platforms[0].platformStartTime)).toBe(true);
+    const session3 = itemAt(fromPackage, 0).sessions.find((s) => s.number === 3);
+    expect(session3?.platforms.every((p) => p.platformStartTime === itemAt(session3.platforms, 0).platformStartTime)).toBe(true);
   });
 });

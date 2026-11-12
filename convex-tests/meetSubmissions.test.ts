@@ -15,6 +15,7 @@ import {
 } from '../convex/lib/meetSubmissions';
 import { sendEmail } from '../convex/lib/email';
 import { fakeMutationCtx, handlerOf, type StoredFile } from './fakeDb';
+import { itemAt } from '../convex/lib/json';
 
 jest.mock('../convex/lib/email', () => ({
   ...jest.requireActual('../convex/lib/email'),
@@ -134,7 +135,7 @@ describe('submit', () => {
       { storageId: '_storage:f2', name: 'start list.xlsx' },
     ];
     expect(await store.as(A)(submit, meet({ files }))).toEqual({ submitted: true });
-    const [row] = store.docs('meet_submissions');
+    const row = itemAt(store.docs('meet_submissions'), 0);
     expect(row).toMatchObject({ userId: A, meetName: '2027 Example Open', startDate: '2027-03-06', endDate: '2027-03-07', contactEmail: 'lifter@example.com', createdAt: NOW });
     expect(store.rows('meet_submission_files')).toEqual([
       { submissionId: row._id, storageId: '_storage:f1', name: 'Schedule.PDF', size: 2048 },

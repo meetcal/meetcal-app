@@ -3,6 +3,7 @@ import { describeFailure } from '../../convex/lib/cronAlerts';
 import { HARD_STOP_MS, NOT_REACHED, OUT_OF_TIME, RUN_BUDGET_MS } from '../../convex/scrapers/lib/budget';
 import { run } from '../../convex/scrapers/sport80';
 import { handlerOf } from '../fakeDb';
+import { itemAt } from '../../convex/lib/json';
 
 const API = 'https://rankings.example.test';
 const events = ['1', '2'].map((id) => ({ meet: `Meet ${id}`, start_date: `2026-10-0${id}`, action: [{ route: `/events/${id}` }] }));
@@ -17,7 +18,7 @@ function sport80(onEventRead: (eventId: string) => void | Promise<unknown> = () 
     }
     const path = new URL(url).pathname;
     if (path === '/api/events/table/data') return json({ data: events, total: events.length });
-    const eventId = /\/api\/events\/(\d+)\/table\/data/.exec(path)![1];
+    const eventId = itemAt(/\/api\/events\/(\d+)\/table\/data/.exec(path) ?? [], 1);
     await onEventRead(eventId);
     return json({ data: [lifter], total: 1 });
   }) as never;
@@ -33,7 +34,7 @@ function deployment(afterStoring: (meet: string) => void = () => {}) {
         prunedEvents.push(args.eventId!);
         return { deleted: 0, remaining: 0 };
       }
-      const meet = args.rows![0].meet;
+      const meet = itemAt(args.rows ?? [], 0).meet;
       storedMeets.push(meet);
       afterStoring(meet);
       return { inserted: 1, updated: 0, unchanged: 0 };

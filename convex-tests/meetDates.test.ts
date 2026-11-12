@@ -4,6 +4,7 @@ import { padMeetDates } from '../convex/migrations';
 import { canonicalMeetDate, isKnownTimeZone, isMeetTimeZone } from '../convex/lib/validation';
 import { meetDataProblems } from '../convex/scrapers/queries';
 import type { Doc, Id } from '../convex/_generated/dataModel';
+import { itemAt } from '../convex/lib/json';
 
 // Convex attaches the handler at runtime but omits it from its public types.
 function handlerOf(registered: unknown): (ctx: unknown, args: unknown) => Promise<unknown> {
@@ -173,7 +174,7 @@ describe('scraped meet values', () => {
       expect(unchanged.patch).not.toHaveBeenCalled();
       const moved = await upsert(meet(), { ...noVenue, endDate: '2026-10-18' });
       expect(moved.outcomes).toEqual([{ wasInsert: false, wasChanged: true }]);
-      const [[, values]] = moved.patch.mock.calls.filter(([id]) => id === moved.docs('meets')[0]._id);
+      const [, values] = itemAt(moved.patch.mock.calls.filter(([id]) => id === itemAt(moved.docs('meets'), 0)._id), 0);
       expect(values).toMatchObject({ endDate: '2026-10-18' });
       for (const key of ['venueName', 'venueStreet', 'venueCity', 'venueState', 'venueZip', 'timeZone']) expect(values).not.toHaveProperty(key);
     });

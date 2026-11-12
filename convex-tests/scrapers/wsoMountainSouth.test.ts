@@ -1,5 +1,6 @@
 import type { PdfLine } from '../../convex/scrapers/lib/pdf';
 import { mountainSouthPdfUrls, mountainSouthSection, parseMountainSouth } from '../../convex/scrapers/parse/wso/mountainSouth';
+import { itemAt } from '../../convex/lib/json';
 
 /** A line of positioned runs, `[x, text]` each, as the PDFs lay them out. */
 function runs(...cells: [number, string][]): PdfLine {
@@ -12,7 +13,7 @@ const header = runs([44, 'CAT'], [88, 'LIFT'], [129, 'RECORD'], [207, 'ATHLETE']
 
 /** A class line's runs, at the 17 October 2026 PDFs' positions. */
 const line = (cls: string, lift: string, value: string, ...holder: string[]) =>
-  runs([47, cls], [83, lift], [142, value], ...holder.map((text, i): [number, string] => [[177, 290, 339, 446][i], text]));
+  runs([47, cls], [83, lift], [142, value], ...holder.map((text, i): [number, string] => [itemAt([177, 290, 339, 446], i), text]));
 
 describe('Mountain South WSO PDFs (port of scraper_pdf_mountainsouth.py)', () => {
   it('reads section headers', () => {
@@ -50,10 +51,10 @@ describe('Mountain South WSO PDFs (port of scraper_pdf_mountainsouth.py)', () =>
       ['Masters 35', 'Men', '110+', null, null, null],
       ['Senior', 'Men', '60', null, null, 178],
     ]);
-    expect(records[0].snatchBy).toEqual({ name: 'FUNG, Kisente', date: '2026-04-11', location: 'Salt Lake City, UT' });
+    expect(itemAt(records, 0).snatchBy).toEqual({ name: 'FUNG, Kisente', date: '2026-04-11', location: 'Salt Lake City, UT' });
     expect(records[1]).not.toHaveProperty('snatchBy');
     // Text alone cannot tell the place from the event, so they stay together.
-    expect(records[2].totalBy).toEqual({ name: 'MCALLISTER, Ashton', date: '2025-06-22', location: 'Colorado Springs, CO 2025 Youth Nationals' });
+    expect(itemAt(records, 2).totalBy).toEqual({ name: 'MCALLISTER, Ashton', date: '2025-06-22', location: 'Colorado Springs, CO 2025 Youth Nationals' });
   });
 
   it('fails on a value it cannot read, and on a line in the layout before October 2026', () => {
@@ -95,12 +96,12 @@ describe('Mountain South WSO PDFs (port of scraper_pdf_mountainsouth.py)', () =>
   it('reads the holder from the text when the runs disagree with it on the record', () => {
     // The lift and the record drawn as one run.
     const glued = { ...runs([47, '60'], [83, 'Snatch77'], [177, 'MCALLISTER, Ashton'], [290, '6/22/25'], [339, 'Mesa, AZ']), text: '60 Snatch 77 MCALLISTER, Ashton 6/22/25 Mesa, AZ' };
-    expect(parseMountainSouth([[header, runs([275, 'OPEN MEN']), glued]], 'Mountain South')[0].snatchBy).toEqual({ name: 'MCALLISTER, Ashton', date: '2025-06-22', location: 'Mesa, AZ' });
+    expect(itemAt(parseMountainSouth([[header, runs([275, 'OPEN MEN']), glued]], 'Mountain South'), 0).snatchBy).toEqual({ name: 'MCALLISTER, Ashton', date: '2025-06-22', location: 'Mesa, AZ' });
   });
 
   it('keeps the columns when a heading line lacks LOCATION and EVENT', () => {
     const pages = [[header, runs([275, 'OPEN MEN']), runs([44, 'CAT'], [88, 'LIFT'], [129, 'RECORD']), line('65', 'Snatch', '97', 'MCALLISTER, Ashton', '10/17/26', 'Mesa, AZ', '2026 AZ Championship')]];
-    expect(parseMountainSouth(pages, 'Mountain South')[0].snatchBy).toMatchObject({ location: '2026 AZ Championship, Mesa, AZ' });
+    expect(itemAt(parseMountainSouth(pages, 'Mountain South'), 0).snatchBy).toMatchObject({ location: '2026 AZ Championship, Mesa, AZ' });
   });
 
   it('reads holders from positioned runs, the place and the event split by their columns', () => {

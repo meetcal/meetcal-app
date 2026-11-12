@@ -1,5 +1,6 @@
 import { parseCsv } from '../../convex/scrapers/lib/csv';
 import { formatWeightClass, parseUmwfSheet } from '../../convex/scrapers/parse/umwf';
+import { itemAt } from '../../convex/lib/json';
 
 describe('CSV reader (Python csv.reader semantics)', () => {
   it('handles quotes, doubled quotes, embedded commas and newlines, CRLF and blank lines', () => {
@@ -62,7 +63,8 @@ describe('UMWF sheet parser (port of umwf_records.py)', () => {
       ',Clean & Jerk,Standard,,,,,,,x',
       ',Total,210,"CASSIDY, Wes",1969,AUS,10-June-0206,"Adelaide, SA",57,',
     ].join('\n');
-    const [light, heavy] = parseUmwfSheet(sheet, 'Masters 35', 'men');
+    const classes = parseUmwfSheet(sheet, 'Masters 35', 'men');
+    const [light, heavy] = [itemAt(classes, 0), itemAt(classes, 1)];
     expect(light.snatchBy).toEqual({ name: 'PUFF, Derick', date: '2025-12-07', location: 'Daytona Beach, FL' });
     expect(light.cjBy).toEqual({ name: 'Standard' });
     // "10-June_2026" is still a readable date.

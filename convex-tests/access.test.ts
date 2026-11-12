@@ -134,7 +134,7 @@ describe('the premium queries', () => {
 
   it('are every one the app and website send the pass to', async () => {
     for (const name of PREMIUM_FUNCTIONS) {
-      const [module, fn] = name.split(':');
+      const [module = '', fn = ''] = name.split(':');
       const registered = modules[module]?.[fn] as { isQuery?: boolean; isPublic?: boolean } | undefined;
       expect([name, registered?.isQuery, registered?.isPublic]).toEqual([name, true, true]);
     }
@@ -144,11 +144,11 @@ describe('the premium queries', () => {
     setPremiumModeForTests('enforce');
     const dated = { query: 'Ada', startDate: '2026-01-01', endDate: '2026-12-31' };
     for (const name of PREMIUM_FUNCTIONS) {
-      const [module, fn] = name.split(':');
+      const [module = '', fn = ''] = name.split(':');
       const tables: string[] = [];
       const { db: real } = fakeDb();
       const db = { ...real, query: (table: string) => (tables.push(table), real.query(table)) };
-      const answer = await statusOf(handlerOf(modules[module][fn])({ db, auth: ANONYMOUS_AUTH }, name === 'results:search' ? dated : {}));
+      const answer = await statusOf(handlerOf(modules[module]?.[fn])({ db, auth: ANONYMOUS_AUTH }, name === 'results:search' ? dated : {}));
       expect([name, answer, tables]).toEqual([name, 401, ['access_passes']]);
     }
   });
@@ -177,7 +177,7 @@ describe('the premium queries', () => {
 
   it('leave out the premium actions, which are public actions the CLI sends the pass to (`PREMIUM_ACTIONS`)', () => {
     for (const name of PREMIUM_ACTIONS) {
-      const [module, fn] = name.split(':');
+      const [module = '', fn = ''] = name.split(':');
       const registered = modules[module]?.[fn] as { isAction?: boolean; isPublic?: boolean } | undefined;
       expect([name, registered?.isAction, registered?.isPublic]).toEqual([name, true, true]);
       expect(PREMIUM_FUNCTIONS).not.toContain(name);

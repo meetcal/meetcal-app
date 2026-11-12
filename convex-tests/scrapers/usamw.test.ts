@@ -2,6 +2,7 @@ import { execFileSync } from 'node:child_process';
 import { join } from 'node:path';
 import type { PdfLine, PdfLineOptions } from '../../convex/scrapers/lib/pdf';
 import { ageCategory, discoverRecordPdfs, parseRecordPages, PDF_OPTIONS, type UsamwRecord } from '../../convex/scrapers/parse/usamw';
+import { itemAt } from '../../convex/lib/json';
 
 const STORAGE = 'https://storage.googleapis.com/production-ipower-v1-0-4/354/1018354/vixoE8Rk';
 
@@ -51,7 +52,8 @@ describe('USAMW national records (port of national_records.py)', () => {
         '110+ TOT',
       ],
     ];
-    const [middle, heavy] = parseRecordPages(pages, 'Men');
+    const classes = parseRecordPages(pages, 'Men');
+    const [middle, heavy] = [itemAt(classes, 0), itemAt(classes, 1)];
     expect(middle.snatchBy).toEqual({ name: 'ELAM II Onzy', date: '2026-03-28', location: 'National Masters, Little Rock, AR' });
     expect(middle.cjBy).toEqual({ name: 'DECRISTOFARO Anthony', date: '2025-09-12', location: 'World Masters, Las Vegas, NV' });
     expect(middle.totalBy).toEqual({ name: 'ELAM II Onzy', date: '2026-03-28', location: 'Somewhere Open' });
@@ -82,21 +84,21 @@ describe('USAMW national records (port of national_records.py)', () => {
     const head = ['USA National Masters Records - Men', 'M 45 - 49'];
     const abroad: [number, string][] = [[70, '110+'], [114, 'CnJ'], [165, '195'], [199, 'ALBURY'], [295, 'Dimitri'], [364, '26-Sep-26'], [422, 'Athens, Greece'], [547, 'World Masters']];
     const sharedRun: [number, string][] = [[70, '70'], [114, 'SNA'], [168, '94'], [199, 'FLORENDO'], [295, 'Sid'], [364, '29-May-26 San Salvador, ES'], [528, 'Pan American Masters']];
-    const [cells] = parseRecordPages([[...head, at(abroad)]], 'Men');
+    const cells = itemAt(parseRecordPages([[...head, at(abroad)]], 'Men'), 0);
     expect(cells.cjBy).toEqual({ name: 'ALBURY Dimitri', date: '2026-09-26', location: 'World Masters, Athens, Greece' });
-    expect(parseRecordPages([[...head, at(sharedRun)]], 'Men')[0].snatchBy).toEqual({ name: 'FLORENDO Sid', date: '2026-05-29', location: 'Pan American Masters, San Salvador, ES' });
+    expect(itemAt(parseRecordPages([[...head, at(sharedRun)]], 'Men'), 0).snatchBy).toEqual({ name: 'FLORENDO Sid', date: '2026-05-29', location: 'Pan American Masters, San Salvador, ES' });
     // Text alone cannot place the end of a site with no state code: all of it is kept.
-    const [text] = parseRecordPages([[...head, at(abroad).text]], 'Men');
+    const text = itemAt(parseRecordPages([[...head, at(abroad).text]], 'Men'), 0);
     expect(text.cjBy).toEqual({ name: 'ALBURY Dimitri', date: '2026-09-26', location: 'Athens, Greece World Masters' });
     // A site without a comma is not told from a competition in two cells: the text reading decides.
     const noComma: [number, string][] = [[70, '60'], [114, 'SNA'], [168, '93'], [199, 'MURRAY'], [295, 'George'], [364, '12-Sep-25'], [423, 'Championships'], [547, 'World Masters']];
-    expect(parseRecordPages([[...head, at(noComma)]], 'Men')[0].snatchBy?.location).toBe('Championships World Masters');
+    expect(itemAt(parseRecordPages([[...head, at(noComma)]], 'Men'), 0).snatchBy?.location).toBe('Championships World Masters');
     // A date drawn in two runs with a gap is still one date.
     const spacedDate = at(noComma).text.replace('12-Sep-25', '12-Sep- 25');
-    expect(parseRecordPages([[...head, spacedDate]], 'Men')[0].snatchBy).toEqual({ name: 'MURRAY George', date: '2025-09-12', location: 'Championships World Masters' });
+    expect(itemAt(parseRecordPages([[...head, spacedDate]], 'Men'), 0).snatchBy).toEqual({ name: 'MURRAY George', date: '2025-09-12', location: 'Championships World Masters' });
     // A site drawn as two cells is not a whole site: the text reading decides.
     const splitSite: [number, string][] = [[70, '60'], [114, 'SNA'], [168, '93'], [199, 'MURRAY'], [295, 'George'], [364, '12-Sep-25'], [423, 'Las Vegas,'], [480, 'NV'], [547, 'World Masters']];
-    expect(parseRecordPages([[...head, at(splitSite)]], 'Men')[0].snatchBy?.location).toBe('World Masters, Las Vegas, NV');
+    expect(itemAt(parseRecordPages([[...head, at(splitSite)]], 'Men'), 0).snatchBy?.location).toBe('World Masters, Las Vegas, NV');
     // Runs drawn touching are one word in a cell, as in the line's text.
     const touching: PdfLine = {
       text: '60 SNA 93 MURRAY George 12-Sep-25 Las Vegas, NV World Masters',
@@ -107,29 +109,29 @@ describe('USAMW national records (port of national_records.py)', () => {
         { text: 'World Masters', x: 547, end: 612 },
       ],
     };
-    expect(parseRecordPages([[...head, touching]], 'Men')[0].snatchBy?.location).toBe('World Masters, Las Vegas, NV');
+    expect(itemAt(parseRecordPages([[...head, touching]], 'Men'), 0).snatchBy?.location).toBe('World Masters, Las Vegas, NV');
     // A date drawn as two runs a few points apart keeps the site abroad split from the competition.
     const gappedDate: PdfLine = {
       text: '110+ CnJ 195 ALBURY Dimitri 26-Sep- 26 Athens, Greece World Masters',
       runs: [...at(abroad.slice(0, 5)).runs, { text: '26-Sep-', x: 364, end: 398 }, { text: '26', x: 402, end: 412 }, ...at(abroad.slice(6)).runs],
     };
-    expect(parseRecordPages([[...head, gappedDate]], 'Men')[0].cjBy).toEqual(cells.cjBy);
+    expect(itemAt(parseRecordPages([[...head, gappedDate]], 'Men'), 0).cjBy).toEqual(cells.cjBy);
     // A site cell that runs on into the competition: the text reading decides.
     const runOn: [number, string][] = [[70, '60'], [114, 'SNA'], [168, '93'], [199, 'MURRAY'], [295, 'George'], [364, '12-Sep-25'], [423, 'Las Vegas, NV World'], [560, 'Masters']];
-    expect(parseRecordPages([[...head, at(runOn)]], 'Men')[0].snatchBy?.location).toBe('World Masters, Las Vegas, NV');
+    expect(itemAt(parseRecordPages([[...head, at(runOn)]], 'Men'), 0).snatchBy?.location).toBe('World Masters, Las Vegas, NV');
     // A date drawn as two touching runs is still one date.
     const splitDate: PdfLine = {
       text: '110+ CnJ 195 ALBURY Dimitri 26-Sep-26 Athens, Greece World Masters',
       runs: [...at(abroad.slice(0, 5)).runs, { text: '26-Sep-', x: 364, end: 398 }, { text: '26', x: 398, end: 408 }, ...at(abroad.slice(6)).runs],
     };
-    expect(parseRecordPages([[...head, splitDate]], 'Men')[0].cjBy).toEqual(cells.cjBy);
+    expect(itemAt(parseRecordPages([[...head, splitDate]], 'Men'), 0).cjBy).toEqual(cells.cjBy);
   });
 
   it('spaces only the names listed as run together, and keeps every other name as written', () => {
-    const holder = (name: string) => parseRecordPages([['M 40 - 44', `75 SNA 107 ${name} 27-Mar-26 Little Rock, AR National Masters`]], 'Men')[0].snatchBy?.name;
+    const holder = (name: string) => itemAt(parseRecordPages([['M 40 - 44', `75 SNA 107 ${name} 27-Mar-26 Little Rock, AR National Masters`]], 'Men'), 0).snatchBy?.name;
     expect(holder('TAN CASTELLANOSYicay')).toBe('TAN CASTELLANOS Yicay');
     // A listed name on a line without a date is spaced too.
-    expect(parseRecordPages([['M 40 - 44', '75 SNA 107 TAN CASTELLANOSYicay']], 'Men')[0].snatchBy?.name).toBe('TAN CASTELLANOS Yicay');
+    expect(itemAt(parseRecordPages([['M 40 - 44', '75 SNA 107 TAN CASTELLANOSYicay']], 'Men'), 0).snatchBy?.name).toBe('TAN CASTELLANOS Yicay');
     for (const name of ["SMITH D'Angelo", "O'Neil Mary", 'SMITH-Jones Ann', 'McDONALD Ann', 'SMITH DEAnne', 'SMITH ALEXandra', 'SMITHDEAnne', 'McDONALDSarah']) {
       expect(holder(name)).toBe(name);
     }
@@ -198,7 +200,7 @@ describe('USAMW national records PDFs of September 27, 2026 (pages rotated 90 de
   it('reads the rotated pages as they are displayed, one table row per line', () => {
     expect(men).toHaveLength(12);
     expect(women).toHaveLength(11);
-    expect(men[0].slice(0, 5).map((l) => l.text)).toEqual([
+    expect(itemAt(men, 0).slice(0, 5).map((l) => l.text)).toEqual([
       'USA National Masters Records - Men',
       'September 27, 2026',
       'M 35 - 39',
@@ -207,7 +209,7 @@ describe('USAMW national records PDFs of September 27, 2026 (pages rotated 90 de
     ]);
     // Without `asDisplayed` (every other source) a page is read in its own coordinates, one table column per line.
     const own = fixtureLines('usamw-national-records-men-20260927.pdf', { xTolerance: 2, yTolerance: 2 });
-    expect(own[0].map((l) => l.text)).toContain('Cat 110110110');
+    expect(itemAt(own, 0).map((l) => l.text)).toContain('Cat 110110110');
     expect(parseRecordPages(own, 'Men')).toEqual([]);
   });
 

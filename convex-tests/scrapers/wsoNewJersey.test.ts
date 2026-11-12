@@ -1,4 +1,5 @@
 import { consolidateRecords, parseNewJerseyTab, splitDateLocation } from '../../convex/scrapers/parse/wso/newJersey';
+import { itemAt } from '../../convex/lib/json';
 
 const row = (...cells: string[]) => cells.concat(Array(14).fill('')).slice(0, 14).join(',');
 
@@ -53,7 +54,7 @@ describe('New Jersey WSO sheet (port of scraper_newjersey.py)', () => {
     // A vacant class has no lifts, so no holders.
     expect(records[2]).toEqual({ wso: 'New Jersey', ageCategory: 'Senior', gender: 'Women', weightClass: '53', snatchRecord: null, cjRecord: null, totalRecord: null });
     // A value with no athlete written is a standard.
-    expect(records[4].snatchBy).toEqual({ name: 'Standard' });
+    expect(itemAt(records, 4).snatchBy).toEqual({ name: 'Standard' });
 
     const men71 = consolidateRecords(records).find((r) => r.gender === 'Men' && r.weightClass === '71');
     expect(men71).toEqual({

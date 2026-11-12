@@ -3,6 +3,7 @@ import { wikitextOf } from '../../convex/scrapers/parse/iwfRecords';
 import { readWidgetPage } from '../../convex/scrapers/parse/meets';
 import { pageRows, readSport80Env, readTablePage } from '../../convex/scrapers/parse/sport80';
 import { joinPages, tableComplete } from '../../convex/scrapers/sport80';
+import { itemAt } from '../../convex/lib/json';
 
 describe('the entries table', () => {
   const row = { id: 7, member_id: '1012345', first_name: 'Ann', last_name: 'Lee', weightlifting_age: 31, club: 'Club', gender: 'Female', weight_class: '63', entry_total: '150' };
@@ -10,13 +11,13 @@ describe('the entries table', () => {
   it('reads a page as Sport80 sends it', () => {
     const table = readEntriesTable({ title: 'Open - Members', total: 1, data: [row] });
     expect(table).toEqual({ title: 'Open - Members', total: 1, data: [row] });
-    expect(entryFromRow(table.data![0], 'Open')).toMatchObject({ memberId: '1012345', name: 'Ann Lee', age: 31, entryTotal: 150 });
+    expect(entryFromRow(itemAt(table.data ?? [], 0), 'Open')).toMatchObject({ memberId: '1012345', name: 'Ann Lee', age: 31, entryTotal: 150 });
   });
 
   it('takes a membership number sent as a number, which used to fail the target with "trim is not a function"', () => {
     const table = readEntriesTable({ total: '1', data: [{ ...row, member_id: 1012345 }] });
     expect(table.total).toBe(1);
-    expect(entryFromRow(table.data![0], 'Open').memberId).toBe('1012345');
+    expect(entryFromRow(itemAt(table.data ?? [], 0), 'Open').memberId).toBe('1012345');
   });
 
   it('keeps a row id as sent, so ids of any kind still tell rows apart', () => {
@@ -28,7 +29,7 @@ describe('the entries table', () => {
   it('reads an age or entry total that is neither a number nor text as missing, as before, and ignores a title that is not text', () => {
     const table = readEntriesTable({ title: 7, data: [{ ...row, weightlifting_age: true, entry_total: { kg: 150 } }] });
     expect(table.title).toBeUndefined();
-    expect(entryFromRow(table.data![0], 'Open')).toMatchObject({ age: 0, entryTotal: 0 });
+    expect(entryFromRow(itemAt(table.data ?? [], 0), 'Open')).toMatchObject({ age: 0, entryTotal: 0 });
   });
 
   it('names the field that is not what the sync reads', () => {

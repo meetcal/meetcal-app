@@ -1,5 +1,6 @@
 import type { ApiLiftingResult } from '../convex/lib/results';
 import { exactSearchAnswer, fallbackSearchAnswer, MAX_SEARCH_RESULT_ROWS } from '../convex/results';
+import { itemAt } from '../convex/lib/json';
 
 function row(name: string, date: string, total = 100): ApiLiftingResult {
   return {
@@ -77,7 +78,7 @@ describe('results:search row bound', () => {
   it('keeps the most recent rows of an exact match too', () => {
     const answer = exactSearchAnswer(dailyHistory('Ann Smith', MAX_SEARCH_RESULT_ROWS + 5), '1990-01-01', '2030-12-31');
     expect(answer?.truncated).toBe(true);
-    expect(answer?.results[0].date).toBe('2000-01-06');
+    expect(itemAt(answer?.results ?? [], 0).date).toBe('2000-01-06');
   });
 
   it('is not truncated under the bound', () => {

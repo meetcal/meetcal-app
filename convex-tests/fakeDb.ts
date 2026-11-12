@@ -1,5 +1,6 @@
 import { getFunctionName } from 'convex/server';
 import schema from '../convex/schema';
+import { itemAt } from '../convex/lib/json';
 
 /**
  * An in-memory stand-in for a mutation's `ctx.db`, enough for the ingest
@@ -153,13 +154,14 @@ export function fakeDb(seed: Record<string, Record<string, unknown>[]> = {}) {
     normalizeId: (name: string, id: string) => (id.startsWith(`${name}:`) ? id : null),
     patch: async (id: string, fields: Record<string, unknown>) => {
       const { docs, at } = find(id);
-      const doc = { ...docs[at], ...fields };
+      const doc = { ...itemAt(docs, at), ...fields };
       for (const key of Object.keys(doc)) if (doc[key] === undefined) delete doc[key];
       docs[at] = doc;
     },
     replace: async (id: string, value: Record<string, unknown>) => {
       const { docs, at } = find(id);
-      const doc: Doc = { ...value, _id: docs[at]._id, _creationTime: docs[at]._creationTime };
+      const { _id, _creationTime } = itemAt(docs, at);
+      const doc: Doc = { ...value, _id, _creationTime };
       for (const key of Object.keys(doc)) if (doc[key] === undefined) delete doc[key];
       docs[at] = doc;
     },

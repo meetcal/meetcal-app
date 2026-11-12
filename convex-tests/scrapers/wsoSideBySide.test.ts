@@ -1,4 +1,5 @@
 import { carolinaLayout, floridaLayout, parseSideBySide } from '../../convex/scrapers/parse/wso/sideBySide';
+import { itemAt } from '../../convex/lib/json';
 
 const row = (...cells: string[]) => cells.concat(Array(12).fill('')).slice(0, 12).join(',');
 
@@ -31,7 +32,8 @@ describe('side-by-side WSO sheets (ports of scraper_florida.py and scraper_carol
       row('', 'Clean and Jerk', '0', 'STANDARD', '6/1/25', '', '', 'Clean & Jerk', '60', 'Annalee Seek', '6/28/26'),
       row('', 'Total', '97', 'STANDARD', '6/1/25', '', '', 'Total', '112', 'Annalee Seek', ''),
     ].join('\n');
-    const [men, women] = parseSideBySide(csv, 'Florida', floridaLayout('U13'));
+    const florida = parseSideBySide(csv, 'Florida', floridaLayout('U13'));
+    const [men, women] = [itemAt(florida, 0), itemAt(florida, 1)];
     expect(men.snatchBy).toEqual({ name: 'Standard', date: '2025-06-01' });
     expect(men).not.toHaveProperty('cjBy');
     expect(women).toMatchObject({

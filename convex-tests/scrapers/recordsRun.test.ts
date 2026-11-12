@@ -1,6 +1,7 @@
 import { run } from '../../convex/scrapers/records';
 import { describeFailure } from '../../convex/lib/cronAlerts';
 import { handlerOf } from '../fakeDb';
+import { itemAt } from '../../convex/lib/json';
 
 const mockPdfLines = jest.fn<Promise<string[][]>, []>();
 jest.mock('../../convex/scrapers/lib/http', () => ({
@@ -55,7 +56,7 @@ describe('records run (#406, #255)', () => {
     const failure = await handlerOf<Record<string, never>, Result>(run)({ runMutation }, {}).catch((error: unknown) => error);
     expect(describeFailure(failure).failedSources).toEqual(['age group 18-20yo']);
     expect(runMutation).toHaveBeenCalledTimes(1);
-    expect(runMutation.mock.calls[0][1]).toHaveProperty('rows');
+    expect(itemAt(runMutation.mock.calls, 0)[1]).toHaveProperty('rows');
   });
 
   it('writes nothing when the prune would refuse, so the new classes are not stored beside the old', async () => {
