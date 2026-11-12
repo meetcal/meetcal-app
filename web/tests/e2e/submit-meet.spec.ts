@@ -268,6 +268,17 @@ test("a first try the server answers with its already-submitted code shows why",
   await expect(page.getByLabel("Meet name")).toHaveValue("  Ohio Open  ");
 });
 
+test("a session the server refuses says to sign in again, as /link does", async ({ page }) => {
+  await mockAuth(page);
+  await mockSubmissions(page);
+  await routeMutation(page, "meetSubmissions:generateUploadUrl", (route) => route.fulfill(errorAnswer("Server Error", { status: 401, error: "unauthorized" })));
+  await page.goto("/submit-meet");
+  await fillMeet(page);
+  await files(page).setInputFiles([pdf]);
+  await page.getByRole("button", { name: "Submit meet" }).click();
+  await expect(page.getByRole("alert")).toHaveText("MeetCal couldn't confirm you're signed in; please sign in again");
+});
+
 test("the form has no serious accessibility violations", async ({ page }) => {
   await mockAuth(page);
   await mockSubmissions(page);
