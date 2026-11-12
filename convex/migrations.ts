@@ -1,3 +1,4 @@
+import { itemAt, last } from './lib/json';
 import { EVENT_RESULTS_MAX, MEETS_MAX, MEET_ROSTER_MAX, REFERENCE_TABLE_ROWS_MAX, USER_SAVED_SESSIONS_MAX, WSO_RECORDS_MAX, readAll } from './lib/boundedRead';
 import { v } from 'convex/values';
 import { internalAction, internalMutation, internalQuery } from './_generated/server';
@@ -202,7 +203,7 @@ const LEFT_PER_LOG_LINE = 50;
 function copySets(rows: readonly Doc<'lifting_results'>[]): Doc<'lifting_results'>[][] {
   const sets: Doc<'lifting_results'>[][] = [];
   for (const row of rows) {
-    const set = sets.find((candidate) => isCopy(candidate[0], row));
+    const set = sets.find((candidate) => isCopy(itemAt(candidate, 0), row));
     if (set) set.push(row);
     else sets.push([row]);
   }
@@ -253,8 +254,8 @@ export const dedupeLiftingResults = internalMutation({
         const identity = copySets(rows);
         sets.push(...identity.filter((set) => set.length > 1));
         if (identity.length > 1) {
-          const { meet, name, age } = rows[0];
-          const values = identity.map((set) => `${set[0].date} total ${set[0].total ?? '-'} bw ${set[0].bodyWeight ?? '-'}${set.length > 1 ? ` (x${set.length})` : ''}`);
+          const { meet, name, age } = itemAt(rows, 0);
+          const values = identity.map((set) => `${itemAt(set, 0).date} total ${itemAt(set, 0).total ?? '-'} bw ${itemAt(set, 0).bodyWeight ?? '-'}${set.length > 1 ? ` (x${set.length})` : ''}`);
           unresolved.push(`event ${eventId} ${JSON.stringify(meet)} ${JSON.stringify(name)} ${age ?? '(no age)'}: ${values.join('; ')}`);
         }
       }
@@ -267,7 +268,7 @@ export const dedupeLiftingResults = internalMutation({
       // Each set's older rows, newest kept, up to DEDUPE_BATCH deletions.
       const doomed: Doc<'lifting_results'>[] = [];
       for (const set of sets) {
-        const kept = set[set.length - 1];
+        const kept = last(set);
         const older = set.slice(0, -1).slice(0, DEDUPE_BATCH - doomed.length);
         if (older.length === 0) break;
         const legacyId = kept.legacyId ?? older.find((row) => row.legacyId !== undefined)?.legacyId;
@@ -709,7 +710,7 @@ export const resultDateProblems = internalAction({
       .filter((group) => suspectResultDates(group.dates))
       .map(({ eventId, meet, dates }) => {
         const sorted = Object.keys(dates).sort();
-        return { eventId, meet, rows: Object.values(dates).reduce((sum, n) => sum + n, 0), dates: sorted.length, first: sorted[0], last: sorted[sorted.length - 1] };
+        return { eventId, meet, rows: Object.values(dates).reduce((sum, n) => sum + n, 0), dates: sorted.length, first: sorted[0] ?? '', last: sorted[sorted.length - 1] ?? '' };
       })
       .sort((a, b) => (a.eventId < b.eventId ? -1 : a.eventId > b.eventId ? 1 : 0));
   },

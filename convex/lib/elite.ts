@@ -1,4 +1,4 @@
-import { completeRecord, isRecord } from './json';
+import { completeRecord, isRecord, itemAt } from './json';
 import { type Gender, MAX_LEADERBOARD_YEARS, parseDivision, plausible, qpoints, type RankedFields, sinclair } from './leaderboard';
 import { plusYears } from './dates';
 import { genderOfWord } from './gender';
@@ -91,7 +91,7 @@ export const AGE_FACTORS_MEN = [
 export function ageFactor(age: number, gender: Gender): number {
   const factors = gender === 'Men' ? AGE_FACTORS_MEN : AGE_FACTORS_WOMEN;
   if (age < AGE_FACTORS_FIRST_AGE) return 1;
-  return factors[Math.min(age - AGE_FACTORS_FIRST_AGE, factors.length - 1)];
+  return itemAt(factors, Math.min(age - AGE_FACTORS_FIRST_AGE, factors.length - 1));
 }
 
 /** A total's Q-masters: its Q-points times the age factor; null where Q-points are. */

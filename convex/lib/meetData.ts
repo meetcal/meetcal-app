@@ -132,7 +132,7 @@ export function zoneFormatter(timeZone: string, formatters: ZoneFormatters): Int
 
 /** Postgres `date + INTERVAL 'n months'`: same day, clamped to the month's end. */
 export function addMonths(date: string, months: number): string {
-  const [year, month, day] = date.split('-').map(Number);
+  const [year = Number.NaN, month = Number.NaN, day = Number.NaN] = date.split('-').map(Number);
   const target = new Date(Date.UTC(year, month - 1 + months, 1));
   const lastDay = new Date(Date.UTC(target.getUTCFullYear(), target.getUTCMonth() + 1, 0)).getUTCDate();
   target.setUTCDate(Math.min(day, lastDay));

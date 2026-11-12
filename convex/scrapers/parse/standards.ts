@@ -72,9 +72,9 @@ export function standardsPeriod(line: string): { validFrom?: string; validUntil?
     return date && /^\d{4}-\d{2}-\d{2}$/.test(date) ? date : undefined;
   };
   const until = THROUGH.exec(line);
-  if (until && iso(until[1])) return { validUntil: iso(until[1]) };
+  if (until && iso(until[1] ?? '')) return { validUntil: iso(until[1] ?? '') };
   const from = TAKES_EFFECT.exec(line);
-  if (from && iso(from[1])) return { validFrom: iso(from[1]) };
+  if (from && iso(from[1] ?? '')) return { validFrom: iso(from[1] ?? '') };
   return null;
 }
 
@@ -90,7 +90,7 @@ export function parseStandards(pages: string[][]): Standard[] {
     let section: { age: string; gender: string; isA: boolean; isB: boolean } | null = null;
     let classes: string[] = [];
     for (const line of lines) {
-      const [first, ...rest] = line.split(' ');
+      const [first = '', ...rest] = line.split(' ');
       const named = standardsPeriod(line);
       if (named) {
         period = named;
@@ -116,14 +116,15 @@ export function parseStandards(pages: string[][]): Standard[] {
       }
       if (first.toLowerCase() === 'total' && classes.length > 0) {
         rest.forEach((cell, index) => {
-          if (index >= classes.length) return;
+          const weightClass = classes[index];
+          if (weightClass === undefined) return;
           const total = parseIntValue(cell);
           if (total === null) return;
-          const key = `${period.validFrom ?? ''}|${period.validUntil ?? ''}|${section!.age}|${section!.gender}|${classes[index]}`;
+          const key = `${period.validFrom ?? ''}|${period.validUntil ?? ''}|${section!.age}|${section!.gender}|${weightClass}`;
           const standard = byKey.get(key) ?? {
             age_category: section!.age,
             gender: section!.gender,
-            weight_class: classes[index],
+            weight_class: weightClass,
             standard_a: 0,
             standard_b: 0,
             ...period,

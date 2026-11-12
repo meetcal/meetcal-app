@@ -63,7 +63,7 @@ class Sport80 {
     const page = await response.text();
     const match = /window\.env = ({.*?});/s.exec(page);
     if (!match) throw new Error('sport80: window.env not found on the rankings page');
-    return new Sport80(readSport80Env(match[1]));
+    return new Sport80(readSport80Env(match[1] ?? ''));
   }
 
   private headers() {

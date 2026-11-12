@@ -78,8 +78,9 @@ async function alert(notices: Notice[]): Promise<void> {
   const to = process.env.ALERT_EMAIL;
   if (!to) return;
   const deployment = process.env.CONVEX_CLOUD_URL ?? '';
+  const [only] = notices;
   const subject =
-    notices.length === 1 ? `MeetCal: ${notices[0].job} ${SUBJECTS[notices[0].kind]}` : `MeetCal: ${notices.length} scheduled jobs need attention`;
+    only !== undefined && notices.length === 1 ? `MeetCal: ${only.job} ${SUBJECTS[only.kind]}` : `MeetCal: ${notices.length} scheduled jobs need attention`;
   const items = notices
     .map((n) => `<li><b>${escapeHtml(n.job)}</b> ${SUBJECTS[n.kind]}<pre style="white-space:pre-wrap;margin:4px 0 12px">${escapeHtml(n.detail.slice(0, 4000))}</pre></li>`)
     .join('');

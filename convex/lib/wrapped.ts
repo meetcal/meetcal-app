@@ -1,3 +1,4 @@
+import { itemAt } from './json';
 import type { ApiLiftingResult } from './results';
 import { DAY_MS } from './dates';
 import { normalizeName } from './names';
@@ -155,7 +156,7 @@ export function wrappedStats(rows: readonly ApiLiftingResult[]): WrappedStats {
   const madeByAttempt = [0, 0, 0];
 
   lifts.forEach((row, index) => {
-    const edition = editions[index];
+    const edition = itemAt(editions, index);
     if (!meetNames.has(edition)) meetNames.set(edition, row.meet);
     attemptsOf(row).forEach((attempt, slot) => {
       // An untaken attempt is neither a make nor a miss.
@@ -164,7 +165,7 @@ export function wrappedStats(rows: readonly ApiLiftingResult[]): WrappedStats {
       if (wasMade(attempt)) {
         totalWeight += attempt;
         made++;
-        madeByAttempt[slot % 3]++;
+        madeByAttempt[slot % 3] = (madeByAttempt[slot % 3] ?? 0) + 1;
         streak++;
         longestStreak = Math.max(longestStreak, streak);
       } else {
@@ -188,7 +189,8 @@ export function wrappedStats(rows: readonly ApiLiftingResult[]): WrappedStats {
   const topMeet = topEdition === null ? null : (meetNames.get(topEdition) ?? null);
   // A bomb-out is no data point, and one meet has nothing to compare.
   const meetBests = [...meetTotals.values()].filter((total) => total > 0);
-  const improvementFromFirst = meetBests.length >= 2 ? meetBests[meetBests.length - 1] - meetBests[0] : null;
+  const [firstBest, lastBest] = [meetBests[0], meetBests[meetBests.length - 1]];
+  const improvementFromFirst = meetBests.length >= 2 && firstBest !== undefined && lastBest !== undefined ? lastBest - firstBest : null;
 
   const ATTEMPT_NUMBERS: readonly (1 | 2 | 3 | undefined)[] = [1, 2, 3];
   let favoriteAttempt: WrappedStats['favoriteAttempt'] = null;
@@ -252,8 +254,9 @@ export function selectWrapped(search: WrappedSearch): WrappedAnswer {
     if (key && !byKey.has(key)) byKey.set(key, row.name);
   }
   if (byKey.size === 0) return none();
-  if (byKey.size === 1 && !search.truncated) {
-    const [[key, name]] = [...byKey];
+  const [only] = [...byKey];
+  if (byKey.size === 1 && !search.truncated && only !== undefined) {
+    const [key, name] = only;
     return { kind: 'athlete', name, stats: wrappedStats(inDateOrder(rows.filter((row) => normalizeName(row.name ?? '') === key))) };
   }
   // The athletes who lifted in the year, so each pick has a Wrapped.

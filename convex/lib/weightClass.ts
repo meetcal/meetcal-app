@@ -36,7 +36,7 @@ const isInsideParentheses = (text: string, index: number): boolean => {
 export function classNamedIn(label: string, place: ClassPlace): string | null {
   if (place === 'atTheEnd') return /(\d+\+?)\s*kg\s*$/i.exec(label)?.[1] ?? null;
   for (const match of label.matchAll(/\b(\d+\+?)kg/gi)) {
-    if (!isInsideParentheses(label, match.index)) return match[1];
+    if (!isInsideParentheses(label, match.index)) return match[1] ?? null;
   }
   return null;
 }

@@ -60,7 +60,7 @@ export function illinoisPdfHref(pageHtml: string): string {
   const open = pageHtml.lastIndexOf('<section', heading);
   const close = pageHtml.indexOf('</section>', heading);
   const section = pageHtml.slice(open === -1 ? heading : open, close === -1 ? undefined : close);
-  const hrefs = [...section.matchAll(VIEW_RECORDS_LINK)].map((m) => m[1]);
+  const hrefs = [...section.matchAll(VIEW_RECORDS_LINK)].map((m) => m[1] ?? '');
   if (!hrefs.length) throw new Error('Could not find the Illinois records PDF URL on the page');
   const dateOf = (href: string) => FILE_DATE.exec(href)?.[1] ?? '';
   return hrefs.reduce((newest, href) => (dateOf(href) > dateOf(newest) ? href : newest));
@@ -101,7 +101,7 @@ export function parseIllinois(lines: readonly string[], wso: string): { records:
       if (RECORD_ROW_PREFIX.test(line)) unparsed.push(line);
       continue;
     }
-    const [, age, rawGender, weight, lift, value, holder, date, place] = match;
+    const [, age = '', rawGender = '', weight = '', lift = '', value, holder, date, place] = match;
     const gender = rawGender.toUpperCase() === 'F' ? 'Women' : 'Men';
     const record: Parsed = { wso, ageCategory: ageCategory(age, rawGender.toUpperCase()), gender, weightClass: weightClass(weight) };
     const key = JSON.stringify([record.ageCategory, gender, record.weightClass]);

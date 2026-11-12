@@ -1,4 +1,4 @@
-import { errorMessage, isRecord, isStringList } from './lib/json';
+import { errorMessage, isRecord, isStringList, itemAt } from './lib/json';
 import { MEETS_MAX, MEET_ROSTER_MAX, VIEW_HEADERS_MAX, readAll } from './lib/boundedRead';
 import { v } from 'convex/values';
 import { internalAction, internalQuery } from './_generated/server';
@@ -278,7 +278,7 @@ export const run = internalAction({
     const directory: string[] = directoryNames((await ctx.runQuery(internal.views.textViewAnyAge, { key: RESULT_NAMES_VIEW })) ?? '');
     const queries = new Set(['john', 'ann', 'ez', 'mc', "o'", 'van ', 'jr', 'zzqx', 'Ab', 'SMI', 'jos\u00e9', 'x']);
     for (let i = 0; i < directory.length; i += Math.max(1, Math.floor(directory.length / 25))) {
-      const name = directory[i];
+      const name = itemAt(directory, i);
       const last = name.split(' ').pop() ?? name;
       queries.add(last.slice(0, 3));
       queries.add(name.slice(1, 5).toLowerCase());
@@ -317,7 +317,7 @@ export const viewFreshness = internalQuery({
         (dependencies.roster !== undefined && athletePending);
       if (!isStale) fresh += 1;
       else {
-        const family = header.key.split('|')[0];
+        const family = header.key.split('|')[0] ?? '';
         stale[family] = (stale[family] ?? 0) + 1;
       }
     }

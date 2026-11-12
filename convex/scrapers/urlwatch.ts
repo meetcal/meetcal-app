@@ -1,6 +1,6 @@
 'use node';
 
-import { errorMessage } from '../lib/json';
+import { errorMessage, itemAt } from '../lib/json';
 import { v } from 'convex/values';
 import { internalAction } from '../_generated/server';
 import { internal } from '../_generated/api';
@@ -63,7 +63,7 @@ export const run = internalAction({
       const delivery = reportDelivery({ URLWATCH_EMAIL: process.env.URLWATCH_EMAIL, ALERT_EMAIL: process.env.ALERT_EMAIL });
       if (delivery === 'fail') throw new Error('urlwatch: URLWATCH_EMAIL is not set; not saving, so the changes are reported once it is');
       const changed = report.filter((r) => r.status === 'changed').length;
-      const subject = changed ? `urlwatch: ${report.map((r) => r.name.replace('USA Masters Weightlifting ', '')).join(', ')} changed` : `urlwatch: ${report[0].name} failed`;
+      const subject = changed ? `urlwatch: ${report.map((r) => r.name.replace('USA Masters Weightlifting ', '')).join(', ')} changed` : `urlwatch: ${itemAt(report, 0).name} failed`;
       if (delivery === 'send') await sendEmail(process.env.URLWATCH_EMAIL!, subject, emailBody(report));
       else for (const r of report) console.warn(`${subject}: ${r.name} (${r.url}) ${r.status}${r.error ? `: ${r.error}` : ''}`);
     }

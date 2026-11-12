@@ -1,3 +1,4 @@
+import { groupOf } from './json';
 import { ConvexError } from 'convex/values';
 
 /**
@@ -38,7 +39,7 @@ export function isValidIsoDate(value: string): boolean {
 export function canonicalMeetDate(value: string): string | null {
   const match = /^(\d{4})-(\d{1,2})-(\d{1,2})$/.exec(value.trim());
   if (!match) return null;
-  const date = `${match[1]}-${match[2].padStart(2, '0')}-${match[3].padStart(2, '0')}`;
+  const date = `${groupOf(match, 1)}-${groupOf(match, 2).padStart(2, '0')}-${groupOf(match, 3).padStart(2, '0')}`;
   return isValidIsoDate(date) ? date : null;
 }
 

@@ -86,7 +86,7 @@ function rawEventDate(event: Dict): string | null {
 export function eventDate(event: Dict): number | null {
   const raw = rawEventDate(event);
   if (!raw) return null;
-  const iso = /^(\d{4})-(\d{1,2})-(\d{1,2})$/.exec(raw.split(' ')[0]);
+  const iso = /^(\d{4})-(\d{1,2})-(\d{1,2})$/.exec(raw.split(' ')[0] ?? '');
   return iso ? utc(Number(iso[1]), Number(iso[2]), Number(iso[3])) : null;
 }
 

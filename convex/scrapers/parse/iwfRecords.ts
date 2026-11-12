@@ -17,7 +17,7 @@
 
 import { recordHolder, type RecordHolder } from './holder';
 import { unescapeHtml } from '../lib/html';
-import { isRecord, typedKeys } from '../../lib/json';
+import { isRecord, typedKeys, itemAt } from '../../lib/json';
 
 export const IWF_PAGES = {
   Senior: 'List_of_world_records_in_Olympic_weightlifting',
@@ -140,7 +140,7 @@ export function parseIwfWikitext(wikitext: string, ageCategory: IwfAge): IwfReco
     const endRow = () => {
       if (!current || cells.length === 0) return;
       const row = columns();
-      const first = LIFTS[cellText(cells[0]).toLowerCase()];
+      const first = LIFTS[cellText(cells[0] ?? '').toLowerCase()];
       if (first) {
         lift = first;
         cells = cells.slice(1);
@@ -166,7 +166,7 @@ export function parseIwfWikitext(wikitext: string, ageCategory: IwfAge): IwfReco
       const header = /^!\s*colspan\s*=\s*"?\d+"?\s*\|(.*)$/.exec(line);
       if (header) {
         endRow();
-        current = { weightClass: header[1].replaceAll('&nbsp;', '').replace(/\s+/g, ''), lifts: {}, holders: {} };
+        current = { weightClass: itemAt(header, 1).replaceAll('&nbsp;', '').replace(/\s+/g, ''), lifts: {}, holders: {} };
         classes.push(current);
         lift = null;
         spans = [];

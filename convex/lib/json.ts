@@ -70,3 +70,12 @@ export function completeRecord<Key extends string, Value>(keys: readonly Key[], 
 }
 
 export const isTextPair = isPairOf(isString, isString);
+
+export function itemAt<Item>(items: readonly Item[], index: number): Item {
+  if (Number.isInteger(index) && index >= 0) for (const item of items.slice(index, index + 1)) return item;
+  throw new RangeError(`no item ${index} in a list of ${items.length}`);
+}
+
+export const last = <Item>(items: readonly Item[]): Item => itemAt(items, items.length - 1);
+
+export const groupOf = (match: RegExpMatchArray, group: number): string => match[group] ?? '';

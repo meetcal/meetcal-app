@@ -107,7 +107,7 @@ export const beginRefresh = internalMutation({
       hints: rows.map((h) => ({ id: h._id, kind: h.kind, key: h.key, seq: h.seq ?? 0, since: h.since })),
       overflow: costly > MAX_TARGETED_HINTS,
       more: all.length > MAX_REFRESH_HINTS,
-      lastRead: rows.length > 0 ? rows[rows.length - 1]._creationTime : null,
+      lastRead: rows[rows.length - 1]?._creationTime ?? null,
       rebuilding: state?.rebuilding ?? false,
       rebuildHeartbeat: state?.rebuildHeartbeat ?? null,
       rebuildPosition: storedPosition(state?.rebuildPosition),

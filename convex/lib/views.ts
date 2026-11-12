@@ -136,7 +136,8 @@ export function jsonChunks(items: readonly unknown[]): string[] {
 
 /** The single JSON array the chunks were cut from. */
 export function joinJsonChunks(chunks: readonly string[]): string {
-  if (chunks.length === 1) return chunks[0];
+  const [only] = chunks;
+  if (chunks.length === 1 && only !== undefined) return only;
   const inner = chunks.map((chunk) => chunk.slice(1, -1)).filter((part) => part.length > 0);
   return `[${inner.join(',')}]`;
 }
@@ -151,7 +152,7 @@ export function textChunks(text: string): string[] {
     let end = Math.min(i + MAX_CHUNK_CHARS, text.length);
     // Never between the two halves of a surrogate pair: a lone half is not a
     // string Convex can store.
-    if (end < text.length && /[\uD800-\uDBFF]/.test(text[end - 1])) end -= 1;
+    if (end < text.length && /[\uD800-\uDBFF]/.test(text.charAt(end - 1))) end -= 1;
     // Then stop sooner if the chunk would pass the byte cap, a whole code
     // point at a time (so a pair stays together).
     let bytes = 0;

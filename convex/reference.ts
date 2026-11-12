@@ -277,7 +277,7 @@ function clubAthleteRow(r: Doc<'athletes'>) {
 async function meetDatesOf(ctx: QueryCtx, rows: readonly Doc<'athletes'>[], lookups: number): Promise<Map<string, string | null>> {
   const meets = [...new Set([...rows].sort((a, b) => b._creationTime - a._creationTime).map((r) => r.meet))].slice(0, Math.max(0, lookups));
   const dates = await Promise.all(meets.map(async (meet) => (await meetByName(ctx, meet))?.startDate ?? null));
-  return new Map(meets.map((meet, i) => [meet, dates[i]]));
+  return new Map(meets.map((meet, i) => [meet, dates[i] ?? null]));
 }
 
 async function clubAthleteRows(ctx: QueryCtx, rows: Doc<'athletes'>[], dateLookups: number) {

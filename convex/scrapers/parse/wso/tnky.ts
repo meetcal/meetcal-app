@@ -81,7 +81,7 @@ const LIFTS: Record<string, LiftName> = { snatch: 'snatch', 'c&j': 'cj', cleanan
 /** "40KG", "65+KG", "77KG*" -> the class ("65+"); null for any other cell. */
 const classOf = (cell: string) => {
   const match = /^(\+?\d+\+?)\s*kg\b/i.exec(cell.trim());
-  return match ? plusLast(match[1]) : null;
+  return match ? plusLast(match[1] ?? '') : null;
 };
 
 /**

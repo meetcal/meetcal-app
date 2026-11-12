@@ -1,3 +1,4 @@
+import { groupOf } from './json';
 import type { SourceTable } from './views';
 
 /**
@@ -186,19 +187,19 @@ const WSO_PATTERN = /^wso\|([^|]*)$/;
  */
 export function parseViewKey(key: string): ParsedViewKey | null {
   const session = MEET_SESSION_PATTERN.exec(key);
-  if (session) return { family: 'session', meet: unescapeKeyPart(session[1]), sessionNumber: Number(session[2]) };
+  if (session) return { family: 'session', meet: unescapeKeyPart(groupOf(session, 1)), sessionNumber: Number(session[2]) };
   const meetPart = MEET_PART_PATTERN.exec(key);
   const part = meetPart === null ? undefined : MEET_VIEW_PARTS.find((known) => known === meetPart[2]);
-  if (meetPart && part !== undefined) return { family: 'meet', meet: unescapeKeyPart(meetPart[1]), part };
+  if (meetPart && part !== undefined) return { family: 'meet', meet: unescapeKeyPart(groupOf(meetPart, 1)), part };
   const nat = NAT_PATTERN.exec(key);
-  if (nat) return { family: 'nat', federation: unescapeKeyPart(nat[1]), ageCategory: unescapeKeyPart(nat[2]) };
+  if (nat) return { family: 'nat', federation: unescapeKeyPart(groupOf(nat, 1)), ageCategory: unescapeKeyPart(groupOf(nat, 2)) };
   const adaptive = ADAPTIVE_PATTERN.exec(key);
   if (adaptive) {
-    const [gender, excludeFederation, season] = adaptive.slice(1).map(unescapeKeyPart);
+    const [gender = '', excludeFederation = '', season = ''] = adaptive.slice(1).map(unescapeKeyPart);
     return { family: 'adaptive', gender, excludeFederation, season };
   }
   const wso = WSO_PATTERN.exec(key);
-  if (wso) return { family: 'wso', wso: unescapeKeyPart(wso[1]) };
+  if (wso) return { family: 'wso', wso: unescapeKeyPart(groupOf(wso, 1)) };
   return null;
 }
 

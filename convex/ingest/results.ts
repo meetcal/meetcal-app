@@ -1,3 +1,4 @@
+import { itemAt } from '../lib/json';
 import { EVENT_RESULTS_MAX, readAll } from '../lib/boundedRead';
 import { v } from 'convex/values';
 import { internalMutation, type MutationCtx } from '../_generated/server';
@@ -105,7 +106,7 @@ export async function eventResultsByKey(ctx: MutationCtx, eventId: string): Prom
  * there is one, else the oldest.
  */
 function pickStored(rows: readonly Doc<'lifting_results'>[], name: string): Doc<'lifting_results'> {
-  return rows.find((row) => row.name === name) ?? rows[0];
+  return rows.find((row) => row.name === name) ?? itemAt(rows, 0);
 }
 
 /**

@@ -59,7 +59,7 @@ export const list = query({
   args: { now: v.number(), ifNoneMatch: v.optional(v.string()) },
   handler: async (ctx, { now: clientNow, ifNoneMatch }) => {
     const now = upcomingWindowNow(clientNow, Date.now());
-    const [upcoming, ongoing] = await Promise.all(
+    const [upcoming = [], ongoing = []] = await Promise.all(
       (['upcoming', 'ongoing'] as const).map((status) =>
         readAll(
           ctx.db

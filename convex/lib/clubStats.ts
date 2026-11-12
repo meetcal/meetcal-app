@@ -1,4 +1,4 @@
-import { isListOf, isNumber, isPairOf, isRecord, isString } from './json';
+import { isListOf, isNumber, isPairOf, isRecord, isString, itemAt } from './json';
 import { ATHLETE_RESULTS_MAX, readAll } from './boundedRead';
 import type { QueryCtx } from '../_generated/server';
 import type { Doc } from '../_generated/dataModel';
@@ -94,7 +94,10 @@ export function liftKey(row: RankedResult, lift: RankedLift): LiftKey {
 
 function ranksAhead(a: LiftKey, b: LiftKey): boolean {
   if (a[0] !== b[0]) return a[0] > b[0];
-  for (let i = 1; i < Math.min(a.length, b.length); i += 1) if (a[i] !== b[i]) return a[i] < b[i];
+  for (let i = 1; i < Math.min(a.length, b.length); i += 1) {
+    const [mine, theirs] = [itemAt(a, i), itemAt(b, i)];
+    if (mine !== theirs) return mine < theirs;
+  }
   return false;
 }
 

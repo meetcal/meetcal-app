@@ -17,7 +17,7 @@ import { blankRecord, intOrNull, plusLast, setLift, type WsoRecord } from './com
 
 /** Every records PDF the page links, in page order. */
 export function newEnglandPdfUrls(html: string): string[] {
-  return [...new Set([...html.matchAll(/href="(https:\/\/www\.newenglandweightlifting\.com\/_files\/ugd\/[a-zA-Z0-9_/]+\.pdf)"/g)].map((m) => m[1]))];
+  return [...new Set([...html.matchAll(/href="(https:\/\/www\.newenglandweightlifting\.com\/_files\/ugd\/[a-zA-Z0-9_/]+\.pdf)"/g)].map((m) => m[1] ?? ''))];
 }
 
 /** "16/17 Youth Men's Records" -> ["U17", "Men"], "35-39 Masters Women's Records" -> ["Masters 35", "Women"]. */

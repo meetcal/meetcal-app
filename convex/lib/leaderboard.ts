@@ -86,7 +86,7 @@ const YOUTH_MARKERS: readonly (readonly [string, string])[] = [
 function divisionCategory(lower: string): string | null {
   const masters = lower.split('masters (');
   if (masters.length > 1) {
-    const start = /^\d*/.exec(masters[1])![0];
+    const start = /^\d*/.exec(masters[1] ?? '')?.[0] ?? '';
     return start === '' ? null : `Masters ${start}`;
   }
   if (lower.startsWith('open') || lower.includes(' open ') || lower.includes('senior')) return 'Senior';
@@ -290,6 +290,7 @@ export function pruneBests(best: Map<string, Candidate>, limit: number): void {
   if (best.size <= limit) return;
   const values = [...best.values()].map(({ value }) => value).sort((a, b) => b - a);
   const threshold = values[limit - 1];
+  if (threshold === undefined) return;
   for (const [key, { value }] of best) if (value < threshold) best.delete(key);
 }
 

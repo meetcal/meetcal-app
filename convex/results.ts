@@ -1,4 +1,4 @@
-import { isAnything, isListOf, isNumber, isPairOf, isString, isStringList, parsedAs } from './lib/json';
+import { isAnything, isListOf, isNumber, isPairOf, isString, isStringList, parsedAs, itemAt, last } from './lib/json';
 import { MEMBER_REGISTRATIONS_MAX, STANDARDS_MAX, readAll } from './lib/boundedRead';
 import { v } from 'convex/values';
 import { checkPass, premiumQuery, premiumRead } from './lib/access';
@@ -324,7 +324,7 @@ export function answerByNames(histories: Histories, latestOnly: boolean, limit: 
   const rows: ApiLiftingResult[] = [];
   for (const history of histories.values()) {
     let kept = history;
-    if (latestOnly && kept.length > 0) kept = kept.filter((row) => row.date === history[0].date);
+    if (latestOnly && kept.length > 0) kept = kept.filter((row) => row.date === itemAt(history, 0).date);
     if (limit !== undefined) kept = kept.slice(0, limit);
     rows.push(...kept);
   }
@@ -501,7 +501,7 @@ export function exactSearchAnswer(
 ): SearchAnswer | null {
   const rows = inRange(history, start, end);
   if (rows.length === 0) return null;
-  return { matched_name: rows[rows.length - 1].name, suggestions: [], ...mostRecent(rows) };
+  return { matched_name: last(rows).name, suggestions: [], ...mostRecent(rows) };
 }
 
 /**

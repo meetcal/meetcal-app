@@ -1,3 +1,4 @@
+import { itemAt } from '../../../lib/json';
 import { parseHtml } from '../../lib/html';
 import { recordHolder } from '../holder';
 import type { WsoRecord } from './common';
@@ -69,7 +70,7 @@ export function parseMissouriValley(lines: readonly string[], wso = 'Missouri Va
     return entry;
   };
   for (let i = 0; i < lines.length; i++) {
-    const line = lines[i];
+    const line = itemAt(lines, i);
     if (/^find a club$/i.test(line)) break;
     const lower = line.toLowerCase();
     if (GENDERS[lower]) {
@@ -85,7 +86,7 @@ export function parseMissouriValley(lines: readonly string[], wso = 'Missouri Va
     }
     const classHeading = /^(\d+\+?)\s*kg$/i.exec(line);
     if (classHeading) {
-      weightClass = classHeading[1];
+      weightClass = classHeading[1] ?? '';
       continue;
     }
     if (/^no records set$/i.test(line)) {
@@ -104,7 +105,7 @@ export function parseMissouriValley(lines: readonly string[], wso = 'Missouri Va
     if (!kg) throw new Error(`Missouri Valley: unreadable ${line} value "${value}" (${age} ${gender} ${weightClass})`);
     let name = kg[2];
     // "50 kg –" with the name wrapped onto the next line.
-    if (!name && /[–—-]\s*$/.test(value) && i + 1 < lines.length && !isHeading(lines[i + 1])) {
+    if (!name && /[–—-]\s*$/.test(value) && i + 1 < lines.length && !isHeading(lines[i + 1] ?? '')) {
       name = lines[i + 1];
       i += 1;
     }

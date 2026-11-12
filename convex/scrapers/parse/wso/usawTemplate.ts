@@ -74,7 +74,7 @@ function classNames(rows: readonly Row[], wso: string, warnings: string[]): Map<
   const names = new Map<string, string>();
   for (const [key, { age, gender, min, classes }] of written) {
     const [only] = classes;
-    if (classes.size === 1 && fits(only, min)) {
+    if (only !== undefined && classes.size === 1 && fits(only, min)) {
       names.set(key, only);
       continue;
     }
