@@ -1,6 +1,6 @@
 use super::{
     filters::{SortDirection, sort_numeric},
-    format::format_us_date,
+    format::{NO_VALUE, format_us_date},
     loading::{Load, LoadState, load_error},
     ui::{DataPage, DataStatus, DataTable, EmptyTableRow, SelectOptions, TableSkeleton},
 };
@@ -235,6 +235,20 @@ pub fn NationalRankings() -> impl IntoView {
     }
 }
 
+const YEAR_DIGITS: usize = 4;
+const YEAR_PROBLEM: &str = "Enter a four-digit year, or leave it blank for all-time rankings.";
+
+fn ranking_year(typed: &str) -> Result<Option<String>, &'static str> {
+    let year = typed.trim();
+    if year.is_empty() {
+        Ok(None)
+    } else if year.len() == YEAR_DIGITS && year.bytes().all(|byte| byte.is_ascii_digit()) {
+        Ok(Some(year.to_owned()))
+    } else {
+        Err(YEAR_PROBLEM)
+    }
+}
+
 #[component]
 fn NationalRankingsForm(submit: Callback<NationalRankingQuery>) -> impl IntoView {
     let (federation, set_federation) = signal("USAW".to_owned());
@@ -242,23 +256,32 @@ fn NationalRankingsForm(submit: Callback<NationalRankingQuery>) -> impl IntoView
     let (age_group, set_age_group) = signal("Senior".to_owned());
     let (division, set_division) = signal("Open Men's 60kg".to_owned());
     let (year, set_year) = signal(String::new());
+    let (year_problem, set_year_problem) = signal(None::<&'static str>);
 
     view! {
         <form class="data-query-form" on:submit=move |event| {
             event.prevent_default();
             let age_category = division.get().trim().to_owned();
             if !age_category.is_empty() {
-                let selected_year = year.get().trim().to_owned();
-                submit.run(NationalRankingQuery { federation: federation.get(), age_category, year: (!selected_year.is_empty()).then_some(selected_year) });
+                match ranking_year(&year.get()) {
+                    Ok(year) => {
+                        set_year_problem.set(None);
+                        submit.run(NationalRankingQuery { federation: federation.get(), age_category, year });
+                    }
+                    Err(problem) => set_year_problem.set(Some(problem)),
+                }
             }
         }>
             <label>"Federation"<select class="data-filter" on:change=move |event| set_federation.set(event_target_value(&event))><option value="USAW">"USAW"</option><option value="USAMW">"USAMW"</option></select></label>
             <label>"Gender"<select class="data-filter" on:change=move |event| { let selected = event_target_value(&event); let next = division_options(&selected, &age_group.get()).into_iter().next().unwrap_or_default(); set_gender.set(selected); set_division.set(next); }><option value="Men">"Men"</option><option value="Women">"Women"</option></select></label>
             <label>"Age group"<select class="data-filter" on:change=move |event| { let selected = event_target_value(&event); let next = division_options(&gender.get(), &selected).into_iter().next().unwrap_or_default(); set_age_group.set(selected); set_division.set(next); }>{AGE_GROUPS.iter().map(|age| view! { <option value=*age selected=*age == "Senior">{*age}</option> }).collect_view()}</select></label>
             <label class="data-query-grow">"Division"<select class="data-filter" required=true prop:value=move || division.get() on:change=move |event| set_division.set(event_target_value(&event))>{move || view! { <DivisionOptions groups=division_groups(&gender.get(), &age_group.get()) selected=division.get() /> }}</select></label>
-            <label>"Year (optional)"<input class="data-filter data-year-input" inputmode="numeric" maxlength="4" placeholder="All time" on:input=move |event| set_year.set(event_target_value(&event)) /></label>
+            <label>"Year (optional)"<input class="data-filter data-year-input" inputmode="numeric" maxlength="4" placeholder="All time" aria-invalid=move || year_problem.get().map(|_| "true") aria-describedby="national-rankings-year-problem" on:input=move |event| { set_year.set(event_target_value(&event)); set_year_problem.set(None); } /></label>
             <button class="data-search-button" type="submit">"View rankings"</button>
         </form>
+        <p id="national-rankings-year-problem" class="data-status error" role="alert" hidden=move || year_problem.get().is_none()>
+            {move || year_problem.get()}
+        </p>
     }
 }
 
@@ -281,7 +304,7 @@ fn NationalRankingsTable(rankings: Vec<NationalRanking>) -> impl IntoView {
     let mut ranked = rankings.iter().collect::<Vec<_>>();
     sort_numeric(&mut ranked, |row| row.total, SortDirection::Descending);
     let ranks = competition_ranks(&ranked.iter().map(|row| row.total).collect::<Vec<_>>());
-    let rows = ranked.into_iter().zip(ranks).map(|(row, rank)| view! { <tr><td>{rank}</td><td>{row.name.clone()}</td><td>{row.total}</td><td>{row.date.as_deref().map_or_else(|| "—".to_owned(), format_us_date)}</td></tr> }).collect_view();
+    let rows = ranked.into_iter().zip(ranks).map(|(row, rank)| view! { <tr><td>{rank}</td><td>{row.name.clone()}</td><td>{row.total}</td><td>{row.date.as_deref().map_or_else(|| NO_VALUE.to_owned(), format_us_date)}</td></tr> }).collect_view();
     let empty = rankings.is_empty().then(|| view! { <EmptyTableRow columns=4 message="No rankings matched this federation and division." /> });
     view! { <DataTable><thead><tr><th>"Rank"</th><th>"Athlete"</th><th>"Total"</th><th>"Date"</th></tr></thead><tbody>{empty}{rows}</tbody></DataTable> }
 }
@@ -289,6 +312,17 @@ fn NationalRankingsTable(rankings: Vec<NationalRanking>) -> impl IntoView {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_year_is_four_digits_or_blank_as_the_server_requires() {
+        assert_eq!(ranking_year(""), Ok(None));
+        assert_eq!(ranking_year("   "), Ok(None));
+        assert_eq!(ranking_year("2026"), Ok(Some("2026".to_owned())));
+        assert_eq!(ranking_year(" 2026 "), Ok(Some("2026".to_owned())));
+        for typed in ["26", "202", "abcd", "20 6", "20.6", "２０２６", "-202"] {
+            assert_eq!(ranking_year(typed), Err(YEAR_PROBLEM), "{typed}");
+        }
+    }
 
     #[test]
     fn all_time_query_omits_the_year() {

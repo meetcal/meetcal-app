@@ -1,5 +1,5 @@
 use super::{
-    filters::{compare_weight_classes, matches_filter, weight_class_options},
+    filters::{compare_weight_classes, matches_filter, sort_orders, weight_class_options},
     format::{display_weight_class, reference_value},
     loading::{Load, table_response},
     ui::{DataPage, DataTable, EmptyTableRow, FilterSelect, SortSelect},
@@ -34,18 +34,18 @@ impl AdaptiveRecord {
     }
 }
 
-const SORT_OPTIONS: &[(&str, &str)] = &[
-    ("weight_asc", "Weight class"),
-    ("total_desc", "Total: high to low"),
-    ("snatch_desc", "Snatch: high to low"),
-    ("cj_desc", "Clean & jerk: high to low"),
-];
+sort_orders!(AdaptiveRecordSort {
+    WeightAsc => ("weight_asc", "Weight class"),
+    TotalDesc => ("total_desc", "Total: high to low"),
+    SnatchDesc => ("snatch_desc", "Snatch: high to low"),
+    CjDesc => ("cj_desc", "Clean & jerk: high to low"),
+});
 
 #[component]
 pub fn AdaptiveRecords() -> impl IntoView {
     let (gender, set_gender) = signal("Men".to_owned());
     let (weight_class, set_weight_class) = signal(String::new());
-    let (sort, set_sort) = signal("weight_asc".to_owned());
+    let (sort, set_sort) = signal(AdaptiveRecordSort::WeightAsc);
     let records = Load::new(
         move || gender.get(),
         |gender| async move {
@@ -89,11 +89,11 @@ pub fn AdaptiveRecords() -> impl IntoView {
                     .iter()
                     .filter(|row| matches_filter(&row.weight_class, &selected_weight))
                     .collect::<Vec<_>>();
-                match sort.get().as_str() {
-                    "snatch_desc" => filtered.sort_by(|left, right| right.snatch.total_cmp(&left.snatch)),
-                    "cj_desc" => filtered.sort_by(|left, right| right.cj.total_cmp(&left.cj)),
-                    "total_desc" => filtered.sort_by(|left, right| right.total.total_cmp(&left.total)),
-                    _ => filtered.sort_by(|left, right| compare_weight_classes(&left.weight_class, &right.weight_class)),
+                match sort.get() {
+                    AdaptiveRecordSort::SnatchDesc => filtered.sort_by(|left, right| right.snatch.total_cmp(&left.snatch)),
+                    AdaptiveRecordSort::CjDesc => filtered.sort_by(|left, right| right.cj.total_cmp(&left.cj)),
+                    AdaptiveRecordSort::TotalDesc => filtered.sort_by(|left, right| right.total.total_cmp(&left.total)),
+                    AdaptiveRecordSort::WeightAsc => filtered.sort_by(|left, right| compare_weight_classes(&left.weight_class, &right.weight_class)),
                 }
                 let is_empty = filtered.is_empty();
                 let rows = filtered.into_iter().map(|row| view! {
@@ -103,7 +103,7 @@ pub fn AdaptiveRecords() -> impl IntoView {
                 view! {
                     <div class="data-filters data-filters-secondary">
                         <FilterSelect label="Weight class" placeholder="All classes" values=weights selected=weight_class on_select=move |value| set_weight_class.set(value) />
-                        <SortSelect options=SORT_OPTIONS sort set_sort />
+                        <SortSelect sort set_sort />
                     </div>
                     <DataTable>
                         <thead><tr><th>"Weight class"</th><th>"Snatch"</th><th>"Clean & jerk"</th><th>"Total"</th></tr></thead>
@@ -148,5 +148,12 @@ mod tests {
         )
         .unwrap();
         assert_eq!(open.shown().weight_class, "110+kg");
+    }
+
+    #[test]
+    fn every_sort_order_in_the_menu_is_one_the_table_sorts_by() {
+        crate::pages::comp_data::filters::assert_each_sort_order_parses_to_itself::<
+            AdaptiveRecordSort,
+        >();
     }
 }
