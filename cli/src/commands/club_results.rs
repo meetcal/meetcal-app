@@ -41,8 +41,65 @@ pub async fn run(args: ClubResultsArgs) -> Result<()> {
         }
         return Err(not_found(NameKind::ResultsMeet, meet, message).await);
     }
+    refuse_uncounted_results("Club", club, meet, &stats).await?;
     output::emit(report("Club", club, meet, &stats));
     Ok(())
+}
+
+pub async fn refuse_uncounted_results(
+    group: &str,
+    name: &str,
+    meet: &str,
+    stats: &ClubMeetStats,
+) -> Result<()> {
+    if !stats.athlete_results.is_empty() {
+        return Ok(());
+    }
+    let titles = results_under_other_names(meet).await;
+    match uncounted_results_message(group, name, meet, stats.total_athletes, &titles) {
+        Some(message) => bail!(message),
+        None => Ok(()),
+    }
+}
+
+async fn results_under_other_names(meet: &str) -> Vec<String> {
+    let mut titles = Vec::new();
+    for alias in result_meet_aliases(meet) {
+        if alias == meet {
+            continue;
+        }
+        let rows: Result<Vec<serde_json::Value>> =
+            query(queries::MEET_RESULTS, &serde_json::json!({ "meet": alias })).await;
+        if matches!(rows, Ok(ref rows) if !rows.is_empty()) {
+            titles.push(alias);
+        }
+    }
+    titles
+}
+
+pub fn uncounted_results_message(
+    group: &str,
+    name: &str,
+    meet: &str,
+    athletes: u64,
+    titles_with_results: &[String],
+) -> Option<String> {
+    let first = titles_with_results.first()?;
+    let quoted: Vec<String> = titles_with_results
+        .iter()
+        .map(|title| format!("\"{title}\""))
+        .collect();
+    let athletes = match athletes {
+        1 => "1 athlete".to_string(),
+        count => format!("{count} athletes"),
+    };
+    Some(format!(
+        "{group} \"{name}\" has {athletes} registered for meet \"{meet}\", and none of \
+         their results are counted there, while MeetCal holds results under {}. If those are this \
+         meet's results, they are not linked to it yet.\n\
+         See them with: meetcal meet-results \"{first}\"",
+        quoted.join(" and ")
+    ))
 }
 
 /// Whether `club` is a known club exactly as the stats query was given it: the query matches
@@ -305,6 +362,37 @@ mod tests {
         assert!(results_only_message("wso", "M").starts_with("wso needs the start list"));
         assert!(message.contains("meetcal meet-results \"2025 UMWF World Championships\""));
         assert!(!message.contains("Did you mean"));
+    }
+
+    #[test]
+    fn athletes_without_counted_results_at_a_meet_with_results_elsewhere_are_explained() {
+        let titles = vec![
+            "The 2026 USA Weightlifting Masters National Championships Powered by Rogue Fitness"
+                .to_string(),
+            "The 2026 National University Championships".to_string(),
+        ];
+        assert_eq!(
+            uncounted_results_message("WSO", "Carolina", "2026 Masters & University", 12, &titles)
+                .as_deref(),
+            Some(
+                "WSO \"Carolina\" has 12 athletes registered for meet \"2026 Masters & University\", \
+                 and none of their results are counted there, while MeetCal holds results under \
+                 \"The 2026 USA Weightlifting Masters National Championships Powered by Rogue \
+                 Fitness\" and \"The 2026 National University Championships\". If those are this \
+                 meet's results, they are not linked to it yet.\nSee them with: meetcal meet-results \
+                 \"The 2026 USA Weightlifting Masters National Championships Powered by Rogue \
+                 Fitness\""
+            )
+        );
+        assert_eq!(
+            uncounted_results_message("Club", "Club", "Ohio Open", 3, &[]),
+            None
+        );
+        assert!(
+            uncounted_results_message("Club", "Barbell", "Meet", 1, &titles).is_some_and(
+                |message| message.starts_with("Club \"Barbell\" has 1 athlete registered")
+            )
+        );
     }
 
     #[test]
