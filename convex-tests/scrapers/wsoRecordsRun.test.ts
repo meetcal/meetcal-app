@@ -14,7 +14,7 @@ const stored = () => {
   const wsos: string[] = [];
   return { wsos, store: async (wso: string) => (wsos.push(wso), { inserted: 1 }) };
 };
-const failure = (run: Promise<unknown>) => run.then(() => ({ error: '', failedSources: [] as string[] }), (error: unknown) => ({ failedSources: [], ...describeFailure(error) }));
+const failure = (run: Promise<unknown>) => run.then(() => ({ error: '', failedSources: [] as string[], failures: [] as ReturnType<typeof describeFailure>['failures'] }), (error: unknown) => ({ failedSources: [], ...describeFailure(error) }));
 
 beforeEach(() => jest.spyOn(console, 'error').mockImplementation(() => {}));
 afterEach(() => {
@@ -33,10 +33,11 @@ describe("the WSO records run's time budget (#574)", () => {
       },
     }));
     const { wsos, store } = stored();
-    const { error, failedSources } = await failure(syncWsoSources(sources, { budget: runBudget({ budgetMs: 700, hardStopMs: 900, now: () => now }), dryRun: false, store }));
+    const { error, failedSources, failures } = await failure(syncWsoSources(sources, { budget: runBudget({ budgetMs: 700, hardStopMs: 900, now: () => now }), dryRun: false, store }));
     expect(wsos).toEqual(['Georgia', 'Florida']);
     expect(failedSources).toEqual(['Ohio']);
     expect(error).toContain(`Ohio: ${NOT_REACHED}`);
+    expect(failures).toEqual([{ source: 'Ohio', error: NOT_REACHED, notReached: true }]);
   });
 
   it('stops waiting for a WSO still reading at the hard stop and stores nothing for it', async () => {

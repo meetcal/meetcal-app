@@ -40,7 +40,7 @@ function deployment(afterStoring: (meet: string) => void = () => {}) {
       return { inserted: 1, updated: 0, unchanged: 0 };
     },
   };
-  const failure = () => handlerOf<Record<string, never>>(run)(ctx, {}).then(() => ({ error: '', failedSources: [] as string[] }), (error: unknown) => ({ failedSources: [], ...describeFailure(error) }));
+  const failure = () => handlerOf<Record<string, never>>(run)(ctx, {}).then(() => ({ error: '', failedSources: [] as string[], failures: [] as ReturnType<typeof describeFailure>['failures'] }), (error: unknown) => ({ failedSources: [], ...describeFailure(error) }));
   return { storedMeets, prunedEvents, failure };
 }
 
@@ -69,10 +69,11 @@ describe("the Sport80 results run's time budget (#574)", () => {
       if (eventId === '2') jest.advanceTimersByTime(RUN_BUDGET_MS / 2);
     });
     const { storedMeets, failure } = deployment();
-    const { error, failedSources } = await failure();
+    const { error, failedSources, failures } = await failure();
     expect(storedMeets).toEqual(['Meet 2']);
     expect(failedSources).toEqual(['Meet 1 (event 1)']);
     expect(error).toContain(`Meet 1 (event 1): ${NOT_REACHED}`);
+    expect(failures).toEqual([{ source: 'Meet 1 (event 1)', error: NOT_REACHED, notReached: true }]);
   });
 
   it('stops waiting for an event read at three quarters of its budget, so the events read before it are still stored', async () => {
