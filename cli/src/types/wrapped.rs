@@ -1,15 +1,8 @@
 use serde::Deserialize;
 
-use super::lifting_results::LiftingResults;
-
 #[derive(Debug, Deserialize)]
-pub struct SearchResponse {
-    pub matched_name: Option<String>,
-    pub suggestions: Vec<String>,
-    pub results: Vec<LiftingResults>,
-    /// More results matched than the answer holds (it keeps the most recent).
-    #[serde(default)]
-    pub truncated: bool,
+pub(crate) struct SearchResponse {
+    pub(crate) suggestions: Vec<String>,
 }
 
 /// A calendar year's Wrapped numbers. For an athlete they are the server's (`results:wrapped`,
@@ -18,24 +11,24 @@ pub struct SearchResponse {
 #[derive(Debug, Default, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct WrappedStats {
-    pub total_weight_lifted: f64,
+    pub(crate) total_weight_lifted: f64,
     pub total_meets: usize,
     /// Made attempts over taken attempts, 0–100.
-    pub make_percentage: f64,
-    pub best_snatch: f64,
-    pub best_clean_jerk: f64,
+    pub(crate) make_percentage: f64,
+    pub(crate) best_snatch: f64,
+    pub(crate) best_clean_jerk: f64,
     pub best_total: f64,
-    pub average_total: f64,
+    pub(crate) average_total: f64,
     /// The meet with the year's best total.
-    pub top_meet: Option<String>,
+    pub(crate) top_meet: Option<String>,
     /// First meet's total to the last meet's; `None` with fewer than two meets with a total.
-    pub improvement_from_first: Option<f64>,
+    pub(crate) improvement_from_first: Option<f64>,
     /// The longest run of made attempts, in competition order.
     pub longest_make_streak: usize,
     /// The attempt (1, 2 or 3) made most often; `None` when none was made.
     pub favorite_attempt: Option<usize>,
     /// "Consistency King", "Heavy Hitter", "Meet Regular" or "Rising Star".
-    pub year_rank: String,
+    pub(crate) year_rank: String,
 }
 
 /// `results:wrapped`'s answer for one name and year, by its `kind`.

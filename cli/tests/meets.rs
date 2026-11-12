@@ -1,11 +1,16 @@
-mod support;
+#![cfg(test)]
+mod support {
+    pub(crate) mod bodies;
+    pub(crate) mod server;
+}
 
 use std::process::Command;
 
 use clap::Parser;
 use meetcal::parser::{Cli, Commands};
 use serde_json::json;
-use support::{OK, reply, request_bodies, serve};
+use support::bodies::request_bodies;
+use support::server::{OK, reply, serve};
 
 #[test]
 fn parses_meets_arguments() {

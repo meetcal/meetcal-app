@@ -1,0 +1,924 @@
+{
+  "adaptive-records": {
+    "adaptive_records": [
+      "weight_class",
+      "snatch",
+      "cj",
+      "total"
+    ]
+  },
+  "attendance": {
+    "by_year": [
+      "year",
+      "meets",
+      "registered",
+      "athletes",
+      "change",
+      "counted_from"
+    ],
+    "editions": [
+      "year",
+      "meet",
+      "start_date",
+      "end_date",
+      "registered",
+      "lifters_with_results",
+      "status"
+    ]
+  },
+  "club-compare": {
+    "comparison": [
+      "metric",
+      "previous_year",
+      "previous",
+      "current_year",
+      "current",
+      "difference"
+    ]
+  },
+  "club-results": {
+    "athletes": [
+      "athlete",
+      "class",
+      "bw",
+      "snatch",
+      "cj",
+      "total",
+      "pr",
+      "6_for_6",
+      "snatch_medal",
+      "cj_medal",
+      "total_medal"
+    ],
+    "medals": [
+      "gold",
+      "silver",
+      "bronze",
+      "total"
+    ],
+    "results": [
+      "total_weight_lifted",
+      "snatch_make_rate",
+      "cj_make_rate",
+      "overall_make_rate",
+      "total_prs",
+      "6_for_6"
+    ],
+    "summary": [
+      "club",
+      "meet",
+      "athletes",
+      "results"
+    ]
+  },
+  "club-trends": {
+    "by_year": [
+      "year",
+      "athletes",
+      "meets",
+      "results",
+      "make_rate",
+      "total_lifted",
+      "best_total",
+      "total_prs",
+      "gold",
+      "silver",
+      "bronze"
+    ],
+    "top_lifters": [
+      "rank",
+      "athlete",
+      "best_total",
+      "division",
+      "date",
+      "best_sinclair",
+      "best_q_points",
+      "results",
+      "first",
+      "latest"
+    ]
+  },
+  "club-trends --no-medals": {
+    "by_year": [
+      "year",
+      "athletes",
+      "meets",
+      "results",
+      "make_rate",
+      "total_lifted",
+      "best_total",
+      "total_prs",
+      "gold",
+      "silver",
+      "bronze"
+    ],
+    "top_lifters": [
+      "rank",
+      "athlete",
+      "best_total",
+      "division",
+      "date",
+      "best_sinclair",
+      "best_q_points",
+      "results",
+      "first",
+      "latest"
+    ]
+  },
+  "club-wrapped": {
+    "lifts": [
+      "total_weight_lifted",
+      "best_snatch",
+      "best_cj",
+      "best_total"
+    ],
+    "overview": [
+      "athletes",
+      "meets",
+      "make_rate",
+      "average_total"
+    ],
+    "top_meet": [
+      "top_meet"
+    ]
+  },
+  "clubs": {
+    "clubs": [
+      "club"
+    ]
+  },
+  "compare": {
+    "comparison": [
+      "metric",
+      "previous_year",
+      "previous",
+      "current_year",
+      "current",
+      "difference"
+    ]
+  },
+  "elite": {
+    "junior_men": [
+      "rank",
+      "athlete",
+      "age",
+      "group",
+      "division",
+      "bw",
+      "snatch",
+      "cj",
+      "total",
+      "score",
+      "class",
+      "a_standard",
+      "date",
+      "meet"
+    ],
+    "junior_women": [
+      "rank",
+      "athlete",
+      "age",
+      "group",
+      "division",
+      "bw",
+      "snatch",
+      "cj",
+      "total",
+      "score",
+      "class",
+      "a_standard",
+      "date",
+      "meet"
+    ],
+    "masters_men": [
+      "rank",
+      "athlete",
+      "age",
+      "group",
+      "division",
+      "bw",
+      "snatch",
+      "cj",
+      "total",
+      "score",
+      "class",
+      "a_standard",
+      "date",
+      "meet"
+    ],
+    "masters_women": [
+      "rank",
+      "athlete",
+      "age",
+      "group",
+      "division",
+      "bw",
+      "snatch",
+      "cj",
+      "total",
+      "score",
+      "class",
+      "a_standard",
+      "date",
+      "meet"
+    ],
+    "overall_men": [
+      "rank",
+      "athlete",
+      "age",
+      "group",
+      "division",
+      "bw",
+      "snatch",
+      "cj",
+      "total",
+      "score",
+      "class",
+      "a_standard",
+      "date",
+      "meet"
+    ],
+    "overall_women": [
+      "rank",
+      "athlete",
+      "age",
+      "group",
+      "division",
+      "bw",
+      "snatch",
+      "cj",
+      "total",
+      "score",
+      "class",
+      "a_standard",
+      "date",
+      "meet"
+    ],
+    "senior_men": [
+      "rank",
+      "athlete",
+      "age",
+      "group",
+      "division",
+      "bw",
+      "snatch",
+      "cj",
+      "total",
+      "score",
+      "class",
+      "a_standard",
+      "date",
+      "meet"
+    ],
+    "senior_women": [
+      "rank",
+      "athlete",
+      "age",
+      "group",
+      "division",
+      "bw",
+      "snatch",
+      "cj",
+      "total",
+      "score",
+      "class",
+      "a_standard",
+      "date",
+      "meet"
+    ],
+    "youth_men": [
+      "rank",
+      "athlete",
+      "age",
+      "group",
+      "division",
+      "bw",
+      "snatch",
+      "cj",
+      "total",
+      "score",
+      "class",
+      "a_standard",
+      "date",
+      "meet"
+    ],
+    "youth_women": [
+      "rank",
+      "athlete",
+      "age",
+      "group",
+      "division",
+      "bw",
+      "snatch",
+      "cj",
+      "total",
+      "score",
+      "class",
+      "a_standard",
+      "date",
+      "meet"
+    ]
+  },
+  "h2h": {
+    "meetings": [
+      "date",
+      "meet",
+      "first_athlete",
+      "first_total",
+      "first_division",
+      "second_athlete",
+      "second_total",
+      "second_division",
+      "higher_total",
+      "margin"
+    ],
+    "summary": [
+      "athlete",
+      "higher_total_in",
+      "meets_entered_by_both",
+      "best_snatch",
+      "best_cj",
+      "best_total",
+      "best_sinclair",
+      "best_q_points",
+      "past_year_best_total"
+    ]
+  },
+  "intl-rankings": {
+    "intl_rankings": [
+      "rank",
+      "name",
+      "class",
+      "percent_a",
+      "total"
+    ]
+  },
+  "leaderboard": {
+    "leaderboard": [
+      "rank",
+      "athlete",
+      "division",
+      "bw",
+      "snatch",
+      "cj",
+      "total",
+      "sinclair",
+      "q_points",
+      "date",
+      "meet"
+    ]
+  },
+  "meet": {
+    "start_list": [
+      "name",
+      "age",
+      "gender",
+      "adaptive",
+      "club",
+      "class",
+      "entry_total",
+      "session",
+      "platform",
+      "date",
+      "weigh_in",
+      "start",
+      "past_year_best_snatch",
+      "past_year_best_cj",
+      "past_year_best_total"
+    ]
+  },
+  "meet --no-bests": {
+    "start_list": [
+      "name",
+      "age",
+      "gender",
+      "adaptive",
+      "club",
+      "class",
+      "entry_total",
+      "session",
+      "platform",
+      "date",
+      "weigh_in",
+      "start",
+      "past_year_best_snatch",
+      "past_year_best_cj",
+      "past_year_best_total"
+    ]
+  },
+  "meet-info": {
+    "meet": [
+      "meet",
+      "start_date",
+      "end_date",
+      "status",
+      "federation",
+      "venue",
+      "address",
+      "time_zone",
+      "apple_maps",
+      "venue_map"
+    ]
+  },
+  "meet-results": {
+    "editions": [
+      "year",
+      "meet",
+      "athletes",
+      "average_total",
+      "make_rate",
+      "bomb_outs",
+      "best_sinclair_men",
+      "best_sinclair_men_athlete",
+      "best_sinclair_women",
+      "best_sinclair_women_athlete",
+      "best_q_points_men",
+      "best_q_points_men_athlete",
+      "best_q_points_women",
+      "best_q_points_women_athlete"
+    ],
+    "heaviest_lifts": [
+      "lift",
+      "weight",
+      "athlete",
+      "division"
+    ],
+    "make_rate": [
+      "snatch_make_rate",
+      "cj_make_rate",
+      "total_make_rate"
+    ],
+    "make_rate_by_attempt": [
+      "sn1_make_rate",
+      "sn2",
+      "sn3",
+      "cj1",
+      "cj2",
+      "cj3"
+    ],
+    "results": [
+      "name",
+      "class",
+      "bw",
+      "adaptive",
+      "sn1",
+      "sn2",
+      "sn3",
+      "cj1",
+      "cj2",
+      "cj3",
+      "total",
+      "sinclair",
+      "q_points"
+    ],
+    "summary": [
+      "athletes",
+      "bomb_outs",
+      "bomb_out_rate",
+      "average_total",
+      "make_rate"
+    ],
+    "top_qpoints_men": [
+      "rank",
+      "athlete",
+      "division",
+      "bw",
+      "total",
+      "q_points"
+    ],
+    "top_qpoints_women": [
+      "rank",
+      "athlete",
+      "division",
+      "bw",
+      "total",
+      "q_points"
+    ],
+    "top_sinclair_men": [
+      "rank",
+      "athlete",
+      "division",
+      "bw",
+      "total",
+      "sinclair"
+    ],
+    "top_sinclair_women": [
+      "rank",
+      "athlete",
+      "division",
+      "bw",
+      "total",
+      "sinclair"
+    ]
+  },
+  "meet-results --no-history": {
+    "editions": [
+      "year",
+      "meet",
+      "athletes",
+      "average_total",
+      "make_rate",
+      "bomb_outs",
+      "best_sinclair_men",
+      "best_sinclair_men_athlete",
+      "best_sinclair_women",
+      "best_sinclair_women_athlete",
+      "best_q_points_men",
+      "best_q_points_men_athlete",
+      "best_q_points_women",
+      "best_q_points_women_athlete"
+    ],
+    "heaviest_lifts": [
+      "lift",
+      "weight",
+      "athlete",
+      "division"
+    ],
+    "make_rate": [
+      "snatch_make_rate",
+      "cj_make_rate",
+      "total_make_rate"
+    ],
+    "make_rate_by_attempt": [
+      "sn1_make_rate",
+      "sn2",
+      "sn3",
+      "cj1",
+      "cj2",
+      "cj3"
+    ],
+    "results": [
+      "name",
+      "class",
+      "bw",
+      "adaptive",
+      "sn1",
+      "sn2",
+      "sn3",
+      "cj1",
+      "cj2",
+      "cj3",
+      "total",
+      "sinclair",
+      "q_points"
+    ],
+    "summary": [
+      "athletes",
+      "bomb_outs",
+      "bomb_out_rate",
+      "average_total",
+      "make_rate"
+    ],
+    "top_qpoints_men": [
+      "rank",
+      "athlete",
+      "division",
+      "bw",
+      "total",
+      "q_points"
+    ],
+    "top_qpoints_women": [
+      "rank",
+      "athlete",
+      "division",
+      "bw",
+      "total",
+      "q_points"
+    ],
+    "top_sinclair_men": [
+      "rank",
+      "athlete",
+      "division",
+      "bw",
+      "total",
+      "sinclair"
+    ],
+    "top_sinclair_women": [
+      "rank",
+      "athlete",
+      "division",
+      "bw",
+      "total",
+      "sinclair"
+    ]
+  },
+  "meets": {
+    "meets": [
+      "meet",
+      "start_date",
+      "end_date",
+      "location",
+      "status"
+    ]
+  },
+  "nat-ranking-year": {
+    "national_rankings": [
+      "rank",
+      "name",
+      "total",
+      "meet_date"
+    ]
+  },
+  "nat-rankings": {
+    "national_rankings": [
+      "rank",
+      "name",
+      "total"
+    ]
+  },
+  "progress": {
+    "attempts": [
+      "lift",
+      "1st_make_rate",
+      "2nd_make_rate",
+      "3rd_make_rate",
+      "avg_jump_1st_2nd",
+      "avg_jump_2nd_3rd",
+      "opener_of_best"
+    ],
+    "results": [
+      "date",
+      "meet",
+      "division",
+      "bw",
+      "snatch",
+      "cj",
+      "total",
+      "sinclair",
+      "q_points",
+      "prs"
+    ],
+    "trend": [
+      "meets",
+      "first_meet",
+      "latest_total",
+      "best_total",
+      "best_total_date",
+      "best_sinclair",
+      "best_q_points",
+      "first_to_latest_total",
+      "bomb_outs"
+    ]
+  },
+  "qualify": {
+    "athlete": [
+      "athlete",
+      "latest_division",
+      "checked_as",
+      "past_year_snatch",
+      "past_year_cj",
+      "past_year_total",
+      "counted_results",
+      "note"
+    ],
+    "qualifying_totals": [
+      "event",
+      "category",
+      "needed_total",
+      "status"
+    ],
+    "standards": [
+      "category",
+      "level",
+      "needed_total",
+      "status"
+    ]
+  },
+  "qualifying-totals": {
+    "qualifying_totals": [
+      "class",
+      "total"
+    ]
+  },
+  "records": {
+    "records": [
+      "class",
+      "snatch",
+      "snatch_holder",
+      "snatch_date",
+      "snatch_location",
+      "cj",
+      "cj_holder",
+      "cj_date",
+      "cj_location",
+      "total",
+      "total_holder",
+      "total_date",
+      "total_location"
+    ]
+  },
+  "schedule": {
+    "sessions": [
+      "date",
+      "session",
+      "platform",
+      "weigh_in",
+      "start",
+      "weight_classes"
+    ]
+  },
+  "search": {
+    "make_rate": [
+      "snatch_make_rate",
+      "cj_make_rate",
+      "total_make_rate"
+    ],
+    "make_rate_by_attempt": [
+      "sn1_make_rate",
+      "sn2",
+      "sn3",
+      "cj1",
+      "cj2",
+      "cj3"
+    ],
+    "prs": [
+      "snatch_pr",
+      "cj_pr",
+      "total_pr"
+    ],
+    "results": [
+      "meet",
+      "date",
+      "age",
+      "sn1",
+      "sn2",
+      "sn3",
+      "cj1",
+      "cj2",
+      "cj3",
+      "total"
+    ]
+  },
+  "standards": {
+    "standards": [
+      "class",
+      "a",
+      "b"
+    ]
+  },
+  "wrapped": {
+    "headline": [
+      "meets",
+      "make_rate",
+      "best_total",
+      "status"
+    ],
+    "journey": [
+      "top_meet",
+      "first_to_last_total",
+      "longest_make_streak",
+      "favorite_attempt"
+    ],
+    "volume": [
+      "total_weight_lifted",
+      "best_snatch",
+      "best_cj",
+      "average_total"
+    ]
+  },
+  "wso": {
+    "athletes": [
+      "athlete",
+      "class",
+      "bw",
+      "snatch",
+      "cj",
+      "total",
+      "pr",
+      "6_for_6",
+      "snatch_medal",
+      "cj_medal",
+      "total_medal"
+    ],
+    "medals": [
+      "gold",
+      "silver",
+      "bronze",
+      "total"
+    ],
+    "results": [
+      "total_weight_lifted",
+      "snatch_make_rate",
+      "cj_make_rate",
+      "overall_make_rate",
+      "total_prs",
+      "6_for_6"
+    ],
+    "summary": [
+      "wso",
+      "meet",
+      "athletes",
+      "results"
+    ]
+  },
+  "wso-compare": {
+    "comparison": [
+      "metric",
+      "previous_year",
+      "previous",
+      "current_year",
+      "current",
+      "difference"
+    ]
+  },
+  "wso-records": {
+    "wso_records": [
+      "class",
+      "snatch",
+      "snatch_holder",
+      "snatch_date",
+      "snatch_location",
+      "cj",
+      "cj_holder",
+      "cj_date",
+      "cj_location",
+      "total",
+      "total_holder",
+      "total_date",
+      "total_location"
+    ]
+  },
+  "wso-trends": {
+    "by_year": [
+      "year",
+      "athletes",
+      "meets",
+      "results",
+      "make_rate",
+      "total_lifted",
+      "best_total",
+      "total_prs",
+      "gold",
+      "silver",
+      "bronze"
+    ],
+    "top_lifters": [
+      "rank",
+      "athlete",
+      "best_total",
+      "division",
+      "date",
+      "best_sinclair",
+      "best_q_points",
+      "results",
+      "first",
+      "latest"
+    ]
+  },
+  "wso-trends --no-medals": {
+    "by_year": [
+      "year",
+      "athletes",
+      "meets",
+      "results",
+      "make_rate",
+      "total_lifted",
+      "best_total",
+      "total_prs",
+      "gold",
+      "silver",
+      "bronze"
+    ],
+    "top_lifters": [
+      "rank",
+      "athlete",
+      "best_total",
+      "division",
+      "date",
+      "best_sinclair",
+      "best_q_points",
+      "results",
+      "first",
+      "latest"
+    ]
+  },
+  "wso-wrapped": {
+    "lifts": [
+      "total_weight_lifted",
+      "best_snatch",
+      "best_cj",
+      "best_total"
+    ],
+    "overview": [
+      "athletes",
+      "meets",
+      "make_rate",
+      "average_total"
+    ],
+    "top_meet": [
+      "top_meet"
+    ]
+  },
+  "wsos": {
+    "wsos": [
+      "wso",
+      "registrations",
+      "records"
+    ]
+  },
+  "wsos <WSO>": {
+    "age_groups": [
+      "age_group"
+    ]
+  }
+}

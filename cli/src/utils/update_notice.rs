@@ -17,43 +17,43 @@ use crate::utils::credentials;
 use crate::utils::releases::{self, Version};
 
 /// Set (to anything but `0` or `false`) to turn the notice and its check off.
-pub const OPT_OUT_ENV: &str = "MEETCAL_NO_UPDATE_CHECK";
+pub(crate) const OPT_OUT_ENV: &str = "MEETCAL_NO_UPDATE_CHECK";
 
 /// The cache's file name inside the CLI's config directory.
-pub const CACHE_FILE: &str = "update-check.json";
+pub(crate) const CACHE_FILE: &str = "update-check.json";
 
 /// How often GitHub is asked, and how often the notice shows.
-pub const INTERVAL_MS: i64 = 24 * 60 * 60 * 1000;
+pub(crate) const INTERVAL_MS: i64 = 24 * 60 * 60 * 1000;
 
 /// Longest the check may take on its own.
-pub const CHECK_TIMEOUT: Duration = Duration::from_secs(5);
+pub(crate) const CHECK_TIMEOUT: Duration = Duration::from_secs(5);
 
 /// Longest a finished command waits for a check still running. Past this the check is dropped
 /// and the next command asks again.
-pub const FINISH_GRACE: Duration = Duration::from_millis(300);
+pub(crate) const FINISH_GRACE: Duration = Duration::from_millis(300);
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Cache {
     /// When GitHub was last asked (epoch milliseconds), answered or not.
     #[serde(default)]
-    pub checked_at: i64,
+    pub(crate) checked_at: i64,
     /// The newest release GitHub named then.
     #[serde(default)]
-    pub latest: Option<String>,
+    pub(crate) latest: Option<String>,
     /// When the notice was last shown.
     #[serde(default)]
-    pub notified_at: i64,
+    pub(crate) notified_at: i64,
 }
 
 impl Cache {
     /// Whether GitHub is due to be asked at `now_ms`.
-    pub fn needs_check(&self, now_ms: i64) -> bool {
+    pub(crate) fn needs_check(&self, now_ms: i64) -> bool {
         now_ms - self.checked_at >= INTERVAL_MS || now_ms < self.checked_at
     }
 
     /// The notice to show at `now_ms` for this build's `current` version, if one is due.
-    pub fn notice(&self, current: Version, now_ms: i64) -> Option<String> {
+    pub(crate) fn notice(&self, current: Version, now_ms: i64) -> Option<String> {
         let latest = Version::parse(self.latest.as_deref()?)?;
         let due = now_ms - self.notified_at >= INTERVAL_MS || now_ms < self.notified_at;
         (due && releases::is_newer(latest, current))
@@ -62,7 +62,11 @@ impl Cache {
 }
 
 /// Whether the notice is on: stderr is a terminal, not under CI, and not turned off.
-pub fn enabled(stderr_is_terminal: bool, ci: Option<&OsStr>, opt_out: Option<&OsStr>) -> bool {
+pub(crate) fn enabled(
+    stderr_is_terminal: bool,
+    ci: Option<&OsStr>,
+    opt_out: Option<&OsStr>,
+) -> bool {
     let set = |value: Option<&OsStr>| {
         value.is_some_and(|value| !value.is_empty() && value != "0" && value != "false")
     };
@@ -80,7 +84,7 @@ pub fn load(path: &Path) -> Cache {
 /// Saves the cache at `path`, through a temporary file so a reader never sees half of it. The
 /// directory is created private, as the saved login's is.
 /// Failures are ignored: the notice is a nicety.
-pub fn save(path: &Path, cache: &Cache) {
+pub(crate) fn save(path: &Path, cache: &Cache) {
     let Some(dir) = path.parent() else { return };
     let Ok(text) = serde_json::to_string(cache) else {
         return;
