@@ -133,9 +133,14 @@ The site makes no entitlement decision of its own. Purchases happen in the mobil
 again (pass, then `entitlements:refresh`, then the pass), so a user who just subscribed in the app
 gets in without a reload.
 
-While it checks, the gate shows the page's own heading and intro from `catalog.rs` over a table
-skeleton, the same first frame the route's static shell paints, so nothing moves when the app
-mounts or when the check passes.
+While it checks, the gate shows the page's own heading and intro from `catalog.rs` over its first
+view (`FirstView`): a table skeleton, or for a page that opens on a search (Meet Center) the
+search field, disabled until its list loads, and the prompt under it. That is the same first frame
+the route's static shell paints, so nothing moves when the app mounts or when the check passes.
+Every data page is at least a screen tall (`.data-page`), so the footer, which only the app
+draws, arrives below the first screen: a table or a meet arriving after mount never moves it,
+and it is never the page's largest paint. The Meet Center shows a meet's sections only once the
+meet list has loaded, so the meet's details and its sections appear together.
 
 Every route's gate reads one shared answer (`provide_access`, next to `provide_auth`), so moving
 between data pages neither checks again nor rebuilds the page. It is checked again when the

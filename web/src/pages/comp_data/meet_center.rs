@@ -1,16 +1,16 @@
 use super::{
     address::{HistoryEntry, query_param, use_page_address},
-    catalog,
+    catalog::{self, MEET_SEARCH, MEET_SEARCH_PROMPT},
     combobox::{Combobox, SuggestionCopy, Suggestions},
     format::{
         NO_VALUE, display_body_weight, display_gender, display_weight_class, format_us_date,
         format_us_time, yes_no,
     },
-    loading::{Load, load_meet_data, select_response, table_response},
+    loading::{Load, LoadState, load_error, load_meet_data, table_response},
     meets::load_meet_catalog,
     models::{Athlete, LiftingResult, Meet, ScheduleRow, attempt},
     results::results_url,
-    ui::{DataPage, DataStatus, StaticRowsTable},
+    ui::{DataPage, DataStatus, SearchFieldLoading, StaticRowsTable},
 };
 use crate::utils::api::queries;
 use leptos::prelude::*;
@@ -157,11 +157,13 @@ pub fn MeetCenter() -> impl IntoView {
         <DataPage
             page=catalog::MEET_CENTER
         >
-            {move || select_response(meets, "Loading meets…", "meets", |meets| {
-                view! { <MeetPicker meets=meets.to_vec() meet show_meet meet_search set_meet_search /> }.into_any()
+            {move || meets.with(|state| match state {
+                LoadState::Loading => view! { <SearchFieldLoading field=MEET_SEARCH /> }.into_any(),
+                LoadState::Failed(error) => load_error("meets", error, move || meets.retry()),
+                LoadState::Ready(meets) => view! { <MeetPicker meets=meets.to_vec() meet show_meet meet_search set_meet_search /> }.into_any(),
             })}
 
-            {move || if meet.get().is_empty() { view! { <DataStatus message="Search for and select a meet to load its competition data." /> }.into_any() } else { view! {
+            {move || if meet.get().is_empty() { view! { <DataStatus message=MEET_SEARCH_PROMPT /> }.into_any() } else if !meets.with(|state| matches!(state, LoadState::Ready(_))) { ().into_any() } else { view! {
                 <div class="data-tabs" role="group" aria-label="Meet data">
                     {MeetSection::ALL.into_iter().map(|choice| view! {
                         <button
@@ -198,11 +200,11 @@ fn MeetPicker(
     let meets = StoredValue::new(meets);
     view! {
         <Combobox
-                input_id="meet-search-input"
-                label="Meet"
+                input_id=MEET_SEARCH.input_id
+                label=MEET_SEARCH.label
                 placeholder="Type at least 3 characters"
-                input_class="data-filter data-filter-wide"
-                wrapper_class="meet-search"
+                input_class=MEET_SEARCH.input_class
+                wrapper_class=MEET_SEARCH.wrapper_class
                 list_class="meet-suggestions"
                 value=meet_search
                 suggestions=Signal::derive(move || {

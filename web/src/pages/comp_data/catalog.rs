@@ -12,9 +12,34 @@ pub struct DataPageLink {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum FirstView {
-    Table { columns: usize },
+    Table {
+        columns: usize,
+    },
+    Search {
+        field: SearchField,
+        prompt: &'static str,
+    },
     Form,
 }
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct SearchField {
+    pub input_id: &'static str,
+    pub label: &'static str,
+    pub input_class: &'static str,
+    pub wrapper_class: &'static str,
+    pub loading: &'static str,
+}
+
+pub const MEET_SEARCH: SearchField = SearchField {
+    input_id: "meet-search-input",
+    label: "Meet",
+    input_class: "data-filter data-filter-wide",
+    wrapper_class: "meet-search",
+    loading: "Loading meets…",
+};
+
+pub const MEET_SEARCH_PROMPT: &str = "Search for and select a meet to load its competition data.";
 
 /// Who can open a data page.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -72,7 +97,10 @@ pub const MEET_CENTER: DataPageLink = DataPageLink {
     description: "Venue details, schedules, start lists, and complete meet results.",
     seo_title: "Weightlifting Meets, Schedules & Results",
     access: Access::Subscription,
-    first_view: FirstView::Form,
+    first_view: FirstView::Search {
+        field: MEET_SEARCH,
+        prompt: MEET_SEARCH_PROMPT,
+    },
 };
 
 pub const CLUB_DASHBOARD: DataPageLink = DataPageLink {

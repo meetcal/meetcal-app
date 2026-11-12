@@ -1,4 +1,4 @@
-use super::catalog::DataPageLink;
+use super::catalog::{DataPageLink, SearchField};
 use super::filters::SortOrder;
 use super::models::RecordHolder;
 use leptos::prelude::*;
@@ -23,6 +23,16 @@ pub(crate) fn DataPage(
 #[component]
 pub(crate) fn DataStatus(message: &'static str) -> impl IntoView {
     view! { <p class="data-status">{message}</p> }
+}
+
+#[component]
+pub(crate) fn SearchFieldLoading(field: SearchField) -> impl IntoView {
+    view! {
+        <div class=field.wrapper_class aria-busy="true">
+            <label for=field.input_id>{field.label}</label>
+            <input id=field.input_id class=field.input_class type="search" disabled placeholder=field.loading />
+        </div>
+    }
 }
 
 #[component]

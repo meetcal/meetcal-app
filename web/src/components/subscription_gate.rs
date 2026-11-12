@@ -3,7 +3,7 @@ use crate::{
     components::store_links::{APP_STORE_URL, PLAY_STORE_URL},
     pages::comp_data::{
         catalog::{DataPageLink, FirstView},
-        ui::{DataPage, TableSkeleton},
+        ui::{DataPage, DataStatus, SearchFieldLoading, TableSkeleton},
     },
     utils::{
         api::{PassRefusal, check_access},
@@ -234,7 +234,8 @@ pub fn SubscriptionGate(page: DataPageLink, children: ChildrenFn) -> impl IntoVi
                 <DataPage page>
                     <p class="visually-hidden" role="status">"Checking your access"</p>
                     {match page.first_view {
-                        FirstView::Table { columns } => Some(view! { <TableSkeleton columns /> }),
+                        FirstView::Table { columns } => Some(view! { <TableSkeleton columns /> }.into_any()),
+                        FirstView::Search { field, prompt } => Some(view! { <SearchFieldLoading field /> <DataStatus message=prompt /> }.into_any()),
                         FirstView::Form => None,
                     }}
                 </DataPage>
