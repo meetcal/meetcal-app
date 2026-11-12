@@ -62,14 +62,19 @@ refused submission keeping the form filled, accessibility, and a small phone.
 Convex's validators take them (camelCase, edits tagged by `kind`), reading a
 server error as its sentence, and decoding an exported workbook's base64.
 `src/pages/schedule_builder/` tests the options form's checks against the
-server's limits, which saved work a meet opens with, the Move To… targets, and
-how sessions, athletes and publish answers read.
+server's limits, which saved work a meet opens with, the Move To… targets, each
+entrant's own list, how class chips, sessions, athletes and publish answers read,
+and when a publish's answer stops showing.
 `tests/e2e/schedule-builder.spec.ts` covers `/schedule-builder` against mocked
 Convex answers: loading a meet, building, moving an athlete, Undo, both
 downloads, printing and the print styles, the browser's copy after a reload,
-retiming and swapping sessions, the confirmation before a new build drops
-edits, a load Sport80 refuses, and, signed in, saving a draft, publishing for
-review, the drafts list with Delete, and accessibility.
+retiming and swapping sessions (a day-2 session's Edit Time opening on day 2),
+the lists' keyboard use and where focus goes, the inert busy board, separate
+lists for entrants who share an identity, the confirmation before a new build
+drops edits, a build the server refuses keeping them, the form's weigh-in and
+midnight checks, a load Sport80 refuses, and, signed in, saving a draft,
+publishing for review and publishing again after an edit, the drafts list with
+Delete, and accessibility.
 
 ## Browser checks
 

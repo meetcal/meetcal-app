@@ -62,7 +62,13 @@ fn DraftList(user: String) -> impl IntoView {
             {move || {
                 error
                     .get()
-                    .map(|message| view! { <p class="access-inline-error" role="alert">{message}</p> })
+                    .map(|message| {
+                        view! {
+                            <p class="access-inline-error" role="alert">
+                                {message}
+                            </p>
+                        }
+                    })
             }}
             {move || {
                 select_response(
@@ -95,7 +101,8 @@ fn DraftList(user: String) -> impl IntoView {
                                                     class="builder-button-quiet"
                                                     aria-label=format!("Delete the saved schedule for {label}")
                                                     disabled=move || {
-                                                        deleting.with(|deleting| deleting.as_deref() == Some(busy.as_str()))
+                                                        deleting
+                                                            .with(|deleting| deleting.as_deref() == Some(busy.as_str()))
                                                     }
                                                     on:click=move |_| delete(meet.clone())
                                                 >

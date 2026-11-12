@@ -33,9 +33,12 @@ const athlete = (key: string, name: string, weightClass: string, entryTotal: num
   entryTotal,
 });
 
-function schedule(edits: Edit[]) {
+type Shape = { secondDay?: string; twins?: boolean };
+
+function schedule(edits: Edit[], { secondDay, twins = false }: Shape = {}) {
   const first = [athlete("1|laney johnson", "Laney Johnson", "45", 60), athlete("2|ava smith", "Ava Smith", "53", 90)];
   const second = [athlete("3|mia lee", "Mia Lee", "77", 120)];
+  if (twins) second.push(athlete("3|mia lee", "Mia Lee", "77", 125));
   for (const edit of edits) {
     if (edit.kind === "moveAthlete" && edit.toSession === 2) {
       const at = first.findIndex((a) => a.key === edit.athlete);
@@ -57,9 +60,9 @@ function schedule(edits: Edit[]) {
       {
         id: 2,
         number: 2,
-        date: "",
-        startTime: "",
-        weighInTime: "",
+        date: secondDay ?? "",
+        startTime: secondDay ? "09:00:00" : "",
+        weighInTime: secondDay ? "07:00:00" : "",
         groups: [{ platform: "Red", gender: "Female", ageGroup: "masters", split: "", label: "W 77 (Masters)", weightClasses: ["77"], athletes: second }],
       },
     ],
@@ -67,7 +70,11 @@ function schedule(edits: Edit[]) {
   };
 }
 
-async function mockBuilder(page: Page, { signedIn = false, loadError = "" } = {}) {
+type MockSetup = Shape & { signedIn?: boolean; loadError?: string; refuseSessionMinutes?: number };
+
+async function mockBuilder(page: Page, { signedIn = false, loadError = "", refuseSessionMinutes, ...shape }: MockSetup = {}) {
+  const meetDays = shape.secondDay ? ["2026-11-21", shape.secondDay] : ["2026-11-21"];
+  const options = { ...defaultOptions, days: meetDays.map((date) => ({ date, firstStart: "09:00" })) };
   await mockAuth(page, { signedIn });
   const calls = {
     loads: [] as Call[],
@@ -86,11 +93,14 @@ async function mockBuilder(page: Page, { signedIn = false, loadError = "" } = {}
     return route.fulfill(valueAnswer({ meet: MEET, refreshed: true }));
   });
   await routeQuery(page, "scheduleBuilder:defaults", (route) =>
-    route.fulfill(valueAnswer({ meet: MEET, startDate: "2026-11-21", endDate: "2026-11-21", timeZone: "America/Chicago", status: "upcoming", options: defaultOptions })),
+    route.fulfill(valueAnswer({ meet: MEET, startDate: "2026-11-21", endDate: meetDays.at(-1), timeZone: "America/Chicago", status: "upcoming", options })),
   );
   await routeQuery(page, "scheduleBuilder:preview", (route, args) => {
     record(calls.previews, route, args);
-    return route.fulfill(valueAnswer(schedule(args.edits as Edit[])));
+    if ((args.options as Options).sessionMinutes === refuseSessionMinutes) {
+      return route.fulfill(errorAnswer("Server Error", { status: 400, error: "the first session on 2026-11-21 would end after midnight" }));
+    }
+    return route.fulfill(valueAnswer(schedule(args.edits as Edit[], shape)));
   });
   await routeQuery(page, "scheduleBuilder:exportFile", (route, args) => {
     record(calls.exports, route, args);
@@ -162,8 +172,8 @@ test("signed out, a meet loads, builds, takes an edit, exports and prints", asyn
   await expect(sessionCard(page, 2)).toContainText("No Time");
 
   await page.getByRole("button", { name: "Laney Johnson: Move To…" }).click();
-  await expect(page.getByRole("menu", { name: "Move To…" })).toBeVisible();
-  await page.getByRole("menuitem", { name: "Session 2 · Red" }).click();
+  await expect(page.getByRole("button", { name: "Laney Johnson: Move To…" })).toHaveAttribute("aria-expanded", "true");
+  await page.getByRole("group", { name: "Move To…" }).getByRole("button", { name: "Session 2 · Red" }).click();
   await expect(sessionCard(page, 2)).toContainText("Laney Johnson");
   expect(calls.previews.at(-1)?.args.edits).toEqual([{ kind: "moveAthlete", athlete: "1|laney johnson", toSession: 2, toPlatform: "Red" }]);
 
@@ -195,7 +205,7 @@ test("signed out, a meet loads, builds, takes an edit, exports and prints", asyn
   expect(calls.previews.at(-1)?.args.edits).toEqual([]);
 
   await page.getByRole("button", { name: "Ava Smith: Move To…" }).click();
-  await page.getByRole("menuitem", { name: "Session 2 · Red" }).click();
+  await page.getByRole("group", { name: "Move To…" }).getByRole("button", { name: "Session 2 · Red" }).click();
   await expect(sessionCard(page, 2)).toContainText("Ava Smith");
   await page.reload();
   await expect(sessionCard(page, 2)).toContainText("Ava Smith");
@@ -213,20 +223,23 @@ test("a session can be retimed and swapped, and building again asks before dropp
   await expect(sessionCard(page, 1)).toContainText("Start 10:30 AM");
 
   await page.getByRole("button", { name: "Session 1: Swap With…" }).click();
-  await page.getByRole("menuitem", { name: /^Session 2 · No Time$/ }).click();
+  await page.getByRole("group", { name: "Swap With…" }).getByRole("button", { name: /^Session 2 · No Time$/ }).click();
   await expect.poll(() => calls.previews.at(-1)?.args.edits).toEqual([
     { kind: "setSessionTime", session: 1, date: "2026-11-21", startTime: "10:30" },
     { kind: "swapSessions", session: 1, withSession: 2 },
   ]);
 
-  await page.getByRole("button", { name: "Move Class: 45kg" }).click();
+  await expect(page.getByRole("button", { name: "Move Class: 45", exact: true })).toHaveText("Move Class: 45");
+  await page.getByRole("button", { name: "Move Class: 45", exact: true }).click();
   await page.keyboard.press("Escape");
-  await expect(page.getByRole("menu")).toHaveCount(0);
+  await expect(page.getByRole("group", { name: "Move Class To…" })).toHaveCount(0);
 
   await page.getByLabel("Session Length (Minutes)").fill("90");
   await page.getByRole("button", { name: "Build Again" }).click();
   await expect(page.getByRole("alertdialog")).toContainText("Building again discards your 2 edits.");
+  await expect(page.getByRole("button", { name: "Keep Editing" })).toBeFocused();
   await page.getByRole("button", { name: "Keep Editing" }).click();
+  await expect(page.getByRole("button", { name: "Build Again" })).toBeFocused();
   expect(calls.previews.at(-1)?.args.edits).toHaveLength(2);
   await page.getByRole("button", { name: "Build Again" }).click();
   await page.getByRole("button", { name: "Discard Edits and Build" }).click();
@@ -235,6 +248,112 @@ test("a session can be retimed and swapped, and building again asks before dropp
   await page.getByLabel("Session Length (Minutes)").fill("5");
   await page.getByRole("button", { name: "Build Again" }).click();
   await expect(page.getByRole("alert")).toContainText("Session length must be a whole number from 15 to 480.");
+
+  await page.getByLabel("Session Length (Minutes)").fill("120");
+  await page.getByLabel("First start on November 21, 2026").fill("01:00");
+  await page.getByRole("button", { name: "Build Again" }).click();
+  await expect(page.getByRole("alert")).toHaveText("The first start on November 21, 2026 leaves no time for its 120-minute weigh-in.");
+  await page.getByLabel("First start on November 21, 2026").fill("23:00");
+  await page.getByRole("button", { name: "Build Again" }).click();
+  await expect(page.getByRole("alert")).toHaveText("The first session on November 21, 2026 would end after midnight.");
+  expect(calls.previews.at(-1)?.args.options).toEqual({ ...defaultOptions, sessionMinutes: 90 });
+});
+
+test("the board's menus open, choose and close from the keyboard, and focus follows", async ({ page }) => {
+  const calls = await mockBuilder(page);
+  await loadAndBuild(page);
+
+  const trigger = page.getByRole("button", { name: "Laney Johnson: Move To…" });
+  await trigger.focus();
+  await page.keyboard.press("Enter");
+  await expect(trigger).toHaveAttribute("aria-expanded", "true");
+  const list = page.getByRole("group", { name: "Move To…" });
+  await page.keyboard.press("Tab");
+  await expect(list.getByRole("button").first()).toBeFocused();
+  await page.keyboard.press("Escape");
+  await expect(list).toHaveCount(0);
+  await expect(trigger).toBeFocused();
+  await expect(trigger).toHaveAttribute("aria-expanded", "false");
+
+  await page.keyboard.press("Enter");
+  await page.keyboard.press("Tab");
+  await expect(list.getByRole("button", { name: "Session 2 · Red" })).toBeFocused();
+  await page.keyboard.press("Enter");
+  await expect(sessionCard(page, 2)).toContainText("Laney Johnson");
+  expect(calls.previews.at(-1)?.args.edits).toEqual([{ kind: "moveAthlete", athlete: "1|laney johnson", toSession: 2, toPlatform: "Red" }]);
+  await expect(page.getByRole("button", { name: "Ava Smith: Move To…" })).toBeFocused();
+
+  await page.getByRole("button", { name: "Session 1: Edit Time" }).click();
+  const dialog = page.getByRole("dialog", { name: "Edit Time" });
+  await expect(dialog.getByLabel("Date")).toBeFocused();
+  await dialog.getByLabel("Start Time").fill("11:00");
+  await dialog.getByLabel("Start Time").press("Enter");
+  await expect(sessionCard(page, 1)).toContainText("Start 11:00 AM");
+  await expect(page.getByRole("button", { name: "Session 1: Edit Time" })).toBeFocused();
+});
+
+test("the board is inert while the next answer loads", async ({ page }) => {
+  await mockBuilder(page);
+  await loadAndBuild(page);
+  let release = () => {};
+  const held = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  await routeQuery(page, "scheduleBuilder:preview", async (route) => {
+    await held;
+    await route.fallback();
+  });
+  await page.getByRole("button", { name: "Laney Johnson: Move To…" }).click();
+  await page.getByRole("group", { name: "Move To…" }).getByRole("button", { name: "Session 2 · Red" }).click();
+  await expect(page.getByTestId("schedule-board")).toHaveAttribute("inert", "");
+  release();
+  await expect(page.getByTestId("schedule-board")).not.toHaveAttribute("inert");
+});
+
+test("a day-2 session's Edit Time opens on day 2", async ({ page }) => {
+  const calls = await mockBuilder(page, { secondDay: "2026-11-22" });
+  await loadAndBuild(page);
+  await expect(sessionCard(page, 2)).toContainText("November 22, 2026");
+
+  await page.getByRole("button", { name: "Session 2: Edit Time" }).click();
+  const dialog = page.getByRole("dialog", { name: "Edit Time" });
+  await expect(dialog.getByLabel("Date")).toHaveValue("2026-11-22");
+  await expect(dialog.getByLabel("Date").locator("option:checked")).toHaveText("November 22, 2026");
+  await dialog.getByLabel("Start Time").fill("13:00");
+  await dialog.getByRole("button", { name: "Save Time" }).click();
+  await expect.poll(() => calls.previews.at(-1)?.args.edits).toEqual([{ kind: "setSessionTime", session: 2, date: "2026-11-22", startTime: "13:00" }]);
+});
+
+test("entrants who share an identity open their own Move To lists", async ({ page }) => {
+  await mockBuilder(page, { twins: true });
+  await loadAndBuild(page);
+  const twins = page.getByRole("button", { name: "Mia Lee: Move To…" });
+  await expect(twins).toHaveCount(2);
+  await twins.first().click();
+  await expect(twins.first()).toHaveAttribute("aria-expanded", "true");
+  await expect(twins.last()).toHaveAttribute("aria-expanded", "false");
+  await expect(page.getByRole("group", { name: "Move To…" })).toHaveCount(1);
+});
+
+test("a build the server refuses keeps the edits", async ({ page }) => {
+  const calls = await mockBuilder(page, { refuseSessionMinutes: 100 });
+  await loadAndBuild(page);
+  await page.getByRole("button", { name: "Laney Johnson: Move To…" }).click();
+  await page.getByRole("group", { name: "Move To…" }).getByRole("button", { name: "Session 2 · Red" }).click();
+  await expect(sessionCard(page, 2)).toContainText("Laney Johnson");
+
+  await page.getByLabel("Session Length (Minutes)").fill("100");
+  await page.getByRole("button", { name: "Build Again" }).click();
+  await page.getByRole("button", { name: "Discard Edits and Build" }).click();
+  await expect(page.locator(".builder-options").getByRole("alert")).toContainText("This schedule couldn’t be built, so your edits are kept");
+  await expect(sessionCard(page, 2)).toContainText("Laney Johnson");
+  expect(calls.previews.some((call) => (call.args.options as Options).sessionMinutes === 100)).toBe(true);
+  expect(calls.previews.at(-1)?.args).toEqual({
+    meet: MEET,
+    options: defaultOptions,
+    edits: [{ kind: "moveAthlete", athlete: "1|laney johnson", toSession: 2, toPlatform: "Red" }],
+  });
+  await expect(page.getByRole("button", { name: "Undo" })).toBeEnabled();
 });
 
 test("a load Sport80 refuses shows the server's reason", async ({ page }) => {
@@ -270,6 +389,16 @@ test("signed in, drafts save and list, and a publish is sent for review", async 
   ]);
   await expect(publish.getByText("In Review")).toBeVisible();
   expect(calls.publications.every((call) => call.authorization === "Bearer token_user_ci")).toBe(true);
+  await expect(publish.getByRole("button", { name: "Publish", exact: true })).toHaveCount(0);
+
+  await page.getByRole("button", { name: "Ava Smith: Move To…" }).click();
+  await page.getByRole("group", { name: "Move To…" }).getByRole("button", { name: "Session 2 · Red" }).click();
+  await expect(sessionCard(page, 2)).toContainText("Ava Smith");
+  await expect(publish.getByRole("heading", { name: "Sent for Review" })).toHaveCount(0);
+  await publish.getByRole("button", { name: "Publish", exact: true }).click();
+  await expect(publish.getByRole("heading", { name: "Sent for Review" })).toBeVisible();
+  expect(calls.publishes.map((call) => call.args.edits)).toEqual([[], [{ kind: "moveAthlete", athlete: "2|ava smith", toSession: 2, toPlatform: "Red" }]]);
+  await expect(publish.getByText("In Review")).toHaveCount(2);
 
   await page.getByRole("link", { name: "Load Another Meet" }).click();
   await drafts.getByRole("button", { name: `Delete the saved schedule for ${MEET}` }).click();

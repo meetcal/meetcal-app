@@ -5,6 +5,7 @@ pub(crate) const MAX_BUILDER_DAYS: usize = 7;
 pub(crate) const MAX_BUILDER_PLATFORMS: usize = 6;
 pub(crate) const MAX_PLATFORM_NAME_LENGTH: usize = 30;
 pub(crate) const MAX_BUILDER_EDITS: usize = 500;
+pub(crate) const MINUTES_PER_DAY: u32 = 24 * 60;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) struct Limit {
@@ -258,30 +259,37 @@ fn whole_number(text: &str, limit: Limit) -> Result<u32, String> {
         })
 }
 
+pub(crate) fn minutes_of_clock(text: &str) -> Option<u32> {
+    let (hours, minutes) = text.split_once(':')?;
+    let all_digits = |part: &str| part.chars().all(|c| c.is_ascii_digit());
+    if !(1..=2).contains(&hours.len())
+        || minutes.len() != 2
+        || !all_digits(hours)
+        || !all_digits(minutes)
+    {
+        return None;
+    }
+    let hours = hours.parse::<u32>().ok().filter(|hours| *hours <= 23)?;
+    let minutes = minutes
+        .parse::<u32>()
+        .ok()
+        .filter(|minutes| *minutes <= 59)?;
+    Some(hours * 60 + minutes)
+}
+
 pub(crate) fn is_clock(text: &str) -> bool {
-    let Some((hours, minutes)) = text.split_once(':') else {
-        return false;
-    };
-    let hours_ok =
-        (1..=2).contains(&hours.len()) && hours.parse::<u32>().is_ok_and(|hours| hours <= 23);
-    let minutes_ok =
-        minutes.len() == 2 && minutes.parse::<u32>().is_ok_and(|minutes| minutes <= 59);
-    hours_ok
-        && minutes_ok
-        && hours
-            .chars()
-            .chain(minutes.chars())
-            .all(|c| c.is_ascii_digit())
+    minutes_of_clock(text).is_some()
 }
 
 pub(crate) fn checked_options(form: &OptionsForm) -> Result<BuilderOptions, String> {
+    use crate::pages::comp_data::format::format_us_date;
     let mut days = Vec::new();
     for day in form.days.iter().filter(|day| day.included) {
         let first_start = day.first_start.trim();
         if !is_clock(first_start) {
             return Err(format!(
                 "Enter a first start time for {}.",
-                crate::pages::comp_data::format::format_us_date(&day.date)
+                format_us_date(&day.date)
             ));
         }
         days.push(BuilderDay {
@@ -308,6 +316,21 @@ pub(crate) fn checked_options(form: &OptionsForm) -> Result<BuilderOptions, Stri
             MAX_SESSIONS_PER_DAY,
         )?)
     };
+    for day in &days {
+        let start = minutes_of_clock(&day.first_start).unwrap_or_default();
+        if start < weigh_in_minutes {
+            return Err(format!(
+                "The first start on {} leaves no time for its {weigh_in_minutes}-minute weigh-in.",
+                format_us_date(&day.date)
+            ));
+        }
+        if start + session_minutes > MINUTES_PER_DAY {
+            return Err(format!(
+                "The first session on {} would end after midnight.",
+                format_us_date(&day.date)
+            ));
+        }
+    }
     let platforms = form
         .platforms
         .iter()
@@ -456,6 +479,8 @@ mod tests {
                 "{name} differs"
             );
         }
+        assert_eq!(MINUTES_PER_DAY, 24 * 60);
+        assert!(server.contains("export const MINUTES_PER_DAY = 24 * 60;"));
     }
 
     #[test]
@@ -541,6 +566,38 @@ mod tests {
         assert!(!is_clock("24:00"));
         assert!(!is_clock("09:00:00"));
         assert!(!is_clock("+9:00"));
+    }
+
+    #[test]
+    fn each_first_start_leaves_room_for_its_weigh_in_and_ends_by_midnight() {
+        let mut form = form_of(&options().days, &options());
+        if let Some(day) = form.days.get_mut(1) {
+            day.first_start = "01:59".to_owned();
+        }
+        assert_eq!(
+            checked_options(&form),
+            Err(
+                "The first start on November 15, 2026 leaves no time for its 120-minute weigh-in."
+                    .to_owned()
+            )
+        );
+        form.weigh_in_minutes = "0".to_owned();
+        assert!(checked_options(&form).is_ok());
+        form.weigh_in_minutes = "119".to_owned();
+        assert!(checked_options(&form).is_ok());
+        if let Some(day) = form.days.first_mut() {
+            day.first_start = "22:01".to_owned();
+        }
+        assert_eq!(
+            checked_options(&form),
+            Err("The first session on November 14, 2026 would end after midnight.".to_owned())
+        );
+        if let Some(day) = form.days.first_mut() {
+            day.first_start = "22:00".to_owned();
+        }
+        assert!(checked_options(&form).is_ok());
+        assert_eq!(minutes_of_clock("7:05"), Some(425));
+        assert_eq!(minutes_of_clock("23:59"), Some(1439));
     }
 
     #[test]

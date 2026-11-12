@@ -1,5 +1,7 @@
+use super::browser::focus_element;
 use super::models::{
-    BuiltAthlete, BuiltGroup, BuiltSchedule, BuiltSession, is_clock, move_targets, session_when,
+    BuiltAthlete, BuiltGroup, BuiltSchedule, BuiltSession, MoveTarget, is_clock, move_targets,
+    session_when,
 };
 use crate::pages::comp_data::format::{
     display_weight_class, format_us_date, format_us_time, reference_value,
@@ -7,9 +9,16 @@ use crate::pages::comp_data::format::{
 use crate::utils::api::{BuilderEdit, BuilderOptions};
 use leptos::prelude::*;
 
+pub(crate) const UNDO_BUTTON_ID: &str = "builder-undo";
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) enum MenuId {
-    Athlete(String),
+    Athlete {
+        session: u32,
+        platform: String,
+        row: usize,
+        key: String,
+    },
     Class {
         session: u32,
         platform: String,
@@ -22,7 +31,18 @@ pub(crate) enum MenuId {
 #[derive(Clone, Copy)]
 pub(crate) struct BoardActions {
     pub open_menu: RwSignal<Option<MenuId>>,
-    pub add_edit: Callback<BuilderEdit>,
+    pub add_edit: Callback<BuilderEdit, bool>,
+    pub focus_after_edit: RwSignal<Option<String>>,
+}
+
+impl BoardActions {
+    fn edit_from(self, trigger_id: &str, edit: BuilderEdit) {
+        self.open_menu.set(None);
+        focus_element(trigger_id);
+        if self.add_edit.run(edit) {
+            self.focus_after_edit.set(Some(trigger_id.to_owned()));
+        }
+    }
 }
 
 #[derive(Clone, Copy)]
@@ -31,21 +51,60 @@ struct BoardData {
     options: StoredValue<BuilderOptions>,
 }
 
+impl BoardData {
+    fn move_targets(self, session: u32, from_platform: &str) -> Vec<MoveTarget> {
+        self.sessions.with_value(|sessions| {
+            self.options.with_value(|options| {
+                move_targets(sessions, &options.platforms, session, from_platform)
+            })
+        })
+    }
+}
+
+fn move_items(
+    targets: Vec<MoveTarget>,
+    trigger_id: String,
+    actions: BoardActions,
+    edit_for: impl Fn(MoveTarget) -> BuilderEdit,
+) -> impl IntoView {
+    targets
+        .into_iter()
+        .map(|target| {
+            let label = target.label.clone();
+            view! { <MenuItem actions trigger_id=trigger_id.clone() label edit=edit_for(target) /> }
+        })
+        .collect_view()
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum MenuKind {
+    List,
+    Dialog,
+}
+
 #[component]
 pub(crate) fn Menu(
     id: MenuId,
     actions: BoardActions,
+    #[prop(into)] trigger_id: String,
     #[prop(into)] label: String,
     #[prop(into)] whose: String,
     #[prop(into)] title: String,
     #[prop(default = "builder-menu-button")] button_class: &'static str,
-    #[prop(default = "menu")] role: &'static str,
+    #[prop(default = MenuKind::List)] kind: MenuKind,
     children: ChildrenFn,
 ) -> impl IntoView {
     let open_menu = actions.open_menu;
     let is_open = {
         let id = id.clone();
         Memo::new(move |_| open_menu.with(|open| open.as_ref() == Some(&id)))
+    };
+    let trigger = NodeRef::<leptos::html::Button>::new();
+    let close = move || {
+        open_menu.set(None);
+        if let Some(button) = trigger.get_untracked() {
+            let _ = button.focus();
+        }
     };
     let toggle = move |_| {
         if is_open.get_untracked() {
@@ -57,11 +116,21 @@ pub(crate) fn Menu(
     let children = StoredValue::new(children);
     let title = StoredValue::new(title);
     view! {
-        <div class="builder-menu no-print">
+        <div
+            class="builder-menu no-print"
+            on:keydown=move |event| {
+                if event.key() == "Escape" && is_open.get_untracked() {
+                    event.stop_propagation();
+                    close();
+                }
+            }
+        >
             <button
                 type="button"
+                id=trigger_id
                 class=button_class
-                aria-haspopup=if role == "menu" { "menu" } else { "dialog" }
+                node_ref=trigger
+                aria-haspopup=(kind == MenuKind::Dialog).then_some("dialog")
                 aria-expanded=move || if is_open.get() { "true" } else { "false" }
                 on:click=toggle
             >
@@ -69,10 +138,24 @@ pub(crate) fn Menu(
                 {label}
             </button>
             <Show when=move || is_open.get()>
-                <div class="builder-menu-backdrop" on:click=move |_| open_menu.set(None)></div>
-                <div class="builder-menu-panel" role=role aria-label=title.get_value()>
+                <div class="builder-menu-backdrop" on:click=move |_| close()></div>
+                <div
+                    class="builder-menu-panel"
+                    role=if kind == MenuKind::Dialog { "dialog" } else { "group" }
+                    aria-label=title.get_value()
+                >
                     <p class="builder-menu-title">{title.get_value()}</p>
-                    {children.with_value(|children| children())}
+                    {match kind {
+                        MenuKind::List => {
+                            view! {
+                                <ul class="builder-menu-list">
+                                    {children.with_value(|children| children())}
+                                </ul>
+                            }
+                                .into_any()
+                        }
+                        MenuKind::Dialog => children.with_value(|children| children()).into_any(),
+                    }}
                 </div>
             </Show>
         </div>
@@ -82,22 +165,24 @@ pub(crate) fn Menu(
 #[component]
 fn MenuItem(
     actions: BoardActions,
+    #[prop(into)] trigger_id: String,
     #[prop(into)] label: String,
     edit: BuilderEdit,
 ) -> impl IntoView {
     let edit = StoredValue::new(edit);
+    let trigger_id = StoredValue::new(trigger_id);
     view! {
-        <button
-            type="button"
-            role="menuitem"
-            class="builder-menu-item"
-            on:click=move |_| {
-                actions.open_menu.set(None);
-                actions.add_edit.run(edit.get_value());
-            }
-        >
-            {label}
-        </button>
+        <li>
+            <button
+                type="button"
+                class="builder-menu-item"
+                on:click=move |_| {
+                    actions.edit_from(&trigger_id.get_value(), edit.get_value());
+                }
+            >
+                {label}
+            </button>
+        </li>
     }
 }
 
@@ -112,11 +197,24 @@ pub(crate) fn Board(
         sessions: StoredValue::new(schedule.sessions.clone()),
         options: StoredValue::new(options),
     };
+    if !busy {
+        let focus_after_edit = actions.focus_after_edit;
+        Effect::new(move || {
+            let Some(trigger_id) = focus_after_edit.get_untracked() else {
+                return;
+            };
+            focus_after_edit.set(None);
+            if !focus_element(&trigger_id) {
+                focus_element(UNDO_BUTTON_ID);
+            }
+        });
+    }
     view! {
         <div
             class="builder-board"
             class:builder-board-busy=busy
             aria-busy=busy.then_some("true")
+            inert=busy
             data-testid="schedule-board"
         >
             {schedule
@@ -147,6 +245,8 @@ fn SessionCard(session: BuiltSession, data: BoardData, actions: BoardActions) ->
     let times = session_times(&session);
     let unscheduled = !session.is_scheduled();
     let start = StoredValue::new((session.date.clone(), session.start_time.clone()));
+    let swap_trigger = StoredValue::new(format!("builder-swap-{id}"));
+    let time_trigger = StoredValue::new(format!("builder-time-{id}"));
     view! {
         <article class="builder-session" class:builder-session-unscheduled=unscheduled>
             <header class="builder-session-head">
@@ -158,6 +258,7 @@ fn SessionCard(session: BuiltSession, data: BoardData, actions: BoardActions) ->
                     <Menu
                         id=MenuId::Swap(id)
                         actions
+                        trigger_id=swap_trigger.get_value()
                         label="Swap With…"
                         whose=format!("Session {number}: ")
                         title="Swap With…"
@@ -172,6 +273,7 @@ fn SessionCard(session: BuiltSession, data: BoardData, actions: BoardActions) ->
                                             view! {
                                                 <MenuItem
                                                     actions
+                                                    trigger_id=swap_trigger.get_value()
                                                     label=format!(
                                                         "Session {} · {}",
                                                         other.number,
@@ -191,14 +293,24 @@ fn SessionCard(session: BuiltSession, data: BoardData, actions: BoardActions) ->
                     <Menu
                         id=MenuId::Time(id)
                         actions
+                        trigger_id=time_trigger.get_value()
                         label="Edit Time"
                         whose=format!("Session {number}: ")
                         title="Edit Time"
-                        role="dialog"
+                        kind=MenuKind::Dialog
                     >
                         {move || {
                             let (date, start_time) = start.get_value();
-                            view! { <TimeForm session=id date start_time data actions /> }
+                            view! {
+                                <TimeForm
+                                    session=id
+                                    date
+                                    start_time
+                                    trigger_id=time_trigger.get_value()
+                                    data
+                                    actions
+                                />
+                            }
                         }}
                     </Menu>
                 </div>
@@ -206,7 +318,8 @@ fn SessionCard(session: BuiltSession, data: BoardData, actions: BoardActions) ->
             {session
                 .groups
                 .into_iter()
-                .map(|group| view! { <GroupView session=id group data actions /> })
+                .enumerate()
+                .map(|(index, group)| view! { <GroupView session=id index group data actions /> })
                 .collect_view()}
         </article>
     }
@@ -217,9 +330,16 @@ fn TimeForm(
     session: u32,
     date: String,
     start_time: String,
+    trigger_id: String,
     data: BoardData,
     actions: BoardActions,
 ) -> impl IntoView {
+    let date_field = NodeRef::<leptos::html::Select>::new();
+    Effect::new(move || {
+        if let Some(field) = date_field.get() {
+            let _ = field.focus();
+        }
+    });
     let days = data.options.with_value(|options| options.days.clone());
     let first_day = days.first().cloned();
     let chosen_date = RwSignal::new(if date.is_empty() {
@@ -242,13 +362,16 @@ fn TimeForm(
             problem.set(Some("Enter a start time."));
             return;
         }
-        actions.open_menu.set(None);
-        actions.add_edit.run(BuilderEdit::SetSessionTime {
-            session,
-            date: chosen_date.get_untracked(),
-            start_time: time,
-        });
+        actions.edit_from(
+            &trigger_id,
+            BuilderEdit::SetSessionTime {
+                session,
+                date: chosen_date.get_untracked(),
+                start_time: time,
+            },
+        );
     };
+    let shown_date = chosen_date.get_untracked();
     view! {
         <form
             class="builder-time-form"
@@ -262,6 +385,7 @@ fn TimeForm(
                 <span>"Date"</span>
                 <select
                     class="builder-input"
+                    node_ref=date_field
                     prop:value=move || chosen_date.get()
                     on:change=move |event| chosen_date.set(event_target_value(&event))
                 >
@@ -269,7 +393,12 @@ fn TimeForm(
                         .into_iter()
                         .map(|day| {
                             let label = format_us_date(&day.date);
-                            view! { <option value=day.date>{label}</option> }
+                            let selected = day.date == shown_date;
+                            view! {
+                                <option value=day.date selected=selected>
+                                    {label}
+                                </option>
+                            }
                         })
                         .collect_view()}
                 </select>
@@ -291,10 +420,16 @@ fn TimeForm(
                 problem
                     .get()
                     .map(|message| {
-                        view! { <p class="access-inline-error" role="alert">{message}</p> }
+                        view! {
+                            <p class="access-inline-error" role="alert">
+                                {message}
+                            </p>
+                        }
                     })
             }}
-            <button class="builder-button" type="submit">"Save Time"</button>
+            <button class="builder-button" type="submit">
+                "Save Time"
+            </button>
         </form>
     }
 }
@@ -310,6 +445,7 @@ fn athlete_count(count: usize) -> String {
 #[component]
 fn GroupView(
     session: u32,
+    index: usize,
     group: BuiltGroup,
     data: BoardData,
     actions: BoardActions,
@@ -327,9 +463,13 @@ fn GroupView(
                 {group
                     .weight_classes
                     .into_iter()
-                    .map(|weight_class| {
-                        let shown = display_weight_class(&weight_class);
+                    .enumerate()
+                    .map(|(position, weight_class)| {
+                        let shown = chip_label(&weight_class);
                         let class_of_edit = StoredValue::new(weight_class.clone());
+                        let trigger_id = StoredValue::new(
+                            format!("builder-class-{session}-{index}-{position}"),
+                        );
                         view! {
                             <Menu
                                 id=MenuId::Class {
@@ -338,6 +478,7 @@ fn GroupView(
                                     weight_class,
                                 }
                                 actions
+                                trigger_id=trigger_id.get_value()
                                 label=shown.clone()
                                 whose="Move Class: "
                                 title="Move Class To…"
@@ -345,35 +486,18 @@ fn GroupView(
                             >
                                 {move || {
                                     let from_platform = platform.get_value();
-                                    data.sessions
-                                        .with_value(|sessions| {
-                                            data.options
-                                                .with_value(|options| {
-                                                    move_targets(
-                                                        sessions,
-                                                        &options.platforms,
-                                                        session,
-                                                        &from_platform,
-                                                    )
-                                                })
-                                        })
-                                        .into_iter()
-                                        .map(|target| {
-                                            view! {
-                                                <MenuItem
-                                                    actions
-                                                    label=target.label
-                                                    edit=BuilderEdit::MoveClass {
-                                                        from_session: session,
-                                                        from_platform: from_platform.clone(),
-                                                        weight_class: class_of_edit.get_value(),
-                                                        to_session: target.session,
-                                                        to_platform: target.platform,
-                                                    }
-                                                />
-                                            }
-                                        })
-                                        .collect_view()
+                                    move_items(
+                                        data.move_targets(session, &from_platform),
+                                        trigger_id.get_value(),
+                                        actions,
+                                        move |target| BuilderEdit::MoveClass {
+                                            from_session: session,
+                                            from_platform: from_platform.clone(),
+                                            weight_class: class_of_edit.get_value(),
+                                            to_session: target.session,
+                                            to_platform: target.platform,
+                                        },
+                                    )
                                 }}
                             </Menu>
                         }
@@ -384,12 +508,40 @@ fn GroupView(
                 {group
                     .athletes
                     .into_iter()
-                    .map(|athlete| {
-                        view! { <AthleteRow session platform=platform.get_value() athlete data actions /> }
+                    .enumerate()
+                    .map(|(row, athlete)| {
+                        let trigger_id = format!("builder-athlete-{session}-{index}-{row}");
+                        view! {
+                            <AthleteRow
+                                session
+                                platform=platform.get_value()
+                                row
+                                trigger_id
+                                athlete
+                                data
+                                actions
+                            />
+                        }
                     })
                     .collect_view()}
             </ol>
         </section>
+    }
+}
+
+fn chip_label(weight_class: &str) -> String {
+    let shown = display_weight_class(weight_class);
+    shown
+        .strip_suffix("kg")
+        .map_or_else(|| shown.clone(), str::to_owned)
+}
+
+fn athlete_menu_id(session: u32, platform: &str, row: usize, athlete: &BuiltAthlete) -> MenuId {
+    MenuId::Athlete {
+        session,
+        platform: platform.to_owned(),
+        row,
+        key: athlete.key.clone(),
     }
 }
 
@@ -409,13 +561,17 @@ fn athlete_details(athlete: &BuiltAthlete) -> String {
 fn AthleteRow(
     session: u32,
     platform: String,
+    row: usize,
+    trigger_id: String,
     athlete: BuiltAthlete,
     data: BoardData,
     actions: BoardActions,
 ) -> impl IntoView {
     let details = athlete_details(&athlete);
+    let menu_id = athlete_menu_id(session, &platform, row, &athlete);
     let key = StoredValue::new(athlete.key.clone());
     let platform = StoredValue::new(platform);
+    let trigger = StoredValue::new(trigger_id);
     view! {
         <li class="builder-athlete">
             <div class="builder-athlete-text">
@@ -423,36 +579,24 @@ fn AthleteRow(
                 <span class="builder-athlete-detail">{details}</span>
             </div>
             <Menu
-                id=MenuId::Athlete(athlete.key.clone())
+                id=menu_id
                 actions
+                trigger_id=trigger.get_value()
                 label="Move To…"
                 whose=format!("{}: ", athlete.name)
                 title="Move To…"
             >
                 {move || {
-                    let from_platform = platform.get_value();
-                    data.sessions
-                        .with_value(|sessions| {
-                            data.options
-                                .with_value(|options| {
-                                    move_targets(sessions, &options.platforms, session, &from_platform)
-                                })
-                        })
-                        .into_iter()
-                        .map(|target| {
-                            view! {
-                                <MenuItem
-                                    actions
-                                    label=target.label
-                                    edit=BuilderEdit::MoveAthlete {
-                                        athlete: key.get_value(),
-                                        to_session: target.session,
-                                        to_platform: target.platform,
-                                    }
-                                />
-                            }
-                        })
-                        .collect_view()
+                    move_items(
+                        data.move_targets(session, &platform.get_value()),
+                        trigger.get_value(),
+                        actions,
+                        move |target| BuilderEdit::MoveAthlete {
+                            athlete: key.get_value(),
+                            to_session: target.session,
+                            to_platform: target.platform,
+                        },
+                    )
                 }}
             </Menu>
         </li>
@@ -483,6 +627,31 @@ mod tests {
             ..athlete
         };
         assert_eq!(athlete_details(&unentered), "Age 15 · 48kg · Total —");
+    }
+
+    #[test]
+    fn class_chips_read_as_the_group_labels_do() {
+        assert_eq!(chip_label("45"), "45");
+        assert_eq!(chip_label("61+"), "61+");
+        assert_eq!(chip_label("+95"), "95+");
+        assert_eq!(chip_label("69kg"), "69");
+    }
+
+    #[test]
+    fn entrants_sharing_an_identity_get_their_own_menus() {
+        let twin = BuiltAthlete {
+            key: "3|mia lee".to_owned(),
+            name: "Mia Lee".to_owned(),
+            age: 40.0,
+            club: String::new(),
+            weight_class: "77".to_owned(),
+            entry_total: 120.0,
+        };
+        let first = athlete_menu_id(2, "Red", 0, &twin);
+        assert_ne!(first, athlete_menu_id(2, "Red", 1, &twin));
+        assert_ne!(first, athlete_menu_id(2, "Blue", 0, &twin));
+        assert_ne!(first, athlete_menu_id(1, "Red", 0, &twin));
+        assert_eq!(first, athlete_menu_id(2, "Red", 0, &twin));
     }
 
     #[test]

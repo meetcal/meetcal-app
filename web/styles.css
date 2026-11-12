@@ -2557,10 +2557,6 @@ main > div:has(> h4) > p {
     gap: 22px;
 }
 
-.builder-page .data-intro {
-    margin-bottom: 4px;
-}
-
 .builder-panel {
     padding: clamp(18px, 3vw, 26px);
     border: 1px solid var(--border);
@@ -3094,7 +3090,15 @@ main > div:has(> h4) > p {
     text-transform: uppercase;
 }
 
+.builder-menu-list {
+    display: grid;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
 .builder-menu-item {
+    width: 100%;
     min-height: 40px;
     padding: 0 10px;
     border-radius: 8px;

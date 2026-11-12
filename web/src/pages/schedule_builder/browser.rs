@@ -34,6 +34,21 @@ pub(crate) fn remove_local_work(meet: &str) {
     }
 }
 
+pub(crate) fn focus_element(id: &str) -> bool {
+    let Some(element) = web_sys::window()
+        .and_then(|window| window.document())
+        .and_then(|document| document.get_element_by_id(id))
+    else {
+        return false;
+    };
+    if element.closest("[inert]").ok().flatten().is_some() {
+        return false;
+    }
+    element
+        .dyn_into::<web_sys::HtmlElement>()
+        .is_ok_and(|element| element.focus().is_ok())
+}
+
 pub(crate) fn now_ms() -> f64 {
     js_sys::Date::now()
 }

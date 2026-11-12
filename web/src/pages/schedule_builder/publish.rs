@@ -11,7 +11,28 @@ use leptos::task::spawn_local;
 enum Phase {
     Ready,
     Publishing,
-    Published(PublishOutcome),
+    Published {
+        outcome: PublishOutcome,
+        options: BuilderOptions,
+        edits: Vec<BuilderEdit>,
+    },
+}
+
+impl Phase {
+    fn outcome_for(
+        &self,
+        options: Option<&BuilderOptions>,
+        edits: &[BuilderEdit],
+    ) -> Option<&PublishOutcome> {
+        match self {
+            Phase::Published {
+                outcome,
+                options: published,
+                edits: published_edits,
+            } if options == Some(published) && edits == published_edits.as_slice() => Some(outcome),
+            Phase::Ready | Phase::Publishing | Phase::Published { .. } => None,
+        }
+    }
 }
 
 #[component]
@@ -23,24 +44,28 @@ pub(crate) fn PublishPanel(
     let auth = expect_context::<AuthContext>();
     let meet = StoredValue::new(meet);
     view! {
-        <section class="builder-panel builder-publish no-print" aria-labelledby="builder-publish-heading">
+        <section
+            class="builder-panel builder-publish no-print"
+            aria-labelledby="builder-publish-heading"
+        >
             <h2 id="builder-publish-heading">"Publish to MeetCal"</h2>
             {move || match auth.state.get() {
                 AuthState::SignedIn(user) => {
-                    view! { <SignedInPublish meet=meet.get_value() user applied edits /> }.into_any()
+                    view! { <SignedInPublish meet=meet.get_value() user applied edits /> }
+                        .into_any()
                 }
                 AuthState::Loading => {
                     view! { <p class="data-status">"Checking your sign-in…"</p> }.into_any()
                 }
                 AuthState::SignedOut | AuthState::ConfigurationError(_) => {
                     view! {
-                        <p class="builder-help">
-                            "Publishing puts this schedule on MeetCal for every lifter and coach at the meet."
-                        </p>
                         <button
                             class="builder-button"
                             type="button"
-                            disabled=matches!(auth.state.get_untracked(), AuthState::ConfigurationError(_))
+                            disabled=matches!(
+                                auth.state.get_untracked(),
+                                AuthState::ConfigurationError(_)
+                            )
                             on:click=move |_| open_clerk_sign_in()
                         >
                             "Sign In to Publish"
@@ -103,6 +128,13 @@ fn SignedInPublish(
         }
     });
     let publishing = Memo::new(move |_| phase.get() == Phase::Publishing);
+    let shown_outcome = Memo::new(move |_| {
+        phase.with(|phase| {
+            applied.with(|options| {
+                edits.with(|edits| phase.outcome_for(options.as_ref(), edits).cloned())
+            })
+        })
+    });
     let publish = move || {
         let Some(options) = applied.get_untracked() else {
             return;
@@ -115,13 +147,18 @@ fn SignedInPublish(
         error.set(None);
         phase.set(Phase::Publishing);
         let (task, handle) = abortable(async move {
-            api::publish_schedule(
+            let outcome = api::publish_schedule(
                 &meet.get_value(),
                 &options,
                 &changes,
                 (!contact.is_empty()).then_some(contact.as_str()),
             )
-            .await
+            .await;
+            outcome.map(|outcome| Phase::Published {
+                outcome,
+                options,
+                edits: changes,
+            })
         });
         in_flight.set_value(Some(handle));
         spawn_local(async move {
@@ -129,8 +166,8 @@ fn SignedInPublish(
                 return;
             };
             match result {
-                Ok(outcome) => {
-                    phase.try_set(Phase::Published(outcome));
+                Ok(published) => {
+                    phase.try_set(published);
                     refreshes.try_update(|count| *count += 1);
                 }
                 Err(message) => {
@@ -141,8 +178,8 @@ fn SignedInPublish(
         });
     };
     view! {
-        {move || match phase.get() {
-            Phase::Published(outcome) => {
+        {move || match shown_outcome.get() {
+            Some(outcome) => {
                 let (heading, message) = published_message(&outcome);
                 view! {
                     <div class="builder-published" role="status">
@@ -152,7 +189,7 @@ fn SignedInPublish(
                 }
                     .into_any()
             }
-            Phase::Ready | Phase::Publishing => {
+            None => {
                 view! {
                     <form
                         class="builder-publish-form"
@@ -176,7 +213,11 @@ fn SignedInPublish(
                             error
                                 .get()
                                 .map(|message| {
-                                    view! { <p class="access-inline-error" role="alert">{message}</p> }
+                                    view! {
+                                        <p class="access-inline-error" role="alert">
+                                            {message}
+                                        </p>
+                                    }
                                 })
                         }}
                         <button
@@ -194,11 +235,15 @@ fn SignedInPublish(
         {move || {
             publications
                 .with(|state| match state {
-                    LoadState::Loading => view! { <p class="data-status">"Loading your publishes…"</p> }.into_any(),
+                    LoadState::Loading => {
+                        view! { <p class="data-status">"Loading your publishes…"</p> }.into_any()
+                    }
                     LoadState::Failed(message) => {
                         load_error("your publishes", message, move || publications.retry())
                     }
-                    LoadState::Ready(answer) => view! { <PublicationList answer=answer.clone() /> }.into_any(),
+                    LoadState::Ready(answer) => {
+                        view! { <PublicationList answer=answer.clone() /> }.into_any()
+                    }
                 })
         }}
     }
@@ -262,5 +307,41 @@ mod tests {
             athletes: 17,
         };
         assert_eq!(published_message(&pending).0, "Sent for Review");
+    }
+
+    #[test]
+    fn a_publish_shows_until_the_schedule_changes() {
+        let outcome = PublishOutcome {
+            status: PublishStatus::Live,
+            sessions: 2,
+            athletes: 3,
+        };
+        let options = BuilderOptions {
+            days: Vec::new(),
+            session_minutes: 120,
+            break_minutes: 0,
+            weigh_in_minutes: 120,
+            max_athletes_per_platform: 15,
+            max_sessions_per_day: None,
+            platforms: vec!["Red".to_owned()],
+            grouping: crate::utils::api::Grouping::WeightClass,
+            separate_age_groups: true,
+            order: crate::utils::api::SessionOrder::WomenThenMen,
+        };
+        let published = Phase::Published {
+            outcome: outcome.clone(),
+            options: options.clone(),
+            edits: Vec::new(),
+        };
+        assert_eq!(published.outcome_for(Some(&options), &[]), Some(&outcome));
+        let edit = BuilderEdit::SwapSessions {
+            session: 1,
+            with_session: 2,
+        };
+        assert_eq!(published.outcome_for(Some(&options), &[edit]), None);
+        let mut longer = options.clone();
+        longer.session_minutes = 90;
+        assert_eq!(published.outcome_for(Some(&longer), &[]), None);
+        assert_eq!(Phase::Ready.outcome_for(Some(&options), &[]), None);
     }
 }

@@ -6,6 +6,8 @@ use crate::pages::comp_data::format::format_us_date;
 use crate::utils::api::{Grouping, SessionOrder};
 use leptos::prelude::*;
 
+pub(crate) const BUILD_BUTTON_ID: &str = "builder-build";
+
 const GROUPINGS: [(Grouping, &str); 2] = [
     (Grouping::WeightClass, "By Weight Class"),
     (Grouping::EntryTotal, "By Entry Total"),
@@ -54,7 +56,10 @@ pub(crate) fn OptionsPanel(
     let day_count = form.with_untracked(|form| form.days.len());
     let platform_count = Memo::new(move |_| form.with(|form| form.platforms.len()));
     view! {
-        <section class="builder-panel builder-options no-print" aria-labelledby="builder-options-heading">
+        <section
+            class="builder-panel builder-options no-print"
+            aria-labelledby="builder-options-heading"
+        >
             <h2 id="builder-options-heading">"Options"</h2>
             <form
                 class="builder-options-form"
@@ -238,8 +243,12 @@ pub(crate) fn OptionsPanel(
                                         <input
                                             type="radio"
                                             name="builder-grouping"
-                                            prop:checked=move || form.with(|form| form.grouping == grouping)
-                                            on:change=move |_| form.update(|form| form.grouping = grouping)
+                                            prop:checked=move || {
+                                                form.with(|form| form.grouping == grouping)
+                                            }
+                                            on:change=move |_| {
+                                                form.update(|form| form.grouping = grouping)
+                                            }
                                         />
                                         <span>{label}</span>
                                     </label>
@@ -284,10 +293,14 @@ pub(crate) fn OptionsPanel(
                     error
                         .get()
                         .map(|message| {
-                            view! { <p class="access-inline-error builder-error" role="alert">{message}</p> }
+                            view! {
+                                <p class="access-inline-error builder-error" role="alert">
+                                    {message}
+                                </p>
+                            }
                         })
                 }}
-                <button class="builder-button builder-build" type="submit">
+                <button id=BUILD_BUTTON_ID class="builder-button builder-build" type="submit">
                     {move || build_label.get()}
                 </button>
             </form>

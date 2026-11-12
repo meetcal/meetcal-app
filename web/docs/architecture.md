@@ -194,15 +194,21 @@ Convex's answer.
   `SPORT80_LOAD_TIMEOUT`), which answers `{ meet }`; the page then moves to
   `/schedule-builder?meet=<name>`, the address the drafts list and a shared link open.
 - `scheduleBuilder:defaults` answers the meet's days and default options, which fill the options
-  form. The form's checks (`checked_options` in `models.rs`) give each limit a readable sentence;
-  the limits are the server's `BUILDER_LIMITS` and maximums, which a test keeps equal. Building
-  sends the options, with the edits made so far, to `scheduleBuilder:preview`, which answers the
-  sessions, each group's `label` (the one the export and a published schedule use) and the
-  warnings. A new build with changed options drops the edits after the user confirms.
-- Edits come from menus, with no drag and drop: Move To… on each athlete, a class chip's Move
-  Class To…, and Swap With… and Edit Time on each session. Each edit is appended to the list sent
-  to `preview` (at most `MAX_BUILDER_EDITS`, the server's), and Undo drops the last. While the next
-  answer loads, the previous board stays on screen dimmed and inert.
+  form. The form's checks (`checked_options` in `models.rs`) give each limit a readable sentence,
+  and refuse, as `checkBuilderOptions` does, a day whose first start leaves no time for the
+  weigh-in or whose first session would end after midnight; the limits are the server's
+  `BUILDER_LIMITS`, maximums and `MINUTES_PER_DAY`, which a test keeps equal. Building sends the
+  options, with the edits made so far, to `scheduleBuilder:preview`, which answers the sessions,
+  each group's `label` (the one the export and a published schedule use) and the warnings. A new
+  build with changed options drops the edits after the user confirms, and only once `preview`
+  accepts the new options: a refused build brings the previous options and edits back.
+- Edits come from disclosure lists, with no drag and drop and no menu roles: Move To… on each
+  athlete, a class chip's Move Class To…, and Swap With… on each session each open a list of
+  plain buttons, and Edit Time opens a small dialog. Escape or a click outside closes one and
+  returns focus to its button; after an edit, focus goes to the button in the same place on the
+  new board, or to Undo. Each edit is appended to the list sent to `preview` (at most
+  `MAX_BUILDER_EDITS`, the server's), and Undo drops the last. While the next answer loads, the
+  previous board stays on screen dimmed and `inert`.
 - Signed out, the options and edits of each meet are kept in `localStorage`
   (`meetcal.scheduleBuilder:<meet>`, every access guarded, so the page works without it). Signed
   in, Save Draft calls `scheduleBuilder:saveDraft`, and the landing page lists
@@ -215,8 +221,9 @@ Convex's answer.
   session's date, weigh-in, start, platforms, group labels and athletes.
 - Publishing needs sign-in: `schedulePublications:publish` takes the options, edits and the contact
   email (prefilled with the Clerk user's primary email) and answers `live` or `pending`, shown as
-  "Live on MeetCal" or "Sent for Review"; `schedulePublications:publications` lists the user's
-  publishes of the meet and whether they organize it.
+  "Live on MeetCal" or "Sent for Review" until the options or edits change, when the form returns
+  for the next publish; `schedulePublications:publications` lists the user's publishes of the meet
+  and whether they organize it.
 - A function error's `error` is shown as the sentence the server wrote, and a 401 asks the user to
   sign in again.
 
