@@ -177,15 +177,15 @@ function assertObject(value: unknown, label: string): asserts value is Record<st
   }
 }
 
-function assertArray<T>(value: unknown, label: string): T[] {
+function assertArray(value: unknown, label: string): unknown[] {
   if (!Array.isArray(value)) {
     throw new Error(`${label} expected an array response`);
   }
-  return value as T[];
+  return value;
 }
 
 function assertStringArray(value: unknown, label: string): string[] {
-  const rows = assertArray<unknown>(value, label);
+  const rows = assertArray(value, label);
   if (!rows.every((row) => typeof row === 'string')) {
     throw new Error(`${label} expected a string array response`);
   }
@@ -480,41 +480,11 @@ export type ApiYearBests = {
 };
 
 export type ApiMeetPackage = {
-  meet: ApiMeet;
-  schedule: {
-    date: string;
-    sessions: {
-      session_id: number;
-      start_time: string;
-      weigh_in_time: string;
-      /**
-       * `start_time` / `weigh_in_time` per platform: platforms of one session
-       * can start at different times. Absent from packages built before they
-       * were added; the session's (its first platform's) times apply then.
-       */
-      platforms: {
-        platform: string;
-        weight_class: string;
-        start_time?: string | null;
-        weigh_in_time?: string | null;
-      }[];
-    }[];
-  }[];
-  athletes: (ApiAthlete & {
-    session?: {
-      session_number: number;
-      session_platform: string;
-      date?: string | null;
-      start_time?: string | null;
-      weigh_in_time?: string | null;
-    } | null;
-  })[];
-  meet_results: ApiLiftingResult[];
-  // Optional sections, selected with `include=`. Absent unless asked for (or
-  // when talking to a backend that predates the parameter, which sends all).
-  attempt_estimates?: unknown[];
+  meet: Record<string, unknown>;
+  schedule: unknown[];
+  athletes: unknown[];
+  meet_results: unknown[];
   year_bests_by_name?: Record<string, ApiYearBests>;
-  recent_results_by_name?: Record<string, ApiLiftingResult[]>;
 };
 
 export type ApiSavedSession = {
@@ -590,7 +560,7 @@ export type MappedMeet = Meet & { timeZoneUnknown: boolean };
  * already reject a row without its name, dates and zone (`assertMeetText`),
  * and a package's meet only feeds the schedule's time zone.
  */
-export function mapApiMeet(row: ApiMeet): MappedMeet {
+export function mapApiMeet(row: unknown): MappedMeet {
   assertObject(row, 'meet');
   const name = nullableString(row.name) ?? '';
   const timeZone = nullableString(row.time_zone) ?? '';
@@ -643,21 +613,30 @@ export function mapApiMeet(row: ApiMeet): MappedMeet {
  */
 function assertApiScheduleRow(row: unknown, label: string): ApiScheduleRow {
   assertObject(row, label);
-  if (typeof row.date !== 'string' || typeof row.session_id !== 'number' || !Number.isFinite(row.session_id)) {
+  const { date, session_id } = row;
+  if (typeof date !== 'string' || typeof session_id !== 'number' || !Number.isFinite(session_id)) {
     throw new Error(`${label} has an invalid date or session_id`);
   }
-  return row as ApiScheduleRow;
+  return {
+    date,
+    session_id,
+    meet: nullableString(row.meet) ?? undefined,
+    platform: nullableString(row.platform),
+    start_time: nullableString(row.start_time),
+    weigh_in_time: nullableString(row.weigh_in_time),
+    weight_class: nullableString(row.weight_class),
+  };
 }
 
-export function mapApiSchedule(rows: ApiScheduleRow[]): Schedule {
+export function mapApiSchedule(rows: readonly unknown[]): Schedule {
   const scheduleMap = new Map<string, {
     date: string;
     fullDate: string;
     sessions: Map<number, Schedule[number]['sessions'][number]>;
   }>();
 
-  rows.forEach((row, index) => {
-    assertApiScheduleRow(row, `schedule[${index}]`);
+  rows.forEach((unchecked, index) => {
+    const row = assertApiScheduleRow(unchecked, `schedule[${index}]`);
     if (!scheduleMap.has(row.date)) {
       scheduleMap.set(row.date, {
         date: formatScheduleDay(row.date),
@@ -694,50 +673,59 @@ export function mapApiSchedule(rows: ApiScheduleRow[]): Schedule {
 }
 
 export function mapPackageSchedule(pkg: ApiMeetPackage): Schedule {
-  const rows = pkg.schedule.flatMap((day) =>
-    day.sessions.flatMap((session) =>
-      session.platforms.map((platform) => ({
-        date: day.date,
-        meet: pkg.meet.name,
-        platform: platform.platform,
-        session_id: session.session_id,
-        // The platform's own time, as `/meets/schedule` reports it: copying
-        // the session's (first platform's) time onto every platform put a
-        // 9:30 Blue session at 9:00 offline, reminders included.
-        start_time: platform.start_time ?? session.start_time,
-        weigh_in_time: platform.weigh_in_time ?? session.weigh_in_time,
-        weight_class: platform.weight_class,
-      })),
-    ),
-  );
+  const meet = nullableString(pkg.meet.name) ?? '';
+  const rows: Record<string, unknown>[] = [];
+  pkg.schedule.forEach((day, dayIndex) => {
+    const dayLabel = `/meets/package.schedule[${dayIndex}]`;
+    assertObject(day, dayLabel);
+    assertArray(day.sessions, `${dayLabel}.sessions`).forEach((session, sessionIndex) => {
+      const sessionLabel = `${dayLabel}.sessions[${sessionIndex}]`;
+      assertObject(session, sessionLabel);
+      assertArray(session.platforms, `${sessionLabel}.platforms`).forEach((platform, platformIndex) => {
+        assertObject(platform, `${sessionLabel}.platforms[${platformIndex}]`);
+        rows.push({
+          date: day.date,
+          meet,
+          platform: platform.platform,
+          session_id: session.session_id,
+          start_time: platform.start_time ?? session.start_time,
+          weigh_in_time: platform.weigh_in_time ?? session.weigh_in_time,
+          weight_class: platform.weight_class,
+        });
+      });
+    });
+  });
   return mapApiSchedule(rows);
 }
 
-export function mapApiAthlete(row: ApiAthleteWithSession): LiftResult {
+export function mapApiAthlete(row: unknown): LiftResult {
   assertObject(row, 'athlete');
-  const sessionNumber = row.session_number ?? row.session?.session_number;
-  const sessionPlatform = row.session_platform ?? row.session?.session_platform;
-  const date = row.date ?? row.schedule_row?.date ?? row.session?.date ?? undefined;
-  const startTime = row.start_time ?? row.schedule_row?.start_time ?? row.session?.start_time ?? undefined;
-  const weighInTime = row.weigh_in_time ?? row.schedule_row?.weigh_in_time ?? row.session?.weigh_in_time ?? undefined;
+  const session = isRecord(row.session) ? row.session : {};
+  const scheduleRow = isRecord(row.schedule_row) ? row.schedule_row : {};
+  const firstText = (...values: unknown[]) => values.map(nullableString).find((value) => value !== null) ?? undefined;
+  const sessionNumber = nullableNumber(row.session_number) ?? nullableNumber(session.session_number);
+  const sessionPlatform = firstText(row.session_platform, session.session_platform);
+  const date = firstText(row.date, scheduleRow.date, session.date);
+  const startTime = firstText(row.start_time, scheduleRow.start_time, session.start_time);
+  const weighInTime = firstText(row.weigh_in_time, scheduleRow.weigh_in_time, session.weigh_in_time);
 
   const athlete = {
-    memberId: row.member_id || '',
-    name: row.name,
+    memberId: nullableString(row.member_id) || '',
+    name: nullableString(row.name) ?? '',
     age: toFiniteNumber(row.age, 0),
-    club: row.club ?? '',
-    wso: row.wso || undefined,
-    gender: row.gender || '',
-    weightClass: row.weight_class || '',
+    club: nullableString(row.club) ?? '',
+    wso: nullableString(row.wso) || undefined,
+    gender: nullableString(row.gender) || '',
+    weightClass: nullableString(row.weight_class) || '',
     entryTotal: toFiniteNumber(row.entry_total, 0),
-    adaptive: row.adaptive || false,
-    session: sessionNumber != null && sessionPlatform
+    adaptive: row.adaptive === true,
+    session: sessionNumber !== null && sessionPlatform
       ? {
           number: sessionNumber,
           platform: normalizePlatform(sessionPlatform),
-          ...(date != null && { date }),
-          ...(startTime != null && { startTime: formatApiTime(startTime) }),
-          ...(weighInTime != null && { weighInTime: formatApiTime(weighInTime) }),
+          ...(date !== undefined && { date }),
+          ...(startTime !== undefined && { startTime: formatApiTime(startTime) }),
+          ...(weighInTime !== undefined && { weighInTime: formatApiTime(weighInTime) }),
         }
       : undefined,
   };
@@ -750,7 +738,7 @@ export function mapApiAthlete(row: ApiAthleteWithSession): LiftResult {
  * no name, or a malformed session. One bad row must not fail an entire start
  * list or an offline download.
  */
-export function mapApiAthletes(rows: readonly ApiAthleteWithSession[], source: string): LiftResult[] {
+export function mapApiAthletes(rows: readonly unknown[], source: string): LiftResult[] {
   const athletes: LiftResult[] = [];
   let dropped = 0;
   for (const row of rows) {
@@ -780,7 +768,7 @@ function fallbackEventId(meet: string, date: string, name: string): string {
  * (text) or `null` (a lift), so one bad cell never reaches a screen or the
  * offline cache as a string where a number belongs.
  */
-export function mapApiLiftingResult(row: ApiLiftingResult): AthleteMeetResult {
+export function mapApiLiftingResult(row: unknown): AthleteMeetResult {
   assertObject(row, 'lifting result');
   const meet = nullableString(row.meet) ?? '';
   const date = nullableString(row.date) ?? '';
@@ -818,38 +806,48 @@ export function mapApiYearBests(row: ApiYearBests) {
 }
 
 /** A meet row's name, dates and zone are text; without them there is nothing to show. */
-function assertMeetText(row: Record<string, unknown>, label: string): void {
-  const invalid = ['name', 'start_date', 'end_date', 'time_zone'].filter((field) => typeof row[field] !== 'string');
-  if (invalid.length > 0) throw new Error(`${label} has invalid fields: ${invalid.join(', ')}`);
+function readApiMeet(row: Record<string, unknown>, label: string): ApiMeet {
+  const { name, start_date, end_date, time_zone } = row;
+  if (typeof name !== 'string' || typeof start_date !== 'string' || typeof end_date !== 'string' || typeof time_zone !== 'string') {
+    const invalid = ['name', 'start_date', 'end_date', 'time_zone'].filter((field) => typeof row[field] !== 'string');
+    throw new Error(`${label} has invalid fields: ${invalid.join(', ')}`);
+  }
+  return {
+    id: nullableString(row.id),
+    federation: nullableString(row.federation),
+    name,
+    start_date,
+    end_date,
+    time_zone,
+    venue_city: nullableString(row.venue_city),
+    venue_name: nullableString(row.venue_name),
+    venue_state: nullableString(row.venue_state),
+    venue_street: nullableString(row.venue_street),
+    venue_zip: nullableString(row.venue_zip),
+    venue_map_pdf_url: nullableString(row.venue_map_pdf_url),
+    venue_map_apple_url: nullableString(row.venue_map_apple_url),
+    status: nullableString(row.status) ?? '',
+  };
 }
 
 function validateApiMeets(json: unknown): ApiMeet[] {
-  return assertArray<unknown>(json, '/meets').map((row, index) => {
-    const fields = assertHasFields(row, `/meets[${index}]`, [
-      'name',
-      'start_date',
-      'end_date',
-      'time_zone',
-      'status',
-    ]);
-    assertMeetText(fields, `/meets[${index}]`);
-    return fields as ApiMeet;
-  });
+  return assertArray(json, '/meets').map((row, index) =>
+    readApiMeet(
+      assertHasFields(row, `/meets[${index}]`, ['name', 'start_date', 'end_date', 'time_zone', 'status']),
+      `/meets[${index}]`,
+    ),
+  );
 }
 
 function validateApiMeetDetails(json: unknown): ApiMeet {
-  const fields = assertHasFields(json, '/meets/details', [
-    'name',
-    'start_date',
-    'end_date',
-    'time_zone',
-  ]);
-  assertMeetText(fields, '/meets/details');
-  return fields as ApiMeet;
+  return readApiMeet(
+    assertHasFields(json, '/meets/details', ['name', 'start_date', 'end_date', 'time_zone']),
+    '/meets/details',
+  );
 }
 
 function validateApiSchedule(json: unknown): ApiScheduleRow[] {
-  return assertArray<unknown>(json, '/meets/schedule').map((row, index) =>
+  return assertArray(json, '/meets/schedule').map((row, index) =>
     assertApiScheduleRow(row, `/meets/schedule[${index}]`),
   );
 }
@@ -894,7 +892,7 @@ export async function fetchApiSchedule(meet: MeetName): Promise<Schedule> {
 }
 
 export async function fetchApiAthletes(meet: MeetName): Promise<LiftResult[]> {
-  const rows = assertArray<ApiAthlete>(
+  const rows = assertArray(
     decodeJsonText(await readQuery('/meets/athletes', 'meets:athletes', { meet }), '/meets/athletes'),
     '/meets/athletes',
   );
@@ -918,7 +916,7 @@ export async function fetchApiAthletesWithSession(
   platform?: string,
 ): Promise<LiftResult[]> {
   const filterLocally = sessionNumber != null && !!platform;
-  const rows = assertArray<ApiAthleteWithSession>(
+  const rows = assertArray(
     decodeJsonText(
       await readQuery('/meets/athletes-sessions', 'meets:athletesSessions', {
         meet,
@@ -953,7 +951,7 @@ export async function fetchApiResultsByNames(
   const rows: AthleteMeetResult[] = [];
   const chunkSize = options.latestOnly ? SMALL_ROWS_NAMES_CHUNK_SIZE : NAMES_QUERY_CHUNK_SIZE;
   for (const chunk of chunkValues(names, chunkSize)) {
-    const part = assertArray<ApiLiftingResult>(
+    const part = assertArray(
       decodeJsonText(
         await readQuery('/lifting-results/by-names', 'results:byNames', {
           names: chunk,
@@ -975,7 +973,7 @@ export async function fetchApiRecentResultsByNames(
   if (names.length === 0) return [];
   const rows: AthleteMeetResult[] = [];
   for (const chunk of chunkValues(names, NAMES_QUERY_CHUNK_SIZE)) {
-    const part = assertArray<ApiLiftingResult>(
+    const part = assertArray(
       decodeJsonText(
         await readQuery('/lifting-results/recent', 'results:recent', { names: chunk, cutoffDate }),
         '/lifting-results/recent',
@@ -1022,7 +1020,7 @@ export async function fetchApiYearBestsByNames(
   if (names.length === 0) return {};
   const byFoldedName = new Map<string, ReturnType<typeof mapApiYearBests>>();
   for (const chunk of chunkValues(names, SMALL_ROWS_NAMES_CHUNK_SIZE)) {
-    const rows = assertArray<unknown>(
+    const rows = assertArray(
       await readQuery('/lifting-results/bests', 'results:bests', { names: chunk, cutoffDate }),
       '/lifting-results/bests',
     );
@@ -1051,7 +1049,7 @@ export async function searchApi(query: string, startDate?: string, endDate?: str
     ['matched_name', 'suggestions', 'results'],
   );
   const suggestions = assertStringArray(response.suggestions, '/search.suggestions');
-  const results = assertArray<ApiLiftingResult>(response.results, '/search.results');
+  const results = assertArray(response.results, '/search.results');
   return {
     matchedName: typeof response.matched_name === 'string' ? response.matched_name : null,
     suggestions,
@@ -1079,13 +1077,13 @@ export type MeetPackageFetch =
   | { status: 'not_modified' };
 
 function assertPackageSchedule(schedule: unknown): void {
-  assertArray<unknown>(schedule, '/meets/package.schedule').forEach((day, dayIndex) => {
+  assertArray(schedule, '/meets/package.schedule').forEach((day, dayIndex) => {
     const dayLabel = `/meets/package.schedule[${dayIndex}]`;
     assertObject(day, dayLabel);
-    assertArray<unknown>(day.sessions, `${dayLabel}.sessions`).forEach((session, sessionIndex) => {
+    assertArray(day.sessions, `${dayLabel}.sessions`).forEach((session, sessionIndex) => {
       const sessionLabel = `${dayLabel}.sessions[${sessionIndex}]`;
       assertObject(session, sessionLabel);
-      assertArray<unknown>(session.platforms, `${sessionLabel}.platforms`).forEach((platform, platformIndex) =>
+      assertArray(session.platforms, `${sessionLabel}.platforms`).forEach((platform, platformIndex) =>
         assertObject(platform, `${sessionLabel}.platforms[${platformIndex}]`),
       );
     });
@@ -1123,23 +1121,23 @@ export async function fetchApiMeetPackageConditional(
   }
   const pkg = assertHasFields(answer.body, '/meets/package', MEET_PACKAGE_FIELDS);
   assertObject(pkg.meet, '/meets/package.meet');
-  assertPackageSchedule(pkg.schedule);
-  assertArray(pkg.athletes, '/meets/package.athletes');
-  assertArray(pkg.meet_results, '/meets/package.meet_results');
+  const schedule = assertArray(pkg.schedule, '/meets/package.schedule');
+  assertPackageSchedule(schedule);
+  const built: ApiMeetPackage = {
+    meet: pkg.meet,
+    schedule,
+    athletes: assertArray(pkg.athletes, '/meets/package.athletes'),
+    meet_results: assertArray(pkg.meet_results, '/meets/package.meet_results'),
+  };
   if ('year_bests' in pkg) {
-    // Sent as a list (see `parseNamedBests`); the rest of the app reads the
-    // map the Rust API sent, with the API's snake_case fields. Keyed by the
-    // server's spelling: there is no caller's spelling here, and the store
-    // folds the key (`saveAthleteBestsBatch`).
     const byName: Record<string, ApiYearBests> = {};
-    const rows = assertArray<unknown>(pkg.year_bests, '/meets/package.year_bests');
+    const rows = assertArray(pkg.year_bests, '/meets/package.year_bests');
     for (const { name, bests } of parseNamedBests(rows, '/meets/package.year_bests')) {
       byName[name] = bests;
     }
-    const { year_bests: _wire, ...rest } = pkg;
-    return { status: 'fresh', etag: answer.etag, package: { ...rest, year_bests_by_name: byName } as ApiMeetPackage };
+    built.year_bests_by_name = byName;
   }
-  return { status: 'fresh', etag: answer.etag, package: pkg as ApiMeetPackage };
+  return { status: 'fresh', etag: answer.etag, package: built };
 }
 
 // ---------------------------------------------------------------------------
@@ -1174,7 +1172,7 @@ function validateRows<T extends object>(
   readRow: (row: Record<string, unknown>) => T,
 ): readonly Readonly<T>[] {
   const rows: Readonly<T>[] = [];
-  for (const row of assertArray<unknown>(json, label)) {
+  for (const row of assertArray(json, label)) {
     if (!isRecord(row)) continue;
     rows.push(Object.freeze(readRow(row)));
   }
@@ -1424,7 +1422,7 @@ export type ApiClubMeet = {
 export async function fetchApiClubMeets(club: string): Promise<ApiClubMeet[]> {
   const response = await readQuery('/clubs/meets', 'reference:clubMeets', { club });
   assertObject(response, '/clubs/meets');
-  const rows = assertArray<unknown>(response.meets, '/clubs/meets');
+  const rows = assertArray(response.meets, '/clubs/meets');
   const meets: ApiClubMeet[] = [];
   for (const row of rows) {
     if (!isRecord(row)) continue;
@@ -1504,7 +1502,7 @@ export async function fetchSavedSessions(token: string): Promise<ApiSavedSession
   const authToken = requireToken(token, 'fetchSavedSessions');
   const response = await userCall('/users/me/saved-sessions', 'users:savedSessions', 'query', authToken);
   assertObject(response, '/users/me/saved-sessions');
-  const sessions = assertArray<unknown>(
+  const sessions = assertArray(
     (response as { sessions?: unknown }).sessions,
     '/users/me/saved-sessions.sessions',
   );

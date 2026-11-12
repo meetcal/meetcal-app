@@ -447,8 +447,8 @@ describe('meetcal API client', () => {
     const fetched = await fetchApiMeetPackageConditional('Test Meet', '2024-01-01', null);
     expect(fetched.status).toBe('fresh');
     if (fetched.status === 'fresh') {
-      expect(fetched.package.recent_results_by_name).toBeUndefined();
-      expect(fetched.package.attempt_estimates).toBeUndefined();
+      expect(fetched.package).not.toHaveProperty('recent_results_by_name');
+      expect(fetched.package).not.toHaveProperty('attempt_estimates');
       expect(fetched.package.year_bests_by_name).toBeUndefined();
     }
     expect(MEET_PACKAGE_INCLUDE).toEqual(['year_bests']);
@@ -766,9 +766,7 @@ describe('meetcal API mappers', () => {
       ],
       athletes: [],
       meet_results: [],
-      attempt_estimates: [],
       year_bests_by_name: {},
-      recent_results_by_name: {},
     });
 
     expect(schedule).toHaveLength(1);

@@ -1,6 +1,6 @@
 import { isRecord } from '@/lib/is-record';
 import { ConvexHttpClient } from 'convex/browser';
-import { anyApi } from 'convex/server';
+import { makeFunctionReference } from 'convex/server';
 import { ConvexError } from 'convex/values';
 
 import { getChaosConfig } from '@/config/development';
@@ -109,10 +109,10 @@ export function serverClockMs(header: string | null): number | null {
   return Number.isFinite(ms) ? ms + 500 : null;
 }
 
-function functionReference(fn: string): any {
+function checkedFunctionName(fn: string): string {
   const [module, name] = fn.split(':');
   if (!module || !name) throw new Error(`invalid Convex function name ${JSON.stringify(fn)}`);
-  return (anyApi as any)[module][name];
+  return fn;
 }
 
 /**
@@ -192,7 +192,7 @@ function definedArgs(args: Record<string, unknown>): Record<string, unknown> {
 }
 
 export const convexTransport: Transport = async (call) => {
-  const ref = functionReference(call.fn);
+  const name = checkedFunctionName(call.fn);
   const args = definedArgs(call.args);
   const facts: ResponseFacts = { status: null, date: null };
   const client = httpClient(facts, call.signal);
@@ -201,11 +201,15 @@ export const convexTransport: Transport = async (call) => {
     if (call.kind === 'clock') {
       // A cached query's answer still carries the time it was sent, so the
       // clock costs a cache hit rather than a mutation.
-      await client.query(ref, args);
-      return serverClockMs(facts.date) ?? (await client.mutation(functionReference(SERVER_TIME_MUTATION), {}));
+      await client.query(makeFunctionReference<'query'>(name), args);
+      return (
+        serverClockMs(facts.date) ??
+        (await client.mutation(makeFunctionReference<'mutation'>(SERVER_TIME_MUTATION), {}))
+      );
     }
-    if (call.kind === 'query') return await client.query(ref, args);
-    return call.kind === 'action' ? await client.action(ref, args) : await client.mutation(ref, args);
+    if (call.kind === 'query') return await client.query(makeFunctionReference<'query'>(name), args);
+    if (call.kind === 'action') return await client.action(makeFunctionReference<'action'>(name), args);
+    return await client.mutation(makeFunctionReference<'mutation'>(name), args);
   } catch (error) {
     throw toTransportError(call, error, facts.status);
   }
