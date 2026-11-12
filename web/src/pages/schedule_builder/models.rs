@@ -1,4 +1,6 @@
-use crate::utils::api::{BuilderDay, BuilderEdit, BuilderOptions, Grouping, MeetMatch, SessionOrder};
+use crate::utils::api::{
+    BuilderDay, BuilderEdit, BuilderOptions, Grouping, MeetMatch, SessionOrder,
+};
 use serde::{Deserialize, Serialize};
 
 pub(crate) const MAX_BUILDER_DAYS: usize = 7;
