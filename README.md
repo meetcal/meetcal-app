@@ -111,7 +111,7 @@ inner display. Building it requires Xcode 27.1 locally — see [docs/iphone-duo.
 meetcal.app: the marketing pages, and the competition data pages (results, meet center, club and
 WSO dashboards, rankings, records, standards, qualifying totals, Wrapped) behind the subscription.
 Written in Rust with Leptos and compiled to WebAssembly; every data call is in
-[`web/src/utils/api.rs`](web/src/utils/api.rs).
+[`web/src/utils/api/`](web/src/utils/api/).
 
 ```sh
 cd web
