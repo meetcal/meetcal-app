@@ -51,7 +51,7 @@ describe('planChecks', () => {
   });
 
   it('runs only the website or CLI suite for their folders', () => {
-    expect(suites(['web/src/utils/api.rs'])).toEqual(['web']);
+    expect(suites(['web/src/utils/api/mod.rs'])).toEqual(['web']);
     expect(suites(['cli/src/commands/meets.rs'])).toEqual(['cli']);
     expect(suites(['web/src/main.rs', 'cli/Cargo.toml', 'src/utils/time.ts'])).toEqual(['app', 'web', 'cli']);
   });

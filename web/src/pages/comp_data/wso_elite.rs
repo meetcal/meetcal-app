@@ -52,7 +52,7 @@ impl Method {
     fn score(self, value: f64) -> String {
         match self {
             Method::PercentA => format!("{value:.1}%"),
-            _ => format!("{value:.2}"),
+            Method::Qpoints | Method::Qmasters | Method::Sinclair => format!("{value:.2}"),
         }
     }
 }
@@ -95,17 +95,22 @@ impl EliteList {
         }
     }
 
-    fn methods_default_first(self) -> &'static [Method] {
+    fn default_then_other_methods(self) -> (Method, &'static [Method]) {
         match self {
-            Self::Overall => &[Method::PercentA, Method::Sinclair, Method::Qpoints],
-            Self::Youth => &[Method::PercentA, Method::Sinclair],
-            Self::Junior | Self::Senior => &[Method::PercentA, Method::Qpoints, Method::Sinclair],
-            Self::Masters => &[Method::Qmasters, Method::PercentA, Method::Sinclair],
+            Self::Overall => (Method::PercentA, &[Method::Sinclair, Method::Qpoints]),
+            Self::Youth => (Method::PercentA, &[Method::Sinclair]),
+            Self::Junior | Self::Senior => (Method::PercentA, &[Method::Qpoints, Method::Sinclair]),
+            Self::Masters => (Method::Qmasters, &[Method::PercentA, Method::Sinclair]),
         }
     }
 
+    fn methods_default_first(self) -> impl Iterator<Item = Method> {
+        let (default, others) = self.default_then_other_methods();
+        std::iter::once(default).chain(others.iter().copied())
+    }
+
     fn default_method(self) -> Method {
-        self.methods_default_first()[0]
+        self.default_then_other_methods().0
     }
 }
 
@@ -396,9 +401,8 @@ fn EliteForm(
         .map(|list| {
             let options = list
                 .methods_default_first()
-                .iter()
                 .map(|method| {
-                    view! { <option value=method.value() selected=*method == list.default_method()>{choice_label(list, *method)}</option> }
+                    view! { <option value=method.value() selected=method == list.default_method()>{choice_label(list, method)}</option> }
                 })
                 .collect_view();
             view! {
@@ -789,7 +793,7 @@ mod tests {
     }
 
     #[test]
-    fn each_lists_methods_and_default_are_the_servers() {
+    fn each_lists_methods_default_first_are_the_servers() {
         let server = include_str!("../../../../convex/lib/elite.ts");
         let choices = server
             .split_once("export const ELITE_METHOD_CHOICES")
@@ -804,16 +808,21 @@ mod tests {
             let server_methods = line.split('\'').skip(1).step_by(2).collect::<Vec<_>>();
             let page_methods = list
                 .methods_default_first()
-                .iter()
-                .map(|method| method.value())
+                .map(Method::value)
                 .collect::<Vec<_>>();
             assert_eq!(page_methods, server_methods, "{}", list.key());
+        }
+    }
+
+    #[test]
+    fn defaults_match_the_servers() {
+        let defaults = Methods::default();
+        for list in EliteList::IN_PAGE_ORDER {
             assert_eq!(
-                Methods::default().get(list).value(),
-                server_methods[0],
-                "{}",
-                list.key()
+                Some(defaults.get(list)),
+                list.methods_default_first().next()
             );
         }
+        assert_eq!(defaults.masters, Method::Qmasters);
     }
 }

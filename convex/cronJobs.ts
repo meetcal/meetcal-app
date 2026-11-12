@@ -46,6 +46,7 @@ export const JOBS: Record<string, Job> = {
   'meet-sync': { schedule: '5 5 * * *', run: { kind: 'action', fn: internal.scrapers.meets.run } },
   'usamw-events': { schedule: '35 5 * * *', run: { kind: 'action', fn: internal.scrapers.usamwEvents.run } },
   'results-sport80': { schedule: '5 6 * * *', run: { kind: 'action', fn: internal.scrapers.sport80.run } },
+  'lifters-sport80': { schedule: '45 6 * * *', run: { kind: 'action', fn: internal.scrapers.lifters.run } },
   'wso-records': { schedule: '40 6 * * *', run: { kind: 'action', fn: internal.scrapers.wsoRecords.run } },
   entries: { schedule: '25 7 * * *', run: { kind: 'action', fn: internal.scrapers.entries.run } },
   // A new access pass for premium reads (`accessPass.ts`), when US traffic

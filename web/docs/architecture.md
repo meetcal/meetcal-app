@@ -7,7 +7,7 @@ browser.
 
 ## Data: Convex over HTTP
 
-Every read goes through `src/utils/api.rs`, which posts to Convex's HTTP API:
+Every read goes through `src/utils/api/`, which posts to Convex's HTTP API:
 
 ```text
 POST https://disciplined-hare-790.convex.cloud/api/query
@@ -22,7 +22,7 @@ POST https://disciplined-hare-790.convex.cloud/api/query
     (records, rankings, rosters, results) come this way because Convex serves text faster than the
     same rows as values. The site sends no `ifNoneMatch`, so `json` is always present.
   - `Body::Value`: the answer is the body (`results:search`, `reference:clubMeetStats`). Convex
-    writes its numbers as floats (`2.0`); `api.rs` turns whole numbers back into integers before
+    writes its numbers as floats (`2.0`); `utils/api` turns whole numbers back into integers before
     parsing.
 - The Club Dashboard's Meet picker reads `reference:clubMeets`, the club's distinct meets in one
   bounded answer, not the club's registrations (`reference:clubAthletes`, which the site no longer
@@ -34,20 +34,20 @@ POST https://disciplined-hare-790.convex.cloud/api/query
   `apiTokens:revokeAllCli` (`POST /api/mutation`, from `/link`), and
   `meetSubmissions:generateUploadUrl` and `meetSubmissions:submit` (from `/submit-meet`), are never
   retried by themselves: the user taps again.
-- The premium functions (`SUBSCRIPTION_FUNCTIONS` in `api.rs`, Convex's `PREMIUM_FUNCTIONS`) take
-  the access pass as their `pass` argument; `api.rs` adds it to their arguments. A search
+- The premium functions (`SUBSCRIPTION_FUNCTIONS` in `api/catalog.rs`, Convex's `PREMIUM_FUNCTIONS`) take
+  the access pass as their `pass` argument; `utils/api` adds it to their arguments. A search
   (`results:search`) takes it only with `startDate` and `endDate`: name suggestions are public.
   Every other query goes out without it, `results:wrapped` (Athlete Wrapped, below) included. No query carries the user's session token except
   `accessPass:pass` and `deviceLogin:describe` (one user's own CLI sign-in, below): a query that reads its caller is cached per user, while every subscriber sends
   the same pass, so premium answers stay in Convex's shared query cache.
 - The pass comes from `accessPass:pass` (`POST /api/query` with `Authorization: Bearer <Clerk
   session token>`, Clerk's default token, as the app sends), which answers `{ pass, rotatesAt }`.
-  `api.rs` fetches it before the first premium read, only for a signed-in user, and holds it in
+  `utils/api` fetches it before the first premium read, only for a signed-in user, and holds it in
   memory (never stored) until `rotatesAt`, or at least five minutes so a fast device clock cannot
   make every read fetch it; concurrent reads share one fetch. Convex accepts a pass until the
   rotation after the one that replaced it, so a slightly stale pass still works. Signing in, out
   or as another user forgets it.
-- When `accessPass:pass` answers 403 (Convex has no active entitlement for the user), `api.rs`
+- When `accessPass:pass` answers 403 (Convex has no active entitlement for the user), `utils/api`
   calls the `entitlements:refresh` action (`POST /api/action`, same token), which asks RevenueCat
   and records the entitlement, and, if it answers `{ active: true }`, asks for the pass once more.
   This is how Convex learns of a subscriber its RevenueCat webhook never reported (a lifetime
@@ -55,7 +55,7 @@ POST https://disciplined-hare-790.convex.cloud/api/query
 - Without a pass (signed out, not subscribed, offline, Clerk slow to hand over a token) a premium
   read goes out without one, and a failed fetch is not tried again for a minute. If Convex refuses
   a premium read for its pass (a function error with status 401, "access pass required", or 403,
-  "access pass expired"), `api.rs` drops the held pass, fetches a fresh one, and sends the read
+  "access pass expired"), `utils/api` drops the held pass, fetches a fresh one, and sends the read
   once more with it.
 - `MEETCAL_CONVEX_URL` (compile time) points a build at another deployment. Production's CSP allows
   only the production deployment, so a preview built against dev is blocked on Vercel.
@@ -134,7 +134,7 @@ is the page the link opens. It needs a signed-in user but no subscription, so it
   and answers 404 when nothing is left to turn down (expired, or the CLI already has its token):
   the page then shows the code as expired or used, never "denied", since the CLI may be signed in. All three carry `Authorization: Bearer <Clerk session token>`, and a 401 shows "MeetCal
   couldn't confirm you're signed in; please sign in again", with a Try again button that asks again
-  with a fresh token. The calls are in `api.rs` (`describe_device_login`,
+  with a fresh token. The calls are in `utils/api` (`describe_device_login`,
   `approve_device_login`, `deny_device_login`, `revoke_all_cli_logins`).
 - States: checking sign-in, sign-in, code entry, looking up, the request (Approve / Deny),
   approved ("Done — you can return to your terminal."), denied, expired or used (a `null`

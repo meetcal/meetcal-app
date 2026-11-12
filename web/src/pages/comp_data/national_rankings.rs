@@ -401,12 +401,14 @@ fn NationalRankingsForm(
 /// and the next total skips past it (250, 250, 240 rank 1, 1, 3).
 fn competition_ranks(totals: &[f64]) -> Vec<usize> {
     let mut ranks = Vec::with_capacity(totals.len());
+    let mut total_and_rank_before = None::<(f64, usize)>;
     for (index, total) in totals.iter().enumerate() {
-        let rank = match (index.checked_sub(1), ranks.last()) {
-            (Some(previous), Some(&previous_rank)) if totals[previous] == *total => previous_rank,
-            _ => index + 1,
+        let rank = match total_and_rank_before {
+            Some((total_before, rank_before)) if total_before == *total => rank_before,
+            Some(_) | None => index + 1,
         };
         ranks.push(rank);
+        total_and_rank_before = Some((*total, rank));
     }
     ranks
 }

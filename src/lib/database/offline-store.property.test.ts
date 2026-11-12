@@ -90,7 +90,7 @@ describe('corrupted lifting results on disk', () => {
     await fc.assert(
       fc.asyncProperty(corruptedArb(manifest), async (broken) => {
         await AsyncStorage.clear();
-        await AsyncStorage.multiSet(Object.entries(pristine));
+        await AsyncStorage.setMany(pristine);
         if (broken === undefined) await AsyncStorage.removeItem(RESULTS_KEY);
         else await AsyncStorage.setItem(RESULTS_KEY, JSON.stringify(broken));
         allOrNothing(await getMeetLiftingResults(MEET), rows);
@@ -116,7 +116,7 @@ describe('corrupted lifting results on disk', () => {
     await fc.assert(
       fc.asyncProperty(fc.nat({ max: keys.length - 1 }), damageArb, async (index, damage) => {
         await AsyncStorage.clear();
-        await AsyncStorage.multiSet(Object.entries(pristine));
+        await AsyncStorage.setMany(pristine);
         const key = keys[index];
         const chunk = pristine[key];
         switch (damage.kind) {
@@ -131,10 +131,10 @@ describe('corrupted lifting results on disk', () => {
             break;
           case 'swap': {
             const other = keys[(index + 1) % keys.length];
-            await AsyncStorage.multiSet([
+            await AsyncStorage.setMany(Object.fromEntries([
               [key, pristine[other]],
               [other, chunk],
-            ]);
+            ]));
             break;
           }
           case 'flip': {
