@@ -14,6 +14,19 @@ import { byNameThenNewest, computeMeetResults, meetResultTitles } from './lib/me
 import { editionSummaries, newestEditionFirst, type EditionSummary } from './lib/meetSummary';
 import { editionMedals, needsRoster, type EditionMedals, type RosterEntry } from './lib/placings';
 import { takeWithinBudget, tooLargeToRead, type DocumentBudget } from './lib/readBudget';
+import {
+  athleteResults,
+  choiceOf,
+  choicesInOrder,
+  lifterById,
+  lifterCard,
+  lifterOfMembership,
+  newestFirst,
+  rowsByLifter,
+  rowsOfLifter,
+  unlinked,
+  type AthleteAnswer,
+} from './lib/lifterHistory';
 import { cleanNameList, distinctNameKeys, newestSpelling, normalizeName, requestedNamesByKey } from './lib/names';
 import {
   bestsSince,
@@ -382,11 +395,6 @@ export const meetSummaries = premiumQuery('results:meetSummaries', {
   },
 });
 
-/** Newest first across athletes (a stable sort keeps each athlete's own order). */
-function newestFirst(rows: ApiLiftingResult[]): ApiLiftingResult[] {
-  return rows.sort((a, b) => compareBytes(b.date, a.date));
-}
-
 /** A newest-first history cut at `cutoff` (inclusive). */
 function since(history: readonly ApiLiftingResult[], cutoff: string): ApiLiftingResult[] {
   const rows: ApiLiftingResult[] = [];
@@ -504,6 +512,51 @@ export const bests = premiumQuery('results:bests', {
     const summaries = await readSummaries(ctx, [...requestedNamesByKey(names).keys()]);
     if (args.latestWhenEmpty) return answerBestsOrLatest(summaries, names, cutoff);
     return answerBests(summaries, names, cutoff);
+  },
+});
+
+/**
+ * One lifter's results, or the lifters to choose from under a name. With
+ * `lifter`, that lifter's results under every name they lifted under; with
+ * `other`, the name's results no lifter holds; with a `membership` Sport80
+ * knows, that member's results. Otherwise the name's one lifter, or its rows
+ * when no lifter holds any, and when several could be meant, the choice.
+ * `prs` index the answer's rows; `year_bests` are since `cutoffDate`.
+ */
+export const athlete = premiumQuery('results:athlete', {
+  args: {
+    name: v.string(),
+    lifter: v.optional(v.string()),
+    membership: v.optional(v.string()),
+    other: v.optional(v.boolean()),
+    cutoffDate: v.optional(v.string()),
+  },
+  handler: async (ctx, args): Promise<AthleteAnswer> => {
+    requireNonEmpty('name', args.name);
+    requireIsoDate('cutoff_date', args.cutoffDate);
+    const year = new Date(Date.now()).getUTCFullYear();
+    const nameKey = normalizeName(args.name);
+    const lifterAnswer = async (athleteId: string) => {
+      const [lifter, rows] = await Promise.all([lifterById(ctx, athleteId), rowsOfLifter(ctx, athleteId, [nameKey])]);
+      return athleteResults(lifterCard(athleteId, lifter, rows, year), rows, args.cutoffDate);
+    };
+    if (args.lifter !== undefined) {
+      requireNonEmpty('lifter', args.lifter);
+      return await lifterAnswer(args.lifter);
+    }
+    const history = (await readHistories(ctx, [nameKey])).get(nameKey) ?? [];
+    if (args.other === true) return athleteResults(null, history.filter(unlinked), args.cutoffDate);
+    const member = args.membership === undefined ? null : await lifterOfMembership(ctx, args.membership);
+    if (member !== null) return await lifterAnswer(member);
+    const byLifter = rowsByLifter(history);
+    const otherResults = history.filter(unlinked).length;
+    const [only] = byLifter.keys();
+    if (only === undefined) return athleteResults(null, history, args.cutoffDate);
+    if (byLifter.size === 1 && otherResults === 0) return await lifterAnswer(only);
+    const choices = await Promise.all(
+      [...byLifter].map(async ([athleteId, rows]) => choiceOf(lifterCard(athleteId, await lifterById(ctx, athleteId), rows, year), rows)),
+    );
+    return { kind: 'choose', name: newestSpelling(history) ?? args.name, lifters: choicesInOrder(choices), other_results: otherResults };
   },
 });
 

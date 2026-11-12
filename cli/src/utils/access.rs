@@ -46,6 +46,7 @@ pub(crate) const PREMIUM_FUNCTIONS: &[&str] = &[
     "results:yearBests",
     "results:bests",
     "results:groupMedals",
+    "results:athlete",
     "results:search",
     "meets:packageForMeet",
 ];

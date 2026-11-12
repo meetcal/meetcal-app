@@ -1,0 +1,152 @@
+{
+  "function": "results:athlete",
+  "encoding": "value",
+  "answers": [
+    {
+      "args": {
+        "name": "Jordan Twin"
+      },
+      "body": {
+        "kind": "choose",
+        "name": "Jordan Twin",
+        "lifters": [
+          {
+            "id": "30003",
+            "name": "Jordan Twin",
+            "label": "Age 16 · Wire Fixture Barbell",
+            "results": 1,
+            "latest_date": "2026-02-01"
+          },
+          {
+            "id": "30002",
+            "name": "Jordan Twin",
+            "label": "Age 66 · Carolina",
+            "results": 1,
+            "latest_date": "2025-06-01"
+          }
+        ],
+        "other_results": 1
+      }
+    },
+    {
+      "args": {
+        "name": "jordan twin",
+        "lifter": "30003",
+        "cutoffDate": "2026-01-01"
+      },
+      "body": {
+        "kind": "results",
+        "lifter": {
+          "id": "30003",
+          "name": "Jordan Twin",
+          "label": "Age 16 · Wire Fixture Barbell"
+        },
+        "json": "[{\"id\":0,\"event_id\":\"Youth Twin Open|2026-02-01\",\"federation\":\"USAW\",\"meet\":\"Youth Twin Open\",\"date\":\"2026-02-01\",\"name\":\"Jordan Twin\",\"age\":\"Men's 16-17 Age Group 79kg\",\"body_weight\":63.4,\"snatch1\":60,\"snatch2\":-64,\"snatch3\":66,\"snatch_best\":66,\"cj1\":80,\"cj2\":84,\"cj3\":-88,\"cj_best\":84,\"total\":150,\"adaptive\":false,\"lifter_id\":\"30003\"}]",
+        "prs": {
+          "set": {
+            "snatch": [],
+            "cj": [],
+            "total": []
+          },
+          "current": {
+            "snatch": 0,
+            "cj": 0,
+            "total": 0
+          }
+        },
+        "year_bests": {
+          "best_snatch": 66,
+          "best_cj": 84,
+          "best_total": 150
+        }
+      }
+    },
+    {
+      "args": {
+        "name": "Jordan Twin",
+        "other": true
+      },
+      "body": {
+        "kind": "results",
+        "lifter": null,
+        "json": "[{\"id\":0,\"event_id\":\"Unclaimed Twin Open|2024-01-01\",\"federation\":\"USAW\",\"meet\":\"Unclaimed Twin Open\",\"date\":\"2024-01-01\",\"name\":\"Jordan Twin\",\"age\":\"Open Women's 63kg\",\"body_weight\":63.4,\"snatch1\":78,\"snatch2\":-82,\"snatch3\":82,\"snatch_best\":82,\"cj1\":98,\"cj2\":102,\"cj3\":-105,\"cj_best\":102,\"total\":184,\"adaptive\":false}]",
+        "prs": {
+          "set": {
+            "snatch": [],
+            "cj": [],
+            "total": []
+          },
+          "current": {
+            "snatch": 0,
+            "cj": 0,
+            "total": 0
+          }
+        },
+        "year_bests": null
+      }
+    },
+    {
+      "args": {
+        "name": "Avery Fixture",
+        "membership": "100001"
+      },
+      "body": {
+        "kind": "results",
+        "lifter": {
+          "id": "30001",
+          "name": "Avery Fixture",
+          "label": "Age 27 · Carolina · Wire Fixture Barbell"
+        },
+        "json": "[{\"id\":9001,\"event_id\":\"2026 Wire Fixture Classic|2026-03-07\",\"federation\":\"USAW\",\"meet\":\"2026 Wire Fixture Classic\",\"date\":\"2026-03-07\",\"name\":\"Avery Fixture\",\"age\":\"Open Women's 63kg\",\"body_weight\":63.4,\"snatch1\":78,\"snatch2\":-82,\"snatch3\":82,\"snatch_best\":82,\"cj1\":98,\"cj2\":102,\"cj3\":-105,\"cj_best\":102,\"total\":184,\"adaptive\":false,\"lifter_id\":\"30001\"},{\"id\":8001,\"event_id\":\"2025 Wire Fixture Fall Open|2025-11-01\",\"federation\":\"USAW\",\"meet\":\"2025 Wire Fixture Fall Open\",\"date\":\"2025-11-01\",\"name\":\"Avery Fixture\",\"age\":\"Open Women's 63kg\",\"body_weight\":63.4,\"snatch1\":78,\"snatch2\":-82,\"snatch3\":-84,\"snatch_best\":80,\"cj1\":98,\"cj2\":102,\"cj3\":-105,\"cj_best\":102,\"total\":182,\"adaptive\":false,\"lifter_id\":\"30001\"}]",
+        "prs": {
+          "set": {
+            "snatch": [
+              0
+            ],
+            "cj": [],
+            "total": [
+              0
+            ]
+          },
+          "current": {
+            "snatch": 0,
+            "cj": 1,
+            "total": 0
+          }
+        },
+        "year_bests": null
+      }
+    },
+    {
+      "args": {
+        "name": "Avery Fixture"
+      },
+      "body": {
+        "kind": "results",
+        "lifter": {
+          "id": "30001",
+          "name": "Avery Fixture",
+          "label": "Age 27 · Carolina · Wire Fixture Barbell"
+        },
+        "json": "[{\"id\":9001,\"event_id\":\"2026 Wire Fixture Classic|2026-03-07\",\"federation\":\"USAW\",\"meet\":\"2026 Wire Fixture Classic\",\"date\":\"2026-03-07\",\"name\":\"Avery Fixture\",\"age\":\"Open Women's 63kg\",\"body_weight\":63.4,\"snatch1\":78,\"snatch2\":-82,\"snatch3\":82,\"snatch_best\":82,\"cj1\":98,\"cj2\":102,\"cj3\":-105,\"cj_best\":102,\"total\":184,\"adaptive\":false,\"lifter_id\":\"30001\"},{\"id\":8001,\"event_id\":\"2025 Wire Fixture Fall Open|2025-11-01\",\"federation\":\"USAW\",\"meet\":\"2025 Wire Fixture Fall Open\",\"date\":\"2025-11-01\",\"name\":\"Avery Fixture\",\"age\":\"Open Women's 63kg\",\"body_weight\":63.4,\"snatch1\":78,\"snatch2\":-82,\"snatch3\":-84,\"snatch_best\":80,\"cj1\":98,\"cj2\":102,\"cj3\":-105,\"cj_best\":102,\"total\":182,\"adaptive\":false,\"lifter_id\":\"30001\"}]",
+        "prs": {
+          "set": {
+            "snatch": [
+              0
+            ],
+            "cj": [],
+            "total": [
+              0
+            ]
+          },
+          "current": {
+            "snatch": 0,
+            "cj": 1,
+            "total": 0
+          }
+        },
+        "year_bests": null
+      }
+    }
+  ]
+}

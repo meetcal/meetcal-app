@@ -52,6 +52,7 @@ const SHARED_FUNCTIONS: Record<string, Kind> = {
   'reference:wsoRecords': 'query',
   'results:bests': 'query',
   'results:byMeet': 'query',
+  'results:athlete': 'query',
   'results:byNames': 'query',
   'results:recent': 'query',
   'results:search': 'query',
@@ -126,6 +127,8 @@ const SECOND_LIFTER = 'Blake Fixture';
 const UNSEATED = 'Casey Fixture';
 const BOMBED = 'Drew Fixture';
 const PROLIFIC = 'Tess Toomany';
+const TWIN = 'Jordan Twin';
+const LIFTER_ID = '30001';
 const PROLIFIC_ROWS = 601;
 const NARROW_NAMES = Array.from({ length: 100 }, (_, i) => `Narrow Name ${String(i).padStart(3, '0')}`);
 
@@ -156,8 +159,22 @@ function seed() {
       registration('100002', SECOND_LIFTER, COMPLETED, { wso: WSO, weightClass: '69', entryTotal: 200 }),
       registration('100004', BOMBED, COMPLETED, { entryTotal: 170 }),
     ],
+    lifters: [
+      { athleteId: LIFTER_ID, name: LIFTER, nameKey: LIFTER.toLowerCase(), gender: 'Women', birthYear: 1999, club: CLUB, wso: WSO, seenAt: '2026-03-07' },
+      { athleteId: '30002', name: TWIN, nameKey: TWIN.toLowerCase(), gender: 'Men', birthYear: 1960, wso: WSO, seenAt: '2025-06-01' },
+      { athleteId: '30003', name: TWIN, nameKey: TWIN.toLowerCase(), gender: 'Men', birthYear: 2010, club: CLUB, seenAt: '2026-02-01' },
+    ],
+    lifter_memberships: [{ membership: '100001', athleteId: LIFTER_ID }],
+    lifter_names: [
+      { nameKey: LIFTER.toLowerCase(), athleteId: LIFTER_ID },
+      { nameKey: TWIN.toLowerCase(), athleteId: '30002' },
+      { nameKey: TWIN.toLowerCase(), athleteId: '30003' },
+    ],
     lifting_results: [
-      result(LIFTER, '2026-03-07', COMPLETED, { legacyId: 9001 }),
+      result(TWIN, '2025-06-01', 'Masters Twin Open', { age: "Men's Masters (65-69) 88kg", lifterId: '30002', lifterMatch: 'history' }),
+      result(TWIN, '2026-02-01', 'Youth Twin Open', { age: "Men's 16-17 Age Group 79kg", total: 150, snatch1: 60, snatch2: -64, snatch3: 66, snatchBest: 66, cj1: 80, cj2: 84, cj3: -88, cjBest: 84, lifterId: '30003', lifterMatch: 'history' }),
+      result(TWIN, '2024-01-01', 'Unclaimed Twin Open'),
+      result(LIFTER, '2026-03-07', COMPLETED, { legacyId: 9001, lifterId: LIFTER_ID, lifterMatch: 'history' }),
       result(SECOND_LIFTER, '2026-03-08', COMPLETED, {
         age: "Open Women's 69kg",
         bodyWeight: undefined,
@@ -184,7 +201,7 @@ function seed() {
         cjBest: 0,
         total: 0,
       }),
-      result(LIFTER, '2025-11-01', '2025 Wire Fixture Fall Open', { legacyId: 8001, snatchBest: 80, total: 182, snatch3: -84 }),
+      result(LIFTER, '2025-11-01', '2025 Wire Fixture Fall Open', { legacyId: 8001, snatchBest: 80, total: 182, snatch3: -84, lifterId: LIFTER_ID, lifterMatch: 'history' }),
       ...Array.from({ length: PROLIFIC_ROWS }, (_, i) =>
         result(PROLIFIC, `2026-${String(1 + (i % 12)).padStart(2, '0')}-${String(1 + (i % 28)).padStart(2, '0')}`, `Toomany Meet ${i}`),
       ),

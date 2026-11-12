@@ -397,6 +397,7 @@ actor MeetCalAPI {
         "results:recent",
         "results:yearBests",
         "results:bests",
+        "results:athlete",
         "results:search",
         "meets:packageForMeet",
     ]
