@@ -52,7 +52,7 @@ export type OutboxModule = typeof import('@/lib/saved-sessions-outbox');
 export const OWNER = 'user_outbox_owner';
 export const OTHER_USER = 'user_outbox_other';
 export const MEETS = ['Spring Open', 'Fall Classic'] as const;
-export type Meet = (typeof MEETS)[number];
+export type ModelMeet = (typeof MEETS)[number];
 export const SESSION_IDS: readonly string[] = MEETS.flatMap((meet) => [1, 2, 3].map((n) => `${meet}-${n}-Red`));
 const RESET_ALL_KEY = '*';
 
@@ -85,7 +85,7 @@ function subjectOf(token: string | undefined): string | null {
   }
 }
 
-export function meetOf(id: string): Meet {
+export function meetOf(id: string): ModelMeet {
   const meet = MEETS.find((candidate) => id.startsWith(`${candidate}-`));
   if (!meet) throw new Error(`no meet for ${id}`);
   return meet;
@@ -445,7 +445,7 @@ export function emptyModel(): Model {
 export type Intent =
   | { kind: 'save'; id: string; version: number; invalid?: boolean }
   | { kind: 'unsave'; id: string }
-  | { kind: 'reset'; meet: Meet | null };
+  | { kind: 'reset'; meet: ModelMeet | null };
 
 function describeIntent(intent: Intent): string {
   if (intent.kind === 'save') return `save(${intent.id}, v${intent.version}${intent.invalid ? ', invalid' : ''})`;
@@ -1005,7 +1005,7 @@ export const intentArb: fc.Arbitrary<Intent> = fc.oneof(
       .map(({ id, version }): Intent => ({ kind: 'save', id, version, invalid: true })),
   },
   { weight: 3, arbitrary: sessionIdArb.map((id): Intent => ({ kind: 'unsave', id })) },
-  { weight: 2, arbitrary: fc.constantFrom<Meet | null>(...MEETS, null).map((meet): Intent => ({ kind: 'reset', meet })) },
+  { weight: 2, arbitrary: fc.constantFrom<ModelMeet | null>(...MEETS, null).map((meet): Intent => ({ kind: 'reset', meet })) },
 );
 
 /**

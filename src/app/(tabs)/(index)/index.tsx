@@ -1,13 +1,6 @@
 import { IconSymbol } from "@/components/ui/IconSymbol";
-import { useNavigation, usePathname, useRouter } from "expo-router";
-import {
-  type ReactNode,
-  useCallback,
-  useEffect,
-  useLayoutEffect,
-  useRef,
-  useState,
-} from "react";
+import { useNavigation } from "expo-router";
+import { type ReactNode, useCallback, useEffect, useState } from "react";
 import {
   FlatList,
   Platform,
@@ -15,18 +8,15 @@ import {
   RefreshControl,
   ScrollView,
   StyleSheet,
-  useWindowDimensions,
   View,
 } from "react-native";
 
+import { CenteredHeaderDate } from "@/components/schedule/CenteredHeaderDate";
 import { DayView } from "@/components/schedule/DayView";
 import { useMeetZone } from "@/hooks/useMeetZone";
 import { meetTimeZoneLabel } from "@/utils/timezone";
 import { MeetSelectionModal } from "@/components/schedule/MeetSelectionModal";
-import {
-  checkOnboardingComplete,
-  OnboardingView,
-} from "@/components/schedule/OnboardingView";
+import { OnboardingView } from "@/components/schedule/OnboardingView";
 import { PageIndicator } from "@/components/schedule/PageIndicator";
 import { ScheduleSkeleton } from "@/components/schedule/ScheduleSkeleton";
 import { VersionAnnouncement } from "@/components/schedule/VersionAnnouncement";
@@ -39,46 +29,23 @@ import { useSavedSessions } from "@/contexts/SavedSessionsContext";
 import { useSelectedMeet } from "@/contexts/SelectedMeetContext";
 import { useAppColors } from "@/hooks/useAppColors";
 import { useIsOffline } from "@/hooks/useIsOffline";
+import { useOnboardingStatus } from "@/hooks/useOnboardingStatus";
 import { usePaginatedSchedule } from "@/hooks/usePaginatedSchedule";
 import { useScheduleData } from "@/hooks/useScheduleData";
+import { useScheduleHeaderButtons } from "@/hooks/useScheduleHeaderButtons";
+import { useInitialScheduleScroll, useMeetStartDateTitle } from "@/hooks/useScheduleOpeningView";
 import { useStartupScreenReport } from "@/hooks/useStartupScreenReport";
 import { useUpcomingMeets } from "@/hooks/useUpcomingMeets";
 import { initStore } from "@/lib/database/offline-store-index";
-import { isMaestroE2E } from "@/lib/e2e";
 import { loadFailureCopy } from "@/lib/load-failure";
 import { noMeetState } from "@/lib/schedule-empty-state";
 import { DaySchedule } from "@/types/schedule";
-import {
-  formatDayTitle,
-  formatIsoDateTitle,
-} from "@/utils/dateTime";
-import { useAuthGuard } from "@/utils/authGuard";
+import { formatDayTitle } from "@/utils/dateTime";
 import { useScreenHorizontalInsets } from "@/hooks/useScreenInsets";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Palette } from "@/constants/Palette";
 
 const IPHONE_DUO_HORIZONTAL_INSET = 84;
-
-/**
- * iOS 27.1 leading-aligns the native nav title on iPhone Duo's reorganised bar,
- * and `headerTitleAlign` is ignored by the iOS native stack. Rendering the date
- * as a custom title view puts it back in the centre, as on every other iPhone.
- * The explicit width keeps it inside the safe area rather than under the band.
- */
-function HeaderDate({ children }: { children: string }) {
-  const colors = useAppColors();
-  const insets = useSafeAreaInsets();
-  const { width } = useWindowDimensions();
-  return (
-    <View
-      style={[styles.headerDate, { width: width - insets.left - insets.right }]}
-    >
-      <ThemedText style={[styles.headerDateText, { color: colors.text }]}>
-        {children}
-      </ThemedText>
-    </View>
-  );
-}
 
 export default function ScheduleScreen() {
   const screenInsets = useScreenHorizontalInsets();
@@ -96,25 +63,13 @@ export default function ScheduleScreen() {
     availableMeets,
     refreshAvailableMeets,
   } = useSelectedMeet();
-  // The guard, not Clerk's `isLoaded`: offline, Clerk never loads, and the
-  // profile button returned early, so even a signed-in user with a valid
-  // cached sign-in could not reach reminders, widget settings or Clear Cache.
-  const { isAuthenticated, authState, notifyAuthPending } = useAuthGuard();
-  const router = useRouter();
-  const pathname = usePathname();
   const colors = useAppColors();
   const [isOffline] = useIsOffline();
-  // "What's New" waits for this to be "done", so a fresh install never gets
-  // it stacked on top of onboarding.
-  const [onboardingStatus, setOnboardingStatus] = useState<
-    "checking" | "showing" | "done"
-  >("checking");
+  const { onboardingStatus, completeOnboarding } = useOnboardingStatus();
   const [showFilterModal, setShowFilterModal] = useState(false);
   const [isRefreshingMeets, setIsRefreshingMeets] = useState(false);
   const [isChangingMeet, setIsChangingMeet] = useState(false);
-  const lastAppliedInitialIndexRef = useRef<string>("");
 
-  // Use custom hooks
   const {
     schedule,
     isLoading,
@@ -126,7 +81,6 @@ export default function ScheduleScreen() {
   } = useScheduleData(selectedMeet, meetDetails?.time.timeZoneIdentifier);
   const scheduleFailure = loadError ? loadFailureCopy("schedule", isOffline) : null;
 
-  // Tells the startup timing (and the splash) what this launch's first screen was.
   const onScheduleLayout = useStartupScreenReport(
     {
       onboardingShowing: onboardingStatus === "showing",
@@ -149,7 +103,7 @@ export default function ScheduleScreen() {
       navigation.setOptions({
         title,
         headerTitle: shouldUseCustomHeader
-          ? () => <HeaderDate>{title}</HeaderDate>
+          ? () => <CenteredHeaderDate>{title}</CenteredHeaderDate>
           : undefined,
       });
     },
@@ -171,173 +125,29 @@ export default function ScheduleScreen() {
     formatDayTitle,
   });
 
-  // Each day's times are labelled with the zone at that day
-  // (`meetTimeZoneLabel`): a meet that spans a DST change reads "EDT" on
-  // Saturday and "EST" on Sunday. Formatting *today* instead labelled a
-  // December New York meet opened in September "EDT". No label while the
-  // meet's details load; the old "America/New_York" default mislabelled them.
   const meetZone = useMeetZone(meetDetails?.time);
 
-  // Header configuration
-  useLayoutEffect(() => {
-    const openOfflineData = () => router.push("/schedule-toolbar/offline-data");
-    const openProfile = () => {
-      if (authState === null) {
-        notifyAuthPending();
-        return;
-      }
-      if (authState) {
-        router.push("/schedule-toolbar/profile");
-      } else {
-        router.push({
-          pathname: "/(auth)/sign-in",
-          // A real route, not a label: sign-in hands this straight to
-          // `router.replace`, and the profile screen is where the tap was
-          // headed.
-          params: { from: "/schedule-toolbar/profile", feature: "profile" },
-        });
-      }
-    };
-
-    // Native UIBarButtonItems on iOS. Custom React views stay pinned to the
-    // horizontal bar, so only native items get relocated into iPhone Duo's
-    // vertical bar alongside the tab rail the way system apps do.
-    if (Platform.OS === "ios") {
-      navigation.setOptions({
-        unstable_headerLeftItems: () => [
-          {
-            type: "button",
-            label: "Offline data",
-            icon: { type: "sfSymbol", name: "square.and.arrow.down" },
-            onPress: openOfflineData,
-          },
-        ],
-        unstable_headerRightItems: () => [
-          {
-            type: "button",
-            label: isAuthenticated ? "My profile and settings" : "Sign in",
-            icon: { type: "sfSymbol", name: "person.circle.fill" },
-            onPress: openProfile,
-          },
-        ],
-      });
-      return;
-    }
-
-    navigation.setOptions({
-      headerRight: () => (
-        <View style={styles.headerActions}>
-          <Pressable
-            style={styles.headerIconButton}
-            onPress={openOfflineData}
-            accessibilityRole="button"
-            accessibilityLabel="Offline data"
-          >
-            <IconSymbol name="square.and.arrow.down" size={24} color={colors.text} />
-          </Pressable>
-          <Pressable
-            style={[styles.headerIconButton, { paddingTop: 8 }]}
-            onPress={openProfile}
-            accessibilityRole="button"
-            accessibilityLabel={
-              isAuthenticated ? "My profile and settings" : "Sign in"
-            }
-          >
-            <IconSymbol
-              name="person-circle-sharp"
-              size={24}
-              color={colors.text}
-            />
-          </Pressable>
-        </View>
-      ),
-    });
-  }, [
-    authState,
-    colors.text,
-    isAuthenticated,
-    navigation,
-    notifyAuthPending,
-    pathname,
-    router,
-  ]);
+  useScheduleHeaderButtons();
 
   useEffect(() => {
     void initStore();
   }, []);
 
-  // Check onboarding status on mount
-  useEffect(() => {
-    if (isMaestroE2E()) {
-      setOnboardingStatus("done");
-      return;
-    }
-
-    let aborted = false;
-
-    const checkOnboarding = async () => {
-      try {
-        const completed = await checkOnboardingComplete();
-        if (!aborted) setOnboardingStatus(completed ? "done" : "showing");
-      } catch (error) {
-        if (!aborted) {
-          console.error("Error checking onboarding status:", error);
-          setOnboardingStatus("done");
-        }
-      }
-    };
-
-    void checkOnboarding();
-
-    return () => {
-      aborted = true;
-    };
-  }, []);
-
-  // Scroll to initial position after data is loaded
-  useEffect(() => {
-    if (!isLoading && schedule.length > 0 && initialScrollIndex > 0) {
-      const applyKey = `${selectedMeet ?? "none"}:${schedule.length}:${initialScrollIndex}`;
-      if (lastAppliedInitialIndexRef.current === applyKey) return;
-      lastAppliedInitialIndexRef.current = applyKey;
-      // Use a small delay to ensure the FlatList is fully rendered
-      const timer = setTimeout(() => {
-        flatListRef.current?.scrollToIndex({
-          index: initialScrollIndex,
-          animated: false,
-        });
-      }, 100);
-
-      return () => clearTimeout(timer);
-    }
-  }, [
+  useInitialScheduleScroll({
     isLoading,
-    schedule.length,
+    scheduleLength: schedule.length,
     initialScrollIndex,
     selectedMeet,
     flatListRef,
-  ]);
+  });
 
-  // Set title to start date when there's no schedule loaded
-  useEffect(() => {
-    if (!isLoading && schedule.length === 0 && meetDetails?.dates?.start) {
-      // The meet start date is a calendar date in the meet's timezone. Format
-      // it through the shared UTC-safe helper; `new Date("2026-06-20")` is UTC
-      // midnight and renders as Jun 19 on any US device.
-      // Through the day list's setter, so it knows the header no longer
-      // shows its day: switching back to a meet with a schedule then sets
-      // that meet's day again instead of keeping this date.
-      const formattedDate = formatIsoDateTitle(meetDetails.dates.start);
-      if (formattedDate) setHeaderTitle(formattedDate);
-    }
-  }, [
+  useMeetStartDateTitle({
     isLoading,
-    schedule.length,
+    scheduleLength: schedule.length,
     meetDetails,
     setHeaderTitle,
-  ]);
+  });
 
-  // Handle refreshing available meets in modal
   const handleRefreshMeets = useCallback(async () => {
     setIsRefreshingMeets(true);
     try {
@@ -353,7 +163,6 @@ export default function ScheduleScreen() {
     }
   }, [refreshAvailableMeets]);
 
-  // Handle meet selection
   const handleSelectMeet = useCallback(
     async (meetName: string) => {
       setShowFilterModal(false);
@@ -371,7 +180,6 @@ export default function ScheduleScreen() {
     [selectedMeet, setSelectedMeet],
   );
 
-  // Render day view
   const renderDayView = useCallback(
     ({ item }: { item: DaySchedule }) => (
       <View style={[styles.pageContainer, { width: pageWidth }]}>
@@ -387,14 +195,10 @@ export default function ScheduleScreen() {
     [pageWidth, meetZone, refreshSchedule, isRefreshing, selectedMeet],
   );
 
-  // The tour is a modal that keeps its page in local state. It sits first in
-  // the same fragment on every branch below, skeletons included, so a meet
-  // list or schedule arriving mid-tour (a reconnect) cannot unmount it and
-  // send the user back to page 1.
   const onboarding = (
     <OnboardingView
       visible={onboardingStatus === "showing"}
-      onComplete={() => setOnboardingStatus("done")}
+      onComplete={completeOnboarding}
     />
   );
   const withOnboarding = (content: ReactNode) => (
@@ -650,21 +454,5 @@ const styles = StyleSheet.create({
   contentContainer: {
     flex: 1,
     position: "relative",
-  },
-  headerDate: {
-    alignItems: "center",
-  },
-  headerDateText: {
-    fontSize: 17,
-    fontWeight: "600",
-  },
-  headerActions: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-  },
-  headerIconButton: {
-    paddingVertical: 6,
-    paddingHorizontal: 8,
   },
 });

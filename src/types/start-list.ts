@@ -1,6 +1,5 @@
 import { LiftResult } from "@/data/types/athletes";
 import { useRouter } from "expo-router";
-import { Animated } from "react-native";
 
 export type ShareBackgroundPresetId =
   | "white"
@@ -56,6 +55,3 @@ export interface AthleteItemProps {
     index?: number;
 }
 
-export interface StartListSkeletonProps {
-    skeletonPulse: Animated.Value;
-  }

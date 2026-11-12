@@ -4,14 +4,9 @@ import {
   isLiquidGlassAvailable,
 } from "expo-glass-effect";
 import React from "react";
-import { View, type ViewProps } from "react-native";
+import { View } from "react-native";
 
-export interface MaterialSurfaceProps extends ViewProps {
-  /** Solid color rendered when Liquid Glass is unavailable. */
-  fallbackColor: string;
-  /** Android blur intensity. Ignored on iOS. */
-  intensity?: number;
-}
+import type { MaterialSurfaceProps } from "./MaterialSurface.types";
 
 /**
  * iOS frosted material surface backed by expo-glass-effect's Liquid Glass.
