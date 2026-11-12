@@ -1,4 +1,4 @@
-use super::format::format_us_date;
+use super::format::{NO_VALUE, format_us_date};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
@@ -110,8 +110,6 @@ pub(crate) struct AthleteSearchResponse {
     /// Without an exact name match these are every matching athlete's rows,
     /// so each carries its athlete's name.
     pub results: Vec<LiftingResult>,
-    /// More results matched than the answer holds (it keeps the most recent).
-    #[serde(default)]
     pub truncated: bool,
 }
 
@@ -199,7 +197,7 @@ pub(crate) fn distinct_athletes(rows: &[LiftingResult]) -> BTreeMap<String, Stri
 
 pub(crate) fn attempt(value: f64) -> String {
     if value == 0.0 {
-        "—".to_owned()
+        NO_VALUE.to_owned()
     } else if value < 0.0 {
         format!("{}×", -value)
     } else {

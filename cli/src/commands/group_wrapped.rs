@@ -10,7 +10,7 @@ use crate::commands::compare::{
 };
 use crate::types::lifting_results::LiftingResults;
 use crate::types::wrapped::WrappedStats;
-use crate::utils::backend::{queries, query, query_all_pages};
+use crate::utils::backend::{queries, query_all_pages, query_each};
 use crate::utils::meet_names::equivalent_meets;
 use crate::utils::output::Report;
 use crate::utils::stats::{Lift, fold, number, valid_lift, valid_total};
@@ -50,13 +50,12 @@ pub async fn get_recent_results(
     names: &[String],
     cutoff_date: &str,
 ) -> Result<Vec<LiftingResults>> {
-    let mut results = Vec::new();
-    for batch in names.chunks(RESULTS_REQUEST_BATCH_SIZE) {
-        let args = json!({ "names": batch, "cutoffDate": cutoff_date });
-        let mut rows: Vec<LiftingResults> = query(queries::RECENT_RESULTS, &args).await?;
-        results.append(&mut rows);
-    }
-    Ok(results)
+    let batches = names
+        .chunks(RESULTS_REQUEST_BATCH_SIZE)
+        .map(|batch| json!({ "names": batch, "cutoffDate": cutoff_date }))
+        .collect();
+    let answers: Vec<Vec<LiftingResults>> = query_each(queries::RECENT_RESULTS, batches).await?;
+    Ok(answers.into_iter().flatten().collect())
 }
 
 pub async fn get_club_results_since(
@@ -336,7 +335,8 @@ fn percentage(successes: usize, attempts: usize) -> f64 {
     }
 }
 
-pub fn render_group_wrapped(
+#[cfg(test)]
+fn render_group_wrapped(
     group_kind: &str,
     group_name: &str,
     year: i32,
@@ -410,25 +410,6 @@ pub fn group_comparisons(
         &current.wrapped,
     ));
     metrics
-}
-
-pub fn render_group_comparison(
-    group_kind: &str,
-    group_name: &str,
-    previous_year: i32,
-    current_year: i32,
-    previous: &GroupWrappedStats,
-    current: &GroupWrappedStats,
-) -> String {
-    group_comparison_report(
-        group_kind,
-        group_name,
-        previous_year,
-        current_year,
-        previous,
-        current,
-    )
-    .to_text()
 }
 
 pub fn group_comparison_report(

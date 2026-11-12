@@ -95,7 +95,8 @@ pub fn validate_stats(stats: &ClubMeetStats, club: &str, meet: &str) -> Result<(
     Ok(())
 }
 
-pub fn render_report(club: &str, meet: &str, stats: &ClubMeetStats) -> String {
+#[cfg(test)]
+fn render_report(club: &str, meet: &str, stats: &ClubMeetStats) -> String {
     report(club, meet, stats).to_text()
 }
 

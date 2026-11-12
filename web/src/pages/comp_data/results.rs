@@ -1,6 +1,7 @@
 use super::{
+    address::{HistoryEntry, address, query_param, use_page_address},
     athlete_autocomplete::AthleteAutocomplete,
-    filters::{SortDirection, sort_numeric, sort_text},
+    filters::{SortDirection, sort_numeric, sort_orders, sort_text},
     format::{display_body_weight, format_us_date, yes_no},
     loading::{Load, LoadState, load_error},
     models::{
@@ -13,7 +14,6 @@ use crate::utils::api::{queries, query_with};
 use js_sys::Date;
 use leptos::prelude::*;
 use leptos_router::components::A;
-use leptos_router::hooks::{use_navigate, use_query_map};
 
 /// The last twenty years, through today: `results:search` includes both ends of the range.
 fn search_date_range() -> (String, String) {
@@ -34,19 +34,15 @@ fn format_date(date: &Date) -> String {
     )
 }
 
-const SORT_OPTIONS: &[(&str, &str)] = &[
-    ("date_desc", "Date: newest first"),
-    ("date_asc", "Date: oldest first"),
-    ("total_desc", "Total: high to low"),
-    ("total_asc", "Total: low to high"),
-];
+sort_orders!(ResultSort {
+    DateDesc => ("date_desc", "Date: newest first"),
+    DateAsc => ("date_asc", "Date: oldest first"),
+    TotalDesc => ("total_desc", "Total: high to low"),
+    TotalAsc => ("total_asc", "Total: low to high"),
+});
 
-/// The Results page's link for one athlete's search.
 pub(crate) fn results_url(athlete: &str) -> String {
-    format!(
-        "/results?athlete={}",
-        js_sys::encode_uri_component(athlete.trim())
-    )
+    address("/results", &[("athlete", athlete)])
 }
 
 /// What one Results search answered, ready to show.
@@ -156,16 +152,7 @@ fn results_answer(query: &str, response: AthleteSearchResponse) -> ResultsAnswer
 
 #[component]
 pub fn Results() -> impl IntoView {
-    // The URL is the search: the header's Results link, back and forward,
-    // reloading and sharing all show the athlete the address names.
-    let query_map = use_query_map();
-    let athlete = Memo::new(move |_| {
-        query_map
-            .with(|params| params.get("athlete"))
-            .unwrap_or_default()
-            .trim()
-            .to_owned()
-    });
+    let athlete = query_param("athlete");
     let request = Memo::new(move |_| {
         let athlete = athlete.get();
         (!athlete.is_empty()).then(|| {
@@ -180,7 +167,7 @@ pub fn Results() -> impl IntoView {
             set_name.set(athlete);
         }
     });
-    let (sort, set_sort) = signal("date_desc".to_string());
+    let (sort, set_sort) = signal(ResultSort::DateDesc);
 
     let results = Load::new(
         move || request.get(),
@@ -247,7 +234,7 @@ fn ResultsSearchForm(
     current: Memo<String>,
     search_again: Callback<()>,
 ) -> impl IntoView {
-    let navigate = use_navigate();
+    let page = use_page_address("/results");
     view! {
         <form class="result-search" on:submit=move |event| {
             event.prevent_default();
@@ -258,7 +245,7 @@ fn ResultsSearchForm(
             if athlete.trim() == current.get_untracked() {
                 search_again.run(());
             } else {
-                navigate(&results_url(&athlete), Default::default());
+                page.show(&[("athlete", &athlete)], HistoryEntry::Push);
             }
         }>
             <AthleteAutocomplete value=name set_value=set_name input_id="results-athlete" />
@@ -291,8 +278,8 @@ fn ResultsTable(
     rows: Vec<LiftingResult>,
     truncated: bool,
     suggestions: Vec<String>,
-    sort: ReadSignal<String>,
-    set_sort: WriteSignal<String>,
+    sort: ReadSignal<ResultSort>,
+    set_sort: WriteSignal<ResultSort>,
 ) -> impl IntoView {
     let truncated = truncated.then(|| {
         view! {
@@ -308,17 +295,17 @@ fn ResultsTable(
         <Suggestions names=suggestions />
         {truncated}
         <div class="data-filters">
-            <SortSelect options=SORT_OPTIONS sort set_sort />
+            <SortSelect sort set_sort />
         </div>
         <DataTable>
             <thead><tr><th>"Date"</th><th>"Meet"</th><th>"Division"</th><th>"Bodyweight"</th><th>"S1"</th><th>"S2"</th><th>"S3"</th><th>"Best snatch"</th><th>"C&J 1"</th><th>"C&J 2"</th><th>"C&J 3"</th><th>"Best C&J"</th><th>"Total"</th><th>"Adaptive"</th></tr></thead>
             <tbody>{move || results.with_value(|results| {
                 let mut rows = results.iter().collect::<Vec<_>>();
-                match sort.get().as_str() {
-                    "date_asc" => sort_text(&mut rows, |row| &row.date, SortDirection::Ascending),
-                    "total_desc" => sort_numeric(&mut rows, |row| row.total, SortDirection::Descending),
-                    "total_asc" => sort_numeric(&mut rows, |row| row.total, SortDirection::Ascending),
-                    _ => sort_text(&mut rows, |row| &row.date, SortDirection::Descending),
+                match sort.get() {
+                    ResultSort::DateAsc => sort_text(&mut rows, |row| &row.date, SortDirection::Ascending),
+                    ResultSort::TotalDesc => sort_numeric(&mut rows, |row| row.total, SortDirection::Descending),
+                    ResultSort::TotalAsc => sort_numeric(&mut rows, |row| row.total, SortDirection::Ascending),
+                    ResultSort::DateDesc => sort_text(&mut rows, |row| &row.date, SortDirection::Descending),
                 }
                 rows.into_iter().map(|row| view! { <tr><td>{format_us_date(&row.date)}</td><td>{row.meet.clone()}</td><td>{row.age.clone()}</td><td>{display_body_weight(row.body_weight)}</td><td>{attempt(row.snatch1)}</td><td>{attempt(row.snatch2)}</td><td>{attempt(row.snatch3)}</td><td>{row.snatch_best}</td><td>{attempt(row.cj1)}</td><td>{attempt(row.cj2)}</td><td>{attempt(row.cj3)}</td><td>{row.cj_best}</td><td>{row.total}</td><td>{yes_no(row.adaptive)}</td></tr> }).collect_view()
             })}</tbody>
@@ -331,9 +318,21 @@ mod tests {
     use super::*;
 
     #[test]
+    fn an_athletes_results_link_is_built_like_every_other_page_address() {
+        assert_eq!(
+            results_url("  O'Neil & José "),
+            address("/results", &[("athlete", "O'Neil & José")])
+        );
+        assert_eq!(
+            results_url("O'Neil & José"),
+            "/results?athlete=O%27Neil%20%26%20Jos%C3%A9"
+        );
+    }
+
+    #[test]
     fn search_response_deserializes_results_and_suggestions() {
         let response: AthleteSearchResponse = serde_json::from_str(
-            r#"{"matched_name":"Test Athlete","suggestions":["Test Athlete Jr"],"results":[{"name":"Test Athlete","meet":"Nationals","date":"2026-06-20","age":"Senior","body_weight":70.5,"snatch1":95.0,"snatch2":100.0,"snatch3":-103.0,"snatch_best":100.0,"cj1":120.0,"cj2":125.0,"cj3":0.0,"cj_best":125.0,"total":225.0,"adaptive":false}]}"#,
+            r#"{"matched_name":"Test Athlete","suggestions":["Test Athlete Jr"],"results":[{"name":"Test Athlete","meet":"Nationals","date":"2026-06-20","age":"Senior","body_weight":70.5,"snatch1":95.0,"snatch2":100.0,"snatch3":-103.0,"snatch_best":100.0,"cj1":120.0,"cj2":125.0,"cj3":0.0,"cj_best":125.0,"total":225.0,"adaptive":false}],"truncated":false}"#,
         )
         .unwrap();
 
@@ -341,8 +340,14 @@ mod tests {
         assert_eq!(response.suggestions, ["Test Athlete Jr"]);
         assert_eq!(response.results[0].total, 225.0);
         assert_eq!(response.results[0].snatch3, -103.0);
-        // Deployments before `truncated` answered without it.
         assert!(!response.truncated);
+    }
+
+    #[test]
+    fn a_search_answer_that_does_not_say_whether_it_was_cut_is_unreadable() {
+        let answer_without_truncated =
+            r#"{"matched_name":null,"suggestions":["Ann Smith"],"results":[]}"#;
+        assert!(serde_json::from_str::<AthleteSearchResponse>(answer_without_truncated).is_err());
     }
 
     #[test]
@@ -468,5 +473,10 @@ mod tests {
         let message = empty_message(&query, cut);
         assert!(message.contains("Type more of the name"), "{message}");
         assert!(!message.starts_with("No results found"), "{message}");
+    }
+
+    #[test]
+    fn every_sort_order_in_the_menu_is_one_the_table_sorts_by() {
+        crate::pages::comp_data::filters::assert_each_sort_order_parses_to_itself::<ResultSort>();
     }
 }
