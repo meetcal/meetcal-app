@@ -136,7 +136,6 @@ class Sport80 {
   }
 }
 
-/** The share of the run's time budget (`lib/budget.ts`) reading events' tables may take. */
 const READ_SHARE = 0.5;
 
 /** Rows per ingest call: each writes its rows and rewrites their athletes' history documents. */
@@ -169,7 +168,7 @@ export const run = internalAction({
   args: { dryRun: v.optional(v.boolean()), only: v.optional(v.array(v.string())), allowShrink: v.optional(v.boolean()) },
   handler: async (ctx, { dryRun, only, allowShrink }): Promise<RunResult> => {
     const budget = runBudget();
-    const api = await Sport80.connect();
+    const api = await budget.orStop(Sport80.connect());
     const year = new Date().getUTCFullYear();
     // Everything that could not be read or stored, by a source name that
     // stays the same from run to run. The rest is still stored, then the run
@@ -179,7 +178,7 @@ export const run = internalAction({
     const events: Dict[] = [];
     for (const y of [year, year - 1]) {
       try {
-        events.push(...(await api.eventIndex(y)));
+        events.push(...(await budget.orStop(api.eventIndex(y))));
       } catch (error) {
         failures.push({ source: `event index ${y}`, error: (error as Error).message });
       }
@@ -221,14 +220,13 @@ export const run = internalAction({
       if (!eventId || !meet || seen.has(eventId)) continue;
       seen.add(eventId);
       if (!hasResultsRoute(event) || (only && !only.includes(eventId))) continue;
-      // Reading may take half the budget; storing what was read needs the rest.
       if (budget.spent(READ_SHARE)) {
         failures.push({ source: `${meet} (event ${eventId})`, error: NOT_REACHED });
         continue;
       }
       let table: { rows: Dict[]; notWhole?: string };
       try {
-        table = await api.eventResults(eventId);
+        table = await budget.orStop(api.eventResults(eventId));
       } catch (error) {
         failures.push({ source: `${meet} (event ${eventId})`, error: `${eventDate(event)}: ${(error as Error).message}` });
         continue;
@@ -265,6 +263,7 @@ export const run = internalAction({
       }
       try {
       for (let i = 0; i < valid.length; i += INGEST_BATCH) {
+        budget.writeOnlyBeforeTheHardStop();
         const counts: { inserted: number; updated: number; unchanged: number } = await ctx.runMutation(
           internal.ingest.upsertLiftingResults,
           {
@@ -295,7 +294,6 @@ export const run = internalAction({
         outcome.unchanged += counts.unchanged;
       }
       } catch (error) {
-        // One meet's write failing leaves the other meets to be stored.
         failures.push({ source, error: `not stored: ${(error as Error).message}` });
         continue;
       }
@@ -307,13 +305,9 @@ export const run = internalAction({
       }
       try {
         const keep = valid.map((row) => ({ meet: row.meet, name: row.name!, age: row.age, date: row.date }));
-        // A batch a call; the rest of a huge prune waits for the next run.
         for (let call = 0; call < MAX_PRUNE_CALLS; call++) {
-          const pruned: { deleted: number; remaining: number } = await ctx.runMutation(internal.ingest.pruneEventResults, {
-            eventId,
-            keep,
-            allowShrink: allowShrink ?? false,
-          });
+          budget.writeOnlyBeforeTheHardStop();
+          const pruned: { deleted: number; remaining: number } = await ctx.runMutation(internal.ingest.pruneEventResults, { eventId, keep, allowShrink: allowShrink ?? false });
           outcome.deleted += pruned.deleted;
           if (pruned.remaining === 0 || pruned.deleted === 0) break;
         }
