@@ -102,7 +102,7 @@ function AthleteResultsContent() {
         options={{
           ...stackHeaderOptions(colors),
           ...SLIDE_IN_FROM_RIGHT,
-          headerTitle: details?.lifter?.name || choice?.name || request.name,
+          headerTitle: details?.lifter?.name || request.name,
         }}
       />
 
