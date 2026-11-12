@@ -63,7 +63,7 @@ Run from this folder.
 
 List what you ran in the PR's test plan, and anything you could not run and why. Unit tests use answer shapes written by hand, and CI never calls a deployment, so this local run is the only check that a command still works against live data.
 
-CI (`.github/workflows/cli.yml` at the root) runs `cargo fmt --check`, `clippy -D warnings`, `cargo test --locked` and `cargo audit` (also weekly, since advisories arrive without a change here), and builds the release binary to check it against `scripts/check-size.sh`'s budgets (`cargo build --release` then `scripts/check-size.sh target/release/meetcal` runs the same check locally). The release workflow runs the tests and the audit again before it builds, and the size check on the Linux x64 archive before it uploads.
+CI (`.github/workflows/cli.yml` at the root) runs `cargo fmt --check`, `clippy -D warnings`, `cargo test --locked` and `cargo audit` (also weekly, since advisories arrive without a change here), and the CLI Size workflow (`.github/workflows/cli-size.yml`, on changes to `cli/`) builds the release binary to check it against `scripts/check-size.sh`'s budgets (`cargo build --release` then `scripts/check-size.sh target/release/meetcal` runs the same check locally). The release workflow runs the tests and the audit again before it builds, and the size check on the Linux x64 archive before it uploads.
 
 ## Code Quality
 
