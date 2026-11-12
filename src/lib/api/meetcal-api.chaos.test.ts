@@ -12,6 +12,7 @@ import { resetServerClockForTests } from '@/lib/api/server-clock';
 import type { TransportFault } from './chaos-transport';
 import { isClockCall, jsonTransportStub } from './json-transport-stub';
 import { CONVEX_TRANSIENT_MESSAGE, setApiTransportForTests, type ApiCall, type Transport } from './transport';
+import { REQUEST_INACTIVITY_TIMEOUT_MS } from './network-policy';
 import { hostileStringArb } from '@/test-support/arbitraries';
 import {
   faultPlanArb,
@@ -29,8 +30,6 @@ import { itemAt } from '@/test-support/checked-access';
  * follows from the fault the deciding call got.
  */
 
-/** The client's per-call default (`DEFAULT_TIMEOUT_MS` in meetcal-api.ts). */
-const DEFAULT_TIMEOUT_MS = 10000;
 
 const MEET_ROW = {
   name: 'Meet',
@@ -101,18 +100,18 @@ const isArrayOf = (value: unknown, row: (item: unknown) => boolean) => Array.isA
 const isMeet = (value: unknown) => isObject(value) && typeof value.name === 'string' && isObject(value.time);
 
 const FETCHERS: Fetcher[] = [
-  { name: 'fetchApiMeets', run: () => fetchApiMeets(), timeoutMs: DEFAULT_TIMEOUT_MS, valid: (v) => isArrayOf(v, isMeet) },
+  { name: 'fetchApiMeets', run: () => fetchApiMeets(), timeoutMs: REQUEST_INACTIVITY_TIMEOUT_MS, valid: (v) => isArrayOf(v, isMeet) },
   {
     name: 'fetchApiMeetByName',
     run: () => fetchApiMeetByName('Meet'),
-    timeoutMs: DEFAULT_TIMEOUT_MS,
+    timeoutMs: REQUEST_INACTIVITY_TIMEOUT_MS,
     valid: (v) => v === null || isMeet(v),
     notFoundIsNull: true,
   },
   {
     name: 'fetchApiAthletes',
     run: () => fetchApiAthletes('Meet'),
-    timeoutMs: DEFAULT_TIMEOUT_MS,
+    timeoutMs: REQUEST_INACTIVITY_TIMEOUT_MS,
     valid: (v) => isArrayOf(v, (row) => isObject(row) && typeof row.name === 'string'),
   },
   {
@@ -124,7 +123,7 @@ const FETCHERS: Fetcher[] = [
   {
     name: 'fetchApiYearBestsByNames',
     run: () => fetchApiYearBestsByNames(['Athlete A']),
-    timeoutMs: DEFAULT_TIMEOUT_MS,
+    timeoutMs: REQUEST_INACTIVITY_TIMEOUT_MS,
     valid: (v) =>
       isObject(v) &&
       Object.values(v).every((bests) => isObject(bests) && Object.values(bests).every(Number.isFinite)),
@@ -132,19 +131,19 @@ const FETCHERS: Fetcher[] = [
   {
     name: 'fetchApiClubMeets',
     run: () => fetchApiClubMeets('Club'),
-    timeoutMs: DEFAULT_TIMEOUT_MS,
+    timeoutMs: REQUEST_INACTIVITY_TIMEOUT_MS,
     valid: (v) => isArrayOf(v, (row) => isObject(row) && typeof row.meet === 'string' && row.meet.length > 0),
   },
   {
     name: 'fetchSavedSessions',
     run: () => fetchSavedSessions('token'),
-    timeoutMs: DEFAULT_TIMEOUT_MS,
+    timeoutMs: REQUEST_INACTIVITY_TIMEOUT_MS,
     valid: (v) => isArrayOf(v, (row) => isObject(row) && typeof row.session_id === 'string'),
   },
   {
     name: 'deleteSavedSession',
     run: () => deleteSavedSession('token', 's1'),
-    timeoutMs: DEFAULT_TIMEOUT_MS,
+    timeoutMs: REQUEST_INACTIVITY_TIMEOUT_MS,
     valid: (v) => isObject(v) && typeof v.deleted === 'boolean',
   },
 ];
@@ -296,7 +295,7 @@ describe('request() timeouts under hanging and slow transports (chaos)', () => {
     await fc.assert(
       fc.asyncProperty(
         fetcherArb,
-        fc.oneof(fc.integer({ min: 0, max: 20_000 }), fc.constantFrom(DEFAULT_TIMEOUT_MS - 1, DEFAULT_TIMEOUT_MS, MEET_PACKAGE_TIMEOUT_MS)),
+        fc.oneof(fc.integer({ min: 0, max: 20_000 }), fc.constantFrom(REQUEST_INACTIVITY_TIMEOUT_MS - 1, REQUEST_INACTIVITY_TIMEOUT_MS, MEET_PACKAGE_TIMEOUT_MS)),
         async (fetcher, ms) => {
           jest.useFakeTimers();
           resetServerClockForTests();
