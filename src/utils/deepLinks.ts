@@ -1,3 +1,4 @@
+import { isRecord } from "@/lib/is-record";
 import type { Href } from "expo-router";
 import { Linking } from "react-native";
 
@@ -89,18 +90,14 @@ export function getNotificationDeepLink(data: NotificationData) {
 }
 
 export function getOneSignalDeepLink(event: unknown) {
-  const payload = event as {
-    result?: { url?: unknown };
-    notification?: {
-      launchURL?: unknown;
-      additionalData?: NotificationData;
-    };
-  } | null | undefined;
+  const payload = isRecord(event) ? event : {};
+  const result = isRecord(payload.result) ? payload.result : {};
+  const notification = isRecord(payload.notification) ? payload.notification : {};
 
   const values = [
-    payload?.result?.url,
-    getNotificationDeepLink(payload?.notification?.additionalData),
-    payload?.notification?.launchURL,
+    result.url,
+    getNotificationDeepLink(isRecord(notification.additionalData) ? notification.additionalData : null),
+    notification.launchURL,
   ];
 
   const value = values.find(

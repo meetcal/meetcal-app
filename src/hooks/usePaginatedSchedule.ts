@@ -75,6 +75,10 @@ export function usePaginatedSchedule({
     itemVisiblePercentThreshold: 50,
   }).current;
 
+  const scheduleRef = useRef(schedule);
+  useEffect(() => {
+    scheduleRef.current = schedule;
+  }, [schedule]);
   const onViewableItemsChanged = useCallback(
     ({
       viewableItems,
@@ -90,8 +94,8 @@ export function usePaginatedSchedule({
         if (typeof first.index === "number" && first.index >= 0 && first.index <= lastPage) {
           setCurrentPage(first.index);
         }
-        const currentItem = first.item as DaySchedule;
-        setHeaderTitle(formatDayTitle(currentItem));
+        const currentItem = typeof first.index === "number" ? scheduleRef.current[first.index] : undefined;
+        if (currentItem) setHeaderTitle(formatDayTitle(currentItem));
       }
     },
     [formatDayTitle, setHeaderTitle, lastPage],

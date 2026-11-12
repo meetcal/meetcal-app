@@ -53,10 +53,10 @@ export type MutableResource<T, TParams extends readonly unknown[]> = {
     /** False when the answer changed and could not be stored. */
     stored?: boolean;
   }>;
-  revalidateWithCached: (
-    cached: ResourceCacheEntry<unknown> | null,
+  revalidateWithCached(
+    cached: ResourceCacheEntry<T> | null,
     ...params: TParams
-  ) => Promise<{
+  ): Promise<{
     data: T;
     changed: boolean;
     lastUpdatedAt: number | null;
@@ -77,8 +77,6 @@ export type MutableResource<T, TParams extends readonly unknown[]> = {
    */
   isEqual(left: T, right: T): boolean;
 };
-
-const inFlightRequests = new Map<string, Promise<unknown>>();
 
 /**
  * Upper bound of the random delay a reconnect-triggered refetch waits before
@@ -117,10 +115,19 @@ export function defaultIsEqual<T>(left: T, right: T): boolean {
   return stableSerialize(left) === stableSerialize(right);
 }
 
+type NetworkRevalidation<T> = {
+  data: T;
+  changed: boolean;
+  lastUpdatedAt: number | null;
+  source: "network";
+  stored?: boolean;
+};
+
 export function createMutableResource<T, TParams extends readonly unknown[]>(
   config: MutableResourceConfig<T, TParams>,
 ): MutableResource<T, TParams> {
   const isEqual = config.isEqual ?? defaultIsEqual<T>;
+  const inFlightRequests = new Map<string, Promise<NetworkRevalidation<T>>>();
   const listeners = new Map<string, Set<(result: ResourceRevalidation<T>) => void>>();
   const publish = (key: string, result: ResourceRevalidation<T>) => {
     if (config.isPublishable && !config.isPublishable(result.data)) return;
@@ -138,15 +145,7 @@ export function createMutableResource<T, TParams extends readonly unknown[]>(
   ) => {
     const key = config.getKey(...params);
     const existingRequest = inFlightRequests.get(key);
-    if (existingRequest) {
-      return existingRequest as Promise<{
-        data: T;
-        changed: boolean;
-        lastUpdatedAt: number | null;
-        source: "network";
-        stored?: boolean;
-      }>;
-    }
+    if (existingRequest) return existingRequest;
 
     const request = (async (): Promise<ResourceRevalidation<T>> => {
       const cacheEntry = cached === undefined
@@ -201,7 +200,7 @@ export function createMutableResource<T, TParams extends readonly unknown[]>(
     loadCached: (...params) => config.loadCached(...params),
     revalidate: async (...params) => revalidateWithCached(undefined, ...params),
     revalidateWithCached: async (cached, ...params) =>
-      revalidateWithCached(cached as ResourceCacheEntry<T> | null, ...params),
+      revalidateWithCached(cached, ...params),
     subscribe: (key, listener) => {
       let keyListeners = listeners.get(key);
       if (!keyListeners) {

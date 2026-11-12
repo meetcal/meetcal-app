@@ -13,9 +13,14 @@ const ACTION_SEPARATOR = "::";
 const encodeActionId = (key: SortKey, direction: SortDirection) =>
   `${key}${ACTION_SEPARATOR}${direction}`;
 
-const decodeActionId = (id: string): [SortKey, SortDirection] => {
+const SORT_KEYS: readonly SortKey[] = ["entryTotal", "snatch", "cj", "total"];
+const SORT_DIRECTIONS: readonly SortDirection[] = ["asc", "desc"];
+
+const decodeActionId = (id: string): [SortKey, SortDirection] | null => {
   const [key, direction] = id.split(ACTION_SEPARATOR);
-  return [key as SortKey, direction as SortDirection];
+  const sortKey = SORT_KEYS.find((candidate) => candidate === key);
+  const sortDirection = SORT_DIRECTIONS.find((candidate) => candidate === direction);
+  return sortKey && sortDirection ? [sortKey, sortDirection] : null;
 };
 
 /**
@@ -61,8 +66,8 @@ const SessionSortControl: React.FC<SessionSortControlProps> = ({
       title="Sort Athletes"
       actions={buildActions()}
       onPressAction={({ nativeEvent }) => {
-        const [key, direction] = decodeActionId(nativeEvent.event);
-        onSelect(key, direction);
+        const decoded = decodeActionId(nativeEvent.event);
+        if (decoded) onSelect(...decoded);
       }}
     >
       <View accessibilityLabel="Sort athletes">
