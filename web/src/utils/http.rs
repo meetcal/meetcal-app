@@ -29,6 +29,22 @@ pub(crate) struct Post<'a> {
     pub timeout: Duration,
 }
 
+pub(crate) struct OnDrop<F: FnOnce()>(Option<F>);
+
+impl<F: FnOnce()> OnDrop<F> {
+    pub(crate) fn new(cleanup: F) -> Self {
+        Self(Some(cleanup))
+    }
+}
+
+impl<F: FnOnce()> Drop for OnDrop<F> {
+    fn drop(&mut self) {
+        if let Some(cleanup) = self.0.take() {
+            cleanup();
+        }
+    }
+}
+
 fn described(error: JsValue) -> String {
     js_sys::Reflect::get(&error, &JsValue::from_str("message"))
         .ok()
@@ -54,6 +70,15 @@ pub(crate) async fn post(request: Post<'_>) -> Result<Reply, Failure> {
         )
         .ok()
     };
+    let _abandoned_or_settled = OnDrop::new({
+        let abort = abort.clone();
+        move || {
+            if let Some(timer) = timer {
+                timer.clear();
+            }
+            abort.abort();
+        }
+    });
     let failure = |error: JsValue| {
         if timed_out.get() {
             Failure::TimedOut
@@ -61,7 +86,7 @@ pub(crate) async fn post(request: Post<'_>) -> Result<Reply, Failure> {
             Failure::Unreachable(described(error))
         }
     };
-    let outcome = async {
+    async {
         let headers = web_sys::Headers::new().map_err(failure)?;
         headers
             .set("Content-Type", request.content_type)
@@ -95,9 +120,40 @@ pub(crate) async fn post(request: Post<'_>) -> Result<Reply, Failure> {
             body,
         })
     }
-    .await;
-    if let Some(timer) = timer {
-        timer.clear();
+    .await
+}
+
+#[cfg(test)]
+mod tests {
+    use super::OnDrop;
+    use futures::FutureExt;
+    use std::{cell::Cell, rc::Rc};
+
+    #[test]
+    fn a_request_dropped_while_in_flight_is_cancelled_once() {
+        let cancelled = Rc::new(Cell::new(0));
+        let request = {
+            let cancelled = Rc::clone(&cancelled);
+            async move {
+                let _guard = OnDrop::new(move || cancelled.set(cancelled.get() + 1));
+                futures::future::pending::<()>().await;
+            }
+        };
+        assert_eq!(request.now_or_never(), None);
+        assert_eq!(cancelled.get(), 1);
     }
-    outcome
+
+    #[test]
+    fn a_request_that_settles_cleans_up_once() {
+        let cleaned = Rc::new(Cell::new(0));
+        let request = {
+            let cleaned = Rc::clone(&cleaned);
+            async move {
+                let _guard = OnDrop::new(move || cleaned.set(cleaned.get() + 1));
+                7
+            }
+        };
+        assert_eq!(request.now_or_never(), Some(7));
+        assert_eq!(cleaned.get(), 1);
+    }
 }

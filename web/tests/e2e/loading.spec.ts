@@ -77,6 +77,37 @@ test("a new meet loads at once and never shows the previous meet's answer or a f
   await expect(page.getByText("Alpha Platform")).toHaveCount(0);
 });
 
+test("a request a newer choice replaces is aborted in the browser, not left to finish", async ({ page }) => {
+  await mockSubscribedUser(page);
+  await routeQuery(page, "meets:list", (route) => route.fulfill(textAnswer([])));
+  await routeQuery(page, "meets:completed", (route) => route.fulfill(textAnswer([meet("Meet Alpha"), meet("Meet Bravo")])));
+  const answer = (rows: (meetName: string) => unknown[]) => async (route: Route, args: Record<string, unknown>) => {
+    const meetName = String(args.meet);
+    if (meetName === "Meet Alpha") return;
+    await route.fulfill(textAnswer(rows(meetName)));
+  };
+  await routeQuery(page, "meets:schedule", answer((meetName) => [scheduleRow(meetName, "Bravo Platform")]));
+  await routeQuery(page, "meets:athletes", answer(() => []));
+  await routeQuery(page, "results:byMeet", answer(() => []));
+  const aborted: string[] = [];
+  page.on("requestfailed", (request) => {
+    const body = request.postDataJSON() as { path?: string; args?: { meet?: string } } | null;
+    if (body?.args?.meet === "Meet Alpha" && request.failure()?.errorText.includes("ERR_ABORTED")) {
+      aborted.push(String(body.path));
+    }
+  });
+
+  await page.goto("/meet-center");
+  const meetSearch = page.locator("#meet-search-input");
+  await meetSearch.fill("Meet Alpha");
+  await page.getByRole("option", { name: "Meet Alpha" }).click();
+  await expect(page.getByLabel("Loading data")).toHaveCount(1);
+  await meetSearch.fill("Meet Bravo");
+  await page.getByRole("option", { name: "Meet Bravo" }).click();
+  await expect(page.locator("tbody").first()).toContainText("Bravo Platform");
+  await expect.poll(() => aborted).toContain("meets:schedule");
+});
+
 test("each loading skeleton has as many columns as the table that replaces it", async ({ page }) => {
   await mockSubscribedUser(page);
   await routeQuery(page, "meets:list", (route) => route.fulfill(textAnswer([])));
