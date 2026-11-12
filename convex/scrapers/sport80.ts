@@ -9,26 +9,20 @@ import {
   formatResults,
   hasResultsRoute,
   nested,
+  eventSource,
+  failingEventIds,
+  isSourceOfEvent,
+  MAX_ROLLING_EVENTS_A_NIGHT,
   pickNewestEvents,
+  pickNightlyEvents,
   pickRequestedEvents,
+  RESULTS_JOB,
   type ResultRow,
 } from './parse/sport80';
 import { sourcesFailed, type SourceFailure } from '../lib/cronAlerts';
 import { NOT_REACHED, runBudget } from './lib/budget';
 import { Sport80 } from './lib/sport80Api';
 
-/**
- * USAW meet results from Sport80 (port of
- * `usaw/sport80_api/update_supabase_from_sport80.py`): the 30 most recent
- * events of this year and last, each meet's results upserted into
- * `lifting_results` (matched on event id, meet, folded name and age
- * category, `ingest.resultKey`; unchanged rows are not written, so a
- * re-sync of an unchanged meet costs no writes). Rows the
- * event's table no longer has (a corrected name, a withdrawn result, the
- * meet's old title) are then deleted (`ingest.pruneEventResults`, which
- * refuses to delete much without `allowShrink`), but only for a meet whose
- * every row was read: a row that could not be read is not one Sport80 dropped.
- */
 type Dict = Record<string, unknown>;
 
 const READ_SHARE = 0.5;
@@ -79,13 +73,15 @@ export const run = internalAction({
         failures.push({ source: `event index ${y}`, error: (error as Error).message });
       }
     }
-    if (!events.length) throw sourcesFailed('sport80: no events fetched', failures);
+    const failedLastRun: string[] = only ? [] : await ctx.runQuery(internal.cronStatus.failedSources, { job: RESULTS_JOB });
+    const stillFailing = failingEventIds(failedLastRun);
+    const notRetried = (ids: readonly string[]) =>
+      ids.map((id) => ({
+        source: failedLastRun.find((source) => isSourceOfEvent(source, id)) ?? eventSource(null, id),
+        error: 'failed in the last run and the event index it is in could not be read, not synced',
+      }));
+    if (!events.length) throw sourcesFailed('sport80: no events fetched', [...failures, ...notRetried(stillFailing)]);
 
-    // A date in a format not seen before is not guessed at (month and day
-    // could be swapped): the event is left out, and the run fails naming it
-    // when it could be among the newest (`pickNewestEvents`). Events asked
-    // for by id are taken from the whole index, however old: the override
-    // for a refused prune must reach its event after it leaves the newest.
     let newest: Dict[];
     let unreadable: ReturnType<typeof pickNewestEvents>['unreadable'];
     if (only) {
@@ -93,14 +89,20 @@ export const run = internalAction({
       ({ picked: newest, unreadable } = requested);
       const indexes = [year, year - 1].filter((y) => !failures.some((f) => f.source === `event index ${y}`));
       for (const id of requested.missing) {
-        failures.push({ source: `event ${id}`, error: `not in the event index read (${indexes.join(', ')}), not synced` });
+        failures.push({ source: eventSource(null, id), error: `not in the event index read (${indexes.join(', ')}), not synced` });
       }
     } else {
-      ({ newest, unreadable } = pickNewestEvents(events));
+      const nightly = pickNightlyEvents(events, Date.now(), { stillFailing });
+      ({ newest, unreadable } = nightly);
+      console.log(`sport80: reading ${nightly.recentCount} recent events, ${nightly.retriedCount} that failed last run and ${nightly.rollingCount} older ones due tonight`);
+      if (failures.length > 0) failures.push(...notRetried(nightly.notInTheIndex));
+      if (nightly.rollingLeftOut > 0) {
+        failures.push({ source: 'rolling pass', error: `${nightly.rollingLeftOut} older events due tonight were not read (more than ${MAX_ROLLING_EVENTS_A_NIGHT}); raise ROLLING_NIGHTS in parse/sport80.ts` });
+      }
     }
     const reported = new Set<string>();
     for (const { event, date, recent } of unreadable) {
-      const source = `${String(nested(event, 'meet') ?? '?')} (event ${eventIdOf(event) ?? '?'})`;
+      const source = eventSource(String(nested(event, 'meet') ?? '?'), eventIdOf(event));
       const error = `unreadable date ${JSON.stringify(date)}, not synced`;
       if (reported.has(source)) continue;
       reported.add(source);
@@ -117,23 +119,21 @@ export const run = internalAction({
       seen.add(eventId);
       if (!hasResultsRoute(event) || (only && !only.includes(eventId))) continue;
       if (budget.spent(READ_SHARE)) {
-        failures.push({ source: `${meet} (event ${eventId})`, error: NOT_REACHED });
+        failures.push({ source: eventSource(meet, eventId), error: NOT_REACHED });
         continue;
       }
       let table: { rows: Dict[]; notWhole?: string };
       try {
         table = await budget.orStop(api.eventResults(eventId), READ_DEADLINE_SHARE);
       } catch (error) {
-        failures.push({ source: `${meet} (event ${eventId})`, error: `${eventDate(event)}: ${(error as Error).message}` });
+        failures.push({ source: eventSource(meet, eventId), error: `${eventDate(event)}: ${(error as Error).message}` });
         continue;
       }
       if (table.rows.length) meets.push({ eventId, meet, rows: formatResults(eventId, meet, eventDate(event), table.rows), notWhole: table.notWhole });
     }
-    // Every event asked for by id is synced or named: an override that read
-    // nothing must not finish as if it had done its work.
     for (const id of only ?? []) {
-      if (meets.some((m) => m.eventId === id) || failures.some((f) => f.source === `event ${id}` || f.source.endsWith(`(event ${id})`))) continue;
-      failures.push({ source: `event ${id}`, error: 'no results read (no results page, no meet name, or an empty table), not synced' });
+      if (meets.some((m) => m.eventId === id) || failures.some((f) => isSourceOfEvent(f.source, id))) continue;
+      failures.push({ source: eventSource(null, id), error: 'no results read (no results page, no meet name, or an empty table), not synced' });
     }
     for (const failure of failed()) console.error(`sport80: ${failure}`);
     if (dryRun) return { meets, outcomes: [], failed: failed() };
@@ -141,7 +141,7 @@ export const run = internalAction({
     const outcomes: MeetOutcome[] = [];
     let storedCount = 0;
     for (const { eventId, meet, rows, notWhole } of meets) {
-      const source = `${meet} (event ${eventId})`;
+      const source = eventSource(meet, eventId);
       if (budget.spent()) {
         failures.push({ source, error: `read but not stored: ${NOT_REACHED}` });
         continue;
