@@ -31,8 +31,7 @@
     {
       "args": {
         "name": "jordan twin",
-        "lifter": "30003",
-        "cutoffDate": "2026-01-01"
+        "lifter": "30003"
       },
       "body": {
         "kind": "results",
@@ -54,11 +53,7 @@
             "total": 0
           }
         },
-        "year_bests": {
-          "best_snatch": 66,
-          "best_cj": 84,
-          "best_total": 150
-        }
+        "year_bests": null
       }
     },
     {

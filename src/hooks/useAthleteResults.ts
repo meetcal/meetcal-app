@@ -1,19 +1,29 @@
 import { useRetryOnReconnect } from "@/hooks/useRetryOnReconnect";
+import type { AthleteRequest } from "@/lib/api/results-api";
 import {
   loadAthleteResults,
+  type ApiDetails,
+  type AthleteChoice,
   type AthleteResultsOutcome,
   type ShownResultsSource,
 } from "@/lib/athlete-results-load";
+import { athleteRequestKey, rowsForRequest } from "@/lib/athlete-results-route";
 import { getAllCachedLiftingResultsForAthlete } from "@/lib/database/athlete-history-store";
-import { fetchAllResultsForName } from "@/lib/database/queries";
+import { fetchAthleteResults } from "@/lib/database/queries";
 import type { AthleteMeetResult } from "@/types/athlete-results";
 import { useCallback, useEffect, useRef, useState } from "react";
 
-type OfflineRowsOnScreen = { name: string; rows: AthleteMeetResult[] };
+type OfflineRowsOnScreen = { key: string; rows: AthleteMeetResult[] };
+
+type AnsweredPage =
+  | { kind: "rows"; rows: AthleteMeetResult[]; details: ApiDetails }
+  | { kind: "choice"; choice: AthleteChoice };
 
 export type AthleteResultsState = {
   loading: boolean;
   athleteResults: AthleteMeetResult[];
+  details: ApiDetails | null;
+  choice: AthleteChoice | null;
   loadFailed: boolean;
   rowsSource: ShownResultsSource | null;
   loadOutcome: AthleteResultsOutcome | null;
@@ -21,7 +31,7 @@ export type AthleteResultsState = {
 };
 
 function useSessionResultsCache() {
-  const resultsCacheRef = useRef<Map<string, AthleteMeetResult[]>>(new Map());
+  const resultsCacheRef = useRef<Map<string, AnsweredPage>>(new Map());
   useEffect(() => {
     const cache = resultsCacheRef.current;
     return () => {
@@ -31,9 +41,11 @@ function useSessionResultsCache() {
   return resultsCacheRef;
 }
 
-export function useAthleteResults(name: string | undefined): AthleteResultsState {
+export function useAthleteResults(request: AthleteRequest | null): AthleteResultsState {
   const [loading, setLoading] = useState(true);
   const [athleteResults, setAthleteResults] = useState<AthleteMeetResult[]>([]);
+  const [details, setDetails] = useState<ApiDetails | null>(null);
+  const [choice, setChoice] = useState<AthleteChoice | null>(null);
   const [loadFailed, setLoadFailed] = useState(false);
   const [rowsSource, setRowsSource] = useState<ShownResultsSource | null>(null);
   const [loadOutcome, setLoadOutcome] = useState<AthleteResultsOutcome | null>(null);
@@ -43,43 +55,63 @@ export function useAthleteResults(name: string | undefined): AthleteResultsState
   const offlineRowsRef = useRef<OfflineRowsOnScreen | null>(null);
 
   useEffect(() => {
-    const fetchAthleteResults = async () => {
-      if (!name) return;
+    if (!request) return;
+    const key = athleteRequestKey(request);
+    const showRows = (rows: AthleteMeetResult[], source: ShownResultsSource, shownDetails: ApiDetails | null) => {
+      setChoice(null);
+      setAthleteResults(rows);
+      setDetails(shownDetails);
+      setRowsSource(source);
+    };
+    const showChoice = (answer: AthleteChoice) => {
+      setChoice(answer);
+      setAthleteResults([]);
+      setDetails(null);
+      setRowsSource(null);
+    };
 
-      const nameStr = Array.isArray(name) ? name[0] : name;
-      const cacheKey = `all::${nameStr}`;
-      const cachedResults = resultsCacheRef.current.get(cacheKey);
-      setLoadFailed(false);
-      setLoadOutcome(null);
-      if (cachedResults) {
-        offlineRowsRef.current = null;
-        setAthleteResults(cachedResults);
-        setRowsSource("api");
-        setLoading(false);
-      } else if (offlineRowsRef.current?.name !== nameStr) {
-        offlineRowsRef.current = null;
-        setAthleteResults([]);
-        setRowsSource(null);
-        setLoading(true);
-      }
-      const keptOffline = cachedResults ? undefined : offlineRowsRef.current?.rows;
+    const cached = resultsCacheRef.current.get(key);
+    setLoadFailed(false);
+    setLoadOutcome(null);
+    if (cached?.kind === "choice") {
+      offlineRowsRef.current = null;
+      showChoice(cached.choice);
+      setLoading(false);
+      return;
+    }
+    if (cached) {
+      offlineRowsRef.current = null;
+      showRows(cached.rows, "api", cached.details);
+      setLoading(false);
+    } else if (offlineRowsRef.current?.key !== key) {
+      offlineRowsRef.current = null;
+      showRows([], "api", null);
+      setRowsSource(null);
+      setLoading(true);
+    }
+    const shown = cached ? cached.rows : offlineRowsRef.current?.rows;
 
-      const requestId = ++requestIdRef.current;
+    const requestId = ++requestIdRef.current;
+    const load = async () => {
       try {
         const outcome = await loadAthleteResults({
-          shown: cachedResults ?? keptOffline,
-          shownSource: cachedResults ? "api" : "offline",
-          readOffline: () => getAllCachedLiftingResultsForAthlete(nameStr),
-          fetchFull: () => fetchAllResultsForName(nameStr),
+          shown,
+          shownSource: cached ? "api" : "offline",
+          readOffline: async () => rowsForRequest(await getAllCachedLiftingResultsForAthlete(request.name), request),
+          fetchFull: () => fetchAthleteResults(request),
           isCurrent: () => requestId === requestIdRef.current,
-          show: (rows, source) => {
-            if (source === "api") {
-              resultsCacheRef.current.set(cacheKey, rows);
+          show: (rows, source, shownDetails) => {
+            if (source === "api" && shownDetails) {
+              resultsCacheRef.current.set(key, { kind: "rows", rows, details: shownDetails });
             }
-            offlineRowsRef.current = source === "offline" ? { name: nameStr, rows } : null;
-            setAthleteResults(rows);
-            setRowsSource(source);
+            offlineRowsRef.current = source === "offline" ? { key, rows } : null;
+            showRows(rows, source, shownDetails);
             if (source === "offline") setLoading(false);
+          },
+          choose: (answer) => {
+            resultsCacheRef.current.set(key, { kind: "choice", choice: answer });
+            offlineRowsRef.current = null;
+            showChoice(answer);
           },
         });
         if (outcome === "superseded") return;
@@ -94,14 +126,14 @@ export function useAthleteResults(name: string | undefined): AthleteResultsState
       }
     };
 
-    void fetchAthleteResults();
+    void load();
     return () => {
       requestIdRef.current += 1;
     };
-  }, [name, retryCount, resultsCacheRef]);
+  }, [request, retryCount, resultsCacheRef]);
 
   const retryLoad = useCallback(() => setRetryCount((count) => count + 1), []);
   useRetryOnReconnect(loadOutcome === "offline-partial", retryLoad);
 
-  return { loading, athleteResults, loadFailed, rowsSource, loadOutcome, retryLoad };
+  return { loading, athleteResults, details, choice, loadFailed, rowsSource, loadOutcome, retryLoad };
 }

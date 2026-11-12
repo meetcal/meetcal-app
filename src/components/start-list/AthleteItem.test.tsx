@@ -194,7 +194,7 @@ describe("AthleteItem", () => {
     });
 
     expect(props.onSeeAllResults).toHaveBeenCalledTimes(1);
-    expect(props.onSeeAllResults).toHaveBeenCalledWith("Jane Doe");
+    expect(props.onSeeAllResults).toHaveBeenCalledWith({ name: "Jane Doe", membership: "123" });
     expect(props.router.push).not.toHaveBeenCalled();
 
     act(() => {

@@ -1,8 +1,8 @@
 import { isRecord } from '@/lib/is-record';
 import { isLiftResult } from '@/lib/athletes';
-import { LiftResult, AthleteMeetResult } from '@/data/types/athletes';
+import { LiftResult, AthleteMeetResult, type AthleteLookup, type LifterCard, type LifterChoice, type PRIndexes } from '@/data/types/athletes';
 import { formatApiTime, normalizePlatform, type ApiScheduleRow } from '@/lib/api/api-meet-mappers';
-import { assertHasFields, assertObject, nullableNumber, nullableString, toFiniteNumber } from '@/lib/api/api-validators';
+import { assertArray, assertHasFields, assertObject, nullableNumber, nullableString, toFiniteNumber } from '@/lib/api/api-validators';
 
 export type ApiAthlete = {
   member_id?: string | null;
@@ -136,6 +136,55 @@ export function mapApiLiftingResult(row: unknown): AthleteMeetResult {
     cj3: nullableNumber(row.cj3),
     cj_best: nullableNumber(row.cj_best),
     total: nullableNumber(row.total),
+    ...(typeof row.lifter_id === 'string' && row.lifter_id !== '' ? { lifter_id: row.lifter_id } : {}),
+  };
+}
+
+export const NO_PR = -1;
+
+function requiredString(value: unknown, label: string): string {
+  if (typeof value !== 'string') throw new Error(`${label} expected a string`);
+  return value;
+}
+
+function mapLifterCard(value: unknown, label: string): LifterCard {
+  const card = assertHasFields(value, label, ['id', 'name', 'label']);
+  return { id: requiredString(card.id, `${label}.id`), name: requiredString(card.name, `${label}.name`), label: requiredString(card.label, `${label}.label`) };
+}
+
+function mapLifterChoice(value: unknown, label: string): LifterChoice {
+  const choice = assertHasFields(value, label, ['results', 'latest_date']);
+  return { ...mapLifterCard(choice, label), results: toFiniteNumber(choice.results), latestDate: nullableString(choice.latest_date) ?? '' };
+}
+
+function prIndex(value: unknown, rowCount: number): number {
+  return typeof value === 'number' && Number.isInteger(value) && value >= 0 && value < rowCount ? value : NO_PR;
+}
+
+function mapCurrentBests(prs: unknown, rowCount: number, label: string): PRIndexes {
+  const current = assertHasFields(assertHasFields(prs, label, ['current']).current, `${label}.current`, ['snatch', 'cj', 'total']);
+  return { snatch: prIndex(current.snatch, rowCount), cj: prIndex(current.cj, rowCount), total: prIndex(current.total, rowCount) };
+}
+
+export function mapAthleteLookup(value: unknown, label: string, decodeRows: (json: unknown) => unknown): AthleteLookup {
+  const answer = assertHasFields(value, label, ['kind']);
+  if (answer.kind === 'choose') {
+    const choice = assertHasFields(answer, label, ['name', 'lifters', 'other_results']);
+    return {
+      kind: 'choose',
+      name: requiredString(choice.name, `${label}.name`),
+      lifters: assertArray(choice.lifters, `${label}.lifters`).map((row, index) => mapLifterChoice(row, `${label}.lifters[${index}]`)),
+      otherResults: toFiniteNumber(choice.other_results),
+    };
+  }
+  if (answer.kind !== 'results') throw new Error(`${label} answered an unknown kind`);
+  const results = assertHasFields(answer, label, ['lifter', 'json', 'prs']);
+  const rows = assertArray(decodeRows(results.json), `${label}.json`).map(mapApiLiftingResult);
+  return {
+    kind: 'results',
+    lifter: results.lifter === null ? null : mapLifterCard(results.lifter, `${label}.lifter`),
+    rows,
+    prs: mapCurrentBests(results.prs, rows.length, `${label}.prs`),
   };
 }
 

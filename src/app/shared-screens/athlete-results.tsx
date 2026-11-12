@@ -1,6 +1,7 @@
 import { athleteResultsStyles as styles } from "@/components/athlete-results/athleteResultsStyles";
 import { AthleteStats } from "@/components/athlete-results/AthleteStats";
 import { MeetResultCard } from "@/components/athlete-results/MeetResultCard";
+import { LifterChoiceList } from "@/components/athlete-results/LifterChoiceList";
 import { PartialResultsStatus } from "@/components/athlete-results/PartialResultsStatus";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { SubscriptionGate } from "@/components/ui/SubscriptionGate";
@@ -10,19 +11,21 @@ import { useAppColors } from "@/hooks/useAppColors";
 import { useAthleteResults } from "@/hooks/useAthleteResults";
 import { useIsOffline } from "@/hooks/useIsOffline";
 import { useScreenHorizontalInsets } from "@/hooks/useScreenInsets";
-import { findPRIndexes, type PRIndexes } from "@/lib/athlete-prs";
 import { meetResultKey } from "@/lib/athlete-result-display";
+import { NO_PR } from "@/lib/api/api-athlete-mappers";
 import { partialResultsStatus, showsCareerStats } from "@/lib/athlete-results-load";
+import { athleteRequestOf, athleteResultsHref } from "@/lib/athlete-results-route";
 import { loadFailureCopy } from "@/lib/load-failure";
 import { SLIDE_IN_FROM_RIGHT, stackHeaderOptions } from "@/lib/stack-header-options";
+import type { LifterChoice, PRIndexes } from "@/data/types/athletes";
 import type { AthleteMeetResult } from "@/types/athlete-results";
 import { FlashList } from "@shopify/flash-list";
-import { Stack, useLocalSearchParams } from "expo-router";
+import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import React, { useCallback, useMemo } from "react";
 import { ActivityIndicator, ScrollView, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-const NO_PR_INDEXES: PRIndexes = { snatch: -1, cj: -1, total: -1 };
+const NO_PR_INDEXES: PRIndexes = { snatch: NO_PR, cj: NO_PR, total: NO_PR };
 
 export default function AthleteResultsScreen() {
   return (
@@ -35,17 +38,33 @@ export default function AthleteResultsScreen() {
 function AthleteResultsContent() {
   const screenInsets = useScreenHorizontalInsets();
   const colors = useAppColors();
-  const { name } = useLocalSearchParams<{ name?: string }>();
+  const router = useRouter();
+  const { name, lifter, membership, other } = useLocalSearchParams<{
+    name?: string;
+    lifter?: string;
+    membership?: string;
+    other?: string;
+  }>();
+  const request = useMemo(
+    () => athleteRequestOf({ name, lifter, membership, other }),
+    [name, lifter, membership, other],
+  );
   const insets = useSafeAreaInsets();
   const [isOffline] = useIsOffline();
-  const { loading, athleteResults, loadFailed, rowsSource, loadOutcome, retryLoad } =
-    useAthleteResults(name);
+  const { loading, athleteResults, details, choice, loadFailed, rowsSource, loadOutcome, retryLoad } =
+    useAthleteResults(request);
 
   const careerStats = showsCareerStats(rowsSource);
-  const prIndexes = useMemo(
-    () => (careerStats ? findPRIndexes(athleteResults) : NO_PR_INDEXES),
-    [athleteResults, careerStats],
+  const prIndexes = careerStats && details ? details.prs : NO_PR_INDEXES;
+  const chooseLifter = useCallback(
+    (chosen: LifterChoice) => {
+      if (request) router.push(athleteResultsHref({ name: request.name, lifter: chosen.id }));
+    },
+    [request, router],
   );
+  const chooseOther = useCallback(() => {
+    if (request) router.push(athleteResultsHref({ name: request.name, other: true }));
+  }, [request, router]);
   const partialStatus = partialResultsStatus({
     source: rowsSource,
     outcome: loadOutcome,
@@ -67,7 +86,7 @@ function AthleteResultsContent() {
     [colors, prIndexes],
   );
 
-  if (!name) {
+  if (!request) {
     return (
       <ThemedView style={styles.container}>
         <ThemedText>No athlete selected</ThemedText>
@@ -83,11 +102,19 @@ function AthleteResultsContent() {
         options={{
           ...stackHeaderOptions(colors),
           ...SLIDE_IN_FROM_RIGHT,
-          headerTitle: name?.toString() || "Meet Results",
+          headerTitle: details?.lifter?.name || choice?.name || request.name,
         }}
       />
 
-      {loading || athleteResults.length === 0 ? (
+      {choice ? (
+        <LifterChoiceList
+          choice={choice}
+          colors={colors}
+          bottomInset={insets.bottom}
+          onChooseLifter={chooseLifter}
+          onChooseOther={chooseOther}
+        />
+      ) : loading || athleteResults.length === 0 ? (
         <ScrollView
           style={styles.scrollView}
           contentContainerStyle={[styles.scrollContent, { paddingBottom: insets.bottom + 20 }]}
@@ -108,7 +135,7 @@ function AthleteResultsContent() {
               <View style={styles.emptyStateContainer}>
                 <ThemedText style={[styles.emptyStateText, { color: colors.secondaryText }]}>
                   No meet results found for{" "}
-                  {name}
+                  {request.name}
                 </ThemedText>
               </View>
             )}

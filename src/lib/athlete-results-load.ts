@@ -1,5 +1,10 @@
 import { devLog } from '@/lib/logger';
+import type { AthleteLookup, LifterCard, PRIndexes } from '@/data/types/athletes';
 import type { AthleteMeetResult } from '@/types/athlete-results';
+
+export type AthleteChoice = Extract<AthleteLookup, { kind: 'choose' }>;
+
+export type ApiDetails = { lifter: LifterCard | null; prs: PRIndexes };
 
 /**
  * One load of an athlete's results screen: the on-device copy as a fast first
@@ -28,15 +33,14 @@ export type AthleteResultsLoad = {
    */
   shownSource?: ShownResultsSource;
   readOffline: () => Promise<AthleteMeetResult[]>;
-  fetchFull: () => Promise<AthleteMeetResult[]>;
-  /** False once the screen moved on (another athlete, or unmounted). */
+  fetchFull: () => Promise<AthleteLookup>;
   isCurrent: () => boolean;
-  /** Paint rows. `api` rows are the complete history and may be memoized. */
-  show: (rows: AthleteMeetResult[], source: 'offline' | 'api') => void;
+  show: (rows: AthleteMeetResult[], source: 'offline' | 'api', details: ApiDetails | null) => void;
+  choose: (choice: AthleteChoice) => void;
 };
 
 type FullOutcome =
-  | { ok: true; rows: AthleteMeetResult[] }
+  | { ok: true; answer: AthleteLookup }
   | { ok: false; error: unknown };
 
 /**
@@ -85,7 +89,7 @@ export async function loadAthleteResults(
   // Started first and settled into a value, so a rejection while the
   // on-device read is still running is never unhandled.
   const full: Promise<FullOutcome> = load.fetchFull().then(
-    (rows) => ({ ok: true, rows }),
+    (answer) => ({ ok: true, answer }),
     (error: unknown) => ({ ok: false, error }),
   );
 
@@ -98,7 +102,7 @@ export async function loadAthleteResults(
       if (offline.length > 0) {
         displayedCount = offline.length;
         displayedOffline = true;
-        load.show(offline, 'offline');
+        load.show(offline, 'offline', null);
       }
     } catch (cacheError) {
       devLog(`Cache miss for athlete results, fetching from API ${cacheError}`);
@@ -108,10 +112,13 @@ export async function loadAthleteResults(
   const outcome = await full;
   if (!load.isCurrent()) return 'superseded';
   if (outcome.ok) {
-    // An empty answer (e.g. a transient name-normalization miss) must not
-    // clobber rows already on screen.
-    if (outcome.rows.length > 0 || displayedCount === 0) {
-      load.show(outcome.rows, 'api');
+    const { answer } = outcome;
+    if (answer.kind === 'choose') {
+      load.choose(answer);
+      return 'shown';
+    }
+    if (answer.rows.length > 0 || displayedCount === 0) {
+      load.show(answer.rows, 'api', { lifter: answer.lifter, prs: answer.prs });
       return 'shown';
     }
     return displayedOffline ? 'offline-partial' : 'shown';

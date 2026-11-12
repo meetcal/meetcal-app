@@ -5,7 +5,7 @@ import { fetchAccessPass, refreshServerEntitlement } from './entitlement-api';
 import { generateMeetSubmissionUploadUrl, submitMeet } from './meet-submissions-api';
 import { fetchApiAthletes, fetchApiAthletesWithSession, fetchApiMeetByName, fetchApiMeets, fetchApiSchedule } from './meets-api';
 import { fetchApiAdaptiveRecords, fetchApiIntlRankings, fetchApiNationalRankings, fetchApiQualifyingTotals, fetchApiRecords, fetchApiStandards, fetchApiWsoAgeGroups, fetchApiWsoList, fetchApiWsoRecords } from './reference-api';
-import { fetchApiRecentResultsByNames, fetchApiResultsByNames, fetchApiYearBestsByNames, searchApi } from './results-api';
+import { fetchApiRecentResultsByNames, fetchApiResultsByNames, fetchApiYearBestsByNames, fetchAthlete, searchApi } from './results-api';
 import { clearHttpValidatorCache } from './revalidated-reads';
 import { resetServerClockForTests } from './server-clock';
 import { revokeApiToken } from './siri-tokens-api';
@@ -137,6 +137,32 @@ const CHECKS: Record<string, Check> = {
   'results:byNames': async (args, body) => {
     const results = await fetchApiResultsByNames(names(args), { latestOnly: args.latestOnly === true });
     expect(results).toEqual(rows(body).map((sent) => omit(sent, RESULT_FIELDS_THE_APP_DROPS)));
+  },
+  'results:athlete': async (args, body) => {
+    const sent = row(body);
+    const lookup = await fetchAthlete({
+      name: text(args, 'name'),
+      lifter: optionalText(args, 'lifter'),
+      membership: optionalText(args, 'membership'),
+      other: args.other === true,
+    });
+    if (sent.kind === 'choose') {
+      expect(lookup).toEqual({
+        kind: 'choose',
+        name: sent.name,
+        lifters: rows(sent.lifters).map((lifter) => ({ id: lifter.id, name: lifter.name, label: lifter.label, results: lifter.results, latestDate: lifter.latest_date })),
+        otherResults: sent.other_results,
+      });
+      return;
+    }
+    const current = row(row(sent.prs).current);
+    const index = (value: unknown) => (typeof value === 'number' ? value : -1);
+    expect(lookup).toEqual({
+      kind: 'results',
+      lifter: sent.lifter,
+      rows: rows(JSON.parse(text(sent, 'json'))).map((result) => omit(result, RESULT_FIELDS_THE_APP_DROPS)),
+      prs: { snatch: index(current.snatch), cj: index(current.cj), total: index(current.total) },
+    });
   },
   'results:recent': async (args, body) => {
     const results = await fetchApiRecentResultsByNames(names(args), text(args, 'cutoffDate'));

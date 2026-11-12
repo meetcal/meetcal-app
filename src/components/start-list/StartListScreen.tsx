@@ -1,3 +1,5 @@
+import type { AthleteRequest } from "@/lib/api/results-api";
+import { athleteResultsHref } from "@/lib/athlete-results-route";
 import { CalendarDestinationPickerModal } from "@/components/calendar/CalendarDestinationPickerModal";
 import ImagePreviewModal from "@/components/share/ImagePreviewModal";
 import ActionModal from "@/components/start-list/ActionModal";
@@ -135,12 +137,9 @@ export default function StartListScreen() {
   );
 
   const handleSeeAllResults = useCallback(
-    (athleteName: string) => {
+    (request: AthleteRequest) => {
       if (!requirePremium("athlete-results", "Sign in to access premium features.")) return;
-      router.push({
-        pathname: "/shared-screens/athlete-results",
-        params: { name: athleteName },
-      });
+      router.push(athleteResultsHref(request));
     },
     [requirePremium, router],
   );

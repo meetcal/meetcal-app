@@ -4,10 +4,17 @@ import {
   showsCareerStats,
   type AthleteResultsLoad,
 } from '@/lib/athlete-results-load';
+import type { AthleteLookup } from '@/data/types/athletes';
 import type { AthleteMeetResult } from '@/types/athlete-results';
 
 function row(meet: string): AthleteMeetResult {
   return { meet, name: 'Jane Lifter', date: '2026-06-20', total: 200 } as unknown as AthleteMeetResult;
+}
+
+const NO_PRS = { snatch: -1, cj: -1, total: -1 };
+
+function api(...rows: AthleteMeetResult[]): AthleteLookup {
+  return { kind: 'results', lifter: null, rows, prs: NO_PRS };
 }
 
 function deferred<T>() {
@@ -25,7 +32,8 @@ function makeLoad(overrides: Partial<AthleteResultsLoad> = {}) {
   const load: AthleteResultsLoad = {
     shown: undefined,
     readOffline: jest.fn(async () => []),
-    fetchFull: jest.fn(async () => []),
+    fetchFull: jest.fn(async () => api()),
+    choose: () => undefined,
     isCurrent: () => true,
     show: (rows, source) => painted.push({ source, meets: rows.map((r) => r.meet) }),
     ...overrides,
@@ -45,7 +53,7 @@ describe('loadAthleteResults', () => {
   // athlete with no history blob; the request used to wait behind it.
   it('sends the API request before the on-device read finishes', async () => {
     const offline = deferred<AthleteMeetResult[]>();
-    const fetchFull = jest.fn(async () => [row('API')]);
+    const fetchFull = jest.fn(async () => api(row('API')));
     const { load, painted } = makeLoad({ readOffline: () => offline.promise, fetchFull });
 
     const done = loadAthleteResults(load);
@@ -63,7 +71,7 @@ describe('loadAthleteResults', () => {
     const offline = deferred<AthleteMeetResult[]>();
     const { load, painted } = makeLoad({
       readOffline: () => offline.promise,
-      fetchFull: async () => [row('API')],
+      fetchFull: async () => api(row('API')),
     });
     const done = loadAthleteResults(load);
     await Promise.resolve();
@@ -79,11 +87,38 @@ describe('loadAthleteResults', () => {
   it('does not let an empty API answer clobber on-device rows', async () => {
     const { load, painted } = makeLoad({
       readOffline: async () => [row('Local')],
-      fetchFull: async () => [],
+      fetchFull: async () => api(),
     });
     // What stays on screen is still only the on-device copy.
     await expect(loadAthleteResults(load)).resolves.toBe('offline-partial');
     expect(painted).toEqual([{ source: 'offline', meets: ['Local'] }]);
+  });
+
+  it('replaces the on-device rows with the lifters to choose from when the name is shared', async () => {
+    const choice: AthleteLookup = { kind: 'choose', name: 'Jane Lifter', lifters: [], otherResults: 2 };
+    const chosen: AthleteLookup[] = [];
+    const { load, painted } = makeLoad({
+      readOffline: async () => [row('Local')],
+      fetchFull: async () => choice,
+      choose: (answer) => chosen.push(answer),
+    });
+    await expect(loadAthleteResults(load)).resolves.toBe('shown');
+    expect(painted).toEqual([{ source: 'offline', meets: ['Local'] }]);
+    expect(chosen).toEqual([choice]);
+  });
+
+  it('passes the server’s PR marks and lifter with the API rows', async () => {
+    const details: { lifter: unknown; prs: unknown }[] = [];
+    const lifter = { id: '20730', name: 'Jane Lifter', label: 'Age 37' };
+    const prs = { snatch: 0, cj: -1, total: 0 };
+    const { load } = makeLoad({
+      fetchFull: async () => ({ kind: 'results', lifter, rows: [row('API')], prs }),
+      show: (_rows, _source, shown) => {
+        if (shown) details.push(shown);
+      },
+    });
+    await loadAthleteResults(load);
+    expect(details).toEqual([{ lifter, prs }]);
   });
 
   it('shows an empty API answer when nothing else was shown', async () => {
@@ -95,7 +130,7 @@ describe('loadAthleteResults', () => {
   // Regression (#312): this returned 'shown', so the screen presented one
   // cached meet as the whole career, PR badges and success rates included.
   it('keeps the on-device rows when the request fails, says they are partial, and never rejects', async () => {
-    const full = deferred<AthleteMeetResult[]>();
+    const full = deferred<AthleteLookup>();
     const offline = deferred<AthleteMeetResult[]>();
     const { load, painted } = makeLoad({
       readOffline: () => offline.promise,
@@ -127,7 +162,7 @@ describe('loadAthleteResults', () => {
       readOffline: async () => {
         throw new Error('corrupt');
       },
-      fetchFull: async () => [row('API')],
+      fetchFull: async () => api(row('API')),
     });
     await loadAthleteResults(load);
     expect(painted).toEqual([{ source: 'api', meets: ['API'] }]);
@@ -138,7 +173,7 @@ describe('loadAthleteResults', () => {
     const { load, painted } = makeLoad({
       shown: [row('Memo')],
       readOffline,
-      fetchFull: async () => [],
+      fetchFull: async () => api(),
     });
     await expect(loadAthleteResults(load)).resolves.toBe('shown');
     expect(readOffline).not.toHaveBeenCalled();
@@ -161,7 +196,7 @@ describe('loadAthleteResults', () => {
   // download was removed meanwhile), let an empty answer clear the rows, or
   // a failed request report "failed" and lose the Retry.
   it.each([
-    ['answers empty', async () => []],
+    ['answers empty', async () => api()],
     [
       'fails',
       async () => {
@@ -184,7 +219,7 @@ describe('loadAthleteResults', () => {
     const offline = deferred<AthleteMeetResult[]>();
     const { load, painted } = makeLoad({
       readOffline: () => offline.promise,
-      fetchFull: async () => [row('API')],
+      fetchFull: async () => api(row('API')),
       isCurrent: () => current,
     });
     const done = loadAthleteResults(load);
@@ -196,7 +231,7 @@ describe('loadAthleteResults', () => {
 
   it('paints nothing more when the screen moves on while the request is in flight', async () => {
     let current = true;
-    const full = deferred<AthleteMeetResult[]>();
+    const full = deferred<AthleteLookup>();
     const { load, painted } = makeLoad({
       readOffline: async () => [row('Local')],
       fetchFull: () => full.promise,
@@ -207,14 +242,14 @@ describe('loadAthleteResults', () => {
     expect(painted).toEqual([{ source: 'offline', meets: ['Local'] }]);
 
     current = false;
-    full.resolve([row('Previous athlete API')]);
+    full.resolve(api(row('Previous athlete API')));
     await done;
     expect(painted).toEqual([{ source: 'offline', meets: ['Local'] }]);
   });
 
   it('does not log a failure for a screen that has moved on', async () => {
     let current = true;
-    const full = deferred<AthleteMeetResult[]>();
+    const full = deferred<AthleteLookup>();
     const { load, painted } = makeLoad({ fetchFull: () => full.promise, isCurrent: () => current });
     const done = loadAthleteResults(load);
     current = false;
