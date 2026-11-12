@@ -9,6 +9,7 @@ export const parseProcessTable = (output: string): Map<number, number[]> => {
   const children = new Map<number, number[]>();
   for (const line of output.split('\n')) {
     const [pid, ppid] = line.trim().split(/\s+/).map(Number);
+    if (pid === undefined || ppid === undefined) continue;
     if (!Number.isSafeInteger(pid) || !Number.isSafeInteger(ppid) || pid <= 0) continue;
     children.set(ppid, [...(children.get(ppid) ?? []), pid]);
   }
@@ -19,8 +20,8 @@ export const parseProcessTable = (output: string): Map<number, number[]> => {
 export const treeOf = (root: number, children: Map<number, number[]>): number[] => {
   const tree = [root];
   const seen = new Set(tree);
-  for (let index = 0; index < tree.length; index += 1) {
-    for (const child of children.get(tree[index]) ?? []) {
+  for (const parent of tree) {
+    for (const child of children.get(parent) ?? []) {
       if (seen.has(child)) continue;
       seen.add(child);
       tree.push(child);

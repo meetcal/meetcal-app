@@ -1,3 +1,4 @@
+import { isRecord } from '@/lib/is-record';
 import type { ApiCall, Transport } from '@/lib/api/transport';
 import { TransportRequestError } from '@/lib/api/transport-error';
 
@@ -60,9 +61,7 @@ function wait(ms: number, signal: AbortSignal | undefined): Promise<void> {
 /** Half of the answer's JSON text, as a `{ json }` answer. */
 function truncated(answer: unknown): { json: string } {
   const text =
-    answer && typeof answer === 'object' && typeof (answer as { json?: unknown }).json === 'string'
-      ? (answer as { json: string }).json
-      : (JSON.stringify(answer) ?? '');
+    isRecord(answer) && typeof answer.json === 'string' ? answer.json : (JSON.stringify(answer) ?? '');
   return { json: text.slice(0, Math.floor(text.length / 2)) };
 }
 

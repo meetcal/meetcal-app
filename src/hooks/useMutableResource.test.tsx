@@ -5,6 +5,7 @@ import {
   createMutableResource,
   ResourceCacheEntry,
 } from "@/lib/data/mutable-resource";
+import { itemAt } from "@/test-support/checked-access";
 
 jest.mock("@/lib/networkUtils", () => ({
   subscribeToNetworkChanges: jest.fn(() => () => {}),
@@ -497,7 +498,7 @@ describe("useMutableResource", () => {
 
       const before = renders.length;
       show("B");
-      const firstForB = renders[before];
+      const firstForB = itemAt(renders, before);
       expect(firstForB.param).toBe("B");
       expect(firstForB.isInitialLoading).toBe(true);
 

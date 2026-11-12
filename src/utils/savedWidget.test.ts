@@ -12,6 +12,7 @@ import {
   widgetSessionStartAtMs,
 } from "@/utils/savedWidget";
 import type { SavedSession } from "@/lib/saved-sessions-store";
+import { itemAt } from "@/test-support/checked-access";
 
 function session(
   overrides: Partial<SavedSession> & { id: string },
@@ -232,7 +233,7 @@ describe("syncSavedWidget", () => {
       start_at_ms: Date.UTC(2026, 5, 20, 15, 0),
       time_zone: "America/Denver",
     });
-    expect(String(rows[0].url)).toMatch(/^meetcal:\/\//);
+    expect(String(itemAt(rows, 0).url)).toMatch(/^meetcal:\/\//);
   });
 
   it("sends the rows in chronological order", () => {

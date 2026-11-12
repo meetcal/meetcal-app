@@ -1,9 +1,8 @@
 // hooks/useAppColors.ts
-import { Colors } from '@/constants/Colors';
+import { Colors, type AppColors } from '@/constants/Colors';
 import { useColorScheme } from '@/hooks/useColorScheme';
 
-/** The resolved palette for the active colour scheme. */
-export type AppColors = (typeof Colors)['light'];
+export type { AppColors } from '@/constants/Colors';
 
 export function useAppColors(): AppColors {
   const colorScheme = useColorScheme();

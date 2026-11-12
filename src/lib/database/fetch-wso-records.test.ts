@@ -1,3 +1,4 @@
+import { readRecordsDataByKey, readUnknown } from "@/lib/database/cached-shapes";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { jsonTransportStub } from "@/lib/api/json-transport-stub";
 import { setApiTransportForTests } from "@/lib/api/transport";
@@ -10,6 +11,7 @@ import {
 } from "@/lib/database/fetch-wso-records";
 import { getOfflineCache, OFFLINE_CACHE_KEYS } from "@/lib/database/offline-cache";
 import type { RecordsData } from "@/types/records";
+import { valueAt } from "@/test-support/checked-access";
 
 const mockGetJsonArray = jest.fn();
 const mockFetchApiWsoList = jest.fn();
@@ -50,8 +52,8 @@ beforeEach(async () => {
 async function fetchWSORecords(wso: string): Promise<RecordsData> {
   mockFetchApiWsoList.mockResolvedValueOnce([wso]);
   await downloadWSORecordsForOffline();
-  const stored = await getOfflineCache<Record<string, RecordsData>>(WSO_KEY);
-  return stored!.data[wso];
+  const stored = await getOfflineCache(WSO_KEY, readRecordsDataByKey);
+  return valueAt(stored!.data, wso);
 }
 
 const row = (overrides: Record<string, unknown>) => ({
@@ -86,14 +88,14 @@ describe("WSO records mapping and list", () => {
     // A null age category used to become a literal "null" bucket the user
     // could select.
     expect(Object.keys(records)).toEqual(["Senior"]);
-    expect(records.Senior.Men.map((record) => record.weightClass)).toEqual(["67kg", "89kg"]);
-    expect(records.Senior.Men[0]).toEqual({
+    expect(records.Senior?.Men?.map((record) => record.weightClass)).toEqual(["67kg", "89kg"]);
+    expect(records.Senior?.Men?.[0]).toEqual({
       weightClass: "67kg",
       snatchRecord: null,
       cjRecord: null,
       totalRecord: null,
     });
-    expect(records.Senior.Women).toEqual([]);
+    expect(records.Senior?.Women).toEqual([]);
     expect(mockGetJsonArray).toHaveBeenCalledWith("/data/wso/records", { wso: "Carolina" });
   });
 
@@ -174,7 +176,7 @@ describe("wsoRecordsResource offline cache", () => {
 
     // The full copy is what every other filter falls back to offline; a
     // one-age-group subset written over it would hide the rest.
-    await expect(getOfflineCache(WSO_KEY)).resolves.toEqual({ data: full, lastSynced: 10 });
+    await expect(getOfflineCache(WSO_KEY, readUnknown)).resolves.toEqual({ data: full, lastSynced: 10 });
     const stored = { Senior: { Men: [{ weightClass: "102kg", snatchRecord: 150, cjRecord: 180, totalRecord: 400 }], Women: [] } };
     await expect(wsoRecordsResource.loadCached("Carolina", "Senior", "Men")).resolves.toEqual({
       data: stored,
@@ -191,7 +193,7 @@ describe("wsoRecordsResource offline cache", () => {
     await expect(wsoRecordsResource.loadCached("WSO 0", "Senior", "Men")).resolves.toBeNull();
     await expect(wsoRecordsResource.loadCached("WSO 1", "Senior", "Men")).resolves.not.toBeNull();
     // The downloaded full copy is not part of the cap.
-    await expect(getOfflineCache(WSO_KEY)).resolves.toEqual({ data: full, lastSynced: 10 });
+    await expect(getOfflineCache(WSO_KEY, readUnknown)).resolves.toEqual({ data: full, lastSynced: 10 });
   });
 });
 

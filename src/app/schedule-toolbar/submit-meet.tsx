@@ -6,7 +6,7 @@ import { ThemedView } from "@/components/ui/ThemedView";
 import { useAppColors } from "@/hooks/useAppColors";
 import { SUBMIT_MEET_ROUTE } from "@/lib/meet-submission";
 import { useScreenHorizontalInsets } from "@/hooks/useScreenInsets";
-import { useAuthGuard } from "@/utils/authGuard";
+import { useAuthGuard } from "@/hooks/useAuthGuard";
 import { returnToOrigin } from "@/utils/returnToOrigin";
 import { Stack, useRouter } from "expo-router";
 import React from "react";

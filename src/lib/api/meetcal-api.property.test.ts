@@ -3,41 +3,18 @@
  */
 import * as fc from 'fast-check';
 
-import {
-  clearHttpValidatorCache,
-  fetchApiAthletes,
-  fetchApiAthletesWithSession,
-  fetchApiMeetPackageConditional,
-  fetchApiMeets,
-  fetchApiRecentResultsByNames,
-  fetchApiResultsByNames,
-  fetchApiSchedule,
-  fetchApiYearBestsByNames,
-  fetchSavedSessions,
-  fetchApiClubMeetStats,
-  fetchApiClubNames,
-  fetchApiMeetByName,
-  fetchApiRecords,
-  fetchApiWsoAgeGroups,
-  fetchUserPreferences,
-  formatApiTime,
-  mapApiAthlete,
-  mapApiAthletes,
-  mapApiLiftingResult,
-  mapApiMeet,
-  mapApiSchedule,
-  mapApiYearBests,
-  mapPackageSchedule,
-  MeetCalApiTimeoutError,
-  normalizePlatform,
-  resetServerClockForTests,
-  searchApi,
-  type ApiAthleteWithSession,
-  type ApiLiftingResult,
-  type ApiMeet,
-  type ApiScheduleRow,
-  type ApiYearBests,
-} from './meetcal-api';
+import { clearHttpValidatorCache } from '@/lib/api/revalidated-reads';
+import { fetchApiAthletes, fetchApiAthletesWithSession, fetchApiMeets, fetchApiSchedule, fetchApiMeetByName } from '@/lib/api/meets-api';
+import { fetchApiMeetPackageConditional } from '@/lib/api/meet-package-api';
+import { fetchApiRecentResultsByNames, fetchApiResultsByNames, fetchApiYearBestsByNames, searchApi } from '@/lib/api/results-api';
+import { fetchSavedSessions } from '@/lib/api/saved-sessions-api';
+import { fetchApiClubMeetStats, fetchApiClubNames } from '@/lib/api/clubs-api';
+import { fetchApiRecords, fetchApiWsoAgeGroups } from '@/lib/api/reference-api';
+import { fetchUserPreferences } from '@/lib/api/user-preferences-api';
+import { formatApiTime, mapApiMeet, mapApiSchedule, mapPackageSchedule, normalizePlatform, type ApiMeet, type ApiScheduleRow } from '@/lib/api/api-meet-mappers';
+import { mapApiAthlete, mapApiAthletes, mapApiLiftingResult, mapApiYearBests, type ApiAthleteWithSession, type ApiLiftingResult, type ApiYearBests } from '@/lib/api/api-athlete-mappers';
+import { MeetCalApiTimeoutError } from '@/lib/api/meetcal-api';
+import { resetServerClockForTests } from '@/lib/api/server-clock';
 import { callQuery, isClockCall, jsonTransportStub, type JsonResponder } from './json-transport-stub';
 import { setApiTransportForTests } from './transport';
 import { isLiftResult } from '@/lib/athletes';
@@ -48,7 +25,8 @@ import {
   isoCalendarDateArb,
   timeZoneArb,
 } from '@/test-support/arbitraries';
-import { MS_PER_HOUR, readWallClock, wallClockExists } from '@/test-support/time-arbitraries';
+import { calendarDateParts, MS_PER_HOUR, readWallClock, wallClockExists } from '@/test-support/time-arbitraries';
+import { itemAt } from '@/test-support/checked-access';
 
 /**
  * The API boundary under generated payloads. A valid payload must map without
@@ -355,7 +333,7 @@ describe('meetcal API mappers (properties)', () => {
         const zone = meet.time.timeZoneIdentifier;
         const noon = { date: row.start_date, hour: 12, minute: 0 };
         if (wallClockExists(zone, noon)) {
-          const [year, month, day] = row.start_date.split('-').map(Number);
+          const { year, month, day } = calendarDateParts(row.start_date);
           const instant = Date.UTC(year, month - 1, day, 12) + meet.time.utcOffset * MS_PER_HOUR;
           expect(readWallClock(zone, instant)).toMatchObject(noon);
         }
@@ -371,7 +349,7 @@ describe('meetcal API mappers (properties)', () => {
         // A day's title is its calendar date, whatever the meet's zone: read
         // in a zone east of UTC+12 it used to name the next day.
         for (const day of schedule) {
-          const [year, month, date] = day.fullDate.split('-').map(Number);
+          const { year, month, day: date } = calendarDateParts(day.fullDate);
           expect(day.date).toBe(`${MONTH_NAMES[month - 1]} ${date}, ${year}`);
         }
         expect(schedule.map((day) => day.fullDate).sort()).toEqual([...new Set(rows.map((row) => row.date))].sort());
@@ -391,10 +369,11 @@ describe('meetcal API mappers (properties)', () => {
         const athletes = mapApiAthletes(rows, 'property');
         expect(athletes).toHaveLength(rows.length);
         athletes.forEach((athlete, index) => {
+          const row = itemAt(rows, index);
           expect(isLiftResult(athlete)).toBe(true);
-          expect(athlete.name).toBe(rows[index].name);
-          const hasSession = rows[index].session_number != null && !!rows[index].session_platform;
-          expect(athlete.session?.number).toBe(hasSession ? rows[index].session_number : undefined);
+          expect(athlete.name).toBe(row.name);
+          const hasSession = row.session_number != null && !!row.session_platform;
+          expect(athlete.session?.number).toBe(hasSession ? row.session_number : undefined);
         });
       }),
     );

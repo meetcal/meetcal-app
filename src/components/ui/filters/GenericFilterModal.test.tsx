@@ -5,6 +5,7 @@ import FilterModalTitle from "@/components/ui/filters/FilterModalTitle";
 import GenericFilterModal, {
   type FilterSection,
 } from "@/components/ui/filters/GenericFilterModal";
+import { defined, itemAt } from "@/test-support/checked-access";
 
 jest.mock("react-native-safe-area-context", () => ({
   useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }),
@@ -39,7 +40,7 @@ function sections(temp: Record<string, string>): FilterSection[] {
     {
       id: "ageGroup",
       title: "Age Group",
-      options: (AGE_GROUPS[temp.federation] ?? []).map((a) => ({ value: a, label: a })),
+      options: (AGE_GROUPS[temp.federation ?? ""] ?? []).map((a) => ({ value: a, label: a })),
       dependsOn: ["federation"],
     },
   ];
@@ -78,7 +79,7 @@ function setup(overrides: Partial<Props> = {}) {
   const valueOf = (name: string) => title(name)?.props.value;
   const choose = (name: string, value: string) => {
     act(() => {
-      title(name).props.onPress();
+      defined(title(name), `the ${name} title`).props.onPress();
     });
     act(() => {
       tree.root.findByType(FilterModalOptions).props.onSelect(value);
@@ -110,7 +111,7 @@ describe("GenericFilterModal", () => {
         node.findAll((child) => child.children.includes("Apply")).length > 0,
     );
     act(() => {
-      applyButton[applyButton.length - 1].props.onPress();
+      itemAt(applyButton, -1).props.onPress();
     });
 
     expect(sheet.onApplyFilters).toHaveBeenCalledWith({
@@ -157,7 +158,7 @@ describe("GenericFilterModal", () => {
         node.findAll((child) => child.children.includes("Reset")).length > 0,
     );
     act(() => {
-      resetButton[resetButton.length - 1].props.onPress();
+      itemAt(resetButton, -1).props.onPress();
     });
     expect(sheet.onResetFilters).toHaveBeenCalledTimes(1);
 

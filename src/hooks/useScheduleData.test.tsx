@@ -15,12 +15,14 @@ const mockGetMeetSchedule = jest.fn<Promise<Schedule>, [string]>();
 const mockSaveMeetSchedule = jest.fn<Promise<void>, [string, Schedule]>();
 const mockFetchSchedule = jest.fn<Promise<Schedule>, [string]>();
 
-jest.mock("@/lib/database/offline-store", () => ({
+jest.mock("@/lib/database/meet-data-reads", () => ({
   getMeetSchedule: (meet: string) => mockGetMeetSchedule(meet),
+}));
+jest.mock("@/lib/database/meet-data-saves", () => ({
   saveMeetSchedule: (meet: string, schedule: unknown) =>
     mockSaveMeetSchedule(meet, schedule as never),
-  getMeetWriteGeneration: () => 0,
 }));
+jest.mock("@/lib/database/offline-store-index", () => ({ getMeetWriteGeneration: () => 0 }));
 
 jest.mock("@/lib/database/queries", () => ({
   fetchSchedule: (meet: string) => mockFetchSchedule(meet),

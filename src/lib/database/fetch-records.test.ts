@@ -1,3 +1,4 @@
+import { readUnknown } from "@/lib/database/cached-shapes";
 import { jsonTransportStub } from "@/lib/api/json-transport-stub";
 import { setApiTransportForTests } from "@/lib/api/transport";
 import {
@@ -83,8 +84,8 @@ describe("federationRecordsResource and fetchAgeGroups", () => {
 
     const records = await fetchRecords("USAW");
 
-    expect(records.Senior.Men.map((record) => record.weightClass)).toEqual(["67kg", "89kg"]);
-    expect(records.Senior.Women).toEqual([
+    expect(records.Senior?.Men?.map((record) => record.weightClass)).toEqual(["67kg", "89kg"]);
+    expect(records.Senior?.Women).toEqual([
       { weightClass: "71kg", snatchRecord: 170, cjRecord: 210, totalRecord: 380 },
     ]);
     await expect(federationRecordsResource.loadCached("USAW")).resolves.toEqual({
@@ -103,10 +104,10 @@ describe("federationRecordsResource and fetchAgeGroups", () => {
 
     const records = await fetchRecords("USAW");
 
-    expect(records["Masters 60"].Men).toEqual([
+    expect(records["Masters 60"]?.Men).toEqual([
       { weightClass: "58kg", snatchRecord: 40, cjRecord: null, totalRecord: null },
     ]);
-    expect(records["Masters 85"].Women).toEqual([
+    expect(records["Masters 85"]?.Women).toEqual([
       { weightClass: "48kg", snatchRecord: 0, cjRecord: 0, totalRecord: 0 },
     ]);
   });
@@ -118,7 +119,7 @@ describe("federationRecordsResource and fetchAgeGroups", () => {
 
     await fetchRecords("USAW");
 
-    await expect(getOfflineCache(OFFLINE_CACHE_KEYS.records)).resolves.toBeNull();
+    await expect(getOfflineCache(OFFLINE_CACHE_KEYS.records, readUnknown)).resolves.toBeNull();
     expect(mockMemory.has(OFFLINE_CACHE_KEYS.recordsBrowse)).toBe(true);
   });
 
@@ -132,7 +133,7 @@ describe("federationRecordsResource and fetchAgeGroups", () => {
 
     await fetchRecords("USAW");
 
-    await expect(getOfflineCache(OFFLINE_CACHE_KEYS.records)).resolves.toEqual({
+    await expect(getOfflineCache(OFFLINE_CACHE_KEYS.records, readUnknown)).resolves.toEqual({
       data: { USAW: seniorMen(1), IWF: seniorMen(2) },
       lastSynced: monthAgo,
     });

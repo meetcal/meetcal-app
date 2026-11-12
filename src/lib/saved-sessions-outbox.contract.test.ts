@@ -9,7 +9,7 @@
  * answers what meetcal-backend `app/src/routes/users/saved_sessions.rs` did.
  */
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { resetServerClockForTests } from "@/lib/api/meetcal-api";
+import { resetServerClockForTests } from "@/lib/api/server-clock";
 import { isClockCall } from "@/lib/api/json-transport-stub";
 import { setApiTransportForTests, TransportRequestError, type ApiCall } from "@/lib/api/transport";
 import type { SavedSession } from "@/lib/saved-sessions-store";
@@ -21,6 +21,7 @@ import {
   markSessionPut,
   readOutbox,
 } from "@/lib/saved-sessions-outbox";
+import { itemAt } from "@/test-support/checked-access";
 
 const USER = "user_1";
 
@@ -136,14 +137,14 @@ describe("outbox replay over the real API client", () => {
     // server can ignore one that lands after a newer write from this install.
     const { device } = await readOutbox(USER);
     expect(device).toMatch(/^[A-Za-z0-9_-]{8,64}$/);
-    expect(sent[0].args).toEqual({ meet: "Other Meet", device, rev: resetRev });
-    expect(sent[1].args).toEqual({ sessionId: "Test Meet-2-Red", device, rev: deleteRev });
-    expect(sent[2].args).toMatchObject({ device, rev: putRev });
+    expect(itemAt(sent, 0).args).toEqual({ meet: "Other Meet", device, rev: resetRev });
+    expect(itemAt(sent, 1).args).toEqual({ sessionId: "Test Meet-2-Red", device, rev: deleteRev });
+    expect(itemAt(sent, 2).args).toMatchObject({ device, rev: putRev });
     // A `/` in the meet name is part of the id argument, not a path segment.
-    expect(sent[2].args.sessionId).toBe("Test Meet/Finals-1-Red");
+    expect(itemAt(sent, 2).args.sessionId).toBe("Test Meet/Finals-1-Red");
     expect(sent.every((call) => call.token === TOKEN)).toBe(true);
 
-    const { sessionId: _id, ...putArgs } = sent[2].args;
+    const { sessionId: _id, ...putArgs } = itemAt(sent, 2).args;
     const violations = Object.entries(putArgs)
       // An undefined member is dropped before it reaches Convex.
       .filter(([, value]) => value !== undefined)

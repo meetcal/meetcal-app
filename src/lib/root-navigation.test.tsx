@@ -4,6 +4,7 @@ import { createSeededRootState } from "expo-router/build/global-state/createSeed
 import { inMemoryContext } from "expo-router/build/testing-library/context-stubs";
 
 import { ROOT_STACK_SETTINGS } from "@/lib/root-navigation";
+import { itemAt } from "@/test-support/checked-access";
 
 type Settings = Record<string, unknown> | undefined;
 type State = { routes: { name: string; state?: State }[] };
@@ -35,7 +36,7 @@ function coldStartRoot(rootSettings: Settings, url: string): string[] {
   const parsed = linking.getStateFromPath!(url, linking.config);
   const state = createSeededRootState(parsed as never, routes) as unknown as State;
   // The router's own root (`__root`) holds the root layout's stack.
-  const rootStack = state.routes[0].state ?? state;
+  const rootStack = itemAt(state.routes, 0).state ?? state;
   return rootStack.routes.map((route) => route.name);
 }
 

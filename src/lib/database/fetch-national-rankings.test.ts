@@ -6,6 +6,7 @@ import {
 } from "@/lib/database/fetch-national-rankings";
 import { jsonTransportStub } from "@/lib/api/json-transport-stub";
 import { setApiTransportForTests } from "@/lib/api/transport";
+import { itemAt } from "@/test-support/checked-access";
 
 const mockGetJson = jest.fn();
 
@@ -47,7 +48,7 @@ describe("nationalRankingsResource", () => {
     const result = await nationalRankingsResource.revalidate("Open Men's 89kg");
 
     expect(result.data.map((row) => row.name)).toEqual(["Athlete A", "Athlete B"]);
-    expect(result.data[0].total).toBe(250);
+    expect(itemAt(result.data, 0).total).toBe(250);
     expect(result.lastUpdatedAt).toBe(2);
     await expect(nationalRankingsResource.loadCached("Open Men's 89kg")).resolves.toEqual({
       data: result.data,

@@ -6,6 +6,7 @@ import {
   parseClockTime,
   resolvedMeetTimeZone,
 } from "@/utils/timezone";
+import { itemAt } from '@/test-support/checked-access';
 
 describe("timezone utilities", () => {
   describe("parseClockTime", () => {
@@ -267,17 +268,17 @@ describe("parts formatter cache", () => {
     const zones = Intl.supportedValuesOf("timeZone").slice(0, tz.PARTS_FORMATTER_CACHE_LIMIT + 1);
     const instant = new Date("2026-06-20T16:00:00.000Z");
 
-    tz.getOffsetMinutesAtInstant(zones[0], instant);
-    tz.getOffsetMinutesAtInstant(zones[0], instant);
+    tz.getOffsetMinutesAtInstant(itemAt(zones, 0), instant);
+    tz.getOffsetMinutesAtInstant(itemAt(zones, 0), instant);
     expect(constructed).toBe(1);
 
     for (const zone of zones.slice(1)) tz.getOffsetMinutesAtInstant(zone, instant);
     expect(constructed).toBe(zones.length);
 
     // The first zone was the oldest entry and has been evicted; the newest is still held.
-    tz.getOffsetMinutesAtInstant(zones[zones.length - 1], instant);
+    tz.getOffsetMinutesAtInstant(itemAt(zones, -1), instant);
     expect(constructed).toBe(zones.length);
-    tz.getOffsetMinutesAtInstant(zones[0], instant);
+    tz.getOffsetMinutesAtInstant(itemAt(zones, 0), instant);
     expect(constructed).toBe(zones.length + 1);
   });
 });

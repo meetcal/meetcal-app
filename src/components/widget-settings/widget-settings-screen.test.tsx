@@ -10,6 +10,7 @@ import {
   syncDataWidgets,
   type WidgetSettings,
 } from "@/utils/dataWidgets";
+import { itemAt } from "@/test-support/checked-access";
 
 type ResourceState = {
   data: unknown;
@@ -124,16 +125,18 @@ async function render(): Promise<ReactTestRenderer> {
 
 function updateButton(tree: ReactTestRenderer) {
   // The filter rows are pressable too; only the update button sets `disabled`.
-  const [button] = tree.root.findAll(
-    (node) => typeof node.props.onPress === "function" && typeof node.props.disabled === "boolean",
+  return itemAt(
+    tree.root.findAll(
+      (node) => typeof node.props.onPress === "function" && typeof node.props.disabled === "boolean",
+    ),
+    0,
   );
-  return button;
 }
 
 /** The qualifying-totals filter modal's apply, as the user would tap it. */
 async function applyQualifyingTotals(filters: Record<string, string>) {
   await act(async () => {
-    mockModals[mockModals.length - 3].onApplyFilters(filters);
+    itemAt(mockModals, -3).onApplyFilters(filters);
   });
 }
 

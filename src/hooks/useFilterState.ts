@@ -42,9 +42,8 @@ export function useFilterState<T extends Record<string, string>>(
   }, []);
 
   const applyFilters = useCallback((newFilters: Record<string, string>) => {
-    const updated = newFilters as T;
-    setFilters(updated);
-    setTempFilters(updated);
+    setFilters((previous) => ({ ...previous, ...newFilters }));
+    setTempFilters((previous) => ({ ...previous, ...newFilters }));
     setShowFilterModal(false);
   }, []);
 

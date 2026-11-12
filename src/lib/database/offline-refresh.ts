@@ -1,6 +1,6 @@
 import { isNetworkAvailable } from '@/lib/networkUtils';
-import { prefetchMeetData } from './meet-manager';
-import { markMeetExplicitlyDownloaded } from './offline-store';
+import { prefetchMeetData } from '@/lib/database/meet-manager';
+import { markMeetExplicitlyDownloaded } from '@/lib/database/meet-downloads-registry';
 
 /**
  * "Refresh All" for offline downloads, as download-then-swap.
@@ -76,8 +76,7 @@ export async function refreshOfflineDownloads(
   const failed: string[] = [];
   let connectionLost = false;
 
-  for (let index = 0; index < steps.length; index += 1) {
-    const step = steps[index];
+  for (const [index, step] of steps.entries()) {
     try {
       await step.run();
       refreshed.push(step.title);

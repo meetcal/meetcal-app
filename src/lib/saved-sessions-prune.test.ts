@@ -1,5 +1,5 @@
 import { convertToUTC, getMeetConfig } from "@/data/meets/config";
-import { fetchUserPreferences } from "@/lib/api/meetcal-api";
+import { fetchUserPreferences } from "@/lib/api/user-preferences-api";
 import { findExpiredSessionIds, pruneStartedSessions } from "@/lib/saved-sessions-prune";
 import type { SavedSession } from "@/lib/saved-sessions-store";
 
@@ -18,8 +18,10 @@ let mockServerClock: () => { skewMs: number; sampledAt: number } | null = () => 
   skewMs: 0,
   sampledAt: Date.now(),
 });
-jest.mock("@/lib/api/meetcal-api", () => ({
+jest.mock("@/lib/api/user-preferences-api", () => ({
   fetchUserPreferences: jest.fn(async () => ({ auto_unsave_started_sessions: true })),
+}));
+jest.mock("@/lib/api/server-clock", () => ({
   refreshServerClock: async () => mockServerClock(),
   MAX_PLAUSIBLE_CLOCK_SKEW_MS: 15 * 60 * 1000,
 }));

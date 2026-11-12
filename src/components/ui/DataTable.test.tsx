@@ -2,6 +2,7 @@ import React from "react";
 import { ScrollView, StyleSheet, Text, View } from "react-native";
 import { act, create } from "react-test-renderer";
 import { DataTable } from "@/components/ui/DataTable";
+import { itemAt } from "@/test-support/checked-access";
 
 // react-native's exports are lazy getters. On a cold transform cache (every CI
 // run) the first access transforms the component tree behind each one, inside
@@ -76,13 +77,13 @@ describe("DataTable", () => {
 
     expect(renderRow).not.toHaveBeenCalled();
     expect(flashListCalls).toHaveLength(1);
-    expect(flashListCalls[0].data).toHaveLength(50);
+    expect(itemAt(flashListCalls, 0).data).toHaveLength(50);
   });
 
   it("keeps the same row identity and content in the virtualized path", () => {
     renderTable({ virtualized: true });
 
-    const { data, keyExtractor, renderItem } = flashListCalls[0];
+    const { data, keyExtractor, renderItem } = itemAt(flashListCalls, 0);
     // Keys and row content must come from the caller's own functions,
     // unchanged, or virtualizing would silently reorder or blank the table.
     expect(keyExtractor(data[7], 7)).toBe("7");
@@ -116,9 +117,9 @@ describe("DataTable", () => {
     });
 
     expect(flashListCalls).toHaveLength(2);
-    expect(flashListCalls[1].renderItem).toBe(flashListCalls[0].renderItem);
-    expect(flashListCalls[0].extraData).toBeDefined();
-    expect(flashListCalls[1].extraData).toBe(flashListCalls[0].extraData);
+    expect(itemAt(flashListCalls, 1).renderItem).toBe(itemAt(flashListCalls, 0).renderItem);
+    expect(itemAt(flashListCalls, 0).extraData).toBeDefined();
+    expect(itemAt(flashListCalls, 1).extraData).toBe(itemAt(flashListCalls, 0).extraData);
   });
 
   it("shows the empty message instead of a list when there are no rows", () => {

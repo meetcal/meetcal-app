@@ -1,8 +1,9 @@
+import { isRecord } from "@/lib/is-record";
 import { filterSummary } from "@/lib/filter-summary";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { NativeModules, Platform } from "react-native";
 
-import type { FilterSection } from "@/components/ui/filters/GenericFilterModal";
+import type { FilterSection } from "@/types/filters";
 import { defaultQualifyingEvent, sortQualifyingEvents } from "@/lib/comp-data-filters";
 import { QualifyingTotalsData } from "@/lib/database/fetch-qualifying-totals";
 import { IntlRanking } from "@/lib/database/fetchIntlRankings";
@@ -111,12 +112,12 @@ export async function saveWidgetSettings(settings: WidgetSettings) {
 }
 
 function readSection(value: unknown, key: string): Record<string, unknown> {
-  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
-  const section = (value as Record<string, unknown>)[key];
-  if (!section || typeof section !== "object" || Array.isArray(section)) {
+  if (!isRecord(value)) return {};
+  const section = value[key];
+  if (!isRecord(section)) {
     return {};
   }
-  return section as Record<string, unknown>;
+  return section;
 }
 
 function readString(section: Record<string, unknown>, key: string, fallback: string): string {
@@ -131,7 +132,7 @@ function readEnum<T extends string>(
   fallback: T,
 ): T {
   const value = section[key];
-  return allowed.includes(value as T) ? (value as T) : fallback;
+  return allowed.find((option) => option === value) ?? fallback;
 }
 
 /**
@@ -197,6 +198,28 @@ export function mergeWidgetSettings(value: unknown): WidgetSettings {
       ),
     },
   };
+}
+
+export function readWidgetFilters<K extends WidgetKind>(
+  kind: K,
+  filters: Record<string, string>,
+): WidgetSettings[K] {
+  return mergeWidgetSettings({ [kind]: filters })[kind];
+}
+
+export function applyWidgetFilters(
+  settings: WidgetSettings,
+  kind: WidgetKind,
+  filters: Record<string, string>,
+): WidgetSettings {
+  switch (kind) {
+    case "qualifyingTotals":
+      return { ...settings, qualifyingTotals: readWidgetFilters(kind, filters) };
+    case "standards":
+      return { ...settings, standards: readWidgetFilters(kind, filters) };
+    case "intlRankings":
+      return { ...settings, intlRankings: readWidgetFilters(kind, filters) };
+  }
 }
 
 export function buildQualifyingTotalsWidgetPayload(
@@ -451,9 +474,9 @@ function compareOptionLabels(left: string, right: string): number {
   return left.localeCompare(right, undefined, OPTION_COLLATOR_OPTIONS);
 }
 
-function sortedUnique(values: (string | undefined | null)[]): string[] {
+function sortedUnique<T extends string>(values: readonly (T | undefined | null)[]): T[] {
   return Array.from(new Set(values))
-    .filter((value): value is string => Boolean(value))
+    .filter((value): value is T => Boolean(value))
     .sort(compareOptionLabels);
 }
 
@@ -463,7 +486,7 @@ export type WidgetFilterOptions = {
   /** Meets that international rankings exist for. */
   rankingMeets: string[];
   /** Genders that international rankings exist for. */
-  rankingGenders: string[];
+  rankingGenders: IntlRanking["gender"][];
 };
 
 export function buildWidgetFilterOptions(
@@ -509,12 +532,12 @@ export function areWidgetSettingsEqual(
 
 function pickOption<T extends string>(
   current: T,
-  options: readonly string[],
+  options: readonly T[],
   preferred?: T,
 ): T {
   if (options.includes(current)) return current;
   if (preferred && options.includes(preferred)) return preferred;
-  return (options[0] as T | undefined) ?? current;
+  return options[0] ?? current;
 }
 
 /**

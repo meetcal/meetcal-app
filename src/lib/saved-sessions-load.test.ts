@@ -4,6 +4,7 @@ import {
   savedSessionsLoadKey,
   sessionsFromApi,
 } from "@/lib/saved-sessions-load";
+import { itemAt } from '@/test-support/checked-access';
 
 describe("sessionsFromApi", () => {
   it("maps API rows and defaults nullable fields", () => {
@@ -56,7 +57,7 @@ describe("sessionsFromApi duplicates (#319)", () => {
   it("keeps the newest row of a session an older backend lists twice, oldest first", () => {
     const sessions = sessionsFromApi([row("old", 1), row("new", 2)]);
     expect(sessions).toHaveLength(1);
-    expect(sessions[0].notes).toBe("new");
+    expect(itemAt(sessions, 0).notes).toBe("new");
   });
 });
 

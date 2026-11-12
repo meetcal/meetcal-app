@@ -29,28 +29,31 @@ function tally(makes: number, total: number): AttemptTally {
   return { makes, total, rate: total > 0 ? (makes / total) * 100 : 0 };
 }
 
-/** One lift's three attempt slots across every result, by attempt number. */
+function rateAttemptSlot(attemptsPerResult: (number | null | undefined)[][], slot: number): AttemptTally {
+  let makes = 0;
+  let taken = 0;
+  for (const attempts of attemptsPerResult) {
+    const attempt = attempts[slot];
+    if (!wasAttemptTaken(attempt)) continue;
+    taken++;
+    if (wasAttemptMade(attempt)) makes++;
+  }
+  return tally(makes, taken);
+}
+
 function rateLift(attemptsPerResult: (number | null | undefined)[][]): {
   overall: AttemptTally;
   byAttempt: AttemptRates;
 } {
-  const makes = [0, 0, 0];
-  const taken = [0, 0, 0];
-  for (const attempts of attemptsPerResult) {
-    attempts.forEach((attempt, index) => {
-      if (!wasAttemptTaken(attempt)) return;
-      taken[index]++;
-      if (wasAttemptMade(attempt)) makes[index]++;
-    });
-  }
-  const sum = (values: number[]) => values.reduce((a, b) => a + b, 0);
+  const attempt1 = rateAttemptSlot(attemptsPerResult, 0);
+  const attempt2 = rateAttemptSlot(attemptsPerResult, 1);
+  const attempt3 = rateAttemptSlot(attemptsPerResult, 2);
   return {
-    overall: tally(sum(makes), sum(taken)),
-    byAttempt: {
-      attempt1: tally(makes[0], taken[0]),
-      attempt2: tally(makes[1], taken[1]),
-      attempt3: tally(makes[2], taken[2]),
-    },
+    overall: tally(
+      attempt1.makes + attempt2.makes + attempt3.makes,
+      attempt1.total + attempt2.total + attempt3.total,
+    ),
+    byAttempt: { attempt1, attempt2, attempt3 },
   };
 }
 

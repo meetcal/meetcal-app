@@ -156,7 +156,7 @@ export function parseClockTime(time: string): { hour: number; minute: number } {
     const rawHour = Number(amPmMatch[1]);
     const minute = Number(amPmMatch[2]);
     const second = Number(amPmMatch[3] ?? "0");
-    const period = amPmMatch[4].toUpperCase();
+    const period = (amPmMatch[4] ?? "").toUpperCase();
 
     // Seconds are range-checked as in the 24-hour branch, which rejects
     // "13:00:99"; "1:00:99 PM" used to be the one shape that slipped through.
@@ -259,10 +259,8 @@ export function convertZonedLocalToUTC(
     );
   });
 
-  if (exactMatches.length > 0) {
-    exactMatches.sort((a, b) => a.getTime() - b.getTime());
-    return exactMatches[0];
-  }
+  const [earliestExactMatch] = exactMatches.sort((a, b) => a.getTime() - b.getTime());
+  if (earliestExactMatch) return earliestExactMatch;
 
   const desiredMinutes = toComparableMinutes(desiredParts);
   const decorated = candidateInstants.map((candidate) => {
@@ -271,18 +269,21 @@ export function convertZonedLocalToUTC(
     return { candidate, diffMinutes };
   });
 
-  const futureCandidates = decorated
+  const [nearestFuture] = decorated
     .filter((item) => item.diffMinutes >= 0)
     .sort((a, b) => a.diffMinutes - b.diffMinutes);
 
-  if (futureCandidates.length > 0) {
-    return futureCandidates[0].candidate;
+  if (nearestFuture) {
+    return nearestFuture.candidate;
   }
 
-  decorated.sort(
+  const [nearest] = decorated.sort(
     (a, b) => Math.abs(a.diffMinutes) - Math.abs(b.diffMinutes),
   );
-  return decorated[0].candidate;
+  if (!nearest) {
+    throw new Error(`No instant for ${date} ${time} in ${timeZone}`);
+  }
+  return nearest.candidate;
 }
 
 /**
