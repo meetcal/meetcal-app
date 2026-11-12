@@ -120,7 +120,7 @@ const REQUESTS_BEFORE_WASM_BUDGET = budgets.requestsBeforeWasm;
 
 async function builtWasm() {
   const dist = new URL("../../dist/", import.meta.url);
-  const names = (await readdir(dist)).filter((file) => /^meetcal-web-[0-9a-f]{16}_bg\.wasm$/.test(file));
+  const names = (await readdir(dist)).filter((file) => /^meetcal-web-[0-9a-f]{15,16}_bg\.wasm$/.test(file));
   assert.equal(names.length, 1, "expected one content-hashed Wasm binary in dist/");
   return readFile(new URL(names[0], dist));
 }
