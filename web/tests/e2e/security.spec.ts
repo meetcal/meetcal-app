@@ -101,6 +101,13 @@ test("an auth SDK file that fails its integrity check never runs", async ({ page
   });
 
   await page.goto("/");
+  await expect(page.locator("header.site-header")).toBeVisible();
+  await expect(page.locator("#app-loading")).toHaveCount(0);
+  const beforeSignIn = await page.evaluate(
+    () => (window as typeof window & { __meetcalScripts: Array<Record<string, string | null>> }).__meetcalScripts,
+  );
+  expect(beforeSignIn.filter(({ src }) => src?.includes("@clerk/")), "a public page loads Clerk only when asked").toEqual([]);
+  await page.getByRole("button", { name: "Sign in" }).click();
   await expect(page.getByRole("button", { name: "Sign in" })).toBeDisabled();
   const scripts = await page.evaluate(
     () => (window as typeof window & { __meetcalScripts: Array<Record<string, string | null>> }).__meetcalScripts,

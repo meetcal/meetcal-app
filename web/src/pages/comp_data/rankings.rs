@@ -78,7 +78,7 @@ const FILTERS: &[Filter<Ranking>] = &[
     },
 ];
 
-const HEADERS: &[&str] = &[
+pub(crate) const HEADERS: &[&str] = &[
     "Rank",
     "Athlete",
     "Meet",

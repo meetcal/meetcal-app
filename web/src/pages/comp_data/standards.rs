@@ -64,7 +64,7 @@ const FILTERS: &[Filter<Standard>] = &[
     },
 ];
 
-const HEADERS: &[&str] = &["Gender", "Age", "Weight class", "A", "B"];
+pub(crate) const HEADERS: &[&str] = &["Gender", "Age", "Weight class", "A", "B"];
 
 sort_orders!(StandardSort {
     ADesc => ("standard_a_desc", "A: high to low"),

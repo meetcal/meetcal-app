@@ -47,7 +47,7 @@ const FILTERS: &[Filter<AdaptiveRecord>] = &[Filter {
     order: OptionOrder::ByWeight,
 }];
 
-const HEADERS: &[&str] = &["Weight class", "Snatch", "Clean & jerk", "Total"];
+pub(crate) const HEADERS: &[&str] = &["Weight class", "Snatch", "Clean & jerk", "Total"];
 
 sort_orders!(AdaptiveRecordSort {
     WeightAsc => ("weight_asc", "Weight class"),

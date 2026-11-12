@@ -104,7 +104,7 @@ const FILTERS: &[Filter<Record>] = &[
     },
 ];
 
-const HEADERS: &[&str] = &[
+pub(crate) const HEADERS: &[&str] = &[
     "Type",
     "Gender",
     "Age",

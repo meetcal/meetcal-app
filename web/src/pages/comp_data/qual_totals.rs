@@ -75,7 +75,7 @@ const FILTERS: &[Filter<QualifyingTotal>] = &[
     },
 ];
 
-const HEADERS: &[&str] = &["Event", "Gender", "Age", "Weight class", "Total"];
+pub(crate) const HEADERS: &[&str] = &["Event", "Gender", "Age", "Weight class", "Total"];
 
 sort_orders!(QualifyingTotalSort {
     TotalAsc => ("total_asc", "Total: low to high"),

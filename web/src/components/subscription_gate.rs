@@ -2,7 +2,7 @@ use crate::{
     auth::{AuthContext, AuthState, has_comp_data_access, mount_sign_in, unmount_sign_in},
     components::store_links::{APP_STORE_URL, PLAY_STORE_URL},
     pages::comp_data::{
-        catalog::DataPageLink,
+        catalog::{DataPageLink, FirstView},
         ui::{DataPage, TableSkeleton},
     },
     utils::page,
@@ -12,8 +12,6 @@ use leptos::prelude::*;
 /// How long a granted subscription is trusted before a data page checks it
 /// again (in the background, keeping the page).
 const ACCESS_RECHECK_AFTER_MS: f64 = 10.0 * 60.0 * 1000.0;
-
-const GATE_SKELETON_COLUMNS: usize = 5;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 enum AccessState {
@@ -235,7 +233,10 @@ pub fn SubscriptionGate(page: DataPageLink, children: ChildrenFn) -> impl IntoVi
             AccessState::Unchecked | AccessState::Checking => view! {
                 <DataPage page>
                     <p class="visually-hidden" role="status">"Checking your access"</p>
-                    <TableSkeleton columns=GATE_SKELETON_COLUMNS />
+                    {match page.first_view {
+                        FirstView::Table { columns } => Some(view! { <TableSkeleton columns /> }),
+                        FirstView::Form => None,
+                    }}
                 </DataPage>
             }.into_any(),
             AccessState::SignedOut => view! {

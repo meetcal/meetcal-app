@@ -54,17 +54,21 @@ test("a new meet loads at once and never shows the previous meet's answer or a f
   await meetSearch.fill("Meet Alpha");
   await page.getByRole("option", { name: "Meet Alpha" }).click();
 
-  // Still loading: skeletons, not the "nothing chosen" placeholder read as an answer.
-  await expect(page.getByLabel("Loading data")).toHaveCount(3);
+  // Still loading: a skeleton, not the "nothing chosen" placeholder read as an answer.
+  await expect(page.getByLabel("Loading data")).toHaveCount(1);
   await expect(page.getByText("No schedule has been published for this meet.")).toHaveCount(0);
+  await page.getByRole("tab", { name: "Start List" }).click();
+  await expect(page.getByLabel("Loading data")).toHaveCount(1);
   await expect(page.getByText("No start list has been published for this meet.")).toHaveCount(0);
-  await expect(page.getByText("No results have been published for this meet.")).toHaveCount(0);
+  await page.getByRole("tab", { name: "Schedule" }).click();
 
   // Meet Bravo's answer arrives while Meet Alpha's requests are still pending.
   await meetSearch.fill("Meet Bravo");
   await page.getByRole("option", { name: "Meet Bravo" }).click();
   await expect(page.locator("tbody").first()).toContainText("Bravo Platform");
+  await page.getByRole("tab", { name: "Start List" }).click();
   await expect(page.getByText("No start list has been published for this meet.")).toBeVisible();
+  await page.getByRole("tab", { name: "Schedule" }).click();
 
   // Meet Alpha's late answer is never shown under Meet Bravo.
   releaseAlpha();
@@ -102,11 +106,12 @@ test("each loading skeleton has as many columns as the table that replaces it", 
   const skeletons = page.locator("table.data-table-skeleton");
   const tables = page.locator("table.data-table:not(.data-table-skeleton)");
 
-  await page.goto("/meet-center");
-  await page.locator("#meet-search-input").fill("Meet Alpha");
-  await page.getByRole("option", { name: "Meet Alpha" }).click();
-  await expect(skeletons).toHaveCount(3);
-  const meetSkeletonColumns = await columnsOfEach(skeletons);
+  const meetSkeletonColumns: number[] = [];
+  for (const section of ["", "start-list", "results"]) {
+    await page.goto(`/meet-center?meet=Meet%20Alpha${section ? `&section=${section}` : ""}`);
+    await expect(skeletons).toHaveCount(1);
+    meetSkeletonColumns.push(...(await columnsOfEach(skeletons)));
+  }
 
   await page.goto("/club-dashboard");
   await page.getByLabel("Club").selectOption("Test Barbell");
@@ -119,11 +124,13 @@ test("each loading skeleton has as many columns as the table that replaces it", 
   await expect(tables).toHaveCount(1);
   expect(clubSkeletonColumns).toEqual(await columnsOfEach(tables));
 
-  await page.goto("/meet-center");
-  await page.locator("#meet-search-input").fill("Meet Alpha");
-  await page.getByRole("option", { name: "Meet Alpha" }).click();
-  await expect(tables).toHaveCount(3);
-  expect(meetSkeletonColumns).toEqual(await columnsOfEach(tables));
+  const meetTableColumns: number[] = [];
+  for (const section of ["", "start-list", "results"]) {
+    await page.goto(`/meet-center?meet=Meet%20Alpha${section ? `&section=${section}` : ""}`);
+    await expect(tables).toHaveCount(1);
+    meetTableColumns.push(...(await columnsOfEach(tables)));
+  }
+  expect(meetSkeletonColumns).toEqual(meetTableColumns);
 });
 
 test("a failed load offers Try again and loads after it", async ({ page }) => {

@@ -7,6 +7,13 @@ pub struct DataPageLink {
     pub description: &'static str,
     pub seo_title: &'static str,
     pub access: Access,
+    pub first_view: FirstView,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum FirstView {
+    Table { columns: usize },
+    Form,
 }
 
 /// Who can open a data page.
@@ -28,6 +35,9 @@ pub const QUALIFYING_TOTALS: DataPageLink = DataPageLink {
     description: "Qualification totals by event, division, and weight class.",
     seo_title: "Weightlifting Qualifying Totals",
     access: Access::Subscription,
+    first_view: FirstView::Table {
+        columns: super::qual_totals::HEADERS.len(),
+    },
 };
 
 pub const STANDARDS: DataPageLink = DataPageLink {
@@ -38,6 +48,9 @@ pub const STANDARDS: DataPageLink = DataPageLink {
     description: "A and B standards by division and weight class.",
     seo_title: "Weightlifting Standards",
     access: Access::Subscription,
+    first_view: FirstView::Table {
+        columns: super::standards::HEADERS.len(),
+    },
 };
 
 pub const RESULTS: DataPageLink = DataPageLink {
@@ -48,6 +61,7 @@ pub const RESULTS: DataPageLink = DataPageLink {
     description: "Search an athlete’s competition results from the last 20 years.",
     seo_title: "Athlete Competition Results",
     access: Access::Subscription,
+    first_view: FirstView::Form,
 };
 
 pub const MEET_CENTER: DataPageLink = DataPageLink {
@@ -58,6 +72,7 @@ pub const MEET_CENTER: DataPageLink = DataPageLink {
     description: "Venue details, schedules, start lists, and complete meet results.",
     seo_title: "Weightlifting Meets, Schedules & Results",
     access: Access::Subscription,
+    first_view: FirstView::Form,
 };
 
 pub const CLUB_DASHBOARD: DataPageLink = DataPageLink {
@@ -68,6 +83,7 @@ pub const CLUB_DASHBOARD: DataPageLink = DataPageLink {
     description: "Meet performance, medals, PRs, make rates, and athlete totals by club.",
     seo_title: "Weightlifting Club Meet Dashboard",
     access: Access::Subscription,
+    first_view: FirstView::Form,
 };
 
 pub const WSO_DASHBOARD: DataPageLink = DataPageLink {
@@ -78,6 +94,7 @@ pub const WSO_DASHBOARD: DataPageLink = DataPageLink {
     description: "Participation, make rates, lifted volume, and results for a selected WSO.",
     seo_title: "USAW WSO Meet Dashboard",
     access: Access::Subscription,
+    first_view: FirstView::Form,
 };
 
 pub const WSO_ELITE: DataPageLink = DataPageLink {
@@ -88,6 +105,7 @@ pub const WSO_ELITE: DataPageLink = DataPageLink {
     description: "A WSO's top athletes overall and by age group, by % of A, Q-points, or Sinclair.",
     seo_title: "USAW WSO Elite Athletes",
     access: Access::Subscription,
+    first_view: FirstView::Form,
 };
 
 pub const WRAPPED: DataPageLink = DataPageLink {
@@ -100,6 +118,7 @@ pub const WRAPPED: DataPageLink = DataPageLink {
     access: Access::Free {
         seo_description: "Free Weightlifting Wrapped: an athlete's competition year in numbers, with meets, best lifts, make rate, and progress.",
     },
+    first_view: FirstView::Form,
 };
 
 pub const RANKINGS: DataPageLink = DataPageLink {
@@ -110,6 +129,9 @@ pub const RANKINGS: DataPageLink = DataPageLink {
     description: "International rankings, totals, and percentage scores.",
     seo_title: "International Weightlifting Rankings",
     access: Access::Subscription,
+    first_view: FirstView::Table {
+        columns: super::rankings::HEADERS.len(),
+    },
 };
 
 pub const NATIONAL_RANKINGS: DataPageLink = DataPageLink {
@@ -120,6 +142,7 @@ pub const NATIONAL_RANKINGS: DataPageLink = DataPageLink {
     description: "USAW and USAMW rankings by division, with optional year filtering.",
     seo_title: "National Weightlifting Rankings",
     access: Access::Subscription,
+    first_view: FirstView::Form,
 };
 
 pub const RECORDS: DataPageLink = DataPageLink {
@@ -130,6 +153,9 @@ pub const RECORDS: DataPageLink = DataPageLink {
     description: "Snatch, clean and jerk, and total records.",
     seo_title: "Weightlifting Records",
     access: Access::Subscription,
+    first_view: FirstView::Table {
+        columns: super::records::HEADERS.len(),
+    },
 };
 
 pub const WSO_RECORDS: DataPageLink = DataPageLink {
@@ -140,6 +166,7 @@ pub const WSO_RECORDS: DataPageLink = DataPageLink {
     description: "State-organization records by division and weight class.",
     seo_title: "USAW WSO Records",
     access: Access::Subscription,
+    first_view: FirstView::Form,
 };
 
 pub const ADAPTIVE_RECORDS: DataPageLink = DataPageLink {
@@ -150,6 +177,9 @@ pub const ADAPTIVE_RECORDS: DataPageLink = DataPageLink {
     description: "Top adaptive performances by gender and weight class.",
     seo_title: "Adaptive Weightlifting Records",
     access: Access::Subscription,
+    first_view: FirstView::Table {
+        columns: super::adaptive_records::HEADERS.len(),
+    },
 };
 
 pub const DATA_HOME: DataPageLink = DataPageLink {
@@ -160,6 +190,7 @@ pub const DATA_HOME: DataPageLink = DataPageLink {
     description: "Every competition data page.",
     seo_title: "Competition Data",
     access: Access::Subscription,
+    first_view: FirstView::Form,
 };
 
 pub const DATA_PAGES: [DataPageLink; 13] = [

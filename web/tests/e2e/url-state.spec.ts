@@ -144,12 +144,13 @@ test("an athlete link from a meet's results comes back to the same meet", async 
   const result = { name: "Test Athlete", meet: "Meet Alpha", date: "2026-06-20", age: "Senior", body_weight: 70.5, snatch1: 95, snatch2: 100, snatch3: -103, snatch_best: 100, cj1: 120, cj2: 125, cj3: 0, cj_best: 125, total: 225, adaptive: false };
   await routeQuery(page, "results:byMeet", (route) => route.fulfill(textAnswer([result])));
   await routeQuery(page, "results:search", (route) => route.fulfill(valueAnswer({ matched_name: "Test Athlete", suggestions: [], results: [result], truncated: false })));
-  await page.goto("/meet-center?meet=Meet%20Alpha");
+  await page.goto("/meet-center?meet=Meet%20Alpha&section=results");
   await page.getByRole("link", { name: "Test Athlete" }).click();
   await expect(page).toHaveURL(/\/results\?athlete=Test%20Athlete$/);
   await page.goBack();
-  await expect(page).toHaveURL(/\/meet-center\?meet=Meet%20Alpha$/);
-  await expect(page.locator("tbody").first()).toContainText("Meet Alpha Platform");
+  await expect(page).toHaveURL(/\/meet-center\?meet=Meet%20Alpha&section=results$/);
+  await expect(page.getByRole("tab", { name: "Full Results" })).toHaveAttribute("aria-selected", "true");
+  await expect(page.locator("tbody").first()).toContainText("Test Athlete");
 });
 
 test("the dashboards open from their addresses and write their picks to them", async ({ page }) => {
