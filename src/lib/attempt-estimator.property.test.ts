@@ -3,6 +3,7 @@ import * as fc from 'fast-check';
 import type { LiftResult, AthleteMeetResult } from '@/data/types/athletes';
 import { calculateEstimates, generateAthleteNotes, type AthleteAttemptEstimate } from '@/lib/attempt-estimator';
 import { addCalendarDays } from '@/test-support/time-arbitraries';
+import { itemAt } from '@/test-support/checked-access';
 
 /** A fixed clock, so the two-year history cutoff is the same for every case. */
 const NOW = new Date('2026-10-12T12:00:00Z');
@@ -54,7 +55,7 @@ const athletesArb: fc.Arbitrary<LiftResult[]> = fc
             club: 'Club',
             gender: 'F',
             weightClass: '64',
-            entryTotal: totals[index],
+            entryTotal: itemAt(totals, index),
             adaptive: false,
           }),
         ),
@@ -79,7 +80,7 @@ function expectSaneKg(values: number[]): void {
     expect(Number.isInteger(kg)).toBe(true);
     expect(kg).toBeGreaterThanOrEqual(0);
   }
-  for (let i = 1; i < values.length; i++) expect(values[i]).toBeGreaterThanOrEqual(values[i - 1]);
+  values.slice(1).forEach((kg, i) => expect(kg).toBeGreaterThanOrEqual(itemAt(values, i)));
 }
 
 /** An estimate without the attempts-out counts (see the athlete-order property). */

@@ -1,4 +1,5 @@
 import { parseIwfWikitext, wikiText } from '../../convex/scrapers/parse/iwfRecords';
+import { itemAt } from '../../convex/lib/json';
 
 function lift(name: string, value: string, extra = '|[[Someone]]\n|{{flagu|China}}\n|1 May 2026') {
   return `|-\n|${name}\n|align=center|${value}\n${extra}`;
@@ -23,7 +24,7 @@ describe('IWF world records from Wikipedia', () => {
     const records = parseIwfWikitext(page(table(MEN)), 'Junior');
     expect(records).toHaveLength(16);
     expect(records[0]).toMatchObject({ ageCategory: 'Junior', gender: 'Men', weightClass: '60kg', snatchRecord: 100, cjRecord: 120, totalRecord: 220 });
-    expect(records[7].weightClass).toBe('+110kg');
+    expect(itemAt(records, 7).weightClass).toBe('+110kg');
     expect(records[15]).toMatchObject({ gender: 'Women', weightClass: '+86kg' });
   });
 

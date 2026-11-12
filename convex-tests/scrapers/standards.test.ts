@@ -1,6 +1,7 @@
 import { JOBS } from '../../convex/cronJobs';
 import { usawToday } from '../../convex/scrapers/standards';
 import { currentStandards, findStandardsPdfUrl, normalizeWeightClass, parseStandards, standardsPeriod } from '../../convex/scrapers/parse/standards';
+import { itemAt } from '../../convex/lib/json';
 
 // Lines as `pdfLines` reads the 2026 A & B Standards PDF (trimmed): a title,
 // then per section a header, a `Category` line and a `Total` line.
@@ -47,7 +48,7 @@ describe('standards parser (port of usaw/standards_scraper)', () => {
     // A PDF that names no period is always in force.
     expect(currentStandards(parseStandards([PAGE_1.slice(1)]), '2030-01-01')).toHaveLength(5);
     // Two values for one class on one day is a PDF the parser misread.
-    expect(() => currentStandards([...parsed, { ...parsed[5], standard_a: 1 }], '2026-10-12')).toThrow('two standards in force');
+    expect(() => currentStandards([...parsed, { ...itemAt(parsed, 5), standard_a: 1 }], '2026-10-12')).toThrow('two standards in force');
   });
 
   it("switches on USA Weightlifting's date, not UTC's", () => {
@@ -57,7 +58,7 @@ describe('standards parser (port of usaw/standards_scraper)', () => {
   });
 
   it('runs after midnight in Colorado Springs, so a set taking effect that day is stored the same day', () => {
-    const [minute, hour] = JOBS.standards.schedule.split(' ').map(Number);
+    const [minute, hour] = (JOBS.standards?.schedule ?? '').split(' ').map(Number);
     const at = (day: string) => new Date(`${day}T${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}:00Z`);
     // Daylight time (August) and standard time (January).
     expect(usawToday(at('2026-08-01'))).toBe('2026-08-01');

@@ -1,3 +1,4 @@
+import { itemAt, last } from '../convex/lib/json';
 import { fakeMutationCtx, handlerOf } from './fakeDb';
 import { writeHistories } from '../convex/lib/history';
 import { linkLifterResults, MAX_LIFTER_SIGHTINGS, MAX_LINK_NAMES, queueLifterRelinks, upsertLifters, upsertLiftingResults } from '../convex/ingest';
@@ -275,12 +276,12 @@ describe('the reads the lifter jobs page through', () => {
         result({ date: '2012-01-01' }),
       ],
     });
-    const insertedSince = docs('lifting_results')[1]._creationTime;
+    const insertedSince = itemAt(docs('lifting_results'), 1)._creationTime;
     expect(await unlinked(ctx, { insertedSince, cursor: null })).toMatchObject({
       rows: [
-        { nameKey: 'taylor johnson', date: '2026-10-01', federation: 'USAW', storedAt: docs('lifting_results')[1]._creationTime },
-        { nameKey: 'taylor johnson', date: '2026-10-03', federation: 'USAMW', storedAt: docs('lifting_results')[3]._creationTime },
-        { nameKey: 'taylor johnson', date: '2012-01-01', federation: 'USAW', storedAt: docs('lifting_results')[4]._creationTime },
+        { nameKey: 'taylor johnson', date: '2026-10-01', federation: 'USAW', storedAt: itemAt(docs('lifting_results'), 1)._creationTime },
+        { nameKey: 'taylor johnson', date: '2026-10-03', federation: 'USAMW', storedAt: itemAt(docs('lifting_results'), 3)._creationTime },
+        { nameKey: 'taylor johnson', date: '2012-01-01', federation: 'USAW', storedAt: itemAt(docs('lifting_results'), 4)._creationTime },
       ],
       isDone: true,
     });
@@ -292,7 +293,7 @@ describe('the reads the lifter jobs page through', () => {
     const first = await names(ctx, { after: '' });
     expect(first.done).toBe(false);
     expect(first.names).not.toContain('zz');
-    expect(await names(ctx, { after: first.names[first.names.length - 1] })).toEqual({ names: ['zz'], done: true });
+    expect(await names(ctx, { after: last(first.names) })).toEqual({ names: ['zz'], done: true });
   });
 
   it('remembers when the latest complete run started, never moving it back', async () => {

@@ -3,6 +3,7 @@ import { getFunctionName } from 'convex/server';
 import { API_TOKEN_AUDIENCE, API_TOKEN_TTL_MS, issue, jwks, MAX_API_TOKENS_PER_USER, record, revoke, revokeAllCli } from '../convex/apiTokens';
 import { parseSigningJwk, publicJwk, signJwt, type SigningJwk } from '../convex/lib/jwt';
 import { fakeMutationCtx, handlerOf } from './fakeDb';
+import { itemAt } from '../convex/lib/json';
 
 /**
  * MeetCal-issued tokens (`convex/apiTokens.ts`): signed so Convex can verify
@@ -25,10 +26,10 @@ const decode = (part: string) => JSON.parse(fromBase64Url(part).toString('utf8')
 
 /** Verifies `token` against the public JWK as Convex would. */
 async function verify(token: string, key: SigningJwk): Promise<boolean> {
-  const [header, payload, signature] = token.split('.');
+  const [header, payload] = token.split('.');
   const { kty, crv, x, y } = publicJwk(key);
   const verifier = await crypto.subtle.importKey('jwk', { kty, crv, x, y }, { name: 'ECDSA', namedCurve: 'P-256' }, false, ['verify']);
-  return crypto.subtle.verify({ name: 'ECDSA', hash: 'SHA-256' }, verifier, fromBase64Url(signature), new TextEncoder().encode(`${header}.${payload}`));
+  return crypto.subtle.verify({ name: 'ECDSA', hash: 'SHA-256' }, verifier, fromBase64Url(itemAt(token.split('.'), 2)), new TextEncoder().encode(`${header}.${payload}`));
 }
 
 async function statusOf(promise: Promise<unknown>): Promise<number | 'ok'> {
@@ -45,8 +46,8 @@ describe('ES256 signing', () => {
   it('makes a token the public key verifies, with the header Convex expects', async () => {
     const key = await newSigningKey();
     const token = await signJwt(key, { sub: A });
-    expect(decode(token.split('.')[0])).toEqual({ alg: 'ES256', typ: 'JWT', kid: 'k1' });
-    expect(decode(token.split('.')[1])).toEqual({ sub: A });
+    expect(decode(itemAt(token.split('.'), 0))).toEqual({ alg: 'ES256', typ: 'JWT', kid: 'k1' });
+    expect(decode(itemAt(token.split('.'), 1))).toEqual({ sub: A });
     expect(await verify(token, key)).toBe(true);
     expect(await verify(token, await newSigningKey())).toBe(false);
   });
@@ -99,7 +100,7 @@ describe('issuing and revoking', () => {
     const before = Date.now();
     const { token, tokenId, expiresAt } = await issueAs(db, clerk(A));
     expect(await verify(token, key)).toBe(true);
-    const claims = decode(token.split('.')[1]);
+    const claims = decode(itemAt(token.split('.'), 1));
     expect(claims).toMatchObject({ iss: SITE, sub: A, aud: API_TOKEN_AUDIENCE, tid: tokenId });
     expect(Number(claims.exp) * 1000).toBeGreaterThanOrEqual(before + API_TOKEN_TTL_MS - 1000);
     expect(db.rows('api_tokens')).toEqual([{ tokenId, userId: A, client: 'cli', createdAt: expect.any(Number), expiresAt }]);

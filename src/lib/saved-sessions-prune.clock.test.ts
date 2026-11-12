@@ -2,7 +2,8 @@
 // clock sample it needs must be taken for it, however long ago the process's
 // first request sampled the clock.
 import { getMeetConfig } from "@/data/meets/config";
-import { fetchApiMeets, resetServerClockForTests } from "@/lib/api/meetcal-api";
+import { fetchApiMeets } from "@/lib/api/meets-api";
+import { resetServerClockForTests } from "@/lib/api/server-clock";
 import { setApiTransportForTests, type ApiCall } from "@/lib/api/transport";
 import { pruneStartedSessions } from "@/lib/saved-sessions-prune";
 import type { SavedSession } from "@/lib/saved-sessions-store";

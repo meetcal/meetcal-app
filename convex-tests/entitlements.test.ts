@@ -19,6 +19,7 @@ import {
 } from '../convex/entitlements';
 import { isLive } from '../convex/apiTokens';
 import { fakeMutationCtx, handlerOf } from './fakeDb';
+import { itemAt } from '../convex/lib/json';
 
 /**
  * The `entitlements` table follows RevenueCat (`convex/entitlements.ts`):
@@ -160,7 +161,7 @@ describe('the stored entitlement', () => {
     await put(db.ctx, { userId: A, ...state, syncedAt: NOW + 1 });
     const claim = handlerOf<{ userId: string; now: number }, Record<string, unknown>>(claimRefresh);
     await claim(db.ctx, { userId: A, now: NOW + 2 });
-    const entitlementId = db.docs('entitlements')[0]._id;
+    const entitlementId = itemAt(db.docs('entitlements'), 0)._id;
     expect(patch.mock.calls.map(([id]) => id)).not.toContain(entitlementId);
   });
 

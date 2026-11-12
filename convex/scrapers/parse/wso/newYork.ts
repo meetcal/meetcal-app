@@ -19,7 +19,7 @@ export function newYorkPdfUrls(html: string): string[] {
   if (start === -1) start = html.indexOf('Current Records');
   const end = html.indexOf('State Meet Records');
   const section = start === -1 ? html.slice(0, end === -1 ? undefined : end) : end > start ? html.slice(start, end) : html.slice(start, start + 10_000);
-  const urls = [...new Set([...section.matchAll(/href="(https:\/\/www\.nywso\.com\/_files\/ugd\/[a-zA-Z0-9_/]+\.pdf)"/g)].map((m) => m[1]))];
+  const urls = [...new Set([...section.matchAll(/href="(https:\/\/www\.nywso\.com\/_files\/ugd\/[a-zA-Z0-9_/]+\.pdf)"/g)].map((m) => m[1] ?? ''))];
   // The Python kept the ones it could label from nearby text, topping up from
   // the rest when that left fewer than five.
   const labelled = urls.filter((url) => {
@@ -92,12 +92,12 @@ export function parseNewYork(pages: readonly (readonly string[])[], wso: string)
         blocks.push(block);
       }
       const label = lift?.[1] ?? bareClass;
-      if (label) block.weight_class = plusLast(label);
+      if (label) block.weightClass = plusLast(label);
       if (!lift) continue;
-      const value = liftValue(lift[3]);
-      setLift(block, lift[2] === 'Snatch' ? 'snatch' : lift[2] === 'Total' ? 'total' : 'cj', value, liftHolder(value, lift[3]));
+      const value = liftValue(lift[3] ?? '');
+      setLift(block, lift[2] === 'Snatch' ? 'snatch' : lift[2] === 'Total' ? 'total' : 'cj', value, liftHolder(value, lift[3] ?? ''));
     }
-    records.push(...blocks.filter((b) => b.weight_class && b.age_category));
+    records.push(...blocks.filter((b) => b.weightClass && b.ageCategory));
   }
   return records;
 }

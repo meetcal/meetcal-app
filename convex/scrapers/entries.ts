@@ -1,5 +1,7 @@
 'use node';
 
+import { errorMessage } from '../lib/errors';
+
 import { v } from 'convex/values';
 import { DAY_MS, isoDateOf } from '../lib/dates';
 import { internalAction, type ActionCtx } from '../_generated/server';
@@ -75,9 +77,7 @@ async function readEntries(ctx: ActionCtx, url: string, meet: string): Promise<E
 
 type MeetResult = {
   label: string;
-  /** The stored meet the entries are written under. */
   meet?: string;
-  /** The list's title, when Sport80 calls the meet something else now. */
   title?: string;
   entries?: number;
   inserted?: number;
@@ -87,10 +87,10 @@ type MeetResult = {
   notOnStartList?: number;
   rejected?: number;
   deleted?: number;
-  /** Entrants given a WSO from their other registrations. */
   withWso?: number;
   skipped?: string;
   error?: string;
+  notReached?: boolean;
 };
 
 export const run = internalAction({
@@ -106,6 +106,7 @@ export const run = internalAction({
       results.push(result);
       if (budget.spent()) {
         result.error = NOT_REACHED;
+        result.notReached = true;
         continue;
       }
       try {
@@ -130,12 +131,12 @@ export const run = internalAction({
         );
         Object.assign(result, counts);
       } catch (error) {
-        result.error = (error as Error).message;
+        result.error = errorMessage(error);
         console.error(`entries (${target.label}): ${result.error}`);
       }
     }
-    const failed = results.filter((r) => r.error);
-    if (failed.length && !dryRun) throw sourcesFailed('entries', failed.map((r) => ({ source: r.label, error: r.error! })));
+    const failures = results.flatMap(({ label, error, notReached }) => (error === undefined ? [] : [{ source: label, error, notReached }]));
+    if (failures.length && !dryRun) throw sourcesFailed('entries', failures);
     return results;
   },
 });

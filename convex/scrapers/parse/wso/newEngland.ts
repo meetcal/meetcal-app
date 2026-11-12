@@ -17,7 +17,7 @@ import { blankRecord, intOrNull, plusLast, setLift, type WsoRecord } from './com
 
 /** Every records PDF the page links, in page order. */
 export function newEnglandPdfUrls(html: string): string[] {
-  return [...new Set([...html.matchAll(/href="(https:\/\/www\.newenglandweightlifting\.com\/_files\/ugd\/[a-zA-Z0-9_/]+\.pdf)"/g)].map((m) => m[1]))];
+  return [...new Set([...html.matchAll(/href="(https:\/\/www\.newenglandweightlifting\.com\/_files\/ugd\/[a-zA-Z0-9_/]+\.pdf)"/g)].map((m) => m[1] ?? ''))];
 }
 
 /** "16/17 Youth Men's Records" -> ["U17", "Men"], "35-39 Masters Women's Records" -> ["Masters 35", "Women"]. */
@@ -63,7 +63,10 @@ export function parseNewEngland(pages: readonly (readonly PdfLine[])[], wso: str
         continue;
       }
       if (line.runs[0]?.text.trim() === 'Class') {
-        columns = line.runs.flatMap((run) => (COLUMNS.includes(run.text.trim() as Column) ? [{ name: run.text.trim() as Column, centre: centre(run) }] : []));
+        columns = line.runs.flatMap((run) => {
+          const name = COLUMNS.find((column) => column === run.text.trim());
+          return name === undefined ? [] : [{ name, centre: centre(run) }];
+        });
         continue;
       }
       if (!columns?.length) continue;
@@ -79,7 +82,7 @@ export function parseNewEngland(pages: readonly (readonly PdfLine[])[], wso: str
         block = blankRecord(wso, section?.[0] ?? '', section?.[1] ?? 'Men');
         blocks.push(block);
       }
-      if (classCell) block.weight_class = plusLast(classCell);
+      if (classCell) block.weightClass = plusLast(classCell);
       const name = cells.Name ?? '';
       const weight = cells.Weight ?? '';
       // "Open" is a class with no record yet; 0 or a non-number is none either.
@@ -88,7 +91,7 @@ export function parseNewEngland(pages: readonly (readonly PdfLine[])[], wso: str
       const field = lift.includes('Snatch') ? 'snatch' : lift.includes('C&J') || lift.includes('Clean') ? 'cj' : lift.includes('Total') ? 'total' : null;
       if (field) setLift(block, field, value, recordHolder(value, athlete(name), cells.Date, cells['Location/Meet']));
     }
-    records.push(...blocks.filter((b) => b.weight_class && b.age_category));
+    records.push(...blocks.filter((b) => b.weightClass && b.ageCategory));
   }
   return records;
 }

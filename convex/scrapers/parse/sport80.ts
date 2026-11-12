@@ -1,10 +1,10 @@
 // Pure parts of `scrapers/sport80.ts` (port of `usaw/sport80_api/update_supabase_from_sport80.py`).
 
-import { isRecord, kindOf } from '../../lib/json';
+import { isRecord, kindOf, textOrNull } from '../../lib/json';
 import { pyFloat } from '../lib/numbers';
 import { isValidIsoDate } from '../../lib/validation';
 import { normalizeGender } from '../../lib/normalize';
-import { isoDateOf } from '../../lib/dates';
+import { DAY_MS, isoDateOf } from '../../lib/dates';
 import { foldDivision } from '../../lib/lifters';
 import { UNDATED_RESULT_DATE } from '../../lib/results';
 
@@ -54,8 +54,8 @@ export function pageRows(page: Dict): Dict[] {
  */
 export function nested(data: Dict, primaryKey: string, columnName?: string): unknown {
   if (columnName && 'columns' in data) {
-    const columns = (data.columns ?? {}) as Record<string, Dict | undefined>;
-    return columns[columnName]?.value ?? null;
+    const column = isRecord(data.columns) ? data.columns[columnName] : undefined;
+    return isRecord(column) ? (column.value ?? null) : null;
   }
   return data[primaryKey] ?? null;
 }
@@ -90,7 +90,7 @@ function rawEventDate(event: Dict): string | null {
 export function eventDate(event: Dict): number | null {
   const raw = rawEventDate(event);
   if (!raw) return null;
-  const iso = /^(\d{4})-(\d{1,2})-(\d{1,2})$/.exec(raw.split(' ')[0]);
+  const iso = /^(\d{4})-(\d{1,2})-(\d{1,2})$/.exec(raw.split(' ')[0] ?? '');
   return iso ? utc(Number(iso[1]), Number(iso[2]), Number(iso[3])) : null;
 }
 
@@ -191,8 +191,8 @@ function formatResult(eventId: string, meet: string, day: string, item: Dict): R
     eventId,
     meet,
     date: day,
-    name: or(nested(item, 'lifter', 'Athlete'), nested(item, 'name', 'Name')) as string | null,
-    age: or(nested(item, 'age_category', 'Age Category'), nested(item, 'age', 'Age')) as string | null,
+    name: textOrNull(or(nested(item, 'lifter', 'Athlete'), nested(item, 'name', 'Name'))),
+    age: textOrNull(or(nested(item, 'age_category', 'Age Category'), nested(item, 'age', 'Age'))),
     bodyWeight: toFloat(or(nested(item, 'body_weight_kg', 'Bodyweight'), nested(item, 'body_weight_(kg)'))),
     snatch1: toFloat(nested(item, 'snatch_lift_1', 'Snatch 1')),
     snatch2: toFloat(nested(item, 'snatch_lift_2', 'Snatch 2')),
@@ -228,6 +228,79 @@ export function pickNewestEvents(events: Dict[], count = RECENT_EVENTS): { newes
   const newest = newestEvents(dated, count);
   const oldestPicked = newest.length < count ? -Infinity : Math.min(...newest.map(idNumber));
   return { newest, unreadable: undated.map((entry) => ({ ...entry, recent: idNumber(entry.event) > oldestPicked })) };
+}
+
+export const RECENT_DAYS = 21;
+export const ROLLING_NIGHTS = 28;
+export const MAX_ROLLING_EVENTS_A_NIGHT = 120;
+
+export const RESULTS_JOB = 'results-sport80';
+
+export const eventSource = (meet: string | null, eventId: string | null) => (meet === null ? `event ${eventId ?? '?'}` : `${meet} (event ${eventId ?? '?'})`);
+
+export const isSourceOfEvent = (source: string, eventId: string) => source === eventSource(null, eventId) || source.endsWith(`(event ${eventId})`);
+
+export function failingEventIds(failedSources: readonly string[]): string[] {
+  const ids = failedSources.map((source) => /(?:^|\()event (\d+)\)?$/.exec(source)?.[1]).filter((id): id is string => id !== undefined);
+  return [...new Set(ids)];
+}
+
+export type NightlyEvents = {
+  newest: Dict[];
+  recentCount: number;
+  retriedCount: number;
+  rollingCount: number;
+  rollingLeftOut: number;
+  notInTheIndex: string[];
+  unreadable: { event: Dict; date: string; recent: boolean }[];
+};
+
+export function pickNightlyEvents(
+  events: Dict[],
+  now: number,
+  {
+    count = RECENT_EVENTS,
+    recentDays = RECENT_DAYS,
+    rollingNights = ROLLING_NIGHTS,
+    maxRolling = MAX_ROLLING_EVENTS_A_NIGHT,
+    stillFailing = [] as readonly string[],
+  } = {},
+): NightlyEvents {
+  const { newest, unreadable } = pickNewestEvents(events, count);
+  const recentIds = new Set(newest.map(eventIdOf));
+  const recent = [...newest];
+  const older = new Map<string, Dict>();
+  const earliestRecentDay = (Math.floor(now / DAY_MS) - recentDays) * DAY_MS;
+  for (const event of events) {
+    const id = eventIdOf(event);
+    const date = eventDate(event);
+    if (id === null || date === null || recentIds.has(id) || older.has(id)) continue;
+    if (date >= earliestRecentDay) {
+      recentIds.add(id);
+      recent.push(event);
+    } else {
+      older.set(id, event);
+    }
+  }
+  const tonight = Math.floor(now / DAY_MS) % rollingNights;
+  const dueTonight = [...older.values()].filter((event) => idNumber(event) % rollingNights === tonight).sort((a, b) => idNumber(b) - idNumber(a));
+  const rolling = dueTonight.slice(0, maxRolling);
+  const picked = new Set([...recent, ...rolling].map(eventIdOf));
+  const inTheIndex = new Set(events.map(eventIdOf));
+  const retried = stillFailing.flatMap((id) => {
+    const event = picked.has(id) ? undefined : older.get(id);
+    return event === undefined ? [] : [event];
+  });
+  const oldestRecentId = recent.length < count ? -Infinity : Math.min(...recent.map(idNumber));
+  return {
+    newest: [...recent, ...retried, ...rolling],
+    recentCount: recent.length,
+    retriedCount: retried.length,
+    rollingCount: rolling.length,
+    rollingLeftOut: dueTonight.length - rolling.length,
+    notInTheIndex: stillFailing.filter((id) => !picked.has(id) && !older.has(id) && !inTheIndex.has(id)),
+    unreadable: unreadable.map((entry) => ({ ...entry, recent: entry.recent || idNumber(entry.event) > oldestRecentId })),
+  };
 }
 
 /**
@@ -312,7 +385,7 @@ function memberId(action: unknown): string | null {
   for (const button of action) {
     if (!isRecord(button) || typeof button.route !== 'string') continue;
     const match = MEMBER_ROUTE.exec(button.route);
-    if (match) return match[1];
+    if (match) return match[1] ?? null;
   }
   return null;
 }

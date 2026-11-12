@@ -1,5 +1,6 @@
 import { readStatsViewItems, statsViewItems, type StatsRow } from '../convex/lib/meetData';
 import { joinJsonChunks, jsonChunks, textChunks } from '../convex/lib/views';
+import { itemAt } from '../convex/lib/json';
 
 function statsRow(i: number): StatsRow {
   return {
@@ -39,7 +40,7 @@ describe('view chunks', () => {
   });
 
   it('never split a surrogate pair across chunks', () => {
-    const size = textChunks('a'.repeat(3_000_000))[0].length;
+    const size = itemAt(textChunks('a'.repeat(3_000_000)), 0).length;
     // An astral character straddling the first boundary.
     const text = `${'a'.repeat(size - 1)}😀${'b'.repeat(10)}`;
     const chunks = textChunks(text);

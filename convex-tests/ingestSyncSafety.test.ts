@@ -13,6 +13,7 @@ import {
   upsertRecords,
 } from '../convex/ingest';
 import { writeHistories } from '../convex/lib/history';
+import { itemAt } from '../convex/lib/json';
 
 // The derived-data side of each write (versions, history documents, the
 // scheduled refresh) has its own tests; here only which rows are written.
@@ -67,7 +68,7 @@ describe('entries after a published start list (#133)', () => {
   it('stores the start list gender normalized, so an athlete without an id matches it', async () => {
     const { db, rows } = fakeDb();
     await replace({ db }, { meet: 'Meet', rows: [athlete('No Id', 'noid:no-id', { gender: ' female ' })] });
-    expect(rows('athletes')[0].gender).toBe('Women');
+    expect(itemAt(rows('athletes'), 0).gender).toBe('Women');
     expect(await upsert({ db }, { meet: 'Meet', rows: [entry('No Id', 'noid:no-id', { entryTotal: 160 })] })).toMatchObject({ updated: 1, inserted: 0 });
   });
 });

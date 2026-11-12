@@ -23,6 +23,7 @@ import {
   NOTIFICATION_ENABLED_KEY,
   scheduleNotification,
 } from "@/utils/notifications";
+import { itemAt } from "@/test-support/checked-access";
 
 jest.mock("@/utils/notifications", () => ({
   NOTIFICATION_ENABLED_KEY: "notificationsEnabled",
@@ -37,9 +38,7 @@ jest.mock("@/lib/exact-alarms", () => ({
   exactAlarmsFromStatus: jest.fn(() => null),
 }));
 
-jest.mock("@/lib/database/offline-store", () => ({
-  getMeetSchedule: jest.fn(async () => []),
-}));
+jest.mock("@/lib/database/meet-data-reads", () => ({ getMeetSchedule: jest.fn(async () => []) }));
 
 // Wall clock read as UTC: "11:00 AM" on 2099-06-20 is 2099-06-20T11:00Z.
 jest.mock("@/data/meets/config", () => ({
@@ -347,8 +346,8 @@ describe("syncSessionReminders", () => {
 
       const triggerAtMs = Date.parse("2099-06-20T10:00:00.000Z");
       // The OS fires by the device clock: 12:00 on it is 10:00 on the server's.
-      expect(mockScheduleNotification.mock.calls[0][2]).toEqual(new Date(triggerAtMs + 2 * HOUR_MS));
-      expect(mockScheduleNotification.mock.calls[0][5]).toEqual({
+      expect(itemAt(mockScheduleNotification.mock.calls, 0)[2]).toEqual(new Date(triggerAtMs + 2 * HOUR_MS));
+      expect(itemAt(mockScheduleNotification.mock.calls, 0)[5]).toEqual({
         kind: SESSION_REMINDER_KIND,
         triggerAtMs,
         fireAtMs: triggerAtMs + 2 * HOUR_MS,
@@ -374,7 +373,7 @@ describe("syncSessionReminders", () => {
       await syncSessionReminders([saved("a")], true, fastDevice());
 
       expect(mockScheduleNotification).toHaveBeenCalledTimes(1);
-      expect(mockScheduleNotification.mock.calls[0][2]).toEqual(new Date(triggerAtMs + 2 * HOUR_MS));
+      expect(itemAt(mockScheduleNotification.mock.calls, 0)[2]).toEqual(new Date(triggerAtMs + 2 * HOUR_MS));
     });
 
     describe("before the first clock sample (a cold start offline)", () => {
@@ -410,8 +409,8 @@ describe("syncSessionReminders", () => {
       it("schedules a missing reminder on the device's clock and marks it for correction", async () => {
         await syncSessionReminders([saved("a")], true, noSample(NOW.getTime()));
 
-        expect(mockScheduleNotification.mock.calls[0][2]).toEqual(new Date(triggerAtMs));
-        expect(mockScheduleNotification.mock.calls[0][5]).toEqual({
+        expect(itemAt(mockScheduleNotification.mock.calls, 0)[2]).toEqual(new Date(triggerAtMs));
+        expect(itemAt(mockScheduleNotification.mock.calls, 0)[5]).toEqual({
           kind: SESSION_REMINDER_KIND,
           triggerAtMs,
           fireAtMs: triggerAtMs,
@@ -439,7 +438,7 @@ describe("syncSessionReminders", () => {
         );
 
         expect(mockScheduleNotification).toHaveBeenCalledTimes(1);
-        expect(mockScheduleNotification.mock.calls[0][2]).toEqual(
+        expect(itemAt(mockScheduleNotification.mock.calls, 0)[2]).toEqual(
           new Date("2099-06-20T13:00:00.000Z"),
         );
       });
@@ -506,7 +505,7 @@ describe("syncSessionReminders", () => {
     it("records whether the reminder was set as an exact alarm", async () => {
       await syncSessionReminders([saved("a")], true, deps({ exactAlarms: async () => false }));
 
-      expect(mockScheduleNotification.mock.calls[0][5]).toEqual({
+      expect(itemAt(mockScheduleNotification.mock.calls, 0)[5]).toEqual({
         kind: SESSION_REMINDER_KIND,
         triggerAtMs,
         fireAtMs: triggerAtMs,
@@ -522,7 +521,7 @@ describe("syncSessionReminders", () => {
       await syncSessionReminders([saved("a")], true, deps({ exactAlarms: async () => true }));
 
       expect(mockScheduleNotification).toHaveBeenCalledTimes(1);
-      expect(mockScheduleNotification.mock.calls[0][5]).toEqual(
+      expect(itemAt(mockScheduleNotification.mock.calls, 0)[5]).toEqual(
         expect.objectContaining({ exact: true }),
       );
     });

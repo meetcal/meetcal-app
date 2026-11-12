@@ -1,3 +1,4 @@
+import { itemAt } from '../../lib/json';
 import { unescapeHtml } from '../lib/html';
 
 // Pure parsing for `scrapers/intlRankings.ts` (port of
@@ -35,12 +36,12 @@ export function discoverRankingPdfs(page: string): RankingPdf[] {
   const seen = new Set<string>();
   const found: RankingPdf[] = [];
   for (const match of html.matchAll(button)) {
-    const url = match[1];
+    const url = match[1] ?? '';
     if (seen.has(url)) continue;
     seen.add(url);
     const prefix = html.slice(Math.max(0, (match.index ?? 0) - 3000), match.index);
     const titles = [...prefix.matchAll(/"title":"([^"]+)"/g)];
-    found.push({ title: titles.length ? titles[titles.length - 1][1] : fileName(url), url });
+    found.push({ title: titles[titles.length - 1]?.[1] ?? fileName(url), url });
   }
   return found;
 }
@@ -131,10 +132,10 @@ export function parseRankingsTable(lines: string[], info: MeetInfo): IntlRanking
     rankings.push({
       meet: info.meet_name,
       ranking: Number(match[1]),
-      name: match[2].trim(),
-      weight_class: match[3],
-      total: cleanNumber(match[4]),
-      percent_a: cleanPercent(match[5]),
+      name: itemAt(match, 2).trim(),
+      weight_class: match[3] ?? '',
+      total: cleanNumber(match[4] ?? ''),
+      percent_a: cleanPercent(match[5] ?? ''),
       gender: info.gender,
       age_category: info.age_category,
     });

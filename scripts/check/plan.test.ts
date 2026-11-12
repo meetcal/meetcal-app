@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { checkSteps, LOCAL_GATE_TEST_TIMEOUT_MS, planChecks, type CheckPlan } from './plan';
+import { itemAt } from '@/test-support/checked-access';
 
 const suites = (paths: string[]) => planChecks(paths).suites;
 const names = (plan: CheckPlan) => checkSteps(plan).map((step) => step.name);
@@ -112,6 +113,6 @@ describe('checkSteps', () => {
       ['CLI tests', 'cli'],
     ]);
     // Through mise in the folder, so its pinned Rust and mbx apply.
-    expect(steps[1].command).toEqual(['mise', 'exec', '--', 'cargo', 'clippy', '--all-targets', '--locked', '--', '-D', 'warnings']);
+    expect(itemAt(steps, 1).command).toEqual(['mise', 'exec', '--', 'cargo', 'clippy', '--all-targets', '--locked', '--', '-D', 'warnings']);
   });
 });

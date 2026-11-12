@@ -1,13 +1,9 @@
 import { convertToUTC, getMeetConfig } from '@/data/meets/config';
 import type { MeetName } from '@/data/types/meet';
-import {
-  getServerClockSample,
-  MAX_PLAUSIBLE_CLOCK_SKEW_MS,
-  type ServerClockSample,
-} from '@/lib/api/meetcal-api';
+import { getServerClockSample, MAX_PLAUSIBLE_CLOCK_SKEW_MS, type ServerClockSample } from '@/lib/api/server-clock';
 import { exactAlarmsFromStatus, readExactAlarmStatus } from '@/lib/exact-alarms';
 import { devLog } from '@/lib/logger';
-import { getMeetSchedule } from '@/lib/database/offline-store';
+import { getMeetSchedule } from '@/lib/database/meet-data-reads';
 import {
   readReminderPreference,
   type RemindersPolicy,
@@ -15,6 +11,7 @@ import {
 } from '@/lib/reminder-preference';
 import { buildSessionScheduleLookup, withScheduleTimes } from '@/lib/saved-schedule-lookup';
 import type { SavedSession } from '@/lib/saved-sessions-store';
+import { utcCalendarDate } from '@/utils/dateTime';
 import type { Schedule as ScheduleType } from '@/types/schedule';
 import {
   cancelNotification,
@@ -295,10 +292,8 @@ export const defaultReminderSyncDeps: ReminderSyncDeps = {
   exactAlarms: async () => exactAlarmsFromStatus(await readExactAlarmStatus()),
 };
 
-/** `YYYY-MM-DD` dates before this cannot be upcoming anywhere. */
 function pastDateCutoff(now: Date): string {
-  const cutoff = new Date(now.getTime() - PAST_DATE_SLACK_DAYS * 24 * 60 * 60 * 1000);
-  return cutoff.toISOString().slice(0, 10);
+  return utcCalendarDate(new Date(now.getTime() - PAST_DATE_SLACK_DAYS * 24 * 60 * 60 * 1000));
 }
 
 /**

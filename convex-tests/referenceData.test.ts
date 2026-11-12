@@ -1,16 +1,16 @@
 import { rosterProblems } from '../convex/lib/roster';
 import { computeNationalRankingsForYear, computeRecords, computeWsoList, computeWsoRows, currentWeightClasses } from '../convex/lib/referenceData';
+import { itemAt } from '../convex/lib/json';
 
 type Row = Record<string, unknown>;
 
-/** Just enough of Convex's `ctx.db` for the reference readers: index equality and ranges, then `collect`. */
 function fakeCtx(tables: Record<string, Row[]>) {
   const ctx = {
     db: {
       query: (table: string) => {
         const all = tables[table] ?? [];
         return {
-          collect: async () => all,
+          take: async (count: number) => all.slice(0, count),
           withIndex: (_index: string, build: (q: unknown) => unknown) => {
             const filters: ((row: Row) => boolean)[] = [];
             const q = {
@@ -28,7 +28,7 @@ function fakeCtx(tables: Record<string, Row[]>) {
               },
             };
             build(q);
-            return { collect: async () => all.filter((row) => filters.every((f) => f(row))) };
+            return { take: async (count: number) => (all.filter((row) => filters.every((f) => f(row))).slice(0, count)) };
           },
         };
       },
@@ -55,7 +55,7 @@ describe('record holders', () => {
       ],
     });
 
-    const [row] = await computeRecords(ctx);
+    const row = itemAt(await computeRecords(ctx), 0);
 
     expect(row.snatch_by).toEqual({ name: 'Ada Lift', date: '2025-06-01', location: 'Nationals, Columbus OH' });
     expect(row.cj_by).toEqual({ name: 'Standard', date: null, location: null });
@@ -110,7 +110,7 @@ describe('record holders', () => {
       ],
     });
 
-    const [row] = await computeWsoRows(ctx, 'Carolina');
+    const row = itemAt(await computeWsoRows(ctx, 'Carolina'), 0);
 
     expect(row.total_by).toEqual({ name: 'Bo Press', date: '2024-03-02', location: 'Raleigh' });
     expect(row.snatch_by).toBeNull();

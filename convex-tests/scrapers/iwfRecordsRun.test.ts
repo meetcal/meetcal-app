@@ -2,6 +2,7 @@ import { keepStoredHolders, run } from '../../convex/scrapers/iwfRecords';
 import { isQuotaRefusal, UNBLOCK_URL } from '../../convex/scrapers/lib/browserless';
 import { describeFailure } from '../../convex/lib/cronAlerts';
 import { handlerOf } from '../fakeDb';
+import { itemAt } from '../../convex/lib/json';
 
 // The parsers have their own tests; here each page's text names the record it stands for.
 jest.mock('../../convex/scrapers/parse/iwfRecords', () => ({
@@ -67,7 +68,7 @@ describe('iwf-world-records run', () => {
       expect(result.records).toHaveLength(3);
       // Two failures and three pages read.
       expect(calls(fetchMock, 'wikipedia')).toHaveLength(5);
-      const headers = fetchMock.mock.calls[0][1]?.headers as Record<string, string>;
+      const headers = itemAt(fetchMock.mock.calls, 0)[1]?.headers as Record<string, string>;
       expect(headers['User-Agent']).toMatch(/^MeetCal\/\d+\.\d+ \(https:\/\/meetcal\.app; .+\) iwf-world-records$/);
       expect(runMutation).toHaveBeenCalledTimes(1);
       expect(calls(fetchMock, 'browserless')).toHaveLength(0);
@@ -116,7 +117,7 @@ describe('iwf-world-records run', () => {
       expect(result.source).toBe('iwf.sport');
       expect(result.records).toHaveLength(6);
       expect(calls(fetchMock, 'wikipedia')).toHaveLength(0);
-      const [url, init] = calls(fetchMock, 'browserless')[0];
+      const [url, init] = itemAt(calls(fetchMock, 'browserless'), 0);
       // The token goes in the header, never the URL, which errors repeat.
       expect(url).not.toContain(TOKEN);
       expect(init?.headers).toMatchObject({ Authorization: `Bearer ${TOKEN}` });
@@ -155,7 +156,7 @@ describe('iwf-world-records run', () => {
       runQuery.mockResolvedValue([{ ageCategory: 'Senior', gender: 'Men', weightClass: '60kg', snatchRecord: 1, cjRecord: 2, totalRecord: 3, snatchBy: iwfHolder }]);
       serve({ iwf: json({}, 503) });
       expect((await runJob()).source).toBe('wikipedia');
-      const rows = runMutation.mock.calls[0][1].rows as { ageCategory: string; snatchBy?: unknown }[];
+      const rows = itemAt(runMutation.mock.calls, 0)[1].rows as { ageCategory: string; snatchBy?: unknown }[];
       expect(rows.find((r) => r.ageCategory === 'Senior')?.snatchBy).toEqual(iwfHolder);
     });
 
@@ -232,7 +233,7 @@ describe('keepStoredHolders', () => {
   const record = { ageCategory: 'Senior' as const, gender: 'Women' as const, weightClass: '49kg', snatchRecord: 94, cjRecord: 121, totalRecord: 216, snatchBy: fresh, cjBy: fresh, totalBy: fresh };
 
   it('keeps the stored holder of an unchanged lift and takes the new one where the record moved', () => {
-    const [kept] = keepStoredHolders([record], [{ ageCategory: 'Senior', gender: 'Women', weightClass: '49kg', snatchRecord: 94, cjRecord: 121, totalRecord: 215, snatchBy: stored, totalBy: stored }]);
+    const kept = itemAt(keepStoredHolders([record], [{ ageCategory: 'Senior', gender: 'Women', weightClass: '49kg', snatchRecord: 94, cjRecord: 121, totalRecord: 215, snatchBy: stored, totalBy: stored }]), 0);
     expect(kept).toMatchObject({ snatchBy: stored, totalBy: fresh, totalRecord: 216 });
     // No stored holder to keep.
     expect(kept.cjBy).toEqual(fresh);

@@ -1,3 +1,4 @@
+import { isRecord } from '@/lib/is-record';
 import { LiftResult } from '@/data/types/athletes';
 import { MeetName } from '@/data/types/meet';
 import { isSamePlatform } from '@/lib/athletes';
@@ -71,11 +72,11 @@ export function upsertSession(
 function sameSession(a: SavedSession, b: SavedSession): boolean {
   const canonical = (value: unknown): unknown => {
     if (Array.isArray(value)) return value.map(canonical);
-    if (value && typeof value === 'object') {
-      return Object.keys(value as Record<string, unknown>)
-        .filter((key) => (value as Record<string, unknown>)[key] !== undefined)
+    if (isRecord(value)) {
+      return Object.keys(value)
+        .filter((key) => value[key] !== undefined)
         .sort()
-        .map((key) => [key, canonical((value as Record<string, unknown>)[key])]);
+        .map((key) => [key, canonical(value[key])]);
     }
     return value;
   };
@@ -88,7 +89,8 @@ export function revertRefusedSave(
   previousSession: SavedSession | undefined,
 ): SavedSession[] | null {
   const index = currentSessions.findIndex(s => s.id === refused.id);
-  if (index < 0 || !sameSession(currentSessions[index], refused)) {
+  const current = currentSessions[index];
+  if (!current || !sameSession(current, refused)) {
     return null;
   }
   const next = [...currentSessions];

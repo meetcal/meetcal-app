@@ -1,6 +1,7 @@
 import { parseDates, parseLocation, parseUsamwEvents, timeZoneFor } from '../../convex/scrapers/parse/usamwEvents';
 import { usamwEventFailures } from '../../convex/scrapers/usamwEvents';
 import { afterRun, describeFailure, sourcesFailed } from '../../convex/lib/cronAlerts';
+import { itemAt } from '../../convex/lib/json';
 
 const block = (venue: string, location: string) =>
   `<div class="kv-ee-row kv-ee-event"><div class="kv-ee-venue"><p>${venue}<span style="display:none;"></span></p></div><div class="kv-ee-location"><p>${location}</p></div></div>`;
@@ -57,8 +58,8 @@ describe('USA Masters events (usamasters.net)', () => {
         renamedEvents: [renamed('2027 Masters Open', '2027 Masters Open (USAMW)'), renamed('2027 Masters Open 2', '2027 Masters Open 2 (USAMW 2)')],
       });
       expect(failures.map((f) => f.source)).toEqual(['event Spring Open', 'meet 2027 Masters Open', 'meet 2027 Masters Open 2']);
-      expect(failures[0].error).toContain('Meet A / Meet B');
-      expect(failures[1].error).toContain('"2027 Masters Open (USAMW)"');
+      expect(itemAt(failures, 0).error).toContain('Meet A / Meet B');
+      expect(itemAt(failures, 1).error).toContain('"2027 Masters Open (USAMW)"');
       expect(usamwEventFailures({ ambiguousEvents: [], renamedEvents: [] })).toEqual([]);
     });
 

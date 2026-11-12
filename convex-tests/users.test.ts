@@ -11,6 +11,7 @@ import {
   USER_DATA_DELETE_BATCH,
 } from '../convex/users';
 import { fakeMutationCtx, handlerOf } from './fakeDb';
+import { itemAt } from '../convex/lib/json';
 
 /**
  * `convex/users.ts` is the only code that scopes saved sessions and
@@ -83,7 +84,7 @@ describe('users.ts scoping (#220)', () => {
     expect(await status(anonymous(setAutoUnsave, { enabled: false }))).toBe(401);
     expect(store.reads.count).toBe(before);
     expect(store.rows('saved_sessions')).toHaveLength(1);
-    expect(store.rows('user_preferences')[0].autoUnsaveStartedSessions).toBe(true);
+    expect(itemAt(store.rows('user_preferences'), 0).autoUnsaveStartedSessions).toBe(true);
   });
 
   it("lists and deletes only the caller's rows, never another user's with the same session id", async () => {

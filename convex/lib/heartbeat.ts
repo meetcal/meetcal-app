@@ -1,3 +1,5 @@
+import { errorMessage } from './errors';
+
 /**
  * The external dead man's switch. After each watchdog run that checked every
  * job and sent every alert, the backend pings `HEARTBEAT_URL` (a
@@ -23,7 +25,7 @@ export async function pingHeartbeat(url: string | undefined, fetchImpl: typeof f
     if (response.ok) return true;
     console.error(`heartbeat ping failed with ${response.status}`);
   } catch (error) {
-    console.error(`heartbeat ping failed: ${(error as Error).message}`);
+    console.error(`heartbeat ping failed: ${errorMessage(error)}`);
   }
   return false;
 }

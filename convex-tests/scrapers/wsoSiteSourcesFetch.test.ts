@@ -12,7 +12,7 @@ jest.mock('../../convex/scrapers/lib/pdf', () => ({
   pdfLines: jest.fn(async () => [['line']]),
   pdfRunLines: jest.fn(async () => [[{ text: 'line', runs: [] }]]),
 }));
-const record = (wso: string) => ({ wso, age_category: 'Senior', gender: 'Men', weight_class: '65', snatch_record: 100, cj_record: 120, total_record: 220 });
+const record = (wso: string) => ({ wso, ageCategory: 'Senior', gender: 'Men', weightClass: '65', snatchRecord: 100, cjRecord: 120, totalRecord: 220 });
 jest.mock('../../convex/scrapers/parse/wso/illinois', () => ({
   illinoisPdfHref: () => '/records.pdf',
   parseIllinois: (_: unknown, wso: string) => ({ records: [record(wso)], warnings: [] }),

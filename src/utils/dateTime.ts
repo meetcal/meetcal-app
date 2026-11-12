@@ -100,7 +100,7 @@ export function calculateInitialPage(
 
   const today = timeZone
     ? getCalendarDateInTimeZone(timeZone)
-    : new Date().toISOString().split("T")[0];
+    : utcCalendarDate(new Date());
 
   // Find the index of the current date or the closest future date using fullDate
   const currentDateIndex = scheduleData.findIndex(
@@ -180,8 +180,8 @@ const ISO_DATE_REGEX = /^\d{4}-\d{2}-\d{2}$/;
  */
 export function toMeetCalendarDate(value: string | null | undefined): string {
   if (typeof value !== "string") return "";
-  const [datePart] = value.split("T");
-  return ISO_DATE_REGEX.test(datePart ?? "") && meetCalendarDateAnchor(datePart)
+  const [datePart = ""] = value.split("T");
+  return ISO_DATE_REGEX.test(datePart) && meetCalendarDateAnchor(datePart)
     ? datePart
     : "";
 }
@@ -195,9 +195,12 @@ const ANYWHERE_ON_EARTH_OFFSET_MS = 12 * 60 * 60 * 1000;
  * whatever its zone. Plain arithmetic, so no engine has to know `Etc/GMT+12`.
  */
 export function getAnywhereOnEarthDate(now: Date = new Date()): string {
-  return new Date(now.getTime() - ANYWHERE_ON_EARTH_OFFSET_MS)
-    .toISOString()
-    .split("T")[0];
+  return utcCalendarDate(new Date(now.getTime() - ANYWHERE_ON_EARTH_OFFSET_MS));
+}
+
+export function utcCalendarDate(instant: Date): string {
+  const [datePart = ""] = instant.toISOString().split("T");
+  return datePart;
 }
 
 /**
@@ -226,5 +229,5 @@ export function getHistoryCutoffDate(
   const cutoff = new Date(
     Date.UTC(now.getUTCFullYear() - years, now.getUTCMonth(), now.getUTCDate()),
   );
-  return cutoff.toISOString().split("T")[0];
+  return utcCalendarDate(cutoff);
 }

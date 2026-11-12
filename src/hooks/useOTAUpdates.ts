@@ -268,7 +268,7 @@ export function useOTAUpdates(): OTAUpdateState & OTAUpdateActions {
 
   useEffect(() => {
     if (Platform.OS !== 'web') {
-      checkForUpdate();
+      void checkForUpdate();
     }
   }, [checkForUpdate]);
 
@@ -282,7 +282,7 @@ export function useOTAUpdates(): OTAUpdateState & OTAUpdateActions {
       const now = Date.now();
       if (now - lastForegroundCheckRef.current < FOREGROUND_CHECK_THROTTLE_MS) return;
       lastForegroundCheckRef.current = now;
-      checkForUpdate();
+      void checkForUpdate();
     });
 
     return () => subscription.remove();

@@ -1,3 +1,4 @@
+import { isOwnKey, itemAt, groupOf } from '../../../lib/json';
 import type { PdfLine } from '../../lib/pdf';
 import { recordHolder, setHolder, type RecordHolder } from '../holder';
 import { blankRecord, intOrNull, plusLast, type WsoRecord } from './common';
@@ -28,7 +29,7 @@ export function mountainSouthPdfUrls(html: string): string[] {
     return upper.includes('WOMEN') ? 'Women' : upper.includes('MEN') ? 'Men' : null;
   };
   const urls: string[] = [];
-  for (const [, url, text] of section.matchAll(/href="(https:\/\/mountainsouth\.org\/[^"]+\/Mountain-South-WSO-Records[^"]*\.pdf)"[^>]*>([^<]+)/gi)) {
+  for (const [, url = '', text = ''] of section.matchAll(/href="(https:\/\/mountainsouth\.org\/[^"]+\/Mountain-South-WSO-Records[^"]*\.pdf)"[^>]*>([^<]+)/gi)) {
     if (urls.includes(url) || url.toLowerCase().includes('certificate') || text.toLowerCase().includes('certificate')) continue;
     if (!genderOf(url) && !genderOf(text)) continue;
     urls.push(url);
@@ -76,9 +77,8 @@ const CLASS_SHAPE = /^\+?\d+\+?\s+[A-Za-z]/;
 /** An age group's heading: "OPEN MEN", "MASTER WOMEN W35 (35-39)". */
 const SECTION = /^(?:OPEN|JUNIOR|YOUTH|MASTERS?)\s+(?:WO)?MEN\b/;
 
-/** Lifts by their first letter: "Clean & Jerk" may print without its spaces. */
-const FIELDS = { s: 'snatch_record', c: 'cj_record', t: 'total_record' } as const;
-const HOLDER_FIELDS = { snatch_record: 'snatch_by', cj_record: 'cj_by', total_record: 'total_by' } as const;
+const FIELDS = { s: 'snatchRecord', c: 'cjRecord', t: 'totalRecord' } as const;
+const HOLDER_FIELDS = { snatchRecord: 'snatchBy', cjRecord: 'cjBy', totalRecord: 'totalBy' } as const;
 
 /**
  * Where the EVENT column starts on this page: halfway between the LOCATION
@@ -111,7 +111,7 @@ function lineHolder(value: number | null, line: string | PdfLine, columns: Colum
   if (value === null) return undefined;
   const text = words(typeof line === 'string' ? line : line.text);
   const runs = typeof line === 'string' ? [] : line.runs.flatMap((run) => words(run.text, run.x));
-  const all = recordAt(runs) !== -1 && Math.trunc(Number(runs[recordAt(runs)].text)) === value ? runs : text;
+  const all = recordAt(runs) !== -1 && Math.trunc(Number(itemAt(runs, recordAt(runs)).text)) === value ? runs : text;
   const rest = all.slice(recordAt(all) + 1);
   const at = rest.findIndex((word) => DATE.test(word.text));
   const name = at === -1 ? rest : rest.slice(0, at);
@@ -120,7 +120,7 @@ function lineHolder(value: number | null, line: string | PdfLine, columns: Colum
   const place = split ? after.filter((word) => word.x! < columns.event!) : after;
   const event = split ? after.filter((word) => word.x! >= columns.event!) : [];
   const join = (list: Word[]) => list.map((word) => word.text).join(' ');
-  return recordHolder(value, join(name), at === -1 ? null : rest[at].text, join(event), join(place));
+  return recordHolder(value, join(name), at === -1 ? null : itemAt(rest, at).text, join(event), join(place));
 }
 
 /** One PDF's records, from its lines (text, or runs with positions) page by page. */
@@ -150,13 +150,15 @@ export function parseMountainSouth(pages: readonly (readonly (string | PdfLine)[
       if (!section || !CLASS_SHAPE.test(line)) continue;
       const match = CLASS_LINE.exec(line);
       if (!match) throw new Error(`${wso}: unreadable class line ${JSON.stringify(line)} (layout changed?)`);
-      const weightClass = plusLast(match[1]);
-      const field = FIELDS[match[2][0].toLowerCase() as keyof typeof FIELDS];
+      const weightClass = plusLast(match[1] ?? '');
+      const initial = groupOf(match, 2).charAt(0).toLowerCase();
+      if (!isOwnKey(FIELDS, initial)) throw new Error(`${wso}: unknown lift in ${JSON.stringify(line)}`);
+      const field = FIELDS[initial];
       const key = JSON.stringify([section[0], section[1], weightClass]);
       const record = records.get(key) ?? blankRecord(wso, section[0], section[1], weightClass);
       records.set(key, record);
       // 0 is how the PDFs list a vacant class.
-      const value = intOrNull(match[3]) || null;
+      const value = intOrNull(match[3] ?? '') || null;
       record[field] = value;
       setHolder(record, HOLDER_FIELDS[field], lineHolder(value, source, columns));
     }

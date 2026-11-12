@@ -1,3 +1,4 @@
+import { itemAt } from '../../../lib/json';
 import { parseCsv } from '../../lib/csv';
 import { recordHolder } from '../holder';
 import { intOrNull, type WsoRecord } from './common';
@@ -25,7 +26,7 @@ export type SideBySide = {
   holder: { name: number; date: number; location?: number };
 };
 
-const cell = (row: readonly string[] | undefined, column: number) => (row && row.length > column ? row[column].trim() : '');
+const cell = (row: readonly string[] | undefined, column: number) => (row && row.length > column ? itemAt(row, column).trim() : '');
 
 export function parseSideBySide(csv: string, wso: string, layout: SideBySide): WsoRecord[] {
   const rows = parseCsv(csv);
@@ -61,24 +62,25 @@ export function parseSideBySide(csv: string, wso: string, layout: SideBySide): W
         if (!lastClass[gender]) continue;
         weightClass = `${lastClass[gender]}+`;
       }
-      const [snatch, cj, total] = [row, rows[i + 1], rows[i + 2]].map((liftRow) => {
+      const liftOf = (liftRow: readonly string[] | undefined) => {
         const lift = value(liftRow, column + 2);
         const { name, date, location } = layout.holder;
         const place = location === undefined ? undefined : cell(liftRow, column + location);
         return { lift, by: recordHolder(lift, cell(liftRow, column + name), cell(liftRow, column + date), place) };
-      });
+      };
+      const [snatch, cj, total] = [liftOf(row), liftOf(rows[i + 1]), liftOf(rows[i + 2])];
       const record: WsoRecord = {
         wso,
-        age_category: age,
+        ageCategory: age,
         gender,
-        weight_class: weightClass,
-        snatch_record: snatch.lift,
-        cj_record: cj.lift,
-        total_record: total.lift,
+        weightClass: weightClass,
+        snatchRecord: snatch.lift,
+        cjRecord: cj.lift,
+        totalRecord: total.lift,
       };
-      if (snatch.by) record.snatch_by = snatch.by;
-      if (cj.by) record.cj_by = cj.by;
-      if (total.by) record.total_by = total.by;
+      if (snatch.by) record.snatchBy = snatch.by;
+      if (cj.by) record.cjBy = cj.by;
+      if (total.by) record.totalBy = total.by;
       records.push(record);
       if (!weightClass.endsWith('+')) lastClass[gender] = weightClass;
     }

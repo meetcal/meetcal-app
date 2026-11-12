@@ -1,3 +1,5 @@
+import { isListOf, isStringList, parsedAs } from './json';
+import { VIEW_CHUNKS_MAX, VIEW_HEADERS_MAX, readAll } from './boundedRead';
 import type { Id } from '../_generated/dataModel';
 import type { MutationCtx, QueryCtx } from '../_generated/server';
 import { etagOf } from './etag';
@@ -134,7 +136,8 @@ export function jsonChunks(items: readonly unknown[]): string[] {
 
 /** The single JSON array the chunks were cut from. */
 export function joinJsonChunks(chunks: readonly string[]): string {
-  if (chunks.length === 1) return chunks[0];
+  const [only] = chunks;
+  if (chunks.length === 1 && only !== undefined) return only;
   const inner = chunks.map((chunk) => chunk.slice(1, -1)).filter((part) => part.length > 0);
   return `[${inner.join(',')}]`;
 }
@@ -149,7 +152,7 @@ export function textChunks(text: string): string[] {
     let end = Math.min(i + MAX_CHUNK_CHARS, text.length);
     // Never between the two halves of a surrogate pair: a lone half is not a
     // string Convex can store.
-    if (end < text.length && /[\uD800-\uDBFF]/.test(text[end - 1])) end -= 1;
+    if (end < text.length && /[\uD800-\uDBFF]/.test(text.charAt(end - 1))) end -= 1;
     // Then stop sooner if the chunk would pass the byte cap, a whole code
     // point at a time (so a pair stays together).
     let bytes = 0;
@@ -191,14 +194,11 @@ export async function bumpVersion(ctx: MutationCtx, table: SourceTable): Promise
   return version;
 }
 
-export type FreshView<T> = {
+export type FreshView = {
   etag: string;
   meta: string | undefined;
-  /** The view's JSON array, as text. */
   json: () => Promise<string>;
-  /** The same, parsed. */
-  items: () => Promise<T[]>;
-  /** A text view's content (chunks joined as they are). */
+  items: <Item>(isItem: (item: unknown) => item is Item) => Promise<Item[]>;
   text: () => Promise<string>;
 };
 
@@ -210,14 +210,17 @@ export async function viewHeader(ctx: QueryCtx, key: string) {
 }
 
 async function readChunks(ctx: QueryCtx, key: string, chunkCount: number): Promise<string[]> {
-  const chunks = await ctx.db
-    .query('view_chunks')
-    .withIndex('by_key_index', (q) => q.eq('key', key).lt('index', chunkCount))
-    .collect();
+  const chunks = await readAll(
+    ctx.db
+      .query('view_chunks')
+      .withIndex('by_key_index', (q) => q.eq('key', key).lt('index', chunkCount)),
+    VIEW_CHUNKS_MAX,
+    'chunks of one view',
+  );
   return chunks.map((chunk) => chunk.text);
 }
 
-function freshView<T>(ctx: QueryCtx, key: string, header: { etag: string; meta?: string; chunk_count: number }): FreshView<T> {
+function freshView(ctx: QueryCtx, key: string, header: { etag: string; meta?: string; chunk_count: number }): FreshView {
   let chunks: Promise<string[]> | null = null;
   const read = () => (chunks ??= readChunks(ctx, key, header.chunk_count));
   const json = async () => joinJsonChunks(await read());
@@ -225,7 +228,7 @@ function freshView<T>(ctx: QueryCtx, key: string, header: { etag: string; meta?:
     etag: header.etag,
     meta: header.meta,
     json,
-    items: async () => JSON.parse(await json()) as T[],
+    items: async (isItem) => parsedAs(await json(), isListOf(isItem), `view ${key}`),
     text: async () => (await read()).join(''),
   };
 }
@@ -265,7 +268,7 @@ async function rosterChangePending(
   { meet, part }: NonNullable<ViewDependencies['roster']>,
   meta: string | undefined,
 ): Promise<boolean> {
-  const roster = JSON.parse((await readViewJsonAnyAge(ctx, meetKey(meet, 'keys'))) ?? '[]') as string[];
+  const roster = parsedAs((await readViewJsonAnyAge(ctx, meetKey(meet, 'keys'))) ?? '[]', isStringList, `the roster keys of ${meet}`);
   if (roster.length <= ROSTER_KEYS_LOOKED_UP) {
     // In batches: a national meet's roster is more lookups than one function
     // may have in flight at once.
@@ -298,7 +301,7 @@ async function rosterChangePending(
  * Chunks are read only when asked for, so a caller whose client holds `etag`
  * reads the header and a hint lookup or two alone.
  */
-export async function readFreshView<T>(ctx: QueryCtx, key: string): Promise<FreshView<T> | null> {
+export async function readFreshView(ctx: QueryCtx, key: string): Promise<FreshView | null> {
   const dependencies = viewDependencies(key);
   if (dependencies === null) return null;
   const [header, pending] = await Promise.all([
@@ -307,7 +310,7 @@ export async function readFreshView<T>(ctx: QueryCtx, key: string): Promise<Fres
   ]);
   if (!header?.sources || pending.some(Boolean)) return null;
   if (dependencies.roster && (await rosterChangePending(ctx, dependencies.roster, header.meta))) return null;
-  return freshView<T>(ctx, key, header);
+  return freshView(ctx, key, header);
 }
 
 /**
@@ -315,9 +318,9 @@ export async function readFreshView<T>(ctx: QueryCtx, key: string): Promise<Fres
  * where the last complete build beats computing live (national rankings and
  * the club list, whose live computations are more than one query may read).
  */
-export async function readViewAnyAge<T>(ctx: QueryCtx, key: string): Promise<FreshView<T> | null> {
+export async function readViewAnyAge(ctx: QueryCtx, key: string): Promise<FreshView | null> {
   const header = await viewHeader(ctx, key);
-  return header ? freshView<T>(ctx, key, header) : null;
+  return header ? freshView(ctx, key, header) : null;
 }
 
 /**
@@ -371,10 +374,13 @@ export async function writeView(
     await ctx.db.patch(existing._id, { sources: header.sources, built_at: header.built_at });
     return header;
   }
-  const oldChunks = await ctx.db
-    .query('view_chunks')
-    .withIndex('by_key_index', (q) => q.eq('key', key))
-    .collect();
+  const oldChunks = await readAll(
+    ctx.db
+      .query('view_chunks')
+      .withIndex('by_key_index', (q) => q.eq('key', key)),
+    VIEW_CHUNKS_MAX,
+    'chunks of one view',
+  );
   await Promise.all(oldChunks.map((chunk) => ctx.db.delete(chunk._id)));
   await Promise.all(chunks.map((text, index) => ctx.db.insert('view_chunks', { key, index, text })));
   if (existing) await ctx.db.replace(existing._id, header);
@@ -383,20 +389,26 @@ export async function writeView(
 }
 
 export async function deleteHeaderAndChunks(ctx: MutationCtx, header: { _id: Id<'views'>; key: string }): Promise<void> {
-  const chunks = await ctx.db
-    .query('view_chunks')
-    .withIndex('by_key_index', (q) => q.eq('key', header.key))
-    .collect();
+  const chunks = await readAll(
+    ctx.db
+      .query('view_chunks')
+      .withIndex('by_key_index', (q) => q.eq('key', header.key)),
+    VIEW_CHUNKS_MAX,
+    'chunks of one view',
+  );
   for (const chunk of chunks) await ctx.db.delete(chunk._id);
   await ctx.db.delete(header._id);
 }
 
 /** Deletes every view whose key starts with `prefix` (headers and chunks). */
 export async function deleteViewsWithPrefix(ctx: MutationCtx, prefix: string): Promise<number> {
-  const headers = await ctx.db
-    .query('views')
-    .withIndex('by_key', (q) => q.gte('key', prefix).lt('key', `${prefix}\uffff`))
-    .collect();
+  const headers = await readAll(
+    ctx.db
+      .query('views')
+      .withIndex('by_key', (q) => q.gte('key', prefix).lt('key', `${prefix}\uffff`)),
+    VIEW_HEADERS_MAX,
+    'views',
+  );
   for (const header of headers) await deleteHeaderAndChunks(ctx, header);
   return headers.length;
 }
@@ -410,9 +422,12 @@ export async function deleteView(ctx: MutationCtx, key: string): Promise<boolean
 
 /** Keys of every view whose key starts with `prefix`. */
 export async function viewKeysWithPrefix(ctx: QueryCtx, prefix: string): Promise<string[]> {
-  const headers = await ctx.db
-    .query('views')
-    .withIndex('by_key', (q) => q.gte('key', prefix).lt('key', `${prefix}\uffff`))
-    .collect();
+  const headers = await readAll(
+    ctx.db
+      .query('views')
+      .withIndex('by_key', (q) => q.gte('key', prefix).lt('key', `${prefix}\uffff`)),
+    VIEW_HEADERS_MAX,
+    'views',
+  );
   return headers.map((h) => h.key);
 }

@@ -44,6 +44,10 @@ function changedPaths(): string[] | null {
 
 function runStep(command: string[], cwd: string | undefined): Promise<number> {
   const [program, ...args] = command;
+  if (program === undefined) {
+    console.error('[check] a step has no command');
+    return Promise.resolve(127);
+  }
   const child = spawn(program, args, { cwd, stdio: 'inherit' });
   const interrupt = () => child.kill('SIGINT');
   const terminate = () => child.kill('SIGTERM');

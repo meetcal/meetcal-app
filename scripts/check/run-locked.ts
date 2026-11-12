@@ -44,6 +44,11 @@ export async function runLocked(
   command: string[],
   { lockPath, label, refuseSameWorktree = false, leaseMs, leaseHint = '', beforeRun }: RunLockedOptions,
 ): Promise<never> {
+  const [program, ...args] = command;
+  if (program === undefined) {
+    console.error(`${label}: no command to run`);
+    process.exit(2);
+  }
   const owner: LockOwner = {
     pid: process.pid,
     pidStartedAt: processStartTime(process.pid),
@@ -79,7 +84,6 @@ export async function runLocked(
   }
 
   if (leaseMs !== undefined) owner.leaseEndsAtMs = Date.now() + leaseMs;
-  const [program, ...args] = command;
   const started = spawn(program, args, { stdio: 'inherit' });
   child = started;
   if (started.pid !== undefined) recordChildPid(lockPath, owner, started.pid);

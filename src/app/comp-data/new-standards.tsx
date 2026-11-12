@@ -14,7 +14,12 @@ import { selectStandards } from "@/lib/comp-data-filters";
 import { standardsResource } from "@/lib/database/fetch-standards";
 import { filterSummary } from "@/lib/filter-summary";
 import { formatAgeGroupLabel } from "@/lib/sortAgeGroups";
-import { StandardsAgeGroup, StandardsFilters, StandardsGender, StandardsData } from "@/types/standards";
+import {
+  EMPTY_STANDARDS,
+  StandardsAgeGroup,
+  StandardsFilters,
+  StandardsGender,
+} from "@/types/standards";
 import { Stack, useLocalSearchParams } from "expo-router";
 import React, { useMemo } from "react";
 import { StyleSheet, View } from "react-native";
@@ -60,7 +65,7 @@ function NewStandardsScreenContent() {
   } = useMutableResource({
     resource: standardsResource,
     params: [] as const,
-    initialData: {} as StandardsData,
+    initialData: EMPTY_STANDARDS,
   });
 
   const standardsData = useMemo(

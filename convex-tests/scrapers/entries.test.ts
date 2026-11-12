@@ -107,7 +107,7 @@ describe('Sport80 entries (replaces csv_scraper.js)', () => {
         query: (table: string) =>
           table === 'meets'
             ? { paginate: async () => ({ page: [{ name: 'M' }], continueCursor: 'next', isDone: true }) }
-            : { withIndex: () => ({ collect: async () => athletes }) },
+            : { withIndex: () => ({ take: async (count: number) => athletes.slice(0, count) }) },
       },
     };
     const result = await handlerOf(truncatedEntryNames)(ctx, {});

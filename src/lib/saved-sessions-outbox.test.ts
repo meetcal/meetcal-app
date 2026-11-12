@@ -1,12 +1,8 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Crypto from "expo-crypto";
 import type { SavedSession } from "@/lib/saved-sessions-store";
-import {
-  deleteSavedSession,
-  deleteSavedSessions,
-  MeetCalApiError,
-  putSavedSession,
-} from "@/lib/api/meetcal-api";
+import { deleteSavedSession, deleteSavedSessions, putSavedSession } from "@/lib/api/saved-sessions-api";
+import { MeetCalApiError } from "@/lib/api/meetcal-api";
 import {
   adoptPreOutboxSessions,
   capAthleteNames,
@@ -27,6 +23,7 @@ import {
   tokenBelongsTo,
   toSavedSessionBody,
 } from "@/lib/saved-sessions-outbox";
+import { itemAt, valueAt } from "@/test-support/checked-access";
 
 jest.mock("@/lib/api/meetcal-api", () => {
   class MeetCalApiError extends Error {
@@ -40,17 +37,16 @@ jest.mock("@/lib/api/meetcal-api", () => {
     }
   }
   class MeetCalApiTimeoutError extends Error {}
-  return {
-    MeetCalApiError,
-    MeetCalApiTimeoutError,
-    deleteSavedSession: jest.fn(async () => ({ deleted: true })),
-    deleteSavedSessions: jest.fn(async () => ({ deleted_count: 0 })),
-    putSavedSession: jest.fn(async (_t: string, id: string) => ({
-      session_id: id,
-      updated_at: 1,
-    })),
-  };
+  return { MeetCalApiError, MeetCalApiTimeoutError };
 });
+jest.mock("@/lib/api/saved-sessions-api", () => ({
+  deleteSavedSession: jest.fn(async () => ({ deleted: true })),
+  deleteSavedSessions: jest.fn(async () => ({ deleted_count: 0 })),
+  putSavedSession: jest.fn(async (_t: string, id: string) => ({
+    session_id: id,
+    updated_at: 1,
+  })),
+}));
 
 const mockPut = putSavedSession as jest.MockedFunction<typeof putSavedSession>;
 const mockDelete = deleteSavedSession as jest.MockedFunction<typeof deleteSavedSession>;
@@ -388,7 +384,7 @@ describe("persisted PUT bodies", () => {
     const outbox = await readOutbox(USER);
     // A body with no usable identity cannot be replayed.
     expect(Object.keys(outbox.sessions)).toEqual(["legacy"]);
-    const body = outbox.sessions.legacy.session!;
+    const body = valueAt(outbox.sessions, "legacy").session!;
     expect(body).toMatchObject({
       sessionNumber: 4,
       weightClass: "",
@@ -403,7 +399,7 @@ describe("persisted PUT bodies", () => {
 
     await flushOutbox(USER, getToken);
     expect(mockPut).toHaveBeenCalledTimes(1);
-    const sent = mockPut.mock.calls[0][2];
+    const sent = itemAt(mockPut.mock.calls, 0)[2];
     expect(sent.session_number).toBe(4);
     expect(sent.weight_class).toBe("");
     expect(sent.athlete_names).toBeUndefined();
@@ -420,7 +416,7 @@ describe("mergeServerSessions", () => {
   it("prefers the pending version of a row the server also has", async () => {
     await markSessionPut(USER, session("shared", { notes: "local" }));
     const merged = mergeServerSessions([session("shared", { notes: "server" })], await readOutbox(USER));
-    expect(merged[0].notes).toBe("local");
+    expect(itemAt(merged, 0).notes).toBe("local");
   });
 
   it("drops server rows pending delete or covered by a pending reset", async () => {
@@ -455,8 +451,8 @@ describe("mergeServerSessions", () => {
       await readOutbox(USER),
     );
     expect(ids(merged)).toEqual(["dup", "pending-twice"]);
-    expect(merged[0].notes).toBe("first");
-    expect(merged[1].notes).toBe("local");
+    expect(itemAt(merged, 0).notes).toBe("first");
+    expect(itemAt(merged, 1).notes).toBe("local");
   });
 
   it("trusts an empty server list: a clean row removed elsewhere goes", () => {
@@ -530,9 +526,9 @@ describe("flushOutbox", () => {
     expect(result.delivered).toBe(3);
     expect(result.remaining).toBe(0);
     const order = [
-      mockPut.mock.invocationCallOrder[0],
-      mockDeleteAll.mock.invocationCallOrder[0],
-      mockDelete.mock.invocationCallOrder[0],
+      itemAt(mockPut.mock.invocationCallOrder, 0),
+      itemAt(mockDeleteAll.mock.invocationCallOrder, 0),
+      itemAt(mockDelete.mock.invocationCallOrder, 0),
     ];
     expect(order).toEqual([...order].sort((a, b) => a - b));
     expect(mockDeleteAll).toHaveBeenCalledWith(TOKEN, OTHER, expect.anything());
@@ -554,7 +550,7 @@ describe("flushOutbox", () => {
     // Next flush: reset first, then the PUT, which therefore survives.
     await flushOutbox(USER, getToken);
     expect(mockDeleteAll.mock.invocationCallOrder[1]).toBeLessThan(
-      mockPut.mock.invocationCallOrder[1],
+      itemAt(mockPut.mock.invocationCallOrder, 1),
     );
     expect(countPendingWrites(await readOutbox(USER))).toBe(0);
   });
@@ -574,7 +570,7 @@ describe("flushOutbox", () => {
 
     await flushOutbox(USER, getToken);
     expect(mockDeleteAll).toHaveBeenCalledTimes(2);
-    expect(mockDeleteAll.mock.invocationCallOrder[1]).toBeLessThan(mockPut.mock.invocationCallOrder[0]);
+    expect(mockDeleteAll.mock.invocationCallOrder[1]).toBeLessThan(itemAt(mockPut.mock.invocationCallOrder, 0));
     expect(countPendingWrites(await readOutbox(USER))).toBe(0);
   });
 
@@ -593,7 +589,7 @@ describe("flushOutbox", () => {
 
     await flushOutbox(USER, getToken);
 
-    expect(mockPut.mock.invocationCallOrder[0]).toBeLessThan(mockDeleteAll.mock.invocationCallOrder[0]);
+    expect(mockPut.mock.invocationCallOrder[0]).toBeLessThan(itemAt(mockDeleteAll.mock.invocationCallOrder, 0));
     expect(countPendingWrites(await readOutbox(USER))).toBe(0);
   });
 
@@ -627,7 +623,7 @@ describe("flushOutbox", () => {
 
     const editedCalls = mockPut.mock.calls.filter(([, id]) => id === "edited");
     expect(editedCalls).toHaveLength(1);
-    expect(editedCalls[0][2]).toEqual(expect.objectContaining({ notes: "v2" }));
+    expect(itemAt(editedCalls, 0)[2]).toEqual(expect.objectContaining({ notes: "v2" }));
     expect(countPendingWrites(await readOutbox(USER))).toBe(0);
   });
 

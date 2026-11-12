@@ -1,4 +1,5 @@
 import { consolidateRecords, parseNewJerseyTab, splitDateLocation } from '../../convex/scrapers/parse/wso/newJersey';
+import { itemAt } from '../../convex/lib/json';
 
 const row = (...cells: string[]) => cells.concat(Array(14).fill('')).slice(0, 14).join(',');
 
@@ -12,7 +13,7 @@ describe('New Jersey WSO sheet (port of scraper_newjersey.py)', () => {
       'short,row',
     ].join('\n');
     const records = parseNewJerseyTab(csv, 'New Jersey', 'Masters 35');
-    expect(records.map((r) => [r.gender, r.weight_class, r.snatch_record, r.cj_record, r.total_record])).toEqual([
+    expect(records.map((r) => [r.gender, r.weightClass, r.snatchRecord, r.cjRecord, r.totalRecord])).toEqual([
       ['Women', '48', 60, 75, 135],
       ['Men', '60', 90, null, null],
       ['Women', '48+', null, null, null],
@@ -20,7 +21,7 @@ describe('New Jersey WSO sheet (port of scraper_newjersey.py)', () => {
       ['Women', '48+', null, 80, null],
       ['Men', '60+', null, 130, 230],
     ]);
-    expect(consolidateRecords(records).map((r) => [r.gender, r.weight_class, r.snatch_record, r.cj_record, r.total_record])).toEqual([
+    expect(consolidateRecords(records).map((r) => [r.gender, r.weightClass, r.snatchRecord, r.cjRecord, r.totalRecord])).toEqual([
       ['Women', '48', 60, 75, 135],
       ['Men', '60', 90, null, null],
       ['Women', '48+', null, 80, null],
@@ -47,27 +48,27 @@ describe('New Jersey WSO sheet (port of scraper_newjersey.py)', () => {
     ].join('\n');
     const records = parseNewJerseyTab(csv, 'New Jersey', 'Senior');
     const julie = { name: 'Julie Carmody', date: '2007-07-20', location: 'Tri-State In House Meet' };
-    expect(records[0]).toMatchObject({ weight_class: '48', snatch_by: julie, cj_by: julie, total_by: julie });
-    expect(records[1]).toMatchObject({ weight_class: '71', snatch_record: 90, cj_record: null });
-    expect(records[1]).not.toHaveProperty('cj_by');
+    expect(records[0]).toMatchObject({ weightClass: '48', snatchBy: julie, cjBy: julie, totalBy: julie });
+    expect(records[1]).toMatchObject({ weightClass: '71', snatchRecord: 90, cjRecord: null });
+    expect(records[1]).not.toHaveProperty('cjBy');
     // A vacant class has no lifts, so no holders.
-    expect(records[2]).toEqual({ wso: 'New Jersey', age_category: 'Senior', gender: 'Women', weight_class: '53', snatch_record: null, cj_record: null, total_record: null });
+    expect(records[2]).toEqual({ wso: 'New Jersey', ageCategory: 'Senior', gender: 'Women', weightClass: '53', snatchRecord: null, cjRecord: null, totalRecord: null });
     // A value with no athlete written is a standard.
-    expect(records[4].snatch_by).toEqual({ name: 'Standard' });
+    expect(itemAt(records, 4).snatchBy).toEqual({ name: 'Standard' });
 
-    const men71 = consolidateRecords(records).find((r) => r.gender === 'Men' && r.weight_class === '71');
+    const men71 = consolidateRecords(records).find((r) => r.gender === 'Men' && r.weightClass === '71');
     expect(men71).toEqual({
       wso: 'New Jersey',
-      age_category: 'Senior',
+      ageCategory: 'Senior',
       gender: 'Men',
-      weight_class: '71',
-      snatch_record: 90,
-      cj_record: 124,
-      total_record: 214,
-      snatch_by: { name: 'Justin Bongcaron', date: '2025-06-24', location: 'USAW National U23 Championships' },
+      weightClass: '71',
+      snatchRecord: 90,
+      cjRecord: 124,
+      totalRecord: 214,
+      snatchBy: { name: 'Justin Bongcaron', date: '2025-06-24', location: 'USAW National U23 Championships' },
       // 124 tied: the first listed keeps it.
-      cj_by: { name: 'Joshua Williams', date: '2025-10-25', location: 'NJ WSO Championships' },
-      total_by: { name: 'Joshua Williams', date: '2025-10-25', location: 'NJ WSO Championships' },
+      cjBy: { name: 'Joshua Williams', date: '2025-10-25', location: 'NJ WSO Championships' },
+      totalBy: { name: 'Joshua Williams', date: '2025-10-25', location: 'NJ WSO Championships' },
     });
   });
 });

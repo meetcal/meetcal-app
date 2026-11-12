@@ -1,29 +1,12 @@
 import { plusYears } from './dates';
+import { genderNamedByWords, type Gender } from './gender';
 import { normalizeName } from './names';
+import { isPlausibleResult, LEADERBOARD_GUARD, totalAddsUp } from './plausible';
 import type { ApiLiftingResult } from './results';
 import { compareBytes } from './sort';
 import { apiError, isValidIsoDate } from './validation';
 
-/**
- * The leaderboard `results:leaderboard` answers: each athlete once, by their
- * best result for a metric over a date range, best first. A port of the CLI's
- * leaderboard (`cli/src/commands/leaderboard.rs`: `Metric::value`,
- * `Filters::keeps`, `rank`) and the guards and scores it ranks with
- * (`cli/src/utils/stats.rs`: `plausible`, `row_sinclair`, `row_qpoints`,
- * `Division::parse`, `fold`), so the CLI's answers did not change when the
- * ranking moved to the server.
- *
- * Its source-error guard is the CLI's, not `lib/plausible.ts`'s, which
- * differs: lower ceilings (best snatch 230, best clean & jerk 275, total 500
- * kg, against 240 / 290 / 520), a typo'd attempt is any made attempt over 1.5
- * times the heaviest other one (`lib/plausible.ts` also needs it 20 kg
- * heavier, and checks every attempt against the ceiling, not just the best),
- * and a total that is one lift alone (snatch 0, clean & jerk 90, total 90)
- * passes, as it adds up.
- */
-
 export type LeaderboardMetric = 'total' | 'snatch' | 'cj' | 'sinclair' | 'qpoints';
-export type Gender = 'Men' | 'Women';
 
 /** The rows a leaderboard shows when the caller does not say. */
 export const DEFAULT_LEADERBOARD_LIMIT = 50;
@@ -84,19 +67,6 @@ export function qpoints(total: number, bodyWeight: number, gender: Gender): numb
 /** ASCII-only lowercase, as Rust's `to_ascii_lowercase`. */
 const asciiLower = (value: string) => value.replace(/[A-Z]/g, (c) => c.toLowerCase());
 
-const WOMEN_WORDS = ['women', 'woman', 'womens', 'female', 'females', 'girl', 'girls'];
-const MEN_WORDS = ['men', 'man', 'mens', 'male', 'males', 'boy', 'boys'];
-
-/** The gender a division names by its words, or null when it names neither or both. */
-function divisionGender(lower: string): Gender | null {
-  const words = lower.split(/[^A-Za-z]+/).filter((word) => word.length > 0);
-  const women = words.some((word) => WOMEN_WORDS.includes(word));
-  const men = words.some((word) => MEN_WORDS.includes(word));
-  if (men && !women) return 'Men';
-  if (women && !men) return 'Women';
-  return null;
-}
-
 const YOUTH_MARKERS: readonly (readonly [string, string])[] = [
   ['under 17', 'U17'],
   ['under 15', 'U15'],
@@ -136,10 +106,9 @@ export function mastersAges(division: string): MastersAges | null {
 
 export type Division = { gender: Gender | null; category: string | null };
 
-/** A result's division (`Open Men's 89kg`, `Women's Masters (40-44) 69kg`), parsed. */
 export function parseDivision(division: string): Division {
   const lower = asciiLower(division);
-  return { gender: divisionGender(lower), category: divisionCategory(lower) };
+  return { gender: genderNamedByWords(lower, 'division'), category: divisionCategory(lower) };
 }
 
 /**
@@ -176,17 +145,6 @@ export function normalizeCategory(value: string): string | null {
 
 export const CATEGORIES = 'Senior, Junior, U17 (or Youth), U15, U13, U11, or Masters 30 … Masters 95';
 
-// ---------------------------------------------------------------------------
-// Source errors (`plausible`)
-// ---------------------------------------------------------------------------
-
-/** The heaviest best snatch, best clean & jerk and total a result can hold (`MAX_SNATCH` …). */
-export const MAX_SNATCH = 230;
-export const MAX_CJ = 275;
-export const MAX_TOTAL = 500;
-/** A made attempt more than this many times the heaviest other one in its lift is a typo. */
-export const MAX_ATTEMPT_JUMP = 1.5;
-
 /** The numbers of a row the guards and scores read. */
 export type RankedFields = Pick<
   ApiLiftingResult,
@@ -208,29 +166,24 @@ export type RankedFields = Pick<
   | 'adaptive'
 >;
 
-/** Whether the total is the snatch plus the clean & jerk, or there is none (`consistent_total`). */
-export function consistentTotal(row: RankedFields): boolean {
-  return row.total <= 0 || Math.abs(row.total - (row.snatch_best + row.cj_best)) <= 0.5;
-}
+export const consistentTotal = (row: RankedFields): boolean => totalAddsUp(row.total, row.snatch_best, row.cj_best, LEADERBOARD_GUARD.total);
 
-function plausibleLift(best: number, attempts: readonly number[], ceiling: number): boolean {
-  if (best > ceiling) return false;
-  const weights = attempts.map(Math.abs);
-  return attempts.every((attempt, index) => {
-    const heaviestOther = weights.reduce((max, weight, other) => (other !== index && weight > 0 ? Math.max(max, weight) : max), 0);
-    return attempt <= 0 || heaviestOther === 0 || attempt <= heaviestOther * MAX_ATTEMPT_JUMP;
-  });
-}
-
-/** Whether a row can be trusted for a ranking or a score (`plausible`). */
-export function plausible(row: RankedFields): boolean {
-  return (
-    consistentTotal(row) &&
-    row.total <= MAX_TOTAL &&
-    plausibleLift(row.snatch_best, [row.snatch1, row.snatch2, row.snatch3], MAX_SNATCH) &&
-    plausibleLift(row.cj_best, [row.cj1, row.cj2, row.cj3], MAX_CJ)
+export const plausible = (row: RankedFields): boolean =>
+  [row.total, row.snatch_best, row.cj_best].every(Number.isFinite) &&
+  isPlausibleResult(
+    {
+      snatch1: row.snatch1,
+      snatch2: row.snatch2,
+      snatch3: row.snatch3,
+      snatchBest: row.snatch_best,
+      cj1: row.cj1,
+      cj2: row.cj2,
+      cj3: row.cj3,
+      cjBest: row.cj_best,
+      total: row.total,
+    },
+    LEADERBOARD_GUARD,
   );
-}
 
 /** A row's Sinclair score; null for a division with no gender, or a source error (`row_sinclair`). */
 export function rowSinclair(row: RankedFields): number | null {
@@ -340,6 +293,7 @@ export function pruneBests(best: Map<string, Candidate>, limit: number): void {
   if (best.size <= limit) return;
   const values = [...best.values()].map(({ value }) => value).sort((a, b) => b - a);
   const threshold = values[limit - 1];
+  if (threshold === undefined) return;
   for (const [key, { value }] of best) if (value < threshold) best.delete(key);
 }
 
@@ -367,6 +321,21 @@ export type CompactRow = [
   adaptive: boolean,
 ];
 
+export function readCompactRow(row: unknown): CompactRow {
+  if (!Array.isArray(row) || row.length !== 16) throw new Error('leaderboard page row is not a compact row');
+  const cells: unknown[] = row;
+  const text = (index: number): string => {
+    const cell = cells[index];
+    if (typeof cell !== 'string') throw new Error('leaderboard page row is not a compact row');
+    return cell;
+  };
+  const number = (index: number): number => {
+    const cell = cells[index];
+    return typeof cell === 'number' ? cell : Number.NaN;
+  };
+  return [text(0), text(1), text(2), text(3), text(4), number(5), number(6), number(7), number(8), number(9), number(10), number(11), number(12), number(13), number(14), cells[15] === true];
+}
+
 export function toCompactRow(row: RankedFields): CompactRow {
   return [
     row.federation,
@@ -392,10 +361,7 @@ export function toCompactRow(row: RankedFields): CompactRow {
 export function parseCompactRows(json: string): RankedFields[] {
   const parsed: unknown = JSON.parse(json);
   if (!Array.isArray(parsed)) throw new Error('leaderboard page is not a list');
-  return parsed.map((row: unknown) => {
-    if (!Array.isArray(row) || row.length !== 16) throw new Error('leaderboard page row is not a compact row');
-    return fromCompactRow(row as CompactRow);
-  });
+  return parsed.map((row: unknown) => fromCompactRow(readCompactRow(row)));
 }
 
 export function fromCompactRow([federation, meet, date, name, age, body_weight, snatch1, snatch2, snatch3, snatch_best, cj1, cj2, cj3, cj_best, total, adaptive]: CompactRow): RankedFields {

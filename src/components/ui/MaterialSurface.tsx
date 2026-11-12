@@ -1,14 +1,9 @@
 import { useColorScheme } from "@/hooks/useColorScheme";
 import { BlurView } from "expo-blur";
 import React from "react";
-import { Platform, View, type ViewProps } from "react-native";
+import { Platform, View } from "react-native";
 
-export interface MaterialSurfaceProps extends ViewProps {
-  /** Solid color rendered when a native material effect is unavailable. */
-  fallbackColor: string;
-  /** Android blur intensity (1-100). Ignored on iOS. */
-  intensity?: number;
-}
+import type { MaterialSurfaceProps } from "./MaterialSurface.types";
 
 /**
  * Cross-platform frosted material surface. Android uses expo-blur's BlurView;

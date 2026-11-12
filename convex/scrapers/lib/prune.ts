@@ -1,3 +1,5 @@
+import { errorMessage } from '../../lib/errors';
+
 /**
  * The reference syncs (records, standards) delete the classes their source
  * no longer lists (`ingest.pruneRecords`, `ingest.pruneStandards`), and the
@@ -14,7 +16,7 @@ export async function previewPrune(prune: Prune, allowShrink: boolean): Promise<
     await prune({ allowShrink, dryRun: true });
     return { deleted };
   } catch (error) {
-    return { deleted, pruneRefused: (error as Error).message };
+    return { deleted, pruneRefused: errorMessage(error) };
   }
 }
 

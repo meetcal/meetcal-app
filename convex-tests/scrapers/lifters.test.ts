@@ -1,3 +1,4 @@
+import { itemAt } from '../../convex/lib/json';
 import { getFunctionName } from 'convex/server';
 import { describeFailure } from '../../convex/lib/cronAlerts';
 import {
@@ -127,7 +128,7 @@ describe('the nightly lifter links', () => {
     const answer = await handlerOf<{ dryRun?: boolean }, Dict>(run)(ctx, {});
 
     expect(mockApi.rankings).toHaveBeenCalledTimes(1);
-    expect(mockApi.rankings.mock.calls[0][0]).toBe(939);
+    expect(itemAt(itemAt(mockApi.rankings.mock.calls, 0), 0)).toBe(939);
     const stored = mutations.find((m) => m.name === 'ingest:upsertLifters')!.args.sightings as Dict[];
     expect(stored.map((s) => [s.athleteId, s.birthYear])).toEqual([
       ['1', 1999],
@@ -183,7 +184,7 @@ describe('the nightly lifter links', () => {
     await handlerOf<{ dryRun?: boolean }, Dict>(run)(ctx, {});
     expect(mockApi.rankings).not.toHaveBeenCalled();
     expect(mutations.map((m) => m.name)).toEqual(['ingest:linkLifterResults']);
-    expect((mutations[0].args.names as Dict[]).map((n) => n.nameKey)).toEqual(['sara rubin']);
+    expect((itemAt(mutations, 0).args.names as Dict[]).map((n) => n.nameKey)).toEqual(['sara rubin']);
   });
 
   it('asks for the unlinked results stored in the last days, whatever their meet date', async () => {
@@ -225,7 +226,7 @@ describe('the nightly lifter links', () => {
     const { ctx, mutations } = fakeCtx({ queued: ['taylor johnson'], lifters: [{ nameKey: 'taylor johnson', athleteIds: ['1', '2'] }] });
     await handlerOf<{ dryRun?: boolean }, Dict>(run)(ctx, {});
     const linked = mutations.find((m) => m.name === 'ingest:linkLifterResults')!.args as { names: { histories: { athleteId: string; results: unknown[] }[] }[] };
-    expect(linked.names[0].histories.map((h) => [h.athleteId, h.results.length])).toEqual([
+    expect(itemAt(linked.names, 0).histories.map((h) => [h.athleteId, h.results.length])).toEqual([
       ['1', 1],
       ['2', 0],
     ]);
@@ -400,7 +401,7 @@ describe('the nightly lifter links', () => {
     });
     await handlerOf<{ dryRun?: boolean }, Dict>(run)(ctx, {});
     expect(mutations.map((m) => m.name)).toEqual(['ingest:linkLifterResults', 'ingest:queueLifterRelinks', 'lifters:recordCompleteRun']);
-    expect(mutations[1].args.nameKeys).toEqual(queued.slice(NAMES_PER_LINK));
+    expect(itemAt(mutations, 1).args.nameKeys).toEqual(queued.slice(NAMES_PER_LINK));
   });
 
   it('stores no lifter in a dry run, and asks for the links as a dry run', async () => {
@@ -435,7 +436,7 @@ describe('the lifter backfill', () => {
     const { ctx, scheduled } = fakeCtx();
     await handlerOf<Dict, void>(backfill)(ctx, {});
     expect(mockApi.rankings).toHaveBeenCalledTimes(SPORT80_CONCURRENCY);
-    expect(scheduled[0].args).toMatchObject({ stage: 'rankings', offset: SPORT80_CONCURRENCY });
+    expect(itemAt(scheduled, 0).args).toMatchObject({ stage: 'rankings', offset: SPORT80_CONCURRENCY });
   });
 
   it('stops before linking when some classes could not be read, naming the arguments that read just those again', async () => {
@@ -457,7 +458,7 @@ describe('the lifter backfill', () => {
     const again = fakeCtx();
     await handlerOf<Dict, void>(backfill)(again.ctx, { stage: 'rankings', classIds: [1] });
     expect(mockApi.rankings.mock.calls.map((call) => call[0])).toEqual([1]);
-    expect(again.scheduled[0].args).toMatchObject({ stage: 'link', after: '' });
+    expect(itemAt(again.scheduled, 0).args).toMatchObject({ stage: 'link', after: '' });
   });
 
   it('links a page of names and carries on after the last one', async () => {
@@ -479,7 +480,7 @@ describe('the lifter backfill', () => {
     await handlerOf<Dict, void>(backfill)(ctx, { stage: 'link', after: '' });
     expect(ctx.runMutation).toHaveBeenCalledTimes(1);
     expect(mutations).toEqual([]);
-    expect(scheduled[0].args).toMatchObject({ stage: 'link', after: `n${String(NAMES_PER_LINK - 1).padStart(3, '0')}` });
+    expect(itemAt(scheduled, 0).args).toMatchObject({ stage: 'link', after: `n${String(NAMES_PER_LINK - 1).padStart(3, '0')}` });
   });
 
   it('decides a page’s names whose lifters all answer 404 once the page’s other histories are read', async () => {
@@ -502,7 +503,7 @@ describe('the lifter backfill', () => {
     const { ctx, mutations } = fakeCtx({ names: { names: [{ nameKey: 'a', athleteIds: ['1'] }], done: true } });
     await handlerOf<Dict, void>(backfill)(ctx, { stage: 'link', after: '' });
     expect(mockApi.athleteResults.mock.calls.map((call) => call[0])).toEqual(['1']);
-    expect((mutations[0].args.names as { histories: unknown[] }[])[0].histories).toHaveLength(1);
+    expect(itemAt(itemAt(mutations, 0).args.names as { histories: unknown[] }[], 0).histories).toHaveLength(1);
   });
 
   it('tries a failed run again a minute later, then stops naming the command that resumes it', async () => {
@@ -535,10 +536,10 @@ describe('the lifter backfill', () => {
     const rankings = fakeCtx();
     await handlerOf<Dict, void>(backfill)(rankings.ctx, { previewLinks: true });
     expect(rankings.mutations.map((m) => [m.name, m.args.queueRelinks])).toEqual([['ingest:upsertLifters', false]]);
-    expect(rankings.scheduled[0].args).toMatchObject({ stage: 'link', previewLinks: true });
+    expect(itemAt(rankings.scheduled, 0).args).toMatchObject({ stage: 'link', previewLinks: true });
 
     const link = fakeCtx({ names: { names: [{ nameKey: 'a', athleteIds: ['1'] }], done: true } });
-    await handlerOf<Dict, void>(backfill)(link.ctx, rankings.scheduled[0].args);
+    await handlerOf<Dict, void>(backfill)(link.ctx, itemAt(rankings.scheduled, 0).args);
     expect(link.mutations.map((m) => [m.name, m.args.dryRun])).toEqual([['ingest:linkLifterResults', true]]);
   });
 });
@@ -589,12 +590,12 @@ describe('what the nightly run reads', () => {
   it('joins runs of dates up to 52 days apart into one window, so no two windows read the same day twice', () => {
     const row = (date: string) => ({ nameKey: date, age: null, date, federation: 'USAW', storedAt: 1 });
     expect(rankingsWindows([row('2026-08-01'), row('2026-09-22')], '2026-12-31')).toHaveLength(1);
-    const [first, second] = rankingsWindows([row('2026-08-01'), row('2026-09-23')], '2026-12-31');
-    expect(second.from > first.to).toBe(true);
+    const windows = rankingsWindows([row('2026-08-01'), row('2026-09-23')], '2026-12-31');
+    expect(itemAt(windows, 1).from > itemAt(windows, 0).to).toBe(true);
   });
 
   it('reads the rankings of a month-long online meet back to its first day, so a lifter new to Sport80 who lifted early in it is found', () => {
-    const [window] = rankingsWindows([{ nameKey: 'a', age: "Open Women's 49kg", date: '2026-10-31', federation: 'USAW', storedAt: 1 }], '2026-11-11');
+    const window = itemAt(rankingsWindows([{ nameKey: 'a', age: "Open Women's 49kg", date: '2026-10-31', federation: 'USAW', storedAt: 1 }], '2026-11-11'), 0);
     expect(window.from <= '2026-10-01').toBe(true);
   });
 

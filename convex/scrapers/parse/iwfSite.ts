@@ -45,7 +45,7 @@ export function parseIwfSiteHtml(html: string, ageCategory: IwfAge, gender: IwfG
     for (const label of element.querySelectorAll('.only__mobile')) label.remove();
     const cells = element.querySelectorAll('p').map((p) => clean(p.text));
     if (cells.length !== 6) throw new Error(`${where} ${current.weightClass}: a record with ${cells.length} cells, expected 6`);
-    const [liftName, value, athlete, , , event] = cells;
+    const [liftName = '', value = '', athlete = '', , , event = ''] = cells;
     const lift = LIFTS[liftName.toLowerCase()];
     const kg = /^(\d+) kg$/.exec(value);
     if (!lift || !kg) throw new Error(`${where} ${current.weightClass}: unreadable record "${liftName}: ${value}"`);

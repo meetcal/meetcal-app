@@ -1,3 +1,4 @@
+import { itemAt } from './json';
 import { normalizeName } from './names';
 
 /**
@@ -129,7 +130,7 @@ export function foldForShards(text: string): string {
 export function nameBigrams(name: string): Set<string> {
   const chars = [...foldForShards(name)];
   const bigrams = new Set<string>();
-  for (let i = 0; i + 1 < chars.length; i++) bigrams.add(chars[i] + chars[i + 1]);
+  for (let i = 0; i + 1 < chars.length; i++) bigrams.add(itemAt(chars, i) + itemAt(chars, i + 1));
   return bigrams;
 }
 

@@ -1,22 +1,14 @@
 import * as fc from 'fast-check';
 
-import {
-  clearHttpValidatorCache,
-  deleteSavedSession,
-  fetchApiAthletes,
-  fetchApiClubMeets,
-  fetchApiMeetByName,
-  fetchApiMeetPackageConditional,
-  fetchApiMeets,
-  fetchApiWsoRecords,
-  fetchApiYearBestsByNames,
-  fetchSavedSessions,
-  MEET_PACKAGE_TIMEOUT_MS,
-  MeetCalApiError,
-  MeetCalApiTimeoutError,
-  resetServerClockForTests,
-  type ApiWsoRecordRow,
-} from './meetcal-api';
+import { clearHttpValidatorCache } from '@/lib/api/revalidated-reads';
+import { deleteSavedSession, fetchSavedSessions } from '@/lib/api/saved-sessions-api';
+import { fetchApiAthletes, fetchApiMeetByName, fetchApiMeets } from '@/lib/api/meets-api';
+import { fetchApiClubMeets } from '@/lib/api/clubs-api';
+import { fetchApiMeetPackageConditional, MEET_PACKAGE_TIMEOUT_MS } from '@/lib/api/meet-package-api';
+import { fetchApiWsoRecords, type ApiWsoRecordRow } from '@/lib/api/reference-api';
+import { fetchApiYearBestsByNames } from '@/lib/api/results-api';
+import { MeetCalApiError, MeetCalApiTimeoutError } from '@/lib/api/meetcal-api';
+import { resetServerClockForTests } from '@/lib/api/server-clock';
 import type { TransportFault } from './chaos-transport';
 import { isClockCall, jsonTransportStub } from './json-transport-stub';
 import { CONVEX_TRANSIENT_MESSAGE, setApiTransportForTests, type ApiCall, type Transport } from './transport';
@@ -27,6 +19,7 @@ import {
   settlingTransportFaultArb,
   type ChaosTransport,
 } from '@/test-support/chaos';
+import { itemAt } from '@/test-support/checked-access';
 
 /**
  * `request()` and the validator cache under transport faults. A call ends in
@@ -210,7 +203,8 @@ function expectClassified(fetcher: Fetcher, fault: TransportFault, outcome: Outc
     case 'truncate':
       expectPlainError(outcome);
       return;
-    default:
+    case 'delay':
+    case 'hang':
       throw new Error(`unexpected fault ${fault.kind}`);
   }
 }
@@ -251,7 +245,7 @@ describe('request() under settling transport faults (chaos)', () => {
         // One call, plus at most one retry without a tag after a bodiless answer.
         expect(calls.length).toBeGreaterThanOrEqual(1);
         expect(calls.length).toBeLessThanOrEqual(2);
-        expectClassified(fetcher, calls[calls.length - 1].fault, outcome);
+        expectClassified(fetcher, itemAt(calls, -1).fault, outcome);
       }),
     );
   });
@@ -284,7 +278,7 @@ describe('request() timeouts under hanging and slow transports (chaos)', () => {
 
         await jest.advanceTimersByTimeAsync(fetcher.timeoutMs - 1);
         expect(settled).toBe(false);
-        const [hung] = dataCalls(run);
+        const hung = itemAt(dataCalls(run), 0);
         expect(hung.call.signal?.aborted).toBe(false);
 
         await jest.advanceTimersByTimeAsync(1);
@@ -313,7 +307,7 @@ describe('request() timeouts under hanging and slow transports (chaos)', () => {
           const outcome = await pending;
           if (ms >= fetcher.timeoutMs) {
             expect(outcome.ok ? null : outcome.error).toBeInstanceOf(MeetCalApiTimeoutError);
-            expect(dataCalls(run)[0].call.signal?.aborted).toBe(true);
+            expect(itemAt(dataCalls(run), 0).call.signal?.aborted).toBe(true);
           } else {
             expect(outcome.ok && fetcher.valid(outcome.value)).toBe(true);
           }
@@ -420,8 +414,8 @@ function cacheOpArb(keyCount: number): fc.Arbitrary<CacheOp> {
 /** The rows came from `id`'s own answers, at a version it has had. */
 function expectFromKey(rows: readonly ApiWsoRecordRow[], id: string, newest: number) {
   expect(rows).toHaveLength(1);
-  expect(rows[0].wso).toBe(id);
-  expect(rows[0].total_record).toBeLessThanOrEqual(newest);
+  expect(itemAt(rows, 0).wso).toBe(id);
+  expect(itemAt(rows, 0).total_record).toBeLessThanOrEqual(newest);
 }
 
 describe('validator cache under transport faults (chaos)', () => {
@@ -436,7 +430,7 @@ describe('validator cache under transport faults (chaos)', () => {
           const ids = keys.map(keyId);
           for (const op of ops) {
             if (op.kind === 'bump') {
-              server.bump(ids[op.key]);
+              server.bump(itemAt(ids, op.key));
               continue;
             }
             if (op.kind === 'clear') {
@@ -444,8 +438,8 @@ describe('validator cache under transport faults (chaos)', () => {
               continue;
             }
             const run = install(server.transport, [op.fault]);
-            const outcome = await outcomeOf(fetchKey(keys[op.key]));
-            const id = ids[op.key];
+            const outcome = await outcomeOf(fetchKey(itemAt(keys, op.key)));
+            const id = itemAt(ids, op.key);
             const healthyRun = dataCalls(run).every(({ fault }) => fault.kind === 'pass');
             if (healthyRun) {
               expect(outcome).toEqual({ ok: true, value: rowsFor(id, server.version(id)) });
@@ -460,7 +454,7 @@ describe('validator cache under transport faults (chaos)', () => {
           // No fault left anything behind that a healthy call would serve.
           install(server.transport, []);
           for (const [index, key] of keys.entries()) {
-            await expect(fetchKey(key)).resolves.toEqual(rowsFor(ids[index], server.version(ids[index])));
+            await expect(fetchKey(key)).resolves.toEqual(rowsFor(itemAt(ids, index), server.version(itemAt(ids, index))));
           }
         },
       ),
@@ -499,14 +493,14 @@ describe('validator cache under transport faults (chaos)', () => {
           const resolved = new Map<string, number[]>();
           const work = ops.map((op) =>
             s.schedule(Promise.resolve(), op.kind).then(async () => {
-              const id = ids[op.key];
+              const id = itemAt(ids, op.key);
               if (op.kind === 'bump') {
                 server.bump(id);
                 return;
               }
-              const rows = await fetchKey(keys[op.key]);
+              const rows = await fetchKey(itemAt(keys, op.key));
               expectFromKey(rows, id, server.version(id));
-              resolved.set(id, [...(resolved.get(id) ?? []), rows[0].total_record ?? -1]);
+              resolved.set(id, [...(resolved.get(id) ?? []), itemAt(rows, 0).total_record ?? -1]);
             }),
           );
           // Wait for every operation, not just the first to fail, and then
@@ -521,7 +515,7 @@ describe('validator cache under transport faults (chaos)', () => {
           }
           setApiTransportForTests(server.transport);
           for (const [index, key] of keys.entries()) {
-            await expect(fetchKey(key)).resolves.toEqual(rowsFor(ids[index], server.version(ids[index])));
+            await expect(fetchKey(key)).resolves.toEqual(rowsFor(itemAt(ids, index), server.version(itemAt(ids, index))));
           }
         },
       ),

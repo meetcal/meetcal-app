@@ -1,9 +1,10 @@
 import * as fc from 'fast-check';
 
 import { MAX_CHUNK_BYTES, joinJsonChunks, jsonChunks, textChunks, utf8Length } from '../convex/lib/views';
+import { itemAt } from '../convex/lib/json';
 
 /** The chunk limit, in UTF-16 code units (`MAX_CHUNK_CHARS` is not exported). */
-const MAX = textChunks('a'.repeat(3_000_000))[0].length;
+const MAX = itemAt(textChunks('a'.repeat(3_000_000)), 0).length;
 
 /**
  * Convex caps a document at 1 MiB and stores strings as UTF-8, so a chunk's
@@ -79,7 +80,7 @@ function oldTextChunks(text: string): string[] {
   const chunks: string[] = [];
   for (let i = 0; i < text.length; ) {
     let end = Math.min(i + OLD_MAX_CHUNK_CHARS, text.length);
-    if (end < text.length && /[\uD800-\uDBFF]/.test(text[end - 1])) end -= 1;
+    if (end < text.length && /[\uD800-\uDBFF]/.test(text.charAt(end - 1))) end -= 1;
     chunks.push(text.slice(i, end));
     i = end;
   }
@@ -183,8 +184,8 @@ describe('jsonChunks (property)', () => {
       fc.property(itemsArb, (items) => {
         const chunks = jsonChunks(items);
         for (let i = 1; i < chunks.length; i++) {
-          const first = (JSON.parse(chunks[i]) as unknown[])[0];
-          expect(chunks[i - 1].length + textOf(first).length + 1).toBeGreaterThanOrEqual(MAX);
+          const first = (JSON.parse(itemAt(chunks, i)) as unknown[])[0];
+          expect(itemAt(chunks, i - 1).length + textOf(first).length + 1).toBeGreaterThanOrEqual(MAX);
         }
       }),
     );
@@ -243,9 +244,9 @@ describe('jsonChunks (property)', () => {
       fc.property(wideItemsArb, (items) => {
         const chunks = jsonChunks(items);
         for (let i = 1; i < chunks.length; i++) {
-          const first = textOf((JSON.parse(chunks[i]) as unknown[])[0]);
-          const bytesOver = utf8Bytes(chunks[i - 1]) + 1 + utf8Bytes(first) > MAX_CHUNK_BYTES;
-          const charsOver = chunks[i - 1].length + first.length + 1 >= MAX;
+          const first = textOf((JSON.parse(itemAt(chunks, i)) as unknown[])[0]);
+          const bytesOver = utf8Bytes(itemAt(chunks, i - 1)) + 1 + utf8Bytes(first) > MAX_CHUNK_BYTES;
+          const charsOver = itemAt(chunks, i - 1).length + first.length + 1 >= MAX;
           expect(bytesOver || charsOver).toBe(true);
         }
       }),
@@ -307,8 +308,8 @@ describe('textChunks (property)', () => {
         if (text === '') expect(chunks).toEqual(['']);
         else for (const chunk of chunks) expect(chunk.length).toBeGreaterThan(0);
         for (let i = 1; i < chunks.length; i++) {
-          const before = chunks[i - 1];
-          expect(isHigh(before[before.length - 1]) && isLow(chunks[i][0])).toBe(false);
+          const before = itemAt(chunks, i - 1);
+          expect(isHigh(before[before.length - 1]) && isLow(itemAt(chunks, i)[0])).toBe(false);
         }
       }),
     );
@@ -366,10 +367,10 @@ describe('textChunks (property)', () => {
           expect(utf8Bytes(chunk)).toBeLessThanOrEqual(MAX_CHUNK_BYTES);
         }
         for (let i = 1; i < chunks.length; i++) {
-          const before = chunks[i - 1];
-          expect(isHigh(before[before.length - 1]) && isLow(chunks[i][0])).toBe(false);
+          const before = itemAt(chunks, i - 1);
+          expect(isHigh(before[before.length - 1]) && isLow(itemAt(chunks, i)[0])).toBe(false);
           // The next code point would not have fit, in bytes or characters.
-          const next = String.fromCodePoint(chunks[i].codePointAt(0) ?? 0);
+          const next = String.fromCodePoint(itemAt(chunks, i).codePointAt(0) ?? 0);
           const bytesFull = utf8Bytes(before) + utf8Bytes(next) > MAX_CHUNK_BYTES;
           expect(bytesFull || before.length >= MAX - 1).toBe(true);
         }
@@ -404,6 +405,6 @@ describe('textChunks (property)', () => {
     const text = `abc${'😀'.repeat(250_000)}`;
     const chunks = textChunks(text);
     expect(chunks).toEqual([`abc${'😀'.repeat(249_999)}`, '😀']);
-    expect(utf8Bytes(chunks[0])).toBe(MAX_CHUNK_BYTES - 1);
+    expect(utf8Bytes(itemAt(chunks, 0))).toBe(MAX_CHUNK_BYTES - 1);
   });
 });

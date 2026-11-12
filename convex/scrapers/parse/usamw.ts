@@ -1,3 +1,4 @@
+import { itemAt } from '../../lib/json';
 import { recordHolder, setHolder, type RecordHolder } from './holder';
 import { MONTH_NUMBERS, pad2 } from '../../lib/dates';
 import { unescapeHtml } from '../lib/html';
@@ -27,7 +28,7 @@ export function discoverRecordPdfs(page: string): { Men: string; Women: string }
   const html = unescapeHtml(page);
   const urls: { Men?: string; Women?: string } = {};
   for (const match of html.matchAll(/href="([^"]+)"/gi)) {
-    const url = unescapeHtml(match[1]);
+    const url = unescapeHtml(match[1] ?? '');
     const lower = url.toLowerCase();
     if (!lower.includes('storage.googleapis.com') || !lower.includes('filename=nm') || !lower.includes('.pdf')) continue;
     if (/[-_ ]women(?:[ _-]*\d+)?\.pdf\b/.test(lower)) urls.Women = url;
@@ -54,10 +55,10 @@ const LATEST_TWO_DIGIT_YEAR_IN_THE_2000S = 50;
 
 function recordsDate(text: string): string {
   const match = /^(\d{1,2})-([A-Za-z]{3})[a-z]*-(\d{2}|\d{4})$/.exec(text);
-  const month = match ? (MONTH_NUMBERS[match[2].toLowerCase()] ?? 0) : 0;
+  const month = match ? (MONTH_NUMBERS[itemAt(match, 2).toLowerCase()] ?? 0) : 0;
   if (!match || !month) return text;
-  const year = match[3].length === 4 ? Number(match[3]) : Number(match[3]) + (Number(match[3]) <= LATEST_TWO_DIGIT_YEAR_IN_THE_2000S ? 2000 : 1900);
-  return `${year}-${pad2(month)}-${match[1].padStart(2, '0')}`;
+  const year = itemAt(match, 3).length === 4 ? Number(match[3]) : Number(match[3]) + (Number(match[3]) <= LATEST_TWO_DIGIT_YEAR_IN_THE_2000S ? 2000 : 1900);
+  return `${year}-${pad2(month)}-${itemAt(match, 1).padStart(2, '0')}`;
 }
 
 const DATE_WORD = /^(?:\d{1,2}-[A-Za-z]{3,}-\d{2,4}|\d{1,2}\/\d{1,2}\/\d{2,4})$/;
@@ -81,7 +82,7 @@ function lineCells(line: PdfLine): string[] | undefined {
   let end = -Infinity;
   for (const run of line.runs) {
     const size = letters(run.text).length;
-    if (sizes.length && run.x - end <= CELL_GAP) sizes[sizes.length - 1] += size;
+    if (sizes.length && run.x - end <= CELL_GAP) sizes[sizes.length - 1] = (sizes[sizes.length - 1] ?? 0) + size;
     else sizes.push(size);
     end = Math.max(end, run.end);
   }
@@ -90,7 +91,7 @@ function lineCells(line: PdfLine): string[] | undefined {
   let at = 0;
   for (const size of sizes) {
     const from = at;
-    for (let seen = 0; seen < size; at++) if (!/\s/.test(line.text[at])) seen++;
+    for (let seen = 0; seen < size; at++) if (!/\s/.test(line.text[at] ?? '')) seen++;
     cells.push(joinDate(line.text.slice(from, at).trim()));
   }
   return cells.filter(Boolean);
@@ -110,7 +111,7 @@ const hasDate = (cell: string) => cell.split(' ').some((word) => DATE_WORD.test(
 function siteAndCompetition(tail: string, cells: string[] | undefined): [site: string | undefined, competition: string] {
   const at = cells?.findIndex(hasDate) ?? -1;
   if (cells && at >= 0) {
-    const words = cells[at].split(' ');
+    const words = itemAt(cells, at).split(' ');
     const after = [words.slice(words.findIndex((word) => DATE_WORD.test(word)) + 1).join(' '), ...cells.slice(at + 1)].filter(Boolean);
     // Only a first cell that reads as a whole site ("City, Region", as every site in the PDFs is), not one
     // that runs on past a state code ("Las Vegas, NV World"), and cells that say what the text says.
@@ -120,7 +121,7 @@ function siteAndCompetition(tail: string, cells: string[] | undefined): [site: s
     }
   }
   const site = /^(.+?,\s*[A-Z]{2})\s+(.+)$/.exec(tail);
-  return site ? [site[1], site[2]] : [undefined, tail];
+  return site ? [site[1], (site[2] ?? '')] : [undefined, tail];
 }
 
 /**
@@ -146,7 +147,7 @@ function lineHolder(value: number, rest: string, cells: string[] | undefined): R
   const name = NAME_CORRECTIONS[written] ?? written;
   if (at < 0) return recordHolder(value, name);
   const [site, competition] = siteAndCompetition(words.slice(at + 1).join(' '), cells);
-  return recordHolder(value, name, recordsDate(words[at]), competition, site);
+  return recordHolder(value, name, recordsDate(words[at] ?? ''), competition, site);
 }
 
 type Lift = 'snatchRecord' | 'cjRecord' | 'totalRecord';
@@ -229,7 +230,7 @@ export function parseRecordPages(pages: (string | PdfLine)[][], gender: string, 
         totalRecord: null,
       };
       const value = Math.trunc(Number(match[3]));
-      const lift = match[2].toUpperCase();
+      const lift = itemAt(match, 2).toUpperCase();
       const holder = lineHolder(value, line.slice(match[0].length), cells);
       if (lift.startsWith('SNA')) {
         record.snatchRecord = value;

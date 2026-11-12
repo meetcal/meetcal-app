@@ -34,7 +34,7 @@ export function clubSpellingGroups(spellings: Iterable<string>): [key: string, s
 const mixedCase = (spelling: string) => spelling !== spelling.toUpperCase() && spelling !== spelling.toLowerCase();
 
 export function clubLabel(spellings: readonly string[]): string {
-  return spellings.find(mixedCase) ?? spellings[0];
+  return spellings.find(mixedCase) ?? spellings[0] ?? '';
 }
 
 /** `GET /clubs`: one label per club (`clubLabel`), in the database's text order. */

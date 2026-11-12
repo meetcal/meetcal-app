@@ -20,7 +20,7 @@ describe('Missouri Valley WSO records page', () => {
       <h4>AGE 60 – 64</h4><p>SNATCH:</p><p>35 kg – Joni Siplon</p><p>CLEAN &amp; JERK:</p><p>TBD</p><p>TOTAL:</p><p>TBD</p>
       <h3>men</h3><h5>110+ kg</h5><h4>AGE 35 – 39</h4><p>SNATCH:</p><p>TBD</p><p>CLEAN &amp; JERK:</p><p>TBD</p><p>TOTAL:</p><p>TBD</p>
       <h2>find a club</h2><p>SNATCH:</p><p>1 kg</p>`;
-    const rows = parseMissouriValley(missouriValleyLines(html)).map((r) => [r.age_category, r.gender, r.weight_class, r.snatch_record, r.cj_record, r.total_record]);
+    const rows = parseMissouriValley(missouriValleyLines(html)).map((r) => [r.ageCategory, r.gender, r.weightClass, r.snatchRecord, r.cjRecord, r.totalRecord]);
     expect(rows).toEqual([
       ['Junior', 'Women', '49', null, 70, null],
       ['U17', 'Women', '45', null, null, null],
@@ -34,18 +34,18 @@ describe('Missouri Valley WSO records page', () => {
   it('names the holder after the dash, including a name wrapped onto the next line', () => {
     const lines = ['women', '49 kg', 'AGE 55 – 59', 'SNATCH:', '38 kg – Nancy Taylor', 'CLEAN & JERK:', '50 kg –', 'Nancy Taylor', 'TOTAL:', 'TBD', '53 kg', 'SNATCH:', '40 kg –', 'CLEAN & JERK:', '45 kg', 'TOTAL:', '85 kg – Brody O’Gara'];
     expect(parseMissouriValley(lines)).toEqual([
-      { wso: 'Missouri Valley', age_category: 'Masters 55', gender: 'Women', weight_class: '49', snatch_record: 38, cj_record: 50, total_record: null, snatch_by: { name: 'Nancy Taylor' }, cj_by: { name: 'Nancy Taylor' } },
+      { wso: 'Missouri Valley', ageCategory: 'Masters 55', gender: 'Women', weightClass: '49', snatchRecord: 38, cjRecord: 50, totalRecord: null, snatchBy: { name: 'Nancy Taylor' }, cjBy: { name: 'Nancy Taylor' } },
       {
         wso: 'Missouri Valley',
-        age_category: 'Masters 55',
+        ageCategory: 'Masters 55',
         gender: 'Women',
-        weight_class: '53',
-        snatch_record: 40,
-        cj_record: 45,
-        total_record: 85,
-        snatch_by: { name: 'Standard' },
-        cj_by: { name: 'Standard' },
-        total_by: { name: 'Brody O’Gara' },
+        weightClass: '53',
+        snatchRecord: 40,
+        cjRecord: 45,
+        totalRecord: 85,
+        snatchBy: { name: 'Standard' },
+        cjBy: { name: 'Standard' },
+        totalBy: { name: 'Brody O’Gara' },
       },
     ]);
   });

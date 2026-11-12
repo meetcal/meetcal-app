@@ -1,7 +1,9 @@
 import type { AthleteBests } from "@/data/types/athletes";
 
-export type SessionAthleteSortKey = "entryTotal" | "snatch" | "cj" | "total";
-export type SessionAthleteSortDirection = "asc" | "desc";
+export const SESSION_ATHLETE_SORT_KEYS = ["entryTotal", "snatch", "cj", "total"] as const;
+export const SESSION_ATHLETE_SORT_DIRECTIONS = ["asc", "desc"] as const;
+export type SessionAthleteSortKey = (typeof SESSION_ATHLETE_SORT_KEYS)[number];
+export type SessionAthleteSortDirection = (typeof SESSION_ATHLETE_SORT_DIRECTIONS)[number];
 
 /**
  * The value an athlete sorts by, or `null` when they have no best for a

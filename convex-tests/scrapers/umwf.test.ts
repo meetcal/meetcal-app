@@ -1,5 +1,6 @@
 import { parseCsv } from '../../convex/scrapers/lib/csv';
 import { formatWeightClass, parseUmwfSheet } from '../../convex/scrapers/parse/umwf';
+import { itemAt } from '../../convex/lib/json';
 
 describe('CSV reader (Python csv.reader semantics)', () => {
   it('handles quotes, doubled quotes, embedded commas and newlines, CRLF and blank lines', () => {
@@ -28,8 +29,8 @@ describe('UMWF sheet parser (port of umwf_records.py)', () => {
 
   it('opens a class per "kg Category" row and fills its lifts', () => {
     expect(parseUmwfSheet(csv, 'Masters 30', 'men')).toMatchObject([
-      { record_type: 'UMWF', age_category: 'Masters 30', gender: 'men', weight_class: '60kg', snatch_record: 104, cj_record: 128, total_record: 232 },
-      { record_type: 'UMWF', age_category: 'Masters 30', gender: 'men', weight_class: '110+kg', snatch_record: 0, cj_record: 0, total_record: 210 },
+      { recordType: 'UMWF', ageCategory: 'Masters 30', gender: 'men', weightClass: '60kg', snatchRecord: 104, cjRecord: 128, totalRecord: 232 },
+      { recordType: 'UMWF', ageCategory: 'Masters 30', gender: 'men', weightClass: '110+kg', snatchRecord: 0, cjRecord: 0, totalRecord: 210 },
     ]);
   });
 
@@ -44,7 +45,7 @@ describe('UMWF sheet parser (port of umwf_records.py)', () => {
       ',110 kg Category,Weight,Name,Year Born,Nation,Date,Where,Age',
       ',Total,250,"DOE, John",1971,USA,13-June-2025,Singapore,54',
     ].join('\n');
-    expect(parseUmwfSheet(sheet, 'Masters 50', 'men').map((r) => [r.weight_class, r.snatch_record, r.total_record])).toEqual([
+    expect(parseUmwfSheet(sheet, 'Masters 50', 'men').map((r) => [r.weightClass, r.snatchRecord, r.totalRecord])).toEqual([
       ['94kg', 100, 0],
       ['110kg', 0, 250],
     ]);
@@ -62,15 +63,16 @@ describe('UMWF sheet parser (port of umwf_records.py)', () => {
       ',Clean & Jerk,Standard,,,,,,,x',
       ',Total,210,"CASSIDY, Wes",1969,AUS,10-June-0206,"Adelaide, SA",57,',
     ].join('\n');
-    const [light, heavy] = parseUmwfSheet(sheet, 'Masters 35', 'men');
-    expect(light.snatch_by).toEqual({ name: 'PUFF, Derick', date: '2025-12-07', location: 'Daytona Beach, FL' });
-    expect(light.cj_by).toEqual({ name: 'Standard' });
+    const classes = parseUmwfSheet(sheet, 'Masters 35', 'men');
+    const [light, heavy] = [itemAt(classes, 0), itemAt(classes, 1)];
+    expect(light.snatchBy).toEqual({ name: 'PUFF, Derick', date: '2025-12-07', location: 'Daytona Beach, FL' });
+    expect(light.cjBy).toEqual({ name: 'Standard' });
     // "10-June_2026" is still a readable date.
-    expect(light.total_by).toEqual({ name: 'YATES, Leora', date: '2026-06-10', location: 'Adelaide, SA' });
+    expect(light.totalBy).toEqual({ name: 'YATES, Leora', date: '2026-06-10', location: 'Adelaide, SA' });
     // No value (blank or "Standard"): no holder; the sheet's "0206" is corrected (`correctRecordDate`).
-    expect(heavy).not.toHaveProperty('snatch_by');
-    expect(heavy).not.toHaveProperty('cj_by');
-    expect(heavy.total_by).toEqual({ name: 'CASSIDY, Wes', date: '2026-06-10', location: 'Adelaide, SA' });
+    expect(heavy).not.toHaveProperty('snatchBy');
+    expect(heavy).not.toHaveProperty('cjBy');
+    expect(heavy.totalBy).toEqual({ name: 'CASSIDY, Wes', date: '2026-06-10', location: 'Adelaide, SA' });
   });
 
   it('fails the tab on a lift it cannot read instead of reading it as 0', () => {

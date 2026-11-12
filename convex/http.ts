@@ -1,9 +1,9 @@
+import { isRecord } from './lib/json';
 import { httpRouter } from 'convex/server';
 import { internal } from './_generated/api';
 import { httpAction } from './_generated/server';
 import { jwks } from './apiTokens';
 import { revenuecatWebhook } from './entitlements';
-import { isRecord } from './lib/json';
 import { UNREADABLE_SECRET, verifyWebhook } from './lib/webhookSignature';
 
 const http = httpRouter();

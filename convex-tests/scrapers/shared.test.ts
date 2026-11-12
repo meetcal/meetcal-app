@@ -1,4 +1,5 @@
-import { fetchJson, fetchPdf, fetchText, HttpStatusError, mapLimited, throttledOrTransient, USER_AGENT, withRetries } from '../../convex/scrapers/lib/http';
+import { mapLimited } from '../../convex/lib/concurrency';
+import { fetchJson, fetchPdf, fetchText, HttpStatusError, throttledOrTransient, USER_AGENT, withRetries } from '../../convex/scrapers/lib/http';
 import { pyFloat, pyInt } from '../../convex/scrapers/lib/numbers';
 import { setHolder, type RecordHolder } from '../../convex/scrapers/parse/holder';
 import { blankRecord, columnDLift, liftsRecord, NO_LIFT, plusLast, setLift } from '../../convex/scrapers/parse/wso/common';
@@ -17,11 +18,11 @@ describe('shared scraper helpers', () => {
 
   it('sets or clears a holder', () => {
     const holder: RecordHolder = { name: 'Ann' };
-    const record: { snatch_by?: RecordHolder } = {};
-    setHolder(record, 'snatch_by', holder);
-    expect(record).toEqual({ snatch_by: holder });
-    setHolder(record, 'snatch_by', undefined);
-    expect('snatch_by' in record).toBe(false);
+    const record: { snatchBy?: RecordHolder } = {};
+    setHolder(record, 'snatchBy', holder);
+    expect(record).toEqual({ snatchBy: holder });
+    setHolder(record, 'snatchBy', undefined);
+    expect('snatchBy' in record).toBe(false);
   });
 
   it('builds WSO records the same way for every source', () => {
@@ -30,15 +31,15 @@ describe('shared scraper helpers', () => {
     expect(plusLast('61')).toBe('61');
     const record = blankRecord('Ohio', 'U15', 'Women');
     setLift(record, 'cj', 80, { name: 'Ann' });
-    expect(record).toEqual({ wso: 'Ohio', age_category: 'U15', gender: 'Women', weight_class: '', snatch_record: null, cj_record: 80, total_record: null, cj_by: { name: 'Ann' } });
+    expect(record).toEqual({ wso: 'Ohio', ageCategory: 'U15', gender: 'Women', weightClass: '', snatchRecord: null, cjRecord: 80, totalRecord: null, cjBy: { name: 'Ann' } });
     setLift(record, 'cj', null, undefined);
-    expect(record).not.toHaveProperty('cj_by');
+    expect(record).not.toHaveProperty('cjBy');
     const snatch = columnDLift(['Snatch', 'Ann Lee', 'Team', '61', '2026-03-01', 'Ohio Open', 'Columbus']);
     expect(snatch).toEqual({ value: 61, by: { name: 'Ann Lee', date: '2026-03-01', location: 'Ohio Open, Columbus' } });
     expect(columnDLift(['Total', 'STANDARD', '', 'STANDARD'])).toEqual({ value: null, by: undefined });
     expect(columnDLift(['Total'])).toEqual({ value: null, by: undefined });
     expect(liftsRecord('Ohio', 'U15', 'Women', '48', { snatch, cj: NO_LIFT, total: { value: 0 } })).toEqual({
-      wso: 'Ohio', age_category: 'U15', gender: 'Women', weight_class: '48', snatch_record: 61, cj_record: null, total_record: 0, snatch_by: snatch.by,
+      wso: 'Ohio', ageCategory: 'U15', gender: 'Women', weightClass: '48', snatchRecord: 61, cjRecord: null, totalRecord: 0, snatchBy: snatch.by,
     });
   });
 

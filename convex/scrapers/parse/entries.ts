@@ -13,7 +13,7 @@ const ENTRIES_PAGE = /\/public\/events\/(\d+)\/entries\/(\d+)/;
 function entriesPage(pageUrl: string): { event: string; stage: string } {
   const match = ENTRIES_PAGE.exec(pageUrl);
   if (!match) throw new Error(`not a Sport80 entries page: ${pageUrl}`);
-  return { event: match[1], stage: match[2] };
+  return { event: match[1] ?? '', stage: match[2] ?? '' };
 }
 
 /** The entries data endpoint behind a public entries page URL. */
