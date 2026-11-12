@@ -1,5 +1,6 @@
 import type { ApiLiftingResult } from './results';
-import { normalizeName } from './names';
+import { DAY_MS } from './dates';
+import { newestSpellingByAthlete, normalizeName } from './names';
 import { isPlausibleResult } from './plausible';
 
 /**
@@ -52,8 +53,6 @@ export const MAX_WRAPPED_NAME_CHOICES = 8;
  */
 export const MEET_EDITION_SPAN_DAYS = 10;
 
-const MS_PER_DAY = 24 * 60 * 60 * 1000;
-
 /** An attempt was taken: a recorded, non-zero number (a miss is negative). */
 const wasTaken = (attempt: number | null | undefined): attempt is number => typeof attempt === 'number' && attempt !== 0;
 /** A taken attempt that was made. */
@@ -65,7 +64,7 @@ const meetKey = (meet: string) => meet.trim().toLowerCase();
 function calendarDay(date: string): number | null {
   const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(date);
   if (!match) return null;
-  return Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3])) / MS_PER_DAY;
+  return Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3])) / DAY_MS;
 }
 
 function withinOneEdition(a: string, b: string): boolean {
@@ -226,37 +225,23 @@ export type WrappedSearch = { matched_name: string | null; suggestions: string[]
 
 const inDateOrder = (rows: readonly ApiLiftingResult[]) => [...rows].sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
 
-/**
- * The Wrapped a dated search answer makes. An exact name match is one
- * athlete. Otherwise the name-contains fallback is one athlete's year only
- * when its rows carry exactly one distinct name; with more, scoring them
- * together would merge athletes, so the names are offered to pick from. A
- * truncated answer is never scored: its rows may miss part of the year.
- */
 export function selectWrapped(search: WrappedSearch): WrappedAnswer {
   const rows = search.results;
   const none = (): WrappedAnswer => (search.truncated ? { kind: 'narrow' } : { kind: 'none', suggestions: search.suggestions });
   if (rows.length === 0) return none();
 
   if (search.matched_name !== null) {
-    const name = rows[0].name || search.matched_name;
+    const name = search.matched_name;
     if (search.truncated) return { kind: 'tooManyResults', name };
-    const ordered = inDateOrder(rows);
-    return { kind: 'athlete', name: ordered[0].name || search.matched_name, stats: wrappedStats(ordered) };
+    return { kind: 'athlete', name, stats: wrappedStats(inDateOrder(rows)) };
   }
 
-  // Distinct athletes among the fallback rows, keeping the first spelling seen.
-  const byKey = new Map<string, string>();
-  for (const row of rows) {
-    const key = normalizeName(row.name ?? '');
-    if (key && !byKey.has(key)) byKey.set(key, row.name);
+  const athletes = newestSpellingByAthlete(rows);
+  if (athletes.size === 0) return none();
+  if (athletes.size === 1 && !search.truncated) {
+    const [[key, name]] = [...athletes];
+    return { kind: 'athlete', name, stats: wrappedStats(inDateOrder(rows.filter((row) => normalizeName(row.name) === key))) };
   }
-  if (byKey.size === 0) return none();
-  if (byKey.size === 1 && !search.truncated) {
-    const [[key, name]] = [...byKey];
-    return { kind: 'athlete', name, stats: wrappedStats(inDateOrder(rows.filter((row) => normalizeName(row.name ?? '') === key))) };
-  }
-  // The athletes who lifted in the year, so each pick has a Wrapped.
-  const names = [...byKey.values()].sort((a, b) => a.localeCompare(b)).slice(0, MAX_WRAPPED_NAME_CHOICES);
-  return { kind: 'ambiguous', names, truncated: search.truncated || byKey.size > MAX_WRAPPED_NAME_CHOICES };
+  const names = [...athletes.values()].sort((a, b) => a.localeCompare(b)).slice(0, MAX_WRAPPED_NAME_CHOICES);
+  return { kind: 'ambiguous', names, truncated: search.truncated || athletes.size > MAX_WRAPPED_NAME_CHOICES };
 }

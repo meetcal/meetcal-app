@@ -259,7 +259,12 @@ same numbers for the meet's three previous editions (the same name with an earli
 ```sh
 meetcal meet-results "2026 Ohio WSO Championships"
 meetcal meet-results "2026 Ohio WSO Championships" --no-history
+meetcal meet-results "Testify Leprechaun Lift-off" --year 2022
 ```
+
+- `--year`, `-y`: the edition to show, for a meet held under one name every year (default: the
+  latest)
+- `--no-history`: skip the comparison with the meet's previous editions
 
 #### `attendance`
 
@@ -393,8 +398,11 @@ meetcal wsos Carolina
 
 #### `wso`
 
-Analyze one WSO's athletes at a meet. The report includes meet participation, make rates, total
-weight lifted, PRs, medals, and athlete detail.
+Analyze one WSO's athletes at a meet: the same report as `club-results`, for the athletes
+registered with the WSO. MeetCal computes it (`reference:wsoMeetStats`), so the medals, PRs and
+make rates are the ones `club-results` shows for the same athletes. It counts the athletes
+registered with the WSO, so it needs the meet's start list: for a meet MeetCal has only results
+for, use `meet-results`.
 
 ```sh
 meetcal wso \
@@ -402,12 +410,9 @@ meetcal wso \
   --wso Carolina
 ```
 
-MeetCal resolves combined USA Weightlifting registration events to their individual results meets,
-such as Masters Nationals and National University Championships.
-
 Options:
 
-- `--wso`, `-w`: Exact WSO name
+- `--wso`, `-w`: WSO name, as registrations spell it (case and spacing ignored; see `meetcal wsos`)
 
 #### `wso-wrapped`
 
@@ -479,7 +484,7 @@ meetcal records --age Senior --gender Men --federation USAW
 Options:
 
 - `--age`, `-a`: Age group
-- `--gender`, `-g`: Gender
+- `--gender`, `-g`: `Men` or `Women` (`m`, `f`, `male` and `female` work too)
 - `--federation`, `-f`: `BWL`, `IWF`, `USAW`, `USAMW`, or `UMWF`
 
 #### `standards`
@@ -493,7 +498,7 @@ meetcal standards --age Senior --gender Men
 Options:
 
 - `--age`, `-a`: Age group
-- `--gender`, `-g`: Gender
+- `--gender`, `-g`: `Men` or `Women` (`m`, `f`, `male` and `female` work too)
 
 #### `qualifying-totals`
 
@@ -506,7 +511,7 @@ meetcal qualifying-totals --age Junior --gender Men --event Nationals
 Options:
 
 - `--age`, `-a`: Age group
-- `--gender`, `-g`: Gender
+- `--gender`, `-g`: `Men` or `Women` (`m`, `f`, `male` and `female` work too)
 - `--event`, `-e`: Event name
 
 #### `nat-rankings`
@@ -546,7 +551,7 @@ meetcal intl-rankings --age Senior --gender Men --meet Worlds
 Options:
 
 - `--age`, `-a`: Age group
-- `--gender`, `-g`: Gender
+- `--gender`, `-g`: `Men` or `Women` (`m`, `f`, `male` and `female` work too)
 - `--meet`, `-m`: Meet name
 
 #### `wso-records`
@@ -561,7 +566,7 @@ meetcal wso-records --age Senior --gender Men --wso Carolina
 Options:
 
 - `--age`, `-a`: Age group (e.g. `U17`, `Junior`, `Senior`, `Masters 35`)
-- `--gender`, `-g`: `Men` or `Women`
+- `--gender`, `-g`: `Men` or `Women` (`m`, `f`, `male` and `female` work too)
 - `--wso`, `-w`: WSO region (e.g. `Carolina`, `Florida`)
 
 #### `adaptive-records`

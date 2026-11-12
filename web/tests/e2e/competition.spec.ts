@@ -677,6 +677,24 @@ test("the WSO elite page ranks a WSO's athletes, and a list's score picker switc
   expect(asked).toHaveLength(1);
 });
 
+test("WSO Elite asks for the current calendar year by default", async ({ page }) => {
+  await page.clock.setFixedTime(new Date("2026-11-11T12:00:00"));
+  await mockSubscribedUser(page);
+  await routeQuery(page, "reference:registrationWsos", (route) => route.fulfill(valueAnswer(["Carolina"])));
+  const asked: Record<string, unknown>[] = [];
+  await routeAction(page, "results:wsoElite", (route, args) => {
+    asked.push(args);
+    return route.fulfill(valueAnswer(eliteAnswer()));
+  });
+  await page.goto("/wso-elite");
+  await expect(page.getByLabel("From")).toHaveValue("2026-01-01");
+  await expect(page.getByLabel("To")).toHaveValue("2026-12-31");
+  await page.getByLabel("WSO").selectOption("Carolina");
+  await page.getByRole("button", { name: "View elite lists" }).click();
+  await expect(page).toHaveURL(/\/wso-elite\?wso=Carolina&from=2026-01-01&to=2026-12-31$/);
+  await expect.poll(() => asked[0]).toEqual({ wso: "Carolina", from: "2026-01-01", to: "2026-12-31", pass: "pass_test" });
+});
+
 test("a WSO elite score the answer lacks says so, and a score the page does not know is ignored", async ({ page }) => {
   await mockSubscribedUser(page);
   await routeQuery(page, "reference:registrationWsos", (route) => route.fulfill(valueAnswer(["Carolina"])));

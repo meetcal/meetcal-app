@@ -1,4 +1,5 @@
 import * as server from '../../convex/lib/meetSubmissions';
+import { apiError } from '../../convex/lib/validation';
 import { MeetCalApiError, MeetCalApiTimeoutError } from '@/lib/api/meetcal-api';
 import {
   checkMeetSubmissionForm,
@@ -252,6 +253,13 @@ describe('sendMeetSubmission', () => {
     // Nothing reused: a real refusal.
     await expect(sendMeetSubmission('token', form([pdf('a.pdf')]), null, new Map(), undefined, deps)).rejects.toBe(stored);
     // Reused from the attempt whose submit timed out: it was stored.
+    await expect(sendMeetSubmission('token', form([pdf('a.pdf')]), null, new Map([[pdf('a.pdf').uri, 'id-a.pdf']]), undefined, deps)).resolves.toBeUndefined();
+  });
+
+  it('counts a retry as sent when the refusal also carries the already-submitted code', async () => {
+    const { deps } = fakeDeps();
+    const refusal = apiError(400, 'file already submitted: a.pdf', { code: server.FILE_ALREADY_SUBMITTED_CODE });
+    deps.submit.mockRejectedValue(new MeetCalApiError('failed', 400, JSON.stringify(refusal.data)));
     await expect(sendMeetSubmission('token', form([pdf('a.pdf')]), null, new Map([[pdf('a.pdf').uri, 'id-a.pdf']]), undefined, deps)).resolves.toBeUndefined();
   });
 });
