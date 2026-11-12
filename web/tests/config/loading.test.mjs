@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { readFile, readdir } from "node:fs/promises";
+import { createHash } from "node:crypto";
 import test from "node:test";
 
 const config = JSON.parse(
@@ -53,6 +54,25 @@ test("every content-hashed file in the build is cached for a year, and nothing e
       assert.notEqual(cacheControlFor(path), IMMUTABLE, `${path} keeps its name across deploys and must not be immutable`);
     }
   }
+});
+
+test("the glue and the snippet folder are named by their own content, so a year's cache never serves a stale one", async () => {
+  const dist = new URL("../../dist/", import.meta.url);
+  const hash = (bytes) => createHash("sha256").update(bytes).digest("hex").slice(0, 16);
+  const [snippetFolder, ...others] = await readdir(new URL("snippets/", dist));
+  assert.equal(others.length, 0);
+  const snippetFiles = (await filesUnder("../../dist/snippets/" + snippetFolder + "/"))
+    .map((path) => "." + path)
+    .sort((left, right) => (left < right ? -1 : left > right ? 1 : 0));
+  const snippetBytes = Buffer.concat(
+    await Promise.all(snippetFiles.map((path) => readFile(new URL(`snippets/${snippetFolder}/${path.slice(2)}`, dist)))),
+  );
+  assert.ok(snippetFolder.endsWith(`-${hash(snippetBytes)}`), `${snippetFolder} is not named by its content`);
+  const glue = (await readdir(dist)).filter((file) => /^meetcal-web-[0-9a-f]{16}\.js$/.test(file));
+  assert.equal(glue.length, 1);
+  const glueText = await readFile(new URL(glue[0], dist));
+  assert.equal(glue[0], `meetcal-web-${hash(glueText)}.js`);
+  assert.ok(glueText.toString().includes(`snippets/${snippetFolder}/`), "the glue imports another snippet folder");
 });
 
 test("pages and the routes they rewrite to revalidate on every visit", () => {

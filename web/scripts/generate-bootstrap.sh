@@ -15,10 +15,22 @@ if [[ ${#javascript_candidates[@]} -ne 1 || ${#wasm_candidates[@]} -ne 1 || ${#s
   exit 1
 fi
 
-javascript_file="$(basename "${javascript_candidates[0]}")"
+content_hash() {
+  sha256sum | cut -c1-16
+}
+
+snippet_dir="$(dirname "$(dirname "${snippet_candidates[0]}")")"
+snippet_crate="$(basename "${snippet_dir}")"
+snippet_hash="$(cd "${snippet_dir}" && find . -type f -print | LC_ALL=C sort | xargs cat | content_hash)"
+hashed_snippet_crate="${snippet_crate}-${snippet_hash}"
+mv "${snippet_dir}" "${dist_dir}/snippets/${hashed_snippet_crate}"
+sed -i "s#snippets/${snippet_crate}/#snippets/${hashed_snippet_crate}/#g" "${javascript_candidates[0]}"
+javascript_file="meetcal-web-$(content_hash < "${javascript_candidates[0]}").js"
+mv "${javascript_candidates[0]}" "${dist_dir}/${javascript_file}"
+
 wasm_file="$(basename "${wasm_candidates[0]}")"
 snippet_paths=""
-for snippet in "${snippet_candidates[@]}"; do
+for snippet in "${dist_dir}/snippets/${hashed_snippet_crate}"/src/*.js; do
   snippet_paths+="${snippet#"${dist_dir}"} "
 done
 

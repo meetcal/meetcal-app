@@ -228,7 +228,10 @@ Each route needs a document that search engines and link previews can read befor
   (each route's title, description and robots) equal to it. After a change to a page, the header
   or the catalog, run `UPDATE_SHELLS=1 cargo test --test shells`; the test fails until the
   committed shells match.
-- `scripts/generate-bootstrap.sh` runs after every Trunk build. It writes the content-hashed
+- `scripts/generate-bootstrap.sh` runs after every Trunk build. wasm-bindgen names the snippet
+  folder (`snippets/meetcal-web-<crate hash>/`) after the crate, not its files, so the script adds
+  the files' content hash to the folder's name, rewrites the glue's imports to match, and names the
+  glue by its own content hash again; both can then be cached for a year. It writes the content-hashed
   `app-bootstrap-<hash>.js` (which loads the Wasm, then removes the prerendered page and
   `#app-loading`, or turns `#app-loading` into an error with a retry when the load fails, and
   starts PostHog once the app has mounted), adds `modulepreload` for the glue and the auth bridge
