@@ -84,7 +84,14 @@ function now(): number {
   return typeof performance !== 'undefined' ? performance.now() : Date.now();
 }
 
+let requestsSent = 0;
+
+export function apiRequestsStarted(): number {
+  return requestsSent;
+}
+
 async function send(call: ApiCall, timeoutMs: number): Promise<unknown> {
+  requestsSent += 1;
   const startedAt = now();
   const abort = typeof AbortController !== 'undefined' ? new AbortController() : null;
   let rejectTimeout: (error: Error) => void = () => undefined;

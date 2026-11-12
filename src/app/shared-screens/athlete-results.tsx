@@ -11,6 +11,7 @@ import { useAppColors } from "@/hooks/useAppColors";
 import { useAthleteResults } from "@/hooks/useAthleteResults";
 import { useIsOffline } from "@/hooks/useIsOffline";
 import { useScreenHorizontalInsets } from "@/hooks/useScreenInsets";
+import { useScreenTiming } from "@/hooks/useScreenTiming";
 import { findPRIndexes, type PRIndexes } from "@/lib/athlete-prs";
 import { meetResultKey } from "@/lib/athlete-result-display";
 import { partialResultsStatus, showsCareerStats } from "@/lib/athlete-results-load";
@@ -41,6 +42,10 @@ function AthleteResultsContent() {
   const [isOffline] = useIsOffline();
   const { loading, athleteResults, loadFailed, rowsSource, loadOutcome, retryLoad } =
     useAthleteResults(name);
+  useScreenTiming("athlete-results", {
+    source: loadOutcome === "shown" ? "network" : rowsSource === null ? null : "cache",
+    failed: loadFailed,
+  });
 
   const careerStats = showsCareerStats(rowsSource);
   const prIndexes = useMemo(

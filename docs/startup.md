@@ -45,8 +45,32 @@ One PostHog event per process, sent once the splash is down and the first screen
 | `platform` | `ios` or `android`. |
 | `update_launch` | Running a downloaded OTA update rather than the embedded bundle. |
 | `app_state_at_start`, `backgrounded` | Filter out background launches and launches put in the background before they settled. |
+| `device_model` | `expo-device`'s model id (`iPhone12,8`), or its model name where there is no id (Android). |
+| `device_memory_mb` | The device's total memory in MB (`expo-device`'s `totalMemory`). |
+| `network_type` | NetInfo's connection when the launch started: `wifi`, `cellular-4g` (`cellular` with no generation reported), `none`, `unknown` or NetInfo's other types. |
 | `reported_at_ms` | When the event was built. |
 
 All times are ms since `_layout.tsx` started evaluating; native launch and bundle load come before 0 and are not included.
 
-To read it: in PostHog, build a trend on `startup_timing` with `complete = true`, `app_state_at_start = active` and `backgrounded` not `true`, and chart the median and p90 of `schedule_content_ms` (time to the schedule) and `splash_hidden_ms`, broken down by `platform`, `schedule_cache_hit` and `native_tabs`. Compare `splash_hide_reason` shares: a high `cap` share on warm starts (`schedule_cache_hit = true`) means the cache read is slower than the hold; `needed_meet_lookup = true` launches wait on the network before a meet can show.
+To read it: in PostHog, build a trend on `startup_timing` with `complete = true`, `app_state_at_start = active` and `backgrounded` not `true`, and chart the median and p90 of `schedule_content_ms` (time to the schedule) and `splash_hidden_ms`, broken down by `platform`, `schedule_cache_hit` and `native_tabs`. Compare `splash_hide_reason` shares: a high `cap` share on warm starts (`schedule_cache_hit = true`) means the cache read is slower than the hold; `needed_meet_lookup = true` launches wait on the network before a meet can show. Break `schedule_content_ms` down by `network_type`, and filter on `device_memory_mb` to see the oldest phones (3 GB and under).
+
+## The `screen_timing` event
+
+One PostHog event per sampled screen visit: a visit is sampled with probability `SCREEN_TIMING_SAMPLE_RATE` (10 %) when the screen mounts (`lib/screen-timing.ts`). It is sent once the screen's data arrives from the network, when its load fails, or, with `complete: false`, when the user leaves first. The reference screens report through `useMutableResource`'s `screen` option; Athlete Results through `useScreenTiming`. Development builds log it as `[perf] screen timing`.
+
+| Property | Meaning |
+|---|---|
+| `screen` | The route, as `comp-data/` names it (`records`, `wso-records`, `club-results/clubs-list`, `athlete-results`). |
+| `time_to_first_content_ms` | Mount to the first rows on screen, cached or fresh. |
+| `time_to_data_ms` | Mount to the network's answer; null if it never came. |
+| `round_trips` | API requests the app sent between the mount and the answer (every request, so a background read in that window counts too). |
+| `cache_hit` | The first rows came from the offline copy. |
+| `failed` | The load failed with nothing on screen. |
+| `complete` | The answer arrived, or the load failed, before the user left. |
+| `platform`, `device_model`, `device_memory_mb`, `network_type` | As on `startup_timing`, read when the event is sent. |
+
+To read it: chart the median and p90 of `time_to_data_ms` by `screen`, broken down by `network_type`, with `cache_hit = false` for first visits. A screen whose `round_trips` sits at 2 or more on first visits chains its requests.
+
+## Network policy
+
+Every request times out only when nothing has arrived for `REQUEST_INACTIVITY_TIMEOUT_MS` (10 s): headers, upload progress and every downloaded chunk reset the timer (`lib/api/progress-fetch.ts`, `lib/api/network-policy.ts`), so a large download on a slow link keeps going while bytes arrive. Queries retry a network failure, a timeout or a busy answer (408, 429, 502-504) up to `READ_MAX_ATTEMPTS` (3) times, `READ_RETRY_BASE_DELAY_MS` doubling to `READ_RETRY_MAX_DELAY_MS`, jittered, and fail at once while NetInfo says the device is offline; writes never retry (the outbox does). `useMutableResource` and `useRetryOnReconnect` ask again when the connection comes back. A screen with nothing to show says Waiting for Connection after `WAITING_FOR_CONNECTION_AFTER_MS` (3 s) (`LoadingLabel`, `useWaitingForConnection`); its error and Try Again appear once the retries are spent or the device is offline.

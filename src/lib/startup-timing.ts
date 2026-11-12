@@ -67,6 +67,9 @@ export type StartupFlags = {
   /** The app went to the background before the event was sent. */
   backgrounded?: boolean;
   splashHideReason?: SplashHideReason;
+  deviceModel?: string | null;
+  deviceMemoryMb?: number | null;
+  networkType?: string;
 };
 
 export type StartupTimingProperties = Record<string, string | number | boolean | null>;
@@ -98,6 +101,9 @@ const FLAG_PROPERTIES: Record<keyof StartupFlags, string> = {
   appStateAtStart: "app_state_at_start",
   backgrounded: "backgrounded",
   splashHideReason: "splash_hide_reason",
+  deviceModel: "device_model",
+  deviceMemoryMb: "device_memory_mb",
+  networkType: "network_type",
 };
 
 function isStartupMark(key: string): key is StartupMark {

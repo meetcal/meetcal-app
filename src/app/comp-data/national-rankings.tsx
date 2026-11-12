@@ -81,6 +81,7 @@ function NationalRankingsScreenContent() {
     error,
   } = useMutableResource({
     resource: nationalRankingsResource,
+    screen: "national-rankings",
     params: resourceParams,
     initialData: EMPTY_RANKINGS,
   });

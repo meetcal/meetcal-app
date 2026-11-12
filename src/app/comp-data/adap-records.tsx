@@ -42,6 +42,7 @@ function AdaptiveRecordsScreenContent() {
     error: fetchError,
   } = useMutableResource({
     resource: adaptiveRecordsResource,
+    screen: "adap-records",
     params: [] as const,
     initialData: EMPTY_RECORDS_DATA as RecordsData,
   });

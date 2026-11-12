@@ -77,6 +77,7 @@ function WSORecordsScreenContent() {
     error: recordsError,
   } = useMutableResource({
     resource: wsoRecordsResource,
+    screen: "wso-records",
     params: wsoParams,
     initialData: EMPTY_RECORDS_DATA,
   });

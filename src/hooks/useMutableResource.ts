@@ -7,6 +7,7 @@ import {
   reconnectRefetchDelayMs,
 } from "@/lib/data/mutable-resource";
 import { subscribeToNetworkChanges } from "@/lib/networkUtils";
+import { useScreenTiming } from "@/hooks/useScreenTiming";
 import { useWaitingForConnection } from "@/hooks/useWaitingForConnection";
 
 export type MutableResourceState<T> = {
@@ -50,12 +51,13 @@ type UseMutableResourceOptions<T, TParams extends readonly unknown[]> = {
    */
   params: TParams | null;
   initialData: T;
+  screen?: string;
 };
 
 export function useMutableResource<T, TParams extends readonly unknown[]>(
   options: UseMutableResourceOptions<T, TParams>,
 ): MutableResourceState<T> {
-  const { resource, params, initialData } = options;
+  const { resource, params, initialData, screen } = options;
   const enabled = params !== null;
 
   const key = useMemo(
@@ -308,6 +310,7 @@ export function useMutableResource<T, TParams extends readonly unknown[]>(
 
   const reportedInitialLoading = isInitialLoading || (key !== null && key !== loadStartedForKey);
   const isWaitingForConnection = useWaitingForConnection(reportedInitialLoading);
+  useScreenTiming(screen ?? null, { source, failed: error !== null });
 
   return {
     data,

@@ -64,6 +64,7 @@ function NewStandardsScreenContent() {
     error: fetchError,
   } = useMutableResource({
     resource: standardsResource,
+    screen: "new-standards",
     params: [] as const,
     initialData: EMPTY_STANDARDS,
   });

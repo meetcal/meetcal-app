@@ -68,6 +68,7 @@ function QualifyingTotalsScreenContent() {
     error: fetchError,
   } = useMutableResource({
     resource: qualifyingTotalsResource,
+    screen: "new-qualifying-totals",
     params: [] as const,
     initialData: EMPTY_QUALIFYING_TOTALS,
   });
