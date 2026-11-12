@@ -24,6 +24,7 @@ import {
   type TokenFault,
   type TransportFault,
 } from '@/test-support/chaos';
+import { itemAt } from '@/test-support/checked-access';
 
 /**
  * Model-based chaos harness for the saved-sessions outbox
@@ -340,7 +341,9 @@ export function serverTransport(
     if (!h.online) throw new TypeError('Network request failed');
     if (isClockCall(call)) return Date.now();
     if (gate) await gate(call);
-    const answer = next < answers.length ? answers[next++] : ({ kind: 'answer' } as const);
+    const scripted = answers[next];
+    if (scripted !== undefined) next += 1;
+    const answer = scripted ?? ({ kind: 'answer' } as const);
     answered.push(answer);
     if (answer.kind === 'late') {
       // Already on the wire: the client's abort cannot recall it.
@@ -539,7 +542,7 @@ function isFinalStatus(status: number): boolean {
 export function processRefusals(m: Model, h: Harness, calls: ChaosTransport['calls'], cursor: { seen: number }): void {
   const rows = h.server.wires(OWNER);
   for (; cursor.seen < calls.length; cursor.seen += 1) {
-    const { call, fault } = calls[cursor.seen];
+    const { call, fault } = itemAt(calls, cursor.seen);
     if (fault.kind !== 'status' || !isFinalStatus(fault.status)) continue;
     if (call.fn === 'users:deleteSavedSessions') {
       const key = typeof call.args.meet === 'string' ? call.args.meet : RESET_ALL_KEY;
@@ -696,7 +699,7 @@ export class MarkCommand implements Command {
       intent.kind === 'reset'
         ? outbox.resets[intent.meet ?? RESET_ALL_KEY]
         : outbox.sessions[intent.id]?.op === (intent.kind === 'save' ? 'put' : 'delete')
-          ? outbox.sessions[intent.id].rev
+          ? outbox.sessions[intent.id]?.rev
           : undefined;
     if (stored !== rev) {
       throw new Error(`${describeIntent(intent)} resolved with rev ${rev}, but the outbox holds ${JSON.stringify(outbox)}`);
@@ -725,7 +728,8 @@ export class FlushCommand implements Command {
       processRefusals(m, h, chaos.calls, { seen: 0 });
       const writes = chaos.calls.filter(({ call }) => !isClockCall(call));
       const foreign = writes.filter(({ call }) => call.token !== OWNER_TOKEN);
-      if (foreign.length > 0) throw new Error(`sent ${foreign[0].call.fn} with a token that is not the owner's`);
+      const [firstForeign] = foreign;
+      if (firstForeign) throw new Error(`sent ${firstForeign.call.fn} with a token that is not the owner's`);
       const sawAuthFailure = writes.some(({ fault }) => fault.kind === 'status' && fault.status === 401);
       if (result.authExpired !== sawAuthFailure) {
         throw new Error(`authExpired ${result.authExpired}, but a 401 was ${sawAuthFailure ? '' : 'not '}answered`);

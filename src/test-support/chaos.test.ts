@@ -14,6 +14,7 @@ import {
   storageFaultArb,
   tokenFaultArb,
 } from '@/test-support/chaos';
+import { itemAt } from '@/test-support/checked-access';
 
 describe('installChaosTransport', () => {
   it('applies the plan in order, then passes every call through', async () => {
@@ -33,7 +34,7 @@ describe('installChaosTransport', () => {
     const chaos = installChaosTransport(async () => 'ok', [{ kind: 'network' }]);
     try {
       await expect(callApi(SERVER_CLOCK_CALL)).resolves.toBe('ok');
-      expect(chaos.calls[0].fault.kind).toBe('pass');
+      expect(itemAt(chaos.calls, 0).fault.kind).toBe('pass');
     } finally {
       chaos.restore();
     }

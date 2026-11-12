@@ -224,9 +224,17 @@ export function meetLocalDate(timeZone: string, instant: Date | number): string 
   return readWallClock(timeZone, instant).date;
 }
 
+export function calendarDateParts(date: string): { year: number; month: number; day: number } {
+  const [year, month, day] = date.split('-').map(Number);
+  if (year === undefined || month === undefined || day === undefined) {
+    throw new Error(`Expected a YYYY-MM-DD date, got ${JSON.stringify(date)}`);
+  }
+  return { year, month, day };
+}
+
 /** A wall clock as minutes on a naive (zone-free) UTC axis, for differences. */
 export function naiveMinutes({ date, hour, minute }: WallClock): number {
-  const [year, month, day] = date.split('-').map(Number);
+  const { year, month, day } = calendarDateParts(date);
   return Date.UTC(year, month - 1, day, hour, minute) / MS_PER_MINUTE;
 }
 
@@ -241,7 +249,7 @@ export function oracleOffsetMinutes(timeZone: string, instant: Date | number): n
 
 /** `YYYY-MM-DD` shifted by whole days, on the calendar (no zone involved). */
 export function addCalendarDays(date: string, days: number): string {
-  const [year, month, day] = date.split('-').map(Number);
+  const { year, month, day } = calendarDateParts(date);
   return new Date(Date.UTC(year, month - 1, day + days)).toISOString().slice(0, 10);
 }
 
@@ -273,7 +281,7 @@ const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', '
  * arithmetic alone: day-of-week counted from the epoch, no formatter, no zone.
  */
 export function calendarDateTitle(date: string): string {
-  const [year, month, day] = date.split('-').map(Number);
+  const { year, month, day } = calendarDateParts(date);
   const daysSinceEpoch = Date.UTC(year, month - 1, day) / MS_PER_DAY;
   // 1970-01-01 was a Thursday.
   const weekday = WEEKDAYS[(((daysSinceEpoch + 4) % 7) + 7) % 7];

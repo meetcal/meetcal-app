@@ -5,6 +5,7 @@ import { getTodayInMeetTimeZone, isMeetTodayOrOngoing } from '@/lib/next-session
 import { isoCalendarDateArb } from '@/test-support/arbitraries';
 import {
   addCalendarDays,
+  calendarDateParts,
   calendarDateTitle,
   instantArb,
   isoDateSuffixArb,
@@ -112,7 +113,7 @@ export function describeDeviceZoneProperties(deviceTimeZone: string): void {
     it('cuts history off at the same UTC calendar date on every device', () => {
       fc.assert(
         fc.property(instantArb, fc.integer({ min: 0, max: 10 }), (now, years) => {
-          const [year, month, day] = utcCalendarDate(now).split('-').map(Number);
+          const { year, month, day } = calendarDateParts(utcCalendarDate(now));
           const isLeap = (y: number) => (y % 4 === 0 && y % 100 !== 0) || y % 400 === 0;
           const cutoffYear = String(year - years).padStart(4, '0');
           // Feb 29 into a non-leap year is Mar 1, as `Date.UTC` rolls it and
