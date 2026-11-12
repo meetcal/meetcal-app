@@ -75,9 +75,9 @@ fn year_in_name(meet: &str) -> Option<String> {
 }
 
 #[derive(Debug, Deserialize)]
-struct MatchingNames {
-    meets: Vec<String>,
-    count: usize,
+pub(crate) struct MatchingNames {
+    pub(crate) meets: Vec<String>,
+    pub(crate) count: usize,
 }
 
 fn given(values: &[String]) -> Vec<&str> {

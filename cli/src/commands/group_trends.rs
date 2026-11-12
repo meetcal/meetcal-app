@@ -127,11 +127,11 @@ fn pr_key(row: &LiftingResults) -> (String, String, String) {
 }
 
 #[derive(Debug, Deserialize)]
-struct YearMedals {
-    year: String,
-    gold: usize,
-    silver: usize,
-    bronze: usize,
+pub(crate) struct YearMedals {
+    pub(crate) year: String,
+    pub(crate) gold: usize,
+    pub(crate) silver: usize,
+    pub(crate) bronze: usize,
 }
 
 pub(crate) const MEDAL_MEMBERS_PER_READ: usize = 2_000;

@@ -6,8 +6,9 @@ import * as apiTokens from '../convex/apiTokens';
 import * as entitlements from '../convex/entitlements';
 import { PREMIUM_ACTIONS, PREMIUM_FUNCTIONS } from '../convex/lib/access';
 import { directoryText } from '../convex/lib/directory';
-import { RESULT_NAMES_VIEW } from '../convex/lib/viewKeys';
-import { textChunks, writeView } from '../convex/lib/views';
+import { compareBytes } from '../convex/lib/sort';
+import { MEET_NAMES_VIEW, RESULT_NAMES_VIEW } from '../convex/lib/viewKeys';
+import { jsonChunks, textChunks, writeView } from '../convex/lib/views';
 import * as meetSubmissions from '../convex/meetSubmissions';
 import * as meets from '../convex/meets';
 import * as reference from '../convex/reference';
@@ -35,6 +36,7 @@ const SHARED_FUNCTIONS: Record<string, Kind> = {
   'meets:completed': 'query',
   'meets:details': 'query',
   'meets:list': 'query',
+  'meets:namesMatching': 'query',
   'meets:schedule': 'query',
   'reference:adaptiveRecords': 'query',
   'reference:clubMeetStats': 'query',
@@ -55,6 +57,8 @@ const SHARED_FUNCTIONS: Record<string, Kind> = {
   'results:bests': 'query',
   'results:byMeet': 'query',
   'results:byNames': 'query',
+  'results:groupMedals': 'query',
+  'results:meetSummaries': 'query',
   'results:recent': 'query',
   'results:search': 'query',
   'results:wrapped': 'query',
@@ -242,6 +246,8 @@ async function seededContext() {
     [],
     { text: true },
   );
+  const meetNames = [UPCOMING, ONGOING, COMPLETED, '2025 Wire Fixture Fall Open'].sort(compareBytes);
+  await writeView({ db: store.db } as never, MEET_NAMES_VIEW, jsonChunks(meetNames), []);
   return store;
 }
 

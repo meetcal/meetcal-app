@@ -1,0 +1,60 @@
+{
+  "function": "results:meetSummaries",
+  "encoding": "value",
+  "answers": [
+    {
+      "args": {
+        "meets": [
+          "2026 Wire Fixture Classic",
+          "2025 Wire Fixture Fall Open"
+        ]
+      },
+      "body": [
+        {
+          "meet": "2026 Wire Fixture Classic",
+          "year": "2026",
+          "athletes": 3,
+          "bomb_outs": 1,
+          "average_total": 192,
+          "make_rate": 56.25,
+          "best_sinclair": {
+            "men": null,
+            "women": {
+              "score": 240.61209318054605,
+              "name": "Avery Fixture"
+            }
+          },
+          "best_qpoints": {
+            "men": null,
+            "women": {
+              "score": 249.99616752212197,
+              "name": "Avery Fixture"
+            }
+          }
+        },
+        {
+          "meet": "2025 Wire Fixture Fall Open",
+          "year": "2025",
+          "athletes": 1,
+          "bomb_outs": 0,
+          "average_total": 182,
+          "make_rate": 50,
+          "best_sinclair": {
+            "men": null,
+            "women": {
+              "score": 237.99674434162708,
+              "name": "Avery Fixture"
+            }
+          },
+          "best_qpoints": {
+            "men": null,
+            "women": {
+              "score": 247.2788178751424,
+              "name": "Avery Fixture"
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

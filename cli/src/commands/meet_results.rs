@@ -83,7 +83,7 @@ impl BestByGender {
 }
 
 #[derive(Debug, Deserialize)]
-struct EditionAnswer {
+pub(crate) struct EditionAnswer {
     meet: String,
     year: String,
     athletes: usize,
