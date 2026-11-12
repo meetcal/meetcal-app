@@ -1,4 +1,5 @@
 use super::{
+    address::{HistoryEntry, address, query_param, use_page_address},
     athlete_autocomplete::AthleteAutocomplete,
     filters::{SortDirection, sort_numeric, sort_orders, sort_text},
     format::{display_body_weight, format_us_date, yes_no},
@@ -13,7 +14,6 @@ use crate::utils::api::{queries, query_with};
 use js_sys::Date;
 use leptos::prelude::*;
 use leptos_router::components::A;
-use leptos_router::hooks::{use_navigate, use_query_map};
 
 /// The last twenty years, through today: `results:search` includes both ends of the range.
 fn search_date_range() -> (String, String) {
@@ -41,12 +41,8 @@ sort_orders!(ResultSort {
     TotalAsc => ("total_asc", "Total: low to high"),
 });
 
-/// The Results page's link for one athlete's search.
 pub(crate) fn results_url(athlete: &str) -> String {
-    format!(
-        "/results?athlete={}",
-        js_sys::encode_uri_component(athlete.trim())
-    )
+    address("/results", &[("athlete", athlete)])
 }
 
 /// What one Results search answered, ready to show.
@@ -156,16 +152,7 @@ fn results_answer(query: &str, response: AthleteSearchResponse) -> ResultsAnswer
 
 #[component]
 pub fn Results() -> impl IntoView {
-    // The URL is the search: the header's Results link, back and forward,
-    // reloading and sharing all show the athlete the address names.
-    let query_map = use_query_map();
-    let athlete = Memo::new(move |_| {
-        query_map
-            .with(|params| params.get("athlete"))
-            .unwrap_or_default()
-            .trim()
-            .to_owned()
-    });
+    let athlete = query_param("athlete");
     let request = Memo::new(move |_| {
         let athlete = athlete.get();
         (!athlete.is_empty()).then(|| {
@@ -247,7 +234,7 @@ fn ResultsSearchForm(
     current: Memo<String>,
     search_again: Callback<()>,
 ) -> impl IntoView {
-    let navigate = use_navigate();
+    let page = use_page_address("/results");
     view! {
         <form class="result-search" on:submit=move |event| {
             event.prevent_default();
@@ -258,7 +245,7 @@ fn ResultsSearchForm(
             if athlete.trim() == current.get_untracked() {
                 search_again.run(());
             } else {
-                navigate(&results_url(&athlete), Default::default());
+                page.show(&[("athlete", &athlete)], HistoryEntry::Push);
             }
         }>
             <AthleteAutocomplete value=name set_value=set_name input_id="results-athlete" />
@@ -329,6 +316,18 @@ fn ResultsTable(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn an_athletes_results_link_is_built_like_every_other_page_address() {
+        assert_eq!(
+            results_url("  O'Neil & José "),
+            address("/results", &[("athlete", "O'Neil & José")])
+        );
+        assert_eq!(
+            results_url("O'Neil & José"),
+            "/results?athlete=O%27Neil%20%26%20Jos%C3%A9"
+        );
+    }
 
     #[test]
     fn search_response_deserializes_results_and_suggestions() {

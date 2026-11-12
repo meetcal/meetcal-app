@@ -51,37 +51,6 @@ pub(crate) fn matches_filter(value: &str, selected: &str) -> bool {
     selected.is_empty() || value == selected
 }
 
-pub(crate) trait ClassifiedRow {
-    fn gender(&self) -> &str;
-    fn age_category(&self) -> &str;
-    fn weight_class(&self) -> &str;
-}
-
-pub(crate) struct ClassificationFilters<'a> {
-    pub gender: &'a str,
-    pub age_category: &'a str,
-    pub weight_class: &'a str,
-}
-
-pub(crate) fn classified_rows<'a, T, F>(
-    rows: &'a [T],
-    filters: &ClassificationFilters<'_>,
-    include: F,
-) -> Vec<&'a T>
-where
-    T: ClassifiedRow,
-    F: Fn(&T) -> bool,
-{
-    rows.iter()
-        .filter(|row| {
-            matches_filter(row.gender(), filters.gender)
-                && matches_filter(row.age_category(), filters.age_category)
-                && matches_filter(row.weight_class(), filters.weight_class)
-                && include(row)
-        })
-        .collect()
-}
-
 pub(crate) trait SortOrder: Copy + PartialEq + Send + Sync + 'static {
     const ALL: &'static [Self];
     fn value(self) -> &'static str;
@@ -169,25 +138,6 @@ where
 mod tests {
     use super::*;
 
-    struct TestClassifiedRow {
-        gender: &'static str,
-        age: &'static str,
-        weight: &'static str,
-        active: bool,
-    }
-
-    impl ClassifiedRow for TestClassifiedRow {
-        fn gender(&self) -> &str {
-            self.gender
-        }
-        fn age_category(&self) -> &str {
-            self.age
-        }
-        fn weight_class(&self) -> &str {
-            self.weight
-        }
-    }
-
     #[test]
     fn filter_options_are_trimmed_sorted_unique_and_nonempty() {
         let options = filter_options(["  Women ", "Men", "", "Men", "   ", "Youth"].into_iter());
@@ -212,40 +162,6 @@ mod tests {
         assert!(matches_filter("Senior", ""));
         assert!(matches_filter("Senior", "Senior"));
         assert!(!matches_filter("Junior", "Senior"));
-    }
-
-    #[test]
-    fn generic_classification_filter_combines_shared_and_page_rules() {
-        let rows = [
-            TestClassifiedRow {
-                gender: "Women",
-                age: "Senior",
-                weight: "69kg",
-                active: true,
-            },
-            TestClassifiedRow {
-                gender: "Women",
-                age: "Junior",
-                weight: "69kg",
-                active: true,
-            },
-            TestClassifiedRow {
-                gender: "Women",
-                age: "Senior",
-                weight: "69kg",
-                active: false,
-            },
-        ];
-        let filters = ClassificationFilters {
-            gender: "Women",
-            age_category: "Senior",
-            weight_class: "69kg",
-        };
-
-        let filtered = classified_rows(&rows, &filters, |row| row.active);
-
-        assert_eq!(filtered.len(), 1);
-        assert_eq!(filtered[0].age, "Senior");
     }
 
     #[test]
