@@ -130,9 +130,7 @@ pub mod queries {
     /// (`results` or `registrations`), `after` (null to start) and optionally `before`. Answers
     /// `{ json, next }`.
     pub const MEET_NAMES_PAGE: Query = Query::value("meets:namesPage");
-    /// Lifters with results and entries registered for up to eight meets; takes `meets`.
-    /// Answers `{ json }`.
-    pub const MEET_ATTENDANCE: Query = Query::value("meets:attendance");
+    pub const MEET_ATTENDANCE: Query = Query::text("meets:attendance");
     /// `GET /meets/athletes`; takes `meet`.
     pub const MEET_ATHLETES: Query = Query::text("meets:athletes");
     /// `GET /meets/athletes-sessions`; takes `meet`, and optionally `sessionNumber` and

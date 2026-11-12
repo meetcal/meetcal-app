@@ -1,4 +1,4 @@
-import { createContext, useContext } from 'react';
+import { createContext, useContext, useMemo } from 'react';
 import { useColorScheme } from 'react-native';
 
 type ThemeType = 'light' | 'dark';
@@ -18,8 +18,10 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
   const colorScheme = useColorScheme();
   const currentTheme: ThemeType = colorScheme === 'dark' ? 'dark' : 'light';
 
+  const value = useMemo(() => ({ currentTheme }), [currentTheme]);
+
   return (
-    <ThemeContext.Provider value={{ currentTheme }}>
+    <ThemeContext.Provider value={value}>
       {children}
     </ThemeContext.Provider>
   );
