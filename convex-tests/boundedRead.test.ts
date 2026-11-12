@@ -1,5 +1,6 @@
 import * as limits from '../convex/lib/boundedRead';
 import { readAll } from '../convex/lib/boundedRead';
+import { MAX_SAVED_SESSIONS_PER_USER, USER_SAVED_SESSIONS_MAX } from '../convex/users';
 import { changedFields, completeRecord, groupOf, isListOf, isPairOf, isString, isStringList, itemAt, last, parsedAs, textOrNull, typedKeys } from '../convex/lib/json';
 import { readCompactRow } from '../convex/lib/leaderboard';
 import { queuedNotices } from '../convex/lib/cronAlerts';
@@ -42,10 +43,8 @@ describe('reads that used to collect are bounded', () => {
     REFERENCE_TABLE_ROWS_MAX: 4780,
     VIEW_CHUNKS_MAX: 2,
     VIEW_HEADERS_MAX: 3449,
-    SUBMISSION_FILES_MAX: 10,
     CRON_JOBS_MAX: 18,
     ENTRY_TARGETS_MAX: 7,
-    USER_SAVED_SESSIONS_MAX: 35,
   };
   const MOST_STORED_OVER_EVERY_YEAR: Record<string, number> = { DIVISION_YEAR_RESULTS_MAX: 14295 };
 
@@ -58,6 +57,12 @@ describe('reads that used to collect are bounded', () => {
       expect([name, room]).toEqual([name, true]);
       expect([name, limit < 32000]).toEqual([name, true]);
     }
+  });
+});
+
+describe('reads bounded by a cap the write path keeps', () => {
+  it('read at least as many rows as the write path lets one owner keep', () => {
+    expect(USER_SAVED_SESSIONS_MAX).toBeGreaterThanOrEqual(MAX_SAVED_SESSIONS_PER_USER);
   });
 });
 

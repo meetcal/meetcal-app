@@ -24,7 +24,5 @@ export const WSO_RECORDS_MAX = 20_000;
 export const REFERENCE_TABLE_ROWS_MAX = 20_000;
 export const VIEW_CHUNKS_MAX = 2_000;
 export const VIEW_HEADERS_MAX = 20_000;
-export const SUBMISSION_FILES_MAX = 100;
 export const CRON_JOBS_MAX = 500;
 export const ENTRY_TARGETS_MAX = 500;
-export const USER_SAVED_SESSIONS_MAX = 5_000;

@@ -1,5 +1,6 @@
 import { itemAt, last } from './lib/json';
-import { EVENT_RESULTS_MAX, MEETS_MAX, MEET_ROSTER_MAX, REFERENCE_TABLE_ROWS_MAX, USER_SAVED_SESSIONS_MAX, WSO_RECORDS_MAX, readAll } from './lib/boundedRead';
+import { EVENT_RESULTS_MAX, MEETS_MAX, MEET_ROSTER_MAX, REFERENCE_TABLE_ROWS_MAX, WSO_RECORDS_MAX, readAll } from './lib/boundedRead';
+import { USER_SAVED_SESSIONS_MAX } from './users';
 import { v } from 'convex/values';
 import { internalAction, internalMutation, internalQuery } from './_generated/server';
 import { internal } from './_generated/api';

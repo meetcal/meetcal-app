@@ -1,24 +1,10 @@
-import { SUBMISSION_FILES_MAX, readAll } from './lib/boundedRead';
+import { readAll } from './lib/boundedRead';
 import { v } from 'convex/values';
 import { internal } from './_generated/api';
 import { internalAction, internalMutation, internalQuery, mutation, type MutationCtx } from './_generated/server';
 import type { Id } from './_generated/dataModel';
 import { sendEmail } from './lib/email';
-import {
-  FILE_ALREADY_SUBMITTED_CODE,
-  DAY_MS,
-  MAX_MEET_SUBMISSION_FILE_BYTES,
-  MAX_MEET_SUBMISSION_UPLOAD_URLS_PER_DAY,
-  MAX_MEET_SUBMISSIONS_PER_DAY,
-  MEET_SUBMISSION_CLEANUP_BATCH,
-  MEET_SUBMISSION_EMAIL_RETRY_DELAYS_MS,
-  MEET_SUBMISSION_RETENTION_MS,
-  ORPHAN_UPLOAD_MS,
-  checkMeetSubmission,
-  deleteMeetSubmission,
-  renderMeetSubmissionEmail,
-  type MeetSubmissionEmailContent,
-} from './lib/meetSubmissions';
+import { checkMeetSubmission, DAY_MS, deleteMeetSubmission, FILE_ALREADY_SUBMITTED_CODE, MAX_MEET_SUBMISSION_FILE_BYTES, MAX_MEET_SUBMISSION_FILES, MAX_MEET_SUBMISSION_UPLOAD_URLS_PER_DAY, MAX_MEET_SUBMISSIONS_PER_DAY, MEET_SUBMISSION_CLEANUP_BATCH, MEET_SUBMISSION_EMAIL_RETRY_DELAYS_MS, MEET_SUBMISSION_RETENTION_MS, type MeetSubmissionEmailContent, ORPHAN_UPLOAD_MS, renderMeetSubmissionEmail } from './lib/meetSubmissions';
 import { requireUserId } from './lib/access';
 import { apiError } from './lib/validation';
 
@@ -136,7 +122,7 @@ export const emailContent = internalQuery({
       ctx.db
         .query('meet_submission_files')
         .withIndex('by_submissionId', (q) => q.eq('submissionId', submissionId)),
-      SUBMISSION_FILES_MAX,
+      MAX_MEET_SUBMISSION_FILES,
       'files of one submission',
     );
     const files = [];

@@ -1,5 +1,5 @@
 import { isStringList } from './lib/json';
-import { USER_SAVED_SESSIONS_MAX, readAll } from './lib/boundedRead';
+import { readAll } from './lib/boundedRead';
 import { v } from 'convex/values';
 import { internal } from './_generated/api';
 import { internalMutation, mutation, query, type MutationCtx, type QueryCtx } from './_generated/server';
@@ -19,6 +19,7 @@ export const MAX_SAVED_SESSION_NOTES_LEN = 2000;
 export const MAX_SAVED_SESSION_ATHLETE_NAME_LEN = 128;
 export const MAX_SAVED_SESSION_ATHLETE_NAMES = 64;
 export const MAX_SAVED_SESSIONS_PER_USER = 500;
+export const USER_SAVED_SESSIONS_MAX = 2 * MAX_SAVED_SESSIONS_PER_USER;
 export const MAX_SAVED_SESSION_DEVICE_LEN = 64;
 /**
  * How long a write's revision and a reset's marker are kept. They only have
