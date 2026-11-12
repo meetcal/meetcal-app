@@ -395,6 +395,31 @@ mod tests {
     }
 
     #[test]
+    fn each_lists_methods_and_default_are_the_servers() {
+        let server = include_str!("../../../convex/lib/elite.ts");
+        let choices = server
+            .split_once("export const ELITE_METHOD_CHOICES")
+            .and_then(|(_, rest)| rest.split_once("};"))
+            .map(|(choices, _)| choices)
+            .expect("convex/lib/elite.ts declares ELITE_METHOD_CHOICES");
+        let server_lists: Vec<&str> = choices
+            .lines()
+            .filter(|line| line.contains(": ['"))
+            .collect();
+        assert_eq!(server_lists.len(), LISTS.len());
+        for list in &LISTS {
+            let line = server_lists
+                .iter()
+                .find(|line| line.trim_start().starts_with(&format!("{}:", list.key)))
+                .unwrap_or_else(|| panic!("the server has no {} list", list.key));
+            let server_methods: Vec<&str> = line.split('\'').skip(1).step_by(2).collect();
+            let cli_methods: Vec<serde_json::Value> =
+                list.offered().map(|method| json!(method)).collect();
+            assert_eq!(cli_methods, server_methods, "{}", list.key);
+        }
+    }
+
+    #[test]
     fn sends_methods_as_the_server_names_them() {
         assert_eq!(json!(Method::PercentA), json!("percentA"));
         assert_eq!(json!(Method::Qmasters), json!("qmasters"));
