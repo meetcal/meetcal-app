@@ -264,7 +264,7 @@ pub fn comparison_tables(
             exported(previous, with_results.previous),
             current_year.to_string(),
             exported(current, with_results.current),
-            difference,
+            exported(difference, with_results.previous && with_results.current),
         ]);
     }
     (table, data)
@@ -370,6 +370,7 @@ mod tests {
         for metric in exported.as_array().unwrap() {
             assert_eq!(metric["current"], serde_json::Value::Null, "{metric}");
             assert_ne!(metric["previous"], serde_json::Value::Null, "{metric}");
+            assert_eq!(metric["difference"], serde_json::Value::Null, "{metric}");
         }
     }
 

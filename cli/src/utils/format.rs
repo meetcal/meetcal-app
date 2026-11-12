@@ -112,8 +112,6 @@ pub fn record_cell(value: Option<f64>, holder: Option<&RecordHolder>) -> String 
     lines.join("\n")
 }
 
-/// A record table's columns for JSON and CSV: the class, then for each lift its weight, holder,
-/// date and place, one column each.
 pub struct RecordRow<'a> {
     pub weight_class: &'a str,
     pub snatch: (Option<f64>, Option<&'a RecordHolder>),

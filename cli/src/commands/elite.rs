@@ -5,9 +5,8 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 
 use crate::commands::leaderboard::MAX_YEARS;
-use crate::commands::wrapped::current_year;
 use crate::utils::backend::{functions, premium_action};
-use crate::utils::filters::{parse_date, plus_years, year_range};
+use crate::utils::filters::{parse_date, plus_years};
 use crate::utils::format::us_date;
 use crate::utils::names::{NameKind, not_found, registration_wsos};
 use crate::utils::output::{self, Report};
@@ -175,10 +174,7 @@ fn value_name(method: Method) -> String {
 }
 
 pub fn range(args: &EliteArgs) -> (String, String) {
-    match (&args.from, &args.to) {
-        (Some(from), Some(to)) => (from.clone(), to.clone()),
-        _ => year_range(args.year.unwrap_or_else(current_year)),
-    }
+    crate::commands::leaderboard::range(args.year, args.from.as_deref(), args.to.as_deref())
 }
 
 /// One ranked result, as `results:wsoElite` answers it.
@@ -357,6 +353,7 @@ fn capitalized(value: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::commands::wrapped::current_year;
 
     #[test]
     fn defaults_each_list_and_refuses_a_method_it_does_not_offer() {
