@@ -15,25 +15,17 @@ const vercel: { rewrites: Array<{ source: string; destination: string }> } = JSO
   readFileSync(join(process.cwd(), "vercel.json"), "utf8"),
 );
 
-const REQUESTS_BEFORE_WASM_BUDGET = 5;
-const OWN_REQUESTS_BUDGET = 11;
-const SHELL_LCP_BUDGET_MS = 4_000;
-const APP_LCP_BUDGET_MS = 12_000;
-const CLS_BUDGET = 0.05;
-const FILTER_BLOCKING_BUDGET_MS = 800;
+type RouteBudget = { paintsFromShell: boolean; lcpMs: number; cls: number; ownBytes: number };
+type RouteName = "home" | "records" | "qualifyingTotals" | "meetCenter" | "wrapped" | "signIn";
+
+const budgets: {
+  requestsBeforeWasm: number;
+  slow4gPhone: { ownRequests: number; filterBlockingMs: number; routes: Record<RouteName, RouteBudget> };
+} = JSON.parse(readFileSync(join(process.cwd(), "tests/budgets.json"), "utf8"));
+
+const BUDGETS = budgets.slow4gPhone.routes;
 const FILTER_ROUNDS = 3;
 const SETTLE_TIMEOUT_MS = 15_000;
-
-type RouteBudget = { paintsFromShell: boolean; lcpMs: number; cls: number; ownBytes: number };
-
-const BUDGETS: Record<string, RouteBudget> = {
-  home: { paintsFromShell: true, lcpMs: SHELL_LCP_BUDGET_MS, cls: CLS_BUDGET, ownBytes: 675_000 },
-  records: { paintsFromShell: true, lcpMs: SHELL_LCP_BUDGET_MS, cls: CLS_BUDGET, ownBytes: 682_000 },
-  qualifyingTotals: { paintsFromShell: true, lcpMs: SHELL_LCP_BUDGET_MS, cls: CLS_BUDGET, ownBytes: 681_000 },
-  meetCenter: { paintsFromShell: false, lcpMs: APP_LCP_BUDGET_MS, cls: 0.15, ownBytes: 678_000 },
-  wrapped: { paintsFromShell: false, lcpMs: APP_LCP_BUDGET_MS, cls: CLS_BUDGET, ownBytes: 679_000 },
-  signIn: { paintsFromShell: true, lcpMs: SHELL_LCP_BUDGET_MS, cls: CLS_BUDGET, ownBytes: 682_000 },
-};
 
 const WOMEN_CLASSES = ["40kg", "44kg", "48kg", "53kg", "58kg", "63kg", "69kg", "77kg", "86kg", "86+kg"];
 const MEN_CLASSES = ["50kg", "55kg", "60kg", "65kg", "71kg", "79kg", "88kg", "94kg", "110kg", "110+kg"];
@@ -165,8 +157,8 @@ async function measureLoad(page: Page, path: string, ready: () => Promise<void>,
 }
 
 function expectWithin(measured: Measured, budget: RouteBudget) {
-  expect(measured.requestsBeforeWasm, "requests started before the Wasm binary").toBeLessThanOrEqual(REQUESTS_BEFORE_WASM_BUDGET);
-  expect(measured.ownRequests, "requests to the site").toBeLessThanOrEqual(OWN_REQUESTS_BUDGET);
+  expect(measured.requestsBeforeWasm, "requests started before the Wasm binary").toBeLessThanOrEqual(budgets.requestsBeforeWasm);
+  expect(measured.ownRequests, "requests to the site").toBeLessThanOrEqual(budgets.slow4gPhone.ownRequests);
   expect(measured.ownBytes, "bytes from the site").toBeLessThanOrEqual(budget.ownBytes);
   expect(measured.cls, "cumulative layout shift").toBeLessThanOrEqual(budget.cls);
   if (budget.paintsFromShell) {
@@ -211,7 +203,7 @@ async function expectFiltersWithin(browser: Browser, testInfo: TestInfo, loaded:
   }
   steps.forEach((step, index) => {
     const fewest = Math.min(...rounds.map((times) => times[index] ?? Number.POSITIVE_INFINITY));
-    expect(fewest, `blocking time after ${step.label}, the fewest ms of ${FILTER_ROUNDS} fresh loads`).toBeLessThanOrEqual(FILTER_BLOCKING_BUDGET_MS);
+    expect(fewest, `blocking time after ${step.label}, the fewest ms of ${FILTER_ROUNDS} fresh loads`).toBeLessThanOrEqual(budgets.slow4gPhone.filterBlockingMs);
   });
 }
 

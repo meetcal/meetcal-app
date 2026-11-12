@@ -113,9 +113,10 @@ test("every page shell paints its route's own page before the app runs", async (
   }
 });
 
-const WASM_RAW_BUDGET_BYTES = 1_850_000;
-const WASM_BROTLI_11_BUDGET_BYTES = 500_000;
-const REQUESTS_BEFORE_WASM_BUDGET = 5;
+const budgets = JSON.parse(await readFile(new URL("../budgets.json", import.meta.url), "utf8"));
+const WASM_RAW_BUDGET_BYTES = budgets.wasmRawBytes;
+const WASM_BROTLI_11_BUDGET_BYTES = budgets.wasmBrotli11Bytes;
+const REQUESTS_BEFORE_WASM_BUDGET = budgets.requestsBeforeWasm;
 
 async function builtWasm() {
   const dist = new URL("../../dist/", import.meta.url);
