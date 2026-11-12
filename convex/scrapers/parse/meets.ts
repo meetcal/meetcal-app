@@ -231,6 +231,10 @@ export function addressTimeZone(raw: string, state: string, city: string): { zon
   return zone === null ? { problem: `state ${JSON.stringify(state)}` } : { zone };
 }
 
+export function isAdaptiveListing(name: string): boolean {
+  return name.toUpperCase().includes('ADAPTIVE');
+}
+
 /**
  * `transformMeetsData`: widget rows to meets, dropping adaptive ones. A meet
  * whose dates cannot be read (or that has no dates field at all) is left out
@@ -242,10 +246,6 @@ export function addressTimeZone(raw: string, state: string, city: string): { zon
  * `addressTimeZone`). A meet with no address is synced without venue or zone,
  * so the stored ones stay.
  */
-export function isAdaptiveListing(name: string): boolean {
-  return name.toUpperCase().includes('ADAPTIVE');
-}
-
 export function transformMeets(rows: (Pick<WidgetRow, 'name' | 'address' | 'subtitle'> & { id?: string | null })[]): TransformedMeets {
   const result: TransformedMeets = { meets: [], rejected: [], undated: [], unknownZone: [] };
   for (const row of rows) {

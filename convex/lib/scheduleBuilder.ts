@@ -43,7 +43,7 @@ export type BuilderWarning = { code: BuilderWarningCode; message: string };
 
 export type BuiltSchedule = { athletes: number; sessions: BuiltSession[]; warnings: BuilderWarning[] };
 
-type Group = { gender: string; ageGroup: AgePool; split: string; athletes: BuiltAthlete[]; edited: boolean };
+type Group = { gender: string; ageGroup: AgePool; split: string; splitOf: string; athletes: BuiltAthlete[]; edited: boolean };
 
 type Slot = { id: number; date: string; start: number | null; groups: Map<string, Group> };
 
@@ -96,7 +96,7 @@ function groupsByWeightClass(athletes: BuiltAthlete[], max: number, gender: stri
     const lifters = athletes.filter((a) => a.weightClass === weightClass).sort(byTotal);
     if (lifters.length > max) {
       const chunks = balancedChunks(lifters, max);
-      chunks.forEach((chunk, i) => groups.push({ gender, ageGroup, split: splitLabel(i, chunks.length), athletes: chunk, edited: false }));
+      chunks.forEach((chunk, i) => groups.push({ gender, ageGroup, split: splitLabel(i, chunks.length), splitOf: `${gender}|${ageGroup}|${weightClass}`, athletes: chunk, edited: false }));
       open = null;
       continue;
     }
@@ -104,14 +104,14 @@ function groupsByWeightClass(athletes: BuiltAthlete[], max: number, gender: stri
       open.athletes.push(...lifters);
       continue;
     }
-    open = { gender, ageGroup, split: '', athletes: [...lifters], edited: false };
+    open = { gender, ageGroup, split: '', splitOf: '', athletes: [...lifters], edited: false };
     groups.push(open);
   }
   return groups;
 }
 
 function groupsByEntryTotal(athletes: BuiltAthlete[], max: number, gender: string, ageGroup: AgePool): Group[] {
-  return balancedChunks([...athletes].sort(byTotal), max).map((chunk) => ({ gender, ageGroup, split: '', athletes: chunk, edited: false }));
+  return balancedChunks([...athletes].sort(byTotal), max).map((chunk) => ({ gender, ageGroup, split: '', splitOf: '', athletes: chunk, edited: false }));
 }
 
 function genderSequences(entrants: readonly BuilderEntrant[], options: BuilderOptions): Group[][] {
@@ -196,12 +196,18 @@ function layout(segmentSlots: readonly number[], options: BuilderOptions): Place
     const cap = options.maxSessionsPerDay;
     return placeSlots(segmentSlots, (day) => Math.min(cap, fits[day] ?? 0), options.days.length);
   }
-  let best: Placement[] = [];
-  for (let cap = Math.max(1, Math.ceil(total / options.days.length)); cap <= Math.max(1, total); cap++) {
-    best = placeSlots(segmentSlots, (day) => Math.min(cap, fits[day] ?? 0), options.days.length);
-    if (best.every((p) => p !== null)) return best;
+  const placeWithCap = (cap: number) => placeSlots(segmentSlots, (day) => Math.min(cap, fits[day] ?? 0), options.days.length);
+  const placesAll = (placements: readonly Placement[]) => placements.every((p) => p !== null);
+  let low = Math.max(1, Math.ceil(total / options.days.length));
+  let high = Math.max(low, ...fits);
+  const widest = placeWithCap(high);
+  if (!placesAll(widest)) return widest;
+  while (low < high) {
+    const middle = Math.floor((low + high) / 2);
+    if (placesAll(placeWithCap(middle))) high = middle;
+    else low = middle + 1;
   }
-  return best;
+  return placeWithCap(low);
 }
 
 function initialSlots(entrants: readonly BuilderEntrant[], options: BuilderOptions): Slot[] {
@@ -244,7 +250,7 @@ function targetGroup(slots: readonly Slot[], options: BuilderOptions, session: n
   if (!slot || !options.platforms.includes(platform)) return null;
   const existing = slot.groups.get(platform);
   if (existing) return existing;
-  const created: Group = { gender: like.gender, ageGroup: like.ageGroup, split: '', athletes: [], edited: true };
+  const created: Group = { gender: like.gender, ageGroup: like.ageGroup, split: '', splitOf: '', athletes: [], edited: true };
   slot.groups.set(platform, created);
   return created;
 }
@@ -293,11 +299,12 @@ function applyEdit(slots: Slot[], edit: BuilderEdit, options: BuilderOptions): E
   }
 }
 
-function groupLabels(group: Group, athletes: readonly BuiltAthlete[], options: BuilderOptions): { gender: string; ageGroup: AgePool; split: string; mixed: boolean } {
+function groupLabels(group: Group, athletes: readonly BuiltAthlete[], options: BuilderOptions, editedSplits: ReadonlySet<string>): { gender: string; ageGroup: AgePool; split: string; mixed: boolean } {
   const genders = [...new Set(athletes.map((a) => a.gender))];
   const [only] = genders;
   const gender = genders.length === 1 && only !== undefined ? only : group.gender;
-  if (!group.edited) return { gender, ageGroup: group.ageGroup, split: group.split, mixed: genders.length > 1 };
+  const split = group.splitOf !== '' && editedSplits.has(group.splitOf) ? '' : group.split;
+  if (!group.edited) return { gender, ageGroup: group.ageGroup, split, mixed: genders.length > 1 };
   const pools = [...new Set(athletes.map((a) => ageGroupOf(a.age, options.separateAgeGroups)))];
   const [pool] = pools;
   return { gender, ageGroup: pools.length === 1 && pool !== undefined ? pool : '', split: '', mixed: genders.length > 1 };
@@ -305,6 +312,7 @@ function groupLabels(group: Group, athletes: readonly BuiltAthlete[], options: B
 
 function finish(slots: readonly Slot[], options: BuilderOptions, athletes: number, skipped: number): BuiltSchedule {
   const warnings: BuilderWarning[] = [];
+  const editedSplits = new Set(slots.flatMap((slot) => [...slot.groups.values()].filter((g) => g.edited && g.splitOf !== '').map((g) => g.splitOf)));
   const kept = slots
     .map((slot) => ({
       slot,
@@ -324,7 +332,7 @@ function finish(slots: readonly Slot[], options: BuilderOptions, athletes: numbe
     const scheduled = slot.start !== null && slot.date !== '';
     const builtGroups = groups.map(({ platform, group }): BuiltGroup => {
       const sorted = [...group.athletes].sort(byTotal);
-      const labels = groupLabels(group, sorted, options);
+      const labels = groupLabels(group, sorted, options, editedSplits);
       if (labels.mixed) warnings.push({ code: 'mixedGroup', message: `Session ${i + 1} ${platform} mixes women and men.` });
       if (sorted.length > options.maxAthletesPerPlatform) {
         warnings.push({ code: 'overCapacity', message: `Session ${i + 1} ${platform} has ${sorted.length} athletes, more than the ${options.maxAthletesPerPlatform} allowed.` });

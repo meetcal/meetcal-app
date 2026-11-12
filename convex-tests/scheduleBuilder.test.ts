@@ -183,6 +183,15 @@ describe('fitting sessions into days', () => {
     expect(slotsThatFit(minutesOfClock('23:00') ?? 0, { sessionMinutes: 120, breakMinutes: 0 })).toBe(0);
   });
 
+  it('lays out the largest roster quickly when sessions do not fit', () => {
+    const entrants = many(10_000, (i) => lifter(i % 2 ? 'Men' : 'Women', String(40 + (i % 60)), i % 300));
+    const started = performance.now();
+    const days = Array.from({ length: 7 }, (_, i) => ({ date: `2027-03-0${i + 1}`, firstStart: '09:00' }));
+    const schedule = buildSchedule(entrants, options({ days, maxAthletesPerPlatform: 1, sessionMinutes: 15 }));
+    expect(performance.now() - started).toBeLessThan(500);
+    expect(schedule.warnings.map((w) => w.code)).toEqual(['unscheduled']);
+  });
+
   it('warns when the meet has no entrants', () => {
     expect(buildSchedule([], options())).toEqual({ athletes: 0, sessions: [], warnings: [{ code: 'noEntrants', message: 'The meet has no entrants yet.' }] });
   });
@@ -247,6 +256,24 @@ describe('edits', () => {
       ['', 1],
       ['', 3],
     ]);
+  });
+
+  it('drops the A/B label of every half of a split class when an edit touches one half', () => {
+    nextId = 1;
+    const entrants = many(20, (i) => lifter('Women', '64', 60 + i));
+    const schedule = buildSchedule([...entrants, lifter('Women', '71', 90)], options({ maxAthletesPerPlatform: 10 }), [
+      { kind: 'moveClass', fromSession: 1, fromPlatform: 'Red', weightClass: '64', toSession: 3, toPlatform: 'Red' },
+    ]);
+    expect(schedule.sessions.map((s) => [s.id, s.groups[0]?.weightClasses.join('/'), s.groups[0]?.split])).toEqual([
+      [2, '64', ''],
+      [3, '64/71', ''],
+    ]);
+  });
+
+  it('keeps a split label while neither half was edited', () => {
+    nextId = 1;
+    const schedule = buildSchedule([...many(20, (i) => lifter('Women', '64', 60 + i)), lifter('Men', '89', 150)], options({ maxAthletesPerPlatform: 10 }), [{ kind: 'swapSessions', session: 1, withSession: 3 }]);
+    expect(schedule.sessions.map((s) => s.groups[0]?.split)).toEqual(['', 'A', 'B']);
   });
 
   it('skips a retime that would end after midnight', () => {
