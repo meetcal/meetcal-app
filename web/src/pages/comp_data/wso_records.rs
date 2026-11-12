@@ -135,9 +135,11 @@ fn record_row(record: &WsoRecord) -> AnyView {
     .into_any()
 }
 
+const PATH: &str = "/wso-records";
+
 #[component]
 pub fn WsoRecords() -> impl IntoView {
-    let page = use_page_address("/wso-records");
+    let page = use_page_address(PATH);
     let wso = query_param("wso");
 
     let organizations = load_query::<Vec<String>>(queries::WSO_LIST);
@@ -183,7 +185,7 @@ pub fn WsoRecords() -> impl IntoView {
             } else {
                 table_response(records, HEADERS.len(), "WSO records", |records| {
                     view! {
-                        <ReferenceTable rows=records.to_vec() filters=FILTERS headers=HEADERS row=record_row path="/wso-records" default_sort=WsoRecordSort::TotalDesc empty_message="No WSO records match these filters." below_another_filter_row=true />
+                        <ReferenceTable rows=records.to_vec() filters=FILTERS headers=HEADERS row=record_row path=PATH default_sort=WsoRecordSort::TotalDesc empty_message="No WSO records match these filters." below_another_filter_row=true />
                     }
                     .into_any()
                 })
