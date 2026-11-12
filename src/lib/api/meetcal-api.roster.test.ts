@@ -1,5 +1,6 @@
 import { clearHttpValidatorCache } from './revalidated-reads';
 import { fetchApiAthletesWithSession, fetchApiRosterTagged } from './meets-api';
+import { fetchApiYearBestsByNames } from './results-api';
 import { setApiTransportForTests, type ApiCall } from './transport';
 import type { MeetName } from '@/data/types/meet';
 
@@ -73,5 +74,20 @@ describe('the roster read against a tag held on disk', () => {
     await expect(fetchApiRosterTagged(MEET, '"r1"')).resolves.toMatchObject({ status: 'fresh', tag: '"r2"' });
     expect(calls).toHaveLength(2);
     expect(calls[1].args.ifNoneMatch).toBeUndefined();
+  });
+});
+
+describe('results:bests with the latest meet for empty windows', () => {
+  it('sends latestWhenEmpty only when asked, and reads a latest row like any other', async () => {
+    const calls = server(() => [
+      { name: 'A Lifter', best_snatch: 100, best_cj: 120, best_total: 220 },
+      { name: 'B Lifter', best_snatch: 77.5, best_cj: 97.5, best_total: 175, latest: true },
+    ]);
+    const answer = await fetchApiYearBestsByNames(['A Lifter', 'B Lifter'], '2024-11-12', { latestWhenEmpty: true });
+    expect(calls[0].args).toMatchObject({ latestWhenEmpty: true, cutoffDate: '2024-11-12' });
+    expect(answer['B Lifter']).toEqual({ bestSnatch: 77.5, bestCJ: 97.5, bestTotal: 175 });
+
+    await fetchApiYearBestsByNames(['A Lifter'], '2024-11-12');
+    expect(calls[1].args.latestWhenEmpty).toBeUndefined();
   });
 });

@@ -1,7 +1,7 @@
 import type { AthleteBests, AthleteMeetResult } from "@/data/types/athletes";
-import { fetchApiResultsByNames, fetchApiYearBestsByNames } from "@/lib/api/results-api";
-import { maxSuccessfulAttempt, normalizeAthleteName } from "@/lib/athletes";
-import { hasAnyAthleteBest, saveAthleteBestsBatch } from "@/lib/database/athlete-bests-store";
+import { fetchApiYearBestsByNames } from "@/lib/api/results-api";
+import { maxSuccessfulAttempt } from "@/lib/athletes";
+import { saveAthleteBestsBatch } from "@/lib/database/athlete-bests-store";
 import {
   getHistoryCutoffDate,
   toMeetCalendarDate,
@@ -90,40 +90,8 @@ function fromApiBests(row: { bestSnatch: number; bestCJ: number; bestTotal: numb
   };
 }
 
-/**
- * The most recent meet's bests for each name, from `latest_only` rows.
- * `latest_only` bounds rows per folded name, so rows are grouped by the same
- * fold rather than by raw spelling. Null when the request failed.
- */
-async function fetchMostRecentMeetBests(
-  names: string[],
-): Promise<Record<string, AthleteBests> | null> {
-  let rows: AthleteMeetResult[];
-  try {
-    rows = await fetchApiResultsByNames(names, { latestOnly: true });
-  } catch {
-    return null;
-  }
-  const grouped = new Map<string, AthleteMeetResult[]>();
-  for (const row of rows) {
-    const key = normalizeAthleteName(row.name);
-    const group = grouped.get(key);
-    if (group) group.push(row);
-    else grouped.set(key, [row]);
-  }
-  const byName: Record<string, AthleteBests> = {};
-  for (const name of names) {
-    byName[name] = deriveMostRecentMeetBests(grouped.get(normalizeAthleteName(name)) ?? []);
-  }
-  return byName;
-}
-
 export type AthleteBestsLookup = {
   answered: Record<string, AthleteBests>;
-  /**
-   * Names with nothing inside the window whose most-recent-meet lookup
-   * failed. Not an answer, so nothing is stored for them.
-   */
   unanswered: string[];
 };
 
@@ -139,26 +107,14 @@ export async function lookUpAthleteBests(names: readonly string[]): Promise<Athl
   const answered: Record<string, AthleteBests> = {};
   if (uniqueNames.length === 0) return { answered, unanswered: [] };
 
-  const windowed = await fetchApiYearBestsByNames(
-    uniqueNames,
-    getHistoryCutoffDate(YEAR_BESTS_YEARS),
-  );
-  const emptyNames: string[] = [];
+  const bestsOrLatest = await fetchApiYearBestsByNames(uniqueNames, getHistoryCutoffDate(YEAR_BESTS_YEARS), {
+    latestWhenEmpty: true,
+  });
+  const unanswered: string[] = [];
   for (const name of uniqueNames) {
-    const row = windowed[name];
-    const bests = row ? fromApiBests(row) : emptyBests();
-    if (hasAnyAthleteBest(bests)) answered[name] = bests;
-    else emptyNames.push(name);
-  }
-
-  let unanswered: string[] = [];
-  if (emptyNames.length > 0) {
-    const latest = await fetchMostRecentMeetBests(emptyNames);
-    if (latest) {
-      for (const name of emptyNames) answered[name] = latest[name] ?? emptyBests();
-    } else {
-      unanswered = emptyNames;
-    }
+    const row = bestsOrLatest[name];
+    if (row) answered[name] = fromApiBests(row);
+    else unanswered.push(name);
   }
 
   if (Object.keys(answered).length > 0) {

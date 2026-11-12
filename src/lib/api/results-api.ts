@@ -64,15 +64,22 @@ export async function fetchApiRecentResultsByNames(
   return rows;
 }
 
+export type YearBestsOptions = { latestWhenEmpty?: boolean };
+
 export async function fetchApiYearBestsByNames(
   names: string[],
   cutoffDate: string = getHistoryCutoffDate(YEAR_BESTS_YEARS),
+  { latestWhenEmpty = false }: YearBestsOptions = {},
 ): Promise<Record<string, ReturnType<typeof mapApiYearBests>>> {
   if (names.length === 0) return {};
   const byFoldedName = new Map<string, ReturnType<typeof mapApiYearBests>>();
   for (const chunk of chunkValues(names, SMALL_ROWS_NAMES_CHUNK_SIZE)) {
     const rows = assertArray(
-      await readQuery('/lifting-results/bests', 'results:bests', { names: chunk, cutoffDate }),
+      await readQuery('/lifting-results/bests', 'results:bests', {
+        names: chunk,
+        cutoffDate,
+        latestWhenEmpty: latestWhenEmpty || undefined,
+      }),
       '/lifting-results/bests',
     );
     for (const { name, bests } of parseNamedBests(rows, '/lifting-results/bests')) {

@@ -20,10 +20,18 @@ jest.mock("@/lib/database/athlete-bests-store", () => ({
   saveAthleteBestsBatch: jest.fn(),
 }));
 
-jest.mock("@/lib/api/results-api", () => ({
-  fetchApiYearBestsByNames: jest.fn(),
-  fetchApiResultsByNames: jest.fn(),
-}));
+const mockWindowBests = jest.fn();
+jest.mock("@/lib/api/results-api", () => {
+  const fetchApiResultsByNames = jest.fn();
+  return {
+    fetchApiResultsByNames,
+    fetchApiYearBestsByNames: jest.fn((names: string[], cutoffDate?: string, options?: { latestWhenEmpty?: boolean }) =>
+      jest
+        .requireActual("@/test-support/latest-bests")
+        .answerBestsOrLatest(names, cutoffDate, options, mockWindowBests, fetchApiResultsByNames),
+    ),
+  };
+});
 
 const mockIsNetworkAvailable = isNetworkAvailable as jest.MockedFunction<
   typeof isNetworkAvailable
@@ -39,7 +47,7 @@ const mockGetStoredAthleteBestsForNames =
 const mockSaveAthleteBestsBatch = saveAthleteBestsBatch as jest.MockedFunction<
   typeof saveAthleteBestsBatch
 >;
-const mockFetchYearBests = fetchApiYearBestsByNames as jest.MockedFunction<
+const mockFetchYearBests = mockWindowBests as unknown as jest.MockedFunction<
   typeof fetchApiYearBestsByNames
 >;
 const mockFetchResultsByNames = fetchApiResultsByNames as jest.MockedFunction<
