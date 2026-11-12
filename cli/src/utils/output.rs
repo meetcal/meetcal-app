@@ -13,9 +13,6 @@
 //! - Each row is keyed by its table's column headers in snake_case. Headers never come from the
 //!   input or the data (athlete names, years): a command whose table shows them exports a data
 //!   table with fixed headers instead ([`Report::table_with_data`]).
-//! - Cells that are numbers (optionally with a `kg` or `%` unit, or a sign) are numbers; `true`
-//!   and `false` (and `Yes` and `No`) are booleans; `N/A`, a dash and empty cells are null.
-//!   Weight classes stay text.
 //! - Dates are `YYYY-MM-DD`, times `HH:MM` on a 24-hour clock, both as the data stores them in
 //!   the meet's own time zone; a range is two columns (`start_date`, `end_date`). One cell holds
 //!   one value: what the table packs into one cell (a total and its division) is split into
@@ -53,28 +50,28 @@ pub fn set_format(format: Format) {
     let _ = FORMAT.set(format);
 }
 
-pub fn format() -> Format {
+pub(crate) fn format() -> Format {
     FORMAT.get().copied().unwrap_or_default()
 }
 
 /// One table of a report.
-pub struct Section {
+pub(crate) struct Section {
     /// The table's key in JSON and CSV (snake_case).
-    pub key: String,
+    pub(crate) key: String,
     /// A line printed above the table in table format.
-    pub heading: Option<String>,
+    pub(crate) heading: Option<String>,
     /// What table format shows.
-    pub table: Table,
+    pub(crate) table: Table,
     /// What JSON and CSV export instead of `table`, when the display packs several values into
     /// one cell (a record's holder under its weight) or shows dates for reading.
-    pub data: Option<Table>,
+    pub(crate) data: Option<Table>,
     /// When table format shows the table; JSON and CSV always carry it.
-    pub shown: Shown,
+    pub(crate) shown: Shown,
 }
 
 /// When table format shows a section.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Shown {
+pub(crate) enum Shown {
     Always,
     /// Only when it has rows.
     WithRows,
@@ -84,43 +81,43 @@ pub enum Shown {
 
 /// A command's output: an optional title and its tables.
 #[derive(Default)]
-pub struct Report {
-    pub title: Option<String>,
-    pub sections: Vec<Section>,
+pub(crate) struct Report {
+    pub(crate) title: Option<String>,
+    pub(crate) sections: Vec<Section>,
     /// Printed instead of the tables in table format when there are no rows to show.
-    pub empty_message: Option<String>,
+    pub(crate) empty_message: Option<String>,
 }
 
 impl Report {
-    pub fn new() -> Self {
+    pub(crate) fn new() -> Self {
         Self::default()
     }
 
     /// A report of one table.
-    pub fn single(key: &str, table: Table) -> Self {
+    pub(crate) fn single(key: &str, table: Table) -> Self {
         Self::new().table(key, table)
     }
 
-    pub fn titled(mut self, title: impl Into<String>) -> Self {
+    pub(crate) fn titled(mut self, title: impl Into<String>) -> Self {
         self.title = Some(title.into());
         self
     }
 
-    pub fn table(self, key: &str, table: Table) -> Self {
+    pub(crate) fn table(self, key: &str, table: Table) -> Self {
         self.section(key, None, table, None, Shown::Always)
     }
 
-    pub fn headed(self, key: &str, heading: impl Into<String>, table: Table) -> Self {
+    pub(crate) fn headed(self, key: &str, heading: impl Into<String>, table: Table) -> Self {
         self.section(key, Some(heading.into()), table, None, Shown::Always)
     }
 
     /// A table shown as `table` but exported as `data`.
-    pub fn table_with_data(self, key: &str, table: Table, data: Table) -> Self {
+    pub(crate) fn table_with_data(self, key: &str, table: Table, data: Table) -> Self {
         self.section(key, None, table, Some(data), Shown::Always)
     }
 
     /// A headed table shown as `table` but exported as `data`.
-    pub fn headed_with_data(
+    pub(crate) fn headed_with_data(
         self,
         key: &str,
         heading: impl Into<String>,
@@ -132,12 +129,12 @@ impl Report {
 
     /// A headed table that table format shows only when it has rows; JSON and CSV always carry
     /// it, so a script finds the key whatever the data.
-    pub fn headed_if_any(self, key: &str, heading: impl Into<String>, table: Table) -> Self {
+    pub(crate) fn headed_if_any(self, key: &str, heading: impl Into<String>, table: Table) -> Self {
         self.section(key, Some(heading.into()), table, None, Shown::WithRows)
     }
 
     /// A table that only JSON and CSV carry, for a key they must always have.
-    pub fn exported(self, key: &str, table: Table) -> Self {
+    pub(crate) fn exported(self, key: &str, table: Table) -> Self {
         self.section(key, None, table, None, Shown::Never)
     }
 
@@ -162,7 +159,7 @@ impl Report {
         self
     }
 
-    pub fn when_empty(mut self, message: impl Into<String>) -> Self {
+    pub(crate) fn when_empty(mut self, message: impl Into<String>) -> Self {
         self.empty_message = Some(message.into());
         self
     }
@@ -174,7 +171,7 @@ impl Report {
     }
 
     /// The report as table format prints it.
-    pub fn to_text(&self) -> String {
+    pub(crate) fn to_text(&self) -> String {
         if let (true, Some(message)) = (self.is_empty(), &self.empty_message) {
             return message.clone();
         }
@@ -195,10 +192,18 @@ impl Report {
         parts.join("\n")
     }
 
+    #[cfg(test)]
+    pub(crate) fn export_keys(&self) -> std::collections::BTreeMap<String, Vec<String>> {
+        self.sections
+            .iter()
+            .map(|section| (section.key.clone(), headers(export_table(section))))
+            .collect()
+    }
+
     /// The report as JSON: one table's rows, or an object of each table's rows.
-    pub fn to_json(&self) -> Value {
-        if self.sections.len() == 1 {
-            return Value::Array(rows(export_table(&self.sections[0])));
+    pub(crate) fn to_json(&self) -> Value {
+        if let [only_table] = self.sections.as_slice() {
+            return Value::Array(rows(export_table(only_table)));
         }
         let mut object = Map::new();
         for section in &self.sections {
@@ -211,7 +216,7 @@ impl Report {
     }
 
     /// The report as CSV.
-    pub fn to_csv(&self) -> String {
+    pub(crate) fn to_csv(&self) -> String {
         let several = self.sections.len() > 1;
         self.sections
             .iter()
@@ -233,7 +238,7 @@ impl Report {
 /// A reader that stops early (`meetcal leaderboard | head`, quitting `less`) closes the pipe; the
 /// run then ends quietly with status 0, as other command line tools do, instead of panicking
 /// in `println!`. Any other failure to write ends it with status 1.
-pub fn emit(report: Report) {
+pub(crate) fn emit(report: Report) {
     let mut stdout = io::stdout().lock();
     let written = write(&mut stdout, &report, format()).and_then(|()| stdout.flush());
     if let Err(error) = written {
@@ -246,7 +251,7 @@ pub fn emit(report: Report) {
 }
 
 /// Writes `report` to `out` in `format`.
-pub fn write(out: &mut impl Write, report: &Report, format: Format) -> io::Result<()> {
+pub(crate) fn write(out: &mut impl Write, report: &Report, format: Format) -> io::Result<()> {
     match format {
         Format::Table => writeln!(out, "{}", report.to_text()),
         Format::Json => writeln!(
@@ -259,7 +264,7 @@ pub fn write(out: &mut impl Write, report: &Report, format: Format) -> io::Resul
 }
 
 /// A one-column table of `values` under `header`, for plain lists (club names, WSOs).
-pub fn list(header: &str, values: impl IntoIterator<Item = impl Into<String>>) -> Table {
+pub(crate) fn list(header: &str, values: impl IntoIterator<Item = impl Into<String>>) -> Table {
     let mut table = Table::new();
     table.set_header(vec![header]);
     for value in values {
@@ -312,10 +317,11 @@ fn rows(table: &Table) -> Vec<Value> {
 
 fn export_value(name: &str, cell: &str) -> Value {
     let holds_weight_classes = name.contains("class");
-    match value(cell) {
-        Value::Null => Value::Null,
-        _ if holds_weight_classes => text_value(cell),
-        exported => exported,
+    let exported = value(cell);
+    if holds_weight_classes && !exported.is_null() {
+        text_value(cell)
+    } else {
+        exported
     }
 }
 
@@ -347,7 +353,9 @@ fn csv_value(name: &str, cell: &str) -> String {
     match export_value(name, cell) {
         Value::Null => String::new(),
         Value::String(text) => text,
-        other => other.to_string(),
+        other @ (Value::Bool(_) | Value::Number(_) | Value::Array(_) | Value::Object(_)) => {
+            other.to_string()
+        }
     }
 }
 
@@ -360,10 +368,30 @@ fn csv_field(value: &str) -> String {
     }
 }
 
-/// A header as a JSON key: `Best C&J` becomes `best_c_j`, `% Difference` `difference`.
-pub fn key(header: &str) -> String {
+fn without_parenthesised_notes(header: &str) -> String {
+    let mut depth = 0usize;
+    header
+        .chars()
+        .filter(|c| match c {
+            '(' => {
+                depth += 1;
+                false
+            }
+            ')' => {
+                depth = depth.saturating_sub(1);
+                false
+            }
+            _ => depth == 0,
+        })
+        .collect()
+}
+
+pub(crate) fn key(header: &str) -> String {
     let mut key = String::new();
-    for c in header.chars() {
+    for c in without_parenthesised_notes(header).chars() {
+        if c == '&' {
+            continue;
+        }
         if c.is_alphanumeric() {
             key.extend(c.to_lowercase());
         } else if !key.is_empty() && !key.ends_with('_') {
@@ -383,12 +411,10 @@ fn text_value(cell: &str) -> Value {
     }
 }
 
-/// A cell as a JSON value: a number when it is one (units `kg` and `%` and a sign allowed), a
-/// boolean for `true`/`false` and `Yes`/`No`, null when empty, `N/A` or a dash, the text
-/// otherwise.
-pub fn value(cell: &str) -> Value {
+pub(crate) fn value(cell: &str) -> Value {
     let text = cell.trim();
-    if text.is_empty() || text.eq_ignore_ascii_case("n/a") || matches!(text, "—" | "–" | "-") {
+    if text.is_empty() || text.eq_ignore_ascii_case("n/a") || matches!(text, "—" | "–" | "-" | "?")
+    {
         return Value::Null;
     }
     match text {
@@ -431,12 +457,26 @@ mod tests {
 
     #[test]
     fn keys_are_snake_case() {
-        assert_eq!(key("Best C&J"), "best_c_j");
         assert_eq!(key("% Difference"), "difference");
-        assert_eq!(
-            key("Past-year bests\n(Sn / CJ / Total)"),
-            "past_year_bests_sn_cj_total"
-        );
+        assert_eq!(key("Lifters With Results"), "lifters_with_results");
+        assert_eq!(key("Q-points"), "q_points");
+    }
+
+    #[test]
+    fn clean_and_jerk_has_one_key_however_the_header_spells_it() {
+        assert_eq!(key("C&J"), "cj");
+        assert_eq!(key("CJ"), "cj");
+        assert_eq!(key("Best C&J"), "best_cj");
+        assert_eq!(key("C&J Make Rate"), key("CJ Make Rate"));
+    }
+
+    #[test]
+    fn a_parenthesised_note_in_a_header_is_not_part_of_its_key() {
+        assert_eq!(key("Sinclair (2021-24)"), "sinclair");
+        assert_eq!(key("Best Sinclair (2021-24)"), "best_sinclair");
+        assert_eq!(key("Sinclair (2025-28)"), key("Sinclair (2021-24)"));
+        assert_eq!(key("Top Meet (Best Total)"), "top_meet");
+        assert_eq!(key("Past-year bests\n(Sn / CJ / Total)"), "past_year_bests");
     }
 
     #[test]
@@ -538,6 +578,7 @@ mod tests {
     #[test]
     fn placeholders_become_null_and_yes_no_booleans() {
         assert_eq!(value("—"), Value::Null);
+        assert_eq!(value("?"), Value::Null);
         assert_eq!(value("-"), Value::Null);
         assert_eq!(value("true"), json!(true));
         assert_eq!(value("Yes"), json!(true));

@@ -50,7 +50,7 @@ pub struct QualifyArgs {
 }
 
 /// The day USA Weightlifting replaced its bodyweight classes with the IWF's new set.
-pub const CLASS_CHANGE: &str = "2026-08-01";
+pub(crate) const CLASS_CHANGE: &str = "2026-08-01";
 /// The classes since [`CLASS_CHANGE`]: juniors, seniors and Masters, then youth (U17 and U15).
 const SENIOR_MEN: &[&str] = &["60", "65", "70", "75", "85", "95", "110", "110+"];
 const SENIOR_WOMEN: &[&str] = &["49", "53", "57", "61", "69", "77", "86", "86+"];
@@ -90,7 +90,7 @@ fn class_for(body_weight: f64, classes: &[&str]) -> Option<String> {
 }
 
 /// A class's bodyweight limit: `75` for `75`, none for `110+`.
-pub fn class_limit(class: &str) -> f64 {
+pub(crate) fn class_limit(class: &str) -> f64 {
     if class.ends_with('+') {
         f64::INFINITY
     } else {
@@ -103,7 +103,7 @@ pub fn class_limit(class: &str) -> f64 {
 /// when it was made at or under that class's limit, so a class with a limit needs a plausible
 /// bodyweight ([`PLAUSIBLE_BODY_WEIGHT`]: not a 0.9 kg source error). Source errors and British
 /// results ([`EXCLUDED_FEDERATION`]) are left out: these are USA Weightlifting's totals.
-pub fn bests_within(rows: &[LiftingResults], cutoff: &str, limit: f64) -> (f64, f64, f64) {
+pub(crate) fn bests_within(rows: &[LiftingResults], cutoff: &str, limit: f64) -> (f64, f64, f64) {
     rows.iter()
         .filter(|row| !row.federation.eq_ignore_ascii_case(EXCLUDED_FEDERATION))
         .filter(|row| row.date.as_str() >= cutoff)
@@ -122,21 +122,19 @@ pub fn bests_within(rows: &[LiftingResults], cutoff: &str, limit: f64) -> (f64, 
 
 /// Who is being checked: gender, the age categories, and the class.
 #[derive(Debug, PartialEq)]
-pub struct Target {
-    pub gender: Gender,
-    pub categories: Vec<String>,
-    pub class: String,
+pub(crate) struct Target {
+    pub(crate) gender: Gender,
+    pub(crate) categories: Vec<String>,
+    pub(crate) class: String,
     /// The latest result's class when it was retired on [`CLASS_CHANGE`] and `class` replaced it.
-    pub retired: Option<String>,
+    pub(crate) retired: Option<String>,
 }
 
 pub async fn run(args: QualifyArgs) -> Result<()> {
     let rows = history(&args.name).await?;
-    let latest = chronological(&rows)
-        .last()
-        .copied()
-        .expect("history is never empty");
-    let name = latest.name.clone();
+    let Some(latest) = chronological(&rows).last().copied() else {
+        bail!("No results found for athlete \"{}\"", args.name);
+    };
     let division = Division::parse(&latest.age);
     let target = target(
         &division,
@@ -152,6 +150,25 @@ pub async fn run(args: QualifyArgs) -> Result<()> {
     let standards: Vec<Standards> = query(queries::STANDARDS, &NoArgs {}).await?;
     let totals: Vec<QualifyingTotal> = query(queries::QUALIFYING_TOTALS, &NoArgs {}).await?;
 
+    output::emit(report(
+        latest,
+        &target,
+        (snatch, cj, total),
+        &standards,
+        &totals,
+    ));
+    Ok(())
+}
+
+pub(crate) fn report(
+    latest: &LiftingResults,
+    target: &Target,
+    (snatch, cj, total): (f64, f64, f64),
+    standards: &[Standards],
+    totals: &[QualifyingTotal],
+) -> Report {
+    let name = latest.name.clone();
+    let limit = class_limit(&target.class);
     let mut athlete = Table::new();
     athlete.set_header(vec![
         "Athlete",
@@ -193,27 +210,24 @@ pub async fn run(args: QualifyArgs) -> Result<()> {
             .unwrap_or_default(),
     ]);
 
-    output::emit(
-        Report::new()
-            .titled(format!("QUALIFYING — {name}"))
-            .table("athlete", athlete)
-            .headed(
-                "standards",
-                "USAW A/B STANDARDS",
-                standards_table(&standards, &target, total),
-            )
-            .headed(
-                "qualifying_totals",
-                "QUALIFYING TOTALS",
-                totals_table(&totals, &target, total),
-            ),
-    );
-    Ok(())
+    Report::new()
+        .titled(format!("QUALIFYING — {name}"))
+        .table("athlete", athlete)
+        .headed(
+            "standards",
+            "USAW A/B STANDARDS",
+            standards_table(standards, target, total),
+        )
+        .headed(
+            "qualifying_totals",
+            "QUALIFYING TOTALS",
+            totals_table(totals, target, total),
+        )
 }
 
 /// The categories and class to check: the overrides, or what `division` says. A class no longer
 /// current is replaced by the lightest current class holding `body_weight`, the latest result's.
-pub fn target(
+pub(crate) fn target(
     division: &Division,
     body_weight: f64,
     category: Option<&str>,
@@ -282,7 +296,7 @@ fn gap_cells(needed: f64, best: f64) -> (String, String) {
     }
 }
 
-pub fn standards_table(standards: &[Standards], target: &Target, total: f64) -> Table {
+pub(crate) fn standards_table(standards: &[Standards], target: &Target, total: f64) -> Table {
     let mut table = Table::new();
     table.set_header(vec!["Category", "Level", "Needed Total", "Status"]);
     for category in &target.categories {
@@ -302,7 +316,7 @@ pub fn standards_table(standards: &[Standards], target: &Target, total: f64) -> 
     table
 }
 
-pub fn totals_table(totals: &[QualifyingTotal], target: &Target, total: f64) -> Table {
+pub(crate) fn totals_table(totals: &[QualifyingTotal], target: &Target, total: f64) -> Table {
     let mut rows: Vec<&QualifyingTotal> = totals
         .iter()
         .filter(|t| {

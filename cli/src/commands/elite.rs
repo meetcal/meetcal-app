@@ -5,14 +5,13 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 
 use crate::commands::leaderboard::MAX_YEARS;
-use crate::commands::wrapped::current_year;
 use crate::utils::backend::{functions, premium_action};
-use crate::utils::filters::{parse_date, plus_years, year_range};
-use crate::utils::format::us_date;
+use crate::utils::filters::{parse_date, plus_years};
+use crate::utils::format::{capitalized, us_date};
 use crate::utils::names::{NameKind, not_found, registration_wsos};
 use crate::utils::output::{self, Report};
 use crate::utils::progress::Progress;
-use crate::utils::stats::{fold, number, percent, points};
+use crate::utils::stats::{SINCLAIR_WITH_COEFFICIENTS, fold, number, percent, points};
 
 /// What an elite list ranks by.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, ValueEnum, Serialize, Deserialize)]
@@ -25,7 +24,7 @@ pub enum Method {
     Qpoints,
     /// Q-points times the Masters age factor
     Qmasters,
-    /// Sinclair (2021-24 coefficients)
+    #[value(help = SINCLAIR_WITH_COEFFICIENTS)]
     Sinclair,
 }
 
@@ -43,35 +42,55 @@ impl Method {
     fn score(self, value: f64) -> String {
         match self {
             Method::PercentA => percent(Some(value)),
-            _ => points(Some(value)),
+            Method::Qpoints | Method::Qmasters | Method::Sinclair => points(Some(value)),
         }
     }
 }
 
-/// The lists, in the order they print, with what each may be scored by (its default first), as
-/// the server's `ELITE_METHOD_CHOICES` (`convex/lib/elite.ts`).
-pub const LISTS: [(&str, &str, &[Method]); 5] = [
-    (
-        "overall",
-        "Overall",
-        &[Method::PercentA, Method::Sinclair, Method::Qpoints],
-    ),
-    ("youth", "Youth", &[Method::PercentA, Method::Sinclair]),
-    (
-        "junior",
-        "Junior",
-        &[Method::PercentA, Method::Qpoints, Method::Sinclair],
-    ),
-    (
-        "senior",
-        "Senior",
-        &[Method::PercentA, Method::Qpoints, Method::Sinclair],
-    ),
-    (
-        "masters",
-        "Masters",
-        &[Method::Qmasters, Method::PercentA, Method::Sinclair],
-    ),
+pub(crate) struct EliteListChoices {
+    pub(crate) key: &'static str,
+    pub(crate) label: &'static str,
+    pub(crate) default: Method,
+    pub(crate) alternatives: &'static [Method],
+}
+
+impl EliteListChoices {
+    fn offered(&self) -> impl Iterator<Item = Method> {
+        std::iter::once(self.default).chain(self.alternatives.iter().copied())
+    }
+}
+
+pub(crate) const LISTS: [EliteListChoices; 5] = [
+    EliteListChoices {
+        key: "overall",
+        label: "Overall",
+        default: Method::PercentA,
+        alternatives: &[Method::Sinclair, Method::Qpoints],
+    },
+    EliteListChoices {
+        key: "youth",
+        label: "Youth",
+        default: Method::PercentA,
+        alternatives: &[Method::Sinclair],
+    },
+    EliteListChoices {
+        key: "junior",
+        label: "Junior",
+        default: Method::PercentA,
+        alternatives: &[Method::Qpoints, Method::Sinclair],
+    },
+    EliteListChoices {
+        key: "senior",
+        label: "Senior",
+        default: Method::PercentA,
+        alternatives: &[Method::Qpoints, Method::Sinclair],
+    },
+    EliteListChoices {
+        key: "masters",
+        label: "Masters",
+        default: Method::Qmasters,
+        alternatives: &[Method::PercentA, Method::Sinclair],
+    },
 ];
 
 /// A WSO's elite lists: its top 20 women and men Overall, Youth (17 and under), Junior (18-20),
@@ -100,7 +119,7 @@ pub struct EliteArgs {
     #[arg(value_parser = crate::utils::filters::parse_name)]
     pub wso: String,
 
-    /// Calendar year (defaults to last year; ignored with --from)
+    /// Calendar year (defaults to the current year, as leaderboard's; ignored with --from)
     #[arg(long, short = 'y', value_parser = crate::utils::filters::parse_year)]
     pub year: Option<i32>,
 
@@ -146,25 +165,24 @@ impl EliteArgs {
     }
 }
 
-/// Each list's method: the one asked for, or the list's default; an error naming the choices for
-/// a method a list does not offer.
-pub fn methods(asked: [Option<Method>; 5]) -> Result<[Method; 5]> {
-    let mut chosen = [Method::PercentA; 5];
-    for (index, ((key, _, choices), asked)) in LISTS.iter().zip(asked).enumerate() {
-        chosen[index] = match asked {
-            Some(method) if choices.contains(&method) => method,
+pub(crate) fn methods(asked: [Option<Method>; 5]) -> Result<Vec<Method>> {
+    LISTS
+        .iter()
+        .zip(asked)
+        .map(|(list, asked)| match asked {
+            Some(method) if list.offered().any(|offered| offered == method) => Ok(method),
             Some(method) => {
-                let names: Vec<String> = choices.iter().map(|m| value_name(*m)).collect();
+                let names: Vec<String> = list.offered().map(value_name).collect();
                 bail!(
-                    "--{key} can be {}, not {}",
+                    "--{} can be {}, not {}",
+                    list.key,
                     names.join(", "),
                     value_name(method)
                 );
             }
-            None => choices[0],
-        };
-    }
-    Ok(chosen)
+            None => Ok(list.default),
+        })
+        .collect()
 }
 
 fn value_name(method: Method) -> String {
@@ -174,48 +192,44 @@ fn value_name(method: Method) -> String {
         .unwrap_or_default()
 }
 
-/// The range: `--from`/`--to`, else `--year`, else last calendar year.
-pub fn range(args: &EliteArgs) -> (String, String) {
-    match (&args.from, &args.to) {
-        (Some(from), Some(to)) => (from.clone(), to.clone()),
-        _ => year_range(args.year.unwrap_or_else(|| current_year() - 1)),
-    }
+pub(crate) fn range(args: &EliteArgs) -> (String, String) {
+    crate::commands::leaderboard::range(args.year, args.from.as_deref(), args.to.as_deref())
 }
 
 /// One ranked result, as `results:wsoElite` answers it.
 #[derive(Debug, Deserialize, PartialEq)]
-pub struct EliteRow {
-    pub name: String,
-    pub date: String,
-    pub meet: String,
-    pub division: String,
-    pub group: String,
-    pub age: i64,
-    pub body_weight: f64,
-    pub snatch_best: f64,
-    pub cj_best: f64,
-    pub total: f64,
-    pub score: f64,
+pub(crate) struct EliteRow {
+    pub(crate) name: String,
+    pub(crate) date: String,
+    pub(crate) meet: String,
+    pub(crate) division: String,
+    pub(crate) group: String,
+    pub(crate) age: i64,
+    pub(crate) body_weight: f64,
+    pub(crate) snatch_best: f64,
+    pub(crate) cj_best: f64,
+    pub(crate) total: f64,
+    pub(crate) score: f64,
     #[serde(default)]
-    pub weight_class: Option<String>,
+    pub(crate) weight_class: Option<String>,
     #[serde(default)]
-    pub standard_a: Option<f64>,
+    pub(crate) standard_a: Option<f64>,
 }
 
 #[derive(Debug, Deserialize)]
-pub struct EliteList {
-    pub method: Method,
-    pub men: Vec<EliteRow>,
-    pub women: Vec<EliteRow>,
+pub(crate) struct EliteList {
+    pub(crate) method: Method,
+    pub(crate) men: Vec<EliteRow>,
+    pub(crate) women: Vec<EliteRow>,
 }
 
 #[derive(Debug, Deserialize)]
-pub struct EliteLists {
-    pub overall: EliteList,
-    pub youth: EliteList,
-    pub junior: EliteList,
-    pub senior: EliteList,
-    pub masters: EliteList,
+pub(crate) struct EliteLists {
+    pub(crate) overall: EliteList,
+    pub(crate) youth: EliteList,
+    pub(crate) junior: EliteList,
+    pub(crate) senior: EliteList,
+    pub(crate) masters: EliteList,
 }
 
 impl EliteLists {
@@ -231,9 +245,9 @@ impl EliteLists {
 }
 
 #[derive(Debug, Deserialize)]
-pub struct EliteAnswer {
-    pub members: i64,
-    pub lists: EliteLists,
+pub(crate) struct EliteAnswer {
+    pub(crate) members: i64,
+    pub(crate) lists: EliteLists,
 }
 
 pub async fn run(args: EliteArgs) -> Result<()> {
@@ -259,8 +273,8 @@ pub async fn run(args: EliteArgs) -> Result<()> {
     };
 
     let mut method_args = serde_json::Map::new();
-    for ((key, _, _), method) in LISTS.iter().zip(methods) {
-        method_args.insert((*key).to_string(), json!(method));
+    for (list, method) in LISTS.iter().zip(methods) {
+        method_args.insert(list.key.to_string(), json!(method));
     }
     let mut progress = Progress::new("Ranking the WSO's athletes on MeetCal");
     progress.update("");
@@ -286,9 +300,9 @@ pub async fn run(args: EliteArgs) -> Result<()> {
 }
 
 /// Ten tables: each list's women, then its men.
-pub fn report(lists: &EliteLists) -> Report {
+pub(crate) fn report(lists: &EliteLists) -> Report {
     let mut report = Report::new();
-    for ((key, label, _), list) in LISTS.iter().zip(lists.in_order()) {
+    for (EliteListChoices { key, label, .. }, list) in LISTS.iter().zip(lists.in_order()) {
         for (gender, rows) in [("women", &list.women), ("men", &list.men)] {
             let heading = format!(
                 "{} — {} ({})",
@@ -308,7 +322,7 @@ pub fn report(lists: &EliteLists) -> Report {
 }
 
 /// A list's rows, with dates written by `date` (US dates to show, ISO ones to export).
-pub fn table(rows: &[EliteRow], method: Method, date: fn(&str) -> String) -> Table {
+pub(crate) fn table(rows: &[EliteRow], method: Method, date: fn(&str) -> String) -> Table {
     let mut table = Table::new();
     table.set_header(vec![
         "Rank",
@@ -347,17 +361,10 @@ pub fn table(rows: &[EliteRow], method: Method, date: fn(&str) -> String) -> Tab
     table
 }
 
-fn capitalized(value: &str) -> String {
-    let mut chars = value.chars();
-    chars
-        .next()
-        .map(|first| first.to_uppercase().chain(chars).collect())
-        .unwrap_or_default()
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::commands::wrapped::current_year;
 
     #[test]
     fn defaults_each_list_and_refuses_a_method_it_does_not_offer() {
@@ -385,6 +392,31 @@ mod tests {
             "--youth can be percent-a, sinclair, not qpoints"
         );
         assert!(methods([None, None, None, Some(Method::Qmasters), None]).is_err());
+    }
+
+    #[test]
+    fn each_lists_methods_and_default_are_the_servers() {
+        let server = include_str!("../../../convex/lib/elite.ts");
+        let choices = server
+            .split_once("export const ELITE_METHOD_CHOICES")
+            .and_then(|(_, rest)| rest.split_once("};"))
+            .map(|(choices, _)| choices)
+            .expect("convex/lib/elite.ts declares ELITE_METHOD_CHOICES");
+        let server_lists: Vec<&str> = choices
+            .lines()
+            .filter(|line| line.contains(": ['"))
+            .collect();
+        assert_eq!(server_lists.len(), LISTS.len());
+        for list in &LISTS {
+            let line = server_lists
+                .iter()
+                .find(|line| line.trim_start().starts_with(&format!("{}:", list.key)))
+                .unwrap_or_else(|| panic!("the server has no {} list", list.key));
+            let server_methods: Vec<&str> = line.split('\'').skip(1).step_by(2).collect();
+            let cli_methods: Vec<serde_json::Value> =
+                list.offered().map(|method| json!(method)).collect();
+            assert_eq!(cli_methods, server_methods, "{}", list.key);
+        }
     }
 
     #[test]
@@ -436,12 +468,16 @@ mod tests {
     }
 
     #[test]
-    fn defaults_to_last_calendar_year() {
+    fn defaults_to_the_current_calendar_year_as_leaderboard_does() {
         let args = EliteArgs::parse_from(["elite", "Carolina"]);
-        let last = current_year() - 1;
+        let this_year = current_year();
         assert_eq!(
             range(&args),
-            (format!("{last}-01-01"), format!("{last}-12-31"))
+            (format!("{this_year}-01-01"), format!("{this_year}-12-31"))
+        );
+        assert_eq!(
+            range(&args),
+            crate::commands::leaderboard::range(None, None, None)
         );
         let args = EliteArgs::parse_from(["elite", "Carolina", "--year", "2024"]);
         assert_eq!(range(&args), ("2024-01-01".into(), "2024-12-31".into()));

@@ -9,12 +9,12 @@ use crate::utils::output::{self, Report};
 use crate::utils::stats::{Gender, number, weight_class};
 
 #[derive(Debug, Deserialize)]
-pub struct Standards {
-    pub weight_class: String,
-    pub standard_a: f64,
-    pub standard_b: f64,
-    pub age_category: String,
-    pub gender: String,
+pub(crate) struct Standards {
+    pub(crate) weight_class: String,
+    pub(crate) standard_a: f64,
+    pub(crate) standard_b: f64,
+    pub(crate) age_category: String,
+    pub(crate) gender: String,
 }
 
 /// Search for A/B USAW Standards for a given age and gender group.
@@ -35,17 +35,22 @@ pub struct StandardsArgs {
 }
 
 pub async fn run(args: StandardsArgs) -> Result<()> {
-    // assign args to vars
-    let age = args.age;
-    let gender = args.gender;
     let standards: Vec<Standards> = query(queries::STANDARDS, &NoArgs {}).await?;
-    let (table, data) = tables(&selected(standards, &age, gender)?);
-    output::emit(Report::new().table_with_data("standards", table, data));
+    output::emit(report(&selected(standards, &args.age, args.gender)?));
 
     Ok(())
 }
 
-pub fn selected(standards: Vec<Standards>, age: &str, gender: Gender) -> Result<Vec<Standards>> {
+pub(crate) fn report(standards: &[Standards]) -> Report {
+    let (table, data) = tables(standards);
+    Report::new().table_with_data("standards", table, data)
+}
+
+pub(crate) fn selected(
+    standards: Vec<Standards>,
+    age: &str,
+    gender: Gender,
+) -> Result<Vec<Standards>> {
     let (filtered, others): (Vec<Standards>, Vec<Standards>) =
         standards.into_iter().partition(|row| {
             row.age_category.trim().eq_ignore_ascii_case(age.trim())
