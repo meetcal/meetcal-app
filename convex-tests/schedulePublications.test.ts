@@ -1,9 +1,9 @@
 import { ConvexError } from 'convex/values';
 import { getFunctionName } from 'convex/server';
-import { approve, decideByToken, email, emailContent, markEmailed, pending, publications, publish, reject, reviewByToken, reviewDecisionHttp, reviewPageHttp, setReviewToken } from '../convex/schedulePublications';
+import { approve, decideByToken, email, emailContent, expire, markEmailed, pending, publications, publish, reject, reviewByToken, reviewDecisionHttp, reviewPageHttp, setReviewToken } from '../convex/schedulePublications';
 import { buildSchedule } from '../convex/lib/scheduleBuilder';
 import { defaultBuilderOptions, type BuilderOptions } from '../convex/lib/scheduleBuilderOptions';
-import { MAX_PUBLISHES_PER_DAY, platformLabel, publishedSchedule, publishProblem, renderPublicationEmail, reviewUrl } from '../convex/lib/schedulePublishing';
+import { MAX_PUBLISHES_PER_DAY, PENDING_PUBLICATION_DAYS, platformLabel, publishedSchedule, publishProblem, renderPublicationEmail, reviewUrl } from '../convex/lib/schedulePublishing';
 import { EMAIL_RETRY_DELAYS_MS, sendEmail } from '../convex/lib/email';
 import { sha256Hex } from '../convex/lib/tokens';
 import { fakeMutationCtx, handlerOf } from './fakeDb';
@@ -175,12 +175,35 @@ describe('review', () => {
   it('approves from the CLI: the schedule goes live and the publisher becomes the organizer', async () => {
     const store = server();
     const publicationId = await pendingPublication(store);
-    expect(await store.as(null)(pending)).toEqual([{ publicationId, meet: MEET, userId: 'user_a', contactEmail: null, createdAt: NOW }]);
+    expect(await store.as(null)(pending)).toEqual([{ publicationId, meet: MEET, userId: 'user_a', contactEmail: null, createdAt: NOW, linkExpiresAt: null }]);
     expect(await store.as(null)(approve, { publicationId })).toEqual({ status: 'approved', message: "The schedule is live, and its publisher is now the meet's organizer." });
     expect(sessionsOf(store).map(([, session]) => session)).toEqual([1, 1, 2]);
     expect(store.rows('meet_organizers').map((o) => [o.meet, o.userId])).toEqual([[MEET, 'user_a']]);
     expect(await store.as(null)(approve, { publicationId })).toEqual({ status: 'approved', message: 'This schedule is already approved.' });
     expect(await store.as(null)(pending)).toEqual([]);
+  });
+
+  it('refuses to approve once the meet is over, keeping it pending', async () => {
+    const store = server();
+    const publicationId = await pendingPublication(store);
+    const [meet] = store.docs('meets');
+    await store.db.patch(String(meet?._id), { status: 'completed' });
+    expect(await failure(store.as(null)(approve, { publicationId }))).toEqual({ status: 409, error: 'this meet is over, so its schedule can no longer be published' });
+    expect(store.rows('schedule_publications').map((p) => p.status)).toEqual(['pending']);
+    expect(store.rows('meet_organizers')).toEqual([]);
+  });
+
+  it('lists the newest pending publishes first, and expires ones nobody reviewed', async () => {
+    const day = 24 * 60 * 60 * 1000;
+    const rows = [0, 1, 2].map((i) => ({ meet: MEET, userId: `u${i}`, options: options(), edits: [], status: 'pending', createdAt: NOW - (PENDING_PUBLICATION_DAYS + 1 - i * 10) * day }));
+    const store = server({ schedule_publications: rows });
+    expect(((await store.as(null)(pending)) as { userId: string }[]).map((p) => p.userId)).toEqual(['u2', 'u1', 'u0']);
+    expect(await store.as(null)(expire)).toEqual({ expired: 1 });
+    expect(store.rows('schedule_publications').map((p) => [p.userId, p.status])).toEqual([
+      ['u0', 'expired'],
+      ['u1', 'pending'],
+      ['u2', 'pending'],
+    ]);
   });
 
   it('rejects without changing the meet', async () => {
@@ -258,6 +281,17 @@ describe('email', () => {
     expect(sendEmailMock).toHaveBeenCalledTimes(1);
   });
 
+  it("says when a pending publish would replace an organizer's live schedule", async () => {
+    const store = server({ meet_organizers: [{ meet: MEET, userId: 'user_a', approvedAt: 1 }] });
+    await store.as('user_a')(publish, { meet: MEET, options: options(), edits: [] });
+    await store.as('user_b')(publish, { meet: MEET, options: options(), edits: [] });
+    const pendingRow = store.docs('schedule_publications').find((p) => p.status === 'pending');
+    await store.action(email, { publicationId: pendingRow?._id, attempt: 0 });
+    const html = String(sendEmailMock.mock.calls[0]?.[2]);
+    expect(html).toContain("The organizer's schedule went live on 2027-01-10; approving replaces it");
+    expect(html).not.toContain('no organizer yet');
+  });
+
   it("tells you about an organizer's live publish, without a link", async () => {
     const store = server({ meet_organizers: [{ meet: MEET, userId: 'user_a', approvedAt: 1 }] });
     await store.as('user_a')(publish, { meet: MEET, options: options(), edits: [] });
@@ -284,6 +318,6 @@ describe('email', () => {
   it('builds review links on the deployment site', () => {
     expect(reviewUrl('https://x.convex.site/', 'id1', 'abc')).toBe('https://x.convex.site/schedule-builder/review?id=id1&token=abc');
     const schedule = buildSchedule(roster(), options());
-    expect(renderPublicationEmail({ meet: '<b>Cup</b>', status: 'pending', userId: 'u', schedule }).html).toContain('&lt;b&gt;Cup&lt;/b&gt;');
+    expect(renderPublicationEmail({ meet: '<b>Cup</b>', status: 'pending', userId: 'u', schedule, lastLiveAt: null }).html).toContain('&lt;b&gt;Cup&lt;/b&gt;');
   });
 });

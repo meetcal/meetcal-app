@@ -347,7 +347,7 @@ export default defineSchema({
     contactEmail: v.optional(v.string()),
     options: builderOptionsValidator,
     edits: v.array(builderEditValidator),
-    status: v.union(v.literal('pending'), v.literal('live'), v.literal('approved'), v.literal('rejected'), v.literal('superseded')),
+    status: v.union(v.literal('pending'), v.literal('live'), v.literal('approved'), v.literal('rejected'), v.literal('superseded'), v.literal('expired')),
     createdAt: v.number(),
     decidedAt: v.optional(v.number()),
     emailedAt: v.optional(v.number()),

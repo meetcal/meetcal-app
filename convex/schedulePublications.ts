@@ -11,6 +11,7 @@ import { buildSchedule, type BuiltSchedule } from './lib/scheduleBuilder';
 import { builderEditValidator, builderOptionsValidator } from './lib/scheduleBuilderOptions';
 import {
   MAX_PUBLISHES_PER_DAY,
+  PENDING_PUBLICATION_DAYS,
   publishedSchedule,
   publishProblem,
   renderPublicationEmail,
@@ -28,6 +29,8 @@ import { checked, entrantsOf, requireMeet } from './scheduleBuilder';
 
 const USER_PUBLICATIONS_READ = 50;
 const PENDING_LIST_MAX = 50;
+const MEET_PUBLICATIONS_READ = 50;
+const EXPIRE_BATCH = 100;
 
 type Decision = 'approve' | 'reject';
 type DecisionResult = { status: PublicationStatus; message: string };
@@ -38,6 +41,22 @@ async function isOrganizer(ctx: QueryCtx, meet: string, userId: string): Promise
     .withIndex('by_meet_and_userId', (q) => q.eq('meet', meet).eq('userId', userId))
     .first();
   return row !== null;
+}
+
+async function lastLiveAt(ctx: QueryCtx, meet: string): Promise<number | null> {
+  const recent = await ctx.db
+    .query('schedule_publications')
+    .withIndex('by_meet_and_createdAt', (q) => q.eq('meet', meet))
+    .order('desc')
+    .take(MEET_PUBLICATIONS_READ);
+  const live = recent.find((p) => p.status === 'live' || p.status === 'approved');
+  return live ? (live.decidedAt ?? live.createdAt) : null;
+}
+
+async function requireOpenMeet(ctx: QueryCtx, meet: string) {
+  const row = await requireMeet(ctx, meet);
+  if (row.status === 'completed') throw apiError(409, 'this meet is over, so its schedule can no longer be published');
+  return row;
 }
 
 async function recentOfUser(ctx: QueryCtx, userId: string): Promise<Doc<'schedule_publications'>[]> {
@@ -58,8 +77,7 @@ export const publish = mutation({
     const userId = await requireUserId(ctx);
     checked(options, edits);
     const email = checkContactEmail(contactEmail);
-    const row = await requireMeet(ctx, meet);
-    if (row.status === 'completed') throw apiError(409, 'this meet is over, so its schedule can no longer be published');
+    const row = await requireOpenMeet(ctx, meet);
     const now = Date.now();
     const recent = await recentOfUser(ctx, userId);
     if (recent.filter((p) => p.createdAt > now - DAY_MS).length >= MAX_PUBLISHES_PER_DAY) {
@@ -107,7 +125,7 @@ export const emailContent = internalQuery({
     const publication = await ctx.db.get(publicationId);
     if (!publication) return null;
     const { meet, status, contactEmail, userId, emailedAt } = publication;
-    return { meet, status, contactEmail, userId, emailedAt, schedule: await scheduleOf(ctx, publication) };
+    return { meet, status, contactEmail, userId, emailedAt, schedule: await scheduleOf(ctx, publication), lastLiveAt: await lastLiveAt(ctx, meet) };
   },
 });
 
@@ -172,6 +190,7 @@ async function decide(ctx: MutationCtx, publication: Doc<'schedule_publications'
     await ctx.db.patch(publication._id, { status: 'rejected', decidedAt: now, reviewTokenHash: undefined });
     return { status: 'rejected', message: 'The schedule was rejected. Nothing on MeetCal changed.' };
   }
+  await requireOpenMeet(ctx, publication.meet);
   const schedule = await scheduleOf(ctx, publication);
   const problem = publishProblem(schedule);
   if (problem) throw apiError(409, `it can't go live now: ${problem}`);
@@ -196,7 +215,14 @@ export const reviewByToken = internalQuery({
   handler: async (ctx, { id, tokenHash }) => {
     const publication = await publicationByToken(ctx, id, tokenHash);
     if (!publication) return null;
-    return { meet: publication.meet, status: publication.status, contactEmail: publication.contactEmail, userId: publication.userId, schedule: await scheduleOf(ctx, publication) };
+    return {
+      meet: publication.meet,
+      status: publication.status,
+      contactEmail: publication.contactEmail,
+      userId: publication.userId,
+      schedule: await scheduleOf(ctx, publication),
+      lastLiveAt: await lastLiveAt(ctx, publication.meet),
+    };
   },
 });
 
@@ -230,8 +256,30 @@ export const pending = internalQuery({
     const rows = await ctx.db
       .query('schedule_publications')
       .withIndex('by_status_and_createdAt', (q) => q.eq('status', 'pending'))
+      .order('desc')
       .take(PENDING_LIST_MAX);
-    return rows.map(({ _id, meet, userId, contactEmail, createdAt }) => ({ publicationId: _id, meet, userId, contactEmail: contactEmail ?? null, createdAt }));
+    return rows.map(({ _id, meet, userId, contactEmail, createdAt, reviewTokenExpiresAt }) => ({
+      publicationId: _id,
+      meet,
+      userId,
+      contactEmail: contactEmail ?? null,
+      createdAt,
+      linkExpiresAt: reviewTokenExpiresAt ?? null,
+    }));
+  },
+});
+
+export const expire = internalMutation({
+  args: {},
+  handler: async (ctx) => {
+    const now = Date.now();
+    const stale = await ctx.db
+      .query('schedule_publications')
+      .withIndex('by_status_and_createdAt', (q) => q.eq('status', 'pending').lt('createdAt', now - PENDING_PUBLICATION_DAYS * DAY_MS))
+      .take(EXPIRE_BATCH);
+    for (const row of stale) await ctx.db.patch(row._id, { status: 'expired', decidedAt: now, reviewTokenHash: undefined });
+    if (stale.length === EXPIRE_BATCH) await ctx.scheduler.runAfter(0, internal.schedulePublications.expire, {});
+    return { expired: stale.length };
   },
 });
 
