@@ -24,8 +24,8 @@ The repository root's `AGENTS.md` applies here too: its hard rules (worktrees, n
 | `styles.css` | All styling |
 | `index.html`, `scripts/generate-bootstrap.sh`, `shells/` | The page shell, each route's prerendered first frame (`shells/`, kept equal to the app by `tests/shells.rs`; `UPDATE_SHELLS=1 cargo test --test shells` rewrites it), and the post-build hook that writes the Wasm bootstrap, the preloads and one shell per route under `dist/seo/` |
 | `vercel.json` | Build command, security headers (the CSP), and the rewrites that serve each route's metadata shell |
-| `tests/e2e/` | Playwright: routes, layout, accessibility, security headers, visual baselines, and the data pages against mocked Convex answers |
-| `tests/config/` | Node tests of `vercel.json` and the built shells |
+| `tests/e2e/` | Playwright: routes, layout, accessibility, security headers, visual baselines, the data pages against mocked Convex answers, and `performance.spec.ts`: each main route's bytes, requests, LCP and CLS, and the filters' blocking time, on a Slow 4G phone (mobile Chromium only; raising a budget is an edit there in the pull request that needs it) |
+| `tests/config/` | Node tests of `vercel.json` and the built shells, including the Wasm's raw and brotli-11 size budgets and the cap on files asked for before it (`loading.test.mjs`) |
 | `docs/` | [architecture.md](docs/architecture.md) (how the pieces fit, and adding a page), [testing.md](docs/testing.md) |
 
 ## Commands
