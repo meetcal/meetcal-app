@@ -10,6 +10,7 @@ import {
   addMonths,
   clubAthleteCount,
   clubStats,
+  computeMeetResults,
   computeScheduleRows,
   computeStatsRows,
   meetByName,
@@ -63,6 +64,8 @@ export const live = internalQuery({
       }
       case 'athletes':
         return await liveAthletesJson(ctx, a.meet);
+      case 'byMeet':
+        return JSON.stringify(await computeMeetResults(ctx, a.meet));
       case 'sessions':
         return await liveSessionsJson(ctx, a.meet, a.sessionNumber, a.platform);
       case 'package': {
@@ -229,6 +232,7 @@ export const run = internalAction({
       const s = await ctx.runQuery(internal.parity.meetSample, { meet });
       await compare(`schedule ${meet}`, ctx.runQuery(api.meets.schedule, { meet }), 'schedule', { meet });
       await compare(`athletes ${meet}`, ctx.runQuery(api.meets.athletes, { meet }), 'athletes', { meet });
+      await compare(`byMeet ${meet}`, ctx.runQuery(api.results.byMeet, withPass({ meet })), 'byMeet', { meet });
       await compare(`sessions ${meet}`, ctx.runQuery(api.meets.athletesSessions, { meet }), 'sessions', { meet });
       for (const sessionNumber of s.sessions) {
         await compare(`session ${sessionNumber} ${meet}`, ctx.runQuery(api.meets.athletesSessions, { meet, sessionNumber }), 'sessions', { meet, sessionNumber });

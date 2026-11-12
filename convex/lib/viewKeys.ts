@@ -35,15 +35,6 @@ export const unescapeKeyPart = (escaped: string) => escaped.replace(/%7C|%25/g, 
 export const natKey = (federation: string, ageCategory: string) =>
   `nat|${escapeKeyPart(federation)}|${escapeKeyPart(ageCategory)}`;
 
-/**
- * Per-meet views, each the exact JSON of one answer (or of one package
- * section): `package_static` (the package up to its year bests, as text:
- * `{"meet":…,"schedule":…,"athletes":…,"meet_results":…` without the closing
- * brace), `schedule` (`/meets/schedule`), `sessions` (`/meets/athletes-sessions`
- * unfiltered), `athletes` (`/meets/athletes`), `timelines` (year bests
- * input), `stats` (club meet stats input) and `keys` (the roster's folded
- * names, for refresh).
- */
 export type MeetViewPart =
   | 'package_static'
   | 'schedule'
@@ -51,7 +42,8 @@ export type MeetViewPart =
   | 'athletes'
   | 'timelines'
   | 'stats'
-  | 'keys';
+  | 'keys'
+  | 'results';
 export const MEET_VIEW_PARTS: readonly MeetViewPart[] = [
   'package_static',
   'schedule',
@@ -60,6 +52,7 @@ export const MEET_VIEW_PARTS: readonly MeetViewPart[] = [
   'timelines',
   'stats',
   'keys',
+  'results',
 ];
 /** Every view of one meet, and of no other meet, has a key starting with this. */
 export const meetViewsPrefix = (meet: string) => `meet|${escapeKeyPart(meet)}|`;
@@ -132,6 +125,7 @@ export const VIEW_SOURCES = {
   meetTimelines: ['athletes', 'lifting_results'],
   meetStats: ['athletes', 'lifting_results'],
   meetKeys: ['athletes'],
+  meetResults: ['lifting_results'],
   records: ['records'],
   standards: ['standards'],
   qualifying_totals: ['qualifying_totals'],
@@ -149,6 +143,7 @@ export const MEET_PART_SOURCES: Record<MeetViewPart, readonly SourceTable[]> = {
   timelines: VIEW_SOURCES.meetTimelines,
   stats: VIEW_SOURCES.meetStats,
   keys: VIEW_SOURCES.meetKeys,
+  results: VIEW_SOURCES.meetResults,
 };
 
 /** Adaptive-record argument sets the app sends; other sets are computed live. */

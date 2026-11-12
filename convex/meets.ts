@@ -3,7 +3,7 @@ import { MEETS_MAX, MEET_ROSTER_MAX, readAll } from './lib/boundedRead';
 import { v } from 'convex/values';
 import { premiumQuery } from './lib/access';
 import { query, type QueryCtx } from './_generated/server';
-import { etagOf, revalidated, revalidatedText, type Revalidated } from './lib/etag';
+import { revalidated, revalidatedJson, revalidatedText } from './lib/etag';
 import {
   addMonths,
   athletesWithSessions,
@@ -260,14 +260,13 @@ export const schedule = query({
   },
 });
 
-/** `GET /meets/athletes`: the roster, by name. Answers `{ json }`. */
 export const athletes = query({
-  args: { meet: v.string() },
-  handler: async (ctx, { meet }) => {
+  args: { meet: v.string(), ifNoneMatch: v.optional(v.string()) },
+  handler: async (ctx, { meet, ifNoneMatch }) => {
     requireNonEmpty('meet', meet);
     const view = await readFreshView(ctx, meetKey(meet, 'athletes'));
-    if (view) return { json: await view.json() };
-    return { json: await liveAthletesJson(ctx, meet) };
+    if (view) return await revalidatedText(view.etag, view.json, ifNoneMatch);
+    return revalidatedJson(await liveAthletesJson(ctx, meet), ifNoneMatch);
   },
 });
 
@@ -275,36 +274,28 @@ export async function liveAthletesJson(ctx: QueryCtx, meet: string): Promise<str
   return JSON.stringify(plainRoster(await computeRoster(ctx, meet), meet));
 }
 
-/**
- * `GET /meets/athletes-sessions`: athletes with their session's date and
- * times. Narrowed by session and/or platform (case-folded), the join is an
- * inner one; unfiltered it is a left join, so unscheduled athletes stay.
- * Answers `{ json }`.
- */
 export const athletesSessions = query({
   args: {
     meet: v.string(),
     sessionNumber: v.optional(v.number()),
     platform: v.optional(v.string()),
+    ifNoneMatch: v.optional(v.string()),
   },
-  handler: async (ctx, { meet, sessionNumber, platform }) => {
+  handler: async (ctx, { meet, sessionNumber, platform, ifNoneMatch }) => {
     requireNonEmpty('meet', meet);
-    const narrowed = sessionNumber !== undefined || platform !== undefined;
     if (sessionNumber !== undefined) {
-      // One session: its own view is a few dozen rows. A session without
-      // athletes has no view, and falls through to narrowing the whole list.
       const sessionView = await readFreshView(ctx, meetSessionKey(meet, sessionNumber));
       if (sessionView) {
-        if (platform === undefined) return { json: await sessionView.json() };
-        return { json: JSON.stringify(narrowSessions(await sessionView.items(isSessionRow), sessionNumber, platform)) };
+        if (platform === undefined) return await revalidatedText(sessionView.etag, sessionView.json, ifNoneMatch);
+        return revalidated(narrowSessions(await sessionView.items(isSessionRow), sessionNumber, platform), ifNoneMatch);
       }
     }
     const view = await readFreshView(ctx, meetKey(meet, 'sessions'));
     if (view) {
-      if (!narrowed) return { json: await view.json() };
-      return { json: JSON.stringify(narrowSessions(await view.items(isSessionRow), sessionNumber, platform)) };
+      if (sessionNumber === undefined && platform === undefined) return await revalidatedText(view.etag, view.json, ifNoneMatch);
+      return revalidated(narrowSessions(await view.items(isSessionRow), sessionNumber, platform), ifNoneMatch);
     }
-    return { json: await liveSessionsJson(ctx, meet, sessionNumber, platform) };
+    return revalidatedJson(await liveSessionsJson(ctx, meet, sessionNumber, platform), ifNoneMatch);
   },
 });
 
@@ -403,7 +394,7 @@ export const packageForMeet = premiumQuery('meets:packageForMeet', {
           yearBests = names.length > 0 ? yearBestsFromTimelines(names, timelines, bestsSince) : [];
         }
       }
-      return textAnswer(closePackage(staticText, yearBests), ifNoneMatch);
+      return revalidatedJson(closePackage(staticText, yearBests), ifNoneMatch);
     }
 
     // Only the year bests are stale (a roster athlete's results changed): the
@@ -415,21 +406,16 @@ export const packageForMeet = premiumQuery('meets:packageForMeet', {
         names.length > 0 ? computeTimelines(ctx, names, bestsSince) : Promise.resolve([]),
       ]);
       const yearBests = names.length > 0 ? yearBestsFromTimelines(names, timelines, bestsSince) : [];
-      return textAnswer(closePackage(staticText, yearBests), ifNoneMatch);
+      return revalidatedJson(closePackage(staticText, yearBests), ifNoneMatch);
     }
 
     const meetRow = await meetByName(ctx, meet);
     if (!meetRow) throw apiError(404, 'meet not found');
     const apiMeet = toApiMeet(meetRow);
     const json = await livePackageJson(ctx, meet, apiMeet, bestsSince, wantBests);
-    return textAnswer(json, ifNoneMatch);
+    return revalidatedJson(json, ifNoneMatch);
   },
 });
-
-/** Answers `json`, tagged with its hash, or the tag alone when the client holds it. */
-function textAnswer(json: string, ifNoneMatch: string | undefined): Promise<Revalidated> {
-  return revalidatedText(etagOf(json), async () => json, ifNoneMatch);
-}
 
 /** The package computed from the tables, without any view. */
 export async function livePackageJson(

@@ -92,6 +92,7 @@ export const buildMeet = internalMutation({
     await writeView(ctx, meetKey(meet, 'sessions'), jsonChunks(athletesWithSessions(roster)), pick('sessions'));
     await writeView(ctx, meetKey(meet, 'athletes'), jsonChunks(plainRoster(roster, meet)), pick('athletes'));
     await writeView(ctx, meetKey(meet, 'keys'), jsonChunks(keys), pick('keys'));
+    await writeView(ctx, meetKey(meet, 'results'), jsonChunks(results), pick('results'));
     const meetRow = await meetByName(ctx, meet);
     if (meetRow) {
       const staticText = packageStaticText(toApiMeet(meetRow), schedule, roster.map(packageAthlete), results);

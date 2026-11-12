@@ -42,7 +42,10 @@ function stripWeak(tag: string): string {
 
 /** Answers `body`, or the tag alone when `ifNoneMatch` names it. */
 export function revalidated(body: unknown, ifNoneMatch: string | undefined): Revalidated {
-  const json = JSON.stringify(body);
+  return revalidatedJson(JSON.stringify(body), ifNoneMatch);
+}
+
+export function revalidatedJson(json: string, ifNoneMatch: string | undefined): Revalidated {
   const etag = etagOf(json);
   if (ifNoneMatch && stripWeak(ifNoneMatch) === etag) return { etag };
   return { etag, json };

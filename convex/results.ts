@@ -3,6 +3,7 @@ import { MEMBER_REGISTRATIONS_MAX, STANDARDS_MAX, readAll } from './lib/boundedR
 import { v } from 'convex/values';
 import { checkPass, premiumQuery, premiumRead } from './lib/access';
 import { chunks, mapLimited } from './lib/concurrency';
+import { revalidated, revalidatedText } from './lib/etag';
 import { action, internalQuery, query, type QueryCtx } from './_generated/server';
 import { internal } from './_generated/api';
 import { nameMatcher, queryBigrams, searchDirectory } from './lib/directory';
@@ -16,6 +17,8 @@ import { takeWithinBudget, tooLargeToRead, type DocumentBudget } from './lib/rea
 import { cleanNameList, distinctNameKeys, newestSpelling, normalizeName, requestedNamesByKey } from './lib/names';
 import {
   bestsSince,
+  hasAnyBest,
+  latestMeetBests,
   namedBests,
   toApiLiftingResult,
   ZERO_BESTS,
@@ -25,8 +28,8 @@ import {
 } from './lib/results';
 import { compareBytes } from './lib/sort';
 import { selectWrapped, type WrappedAnswer } from './lib/wrapped';
-import { RESULT_NAMES_VIEW, SEARCH_SHARD_SIZES_VIEW, searchShardKey } from './lib/viewKeys';
-import { readViewJsonAnyAge, readViewTextAnyAge } from './lib/views';
+import { meetKey, RESULT_NAMES_VIEW, SEARCH_SHARD_SIZES_VIEW, searchShardKey } from './lib/viewKeys';
+import { readFreshView, readViewJsonAnyAge, readViewTextAnyAge } from './lib/views';
 import { apiError, requireIsoDate, requireNameList, requireNonEmpty, requirePresentIsoDate, requireTextList } from './lib/validation';
 
 // `/lifting-results/*` and `/search`: each query answers the JSON of the Rust
@@ -299,10 +302,12 @@ export const wsoElite = action({
 
 /** `GET /lifting-results`: a meet's results, by name. Answers `{ json }`. */
 export const byMeet = premiumQuery('results:byMeet', {
-  args: { meet: v.string() },
-  handler: async (ctx, { meet }) => {
+  args: { meet: v.string(), ifNoneMatch: v.optional(v.string()) },
+  handler: async (ctx, { meet, ifNoneMatch }) => {
     requireNonEmpty('meet', meet);
-    return { json: JSON.stringify(await computeMeetResults(ctx, meet)) };
+    const view = await readFreshView(ctx, meetKey(meet, 'results'));
+    if (view) return await revalidatedText(view.etag, view.json, ifNoneMatch);
+    return revalidated(await computeMeetResults(ctx, meet), ifNoneMatch);
   },
 });
 
@@ -422,6 +427,16 @@ export function answerBests(summaries: Map<string, Summary>, names: readonly str
   return namedBests(names, bestByKey);
 }
 
+export type NamedBestsOrLatest = NamedBests & { latest?: true };
+
+export function answerBestsOrLatest(summaries: Map<string, Summary>, names: readonly string[], cutoff: string): NamedBestsOrLatest[] {
+  return answerBests(summaries, names, cutoff).map((row) => {
+    if (hasAnyBest(row)) return row;
+    const marks = summaries.get(normalizeName(row.name))?.marks ?? [];
+    return { ...row, ...(latestMeetBests(marks) ?? ZERO_BESTS), latest: true };
+  });
+}
+
 export function answerYearBests(marks: readonly Mark[], cutoff: string): YearBests {
   return bestsSince(marks, cutoff) ?? ZERO_BESTS;
 }
@@ -488,12 +503,13 @@ export const yearBests = premiumQuery('results:yearBests', {
  * `NamedBests` for why not a name-keyed map.
  */
 export const bests = premiumQuery('results:bests', {
-  args: { names: v.array(v.string()), cutoffDate: v.optional(v.string()) },
-  handler: async (ctx, args): Promise<NamedBests[]> => {
+  args: { names: v.array(v.string()), cutoffDate: v.optional(v.string()), latestWhenEmpty: v.optional(v.boolean()) },
+  handler: async (ctx, args): Promise<NamedBests[] | NamedBestsOrLatest[]> => {
     const names = cleanNameList(args.names);
     requireNameList(names);
     const cutoff = requirePresentIsoDate('cutoff_date', args.cutoffDate);
     const summaries = await readSummaries(ctx, [...requestedNamesByKey(names).keys()]);
+    if (args.latestWhenEmpty) return answerBestsOrLatest(summaries, names, cutoff);
     return answerBests(summaries, names, cutoff);
   },
 });
