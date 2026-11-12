@@ -2,7 +2,6 @@ import { SessionAthleteRow } from "@/components/schedule-details/SessionAthleteR
 import { SessionAthletesFrame } from "@/components/schedule-details/SessionAthletesFrame";
 import { sessionAthletesStyles as styles } from "@/components/schedule-details/sessionAthletesStyles";
 import SessionSortControl from "@/components/schedule-details/sessionSort/SessionSortControl";
-import type { SortDirection, SortKey } from "@/components/schedule-details/sessionSort/types";
 import { Button } from "@/components/ui/Button";
 import { ThemedText } from "@/components/ui/ThemedText";
 import type { MeetName } from "@/data/types/meet";
@@ -15,7 +14,11 @@ import {
   useSessionAthletesReadyLog,
 } from "@/hooks/useSessionAthleteBests";
 import { loadFailureCopy } from "@/lib/load-failure";
-import { sortSessionAthletes } from "@/lib/session-athlete-sort";
+import {
+  sortSessionAthletes,
+  type SessionAthleteSortDirection,
+  type SessionAthleteSortKey,
+} from "@/lib/session-athlete-sort";
 import {
   SESSION_SORT_OPTIONS,
   sessionSortLabel,
@@ -49,8 +52,8 @@ export default function SessionAthletes({
     refreshAthletes,
   } = athletesState;
   const [isOffline] = useIsOffline();
-  const [sortKey, setSortKey] = useState<SortKey>("entryTotal");
-  const [sortDirection, setSortDirection] = useState<SortDirection>("desc");
+  const [sortKey, setSortKey] = useState<SessionAthleteSortKey>("entryTotal");
+  const [sortDirection, setSortDirection] = useState<SessionAthleteSortDirection>("desc");
   const { requirePremium, requireAuth, access } = useRequirePremium();
   const isSubscribed = access === "granted";
   const returnPath = useMemo(() => {
@@ -80,7 +83,7 @@ export default function SessionAthletes({
     return Object.fromEntries(entries);
   }, [athletes, athleteBests, sortKey, sortDirection]);
 
-  const handleSortSelect = useCallback((key: SortKey, direction: SortDirection) => {
+  const handleSortSelect = useCallback((key: SessionAthleteSortKey, direction: SessionAthleteSortDirection) => {
     setSortKey(key);
     setSortDirection(direction);
   }, []);
