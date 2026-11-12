@@ -27,8 +27,6 @@ pub struct ClubResultsArgs {
 }
 
 pub async fn run(args: ClubResultsArgs) -> Result<()> {
-    // Both arrive trimmed (`filters::parse_name`), so the query and the known-club check below
-    // see the same name.
     let club = args.club.as_str();
     let meet = args.meet.as_str();
     let stats = get_club_meet_stats(club, meet).await?;
@@ -97,7 +95,6 @@ pub fn validate_stats(stats: &ClubMeetStats, club: &str, meet: &str) -> Result<(
     Ok(())
 }
 
-/// The report as table format prints it, for the tests.
 #[cfg(test)]
 fn render_report(club: &str, meet: &str, stats: &ClubMeetStats) -> String {
     report(club, meet, stats).to_text()

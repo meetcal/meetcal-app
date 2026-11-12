@@ -1,4 +1,5 @@
 import type { ApiLiftingResult } from '../convex/lib/results';
+import { newestSpelling, newestSpellingByAthlete } from '../convex/lib/names';
 import { exactSearchAnswer, fallbackSearchAnswer, MAX_SEARCH_RESULT_ROWS } from '../convex/results';
 
 function row(name: string, date: string, total = 100): ApiLiftingResult {
@@ -37,17 +38,19 @@ describe('results:search date range', () => {
   const history = [row('Ann Lee', '2027-01-01'), row('Ann Lee', '2026-12-31'), row('Ann Lee', '2026-01-01'), row('Ann Lee', '2025-12-31')];
 
   it('includes both endpoints', () => {
-    const answer = exactSearchAnswer('Ann Lee', history, '2026-01-01', '2026-12-31');
+    const answer = exactSearchAnswer(history, '2026-01-01', '2026-12-31');
     expect(answer?.results.map((r) => r.date)).toEqual(['2026-01-01', '2026-12-31']);
     expect(answer).toMatchObject({ matched_name: 'Ann Lee', suggestions: [], truncated: false });
   });
 
-  it("answers the athlete's stored name, not the query's typing (#569)", () => {
-    const answer = exactSearchAnswer('  ann   LEE ', history, '2026-01-01', '2026-12-31');
-    expect(answer?.matched_name).toBe('Ann Lee');
-    // The newest result's spelling when the athlete's rows differ.
+  it("answers the athlete's name as their newest result in the range spells it (#569)", () => {
+    expect(exactSearchAnswer(history, '2026-01-01', '2026-12-31')?.matched_name).toBe('Ann Lee');
     const respelled = [row('Ann Lee', '2026-06-01'), row('ANN LEE', '2026-01-01')];
-    expect(exactSearchAnswer('ann lee', respelled, '2026-01-01', '2026-12-31')?.matched_name).toBe('Ann Lee');
+    expect(exactSearchAnswer(respelled, '2026-01-01', '2026-12-31')?.matched_name).toBe('Ann Lee');
+  });
+
+  it('answers the newest spelling without the spaces a source left around it', () => {
+    expect(exactSearchAnswer([row(' Ann Lee  ', '2026-06-01')], '2026-01-01', '2026-12-31')?.matched_name).toBe('Ann Lee');
   });
 
   it('includes a one-day range', () => {
@@ -56,7 +59,7 @@ describe('results:search date range', () => {
   });
 
   it('answers null for an exact name without results in the range, so the fallback runs', () => {
-    expect(exactSearchAnswer('Ann Lee', history, '2028-01-01', '2028-12-31')).toBeNull();
+    expect(exactSearchAnswer(history, '2028-01-01', '2028-12-31')).toBeNull();
   });
 });
 
@@ -77,7 +80,7 @@ describe('results:search row bound', () => {
   });
 
   it('keeps the most recent rows of an exact match too', () => {
-    const answer = exactSearchAnswer('Ann Smith', dailyHistory('Ann Smith', MAX_SEARCH_RESULT_ROWS + 5), '1990-01-01', '2030-12-31');
+    const answer = exactSearchAnswer(dailyHistory('Ann Smith', MAX_SEARCH_RESULT_ROWS + 5), '1990-01-01', '2030-12-31');
     expect(answer?.truncated).toBe(true);
     expect(answer?.results[0].date).toBe('2000-01-06');
   });
@@ -93,5 +96,18 @@ describe('results:search row bound', () => {
     const answer = fallbackSearchAnswer('smith', names, new Map(), '1990-01-01', '2030-12-31');
     expect(answer.truncated).toBe(true);
     expect(answer.suggestions).toHaveLength(8);
+  });
+});
+
+describe("an athlete's newest spelling", () => {
+  it('is the name on the latest-dated row, the last of rows on the same date, trimmed', () => {
+    expect(newestSpelling([row('ANN LEE', '2026-01-01'), row('Ann Lee ', '2026-06-01'), row('ann lee', '2026-03-01')])).toBe('Ann Lee');
+    expect(newestSpelling([row('ANN LEE', '2026-06-01'), row('Ann Lee', '2026-06-01')])).toBe('Ann Lee');
+    expect(newestSpelling([])).toBeNull();
+  });
+
+  it('is kept per athlete, skipping rows without a name', () => {
+    const rows = [row('JOHN SMITH', '2026-01-01'), row('Jane Smith', '2026-02-01'), row(' John Smith', '2026-03-01'), row(' ', '2026-04-01')];
+    expect(newestSpellingByAthlete(rows)).toEqual(new Map([['john smith', 'John Smith'], ['jane smith', 'Jane Smith']]));
   });
 });

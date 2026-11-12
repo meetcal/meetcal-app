@@ -4,6 +4,7 @@
 //! subscription gate and never reads the results behind the stats.
 
 use super::{
+    address::{HistoryEntry, query_param, use_page_address},
     athlete_autocomplete::AthleteAutocomplete,
     format::NO_VALUE,
     loading::{Load, LoadState, load_error},
@@ -91,13 +92,66 @@ fn wrapped_year(text: &str) -> Result<i32, String> {
     }
 }
 
+const WRAPPED_PATH: &str = "/wrapped";
+const PICKED_FROM_THE_MATCHES: &str = "1";
+
+fn wrapped_request(
+    athlete: &str,
+    year: &str,
+    picked: &str,
+    current_year: i32,
+) -> Option<WrappedRequest> {
+    if athlete.is_empty() {
+        return None;
+    }
+    let year = if year.is_empty() {
+        current_year
+    } else {
+        wrapped_year(year).ok()?
+    };
+    Some(WrappedRequest {
+        query: athlete.to_owned(),
+        year,
+        picked: picked == PICKED_FROM_THE_MATCHES,
+    })
+}
+
 #[component]
 pub fn Wrapped() -> impl IntoView {
     let current_year = Date::new_0().get_full_year() as i32;
-    let (athlete_name, set_athlete_name) = signal(String::new());
-    let (year, set_year) = signal(current_year.to_string());
+    let page = use_page_address(WRAPPED_PATH);
+    let athlete_in_address = query_param("athlete");
+    let year_in_address = query_param("year");
+    let picked_in_address = query_param("picked");
+    let request = Memo::new(move |_| {
+        wrapped_request(
+            &athlete_in_address.get(),
+            &year_in_address.get(),
+            &picked_in_address.get(),
+            current_year,
+        )
+    });
+    let year_shown = move || {
+        let year = year_in_address.get();
+        if year.is_empty() {
+            current_year.to_string()
+        } else {
+            year
+        }
+    };
+    let (athlete_name, set_athlete_name) = signal(athlete_in_address.get_untracked());
+    let (year, set_year) = signal(untrack(year_shown));
     let (year_error, set_year_error) = signal(None::<String>);
-    let (request, set_request) = signal(None::<WrappedRequest>);
+    Effect::new(move |earlier: Option<()>| {
+        let athlete = athlete_in_address.get();
+        let year = year_shown();
+        let year_problem = wrapped_year(&year).err();
+        if earlier.is_some() {
+            set_athlete_name.set(athlete);
+            set_year.set(year);
+        }
+        set_year_error.set(year_problem);
+    });
     let wrapped = Load::new(
         move || request.get(),
         |request| async move {
@@ -110,14 +164,50 @@ pub fn Wrapped() -> impl IntoView {
             }
         },
     );
+    let build = move || {
+        let athlete = athlete_name.get().trim().to_owned();
+        if athlete.is_empty() {
+            return;
+        }
+        let selected_year = match wrapped_year(&year.get()) {
+            Ok(year) => year,
+            Err(message) => {
+                set_year_error.set(Some(message));
+                return;
+            }
+        };
+        set_year_error.set(None);
+        let asked = WrappedRequest {
+            query: athlete.clone(),
+            year: selected_year,
+            picked: false,
+        };
+        if request.get_untracked().as_ref() == Some(&asked) {
+            wrapped.retry();
+        } else {
+            page.show(
+                &[("athlete", &athlete), ("year", &selected_year.to_string())],
+                HistoryEntry::Push,
+            );
+        }
+    };
+    let pick = Callback::new(move |(athlete, year): (String, i32)| {
+        page.show(
+            &[
+                ("athlete", &athlete),
+                ("year", &year.to_string()),
+                ("picked", PICKED_FROM_THE_MATCHES),
+            ],
+            HistoryEntry::Push,
+        );
+    });
     view! { <DataPage heading="Athlete Wrapped" intro="Summarize an athlete’s competition year, best lifts, make rate, and progress.">
-        <form class="data-query-form" on:submit=move |event| { event.prevent_default(); let athlete = athlete_name.get().trim().to_owned(); if athlete.is_empty() { return; } let selected_year = match wrapped_year(&year.get()) { Ok(year) => year, Err(message) => { set_year_error.set(Some(message)); return; } }; set_year_error.set(None); wrapped.submit(|| set_request.set(Some(WrappedRequest { query: athlete, year: selected_year, picked: false }))); }>
+        <form class="data-query-form" on:submit=move |event| { event.prevent_default(); build(); }>
             <AthleteAutocomplete value=athlete_name set_value=set_athlete_name input_id="wrapped-athlete" wrapper_class="data-query-grow" />
-            <label>"Year"<input class="data-filter data-year-input" inputmode="numeric" maxlength="4" prop:value=current_year on:input=move |event| { set_year.set(event_target_value(&event)); set_year_error.set(None); } /></label>
+            <label>"Year"<input class="data-filter data-year-input" inputmode="numeric" maxlength="4" prop:value=move || year.get() on:input=move |event| { set_year.set(event_target_value(&event)); set_year_error.set(None); } /></label>
             <button class="data-search-button" type="submit">"Build wrapped"</button>
         </form>
         {move || year_error.get().map(|message| view! { <p class="data-status error" role="alert">{message}</p> })}
-        // Nothing asked yet is the prompt at once, never a loading skeleton.
         {move || if request.with(Option::is_none) {
             view! { <DataStatus message="Enter an athlete to build their yearly recap." /> }.into_any()
         } else { wrapped.with(|state| match state {
@@ -126,7 +216,7 @@ pub fn Wrapped() -> impl IntoView {
             LoadState::Ready(None) => view! { <DataStatus message="Enter an athlete to build their yearly recap." /> }.into_any(),
             LoadState::Ready(Some((request, answer))) => match answer {
                 WrappedAnswer::Athlete { name, stats } => report(name, request.year, stats),
-                WrappedAnswer::Ambiguous { names, truncated } => choices(&request.query, request.year, names, *truncated, set_athlete_name, set_request),
+                WrappedAnswer::Ambiguous { names, truncated } => choices(&request.query, request.year, names, *truncated, pick),
                 _ => view! { <p class="data-status error">{format!("Could not build wrapped: {}", unavailable_message(request, answer))}</p> }.into_any(),
             },
         }) }}
@@ -168,14 +258,12 @@ fn report(athlete_name: &str, year: i32, stats: &WrappedStats) -> AnyView {
     view! { <h2 class="data-section-title">{format!("{year} Wrapped — {athlete_name}")}</h2><div class="data-metric-grid"><DataMetric label="Meets" value=stats.total_meets.to_string() /><DataMetric label="Make rate" value=format!("{:.1}%", stats.make_percentage) /><DataMetric label="Best snatch" value=format!("{}kg", stats.best_snatch) /><DataMetric label="Best C&J" value=format!("{}kg", stats.best_clean_jerk) /><DataMetric label="Best total" value=format!("{}kg", stats.best_total) /><DataMetric label="Average total" value=format!("{:.1}kg", stats.average_total) /><DataMetric label="Weight lifted" value=format!("{}kg", stats.total_weight_lifted) /><DataMetric label="First-to-last" value=format_improvement(stats.improvement_from_first) /><DataMetric label="Longest make streak" value=stats.longest_make_streak.to_string() /><DataMetric label="Favorite attempt" value=stats.favorite_attempt.map(|value| value.to_string()).unwrap_or_else(|| NO_VALUE.to_owned()) /></div><div class="wrapped-top-meet"><span>"Top meet"</span><strong>{stats.top_meet.clone().unwrap_or_else(|| NO_VALUE.to_owned())}</strong></div> }.into_any()
 }
 
-/// The athletes a search matched, each building that athlete's Wrapped.
 fn choices(
     query: &str,
     year: i32,
     names: &[String],
     more_than_shown: bool,
-    set_athlete_name: WriteSignal<String>,
-    set_request: WriteSignal<Option<WrappedRequest>>,
+    pick: Callback<(String, i32)>,
 ) -> AnyView {
     let message = if more_than_shown {
         format!("Many athletes match {query}. Pick one, or type more of the name.")
@@ -188,10 +276,7 @@ fn choices(
             {names.iter().cloned().map(|name| {
                 let athlete = name.clone();
                 view! {
-                    <button type="button" on:click=move |_| {
-                        set_athlete_name.set(athlete.clone());
-                        set_request.set(Some(WrappedRequest { query: athlete.clone(), year, picked: true }));
-                    }>{name}</button>
+                    <button type="button" on:click=move |_| pick.run((athlete.clone(), year))>{name}</button>
                 }
             }).collect_view()}
         </div>
@@ -225,6 +310,29 @@ mod tests {
             year: 2026,
             picked: false,
         }
+    }
+
+    #[test]
+    fn an_address_names_the_wrapped_it_opens() {
+        assert_eq!(wrapped_request("", "2026", "", 2027), None);
+        assert_eq!(
+            wrapped_request("Ann Lee", "2026", "", 2027),
+            Some(WrappedRequest {
+                query: "Ann Lee".to_owned(),
+                year: 2026,
+                picked: false
+            })
+        );
+        assert_eq!(
+            wrapped_request("Ann Lee", "", "", 2027).map(|request| request.year),
+            Some(2027)
+        );
+        assert_eq!(
+            wrapped_request("Ann Lee", "2026", "1", 2027).map(|request| request.picked),
+            Some(true)
+        );
+        assert_eq!(wrapped_request("Ann Lee", "20x6", "", 2027), None);
+        assert_eq!(wrapped_request("Ann Lee", "1066", "", 2027), None);
     }
 
     #[test]

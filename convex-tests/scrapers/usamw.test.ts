@@ -21,6 +21,7 @@ describe('USAMW national records (port of national_records.py)', () => {
       Women: `${STORAGE}/y?fileName=NM2025_women.pdf`,
     });
     expect(() => discoverRecordPdfs('<a href="/nothing.pdf">x</a>')).toThrow('Men, Women');
+    expect(() => discoverRecordPdfs(`<a href="${STORAGE}/x?fileName=NM2025-men.pdf">m</a>`)).toThrow('for: Women');
   });
 
   it('reads the age group from the page head and class/lift/record lines, sorted by age then class', () => {
