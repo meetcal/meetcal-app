@@ -152,7 +152,7 @@ test("WSO records omit the organization column after an organization is selected
   await expect(page.locator("tbody tr").first().locator("td")).toHaveCount(6);
   await expect(page.locator("tbody")).not.toContainText("California North");
   await expect(page.locator("tbody tr").first().locator("td").nth(2)).toHaveText("110+kg");
-  await expect(page.getByLabel("Weight class").locator("option")).toHaveText(["All classes", "110+kg"]);
+  await expect(page.getByRole("combobox", { name: "Weight class", exact: true }).locator("option")).toHaveText(["All classes", "110+kg"]);
 
   const [snatch, cleanAndJerk, total] = await page.locator("tbody tr").first().locator("td.record-lift").all();
   await expect(snatch.locator(".record-value")).toHaveText("158");
