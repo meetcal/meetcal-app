@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { ConvexError } from 'convex/values';
 import * as meets from '../convex/meets';
@@ -195,11 +195,19 @@ describe('the premium queries', () => {
     expect(web.sort()).toEqual([...PREMIUM_ACTIONS].sort());
   });
 
-  it("are the ones Siri sends the pass to (`premiumFunctions` in `plugins/ios-app-intents/MeetCalAPI.swift`)", () => {
-    const source = readFileSync(join(__dirname, '..', 'plugins', 'ios-app-intents', 'MeetCalAPI.swift'), 'utf8');
-    const list = /premiumFunctions: Set<String> = \[([^\]]*)\]/.exec(source)?.[1] ?? '';
-    const siri = [...list.matchAll(/"([^"]+)"/g)].map((match) => match[1]);
-    expect(siri.sort()).toEqual([...PREMIUM_FUNCTIONS].sort());
+  it("cover every premium function Siri calls, and only premium functions (`premiumFunctions` in `plugins/ios-app-intents/MeetCalAPI.swift`)", () => {
+    const intents = join(__dirname, '..', 'plugins', 'ios-app-intents');
+    const swift = readdirSync(intents)
+      .filter((file) => file.endsWith('.swift'))
+      .map((file) => readFileSync(join(intents, file), 'utf8'))
+      .join('\n');
+    const list = /premiumFunctions: Set<String> = \[([^\]]*)\]/.exec(swift)?.[1] ?? '';
+    const siriList = [...list.matchAll(/"([^"]+)"/g)].flatMap((match) => match[1] ?? []);
+    const called = [...new Set([...swift.matchAll(/\b(?:query|requestBody)\(\s*"([A-Za-z]+:[A-Za-z]+)"/g)].flatMap((match) => match[1] ?? []))];
+    const premium: readonly string[] = PREMIUM_FUNCTIONS;
+    expect(called).toEqual(expect.arrayContaining(['meets:list', 'results:byNames', 'reference:records', 'accessPass:pass']));
+    expect(called.filter((name) => premium.includes(name) && !siriList.includes(name))).toEqual([]);
+    expect(siriList.filter((name) => !premium.includes(name))).toEqual([]);
   });
 
   it('leave name suggestions public: search checks the pass only when asked for results', async () => {
