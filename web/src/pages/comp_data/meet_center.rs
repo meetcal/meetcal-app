@@ -1,15 +1,16 @@
+use std::collections::HashSet;
+
 use super::{
     combobox::{Combobox, SuggestionCopy, Suggestions},
     format::{
-        NO_VALUE, display_body_weight, display_gender, display_weight_class, format_us_date,
-        format_us_time, yes_no,
+        display_body_weight, display_gender, display_weight_class, format_us_date, format_us_time,
+        yes_no,
     },
-    loading::{Load, load_meet_data, select_response, table_response},
-    meets::load_meet_catalog,
-    models::{Athlete, LiftingResult, Meet, ScheduleRow, attempt},
+    loading::{Load, LoadState, load_error, load_meet_data, load_query, table_response},
+    models::{Athlete, LiftingResult, Meet, ScheduleRow, UpcomingMeetsQuery, attempt},
     ui::{DataPage, DataStatus, DataTable, EmptyTableRow, TableHead},
 };
-use crate::utils::api::queries;
+use crate::utils::api::{queries, query_with};
 use leptos::prelude::*;
 
 fn session(value: Option<f64>) -> String {
@@ -21,7 +22,24 @@ fn session(value: Option<f64>) -> String {
                 value.to_string()
             }
         })
-        .unwrap_or_else(|| NO_VALUE.to_owned())
+        .unwrap_or_else(|| "—".to_owned())
+}
+
+fn meet_catalog(upcoming: &[Meet], completed: &[Meet]) -> Vec<Meet> {
+    let mut meets = upcoming
+        .iter()
+        .chain(completed)
+        .cloned()
+        .collect::<Vec<_>>();
+    meets.sort_by(|left, right| {
+        right
+            .start_date
+            .cmp(&left.start_date)
+            .then_with(|| left.name.cmp(&right.name))
+    });
+    let mut seen = HashSet::new();
+    meets.retain(|row| seen.insert(row.name.clone()));
+    meets
 }
 
 /// Apostrophes meet names are written with (typewriter, curly, modifier
@@ -67,7 +85,15 @@ fn meet_suggestions(meets: &[Meet], query: &str, limit: usize) -> Vec<String> {
 pub fn MeetCenter() -> impl IntoView {
     let (meet, set_meet) = signal(String::new());
     let (meet_search, set_meet_search) = signal(String::new());
-    let meets = load_meet_catalog();
+    let upcoming_meets = Load::new(
+        || (),
+        |()| async {
+            query_with::<Vec<Meet>, _>(queries::UPCOMING_MEETS, &UpcomingMeetsQuery::current())
+                .await
+                .map_err(|error| error.to_string())
+        },
+    );
+    let completed_meets = load_query::<Vec<Meet>>(queries::COMPLETED_MEETS);
     let schedule = Load::new(
         move || meet.get(),
         |meet| load_meet_data::<ScheduleRow>(meet, queries::MEET_SCHEDULE),
@@ -89,9 +115,17 @@ pub fn MeetCenter() -> impl IntoView {
             heading="Meets"
             intro="Search all meets to see venue details, session schedules, start lists, and published results."
         >
-            {move || select_response(meets, "Loading meets…", "meets", |meets| {
-                view! { <MeetPicker meets=meets.to_vec() meet set_meet meet_search set_meet_search /> }.into_any()
-            })}
+            {move || upcoming_meets.with(|upcoming| completed_meets.with(|completed| match (upcoming, completed) {
+                (LoadState::Ready(upcoming), LoadState::Ready(completed)) => {
+                    let meets = meet_catalog(upcoming, completed);
+                    view! { <MeetPicker meets meet set_meet meet_search set_meet_search /> }.into_any()
+                }
+                (LoadState::Failed(error), _) | (_, LoadState::Failed(error)) => load_error("meets", error, move || {
+                    upcoming_meets.retry_failed();
+                    completed_meets.retry_failed();
+                }),
+                _ => view! { <DataStatus message="Loading meets…" /> }.into_any(),
+            }))}
 
             {move || if meet.get().is_empty() { view! { <DataStatus message="Search for and select a meet to load its competition data." /> }.into_any() } else { view! {
                 <h2 class="data-section-title">"Schedule"</h2>
@@ -202,7 +236,7 @@ fn table_schedule(rows: &[ScheduleRow]) -> AnyView {
 
 fn table_athletes(rows: &[Athlete]) -> AnyView {
     let is_empty = rows.is_empty();
-    let body = rows.iter().map(|row| view! { <tr><td>{row.name.clone()}</td><td>{display_gender(&row.gender)}</td><td>{row.age}</td><td>{display_weight_class(&row.weight_class)}</td><td>{row.entry_total}</td><td>{row.club.clone()}</td><td>{row.wso.clone().unwrap_or_else(|| NO_VALUE.to_owned())}</td><td>{session(row.session_number)}</td><td>{row.session_platform.clone().unwrap_or_else(|| NO_VALUE.to_owned())}</td><td>{yes_no(row.adaptive)}</td></tr> }).collect_view();
+    let body = rows.iter().map(|row| view! { <tr><td>{row.name.clone()}</td><td>{display_gender(&row.gender)}</td><td>{row.age}</td><td>{display_weight_class(&row.weight_class)}</td><td>{row.entry_total}</td><td>{row.club.clone()}</td><td>{row.wso.clone().unwrap_or_else(|| "—".to_owned())}</td><td>{session(row.session_number)}</td><td>{row.session_platform.clone().unwrap_or_else(|| "—".to_owned())}</td><td>{yes_no(row.adaptive)}</td></tr> }).collect_view();
     view! { <DataTable><TableHead headers=START_LIST_HEADERS /><tbody>{is_empty.then(|| view! { <EmptyTableRow columns=START_LIST_HEADERS.len() message="No start list has been published for this meet." /> })}{body}</tbody></DataTable> }.into_any()
 }
 
@@ -239,6 +273,23 @@ mod tests {
     fn absent_sessions_use_dash() {
         assert_eq!(session(None), "—");
         assert_eq!(session(Some(3.0)), "3");
+    }
+
+    #[test]
+    fn meet_catalog_is_newest_first_and_deduplicated() {
+        let upcoming = [meet("Older", "2026-01-01"), meet("Duplicate", "2026-02-01")];
+        let completed = [
+            meet("Duplicate", "2025-02-01"),
+            meet("Newest", "2026-03-01"),
+        ];
+        let catalog = meet_catalog(&upcoming, &completed);
+        assert_eq!(
+            catalog
+                .iter()
+                .map(|row| row.name.as_str())
+                .collect::<Vec<_>>(),
+            ["Newest", "Duplicate", "Older"]
+        );
     }
 
     #[test]

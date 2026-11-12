@@ -24,7 +24,7 @@ async function routeSearch(page: Page) {
   await routeQuery(page, "results:search", (route, args) => {
     const query = String(args.query ?? "");
     if (!("startDate" in args)) {
-      return route.fulfill(valueAnswer({ matched_name: null, suggestions: [], results: [], truncated: false }));
+      return route.fulfill(valueAnswer({ matched_name: null, suggestions: [], results: [] }));
     }
     const exact: Record<string, string> = {
       "ann lee": "Ann Lee",
@@ -35,17 +35,16 @@ async function routeSearch(page: Page) {
     };
     const stored = exact[query.toLowerCase()];
     if (stored) {
-      return route.fulfill(valueAnswer({ matched_name: query, suggestions: [], results: [result(stored, `${stored} Open`)], truncated: false }));
+      return route.fulfill(valueAnswer({ matched_name: query, suggestions: [], results: [result(stored, `${stored} Open`)] }));
     }
     if (query === "Smith") {
       return route.fulfill(valueAnswer({
         matched_name: null,
         suggestions: ["John Smith", "Jane Smith"],
         results: [result("John Smith", "John Smith Open"), result("Jane Smith", "Jane Smith Open")],
-        truncated: false,
       }));
     }
-    return route.fulfill(valueAnswer({ matched_name: null, suggestions: ["Ann Lee"], results: [], truncated: false }));
+    return route.fulfill(valueAnswer({ matched_name: null, suggestions: ["Ann Lee"], results: [] }));
   });
 }
 

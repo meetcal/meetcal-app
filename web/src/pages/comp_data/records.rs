@@ -1,7 +1,7 @@
 use super::{
     filters::{
         ClassificationFilters, ClassifiedRow, SortDirection, classified_rows, filter_options,
-        sort_numeric, sort_orders, weight_class_options,
+        sort_numeric, weight_class_options,
     },
     format::{display_weight_class, reference_value},
     loading::{load_rows, table_response},
@@ -65,14 +65,14 @@ impl ClassifiedRow for Record {
     }
 }
 
-sort_orders!(RecordSort {
-    TotalDesc => ("total_desc", "Total: high to low"),
-    TotalAsc => ("total_asc", "Total: low to high"),
-    SnatchDesc => ("snatch_desc", "Snatch: high to low"),
-    SnatchAsc => ("snatch_asc", "Snatch: low to high"),
-    CjDesc => ("cj_desc", "Clean & jerk: high to low"),
-    CjAsc => ("cj_asc", "Clean & jerk: low to high"),
-});
+const SORT_OPTIONS: &[(&str, &str)] = &[
+    ("total_desc", "Total: high to low"),
+    ("total_asc", "Total: low to high"),
+    ("snatch_desc", "Snatch: high to low"),
+    ("snatch_asc", "Snatch: low to high"),
+    ("cj_desc", "Clean & jerk: high to low"),
+    ("cj_asc", "Clean & jerk: low to high"),
+];
 
 #[component]
 pub fn Records() -> impl IntoView {
@@ -80,7 +80,7 @@ pub fn Records() -> impl IntoView {
     let (gender, set_gender) = signal(String::new());
     let (age, set_age) = signal(String::new());
     let (weight_class, set_weight_class) = signal(String::new());
-    let (sort, set_sort) = signal(RecordSort::TotalDesc);
+    let (sort, set_sort) = signal("total_desc".to_string());
     let records = load_rows(queries::RECORDS, Record::shown);
 
     view! {
@@ -105,13 +105,13 @@ pub fn Records() -> impl IntoView {
                         && record.record_type != "BWL"
                 });
 
-                match sort.get() {
-                    RecordSort::SnatchDesc => sort_numeric(&mut filtered_records, |row| row.snatch_record.unwrap_or_default(), SortDirection::Descending),
-                    RecordSort::SnatchAsc => sort_numeric(&mut filtered_records, |row| row.snatch_record.unwrap_or_default(), SortDirection::Ascending),
-                    RecordSort::CjDesc => sort_numeric(&mut filtered_records, |row| row.cj_record.unwrap_or_default(), SortDirection::Descending),
-                    RecordSort::CjAsc => sort_numeric(&mut filtered_records, |row| row.cj_record.unwrap_or_default(), SortDirection::Ascending),
-                    RecordSort::TotalAsc => sort_numeric(&mut filtered_records, |row| row.total_record.unwrap_or_default(), SortDirection::Ascending),
-                    RecordSort::TotalDesc => sort_numeric(&mut filtered_records, |row| row.total_record.unwrap_or_default(), SortDirection::Descending),
+                match sort.get().as_str() {
+                    "snatch_desc" => sort_numeric(&mut filtered_records, |row| row.snatch_record.unwrap_or_default(), SortDirection::Descending),
+                    "snatch_asc" => sort_numeric(&mut filtered_records, |row| row.snatch_record.unwrap_or_default(), SortDirection::Ascending),
+                    "cj_desc" => sort_numeric(&mut filtered_records, |row| row.cj_record.unwrap_or_default(), SortDirection::Descending),
+                    "cj_asc" => sort_numeric(&mut filtered_records, |row| row.cj_record.unwrap_or_default(), SortDirection::Ascending),
+                    "total_asc" => sort_numeric(&mut filtered_records, |row| row.total_record.unwrap_or_default(), SortDirection::Ascending),
+                    _ => sort_numeric(&mut filtered_records, |row| row.total_record.unwrap_or_default(), SortDirection::Descending),
                 }
                 let is_empty = filtered_records.is_empty();
                 let rows = filtered_records
@@ -135,7 +135,7 @@ pub fn Records() -> impl IntoView {
                         <FilterSelect label="Gender" placeholder="All genders" values=genders selected=gender on_select=move |value| set_gender.set(value) />
                         <FilterSelect label="Age" placeholder="All ages" values=ages selected=age on_select=move |value| set_age.set(value) />
                         <FilterSelect label="Weight class" placeholder="All classes" values=weights selected=weight_class on_select=move |value| set_weight_class.set(value) />
-                        <SortSelect sort set_sort />
+                        <SortSelect options=SORT_OPTIONS sort set_sort />
                     </div>
                     <DataTable>
                         <thead>
@@ -235,10 +235,5 @@ mod tests {
         assert_eq!(reference_value(record.snatch_record), "40");
         assert_eq!(reference_value(record.cj_record), "—");
         assert_eq!(reference_value(record.total_record), "—");
-    }
-
-    #[test]
-    fn every_sort_order_in_the_menu_is_one_the_table_sorts_by() {
-        crate::pages::comp_data::filters::assert_each_sort_order_parses_to_itself::<RecordSort>();
     }
 }

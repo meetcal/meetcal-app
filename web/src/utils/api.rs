@@ -16,7 +16,6 @@
 //! premium read without a current pass and still answers it; later it will
 //! refuse it, so a premium read sends the pass whenever the site can get one.
 
-use crate::utils::text::capitalize_first;
 use anyhow::{Result, anyhow};
 use futures::future::{FutureExt, LocalBoxFuture, Shared};
 use reqwest::{StatusCode, header::RETRY_AFTER};
@@ -107,10 +106,6 @@ const REFRESH_ENTITLEMENT: &str = "entitlements:refresh";
 /// that replaced it, so holding one a little past `rotatesAt` is safe.
 const MIN_PASS_HOLD_MS: f64 = 5.0 * 60.0 * 1000.0;
 
-/// Longest time (ms) a premium read waits for a pass fetch, counted from the
-/// fetch's start, before going without one. The fetch itself runs on and its
-/// pass is held for later reads: on a slow network (or a first fetch that
-/// asks RevenueCat), a page never waits on it longer than this.
 const PASS_WAIT_MS: f64 = 3000.0;
 
 const REFUSED_READ_PASS_WAIT_MS: f64 = 15.0 * 1000.0;
@@ -338,7 +333,11 @@ fn request_used_its_whole_timeout(elapsed_ms: f64, timeout: Duration) -> bool {
     elapsed_ms + TIMER_ROUNDING_MS >= timeout.as_secs_f64() * 1000.0
 }
 
-fn failed_at_the_timeout(error: &reqwest::Error, started_at_ms: f64, timeout: Duration) -> bool {
+fn body_read_failed_at_the_timeout(
+    error: &reqwest::Error,
+    started_at_ms: f64,
+    timeout: Duration,
+) -> bool {
     error.is_timeout()
         || request_used_its_whole_timeout(js_sys::Date::now() - started_at_ms, timeout)
 }
@@ -622,13 +621,10 @@ async fn post_within(
         if let Some(token) = token {
             builder = builder.bearer_auth(token);
         }
-        let response = builder.send().await.map_err(|error| {
-            transport_error(
-                function,
-                &error,
-                failed_at_the_timeout(&error, started_at_ms, timeout),
-            )
-        })?;
+        let response = builder
+            .send()
+            .await
+            .map_err(|error| transport_error(function, &error, error.is_timeout()))?;
         let status = response.status();
 
         if endpoint.retries() && should_retry(status, retries) {
@@ -657,7 +653,7 @@ async fn post_within(
         transport_error(
             function,
             &error,
-            failed_at_the_timeout(&error, started_at_ms, timeout),
+            body_read_failed_at_the_timeout(&error, started_at_ms, timeout),
         )
     })?;
     serde_json::from_slice::<QueryResponse>(&body)
@@ -1148,13 +1144,6 @@ pub(crate) async fn upload_meet_submission_file(
     bytes: Vec<u8>,
 ) -> Result<String> {
     let started_at_ms = js_sys::Date::now();
-    let upload_failure = |error: reqwest::Error| {
-        transport_error(
-            "file upload",
-            &error,
-            failed_at_the_timeout(&error, started_at_ms, UPLOAD_TIMEOUT),
-        )
-    };
     let response = reqwest::Client::new()
         .post(upload_url)
         .timeout(UPLOAD_TIMEOUT)
@@ -1162,7 +1151,7 @@ pub(crate) async fn upload_meet_submission_file(
         .body(bytes)
         .send()
         .await
-        .map_err(upload_failure)?;
+        .map_err(|error| transport_error("file upload", &error, error.is_timeout()))?;
     let status = response.status();
     if !status.is_success() {
         return Err(user_error(
@@ -1171,7 +1160,13 @@ pub(crate) async fn upload_meet_submission_file(
             status,
         ));
     }
-    let body = response.bytes().await.map_err(upload_failure)?;
+    let body = response.bytes().await.map_err(|error| {
+        transport_error(
+            "file upload",
+            &error,
+            body_read_failed_at_the_timeout(&error, started_at_ms, UPLOAD_TIMEOUT),
+        )
+    })?;
     read_storage_id(&body)
 }
 
@@ -1201,7 +1196,7 @@ fn meet_submission_value(response: QueryResponse) -> Result<Value> {
     ) = (status, &response)
         && let Some(error) = data.get("error").and_then(Value::as_str)
     {
-        let sentence = capitalize_first(error);
+        let sentence = sentence_case(error);
         return Err(anyhow!(if status == 429 {
             format!("{sentence}. Please try again tomorrow.")
         } else {
@@ -1209,6 +1204,16 @@ fn meet_submission_value(response: QueryResponse) -> Result<Value> {
         }));
     }
     answer_value(response)
+}
+
+/// `text` with its first letter capitalized: the server's errors are
+/// lowercase phrases (`meet name is required`).
+fn sentence_case(text: &str) -> String {
+    let mut characters = text.trim().chars();
+    match characters.next() {
+        Some(first) => first.to_uppercase().chain(characters).collect(),
+        None => String::new(),
+    }
 }
 
 /// Reads `meetSubmissions:generateUploadUrl`'s `{ uploadUrl }`.
