@@ -32,7 +32,7 @@ function deployment(afterStoring: (meet: string) => void = () => {}) {
       (error: unknown) => describeFailure(error).failedSources ?? [],
     );
   const failureText = () => handlerOf<Record<string, never>>(run)(ctx, {}).then(() => '', (error: unknown) => describeFailure(error).error);
-  const dryRun = () => handlerOf<{ dryRun: boolean }>(run)(ctx, { dryRun: true });
+  const dryRun = () => handlerOf<{ dryRun: boolean }, { label: string; meet?: string; error?: string }[]>(run)(ctx, { dryRun: true });
   return { stored, failedSources, failureText, dryRun };
 }
 
