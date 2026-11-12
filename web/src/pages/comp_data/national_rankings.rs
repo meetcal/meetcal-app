@@ -281,6 +281,7 @@ const DEFAULT_GENDER: &str = "Men";
 const DEFAULT_AGE_GROUP: &str = "Senior";
 const DEFAULT_DIVISION: &str = "Open Men's 60kg";
 const GENDERS: [&str; 2] = ["Men", "Women"];
+const FEDERATIONS: [&str; 2] = ["USAW", "USAMW"];
 
 fn ranking_request(federation: &str, division: &str, year: &str) -> Option<NationalRankingQuery> {
     if division.is_empty() {
@@ -308,6 +309,10 @@ fn gender_and_age_group_of(division: &str) -> Option<(&'static str, &'static str
             })
             .map(|age_group| (gender, *age_group))
     })
+}
+
+fn owned(values: &[&str]) -> Vec<String> {
+    values.iter().map(|value| (*value).to_owned()).collect()
 }
 
 struct FormChoices {
@@ -345,6 +350,9 @@ fn NationalRankingsForm(
     submit: Callback<NationalRankingQuery>,
 ) -> impl IntoView {
     let first = shown.with_untracked(|shown| form_choices(shown.as_ref()));
+    let first_federation = Some(first.federation.clone());
+    let first_gender = Some(first.gender.clone());
+    let first_age_group = Some(first.age_group.clone());
     let (federation, set_federation) = signal(first.federation);
     let (gender, set_gender) = signal(first.gender);
     let (age_group, set_age_group) = signal(first.age_group);
@@ -377,9 +385,9 @@ fn NationalRankingsForm(
                 }
             }
         }>
-            <label>"Federation"<select class="data-filter" prop:value=move || federation.get() on:change=move |event| set_federation.set(event_target_value(&event))><option value="USAW">"USAW"</option><option value="USAMW">"USAMW"</option></select></label>
-            <label>"Gender"<select class="data-filter" prop:value=move || gender.get() on:change=move |event| { let selected = event_target_value(&event); let next = division_options(&selected, &age_group.get()).into_iter().next().unwrap_or_default(); set_gender.set(selected); set_division.set(next); }><option value="Men">"Men"</option><option value="Women">"Women"</option></select></label>
-            <label>"Age group"<select class="data-filter" prop:value=move || age_group.get() on:change=move |event| { let selected = event_target_value(&event); let next = division_options(&gender.get(), &selected).into_iter().next().unwrap_or_default(); set_age_group.set(selected); set_division.set(next); }>{AGE_GROUPS.iter().map(|age| view! { <option value=*age selected=*age == "Senior">{*age}</option> }).collect_view()}</select></label>
+            <label>"Federation"<select class="data-filter" prop:value=move || federation.get() on:change=move |event| set_federation.set(event_target_value(&event))><SelectOptions values=owned(&FEDERATIONS) selected=first_federation /></select></label>
+            <label>"Gender"<select class="data-filter" prop:value=move || gender.get() on:change=move |event| { let selected = event_target_value(&event); let next = division_options(&selected, &age_group.get()).into_iter().next().unwrap_or_default(); set_gender.set(selected); set_division.set(next); }><SelectOptions values=owned(&GENDERS) selected=first_gender /></select></label>
+            <label>"Age group"<select class="data-filter" prop:value=move || age_group.get() on:change=move |event| { let selected = event_target_value(&event); let next = division_options(&gender.get(), &selected).into_iter().next().unwrap_or_default(); set_age_group.set(selected); set_division.set(next); }><SelectOptions values=owned(AGE_GROUPS) selected=first_age_group /></select></label>
             <label class="data-query-grow">"Division"<select class="data-filter" required=true prop:value=move || division.get() on:change=move |event| set_division.set(event_target_value(&event))>{move || view! { <DivisionOptions groups=division_groups(&gender.get(), &age_group.get()) selected=division.get() /> }}</select></label>
             <label>"Year (optional)"<input class="data-filter data-year-input" inputmode="numeric" maxlength="4" placeholder="All time" prop:value=move || year.get() aria-invalid=move || year_problem.get().map(|_| "true") aria-describedby="national-rankings-year-problem" on:input=move |event| { set_year.set(event_target_value(&event)); set_year_problem.set(None); } /></label>
             <button class="data-search-button" type="submit">"View rankings"</button>
