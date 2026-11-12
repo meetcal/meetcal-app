@@ -24,7 +24,7 @@ snippet_crate="$(basename "${snippet_dir}")"
 snippet_hash="$(cd "${snippet_dir}" && find . -type f -print | LC_ALL=C sort | xargs cat | content_hash)"
 hashed_snippet_crate="${snippet_crate}-${snippet_hash}"
 mv "${snippet_dir}" "${dist_dir}/snippets/${hashed_snippet_crate}"
-sed -i "s#snippets/${snippet_crate}/#snippets/${hashed_snippet_crate}/#g" "${javascript_candidates[0]}"
+sed -i -E "s#(from [\"']\./snippets/)${snippet_crate}/#\1${hashed_snippet_crate}/#g" "${javascript_candidates[0]}"
 javascript_file="meetcal-web-$(content_hash < "${javascript_candidates[0]}").js"
 mv "${javascript_candidates[0]}" "${dist_dir}/${javascript_file}"
 

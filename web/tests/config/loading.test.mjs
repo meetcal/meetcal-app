@@ -72,7 +72,16 @@ test("the glue and the snippet folder are named by their own content, so a year'
   assert.equal(glue.length, 1);
   const glueText = await readFile(new URL(glue[0], dist));
   assert.equal(glue[0], `meetcal-web-${hash(glueText)}.js`);
-  assert.ok(glueText.toString().includes(`snippets/${snippetFolder}/`), "the glue imports another snippet folder");
+  const imported = [...glueText.toString().matchAll(/from ["']\.\/(snippets\/[^"']+)["']/g)].map(([, path]) => path);
+  assert.ok(imported.length > 0, "the glue imports no snippet");
+  for (const path of imported) {
+    assert.ok(path.startsWith(`snippets/${snippetFolder}/`), `the glue imports ${path} from another folder`);
+    await readFile(new URL(path, dist));
+  }
+  const importObjectKeys = [...glueText.toString().matchAll(/"\.\/(snippets\/[^"]+)": import/g)].map(([, path]) => path);
+  for (const path of importObjectKeys) {
+    assert.ok(!path.startsWith(`snippets/${snippetFolder}/`), `${path}: the Wasm imports its snippets under the name wasm-bindgen gave them`);
+  }
 });
 
 test("pages and the routes they rewrite to revalidate on every visit", () => {
