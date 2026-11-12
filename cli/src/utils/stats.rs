@@ -499,7 +499,7 @@ pub fn signed_kg(value: Option<f64>) -> String {
 pub(crate) mod tests {
     use super::*;
 
-    pub fn row(
+    pub(crate) fn row(
         name: &str,
         date: &str,
         meet: &str,
@@ -775,7 +775,7 @@ pub(crate) mod tests {
 
     /// A row with its attempts as given and its bests and total computed from them, typos and
     /// all, the way the source does.
-    pub fn raw_row(snatch: [f64; 3], cj: [f64; 3]) -> LiftingResults {
+    pub(crate) fn raw_row(snatch: [f64; 3], cj: [f64; 3]) -> LiftingResults {
         row(
             "A",
             "2026-04-04",
