@@ -67,6 +67,11 @@ describe('reading again the events the last run named as failing (#566)', () => 
     expect(notRetried).not.toContain(String(olderId));
   });
 
+  it('stops naming a failing event that neither event index lists when both were read', async () => {
+    sport80();
+    expect((await deployment(['event 424242'])).failedSources).toEqual([]);
+  });
+
   it('names a failing event under the name it already had when its event index cannot be read', async () => {
     sport80(['2025']);
     const { failedSources } = await deployment([`Meet ${olderId} (event ${olderId})`]);

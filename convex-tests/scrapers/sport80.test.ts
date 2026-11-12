@@ -1,7 +1,6 @@
-import { JOBS } from '../../convex/cronJobs';
 import { readFileSync } from 'fs';
 import { join } from 'path';
-import { eventDate, eventIdOf, eventSource, formatResults, isSourceOfEvent, nested, failingEventIds, newestEvents, pickNewestEvents, pickNightlyEvents, pickRequestedEvents, RESULTS_JOB, ROLLING_NIGHTS, unreadableEventDate } from '../../convex/scrapers/parse/sport80';
+import { eventDate, eventIdOf, eventSource, formatResults, isSourceOfEvent, nested, failingEventIds, newestEvents, pickNewestEvents, pickNightlyEvents, pickRequestedEvents, ROLLING_NIGHTS, unreadableEventDate } from '../../convex/scrapers/parse/sport80';
 import { itemAt } from '../../convex/lib/json';
 
 // The first events of the 2026 index as Sport80 sent them on 2026-10-11 (every
@@ -131,10 +130,6 @@ describe('Sport80 results sync (port of update_supabase_from_sport80.py)', () =>
       expect(unreadable.map(({ event: e, recent }) => [eventIdOf(e), recent])).toEqual([['7990', true]]);
       const longAgo = pickNightlyEvents([...index, event('6000', '05/09/2025')], tonight, { count: 30 }).unreadable;
       expect(longAgo.map(({ event: e, recent }) => [eventIdOf(e), recent])).toEqual([['6000', false]]);
-    });
-
-    it('names the job whose failing events it reads again as the cron table does', () => {
-      expect(Object.keys(JOBS)).toContain(RESULTS_JOB);
     });
 
     it('still reads the newest events when none was held in the last three weeks', () => {

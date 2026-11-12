@@ -222,8 +222,6 @@ export const run = internalAction({
       }
       if (table.rows.length) meets.push({ eventId, meet, rows: formatResults(eventId, meet, eventDate(event), table.rows), notWhole: table.notWhole });
     }
-    // Every event asked for by id is synced or named: an override that read
-    // nothing must not finish as if it had done its work.
     for (const id of only ?? []) {
       if (meets.some((m) => m.eventId === id) || failures.some((f) => isSourceOfEvent(f.source, id))) continue;
       failures.push({ source: eventSource(null, id), error: 'no results read (no results page, no meet name, or an empty table), not synced' });
