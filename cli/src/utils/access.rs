@@ -340,7 +340,7 @@ mod tests {
 
     #[test]
     fn the_premium_functions_match_the_servers_list() {
-        assert_eq!(PREMIUM_FUNCTIONS.len(), 24);
+        assert_eq!(PREMIUM_FUNCTIONS.len(), 28);
         assert!(!is_premium(queries::ACCESS_PASS.function));
         for public in [
             "meets:list",

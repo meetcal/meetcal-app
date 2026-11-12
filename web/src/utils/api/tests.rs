@@ -124,7 +124,7 @@ fn premium_queries_carry_the_pass_and_the_rest_do_not() {
         assert!(!query.is_premium(), "{}", query.function);
         assert!(!carries_pass(query, &args), "{}", query.function);
     }
-    assert_eq!(SUBSCRIPTION_FUNCTIONS.len(), 24);
+    assert_eq!(SUBSCRIPTION_FUNCTIONS.len(), 28);
     assert!(!SUBSCRIPTION_FUNCTIONS.contains(&ACCESS_PASS));
     assert!(!SUBSCRIPTION_FUNCTIONS.contains(&REFRESH_ENTITLEMENT));
 }
