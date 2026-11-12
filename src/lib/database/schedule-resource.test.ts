@@ -1,7 +1,9 @@
 import type { MeetName } from "@/data/types/meet";
 import type { Schedule } from "@/types/schedule";
+import { fetchSchedule } from "@/lib/database/queries";
 import {
   primeScheduleCache,
+  primeScheduleFetch,
   resetSchedulePrimeForTests,
   SCHEDULE_PRIME_TTL_MS,
   scheduleResource,
@@ -151,5 +153,43 @@ describe("schedule resource priming", () => {
 
     await expect(scheduleResource.loadCached(MEET)).resolves.toBeNull();
     expect(mockGetMeetSchedule).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("launch schedule read", () => {
+  beforeEach(() => {
+    jest.useRealTimers();
+    mockGetMeetSchedule.mockReset();
+    mockGenerations.clear();
+    resetSchedulePrimeForTests();
+    jest.mocked(fetchSchedule).mockReset();
+  });
+
+  it("starts the network read at launch, and the Schedule tab joins it instead of sending its own", async () => {
+    const answer = deferred<Schedule>();
+    jest.mocked(fetchSchedule).mockReturnValue(answer.promise);
+    mockGetMeetSchedule.mockResolvedValue([]);
+    const listener = jest.fn();
+    const unsubscribe = scheduleResource.subscribe(scheduleResource.getKey(MEET), listener);
+
+    primeScheduleFetch(MEET);
+    await Promise.resolve();
+    const tab = scheduleResource.revalidateWithCached(null, MEET);
+    answer.resolve(day("Saturday"));
+
+    await expect(tab).resolves.toMatchObject({ data: day("Saturday"), changed: true });
+    expect(fetchSchedule).toHaveBeenCalledTimes(1);
+    expect(listener).toHaveBeenCalledWith(expect.objectContaining({ data: day("Saturday") }));
+    unsubscribe();
+  });
+
+  it("leaves a failed launch read for the tab to retry", async () => {
+    jest.mocked(fetchSchedule).mockRejectedValueOnce(new Error("Network request failed")).mockResolvedValueOnce(day("Sunday"));
+    mockGetMeetSchedule.mockResolvedValue([]);
+
+    primeScheduleFetch(MEET);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    await expect(scheduleResource.revalidateWithCached(null, MEET)).resolves.toMatchObject({ data: day("Sunday") });
+    expect(fetchSchedule).toHaveBeenCalledTimes(2);
   });
 });
