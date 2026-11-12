@@ -37,13 +37,13 @@ pub struct ScheduleArgs {
 
 /// One session on one platform, with its weight classes.
 #[derive(Clone, Debug, PartialEq)]
-pub struct Session {
-    pub date: String,
-    pub session: u32,
-    pub platform: String,
-    pub weigh_in_time: String,
-    pub start_time: String,
-    pub weight_classes: Vec<String>,
+pub(crate) struct Session {
+    pub(crate) date: String,
+    pub(crate) session: u32,
+    pub(crate) platform: String,
+    pub(crate) weigh_in_time: String,
+    pub(crate) start_time: String,
+    pub(crate) weight_classes: Vec<String>,
 }
 
 pub async fn run(args: ScheduleArgs) -> Result<()> {
@@ -55,54 +55,63 @@ pub async fn run(args: ScheduleArgs) -> Result<()> {
     }
 
     let all = sessions(rows);
-    let filters = [
-        Filter {
-            option: "--date",
-            value: args.date.as_deref().unwrap_or_default(),
-        },
-        Filter {
-            option: "--platform",
-            value: args.platform.as_deref().unwrap_or_default(),
-        },
-    ];
-    let wanted = |index: usize| (!filters[index].value.is_empty()).then_some(index);
+    fn given(value: &Option<String>) -> Option<&str> {
+        value.as_deref().filter(|value| !value.is_empty())
+    }
+    let (date, platform) = (given(&args.date), given(&args.platform));
     let sessions: Vec<Session> = all
         .iter()
-        .filter(|session| wanted(0).is_none_or(|_| session.date == filters[0].value))
+        .filter(|session| date.is_none_or(|date| session.date == date))
         .filter(|session| {
-            wanted(1).is_none_or(|_| {
-                session
-                    .platform
-                    .eq_ignore_ascii_case(filters[1].value.trim())
-            })
+            platform.is_none_or(|platform| session.platform.eq_ignore_ascii_case(platform.trim()))
         })
         .cloned()
         .collect();
     if sessions.is_empty() {
-        // Name the filter that matched nothing, with the days or platforms the meet has.
-        let given: Vec<usize> = (0..filters.len()).filter_map(wanted).collect();
+        type ValueOfSession = fn(&Session) -> &str;
+        let given_filters: Vec<(Filter, ValueOfSession)> = [
+            date.map(|value| {
+                let filter = Filter {
+                    option: "--date",
+                    value,
+                };
+                (filter, (|session| session.date.as_str()) as ValueOfSession)
+            }),
+            platform.map(|value| {
+                let filter = Filter {
+                    option: "--platform",
+                    value,
+                };
+                (
+                    filter,
+                    (|session| session.platform.as_str()) as ValueOfSession,
+                )
+            }),
+        ]
+        .into_iter()
+        .flatten()
+        .collect();
         let rows: Vec<Vec<&str>> = all
             .iter()
             .map(|session| {
-                let values = [session.date.as_str(), session.platform.as_str()];
-                given.iter().map(|&index| values[index]).collect()
+                given_filters
+                    .iter()
+                    .map(|(_, value)| value(session))
+                    .collect()
             })
             .collect();
-        let given_filters: Vec<Filter> = given
-            .iter()
-            .map(|&index| Filter {
-                option: filters[index].option,
-                value: filters[index].value,
-            })
+        let filters: Vec<Filter> = given_filters
+            .into_iter()
+            .map(|(filter, _)| filter)
             .collect();
-        return Err(no_match("sessions", &given_filters, &rows));
+        return Err(no_match("sessions", &filters, &rows));
     }
 
     output::emit(report(&sessions).when_empty("No sessions match those filters."));
     Ok(())
 }
 
-pub fn report(sessions: &[Session]) -> Report {
+pub(crate) fn report(sessions: &[Session]) -> Report {
     Report::new().table_with_data(
         "sessions",
         table(sessions, us_date, us_time),
@@ -112,7 +121,11 @@ pub fn report(sessions: &[Session]) -> Report {
 
 /// The sessions, with dates and times written by `date` and `time`: US dates and 12-hour times
 /// to show, `YYYY-MM-DD` and 24-hour `HH:MM` to export.
-pub fn table(sessions: &[Session], date: fn(&str) -> String, time: fn(&str) -> String) -> Table {
+pub(crate) fn table(
+    sessions: &[Session],
+    date: fn(&str) -> String,
+    time: fn(&str) -> String,
+) -> Table {
     let mut table = Table::new();
     table.set_header(vec![
         "Date",
@@ -137,7 +150,7 @@ pub fn table(sessions: &[Session], date: fn(&str) -> String, time: fn(&str) -> S
 
 /// Schedule rows (one per session, platform and weight class) grouped into sessions, in the
 /// schedule's order.
-pub fn sessions(rows: Vec<ScheduleRow>) -> Vec<Session> {
+pub(crate) fn sessions(rows: Vec<ScheduleRow>) -> Vec<Session> {
     let mut order = Vec::new();
     let mut grouped: BTreeMap<(String, u32, String), Session> = BTreeMap::new();
     for row in rows {

@@ -10,7 +10,7 @@ const MONTHS: [&str; 12] = [
 ];
 
 /// `2026-06-20` as `Jun 20, 2026`; anything else as written.
-pub fn us_date(value: &str) -> String {
+pub(crate) fn us_date(value: &str) -> String {
     let parts: Vec<&str> = value.trim().split('-').collect();
     if let [year, month, day] = parts.as_slice()
         && let (Ok(year), Ok(month @ 1..=12), Ok(day @ 1..=31)) = (
@@ -18,14 +18,15 @@ pub fn us_date(value: &str) -> String {
             month.parse::<usize>(),
             day.parse::<u32>(),
         )
+        && let Some(month_name) = MONTHS.get(month - 1)
     {
-        return format!("{} {day}, {year}", MONTHS[month - 1]);
+        return format!("{month_name} {day}, {year}");
     }
     value.to_string()
 }
 
 /// A meet's dates: one date, or `Jun 20 – 21, 2026`, or the two dates in full.
-pub fn date_range(start: &str, end: &str) -> String {
+pub(crate) fn date_range(start: &str, end: &str) -> String {
     if start == end || end.is_empty() {
         return us_date(start);
     }
@@ -49,7 +50,7 @@ pub fn date_range(start: &str, end: &str) -> String {
 }
 
 /// `08:00` or `08:00:00` as `8:00 AM`; anything else as written.
-pub fn us_time(value: &str) -> String {
+pub(crate) fn us_time(value: &str) -> String {
     let mut parts = value.trim().split(':');
     let (Some(hour), Some(minute)) = (parts.next(), parts.next()) else {
         return value.to_string();
@@ -67,7 +68,7 @@ pub fn us_time(value: &str) -> String {
 }
 
 /// `08:00` or `08:00:00` as `08:00`, for JSON and CSV; anything else as written.
-pub fn time_24h(value: &str) -> String {
+pub(crate) fn time_24h(value: &str) -> String {
     let mut parts = value.trim().split(':');
     let (Some(hour), Some(minute)) = (parts.next(), parts.next()) else {
         return value.to_string();
@@ -80,7 +81,7 @@ pub fn time_24h(value: &str) -> String {
 }
 
 /// A lift in kilograms without a trailing `.0`; blank for none.
-pub fn kg(value: f64) -> String {
+pub(crate) fn kg(value: f64) -> String {
     if value <= 0.0 {
         return String::new();
     }
@@ -96,7 +97,7 @@ fn record_weight(value: Option<f64>) -> String {
 }
 
 /// A record cell: the weight, then who set it, then when and where, one per line.
-pub fn record_cell(value: Option<f64>, holder: Option<&RecordHolder>) -> String {
+pub(crate) fn record_cell(value: Option<f64>, holder: Option<&RecordHolder>) -> String {
     let mut lines = vec![record_weight(value)];
     if let Some(holder) = holder {
         lines.push(holder.name.clone());
@@ -112,14 +113,22 @@ pub fn record_cell(value: Option<f64>, holder: Option<&RecordHolder>) -> String 
     lines.join("\n")
 }
 
-pub struct RecordRow<'a> {
-    pub weight_class: &'a str,
-    pub snatch: (Option<f64>, Option<&'a RecordHolder>),
-    pub cj: (Option<f64>, Option<&'a RecordHolder>),
-    pub total: (Option<f64>, Option<&'a RecordHolder>),
+pub(crate) fn capitalized(word: &str) -> String {
+    let mut letters = word.chars();
+    letters
+        .next()
+        .map(|first| first.to_uppercase().chain(letters).collect())
+        .unwrap_or_default()
 }
 
-pub fn record_tables<'a>(rows: impl IntoIterator<Item = RecordRow<'a>>) -> (Table, Table) {
+pub(crate) struct RecordRow<'a> {
+    pub(crate) weight_class: &'a str,
+    pub(crate) snatch: (Option<f64>, Option<&'a RecordHolder>),
+    pub(crate) cj: (Option<f64>, Option<&'a RecordHolder>),
+    pub(crate) total: (Option<f64>, Option<&'a RecordHolder>),
+}
+
+pub(crate) fn record_tables<'a>(rows: impl IntoIterator<Item = RecordRow<'a>>) -> (Table, Table) {
     let mut table = Table::new();
     table.set_header(vec!["Class", "Snatch", "CJ", "Total"]);
     let mut data = Table::new();
@@ -142,7 +151,7 @@ pub fn record_tables<'a>(rows: impl IntoIterator<Item = RecordRow<'a>>) -> (Tabl
     (table, data)
 }
 
-pub fn record_data_header() -> Vec<&'static str> {
+pub(crate) fn record_data_header() -> Vec<&'static str> {
     let mut header = vec!["Class"];
     for lift in ["Snatch", "CJ", "Total"] {
         header.extend(match lift {
@@ -155,7 +164,7 @@ pub fn record_data_header() -> Vec<&'static str> {
 }
 
 /// One lift's four export columns: weight, holder, date (`YYYY-MM-DD` as stored), place.
-pub fn record_data_cells(value: Option<f64>, holder: Option<&RecordHolder>) -> [String; 4] {
+pub(crate) fn record_data_cells(value: Option<f64>, holder: Option<&RecordHolder>) -> [String; 4] {
     [
         record_weight(value),
         holder.map(|holder| holder.name.clone()).unwrap_or_default(),
@@ -171,6 +180,15 @@ pub fn record_data_cells(value: Option<f64>, holder: Option<&RecordHolder>) -> [
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn capitalizing_raises_the_first_letter_whatever_its_alphabet() {
+        assert_eq!(capitalized("open"), "Open");
+        assert_eq!(capitalized("élan"), "Élan");
+        assert_eq!(capitalized("Open"), "Open");
+        assert_eq!(capitalized("2026"), "2026");
+        assert_eq!(capitalized(""), "");
+    }
 
     #[test]
     fn dates_read_as_us_dates() {

@@ -1,7 +1,7 @@
 use super::{
     address::{HistoryEntry, query_param, use_page_address},
     filters::{SortDirection, sort_numeric},
-    format::{NO_VALUE, format_us_date},
+    format::{GENDERS, NO_VALUE, format_us_date},
     loading::{Load, LoadState, load_error},
     ui::{DataPage, DataStatus, DataTable, EmptyTableRow, SelectOptions, TableSkeleton},
 };
@@ -280,7 +280,6 @@ const DEFAULT_FEDERATION: &str = "USAW";
 const DEFAULT_GENDER: &str = "Men";
 const DEFAULT_AGE_GROUP: &str = "Senior";
 const DEFAULT_DIVISION: &str = "Open Men's 60kg";
-const GENDERS: [&str; 2] = ["Men", "Women"];
 const FEDERATIONS: [&str; 2] = ["USAW", "USAMW"];
 
 fn ranking_request(federation: &str, division: &str, year: &str) -> Option<NationalRankingQuery> {

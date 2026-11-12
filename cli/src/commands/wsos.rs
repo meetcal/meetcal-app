@@ -36,18 +36,18 @@ pub async fn run(args: WsosArgs) -> Result<()> {
     Ok(())
 }
 
-pub fn report(registrations: &[String], records: &[String]) -> Report {
+pub(crate) fn report(registrations: &[String], records: &[String]) -> Report {
     Report::single("wsos", table(registrations, records))
 }
 
-pub fn age_groups_report(groups: Vec<String>) -> Report {
+pub(crate) fn age_groups_report(groups: Vec<String>) -> Report {
     Report::single("age_groups", output::list("Age Group", groups))
 }
 
 /// Every WSO name, as registrations name it (what `wso-wrapped`, `wso-compare`, `wso-trends`,
 /// `wso` and `leaderboard --wso` take) and as record sheets do (what `wso-records` takes). The
 /// two differ: "California North Central" registers athletes, "California North" keeps records.
-pub fn table(registrations: &[String], records: &[String]) -> Table {
+pub(crate) fn table(registrations: &[String], records: &[String]) -> Table {
     let mut names: Vec<&String> = records.iter().chain(registrations).collect();
     names.sort_by_key(|name| name.to_lowercase());
     names.dedup();

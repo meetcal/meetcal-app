@@ -1,4 +1,5 @@
 pub(crate) const NO_VALUE: &str = "—";
+pub(crate) const GENDERS: [&str; 2] = ["Men", "Women"];
 
 pub(crate) fn yes_no(value: bool) -> &'static str {
     if value { "Yes" } else { "No" }

@@ -19,8 +19,8 @@ use crate::utils::names::{NameKind, not_found};
 use crate::utils::output::{self, Report};
 use crate::utils::progress::Progress;
 use crate::utils::stats::{
-    Division, Gender, QPOINTS_LABEL, SINCLAIR_LABEL, fold, number, plausible, points, row_qpoints,
-    row_sinclair,
+    Division, Gender, QPOINTS_LABEL, SINCLAIR_LABEL, SINCLAIR_WITH_COEFFICIENTS, fold, number,
+    plausible, points, row_qpoints, row_sinclair,
 };
 
 /// What a leaderboard ranks by.
@@ -51,7 +51,7 @@ impl Metric {
     }
 
     /// The name `results:leaderboard` takes it by (its `by` argument).
-    pub fn server_name(self) -> &'static str {
+    pub(crate) fn server_name(self) -> &'static str {
         match self {
             Metric::Total => "total",
             Metric::Snatch => "snatch",
@@ -64,15 +64,15 @@ impl Metric {
 
 /// The most rows a leaderboard of every athlete shows (`results:leaderboard`'s limit,
 /// `MAX_LEADERBOARD_LIMIT` in `convex/lib/leaderboard.ts`). `--club` and `--wso` have none.
-pub const MAX_LIMIT: u32 = 500;
+pub(crate) const MAX_LIMIT: u32 = 500;
 
 /// A leaderboard of every athlete covers less than this many years (`MAX_LEADERBOARD_YEARS` in
 /// `convex/lib/leaderboard.ts`): `--to` before `--from` plus this many years.
-pub const MAX_YEARS: i32 = 5;
+pub(crate) const MAX_YEARS: i32 = 5;
 
 /// Why `results:leaderboard` would refuse a leaderboard of every athlete from `from` to `to` with
 /// `limit` rows, checked before any request; `None` when it would not.
-pub fn server_scope_problem(from: &str, to: &str, limit: u32) -> Option<String> {
+pub(crate) fn server_scope_problem(from: &str, to: &str, limit: u32) -> Option<String> {
     if to >= plus_years(from, MAX_YEARS).as_str() {
         return Some(format!(
             "A leaderboard of every athlete covers less than {MAX_YEARS} years: narrow --from and \
@@ -159,7 +159,7 @@ pub struct LeaderboardArgs {
 }
 
 /// The range a year or --from/--to covers.
-pub fn range(year: Option<i32>, from: Option<&str>, to: Option<&str>) -> (String, String) {
+pub(crate) fn range(year: Option<i32>, from: Option<&str>, to: Option<&str>) -> (String, String) {
     match (from, to) {
         (Some(from), Some(to)) => (from.trim().to_string(), to.trim().to_string()),
         _ => year_range(year.unwrap_or_else(current_year)),
@@ -169,16 +169,16 @@ pub fn range(year: Option<i32>, from: Option<&str>, to: Option<&str>) -> (String
 /// The filters rows must pass. `results:leaderboard` applies the same ones on the server
 /// (`convex/lib/leaderboard.ts`); these rank a club's or WSO's rows.
 #[derive(Debug, Default)]
-pub struct Filters {
-    pub gender: Option<Gender>,
-    pub category: Option<String>,
-    pub division: Option<String>,
-    pub federation: Option<String>,
-    pub adaptive: bool,
+pub(crate) struct Filters {
+    pub(crate) gender: Option<Gender>,
+    pub(crate) category: Option<String>,
+    pub(crate) division: Option<String>,
+    pub(crate) federation: Option<String>,
+    pub(crate) adaptive: bool,
 }
 
 impl Filters {
-    pub fn keeps(&self, row: &LiftingResults) -> bool {
+    pub(crate) fn keeps(&self, row: &LiftingResults) -> bool {
         let division = Division::parse(&row.age);
         (self.adaptive || !row.adaptive)
             && self
@@ -222,11 +222,11 @@ impl Filters {
 
 /// The federation left out unless asked for: British Weightlifting, outside USA comparisons (the
 /// adaptive records and the server's club stats leave it out too).
-pub const EXCLUDED_FEDERATION: &str = "BWL";
+pub(crate) const EXCLUDED_FEDERATION: &str = "BWL";
 
 /// Each athlete's best row by `metric` among `rows` that pass `filters`, best first (ties: the
 /// earlier result), at most `limit`.
-pub fn rank<'a>(
+pub(crate) fn rank<'a>(
     rows: &'a [LiftingResults],
     metric: Metric,
     filters: &Filters,
@@ -258,21 +258,21 @@ pub fn rank<'a>(
 /// A ranked row as the table prints it: one of `results:leaderboard`'s rows, or a club's or WSO's
 /// row ranked here.
 #[derive(Clone, Debug, Deserialize, PartialEq)]
-pub struct LeaderboardRow {
-    pub name: String,
-    pub date: String,
-    pub meet: String,
+pub(crate) struct LeaderboardRow {
+    pub(crate) name: String,
+    pub(crate) date: String,
+    pub(crate) meet: String,
     /// The division.
-    pub age: String,
-    pub federation: String,
-    pub body_weight: f64,
-    pub snatch_best: f64,
-    pub cj_best: f64,
-    pub total: f64,
-    pub sinclair: Option<f64>,
-    pub qpoints: Option<f64>,
+    pub(crate) age: String,
+    pub(crate) federation: String,
+    pub(crate) body_weight: f64,
+    pub(crate) snatch_best: f64,
+    pub(crate) cj_best: f64,
+    pub(crate) total: f64,
+    pub(crate) sinclair: Option<f64>,
+    pub(crate) qpoints: Option<f64>,
     /// What the row was ranked by.
-    pub value: f64,
+    pub(crate) value: f64,
 }
 
 impl LeaderboardRow {
@@ -296,13 +296,13 @@ impl LeaderboardRow {
 
 /// `results:leaderboard`'s answer: the ranked rows, and every federation in the range.
 #[derive(Debug, Deserialize)]
-pub struct LeaderboardAnswer {
-    pub rows: Vec<LeaderboardRow>,
-    pub federations: Vec<String>,
+pub(crate) struct LeaderboardAnswer {
+    pub(crate) rows: Vec<LeaderboardRow>,
+    pub(crate) federations: Vec<String>,
 }
 
 /// `results:leaderboard`'s arguments.
-pub fn leaderboard_arguments(
+pub(crate) fn leaderboard_arguments(
     from: &str,
     to: &str,
     metric: Metric,
@@ -398,7 +398,7 @@ pub async fn run(args: LeaderboardArgs) -> Result<()> {
         Metric::Total => "total",
         Metric::Snatch => "snatch",
         Metric::Cj => "clean & jerk",
-        Metric::Sinclair => "Sinclair (2021-24 coefficients)",
+        Metric::Sinclair => SINCLAIR_WITH_COEFFICIENTS,
         Metric::Qpoints => "Q-points",
     };
     let title = format!(
@@ -414,7 +414,7 @@ pub async fn run(args: LeaderboardArgs) -> Result<()> {
     Ok(())
 }
 
-pub fn report(ranked: &[LeaderboardRow]) -> Report {
+pub(crate) fn report(ranked: &[LeaderboardRow]) -> Report {
     Report::new().table_with_data(
         "leaderboard",
         table(ranked, us_date),
@@ -437,7 +437,7 @@ async fn group_rows(
 }
 
 /// The ranked rows, with dates written by `date` (US dates to show, ISO ones to export).
-pub fn table(ranked: &[LeaderboardRow], date: fn(&str) -> String) -> Table {
+pub(crate) fn table(ranked: &[LeaderboardRow], date: fn(&str) -> String) -> Table {
     let mut table = Table::new();
     table.set_header(vec![
         "Rank",
