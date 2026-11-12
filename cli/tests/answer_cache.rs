@@ -168,11 +168,42 @@ async fn a_rotated_pass_drops_the_premium_answers_read_with_the_old_one() {
     let run = || Access::from_file(login.clone()).with_cache(Cache::at(dir.join("cache")));
 
     records(&base_url, &run()).await;
+    hold_expires(&dir.join("cache"));
     records(&base_url, &run()).await;
 
     let bodies = request_bodies(&requests);
     assert_eq!(bodies[2]["path"], "accessPass:pass");
     assert_eq!(bodies[3]["args"], json!({"pass": "p2"}));
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+fn hold_expires(cache: &Path) {
+    let path = cache.join("pass.json");
+    let mut stored: Value = serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
+    stored["until"] = json!(1);
+    std::fs::write(&path, stored.to_string()).unwrap();
+}
+
+#[tokio::test]
+async fn a_pass_whose_rotation_is_already_past_is_held_for_the_minimum() {
+    let dir = scratch("late-rotation");
+    let (base_url, requests) = serve(vec![
+        reply(OK, None, pass_answer("p1", 1_000)),
+        reply(OK, None, tagged("\"e1\"", "[1]")),
+        reply(OK, None, unchanged("\"e1\"")),
+    ]);
+    let login = saved_login(&dir, &base_url);
+    let run = || Access::from_file(login.clone()).with_cache(Cache::at(dir.join("cache")));
+
+    records(&base_url, &run()).await;
+    records(&base_url, &run()).await;
+
+    let bodies = request_bodies(&requests);
+    assert_eq!(bodies.len(), 3, "the second run fetched the pass again");
+    assert_eq!(
+        bodies[2]["args"],
+        json!({"pass": "p1", "ifNoneMatch": "\"e1\""})
+    );
     std::fs::remove_dir_all(dir).unwrap();
 }
 

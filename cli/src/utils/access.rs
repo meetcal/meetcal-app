@@ -5,7 +5,7 @@ use serde_json::Value;
 use tokio::sync::Mutex;
 
 use crate::utils::backend::{self, Endpoint, FunctionError, functions, queries};
-use crate::utils::cache::{Cache, StoredPass};
+use crate::utils::cache::{Cache, StoredPass, held_until};
 use crate::utils::credentials::{self, Credentials};
 use crate::utils::progress;
 
@@ -302,7 +302,7 @@ impl Access {
                     deployment: base_url.to_string(),
                     token_id: login.token_id.clone(),
                     pass: answer.pass.clone(),
-                    rotates_at: answer.rotates_at,
+                    until: held_until(answer.rotates_at, now_ms()),
                 }),
                 Err(NoPass::LoginRejected | NoPass::NotSubscribed) => cache.forget_access(),
                 Err(

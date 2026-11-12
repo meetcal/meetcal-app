@@ -79,10 +79,11 @@ server's), through
   on the deployment that issued it. Logging in again replaces it and revokes the old token
   (`apiTokens:revoke`, best effort); `meetcal logout` revokes and deletes it.
 - `Access` (`src/utils/access.rs`) holds the run's pass. The first premium read takes the pass
-  kept in the cache (below) while it belongs to the saved login and has not reached its
-  `rotatesAt`, or else trades the saved token for one (`accessPass:pass`; only it,
+  kept in the cache (below) while it belongs to the saved login and is not yet due, or else trades the saved token for one (`accessPass:pass`; only it,
   `entitlements:refresh` and `apiTokens:revoke` send the token) and keeps it; concurrent reads
-  share that fetch. A pass Convex refuses is fetched again, never taken from the cache. When it answers 403, the CLI asks `entitlements:refresh` (an
+  share that fetch. A pass is due at its `rotatesAt`, but is held at least five minutes from
+  its fetch (`ACCESS_PASS_MIN_HOLD_MS`, as the app, the website and Siri hold it), so a clock
+  running ahead or a late rotation does not turn every run into a pass fetch. A pass Convex refuses is fetched again, never taken from the cache. When it answers 403, the CLI asks `entitlements:refresh` (an
   action, with the token) to re-check the subscription with RevenueCat, and asks for the pass once
   more if that answers `{ active: true }`; `login` does the same for its subscription check.
   Numbers outside the data rows (`expiresAt`, `rotatesAt`, `interval`) are read with
@@ -109,7 +110,7 @@ server's), through
   without asking. A test reads each function's `args` in `../convex/` and fails when a query
   marked revalidated takes no `ifNoneMatch`, or one that takes it is not marked.
 - Premium answers go under `answers/premium/`, and only when the read carried a pass. A new pass
-  (`pass.json`, with the login's token id, the deployment and `rotatesAt`) drops them, as do
+  (`pass.json`, with the login's token id, the deployment and when it is due) drops them, as do
   `logout`, a rejected login and a lapsed subscription.
 - Writes go to a temporary file renamed into place; an unreadable file is a miss and is
   replaced. Past 64 MB the least recently used answers go, and one larger than 16 MB is not kept.

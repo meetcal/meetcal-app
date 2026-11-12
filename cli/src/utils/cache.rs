@@ -14,7 +14,7 @@ pub(crate) const MAX_CACHE_BYTES: u64 = 64 * 1024 * 1024;
 
 pub(crate) const MAX_ANSWER_BYTES: usize = 16 * 1024 * 1024;
 
-pub(crate) const MAX_PASS_LIFETIME_MS: i64 = 2 * 24 * 60 * 60 * 1000;
+pub(crate) const ACCESS_PASS_MIN_HOLD_MS: i64 = 5 * 60 * 1000;
 
 pub(crate) const TAG_ARGUMENT: &str = "ifNoneMatch";
 
@@ -50,15 +50,18 @@ pub(crate) struct StoredPass {
     pub(crate) deployment: String,
     pub(crate) token_id: String,
     pub(crate) pass: String,
-    pub(crate) rotates_at: i64,
+    pub(crate) until: i64,
+}
+
+pub(crate) fn held_until(rotates_at: i64, fetched_at_ms: i64) -> i64 {
+    rotates_at.max(fetched_at_ms.saturating_add(ACCESS_PASS_MIN_HOLD_MS))
 }
 
 impl StoredPass {
     pub(crate) fn usable(&self, deployment: &str, token_id: &str, now_ms: i64) -> bool {
         same_deployment(&self.deployment, deployment)
             && self.token_id == token_id
-            && now_ms < self.rotates_at
-            && self.rotates_at - now_ms <= MAX_PASS_LIFETIME_MS
+            && now_ms < self.until
     }
 }
 
@@ -221,12 +224,12 @@ mod tests {
         }
     }
 
-    fn stored(pass: &str, rotates_at: i64) -> StoredPass {
+    fn stored(pass: &str, until: i64) -> StoredPass {
         StoredPass {
             deployment: "https://a.convex.cloud".to_string(),
             token_id: "tid-1".to_string(),
             pass: pass.to_string(),
-            rotates_at,
+            until,
         }
     }
 
@@ -396,17 +399,30 @@ mod tests {
     }
 
     #[test]
-    fn a_stored_pass_is_used_on_its_login_until_it_rotates() {
+    fn a_stored_pass_is_used_on_its_login_until_it_is_due() {
         let pass = stored("p1", 10_000);
         assert!(pass.usable("https://a.convex.cloud/", "tid-1", 9_999));
         assert!(!pass.usable("https://a.convex.cloud", "tid-1", 10_000));
         assert!(!pass.usable("https://b.convex.cloud", "tid-1", 1_000));
         assert!(!pass.usable("https://a.convex.cloud", "tid-2", 1_000));
-        assert!(!pass.usable(
-            "https://a.convex.cloud",
-            "tid-1",
-            10_000 - MAX_PASS_LIFETIME_MS - 1
-        ));
+        let days_ahead = stored("p1", 10 * 24 * 60 * 60 * 1000);
+        assert!(days_ahead.usable("https://a.convex.cloud", "tid-1", 1_000));
+    }
+
+    #[test]
+    fn a_pass_is_held_at_least_the_app_s_minimum_however_early_it_rotates() {
+        let fetched_at = 1_000_000;
+        assert_eq!(
+            held_until(fetched_at - 60_000, fetched_at),
+            fetched_at + ACCESS_PASS_MIN_HOLD_MS
+        );
+        assert_eq!(
+            held_until(fetched_at + 1, fetched_at),
+            fetched_at + ACCESS_PASS_MIN_HOLD_MS
+        );
+        let tomorrow = fetched_at + 24 * 60 * 60 * 1000;
+        assert_eq!(held_until(tomorrow, fetched_at), tomorrow);
+        assert_eq!(ACCESS_PASS_MIN_HOLD_MS, 5 * 60 * 1000);
     }
 
     #[test]
