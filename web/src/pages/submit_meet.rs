@@ -76,7 +76,7 @@ pub fn file_problem(file: &FileInfo) -> Option<&'static str> {
 /// Whether `value` is a real calendar date written `YYYY-MM-DD`.
 pub fn is_iso_date(value: &str) -> bool {
     let bytes = value.as_bytes();
-    if bytes.len() != 10 || bytes[4] != b'-' || bytes[7] != b'-' {
+    if bytes.len() != 10 || bytes.get(4) != Some(&b'-') || bytes.get(7) != Some(&b'-') {
         return false;
     }
     let number = |range: std::ops::Range<usize>| -> Option<u32> {
@@ -473,7 +473,7 @@ fn SubmitMeetForm() -> impl IntoView {
                         <p class="submit-progress" role="status" aria-live="polite">
                             {move || match phase.get() {
                                 Phase::Working(progress) => progress,
-                                _ => String::new(),
+                                Phase::Editing | Phase::Sent => String::new(),
                             }}
                         </p>
                         <button class="access-button submit-button" type="submit" disabled=move || working.get()>

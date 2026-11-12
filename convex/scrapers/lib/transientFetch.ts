@@ -1,4 +1,5 @@
 import { fetchPdf, fetchText, retryable, withRetries, type RetryPolicy } from './http';
+import { errorMessage } from '../../lib/errors';
 
 /**
  * The WSO sites on small hosts (Missouri Valley, Mountain South, Illinois,
@@ -16,7 +17,7 @@ function gaveUp(url: string) {
     const detail = cause instanceof Error
       ? ` (${('code' in cause ? `${String(cause.code)}: ` : '')}${cause.message})`
       : '';
-    return Object.assign(new Error(`GET ${url} failed after ${attempts} attempt(s): ${error instanceof Error ? error.message : String(error)}${detail}`), { cause: error });
+    return Object.assign(new Error(`GET ${url} failed after ${attempts} attempt(s): ${errorMessage(error)}${detail}`), { cause: error });
   };
 }
 

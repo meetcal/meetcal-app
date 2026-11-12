@@ -1,3 +1,4 @@
+#![cfg(test)]
 //! Date options are parsed before any request, so a bad value names the option and the format.
 
 use clap::Parser;

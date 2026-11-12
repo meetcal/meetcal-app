@@ -88,6 +88,26 @@ export const liftingResultsFields = {
     federation: v.optional(v.string()),
 };
 
+export const lifterMatch = v.union(v.literal('history'), v.literal('fit'));
+
+export const lifterLinkFields = {
+    lifterId: v.optional(v.string()),
+    lifterMatch: v.optional(lifterMatch),
+};
+
+export const liftersFields = {
+    athleteId: v.string(),
+    name: v.string(),
+    nameKey: v.string(),
+    gender: v.optional(v.string()),
+    birthYear: v.optional(v.number()),
+    club: v.optional(v.string()),
+    clubSeenAt: v.optional(v.string()),
+    wso: v.optional(v.string()),
+    wsoSeenAt: v.optional(v.string()),
+    seenAt: v.string(),
+};
+
 export const meetsFields = {
     name: v.string(),
     venueName: v.string(),
@@ -179,13 +199,25 @@ export default defineSchema({
   // costs storage and write throughput, and the nightly sync rewrites this
   // table in bulk. Name search goes through the directory views
   // (`lib/directory.ts`), not a search index.
-  lifting_results: defineTable(liftingResultsFields)
+  lifting_results: defineTable({ ...liftingResultsFields, ...lifterLinkFields })
     .index('by_meet', ['meet'])
     .index('by_date', ['date'])
     .index('by_event_and_name', ['eventId', 'name'])
     .index('by_federation_age_and_date', ['federation', 'age', 'date'])
     .index('by_adaptive_and_date', ['adaptive', 'date'])
     .index('by_nameKey_and_date', ['nameKey', 'date']),
+
+  lifters: defineTable(liftersFields).index('by_athleteId', ['athleteId']).index('by_nameKey', ['nameKey']),
+
+  lifter_memberships: defineTable({ membership: v.string(), athleteId: v.string() }).index('by_membership', ['membership']),
+
+  lifter_relinks: defineTable({ nameKey: v.string() }).index('by_nameKey', ['nameKey']),
+
+  lifter_names: defineTable({ nameKey: v.string(), athleteId: v.string() })
+    .index('by_nameKey_and_athleteId', ['nameKey', 'athleteId'])
+    .index('by_athleteId', ['athleteId']),
+
+  lifter_sync: defineTable({ completeRunStartedAt: v.number() }),
 
   meets: defineTable(meetsFields)
     .index('by_status_and_start_date', ['status', 'startDate'])

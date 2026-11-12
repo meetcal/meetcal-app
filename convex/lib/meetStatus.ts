@@ -1,4 +1,5 @@
 import type { Doc } from '../_generated/dataModel';
+import { isoDateOf } from './dates';
 import { meetLocalDate, zoneFormatter, type ZoneFormatters } from './meetData';
 
 export type MeetStatus = Doc<'meets'>['status'];
@@ -58,11 +59,8 @@ export function meetStatusAt(
   return meetStatusOn(meet, today);
 }
 
-/**
- * The earliest calendar date any place is on at `instant` (UTC-12, "Anywhere
- * on Earth", is the furthest behind): a meet ending on or after it may not
- * have ended yet, and one starting after it has not begun everywhere.
- */
+const ANYWHERE_ON_EARTH_OFFSET_MS = 12 * 60 * 60 * 1000;
+
 export function earliestLocalDate(instant: number): string {
-  return new Date(instant - 12 * 60 * 60 * 1000).toISOString().slice(0, 10);
+  return isoDateOf(instant - ANYWHERE_ON_EARTH_OFFSET_MS);
 }

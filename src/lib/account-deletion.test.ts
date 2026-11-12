@@ -24,7 +24,7 @@ describe("account deletion", () => {
   });
 
   it("clears only the deleted user's saved sessions and outbox from the device", async () => {
-    await AsyncStorage.multiSet([
+    await AsyncStorage.setMany(Object.fromEntries([
       ["@saved_sessions_user_1", "[]"],
       ["@saved_sessions_outbox_user_1", "[]"],
       ["@saved_sessions_outbox_seeded_user_1", "1"],
@@ -33,7 +33,7 @@ describe("account deletion", () => {
       ["@savedSessions_user_1", "[]"],
       ["sessions_user_1", "[]"],
       ["@saved_sessions_user_2", "[]"],
-    ]);
+    ]));
     await clearLocalUserData("user_1");
     expect(await AsyncStorage.getAllKeys()).toEqual(["@saved_sessions_user_2"]);
   });

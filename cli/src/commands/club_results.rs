@@ -4,6 +4,7 @@ use comfy_table::Table;
 
 use crate::types::club::ClubMeetStats;
 use crate::utils::backend::{queries, query};
+use crate::utils::format::capitalized;
 use crate::utils::meet_names::result_meet_aliases;
 use crate::utils::names::{NameKind, clubs, not_found, not_found_message};
 use crate::utils::output::{self, Report};
@@ -36,31 +37,85 @@ pub async fn run(args: ClubResultsArgs) -> Result<()> {
         if !clubs.is_empty() && !club_known(&clubs, club) {
             bail!(not_found_message(NameKind::Club, club, &clubs, message));
         }
-        if results_only(meet).await {
-            bail!(results_only_message(meet));
+        if meet_has_only_results(meet).await {
+            bail!(results_only_message("club-results", meet));
         }
         return Err(not_found(NameKind::ResultsMeet, meet, message).await);
     }
-    output::emit(report(club, meet, &stats));
+    refuse_uncounted_results("Club", club, meet, &stats).await?;
+    output::emit(report("Club", club, meet, &stats));
     Ok(())
+}
+
+pub(crate) async fn refuse_uncounted_results(
+    group: &str,
+    name: &str,
+    meet: &str,
+    stats: &ClubMeetStats,
+) -> Result<()> {
+    if !stats.athlete_results.is_empty() {
+        return Ok(());
+    }
+    let titles = results_under_other_names(meet).await;
+    match uncounted_results_message(group, name, meet, stats.total_athletes, &titles) {
+        Some(message) => bail!(message),
+        None => Ok(()),
+    }
+}
+
+async fn results_under_other_names(meet: &str) -> Vec<String> {
+    let mut titles = Vec::new();
+    for alias in result_meet_aliases(meet) {
+        if alias == meet {
+            continue;
+        }
+        let rows: Result<Vec<serde_json::Value>> =
+            query(queries::MEET_RESULTS, &serde_json::json!({ "meet": alias })).await;
+        if matches!(rows, Ok(ref rows) if !rows.is_empty()) {
+            titles.push(alias);
+        }
+    }
+    titles
+}
+
+pub(crate) fn uncounted_results_message(
+    group: &str,
+    name: &str,
+    meet: &str,
+    athletes: u64,
+    titles_with_results: &[String],
+) -> Option<String> {
+    let first = titles_with_results.first()?;
+    let quoted: Vec<String> = titles_with_results
+        .iter()
+        .map(|title| format!("\"{title}\""))
+        .collect();
+    let athletes = match athletes {
+        1 => "1 athlete".to_string(),
+        count => format!("{count} athletes"),
+    };
+    Some(format!(
+        "{group} \"{name}\" has {athletes} registered for meet \"{meet}\", and none of \
+         their results are counted there, while MeetCal holds results under {}. If those are this \
+         meet's results, they are not linked to it yet.\n\
+         See them with: meetcal meet-results \"{first}\"",
+        quoted.join(" and ")
+    ))
 }
 
 /// Whether `club` is a known club exactly as the stats query was given it: the query matches
 /// the name exactly, so a name differing in case or spacing is a club to suggest.
-pub fn club_known(clubs: &[String], club: &str) -> bool {
+pub(crate) fn club_known(clubs: &[String], club: &str) -> bool {
     clubs.iter().any(|known| known == club)
 }
 
-/// Whether MeetCal has `meet`'s results but not its start list. The club report counts the
-/// athletes registered with the club, so it cannot be built from results alone, and the meet's
-/// name is right, so suggesting other meets would mislead. Any failed lookup reads as `false`,
-/// leaving the usual not-found error.
-async fn results_only(meet: &str) -> bool {
+pub(crate) async fn meet_has_only_results(meet: &str) -> bool {
     let roster: Result<Vec<serde_json::Value>> =
         query(queries::MEET_ATHLETES, &serde_json::json!({ "meet": meet })).await;
-    if !matches!(roster, Ok(ref athletes) if athletes.is_empty()) {
-        return false;
-    }
+    matches!(roster, Ok(ref athletes) if athletes.is_empty()) && meet_has_results(meet).await
+}
+
+pub(crate) async fn meet_has_results(meet: &str) -> bool {
     for alias in result_meet_aliases(meet) {
         let rows: Result<Vec<serde_json::Value>> =
             query(queries::MEET_RESULTS, &serde_json::json!({ "meet": alias })).await;
@@ -71,15 +126,14 @@ async fn results_only(meet: &str) -> bool {
     false
 }
 
-/// The error for a meet MeetCal has results for but no start list.
-pub fn results_only_message(meet: &str) -> String {
+pub(crate) fn results_only_message(command: &str, meet: &str) -> String {
     format!(
-        "club-results needs the start list of meet \"{meet}\", and MeetCal has only its results.\n\
+        "{command} needs the start list of meet \"{meet}\", and MeetCal has only its results.\n\
          See them with: meetcal meet-results \"{meet}\""
     )
 }
 
-pub async fn get_club_meet_stats(club: &str, meet: &str) -> Result<ClubMeetStats> {
+pub(crate) async fn get_club_meet_stats(club: &str, meet: &str) -> Result<ClubMeetStats> {
     query(
         queries::CLUB_MEET_STATS,
         &serde_json::json!({ "club": club, "meet": meet }),
@@ -87,7 +141,7 @@ pub async fn get_club_meet_stats(club: &str, meet: &str) -> Result<ClubMeetStats
     .await
 }
 
-pub fn validate_stats(stats: &ClubMeetStats, club: &str, meet: &str) -> Result<()> {
+pub(crate) fn validate_stats(stats: &ClubMeetStats, club: &str, meet: &str) -> Result<()> {
     if stats.total_athletes == 0 {
         bail!("No athletes found for club \"{club}\" in meet \"{meet}\"");
     }
@@ -97,14 +151,14 @@ pub fn validate_stats(stats: &ClubMeetStats, club: &str, meet: &str) -> Result<(
 
 #[cfg(test)]
 fn render_report(club: &str, meet: &str, stats: &ClubMeetStats) -> String {
-    report(club, meet, stats).to_text()
+    report("Club", club, meet, stats).to_text()
 }
 
-pub fn report(club: &str, meet: &str, stats: &ClubMeetStats) -> Report {
+pub(crate) fn report(group: &str, name: &str, meet: &str, stats: &ClubMeetStats) -> Report {
     let mut summary = Table::new();
-    summary.set_header(vec!["Club", "Meet", "Athletes", "Results"]);
+    summary.set_header(vec![group, "Meet", "Athletes", "Results"]);
     summary.add_row(vec![
-        club.to_string(),
+        name.to_string(),
         meet.to_string(),
         stats.total_athletes.to_string(),
         stats.athlete_results.len().to_string(),
@@ -185,15 +239,7 @@ fn yes_no(value: bool) -> String {
 }
 
 fn medal_name(medal: Option<&str>) -> String {
-    medal
-        .map(|value| {
-            let mut characters = value.chars();
-            match characters.next() {
-                Some(first) => first.to_uppercase().collect::<String>() + characters.as_str(),
-                None => String::new(),
-            }
-        })
-        .unwrap_or_else(|| "-".to_string())
+    medal.map(capitalized).unwrap_or_else(|| "-".to_string())
 }
 
 #[cfg(test)]
@@ -209,7 +255,6 @@ mod tests {
             cj_best: 105.0,
             total: 187.5,
             body_weight: 68.4,
-            medal: Some("gold".to_string()),
             snatch_medal: Some("silver".to_string()),
             cj_medal: None,
             total_medal: Some("gold".to_string()),
@@ -303,11 +348,43 @@ mod tests {
 
     #[test]
     fn a_results_only_meet_points_to_meet_results_not_other_meets() {
-        let message = results_only_message("2025 UMWF World Championships");
+        let message = results_only_message("club-results", "2025 UMWF World Championships");
 
-        assert!(message.contains("start list"));
+        assert!(message.starts_with("club-results needs the start list"));
+        assert!(results_only_message("wso", "M").starts_with("wso needs the start list"));
         assert!(message.contains("meetcal meet-results \"2025 UMWF World Championships\""));
         assert!(!message.contains("Did you mean"));
+    }
+
+    #[test]
+    fn athletes_without_counted_results_at_a_meet_with_results_elsewhere_are_explained() {
+        let titles = vec![
+            "The 2026 USA Weightlifting Masters National Championships Powered by Rogue Fitness"
+                .to_string(),
+            "The 2026 National University Championships".to_string(),
+        ];
+        assert_eq!(
+            uncounted_results_message("WSO", "Carolina", "2026 Masters & University", 12, &titles)
+                .as_deref(),
+            Some(
+                "WSO \"Carolina\" has 12 athletes registered for meet \"2026 Masters & University\", \
+                 and none of their results are counted there, while MeetCal holds results under \
+                 \"The 2026 USA Weightlifting Masters National Championships Powered by Rogue \
+                 Fitness\" and \"The 2026 National University Championships\". If those are this \
+                 meet's results, they are not linked to it yet.\nSee them with: meetcal meet-results \
+                 \"The 2026 USA Weightlifting Masters National Championships Powered by Rogue \
+                 Fitness\""
+            )
+        );
+        assert_eq!(
+            uncounted_results_message("Club", "Club", "Ohio Open", 3, &[]),
+            None
+        );
+        assert!(
+            uncounted_results_message("Club", "Barbell", "Meet", 1, &titles).is_some_and(
+                |message| message.starts_with("Club \"Barbell\" has 1 athlete registered")
+            )
+        );
     }
 
     #[test]
@@ -321,6 +398,18 @@ mod tests {
         assert!(report.contains("Jane Doe"));
         assert!(report.contains("Silver"));
         assert!(report.contains("Gold"));
+    }
+
+    #[test]
+    fn a_wso_report_is_the_club_report_under_a_wso_column() {
+        let club = report("Club", "Test Club", "Test Meet", &stats()).to_json();
+        let wso = report("WSO", "Carolina", "Test Meet", &stats()).to_json();
+        assert_eq!(club["summary"][0]["club"], "Test Club");
+        assert_eq!(wso["summary"][0]["wso"], "Carolina");
+        assert!(wso["summary"][0].get("club").is_none());
+        for table in ["results", "medals", "athletes"] {
+            assert_eq!(wso[table], club[table], "{table}");
+        }
     }
 
     #[test]

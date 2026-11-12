@@ -21,19 +21,19 @@ use crate::utils::credentials;
 use crate::utils::retry::{next_retry_delay, next_transport_retry_delay, parse_retry_after_secs};
 
 /// The production Convex deployment, which the app and the website read too.
-pub const CONVEX_URL: &str = "https://disciplined-hare-790.convex.cloud";
+pub(crate) const CONVEX_URL: &str = "https://disciplined-hare-790.convex.cloud";
 
 /// Environment variable that points the CLI at another deployment (a dev one).
-pub const CONVEX_URL_ENV: &str = "MEETCAL_CONVEX_URL";
+pub(crate) const CONVEX_URL_ENV: &str = "MEETCAL_CONVEX_URL";
 
 /// User-Agent sent with every request.
 pub const USER_AGENT: &str = concat!("meetcal-cli/", env!("CARGO_PKG_VERSION"));
 
 /// Time allowed to establish a connection.
-pub const CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
+pub(crate) const CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
 
 /// Time allowed for a whole request, from connecting to reading the body.
-pub const REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
+pub(crate) const REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
 
 /// Convex answers a function that ran but failed with this status (or 200).
 const FUNCTION_FAILED: u16 = 560;
@@ -41,12 +41,12 @@ const FUNCTION_FAILED: u16 = 560;
 /// Most pages [`query_all_pages`] reads before giving up. A club's or WSO's entries arrive 2,000
 /// rows a page, so this allows 200,000 rows; an answer that never reports `isDone` fails here
 /// instead of looping forever.
-pub const MAX_PAGES: usize = 100;
+pub(crate) const MAX_PAGES: usize = 100;
 
 static CLIENT: OnceLock<Client> = OnceLock::new();
 
 /// The HTTP client shared by every request.
-pub fn client() -> Result<&'static Client> {
+pub(crate) fn client() -> Result<&'static Client> {
     if let Some(client) = CLIENT.get() {
         return Ok(client);
     }
@@ -64,7 +64,7 @@ static ACCESS: OnceLock<Access> = OnceLock::new();
 
 /// The saved login (`utils::credentials::default_path`) and the pass fetched with it, shared by
 /// every read of this run.
-pub fn default_access() -> &'static Access {
+pub(crate) fn default_access() -> &'static Access {
     ACCESS.get_or_init(|| match credentials::default_path() {
         Some(path) => Access::from_file(path),
         None => Access::anonymous(),
@@ -72,7 +72,7 @@ pub fn default_access() -> &'static Access {
 }
 
 /// The deployment to read: `MEETCAL_CONVEX_URL` when set, production otherwise.
-pub fn convex_url() -> String {
+pub(crate) fn convex_url() -> String {
     std::env::var(CONVEX_URL_ENV)
         .ok()
         .filter(|url| !url.trim().is_empty())
@@ -81,7 +81,7 @@ pub fn convex_url() -> String {
 
 /// How a query's answer carries its body.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Body {
+pub(crate) enum Body {
     /// The answer is the body.
     Value,
     /// The answer is `{ json }` or `{ etag, json }`: the body as JSON text, which Convex serves
@@ -93,8 +93,8 @@ pub enum Body {
 #[derive(Clone, Copy, Debug)]
 pub struct Query {
     /// `module:function`, e.g. `reference:records` for `convex/reference.ts`.
-    pub function: &'static str,
-    pub body: Body,
+    pub(crate) function: &'static str,
+    pub(crate) body: Body,
 }
 
 impl Query {
@@ -120,32 +120,32 @@ pub mod queries {
 
     /// `GET /meets`: meets starting within three months; takes `now` (milliseconds, rounded
     /// down to the hour so callers share Convex's cached answer).
-    pub const UPCOMING_MEETS: Query = Query::text("meets:list");
+    pub(crate) const UPCOMING_MEETS: Query = Query::text("meets:list");
     /// `GET /meets/completed`: completed meets, newest first.
-    pub const COMPLETED_MEETS: Query = Query::text("meets:completed");
+    pub(crate) const COMPLETED_MEETS: Query = Query::text("meets:completed");
     /// `GET /meets/details`; takes `meet`. An unknown meet is a 404 error.
-    pub const MEET_DETAILS: Query = Query::text("meets:details");
+    pub(crate) const MEET_DETAILS: Query = Query::text("meets:details");
     /// `GET /meets/schedule`; takes `meet`.
     pub const MEET_SCHEDULE: Query = Query::text("meets:schedule");
     /// Distinct meet names in the results or the registrations, a page at a time; takes `source`
     /// (`results` or `registrations`), `after` (null to start) and optionally `before`. Answers
     /// `{ json, next }`.
-    pub const MEET_NAMES_PAGE: Query = Query::value("meets:namesPage");
-    pub const MEET_ATTENDANCE: Query = Query::text("meets:attendance");
+    pub(crate) const MEET_NAMES_PAGE: Query = Query::value("meets:namesPage");
+    pub(crate) const MEET_ATTENDANCE: Query = Query::text("meets:attendance");
     /// `GET /meets/athletes`; takes `meet`.
-    pub const MEET_ATHLETES: Query = Query::text("meets:athletes");
+    pub(crate) const MEET_ATHLETES: Query = Query::text("meets:athletes");
     /// `GET /meets/athletes-sessions`; takes `meet`, and optionally `sessionNumber` and
     /// `platform`.
-    pub const MEET_ATHLETES_SESSIONS: Query = Query::text("meets:athletesSessions");
+    pub(crate) const MEET_ATHLETES_SESSIONS: Query = Query::text("meets:athletesSessions");
     /// `GET /lifting-results`; takes `meet`.
-    pub const MEET_RESULTS: Query = Query::text("results:byMeet");
+    pub(crate) const MEET_RESULTS: Query = Query::text("results:byMeet");
     /// `GET /lifting-results/by-names`; takes `names` (at most 100).
-    pub const RESULTS_BY_NAMES: Query = Query::text("results:byNames");
+    pub(crate) const RESULTS_BY_NAMES: Query = Query::text("results:byNames");
     /// `GET /lifting-results/recent`; takes `names` (at most 100) and `cutoffDate`.
-    pub const RECENT_RESULTS: Query = Query::text("results:recent");
+    pub(crate) const RECENT_RESULTS: Query = Query::text("results:recent");
     /// `GET /lifting-results/bests`: each name's best snatch, clean & jerk and total since
     /// `cutoffDate`; takes `names` (at most 100) and `cutoffDate`.
-    pub const BESTS: Query = Query::value("results:bests");
+    pub(crate) const BESTS: Query = Query::value("results:bests");
     /// `GET /search`; takes `query`, and optionally `startDate` and `endDate` (both included).
     /// Answers at most 600 results, the most recent, with `truncated` set when it cut some.
     pub const SEARCH: Query = Query::value("results:search");
@@ -153,44 +153,46 @@ pub mod queries {
     /// pass. Takes `query`, `year` and optionally `picked` (true: the exact name only). Answers
     /// `{ kind }`: `athlete` with `name` and `stats`, `ambiguous`, `narrow`, `tooManyResults`, or
     /// `none` with name `suggestions`.
-    pub const WRAPPED: Query = Query::value("results:wrapped");
+    pub(crate) const WRAPPED: Query = Query::value("results:wrapped");
     /// `GET /data/records`
-    pub const RECORDS: Query = Query::text("reference:records");
+    pub(crate) const RECORDS: Query = Query::text("reference:records");
     /// `GET /data/standards`
-    pub const STANDARDS: Query = Query::text("reference:standards");
+    pub(crate) const STANDARDS: Query = Query::text("reference:standards");
     /// `GET /data/qualifying-totals`
-    pub const QUALIFYING_TOTALS: Query = Query::text("reference:qualifyingTotals");
+    pub(crate) const QUALIFYING_TOTALS: Query = Query::text("reference:qualifyingTotals");
     /// `GET /data/intl-rankings`
-    pub const INTL_RANKINGS: Query = Query::text("reference:intlRankings");
+    pub(crate) const INTL_RANKINGS: Query = Query::text("reference:intlRankings");
     /// `GET /data/nat-rankings`; takes `federation` and `ageCategory`.
-    pub const NATIONAL_RANKINGS: Query = Query::text("reference:nationalRankings");
+    pub(crate) const NATIONAL_RANKINGS: Query = Query::text("reference:nationalRankings");
     /// `GET /data/nat-rankings-year`; also takes `year`.
-    pub const NATIONAL_RANKINGS_BY_YEAR: Query = Query::text("reference:nationalRankingsByYear");
+    pub(crate) const NATIONAL_RANKINGS_BY_YEAR: Query =
+        Query::text("reference:nationalRankingsByYear");
     /// `GET /data/wso/records`; takes `wso`, and optionally `ageCategory` and `gender`.
-    pub const WSO_RECORDS: Query = Query::text("reference:wsoRecords");
+    pub(crate) const WSO_RECORDS: Query = Query::text("reference:wsoRecords");
     /// `GET /data/adaptive`; takes `gender` and `excludeFederation`.
-    pub const ADAPTIVE_RECORDS: Query = Query::text("reference:adaptiveRecords");
+    pub(crate) const ADAPTIVE_RECORDS: Query = Query::text("reference:adaptiveRecords");
     /// `GET /clubs`: every club name.
-    pub const CLUBS: Query = Query::text("reference:clubs");
+    pub(crate) const CLUBS: Query = Query::text("reference:clubs");
     /// `GET /data/wso`: every WSO with records.
-    pub const WSO_LIST: Query = Query::text("reference:wsoList");
+    pub(crate) const WSO_LIST: Query = Query::text("reference:wsoList");
     /// Every WSO name on registrations: the names `reference:wsoAthletes` matches, which differ
     /// from the record sheets' (`reference:wsoList`).
-    pub const REGISTRATION_WSOS: Query = Query::value("reference:registrationWsos");
+    pub(crate) const REGISTRATION_WSOS: Query = Query::value("reference:registrationWsos");
     /// `GET /data/wso/age-groups`: the age groups a WSO keeps records for; takes `wso`.
-    pub const WSO_AGE_GROUPS: Query = Query::text("reference:wsoAgeGroups");
+    pub(crate) const WSO_AGE_GROUPS: Query = Query::text("reference:wsoAgeGroups");
     /// `GET /clubs/athletes`; takes `club`, and `cursor` (null to start) to page. Read it with
     /// [`super::query_all_pages`]: a page answers `{ json, cursor, isDone }`.
     pub const CLUB_ATHLETES: Query = Query::value("reference:clubAthletes");
     /// `GET /clubs/meet-stats`; takes `club` and `meet`.
-    pub const CLUB_MEET_STATS: Query = Query::value("reference:clubMeetStats");
+    pub(crate) const CLUB_MEET_STATS: Query = Query::value("reference:clubMeetStats");
+    pub(crate) const WSO_MEET_STATS: Query = Query::value("reference:wsoMeetStats");
     /// `GET /wsos/athletes`; takes `wso`, and `cursor` (null to start) to page. Read it with
     /// [`super::query_all_pages`]: a page answers `{ json, cursor, isDone }`.
-    pub const WSO_ATHLETES: Query = Query::value("reference:wsoAthletes");
+    pub(crate) const WSO_ATHLETES: Query = Query::value("reference:wsoAthletes");
     /// The access pass for a subscriber, called with the saved login's token as the bearer
     /// (`utils::access`): `{ pass, rotatesAt }`, or status 401 (token not accepted), 403 (no active
     /// subscription) or 503 (no pass yet).
-    pub const ACCESS_PASS: Query = Query::value("accessPass:pass");
+    pub(crate) const ACCESS_PASS: Query = Query::value("accessPass:pass");
 }
 
 /// A premium Convex action the CLI calls (`utils::access::PREMIUM_ACTIONS`), and how long its
@@ -198,8 +200,8 @@ pub mod queries {
 #[derive(Clone, Copy, Debug)]
 pub struct PremiumAction {
     /// `module:function`.
-    pub function: &'static str,
-    pub timeout: Duration,
+    pub(crate) function: &'static str,
+    pub(crate) timeout: Duration,
 }
 
 /// The actions and mutations the CLI calls: the premium leaderboard and WSO elite lists, `meetcal
@@ -222,28 +224,30 @@ pub mod functions {
     /// spell it), `from`, `to` (under five years apart) and `methods` (each list's score, by
     /// `overall`, `youth`, `junior`, `senior`, `masters`). Answers `{ wso, from, to, members,
     /// lists }`. It reads every member's registrations and history, so it gets two minutes.
-    pub const WSO_ELITE: PremiumAction = PremiumAction {
+    pub(crate) const WSO_ELITE: PremiumAction = PremiumAction {
         function: "results:wsoElite",
         timeout: Duration::from_secs(120),
     };
     /// Action. Starts a device login; takes `deviceName` (at most 64 characters). Answers
     /// `{ deviceCode, userCode, verificationUrl, expiresAt, interval }`.
-    pub const START_DEVICE_LOGIN: &str = "deviceLogin:start";
+    pub(crate) const START_DEVICE_LOGIN: &str = "deviceLogin:start";
     /// Action. Where a device login stands; takes `deviceCode`. Answers `{ status }`, with the
     /// token (`{ token, tokenId, expiresAt }`) once approved.
-    pub const POLL_DEVICE_LOGIN: &str = "deviceLogin:poll";
+    pub(crate) const POLL_DEVICE_LOGIN: &str = "deviceLogin:poll";
     /// Mutation. Ends the MeetCal-issued token it is called with (as the bearer); takes `{}`.
-    pub const REVOKE_TOKEN: &str = "apiTokens:revoke";
+    pub(crate) const REVOKE_TOKEN: &str = "apiTokens:revoke";
     /// Action. Asks RevenueCat for the caller's (the bearer's) subscription and records it;
     /// takes `{}`, answers `{ active }`. Called when `accessPass:pass` answers 403, for a
     /// subscriber Convex does not know yet (a lifetime purchase never sends a renewal).
-    pub const REFRESH_ENTITLEMENT: &str = "entitlements:refresh";
+    pub(crate) const REFRESH_ENTITLEMENT: &str = "entitlements:refresh";
 }
 
 /// Reads a JSON number as a whole `i64`, whether Convex wrote it as an integer (`5`) or a float
 /// (`5.0`, `1791948423574.0`); a fraction is rounded. For every numeric field of an answer the
 /// CLI reads outside the data rows (epoch-ms times, intervals).
-pub fn whole_number<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<i64, D::Error> {
+pub(crate) fn whole_number<'de, D: serde::Deserializer<'de>>(
+    deserializer: D,
+) -> Result<i64, D::Error> {
     let number = f64::deserialize(deserializer)?;
     let rounded = number.round();
     if !rounded.is_finite() || rounded < i64::MIN as f64 || rounded > i64::MAX as f64 {
@@ -263,7 +267,7 @@ pub enum Endpoint {
 }
 
 impl Endpoint {
-    pub fn retries(self) -> bool {
+    pub(crate) fn retries(self) -> bool {
         matches!(self, Endpoint::Query)
     }
 
@@ -280,10 +284,10 @@ impl Endpoint {
 /// `{ status, error }`), and the reason. Reaches callers inside `anyhow::Error`; read the status
 /// with [`FunctionError::status_of`].
 #[derive(Debug)]
-pub struct FunctionError {
-    pub function: String,
-    pub status: Option<u16>,
-    pub reason: String,
+pub(crate) struct FunctionError {
+    pub(crate) function: String,
+    pub(crate) status: Option<u16>,
+    pub(crate) reason: String,
 }
 
 impl std::fmt::Display for FunctionError {
@@ -300,7 +304,7 @@ impl std::error::Error for FunctionError {}
 
 impl FunctionError {
     /// The status of the function error `error` carries, if it carries one.
-    pub fn status_of(error: &anyhow::Error) -> Option<u16> {
+    pub(crate) fn status_of(error: &anyhow::Error) -> Option<u16> {
         error
             .chain()
             .find_map(|cause| cause.downcast_ref::<FunctionError>())
@@ -364,15 +368,15 @@ struct PagedArgs<'a, A: Serialize + ?Sized> {
 /// One page of a paged query: its rows as JSON text, and where the next page starts.
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct Page {
-    pub json: String,
-    pub cursor: String,
-    pub is_done: bool,
+pub(crate) struct Page {
+    pub(crate) json: String,
+    pub(crate) cursor: String,
+    pub(crate) is_done: bool,
 }
 
 /// Runs `query` with `args` on the production deployment (or `MEETCAL_CONVEX_URL`), with the
 /// saved login's access pass when it is a premium read.
-pub async fn query<T, A>(query: Query, args: &A) -> Result<T>
+pub(crate) async fn query<T, A>(query: Query, args: &A) -> Result<T>
 where
     T: DeserializeOwned,
     A: Serialize + ?Sized,
@@ -419,7 +423,7 @@ where
 
 /// Runs the premium `action` with `args` on the production deployment (or
 /// `MEETCAL_CONVEX_URL`), with the saved login's access pass.
-pub async fn premium_action<T, A>(action: PremiumAction, args: &A) -> Result<T>
+pub(crate) async fn premium_action<T, A>(action: PremiumAction, args: &A) -> Result<T>
 where
     T: DeserializeOwned,
     A: Serialize + ?Sized,
@@ -441,6 +445,11 @@ where
     A: Serialize + ?Sized,
 {
     let function = action.function;
+    if !access::PREMIUM_ACTIONS.contains(&function) {
+        return Err(anyhow!(
+            "{function} is not on the CLI's list of premium actions"
+        ));
+    }
     let args = serde_json::to_value(args)
         .with_context(|| format!("Failed to build request for MeetCal {function}"))?;
     let answer = premium_answer(
@@ -613,7 +622,7 @@ async fn call(
 
 /// Every row of the paged `query` with `args`, on the production deployment (or
 /// `MEETCAL_CONVEX_URL`). See [`query_all_pages_from`].
-pub async fn query_all_pages<T, A>(query: Query, args: &A) -> Result<Vec<T>>
+pub(crate) async fn query_all_pages<T, A>(query: Query, args: &A) -> Result<Vec<T>>
 where
     T: DeserializeOwned,
     A: Serialize + ?Sized,
@@ -645,9 +654,9 @@ where
     .await
 }
 
-pub const CONCURRENT_READS: usize = 8;
+pub(crate) const CONCURRENT_READS: usize = 8;
 
-pub async fn query_each<T>(query: Query, args: Vec<Value>) -> Result<Vec<T>>
+pub(crate) async fn query_each<T>(query: Query, args: Vec<Value>) -> Result<Vec<T>>
 where
     T: DeserializeOwned + Send + 'static,
 {
@@ -657,34 +666,59 @@ where
     in_order(CONCURRENT_READS, jobs).await
 }
 
-pub async fn in_order<T, Fut>(limit: usize, jobs: impl IntoIterator<Item = Fut>) -> Result<Vec<T>>
+pub(crate) async fn in_order<T, Fut>(
+    limit: usize,
+    jobs: impl IntoIterator<Item = Fut>,
+) -> Result<Vec<T>>
 where
     T: Send + 'static,
     Fut: Future<Output = Result<T>> + Send + 'static,
 {
     let mut pending = jobs.into_iter().enumerate();
     let mut running = JoinSet::new();
-    let mut answers: Vec<Option<T>> = Vec::new();
+    let mut answers: Vec<(usize, T)> = Vec::new();
     loop {
         while running.len() < limit.max(1)
             && let Some((index, job)) = pending.next()
         {
-            answers.push(None);
             running.spawn(async move { (index, job.await) });
         }
         let Some(finished) = running.join_next().await else {
             break;
         };
         let (index, answer) = finished.context("A MeetCal read stopped before it finished")?;
-        answers[index] = Some(answer?);
+        answers.push((index, answer?));
     }
-    Ok(answers.into_iter().flatten().collect())
+    answers.sort_by_key(|(index, _)| *index);
+    Ok(answers.into_iter().map(|(_, answer)| answer).collect())
 }
 
-/// The paging loop of every paged read, over any page source: `fetch` gets `None` first, then
-/// each cursor a page returned, at most [`MAX_PAGES`] times. `function` names the query in
-/// errors. A query whose page names its fields differently maps it to a [`Page`].
-pub async fn collect_pages<T, F, Fut>(function: &str, mut fetch: F) -> Result<Vec<T>>
+pub(crate) async fn collect_pages<T, F, Fut>(function: &str, fetch: F) -> Result<Vec<T>>
+where
+    T: DeserializeOwned,
+    F: FnMut(Option<String>) -> Fut,
+    Fut: Future<Output = Result<Page>>,
+{
+    match collect_pages_within(function, MAX_PAGES, fetch).await? {
+        PagesRead::All(rows) => Ok(rows),
+        PagesRead::CutShort(_) => Err(unfinished(function, MAX_PAGES)),
+    }
+}
+
+pub(crate) enum PagesRead<T> {
+    All(Vec<T>),
+    CutShort(Vec<T>),
+}
+
+pub(crate) fn unfinished(function: &str, max_pages: usize) -> anyhow::Error {
+    anyhow!("MeetCal query {function} did not finish within {max_pages} pages")
+}
+
+pub(crate) async fn collect_pages_within<T, F, Fut>(
+    function: &str,
+    max_pages: usize,
+    mut fetch: F,
+) -> Result<PagesRead<T>>
 where
     T: DeserializeOwned,
     F: FnMut(Option<String>) -> Fut,
@@ -692,19 +726,17 @@ where
 {
     let mut rows = Vec::new();
     let mut cursor: Option<String> = None;
-    for _ in 0..MAX_PAGES {
+    for _ in 0..max_pages {
         let page = fetch(cursor.take()).await?;
         let mut batch: Vec<T> = serde_json::from_str(&page.json)
             .with_context(|| format!("Unexpected answer from MeetCal query {function}"))?;
         rows.append(&mut batch);
         if page.is_done {
-            return Ok(rows);
+            return Ok(PagesRead::All(rows));
         }
         cursor = Some(page.cursor);
     }
-    Err(anyhow!(
-        "MeetCal query {function} did not finish within {MAX_PAGES} pages"
-    ))
+    Ok(PagesRead::CutShort(rows))
 }
 
 /// Convex's HTTP API writes every number of a value answer as a float (`2.0`), which an integer
@@ -727,7 +759,7 @@ fn whole_numbers_as_integers(value: Value) -> Value {
             .into_iter()
             .map(|(key, field)| (key, whole_numbers_as_integers(field)))
             .collect(),
-        other => other,
+        other @ (Value::Null | Value::Bool(_) | Value::String(_)) => other,
     }
 }
 
@@ -776,7 +808,11 @@ fn used_its_whole_request_allowance(error: &reqwest::Error) -> bool {
     error.is_timeout() && !error.is_connect()
 }
 
-pub async fn send_with_retry(request: Request, function: &str, retries: bool) -> Result<Response> {
+pub(crate) async fn send_with_retry(
+    request: Request,
+    function: &str,
+    retries: bool,
+) -> Result<Response> {
     let mut retries_done = 0;
 
     loop {
@@ -830,7 +866,7 @@ pub async fn send_with_retry(request: Request, function: &str, retries: bool) ->
 }
 
 /// The message shown when the API is still rate limiting after every retry.
-pub fn rate_limited_message(retry_after_secs: Option<u64>) -> String {
+pub(crate) fn rate_limited_message(retry_after_secs: Option<u64>) -> String {
     let wait = match retry_after_secs {
         Some(0 | 1) => "1 second".to_string(),
         Some(secs) => format!("{secs} seconds"),
@@ -1029,6 +1065,52 @@ mod tests {
         .await
         .unwrap();
         assert_eq!(rows.len(), MAX_PAGES);
+    }
+
+    #[tokio::test]
+    async fn an_action_that_is_not_on_the_premium_list_is_refused_before_any_request() {
+        let unlisted = PremiumAction {
+            function: "results:other",
+            timeout: Duration::from_secs(1),
+        };
+        let error = premium_action_from::<serde_json::Value, _>(
+            "http://127.0.0.1:1",
+            &Access::anonymous(),
+            unlisted,
+            &json!({}),
+        )
+        .await
+        .unwrap_err();
+        assert_eq!(
+            error.to_string(),
+            "results:other is not on the CLI's list of premium actions"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_read_stopped_at_its_page_limit_keeps_the_rows_it_read() {
+        let mut pages = vec![
+            page(&[1, 2], "c1", false),
+            page(&[3], "c2", false),
+            page(&[4], "c3", true),
+        ]
+        .into_iter();
+        let read = collect_pages_within::<u32, _, _>("test:paged", 2, |_| {
+            let next = pages.next().expect("no more pages");
+            async move { Ok(next) }
+        })
+        .await
+        .unwrap();
+        assert!(matches!(read, PagesRead::CutShort(rows) if rows == vec![1, 2, 3]));
+
+        let mut pages = vec![page(&[1], "c1", false), page(&[2], "c2", true)].into_iter();
+        let read = collect_pages_within::<u32, _, _>("test:paged", 2, |_| {
+            let next = pages.next().expect("no more pages");
+            async move { Ok(next) }
+        })
+        .await
+        .unwrap();
+        assert!(matches!(read, PagesRead::All(rows) if rows == vec![1, 2]));
     }
 
     #[tokio::test]

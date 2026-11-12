@@ -1,4 +1,5 @@
 pub(crate) const NO_VALUE: &str = "—";
+pub(crate) const GENDERS: [&str; 2] = ["Men", "Women"];
 
 pub(crate) fn yes_no(value: bool) -> &'static str {
     if value { "Yes" } else { "No" }
@@ -90,12 +91,14 @@ pub(crate) fn format_us_date(value: &str) -> String {
                 day.parse::<u32>().ok()?,
             ))
         });
-    match parsed {
-        Some((year, month @ 1..=12, day @ 1..=31)) => {
-            format!("{} {day}, {year}", MONTHS[month - 1])
-        }
-        _ => value.to_owned(),
-    }
+    parsed
+        .and_then(|(year, month, day)| {
+            let month_name = MONTHS.get(month.checked_sub(1)?)?;
+            (1..=31)
+                .contains(&day)
+                .then(|| format!("{month_name} {day}, {year}"))
+        })
+        .unwrap_or_else(|| value.to_owned())
 }
 
 pub(crate) fn format_us_time(value: &str) -> String {
@@ -144,6 +147,17 @@ mod tests {
     #[test]
     fn dates_and_times_use_us_display_formats() {
         assert_eq!(format_us_date("2026-06-20"), "June 20, 2026");
+        assert_eq!(format_us_date("2026-12-01"), "December 1, 2026");
+        for not_a_date in [
+            "2026-00-10",
+            "2026-13-10",
+            "2026-06-00",
+            "2026-06-32",
+            "2026-06",
+            "soon",
+        ] {
+            assert_eq!(format_us_date(not_a_date), not_a_date);
+        }
         assert_eq!(format_us_time("08:00:00"), "8:00 AM");
         assert_eq!(format_us_time("12:30"), "12:30 PM");
     }
