@@ -1,6 +1,7 @@
 import { File } from 'expo-file-system';
 import { generateMeetSubmissionUploadUrl, submitMeet, type MeetSubmissionBody } from '@/lib/api/meet-submissions-api';
 import { MeetCalApiError, MeetCalApiTimeoutError } from '@/lib/api/meetcal-api';
+import { startInactivityTimer, type InactivityTimer } from '@/lib/api/network-policy';
 import { isRecord } from '@/lib/is-record';
 
 // Sending a schedule or start list for a meet MeetCal does not cover yet
@@ -31,8 +32,7 @@ export const MEET_SUBMISSION_PICKER_TYPES = [
   'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
 ];
 
-/** One file's upload, from reading it off the device to Convex's answer. */
-export const MEET_SUBMISSION_UPLOAD_TIMEOUT_MS = 120_000;
+export const MEET_SUBMISSION_UPLOAD_SILENCE_LIMIT_MS = 120_000;
 
 const CONTENT_TYPES: Record<string, string> = {
   pdf: 'application/pdf',
@@ -172,30 +172,30 @@ export interface UploadAnswer {
 /** Reads a local file and sends its bytes; the native side streams it from disk. */
 export type FileSender = (file: PickedFile, uploadUrl: string, contentType: string) => Promise<UploadAnswer>;
 
-/**
- * Sends a file with `expo-file-system`'s native uploader, which streams it
- * from disk (no copy in JS memory, and no `fetch` of a `file://` URI, which
- * Android's React Native networking does not reliably serve), within
- * MEET_SUBMISSION_UPLOAD_TIMEOUT_MS.
- */
 export const sendFileFromDisk: FileSender = async (file, uploadUrl, contentType) => {
   const local = new File(file.uri);
   if (typeof local.size === 'number' && local.size > MAX_MEET_SUBMISSION_FILE_BYTES) {
     throw new MeetSubmissionUploadError(`${file.name} is larger than ${formatMegabytes(MAX_MEET_SUBMISSION_FILE_BYTES)}.`);
   }
-  const task = local.createUploadTask(uploadUrl, { httpMethod: 'POST', headers: { 'Content-Type': contentType } });
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  const timeout = new Promise<never>((_, reject) => {
-    timer = setTimeout(() => {
-      task.cancel();
-      reject(new MeetSubmissionUploadError(`Uploading ${file.name} took too long. Check your connection and try again.`));
-    }, MEET_SUBMISSION_UPLOAD_TIMEOUT_MS);
+  let watchdog: InactivityTimer | null = null;
+  const task = local.createUploadTask(uploadUrl, {
+    httpMethod: 'POST',
+    headers: { 'Content-Type': contentType },
+    onProgress: () => watchdog?.touch(),
+  });
+  let rejectStalled: (error: Error) => void = () => undefined;
+  const stalled = new Promise<never>((_, reject) => {
+    rejectStalled = reject;
+  });
+  watchdog = startInactivityTimer(MEET_SUBMISSION_UPLOAD_SILENCE_LIMIT_MS, () => {
+    task.cancel();
+    rejectStalled(new MeetSubmissionUploadError(`Uploading ${file.name} stopped making progress. Check your connection and try again.`));
   });
   try {
-    const result = await Promise.race([task.uploadAsync(), timeout]);
+    const result = await Promise.race([task.uploadAsync(), stalled]);
     return { status: result.status, body: result.body };
   } finally {
-    clearTimeout(timer);
+    watchdog.stop();
   }
 };
 

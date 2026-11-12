@@ -208,6 +208,10 @@ async fn install_release(
 }
 
 /// The body at `url`, at most [`MAX_DOWNLOAD_BYTES`].
+#[expect(
+    clippy::disallowed_methods,
+    reason = "a release archive comes from GitHub, not Convex, and is megabytes long, so it keeps a ceiling of its own"
+)]
 async fn download(client: &reqwest::Client, url: &str) -> Result<Vec<u8>> {
     let mut response = client
         .get(url)

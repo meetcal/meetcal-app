@@ -1,0 +1,42 @@
+name: CLI Size
+
+on:
+  push:
+    branches: [main, master]
+    paths: ["cli/**", ".github/workflows/cli-size.yml"]
+  pull_request:
+    paths: ["cli/**", ".github/workflows/cli-size.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cli-size-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    working-directory: cli
+
+jobs:
+  release-size:
+    name: Release binary size
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.99.1"
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: cli
+          key: release
+
+      - name: Build the release binary
+        run: cargo build --release --locked
+
+      - name: Check the release binary and its tarball against their size budgets
+        run: scripts/check-size.sh target/release/meetcal

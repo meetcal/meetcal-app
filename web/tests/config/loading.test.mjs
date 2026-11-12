@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { readFile, readdir } from "node:fs/promises";
 import { createHash } from "node:crypto";
+import { brotliCompressSync, constants as zlib } from "node:zlib";
 import test from "node:test";
 import { pathToRegexp } from "path-to-regexp";
 
@@ -109,6 +110,56 @@ test("every page shell paints its route's own page before the app runs", async (
     const shell = await readFile(new URL(`../../shells/${stem}.html`, import.meta.url), "utf8");
     assert.ok(html.includes(`<div id="app-prerendered" class="app-prerendered">${shell.trimEnd()}</div>`), `${file} lacks its route's shell`);
     assert.match(shell, /<h1[ >]/, `${stem} has no heading`);
+  }
+});
+
+const budgets = JSON.parse(await readFile(new URL("../budgets.json", import.meta.url), "utf8"));
+const WASM_RAW_BUDGET_BYTES = budgets.wasmRawBytes;
+const WASM_BROTLI_11_BUDGET_BYTES = budgets.wasmBrotli11Bytes;
+const REQUESTS_BEFORE_WASM_BUDGET = budgets.requestsBeforeWasm;
+
+async function builtWasm() {
+  const dist = new URL("../../dist/", import.meta.url);
+  const names = (await readdir(dist)).filter((file) => /^meetcal-web-[0-9a-f]{15,16}_bg\.wasm$/.test(file));
+  assert.equal(names.length, 1, "expected one content-hashed Wasm binary in dist/");
+  return readFile(new URL(names[0], dist));
+}
+
+async function builtPages() {
+  const seo = (await readdir(new URL("../../dist/seo/", import.meta.url))).map((file) => `seo/${file}`);
+  return ["index.html", "404.html", ...seo.filter((file) => file.endsWith(".html"))];
+}
+
+test("the Wasm binary stays inside its raw and brotli-11 size budgets", async () => {
+  const wasm = await builtWasm();
+  assert.ok(
+    wasm.length <= WASM_RAW_BUDGET_BYTES,
+    `the Wasm binary is ${wasm.length} bytes, over its ${WASM_RAW_BUDGET_BYTES}-byte budget`,
+  );
+  const brotli = brotliCompressSync(wasm, {
+    params: {
+      [zlib.BROTLI_PARAM_QUALITY]: 11,
+      [zlib.BROTLI_PARAM_SIZE_HINT]: wasm.length,
+    },
+  });
+  assert.ok(
+    brotli.length <= WASM_BROTLI_11_BUDGET_BYTES,
+    `the Wasm binary is ${brotli.length} bytes at brotli 11, over its ${WASM_BROTLI_11_BUDGET_BYTES}-byte budget`,
+  );
+});
+
+test("no page asks for more than its budget of files before the Wasm binary", async () => {
+  const fetching = /<link\b[^>]*\brel="(?:stylesheet|preload|modulepreload)"[^>]*>|<script\b[^>]*\bsrc=/g;
+  for (const file of await builtPages()) {
+    const html = await readFile(new URL(`../../dist/${file}`, import.meta.url), "utf8");
+    const wasmPreload = html.search(/<link rel="preload" href="\/meetcal-web-[0-9a-f]+_bg\.wasm"/);
+    assert.ok(wasmPreload > 0, `${file}: no wasm preload`);
+    const before = html.slice(0, wasmPreload).match(fetching) ?? [];
+    const requests = 1 + before.length;
+    assert.ok(
+      requests <= REQUESTS_BEFORE_WASM_BUDGET,
+      `${file}: ${requests} requests (the page and ${before.join(", ")}) start before the Wasm binary; the budget is ${REQUESTS_BEFORE_WASM_BUDGET}`,
+    );
   }
 });
 

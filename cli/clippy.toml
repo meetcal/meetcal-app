@@ -2,3 +2,7 @@ allow-unwrap-in-tests = true
 allow-expect-in-tests = true
 allow-indexing-slicing-in-tests = true
 allow-panic-in-tests = true
+disallowed-methods = [
+  { path = "reqwest::ClientBuilder::timeout", reason = "a read times out when no answer arrives or its bytes stop (`Sending` in utils/transport.rs), never after a fixed time from its start" },
+  { path = "reqwest::RequestBuilder::timeout", reason = "a read times out when no answer arrives or its bytes stop (`Sending` in utils/transport.rs), never after a fixed time from its start" },
+]

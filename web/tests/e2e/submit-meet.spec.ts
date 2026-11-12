@@ -169,6 +169,26 @@ test("leaving the page during an upload stops the submission and the site keeps 
   expect(calls.submits).toEqual([]);
 });
 
+test("an upload is cancelled once it has sent nothing for two minutes, not while it is still within them", async ({ page }) => {
+  await page.clock.install();
+  await mockAuth(page);
+  const { calls, release } = await mockSubmissions(page, { holdUpload: "t1" });
+
+  await page.goto("/submit-meet");
+  await expect(heading(page)).toBeVisible();
+  await fillMeet(page);
+  await files(page).setInputFiles([pdf]);
+  await page.getByRole("button", { name: "Submit meet" }).click();
+  await expect.poll(() => calls.uploads.length).toBe(1);
+
+  await page.clock.runFor(110_000);
+  await expect(page.getByRole("alert")).toHaveCount(0);
+  await page.clock.runFor(15_000);
+  await expect(page.getByRole("alert")).toContainText("took too long");
+  release();
+  expect(calls.submits).toEqual([]);
+});
+
 test("the end date is optional and goes as null", async ({ page }) => {
   await mockAuth(page);
   const { calls } = await mockSubmissions(page);
