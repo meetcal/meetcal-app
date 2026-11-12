@@ -1,7 +1,7 @@
 import { v } from 'convex/values';
 import { internalQuery, type QueryCtx } from '../_generated/server';
 import type { Doc } from '../_generated/dataModel';
-import { meetByName, oldestMeet } from '../lib/meetData';
+import { meetByName, meetResultTitles, oldestMeet } from '../lib/meetData';
 import { normalizeName } from '../lib/names';
 import { normalizeFederation } from '../lib/normalize';
 import { canonicalMeetDate, isMeetTimeZone } from '../lib/validation';
@@ -85,12 +85,7 @@ async function missingResultsLink(ctx: QueryCtx, meet: Doc<'meets'>) {
     .withIndex('by_meet', (q) => q.eq('meet', meet.name))
     .first();
   if (roster === null) return null;
-  const linkedTitles = (
-    await ctx.db
-      .query('meet_result_titles')
-      .withIndex('by_meet', (q) => q.eq('meet', meet.name))
-      .collect()
-  ).map((link) => link.title);
+  const linkedTitles = (await meetResultTitles(ctx, meet.name)).slice(1);
   for (const title of linkedTitles) if (await hasResultsUnder(ctx, title)) return null;
   return { name: meet.name, startDate: meet.startDate, endDate: meet.endDate, linkedTitles };
 }
