@@ -1,4 +1,5 @@
 use super::{
+    address::{address, query_param},
     athlete_autocomplete::AthleteAutocomplete,
     filters::{SortDirection, sort_numeric, sort_orders, sort_text},
     format::{display_body_weight, format_us_date, yes_no},
@@ -13,7 +14,7 @@ use crate::utils::api::{queries, query_with};
 use js_sys::Date;
 use leptos::prelude::*;
 use leptos_router::components::A;
-use leptos_router::hooks::{use_navigate, use_query_map};
+use leptos_router::hooks::use_navigate;
 
 /// The last twenty years, through today: `results:search` includes both ends of the range.
 fn search_date_range() -> (String, String) {
@@ -41,12 +42,8 @@ sort_orders!(ResultSort {
     TotalAsc => ("total_asc", "Total: low to high"),
 });
 
-/// The Results page's link for one athlete's search.
 pub(crate) fn results_url(athlete: &str) -> String {
-    format!(
-        "/results?athlete={}",
-        js_sys::encode_uri_component(athlete.trim())
-    )
+    address("/results", &[("athlete", athlete)])
 }
 
 /// What one Results search answered, ready to show.
@@ -156,16 +153,7 @@ fn results_answer(query: &str, response: AthleteSearchResponse) -> ResultsAnswer
 
 #[component]
 pub fn Results() -> impl IntoView {
-    // The URL is the search: the header's Results link, back and forward,
-    // reloading and sharing all show the athlete the address names.
-    let query_map = use_query_map();
-    let athlete = Memo::new(move |_| {
-        query_map
-            .with(|params| params.get("athlete"))
-            .unwrap_or_default()
-            .trim()
-            .to_owned()
-    });
+    let athlete = query_param("athlete");
     let request = Memo::new(move |_| {
         let athlete = athlete.get();
         (!athlete.is_empty()).then(|| {
@@ -329,6 +317,18 @@ fn ResultsTable(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn an_athletes_results_link_is_built_like_every_other_page_address() {
+        assert_eq!(
+            results_url("  O'Neil & José "),
+            address("/results", &[("athlete", "O'Neil & José")])
+        );
+        assert_eq!(
+            results_url("O'Neil & José"),
+            "/results?athlete=O%27Neil%20%26%20Jos%C3%A9"
+        );
+    }
 
     #[test]
     fn search_response_deserializes_results_and_suggestions() {

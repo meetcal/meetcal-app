@@ -8,6 +8,7 @@ use super::{
     loading::{Load, load_meet_data, select_response, table_response},
     meets::load_meet_catalog,
     models::{Athlete, LiftingResult, Meet, ScheduleRow, attempt},
+    results::results_url,
     ui::{DataPage, DataStatus, DataTable, EmptyTableRow, TableHead},
 };
 use crate::utils::api::queries;
@@ -226,7 +227,7 @@ fn table_results(rows: &[LiftingResult]) -> AnyView {
     let mut rows = rows.iter().collect::<Vec<_>>();
     rows.sort_by(|left, right| right.total.total_cmp(&left.total));
     let is_empty = rows.is_empty();
-    let body = rows.iter().map(|row| { let athlete_url = format!("/results?athlete={}", js_sys::encode_uri_component(&row.name)); view! { <tr><td><a class="data-athlete-link" href=athlete_url>{row.name.clone()}</a></td><td><strong>{row.total}</strong></td><td>{row.age.clone()}</td><td>{display_body_weight(row.body_weight)}</td><td>{attempt(row.snatch1)}</td><td>{attempt(row.snatch2)}</td><td>{attempt(row.snatch3)}</td><td>{row.snatch_best}</td><td>{attempt(row.cj1)}</td><td>{attempt(row.cj2)}</td><td>{attempt(row.cj3)}</td><td>{row.cj_best}</td><td>{yes_no(row.adaptive)}</td></tr> } }).collect_view();
+    let body = rows.iter().map(|row| { let athlete_url = results_url(&row.name); view! { <tr><td><a class="data-athlete-link" href=athlete_url>{row.name.clone()}</a></td><td><strong>{row.total}</strong></td><td>{row.age.clone()}</td><td>{display_body_weight(row.body_weight)}</td><td>{attempt(row.snatch1)}</td><td>{attempt(row.snatch2)}</td><td>{attempt(row.snatch3)}</td><td>{row.snatch_best}</td><td>{attempt(row.cj1)}</td><td>{attempt(row.cj2)}</td><td>{attempt(row.cj3)}</td><td>{row.cj_best}</td><td>{yes_no(row.adaptive)}</td></tr> } }).collect_view();
     view! { <DataTable><TableHead headers=RESULTS_HEADERS /><tbody>{is_empty.then(|| view! { <EmptyTableRow columns=RESULTS_HEADERS.len() message="No results have been published for this meet." /> })}{body}</tbody></DataTable> }.into_any()
 }
 
