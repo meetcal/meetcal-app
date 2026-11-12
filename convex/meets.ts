@@ -217,7 +217,7 @@ export async function attendanceRows(ctx: QueryCtx, meets: readonly string[], do
   for (const meet of meets) {
     const row = await meetAttendance(ctx, meet, budget);
     if (row === null) {
-      throw apiError(413, meets.length === 1 ? tooLargeToRead(meet) : 'these meets are too large to read in one request; try fewer at once.', { max: documentBudget });
+      throw apiError(413, meets.length === 1 ? tooLargeToRead(meet) : 'these meets are too large to read in one request; try again later or report it.', { max: documentBudget });
     }
     rows.push(row);
   }

@@ -107,7 +107,7 @@ describe('results titles of a meet (#362)', () => {
     const store = world();
     const message = (meets: string[]) => attendanceRows(store.ctx as never, meets, 0).then(() => '', (error: { data?: { error?: string } }) => error.data?.error ?? '');
     expect(await message([NATIONALS])).toBe('"2026 USA Weightlifting National Championships" is too large to read in one request; try again later or report it.');
-    expect(await message([NATIONALS, JUNIOR])).toBe('these meets are too large to read in one request; try fewer at once.');
+    expect(await message([NATIONALS, JUNIOR])).toBe('these meets are too large to read in one request; try again later or report it.');
   });
 
   it('counts every document it reads against what one query may read, and keeps nothing back', async () => {
