@@ -1,3 +1,4 @@
+import { daysBetween, isoDaysAfter } from '../../lib/dates';
 import { rowCount } from '../../lib/json';
 import { pageRows, readSport80Env, readTablePage, USAW_DOMAIN, type Sport80Env } from '../parse/sport80';
 
@@ -8,6 +9,19 @@ const REQUEST_TIMEOUT_MS = 60_000;
 const EVENT_INDEX_PAGE_ROWS = 1000;
 const TABLE_PAGE_ROWS = 2000;
 export const RANKINGS_PAGE_ROWS = [2000, 1000, 500] as const;
+export const RANKINGS_UNSPLIT_DAYS = 366;
+
+export type DateRange = readonly [start: string, end: string];
+
+export function halvesOf([start, end]: DateRange): [DateRange, DateRange] | null {
+  const days = daysBetween(start, end);
+  if (end < start || days <= RANKINGS_UNSPLIT_DAYS) return null;
+  const firstEnd = isoDaysAfter(start, Math.floor(days / 2));
+  return [
+    [start, firstEnd],
+    [isoDaysAfter(firstEnd, 1), end],
+  ];
+}
 
 export class Sport80HttpError extends Error {
   constructor(
@@ -105,8 +119,9 @@ export class Sport80 {
 
   async rankings(classId: number, start: string, end: string): Promise<Dict[]> {
     const payload = { date_range_start: start, date_range_end: end, weight_class: classId };
+    const halves = halvesOf([start, end]);
     let serverError: Sport80HttpError | null = null;
-    for (const rows of RANKINGS_PAGE_ROWS) {
+    for (const rows of halves ? RANKINGS_PAGE_ROWS.slice(0, 1) : RANKINGS_PAGE_ROWS) {
       try {
         return (await this.collate(await this.request('POST', this.url('/api/categories/all/rankings/table/data', rows), payload), payload)).rows;
       } catch (error) {
@@ -114,6 +129,7 @@ export class Sport80 {
         serverError = error;
       }
     }
+    if (halves) return [...(await this.rankings(classId, ...halves[0])), ...(await this.rankings(classId, ...halves[1]))];
     throw serverError ?? new Error(`sport80: rankings of class ${classId} not read`);
   }
 
