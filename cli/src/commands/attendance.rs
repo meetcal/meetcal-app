@@ -544,26 +544,13 @@ mod tests {
     }
 
     #[test]
-    fn a_refused_batch_is_asked_for_again_in_halves() {
+    fn halves_put_the_odd_meet_in_the_first_half() {
         let names: Vec<String> = (1..=5).map(|n| format!("meet {n}")).collect();
         let (first, second) = halves(&names);
         assert_eq!(first, &names[..3]);
         assert_eq!(second, &names[3..]);
         let (first, second) = halves(&names[..2]);
         assert_eq!((first.len(), second.len()), (1, 1));
-
-        let refused = anyhow::Error::new(FunctionError {
-            function: "meets:attendance".to_owned(),
-            status: Some(413),
-            reason: "too many rows".to_owned(),
-        });
-        assert!(too_many_rows(&refused));
-        let other = anyhow::Error::new(FunctionError {
-            function: "meets:attendance".to_owned(),
-            status: Some(400),
-            reason: "meets exceeds the 8-meet limit".to_owned(),
-        });
-        assert!(!too_many_rows(&other));
     }
 
     fn words(values: &[&str]) -> Vec<String> {

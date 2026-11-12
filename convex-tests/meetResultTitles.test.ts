@@ -1,7 +1,7 @@
 import { recordWrite, setMeetResultTitles } from '../convex/ingest';
 import { computeStatsRows } from '../convex/lib/meetData';
 import { byMeet } from '../convex/results';
-import { attendance, attendanceRows, ATTENDANCE_ROW_BUDGET } from '../convex/meets';
+import { attendance, attendanceRows } from '../convex/meets';
 import { fakeMutationCtx, handlerOf } from './fakeDb';
 
 // Premium queries may log their caller (`convex/lib/access.ts`).
@@ -111,8 +111,16 @@ describe('results titles of a meet (#362)', () => {
     expect(await message([NATIONALS, JUNIOR])).toContain('ask for fewer meets at once');
   });
 
-  it('gives every batch size the same budget, all but a few hundred of what one query may read', () => {
-    expect(ATTENDANCE_ROW_BUDGET).toBe(31500);
+  it('counts every document it reads against what one query may read, and keeps nothing back', async () => {
+    const store = world();
+    await link(store.ctx, { meet: NATIONALS, titles: [JUNIOR, YOUTH] });
+    const meetRow = 1;
+    const linkedTitles = 2;
+    const results = 3;
+    const registrations = 3;
+    const everyDocument = meetRow + linkedTitles + results + registrations;
+    await expect(attendanceRows(store.ctx as never, [NATIONALS], everyDocument)).resolves.toHaveLength(1);
+    await expect(attendanceRows(store.ctx as never, [NATIONALS], everyDocument - 1)).rejects.toMatchObject({ data: { status: 413, max: everyDocument - 1 } });
   });
 
   it('looks up linked titles only for results writes', async () => {

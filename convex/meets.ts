@@ -10,8 +10,12 @@ import {
   computeScheduleRows,
   computeTimelines,
   joinRoster,
+  linkedResultTitles,
   meetByName,
-  meetResultTitles,
+  meetsNamed,
+  MEET_ROWS_READ_PER_NAME,
+  oldestMeetNamed,
+  resultTitlesOf,
   meetLocalDate,
   narrowSessions,
   packageAthlete,
@@ -166,57 +170,55 @@ export const namesPage = query({
   },
 });
 
-const DOCUMENTS_LEFT_FOR_MEET_ROWS_AND_TITLES = 500;
-export const ATTENDANCE_ROW_BUDGET = DOCUMENTS_ONE_QUERY_MAY_READ - DOCUMENTS_LEFT_FOR_MEET_ROWS_AND_TITLES;
+async function meetAttendance(ctx: QueryCtx, meet: string, budget: DocumentBudget) {
+  const meetRows = await takeWithinBudget(budget, (limit) => meetsNamed(ctx, meet, Math.min(limit, MEET_ROWS_READ_PER_NAME)));
+  if (meetRows === null) return null;
+  const linked = await takeWithinBudget(budget, (limit) => linkedResultTitles(ctx, meet).take(limit));
+  if (linked === null) return null;
+  const titles = resultTitlesOf(meet, linked);
+  const results = [];
+  for (const title of titles) {
+    const page = await takeWithinBudget(budget, (limit) =>
+      ctx.db
+        .query('lifting_results')
+        .withIndex('by_meet', (q) => q.eq('meet', title))
+        .take(limit),
+    );
+    if (page === null) return null;
+    results.push(...page);
+  }
+  const registrations = await takeWithinBudget(budget, (limit) =>
+    ctx.db
+      .query('athletes')
+      .withIndex('by_meet', (q) => q.eq('meet', meet))
+      .take(limit),
+  );
+  if (registrations === null) return null;
+  const meetRow = oldestMeetNamed(meet, meetRows);
+  const dates = results.map((r) => r.date).sort(compareBytes);
+  return {
+    meet,
+    lifters: new Set(results.map((r) => normalizeName(r.name))).size,
+    registrations: new Set(registrations.map((r) => r.memberId || normalizeName(r.name))).size,
+    first_date: dates[0] ?? null,
+    last_date: dates[dates.length - 1] ?? null,
+    start_date: meetRow?.startDate ?? null,
+    end_date: meetRow?.endDate ?? null,
+    status: meetRow?.status ?? null,
+    results_titles: titles.slice(1),
+  };
+}
 
-export async function attendanceRows(
-  ctx: QueryCtx,
-  meets: readonly string[],
-  rowBudget = ATTENDANCE_ROW_BUDGET,
-) {
-  const budget: DocumentBudget = { left: rowBudget };
+export async function attendanceRows(ctx: QueryCtx, meets: readonly string[], documentBudget = DOCUMENTS_ONE_QUERY_MAY_READ) {
+  const budget: DocumentBudget = { left: documentBudget };
   const rows = [];
   for (const meet of meets) {
-    const [titles, meetRow] = await Promise.all([meetResultTitles(ctx, meet), meetByName(ctx, meet)]);
-    const results = [];
-    let fits = true;
-    for (const title of titles) {
-      const page = await takeWithinBudget(budget, (limit) =>
-        ctx.db
-          .query('lifting_results')
-          .withIndex('by_meet', (q) => q.eq('meet', title))
-          .take(limit),
-      );
-      if (page === null) {
-        fits = false;
-        break;
-      }
-      results.push(...page);
+    const row = await meetAttendance(ctx, meet, budget);
+    if (row === null) {
+      const tooMany = `more results and registrations than one call reads (${documentBudget})`;
+      throw apiError(413, meets.length === 1 ? `${JSON.stringify(meet)} has ${tooMany}` : `these meets have ${tooMany}: ask for fewer meets at once`, { max: documentBudget });
     }
-    const registrations = fits
-      ? await takeWithinBudget(budget, (limit) =>
-          ctx.db
-            .query('athletes')
-            .withIndex('by_meet', (q) => q.eq('meet', meet))
-            .take(limit),
-        )
-      : null;
-    if (registrations === null) {
-      const tooMany = `more results and registrations than one call reads (${rowBudget})`;
-      throw apiError(413, meets.length === 1 ? `${JSON.stringify(meet)} has ${tooMany}` : `these meets have ${tooMany}: ask for fewer meets at once`, { max: rowBudget });
-    }
-    const dates = results.map((r) => r.date).sort(compareBytes);
-    rows.push({
-      meet,
-      lifters: new Set(results.map((r) => normalizeName(r.name))).size,
-      registrations: new Set(registrations.map((r) => r.memberId || normalizeName(r.name))).size,
-      first_date: dates[0] ?? null,
-      last_date: dates[dates.length - 1] ?? null,
-      start_date: meetRow?.startDate ?? null,
-      end_date: meetRow?.endDate ?? null,
-      status: meetRow?.status ?? null,
-      results_titles: titles.slice(1),
-    });
+    rows.push(row);
   }
   return rows;
 }
