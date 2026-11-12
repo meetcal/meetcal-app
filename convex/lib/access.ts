@@ -40,8 +40,10 @@ export const SUBSCRIPTION_ENTITLEMENT_ID = 'Subscriptions';
 /** Every query that answers premium data. The app and website send the pass to exactly these. */
 export const PREMIUM_FUNCTIONS = [
   'reference:records',
+  'reference:recordCategories',
   'reference:standards',
   'reference:qualifyingTotals',
+  'reference:qualifyingTotalCategories',
   'reference:intlRankings',
   'reference:nationalRankings',
   'reference:nationalRankingsByYear',
@@ -57,10 +59,12 @@ export const PREMIUM_FUNCTIONS = [
   'reference:clubMeetStats',
   'reference:wsoMeetStats',
   'results:byMeet',
+  'results:meetSummaries',
   'results:byNames',
   'results:recent',
   'results:yearBests',
   'results:bests',
+  'results:groupMedals',
   // Only with dates: name suggestions alone stay public.
   'results:search',
   'meets:packageForMeet',

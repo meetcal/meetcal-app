@@ -12,6 +12,8 @@ import {
   meetViewsPrefix,
   natKey,
   parseViewKey,
+  qualifyingTotalsOfEventKey,
+  recordsOfFederationKey,
   REF_VIEWS,
   RESULT_NAMES_VIEW,
   SEARCH_SHARD_PREFIX,
@@ -65,7 +67,15 @@ describe('view keys (property)', () => {
     const fixed = [...Object.values(REF_VIEWS), RESULT_NAMES_VIEW, SEARCH_SHARD_SIZES_VIEW];
     fc.assert(
       fc.property(meetViewArb, partArb, bigramArb, (meetView, wso, bigram) => {
-        const keys = [meetView.key, wsoKey(wso), searchShardKey(bigram), natKey(wso, wso), adaptiveKey(wso, wso, wso)];
+        const keys = [
+          meetView.key,
+          wsoKey(wso),
+          searchShardKey(bigram),
+          natKey(wso, wso),
+          adaptiveKey(wso, wso, wso),
+          recordsOfFederationKey(wso),
+          qualifyingTotalsOfEventKey(wso),
+        ];
         expect(new Set(keys).size).toBe(keys.length);
         for (const key of keys) expect(fixed).not.toContain(key);
       }),
@@ -199,6 +209,10 @@ describe('view keys (property)', () => {
         expect(viewDependencies(meetKey(x, part))?.hints).toEqual([{ kind: 'meet', key: x }]);
         expect(viewDependencies(meetSessionKey(x, n))?.hints).toEqual([{ kind: 'meet', key: x }]);
         expect(viewDependencies(natKey(x, y))?.hints).toEqual([{ kind: 'nat', key: JSON.stringify([x, y]) }]);
+        expect(parseViewKey(recordsOfFederationKey(x))).toEqual({ family: 'recordsOfFederation', federation: x.trim().toLowerCase() });
+        expect(parseViewKey(qualifyingTotalsOfEventKey(x))).toEqual({ family: 'qualifyingTotalsOfEvent', event: x.trim().toLowerCase() });
+        expect(viewDependencies(recordsOfFederationKey(x))?.hints).toEqual([{ kind: 'table', key: 'records' }]);
+        expect(viewDependencies(qualifyingTotalsOfEventKey(x))?.hints).toEqual([{ kind: 'table', key: 'qualifying_totals' }]);
       }),
     );
   });

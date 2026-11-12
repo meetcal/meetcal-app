@@ -3,7 +3,7 @@ import { MEETS_MAX, MEET_ROSTER_MAX, readAll } from './lib/boundedRead';
 import { v } from 'convex/values';
 import { premiumQuery } from './lib/access';
 import { query, type QueryCtx } from './_generated/server';
-import { etagOf, revalidated, revalidatedText, type Revalidated } from './lib/etag';
+import { revalidated, revalidatedJson, revalidatedText } from './lib/etag';
 import {
   addMonths,
   athletesWithSessions,
@@ -21,6 +21,7 @@ import {
   resultTitlesOf,
   meetLocalDate,
   narrowSessions,
+  nextMeetRow,
   packageAthlete,
   packageStaticText,
   plainRoster,
@@ -32,11 +33,12 @@ import {
   type ZoneFormatters,
 } from './lib/meetData';
 import { normalizeName } from './lib/names';
-import { DOCUMENTS_BEFORE_THE_OVERFLOW_PROBE, takeWithinBudget, type DocumentBudget } from './lib/readBudget';
+import { DOCUMENTS_BEFORE_THE_OVERFLOW_PROBE, takeWithinBudget, tooLargeToRead, type DocumentBudget } from './lib/readBudget';
 import { compareBytes } from './lib/sort';
-import { meetKey, meetSessionKey } from './lib/viewKeys';
-import { readFreshView } from './lib/views';
-import { apiError, requireIsoDate, requireNonEmpty } from './lib/validation';
+import { matchingMeetNames, MAX_MATCHING_WORDS, parseMeetNames } from './lib/meetNameMatch';
+import { MEET_NAMES_VIEW, meetKey, meetSessionKey } from './lib/viewKeys';
+import { readFreshView, readViewJsonAnyAge } from './lib/views';
+import { apiError, requireIsoDate, requireNonEmpty, requireTextList } from './lib/validation';
 
 // `GET /meets*`: each query answers the JSON of the Rust route of the same
 // name in `meetcal-backend/app/src/routes/meets`, from the meet's views when
@@ -137,14 +139,6 @@ export const MEET_NAMES_PAGE_SIZE = 500;
 /** The most meets `meets:attendance` counts in one call. */
 export const MAX_ATTENDANCE_MEETS = 8;
 
-/**
- * Every distinct meet name in the results (`source: 'results'`) or the registrations
- * (`'registrations'`), in name order after `after` and before `before` (when given), a page at a
- * time: one read per meet, skipping along the meet index, so the whole history is listable however
- * many rows it holds. Pass back `next` until it is null. Callers can list several name ranges at
- * once. Results meets carry one of their dates. Answers `{ json, next }`, the meets as JSON text
- * (`[{ meet, date }]`).
- */
 export const namesPage = query({
   args: {
     source: v.union(v.literal('results'), v.literal('registrations')),
@@ -160,17 +154,7 @@ export const namesPage = query({
     const meets: { meet: string; date: string | null }[] = [];
     let last = after;
     while (meets.length < pageSize) {
-      const from = last;
-      const row =
-        source === 'results'
-          ? await ctx.db
-              .query('lifting_results')
-              .withIndex('by_meet', (q) => (from === null ? q : q.gt('meet', from)))
-              .first()
-          : await ctx.db
-              .query('athletes')
-              .withIndex('by_meet', (q) => (from === null ? q : q.gt('meet', from)))
-              .first();
+      const row = await nextMeetRow(ctx, source === 'results' ? 'lifting_results' : 'athletes', last);
       if (!row || (before !== undefined && row.meet >= before)) {
         return { json: JSON.stringify(meets), next: null };
       }
@@ -180,8 +164,6 @@ export const namesPage = query({
     return { json: JSON.stringify(meets), next: last };
   },
 });
-
-const tooLargeToRead = (meet: string) => `${JSON.stringify(meet)} is too large to read in one request; try again later or report it.`;
 
 async function meetAttendance(ctx: QueryCtx, meet: string, budget: DocumentBudget) {
   const meetRows = await takeWithinBudget(budget, (limit) => meetsNamed(ctx, meet, Math.min(limit, MEET_ROWS_READ_PER_NAME)));
@@ -228,7 +210,7 @@ export async function attendanceRows(ctx: QueryCtx, meets: readonly string[], do
   for (const meet of meets) {
     const row = await meetAttendance(ctx, meet, budget);
     if (row === null) {
-      throw apiError(413, meets.length === 1 ? tooLargeToRead(meet) : 'these meets are too large to read in one request; try again later or report it.', { max: documentBudget });
+      throw apiError(413, tooLargeToRead(meets.length === 1 ? [meet] : meets), { max: documentBudget });
     }
     rows.push(row);
   }
@@ -242,6 +224,17 @@ export const attendance = query({
       throw apiError(400, `meets exceeds the ${MAX_ATTENDANCE_MEETS}-meet limit`);
     }
     return { json: JSON.stringify(await attendanceRows(ctx, meets)) };
+  },
+});
+
+export const namesMatching = query({
+  args: { words: v.array(v.string()), exclude: v.optional(v.array(v.string())) },
+  handler: async (ctx, { words, exclude = [] }) => {
+    requireTextList('words', words, MAX_MATCHING_WORDS);
+    if (exclude.length > 0) requireTextList('exclude', exclude, MAX_MATCHING_WORDS);
+    const text = await readViewJsonAnyAge(ctx, MEET_NAMES_VIEW);
+    if (text === null) throw apiError(503, 'the meet name index is being built; try again in a minute');
+    return matchingMeetNames(parseMeetNames(text), words, exclude);
   },
 });
 
@@ -267,14 +260,13 @@ export const schedule = query({
   },
 });
 
-/** `GET /meets/athletes`: the roster, by name. Answers `{ json }`. */
 export const athletes = query({
-  args: { meet: v.string() },
-  handler: async (ctx, { meet }) => {
+  args: { meet: v.string(), ifNoneMatch: v.optional(v.string()) },
+  handler: async (ctx, { meet, ifNoneMatch }) => {
     requireNonEmpty('meet', meet);
     const view = await readFreshView(ctx, meetKey(meet, 'athletes'));
-    if (view) return { json: await view.json() };
-    return { json: await liveAthletesJson(ctx, meet) };
+    if (view) return await revalidatedText(view.etag, view.json, ifNoneMatch);
+    return revalidatedJson(await liveAthletesJson(ctx, meet), ifNoneMatch);
   },
 });
 
@@ -282,36 +274,28 @@ export async function liveAthletesJson(ctx: QueryCtx, meet: string): Promise<str
   return JSON.stringify(plainRoster(await computeRoster(ctx, meet), meet));
 }
 
-/**
- * `GET /meets/athletes-sessions`: athletes with their session's date and
- * times. Narrowed by session and/or platform (case-folded), the join is an
- * inner one; unfiltered it is a left join, so unscheduled athletes stay.
- * Answers `{ json }`.
- */
 export const athletesSessions = query({
   args: {
     meet: v.string(),
     sessionNumber: v.optional(v.number()),
     platform: v.optional(v.string()),
+    ifNoneMatch: v.optional(v.string()),
   },
-  handler: async (ctx, { meet, sessionNumber, platform }) => {
+  handler: async (ctx, { meet, sessionNumber, platform, ifNoneMatch }) => {
     requireNonEmpty('meet', meet);
-    const narrowed = sessionNumber !== undefined || platform !== undefined;
     if (sessionNumber !== undefined) {
-      // One session: its own view is a few dozen rows. A session without
-      // athletes has no view, and falls through to narrowing the whole list.
       const sessionView = await readFreshView(ctx, meetSessionKey(meet, sessionNumber));
       if (sessionView) {
-        if (platform === undefined) return { json: await sessionView.json() };
-        return { json: JSON.stringify(narrowSessions(await sessionView.items(isSessionRow), sessionNumber, platform)) };
+        if (platform === undefined) return await revalidatedText(sessionView.etag, sessionView.json, ifNoneMatch);
+        return revalidated(narrowSessions(await sessionView.items(isSessionRow), sessionNumber, platform), ifNoneMatch);
       }
     }
     const view = await readFreshView(ctx, meetKey(meet, 'sessions'));
     if (view) {
-      if (!narrowed) return { json: await view.json() };
-      return { json: JSON.stringify(narrowSessions(await view.items(isSessionRow), sessionNumber, platform)) };
+      if (sessionNumber === undefined && platform === undefined) return await revalidatedText(view.etag, view.json, ifNoneMatch);
+      return revalidated(narrowSessions(await view.items(isSessionRow), sessionNumber, platform), ifNoneMatch);
     }
-    return { json: await liveSessionsJson(ctx, meet, sessionNumber, platform) };
+    return revalidatedJson(await liveSessionsJson(ctx, meet, sessionNumber, platform), ifNoneMatch);
   },
 });
 
@@ -410,7 +394,7 @@ export const packageForMeet = premiumQuery('meets:packageForMeet', {
           yearBests = names.length > 0 ? yearBestsFromTimelines(names, timelines, bestsSince) : [];
         }
       }
-      return textAnswer(closePackage(staticText, yearBests), ifNoneMatch);
+      return revalidatedJson(closePackage(staticText, yearBests), ifNoneMatch);
     }
 
     // Only the year bests are stale (a roster athlete's results changed): the
@@ -422,21 +406,16 @@ export const packageForMeet = premiumQuery('meets:packageForMeet', {
         names.length > 0 ? computeTimelines(ctx, names, bestsSince) : Promise.resolve([]),
       ]);
       const yearBests = names.length > 0 ? yearBestsFromTimelines(names, timelines, bestsSince) : [];
-      return textAnswer(closePackage(staticText, yearBests), ifNoneMatch);
+      return revalidatedJson(closePackage(staticText, yearBests), ifNoneMatch);
     }
 
     const meetRow = await meetByName(ctx, meet);
     if (!meetRow) throw apiError(404, 'meet not found');
     const apiMeet = toApiMeet(meetRow);
     const json = await livePackageJson(ctx, meet, apiMeet, bestsSince, wantBests);
-    return textAnswer(json, ifNoneMatch);
+    return revalidatedJson(json, ifNoneMatch);
   },
 });
-
-/** Answers `json`, tagged with its hash, or the tag alone when the client holds it. */
-function textAnswer(json: string, ifNoneMatch: string | undefined): Promise<Revalidated> {
-  return revalidatedText(etagOf(json), async () => json, ifNoneMatch);
-}
 
 /** The package computed from the tables, without any view. */
 export async function livePackageJson(

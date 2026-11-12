@@ -1,4 +1,5 @@
 import { groupOf } from './json';
+import { foldedFilter } from './referenceFilters';
 import type { SourceTable } from './views';
 
 /**
@@ -34,15 +35,6 @@ export const unescapeKeyPart = (escaped: string) => escaped.replace(/%7C|%25/g, 
 export const natKey = (federation: string, ageCategory: string) =>
   `nat|${escapeKeyPart(federation)}|${escapeKeyPart(ageCategory)}`;
 
-/**
- * Per-meet views, each the exact JSON of one answer (or of one package
- * section): `package_static` (the package up to its year bests, as text:
- * `{"meet":…,"schedule":…,"athletes":…,"meet_results":…` without the closing
- * brace), `schedule` (`/meets/schedule`), `sessions` (`/meets/athletes-sessions`
- * unfiltered), `athletes` (`/meets/athletes`), `timelines` (year bests
- * input), `stats` (club meet stats input) and `keys` (the roster's folded
- * names, for refresh).
- */
 export type MeetViewPart =
   | 'package_static'
   | 'schedule'
@@ -50,7 +42,8 @@ export type MeetViewPart =
   | 'athletes'
   | 'timelines'
   | 'stats'
-  | 'keys';
+  | 'keys'
+  | 'results';
 export const MEET_VIEW_PARTS: readonly MeetViewPart[] = [
   'package_static',
   'schedule',
@@ -59,6 +52,7 @@ export const MEET_VIEW_PARTS: readonly MeetViewPart[] = [
   'timelines',
   'stats',
   'keys',
+  'results',
 ];
 /** Every view of one meet, and of no other meet, has a key starting with this. */
 export const meetViewsPrefix = (meet: string) => `meet|${escapeKeyPart(meet)}|`;
@@ -77,7 +71,14 @@ export const REF_VIEWS = {
   // club answers to read every spelling of the one asked for (#363).
   club_spellings: 'ref|club_spellings',
   wso_list: 'ref|wso_list',
+  record_categories: 'ref|record_categories',
+  qualifying_total_categories: 'ref|qualifying_total_categories',
 } as const;
+
+export const RECORDS_OF_FEDERATION_PREFIX = 'records|';
+export const QUALIFYING_TOTALS_OF_EVENT_PREFIX = 'qualifying_totals|';
+export const recordsOfFederationKey = (federation: string) => `${RECORDS_OF_FEDERATION_PREFIX}${escapeKeyPart(foldedFilter(federation))}`;
+export const qualifyingTotalsOfEventKey = (event: string) => `${QUALIFYING_TOTALS_OF_EVENT_PREFIX}${escapeKeyPart(foldedFilter(event))}`;
 
 export const wsoKey = (wso: string) => `wso|${escapeKeyPart(wso)}`;
 export const adaptiveKey = (gender: string, excludeFederation: string, season: string) =>
@@ -90,6 +91,8 @@ export const adaptiveKey = (gender: string, excludeFederation: string, season: s
  * refresh has to rediscover it from the tables.
  */
 export const MEET_INDEX_VIEW = 'index|meets';
+
+export const MEET_NAMES_VIEW = 'index|meet_names';
 
 /**
  * Key prefixes of the refresh machinery's own documents (the search
@@ -122,6 +125,7 @@ export const VIEW_SOURCES = {
   meetTimelines: ['athletes', 'lifting_results'],
   meetStats: ['athletes', 'lifting_results'],
   meetKeys: ['athletes'],
+  meetResults: ['lifting_results'],
   records: ['records'],
   standards: ['standards'],
   qualifying_totals: ['qualifying_totals'],
@@ -139,6 +143,7 @@ export const MEET_PART_SOURCES: Record<MeetViewPart, readonly SourceTable[]> = {
   timelines: VIEW_SOURCES.meetTimelines,
   stats: VIEW_SOURCES.meetStats,
   keys: VIEW_SOURCES.meetKeys,
+  results: VIEW_SOURCES.meetResults,
 };
 
 /** Adaptive-record argument sets the app sends; other sets are computed live. */
@@ -171,7 +176,9 @@ export type ParsedViewKey =
   | { family: 'session'; meet: string; sessionNumber: number }
   | { family: 'nat'; federation: string; ageCategory: string }
   | { family: 'adaptive'; gender: string; excludeFederation: string; season: string }
-  | { family: 'wso'; wso: string };
+  | { family: 'wso'; wso: string }
+  | { family: 'recordsOfFederation'; federation: string }
+  | { family: 'qualifyingTotalsOfEvent'; event: string };
 
 // An escaped part holds no `|`, so each `([^|]*)` is exactly one part.
 const MEET_PART_PATTERN = new RegExp(`^meet\\|([^|]*)\\|(${MEET_VIEW_PARTS.join('|')})$`);
@@ -179,6 +186,8 @@ const MEET_SESSION_PATTERN = /^meet\|([^|]*)\|session\|(\d+)$/;
 const NAT_PATTERN = /^nat\|([^|]*)\|([^|]*)$/;
 const ADAPTIVE_PATTERN = /^adaptive\|([^|]*)\|([^|]*)\|([^|]*)$/;
 const WSO_PATTERN = /^wso\|([^|]*)$/;
+const RECORDS_OF_FEDERATION_PATTERN = /^records\|([^|]*)$/;
+const QUALIFYING_TOTALS_OF_EVENT_PATTERN = /^qualifying_totals\|([^|]*)$/;
 
 /**
  * The arguments a meet, session, national ranking, adaptive or WSO key was
@@ -200,6 +209,10 @@ export function parseViewKey(key: string): ParsedViewKey | null {
   }
   const wso = WSO_PATTERN.exec(key);
   if (wso) return { family: 'wso', wso: unescapeKeyPart(groupOf(wso, 1)) };
+  const records = RECORDS_OF_FEDERATION_PATTERN.exec(key);
+  if (records) return { family: 'recordsOfFederation', federation: unescapeKeyPart(groupOf(records, 1)) };
+  const totals = QUALIFYING_TOTALS_OF_EVENT_PATTERN.exec(key);
+  if (totals) return { family: 'qualifyingTotalsOfEvent', event: unescapeKeyPart(groupOf(totals, 1)) };
   return null;
 }
 
@@ -212,6 +225,8 @@ const REF_VIEW_TABLES: Record<string, string> = {
   [REF_VIEWS.clubs]: 'athletes',
   [REF_VIEWS.club_spellings]: 'athletes',
   [REF_VIEWS.wso_list]: 'wso_records',
+  [REF_VIEWS.record_categories]: 'records',
+  [REF_VIEWS.qualifying_total_categories]: 'qualifying_totals',
 };
 
 /**
@@ -237,6 +252,10 @@ export function viewDependencies(key: string): ViewDependencies | null {
       return { hints: [{ kind: 'adaptive', key: '1' }] };
     case 'wso':
       return { hints: [{ kind: 'table', key: 'wso_records' }] };
+    case 'recordsOfFederation':
+      return { hints: [{ kind: 'table', key: 'records' }] };
+    case 'qualifyingTotalsOfEvent':
+      return { hints: [{ kind: 'table', key: 'qualifying_totals' }] };
     case undefined: {
       const table = REF_VIEW_TABLES[key];
       return table === undefined ? null : { hints: [{ kind: 'table', key: table }] };

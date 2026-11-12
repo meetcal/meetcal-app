@@ -6,7 +6,8 @@ import { internalAction, internalMutation, internalQuery, type ActionCtx, type M
 import { internal } from '../_generated/api';
 import { athletesWithSessions, clubAthleteCounts, computeMeetResults, computeRoster, computeScheduleRows, computeStats, computeTimelines, meetByName, packageAthlete, packageStaticText, plainRoster, previousBests, statsPreviousBestKeys, statsViewItems, toApiMeet, type PreviousBest, type TimelinesView } from '../lib/meetData';
 import { normalizeName } from '../lib/names';
-import { ADAPTIVE_RECORDS_SEASON_START, computeAdaptiveRecords, clubNamesPage, computeIntlRankings, bestTotalPerAthlete, nationalRankingPage, type RankedTotal, computeQualifyingTotals, computeRecords, computeStandards, computeWsoList, computeWsoRows } from '../lib/referenceData';
+import { ADAPTIVE_RECORDS_SEASON_START, computeAdaptiveRecords, clubNamesPage, computeIntlRankings, bestTotalPerAthlete, nationalRankingPage, type RankedTotal, computeStandards, computeWsoList, computeWsoRows } from '../lib/referenceData';
+import { writeQualifyingTotalsViews, writeRecordsViews } from '../lib/referenceViews';
 import { compareBytes } from '../lib/sort';
 import { adaptiveKey, ADAPTIVE_VIEW_ARGS, MEET_PART_SOURCES, meetKey, meetSessionKey, meetSessionPrefix, natKey, REF_VIEWS, VIEW_SOURCES, wsoKey } from '../lib/viewKeys';
 import { deleteView, deleteViewsWithPrefix, jsonChunks, snapshotVersions, textChunks, writeView, type SourceTable, type SourceVersion, viewKeysWithPrefix as keysWithPrefix } from '../lib/views';
@@ -91,6 +92,7 @@ export const buildMeet = internalMutation({
     await writeView(ctx, meetKey(meet, 'sessions'), jsonChunks(athletesWithSessions(roster)), pick('sessions'));
     await writeView(ctx, meetKey(meet, 'athletes'), jsonChunks(plainRoster(roster, meet)), pick('athletes'));
     await writeView(ctx, meetKey(meet, 'keys'), jsonChunks(keys), pick('keys'));
+    await writeView(ctx, meetKey(meet, 'results'), jsonChunks(results), pick('results'));
     const meetRow = await meetByName(ctx, meet);
     if (meetRow) {
       const staticText = packageStaticText(toApiMeet(meetRow), schedule, roster.map(packageAthlete), results);
@@ -225,11 +227,9 @@ async function writeComputed(
 export const buildReferenceTables = internalMutation({
   args: {},
   handler: async (ctx) => {
-    await writeComputed(ctx, REF_VIEWS.records, VIEW_SOURCES.records, () => computeRecords(ctx));
+    await writeRecordsViews(ctx);
     await writeComputed(ctx, REF_VIEWS.standards, VIEW_SOURCES.standards, () => computeStandards(ctx));
-    await writeComputed(ctx, REF_VIEWS.qualifying_totals, VIEW_SOURCES.qualifying_totals, () =>
-      computeQualifyingTotals(ctx),
-    );
+    await writeQualifyingTotalsViews(ctx);
     await writeComputed(ctx, REF_VIEWS.intl_rankings, VIEW_SOURCES.intl_rankings, () => computeIntlRankings(ctx));
     for (const { gender, excludeFederation } of ADAPTIVE_VIEW_ARGS) {
       await writeComputed(ctx, adaptiveKey(gender, excludeFederation, ADAPTIVE_RECORDS_SEASON_START), VIEW_SOURCES.adaptive, () =>

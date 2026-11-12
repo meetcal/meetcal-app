@@ -82,6 +82,10 @@ export type NamedBests = YearBests & { name: string };
  */
 export type BestsPoint = readonly [date: string, snatch: number, cj: number, total: number];
 
+export function hasAnyBest(bests: YearBests): boolean {
+  return bests.best_snatch > 0 || bests.best_cj > 0 || bests.best_total > 0;
+}
+
 /**
  * The heaviest snatch, clean & jerk and total over the points dated
  * `sinceDate` or later, in any order; null when none is.

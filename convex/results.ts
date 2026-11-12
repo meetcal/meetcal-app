@@ -3,16 +3,21 @@ import { MEMBER_REGISTRATIONS_MAX, STANDARDS_MAX, readAll } from './lib/boundedR
 import { v } from 'convex/values';
 import { checkPass, premiumQuery, premiumRead } from './lib/access';
 import { chunks, mapLimited } from './lib/concurrency';
+import { revalidated, revalidatedText } from './lib/etag';
 import { action, internalQuery, query, type QueryCtx } from './_generated/server';
 import { internal } from './_generated/api';
 import { nameMatcher, queryBigrams, searchDirectory } from './lib/directory';
-import { readHistories, readSummaries, type Mark, type Summary } from './lib/history';
+import { latestMeetBests, readHistories, readSummaries, type Mark, type Summary } from './lib/history';
 import { addBests, type Candidate, checkLeaderboardArgs, fromCompactRow, type LeaderboardRow, leaderboardRow, monthSlices, parseCompactRows, pruneBests, rankBests, toCompactRow, readCompactRow } from './lib/leaderboard';
 import { checkEliteArgs, type EliteAnswer, type EliteMember, type EliteRegistration, type EliteStandard, isMemberOf, latestRegistration, type MemberResult, rankAll, standardTables, isEliteMember } from './lib/elite';
-import { computeMeetResults } from './lib/meetData';
+import { byNameThenNewest, computeMeetResults, meetResultTitles } from './lib/meetData';
+import { editionSummaries, newestEditionFirst, type EditionSummary } from './lib/meetSummary';
+import { editionMedals, needsRoster, type EditionMedals, type RosterEntry } from './lib/placings';
+import { takeWithinBudget, tooLargeToRead, type DocumentBudget } from './lib/readBudget';
 import { cleanNameList, distinctNameKeys, newestSpelling, normalizeName, requestedNamesByKey } from './lib/names';
 import {
   bestsSince,
+  hasAnyBest,
   namedBests,
   toApiLiftingResult,
   ZERO_BESTS,
@@ -22,9 +27,9 @@ import {
 } from './lib/results';
 import { compareBytes } from './lib/sort';
 import { selectWrapped, type WrappedAnswer } from './lib/wrapped';
-import { RESULT_NAMES_VIEW, SEARCH_SHARD_SIZES_VIEW, searchShardKey } from './lib/viewKeys';
-import { readViewJsonAnyAge, readViewTextAnyAge } from './lib/views';
-import { apiError, requireIsoDate, requireNameList, requireNonEmpty, requirePresentIsoDate } from './lib/validation';
+import { meetKey, RESULT_NAMES_VIEW, SEARCH_SHARD_SIZES_VIEW, searchShardKey } from './lib/viewKeys';
+import { readFreshView, readViewJsonAnyAge, readViewTextAnyAge } from './lib/views';
+import { apiError, requireIsoDate, requireNameList, requireNonEmpty, requirePresentIsoDate, requireTextList } from './lib/validation';
 
 // `/lifting-results/*` and `/search`: each query answers the JSON of the Rust
 // route of the same name. Per-athlete reads go through the athlete history
@@ -294,12 +299,86 @@ export const wsoElite = action({
   },
 });
 
-/** `GET /lifting-results`: a meet's results, by name. Answers `{ json }`. */
 export const byMeet = premiumQuery('results:byMeet', {
-  args: { meet: v.string() },
-  handler: async (ctx, { meet }) => {
+  args: { meet: v.string(), ifNoneMatch: v.optional(v.string()) },
+  handler: async (ctx, { meet, ifNoneMatch }) => {
     requireNonEmpty('meet', meet);
-    return { json: JSON.stringify(await computeMeetResults(ctx, meet)) };
+    const view = await readFreshView(ctx, meetKey(meet, 'results'));
+    if (view) return await revalidatedText(view.etag, view.json, ifNoneMatch);
+    return revalidated(await computeMeetResults(ctx, meet), ifNoneMatch);
+  },
+});
+
+export const MAX_MEDAL_MEETS = 10;
+export const MAX_MEDAL_MEMBERS = 2000;
+export const MAX_SUMMARY_MEETS = 4;
+export const MEET_ROWS_READ_BUDGET = 30000;
+
+async function rowsWithinBudget<T>(budget: DocumentBudget, meets: readonly string[], take: (limit: number) => Promise<T[]>): Promise<T[]> {
+  const rows = await takeWithinBudget(budget, take);
+  if (rows === null) throw apiError(413, tooLargeToRead(meets), { max: MEET_ROWS_READ_BUDGET });
+  return rows;
+}
+
+async function resultRowsOfTitles(ctx: QueryCtx, titles: readonly string[], budget: DocumentBudget, meets: readonly string[]): Promise<ApiLiftingResult[]> {
+  const rows: ApiLiftingResult[] = [];
+  for (const title of titles) {
+    const docs = await rowsWithinBudget(budget, meets, (limit) =>
+      ctx.db
+        .query('lifting_results')
+        .withIndex('by_meet', (q) => q.eq('meet', title))
+        .take(limit),
+    );
+    rows.push(...docs.map(toApiLiftingResult));
+  }
+  return rows;
+}
+
+async function titlesSpelledLike(ctx: QueryCtx, meets: readonly string[]): Promise<string[]> {
+  const titles = new Set<string>();
+  for (const meet of meets) {
+    const key = normalizeName(meet);
+    for (const title of await meetResultTitles(ctx, meet)) if (normalizeName(title) === key) titles.add(title);
+  }
+  return [...titles];
+}
+
+export const groupMedals = premiumQuery('results:groupMedals', {
+  args: { meets: v.array(v.string()), members: v.array(v.string()) },
+  handler: async (ctx, { meets, members }): Promise<EditionMedals[]> => {
+    requireTextList('meets', meets, MAX_MEDAL_MEETS);
+    requireTextList('members', members, MAX_MEDAL_MEMBERS);
+    const budget: DocumentBudget = { left: MEET_ROWS_READ_BUDGET };
+    const results = await resultRowsOfTitles(ctx, await titlesSpelledLike(ctx, meets), budget, meets);
+    const roster: RosterEntry[] = [];
+    if (needsRoster(results)) {
+      for (const meet of new Set(meets)) {
+        roster.push(
+          ...(await rowsWithinBudget(budget, meets, (limit) =>
+            ctx.db
+              .query('athletes')
+              .withIndex('by_meet', (q) => q.eq('meet', meet))
+              .take(limit),
+          )),
+        );
+      }
+    }
+    return editionMedals(results, roster, members);
+  },
+});
+
+export const meetSummaries = premiumQuery('results:meetSummaries', {
+  args: { meets: v.array(v.string()) },
+  handler: async (ctx, { meets }): Promise<EditionSummary[]> => {
+    requireTextList('meets', meets, MAX_SUMMARY_MEETS);
+    const budget: DocumentBudget = { left: MEET_ROWS_READ_BUDGET };
+    const summaries: EditionSummary[] = [];
+    for (const meet of new Set(meets)) {
+      const rows = await resultRowsOfTitles(ctx, await meetResultTitles(ctx, meet), budget, [meet]);
+      rows.sort(byNameThenNewest);
+      summaries.push(...editionSummaries(meet, rows));
+    }
+    return summaries.sort(newestEditionFirst);
   },
 });
 
@@ -344,6 +423,16 @@ export function answerBests(summaries: Map<string, Summary>, names: readonly str
     if (bests) bestByKey.set(key, bests);
   }
   return namedBests(names, bestByKey);
+}
+
+export type NamedBestsOrLatest = NamedBests & { latest?: true };
+
+export function answerBestsOrLatest(summaries: Map<string, Summary>, names: readonly string[], cutoff: string): NamedBestsOrLatest[] {
+  return answerBests(summaries, names, cutoff).map((row) => {
+    if (hasAnyBest(row)) return row;
+    const latest = summaries.get(normalizeName(row.name))?.latest ?? [];
+    return { ...row, ...(latestMeetBests(latest) ?? ZERO_BESTS), latest: true };
+  });
 }
 
 export function answerYearBests(marks: readonly Mark[], cutoff: string): YearBests {
@@ -406,18 +495,14 @@ export const yearBests = premiumQuery('results:yearBests', {
   },
 });
 
-/**
- * `POST /lifting-results/bests`: bests since `cutoffDate` for each requested
- * spelling (unknown names get zeros), as a list in byte order of name; see
- * `NamedBests` for why not a name-keyed map.
- */
 export const bests = premiumQuery('results:bests', {
-  args: { names: v.array(v.string()), cutoffDate: v.optional(v.string()) },
-  handler: async (ctx, args): Promise<NamedBests[]> => {
+  args: { names: v.array(v.string()), cutoffDate: v.optional(v.string()), latestWhenEmpty: v.optional(v.boolean()) },
+  handler: async (ctx, args): Promise<NamedBests[] | NamedBestsOrLatest[]> => {
     const names = cleanNameList(args.names);
     requireNameList(names);
     const cutoff = requirePresentIsoDate('cutoff_date', args.cutoffDate);
     const summaries = await readSummaries(ctx, [...requestedNamesByKey(names).keys()]);
+    if (args.latestWhenEmpty) return answerBestsOrLatest(summaries, names, cutoff);
     return answerBests(summaries, names, cutoff);
   },
 });
