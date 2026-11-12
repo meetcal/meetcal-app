@@ -8,6 +8,7 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { DaySchedule, Schedule } from "@/types/schedule";
+import { isDaySchedule } from "@/lib/schedule-shape";
 
 interface UsePaginatedScheduleParams {
   schedule: Schedule;
@@ -75,10 +76,6 @@ export function usePaginatedSchedule({
     itemVisiblePercentThreshold: 50,
   }).current;
 
-  const scheduleRef = useRef(schedule);
-  useEffect(() => {
-    scheduleRef.current = schedule;
-  }, [schedule]);
   const onViewableItemsChanged = useCallback(
     ({
       viewableItems,
@@ -88,14 +85,10 @@ export function usePaginatedSchedule({
     }) => {
       const [first] = viewableItems;
       if (first) {
-        // Keep `currentPage` honest even when the user never swiped: the list
-        // can open on `initialScrollIndex` (today's day), and the re-anchor
-        // effect below would otherwise snap back to day 0 on the first fold.
         if (typeof first.index === "number" && first.index >= 0 && first.index <= lastPage) {
           setCurrentPage(first.index);
         }
-        const currentItem = typeof first.index === "number" ? scheduleRef.current[first.index] : undefined;
-        if (currentItem) setHeaderTitle(formatDayTitle(currentItem));
+        if (isDaySchedule(first.item)) setHeaderTitle(formatDayTitle(first.item));
       }
     },
     [formatDayTitle, setHeaderTitle, lastPage],

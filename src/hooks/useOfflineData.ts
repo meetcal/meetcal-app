@@ -77,11 +77,6 @@ export const useOfflineData = () => {
   >({});
   const [statusesLoad, setStatusesLoad] =
     useState<DownloadStatusesLoad>("loading");
-  // Busy flags live in `offline-activity`, not in this hook: they are read
-  // synchronously (an alert's button holds the closure of the render that
-  // opened it, so render-time state still said "not busy"), and they outlive
-  // this mount (an action keeps running after the user swipes back, and a
-  // reopened screen must still see it).
   const activity = useSyncExternalStore(
     subscribeOfflineActivity,
     getOfflineActivity,
@@ -94,8 +89,6 @@ export const useOfflineData = () => {
     () =>
       selectDownloadableMeets(
         availableMeets,
-        // Anchored in the last zone a day ends in (UTC-12), so a meet stays
-        // offered until it has finished everywhere on Earth, whatever its zone.
         getAnywhereOnEarthDate(),
       ),
     [availableMeets],
@@ -221,8 +214,6 @@ export const useOfflineData = () => {
           lastSynced: adaptiveCache,
         };
     
-        // One read of the downloads blob instead of a `Promise.all` fan-out
-        // that re-read and re-parsed the same AsyncStorage value once per meet.
         const downloadedMeetIds = await getExplicitlyDownloadedMeetIds();
         for (const meet of availableMeets) {
           const explicitlyDownloaded = downloadedMeetIds.has(meet.name);
@@ -254,8 +245,6 @@ export const useOfflineData = () => {
         return () => {
           cancelled = true;
         };
-        // Re-read whenever an action ends (`activity.settled`), including one
-        // an earlier mount of this screen started: it may have changed storage.
       }, [loadStatuses, activity.settled]);
     
       const handleDownload = async (id: string, action: () => Promise<void>) => {
@@ -296,8 +285,6 @@ export const useOfflineData = () => {
             text: "Remove",
             style: "destructive",
             onPress: async () => {
-              // Re-checked: a bulk action may have started while this
-              // confirmation was open.
               if (!claimOfflineItem(id)) return;
               try {
                 await action();
@@ -312,7 +299,6 @@ export const useOfflineData = () => {
         ]);
       };
     
-      /** Claims every row for a bulk action, or says why it can't. */
       const claimBulkAction = (action: OfflineBulkAction): boolean => {
         const claim = claimOfflineBulk(action);
         if (claim === "items-running") {
@@ -328,11 +314,7 @@ export const useOfflineData = () => {
         if (!claimBulkAction("refresh")) return;
 
         try {
-          // Read now, not from the render that opened the confirmation: the
-          // statuses may have landed (or changed) since.
           const statuses = await loadStatuses();
-          // Download-then-swap (see `refreshOfflineDownloads`): nothing is
-          // deleted, so a failed item keeps its previous copy.
           const result = await refreshOfflineDownloads(
             competitionItems
               .filter((item) => statuses[item.id]?.isDownloaded)
@@ -371,14 +353,9 @@ export const useOfflineData = () => {
             clearOfflineCache(OFFLINE_CACHE_KEYS.records),
             clearOfflineCache(OFFLINE_CACHE_KEYS.wsoRecords),
             clearOfflineCache(OFFLINE_CACHE_KEYS.adaptiveRecords),
-            // Rankings, club and filtered-record views cached while browsing.
             clearBrowseCaches(),
           ]);
     
-          // Every meet with data on the device or marked downloaded, not only
-          // the ones in today's window, through the same clear-all as Clear
-          // Cache (one shared key listing, no per-meet history prune: all
-          // history goes right after).
           const { failed } = await clearAllMeetData();
           await clearAllAthleteHistory();
           if (failed > 0) {

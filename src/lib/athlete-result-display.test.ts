@@ -2,7 +2,6 @@ import {
   formatResultDate,
   getRateColor,
   meetResultKey,
-  MIDDLING_RATE_COLOR,
 } from "@/lib/athlete-result-display";
 import type { AthleteMeetResult } from "@/types/athlete-results";
 
@@ -28,8 +27,8 @@ describe("getRateColor", () => {
   it("colors 80% and above as success, below 70% as fail, and the band between as middling", () => {
     expect(getRateColor(100, colors)).toBe("green");
     expect(getRateColor(80, colors)).toBe("green");
-    expect(getRateColor(79.9, colors)).toBe(MIDDLING_RATE_COLOR);
-    expect(getRateColor(70, colors)).toBe(MIDDLING_RATE_COLOR);
+    expect(getRateColor(79.9, colors)).toBe("#FF9500");
+    expect(getRateColor(70, colors)).toBe("#FF9500");
     expect(getRateColor(69.9, colors)).toBe("red");
     expect(getRateColor(0, colors)).toBe("red");
   });

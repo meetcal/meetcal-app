@@ -2,7 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { clearAllPackageEtags } from './package-etags';
 import { runHistoryClear } from './offline-clears';
 import { normalizeAthleteName } from '@/lib/athletes';
-import { ATHLETE_BESTS_KEY_PREFIX, ATHLETE_HISTORY_KEY_PREFIX } from './offline-storage-keys';
+import { ATHLETE_BESTS_KEY_PREFIX, ATHLETE_HISTORY_KEY_PREFIX, LIFTING_RESULTS_CHUNK_MARKER } from './offline-storage-keys';
 import { multiRemoveBatched } from './storage-batches';
 import { getStore, type OfflineStore } from './offline-store-index';
 import { readStoredAthletes } from './meet-data-reads';
@@ -15,7 +15,7 @@ function athleteNameOfStorageKey(key: string): string | null {
       : null;
   if (!prefix) return null;
   const rest = key.slice(prefix.length);
-  const chunkAt = rest.indexOf('__chunk_');
+  const chunkAt = rest.indexOf(LIFTING_RESULTS_CHUNK_MARKER);
   return normalizeAthleteName(chunkAt === -1 ? rest : rest.slice(0, chunkAt));
 }
 

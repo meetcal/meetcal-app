@@ -47,18 +47,6 @@ async function loadCachedBestsForNames(
   return bestsByName;
 }
 
-/**
- * The stored-bests layer, shared by both entry points: de-duplicate the
- * names, seed every one with an empty record, then overwrite whatever
- * `offline-store` already holds, fresh or not (a stale answer still beats
- * "—"). `getCachedAthleteBestsBatch` stops here;
- * `getAthleteBestsBatchUncached` continues with `namesNeedingLookup`.
- *
- * Freshness is `offline-store`'s rule (`isAthleteBestsFresh`), the one the
- * start list uses too: a stored all-null entry used to count as a final
- * "no results" forever, even when it was an offline or failed lookup's
- * fallback.
- */
 async function loadStoredBests(names: string[]): Promise<{
   bestsByName: Record<string, AthleteBests>;
   namesNeedingLookup: string[];

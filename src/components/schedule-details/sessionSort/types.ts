@@ -2,19 +2,14 @@ import type {
   SessionAthleteSortDirection,
   SessionAthleteSortKey,
 } from "@/lib/session-athlete-sort";
-
-export interface SortOption {
-  label: string;
-  key: SessionAthleteSortKey;
-  direction: SessionAthleteSortDirection;
-}
+import type { SessionSortOption } from "@/lib/session-athletes-view";
 
 export interface SessionSortControlProps {
   isSubscribed: boolean;
   sortLabel: string;
   sortKey: SessionAthleteSortKey;
   sortDirection: SessionAthleteSortDirection;
-  sortOptions: SortOption[];
+  sortOptions: readonly SessionSortOption[];
   onSelect: (key: SessionAthleteSortKey, direction: SessionAthleteSortDirection) => void;
   onLockedPress: () => void;
 }

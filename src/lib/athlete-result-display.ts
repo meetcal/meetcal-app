@@ -1,7 +1,8 @@
 import type { AppColors } from "@/constants/Colors";
+import { Palette } from "@/constants/Palette";
 import type { AthleteMeetResult } from "@/types/athlete-results";
 
-export const MIDDLING_RATE_COLOR = "#FF9500";
+const MIDDLING_RATE_COLOR = Palette.systemOrange;
 const GOOD_RATE_MIN = 80;
 const POOR_RATE_BELOW = 70;
 

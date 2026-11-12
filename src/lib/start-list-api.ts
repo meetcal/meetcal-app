@@ -155,9 +155,6 @@ export async function getLastYearBests(athleteName: string): Promise<YearBests> 
 }
 
 async function getLastYearBestsUncached(athleteName: string): Promise<YearBests> {
-  // Freshness is `offline-store`'s rule, shared with session details: a
-  // fresh entry is final, real numbers or "no results" alike; a stale one
-  // (or one stored before entries carried a time) is looked up again.
   const stored = (await getStoredAthleteBestsForNames([athleteName]))[athleteName];
   if (stored?.isFresh) {
     const result = fromStoredBests(stored.bests);
