@@ -17,7 +17,7 @@ export type WsoRecord = {
 
 /** The spreadsheet id in a Google Sheets URL (`/d/<id>/`). */
 export function sheetIdOf(url: string): string {
-  return url.split('/d/')[1].split('/')[0];
+  return (url.split('/d/')[1] ?? '').split('/')[0] ?? '';
 }
 
 /**
@@ -56,7 +56,7 @@ function unescapeJs(text: string): string {
  */
 export function sheetTabList(html: string): SheetTab[] {
   const tabs: SheetTab[] = [];
-  for (const [, name, gid] of html.matchAll(/\{name: "((?:[^"\\]|\\.)*)", pageUrl: "(?:[^"\\]|\\.)*", gid: "(\d+)"/g)) {
+  for (const [, name = '', gid = ''] of html.matchAll(/\{name: "((?:[^"\\]|\\.)*)", pageUrl: "(?:[^"\\]|\\.)*", gid: "(\d+)"/g)) {
     tabs.push({ name: unescapeJs(name), gid });
   }
   return tabs;

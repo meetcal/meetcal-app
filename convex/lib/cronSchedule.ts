@@ -6,7 +6,7 @@
  */
 export function parseSchedule(schedule: string): { minute: number; hour: number | null } {
   const fields = schedule.trim().split(/\s+/);
-  const [minute, hour, ...rest] = fields;
+  const [minute = '', hour = '', ...rest] = fields;
   if (fields.length !== 5 || rest.some((field) => field !== '*') || !/^\d{1,2}$/.test(minute) || !(hour === '*' || /^\d{1,2}$/.test(hour))) {
     throw new Error(`unsupported schedule "${schedule}": only "M H * * *" and "M * * * *" are handled`);
   }

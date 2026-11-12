@@ -1,3 +1,4 @@
+import { MEETS_MAX, MEET_ROSTER_MAX, RECORDS_MAX, readAll } from '../lib/boundedRead';
 import { mapInBatches } from '../lib/concurrency';
 import { v } from 'convex/values';
 import { internalQuery, type QueryCtx } from '../_generated/server';
@@ -14,10 +15,13 @@ const isUsaw = (meet: Doc<'meets'>) => normalizeFederation(meet.federation ?? 'U
 
 /** The stored USAW meet Sport80 knows by `sourceId` (its event id; the oldest, if rows repeat one), or null. */
 async function sport80Meet(ctx: QueryCtx, sourceId: string): Promise<Doc<'meets'> | null> {
-  const rows = await ctx.db
-    .query('meets')
-    .withIndex('by_source_id', (q) => q.eq('sourceId', sourceId))
-    .collect();
+  const rows = await readAll(
+    ctx.db
+      .query('meets')
+      .withIndex('by_source_id', (q) => q.eq('sourceId', sourceId)),
+    MEETS_MAX,
+    'meets',
+  );
   return oldestMeet(rows.filter(isUsaw));
 }
 
@@ -42,10 +46,13 @@ export const meetsForSync = internalQuery({
     }
     const listed = new Set(rows.map((row) => row.sourceId));
     const unlisted = (
-      await ctx.db
-        .query('meets')
-        .withIndex('by_status_and_start_date', (q) => q.eq('status', 'upcoming').gt('startDate', today))
-        .collect()
+      await readAll(
+        ctx.db
+          .query('meets')
+          .withIndex('by_status_and_start_date', (q) => q.eq('status', 'upcoming').gt('startDate', today)),
+        MEETS_MAX,
+        'meets',
+      )
     )
       .filter((meet) => meet.sourceId !== undefined && !listed.has(meet.sourceId) && isUsaw(meet))
       .map((meet) => ({ name: meet.name, sourceId: meet.sourceId!, startDate: meet.startDate }));
@@ -95,7 +102,7 @@ async function missingResultsLink(ctx: QueryCtx, meet: Doc<'meets'>) {
 export const meetDataProblems = internalQuery({
   args: {},
   handler: async (ctx) => {
-    const meets = await ctx.db.query('meets').collect();
+    const meets = await readAll(ctx.db.query('meets'), MEETS_MAX, 'meets');
     const badDates = [];
     const unknownZone = [];
     const zoneDiffers = [];
@@ -139,10 +146,13 @@ export const truncatedEntryNames = internalQuery({
     const page = await ctx.db.query('meets').paginate({ cursor: cursor ?? null, numItems: pageSize });
     const pairs = [];
     for (const meet of page.page) {
-      const athletes = await ctx.db
-        .query('athletes')
-        .withIndex('by_meet', (q) => q.eq('meet', meet.name))
-        .collect();
+      const athletes = await readAll(
+        ctx.db
+          .query('athletes')
+          .withIndex('by_meet', (q) => q.eq('meet', meet.name)),
+        MEET_ROSTER_MAX,
+        'athletes of one meet',
+      );
       const byKey = new Map<string, typeof athletes>();
       for (const athlete of athletes) {
         const key = normalizeName(athlete.name);
@@ -210,7 +220,7 @@ export const memberWsos = internalQuery({
 export const storedRecords = internalQuery({
   args: { recordType: v.string() },
   handler: async (ctx, { recordType }) =>
-    (await ctx.db.query('records').withIndex('by_record_type', (q) => q.eq('recordType', recordType)).collect()).map(
+    (await readAll(ctx.db.query('records').withIndex('by_record_type', (q) => q.eq('recordType', recordType)), RECORDS_MAX, 'records')).map(
       ({ ageCategory, gender, weightClass, snatchRecord, cjRecord, totalRecord, snatchBy, cjBy, totalBy }) => ({
         ageCategory,
         gender,

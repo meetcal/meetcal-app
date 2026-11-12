@@ -20,6 +20,7 @@ import {
 } from '../convex/deviceLogin';
 import { type SigningJwk } from '../convex/lib/jwt';
 import { fakeMutationCtx, handlerOf } from './fakeDb';
+import { itemAt } from '../convex/lib/json';
 
 /**
  * Device-code login for the CLI (`convex/deviceLogin.ts`): start, approve on
@@ -247,7 +248,7 @@ describe('a device login', () => {
     const db = fakeMutationCtx();
     expect(await statusOf(startLogin(db, '   '))).toBe(400);
     await startLogin(db, 'x'.repeat(200));
-    expect(db.rows('device_logins')[0].deviceName).toHaveLength(64);
+    expect(itemAt(db.rows('device_logins'), 0).deviceName).toHaveLength(64);
   });
 
   it('prunes expired logins, with no cap anyone could fill to block everyone', async () => {

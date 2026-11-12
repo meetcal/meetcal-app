@@ -2,6 +2,7 @@ import type { Infer } from 'convex/values';
 import type { Doc } from '../_generated/dataModel';
 import type { lifterMatch } from '../schema';
 import { daysBetween } from './dates';
+import { itemAt } from './json';
 import { mastersAges, parseDivision } from './leaderboard';
 import { normalizeName } from './names';
 import { isDatedResult } from './results';
@@ -82,8 +83,9 @@ export function condenseSightings<T extends SightingWithMembership>(sightings: r
 }
 
 export function sameLifterFields(a: LifterFields, b: LifterFields): boolean {
-  const keys = new Set([...Object.keys(a), ...Object.keys(b)] as (keyof LifterFields)[]);
-  for (const key of keys) if (a[key] !== b[key]) return false;
+  const left = new Map(Object.entries(a));
+  const right = new Map(Object.entries(b));
+  for (const key of new Set([...left.keys(), ...right.keys()])) if (left.get(key) !== right.get(key)) return false;
   return true;
 }
 
@@ -160,11 +162,11 @@ export function linkFor(row: LinkableResult, lifters: readonly LifterFacts[], hi
     if (histories === null) return null;
     const owners = lifters.filter((lifter) => (histories.get(lifter.athleteId) ?? []).some((source) => sameSourceResult(row, source)));
     if (owners.length === 0) return null;
-    if (owners.length === 1) return { lifterId: owners[0].athleteId, lifterMatch: 'history' };
+    if (owners.length === 1) return { lifterId: itemAt(owners, 0).athleteId, lifterMatch: 'history' };
     candidates = owners;
   }
   const fitting = candidates.filter((lifter) => fitsDivision(row, lifter));
-  return fitting.length === 1 ? { lifterId: fitting[0].athleteId, lifterMatch: 'fit' } : null;
+  return fitting.length === 1 ? { lifterId: itemAt(fitting, 0).athleteId, lifterMatch: 'fit' } : null;
 }
 
 export function sameLink(row: Pick<Doc<'lifting_results'>, 'lifterId' | 'lifterMatch'>, link: LifterLink): boolean {

@@ -3,10 +3,10 @@ import { join } from 'node:path';
 import { clubStats, computeStatsRows, liftKey, medalFor, rankingGroup, rankOf, type StatsRow } from '../convex/lib/meetData';
 import { formatResults } from '../convex/scrapers/parse/sport80';
 import { clubKey } from '../convex/lib/clubs';
+import { itemAt } from '../convex/lib/json';
 
 type Row = Record<string, unknown>;
 
-/** Just enough of Convex's `ctx.db` for the stats readers: index equality / `lt`, then `collect`. */
 function fakeCtx(tables: Record<string, Row[]>) {
   return {
     db: {
@@ -24,7 +24,7 @@ function fakeCtx(tables: Record<string, Row[]>) {
             },
           };
           build(q);
-          return { collect: async () => (tables[table] ?? []).filter((row) => filters.every((f) => f(row))) };
+          return { take: async (count: number) => ((tables[table] ?? []).filter((row) => filters.every((f) => f(row))).slice(0, count)) };
         },
       }),
     },
@@ -327,7 +327,7 @@ describe('club meet stats from Sport80 rows', () => {
 
   it('rank by division and attempts, as the table carries no placing', async () => {
     // No placing, lot number or lifting-order column to take placings from.
-    expect(Object.keys(DMV_95.data[0]).sort()).toEqual(
+    expect(Object.keys(itemAt(DMV_95.data, 0)).sort()).toEqual(
       [
         'age_category', 'best_c&j', 'best_snatch', 'body_weight_(kg)', 'c&j_lift_1', 'c&j_lift_2', 'c&j_lift_3',
         'date', 'lifter', 'meet', 'snatch_lift_1', 'snatch_lift_2', 'snatch_lift_3', 'total',
@@ -392,7 +392,7 @@ describe('club meet stats for two lifters of one name (#247)', () => {
     // Club X's row sorts first; the 89 kg rows are one club under two spellings.
     const rows = await computeStatsRows(fakeCtx({ athletes: [x, y, yAgain], lifting_results: [yResult] }), 'Open');
     expect(rows.map((r) => [r.weight_class, r.total])).toEqual([['89', 300]]);
-    expect(clubKey(rows[0].club)).toBe(clubKey('Ong Weightlifting'));
+    expect(clubKey(itemAt(rows, 0).club)).toBe(clubKey('Ong Weightlifting'));
   });
 
   it('reads a superheavy class either way round, and falls back to the first entry when no class matches', async () => {

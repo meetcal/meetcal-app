@@ -12,6 +12,7 @@ import {
   resultDatePage,
   suspectResultDates,
 } from '../convex/migrations';
+import { itemAt } from '../convex/lib/json';
 
 type Row = Record<string, unknown>;
 type Paged = { cursor?: string | null; [key: string]: unknown };
@@ -104,7 +105,7 @@ describe('dedupeLiftingResults (#132, #369)', () => {
     // Both on one line: a page's unresolved identities are logged together.
     const left = logged.filter((line) => line.startsWith('dedupeLiftingResults: left'));
     expect(left).toHaveLength(1);
-    expect(left[0].split('\n').slice(1)).toEqual([expect.stringContaining('event 4598 "Dallas" "Brandon Victorian"'), expect.stringContaining('event 4600')]);
+    expect(itemAt(left, 0).split('\n').slice(1)).toEqual([expect.stringContaining('event 4598 "Dallas" "Brandon Victorian"'), expect.stringContaining('event 4600')]);
     expect(logged.at(-1)).toContain('2 duplicate rows deleted, 2 identities left');
   });
 

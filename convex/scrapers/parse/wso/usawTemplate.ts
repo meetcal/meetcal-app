@@ -61,19 +61,20 @@ type Row = { age: string; gender: string; min: string; written: string; cell: (i
  * or "<min>+" at the top), with a warning.
  */
 function classNames(rows: readonly Row[], wso: string, warnings: string[]): Map<string, string> {
-  const written = new Map<string, Set<string>>();
+  const written = new Map<string, { age: string; gender: string; min: string; classes: Set<string> }>();
   const ladders = new Map<string, number[]>();
   for (const row of rows) {
     const key = JSON.stringify([row.age, row.gender, row.min]);
-    written.set(key, (written.get(key) ?? new Set()).add(row.written));
+    const group = written.get(key) ?? { age: row.age, gender: row.gender, min: row.min, classes: new Set<string>() };
+    group.classes.add(row.written);
+    written.set(key, group);
     const ladder = JSON.stringify([row.age, row.gender]);
     if (/^\d+(?:\.\d+)?$/.test(row.min)) ladders.set(ladder, [...(ladders.get(ladder) ?? []), Number(row.min)]);
   }
   const names = new Map<string, string>();
-  for (const [key, classes] of written) {
-    const [age, gender, min] = JSON.parse(key) as [string, string, string];
+  for (const [key, { age, gender, min, classes }] of written) {
     const [only] = classes;
-    if (classes.size === 1 && fits(only, min)) {
+    if (only !== undefined && classes.size === 1 && fits(only, min)) {
       names.set(key, only);
       continue;
     }

@@ -293,6 +293,7 @@ export function pruneBests(best: Map<string, Candidate>, limit: number): void {
   if (best.size <= limit) return;
   const values = [...best.values()].map(({ value }) => value).sort((a, b) => b - a);
   const threshold = values[limit - 1];
+  if (threshold === undefined) return;
   for (const [key, { value }] of best) if (value < threshold) best.delete(key);
 }
 
@@ -320,6 +321,21 @@ export type CompactRow = [
   adaptive: boolean,
 ];
 
+export function readCompactRow(row: unknown): CompactRow {
+  if (!Array.isArray(row) || row.length !== 16) throw new Error('leaderboard page row is not a compact row');
+  const cells: unknown[] = row;
+  const text = (index: number): string => {
+    const cell = cells[index];
+    if (typeof cell !== 'string') throw new Error('leaderboard page row is not a compact row');
+    return cell;
+  };
+  const number = (index: number): number => {
+    const cell = cells[index];
+    return typeof cell === 'number' ? cell : Number.NaN;
+  };
+  return [text(0), text(1), text(2), text(3), text(4), number(5), number(6), number(7), number(8), number(9), number(10), number(11), number(12), number(13), number(14), cells[15] === true];
+}
+
 export function toCompactRow(row: RankedFields): CompactRow {
   return [
     row.federation,
@@ -345,10 +361,7 @@ export function toCompactRow(row: RankedFields): CompactRow {
 export function parseCompactRows(json: string): RankedFields[] {
   const parsed: unknown = JSON.parse(json);
   if (!Array.isArray(parsed)) throw new Error('leaderboard page is not a list');
-  return parsed.map((row: unknown) => {
-    if (!Array.isArray(row) || row.length !== 16) throw new Error('leaderboard page row is not a compact row');
-    return fromCompactRow(row as CompactRow);
-  });
+  return parsed.map((row: unknown) => fromCompactRow(readCompactRow(row)));
 }
 
 export function fromCompactRow([federation, meet, date, name, age, body_weight, snatch1, snatch2, snatch3, snatch_best, cj1, cj2, cj3, cj_best, total, adaptive]: CompactRow): RankedFields {

@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { parseHtml } from '../../convex/scrapers/lib/html';
 import { iwfSiteUrl, parseIwfSiteHtml } from '../../convex/scrapers/parse/iwfSite';
+import { itemAt } from '../../convex/lib/json';
 
 // iwf.sport's senior women's page as Browserless loaded it on 28 October
 // 2026, cut to its records list.
@@ -41,7 +42,7 @@ describe('IWF world records from iwf.sport', () => {
   it('reads a standard IWF dates ahead, which is no lift', () => {
     const ahead = page.replace('Jun 01, 2025 - World Standard', 'Jun 01, 2099 - World Standard');
     expect(ahead).not.toBe(page);
-    expect(parseIwfSiteHtml(ahead, 'Senior', 'Women')[1].snatchBy).toEqual({ name: 'Standard' });
+    expect(itemAt(parseIwfSiteHtml(ahead, 'Senior', 'Women'), 1).snatchBy).toEqual({ name: 'Standard' });
   });
 
   it('fails on the bot challenge, a missing class or a missing lift instead of reading too few records', () => {

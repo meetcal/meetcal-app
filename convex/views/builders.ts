@@ -1,4 +1,5 @@
 import { isoDateOf } from '../lib/dates';
+import { MEET_ROSTER_MAX, readAll } from '../lib/boundedRead';
 import { chunks } from '../lib/concurrency';
 import { v } from 'convex/values';
 import { internalAction, internalMutation, internalQuery, type ActionCtx, type MutationCtx } from '../_generated/server';
@@ -129,10 +130,13 @@ export const buildMeetTimelines = internalMutation({
   args: { meet: v.string() },
   handler: async (ctx, { meet }) => {
     const sources = await snapshotVersions(ctx, VIEW_SOURCES.meetTimelines);
-    const roster = await ctx.db
-      .query('athletes')
-      .withIndex('by_meet', (q) => q.eq('meet', meet))
-      .collect();
+    const roster = await readAll(
+      ctx.db
+        .query('athletes')
+        .withIndex('by_meet', (q) => q.eq('meet', meet)),
+      MEET_ROSTER_MAX,
+      'athletes of one meet',
+    );
     const horizon = yearsAgo(TIMELINE_YEARS);
     const names = [...new Set(roster.map((a) => a.name))].sort(compareBytes);
     const timelines = await computeTimelines(ctx, names, horizon);
@@ -165,10 +169,13 @@ export const buildMeetStats = internalMutation({
   handler: async (ctx, { meet, sources, known }) => {
     const stamp = sources ?? (await snapshotVersions(ctx, VIEW_SOURCES.meetStats));
     const { rows, latest } = await computeStats(ctx, meet, undefined, known ?? []);
-    const roster = await ctx.db
-      .query('athletes')
-      .withIndex('by_meet', (q) => q.eq('meet', meet))
-      .collect();
+    const roster = await readAll(
+      ctx.db
+        .query('athletes')
+        .withIndex('by_meet', (q) => q.eq('meet', meet)),
+      MEET_ROSTER_MAX,
+      'athletes of one meet',
+    );
     await writeView(ctx, meetKey(meet, 'stats'), jsonChunks(statsViewItems(rows, clubAthleteCounts(roster))), stamp, { meta: latest });
     return rows.length;
   },

@@ -1,4 +1,5 @@
 import { ageCategory, findRecordsPdfUrl, formatWeightClass, parseRecords, parseRecordsReport } from '../../convex/scrapers/parse/records';
+import { itemAt } from '../../convex/lib/json';
 
 const PAGE = 'https://www.usaweightlifting.org/american-records';
 
@@ -31,7 +32,8 @@ describe('records parser (port of usaw/records_scraper)', () => {
       'JR M 60 TOTAL Standard 2026-08-01',
       'W80 F 49 SNATCH 0 Standard 2026-08-01',
     ];
-    const [women49, men60, women80] = parseRecords([lines]);
+    const records = parseRecords([lines]);
+    const [women49, men60, women80] = [itemAt(records, 0), itemAt(records, 1), itemAt(records, 2)];
     expect(women49.snatchBy).toEqual({ name: 'DOE, Jane', date: '2026-06-20', location: '2026 National Championships, Colorado Springs, CO' });
     expect(women49.cjBy).toEqual({ name: 'DOE, Jane', date: '2026-06-20' });
     expect(women49.totalBy).toEqual({ name: 'Standard', date: '2026-08-01' });
@@ -86,7 +88,7 @@ describe('records parser (port of usaw/records_scraper)', () => {
       ['u17', 'men', '85kg', 130, 0, 0],
       ['university', 'men', '110kg', 0, 0, 369],
     ]);
-    expect(records[0].snatchBy).toEqual({ name: 'AOKI BLANCHARD, Charlotte', date: '2026-09-12', location: '2026 Virus Weightlifting Series 2, Fort Worth, TX' });
+    expect(itemAt(records, 0).snatchBy).toEqual({ name: 'AOKI BLANCHARD, Charlotte', date: '2026-09-12', location: '2026 Virus Weightlifting Series 2, Fort Worth, TX' });
     expect(unknownAgeGroups).toEqual([]);
   });
 

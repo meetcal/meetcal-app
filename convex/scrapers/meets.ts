@@ -1,5 +1,7 @@
 'use node';
 
+import { errorMessage } from '../lib/errors';
+import { itemAt } from '../lib/json';
 import { v } from 'convex/values';
 import { isoDateOf } from '../lib/dates';
 import { internalAction } from '../_generated/server';
@@ -65,7 +67,7 @@ export const run = internalAction({
     try {
       rows = await readAllWidgetPages((page) => fetchWidgetPage(widgetPageUrl('', page)));
     } catch (error) {
-      result.error = (error as Error).message;
+      result.error = errorMessage(error);
       console.error(`meets: fetch failed: ${result.error}`);
       throw sourcesFailed('meets', [{ source: LISTING, error: result.error }]);
     }
@@ -100,12 +102,12 @@ export const run = internalAction({
       const outcomes: { wasInsert: boolean; wasChanged: boolean; storedAs?: string; retitledFrom?: string }[] = await ctx.runMutation(internal.ingest.upsertMeets, {
         rows: toIngest,
       });
-      result.inserted = toIngest.filter((_, i) => outcomes[i].wasInsert).map((m) => m.name);
+      result.inserted = toIngest.filter((_, i) => itemAt(outcomes, i).wasInsert).map((m) => m.name);
       // Stored, then the run fails once so a person hears: a new meet stored
       // under another name because another federation's meet has its name,
       // and a meet Sport80 retitled.
       toIngest.forEach((m, i) => {
-        const { wasInsert, storedAs, retitledFrom } = outcomes[i];
+        const { wasInsert, storedAs, retitledFrom } = itemAt(outcomes, i);
         if (wasInsert && storedAs) failed.push({ source: `meet ${m.name}`, error: renamedMeetMessage(m.name, storedAs) });
         if (retitledFrom !== undefined) failed.push({ source: `meet ${storedAs ?? m.name}`, error: retitledMeetMessage(retitledFrom, m.name, storedAs ?? m.name) });
       });

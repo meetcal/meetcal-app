@@ -2,10 +2,6 @@ import { computeStatsRows, previousBests, statsPreviousBestKeys, type PreviousBe
 
 type Row = Record<string, unknown>;
 
-/**
- * Just enough of Convex's `ctx.db` for the stats readers: equality and `lt`
- * range on an index, then `collect`. Counts documents read per query.
- */
 function fakeCtx(tables: Record<string, Row[]>) {
   const reads = { resultsBefore: 0 };
   const ctx = {
@@ -27,10 +23,10 @@ function fakeCtx(tables: Record<string, Row[]>) {
           };
           build(q);
           return {
-            collect: async () => {
+            take: async (count: number) => {
               const rows = (tables[table] ?? []).filter((row) => filters.every((f) => f(row)));
               if (ranged) reads.resultsBefore += 1;
-              return rows;
+              return rows.slice(0, count);
             },
           };
         },

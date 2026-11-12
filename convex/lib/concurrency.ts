@@ -1,3 +1,5 @@
+import { itemAt } from './json';
+
 export const chunks = <T>(items: readonly T[], size: number): T[][] => {
   if (!(size >= 1)) throw new Error(`chunks: size must be at least 1, got ${size}`);
   return Array.from({ length: Math.ceil(items.length / size) }, (_, index) => items.slice(index * size, (index + 1) * size));
@@ -12,7 +14,7 @@ export async function mapLimited<T, R>(items: readonly T[], limit: number, run: 
     while (!failed && next < items.length) {
       const i = next++;
       try {
-        results[i] = await run(items[i]);
+        results[i] = await run(itemAt(items, i));
       } catch (error) {
         failed = true;
         throw error;

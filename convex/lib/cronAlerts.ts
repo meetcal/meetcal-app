@@ -1,6 +1,6 @@
+import { isListOf, isRecord, isStringList } from './json';
 import { ConvexError } from 'convex/values';
 import { errorMessage } from './errors';
-import { isRecord } from './json';
 
 /**
  * When a scheduled job's state is worth an email. One incident sends one
@@ -11,6 +11,16 @@ import { isRecord } from './json';
  */
 export type Alerting = 'failed' | 'missed' | 'stuck';
 export type Notice = { kind: Alerting | 'recovered'; job: string; detail: string };
+const NOTICE_KINDS: readonly Notice['kind'][] = ['failed', 'missed', 'stuck', 'recovered'];
+
+export function queuedNotices(job: string, unsent: readonly { kind: string; detail: string }[] | undefined): Notice[] {
+  return (unsent ?? []).map(({ kind, detail }) => {
+    const known = NOTICE_KINDS.find((candidate) => candidate === kind);
+    if (known === undefined) throw new Error(`${job} has a queued notice of an unknown kind ${JSON.stringify(kind)}`);
+    return { job, kind: known, detail };
+  });
+}
+
 export type RunOutcome = { ok: true } | { ok: false; error: string; failedSources?: readonly string[] };
 
 /**
@@ -62,9 +72,7 @@ const isFailureRecord = (value: unknown): value is FailureRecord =>
   isRecord(value) && typeof value.source === 'string' && typeof value.error === 'string' && typeof value.notReached === 'boolean';
 
 function isSourcesFailedData(data: unknown): data is SourcesFailedData {
-  if (!isRecord(data)) return false;
-  const { message, failedSources, failures } = data;
-  return typeof message === 'string' && Array.isArray(failedSources) && failedSources.every((s) => typeof s === 'string') && Array.isArray(failures) && failures.every(isFailureRecord);
+  return isRecord(data) && typeof data.message === 'string' && isStringList(data.failedSources) && isListOf(isFailureRecord)(data.failures);
 }
 
 export function describeFailure(failure: unknown): RunFailure {
@@ -119,7 +127,7 @@ type Status = { startedAt: number; status: 'running' | 'ok' | 'error'; alerting?
  * running for over STUCK_AFTER_MS. A job that has never run is not judged
  * (a fresh deployment would otherwise report every job missed).
  */
-export function watch(job: string, status: Status | null, due: number, now: number): Notice | undefined {
+export function watch(job: string, status: Status | null, due: number, now: number): (Notice & { kind: 'missed' | 'stuck' }) | undefined {
   if (!status) return undefined;
   if (status.status === 'running' && now - status.startedAt > STUCK_AFTER_MS) {
     if (status.alerting === 'stuck') return undefined;

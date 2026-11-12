@@ -1,5 +1,7 @@
 'use node';
 
+import { errorMessage } from '../lib/errors';
+import { itemAt } from '../lib/json';
 import { v } from 'convex/values';
 import { internalAction, type ActionCtx } from '../_generated/server';
 import { internal } from '../_generated/api';
@@ -111,7 +113,7 @@ const flat = (
     const ref: TabRef | null = tab !== undefined ? { name: tab } : gid ? { gid } : null;
     if (!ref) throw new Error(`${wso}: the sheet URL names no tab (gid)`);
     const [csv] = await fetchTabs(sheetIdOf(sheetUrl), [ref], { headers });
-    return parseFlatSheet(csv, wso, columns);
+    return parseFlatSheet(csv ?? '', wso, columns);
   },
 });
 
@@ -150,7 +152,7 @@ const tabbed = (
   wso,
   scrape: async () => {
     const texts = await fetchTabs(sheetIdOf(sheetUrl), tabs.map(([tab]) => tab));
-    return finish(everyPart(wso, tabs.map(([, parse], i) => parse(texts[i], wso)), (i) => tabLabel(tabs[i][0])));
+    return finish(everyPart(wso, tabs.map(([, parse], i) => parse(texts[i] ?? '', wso)), (i) => tabLabel(itemAt(tabs, i)[0])));
   },
 });
 
@@ -219,14 +221,14 @@ export const WSO_SOURCES: WsoSource[] = [
       const list = await fetchTabList(TNKY_SHEET_ID);
       const tabs = tnkyTabs(list);
       const texts = await fetchTabs(TNKY_SHEET_ID, tabs.map(({ gid }) => ({ gid })), { headers: 1, list });
-      return everyPart('Tennessee-Kentucky', tabs.map((tab, i) => parseTnkyTab(texts[i], 'Tennessee-Kentucky', tab.age, tab.gender)), (i) => `tab ${JSON.stringify(tabs[i].name)}`);
+      return everyPart('Tennessee-Kentucky', tabs.map((tab, i) => parseTnkyTab(texts[i] ?? '', 'Tennessee-Kentucky', tab.age, tab.gender)), (i) => `tab ${JSON.stringify(itemAt(tabs, i).name)}`);
     },
   },
   {
     wso: 'Ohio',
     scrape: async () => {
       const texts = await fetchTabs(OHIO_SHEET_ID, OHIO_TABS.map((tab) => ({ gid: OHIO_TAB_GIDS[tab] })));
-      return everyPart('Ohio', OHIO_TABS.map((tab, i) => parseOhioTab(texts[i], 'Ohio', tab)), (i) => `tab ${JSON.stringify(OHIO_TABS[i])}`);
+      return everyPart('Ohio', OHIO_TABS.map((tab, i) => parseOhioTab(texts[i] ?? '', 'Ohio', tab)), (i) => `tab ${JSON.stringify(OHIO_TABS[i])}`);
     },
   },
   {
@@ -234,7 +236,7 @@ export const WSO_SOURCES: WsoSource[] = [
     scrape: async () => {
       const publishedId = '2PACX-1vR8exp9-mwi8dpkZa9-48G-CUVuZ5rAlpOYdMCiNMka25wZ6V2XPLurpgMDtyiarqnQxYrW6dWfQ042';
       const texts = await mapLimited(PAWV_TABS, SHEET_CONCURRENCY, (tab) => fetchSheetText(pawvCsvUrl(publishedId, tab.gid)));
-      return everyPart('Pennsylvania-West Virginia', PAWV_TABS.map((tab, i) => parsePawvTab(texts[i], 'Pennsylvania-West Virginia', tab)), (i) => `tab gid ${PAWV_TABS[i].gid}`);
+      return everyPart('Pennsylvania-West Virginia', PAWV_TABS.map((tab, i) => parsePawvTab(texts[i] ?? '', 'Pennsylvania-West Virginia', tab)), (i) => `tab gid ${itemAt(PAWV_TABS, i).gid}`);
     },
   },
   {
@@ -254,7 +256,7 @@ export const WSO_SOURCES: WsoSource[] = [
       const urls = mountainSouthPdfUrls(await fetchTextRetrying('https://mountainsouth.org/records/'));
       if (!urls.length) throw new Error('No records PDFs found on the Mountain South records page');
       const pdfs = await Promise.all(urls.map(async (url) => pdfRunLines(await fetchPdfRetrying(url, PDF_TIMEOUT_MS))));
-      return everyPart('Mountain South', pdfs.map((pages) => parseMountainSouth(pages, 'Mountain South')), (i) => urls[i]);
+      return everyPart('Mountain South', pdfs.map((pages) => parseMountainSouth(pages, 'Mountain South')), (i) => urls[i] ?? '');
     },
   },
   {
@@ -263,7 +265,7 @@ export const WSO_SOURCES: WsoSource[] = [
       const urls = newYorkPdfUrls(await fetchTextRetrying('https://www.nywso.com/state-records'));
       if (!urls.length) throw new Error('No records PDFs found on the New York records page');
       const pdfs = await Promise.all(urls.map(async (url) => pdfLines(await fetchPdfRetrying(url, PDF_TIMEOUT_MS))));
-      return everyPart('New York', pdfs.map((pages) => parseNewYork(pages, 'New York')), (i) => urls[i]);
+      return everyPart('New York', pdfs.map((pages) => parseNewYork(pages, 'New York')), (i) => urls[i] ?? '');
     },
   },
   {
@@ -272,7 +274,7 @@ export const WSO_SOURCES: WsoSource[] = [
       const urls = newEnglandPdfUrls(await fetchTextRetrying('https://www.newenglandweightlifting.com/records'));
       if (!urls.length) throw new Error('No records PDFs found on the New England records page');
       const pdfs = await Promise.all(urls.map(async (url) => pdfRunLines(await fetchPdfRetrying(url, PDF_TIMEOUT_MS))));
-      return everyPart('New England', pdfs.map((pages) => parseNewEngland(pages, 'New England')), (i) => urls[i]);
+      return everyPart('New England', pdfs.map((pages) => parseNewEngland(pages, 'New England')), (i) => urls[i] ?? '');
     },
   },
   {
@@ -292,7 +294,7 @@ export const WSO_SOURCES: WsoSource[] = [
     wso: 'Texas-Oklahoma',
     scrape: async () => {
       const [detailed] = await fetchTabs('1gbLq6S4ebW7SGJy4ZyYJZ7ZjOCLjBedjIJzfp9AqIpI', [{ gid: '1649080864' }]);
-      return usawTemplate(detailed, 'Texas-Oklahoma');
+      return usawTemplate(detailed ?? '', 'Texas-Oklahoma');
     },
   },
 ];
@@ -340,7 +342,7 @@ export async function syncWsoSources(
       if (result.records.length === 0) throw new Error('parsed 0 records (source layout changed?)');
       if (!dryRun) Object.assign(result, await store(source.wso, result.records));
     } catch (error) {
-      result.error = (error as Error).message;
+      result.error = errorMessage(error);
       console.error(`wso records (${source.wso}): ${result.error}`);
     }
   }

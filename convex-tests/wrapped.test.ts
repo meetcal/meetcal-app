@@ -6,6 +6,7 @@ import { textChunks, writeView } from '../convex/lib/views';
 import { distinctLifts, MAX_WRAPPED_NAME_CHOICES, selectWrapped, type WrappedAnswer, wrappedStats } from '../convex/lib/wrapped';
 import { MAX_SEARCH_RESULT_ROWS, WRAPPED_FALLBACK_NAMES, wrapped } from '../convex/results';
 import { fakeMutationCtx, handlerOf } from './fakeDb';
+import { itemAt } from '../convex/lib/json';
 
 /**
  * Weightlifting Wrapped is scored on the server (`convex/lib/wrapped.ts`,
@@ -342,7 +343,7 @@ describe('selectWrapped', () => {
   it('scores every row of an exact match oldest first, so improvement from first is +20kg', () => {
     const rows = [searchRow('John Smith', '2025-06-01', 220), searchRow('John Smith', '2025-02-01', 200)];
     const answer = search({ matched_name: 'John Smith', results: rows });
-    expect(answer).toEqual({ kind: 'athlete', name: 'John Smith', stats: wrappedStats([rows[1], rows[0]]) });
+    expect(answer).toEqual({ kind: 'athlete', name: 'John Smith', stats: wrappedStats([itemAt(rows, 1), itemAt(rows, 0)]) });
     expect(answer.kind === 'athlete' && answer.stats.improvementFromFirst).toBe(20);
   });
 
@@ -358,7 +359,7 @@ describe('selectWrapped', () => {
 
   it('accepts the fallback when its rows are one athlete (spelling variants included)', () => {
     const rows = [searchRow('Jane Doe', '2025-05-01', 220), searchRow('jane  doe ', '2025-01-01', 200)];
-    expect(search({ results: rows })).toEqual({ kind: 'athlete', name: 'Jane Doe', stats: wrappedStats([rows[1], rows[0]]) });
+    expect(search({ results: rows })).toEqual({ kind: 'athlete', name: 'Jane Doe', stats: wrappedStats([itemAt(rows, 1), itemAt(rows, 0)]) });
   });
 
   it('names the one athlete of a fallback as an exact search would: the newest spelling, without spaces around it', () => {
@@ -369,7 +370,7 @@ describe('selectWrapped', () => {
   it('drops blank-named rows rather than scoring them with the one athlete', () => {
     const rows = [searchRow('Jane Doe', '2025-05-01'), searchRow('', '2025-01-01')];
     const answer = search({ results: rows });
-    expect(answer).toEqual({ kind: 'athlete', name: 'Jane Doe', stats: wrappedStats([rows[0]]) });
+    expect(answer).toEqual({ kind: 'athlete', name: 'Jane Doe', stats: wrappedStats([itemAt(rows, 0)]) });
     expect(answer.kind === 'athlete' && answer.stats.totalMeets).toBe(1);
   });
 
@@ -411,13 +412,13 @@ describe('selectWrapped', () => {
 /** A newest-first history, as the history documents hold it. */
 const historyOf = (rows: ApiLiftingResult[]) => [...rows].sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0));
 
-const HISTORIES: Record<string, ApiLiftingResult[]> = {
+const HISTORIES = {
   'Ann Lee': [searchRow('Ann Lee', '2025-12-31', 180), searchRow('Ann Lee', '2026-02-01', 200), searchRow('Ann Lee', '2026-08-01', 210)],
   'Ann Smith': [searchRow('Ann Smith', '2025-05-01')],
   'Ann Smithers': [searchRow('Ann Smithers', '2026-05-01')],
   'Bob Smith': [searchRow('Bob Smith', '2026-03-01')],
   'Cal Busy': Array.from({ length: MAX_SEARCH_RESULT_ROWS + 1 }, (_, i) => searchRow('Cal Busy', `2026-01-${String((i % 28) + 1).padStart(2, '0')}`)),
-};
+} satisfies Record<string, ApiLiftingResult[]>;
 
 const getUserIdentity = jest.fn(async () => {
   throw new Error('results:wrapped must not read the caller');

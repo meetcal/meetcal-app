@@ -1,3 +1,4 @@
+import { itemAt } from '../../../lib/json';
 import { parseCsv } from '../../lib/csv';
 import { recordHolder } from '../holder';
 import { intOrNull, type WsoRecord } from './common';
@@ -35,7 +36,7 @@ export const NEW_JERSEY_TABS: readonly [name: string, age: string][] = [
   ['90+ Master Records', 'Masters 90'],
 ];
 
-const cell = (row: readonly string[], column: number) => (row.length > column ? row[column].trim() : '');
+const cell = (row: readonly string[], column: number) => (row.length > column ? itemAt(row, column).trim() : '');
 
 /** A lift, with 0 meaning no record. */
 function lift(row: readonly string[], column: number): number | null {

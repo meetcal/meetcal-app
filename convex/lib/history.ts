@@ -1,7 +1,9 @@
+import { isListOf, parsedAs } from './json';
+import { ATHLETE_RESULTS_MAX, readAll } from './boundedRead';
 import type { MutationCtx, QueryCtx } from '../_generated/server';
 import type { Doc } from '../_generated/dataModel';
 import { mapInBatches } from './concurrency';
-import { compareNewestFirst, toApiLiftingResult, type ApiLiftingResult } from './results';
+import { compareNewestFirst, toApiLiftingResult, type ApiLiftingResult, isApiLiftingResults } from './results';
 
 /**
  * One document per athlete (folded name) holding their whole result history
@@ -28,10 +30,13 @@ export async function historiesReady(ctx: QueryCtx): Promise<boolean> {
 }
 
 async function historyRows(ctx: QueryCtx, key: string): Promise<Doc<'lifting_results'>[]> {
-  return await ctx.db
-    .query('lifting_results')
-    .withIndex('by_nameKey_and_date', (q) => q.eq('nameKey', key))
-    .collect();
+  return await readAll(
+    ctx.db
+      .query('lifting_results')
+      .withIndex('by_nameKey_and_date', (q) => q.eq('nameKey', key)),
+    ATHLETE_RESULTS_MAX,
+    'results of one athlete',
+  );
 }
 
 /** The athlete's history from `lifting_results`, newest first. */
@@ -44,6 +49,9 @@ export async function computeHistory(ctx: QueryCtx, key: string): Promise<ApiLif
  * `results:bests` takes over full rows (a row's best and its attempts).
  */
 export type Mark = [date: string, snatch: number, cj: number, total: number];
+
+const isMark = (mark: unknown): mark is Mark =>
+  Array.isArray(mark) && mark.length === 4 && typeof mark[0] === 'string' && typeof mark[1] === 'number' && typeof mark[2] === 'number' && typeof mark[3] === 'number';
 
 export type Summary = { latest: ApiLiftingResult[]; marks: Mark[] };
 
@@ -102,7 +110,10 @@ const READ_BATCH = 250;
 
 export async function readSummaries(ctx: QueryCtx, keys: readonly string[]): Promise<Map<string, Summary>> {
   const ready = await historiesReady(ctx);
-  const parse = (latest: string, marks: string): Summary => ({ latest: JSON.parse(latest) as ApiLiftingResult[], marks: JSON.parse(marks) as Mark[] });
+  const parse = (latest: string, marks: string): Summary => ({
+    latest: parsedAs(latest, isApiLiftingResults, 'an athlete summary'),
+    marks: parsedAs(marks, isListOf(isMark), "an athlete summary's marks"),
+  });
   const entries = await mapInBatches(
     keys,
     READ_BATCH,
@@ -133,7 +144,7 @@ export async function readHistories(ctx: QueryCtx, keys: readonly string[]): Pro
         .query('athlete_history')
         .withIndex('by_nameKey', (q) => q.eq('nameKey', key))
         .unique();
-      return [key, doc ? (JSON.parse(doc.json) as ApiLiftingResult[]) : []];
+      return [key, doc ? parsedAs(doc.json, isApiLiftingResults, 'an athlete history') : []];
     },
   );
   return new Map(entries);

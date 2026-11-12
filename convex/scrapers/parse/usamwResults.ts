@@ -6,6 +6,7 @@
 // QMasters attempt table (age group only; the class is inferred from body
 // weight), and a looser word-by-word reading.
 
+import { itemAt } from '../../lib/json';
 import { resultProblems } from '../../lib/plausible';
 import { pyInt } from '../lib/numbers';
 
@@ -95,7 +96,7 @@ export function groupLines(words: readonly PdfWord[]): PdfWord[][] {
   const lines: PdfWord[][] = [];
   for (const word of [...words].sort((a, b) => a.y - b.y || a.x - b.x)) {
     const last = lines[lines.length - 1];
-    if (!last || Math.abs(last[0].y - word.y) >= 2) lines.push([word]);
+    if (!last || Math.abs(itemAt(last, 0).y - word.y) >= 2) lines.push([word]);
     else last.push(word);
   }
   for (const line of lines) line.sort((a, b) => a.x - b.x);
@@ -124,7 +125,7 @@ function bodyWeightIndex(texts: readonly string[]): number {
 }
 
 function result(ctx: Context, age: string, name: string, bodyWeight: number, lifts: number[], total: number): UsamwResult {
-  const [snatch1, snatch2, snatch3, cj1, cj2, cj3] = lifts;
+  const [snatch1 = 0, snatch2 = 0, snatch3 = 0, cj1 = 0, cj2 = 0, cj3 = 0] = lifts;
   return {
     adaptive: ctx.adaptive,
     age,
@@ -155,22 +156,22 @@ function parseClassTables(pages: readonly PdfWord[][], ctx: Context): ParsedRow[
       const texts = line.map((word) => word.text);
       const heading = /Age Group ([MW]\d+)\s+Weight Category ([\d+]+\+?)/.exec(texts.join(' '));
       if (heading) {
-        age = masters(heading[1], heading[2]);
+        age = masters(heading[1] ?? '', heading[2]);
         continue;
       }
-      if (!age || line.length < 12 || !/^\d{1,4}$/.test(texts[0]) || !/^\d{1,4}$/.test(texts[1])) continue;
+      if (!age || line.length < 12 || !/^\d{1,4}$/.test(texts[0] ?? '') || !/^\d{1,4}$/.test(texts[1] ?? '')) continue;
       // The nationality is the word right before the row's first number: a
       // three-letter surname (`LEE`) or a bare `ADT` marker in the name has
       // the same shape, and taken first, skipped the row.
       const firstNumber = texts.findIndex((text, index) => index >= 3 && /^\d/.test(text));
       const natIndex = firstNumber - 1;
-      if (natIndex <= 2 || !/^[A-Z]{3}$/.test(texts[natIndex]) || /^ADT/.test(texts[natIndex])) continue;
+      if (natIndex <= 2 || !/^[A-Z]{3}$/.test(texts[natIndex] ?? '') || /^ADT/.test(texts[natIndex] ?? '')) continue;
       const name = normalizeResultName(texts.slice(2, natIndex).join(' '));
       const after = line.slice(natIndex + 1);
       const data = after.slice(bodyWeightIndex(after.map((word) => word.text)));
-      if (!name || data.length < 9 || !/^\d+\.?\d*$/.test(data[0].text)) continue;
+      if (!name || data.length < 9 || !/^\d+\.?\d*$/.test(itemAt(data, 0).text)) continue;
       try {
-        results.push({ row: result(ctx, age, name, Number(data[0].text), data.slice(2, 8).map(attemptWord), whole(data[8].text)), line: wordsText(line) });
+        results.push({ row: result(ctx, age, name, Number(itemAt(data, 0).text), data.slice(2, 8).map(attemptWord), whole(itemAt(data, 8).text)), line: wordsText(line) });
       } catch {
         continue;
       }
@@ -189,11 +190,11 @@ function parseQMasters(pages: readonly PdfWord[][], ctx: Context): ParsedRow[] {
       const texts = line.map((word) => word.text);
       const heading = /\bAge Group ([MW]\d+)\b/.exec(texts.join(' '));
       if (heading) {
-        ageCode = heading[1];
+        ageCode = heading[1] ?? '';
         age = masters(ageCode);
         continue;
       }
-      if (!age || !ageCode || line.length < 13 || !/^\d{1,3}$/.test(texts[0]) || !/^\d{1,4}$/.test(texts[1])) continue;
+      if (!age || !ageCode || line.length < 13 || !/^\d{1,3}$/.test(texts[0] ?? '') || !/^\d{1,4}$/.test(texts[1] ?? '')) continue;
       const weightIndex = line.findIndex((word, index) => index >= 2 && word.x >= 275 && /^\d+\.\d+$/.test(word.text));
       if (weightIndex < 4) continue;
       const name = normalizeResultName(
@@ -206,11 +207,11 @@ function parseQMasters(pages: readonly PdfWord[][], ctx: Context): ParsedRow[] {
       const data = line.slice(weightIndex);
       if (!name || data.length < 10) continue;
       try {
-        const bodyWeight = Number(data[0].text);
-        if (!/^\s*[-+]?\d+\.?\d*\s*$/.test(data[0].text)) throw new Error('body weight');
-        whole(data[1].text);
+        const bodyWeight = Number(itemAt(data, 0).text);
+        if (!/^\s*[-+]?\d+\.?\d*\s*$/.test(itemAt(data, 0).text)) throw new Error('body weight');
+        whole(itemAt(data, 1).text);
         const lifts = data.slice(2, 8).map(attemptWord);
-        const total = whole(data[8].text);
+        const total = whole(itemAt(data, 8).text);
         const weightCategory = inferWeightCategory(ageCode, bodyWeight, ctx.date);
         results.push({ row: result(ctx, weightCategory ? masters(ageCode, weightCategory)! : age, name, bodyWeight, lifts, total), line: wordsText(line) });
       } catch {
@@ -233,18 +234,18 @@ function parseLoose(pages: readonly PdfWord[][], ctx: Context): ParsedRow[] {
     let age: string | null = null;
     let i = 0;
     while (i < items.length) {
-      const text = items[i].text;
+      const text = itemAt(items, i).text;
       const lineText = items
-        .filter((item) => Math.abs(item.y - items[i].y) < 2)
+        .filter((item) => Math.abs(item.y - itemAt(items, i).y) < 2)
         .map((item) => item.text)
         .join(' ');
       const heading = /Age Group ([MW]\d+)\s+Weight Category ([\d+]+\+?)/.exec(lineText);
-      if (heading) age = masters(heading[1], heading[2]);
+      if (heading) age = masters(heading[1] ?? '', heading[2]);
       if (!age || !/^\d{1,4}$/.test(text) || i + 1 >= items.length) {
         i += 1;
         continue;
       }
-      const name = /^[A-Z]+/.test(items[i + 1].text) ? normalizeResultName(items[i + 1].text) : null;
+      const name = /^[A-Z]+/.test(itemAt(items, i + 1).text) ? normalizeResultName(itemAt(items, i + 1).text) : null;
       if (!name) {
         i += 1;
         continue;
@@ -252,13 +253,13 @@ function parseLoose(pages: readonly PdfWord[][], ctx: Context): ParsedRow[] {
       const read: { value: string; isRed: boolean }[] = [];
       let j = i + 2;
       while (j < items.length && read.length < 12) {
-        const valueText = items[j].text;
+        const valueText = itemAt(items, j).text;
         if (valueText === '-') read.push({ value: '0', isRed: false });
-        else if (/^\d+\.?\d*$/.test(valueText)) read.push({ value: valueText, isRed: items[j].isRed });
+        else if (/^\d+\.?\d*$/.test(valueText)) read.push({ value: valueText, isRed: itemAt(items, j).isRed });
         j += 1;
         if (j < items.length) {
-          const nextText = items[j].text;
-          const nextName = j + 1 < items.length ? items[j + 1].text : '';
+          const nextText = itemAt(items, j).text;
+          const nextName = j + 1 < items.length ? itemAt(items, j + 1).text : '';
           if (/^\d{2,4}$/.test(nextText) && /^[A-Z]+\s+[A-Za-z]+/.test(nextName)) break;
           if (nextText.includes('Age Group')) break;
         }
@@ -269,7 +270,7 @@ function parseLoose(pages: readonly PdfWord[][], ctx: Context): ParsedRow[] {
         continue;
       }
       const lifts = values.slice(2, 8).map((v) => attempt(v.value, v.isRed));
-      results.push({ row: result(ctx, age, name, Number(values[0].value), lifts, whole(values[8].value)), line: wordsText(items.slice(i, j)) });
+      results.push({ row: result(ctx, age, name, Number(itemAt(values, 0).value), lifts, whole(itemAt(values, 8).value)), line: wordsText(items.slice(i, j)) });
       i = j;
     }
   }
@@ -309,7 +310,7 @@ export function usamwRowProblems(row: UsamwResult): string[] {
     ['clean & jerk', [row.cj1, row.cj2, row.cj3]],
   ] as const) {
     const taken = attempts.filter((value) => value !== 0).map(Math.abs);
-    if (taken.some((value, index) => index > 0 && value < taken[index - 1])) problems.push(`${label} attempts ${attempts.join(', ')} go down`);
+    if (taken.some((value, index) => index > 0 && value < (taken[index - 1] ?? value))) problems.push(`${label} attempts ${attempts.join(', ')} go down`);
   }
   return [...problems, ...resultProblems(row)];
 }

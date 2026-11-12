@@ -1,3 +1,4 @@
+import { isOwnKey } from '../../../lib/json';
 import { recordHolder } from '../holder';
 import type { WsoRecord } from './common';
 
@@ -59,7 +60,7 @@ export function illinoisPdfHref(pageHtml: string): string {
   const open = pageHtml.lastIndexOf('<section', heading);
   const close = pageHtml.indexOf('</section>', heading);
   const section = pageHtml.slice(open === -1 ? heading : open, close === -1 ? undefined : close);
-  const hrefs = [...section.matchAll(VIEW_RECORDS_LINK)].map((m) => m[1]);
+  const hrefs = [...section.matchAll(VIEW_RECORDS_LINK)].map((m) => m[1] ?? '');
   if (!hrefs.length) throw new Error('Could not find the Illinois records PDF URL on the page');
   const dateOf = (href: string) => FILE_DATE.exec(href)?.[1] ?? '';
   return hrefs.reduce((newest, href) => (dateOf(href) > dateOf(newest) ? href : newest));
@@ -100,13 +101,15 @@ export function parseIllinois(lines: readonly string[], wso: string): { records:
       if (RECORD_ROW_PREFIX.test(line)) unparsed.push(line);
       continue;
     }
-    const [, age, rawGender, weight, lift, value, holder, date, place] = match;
+    const [, age = '', rawGender = '', weight = '', lift = '', value, holder, date, place] = match;
     const gender = rawGender.toUpperCase() === 'F' ? 'Women' : 'Men';
     const record: Parsed = { wso, ageCategory: ageCategory(age, rawGender.toUpperCase()), gender, weightClass: weightClass(weight) };
     const key = JSON.stringify([record.ageCategory, gender, record.weightClass]);
     const entry = grouped.get(key) ?? record;
     grouped.set(key, entry);
-    const field = LIFT_FIELDS[lift.toLowerCase().replace(/\s+/g, '') as keyof typeof LIFT_FIELDS];
+    const liftName = lift.toLowerCase().replace(/\s+/g, '');
+    if (!isOwnKey(LIFT_FIELDS, liftName)) throw new Error(`${wso}: unknown lift ${JSON.stringify(lift)}`);
+    const field = LIFT_FIELDS[liftName];
     const parsed = Number(value);
     const existing = entry[field];
     // A lift listed twice must agree, except that a real value beats a 0.
@@ -146,7 +149,7 @@ function validate(records: Parsed[], pages: readonly number[], warnings: string[
   const classes = new Map<string, { Women: number; Men: number }>();
   for (const r of records) {
     const counts = classes.get(r.ageCategory) ?? { Women: 0, Men: 0 };
-    counts[r.gender as 'Women' | 'Men'] += 1;
+    if (r.gender === 'Women' || r.gender === 'Men') counts[r.gender] += 1;
     classes.set(r.ageCategory, counts);
   }
   for (const [age, { Women, Men }] of classes) {

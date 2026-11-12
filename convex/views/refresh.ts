@@ -1,3 +1,4 @@
+import { isStringList, isTextPair, parsedAs } from '../lib/json';
 import { chunks } from '../lib/concurrency';
 import { v } from 'convex/values';
 import { internalAction, internalMutation, internalQuery, type ActionCtx, type MutationCtx, type QueryCtx } from '../_generated/server';
@@ -106,7 +107,7 @@ export const beginRefresh = internalMutation({
       hints: rows.map((h) => ({ id: h._id, kind: h.kind, key: h.key, seq: h.seq ?? 0, since: h.since })),
       overflow: costly > MAX_TARGETED_HINTS,
       more: all.length > MAX_REFRESH_HINTS,
-      lastRead: rows.length > 0 ? rows[rows.length - 1]._creationTime : null,
+      lastRead: rows[rows.length - 1]?._creationTime ?? null,
       rebuilding: state?.rebuilding ?? false,
       rebuildHeartbeat: state?.rebuildHeartbeat ?? null,
       rebuildPosition: storedPosition(state?.rebuildPosition),
@@ -141,7 +142,7 @@ export const meetsListingAny = internalQuery({
     const wanted = new Set(keys);
     const listed = await Promise.all(
       meets.map(async (meet) => {
-        const roster = JSON.parse((await readViewJsonAnyAge(ctx, meetKey(meet, 'keys'))) ?? '[]') as string[];
+        const roster = parsedAs((await readViewJsonAnyAge(ctx, meetKey(meet, 'keys'))) ?? '[]', isStringList, `the roster keys of ${meet}`);
         const matched = roster.filter((key) => wanted.has(key));
         if (matched.length === 0) return null;
         const stats = await viewHeader(ctx, meetKey(meet, 'stats'));
@@ -391,7 +392,7 @@ async function refreshTargets(ctx: ActionCtx, hints: readonly Hint[]): Promise<R
   const natCovered: Hint[] = [];
   for (const hint of ofKind('nat')) {
     if (!inBudget()) break;
-    const [federation, ageCategory] = JSON.parse(hint.key) as [string, string];
+    const [federation, ageCategory] = parsedAs(hint.key, isTextPair, 'a national ranking hint');
     if (await build(natKey(federation, ageCategory), () => ctx.runAction(internal.views.buildNat, { federation, ageCategory }))) {
       natCovered.push(hint);
     }

@@ -17,8 +17,18 @@ import type * as deviceLogin from "../deviceLogin.js";
 import type * as entitlements from "../entitlements.js";
 import type * as http from "../http.js";
 import type * as ingest from "../ingest.js";
+import type * as ingest_hints from "../ingest/hints.js";
+import type * as ingest_meets from "../ingest/meets.js";
+import type * as ingest_records from "../ingest/records.js";
+import type * as ingest_reference from "../ingest/reference.js";
+import type * as ingest_results from "../ingest/results.js";
+import type * as ingest_rosters from "../ingest/rosters.js";
+import type * as ingest_shared from "../ingest/shared.js";
 import type * as lib_access from "../lib/access.js";
+import type * as lib_boundedRead from "../lib/boundedRead.js";
+import type * as lib_clubStats from "../lib/clubStats.js";
 import type * as lib_clubs from "../lib/clubs.js";
+import type * as lib_concurrency from "../lib/concurrency.js";
 import type * as lib_cronAlerts from "../lib/cronAlerts.js";
 import type * as lib_cronSchedule from "../lib/cronSchedule.js";
 import type * as lib_dates from "../lib/dates.js";
@@ -27,6 +37,7 @@ import type * as lib_elite from "../lib/elite.js";
 import type * as lib_email from "../lib/email.js";
 import type * as lib_errors from "../lib/errors.js";
 import type * as lib_etag from "../lib/etag.js";
+import type * as lib_gender from "../lib/gender.js";
 import type * as lib_heartbeat from "../lib/heartbeat.js";
 import type * as lib_history from "../lib/history.js";
 import type * as lib_json from "../lib/json.js";
@@ -52,6 +63,7 @@ import type * as lib_validation from "../lib/validation.js";
 import type * as lib_viewKeys from "../lib/viewKeys.js";
 import type * as lib_views from "../lib/views.js";
 import type * as lib_webhookSignature from "../lib/webhookSignature.js";
+import type * as lib_weightClass from "../lib/weightClass.js";
 import type * as lib_wrapped from "../lib/wrapped.js";
 import type * as lib_wsoSources from "../lib/wsoSources.js";
 import type * as lifters from "../lifters.js";
@@ -76,6 +88,7 @@ import type * as scrapers_lib_incompleteChain from "../scrapers/lib/incompleteCh
 import type * as scrapers_lib_numbers from "../scrapers/lib/numbers.js";
 import type * as scrapers_lib_pdf from "../scrapers/lib/pdf.js";
 import type * as scrapers_lib_prune from "../scrapers/lib/prune.js";
+import type * as scrapers_lib_recordRows from "../scrapers/lib/recordRows.js";
 import type * as scrapers_lib_sport80Api from "../scrapers/lib/sport80Api.js";
 import type * as scrapers_lib_states from "../scrapers/lib/states.js";
 import type * as scrapers_lib_transientFetch from "../scrapers/lib/transientFetch.js";
@@ -121,6 +134,12 @@ import type * as scrapers_wsoRecords from "../scrapers/wsoRecords.js";
 import type * as system from "../system.js";
 import type * as users from "../users.js";
 import type * as views from "../views.js";
+import type * as views_builders from "../views/builders.js";
+import type * as views_meetIndex from "../views/meetIndex.js";
+import type * as views_rebuild from "../views/rebuild.js";
+import type * as views_refresh from "../views/refresh.js";
+import type * as views_searchDirectory from "../views/searchDirectory.js";
+import type * as views_shared from "../views/shared.js";
 
 import type {
   ApiFromModules,
@@ -138,8 +157,18 @@ declare const fullApi: ApiFromModules<{
   entitlements: typeof entitlements;
   http: typeof http;
   ingest: typeof ingest;
+  "ingest/hints": typeof ingest_hints;
+  "ingest/meets": typeof ingest_meets;
+  "ingest/records": typeof ingest_records;
+  "ingest/reference": typeof ingest_reference;
+  "ingest/results": typeof ingest_results;
+  "ingest/rosters": typeof ingest_rosters;
+  "ingest/shared": typeof ingest_shared;
   "lib/access": typeof lib_access;
+  "lib/boundedRead": typeof lib_boundedRead;
+  "lib/clubStats": typeof lib_clubStats;
   "lib/clubs": typeof lib_clubs;
+  "lib/concurrency": typeof lib_concurrency;
   "lib/cronAlerts": typeof lib_cronAlerts;
   "lib/cronSchedule": typeof lib_cronSchedule;
   "lib/dates": typeof lib_dates;
@@ -148,6 +177,7 @@ declare const fullApi: ApiFromModules<{
   "lib/email": typeof lib_email;
   "lib/errors": typeof lib_errors;
   "lib/etag": typeof lib_etag;
+  "lib/gender": typeof lib_gender;
   "lib/heartbeat": typeof lib_heartbeat;
   "lib/history": typeof lib_history;
   "lib/json": typeof lib_json;
@@ -173,6 +203,7 @@ declare const fullApi: ApiFromModules<{
   "lib/viewKeys": typeof lib_viewKeys;
   "lib/views": typeof lib_views;
   "lib/webhookSignature": typeof lib_webhookSignature;
+  "lib/weightClass": typeof lib_weightClass;
   "lib/wrapped": typeof lib_wrapped;
   "lib/wsoSources": typeof lib_wsoSources;
   lifters: typeof lifters;
@@ -197,6 +228,7 @@ declare const fullApi: ApiFromModules<{
   "scrapers/lib/numbers": typeof scrapers_lib_numbers;
   "scrapers/lib/pdf": typeof scrapers_lib_pdf;
   "scrapers/lib/prune": typeof scrapers_lib_prune;
+  "scrapers/lib/recordRows": typeof scrapers_lib_recordRows;
   "scrapers/lib/sport80Api": typeof scrapers_lib_sport80Api;
   "scrapers/lib/states": typeof scrapers_lib_states;
   "scrapers/lib/transientFetch": typeof scrapers_lib_transientFetch;
@@ -242,6 +274,12 @@ declare const fullApi: ApiFromModules<{
   system: typeof system;
   users: typeof users;
   views: typeof views;
+  "views/builders": typeof views_builders;
+  "views/meetIndex": typeof views_meetIndex;
+  "views/rebuild": typeof views_rebuild;
+  "views/refresh": typeof views_refresh;
+  "views/searchDirectory": typeof views_searchDirectory;
+  "views/shared": typeof views_shared;
 }>;
 
 /**

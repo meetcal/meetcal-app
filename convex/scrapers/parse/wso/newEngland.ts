@@ -17,7 +17,7 @@ import { blankRecord, intOrNull, plusLast, setLift, type WsoRecord } from './com
 
 /** Every records PDF the page links, in page order. */
 export function newEnglandPdfUrls(html: string): string[] {
-  return [...new Set([...html.matchAll(/href="(https:\/\/www\.newenglandweightlifting\.com\/_files\/ugd\/[a-zA-Z0-9_/]+\.pdf)"/g)].map((m) => m[1]))];
+  return [...new Set([...html.matchAll(/href="(https:\/\/www\.newenglandweightlifting\.com\/_files\/ugd\/[a-zA-Z0-9_/]+\.pdf)"/g)].map((m) => m[1] ?? ''))];
 }
 
 /** "16/17 Youth Men's Records" -> ["U17", "Men"], "35-39 Masters Women's Records" -> ["Masters 35", "Women"]. */
@@ -63,7 +63,10 @@ export function parseNewEngland(pages: readonly (readonly PdfLine[])[], wso: str
         continue;
       }
       if (line.runs[0]?.text.trim() === 'Class') {
-        columns = line.runs.flatMap((run) => (COLUMNS.includes(run.text.trim() as Column) ? [{ name: run.text.trim() as Column, centre: centre(run) }] : []));
+        columns = line.runs.flatMap((run) => {
+          const name = COLUMNS.find((column) => column === run.text.trim());
+          return name === undefined ? [] : [{ name, centre: centre(run) }];
+        });
         continue;
       }
       if (!columns?.length) continue;

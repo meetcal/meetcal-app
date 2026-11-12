@@ -1,6 +1,6 @@
 // Pure parts of `scrapers/sport80.ts` (port of `usaw/sport80_api/update_supabase_from_sport80.py`).
 
-import { isRecord, kindOf } from '../../lib/json';
+import { isRecord, kindOf, textOrNull } from '../../lib/json';
 import { pyFloat } from '../lib/numbers';
 import { isValidIsoDate } from '../../lib/validation';
 import { normalizeGender } from '../../lib/normalize';
@@ -54,8 +54,8 @@ export function pageRows(page: Dict): Dict[] {
  */
 export function nested(data: Dict, primaryKey: string, columnName?: string): unknown {
   if (columnName && 'columns' in data) {
-    const columns = (data.columns ?? {}) as Record<string, Dict | undefined>;
-    return columns[columnName]?.value ?? null;
+    const column = isRecord(data.columns) ? data.columns[columnName] : undefined;
+    return isRecord(column) ? (column.value ?? null) : null;
   }
   return data[primaryKey] ?? null;
 }
@@ -90,7 +90,7 @@ function rawEventDate(event: Dict): string | null {
 export function eventDate(event: Dict): number | null {
   const raw = rawEventDate(event);
   if (!raw) return null;
-  const iso = /^(\d{4})-(\d{1,2})-(\d{1,2})$/.exec(raw.split(' ')[0]);
+  const iso = /^(\d{4})-(\d{1,2})-(\d{1,2})$/.exec(raw.split(' ')[0] ?? '');
   return iso ? utc(Number(iso[1]), Number(iso[2]), Number(iso[3])) : null;
 }
 
@@ -191,8 +191,8 @@ function formatResult(eventId: string, meet: string, day: string, item: Dict): R
     eventId,
     meet,
     date: day,
-    name: or(nested(item, 'lifter', 'Athlete'), nested(item, 'name', 'Name')) as string | null,
-    age: or(nested(item, 'age_category', 'Age Category'), nested(item, 'age', 'Age')) as string | null,
+    name: textOrNull(or(nested(item, 'lifter', 'Athlete'), nested(item, 'name', 'Name'))),
+    age: textOrNull(or(nested(item, 'age_category', 'Age Category'), nested(item, 'age', 'Age'))),
     bodyWeight: toFloat(or(nested(item, 'body_weight_kg', 'Bodyweight'), nested(item, 'body_weight_(kg)'))),
     snatch1: toFloat(nested(item, 'snatch_lift_1', 'Snatch 1')),
     snatch2: toFloat(nested(item, 'snatch_lift_2', 'Snatch 2')),
@@ -385,7 +385,7 @@ function memberId(action: unknown): string | null {
   for (const button of action) {
     if (!isRecord(button) || typeof button.route !== 'string') continue;
     const match = MEMBER_ROUTE.exec(button.route);
-    if (match) return match[1];
+    if (match) return match[1] ?? null;
   }
   return null;
 }

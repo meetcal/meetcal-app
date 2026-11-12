@@ -1,9 +1,11 @@
+import { errorMessage } from './lib/errors';
+
 import { v } from 'convex/values';
 import { internalAction, type ActionCtx } from './_generated/server';
 import { internal } from './_generated/api';
 import type { FunctionReference } from 'convex/server';
 import { lastScheduled } from './lib/cronSchedule';
-import { chainOutcome, describeFailure, latestPerSource, nextLink, START_MARGIN_MS, type Notice, type RunFailure } from './lib/cronAlerts';
+import { chainOutcome, describeFailure, latestPerSource, nextLink, queuedNotices, START_MARGIN_MS, type Notice, type RunFailure } from './lib/cronAlerts';
 import { escapeHtml, sendEmail } from './lib/email';
 import { pingHeartbeat } from './lib/heartbeat';
 import { RESULTS_JOB } from './scrapers/parse/sport80';
@@ -80,8 +82,9 @@ async function alert(notices: Notice[]): Promise<void> {
   const to = process.env.ALERT_EMAIL;
   if (!to) return;
   const deployment = process.env.CONVEX_CLOUD_URL ?? '';
+  const [only] = notices;
   const subject =
-    notices.length === 1 ? `MeetCal: ${notices[0].job} ${SUBJECTS[notices[0].kind]}` : `MeetCal: ${notices.length} scheduled jobs need attention`;
+    only !== undefined && notices.length === 1 ? `MeetCal: ${only.job} ${SUBJECTS[only.kind]}` : `MeetCal: ${notices.length} scheduled jobs need attention`;
   const items = notices
     .map((n) => `<li><b>${escapeHtml(n.job)}</b> ${SUBJECTS[n.kind]}<pre style="white-space:pre-wrap;margin:4px 0 12px">${escapeHtml(n.detail.slice(0, 4000))}</pre></li>`)
     .join('');
@@ -105,7 +108,7 @@ async function finishRun(ctx: ActionCtx, job: string, outcome: RunFailure | unde
     await markAllSent(ctx, notices);
     return true;
   } catch (sendError) {
-    console.error(`cron alert for ${job} could not be sent: ${(sendError as Error).message}`);
+    console.error(`cron alert for ${job} could not be sent: ${errorMessage(sendError)}`);
     return false;
   }
 }
@@ -147,7 +150,7 @@ export const run = internalAction({
       });
       watchdogQueued = await ctx.runQuery(internal.cronStatus.queuedWhileAlerting, { job: WATCHDOG_JOB });
     } catch (error) {
-      console.error(`watchdog check from ${job} failed: ${(error as Error).message}`);
+      console.error(`watchdog check from ${job} failed: ${errorMessage(error)}`);
     }
     const outcome = chainOutcome(job, carried, described, pending);
     await finishRun(ctx, job, outcome, watchdogQueued);
@@ -189,7 +192,7 @@ async function sweep(ctx: ActionCtx): Promise<Notice[]> {
   const statuses = new Map((await ctx.runQuery(internal.cronStatus.all, {})).map((s) => [s.job, s]));
   const pending: Notice[] = [];
   for (const [job, status] of statuses) {
-    for (const u of status.unsent ?? []) pending.push({ job, kind: u.kind as Notice['kind'], detail: u.detail });
+    pending.push(...queuedNotices(job, status.unsent));
   }
   for (const [job, { schedule }] of Object.entries(JOBS)) {
     // Judged and queued in one mutation, against the job's current row; queued

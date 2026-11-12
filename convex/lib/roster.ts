@@ -76,7 +76,7 @@ export function rosterProblems(rows: readonly RosterRow[]): string[] {
   if (rows.length >= ONE_AGE.roster) {
     const counts = new Map<number, number>();
     for (const row of rows) counts.set(row.age, (counts.get(row.age) ?? 0) + 1);
-    const [age, count] = [...counts].sort((a, b) => b[1] - a[1])[0];
+    const [age, count] = [...counts].sort((a, b) => b[1] - a[1])[0] ?? [0, 0];
     if (count > rows.length * ONE_AGE.share) problems.push(`${count} of ${rows.length} rows have age ${age} (category buckets or a default?)`);
   }
   report('gender neither men nor women', rows.filter((row) => !['Men', 'Women'].includes(normalizeGender(row.gender))));

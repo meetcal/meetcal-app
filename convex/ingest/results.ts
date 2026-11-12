@@ -1,6 +1,8 @@
 import { candidateLifters, namesOfLifter, recordLifterName, rowsOfName } from '../lib/lifterCandidates';
 import { isSport80Result, linkFor, mergeSighting, needsSourceHistories, sameLifterFields, sameLink, type LifterFields, type SourceHistories } from '../lib/lifters';
 import { v, type Infer } from 'convex/values';
+import { itemAt } from '../lib/json';
+import { EVENT_RESULTS_MAX, readAll } from '../lib/boundedRead';
 import { internalMutation, type MutationCtx } from '../_generated/server';
 import type { Doc } from '../_generated/dataModel';
 import { writeHistories } from '../lib/history';
@@ -82,10 +84,13 @@ export function sameEditionRows(stored: readonly Doc<'lifting_results'>[], incom
 /** One event's stored results by `resultKey`, oldest first within a key; read once per mutation. */
 export async function eventResultsByKey(ctx: MutationCtx, eventId: string): Promise<Map<string, Doc<'lifting_results'>[]>> {
   const byKey = new Map<string, Doc<'lifting_results'>[]>();
-  const rows = await ctx.db
-    .query('lifting_results')
-    .withIndex('by_event_and_name', (q) => q.eq('eventId', eventId))
-    .collect();
+  const rows = await readAll(
+    ctx.db
+      .query('lifting_results')
+      .withIndex('by_event_and_name', (q) => q.eq('eventId', eventId)),
+    EVENT_RESULTS_MAX,
+    'results of one event',
+  );
   for (const row of rows.sort((a, b) => a._creationTime - b._creationTime)) {
     const key = resultKey(row);
     const list = byKey.get(key);
@@ -101,7 +106,7 @@ export async function eventResultsByKey(ctx: MutationCtx, eventId: string): Prom
  * there is one, else the oldest.
  */
 function pickStored(rows: readonly Doc<'lifting_results'>[], name: string): Doc<'lifting_results'> {
-  return rows.find((row) => row.name === name) ?? rows[0];
+  return rows.find((row) => row.name === name) ?? itemAt(rows, 0);
 }
 
 export const upsertLiftingResults = internalMutation({
@@ -282,10 +287,13 @@ export const pruneEventResults = internalMutation({
     // edition: an imported row of another source, or of another edition, under
     // the same event id is not its to delete.
     const stored = (
-      await ctx.db
-        .query('lifting_results')
-        .withIndex('by_event_and_name', (q) => q.eq('eventId', eventId))
-        .collect()
+      await readAll(
+        ctx.db
+          .query('lifting_results')
+          .withIndex('by_event_and_name', (q) => q.eq('eventId', eventId)),
+        EVENT_RESULTS_MAX,
+        'results of one event',
+      )
     ).filter((row) => row.federation === 'USAW' && !row.adaptive && dates.some((date) => sameEditionDates(row.date, date)));
     const stale = stored.filter((row) => !kept.has(resultKey(row)));
     const dropped = stale.filter((row) => !names.has(normalizeName(row.name)));
@@ -345,8 +353,8 @@ async function clearRelink(ctx: MutationCtx, nameKey: string): Promise<void> {
   const queued = await ctx.db
     .query('lifter_relinks')
     .withIndex('by_nameKey', (q) => q.eq('nameKey', nameKey))
-    .collect();
-  for (const row of queued) await ctx.db.delete(row._id);
+    .first();
+  if (queued) await ctx.db.delete(queued._id);
 }
 
 export const MAX_QUEUED_RELINK_NAMES = 500;

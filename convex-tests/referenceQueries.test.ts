@@ -5,13 +5,14 @@ import { clubAthletes, clubMeets, clubMeetStats, clubs, MAX_CLUB_MEETS, national
 import { storeClubs } from '../convex/views';
 import { clubKey, clubLabels } from '../convex/lib/clubs';
 import { ANONYMOUS_AUTH, fakeDb, handlerOf } from './fakeDb';
+import { itemAt } from '../convex/lib/json';
 
 // Premium queries may log their caller (`convex/lib/access.ts`).
 beforeEach(() => jest.spyOn(console, 'log').mockImplementation(() => {}));
 
 const STAMP = [{ table: 'lifting_results', version: 1 }];
 /** A current division: a known ranking class with or without results (`requireKnownRankingClass`). */
-const DIVISION = [...RANKING_DIVISIONS][0];
+const DIVISION = itemAt([...RANKING_DIVISIONS], 0);
 
 function query<Args>(fn: unknown, db: unknown, args: Args) {
   return handlerOf<Args, Record<string, unknown> | unknown[]>(fn)({ db, auth: ANONYMOUS_AUTH }, args);

@@ -159,7 +159,7 @@ export function parseRecordsReport(pages: string[][]): ParsedRecords {
       const text = line.replace(/\s+/g, ' ').trim();
       const row = ADAPTIVE.test(text) ? null : RECORD_ROW.exec(text);
       if (!row) continue;
-      const [, code, genderCode, bodyweight, lift, value, rest] = row;
+      const [, code = '', genderCode = '', bodyweight = '', lift = '', value = '', rest] = row;
       const gender = genderOf(genderCode);
       if (!gender) continue;
       const age = ageCategory(code);

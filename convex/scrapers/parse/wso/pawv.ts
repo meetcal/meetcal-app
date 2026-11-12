@@ -1,3 +1,4 @@
+import { itemAt } from '../../../lib/json';
 import { parseCsv } from '../../lib/csv';
 import { columnDLift, liftsRecord, NO_LIFT, type Lift, type WsoRecord } from './common';
 
@@ -64,7 +65,7 @@ export function parsePawvTab(csv: string, wso: string, { gender, base }: PawvTab
 
   for (const row of parseCsv(csv.trim())) {
     if (row.length < 4) continue;
-    const first = row[0].trim();
+    const first = itemAt(row, 0).trim();
     if ((first.includes('Age Group') || first.includes('Masters')) && (first.includes(gender) || first.includes("Men's") || first.includes("Women's"))) {
       const section = pawvSection(first, base);
       if (section) {

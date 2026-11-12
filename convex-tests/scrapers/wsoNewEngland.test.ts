@@ -1,5 +1,6 @@
 import type { PdfLine } from '../../convex/scrapers/lib/pdf';
 import { newEnglandPdfUrls, newEnglandSection, parseNewEngland } from '../../convex/scrapers/parse/wso/newEngland';
+import { itemAt } from '../../convex/lib/json';
 
 // Column centres as the PDFs lay them out.
 const AT = { Class: 137, Lift: 188, Name: 272, Representing: 388, 'Location/Meet': 520, Weight: 612, Date: 655 };
@@ -66,7 +67,8 @@ describe('New England WSO PDFs (port of scraper_pdf_newengland.py)', () => {
       line({ Class: '44', Lift: 'C&J', Name: 'Sarah StGermain (52.2)', Weight: '66', Date: '4/26/2026' }),
       line({ Lift: 'Total', Name: 'A Lifter (Jr)', Weight: '100' }),
     ];
-    const [first, second] = parseNewEngland([page], 'New England');
+    const records = parseNewEngland([page], 'New England');
+    const [first, second] = [itemAt(records, 0), itemAt(records, 1)];
     expect(first).toMatchObject({
       snatchBy: { name: 'Cian Whitney', date: '2025-07-19', location: '2025 Bay State Games' },
       totalBy: { name: 'Beckett Roche', date: '2026-03-21', location: "Strength Paddy's Day Classic" },

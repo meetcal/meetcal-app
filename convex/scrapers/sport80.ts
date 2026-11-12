@@ -1,5 +1,7 @@
 'use node';
 
+import { errorMessage } from '../lib/errors';
+
 import { v } from 'convex/values';
 import { internalAction } from '../_generated/server';
 import { internal } from '../_generated/api';
@@ -22,6 +24,7 @@ import {
 import { sourcesFailed, type SourceFailure } from '../lib/cronAlerts';
 import { NOT_REACHED, runBudget } from './lib/budget';
 import { Sport80 } from './lib/sport80Api';
+import { textOrNull } from '../lib/json';
 
 type Dict = Record<string, unknown>;
 
@@ -69,7 +72,7 @@ export const run = internalAction({
       try {
         events.push(...(await budget.orStop(api.eventIndex(y))));
       } catch (error) {
-        failures.push({ source: `event index ${y}`, error: (error as Error).message });
+        failures.push({ source: `event index ${y}`, error: errorMessage(error) });
       }
     }
     const knownNames: string[] = continuing ?? (only ? [] : await ctx.runQuery(internal.cronStatus.failedSources, { job: RESULTS_JOB }));
@@ -112,7 +115,7 @@ export const run = internalAction({
     const seen = new Set<string>();
     for (const event of newest) {
       const eventId = eventIdOf(event);
-      const meet = nested(event, 'meet') as string | null;
+      const meet = textOrNull(nested(event, 'meet'));
       if (!eventId || !meet || seen.has(eventId)) continue;
       seen.add(eventId);
       if (!hasResultsRoute(event) || (requested && !requested.includes(eventId))) continue;
@@ -124,7 +127,7 @@ export const run = internalAction({
       try {
         table = await budget.orStop(api.eventResults(eventId), READ_DEADLINE_SHARE);
       } catch (error) {
-        failures.push({ source: eventSource(meet, eventId), error: `${eventDate(event)}: ${(error as Error).message}` });
+        failures.push({ source: eventSource(meet, eventId), error: `${eventDate(event)}: ${errorMessage(error)}` });
         continue;
       }
       if (table.rows.length) meets.push({ eventId, meet, rows: formatResults(eventId, meet, eventDate(event), table.rows), notWhole: table.notWhole });
@@ -189,7 +192,7 @@ export const run = internalAction({
         outcome.unchanged += counts.unchanged;
       }
       } catch (error) {
-        failures.push({ source, error: `not stored: ${(error as Error).message}` });
+        failures.push({ source, error: `not stored: ${errorMessage(error)}` });
         continue;
       }
       if (valid.length > 0) storedCount += 1;
@@ -208,7 +211,7 @@ export const run = internalAction({
           if (pruned.remaining === 0 || pruned.deleted === 0) break;
         }
       } catch (error) {
-        failures.push({ source, error: `stale results not deleted: ${(error as Error).message}` });
+        failures.push({ source, error: `stale results not deleted: ${errorMessage(error)}` });
       }
     }
 

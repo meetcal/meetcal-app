@@ -1,5 +1,6 @@
 'use node';
 
+import { typedKeys } from '../lib/json';
 import { v } from 'convex/values';
 import { errorMessage } from '../lib/errors';
 import { internalAction, type ActionCtx } from '../_generated/server';
@@ -9,7 +10,7 @@ import { BrowserlessKeyError, BrowserlessQuotaError, ChallengeError, fetchUnbloc
 import { sourcesFailed } from '../lib/cronAlerts';
 import { classKey } from '../lib/normalize';
 import type { RecordHolder } from './parse/holder';
-import { IWF_PAGES, parseIwfWikitext, wikitextOf, wikitextUrl, type IwfAge, type IwfRecord } from './parse/iwfRecords';
+import { IWF_PAGES, parseIwfWikitext, wikitextOf, wikitextUrl, type IwfRecord } from './parse/iwfRecords';
 import { iwfSiteUrl, parseIwfSiteHtml } from './parse/iwfSite';
 
 /**
@@ -54,7 +55,7 @@ const GENDERS = ['Men', 'Women'] as const;
 async function fromIwfSite(token: string): Promise<IwfRecord[]> {
   const deadline = Date.now() + IWF_BUDGET_MS;
   const records: IwfRecord[] = [];
-  for (const age of Object.keys(IWF_PAGES) as IwfAge[]) {
+  for (const age of typedKeys(IWF_PAGES)) {
     for (const gender of GENDERS) {
       const url = iwfSiteUrl(age, gender);
       const html = await withRetries(() => {
@@ -76,7 +77,7 @@ async function wikitext(page: string): Promise<string> {
 async function fromWikipedia(): Promise<IwfRecord[]> {
   const records: IwfRecord[] = [];
   // One page at a time, as Wikimedia's API etiquette asks.
-  for (const [age, page] of Object.entries(IWF_PAGES) as [IwfAge, string][]) records.push(...parseIwfWikitext(await wikitext(page), age));
+  for (const age of typedKeys(IWF_PAGES)) records.push(...parseIwfWikitext(await wikitext(IWF_PAGES[age]), age));
   return records;
 }
 
@@ -102,7 +103,6 @@ export function keepStoredHolders(records: readonly IwfRecord[], stored: readonl
     return kept;
   });
 }
-
 
 type Source = 'iwf.sport' | 'wikipedia';
 type RunResult = { source: Source | 'skipped'; records: IwfRecord[]; inserted: number; updated: number; deleted: number; unchanged: number; changes: string[] };

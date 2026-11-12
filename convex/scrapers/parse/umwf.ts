@@ -1,3 +1,4 @@
+import { itemAt } from '../../lib/json';
 import { recordHolder, recordLift, setHolder, type RecordHolder } from './holder';
 import { parseCsv } from '../lib/csv';
 
@@ -90,21 +91,21 @@ export function parseUmwfSheet(csv: string, ageCategory: string, gender: string)
   let columns = DEFAULT_COLUMNS;
   for (const row of parseCsv(csv)) {
     if (row.length < 3) continue;
-    if (row[1].includes('kg Category')) {
+    if (itemAt(row, 1).includes('kg Category')) {
       columns = holderColumns(row, columns);
       if (current) records.push(current);
-      const weightClass = /\(\s*retired\b/i.test(row[1]) ? null : formatWeightClass(row[1]);
+      const weightClass = /\(\s*retired\b/i.test(row[1] ?? '') ? null : formatWeightClass(row[1] ?? '');
       current = weightClass
         ? { recordType: 'UMWF', ageCategory: ageCategory, gender, weightClass: weightClass, snatchRecord: 0, cjRecord: 0, totalRecord: 0 }
         : null;
       continue;
     }
     if (!current) continue;
-    const lift = row[1].trim();
+    const lift = itemAt(row, 1).trim();
     if (lift !== 'Snatch' && lift !== 'Clean & Jerk' && lift !== 'Total') continue;
     // Blank or "Standard" leaves the lift at 0; a value it cannot read
     // ("125*") throws, failing the tab rather than clearing the record.
-    const weight = recordLift(row[2]);
+    const weight = recordLift(row[2] ?? '');
     if (weight === null) continue;
     const cell = (index: number) => row[index] ?? '';
     const holder = weight === 0 ? undefined : recordHolder(weight, cell(columns.name), sheetDate(cell(columns.date)), cell(columns.where));

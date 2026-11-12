@@ -1,4 +1,5 @@
 import { DAY_MS, isoDateOf, MONTH_NUMBERS as MONTHS, pad2 as pad } from '../../lib/dates';
+import { itemAt, groupOf } from '../../lib/json';
 import { pyInt } from '../lib/numbers';
 
 // Who holds a record, stored beside each lift (`snatchBy`, `cjBy`, `totalBy`
@@ -33,13 +34,15 @@ export function recordDate(raw: string | null | undefined): string | undefined {
   if (m) return iso(Number(m[1]), Number(m[2]), Number(m[3])) ?? text;
   m = /^(\d{1,2})[/.-](\d{1,2})[/.-](\d{2}|\d{4})$/.exec(text);
   if (m) {
-    const year = m[3].length === 2 ? 2000 + Number(m[3]) : Number(m[3]);
+    const year = itemAt(m, 3).length === 2 ? 2000 + Number(m[3]) : Number(m[3]);
     return iso(year, Number(m[1]), Number(m[2])) ?? text;
   }
   m = /^(\d{1,2})\s+([A-Za-z]{3,})\.?\s+(\d{4})$/.exec(text);
-  if (m && MONTHS[m[2].slice(0, 3).toLowerCase()]) return iso(Number(m[3]), MONTHS[m[2].slice(0, 3).toLowerCase()], Number(m[1])) ?? text;
+  let month = m ? MONTHS[groupOf(m, 2).slice(0, 3).toLowerCase()] : undefined;
+  if (m && month) return iso(Number(m[3]), month, Number(m[1])) ?? text;
   m = /^([A-Za-z]{3,})\.?\s+(\d{1,2}),?\s+(\d{4})$/.exec(text);
-  if (m && MONTHS[m[1].slice(0, 3).toLowerCase()]) return iso(Number(m[3]), MONTHS[m[1].slice(0, 3).toLowerCase()], Number(m[2])) ?? text;
+  month = m ? MONTHS[groupOf(m, 1).slice(0, 3).toLowerCase()] : undefined;
+  if (m && month) return iso(Number(m[3]), month, Number(m[2])) ?? text;
   return text;
 }
 

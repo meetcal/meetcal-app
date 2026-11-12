@@ -1,4 +1,5 @@
 import { newYorkPdfUrls, newYorkSection, parseNewYork } from '../../convex/scrapers/parse/wso/newYork';
+import { itemAt } from '../../convex/lib/json';
 
 describe('New York WSO PDFs (port of scraper_pdf_newyork.py)', () => {
   it('reads section headings', () => {
@@ -37,7 +38,8 @@ describe('New York WSO PDFs (port of scraper_pdf_newyork.py)', () => {
       '70 Clean and Jerk - - -',
       'Total 300 kg Jean Laguerre Jr. 8/31/2025 Virus Weightlifting Series II',
     ];
-    const [first, second] = parseNewYork([page], 'New York');
+    const records = parseNewYork([page], 'New York');
+    const [first, second] = [itemAt(records, 0), itemAt(records, 1)];
     expect(first).toMatchObject({
       weightClass: '65',
       snatchRecord: 77,

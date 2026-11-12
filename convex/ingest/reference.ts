@@ -1,3 +1,4 @@
+import { INTL_RANKINGS_MAX, QUALIFYING_TOTALS_MAX, STANDARDS_MAX, readAll } from '../lib/boundedRead';
 import { v } from 'convex/values';
 import { internalMutation } from '../_generated/server';
 import { normalizeAgeCategory, normalizeGender } from '../lib/normalize';
@@ -32,10 +33,13 @@ export const upsertStandards = internalMutation({
       };
       const existing = (
         await bySpellingOf(doc.gender, (gender) =>
-          ctx.db
-            .query('standards')
-            .withIndex('by_age_gender', (q) => q.eq('ageCategory', doc.ageCategory).eq('gender', gender))
-            .collect(),
+          readAll(
+            ctx.db
+              .query('standards')
+              .withIndex('by_age_gender', (q) => q.eq('ageCategory', doc.ageCategory).eq('gender', gender)),
+            STANDARDS_MAX,
+            'standards',
+          ),
         )
       ).find((s) => s.weightClass === doc.weightClass);
       if (!existing) {
@@ -62,7 +66,7 @@ export const pruneStandards = internalMutation({
   // `dryRun`: check the guard and list what would be deleted, deleting nothing.
   args: { keep: v.array(classArg), allowShrink: v.optional(v.boolean()), dryRun: v.optional(v.boolean()) },
   handler: async (ctx, { keep, allowShrink, dryRun }) => {
-    const dropped = droppedClasses('standards', await ctx.db.query('standards').collect(), keep, allowShrink);
+    const dropped = droppedClasses('standards', await readAll(ctx.db.query('standards'), STANDARDS_MAX, 'standards'), keep, allowShrink);
     if (dryRun) return { deleted: dropped.map((r) => `${r.ageCategory} ${r.gender} ${r.weightClass}`) };
     for (const row of dropped) await ctx.db.delete(row._id);
     if (dropped.length) await recordWrite(ctx, 'standards', [{ kind: 'table', key: 'standards' }]);
@@ -83,11 +87,15 @@ export const replaceQualifyingTotalSet = internalMutation({
     if (!eventName.trim()) throw new Error('eventName is required');
     if (!rows.length) throw new Error(`refusing to replace ${eventName} qualifying totals with an empty payload`);
     const counts = await replaceExactSet(ctx, {
-      table: 'qualifying_totals',
-      stored: await ctx.db
-        .query('qualifying_totals')
-        .withIndex('by_event', (q) => q.eq('eventName', eventName))
-        .collect(),
+      insert: (doc) => ctx.db.insert('qualifying_totals', doc),
+      replace: (current, doc) => ctx.db.replace(current._id, doc),
+      stored: await readAll(
+        ctx.db
+          .query('qualifying_totals')
+          .withIndex('by_event', (q) => q.eq('eventName', eventName)),
+        QUALIFYING_TOTALS_MAX,
+        'qualifying totals',
+      ),
       docs: rows.map((row) => ({
         eventName,
         ageCategory: normalizeAgeCategory(row.ageCategory),
@@ -122,10 +130,13 @@ export const renameQualifyingTotalSet = internalMutation({
       .withIndex('by_event', (q) => q.eq('eventName', to))
       .first();
     if (taken) throw new Error(`refusing to rename ${from} qualifying totals onto existing event ${to}`);
-    const rows = await ctx.db
-      .query('qualifying_totals')
-      .withIndex('by_event', (q) => q.eq('eventName', from))
-      .collect();
+    const rows = await readAll(
+      ctx.db
+        .query('qualifying_totals')
+        .withIndex('by_event', (q) => q.eq('eventName', from)),
+      QUALIFYING_TOTALS_MAX,
+      'qualifying totals',
+    );
     if (!rows.length) throw new Error(`no ${from} qualifying totals to rename`);
     for (const row of rows) await ctx.db.patch(row._id, { eventName: to });
     await recordWrite(ctx, 'qualifying_totals', [{ kind: 'table', key: 'qualifying_totals' }]);
@@ -143,10 +154,13 @@ export const renameQualifyingTotalSet = internalMutation({
 export const deleteQualifyingTotalSet = internalMutation({
   args: { eventName: v.string() },
   handler: async (ctx, { eventName }) => {
-    const rows = await ctx.db
-      .query('qualifying_totals')
-      .withIndex('by_event', (q) => q.eq('eventName', eventName))
-      .collect();
+    const rows = await readAll(
+      ctx.db
+        .query('qualifying_totals')
+        .withIndex('by_event', (q) => q.eq('eventName', eventName)),
+      QUALIFYING_TOTALS_MAX,
+      'qualifying totals',
+    );
     if (!rows.length) throw new Error(`no ${eventName} qualifying totals to delete`);
     for (const row of rows) await ctx.db.delete(row._id);
     await recordWrite(ctx, 'qualifying_totals', [{ kind: 'table', key: 'qualifying_totals' }]);
@@ -186,10 +200,13 @@ export const replaceIntlRankingsGroup = internalMutation({
     }
     const existing = (
       await bySpellingOf(gender, (spelling) =>
-        ctx.db
-          .query('intl_rankings')
-          .withIndex('by_gender_age', (q) => q.eq('gender', spelling).eq('ageCategory', ageCategory))
-          .collect(),
+        readAll(
+          ctx.db
+            .query('intl_rankings')
+            .withIndex('by_gender_age', (q) => q.eq('gender', spelling).eq('ageCategory', ageCategory)),
+          INTL_RANKINGS_MAX,
+          'international rankings',
+        ),
       )
     ).filter((row) => row.meet === meet);
     const keyOf = (ranking: number | undefined, name: string | undefined) => JSON.stringify([ranking, name]);
@@ -263,7 +280,7 @@ export const deleteMissingIntlRankingGroups = internalMutation({
     );
     if (active.size === 0) return { deletedGroups: [], deleted: 0 };
     const byGroup = new Map<string, { meet: string; gender: string; ageCategory: string; ids: (typeof rows)[number]['_id'][] }>();
-    const rows = await ctx.db.query('intl_rankings').collect();
+    const rows = await readAll(ctx.db.query('intl_rankings'), INTL_RANKINGS_MAX, 'international rankings');
     for (const row of rows) {
       const key = JSON.stringify([row.meet ?? null, storedGender(row.gender), row.ageCategory ?? null]);
       if (active.has(key)) continue;

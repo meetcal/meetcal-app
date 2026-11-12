@@ -21,6 +21,7 @@ import {
   viewDependencies,
   wsoKey,
 } from '../convex/lib/viewKeys';
+import { itemAt } from '../convex/lib/json';
 
 /**
  * Key parts: meet names, labels, the separator itself where it hurts, and the
@@ -49,7 +50,7 @@ const meetViewArb: fc.Arbitrary<MeetView> = fc.oneof(
 /** Two-character sequences as `nameBigrams` makes them: two code points of well-formed text. */
 const bigramArb = fc
   .tuple(fc.string({ unit: 'grapheme', minLength: 1, maxLength: 1 }), fc.string({ unit: 'grapheme', minLength: 1, maxLength: 1 }))
-  .map(([a, b]) => [...a][0] + [...b][0]);
+  .map(([a, b]) => itemAt([...a], 0) + itemAt([...b], 0));
 
 describe('view keys (property)', () => {
   it('give a meet view and a session view of distinct arguments distinct keys', () => {

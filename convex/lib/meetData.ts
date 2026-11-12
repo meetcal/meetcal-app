@@ -1,3 +1,5 @@
+import { isListOf, isPairOf, isRecord, isString, isStringList } from './json';
+import { ATHLETE_RESULTS_MAX, MEET_RESULTS_MAX, MEET_RESULT_TITLES_MAX, MEET_ROSTER_MAX, MEET_SESSIONS_MAX, readAll } from './boundedRead';
 import type { QueryCtx } from '../_generated/server';
 import { isoDateOf } from './dates';
 import type { Doc } from '../_generated/dataModel';
@@ -126,7 +128,7 @@ export function zoneFormatter(timeZone: string, formatters: ZoneFormatters): Int
 
 /** Postgres `date + INTERVAL 'n months'`: same day, clamped to the month's end. */
 export function addMonths(date: string, months: number): string {
-  const [year, month, day] = date.split('-').map(Number);
+  const [year = Number.NaN, month = Number.NaN, day = Number.NaN] = date.split('-').map(Number);
   const target = new Date(Date.UTC(year, month - 1 + months, 1));
   const lastDay = new Date(Date.UTC(target.getUTCFullYear(), target.getUTCMonth() + 1, 0)).getUTCDate();
   target.setUTCDate(Math.min(day, lastDay));
@@ -144,10 +146,13 @@ export type ApiScheduleRow = {
 };
 
 async function scheduleDocs(ctx: QueryCtx, meet: string): Promise<Doc<'session_schedule'>[]> {
-  return await ctx.db
-    .query('session_schedule')
-    .withIndex('by_meet', (q) => q.eq('meet', meet))
-    .collect();
+  return await readAll(
+    ctx.db
+      .query('session_schedule')
+      .withIndex('by_meet', (q) => q.eq('meet', meet)),
+    MEET_SESSIONS_MAX,
+    'sessions of one meet',
+  );
 }
 
 function toApiScheduleRow(row: Doc<'session_schedule'>): ApiScheduleRow {
@@ -240,10 +245,13 @@ export type RosterItem = {
 };
 
 export async function rosterDocs(ctx: QueryCtx, meet: string): Promise<Doc<'athletes'>[]> {
-  return await ctx.db
-    .query('athletes')
-    .withIndex('by_meet', (q) => q.eq('meet', meet))
-    .collect();
+  return await readAll(
+    ctx.db
+      .query('athletes')
+      .withIndex('by_meet', (q) => q.eq('meet', meet)),
+    MEET_ROSTER_MAX,
+    'athletes of one meet',
+  );
 }
 
 /** Every roster athlete's name as stored (the names a package's year bests are for). */
@@ -362,6 +370,9 @@ function sessionRow(item: RosterItem) {
 /** One row of `/meets/athletes-sessions`. */
 export type SessionRow = ReturnType<typeof sessionRow>;
 
+export const isSessionRow = (item: unknown): item is SessionRow =>
+  isRecord(item) && typeof item.name === 'string' && 'date' in item && 'session_number' in item && 'session_platform' in item;
+
 /**
  * The inner-join narrowing of the (left-joined) start list: rows of a
  * scheduled session (a matching schedule row, so a date) in `sessionNumber`
@@ -389,7 +400,7 @@ export function resultTitlesOf(meet: string, linked: readonly { title: string }[
 }
 
 export async function meetResultTitles(ctx: QueryCtx, meet: string): Promise<string[]> {
-  return resultTitlesOf(meet, await linkedResultTitles(ctx, meet).collect());
+  return resultTitlesOf(meet, await readAll(linkedResultTitles(ctx, meet), MEET_RESULT_TITLES_MAX, 'results titles linked to one meet'));
 }
 
 /** A meet's results under its own name and every results title linked to it. */
@@ -397,10 +408,13 @@ export async function meetResultDocs(ctx: QueryCtx, meet: string): Promise<Doc<'
   const titles = await meetResultTitles(ctx, meet);
   const groups = await Promise.all(
     titles.map((title) =>
-      ctx.db
-        .query('lifting_results')
-        .withIndex('by_meet', (q) => q.eq('meet', title))
-        .collect(),
+      readAll(
+        ctx.db
+          .query('lifting_results')
+          .withIndex('by_meet', (q) => q.eq('meet', title)),
+        MEET_RESULTS_MAX,
+        'results of one meet',
+      ),
     ),
   );
   return groups.flat();
@@ -428,6 +442,17 @@ export type Timeline = [string, TimelinePoint[]];
  */
 export type TimelinesView = [['names', string[]], ...Timeline[]];
 
+const isTimelinePoint = (point: unknown): point is TimelinePoint =>
+  Array.isArray(point) && point.length === 4 && typeof point[0] === 'string' && typeof point[1] === 'number' && typeof point[2] === 'number' && typeof point[3] === 'number';
+
+const isTimeline = isPairOf(isString, isListOf(isTimelinePoint));
+
+export function readTimelinesView(items: readonly unknown[]): { names: string[]; timelines: Timeline[] } {
+  const [first, ...rest] = items;
+  if (!isPairOf(isString, isStringList)(first) || first[0] !== 'names' || !isListOf(isTimeline)(rest)) throw new Error('the timelines view is not stored in the shape it is read in');
+  return { names: first[1], timelines: rest };
+}
+
 function timelinePoint(row: Doc<'lifting_results'>): TimelinePoint {
   const bests = accumulateBests(ZERO_BESTS, row);
   return [row.date, bests.best_snatch, bests.best_cj, bests.best_total];
@@ -442,10 +467,13 @@ export const TIMELINE_READ_BATCH = 250;
 export async function computeTimelines(ctx: QueryCtx, names: readonly string[], horizon: string): Promise<Timeline[]> {
   const keys = Array.from(new Set(names.map(normalizeName))).sort(compareBytes);
   return mapInBatches(keys, TIMELINE_READ_BATCH, async (key): Promise<Timeline> => {
-    const rows = await ctx.db
-      .query('lifting_results')
-      .withIndex('by_nameKey_and_date', (q) => q.eq('nameKey', key).gte('date', horizon))
-      .collect();
+    const rows = await readAll(
+      ctx.db
+        .query('lifting_results')
+        .withIndex('by_nameKey_and_date', (q) => q.eq('nameKey', key).gte('date', horizon)),
+      ATHLETE_RESULTS_MAX,
+      'results of one athlete',
+    );
     return [key, rows.map(timelinePoint)];
   });
 }

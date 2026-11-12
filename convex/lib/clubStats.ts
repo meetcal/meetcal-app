@@ -1,3 +1,5 @@
+import { isListOf, isNumber, isPairOf, isRecord, isString, itemAt } from './json';
+import { ATHLETE_RESULTS_MAX, readAll } from './boundedRead';
 import type { QueryCtx } from '../_generated/server';
 import type { Doc } from '../_generated/dataModel';
 import { clubKey, sameClub } from './clubs';
@@ -92,7 +94,10 @@ export function liftKey(row: RankedResult, lift: RankedLift): LiftKey {
 
 function ranksAhead(a: LiftKey, b: LiftKey): boolean {
   if (a[0] !== b[0]) return a[0] > b[0];
-  for (let i = 1; i < Math.min(a.length, b.length); i += 1) if (a[i] !== b[i]) return a[i] < b[i];
+  for (let i = 1; i < Math.min(a.length, b.length); i += 1) {
+    const [mine, theirs] = [itemAt(a, i), itemAt(b, i)];
+    if (mine !== theirs) return mine < theirs;
+  }
   return false;
 }
 
@@ -220,10 +225,13 @@ export async function previousBests(
 }
 
 async function previousBest(ctx: QueryCtx, key: string, before: string): Promise<number | null> {
-  const previous = await ctx.db
-    .query('lifting_results')
-    .withIndex('by_nameKey_and_date', (q) => q.eq('nameKey', key).lt('date', before))
-    .collect();
+  const previous = await readAll(
+    ctx.db
+      .query('lifting_results')
+      .withIndex('by_nameKey_and_date', (q) => q.eq('nameKey', key).lt('date', before)),
+    ATHLETE_RESULTS_MAX,
+    'results of one athlete',
+  );
   let best: number | null = null;
   for (const p of previous) {
     // A bomb-out (a total of 0) is no previous best: a first real total
@@ -286,6 +294,10 @@ export function statsViewItems(rows: readonly StatsRow[], clubCounts: [string, n
   return [['club_counts', clubCounts], ...rows];
 }
 
+const isStatsRow = (row: unknown): row is StatsRow => isRecord(row) && typeof row.name === 'string' && typeof row.club === 'string';
+
+const isClubCounts = isListOf(isPairOf(isString, isNumber));
+
 /**
  * The rows and club counts back from the stats view's items; also reads the
  * single `{ rows, club_counts }` item views were built as before.
@@ -293,13 +305,11 @@ export function statsViewItems(rows: readonly StatsRow[], clubCounts: [string, n
 export function readStatsViewItems(items: readonly unknown[]): { rows: StatsRow[]; club_counts: [string, number][] } {
   const [first, ...rest] = items;
   if (Array.isArray(first) && first[0] === 'club_counts' && Array.isArray(first[1])) {
-    return { rows: rest as StatsRow[], club_counts: first[1] as [string, number][] };
+    const counts: unknown = first[1];
+    if (isListOf(isStatsRow)(rest) && isClubCounts(counts)) return { rows: rest, club_counts: counts };
   }
-  if (items.length === 1 && first && typeof first === 'object' && 'rows' in first && 'club_counts' in first) {
-    const legacy = first as { rows: unknown; club_counts: unknown };
-    if (Array.isArray(legacy.rows) && Array.isArray(legacy.club_counts)) {
-      return { rows: legacy.rows as StatsRow[], club_counts: legacy.club_counts as [string, number][] };
-    }
+  if (items.length === 1 && isRecord(first) && isListOf(isStatsRow)(first.rows) && isClubCounts(first.club_counts)) {
+    return { rows: first.rows, club_counts: first.club_counts };
   }
   throw new Error('malformed stats view');
 }

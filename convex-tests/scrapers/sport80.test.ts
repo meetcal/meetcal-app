@@ -1,6 +1,7 @@
 import { readFileSync } from 'fs';
 import { join } from 'path';
 import { eventDate, eventIdOf, eventSource, formatResults, isSourceOfEvent, nested, failingEventIds, newestEvents, pickNewestEvents, pickNightlyEvents, pickRequestedEvents, ROLLING_NIGHTS, unreadableEventDate } from '../../convex/scrapers/parse/sport80';
+import { itemAt } from '../../convex/lib/json';
 
 // The first events of the 2026 index as Sport80 sent them on 2026-10-11 (every
 // event of 2025 and 2026 had an ISO date).
@@ -58,7 +59,7 @@ describe('Sport80 results sync (port of update_supabase_from_sport80.py)', () =>
       ['7510', '10/04/2026', true],
     ]);
     // Fewer readable events than wanted: any unreadable one could be among them.
-    expect(pickNewestEvents([event('7300', '05/09/2025')], 2).unreadable[0].recent).toBe(true);
+    expect(itemAt(pickNewestEvents([event('7300', '05/09/2025')], 2).unreadable, 0).recent).toBe(true);
   });
 
   describe('the events a nightly run reads (#566)', () => {
@@ -164,7 +165,8 @@ describe('Sport80 results sync (port of update_supabase_from_sport80.py)', () =>
     expect(rows[1]).toMatchObject({ name: 'No Lifts', age: 'Youth', snatch1: null, total: null });
     expect(formatResults('1', 'M', null, [])).toEqual([]);
     // A value that is not a number invalidates its row (no name: not stored), not the meet.
-    const [bad, good] = formatResults('1', 'M', null, [{ lifter: 'X', total: 'DNF' }, { lifter: 'Y', total: '100' }]);
+    const mixed = formatResults('1', 'M', null, [{ lifter: 'X', total: 'DNF' }, { lifter: 'Y', total: '100' }]);
+    const [bad, good] = [itemAt(mixed, 0), itemAt(mixed, 1)];
     expect(bad.name).toBeNull();
     expect(good).toMatchObject({ name: 'Y', total: 100 });
   });

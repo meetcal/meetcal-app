@@ -1,3 +1,4 @@
+import { isStringList, isTextPair, parsedAs, itemAt, last } from '../lib/json';
 import { chunks } from '../lib/concurrency';
 import { v } from 'convex/values';
 import { internalAction, internalMutation, internalQuery, type ActionCtx, type QueryCtx } from '../_generated/server';
@@ -155,14 +156,14 @@ export const sweepViewsPage = internalMutation({
     let chunks = 0;
     for (const [i, header] of headers.entries()) {
       // Always at least one, so the sweep moves on past any view.
-      if (deleted > 0 && chunks + header.chunk_count > SWEEP_CHUNK_BUDGET) return { after: headers[i - 1].key, deleted };
+      if (deleted > 0 && chunks + header.chunk_count > SWEEP_CHUNK_BUDGET) return { after: itemAt(headers, i - 1).key, deleted };
       if (header.built_at >= before || INTERNAL_VIEW_PREFIXES.some((prefix) => header.key.startsWith(prefix))) continue;
       if (await changedSince(ctx, header.key, before)) continue;
       await deleteHeaderAndChunks(ctx, header);
       deleted += 1;
       chunks += header.chunk_count;
     }
-    return { after: headers.length < SWEEP_PAGE ? null : headers[headers.length - 1].key, deleted };
+    return { after: headers.length < SWEEP_PAGE ? null : last(headers).key, deleted };
   },
 });
 
@@ -282,7 +283,7 @@ export const rebuildStage = internalAction({
           resumed ? directoryNames((await ctx.runQuery(internal.views.textViewAnyAge, { key: SCAN_NAMES_VIEW })) ?? '') : [],
         );
         const classes = new Set<string>(
-          resumed ? (JSON.parse((await ctx.runQuery(internal.views.jsonViewAnyAge, { key: SCAN_CLASSES_VIEW })) ?? '[]') as string[]) : [],
+          resumed ? parsedAs((await ctx.runQuery(internal.views.jsonViewAnyAge, { key: SCAN_CLASSES_VIEW })) ?? '[]', isStringList, 'the scanned classes') : [],
         );
         let cursor: string | null = args.cursor ?? null;
         for (;;) {
@@ -335,17 +336,18 @@ export const rebuildStage = internalAction({
             await ctx.runMutation(internal.views.buildHistories, { keys: batch });
           }
           if (keys.length < PRUNE_PAGE) return await next('nat', 0);
-          after = keys[keys.length - 1];
+          after = last(keys);
           if (overBudget()) return await next('prune', 0, { after });
         }
       }
       case 'nat': {
         const text: string | null = await ctx.runQuery(internal.views.jsonViewAnyAge, { key: REBUILD_CLASSES_VIEW });
-        const classes = JSON.parse(text ?? '[]') as string[];
+        const classes = parsedAs(text ?? '[]', isStringList, 'the classes to rebuild');
         let i = args.offset;
         for (; i < classes.length && !overBudget(); i += 1) {
-          const [federation, ageCategory] = JSON.parse(classes[i]) as [string, string];
-          await rebuildTarget(ctx, natKey(federation, ageCategory), [{ kind: 'nat', key: classes[i] }], () =>
+          const key = itemAt(classes, i);
+          const [federation, ageCategory] = parsedAs(key, isTextPair, 'a class to rebuild');
+          await rebuildTarget(ctx, natKey(federation, ageCategory), [{ kind: 'nat', key }], () =>
             ctx.runAction(internal.views.buildNat, { federation, ageCategory }),
           );
         }
@@ -363,7 +365,7 @@ export const rebuildStage = internalAction({
         }
         let i = args.offset;
         for (; i < meets.length && !overBudget(); i += 1) {
-          const meet = meets[i];
+          const meet = itemAt(meets, i);
           await rebuildTarget(ctx, `meet ${meet}`, [{ kind: 'meet', key: meet }], () => rebuildMeet(ctx, meet));
         }
         return i < meets.length ? await next('meets', i) : await next('reference', 0);

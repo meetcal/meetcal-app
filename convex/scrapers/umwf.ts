@@ -1,5 +1,7 @@
 'use node';
 
+import { errorMessage } from '../lib/errors';
+
 import { v } from 'convex/values';
 import { internalAction } from '../_generated/server';
 import { internal } from '../_generated/api';
@@ -55,7 +57,7 @@ export const run = internalAction({
           records.push(...tab);
           groups.push({ ageCategory, gender });
         } catch (error) {
-          failures.push({ source, error: (error as Error).message });
+          failures.push({ source, error: errorMessage(error) });
         }
       }
     }
@@ -82,7 +84,7 @@ export const run = internalAction({
     } catch (error) {
       // A refused write fails the run with the skipped tabs still named, so
       // a tab failing alongside it still alerts.
-      throw sourcesFailed('umwf: nothing stored', [...failures, { source: 'sync', error: (error as Error).message }]);
+      throw sourcesFailed('umwf: nothing stored', [...failures, { source: 'sync', error: errorMessage(error) }]);
     }
     const { inserted, updated } = tally(result.written);
     const { deleted } = result;
