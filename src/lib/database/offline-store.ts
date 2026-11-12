@@ -37,19 +37,8 @@ const EXPLICIT_MEET_DOWNLOADS_KEY = 'meetcal_explicit_meet_downloads';
 export { PACKAGE_ETAG_STORAGE_KEY };
 const LIFTING_RESULTS_CHUNK_SIZE = 180_000;
 
-/**
- * Keys removed per `removeMany`. AsyncStorage forwards the whole list to a
- * single native call, so a 4500-key delete would otherwise cross the bridge as
- * one unbounded batch (PoT #4 "declare sizes").
- */
 const STORAGE_REMOVE_BATCH_SIZE = 500;
-/** Keys read per `getMany` when probing which athletes have a history blob. */
 const STORAGE_READ_BATCH_SIZE = 500;
-/**
- * Entries written per `setMany`. The package's `year_bests_by_name` is
- * roster-sized (a national meet is well over a thousand names), and one
- * `setMany` crosses the bridge as a single unbounded batch, like a remove.
- */
 const STORAGE_WRITE_BATCH_SIZE = 500;
 /**
  * Most chunk keys a lifting-results manifest may name: 256 x 180 KB is ~46 MB
@@ -569,39 +558,6 @@ function nextChunkGeneration(taken: ReadonlySet<number>): number {
   return generation;
 }
 
-/**
- * Writes several lifting-results blobs (meet results or per-athlete history)
- * with a bounded number of storage calls and a crash-safe order.
- *
- * Why batched: iOS AsyncStorage keeps every value of 1 KB or less inline in
- * one `manifest.json` and rewrites that whole file on every `setItem`/
- * `setMany` that touches an inline key. Per-athlete history chunks and
- * manifests are almost all inline, so writing a 1,500-athlete roster one
- * `setItem` at a time rewrote a multi-megabyte file ~3,000 times, serialized
- * on the storage queue in front of every other read. One `setMany` per
- * batch rewrites it once.
- *
- * Why this order (the manifest is the commit point):
- *   1. read the current manifests and, for unchanged blobs, skip the write
- *      entirely (the daily history refresh mostly rewrites identical rows);
- *   2. one `setMany` of every new chunk followed by every new manifest, the
- *      chunks under a fresh generation of keys so nothing the old manifest
- *      references is touched;
- *   3. one read-back of what was written, so a chunk that did not persist is
- *      caught before the old chunks go;
- *   4. one `removeMany` of the chunk keys only the old manifests named.
- * A failure in 2 or 3 restores the previous manifests, which still point at
- * the previous chunks, so an interrupted download leaves each athlete with
- * the copy it had rather than nothing. This used to be clear-then-write.
- *
- * A key whose value did not parse as a manifest (unreadable, or a legacy row
- * array) does not say which chunks are live, so its new generation comes from
- * a key listing instead: one past every chunk generation on disk, which no
- * live chunk can share, and every listed key whose value is a chunk is pruned
- * in step 4.
- *
- * @returns how many blobs were rewritten (the rest were byte-identical).
- */
 async function writeStoredLiftingResultsBatch(
   writes: readonly LiftingResultsWrite[],
 ): Promise<number> {
@@ -751,14 +707,6 @@ async function restorePreviousManifests(planned: readonly PlannedLiftingResultsW
   }
 }
 
-/**
- * The `unverified` keys of a failed batch to write their first-read bytes back
- * to: those that now hold this write's manifest while a chunk it names is
- * missing (iOS `setMany` can land the manifest after a chunk failed). The key
- * then reads as no results, and those bytes, legacy rows most likely, are the
- * only copy left. Any other key is left alone: it holds a whole new copy, or
- * the new manifest never landed, and the first-read bytes may be made up.
- */
 async function unverifiedRewritesToUndo(
   planned: readonly PlannedLiftingResultsWrite[],
 ): Promise<[string, string][]> {
@@ -958,18 +906,6 @@ export type AthleteHistoryEntry = {
   results: AthleteMeetResult[];
 };
 
-/**
- * Persists several athletes' histories with one `setMany`, one read-back and
- * one `removeMany` for the whole batch (see `writeStoredLiftingResultsBatch`),
- * skipping athletes whose stored bytes already match. The history download
- * calls this once per `/lifting-results/by-names` batch; per-athlete calls
- * cost one manifest rewrite each on iOS.
- *
- * Two spellings of one name (the API folds them the same way) collapse to a
- * single write, the last one winning.
- *
- * @returns how many athletes were actually rewritten.
- */
 export async function saveAthleteHistoryBatch(
   entries: readonly AthleteHistoryEntry[],
 ): Promise<number> {
@@ -1728,14 +1664,6 @@ function athleteNameOfStorageKey(key: string): string | null {
   return normalizeAthleteName(chunkAt === -1 ? rest : rest.slice(0, chunkAt));
 }
 
-/**
- * Normalized names of every athlete with a history blob (or a chunk of one)
- * or a stored bests entry in a key listing. Reading the listing answers "is
- * anything on disk for these athletes" without a `getMany`. Bests count on
- * their own: every viewed start list stores them for its whole roster, and
- * when only history counted, an athlete with bests and no history was never
- * pruned, so the keys only accumulated.
- */
 function athleteNamesWithStoredDataInListing(storageKeys: readonly string[]): Set<string> {
   const names = new Set<string>();
   for (const key of storageKeys) {
@@ -1745,11 +1673,6 @@ function athleteNamesWithStoredDataInListing(storageKeys: readonly string[]): Se
   return names;
 }
 
-/**
- * Removes every history, chunk and bests key of the given athletes, taken from
- * a key listing so no manifest has to be read, in bounded `removeMany`
- * batches. Keys already gone (a batch clear shares one listing) are a no-op.
- */
 async function removeAthleteKeysFromListing(
   storageKeys: readonly string[],
   normalizedNames: ReadonlySet<string>,
@@ -1784,17 +1707,6 @@ async function readRemainingRosterNames(
   return names;
 }
 
-/**
- * Drops the history and bests of the athletes on `rosterNames` that appear on
- * no other stored roster, once a meet's data is being cleared. Athlete history is
- * keyed by name, not by meet, so nothing else ever reclaimed it: a season of
- * downloaded meets left every athlete's history behind after the meet
- * expired, and the AsyncStorage database filled with rows no screen could
- * reach.
- *
- * Cheap exit first: a meet whose athletes have nothing stored by name (no
- * history, no bests) must not pay for reading every other roster.
- */
 async function pruneAthleteHistoryExclusiveToRoster(
   meet: string,
   rosterNames: readonly string[],
@@ -2051,27 +1963,10 @@ export async function clearAllAthleteHistory(): Promise<void> {
 
 async function removeAllAthleteHistory(): Promise<void> {
   const keys = await AsyncStorage.getAllKeys();
-  // Chunk keys are `<manifest key>__chunk_<n>`, so the prefix already covers
-  // manifests, chunks, and legacy raw payloads alike. Reading each manifest
-  // to rediscover its own chunk keys cost one `getItem` + one `removeMany`
-  // per athlete — 1500-4500 serial round trips on "Delete all offline data"
-  // (PoT #2 bounded loops). One `getAllKeys` plus batched removes replaces
-  // them, and it also reaps chunks orphaned by an interrupted write.
-  // Stored bests go too. They are keyed by athlete name like the history,
-  // and "Delete All Offline Data" / "Clear Cache" used to leave every one
-  // behind, so a wrong "no results" answer survived until a reinstall.
   const athleteHistoryKeys = keys.filter(
     (k) => k.startsWith(ATHLETE_HISTORY_KEY_PREFIX) || k.startsWith(ATHLETE_BESTS_KEY_PREFIX),
   );
-  for (
-    let offset = 0;
-    offset < athleteHistoryKeys.length;
-    offset += STORAGE_REMOVE_BATCH_SIZE
-  ) {
-    await AsyncStorage.removeMany(
-      athleteHistoryKeys.slice(offset, offset + STORAGE_REMOVE_BATCH_SIZE),
-    );
-  }
+  await removeManyBatched(athleteHistoryKeys);
   // The package validators vouched for history that is now gone. Left in
   // place, the next prefetch's `304` would short-circuit with the roster
   // still on disk and never re-download a single athlete.

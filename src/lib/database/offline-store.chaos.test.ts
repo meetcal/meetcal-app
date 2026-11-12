@@ -168,13 +168,6 @@ describe('meet lifting results under storage chaos', () => {
     );
   });
 
-  // Regression: a rewrite used to keep whatever bytes its first read returned
-  // and, on failure, write them back over the good manifest it never touched
-  // (seed 494037883: the manifest read as `""`, then the `setMany` was
-  // rejected, and the meet read as no results). The unparseable read also
-  // picked generation 0, so the new chunks overwrote the live ones before the
-  // commit point. Now only a payload that parsed as a manifest is restored,
-  // and an unreadable one takes its generation from a key listing.
   it('a corrupted read during a failed rewrite does not cost the previous copy', async () => {
     await fc.assert(
       fc.asyncProperty(
@@ -196,7 +189,6 @@ describe('meet lifting results under storage chaos', () => {
     const previous = [{ ...bulkyLiftResults(1, 1)[0], name: 'Previous Lifter' }];
     const next = [{ ...bulkyLiftResults(2, 1)[0], name: 'Next Lifter' }];
     await saveMeetLiftingResults(MEET, previous);
-    // The manifest read, the key listing, the listed chunks' read, the rejected setMany.
     await underChaos([{ kind: 'corrupt-read', value: '' }, { kind: 'pass' }, { kind: 'pass' }, { kind: 'reject' }], () =>
       saveMeetLiftingResults(MEET, next).catch(() => undefined),
     );
@@ -288,8 +280,6 @@ describe('meet lifting results under storage chaos', () => {
           const { getMeetLiftingResults, saveMeetLiftingResults } = restartedStore();
           if (previous) await saveMeetLiftingResults(MEET, previous);
 
-          // The data `setMany` persists its first `crashAfter` pairs and the
-          // process dies: the promise never settles, nothing after it runs.
           let total = 0;
           let persisted = 0;
           setMany.mockImplementationOnce(async (entries: Record<string, string>) => {
@@ -380,7 +370,6 @@ describe('athlete history batches under storage chaos', () => {
             if (!isNext) sawPrevious = true;
             if (!isPrevious) sawNext = true;
           }
-          // The batch commits together: one setMany carries every manifest.
           expect(sawPrevious && sawNext).toBe(false);
         },
       ),

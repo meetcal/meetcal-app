@@ -1009,9 +1009,6 @@ async function downloadHistoryBatch(
   }
 
   try {
-    // One storage batch per network batch: one `setMany`, one read-back,
-    // one `removeMany`, and no write at all for athletes whose history
-    // has not changed since the last download.
     await saveAthleteHistoryBatch(
       batch.map((name) => ({
         name,

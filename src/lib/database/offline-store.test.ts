@@ -1641,9 +1641,6 @@ describe("batched athlete history writes", () => {
   });
 
   it("writes a 40-athlete batch with one setMany, no setItem and no per-athlete remove", async () => {
-    // Before: 40 athletes cost 40 manifest getItems, 40 chunk setItems, 40
-    // verify getItems and 40 manifest setItems = 80 writes, each an iOS
-    // manifest.json rewrite. After: one setMany.
     await expect(saveAthleteHistoryBatch(entries(40))).resolves.toBe(40);
 
     expect(writeCalls()).toEqual({ setMany: 1, removeMany: 0, setItem: 0, removeItem: 0 });
@@ -1766,8 +1763,6 @@ describe("batched athlete history writes", () => {
   it("puts legacy rows back when a chunk fails but the new manifest lands", async () => {
     const legacy = JSON.stringify([row("Jane Doe", "2024-01-01")]);
     mockStorage.set(`${HISTORY_PREFIX}jane doe`, legacy);
-    // iOS `setMany` writes every pair it can and reports the first failure
-    // at the end: the chunk hit a full disk, the manifest after it landed.
     (AsyncStorage.setMany as jest.Mock).mockImplementationOnce(
       async (entries: Record<string, string>) => {
         Object.entries(entries)
