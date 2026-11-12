@@ -191,19 +191,10 @@ pub struct PremiumAction {
 pub mod functions {
     use super::{Duration, PremiumAction};
 
-    /// Premium action: every athlete's best in a date range, ranked on the server. Takes `from`,
-    /// `to` (`YYYY-MM-DD`, under five years apart), `by` (`total`, `snatch`, `cj`, `sinclair`,
-    /// `qpoints`), and optionally `gender` (`Men` or `Women`, needed for `sinclair` and
-    /// `qpoints`), `category`, `division`, `federation`, `adaptive` and `limit` (1 to 500).
-    /// Answers `{ rows, federations }`. Read it with [`super::premium_action`].
     pub const LEADERBOARD: PremiumAction = PremiumAction {
         function: "results:leaderboard",
         answer_within: Duration::from_secs(120),
     };
-    /// Premium action: a WSO's elite lists (`convex/lib/elite.ts`). Takes `wso` (as registrations
-    /// spell it), `from`, `to` (under five years apart) and `methods` (each list's score, by
-    /// `overall`, `youth`, `junior`, `senior`, `masters`). Answers `{ wso, from, to, members,
-    /// lists }`.
     pub(crate) const WSO_ELITE: PremiumAction = PremiumAction {
         function: "results:wsoElite",
         answer_within: Duration::from_secs(120),
