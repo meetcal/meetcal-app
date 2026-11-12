@@ -8,7 +8,6 @@ import {
 } from "@/lib/data/mutable-resource";
 import { subscribeToNetworkChanges } from "@/lib/networkUtils";
 import { useScreenTiming } from "@/hooks/useScreenTiming";
-import { useWaitingForConnection } from "@/hooks/useWaitingForConnection";
 
 export type MutableResourceState<T> = {
   data: T;
@@ -25,7 +24,6 @@ export type MutableResourceState<T> = {
    */
   refreshError: string | null;
   isInitialLoading: boolean;
-  isWaitingForConnection: boolean;
   isRefreshing: boolean;
   lastUpdatedAt: number | null;
   source: ResourceSource | null;
@@ -309,7 +307,6 @@ export function useMutableResource<T, TParams extends readonly unknown[]>(
   }, [enabled, key, refresh]);
 
   const reportedInitialLoading = isInitialLoading || (key !== null && key !== loadStartedForKey);
-  const isWaitingForConnection = useWaitingForConnection(reportedInitialLoading);
   useScreenTiming(screen ?? null, { source, failed: error !== null });
 
   return {
@@ -317,7 +314,6 @@ export function useMutableResource<T, TParams extends readonly unknown[]>(
     error,
     refreshError,
     isInitialLoading: reportedInitialLoading,
-    isWaitingForConnection,
     isRefreshing,
     lastUpdatedAt,
     source,
