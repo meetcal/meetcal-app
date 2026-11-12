@@ -1,5 +1,6 @@
-import { errorMessage } from '../../lib/json';
+
 import { fetchPdf, fetchText, retryable, withRetries, type RetryPolicy } from './http';
+import { errorMessage } from '../../lib/errors';
 
 /**
  * The WSO sites on small hosts (Missouri Valley, Mountain South, Illinois,

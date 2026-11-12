@@ -1,6 +1,8 @@
-import { errorMessage, isRecord, isStringList, itemAt } from './lib/json';
+import { errorMessage } from './lib/errors';
+import { isRecord, isStringList, itemAt } from './lib/json';
 import { MEETS_MAX, MEET_ROSTER_MAX, VIEW_HEADERS_MAX, readAll } from './lib/boundedRead';
 import { v } from 'convex/values';
+import { isoDateOf } from './lib/dates';
 import { internalAction, internalQuery } from './_generated/server';
 import { api, internal } from './_generated/api';
 import { computeHistory, summaryOf } from './lib/history';
@@ -202,7 +204,7 @@ export const run = internalAction({
     const cutoff = (() => {
       const d = new Date();
       d.setUTCFullYear(d.getUTCFullYear() - 2);
-      return d.toISOString().slice(0, 10);
+      return isoDateOf(d.getTime());
     })();
     const yearAgo = addMonths(cutoff, 12);
     const { meets, classes }: { meets: string[]; classes: { federation: string; ageCategory: string }[] } =

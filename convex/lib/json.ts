@@ -12,8 +12,6 @@ export function rowCount(total: unknown): number | null {
   return typeof count === 'number' && Number.isInteger(count) && count >= 0 ? count : null;
 }
 
-export const errorMessage = (error: unknown): string => (error instanceof Error ? error.message : String(error));
-
 export const isString = (value: unknown): value is string => typeof value === 'string';
 
 export const isNumber = (value: unknown): value is number => typeof value === 'number';

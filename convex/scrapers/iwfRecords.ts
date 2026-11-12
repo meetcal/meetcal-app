@@ -1,7 +1,8 @@
 'use node';
 
-import { errorMessage, typedKeys } from '../lib/json';
+import { typedKeys } from '../lib/json';
 import { v } from 'convex/values';
+import { errorMessage } from '../lib/errors';
 import { internalAction, type ActionCtx } from '../_generated/server';
 import { internal } from '../_generated/api';
 import { fetchJson, throttledOrTransient, withRetries, type RetryPolicy } from './lib/http';
@@ -102,7 +103,6 @@ export function keepStoredHolders(records: readonly IwfRecord[], stored: readonl
     return kept;
   });
 }
-
 
 type Source = 'iwf.sport' | 'wikipedia';
 type RunResult = { source: Source | 'skipped'; records: IwfRecord[]; inserted: number; updated: number; deleted: number; unchanged: number; changes: string[] };

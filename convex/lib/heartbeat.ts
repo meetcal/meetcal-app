@@ -1,4 +1,4 @@
-import { errorMessage } from './json';
+import { errorMessage } from './errors';
 
 /**
  * The external dead man's switch. After each watchdog run that checked every

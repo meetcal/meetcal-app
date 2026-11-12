@@ -115,7 +115,7 @@ pub(crate) fn Combobox(
     let options = move || {
         suggestions.with(|state| match state {
             Suggestions::Ready(options) => options.clone(),
-            _ => Vec::new(),
+            Suggestions::Idle | Suggestions::Searching | Suggestions::Failed => Vec::new(),
         })
     };
     let popup_shown = move || open.get() && suggestions.with(|state| *state != Suggestions::Idle);
@@ -209,7 +209,7 @@ pub(crate) fn Combobox(
                         Suggestions::Searching => Some("Searching…"),
                         Suggestions::Ready(options) if options.is_empty() => Some(copy.no_matches),
                         Suggestions::Failed => Some(copy.failed),
-                        _ => None,
+                        Suggestions::Idle | Suggestions::Ready(_) => None,
                     })
                     .map(|message| view! { <p>{message}</p> })
                 }}

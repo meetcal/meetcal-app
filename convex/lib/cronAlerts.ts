@@ -1,5 +1,6 @@
-import { errorMessage, isRecord, isStringList } from './json';
+import { isRecord, isStringList } from './json';
 import { ConvexError } from 'convex/values';
+import { errorMessage } from './errors';
 
 /**
  * When a scheduled job's state is worth an email. One incident sends one

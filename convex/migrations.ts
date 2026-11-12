@@ -2,6 +2,7 @@ import { itemAt, last } from './lib/json';
 import { EVENT_RESULTS_MAX, MEETS_MAX, MEET_ROSTER_MAX, REFERENCE_TABLE_ROWS_MAX, WSO_RECORDS_MAX, readAll } from './lib/boundedRead';
 import { USER_SAVED_SESSIONS_MAX } from './users';
 import { v } from 'convex/values';
+import { logInLines } from './lib/logLines';
 import { internalAction, internalMutation, internalQuery } from './_generated/server';
 import { internal } from './_generated/api';
 import type { Doc } from './_generated/dataModel';
@@ -195,9 +196,6 @@ function isCopy(a: Doc<'lifting_results'>, b: Doc<'lifting_results'>): boolean {
   return sameEditionDates(a.date, b.date) && sameResultValues(a, b) && a.federation === b.federation && a.adaptive === b.adaptive;
 }
 
-/** Identities one log line lists: Convex keeps a bounded number of log lines per function run. */
-const LEFT_PER_LOG_LINE = 50;
-
 /**
  * Splits one identity's stored rows (oldest first) into sets of copies of
  * one result (`isCopy`), each in the order the rows were stored.
@@ -289,10 +287,7 @@ export const dedupeLiftingResults = internalMutation({
         return;
       }
     }
-    // Logged once, on the pass that finishes the page.
-    for (let i = 0; i < unresolved.length; i += LEFT_PER_LOG_LINE) {
-      console.log(`dedupeLiftingResults: left\n${unresolved.slice(i, i + LEFT_PER_LOG_LINE).join('\n')}`);
-    }
+    logInLines('dedupeLiftingResults: left', unresolved);
     const counts = { deleted: deleted + removed, left: left + unresolved.length };
     if (page.isDone) {
       console.log(
@@ -472,9 +467,7 @@ export const cleanupRosterRows = internalMutation({
         { kind: 'table', key: 'athletes' },
       ]);
     }
-    for (let i = 0; i < found.length; i += LEFT_PER_LOG_LINE) {
-      console.log(`cleanupRosterRows${dryRun ? ' (dry run)' : ''}:\n${found.slice(i, i + LEFT_PER_LOG_LINE).join('\n')}`);
-    }
+    logInLines(`cleanupRosterRows${dryRun ? ' (dry run)' : ''}:`, found);
     if (page.isDone) {
       console.log(`cleanupRosterRows: done${dryRun ? ' (dry run)' : ''}, ${count} roster rows ${dryRun ? 'to delete' : 'deleted'}`);
       return;

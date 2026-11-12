@@ -1,3 +1,4 @@
+import { isoDateOf } from '../lib/dates';
 import { MEET_ROSTER_MAX, readAll } from '../lib/boundedRead';
 import { chunks } from '../lib/concurrency';
 import { v } from 'convex/values';
@@ -118,7 +119,7 @@ export const buildMeet = internalMutation({
 function yearsAgo(years: number): string {
   const now = new Date();
   now.setUTCFullYear(now.getUTCFullYear() - years);
-  return now.toISOString().slice(0, 10);
+  return isoDateOf(now.getTime());
 }
 
 /**

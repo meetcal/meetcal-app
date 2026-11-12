@@ -1,6 +1,6 @@
 import { itemAt } from './json';
 import type { ApiLiftingResult } from './results';
-import { DAY_MS } from './dates';
+import { daysBetween } from './dates';
 import { newestSpellingByAthlete, normalizeName } from './names';
 import { isPlausibleResult } from './plausible';
 
@@ -62,16 +62,8 @@ const wasMade = (attempt: number | null | undefined): attempt is number => typeo
 const attemptsOf = (row: ApiLiftingResult) => [row.snatch1, row.snatch2, row.snatch3, row.cj1, row.cj2, row.cj3];
 const meetKey = (meet: string) => meet.trim().toLowerCase();
 
-function calendarDay(date: string): number | null {
-  const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(date);
-  if (!match) return null;
-  return Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3])) / DAY_MS;
-}
-
 function withinOneEdition(a: string, b: string): boolean {
-  const dayA = calendarDay(a);
-  const dayB = calendarDay(b);
-  return dayA !== null && dayB !== null && Math.abs(dayA - dayB) <= MEET_EDITION_SPAN_DAYS;
+  return daysBetween(a, b) <= MEET_EDITION_SPAN_DAYS;
 }
 
 /**

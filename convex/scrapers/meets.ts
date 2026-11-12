@@ -1,7 +1,9 @@
 'use node';
 
-import { errorMessage, itemAt } from '../lib/json';
+import { errorMessage } from '../lib/errors';
+import { itemAt } from '../lib/json';
 import { v } from 'convex/values';
+import { isoDateOf } from '../lib/dates';
 import { internalAction } from '../_generated/server';
 import { internal } from '../_generated/api';
 import { fetchJson, withRetries } from './lib/http';
@@ -70,7 +72,7 @@ export const run = internalAction({
       throw sourcesFailed('meets', [{ source: LISTING, error: result.error }]);
     }
     result.fetched = rows.length;
-    const today = new Date().toISOString().slice(0, 10);
+    const today = isoDateOf(Date.now());
     const { stored, unlisted }: {
       stored: ({ name: string; status: string; bySource: boolean } | null)[];
       unlisted: { name: string; sourceId: string; startDate: string }[];

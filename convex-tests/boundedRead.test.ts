@@ -46,14 +46,20 @@ describe('reads that used to collect are bounded', () => {
     CRON_JOBS_MAX: 18,
     ENTRY_TARGETS_MAX: 7,
   };
+  const MOST_STORED_ON_2026_11_12: Record<string, number> = {
+    NAME_RESULTS_MAX: 93,
+    LIFTERS_OF_NAME_MAX: 7,
+    NAMES_OF_LIFTER_MAX: 0,
+  };
+  const MOST_STORED: Record<string, number> = { ...MOST_STORED_ON_2026_11_11, ...MOST_STORED_ON_2026_11_12 };
   const MOST_STORED_OVER_EVERY_YEAR: Record<string, number> = { DIVISION_YEAR_RESULTS_MAX: 14295 };
 
   it('gives every limit at least four times the most rows stored when it was set, and keeps under what one query may read', () => {
     const named = Object.entries(limits).flatMap(([name, value]): [string, number][] => (typeof value === 'number' ? [[name, value]] : []));
-    expect(named.map(([name]) => name).sort()).toEqual([...Object.keys(MOST_STORED_ON_2026_11_11), ...Object.keys(MOST_STORED_OVER_EVERY_YEAR)].sort());
+    expect(named.map(([name]) => name).sort()).toEqual([...Object.keys(MOST_STORED), ...Object.keys(MOST_STORED_OVER_EVERY_YEAR)].sort());
     for (const [name, limit] of named) {
       const everyYear = MOST_STORED_OVER_EVERY_YEAR[name];
-      const room = everyYear === undefined ? limit >= 4 * (MOST_STORED_ON_2026_11_11[name] ?? Infinity) : limit > everyYear;
+      const room = everyYear === undefined ? limit >= 4 * (MOST_STORED[name] ?? Infinity) : limit > everyYear;
       expect([name, room]).toEqual([name, true]);
       expect([name, limit < 32000]).toEqual([name, true]);
     }

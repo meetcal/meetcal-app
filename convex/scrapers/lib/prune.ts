@@ -1,4 +1,4 @@
-import { errorMessage } from '../../lib/json';
+import { errorMessage } from '../../lib/errors';
 
 /**
  * The reference syncs (records, standards) delete the classes their source

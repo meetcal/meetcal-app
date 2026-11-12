@@ -26,3 +26,6 @@ export const VIEW_CHUNKS_MAX = 2_000;
 export const VIEW_HEADERS_MAX = 20_000;
 export const CRON_JOBS_MAX = 500;
 export const ENTRY_TARGETS_MAX = 500;
+export const NAME_RESULTS_MAX = 2_000;
+export const LIFTERS_OF_NAME_MAX = 200;
+export const NAMES_OF_LIFTER_MAX = 200;

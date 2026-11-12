@@ -18,7 +18,7 @@ contracts. Put unit tests in a `#[cfg(test)] mod tests` at the bottom of the
 module they cover. A new answer type gets a test that parses a real answer's
 shape, including fields that may be absent or `null`.
 
-`src/utils/api.rs` tests the transport without a network: request bodies, both
+`src/utils/api/` tests the transport without a network: request bodies, both
 answer forms (`Body::Value` and `Body::JsonText`), function errors, retry
 timing, whole-number floats becoming integers, which queries (and which
 searches) carry the access pass, reading `accessPass:pass`'s answer, how long a
@@ -26,7 +26,7 @@ pass is held, and which function errors renew it, and reading the `deviceLogin`
 answers (a pending login or `null`; `{ ok: true }` or a 404) and
 `apiTokens:revokeAllCli`'s `{ ended }`. `src/pages/link.rs`
 tests the code's formatting, the caret while it formats, and the page's states.
-`api.rs` also tests the meet-submission calls: their camelCase arguments (absent
+`utils/api` also tests the meet-submission calls: their camelCase arguments (absent
 fields as `null`), reading `{ uploadUrl }`, `{ storageId }` and
 `{ submitted: true }`, and the sentence each error status shows.
 `src/pages/submit_meet.rs` tests the form's checks (name, dates, file count,
@@ -111,7 +111,7 @@ await routeQuery(page, "results:search", (route, args) =>
   answers the CORS preflight every JSON `POST` triggers.
 - Answer the way the real query does: `textAnswer(body)` for `Body::JsonText`
   queries, `valueAnswer(body)` for `Body::Value` ones (see `queries` in
-  `src/utils/api.rs`). `errorAnswer(message)` is a function that ran and failed.
+  `src/utils/api/`). `errorAnswer(message)` is a function that ran and failed.
 - `routeMutation(page, fn, handler)` does the same for a mutation (`POST /api/mutation`):
   `deviceLogin:approve`, `deviceLogin:deny`, `apiTokens:revokeAllCli` and `meetSubmissions:*`.
 - `retryableResponse(429 | 503, retryAfter?)` exercises the retries.

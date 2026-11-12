@@ -1,6 +1,7 @@
 'use node';
 
-import { errorMessage, itemAt } from '../lib/json';
+import { errorMessage } from '../lib/errors';
+import { itemAt } from '../lib/json';
 import { v } from 'convex/values';
 import { internalAction, type ActionCtx } from '../_generated/server';
 import { internal } from '../_generated/api';

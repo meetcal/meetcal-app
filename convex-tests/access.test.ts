@@ -161,8 +161,8 @@ describe('the premium queries', () => {
     expect(answer instanceof ConvexError ? (answer.data as { status: number }).status : answer).toBe(404);
   });
 
-  it("are the ones the website sends the pass to (`SUBSCRIPTION_FUNCTIONS` in `web/src/utils/api.rs`)", () => {
-    const source = readFileSync(join(__dirname, '..', 'web', 'src', 'utils', 'api.rs'), 'utf8');
+  it("are the ones the website sends the pass to (`SUBSCRIPTION_FUNCTIONS` in `web/src/utils/api/catalog.rs`)", () => {
+    const source = readFileSync(join(__dirname, '..', 'web', 'src', 'utils', 'api', 'catalog.rs'), 'utf8');
     const list = /SUBSCRIPTION_FUNCTIONS: &\[&str\] = &\[([^\]]*)\]/.exec(source)?.[1] ?? '';
     const web = [...list.matchAll(/"([^"]+)"/g)].map((match) => match[1]);
     expect(web.sort()).toEqual([...PREMIUM_FUNCTIONS].sort());
@@ -188,8 +188,8 @@ describe('the premium queries', () => {
     expect(cli.sort()).toEqual([...PREMIUM_ACTIONS].sort());
   });
 
-  it("are the actions the website sends the pass to (`SUBSCRIPTION_ACTIONS` in `web/src/utils/api.rs`)", () => {
-    const source = readFileSync(join(__dirname, '..', 'web', 'src', 'utils', 'api.rs'), 'utf8');
+  it("are the actions the website sends the pass to (`SUBSCRIPTION_ACTIONS` in `web/src/utils/api/catalog.rs`)", () => {
+    const source = readFileSync(join(__dirname, '..', 'web', 'src', 'utils', 'api', 'catalog.rs'), 'utf8');
     const list = /SUBSCRIPTION_ACTIONS: &\[&str\] = &\[([^\]]*)\]/.exec(source)?.[1] ?? '';
     const web = [...list.matchAll(/"([^"]+)"/g)].map((match) => match[1]);
     expect(web.sort()).toEqual([...PREMIUM_ACTIONS].sort());

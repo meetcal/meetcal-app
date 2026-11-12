@@ -117,11 +117,9 @@ fn CopyCommand(label: &'static str, command: &'static str) -> impl IntoView {
                         format!("Copy {label} install command")
                     }
                     on:click=move |_| {
-                        let _ = leptos::web_sys::window()
-                            .expect("window should be available")
-                            .navigator()
-                            .clipboard()
-                            .write_text(command);
+                        if let Some(window) = leptos::web_sys::window() {
+                            let _ = window.navigator().clipboard().write_text(command);
+                        }
 
                         set_copied.set(true);
                         leptos::leptos_dom::helpers::set_timeout(

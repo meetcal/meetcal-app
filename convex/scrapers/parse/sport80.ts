@@ -2,7 +2,11 @@
 
 import { isRecord, kindOf, textOrNull } from '../../lib/json';
 import { pyFloat } from '../lib/numbers';
-import { DAY_MS } from '../../lib/dates';
+import { isValidIsoDate } from '../../lib/validation';
+import { normalizeGender } from '../../lib/normalize';
+import { DAY_MS, isoDateOf } from '../../lib/dates';
+import { foldDivision } from '../../lib/lifters';
+import { UNDATED_RESULT_DATE } from '../../lib/results';
 
 export const USAW_DOMAIN = 'https://usaweightlifting.sport80.com';
 export const RECENT_EVENTS = 30;
@@ -160,20 +164,25 @@ export type ResultRow = {
   federation: 'USAW';
 };
 
-/**
- * The meet's rows as the Python job formatted them, one per result item. An
- * item with a value that is not a number becomes a row with no name, which
- * the run logs and does not store: one bad cell loses that row, not the meet
- * or the night's sync.
- */
+function readResultOrUnnamed(eventId: string, meet: string, day: string, item: Dict): ResultRow {
+  try {
+    return formatResult(eventId, meet, day, item);
+  } catch {
+    return { ...formatResult(eventId, meet, day, {}), name: null };
+  }
+}
+
 export function formatResults(eventId: string, meet: string, date: number | null, items: Dict[]): ResultRow[] {
-  const day = date === null ? '1970-01-01' : new Date(date).toISOString().slice(0, 10);
+  const day = date === null ? UNDATED_RESULT_DATE : isoDateOf(date);
+  return items.map((item) => readResultOrUnnamed(eventId, meet, day, item));
+}
+
+export function formatAthleteResults(items: Dict[]): ResultRow[] {
   return items.map((item) => {
-    try {
-      return formatResult(eventId, meet, day, item);
-    } catch {
-      return { ...formatResult(eventId, meet, day, {}), name: null };
-    }
+    const date = typeof item.date === 'string' && isValidIsoDate(item.date) ? item.date : null;
+    const meet = typeof item.meet === 'string' ? item.meet : '';
+    const row = readResultOrUnnamed('', meet, date ?? UNDATED_RESULT_DATE, item);
+    return date === null ? { ...row, name: null } : row;
   });
 }
 
@@ -322,4 +331,90 @@ export function pickRequestedEvents(
     else unreadable.push({ event, date, recent: true });
   }
   return { picked, unreadable, missing: [...wanted].filter((id) => !found.has(id)) };
+}
+
+export type RankingClass = { id: number; label: string };
+
+export function rankingClasses(table: Dict): RankingClass[] {
+  const filters = Array.isArray(table.filters) ? table.filters : [];
+  const filter = filters.find((f): f is Dict => isRecord(f) && f.name === 'weight_class');
+  if (!filter || !Array.isArray(filter.items)) throw new Error('sport80: the rankings table has no weight class filter');
+  return filter.items.map((item, index): RankingClass => {
+    if (!isRecord(item) || typeof item.text !== 'string' || typeof item.value !== 'number' || !Number.isInteger(item.value)) {
+      throw new Error(`sport80: weight class ${index} of the rankings filter is unreadable: ${JSON.stringify(item)}`);
+    }
+    return { id: item.value, label: item.text };
+  });
+}
+
+const INACTIVE_PREFIX = '(inactive)';
+
+export function foldClassLabel(label: string): string {
+  const lower = label.toLowerCase().trim();
+  return foldDivision(lower.startsWith(INACTIVE_PREFIX) ? lower.slice(INACTIVE_PREFIX.length) : lower);
+}
+
+export function rankingClassIds(ageCategory: string, classes: readonly RankingClass[]): number[] {
+  const wanted = foldClassLabel(ageCategory);
+  return classes.filter((c) => foldClassLabel(c.label) === wanted).map((c) => c.id);
+}
+
+export type LifterSighting = {
+  athleteId: string;
+  membership: string | null;
+  name: string;
+  gender: string | null;
+  birthYear: number | null;
+  club: string | null;
+  wso: string | null;
+  date: string;
+};
+
+const MEMBER_ROUTE = /\/public\/rankings\/member\/(\d+)(?:\/|$)/;
+const PLAUSIBLE_LIFTER_AGE = { min: 4, max: 110 } as const;
+
+function text(value: unknown): string | null {
+  if (typeof value === 'number' && Number.isFinite(value)) return String(value);
+  if (typeof value !== 'string') return null;
+  const trimmed = value.trim();
+  return trimmed === '' ? null : trimmed;
+}
+
+function memberId(action: unknown): string | null {
+  if (!Array.isArray(action)) return null;
+  for (const button of action) {
+    if (!isRecord(button) || typeof button.route !== 'string') continue;
+    const match = MEMBER_ROUTE.exec(button.route);
+    if (match) return match[1] ?? null;
+  }
+  return null;
+}
+
+function sightingGender(value: unknown): string | null {
+  const raw = text(value);
+  if (raw === null) return null;
+  const gender = normalizeGender(raw);
+  return gender === 'Men' || gender === 'Women' ? gender : null;
+}
+
+function birthYearAt(date: string, age: unknown): number | null {
+  if (typeof age !== 'number' || !Number.isInteger(age) || age < PLAUSIBLE_LIFTER_AGE.min || age > PLAUSIBLE_LIFTER_AGE.max) return null;
+  return Number(date.slice(0, 4)) - age;
+}
+
+export function lifterSighting(item: Dict): LifterSighting | null {
+  const name = text(item.name);
+  const athleteId = memberId(item.action);
+  const date = typeof item.lift_date === 'string' && isValidIsoDate(item.lift_date) ? item.lift_date : null;
+  if (name === null || athleteId === null || date === null) return null;
+  return {
+    athleteId,
+    membership: text(item.membership),
+    name,
+    gender: sightingGender(item.gender),
+    birthYear: birthYearAt(date, item.lifter_age),
+    club: text(item.club),
+    wso: text(item.wso),
+    date,
+  };
 }

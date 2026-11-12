@@ -3,7 +3,7 @@ import { entryFromRow, readEntriesTable } from '../../convex/scrapers/parse/entr
 import { wikitextOf } from '../../convex/scrapers/parse/iwfRecords';
 import { readWidgetPage } from '../../convex/scrapers/parse/meets';
 import { pageRows, readSport80Env, readTablePage } from '../../convex/scrapers/parse/sport80';
-import { joinPages, tableComplete } from '../../convex/scrapers/sport80';
+import { joinPages, tableComplete } from '../../convex/scrapers/lib/sport80Api';
 
 describe('naming what a value is', () => {
   it('names each kind the way an error reads it', () => {
