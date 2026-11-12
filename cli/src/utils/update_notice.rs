@@ -13,6 +13,7 @@ use serde::{Deserialize, Serialize};
 use tokio::task::JoinHandle;
 
 use crate::utils::credentials;
+use crate::utils::dirs::{self, Flush};
 use crate::utils::releases::{self, Version};
 use crate::utils::transport;
 
@@ -81,21 +82,13 @@ pub fn load(path: &Path) -> Cache {
         .unwrap_or_default()
 }
 
-/// Saves the cache at `path`, through a temporary file so a reader never sees half of it. The
-/// directory is created private, as the saved login's is.
-/// Failures are ignored: the notice is a nicety.
 pub(crate) fn save(path: &Path, cache: &Cache) {
     let Some(dir) = path.parent() else { return };
     let Ok(text) = serde_json::to_string(cache) else {
         return;
     };
-    let temporary = dir.join(format!(".{CACHE_FILE}.{}.tmp", std::process::id()));
-    let saved = credentials::create_private_dir(dir)
-        .and_then(|()| fs::write(&temporary, text))
-        .and_then(|()| fs::rename(&temporary, path));
-    if saved.is_err() {
-        let _ = fs::remove_file(&temporary);
-    }
+    let _ = dirs::create_private_dir(dir)
+        .and_then(|()| dirs::replace_private_file(path, text.as_bytes(), Flush::WhenTheSystemDoes));
 }
 
 /// A command's notice: the cache read when it started and the check running beside it.

@@ -11,7 +11,8 @@ use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use serde_json::Value;
 use tokio::task::JoinSet;
 
-use crate::utils::access::{self, Access, Refusal};
+use crate::utils::access::{self, Access, HeldPass, Refusal};
+use crate::utils::cache::{self, Cache, Shelf, TaggedAnswer};
 use crate::utils::credentials;
 use crate::utils::transport::{self, Sending};
 
@@ -31,12 +32,16 @@ pub(crate) const MAX_PAGES: usize = 100;
 
 static ACCESS: OnceLock<Access> = OnceLock::new();
 
-/// The saved login (`utils::credentials::default_path`) and the pass fetched with it, shared by
-/// every read of this run.
 pub(crate) fn default_access() -> &'static Access {
-    ACCESS.get_or_init(|| match credentials::default_path() {
-        Some(path) => Access::from_file(path),
-        None => Access::anonymous(),
+    ACCESS.get_or_init(|| {
+        let access = match credentials::default_path() {
+            Some(path) => Access::from_file(path),
+            None => Access::anonymous(),
+        };
+        match cache::default_dir() {
+            Some(dir) => access.with_cache(Cache::at(dir)),
+            None => access,
+        }
     })
 }
 
@@ -48,14 +53,11 @@ pub(crate) fn convex_url() -> String {
         .unwrap_or_else(|| CONVEX_URL.to_string())
 }
 
-/// How a query's answer carries its body.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum Body {
-    /// The answer is the body.
     Value,
-    /// The answer is `{ json }` or `{ etag, json }`: the body as JSON text, which Convex serves
-    /// faster than the same rows as values.
     JsonText,
+    Revalidated,
 }
 
 /// A Convex query the CLI reads.
@@ -80,6 +82,13 @@ impl Query {
             body: Body::JsonText,
         }
     }
+
+    const fn revalidated(function: &'static str) -> Self {
+        Self {
+            function,
+            body: Body::Revalidated,
+        }
+    }
 }
 
 /// Every Convex query the CLI reads, each named for the Rust API route it replaced. Arguments
@@ -89,13 +98,13 @@ pub mod queries {
 
     /// `GET /meets`: meets starting within three months; takes `now` (milliseconds, rounded
     /// down to the hour so callers share Convex's cached answer).
-    pub(crate) const UPCOMING_MEETS: Query = Query::text("meets:list");
+    pub(crate) const UPCOMING_MEETS: Query = Query::revalidated("meets:list");
     /// `GET /meets/completed`: completed meets, newest first.
-    pub(crate) const COMPLETED_MEETS: Query = Query::text("meets:completed");
+    pub(crate) const COMPLETED_MEETS: Query = Query::revalidated("meets:completed");
     /// `GET /meets/details`; takes `meet`. An unknown meet is a 404 error.
-    pub(crate) const MEET_DETAILS: Query = Query::text("meets:details");
+    pub(crate) const MEET_DETAILS: Query = Query::revalidated("meets:details");
     /// `GET /meets/schedule`; takes `meet`.
-    pub const MEET_SCHEDULE: Query = Query::text("meets:schedule");
+    pub const MEET_SCHEDULE: Query = Query::revalidated("meets:schedule");
     /// Distinct meet names in the results or the registrations, a page at a time; takes `source`
     /// (`results` or `registrations`), `after` (null to start) and optionally `before`. Answers
     /// `{ json, next }`.
@@ -124,31 +133,31 @@ pub mod queries {
     /// `none` with name `suggestions`.
     pub(crate) const WRAPPED: Query = Query::value("results:wrapped");
     /// `GET /data/records`
-    pub(crate) const RECORDS: Query = Query::text("reference:records");
+    pub const RECORDS: Query = Query::revalidated("reference:records");
     /// `GET /data/standards`
-    pub(crate) const STANDARDS: Query = Query::text("reference:standards");
+    pub(crate) const STANDARDS: Query = Query::revalidated("reference:standards");
     /// `GET /data/qualifying-totals`
-    pub(crate) const QUALIFYING_TOTALS: Query = Query::text("reference:qualifyingTotals");
+    pub(crate) const QUALIFYING_TOTALS: Query = Query::revalidated("reference:qualifyingTotals");
     /// `GET /data/intl-rankings`
-    pub(crate) const INTL_RANKINGS: Query = Query::text("reference:intlRankings");
+    pub(crate) const INTL_RANKINGS: Query = Query::revalidated("reference:intlRankings");
     /// `GET /data/nat-rankings`; takes `federation` and `ageCategory`.
-    pub(crate) const NATIONAL_RANKINGS: Query = Query::text("reference:nationalRankings");
+    pub(crate) const NATIONAL_RANKINGS: Query = Query::revalidated("reference:nationalRankings");
     /// `GET /data/nat-rankings-year`; also takes `year`.
     pub(crate) const NATIONAL_RANKINGS_BY_YEAR: Query =
-        Query::text("reference:nationalRankingsByYear");
+        Query::revalidated("reference:nationalRankingsByYear");
     /// `GET /data/wso/records`; takes `wso`, and optionally `ageCategory` and `gender`.
-    pub(crate) const WSO_RECORDS: Query = Query::text("reference:wsoRecords");
+    pub(crate) const WSO_RECORDS: Query = Query::revalidated("reference:wsoRecords");
     /// `GET /data/adaptive`; takes `gender` and `excludeFederation`.
-    pub(crate) const ADAPTIVE_RECORDS: Query = Query::text("reference:adaptiveRecords");
+    pub(crate) const ADAPTIVE_RECORDS: Query = Query::revalidated("reference:adaptiveRecords");
     /// `GET /clubs`: every club name.
-    pub(crate) const CLUBS: Query = Query::text("reference:clubs");
+    pub(crate) const CLUBS: Query = Query::revalidated("reference:clubs");
     /// `GET /data/wso`: every WSO with records.
-    pub(crate) const WSO_LIST: Query = Query::text("reference:wsoList");
+    pub(crate) const WSO_LIST: Query = Query::revalidated("reference:wsoList");
     /// Every WSO name on registrations: the names `reference:wsoAthletes` matches, which differ
     /// from the record sheets' (`reference:wsoList`).
     pub(crate) const REGISTRATION_WSOS: Query = Query::value("reference:registrationWsos");
     /// `GET /data/wso/age-groups`: the age groups a WSO keeps records for; takes `wso`.
-    pub(crate) const WSO_AGE_GROUPS: Query = Query::text("reference:wsoAgeGroups");
+    pub(crate) const WSO_AGE_GROUPS: Query = Query::revalidated("reference:wsoAgeGroups");
     /// `GET /clubs/athletes`; takes `club`, and `cursor` (null to start) to page. Read it with
     /// [`super::query_all_pages`]: a page answers `{ json, cursor, isDone }`.
     pub const CLUB_ATHLETES: Query = Query::value("reference:clubAthletes");
@@ -362,28 +371,117 @@ where
             query.function
         )
     })?;
-    let answer = if access::carries_pass(query.function, &args) {
-        premium_answer(
-            base_url,
-            access,
-            Endpoint::Query,
-            query.function,
-            &args,
-            Sending::READ,
-        )
-        .await?
+    let function = query.function;
+    let held = if access::carries_pass(function, &args) {
+        Some(access.current_pass(base_url).await)
     } else {
-        call(
-            base_url,
-            Endpoint::Query,
-            query.function,
-            &args,
-            None,
-            Sending::READ,
-        )
-        .await?
+        None
     };
-    read_answer(query, answer)
+    let shelf = match &held {
+        None => Some(Shelf::Public),
+        Some(held) => held.pass.is_ok().then_some(Shelf::Premium),
+    };
+    let shelved = access
+        .cache()
+        .zip(shelf)
+        .filter(|_| query.body == Body::Revalidated)
+        .map(|(cache, shelf)| Shelved {
+            cache,
+            shelf,
+            key: cache::answer_key(base_url, function, &args),
+        });
+    let kept = shelved.as_ref().and_then(Shelved::answer);
+    let sent = with_tag(&args, kept.as_ref().map(|kept| kept.etag.as_str()));
+    let answer = match held {
+        Some(held) => {
+            premium_answer(
+                base_url,
+                access,
+                Endpoint::Query,
+                function,
+                &sent,
+                Sending::READ,
+                held,
+            )
+            .await?
+        }
+        None => {
+            call(
+                base_url,
+                Endpoint::Query,
+                function,
+                &sent,
+                None,
+                Sending::READ,
+            )
+            .await?
+        }
+    };
+    match query.body {
+        Body::Revalidated => {
+            let text = revalidated_text(function, answer, kept, shelved.as_ref())?;
+            serde_json::from_str(&text)
+                .with_context(|| format!("Unexpected answer from MeetCal query {function}"))
+        }
+        Body::Value | Body::JsonText => read_answer(query, answer),
+    }
+}
+
+struct Shelved<'a> {
+    cache: &'a Cache,
+    shelf: Shelf,
+    key: String,
+}
+
+impl Shelved<'_> {
+    fn answer(&self) -> Option<TaggedAnswer> {
+        self.cache.answer(self.shelf, &self.key)
+    }
+
+    fn keep(&self, answer: &TaggedAnswer) {
+        self.cache.keep(self.shelf, &self.key, answer);
+    }
+}
+
+fn with_tag(args: &Value, etag: Option<&str>) -> Value {
+    let mut args = args.clone();
+    if let (Some(etag), Some(fields)) = (etag, args.as_object_mut()) {
+        fields.insert(cache::TAG_ARGUMENT.to_owned(), Value::from(etag));
+    }
+    args
+}
+
+#[derive(Deserialize)]
+struct RevalidatedAnswer {
+    #[serde(default)]
+    etag: Option<String>,
+    #[serde(default)]
+    json: Option<String>,
+}
+
+fn revalidated_text(
+    function: &str,
+    answer: QueryResponse,
+    kept: Option<TaggedAnswer>,
+    shelved: Option<&Shelved>,
+) -> Result<String> {
+    let value = answer_value(function, answer)?;
+    let answer: RevalidatedAnswer = serde_json::from_value(value)
+        .with_context(|| format!("Unexpected answer from MeetCal query {function}"))?;
+    match (answer.json, answer.etag, kept) {
+        (Some(json), Some(etag), _) => {
+            let fresh = TaggedAnswer { etag, json };
+            if let Some(shelved) = shelved {
+                shelved.keep(&fresh);
+            }
+            Ok(fresh.json)
+        }
+        (Some(json), None, _) => Ok(json),
+        (None, Some(etag), Some(kept)) if kept.etag == etag => Ok(kept.json),
+        (None, _, _) => Err(anyhow!(
+            "MeetCal query {function} answered without its body"
+        )),
+    }
 }
 
 /// Runs the premium `action` with `args` on the production deployment (or
@@ -414,6 +512,7 @@ where
     }
     let args = serde_json::to_value(args)
         .with_context(|| format!("Failed to build request for MeetCal {function}"))?;
+    let held = access.current_pass(base_url).await;
     let answer = premium_answer(
         base_url,
         access,
@@ -424,6 +523,7 @@ where
             answer_within: action.answer_within,
             ..Sending::READ
         },
+        held,
     )
     .await?;
     read_function_value(function, answer_value(function, answer)?)
@@ -436,8 +536,8 @@ async fn premium_answer(
     function: &str,
     args: &Value,
     sending: Sending,
+    held: HeldPass,
 ) -> Result<QueryResponse> {
-    let held = access.current_pass(base_url).await;
     let pass = held.pass.as_deref().ok();
     let answer = call(
         base_url,
@@ -730,7 +830,7 @@ fn read_answer<T: DeserializeOwned>(query: Query, answer: QueryResponse) -> Resu
     match query.body {
         Body::Value => serde_json::from_value(whole_numbers_as_integers(value))
             .with_context(|| format!("Unexpected answer from MeetCal query {}", query.function)),
-        Body::JsonText => {
+        Body::JsonText | Body::Revalidated => {
             let text = value.get("json").and_then(Value::as_str).ok_or_else(|| {
                 anyhow!("MeetCal query {} answered without its body", query.function)
             })?;

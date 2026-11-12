@@ -1,15 +1,3 @@
-//! The access pass premium reads carry (`../docs/backend.md`, "Premium data").
-//!
-//! The premium queries ([`PREMIUM_FUNCTIONS`]) and actions ([`PREMIUM_ACTIONS`]) take a shared
-//! daily pass as their `pass` argument.
-//! A user who ran `meetcal login` has a MeetCal-issued token (`utils::credentials`); before the
-//! first premium read the CLI trades it for the pass with `accessPass:pass`, once per process, and
-//! adds the pass to every premium read. The token itself goes to no data read, so premium answers
-//! stay in Convex's shared cache. Without a pass (not logged in, not subscribed, an expired login)
-//! a premium read goes out without one: while Convex only logs such reads it still answers them.
-//! Once it refuses them (a function error with status 401 or 403), [`on_refusal`] decides whether
-//! a fresh pass is worth one more try or the user must log in or subscribe.
-
 use std::path::PathBuf;
 
 use serde::Deserialize;
@@ -17,6 +5,7 @@ use serde_json::Value;
 use tokio::sync::Mutex;
 
 use crate::utils::backend::{self, Endpoint, FunctionError, functions, queries};
+use crate::utils::cache::{Cache, StoredPass};
 use crate::utils::credentials::{self, Credentials};
 
 pub(crate) const PREMIUM_FUNCTIONS: &[&str] = &[
@@ -157,11 +146,12 @@ pub(crate) fn on_refusal(pass: &Result<String, NoPass>) -> Refusal {
     }
 }
 
-/// `accessPass:pass`'s answer.
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct AccessPass {
     pub(crate) pass: String,
+    #[serde(deserialize_with = "crate::utils::backend::whole_number")]
+    pub(crate) rotates_at: i64,
 }
 
 /// `entitlements:refresh`'s answer.
@@ -170,11 +160,7 @@ pub(crate) struct Refreshed {
     pub(crate) active: bool,
 }
 
-/// The pass for `token` from the deployment at `base_url`, or why there is none. When
-/// `accessPass:pass` answers 403, asks `entitlements:refresh` to re-check the subscription with
-/// RevenueCat (a purchase Convex has not heard of yet, or a lifetime one) and, if it is active,
-/// asks for the pass once more. A refresh that fails or says inactive leaves it at 403.
-pub(crate) async fn fetch_pass(base_url: &str, token: &str) -> Result<String, NoPass> {
+pub(crate) async fn fetch_pass(base_url: &str, token: &str) -> Result<AccessPass, NoPass> {
     match ask_pass(base_url, token).await {
         Err(NoPass::NotSubscribed) if refreshed_active(base_url, token).await => {
             ask_pass(base_url, token).await
@@ -196,8 +182,7 @@ async fn refreshed_active(base_url: &str, token: &str) -> bool {
     .is_ok_and(|refreshed| refreshed.active)
 }
 
-/// One `accessPass:pass` call with `token`.
-async fn ask_pass(base_url: &str, token: &str) -> Result<String, NoPass> {
+async fn ask_pass(base_url: &str, token: &str) -> Result<AccessPass, NoPass> {
     match backend::call_function::<AccessPass>(
         base_url,
         Endpoint::Query,
@@ -207,7 +192,7 @@ async fn ask_pass(base_url: &str, token: &str) -> Result<String, NoPass> {
     )
     .await
     {
-        Ok(answer) => Ok(answer.pass),
+        Ok(answer) => Ok(answer),
         Err(error) => Err(match FunctionError::status_of(&error) {
             Some(401) => NoPass::LoginRejected,
             Some(403) => NoPass::NotSubscribed,
@@ -238,36 +223,49 @@ pub(crate) struct HeldPass {
     generation: u64,
 }
 
-/// The saved login and the pass fetched with it, for one run. Concurrent reads share one fetch.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Kept {
+    Usable,
+    Refused,
+}
+
 #[derive(Debug)]
 pub struct Access {
     source: LoginSource,
+    cache: Option<Cache>,
     state: Mutex<PassState>,
 }
 
 impl Access {
-    /// Access with no login: premium reads go without a pass.
     pub fn anonymous() -> Self {
         Self::with_source(LoginSource::None)
     }
 
-    /// Access with the login saved at `path`.
     pub fn from_file(path: PathBuf) -> Self {
         Self::with_source(LoginSource::File(path))
+    }
+
+    pub fn with_cache(mut self, cache: Cache) -> Self {
+        self.cache = Some(cache);
+        self
     }
 
     fn with_source(source: LoginSource) -> Self {
         Self {
             source,
+            cache: None,
             state: Mutex::new(PassState::default()),
         }
     }
 
-    /// The pass for reads from the deployment at `base_url`, fetched by the first read.
+    pub(crate) fn cache(&self) -> Option<&Cache> {
+        self.cache.as_ref()
+    }
+
     pub(crate) async fn current_pass(&self, base_url: &str) -> HeldPass {
         let mut state = self.state.lock().await;
         if state.outcome.is_none() {
-            let outcome = self.fetch(base_url).await;
+            let outcome = self.fetch(base_url, Kept::Usable).await;
             note_login_problem(&outcome);
             state.generation += 1;
             state.outcome = Some(outcome);
@@ -275,23 +273,46 @@ impl Access {
         held(&state)
     }
 
-    /// A fresh pass after Convex refused a read sent with `refused`. A pass fetched since that
-    /// read (another read renewed it) is used as it is.
     pub(crate) async fn renew_pass(&self, base_url: &str, refused: &HeldPass) -> HeldPass {
         let mut state = self.state.lock().await;
         if state.generation == refused.generation {
-            state.outcome = Some(self.fetch(base_url).await);
+            state.outcome = Some(self.fetch(base_url, Kept::Refused).await);
             state.generation += 1;
         }
         held(&state)
     }
 
-    async fn fetch(&self, base_url: &str) -> Result<String, NoPass> {
+    async fn fetch(&self, base_url: &str, kept: Kept) -> Result<String, NoPass> {
         let login = match &self.source {
             LoginSource::None => return Err(NoPass::LoggedOut),
             LoginSource::File(path) => login_for(credentials::load(path), base_url, now_ms())?,
         };
-        fetch_pass(base_url, &login.token).await
+        let cache = self.cache.as_ref();
+        if kept == Kept::Usable
+            && let Some(stored) = cache.and_then(Cache::pass)
+            && stored.usable(base_url, &login.token_id, now_ms())
+        {
+            return Ok(stored.pass);
+        }
+        let fetched = fetch_pass(base_url, &login.token).await;
+        if let Some(cache) = cache {
+            match &fetched {
+                Ok(answer) => cache.keep_pass(&StoredPass {
+                    deployment: base_url.to_string(),
+                    token_id: login.token_id.clone(),
+                    pass: answer.pass.clone(),
+                    rotates_at: answer.rotates_at,
+                }),
+                Err(NoPass::LoginRejected | NoPass::NotSubscribed) => cache.forget_access(),
+                Err(
+                    NoPass::LoggedOut
+                    | NoPass::LoginExpired
+                    | NoPass::UnreadableLogin(_)
+                    | NoPass::Unavailable(_),
+                ) => {}
+            }
+        }
+        fetched.map(|answer| answer.pass)
     }
 }
 

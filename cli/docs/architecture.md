@@ -78,9 +78,11 @@ server's), through
   0600 in a 0700 directory, as `{ token, tokenId, expiresAt, deployment }`. A login is used only
   on the deployment that issued it. Logging in again replaces it and revokes the old token
   (`apiTokens:revoke`, best effort); `meetcal logout` revokes and deletes it.
-- `Access` (`src/utils/access.rs`) holds the run's pass. The first premium read trades the saved
-  token for it (`accessPass:pass`; only it, `entitlements:refresh` and `apiTokens:revoke` send the token);
-  concurrent reads share that fetch. When it answers 403, the CLI asks `entitlements:refresh` (an
+- `Access` (`src/utils/access.rs`) holds the run's pass. The first premium read takes the pass
+  kept in the cache (below) while it belongs to the saved login and has not reached its
+  `rotatesAt`, or else trades the saved token for one (`accessPass:pass`; only it,
+  `entitlements:refresh` and `apiTokens:revoke` send the token) and keeps it; concurrent reads
+  share that fetch. A pass Convex refuses is fetched again, never taken from the cache. When it answers 403, the CLI asks `entitlements:refresh` (an
   action, with the token) to re-check the subscription with RevenueCat, and asks for the pass once
   more if that answers `{ active: true }`; `login` does the same for its subscription check.
   Numbers outside the data rows (`expiresAt`, `rotatesAt`, `interval`) are read with
@@ -93,6 +95,23 @@ server's), through
   pass again and reads once more; without a login, with an expired or rejected one, or without a
   subscription, it fails with a `PassRefused` error saying to run `meetcal login` or to subscribe.
   `meet` shows its start list without past-year bests in that case, since the start list is free.
+
+## The answer cache
+
+`src/utils/cache.rs` keeps answers between runs in `$XDG_CACHE_HOME/meetcal/` (else
+`~/.cache/meetcal/`; `%LOCALAPPDATA%` on Windows), 0600 files in 0700 directories:
+
+- The queries that take `ifNoneMatch` (`Body::Revalidated` in `queries`: the meet lists, details
+  and schedules, and the reference tables) keep their `{ etag, json }` under `answers/`, one file
+  per deployment, function and arguments (a SHA-256 of them, the pass and tag left out). The next
+  read sends the kept tag; Convex answers `{ etag }` alone when the body is unchanged (72 bytes
+  instead of 377 KB for `reference:records`), and the kept body is used. Nothing is served
+  without asking.
+- Premium answers go under `answers/premium/`, and only when the read carried a pass. A new pass
+  (`pass.json`, with the login's token id, the deployment and `rotatesAt`) drops them, as do
+  `logout`, a rejected login and a lapsed subscription.
+- Writes go to a temporary file renamed into place; an unreadable file is a miss and is
+  replaced. Past 64 MB the least recently used answers go, and one larger than 16 MB is not kept.
 
 The queries themselves are in `../convex/` (`reference.ts`, `meets.ts`, `results.ts`). Many are
 served from materialized views; `../docs/backend.md` explains when a view needs rebuilding.
