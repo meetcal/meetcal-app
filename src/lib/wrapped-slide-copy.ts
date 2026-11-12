@@ -1,41 +1,46 @@
-type FunFact = (kg: number) => string;
+type FunFact = { kgEach: number; one: string; many: string };
 
-const adultHumansFact: FunFact = (kg) => `That's ${Math.round(kg / 180).toLocaleString()} adult humans`;
+const ADULT_HUMANS: FunFact = { kgEach: 180, one: "adult human", many: "adult humans" };
 
 const FUN_FACTS: readonly FunFact[] = [
-  (kg) => `That's ${Math.round(kg / 1500).toLocaleString()} grand pianos`,
-  adultHumansFact,
-  (kg) => `That's ${Math.round(kg / 5000).toLocaleString()} Toyota Camrys`,
-  (kg) => `That's ${Math.round(kg / 6000).toLocaleString()} African elephants`,
-  (kg) => `That's ${Math.round(kg / 0.45).toLocaleString()} sticks of butter`,
-  (kg) => `That's ${Math.round(kg / 4.5).toLocaleString()} bowling balls`,
-  (kg) => `That's ${Math.round(kg / 30).toLocaleString()} golden retrievers`,
-  (kg) => `That's ${Math.round(kg / 900).toLocaleString()} grizzly bears`,
-  (kg) => `That's ${Math.round(kg / 0.05).toLocaleString()} chicken nuggets`,
-  (kg) => `That's ${Math.round(kg / 320).toLocaleString()} vending machines`,
-  (kg) => `That's ${Math.round(kg / 635).toLocaleString()} concert grand pianos`,
-  (kg) => `That's ${Math.round(kg / 0.028).toLocaleString()} AA batteries`,
-  (kg) => `That's ${Math.round(kg / 2000).toLocaleString()} SmartCars`,
-  (kg) => `That's ${Math.round(kg / 0.5).toLocaleString()} baseballs`,
-  (kg) => `That's ${Math.round(kg / 150).toLocaleString()} refrigerators`,
-  (kg) => `That's ${Math.round(kg / 0.2).toLocaleString()} bananas`,
-  (kg) => `That's ${Math.round(kg / 80).toLocaleString()} Labrador Retrievers`,
-  (kg) => `That's ${Math.round(kg / 5.5).toLocaleString()} house cats`,
-  (kg) => `That's ${Math.round(kg / 113).toLocaleString()} kegs of beer`,
-  (kg) => `That's ${Math.round(kg / 0.007).toLocaleString()} paperclips`,
-  (kg) => `That's ${Math.round(kg / 20).toLocaleString()} car tires`,
-  (kg) => `That's ${Math.round(kg / 45000).toLocaleString()} school buses`,
-  (kg) => `That's ${Math.round(kg / 0.14).toLocaleString()} iPhones`,
+  { kgEach: 1500, one: "grand piano", many: "grand pianos" },
+  ADULT_HUMANS,
+  { kgEach: 5000, one: "Toyota Camry", many: "Toyota Camrys" },
+  { kgEach: 6000, one: "African elephant", many: "African elephants" },
+  { kgEach: 0.45, one: "stick of butter", many: "sticks of butter" },
+  { kgEach: 4.5, one: "bowling ball", many: "bowling balls" },
+  { kgEach: 30, one: "golden retriever", many: "golden retrievers" },
+  { kgEach: 900, one: "grizzly bear", many: "grizzly bears" },
+  { kgEach: 0.05, one: "chicken nugget", many: "chicken nuggets" },
+  { kgEach: 320, one: "vending machine", many: "vending machines" },
+  { kgEach: 635, one: "concert grand piano", many: "concert grand pianos" },
+  { kgEach: 0.028, one: "AA battery", many: "AA batteries" },
+  { kgEach: 2000, one: "SmartCar", many: "SmartCars" },
+  { kgEach: 0.5, one: "baseball", many: "baseballs" },
+  { kgEach: 150, one: "refrigerator", many: "refrigerators" },
+  { kgEach: 0.2, one: "banana", many: "bananas" },
+  { kgEach: 80, one: "Labrador Retriever", many: "Labrador Retrievers" },
+  { kgEach: 5.5, one: "house cat", many: "house cats" },
+  { kgEach: 113, one: "keg of beer", many: "kegs of beer" },
+  { kgEach: 0.007, one: "paperclip", many: "paperclips" },
+  { kgEach: 20, one: "car tire", many: "car tires" },
+  { kgEach: 45000, one: "school bus", many: "school buses" },
+  { kgEach: 0.14, one: "iPhone", many: "iPhones" },
 ];
 
-function countsAtLeastOne(fact: FunFact, kg: number): boolean {
-  return parseInt(fact(kg).replace(/\D/g, "")) >= 1;
+function factCount(fact: FunFact, kg: number): number {
+  return Math.round(kg / fact.kgEach);
+}
+
+function factSentence(fact: FunFact, kg: number): string {
+  const count = factCount(fact, kg);
+  return `That's ${count.toLocaleString()} ${count === 1 ? fact.one : fact.many}`;
 }
 
 export function pickFunFact(totalWeightLifted: number, random: () => number = Math.random): string {
-  const fitting = FUN_FACTS.filter((fact) => countsAtLeastOne(fact, totalWeightLifted));
-  const pick = fitting[Math.floor(random() * fitting.length)] ?? adultHumansFact;
-  return pick(totalWeightLifted);
+  const fitting = FUN_FACTS.filter((fact) => factCount(fact, totalWeightLifted) >= 1);
+  const pick = fitting[Math.floor(random() * fitting.length)] ?? ADULT_HUMANS;
+  return factSentence(pick, totalWeightLifted);
 }
 
 export type AccuracyTier = "ELITE" | "SOLID" | "GROWING";

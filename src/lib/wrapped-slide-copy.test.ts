@@ -8,7 +8,7 @@ import {
 
 describe("pickFunFact", () => {
   it("picks among the comparisons that count at least one of the thing", () => {
-    expect(pickFunFact(1000, () => 0)).toBe("That's 1 grand pianos");
+    expect(pickFunFact(1000, () => 0)).toBe("That's 1 grand piano");
   });
 
   it("falls back to adult humans when no comparison counts one", () => {
@@ -67,5 +67,12 @@ describe("formatCounterValue", () => {
 
   it("shows fixed decimals without grouping", () => {
     expect(formatCounterValue(1234.5, 1)).toBe("1234.5");
+  });
+});
+
+describe("pickFunFact's wording", () => {
+  it("names one of a thing in the singular", () => {
+    expect(pickFunFact(1500, () => 0)).toBe("That's 1 grand piano");
+    expect(pickFunFact(3000, () => 0)).toBe("That's 2 grand pianos");
   });
 });
