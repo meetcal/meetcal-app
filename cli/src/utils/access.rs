@@ -19,11 +19,6 @@ use tokio::sync::Mutex;
 use crate::utils::backend::{self, Endpoint, FunctionError, functions, queries};
 use crate::utils::credentials::{self, Credentials};
 
-/// The Convex functions that answer premium data and take the access pass in their `pass`
-/// argument. The list is Convex's (`PREMIUM_FUNCTIONS` in `convex/lib/access.ts`) and the
-/// website's (`SUBSCRIPTION_FUNCTIONS` in `web/src/utils/api.rs`), including functions the CLI
-/// does not call, so a command that starts calling one sends the pass without another change.
-/// `results:search` needs it only with both dates ([`carries_pass`]): name suggestions are public.
 pub(crate) const PREMIUM_FUNCTIONS: &[&str] = &[
     "reference:records",
     "reference:standards",
