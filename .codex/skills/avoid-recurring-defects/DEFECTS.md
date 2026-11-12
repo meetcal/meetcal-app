@@ -50,6 +50,22 @@ Each entry: what it looks like here, what to do instead, and a search that finds
 
 **Search:** `rg "\.collect\(\)" convex --glob '!*test*'`; `rg "Promise\.all\(" src convex --glob '!*test*'`.
 
+## Independent Reads Awaited One After Another
+
+**Looks like:** two or more requests that do not need each other's answers, each awaited before the next starts, so a screen waits for the sum of their round trips instead of the longest. Seen in the app's data widget refresh, WSO Records and the Attempt Estimator, the CLI's `qualify`, `meet-results` and name suggestions, and the website loading Clerk's two files.
+
+**Do instead:** start every read whose arguments are already known, then await them together: `Promise.all` over a fixed, small set in the app (never over a meet-sized collection; see A Read With No Bound), `tokio::join!` or `try_join!` in the CLI, `futures::join!` or one `Load` per answer on the website. Keep a read sequential only when it needs the earlier answer, and then the dependency is visible in its arguments.
+
+**Search:** `rg -U "= await [^;]+;\n\s*(const|let) \w+ = await " src convex --glob '!*test*'`; `rg -U "\.await\??;\n\s*let [^=]+= [^;]*\.await" cli/src web/src`. For each hit, check whether the second call's arguments use the first's answer.
+
+## A Whole Table Downloaded To Show Part Of It
+
+**Looks like:** a client asking for every row of a table and then filtering, slicing or counting it on the device: Records and Qualifying Totals fetched whole to show one organization, gender and age; club trends, meet results and attendance read every row of a meet or club to show one slice. The answer is many times what the screen shows, so it is slow on a phone network and heavy to parse, and it grows with the table.
+
+**Do instead:** send the screen's filters as the query's arguments and narrow on the server with an index (as `reference:records` and `reference:qualifyingTotals` do with their category queries), and answer counts and summaries from Convex rather than computing them from every row. A filter that stays on the device works on an answer already narrowed by the server.
+
+**Search:** `rg -n "args: \{\}," convex --glob '!*test*' --glob '!scrapers/**'` for queries that answer a whole table, then their readers in `src/lib/api/`, `web/src/utils/api/` and `cli/src/utils/backend.rs`; `rg "\.filter\(|\.iter\(\)\.filter|\.into_iter\(\)\.filter" web/src/pages/comp_data cli/src/commands src/app/comp-data` for client-side narrowing of an answer.
+
 ## A Failure That Looks Like Success
 
 **Looks like:** an error swallowed into an empty or partial answer: a dropped promise from `Linking.openURL`, a CLI command printing a partial table after one lookup failed, a load error shown as "no results", `catch(() => {})` on a write.
