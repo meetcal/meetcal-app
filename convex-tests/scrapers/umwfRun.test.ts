@@ -35,6 +35,18 @@ function mutations(refuse = false) {
 }
 
 describe('UMWF run (#414, #255)', () => {
+  it('sends a lift the sheet leaves at 0 as missing, since UMWF writes 0 for no record (#573)', async () => {
+    const runMutation = mutations();
+    await handlerOf<Record<string, never>>(run)({ runMutation }, {}).catch(() => {});
+    const upsert = runMutation.mock.calls.map(([, args]) => args).find((args) => 'rows' in args) as { rows: Record<string, unknown>[] };
+    expect(upsert.rows.length).toBeGreaterThan(0);
+    for (const row of upsert.rows) {
+      expect(row.totalRecord).toBeGreaterThan(0);
+      expect(row.snatchRecord).toBeUndefined();
+      expect(row.cjRecord).toBeUndefined();
+    }
+  });
+
   it('prunes only the tabs it read, leaves out the retired class, and still fails naming the tab it could not read', async () => {
     const runMutation = mutations();
     const failure = await handlerOf<Record<string, never>>(run)({ runMutation }, {}).catch((error: unknown) => error);

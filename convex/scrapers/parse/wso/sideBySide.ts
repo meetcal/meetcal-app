@@ -69,16 +69,16 @@ export function parseSideBySide(csv: string, wso: string, layout: SideBySide): W
       });
       const record: WsoRecord = {
         wso,
-        age_category: age,
+        ageCategory: age,
         gender,
-        weight_class: weightClass,
-        snatch_record: snatch.lift,
-        cj_record: cj.lift,
-        total_record: total.lift,
+        weightClass: weightClass,
+        snatchRecord: snatch.lift,
+        cjRecord: cj.lift,
+        totalRecord: total.lift,
       };
-      if (snatch.by) record.snatch_by = snatch.by;
-      if (cj.by) record.cj_by = cj.by;
-      if (total.by) record.total_by = total.by;
+      if (snatch.by) record.snatchBy = snatch.by;
+      if (cj.by) record.cjBy = cj.by;
+      if (total.by) record.totalBy = total.by;
       records.push(record);
       if (!weightClass.endsWith('+')) lastClass[gender] = weightClass;
     }

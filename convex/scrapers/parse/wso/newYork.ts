@@ -92,12 +92,12 @@ export function parseNewYork(pages: readonly (readonly string[])[], wso: string)
         blocks.push(block);
       }
       const label = lift?.[1] ?? bareClass;
-      if (label) block.weight_class = plusLast(label);
+      if (label) block.weightClass = plusLast(label);
       if (!lift) continue;
       const value = liftValue(lift[3]);
       setLift(block, lift[2] === 'Snatch' ? 'snatch' : lift[2] === 'Total' ? 'total' : 'cj', value, liftHolder(value, lift[3]));
     }
-    records.push(...blocks.filter((b) => b.weight_class && b.age_category));
+    records.push(...blocks.filter((b) => b.weightClass && b.ageCategory));
   }
   return records;
 }

@@ -21,7 +21,7 @@ describe('Ohio WSO sheet (port of scraper_ohio.py)', () => {
       row('30 kg', 'x'),
       row('Total', 'D', 'T', '99'),
     ].join('\n');
-    expect(parseOhioTab(csv, 'Ohio', 'Youth Women').map((r) => [r.age_category, r.weight_class, r.snatch_record, r.cj_record, r.total_record])).toEqual([
+    expect(parseOhioTab(csv, 'Ohio', 'Youth Women').map((r) => [r.ageCategory, r.weightClass, r.snatchRecord, r.cjRecord, r.totalRecord])).toEqual([
       ['U13', '30', 18, 19, 37],
       ['U13', '33', null, null, 40],
       ['U15', '36', 30, null, 70],
@@ -30,12 +30,12 @@ describe('Ohio WSO sheet (port of scraper_ohio.py)', () => {
 
   it('uses the lower bound on Masters tabs and the tab name for Junior and Senior', () => {
     const masters = [row('Title Lift 35 - 39 60 kg', 'Athlete'), row('Total', '', '', '200'), row('40 - 44', ''), row('60 kg', ''), row('Total', '', '', '190')].join('\n');
-    expect(parseOhioTab(masters, 'Ohio', 'Masters Men').map((r) => [r.age_category, r.gender, r.weight_class, r.total_record])).toEqual([
+    expect(parseOhioTab(masters, 'Ohio', 'Masters Men').map((r) => [r.ageCategory, r.gender, r.weightClass, r.totalRecord])).toEqual([
       ['Masters 35', 'Men', '60', 200],
       ['Masters 40', 'Men', '60', 190],
     ]);
     const senior = [row('Title Lift 49 kg', 'Athlete'), row('Total', '', '', '150')].join('\n');
-    expect(parseOhioTab(senior, 'Ohio', 'Senior Women').map((r) => [r.age_category, r.weight_class, r.total_record])).toEqual([['Senior', '49', 150]]);
+    expect(parseOhioTab(senior, 'Ohio', 'Senior Women').map((r) => [r.ageCategory, r.weightClass, r.totalRecord])).toEqual([['Senior', '49', 150]]);
   });
 
   it('names who holds each lift: athlete, date, meet and location, or Standard', () => {
@@ -52,18 +52,18 @@ describe('Ohio WSO sheet (port of scraper_ohio.py)', () => {
     const [first, second] = parseOhioTab(csv, 'Ohio', 'Masters Men');
     expect(first).toEqual({
       wso: 'Ohio',
-      age_category: 'Masters 35',
+      ageCategory: 'Masters 35',
       gender: 'Men',
-      weight_class: '60',
-      snatch_record: 78,
-      cj_record: 88,
-      total_record: 164,
-      snatch_by: { name: 'Derick Puff', date: '2026-08-16', location: '2026 Ohio WSO Championships, Columbus, OH' },
-      cj_by: { name: 'Standard', date: '2026-08-01' },
-      total_by: { name: 'Standard', date: '2026-08-01' },
+      weightClass: '60',
+      snatchRecord: 78,
+      cjRecord: 88,
+      totalRecord: 164,
+      snatchBy: { name: 'Derick Puff', date: '2026-08-16', location: '2026 Ohio WSO Championships, Columbus, OH' },
+      cjBy: { name: 'Standard', date: '2026-08-01' },
+      totalBy: { name: 'Standard', date: '2026-08-01' },
     });
-    expect(second).toMatchObject({ weight_class: '65', snatch_record: 74, snatch_by: { name: 'Standard' }, cj_record: null, total_record: null });
-    expect(second).not.toHaveProperty('cj_by');
-    expect(second).not.toHaveProperty('total_by');
+    expect(second).toMatchObject({ weightClass: '65', snatchRecord: 74, snatchBy: { name: 'Standard' }, cjRecord: null, totalRecord: null });
+    expect(second).not.toHaveProperty('cjBy');
+    expect(second).not.toHaveProperty('totalBy');
   });
 });

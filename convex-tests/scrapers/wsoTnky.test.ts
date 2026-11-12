@@ -40,18 +40,18 @@ describe('Tennessee-Kentucky WSO sheet (a tab per group)', () => {
 
   it("reads the new sheet's classes, holders written LAST, First", () => {
     const records = parseTnkyTab(fixture('tnky-seniors-men-20261015.csv'), 'Tennessee-Kentucky', 'Senior', 'Men');
-    expect(records.map((r) => r.weight_class)).toEqual(['60', '65', '70', '75', '85', '95', '110', '110+']);
-    expect(records.find((r) => r.weight_class === '110')).toEqual({
+    expect(records.map((r) => r.weightClass)).toEqual(['60', '65', '70', '75', '85', '95', '110', '110+']);
+    expect(records.find((r) => r.weightClass === '110')).toEqual({
       wso: 'Tennessee-Kentucky',
-      age_category: 'Senior',
+      ageCategory: 'Senior',
       gender: 'Men',
-      weight_class: '110',
-      snatch_record: 116,
-      cj_record: 140,
-      total_record: 256,
-      snatch_by: { name: 'BROWN, Zachary', date: '2026-09-13', location: '2026 Virus Weightlifting Series 2' },
-      cj_by: { name: 'BROWN, Zachary', date: '2026-09-13', location: '2026 Virus Weightlifting Series 2' },
-      total_by: { name: 'BROWN, Zachary', date: '2026-09-13', location: '2026 Virus Weightlifting Series 2' },
+      weightClass: '110',
+      snatchRecord: 116,
+      cjRecord: 140,
+      totalRecord: 256,
+      snatchBy: { name: 'BROWN, Zachary', date: '2026-09-13', location: '2026 Virus Weightlifting Series 2' },
+      cjBy: { name: 'BROWN, Zachary', date: '2026-09-13', location: '2026 Virus Weightlifting Series 2' },
+      totalBy: { name: 'BROWN, Zachary', date: '2026-09-13', location: '2026 Virus Weightlifting Series 2' },
     });
   });
 
@@ -59,34 +59,34 @@ describe('Tennessee-Kentucky WSO sheet (a tab per group)', () => {
   it('reads a class row, then a row per lift: name, weight, date and meet', () => {
     jest.useFakeTimers({ now: new Date('2027-01-15T12:00:00Z') });
     const records = parseTnkyTab(fixture('tnky-youth-men-14-17-20261012.csv'), 'Tennessee-Kentucky', 'U17', 'Men');
-    expect(records.map((r) => r.weight_class)).toEqual(['48', '52', '56', '60', '65', '71', '79', '88', '94', '94+']);
-    expect(records[0]).toEqual({ wso: 'Tennessee-Kentucky', age_category: 'U17', gender: 'Men', weight_class: '48', snatch_record: null, cj_record: null, total_record: null });
+    expect(records.map((r) => r.weightClass)).toEqual(['48', '52', '56', '60', '65', '71', '79', '88', '94', '94+']);
+    expect(records[0]).toEqual({ wso: 'Tennessee-Kentucky', ageCategory: 'U17', gender: 'Men', weightClass: '48', snatchRecord: null, cjRecord: null, totalRecord: null });
     expect(records[3]).toEqual({
       wso: 'Tennessee-Kentucky',
-      age_category: 'U17',
+      ageCategory: 'U17',
       gender: 'Men',
-      weight_class: '60',
-      snatch_record: 48,
-      cj_record: 66,
-      total_record: 117,
-      snatch_by: { name: 'Gideon Hayhoe', date: '2026-03-05', location: '2026 Virus Series 1' },
-      cj_by: { name: 'Gideon Hayhoe', date: '2026-03-05', location: '2026 Virus Series 1' },
-      total_by: { name: 'Gideon Hayhoe', date: '2026-03-05', location: '2026 Virus Series 1' },
+      weightClass: '60',
+      snatchRecord: 48,
+      cjRecord: 66,
+      totalRecord: 117,
+      snatchBy: { name: 'Gideon Hayhoe', date: '2026-03-05', location: '2026 Virus Series 1' },
+      cjBy: { name: 'Gideon Hayhoe', date: '2026-03-05', location: '2026 Virus Series 1' },
+      totalBy: { name: 'Gideon Hayhoe', date: '2026-03-05', location: '2026 Virus Series 1' },
     });
     // "12/7/2026" at the 2025 Virus Series Finals, read as 2025 after December 2026 too.
-    const whitlock = records.find((r) => r.snatch_by?.name === 'Xander Whitlock');
-    expect(whitlock).toMatchObject({ snatch_record: 93, cj_record: 120, total_record: 213, snatch_by: { date: '2025-12-07' }, total_by: { date: '2025-12-07' } });
+    const whitlock = records.find((r) => r.snatchBy?.name === 'Xander Whitlock');
+    expect(whitlock).toMatchObject({ snatchRecord: 93, cjRecord: 120, totalRecord: 213, snatchBy: { date: '2025-12-07' }, totalBy: { date: '2025-12-07' } });
   });
 
   it('keeps the later listing of a class written twice ("77KG*")', () => {
     const records = parseTnkyTab(fixture('tnky-seniors-women-20261012.csv'), 'Tennessee-Kentucky', 'Senior', 'Women');
-    expect(records.map((r) => r.weight_class)).toEqual(['48', '53', '58', '63', '69', '77', '86', '86+']);
-    expect(records.find((r) => r.weight_class === '77')).toMatchObject({ snatch_record: 124, cj_record: 153, total_record: 277, total_by: { name: 'Olivia Reeves' } });
+    expect(records.map((r) => r.weightClass)).toEqual(['48', '53', '58', '63', '69', '77', '86', '86+']);
+    expect(records.find((r) => r.weightClass === '77')).toMatchObject({ snatchRecord: 124, cjRecord: 153, totalRecord: 277, totalBy: { name: 'Olivia Reeves' } });
   });
 
   it('reads a lift weight written with kg', () => {
     const [record] = parseTnkyTab('Lift,Name,Weight,Date,Meet\n,40KG,,,\nSnatch,A,82kg,1/1/2025,M\nC&J,A,102 kg,1/1/2025,M', 'Tennessee-Kentucky', 'U13', 'Men');
-    expect(record).toMatchObject({ weight_class: '40', snatch_record: 82, cj_record: 102 });
+    expect(record).toMatchObject({ weightClass: '40', snatchRecord: 82, cjRecord: 102 });
   });
 
   it('fails on a lift cell it cannot read, or a lift row before any class', () => {

@@ -26,6 +26,14 @@ const calls = (runMutation: ReturnType<typeof mutations>) =>
   runMutation.mock.calls.map(([, args]) => ('recordType' in args ? `prune${args.dryRun ? ' (dry run)' : ''}` : 'upsert'));
 
 describe('records run (#406, #255)', () => {
+  it('sends a lift the PDF leaves unset as 0, which is how USAW records store no record (#573)', async () => {
+    mockPdfLines.mockResolvedValue([['OPEN F 49 TOTAL 206 DOE, Jane 2026-06-20']]);
+    const runMutation = mutations();
+    await handlerOf<Record<string, never>, Result>(run)({ runMutation }, {});
+    const upsert = runMutation.mock.calls.map(([, args]) => args).find((args) => 'rows' in args) as { rows: Record<string, unknown>[] };
+    expect(upsert.rows).toEqual([expect.objectContaining({ recordType: 'USAW', weightClass: '49kg', snatchRecord: 0, cjRecord: 0, totalRecord: 206 })]);
+  });
+
   it('prunes the classes the PDF no longer lists when every age group was read', async () => {
     mockPdfLines.mockResolvedValue([['16-17yo M 85 TOTAL 290 WHITLOCK, Robert 2026-08-29', 'OPEN F 49 TOTAL 206 DOE, Jane 2026-06-20']]);
     const runMutation = mutations();

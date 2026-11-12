@@ -63,7 +63,7 @@ export function parseMissouriValley(lines: readonly string[], wso = 'Missouri Va
     const key = JSON.stringify([age, gender, weightClass]);
     let entry = records.get(key);
     if (!entry) {
-      entry = { wso, age_category: age, gender, weight_class: weightClass, snatch_record: null, cj_record: null, total_record: null };
+      entry = { wso, ageCategory: age, gender, weightClass: weightClass, snatchRecord: null, cjRecord: null, totalRecord: null };
       records.set(key, entry);
     }
     return entry;
@@ -110,9 +110,9 @@ export function parseMissouriValley(lines: readonly string[], wso = 'Missouri Va
     }
     const entry = record();
     const kilos = Math.trunc(Number(kg[1]));
-    entry[`${lift}_record`] = kilos;
+    entry[`${lift}Record`] = kilos;
     const by = recordHolder(kilos, name);
-    if (by) entry[`${lift}_by`] = by;
+    if (by) entry[`${lift}By`] = by;
   }
   return [...records.values()];
 }

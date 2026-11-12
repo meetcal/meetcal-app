@@ -76,9 +76,8 @@ const CLASS_SHAPE = /^\+?\d+\+?\s+[A-Za-z]/;
 /** An age group's heading: "OPEN MEN", "MASTER WOMEN W35 (35-39)". */
 const SECTION = /^(?:OPEN|JUNIOR|YOUTH|MASTERS?)\s+(?:WO)?MEN\b/;
 
-/** Lifts by their first letter: "Clean & Jerk" may print without its spaces. */
-const FIELDS = { s: 'snatch_record', c: 'cj_record', t: 'total_record' } as const;
-const HOLDER_FIELDS = { snatch_record: 'snatch_by', cj_record: 'cj_by', total_record: 'total_by' } as const;
+const FIELDS = { s: 'snatchRecord', c: 'cjRecord', t: 'totalRecord' } as const;
+const HOLDER_FIELDS = { snatchRecord: 'snatchBy', cjRecord: 'cjBy', totalRecord: 'totalBy' } as const;
 
 /**
  * Where the EVENT column starts on this page: halfway between the LOCATION

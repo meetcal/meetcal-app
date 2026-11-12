@@ -32,9 +32,9 @@ describe('New England WSO PDFs (port of scraper_pdf_newengland.py)', () => {
       line({ Class: '56+', Lift: 'C&J', Name: 'Open' }),
       line({ Lift: 'Total', Name: 'Open' }),
     ];
-    expect(parseNewEngland([page], 'New England')).toEqual(['24', '56+'].map((weight_class) => ({
-      wso: 'New England', age_category: 'U11', gender, weight_class,
-      snatch_record: null, cj_record: null, total_record: null,
+    expect(parseNewEngland([page], 'New England')).toEqual(['24', '56+'].map((weightClass) => ({
+      wso: 'New England', ageCategory: 'U11', gender, weightClass,
+      snatchRecord: null, cjRecord: null, totalRecord: null,
     })));
   });
 
@@ -49,7 +49,7 @@ describe('New England WSO PDFs (port of scraper_pdf_newengland.py)', () => {
       line({ Class: '44+', Lift: 'C&J', Name: 'Standard', Weight: '121' }),
       line({ Lift: 'Total', Name: 'Open' }),
     ];
-    expect(parseNewEngland([page], 'New England').map((r) => [r.age_category, r.weight_class, r.snatch_record, r.cj_record, r.total_record])).toEqual([
+    expect(parseNewEngland([page], 'New England').map((r) => [r.ageCategory, r.weightClass, r.snatchRecord, r.cjRecord, r.totalRecord])).toEqual([
       ['U13', '40', 25, 30, null],
       ['U13', '44+', null, 121, null],
     ]);
@@ -68,14 +68,14 @@ describe('New England WSO PDFs (port of scraper_pdf_newengland.py)', () => {
     ];
     const [first, second] = parseNewEngland([page], 'New England');
     expect(first).toMatchObject({
-      snatch_by: { name: 'Cian Whitney', date: '2025-07-19', location: '2025 Bay State Games' },
-      total_by: { name: 'Beckett Roche', date: '2026-03-21', location: "Strength Paddy's Day Classic" },
+      snatchBy: { name: 'Cian Whitney', date: '2025-07-19', location: '2025 Bay State Games' },
+      totalBy: { name: 'Beckett Roche', date: '2026-03-21', location: "Strength Paddy's Day Classic" },
     });
-    expect(first.cj_by).toEqual({ name: 'Standard' });
-    expect(second).not.toHaveProperty('snatch_by');
-    expect(second.cj_by).toEqual({ name: 'Sarah StGermain', date: '2026-04-26' });
+    expect(first.cjBy).toEqual({ name: 'Standard' });
+    expect(second).not.toHaveProperty('snatchBy');
+    expect(second.cjBy).toEqual({ name: 'Sarah StGermain', date: '2026-04-26' });
     // Only a number in parentheses is a bodyweight.
-    expect(second.total_by).toEqual({ name: 'A Lifter (Jr)' });
+    expect(second.totalBy).toEqual({ name: 'A Lifter (Jr)' });
   });
 
   it('finds every records PDF the page links, once each', () => {
