@@ -225,7 +225,6 @@ pub async fn known_names(kind: NameKind, input: &str) -> Result<Vec<String>> {
             Ok(names)
         }
         NameKind::Club => clubs().await,
-        // Never the record sheets' names instead: the club and WSO reports do not take them.
         NameKind::Wso => registration_wsos().await,
         NameKind::RecordWso => wsos().await,
     }

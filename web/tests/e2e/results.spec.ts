@@ -49,6 +49,33 @@ async function routeSearch(page: Page) {
   });
 }
 
+test("searching again after Back and Forward still writes the address, and Back returns through it", async ({ page }) => {
+  await mockSubscribedUser(page);
+  await routeSearch(page);
+  const search = async (athlete: string) => {
+    const field = page.getByLabel("Athlete", { exact: true });
+    await field.fill(athlete);
+    await field.press("Enter");
+  };
+
+  await page.goto("/results");
+  await search("Ann Lee");
+  await expect(page).toHaveURL(/\/results\?athlete=Ann%20Lee$/);
+  await search("Bo Kim");
+  await expect(page).toHaveURL(/\/results\?athlete=Bo%20Kim$/);
+  await page.goBack();
+  await expect(page.getByText("Results for Ann Lee")).toBeVisible();
+  await page.goForward();
+  await expect(page.getByText("Results for Bo Kim")).toBeVisible();
+
+  await search("Ann Lee");
+  await expect(page.getByText("Results for Ann Lee")).toBeVisible();
+  await expect(page).toHaveURL(/\/results\?athlete=Ann%20Lee$/);
+  await page.goBack();
+  await expect(page).toHaveURL(/\/results\?athlete=Bo%20Kim$/);
+  await expect(page.getByText("Results for Bo Kim")).toBeVisible();
+});
+
 test("the Results page follows its URL: links, the header link, searches, back and forward", async ({ page }) => {
   await mockSubscribedUser(page);
   await routeSearch(page);

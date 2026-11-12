@@ -1,4 +1,5 @@
 import type { ApiLiftingResult } from '../convex/lib/results';
+import { newestSpelling, newestSpellingByAthlete } from '../convex/lib/names';
 import { exactSearchAnswer, fallbackSearchAnswer, MAX_SEARCH_RESULT_ROWS } from '../convex/results';
 import { itemAt } from '../convex/lib/json';
 
@@ -49,6 +50,10 @@ describe('results:search date range', () => {
     expect(exactSearchAnswer(respelled, '2026-01-01', '2026-12-31')?.matched_name).toBe('Ann Lee');
   });
 
+  it('answers the newest spelling without the spaces a source left around it', () => {
+    expect(exactSearchAnswer([row(' Ann Lee  ', '2026-06-01')], '2026-01-01', '2026-12-31')?.matched_name).toBe('Ann Lee');
+  });
+
   it('includes a one-day range', () => {
     const answer = fallbackSearchAnswer('ann', ['Ann Lee'], new Map([['ann lee', history]]), '2026-12-31', '2026-12-31');
     expect(answer.results.map((r) => r.date)).toEqual(['2026-12-31']);
@@ -92,5 +97,18 @@ describe('results:search row bound', () => {
     const answer = fallbackSearchAnswer('smith', names, new Map(), '1990-01-01', '2030-12-31');
     expect(answer.truncated).toBe(true);
     expect(answer.suggestions).toHaveLength(8);
+  });
+});
+
+describe("an athlete's newest spelling", () => {
+  it('is the name on the latest-dated row, the last of rows on the same date, trimmed', () => {
+    expect(newestSpelling([row('ANN LEE', '2026-01-01'), row('Ann Lee ', '2026-06-01'), row('ann lee', '2026-03-01')])).toBe('Ann Lee');
+    expect(newestSpelling([row('ANN LEE', '2026-06-01'), row('Ann Lee', '2026-06-01')])).toBe('Ann Lee');
+    expect(newestSpelling([])).toBeNull();
+  });
+
+  it('is kept per athlete, skipping rows without a name', () => {
+    const rows = [row('JOHN SMITH', '2026-01-01'), row('Jane Smith', '2026-02-01'), row(' John Smith', '2026-03-01'), row(' ', '2026-04-01')];
+    expect(newestSpellingByAthlete(rows)).toEqual(new Map([['john smith', 'John Smith'], ['jane smith', 'Jane Smith']]));
   });
 });

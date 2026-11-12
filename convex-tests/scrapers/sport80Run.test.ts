@@ -11,7 +11,7 @@ const lifter = { lifter: 'Ann Lee', age_category: "Open Women's 63kg", body_weig
 const json = (body: unknown) => ({ ok: true, status: 200, json: async () => body, text: async (): Promise<string> => JSON.stringify(body) });
 const originalFetch = global.fetch;
 
-function sport80(onEventRead: (eventId: string) => void | Promise<unknown> = () => {}) {
+function sport80(onEventRead: (eventId: string) => void | Promise<unknown> = () => {}, rowsOf: (eventId: string) => unknown[] = () => [lifter]) {
   global.fetch = jest.fn(async (url: string) => {
     if (url.endsWith('/public/rankings/')) {
       return { ok: true, status: 200, text: async (): Promise<string> => `<script>window.env = {"RANKINGS_DOMAIN_URL":"${API}","SERVICES_API_PUBLIC_KEY":"key"};</script>` };
@@ -20,7 +20,8 @@ function sport80(onEventRead: (eventId: string) => void | Promise<unknown> = () 
     if (path === '/api/events/table/data') return json({ data: events, total: events.length });
     const eventId = itemAt(/\/api\/events\/(\d+)\/table\/data/.exec(path) ?? [], 1);
     await onEventRead(eventId);
-    return json({ data: [lifter], total: 1 });
+    const rows = rowsOf(eventId);
+    return json({ data: rows, total: rows.length });
   }) as never;
 }
 
@@ -73,6 +74,26 @@ describe("the Sport80 results run's time budget (#574)", () => {
     expect(storedMeets).toEqual(['Meet 2']);
     expect(failedSources).toEqual(['Meet 1 (event 1)']);
     expect(error).toContain(`Meet 1 (event 1): ${NOT_REACHED}`);
+  });
+
+  it('stops waiting for an event read at three quarters of its budget, so the events read before it are still stored', async () => {
+    sport80((eventId) => (eventId === '2' ? void jest.advanceTimersByTime(200_000) : new Promise(() => {})));
+    const { storedMeets, failure } = deployment();
+    const outcome = failure();
+    await jest.advanceTimersByTimeAsync(RUN_BUDGET_MS);
+    const { error, failedSources } = await outcome;
+    expect(storedMeets).toEqual(['Meet 2']);
+    expect(failedSources).toEqual(['Meet 1 (event 1)']);
+    expect(error).toContain('1 of 1 meet(s) read were stored');
+    expect(error).toContain(OUT_OF_TIME);
+  });
+
+  it('does not count a meet whose rows were all unreadable among the meets stored', async () => {
+    sport80(() => {}, (eventId) => (eventId === '1' ? [{ ...lifter, lifter: '' }] : [lifter]));
+    const { storedMeets, failure } = deployment();
+    const { error } = await failure();
+    expect(storedMeets).toEqual(['Meet 2']);
+    expect(error).toContain('1 of 2 meet(s) read were stored');
   });
 
   it('names an event it read but ran out of time to store, and does not prune it', async () => {

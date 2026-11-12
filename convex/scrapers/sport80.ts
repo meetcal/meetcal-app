@@ -52,13 +52,11 @@ export function joinPages(pages: readonly Dict[][], total: unknown): { rows: Dic
   return { rows };
 }
 
-/** The Sport80 public API: key and base URL come from the site's `window.env`. */
 class Sport80 {
   private constructor(private readonly env: Sport80Env) {}
 
   static async connect(): Promise<Sport80> {
     const response = await fetch(`${USAW_DOMAIN}/public/rankings/`, { signal: AbortSignal.timeout(60_000) });
-    // A 5xx page has no `window.env` either: say what really failed.
     if (!response.ok) throw new Error(`sport80: rankings page failed with ${response.status}`);
     const page = await response.text();
     const match = /window\.env = ({.*?});/s.exec(page);
@@ -75,7 +73,6 @@ class Sport80 {
     };
   }
 
-  /** A page of a table; a failed request throws, so a partial table is never taken for a whole one. */
   private async post(url: string, payload?: Dict): Promise<Dict> {
     const response = await fetch(url, {
       method: 'POST',
@@ -87,12 +84,6 @@ class Sport80 {
     return readTablePage(await response.json());
   }
 
-  /**
-   * Every page's `data`, following `next_page_url`; any failed page fails
-   * the whole table, and so does a table short of the `total` it reports.
-   * The results sync deletes what a table lacks, so it prunes only a table
-   * `joinPages` finds whole.
-   */
   private async collate(first: Dict, payload?: Dict): Promise<{ rows: Dict[]; notWhole?: string }> {
     const pages: Dict[][] = [pageRows(first)];
     let current = first;
@@ -126,6 +117,7 @@ class Sport80 {
 }
 
 const READ_SHARE = 0.5;
+const READ_DEADLINE_SHARE = 0.75;
 
 /** Rows per ingest call: each writes its rows and rewrites their athletes' history documents. */
 const INGEST_BATCH = 200;
@@ -219,7 +211,7 @@ export const run = internalAction({
       }
       let table: { rows: Dict[]; notWhole?: string };
       try {
-        table = await budget.orStop(api.eventResults(eventId));
+        table = await budget.orStop(api.eventResults(eventId), READ_DEADLINE_SHARE);
       } catch (error) {
         failures.push({ source: eventSource(meet, eventId), error: `${eventDate(event)}: ${errorMessage(error)}` });
         continue;
@@ -236,6 +228,7 @@ export const run = internalAction({
     if (dryRun) return { meets, outcomes: [], failed: failed() };
 
     const outcomes: MeetOutcome[] = [];
+    let storedCount = 0;
     for (const { eventId, meet, rows, notWhole } of meets) {
       const source = eventSource(meet, eventId);
       if (budget.spent()) {
@@ -290,6 +283,7 @@ export const run = internalAction({
         failures.push({ source, error: `not stored: ${errorMessage(error)}` });
         continue;
       }
+      if (valid.length > 0) storedCount += 1;
       // Only a meet read in full is a safe basis for deleting what it lacks.
       if (outcome.failed > 0 || valid.length === 0) continue;
       if (notWhole) {
@@ -313,7 +307,7 @@ export const run = internalAction({
     const updated = outcomes.filter((o) => o.inserted === 0 && o.updated > 0).map((o) => o.meet);
     const deleted = outcomes.reduce((sum, o) => sum + o.deleted, 0);
     console.log(`sport80: ${meets.length} meets, ${inserted.length} with new results, ${updated.length} updated, ${deleted} stale result(s) deleted`);
-    if (failures.length) throw sourcesFailed(`sport80: ${failures.length} problem(s), the rest was stored`, failures);
+    if (failures.length) throw sourcesFailed(`sport80: ${failures.length} problem(s), ${storedCount} of ${meets.length} meet(s) read were stored`, failures);
     return { meets, outcomes, failed: failed() };
   },
 });

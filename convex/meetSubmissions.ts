@@ -5,6 +5,7 @@ import { internalAction, internalMutation, internalQuery, mutation, type Mutatio
 import type { Id } from './_generated/dataModel';
 import { sendEmail } from './lib/email';
 import {
+  FILE_ALREADY_SUBMITTED_CODE,
   DAY_MS,
   MAX_MEET_SUBMISSION_FILE_BYTES,
   MAX_MEET_SUBMISSION_UPLOAD_URLS_PER_DAY,
@@ -108,7 +109,7 @@ export const submit = mutation({
         .query('meet_submission_files')
         .withIndex('by_storageId', (q) => q.eq('storageId', storageId))
         .first();
-      if (claimed) throw apiError(400, `file already submitted: ${file.name}`);
+      if (claimed) throw apiError(400, `file already submitted: ${file.name}`, { code: FILE_ALREADY_SUBMITTED_CODE });
       files.push({ storageId, name: file.name, size: stored.size });
     }
     const submissionId = await ctx.db.insert('meet_submissions', {

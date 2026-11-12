@@ -17,7 +17,7 @@
 
 import { recordHolder, type RecordHolder } from './holder';
 import { unescapeHtml } from '../lib/html';
-import { isRecord, typedKeys, itemAt } from '../../lib/json';
+import { isRecord, itemAt, kindOf, typedKeys } from '../../lib/json';
 
 export const IWF_PAGES = {
   Senior: 'List_of_world_records_in_Olympic_weightlifting',
@@ -37,7 +37,7 @@ export function wikitextOf(body: unknown, page: string): string {
   const wikitext = object(answer.parse)?.wikitext;
   if (typeof wikitext === 'string' && wikitext !== '') return wikitext;
   const info = object(answer.error)?.info;
-  throw new Error(`Wikipedia ${page}: ${typeof info === 'string' ? info : wikitext === undefined ? 'no wikitext' : `wikitext is ${wikitext === '' ? 'empty' : `a ${typeof wikitext}`}`}`);
+  throw new Error(`Wikipedia ${page}: ${typeof info === 'string' ? info : wikitext === undefined ? 'no wikitext' : `wikitext is ${wikitext === '' ? 'empty' : kindOf(wikitext)}`}`);
 }
 
 export type IwfRecord = {

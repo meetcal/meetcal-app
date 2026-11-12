@@ -294,7 +294,7 @@ describe('scraped data problems', () => {
       meet({ name: 'Several zones', venueState: 'Canada', venueCity: 'Vancouver', timeZone: 'America/Toronto' }),
       meet({ name: 'Island', venueState: 'Spain', venueCity: 'La Laguna', timeZone: 'Atlantic/Canary' }),
     ];
-    const ctx = { db: { query: () => ({ take: async (count: number) => meets.slice(0, count) }) } };
+    const { ctx } = fakeMutationCtx({ meets: meets.map(({ _id: _i, _creationTime: _c, ...doc }) => doc) });
     const result = await handlerOf(meetDataProblems)(ctx, {});
     expect(result).toEqual({
       badDates: [
@@ -311,6 +311,7 @@ describe('scraped data problems', () => {
         { name: 'Knoxville', status: 'upcoming', timeZone: 'America/Chicago', derived: 'America/New_York', venueCity: 'Knoxville', venueState: 'TN' },
         { name: 'Abroad guessed', status: 'upcoming', timeZone: 'America/New_York', derived: 'Asia/Tokyo', venueCity: 'Tokyo', venueState: 'Japan' },
       ],
+      needsResultsLink: [],
     });
   });
 });

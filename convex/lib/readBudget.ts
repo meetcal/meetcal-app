@@ -1,4 +1,5 @@
 export const DOCUMENTS_ONE_QUERY_MAY_READ = 32000;
+export const DOCUMENTS_BEFORE_THE_OVERFLOW_PROBE = DOCUMENTS_ONE_QUERY_MAY_READ - 1;
 
 export type DocumentBudget = { left: number };
 

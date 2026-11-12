@@ -2,11 +2,11 @@ export const RUN_BUDGET_MS = 7 * 60 * 1000;
 export const HARD_STOP_MS = 9 * 60 * 1000;
 
 export const NOT_REACHED = "not reached: the run's time budget was spent on earlier sources (run it alone with `only`)";
-export const OUT_OF_TIME = 'stopped: still running when the run had to end (run it alone with `only`)';
+export const OUT_OF_TIME = "stopped: still running when the run's time for it ran out (run it alone with `only`)";
 
 export type RunBudget = {
   spent: (share?: number) => boolean;
-  orStop: <T>(work: Promise<T>) => Promise<T>;
+  orStop: <T>(work: Promise<T>, budgetShare?: number) => Promise<T>;
   writeOnlyBeforeTheHardStop: () => void;
 };
 
@@ -19,8 +19,9 @@ export function runBudget(
     writeOnlyBeforeTheHardStop: () => {
       if (now() - started >= hardStopMs) throw new Error(OUT_OF_TIME);
     },
-    orStop: async <T>(work: Promise<T>): Promise<T> => {
-      const timeLeftMs = hardStopMs - (now() - started);
+    orStop: async <T>(work: Promise<T>, budgetShare?: number): Promise<T> => {
+      const stopAtMs = budgetShare === undefined ? hardStopMs : budgetMs * budgetShare;
+      const timeLeftMs = stopAtMs - (now() - started);
       if (timeLeftMs <= 0) {
         work.catch(() => {});
         throw new Error(OUT_OF_TIME);

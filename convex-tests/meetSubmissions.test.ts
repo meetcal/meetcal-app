@@ -150,7 +150,8 @@ describe('submit', () => {
     expect(await failure(store.as(A)(submit, meet({ files: [{ storageId: '_storage:gone', name: 'a.pdf' }] })))).toMatchObject({ status: 400 });
     expect(await failure(store.as(A)(submit, meet({ files: [{ storageId: '_storage:big', name: 'a.pdf' }] })))).toMatchObject({ status: 413 });
     expect(await store.as(A)(submit, meet())).toEqual({ submitted: true });
-    expect(await failure(store.as(B)(submit, meet()))).toMatchObject({ status: 400, error: 'file already submitted: Schedule.PDF' });
+    expect(await failure(store.as(B)(submit, meet()))).toEqual({ status: 400, error: 'file already submitted: Schedule.PDF', code: 'already_submitted' });
+    expect(await failure(store.as(A)(submit, meet({ files: [{ storageId: 'nope', name: 'a.pdf' }] })))).not.toHaveProperty('code');
     expect(store.rows('meet_submissions')).toHaveLength(1);
   });
 

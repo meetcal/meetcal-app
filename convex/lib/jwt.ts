@@ -11,7 +11,6 @@ import { isRecord } from './json';
 export type SigningJwk = JsonWebKey & { kid: string; kty: 'EC'; crv: 'P-256'; d: string; x: string; y: string };
 export type PublicJwk = { kty: 'EC'; crv: 'P-256'; x: string; y: string; kid: string; alg: 'ES256'; use: 'sig' };
 
-/** The signing key from its environment variable's text, or null when it is unset or not a P-256 private JWK. */
 export function parseSigningJwk(raw: string | undefined): SigningJwk | null {
   if (!raw) return null;
   let value: unknown;

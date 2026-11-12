@@ -147,16 +147,10 @@ export const meetSample = internalQuery({
   },
 });
 
-/** Unwraps `{ json }` / `{ etag, json }` answers into parsed values. */
 function decode(answer: unknown): unknown {
   return isRecord(answer) && typeof answer.json === 'string' ? JSON.parse(answer.json) : answer;
 }
 
-/**
- * JSON with object keys sorted: Convex returns structured objects with their
- * keys in its own order, and key order is not part of any answer's meaning.
- * Array order is compared as is.
- */
 function canonical(value: unknown): string {
   return JSON.stringify(value, (_key, v: unknown) => (isRecord(v) ? Object.fromEntries(Object.keys(v).sort().map((k) => [k, v[k]])) : v));
 }

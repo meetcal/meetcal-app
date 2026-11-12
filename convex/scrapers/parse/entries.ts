@@ -1,10 +1,10 @@
 import { placeholderMemberId } from '../../lib/memberIds';
-import { isRecord, rowCount } from '../../lib/json';
 // Meet entries from Sport80 (replaces `usaw/entry_scraper/csv_scraper.js`).
 // The Node scraper drove a headless browser through the public entries page;
 // the table on that page is filled from a public JSON endpoint, which this
 // reads directly: `/api/public/events/datatable/{event}/entries/{stage}`,
 // 100 rows a page, the meet's name in the table's title.
+import { isRecord, kindOf, rowCount } from '../../lib/json';
 
 export const SPORT80 = 'https://usaweightlifting.sport80.com';
 
@@ -84,19 +84,22 @@ export function readEntriesTable(body: unknown): EntriesTable {
   const text = (row: Record<string, unknown>, i: number, field: string): string | null => {
     const value = row[field];
     if (value === undefined || value === null) return null;
-    if (typeof value !== 'string') throw new Error(`entries: row ${i}: ${field} is a ${typeof value}`);
+    if (typeof value !== 'string') throw new Error(`entries: row ${i}: ${field} is ${kindOf(value)}`);
     return value;
   };
   const scalar = (row: Record<string, unknown>, i: number, field: string): number | string | null => {
     const value = row[field];
     if (value === undefined || value === null) return null;
-    if (typeof value !== 'string' && typeof value !== 'number') throw new Error(`entries: row ${i}: ${field} is a ${typeof value}`);
+    if (typeof value !== 'string' && typeof value !== 'number') throw new Error(`entries: row ${i}: ${field} is ${kindOf(value)}`);
     return value;
   };
   const rows = (data ?? []).map((item: unknown, i: number): EntryRow => {
     if (!isRecord(item)) throw new Error(`entries: row ${i} is not an object`);
     const memberId = scalar(item, i, 'member_id');
-    const numberOrText = (field: string) => (typeof item[field] === 'number' || typeof item[field] === 'string' ? (item[field] as number | string) : null);
+    const numberOrText = (field: string) => {
+      const value = item[field];
+      return typeof value === 'number' || typeof value === 'string' ? value : null;
+    };
     return {
       ...('id' in item ? { id: item.id } : {}),
       member_id: memberId === null ? null : String(memberId),

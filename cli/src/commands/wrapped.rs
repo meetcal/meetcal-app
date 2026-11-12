@@ -120,7 +120,6 @@ pub fn other_names(name: &str, suggestions: Vec<String>) -> Vec<String> {
         .collect()
 }
 
-/// The report as table format prints it, for the tests.
 #[cfg(test)]
 fn render_wrapped_report(name: &str, year: i32, stats: &WrappedStats) -> String {
     wrapped_report(name, year, stats).to_text()

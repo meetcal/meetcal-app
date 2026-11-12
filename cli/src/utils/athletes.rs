@@ -84,8 +84,6 @@ async fn athlete_candidates(name: &str) -> Vec<String> {
     candidates
 }
 
-/// Every result of each of `names`, keyed by folded name. Names with no results are absent. The
-/// name batches are read side by side (`backend::query_each`).
 pub async fn histories(names: &[String]) -> Result<HashMap<String, Vec<LiftingResults>>> {
     let batches = names
         .chunks(HISTORY_BATCH_SIZE)

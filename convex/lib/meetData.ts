@@ -49,21 +49,22 @@ export function toApiMeet(meet: Doc<'meets'>): ApiMeet {
   };
 }
 
-/**
- * The meet a name identifies. Names are meant to be unique (the ingest
- * mutations store a second federation's meet of the same name under
- * `disambiguatedMeetName`), but older rows can repeat one: then the oldest
- * row is the meet, the one its roster and results were written for, and the
- * duplicate is logged (`migrations:duplicateMeetNames` lists them all)
- * rather than chosen by chance.
- */
-export async function meetByName(ctx: QueryCtx, name: string): Promise<Doc<'meets'> | null> {
-  const rows = await ctx.db
+export const MEET_ROWS_READ_PER_NAME = 2;
+
+export async function meetsNamed(ctx: QueryCtx, name: string, limit = MEET_ROWS_READ_PER_NAME): Promise<Doc<'meets'>[]> {
+  return ctx.db
     .query('meets')
     .withIndex('by_name', (q) => q.eq('name', name))
-    .take(2);
+    .take(limit);
+}
+
+export function oldestMeetNamed(name: string, rows: readonly Doc<'meets'>[]): Doc<'meets'> | null {
   if (rows.length > 1) console.warn(`meets: more than one meet named ${JSON.stringify(name)}; using the oldest`);
   return oldestMeet(rows);
+}
+
+export async function meetByName(ctx: QueryCtx, name: string): Promise<Doc<'meets'> | null> {
+  return oldestMeetNamed(name, await meetsNamed(ctx, name));
 }
 
 /** The first-created of `rows`, or null. Index order already ties by creation time; this does not rely on it. */
@@ -395,19 +396,16 @@ export function narrowSessions(rows: readonly SessionRow[], sessionNumber?: numb
   );
 }
 
-/**
- * The titles a meet's results are stored under: its own name, then the
- * results titles linked to it (`meet_result_titles`, #362).
- */
-export async function meetResultTitles(ctx: QueryCtx, meet: string): Promise<string[]> {
-  const linked = await readAll(
-    ctx.db
-      .query('meet_result_titles')
-      .withIndex('by_meet', (q) => q.eq('meet', meet)),
-    MEET_RESULT_TITLES_MAX,
-    'results titles linked to one meet',
-  );
+export function linkedResultTitles(ctx: QueryCtx, meet: string) {
+  return ctx.db.query('meet_result_titles').withIndex('by_meet', (q) => q.eq('meet', meet));
+}
+
+export function resultTitlesOf(meet: string, linked: readonly { title: string }[]): string[] {
   return [meet, ...linked.map((row) => row.title).filter((title) => title !== meet)];
+}
+
+export async function meetResultTitles(ctx: QueryCtx, meet: string): Promise<string[]> {
+  return resultTitlesOf(meet, await readAll(linkedResultTitles(ctx, meet), MEET_RESULT_TITLES_MAX, 'results titles linked to one meet'));
 }
 
 /** A meet's results under its own name and every results title linked to it. */

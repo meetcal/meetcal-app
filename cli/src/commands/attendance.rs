@@ -1,6 +1,6 @@
 use std::collections::{BTreeMap, HashSet};
 
-use anyhow::{Context, Result, bail};
+use anyhow::{Result, bail};
 use clap::Parser;
 use comfy_table::Table;
 use serde::Deserialize;
@@ -51,11 +51,6 @@ pub struct AttendanceArgs {
     /// Leave out meets whose name contains this text (repeatable)
     #[arg(long, short = 'x')]
     pub exclude: Vec<String>,
-}
-
-#[derive(Debug, Deserialize)]
-struct Answer {
-    json: String,
 }
 
 /// One edition's numbers (`meets:attendance`).
@@ -188,11 +183,11 @@ pub async fn run(args: AttendanceArgs) -> Result<()> {
 
     let mut editions: Vec<Edition> = Vec::new();
     let answers = answers_for(&matched, |batch| async move {
-        query::<Answer, _>(queries::MEET_ATTENDANCE, &json!({ "meets": batch })).await
+        query::<Vec<Edition>, _>(queries::MEET_ATTENDANCE, &json!({ "meets": batch })).await
     })
     .await?;
-    for answer in answers {
-        for edition in editions_of(&answer.json)? {
+    for answered in answers {
+        for edition in answered {
             if edition.spans_years() {
                 let rows: Vec<LiftingResults> =
                     query(queries::MEET_RESULTS, &json!({ "meet": edition.meet })).await?;
@@ -204,12 +199,6 @@ pub async fn run(args: AttendanceArgs) -> Result<()> {
     }
     output::emit(report(&search, &editions));
     Ok(())
-}
-
-/// The editions in a `meets:attendance` answer's JSON text; an answer of another shape is an error
-/// naming the query.
-pub fn editions_of(json: &str) -> Result<Vec<Edition>> {
-    serde_json::from_str(json).context("Unexpected answer from MeetCal query meets:attendance")
 }
 
 const TOO_MANY_ROWS_STATUS: u16 = 413;
@@ -224,15 +213,22 @@ where
     while let Some(batch) = batches.pop() {
         match ask(batch.to_vec()).await {
             Ok(answer) => answers.push(answer),
-            Err(error) if too_many_rows(&error) && batch.len() > 1 => {
-                let (first, second) = halves(batch);
-                batches.push(second);
-                batches.push(first);
-            }
+            Err(error) if too_many_rows(&error) => match batch {
+                [meet] => bail!(too_large_to_read(meet)),
+                _ => {
+                    let (first, second) = halves(batch);
+                    batches.push(second);
+                    batches.push(first);
+                }
+            },
             Err(error) => return Err(error),
         }
     }
     Ok(answers)
+}
+
+fn too_large_to_read(meet: &str) -> String {
+    format!("\"{meet}\" is too large to read in one request; try again later or report it.")
 }
 
 fn too_many_rows(error: &anyhow::Error) -> bool {
@@ -538,7 +534,10 @@ mod tests {
         .await
         .unwrap_err();
         assert_eq!(asked.get(), 1);
-        assert!(too_many_rows(&failure));
+        assert_eq!(
+            failure.to_string(),
+            "\"meet 1\" is too large to read in one request; try again later or report it."
+        );
     }
 
     #[tokio::test]
@@ -555,36 +554,13 @@ mod tests {
     }
 
     #[test]
-    fn an_answer_of_another_shape_names_the_query() {
-        let error = editions_of(r#"[{"meet": "M"}]"#).unwrap_err();
-        assert_eq!(
-            error.to_string(),
-            "Unexpected answer from MeetCal query meets:attendance"
-        );
-        assert!(editions_of("[]").unwrap().is_empty());
-    }
-
-    #[test]
-    fn a_refused_batch_is_asked_for_again_in_halves() {
+    fn halves_put_the_odd_meet_in_the_first_half() {
         let names: Vec<String> = (1..=5).map(|n| format!("meet {n}")).collect();
         let (first, second) = halves(&names);
         assert_eq!(first, &names[..3]);
         assert_eq!(second, &names[3..]);
         let (first, second) = halves(&names[..2]);
         assert_eq!((first.len(), second.len()), (1, 1));
-
-        let refused = anyhow::Error::new(FunctionError {
-            function: "meets:attendance".to_owned(),
-            status: Some(413),
-            reason: "too many rows".to_owned(),
-        });
-        assert!(too_many_rows(&refused));
-        let other = anyhow::Error::new(FunctionError {
-            function: "meets:attendance".to_owned(),
-            status: Some(400),
-            reason: "meets exceeds the 8-meet limit".to_owned(),
-        });
-        assert!(!too_many_rows(&other));
     }
 
     fn words(values: &[&str]) -> Vec<String> {

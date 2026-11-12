@@ -132,8 +132,9 @@ is the page the link opens. It needs a signed-in user but no subscription, so it
   function error with status 404 for a code no login is waiting on. Deny also turns down a login
   this user approved whose token the CLI has not collected yet (second thoughts in another tab),
   and answers 404 when nothing is left to turn down (expired, or the CLI already has its token):
-  the page then shows the code as expired or used, never "denied", since the CLI may be signed in. All three carry `Authorization: Bearer <Clerk session token>`, and a 401 asks the user to try
-  again, which fetches a fresh token. The calls are in `api.rs` (`describe_device_login`,
+  the page then shows the code as expired or used, never "denied", since the CLI may be signed in. All three carry `Authorization: Bearer <Clerk session token>`, and a 401 shows "MeetCal
+  couldn't confirm you're signed in; please sign in again", with a Try again button that asks again
+  with a fresh token. The calls are in `api.rs` (`describe_device_login`,
   `approve_device_login`, `deny_device_login`, `revoke_all_cli_logins`).
 - States: checking sign-in, sign-in, code entry, looking up, the request (Approve / Deny),
   approved ("Done — you can return to your terminal."), denied, expired or used (a `null`
@@ -170,8 +171,11 @@ in the sitemap.
   user's primary email (`auth::primary_email`), or `null`.
 - A function error's `{ status, error }` is shown as a sentence: 400 (invalid input) and 413 (a file
   over 20 MB) show the server's `error`, 429 (5 submissions, or the upload URLs, a day) adds "Please
-  try again tomorrow.", and 401 asks the user to sign in again. On any error the form keeps what the
-  user entered. Done, the page thanks the user and offers to send another meet.
+  try again tomorrow.", and 401 says MeetCal couldn't confirm the sign-in and asks the user to sign in again, as
+  `/link` does. A submit refused with `code: "already_submitted"` (the files are already in a
+  submission) counts as sent when it is a retry that reused files an earlier try uploaded: that try
+  was stored after all. On a first try it shows the server's `error`. On any error the form keeps
+  what the user entered. Done, the page thanks the user and offers to send another meet.
 - Upload URLs are on the Convex deployment's own origin, which the CSP's `connect-src` already allows.
 
 ## Routes and metadata

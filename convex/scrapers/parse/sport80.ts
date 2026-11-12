@@ -1,6 +1,6 @@
 // Pure parts of `scrapers/sport80.ts` (port of `usaw/sport80_api/update_supabase_from_sport80.py`).
 
-import { isRecord, textOrNull } from '../../lib/json';
+import { isRecord, kindOf, textOrNull } from '../../lib/json';
 import { pyFloat } from '../lib/numbers';
 import { DAY_MS } from '../../lib/dates';
 
@@ -30,14 +30,14 @@ export function readSport80Env(json: string): Sport80Env {
 }
 
 export function readTablePage(body: unknown): Dict {
-  if (!isRecord(body)) throw new Error(`the table response is ${Array.isArray(body) ? 'a list' : body === null ? 'null' : `a ${typeof body}`}, not an object`);
+  if (!isRecord(body)) throw new Error(`the table response is ${kindOf(body)}, not an object`);
   return body;
 }
 
 export function pageRows(page: Dict): Dict[] {
   const { data } = page;
   if (data === undefined || data === null) return [];
-  if (!Array.isArray(data)) throw new Error(`the table's data is ${typeof data === 'object' ? 'an object' : `a ${typeof data}`}, not a list of rows`);
+  if (!Array.isArray(data)) throw new Error(`the table's data is ${kindOf(data)}, not a list of rows`);
   return data.map((row: unknown, i) => {
     if (!isRecord(row)) throw new Error(`the table's row ${i} is not an object`);
     return row;

@@ -1,12 +1,5 @@
 import { isRecord } from './json';
 
-/**
- * Sends an email through OneSignal (`ONESIGNAL_APP_ID`, `ONESIGNAL_REST_API_KEY`,
- * the app's email sender). Returns OneSignal's notification id; throws when
- * OneSignal refuses the message, so a failed alert fails the run and shows
- * in the Convex logs. OneSignal email has no attachments: link to files.
- * `replyTo` overrides the sender's Reply-To address.
- */
 export async function sendEmail(to: string, subject: string, html: string, options: { replyTo?: string } = {}): Promise<string> {
   const appId = process.env.ONESIGNAL_APP_ID;
   const key = process.env.ONESIGNAL_REST_API_KEY;

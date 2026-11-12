@@ -1,4 +1,4 @@
-import { isAnything, isListOf, isNumber, isPairOf, isString, isStringList, parsedAs, itemAt, last } from './lib/json';
+import { isAnything, isListOf, isNumber, isPairOf, isString, isStringList, parsedAs, itemAt } from './lib/json';
 import { MEMBER_REGISTRATIONS_MAX, STANDARDS_MAX, readAll } from './lib/boundedRead';
 import { v } from 'convex/values';
 import { checkPass, premiumQuery, premiumRead } from './lib/access';
@@ -10,7 +10,7 @@ import { readHistories, readSummaries, type Mark, type Summary } from './lib/his
 import { addBests, type Candidate, checkLeaderboardArgs, fromCompactRow, type LeaderboardRow, leaderboardRow, monthSlices, parseCompactRows, pruneBests, rankBests, toCompactRow, readCompactRow } from './lib/leaderboard';
 import { checkEliteArgs, type EliteAnswer, type EliteMember, type EliteRegistration, type EliteStandard, isMemberOf, latestRegistration, type MemberResult, rankAll, standardTables, isEliteMember } from './lib/elite';
 import { computeMeetResults } from './lib/meetData';
-import { cleanNameList, distinctNameKeys, normalizeName, requestedNamesByKey } from './lib/names';
+import { cleanNameList, distinctNameKeys, newestSpelling, normalizeName, requestedNamesByKey } from './lib/names';
 import {
   bestsSince,
   namedBests,
@@ -500,8 +500,9 @@ export function exactSearchAnswer(
   end: string,
 ): SearchAnswer | null {
   const rows = inRange(history, start, end);
-  if (rows.length === 0) return null;
-  return { matched_name: last(rows).name, suggestions: [], ...mostRecent(rows) };
+  const matchedName = newestSpelling(rows);
+  if (matchedName === null) return null;
+  return { matched_name: matchedName, suggestions: [], ...mostRecent(rows) };
 }
 
 /**
