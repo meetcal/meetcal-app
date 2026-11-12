@@ -5,6 +5,7 @@
 
 use super::{
     athlete_autocomplete::AthleteAutocomplete,
+    format::NO_VALUE,
     loading::{Load, LoadState, load_error},
     ui::{DataMetric, DataPage, DataStatus, TableSkeleton},
 };
@@ -155,18 +156,16 @@ fn unavailable_message(request: &WrappedRequest, answer: &WrappedAnswer) -> Stri
     }
 }
 
-/// The first-to-last change as shown, the app's `formatImprovement`:
-/// "+12kg", "-5kg", "Steady" for none, and "—" with fewer than two meets.
 fn format_improvement(improvement: Option<f64>) -> String {
     match improvement {
-        None => "—".to_owned(),
+        None => NO_VALUE.to_owned(),
         Some(0.0) => "Steady".to_owned(),
         Some(change) => format!("{change:+}kg"),
     }
 }
 
 fn report(athlete_name: &str, year: i32, stats: &WrappedStats) -> AnyView {
-    view! { <h2 class="data-section-title">{format!("{year} Wrapped — {athlete_name}")}</h2><div class="data-metric-grid"><DataMetric label="Meets" value=stats.total_meets.to_string() /><DataMetric label="Make rate" value=format!("{:.1}%", stats.make_percentage) /><DataMetric label="Best snatch" value=format!("{}kg", stats.best_snatch) /><DataMetric label="Best C&J" value=format!("{}kg", stats.best_clean_jerk) /><DataMetric label="Best total" value=format!("{}kg", stats.best_total) /><DataMetric label="Average total" value=format!("{:.1}kg", stats.average_total) /><DataMetric label="Weight lifted" value=format!("{}kg", stats.total_weight_lifted) /><DataMetric label="First-to-last" value=format_improvement(stats.improvement_from_first) /><DataMetric label="Longest make streak" value=stats.longest_make_streak.to_string() /><DataMetric label="Favorite attempt" value=stats.favorite_attempt.map(|value| value.to_string()).unwrap_or_else(|| "—".to_owned()) /></div><div class="wrapped-top-meet"><span>"Top meet"</span><strong>{stats.top_meet.clone().unwrap_or_else(|| "—".to_owned())}</strong></div> }.into_any()
+    view! { <h2 class="data-section-title">{format!("{year} Wrapped — {athlete_name}")}</h2><div class="data-metric-grid"><DataMetric label="Meets" value=stats.total_meets.to_string() /><DataMetric label="Make rate" value=format!("{:.1}%", stats.make_percentage) /><DataMetric label="Best snatch" value=format!("{}kg", stats.best_snatch) /><DataMetric label="Best C&J" value=format!("{}kg", stats.best_clean_jerk) /><DataMetric label="Best total" value=format!("{}kg", stats.best_total) /><DataMetric label="Average total" value=format!("{:.1}kg", stats.average_total) /><DataMetric label="Weight lifted" value=format!("{}kg", stats.total_weight_lifted) /><DataMetric label="First-to-last" value=format_improvement(stats.improvement_from_first) /><DataMetric label="Longest make streak" value=stats.longest_make_streak.to_string() /><DataMetric label="Favorite attempt" value=stats.favorite_attempt.map(|value| value.to_string()).unwrap_or_else(|| NO_VALUE.to_owned()) /></div><div class="wrapped-top-meet"><span>"Top meet"</span><strong>{stats.top_meet.clone().unwrap_or_else(|| NO_VALUE.to_owned())}</strong></div> }.into_any()
 }
 
 /// The athletes a search matched, each building that athlete's Wrapped.

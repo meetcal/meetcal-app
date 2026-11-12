@@ -344,6 +344,7 @@ test("club and WSO dashboards expose meet performance metrics", async ({ page })
   await routeQuery(page, "meets:athletes", (route) => route.fulfill(textAnswer([entrant, { ...entrant, member_id: "2", name: "Other Athlete", wso: "Tennessee" }])));
   await routeQuery(page, "results:byMeet", (route) => route.fulfill(textAnswer([completeResult])));
   await page.goto("/wso-dashboard");
+  await expect(page.locator("select").and(page.getByRole("combobox", { name: "Meet" })).locator("option")).toHaveText(["Choose a meet", "Test Meet", "Older Meet"]);
   await page.locator("select").and(page.getByRole("combobox", { name: "Meet" })).selectOption("Test Meet");
   await expect(page.getByLabel("WSO").locator("option")).toHaveText(["Choose a WSO", "California North", "Tennessee"]);
   await page.getByLabel("WSO").selectOption("California North");
