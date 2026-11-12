@@ -1,8 +1,3 @@
-//! Access to MeetCal's data: the Convex queries in `convex/` at the repository root, the same
-//! ones the app and the website read, called over Convex's HTTP API (`POST /api/query`), the
-//! premium action `leaderboard` ranks with, and the few actions and mutations `meetcal login` and
-//! `logout` call.
-
 use std::sync::OnceLock;
 use std::time::Duration;
 
@@ -96,14 +91,9 @@ impl Query {
 pub mod queries {
     use super::Query;
 
-    /// `GET /meets`: meets starting within three months; takes `now` (milliseconds, rounded
-    /// down to the hour so callers share Convex's cached answer).
     pub(crate) const UPCOMING_MEETS: Query = Query::revalidated("meets:list");
-    /// `GET /meets/completed`: completed meets, newest first.
     pub(crate) const COMPLETED_MEETS: Query = Query::revalidated("meets:completed");
-    /// `GET /meets/details`; takes `meet`. An unknown meet is a 404 error.
     pub(crate) const MEET_DETAILS: Query = Query::revalidated("meets:details");
-    /// `GET /meets/schedule`; takes `meet`.
     pub const MEET_SCHEDULE: Query = Query::revalidated("meets:schedule");
     /// Distinct meet names in the results or the registrations, a page at a time; takes `source`
     /// (`results` or `registrations`), `after` (null to start) and optionally `before`. Answers
@@ -111,12 +101,8 @@ pub mod queries {
     pub(crate) const MEET_NAMES_PAGE: Query = Query::value("meets:namesPage");
     pub(crate) const MEET_ATTENDANCE: Query = Query::text("meets:attendance");
     pub(crate) const MEET_NAMES_MATCHING: Query = Query::value("meets:namesMatching");
-    /// `GET /meets/athletes`; takes `meet`.
     pub(crate) const MEET_ATHLETES: Query = Query::revalidated("meets:athletes");
-    /// `GET /meets/athletes-sessions`; takes `meet`, and optionally `sessionNumber` and
-    /// `platform`.
     pub(crate) const MEET_ATHLETES_SESSIONS: Query = Query::revalidated("meets:athletesSessions");
-    /// `GET /lifting-results`; takes `meet`.
     pub(crate) const MEET_RESULTS: Query = Query::revalidated("results:byMeet");
     /// `GET /lifting-results/by-names`; takes `names` (at most 100).
     pub(crate) const RESULTS_BY_NAMES: Query = Query::text("results:byNames");
@@ -135,34 +121,23 @@ pub mod queries {
     /// `{ kind }`: `athlete` with `name` and `stats`, `ambiguous`, `narrow`, `tooManyResults`, or
     /// `none` with name `suggestions`.
     pub(crate) const WRAPPED: Query = Query::value("results:wrapped");
-    /// `GET /data/records`
     pub const RECORDS: Query = Query::revalidated("reference:records");
     pub(crate) const RECORD_CATEGORIES: Query = Query::revalidated("reference:recordCategories");
-    /// `GET /data/standards`
     pub(crate) const STANDARDS: Query = Query::revalidated("reference:standards");
-    /// `GET /data/qualifying-totals`
     pub(crate) const QUALIFYING_TOTALS: Query = Query::revalidated("reference:qualifyingTotals");
     pub(crate) const QUALIFYING_TOTAL_CATEGORIES: Query =
         Query::revalidated("reference:qualifyingTotalCategories");
-    /// `GET /data/intl-rankings`
     pub(crate) const INTL_RANKINGS: Query = Query::revalidated("reference:intlRankings");
-    /// `GET /data/nat-rankings`; takes `federation` and `ageCategory`.
     pub(crate) const NATIONAL_RANKINGS: Query = Query::revalidated("reference:nationalRankings");
-    /// `GET /data/nat-rankings-year`; also takes `year`.
     pub(crate) const NATIONAL_RANKINGS_BY_YEAR: Query =
         Query::revalidated("reference:nationalRankingsByYear");
-    /// `GET /data/wso/records`; takes `wso`, and optionally `ageCategory` and `gender`.
     pub(crate) const WSO_RECORDS: Query = Query::revalidated("reference:wsoRecords");
-    /// `GET /data/adaptive`; takes `gender` and `excludeFederation`.
     pub(crate) const ADAPTIVE_RECORDS: Query = Query::revalidated("reference:adaptiveRecords");
-    /// `GET /clubs`: every club name.
     pub(crate) const CLUBS: Query = Query::revalidated("reference:clubs");
-    /// `GET /data/wso`: every WSO with records.
     pub(crate) const WSO_LIST: Query = Query::revalidated("reference:wsoList");
     /// Every WSO name on registrations: the names `reference:wsoAthletes` matches, which differ
     /// from the record sheets' (`reference:wsoList`).
     pub(crate) const REGISTRATION_WSOS: Query = Query::value("reference:registrationWsos");
-    /// `GET /data/wso/age-groups`: the age groups a WSO keeps records for; takes `wso`.
     pub(crate) const WSO_AGE_GROUPS: Query = Query::revalidated("reference:wsoAgeGroups");
     /// `GET /clubs/athletes`; takes `club`, and `cursor` (null to start) to page. Read it with
     /// [`super::query_all_pages`]: a page answers `{ json, cursor, isDone }`.
@@ -355,8 +330,6 @@ where
     query_from(&convex_url(), default_access(), query, args).await
 }
 
-/// Runs `query` with `args` on the deployment at `base_url`. A premium read carries the pass
-/// `access` holds (see [`premium_answer`]).
 pub async fn query_from<T, A>(base_url: &str, access: &Access, query: Query, args: &A) -> Result<T>
 where
     T: DeserializeOwned,
