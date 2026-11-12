@@ -1,6 +1,6 @@
 import { IconSymbol } from "@/components/ui/IconSymbol";
 import { useAppColors } from "@/hooks/useAppColors";
-import { useAuthGuard } from "@/utils/authGuard";
+import { useAuthGuard } from "@/hooks/useAuthGuard";
 import { useNavigation, usePathname, useRouter } from "expo-router";
 import React, { useLayoutEffect } from "react";
 import { Platform, Pressable, StyleSheet, View } from "react-native";

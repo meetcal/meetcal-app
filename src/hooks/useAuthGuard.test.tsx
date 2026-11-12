@@ -1,7 +1,7 @@
 import React from "react";
 import { Alert } from "react-native";
 import { act, create } from "react-test-renderer";
-import { useAuthGuard } from "@/utils/authGuard";
+import { useAuthGuard } from "@/hooks/useAuthGuard";
 import { useUser } from "@clerk/expo";
 import { useRouter } from "expo-router";
 import { cacheAuthState, getCachedAuthState } from "@/lib/authCache";

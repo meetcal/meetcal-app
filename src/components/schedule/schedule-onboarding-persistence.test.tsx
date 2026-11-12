@@ -92,7 +92,7 @@ jest.mock("react-native-safe-area-context", () => ({
 }));
 jest.mock("@/lib/database/offline-store-index", () => ({ initStore: jest.fn() }));
 jest.mock("@/lib/e2e", () => ({ isMaestroE2E: () => false }));
-jest.mock("@/utils/authGuard", () => ({
+jest.mock("@/hooks/useAuthGuard", () => ({
   useAuthGuard: () => ({ isAuthenticated: false, authState: false, notifyAuthPending: jest.fn() }),
 }));
 jest.mock("expo-router", () => ({

@@ -1,5 +1,5 @@
 import { devLog } from '@/lib/logger';
-import { useRedirectIntoTabs } from '@/lib/tab-redirect';
+import { useRedirectIntoTabs } from '@/hooks/useRedirectIntoTabs';
 
 export default function NotFoundScreen() {
   devLog('[NotFound] Hit +not-found route, returning to /(tabs)/(index)');

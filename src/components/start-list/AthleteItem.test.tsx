@@ -31,7 +31,7 @@ jest.mock("@/lib/start-list-utils", () => {
 // Regression guard for H3: the row must not read these itself. A row that
 // imports any of them would call the throwing hook on mount. (Each factory
 // builds its own thrower: `jest.mock` is hoisted above module scope.)
-jest.mock("@/utils/authGuard", () => ({
+jest.mock("@/hooks/useAuthGuard", () => ({
   useAuthGuard: () => {
     throw new Error("AthleteItem must not read app contexts");
   },

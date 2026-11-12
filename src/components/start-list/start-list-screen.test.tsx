@@ -104,7 +104,7 @@ jest.mock("@/contexts/SavedSessionsContext", () => ({
 jest.mock("@/contexts/ThemeContext", () => ({
   useTheme: () => ({ currentTheme: "light" }),
 }));
-jest.mock("@/utils/authGuard", () => ({
+jest.mock("@/hooks/useAuthGuard", () => ({
   useAuthGuard: () => ({ requireAuth: mockRequireAuth }),
 }));
 jest.mock("expo-router", () => ({

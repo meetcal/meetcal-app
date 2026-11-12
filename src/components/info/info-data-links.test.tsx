@@ -13,7 +13,7 @@ import { isInternalRoutePath } from "@/utils/deepLinks";
 import { itemAt } from "@/test-support/checked-access";
 
 const mockRequireAuth = jest.fn<boolean | null, [Record<string, unknown>]>(() => false);
-jest.mock("@/utils/authGuard", () => ({
+jest.mock("@/hooks/useAuthGuard", () => ({
   useAuthGuard: () => ({ requireAuth: mockRequireAuth }),
 }));
 

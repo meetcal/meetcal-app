@@ -28,7 +28,7 @@ jest.mock("expo-store-review", () => ({}));
 jest.mock("@/components/ui/IconSymbol", () => ({ IconSymbol: () => null }));
 jest.mock("@/utils/calendar", () => ({}));
 let mockSignedIn = true;
-jest.mock("@/utils/authGuard", () => ({
+jest.mock("@/hooks/useAuthGuard", () => ({
   useAuthGuard: () => ({ requireAuth: () => mockSignedIn }),
 }));
 let mockSubscribed: boolean | null = true;

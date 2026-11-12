@@ -35,7 +35,7 @@ jest.mock("@/contexts/SubscriptionContext", () => ({
 // Offline: Clerk never loads, so there is no Clerk user; the cached sign-in
 // is what `requireAuth` trusts.
 jest.mock("@clerk/expo", () => ({ useUser: () => ({ user: null, isLoaded: false }) }));
-jest.mock("@/utils/authGuard", () => ({ useAuthGuard: () => ({ requireAuth: () => true }) }));
+jest.mock("@/hooks/useAuthGuard", () => ({ useAuthGuard: () => ({ requireAuth: () => true }) }));
 jest.mock("@/hooks/useCalendarSessionsExport", () => ({
   useCalendarSessionsExport: () => ({
     exportSessions: jest.fn(),
